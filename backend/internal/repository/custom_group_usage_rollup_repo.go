@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -17,21 +18,21 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 	todayDate := service.GroupUsageDate(todayStart)
 	yesterdayDate := service.GroupUsageDate(yesterdayStart)
 
+	// 日桶是不可变的历史沉淀：即便原始日志已被保留期清理，
+	// closed_before 以前的桶依旧全部计入累计用量，不随清理缩水。
 	const query = `
 		WITH state_values AS (
 			SELECT
 				COUNT(*) = 1
 					AND MAX(timezone_name) = $3
 					AND MAX(closed_before) <= $4::date AS valid,
-				MAX(closed_before) AS closed_before,
-				MAX(retained_from) AS retained_from
+				MAX(closed_before) AS closed_before
 			FROM usage_group_rollup_state
 			WHERE id = 1
 		),
 		state AS (
 			SELECT
 				CASE WHEN valid THEN closed_before ELSE DATE '1970-01-01' END AS closed_before,
-				CASE WHEN valid THEN retained_from ELSE TIMESTAMPTZ '1970-01-01 00:00:00+00' END AS retained_from,
 				CASE
 					WHEN valid THEN closed_before::timestamp AT TIME ZONE $3::text
 					ELSE TIMESTAMPTZ '1970-01-01 00:00:00+00'
@@ -49,7 +50,6 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 			FROM usage_group_daily_rollups rollup
 			CROSS JOIN state
 			WHERE state.valid
-				AND rollup.bucket_date >= (state.retained_from AT TIME ZONE $3::text)::date
 				AND rollup.bucket_date < state.closed_before
 			GROUP BY rollup.group_id
 		),
@@ -180,9 +180,19 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupsInTx(ctx context.C
 	if err != nil {
 		return err
 	}
+	// 重建下界不能早于 retainedDate：更早的原始日志已被清理，
+	// 那段日桶是不可重算的历史沉淀，只能原样保留。
 	rebuildStartDate := retainedDate
 	if !timezoneChanged && closedTime.After(retainedDateTime) {
 		rebuildStartDate = closedBefore
+	}
+	if timezoneChanged && previousRetainedFrom.Before(retainedFrom) {
+		logger.LegacyPrintf(
+			"repository.group_usage_rollup",
+			"[GroupUsageRollup] 时区切换为 %s，%s 以前的日桶因原始日志已归档无法重建，保留旧时区口径",
+			timezoneName,
+			retainedDate,
+		)
 	}
 	rebuildStart, err := service.ParseGroupUsageDate(rebuildStartDate)
 	if err != nil {
@@ -191,10 +201,8 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupsInTx(ctx context.C
 
 	if _, err := r.sql.ExecContext(ctx, `
 		DELETE FROM usage_group_daily_rollups
-		WHERE bucket_date < $1::date
-			OR (bucket_date >= $2::date AND bucket_date < $3::date)
-			OR bucket_date >= $3::date
-	`, retainedDate, rebuildStartDate, todayDate); err != nil {
+		WHERE bucket_date >= $1::date
+	`, rebuildStartDate); err != nil {
 		return fmt.Errorf("清理分组用量日桶: %w", err)
 	}
 
@@ -218,10 +226,11 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupsInTx(ctx context.C
 		return fmt.Errorf("重建分组用量日桶: %w", err)
 	}
 
+	// 归档屏障只增不减：迟到的历史写入不得把它拉回，否则会解除已归档日桶的保护。
 	if _, err := r.sql.ExecContext(ctx, `
 		UPDATE usage_group_rollup_state
 		SET closed_before = $1::date,
-			retained_from = $2,
+			retained_from = GREATEST(retained_from, $2::timestamptz),
 			timezone_name = $3,
 			updated_at = NOW()
 		WHERE id = 1
@@ -244,16 +253,36 @@ func lockGroupUsageRollupState(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
+// invalidateGroupUsageRollupsAt 把发布水位回退到受影响日期，使该日之后的日桶在下次同步时重建。
+// 回退不会越过归档屏障：retained_from 之前的原始日志已被清理，那段日桶无法重算。
 func invalidateGroupUsageRollupsAt(ctx context.Context, tx *sql.Tx, affectedAt time.Time) error {
 	timezoneName := service.GroupUsageTimezoneName()
 	_, err := tx.ExecContext(ctx, `
 		UPDATE usage_group_rollup_state
 		SET closed_before = LEAST(
 			closed_before,
-			($1::timestamptz AT TIME ZONE $2::text)::date
+			GREATEST(
+				($1::timestamptz AT TIME ZONE $2::text)::date,
+				(retained_from AT TIME ZONE $2::text)::date
+			)
 		),
 			updated_at = NOW()
 		WHERE id = 1
 	`, affectedAt.UTC(), timezoneName)
 	return err
+}
+
+// advanceGroupUsageRetention 推进归档屏障，声明 cutoff 之前的原始日志已被清理。
+// 归档删除必须先调用它再删数据（能用事务时放进同一事务），失效触发器据此跳过水位回退，
+// 从而让已发布的历史日桶保持不变、不被重算。屏障单调递增，可重复调用。
+func advanceGroupUsageRetention(ctx context.Context, exec sqlExecutor, cutoff time.Time) error {
+	if _, err := exec.ExecContext(ctx, `
+		UPDATE usage_group_rollup_state
+		SET retained_from = GREATEST(retained_from, $1::timestamptz),
+			updated_at = NOW()
+		WHERE id = 1
+	`, cutoff.UTC()); err != nil {
+		return fmt.Errorf("推进分组用量归档屏障: %w", err)
+	}
+	return nil
 }
