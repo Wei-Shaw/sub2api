@@ -50,6 +50,186 @@ func TestGroupUsageRollupTriggerInvalidatesCascadedHistoricalDelete(t *testing.T
 	}
 }
 
+// 保留期清理先推进归档屏障再删源数据，触发器据此跳过水位回退，
+// 已发布的历史日桶原样保留、不被重算。
+func TestGroupUsageRollupTriggerSkipsInvalidationBelowRetentionBarrier(t *testing.T) {
+	for _, partitioned := range []bool{false, true} {
+		name := "ordinary"
+		if partitioned {
+			name = "partitioned"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			schema := createGroupUsageRollupTriggerTestSchema(t, ctx, partitioned)
+			tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+			defer func() { _ = tx.Rollback() }()
+
+			_, err := tx.ExecContext(ctx, `
+				INSERT INTO groups (id) VALUES (10);
+				INSERT INTO users (id) VALUES (1);
+				INSERT INTO usage_logs (id, user_id, group_id, actual_cost, created_at)
+				VALUES (1, 1, 10, 1.25, TIMESTAMPTZ '2026-05-01 08:00:00+08');
+				INSERT INTO usage_group_daily_rollups (bucket_date, group_id, actual_cost, computed_at)
+				VALUES (DATE '2026-05-01', 10, 1.25, NOW());
+				UPDATE usage_group_rollup_state
+				SET closed_before = DATE '2026-08-14',
+					retained_from = TIMESTAMPTZ '2026-06-01 00:00:00+08'
+				WHERE id = 1;
+				DELETE FROM usage_logs WHERE id = 1;
+			`)
+			require.NoError(t, err)
+
+			var closedBefore string
+			require.NoError(t, tx.QueryRowContext(ctx, `
+				SELECT closed_before::text
+				FROM usage_group_rollup_state
+				WHERE id = 1
+			`).Scan(&closedBefore))
+			require.Equal(t, "2026-08-14", closedBefore, "归档区间的删除不得回退发布水位")
+
+			var rollupCost float64
+			require.NoError(t, tx.QueryRowContext(ctx, `
+				SELECT actual_cost
+				FROM usage_group_daily_rollups
+				WHERE bucket_date = DATE '2026-05-01' AND group_id = 10
+			`).Scan(&rollupCost))
+			require.InDelta(t, 1.25, rollupCost, 0.0000001, "归档日桶必须原样保留")
+		})
+	}
+}
+
+// 屏障之后的删除仍是数据修正，必须回退水位以便重建。
+func TestGroupUsageRollupTriggerInvalidatesAboveRetentionBarrier(t *testing.T) {
+	ctx := context.Background()
+	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
+	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	defer func() { _ = tx.Rollback() }()
+
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO groups (id) VALUES (10);
+		INSERT INTO users (id) VALUES (1);
+		INSERT INTO usage_logs (id, user_id, group_id, actual_cost, created_at)
+		VALUES (1, 1, 10, 1.25, TIMESTAMPTZ '2026-07-03 08:00:00+08');
+		UPDATE usage_group_rollup_state
+		SET closed_before = DATE '2026-08-14',
+			retained_from = TIMESTAMPTZ '2026-06-01 00:00:00+08'
+		WHERE id = 1;
+		DELETE FROM usage_logs WHERE id = 1;
+	`)
+	require.NoError(t, err)
+
+	var closedBefore string
+	require.NoError(t, tx.QueryRowContext(ctx, `
+		SELECT closed_before::text
+		FROM usage_group_rollup_state
+		WHERE id = 1
+	`).Scan(&closedBefore))
+	require.Equal(t, "2026-07-03", closedBefore)
+}
+
+// CleanupUsageLogs 的完整归档路径：删掉保留期以外的原始日志后，
+// 发布水位不动、历史日桶一行不少、分组累计用量不变——即「不重新算」。
+func TestCleanupUsageLogsArchivesWithoutRecomputingRollups(t *testing.T) {
+	ctx := context.Background()
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
+	todayStart := time.Date(2026, 8, 13, 16, 0, 0, 0, time.UTC)
+	cutoff := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+
+	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
+	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	defer func() { _ = tx.Rollback() }()
+
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO groups (id) VALUES (10);
+		INSERT INTO users (id) VALUES (1);
+		INSERT INTO usage_logs (id, user_id, group_id, actual_cost, created_at) VALUES
+			(1, 1, 10, 7, TIMESTAMPTZ '2026-05-20 12:00:00+08'),
+			(2, 1, 10, 2, TIMESTAMPTZ '2026-08-12 12:00:00+08'),
+			(3, 1, 10, 3, TIMESTAMPTZ '2026-08-13 12:00:00+08'),
+			(4, 1, 10, 4, TIMESTAMPTZ '2026-08-14 12:00:00+08');
+		INSERT INTO usage_group_daily_rollups (bucket_date, group_id, actual_cost, computed_at) VALUES
+			(DATE '2026-05-20', 10, 7, NOW()),
+			(DATE '2026-08-12', 10, 2, NOW()),
+			(DATE '2026-08-13', 10, 3, NOW());
+		UPDATE usage_group_rollup_state
+		SET closed_before = DATE '2026-08-14',
+			retained_from = TIMESTAMPTZ '2026-05-20 12:00:00+08'
+		WHERE id = 1;
+	`)
+	require.NoError(t, err)
+
+	usageRepo := newUsageLogRepositoryWithSQL(nil, tx)
+	before, err := usageRepo.GetAllGroupUsageSummary(ctx, todayStart)
+	require.NoError(t, err)
+	require.Len(t, before, 1)
+	require.InDelta(t, 16, before[0].TotalCost, 0.0000001)
+
+	aggRepo := newDashboardAggregationRepositoryWithSQL(tx)
+	require.NoError(t, aggRepo.CleanupUsageLogs(ctx, cutoff))
+
+	var remaining int
+	require.NoError(t, tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_logs").Scan(&remaining))
+	require.Equal(t, 3, remaining, "cutoff 以前的原始日志应被归档")
+
+	var closedBefore string
+	var retainedFrom time.Time
+	require.NoError(t, tx.QueryRowContext(ctx, `
+		SELECT closed_before::text, retained_from
+		FROM usage_group_rollup_state
+		WHERE id = 1
+	`).Scan(&closedBefore, &retainedFrom))
+	require.Equal(t, "2026-08-14", closedBefore, "归档不得回退发布水位")
+	require.True(t, retainedFrom.Equal(cutoff), "归档屏障应推进到 cutoff")
+
+	var buckets int
+	require.NoError(t, tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_group_daily_rollups").Scan(&buckets))
+	require.Equal(t, 3, buckets, "历史日桶必须原样保留")
+
+	after, err := usageRepo.GetAllGroupUsageSummary(ctx, todayStart)
+	require.NoError(t, err)
+	require.Len(t, after, 1)
+	require.InDelta(t, before[0].TotalCost, after[0].TotalCost, 0.0000001, "累计用量不得因归档缩水")
+	require.InDelta(t, 4, after[0].TodayCost, 0.0000001)
+	require.InDelta(t, 3, after[0].YesterdayCost, 0.0000001)
+}
+
+// 保留期清理后累计用量不缩水：原始日志已不在，日桶依旧全额计入。
+func TestGroupUsageSummaryKeepsArchivedRollupsInTotal(t *testing.T) {
+	ctx := context.Background()
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
+	todayStart := time.Date(2026, 8, 13, 16, 0, 0, 0, time.UTC)
+
+	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
+	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	defer func() { _ = tx.Rollback() }()
+
+	// 只有 08-13 起的原始日志还在，08-12 及更早的已被归档，仅剩日桶。
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO groups (id) VALUES (10);
+		INSERT INTO users (id) VALUES (1);
+		INSERT INTO usage_logs (id, user_id, group_id, actual_cost, created_at) VALUES
+			(2, 1, 10, 3, TIMESTAMPTZ '2026-08-13 12:00:00+08'),
+			(3, 1, 10, 4, TIMESTAMPTZ '2026-08-14 12:00:00+08');
+		INSERT INTO usage_group_daily_rollups (bucket_date, group_id, actual_cost, computed_at) VALUES
+			(DATE '2026-05-20', 10, 11, NOW()),
+			(DATE '2026-08-12', 10, 2, NOW()),
+			(DATE '2026-08-13', 10, 3, NOW());
+		UPDATE usage_group_rollup_state
+		SET closed_before = DATE '2026-08-14',
+			retained_from = TIMESTAMPTZ '2026-08-13 00:00:00+08'
+		WHERE id = 1;
+	`)
+	require.NoError(t, err)
+
+	repo := newUsageLogRepositoryWithSQL(nil, tx)
+	result, err := repo.GetAllGroupUsageSummary(ctx, todayStart)
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	require.InDelta(t, 20, result[0].TotalCost, 0.0000001, "归档日桶必须计入累计用量")
+	require.InDelta(t, 4, result[0].TodayCost, 0.0000001)
+	require.InDelta(t, 3, result[0].YesterdayCost, 0.0000001)
+}
+
 func TestGroupUsageRollupTriggerSerializesLateHistoricalInsertWithPublish(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -449,6 +629,7 @@ func createGroupUsageRollupTriggerTestSchema(t *testing.T, ctx context.Context, 
 	for _, migrationName := range []string{
 		"222_group_usage_daily_rollups.sql",
 		"223_group_usage_rollup_timezone.sql",
+		"227_group_usage_rollup_archival.sql",
 	} {
 		migrationSQL, readErr := migrations.FS.ReadFile(migrationName)
 		require.NoError(t, readErr)

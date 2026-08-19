@@ -230,26 +230,31 @@ func (r *dashboardAggregationRepository) CleanupAggregates(ctx context.Context, 
 	return nil
 }
 
+// CleanupUsageLogs 归档保留期以外的原始用量日志。
+// 归档只删源数据：cutoff 以前的日期早已发布为分组日桶，那些桶是不可变的历史沉淀，
+// 因此这里既不回退发布水位，也不触发任何重算。
 func (r *dashboardAggregationRepository) CleanupUsageLogs(ctx context.Context, cutoff time.Time) error {
 	isPartitioned, err := r.isUsageLogsPartitioned(ctx)
 	if err != nil {
 		return err
 	}
 	if isPartitioned {
-		if err := r.dropUsageLogsPartitions(ctx, cutoff); err != nil {
-			return err
-		}
-	} else if err := r.cleanupUsageLogsBatches(ctx, cutoff); err != nil {
-		return err
+		return r.dropUsageLogsPartitions(ctx, cutoff)
 	}
-	return r.SyncGroupUsageRollups(ctx, service.GroupUsageTodayStart(r.now()))
+	return r.cleanupUsageLogsBatches(ctx, cutoff)
 }
 
 func (r *dashboardAggregationRepository) cleanupUsageLogsBatches(ctx context.Context, cutoff time.Time) error {
 	db, transactional := r.sql.(*sql.DB)
+	if !transactional {
+		// 无事务可用时至少保证屏障先于删除推进，否则触发器会把这批归档当成数据修正。
+		if err := advanceGroupUsageRetention(ctx, r.sql, cutoff); err != nil {
+			return err
+		}
+	}
 	for {
 		if transactional {
-			affected, err := cleanupUsageLogsBatchWithRollupInvalidation(ctx, db, cutoff)
+			affected, err := cleanupUsageLogsBatchWithRetentionAdvance(ctx, db, cutoff)
 			if err != nil {
 				return err
 			}
@@ -283,7 +288,9 @@ func (r *dashboardAggregationRepository) cleanupUsageLogsBatches(ctx context.Con
 	}
 }
 
-func cleanupUsageLogsBatchWithRollupInvalidation(ctx context.Context, db *sql.DB, cutoff time.Time) (int64, error) {
+// cleanupUsageLogsBatchWithRetentionAdvance 在同一事务内先推进归档屏障再删除，
+// 使失效触发器认出这批删除属于归档，跳过发布水位回退。
+func cleanupUsageLogsBatchWithRetentionAdvance(ctx context.Context, db *sql.DB, cutoff time.Time) (int64, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -296,7 +303,10 @@ func cleanupUsageLogsBatchWithRollupInvalidation(ctx context.Context, db *sql.DB
 	if err := lockGroupUsageRollupState(ctx, tx); err != nil {
 		return rollback(err)
 	}
-	rows, err := tx.QueryContext(ctx, `
+	if err := advanceGroupUsageRetention(ctx, tx, cutoff); err != nil {
+		return rollback(err)
+	}
+	res, err := tx.ExecContext(ctx, `
 		WITH victims AS (
 			SELECT ctid
 			FROM usage_logs
@@ -306,36 +316,13 @@ func cleanupUsageLogsBatchWithRollupInvalidation(ctx context.Context, db *sql.DB
 		)
 		DELETE FROM usage_logs
 		WHERE ctid IN (SELECT ctid FROM victims)
-		RETURNING created_at
 	`, cutoff.UTC(), usageLogsCleanupBatchSize)
 	if err != nil {
 		return rollback(err)
 	}
-
-	var affected int64
-	var earliestDeletedAt time.Time
-	for rows.Next() {
-		var deletedAt time.Time
-		if err := rows.Scan(&deletedAt); err != nil {
-			_ = rows.Close()
-			return rollback(err)
-		}
-		affected++
-		if earliestDeletedAt.IsZero() || deletedAt.Before(earliestDeletedAt) {
-			earliestDeletedAt = deletedAt
-		}
-	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
+	affected, err := res.RowsAffected()
+	if err != nil {
 		return rollback(err)
-	}
-	if err := rows.Close(); err != nil {
-		return rollback(err)
-	}
-	if affected > 0 {
-		if err := invalidateGroupUsageRollupsAt(ctx, tx, earliestDeletedAt); err != nil {
-			return rollback(err)
-		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
@@ -629,13 +616,16 @@ func (r *dashboardAggregationRepository) dropUsageLogsPartitions(ctx context.Con
 	})
 	if db, ok := r.sql.(*sql.DB); ok {
 		for _, partition := range partitions {
-			if err := dropUsageLogsPartitionWithRollupInvalidation(ctx, db, partition.name, partition.month); err != nil {
+			if err := dropUsageLogsPartitionWithRetentionAdvance(ctx, db, partition.name, partition.month.AddDate(0, 1, 0)); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
 	for _, partition := range partitions {
+		if err := advanceGroupUsageRetention(ctx, r.sql, partition.month.AddDate(0, 1, 0)); err != nil {
+			return err
+		}
 		if _, err := r.sql.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", pq.QuoteIdentifier(partition.name))); err != nil {
 			return err
 		}
@@ -643,7 +633,10 @@ func (r *dashboardAggregationRepository) dropUsageLogsPartitions(ctx context.Con
 	return nil
 }
 
-func dropUsageLogsPartitionWithRollupInvalidation(ctx context.Context, db *sql.DB, name string, monthStart time.Time) error {
+// dropUsageLogsPartitionWithRetentionAdvance 丢弃整月分区并把归档屏障推进到该分区之后。
+// DROP TABLE 不触发行级失效触发器，因此屏障必须在这里显式推进，
+// 否则后续删除会误以为这段日期仍有原始日志可重建。
+func dropUsageLogsPartitionWithRetentionAdvance(ctx context.Context, db *sql.DB, name string, retainedFrom time.Time) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -656,7 +649,7 @@ func dropUsageLogsPartitionWithRollupInvalidation(ctx context.Context, db *sql.D
 	if err := lockGroupUsageRollupState(ctx, tx); err != nil {
 		return rollback(err)
 	}
-	if err := invalidateGroupUsageRollupsAt(ctx, tx, monthStart); err != nil {
+	if err := advanceGroupUsageRetention(ctx, tx, retainedFrom); err != nil {
 		return rollback(err)
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", pq.QuoteIdentifier(name))); err != nil {

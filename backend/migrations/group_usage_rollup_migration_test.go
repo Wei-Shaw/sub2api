@@ -3,6 +3,7 @@
 package migrations
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -49,4 +50,20 @@ func TestMigration223TracksConfiguredTimezone(t *testing.T) {
 	require.Contains(t, sql, "current_setting('TimeZone')")
 	require.Contains(t, sql, "CREATE OR REPLACE FUNCTION invalidate_group_usage_rollup_state")
 	require.Contains(t, sql, "CREATE OR REPLACE FUNCTION invalidate_group_usage_rollup_state_after_insert")
+}
+
+func TestMigration227AddsRetentionBarrier(t *testing.T) {
+	content, err := FS.ReadFile("227_group_usage_rollup_archival.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "CREATE OR REPLACE FUNCTION invalidate_group_usage_rollup_state")
+	require.Contains(t, sql, "CREATE OR REPLACE FUNCTION invalidate_group_usage_rollup_state_after_insert")
+	// 归档屏障：两个失效函数都必须在回退水位前跳过已归档区间。
+	require.Equal(t, 2, strings.Count(sql, "affected_date < archived_before"))
+	require.Contains(t, sql, "(retained_from AT TIME ZONE configured_timezone)::date")
+	// 屏障判定不加锁，避免批量归档删除逐行争抢状态行。
+	require.Contains(t, sql, "SELECT (retained_from AT TIME ZONE configured_timezone)::date")
+	// 存量修复：把被清理拉坏的水位收回到屏障之后。
+	require.Contains(t, sql, "closed_before < (retained_from AT TIME ZONE timezone_name)::date")
 }
