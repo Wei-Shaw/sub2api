@@ -196,6 +196,40 @@ func TestApplyOpenAIFastPolicyToBody_DefaultPassesPriorityAndFast(t *testing.T) 
 	require.Equal(t, string(body), string(updated))
 }
 
+func TestApplyOpenAIFastPolicyToBody_ForcePriorityInjectsMissingTier(t *testing.T) {
+	settings := &OpenAIFastPolicySettings{
+		Rules: []OpenAIFastPolicyRule{{
+			ServiceTier: OpenAIFastTierAny,
+			Action:      OpenAIFastPolicyActionForcePriority,
+			Scope:       BetaPolicyScopeAll,
+			UserIDs:     []int64{42},
+		}},
+	}
+	svc := newOpenAIGatewayServiceWithSettings(t, settings)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	body := []byte(`{"model":"gpt-5.5"}`)
+
+	matchingCtx := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
+	updated, err := svc.applyOpenAIFastPolicyToBody(matchingCtx, account, "gpt-5.5", body)
+	require.NoError(t, err)
+	require.Equal(t, OpenAIFastTierPriority, gjson.GetBytes(updated, "service_tier").String())
+
+	otherCtx := context.WithValue(context.Background(), ctxkey.UserID, int64(43))
+	updated, err = svc.applyOpenAIFastPolicyToBody(otherCtx, account, "gpt-5.5", body)
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(updated, "service_tier").Exists())
+}
+
+func TestApplyOpenAIFastPolicyToBody_MissingTierIgnoresNonForceRule(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithSettings(t, openAIFastFilterPriorityPolicy())
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	body := []byte(`{"model":"gpt-5.5"}`)
+
+	updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
+	require.NoError(t, err)
+	require.Equal(t, string(body), string(updated))
+}
+
 func TestApplyOpenAIFastPolicyToBody_ExplicitFilterRemovesField(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, openAIFastFilterPriorityPolicy())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
