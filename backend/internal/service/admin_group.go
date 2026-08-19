@@ -512,7 +512,7 @@ REDACTED
 		ReasoningEffortMappings:         reasoningEffortMappings,
 REDACTED
 	sanitizeGroupMessagesDispatchFields(group)
-	if group.Platform != PlatformOpenAI {
+	if group.Platform != PlatformOpenAI && group.Platform != PlatformComposite {
 		group.AllowLive = false
 REDACTED
 	sanitizeGroupReasoningEffortPolicy(group)
@@ -892,7 +892,7 @@ REDACTED
 		group.ReasoningEffortMappings = reasoningEffortMappings
 REDACTED
 	sanitizeGroupMessagesDispatchFields(group)
-	if group.Platform != PlatformOpenAI {
+	if group.Platform != PlatformOpenAI && group.Platform != PlatformComposite {
 		group.AllowLive = false
 REDACTED
 	sanitizeGroupReasoningEffortPolicy(group)
