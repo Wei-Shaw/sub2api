@@ -472,7 +472,7 @@ func beginGroupUsageRollupTriggerTestTx(t *testing.T, ctx context.Context, schem
 }
 
 func setGroupUsageRollupTriggerSearchPath(ctx context.Context, tx *sql.Tx, quotedSchema string) error {
-	_, err := tx.ExecContext(ctx, "SET LOCAL search_path TO "+quotedSchema)
+	_, err := tx.ExecContext(ctx, "SET LOCAL search_path TO "+quotedSchema+"; SET LOCAL TIME ZONE 'Asia/Shanghai'")
 	return err
 }
 
