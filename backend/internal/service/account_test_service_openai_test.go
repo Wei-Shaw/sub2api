@@ -248,6 +248,73 @@ REDACTED
 	require.NotContains(t, recorder.Body.String(), `"success":true`)
 REDACTED
 
+func TestAccountTestService_DeepSeekCustomBaseURLUsesV1ResponsesPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(`data: {"type":"response.completed"REDACTED
+
+`))
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{respREDACTEDREDACTED
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: falseREDACTEDREDACTEDREDACTED,
+REDACTED
+	account := &Account{
+		ID:          91,
+		Platform:    PlatformDeepseek,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":      "sk-test",
+			"base_url":     "https://token.cvte.com/v1",
+			"api_protocol": APIProtocolResponses,
+	REDACTED,
+		Extra: map[string]any{
+			openai_compat.ExtraKeyResponsesSupported: true,
+	REDACTED,
+REDACTED
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+REDACTED
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://token.cvte.com/v1/responses", upstream.requests[0].URL.String())
+REDACTED
+
+func TestAccountTestService_DeepSeekDefaultBaseURLUsesNativeResponsesPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(`data: {"type":"response.completed"REDACTED
+
+`))
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{respREDACTEDREDACTED
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: falseREDACTEDREDACTEDREDACTED,
+REDACTED
+	account := &Account{
+		ID:          92,
+		Platform:    PlatformDeepseek,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":      "sk-test",
+			"api_protocol": APIProtocolResponses,
+	REDACTED,
+		Extra: map[string]any{
+			openai_compat.ExtraKeyResponsesSupported: true,
+	REDACTED,
+REDACTED
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+REDACTED
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://api.deepseek.com/responses", upstream.requests[0].URL.String())
+REDACTED
+
 func TestAccountTestService_OpenAI429PersistsSnapshotAndRateLimitState(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()
