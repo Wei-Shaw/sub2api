@@ -3,8 +3,11 @@ package handler
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -20,42 +23,39 @@ import (
 //     model). Returning 503 here misleads operators and trips reverse-proxy
 //     health checks; 404 lets the client surface the real problem.
 //
+//   - 429 rate_limit_error — every matching Anthropic account is waiting for
+//     a known rate-limit reset time.
+//
 //   - 503 api_error — accounts that could serve the model exist but are
 //     temporarily exhausted (rate limit, quota auto-pause, runtime block) OR
 //     the group has no accounts at all. Both stay on 503 because retrying
 //     after a backoff can plausibly succeed (or, in the empty-pool case, the
 //     operator may be in the middle of adding accounts).
 type noAccountErrorClassification struct {
-	Status        int
-	ErrType       string
-	Message       string
-	ModelNotFound bool // true when this is a 404 model_not_found classification
+	Status            int
+	ErrType           string
+	Message           string
+	ModelNotFound     bool // true when this is a 404 model_not_found classification
+	RetryAfterSeconds int
+	ResetsAt          *time.Time
 }
 
-// classifyNoAccountError decides between 404 model_not_found and 503
-// api_error for "no available accounts" failures.
+// classifyNoAccountError decides between 404 model_not_found, 429
+// rate_limit_error, and 503 api_error for "no available accounts" failures.
 //
-// The classifier intentionally does not consume the original error: the
-// selection layer never tells us *why* the pool came up empty (rate-limited
-// vs. unsupported model are both wrapped as ErrNoAvailableAccounts). Instead
-// we re-check pool composition through DiagnoseModelAvailabilityForPlatform.
-// Its dedicated database query considers only persistent eligibility
-// (active status + schedulable setting) and model_mapping, bypassing scheduler
-// snapshots and transient filters. That guarantees a 404 is only returned
-// when persistent account/group/model configuration must change before the
-// request can succeed.
+// The classifier intentionally does not consume the original selection error.
+// Instead, it re-checks pool composition through
+// DiagnoseModelAvailabilityForPlatform. The dedicated database query considers
+// persistent eligibility and model mapping while retaining transient reset
+// metadata. This keeps all no-account reason classification in one place and
+// avoids forcing every selection call site to propagate a new error type.
 //
 // routingModel is the model name that account selection actually compared
-// against (i.e. after group-level dispatch mapping). displayModel is the
-// raw model the caller asked for; it is used only in the user-facing error
-// message so that internal mapping details don't leak. Most callers pass
-// the same value for both.
+// against (i.e. after group-level dispatch mapping). displayModel is the raw
+// model the caller asked for; it is used only in the user-facing error message.
 //
-// platform is the platform the request was routed to (use
-// service.PlatformOpenAI / PlatformAnthropic / PlatformGemini). It is
-// required because Anthropic/Gemini routes additionally surface
-// mixed-scheduled Antigravity accounts; passing the wrong platform would
-// flip a legitimate 503 to a misleading 404 (or vice versa).
+// platform scopes diagnosis to the actual routed platform. Anthropic/Gemini
+// routes can additionally include mixed-scheduled Antigravity accounts.
 func classifyNoAccountError(
 	ctx context.Context,
 	diag service.ModelAvailabilityDiagnoser,
@@ -80,6 +80,18 @@ func classifyNoAccountError(
 	}
 
 	result := diag.DiagnoseModelAvailabilityForPlatform(ctx, apiKey.GroupID, routingModel, platform)
+	if result.AllMatchingAccountsRateLimited && result.MinRateLimitResetAt != nil {
+		retryAfterSeconds := int(math.Ceil(time.Until(*result.MinRateLimitResetAt).Seconds()))
+		if retryAfterSeconds > 0 {
+			return noAccountErrorClassification{
+				Status:            http.StatusTooManyRequests,
+				ErrType:           "rate_limit_error",
+				Message:           fmt.Sprintf("All available accounts are rate limited. Try again in %d seconds.", retryAfterSeconds),
+				RetryAfterSeconds: retryAfterSeconds,
+				ResetsAt:          result.MinRateLimitResetAt,
+			}
+		}
+	}
 	if result.HasAccountsInPool && !result.HasModelSupport {
 		return noAccountErrorClassification{
 			Status:        http.StatusNotFound,
@@ -106,7 +118,9 @@ func classifyNoAccountErrorFromGin(
 	if c != nil && c.Request != nil {
 		ctx = c.Request.Context()
 	}
-	return classifyNoAccountError(ctx, diag, apiKey, routingModel, displayModel, platform)
+	cls := classifyNoAccountError(ctx, diag, apiKey, routingModel, displayModel, platform)
+	setNoAccountRetryAfterHeader(c, cls)
+	return cls
 }
 
 func classifyOpenAICompatibleNoAccountErrorFromGin(
@@ -128,6 +142,46 @@ func classifyOpenAICompatibleNoAccountErrorFromGin(
 		displayModel,
 		openAICompatibleRequestPlatform(ctx, apiKey),
 	)
+}
+
+type noAccountRateLimitProtocol int
+
+const (
+	noAccountRateLimitAnthropic noAccountRateLimitProtocol = iota
+	noAccountRateLimitOpenAI
+)
+
+func setNoAccountRetryAfterHeader(c *gin.Context, cls noAccountErrorClassification) {
+	if c == nil || cls.Status != http.StatusTooManyRequests || cls.RetryAfterSeconds <= 0 {
+		return
+	}
+	c.Header("Retry-After", strconv.Itoa(cls.RetryAfterSeconds))
+}
+
+// writeAllAccountsRateLimitedError writes the precise reset metadata using
+// the inbound protocol's error shape. It returns false when cls is not the
+// full-pool rate-limit classification, allowing callers to use their existing
+// generic error writer unchanged.
+func writeAllAccountsRateLimitedError(c *gin.Context, cls noAccountErrorClassification, protocol noAccountRateLimitProtocol) bool {
+	if c == nil || cls.Status != http.StatusTooManyRequests || cls.RetryAfterSeconds <= 0 || cls.ResetsAt == nil {
+		return false
+	}
+
+	errorBody := gin.H{
+		"type":              cls.ErrType,
+		"message":           cls.Message,
+		"resets_in_seconds": cls.RetryAfterSeconds,
+		"resets_at":         cls.ResetsAt.UTC().Format(time.RFC3339),
+	}
+	responseBody := gin.H{"error": errorBody}
+	if protocol == noAccountRateLimitOpenAI {
+		errorBody["code"] = "rate_limit_exceeded"
+		errorBody["param"] = nil
+	} else {
+		responseBody["type"] = "error"
+	}
+	c.JSON(http.StatusTooManyRequests, responseBody)
+	return true
 }
 
 func openAICompatibleSelectionErrorForLog(err error, platform string) error {

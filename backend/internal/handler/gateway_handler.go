@@ -642,8 +642,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						zap.Error(err),
 					)
 					message := cls.Message
-					if !cls.ModelNotFound {
+					if !cls.ModelNotFound && cls.Status != http.StatusTooManyRequests {
 						message = "No available accounts: " + err.Error()
+					}
+					if !streamStarted && writeAllAccountsRateLimitedError(c, cls, noAccountRateLimitAnthropic) {
+						return
 					}
 					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
 					return
@@ -2063,6 +2066,9 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, parsedReq.Model, parsedReq.Model, service.PlatformAnthropic)
 		if !cls.ModelNotFound {
 			markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+		}
+		if writeAllAccountsRateLimitedError(c, cls, noAccountRateLimitAnthropic) {
+			return
 		}
 		h.errorResponse(c, cls.Status, cls.ErrType, cls.Message)
 		return
