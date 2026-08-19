@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand/v2"
@@ -558,7 +559,7 @@ func (s *SubscriptionService) assignSubscriptionWithReuse(ctx context.Context, i
 				return nil, false, getErr
 			}
 			if renewed.Status == SubscriptionStatusActive && renewed.ExpiresAt.After(now) {
-				if err := s.userSubRepo.UpdateLimits(ctx, sub.ID, input.DailyLimitUSD, input.WeeklyLimitUSD, input.MonthlyLimitUSD); err != nil {
+				if err := s.updateSubscriptionLimitsColumns(ctx, sub.ID, input.DailyLimitUSD, input.WeeklyLimitUSD, input.MonthlyLimitUSD); err != nil {
 					return nil, false, err
 				}
 				renewed, getErr = s.userSubRepo.GetByID(ctx, sub.ID)
@@ -663,6 +664,18 @@ type UpdateSubscriptionLimitsInput struct {
 	Monthly SubscriptionLimitUpdate
 }
 
+type userSubscriptionLimitUpdater interface {
+	UpdateLimits(ctx context.Context, subscriptionID int64, daily, weekly, monthly *float64) error
+}
+
+func (s *SubscriptionService) updateSubscriptionLimitsColumns(ctx context.Context, subscriptionID int64, daily, weekly, monthly *float64) error {
+	updater, ok := s.userSubRepo.(userSubscriptionLimitUpdater)
+	if !ok {
+		return errors.New("user subscription repository does not support limit updates")
+	}
+	return updater.UpdateLimits(ctx, subscriptionID, daily, weekly, monthly)
+}
+
 // UpdateSubscriptionLimits updates optional per-user subscription limits.
 // A cleared value falls back to the corresponding group limit.
 func (s *SubscriptionService) UpdateSubscriptionLimits(ctx context.Context, subscriptionID int64, input UpdateSubscriptionLimitsInput) (*UserSubscription, error) {
@@ -688,7 +701,7 @@ func (s *SubscriptionService) UpdateSubscriptionLimits(ctx context.Context, subs
 		sub.MonthlyLimitUSD = input.Monthly.Value
 	}
 
-	if err := s.userSubRepo.UpdateLimits(ctx, sub.ID, sub.DailyLimitUSD, sub.WeeklyLimitUSD, sub.MonthlyLimitUSD); err != nil {
+	if err := s.updateSubscriptionLimitsColumns(ctx, sub.ID, sub.DailyLimitUSD, sub.WeeklyLimitUSD, sub.MonthlyLimitUSD); err != nil {
 		return nil, err
 	}
 	if err := s.invalidateSubscriptionCaches(sub.UserID, sub.GroupID); err != nil {
