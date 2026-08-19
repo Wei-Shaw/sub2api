@@ -662,8 +662,8 @@ export default {
 
   // Redeem
   redeem: {
-    title: 'Redeem Code',
-    description: 'Enter your redeem code to add balance or increase concurrency',
+    title: 'Recharge / Redeem',
+    description: 'Use a redeem code to add balance or increase concurrency',
     currentBalance: 'Current Balance',
     concurrency: 'Concurrency',
     requests: 'requests',
@@ -700,7 +700,10 @@ export default {
     codeRedeemSuccess: 'Code redeemed successfully!',
     failedToRedeem: 'Failed to redeem code. Please check the code and try again.',
     subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.',
-    pleaseEnterCode: 'Please enter a redeem code'
+    pleaseEnterCode: 'Please enter a redeem code',
+    shopTitle: 'Online Shop',
+    shopDescription: 'Purchase recharge cards or subscription services',
+    openShop: 'Open shop in new tab'
   },
 
   // Profile

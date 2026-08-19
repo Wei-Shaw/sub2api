@@ -660,12 +660,12 @@ export default {
         hideCcsImportButtonHint: '启用后将在 API Keys 页面隐藏"导入 CCS"按钮'
       },
       purchase: {
-        title: '充值/订阅页面',
-        description: '在侧边栏展示“充值/订阅”入口，并在页面内通过 iframe 打开指定链接',
-        enabled: '显示充值/订阅入口',
-        enabledHint: '仅在标准模式（非简单模式）下展示',
-        url: '充值/订阅页面 URL',
-        urlPlaceholder: 'https://example.com/purchase',
+        title: '店铺外链',
+        description: '在用户端“充值/兑换”页面展示店铺入口，支持内嵌预览和新窗口打开',
+        enabled: '显示店铺外链',
+        enabledHint: '关闭后用户端仅显示兑换码功能',
+        url: '店铺 URL',
+        urlPlaceholder: 'https://example.com/shop',
         urlHint: '必须是完整的 http(s) 链接',
         iframeWarning:
           '⚠️ iframe 提示：部分网站会通过 X-Frame-Options 或 CSP（frame-ancestors）禁止被 iframe 嵌入，出现空白时可引导用户使用”新窗口打开”。',

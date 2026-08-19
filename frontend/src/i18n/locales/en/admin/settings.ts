@@ -665,12 +665,12 @@ export default {
         hideCcsImportButtonHint: 'When enabled, the "Import to CCS" button will be hidden on the API Keys page'
       },
       purchase: {
-        title: 'Recharge / Subscription Page',
-        description: 'Show a "Recharge / Subscription" entry in the sidebar and open the configured URL in an iframe',
-        enabled: 'Show Recharge / Subscription Entry',
-        enabledHint: 'Only shown in standard mode (not simple mode)',
-        url: 'Recharge / Subscription URL',
-        urlPlaceholder: 'https://example.com/purchase',
+        title: 'External Shop Link',
+        description: 'Show a shop alongside the user recharge/redeem form, with embedded preview and new-tab access',
+        enabled: 'Show external shop',
+        enabledHint: 'When disabled, users only see the redeem-code form',
+        url: 'Shop URL',
+        urlPlaceholder: 'https://example.com/shop',
         urlHint: 'Must be an absolute http(s) URL',
         iframeWarning:
           '⚠️ iframe note: Some websites block embedding via X-Frame-Options or CSP (frame-ancestors). If the page is blank, provide an "Open in new tab" alternative.',

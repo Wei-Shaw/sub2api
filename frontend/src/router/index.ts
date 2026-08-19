@@ -271,7 +271,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
-      title: 'Redeem Code',
+      title: 'Recharge / Redeem',
       titleKey: 'redeem.title',
       descriptionKey: 'redeem.description'
     }

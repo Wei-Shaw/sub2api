@@ -1,6 +1,8 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-2xl space-y-6">
+    <div class="mx-auto w-full max-w-6xl">
+      <div :class="hasShopLink ? 'grid grid-cols-1 items-start gap-6 md:grid-cols-2' : 'mx-auto max-w-2xl space-y-6'">
+        <section class="space-y-6">
       <!-- Current Balance Card -->
       <div class="card overflow-hidden">
         <div class="bg-gradient-to-br from-primary-500 to-primary-600 px-6 py-8 text-center">
@@ -337,6 +339,46 @@
           </div>
         </div>
       </div>
+        </section>
+
+        <section v-if="hasShopLink" class="md:sticky md:top-6">
+          <div class="card overflow-hidden">
+            <div class="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-100 dark:bg-primary-900/30">
+                    <Icon name="link" size="md" class="text-primary-600 dark:text-primary-400" />
+                  </div>
+                  <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-white">
+                    {{ t('redeem.shopTitle') }}
+                  </h2>
+                </div>
+                <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+                  {{ t('redeem.shopDescription') }}
+                </p>
+              </div>
+              <a
+                :href="shopUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn btn-secondary btn-sm shrink-0"
+              >
+                <Icon name="externalLink" size="sm" class="mr-1.5" />
+                <span class="hidden sm:inline">{{ t('redeem.openShop') }}</span>
+              </a>
+            </div>
+            <div class="bg-gray-50 p-3 dark:bg-dark-900/40">
+              <iframe
+                :src="shopUrl"
+                :title="t('redeem.shopTitle')"
+                class="h-[min(70vh,720px)] w-full rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800"
+                loading="lazy"
+                referrerpolicy="strict-origin-when-cross-origin"
+              ></iframe>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
   </AppLayout>
 </template>
@@ -348,9 +390,11 @@ import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { useSubscriptionStore } from '@/stores/subscriptions'
 import { redeemAPI, authAPI, type RedeemHistoryItem } from '@/api'
+import type { PublicSettings } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
+import { sanitizeUrl } from '@/utils/url'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
@@ -376,6 +420,14 @@ const errorMessage = ref('')
 const history = ref<RedeemHistoryItem[]>([])
 const loadingHistory = ref(false)
 const contactInfo = ref('')
+const publicSettings = ref<PublicSettings | null>(null)
+
+const shopUrl = computed(() => {
+  if (!publicSettings.value?.purchase_subscription_enabled) return ''
+  const value = publicSettings.value.purchase_subscription_url?.trim() || ''
+  return sanitizeUrl(value)
+})
+const hasShopLink = computed(() => Boolean(shopUrl.value))
 
 // Helper functions for history display
 const isBalanceType = (type: string) => {
@@ -480,6 +532,7 @@ onMounted(async () => {
   fetchHistory()
   try {
     const settings = await authAPI.getPublicSettings()
+    publicSettings.value = settings
     contactInfo.value = settings.contact_info || ''
   } catch (error) {
     console.error('Failed to load contact info:', error)

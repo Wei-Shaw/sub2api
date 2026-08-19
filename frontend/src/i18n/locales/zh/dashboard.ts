@@ -667,8 +667,8 @@ export default {
 
   // Redeem
   redeem: {
-    title: '兑换码',
-    description: '输入兑换码以充值余额或增加并发数',
+    title: '充值/兑换',
+    description: '使用兑换码充值余额或增加并发数',
     currentBalance: '当前余额',
     concurrency: '并发数',
     requests: '请求',
@@ -705,7 +705,10 @@ export default {
     codeRedeemSuccess: '兑换成功！',
     failedToRedeem: '兑换失败，请检查兑换码后重试。',
     subscriptionRefreshFailed: '兑换成功，但订阅状态刷新失败。',
-    pleaseEnterCode: '请输入兑换码'
+    pleaseEnterCode: '请输入兑换码',
+    shopTitle: '在线店铺',
+    shopDescription: '购买充值卡或订阅服务',
+    openShop: '在新窗口打开店铺'
   },
 
   // Profile
