@@ -84,7 +84,7 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 			if !canBeCompositeMemberPlatform(acc.Platform) {
 				continue
 			}
-		} else if acc.Platform != platform && !(platform == PlatformOpenAI && acc.Platform == PlatformFal) {
+		} else if acc.Platform != platform && (platform != PlatformOpenAI || acc.Platform != PlatformFal) {
 			continue
 		}
 		for model := range acc.GetModelMapping() {
