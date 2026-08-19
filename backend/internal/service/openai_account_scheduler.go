@@ -481,16 +481,12 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		}
 	}
 
-	account, err := s.service.getSchedulableAccount(ctx, accountID)
+	account, err := s.service.getOpenAIAccountForScheduling(ctx, accountID, req.RequireCompact)
 	if err != nil || account == nil {
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, false, nil
 	}
-	schedulable := account.IsSchedulable()
-	if req.RequireCompact {
-		schedulable = account.IsSchedulableForCompactModelWithContext(ctx, req.RequestedModel)
-	}
-	if shouldClearStickySession(account, req.RequestedModel) || account.Platform != NormalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() || !schedulable {
+	if shouldClearStickySessionForOpenAIRequest(ctx, account, req.RequestedModel, req.RequireCompact) || account.Platform != NormalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() {
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, false, nil
 	}
@@ -501,8 +497,8 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, false, nil
 	}
-	account = s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.GroupID, req.Platform, req.RequestedModel, req.RequireCompact, req.RequiredCapability)
-	if account == nil || !s.service.openAIAccountMatchesSchedulingGroup(account, req.GroupID) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
+	account = s.service.recheckSelectedOpenAIAccountFromDBWithOptions(ctx, account, req.GroupID, req.Platform, req.RequestedModel, req.RequireCompact, false, req.RequiredCapability)
+	if account == nil || (req.RequireCompact && openAICompactSupportTier(account) == 0) || !s.service.openAIAccountMatchesSchedulingGroup(account, req.GroupID) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, false, nil
 	}
@@ -1158,7 +1154,7 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 			continue
 		}
 
-		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.Platform, req.RequestedModel, req.RequireCompact, req.RequiredCapability)
+		fresh := s.service.resolveFreshSchedulableOpenAIAccountWithOptions(ctx, candidate.account, req.Platform, req.RequestedModel, req.RequireCompact, false, req.RequiredCapability)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 			release(result)
 			continue
@@ -1167,7 +1163,7 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 			release(result)
 			break
 		}
-		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, req.RequireCompact, req.RequiredCapability)
+		fresh = s.service.recheckSelectedOpenAIAccountFromDBWithOptions(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, req.RequireCompact, false, req.RequiredCapability)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 			release(result)
 			continue
@@ -1239,14 +1235,14 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 				continue
 			}
 		}
-		account, err := s.service.getSchedulableAccount(ctx, accountID)
+		account, err := s.service.getOpenAIAccountForScheduling(ctx, accountID, req.RequireCompact)
 		if err != nil || account == nil {
 			continue
 		}
 		if !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
 			continue
 		}
-		account = s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.GroupID, req.Platform, req.RequestedModel, req.RequireCompact, req.RequiredCapability)
+		account = s.service.recheckSelectedOpenAIAccountFromDBWithOptions(ctx, account, req.GroupID, req.Platform, req.RequestedModel, req.RequireCompact, false, req.RequiredCapability)
 		if account == nil {
 			if accountID == req.StickyAccountID && strings.TrimSpace(req.SessionHash) != "" {
 				_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, req.SessionHash)
@@ -1670,14 +1666,14 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 					continue
 				}
 			}
-			fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.Platform, req.RequestedModel, req.RequireCompact, req.RequiredCapability)
+			fresh := s.service.resolveFreshSchedulableOpenAIAccountWithOptions(ctx, candidate.account, req.Platform, req.RequestedModel, req.RequireCompact, false, req.RequiredCapability)
 			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 				continue
 			}
 			if !s.consumeOpenAISelectionDBRecheck(budget) {
 				return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, compactBlocked, filterStats.summary("selection_order_exhausted"))
 			}
-			fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, req.RequireCompact, req.RequiredCapability)
+			fresh = s.service.recheckSelectedOpenAIAccountFromDBWithOptions(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, req.RequireCompact, false, req.RequiredCapability)
 			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 				continue
 			}
@@ -2163,6 +2159,9 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	useUpstreamTokenCost bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
+	if requireCompact {
+		ctx = withOpenAICompactSchedulingContext(ctx)
+	}
 	// 分组利润控制：唯一文本调度入口的防御性装门。handler 文本
 	// 入口已在请求开始经 WithOpenAIRequestPricingContext 装门并固定 pricingAt，
 	// 此处对同分组门直接复用（failover 重入阈值稳定），仅为不经 handler 装配的
