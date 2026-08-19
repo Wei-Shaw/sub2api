@@ -1535,7 +1535,7 @@
             <input
               v-model.number="poolModeRetryCount"
               type="number"
-              min="0"
+              min="-1"
               :max="MAX_POOL_MODE_RETRY_COUNT"
               step="1"
               class="input"
@@ -1936,7 +1936,7 @@
             <input
               v-model.number="poolModeRetryCount"
               type="number"
-              min="0"
+              min="-1"
               :max="MAX_POOL_MODE_RETRY_COUNT"
               step="1"
               class="input"
@@ -5188,11 +5188,16 @@ const handleMixedChannelCancel = () => {
   clearMixedChannelDialog()
 }
 
+const UNLIMITED_POOL_MODE_RETRY_COUNT = -1
 const normalizePoolModeRetryCount = (value: number) => {
   if (!Number.isFinite(value)) {
     return DEFAULT_POOL_MODE_RETRY_COUNT
   }
   const normalized = Math.trunc(value)
+  // -1 means unlimited same-account retries in pool mode.
+  if (normalized === UNLIMITED_POOL_MODE_RETRY_COUNT) {
+    return UNLIMITED_POOL_MODE_RETRY_COUNT
+  }
   if (normalized < 0) {
     return 0
   }

@@ -72,13 +72,37 @@ func TestGetPoolModeRetryCount(t *testing.T) {
 			expected: 2,
 		},
 		{
-			name: "negative_value_is_clamped_to_zero",
+			name: "negative_one_means_unlimited",
 			account: &Account{
 				Type:     AccountTypeAPIKey,
 				Platform: PlatformOpenAI,
 				Credentials: map[string]any{
 					"pool_mode":             true,
 					"pool_mode_retry_count": -1,
+				},
+			},
+			expected: poolModeRetryCountUnlimited,
+		},
+		{
+			name: "negative_one_string_means_unlimited",
+			account: &Account{
+				Type:     AccountTypeAPIKey,
+				Platform: PlatformOpenAI,
+				Credentials: map[string]any{
+					"pool_mode":             true,
+					"pool_mode_retry_count": "-1",
+				},
+			},
+			expected: poolModeRetryCountUnlimited,
+		},
+		{
+			name: "other_negative_values_are_clamped_to_zero",
+			account: &Account{
+				Type:     AccountTypeAPIKey,
+				Platform: PlatformOpenAI,
+				Credentials: map[string]any{
+					"pool_mode":             true,
+					"pool_mode_retry_count": -2,
 				},
 			},
 			expected: 0,
