@@ -31,18 +31,15 @@ REDACTED
 	if insecure {
 		log.Printf("[ProxyProbe] Warning: insecure_skip_verify is not allowed and will cause probe failure.")
 REDACTED
-	// 构建探测 URL 列表：优先用配置的自定义列表，否则用内置默认列表
-	probeTargets := defaultProbeURLs
+	// 构建探测 URL 列表：配置存在时覆盖内置默认列表。
+	var configuredTargets []configuredProbeTarget
 	if cfg != nil && len(cfg.Security.ProxyProbe.URLs) > 0 {
-		probeTargets = make([]probeTarget, 0, len(cfg.Security.ProxyProbe.URLs))
+		configuredTargets = make([]configuredProbeTarget, 0, len(cfg.Security.ProxyProbe.URLs))
 		for _, u := range cfg.Security.ProxyProbe.URLs {
-			if strings.TrimSpace(u.URL) == "" || strings.TrimSpace(u.Parser) == "" {
-				continue
-		REDACTED
-			probeTargets = append(probeTargets, probeTarget{url: u.URL, parser: u.ParserREDACTED)
-	REDACTED
-		if len(probeTargets) == 0 {
-			probeTargets = defaultProbeURLs
+			configuredTargets = append(configuredTargets, configuredProbeTarget{
+				url:    u.URL,
+				parser: u.Parser,
+		REDACTED)
 	REDACTED
 REDACTED
 
@@ -51,7 +48,7 @@ REDACTED
 		allowPrivateHosts:  allowPrivate,
 		validateResolvedIP: validateResolvedIP,
 		maxResponseBytes:   maxResponseBytes,
-		probeURLs:          probeTargets,
+		configuredProbeURLs: configuredTargets,
 REDACTED
 REDACTED
 
@@ -60,26 +57,27 @@ const (
 	defaultProxyProbeResponseMaxBytes = int64(1024 * 1024)
 )
 
-// probeTarget 描述一个探测端点及其响应解析方式。
-type probeTarget struct {
-	url    string
-	parser string // "ip-api" / "ipify" / "chatgpt-trace"
-REDACTED
-
-// defaultProbeURLs 按优先级排列的默认探测 URL 列表。
+// probeURLs 按优先级排列的内置探测 URL 列表。
 // 某些 AI API 专用代理只允许访问特定域名，因此需要多个备选。
-// 可通过配置 security.proxy_probe.urls 覆盖。
-var defaultProbeURLs = []probeTarget{
+var probeURLs = []struct {
+	url    string
+	parser string
+REDACTED{
 	{"http://ip-api.com/json/?lang=zh-CN", "ip-api"REDACTED,
 	{"http://api64.ipify.org?format=json", "ipify"REDACTED,
 REDACTED
 
+type configuredProbeTarget struct {
+	url    string
+	parser string
+REDACTED
+
 type proxyProbeService struct {
-	insecureSkipVerify bool
-	allowPrivateHosts  bool
-	validateResolvedIP bool
-	maxResponseBytes   int64
-	probeURLs          []probeTarget
+	insecureSkipVerify  bool
+	allowPrivateHosts   bool
+	validateResolvedIP  bool
+	maxResponseBytes    int64
+	configuredProbeURLs []configuredProbeTarget
 REDACTED
 
 func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*service.ProxyExitInfo, int64, error) {
@@ -95,10 +93,17 @@ REDACTED)
 REDACTED
 
 	var lastErr error
-	probeURLs := s.probeURLs
-	if len(probeURLs) == 0 {
-		probeURLs = defaultProbeURLs
+	if len(s.configuredProbeURLs) > 0 {
+		for _, probe := range s.configuredProbeURLs {
+			exitInfo, latencyMs, err := s.probeWithURL(ctx, client, probe.url, probe.parser)
+			if err == nil {
+				return exitInfo, latencyMs, nil
+		REDACTED
+			lastErr = err
+	REDACTED
+		return nil, 0, fmt.Errorf("all probe URLs failed, last error: %w", lastErr)
 REDACTED
+
 	for _, probe := range probeURLs {
 		exitInfo, latencyMs, err := s.probeWithURL(ctx, client, probe.url, probe.parser)
 		if err == nil {
