@@ -14,8 +14,12 @@ const (
 
 // upstreamResponseModelObserver tracks one forwarding attempt (or one WS turn).
 // A terminal declaration wins over an earlier declaration; otherwise the first
-// declaration is retained. Conflicts are diagnostic only and never affect the
-// forwarding or billing path.
+// declaration is retained. Observation never affects the forwarding path.
+//
+// Billing normally ignores the observed model as well; the only exception is a
+// channel explicitly configured with billing_model_source = response_model,
+// where a conflict flag makes billing fall back to the baseline model
+// (see responseModelBillingDeclaration).
 type upstreamResponseModelObserver struct {
 	first    string
 	terminal string
@@ -163,8 +167,31 @@ func upstreamModelMismatch(sentModel, responseModel string) *bool {
 		return nil
 	}
 	sentModel = strings.TrimSpace(sentModel)
-	mismatch := sentModel == "" || !strings.EqualFold(sentModel, responseModel)
+	mismatch := sentModel == "" || !upstreamModelsMatchForAudit(sentModel, responseModel)
 	return &mismatch
+}
+
+func upstreamModelsMatchForAudit(sentModel, responseModel string) bool {
+	if strings.EqualFold(sentModel, responseModel) {
+		return true
+	}
+
+	// xAI reports the runtime build ID for these supported public aliases.
+	// Canonicalize only for mismatch auditing; keep the raw response model for
+	// observability and for the separate response-model billing safeguards.
+	sentGrokModel := canonicalGrokBuildRuntimeModel(sentModel)
+	return sentGrokModel != "" && sentGrokModel == canonicalGrokBuildRuntimeModel(responseModel)
+}
+
+func canonicalGrokBuildRuntimeModel(model string) string {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "grok-4.5", "grok-4.5-latest", "grok-4.5-build":
+		return "grok-4.5-build"
+	case "grok-4.6", "grok-4.6-latest", "grok-4.6-build":
+		return "grok-4.6-build"
+	default:
+		return ""
+	}
 }
 
 func upstreamSentModel(requestedModel, upstreamModel string) string {
