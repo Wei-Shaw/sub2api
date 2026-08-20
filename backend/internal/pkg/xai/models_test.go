@@ -17,7 +17,7 @@ func TestDefaultModelMappingExcludesCrossClientWildcards(t *testing.T) {
 	require.Equal(t, "grok-build-0.1", mapping["grok-build"])
 	require.Equal(t, DefaultTextModel, mapping["grok-build-latest"])
 	require.Equal(t, DefaultImagineImageQualityModel, mapping["grok-imagine-edit"])
-	require.Equal(t, DefaultImagineVideo15LegacyModel, mapping["grok-imagine-video-1.5"])
+	require.Equal(t, DefaultImagineVideo15Model, mapping["grok-imagine-video-1.5"])
 	require.Equal(t, DefaultImagineVideo15Model, mapping["grok-imagine-video-1.5-preview"])
 	require.Equal(t, "grok-4.5", mapping["xai/grok"])
 
@@ -71,4 +71,10 @@ func TestResolveGrokTextResponsesModelID(t *testing.T) {
 	require.Equal(t, "grok-4.5", ResolveGrokTextResponsesModelID(""))
 	require.Equal(t, "grok-4.3", ResolveGrokTextResponsesModelID("grok", "grok-4.3"))
 	require.Equal(t, "grok-4.20-multi-agent-0309", ResolveGrokTextResponsesModelID("grok-4.20-multi-agent"))
+REDACTED
+
+func TestExplicitGrok45DoesNotFollowRuntimeDefault(t *testing.T) {
+	require.Equal(t, "grok-4.5", ResolveGrokTextResponsesModelID("grok-4.5", "grok-4.6"))
+	require.Equal(t, "grok-4.5", ResolveGrokTextResponsesModelID("grok-4.5-latest", "grok-4.6"))
+	require.Equal(t, "grok-4.6", ResolveGrokTextResponsesModelID("grok", "grok-4.6"))
 REDACTED

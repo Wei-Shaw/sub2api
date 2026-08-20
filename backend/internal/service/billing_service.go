@@ -704,6 +704,21 @@ REDACTED
 		LongContextInputMultiplier:    2,
 		LongContextOutputMultiplier:   2,
 REDACTED
+
+	// Keep legacy Grok 3 Mini requests on their own historical xAI price card;
+	// otherwise the generic Grok fallback bills them as Grok 4.5.
+	s.fallbackPrices["grok-3-mini"] = &ModelPricing{
+		InputPricePerToken:     0.30e-6,
+		OutputPricePerToken:    0.50e-6,
+		CacheReadPricePerToken: 0.075e-6,
+		SupportsCacheBreakdown: false,
+REDACTED
+	s.fallbackPrices["grok-3-mini-fast"] = &ModelPricing{
+		InputPricePerToken:     0.60e-6,
+		OutputPricePerToken:    4e-6,
+		CacheReadPricePerToken: 0.15e-6,
+		SupportsCacheBreakdown: false,
+REDACTED
 	// xAI Grok Build 0.1 (official docs: $1 input / $0.20 cached input /
 	// $2 output per MTok). Composer is available only through Grok Build and
 	// has no standalone public API rate card, so its aliases use this coding
@@ -913,6 +928,10 @@ REDACTED
 		return s.fallbackPrices["grok-4.5"]
 	case "grok-4.6", "grok-4.6-latest":
 		return s.fallbackPrices["grok-4.6"]
+	case "grok-3-mini":
+		return s.fallbackPrices["grok-3-mini"]
+	case "grok-3-mini-fast":
+		return s.fallbackPrices["grok-3-mini-fast"]
 	case "grok-4.3",
 		"grok-4.20-0309-reasoning",
 		"grok-4.20-0309-non-reasoning",

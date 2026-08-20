@@ -173,11 +173,14 @@ REDACTED
 			markGrokTeamModelRateLimit(account, upstreamModel, resolveGrokTeamRateLimitUntil(time.Now().Add(grokTeamRateLimitDefaultTTL), time.Now()))
 	REDACTED
 		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
+			retryable, retryDelay, retryDeadline := grokSameAccountRetryMetadata(account, resp.StatusCode, respBody)
 			return nil, &UpstreamFailoverError{
-				StatusCode:             resp.StatusCode,
-				ResponseBody:           respBody,
-				ResponseHeaders:        resp.Header.Clone(),
-				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				StatusCode:               resp.StatusCode,
+				ResponseBody:             respBody,
+				ResponseHeaders:          resp.Header.Clone(),
+				RetryableOnSameAccount:   retryable,
+				SameAccountRetryDelay:    retryDelay,
+				SameAccountRetryDeadline: retryDeadline,
 		REDACTED
 	REDACTED
 		return s.handleErrorResponse(ctx, resp, c, account, patchedBody, upstreamModel)
@@ -899,7 +902,14 @@ func sanitizeGrokResponsesTools(body []byte) ([]byte, error) {
 		return body, nil
 REDACTED
 	if !tools.IsArray() {
-		return body, nil
+		// xAI rejects tool_choice when tools is null/object. Treat malformed
+		// tool collections as absent at egress rather than forwarding a pair
+		// that cannot be interpreted by the Grok Responses endpoint.
+		body, err := sjson.DeleteBytes(body, "tools")
+		if err != nil {
+			return nil, err
+	REDACTED
+		return sjson.DeleteBytes(body, "tool_choice")
 REDACTED
 
 	rawTools := tools.Array()
@@ -1173,11 +1183,14 @@ REDACTED
 	REDACTED)
 		s.handleGrokAccountUpstreamError(withGrokTeamRateLimitModel(ctx, grokComposerImageBridgeVisionModel), account, resp.StatusCode, resp.Header, respBody)
 		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
+			retryable, retryDelay, retryDeadline := grokSameAccountRetryMetadata(account, resp.StatusCode, respBody)
 			return "", OpenAIUsage{REDACTED, &UpstreamFailoverError{
-				StatusCode:             resp.StatusCode,
-				ResponseBody:           respBody,
-				ResponseHeaders:        resp.Header.Clone(),
-				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				StatusCode:               resp.StatusCode,
+				ResponseBody:             respBody,
+				ResponseHeaders:          resp.Header.Clone(),
+				RetryableOnSameAccount:   retryable,
+				SameAccountRetryDelay:    retryDelay,
+				SameAccountRetryDeadline: retryDeadline,
 		REDACTED
 	REDACTED
 		return "", OpenAIUsage{REDACTED, fmt.Errorf("grok composer image bridge upstream error: %s", upstreamMsg)
@@ -1314,6 +1327,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileGrok))
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")

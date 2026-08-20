@@ -406,10 +406,10 @@ REDACTED{
 			wantToolChoice: true,
 	REDACTED,
 		{
-			name:           "malformed non-array tools remain untouched",
+			name:           "malformed non-array tools are removed",
 			body:           `{"input":"hello","tools":{"type":"function","name":"lookup"REDACTED,"tool_choice":"auto"REDACTED`,
-			wantTools:      true,
-			wantToolChoice: true,
+			wantTools:      false,
+			wantToolChoice: false,
 	REDACTED,
 REDACTED
 
