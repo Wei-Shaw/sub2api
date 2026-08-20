@@ -42,7 +42,7 @@ func (s *OpenAIGatewayService) buildOpenAIResponsesWSURL(account *Account) (stri
 			if err != nil {
 				return "", err
 			}
-			targetURL = buildOpenAIResponsesURL(validatedURL)
+			targetURL = buildOpenAIResponsesURLForPlatform(account.Platform, validatedURL)
 		}
 	default:
 		targetURL = openaiPlatformAPIURL
@@ -93,12 +93,24 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 				headers.Add("x-codex-beta-features", value)
 			}
 		}
-		for _, name := range [...]string{"x-codex-window-id", "x-codex-installation-id"} {
+		for _, name := range [...]string{
+			"x-codex-window-id",
+			"x-codex-installation-id",
+			"session-id",
+			"thread-id",
+			"x-client-request-id",
+		} {
 			if value := c.Request.Header.Get(name); strings.TrimSpace(value) != "" {
 				headers.Set(name, value)
 			}
 		}
 	}
+	// 真实 Codex 的 WS 握手同样携带会话级 x-codex-beta-features
+	// （client.rs build_websocket_headers 复用 build_responses_headers），
+	// 客户端未声明时补成默认形态，与 HTTP 出站保持一致。放在客户端头拷贝
+	// 之外：该头是账号/会话级属性，不依赖入站请求是否存在，也避免预热与
+	// 实际请求因头差异落进不同的连接池兼容分桶。
+	applyOpenAICodexBetaFeatures(c, account, headers)
 	// OAuth 账号：将 apiKeyID 混入 session 标识符，防止跨用户会话碰撞。
 	if account != nil && account.Type == AccountTypeOAuth {
 		apiKeyID := getAPIKeyIDFromContext(c)
@@ -122,6 +134,7 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	if metadata := strings.TrimSpace(turnMetadata); metadata != "" {
 		headers.Set(openAIWSTurnMetadataHeader, metadata)
 	}
+	applyStagedCodexFingerprintHeaders(c, account, headers)
 
 	if account != nil && account.Type == AccountTypeOAuth {
 		if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, headers, account); err != nil {
@@ -148,7 +161,7 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		}
 	}
 	if s != nil && s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
-		headers.Set("user-agent", codexCLIUserAgent)
+		headers.Set("user-agent", CodexCanonicalUserAgent())
 	}
 	// 终态收口：WS 握手与 HTTP 出站共用同一套身份语义，账号级自定义 UA 同样作为
 	// 管理员显式配置传入（上面写进 headers 的值只在强制统一被关闭时才参与配对）。
@@ -659,6 +672,33 @@ func setOpenAIWSPayloadInputSequence(
 		return nil, marshalErr
 	}
 	return sjson.SetRawBytes(payload, "input", inputRaw)
+}
+
+func buildOpenAIWSCurrentTurnRetryPayload(
+	payload []byte,
+	fullInput []json.RawMessage,
+	fullInputExists bool,
+	originalModel string,
+) ([]byte, bool, error) {
+	if !fullInputExists {
+		return nil, false, nil
+	}
+	retryPayload, err := setOpenAIWSPayloadInputSequence(payload, fullInput, true)
+	if err != nil {
+		return nil, false, err
+	}
+	retryPayload = RemovePreviousResponseIDFromBody(retryPayload)
+	if model := strings.TrimSpace(originalModel); model != "" {
+		retryPayload, err = sjson.SetBytes(retryPayload, "model", model)
+		if err != nil {
+			return nil, false, err
+		}
+	}
+	coverage := AnalyzeToolCallOutputContextCoverageBytes(retryPayload)
+	if coverage.HasFunctionCallOutput && !coverage.ContextCoversAllCallIDs {
+		return nil, false, nil
+	}
+	return retryPayload, true, nil
 }
 
 func shouldKeepIngressPreviousResponseID(

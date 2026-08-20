@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"encoding/json"
+
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 
@@ -185,6 +187,13 @@ func (Group) Fields() []ent.Field {
 			Min(0).
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Comment("STT 每小时价格（USD）"),
+		field.Bool("long_context_pricing_enabled").
+			Default(true).
+			Comment("是否按上下文长度应用模型阶梯价格；默认开启以保持官方/渠道长上下文价"),
+		field.JSON("model_pricing", json.RawMessage{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("分组逐模型定价；优先级高于渠道和内置定价"),
 
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").

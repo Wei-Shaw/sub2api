@@ -136,6 +136,7 @@ const metaModels = [
 
 // xAI Grok
 const xaiModels = [
+  'grok-4.6',
   'grok-4.5',
   'grok-4.3',
   'grok-build-0.1',
@@ -147,6 +148,7 @@ const xaiModels = [
   'grok-4.20-multi-agent-latest',
   'grok-4.3-latest',
   'grok-latest',
+  'grok-4.6-latest',
   'grok-4.5-latest',
   'grok-build-latest',
   'composer-2.5',
@@ -180,7 +182,9 @@ const yiModels = [
 // Moonshot/Kimi
 const moonshotModels = [
   'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k',
-  'kimi-latest'
+  'kimi-latest',
+  'kimi-for-coding',
+  'kimi-k2'
 ]
 
 // 字节跳动 豆包
@@ -303,6 +307,7 @@ const geminiPresetMappings = [
 ]
 
 const grokPresetMappings = [
+  { label: 'Grok 4.6', from: 'grok-4.6', to: 'grok-4.6', color: 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800/50 dark:text-slate-300' },
   { label: 'Grok 4.5', from: 'grok-4.5', to: 'grok-4.5', color: 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800/50 dark:text-slate-300' },
   { label: 'Grok 4.3', from: 'grok-4.3', to: 'grok-4.3', color: 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800/50 dark:text-slate-300' },
   { label: 'Grok Latest', from: 'grok-latest', to: 'grok-4.5', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' },
@@ -425,7 +430,8 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'grok': return xaiModels
     case 'cohere': return cohereModels
     case 'yi': return yiModels
-    case 'moonshot': return moonshotModels
+    case 'moonshot':
+    case 'kimi': return moonshotModels
     case 'doubao': return doubaoModels
     case 'minimax': return minimaxModels
     case 'baidu': return baiduModels

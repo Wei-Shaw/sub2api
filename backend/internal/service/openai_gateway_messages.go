@@ -15,7 +15,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -36,11 +35,18 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 ) (*OpenAIForwardResult, error) {
 	beginUpstreamResponseModelObservation(c)
 
-	// 入口分流：APIKey 账号 + 上游不支持 Responses API → 走 CC 直转（与
-	// ForwardAsChatCompletions 对称）。缺少此分流时，/v1/messages 入站请求
-	// 会被无条件转为 Responses 格式发往上游 /v1/responses，导致只支持
-	// /v1/chat/completions 的第三方 OpenAI 兼容上游全部 400。
-	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
+	// 入口分流（国产供应商 Anthropic 协议）：上游为供应商原生 Anthropic 端点时，
+	// /v1/messages 请求零转换直通（仅模型名映射 + 少量 body 清洗），完整保留
+	// thinking / tool_use / cache 语义，适配 Claude Code 等原生客户端。
+	// 必须先于 ShouldUseResponsesAPI 分流：Anthropic 协议账号经 probe 落标
+	// openai_responses_supported=false，会先命中下方的 CC 直转分支。
+	if account.IsAnthropicProtocol() || account.IsAdaptiveAPIProtocol() {
+		return s.forwardAnthropicViaNativeAnthropicEndpoint(ctx, c, account, body, defaultMappedModel)
+	}
+
+	// 固定 chat_completions 的 CN 账号，以及不支持 Responses 的其他 APIKey
+	// 账号，均将 Messages 转为 CC；固定 responses 的 CN 账号不受探针旧值覆盖。
+	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
 		return s.forwardAnthropicViaRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
 
@@ -443,7 +449,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		return s.handleAnthropicErrorResponse(resp, c, account, billingModel)
 	}
 	if account.Platform == PlatformGrok && account.Type == AccountTypeOAuth && !account.IsShadow() {
-		s.updateGrokUsageFromResponse(ctx, account, resp.Header, resp.StatusCode)
+		s.updateGrokUsageFromResponse(withGrokTeamRateLimitModel(ctx, upstreamModel), account, resp.Header, resp.StatusCode)
 	}
 
 	if account.Type == AccountTypeOAuth && promptCacheKey != "" {
@@ -544,6 +550,10 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 
 	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, "openai messages buffered", requestID)
 	if err != nil {
+		var readErr *openAICompatBufferedReadError
+		if errors.As(err, &readErr) && readErr != nil {
+			return nil, readErr.cause
+		}
 		return nil, err
 	}
 
@@ -666,6 +676,15 @@ func isOpenAICompatDoneSentinelLine(line string) bool {
 	return ok && strings.TrimSpace(payload) == "[DONE]"
 }
 
+// openAICompatBufferedReadError 只标记错误发生在上游响应体读取阶段；
+// 具体端点自行决定是否允许重放请求，避免共享读取器扩大重试范围。
+type openAICompatBufferedReadError struct {
+	cause error
+}
+
+func (e *openAICompatBufferedReadError) Error() string { return e.cause.Error() }
+func (e *openAICompatBufferedReadError) Unwrap() error { return e.cause }
+
 func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 	resp *http.Response,
 	logPrefix string,
@@ -774,7 +793,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 						zap.String("request_id", requestID),
 					)
 				}
-				return nil, usage, acc, ev.err
+				return nil, usage, acc, &openAICompatBufferedReadError{cause: ev.err}
 			}
 
 			if isOpenAICompatDoneSentinelLine(ev.line) {

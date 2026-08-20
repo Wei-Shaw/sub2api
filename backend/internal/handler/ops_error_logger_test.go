@@ -497,6 +497,107 @@ func TestClassifyOpsRoutingCapacityMarkerExcludesMaskedSelectionFailureFromSLA(t
 	require.Equal(t, "gateway", errorSource)
 }
 
+func TestClassifyOpsLocalModelConfigurationRejection(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+
+	phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(
+		c,
+		"model_not_found",
+		"Model \"gpt-missing\" is not supported by any configured account in this group",
+		"",
+		http.StatusNotFound,
+	)
+
+	require.Equal(t, "routing", phase)
+	require.True(t, isBusinessLimited)
+	require.Equal(t, "platform", errorOwner)
+	require.Equal(t, "gateway", errorSource)
+}
+
+func TestClassifyOpsLocalModelConfigurationOverridesStaleUpstreamMarkers(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+	c.Set(service.OpsUpstreamStatusCodeKey, http.StatusUnauthorized)
+	c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
+		Stage:              string(service.GatewayFailureStageAccountAuth),
+		UpstreamStatusCode: http.StatusUnauthorized,
+	}})
+
+	phase, limited, owner, source := classifyOpsErrorLog(c, "model_not_found", "unsupported configured model", "", http.StatusNotFound)
+
+	require.Equal(t, "routing", phase)
+	require.True(t, limited)
+	require.Equal(t, "platform", owner)
+	require.Equal(t, "gateway", source)
+}
+
+func TestClassifyOpsLocalModelConfigurationRequiresMarkerAndReason(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Set(service.OpsClientBusinessLimitedReasonKey, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+	c.Set(service.OpsUpstreamStatusCodeKey, http.StatusBadGateway)
+
+	phase, limited, owner, source := classifyOpsErrorLog(c, "upstream_error", "provider failed", "", http.StatusBadGateway)
+
+	require.Equal(t, "upstream", phase)
+	require.False(t, limited)
+	require.Equal(t, "provider", owner)
+	require.Equal(t, "upstream_http", source)
+}
+
+func TestOpsErrorLoggerMiddleware_LocalModelConfigurationFields(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 1)
+	gin.SetMode(gin.TestMode)
+
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/chat/completions", func(c *gin.Context) {
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+		c.Set(opsAccountIDKey, int64(99))
+		c.Set(opsUpstreamModelKey, "stale-upstream-model")
+		setActualUpstreamEndpoint(c, "/v1/chat/completions")
+		c.Set(service.OpsUpstreamStatusCodeKey, http.StatusUnauthorized)
+		c.Set(service.OpsUpstreamErrorMessageKey, "stale upstream error")
+		c.Set(service.OpsUpstreamErrorDetailKey, "stale upstream detail")
+		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
+			Stage:              string(service.GatewayFailureStageAccountAuth),
+			UpstreamStatusCode: http.StatusUnauthorized,
+			Message:            "stale auth failure",
+		}})
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": gin.H{
+				"type":    "model_not_found",
+				"message": "Model \"gpt-missing\" is not supported by any configured account in this group",
+			},
+		})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+	require.JSONEq(t, `{"error":{"type":"model_not_found","message":"Model \"gpt-missing\" is not supported by any configured account in this group"}}`, w.Body.String())
+	job := <-opsErrorLogQueue
+	require.Equal(t, http.StatusNotFound, job.entry.StatusCode)
+	require.Equal(t, "routing", job.entry.ErrorPhase)
+	require.True(t, job.entry.IsBusinessLimited)
+	require.Equal(t, "platform", job.entry.ErrorOwner)
+	require.Equal(t, "gateway", job.entry.ErrorSource)
+	require.Nil(t, job.entry.AccountID)
+	require.Nil(t, job.entry.UpstreamStatusCode)
+	require.Nil(t, job.entry.UpstreamErrors)
+	require.Nil(t, job.entry.UpstreamErrorMessage)
+	require.Nil(t, job.entry.UpstreamErrorDetail)
+	require.Empty(t, job.entry.UpstreamModel)
+	require.Empty(t, job.entry.UpstreamEndpoint)
+}
+
 func TestClassifyOpsAuthClientErrorsExcludedFromSLA(t *testing.T) {
 	tests := []struct {
 		name    string

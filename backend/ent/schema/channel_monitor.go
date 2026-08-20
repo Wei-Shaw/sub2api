@@ -35,15 +35,32 @@ func (ChannelMonitor) Fields() []ent.Field {
 			NotEmpty().
 			MaxLen(100),
 		field.Enum("provider").
-			Values("openai", "anthropic", "gemini", "grok"),
+			Values("openai", "anthropic", "gemini", "grok",
+				"antigravity", "kimi", "zhipu", "deepseek"),
+		// check_mode: 'probe' | 'quota' | 'quota_probe'
+		//   probe       - LLM 探活（默认，原有行为）
+		//   quota       - 仅查关联账号的用量/余额（零 LLM 成本；endpoint/api_key 可空）
+		//   quota_probe - 探活 + 配额并存（配额快照挂到主模型历史行）
+		// antigravity 无探活 adapter，仅允许 quota。
+		field.String("check_mode").
+			Default("probe").
+			MaxLen(32).
+			Comment("probe = LLM probe (default); quota = account usage only; quota_probe = both"),
+		// account_id: 配额模式的数据源账号（复用账号侧用量服务，不直接对接上游）。
+		// 普通字段而非 edge（FK 由 SQL 迁移管理）；账号删除时数据库置空，
+		// 监控保留并报「账号未关联」。
+		field.Int64("account_id").
+			Optional().
+			Nillable(),
 		field.String("api_mode").
 			Default("chat_completions").
 			MaxLen(32).
 			Comment("OpenAI request protocol: chat_completions or responses; non-OpenAI uses chat_completions"),
+		// endpoint: 探活模式必填（service 层校验）；quota 模式存空串
+		// （列保持 NOT NULL，去掉 NotEmpty 校验器即可）。
 		field.String("endpoint").
-			NotEmpty().
 			MaxLen(500).
-			Comment("Provider base origin, e.g. https://api.openai.com"),
+			Comment("Provider base origin, e.g. https://api.openai.com; empty for quota-only monitors"),
 		field.String("api_key_encrypted").
 			NotEmpty().
 			Sensitive().
@@ -115,5 +132,6 @@ func (ChannelMonitor) Indexes() []ent.Index {
 		index.Fields("provider", "api_mode"),
 		index.Fields("group_name"),
 		index.Fields("template_id"),
+		index.Fields("account_id"),
 	}
 }

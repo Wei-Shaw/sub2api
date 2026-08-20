@@ -43,11 +43,58 @@ const (
 	PlatformGemini      = domain.PlatformGemini
 	PlatformAntigravity = domain.PlatformAntigravity
 	PlatformGrok        = domain.PlatformGrok
-	PlatformComposite   = domain.PlatformComposite
+	// 国产 OpenAI 兼容供应商（与 grok 一样经 OpenAI 网关转发）。
+	PlatformKimi      = domain.PlatformKimi
+	PlatformZhipu     = domain.PlatformZhipu
+	PlatformDeepseek  = domain.PlatformDeepseek
+	PlatformComposite = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
 	PlatformKiro = "kiro"
 )
+
+// 账号接入模式（国产供应商）：按量付费 vs Coding Plan。
+const (
+	AccountModePayG   = domain.AccountModePayG
+	AccountModeCoding = domain.AccountModeCoding
+)
+
+// 上游 API 协议（国产供应商）：决定转发端点与格式，与接入模式正交。
+const (
+	APIProtocolChatCompletions = domain.APIProtocolChatCompletions
+	APIProtocolAnthropic       = domain.APIProtocolAnthropic
+	APIProtocolResponses       = domain.APIProtocolResponses
+	APIProtocolAdaptive        = domain.APIProtocolAdaptive
+)
+
+// 国产 OpenAI 兼容供应商各模式的默认 base_url。
+// 与前端 credentialsBuilder.ts 中的预设保持一致。
+const (
+	DefaultKimiPayGBaseURL    = "https://api.moonshot.cn/v1"
+	DefaultKimiCodingBaseURL  = "https://api.kimi.com/coding/v1"
+	DefaultZhipuPayGBaseURL   = "https://open.bigmodel.cn/api/paas/v4"
+	DefaultZhipuCodingBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
+	DefaultDeepseekBaseURL    = "https://api.deepseek.com"
+)
+
+// 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
+// 与前端 credentialsBuilder.ts 中的预设保持一致。
+const (
+	DefaultKimiPayGAnthropicBaseURL   = "https://api.moonshot.cn/anthropic"
+	DefaultKimiCodingAnthropicBaseURL = "https://api.kimi.com/coding"
+	DefaultZhipuAnthropicBaseURL      = "https://open.bigmodel.cn/api/anthropic"
+	DefaultDeepseekAnthropicBaseURL   = "https://api.deepseek.com/anthropic"
+)
+
+// IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）。
+func IsCNProvider(platform string) bool {
+	switch platform {
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+		return true
+	default:
+		return false
+	}
+}
 
 // AllowedQuotaPlatforms 是允许设置 user × platform quota 的平台列表（单一权威来源）。
 // ent/schema/user_platform_quota.go 的 Validate 函数独立维护（构建期约束），
@@ -58,14 +105,20 @@ var AllowedQuotaPlatforms = []string{
 	PlatformGemini,
 	PlatformAntigravity,
 	PlatformGrok,
+	PlatformKimi,
+	PlatformZhipu,
+	PlatformDeepseek,
 }
 
 // AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。
-// 仅 openai / anthropic / grok 有原生用量窗口可供评估；其他平台写入阈值无效果。
+// openai/anthropic/grok 有原生用量窗口；kimi/zhipu 的 Coding Plan 同样暴露 5h/weekly
+// 滚动窗口，纳入阈值评估。deepseek 为余额型，走余额检测而非阈值。
 var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformOpenAI,
 	PlatformAnthropic,
 	PlatformGrok,
+	PlatformKimi,
+	PlatformZhipu,
 }
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。
@@ -424,6 +477,13 @@ const (
 	// cannot reverse-estimate fleet volume from rates × window length.
 	// Default false (show rates). Admin endpoints always keep full metrics.
 	SettingKeyChannelMonitorHideThroughput = "channel_monitor_hide_throughput"
+
+	// SettingKeyChannelMonitorShowQuota controls whether quota/balance snapshots
+	// attached to channel monitors (check_mode=quota/quota_probe) are exposed on
+	// the user-facing monitor APIs and UI. Default false (hidden); parsed
+	// fail-closed (only the literal "true" enables it). Admin endpoints always
+	// keep the full snapshots regardless of this flag.
+	SettingKeyChannelMonitorShowQuota = "channel_monitor_show_quota"
 
 	// SettingKeyGrokDefaultTextModel is the fallback Grok text model for empty
 	// request models and built-in Grok aliases (e.g. "grok" → this id). Default grok-4.5.
