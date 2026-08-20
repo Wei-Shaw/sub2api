@@ -69,6 +69,11 @@ const messages: Record<string, string> = {
 	'usage.latencyFirstToken': 'First',
 	'usage.latencyDuration': 'Total',
 	'usage.performanceSpeed': 'Speed',
+	'usage.performanceStatusGood': 'Normal',
+	'usage.performanceStatusWarn': 'Slow',
+	'usage.performanceStatusSlow': 'Very slow',
+	'usage.performanceStatusCritical': 'Critical',
+	'usage.performanceStatusMissing': 'No data',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -433,6 +438,8 @@ describe('admin UsageTable performance', () => {
       input_tokens: 100,
       output_tokens: 120,
       image_output_tokens: 0,
+      request_type: 'stream',
+      stream: true,
       first_token_ms: 1000,
       duration_ms: 4000,
     }
@@ -450,6 +457,14 @@ describe('admin UsageTable performance', () => {
     const speed = wrapper.get('[data-testid="usage-performance-speed"]')
     expect(speed.text()).toBe('40.0tps')
     expect(speed.classes()).toContain('text-emerald-600')
+
+    const bar = wrapper.get('[data-testid="usage-performance-bar"]')
+    expect(bar.classes()).toContain('self-stretch')
+    expect(bar.findAll('span')).toHaveLength(3)
+    expect(bar.get('[data-testid="usage-performance-bar-first"]').classes()).toContain('bg-emerald-500')
+    expect(bar.get('[data-testid="usage-performance-bar-duration"]').classes()).toContain('bg-emerald-500')
+    expect(bar.get('[data-testid="usage-performance-bar-speed"]').classes()).toContain('bg-emerald-500')
+    expect(bar.attributes('title')).toBe('First: Normal\nTotal: Normal\nSpeed: Normal')
   })
 
   it('does not estimate generation speed without a valid first-token sample', () => {
@@ -459,6 +474,8 @@ describe('admin UsageTable performance', () => {
       input_tokens: 100,
       output_tokens: 120,
       image_output_tokens: 0,
+      request_type: 'stream',
+      stream: true,
       first_token_ms: null,
       duration_ms: 4000,
     }
@@ -474,6 +491,63 @@ describe('admin UsageTable performance', () => {
     expect(wrapper.text()).toContain('Speed')
     expect(speed.text()).toBe('-')
     expect(speed.classes()).toContain('text-gray-400')
+
+    const bar = wrapper.get('[data-testid="usage-performance-bar"]')
+    expect(bar.get('[data-testid="usage-performance-bar-first"]').classes()).toContain('bg-gray-300')
+    expect(bar.get('[data-testid="usage-performance-bar-speed"]').classes()).toContain('bg-gray-300')
+    expect(bar.attributes('title')).toContain('First: No data')
+    expect(bar.attributes('title')).toContain('Speed: No data')
+  })
+
+  it('does not estimate generation speed for non-streaming requests', () => {
+    const row = {
+      request_id: 'req-performance-sync',
+      model: 'gpt-5.4',
+      input_tokens: 100,
+      output_tokens: 120,
+      image_output_tokens: 0,
+      request_type: 'sync',
+      stream: false,
+      first_token_ms: 1000,
+      duration_ms: 4000,
+    }
+
+    const wrapper = mount(UsageTable, {
+      props: { data: [row], loading: false, columns: [] },
+      global: {
+        stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true },
+      },
+    })
+
+    expect(wrapper.get('[data-testid="usage-performance-speed"]').text()).toBe('-')
+    expect(wrapper.get('[data-testid="usage-performance-bar-speed"]').classes()).toContain('bg-gray-300')
+  })
+
+  it('uses the TPS severity for the speed segment independently of latency', () => {
+    const row = {
+      request_id: 'req-performance-critical-tps',
+      model: 'gpt-5.4',
+      input_tokens: 100,
+      output_tokens: 18,
+      image_output_tokens: 0,
+      request_type: 'stream',
+      stream: true,
+      first_token_ms: 1000,
+      duration_ms: 7000,
+    }
+
+    const wrapper = mount(UsageTable, {
+      props: { data: [row], loading: false, columns: [] },
+      global: {
+        stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true },
+      },
+    })
+
+    const bar = wrapper.get('[data-testid="usage-performance-bar"]')
+    expect(bar.get('[data-testid="usage-performance-bar-first"]').classes()).toContain('bg-emerald-500')
+    expect(bar.get('[data-testid="usage-performance-bar-duration"]').classes()).toContain('bg-emerald-500')
+    expect(bar.get('[data-testid="usage-performance-bar-speed"]').classes()).toContain('bg-red-500')
+    expect(bar.attributes('title')).toBe('First: Normal\nTotal: Normal\nSpeed: Critical')
   })
 })
 

@@ -214,22 +214,37 @@
           </div>
         </template>
 
-        <!-- 合并首字/总耗时/生成速度的性能列：左侧色条上端随首字档、下端随总耗时档，中段(40%-60%)短渐变过渡 -->
+        <!-- 三段色条分别对应首字、总耗时和生成速度，便于快速定位慢在哪个指标。 -->
         <template #cell-latency="{ row }">
           <div class="flex items-stretch gap-2">
-            <span
-              class="w-1 shrink-0 rounded-full"
-              :class="row.first_token_ms != null
-                ? ['bg-gradient-to-b from-40% to-60%', LATENCY_BAR_FROM_CLASSES[firstTokenSeverity(row.first_token_ms)], LATENCY_BAR_TO_CLASSES[durationSeverity(row.duration_ms ?? 0)]]
-                : LATENCY_BAR_CLASSES[durationSeverity(row.duration_ms ?? 0)]"
+            <div
+              class="flex w-1 shrink-0 self-stretch flex-col gap-px overflow-hidden rounded-full"
+              :title="performanceBarTitle(row)"
+              data-testid="usage-performance-bar"
               aria-hidden="true"
-            ></span>
+            >
+              <span
+                class="min-h-0 flex-1 rounded-t-full"
+                :class="performanceBarSegmentClass(row.first_token_ms == null ? null : firstTokenSeverity(row.first_token_ms))"
+                data-testid="usage-performance-bar-first"
+              ></span>
+              <span
+                class="min-h-0 flex-1"
+                :class="performanceBarSegmentClass(row.duration_ms == null ? null : durationSeverity(row.duration_ms))"
+                data-testid="usage-performance-bar-duration"
+              ></span>
+              <span
+                class="min-h-0 flex-1 rounded-b-full"
+                :class="performanceBarSegmentClass(generationTpsSeverityForRow(row))"
+                data-testid="usage-performance-bar-speed"
+              ></span>
+            </div>
             <div class="grid grid-cols-[max-content_max-content] items-baseline gap-x-2 gap-y-0.5 text-xs">
               <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyFirstToken') }}</span>
               <span v-if="row.first_token_ms != null" class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[firstTokenSeverity(row.first_token_ms)]">{{ formatDuration(row.first_token_ms) }}</span>
               <span v-else class="text-gray-400 dark:text-gray-500">-</span>
               <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyDuration') }}</span>
-              <span class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[durationSeverity(row.duration_ms ?? 0)]">{{ formatDuration(row.duration_ms) }}</span>
+              <span class="font-medium tabular-nums" :class="durationTextClass(row)">{{ formatDuration(row.duration_ms) }}</span>
               <span class="text-gray-400 dark:text-gray-500">{{ t('usage.performanceSpeed') }}</span>
               <span
                 data-testid="usage-performance-speed"
@@ -513,9 +528,8 @@ import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
 import { resolveUsageRequestType } from '@/utils/usageRequestType'
 import {
   LATENCY_BAR_CLASSES,
-  LATENCY_BAR_FROM_CLASSES,
-  LATENCY_BAR_TO_CLASSES,
   LATENCY_TEXT_CLASSES,
+  type LatencySeverity,
   durationSeverity,
   firstTokenSeverity,
   generationTpsSeverity,
@@ -696,8 +710,11 @@ const formatDuration = (ms: number | null | undefined): string => {
   return `${Math.floor(totalSec / 3600)}h ${Math.floor((totalSec % 3600) / 60)}m`
 }
 
-// 生成速度排除首 Token 到达前的等待时间，只对有效的流式文本输出进行估算。
+// 生成速度排除首 Token 到达前的等待时间，只对流式协议的文本输出进行估算。
 const generationTps = (row: AdminUsageLog): number | null => {
+  const requestType = resolveUsageRequestType(row)
+  if (requestType !== 'stream' && requestType !== 'ws_v2') return null
+
   const firstTokenMs = row.first_token_ms
   const durationMs = row.duration_ms
   const outputTokens = textOutputTokens(row)
@@ -728,6 +745,38 @@ const generationTpsTextClass = (row: AdminUsageLog): string => {
     ? 'text-gray-400 dark:text-gray-500'
     : LATENCY_TEXT_CLASSES[generationTpsSeverity(tps)]
 }
+
+const PERFORMANCE_BAR_MISSING_CLASS = 'bg-gray-300 dark:bg-gray-600'
+
+const performanceBarSegmentClass = (severity: LatencySeverity | null): string =>
+  severity == null ? PERFORMANCE_BAR_MISSING_CLASS : LATENCY_BAR_CLASSES[severity]
+
+const generationTpsSeverityForRow = (row: AdminUsageLog): LatencySeverity | null => {
+  const tps = generationTps(row)
+  return tps == null ? null : generationTpsSeverity(tps)
+}
+
+const durationTextClass = (row: AdminUsageLog): string =>
+  row.duration_ms == null
+    ? 'text-gray-400 dark:text-gray-500'
+    : LATENCY_TEXT_CLASSES[durationSeverity(row.duration_ms)]
+
+const performanceStatusLabel = (severity: LatencySeverity | null): string => {
+  if (severity == null) return t('usage.performanceStatusMissing')
+  const statusKeys: Record<LatencySeverity, string> = {
+    good: 'usage.performanceStatusGood',
+    warn: 'usage.performanceStatusWarn',
+    slow: 'usage.performanceStatusSlow',
+    critical: 'usage.performanceStatusCritical',
+  }
+  return t(statusKeys[severity])
+}
+
+const performanceBarTitle = (row: AdminUsageLog): string => [
+  `${t('usage.latencyFirstToken')}: ${performanceStatusLabel(row.first_token_ms == null ? null : firstTokenSeverity(row.first_token_ms))}`,
+  `${t('usage.latencyDuration')}: ${performanceStatusLabel(row.duration_ms == null ? null : durationSeverity(row.duration_ms))}`,
+  `${t('usage.performanceSpeed')}: ${performanceStatusLabel(generationTpsSeverityForRow(row))}`,
+].join('\n')
 
 // Cost tooltip functions
 const showTooltip = (event: MouseEvent, row: AdminUsageLog) => {

@@ -58,26 +58,10 @@ export const LATENCY_TEXT_CLASSES: Record<LatencySeverity, string> = {
   critical: 'text-red-600 dark:text-red-400',
 }
 
-/** 无首字数据时的纯色色条（仅按总耗时档着色）。 */
+/** 性能指标色条各段使用的纯色。 */
 export const LATENCY_BAR_CLASSES: Record<LatencySeverity, string> = {
   good: 'bg-emerald-500',
   warn: 'bg-amber-400',
   slow: 'bg-orange-500',
   critical: 'bg-red-500',
-}
-
-/** 渐变色条上端（首字档）；与 LATENCY_BAR_TO_CLASSES 组合成上下渐变，避免两段硬切割裂感。 */
-export const LATENCY_BAR_FROM_CLASSES: Record<LatencySeverity, string> = {
-  good: 'from-emerald-500',
-  warn: 'from-amber-400',
-  slow: 'from-orange-500',
-  critical: 'from-red-500',
-}
-
-/** 渐变色条下端（总耗时档）。 */
-export const LATENCY_BAR_TO_CLASSES: Record<LatencySeverity, string> = {
-  good: 'to-emerald-500',
-  warn: 'to-amber-400',
-  slow: 'to-orange-500',
-  critical: 'to-red-500',
 }
