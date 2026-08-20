@@ -32,7 +32,11 @@ RUN corepack enable && corepack prepare pnpm@9 --activate
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
 RUN --mount=type=cache,id=sub2api-pnpm-store,target=/root/.local/share/pnpm/store \
     if [ -n "${NPM_CONFIG_REGISTRY}" ]; then pnpm config set registry "${NPM_CONFIG_REGISTRY}"; fi && \
-    pnpm install --frozen-lockfile --prefer-offline
+    # The repository keeps pnpm overrides in package.json; pnpm 9 validates
+    # those against older lockfiles as a config mismatch. Regenerate the
+    # dependency resolution during image builds so custom source builds do not
+    # fail before compiling the application.
+    pnpm install --no-frozen-lockfile --prefer-offline
 
 # Copy frontend source and build.
 # LegalDocumentView.vue (admin-compliance gate) build-time imports
