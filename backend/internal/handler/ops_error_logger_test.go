@@ -188,21 +188,23 @@ func TestOpsCaptureWriterPool_ResetOnRelease(t *testing.T) {
 
 	writer := acquireOpsCaptureWriter(c.Writer)
 	require.NotNil(t, writer)
-	_, err := writer.buf.WriteString("temp-error-body")
+	c.Writer.WriteHeader(http.StatusInternalServerError)
+	_, err := writer.WriteString("temp-error-body")
 REDACTED
+	require.NotEmpty(t, writer.capturedBytes())
 
 	releaseOpsCaptureWriter(writer)
 
 	reused := acquireOpsCaptureWriter(c.Writer)
 	defer releaseOpsCaptureWriter(reused)
 
-	require.Zero(t, reused.buf.Len(), "writer should be reset before reuse")
+	require.Empty(t, reused.capturedBytes(), "writer should be reset before reuse")
 REDACTED
 
 func TestOpsCaptureWriterPool_DropsLargeBuffers(t *testing.T) {
-	w := &opsCaptureWriter{REDACTED
-	w.buf.Grow(opsCaptureWriterPoolMaxRetainedCapacity + 1)
-	require.False(t, shouldPoolOpsCaptureWriter(w))
+	state := &opsCaptureWriterState{REDACTED
+	state.buf.Grow(opsCaptureWriterPoolMaxRetainedCapacity + 1)
+	require.False(t, shouldPoolOpsCaptureWriterState(state))
 REDACTED
 
 func TestEnqueueOpsErrorLog_SanitizesAndBoundsBodyBeforeQueue(t *testing.T) {
@@ -278,6 +280,52 @@ REDACTED)
 	require.Zero(t, settings.getValueCalls, "ingress rejection must bypass monitoring settings reads")
 	require.Zero(t, repo.insertCalls, "ingress rejection must bypass inserts")
 	require.Zero(t, OpsErrorLogEnqueuedTotal(), "ingress rejection must not enter the error queue")
+REDACTED
+
+func TestOpsErrorLoggerMiddleware_DedicatedCyberSessionBlockRecordsExactlyOnce(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 3)
+	gin.SetMode(gin.TestMode)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := &OpenAIGatewayHandler{opsService: opsREDACTED
+	apiKey := &service.APIKey{ID: 41, Key: "sk-dedicated-test"REDACTED
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/responses", func(c *gin.Context) {
+		h.enqueueCyberSessionBlockedOpsEntry(c, apiKey, "gpt-test", "session-block-hash")
+		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{
+			"type": "permission_error", "code": "session_blocked_by_cyber_policy", "message": "blocked",
+	REDACTEDREDACTED)
+REDACTED)
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.Equal(t, "cyber_policy_session_blocked", job.entry.ErrorType)
+	require.Equal(t, http.StatusForbidden, job.entry.StatusCode)
+REDACTED
+
+func TestOpsErrorLoggerMiddleware_OrdinaryPermissionStillRecords(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 2)
+	gin.SetMode(gin.TestMode)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/responses", func(c *gin.Context) {
+		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{
+			"type": "permission_error", "code": "permission_denied", "message": "denied",
+	REDACTEDREDACTED)
+REDACTED)
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.Equal(t, "permission_error", job.entry.ErrorType)
+	require.Equal(t, http.StatusForbidden, job.entry.StatusCode)
 REDACTED
 
 func TestOpsErrorLoggerMiddleware_SkipsRecoveredUpstreamErrorOnSuccessfulRequest(t *testing.T) {
@@ -374,18 +422,18 @@ REDACTED
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			writer := &opsCaptureWriter{limit: opsCaptureWriterLimitREDACTED
-			writer.captureResponseChunk([]byte(tt.prefix), http.StatusOK)
-			require.Empty(t, writer.buf.Bytes(), "partial marker must remain in the bounded probe")
-			writer.captureResponseChunk([]byte(tt.suffix+"\n\n"), http.StatusOK)
+			state := &opsCaptureWriterState{limit: opsCaptureWriterLimitREDACTED
+			state.captureResponseChunk([]byte(tt.prefix), http.StatusOK)
+			require.Empty(t, state.buf.Bytes(), "partial frame must remain in the bounded probe")
+			state.captureResponseChunk([]byte(tt.suffix+"\n\n"), http.StatusOK)
 
-			parsed := parseOpsErrorResponse(writer.buf.Bytes())
-			require.True(t, writer.sseCapturing)
+			parsed := parseOpsErrorResponse(state.buf.Bytes())
+			require.True(t, state.sseCapturing)
 			require.True(t, parsed.StreamFailure)
 			require.Equal(t, tt.wantType, parsed.ErrorType)
 			require.Equal(t, tt.wantCode, parsed.Code)
 			require.Equal(t, tt.wantError, parsed.Message)
-			require.LessOrEqual(t, len(writer.probe), opsTerminalSSEProbeSize)
+			require.LessOrEqual(t, len(state.probe), opsTerminalSSEFrameProbeLimit)
 	REDACTED)
 REDACTED
 REDACTED
@@ -545,6 +593,23 @@ func TestLogOpsStreamError_SkipWhenPassthroughSkipMonitoring(t *testing.T) {
 	require.Equal(t, int64(0), OpsErrorLogEnqueuedTotal())
 REDACTED
 
+func TestShouldSkipFinalOpsFailureUsesOnlyFinalAttemptRule(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{
+		{UpstreamStatusCode: http.StatusBadGateway, Message: "hidden intermediate", SkipMonitoring: trueREDACTED,
+		{UpstreamStatusCode: http.StatusServiceUnavailable, Message: "visible final"REDACTED,
+REDACTED)
+	require.False(t, shouldSkipFinalOpsFailure(c))
+
+	c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{
+		{UpstreamStatusCode: http.StatusBadGateway, Message: "visible intermediate"REDACTED,
+		nil,
+		{UpstreamStatusCode: http.StatusServiceUnavailable, Message: "hidden final", SkipMonitoring: trueREDACTED,
+REDACTED)
+	require.True(t, shouldSkipFinalOpsFailure(c))
+REDACTED
+
 // MarkOpsStreamError 采用「首个标记生效」：后续的通用兜底帧不得覆盖根因错误。
 func TestMarkOpsStreamError_FirstWins(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -559,6 +624,35 @@ func TestMarkOpsStreamError_FirstWins(t *testing.T) {
 	require.Equal(t, "rate_limit_error", se.ErrType)
 	require.Equal(t, "Concurrency limit exceeded for account", se.Message)
 	require.Equal(t, http.StatusTooManyRequests, se.IntendedStatus)
+REDACTED
+
+func TestLogOpsStreamError_RecordsOneFailurePerWebSocketTurn(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 4)
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	service.SetOpenAIClientTransport(c, service.OpenAIClientTransportWS)
+
+	service.BeginOpsStreamTurn(c, 1)
+	service.MarkOpsStreamFailure(c, "rate_limit_error", "rate_limit_exceeded", "turn one failed", http.StatusTooManyRequests)
+	service.MarkOpsStreamError(c, "upstream_error", "generic duplicate for turn one", http.StatusBadGateway)
+	service.BeginOpsStreamTurn(c, 2)
+	service.MarkOpsStreamFailure(c, "permission_error", "permission_denied", "turn two failed", http.StatusForbidden)
+
+	streamErrors := service.GetOpsStreamErrors(c)
+	require.Len(t, streamErrors, 2)
+	require.Equal(t, 1, streamErrors[0].Turn)
+	require.Equal(t, 2, streamErrors[1].Turn)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	logOpsStreamError(c, ops, http.StatusSwitchingProtocols)
+
+	require.Equal(t, int64(2), OpsErrorLogQueueLength())
+	first := <-opsErrorLogQueue
+	second := <-opsErrorLogQueue
+	require.Equal(t, "turn one failed", first.entry.ErrorMessage)
+	require.Equal(t, http.StatusTooManyRequests, first.entry.StatusCode)
+	require.Equal(t, "turn two failed", second.entry.ErrorMessage)
+	require.Equal(t, http.StatusForbidden, second.entry.StatusCode)
 REDACTED
 
 func TestIsKnownOpsErrorType(t *testing.T) {
@@ -784,7 +878,11 @@ REDACTED
 			errType := normalizeOpsErrorType(tt.errType, tt.code)
 			phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(c, errType, tt.message, tt.code, tt.status)
 
-			require.Equal(t, "api_error", errType)
+			wantErrType := "api_error"
+			if tt.errType == "permission_error" {
+				wantErrType = "permission_error"
+		REDACTED
+			require.Equal(t, wantErrType, errType)
 			require.Equal(t, "auth", phase)
 			require.True(t, isBusinessLimited)
 			require.Equal(t, "client", errorOwner)
@@ -935,7 +1033,7 @@ REDACTED{
 			message:     "This group is restricted to Claude Code clients (/v1/messages only)",
 			code:        "",
 			status:      http.StatusForbidden,
-			wantErrType: "api_error",
+			wantErrType: "permission_error",
 			wantPhase:   "request",
 	REDACTED,
 		{
@@ -944,7 +1042,7 @@ REDACTED{
 			message:     "Image generation is not enabled for this group",
 			code:        "",
 			status:      http.StatusForbidden,
-			wantErrType: "api_error",
+			wantErrType: "permission_error",
 			wantPhase:   "request",
 	REDACTED,
 		{
@@ -971,7 +1069,7 @@ REDACTED{
 			message:     "model claude-3-5-sonnet not in whitelist",
 			code:        "",
 			status:      http.StatusForbidden,
-			wantErrType: "api_error",
+			wantErrType: "permission_error",
 			wantPhase:   "request",
 	REDACTED,
 		{
@@ -998,7 +1096,7 @@ REDACTED{
 			message:     "openai service_tier=priority is not allowed for model gpt-5.5",
 			code:        "",
 			status:      http.StatusForbidden,
-			wantErrType: "api_error",
+			wantErrType: "permission_error",
 			wantPhase:   "request",
 	REDACTED,
 		{
@@ -1307,6 +1405,254 @@ func TestParseOpsErrorResponsePreservesNestedStringCode(t *testing.T) {
 	require.Equal(t, "permission_error", parsed.ErrorType)
 	require.Equal(t, "GROUP_DELETED", parsed.Code)
 	require.Equal(t, "API Key 所属分组已删除", parsed.Message)
+REDACTED
+
+func TestParseOpsErrorResponsePreservesStructuredTopLevelSemantics(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		wantType string
+		wantCode string
+		wantMsg  string
+REDACTED{
+		{
+			name:     "model not found",
+			body:     `{"type":"model_not_found","code":404,"message":"model unavailable"REDACTED`,
+			wantType: "model_not_found",
+			wantCode: "404",
+			wantMsg:  "model unavailable",
+	REDACTED,
+		{
+			name:     "string error",
+			body:     `{"type":"service_unavailable","code":"temporarily_unavailable","error":"capacity exhausted"REDACTED`,
+			wantType: "service_unavailable",
+			wantCode: "temporarily_unavailable",
+			wantMsg:  "capacity exhausted",
+	REDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed := parseOpsErrorResponse([]byte(tt.body))
+			require.Equal(t, tt.wantType, normalizeOpsErrorType(parsed.ErrorType, parsed.Code))
+			require.Equal(t, tt.wantCode, parsed.Code)
+			require.Equal(t, tt.wantMsg, parsed.Message)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestApplyOpsUpstreamFieldsUsesLastNonNilAttempt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	service.SetOpsUpstreamError(c, http.StatusUnauthorized, "stale context", "stale detail")
+	c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{
+		{UpstreamStatusCode: http.StatusTooManyRequests, Message: "first attempt", Detail: "first detail"REDACTED,
+		nil,
+		{UpstreamStatusCode: http.StatusServiceUnavailable, Message: "final attempt", Detail: "final detail"REDACTED,
+		nil,
+REDACTED)
+	entry := &service.OpsInsertErrorLogInput{REDACTED
+
+	applyOpsUpstreamFieldsFromContext(c, entry)
+
+	require.NotNil(t, entry.UpstreamStatusCode)
+	require.Equal(t, http.StatusServiceUnavailable, *entry.UpstreamStatusCode)
+	require.NotNil(t, entry.UpstreamErrorMessage)
+	require.Equal(t, "final attempt", *entry.UpstreamErrorMessage)
+	require.NotNil(t, entry.UpstreamErrorDetail)
+	require.Equal(t, "final detail", *entry.UpstreamErrorDetail)
+	require.Len(t, entry.UpstreamErrors, 4)
+REDACTED
+
+func TestApplyOpsUpstreamFieldsFinalStatuslessAttemptClearsStaleContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	service.SetOpsUpstreamError(c, http.StatusBadGateway, "stale response", "stale body")
+	c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{
+		{UpstreamStatusCode: http.StatusBadGateway, Message: "first response"REDACTED,
+		{Kind: "request_error", Message: "final transport failure", Detail: "connection reset"REDACTED,
+REDACTED)
+	entry := &service.OpsInsertErrorLogInput{REDACTED
+
+	applyOpsUpstreamFieldsFromContext(c, entry)
+
+	require.Nil(t, entry.UpstreamStatusCode)
+	require.NotNil(t, entry.UpstreamErrorMessage)
+	require.Equal(t, "final transport failure", *entry.UpstreamErrorMessage)
+	require.NotNil(t, entry.UpstreamErrorDetail)
+	require.Equal(t, "connection reset", *entry.UpstreamErrorDetail)
+REDACTED
+
+func TestOpsCaptureWriter_ProtocolLevelTerminalFrameDetection(t *testing.T) {
+	state := &opsCaptureWriterState{limit: opsCaptureWriterLimitREDACTED
+	chunks := []string{
+		"event : response.failed\r\n",
+		"data: { \"response\" : { \"error\" : { \"message\" : \"busy\", \"code\" : \"service_unavailable\" REDACTED REDACTED,",
+		" \"type\" : \"response.failed\" REDACTED\r\n\r\n",
+REDACTED
+	for _, chunk := range chunks {
+		state.captureResponseChunk([]byte(chunk), http.StatusOK)
+REDACTED
+
+	parsed := parseOpsErrorResponse(state.buf.Bytes())
+	require.True(t, state.sseCapturing)
+	require.True(t, parsed.StreamFailure)
+	require.Equal(t, "service_unavailable_error", parsed.ErrorType)
+	require.Equal(t, "service_unavailable", parsed.Code)
+	require.Equal(t, "busy", parsed.Message)
+	require.Equal(t, http.StatusServiceUnavailable, inferStreamFailureStatus(nil, parsed))
+REDACTED
+
+func TestParseOpsSSEFailure_TopLevelErrorsAndUnknownStatus(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		wantType   string
+		wantStatus int
+REDACTED{
+		{
+			name:       "top-level permission",
+			body:       "event: error\ndata: {\"message\":\"denied\",\"code\":\"permission_denied\",\"type\":\"error\"REDACTED\n\n",
+			wantType:   "permission_error",
+			wantStatus: http.StatusForbidden,
+	REDACTED,
+		{
+			name:       "top-level unavailable",
+			body:       "data: {\"message\":\"busy\",\"type\":\"error\",\"code\":\"service_unavailable\"REDACTED\n\n",
+			wantType:   "service_unavailable_error",
+			wantStatus: http.StatusServiceUnavailable,
+	REDACTED,
+		{
+			name:       "unknown terminal",
+			body:       "event: response.failed\ndata: {\"type\":\"response.failed\",\"error\":{\"code\":\"new_provider_code\",\"message\":\"failed\"REDACTEDREDACTED\n\n",
+			wantType:   "upstream_error",
+			wantStatus: http.StatusBadGateway,
+	REDACTED,
+		{
+			name:       "explicit terminal status",
+			body:       "event: error\ndata: {\"type\":\"error\",\"status_code\":429,\"code\":\"new_rate_code\",\"message\":\"slow down\"REDACTED\n\n",
+			wantType:   "api_error",
+			wantStatus: http.StatusTooManyRequests,
+	REDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed := parseOpsErrorResponse([]byte(tt.body))
+			require.True(t, parsed.StreamFailure)
+			require.Equal(t, tt.wantType, parsed.ErrorType)
+			gin.SetMode(gin.TestMode)
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			service.SetOpsUpstreamError(c, http.StatusUnauthorized, "old attempt", "")
+			require.Equal(t, tt.wantStatus, inferStreamFailureStatus(c, parsed), "terminal status must not inherit an earlier attempt")
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestOpsCaptureWriter_OversizedNonTerminalFrameRemainsBounded(t *testing.T) {
+	state := &opsCaptureWriterState{limit: opsCaptureWriterLimitREDACTED
+	state.captureResponseChunk([]byte("data: "+strings.Repeat("x", opsTerminalSSEFrameProbeLimit*2)+"\n\n"), http.StatusOK)
+	require.Empty(t, state.buf.Bytes())
+	require.LessOrEqual(t, cap(state.probe), opsTerminalSSEFrameProbeLimit)
+
+	state.captureResponseChunk([]byte("event: error\ndata: {\"type\":\"error\",\"code\":\"permission_denied\",\"message\":\"denied\"REDACTED\n\n"), http.StatusOK)
+	require.True(t, state.sseCapturing)
+	require.NotEmpty(t, state.buf.Bytes())
+REDACTED
+
+func TestOpsCaptureWriter_TerminalMetadataSurvivesBodyCaptureTruncation(t *testing.T) {
+	state := &opsCaptureWriterState{limit: opsCaptureWriterLimitREDACTED
+	frame := "event: response.failed\ndata: {\"padding\":\"" + strings.Repeat("x", opsCaptureWriterLimit) + "\",\"type\":\"response.failed\",\"error\":{\"code\":\"service_unavailable\",\"message\":\"busy\"REDACTEDREDACTED\n\n"
+	state.captureResponseChunk([]byte(frame), http.StatusOK)
+	state.finalizeResponseCapture()
+
+	require.Len(t, state.buf.Bytes(), opsCaptureWriterLimit)
+	require.True(t, parseOpsErrorResponse(state.buf.Bytes()).StreamFailure, "the bounded parser must fail closed from the terminal event line")
+	require.True(t, state.terminalFound)
+	require.Equal(t, "service_unavailable_error", state.terminalError.ErrorType)
+	require.Equal(t, "busy", state.terminalError.Message)
+REDACTED
+
+func TestOpsErrorLoggerMiddleware_LargeTerminalFrameUsesEventFallback(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 2)
+	gin.SetMode(gin.TestMode)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/responses", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+		_, _ = c.Writer.WriteString("event: response.failed\n")
+		_, _ = c.Writer.WriteString("data: {\"authorization\":\"Bearer must-not-persist\",\"padding\":\"" + strings.Repeat("x", opsTerminalSSEFrameProbeLimit*2) + "\"REDACTED")
+REDACTED)
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.Equal(t, http.StatusBadGateway, job.entry.StatusCode)
+	require.Equal(t, "upstream_error", job.entry.ErrorType)
+	require.Equal(t, "upstream stream failed", job.entry.ErrorMessage)
+	require.NotContains(t, job.entry.ErrorMessage, "must-not-persist")
+	require.NotContains(t, job.entry.ErrorBody, "must-not-persist")
+	require.Contains(t, job.entry.ErrorBody, `"payload_truncated":true`)
+REDACTED
+
+func TestOpsErrorLoggerMiddleware_DetectsTerminalDataAtEOFWithoutBlankLine(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 2)
+	gin.SetMode(gin.TestMode)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/responses", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+		_, _ = c.Writer.WriteString(`data: {"message":"denied","code":"permission_denied","type":"error"REDACTED`)
+REDACTED)
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.Equal(t, http.StatusForbidden, job.entry.StatusCode)
+	require.Equal(t, "permission_error", job.entry.ErrorType)
+	require.Equal(t, "denied", job.entry.ErrorMessage)
+REDACTED
+
+func TestOpsCaptureWriter_DetectsCROnlySSEFrame(t *testing.T) {
+	state := &opsCaptureWriterState{limit: opsCaptureWriterLimitREDACTED
+	state.captureResponseChunk([]byte("data: {\"type\":\"error\",\"code\":\"service_unavailable\",\"message\":\"busy\"REDACTED\r\r"), http.StatusOK)
+
+	require.True(t, state.sseCapturing)
+	parsed := parseOpsErrorResponse(state.buf.Bytes())
+	require.True(t, parsed.StreamFailure)
+	require.Equal(t, "service_unavailable_error", parsed.ErrorType)
+REDACTED
+
+func TestSanitizeOpsSSEDataForPersistence_RedactsJSONFields(t *testing.T) {
+	body := []byte("event: error\ndata: {\"type\":\"error\",\"authorization\":\"Bearer secret\",\ndata: \"nested\":{\"api_key\":\"sk-secret\"REDACTEDREDACTED\n\n")
+	sanitized := sanitizeOpsSSEDataForPersistence(body)
+	require.NotContains(t, sanitized, "Bearer secret")
+	require.NotContains(t, sanitized, "sk-secret")
+	require.Contains(t, sanitized, `"authorization":"[REDACTED]"`)
+	require.Contains(t, sanitized, `"api_key":"[REDACTED]"`)
+REDACTED
+
+func TestSanitizeOpsSSEDataForPersistence_DropsTruncatedJSONFragment(t *testing.T) {
+	body := []byte("event: error\ndata: {\"type\":\"error\",\"authorization\":\"Bearer leaked")
+	sanitized := sanitizeOpsSSEDataForPersistence(body)
+	require.NotContains(t, sanitized, "Bearer leaked")
+	require.Contains(t, sanitized, `data: {"payload_truncated":trueREDACTED`)
+REDACTED
+
+func BenchmarkOpsCaptureWriterSuccessfulSSEFrames(b *testing.B) {
+	frame := []byte("event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"REDACTED\n\n")
+	state := &opsCaptureWriterState{limit: opsCaptureWriterLimitREDACTED
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		state.captureResponseChunk(frame, http.StatusOK)
+REDACTED
+	if state.buf.Len() != 0 {
+		b.Fatal("successful frames must not be captured")
+REDACTED
 REDACTED
 
 func TestSetOpsEndpointContext_SetsContextKeys(t *testing.T) {

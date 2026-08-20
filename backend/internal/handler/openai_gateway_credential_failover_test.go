@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestGatewayChatCredentialStopDoesNotSelectAnotherAccountAndReturnsSafe503(t *testing.T) {
@@ -62,6 +63,112 @@ REDACTED, false)
 	require.Contains(t, recorder.Body.String(), service.AntigravityCredentialRejectedClientMessage)
 	require.NotContains(t, strings.ToLower(recorder.Body.String()), "bearer")
 	require.NotContains(t, strings.ToLower(recorder.Body.String()), "refresh_token")
+REDACTED
+
+func TestOpenAIAccessStateCredentialFailureUsesTypedSafeResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+
+	(&OpenAIGatewayHandler{REDACTED).handleFailoverExhausted(c, &service.UpstreamFailoverError{
+		StatusCode:        http.StatusForbidden,
+		Stage:             service.GatewayFailureStageAccountAuth,
+		Scope:             service.GatewayFailureScopeAccount,
+		Reason:            service.OpenAIUpstreamAccessStateReason,
+		NextAccountAction: service.NextAccountRetry,
+		ClientStatusCode:  http.StatusBadGateway,
+		ClientMessage:     "Upstream access is temporarily unavailable, please retry later",
+		ResponseBody:      []byte(`{"error":{"message":"Your workspace is deactivated","token":"must-not-leak"REDACTEDREDACTED`),
+REDACTED, false)
+
+	require.Equal(t, http.StatusBadGateway, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "Upstream access is temporarily unavailable")
+	require.NotContains(t, strings.ToLower(recorder.Body.String()), "deactivated")
+	require.NotContains(t, recorder.Body.String(), "must-not-leak")
+REDACTED
+
+func TestOpenAICapacityFailoverExhaustionPreservesMessageAsServerError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	message := "Our servers are currently overloaded. Please try again later."
+	failoverErr := &service.UpstreamFailoverError{
+		StatusCode:             http.StatusBadRequest,
+		ResponseBody:           []byte(`{"error":{"code":"server_is_overloaded","message":"` + message + `"REDACTEDREDACTED`),
+		RetryableOnSameAccount: true,
+		RequestScopedTransient: true,
+		ClientStatusCode:       http.StatusServiceUnavailable,
+		ClientMessage:          message,
+REDACTED
+
+	t.Run("native_openai", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		(&OpenAIGatewayHandler{REDACTED).handleFailoverExhausted(c, failoverErr, false)
+		require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+		require.Equal(t, "server_error", gjson.Get(recorder.Body.String(), "error.type").String())
+		require.Equal(t, message, gjson.Get(recorder.Body.String(), "error.message").String())
+		require.NotContains(t, recorder.Body.String(), "server_is_overloaded")
+REDACTED)
+
+	t.Run("responses_compat", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		(&GatewayHandler{REDACTED).handleResponsesFailoverExhausted(c, failoverErr, false)
+		require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+		require.Equal(t, "server_error", gjson.Get(recorder.Body.String(), "error.code").String())
+		require.Equal(t, message, gjson.Get(recorder.Body.String(), "error.message").String())
+REDACTED)
+
+	t.Run("anthropic_compat", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		(&OpenAIGatewayHandler{REDACTED).handleAnthropicFailoverExhausted(c, failoverErr, false)
+		require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+		require.Equal(t, "api_error", gjson.Get(recorder.Body.String(), "error.type").String())
+		require.Equal(t, message, gjson.Get(recorder.Body.String(), "error.message").String())
+REDACTED)
+REDACTED
+
+func TestResponsesFailoverExhaustedAfterForwardedTerminalMarksOpsWithoutDuplicateFrame(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	official := "event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"official failure\"REDACTEDREDACTEDREDACTED\n\n"
+	_, _ = recorder.Write([]byte(official))
+	service.MarkOpsStreamError(c, "server_error", "official failure", http.StatusBadGateway)
+
+	(&GatewayHandler{REDACTED).handleResponsesFailoverExhausted(c, &service.UpstreamFailoverError{
+		StatusCode:   http.StatusBadGateway,
+		ResponseBody: []byte(`{"error":{"message":"fallback failure"REDACTEDREDACTED`),
+REDACTED, true)
+
+	require.Equal(t, official, recorder.Body.String())
+	streamErr, ok := service.GetOpsStreamError(c)
+	require.True(t, ok)
+	require.Equal(t, "official failure", streamErr.Message)
+
+	markerRecorder := httptest.NewRecorder()
+	markerContext, _ := gin.CreateTestContext(markerRecorder)
+	(&GatewayHandler{REDACTED).handleResponsesFailoverExhausted(markerContext, &service.UpstreamFailoverError{
+		StatusCode: http.StatusTooManyRequests,
+REDACTED, true)
+	require.Contains(t, markerRecorder.Body.String(), "event: response.failed")
+	require.Equal(t, 1, strings.Count(markerRecorder.Body.String(), "event: response.failed"))
+	streamErr, ok = service.GetOpsStreamError(markerContext)
+	require.True(t, ok)
+	require.Equal(t, http.StatusTooManyRequests, streamErr.IntendedStatus)
+	require.Equal(t, "rate_limit_error", streamErr.ErrType)
+
+	heartbeatRecorder := httptest.NewRecorder()
+	heartbeatContext, _ := gin.CreateTestContext(heartbeatRecorder)
+	heartbeat := ": keepalive\n\n"
+	written, err := heartbeatRecorder.Write([]byte(heartbeat))
+REDACTED
+	recordGatewayStreamHeartbeat(heartbeatContext, written)
+	(&GatewayHandler{REDACTED).handleResponsesFailoverExhausted(heartbeatContext, &service.UpstreamFailoverError{
+		StatusCode: http.StatusBadGateway,
+REDACTED, true)
+	require.True(t, strings.HasPrefix(heartbeatRecorder.Body.String(), heartbeat))
+	require.Equal(t, 1, strings.Count(heartbeatRecorder.Body.String(), "event: response.failed"))
 REDACTED
 
 func TestGatewayChatInferenceExhaustionRestoresRetryAfter(t *testing.T) {

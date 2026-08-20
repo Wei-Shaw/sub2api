@@ -131,9 +131,14 @@ REDACTED
 
 	account := selection.Account
 	setOpsSelectedAccount(c, account.ID, account.Platform)
-	if selection.Acquired && selection.ReleaseFunc != nil {
-		defer selection.ReleaseFunc()
+	accountRelease, acquired := h.acquireCountTokensAccountSlot(c, apiKey.GroupID, sessionHash, selection, false, reqLog)
+	if !acquired {
+		return
 REDACTED
+	if accountRelease != nil {
+		defer accountRelease()
+REDACTED
+	account = selection.Account
 	if err := h.gatewayService.ForwardResponsesInputTokens(c.Request.Context(), c, account, forwardBody); err != nil {
 		reqLog.Error("openai_input_tokens.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 REDACTED
@@ -182,8 +187,7 @@ REDACTED
 REDACTED
 
 // CountTokens handles Anthropic-compatible POST /v1/messages/count_tokens for OpenAI groups.
-// It validates billing and routes to an OpenAI token-count bridge without taking concurrency slots
-// or recording usage.
+// It validates billing and routes to an OpenAI token-count bridge without recording usage.
 func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
@@ -315,13 +319,56 @@ REDACTED
 
 	account := selection.Account
 	setOpsSelectedAccount(c, account.ID, account.Platform)
-	if selection.Acquired && selection.ReleaseFunc != nil {
-		defer selection.ReleaseFunc()
+	accountRelease, acquired := h.acquireCountTokensAccountSlot(c, apiKey.GroupID, sessionHash, selection, true, reqLog)
+	if !acquired {
+		return
 REDACTED
+	if accountRelease != nil {
+		defer accountRelease()
+REDACTED
+	account = selection.Account
 	forwardBody := mappedBodyForMessages(channelMapping.Mapped, channelMapping.MappedModel)
 	defaultMappedModel := preferredMappedModel
 
 	if err := h.gatewayService.ForwardCountTokensAsAnthropic(c.Request.Context(), c, account, forwardBody, defaultMappedModel); err != nil {
 		reqLog.Error("openai_count_tokens.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 REDACTED
+REDACTED
+
+func (h *OpenAIGatewayHandler) acquireCountTokensAccountSlot(
+	c *gin.Context,
+	groupID *int64,
+	sessionHash string,
+	selection *service.AccountSelectionResult,
+	anthropicResponse bool,
+	reqLog *zap.Logger,
+) (func(), bool) {
+	writeError := func(status int, errType, message string) {
+		if anthropicResponse {
+			h.anthropicErrorResponse(c, status, errType, message)
+			return
+	REDACTED
+		h.errorResponse(c, status, errType, message)
+REDACTED
+	streamStarted := false
+	release, result := h.acquireOpenAIAccountSlot(
+		c,
+		groupID,
+		sessionHash,
+		selection,
+		false,
+		&streamStarted,
+		reqLog,
+		writeError,
+	)
+	if result == openAISlotAcquireOK {
+		return release, true
+REDACTED
+	// Token-count requests suppress the profit gate before selection, so this
+	// is defensive only. Never forward without a slot if a stale gate appears.
+	if result == openAISlotAcquireProfitVetoed {
+		markOpsRoutingCapacityLimited(c)
+		writeError(http.StatusServiceUnavailable, "api_error", "No available accounts")
+REDACTED
+	return nil, false
 REDACTED
