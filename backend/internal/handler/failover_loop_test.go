@@ -70,6 +70,13 @@ REDACTED))
 REDACTED))
 REDACTED
 
+func TestEffectiveSameAccountRetryLimitHonorsErrorCapAndDisabledAccount(t *testing.T) {
+	account := &service.Account{Type: service.AccountTypeAPIKey, Credentials: map[string]any{"pool_mode": true, "pool_mode_retry_count": float64(3)REDACTEDREDACTED
+	require.Equal(t, 1, effectiveSameAccountRetryLimit(&service.UpstreamFailoverError{SameAccountRetryMax: 1REDACTED, account))
+	account.Credentials["pool_mode_retry_count"] = float64(0)
+	require.Equal(t, 0, effectiveSameAccountRetryLimit(&service.UpstreamFailoverError{SameAccountRetryMax: 1REDACTED, account))
+REDACTED
+
 // ---------------------------------------------------------------------------
 // Helper
 // ---------------------------------------------------------------------------

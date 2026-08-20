@@ -327,7 +327,7 @@ REDACTED
 				REDACTED
 					// Pool mode: retry on the same account
 					if failoverErr.RetryableOnSameAccount {
-						retryLimit := account.GetPoolModeRetryCount()
+						retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
 						if sameAccountRetryCount[account.ID] < retryLimit && sameAccountRetryDeadlineAllows(failoverErr) {
 							sameAccountRetryCount[account.ID]++
 							retryDelay := sameAccountRetryDelayFor(failoverErr, sameAccountRetryCount[account.ID])

@@ -82,6 +82,19 @@ func sameAccountRetryDeadlineAllows(failoverErr *service.UpstreamFailoverError) 
 	return failoverErr == nil || failoverErr.SameAccountRetryDeadline.IsZero() || time.Now().Before(failoverErr.SameAccountRetryDeadline)
 REDACTED
 
+// effectiveSameAccountRetryLimit applies an error-specific cap without
+// overriding an explicit account setting of zero (which disables retries).
+func effectiveSameAccountRetryLimit(failoverErr *service.UpstreamFailoverError, account *service.Account) int {
+	if account == nil {
+		return 0
+REDACTED
+	limit := account.GetPoolModeRetryCount()
+	if limit > 0 && failoverErr != nil && failoverErr.SameAccountRetryMax > 0 && failoverErr.SameAccountRetryMax < limit {
+		return failoverErr.SameAccountRetryMax
+REDACTED
+	return limit
+REDACTED
+
 // FailoverState 跨循环迭代共享的 failover 状态
 type FailoverState struct {
 	SwitchCount           int
@@ -171,7 +184,7 @@ REDACTED
 
 	// 同账号重试不算切换账号，粘性会话仅在实际切换时强制缓存计费。
 	retryCount := s.SameAccountRetryCount[accountID]
-	if failoverErr.SameAccountRetryMax > 0 && (retryLimit <= 0 || failoverErr.SameAccountRetryMax < retryLimit) {
+	if failoverErr.SameAccountRetryMax > 0 && failoverErr.SameAccountRetryMax < retryLimit {
 		retryLimit = failoverErr.SameAccountRetryMax
 REDACTED
 	sameAccountRetryAllowed := failoverErr.RetryableOnSameAccount && retryLimit > 0 && retryCount < retryLimit
