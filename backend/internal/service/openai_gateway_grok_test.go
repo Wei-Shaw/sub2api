@@ -3434,6 +3434,108 @@ func TestPatchGrokResponsesBody_StripsReasoningContentNull(t *testing.T) {
 	require.Equal(t, "reasoning", reasoning.Get("type").String())
 	require.True(t, reasoning.Get("summary").Exists(), "summary should be preserved")
 	require.False(t, reasoning.Get("content").Exists(), "content: null should be stripped")
+	require.False(t, reasoning.Get("encrypted_content").Exists(), "encrypted_content: null should be stripped")
+}
+
+func TestPatchGrokResponsesBody_StripsExplicitNullsOnNonReasoningItems(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok-latest",
+		"input": [
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}],"status":null},
+			{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"{}","status":null},
+			{"type":"function_call_output","call_id":"call_1","output":"ok","status":null},
+			{"type":"web_search_call","id":"ws_1","status":null}
+		]
+	}`)
+
+	patched, err := patchGrokResponsesBody(body, "grok-4.6")
+	require.NoError(t, err)
+	require.True(t, json.Valid(patched))
+
+	items := gjson.GetBytes(patched, "input").Array()
+	require.Len(t, items, 4)
+	for i, item := range items {
+		require.Falsef(t, item.Get("status").Exists(), "input.%d.status: null should be stripped", i)
+	}
+	require.Equal(t, "lookup", items[1].Get("name").String())
+	require.Equal(t, "ok", items[2].Get("output").String())
+}
+
+func TestPatchGrokResponsesBody_ConvertsCustomToolHistoryInsteadOfDropping(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok-latest",
+		"input": [
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"hi","extra":null}]},
+			{"type":"item_reference","id":"msg_1"},
+			{"type":"custom_tool_call","call_id":"call_1","name":"lookup","input":"{\"q\":\"x\"}"},
+			{"type":"custom_tool_call_output","call_id":"call_1","output":"ok"},
+			{"type":"function_call","call_id":"call_2","name":"lookup","arguments":"{}","status":null}
+		]
+	}`)
+
+	patched, err := patchGrokResponsesBody(body, "grok-4.6")
+	require.NoError(t, err)
+	require.True(t, json.Valid(patched))
+
+	items := gjson.GetBytes(patched, "input").Array()
+	require.Len(t, items, 5)
+	require.Equal(t, "message", items[0].Get("type").String())
+	require.False(t, items[0].Get("content.0.extra").Exists(), "nested extra: null should be stripped")
+	require.Equal(t, "hi", items[0].Get("content.0.text").String())
+	require.Equal(t, "message", items[1].Get("type").String())
+	require.Contains(t, items[1].Get("content.0.text").String(), "item_reference msg_1")
+	require.Equal(t, "function_call", items[2].Get("type").String())
+	require.Equal(t, "call_1", items[2].Get("call_id").String())
+	require.Equal(t, "lookup", items[2].Get("name").String())
+	require.JSONEq(t, `{"q":"x"}`, items[2].Get("arguments").String())
+	require.Equal(t, "function_call_output", items[3].Get("type").String())
+	require.Equal(t, "ok", items[3].Get("output").String())
+	require.Equal(t, "function_call", items[4].Get("type").String())
+	require.False(t, items[4].Get("status").Exists())
+}
+
+func TestPatchGrokResponsesBody_ConvertsToolSearchHistory(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok-latest",
+		"input": [
+			{"type":"tool_search_call","call_id":"s1","arguments":{"query":"git"}},
+			{"type":"tool_search_output","call_id":"s1","output":["shell"]}
+		]
+	}`)
+
+	patched, err := patchGrokResponsesBody(body, "grok-4.6")
+	require.NoError(t, err)
+	items := gjson.GetBytes(patched, "input").Array()
+	require.Len(t, items, 2)
+	require.Equal(t, "function_call", items[0].Get("type").String())
+	require.Equal(t, "tool_search", items[0].Get("name").String())
+	require.JSONEq(t, `{"query":"git"}`, items[0].Get("arguments").String())
+	require.Equal(t, "function_call_output", items[1].Get("type").String())
+	require.Equal(t, "s1", items[1].Get("call_id").String())
+}
+
+func TestSummarizeGrokResponsesInputForLog(t *testing.T) {
+	t.Parallel()
+
+	summary := summarizeGrokResponsesInputForLog([]byte(`{
+		"input": [
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"hi","extra":null}]},
+			{"type":"item_reference","id":"msg_1"},
+			{"type":"reasoning","content":null}
+		]
+	}`))
+	require.Contains(t, summary, "items=3")
+	require.Contains(t, summary, "item_reference=1")
+	require.Contains(t, summary, "message=1")
+	require.Contains(t, summary, "reasoning=1")
+	require.Contains(t, summary, "input.0.content.0.extra")
+	require.Contains(t, summary, "input.2.content")
 }
 
 func TestPatchGrokResponsesBody_KeepsReasoningContentNonNull(t *testing.T) {

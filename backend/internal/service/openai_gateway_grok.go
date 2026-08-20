@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -179,6 +180,13 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 				ResponseHeaders:        resp.Header.Clone(),
 				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 			}
+		}
+		if isGrokModelInputDeserializeError(resp.StatusCode, respBody) {
+			slog.Error("grok_modelinput_422",
+				"account_id", account.ID,
+				"model", upstreamModel,
+				"input", summarizeGrokResponsesInputForLog(patchedBody),
+			)
 		}
 		return s.handleErrorResponse(ctx, resp, c, account, patchedBody, upstreamModel)
 	}
@@ -849,33 +857,338 @@ func grokResponsesToolDedupKey(tool gjson.Result) string {
 	return "json:" + normalizeCompatSeedJSON(json.RawMessage(tool.Raw))
 }
 
-// sanitizeGrokReasoningNullContent 删除 reasoning 项中的 "content": null。
-// xAI 的 untagged enum 反序列化器拒收该字段，返回 422。
+// sanitizeGrokReasoningNullContent 清洗 Responses input，避免 xAI untagged enum ModelInput 422。
+// 生产 0.1.177-modelinput-hotfix 只删顶层 null 后，~251KB grok-4.6 请求仍 422。
 func sanitizeGrokReasoningNullContent(body []byte) ([]byte, error) {
+	return sanitizeGrokResponsesModelInput(body)
+}
+
+var grokResponsesSupportedInputTypes = map[string]struct{}{
+	"message":                {},
+	"reasoning":              {},
+	"function_call":          {},
+	"function_call_output":   {},
+	"web_search_call":        {},
+	"file_search_call":       {},
+	"code_execution_call":    {},
+	"code_interpreter_call":  {},
+	"mcp_call":               {},
+	"mcp_list_tools":         {},
+	"mcp_approval_request":   {},
+	"mcp_approval_response":  {},
+	"image_generation_call":  {},
+	"computer_call":          {},
+	"computer_call_output":   {},
+	"local_shell_call":       {},
+	"local_shell_call_output": {},
+	"shell_call":             {},
+	"shell_call_output":      {},
+}
+
+func sanitizeGrokResponsesModelInput(body []byte) ([]byte, error) {
 	input := gjson.GetBytes(body, "input")
 	if !input.Exists() || !input.IsArray() {
 		return body, nil
 	}
 
-	items := input.Array()
+	rawItems := input.Array()
+	filtered := make([]json.RawMessage, 0, len(rawItems))
 	changed := false
-	for i := len(items) - 1; i >= 0; i-- {
-		item := items[i]
-		if strings.TrimSpace(item.Get("type").String()) != "reasoning" {
+	for _, item := range rawItems {
+		if !item.IsObject() {
+			filtered = append(filtered, json.RawMessage(item.Raw))
 			continue
 		}
-		contentResult := item.Get("content")
-		if contentResult.Exists() && contentResult.Type == gjson.Null {
-			var err error
-			body, err = sjson.DeleteBytes(body, fmt.Sprintf("input.%d.content", i))
-			if err != nil {
-				return nil, err
-			}
+		converted, convertedChanged, keep := convertGrokUnsupportedResponsesInputItem(item)
+		if convertedChanged {
 			changed = true
 		}
+		if !keep {
+			continue
+		}
+		sanitized, itemChanged, err := stripExplicitNullsFromJSONValue(converted)
+		if err != nil {
+			return nil, err
+		}
+		if itemChanged {
+			changed = true
+		}
+		encoded, err := json.Marshal(sanitized)
+		if err != nil {
+			return nil, err
+		}
+		filtered = append(filtered, encoded)
 	}
-	_ = changed
-	return body, nil
+	if !changed {
+		return body, nil
+	}
+	encoded, err := json.Marshal(filtered)
+	if err != nil {
+		return nil, err
+	}
+	return sjson.SetRawBytes(body, "input", encoded)
+}
+
+// convertGrokUnsupportedResponsesInputItem lowers Codex-only history into the
+// xAI ModelInput variants. CLIProxyAPI does the same for custom_tool_call*;
+// dropping those items breaks the next tool turn (model can talk, cannot call).
+func convertGrokUnsupportedResponsesInputItem(item gjson.Result) (any, bool, bool) {
+	itemType := strings.TrimSpace(item.Get("type").String())
+	switch itemType {
+	case "custom_tool_call":
+		name := strings.TrimSpace(item.Get("name").String())
+		callID := strings.TrimSpace(item.Get("call_id").String())
+		if name == "" || callID == "" {
+			return nil, true, false
+		}
+		converted := map[string]any{
+			"type":      "function_call",
+			"call_id":   callID,
+			"name":      name,
+			"arguments": grokCustomToolCallArguments(item.Get("input")),
+		}
+		if id := strings.TrimSpace(item.Get("id").String()); id != "" {
+			converted["id"] = id
+		}
+		return converted, true, true
+	case "custom_tool_call_output":
+		callID := strings.TrimSpace(item.Get("call_id").String())
+		if callID == "" {
+			return nil, true, false
+		}
+		converted := map[string]any{
+			"type":    "function_call_output",
+			"call_id": callID,
+			"output":  grokCustomToolCallOutput(item.Get("output")),
+		}
+		if id := strings.TrimSpace(item.Get("id").String()); id != "" {
+			converted["id"] = id
+		}
+		return converted, true, true
+	case "tool_search_call":
+		callID := strings.TrimSpace(item.Get("call_id").String())
+		if callID == "" {
+			return nil, true, false
+		}
+		converted := map[string]any{
+			"type":      "function_call",
+			"call_id":   callID,
+			"name":      "tool_search",
+			"arguments": grokToolSearchCallArguments(item),
+		}
+		if id := strings.TrimSpace(item.Get("id").String()); id != "" {
+			converted["id"] = id
+		}
+		return converted, true, true
+	case "tool_search_output":
+		callID := strings.TrimSpace(item.Get("call_id").String())
+		if callID == "" {
+			return nil, true, false
+		}
+		converted := map[string]any{
+			"type":    "function_call_output",
+			"call_id": callID,
+			"output":  grokCustomToolCallOutput(item.Get("output")),
+		}
+		if id := strings.TrimSpace(item.Get("id").String()); id != "" {
+			converted["id"] = id
+		}
+		return converted, true, true
+	case "item_reference":
+		// xAI has no store/item_reference. Keep the id as a short user note so
+		// later function_call_output items still have conversation context.
+		id := strings.TrimSpace(item.Get("id").String())
+		if id == "" {
+			return nil, true, false
+		}
+		return map[string]any{
+			"type": "message",
+			"role": "user",
+			"content": []any{
+				map[string]any{
+					"type": "input_text",
+					"text": "[item_reference " + id + "]",
+				},
+			},
+		}, true, true
+	default:
+		if itemType != "" {
+			if _, ok := grokResponsesSupportedInputTypes[itemType]; !ok {
+				return nil, true, false
+			}
+		}
+		return item.Value(), false, true
+	}
+}
+
+func grokCustomToolCallArguments(input gjson.Result) string {
+	if !input.Exists() || input.Type == gjson.Null {
+		return "{}"
+	}
+	if input.Type == gjson.String {
+		text := input.String()
+		trimmed := strings.TrimSpace(text)
+		if gjson.Valid(trimmed) {
+			parsed := gjson.Parse(trimmed)
+			if parsed.IsObject() {
+				return parsed.Raw
+			}
+		}
+		encoded, err := json.Marshal(map[string]string{"input": text})
+		if err != nil {
+			return "{}"
+		}
+		return string(encoded)
+	}
+	if input.IsObject() {
+		return input.Raw
+	}
+	encoded, err := json.Marshal(map[string]any{"input": input.Value()})
+	if err != nil {
+		return "{}"
+	}
+	return string(encoded)
+}
+
+func grokCustomToolCallOutput(output gjson.Result) string {
+	if !output.Exists() || output.Type == gjson.Null {
+		return ""
+	}
+	if output.Type == gjson.String {
+		return output.String()
+	}
+	return output.Raw
+}
+
+func grokToolSearchCallArguments(item gjson.Result) string {
+	args := item.Get("arguments")
+	if args.Exists() && args.Type != gjson.Null {
+		if args.Type == gjson.String {
+			text := strings.TrimSpace(args.String())
+			if text != "" {
+				return text
+			}
+		} else if args.IsObject() {
+			return args.Raw
+		}
+	}
+	if query := strings.TrimSpace(item.Get("query").String()); query != "" {
+		encoded, err := json.Marshal(map[string]string{"query": query})
+		if err == nil {
+			return string(encoded)
+		}
+	}
+	return "{}"
+}
+
+func stripExplicitNullsFromJSONValue(value any) (any, bool, error) {
+	switch typed := value.(type) {
+	case map[string]any:
+		changed := false
+		for key, child := range typed {
+			if child == nil {
+				delete(typed, key)
+				changed = true
+				continue
+			}
+			next, childChanged, err := stripExplicitNullsFromJSONValue(child)
+			if err != nil {
+				return nil, false, err
+			}
+			if childChanged {
+				typed[key] = next
+				changed = true
+			}
+		}
+		return typed, changed, nil
+	case []any:
+		changed := false
+		for i, child := range typed {
+			if child == nil {
+				continue
+			}
+			next, childChanged, err := stripExplicitNullsFromJSONValue(child)
+			if err != nil {
+				return nil, false, err
+			}
+			if childChanged {
+				typed[i] = next
+				changed = true
+			}
+		}
+		return typed, changed, nil
+	default:
+		return value, false, nil
+	}
+}
+
+func summarizeGrokResponsesInputForLog(body []byte) string {
+	input := gjson.GetBytes(body, "input")
+	if !input.Exists() {
+		return "input=missing"
+	}
+	if !input.IsArray() {
+		return "input_type=" + input.Type.String()
+	}
+	items := input.Array()
+	typeCounts := make(map[string]int, 8)
+	nullPaths := make([]string, 0, 8)
+	for i, item := range items {
+		itemType := strings.TrimSpace(item.Get("type").String())
+		if itemType == "" {
+			itemType = "<empty>"
+		}
+		typeCounts[itemType]++
+		collectJSONNullPaths(fmt.Sprintf("input.%d", i), item, &nullPaths, 16)
+	}
+	parts := make([]string, 0, len(typeCounts)+2)
+	parts = append(parts, fmt.Sprintf("items=%d", len(items)))
+	for _, itemType := range sortedStringKeys(typeCounts) {
+		parts = append(parts, fmt.Sprintf("%s=%d", itemType, typeCounts[itemType]))
+	}
+	if len(nullPaths) > 0 {
+		parts = append(parts, "nulls="+strings.Join(nullPaths, ","))
+	}
+	return strings.Join(parts, " ")
+}
+
+func collectJSONNullPaths(prefix string, value gjson.Result, out *[]string, limit int) {
+	if out == nil || len(*out) >= limit {
+		return
+	}
+	switch {
+	case value.Type == gjson.Null:
+		*out = append(*out, prefix)
+	case value.IsObject():
+		value.ForEach(func(key, child gjson.Result) bool {
+			collectJSONNullPaths(prefix+"."+key.String(), child, out, limit)
+			return len(*out) < limit
+		})
+	case value.IsArray():
+		for i, child := range value.Array() {
+			collectJSONNullPaths(fmt.Sprintf("%s.%d", prefix, i), child, out, limit)
+			if len(*out) >= limit {
+				return
+			}
+		}
+	}
+}
+
+func sortedStringKeys(values map[string]int) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func isGrokModelInputDeserializeError(statusCode int, body []byte) bool {
+	if statusCode != http.StatusUnprocessableEntity {
+		return false
+	}
+	msg := strings.ToLower(extractUpstreamErrorMessage(body))
+	return strings.Contains(msg, "untagged enum modelinput") || strings.Contains(msg, "did not match any variant of untagged enum")
 }
 
 var grokResponsesSupportedToolTypes = map[string]struct{}{
