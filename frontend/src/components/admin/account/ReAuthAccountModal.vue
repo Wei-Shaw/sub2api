@@ -2,7 +2,7 @@
   <BaseDialog
     :show="show"
     :title="t('admin.accounts.reAuthorizeAccount')"
-    width="normal"
+    width="wide"
     @close="handleClose"
   >
     <div v-if="account" class="space-y-4">
@@ -131,6 +131,10 @@
         :show-proxy-warning="isAnthropic"
         :show-cookie-option="isAnthropic"
         :show-refresh-token-option="isOpenAI || isAntigravity || isGrok"
+        :show-mobile-refresh-token-option="isOpenAI"
+        :show-codex-session-import-option="isOpenAI"
+        :show-agent-identity-option="isOpenAI"
+        :show-codex-pat-option="isOpenAI"
         :show-sso-option="isGrok"
         :show-email-password-option="false"
         :allow-multiple="false"
@@ -138,9 +142,15 @@
         :platform="isOpenAI ? 'openai' : isGemini ? 'gemini' : isAntigravity ? 'antigravity' : isGrok ? 'grok' : 'anthropic'"
         :show-project-id="isGemini && geminiOAuthType === 'code_assist'"
         :initial-input-method="grokInitialInputMethod"
+        :reauthorize="isOpenAI"
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
-        @validate-refresh-token="handleGrokValidateRefreshToken"
+        @validate-refresh-token="handleValidateRefreshToken"
+        @validate-mobile-refresh-token="
+          handleOpenAIReauthRefreshToken($event, OPENAI_MOBILE_RT_CLIENT_ID)
+        "
+        @import-codex-session="handleOpenAIImportCodexSession"
+        @import-codex-pat="handleOpenAIImportCodexPAT"
         @import-sso="handleGrokImportSSO"
       />
 
@@ -199,7 +209,7 @@ import {
   type AddMethod,
   type AuthInputMethod
 } from '@/composables/useAccountOAuth'
-import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
+import { useOpenAIOAuth, type OpenAITokenInfo } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
@@ -303,7 +313,15 @@ const currentError = computed(() => {
 // Computed — footer "complete auth" only for code-exchange flows, not SSO/password/RT.
 const isManualInputMethod = computed(() => {
   const method = oauthFlowRef.value?.inputMethod
-  if (method === 'sso_cookie' || method === 'email_password' || method === 'refresh_token') {
+  if (
+    method === 'sso_cookie' ||
+    method === 'email_password' ||
+    method === 'refresh_token' ||
+    method === 'mobile_refresh_token' ||
+    method === 'codex_session' ||
+    method === 'agent_identity' ||
+    method === 'codex_pat'
+  ) {
     return false
   }
   // OpenAI/Gemini/Antigravity/Grok use manual code paste by default (no cookie auth)
@@ -385,6 +403,46 @@ const handleGenerateUrl = async () => {
   }
 }
 
+const applyOpenAIReauthTokenInfo = async (
+  tokenInfo: OpenAITokenInfo,
+  personalAccessToken = false
+) => {
+  if (!props.account) return
+
+  const credentials = openaiOAuth.buildCredentials(tokenInfo)
+  credentials.agent_private_key = ''
+  const extra: Record<string, unknown> = {
+    ...(openaiOAuth.buildExtraInfo(tokenInfo) || {}),
+    auth_provider: '',
+    import_source: ''
+  }
+  if (personalAccessToken) {
+    credentials.refresh_token = ''
+    credentials.id_token = ''
+    credentials.auth_mode = 'personal_access_token'
+    credentials.openai_auth_mode = 'personal_access_token'
+    credentials.token_type = 'Bearer'
+    credentials.chatgpt_account_is_fedramp = Boolean(tokenInfo.chatgpt_account_is_fedramp)
+    extra.auth_provider = 'codex_personal_access_token'
+    extra.import_source = 'codex_personal_access_token'
+  }
+
+  try {
+    const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+      type: 'oauth',
+      credentials,
+      extra
+    })
+    appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
+    emit('reauthorized', updatedAccount)
+    handleClose()
+  } catch (error: any) {
+    openaiOAuth.error.value =
+      error.response?.data?.detail || error.message || t('admin.accounts.oauth.authFailed')
+    appStore.showError(openaiOAuth.error.value)
+  }
+}
+
 const handleExchangeCode = async () => {
   if (!props.account) return
 
@@ -411,24 +469,7 @@ const handleExchangeCode = async () => {
     )
     if (!tokenInfo) return
 
-    // Build credentials and extra info
-    const credentials = oauthClient.buildCredentials(tokenInfo)
-    const extra = oauthClient.buildExtraInfo(tokenInfo)
-
-    try {
-      const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
-        type: 'oauth',
-        credentials,
-        extra
-      })
-
-      appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
-      emit('reauthorized', updatedAccount)
-      handleClose()
-    } catch (error: any) {
-      oauthClient.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
-      appStore.showError(oauthClient.error.value)
-    }
+    await applyOpenAIReauthTokenInfo(tokenInfo)
   } else if (isGemini.value) {
     const sessionId = geminiOAuth.sessionId.value
     if (!sessionId) return
@@ -650,6 +691,118 @@ const handleGrokImportSSO = async (ssoInput: string) => {
   } finally {
     grokOAuth.loading.value = false
   }
+}
+
+const handleOpenAIReauthRefreshToken = async (refreshTokenInput: string, clientId?: string) => {
+  if (!props.account || !isOpenAI.value) return
+  const refreshTokens = refreshTokenInput
+    .split('\n')
+    .map((token) => token.trim())
+    .filter(Boolean)
+  if (refreshTokens.length !== 1) {
+    openaiOAuth.error.value = t('admin.accounts.oauth.openai.reauthSingleCredential')
+    return
+  }
+
+  const tokenInfo = await openaiOAuth.validateRefreshToken(
+    refreshTokens[0],
+    props.account.proxy_id,
+    clientId
+  )
+  if (!tokenInfo) return
+  await applyOpenAIReauthTokenInfo(tokenInfo)
+}
+
+const OPENAI_MOBILE_RT_CLIENT_ID = 'app_LlGpXReQgckcGGUo2JrYvtJK'
+
+const isAgentIdentityImportContent = (content: string) => {
+  try {
+    const value = JSON.parse(content) as Record<string, unknown>
+    const authMode = value.auth_mode ?? value.authMode
+    const agentIdentity = value.agent_identity ?? value.agentIdentity
+    return (
+      (typeof authMode === 'string' && authMode.toLowerCase() === 'agentidentity') ||
+      (!!agentIdentity && typeof agentIdentity === 'object')
+    )
+  } catch {
+    return false
+  }
+}
+
+const handleOpenAIImportCodexSession = async (content: string) => {
+  if (!props.account || !isOpenAI.value) return
+  const trimmed = content.trim()
+  if (oauthFlowRef.value?.inputMethod === 'agent_identity' && !isAgentIdentityImportContent(trimmed)) {
+    openaiOAuth.error.value = t('admin.accounts.oauth.openai.agentIdentityInvalid')
+    return
+  }
+
+  openaiOAuth.loading.value = true
+  openaiOAuth.error.value = ''
+  try {
+    const result = await adminAPI.accounts.importCodexSession({
+      account_id: props.account.id,
+      content: trimmed,
+      extra: { auth_provider: '', import_source: '' },
+      update_existing: true
+    })
+    if (result.updated !== 1) {
+      openaiOAuth.error.value =
+        result.errors?.map((item) => item.message).join('\n') ||
+        t('admin.accounts.oauth.openai.codexSessionImportFailed')
+      appStore.showError(openaiOAuth.error.value)
+      return
+    }
+
+    const updatedAccount = await adminAPI.accounts.clearError(props.account.id)
+    appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
+    emit('reauthorized', updatedAccount)
+    handleClose()
+  } catch (error: any) {
+    openaiOAuth.error.value =
+      error.response?.data?.detail ||
+      error.message ||
+      t('admin.accounts.oauth.openai.codexSessionImportFailed')
+    appStore.showError(openaiOAuth.error.value)
+  } finally {
+    openaiOAuth.loading.value = false
+  }
+}
+
+const handleOpenAIImportCodexPAT = async (accessToken: string) => {
+  if (!props.account || !isOpenAI.value) return
+  const tokens = accessToken
+    .split('\n')
+    .map((token) => token.trim())
+    .filter(Boolean)
+  if (tokens.length !== 1) {
+    openaiOAuth.error.value = t('admin.accounts.oauth.openai.reauthSingleCredential')
+    return
+  }
+
+  openaiOAuth.loading.value = true
+  openaiOAuth.error.value = ''
+  try {
+    const tokenInfo = await adminAPI.accounts.validateOpenAICodexPAT({
+      access_token: tokens[0],
+      proxy_id: props.account.proxy_id
+    })
+    await applyOpenAIReauthTokenInfo(tokenInfo as OpenAITokenInfo, true)
+  } catch (error: any) {
+    openaiOAuth.error.value =
+      error.response?.data?.detail || error.message || t('admin.accounts.oauth.authFailed')
+    appStore.showError(openaiOAuth.error.value)
+  } finally {
+    openaiOAuth.loading.value = false
+  }
+}
+
+const handleValidateRefreshToken = async (refreshTokenInput: string) => {
+  if (isOpenAI.value) {
+    await handleOpenAIReauthRefreshToken(refreshTokenInput)
+    return
+  }
+  await handleGrokValidateRefreshToken(refreshTokenInput)
 }
 
 /** Re-auth with a single refresh token. */

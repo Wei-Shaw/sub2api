@@ -687,6 +687,14 @@ export async function createOpenAICodexPAT(payload: OpenAICodexPATCreateRequest)
   return data
 }
 
+export async function validateOpenAICodexPAT(payload: {
+  access_token: string
+  proxy_id?: number | null
+}): Promise<Record<string, unknown>> {
+  const { data } = await apiClient.post<Record<string, unknown>>('/admin/openai/validate-codex-pat', payload)
+  return data
+}
+
 /**
  * Get Antigravity default model mapping from backend
  * @returns Default model mapping (from -> to)
@@ -1025,6 +1033,7 @@ export const accountsAPI = {
   importData,
   importCodexSession,
   createOpenAICodexPAT,
+  validateOpenAICodexPAT,
   getAntigravityDefaultModelMapping,
   batchDelete,
   batchClearError,

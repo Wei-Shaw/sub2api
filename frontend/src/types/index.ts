@@ -1549,6 +1549,7 @@ export interface AdminDataImportResult {
 }
 
 export interface CodexSessionImportRequest {
+  account_id?: number
   content?: string
   contents?: string[]
   name?: string
