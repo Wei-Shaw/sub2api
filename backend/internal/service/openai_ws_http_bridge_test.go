@@ -423,6 +423,7 @@ REDACTED
 		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(completed("resp_1", `[{"type":"custom_tool_call","id":"item_1","call_id":"call_1","name":"exec","input":"pwd"REDACTED]`)))REDACTED,
 		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(completed("resp_2", `[]`)))REDACTED,
 		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(completed("resp_3", `[]`)))REDACTED,
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(completed("resp_4", `[]`)))REDACTED,
 REDACTEDREDACTED
 	cfg := &config.Config{REDACTED
 	cfg.Security.URLAllowlist.Enabled = false
@@ -485,6 +486,7 @@ REDACTED
 REDACTED
 
 	writeAndRead(`{"type":"response.create","model":"gpt-5.1","input":"run pwd"REDACTED`)
+	writeAndRead(`{"type":"response.create","model":"gpt-5.1","previous_response_id":"resp_1","input":[{"role":"user","content":"continue without tool output"REDACTED]REDACTED`)
 	fullContext := `{"type":"response.create","model":"gpt-5.1","input":[{"type":"custom_tool_call","id":"item_1","call_id":"call_1","name":"exec","input":"pwd"REDACTED,{"type":"custom_tool_call_output","call_id":"call_1","output":"/tmp"REDACTED,{"role":"user","content":"continue"REDACTED]REDACTED`
 	writeAndRead(fullContext)
 	writeAndRead(fullContext)
@@ -497,8 +499,12 @@ REDACTED
 		t.Fatal("timed out waiting for websocket bridge proxy to finish")
 REDACTED
 
-	require.Len(t, upstream.bodies, 3)
-	for _, body := range upstream.bodies[1:] {
+	require.Len(t, upstream.bodies, 4)
+	orphanInput := gjson.GetBytes(upstream.bodies[1], "input").Array()
+	require.Len(t, orphanInput, 2)
+	require.Equal(t, "run pwd", orphanInput[0].String())
+	require.Equal(t, "user", orphanInput[1].Get("role").String())
+	for _, body := range upstream.bodies[2:] {
 		input := gjson.GetBytes(body, "input").Array()
 		require.Len(t, input, 3)
 		require.Equal(t, "custom_tool_call", input[0].Get("type").String())
