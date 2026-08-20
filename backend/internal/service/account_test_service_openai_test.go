@@ -613,6 +613,45 @@ func TestAccountTestService_OpenAIAPIKeyResponsesUnsupportedUsesChatCompletionsP
 	require.NotContains(t, body, "当前测试接口仅支持 Responses API 路径")
 }
 
+func TestAccountTestService_OpenAIStrictNoAuthUsesResponsesAndLabelsInference(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, recorder := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader("data: {\"type\":\"response.completed\"}\n\n"))
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := &Account{
+		ID:          951,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"base_url":                          "https://strict-upstream.example/v1",
+			OpenAIUpstreamAuthModeCredentialKey: OpenAIUpstreamAuthModeNone,
+			"model_mapping": map[string]any{
+				"custom/model": "must-not-map",
+			},
+		},
+		Extra: map[string]any{
+			OpenAIResponsesForwardModeExtraKey:       string(OpenAIResponsesForwardModeStrictRaw),
+			openai_compat.ExtraKeyResponsesSupported: false,
+		},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "custom/model", "hello", "")
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	req := upstream.requests[0]
+	require.Equal(t, "https://strict-upstream.example/v1/responses", req.URL.String())
+	require.Empty(t, req.Header.Get("Authorization"))
+	require.Equal(t, "custom/model", gjson.GetBytes(readRequestBodyForTest(t, req), "model").String())
+	require.Contains(t, recorder.Body.String(), "Strict raw connection testing sends a Responses inference request")
+}
+
 func TestAccountTestService_OpenAIChatCompletionsPathReturns4xx(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, recorder := newTestContext()
