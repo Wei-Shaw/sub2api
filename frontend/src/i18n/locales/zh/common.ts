@@ -192,6 +192,7 @@ export default {
     buySubscription: '充值/订阅',
     docs: '文档',
     myOrders: '我的订单',
+    wallet: '钱包',
     orderManagement: '订单管理',
     paymentDashboard: '支付概览',
     paymentConfig: '支付配置',

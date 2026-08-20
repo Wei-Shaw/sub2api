@@ -32,7 +32,7 @@
       <!-- Toggles + Payment mode + Supported types (single row) -->
       <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
         <ToggleSwitch :label="t('common.enabled')" :checked="form.enabled" @toggle="form.enabled = !form.enabled" />
-        <ToggleSwitch :label="t('admin.settings.payment.refundEnabled')" :checked="form.refund_enabled" @toggle="form.refund_enabled = !form.refund_enabled; if (!form.refund_enabled) form.allow_user_refund = false" />
+        <ToggleSwitch v-if="form.provider_key !== 'dogpay'" :label="t('admin.settings.payment.refundEnabled')" :checked="form.refund_enabled" @toggle="form.refund_enabled = !form.refund_enabled; if (!form.refund_enabled) form.allow_user_refund = false" />
         <ToggleSwitch v-if="form.refund_enabled" :label="t('admin.settings.payment.allowUserRefund')" :checked="form.allow_user_refund" @toggle="form.allow_user_refund = !form.allow_user_refund" />
         <div v-if="supportsPaymentMode" class="flex items-center gap-2">
           <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.paymentMode') }}</span>
@@ -333,13 +333,14 @@ import {
  * provider's built-in default behavior". */
 function defaultPaymentMode(providerKey: string): string {
   if (providerKey === 'easypay') return PAYMENT_MODE_QRCODE
+  if (providerKey === 'dogpay') return PAYMENT_MODE_POPUP
   return ''
 }
 
 /** Provider keys whose admin UI exposes a payment_mode selector.
  * Other providers always send payment_mode = ''. */
 function providerSupportsPaymentMode(providerKey: string): boolean {
-  return providerKey === 'easypay' || providerKey === 'alipay'
+  return providerKey === 'easypay' || providerKey === 'alipay' || providerKey === 'dogpay'
 }
 
 /** Allowed payment_mode values per provider. Used to coerce DB values
@@ -350,6 +351,9 @@ function isValidPaymentMode(providerKey: string, mode: string): boolean {
   }
   if (providerKey === 'alipay') {
     return mode === '' || mode === PAYMENT_MODE_REDIRECT
+  }
+  if (providerKey === 'dogpay') {
+    return mode === PAYMENT_MODE_POPUP
   }
   return mode === ''
 }
@@ -418,6 +422,7 @@ const defaultBaseUrl = typeof window !== 'undefined' ? window.location.origin : 
 const providerWebhookHintMap: Record<string, string> = {
   stripe: 'admin.settings.payment.stripeWebhookHint',
   airwallex: 'admin.settings.payment.airwallexWebhookHint',
+  dogpay: 'admin.settings.payment.dogpayWebhookHint',
 }
 
 const providerWebhookUrl = computed(() => {
@@ -435,11 +440,14 @@ const supportsPaymentMode = computed(() => providerSupportsPaymentMode(form.prov
 
 const paymentModeOptions = computed(() => {
   if (form.provider_key === 'alipay') {
-    // For Alipay official: "" = default (precreate → page.pay fallback);
-    // "redirect" = always open the Alipay checkout page in a new tab.
     return [
       { value: '', label: t('admin.settings.payment.modeQRCode') },
       { value: PAYMENT_MODE_REDIRECT, label: t('admin.settings.payment.modeRedirect') },
+    ]
+  }
+  if (form.provider_key === 'dogpay') {
+    return [
+      { value: PAYMENT_MODE_POPUP, label: t('admin.settings.payment.modePopup') },
     ]
   }
   return [
@@ -719,8 +727,8 @@ function handleSave() {
     supported_types: form.supported_types,
     enabled: form.enabled,
     payment_mode: supportsPaymentMode.value ? form.payment_mode : '',
-    refund_enabled: form.refund_enabled,
-    allow_user_refund: form.refund_enabled ? form.allow_user_refund : false,
+    refund_enabled: form.provider_key === 'dogpay' ? false : form.refund_enabled,
+    allow_user_refund: form.provider_key === 'dogpay' ? false : (form.refund_enabled ? form.allow_user_refund : false),
     config: filteredConfig,
     limits: serializeLimits(),
   })

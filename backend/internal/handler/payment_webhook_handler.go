@@ -67,6 +67,12 @@ func (h *PaymentWebhookHandler) AirwallexWebhook(c *gin.Context) {
 	h.handleNotify(c, payment.TypeAirwallex)
 }
 
+// DogPayWebhook handles DogPay webhook events.
+// POST /api/v1/payment/webhook/dogpay
+func (h *PaymentWebhookHandler) DogPayWebhook(c *gin.Context) {
+	h.handleNotify(c, payment.TypeDogPay)
+}
+
 // handleNotify is the shared logic for all provider webhook handlers.
 func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string) {
 	var rawBody string
@@ -163,6 +169,15 @@ func extractOutTradeNo(rawBody, providerKey string) string {
 		}
 		if err := json.Unmarshal([]byte(rawBody), &payload); err == nil {
 			return strings.TrimSpace(payload.Data.Object.MerchantOrderID)
+		}
+	case payment.TypeDogPay:
+		var payload struct {
+			Data struct {
+				CallID string `json:"callId"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(rawBody), &payload); err == nil {
+			return strings.TrimSpace(payload.Data.CallID)
 		}
 	}
 	// For other providers (Stripe, Alipay direct, WxPay direct), the registry

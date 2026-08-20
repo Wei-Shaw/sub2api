@@ -58,6 +58,12 @@ describe('PROVIDER_CONFIG_FIELDS.stripe', () => {
   })
 })
 
+describe('PROVIDER_CONFIG_FIELDS.dogpay', () => {
+  it('uses the documented production API host by default', () => {
+    expect(findField('dogpay', 'apiBase')?.defaultValue).toBe('https://api.dogpay.com')
+  })
+})
+
 describe('EasyPay custom methods config', () => {
   it('parses customMethods from the JSON string stored in provider config', () => {
     expect(parseEasyPayCustomMethods(
