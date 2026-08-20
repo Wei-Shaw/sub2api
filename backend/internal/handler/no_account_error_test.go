@@ -113,6 +113,8 @@ func TestClassifyNoAccountError_ModelNotSupported_Returns404(t *testing.T) {
 	require.Equal(t, service.PlatformOpenAI, fd.calls[0].Platform)
 	require.NotNil(t, fd.calls[0].GroupID)
 	require.Equal(t, int64(42), *fd.calls[0].GroupID)
+	require.True(t, service.HasOpsClientBusinessLimited(c))
+	require.Equal(t, service.OpsClientBusinessLimitedReasonLocalModelConfiguration, service.OpsClientBusinessLimitedReason(c))
 }
 
 func TestClassifyNoAccountError_ChannelModelRestricted_Returns404WithoutDiagnosis(t *testing.T) {
@@ -149,12 +151,26 @@ func TestClassifyOpenAICompatibleNoAccountError_GrokUsesGrokPlatform(t *testing.
 	require.True(t, cls.ModelNotFound)
 	require.Len(t, fd.calls, 1)
 	require.Equal(t, service.PlatformGrok, fd.calls[0].Platform)
+	require.True(t, service.HasOpsClientBusinessLimited(c))
+	require.Equal(t, service.OpsClientBusinessLimitedReasonLocalModelConfiguration, service.OpsClientBusinessLimitedReason(c))
 
 	logErr := openAICompatibleSelectionErrorForLog(
 		fmt.Errorf("no available OpenAI accounts supporting model: grok-4.5"),
 		service.PlatformGrok,
 	)
 	require.EqualError(t, logErr, "no available Grok accounts supporting model: grok-4.5")
+}
+
+func TestClassifyNoAccountError_PureClassifierDoesNotMarkGinContext(t *testing.T) {
+	c := newTestGinContextWithRequest()
+	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: false}}
+	apiKey := &service.APIKey{GroupID: ptrInt64(7)}
+
+	cls := classifyNoAccountError(c.Request.Context(), fd, apiKey, "gpt-5", "gpt-5", service.PlatformOpenAI, nil)
+
+	require.True(t, cls.ModelNotFound)
+	require.False(t, service.HasOpsClientBusinessLimited(c))
+	require.Empty(t, service.OpsClientBusinessLimitedReason(c))
 }
 
 func TestClassifyNoAccountError_HasModelSupport_KeepsRoutingMessageGenerationToCaller(t *testing.T) {
@@ -215,4 +231,6 @@ func TestClassifyNoAccountError_FromGin_NilContextStillSafe(t *testing.T) {
 
 	require.Equal(t, http.StatusNotFound, cls.Status, "even with a nil gin context the classifier must still run and yield a coherent response")
 	require.True(t, cls.ModelNotFound)
+	require.False(t, service.HasOpsClientBusinessLimited(nil))
+	require.Empty(t, service.OpsClientBusinessLimitedReason(nil))
 }

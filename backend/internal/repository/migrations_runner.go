@@ -81,6 +81,9 @@ const postgresIdentifierMaxBytes = 63
 // runner below still verifies its definition before deciding whether to drop it.
 const usageLogsUpstreamModelMismatchIndexMigration = "208_add_usage_log_upstream_model_mismatch_index_notx.sql"
 const usageLogsUpstreamModelMismatchIndex = "idx_usage_logs_upstream_model_mismatch_created_at"
+const usageLogsEffectiveModelIndexesMigration = "243_add_usage_log_effective_model_indexes_notx.sql"
+const usageLogsEffectiveRequestedModelIndex = "idx_usage_logs_effective_requested_model_created"
+const usageLogsEffectiveUpstreamModelIndex = "idx_usage_logs_effective_upstream_model_created"
 
 type migrationChecksumCompatibilityRule struct {
 	fileChecksum       string
@@ -576,10 +579,49 @@ func finalizeNonTransactionalMigration(ctx context.Context, db migrationConnecti
 }
 
 func prepareNonTransactionalMigration(ctx context.Context, db migrationConnection, name string) error {
-	if name == paymentOrdersOutTradeNoUniqueMigration {
+	switch name {
+	case paymentOrdersOutTradeNoUniqueMigration:
 		return preparePaymentOrdersOutTradeNoUniqueMigration(ctx, db)
+	case usageLogsEffectiveModelIndexesMigration:
+		for _, indexName := range []string{usageLogsEffectiveRequestedModelIndex, usageLogsEffectiveUpstreamModelIndex} {
+			if err := dropInvalidIndexIfPresent(ctx, db, indexName); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
+func dropInvalidIndexIfPresent(ctx context.Context, db migrationConnection, indexName string) error {
+	invalid, err := indexIsInvalid(ctx, db, indexName)
+	if err != nil {
+		return fmt.Errorf("check invalid index %s: %w", indexName, err)
+	}
+	if !invalid {
+		return nil
+	}
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("DROP INDEX CONCURRENTLY IF EXISTS %s", indexName)); err != nil {
+		return fmt.Errorf("drop invalid index %s: %w", indexName, err)
 	}
 	return nil
+}
+
+func indexIsInvalid(ctx context.Context, db migrationConnection, indexName string) (bool, error) {
+	var invalid bool
+	err := db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM pg_class idx
+			JOIN pg_namespace ns ON ns.oid = idx.relnamespace
+			JOIN pg_index i ON i.indexrelid = idx.oid
+			WHERE ns.nspname = 'public'
+			  AND idx.relname = $1
+			  AND NOT i.indisvalid
+		)
+	`, indexName).Scan(&invalid)
+	return invalid, err
 }
 
 func preparePaymentOrdersOutTradeNoUniqueMigration(ctx context.Context, db migrationConnection) error {

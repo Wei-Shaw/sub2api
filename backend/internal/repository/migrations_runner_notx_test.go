@@ -287,6 +287,57 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_usage_logs_upstream_model_mismatch_c
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestApplyMigrationsFS_NonTransactionalMigration_EffectiveModelIndexesDropInvalidIndexesBeforeRetry(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	prepareMigrationsBootstrapExpectations(mock)
+	mock.ExpectQuery("SELECT checksum FROM schema_migrations WHERE filename = \\$1").
+		WithArgs(usageLogsEffectiveModelIndexesMigration).
+		WillReturnError(sql.ErrNoRows)
+	for _, indexName := range []string{usageLogsEffectiveRequestedModelIndex, usageLogsEffectiveUpstreamModelIndex} {
+		mock.ExpectQuery("SELECT EXISTS \\(").
+			WithArgs(indexName).
+			WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+		mock.ExpectExec("DROP INDEX CONCURRENTLY IF EXISTS " + indexName).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+	}
+	expectIndexSchema(mock, `"usage_logs"`, "public")
+	expectStepIntentAbsent(mock, usageLogsEffectiveModelIndexesMigration, 1, &qualifiedIndexName{schema: "public", name: usageLogsEffectiveRequestedModelIndex, targetRelationOID: testTargetRelationOID})
+	expectExistingIndex(mock, "public", usageLogsEffectiveRequestedModelIndex, false, 0)
+	expectStepIntentCreate(mock, usageLogsEffectiveModelIndexesMigration, 1, &qualifiedIndexName{schema: "public", name: usageLogsEffectiveRequestedModelIndex, targetRelationOID: testTargetRelationOID})
+	mock.ExpectExec("CREATE INDEX CONCURRENTLY idx_usage_logs_effective_requested_model_created").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	expectIndexHealthy(mock, "public", usageLogsEffectiveRequestedModelIndex, true)
+	expectStepIndexComplete(mock, usageLogsEffectiveModelIndexesMigration, 1, &qualifiedIndexName{schema: "public", name: usageLogsEffectiveRequestedModelIndex, targetRelationOID: testTargetRelationOID})
+	expectIndexSchema(mock, `"usage_logs"`, "public")
+	expectStepIntentAbsent(mock, usageLogsEffectiveModelIndexesMigration, 2, &qualifiedIndexName{schema: "public", name: usageLogsEffectiveUpstreamModelIndex, targetRelationOID: testTargetRelationOID})
+	expectExistingIndex(mock, "public", usageLogsEffectiveUpstreamModelIndex, false, 0)
+	expectStepIntentCreate(mock, usageLogsEffectiveModelIndexesMigration, 2, &qualifiedIndexName{schema: "public", name: usageLogsEffectiveUpstreamModelIndex, targetRelationOID: testTargetRelationOID})
+	mock.ExpectExec("CREATE INDEX CONCURRENTLY idx_usage_logs_effective_upstream_model_created").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	expectIndexHealthy(mock, "public", usageLogsEffectiveUpstreamModelIndex, true)
+	expectStepIndexComplete(mock, usageLogsEffectiveModelIndexesMigration, 2, &qualifiedIndexName{schema: "public", name: usageLogsEffectiveUpstreamModelIndex, targetRelationOID: testTargetRelationOID})
+	expectFinalizeNonTransactionalMigration(mock, usageLogsEffectiveModelIndexesMigration)
+	mock.ExpectExec("SELECT pg_advisory_unlock\\(\\$1\\)").
+		WithArgs(migrationsAdvisoryLockID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	fsys := fstest.MapFS{
+		usageLogsEffectiveModelIndexesMigration: &fstest.MapFile{Data: []byte(`
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_usage_logs_effective_requested_model_created
+    ON usage_logs ((COALESCE(NULLIF(BTRIM(requested_model), ''), model)), created_at DESC, id DESC);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_usage_logs_effective_upstream_model_created
+    ON usage_logs ((COALESCE(NULLIF(BTRIM(upstream_model), ''), model)), created_at DESC, id DESC);
+`)},
+	}
+
+	err = applyMigrationsFS(context.Background(), db, fsys)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestApplyMigrationsFS_PaymentOrdersOutTradeNoUniqueMigration_FailsFastOnDuplicatePrecheck(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

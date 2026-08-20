@@ -25,6 +25,9 @@ func PlatformDefaultModelIDs(platform string) []string {
 			PlatformDefaultModelIDs(PlatformOpenAI),
 			PlatformDefaultModelIDs(PlatformAntigravity),
 			PlatformDefaultModelIDs(PlatformGrok),
+			PlatformDefaultModelIDs(PlatformKimi),
+			PlatformDefaultModelIDs(PlatformZhipu),
+			PlatformDefaultModelIDs(PlatformDeepseek),
 		)
 	}
 	return mergeUniqueModelIDs(packageDefaultModelIDs(platform), modelcatalog.PublicIDs(platform))

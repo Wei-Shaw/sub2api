@@ -915,26 +915,36 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 			return nil, err
 		}
 	}
+	openAISettings, err := normalizeBulkOpenAISettings(input)
+	if err != nil {
+		return nil, err
+	}
 
 	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
-	_, hasLongContextBillingUpdate := input.Extra[openAILongContextBillingEnabledKey]
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasLongContextBillingUpdate || input.ProbeEnabled != nil || input.RateMultiplier != nil {
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
 		}
 		cachedTargets = loaded
 	}
-	if input.ProbeEnabled != nil {
-		targetsByID := make(map[int64]*Account, len(cachedTargets))
-		for _, account := range cachedTargets {
-			if account != nil {
-				targetsByID[account.ID] = account
-			}
+	targetsByID := make(map[int64]*Account, len(cachedTargets))
+	for _, account := range cachedTargets {
+		if account != nil {
+			targetsByID[account.ID] = account
 		}
+	}
+	if openAISettings.any() {
+		inheritedCount, err := validateBulkOpenAISettingsTargets(input, openAISettings, targetsByID)
+		if err != nil {
+			return nil, err
+		}
+		result.LongContextInheritedCount = inheritedCount
+	}
+	if input.ProbeEnabled != nil {
 		for _, accountID := range input.AccountIDs {
 			account, ok := targetsByID[accountID]
 			if !ok {
@@ -945,18 +955,6 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 			}
 		}
 	}
-	if hasLongContextBillingUpdate {
-		for _, account := range cachedTargets {
-			if account == nil || account.Platform != PlatformOpenAI {
-				continue
-			}
-			if err := ValidateOpenAILongContextBillingExtra(account.Platform, input.Extra); err != nil {
-				return nil, err
-			}
-			break
-		}
-	}
-
 	// 影子账号绝不持有凭据:批量更新携带凭据时,目标中不得含影子(外审 G5,与单账号
 	// UpdateAccount 守卫对齐)。覆盖显式 IDs 与 filter 解析出的 IDs(此处 AccountIDs 已解析完成)。
 	if len(input.Credentials) > 0 {

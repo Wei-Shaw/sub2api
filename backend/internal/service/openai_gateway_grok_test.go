@@ -43,6 +43,107 @@ func TestPatchGrokResponsesBodySetsMappedModelAndDropsUnsupportedFields(t *testi
 	require.Equal(t, "high", gjson.GetBytes(patched, "reasoning.effort").String())
 }
 
+func TestPatchGrokResponsesBodyDropsRedundantViewImageForCurrentInlineImage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "top-level tools",
+			body: `{
+				"model":"grok-4.6",
+				"input":[{"type":"message","role":"user","content":[
+					{"type":"input_text","text":"What text is in this image?"},
+					{"type":"input_image","image_url":"data:image/png;base64,AA=="}
+				]}],
+				"tools":[
+					{"type":"function","name":"view_image","parameters":{"type":"object"}},
+					{"type":"function","name":"shell_command","parameters":{"type":"object"}}
+				]
+			}`,
+		},
+		{
+			name: "Responses Lite additional tools",
+			body: `{
+				"model":"grok-4.6",
+				"input":[
+					{"type":"additional_tools","role":"developer","tools":[
+						{"type":"function","name":"view_image","parameters":{"type":"object"}},
+						{"type":"function","name":"shell_command","parameters":{"type":"object"}}
+					]},
+					{"type":"message","role":"user","content":[
+						{"type":"input_text","text":"What text is in this image?"},
+						{"type":"input_image","image_url":"data:image/png;base64,AA=="}
+					]}
+				]
+			}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			patched, err := patchGrokResponsesBody([]byte(tt.body), "grok-4.6")
+			require.NoError(t, err)
+			require.False(t, gjson.GetBytes(patched, `tools.#(name=="view_image")`).Exists())
+			require.Equal(t, "shell_command", gjson.GetBytes(patched, "tools.0.name").String())
+		})
+	}
+}
+
+func TestPatchGrokResponsesBodyKeepsNonRedundantViewImage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "current turn has no inline image",
+			body: `{"input":[{"role":"user","content":[{"type":"input_text","text":"Inspect a local image"}]}],"tools":[{"type":"function","name":"view_image"}]}`,
+		},
+		{
+			name: "inline image is only historical",
+			body: `{"input":[{"role":"user","content":[{"type":"input_image","image_url":"data:image/png;base64,AA=="}]},{"role":"assistant","content":[{"type":"output_text","text":"Done"}]},{"role":"user","content":[{"type":"input_text","text":"Inspect another local image"}]}],"tools":[{"type":"function","name":"view_image"}]}`,
+		},
+		{
+			name: "view image is explicitly selected",
+			body: `{"input":[{"role":"user","content":[{"type":"input_image","image_url":"data:image/png;base64,AA=="}]}],"tools":[{"type":"function","name":"view_image"}],"tool_choice":{"type":"function","name":"view_image"}}`,
+		},
+		{
+			name: "required with view image as the only tool",
+			body: `{"input":[{"role":"user","content":[{"type":"input_image","image_url":"data:image/png;base64,AA=="}]}],"tools":[{"type":"function","name":"view_image"}],"tool_choice":"required"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			patched, err := patchGrokResponsesBody([]byte(tt.body), "grok-4.6")
+			require.NoError(t, err)
+			require.Equal(t, "view_image", gjson.GetBytes(patched, "tools.0.name").String())
+		})
+	}
+}
+
+func TestPatchGrokResponsesBodyDropsViewImageOnlyToolMetadata(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"input":[{"role":"user","content":[{"type":"input_image","image_url":"data:image/png;base64,AA=="}]}],
+		"tools":[{"type":"function","name":"view_image"}],
+		"tool_choice":"auto",
+		"parallel_tool_calls":true
+	}`)
+	patched, err := patchGrokResponsesBody(body, "grok-4.6")
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(patched, "tools").Exists())
+	require.False(t, gjson.GetBytes(patched, "tool_choice").Exists())
+	require.False(t, gjson.GetBytes(patched, "parallel_tool_calls").Exists())
+}
+
 func TestPatchGrokResponsesBodySanitizesComposerReasoningParameters(t *testing.T) {
 	t.Parallel()
 
@@ -157,18 +258,20 @@ func TestPatchGrokResponsesBodyNormalizesReasoningEffortAliases(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		body string
-		path string
-		want string
+		name          string
+		body          string
+		upstreamModel string
+		path          string
+		want          string
 	}{
-		{name: "minimal nested", body: `{"input":"hi","reasoning":{"effort":"minimal"}}`, path: "reasoning.effort", want: "low"},
-		{name: "xhigh snake", body: `{"input":"hi","reasoning_effort":"xhigh"}`, path: "reasoning_effort", want: "high"},
-		{name: "max camel", body: `{"input":"hi","reasoningEffort":"max"}`, path: "reasoning_effort", want: "high"},
+		{name: "minimal nested", body: `{"input":"hi","reasoning":{"effort":"minimal"}}`, upstreamModel: "grok-4.5", path: "reasoning.effort", want: "low"},
+		{name: "xhigh stays high for 4.5", body: `{"input":"hi","reasoning_effort":"xhigh"}`, upstreamModel: "grok-4.5", path: "reasoning_effort", want: "high"},
+		{name: "xhigh nested for 4.6", body: `{"input":"hi","reasoning":{"effort":"xhigh"}}`, upstreamModel: "grok-4.6", path: "reasoning.effort", want: "xhigh"},
+		{name: "xhigh snake for 4.6 latest", body: `{"input":"hi","reasoning_effort":"xhigh"}`, upstreamModel: "grok-4.6-latest", path: "reasoning_effort", want: "xhigh"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			patched, err := patchGrokResponsesBody([]byte(tt.body), "grok-4.5")
+			patched, err := patchGrokResponsesBody([]byte(tt.body), tt.upstreamModel)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, gjson.GetBytes(patched, tt.path).String(), string(patched))
 			require.False(t, gjson.GetBytes(patched, "reasoningEffort").Exists())
@@ -193,6 +296,10 @@ func TestNormalizeGrokChatReasoningEffort(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "high", gjson.GetBytes(patched, "reasoning_effort").String())
 	require.False(t, gjson.GetBytes(patched, "reasoningEffort").Exists())
+
+	patched, err = normalizeGrokChatReasoningEffort([]byte(`{"reasoning_effort":"xhigh"}`), "grok-4.6")
+	require.NoError(t, err)
+	require.Equal(t, "xhigh", gjson.GetBytes(patched, "reasoning_effort").String())
 
 	patched, err = normalizeGrokChatReasoningEffort([]byte(`{"reasoning_effort":"high"}`), "grok-composer-2.5-fast")
 	require.NoError(t, err)

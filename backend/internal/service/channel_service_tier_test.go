@@ -300,8 +300,16 @@ func TestResolveOpenAIServiceTierBillingDecisionUsesAPIResponseForAPIKey(t *test
 		Resolver:            resolver,
 	})
 	require.NoError(t, err)
-	require.InDelta(t, cost.TotalCost*1.25, cost.ActualCost, 1e-12,
-		"actual Standard must be returned and billed with its configured multiplier even when that tier is now disabled")
+	base, err := billing.CalculateCostUnified(CostInput{
+		Model:          "claude-sonnet-4",
+		Tokens:         UsageTokens{InputTokens: 1000, OutputTokens: 1000},
+		RateMultiplier: 1,
+		Resolver:       resolver,
+	})
+	require.NoError(t, err)
+	require.InDelta(t, base.TotalCost*1.25, cost.TotalCost, 1e-12,
+		"actual Standard must be billed with its configured multiplier even when that tier is now disabled")
+	require.InDelta(t, cost.TotalCost, cost.ActualCost, 1e-12)
 
 	unknown := "turbo"
 	result = &OpenAIForwardResult{ActualServiceTier: &unknown}
@@ -424,6 +432,79 @@ func TestExtractOpenAIActualServiceTier(t *testing.T) {
 	require.Nil(t, extractOpenAIActualServiceTierFromJSONBytes([]byte(`not-json`)))
 }
 
+func TestCalculateCostUnifiedDoesNotStackChannelSnapshotWithPricingFastMultiplier(t *testing.T) {
+	bs := newTestBillingServiceForResolver()
+	resolver := NewModelPricingResolver(nil, bs)
+	snapshot := &ChannelServiceTierSnapshot{Config: ChannelServiceTierConfig{
+		Standard: ChannelServiceTierOption{Enabled: true, Multiplier: 1},
+		Priority: ChannelServiceTierOption{Enabled: true, Multiplier: 2},
+		Flex:     ChannelServiceTierOption{Enabled: true, Multiplier: 0.5},
+	}}
+	resolved := &ResolvedPricing{
+		BasePricing: &ModelPricing{
+			InputPricePerToken:  1e-6,
+			OutputPricePerToken: 1e-6,
+			FastMultiplier:      pricingMultiplier(3),
+			FlexMultiplier:      pricingMultiplier(0.25),
+		},
+	}
+
+	base, err := bs.CalculateCostUnified(CostInput{
+		Model:          "gpt-5.4",
+		Tokens:         UsageTokens{InputTokens: 1000, OutputTokens: 1000},
+		RateMultiplier: 1,
+		Resolver:       resolver,
+		Resolved: &ResolvedPricing{BasePricing: &ModelPricing{
+			InputPricePerToken:  1e-6,
+			OutputPricePerToken: 1e-6,
+		}},
+	})
+	require.NoError(t, err)
+
+	cost, err := bs.CalculateCostUnified(CostInput{
+		Model:               "gpt-5.4",
+		Tokens:              UsageTokens{InputTokens: 1000, OutputTokens: 1000},
+		RateMultiplier:      1,
+		ServiceTier:         "fast",
+		ServiceTierSnapshot: snapshot,
+		Resolver:            resolver,
+		Resolved:            resolved,
+	})
+	require.NoError(t, err)
+	require.InDelta(t, base.TotalCost*3, cost.TotalCost, 1e-12,
+		"per-model FastMultiplier overrides the channel snapshot and must not stack with it")
+	require.InDelta(t, cost.TotalCost, cost.ActualCost, 1e-12)
+
+	snapshotOnly := &ResolvedPricing{BasePricing: &ModelPricing{
+		InputPricePerToken:  1e-6,
+		OutputPricePerToken: 1e-6,
+	}}
+	cost, err = bs.CalculateCostUnified(CostInput{
+		Model:               "gpt-5.4",
+		Tokens:              UsageTokens{InputTokens: 1000, OutputTokens: 1000},
+		RateMultiplier:      1,
+		ServiceTier:         "fast",
+		ServiceTierSnapshot: snapshot,
+		Resolver:            resolver,
+		Resolved:            snapshotOnly,
+	})
+	require.NoError(t, err)
+	require.InDelta(t, base.TotalCost*2, cost.TotalCost, 1e-12,
+		"channel snapshot remains the default Fast/Priority multiplier when the model has no override")
+
+	cost, err = bs.CalculateCostUnified(CostInput{
+		Model:          "claude-opus-5",
+		Tokens:         UsageTokens{InputTokens: 1000, OutputTokens: 1000},
+		RateMultiplier: 1,
+		ServiceTier:    "fast",
+		Resolver:       resolver,
+		Resolved:       resolved,
+	})
+	require.NoError(t, err)
+	require.InDelta(t, base.TotalCost*3, cost.TotalCost, 1e-12,
+		"without a snapshot, Fast still uses the per-model FastMultiplier")
+}
+
 func TestCalculateCostUnifiedAppliesChannelTierMultiplierToFallbackAndPerRequest(t *testing.T) {
 	bs := newTestBillingServiceForResolver()
 	resolver := NewModelPricingResolver(nil, bs)
@@ -432,6 +513,14 @@ func TestCalculateCostUnifiedAppliesChannelTierMultiplierToFallbackAndPerRequest
 		Priority: ChannelServiceTierOption{Enabled: true, Multiplier: 3},
 		Flex:     ChannelServiceTierOption{Enabled: true, Multiplier: 0.4},
 	}}
+
+	base, err := bs.CalculateCostUnified(CostInput{
+		Model:          "claude-sonnet-4",
+		Tokens:         UsageTokens{InputTokens: 1000, OutputTokens: 1000},
+		RateMultiplier: 1,
+		Resolver:       resolver,
+	})
+	require.NoError(t, err)
 
 	tokenCost, err := bs.CalculateCostUnified(CostInput{
 		Model:               "claude-sonnet-4",
@@ -442,7 +531,8 @@ func TestCalculateCostUnifiedAppliesChannelTierMultiplierToFallbackAndPerRequest
 		Resolver:            resolver,
 	})
 	require.NoError(t, err)
-	require.InDelta(t, tokenCost.TotalCost*6, tokenCost.ActualCost, 1e-12)
+	require.InDelta(t, base.TotalCost*3, tokenCost.TotalCost, 1e-12)
+	require.InDelta(t, tokenCost.TotalCost*2, tokenCost.ActualCost, 1e-12)
 
 	perRequestCost, err := bs.CalculateCostUnified(CostInput{
 		Model:               "custom-image",
@@ -457,6 +547,48 @@ func TestCalculateCostUnifiedAppliesChannelTierMultiplierToFallbackAndPerRequest
 		},
 	})
 	require.NoError(t, err)
-	require.InDelta(t, 0.2, perRequestCost.TotalCost, 1e-12)
+	require.InDelta(t, 0.6, perRequestCost.TotalCost, 1e-12)
 	require.InDelta(t, 1.2, perRequestCost.ActualCost, 1e-12)
+}
+
+func TestCalculateCostUnifiedPerRequestModelMultiplierOverridesChannelSnapshot(t *testing.T) {
+	bs := newTestBillingServiceForResolver()
+	resolver := NewModelPricingResolver(nil, bs)
+	snapshot := &ChannelServiceTierSnapshot{Config: ChannelServiceTierConfig{
+		Standard: ChannelServiceTierOption{Enabled: true, Multiplier: 1},
+		Priority: ChannelServiceTierOption{Enabled: true, Multiplier: 2},
+		Flex:     ChannelServiceTierOption{Enabled: true, Multiplier: 0.5},
+	}}
+	pricing := &ChannelModelPricing{
+		BillingMode:     BillingModePerRequest,
+		PerRequestPrice: pricingMultiplier(0.1),
+		FastMultiplier:  pricingMultiplier(3),
+		FlexMultiplier:  pricingMultiplier(0.25),
+	}
+
+	for _, tt := range []struct {
+		name        string
+		serviceTier string
+		want        float64
+	}{
+		{name: "fast", serviceTier: "fast", want: 0.3},
+		{name: "flex", serviceTier: "flex", want: 0.025},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			resolved := &ResolvedPricing{Mode: BillingModePerRequest, ServiceTierSnapshot: snapshot}
+			resolver.applyRequestTierOverrides(pricing, resolved)
+
+			cost, err := bs.CalculateCostUnified(CostInput{
+				Model:               "custom-image",
+				RequestCount:        1,
+				RateMultiplier:      1,
+				ServiceTier:         tt.serviceTier,
+				ServiceTierSnapshot: snapshot,
+				Resolver:            resolver,
+				Resolved:            resolved,
+			})
+			require.NoError(t, err)
+			require.InDelta(t, tt.want, cost.TotalCost, 1e-12)
+		})
+	}
 }

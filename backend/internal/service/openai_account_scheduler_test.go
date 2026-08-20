@@ -196,6 +196,13 @@ func (c *schedulerTestGatewayCache) ReleaseGrokVideoBilled(_ context.Context, _ 
 	return nil
 }
 
+func (c *schedulerTestGatewayCache) SetReasoningContent(_ context.Context, _ string, _ string, _ time.Duration) error {
+	return nil
+}
+func (c *schedulerTestGatewayCache) GetReasoningContent(_ context.Context, _ string) (string, error) {
+	return "", ErrReasoningContentNotFound
+}
+
 func newSchedulerTestOpenAIWSV2Config() *config.Config {
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.Enabled = true
