@@ -16,7 +16,7 @@ const maxOpenAIResponsesRejectedFieldRetries = 6
 
 var (
 	openAIResponsesRejectedNamespaceParamPattern = regexp.MustCompile(`(?i)^input\[(\d+)\]\.namespace$`)
-	openAIResponsesRejectedMessageParamPattern   = regexp.MustCompile(`(?i)(?:unknown|unsupported)[ _-]+parameter\s*(?::|=|is)?\s*["']?(max_output_tokens|input\[\d+\]\.namespace)(?:["']|\b)`)
+	openAIResponsesRejectedMessageParamPattern   = regexp.MustCompile(`(?i)(?:unknown|unsupported)[ _-]+parameter\s*(?::|=|is)?\s*["']?(max_output_tokens|prompt_cache_retention|safety_identifier|prompt_cache_options|input\[\d+\]\.namespace)(?:["']|\b)`)
 )
 
 type openAIResponsesRejectedFieldRetryState struct {
@@ -62,13 +62,17 @@ func normalizeOpenAIResponsesRejectedFieldRetryBody(statusCode int, body, respon
 
 	code := strings.ToLower(strings.TrimSpace(extractUpstreamErrorCode(responseBody)))
 	message := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
-	if !isExplicitOpenAIResponsesFieldRejection(code, message) {
+	param := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, "error.param").String()))
+	optionalField := openAIResponsesRejectedOptionalField(param, message)
+	modelUnsupported := optionalField != "" && strings.Contains(message, optionalField+" is not supported")
+	if !isExplicitOpenAIResponsesFieldRejection(code, message) && !modelUnsupported {
 		return nil, "", false, nil
 	}
-
-	param := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, "error.param").String()))
 	if param == "" {
 		param = openAIResponsesRejectedParamFromMessage(message)
+	}
+	if optionalField == "" {
+		optionalField = openAIResponsesRejectedOptionalField(param, message)
 	}
 	if index, ok := openAIResponsesRejectedNamespaceIndex(param); ok {
 		return removeOpenAIResponsesRejectedNamespaceAtIndex(body, index)
@@ -79,6 +83,13 @@ func normalizeOpenAIResponsesRejectedFieldRetryBody(statusCode int, body, respon
 			return nil, "", false, fmt.Errorf("delete rejected max_output_tokens: %w", err)
 		}
 		return retryBody, "max_output_tokens parameter rejection", true, nil
+	}
+	if optionalField != "" && gjson.GetBytes(body, optionalField).Exists() {
+		retryBody, err := sjson.DeleteBytes(body, optionalField)
+		if err != nil {
+			return nil, "", false, fmt.Errorf("delete rejected %s: %w", optionalField, err)
+		}
+		return retryBody, optionalField + " parameter rejection", true, nil
 	}
 	return nil, "", false, nil
 }
@@ -98,6 +109,20 @@ func openAIResponsesRejectedParamFromMessage(message string) string {
 		return ""
 	}
 	return strings.ToLower(strings.TrimSpace(match[1]))
+}
+
+func openAIResponsesRejectedOptionalField(param, message string) string {
+	for _, field := range openAIResponsesOptionalFields {
+		if param == field {
+			return field
+		}
+		if strings.Contains(message, field+" is not supported") ||
+			strings.Contains(message, "unsupported parameter: "+field) ||
+			strings.Contains(message, "unknown parameter: "+field) {
+			return field
+		}
+	}
+	return ""
 }
 
 func openAIResponsesRejectedNamespaceIndex(param string) (int, bool) {

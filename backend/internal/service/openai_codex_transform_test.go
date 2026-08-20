@@ -1655,6 +1655,7 @@ func TestApplyCodexOAuthTransform_StripsChatGPTInternalUnsupportedFields(t *test
 		"metadata":               map[string]any{"trace_id": "abc"},
 		"prompt_cache_retention": "24h",
 		"safety_identifier":      "sid",
+		"prompt_cache_options":   map[string]any{"ttl": "30m"},
 		"stream_options":         map[string]any{"include_usage": true},
 		"input": []any{
 			map[string]any{"role": "user", "content": "hi"},
@@ -1667,6 +1668,7 @@ func TestApplyCodexOAuthTransform_StripsChatGPTInternalUnsupportedFields(t *test
 	for _, field := range openAIChatGPTInternalUnsupportedFields {
 		require.NotContains(t, reqBody, field)
 	}
+	require.NotContains(t, reqBody, "prompt_cache_options")
 }
 
 func TestApplyCodexOAuthTransform_ExtractsSystemMessages(t *testing.T) {

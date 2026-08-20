@@ -154,46 +154,47 @@ func TestCursorMixedShape_JSONRoundtrip(t *testing.T) {
 	require.Len(t, inputArr, 1)
 }
 
-// TestCursorMixedShape_StripsUnsupportedFields mirrors the strip loop in
-// ForwardAsChatCompletions (isResponsesShape branch). Cursor cloud sends
-// prompt_cache_retention, safety_identifier, metadata and stream_options
-// as top-level Responses API parameters, which Codex upstreams reject with
-// "Unsupported parameter: ...". The fix must remove them from the raw body
-// before it is forwarded, for BOTH OAuth and API Key account types.
-func TestCursorMixedShape_StripsUnsupportedFields(t *testing.T) {
+func TestSanitizeCursorResponsesShapeBodyUsesOfficialHostPolicy(t *testing.T) {
 	cursorBody := []byte(`{
 		"model": "gpt-5.4",
 		"stream": true,
 		"prompt_cache_retention": "24h",
 		"safety_identifier": "cursor-user-xyz",
+		"prompt_cache_options": {"ttl":"30m"},
 		"metadata": {"trace_id":"abc","caller":"cursor"},
 		"stream_options": {"include_usage": true},
 		"input": [{"role":"user","content":"hi"}]
 	}`)
-
-	// Sanity: the test fixture contains every field the production code strips.
-	for _, field := range cursorResponsesUnsupportedFields {
-		require.True(t, gjson.GetBytes(cursorBody, field).Exists(),
-			"test fixture must contain %s", field)
+	tests := []struct {
+		name             string
+		account          *Account
+		preserveOfficial bool
+	}{
+		{
+			name:             "official OpenAI API key",
+			account:          &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+			preserveOfficial: true,
+		},
+		{
+			name: "custom compatible API key",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{
+				"base_url": "https://compat.example/v1",
+			}},
+			preserveOfficial: false,
+		},
 	}
 
-	// Run the exact same loop as the production code.
-	result := cursorBody
-	for _, field := range cursorResponsesUnsupportedFields {
-		if stripped, err := sjson.DeleteBytes(result, field); err == nil {
-			result = stripped
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := sanitizeCursorResponsesShapeBody(tt.account, cursorBody)
+			require.NoError(t, err)
+			for _, field := range openAIResponsesOptionalFields {
+				require.Equal(t, tt.preserveOfficial, gjson.GetBytes(result, field).Exists(), field)
+			}
+			require.Equal(t, tt.preserveOfficial, gjson.GetBytes(result, "metadata").Exists())
+			require.False(t, gjson.GetBytes(result, "stream_options").Exists())
+			require.Equal(t, "gpt-5.4", gjson.GetBytes(result, "model").String())
+			require.True(t, gjson.GetBytes(result, "input").IsArray())
+		})
 	}
-
-	// All unsupported fields must be gone.
-	for _, field := range cursorResponsesUnsupportedFields {
-		assert.False(t, gjson.GetBytes(result, field).Exists(),
-			"%s must be stripped", field)
-	}
-
-	// Everything else must survive intact.
-	assert.Equal(t, "gpt-5.4", gjson.GetBytes(result, "model").String())
-	assert.Equal(t, true, gjson.GetBytes(result, "stream").Bool())
-	assert.True(t, gjson.GetBytes(result, "input").IsArray())
-	assert.Equal(t, "user", gjson.GetBytes(result, "input.0.role").String())
 }

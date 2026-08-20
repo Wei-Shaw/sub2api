@@ -55,6 +55,56 @@ func buildOpenAIResponsesURLForPlatform(platform string, base string) string {
 	return buildOpenAIResponsesURL(base)
 }
 
+// openAIResponsesOptionalFields are valid top-level OpenAI Responses fields
+// that some compatible or internal upstreams do not implement.
+var openAIResponsesOptionalFields = []string{
+	"prompt_cache_retention",
+	"safety_identifier",
+	"prompt_cache_options",
+}
+
+func stripOpenAIResponsesOptionalFields(body []byte) ([]byte, error) {
+	if len(body) == 0 {
+		return body, nil
+	}
+	out := body
+	for _, field := range openAIResponsesOptionalFields {
+		if !gjson.GetBytes(out, field).Exists() {
+			continue
+		}
+		next, err := sjson.DeleteBytes(out, field)
+		if err != nil {
+			return body, fmt.Errorf("strip %s: %w", field, err)
+		}
+		out = next
+	}
+	return out, nil
+}
+
+func deleteOpenAIResponsesOptionalFieldsFromObject(body map[string]any) {
+	if body == nil {
+		return
+	}
+	for _, field := range openAIResponsesOptionalFields {
+		delete(body, field)
+	}
+}
+
+func shouldPreserveOpenAIResponsesOptionalFields(account *Account) bool {
+	if account == nil || !account.IsOpenAIApiKey() {
+		return false
+	}
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	return baseURL == "" || isOfficialOpenAIModelsBaseURL(baseURL)
+}
+
+func filterOpenAIResponsesOptionalFieldsForAccount(account *Account, body []byte) ([]byte, error) {
+	if shouldPreserveOpenAIResponsesOptionalFields(account) {
+		return body, nil
+	}
+	return stripOpenAIResponsesOptionalFields(body)
+}
+
 // normalizeDeepSeekResponsesRequestBody 适配 DeepSeek 无状态 Responses 端点：
 // 强制 store=false 并清除 previous_response_id（官方 /responses 不支持服务端
 // 状态存储，携带这些字段会被拒绝）。非 deepseek responses 协议账号原样返回。

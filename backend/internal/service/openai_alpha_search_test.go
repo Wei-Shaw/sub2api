@@ -101,7 +101,9 @@ func TestForwardAlphaSearchPATUsesResponsesWebSearchFallback(t *testing.T) {
 		"model":"gpt-5.6-sol",
 		"commands":{"search_query":[{"q":"OpenAI news"}]},
 		"prompt_cache_key":"responses-cache-key",
-		"prompt_cache_retention":"24h"
+		"prompt_cache_retention":"24h",
+		"safety_identifier":"sid",
+		"prompt_cache_options":{"ttl":"30m"}
 	}`)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -163,11 +165,26 @@ func TestForwardAlphaSearchPATUsesResponsesWebSearchFallback(t *testing.T) {
 	require.Empty(t, upstream.lastReq.Header.Get("Accept-Language"))
 	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_retention").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "safety_identifier").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_options").Exists())
 	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Bool())
 	require.Equal(t, "web_search", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
 	require.Contains(t, gjson.GetBytes(upstream.lastBody, "input.0.content.0.text").String(), `"search_query"`)
+}
+
+func TestSanitizeOpenAIAlphaSearchBodyStripsResponsesOptionalFields(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","prompt_cache_key":"cache-key","prompt_cache_retention":"24h","safety_identifier":"sid","prompt_cache_options":{"ttl":"30m"},"commands":{}}`)
+
+	sanitized, err := sanitizeOpenAIAlphaSearchBody(body)
+
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(sanitized, "prompt_cache_key").Exists())
+	for _, field := range openAIResponsesOptionalFields {
+		require.False(t, gjson.GetBytes(sanitized, field).Exists(), field)
+	}
+	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(sanitized, "model").String())
 }
 
 func TestForwardAlphaSearchPATBackfillsMissingChatGPTAccountMetadata(t *testing.T) {

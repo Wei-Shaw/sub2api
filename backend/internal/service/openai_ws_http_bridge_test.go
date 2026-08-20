@@ -31,14 +31,49 @@ func TestResolveOpenAIWSClientFirstMessageTimeout(t *testing.T) {
 }
 
 func TestPrepareOpenAIWSHTTPBridgeBodyStripsWSFields(t *testing.T) {
-	body, err := prepareOpenAIWSHTTPBridgeBody([]byte(`{"type":"response.create","generate":true,"model":"gpt-5","stream":false,"previous_response_id":"resp_prev","input":"hi"}`))
+	body, err := prepareOpenAIWSHTTPBridgeBody(&Account{Platform: PlatformGrok, Type: AccountTypeAPIKey}, []byte(`{"type":"response.create","generate":true,"model":"gpt-5","stream":false,"previous_response_id":"resp_prev","prompt_cache_retention":"24h","safety_identifier":"sid","prompt_cache_options":{"ttl":"30m"},"input":"hi"}`))
 	require.NoError(t, err)
 	require.False(t, gjson.GetBytes(body, "type").Exists())
 	require.False(t, gjson.GetBytes(body, "generate").Exists())
 	require.False(t, gjson.GetBytes(body, "previous_response_id").Exists())
+	for _, field := range openAIResponsesOptionalFields {
+		require.False(t, gjson.GetBytes(body, field).Exists(), field)
+	}
 	require.Equal(t, "gpt-5", gjson.GetBytes(body, "model").String())
 	require.True(t, gjson.GetBytes(body, "stream").Bool())
 	require.Equal(t, "hi", gjson.GetBytes(body, "input").String())
+}
+
+func TestPrepareOpenAIWSHTTPBridgeBodyUsesOfficialHostPolicy(t *testing.T) {
+	payload := []byte(`{"type":"response.create","model":"gpt-5","prompt_cache_retention":"24h","safety_identifier":"sid","prompt_cache_options":{"ttl":"30m"},"input":"hi"}`)
+	tests := []struct {
+		name     string
+		account  *Account
+		preserve bool
+	}{
+		{
+			name:     "official default base URL",
+			account:  &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+			preserve: true,
+		},
+		{
+			name: "custom compatible base URL",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{
+				"base_url": "https://compat.example/v1",
+			}},
+			preserve: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := prepareOpenAIWSHTTPBridgeBody(tt.account, payload)
+			require.NoError(t, err)
+			for _, field := range openAIResponsesOptionalFields {
+				require.Equal(t, tt.preserve, gjson.GetBytes(body, field).Exists(), field)
+			}
+		})
+	}
 }
 
 func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyAdaptsClientTools(t *testing.T) {

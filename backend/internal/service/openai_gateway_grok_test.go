@@ -31,6 +31,7 @@ func TestPatchGrokResponsesBodySetsMappedModelAndDropsUnsupportedFields(t *testi
 		"input": "hello",
 		"prompt_cache_retention": "24h",
 		"safety_identifier": "user-1",
+		"prompt_cache_options": {"ttl":"30m"},
 		"reasoning": {"effort": "high"}
 	}`)
 
@@ -40,6 +41,7 @@ func TestPatchGrokResponsesBodySetsMappedModelAndDropsUnsupportedFields(t *testi
 	require.Equal(t, "grok-4.3", gjson.GetBytes(patched, "model").String())
 	require.False(t, gjson.GetBytes(patched, "prompt_cache_retention").Exists())
 	require.False(t, gjson.GetBytes(patched, "safety_identifier").Exists())
+	require.False(t, gjson.GetBytes(patched, "prompt_cache_options").Exists())
 	require.Equal(t, "high", gjson.GetBytes(patched, "reasoning.effort").String())
 }
 
