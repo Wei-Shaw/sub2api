@@ -537,6 +537,52 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestAccountGetModelMapping_GoogleOneUsesConservativeDefaults(t *testing.T) {
+	account := &Account{
+REDACTED
+		Type:     AccountTypeOAuth,
+REDACTED
+			"oauth_type": "google_one",
+	REDACTED,
+REDACTED
+
+	mapping := account.GetModelMapping()
+	for _, model := range []string{"gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"REDACTED {
+		if mapping[model] != model {
+			t.Fatalf("expected Google One model %q to map to itself, got %q", model, mapping[model])
+	REDACTED
+REDACTED
+	for _, model := range []string{"gemini-2.5-flash-image", "gemini-3.1-flash-image", "gemini-3.5-flash"REDACTED {
+		if _, ok := mapping[model]; ok {
+			t.Fatalf("did not expect unsupported Google One model %q", model)
+	REDACTED
+REDACTED
+	if account.IsModelSupported("gemini-3.5-flash") {
+		t.Fatal("Google One defaults must not treat unsupported models as eligible")
+REDACTED
+REDACTED
+
+func TestAccountGetModelMapping_GoogleOnePreservesExplicitMapping(t *testing.T) {
+	account := &Account{
+REDACTED
+		Type:     AccountTypeOAuth,
+REDACTED
+			"oauth_type": "google_one",
+			"model_mapping": map[string]any{
+				"custom-model": "gemini-2.5-flash",
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	mapping := account.GetModelMapping()
+	if mapping["custom-model"] != "gemini-2.5-flash" {
+		t.Fatalf("expected explicit Google One mapping to be preserved, got %v", mapping)
+REDACTED
+	if _, ok := mapping["gemini-2.5-flash"]; ok {
+		t.Fatalf("did not expect defaults to overwrite an explicit mapping: %v", mapping)
+REDACTED
+REDACTED
+
 func TestAccountGetModelMapping_AntigravityRespectsWildcardOverride(t *testing.T) {
 	account := &Account{
 		Platform: PlatformAntigravity,
