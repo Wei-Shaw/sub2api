@@ -414,6 +414,106 @@ func TestCreateTradeUsesPrecreateForDesktopWhenAvailable(t *testing.T) {
 	}
 }
 
+func TestAlipayRefundReturnsRequestNumberForLaterQueries(t *testing.T) {
+	origRefund := alipayTradeRefund
+	t.Cleanup(func() { alipayTradeRefund = origRefund })
+
+	var gotParam alipay.TradeRefund
+	alipayTradeRefund = func(_ context.Context, _ *alipay.Client, param alipay.TradeRefund) (*alipay.TradeRefundRsp, error) {
+		gotParam = param
+		return &alipay.TradeRefundRsp{FundChange: "N"}, nil
+	}
+
+	provider := &Alipay{client: &alipay.Client{}}
+	resp, err := provider.Refund(context.Background(), payment.RefundRequest{
+		OrderID: "sub2_refund_request",
+		Amount:  "10.00",
+		Reason:  "customer request",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.HasPrefix(gotParam.OutRequestNo, "sub2_refund_request-refund-") {
+		t.Fatalf("out_request_no = %q, want generated request number", gotParam.OutRequestNo)
+	}
+	if resp.RefundID != gotParam.OutRequestNo {
+		t.Fatalf("refund_id = %q, want out_request_no %q", resp.RefundID, gotParam.OutRequestNo)
+	}
+	if resp.Status != payment.ProviderStatusPending {
+		t.Fatalf("status = %q, want pending", resp.Status)
+	}
+}
+
+func TestAlipayQueryRefund(t *testing.T) {
+	tests := []struct {
+		name         string
+		refundStatus string
+		wantStatus   string
+	}{
+		{name: "success", refundStatus: "REFUND_SUCCESS", wantStatus: payment.ProviderStatusSuccess},
+		{name: "failed", refundStatus: "REFUND_FAILED", wantStatus: payment.ProviderStatusFailed},
+		{name: "pending when status is absent", refundStatus: "", wantStatus: payment.ProviderStatusPending},
+		{name: "unknown status remains pending", refundStatus: "REFUND_PROCESSING", wantStatus: payment.ProviderStatusPending},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			origQuery := alipayTradeFastPayRefundQuery
+			t.Cleanup(func() { alipayTradeFastPayRefundQuery = origQuery })
+
+			var gotParam alipay.TradeFastPayRefundQuery
+			alipayTradeFastPayRefundQuery = func(_ context.Context, _ *alipay.Client, param alipay.TradeFastPayRefundQuery) (*alipay.TradeFastPayRefundQueryRsp, error) {
+				gotParam = param
+				return &alipay.TradeFastPayRefundQueryRsp{
+					Error:        alipay.Error{Code: alipay.CodeSuccess},
+					OutRequestNo: "refund-request-123",
+					RefundStatus: tt.refundStatus,
+				}, nil
+			}
+
+			provider := &Alipay{client: &alipay.Client{}}
+			resp, err := provider.QueryRefund(context.Background(), payment.RefundQueryRequest{
+				TradeNo:  "2026082022001425151434353291",
+				OrderID:  "sub2_20260820uUvtfx1F",
+				RefundID: "refund-request-123",
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if gotParam.TradeNo != "2026082022001425151434353291" || gotParam.OutTradeNo != "" {
+				t.Fatalf("trade identifiers = trade_no %q, out_trade_no %q", gotParam.TradeNo, gotParam.OutTradeNo)
+			}
+			if gotParam.OutRequestNo != "refund-request-123" {
+				t.Fatalf("out_request_no = %q, want %q", gotParam.OutRequestNo, "refund-request-123")
+			}
+			if resp.RefundID != "refund-request-123" {
+				t.Fatalf("refund_id = %q, want %q", resp.RefundID, "refund-request-123")
+			}
+			if resp.Status != tt.wantStatus {
+				t.Fatalf("status = %q, want %q", resp.Status, tt.wantStatus)
+			}
+		})
+	}
+}
+
+func TestAlipayQueryRefundReturnsUpstreamErrors(t *testing.T) {
+	origQuery := alipayTradeFastPayRefundQuery
+	t.Cleanup(func() { alipayTradeFastPayRefundQuery = origQuery })
+
+	alipayTradeFastPayRefundQuery = func(context.Context, *alipay.Client, alipay.TradeFastPayRefundQuery) (*alipay.TradeFastPayRefundQueryRsp, error) {
+		return nil, errors.New("gateway unavailable")
+	}
+
+	provider := &Alipay{client: &alipay.Client{}}
+	_, err := provider.QueryRefund(context.Background(), payment.RefundQueryRequest{
+		TradeNo:  "alipay-trade-123",
+		RefundID: "refund-request-123",
+	})
+	if err == nil || !strings.Contains(err.Error(), "alipay TradeFastPayRefundQuery: gateway unavailable") {
+		t.Fatalf("error = %v, want wrapped upstream error", err)
+	}
+}
+
 func TestAlipayMerchantIdentityMetadata(t *testing.T) {
 	t.Parallel()
 
