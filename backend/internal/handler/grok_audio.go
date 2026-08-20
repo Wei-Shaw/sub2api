@@ -57,9 +57,15 @@ REDACTED
 	var release func()
 	var token string
 	var upstream *service.GrokRealtimeUpstream
+	var candidateSeen bool
 	for attempts := 0; attempts < 4; attempts++ {
+		// Realtime's voice model is not a text-model capability. Passing a
+		// concrete text model here would reject accounts mapped only to an
+		// older/default text model before the upstream handshake can decide.
+		// An empty requested model keeps account selection capability-based;
+		// the actual voice model remains in the upstream WS query below.
 		candidate, _, selectErr := h.gatewayService.SelectAccountWithSchedulerForCapability(
-			c.Request.Context(), apiKey.GroupID, "", "", "grok-4.6", failed,
+			c.Request.Context(), apiKey.GroupID, "", "", "", failed,
 			service.OpenAIUpstreamTransportHTTPSSE,
 			service.OpenAIEndpointCapabilityChatCompletions,
 			false, false, false, service.PlatformGrok,
@@ -67,6 +73,7 @@ REDACTED
 		if selectErr != nil || candidate == nil || candidate.Account == nil {
 			break
 	REDACTED
+		candidateSeen = true
 		account := candidate.Account
 		var streamStarted bool
 		var slotStatus openAISlotAcquireResult
@@ -86,7 +93,7 @@ REDACTED
 			failed[account.ID] = struct{REDACTED{REDACTED
 			continue
 	REDACTED
-		probeCtx, cancelProbe := context.WithTimeout(c.Request.Context(), 15*time.Second)
+		probeCtx, cancelProbe := context.WithTimeout(c.Request.Context(), service.DefaultGrokRealtimeDialTimeout)
 		candidateUpstream, openErr := h.gatewayService.OpenGrokRealtime(probeCtx, account, token, model)
 		cancelProbe()
 		if openErr != nil {
@@ -100,7 +107,11 @@ REDACTED
 		break
 REDACTED
 	if selection == nil || selection.Account == nil || release == nil || upstream == nil {
-		h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Grok realtime upstream unavailable")
+		if !candidateSeen {
+			h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available Grok accounts")
+	REDACTED else {
+			h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Grok realtime upstream unavailable")
+	REDACTED
 		return
 REDACTED
 	defer release()

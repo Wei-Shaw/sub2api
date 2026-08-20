@@ -16,6 +16,10 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// DefaultGrokRealtimeDialTimeout bounds the pre-accept upstream handshake.
+// The timeout only covers dialing; an established session is not interrupted.
+const DefaultGrokRealtimeDialTimeout = 12 * time.Second
+
 // supportedGrokVoiceHTTPEndpoints are xAI Voice HTTP paths we forward as-is.
 var supportedGrokVoiceHTTPEndpoints = map[string]struct{REDACTED{
 	"tts":           {REDACTED,
