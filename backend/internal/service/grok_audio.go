@@ -133,7 +133,7 @@ REDACTED
 	if err != nil {
 		return false, err
 REDACTED
-	defer upstream.Close()
+	defer func() { _ = upstream.Close() REDACTED()
 	return s.ProxyGrokRealtimeConn(ctx, c, client, upstream)
 REDACTED
 

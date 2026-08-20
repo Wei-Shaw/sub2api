@@ -121,7 +121,7 @@ REDACTED
 		return
 REDACTED
 	defer release()
-	defer upstream.Close()
+	defer func() { _ = upstream.Close() REDACTED()
 
 	conn, err := coderws.Accept(c.Writer, c.Request, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeoverREDACTED)
 	if err != nil {
