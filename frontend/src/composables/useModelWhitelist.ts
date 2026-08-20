@@ -157,8 +157,8 @@ const xaiModels = [
   'grok-imagine',
   'grok-imagine-image-quality',
   'grok-imagine-image',
+  'grok-imagine-image-2.0',
   'grok-imagine-video',
-  'grok-imagine-video-1.5-preview',
   'grok-imagine-video-1.5'
 ]
 

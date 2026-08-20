@@ -51,7 +51,7 @@ REDACTED
 // DefaultTextModel is the built-in fallback for empty model fields and Grok
 // text aliases (e.g. "grok", "grok-latest"). Operators may override the runtime
 // default via settings key grok_default_text_model.
-const DefaultTextModel = "grok-4.5"
+const DefaultTextModel = "grok-4.6"
 
 // Official Imagine model IDs (https://docs.x.ai/docs/models).
 const (
@@ -66,10 +66,10 @@ const (
 // ModelMappingOptions controls optional expansions of the default mapping.
 // Cross-client wildcards (gpt-*/claude-*) default ON via settings
 // grok_cross_client_model_map_enabled so Codex/Claude clients keep working
-// against Grok groups (map to DefaultText / grok-4.5). Operators may disable.
+// against Grok groups (map to DefaultText / grok-4.6). Operators may disable.
 type ModelMappingOptions struct {
 	// DefaultText is the target for empty models and optional cross-client maps.
-	// Empty → DefaultTextModel (grok-4.5).
+	// Empty → DefaultTextModel (grok-4.6).
 	DefaultText string
 	// EnableCrossClientMap merges gpt-*/codex-*/o*/claude-* → DefaultText.
 	EnableCrossClientMap bool
@@ -115,7 +115,7 @@ var grokTextResponsesModelAliases = map[string]string{
 	"grok-3-mini":                  "grok-3-mini",
 	"grok-3-mini-fast":             "grok-3-mini-fast",
 	"grok-build":                   "grok-build-0.1",
-	"grok-build-latest":            DefaultTextModel,
+	"grok-build-latest":            "grok-build-0.1",
 	"grok-build-0.1":               "grok-build-0.1",
 	"grok-composer-2.5-fast":       "grok-composer-2.5-fast",
 	"grok-composer":                "grok-composer-2.5-fast",
@@ -161,7 +161,7 @@ func ModelMappingWithOptions(opts ModelMappingOptions) map[string]string {
 REDACTED
 	for alias, canonical := range grokTextResponsesModelAliases {
 		// Remap aliases that pointed at DefaultTextModel constant to runtime default.
-		if (alias == "grok" || alias == "grok-latest" || alias == "grok-build-latest") && canonical == DefaultTextModel {
+		if (alias == "grok" || alias == "grok-latest") && canonical == DefaultTextModel {
 			mapping[alias] = defaultText
 	REDACTED else {
 			mapping[alias] = canonical
@@ -272,7 +272,7 @@ REDACTED
 REDACTED
 	normalized := strings.ToLower(StripGrokProviderPrefix(trimmed))
 	if canonical, ok := grokTextResponsesModelAliases[normalized]; ok {
-		if (normalized == "grok" || normalized == "grok-latest" || normalized == "grok-build-latest") && canonical == DefaultTextModel {
+		if (normalized == "grok" || normalized == "grok-latest") && canonical == DefaultTextModel {
 			return fallback
 	REDACTED
 		return canonical
