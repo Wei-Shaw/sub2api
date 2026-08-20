@@ -59,7 +59,8 @@ func buildOpenAIResponsesURLForPlatform(platform string, base string) string {
 // 强制 store=false 并清除 previous_response_id（官方 /responses 不支持服务端
 // 状态存储，携带这些字段会被拒绝）。非 deepseek responses 协议账号原样返回。
 func normalizeDeepSeekResponsesRequestBody(account *Account, body []byte) []byte {
-	if account == nil || account.Platform != PlatformDeepseek || account.GetAPIProtocol() != APIProtocolResponses {
+	if account == nil || account.Platform != PlatformDeepseek ||
+		(account.GetAPIProtocol() != APIProtocolResponses && !account.IsAdaptiveAPIProtocol()) {
 		return body
 	}
 	normalized, err := sjson.SetBytes(body, "store", false)
@@ -418,6 +419,12 @@ func openAIResponsesRequestPathSuffix(c *gin.Context) string {
 func IsForwardableOpenAIResponsesRequestPath(c *gin.Context) bool {
 	_, ok := sanitizedUpstreamPathSuffix(rawOpenAIResponsesRequestPathSuffix(c))
 	return ok
+}
+
+// IsOpenAIResponsesInputTokensRequestPath reports whether the request targets
+// the native Responses input-token counting endpoint.
+func IsOpenAIResponsesInputTokensRequestPath(c *gin.Context) bool {
+	return openAIResponsesRequestPathSuffix(c) == "/input_tokens"
 }
 
 // rawOpenAIResponsesRequestPathSuffix 仅做提取，不做任何安全判断。
