@@ -61,7 +61,7 @@ const (
 	// 陈旧版本会被优先丢弃（HTTP 200 + 流内 server_is_overloaded）；非官方客户端配不出
 	// 官方身份时整体回退到本常量，因此它必须跟随官方 CLI 的当前发布版本，
 	// 落后多个版本会让这些请求稳定落在被优先丢弃的一侧。
-	codexCLIVersion = "0.147.0"
+	codexCLIVersion = "0.146.0"
 	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
 	openAICodexSnapshotPersistMinInterval = 30 * time.Second
 	// 配额自动暂停时，超过该时长仍未刷新的 used% 快照视为陈旧，不再据此暂停账号。
@@ -284,8 +284,9 @@ type OpenAIForwardResult struct {
 	// AudioUsage carries Voice billing units when present.
 	AudioUsage *AudioUsage
 
-	wsReplayInput       []json.RawMessage
-	wsReplayInputExists bool
+	wsReplayInput                []json.RawMessage
+	wsReplayInputExists          bool
+	wsAccountFailoverReplayInput []json.RawMessage
 REDACTED
 
 // SucceededForScheduling reports whether this result is an upstream success
@@ -398,8 +399,8 @@ REDACTED
 
 var defaultOpenAICodexSnapshotPersistThrottle = newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval)
 
-// ErrNoAvailableCompactAccounts indicates the request needs /responses/compact
-// support but no compatible account is available.
+// ErrNoAvailableCompactAccounts indicates a legacy /responses/compact request
+// needs compact support but no compatible account is available.
 var ErrNoAvailableCompactAccounts = errors.New("no available accounts support /responses/compact")
 
 // OpenAIGatewayService handles OpenAI API gateway operations
@@ -428,8 +429,6 @@ type OpenAIGatewayService struct {
 	channelService        *ChannelService
 	balanceNotifyService  *BalanceNotifyService
 	settingService        *SettingService
-	tlsFPProfileService   *TLSFingerprintProfileService
-	tlsFPRouterService    *TLSFingerprintRouterService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 	liveAttestation       liveattestation.Provider
 	liveAttestationCipher SecretEncryptor
@@ -455,10 +454,6 @@ type OpenAIGatewayService struct {
 	openaiAccountRuntimeBlockLocks      sync.Map // key: int64(accountID), value: *sync.Mutex
 	openaiAccountRuntimeBlockGeneration sync.Map // key: int64(accountID), value: uint64
 	openaiAccountRuntimeBlockSequence   atomic.Uint64
-	openaiOAuth429RetryStartedAt        sync.Map // key: int64(accountID), value: time.Time
-	openai429StrategyMu                 sync.Mutex
-	openai429StrategyCachedAt           time.Time
-	openai429StrategyCached             RateLimit429CooldownSettings
 	grokCredentialMutationLocks         sync.Map // key: int64(accountID), value: *sync.Mutex
 	openaiOAuth429WindowStartUnixNano   atomic.Int64
 	openaiOAuth429WindowCount           atomic.Int64
@@ -468,6 +463,11 @@ type OpenAIGatewayService struct {
 	codexModelsManifestCache            codexModelsManifestCache
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map
+	// openaiCodexTurnStateOrigins: 下游会话 seed → openAICodexTurnStateOrigin，
+	// 记录最近一次向该会话下发 x-codex-turn-state 的铸造账号，供出站守卫
+	// 剥离跨账号回带（openai_codex_turn_state.go）。
+	openaiCodexTurnStateOrigins sync.Map
+	openaiCodexTurnStateWrites  atomic.Uint64
 REDACTED
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
@@ -548,27 +548,6 @@ REDACTED
 	return svc
 REDACTED
 
-func (s *OpenAIGatewayService) SetTLSFingerprintServices(profile *TLSFingerprintProfileService, router *TLSFingerprintRouterService) {
-	if s == nil {
-		return
-REDACTED
-	s.tlsFPProfileService = profile
-	s.tlsFPRouterService = router
-REDACTED
-
-func (s *OpenAIGatewayService) doAccountHTTP(ctx context.Context, c *gin.Context, account *Account, req *http.Request, proxyURL, protocol string) (*http.Response, error) {
-	if account != nil && account.Platform == PlatformGrok {
-		return doLeftoverAccountHTTP(ctx, s.httpUpstream, req, proxyURL, account, s.tlsFPProfileService, s.tlsFPRouterService, inboundUserAgentFromGin(c), "http", protocol)
-REDACTED
-	// Last mutation before send: callers may Header.Set/Get after buildUpstreamRequest
-	// (images Content-Type, messages identity + turn-state). leftover 5 session_id
-	// values are unchanged; originator stays lowercase.
-	if account != nil && account.Type == AccountTypeOAuth && req != nil {
-		applyCodexHeaderWireCasing(req.Header)
-REDACTED
-	return doAccountHTTPUpstreamFromGin(ctx, c, s.httpUpstream, req, proxyURL, account, s.tlsFPProfileService, s.tlsFPRouterService, "http", protocol)
-REDACTED
-
 // ResolveChannelMapping 解析渠道级模型映射（代理到 ChannelService）
 func (s *OpenAIGatewayService) ResolveChannelMapping(ctx context.Context, groupID int64, model string) ChannelMappingResult {
 	if s.channelService == nil {
@@ -624,6 +603,10 @@ REDACTED
 func (s *OpenAIGatewayService) isUpstreamModelRestrictedByChannel(ctx context.Context, groupID int64, account *Account, requestedModel string, requireCompact bool) bool {
 	if s.channelService == nil {
 		return false
+REDACTED
+	if compactForwardModel, ok := openAIForwardModelFromContext(ctx); ok {
+		requestedModel = compactForwardModel.model
+		requireCompact = compactForwardModel.useCompactModelMapping
 REDACTED
 	upstreamModel := resolveOpenAIAccountUpstreamModelForRequest(account, requestedModel, requireCompact)
 	if upstreamModel == "" {
@@ -1073,9 +1056,6 @@ REDACTED
 // isolateOpenAISessionID 将 apiKeyID 混入 session 标识符，
 // 确保不同 API Key 的用户即使使用相同的原始 session_id/conversation_id，
 // 到达上游的标识符也不同，防止跨用户会话碰撞。
-//
-// Outbound session/conversation headers should use openaiOutboundSessionID
-// or openaiOutboundSessionUUID so a valid device-profile namespace is folded in.
 func isolateOpenAISessionID(apiKeyID int64, raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -1085,60 +1065,6 @@ REDACTED
 	_, _ = fmt.Fprintf(h, "k%d:", apiKeyID)
 	_, _ = h.WriteString(raw)
 	return fmt.Sprintf("%016x", h.Sum64())
-REDACTED
-
-func loadOpenAIOutboundSessionProfile(ctx context.Context, account *Account) *AccountDeviceProfile {
-	if account == nil || !account.IsOpenAIOAuth() {
-		return nil
-REDACTED
-	return loadOutboundCodexProfile(ctx, account)
-REDACTED
-
-func deriveOpenAIOutboundSessionIDFromProfile(profile *AccountDeviceProfile, isolated string) string {
-	if profile == nil || isolated == "" {
-		return ""
-REDACTED
-	sessionID, _, _, err := DeriveSessionIDs(profile.SessionNamespace, isolated)
-	if err != nil || sessionID == "" {
-		return ""
-REDACTED
-	return sessionID
-REDACTED
-
-func deriveOpenAIOutboundSessionID(ctx context.Context, account *Account, apiKeyID int64, raw string) string {
-	isolated := isolateOpenAISessionID(apiKeyID, raw)
-	if isolated == "" {
-		return ""
-REDACTED
-	return deriveOpenAIOutboundSessionIDFromProfile(loadOpenAIOutboundSessionProfile(ctx, account), isolated)
-REDACTED
-
-func openaiOutboundSessionIDFromProfile(profile *AccountDeviceProfile, apiKeyID int64, raw string) string {
-	isolated := isolateOpenAISessionID(apiKeyID, raw)
-	if derived := deriveOpenAIOutboundSessionIDFromProfile(profile, isolated); derived != "" {
-		return derived
-REDACTED
-	return isolated
-REDACTED
-
-func openaiOutboundSessionID(ctx context.Context, account *Account, apiKeyID int64, raw string) string {
-	if derived := deriveOpenAIOutboundSessionID(ctx, account, apiKeyID, raw); derived != "" {
-		return derived
-REDACTED
-	return isolateOpenAISessionID(apiKeyID, raw)
-REDACTED
-
-func openaiOutboundSessionUUID(ctx context.Context, account *Account, apiKeyID int64, raw string) string {
-	if derived := deriveOpenAIOutboundSessionID(ctx, account, apiKeyID, raw); derived != "" {
-		return derived
-REDACTED
-	return generateSessionUUID(isolateOpenAISessionID(apiKeyID, raw))
-REDACTED
-
-func openaiOutboundSessionPair(ctx context.Context, account *Account, apiKeyID int64, sessionRaw, conversationRaw string) (sessionID, conversationID string) {
-	profile := loadOpenAIOutboundSessionProfile(ctx, account)
-	return openaiOutboundSessionIDFromProfile(profile, apiKeyID, sessionRaw),
-		openaiOutboundSessionIDFromProfile(profile, apiKeyID, conversationRaw)
 REDACTED
 
 func logCodexCLIOnlyDetection(ctx context.Context, c *gin.Context, account *Account, apiKeyID int64, result CodexClientRestrictionDetectionResult, body []byte) {
@@ -1280,7 +1206,7 @@ REDACTED
 		REDACTED
 			return apiKey, "apikey", nil
 	REDACTED
-		apiKey := account.GetOpenAIApiKey()
+		apiKey := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
 		if apiKey == "" {
 			return "", "", errors.New("api_key not found in credentials")
 	REDACTED

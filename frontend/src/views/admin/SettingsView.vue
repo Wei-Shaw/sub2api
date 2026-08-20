@@ -340,16 +340,8 @@
                   <Toggle v-model="rateLimit429CooldownForm.enabled" />
                 </div>
 
-                <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">处理策略</label>
-                  <select v-model="rateLimit429CooldownForm.strategy" class="input w-64">
-                    <option value="cooldown">账号冷却后恢复</option>
-                    <option value="same_account_retry">原号重试后切号</option>
-                  </select>
-                </div>
-
                 <div
-                  v-if="rateLimit429CooldownForm.enabled && rateLimit429CooldownForm.strategy === 'cooldown'"
+                  v-if="rateLimit429CooldownForm.enabled"
                   class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
                 >
                   <div>
@@ -377,12 +369,6 @@
                       REDACTEDREDACTED
                     </p>
                   </div>
-                </div>
-
-                <div v-if="rateLimit429CooldownForm.strategy === 'same_account_retry'" class="grid grid-cols-1 gap-4 border-t border-gray-100 pt-4 dark:border-dark-700 md:grid-cols-3">
-                  <label class="text-sm">重试间隔(ms)<input v-model.number="rateLimit429CooldownForm.retry_interval_ms" type="number" min="100" max="60000" class="input mt-2 w-full" /></label>
-                  <label class="text-sm">单号最大重试时长(秒)<input v-model.number="rateLimit429CooldownForm.retry_max_duration_seconds" type="number" min="1" max="600" class="input mt-2 w-full" /></label>
-                  <label class="text-sm">最多切号次数<input v-model.number="rateLimit429CooldownForm.max_account_switches" type="number" min="0" max="10" class="input mt-2 w-full" /></label>
                 </div>
 
                 <div
@@ -8951,10 +8937,6 @@ const rateLimit429CooldownSaving = ref(false);
 const rateLimit429CooldownForm = reactive({
   enabled: true,
   cooldown_seconds: 5,
-  strategy: "cooldown" as "cooldown" | "same_account_retry",
-  retry_interval_ms: 500,
-  retry_max_duration_seconds: 120,
-  max_account_switches: 2,
 REDACTED);
 
 // Panel API Rate Limit 状态
@@ -11855,10 +11837,6 @@ async function saveRateLimit429CooldownSettings() {
     const updated = await adminAPI.settings.updateRateLimit429CooldownSettings({
       enabled: rateLimit429CooldownForm.enabled,
       cooldown_seconds: rateLimit429CooldownForm.cooldown_seconds,
-      strategy: rateLimit429CooldownForm.strategy,
-      retry_interval_ms: rateLimit429CooldownForm.retry_interval_ms,
-      retry_max_duration_seconds: rateLimit429CooldownForm.retry_max_duration_seconds,
-      max_account_switches: rateLimit429CooldownForm.max_account_switches,
     REDACTED);
     Object.assign(rateLimit429CooldownForm, updated);
     appStore.showSuccess(t("admin.settings.rateLimit429Cooldown.saved"));

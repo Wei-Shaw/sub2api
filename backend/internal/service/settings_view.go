@@ -154,8 +154,6 @@ type SystemSettings struct {
 	SiteSubtitle                string
 	APIBaseURL                  string
 	ContactInfo                 string
-	SupportQRCodes              string
-	DownloadToolsURL            string
 	DocURL                      string
 	HomeContent                 string
 	CompactHomeEnabled          bool
@@ -167,36 +165,19 @@ type SystemSettings struct {
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 
-	DefaultConcurrency              int
-	DefaultBalance                  float64
-	RiskControlEnabled              bool
-	CyberSessionBlockEnabled        bool
-	CyberSessionBlockTTLSeconds     int
-	AffiliateEnabled                bool
-	AffiliateRebateRate             float64
-	AffiliateRebateFreezeHours      int
-	AffiliateRebateDurationDays     int
-	AffiliateRebatePerInviteeCap    float64
-	AffiliateRebateCap              float64
-	AffiliateRebateInviteeLimit     int
-	AffiliateSignupBonus            float64
-	AdminRechargeRebateEnabled      bool
-	TicketEnabled                   bool
-	KiroDefaultVersion              string
-	KiroDefaultCommit               string
-	KiroDefaultSystemVersion        string
-	KiroDefaultNodeVersion          string
-	KiroCacheHitRateScale           int
-	KiroCacheMinBlockTokens         int
-	KiroCacheIndependentTTLSeconds  int
-	KiroCachePrefixTTLSeconds       int
-	KiroCodeExecutionSandboxCommand string
-	IPMultiAccountBanEnabled        bool
-	IPMultiAccountBanWindowMinutes  int
-	IPMultiAccountBanThreshold      int
-	IPMultiAccountBanLearningUntil  string
-	DefaultUserRPMLimit             int
-	DefaultSubscriptions            []DefaultSubscriptionSetting
+	DefaultConcurrency           int
+	DefaultBalance               float64
+	RiskControlEnabled           bool
+	CyberSessionBlockEnabled     bool
+	CyberSessionBlockTTLSeconds  int
+	AffiliateEnabled             bool
+	AffiliateRebateRate          float64
+	AffiliateRebateFreezeHours   int
+	AffiliateRebateDurationDays  int
+	AffiliateRebatePerInviteeCap float64
+	AdminRechargeRebateEnabled   bool
+	DefaultUserRPMLimit          int
+	DefaultSubscriptions         []DefaultSubscriptionSetting
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -220,6 +201,7 @@ type SystemSettings struct {
 	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
 	ChannelMonitorHideThroughput         bool   `json:"channel_monitor_hide_throughput"`
+	ChannelMonitorShowQuota              bool   `json:"channel_monitor_show_quota"`
 
 	// Grok model mapping policy (admin settings; empty mapping falls back to these).
 	GrokDefaultTextModel           string `json:"grok_default_text_model"`
@@ -331,18 +313,6 @@ type DefaultSubscriptionSetting struct {
 	ValidityDays int   `json:"validity_days"`
 REDACTED
 
-type DefaultAccountModelConfig struct {
-	ModelWhitelist               []string                             `json:"model_whitelist,omitempty"`
-	ModelMapping                 map[string]string                    `json:"model_mapping,omitempty"`
-	CompactModelMapping          map[string]string                    `json:"compact_model_mapping,omitempty"`
-	KiroSubscriptionTypeModelMap map[string]DefaultAccountModelConfig `json:"kiro_subscription_type_model_config,omitempty"`
-
-	TempUnschedulableEnabled bool                    `json:"temp_unschedulable_enabled,omitempty"`
-	TempUnschedulableRules   []TempUnschedulableRule `json:"temp_unschedulable_rules,omitempty"`
-	CustomErrorCodesEnabled  bool                    `json:"custom_error_codes_enabled,omitempty"`
-	CustomErrorCodes         []int                   `json:"custom_error_codes,omitempty"`
-REDACTED
-
 type PublicSettings struct {
 	RegistrationEnabled                 bool
 	EmailVerifyEnabled                  bool
@@ -373,8 +343,6 @@ type PublicSettings struct {
 	SiteSubtitle                        string
 	APIBaseURL                          string
 	ContactInfo                         string
-	SupportQRCodes                      string
-	DownloadToolsURL                    string
 	DocURL                              string
 	HomeContent                         string
 	CompactHomeEnabled                  bool
@@ -411,6 +379,7 @@ type PublicSettings struct {
 	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
 	ChannelMonitorHideThroughput         bool   `json:"channel_monitor_hide_throughput"`
+	ChannelMonitorShowQuota              bool   `json:"channel_monitor_show_quota"`
 
 	// Grok model mapping policy (admin settings).
 	GrokDefaultTextModel           string `json:"grok_default_text_model"`
@@ -426,9 +395,6 @@ type PublicSettings struct {
 
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled bool `json:"affiliate_enabled"`
-
-	// Ticket feature toggle (default enabled)
-	TicketEnabled bool `json:"ticket_enabled"`
 
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
@@ -594,11 +560,7 @@ type RateLimit429CooldownSettings struct {
 	// Enabled 是否在无法解析上游重置时间时应用默认429回避
 	Enabled bool `json:"enabled"`
 	// CooldownSeconds 默认回避时长（秒）
-	CooldownSeconds         int    `json:"cooldown_seconds"`
-	Strategy                string `json:"strategy"`
-	RetryIntervalMs         int    `json:"retry_interval_ms"`
-	RetryMaxDurationSeconds int    `json:"retry_max_duration_seconds"`
-	MaxAccountSwitches      int    `json:"max_account_switches"`
+	CooldownSeconds int `json:"cooldown_seconds"`
 REDACTED
 
 // DefaultOverloadCooldownSettings 返回默认的过载冷却配置（启用，10分钟）
@@ -612,12 +574,8 @@ REDACTED
 // DefaultRateLimit429CooldownSettings 返回默认的429回避配置（启用，5秒）
 func DefaultRateLimit429CooldownSettings() *RateLimit429CooldownSettings {
 	return &RateLimit429CooldownSettings{
-		Enabled:                 true,
-		CooldownSeconds:         5,
-		Strategy:                "cooldown",
-		RetryIntervalMs:         500,
-		RetryMaxDurationSeconds: 120,
-		MaxAccountSwitches:      2,
+		Enabled:         true,
+		CooldownSeconds: 5,
 REDACTED
 REDACTED
 

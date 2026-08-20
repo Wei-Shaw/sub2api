@@ -112,23 +112,15 @@ func (h *SettingHandler) GetRateLimit429CooldownSettings(c *gin.Context) {
 REDACTED
 
 	response.Success(c, dto.RateLimit429CooldownSettings{
-		Enabled:                 settings.Enabled,
-		CooldownSeconds:         settings.CooldownSeconds,
-		Strategy:                settings.Strategy,
-		RetryIntervalMs:         settings.RetryIntervalMs,
-		RetryMaxDurationSeconds: settings.RetryMaxDurationSeconds,
-		MaxAccountSwitches:      settings.MaxAccountSwitches,
+		Enabled:         settings.Enabled,
+		CooldownSeconds: settings.CooldownSeconds,
 REDACTED)
 REDACTED
 
 // UpdateRateLimit429CooldownSettingsRequest 更新429默认回避配置请求
 type UpdateRateLimit429CooldownSettingsRequest struct {
-	Strategy                string `json:"strategy"`
-	RetryIntervalMs         int    `json:"retry_interval_ms"`
-	RetryMaxDurationSeconds int    `json:"retry_max_duration_seconds"`
-	MaxAccountSwitches      int    `json:"max_account_switches"`
-	Enabled                 bool   `json:"enabled"`
-	CooldownSeconds         int    `json:"cooldown_seconds"`
+	Enabled         bool `json:"enabled"`
+	CooldownSeconds int  `json:"cooldown_seconds"`
 REDACTED
 
 // UpdateRateLimit429CooldownSettings 更新429默认回避配置
@@ -141,12 +133,8 @@ func (h *SettingHandler) UpdateRateLimit429CooldownSettings(c *gin.Context) {
 REDACTED
 
 	settings := &service.RateLimit429CooldownSettings{
-		Strategy:                req.Strategy,
-		RetryIntervalMs:         req.RetryIntervalMs,
-		RetryMaxDurationSeconds: req.RetryMaxDurationSeconds,
-		MaxAccountSwitches:      req.MaxAccountSwitches,
-		Enabled:                 req.Enabled,
-		CooldownSeconds:         req.CooldownSeconds,
+		Enabled:         req.Enabled,
+		CooldownSeconds: req.CooldownSeconds,
 REDACTED
 
 	if err := h.settingService.SetRateLimit429CooldownSettings(c.Request.Context(), settings); err != nil {
@@ -161,12 +149,8 @@ REDACTED
 REDACTED
 
 	response.Success(c, dto.RateLimit429CooldownSettings{
-		Enabled:                 updatedSettings.Enabled,
-		CooldownSeconds:         updatedSettings.CooldownSeconds,
-		Strategy:                updatedSettings.Strategy,
-		RetryIntervalMs:         updatedSettings.RetryIntervalMs,
-		RetryMaxDurationSeconds: updatedSettings.RetryMaxDurationSeconds,
-		MaxAccountSwitches:      updatedSettings.MaxAccountSwitches,
+		Enabled:         updatedSettings.Enabled,
+		CooldownSeconds: updatedSettings.CooldownSeconds,
 REDACTED)
 REDACTED
 

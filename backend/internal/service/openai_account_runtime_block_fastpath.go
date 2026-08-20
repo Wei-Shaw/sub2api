@@ -11,33 +11,12 @@ import (
 
 const (
 	openAIAccountStateUpdateTimeout       = 5 * time.Second
-	openAIOAuth429RetryWindow             = 2 * time.Minute
-	openAIOAuth429RetryDelay              = 0
+	openAIOAuth429FallbackCooldown        = 5 * time.Second
 	openAIStopSchedulingBridgeCooldown    = 2 * time.Minute
-	openAIOAuth429MaxAccountAttempts      = 3
 	openAIOAuth429StormWindow             = 10 * time.Second
 	openAIOAuth429StormThreshold          = 20
 	openAIOAuth429StormMaxAccountSwitches = 1
 )
-
-func (s *OpenAIGatewayService) rateLimit429StrategySettings() RateLimit429CooldownSettings {
-	defaults := DefaultRateLimit429CooldownSettings()
-	if s == nil || s.settingService == nil {
-		return *defaults
-REDACTED
-	s.openai429StrategyMu.Lock()
-	defer s.openai429StrategyMu.Unlock()
-	if time.Since(s.openai429StrategyCachedAt) < 5*time.Second {
-		return s.openai429StrategyCached
-REDACTED
-	settings := *defaults
-	if loaded, err := s.settingService.GetRateLimit429CooldownSettings(context.Background()); err == nil && loaded != nil {
-		settings = *loaded
-REDACTED
-	s.openai429StrategyCached = settings
-	s.openai429StrategyCachedAt = time.Now()
-	return settings
-REDACTED
 
 // OpenAIOAuth429FailoverState tracks the request-local follow-up budget after
 // the first Grok OAuth 429. Once that 429 occurs, exactly one different account
@@ -76,6 +55,11 @@ REDACTED
 	if s != nil {
 		scheduleOllamaCloudUsageActivity(s.deferredService, account)
 REDACTED
+	// Capacity shedding describes this request, not account health. Keep the
+	// account schedulable while the request-local retry budget handles recovery.
+	if account != nil && account.Platform == PlatformOpenAI && isOpenAIRequestScopedCapacityShed("", responseBody) {
+		return false
+REDACTED
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
 
@@ -92,6 +76,10 @@ REDACTED
 
 	if s == nil || account == nil {
 		return false
+REDACTED
+	// Team 联动熔断必须先于 model-not-found 与账户级临时不可调度规则的早退。
+	if s.rateLimitService != nil {
+		s.rateLimitService.maybeHandleOpenAITeamLinkedError(stateCtx, account, statusCode, responseBody)
 REDACTED
 	stateCtx = withTempUnschedulableModel(stateCtx, canonicalModel)
 	if s.rateLimitService != nil && len(canonicalModel) > 0 && s.rateLimitService.HandleUpstreamModelNotFound(stateCtx, account, canonicalModel[0], statusCode, responseBody) {
@@ -161,164 +149,20 @@ REDACTED
 		return
 REDACTED
 	s.recordOpenAIOAuth429()
-	if s.ShouldRetryOpenAIOAuth429(account, headers, responseBody) {
-		return
-REDACTED
 
-	cooldownUntil := time.Time{REDACTED
-	hasCooldown := false
+	cooldownUntil := time.Now().Add(openAIOAuth429FallbackCooldown)
 	if s.rateLimitService != nil {
 		if resetAt := s.rateLimitService.calculateOpenAI429ResetTime(headers); resetAt != nil && resetAt.After(time.Now()) {
 			cooldownUntil = *resetAt
-			hasCooldown = true
 	REDACTED else if resetUnix := parseOpenAIRateLimitResetTime(responseBody); resetUnix != nil {
 			if resetAt := time.Unix(*resetUnix, 0); resetAt.After(time.Now()) {
 				cooldownUntil = resetAt
-				hasCooldown = true
 		REDACTED
 	REDACTED else if cooldown, ok := s.rateLimitService.get429FallbackCooldown(ctx, account); ok && cooldown > 0 {
 			cooldownUntil = time.Now().Add(cooldown)
-			hasCooldown = true
 	REDACTED
-REDACTED
-	if !hasCooldown {
-		// The request-local retry window has expired without an upstream reset
-		// signal. Keep the account out of new selections while this request
-		// switches to another candidate, rather than immediately selecting it
-		// again on a concurrent request.
-		cooldownUntil = time.Now().Add(openAIStopSchedulingBridgeCooldown)
 REDACTED
 	s.BlockAccountScheduling(account, cooldownUntil, "429")
-	s.openaiOAuth429RetryStartedAt.Delete(account.ID)
-REDACTED
-
-// shouldRetryOpenAIOAuth429OnSameAccount keeps an OAuth account pinned while
-// a transient 429 is still inside its retry window. API-key accounts keep the
-// existing pool-mode behavior.
-func (s *OpenAIGatewayService) shouldRetryOpenAIOAuth429OnSameAccount(account *Account, statusCode int, shouldDisable bool) bool {
-	if shouldDisable || account == nil {
-		return false
-REDACTED
-	if statusCode == http.StatusTooManyRequests && isOpenAIOAuthAccount(account) && !account.IsShadow() {
-		if s.settingService != nil && s.rateLimit429StrategySettings().Strategy != "same_account_retry" {
-			return false
-	REDACTED
-		// A prior retry window may already have expired and parked this account.
-		// Do not create a fresh window while that runtime block is active.
-		if s.isOpenAIAccountRuntimeBlocked(account) {
-			return false
-	REDACTED
-		return s.openAIOAuth429RetryWindowActive(account)
-REDACTED
-	return account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)
-REDACTED
-
-// ShouldRetryOpenAIOAuth429 is used before persisting a scheduler block. An
-// upstream-provided reset takes precedence; only temporary 429s without one
-// stay on the same OAuth account during the retry window.
-func (s *OpenAIGatewayService) ShouldRetryOpenAIOAuth429(account *Account, headers http.Header, responseBody []byte) bool {
-	if s == nil || !isOpenAIOAuthAccount(account) || account.IsShadow() {
-		return false
-REDACTED
-	if s.isOpenAIAccountRuntimeBlocked(account) {
-		return false
-REDACTED
-	if s.settingService != nil && s.rateLimit429StrategySettings().Strategy != "same_account_retry" {
-		return false
-REDACTED
-	if s.rateLimitService != nil && s.rateLimitService.calculateOpenAI429ResetTime(headers) != nil {
-		return false
-REDACTED
-	if parseOpenAIRateLimitResetTime(responseBody) != nil {
-		return false
-REDACTED
-	return s.openAIOAuth429RetryWindowActive(account)
-REDACTED
-
-func (s *OpenAIGatewayService) openAIOAuth429RetryWindowActive(account *Account) bool {
-	if s == nil || !isOpenAIOAuthAccount(account) || account.IsShadow() {
-		return false
-REDACTED
-	now := time.Now()
-	value, _ := s.openaiOAuth429RetryStartedAt.LoadOrStore(account.ID, now)
-	startedAt, ok := value.(time.Time)
-	if !ok {
-		s.openaiOAuth429RetryStartedAt.Store(account.ID, now)
-		startedAt = now
-REDACTED
-	window := openAIOAuth429RetryWindow
-	if s.settingService != nil {
-		window = time.Duration(s.rateLimit429StrategySettings().RetryMaxDurationSeconds) * time.Second
-REDACTED
-	return now.Sub(startedAt) < window
-REDACTED
-
-func openAIOAuth429SameAccountRetryDelay(statusCode int, account *Account) time.Duration {
-	if statusCode == http.StatusTooManyRequests && isOpenAIOAuthAccount(account) && !account.IsShadow() {
-		return openAIOAuth429RetryDelay
-REDACTED
-	return 0
-REDACTED
-
-func (s *OpenAIGatewayService) openAIOAuth429SameAccountRetryDelay(statusCode int, account *Account) time.Duration {
-	if statusCode == http.StatusTooManyRequests && isOpenAIOAuthAccount(account) && !account.IsShadow() && s != nil && s.settingService != nil {
-		return time.Duration(s.rateLimit429StrategySettings().RetryIntervalMs) * time.Millisecond
-REDACTED
-	return openAIOAuth429SameAccountRetryDelay(statusCode, account)
-REDACTED
-
-// openAIOAuth429RetryDeadline returns the request-local retry window end that
-// was established when the account first saw a temporary OAuth 429.
-func (s *OpenAIGatewayService) openAIOAuth429RetryDeadline(account *Account) time.Time {
-	if s == nil || !isOpenAIOAuthAccount(account) || account.IsShadow() {
-		return time.Time{REDACTED
-REDACTED
-	value, ok := s.openaiOAuth429RetryStartedAt.Load(account.ID)
-	if !ok {
-		return time.Time{REDACTED
-REDACTED
-	startedAt, ok := value.(time.Time)
-	if !ok {
-		return time.Time{REDACTED
-REDACTED
-	window := openAIOAuth429RetryWindow
-	if s.settingService != nil {
-		window = time.Duration(s.rateLimit429StrategySettings().RetryMaxDurationSeconds) * time.Second
-REDACTED
-	return startedAt.Add(window)
-REDACTED
-
-// SameAccountRetryLimit returns the request-local retry budget. OAuth 429s
-// deliberately use a time-derived budget rather than an account pool setting.
-func SameAccountRetryLimit(account *Account, failoverErr *UpstreamFailoverError) int {
-	if failoverErr != nil && failoverErr.StatusCode == http.StatusTooManyRequests &&
-		isOpenAIOAuthAccount(account) && !account.IsShadow() {
-		if failoverErr.SameAccountRetryMax > 0 {
-			return failoverErr.SameAccountRetryMax
-	REDACTED
-		return 24
-REDACTED
-	if account == nil {
-		return 0
-REDACTED
-	return account.GetPoolModeRetryCount()
-REDACTED
-
-func (s *OpenAIGatewayService) openAIOAuth429SameAccountRetryMax() int {
-	if s == nil || s.settingService == nil {
-		return 24
-REDACTED
-	settings := s.rateLimit429StrategySettings()
-	interval := time.Duration(settings.RetryIntervalMs) * time.Millisecond
-	window := time.Duration(settings.RetryMaxDurationSeconds) * time.Second
-	max := int(window / interval)
-	if max < 1 {
-		max = 1
-REDACTED
-	if max > 240 {
-		max = 240
-REDACTED
-	return max
 REDACTED
 
 func (s *OpenAIGatewayService) BlockAccountScheduling(account *Account, until time.Time, reason string) {
@@ -501,11 +345,7 @@ REDACTED
 REDACTED
 
 func (s *OpenAIGatewayService) ShouldStopOpenAIOAuth429Failover(account *Account, statusCode int, failedSwitches int, state *OpenAIOAuth429FailoverState) bool {
-	maxSwitches := openAIOAuth429StormMaxAccountSwitches
-	if s != nil && s.settingService != nil {
-		maxSwitches = s.rateLimit429StrategySettings().MaxAccountSwitches
-REDACTED
-	if failedSwitches < maxSwitches {
+	if failedSwitches < openAIOAuth429StormMaxAccountSwitches {
 		return false
 REDACTED
 	if state != nil && state.grokOAuth429FollowupPending {
@@ -528,9 +368,5 @@ REDACTED
 	if statusCode != http.StatusTooManyRequests || !isOpenAIOAuthAccount(account) {
 		return false
 REDACTED
-	// failedSwitches is incremented after each exhausted candidate. Therefore,
-	// a value of three means this request has already given three distinct OAuth
-	// accounts their full same-account retry window. A 429 storm is diagnostic
-	// only; it must not skip those candidates and return a client 429 early.
-	return failedSwitches >= maxSwitches+1
+	return s.isOpenAIOAuth429Storm()
 REDACTED
