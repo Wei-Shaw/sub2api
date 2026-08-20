@@ -129,7 +129,11 @@ func TestBuildRequest_Edits(t *testing.T) {
 
 func TestToOpenAIResponse(t *testing.T) {
 	t.Parallel()
-	resp := &Response{Images: []Image{{URL: "https://x/1.png"}, {URL: " "}, {URL: "https://x/2.png"}}}
+	resp := &Response{Images: []Image{
+		{URL: "https://x/1.png", ContentType: "image/png", Width: 320, Height: 240, FileName: "one.png", FileSize: 1234},
+		{URL: " "},
+		{URL: "https://x/2.png"},
+	}}
 	out := ToOpenAIResponse(resp, 100)
 	if out.Created != 100 {
 		t.Fatalf("created mismatch: %d", out.Created)
@@ -139,6 +143,9 @@ func TestToOpenAIResponse(t *testing.T) {
 	}
 	if out.Data[0].URL != "https://x/1.png" || out.Data[1].URL != "https://x/2.png" {
 		t.Fatalf("data url mismatch: %#v", out.Data)
+	}
+	if got := out.Data[0]; got.ContentType != "image/png" || got.Width != 320 || got.Height != 240 || got.FileName != "one.png" || got.FileSize != 1234 {
+		t.Fatalf("data metadata mismatch: %#v", got)
 	}
 }
 

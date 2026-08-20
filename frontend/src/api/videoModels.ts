@@ -76,6 +76,8 @@ export interface VideoTaskItem {
   error_reason: string
   video_urls: string[]
   cos_urls: string[]
+  image_urls?: string[]
+  media_type?: string
   request_payload: Record<string, unknown> | null
   result_payload: Record<string, unknown> | null
   created_at: string

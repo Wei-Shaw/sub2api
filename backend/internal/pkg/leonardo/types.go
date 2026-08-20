@@ -17,11 +17,11 @@ const (
 )
 
 type GenerateInput struct {
-	Prompt      string `json:"prompt"`
-	Quality     string `json:"quality"`
-	AspectRatio string `json:"aspect_ratio"`
-	Size        string `json:"size"`
-	Resolution  string `json:"resolution"`
+	Prompt             string   `json:"prompt"`
+	Quality            string   `json:"quality"`
+	Width              int      `json:"width"`
+	Height             int      `json:"height"`
+	ReferenceImageURLs []string `json:"reference_image_urls,omitempty"`
 }
 
 type SubmitRequest struct {
@@ -35,6 +35,7 @@ type SubmitRequest struct {
 
 type Media struct {
 	URL       string `json:"url"`
+	Type      string `json:"type,omitempty"`
 	MediaType string `json:"media_type,omitempty"`
 	MIMEType  string `json:"mime_type,omitempty"`
 	Width     int    `json:"width,omitempty"`
@@ -74,75 +75,64 @@ func BuildSubmitRequest(model string, input fal.ImageGenInput, estimatedCreditCo
 	if estimatedCreditCost <= 0 {
 		estimatedCreditCost = DefaultEstimatedCreditCost
 	}
-	resolution := normalizeResolution(input.Size)
+	width, height := imageDimensions(input.Size)
+	mode := "text-to-image"
+	var referenceImageURLs []string
+	if input.IsEdit {
+		mode = "image-to-image"
+		referenceImageURLs = trimReferenceImageURLs(input.ImageURLs)
+	}
 	return &SubmitRequest{
 		Provider: "leonardo",
 		TaskType: "IMAGE_GENERATION",
 		Model:    strings.TrimSpace(model),
-		Mode:     "text-to-image",
+		Mode:     mode,
 		Input: GenerateInput{
-			Prompt:      strings.TrimSpace(input.Prompt),
-			Quality:     normalizeQuality(input.Quality),
-			AspectRatio: aspectRatio(resolution),
-			Size:        sizeClass(resolution),
-			Resolution:  resolution,
+			Prompt:             strings.TrimSpace(input.Prompt),
+			Quality:            normalizeQuality(input.Quality),
+			Width:              width,
+			Height:             height,
+			ReferenceImageURLs: referenceImageURLs,
 		},
 		EstimatedCreditCost: estimatedCreditCost,
 	}
 }
 
+func trimReferenceImageURLs(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
 func normalizeQuality(value string) string {
 	switch strings.ToUpper(strings.TrimSpace(fal.MapQualityToFal(value))) {
-	case "MEDIUM", "HIGH", "AUTO":
+	case "MEDIUM", "HIGH":
 		return strings.ToUpper(strings.TrimSpace(fal.MapQualityToFal(value)))
+	case "AUTO":
+		// Leonardo does not expose an AUTO quality; use its medium preset.
+		return "MEDIUM"
 	default:
 		return "LOW"
 	}
 }
 
-func normalizeResolution(value string) string {
+func imageDimensions(value string) (int, int) {
 	value = strings.ToLower(strings.TrimSpace(value))
 	parts := strings.SplitN(value, "x", 2)
 	if len(parts) != 2 {
-		return "1024x1024"
+		return 1024, 1024
 	}
 	w, errW := strconv.Atoi(strings.TrimSpace(parts[0]))
 	h, errH := strconv.Atoi(strings.TrimSpace(parts[1]))
 	if errW != nil || errH != nil || w <= 0 || h <= 0 {
-		return "1024x1024"
+		return 1024, 1024
 	}
-	return fmt.Sprintf("%dx%d", w, h)
-}
-
-func aspectRatio(resolution string) string {
-	parts := strings.SplitN(resolution, "x", 2)
-	w, _ := strconv.Atoi(parts[0])
-	h, _ := strconv.Atoi(parts[1])
-	divisor := gcd(w, h)
-	if divisor <= 0 {
-		return "1:1"
-	}
-	return fmt.Sprintf("%d:%d", w/divisor, h/divisor)
-}
-
-func sizeClass(resolution string) string {
-	parts := strings.SplitN(resolution, "x", 2)
-	w, _ := strconv.Atoi(parts[0])
-	h, _ := strconv.Atoi(parts[1])
-	maxDimension := max(w, h)
-	switch {
-	case maxDimension > 2048:
-		return "LARGE"
-	case maxDimension > 1024:
-		return "MEDIUM"
-	default:
-		return "SMALL"
-	}
-}
-
-func gcd(a, b int) int {
-	for b != 0 {
-		a, b = b, a%b
-	}
-	return a
+	return w, h
 }

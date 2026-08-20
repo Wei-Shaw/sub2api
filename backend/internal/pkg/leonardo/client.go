@@ -12,11 +12,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
+	"go.uber.org/zap"
 )
 
 const responseBodyLimit int64 = 8 << 20
+
+const debugPromptLimit = 2000
 
 type APIError struct {
 	StatusCode int
@@ -106,13 +110,27 @@ func (c *Client) TasksURL() string { return c.baseURL + "/v1/tasks" }
 
 func (c *Client) doJSON(ctx context.Context, method, endpoint string, body any, idempotencyKey string, out any) error {
 	var reader io.Reader
+	var requestBody []byte
 	if body != nil {
 		raw, err := json.Marshal(body)
 		if err != nil {
 			return fmt.Errorf("leonardo: marshal request: %w", err)
 		}
+		requestBody = raw
 		reader = bytes.NewReader(raw)
 	}
+	log := logger.FromContext(ctx)
+	requestFields := []zap.Field{
+		zap.String("method", method),
+		zap.String("url", endpoint),
+	}
+	if idempotencyKey != "" {
+		requestFields = append(requestFields, zap.String("idempotency_key", idempotencyKey))
+	}
+	if len(requestBody) > 0 {
+		requestFields = append(requestFields, zap.String("request_body", truncatePromptInJSON(requestBody)))
+	}
+	log.Debug("leonardo.http.request", requestFields...)
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, reader)
 	if err != nil {
 		return fmt.Errorf("leonardo: build request: %w", err)
@@ -137,6 +155,12 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, body any, 
 	if int64(len(raw)) > responseBodyLimit {
 		return errors.New("leonardo: response body too large")
 	}
+	log.Debug("leonardo.http.response",
+		zap.String("method", method),
+		zap.String("url", endpoint),
+		zap.Int("status_code", resp.StatusCode),
+		zap.String("response_body", string(raw)),
+	)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(raw))}
 	}
@@ -146,4 +170,46 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, body any, 
 		}
 	}
 	return nil
+}
+
+// truncatePromptInJSON keeps every request field visible while limiting only
+// the potentially very large image prompt in debug logs.
+func truncatePromptInJSON(raw []byte) string {
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return string(raw)
+	}
+	truncatePromptValue(value)
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return string(raw)
+	}
+	return string(encoded)
+}
+
+func truncatePromptValue(value any) {
+	switch current := value.(type) {
+	case map[string]any:
+		for key, child := range current {
+			if strings.EqualFold(key, "prompt") {
+				if prompt, ok := child.(string); ok {
+					current[key] = truncatePrompt(prompt, debugPromptLimit)
+				}
+				continue
+			}
+			truncatePromptValue(child)
+		}
+	case []any:
+		for _, child := range current {
+			truncatePromptValue(child)
+		}
+	}
+}
+
+func truncatePrompt(prompt string, limit int) string {
+	runes := []rune(prompt)
+	if len(runes) <= limit {
+		return prompt
+	}
+	return string(runes[:limit]) + "...(truncated)"
 }

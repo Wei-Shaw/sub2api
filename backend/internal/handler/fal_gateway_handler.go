@@ -1,10 +1,19 @@
 package handler
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"net/http"
+	"net/url"
+	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +27,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	_ "golang.org/x/image/webp"
 )
 
 // defaultFalPseudoSyncTimeout 伪同步门面阻塞等待上限（超时返回错误但不退费/不终结）。
@@ -224,10 +234,17 @@ func (h *FalGatewayHandler) writeOpenAIImagesResponse(c *gin.Context, reqLog *za
 
 	for i, u := range urls {
 		item := fal.OpenAIImageData{RevisedPrompt: revisedPrompt}
+		if task != nil && i < len(task.ImageMetadata) {
+			metadata := task.ImageMetadata[i]
+			item.ContentType = metadata.ContentType
+			item.Width = metadata.Width
+			item.Height = metadata.Height
+		}
 		if h.cosService != nil {
 			reqLog.Info("fal.images.try_b64_encode", zap.String("image_url", u), zap.Int("index", i))
 			if b64, err := h.cosService.FetchAsBase64(c.Request.Context(), u); err == nil && b64 != "" {
 				item.B64JSON = b64
+				applyLocalImageMetadata(&item, b64, u, i)
 				reqLog.Info("fal.images.b64_encode_success", zap.String("image_url", u), zap.Int("b64_len", len(b64)))
 			} else {
 				reqLog.Warn("fal.images.b64_encode_failed_fallback_url", zap.String("image_url", u), zap.Error(err))
@@ -237,10 +254,54 @@ func (h *FalGatewayHandler) writeOpenAIImagesResponse(c *gin.Context, reqLog *za
 			reqLog.Warn("fal.images.cos_service_nil_fallback_url", zap.String("image_url", u))
 			item.URL = u
 		}
+		if item.FileName == "" {
+			item.FileName = imageFileName(u, i, item.ContentType)
+		}
 		resp.Data = append(resp.Data, item)
 	}
 
 	c.JSON(http.StatusOK, resp)
+}
+
+func applyLocalImageMetadata(item *fal.OpenAIImageData, b64, sourceURL string, index int) {
+	if item == nil {
+		return
+	}
+	data, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return
+	}
+	item.FileSize = int64(len(data))
+	if item.ContentType == "" {
+		item.ContentType = strings.TrimSpace(strings.Split(http.DetectContentType(data), ";")[0])
+	}
+	if item.Width <= 0 || item.Height <= 0 {
+		if config, _, decodeErr := image.DecodeConfig(bytes.NewReader(data)); decodeErr == nil {
+			item.Width = config.Width
+			item.Height = config.Height
+		}
+	}
+	if item.FileName == "" {
+		item.FileName = imageFileName(sourceURL, index, item.ContentType)
+	}
+}
+
+func imageFileName(sourceURL string, index int, contentType string) string {
+	if parsed, err := url.Parse(sourceURL); err == nil {
+		if name := path.Base(strings.TrimSpace(parsed.Path)); name != "." && name != "/" && name != "" {
+			return name
+		}
+	}
+	ext := "png"
+	switch strings.ToLower(strings.TrimSpace(contentType)) {
+	case "image/jpeg":
+		ext = "jpg"
+	case "image/webp":
+		ext = "webp"
+	case "image/gif":
+		ext = "gif"
+	}
+	return "image-" + strconv.Itoa(index+1) + "." + ext
 }
 
 // falAPIForOpenAIImages 把 OpenAI 图片请求映射为所需的 fal api 段：

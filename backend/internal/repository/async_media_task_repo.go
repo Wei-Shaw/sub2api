@@ -99,6 +99,48 @@ func (r *asyncMediaTaskRepository) GetByUpstreamRequestID(ctx context.Context, u
 	return r.queryOne(ctx, `SELECT `+asyncMediaTaskColumns+` FROM async_media_tasks WHERE upstream_request_id = $1 ORDER BY id DESC LIMIT 1`, upstreamRequestID)
 }
 
+func (r *asyncMediaTaskRepository) ListByUserAndModel(ctx context.Context, userID int64, requestedModel string, offset, limit int) ([]*service.AsyncMediaTask, int64, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	const where = ` FROM async_media_tasks WHERE user_id = $1 AND requested_model = $2`
+	countRows, err := r.sql.QueryContext(ctx, `SELECT COUNT(*)`+where, userID, requestedModel)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = countRows.Close() }()
+	var total int64
+	if !countRows.Next() {
+		if err := countRows.Err(); err != nil {
+			return nil, 0, err
+		}
+		return nil, 0, errors.New("count image tasks returned no rows")
+	}
+	if err := countRows.Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := r.sql.QueryContext(ctx, `SELECT `+asyncMediaTaskColumns+where+` ORDER BY created_at DESC, id DESC LIMIT $3 OFFSET $4`, userID, requestedModel, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = rows.Close() }()
+	items := make([]*service.AsyncMediaTask, 0)
+	for rows.Next() {
+		task, scanErr := scanAsyncMediaTask(rows)
+		if scanErr != nil {
+			return nil, 0, scanErr
+		}
+		items = append(items, task)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
+}
+
 func (r *asyncMediaTaskRepository) UpdateUpstreamRef(ctx context.Context, id int64, upstreamRequestID, statusURL, responseURL string) error {
 	query := `
 		UPDATE async_media_tasks

@@ -17,6 +17,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/fal"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/leonardo"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,6 +35,22 @@ type fakeUserRepo struct {
 	refunds       []float64
 	refundUserIDs []int64
 	deductErr     error
+}
+
+func TestExtractLeonardoImageResultPreservesMetadata(t *testing.T) {
+	task := &leonardo.Task{Output: leonardo.Output{Media: []leonardo.Media{{
+		URL: "https://cdn.example.test/result.png", Type: "image/png", Width: 1536, Height: 1024,
+	}}}}
+	urls, sizes, metadata := extractLeonardoImageResult(task)
+	if len(urls) != 1 || urls[0] != "https://cdn.example.test/result.png" {
+		t.Fatalf("unexpected urls: %#v", urls)
+	}
+	if len(sizes) != 1 || sizes[0] != "1536x1024" {
+		t.Fatalf("unexpected sizes: %#v", sizes)
+	}
+	if len(metadata) != 1 || metadata[0].ContentType != "image/png" || metadata[0].Width != 1536 || metadata[0].Height != 1024 {
+		t.Fatalf("unexpected metadata: %#v", metadata)
+	}
 }
 
 type fakeBalanceInvalidator struct {
@@ -196,6 +213,27 @@ func (r *fakeTaskRepo) GetByUpstreamRequestID(_ context.Context, id string) (*As
 		}
 	}
 	return nil, nil
+}
+
+func (r *fakeTaskRepo) ListByUserAndModel(_ context.Context, userID int64, requestedModel string, offset, limit int) ([]*AsyncMediaTask, int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	items := make([]*AsyncMediaTask, 0)
+	for _, t := range r.byID {
+		if t.UserID == userID && t.RequestedModel == requestedModel {
+			cp := *t
+			items = append(items, &cp)
+		}
+	}
+	total := int64(len(items))
+	if offset >= len(items) {
+		return nil, total, nil
+	}
+	end := offset + limit
+	if limit <= 0 || end > len(items) {
+		end = len(items)
+	}
+	return items[offset:end], total, nil
 }
 
 func (r *fakeTaskRepo) UpdateUpstreamRef(_ context.Context, id int64, upstreamID, statusURL, responseURL string) error {

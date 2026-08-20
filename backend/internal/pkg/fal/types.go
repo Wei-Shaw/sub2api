@@ -122,6 +122,11 @@ type OpenAIImageData struct {
 	URL           string `json:"url,omitempty"`
 	B64JSON       string `json:"b64_json,omitempty"`
 	RevisedPrompt string `json:"revised_prompt,omitempty"`
+	ContentType   string `json:"content_type,omitempty"`
+	Width         int    `json:"width,omitempty"`
+	Height        int    `json:"height,omitempty"`
+	FileName      string `json:"file_name,omitempty"`
+	FileSize      int64  `json:"file_size,omitempty"`
 }
 
 // OpenAIImagesUsageTokenDetails 复刻 gpt-image usage 的 token 明细。

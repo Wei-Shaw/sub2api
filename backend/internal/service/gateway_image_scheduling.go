@@ -614,7 +614,7 @@ func (s *GatewayService) buildImageSelectionDiagnostic(
 		diagnostic.CapabilitySupported = true
 	case PlatformLeonardo:
 		diagnostic.ModelSupported = s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, "")
-		diagnostic.CapabilitySupported = !strings.EqualFold(falAPI, FalAPIEdit)
+		diagnostic.CapabilitySupported = true
 	}
 	diagnostic.RequestSupported = s.imageAccountSupportsRequest(ctx, account, requestedModel, imageCapability, falAPI)
 	diagnostic.PricingConfigured = s.falAccountPricingConfigured(ctx, account, requestedModel, falAPI, groupID)
@@ -844,8 +844,7 @@ func (s *GatewayService) imageAccountSupportsRequest(ctx context.Context, accoun
 	case PlatformFal:
 		return s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, falAPI)
 	case PlatformLeonardo:
-		return !strings.EqualFold(falAPI, FalAPIEdit) &&
-			s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, "")
+		return s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, "")
 	default:
 		return false
 	}
@@ -865,17 +864,23 @@ func (s *GatewayService) falAccountPricingConfigured(ctx context.Context, accoun
 			upstreamModel = "gpt-image-2"
 		}
 	}
-	resolved := s.resolver.Resolve(ctx, PricingInput{Model: upstreamModel, GroupID: groupID})
-	if resolved != nil && resolved.Source == PricingSourceChannel {
+	// Group model pricing lives on the hydrated Group and must be passed to the
+	// resolver explicitly. Otherwise media account selection only recognizes
+	// channel pricing and incorrectly rejects FAL/Leonardo accounts.
+	var group *Group
+	if groupID != nil {
+		group = s.groupFromContext(ctx, *groupID)
+		if group == nil && s.groupRepo != nil {
+			group, _ = s.groupRepo.GetByIDLite(ctx, *groupID)
+		}
+	}
+	resolved := s.resolver.Resolve(ctx, PricingInput{Model: upstreamModel, GroupID: groupID, Group: group})
+	if resolved != nil && (resolved.Source == PricingSourceGroup || resolved.Source == PricingSourceChannel) {
 		return (resolved.Mode == BillingModeImage || resolved.Mode == BillingModePerRequest) &&
 			(len(resolved.RequestTiers) > 0 || resolved.DefaultPerRequestPrice > 0)
 	}
 	if groupID == nil {
 		return false
-	}
-	group := s.groupFromContext(ctx, *groupID)
-	if group == nil && s.groupRepo != nil {
-		group, _ = s.groupRepo.GetByIDLite(ctx, *groupID)
 	}
 	if group == nil {
 		return false

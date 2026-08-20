@@ -61,6 +61,9 @@ type AsyncMediaTask struct {
 
 	ImageURLs []string
 	CosURLs   []string
+	// ImageMetadata is populated from provider output for the current request
+	// so the OpenAI-compatible response can preserve provider dimensions/type.
+	ImageMetadata []ImageOutputMetadata
 
 	ErrorReason    *string
 	FailDeadlineAt *time.Time
@@ -74,6 +77,13 @@ type AsyncMediaTask struct {
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+type ImageOutputMetadata struct {
+	URL         string
+	ContentType string
+	Width       int
+	Height      int
 }
 
 // IsTerminal 判断任务是否处于终态（不再需要 reconciler 处理）。
@@ -159,6 +169,8 @@ type AsyncMediaTaskRepository interface {
 	GetByInternalRequestID(ctx context.Context, internalRequestID string) (*AsyncMediaTask, error)
 	// GetByUpstreamRequestID 按上游 request_id 查询；不存在返回 (nil, nil)。
 	GetByUpstreamRequestID(ctx context.Context, upstreamRequestID string) (*AsyncMediaTask, error)
+	// ListByUserAndModel returns the current user's image tasks for one requested model.
+	ListByUserAndModel(ctx context.Context, userID int64, requestedModel string, offset, limit int) ([]*AsyncMediaTask, int64, error)
 	// UpdateUpstreamRef 回填上游 request_id / status_url / response_url，并将状态推进到 running。
 	UpdateUpstreamRef(ctx context.Context, id int64, upstreamRequestID, statusURL, responseURL string) error
 	// MarkSucceeded 成功终态：写入图片地址、转存地址、结算费用，并将状态置 succeeded。

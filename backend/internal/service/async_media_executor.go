@@ -282,6 +282,16 @@ func (s *AsyncMediaService) GetTaskByInternalID(ctx context.Context, internalReq
 	return s.taskRepo.GetByInternalRequestID(ctx, internalRequestID)
 }
 
+// GetTaskByID returns an image task by primary key.
+func (s *AsyncMediaService) GetTaskByID(ctx context.Context, id int64) (*AsyncMediaTask, error) {
+	return s.taskRepo.GetByID(ctx, id)
+}
+
+// ListByUserAndModel returns image tasks for the model playground history.
+func (s *AsyncMediaService) ListByUserAndModel(ctx context.Context, userID int64, requestedModel string, offset, limit int) ([]*AsyncMediaTask, int64, error) {
+	return s.taskRepo.ListByUserAndModel(ctx, userID, requestedModel, offset, limit)
+}
+
 // GetTaskByUpstreamID 按上游 request_id 查询任务（不存在返回 nil,nil）。
 func (s *AsyncMediaService) GetTaskByUpstreamID(ctx context.Context, upstreamRequestID string) (*AsyncMediaTask, error) {
 	return s.taskRepo.GetByUpstreamRequestID(ctx, upstreamRequestID)
@@ -839,6 +849,24 @@ func (s *AsyncMediaService) submitUpstream(ctx context.Context, in *AsyncMediaSu
 		}
 		request := leonardo.BuildSubmitRequest(upstreamModel, in.Input, in.Account.LeonardoEstimatedCreditCost())
 		idempotencyKey := "sub2api-" + strings.TrimSpace(in.InternalRequestID)
+		logger.FromContext(ctx).Debug("leonardo.image.submit_parameters",
+			zap.Int64("account_id", in.Account.ID),
+			zap.Int64("group_id", derefGroupID(in.GroupID)),
+			zap.Int64("api_key_id", in.APIKeyID),
+			zap.String("internal_request_id", in.InternalRequestID),
+			zap.String("requested_model", in.RequestedModel),
+			zap.String("upstream_model", request.Model),
+			zap.String("provider", request.Provider),
+			zap.String("task_type", request.TaskType),
+			zap.String("mode", request.Mode),
+			zap.String("prompt", truncateLeonardoDebugPrompt(request.Input.Prompt)),
+			zap.String("quality", request.Input.Quality),
+			zap.Int("width", request.Input.Width),
+			zap.Int("height", request.Input.Height),
+			zap.Strings("reference_image_urls", request.Input.ReferenceImageURLs),
+			zap.Float64("estimated_credit_cost", request.EstimatedCreditCost),
+			zap.String("idempotency_key", idempotencyKey),
+		)
 		task, err := client.Submit(ctx, request, idempotencyKey)
 		if err != nil {
 			return "", "", "", err
@@ -872,6 +900,12 @@ func (s *AsyncMediaService) pollLeonardoOnce(ctx context.Context, task *AsyncMed
 		return task, false, fmt.Errorf("async media poll: build leonardo client: %w", err)
 	}
 	requestID := amDerefStr(task.UpstreamRequestID)
+	logger.FromContext(ctx).Debug("leonardo.image.status_parameters",
+		zap.Int64("account_id", account.ID),
+		zap.Int64("task_id", task.ID),
+		zap.String("upstream_request_id", requestID),
+		zap.String("url", client.BuildTaskURL(requestID)),
+	)
 	upstreamTask, err := client.GetTask(ctx, requestID)
 	if err != nil {
 		var apiErr *leonardo.APIError
@@ -888,11 +922,12 @@ func (s *AsyncMediaService) pollLeonardoOnce(ctx context.Context, task *AsyncMed
 	if !upstreamTask.IsCompleted() {
 		return task, false, nil
 	}
-	imageURLs, imageOutputSizes := extractLeonardoImageResult(upstreamTask)
+	imageURLs, imageOutputSizes, imageMetadata := extractLeonardoImageResult(upstreamTask)
 	if len(imageURLs) == 0 {
 		s.markFailedAndRefund(ctx, task, billingType, "upstream returned no images")
 		return task, true, nil
 	}
+	task.ImageMetadata = imageMetadata
 	s.markSucceeded(ctx, task, account.BillingRateMultiplier(), billingType, imageURLs, imageOutputSizes)
 	return task, true, nil
 }
@@ -995,12 +1030,13 @@ func extractFalImageResult(resp *fal.Response) ([]string, []string) {
 	return urls, sizes
 }
 
-func extractLeonardoImageResult(task *leonardo.Task) ([]string, []string) {
+func extractLeonardoImageResult(task *leonardo.Task) ([]string, []string, []ImageOutputMetadata) {
 	if task == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	urls := make([]string, 0, len(task.Output.Media))
 	sizes := make([]string, 0, len(task.Output.Media))
+	metadata := make([]ImageOutputMetadata, 0, len(task.Output.Media))
 	for _, media := range task.Output.Media {
 		if url := strings.TrimSpace(media.URL); url != "" {
 			urls = append(urls, url)
@@ -1009,9 +1045,17 @@ func extractLeonardoImageResult(task *leonardo.Task) ([]string, []string) {
 				size = fmt.Sprintf("%dx%d", media.Width, media.Height)
 			}
 			sizes = append(sizes, size)
+			contentType := strings.TrimSpace(media.Type)
+			if contentType == "" {
+				contentType = strings.TrimSpace(media.MediaType)
+			}
+			if contentType == "" {
+				contentType = strings.TrimSpace(media.MIMEType)
+			}
+			metadata = append(metadata, ImageOutputMetadata{URL: url, ContentType: contentType, Width: media.Width, Height: media.Height})
 		}
 	}
-	return urls, sizes
+	return urls, sizes, metadata
 }
 
 func mergeImageOutputSizes(current, fallback []string, count int) []string {
@@ -1099,4 +1143,14 @@ func amDerefInt64(p *int64) int64 {
 		return 0
 	}
 	return *p
+}
+
+const leonardoDebugPromptLimit = 2000
+
+func truncateLeonardoDebugPrompt(prompt string) string {
+	runes := []rune(prompt)
+	if len(runes) <= leonardoDebugPromptLimit {
+		return prompt
+	}
+	return string(runes[:leonardoDebugPromptLimit]) + "...(truncated)"
 }

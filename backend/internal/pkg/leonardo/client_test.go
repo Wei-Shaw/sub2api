@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/fal"
@@ -36,13 +37,19 @@ func TestClientSubmitAndGetTask(t *testing.T) {
 			gotKey = r.Header.Get("Idempotency-Key")
 			var request SubmitRequest
 			require.NoError(t, json.Unmarshal(body, &request))
+			var rawRequest map[string]any
+			require.NoError(t, json.Unmarshal(body, &rawRequest))
+			rawInput, ok := rawRequest["input"].(map[string]any)
+			require.True(t, ok)
+			require.NotContains(t, rawInput, "aspect_ratio")
+			require.NotContains(t, rawInput, "size")
+			require.NotContains(t, rawInput, "resolution")
 			require.Equal(t, "leonardo", request.Provider)
 			require.Equal(t, "IMAGE_GENERATION", request.TaskType)
 			require.Equal(t, "gpt-image-2", request.Model)
 			require.Equal(t, "LOW", request.Input.Quality)
-			require.Equal(t, "1:1", request.Input.AspectRatio)
-			require.Equal(t, "SMALL", request.Input.Size)
-			require.Equal(t, "1024x1024", request.Input.Resolution)
+			require.Equal(t, 1024, request.Input.Width)
+			require.Equal(t, 1024, request.Input.Height)
 			return jsonResponse(http.StatusOK, Task{TaskUUID: "task-123", Status: "PENDING"}), nil
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/task-123":
 			return jsonResponse(http.StatusOK, Task{TaskUUID: "task-123", Status: StatusCompleted, Output: Output{Media: []Media{{URL: "https://cdn.example/image.png", MediaType: "image/png", Width: 1024, Height: 1024}}}}), nil
@@ -60,6 +67,73 @@ func TestClientSubmitAndGetTask(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, task.IsCompleted())
 	require.Len(t, task.Output.Media, 1)
+}
+
+func TestTruncatePromptInJSONOnlyTruncatesPrompt(t *testing.T) {
+	longPrompt := strings.Repeat("绘", debugPromptLimit+20)
+	got := truncatePromptInJSON([]byte(`{"provider":"leonardo","input":{"prompt":"` + longPrompt + `","quality":"HIGH","resolution":"2048x2048"}}`))
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(got), &payload))
+	input, ok := payload["input"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "HIGH", input["quality"])
+	require.Equal(t, "2048x2048", input["resolution"])
+	prompt, ok := input["prompt"].(string)
+	require.True(t, ok)
+	require.Contains(t, prompt, "...(truncated)")
+	require.Less(t, len([]rune(prompt)), len([]rune(longPrompt)))
+}
+
+func TestBuildSubmitRequestAutoQualityUsesMedium(t *testing.T) {
+	for _, quality := range []string{"auto", "AUTO"} {
+		request := BuildSubmitRequest("gpt-image-2", fal.ImageGenInput{Quality: quality}, 8)
+		require.Equal(t, "MEDIUM", request.Input.Quality, quality)
+	}
+}
+
+func TestBuildSubmitRequestEditUsesReferenceImages(t *testing.T) {
+	request := BuildSubmitRequest("gpt-image-2", fal.ImageGenInput{
+		Prompt:    "edit this image",
+		Size:      "1536x1024",
+		IsEdit:    true,
+		ImageURLs: []string{" https://cdn.example/input-1.png ", "", "https://cdn.example/input-2.jpg"},
+	}, 8)
+
+	require.Equal(t, "image-to-image", request.Mode)
+	require.Equal(t, 1536, request.Input.Width)
+	require.Equal(t, 1024, request.Input.Height)
+	require.Equal(t, []string{"https://cdn.example/input-1.png", "https://cdn.example/input-2.jpg"}, request.Input.ReferenceImageURLs)
+
+	raw, err := json.Marshal(request)
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"provider":"leonardo",
+		"task_type":"IMAGE_GENERATION",
+		"model":"gpt-image-2",
+		"mode":"image-to-image",
+		"input":{
+			"prompt":"edit this image",
+			"quality":"LOW",
+			"width":1536,
+			"height":1024,
+			"reference_image_urls":["https://cdn.example/input-1.png","https://cdn.example/input-2.jpg"]
+		},
+		"estimated_credit_cost":8
+	}`, string(raw))
+}
+
+func TestBuildSubmitRequestTextToImageOmitsReferenceImages(t *testing.T) {
+	request := BuildSubmitRequest("gpt-image-2", fal.ImageGenInput{
+		Prompt:    "draw a new image",
+		ImageURLs: []string{"https://cdn.example/ignored.png"},
+	}, 8)
+
+	require.Equal(t, "text-to-image", request.Mode)
+	require.Empty(t, request.Input.ReferenceImageURLs)
+	raw, err := json.Marshal(request)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "reference_image_urls")
 }
 
 func jsonResponse(status int, value any) *http.Response {

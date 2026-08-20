@@ -401,7 +401,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	notificationOutboxWorker := service.ProvideNotificationOutboxWorker(notificationOutboxRepository, notificationEmailService, configConfig)
 	companyOperationsMonitor := service.ProvideCompanyOperationsMonitor(organizationService, notificationOutboxWorker, apiKeyService, configConfig)
 	organizationHandler := handler.NewOrganizationHandler(organizationService, authService, companyOperationsMonitor, opsService, ssoSessionService)
-	videoModelHandler := handler.NewVideoModelHandler(apiKeyService, accountRepository, modelPricingResolver, modelIntroService, asyncVideoService)
+	videoModelHandler := handler.NewVideoModelHandler(apiKeyService, accountRepository, modelPricingResolver, modelIntroService, asyncVideoService, asyncMediaService)
 	userMaterialRepository := repository.NewUserMaterialRepository(db)
 	userMaterialService := service.NewUserMaterialService(userMaterialRepository, cosImageTransferService)
 	userMaterialHandler := handler.NewUserMaterialHandler(userMaterialService)
