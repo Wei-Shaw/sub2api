@@ -98,8 +98,10 @@ func TestHTTPUpstreamDoWithTLSPlainHTTPUsesConfiguredSOCKSProxy(t *testing.T) {
 func TestTLSFingerprintHTTPSProxyFallsBackWithoutBypassingProxy(t *testing.T) {
 	proxyURL, err := url.Parse("https://user:pass@proxy.example:8443")
 	require.NoError(t, err)
-	transport, err := buildUpstreamTransportWithTLSFingerprint(poolSettings{}, proxyURL, &tlsfingerprint.Profile{Name: "test"})
+	client, err := buildUpstreamTransportWithTLSFingerprint(poolSettings{}, proxyURL, &tlsfingerprint.Profile{Name: "test"})
 	require.NoError(t, err)
+	transport, ok := client.Transport.(*http.Transport)
+	require.True(t, ok, "expected underlying *http.Transport for HTTPS proxy fallback")
 	require.NotNil(t, transport.Proxy)
 	require.Nil(t, transport.DialTLSContext)
 	req := &http.Request{URL: &url.URL{Scheme: "https", Host: "upstream.example"}}

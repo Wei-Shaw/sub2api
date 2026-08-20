@@ -5,14 +5,19 @@ package tlsfingerprint
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
+	"sync"
+	"time"
 
 	utls "github.com/refraction-networking/utls"
+	"golang.org/x/net/http2"
 	"golang.org/x/net/proxy"
 )
 
@@ -25,7 +30,7 @@ type Profile struct {
 	PointFormats        []uint16
 	EnableGREASE        bool
 	SignatureAlgorithms []uint16 // Empty uses defaultSignatureAlgorithms
-	ALPNProtocols       []string // Empty uses ["http/1.1"]
+	ALPNProtocols       []string // Empty uses ["h2", "http/1.1"]
 	SupportedVersions   []uint16 // Empty uses [TLS1.3, TLS1.2]
 	KeyShareGroups      []uint16 // Empty uses [X25519]
 	PSKModes            []uint16 // Empty uses [psk_dhe_ke]
@@ -358,7 +363,7 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 		}
 	}
 
-	alpnProtocols := []string{"http/1.1"}
+	alpnProtocols := []string{"h2", "http/1.1"}
 	if profile != nil && len(profile.ALPNProtocols) > 0 {
 		alpnProtocols = profile.ALPNProtocols
 	}
@@ -463,4 +468,147 @@ func toUint8s(vals []uint16) []uint8 {
 		out[i] = uint8(v)
 	}
 	return out
+}
+
+// TLSConnState is the subset of a TLS connection that TLSRoundTripper needs to
+// inspect the negotiated ALPN protocol. *utls.Conn satisfies this interface.
+type TLSConnState interface {
+	ConnectionState() utls.ConnectionState
+}
+
+// UtlsDialFunc dials a uTLS connection to addr with the configured fingerprint.
+// It is used by both the HTTP/1.1 and HTTP/2 transport paths so that every
+// connection carries the same TLS fingerprint.
+type UtlsDialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
+
+// utlsDialFunc is an alias for UtlsDialFunc for internal use.
+type utlsDialFunc = UtlsDialFunc
+
+// TLSRoundTripper is an http.RoundTripper that performs uTLS fingerprinted
+// handshakes and then routes traffic over HTTP/2 or HTTP/1.1 based on the
+// ALPN protocol negotiated during the handshake.
+//
+// Background: Go's net/http.Transport cannot use HTTP/2 with a custom
+// DialTLSContext that returns *utls.UConn (instead of *tls.Conn). The type
+// assertion in Transport.dialConn fails, so NegotiatedProtocol is never read
+// and the connection silently degrades to HTTP/1.1 even when the ALPN
+// includes "h2".  (See refraction-networking/utls#16, golang/go#41236.)
+//
+// TLSRoundTripper works around this by performing a "bootstrap" uTLS dial on
+// the first request, inspecting the negotiated ALPN, and then delegating to
+// either:
+//   - http2.Transport (which does NOT assert *tls.Conn in its DialTLS), or
+//   - http.Transport with the uTLS DialTLSContext.
+//
+// The appropriate inner transport is cached per (host, proxy) key. The
+// bootstrap connection is reused for the first request to avoid a wasted dial.
+type TLSRoundTripper struct {
+	dial     utlsDialFunc
+	mu       sync.RWMutex
+	h2       http.RoundTripper // lazily initialized
+	h1       http.RoundTripper // lazily initialized
+	bootstrap net.Conn         // reused for the first h2/h1 request
+}
+
+// NewTLSRoundTripper creates a RoundTripper that uses the given dial function
+// for all uTLS connections.
+func NewTLSRoundTripper(dial utlsDialFunc) *TLSRoundTripper {
+	return &TLSRoundTripper{dial: dial}
+}
+
+func (rt *TLSRoundTripper) getH2() http.RoundTripper {
+	rt.mu.RLock()
+	if rt.h2 != nil {
+		rt.mu.RUnlock()
+		return rt.h2
+	}
+	rt.mu.RUnlock()
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.h2 != nil {
+		return rt.h2
+	}
+	rt.h2 = &http2.Transport{
+		DialTLS: func(network, addr string, _ *tls.Config) (net.Conn, error) {
+			if rt.bootstrap != nil {
+				c := rt.bootstrap
+				rt.bootstrap = nil
+				return c, nil
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			return rt.dial(ctx, network, addr)
+		},
+		AllowHTTP: false,
+	}
+	return rt.h2
+}
+
+func (rt *TLSRoundTripper) getH1() http.RoundTripper {
+	rt.mu.RLock()
+	if rt.h1 != nil {
+		rt.mu.RUnlock()
+		return rt.h1
+	}
+	rt.mu.RUnlock()
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.h1 != nil {
+		return rt.h1
+	}
+	rt.h1 = &http.Transport{
+		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			if rt.bootstrap != nil {
+				c := rt.bootstrap
+				rt.bootstrap = nil
+				return c, nil
+			}
+			return rt.dial(ctx, network, addr)
+		},
+		ForceAttemptHTTP2: false,
+	}
+	return rt.h1
+}
+
+// RoundTrip implements http.RoundTripper. On the first call it dials a bootstrap
+// uTLS connection, inspects the negotiated ALPN, and delegates to the matching
+// inner transport. Subsequent calls go directly to the cached inner transport.
+func (rt *TLSRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Determine which inner transport to use.
+	// On the first request, perform a bootstrap dial to sniff ALPN.
+	if rt.h2 == nil && rt.h1 == nil {
+		addr := req.URL.Host
+		if !containsPort(addr) {
+			addr = net.JoinHostPort(addr, "443")
+		}
+		ctx := req.Context()
+		conn, err := rt.dial(ctx, "tcp", addr)
+		if err != nil {
+			return nil, err
+		}
+		// Inspect negotiated ALPN.
+		var proto string
+		if cs, ok := conn.(TLSConnState); ok {
+			proto = cs.ConnectionState().NegotiatedProtocol
+		}
+		rt.bootstrap = conn
+		if proto == "h2" {
+			_ = rt.getH2() // initialize h2 transport
+		} else {
+			_ = rt.getH1() // initialize h1 transport
+		}
+	}
+	if rt.h2 != nil {
+		return rt.h2.RoundTrip(req)
+	}
+	return rt.getH1().RoundTrip(req)
+}
+
+// containsPort returns true if the address already has a port suffix.
+func containsPort(addr string) bool {
+	// IPv6 literal in brackets.
+	if addr[0] == '[' {
+		return strings.LastIndex(addr, "]") < strings.LastIndex(addr, ":")
+	}
+	return strings.Count(addr, ":") == 1
 }

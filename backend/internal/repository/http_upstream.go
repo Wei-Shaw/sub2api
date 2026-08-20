@@ -546,15 +546,15 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 		}
 	}
 
-	// 创建带 TLS 指纹的 Transport
+	// 创建带 TLS 指纹的客户端
 	slog.Debug("tls_fingerprint_creating_new_client", "account_id", accountID, "cache_key", cacheKey, "proxy", proxyKey)
-	transport, err := buildUpstreamTransportWithTLSFingerprint(settings, parsedProxy, profile)
+	fingerprintClient, err := buildUpstreamTransportWithTLSFingerprint(settings, parsedProxy, profile)
 	if err != nil {
 		s.mu.Unlock()
 		return nil, fmt.Errorf("build TLS fingerprint transport: %w", err)
 	}
 
-	client := &http.Client{Transport: transport}
+	client := fingerprintClient
 	if s.shouldValidateResolvedIP() {
 		client.CheckRedirect = s.redirectChecker
 	}
@@ -1342,39 +1342,24 @@ func enableOpenAIHTTP2KeepAlive(transport *http.Transport) (*http2.Transport, er
 	return h2, nil
 }
 
-// buildUpstreamTransportWithTLSFingerprint 构建带 TLS 指纹伪装的 Transport
-// 使用 utls 库模拟 Claude CLI 的 TLS 指纹
+// buildUpstreamTransportWithTLSFingerprint 构建带 TLS 指纹伪装的 HTTP 客户端。
+// 返回 *http.Client 而非 *http.Transport，因为 TLSRoundTripper 需要封装
+// uTLS 连接的 ALPN 嗅探逻辑，无法直接暴露 *http.Transport。
 //
-// 参数:
-//   - settings: 连接池配置
-//   - proxyURL: 代理 URL（nil 表示直连）
-//   - profile: TLS 指纹配置
-//
-// 返回:
-//   - *http.Transport: 配置好的 Transport 实例
-//   - error: 配置错误
-//
-// 代理类型处理:
-//   - nil/空: 直连，使用 TLSFingerprintDialer
-//   - http/https: HTTP 代理，使用 HTTPProxyDialer（CONNECT 隧道 + utls 握手）
-//   - socks5: SOCKS5 代理，使用 SOCKS5ProxyDialer（SOCKS5 隧道 + utls 握手）
-func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *url.URL, profile *tlsfingerprint.Profile) (*http.Transport, error) {
-	transport := &http.Transport{
-		MaxIdleConns:          settings.maxIdleConns,
-		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
-		MaxConnsPerHost:       settings.maxConnsPerHost,
-		IdleConnTimeout:       settings.idleConnTimeout,
-		ResponseHeaderTimeout: settings.responseHeaderTimeout,
-		// 禁用默认的 TLS，我们使用自定义的 DialTLSContext
-		ForceAttemptHTTP2: false,
-	}
-
+// 使用 TLSRoundTripper 解决 uTLS + HTTP/2 兼容性问题：
+// Go 的 net/http.Transport 无法对 *utls.Conn 做 *tls.Conn 类型断言，
+// 导致即使 ALPN 协商了 "h2" 也会静默降级到 HTTP/1.1。
+// TLSRoundTripper 通过 bootstrap ALPN 嗅探，h2 走 http2.Transport，
+// h1 走 http.Transport，两者都使用同一个 uTLS dial 函数。
+func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *url.URL, profile *tlsfingerprint.Profile) (*http.Client, error) {
 	// 根据代理类型选择合适的 TLS 指纹 Dialer
+	var dialFunc tlsfingerprint.UtlsDialFunc
+
 	if proxyURL == nil {
 		// 直连：使用 TLSFingerprintDialer
 		slog.Debug("tls_fingerprint_transport_direct")
 		dialer := tlsfingerprint.NewDialer(profile, nil)
-		transport.DialTLSContext = dialer.DialTLSContext
+		dialFunc = dialer.DialTLSContext
 	} else {
 		scheme := strings.ToLower(proxyURL.Scheme)
 		switch scheme {
@@ -1382,26 +1367,33 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 			// SOCKS5 代理：使用 SOCKS5ProxyDialer
 			slog.Debug("tls_fingerprint_transport_socks5", "proxy", proxyURL.Host)
 			socks5Dialer := tlsfingerprint.NewSOCKS5ProxyDialer(profile, proxyURL)
-			transport.DialTLSContext = socks5Dialer.DialTLSContext
+			dialFunc = socks5Dialer.DialTLSContext
 		case "https":
 			// The fingerprint dialer emits a plaintext CONNECT preface and cannot
 			// establish TLS to an HTTPS proxy. Keep proxy routing via net/http.
-			return buildUpstreamTransport(settings, proxyURL, upstreamProtocolModeDefault)
+			fallbackTransport, err := buildUpstreamTransport(settings, proxyURL, upstreamProtocolModeDefault)
+			if err != nil {
+				return nil, err
+			}
+			return &http.Client{Transport: fallbackTransport}, nil
 		case "http":
 			// HTTP/HTTPS 代理：使用 HTTPProxyDialer（CONNECT 隧道）
 			slog.Debug("tls_fingerprint_transport_http_connect", "proxy", proxyURL.Host)
 			httpDialer := tlsfingerprint.NewHTTPProxyDialer(profile, proxyURL)
-			transport.DialTLSContext = httpDialer.DialTLSContext
+			dialFunc = httpDialer.DialTLSContext
 		default:
 			// 未知代理类型，回退到普通代理配置（无 TLS 指纹）
 			slog.Debug("tls_fingerprint_transport_unknown_scheme_fallback", "scheme", scheme)
-			if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
+			fallbackTransport, err := buildUpstreamTransport(settings, proxyURL, upstreamProtocolModeDefault)
+			if err != nil {
 				return nil, err
 			}
+			return &http.Client{Transport: fallbackTransport}, nil
 		}
 	}
 
-	return transport, nil
+	rt := tlsfingerprint.NewTLSRoundTripper(dialFunc)
+	return &http.Client{Transport: rt}, nil
 }
 
 // trackedBody 带跟踪功能的响应体包装器
