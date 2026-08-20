@@ -992,6 +992,28 @@ describe('EditAccountModal', () => {
     ])
   })
 
+  it('echoes and preserves the legacy prompt_cache_retention capability token', async () => {
+    const account = buildAccount()
+    account.credentials.openai_capabilities = ['chat_completions', 'prompt_cache_retention']
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const checkbox = wrapper.get<HTMLInputElement>(
+      '[data-testid="openai-endpoint-capability-prompt_cache_retention"]'
+    )
+    expect(checkbox.element.checked).toBe(true)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_capabilities).toEqual([
+      'chat_completions',
+      'prompt_cache_retention'
+    ])
+  })
+
 	it('submits OpenAI quota auto-pause thresholds in extra', async () => {
 	  const account = buildAccount()
 	  account.extra = {

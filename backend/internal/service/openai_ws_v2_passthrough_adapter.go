@@ -780,6 +780,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, blocked.Message, blocked)
 	}
 	firstClientMessage = updatedFirst
+	if sanitized, changed, sanitizeErr := normalizeOpenAIPromptCacheFieldsRaw(firstClientMessage, account, capturedSessionModel); sanitizeErr != nil {
+		return fmt.Errorf("sanitize prompt cache fields on first ws frame: %w", sanitizeErr)
+	} else if changed {
+		firstClientMessage = sanitized
+	}
 
 	// 在 policy filter 之后再提取 service_tier / reasoning_effort 用于
 	// usage 上报：filter
@@ -1074,6 +1079,23 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			}
 			if isResponseCreate && model != "" && model != strings.TrimSpace(gjson.GetBytes(payload, "model").String()) {
 				payload = s.ReplaceModelInBody(payload, model)
+			}
+			if isResponseCreate {
+				if sanitized, changed, sanitizeErr := normalizeOpenAIPromptCacheFieldsRaw(payload, account, model); sanitizeErr != nil {
+					return payload, nil, sanitizeErr
+				} else if changed {
+					payload = sanitized
+				}
+			} else if eventType == "session.update" {
+				mappedSessionModel := openAIWSPassthroughPolicyModelFromSessionFrame(account, payload)
+				if mappedSessionModel == "" {
+					mappedSessionModel = capturedSessionModel
+				}
+				if sanitized, changed, sanitizeErr := normalizeOpenAIPromptCacheFieldsRawWithSessionModel(payload, account, "", mappedSessionModel); sanitizeErr != nil {
+					return payload, nil, sanitizeErr
+				} else if changed {
+					payload = sanitized
+				}
 			}
 			out, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, model, payload)
 			// 多轮 passthrough usage：仅在成功（non-block / non-err）
