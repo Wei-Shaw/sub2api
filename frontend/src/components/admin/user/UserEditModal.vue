@@ -31,10 +31,11 @@
       </div>
       <div>
         <label class="input-label">{{ t('admin.users.form.roleLabel') REDACTEDREDACTED</label>
-        <select v-model="form.role" class="input">
-          <option value="user">{{ t('admin.users.roles.user') REDACTEDREDACTED</option>
-          <option value="admin">{{ t('admin.users.roles.admin') REDACTEDREDACTED</option>
-        </select>
+        <Select
+          v-model="form.role"
+          :options="roleOptions"
+          :searchable="false"
+        />
       </div>
       <div>
         <label class="input-label">{{ t('admin.users.notes') REDACTEDREDACTED</label>
@@ -73,13 +74,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch REDACTED from 'vue'
+import { computed, ref, reactive, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { useClipboard REDACTED from '@/composables/useClipboard'
 import { adminAPI REDACTED from '@/api/admin'
 import type { AdminUser, UserAttributeValuesMap REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Select from '@/components/common/Select.vue'
 import UserAttributeForm from '@/components/user/UserAttributeForm.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useStepUp, isStepUpBlocked, isStepUpCancelled, stepUpBlockReason REDACTED from '@/composables/useStepUp'
@@ -90,7 +92,20 @@ const emit = defineEmits(['close', 'success'])
 const { t REDACTED = useI18n(); const appStore = useAppStore(); const { copyToClipboard REDACTED = useClipboard()
 
 const submitting = ref(false); const passwordCopied = ref(false)
-const form = reactive({ email: '', password: '', username: '', notes: '', role: 'user', concurrency: 1, rpm_limit: 0, customAttributes: {REDACTED as UserAttributeValuesMap REDACTED)
+const roleOptions = computed(() => [
+  { value: 'user', label: t('admin.users.roles.user') REDACTED,
+  { value: 'admin', label: t('admin.users.roles.admin') REDACTED
+])
+const form = reactive({
+  email: '',
+  password: '',
+  username: '',
+  notes: '',
+  role: 'user' as AdminUser['role'],
+  concurrency: 1,
+  rpm_limit: 0,
+  customAttributes: {REDACTED as UserAttributeValuesMap
+REDACTED)
 
 watch(() => props.user, (u) => {
   if (u) {
