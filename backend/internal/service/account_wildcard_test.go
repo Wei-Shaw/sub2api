@@ -537,6 +537,59 @@ func TestAccountGetModelMapping_AntigravityEnsuresGeminiDefaultPassthroughs(t *t
 	}
 }
 
+func TestAccountGetModelMapping_AntigravityNormalizesGemini35Alias(t *testing.T) {
+	account := &Account{
+		Platform: PlatformAntigravity,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gemini-3.5-flash": "gemini-3.5-flash",
+			},
+		},
+	}
+
+	mapping := account.GetModelMapping()
+	if mapping["gemini-3.5-flash"] != "gemini-3.5-flash-low" {
+		t.Fatalf("expected Gemini 3.5 alias to normalize to low, got %q", mapping["gemini-3.5-flash"])
+	}
+	if mapping["gemini-3.5-flash-low"] != "gemini-3.5-flash-low" {
+		t.Fatalf("expected Gemini 3.5 low passthrough, got %q", mapping["gemini-3.5-flash-low"])
+	}
+}
+
+func TestAccountGetModelMapping_AntigravityPreservesGemini35Override(t *testing.T) {
+	account := &Account{
+		Platform: PlatformAntigravity,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gemini-3.5-flash": "custom-gemini-3.5",
+			},
+		},
+	}
+
+	if got := account.GetModelMapping()["gemini-3.5-flash"]; got != "custom-gemini-3.5" {
+		t.Fatalf("expected explicit Gemini 3.5 override to survive, got %q", got)
+	}
+}
+
+func TestAccountGetModelMapping_AntigravityGemini35AliasRespectsWildcard(t *testing.T) {
+	account := &Account{
+		Platform: PlatformAntigravity,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gemini-3.5*": "custom-gemini-3.5",
+			},
+		},
+	}
+
+	mapping := account.GetModelMapping()
+	if _, exists := mapping["gemini-3.5-flash"]; exists {
+		t.Fatal("did not expect a concrete alias when a wildcard already handles Gemini 3.5")
+	}
+	if got := account.GetMappedModel("gemini-3.5-flash"); got != "custom-gemini-3.5" {
+		t.Fatalf("expected wildcard mapping to remain effective, got %q", got)
+	}
+}
+
 func TestAccountGetModelMapping_AntigravityRespectsWildcardOverride(t *testing.T) {
 	account := &Account{
 		Platform: PlatformAntigravity,

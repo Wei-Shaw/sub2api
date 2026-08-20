@@ -81,6 +81,10 @@ const antigravityModels = [
   'gemini-3.1-pro-high',
   'gemini-3.1-pro-low',
   'gemini-3-pro-image',
+  // Gemini 3.5 Flash wire IDs
+  'gemini-3.5-flash',
+  'gemini-3.5-flash-extra-low',
+  'gemini-3.5-flash-low',
   // 其他
   'gpt-oss-120b-medium',
   'tab_flash_lite_preview'

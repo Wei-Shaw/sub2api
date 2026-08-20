@@ -477,6 +477,38 @@ func TestPricingService_Gemini36FlashThinkingTiersUseBasePricing(t *testing.T) {
 	}
 }
 
+func TestPricingService_Gemini35TiersUseBasePricing(t *testing.T) {
+	basePricing := &LiteLLMModelPricing{
+		InputCostPerToken:       1.5e-6,
+		OutputCostPerToken:      9e-6,
+		CacheReadInputTokenCost: 0.15e-6,
+	}
+	svc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		"gemini-3.5-flash": basePricing,
+	}}
+
+	for _, model := range []string{
+		"gemini-3.5-flash",
+		"gemini-3.5-flash-extra-low",
+		"gemini-3.5-flash-low",
+	} {
+		t.Run(model, func(t *testing.T) {
+			require.Same(t, basePricing, svc.GetModelPricing(model))
+		})
+	}
+}
+
+func TestPricingService_Gemini35TierSpecificPricingTakesPrecedence(t *testing.T) {
+	basePricing := &LiteLLMModelPricing{InputCostPerToken: 1.5e-6}
+	tierPricing := &LiteLLMModelPricing{InputCostPerToken: 2e-6}
+	svc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		"gemini-3.5-flash":     basePricing,
+		"gemini-3.5-flash-low": tierPricing,
+	}}
+
+	require.Same(t, tierPricing, svc.GetModelPricing("models/gemini-3.5-flash-low"))
+}
+
 func TestPricingService_Gemini36FlashTierSpecificPricingTakesPrecedence(t *testing.T) {
 	basePricing := &LiteLLMModelPricing{InputCostPerToken: 1.5e-6}
 	tierPricing := &LiteLLMModelPricing{InputCostPerToken: 2e-6}
@@ -506,6 +538,26 @@ func TestBillingService_Gemini36FlashThinkingTierFallbacksAreBillable(t *testing
 			require.InDelta(t, 7.5, cost.OutputCost, 1e-12)
 			require.InDelta(t, 0.15, cost.CacheReadCost, 1e-12)
 			require.InDelta(t, 9.15, cost.TotalCost, 1e-12)
+		})
+	}
+}
+
+func TestBillingService_Gemini35TierFallbacksAreBillable(t *testing.T) {
+	svc := NewBillingService(&config.Config{}, nil)
+	tokens := UsageTokens{InputTokens: 1_000_000, OutputTokens: 1_000_000, CacheReadTokens: 1_000_000}
+
+	for _, model := range []string{
+		"gemini-3.5-flash",
+		"gemini-3.5-flash-extra-low",
+		"gemini-3.5-flash-low",
+	} {
+		t.Run(model, func(t *testing.T) {
+			cost, err := svc.CalculateCost(model, tokens, 1)
+			require.NoError(t, err)
+			require.InDelta(t, 1.5, cost.InputCost, 1e-12)
+			require.InDelta(t, 9.0, cost.OutputCost, 1e-12)
+			require.InDelta(t, 0.15, cost.CacheReadCost, 1e-12)
+			require.InDelta(t, 10.65, cost.TotalCost, 1e-12)
 		})
 	}
 }
