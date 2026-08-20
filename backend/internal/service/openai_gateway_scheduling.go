@@ -1312,29 +1312,32 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string) ([]Account, error) {
 	platform = NormalizeOpenAICompatiblePlatform(platform)
+	var accounts []Account
+	var err error
 	if s.schedulerSnapshot != nil {
-		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, false)
+		accounts, _, err = s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, false)
 		if err != nil {
 			return accounts, err
 		}
-		accounts = s.filterOpenAIAccountsBySchedulingThreshold(ctx, accounts)
-		if platform == PlatformGrok {
-			accounts = s.filterGrokFreeQuotaAccountsForOpenAI(ctx, accounts)
-		}
-		return accounts, nil
-	}
-	var accounts []Account
-	var err error
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+	} else if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
 	} else if groupID != nil {
 		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, platform)
 	} else {
 		accounts, err = s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, platform)
 	}
-	if err != nil {
+	if s.schedulerSnapshot == nil && err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 	}
+	lookupParent := s.parentAccountLookup(ctx)
+	effectiveAccounts := accounts[:0]
+	for i := range accounts {
+		effective := effectiveOpenAIShadowUpstreamProfile(&accounts[i], lookupParent)
+		if effective != nil {
+			effectiveAccounts = append(effectiveAccounts, *effective)
+		}
+	}
+	accounts = effectiveAccounts
 	accounts = s.filterOpenAIAccountsBySchedulingThreshold(ctx, accounts)
 	if platform == PlatformGrok {
 		accounts = s.filterGrokFreeQuotaAccountsForOpenAI(ctx, accounts)
@@ -1374,6 +1377,10 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountBeforeProfit(
 		}
 		fresh = current
 	}
+	fresh = effectiveOpenAIShadowUpstreamProfile(fresh, s.parentAccountLookup(ctx))
+	if fresh == nil {
+		return nil
+	}
 
 	if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, fresh, platform, requestedModel, requireCompact, requiredCapability) {
 		return nil
@@ -1393,17 +1400,26 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountBeforeProfit(
 	return fresh
 }
 
-// parentAccountLookup 返回供 parentHealthyForShadow 使用的母账号解析闭包:经 accountRepo
-// 按 ID 取当前 Account(repo 为空时 fail-closed 返回 nil)。统一调度/粘连各路径的母账号解析,
-// 取代各调用点重复内联的同一闭包(历史上 recheck 等路径还漏写过 accountRepo==nil 守卫)。
-// L2 候选循环改用带 per-pass 缓存的 parentLookupL2,不走此方法。
 func (s *OpenAIGatewayService) parentAccountLookup(ctx context.Context) func(int64) *Account {
+	parents := make(map[int64]*Account)
 	return func(id int64) *Account {
+		if parent, ok := parents[id]; ok {
+			return parent
+		}
+		if s.schedulerSnapshot != nil {
+			parent, err := s.schedulerSnapshot.GetAccount(ctx, id)
+			if err == nil && parent != nil {
+				parents[id] = parent
+				return parent
+			}
+		}
 		if s.accountRepo == nil {
+			parents[id] = nil
 			return nil
 		}
-		a, _ := s.accountRepo.GetByID(ctx, id)
-		return a
+		parent, _ := s.accountRepo.GetByID(ctx, id)
+		parents[id] = parent
+		return parent
 	}
 }
 
@@ -1423,14 +1439,19 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 		return nil
 	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
+	lookupParent := s.parentAccountLookup(ctx)
 	if s.schedulerSnapshot == nil || s.accountRepo == nil {
+		account = effectiveOpenAIShadowUpstreamProfile(account, lookupParent)
+		if account == nil {
+			return nil
+		}
 		if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, account, platform, requestedModel, requireCompact, requiredCapability) {
 			return nil
 		}
 		if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, account) {
 			return nil
 		}
-		if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
+		if !parentHealthyForShadow(account, lookupParent) {
 			return nil
 		}
 		if s.isOpenAIProxyStreamQuarantined(ctx, account) {
@@ -1446,10 +1467,14 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	if !s.openAIAccountMatchesSchedulingGroup(latest, groupID) {
 		return nil
 	}
+	latest = effectiveOpenAIShadowUpstreamProfile(latest, lookupParent)
+	if latest == nil {
+		return nil
+	}
 	if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, latest, platform, requestedModel, requireCompact, requiredCapability) {
 		return nil
 	}
-	if !parentHealthyForShadow(latest, s.parentAccountLookup(ctx)) {
+	if !parentHealthyForShadow(latest, lookupParent) {
 		return nil
 	}
 	if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel) {
@@ -1483,6 +1508,10 @@ func (s *OpenAIGatewayService) getSchedulableAccount(ctx context.Context, accoun
 	}
 	if err != nil || account == nil {
 		return account, err
+	}
+	account = effectiveOpenAIShadowUpstreamProfile(account, s.parentAccountLookup(ctx))
+	if account == nil {
+		return nil, nil
 	}
 	if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, account) {
 		return nil, nil
@@ -1535,6 +1564,7 @@ func (s *OpenAIGatewayService) hydrateSelectedAccount(ctx context.Context, accou
 	if err != nil {
 		return nil, err
 	}
+	hydrated = effectiveOpenAIShadowUpstreamProfile(hydrated, s.parentAccountLookup(ctx))
 	if hydrated == nil {
 		return nil, fmt.Errorf("selected openai account %d not found during hydration", account.ID)
 	}

@@ -656,10 +656,10 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_long_context_billing_enabled).toBe(false)
   })
 
-  it('does not render or submit the long-context billing toggle for Spark shadow accounts', async () => {
+  it('shows inherited long-context billing read-only without submitting it for Spark shadows', async () => {
     const account = buildOpenAISparkShadowAccount()
     account.extra = {
-      openai_long_context_billing_enabled: false
+      openai_long_context_billing_enabled: true
     }
     updateAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
@@ -667,14 +667,14 @@ describe('EditAccountModal', () => {
     updateAccountMock.mockResolvedValue(account)
     const wrapper = mountModal(account)
 
-    expect(wrapper.find('[data-testid="openai-long-context-billing-toggle"]').exists()).toBe(false)
+    const toggle = wrapper.get('[data-testid="openai-long-context-billing-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+    expect(toggle.attributes('disabled')).toBeDefined()
 
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty(
-      'openai_long_context_billing_enabled'
-    )
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toBeUndefined()
   })
 
   it('preserves an explicit OpenAI long-context billing opt-out', async () => {
@@ -958,6 +958,75 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_responses_mode')
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_supported).toBe(true)
+  })
+
+  it('shows inherited OpenAI profile controls as read-only and only submits shadow fields', async () => {
+    const account = buildOpenAISparkShadowAccount()
+    account.extra = {
+      openai_device_id: 'parent-installation-id',
+      openai_passthrough: true,
+      openai_responses_flatten_namespaces: true,
+      openai: {
+        codex_image_generation_bridge: true
+      },
+      openai_oauth_responses_websockets_v2_mode: 'passthrough',
+      openai_ws_force_http: true,
+      codex_cli_only: true,
+      codex_cli_only_allow_app_server: true,
+      codex_fingerprint_mode: 'full',
+      openai_compact_mode: 'force_on',
+      openai_responses_mode: 'force_responses'
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    for (const selector of [
+      '[data-testid="edit-openai-passthrough-toggle"]',
+      '[data-testid="edit-openai-flatten-namespaces-toggle"]',
+      '[data-testid="edit-codex-cli-only-toggle"]',
+      '[data-testid="edit-codex-cli-only-app-server-toggle"]'
+    ]) {
+      const toggle = wrapper.get(selector)
+      expect(toggle.attributes('disabled')).toBeDefined()
+      expect(toggle.get('span').classes()).toContain('translate-x-5')
+    }
+    for (const selector of [
+      '[data-testid="edit-openai-ws-mode-select"]',
+      '[data-testid="edit-openai-compact-mode-select"]',
+      '[data-testid="edit-codex-fingerprint-mode-select"]',
+      '[data-testid="openai-responses-mode-select"]',
+      'button[data-testid="codex-image-tool-inherit"]',
+      'button[data-testid="codex-image-tool-enabled"]',
+      'button[data-testid="codex-image-tool-disabled"]',
+      'button[data-testid="codex-image-tool-block"]'
+    ]) {
+      expect(wrapper.get(selector).attributes('disabled')).toBeDefined()
+    }
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="edit-openai-ws-mode-select"]').element.value).toBe('http_bridge')
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="edit-openai-compact-mode-select"]').element.value).toBe('force_on')
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="edit-codex-fingerprint-mode-select"]').element.value).toBe('full')
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="openai-responses-mode-select"]').element.value).toBe('force_responses')
+    expect(wrapper.get('button[data-testid="codex-image-tool-enabled"]').classes()).toContain('border-emerald-300')
+    expect(wrapper.get('[data-testid="openai-codex-installation-id"]').text()).toBe('parent-installation-id')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload).not.toHaveProperty('proxy_id')
+    expect(payload?.credentials).toEqual({
+      model_mapping: {
+        'gpt-5.3-codex-spark': 'gpt-5.3-codex-spark'
+      },
+      compact_model_mapping: {
+        'gpt-5.3-codex-spark': 'gpt-5.3-codex-spark-compact'
+      }
+    })
+    expect(payload).not.toHaveProperty('extra')
   })
 
   it('submits OpenAI APIKey endpoint capabilities from credentials', async () => {

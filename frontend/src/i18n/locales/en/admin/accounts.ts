@@ -604,6 +604,9 @@ export default {
         planTypeDesc:
           "Manually correct this account's ChatGPT plan tier (Plus / Pro / Free). Note: a token refresh near expiry or a 429 rate-limit response will auto-overwrite this with the real tier.",
         planTypeClear: 'Clear (auto-detect)',
+        codexInstallationId: 'Codex Installation ID',
+        codexInstallationIdDesc: 'The account-level x-codex-installation-id used by the fingerprint policy.',
+        codexInstallationIdPending: 'Not generated yet',
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
