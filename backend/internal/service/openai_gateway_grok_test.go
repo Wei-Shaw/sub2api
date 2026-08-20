@@ -2053,6 +2053,16 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestGrokCompactionBlobRecoveryStripsCompactionItem(t *testing.T) {
+	body := []byte(`{"model":"grok","input":[{"type":"compaction","id":"cmp_1","encrypted_content":"blob"REDACTED,{"type":"message","role":"user","content":"hi"REDACTED]REDACTED`)
+	require.True(t, isGrokInvalidEncryptedContentResponse(http.StatusUnprocessableEntity, []byte(`{"code":"invalid_compaction","error":"could not decode the compaction blob"REDACTED`)))
+	retry, changed, err := trimGrokInvalidEncryptedContentRetryBody(body)
+REDACTED
+	require.True(t, changed)
+	require.Equal(t, "message", gjson.GetBytes(retry, "input.0.type").String())
+	require.False(t, gjson.GetBytes(retry, "input.#(type==\"compaction\")").Exists())
+REDACTED
+
 func TestForwardGrokResponsesInvalidEncryptedContentRecoveryNestedErrorShape(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
