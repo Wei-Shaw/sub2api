@@ -125,35 +125,60 @@ REDACTED
 	if account.Platform != PlatformGrok {
 		return false, fmt.Errorf("account platform %s is not supported for grok realtime", account.Platform)
 REDACTED
-	base, err := buildGrokVoiceURL(account, s.cfg, "realtime")
+	upstream, err := s.OpenGrokRealtime(ctx, account, token, model)
 	if err != nil {
 		return false, err
+REDACTED
+	defer upstream.Close()
+	return s.ProxyGrokRealtimeConn(ctx, c, client, upstream)
+REDACTED
+
+type GrokRealtimeUpstream struct{ conn openAIWSClientConn REDACTED
+
+func (u *GrokRealtimeUpstream) Close() error {
+	if u == nil || u.conn == nil {
+		return nil
+REDACTED
+	return u.conn.Close()
+REDACTED
+
+func (s *OpenAIGatewayService) OpenGrokRealtime(ctx context.Context, account *Account, token, model string) (*GrokRealtimeUpstream, error) {
+	if s == nil || account == nil || account.Platform != PlatformGrok {
+		return nil, fmt.Errorf("grok realtime account is required")
+REDACTED
+	base, err := buildGrokVoiceURL(account, s.cfg, "realtime")
+	if err != nil {
+		return nil, err
 REDACTED
 	u, err := url.Parse(base)
 	if err != nil {
-		return false, err
+		return nil, err
 REDACTED
 	u.Scheme = "wss"
-	u.RawQuery = "model=" + url.QueryEscape(firstNonEmpty(model, "grok-voice-latest"))
+	q := u.Query()
+	q.Set("model", firstNonEmpty(model, "grok-voice-latest"))
+	u.RawQuery = q.Encode()
 	headers := http.Header{"Authorization": []string{"Bearer " + tokenREDACTEDREDACTED
-	// Match media/voice HTTP: CLI headers only on CLI proxy hosts.
 	if account.IsGrokOAuth() && isGrokCLIProxyTarget(u.String()) {
 		applyGrokCLIHeaders(headers)
 REDACTED
-	if account != nil {
-		account.ApplyHeaderOverrides(headers)
-REDACTED
-
-	dialer := s.getOpenAIWSPassthroughDialer()
+	account.ApplyHeaderOverrides(headers)
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 REDACTED
-	upstream, _, _, err := dialer.Dial(ctx, u.String(), headers, proxyURL)
+	conn, _, _, err := s.getOpenAIWSPassthroughDialer().Dial(ctx, u.String(), headers, proxyURL)
 	if err != nil {
-		return false, err
+		return nil, err
 REDACTED
-	defer func() { _ = upstream.Close() REDACTED()
+	return &GrokRealtimeUpstream{conn: connREDACTED, nil
+REDACTED
+
+func (s *OpenAIGatewayService) ProxyGrokRealtimeConn(ctx context.Context, c *gin.Context, client *coderws.Conn, upstream *GrokRealtimeUpstream) (bool, error) {
+	if s == nil || client == nil || upstream == nil || upstream.conn == nil {
+		return false, fmt.Errorf("realtime connection is required")
+REDACTED
+	conn := upstream.conn
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -163,7 +188,7 @@ REDACTED
 	// Upstream → client
 	go func() {
 		for {
-			msg, readErr := upstream.ReadMessage(ctx)
+			msg, readErr := conn.ReadMessage(ctx)
 			if readErr != nil {
 				errCh <- readErr
 				return
@@ -197,7 +222,7 @@ REDACTED()
 				errCh <- fmt.Errorf("invalid realtime event: %w", unmarshalErr)
 				return
 		REDACTED
-			if writeErr := upstream.WriteJSON(ctx, raw); writeErr != nil {
+			if writeErr := conn.WriteJSON(ctx, raw); writeErr != nil {
 				errCh <- writeErr
 				return
 		REDACTED

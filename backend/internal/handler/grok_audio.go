@@ -56,6 +56,7 @@ REDACTED
 	var selection *service.AccountSelectionResult
 	var release func()
 	var token string
+	var upstream *service.GrokRealtimeUpstream
 	for attempts := 0; attempts < 4; attempts++ {
 		candidate, _, selectErr := h.gatewayService.SelectAccountWithSchedulerForCapability(
 			c.Request.Context(), apiKey.GroupID, "", "", "grok-4.6", failed,
@@ -86,23 +87,24 @@ REDACTED
 			continue
 	REDACTED
 		probeCtx, cancelProbe := context.WithTimeout(c.Request.Context(), 15*time.Second)
-		probeErr := h.gatewayService.ProbeGrokRealtime(probeCtx, account, token, model)
+		candidateUpstream, openErr := h.gatewayService.OpenGrokRealtime(probeCtx, account, token, model)
 		cancelProbe()
-		if probeErr != nil {
-			reqLog.Warn("grok_realtime.pre_accept_failed", zap.Int64("account_id", account.ID), zap.Error(probeErr))
+		if openErr != nil {
+			reqLog.Warn("grok_realtime.pre_accept_failed", zap.Int64("account_id", account.ID), zap.Error(openErr))
 			release()
 			release = nil
 			failed[account.ID] = struct{REDACTED{REDACTED
 			continue
 	REDACTED
-		selection = candidate
+		selection, upstream = candidate, candidateUpstream
 		break
 REDACTED
-	if selection == nil || selection.Account == nil || release == nil {
+	if selection == nil || selection.Account == nil || release == nil || upstream == nil {
 		h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Grok realtime upstream unavailable")
 		return
 REDACTED
 	defer release()
+	defer upstream.Close()
 
 	conn, err := coderws.Accept(c.Writer, c.Request, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeoverREDACTED)
 	if err != nil {
@@ -111,7 +113,7 @@ REDACTED
 	defer func() { _ = conn.CloseNow() REDACTED()
 
 	started := time.Now()
-	audioObserved, proxyErr := h.gatewayService.ProxyGrokRealtime(c.Request.Context(), c, conn, selection.Account, token, model)
+	audioObserved, proxyErr := h.gatewayService.ProxyGrokRealtimeConn(c.Request.Context(), c, conn, upstream)
 	elapsed := time.Since(started)
 	if proxyErr != nil {
 		reqLog.Info("grok_realtime.proxy_failed", zap.Error(proxyErr))
