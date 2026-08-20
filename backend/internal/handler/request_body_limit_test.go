@@ -10,11 +10,24 @@ import (
 	"os"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestReadLenientJSONRequestBodyWithOriginalPreservesStrictBytes(t *testing.T) {
+	raw := []byte{'{', '"', 'v', '"', ':', '"', 'a', '\n', 'b', '"', '}'}
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(raw))
+
+	normalized, original, err := readLenientJSONRequestBodyWithOriginal(req, &config.Config{})
+
+	require.NoError(t, err)
+	require.Equal(t, raw, original)
+	require.NotEqual(t, raw, normalized)
+	require.JSONEq(t, `{"v":"a\nb"}`, string(normalized))
+}
 
 func TestRequestBodyLimitTooLarge(t *testing.T) {
 	gin.SetMode(gin.TestMode)

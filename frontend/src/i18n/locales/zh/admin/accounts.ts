@@ -785,6 +785,17 @@ export default {
         passthroughModelFilter: '透传时按账号模型筛选',
         passthroughModelFilterDesc:
           '使用账号模型白名单与映射的来源模型名筛选候选账号，映射目标不会改写透传请求的模型名。列表为空时允许所有模型。默认关闭。',
+        forwardMode: 'Responses 转发模式',
+        forwardModeDesc:
+          '普通模式保留现有兼容转换；透传模式保留现有仅替换认证行为；严格原始模式会保留原生 Responses 请求与响应字节。',
+        forwardModeNormal: '普通（现有行为）',
+        forwardModePassthrough: '透传（仅替换认证）',
+        forwardModeStrictRaw: '严格原始 Responses',
+        forwardModeStrictWarning:
+          '严格原始模式仅支持 HTTP/SSE，适用于可信的 Responses 兼容上游。该模式禁用语义请求与流改写，请显式配置支持的模型和账号并发数。',
+        strictNoAuth: '上游 HTTP 不使用认证',
+        strictNoAuthDesc:
+          '仅当上游受回环地址或其他已认证私有传输保护时使用；切勿公开暴露无认证上游。',
         flattenNamespaces: '摊平 Codex namespace 工具（兼容）',
         flattenNamespacesDesc:
           '默认关闭：/responses 上的 namespace 工具声明原样转发，这正是 ChatGPT Codex 后端期望的形态。仅当该 OAuth 账号指向不认识 namespace 的兼容上游时才开启——摊平会把工具改名为 namespace__tool，使按 functions.<命名空间>.<工具> 寻址的模型（如 gpt-5.6 多智能体）无法调用。压缩（compact）请求不受该开关影响，始终摊平。',

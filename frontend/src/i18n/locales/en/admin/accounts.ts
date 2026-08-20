@@ -657,6 +657,17 @@ export default {
         passthroughModelFilter: 'Filter passthrough accounts by model',
         passthroughModelFilterDesc:
           'Use the account model whitelist and mapping source names to select this account. Mapping targets do not rename passthrough requests. An empty list allows all models. Disabled by default.',
+        forwardMode: 'Responses forwarding',
+        forwardModeDesc:
+          'Normal keeps the existing compatibility transforms. Passthrough keeps the existing auth-only behavior. Strict raw preserves native Responses request and response bytes.',
+        forwardModeNormal: 'Normal (existing behavior)',
+        forwardModePassthrough: 'Passthrough (auth only)',
+        forwardModeStrictRaw: 'Strict raw Responses',
+        forwardModeStrictWarning:
+          'Strict raw is HTTP/SSE-only and intended for trusted Responses-compatible upstreams. It disables semantic request and stream rewrites, so configure supported models and account concurrency explicitly.',
+        strictNoAuth: 'No upstream HTTP authentication',
+        strictNoAuthDesc:
+          'Use only when the upstream is protected by loopback or another authenticated private transport. Never expose an unauthenticated upstream publicly.',
         flattenNamespaces: 'Flatten Codex namespace tools (compatibility)',
         flattenNamespacesDesc:
           'Disabled by default: Codex namespace tool declarations are forwarded as-is on /responses, which is what the ChatGPT Codex backend expects. Enable only when this OAuth account is routed to a relay that rejects namespace tools — flattening renames them to namespace__tool, which breaks models that address collaboration tools as functions.<namespace>.<tool>. Compaction requests always flatten regardless of this switch.',
