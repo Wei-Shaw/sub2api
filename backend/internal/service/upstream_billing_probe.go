@@ -597,6 +597,9 @@ REDACTED
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, 0, "missing_api_key", 0)
 REDACTED
 	baseURL := account.GetCredential("base_url")
+	if account.IsCNProvider() && account.IsAdaptiveAPIProtocol() {
+		baseURL = account.GetCNProtocolBaseURL(APIProtocolChatCompletions)
+REDACTED
 	if account.Platform == PlatformOpenAI {
 		if baseURL == "" {
 			// 保持官方语义：OpenAI 账号无自定义 base 时探官方域（404 → unsupported）。

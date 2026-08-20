@@ -1281,7 +1281,12 @@
               <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
                 {{ t(`admin.accounts.cnProviders.apiProtocol.${item.labelKeyREDACTED`) REDACTEDREDACTED
               </label>
-              <input v-model="adaptiveBaseUrls[item.value]" type="text" class="input" />
+              <input
+                v-model="adaptiveBaseUrls[item.value]"
+                type="text"
+                class="input"
+                :data-testid="`cn-adaptive-base-url-${item.valueREDACTED`"
+              />
             </div>
           </div>
           <p v-if="form.platform !== 'deepseek'" class="input-hint">
@@ -4064,10 +4069,13 @@ REDACTED
 
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
+  const baseUrl = isCNPlatform.value && apiProtocol.value === 'adaptive'
+    ? adaptiveBaseUrls.value.chat_completions.trim() || apiKeyBaseUrl.value.trim()
+    : apiKeyBaseUrl.value.trim()
   return {
     platform: form.platform,
     type: form.type,
-    base_url: apiKeyBaseUrl.value || undefined,
+    base_url: baseUrl || undefined,
     api_key: apiKeyValue.value
   REDACTED
 REDACTED)

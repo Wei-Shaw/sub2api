@@ -3831,27 +3831,48 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       editAccountMode.value = credentials.account_mode === 'coding' ? 'coding' : 'payg'
       const storedProtocol = credentials.api_protocol
       editApiProtocol.value =
-        storedProtocol === 'adaptive' || storedProtocol === 'anthropic' || storedProtocol === 'responses'
+        storedProtocol === 'adaptive' ||
+        storedProtocol === 'chat_completions' ||
+        storedProtocol === 'anthropic' ||
+        storedProtocol === 'responses'
           ? storedProtocol
-          : 'adaptive'
+          : 'chat_completions'
       if (newAccount.platform !== 'deepseek' && editApiProtocol.value === 'responses') {
         editApiProtocol.value = 'chat_completions'
       REDACTED
       const adaptiveDefaults = defaultCNAdaptiveBaseUrls(newAccount.platform, editAccountMode.value)
       const storedBaseUrls = (credentials.api_base_urls as Record<string, unknown> | undefined) || {REDACTED
-      editAdaptiveBaseUrls.value = {
-        chat_completions: typeof storedBaseUrls.chat_completions === 'string'
-          ? storedBaseUrls.chat_completions
-          : adaptiveDefaults.chat_completions,
-        anthropic: typeof storedBaseUrls.anthropic === 'string'
-          ? storedBaseUrls.anthropic
-          : adaptiveDefaults.anthropic,
-        responses: typeof storedBaseUrls.responses === 'string'
-          ? storedBaseUrls.responses
-          : adaptiveDefaults.responses
+      const legacyBaseUrl = typeof credentials.base_url === 'string' ? credentials.base_url.trim() : ''
+      const storedChatBaseUrl = typeof storedBaseUrls.chat_completions === 'string'
+        ? storedBaseUrls.chat_completions.trim()
+        : ''
+      const storedAnthropicBaseUrl = typeof storedBaseUrls.anthropic === 'string'
+        ? storedBaseUrls.anthropic.trim()
+        : ''
+      const storedResponsesBaseUrl = typeof storedBaseUrls.responses === 'string'
+        ? storedBaseUrls.responses.trim()
+        : ''
+      const nextAdaptiveBaseUrls: Record<CnNativeApiProtocol, string> = {
+        chat_completions: storedChatBaseUrl || adaptiveDefaults.chat_completions,
+        anthropic: storedAnthropicBaseUrl || adaptiveDefaults.anthropic,
+        responses: storedResponsesBaseUrl || adaptiveDefaults.responses
       REDACTED
+      const legacyProtocol: CnNativeApiProtocol = editApiProtocol.value === 'anthropic'
+        ? 'anthropic'
+        : editApiProtocol.value === 'responses'
+          ? 'responses'
+          : 'chat_completions'
+      const storedLegacyBaseUrl = legacyProtocol === 'anthropic'
+        ? storedAnthropicBaseUrl
+        : legacyProtocol === 'responses'
+          ? storedResponsesBaseUrl
+          : storedChatBaseUrl
+      if (legacyBaseUrl && !storedLegacyBaseUrl) {
+        nextAdaptiveBaseUrls[legacyProtocol] = legacyBaseUrl
+      REDACTED
+      editAdaptiveBaseUrls.value = nextAdaptiveBaseUrls
     REDACTED
-  const platformDefaultUrl =
+    const platformDefaultUrl =
       newAccount.platform === 'openai'
         ? 'https://api.openai.com'
         : newAccount.platform === 'gemini'
@@ -3863,9 +3884,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
                 newAccount.platform === 'deepseek'
               ? defaultCNBaseUrl(newAccount.platform, editAccountMode.value, editApiProtocol.value)
               : 'https://api.anthropic.com'
-  editBaseUrl.value = isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'
-    ? editAdaptiveBaseUrls.value.chat_completions
-    : (credentials.base_url as string) || platformDefaultUrl
+    editBaseUrl.value = isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'
+      ? editAdaptiveBaseUrls.value.chat_completions
+      : (credentials.base_url as string) || platformDefaultUrl
 
     // Load model mappings and detect mode
     loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)

@@ -110,6 +110,20 @@ const GroupSelectorStub = defineComponent({
   `,
 REDACTED)
 
+const ModelWhitelistSelectorStub = defineComponent({
+  name: 'ModelWhitelistSelector',
+  props: {
+    modelValue: {
+      type: Array,
+      default: () => [],
+    REDACTED,
+    platform: String,
+    syncCredentials: Object,
+  REDACTED,
+  emits: ['update:modelValue'],
+  template: '<div data-testid="model-whitelist-selector" />',
+REDACTED)
+
 function mountModal(groups: any[] = []) {
   return mount(CreateAccountModal, {
     props: { show: true, proxies: [], groups REDACTED,
@@ -124,7 +138,7 @@ function mountModal(groups: any[] = []) {
         ProxySelector: true,
         ProxyAdBanner: true,
         GroupSelector: GroupSelectorStub,
-        ModelWhitelistSelector: true,
+        ModelWhitelistSelector: ModelWhitelistSelectorStub,
         QuotaLimitCard: true,
       REDACTED,
     REDACTED,
@@ -272,7 +286,6 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
   it('submits adaptive Kimi protocol endpoints', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'Kimi')
-    await selectButtonByText(wrapper, 'admin.accounts.cnProviders.apiProtocol.adaptive')
     await wrapper.get('form#create-account-form input[type="text"]').setValue('Kimi adaptive')
     await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-kimi')
 
@@ -288,6 +301,22 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
         chat_completions: 'https://api.moonshot.cn/v1',
         anthropic: 'https://api.moonshot.cn/anthropic'
       REDACTED
+    REDACTED)
+  REDACTED)
+
+  it('uses the edited adaptive Chat endpoint when previewing upstream models', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Kimi')
+    await wrapper
+      .get('[data-testid="cn-adaptive-base-url-chat_completions"]')
+      .setValue('https://relay.example.com/v1')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-relay')
+
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('syncCredentials')).toMatchObject({
+      platform: 'kimi',
+      type: 'apikey',
+      base_url: 'https://relay.example.com/v1',
+      api_key: 'sk-relay'
     REDACTED)
   REDACTED)
 

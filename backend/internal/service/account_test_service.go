@@ -285,9 +285,13 @@ REDACTED
 REDACTED
 
 	// Route to platform-specific test method
-	if account.IsCNProvider() &&
-		(account.GetAPIProtocol() == APIProtocolChatCompletions || account.IsAdaptiveAPIProtocol()) {
-		return s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt)
+	if account.IsCNProvider() {
+		switch account.GetAPIProtocol() {
+		case APIProtocolAdaptive:
+			return s.testCNProviderAdaptiveConnection(c, account, modelID, prompt)
+		case APIProtocolChatCompletions:
+			return s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt)
+	REDACTED
 REDACTED
 
 	if account.IsOpenAI() {
@@ -3064,6 +3068,13 @@ REDACTED
 REDACTED
 
 func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
+	if event.Type == "test_complete" {
+		if suppress, ok := c.Get(accountTestSuppressCompletionContextKey); ok {
+			if suppressCompletion, _ := suppress.(bool); suppressCompletion {
+				return
+		REDACTED
+	REDACTED
+REDACTED
 	eventJSON, _ := json.Marshal(event)
 	if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", eventJSON); err != nil {
 		log.Printf("failed to write SSE event: %v", err)
