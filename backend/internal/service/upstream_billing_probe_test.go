@@ -340,6 +340,38 @@ REDACTED
 	require.Equal(t, snapshot.Status, persisted.Status)
 REDACTED
 
+func TestUpstreamBillingProbeAdaptiveCNUsesChatProtocolBaseURL(t *testing.T) {
+	account := &Account{
+		ID:          18,
+		Platform:    PlatformKimi,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Concurrency: 1,
+REDACTED
+			"api_key":      "sk-sensitive",
+			"api_protocol": APIProtocolAdaptive,
+			"base_url":     "https://legacy-relay.example/v1",
+			"api_base_urls": map[string]any{
+				APIProtocolChatCompletions: "https://chat-relay.example/v1",
+		REDACTED,
+	REDACTED,
+		Extra: map[string]any{UpstreamBillingProbeEnabledExtraKey: trueREDACTED,
+REDACTED
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: accountREDACTEDREDACTED
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+		Body:       upstreamBillingProbeValidBody(),
+REDACTEDREDACTED
+	svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{REDACTED)
+
+	snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
+
+REDACTED
+	require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Status)
+	require.Equal(t, "https://chat-relay.example/v1/sub2api/billing", upstream.lastReq.URL.String())
+REDACTED
+
 func TestUpstreamBillingProbeSyncsResolvedRateForAllAPIKeyPlatforms(t *testing.T) {
 	for _, platform := range []string{
 		PlatformOpenAI,

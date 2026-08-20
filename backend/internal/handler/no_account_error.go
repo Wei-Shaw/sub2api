@@ -131,7 +131,11 @@ func classifyNoAccountErrorFromGin(
 	if c != nil && c.Request != nil {
 		ctx = c.Request.Context()
 REDACTED
-	return classifyNoAccountError(ctx, diag, apiKey, routingModel, displayModel, platform)
+	classification := classifyNoAccountError(ctx, diag, apiKey, routingModel, displayModel, platform)
+	if classification.ModelNotFound {
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+REDACTED
+	return classification
 REDACTED
 
 func classifyOpenAICompatibleNoAccountErrorFromGin(
