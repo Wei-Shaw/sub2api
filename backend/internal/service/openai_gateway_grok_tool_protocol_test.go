@@ -72,10 +72,13 @@ func TestPatchGrokResponsesBodyWithClientToolsLowersDiscoveredToolsOutput(t *tes
 		"model":"grok-4.5",
 		"tools":[{"type":"tool_search"REDACTED],
 		"input":[
-			{"type":"tool_search_call","id":"tsc_request_74547","call_id":"call_request_74547","arguments":{"query":"subagent"REDACTED,"execution":"client","status":"completed"REDACTED,
-			{"type":"tool_search_output","id":"tso_request_74547","call_id":"call_request_74547","execution":"client","status":"completed","tools":[
+			{"type":"tool_search_call","id":"tsc_fixture","call_id":"call_fixture","arguments":{"query":"subagent"REDACTED,"execution":"client","status":"completed"REDACTED,
+			{"type":"tool_search_output","id":"tso_fixture","call_id":"call_fixture","execution":"client","status":"completed","tools":[
 				{"type":"namespace","name":"codex_app","tools":[{"type":"function","name":"load_workspace_dependencies","parameters":{"type":"object","properties":{REDACTED,"additionalProperties":falseREDACTEDREDACTED]REDACTED,
-				{"type":"namespace","name":"multi_agent_v1","tools":[{"type":"function","name":"spawn_agent","parameters":{"type":"object","properties":{"message":{"type":"string"REDACTEDREDACTED,"required":["message"],"additionalProperties":falseREDACTEDREDACTED]REDACTED
+				{"type":"namespace","name":"multi_agent_v1","tools":[
+					{"type":"function","name":"spawn_agent","parameters":{"type":"object","properties":{"message":{"type":"string"REDACTEDREDACTED,"required":["message"],"additionalProperties":falseREDACTEDREDACTED,
+					{"type":"function","name":"wait_agent","parameters":{"type":"object","properties":{"timeout_ms":{"type":"integer"REDACTEDREDACTED,"additionalProperties":falseREDACTEDREDACTED
+				]REDACTED
 			]REDACTED
 		]
 REDACTED`)
@@ -83,19 +86,37 @@ REDACTED`)
 	patched, mapping, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.5")
 REDACTED
 	require.True(t, mapping.ToolSearch)
-	require.Equal(t, "function_call", gjson.GetBytes(patched, "input.0.type").String())
-	require.Equal(t, "tool_search", gjson.GetBytes(patched, "input.0.name").String())
-	require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.1.type").String())
-	require.Equal(t, "call_request_74547", gjson.GetBytes(patched, "input.1.call_id").String())
-	require.Len(t, gjson.GetBytes(patched, "input.1").Map(), 3)
-	require.False(t, gjson.GetBytes(patched, "input.1.tools").Exists())
-	require.False(t, gjson.GetBytes(patched, "input.1.status").Exists())
-	require.False(t, gjson.GetBytes(patched, "input.1.execution").Exists())
+	require.Equal(t, apicompat.ResponsesNamespaceName{Namespace: "multi_agent_v1", Name: "spawn_agent"REDACTED, mapping.NamespaceTools["multi_agent_v1__spawn_agent"])
+	require.Equal(t, apicompat.ResponsesNamespaceName{Namespace: "multi_agent_v1", Name: "wait_agent"REDACTED, mapping.NamespaceTools["multi_agent_v1__wait_agent"])
 	output := gjson.GetBytes(patched, "input.1.output").String()
 	require.JSONEq(t, `[
 		{"type":"namespace","name":"codex_app","tools":[{"type":"function","name":"load_workspace_dependencies","parameters":{"type":"object","properties":{REDACTED,"additionalProperties":falseREDACTEDREDACTED]REDACTED,
-		{"type":"namespace","name":"multi_agent_v1","tools":[{"type":"function","name":"spawn_agent","parameters":{"type":"object","properties":{"message":{"type":"string"REDACTEDREDACTED,"required":["message"],"additionalProperties":falseREDACTEDREDACTED]REDACTED
+		{"type":"namespace","name":"multi_agent_v1","tools":[
+			{"type":"function","name":"spawn_agent","parameters":{"type":"object","properties":{"message":{"type":"string"REDACTEDREDACTED,"required":["message"],"additionalProperties":falseREDACTEDREDACTED,
+			{"type":"function","name":"wait_agent","parameters":{"type":"object","properties":{"timeout_ms":{"type":"integer"REDACTEDREDACTED,"additionalProperties":falseREDACTEDREDACTED
+		]REDACTED
 	]`, output)
+
+	require.JSONEq(t, `{
+		"model":"grok-4.5",
+		"tools":[
+			{"type":"function","name":"tool_search","description":"Search and load Codex tools, plugins, connectors, and MCP namespaces for the current task.","parameters":{"type":"object","properties":{"query":{"type":"string","description":"Search query for tools or connectors to load."REDACTED,"limit":{"type":"integer","description":"Maximum number of tool groups to return."REDACTEDREDACTED,"required":["query"]REDACTEDREDACTED,
+			{"type":"function","name":"codex_app__load_workspace_dependencies","parameters":{"type":"object","properties":{REDACTED,"additionalProperties":falseREDACTEDREDACTED,
+			{"type":"function","name":"multi_agent_v1__spawn_agent","parameters":{"type":"object","properties":{"message":{"type":"string"REDACTEDREDACTED,"required":["message"],"additionalProperties":falseREDACTEDREDACTED,
+			{"type":"function","name":"multi_agent_v1__wait_agent","parameters":{"type":"object","properties":{"timeout_ms":{"type":"integer"REDACTEDREDACTED,"additionalProperties":falseREDACTEDREDACTED
+		],
+		"input":[
+			{"type":"function_call","call_id":"call_fixture","name":"tool_search","arguments":"{\"query\":\"subagent\"REDACTED","status":"completed"REDACTED,
+			{"type":"function_call_output","call_id":"call_fixture","output":`+string(mustMarshalJSONForTest(t, output))+`REDACTED
+		]
+REDACTED`, string(patched))
+REDACTED
+
+func mustMarshalJSONForTest(t *testing.T, value string) []byte {
+REDACTED
+	encoded, err := json.Marshal(value)
+REDACTED
+	return encoded
 REDACTED
 
 func TestPatchGrokResponsesBodyWithClientToolsRewritesEveryToolChoice(t *testing.T) {
@@ -205,6 +226,32 @@ REDACTED
 	require.Equal(t, "tools", gjson.Get(recorder.Body.String(), "error.param").String())
 	require.Contains(t, gjson.Get(recorder.Body.String(), "error.message").String(), "conflicts")
 	require.Empty(t, upstream.requests, "an ambiguous request must not reach xAI")
+REDACTED
+
+func TestForwardGrokResponsesMalformedToolSearchOutputReturns400BeforeUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{
+		"model":"grok","stream":false,
+		"tools":[{"type":"tool_search"REDACTED],
+		"input":[{"type":"tool_search_output","status":"completed"REDACTED]
+REDACTED`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	upstream := &httpUpstreamRecorder{REDACTED
+	svc := &OpenAIGatewayService{httpUpstream: upstreamREDACTED
+	account := grokProtocolAPIKeyAccount(7103)
+
+	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", false, time.Now())
+
+REDACTED
+	require.Nil(t, result)
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	require.Equal(t, "invalid_request_error", gjson.Get(recorder.Body.String(), "error.type").String())
+	require.Equal(t, "tools", gjson.Get(recorder.Body.String(), "error.param").String())
+	require.Contains(t, gjson.Get(recorder.Body.String(), "error.message").String(), "call_id")
+	require.Empty(t, upstream.requests, "malformed lowered output must not reach xAI")
 REDACTED
 
 func TestForwardGrokResponsesOAuthRestoresClientToolsNonStreaming(t *testing.T) {
