@@ -984,7 +984,9 @@ func sanitizeGrokResponsesTools(body []byte) ([]byte, error) {
 		return deleteGrokOrphanToolControls(body)
 REDACTED
 	if !tools.IsArray() {
-		return deleteGrokOrphanToolControls(body)
+		// Leave malformed tools (and their tool_choice) untouched instead of
+		// inventing an empty inventory.
+		return body, nil
 REDACTED
 
 	rawTools := tools.Array()

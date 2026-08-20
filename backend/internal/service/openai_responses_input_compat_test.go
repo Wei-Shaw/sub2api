@@ -34,7 +34,8 @@ REDACTED)
 		reqBody := map[string]any{"input": inputREDACTED
 
 		require.True(t, sanitizeOpenAIResponsesOrphanToolOutputs(reqBody, input, false))
-		got := reqBody["input"].([]any)
+		got, ok := reqBody["input"].([]any)
+		require.True(t, ok)
 		require.Empty(t, got)
 REDACTED)
 
@@ -90,14 +91,25 @@ REDACTED
 	reqBody := map[string]any{"input": inputREDACTED
 
 	require.False(t, truncateOpenAIResponsesInputText(reqBody))
-	require.Equal(t, atLimit, input[0].(map[string]any)["output"])
+	first, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, atLimit, first["output"])
 	for _, rawItem := range input[1:5] {
-		item := rawItem.(map[string]any)
+		item, ok := rawItem.(map[string]any)
+		require.True(t, ok)
 		require.Equal(t, oversized, item["output"])
 REDACTED
-	content := input[5].(map[string]any)["content"].([]any)
-	require.Equal(t, "short", content[0].(map[string]any)["text"])
-	require.Equal(t, oversized, content[1].(map[string]any)["text"])
+	last, ok := input[5].(map[string]any)
+	require.True(t, ok)
+	content, ok := last["content"].([]any)
+	require.True(t, ok)
+	require.Len(t, content, 2)
+	shortPart, ok := content[0].(map[string]any)
+	require.True(t, ok)
+	oversizedPart, ok := content[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "short", shortPart["text"])
+	require.Equal(t, oversized, oversizedPart["text"])
 REDACTED
 
 func TestOpenAIResponsesInputNeverRequestsPreemptiveTruncation(t *testing.T) {
