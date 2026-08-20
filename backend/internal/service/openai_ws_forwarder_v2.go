@@ -574,7 +574,7 @@ REDACTED
 		REDACTED
 			message = restoreCodexToolNamesFromContext(c, message)
 	REDACTED
-		if openAIWSEventShouldParseUsage(eventType) {
+		if openAIWSMessageShouldParseUsage(eventType, message) {
 			parseOpenAIWSResponseUsageFromCompletedEvent(message, usage)
 	REDACTED
 		imageCounter.AddSSEData(message)
@@ -692,6 +692,9 @@ REDACTED
 	REDACTED
 
 		if isTerminalEvent {
+			if !clientDisconnected {
+				markOpenAIWSClientVisibleFailure(c, eventType, message)
+		REDACTED
 			upstreamTerminalEvent = s.handleOpenAIWSTerminalTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
 			// A terminal event must be the final JSON document in its WS message.
 			// Ignore any tail for the completed client turn, but never reuse the

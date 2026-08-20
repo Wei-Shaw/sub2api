@@ -269,6 +269,44 @@ func TestHandle529_DBReadError_FallsBackToConfig(t *testing.T) {
 	require.WithinDuration(t, before.Add(7*time.Minute), accountRepo.lastOverloadEnd, 2*time.Second)
 REDACTED
 
+func TestHandleUpstreamError_529BypassesPoolAndCustomCodeGates(t *testing.T) {
+	tests := []struct {
+		name        string
+		credentials map[string]any
+REDACTED{
+		{
+			name:        "pool mode",
+			credentials: map[string]any{"pool_mode": trueREDACTED,
+	REDACTED,
+		{
+			name: "custom code filter excludes 529",
+			credentials: map[string]any{
+				"custom_error_codes_enabled": true,
+				"custom_error_codes":         []any{float64(429)REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &overloadAccountRepoStub{REDACTED
+			svc := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
+			account := &Account{
+				ID:          101,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Credentials: tt.credentials,
+		REDACTED
+
+			shouldDisable := svc.HandleUpstreamError(context.Background(), account, 529, nil, []byte(`{"error":{"message":"overloaded"REDACTEDREDACTED`))
+
+			require.False(t, shouldDisable)
+			require.Equal(t, 1, repo.overloadCalls)
+			require.Equal(t, account.ID, repo.lastOverloadID)
+	REDACTED)
+REDACTED
+REDACTED
+
 // ===========================================================================
 // Model: defaults & JSON round-trip
 // ===========================================================================

@@ -26,7 +26,7 @@ REDACTED
 	// through a caller- or account-override-supplied hint. http.Header.Del only
 	// removes the canonical map key; inbound maps can contain raw lowercase keys.
 	deleteOpenAIHeaderEqualFold(headers, openAICodexRoutingHintHeader)
-	if account == nil || !account.IsOpenAIOAuth() {
+	if account == nil || !account.IsOpenAIOAuthLike() {
 		return
 REDACTED
 

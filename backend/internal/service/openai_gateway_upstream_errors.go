@@ -251,8 +251,17 @@ REDACTED
 REDACTED
 
 func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	// cyber_policy is request-scoped even when an intermediary wraps the
+	// provider response in a retryable 5xx status. Never punish or rotate the
+	// selected credential for it.
+	if hit, _, _ := detectOpenAICyberPolicy(upstreamBody); hit {
+		return false
+REDACTED
 	if isOpenAIContextWindowError(upstreamMsg, upstreamBody) {
 		return false
+REDACTED
+	if isOpenAIUpstreamAccessStateError(upstreamMsg, upstreamBody) {
+		return true
 REDACTED
 	if isOpenAIRequestBodyTooLargeError(statusCode, upstreamMsg, upstreamBody) {
 		return true
@@ -297,13 +306,137 @@ REDACTED
 		failoverErr.ClientStatusCode = http.StatusRequestEntityTooLarge
 		failoverErr.ClientMessage = OpenAIRequestBodyTooLargeClientMessage
 REDACTED
+	if isOpenAIUpstreamAccessStateError(upstreamMsg, responseBody) {
+		failoverErr.RetryableOnSameAccount = false
+		failoverErr.RequestScopedTransient = false
+		failoverErr.Stage = GatewayFailureStageAccountAuth
+		failoverErr.Scope = GatewayFailureScopeAccount
+		failoverErr.Reason = OpenAIUpstreamAccessStateReason
+		failoverErr.NextAccountAction = NextAccountRetry
+		failoverErr.ClientStatusCode = http.StatusBadGateway
+		failoverErr.ClientMessage = openAIUpstreamAccessUnavailableClientMessage
+REDACTED else if requestScopedCapacity {
+		// Preserve the provider's actionable overload message after gateway
+		// retries are exhausted, but expose it as a retryable server_error.
+		failoverErr.ClientStatusCode = http.StatusServiceUnavailable
+		failoverErr.ClientMessage = openAICapacityShedClientMessage(upstreamMsg, responseBody)
+REDACTED
 	return failoverErr
+REDACTED
+
+func (s *OpenAIGatewayService) newOpenAIAccountFailoverError(
+	account *Account,
+	statusCode int,
+	responseHeaders http.Header,
+	responseBody []byte,
+	upstreamMsg string,
+	shouldDisable bool,
+	retryableOnSameAccount bool,
+) *UpstreamFailoverError {
+	oauth429Retry := s.shouldRetryOpenAIOAuth429OnSameAccount(account, statusCode, shouldDisable)
+	failoverErr := newOpenAIUpstreamFailoverError(
+		statusCode,
+		responseHeaders,
+		responseBody,
+		upstreamMsg,
+		retryableOnSameAccount || oauth429Retry,
+	)
+	if oauth429Retry {
+		failoverErr.SameAccountRetryDeadline = s.openAIOAuth429RetryDeadline(account)
+		failoverErr.SameAccountRetryDelay = openAIOAuth429SameAccountRetryDelay(responseHeaders, failoverErr.SameAccountRetryDeadline)
+REDACTED
+	return failoverErr
+REDACTED
+
+const (
+	openAIUpstreamAccessUnavailableClientMessage = "Upstream access is temporarily unavailable, please retry later"
+	// OpenAIUpstreamAccessStateReason marks a provider credential whose
+	// account, workspace, or organization is unavailable.
+	OpenAIUpstreamAccessStateReason = GatewayFailureReason("openai_upstream_access_state")
+	// OpenAIHTTPContinuationUnsupportedReason identifies accounts that cannot
+	// preserve an official Responses HTTP continuation without dropping state.
+	OpenAIHTTPContinuationUnsupportedReason = GatewayFailureReason("openai_http_continuation_unsupported")
+)
+
+// isOpenAIUpstreamAccessStateError recognizes provider-side credential state
+// failures from explicit structured fields. Valid JSON is never scanned as a
+// blob because it may contain echoed user input with the same words.
+func isOpenAIUpstreamAccessStateError(upstreamMsg string, body []byte) bool {
+	matchCode := func(value string) bool {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value == "deactivated_workspace" {
+			return true
+	REDACTED
+		for _, subject := range []string{"workspace", "account", "organization", "org"REDACTED {
+			for _, state := range []string{"deactivated", "disabled", "suspended"REDACTED {
+				if value == subject+"_"+state || value == state+"_"+subject {
+					return true
+			REDACTED
+		REDACTED
+	REDACTED
+		return false
+REDACTED
+	matchMessage := func(value string) bool {
+		value = strings.ToLower(strings.TrimSpace(value))
+		for _, subject := range []string{"workspace", "account", "organization", "org"REDACTED {
+			for _, state := range []string{"deactivated", "disabled", "suspended"REDACTED {
+				if strings.Contains(value, subject+" is "+state) ||
+					strings.Contains(value, subject+" has been "+state) ||
+					strings.Contains(value, subject+" "+state) {
+					return true
+			REDACTED
+		REDACTED
+	REDACTED
+		return false
+REDACTED
+
+	if matchMessage(upstreamMsg) {
+		return true
+REDACTED
+	if len(body) == 0 {
+		return false
+REDACTED
+	if !gjson.ValidBytes(body) {
+		return matchMessage(string(body)) || matchCode(string(body))
+REDACTED
+	for _, path := range []string{"error.code", "response.error.code", "detail.code", "code"REDACTED {
+		if matchCode(gjson.GetBytes(body, path).String()) {
+			return true
+	REDACTED
+REDACTED
+	for _, path := range []string{"error.message", "response.error.message", "detail.message", "detail", "message"REDACTED {
+		if matchMessage(gjson.GetBytes(body, path).String()) {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func openAICapacityShedClientMessage(upstreamMsg string, body []byte) string {
+	for _, candidate := range []string{
+		upstreamMsg,
+		gjson.GetBytes(body, "error.message").String(),
+		gjson.GetBytes(body, "response.error.message").String(),
+		gjson.GetBytes(body, "message").String(),
+REDACTED {
+		candidate = sanitizeUpstreamErrorMessage(strings.TrimSpace(candidate))
+		if candidate != "" && isOpenAICapacityShedMessage(candidate) {
+			return candidate
+	REDACTED
+REDACTED
+	return "Upstream service is temporarily overloaded, please retry later"
 REDACTED
 
 // IsOpenAIRequestBodyTooLarge reports whether another account may accept the
 // same request even though the selected account rejected its serialized size.
 func (e *UpstreamFailoverError) IsOpenAIRequestBodyTooLarge() bool {
 	return e != nil && e.Reason == openAIRequestBodyTooLargeReason
+REDACTED
+
+// IsOpenAICapacityShed reports whether typed client fields were derived from a
+// recognized provider overload rather than supplied by an unrelated failure.
+func (e *UpstreamFailoverError) IsOpenAICapacityShed() bool {
+	return e != nil && e.RequestScopedTransient && isOpenAIRequestScopedCapacityShed("", e.ResponseBody)
 REDACTED
 
 func marshalOpenAIUpstreamJSON(v any) ([]byte, error) {

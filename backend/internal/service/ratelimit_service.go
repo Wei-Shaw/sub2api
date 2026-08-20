@@ -25,6 +25,7 @@ type RateLimitService struct {
 	cfg                   *config.Config
 	geminiQuotaService    *GeminiQuotaService
 	tempUnschedCache      TempUnschedCache
+	openAIAPIKeyHealth    OpenAIAPIKeyHealthCache
 	timeoutCounterCache   TimeoutCounterCache
 	openAI403CounterCache OpenAI403CounterCache
 	settingService        *SettingService
@@ -99,6 +100,10 @@ REDACTED
 // SetTimeoutCounterCache 设置超时计数器缓存（可选依赖）
 func (s *RateLimitService) SetTimeoutCounterCache(cache TimeoutCounterCache) {
 	s.timeoutCounterCache = cache
+REDACTED
+
+func (s *RateLimitService) SetOpenAIAPIKeyHealthCache(cache OpenAIAPIKeyHealthCache) {
+	s.openAIAPIKeyHealth = cache
 REDACTED
 
 // SetOpenAI403CounterCache 设置 OpenAI 403 连续失败计数器（可选依赖）
@@ -247,6 +252,11 @@ const (
 // 自定义错误码开启时覆盖后续所有逻辑（包括临时不可调度）。
 func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Account, statusCode int, responseBody []byte, requestedModel ...string) ErrorPolicyResult {
 	ctx = withTempUnschedulableModel(ctx, requestedModel)
+	// 529 is governed by the global overload cooldown. Return Matched before
+	// local pool/custom-code filters so every caller reaches HandleUpstreamError.
+	if statusCode == 529 {
+		return ErrorPolicyMatched
+REDACTED
 	if account.IsCustomErrorCodesEnabled() {
 		if account.ShouldHandleErrorCode(statusCode) {
 			return ErrorPolicyMatched
@@ -276,6 +286,14 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	// 同请求内与 fastpath 调用点的重复触发由方法内去重吸收。
 	s.maybeHandleOpenAITeamLinkedError(ctx, account, statusCode, responseBody)
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
+
+	// The configured 529 cooldown is a global overload policy. Apply it before
+	// pool-mode and custom-code gates so those local retry policies cannot leave
+	// an overloaded account eligible for new requests.
+	if statusCode == 529 {
+		s.handle529(ctx, account)
+		return false
+REDACTED
 
 	// 池模式默认不标记本地账号状态；但管理员显式配置的临时不可调度规则优先。
 	// 401 保留现有认证错误语义，不在这里改变池模式的认证处理。
@@ -481,7 +499,7 @@ REDACTED
 		s.handle429(ctx, account, headers, responseBody)
 		shouldDisable = false
 	case 529:
-		s.handle529(ctx, account)
+		// Handled before pool/custom-code policy gates above.
 		shouldDisable = false
 	default:
 		// 自定义错误码启用时：在列表中的错误码都应该停止调度
@@ -1057,6 +1075,16 @@ REDACTED
 // handle429 处理429限流错误
 // 解析响应头获取重置时间，标记账号为限流状态
 func (s *RateLimitService) handle429(ctx context.Context, account *Account, headers http.Header, responseBody []byte) {
+	// OpenAI OAuth stays on the same account for the gateway's bounded retry
+	// window. Persisting a rate-limit reset on the first 429 would make the next
+	// retry ineligible and silently turn same-account recovery into a switch.
+	if account != nil && isOpenAIOAuthAccount(account) && s.runtimeBlocker != nil {
+		if checker, ok := s.runtimeBlocker.(interface {
+			ShouldRetryOpenAIOAuth429(*Account, http.Header, []byte) bool
+	REDACTED); ok && checker.ShouldRetryOpenAIOAuth429(account, headers, responseBody) {
+			return
+	REDACTED
+REDACTED
 	// Spark 影子：限流/熔断状态 100% 由 QueryUsage(/wham/usage body 的 codex_bengalfox)驱动。
 	// /responses 的 429 携带的 x-codex-*/usage_limit_reached 是 global codex 道(plan/spec §8),
 	// 套到影子会把 spark 误耦合到 global 窗口——即便 spark 仍有配额也会被冷却到 global reset,

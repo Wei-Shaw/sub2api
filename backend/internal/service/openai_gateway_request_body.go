@@ -213,9 +213,7 @@ REDACTED
 		return body, false, nil
 REDACTED
 	var decoded map[string]any
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.UseNumber()
-	if err := decoder.Decode(&decoded); err != nil {
+	if err := decodeOpenAIJSONUseNumber(body, &decoded); err != nil {
 		return body, false, fmt.Errorf("decode cross-mode failover body: %w", err)
 REDACTED
 	if !dropOpenAIEncryptedReasoningInputItems(decoded) {
@@ -326,7 +324,6 @@ func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {
 	if len(body) == 0 {
 		return body, false, nil
 REDACTED
-
 	normalized := []byte(`{REDACTED`)
 	// Keep the current Codex /compact schema while still dropping request-scoped
 	// fields such as prompt_cache_key, store, and stream.
@@ -351,6 +348,11 @@ REDACTED {
 	REDACTED
 		normalized = next
 REDACTED
+	if next, removed, err := normalizeOpenAIParallelToolCallsWithoutTools(normalized); err != nil {
+		return body, false, err
+REDACTED else if removed {
+		normalized = next
+REDACTED
 
 	if bytes.Equal(bytes.TrimSpace(body), bytes.TrimSpace(normalized)) {
 		return body, false, nil
@@ -358,8 +360,91 @@ REDACTED
 	return normalized, true, nil
 REDACTED
 
+func normalizeOpenAIParallelToolCallsWithoutTools(body []byte) ([]byte, bool, error) {
+	parallel := gjson.GetBytes(body, "parallel_tool_calls")
+	if !parallel.Exists() {
+		return body, false, nil
+REDACTED
+	tools := gjson.GetBytes(body, "tools")
+	if tools.IsArray() && len(tools.Array()) > 0 {
+		return body, false, nil
+REDACTED
+	normalized, err := sjson.DeleteBytes(body, "parallel_tool_calls")
+	if err != nil {
+		return body, false, fmt.Errorf("normalize parallel_tool_calls without tools: %w", err)
+REDACTED
+	return normalized, true, nil
+REDACTED
+
+func normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body []byte, knownStoreFalse bool) ([]byte, bool, error) {
+	if !knownStoreFalse && gjson.GetBytes(body, "store").Type != gjson.False {
+		return body, false, nil
+REDACTED
+	input := gjson.GetBytes(body, "input")
+	if !input.IsArray() {
+		return body, false, nil
+REDACTED
+
+	var reqBody map[string]any
+	if err := decodeOpenAIJSONUseNumber(body, &reqBody); err != nil {
+		return body, false, fmt.Errorf("normalize API-key store=false reasoning replay: %w", err)
+REDACTED
+	items, ok := reqBody["input"].([]any)
+	if !ok {
+		return body, false, nil
+REDACTED
+	filtered := make([]any, 0, len(items))
+	changed := false
+	for _, rawItem := range items {
+		item, ok := rawItem.(map[string]any)
+		if !ok {
+			filtered = append(filtered, rawItem)
+			continue
+	REDACTED
+		typ := strings.TrimSpace(firstNonEmptyString(item["type"]))
+		id := strings.TrimSpace(firstNonEmptyString(item["id"]))
+		switch typ {
+		case "reasoning":
+			encryptedContent, hasEncryptedContent := item["encrypted_content"].(string)
+			if !hasEncryptedContent || strings.TrimSpace(encryptedContent) == "" {
+				changed = true
+				continue
+		REDACTED
+			if strings.HasPrefix(id, "rs_") {
+				delete(item, "id")
+				changed = true
+		REDACTED
+			if summary, ok := item["summary"]; !ok || summary == nil {
+				item["summary"] = []any{REDACTED
+				changed = true
+		REDACTED
+		case "item_reference":
+			if strings.HasPrefix(id, "rs_") {
+				changed = true
+				continue
+		REDACTED
+	REDACTED
+		if shouldStripOpenAIResponsesNonPairCallID(typ) {
+			if _, hasCallID := item["call_id"]; hasCallID {
+				delete(item, "call_id")
+				changed = true
+		REDACTED
+	REDACTED
+		filtered = append(filtered, item)
+REDACTED
+	if !changed {
+		return body, false, nil
+REDACTED
+	reqBody["input"] = filtered
+	normalized, err := marshalOpenAIUpstreamJSON(reqBody)
+	if err != nil {
+		return body, false, fmt.Errorf("serialize API-key store=false reasoning replay: %w", err)
+REDACTED
+	return normalized, true, nil
+REDACTED
+
 func normalizeOpenAICodexCompactReasoningEffortForAccount(c *gin.Context, account *Account, body []byte) ([]byte, bool, error) {
-	if account == nil || !account.IsOpenAIOAuth() || !isOpenAIResponsesCompactPath(c) {
+	if account == nil || !account.IsOpenAIOAuthLike() || !isOpenAIResponsesCompactPath(c) {
 		return body, false, nil
 REDACTED
 
@@ -825,9 +910,7 @@ REDACTED
 		return body, false, nil
 REDACTED
 	var reqBody map[string]any
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.UseNumber()
-	if err := decoder.Decode(&reqBody); err != nil {
+	if err := decodeOpenAIJSONUseNumber(body, &reqBody); err != nil {
 		return body, false, fmt.Errorf("normalize responses schema body: %w", err)
 REDACTED
 	if !normalizeOpenAIResponseFormatSchemas(reqBody) {
@@ -841,8 +924,32 @@ REDACTED
 REDACTED
 
 func normalizeOpenAIResponsesWebSocketCompatibilityBody(body []byte, account *Account) ([]byte, bool, error) {
+	if account == nil || !account.IsOpenAI() {
+		return body, false, nil
+REDACTED
 	normalized := body
 	changed := false
+	if account.IsOpenAIOAuthLike() {
+		var err error
+		normalized, changed, err = normalizeOpenAIResponsesLegacyIngress(body)
+		if err != nil {
+			return body, false, err
+	REDACTED
+REDACTED
+	if account.IsOpenAIApiKey() {
+		if next, normalizedParallel, err := normalizeOpenAIParallelToolCallsWithoutTools(normalized); err != nil {
+			return body, false, err
+	REDACTED else if normalizedParallel {
+			normalized = next
+			changed = true
+	REDACTED
+		if next, normalizedReasoning, err := normalizeOpenAIAPIKeyStoreFalseReasoningReplay(normalized, false); err != nil {
+			return body, false, err
+	REDACTED else if normalizedReasoning {
+			normalized = next
+			changed = true
+	REDACTED
+REDACTED
 	if sanitized, idsChanged, err := sanitizeOpenAIResponsesInputItemIDs(normalized); err != nil {
 		return body, false, fmt.Errorf("sanitize websocket Responses input item IDs: %w", err)
 REDACTED else if idsChanged {
@@ -857,7 +964,7 @@ REDACTED
 			changed = true
 	REDACTED
 REDACTED
-	if account != nil && account.IsOpenAIOAuth() {
+	if account != nil && account.IsOpenAIOAuthLike() {
 		oauthBody, oauthChanged, err := normalizeOpenAIOAuthResponsesCompatibilityBody(normalized)
 		if err != nil {
 			return body, false, err
@@ -871,6 +978,35 @@ REDACTED
 			next, deleteErr := sjson.DeleteBytes(normalized, field)
 			if deleteErr != nil {
 				return body, false, fmt.Errorf("normalize websocket body delete %s: %w", field, deleteErr)
+		REDACTED
+			normalized = next
+			changed = true
+	REDACTED
+REDACTED
+	needsOrphanCleanup := account != nil && account.IsOpenAIOAuthLike() &&
+		gjson.GetBytes(normalized, "input").IsArray()
+	if needsOrphanCleanup || openAIResponsesInputMayNeedTruncation(normalized) {
+		var reqBody map[string]any
+		if err := decodeOpenAIJSONUseNumber(normalized, &reqBody); err != nil {
+			return body, false, fmt.Errorf("normalize websocket Responses body: %w", err)
+	REDACTED
+		mapChanged := false
+		if needsOrphanCleanup {
+			if input, ok := reqBody["input"].([]any); ok && sanitizeOpenAIResponsesOrphanToolOutputs(
+				reqBody,
+				input,
+				strings.TrimSpace(firstNonEmptyString(reqBody["previous_response_id"])) != "",
+			) {
+				mapChanged = true
+		REDACTED
+	REDACTED
+		if truncateOpenAIResponsesInputText(reqBody) {
+			mapChanged = true
+	REDACTED
+		if mapChanged {
+			next, err := marshalOpenAIUpstreamJSON(reqBody)
+			if err != nil {
+				return body, false, fmt.Errorf("serialize normalized websocket Responses body: %w", err)
 		REDACTED
 			normalized = next
 			changed = true
@@ -896,16 +1032,26 @@ REDACTED
 			changed = true
 	REDACTED
 REDACTED
-	if toolBody, toolChanged, err := sanitizeOpenAIResponsesToolParameterTypes(normalized); err != nil {
-		return body, false, fmt.Errorf("normalize websocket tool parameter types: %w", err)
-REDACTED else if toolChanged {
-		normalized = toolBody
-		changed = true
+	if account != nil && shouldSanitizeOpenAIResponsesToolSchemas(account.Platform) {
+		if toolBody, toolChanged, err := sanitizeOpenAIResponsesToolParameterTypes(normalized); err != nil {
+			return body, false, fmt.Errorf("normalize websocket tool parameter types: %w", err)
+	REDACTED else if toolChanged {
+			normalized = toolBody
+			changed = true
+	REDACTED
+		if patternBody, patternChanged, err := sanitizeOpenAIResponsesToolSchemaPatterns(normalized); err != nil {
+			return body, false, fmt.Errorf("normalize websocket tool schema patterns: %w", err)
+	REDACTED else if patternChanged {
+			normalized = patternBody
+			changed = true
+	REDACTED
 REDACTED
-	if patternBody, patternChanged, err := sanitizeOpenAIResponsesToolSchemaPatterns(normalized); err != nil {
-		return body, false, fmt.Errorf("normalize websocket tool schema patterns: %w", err)
-REDACTED else if patternChanged {
-		normalized = patternBody
+	// Keep this last: earlier compatibility passes may filter or rebuild input.
+	// Remote compaction v2 requires one trigger as the final input item.
+	if triggerBody, triggerChanged, err := NormalizeCompactionTriggerInputOrder(normalized); err != nil {
+		return body, false, fmt.Errorf("normalize websocket compaction trigger order: %w", err)
+REDACTED else if triggerChanged {
+		normalized = triggerBody
 		changed = true
 REDACTED
 	return normalized, changed, nil
@@ -1657,7 +1803,7 @@ REDACTED
 
 func getOpenAIRequestBodyMap(_ *gin.Context, body []byte) (map[string]any, error) {
 	var reqBody map[string]any
-	if err := json.Unmarshal(body, &reqBody); err != nil {
+	if err := decodeOpenAIJSONUseNumber(body, &reqBody); err != nil {
 		return nil, fmt.Errorf("parse request: %w", err)
 REDACTED
 	return reqBody, nil

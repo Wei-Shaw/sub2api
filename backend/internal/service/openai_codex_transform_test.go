@@ -1875,6 +1875,7 @@ func TestFilterCodexInput_PreservesReasoningStripsID(t *testing.T) {
 			map[string]any{
 				"type":              "reasoning",
 				"id":                "rs_0672f12450da0b9c0169f07220a6c08198b68c2455ced99344",
+				"call_id":           "remove_non_pair_call_id",
 				"encrypted_content": "gAAAAAB-enc-payload",
 				"summary":           []any{REDACTED,
 		REDACTED,
@@ -1897,6 +1898,8 @@ REDACTED
 			// PreserveReferences=true (id lookup, not the item, triggers the 404).
 			_, hasID := item["id"]
 			require.False(t, hasID)
+			_, hasCallID := item["call_id"]
+			require.False(t, hasCallID)
 			// summary passed through untouched.
 			summary, ok := item["summary"].([]any)
 			require.True(t, ok)

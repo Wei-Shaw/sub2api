@@ -191,6 +191,48 @@ REDACTED
 	require.Zero(t, result.usage.OutputTokens)
 REDACTED
 
+func TestOpenAIStreamingPassthroughBareErrorTerminatesBeforeDone(t *testing.T) {
+	errorEvent := "event: error\n" +
+		`data: {"type":"error","error":{"code":"content_policy","message":"request blocked by policy"REDACTED,"usage":{"input_tokens":6,"output_tokens":0,"total_tokens":6REDACTEDREDACTED` + "\n\n"
+	upstream := errorEvent + "data: [DONE]\n\n"
+
+	result, recorder, writer, err := runPassthroughFlushTest(t, io.NopCloser(strings.NewReader(upstream)), -1)
+
+REDACTED
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
+	require.NotNil(t, result)
+	body := recorder.Body.String()
+	require.NotContains(t, body, `"type":"error"`)
+	require.Equal(t, 1, strings.Count(body, `"type":"response.failed"`))
+	require.Contains(t, body, `"status":"failed"`)
+	require.NotContains(t, body, "[DONE]")
+	require.Equal(t, []int{len(body)REDACTED, writer.flushBodyLengths)
+	require.Equal(t, 6, result.usage.InputTokens)
+	require.Zero(t, result.usage.OutputTokens)
+REDACTED
+
+func TestOpenAIStreamingPassthroughBareErrorDrainsAuthoritativeFailedUsage(t *testing.T) {
+	errorEvent := "event: error\n" +
+		`data: {"type":"error","error":{"code":"content_policy","message":"request blocked by policy"REDACTEDREDACTED` + "\n\n"
+	failedEvent := "event: response.failed\n" +
+		`data: {"type":"response.failed","response":{"id":"resp_failed","usage":{"input_tokens":9,"output_tokens":2REDACTED,"error":{"code":"content_policy","message":"request blocked by policy"REDACTEDREDACTEDREDACTED` + "\n\n"
+	upstream := errorEvent + failedEvent + "data: [DONE]\n\n"
+
+	result, recorder, writer, err := runPassthroughFlushTest(t, io.NopCloser(strings.NewReader(upstream)), -1)
+
+REDACTED
+	require.NotNil(t, result)
+	body := recorder.Body.String()
+	require.NotContains(t, body, `"type":"error"`)
+	require.Equal(t, 1, strings.Count(body, `"type":"response.failed"`))
+	require.Contains(t, body, `"id":"resp_failed"`)
+	require.NotContains(t, body, "[DONE]")
+	require.Equal(t, []int{len(body)REDACTED, writer.flushBodyLengths)
+	require.Equal(t, 9, result.usage.InputTokens)
+	require.Equal(t, 2, result.usage.OutputTokens)
+REDACTED
+
 func TestOpenAIStreamingPassthroughFailedAfterOutputFlushesAtBoundaryAndKeepsUsage(t *testing.T) {
 	firstOutput := `data: {"type":"response.output_text.delta","delta":"partial"REDACTED` + "\n\n"
 	failedEvent := "event: response.failed\n" +

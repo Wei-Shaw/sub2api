@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/tidwall/gjson"
 )
 
 // isGrokContentPolicyRejection identifies request-scoped safety refusals from
@@ -197,12 +199,71 @@ func (s *OpenAIGatewayService) shouldFailoverGrokUpstreamError(statusCode int, r
 	if isGrokContentPolicyRejection(statusCode, responseBody) {
 		return false
 REDACTED
+	// A 422 emitted by xAI's ModelInput decoder is account/runtime compatibility,
+	// not quota exhaustion. Another account may run a different upstream build,
+	// so fail over without applying an account cooldown.
+	if isGrokDecoderCompatibilityError(statusCode, responseBody) {
+		return true
+REDACTED
 	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
 	switch decision.Class {
 	case GrokFailureFreeUsage, GrokFailureEmptyUpstream, GrokFailureBilling, GrokFailureModelCapacity:
 		return decision.ShouldFailover
 REDACTED
 	return s.shouldFailoverUpstreamError(statusCode)
+REDACTED
+
+func isGrokDecoderCompatibilityError(statusCode int, responseBody []byte) bool {
+	if statusCode != http.StatusUnprocessableEntity || len(responseBody) == 0 {
+		return false
+REDACTED
+	for _, candidate := range grokStructuredErrorMessageCandidates(responseBody) {
+		message := strings.ToLower(candidate)
+		decoderSignal := strings.Contains(message, "untagged enum") ||
+			strings.Contains(message, "decode") ||
+			strings.Contains(message, "deserialize") ||
+			strings.Contains(message, "deserializ") ||
+			strings.Contains(message, "decoder")
+		inputSignal := strings.Contains(message, "modelinput") ||
+			strings.Contains(message, "model input") ||
+			strings.Contains(message, "input[") ||
+			strings.Contains(message, "input.")
+		messageContentSignal := (strings.Contains(message, "messages[") ||
+			strings.Contains(message, "messages.")) &&
+			strings.Contains(message, "content") &&
+			strings.Contains(message, "did not match any variant")
+		if decoderSignal && (inputSignal || messageContentSignal) {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func grokStructuredErrorMessageCandidates(body []byte) []string {
+	candidates := make([]string, 0, 6)
+	appendCandidate := func(result gjson.Result) {
+		if !result.Exists() {
+			return
+	REDACTED
+		value := strings.TrimSpace(result.String())
+		if value != "" {
+			candidates = append(candidates, value)
+	REDACTED
+REDACTED
+	appendCandidate(gjson.GetBytes(body, "error.message"))
+	appendCandidate(gjson.GetBytes(body, "error.error"))
+	errorNode := gjson.GetBytes(body, "error")
+	if errorNode.Type == gjson.String {
+		appendCandidate(errorNode)
+REDACTED
+	appendCandidate(gjson.GetBytes(body, "message"))
+	appendCandidate(gjson.GetBytes(body, "detail"))
+	if !json.Valid(body) {
+		if plaintext := strings.TrimSpace(string(body)); plaintext != "" {
+			candidates = append(candidates, plaintext)
+	REDACTED
+REDACTED
+	return candidates
 REDACTED
 
 // applyGrokForbiddenPolicy applies an administrator's existing temporary

@@ -44,7 +44,7 @@ REDACTEDREDACTED
 			{"type":"tool_search_call","id":"fc_wrong_search","call_id":"call_search_1","arguments":{"query":"docs"REDACTEDREDACTED,
 			{"type":"tool_search_call","id":"tsc_valid","call_id":"call_search_2","arguments":{"query":"docs"REDACTEDREDACTED,
 			{"type":"function_call_output","id":"item_output","call_id":"call_123","output":"done"REDACTED,
-			{"type":"web_search_call","id":"item_unconstrained"REDACTED
+			{"type":"web_search_call","id":"item_wrong_web"REDACTED
 		]
 REDACTED`)
 
@@ -68,29 +68,31 @@ REDACTED
 	require.Equal(t, "tsc_valid", gjson.GetBytes(forwarded, "input.7.id").String())
 	require.Equal(t, "item_output", gjson.GetBytes(forwarded, "input.8.id").String())
 	require.Equal(t, "call_123", gjson.GetBytes(forwarded, "input.8.call_id").String())
-	require.Equal(t, "item_unconstrained", gjson.GetBytes(forwarded, "input.9.id").String())
+	require.False(t, gjson.GetBytes(forwarded, "input.9.id").Exists())
 REDACTED
 
 func TestOpenAIGatewayService_OAuthPassthrough_SanitizesNativeToolItemIDs(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	upstreamSSE := "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_test\",\"model\":\"gpt-5.6-sol\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2REDACTEDREDACTEDREDACTED\n\ndata: [DONE]\n\n"
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
-		Body:       io.NopCloser(strings.NewReader(upstreamSSE)),
-REDACTEDREDACTED
-	svc := newOpenAIImageGenerationControlTestService(upstream)
-	c, _ := newOpenAIImageGenerationControlTestContext(true, "codex_cli_rs/0.144.1")
-	account := newOpenAIImageGenerationControlTestAccount()
-	account.Type = AccountTypeOAuth
-	account.Credentials = map[string]any{
-		"access_token":       "oauth-token",
-		"chatgpt_account_id": "chatgpt-account",
-REDACTED
-	account.Extra = map[string]any{"openai_passthrough": trueREDACTED
+	for _, accountType := range []string{AccountTypeOAuth, AccountTypeSetupTokenREDACTED {
+		t.Run(accountType, func(t *testing.T) {
+			upstreamSSE := "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_test\",\"model\":\"gpt-5.6-sol\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2REDACTEDREDACTEDREDACTED\n\ndata: [DONE]\n\n"
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+				Body:       io.NopCloser(strings.NewReader(upstreamSSE)),
+		REDACTEDREDACTED
+			svc := newOpenAIImageGenerationControlTestService(upstream)
+			c, _ := newOpenAIImageGenerationControlTestContext(true, "codex_cli_rs/0.144.1")
+			account := newOpenAIImageGenerationControlTestAccount()
+			account.Type = accountType
+			account.Credentials = map[string]any{
+				"access_token":       "oauth-token",
+				"chatgpt_account_id": "chatgpt-account",
+		REDACTED
+			account.Extra = map[string]any{"openai_passthrough": trueREDACTED
 
-	body := []byte(`{
+			body := []byte(`{
 		"model":"gpt-5.6-sol",
 		"stream":true,
 		"instructions":"test",
@@ -102,14 +104,58 @@ REDACTED
 		]
 REDACTED`)
 
+			result, err := svc.Forward(context.Background(), c, account, body)
+		REDACTED
+			require.NotNil(t, result)
+			require.NotNil(t, upstream.lastReq)
+			require.Equal(t, "https://chatgpt.com/backend-api/codex/responses", upstream.lastReq.URL.String())
+			require.False(t, gjson.GetBytes(upstream.lastBody, "input.0.id").Exists())
+			require.Equal(t, "ctc_valid", gjson.GetBytes(upstream.lastBody, "input.1.id").String())
+			require.False(t, gjson.GetBytes(upstream.lastBody, "input.2.id").Exists())
+			require.Equal(t, "tsc_valid", gjson.GetBytes(upstream.lastBody, "input.3.id").String())
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestOpenAIGatewayService_SetupTokenLegacy_SanitizesAndTransforms(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstreamSSE := "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_test\",\"model\":\"gpt-5.6-sol\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2REDACTEDREDACTEDREDACTED\n\ndata: [DONE]\n\n"
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(upstreamSSE)),
+REDACTEDREDACTED
+	svc := newOpenAIImageGenerationControlTestService(upstream)
+	c, _ := newOpenAIImageGenerationControlTestContext(true, "codex_cli_rs/0.144.1")
+	account := newOpenAIImageGenerationControlTestAccount()
+	account.Type = AccountTypeSetupToken
+	account.Credentials = map[string]any{
+		"access_token":       "setup-token",
+		"chatgpt_account_id": "chatgpt-account",
+REDACTED
+	account.Extra = map[string]any{"openai_passthrough": falseREDACTED
+	body := []byte(`{
+		"model":"gpt-5.6-sol",
+		"stream":true,
+		"store":true,
+		"reasoning":{"mode":"pro"REDACTED,
+		"instructions":"test",
+		"input":[
+			{"type":"custom_tool_call","id":"fc_wrong_custom","call_id":"call_custom_1","name":"apply_patch","input":"patch"REDACTED,
+			{"type":"function_call_output","call_id":"call_orphan","output":"orphan"REDACTED
+		]
+REDACTED`)
+
 	result, err := svc.Forward(context.Background(), c, account, body)
 REDACTED
 	require.NotNil(t, result)
 	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://chatgpt.com/backend-api/codex/responses", upstream.lastReq.URL.String())
+	require.Equal(t, false, gjson.GetBytes(upstream.lastBody, "store").Bool())
+	require.Equal(t, "max", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "reasoning.mode").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "input.0.id").Exists())
-	require.Equal(t, "ctc_valid", gjson.GetBytes(upstream.lastBody, "input.1.id").String())
-	require.False(t, gjson.GetBytes(upstream.lastBody, "input.2.id").Exists())
-	require.Equal(t, "tsc_valid", gjson.GetBytes(upstream.lastBody, "input.3.id").String())
+	require.Len(t, gjson.GetBytes(upstream.lastBody, "input").Array(), 1)
 REDACTED
 
 // TestOpenAIGatewayService_APIKeyPassthrough_StripsInvalidReasoningItemIDs
@@ -164,7 +210,7 @@ func TestShouldStripOpenAIResponsesInputItemID_Reasoning(t *testing.T) {
 REDACTED{
 		{"reasoning item_* id", "reasoning", "item_bad_reasoning", trueREDACTED,
 		{"reasoning rs id", "reasoning", "rs_abc123", falseREDACTED,
-		{"reasoning empty id", "reasoning", "", falseREDACTED,
+		{"reasoning empty id", "reasoning", "", trueREDACTED,
 		{"message msg id", "message", "msg_abc", falseREDACTED,
 		{"message item id", "message", "item_x", trueREDACTED,
 		{"function_call fc id", "function_call", "fc_abc", falseREDACTED,
@@ -174,7 +220,10 @@ REDACTED{
 		{"custom tool fc id", "custom_tool_call", "fc_abc", trueREDACTED,
 		{"tool search tsc id", "tool_search_call", "tsc_abc", falseREDACTED,
 		{"tool search fc id", "tool_search_call", "fc_abc", trueREDACTED,
-		{"unconstrained type", "web_search_call", "ws_001", falseREDACTED,
+		{"web search ws id", "web_search_call", "ws_001", falseREDACTED,
+		{"web search item id", "web_search_call", "item_001", trueREDACTED,
+		{"custom output fc id", "custom_tool_call_output", "fc_001", falseREDACTED,
+		{"custom output ctco id", "custom_tool_call_output", "ctco_001", trueREDACTED,
 REDACTED
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -207,4 +256,38 @@ REDACTED
 	largeAllocated := allocatedBytes(makeBody(200))
 	require.Less(t, largeAllocated, smallAllocated*30,
 		"10x more input items must not cause quadratic whole-body allocation growth")
+REDACTED
+
+func TestNormalizeOpenAIResponsesWebSocketCompatibilityBodyClosesInvalidIDReferences(t *testing.T) {
+	body := []byte(`{"type":"response.create","input":[
+		{"type":"custom_tool_call","id":"ctc_call","call_id":"call_custom","name":"apply_patch","input":"patch"REDACTED,
+		{"type":"custom_tool_call_output","id":"ctco_bad","call_id":"call_custom","output":"done"REDACTED,
+		{"type":"item_reference","id":"ctco_bad"REDACTED,
+		{"type":"future_item","id":"item_future","payload":"keep"REDACTED
+	]REDACTED`)
+
+	for _, accountType := range []string{AccountTypeAPIKey, AccountTypeOAuthREDACTED {
+		t.Run(accountType, func(t *testing.T) {
+			normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
+				Platform: PlatformOpenAI,
+				Type:     accountType,
+		REDACTED)
+
+		REDACTED
+			require.True(t, changed)
+			require.Len(t, gjson.GetBytes(normalized, "input").Array(), 3)
+			require.Equal(t, "ctc_call", gjson.GetBytes(normalized, "input.0.id").String())
+			require.Equal(t, "call_custom", gjson.GetBytes(normalized, "input.1.call_id").String())
+			require.False(t, gjson.GetBytes(normalized, "input.1.id").Exists())
+			require.Equal(t, "item_future", gjson.GetBytes(normalized, "input.2.id").String())
+
+			second, changedAgain, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(normalized, &Account{
+				Platform: PlatformOpenAI,
+				Type:     accountType,
+		REDACTED)
+		REDACTED
+			require.False(t, changedAgain)
+			require.JSONEq(t, string(normalized), string(second))
+	REDACTED)
+REDACTED
 REDACTED

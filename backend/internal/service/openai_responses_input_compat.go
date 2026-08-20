@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bytes"
 	"strings"
 )
 
@@ -62,91 +61,16 @@ REDACTED
 	return true
 REDACTED
 
-func truncateOpenAIResponsesInputText(reqBody map[string]any) bool {
-	input, ok := reqBody["input"].([]any)
-	if !ok || len(input) == 0 {
-		return false
-REDACTED
-	modified := false
-	for _, rawItem := range input {
-		item, ok := rawItem.(map[string]any)
-		if !ok {
-			continue
-	REDACTED
-		itemType := strings.TrimSpace(firstNonEmptyString(item["type"]))
-		if isCodexToolCallOutputItemType(itemType) {
-			if output, ok := item["output"].(string); ok {
-				if truncated, changed := truncateOpenAIResponsesInputString(output); changed {
-					item["output"] = truncated
-					modified = true
-			REDACTED
-		REDACTED
-	REDACTED
-		if truncateOpenAIResponsesMessageText(item) {
-			modified = true
-	REDACTED
-REDACTED
-	return modified
-REDACTED
-
-func openAIResponsesInputMayNeedTruncation(body []byte) bool {
-	if len(body) <= openAIResponsesInputTextMaxChars {
-		return false
-REDACTED
-	if bytes.Contains(body, []byte(`"text"`)) && bytes.Contains(body, []byte(`"content"`)) {
-		return true
-REDACTED
-	for _, itemType := range []string{
-		"function_call_output",
-		"tool_search_output",
-		"custom_tool_call_output",
-		"mcp_tool_call_output",
-REDACTED {
-		if bytes.Contains(body, []byte(itemType)) {
-			return true
-	REDACTED
-REDACTED
+func truncateOpenAIResponsesInputText(_ map[string]any) bool {
+	// Do not silently rewrite client or tool output. If an upstream enforces a
+	// text limit, forwarding the original value preserves its explicit error for
+	// the client and the normal Ops error pipeline. This compatibility shim is
+	// retained until the two callers can remove the old mutation hook together.
 	return false
 REDACTED
 
-func truncateOpenAIResponsesMessageText(item map[string]any) bool {
-	itemType := strings.TrimSpace(firstNonEmptyString(item["type"]))
-	role := strings.TrimSpace(firstNonEmptyString(item["role"]))
-	if itemType != "message" && role == "" {
-		return false
-REDACTED
-	parts, ok := item["content"].([]any)
-	if !ok {
-		return false
-REDACTED
-	modified := false
-	for _, rawPart := range parts {
-		part, ok := rawPart.(map[string]any)
-		if !ok {
-			continue
-	REDACTED
-		text, ok := part["text"].(string)
-		if !ok {
-			continue
-	REDACTED
-		if truncated, changed := truncateOpenAIResponsesInputString(text); changed {
-			part["text"] = truncated
-			modified = true
-	REDACTED
-REDACTED
-	return modified
-REDACTED
-
-func truncateOpenAIResponsesInputString(value string) (string, bool) {
-	if len(value) <= openAIResponsesInputTextMaxChars {
-		return value, false
-REDACTED
-	chars := 0
-	for index := range value {
-		if chars == openAIResponsesInputTextMaxChars {
-			return value[:index], true
-	REDACTED
-		chars++
-REDACTED
-	return value, false
+func openAIResponsesInputMayNeedTruncation(_ []byte) bool {
+	// See truncateOpenAIResponsesInputText. Returning false also avoids decoding
+	// very large bodies solely for a mutation that must not happen.
+	return false
 REDACTED

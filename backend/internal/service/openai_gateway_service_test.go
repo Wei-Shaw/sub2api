@@ -1768,7 +1768,7 @@ REDACTED
 REDACTED
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
-	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.Equal(t, http.StatusServiceUnavailable, failoverErr.StatusCode)
 	require.Contains(t, string(failoverErr.ResponseBody), "Please retry later")
 	// 容量降载是请求级信号：非池模式账号也要先在同账号重试，且不得据此临时封禁账号。
 	// 否则单个被降载的请求会把整池账号逐个消耗掉，而降载因素在每个账号上都相同。
@@ -1840,8 +1840,8 @@ REDACTED
 	require.Equal(t, http.StatusTooManyRequests, opsEvents[len(opsEvents)-1].UpstreamStatusCode)
 REDACTED
 
-// 流内 rate limit 只产生 failover 错误，不写账号级限流/封禁状态：
-// HTTP 200 流的 x-codex-* 头是正常配额快照，不能按 429 头驱动账号冷却。
+// 流内 rate limit 进入 OAuth 同账号重试窗口，但不立即写账号级限流/封禁状态：
+// HTTP 200 流的 x-codex-* 头不能让窗口内的账号提前失去调度资格。
 func TestOpenAIStreamingResponseFailedRateLimitDoesNotBlockAccountScheduling(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
@@ -1885,7 +1885,8 @@ REDACTED
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
-	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.False(t, failoverErr.SameAccountRetryDeadline.IsZero())
 	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
 REDACTED
 
@@ -2955,6 +2956,26 @@ REDACTED
 	require.False(t, gjson.GetBytes(normalized, "store").Exists())
 	require.False(t, gjson.GetBytes(normalized, "stream").Exists())
 	require.False(t, gjson.GetBytes(normalized, "prompt_cache_key").Exists())
+REDACTED
+
+func TestNormalizeOpenAICompactRequestBodyDropsParallelToolCallsWithoutUsableTools(t *testing.T) {
+	for _, body := range []string{
+		`{"model":"gpt-5.5","input":[],"parallel_tool_calls":trueREDACTED`,
+		`{"model":"gpt-5.5","input":[],"tools":[],"parallel_tool_calls":falseREDACTED`,
+		`{"model":"gpt-5.5","input":[],"tools":null,"parallel_tool_calls":trueREDACTED`,
+		`{"model":"gpt-5.5","input":[],"tools":{REDACTED,"parallel_tool_calls":trueREDACTED`,
+REDACTED {
+		normalized, changed, err := normalizeOpenAICompactRequestBody([]byte(body))
+	REDACTED
+		require.True(t, changed)
+		require.False(t, gjson.GetBytes(normalized, "parallel_tool_calls").Exists(), string(normalized))
+REDACTED
+
+	withTools := []byte(`{"model":"gpt-5.5","tools":[{"type":"function","name":"lookup"REDACTED],"parallel_tool_calls":falseREDACTED`)
+	normalized, _, err := normalizeOpenAICompactRequestBody(withTools)
+REDACTED
+	require.True(t, gjson.GetBytes(normalized, "parallel_tool_calls").Exists())
+	require.False(t, gjson.GetBytes(normalized, "parallel_tool_calls").Bool())
 REDACTED
 
 func TestOpenAIBuildUpstreamRequestOpenAIPassthroughPreservesCompactPath(t *testing.T) {

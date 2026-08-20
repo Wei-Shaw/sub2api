@@ -91,7 +91,7 @@ REDACTED
 
 func prepareOpenAIWSHTTPBridgeBody(payload []byte) ([]byte, error) {
 	var body map[string]any
-	if err := json.Unmarshal(payload, &body); err != nil {
+	if err := decodeOpenAIJSONUseNumber(payload, &body); err != nil {
 		return nil, err
 REDACTED
 	if body == nil {
@@ -213,6 +213,43 @@ REDACTED
 	return body
 REDACTED
 
+func buildOpenAIWSHTTPBridgeFailedEvent(responseID, model string, source []byte, fallbackMessage string) []byte {
+	errorType := strings.TrimSpace(gjson.GetBytes(source, "error.type").String())
+	if errorType == "" {
+		errorType = strings.TrimSpace(gjson.GetBytes(source, "response.error.type").String())
+REDACTED
+	code := strings.TrimSpace(gjson.GetBytes(source, "error.code").String())
+	if code == "" {
+		code = strings.TrimSpace(gjson.GetBytes(source, "response.error.code").String())
+REDACTED
+	if code == "" {
+		code = "upstream_error"
+REDACTED
+	message := extractOpenAISSEErrorMessage(source)
+	if message == "" {
+		message = strings.TrimSpace(fallbackMessage)
+REDACTED
+	if message == "" {
+		message = "Upstream response failed"
+REDACTED
+	errorBody := map[string]any{"code": code, "message": messageREDACTED
+	if errorType != "" {
+		errorBody["type"] = errorType
+REDACTED
+	response := map[string]any{
+		"id": responseID, "object": "response", "status": "failed",
+		"output": []any{REDACTED, "error": errorBody,
+REDACTED
+	if model = strings.TrimSpace(model); model != "" {
+		response["model"] = model
+REDACTED
+	body, err := json.Marshal(map[string]any{"type": "response.failed", "response": responseREDACTED)
+	if err != nil {
+		return []byte(`{"type":"response.failed","response":{"status":"failed","output":[],"error":{"code":"upstream_error","message":"Upstream response failed"REDACTEDREDACTEDREDACTED`)
+REDACTED
+	return body
+REDACTED
+
 func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	ctx context.Context,
 	c *gin.Context,
@@ -273,38 +310,46 @@ REDACTED
 	REDACTED)
 REDACTED
 
-	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-	var upstreamReq *http.Request
+	buildUpstreamRequest := func(requestBody []byte) (*http.Request, error) {
+		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+		defer releaseUpstreamCtx()
+		var upstreamReq *http.Request
+		var buildErr error
+		if account.Platform == PlatformGrok {
+			upstreamReq, buildErr = buildGrokResponsesRequest(upstreamCtx, c, account, requestBody, token, grokCacheIdentity, s.cfg, s.settingService)
+	REDACTED else {
+			upstreamReq, buildErr = s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, requestBody, token)
+	REDACTED
+		if buildErr != nil {
+			return nil, buildErr
+	REDACTED
+		if account.Platform != PlatformGrok && isOpenAIResponsesLiteWebSocketPayload(payload) {
+			upstreamReq.Header.Set(responsesLiteHeader, "true")
+	REDACTED
+		return upstreamReq, nil
+REDACTED
 	if account.Platform == PlatformGrok {
 		upstreamModel := resolveGrokWSUpstreamModel(account, body, originalModel)
 		grokIntentSourceBody := body
 		body, err = patchGrokResponsesBody(body, upstreamModel)
 		if err != nil {
-			releaseUpstreamCtx()
 			return nil, err
 	REDACTED
 		grokMixedCacheIntentBody := append([]byte(nil), body...)
 		body, err = applyGrokResponsesCacheIdentity(body, grokIntentSourceBody, grokCacheIdentity, account.IsGrokOAuth())
 		if err != nil {
-			releaseUpstreamCtx()
 			return nil, fmt.Errorf("apply grok prompt cache identity: %w", err)
 	REDACTED
 		body, err = applyGrokFreeRequestToolCacheRoute(c, body, grokMixedCacheIntentBody, account, grokCacheIdentity)
 		if err != nil {
-			releaseUpstreamCtx()
 			return nil, fmt.Errorf("apply grok Free function-tool cache route: %w", err)
 	REDACTED
-		upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, body, token, grokCacheIdentity, s.cfg, s.settingService)
-REDACTED else {
-		upstreamReq, err = s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
 REDACTED
-	releaseUpstreamCtx()
-	if err != nil {
-		return nil, err
+	actualModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+	if actualModel == "" {
+		actualModel = canonicalOpenAIAccountSchedulingModel(account, originalModel)
 REDACTED
-	if account.Platform != PlatformGrok && isOpenAIResponsesLiteWebSocketPayload(payload) {
-		upstreamReq.Header.Set(responsesLiteHeader, "true")
-REDACTED
+	SetOpsUpstreamModel(c, actualModel)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -316,19 +361,47 @@ REDACTED
 REDACTED
 
 	turnStart := time.Now()
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
-	if err != nil {
-		if turn == 1 {
-			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
+	rejectedFieldRetryState := newOpenAIResponsesRejectedFieldRetryState(body)
+	var resp *http.Response
+	for {
+		upstreamReq, buildErr := buildUpstreamRequest(body)
+		if buildErr != nil {
+			return nil, buildErr
 	REDACTED
-		safeErr := sanitizeUpstreamErrorMessage(err.Error())
-		_ = writeClientMessage(buildOpenAIWSHTTPBridgeErrorEvent(http.StatusBadGateway, "Upstream request failed"))
-		return nil, fmt.Errorf("upstream http bridge request failed: %s", safeErr)
-REDACTED
-	defer func() { _ = resp.Body.Close() REDACTED()
+		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		if err != nil {
+			if turn == 1 {
+				return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
+		REDACTED
+			safeErr := sanitizeUpstreamErrorMessage(err.Error())
+			clientError := buildOpenAIWSHTTPBridgeErrorEvent(http.StatusBadGateway, "Upstream request failed")
+			if writeErr := writeClientMessage(clientError); writeErr == nil {
+				markOpenAIWSClientVisibleFailure(c, "error", clientError)
+		REDACTED
+			return nil, fmt.Errorf("upstream http bridge request failed: %s", safeErr)
+	REDACTED
+		if resp.StatusCode < 400 {
+			break
+	REDACTED
 
-	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, openAIWSHTTPBridgeErrorBodyLimitBytes))
+		_ = resp.Body.Close()
+		retryBody, retryReason, changed, retryErr := normalizeOpenAIResponsesRejectedFieldRetryBody(resp.StatusCode, body, respBody)
+		if retryErr != nil {
+			return nil, fmt.Errorf("normalize websocket http bridge rejected field retry: %w", retryErr)
+	REDACTED
+		if changed && rejectedFieldRetryState.Allow(retryBody) {
+			logOpenAIWSModeInfo(
+				"ingress_ws_http_bridge_rejected_field_retry account_id=%d turn=%d reason=%s",
+				account.ID,
+				turn,
+				truncateOpenAIWSLogValue(retryReason, openAIWSLogValueMaxLen),
+			)
+			body = retryBody
+			payloadBytes = len(body)
+			continue
+	REDACTED
+
 		upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
 		if upstreamMsg == "" {
 			upstreamMsg = http.StatusText(resp.StatusCode)
@@ -344,12 +417,17 @@ REDACTED
 			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, respBody)
 	REDACTED
 		if account.Platform != PlatformGrok && (shouldFailover || shouldCooldownOpenAITransientUpstreamError(resp.StatusCode, respBody)) {
-			canonicalModel := canonicalOpenAIAccountSchedulingModel(account, originalModel)
-			s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, canonicalModel)
+			s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, actualModel)
 	REDACTED
-		_ = writeClientMessage(buildOpenAIWSHTTPBridgeErrorEvent(resp.StatusCode, upstreamMsg))
+		clientError := buildOpenAIWSHTTPBridgeErrorEvent(resp.StatusCode, upstreamMsg)
+		if writeErr := writeClientMessage(clientError); writeErr == nil {
+			markOpenAIWSClientVisibleFailure(c, "error", clientError)
+	REDACTED
 		return nil, fmt.Errorf("upstream http bridge error: status=%d message=%s", resp.StatusCode, upstreamMsg)
 REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+	stopCancelBody := context.AfterFunc(ctx, func() { _ = resp.Body.Close() REDACTED)
+	defer stopCancelBody()
 	if account.Platform == PlatformGrok {
 		s.updateGrokUsageFromResponse(withGrokTeamRateLimitModel(ctx, resolveGrokWSUpstreamModel(account, body, originalModel)), account, resp.Header, resp.StatusCode)
 REDACTED
@@ -372,14 +450,14 @@ REDACTED
 	pendingClientMessageBytes := int64(0)
 	capacityFailoverSuppressedLogged := false
 	clientDisconnected := false
-	mappedModel := ""
+	bareErrorPending := false
+	var bareErrorPayload []byte
+	bareErrorMessage := ""
+	failureAccountSideEffectsApplied := false
+	mappedModel := actualModel
 	needModelReplace := false
 	var mappedModelBytes []byte
 	if originalModel != "" {
-		mappedModel = strings.TrimSpace(gjson.GetBytes(body, "model").String())
-		if mappedModel == "" {
-			mappedModel = normalizeOpenAIModelForUpstream(account, account.GetMappedModel(originalModel))
-	REDACTED
 		needModelReplace = mappedModel != "" && mappedModel != originalModel
 		if needModelReplace {
 			mappedModelBytes = []byte(mappedModel)
@@ -431,8 +509,48 @@ REDACTED
 	scanner.Buffer(scanBuf[:0], maxLineSize)
 	defer putSSEScannerBuf64K(scanBuf)
 
+	pendingSSEEventType := ""
+	finalizeBareError := func() error {
+		if !bareErrorPending {
+			return nil
+	REDACTED
+		if !failureAccountSideEffectsApplied {
+			failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, mappedModel, resp.Header, bareErrorPayload)
+	REDACTED
+		upstreamTerminalEvent = "response.failed"
+		if clientDisconnected {
+			return nil
+	REDACTED
+		clientMessage := buildOpenAIWSHTTPBridgeFailedEvent(responseID, originalModel, bareErrorPayload, bareErrorMessage)
+		if rewritten, changed := sanitizeOpenAICapacityShedErrorCodeForClient(clientMessage); changed {
+			clientMessage = rewritten
+	REDACTED
+		messages := append(pendingClientMessages, clientMessage)
+		pendingClientMessages = nil
+		pendingClientMessageBytes = 0
+		for _, message := range messages {
+			if err := writeClientMessage(message); err != nil {
+				if isOpenAIWSClientDisconnectError(err) {
+					clientDisconnected = true
+					return nil
+			REDACTED
+				return fmt.Errorf("write synthesized websocket response.failed: %w", err)
+		REDACTED
+			wroteDownstream = true
+	REDACTED
+		markOpenAIWSClientVisibleFailure(c, "response.failed", clientMessage)
+		return nil
+REDACTED
 	for scanner.Scan() {
 		line := scanner.Text()
+		if eventType, ok := extractOpenAISSEEventLine(line); ok {
+			pendingSSEEventType = eventType
+			continue
+	REDACTED
+		if strings.TrimSpace(line) == "" {
+			pendingSSEEventType = ""
+			continue
+	REDACTED
 		data, ok := extractOpenAISSEDataLine(line)
 		if !ok {
 			continue
@@ -446,7 +564,7 @@ REDACTED
 			continue
 	REDACTED
 
-		upstreamMessage := []byte(trimmedData)
+		upstreamMessage := []byte(openAICompatPayloadWithEventType(trimmedData, pendingSSEEventType))
 		if normalized, changed := normalizeCompletedImageGenerationStatus(upstreamMessage); changed {
 			upstreamMessage = normalized
 	REDACTED
@@ -469,7 +587,7 @@ REDACTED
 				firstTokenMs = &ms
 		REDACTED
 	REDACTED
-		if openAIWSEventShouldParseUsage(eventType) {
+		if openAIWSMessageShouldParseUsage(eventType, upstreamMessage) {
 			parseOpenAIWSResponseUsageFromCompletedEvent(upstreamMessage, &usage)
 	REDACTED
 		imageCounter.AddSSEData(upstreamMessage)
@@ -485,6 +603,7 @@ REDACTED
 		replayCollector.AddEvent(eventType, upstreamMessage)
 
 		var upstreamEventErr error
+		suppressClientMessage := bareErrorPending && eventType != "response.failed"
 		if eventType == "error" || eventType == "response.failed" {
 			errMessage := extractOpenAISSEErrorMessage(upstreamMessage)
 			if errMessage == "" {
@@ -494,8 +613,10 @@ REDACTED
 			shouldFailover := openAIStreamFailedEventShouldFailover(upstreamMessage, errMessage)
 			if eventType == "error" {
 				errCodeRaw, errTypeRaw, _ := parseOpenAIWSErrorEventFields(upstreamMessage)
-				statusCode = openAIWSErrorHTTPStatusFromRaw(errCodeRaw, errTypeRaw)
-				shouldFailover = s.shouldFailoverOpenAIUpstreamResponse(statusCode, errMessage, upstreamMessage)
+				shouldFailover = openAIStreamErrorEventShouldFailover(upstreamMessage, errMessage)
+				if account.Platform == PlatformGrok {
+					statusCode = openAIWSErrorHTTPStatusFromRaw(errCodeRaw, errTypeRaw)
+			REDACTED
 		REDACTED
 			requestScopedCapacity := isOpenAIUpstreamCapacityShedEvent(upstreamMessage)
 			if account.Platform == PlatformGrok && eventType == "error" {
@@ -509,13 +630,6 @@ REDACTED
 					shouldFailover = s.shouldFailoverGrokUpstreamError(statusCode, upstreamMessage)
 					s.handleGrokAccountUpstreamError(ctx, account, statusCode, resp.Header, upstreamMessage)
 			REDACTED
-		REDACTED else if eventType == "error" && shouldFailover && !requestScopedCapacity {
-				accountStatus := statusCode
-				if transientStatus := openAIWSPayloadTransientStatus(upstreamMessage); transientStatus != 0 {
-					accountStatus = transientStatus
-			REDACTED
-				canonicalModel := canonicalOpenAIAccountSchedulingModel(account, originalModel)
-				s.handleOpenAIAccountUpstreamError(ctx, account, accountStatus, resp.Header, upstreamMessage, canonicalModel)
 		REDACTED
 			if !wroteDownstream && shouldFailover && (turn == 1 || statusCode == http.StatusTooManyRequests) {
 				if account.Platform == PlatformGrok {
@@ -523,12 +637,24 @@ REDACTED
 			REDACTED
 				return nil, s.newOpenAIStreamFailoverError(c, account, true, resp.Header.Get("x-request-id"), upstreamMessage, errMessage, resp.Header)
 		REDACTED
+			if account.Platform != PlatformGrok && !failureAccountSideEffectsApplied {
+				if eventType == "response.failed" || (shouldFailover && !requestScopedCapacity) {
+					failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, mappedModel, resp.Header, upstreamMessage)
+			REDACTED
+		REDACTED
 			if wroteDownstream && requestScopedCapacity && !capacityFailoverSuppressedLogged {
 				logOpenAICapacityFailoverSuppressed(ctx, account, "ws_http_bridge", resp.Header.Get("x-request-id"), eventType)
 				capacityFailoverSuppressedLogged = true
 		REDACTED
-			if eventType == "error" {
+			if eventType == "error" && account.Platform == PlatformGrok {
 				upstreamEventErr = errors.New(errMessage)
+		REDACTED else if eventType == "error" {
+				bareErrorPending = true
+				bareErrorPayload = append(bareErrorPayload[:0], upstreamMessage...)
+				bareErrorMessage = errMessage
+				suppressClientMessage = true
+		REDACTED else {
+				bareErrorPending = false
 		REDACTED
 	REDACTED
 
@@ -542,7 +668,7 @@ REDACTED
 				clientMessage = rewritten
 		REDACTED
 	REDACTED
-		if !clientDisconnected {
+		if !clientDisconnected && !suppressClientMessage {
 			stageBeforeSemanticOutput := turn == 1 && account.Platform == PlatformOpenAI && !wroteDownstream
 			commitStagedMessages := !stageBeforeSemanticOutput ||
 				openAIStreamDataStartsClientOutput(string(clientMessage), eventType) ||
@@ -589,12 +715,19 @@ REDACTED
 			REDACTED
 		REDACTED
 	REDACTED
+		if !clientDisconnected && !suppressClientMessage {
+			markOpenAIWSClientVisibleFailure(c, eventType, upstreamMessage)
+	REDACTED
 
 		if upstreamEventErr != nil {
 			return resultWithUsage(), upstreamEventErr
 	REDACTED
-		if isOpenAIWSTerminalEvent(eventType) {
-			upstreamTerminalEvent = s.handleOpenAIWSTerminalTransientFailure(ctx, account, canonicalOpenAIAccountSchedulingModel(account, originalModel), resp.Header, upstreamMessage)
+		if isOpenAIWSTerminalEvent(eventType) && !bareErrorPending {
+			if eventType == "response.failed" {
+				upstreamTerminalEvent = "response.failed"
+		REDACTED else {
+				upstreamTerminalEvent = s.handleOpenAIWSTerminalTransientFailure(ctx, account, mappedModel, resp.Header, upstreamMessage)
+		REDACTED
 			terminalEventCount++
 			firstTokenMsValue := -1
 			if firstTokenMs != nil {
@@ -617,6 +750,15 @@ REDACTED
 			)
 			return resultWithUsage(), nil
 	REDACTED
+REDACTED
+	if bareErrorPending {
+		if finalizeErr := finalizeBareError(); finalizeErr != nil {
+			return resultWithUsage(), finalizeErr
+	REDACTED
+		if scanErr := scanner.Err(); scanErr != nil {
+			return resultWithUsage(), fmt.Errorf("read upstream http bridge stream after error event: %w", scanErr)
+	REDACTED
+		return resultWithUsage(), errors.New(bareErrorMessage)
 REDACTED
 	if err := scanner.Err(); err != nil {
 		streamErr := fmt.Errorf("read upstream http bridge stream: %w", err)

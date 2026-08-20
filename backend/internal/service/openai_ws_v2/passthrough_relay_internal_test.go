@@ -307,6 +307,7 @@ func TestParseUsageAndEnrichCoverage(t *testing.T) {
 	require.Equal(t, 0, state.usage.CacheReadInputTokens)
 
 	parseUsageAndAccumulate(state, []byte(`{"type":"response.completed","response":{"usage":{"input_tokens":2,"output_tokens":1,"input_tokens_details":{"cached_tokens":1,"cache_write_tokens":4REDACTED,"output_tokens_details":{"image_tokens":3REDACTEDREDACTEDREDACTEDREDACTED`), "response.completed", nil)
+	finalizeRelayTurnUsage(state)
 	require.Equal(t, 2, state.usage.InputTokens)
 	require.Equal(t, 1, state.usage.OutputTokens)
 	require.Equal(t, 1, state.usage.CacheReadInputTokens)
@@ -334,11 +335,145 @@ func TestParseUsageAndAccumulateAcceptsChatUsageAliases(t *testing.T) {
 		"response.done",
 		nil,
 	)
+	finalizeRelayTurnUsage(state)
 	require.Equal(t, 12, got.InputTokens)
 	require.Equal(t, 6, got.OutputTokens)
 	require.Equal(t, 4, got.CacheReadInputTokens)
 	require.Equal(t, 2, got.ImageOutputTokens)
 	require.Equal(t, got, state.usage)
+REDACTED
+
+func TestRelayUsageTerminalWithoutUsageKeepsFallback(t *testing.T) {
+	t.Parallel()
+
+	state := &relayState{REDACTED
+	parseUsageAndAccumulate(state, []byte(`{"type":"response.in_progress","usage":{"input_tokens":9,"output_tokens":4REDACTEDREDACTED`), "response.in_progress", nil)
+	parseUsageAndAccumulate(state, []byte(`{"type":"response.completed","response":{"id":"resp_1"REDACTEDREDACTED`), "response.completed", nil)
+
+	turnUsage := finalizeRelayTurnUsage(state)
+	require.Equal(t, Usage{InputTokens: 9, OutputTokens: 4REDACTED, turnUsage)
+	require.Equal(t, turnUsage, state.usage)
+REDACTED
+
+func TestRelayUsageTerminalZeroKeepsFallback(t *testing.T) {
+	t.Parallel()
+
+	state := &relayState{REDACTED
+	parseUsageAndAccumulate(state, []byte(`{"type":"response.in_progress","usage":{"input_tokens":9,"output_tokens":4REDACTEDREDACTED`), "response.in_progress", nil)
+	parseUsageAndAccumulate(state, []byte(`{"type":"response.completed","usage":{"input_tokens":0,"output_tokens":0REDACTEDREDACTED`), "response.completed", nil)
+
+	require.Equal(t, Usage{InputTokens: 9, OutputTokens: 4REDACTED, finalizeRelayTurnUsage(state))
+	require.Equal(t, Usage{InputTokens: 9, OutputTokens: 4REDACTED, state.usage)
+REDACTED
+
+func TestRelayUsageTerminalNonZeroReplacesFallbackAsWhole(t *testing.T) {
+	t.Parallel()
+
+	state := &relayState{REDACTED
+	parseUsageAndAccumulate(state, []byte(`{"type":"response.in_progress","usage":{"input_tokens":9,"output_tokens":4,"input_tokens_details":{"cached_tokens":2REDACTEDREDACTEDREDACTED`), "response.in_progress", nil)
+	parseUsageAndAccumulate(state, []byte(`{"type":"response.completed","usage":{"input_tokens":3,"output_tokens":0,"input_tokens_details":{"cached_tokens":0REDACTEDREDACTEDREDACTED`), "response.completed", nil)
+
+	require.Equal(t, Usage{InputTokens: 3REDACTED, finalizeRelayTurnUsage(state))
+	require.Equal(t, Usage{InputTokens: 3REDACTED, state.usage)
+REDACTED
+
+func TestObserveUpstreamMessageBareErrorClearsTurnStateAndFinalizesUsageOnce(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(200, 0)
+	state := &relayState{REDACTED
+	state.setPendingTurnStartedAt(now.Add(-2 * time.Second))
+	timing := openAIWSRelayGetOrInitTurnTiming(state, "resp_active", now.Add(-time.Second))
+	require.NotNil(t, timing)
+	state.setPendingTurnStartedAt(now.Add(-500 * time.Millisecond))
+	parseUsageAndAccumulate(state, []byte(`{"type":"response.in_progress","usage":{"input_tokens":9,"output_tokens":4REDACTEDREDACTED`), "response.in_progress", nil)
+
+	observed := observeUpstreamMessage(
+		state,
+		[]byte(`{"type":"error","usage":{"input_tokens":3,"output_tokens":1REDACTED,"error":{"message":"failed"REDACTEDREDACTED`),
+		now.Add(-3*time.Second),
+		func() time.Time { return now REDACTED,
+		nil,
+	)
+
+	require.False(t, observed.terminal, "bare error settlement is deferred in case response.failed follows")
+	require.Equal(t, "error", observed.eventType)
+	observed = finalizePendingBareError(state, now)
+	require.True(t, observed.terminal)
+	require.Equal(t, Usage{InputTokens: 3, OutputTokens: 1REDACTED, observed.usage)
+	require.Equal(t, observed.usage, state.usage)
+	require.Equal(t, Usage{REDACTED, state.turnUsage)
+	require.Nil(t, state.activeTurn)
+	require.Empty(t, state.turnTimingByID)
+	require.True(t, state.consumePendingTurnStartedAt().IsZero())
+
+	// Re-observing and settling a later terminal without usage must not re-add the prior turn.
+	observeUpstreamMessage(state, []byte(`{"type":"error","error":{"message":"again"REDACTEDREDACTED`), now, func() time.Time { return now REDACTED, nil)
+	finalizePendingBareError(state, now)
+	require.Equal(t, Usage{InputTokens: 3, OutputTokens: 1REDACTED, state.usage)
+REDACTED
+
+func TestObserveUpstreamMessageErrorThenFailedSettlesUsageOnce(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(300, 0)
+	state := &relayState{REDACTED
+	state.setPendingTurnStartedAt(now.Add(-time.Second))
+	openAIWSRelayGetOrInitTurnTiming(state, "resp_1", now)
+	parseUsageAndAccumulate(state, []byte(`{"type":"response.in_progress","usage":{"input_tokens":9,"output_tokens":4REDACTEDREDACTED`), "response.in_progress", nil)
+
+	errorObserved := observeUpstreamMessage(
+		state,
+		[]byte(`{"type":"error","error":{"code":"server_is_overloaded","message":"overloaded"REDACTEDREDACTED`),
+		now,
+		func() time.Time { return now REDACTED,
+		nil,
+	)
+	require.False(t, errorObserved.terminal)
+	require.NotNil(t, state.pendingBareError)
+	require.Equal(t, Usage{REDACTED, state.usage)
+
+	failedObserved := observeUpstreamMessage(
+		state,
+		[]byte(`{"type":"response.failed","response":{"id":"resp_1","usage":{"input_tokens":7,"output_tokens":2REDACTEDREDACTEDREDACTED`),
+		now,
+		func() time.Time { return now REDACTED,
+		nil,
+	)
+	require.True(t, failedObserved.terminal)
+	require.Equal(t, Usage{InputTokens: 7, OutputTokens: 2REDACTED, failedObserved.usage)
+	require.Equal(t, failedObserved.usage, state.usage)
+	require.Nil(t, state.pendingBareError)
+REDACTED
+
+func TestObserveUpstreamMessageBareErrorBeforeNextCompletedKeepsBothTurns(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(400, 0)
+	state := &relayState{REDACTED
+	parseUsageAndAccumulate(state, []byte(`{"type":"response.in_progress","usage":{"input_tokens":5,"output_tokens":1REDACTEDREDACTED`), "response.in_progress", nil)
+	bare := observeUpstreamMessage(
+		state,
+		[]byte(`{"type":"error","error":{"message":"first turn failed"REDACTEDREDACTED`),
+		now,
+		func() time.Time { return now REDACTED,
+		nil,
+	)
+	require.False(t, bare.terminal)
+	bare = finalizePendingBareError(state, now)
+	require.True(t, bare.terminal)
+	require.Equal(t, Usage{InputTokens: 5, OutputTokens: 1REDACTED, bare.usage)
+
+	completed := observeUpstreamMessage(
+		state,
+		[]byte(`{"type":"response.completed","response":{"id":"resp_next","usage":{"input_tokens":3,"output_tokens":2REDACTEDREDACTEDREDACTED`),
+		now,
+		func() time.Time { return now REDACTED,
+		nil,
+	)
+	require.True(t, completed.terminal)
+	require.Equal(t, Usage{InputTokens: 3, OutputTokens: 2REDACTED, completed.usage)
+	require.Equal(t, Usage{InputTokens: 8, OutputTokens: 3REDACTED, state.usage)
 REDACTED
 
 func TestOpenAICacheCreationTokensFromUsageNestedZeroWins(t *testing.T) {
@@ -363,7 +498,7 @@ REDACTED, &relayState{requestModel: "gpt-5"REDACTED, observedUpstreamEvent{
 REDACTED)
 	require.Equal(t, 0, called)
 
-	// 缺少 response_id 时不应触发。
+	// 非 error 终态缺少 response_id 时不应触发。
 	emitTurnComplete(func(turn RelayTurnResult) {
 		called++
 REDACTED, &relayState{requestModel: "gpt-5"REDACTED, observedUpstreamEvent{
@@ -371,6 +506,22 @@ REDACTED, &relayState{requestModel: "gpt-5"REDACTED, observedUpstreamEvent{
 		eventType: "response.completed",
 REDACTED)
 	require.Equal(t, 0, called)
+
+	// Bare error legitimately has no response_id; it must still settle the turn
+	// or a later completed turn would suppress the adapter's aggregate fallback.
+	var bareError RelayTurnResult
+	emitTurnComplete(func(turn RelayTurnResult) {
+		called++
+		bareError = turn
+REDACTED, &relayState{requestModel: "gpt-5"REDACTED, observedUpstreamEvent{
+		terminal:  true,
+		eventType: "error",
+		usage:     Usage{InputTokens: 4, OutputTokens: 1REDACTED,
+REDACTED)
+	require.Equal(t, 1, called)
+	require.Empty(t, bareError.RequestID)
+	require.Equal(t, "error", bareError.TerminalEventType)
+	require.Equal(t, Usage{InputTokens: 4, OutputTokens: 1REDACTED, bareError.Usage)
 
 	// terminal 且 response_id 存在，应该触发；state=nil 时 model 为空串。
 	var got RelayTurnResult
@@ -383,7 +534,7 @@ REDACTED, nil, observedUpstreamEvent{
 		responseID: "resp_emit",
 		usage:      Usage{InputTokens: 2, OutputTokens: 3REDACTED,
 REDACTED)
-	require.Equal(t, 1, called)
+	require.Equal(t, 2, called)
 	require.Equal(t, "resp_emit", got.RequestID)
 	require.Equal(t, "response.completed", got.TerminalEventType)
 	require.Equal(t, 2, got.Usage.InputTokens)

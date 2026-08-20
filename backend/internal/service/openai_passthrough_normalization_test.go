@@ -95,6 +95,28 @@ func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_SanitizesNativeItemI
 REDACTED
 REDACTED
 
+func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_APIKeyStoreFalseReplay(t *testing.T) {
+	body := []byte(`{"type":"response.create","store":false,"parallel_tool_calls":true,"input":[` +
+		`{"type":"reasoning","id":"rs_drop","summary":[]REDACTED,` +
+		`{"type":"reasoning","id":"rs_keep","call_id":"remove","encrypted_content":"cipher"REDACTED,` +
+		`{"type":"message","content":"continue"REDACTED` +
+		`]REDACTED`)
+
+	normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+REDACTED)
+
+REDACTED
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(normalized, "parallel_tool_calls").Exists())
+	require.Equal(t, int64(2), gjson.GetBytes(normalized, "input.#").Int())
+	require.False(t, gjson.GetBytes(normalized, "input.0.id").Exists())
+	require.False(t, gjson.GetBytes(normalized, "input.0.call_id").Exists())
+	require.True(t, gjson.GetBytes(normalized, "input.0.summary").IsArray())
+	require.Equal(t, "message", gjson.GetBytes(normalized, "input.1.type").String())
+REDACTED
+
 func TestNormalizeOpenAIResponsesReasoningMode(t *testing.T) {
 	tests := []struct {
 		name       string
