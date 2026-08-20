@@ -23,9 +23,11 @@ var _ AccountRepository = (*stubAntigravityAccountRepo)(nil)
 var _ SchedulerCache = (*stubSchedulerCache)(nil)
 
 type stubAntigravityUpstream struct {
-	firstBase  string
-	secondBase string
-	calls      []string
+	firstBase   string
+	secondBase  string
+	firstStatus int
+	firstBody   string
+	calls       []string
 }
 
 type recordingOKUpstream struct {
@@ -49,10 +51,18 @@ func (s *stubAntigravityUpstream) Do(req *http.Request, proxyURL string, account
 	url := req.URL.String()
 	s.calls = append(s.calls, url)
 	if strings.HasPrefix(url, s.firstBase) {
+		status := s.firstStatus
+		if status == 0 {
+			status = http.StatusTooManyRequests
+		}
+		body := s.firstBody
+		if body == "" {
+			body = `{"error":{"message":"Resource has been exhausted"}}`
+		}
 		return &http.Response{
-			StatusCode: http.StatusTooManyRequests,
+			StatusCode: status,
 			Header:     http.Header{},
-			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"Resource has been exhausted"}}`)),
+			Body:       io.NopCloser(strings.NewReader(body)),
 		}, nil
 	}
 	return &http.Response{
@@ -104,7 +114,7 @@ func (s *stubAntigravityAccountRepo) UpdateExtra(ctx context.Context, id int64, 
 	return nil
 }
 
-func TestAntigravityRetryLoop_NoURLFallback_UsesConfiguredBaseURL(t *testing.T) {
+func TestAntigravityRetryLoop_URLLevel429FallsBackToNextURL(t *testing.T) {
 	t.Setenv(antigravityForwardBaseURLEnv, "")
 
 	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
@@ -151,16 +161,106 @@ func TestAntigravityRetryLoop_NoURLFallback_UsesConfiguredBaseURL(t *testing.T) 
 	require.NotNil(t, result)
 	require.NotNil(t, result.resp)
 	defer func() { _ = result.resp.Body.Close() }()
-	require.Equal(t, http.StatusTooManyRequests, result.resp.StatusCode)
-	require.True(t, handleErrorCalled)
-	require.Len(t, upstream.calls, antigravityMaxRetries)
-	for _, callURL := range upstream.calls {
-		require.True(t, strings.HasPrefix(callURL, base1))
-	}
+	require.Equal(t, http.StatusOK, result.resp.StatusCode)
+	require.False(t, handleErrorCalled)
+	require.Equal(t, []string{
+		base1 + "/v1internal:generateContent",
+		base2 + "/v1internal:generateContent",
+	}, upstream.calls)
 
 	available := antigravity.DefaultURLAvailability.GetAvailableURLs()
 	require.NotEmpty(t, available)
-	require.Equal(t, base1, available[0])
+	require.Equal(t, base2, available[0])
+}
+
+func TestAntigravityRetryLoop_Gemini37Model404FallsBackToNextURL(t *testing.T) {
+	t.Setenv(antigravityForwardBaseURLEnv, "")
+
+	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
+	oldAvailability := antigravity.DefaultURLAvailability
+	defer func() {
+		antigravity.BaseURLs = oldBaseURLs
+		antigravity.DefaultURLAvailability = oldAvailability
+	}()
+
+	prodURL := "https://prod.test"
+	dailyURL := "https://daily.test"
+	antigravity.BaseURLs = []string{prodURL, dailyURL}
+	antigravity.DefaultURLAvailability = antigravity.NewURLAvailability(time.Minute)
+
+	upstream := &stubAntigravityUpstream{
+		firstBase:   prodURL,
+		secondBase:  dailyURL,
+		firstStatus: http.StatusNotFound,
+		firstBody:   `{"error":{"code":404,"message":"Requested entity was not found.","status":"NOT_FOUND"}}`,
+	}
+	account := &Account{ID: 1, Name: "acc-1", Platform: PlatformAntigravity, Schedulable: true, Status: StatusActive, Concurrency: 1}
+	svc := &AntigravityGatewayService{}
+	result, err := svc.antigravityRetryLoop(antigravityRetryLoopParams{
+		prefix:         "[test]",
+		ctx:            context.Background(),
+		account:        account,
+		accessToken:    "token",
+		action:         "generateContent",
+		body:           []byte(`{"input":"test"}`),
+		httpUpstream:   upstream,
+		requestedModel: "gemini-3.7-flash-tiered",
+		handleError: func(context.Context, string, *Account, int, http.Header, []byte, string, int64, string, bool) *handleModelRateLimitResult {
+			return nil
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	defer func() { _ = result.resp.Body.Close() }()
+	require.Equal(t, http.StatusOK, result.resp.StatusCode)
+	require.Equal(t, []string{
+		prodURL + "/v1internal:generateContent",
+		dailyURL + "/v1internal:generateContent",
+	}, upstream.calls)
+}
+
+func TestAntigravityRetryLoop_OtherModel404DoesNotFallbackURL(t *testing.T) {
+	t.Setenv(antigravityForwardBaseURLEnv, "")
+
+	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
+	oldAvailability := antigravity.DefaultURLAvailability
+	defer func() {
+		antigravity.BaseURLs = oldBaseURLs
+		antigravity.DefaultURLAvailability = oldAvailability
+	}()
+
+	prodURL := "https://prod.test"
+	dailyURL := "https://daily.test"
+	antigravity.BaseURLs = []string{prodURL, dailyURL}
+	antigravity.DefaultURLAvailability = antigravity.NewURLAvailability(time.Minute)
+
+	upstream := &stubAntigravityUpstream{
+		firstBase:   prodURL,
+		secondBase:  dailyURL,
+		firstStatus: http.StatusNotFound,
+		firstBody:   `{"error":{"code":404,"message":"Requested entity was not found.","status":"NOT_FOUND"}}`,
+	}
+	svc := &AntigravityGatewayService{}
+	result, err := svc.antigravityRetryLoop(antigravityRetryLoopParams{
+		prefix:         "[test]",
+		ctx:            context.Background(),
+		account:        &Account{ID: 1, Name: "acc-1", Platform: PlatformAntigravity, Schedulable: true, Status: StatusActive, Concurrency: 1},
+		accessToken:    "token",
+		action:         "generateContent",
+		body:           []byte(`{"input":"test"}`),
+		httpUpstream:   upstream,
+		requestedModel: "gemini-3.6-flash-tiered",
+		handleError: func(context.Context, string, *Account, int, http.Header, []byte, string, int64, string, bool) *handleModelRateLimitResult {
+			return nil
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	defer func() { _ = result.resp.Body.Close() }()
+	require.Equal(t, http.StatusNotFound, result.resp.StatusCode)
+	require.Equal(t, []string{prodURL + "/v1internal:generateContent"}, upstream.calls)
 }
 
 // TestHandleUpstreamError_429_ModelRateLimit 测试 429 模型限流场景
@@ -1009,7 +1109,7 @@ func TestIsAntigravityAccountSwitchError(t *testing.T) {
 	}
 }
 
-func TestResolveAntigravityForwardBaseURL_DefaultDaily(t *testing.T) {
+func TestResolveAntigravityForwardBaseURLs_DefaultPreservesFallbackOrder(t *testing.T) {
 	t.Setenv(antigravityForwardBaseURLEnv, "")
 
 	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
@@ -1019,10 +1119,38 @@ func TestResolveAntigravityForwardBaseURL_DefaultDaily(t *testing.T) {
 
 	prodURL := "https://prod.test"
 	dailyURL := "https://daily.test"
-	antigravity.BaseURLs = []string{dailyURL, prodURL}
+	antigravity.BaseURLs = []string{prodURL, dailyURL}
 
-	resolved := resolveAntigravityForwardBaseURL()
-	require.Equal(t, dailyURL, resolved)
+	resolved := resolveAntigravityForwardBaseURLs()
+	require.Equal(t, []string{prodURL, dailyURL}, resolved)
+}
+
+func TestResolveAntigravityForwardBaseURLs_ExplicitModesDisableFallback(t *testing.T) {
+	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
+	defer func() {
+		antigravity.BaseURLs = oldBaseURLs
+	}()
+
+	prodURL := "https://prod.test"
+	dailyURL := "https://daily.test"
+	antigravity.BaseURLs = []string{prodURL, dailyURL}
+
+	t.Run("prod", func(t *testing.T) {
+		t.Setenv(antigravityForwardBaseURLEnv, "prod")
+		require.Equal(t, []string{prodURL}, resolveAntigravityForwardBaseURLs())
+	})
+	t.Run("production", func(t *testing.T) {
+		t.Setenv(antigravityForwardBaseURLEnv, "production")
+		require.Equal(t, []string{prodURL}, resolveAntigravityForwardBaseURLs())
+	})
+	t.Run("daily", func(t *testing.T) {
+		t.Setenv(antigravityForwardBaseURLEnv, "daily")
+		require.Equal(t, []string{dailyURL}, resolveAntigravityForwardBaseURLs())
+	})
+	t.Run("sandbox", func(t *testing.T) {
+		t.Setenv(antigravityForwardBaseURLEnv, "sandbox")
+		require.Equal(t, []string{dailyURL}, resolveAntigravityForwardBaseURLs())
+	})
 }
 
 func TestAntigravityAccountSwitchError_Error(t *testing.T) {
