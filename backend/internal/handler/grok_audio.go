@@ -44,53 +44,65 @@ REDACTED
 		return
 REDACTED
 
-	selection, _, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
-		c.Request.Context(),
-		apiKey.GroupID,
-		"",
-		"",
-		"grok-4.5",
-		nil,
-		service.OpenAIUpstreamTransportHTTPSSE,
-		// Grok only advertises chat_completions + media capabilities on HEAD.
-		service.OpenAIEndpointCapabilityChatCompletions,
-		false,
-		false,
-		false,
-		service.PlatformGrok,
-	)
-	if err != nil || selection == nil || selection.Account == nil {
-		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available Grok accounts")
-		return
-REDACTED
-
-	var streamStarted bool
 	reqLog := requestLogger(c, "handler.openai_gateway.grok_realtime")
-	release, slotStatus := h.acquireResponsesAccountSlot(c, apiKey.GroupID, "", selection, true, &streamStarted, reqLog)
-	if slotStatus != openAISlotAcquireOK {
-		return
-REDACTED
-	defer release()
-
-	token, _, err := h.gatewayService.GetRequestCredential(c.Request.Context(), c, selection.Account)
-	if err != nil {
-		h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Grok credential unavailable")
-		return
-REDACTED
 	model := c.Query("model")
 	if strings.TrimSpace(model) == "" {
 		model = "grok-voice-latest"
 REDACTED
-	// Complete the upstream handshake before sending HTTP 101. This keeps
-	// pre-accept failures representable as normal JSON errors to the client.
-	probeCtx, cancelProbe := context.WithTimeout(c.Request.Context(), 15*time.Second)
-	probeErr := h.gatewayService.ProbeGrokRealtime(probeCtx, selection.Account, token, model)
-	cancelProbe()
-	if probeErr != nil {
-		reqLog.Warn("grok_realtime.pre_accept_failed", zap.Error(probeErr))
+	// Keep the HTTP response uncommitted while selecting and probing an account.
+	// Realtime is not an HTTP streaming response; using reqStream=true here would
+	// let the wait queue flush an SSE ping before the WebSocket handshake succeeds.
+	failed := map[int64]struct{REDACTED{REDACTED
+	var selection *service.AccountSelectionResult
+	var release func()
+	var token string
+	for attempts := 0; attempts < 4; attempts++ {
+		candidate, _, selectErr := h.gatewayService.SelectAccountWithSchedulerForCapability(
+			c.Request.Context(), apiKey.GroupID, "", "", "grok-4.6", failed,
+			service.OpenAIUpstreamTransportHTTPSSE,
+			service.OpenAIEndpointCapabilityChatCompletions,
+			false, false, false, service.PlatformGrok,
+		)
+		if selectErr != nil || candidate == nil || candidate.Account == nil {
+			break
+	REDACTED
+		account := candidate.Account
+		var streamStarted bool
+		var slotStatus openAISlotAcquireResult
+		release, slotStatus = h.acquireResponsesAccountSlot(c, apiKey.GroupID, "", candidate, false, &streamStarted, reqLog)
+		if slotStatus != openAISlotAcquireOK {
+			if slotStatus == openAISlotAcquireFailed {
+				return
+		REDACTED
+			failed[account.ID] = struct{REDACTED{REDACTED
+			continue
+	REDACTED
+		var credErr error
+		token, _, credErr = h.gatewayService.GetRequestCredential(c.Request.Context(), c, account)
+		if credErr != nil {
+			release()
+			release = nil
+			failed[account.ID] = struct{REDACTED{REDACTED
+			continue
+	REDACTED
+		probeCtx, cancelProbe := context.WithTimeout(c.Request.Context(), 15*time.Second)
+		probeErr := h.gatewayService.ProbeGrokRealtime(probeCtx, account, token, model)
+		cancelProbe()
+		if probeErr != nil {
+			reqLog.Warn("grok_realtime.pre_accept_failed", zap.Int64("account_id", account.ID), zap.Error(probeErr))
+			release()
+			release = nil
+			failed[account.ID] = struct{REDACTED{REDACTED
+			continue
+	REDACTED
+		selection = candidate
+		break
+REDACTED
+	if selection == nil || selection.Account == nil || release == nil {
 		h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Grok realtime upstream unavailable")
 		return
 REDACTED
+	defer release()
 
 	conn, err := coderws.Accept(c.Writer, c.Request, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeoverREDACTED)
 	if err != nil {

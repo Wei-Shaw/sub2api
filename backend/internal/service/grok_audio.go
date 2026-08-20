@@ -63,7 +63,6 @@ REDACTED
 REDACTED
 	upstreamCtx, release := detachUpstreamContext(ctx)
 	defer release()
-	upstreamCtx = WithHTTPUpstreamProfile(upstreamCtx, HTTPUpstreamProfileGrok)
 	method := http.MethodPost
 	if c != nil && c.Request != nil && strings.TrimSpace(c.Request.Method) != "" {
 		method = c.Request.Method
