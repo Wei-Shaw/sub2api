@@ -520,6 +520,32 @@ func (s *OpenAIGatewayService) ResolveAccountIDByPreviousResponseIDForScheduler(
 	return accountID
 }
 
+// IsOpenAIResponseBoundToAccount verifies the raw response-owner binding
+// without re-running scheduler eligibility filters. The caller must still
+// validate that the selected account is currently strict-capable and
+// schedulable; this only prevents a valid owner selection from being rejected
+// when scheduler decision metadata falls back to the ordinary selection lane.
+func (s *OpenAIGatewayService) IsOpenAIResponseBoundToAccount(
+	ctx context.Context,
+	groupID *int64,
+	previousResponseID string,
+	accountID int64,
+) bool {
+	if s == nil || accountID <= 0 {
+		return false
+	}
+	responseID := strings.TrimSpace(previousResponseID)
+	if responseID == "" {
+		return false
+	}
+	store := s.getOpenAIWSStateStore()
+	if store == nil {
+		return false
+	}
+	boundAccountID, err := store.GetResponseAccount(ctx, derefGroupID(groupID), responseID)
+	return err == nil && boundAccountID == accountID
+}
+
 func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 	ctx context.Context,
 	groupID *int64,
