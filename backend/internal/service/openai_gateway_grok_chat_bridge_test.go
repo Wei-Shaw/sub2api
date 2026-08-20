@@ -614,6 +614,9 @@ REDACTED
 	var failoverErr *UpstreamFailoverError
 	require.True(t, errors.As(err, &failoverErr))
 	require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.Equal(t, 500*time.Millisecond, failoverErr.SameAccountRetryDelay)
+	require.False(t, failoverErr.SameAccountRetryDeadline.IsZero())
 	require.Equal(t, "45", failoverErr.ResponseHeaders.Get("Retry-After"))
 	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
 	require.Equal(t, grokChatResponsesEndpoint, GetActualOpenAIUpstreamEndpoint(c))
