@@ -172,6 +172,13 @@ func ProvideNotificationEmailDispatcher(repo NotificationEmailDeliveryRepository
 	return dispatcher
 }
 
+func (d *NotificationEmailDispatcher) smtpConfig(ctx context.Context) (*SMTPConfig, error) {
+	if d == nil || d.emailService == nil || d.emailService.emailService == nil {
+		return nil, ErrEmailNotConfigured
+	}
+	return d.emailService.emailService.GetSMTPConfig(ctx)
+}
+
 func (d *NotificationEmailDispatcher) Enqueue(ctx context.Context, input NotificationEmailSendInput) (NotificationEmailEnqueueResult, error) {
 	if d == nil || d.repo == nil || d.emailService == nil {
 		return NotificationEmailEnqueueResult{}, errors.New("notification email dispatcher is not configured")

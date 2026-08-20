@@ -164,6 +164,27 @@ func TestSettingService_ChannelMonitorHideUserRankingDefaultsToVisible(t *testin
 	}
 }
 
+func TestSettingService_ChannelMonitorShowQuotaFailsClosed(t *testing.T) {
+	missingRuntime := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{}).GetChannelMonitorRuntime(context.Background())
+	require.False(t, missingRuntime.ShowQuota)
+	missingPublic, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{}).
+		GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, missingPublic.ChannelMonitorShowQuota)
+
+	runtime := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+		SettingKeyChannelMonitorShowQuota: "true",
+	}}, &config.Config{}).GetChannelMonitorRuntime(context.Background())
+	require.True(t, runtime.ShowQuota)
+
+	for _, value := range []string{"false", "TRUE", "1", "yes", "on", "garbage"} {
+		rt := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+			SettingKeyChannelMonitorShowQuota: value,
+		}}, &config.Config{}).GetChannelMonitorRuntime(context.Background())
+		require.False(t, rt.ShowQuota, "value=%q", value)
+	}
+}
+
 func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

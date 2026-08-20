@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Select from '@/components/common/Select.vue'
+import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -116,11 +117,7 @@ const groups = ref<Array<{ id: number; name: string; platform: string }>>([])
 
 const platformOptions = computed(() => [
   { value: '', label: t('common.all') },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'gemini', label: 'Gemini' },
-  { value: 'antigravity', label: 'Antigravity' },
-  { value: 'grok', label: 'Grok' }
+  ...CONCRETE_PLATFORM_OPTIONS
 ])
 
 const timeRangeOptions = computed(() => [
@@ -462,6 +459,7 @@ const slaPercent = computed(() => {
   if (!ov || ov.availability_available === false || (ov.request_count_sla ?? 0) <= 0) return null
   const v = ov.sla
   if (typeof v !== 'number') return null
+  if ((overview.value?.request_count_sla ?? 0) <= 0) return null
   return v * 100
 })
 
@@ -1308,8 +1306,8 @@ function handleToolbarRefresh() {
           </div>
           <div class="mt-3 text-xs">
             <div class="flex justify-between">
-              <span class="text-gray-500">{{ t('admin.ops.availabilitySamples') }}:</span>
-              <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber(overview.request_count_sla ?? 0) }}</span>
+              <span class="text-gray-500">{{ t('admin.ops.exceptions') }}:</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ formatNumber((overview.request_count_sla ?? 0) - (overview.success_count ?? 0)) }}</span>
             </div>
           </div>
         </div>

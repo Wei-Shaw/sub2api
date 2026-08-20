@@ -10,6 +10,10 @@ export interface IntervalFormEntry {
   output_price: number | string | null
   cache_write_price: number | string | null
   cache_read_price: number | string | null
+  input_multiplier: number | string | null
+  output_multiplier: number | string | null
+  cache_write_multiplier: number | string | null
+  cache_read_multiplier: number | string | null
   per_request_price: number | string | null
   sort_order: number
 }
@@ -21,6 +25,8 @@ export interface PricingFormEntry {
   output_price: number | string | null
   cache_write_price: number | string | null
   cache_read_price: number | string | null
+  fast_multiplier?: number | string | null
+  flex_multiplier?: number | string | null
   image_input_price: number | string | null
   image_output_price: number | string | null
   per_request_price: number | string | null
@@ -164,6 +170,12 @@ export function toNullableNumber(val: number | string | null | undefined): numbe
   return isNaN(num) ? null : num
 }
 
+export function isValidPositiveMultiplier(val: number | string | null | undefined): boolean {
+  if (val === null || val === undefined || val === '') return true
+  const multiplier = Number(val)
+  return Number.isFinite(multiplier) && multiplier > 0
+}
+
 /** 前端显示值($/MTok) → 后端存储值(per-token) */
 export function mTokToPerToken(val: number | string | null | undefined): number | null {
   const num = toNullableNumber(val)
@@ -186,6 +198,10 @@ export function apiIntervalsToForm(intervals: PricingInterval[]): IntervalFormEn
     output_price: perTokenToMTok(iv.output_price),
     cache_write_price: perTokenToMTok(iv.cache_write_price),
     cache_read_price: perTokenToMTok(iv.cache_read_price),
+    input_multiplier: iv.input_multiplier,
+    output_multiplier: iv.output_multiplier,
+    cache_write_multiplier: iv.cache_write_multiplier,
+    cache_read_multiplier: iv.cache_read_multiplier,
     per_request_price: iv.per_request_price,
     sort_order: iv.sort_order
   }))
@@ -200,6 +216,10 @@ export function formIntervalsToAPI(intervals: IntervalFormEntry[]): PricingInter
     output_price: mTokToPerToken(iv.output_price),
     cache_write_price: mTokToPerToken(iv.cache_write_price),
     cache_read_price: mTokToPerToken(iv.cache_read_price),
+    input_multiplier: toNullableNumber(iv.input_multiplier),
+    output_multiplier: toNullableNumber(iv.output_multiplier),
+    cache_write_multiplier: toNullableNumber(iv.cache_write_multiplier),
+    cache_read_multiplier: toNullableNumber(iv.cache_read_multiplier),
     per_request_price: toNullableNumber(iv.per_request_price),
     sort_order: iv.sort_order
   }))
@@ -332,6 +352,20 @@ function validateIntervalPrices(iv: IntervalFormEntry, idx: number, t: Translate
       )
     }
   }
+  const multipliers: [string, number | string | null][] = [
+    ['inputMultiplier', iv.input_multiplier],
+    ['outputMultiplier', iv.output_multiplier],
+    ['cacheWriteMultiplier', iv.cache_write_multiplier],
+    ['cacheReadMultiplier', iv.cache_read_multiplier],
+  ]
+  for (const [key, val] of multipliers) {
+    if (!isValidPositiveMultiplier(val)) {
+      return intervalValidationMessage(t, 'multiplierPositive', {
+        index,
+        field: intervalPriceLabel(t, key),
+      })
+    }
+  }
   return null
 }
 
@@ -368,6 +402,9 @@ export function getPlatformTagClass(platform: string): string {
     case 'gemini': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
     case 'antigravity': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
     case 'grok': return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+    case 'kimi': return 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400'
+    case 'zhipu': return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
+    case 'deepseek': return 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400'
     default: return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
   }
 }
@@ -380,6 +417,9 @@ export function getPlatformTextClass(platform: string): string {
     case 'gemini': return 'text-blue-700 dark:text-blue-400'
     case 'antigravity': return 'text-purple-700 dark:text-purple-400'
     case 'grok': return 'text-slate-700 dark:text-slate-300'
+    case 'kimi': return 'text-pink-700 dark:text-pink-400'
+    case 'zhipu': return 'text-indigo-700 dark:text-indigo-400'
+    case 'deepseek': return 'text-teal-700 dark:text-teal-400'
     default: return ''
   }
 }

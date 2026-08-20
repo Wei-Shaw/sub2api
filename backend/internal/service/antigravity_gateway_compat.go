@@ -264,6 +264,10 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 		if err != nil {
 			return nil, err
 		}
+		body, err = enableMixedGeminiToolInvocations(body)
+		if err != nil {
+			return nil, err
+		}
 		body = ensureGeminiFunctionCallThoughtSignatures(body)
 		body, err = injectIdentityPatchToGeminiRequest(body)
 		if err != nil {
@@ -278,6 +282,38 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 	options := s.getClaudeTransformOptions(ctx)
 	options.EnableIdentityPatch = true
 	return antigravity.TransformClaudeToGeminiWithOptions(claudeRequest, projectID, mappedModel, options)
+}
+
+func enableMixedGeminiToolInvocations(body []byte) ([]byte, error) {
+	var request map[string]any
+	if err := json.Unmarshal(body, &request); err != nil {
+		return nil, err
+	}
+
+	var hasGoogleSearch, hasFunctionDeclarations bool
+	if tools, ok := request["tools"].([]any); ok {
+		for _, rawTool := range tools {
+			tool, ok := rawTool.(map[string]any)
+			if !ok {
+				continue
+			}
+			_, hasSearch := tool["googleSearch"]
+			declarations, hasFunctions := tool["functionDeclarations"].([]any)
+			hasGoogleSearch = hasGoogleSearch || hasSearch
+			hasFunctionDeclarations = hasFunctionDeclarations || hasFunctions && len(declarations) > 0
+		}
+	}
+	if !hasGoogleSearch || !hasFunctionDeclarations {
+		return body, nil
+	}
+
+	toolConfig, _ := request["toolConfig"].(map[string]any)
+	if toolConfig == nil {
+		toolConfig = make(map[string]any)
+		request["toolConfig"] = toolConfig
+	}
+	toolConfig["includeServerSideToolInvocations"] = true
+	return json.Marshal(request)
 }
 
 func antigravityCompatProxyURL(account *Account) string {
