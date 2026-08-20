@@ -802,6 +802,10 @@ func normalizeModelNameForPricing(model string) string {
 // behavior, not the published token rate, so this keeps -high/-low/-medium and
 // -tiered requests on the same price card as gemini-3.6-flash.
 func normalizeGeminiThinkingTierAlias(model string) string {
+	if model == "gemini-3.7-flash-tiered" {
+		return "gemini-3.7-flash"
+	}
+
 	const baseModel = "gemini-3.6-flash"
 	for _, tier := range []string{"-high", "-low", "-medium", "-tiered"} {
 		if model == baseModel+tier {

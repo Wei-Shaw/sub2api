@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -477,6 +478,20 @@ func TestPricingService_Gemini36FlashThinkingTiersUseBasePricing(t *testing.T) {
 	}
 }
 
+func TestPricingService_Gemini37TieredUsesBasePricing(t *testing.T) {
+	basePricing := &LiteLLMModelPricing{
+		InputCostPerToken:       0.75e-6,
+		OutputCostPerToken:      3.75e-6,
+		CacheReadInputTokenCost: 0.075e-6,
+	}
+	svc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		"gemini-3.7-flash": basePricing,
+	}}
+
+	require.Same(t, basePricing, svc.GetModelPricing("gemini-3.7-flash"))
+	require.Same(t, basePricing, svc.GetModelPricing("gemini-3.7-flash-tiered"))
+}
+
 func TestPricingService_Gemini36FlashTierSpecificPricingTakesPrecedence(t *testing.T) {
 	basePricing := &LiteLLMModelPricing{InputCostPerToken: 1.5e-6}
 	tierPricing := &LiteLLMModelPricing{InputCostPerToken: 2e-6}
@@ -510,6 +525,22 @@ func TestBillingService_Gemini36FlashThinkingTierFallbacksAreBillable(t *testing
 	}
 }
 
+func TestBillingService_Gemini37TieredFallbackIsBillable(t *testing.T) {
+	svc := NewBillingService(&config.Config{}, nil)
+	tokens := UsageTokens{InputTokens: 1_000_000, OutputTokens: 1_000_000, CacheReadTokens: 1_000_000}
+
+	for _, model := range []string{"gemini-3.7-flash", "gemini-3.7-flash-tiered"} {
+		t.Run(model, func(t *testing.T) {
+			cost, err := svc.CalculateCost(model, tokens, 1)
+			require.NoError(t, err)
+			require.InDelta(t, 0.75, cost.InputCost, 1e-12)
+			require.InDelta(t, 3.75, cost.OutputCost, 1e-12)
+			require.InDelta(t, 0.075, cost.CacheReadCost, 1e-12)
+			require.InDelta(t, 4.575, cost.TotalCost, 1e-12)
+		})
+	}
+}
+
 func TestDefaultPricingIncludesGemini36FlashRates(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
 	require.NoError(t, err)
@@ -527,6 +558,29 @@ func TestDefaultPricingIncludesGemini36FlashRates(t *testing.T) {
 			require.InDelta(t, 1.5e-6, pricing.InputPricePerToken, 1e-12)
 			require.InDelta(t, 7.5e-6, pricing.OutputPricePerToken, 1e-12)
 			require.InDelta(t, 0.15e-6, pricing.CacheReadPricePerToken, 1e-12)
+		})
+	}
+}
+
+func TestDefaultPricingIncludesGemini37FlashRates(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(string(data), `"gemini-3.7-flash":`))
+	require.Equal(t, 0, strings.Count(string(data), `"gemini-3.7-flash-tiered":`))
+
+	pricingSvc := &PricingService{}
+	pricingData, err := pricingSvc.parsePricingData(data)
+	require.NoError(t, err)
+	pricingSvc.pricingData = pricingData
+	billingSvc := NewBillingService(&config.Config{}, pricingSvc)
+
+	for _, model := range []string{"gemini-3.7-flash", "gemini-3.7-flash-tiered"} {
+		t.Run(model, func(t *testing.T) {
+			pricing, err := billingSvc.GetModelPricing(model)
+			require.NoError(t, err)
+			require.InDelta(t, 0.75e-6, pricing.InputPricePerToken, 1e-12)
+			require.InDelta(t, 3.75e-6, pricing.OutputPricePerToken, 1e-12)
+			require.InDelta(t, 0.075e-6, pricing.CacheReadPricePerToken, 1e-12)
 		})
 	}
 }

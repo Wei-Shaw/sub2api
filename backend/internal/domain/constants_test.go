@@ -1,6 +1,9 @@
 package domain
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestDefaultAntigravityModelMapping_ImageCompatibilityAliases(t *testing.T) {
 	t.Parallel()
@@ -70,6 +73,30 @@ func TestDefaultAntigravityModelMapping_Gemini36FlashModels(t *testing.T) {
 		if got := DefaultAntigravityModelMapping[model]; got != model {
 			t.Fatalf("expected %s to map to itself, got %q", model, got)
 		}
+	}
+}
+
+func TestDefaultAntigravityModelMapping_Gemini37FlashModels(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"gemini-3.7-flash":        "gemini-3.7-flash-tiered",
+		"gemini-3.7-flash-tiered": "gemini-3.7-flash-tiered",
+	}
+	for from, want := range cases {
+		if got := DefaultAntigravityModelMapping[from]; got != want {
+			t.Fatalf("unexpected Gemini 3.7 mapping for %q: got %q want %q", from, got, want)
+		}
+	}
+
+	count := 0
+	for model := range DefaultAntigravityModelMapping {
+		if strings.HasPrefix(model, "gemini-3.7-flash") {
+			count++
+		}
+	}
+	if count != len(cases) {
+		t.Fatalf("expected exactly %d authoritative Gemini 3.7 mappings, got %d", len(cases), count)
 	}
 }
 
