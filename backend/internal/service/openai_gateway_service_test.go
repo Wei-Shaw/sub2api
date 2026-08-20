@@ -3463,6 +3463,17 @@ func TestExtractOpenAIUsageFromJSONBytes_AcceptsResponseAndChatUsageShapes(t *te
 	require.Equal(t, 500, usage.OutputTokens)
 REDACTED
 
+func TestAdaptGrokWebSearchCompletedAction(t *testing.T) {
+	completed := []byte(`{"type":"response.web_search_call.completed","item_id":"call_1"REDACTED`)
+	done := []byte(`{"type":"response.output_item.done","item":{"type":"web_search_call","id":"call_1","action":{"type":"search","query":"latest news"REDACTEDREDACTEDREDACTED`)
+	got, ok := adaptGrokWebSearchCompletedAction(completed, done)
+	require.True(t, ok)
+	require.Equal(t, "search", gjson.GetBytes(got, "action.type").String())
+	require.Equal(t, "latest news", gjson.GetBytes(got, "action.query").String())
+	_, ok = adaptGrokWebSearchCompletedAction(completed, []byte(`{"type":"response.output_item.done","item":{"type":"web_search_call","id":"other"REDACTEDREDACTED`))
+	require.False(t, ok)
+REDACTED
+
 func TestExtractOpenAIUsageFromJSONBytes_IncludesGrokReasoningTokens(t *testing.T) {
 	usage, ok := extractOpenAIUsageFromJSONBytes([]byte(`{"usage":{"prompt_tokens":32,"completion_tokens":9,"total_tokens":135,"completion_tokens_details":{"reasoning_tokens":94REDACTEDREDACTEDREDACTED`))
 	require.True(t, ok)

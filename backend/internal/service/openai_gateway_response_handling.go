@@ -439,7 +439,9 @@ REDACTED
 		sendErrorEvent("stream_read_error")
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", scanErr), true
 REDACTED
-	processSSELine := func(line string, queueDrained bool) {
+	var pendingGrokWebSearchCompleted string
+	var processSSELine func(line string, queueDrained bool)
+	processSSELine = func(line string, queueDrained bool) {
 		if streamEarlyErr != nil {
 			return
 	REDACTED
@@ -448,6 +450,26 @@ REDACTED
 			dataBytes := []byte(data)
 			eventTypeRaw := gjson.GetBytes(dataBytes, "type").String()
 			eventType := strings.TrimSpace(eventTypeRaw)
+			// Grok Build's xAI decoder requires action on the completed search
+			// event, while OpenAI-compatible upstreams often provide it only on
+			// the following output_item.done event. Hold that one event until the
+			// matching item arrives, then replay it with action injected.
+			if account != nil && account.Platform == PlatformGrok && account.Type == AccountTypeAPIKey &&
+				eventType == "response.web_search_call.completed" &&
+				!gjson.GetBytes(dataBytes, "action").Exists() {
+				pendingGrokWebSearchCompleted = line
+				return
+		REDACTED
+			if pendingGrokWebSearchCompleted != "" && eventType == "response.output_item.done" {
+				if adapted, adaptedOK := adaptGrokWebSearchCompletedAction(
+					[]byte(strings.TrimSpace(strings.TrimPrefix(pendingGrokWebSearchCompleted, "data:"))), dataBytes,
+				); adaptedOK {
+					pendingGrokWebSearchCompleted = "data: " + string(adapted)
+			REDACTED
+				pending := pendingGrokWebSearchCompleted
+				pendingGrokWebSearchCompleted = ""
+				processSSELine(pending, queueDrained)
+		REDACTED
 			observer.ObserveOpenAI(dataBytes, eventTypeRaw)
 			// 初始上游 data 的 type 只解析一次：原始值保持终止事件的精确匹配，规范化值供后续分支复用。
 			if openAIStreamEventIsTerminalWithType(data, eventTypeRaw) {
@@ -640,6 +662,11 @@ REDACTED
 
 		// A blank line dispatches a guarded event from the attempt-local stage.
 		if stageFirstOutput && line == "" {
+			if pendingGrokWebSearchCompleted != "" {
+				pending := pendingGrokWebSearchCompleted
+				pendingGrokWebSearchCompleted = ""
+				processSSELine(pending, queueDrained)
+		REDACTED
 			if !clientDisconnected {
 				if _, err := writePendingString("\n"); err != nil {
 					handlePendingWriteError(err)
@@ -654,6 +681,11 @@ REDACTED
 		// or queue-drain flush must never split an open SSE event.
 		shouldFlush := false
 		if line == "" {
+			if pendingGrokWebSearchCompleted != "" {
+				pending := pendingGrokWebSearchCompleted
+				pendingGrokWebSearchCompleted = ""
+				processSSELine(pending, queueDrained)
+		REDACTED
 			shouldFlush = eventShouldFlush || (queueDrained && clientOutputStarted)
 			eventShouldFlush = false
 	REDACTED
@@ -1171,6 +1203,32 @@ REDACTED
 	groupID := getOpenAIGroupIDFromContext(c)
 	ttl := s.openAIWSResponseStickyTTL()
 	logOpenAIWSBindResponseAccountWarn(groupID, account.ID, responseID, store.BindResponseAccount(ctx, groupID, responseID, account.ID, ttl))
+REDACTED
+
+// adaptGrokWebSearchCompletedAction fills the xAI-specific action field that
+// Grok Build expects on response.web_search_call.completed. OpenAI-compatible
+// upstreams commonly emit the action only on the later output_item.done event.
+func adaptGrokWebSearchCompletedAction(completed, outputItem []byte) ([]byte, bool) {
+	if strings.TrimSpace(gjson.GetBytes(completed, "type").String()) != "response.web_search_call.completed" {
+		return completed, false
+REDACTED
+	itemID := strings.TrimSpace(gjson.GetBytes(completed, "item_id").String())
+	item := gjson.GetBytes(outputItem, "item")
+	if itemID == "" || !item.Exists() || strings.TrimSpace(item.Get("type").String()) != "web_search_call" {
+		return completed, false
+REDACTED
+	if itemID != strings.TrimSpace(item.Get("id").String()) {
+		return completed, false
+REDACTED
+	action := item.Get("action")
+	if !action.Exists() || strings.TrimSpace(action.Raw) == "" || action.Raw == "null" {
+		return completed, false
+REDACTED
+	updated, err := sjson.SetRawBytes(completed, "action", []byte(action.Raw))
+	if err != nil {
+		return completed, false
+REDACTED
+	return updated, true
 REDACTED
 
 func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
