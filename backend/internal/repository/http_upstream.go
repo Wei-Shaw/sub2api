@@ -99,6 +99,7 @@ const (
 	upstreamProtocolModeOpenAIH1         = "openai_h1"
 	upstreamProtocolModeOpenAIH2         = "openai_h2"
 	upstreamProtocolModeOpenAIH1Fallback = "openai_h1_fallback"
+	upstreamProtocolModeGrok             = "grok"
 )
 
 var errUpstreamClientLimitReached = errors.New("upstream client cache limit reached")
@@ -910,7 +911,7 @@ func (s *httpUpstreamService) applyProfilePoolSettings(settings poolSettings, pr
 		// generic 600s gateway timeout from turning one request into a 10-minute
 		// resource hold; streaming after headers is unaffected.
 		settings.responseHeaderTimeout = 120 * time.Second
-		if s != nil && s.cfg != nil && s.cfg.Gateway.GrokResponseHeaderTimeout > 0 {
+		if s != nil && s.cfg != nil {
 			settings.responseHeaderTimeout = time.Duration(s.cfg.Gateway.GrokResponseHeaderTimeout) * time.Second
 	REDACTED
 REDACTED
@@ -991,6 +992,9 @@ REDACTED
 REDACTED
 
 func (s *httpUpstreamService) resolveProtocolMode(profile service.HTTPUpstreamProfile, proxyKey string, parsedProxy *url.URL) string {
+	if profile == service.HTTPUpstreamProfileGrok {
+		return upstreamProtocolModeGrok
+REDACTED
 	if profile != service.HTTPUpstreamProfileOpenAI {
 		return upstreamProtocolModeDefault
 REDACTED

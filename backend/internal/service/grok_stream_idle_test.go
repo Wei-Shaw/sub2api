@@ -21,5 +21,14 @@ func TestGrokStreamIdleFailoverError(t *testing.T) {
 	require.NotNil(t, err)
 	require.Equal(t, 502, err.StatusCode)
 	require.True(t, err.SafeToFailoverAfterWrite)
+	require.True(t, err.RetryableOnSameAccount)
+	require.True(t, err.RequestScopedTransient)
 	require.Contains(t, string(err.ResponseBody), "empty_upstream")
+REDACTED
+
+func TestGrokStreamIdleFailoverErrorRequiresGrokAccount(t *testing.T) {
+	openAI := &Account{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuthREDACTED
+	err := grokStreamIdleFailoverError(openAI, time.Second)
+	require.False(t, err.RetryableOnSameAccount)
+	require.True(t, err.RequestScopedTransient)
 REDACTED

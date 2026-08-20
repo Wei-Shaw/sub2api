@@ -417,6 +417,19 @@ REDACTED
 	return true, 500 * time.Millisecond, time.Now().Add(30 * time.Second)
 REDACTED
 
+// shouldMarkGrokTeamModelRateLimit controls the process-local sibling-account
+// overlay. Model-capacity responses are request pressure, not a team quota;
+// marking them would hide healthy sibling credentials while the bounded
+// same-account retry is still in progress. Ordinary 429s and free-usage
+// exhaustion retain the existing quota/team isolation behavior.
+func shouldMarkGrokTeamModelRateLimit(statusCode int, responseBody []byte) bool {
+	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
+	if decision.Class == GrokFailureModelCapacity {
+		return false
+REDACTED
+	return statusCode == http.StatusTooManyRequests || decision.Class == GrokFailureFreeUsage
+REDACTED
+
 func isGrokCompatibilityError(low, code string) bool {
 	combined := strings.ToLower(strings.TrimSpace(low + " " + code))
 	// Compaction blobs are account/session-bound and frequently fail with 400
@@ -427,11 +440,6 @@ func isGrokCompatibilityError(low, code string) bool {
 		"decode the compaction blob",
 		"ensure it is unmodified from the compact response",
 		"compaction blob",
-		"failed to deserialize the json body",
-		"data did not match any variant",
-		"untagged enum content",
-		"invalid content shape",
-		"invalid response history",
 REDACTED {
 		if strings.Contains(combined, phrase) {
 			return true
@@ -440,8 +448,6 @@ REDACTED
 	for _, marker := range []string{
 		"invalid_compaction",
 		"compaction_decode_error",
-		"response_history_incompatible",
-		"invalid_content_shape",
 REDACTED {
 		if strings.Contains(combined, marker) {
 			return true

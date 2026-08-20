@@ -60,6 +60,16 @@ REDACTED)
 REDACTED)
 REDACTED
 
+func TestSameAccountRetryDeadlineAllows(t *testing.T) {
+	require.True(t, sameAccountRetryDeadlineAllows(&service.UpstreamFailoverError{REDACTED))
+	require.True(t, sameAccountRetryDeadlineAllows(&service.UpstreamFailoverError{
+		SameAccountRetryDeadline: time.Now().Add(time.Second),
+REDACTED))
+	require.False(t, sameAccountRetryDeadlineAllows(&service.UpstreamFailoverError{
+		SameAccountRetryDeadline: time.Now().Add(-time.Second),
+REDACTED))
+REDACTED
+
 // ---------------------------------------------------------------------------
 // Helper
 // ---------------------------------------------------------------------------
