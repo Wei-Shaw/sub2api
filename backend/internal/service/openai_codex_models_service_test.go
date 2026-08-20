@@ -472,7 +472,7 @@ func TestFetchCodexModelsManifestAPIKeyCustomUpstream(t *testing.T) {
 }
 
 func TestFetchCodexModelsManifestAPIKeyConvertsStandardOpenAIModelList(t *testing.T) {
-	upstreamBody := `{"object":"list","data":[{"id":"gpt-5.6","object":"model"},{"id":"  ","object":"model"},{"id":"gpt-5.6-codex","object":"model"}]}`
+	upstreamBody := `{"object":"list","data":[{"id":"gpt-5.6","object":"model"},{"id":"gpt-image-2","object":"model"},{"id":"  ","object":"model"},{"id":"gpt-5.6-codex","object":"model"}]}`
 	upstream := &codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
 		header := make(http.Header)
 		header.Set("ETag", `W/"openai-list"`)
@@ -521,6 +521,11 @@ func TestAdjustAPIKeyCodexModelsManifest(t *testing.T) {
 			body: `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":false},{"slug":"gpt-5.6-terra"},null,"gpt-5.6-luna",{"slug":17,"use_responses_lite":true}]}`,
 			want: `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":false},{"slug":"gpt-5.6-terra"},null,"gpt-5.6-luna",{"slug":17,"use_responses_lite":true}]}`,
 		},
+		{
+			name: "dedicated image models removed while unknown fields and entries remain",
+			body: `{"models":[{"slug":"gpt-image-1","unknown_model":{"enabled":true}},{"slug":"gpt-5.6","unknown_model":{"enabled":true}},null,"alternate-entry",{"slug":"gpt-image-2-codex"}],"unknown_top":{"version":1}}`,
+			want: `{"models":[{"slug":"gpt-5.6","unknown_model":{"enabled":true}},null,"alternate-entry"],"unknown_top":{"version":1}}`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -533,7 +538,7 @@ func TestAdjustAPIKeyCodexModelsManifest(t *testing.T) {
 }
 
 func TestFetchCodexModelsManifestAPIKeyDisablesResponsesLiteForAffectedModels(t *testing.T) {
-	const upstreamBody = `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":true},{"slug":"gpt-5.6-codex","use_responses_lite":true}],"metadata":{"version":1}}`
+	const upstreamBody = `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":true},{"slug":"gpt-image-2"},{"slug":"gpt-5.6-codex","use_responses_lite":true}],"metadata":{"version":1}}`
 	upstream := &codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
@@ -555,8 +560,8 @@ func TestFetchCodexModelsManifestAPIKeyDisablesResponsesLiteForAffectedModels(t 
 	require.Equal(t, manifest.ETag, notModified.ETag)
 }
 
-func TestFetchCodexModelsManifestOAuthPreservesResponsesLite(t *testing.T) {
-	const manifestBody = ` {"models":[{"slug":"gpt-5.6-sol","use_responses_lite":true}]} `
+func TestFetchCodexModelsManifestOAuthPreservesAPIKeySpecificFieldsAndModels(t *testing.T) {
+	const manifestBody = ` {"models":[{"slug":"gpt-5.6-sol","use_responses_lite":true},{"slug":"gpt-image-2"}]} `
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(manifestBody))
 	}))

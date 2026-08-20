@@ -567,10 +567,10 @@ var apiKeyCodexModelsWithoutResponsesLite = map[string]struct{}{
 	"gpt-5.6-luna":  {},
 }
 
-// adjustAPIKeyCodexModelsManifest prevents Codex from selecting Responses
-// Lite for custom API key providers. Those clients do not install web.run in
-// Lite mode, so the affected model manifests must advertise the full Responses
-// path. Return the original body when no targeted true value is present.
+// adjustAPIKeyCodexModelsManifest removes dedicated image-generation models
+// from the Codex agent picker and prevents Codex from selecting Responses Lite
+// for custom API key providers. Return the original body when no adjustment is
+// needed.
 func adjustAPIKeyCodexModelsManifest(body []byte) ([]byte, error) {
 	var envelope map[string]json.RawMessage
 	if err := json.Unmarshal(body, &envelope); err != nil {
@@ -582,20 +582,29 @@ func adjustAPIKeyCodexModelsManifest(body []byte) ([]byte, error) {
 	}
 
 	changed := false
-	for i, rawModel := range models {
+	adjustedModels := make([]json.RawMessage, 0, len(models))
+	for _, rawModel := range models {
 		var model map[string]json.RawMessage
 		if err := json.Unmarshal(rawModel, &model); err != nil || model == nil {
+			adjustedModels = append(adjustedModels, rawModel)
 			continue
 		}
 		var slug string
 		if err := json.Unmarshal(model["slug"], &slug); err != nil {
+			adjustedModels = append(adjustedModels, rawModel)
+			continue
+		}
+		if IsGPTImageGenerationModel(slug) {
+			changed = true
 			continue
 		}
 		if _, targeted := apiKeyCodexModelsWithoutResponsesLite[slug]; !targeted {
+			adjustedModels = append(adjustedModels, rawModel)
 			continue
 		}
 		var useResponsesLite bool
 		if err := json.Unmarshal(model["use_responses_lite"], &useResponsesLite); err != nil || !useResponsesLite {
+			adjustedModels = append(adjustedModels, rawModel)
 			continue
 		}
 		model["use_responses_lite"] = json.RawMessage("false")
@@ -603,18 +612,18 @@ func adjustAPIKeyCodexModelsManifest(body []byte) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("encode model %q: %w", slug, err)
 		}
-		models[i] = adjusted
+		adjustedModels = append(adjustedModels, adjusted)
 		changed = true
 	}
 	if !changed {
 		return body, nil
 	}
 
-	adjustedModels, err := json.Marshal(models)
+	encodedModels, err := json.Marshal(adjustedModels)
 	if err != nil {
 		return nil, fmt.Errorf("encode top-level models array: %w", err)
 	}
-	envelope["models"] = adjustedModels
+	envelope["models"] = encodedModels
 	adjusted, err := json.Marshal(envelope)
 	if err != nil {
 		return nil, fmt.Errorf("encode JSON object: %w", err)
