@@ -309,3 +309,18 @@ func TestMapAntigravityModel_WildcardTargetEqualsRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestMapAntigravityModel_RenameOnlyPassesUnmappedModels(t *testing.T) {
+	account := &Account{
+		Platform: PlatformAntigravity,
+		Credentials: map[string]any{
+			CredentialKeyModelMappingRestricts: false,
+			"model_mapping": map[string]any{
+				"gemini-3.6-flash": "gemini-3.6-flash-tiered",
+			},
+		},
+	}
+
+	require.Equal(t, "gemini-3.6-flash-tiered", mapAntigravityModel(account, "gemini-3.6-flash"))
+	require.Equal(t, "gemini-3.7-flash", mapAntigravityModel(account, "gemini-3.7-flash"))
+}

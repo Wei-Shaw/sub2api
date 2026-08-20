@@ -613,6 +613,10 @@ func (a *Account) GetModelMapping() map[string]string {
 }
 
 func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]string {
+	return applyCatalogDefaultMappings(a, a.resolveStoredModelMapping(rawMapping))
+}
+
+func (a *Account) resolveStoredModelMapping(rawMapping map[string]any) map[string]string {
 	if a.Credentials == nil {
 		// Antigravity 平台使用默认映射
 		if a.Platform == domain.PlatformAntigravity {
@@ -814,8 +818,49 @@ func resolveRequestedModelInMapping(mapping map[string]string, requestedModel st
 	return matchWildcardMappingResult(mapping, requestedModel)
 }
 
+const CredentialKeyModelMappingRestricts = "model_mapping_restricts"
+
+func credentialBool(credentials map[string]any, key string) (bool, bool) {
+	if credentials == nil {
+		return false, false
+	}
+	value, ok := credentials[key].(bool)
+	return value, ok
+}
+
+func hasExplicitStoredModelMapping(credentials map[string]any) bool {
+	if credentials == nil {
+		return false
+	}
+	switch raw := credentials["model_mapping"].(type) {
+	case map[string]any:
+		return len(raw) > 0
+	case map[string]string:
+		return len(raw) > 0
+	default:
+		return false
+	}
+}
+
+// ModelMappingRestricts reports whether account model_mapping is still a
+// whitelist. New accounts persist false so mapping only renames. Missing flag
+// keeps the old behavior: a non-empty mapping, including Antigravity/Grok
+// default mappings, continues to restrict.
+func (a *Account) ModelMappingRestricts() bool {
+	if a == nil {
+		return true
+	}
+	if value, ok := credentialBool(a.Credentials, CredentialKeyModelMappingRestricts); ok {
+		return value
+	}
+	return true
+}
+
 // IsModelSupported 检查模型是否在 model_mapping 中（支持通配符）
 // 如果未配置 mapping，返回 true（允许所有模型）。
+//
+// 新账号会写入 model_mapping_restricts=false：映射只改名，不再当白名单。
+// 旧账号缺这个字段时保持原白名单语义，避免突然放行以前故意藏起来的模型。
 //
 // 例外：OpenAI OAuth 账号（Codex 上游）的空映射会排除明确属于其他厂商
 // 家族的模型（deepseek-*/glm-* 等）——转发阶段 normalizeOpenAIModelForUpstream
@@ -828,6 +873,12 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 	// credentials 里常残留旧的非空 model_mapping，若不在此放行，透传账号会被
 	// model_mapping 白名单错误排除出候选集，导致 no available accounts / 404（issue #4936）。
 	if a.IsOpenAIPassthroughEnabled() {
+		return true
+	}
+	if !a.ModelMappingRestricts() {
+		if a.IsOpenAIOAuth() && !hasExplicitStoredModelMapping(a.Credentials) {
+			return isOpenAIOAuthServableModel(requestedModel)
+		}
 		return true
 	}
 	mapping := a.GetModelMapping()

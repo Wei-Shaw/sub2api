@@ -1,3 +1,27 @@
+export const MODEL_MAPPING_RESTRICTS_CREDENTIAL_KEY = 'model_mapping_restricts'
+
+export function readModelMappingRestricts(
+  credentials: Record<string, unknown> | undefined
+): boolean | undefined {
+  if (!credentials) {
+    return undefined
+  }
+  const value = credentials[MODEL_MAPPING_RESTRICTS_CREDENTIAL_KEY]
+  return typeof value === 'boolean' ? value : undefined
+}
+
+export function applyModelMappingRestricts(
+  credentials: Record<string, unknown>,
+  restricts: boolean,
+  persist: boolean
+): void {
+  if (!persist) {
+    delete credentials[MODEL_MAPPING_RESTRICTS_CREDENTIAL_KEY]
+    return
+  }
+  credentials[MODEL_MAPPING_RESTRICTS_CREDENTIAL_KEY] = restricts
+}
+
 export function applyInterceptWarmup(
   credentials: Record<string, unknown>,
   enabled: boolean,

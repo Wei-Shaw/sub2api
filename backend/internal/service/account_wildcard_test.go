@@ -231,6 +231,45 @@ func TestAccountIsModelSupported(t *testing.T) {
 			requestedModel: "gemini-3-flash",
 			expected:       false,
 		},
+
+		{
+			name: "rename-only mapping does not whitelist",
+			credentials: map[string]any{
+				CredentialKeyModelMappingRestricts: false,
+				"model_mapping": map[string]any{
+					"gemini-3.6-flash": "gemini-3.6-flash-tiered",
+				},
+			},
+			requestedModel: "gemini-3.7-flash",
+			expected:       true,
+		},
+		{
+			name: "explicit whitelist flag still restricts",
+			credentials: map[string]any{
+				CredentialKeyModelMappingRestricts: true,
+				"model_mapping": map[string]any{
+					"gemini-3.6-flash": "gemini-3.6-flash-tiered",
+				},
+			},
+			requestedModel: "gemini-3.7-flash",
+			expected:       false,
+		},
+		{
+			name:           "legacy antigravity empty mapping still uses default whitelist",
+			platform:       PlatformAntigravity,
+			credentials:    map[string]any{},
+			requestedModel: "claude-unknown-model",
+			expected:       false,
+		},
+		{
+			name:     "new antigravity rename-only allows unmapped models",
+			platform: PlatformAntigravity,
+			credentials: map[string]any{
+				CredentialKeyModelMappingRestricts: false,
+			},
+			requestedModel: "gemini-3.7-flash",
+			expected:       true,
+		},
 	}
 
 	for _, tt := range tests {

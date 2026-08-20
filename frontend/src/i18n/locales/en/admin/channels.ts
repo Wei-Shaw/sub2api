@@ -180,7 +180,7 @@ export default {
         searchGroups: 'Search groups...',
         noGroupsMatch: 'No groups match your search',
         restrictModels: 'Restrict Models',
-        restrictModelsHint: 'When enabled, only models in the pricing list are allowed. Others will be rejected.',
+        restrictModelsHint: 'When enabled, users can only see and call models in the pricing list. New channels default to on.',
         defaultPerRequestPrice: 'Default per-request price (fallback when no tier matches)',
         defaultImagePrice: 'Default image price (fallback when no tier matches)',
         defaultVideoPrice: 'Default video price per second (fallback when no tier matches)',
@@ -211,11 +211,17 @@ export default {
         ruleModelPricing: 'Model Pricing',
          noGroupsInChannel: 'No groups selected in platform tabs above',
          unnamed: 'Unnamed',
-         syncLatestModels: 'Sync Latest Models',
+         syncLatestModels: 'Pick from catalog',
          syncingModels: 'Syncing...',
          syncModelsSuccess: 'Synced {count} new model(s)',
          syncModelsAlreadyUpToDate: 'Models already up to date',
-         syncModelsError: 'Failed to sync models'
+         syncModelsError: 'Failed to load catalog',
+        catalogPickerHint: 'Selected models get draft prices that you can still edit. Coverage is last synced account capability, not the shelf.',
+        catalogPickerEmpty: 'No catalog models for this platform yet',
+        catalogPickerAdd: 'Add selected models',
+        catalogCoverage: '{have}/{total} accounts have it',
+        catalogCoverageNone: 'No accounts',
+        catalogCoverageSynced: 'Synced {synced}/{total} accounts'
        }
      },
 

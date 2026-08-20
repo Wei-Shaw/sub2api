@@ -1011,8 +1011,8 @@ export default {
         pricePlaceholder: 'optional'
       },
       modelPricing: {
-        title: 'Per-model group pricing',
-        description: 'Overrides channel and built-in prices for matching models. Long-context tiers come from official presets — do not enter custom intervals. Use per-request tiers such as realtime, tts, and stt for audio.',
+        title: 'Per-model group pricing (legacy)',
+        description: 'Channel prices win. This card is only a leftover fallback when the channel has no price for that model. Use the group rate multiplier for markup. Long-context tiers still come from official presets.',
         longContext: 'Enable long-context tier pricing',
         longContextHint: 'When checked, official/preset long-context tiers apply. When unchecked, token models stay on the first-tier base rate.',
         add: 'Add model price'
@@ -1052,8 +1052,8 @@ export default {
         sumTooHigh: 'Min gross margin plus safety buffer must be less than 100%, otherwise every account would be excluded'
       },
       modelsList: {
-        title: 'Custom /v1/models Model List',
-        hint: 'Only changes the /v1/models response. Whitelist model calls and account routing are unchanged.',
+        title: 'Custom model list (retired shelf)',
+        hint: 'This no longer controls what users can see or call. The channel shelf does. It only remains so image playground can recognize dedicated groups.',
         loading: 'Loading model list...',
         empty: 'No displayable models',
         selectedSummary: 'Selected {selected} / {total}',

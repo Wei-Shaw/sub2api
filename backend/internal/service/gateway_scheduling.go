@@ -2544,12 +2544,12 @@ func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Contex
 		// 应用 thinking 后缀后检查最终模型是否在账号映射中
 		if enabled, ok := ThinkingEnabledFromContext(ctx); ok {
 			finalModel := applyThinkingModelSuffix(mapped, enabled)
-			if finalModel == mapped {
-				return true // thinking 后缀未改变模型名，映射已通过
+			if finalModel != mapped && !account.IsModelSupported(finalModel) {
+				return false
 			}
-			return account.IsModelSupported(finalModel)
+			return account.HasSyncedUpstreamModel(finalModel)
 		}
-		return true
+		return account.HasSyncedUpstreamModel(mapped)
 	}
 	return s.isModelSupportedByAccount(account, requestedModel)
 }
@@ -2560,7 +2560,11 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 		if strings.TrimSpace(requestedModel) == "" {
 			return true
 		}
-		return mapAntigravityModel(account, requestedModel) != ""
+		mapped := mapAntigravityModel(account, requestedModel)
+		if mapped == "" {
+			return false
+		}
+		return account.HasSyncedUpstreamModel(mapped)
 	}
 	if account.IsBedrock() {
 		_, ok := ResolveBedrockModelID(account, requestedModel)
@@ -2579,5 +2583,8 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 		}
 	}
 	// 其他平台使用账户的模型支持检查
-	return account.IsModelSupported(requestedModel)
+	if !account.IsModelSupported(requestedModel) {
+		return false
+	}
+	return account.HasSyncedUpstreamModel(requestedModel)
 }

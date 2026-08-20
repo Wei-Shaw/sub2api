@@ -492,14 +492,55 @@
                 <div class="flex items-center gap-2">
                   <button
                     type="button"
-                    @click="syncLatestModels(sIdx)"
-                    :disabled="syncingPlatform === section.platform"
+                    @click="toggleCatalogPicker(sIdx)"
+                    :disabled="catalogPickerLoading === section.platform"
                     class="text-xs text-gray-500 hover:text-primary-600 disabled:opacity-50"
                   >
-                    {{ syncingPlatform === section.platform ? t('admin.channels.form.syncingModels') : t('admin.channels.form.syncLatestModels') }}
+                    {{ catalogPickerLoading === section.platform ? t('admin.channels.form.syncingModels') : t('admin.channels.form.syncLatestModels') }}
                   </button>
                   <button type="button" @click="addPricingEntry(sIdx)" class="text-xs text-primary-600 hover:text-primary-700">
                     + {{ t('common.add', 'Add') }}
+                  </button>
+                </div>
+              </div>
+              <div
+                v-if="catalogPickerSection === sIdx"
+                class="mb-2 rounded border border-gray-200 bg-white p-2 dark:border-dark-600 dark:bg-dark-800"
+              >
+                <p class="mb-2 text-xs text-gray-500">{{ t('admin.channels.form.catalogPickerHint') }}</p>
+                <div v-if="catalogPickerModels.length === 0" class="text-xs text-gray-400">
+                  {{ t('admin.channels.form.catalogPickerEmpty') }}
+                </div>
+                <div v-else class="max-h-48 space-y-1 overflow-y-auto">
+                  <label
+                    v-for="model in catalogPickerModels"
+                    :key="model.id"
+                    class="flex items-center gap-2 rounded px-1 py-0.5 text-xs hover:bg-gray-50 dark:hover:bg-dark-700"
+                  >
+                    <input
+                      type="checkbox"
+                      class="rounded border-gray-300"
+                      :checked="catalogPickerSelected.has(model.id)"
+                      :disabled="catalogExistingModels.has(model.id)"
+                      @change="toggleCatalogModel(model.id)"
+                    />
+                    <span class="min-w-0 flex-1 truncate">{{ model.display_name || model.id }}</span>
+                    <span
+                      v-if="model.coverage_total != null"
+                      class="shrink-0 text-gray-400"
+                      :title="formatCatalogCoverageTitle(model)"
+                    >{{ formatCatalogCoverage(model) }}</span>
+                    <span class="shrink-0 text-gray-400">{{ formatCatalogPrice(model) }}</span>
+                  </label>
+                </div>
+                <div class="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    class="text-xs text-primary-600 hover:text-primary-700 disabled:opacity-50"
+                    :disabled="catalogPickerSelected.size === 0"
+                    @click="addSelectedCatalogModels(sIdx)"
+                  >
+                    {{ t('admin.channels.form.catalogPickerAdd') }}
                   </button>
                 </div>
               </div>
@@ -699,7 +740,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
-import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule } from '@/api/admin/channels'
+import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule, CatalogStorefrontModel } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
 import { apiIntervalsToForm, apiTimePricingToForm, createDefaultTimePricingForm, findModelConflict, formIntervalsToAPI, formTimePricingToAPI, mTokToPerToken, perTokenToMTok, validateIntervals, validateTimePricing } from '@/components/admin/channel/types'
 import { cloneServiceTierConfig, defaultServiceTierConfig, validateServiceTierConfig } from '@/components/admin/channel/serviceTier'
@@ -829,7 +870,7 @@ const form = reactive({
   name: '',
   description: '',
   status: 'active',
-  restrict_models: false,
+  restrict_models: true,
   billing_model_source: 'channel_mapped' as string,
   service_tier_config: defaultServiceTierConfig(),
   platforms: [] as PlatformSection[],
@@ -942,44 +983,93 @@ function addPricingEntry(sectionIdx: number) {
   })
 }
 
-const syncingPlatform = ref<string | null>(null)
+const catalogPickerSection = ref<number | null>(null)
+const catalogPickerLoading = ref<string | null>(null)
+const catalogPickerModels = ref<CatalogStorefrontModel[]>([])
+const catalogPickerSelected = ref<Set<string>>(new Set())
+const catalogExistingModels = ref<Set<string>>(new Set())
 
-async function syncLatestModels(sectionIdx: number) {
+function collectExistingModels(sectionIdx: number): Set<string> {
+  const existing = new Set<string>()
+  for (const entry of form.platforms[sectionIdx].model_pricing) {
+    for (const model of entry.models) existing.add(model)
+  }
+  return existing
+}
+
+async function toggleCatalogPicker(sectionIdx: number) {
+  if (catalogPickerSection.value === sectionIdx) {
+    catalogPickerSection.value = null
+    return
+  }
   const platform = form.platforms[sectionIdx].platform
-  if (syncingPlatform.value) return
-  syncingPlatform.value = platform
+  catalogPickerLoading.value = platform
   try {
-    const result = await adminAPI.channels.syncPricingModels(platform)
-    // Collect all model names already present in this platform's pricing entries
-    const existingModels = new Set<string>()
-    for (const entry of form.platforms[sectionIdx].model_pricing) {
-      for (const m of entry.models) existingModels.add(m)
-    }
-    const newModels = result.models.filter(m => !existingModels.has(m))
-    if (newModels.length === 0) {
-      appStore.showSuccess(t('admin.channels.form.syncModelsAlreadyUpToDate'))
-      return
-    }
-    // Add new models as a single new pricing entry (user fills in prices)
-    form.platforms[sectionIdx].model_pricing.push({
-      models: newModels,
-      billing_mode: 'token',
-      input_price: null,
-      output_price: null,
-      cache_write_price: null,
-      cache_read_price: null,
-      image_input_price: null,
-      image_output_price: null,
-      per_request_price: null,
-      intervals: [],
-      time_pricing: createDefaultTimePricingForm()
-    })
-    appStore.showSuccess(t('admin.channels.form.syncModelsSuccess', { count: newModels.length }))
+    const result = await adminAPI.channels.listCatalogModels(platform, form.platforms[sectionIdx].group_ids)
+    catalogExistingModels.value = collectExistingModels(sectionIdx)
+    catalogPickerModels.value = result.models || []
+    catalogPickerSelected.value = new Set()
+    catalogPickerSection.value = sectionIdx
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, t('admin.channels.form.syncModelsError')))
   } finally {
-    syncingPlatform.value = null
+    catalogPickerLoading.value = null
   }
+}
+
+function toggleCatalogModel(modelId: string) {
+  if (catalogExistingModels.value.has(modelId)) return
+  const next = new Set(catalogPickerSelected.value)
+  if (next.has(modelId)) next.delete(modelId)
+  else next.add(modelId)
+  catalogPickerSelected.value = next
+}
+
+function formatCatalogPrice(model: CatalogStorefrontModel): string {
+  if (model.input_price == null && model.output_price == null) return ''
+  const input = perTokenToMTok(model.input_price ?? null)
+  const output = perTokenToMTok(model.output_price ?? null)
+  return `$${input ?? '-'} / $${output ?? '-'}`
+}
+
+function formatCatalogCoverage(model: CatalogStorefrontModel): string {
+  if (model.coverage_total == null) return ''
+  if (model.coverage_total === 0) return t('admin.channels.form.catalogCoverageNone')
+  return t('admin.channels.form.catalogCoverage', {
+    have: model.coverage_have ?? 0,
+    total: model.coverage_total
+  })
+}
+
+function formatCatalogCoverageTitle(model: CatalogStorefrontModel): string {
+  if (model.coverage_total == null) return ''
+  return t('admin.channels.form.catalogCoverageSynced', {
+    synced: model.coverage_synced ?? 0,
+    total: model.coverage_total
+  })
+}
+
+function addSelectedCatalogModels(sectionIdx: number) {
+  const selected = catalogPickerModels.value.filter(model => catalogPickerSelected.value.has(model.id))
+  if (selected.length === 0) return
+  for (const model of selected) {
+    form.platforms[sectionIdx].model_pricing.push({
+      models: [model.id],
+      billing_mode: 'token',
+      input_price: perTokenToMTok(model.input_price ?? null),
+      output_price: perTokenToMTok(model.output_price ?? null),
+      cache_write_price: perTokenToMTok(model.cache_write_price ?? null),
+      cache_read_price: perTokenToMTok(model.cache_read_price ?? null),
+      image_input_price: perTokenToMTok(model.image_input_price ?? null),
+      image_output_price: perTokenToMTok(model.image_output_price ?? null),
+      per_request_price: model.per_request_price ?? null,
+      intervals: [],
+      time_pricing: createDefaultTimePricingForm()
+    })
+  }
+  catalogPickerSelected.value = new Set()
+  catalogExistingModels.value = collectExistingModels(sectionIdx)
+  appStore.showSuccess(t('admin.channels.form.syncModelsSuccess', { count: selected.length }))
 }
 
 function updatePricingEntry(sectionIdx: number, idx: number, updated: PricingFormEntry) {
@@ -1406,7 +1496,7 @@ function resetForm() {
   form.name = ''
   form.description = ''
   form.status = 'active'
-  form.restrict_models = false
+  form.restrict_models = true
   form.billing_model_source = 'channel_mapped'
   form.service_tier_config = defaultServiceTierConfig()
   form.platforms = []

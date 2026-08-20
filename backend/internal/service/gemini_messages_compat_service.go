@@ -412,9 +412,16 @@ func (s *GeminiMessagesCompatService) isModelSupportedByAccount(account *Account
 		if strings.TrimSpace(requestedModel) == "" {
 			return true
 		}
-		return mapAntigravityModel(account, requestedModel) != ""
+		mapped := mapAntigravityModel(account, requestedModel)
+		if mapped == "" {
+			return false
+		}
+		return account.HasSyncedUpstreamModel(mapped)
 	}
-	return account.IsModelSupported(requestedModel)
+	if !account.IsModelSupported(requestedModel) {
+		return false
+	}
+	return account.HasSyncedUpstreamModel(requestedModel)
 }
 
 // GetAntigravityGatewayService 返回 AntigravityGatewayService

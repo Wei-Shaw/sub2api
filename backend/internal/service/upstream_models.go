@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
@@ -129,6 +130,28 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 	}
 
 	return models, nil
+}
+
+// StoreUpstreamModelSnapshot persists the last successful model list.
+// An empty list is ignored so a bad probe cannot shrink later scheduling.
+func (s *AccountTestService) StoreUpstreamModelSnapshot(ctx context.Context, account *Account, models []string) error {
+	if s == nil || s.accountRepo == nil || account == nil {
+		return nil
+	}
+	snapshot := BuildUpstreamModelSnapshot(models, time.Now().UTC())
+	if snapshot == nil {
+		return nil
+	}
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
+		UpstreamModelSnapshotExtraKey: snapshot,
+	}); err != nil {
+		return err
+	}
+	if account.Extra == nil {
+		account.Extra = map[string]any{}
+	}
+	account.Extra[UpstreamModelSnapshotExtraKey] = snapshot
+	return nil
 }
 
 func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {

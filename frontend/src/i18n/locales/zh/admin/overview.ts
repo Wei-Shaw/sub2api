@@ -1008,8 +1008,8 @@ export default {
         pricePlaceholder: '可选'
       },
       modelPricing: {
-        title: '分组逐模型定价',
-        description: '匹配模型后覆盖渠道和内置价格。长上下文阶梯沿用官方/预设价卡，无需再手填区间。音频可用按次层级配置 realtime、tts、stt。',
+        title: '分组逐模型定价（旧底稿）',
+        description: '渠道价优先。这里只在渠道没写这个模型时当旧底稿用；日常加价请用分组倍率。长上下文阶梯仍走官方/预设价卡。',
         longContext: '启用长上下文阶梯定价',
         longContextHint: '勾选后按官方/预设阶梯计费；关闭则始终按第一档基础价。',
         add: '添加模型价格'
@@ -1049,8 +1049,8 @@ export default {
         sumTooHigh: '最低毛利率与安全缓冲之和必须小于 100%，否则将排除全部账号'
       },
       modelsList: {
-        title: '自定义 /v1/models 模型列表',
-        hint: '仅影响 /v1/models 展示结果，不影响白名单模型调用和账号调度。',
+        title: '自定义模型列表（已下线货架）',
+        hint: '不再控制用户能看见或调用的模型，货架改由渠道勾选。这里只留给图片工作台识别专用分组。',
         loading: '正在加载模型列表...',
         empty: '暂无可展示模型',
         selectedSummary: '已选 {selected} / {total}',

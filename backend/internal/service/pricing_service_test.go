@@ -454,6 +454,29 @@ func TestGetModelPricing_OpenAICompactAliasUsesStaticFallback(t *testing.T) {
 	require.InDelta(t, 1.5e-5, got.OutputCostPerToken, 1e-12)
 }
 
+func TestPricingService_Gemini37FlashThinkingTiersUseBasePricing(t *testing.T) {
+	basePricing := &LiteLLMModelPricing{
+		InputCostPerToken:       0.75e-6,
+		OutputCostPerToken:      3.75e-6,
+		CacheReadInputTokenCost: 0.075e-6,
+	}
+	svc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		"gemini-3.7-flash": basePricing,
+	}}
+
+	for _, model := range []string{
+		"gemini-3.7-flash",
+		"gemini-3.7-flash-high",
+		"gemini-3.7-flash-low",
+		"gemini-3.7-flash-medium",
+		"gemini-3.7-flash-tiered",
+	} {
+		t.Run(model, func(t *testing.T) {
+			require.Same(t, basePricing, svc.GetModelPricing(model))
+		})
+	}
+}
+
 func TestPricingService_Gemini36FlashThinkingTiersUseBasePricing(t *testing.T) {
 	basePricing := &LiteLLMModelPricing{
 		InputCostPerToken:       1.5e-6,

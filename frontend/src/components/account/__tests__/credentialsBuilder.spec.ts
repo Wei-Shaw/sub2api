@@ -3,9 +3,12 @@ import {
   ANTIGRAVITY_PROJECT_ID_CREDENTIAL_KEY,
   HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY,
   HEADER_OVERRIDES_CREDENTIAL_KEY,
+  MODEL_MAPPING_RESTRICTS_CREDENTIAL_KEY,
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
+  applyModelMappingRestricts,
+  readModelMappingRestricts,
   applyPlanType,
   buildHeaderOverridesObject,
   buildPlanTypeOptions,
@@ -61,6 +64,35 @@ describe('applyInterceptWarmup', () => {
     expect(creds.api_key).toBe('sk')
     expect(creds.base_url).toBe('url')
     expect('intercept_warmup_requests' in creds).toBe(false)
+  })
+})
+
+describe('applyModelMappingRestricts', () => {
+  it('persists false for new rename-only accounts', () => {
+    const creds: Record<string, unknown> = { api_key: 'sk' }
+    applyModelMappingRestricts(creds, false, true)
+    expect(creds[MODEL_MAPPING_RESTRICTS_CREDENTIAL_KEY]).toBe(false)
+  })
+
+  it('persists true when whitelist is explicit', () => {
+    const creds: Record<string, unknown> = { api_key: 'sk' }
+    applyModelMappingRestricts(creds, true, true)
+    expect(creds[MODEL_MAPPING_RESTRICTS_CREDENTIAL_KEY]).toBe(true)
+  })
+
+  it('omits the flag for legacy accounts', () => {
+    const creds: Record<string, unknown> = {
+      [MODEL_MAPPING_RESTRICTS_CREDENTIAL_KEY]: false,
+      model_mapping: { a: 'b' }
+    }
+    applyModelMappingRestricts(creds, false, false)
+    expect(MODEL_MAPPING_RESTRICTS_CREDENTIAL_KEY in creds).toBe(false)
+  })
+
+  it('reads only boolean flags', () => {
+    expect(readModelMappingRestricts({ [MODEL_MAPPING_RESTRICTS_CREDENTIAL_KEY]: false })).toBe(false)
+    expect(readModelMappingRestricts({ [MODEL_MAPPING_RESTRICTS_CREDENTIAL_KEY]: 'false' })).toBeUndefined()
+    expect(readModelMappingRestricts(undefined)).toBeUndefined()
   })
 })
 

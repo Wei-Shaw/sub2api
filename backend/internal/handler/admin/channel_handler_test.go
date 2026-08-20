@@ -644,3 +644,11 @@ func TestChannelServiceTierAuditExtraContainsBeforeAndAfterValues(t *testing.T) 
 	require.Equal(t, true, extra["service_tier_outbound_billing_before"])
 	require.Equal(t, false, extra["service_tier_outbound_billing_after"])
 }
+
+func TestCreateChannelRestrictModelsDefaultsTrue(t *testing.T) {
+	require.True(t, createChannelRestrictModels(nil))
+	off := false
+	require.False(t, createChannelRestrictModels(&off))
+	on := true
+	require.True(t, createChannelRestrictModels(&on))
+}

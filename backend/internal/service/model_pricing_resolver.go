@@ -48,7 +48,8 @@ type ResolvedPricing struct {
 }
 
 // ModelPricingResolver 统一模型定价解析器。
-// 解析链：Group → Channel → LiteLLM → Fallback。
+// 解析链：Channel → Group(legacy fallback) → LiteLLM/catalog → Fallback。
+// 分组逐模型价不再覆盖渠道价；分组倍率仍是加价。
 type ModelPricingResolver struct {
 	channelService *ChannelService
 	billingService *BillingService
@@ -75,19 +76,6 @@ type PricingInput struct {
 // 2. 如果指定了 GroupID，查找渠道定价并覆盖
 func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) *ResolvedPricing {
 	longContextPricingEnabled := input.Group == nil || input.Group.LongContextPricingEnabled
-	if groupPricing := matchGroupModelPricing(input.Group, input.Model); groupPricing != nil {
-		// Group token cards only override the first-tier / flat rates.
-		// Long-context ladders come from official presets, gated by the checkbox.
-		if groupPricing.BillingMode == "" || groupPricing.BillingMode == BillingModeToken {
-			stripped := groupPricing.Clone()
-			stripped.Intervals = nil
-			groupPricing = &stripped
-		}
-		resolved := r.resolveConfiguredPricing(groupPricing, input.Model, PricingSourceGroup)
-		resolved.longContextPricingEnabled = longContextPricingEnabled
-		return resolved
-	}
-
 	var chPricing *ChannelModelPricing
 	if input.GroupID != nil && r.channelService != nil {
 		chPricing = r.channelService.GetChannelModelPricing(ctx, *input.GroupID, input.Model)
@@ -137,6 +125,29 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 		}
 	}
 
+	if resolved.Source != PricingSourceChannel {
+		if groupResolved := r.resolveLegacyGroupPricing(input.Group, input.Model, longContextPricingEnabled); groupResolved != nil {
+			return groupResolved
+		}
+	}
+
+	return resolved
+}
+
+func (r *ModelPricingResolver) resolveLegacyGroupPricing(group *Group, model string, longContextPricingEnabled bool) *ResolvedPricing {
+	groupPricing := matchGroupModelPricing(group, model)
+	if groupPricing == nil {
+		return nil
+	}
+	// Group token cards only override the first-tier / flat rates.
+	// Long-context ladders come from official presets, gated by the checkbox.
+	if groupPricing.BillingMode == "" || groupPricing.BillingMode == BillingModeToken {
+		stripped := groupPricing.Clone()
+		stripped.Intervals = nil
+		groupPricing = &stripped
+	}
+	resolved := r.resolveConfiguredPricing(groupPricing, model, PricingSourceGroup)
+	resolved.longContextPricingEnabled = longContextPricingEnabled
 	return resolved
 }
 

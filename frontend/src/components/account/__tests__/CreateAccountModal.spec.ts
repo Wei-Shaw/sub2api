@@ -164,6 +164,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await submitApiKeyAccount('openai')
 
     expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials?.model_mapping_restricts).toBe(false)
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
   })
 
@@ -284,6 +285,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     const payload = createAccountMock.mock.calls[0]?.[0]
     expect(payload?.platform).toBe('antigravity')
     expect(payload?.type).toBe('apikey')
+    expect(payload?.credentials?.model_mapping_restricts).toBe(false)
     expect(payload?.upstream_billing_probe_enabled).toBe(true)
     // 创建成功后前端立即发起一次首探（与其他 apikey 平台一致）。
     expect(probeUpstreamBillingMock).toHaveBeenCalledWith(42)

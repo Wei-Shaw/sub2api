@@ -166,6 +166,7 @@ const (
 type ChannelService struct {
 	repo                 ChannelRepository
 	groupRepo            GroupRepository
+	accountRepo          AccountRepository
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	pricingService       *PricingService // 用于「可用渠道」展示时回落到全局定价；可为 nil（测试场景）
 

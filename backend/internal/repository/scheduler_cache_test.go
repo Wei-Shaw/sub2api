@@ -20,6 +20,20 @@ func TestFilterSchedulerCredentialsKeepsSubscriptionPlanType(t *testing.T) {
 	require.NotContains(t, filtered, "refresh_token")
 }
 
+func TestFilterSchedulerCredentialsKeepsModelMappingRestricts(t *testing.T) {
+	filtered := filterSchedulerCredentials(map[string]any{
+		service.CredentialKeyModelMappingRestricts: false,
+		"model_mapping": map[string]any{
+			"gemini-3.6-flash": "gemini-3.6-flash-tiered",
+		},
+		"access_token": "secret-access-token",
+	})
+
+	require.Equal(t, false, filtered[service.CredentialKeyModelMappingRestricts])
+	require.Contains(t, filtered, "model_mapping")
+	require.NotContains(t, filtered, "access_token")
+}
+
 func TestSchedulerMetadataAccountKeepsOpenAISubscriptionIdentity(t *testing.T) {
 	account := service.Account{
 		ID:       24,

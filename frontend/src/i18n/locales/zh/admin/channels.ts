@@ -180,7 +180,7 @@ export default {
         searchGroups: '搜索分组...',
         noGroupsMatch: '没有匹配的分组',
         restrictModels: '限制模型',
-        restrictModelsHint: '开启后，仅允许模型定价列表中的模型。不在列表中的模型请求将被拒绝。',
+        restrictModelsHint: '开启后，用户只能看见和调用定价列表里勾过的模型。不在列表中的请求会被拒绝。新渠道默认开启。',
         defaultPerRequestPrice: '默认单次价格（未命中层级时使用）',
         defaultImagePrice: '默认图片价格（未命中层级时使用）',
         defaultVideoPrice: '默认视频每秒价格（未命中层级时使用）',
@@ -211,11 +211,17 @@ export default {
         ruleModelPricing: '模型定价',
         noGroupsInChannel: '上方平台标签页中未选择分组',
         unnamed: '未命名',
-        syncLatestModels: '同步最新模型',
+        syncLatestModels: '从目录勾选',
         syncingModels: '同步中...',
         syncModelsSuccess: '已同步 {count} 个新模型',
         syncModelsAlreadyUpToDate: '模型列表已是最新',
-        syncModelsError: '同步模型失败'
+        syncModelsError: '加载目录失败',
+        catalogPickerHint: '勾选后会带上底稿价，仍可再改。覆盖率只表示最近同步到的账号能力，不是货架本身。',
+        catalogPickerEmpty: '这个平台目录里还没有模型',
+        catalogPickerAdd: '添加已选模型',
+        catalogCoverage: '{have}/{total} 账号有',
+        catalogCoverageNone: '暂无账号',
+        catalogCoverageSynced: '已同步 {synced}/{total} 个账号'
       }
     },
 

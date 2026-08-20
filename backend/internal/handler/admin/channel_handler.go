@@ -36,7 +36,7 @@ type createChannelRequest struct {
 	ModelPricing               []channelModelPricingRequest      `json:"model_pricing"`
 	ModelMapping               map[string]map[string]string      `json:"model_mapping"`
 	BillingModelSource         string                            `json:"billing_model_source" binding:"omitempty,oneof=requested upstream channel_mapped response_model"`
-	RestrictModels             bool                              `json:"restrict_models"`
+	RestrictModels             *bool                             `json:"restrict_models"`
 	Features                   string                            `json:"features"`
 	FeaturesConfig             map[string]any                    `json:"features_config"`
 	ServiceTierConfig          *service.ChannelServiceTierConfig `json:"service_tier_config"`
@@ -448,7 +448,7 @@ func (h *ChannelHandler) Create(c *gin.Context) {
 		ModelPricing:               pricing,
 		ModelMapping:               req.ModelMapping,
 		BillingModelSource:         req.BillingModelSource,
-		RestrictModels:             req.RestrictModels,
+		RestrictModels:             createChannelRestrictModels(req.RestrictModels),
 		Features:                   req.Features,
 		FeaturesConfig:             req.FeaturesConfig,
 		ServiceTierConfig:          req.ServiceTierConfig,
@@ -480,6 +480,13 @@ func channelServiceTierAuditExtra(before, after service.ChannelServiceTierConfig
 		"service_tier_outbound_billing_before":    before.UseOutboundTierForBilling,
 		"service_tier_outbound_billing_after":     after.UseOutboundTierForBilling,
 	}
+}
+
+func createChannelRestrictModels(value *bool) bool {
+	if value == nil {
+		return true
+	}
+	return *value
 }
 
 // Update handles updating a channel
@@ -635,4 +642,58 @@ func (h *ChannelHandler) SyncPricingModels(c *gin.Context) {
 
 	models := h.pricingService.ListModelNamesByProvider(provider)
 	response.Success(c, gin.H{"models": models})
+}
+
+// ListCatalogModels 返回本 fork 目录里指定平台可勾选的模型及底稿价。
+// GET /api/v1/admin/channels/catalog-models?platform=antigravity
+func (h *ChannelHandler) ListCatalogModels(c *gin.Context) {
+	platform := strings.ToLower(strings.TrimSpace(c.Query("platform")))
+	if platform == "" {
+		response.ErrorFrom(c, infraerrors.BadRequest("MISSING_PARAMETER", "platform parameter is required").
+			WithMetadata(map[string]string{"param": "platform"}))
+		return
+	}
+	switch platform {
+	case service.PlatformAnthropic, service.PlatformOpenAI, service.PlatformGemini, service.PlatformAntigravity, service.PlatformGrok:
+	default:
+		response.ErrorFrom(c, infraerrors.BadRequest("UNSUPPORTED_PLATFORM",
+			fmt.Sprintf("unsupported platform: %s", platform)).
+			WithMetadata(map[string]string{"param": "platform"}))
+		return
+	}
+	models := service.ListCatalogStorefrontModels(platform)
+	if h != nil && h.channelService != nil {
+		models = h.channelService.ListCatalogStorefrontModelsWithCoverage(c.Request.Context(), platform, parseQueryInt64List(c, "group_ids"))
+	}
+	response.Success(c, gin.H{"models": models})
+}
+
+func parseQueryInt64List(c *gin.Context, key string) []int64 {
+	if c == nil {
+		return nil
+	}
+	values := append([]string{}, c.QueryArray(key)...)
+	if raw := strings.TrimSpace(c.Query(key)); raw != "" && len(values) == 0 {
+		values = []string{raw}
+	}
+	out := make([]int64, 0, len(values))
+	seen := make(map[int64]struct{}, len(values))
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			id, err := strconv.ParseInt(part, 10, 64)
+			if err != nil || id <= 0 {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+	}
+	return out
 }

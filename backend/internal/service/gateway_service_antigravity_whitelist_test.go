@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/require"
@@ -237,4 +238,22 @@ func TestGatewayService_isModelSupportedByAccountWithContext_CustomMappingThinki
 	// 自定义模型（非 claude）不受 thinking 后缀影响，mapped 成功即通过
 	ctx = context.WithValue(context.Background(), ctxkey.ThinkingEnabled, true)
 	require.True(t, svc.isModelSupportedByAccountWithContext(ctx, account, "my-custom-model"))
+}
+
+func TestGatewayService_isModelSupportedByAccount_UsesUpstreamSnapshot(t *testing.T) {
+	svc := &GatewayService{}
+	account := &Account{
+		Platform: PlatformAntigravity,
+		Credentials: map[string]any{
+			CredentialKeyModelMappingRestricts: false,
+		},
+		Extra: ApplyUpstreamModelSnapshot(nil, []string{"gemini-3.7-flash"}, testTimeUTC()),
+	}
+
+	require.True(t, svc.isModelSupportedByAccount(account, "gemini-3.7-flash"))
+	require.False(t, svc.isModelSupportedByAccount(account, "gpt-4"))
+}
+
+func testTimeUTC() time.Time {
+	return time.Date(2026, 8, 19, 0, 0, 0, 0, time.UTC)
 }

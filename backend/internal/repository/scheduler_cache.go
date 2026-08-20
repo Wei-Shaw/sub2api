@@ -954,7 +954,7 @@ func filterSchedulerCredentials(credentials map[string]any) map[string]any {
 	if len(credentials) == 0 {
 		return nil
 	}
-	keys := []string{"model_mapping", "compact_model_mapping", "api_key", "project_id", "oauth_type", "plan_type"}
+	keys := []string{"model_mapping", "compact_model_mapping", service.CredentialKeyModelMappingRestricts, "api_key", "project_id", "oauth_type", "plan_type"}
 	filtered := make(map[string]any)
 	for _, key := range keys {
 		if value, ok := credentials[key]; ok && value != nil {
@@ -1016,6 +1016,7 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"model_rate_limits",
 		service.UpstreamBillingProbeExtraKey,
 		service.GrokMediaEligibleExtraKey,
+		service.UpstreamModelSnapshotExtraKey,
 		"grok_billing_snapshot",
 	}
 	filtered := make(map[string]any)

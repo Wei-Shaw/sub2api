@@ -70,7 +70,8 @@ type Group struct {
 	AudioTTSPricePerMillionChars *float64
 	AudioSTTPricePerHour         *float64
 
-	// ModelPricing overrides channel and built-in prices for matching models.
+	// ModelPricing is a leftover per-model card. Channel prices win; this only
+	// applies when the bound channel has no price for that model.
 	// Token intervals are selected only when LongContextPricingEnabled is true.
 	LongContextPricingEnabled bool
 	ModelPricing              []ChannelModelPricing

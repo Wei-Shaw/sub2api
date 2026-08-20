@@ -485,7 +485,7 @@ func TestWithWindowCostPrefetch_BatchErrorFallbackSingleQuery(t *testing.T) {
 	require.Equal(t, int64(1), errCount)
 }
 
-func TestGetAvailableModels_UsesShortCacheAndSupportsInvalidation(t *testing.T) {
+func TestGetAvailableModels_IgnoresAccountMappingKeys(t *testing.T) {
 	resetGatewayHotpathStatsForTest()
 
 	groupID := int64(9)
@@ -502,59 +502,13 @@ func TestGetAvailableModels_UsesShortCacheAndSupportsInvalidation(t *testing.T) 
 						},
 					},
 				},
-				{
-					ID:       2,
-					Platform: PlatformGemini,
-					Credentials: map[string]any{
-						"model_mapping": map[string]any{
-							"gemini-2.5-pro": "gemini-2.5-pro",
-						},
-					},
-				},
 			},
 		},
 	}
 
-	svc := &GatewayService{
-		accountRepo:        repo,
-		modelsListCache:    gocache.New(time.Minute, time.Minute),
-		modelsListCacheTTL: time.Minute,
-	}
-
-	models1 := svc.GetAvailableModels(context.Background(), &groupID, PlatformAnthropic)
-	require.Equal(t, []string{"claude-3-5-haiku", "claude-3-5-sonnet"}, models1)
-	require.Equal(t, int64(1), repo.listByGroupCalls.Load())
-
-	// TTL 内再次请求应命中缓存，不回源。
-	models2 := svc.GetAvailableModels(context.Background(), &groupID, PlatformAnthropic)
-	require.Equal(t, models1, models2)
-	require.Equal(t, int64(1), repo.listByGroupCalls.Load())
-
-	// 更新仓储数据，但缓存未失效前应继续返回旧值。
-	repo.byGroup[groupID] = []Account{
-		{
-			ID:       3,
-			Platform: PlatformAnthropic,
-			Credentials: map[string]any{
-				"model_mapping": map[string]any{
-					"claude-3-7-sonnet": "claude-3-7-sonnet",
-				},
-			},
-		},
-	}
-	models3 := svc.GetAvailableModels(context.Background(), &groupID, PlatformAnthropic)
-	require.Equal(t, []string{"claude-3-5-haiku", "claude-3-5-sonnet"}, models3)
-	require.Equal(t, int64(1), repo.listByGroupCalls.Load())
-
-	svc.InvalidateAvailableModelsCache(&groupID, PlatformAnthropic)
-	models4 := svc.GetAvailableModels(context.Background(), &groupID, PlatformAnthropic)
-	require.Equal(t, []string{"claude-3-7-sonnet"}, models4)
-	require.Equal(t, int64(2), repo.listByGroupCalls.Load())
-
-	hit, miss, store := GatewayModelsListCacheStats()
-	require.Equal(t, int64(2), hit)
-	require.Equal(t, int64(2), miss)
-	require.Equal(t, int64(2), store)
+	svc := &GatewayService{accountRepo: repo}
+	require.Nil(t, svc.GetAvailableModels(context.Background(), &groupID, PlatformAnthropic))
+	require.Equal(t, int64(0), repo.listByGroupCalls.Load())
 }
 
 func TestGetAvailableModels_ErrorAndGlobalListBranches(t *testing.T) {
@@ -598,8 +552,8 @@ func TestGetAvailableModels_ErrorAndGlobalListBranches(t *testing.T) {
 		modelsListCacheTTL: time.Minute,
 	}
 	models := svcOK.GetAvailableModels(context.Background(), nil, "")
-	require.Equal(t, []string{"claude-3-5-sonnet", "gemini-2.5-pro"}, models)
-	require.Equal(t, int64(1), okRepo.listAllCalls.Load())
+	require.Nil(t, models)
+	require.Equal(t, int64(0), okRepo.listAllCalls.Load())
 }
 
 func TestGatewayHotpathHelpers_CacheTTLAndStickyContext(t *testing.T) {

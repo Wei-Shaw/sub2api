@@ -2795,6 +2795,8 @@ import {
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
+  applyModelMappingRestricts,
+  readModelMappingRestricts,
   applyPlanType,
   buildPlanTypeOptions,
   readPlanType,
@@ -2974,6 +2976,7 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+const originalHadMappingRestrictsFlag = ref(false)
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
@@ -3478,10 +3481,20 @@ const normalizePoolModeRetryCount = (value: number) => {
   return normalized
 }
 
-const loadModelRestrictionFromMapping = (rawMapping?: Record<string, unknown>) => {
-  const parsed = splitModelMappingObject(rawMapping)
+const loadModelRestrictionFromMapping = (credentials?: Record<string, unknown>) => {
+  const parsed = splitModelMappingObject(credentials?.model_mapping as Record<string, unknown> | undefined)
   allowedModels.value = parsed.allowedModels
   modelMappings.value = parsed.modelMappings
+  const restricts = readModelMappingRestricts(credentials)
+  originalHadMappingRestrictsFlag.value = restricts !== undefined
+  if (restricts === false) {
+    modelRestrictionMode.value = 'mapping'
+    return
+  }
+  if (restricts === true) {
+    modelRestrictionMode.value = 'whitelist'
+    return
+  }
   modelRestrictionMode.value =
     parsed.modelMappings.length > 0 && parsed.allowedModels.length === 0
       ? 'mapping'
@@ -3789,7 +3802,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
     // Load model mappings and detect mode
-    loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
+    loadModelRestrictionFromMapping(credentials)
 
     // Load pool mode
     poolModeEnabled.value = credentials.pool_mode === true
@@ -3836,7 +3849,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     loadQuotaNotifyFromExtra(bedrockExtra)
 
     // Load model mappings for bedrock
-    loadModelRestrictionFromMapping(bedrockCreds.model_mapping as Record<string, unknown> | undefined)
+    loadModelRestrictionFromMapping(bedrockCreds)
   } else if (newAccount.type === 'upstream' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     editBaseUrl.value = (credentials.base_url as string) || ''
@@ -3847,7 +3860,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editVertexLocation.value = (credentials.location as string) || (credentials.vertex_location as string) || 'us-central1'
 
     // Load model mappings for service_account
-    loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
+    loadModelRestrictionFromMapping(credentials)
   } else {
     const platformDefaultUrl =
       newAccount.platform === 'openai'
@@ -3862,11 +3875,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     // Load model mappings for OpenAI/Grok OAuth accounts
     if ((newAccount.platform === 'openai' || newAccount.platform === 'grok') && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
-      loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
+      loadModelRestrictionFromMapping(oauthCredentials)
     } else {
-      modelRestrictionMode.value = 'whitelist'
-      modelMappings.value = []
-      allowedModels.value = []
+      loadModelRestrictionFromMapping(newAccount.credentials as Record<string, unknown> | undefined)
     }
     poolModeEnabled.value = false
     poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
@@ -4386,7 +4397,24 @@ const handleClose = () => {
   emit('close')
 }
 
+const currentModelMappingRestricts = () => {
+  if (props.account?.platform === 'antigravity') {
+    return readModelMappingRestricts(props.account.credentials as Record<string, unknown> | undefined) ?? false
+  }
+  if (openaiPassthroughEnabled.value) {
+    return false
+  }
+  return modelRestrictionMode.value === 'whitelist' && allowedModels.value.length > 0
+}
+
 const submitUpdateAccount = async (accountID: number, updatePayload: Record<string, unknown>) => {
+  if (updatePayload.credentials && typeof updatePayload.credentials === 'object') {
+    applyModelMappingRestricts(
+      updatePayload.credentials as Record<string, unknown>,
+      currentModelMappingRestricts(),
+      originalHadMappingRestrictsFlag.value
+    )
+  }
   submitting.value = true
   try {
     const updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))

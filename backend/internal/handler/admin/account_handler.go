@@ -2574,6 +2574,11 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+	if !account.ModelMappingRestricts() {
+		writeAccountDefaultModels(c, account)
+		return
+	}
+
 	// Handle OpenAI accounts
 	if account.IsOpenAI() {
 		// OpenAI 自动透传会绕过常规模型改写，测试/模型列表也应回落到默认模型集。
@@ -2785,6 +2790,10 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 		slog.Warn("sync_upstream_models_failed", "account_id", accountID)
 		response.Error(c, http.StatusBadGateway, "Failed to sync upstream models from upstream")
 		return
+	}
+
+	if err := h.accountTestService.StoreUpstreamModelSnapshot(c.Request.Context(), account, models); err != nil {
+		slog.Warn("store_upstream_model_snapshot_failed", "account_id", accountID, "error", err)
 	}
 
 	response.Success(c, gin.H{"models": models})
@@ -3044,6 +3053,25 @@ func (h *AccountHandler) BatchRefreshTier(c *gin.Context) {
 	}
 
 	response.Success(c, results)
+}
+
+func writeAccountDefaultModels(c *gin.Context, account *service.Account) {
+	if account == nil {
+		response.Success(c, claude.DefaultModels)
+		return
+	}
+	switch account.Platform {
+	case service.PlatformOpenAI:
+		response.Success(c, openai.DefaultModels)
+	case service.PlatformGemini:
+		response.Success(c, geminicli.DefaultModels)
+	case service.PlatformAntigravity:
+		response.Success(c, antigravity.DefaultModels())
+	case service.PlatformGrok:
+		response.Success(c, xai.DefaultModels())
+	default:
+		response.Success(c, claude.DefaultModels)
+	}
 }
 
 // GetAntigravityDefaultModelMapping 获取 Antigravity 平台的默认模型映射

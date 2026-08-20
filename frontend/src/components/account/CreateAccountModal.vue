@@ -3694,7 +3694,6 @@ import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import {
-  claudeModels,
   getPresetMappingsByPlatform,
   getModelsByPlatform,
   commonErrorCodes,
@@ -3744,6 +3743,7 @@ import {
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
+  applyModelMappingRestricts,
   defaultCNBaseUrl,
   isHeaderOverrideCapable,
   validateHeaderOverrideRows,
@@ -4023,7 +4023,7 @@ const editWeeklyResetHour = ref<number | null>(null)
 const editResetTimezone = ref<string | null>(null)
 const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
-const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
+const modelRestrictionMode = ref<'whitelist' | 'mapping'>('mapping')
 const allowedModels = ref<string[]>([])
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
@@ -4965,8 +4965,8 @@ const resetForm = () => {
   editResetTimezone.value = null
   modelMappings.value = []
   openAICompactModelMappings.value = []
-  modelRestrictionMode.value = 'whitelist'
-  allowedModels.value = [...claudeModels] // Default fill related models
+  modelRestrictionMode.value = 'mapping'
+  allowedModels.value = []
 
   antigravityModelRestrictionMode.value = 'mapping'
   antigravityWhitelistModels.value = []
@@ -5158,7 +5158,20 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
 }
 
 // Helper function to create account with mixed channel warning handling
+const currentModelMappingRestricts = () => {
+  if (isOpenAIModelRestrictionDisabled.value) {
+    return false
+  }
+  if (form.platform === 'antigravity') {
+    return antigravityModelRestrictionMode.value === 'whitelist' && antigravityWhitelistModels.value.length > 0
+  }
+  return modelRestrictionMode.value === 'whitelist' && allowedModels.value.length > 0
+}
+
 const doCreateAccount = async (payload: CreateAccountRequest) => {
+  if (payload.credentials && typeof payload.credentials === 'object') {
+    applyModelMappingRestricts(payload.credentials as Record<string, unknown>, currentModelMappingRestricts(), true)
+  }
   const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
     await submitCreateAccount(payload)
   })

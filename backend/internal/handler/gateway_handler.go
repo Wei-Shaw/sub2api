@@ -1068,8 +1068,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 // Models handles listing available models
 // GET /v1/models
-// Returns models based on account configurations (model_mapping whitelist)
-// Falls back to default models if no whitelist is configured
+// Bound channels with RestrictModels own the user-facing shelf. Otherwise the
+// handler falls back to platform defaults merged with the fork catalog.
+// Group custom model lists are no longer a public shelf. Account
+// model_mapping is rename-only and is not used as a public model list.
 func (h *GatewayHandler) Models(c *gin.Context) {
 	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
 
@@ -1086,58 +1088,66 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	if platform == service.PlatformComposite {
 		availableModels := h.compositeAvailableModels(c.Request.Context(), groupID)
-		if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
-			availableModels = filterModelsByCustomList(availableModels, defaultModelIDsForPlatform(service.PlatformComposite), apiKey.Group.ModelsListConfig.Models)
-			writeCustomModelsList(c, service.PlatformComposite, availableModels)
+		if _, restricted := h.channelStorefrontModels(c.Request.Context(), groupID, ""); restricted {
+			writePlatformModelsList(c, service.PlatformComposite, availableModels)
 			return
 		}
-		if len(availableModels) > 0 {
-			writeModelsList(c, service.PlatformComposite, availableModels)
-			return
+		if len(availableModels) == 0 {
+			availableModels = service.PlatformDefaultModelIDs(service.PlatformComposite)
 		}
-		writeModelsList(c, service.PlatformComposite, defaultModelIDsForPlatform(service.PlatformComposite))
+		writePlatformModelsList(c, service.PlatformComposite, availableModels)
 		return
 	}
 
-	// Get available models from account configurations for the selected group platform.
+	// A bound channel with RestrictModels owns the user-facing shelf: even an
+	// empty list must not fall through to account mappings or platform defaults.
+	if storefront, ok := h.channelStorefrontModels(c.Request.Context(), groupID, platform); ok {
+		writePlatformModelsList(c, platform, storefront)
+		return
+	}
+
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
-	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
-		fallbackModels := defaultModelIDsForPlatform(platform)
-		availableModels = filterModelsByCustomList(customModelsListSource(platform, availableModels, fallbackModels), fallbackModels, apiKey.Group.ModelsListConfig.Models)
-		writeCustomModelsList(c, platform, availableModels)
-		return
+	if len(availableModels) == 0 {
+		availableModels = service.PlatformDefaultModelIDs(platform)
 	}
+	writePlatformModelsList(c, platform, availableModels)
+}
 
-	if len(availableModels) > 0 {
-		writeModelsList(c, platform, availableModels)
-		return
+func writePlatformModelsList(c *gin.Context, platform string, modelIDs []string) {
+	switch platform {
+	case service.PlatformOpenAI:
+		writeOpenAIModelsList(c, modelIDs)
+	case service.PlatformGemini:
+		writeGeminiModelsList(c, modelIDs)
+	default:
+		writeModelsList(c, platform, modelIDs)
 	}
+}
 
-	// Fallback to default models
-	if platform == service.PlatformOpenAI {
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   openai.DefaultModels,
-		})
-		return
+func writeGeminiModelsList(c *gin.Context, modelIDs []string) {
+	defaultsByID := make(map[string]geminicli.Model, len(geminicli.DefaultModels))
+	for _, model := range geminicli.DefaultModels {
+		defaultsByID[model.ID] = model
 	}
-
-	if platform == service.PlatformGemini {
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   geminicli.DefaultModels,
-		})
-		return
+	models := make([]geminicli.Model, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		if model, ok := defaultsByID[modelID]; ok {
+			models = append(models, model)
+			continue
+		}
+		models = append(models, geminicli.Model{ID: modelID, Type: "model", DisplayName: modelID})
 	}
-	if platform == service.PlatformGrok {
-		writeGrokModelsList(c, xai.DefaultModelIDs())
-		return
-	}
-
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
-		"data":   claude.DefaultModels,
+		"data":   models,
 	})
+}
+
+func (h *GatewayHandler) channelStorefrontModels(ctx context.Context, groupID *int64, platform string) ([]string, bool) {
+	if h == nil || h.gatewayService == nil {
+		return nil, false
+	}
+	return h.gatewayService.ListChannelStorefrontModels(ctx, groupID, platform)
 }
 
 func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *int64) []string {
@@ -1148,10 +1158,13 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 	models := make([]string, 0)
 	schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(ctx, groupID)
 	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok} {
-		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
-		if len(platformModels) == 0 {
-			if _, ok := schedulablePlatforms[platform]; ok {
-				platformModels = defaultModelIDsForPlatform(platform)
+		platformModels, storefront := h.channelStorefrontModels(ctx, groupID, platform)
+		if !storefront {
+			platformModels = h.gatewayService.GetAvailableModels(ctx, groupID, platform)
+			if len(platformModels) == 0 {
+				if _, ok := schedulablePlatforms[platform]; ok {
+					platformModels = defaultModelIDsForPlatform(platform)
+				}
 			}
 		}
 		for _, model := range platformModels {
@@ -1187,14 +1200,6 @@ func writeModelsList(c *gin.Context, platform string, modelIDs []string) {
 		"object": "list",
 		"data":   models,
 	})
-}
-
-func writeCustomModelsList(c *gin.Context, platform string, modelIDs []string) {
-	if platform == service.PlatformOpenAI {
-		writeOpenAIModelsList(c, modelIDs)
-		return
-	}
-	writeModelsList(c, platform, modelIDs)
 }
 
 type grokReasoningEffortOption struct {
@@ -1283,131 +1288,8 @@ func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
 	})
 }
 
-func customModelsListSource(platform string, availableModels, fallbackModels []string) []string {
-	if platform == service.PlatformAnthropic && len(availableModels) > 0 {
-		return mergeModelIDs(availableModels, fallbackModels)
-	}
-	return availableModels
-}
-
-func filterModelsByCustomList(availableModels, fallbackModels, selectedModels []string) []string {
-	if len(selectedModels) == 0 {
-		return availableModels
-	}
-	source := availableModels
-	if len(source) == 0 {
-		source = fallbackModels
-	}
-	if len(source) == 0 {
-		return nil
-	}
-
-	allowed := make([]string, 0, len(source))
-	for _, model := range source {
-		model = strings.TrimSpace(model)
-		if model != "" {
-			allowed = append(allowed, model)
-		}
-	}
-
-	seen := make(map[string]struct{}, len(selectedModels))
-	filtered := make([]string, 0, len(selectedModels))
-	for _, model := range selectedModels {
-		model = strings.TrimSpace(model)
-		if model == "" {
-			continue
-		}
-		if !customModelsListAllowsModel(allowed, model) {
-			continue
-		}
-		if _, ok := seen[model]; ok {
-			continue
-		}
-		seen[model] = struct{}{}
-		filtered = append(filtered, model)
-	}
-	return filtered
-}
-
-func customModelsListAllowsModel(availablePatterns []string, model string) bool {
-	for _, pattern := range availablePatterns {
-		if pattern == model {
-			return true
-		}
-		if strings.HasSuffix(pattern, "*") && strings.HasPrefix(model, strings.TrimSuffix(pattern, "*")) {
-			return true
-		}
-	}
-	return false
-}
-
 func defaultModelIDsForPlatform(platform string) []string {
-	switch platform {
-	case service.PlatformOpenAI:
-		return openai.DefaultModelIDs()
-	case service.PlatformGemini:
-		ids := make([]string, 0, len(geminicli.DefaultModels))
-		for _, model := range geminicli.DefaultModels {
-			ids = append(ids, model.ID)
-		}
-		return ids
-	case service.PlatformAntigravity:
-		models := antigravity.DefaultModels()
-		ids := make([]string, 0, len(models))
-		for _, model := range models {
-			ids = append(ids, model.ID)
-		}
-		return ids
-	case service.PlatformAnthropic:
-		ids := make([]string, 0, len(claude.DefaultModels)+len(antigravity.DefaultModels()))
-		for _, model := range claude.DefaultModels {
-			ids = append(ids, model.ID)
-		}
-		for _, model := range antigravity.DefaultModels() {
-			ids = append(ids, model.ID)
-		}
-		return mergeModelIDs(ids, nil)
-	case service.PlatformGrok:
-		return xai.DefaultModelIDs()
-	case service.PlatformComposite:
-		ids := make([]string, 0)
-		seen := make(map[string]struct{})
-		for _, concretePlatform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok} {
-			for _, id := range defaultModelIDsForPlatform(concretePlatform) {
-				if _, ok := seen[id]; ok {
-					continue
-				}
-				seen[id] = struct{}{}
-				ids = append(ids, id)
-			}
-		}
-		return ids
-	default:
-		ids := make([]string, 0, len(claude.DefaultModels))
-		for _, model := range claude.DefaultModels {
-			ids = append(ids, model.ID)
-		}
-		return ids
-	}
-}
-
-func mergeModelIDs(primary, secondary []string) []string {
-	seen := make(map[string]struct{}, len(primary)+len(secondary))
-	merged := make([]string, 0, len(primary)+len(secondary))
-	for _, models := range [][]string{primary, secondary} {
-		for _, model := range models {
-			model = strings.TrimSpace(model)
-			if model == "" {
-				continue
-			}
-			if _, ok := seen[model]; ok {
-				continue
-			}
-			seen[model] = struct{}{}
-			merged = append(merged, model)
-		}
-	}
-	return merged
+	return service.PlatformDefaultModelIDs(platform)
 }
 
 // AntigravityModels 返回 Antigravity 支持的全部模型
