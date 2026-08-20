@@ -48,6 +48,51 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_Hit(t *testing.T
 	}
 }
 
+func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_StrictHTTPHit(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(24)
+	account := Account{
+		ID:          3,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Extra: map[string]any{
+			OpenAIResponsesForwardModeExtraKey: string(OpenAIResponsesForwardModeStrictRaw),
+		},
+	}
+	cache := &stubGatewayCache{}
+	store := NewOpenAIWSStateStore(cache)
+	// WS is intentionally disabled: strict raw continuation affinity is an
+	// HTTP/SSE feature and must not depend on the WSv2 transport resolver.
+	cfg := &config.Config{}
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{account}},
+		cache:              cache,
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+		openaiWSStateStore: store,
+	}
+
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_strict_http", account.ID, time.Hour))
+	selection, err := svc.selectAccountByPreviousResponseIDForCapability(
+		ctx,
+		&groupID,
+		"resp_strict_http",
+		"custom/model",
+		nil,
+		OpenAIEndpointCapabilityStrictResponses,
+		false,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.Equal(t, account.ID, selection.Account.ID)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
 func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_QuotaAutoPausedMiss(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(23)

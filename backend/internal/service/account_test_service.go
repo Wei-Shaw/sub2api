@@ -794,11 +794,15 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		testModelID = openai.DefaultTestModel
 	}
 
-	// Align test routing with gateway behavior: OpenAI accounts apply normal
+	strictResponses := account.IsOpenAIStrictResponsesPassthroughEnabled()
+	// Align test routing with gateway behavior: normal OpenAI accounts apply
 	// account model mapping. Native remote compaction v2 rides the ordinary
 	// /responses wire and does NOT apply the legacy compact-only mapping
 	// (post-#5641 semantics: compact_model_mapping is /responses/compact-only).
-	testModelID = account.GetMappedModel(testModelID)
+	// Strict raw accounts preserve the administrator-selected model slug.
+	if !strictResponses {
+		testModelID = account.GetMappedModel(testModelID)
+	}
 	if mode == AccountTestModeCompact {
 		return s.testOpenAICompactConnection(c, account, testModelID)
 	}
@@ -844,7 +848,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	} else if credentialAccount.Type == "apikey" {
 		// API Key - use Platform API
 		authToken = credentialAccount.GetOpenAIProtocolAPIKey()
-		if authToken == "" {
+		if authToken == "" && !credentialAccount.UsesNoOpenAIUpstreamAuth() {
 			return s.sendErrorAndEnd(c, "No API key available")
 		}
 
@@ -856,7 +860,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 		}
-		if !openai_compat.ShouldUseResponsesAPI(account.Extra) {
+		if !strictResponses && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
 			return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, authToken)
 		}
 		apiURL = buildOpenAIResponsesURLForPlatform(credentialAccount.Platform, normalizedBaseURL)
@@ -884,6 +888,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	// restart this probe after registering a replacement task.
 	if !agentIdentityTaskRecoveryWasTried(ctx) {
 		s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+		if strictResponses {
+			s.sendEvent(c, TestEvent{Type: "status", Text: "Strict raw connection testing sends a Responses inference request"})
+		}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(payloadBytes))
@@ -907,7 +914,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 				req.Header.Add(key, value)
 			}
 		}
-	} else {
+	} else if authToken != "" {
 		req.Header.Set("Authorization", "Bearer "+authToken)
 	}
 
