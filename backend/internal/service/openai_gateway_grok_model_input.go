@@ -371,7 +371,7 @@ REDACTED
 		if !ok {
 			return "", false
 	REDACTED
-		text.WriteString(value)
+		_, _ = text.WriteString(value)
 REDACTED
 	if strings.TrimSpace(text.String()) == "" {
 		return "", false

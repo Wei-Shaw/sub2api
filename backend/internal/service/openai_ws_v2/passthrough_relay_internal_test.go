@@ -405,7 +405,9 @@ func TestObserveUpstreamMessageBareErrorClearsTurnStateAndFinalizesUsageOnce(t *
 	require.Equal(t, Usage{REDACTED, state.turnUsage)
 	require.Nil(t, state.activeTurn)
 	require.Empty(t, state.turnTimingByID)
-	require.True(t, state.consumePendingTurnStartedAt().IsZero())
+	// The error is bound to the active turn id, so settlement must not consume a
+	// later pending start that belongs to the next turn.
+	require.Equal(t, now.Add(-500*time.Millisecond), state.consumePendingTurnStartedAt())
 
 	// Re-observing and settling a later terminal without usage must not re-add the prior turn.
 	observeUpstreamMessage(state, []byte(`{"type":"error","error":{"message":"again"REDACTEDREDACTED`), now, func() time.Time { return now REDACTED, nil)

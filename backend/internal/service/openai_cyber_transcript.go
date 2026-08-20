@@ -38,11 +38,9 @@ REDACTED
 		if !v.Exists() || (v.Type == gjson.String && strings.TrimSpace(v.String()) == "") {
 			continue
 	REDACTED
-		canonical := v.Raw
+		canonical := normalizeCompatSeedJSON(json.RawMessage(v.Raw))
 		if v.Type == gjson.String {
 			canonical = v.String()
-	REDACTED else {
-			canonical = normalizeCompatSeedJSON(json.RawMessage(v.Raw))
 	REDACTED
 		_, _ = h.Write([]byte("|"))
 		_, _ = h.Write([]byte(field))
@@ -63,10 +61,11 @@ REDACTED
 		hasModelGeneratedItem := false
 		sequence.ForEach(func(_, item gjson.Result) bool {
 			canonical := item.Raw
-			if item.Type == gjson.String {
+			switch item.Type {
+			case gjson.String:
 				encoded, _ := json.Marshal(item.String())
 				canonical = string(encoded)
-		REDACTED else if item.Type == gjson.JSON {
+			case gjson.JSON:
 				canonical = normalizeCompatSeedJSON(json.RawMessage(item.Raw))
 		REDACTED
 			if strings.TrimSpace(canonical) == "" {

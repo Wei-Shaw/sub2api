@@ -115,10 +115,6 @@ REDACTED
 	return compactCodexCallIDForItemType(itemType, candidate)
 REDACTED
 
-func compactCodexCallID(id string) string {
-	return compactCodexCallIDForItemType("function_call", id)
-REDACTED
-
 func compactCodexCallIDForItemType(itemType, id string) string {
 	prefix := openAIResponsesToolCallIDPrefix(itemType) + "_"
 	digest := sha256.Sum256([]byte("sub2api:codex-call-id:v1:" + id))

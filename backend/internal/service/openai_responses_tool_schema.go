@@ -311,12 +311,18 @@ REDACTED
 REDACTED
 REDACTED
 
+var (
+	openAIResponsesJSONOneOfKey     = []byte(`"oneOf"`)
+	openAIResponsesJSONAnyOfKey     = []byte(`"anyOf"`)
+	openAIResponsesJSONEscapeNeedle = []byte{'\\'REDACTED
+)
+
 func openAIMissingRootObjectUnionTypeEdit(raw []byte, absoluteStart int) (openAIResponsesToolSchemaEdit, bool) {
 	if len(raw) > openAIResponsesObjectUnionMaxSize {
 		return openAIResponsesToolSchemaEdit{REDACTED, false
 REDACTED
-	if !bytes.Contains(raw, []byte(`"oneOf"`)) && !bytes.Contains(raw, []byte(`"anyOf"`)) &&
-		!bytes.Contains(raw, []byte{'\\'REDACTED) {
+	if !bytes.Contains(raw, openAIResponsesJSONOneOfKey) && !bytes.Contains(raw, openAIResponsesJSONAnyOfKey) &&
+		!bytes.Contains(raw, openAIResponsesJSONEscapeNeedle) {
 		return openAIResponsesToolSchemaEdit{REDACTED, false
 REDACTED
 	var schema map[string]json.RawMessage

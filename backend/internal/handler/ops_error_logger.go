@@ -1766,7 +1766,7 @@ REDACTED
 	out.Grow(len(body))
 	for frameIndex, frame := range frames {
 		if frameIndex > 0 {
-			out.WriteString("\n\n")
+			_, _ = out.WriteString("\n\n")
 	REDACTED
 		_, payload := parseOpsSSEFrameEnvelope(frame)
 		trimmedPayload := bytes.TrimSpace(payload)
@@ -1779,7 +1779,7 @@ REDACTED
 			replacement = `{"payload_truncated":trueREDACTED`
 	REDACTED
 		if replacement == "" {
-			out.Write(frame)
+			_, _ = out.Write(frame)
 			continue
 	REDACTED
 		wroteData := false
@@ -1794,9 +1794,9 @@ REDACTED
 				wroteData = true
 		REDACTED
 			if emittedLine {
-				out.WriteByte('\n')
+				_ = out.WriteByte('\n')
 		REDACTED
-			out.Write(line)
+			_, _ = out.Write(line)
 			emittedLine = true
 	REDACTED
 REDACTED
