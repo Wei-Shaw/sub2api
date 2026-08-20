@@ -222,6 +222,39 @@ func TestForwardResponses_AutoSupportedAccountStillUsesResponsesEndpoint(t *test
 	require.Equal(t, "ok", gjson.Get(rec.Body.String(), "output.0.content.0.text").String())
 }
 
+func TestForwardAsChatCompletions_ResponsesShapeForceChatCompletionsRestoresCustomToolCall(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.5","input":"apply a patch","stream":false,"tools":[{"type":"custom","name":"ApplyPatch","description":"Apply a patch"}]}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "Cursor/1.0")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"chatcmpl_patch","object":"chat.completion","model":"gpt-5.5","choices":[{"index":0,"message":{"role":"assistant","tool_calls":[{"id":"call_patch","type":"function","function":{"name":"ApplyPatch","arguments":"{\\\"input\\\":\\\"*** Begin Patch\\\\n*** End Patch\\\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`,
+		)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, forceChatResponsesFallbackAccount(), body, "", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "http://upstream.example/v1/chat/completions", upstream.lastReq.URL.String())
+	require.Equal(t, "function", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
+	require.Equal(t, "ApplyPatch", gjson.GetBytes(upstream.lastBody, "tools.0.function.name").String())
+	require.Equal(t, "custom_tool_call", gjson.Get(rec.Body.String(), "output.0.type").String())
+	require.Equal(t, "ApplyPatch", gjson.Get(rec.Body.String(), "output.0.name").String())
+	require.Contains(t, gjson.Get(rec.Body.String(), "output.0.input").String(), "*** Begin Patch")
+}
+
 func forceChatResponsesFallbackAccount() *Account {
 	account := rawChatCompletionsTestAccount()
 	account.Extra = map[string]any{

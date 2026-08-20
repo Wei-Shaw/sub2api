@@ -306,7 +306,10 @@ type ResponsesTool struct {
 	Name        string          `json:"name,omitempty"`
 	Description string          `json:"description,omitempty"`
 	Parameters  json.RawMessage `json:"parameters,omitempty"`
-	Strict      *bool           `json:"strict,omitempty"`
+	// type=custom 的可选 grammar 约束。Cursor 的 ApplyPatch 会携带该字段；
+	// 必须原样保留到 Responses 上游，不能因内部结构化而静默丢失。
+	Format json.RawMessage `json:"format,omitempty"`
+	Strict *bool           `json:"strict,omitempty"`
 
 	// type=namespace 的子工具列表（tools 与 children 二选一，语义相同）。
 	Tools    []ResponsesTool `json:"tools,omitempty"`

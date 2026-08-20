@@ -96,9 +96,26 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		return s.forwardChatCompletionsViaNativeAnthropic(ctx, c, account, body, defaultMappedModel)
 	}
 
+	// Cursor may send a Responses-shaped body (input/tools) to the Chat
+	// Completions URL.  If this API-key account can only reach a Chat
+	// Completions upstream, route it through the existing bidirectional
+	// Responses <-> Chat bridge instead of forwarding the incompatible body
+	// verbatim.  The bridge converts custom tools to ordinary functions for
+	// the upstream and restores custom_tool_call items for Cursor.
+	isResponsesShape := !gjson.GetBytes(body, "messages").Exists() && gjson.GetBytes(body, "input").Exists()
+	isCursorClientRequest := isCursorClientRequest(c)
+
 	// 入口分流：APIKey 账号 + 强制或已探测确认上游不支持 Responses，走 CC 直转。
 	// 自动模式下标记缺失（未探测）按"现状即证据"原则继续走下方原 Responses 转换路径。
 	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
+		if isResponsesShape && isCursorClientRequest {
+			logger.L().Info("openai chat_completions: bridging Cursor responses-shaped request through chat upstream",
+				zap.Int64("account_id", account.ID),
+				zap.String("model", gjson.GetBytes(body, "model").String()),
+				zap.Bool("stream", gjson.GetBytes(body, "stream").Bool()),
+			)
+			return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
+		}
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
 
@@ -136,8 +153,6 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	// Detect that shape and forward the raw body as-is, only rewriting `model`
 	// to the resolved upstream model. The downstream codex OAuth transform will
 	// still normalize store/stream/instructions/etc.
-	isResponsesShape := !gjson.GetBytes(body, "messages").Exists() && gjson.GetBytes(body, "input").Exists()
-
 	var (
 		responsesReq  *apicompat.ResponsesRequest
 		responsesBody []byte
@@ -177,6 +192,17 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		responsesReq, err = apicompat.ChatCompletionsToResponses(&chatReq)
 		if err != nil {
 			return nil, fmt.Errorf("convert chat completions to responses: %w", err)
+		}
+		// Cursor combines ordinary nested Chat function tools with a flat
+		// Responses custom tool (ApplyPatch). The standard tools above have
+		// already been converted correctly; append only the flat custom tool.
+		// Replacing the entire slice would erase the nested function payloads.
+		flatCursorCustomTools, hasFlatCursorCustomTools, toolErr := extractFlatCursorCustomToolsFromChatBody(body)
+		if toolErr != nil {
+			return nil, fmt.Errorf("parse Cursor flat custom tools: %w", toolErr)
+		}
+		if isCursorClientRequest && hasFlatCursorCustomTools {
+			responsesReq.Tools = append(responsesReq.Tools, flatCursorCustomTools...)
 		}
 		responsesReq.Model = upstreamModel
 		normalizeResponsesRequestServiceTier(responsesReq)
@@ -352,6 +378,51 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 
 	return result, handleErr
+}
+
+// extractFlatCursorCustomToolsFromChatBody selects only Cursor's top-level
+// custom tools. Standard nested Chat function tools are intentionally left to
+// ChatCompletionsToResponses, which preserves their nested `function` payload.
+func extractFlatCursorCustomToolsFromChatBody(body []byte) ([]apicompat.ResponsesTool, bool, error) {
+	rawTools := gjson.GetBytes(body, "tools")
+	if !rawTools.IsArray() {
+		return nil, false, nil
+	}
+	customTools := make([]apicompat.ResponsesTool, 0)
+	for _, tool := range rawTools.Array() {
+		if !tool.IsObject() || tool.Get("function").Exists() || tool.Get("type").String() != "custom" || tool.Get("name").String() == "" {
+			continue
+		}
+		var customTool apicompat.ResponsesTool
+		if err := json.Unmarshal([]byte(tool.Raw), &customTool); err != nil {
+			return nil, false, err
+		}
+		customTools = append(customTools, customTool)
+	}
+	if len(customTools) == 0 {
+		return nil, false, nil
+	}
+	return customTools, true, nil
+}
+
+// isCursorClientRequest recognizes Cursor by its request headers only.  Tool
+// declarations deliberately do not participate in this decision: a Cursor
+// request that temporarily lacks ApplyPatch must still keep every other flat
+// Responses-style tool, while a non-Cursor client keeps the legacy path.
+func isCursorClientRequest(c *gin.Context) bool {
+	if c == nil || c.Request == nil {
+		return false
+	}
+	if strings.Contains(strings.ToLower(c.GetHeader("User-Agent")), "cursor") ||
+		strings.Contains(strings.ToLower(c.GetHeader("originator")), "cursor") {
+		return true
+	}
+	for name := range c.Request.Header {
+		if strings.HasPrefix(strings.ToLower(name), "x-cursor-") {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeResponsesRequestServiceTier(req *apicompat.ResponsesRequest) {
