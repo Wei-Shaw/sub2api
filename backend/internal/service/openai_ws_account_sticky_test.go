@@ -93,6 +93,19 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_StrictHTTPHit(t 
 	}
 }
 
+func TestOpenAIGatewayService_IsOpenAIResponseBoundToAccount(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(25)
+	store := NewOpenAIWSStateStore(nil)
+	svc := &OpenAIGatewayService{openaiWSStateStore: store}
+
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_strict_owner", 31, time.Hour))
+	require.True(t, svc.IsOpenAIResponseBoundToAccount(ctx, &groupID, "resp_strict_owner", 31))
+	require.False(t, svc.IsOpenAIResponseBoundToAccount(ctx, &groupID, "resp_strict_owner", 32))
+	require.False(t, svc.IsOpenAIResponseBoundToAccount(ctx, nil, "resp_strict_owner", 31))
+	require.False(t, svc.IsOpenAIResponseBoundToAccount(ctx, &groupID, "", 31))
+}
+
 func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_QuotaAutoPausedMiss(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(23)
