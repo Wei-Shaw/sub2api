@@ -900,21 +900,49 @@ func (s *AsyncMediaService) pollLeonardoOnce(ctx context.Context, task *AsyncMed
 		return task, false, fmt.Errorf("async media poll: build leonardo client: %w", err)
 	}
 	requestID := amDerefStr(task.UpstreamRequestID)
-	logger.FromContext(ctx).Debug("leonardo.image.status_parameters",
+	statusURL := client.BuildTaskURL(requestID)
+	statusLog := logger.FromContext(ctx)
+	statusLog.Debug("leonardo.image.status_parameters",
 		zap.Int64("account_id", account.ID),
 		zap.Int64("task_id", task.ID),
 		zap.String("upstream_request_id", requestID),
-		zap.String("url", client.BuildTaskURL(requestID)),
+		zap.String("url", statusURL),
 	)
 	upstreamTask, err := client.GetTask(ctx, requestID)
 	if err != nil {
+		responseFields := []zap.Field{
+			zap.Int64("account_id", account.ID),
+			zap.Int64("task_id", task.ID),
+			zap.String("upstream_request_id", requestID),
+			zap.String("url", statusURL),
+			zap.String("error", err.Error()),
+		}
 		var apiErr *leonardo.APIError
-		if errors.As(err, &apiErr) && apiErr.StatusCode >= 400 && apiErr.StatusCode < 500 {
+		if errors.As(err, &apiErr) {
+			responseFields = append(responseFields,
+				zap.Int("status_code", apiErr.StatusCode),
+				zap.String("response_body", apiErr.Body),
+			)
+		}
+		statusLog.Debug("leonardo.image.status_response", responseFields...)
+		if apiErr != nil && apiErr.StatusCode >= 400 && apiErr.StatusCode < 500 {
 			s.markFailedAndRefund(ctx, task, billingType, fmt.Sprintf("status %d: %s", apiErr.StatusCode, apiErr.Body))
 			return task, true, nil
 		}
 		return task, false, nil
 	}
+	status := ""
+	if upstreamTask != nil {
+		status = upstreamTask.Status
+	}
+	statusLog.Debug("leonardo.image.status_response",
+		zap.Int64("account_id", account.ID),
+		zap.Int64("task_id", task.ID),
+		zap.String("upstream_request_id", requestID),
+		zap.String("url", statusURL),
+		zap.String("status", status),
+		zap.Any("response", upstreamTask),
+	)
 	if upstreamTask.IsFailed() {
 		s.markFailedAndRefund(ctx, task, billingType, upstreamTask.FailureMessage())
 		return task, true, nil
