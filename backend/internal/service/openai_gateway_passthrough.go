@@ -183,6 +183,17 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 	}
 
+	// OpenAI API-key Responses upstream does not accept prompt_cache_retention.
+	// Keep prompt_cache_key intact; OAuth retains its existing normalization path.
+	if account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey &&
+		gjson.GetBytes(body, "prompt_cache_retention").Exists() {
+		nextBody, deleteErr := sjson.DeleteBytes(body, "prompt_cache_retention")
+		if deleteErr != nil {
+			return nil, fmt.Errorf("remove prompt cache retention from api-key passthrough body: %w", deleteErr)
+		}
+		body = nextBody
+	}
+
 	if account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey &&
 		!isOpenAIResponsesCompactPath(c) && needsOpenAIResponsesClientToolAdaptation(body) {
 		adaptedBody, mapping, adaptErr := adaptOpenAIResponsesClientTools(body)

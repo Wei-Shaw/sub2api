@@ -116,6 +116,29 @@ func TestOpenAIPassthroughAPIKeyRestoresClientToolsNonStreaming(t *testing.T) {
 	require.Equal(t, "*** Begin Patch", gjson.Get(recorder.Body.String(), "output.1.input").String())
 }
 
+func TestOpenAIPassthroughAPIKeyRemovesPromptCacheRetention(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-5.4","input":"fix it","prompt_cache_key":"cache-key","prompt_cache_retention":"24h"}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_cache","status":"completed","output":[],"usage":{}}`)),
+	}}
+	svc := openAIClientToolsTestService(upstream)
+	account := &Account{ID: 5661, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+
+	result, err := svc.forwardOpenAIPassthrough(context.Background(), c, account, body, body, "gpt-5.4", false, nil, false, time.Now())
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_retention").Exists())
+	require.Equal(t, "cache-key", gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String())
+}
+
 func TestOpenAIPassthroughAPIKeyRestoresClientToolsStreaming(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := openAIClientToolsRequest(true)
