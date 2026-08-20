@@ -952,7 +952,6 @@ func TestOpenAIResponses_RejectsHTTPContinuationOwnedByAnotherUser(t *testing.T)
 	h := newOpenAIHandlerForPreviousResponseIDValidation(t, nil)
 	require.NoError(t, h.gatewayService.BindOpenAIHTTPResponseOwner(context.Background(), groupID, "resp_other_tenant", 1, 101))
 	h.Responses(c)
-
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	require.Contains(t, w.Body.String(), "previous_response_id is not available for this user")
 }
@@ -3070,6 +3069,25 @@ data: {"type":"response.failed","error":{"message":"This content was flagged"}}
 		reported := openAIForwardErrorAlreadyCommunicated(c, before, errors.New("upstream response failed: This content was flagged"))
 
 		require.True(t, reported)
+	})
+
+	t.Run("strict raw upstream HTTP error stays untouched", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+		before := c.Writer.Size()
+		c.Data(http.StatusConflict, "application/json", []byte(`{"error":{"message":"continuation state missing"}}`))
+		originalBody := w.Body.String()
+
+		reported := openAIForwardErrorAlreadyCommunicated(
+			c,
+			before,
+			errors.New("upstream response failed: strict Responses upstream returned HTTP 409"),
+		)
+
+		require.True(t, reported)
+		require.Equal(t, http.StatusConflict, w.Code)
+		require.Equal(t, originalBody, w.Body.String())
 	})
 
 	t.Run("no write still needs fallback", func(t *testing.T) {

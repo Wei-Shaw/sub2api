@@ -557,10 +557,11 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		return 0, nil, "", nil
 	}
 	// OAuth/SetupToken continuation state lives on the WSv2 session and cannot
-	// survive an HTTP fallback. Official API-key Responses HTTP requests are
-	// different: previous_response_id is supported by the provider and scoped to
-	// the selected key/project, so the response-id binding must retain that key.
-	if !account.IsOpenAIApiKey() && s.getOpenAIWSProtocolResolver().Resolve(account).Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
+	// survive an HTTP fallback. API-key HTTP Responses, including strict raw
+	// mode, retain the binding to the selected key/project.
+	if !account.IsOpenAIApiKey() &&
+		s.getOpenAIWSProtocolResolver().Resolve(account).Transport != OpenAIUpstreamTransportResponsesWebsocketV2 &&
+		!account.IsOpenAIStrictResponsesPassthroughEnabled() {
 		return 0, nil, "", nil
 	}
 	if shouldClearStickySession(account, requestedModel) || !account.IsOpenAI() || !account.IsSchedulable() {
