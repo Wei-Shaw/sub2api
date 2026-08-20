@@ -119,7 +119,7 @@ REDACTED
 		// xAI can reject encrypted reasoning copied from a response produced under
 		// another account or cache identity. Retry once with the same routing and
 		// credential after removing only the rejected encrypted reasoning payload.
-		if attempt > 0 || resp.StatusCode != http.StatusBadRequest {
+		if attempt > 0 || (resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusUnprocessableEntity) {
 			break
 	REDACTED
 		respBody := s.readUpstreamErrorBody(resp)
