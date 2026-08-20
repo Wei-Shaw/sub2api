@@ -492,11 +492,12 @@ type GatewayCache interface {
 	ReleaseGrokVideoBilled(ctx context.Context, key string) error
 
 	// Reasoning content cache (Responses→Chat Completions 桥接）。
-	// SetReasoningContent 按 reasoning item id 缓存 reasoning 全文，供后续请求
+	// 调用方必须传入已按租户隔离的 item key，不能直接使用客户端提供的 item id。
+	// SetReasoningContent 按隔离后的 item key 缓存 reasoning 全文，供后续请求
 	// 在客户端不回传明文 summary 时回注 reasoning_content（DeepSeek thinking
 	// mode 要求回传，否则 400）。
 	SetReasoningContent(ctx context.Context, itemID string, content string, ttl time.Duration) error
-	// GetReasoningContent 返回缓存的 reasoning 全文；未命中返回
+	// GetReasoningContent 按隔离后的 item key 返回缓存的 reasoning 全文；未命中返回
 	// ErrReasoningContentNotFound，使 service 层无需依赖具体缓存实现即可
 	// 区分"未缓存"与真实读取失败。
 	GetReasoningContent(ctx context.Context, itemID string) (string, error)

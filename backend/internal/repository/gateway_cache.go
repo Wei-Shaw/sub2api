@@ -137,7 +137,7 @@ const reasoningContentPrefix = "reasoning_content:"
 // 跨多天恢复，取 7 天；调用方传入非正 TTL 时兜底。
 const reasoningContentDefaultTTL = 7 * 24 * time.Hour
 
-// SetReasoningContent 按 reasoning item id 缓存 reasoning 全文。
+// SetReasoningContent 按 service 层生成的租户隔离 item key 缓存 reasoning 全文。
 // itemID 或 content 为空时直接返回 nil（无可缓存内容，属正常情况而非错误）。
 func (c *gatewayCache) SetReasoningContent(ctx context.Context, itemID string, content string, ttl time.Duration) error {
 	if c == nil || c.rdb == nil {
@@ -153,7 +153,7 @@ func (c *gatewayCache) SetReasoningContent(ctx context.Context, itemID string, c
 	return c.rdb.Set(ctx, reasoningContentPrefix+itemID, content, ttl).Err()
 }
 
-// GetReasoningContent 返回缓存的 reasoning 全文；未命中返回
+// GetReasoningContent 按租户隔离 item key 返回缓存的 reasoning 全文；未命中返回
 // service.ErrReasoningContentNotFound。
 func (c *gatewayCache) GetReasoningContent(ctx context.Context, itemID string) (string, error) {
 	if c == nil || c.rdb == nil {

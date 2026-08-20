@@ -238,6 +238,10 @@ type reasoningRecordingCache struct {
 	getResp map[string]string
 }
 
+func setReasoningTestAPIKey(c *gin.Context, apiKeyID int64) {
+	c.Set("api_key", &APIKey{ID: apiKeyID})
+}
+
 func (c *reasoningRecordingCache) SetReasoningContent(_ context.Context, itemID string, content string, _ time.Duration) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -275,6 +279,7 @@ func TestForwardResponses_ChatFallbackCachesStreamedReasoning(t *testing.T) {
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
+	setReasoningTestAPIKey(c, 101)
 
 	upstreamBody := strings.Join([]string{
 		`data: {"id":"chatcmpl_rc","object":"chat.completion.chunk","model":"deepseek-reasoner","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
@@ -336,6 +341,7 @@ func TestForwardResponses_ChatFallbackRestoresReasoningFromCache(t *testing.T) {
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
+	setReasoningTestAPIKey(c, 101)
 
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
@@ -345,7 +351,7 @@ func TestForwardResponses_ChatFallbackRestoresReasoningFromCache(t *testing.T) {
 		)),
 	}}
 	cache := &reasoningRecordingCache{
-		getResp: map[string]string{"item_enc1": "cached thinking"},
+		getResp: map[string]string{"101:item_enc1": "cached thinking"},
 	}
 	svc := &OpenAIGatewayService{
 		cfg:          rawChatCompletionsTestConfig(),
@@ -367,5 +373,28 @@ func TestForwardResponses_ChatFallbackRestoresReasoningFromCache(t *testing.T) {
 	require.Equal(t, "tool", gjson.GetBytes(upstream.lastBody, "messages.3.role").String())
 
 	// 明文 summary 的 item 被回写进缓存（自愈）。
-	require.Equal(t, "plain thinking", cache.snapshotSets()["item_plain"])
+	require.Equal(t, "plain thinking", cache.snapshotSets()["101:item_plain"])
+}
+
+func TestReasoningContentCacheIsScopedByAPIKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cache := &reasoningRecordingCache{
+		getResp: map[string]string{"101:item_shared": "tenant one thinking"},
+	}
+	svc := &OpenAIGatewayService{cache: cache}
+
+	first, _ := gin.CreateTestContext(httptest.NewRecorder())
+	setReasoningTestAPIKey(first, 101)
+	second, _ := gin.CreateTestContext(httptest.NewRecorder())
+	setReasoningTestAPIKey(second, 202)
+	missingKey, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	require.Equal(t, "tenant one thinking", svc.reasoningContentByID(first, "item_shared"))
+	require.Empty(t, svc.reasoningContentByID(second, "item_shared"))
+	require.Empty(t, svc.reasoningContentByID(missingKey, "item_shared"))
+
+	svc.setReasoningContent(second, "item_shared", "tenant two thinking")
+	svc.setReasoningContent(missingKey, "item_shared", "must not be cached")
+	require.Equal(t, "tenant two thinking", cache.snapshotSets()["202:item_shared"])
+	require.NotContains(t, cache.snapshotSets(), "item_shared")
 }
