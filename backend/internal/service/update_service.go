@@ -419,7 +419,7 @@ func (s *UpdateService) fetchLatestRelease(ctx context.Context) (*UpdateInfo, er
 	return &UpdateInfo{
 		CurrentVersion: s.currentVersion,
 		LatestVersion:  latestVersion,
-		HasUpdate:      compareVersions(s.currentVersion, latestVersion) < 0,
+		HasUpdate:      s.hasUpdate(latestVersion),
 		ReleaseInfo: &ReleaseInfo{
 			Name:        release.Name,
 			Body:        release.Body,
@@ -615,7 +615,7 @@ func (s *UpdateService) getFromCache(ctx context.Context) (*UpdateInfo, error) {
 	return &UpdateInfo{
 		CurrentVersion: s.currentVersion,
 		LatestVersion:  cached.Latest,
-		HasUpdate:      compareVersions(s.currentVersion, cached.Latest) < 0,
+		HasUpdate:      s.hasUpdate(cached.Latest),
 		ReleaseInfo:    cached.ReleaseInfo,
 		Cached:         true,
 		BuildType:      s.buildType,
@@ -653,8 +653,36 @@ func compareVersions(current, latest string) int {
 	return 0
 }
 
+// hasUpdate ignores flavor revisions when a custom build and the remote
+// release share the same stable upstream version.
+func (s *UpdateService) hasUpdate(latestVersion string) bool {
+	if isCustomVersion(s.currentVersion) {
+		current := parseVersion(s.currentVersion)
+		latest := parseVersion(latestVersion)
+		for i := 0; i < len(current); i++ {
+			if current[i] != latest[i] {
+				return current[i] < latest[i]
+			}
+		}
+		return false
+	}
+	return compareVersions(s.currentVersion, latestVersion) < 0
+}
+
+func isCustomVersion(version string) bool {
+	version = strings.ToLower(strings.TrimSpace(version))
+	_, suffix, found := strings.Cut(version, "-")
+	return found && strings.HasPrefix(suffix, "custom")
+}
+
 func parseVersion(v string) [3]int {
 	v = strings.TrimPrefix(v, "v")
+	if base, _, found := strings.Cut(v, "-"); found {
+		v = base
+	}
+	if base, _, found := strings.Cut(v, "+"); found {
+		v = base
+	}
 	parts := strings.Split(v, ".")
 	result := [3]int{0, 0, 0}
 	for i := 0; i < len(parts) && i < 3; i++ {

@@ -69,6 +69,26 @@ func TestUpdateServicePerformUpdateNoUpdateReturnsSentinel(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoUpdateAvailable)
 }
 
+func TestUpdateServiceCustomBuildIgnoresSameBaseFlavorRevision(t *testing.T) {
+	client := &updateServiceGitHubClientStub{release: &GitHubRelease{TagName: "v0.1.181-overdraft.1"}}
+	svc := NewUpdateService(&updateServiceCacheStub{}, client, "0.1.181-custom", "release")
+
+	info, err := svc.CheckUpdate(context.Background(), true)
+
+	require.NoError(t, err)
+	require.False(t, info.HasUpdate)
+}
+
+func TestUpdateServiceCustomBuildDetectsNewBaseVersion(t *testing.T) {
+	client := &updateServiceGitHubClientStub{release: &GitHubRelease{TagName: "v0.1.182-overdraft.1"}}
+	svc := NewUpdateService(&updateServiceCacheStub{}, client, "0.1.181-custom", "release")
+
+	info, err := svc.CheckUpdate(context.Background(), true)
+
+	require.NoError(t, err)
+	require.True(t, info.HasUpdate)
+}
+
 func newRollbackTestService(current string, releases []*GitHubRelease) *UpdateService {
 	return NewUpdateService(
 		&updateServiceCacheStub{},
