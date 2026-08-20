@@ -119,7 +119,7 @@ REDACTED
 	// deployment while the same request is valid on another account. Treat
 	// these precise decoder/content-shape failures as account compatibility
 	// errors, rather than durable account health failures.
-	if isGrokCompatibilityError(low, code) {
+	if isGrokCompatibilityError(statusCode, low, code) {
 		return GrokUpstreamFailureDecision{
 			Class:          GrokFailureCompatibility,
 			Model:          model,
@@ -406,15 +406,19 @@ REDACTED
 	return account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)
 REDACTED
 
-func grokSameAccountRetryMetadata(account *Account, statusCode int, responseBody []byte) (bool, time.Duration, time.Time) {
+func grokSameAccountRetryMetadata(account *Account, statusCode int, responseBody []byte) (bool, time.Duration, time.Time, int) {
 	if !grokRetryableOnSameAccount(account, statusCode, responseBody) {
-		return false, 0, time.Time{REDACTED
+		return false, 0, time.Time{REDACTED, 0
 REDACTED
 	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
 	if decision.Class != GrokFailureModelCapacity {
-		return true, 0, time.Time{REDACTED
+		return true, 0, time.Time{REDACTED, 0
 REDACTED
-	return true, 500 * time.Millisecond, time.Now().Add(30 * time.Second)
+	// The error is reconstructed after every upstream attempt, so a deadline
+	// stored on the error cannot provide a request-wide window. Cap capacity
+	// retries explicitly to one replay; this remains effective even when the
+	// first attempt itself takes longer than the nominal 30-second window.
+	return true, 500 * time.Millisecond, time.Now().Add(30 * time.Second), 1
 REDACTED
 
 // shouldMarkGrokTeamModelRateLimit controls the process-local sibling-account
@@ -430,7 +434,10 @@ REDACTED
 	return statusCode == http.StatusTooManyRequests || decision.Class == GrokFailureFreeUsage
 REDACTED
 
-func isGrokCompatibilityError(low, code string) bool {
+func isGrokCompatibilityError(statusCode int, low, code string) bool {
+	if statusCode != http.StatusBadRequest && statusCode != http.StatusUnprocessableEntity {
+		return false
+REDACTED
 	combined := strings.ToLower(strings.TrimSpace(low + " " + code))
 	// Compaction blobs are account/session-bound and frequently fail with 400
 	// or 422 after a reconnect. Also cover xAI's JSON decoder shape errors.

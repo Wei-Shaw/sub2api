@@ -173,7 +173,7 @@ REDACTED
 			markGrokTeamModelRateLimit(account, upstreamModel, resolveGrokTeamRateLimitUntil(time.Now().Add(grokTeamRateLimitDefaultTTL), time.Now()))
 	REDACTED
 		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
-			retryable, retryDelay, retryDeadline := grokSameAccountRetryMetadata(account, resp.StatusCode, respBody)
+			retryable, retryDelay, retryDeadline, retryMax := grokSameAccountRetryMetadata(account, resp.StatusCode, respBody)
 			return nil, &UpstreamFailoverError{
 				StatusCode:               resp.StatusCode,
 				ResponseBody:             respBody,
@@ -182,6 +182,7 @@ REDACTED
 				RequestScopedTransient:   retryable && resp.StatusCode == http.StatusTooManyRequests,
 				SameAccountRetryDelay:    retryDelay,
 				SameAccountRetryDeadline: retryDeadline,
+				SameAccountRetryMax:      retryMax,
 		REDACTED
 	REDACTED
 		return s.handleErrorResponse(ctx, resp, c, account, patchedBody, upstreamModel)
@@ -1186,7 +1187,7 @@ REDACTED
 	REDACTED)
 		s.handleGrokAccountUpstreamError(withGrokTeamRateLimitModel(ctx, grokComposerImageBridgeVisionModel), account, resp.StatusCode, resp.Header, respBody)
 		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
-			retryable, retryDelay, retryDeadline := grokSameAccountRetryMetadata(account, resp.StatusCode, respBody)
+			retryable, retryDelay, retryDeadline, retryMax := grokSameAccountRetryMetadata(account, resp.StatusCode, respBody)
 			return "", OpenAIUsage{REDACTED, &UpstreamFailoverError{
 				StatusCode:               resp.StatusCode,
 				ResponseBody:             respBody,
@@ -1195,6 +1196,7 @@ REDACTED
 				RequestScopedTransient:   retryable && resp.StatusCode == http.StatusTooManyRequests,
 				SameAccountRetryDelay:    retryDelay,
 				SameAccountRetryDeadline: retryDeadline,
+				SameAccountRetryMax:      retryMax,
 		REDACTED
 	REDACTED
 		return "", OpenAIUsage{REDACTED, fmt.Errorf("grok composer image bridge upstream error: %s", upstreamMsg)

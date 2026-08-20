@@ -1288,7 +1288,7 @@ REDACTED
 		Detail:             upstreamDetail,
 REDACTED)
 	if kind == "failover" {
-		retryable, retryDelay, retryDeadline := grokSameAccountRetryMetadata(account, resp.StatusCode, body)
+		retryable, retryDelay, retryDeadline, retryMax := grokSameAccountRetryMetadata(account, resp.StatusCode, body)
 		return nil, &UpstreamFailoverError{
 			StatusCode:               resp.StatusCode,
 			ResponseBody:             body,
@@ -1297,6 +1297,7 @@ REDACTED)
 			RequestScopedTransient:   retryable && resp.StatusCode == http.StatusTooManyRequests,
 			SameAccountRetryDelay:    retryDelay,
 			SameAccountRetryDeadline: retryDeadline,
+			SameAccountRetryMax:      retryMax,
 	REDACTED
 REDACTED
 
