@@ -650,7 +650,7 @@ REDACTED
 func grokSupportsReasoningEffort(model string) bool {
 	model = strings.ToLower(xai.StripGrokProviderPrefix(strings.TrimSpace(model)))
 	switch model {
-	case xai.DefaultTextModel, "grok-4.5-latest", "grok-4.6-latest",
+	case "grok-4.5", "grok-4.5-latest", "grok-4.6", "grok-4.6-latest",
 		"grok-4.3", "grok-4.3-latest",
 		"grok-3-mini", "grok-3-mini-fast", "grok-4.20-0309-reasoning",
 		"grok-4.20-reasoning", "grok-4.20-multi-agent-0309":
@@ -1366,6 +1366,10 @@ REDACTED
 REDACTED
 
 func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, account *Account, snapshot *xai.QuotaSnapshot) {
+	s.updateGrokUsageSnapshotWithRateLimit(ctx, account, snapshot, true)
+REDACTED
+
+func (s *OpenAIGatewayService) updateGrokUsageSnapshotWithRateLimit(ctx context.Context, account *Account, snapshot *xai.QuotaSnapshot, installRateLimit bool) {
 	if s == nil || account == nil || account.ID <= 0 || snapshot == nil {
 		return
 REDACTED
@@ -1413,7 +1417,7 @@ REDACTED
 	// API keys retain the snapshot for observability but leave account health to
 	// the upstream pool. Other accounts install the immediate runtime and durable
 	// rate-limit state when the observed window is exhausted.
-	if hasActiveLimit && !account.IsPoolMode() {
+	if installRateLimit && hasActiveLimit && !account.IsPoolMode() {
 		s.rateLimitGrok(stateCtx, account, resetAt)
 REDACTED else if recovery {
 		clearGrokRateLimitAfterRecovery(stateCtx, s.accountRepo, account)
@@ -1765,14 +1769,17 @@ REDACTED
 		return
 REDACTED
 	now := time.Now()
+	decision := classifyGrokUpstreamFailure(statusCode, responseBody, grokRequestedModelFromCtx(ctx))
 	snapshot := parseGrokQuotaSnapshot(headers, statusCode, now)
 	stampGrokQuotaSnapshotForPlan(account, snapshot, grokRequestedModelFromCtx(ctx))
-	s.updateGrokUsageSnapshot(ctx, account, snapshot)
+	// Capacity 429 is model pressure, not account quota exhaustion. Keep the
+	// snapshot for observability but do not install account-level rate limiting;
+	// the failover decision below applies a bounded model-scoped block instead.
+	s.updateGrokUsageSnapshotWithRateLimit(ctx, account, snapshot, decision.Class != GrokFailureModelCapacity)
 
 	// Body-first free-usage / empty / billing / capacity must run before the
 	// status switch so non-429 free-usage bodies still cool the account.
 	// Pool-mode still skips durable mutation unless an explicit temp rule matches.
-	decision := classifyGrokUpstreamFailure(statusCode, responseBody, grokRequestedModelFromCtx(ctx))
 	if decision.ShouldCooldown && decision.Class != GrokFailureNone && decision.Class != GrokFailureRateLimit {
 		if account.IsPoolMode() {
 			// Allow configured temp rules (403) below; skip default body cools.

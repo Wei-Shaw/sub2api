@@ -1182,24 +1182,19 @@ REDACTED
 		inputTokens = value.Get("prompt_tokens").Int()
 REDACTED
 	outputTokens := value.Get("output_tokens").Int()
-	outputTokensFromResponses := outputTokens != 0
 	if outputTokens == 0 {
 		outputTokens = value.Get("completion_tokens").Int()
-		outputTokensFromResponses = false
 REDACTED
-	// xAI Chat Completions reports visible completion tokens separately from
-	// reasoning_tokens. Billing must include both. Responses usage generally
-	// already folds reasoning into output_tokens; use total_tokens when present
-	// to avoid double-counting that canonical shape.
+	// xAI may report reasoning_tokens separately from visible output tokens.
+	// Only add it when total_tokens proves it is an independent component;
+	// OpenAI's canonical completion_tokens already includes reasoning details.
 	reasoningTokens := max(int(firstPositiveGJSONInt(
 		value.Get("completion_tokens_details.reasoning_tokens"),
 		value.Get("output_tokens_details.reasoning_tokens"),
 	)), 0)
 	if reasoningTokens > 0 {
 		totalTokens := value.Get("total_tokens").Int()
-		if !outputTokensFromResponses {
-			outputTokens += int64(reasoningTokens)
-	REDACTED else if totalTokens > inputTokens && totalTokens >= outputTokens+int64(reasoningTokens) {
+		if totalTokens > 0 && totalTokens == inputTokens+outputTokens+int64(reasoningTokens) {
 			outputTokens += int64(reasoningTokens)
 	REDACTED
 REDACTED

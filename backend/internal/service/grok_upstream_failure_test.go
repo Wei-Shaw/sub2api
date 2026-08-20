@@ -54,6 +54,14 @@ func TestClassifyGrokUpstreamFailure_EmptyUpstream(t *testing.T) {
 	require.Equal(t, 4*time.Minute, d.Cooldown)
 REDACTED
 
+func TestClassifyGrokUpstreamFailure_ModelCapacityUsesShortCooldown(t *testing.T) {
+	d := classifyGrokUpstreamFailure(http.StatusTooManyRequests,
+		[]byte(`{"error":{"message":"The model is currently at capacity due to high demand"REDACTEDREDACTED`), "grok-4.6")
+	require.Equal(t, GrokFailureModelCapacity, d.Class)
+	require.Equal(t, time.Minute, d.Cooldown)
+	require.False(t, d.BlockModel)
+REDACTED
+
 func TestClassifyGrokUpstreamFailure_Billing(t *testing.T) {
 	d := classifyGrokUpstreamFailure(http.StatusForbidden, []byte(`{"code":"personal-team-blocked:spending-limit","error":"spending limit reached"REDACTED`), "")
 	require.Equal(t, GrokFailureBilling, d.Class)

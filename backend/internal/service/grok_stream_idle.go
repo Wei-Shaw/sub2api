@@ -38,5 +38,9 @@ func grokStreamIdleFailoverError(account *Account, idle time.Duration) *Upstream
 		// the request's retry limit.
 		RetryableOnSameAccount: account != nil && account.Platform == PlatformGrok,
 		RequestScopedTransient: true,
+		// Permit at most one same-account replay after the idle failure. The
+		// deadline is anchored at failure time, so a hung stream cannot consume
+		// the normal three-attempt budget before failover.
+		SameAccountRetryDeadline: time.Now().Add(idle),
 REDACTED
 REDACTED
