@@ -199,7 +199,7 @@ func (s *OpenAIGatewayService) shouldFailoverGrokUpstreamError(statusCode int, r
 REDACTED
 	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
 	switch decision.Class {
-	case GrokFailureFreeUsage, GrokFailureEmptyUpstream, GrokFailureBilling, GrokFailureModelCapacity:
+	case GrokFailureFreeUsage, GrokFailureEmptyUpstream, GrokFailureBilling, GrokFailureModelCapacity, GrokFailureCompatibility:
 		return decision.ShouldFailover
 REDACTED
 	return s.shouldFailoverUpstreamError(statusCode)
