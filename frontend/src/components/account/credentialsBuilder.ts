@@ -256,8 +256,9 @@ export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
 
 export type CnAccountMode = 'payg' | 'coding'
 
-/** 仅 deepseek 支持 responses 协议（官方原生 /responses 端点，适配 Codex）。 */
-export type CnApiProtocol = 'chat_completions' | 'anthropic' | 'responses'
+/** 仅 deepseek 支持原生 responses；adaptive 会按入站协议选择原生端点。 */
+export type CnApiProtocol = 'adaptive' | 'chat_completions' | 'anthropic' | 'responses'
+export type CnNativeApiProtocol = Exclude<CnApiProtocol, 'adaptive'>
 
 export interface CnBaseUrlPreset {
   mode: CnAccountMode
@@ -318,6 +319,18 @@ export function defaultCNBaseUrl(
       return 'https://api.deepseek.com'
     default:
       return ''
+  }
+}
+
+/** 返回自适应模式下需要配置的原生协议及其默认端点。 */
+export function defaultCNAdaptiveBaseUrls(
+  platform: 'kimi' | 'zhipu' | 'deepseek',
+  mode: CnAccountMode
+): Record<CnNativeApiProtocol, string> {
+  return {
+    chat_completions: defaultCNBaseUrl(platform, mode, 'chat_completions'),
+    anthropic: defaultCNBaseUrl(platform, mode, 'anthropic'),
+    responses: platform === 'deepseek' ? defaultCNBaseUrl(platform, mode, 'responses') : ''
   }
 }
 
