@@ -23,6 +23,7 @@ func TestGrokStreamIdleFailoverError(t *testing.T) {
 	require.True(t, err.SafeToFailoverAfterWrite)
 	require.True(t, err.RetryableOnSameAccount)
 	require.True(t, err.RequestScopedTransient)
+	require.Equal(t, 1, err.SameAccountRetryMax)
 	require.Contains(t, string(err.ResponseBody), "empty_upstream")
 	require.WithinDuration(t, time.Now().Add(180*time.Second), err.SameAccountRetryDeadline, 2*time.Second)
 REDACTED

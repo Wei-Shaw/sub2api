@@ -171,6 +171,9 @@ REDACTED
 
 	// 同账号重试不算切换账号，粘性会话仅在实际切换时强制缓存计费。
 	retryCount := s.SameAccountRetryCount[accountID]
+	if failoverErr.SameAccountRetryMax > 0 && (retryLimit <= 0 || failoverErr.SameAccountRetryMax < retryLimit) {
+		retryLimit = failoverErr.SameAccountRetryMax
+REDACTED
 	sameAccountRetryAllowed := failoverErr.RetryableOnSameAccount && retryLimit > 0 && retryCount < retryLimit
 	if sameAccountRetryAllowed && !failoverErr.SameAccountRetryDeadline.IsZero() {
 		sameAccountRetryAllowed = time.Now().Before(failoverErr.SameAccountRetryDeadline)
