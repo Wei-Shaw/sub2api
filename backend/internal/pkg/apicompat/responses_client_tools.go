@@ -27,6 +27,13 @@ REDACTED
 	if !ok || len(tools) == 0 {
 		return ResponsesClientToolMapping{REDACTED, false, nil
 REDACTED
+	discovered, err := promoteResponsesToolSearchDiscoveries(req)
+	if err != nil {
+		return ResponsesClientToolMapping{REDACTED, false, err
+REDACTED
+	if discovered {
+		tools, _ = req["tools"].([]any)
+REDACTED
 
 	adapter := ResponsesClientToolMapping{CustomTools: make(map[string]bool)REDACTED
 	functionNames := make(map[string]bool)
@@ -73,7 +80,7 @@ REDACTED
 
 	tools, _ = req["tools"].([]any)
 	lowered := make([]any, 0, len(tools))
-	changed := flattened
+	changed := discovered || flattened
 	seenSearch := false
 	for _, raw := range tools {
 		tool, ok := raw.(map[string]any)
@@ -115,7 +122,11 @@ REDACTED
 	if changed {
 		req["tools"] = lowered
 REDACTED
-	if rewriteClientToolHistory(req["input"], &adapter) {
+	historyChanged, err := rewriteClientToolHistory(req["input"], &adapter)
+	if err != nil {
+		return ResponsesClientToolMapping{REDACTED, false, err
+REDACTED
+	if historyChanged {
 		changed = true
 REDACTED
 	if rewriteClientToolChoice(req, &adapter) {
@@ -138,6 +149,7 @@ REDACTED
 func AdaptResponsesClientToolsWithInheritedMapping(
 	req map[string]any,
 	inherited ResponsesClientToolMapping,
+	inheritedLoweredTools ...[]any,
 ) (ResponsesClientToolMapping, bool, error) {
 	if req == nil {
 		return ResponsesClientToolMapping{REDACTED, false, nil
@@ -148,8 +160,15 @@ REDACTED
 	if len(inherited.CustomTools) == 0 && !inherited.ToolSearch && len(inherited.NamespaceTools) == 0 {
 		return ResponsesClientToolMapping{REDACTED, false, nil
 REDACTED
+	if len(inheritedLoweredTools) > 0 && len(inheritedLoweredTools[0]) > 0 {
+		req["tools"] = restoreInheritedResponsesClientToolDeclarations(inheritedLoweredTools[0], inherited)
+		return AdaptResponsesClientTools(req)
+REDACTED
 
-	changed := rewriteClientToolHistory(req["input"], &inherited)
+	changed, err := rewriteClientToolHistory(req["input"], &inherited)
+	if err != nil {
+		return ResponsesClientToolMapping{REDACTED, false, err
+REDACTED
 	if len(inherited.NamespaceTools) > 0 {
 		before := changed
 		rewriteNamespaceQualifiedCalls(req["input"], inherited.NamespaceTools)
@@ -174,14 +193,16 @@ REDACTED
 	return copy
 REDACTED
 
-func rewriteClientToolHistory(value any, adapter *ResponsesClientToolMapping) bool {
+func rewriteClientToolHistory(value any, adapter *ResponsesClientToolMapping) (bool, error) {
 	changed := false
-	var visit func(any)
-	visit = func(value any) {
+	var visit func(any) error
+	visit = func(value any) error {
 		switch typed := value.(type) {
 		case []any:
 			for _, item := range typed {
-				visit(item)
+				if err := visit(item); err != nil {
+					return err
+			REDACTED
 		REDACTED
 		case map[string]any:
 			typ := strings.TrimSpace(stringValue(typed["type"]))
@@ -210,19 +231,30 @@ func rewriteClientToolHistory(value any, adapter *ResponsesClientToolMapping) bo
 			REDACTED
 			case "tool_search_output":
 				if adapter.ToolSearch {
+					callID := strings.TrimSpace(stringValue(typed["call_id"]))
+					if callID == "" {
+						return fmt.Errorf("tool_search_output requires a non-empty string call_id before it can be lowered to function_call_output")
+				REDACTED
 					typed["type"] = "function_call_output"
 					dropInvalidLoweredFunctionItemID(typed)
-					normalizeToolSearchOutput(typed)
+					if err := normalizeToolSearchOutput(typed); err != nil {
+						return err
+				REDACTED
 					changed = true
 			REDACTED
 		REDACTED
 			for _, child := range typed {
-				visit(child)
+				if err := visit(child); err != nil {
+					return err
+			REDACTED
 		REDACTED
 	REDACTED
+		return nil
 REDACTED
-	visit(value)
-	return changed
+	if err := visit(value); err != nil {
+		return false, err
+REDACTED
+	return changed, nil
 REDACTED
 
 // dropInvalidLoweredFunctionItemID removes Codex client-only item IDs such as
@@ -256,15 +288,42 @@ REDACTED
 	item["output"] = string(encoded)
 REDACTED
 
-func normalizeToolSearchOutput(item map[string]any) {
-	if _, exists := item["output"]; !exists {
-		if tools, hasTools := item["tools"]; hasTools {
-			item["output"] = tools
-	REDACTED else {
-			return
+// normalizeToolSearchOutput converts both tool_search output wire shapes into
+// the string output required by function_call_output. Older clients send an
+// output field directly; newer Codex clients return discovered definitions in
+// a top-level tools field. Codex treats that field's value as the tool output,
+// so serialize the value directly rather than wrapping it in another object.
+func normalizeToolSearchOutput(item map[string]any) error {
+	if output, hasOutput := item["output"]; hasOutput {
+		switch typed := output.(type) {
+		case string:
+			item["output"] = typed
+		case nil:
+			item["output"] = ""
+		default:
+			encoded, err := json.Marshal(typed)
+			if err != nil {
+				return fmt.Errorf("tool_search_output output cannot be encoded as function_call_output output: %w", err)
+		REDACTED
+			item["output"] = string(encoded)
 	REDACTED
+		dropToolSearchOutputPrivateFields(item)
+		return nil
 REDACTED
-	normalizeClientToolOutput(item)
+	tools, hasTools := item["tools"]
+	if !hasTools {
+		return fmt.Errorf("tool_search_output requires output or tools before it can be lowered to function_call_output")
+REDACTED
+	encoded, err := json.Marshal(tools)
+	if err != nil {
+		return fmt.Errorf("tool_search_output tools cannot be encoded as function_call_output output: %w", err)
+REDACTED
+	item["output"] = string(encoded)
+	dropToolSearchOutputPrivateFields(item)
+	return nil
+REDACTED
+
+func dropToolSearchOutputPrivateFields(item map[string]any) {
 	delete(item, "tools")
 	delete(item, "status")
 	delete(item, "execution")

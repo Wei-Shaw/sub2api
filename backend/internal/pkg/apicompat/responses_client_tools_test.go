@@ -66,66 +66,323 @@ REDACTED
 	require.Equal(t, "team__send", namespaceCall["name"])
 REDACTED
 
-func TestAdaptResponsesClientTools_LowersToolSearchDiscoveryPayloadWithoutOutput(t *testing.T) {
-	req := map[string]any{
-		"tools": []any{map[string]any{"type": "tool_search"REDACTEDREDACTED,
-		"input": []any{map[string]any{
-			"type":      "tool_search_output",
-			"call_id":   "search_1",
-			"tools":     []any{map[string]any{"name": "github", "type": "namespace"REDACTEDREDACTED,
-			"status":    "completed",
-			"execution": "client",
+func TestAdaptResponsesClientTools_LowersDiscoveredToolSearchOutput(t *testing.T) {
+	requestJSON := `{
+		"tools":[{"type":"tool_search"REDACTED],
+		"input":[
+			{"type":"tool_search_call","id":"tsc_client","call_id":"call_search","arguments":{"query":"codex app"REDACTED,"execution":"client","status":"completed"REDACTED,
+			{"type":"tool_search_output","id":"tso_client","call_id":"call_search","execution":"client","status":"completed","tools":[
+				{"type":"namespace","name":"codex_app","tools":[{"type":"function","name":"load_workspace_dependencies","description":"Load workspace dependencies","parameters":{"type":"object","properties":{REDACTED,"additionalProperties":falseREDACTEDREDACTED]REDACTED,
+				{"type":"namespace","name":"multi_agent_v1","tools":[
+					{"type":"function","name":"spawn_agent","description":"Spawn an agent","parameters":{"type":"object","properties":{"message":{"type":"string"REDACTEDREDACTED,"required":["message"],"additionalProperties":falseREDACTEDREDACTED,
+					{"type":"function","name":"wait_agent","description":"Wait for agents","parameters":{"type":"object","properties":{REDACTED,"additionalProperties":falseREDACTEDREDACTED
+				]REDACTED
+			]REDACTED
+		]
+REDACTED`
+
+	type adaptedRequest struct {
+		req     map[string]any
+		mapping ResponsesClientToolMapping
 REDACTED
+	adapt := func() adaptedRequest {
+		var req map[string]any
+		require.NoError(t, json.Unmarshal([]byte(requestJSON), &req))
+		mapping, changed, err := AdaptResponsesClientTools(req)
+	REDACTED
+		require.True(t, changed)
+		return adaptedRequest{req: req, mapping: mappingREDACTED
+REDACTED
+
+	first := adapt()
+	second := adapt()
+	firstInput := requireResponsesClientToolValue[[]any](t, first.req["input"])
+	secondInput := requireResponsesClientToolValue[[]any](t, second.req["input"])
+
+	tools := requireResponsesClientToolValue[[]any](t, first.req["tools"])
+	require.Len(t, tools, 4)
+	require.Equal(t, []string{
+		"tool_search",
+		"codex_app__load_workspace_dependencies",
+		"multi_agent_v1__spawn_agent",
+		"multi_agent_v1__wait_agent",
+REDACTED, responsesClientToolNames(t, tools))
+	require.Equal(t, ResponsesNamespaceName{Namespace: "multi_agent_v1", Name: "spawn_agent"REDACTED, first.mapping.NamespaceTools["multi_agent_v1__spawn_agent"])
+	require.Equal(t, ResponsesNamespaceName{Namespace: "multi_agent_v1", Name: "wait_agent"REDACTED, first.mapping.NamespaceTools["multi_agent_v1__wait_agent"])
+
+	call := requireResponsesClientToolValue[map[string]any](t, firstInput[0])
+	require.Equal(t, "function_call", call["type"])
+	require.Equal(t, toolSearchProxyName, call["name"])
+	require.JSONEq(t, `{"query":"codex app"REDACTED`, requireResponsesClientToolValue[string](t, call["arguments"]))
+	require.NotContains(t, call, "execution")
+
+	output := requireResponsesClientToolValue[map[string]any](t, firstInput[1])
+	require.Equal(t, map[string]any{
+		"type":    "function_call_output",
+		"call_id": "call_search",
+		"output":  output["output"],
+REDACTED, output)
+	outputText := requireResponsesClientToolValue[string](t, output["output"])
+	require.JSONEq(t, `[
+		{"type":"namespace","name":"codex_app","tools":[{"type":"function","name":"load_workspace_dependencies","description":"Load workspace dependencies","parameters":{"type":"object","properties":{REDACTED,"additionalProperties":falseREDACTEDREDACTED]REDACTED,
+		{"type":"namespace","name":"multi_agent_v1","tools":[
+			{"type":"function","name":"spawn_agent","description":"Spawn an agent","parameters":{"type":"object","properties":{"message":{"type":"string"REDACTEDREDACTED,"required":["message"],"additionalProperties":falseREDACTEDREDACTED,
+			{"type":"function","name":"wait_agent","description":"Wait for agents","parameters":{"type":"object","properties":{REDACTED,"additionalProperties":falseREDACTEDREDACTED
+		]REDACTED
+	]`, outputText)
+	secondOutput := requireResponsesClientToolValue[map[string]any](t, secondInput[1])
+	require.Equal(t, outputText, secondOutput["output"], "tool discovery output encoding must be deterministic")
+
+	restored, changed, err := RestoreResponsesClientToolPayload(
+		[]byte(`{"output":[{"type":"function_call","name":"multi_agent_v1__spawn_agent","call_id":"call_spawn","arguments":"{\"message\":\"work\"REDACTED"REDACTED]REDACTED`),
+		first.mapping,
+	)
+REDACTED
+	require.True(t, changed)
+	require.JSONEq(t, `{"output":[{"type":"function_call","name":"spawn_agent","namespace":"multi_agent_v1","call_id":"call_spawn","arguments":"{\"message\":\"work\"REDACTED"REDACTED]REDACTED`, string(restored))
+REDACTED
+
+func TestAdaptResponsesClientTools_PromotesDirectDiscoveryAndDeduplicatesIdenticalDeclarations(t *testing.T) {
+	direct := map[string]any{
+		"type": "function", "name": "inspect_result", "description": "Inspect a result",
+		"parameters": map[string]any{"type": "object", "properties": map[string]any{REDACTEDREDACTED,
+REDACTED
+	custom := map[string]any{
+		"type": "custom", "name": "run_script", "description": "Run a script",
+		"format": map[string]any{"type": "grammar"REDACTED,
+REDACTED
+	namespace := map[string]any{
+		"type": "namespace", "name": "multi_agent_v1", "tools": []any{map[string]any{
+			"type": "function", "name": "spawn_agent", "parameters": map[string]any{"type": "object"REDACTED,
+REDACTED
+REDACTED
+	req := map[string]any{
+		"tools": []any{
+			map[string]any{"type": "function", "name": "static_first", "parameters": map[string]any{"type": "object"REDACTEDREDACTED,
+			map[string]any{"type": "tool_search"REDACTED,
+	REDACTED,
+		"input": []any{
+			map[string]any{"type": "tool_search_output", "status": "completed", "call_id": "search_1", "tools": []any{direct, custom, namespaceREDACTEDREDACTED,
+			map[string]any{"type": "tool_search_output", "status": "completed", "call_id": "search_2", "tools": []any{copyClientTool(direct), copyClientTool(custom), copyClientTool(namespace)REDACTEDREDACTED,
+	REDACTED,
 REDACTED
 
 	mapping, changed, err := AdaptResponsesClientTools(req)
 REDACTED
 	require.True(t, changed)
-	require.True(t, mapping.ToolSearch)
-
-	item := requireResponsesClientToolValue[map[string]any](t, requireResponsesClientToolValue[[]any](t, req["input"])[0])
-	require.Equal(t, "function_call_output", item["type"])
-	require.Equal(t, "search_1", item["call_id"])
-	require.JSONEq(t, `[{"name":"github","type":"namespace"REDACTED]`, requireResponsesClientToolValue[string](t, item["output"]))
-	require.NotContains(t, item, "tools")
-	require.NotContains(t, item, "status")
-	require.NotContains(t, item, "execution")
+	require.True(t, mapping.CustomTools["run_script"])
+	require.Equal(t, ResponsesNamespaceName{Namespace: "multi_agent_v1", Name: "spawn_agent"REDACTED, mapping.NamespaceTools["multi_agent_v1__spawn_agent"])
+	tools := requireResponsesClientToolValue[[]any](t, req["tools"])
+	require.Equal(t, []string{"static_first", "tool_search", "inspect_result", "run_script", "multi_agent_v1__spawn_agent"REDACTED, responsesClientToolNames(t, tools))
+	customTool := requireResponsesClientToolValue[map[string]any](t, tools[3])
+	require.Equal(t, "function", customTool["type"])
+	require.NotContains(t, customTool, "format")
+	for _, raw := range requireResponsesClientToolValue[[]any](t, req["input"]) {
+		item := requireResponsesClientToolValue[map[string]any](t, raw)
+		require.Equal(t, "function_call_output", item["type"])
+		require.NotContains(t, item, "tools")
+		require.NotContains(t, item, "status")
+REDACTED
 REDACTED
 
-func TestAdaptResponsesClientTools_ToolSearchExplicitOutputTakesPriority(t *testing.T) {
+func TestAdaptResponsesClientTools_RejectsDiscoveredSchemaAndNamespaceCollisions(t *testing.T) {
+	tests := []struct {
+		name        string
+		staticTools []any
+		discovered  []any
+REDACTED{
+		{
+			name: "direct schema collision",
+			staticTools: []any{map[string]any{
+				"type": "function", "name": "inspect", "parameters": map[string]any{"type": "object"REDACTED,
+	REDACTED
+			discovered: []any{map[string]any{
+				"type": "function", "name": "inspect", "parameters": map[string]any{"type": "string"REDACTED,
+	REDACTED
+	REDACTED,
+		{
+			name: "namespace schema collision",
+			staticTools: []any{map[string]any{
+				"type": "namespace", "name": "multi_agent_v1", "tools": []any{map[string]any{
+					"type": "function", "name": "spawn_agent", "parameters": map[string]any{"type": "object"REDACTED,
+		REDACTED
+	REDACTED
+			discovered: []any{map[string]any{
+				"type": "namespace", "name": "multi_agent_v1", "tools": []any{map[string]any{
+					"type": "function", "name": "spawn_agent", "parameters": map[string]any{"type": "string"REDACTED,
+		REDACTED
+	REDACTED
+	REDACTED,
+		{
+			name:        "flattened namespace collision",
+			staticTools: []any{map[string]any{"type": "function", "name": "multi_agent_v1__spawn_agent"REDACTEDREDACTED,
+			discovered: []any{map[string]any{
+				"type": "namespace", "name": "multi_agent_v1", "tools": []any{map[string]any{"type": "function", "name": "spawn_agent"REDACTEDREDACTED,
+	REDACTED
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := map[string]any{
+				"tools": append(tt.staticTools, map[string]any{"type": "tool_search"REDACTED),
+				"input": []any{map[string]any{
+					"type": "tool_search_output", "status": "completed", "tools": tt.discovered,
+		REDACTED
+		REDACTED
+			_, _, err := AdaptResponsesClientTools(req)
+			require.ErrorContains(t, err, "conflicts")
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestAdaptResponsesClientTools_DoesNotPromoteUnusableDiscoveries(t *testing.T) {
 	req := map[string]any{
 		"tools": []any{map[string]any{"type": "tool_search"REDACTEDREDACTED,
-		"input": []any{map[string]any{
-			"type": "tool_search_output", "call_id": "search_1",
-			"output": "authoritative", "tools": []any{map[string]any{"name": "ignored"REDACTEDREDACTED,
-REDACTED
+		"input": []any{
+			map[string]any{"type": "tool_search_output", "call_id": "search_in_progress", "status": "in_progress", "tools": []any{map[string]any{"type": "function", "name": "not_ready"REDACTEDREDACTEDREDACTED,
+			map[string]any{"type": "tool_search_output", "call_id": "search_malformed", "status": "completed", "tools": []any{map[string]any{"type": "function"REDACTEDREDACTEDREDACTED,
+	REDACTED,
 REDACTED
 
 	_, changed, err := AdaptResponsesClientTools(req)
 REDACTED
-	require.True(t, changed)
-	item := requireResponsesClientToolValue[map[string]any](t, requireResponsesClientToolValue[[]any](t, req["input"])[0])
-	require.Equal(t, "authoritative", item["output"])
-	require.NotContains(t, item, "tools")
+	require.True(t, changed, "the static tool_search declaration is still lowered")
+	tools := requireResponsesClientToolValue[[]any](t, req["tools"])
+	require.Equal(t, []string{"tool_search"REDACTED, responsesClientToolNames(t, tools))
 REDACTED
 
-func TestAdaptResponsesClientTools_DoesNotInventMissingToolSearchOutput(t *testing.T) {
-	req := map[string]any{
-		"tools": []any{map[string]any{"type": "tool_search"REDACTEDREDACTED,
-		"input": []any{map[string]any{
-			"type": "tool_search_output", "call_id": "search_1",
-			"status": "incomplete", "execution": "client",
+func responsesClientToolNames(t *testing.T, tools []any) []string {
 REDACTED
+	names := make([]string, 0, len(tools))
+	for _, raw := range tools {
+		tool := requireResponsesClientToolValue[map[string]any](t, raw)
+		names = append(names, requireResponsesClientToolValue[string](t, tool["name"]))
+REDACTED
+	return names
 REDACTED
 
-	_, changed, err := AdaptResponsesClientTools(req)
+func TestAdaptResponsesClientTools_ToolSearchOutputEdgeCases(t *testing.T) {
+	unencodableOutput := make(chan struct{REDACTED)
+	tests := []struct {
+		name             string
+		item             map[string]any
+		wantOutput       any
+		wantOutputExists bool
+		wantPrivateKeys  []string
+		wantExactOutput  bool
+		wantErr          bool
+REDACTED{
+		{
+			name:             "absent tools and output is rejected",
+			item:             map[string]any{"type": "tool_search_output", "call_id": "call_empty", "status": "completed"REDACTED,
+			wantOutputExists: false,
+			wantErr:          true,
+	REDACTED,
+		{
+			name: "preexisting string output wins",
+			item: map[string]any{
+				"type": "tool_search_output", "call_id": "call_legacy", "output": "legacy",
+				"tools": []any{map[string]any{"type": "function", "name": "ignored"REDACTEDREDACTED, "execution": "client",
+		REDACTED,
+			wantOutput:       "legacy",
+			wantOutputExists: true,
+			wantExactOutput:  true,
+	REDACTED,
+		{
+			name: "preexisting object output remains legacy representation",
+			item: map[string]any{
+				"type": "tool_search_output", "call_id": "call_object", "output": map[string]any{"groups": []any{"github"REDACTEDREDACTED,
+				"tools": []any{map[string]any{"type": "function", "name": "ignored"REDACTEDREDACTED,
+		REDACTED,
+			wantOutput:       `{"groups":["github"]REDACTED`,
+			wantOutputExists: true,
+			wantExactOutput:  true,
+	REDACTED,
+		{
+			name: "unencodable preexisting output is rejected",
+			item: map[string]any{
+				"type": "tool_search_output", "call_id": "call_bad_output", "output": unencodableOutput,
+				"tools": []any{map[string]any{"type": "function", "name": "retained"REDACTEDREDACTED, "status": "completed", "execution": "client",
+		REDACTED,
+			wantOutput: unencodableOutput,
+			wantErr:    true,
+	REDACTED,
+		{
+			name: "empty tools array is a valid empty output",
+			item: map[string]any{
+				"type": "tool_search_output", "call_id": "call_empty_tools",
+				"tools": []any{REDACTED, "status": "completed", "execution": "client",
+		REDACTED,
+			wantOutput:       `[]`,
+			wantOutputExists: true,
+			wantExactOutput:  true,
+	REDACTED,
+		{
+			name: "non-array tools value is serialized directly",
+			item: map[string]any{
+				"type": "tool_search_output", "call_id": "call_malformed",
+				"tools": map[string]any{"unexpected": trueREDACTED, "status": "completed", "execution": "client",
+		REDACTED,
+			wantOutput:       `{"unexpected":trueREDACTED`,
+			wantOutputExists: true,
+			wantExactOutput:  true,
+	REDACTED,
+		{
+			name: "unencodable tools is rejected",
+			item: map[string]any{
+				"type": "tool_search_output", "call_id": "call_unencodable", "tools": make(chan struct{REDACTED), "status": "completed",
+		REDACTED,
+			wantErr: true,
+	REDACTED,
+		{
+			name: "missing call id is rejected",
+			item: map[string]any{
+				"type": "tool_search_output", "tools": []any{REDACTED, "status": "completed",
+		REDACTED,
+			wantErr: true,
+	REDACTED,
 REDACTED
-	require.True(t, changed)
-	item := requireResponsesClientToolValue[map[string]any](t, requireResponsesClientToolValue[[]any](t, req["input"])[0])
-	require.Equal(t, "function_call_output", item["type"])
-	require.NotContains(t, item, "output")
-	require.Equal(t, "incomplete", item["status"])
-	require.Equal(t, "client", item["execution"])
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := map[string]any{
+				"tools": []any{map[string]any{"type": "tool_search"REDACTEDREDACTED,
+				"input": []any{tt.itemREDACTED,
+		REDACTED
+			_, changed, err := AdaptResponsesClientTools(req)
+			if tt.wantErr {
+			REDACTED
+				return
+		REDACTED
+		REDACTED
+			require.True(t, changed)
+			input := requireResponsesClientToolValue[[]any](t, req["input"])
+			output := requireResponsesClientToolValue[map[string]any](t, input[0])
+			require.Equal(t, "function_call_output", output["type"])
+			actualOutput, outputExists := output["output"]
+			require.Equal(t, tt.wantOutputExists, outputExists)
+			if tt.wantOutputExists {
+				require.Equal(t, tt.wantOutput, actualOutput)
+		REDACTED
+			if tt.wantExactOutput {
+				require.Equal(t, map[string]any{
+					"type":    "function_call_output",
+					"call_id": output["call_id"],
+					"output":  tt.wantOutput,
+			REDACTED, output)
+		REDACTED
+			if len(tt.wantPrivateKeys) > 0 {
+				for _, key := range tt.wantPrivateKeys {
+					require.Contains(t, output, key)
+			REDACTED
+		REDACTED else {
+				require.NotContains(t, output, "tools")
+				require.NotContains(t, output, "status")
+				require.NotContains(t, output, "execution")
+		REDACTED
+	REDACTED)
+REDACTED
 REDACTED
 
 func requireResponsesClientToolValue[T any](t *testing.T, value any) T {
@@ -179,6 +436,47 @@ REDACTED
 	require.JSONEq(t, `[{"text":"ok","type":"input_text"REDACTED]`, requireResponsesClientToolValue[string](t, output["output"]))
 REDACTED
 
+func TestAdaptResponsesClientToolsWithInheritedMapping_PromotesOmittedToolsDiscoveryIntoEffectiveDeclarations(t *testing.T) {
+	req := map[string]any{
+		"input": []any{map[string]any{
+			"type": "tool_search_output", "call_id": "call_search", "status": "completed", "execution": "client",
+			"tools": []any{map[string]any{
+				"type": "namespace", "name": "multi_agent_v1", "tools": []any{map[string]any{
+					"type": "function", "name": "spawn_agent", "parameters": map[string]any{"type": "object"REDACTED,
+		REDACTED
+	REDACTED
+REDACTED
+REDACTED
+	inherited := ResponsesClientToolMapping{
+		ToolSearch: true,
+		NamespaceTools: map[string]ResponsesNamespaceName{
+			"codex_app__read_resource": {Namespace: "codex_app", Name: "read_resource"REDACTED,
+	REDACTED,
+REDACTED
+	lowered := []any{
+		map[string]any{"type": "function", "name": "static_first", "parameters": map[string]any{"type": "object"REDACTEDREDACTED,
+		map[string]any{"type": "function", "name": "tool_search", "parameters": json.RawMessage(toolSearchProxySchema)REDACTED,
+		map[string]any{"type": "function", "name": "codex_app__read_resource", "parameters": map[string]any{"type": "object"REDACTEDREDACTED,
+REDACTED
+
+	mapping, changed, err := AdaptResponsesClientToolsWithInheritedMapping(req, inherited, lowered)
+REDACTED
+	require.True(t, changed)
+	require.True(t, mapping.ToolSearch)
+	require.Equal(t, ResponsesNamespaceName{Namespace: "codex_app", Name: "read_resource"REDACTED, mapping.NamespaceTools["codex_app__read_resource"])
+	require.Equal(t, ResponsesNamespaceName{Namespace: "multi_agent_v1", Name: "spawn_agent"REDACTED, mapping.NamespaceTools["multi_agent_v1__spawn_agent"])
+	tools := requireResponsesClientToolValue[[]any](t, req["tools"])
+	require.Equal(t, []string{
+		"static_first", "tool_search", "codex_app__read_resource", "multi_agent_v1__spawn_agent",
+REDACTED, responsesClientToolNames(t, tools))
+	output := requireResponsesClientToolValue[map[string]any](t, requireResponsesClientToolValue[[]any](t, req["input"])[0])
+	require.Equal(t, "function_call_output", output["type"])
+	require.IsType(t, "", output["output"])
+	require.NotContains(t, output, "tools")
+	require.NotContains(t, output, "status")
+	require.NotContains(t, output, "execution")
+REDACTED
+
 func TestAdaptResponsesClientToolsWithInheritedMapping_ExplicitToolsReplaceInheritedMapping(t *testing.T) {
 	req := map[string]any{
 		"tools": []any{REDACTED,
@@ -198,6 +496,28 @@ REDACTED
 	items := requireResponsesClientToolValue[[]any](t, req["input"])
 	call := requireResponsesClientToolValue[map[string]any](t, items[0])
 	require.Equal(t, "custom_tool_call", call["type"])
+REDACTED
+
+func TestAdaptResponsesClientToolsWithInheritedMapping_ExplicitToolResetDoesNotPromoteDiscovery(t *testing.T) {
+	for _, reset := range []any{nil, []any{REDACTEDREDACTED {
+		req := map[string]any{
+			"tools": reset,
+			"input": []any{map[string]any{
+				"type": "tool_search_output", "call_id": "call_reset", "status": "completed",
+				"tools": []any{map[string]any{"type": "function", "name": "must_not_promote"REDACTEDREDACTED,
+	REDACTED
+	REDACTED
+		mapping, changed, err := AdaptResponsesClientToolsWithInheritedMapping(
+			req,
+			ResponsesClientToolMapping{ToolSearch: trueREDACTED,
+			[]any{map[string]any{"type": "function", "name": "tool_search"REDACTEDREDACTED,
+		)
+	REDACTED
+		require.False(t, changed)
+		require.Empty(t, mapping)
+		item := requireResponsesClientToolValue[map[string]any](t, requireResponsesClientToolValue[[]any](t, req["input"])[0])
+		require.Equal(t, "tool_search_output", item["type"])
+REDACTED
 REDACTED
 
 func TestRestoreResponsesClientToolPayload_RestoresClientAndNamespaceCalls(t *testing.T) {

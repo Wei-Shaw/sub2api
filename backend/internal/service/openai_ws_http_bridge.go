@@ -15,7 +15,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
 const (
@@ -46,6 +45,33 @@ func setOpenAIWSHTTPBridgeToolState(c *gin.Context, state openAIWSHTTPBridgeTool
 REDACTED
 	state.LoweredTools = append(json.RawMessage(nil), state.LoweredTools...)
 	c.Set(openAIWSHTTPBridgeToolStateContextKey, state)
+REDACTED
+
+func decodeOpenAIWSHTTPBridgeLoweredTools(raw json.RawMessage) []any {
+	if len(raw) == 0 {
+		return nil
+REDACTED
+	var tools []any
+	if err := json.Unmarshal(raw, &tools); err != nil {
+		return nil
+REDACTED
+	return tools
+REDACTED
+
+func openAIWSHTTPBridgeRawField(body []byte, name string) (json.RawMessage, bool) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil {
+		return nil, false
+REDACTED
+	raw, present := fields[name]
+	return append(json.RawMessage(nil), raw...), present
+REDACTED
+
+func openAIWSHTTPBridgeToolUpstreamName(account *Account) string {
+	if account != nil && account.Platform == PlatformGrok {
+		return "Grok WS HTTP bridge"
+REDACTED
+	return "OpenAI WS HTTP bridge"
 REDACTED
 
 // ResolveOpenAIWSClientFirstMessageTimeout returns the effective client ingress deadline.
@@ -283,26 +309,40 @@ REDACTED
 	if err != nil {
 		return nil, fmt.Errorf("prepare http bridge body: %w", err)
 REDACTED
+	grokIntentSourceBody := append([]byte(nil), body...)
+	_, grokExplicitToolsField := openAIWSHTTPBridgeRawField(grokIntentSourceBody, "tools")
+	grokExplicitToolIntent := account.Platform == PlatformGrok && hasGrokResponsesToolIntent(grokIntentSourceBody)
 	var clientToolMapping apicompat.ResponsesClientToolMapping
-	if account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey {
+	functionToolUpstream := (account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey) || account.Platform == PlatformGrok
+	if functionToolUpstream {
+		if account.Platform == PlatformGrok {
+			body, err = sanitizeGrokResponsesInput(body)
+			if err != nil {
+				return nil, fmt.Errorf("sanitize Grok WS HTTP bridge input: %w", err)
+		REDACTED
+	REDACTED
 		inheritedState, _ := openAIWSHTTPBridgeToolStateFromContext(c)
-		toolsPresent := gjson.GetBytes(body, "tools").Exists()
+		inheritedLoweredTools := decodeOpenAIWSHTTPBridgeLoweredTools(inheritedState.LoweredTools)
 		body, clientToolMapping, err = adaptResponsesClientToolsForFunctionUpstreamWithMapping(
 			body,
-			"OpenAI WS HTTP bridge",
+			openAIWSHTTPBridgeToolUpstreamName(account),
 			inheritedState.ClientMapping,
+			inheritedLoweredTools,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("adapt OpenAI WS HTTP bridge client tools: %w", err)
+			return nil, fmt.Errorf("adapt %s client tools: %w", openAIWSHTTPBridgeToolUpstreamName(account), err)
+	REDACTED
+		if account.Platform == PlatformGrok && !grokExplicitToolsField && !grokExplicitToolIntent && len(inheritedLoweredTools) > 0 && hasGrokResponsesToolIntent(body) {
+			// This continuation omitted tools, so the pre-adapter source cannot
+			// represent the effective inherited declarations. Cache routing must
+			// see the rehydrated tool intent or it will replace client functions
+			// with the native-search tool-free route. Explicit current-turn tool
+			// intent still uses the original pre-sanitization source above.
+			grokIntentSourceBody = append(grokIntentSourceBody[:0], body...)
 	REDACTED
 		loweredTools := inheritedState.LoweredTools
-		if toolsPresent {
-			loweredTools = json.RawMessage(gjson.GetBytes(body, "tools").Raw)
-	REDACTED else if len(loweredTools) > 0 {
-			body, err = sjson.SetRawBytes(body, "tools", loweredTools)
-			if err != nil {
-				return nil, fmt.Errorf("inherit OpenAI WS HTTP bridge tools: %w", err)
-		REDACTED
+		if currentTools, present := openAIWSHTTPBridgeRawField(body, "tools"); present {
+			loweredTools = currentTools
 	REDACTED
 		setOpenAIWSHTTPBridgeToolState(c, openAIWSHTTPBridgeToolState{
 			ClientMapping: clientToolMapping,
@@ -330,7 +370,6 @@ REDACTED
 REDACTED
 	if account.Platform == PlatformGrok {
 		upstreamModel := resolveGrokWSUpstreamModel(account, body, originalModel)
-		grokIntentSourceBody := body
 		body, err = patchGrokResponsesBody(body, upstreamModel)
 		if err != nil {
 			return nil, err

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import Select from '@/components/common/Select.vue'
+import { CONCRETE_PLATFORM_OPTIONS REDACTED from '@/constants/platforms'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -109,11 +110,7 @@ const groups = ref<Array<{ id: number; name: string; platform: string REDACTED>>
 
 const platformOptions = computed(() => [
   { value: '', label: t('common.all') REDACTED,
-  { value: 'openai', label: 'OpenAI' REDACTED,
-  { value: 'anthropic', label: 'Anthropic' REDACTED,
-  { value: 'gemini', label: 'Gemini' REDACTED,
-  { value: 'antigravity', label: 'Antigravity' REDACTED,
-  { value: 'grok', label: 'Grok' REDACTED
+  ...CONCRETE_PLATFORM_OPTIONS
 ])
 
 const timeRangeOptions = computed(() => [

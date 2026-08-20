@@ -830,6 +830,53 @@ REDACTED
 
 type ProxyProbeConfig struct {
 	InsecureSkipVerify bool `mapstructure:"insecure_skip_verify"` // 已禁用：禁止跳过 TLS 证书验证
+	// URLs 按优先级排列的自定义探测 URL 列表。
+	// 留空时使用内置默认列表（ip-api → ipify）。
+	// 某些 AI API 专用代理只允许访问特定域名，配置多个备选可提高探测成功率。
+	URLs []ProbeURLConfig `mapstructure:"urls"`
+REDACTED
+
+// ProbeURLConfig 描述一个探测端点及其响应解析方式。
+type ProbeURLConfig struct {
+	URL    string `mapstructure:"url"`
+	Parser string `mapstructure:"parser"` // "ip-api" / "ipify" / "chatgpt-trace"
+REDACTED
+
+func normalizeProxyProbeURLs(targets []ProbeURLConfig) ([]ProbeURLConfig, error) {
+	if len(targets) == 0 {
+		return nil, nil
+REDACTED
+
+	normalized := make([]ProbeURLConfig, 0, len(targets))
+	for i, target := range targets {
+		rawURL := strings.TrimSpace(target.URL)
+		parser := strings.ToLower(strings.TrimSpace(target.Parser))
+		if rawURL == "" {
+			return nil, fmt.Errorf("entry %d: url is required", i)
+	REDACTED
+		if parser == "" {
+			return nil, fmt.Errorf("entry %d: parser is required", i)
+	REDACTED
+		switch parser {
+		case "ip-api", "ipify", "chatgpt-trace":
+		default:
+			return nil, fmt.Errorf("entry %d: unsupported parser %q", i, target.Parser)
+	REDACTED
+
+		parsed, err := url.Parse(rawURL)
+		if err != nil || parsed.Host == "" {
+			return nil, fmt.Errorf("entry %d: invalid url %q", i, target.URL)
+	REDACTED
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return nil, fmt.Errorf("entry %d: url scheme must be http or https", i)
+	REDACTED
+
+		normalized = append(normalized, ProbeURLConfig{
+			URL:    rawURL,
+			Parser: parser,
+	REDACTED)
+REDACTED
+	return normalized, nil
 REDACTED
 
 type BillingConfig struct {
@@ -2569,6 +2616,11 @@ func (c *Config) Validate() error {
 REDACTED
 	c.Security.ForwardedClientIPHeaders = forwardedClientIPHeaders
 	c.SetForwardedClientIPSettings(c.Security.TrustForwardedIPForAPIKeyACL, forwardedClientIPHeaders)
+	proxyProbeURLs, err := normalizeProxyProbeURLs(c.Security.ProxyProbe.URLs)
+	if err != nil {
+		return fmt.Errorf("security.proxy_probe.urls: %w", err)
+REDACTED
+	c.Security.ProxyProbe.URLs = proxyProbeURLs
 	if c.Server.ReadHeaderTimeout < 1 || c.Server.ReadHeaderTimeout > 60 {
 		return fmt.Errorf("server.read_header_timeout must be between 1 and 60 seconds")
 REDACTED
