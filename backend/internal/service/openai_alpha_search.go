@@ -443,13 +443,12 @@ func openAIAlphaSearchInboundHeader(c *gin.Context, key string) string {
 	return strings.TrimSpace(c.GetHeader(key))
 }
 
-var openAIAlphaSearchUnsupportedBodyFields = [...]string{
+var openAIAlphaSearchUnsupportedBodyFields = append([]string{
 	// Codex alpha/search 是 SearchRequest 独立协议，不是 /responses 子请求。
 	// 新版 Codex/第三方代理可能把 Responses 公共字段误带到搜索请求里；ChatGPT
 	// alpha/search 会对这些字段返回 Unknown parameter（例如 prompt_cache_key）。
 	"prompt_cache_key",
-	"prompt_cache_retention",
-}
+}, openAIResponsesOptionalFields...)
 
 func sanitizeOpenAIAlphaSearchBody(body []byte) ([]byte, error) {
 	if len(body) == 0 {

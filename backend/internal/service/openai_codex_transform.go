@@ -123,13 +123,11 @@ const (
 	codexSparkImageUnsupportedText   = codexSparkImageUnsupportedMarker + "\nThe current model is gpt-5.3-codex-spark, which does not support image generation, image editing, image input, the `image_generation` tool, or Codex `image_gen`/`$imagegen` workflows. If the user asks for image generation or image editing, clearly explain this model limitation and ask them to switch to a non-Spark Codex model such as gpt-5.3-codex or gpt-5.4. Do not claim that the local environment merely lacks image_gen tooling, and do not suggest CLI fallback as the primary fix while the model remains Spark.\n</sub2api-codex-spark-image-unsupported>"
 )
 
-var openAIChatGPTInternalUnsupportedFields = []string{
+var openAIChatGPTInternalUnsupportedFields = append([]string{
 	"user",
 	"metadata",
-	"prompt_cache_retention",
-	"safety_identifier",
 	"stream_options",
-}
+}, openAIResponsesOptionalFields...)
 
 var openAICodexOAuthUnsupportedFields = append([]string{
 	"max_output_tokens",

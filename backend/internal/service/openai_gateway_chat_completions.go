@@ -27,14 +27,33 @@ import (
 // short-circuit in ForwardAsChatCompletions (see isResponsesShape branch).
 // The normal Chat Completions → Responses conversion path is unaffected
 // because ChatCompletionsRequest has no fields for these parameters — unknown
-// fields are dropped naturally by json.Unmarshal. Kept semantically in sync
-// with the list in openai_gateway_service.go:2034 used by the /v1/responses
-// passthrough path.
-var cursorResponsesUnsupportedFields = []string{
-	"prompt_cache_retention",
-	"safety_identifier",
+// fields are dropped naturally by json.Unmarshal.
+var cursorResponsesUnsupportedFields = append([]string{
 	"metadata",
 	"stream_options",
+}, openAIResponsesOptionalFields...)
+
+var cursorOfficialOpenAIResponsesUnsupportedFields = []string{
+	"stream_options",
+}
+
+func sanitizeCursorResponsesShapeBody(account *Account, body []byte) ([]byte, error) {
+	fields := cursorResponsesUnsupportedFields
+	if shouldPreserveOpenAIResponsesOptionalFields(account) {
+		fields = cursorOfficialOpenAIResponsesUnsupportedFields
+	}
+	out := body
+	for _, field := range fields {
+		if !gjson.GetBytes(out, field).Exists() {
+			continue
+		}
+		stripped, err := sjson.DeleteBytes(out, field)
+		if err != nil {
+			return body, fmt.Errorf("strip Cursor Responses field %s: %w", field, err)
+		}
+		out = stripped
+	}
+	return out, nil
 }
 
 // ForwardAsChatCompletions accepts a Chat Completions request body, converts it
@@ -179,15 +198,12 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		if err != nil {
 			return nil, fmt.Errorf("rewrite model in responses-shape body: %w", err)
 		}
-		// Strip Responses API parameters that no Codex upstream accepts.
-		// Because this branch forwards the raw body (the normal path rebuilds
-		// it from ChatCompletionsRequest and drops unknown fields naturally),
-		// we must filter these fields explicitly here — otherwise the upstream
-		// rejects the request with "Unsupported parameter: ...".
-		for _, field := range cursorResponsesUnsupportedFields {
-			if stripped, derr := sjson.DeleteBytes(responsesBody, field); derr == nil {
-				responsesBody = stripped
-			}
+		// The raw Responses-shaped body bypasses struct conversion. Preserve
+		// official Responses fields only for the official Platform API; internal
+		// and compatible upstreams keep the stricter unsupported-field filter.
+		responsesBody, err = sanitizeCursorResponsesShapeBody(account, responsesBody)
+		if err != nil {
+			return nil, err
 		}
 		responsesBody, normalizedServiceTier, err := normalizeResponsesBodyServiceTier(responsesBody)
 		if err != nil {

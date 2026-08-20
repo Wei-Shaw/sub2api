@@ -958,6 +958,23 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_DedicatedModeDoe
 }
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeRelaysByCaddyAdapter(t *testing.T) {
+	tests := []struct {
+		name       string
+		baseURL    string
+		wantFields bool
+	}{
+		{name: "official OpenAI endpoint", wantFields: true},
+		{name: "custom OpenAI-compatible endpoint", baseURL: "https://compat.example/v1", wantFields: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testOpenAIResponsesWebSocketPassthroughOptionalFields(t, tt.baseURL, tt.wantFields)
+		})
+	}
+}
+
+func testOpenAIResponsesWebSocketPassthroughOptionalFields(t *testing.T, baseURL string, wantFields bool) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 
 	cfg := &config.Config{}
@@ -988,6 +1005,10 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 		openaiWSPassthroughDialer: captureDialer,
 	}
 
+	credentials := map[string]any{"api_key": "sk-test"}
+	if baseURL != "" {
+		credentials["base_url"] = baseURL
+	}
 	account := &Account{
 		ID:          452,
 		Name:        "openai-ingress-passthrough",
@@ -996,9 +1017,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 		Status:      StatusActive,
 		Schedulable: true,
 		Concurrency: 1,
-		Credentials: map[string]any{
-			"api_key": "sk-test",
-		},
+		Credentials: credentials,
 		Extra: map[string]any{
 			"openai_apikey_responses_websockets_v2_mode": OpenAIWSIngressModePassthrough,
 		},
@@ -1058,7 +1077,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 	}()
 
 	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
-	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","stream":false,"service_tier":"fast","reasoning":{"effort":"HIGH"}}`))
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","stream":false,"service_tier":"fast","prompt_cache_retention":"24h","safety_identifier":"sid","prompt_cache_options":{"ttl":"30m"},"reasoning":{"effort":"HIGH"}}`))
 	cancelWrite()
 	require.NoError(t, err)
 
@@ -1099,6 +1118,16 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 
 	require.Equal(t, 1, captureDialer.DialCount(), "passthrough 模式应直接建立上游 websocket")
 	require.Len(t, upstreamConn.writes, 1, "passthrough 模式应透传首条 response.create")
+	forwarded := requestToJSONString(upstreamConn.writes[0])
+	if wantFields {
+		require.Equal(t, "24h", gjson.Get(forwarded, "prompt_cache_retention").String())
+		require.Equal(t, "sid", gjson.Get(forwarded, "safety_identifier").String())
+		require.Equal(t, "30m", gjson.Get(forwarded, "prompt_cache_options.ttl").String())
+		return
+	}
+	require.False(t, gjson.Get(forwarded, "prompt_cache_retention").Exists())
+	require.False(t, gjson.Get(forwarded, "safety_identifier").Exists())
+	require.False(t, gjson.Get(forwarded, "prompt_cache_options").Exists())
 }
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughHeadersUsePromptCacheAndTurnState(t *testing.T) {

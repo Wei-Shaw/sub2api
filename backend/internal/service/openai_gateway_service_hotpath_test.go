@@ -238,6 +238,71 @@ func TestOpenAIGatewayService_Forward_NormalizesMaxTokensAndStripsPromptCacheOpt
 	})
 }
 
+func TestOpenAIGatewayService_Forward_FiltersResponsesOptionalFieldsByOfficialHost(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name          string
+		baseURL       string
+		codexClient   bool
+		preserveField bool
+	}{
+		{
+			name:          "official OpenAI endpoint preserves fields for regular clients",
+			preserveField: true,
+		},
+		{
+			name:          "custom compatible endpoint strips fields for Codex clients",
+			baseURL:       "https://compat.example/v1",
+			codexClient:   true,
+			preserveField: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"usage":{"input_tokens":1,"output_tokens":2}}`)),
+			}}
+			cfg := &config.Config{}
+			cfg.Security.URLAllowlist.Enabled = false
+			svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: upstream}
+			credentials := map[string]any{"api_key": "sk-test"}
+			if tt.baseURL != "" {
+				credentials["base_url"] = tt.baseURL
+			}
+			account := &Account{
+				ID:          41,
+				Name:        "openai-apikey",
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Concurrency: 1,
+				Credentials: credentials,
+				Extra:       map[string]any{"openai_responses_supported": true},
+			}
+			body := []byte(`{"model":"gpt-5.4","stream":false,"prompt_cache_retention":"24h","safety_identifier":"sid","prompt_cache_options":{"ttl":"30m"},"input":"hi"}`)
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			if tt.codexClient {
+				c.Request.Header.Set("User-Agent", codexCLIUserAgent)
+				c.Request.Header.Set("Originator", "codex_cli_rs")
+			}
+			SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+
+			result, err := svc.Forward(context.Background(), c, account, body)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Len(t, upstream.bodies, 1)
+			for _, field := range []string{"prompt_cache_retention", "safety_identifier", "prompt_cache_options"} {
+				require.Equal(t, tt.preserveField, gjson.GetBytes(upstream.bodies[0], field).Exists(), field)
+			}
+		})
+	}
+}
+
 func TestOpenAIGatewayService_Forward_MappedImageModelUsesImageGate(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := &httpUpstreamRecorder{
