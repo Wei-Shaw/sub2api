@@ -42,6 +42,9 @@ func (h *BatchImageHandler) Submit(c *gin.Context) {
 	if !h.checkSecurityAuditBeforeSubmit(c, &req) {
 		return
 	}
+	if apiKey, ok := middleware.GetAPIKeyFromContext(c); ok && apiKey != nil {
+		owner.GroupID = apiKey.GroupID
+	}
 	if sessionID := service.ExtractClientSessionID(c); sessionID != "" {
 		req.SessionID = &sessionID
 	}

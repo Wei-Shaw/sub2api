@@ -97,6 +97,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	requestCtx, pricingAt := service.WithGatewayTokenRequestPricing(requestCtx)
 	if service.IsImageGenerationIntentForPlatform("/v1/responses", reqModel, body, openAICompatibleRequestPlatform(c.Request.Context(), apiKey)) {
 		requestCtx = service.WithOpenAIImageGenerationIntent(requestCtx)
+		requestCtx = service.WithPromptAuditFallbackRequirements(requestCtx, service.PromptAuditFallbackRequirements{ImageIntent: true})
 	}
 	c.Request = c.Request.WithContext(requestCtx)
 
@@ -117,6 +118,17 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && !decision.AllowNextStage {
 		h.responsesSecurityAuditError(c, decision)
+		return
+	}
+	requestCtx = c.Request.Context()
+	if service.IsImageGenerationIntentForPlatform("/v1/responses", reqModel, body, openAICompatibleRequestPlatform(requestCtx, apiKey)) {
+		requestCtx = service.WithOpenAIImageGenerationIntent(requestCtx)
+		c.Request = c.Request.WithContext(requestCtx)
+	}
+	channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(requestCtx, apiKey.GroupID, reqModel)
+	if apiKey.Group != nil && apiKey.Group.ClaudeCodeOnly {
+		h.responsesErrorResponse(c, http.StatusForbidden, "permission_error",
+			"This group is restricted to Claude Code clients (/v1/messages only)")
 		return
 	}
 

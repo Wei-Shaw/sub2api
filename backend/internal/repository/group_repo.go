@@ -99,6 +99,7 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetNillableFallbackGroupID(groupIn.FallbackGroupID).
 		SetNillableFallbackGroupIDOnInvalidRequest(groupIn.FallbackGroupIDOnInvalidRequest).
+		SetNillableFallbackGroupIDOnPromptAuditBlock(groupIn.FallbackGroupIDOnPromptAuditBlock).
 		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled).
 		SetMcpXMLInject(groupIn.MCPXMLInject).
 		SetAllowMessagesDispatch(groupIn.AllowMessagesDispatch).
@@ -378,6 +379,12 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetFallbackGroupIDOnInvalidRequest(*groupIn.FallbackGroupIDOnInvalidRequest)
 	} else {
 		builder = builder.ClearFallbackGroupIDOnInvalidRequest()
+	}
+
+	if groupIn.FallbackGroupIDOnPromptAuditBlock != nil {
+		builder = builder.SetFallbackGroupIDOnPromptAuditBlock(*groupIn.FallbackGroupIDOnPromptAuditBlock)
+	} else {
+		builder = builder.ClearFallbackGroupIDOnPromptAuditBlock()
 	}
 
 	// 处理 ModelRouting：nil 时清除，否则设置

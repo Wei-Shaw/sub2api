@@ -1643,6 +1643,44 @@ func TestAdminService_UpdateGroup_InvalidRequestFallbackAllowsAntigravity(t *tes
 	require.Equal(t, fallbackID, *repo.updated.FallbackGroupIDOnInvalidRequest)
 }
 
+func TestAdminService_ValidatePromptAuditFallbackGroup(t *testing.T) {
+	targetID := int64(10)
+	repo := &groupRepoStubForInvalidRequestFallback{
+		groups: map[int64]*Group{
+			targetID: {ID: targetID, Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	require.NoError(t, svc.validatePromptAuditFallbackGroup(context.Background(), 1, PlatformOpenAI, SubscriptionTypeStandard, targetID))
+	require.ErrorContains(t, svc.validatePromptAuditFallbackGroup(context.Background(), targetID, PlatformOpenAI, SubscriptionTypeStandard, targetID), "cannot set self")
+	require.ErrorContains(t, svc.validatePromptAuditFallbackGroup(context.Background(), 1, PlatformOpenAI, SubscriptionTypeSubscription, targetID), "subscription groups cannot")
+	require.ErrorContains(t, svc.validatePromptAuditFallbackGroup(context.Background(), 1, PlatformAnthropic, SubscriptionTypeStandard, targetID), "platform mismatch")
+}
+
+func TestAdminService_UpdateGroup_PromptAuditFallbackSetAndClear(t *testing.T) {
+	targetID := int64(10)
+	existing := &Group{ID: 1, Name: "source", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard}
+	repo := &groupRepoStubForInvalidRequestFallback{
+		groups: map[int64]*Group{
+			existing.ID: existing,
+			targetID:    {ID: targetID, Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	updated, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{FallbackGroupIDOnPromptAuditBlock: &targetID})
+	require.NoError(t, err)
+	require.Equal(t, targetID, *updated.FallbackGroupIDOnPromptAuditBlock)
+	require.Equal(t, targetID, *repo.updated.FallbackGroupIDOnPromptAuditBlock)
+
+	zero := int64(0)
+	updated, err = svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{FallbackGroupIDOnPromptAuditBlock: &zero})
+	require.NoError(t, err)
+	require.Nil(t, updated.FallbackGroupIDOnPromptAuditBlock)
+	require.Nil(t, repo.updated.FallbackGroupIDOnPromptAuditBlock)
+}
+
 func TestAdminService_CreateCompositeRoute_RejectsNonCompositeGroup(t *testing.T) {
 	groupRepo := &groupRepoStubForAdmin{
 		getByID: &Group{ID: 7, Platform: PlatformOpenAI},

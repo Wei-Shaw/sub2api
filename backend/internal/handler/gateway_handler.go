@@ -213,6 +213,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		h.anthropicSecurityAuditError(c, decision)
 		return
 	}
+	channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 
 	// Track if we've started streaming (for error handling)
 	streamStarted := false
@@ -1308,6 +1309,11 @@ func cloneAPIKeyWithGroup(apiKey *service.APIKey, group *service.Group) *service
 		return apiKey
 	}
 	cloned := *apiKey
+	if apiKey.User != nil {
+		clonedUser := *apiKey.User
+		clonedUser.UserGroupRPMOverride = nil
+		cloned.User = &clonedUser
+	}
 	groupID := group.ID
 	cloned.GroupID = &groupID
 	cloned.Group = group

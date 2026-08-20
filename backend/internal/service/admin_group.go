@@ -364,6 +364,15 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 			return nil, err
 		}
 	}
+	promptAuditFallback := input.FallbackGroupIDOnPromptAuditBlock
+	if promptAuditFallback != nil && *promptAuditFallback <= 0 {
+		promptAuditFallback = nil
+	}
+	if promptAuditFallback != nil {
+		if err := s.validatePromptAuditFallbackGroup(ctx, 0, platform, subscriptionType, *promptAuditFallback); err != nil {
+			return nil, err
+		}
+	}
 
 	// MCPXMLInject：默认为 true，仅当显式传入 false 时关闭
 	mcpXMLInject := true
@@ -407,61 +416,62 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 
 	group := &Group{
-		Name:                            input.Name,
-		Description:                     input.Description,
-		Platform:                        platform,
-		RateMultiplier:                  input.RateMultiplier,
-		IsExclusive:                     input.IsExclusive,
-		Status:                          StatusActive,
-		SubscriptionType:                subscriptionType,
-		DailyLimitUSD:                   dailyLimit,
-		WeeklyLimitUSD:                  weeklyLimit,
-		MonthlyLimitUSD:                 monthlyLimit,
-		LongContextPricingEnabled:       input.LongContextPricingEnabled,
-		ModelPricing:                    modelPricing,
-		AllowImageGeneration:            allowImageGeneration,
-		AllowBatchImageGeneration:       allowBatchImageGeneration,
-		ImageRateIndependent:            input.ImageRateIndependent,
-		ImageRateMultiplier:             imageRateMultiplier,
-		BatchImageDiscountMultiplier:    batchImageDiscountMultiplier,
-		BatchImageHoldMultiplier:        batchImageHoldMultiplier,
-		VideoRateIndependent:            input.VideoRateIndependent,
-		VideoRateMultiplier:             videoRateMultiplier,
-		PeakRateEnabled:                 peakRateEnabled,
-		PeakStart:                       peakStart,
-		PeakEnd:                         peakEnd,
-		PeakRateMultiplier:              peakRateMultiplier,
-		ProfitControlEnabled:            profitControlEnabled,
-		ProfitMinMargin:                 profitMinMargin,
-		ProfitSafetyBuffer:              profitSafetyBuffer,
-		ImagePrice1K:                    imagePrice1K,
-		ImagePrice2K:                    imagePrice2K,
-		ImagePrice4K:                    imagePrice4K,
-		VideoPrice480P:                  videoPrice480P,
-		VideoPrice720P:                  videoPrice720P,
-		VideoPrice1080P:                 videoPrice1080P,
-		VideoModelPrices:                NormalizeVideoModelPrices(input.VideoModelPrices),
-		WebSearchPricePerCall:           webSearchPricePerCall,
-		SearchPricePer1k:                searchPricePer1k,
-		AudioRealtimePricePerMin:        audioRealtimePricePerMin,
-		AudioTTSPricePerMillionChars:    audioTTSPricePerMillionChars,
-		AudioSTTPricePerHour:            audioSTTPricePerHour,
-		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
-		FallbackGroupID:                 input.FallbackGroupID,
-		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
-		ModelRouting:                    input.ModelRouting,
-		MCPXMLInject:                    mcpXMLInject,
-		SupportedModelScopes:            input.SupportedModelScopes,
-		AllowMessagesDispatch:           input.AllowMessagesDispatch,
-		AllowLive:                       input.AllowLive,
-		RequireOAuthOnly:                input.RequireOAuthOnly,
-		RequirePrivacySet:               input.RequirePrivacySet,
-		DefaultMappedModel:              input.DefaultMappedModel,
-		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
-		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
-		RPMLimit:                        input.RPMLimit,
-		MaxReasoningEffort:              maxReasoningEffort,
-		ReasoningEffortMappings:         reasoningEffortMappings,
+		Name:                              input.Name,
+		Description:                       input.Description,
+		Platform:                          platform,
+		RateMultiplier:                    input.RateMultiplier,
+		IsExclusive:                       input.IsExclusive,
+		Status:                            StatusActive,
+		SubscriptionType:                  subscriptionType,
+		DailyLimitUSD:                     dailyLimit,
+		WeeklyLimitUSD:                    weeklyLimit,
+		MonthlyLimitUSD:                   monthlyLimit,
+		LongContextPricingEnabled:         input.LongContextPricingEnabled,
+		ModelPricing:                      modelPricing,
+		AllowImageGeneration:              allowImageGeneration,
+		AllowBatchImageGeneration:         allowBatchImageGeneration,
+		ImageRateIndependent:              input.ImageRateIndependent,
+		ImageRateMultiplier:               imageRateMultiplier,
+		BatchImageDiscountMultiplier:      batchImageDiscountMultiplier,
+		BatchImageHoldMultiplier:          batchImageHoldMultiplier,
+		VideoRateIndependent:              input.VideoRateIndependent,
+		VideoRateMultiplier:               videoRateMultiplier,
+		PeakRateEnabled:                   peakRateEnabled,
+		PeakStart:                         peakStart,
+		PeakEnd:                           peakEnd,
+		PeakRateMultiplier:                peakRateMultiplier,
+		ProfitControlEnabled:              profitControlEnabled,
+		ProfitMinMargin:                   profitMinMargin,
+		ProfitSafetyBuffer:                profitSafetyBuffer,
+		ImagePrice1K:                      imagePrice1K,
+		ImagePrice2K:                      imagePrice2K,
+		ImagePrice4K:                      imagePrice4K,
+		VideoPrice480P:                    videoPrice480P,
+		VideoPrice720P:                    videoPrice720P,
+		VideoPrice1080P:                   videoPrice1080P,
+		VideoModelPrices:                  NormalizeVideoModelPrices(input.VideoModelPrices),
+		WebSearchPricePerCall:             webSearchPricePerCall,
+		SearchPricePer1k:                  searchPricePer1k,
+		AudioRealtimePricePerMin:          audioRealtimePricePerMin,
+		AudioTTSPricePerMillionChars:      audioTTSPricePerMillionChars,
+		AudioSTTPricePerHour:              audioSTTPricePerHour,
+		ClaudeCodeOnly:                    input.ClaudeCodeOnly,
+		FallbackGroupID:                   input.FallbackGroupID,
+		FallbackGroupIDOnInvalidRequest:   fallbackOnInvalidRequest,
+		FallbackGroupIDOnPromptAuditBlock: promptAuditFallback,
+		ModelRouting:                      input.ModelRouting,
+		MCPXMLInject:                      mcpXMLInject,
+		SupportedModelScopes:              input.SupportedModelScopes,
+		AllowMessagesDispatch:             input.AllowMessagesDispatch,
+		AllowLive:                         input.AllowLive,
+		RequireOAuthOnly:                  input.RequireOAuthOnly,
+		RequirePrivacySet:                 input.RequirePrivacySet,
+		DefaultMappedModel:                input.DefaultMappedModel,
+		MessagesDispatchModelConfig:       normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
+		ModelsListConfig:                  normalizeGroupModelsListConfig(input.ModelsListConfig),
+		RPMLimit:                          input.RPMLimit,
+		MaxReasoningEffort:                maxReasoningEffort,
+		ReasoningEffortMappings:           reasoningEffortMappings,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	if group.Platform != PlatformOpenAI && group.Platform != PlatformComposite {
@@ -587,6 +597,57 @@ func (s *adminServiceImpl) validateFallbackGroupOnInvalidRequest(ctx context.Con
 		return fmt.Errorf("fallback group cannot have invalid request fallback configured")
 	}
 	return nil
+}
+
+func (s *adminServiceImpl) validatePromptAuditFallbackGroup(ctx context.Context, currentGroupID int64, platform, subscriptionType string, fallbackGroupID int64) error {
+	if fallbackGroupID <= 0 {
+		return errors.New("prompt audit fallback group must be positive")
+	}
+	if currentGroupID > 0 && currentGroupID == fallbackGroupID {
+		return errors.New("cannot set self as prompt audit fallback group")
+	}
+	if subscriptionType == SubscriptionTypeSubscription {
+		return errors.New("subscription groups cannot set prompt audit fallback")
+	}
+	fallbackGroup, err := s.groupRepo.GetByIDLite(ctx, fallbackGroupID)
+	if err != nil {
+		return fmt.Errorf("prompt audit fallback group not found: %w", err)
+	}
+	if !fallbackGroup.IsActive() {
+		return errors.New("prompt audit fallback group must be active")
+	}
+	if fallbackGroup.SubscriptionType == SubscriptionTypeSubscription {
+		return errors.New("prompt audit fallback group cannot be subscription type")
+	}
+	if !promptAuditFallbackPlatformsCompatible(platform, fallbackGroup.Platform) {
+		return fmt.Errorf("prompt audit fallback group platform mismatch: source=%s target=%s", platform, fallbackGroup.Platform)
+	}
+	return nil
+}
+
+func promptAuditFallbackPlatformsCompatible(sourcePlatform, targetPlatform string) bool {
+	if sourcePlatform == targetPlatform {
+		return true
+	}
+	if sourcePlatform == PlatformComposite {
+		return isConcreteRequestPlatform(targetPlatform)
+	}
+	if targetPlatform == PlatformComposite {
+		return isConcreteRequestPlatform(sourcePlatform)
+	}
+	if (sourcePlatform == PlatformAnthropic || sourcePlatform == PlatformAntigravity) &&
+		(targetPlatform == PlatformAnthropic || targetPlatform == PlatformAntigravity) {
+		return true
+	}
+	if (sourcePlatform == PlatformGemini || sourcePlatform == PlatformAntigravity) &&
+		(targetPlatform == PlatformGemini || targetPlatform == PlatformAntigravity) {
+		return true
+	}
+	if (sourcePlatform == PlatformOpenAI || sourcePlatform == PlatformGrok) &&
+		(targetPlatform == PlatformOpenAI || targetPlatform == PlatformGrok) {
+		return true
+	}
+	return false
 }
 
 func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error) {
@@ -787,6 +848,20 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		}
 	}
 	group.FallbackGroupIDOnInvalidRequest = fallbackOnInvalidRequest
+	promptAuditFallback := group.FallbackGroupIDOnPromptAuditBlock
+	if input.FallbackGroupIDOnPromptAuditBlock != nil {
+		if *input.FallbackGroupIDOnPromptAuditBlock > 0 {
+			promptAuditFallback = input.FallbackGroupIDOnPromptAuditBlock
+		} else {
+			promptAuditFallback = nil
+		}
+	}
+	if promptAuditFallback != nil {
+		if err := s.validatePromptAuditFallbackGroup(ctx, id, group.Platform, group.SubscriptionType, *promptAuditFallback); err != nil {
+			return nil, err
+		}
+	}
+	group.FallbackGroupIDOnPromptAuditBlock = promptAuditFallback
 
 	// 模型路由配置
 	if input.ModelRouting != nil {

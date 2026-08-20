@@ -26,6 +26,31 @@ import (
 	"go.uber.org/zap"
 )
 
+type promptAuditFallbackRequirementsContextKey struct{}
+
+type PromptAuditFallbackRequirements struct {
+	ImageIntent       bool
+	RequireResponses  bool
+	RequireCompact    bool
+	RequiredTransport OpenAIUpstreamTransport
+	ImageCapability   OpenAIImagesCapability
+}
+
+func WithPromptAuditFallbackRequirements(ctx context.Context, requirements PromptAuditFallbackRequirements) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, promptAuditFallbackRequirementsContextKey{}, requirements)
+}
+
+func promptAuditFallbackRequirementsFromContext(ctx context.Context) PromptAuditFallbackRequirements {
+	if ctx == nil {
+		return PromptAuditFallbackRequirements{}
+	}
+	requirements, _ := ctx.Value(promptAuditFallbackRequirementsContextKey{}).(PromptAuditFallbackRequirements)
+	return requirements
+}
+
 const (
 	// ChatGPT internal API for OAuth accounts
 	chatgptCodexURL = "https://chatgpt.com/backend-api/codex/responses"
@@ -560,6 +585,118 @@ func (s *OpenAIGatewayService) ResolveChannelMapping(ctx context.Context, groupI
 		return ChannelMappingResult{MappedModel: model}
 	}
 	return s.channelService.ResolveChannelMapping(ctx, groupID, model)
+}
+
+func (s *OpenAIGatewayService) ResolveGroupByID(ctx context.Context, groupID int64) (*Group, error) {
+	if s == nil || s.channelService == nil || s.channelService.groupRepo == nil {
+		return nil, ErrGroupNotFound
+	}
+	return s.channelService.groupRepo.GetByIDLite(ctx, groupID)
+}
+
+func (s *OpenAIGatewayService) HasPromptAuditFallbackAccounts(ctx context.Context, group *Group, protocol, model string) (bool, error) {
+	if s == nil || s.accountRepo == nil || group == nil {
+		return false, nil
+	}
+	groupID := group.ID
+	if s.checkChannelPricingRestriction(ctx, &groupID, model) {
+		return false, nil
+	}
+	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, group.ID)
+	if err != nil {
+		return false, err
+	}
+	targetPlatform := group.Platform
+	if targetPlatform == PlatformComposite {
+		if resolved, ok := ResolvedTargetPlatformFromContext(ctx); ok {
+			targetPlatform = resolved
+		} else if detected, ok := DetectModelPlatform(model); ok {
+			targetPlatform = detected
+		} else {
+			return false, nil
+		}
+	}
+	requirements := promptAuditFallbackRequirementsFromContext(ctx)
+	requiredCapability := promptAuditFallbackOpenAICapability(protocol, targetPlatform, requirements)
+	eligibilityCtx := ctx
+	eligibilityModel := model
+	if protocol != ContentModerationProtocolOpenAIImages && s.channelService != nil {
+		mapping := s.channelService.ResolveChannelMapping(ctx, groupID, model)
+		eligibilityModel = mapping.MappedModel
+		eligibilityCtx = WithOpenAIForwardModel(ctx, mapping.MappedModel, requirements.RequireCompact)
+	}
+	checkUpstreamRestriction := s.needsUpstreamChannelRestrictionCheck(eligibilityCtx, &groupID)
+	for i := range accounts {
+		account := &accounts[i]
+		modelSupported := s.promptAuditFallbackOpenAIModelSupported(eligibilityCtx, groupID, account, protocol, eligibilityModel)
+		imageCapability := requirements.ImageCapability
+		if targetPlatform != PlatformOpenAI {
+			imageCapability = ""
+		}
+		imageCapabilitySupported := promptAuditFallbackImageCapabilitySupported(account, imageCapability)
+		endpointEligible := promptAuditFallbackAccountSupportsModel(account, eligibilityModel)
+		if targetPlatform == PlatformOpenAI || targetPlatform == PlatformGrok {
+			endpointEligible = isOpenAICompatibleAccountEligibleForRequest(eligibilityCtx, account, targetPlatform, eligibilityModel, requirements.RequireCompact, requiredCapability)
+		}
+		requiredTransport := requirements.RequiredTransport
+		if targetPlatform == PlatformGrok && requiredTransport == OpenAIUpstreamTransportResponsesWebsocketV2Ingress {
+			requiredTransport = OpenAIUpstreamTransportHTTPSSE
+		}
+		transportEligible := s.isOpenAIAccountTransportCompatible(account, requiredTransport)
+		if promptAuditFallbackAccountCompatible(ctx, group.Platform, account.Platform, protocol, model, account.IsMixedSchedulingEnabled()) &&
+			modelSupported && imageCapabilitySupported &&
+			endpointEligible && transportEligible &&
+			(!checkUpstreamRestriction || !s.isUpstreamModelRestrictedByChannel(eligibilityCtx, groupID, account, model, requirements.RequireCompact)) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (s *OpenAIGatewayService) promptAuditFallbackOpenAIModelSupported(ctx context.Context, groupID int64, account *Account, protocol, model string) bool {
+	if protocol != ContentModerationProtocolOpenAIImages || account == nil || account.Platform != PlatformOpenAI {
+		return promptAuditFallbackAccountSupportsModel(account, model)
+	}
+	mappedModel := model
+	if s != nil && s.channelService != nil {
+		mappedModel = s.channelService.ResolveChannelMapping(ctx, groupID, model).MappedModel
+	}
+	return isOpenAIImageModelSupportedByAccount(account, model, mappedModel)
+}
+
+func promptAuditFallbackImageCapabilitySupported(account *Account, capability OpenAIImagesCapability) bool {
+	if capability == "" {
+		return true
+	}
+	if account != nil && account.SupportsOpenAIImageCapability(capability) {
+		return true
+	}
+	return capability == OpenAIImagesCapabilityNative && account != nil && account.SupportsOpenAIImageCapability(OpenAIImagesCapabilityBasic)
+}
+
+func promptAuditFallbackOpenAICapability(protocol, targetPlatform string, requirements PromptAuditFallbackRequirements) OpenAIEndpointCapability {
+	switch protocol {
+	case "openai_embeddings":
+		return OpenAIEndpointCapabilityEmbeddings
+	case "openai_alpha_search":
+		return OpenAIEndpointCapabilityAlphaSearch
+	case "openai_live":
+		return OpenAIEndpointCapabilityLive
+	case "grok_media":
+		return OpenAIEndpointCapabilityGrokMediaGeneration
+	case ContentModerationProtocolOpenAIImages:
+		if targetPlatform == PlatformGrok {
+			return OpenAIEndpointCapabilityGrokMediaGeneration
+		}
+		return ""
+	case ContentModerationProtocolOpenAIResponses:
+		if targetPlatform == PlatformOpenAI && (requirements.ImageIntent || requirements.RequireResponses) {
+			return OpenAIEndpointCapabilityResponses
+		}
+		return OpenAIEndpointCapabilityChatCompletions
+	default:
+		return OpenAIEndpointCapabilityChatCompletions
+	}
 }
 
 // IsModelRestricted 检查模型是否被渠道限制（代理到 ChannelService）

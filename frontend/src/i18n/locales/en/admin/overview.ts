@@ -1152,6 +1152,11 @@ export default {
         hint: 'Triggered only when upstream explicitly returns prompt too long. Leave empty to disable fallback.',
         noFallback: 'No Fallback'
       },
+      promptAuditFallback: {
+        title: 'Prompt Audit Block Fallback Group',
+        hint: 'When synchronous prompt auditing returns Block, switch to this group once. If the target is unavailable, the original block is returned.',
+        noFallback: 'No Fallback'
+      },
       copyAccounts: {
         title: 'Copy Accounts from Groups',
         tooltip: 'Select one or more groups of the same platform. After creation, all accounts from these groups will be automatically bound to the new group (deduplicated).',

@@ -402,6 +402,22 @@ func TestBuildPromptPreviewFullyMasksShortUnlabelledSecrets(t *testing.T) {
 	require.Contains(t, partial, "***")
 }
 
+func TestPromptFallbackProtocolAliasesExtractExpectedText(t *testing.T) {
+	chatSnapshot, err := ExtractPromptSnapshot(Request{
+		Protocol: "grok_web_search",
+		Body:     []byte(`{"messages":[{"role":"user","content":"search audit text"}]}`),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "search audit text", chatSnapshot.ScanText)
+
+	liveSnapshot, err := ExtractPromptSnapshot(Request{
+		Protocol: "openai_live",
+		Body:     []byte(`{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"live audit text"}]}]}`),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "live audit text", liveSnapshot.ScanText)
+}
+
 func mustJSON(t *testing.T, value string) []byte {
 	t.Helper()
 	raw, err := json.Marshal(value)

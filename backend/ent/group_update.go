@@ -888,6 +888,33 @@ func (_u *GroupUpdate) ClearFallbackGroupIDOnInvalidRequest() *GroupUpdate {
 	return _u
 }
 
+// SetFallbackGroupIDOnPromptAuditBlock sets the "fallback_group_id_on_prompt_audit_block" field.
+func (_u *GroupUpdate) SetFallbackGroupIDOnPromptAuditBlock(v int64) *GroupUpdate {
+	_u.mutation.ResetFallbackGroupIDOnPromptAuditBlock()
+	_u.mutation.SetFallbackGroupIDOnPromptAuditBlock(v)
+	return _u
+}
+
+// SetNillableFallbackGroupIDOnPromptAuditBlock sets the "fallback_group_id_on_prompt_audit_block" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableFallbackGroupIDOnPromptAuditBlock(v *int64) *GroupUpdate {
+	if v != nil {
+		_u.SetFallbackGroupIDOnPromptAuditBlock(*v)
+	}
+	return _u
+}
+
+// AddFallbackGroupIDOnPromptAuditBlock adds value to the "fallback_group_id_on_prompt_audit_block" field.
+func (_u *GroupUpdate) AddFallbackGroupIDOnPromptAuditBlock(v int64) *GroupUpdate {
+	_u.mutation.AddFallbackGroupIDOnPromptAuditBlock(v)
+	return _u
+}
+
+// ClearFallbackGroupIDOnPromptAuditBlock clears the value of the "fallback_group_id_on_prompt_audit_block" field.
+func (_u *GroupUpdate) ClearFallbackGroupIDOnPromptAuditBlock() *GroupUpdate {
+	_u.mutation.ClearFallbackGroupIDOnPromptAuditBlock()
+	return _u
+}
+
 // SetModelRouting sets the "model_routing" field.
 func (_u *GroupUpdate) SetModelRouting(v map[string][]int64) *GroupUpdate {
 	_u.mutation.SetModelRouting(v)
@@ -1770,6 +1797,15 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.FallbackGroupIDOnInvalidRequestCleared() {
 		_spec.ClearField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.FallbackGroupIDOnPromptAuditBlock(); ok {
+		_spec.SetField(group.FieldFallbackGroupIDOnPromptAuditBlock, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedFallbackGroupIDOnPromptAuditBlock(); ok {
+		_spec.AddField(group.FieldFallbackGroupIDOnPromptAuditBlock, field.TypeInt64, value)
+	}
+	if _u.mutation.FallbackGroupIDOnPromptAuditBlockCleared() {
+		_spec.ClearField(group.FieldFallbackGroupIDOnPromptAuditBlock, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)
@@ -3018,6 +3054,33 @@ func (_u *GroupUpdateOne) ClearFallbackGroupIDOnInvalidRequest() *GroupUpdateOne
 	return _u
 }
 
+// SetFallbackGroupIDOnPromptAuditBlock sets the "fallback_group_id_on_prompt_audit_block" field.
+func (_u *GroupUpdateOne) SetFallbackGroupIDOnPromptAuditBlock(v int64) *GroupUpdateOne {
+	_u.mutation.ResetFallbackGroupIDOnPromptAuditBlock()
+	_u.mutation.SetFallbackGroupIDOnPromptAuditBlock(v)
+	return _u
+}
+
+// SetNillableFallbackGroupIDOnPromptAuditBlock sets the "fallback_group_id_on_prompt_audit_block" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableFallbackGroupIDOnPromptAuditBlock(v *int64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetFallbackGroupIDOnPromptAuditBlock(*v)
+	}
+	return _u
+}
+
+// AddFallbackGroupIDOnPromptAuditBlock adds value to the "fallback_group_id_on_prompt_audit_block" field.
+func (_u *GroupUpdateOne) AddFallbackGroupIDOnPromptAuditBlock(v int64) *GroupUpdateOne {
+	_u.mutation.AddFallbackGroupIDOnPromptAuditBlock(v)
+	return _u
+}
+
+// ClearFallbackGroupIDOnPromptAuditBlock clears the value of the "fallback_group_id_on_prompt_audit_block" field.
+func (_u *GroupUpdateOne) ClearFallbackGroupIDOnPromptAuditBlock() *GroupUpdateOne {
+	_u.mutation.ClearFallbackGroupIDOnPromptAuditBlock()
+	return _u
+}
+
 // SetModelRouting sets the "model_routing" field.
 func (_u *GroupUpdateOne) SetModelRouting(v map[string][]int64) *GroupUpdateOne {
 	_u.mutation.SetModelRouting(v)
@@ -3930,6 +3993,15 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.FallbackGroupIDOnInvalidRequestCleared() {
 		_spec.ClearField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.FallbackGroupIDOnPromptAuditBlock(); ok {
+		_spec.SetField(group.FieldFallbackGroupIDOnPromptAuditBlock, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedFallbackGroupIDOnPromptAuditBlock(); ok {
+		_spec.AddField(group.FieldFallbackGroupIDOnPromptAuditBlock, field.TypeInt64, value)
+	}
+	if _u.mutation.FallbackGroupIDOnPromptAuditBlockCleared() {
+		_spec.ClearField(group.FieldFallbackGroupIDOnPromptAuditBlock, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)

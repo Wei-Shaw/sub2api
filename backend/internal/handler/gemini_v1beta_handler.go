@@ -211,6 +211,13 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		googleSecurityAuditError(c, decision)
 		return
 	}
+	if resolvedModel, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context()); ok && strings.TrimSpace(resolvedModel) != "" {
+		modelName = strings.TrimSpace(resolvedModel)
+	} else if modelAction := strings.TrimPrefix(c.Param("modelAction"), "/"); modelAction != "" {
+		if parsedModel, _, parseErr := parseGeminiModelAction(modelAction); parseErr == nil && parsedModel != "" {
+			modelName = parsedModel
+		}
+	}
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, modelName)

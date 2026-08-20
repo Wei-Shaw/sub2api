@@ -68,10 +68,7 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		imageTaskError(c, service.ErrImageTaskForbidden)
 		return
 	}
-	platform := ""
-	if apiKey.Group != nil {
-		platform = apiKey.Group.Platform
-	}
+	platform := effectiveAPIKeyPlatform(c, apiKey)
 	if platform != service.PlatformOpenAI && platform != service.PlatformGrok {
 		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "Images API is not supported for this platform")
 		return
@@ -107,6 +104,16 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		return
 	}
 	if !h.checkSecurityAuditBeforeSubmit(c, apiKey, platform, body) {
+		return
+	}
+	if apiKey.Group != nil {
+		platform = apiKey.Group.Platform
+	}
+	if resolvedPlatform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context()); ok {
+		platform = resolvedPlatform
+	}
+	if !service.GroupAllowsImageGeneration(apiKey.Group) {
+		imageTaskJSONError(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 	}
 
@@ -187,7 +194,11 @@ func (h *AsyncImageHandler) checkSecurityAuditBeforeSubmit(c *gin.Context, apiKe
 	}
 	reqLog := requestLogger(c, "handler.async_image.security_audit",
 		zap.Int64("user_id", subject.UserID), zap.Int64("api_key_id", apiKey.ID), zap.String("model", model))
-	decision := h.openAI.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIImages, model, moderationBody)
+	protocol := service.ContentModerationProtocolOpenAIImages
+	if platform == service.PlatformGrok {
+		protocol = "grok_media"
+	}
+	decision := h.openAI.checkSecurityAudit(c, reqLog, apiKey, subject, protocol, model, moderationBody)
 	if decision != nil && !decision.AllowNextStage {
 		h.openAI.openAISecurityAuditError(c, decision)
 		return false

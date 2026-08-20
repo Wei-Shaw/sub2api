@@ -177,3 +177,20 @@ func TestExtractContentModerationInput_ResponsesLastIsAssistantSkipped(t *testin
 	require.Empty(t, input.Text)
 	require.Empty(t, input.Images)
 }
+
+func TestExtractContentModerationInput_PromptFallbackProtocolAliases(t *testing.T) {
+	chatBody := []byte(`{"messages":[{"role":"user","content":"fallback audit text"}]}`)
+	for _, protocol := range []string{"grok_web_search", "grok_audio"} {
+		input := ExtractContentModerationInput(protocol, chatBody)
+		require.Equal(t, "fallback audit text", input.Text)
+	}
+
+	liveBody := []byte(`{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"live audit text"}]}]}`)
+	input := ExtractContentModerationInput("openai_live", liveBody)
+	require.Equal(t, "live audit text", input.Text)
+
+	mediaBody := []byte(`{"prompt":"media audit text","images":[{"image_url":"https://example.test/image.png"}]}`)
+	input = ExtractContentModerationInput("grok_media", mediaBody)
+	require.Equal(t, "media audit text", input.Text)
+	require.Equal(t, []string{"https://example.test/image.png"}, input.Images)
+}

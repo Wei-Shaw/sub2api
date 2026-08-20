@@ -110,6 +110,12 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		h.openAISecurityAuditError(c, decision)
 		return
 	}
+	channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	if apiKey.Group != nil && apiKey.Group.ClaudeCodeOnly {
+		h.chatCompletionsErrorResponse(c, http.StatusForbidden, "permission_error",
+			"This group is restricted to Claude Code clients (/v1/messages only)")
+		return
+	}
 
 	// Error passthrough binding
 	if h.errorPassthroughService != nil {

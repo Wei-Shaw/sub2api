@@ -138,16 +138,6 @@ func (h *OpenAIGatewayHandler) GrokVoice(c *gin.Context, endpoint string) {
 	if !h.ensureResponsesDependencies(c, nil) {
 		return
 	}
-	subscription, _ := middleware2.GetSubscriptionFromContext(c)
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
-		status, code, message, retryAfter := billingErrorDetails(err)
-		if retryAfter > 0 {
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
-		}
-		h.errorResponse(c, status, code, message)
-		return
-	}
-
 	body, err := readGrokVoiceGatewayBody(c)
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
@@ -166,10 +156,24 @@ func (h *OpenAIGatewayHandler) GrokVoice(c *gin.Context, endpoint string) {
 				auditBody = b
 			}
 		}
-		if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIChat, "grok-4.5", auditBody); decision != nil && !decision.AllowNextStage {
+		if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, "grok_audio", "grok-4.5", auditBody); decision != nil && !decision.AllowNextStage {
 			h.openAISecurityAuditError(c, decision)
 			return
 		}
+		if effectiveAPIKeyPlatform(c, apiKey) != service.PlatformGrok {
+			h.errorResponse(c, http.StatusNotFound, "not_found_error", "Voice API is not supported for this platform")
+			return
+		}
+	}
+	// TTS 审计可能切换到兜底分组，因此所有 Voice 请求都只对最终分组计费一次。
+	subscription, _ := middleware2.GetSubscriptionFromContext(c)
+	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		h.errorResponse(c, status, code, message)
+		return
 	}
 	contentType := c.GetHeader("Content-Type")
 	if strings.TrimSpace(contentType) == "" {

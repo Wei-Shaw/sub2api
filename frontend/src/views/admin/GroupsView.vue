@@ -1950,6 +1950,23 @@
           </p>
         </div>
 
+        <div
+          v-if="createForm.subscription_type !== 'subscription'"
+          class="border-t pt-4"
+        >
+          <label class="input-label">{{
+            t("admin.groups.promptAuditFallback.title")
+          }}</label>
+          <Select
+            v-model="createForm.fallback_group_id_on_prompt_audit_block"
+            :options="promptAuditFallbackOptions"
+            :placeholder="t('admin.groups.promptAuditFallback.noFallback')"
+          />
+          <p class="input-hint">
+            {{ t("admin.groups.promptAuditFallback.hint") }}
+          </p>
+        </div>
+
         <!-- 模型路由配置（仅 anthropic 平台） -->
         <div v-if="createForm.platform === 'anthropic'" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
@@ -3672,6 +3689,23 @@
           </p>
         </div>
 
+        <div
+          v-if="editForm.subscription_type !== 'subscription'"
+          class="border-t pt-4"
+        >
+          <label class="input-label">{{
+            t("admin.groups.promptAuditFallback.title")
+          }}</label>
+          <Select
+            v-model="editForm.fallback_group_id_on_prompt_audit_block"
+            :options="promptAuditFallbackOptionsForEdit"
+            :placeholder="t('admin.groups.promptAuditFallback.noFallback')"
+          />
+          <p class="input-hint">
+            {{ t("admin.groups.promptAuditFallback.hint") }}
+          </p>
+        </div>
+
         <!-- 模型路由配置（仅 anthropic 平台） -->
         <div v-if="editForm.platform === 'anthropic'" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
@@ -4870,6 +4904,64 @@ const invalidRequestFallbackOptionsForEdit = computed(() => {
   return options;
 });
 
+const promptAuditFallbackPlatformsCompatible = (
+  sourcePlatform: GroupPlatform,
+  targetPlatform: GroupPlatform,
+) => {
+  if (sourcePlatform === targetPlatform) return true;
+  if (sourcePlatform === "composite" || targetPlatform === "composite") {
+    return true;
+  }
+  if (
+    ["anthropic", "antigravity"].includes(sourcePlatform) &&
+    ["anthropic", "antigravity"].includes(targetPlatform)
+  ) {
+    return true;
+  }
+  if (
+    ["gemini", "antigravity"].includes(sourcePlatform) &&
+    ["gemini", "antigravity"].includes(targetPlatform)
+  ) {
+    return true;
+  }
+  return (
+    ["openai", "grok"].includes(sourcePlatform) &&
+    ["openai", "grok"].includes(targetPlatform)
+  );
+};
+
+const promptAuditFallbackOptions = computed(() => {
+  const options: { value: number | null; label: string }[] = [
+    { value: null, label: t("admin.groups.promptAuditFallback.noFallback") },
+  ];
+  groups.value
+    .filter(
+      (g) =>
+        g.status === "active" &&
+        g.subscription_type !== "subscription" &&
+        promptAuditFallbackPlatformsCompatible(createForm.platform, g.platform),
+    )
+    .forEach((g) => options.push({ value: g.id, label: g.name }));
+  return options;
+});
+
+const promptAuditFallbackOptionsForEdit = computed(() => {
+  const options: { value: number | null; label: string }[] = [
+    { value: null, label: t("admin.groups.promptAuditFallback.noFallback") },
+  ];
+  const currentId = editingGroup.value?.id;
+  groups.value
+    .filter(
+      (g) =>
+        g.id !== currentId &&
+        g.status === "active" &&
+        g.subscription_type !== "subscription" &&
+        promptAuditFallbackPlatformsCompatible(editForm.platform, g.platform),
+    )
+    .forEach((g) => options.push({ value: g.id, label: g.name }));
+  return options;
+});
+
 const canCopyAccountsFromGroup = (targetPlatform: GroupPlatform, sourcePlatform: GroupPlatform) =>
   targetPlatform === "composite" || sourcePlatform === targetPlatform;
 
@@ -5072,6 +5164,7 @@ const createForm = reactive({
   claude_code_only: false,
   fallback_group_id: null as number | null,
   fallback_group_id_on_invalid_request: null as number | null,
+  fallback_group_id_on_prompt_audit_block: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   allow_live: false,
@@ -5433,6 +5526,7 @@ const editForm = reactive({
   claude_code_only: false,
   fallback_group_id: null as number | null,
   fallback_group_id_on_invalid_request: null as number | null,
+  fallback_group_id_on_prompt_audit_block: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   allow_live: false,
@@ -5886,6 +5980,7 @@ const closeCreateModal = () => {
   createForm.claude_code_only = false;
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
+  createForm.fallback_group_id_on_prompt_audit_block = null;
   resetMessagesDispatchFormState(createForm);
   createForm.allow_live = false;
   createForm.require_oauth_only = false;
@@ -6138,6 +6233,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.fallback_group_id = group.fallback_group_id;
   editForm.fallback_group_id_on_invalid_request =
     group.fallback_group_id_on_invalid_request;
+  editForm.fallback_group_id_on_prompt_audit_block =
+    group.fallback_group_id_on_prompt_audit_block ?? null;
   const messagesDispatchFormState = messagesDispatchConfigToFormState(
     group.messages_dispatch_model_config,
   );
@@ -6259,6 +6356,10 @@ const handleUpdateGroup = async () => {
         editForm.fallback_group_id_on_invalid_request === null
           ? 0
           : editForm.fallback_group_id_on_invalid_request,
+      fallback_group_id_on_prompt_audit_block:
+        editForm.fallback_group_id_on_prompt_audit_block === null
+          ? 0
+          : editForm.fallback_group_id_on_prompt_audit_block,
       model_routing: convertRoutingRulesToApiFormat(
         editModelRoutingRules.value,
       ),
@@ -6618,6 +6719,7 @@ watch(
     if (newVal === "subscription") {
       createForm.is_exclusive = true;
       createForm.fallback_group_id_on_invalid_request = null;
+      createForm.fallback_group_id_on_prompt_audit_block = null;
     } else {
       createForm.peak_rate_enabled = false;
       createForm.peak_start = "";
@@ -6631,7 +6733,9 @@ watch(
 watch(
   () => editForm.subscription_type,
   (newVal) => {
-    if (newVal !== "subscription") {
+    if (newVal === "subscription") {
+      editForm.fallback_group_id_on_prompt_audit_block = null;
+    } else {
       editForm.peak_rate_enabled = false;
       editForm.peak_start = "";
       editForm.peak_end = "";
@@ -6645,6 +6749,14 @@ watch(
   (newVal) => {
     if (!["anthropic", "antigravity"].includes(newVal)) {
       createForm.fallback_group_id_on_invalid_request = null;
+    }
+    if (
+      createForm.fallback_group_id_on_prompt_audit_block !== null &&
+      !promptAuditFallbackOptions.value.some(
+        (option) => option.value === createForm.fallback_group_id_on_prompt_audit_block,
+      )
+    ) {
+      createForm.fallback_group_id_on_prompt_audit_block = null;
     }
     if (newVal !== "openai") {
       resetMessagesDispatchFormState(createForm);
@@ -6695,6 +6807,14 @@ watch(
   (newVal) => {
     if (!["anthropic", "antigravity"].includes(newVal)) {
       editForm.fallback_group_id_on_invalid_request = null;
+    }
+    if (
+      editForm.fallback_group_id_on_prompt_audit_block !== null &&
+      !promptAuditFallbackOptionsForEdit.value.some(
+        (option) => option.value === editForm.fallback_group_id_on_prompt_audit_block,
+      )
+    ) {
+      editForm.fallback_group_id_on_prompt_audit_block = null;
     }
     if (newVal !== "openai") {
       resetMessagesDispatchFormState(editForm);

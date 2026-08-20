@@ -838,6 +838,63 @@ func (s *GatewayService) ResolveGroupByID(ctx context.Context, groupID int64) (*
 	return s.resolveGroupByID(ctx, groupID)
 }
 
+func (s *GatewayService) HasPromptAuditFallbackAccounts(ctx context.Context, group *Group, protocol, model string) (bool, error) {
+	if s == nil || s.accountRepo == nil || group == nil {
+		return false, nil
+	}
+	groupID := group.ID
+	if s.checkChannelPricingRestriction(ctx, &groupID, model) {
+		return false, nil
+	}
+	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, group.ID)
+	if err != nil {
+		return false, err
+	}
+	checkUpstreamRestriction := s.needsUpstreamChannelRestrictionCheck(ctx, &groupID)
+	for i := range accounts {
+		account := &accounts[i]
+		if promptAuditFallbackAccountCompatible(ctx, group.Platform, account.Platform, protocol, model, account.IsMixedSchedulingEnabled()) &&
+			promptAuditFallbackAccountSupportsModel(account, model) &&
+			(!checkUpstreamRestriction || !s.isUpstreamModelRestrictedByChannel(ctx, groupID, account, model)) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func promptAuditFallbackAccountSupportsModel(account *Account, model string) bool {
+	if account == nil || !account.IsModelSupported(model) {
+		return false
+	}
+	if account.Platform == PlatformAntigravity && resolveAccountUpstreamModel(account, model) == "" {
+		return false
+	}
+	return true
+}
+
+func promptAuditFallbackAccountCompatible(ctx context.Context, groupPlatform, accountPlatform, protocol, model string, mixedGemini bool) bool {
+	if groupPlatform == PlatformComposite {
+		resolved, ok := ResolvedTargetPlatformFromContext(ctx)
+		if !ok {
+			resolved, ok = DetectModelPlatform(model)
+		}
+		if ok {
+			if resolved == PlatformGemini {
+				return accountPlatform == PlatformGemini || (accountPlatform == PlatformAntigravity && mixedGemini)
+			}
+			return accountPlatform == resolved
+		}
+		return false
+	}
+	if groupPlatform == PlatformGemini {
+		return accountPlatform == PlatformGemini || (accountPlatform == PlatformAntigravity && mixedGemini)
+	}
+	if protocol == "openai_alpha_search" && groupPlatform != PlatformOpenAI {
+		return false
+	}
+	return accountPlatform == groupPlatform
+}
+
 func (s *GatewayService) routingAccountIDsForRequest(ctx context.Context, groupID *int64, requestedModel string, platform string) []int64 {
 	if groupID == nil || requestedModel == "" || platform != PlatformAnthropic {
 		return nil

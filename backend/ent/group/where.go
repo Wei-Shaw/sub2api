@@ -265,6 +265,11 @@ func FallbackGroupIDOnInvalidRequest(v int64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldFallbackGroupIDOnInvalidRequest, v))
 }
 
+// FallbackGroupIDOnPromptAuditBlock applies equality check predicate on the "fallback_group_id_on_prompt_audit_block" field. It's identical to FallbackGroupIDOnPromptAuditBlockEQ.
+func FallbackGroupIDOnPromptAuditBlock(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldFallbackGroupIDOnPromptAuditBlock, v))
+}
+
 // ModelRoutingEnabled applies equality check predicate on the "model_routing_enabled" field. It's identical to ModelRoutingEnabledEQ.
 func ModelRoutingEnabled(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldModelRoutingEnabled, v))
@@ -2178,6 +2183,56 @@ func FallbackGroupIDOnInvalidRequestIsNil() predicate.Group {
 // FallbackGroupIDOnInvalidRequestNotNil applies the NotNil predicate on the "fallback_group_id_on_invalid_request" field.
 func FallbackGroupIDOnInvalidRequestNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldFallbackGroupIDOnInvalidRequest))
+}
+
+// FallbackGroupIDOnPromptAuditBlockEQ applies the EQ predicate on the "fallback_group_id_on_prompt_audit_block" field.
+func FallbackGroupIDOnPromptAuditBlockEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldFallbackGroupIDOnPromptAuditBlock, v))
+}
+
+// FallbackGroupIDOnPromptAuditBlockNEQ applies the NEQ predicate on the "fallback_group_id_on_prompt_audit_block" field.
+func FallbackGroupIDOnPromptAuditBlockNEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldFallbackGroupIDOnPromptAuditBlock, v))
+}
+
+// FallbackGroupIDOnPromptAuditBlockIn applies the In predicate on the "fallback_group_id_on_prompt_audit_block" field.
+func FallbackGroupIDOnPromptAuditBlockIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldFallbackGroupIDOnPromptAuditBlock, vs...))
+}
+
+// FallbackGroupIDOnPromptAuditBlockNotIn applies the NotIn predicate on the "fallback_group_id_on_prompt_audit_block" field.
+func FallbackGroupIDOnPromptAuditBlockNotIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldFallbackGroupIDOnPromptAuditBlock, vs...))
+}
+
+// FallbackGroupIDOnPromptAuditBlockGT applies the GT predicate on the "fallback_group_id_on_prompt_audit_block" field.
+func FallbackGroupIDOnPromptAuditBlockGT(v int64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldFallbackGroupIDOnPromptAuditBlock, v))
+}
+
+// FallbackGroupIDOnPromptAuditBlockGTE applies the GTE predicate on the "fallback_group_id_on_prompt_audit_block" field.
+func FallbackGroupIDOnPromptAuditBlockGTE(v int64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldFallbackGroupIDOnPromptAuditBlock, v))
+}
+
+// FallbackGroupIDOnPromptAuditBlockLT applies the LT predicate on the "fallback_group_id_on_prompt_audit_block" field.
+func FallbackGroupIDOnPromptAuditBlockLT(v int64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldFallbackGroupIDOnPromptAuditBlock, v))
+}
+
+// FallbackGroupIDOnPromptAuditBlockLTE applies the LTE predicate on the "fallback_group_id_on_prompt_audit_block" field.
+func FallbackGroupIDOnPromptAuditBlockLTE(v int64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldFallbackGroupIDOnPromptAuditBlock, v))
+}
+
+// FallbackGroupIDOnPromptAuditBlockIsNil applies the IsNil predicate on the "fallback_group_id_on_prompt_audit_block" field.
+func FallbackGroupIDOnPromptAuditBlockIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldFallbackGroupIDOnPromptAuditBlock))
+}
+
+// FallbackGroupIDOnPromptAuditBlockNotNil applies the NotNil predicate on the "fallback_group_id_on_prompt_audit_block" field.
+func FallbackGroupIDOnPromptAuditBlockNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldFallbackGroupIDOnPromptAuditBlock))
 }
 
 // ModelRoutingIsNil applies the IsNil predicate on the "model_routing" field.

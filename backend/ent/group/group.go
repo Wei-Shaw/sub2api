@@ -104,6 +104,8 @@ const (
 	FieldFallbackGroupID = "fallback_group_id"
 	// FieldFallbackGroupIDOnInvalidRequest holds the string denoting the fallback_group_id_on_invalid_request field in the database.
 	FieldFallbackGroupIDOnInvalidRequest = "fallback_group_id_on_invalid_request"
+	// FieldFallbackGroupIDOnPromptAuditBlock holds the string denoting the fallback_group_id_on_prompt_audit_block field in the database.
+	FieldFallbackGroupIDOnPromptAuditBlock = "fallback_group_id_on_prompt_audit_block"
 	// FieldModelRouting holds the string denoting the model_routing field in the database.
 	FieldModelRouting = "model_routing"
 	// FieldModelRoutingEnabled holds the string denoting the model_routing_enabled field in the database.
@@ -259,6 +261,7 @@ var Columns = []string{
 	FieldClaudeCodeOnly,
 	FieldFallbackGroupID,
 	FieldFallbackGroupIDOnInvalidRequest,
+	FieldFallbackGroupIDOnPromptAuditBlock,
 	FieldModelRouting,
 	FieldModelRoutingEnabled,
 	FieldMcpXMLInject,
@@ -630,6 +633,11 @@ func ByFallbackGroupID(opts ...sql.OrderTermOption) OrderOption {
 // ByFallbackGroupIDOnInvalidRequest orders the results by the fallback_group_id_on_invalid_request field.
 func ByFallbackGroupIDOnInvalidRequest(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFallbackGroupIDOnInvalidRequest, opts...).ToFunc()
+}
+
+// ByFallbackGroupIDOnPromptAuditBlock orders the results by the fallback_group_id_on_prompt_audit_block field.
+func ByFallbackGroupIDOnPromptAuditBlock(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFallbackGroupIDOnPromptAuditBlock, opts...).ToFunc()
 }
 
 // ByModelRoutingEnabled orders the results by the model_routing_enabled field.

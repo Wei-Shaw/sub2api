@@ -68,11 +68,19 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 		reqLog,
 		apiKey,
 		subject,
-		service.ContentModerationProtocolOpenAIResponses,
+		"openai_live",
 		model,
 		request.Session,
 	); decision != nil && !decision.AllowNextStage {
 		h.openAISecurityAuditError(c, decision)
+		return
+	}
+	if effectiveAPIKeyPlatform(c, apiKey) != service.PlatformOpenAI {
+		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Live is not supported for this platform")
+		return
+	}
+	if !liveEnabledForAPIKey(apiKey) {
+		h.errorResponse(c, http.StatusForbidden, "permission_error", "Live is not enabled for this group")
 		return
 	}
 

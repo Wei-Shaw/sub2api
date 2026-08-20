@@ -86,6 +86,10 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 		h.openAISecurityAuditError(c, decision)
 		return
 	}
+	if effectiveAPIKeyPlatform(c, apiKey) != service.PlatformOpenAI {
+		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Codex alpha search is only available for OpenAI groups")
+		return
+	}
 
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, requestedModel)
 	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)

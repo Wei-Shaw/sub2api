@@ -83,6 +83,10 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		h.openAISecurityAuditError(c, decision)
 		return
 	}
+	if effectiveAPIKeyPlatform(c, apiKey) != service.PlatformOpenAI {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Embeddings are only available for OpenAI groups")
+		return
+	}
 
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 

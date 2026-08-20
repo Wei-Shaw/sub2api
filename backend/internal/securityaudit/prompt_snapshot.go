@@ -88,13 +88,13 @@ func extractProtocolSegments(protocol string, document any) []promptSegment {
 	root, _ := document.(map[string]any)
 	protocol = strings.ToLower(strings.TrimSpace(protocol))
 	switch protocol {
-	case "openai_chat_completions", "openai_chat", "chat_completions":
+	case "openai_chat_completions", "openai_chat", "chat_completions", "grok_web_search", "grok_audio":
 		return extractChatLikeSegments(root)
 	case "anthropic_messages", "claude_messages", "messages":
 		return append(extractAnthropicSystem(root["system"]), extractMessages(root["messages"], clientInstructionRoles...)...)
 	case "gemini", "gemini_generate_content":
 		return extractGeminiRoot(root)
-	case "openai_responses", "responses", "responses_websocket":
+	case "openai_responses", "responses", "responses_websocket", "openai_live":
 		if frameType := stringValue(root["type"]); frameType != "" || protocol == "responses_websocket" {
 			if frameType != "response.create" {
 				return nil

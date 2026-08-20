@@ -22,13 +22,13 @@ func ExtractContentModerationInput(protocol string, body []byte) ContentModerati
 	switch protocol {
 	case ContentModerationProtocolAnthropicMessages:
 		collectLastAnthropicUserMessage(gjson.GetBytes(body, "messages"), &parts, &images)
-	case ContentModerationProtocolOpenAIChat:
+	case ContentModerationProtocolOpenAIChat, "grok_web_search", "grok_audio":
 		collectLastRoleMessage(gjson.GetBytes(body, "messages"), "user", &parts, &images)
-	case ContentModerationProtocolOpenAIResponses:
+	case ContentModerationProtocolOpenAIResponses, "openai_live":
 		collectLastResponsesInput(gjson.GetBytes(body, "input"), &parts, &images)
 	case ContentModerationProtocolGemini:
 		collectLastGeminiContent(gjson.GetBytes(body, "contents"), &parts, &images)
-	case ContentModerationProtocolOpenAIImages:
+	case ContentModerationProtocolOpenAIImages, "grok_media":
 		addModerationText(&parts, gjson.GetBytes(body, "prompt").String())
 		collectContentValue(gjson.GetBytes(body, "images"), &parts, &images)
 	default:

@@ -622,6 +622,20 @@ func (_c *GroupCreate) SetNillableFallbackGroupIDOnInvalidRequest(v *int64) *Gro
 	return _c
 }
 
+// SetFallbackGroupIDOnPromptAuditBlock sets the "fallback_group_id_on_prompt_audit_block" field.
+func (_c *GroupCreate) SetFallbackGroupIDOnPromptAuditBlock(v int64) *GroupCreate {
+	_c.mutation.SetFallbackGroupIDOnPromptAuditBlock(v)
+	return _c
+}
+
+// SetNillableFallbackGroupIDOnPromptAuditBlock sets the "fallback_group_id_on_prompt_audit_block" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableFallbackGroupIDOnPromptAuditBlock(v *int64) *GroupCreate {
+	if v != nil {
+		_c.SetFallbackGroupIDOnPromptAuditBlock(*v)
+	}
+	return _c
+}
+
 // SetModelRouting sets the "model_routing" field.
 func (_c *GroupCreate) SetModelRouting(v map[string][]int64) *GroupCreate {
 	_c.mutation.SetModelRouting(v)
@@ -1528,6 +1542,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FallbackGroupIDOnInvalidRequest(); ok {
 		_spec.SetField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64, value)
 		_node.FallbackGroupIDOnInvalidRequest = &value
+	}
+	if value, ok := _c.mutation.FallbackGroupIDOnPromptAuditBlock(); ok {
+		_spec.SetField(group.FieldFallbackGroupIDOnPromptAuditBlock, field.TypeInt64, value)
+		_node.FallbackGroupIDOnPromptAuditBlock = &value
 	}
 	if value, ok := _c.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)
@@ -2516,6 +2534,30 @@ func (u *GroupUpsert) AddFallbackGroupIDOnInvalidRequest(v int64) *GroupUpsert {
 // ClearFallbackGroupIDOnInvalidRequest clears the value of the "fallback_group_id_on_invalid_request" field.
 func (u *GroupUpsert) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsert {
 	u.SetNull(group.FieldFallbackGroupIDOnInvalidRequest)
+	return u
+}
+
+// SetFallbackGroupIDOnPromptAuditBlock sets the "fallback_group_id_on_prompt_audit_block" field.
+func (u *GroupUpsert) SetFallbackGroupIDOnPromptAuditBlock(v int64) *GroupUpsert {
+	u.Set(group.FieldFallbackGroupIDOnPromptAuditBlock, v)
+	return u
+}
+
+// UpdateFallbackGroupIDOnPromptAuditBlock sets the "fallback_group_id_on_prompt_audit_block" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateFallbackGroupIDOnPromptAuditBlock() *GroupUpsert {
+	u.SetExcluded(group.FieldFallbackGroupIDOnPromptAuditBlock)
+	return u
+}
+
+// AddFallbackGroupIDOnPromptAuditBlock adds v to the "fallback_group_id_on_prompt_audit_block" field.
+func (u *GroupUpsert) AddFallbackGroupIDOnPromptAuditBlock(v int64) *GroupUpsert {
+	u.Add(group.FieldFallbackGroupIDOnPromptAuditBlock, v)
+	return u
+}
+
+// ClearFallbackGroupIDOnPromptAuditBlock clears the value of the "fallback_group_id_on_prompt_audit_block" field.
+func (u *GroupUpsert) ClearFallbackGroupIDOnPromptAuditBlock() *GroupUpsert {
+	u.SetNull(group.FieldFallbackGroupIDOnPromptAuditBlock)
 	return u
 }
 
@@ -3705,6 +3747,34 @@ func (u *GroupUpsertOne) UpdateFallbackGroupIDOnInvalidRequest() *GroupUpsertOne
 func (u *GroupUpsertOne) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearFallbackGroupIDOnInvalidRequest()
+	})
+}
+
+// SetFallbackGroupIDOnPromptAuditBlock sets the "fallback_group_id_on_prompt_audit_block" field.
+func (u *GroupUpsertOne) SetFallbackGroupIDOnPromptAuditBlock(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetFallbackGroupIDOnPromptAuditBlock(v)
+	})
+}
+
+// AddFallbackGroupIDOnPromptAuditBlock adds v to the "fallback_group_id_on_prompt_audit_block" field.
+func (u *GroupUpsertOne) AddFallbackGroupIDOnPromptAuditBlock(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddFallbackGroupIDOnPromptAuditBlock(v)
+	})
+}
+
+// UpdateFallbackGroupIDOnPromptAuditBlock sets the "fallback_group_id_on_prompt_audit_block" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateFallbackGroupIDOnPromptAuditBlock() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateFallbackGroupIDOnPromptAuditBlock()
+	})
+}
+
+// ClearFallbackGroupIDOnPromptAuditBlock clears the value of the "fallback_group_id_on_prompt_audit_block" field.
+func (u *GroupUpsertOne) ClearFallbackGroupIDOnPromptAuditBlock() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearFallbackGroupIDOnPromptAuditBlock()
 	})
 }
 
@@ -5102,6 +5172,34 @@ func (u *GroupUpsertBulk) UpdateFallbackGroupIDOnInvalidRequest() *GroupUpsertBu
 func (u *GroupUpsertBulk) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearFallbackGroupIDOnInvalidRequest()
+	})
+}
+
+// SetFallbackGroupIDOnPromptAuditBlock sets the "fallback_group_id_on_prompt_audit_block" field.
+func (u *GroupUpsertBulk) SetFallbackGroupIDOnPromptAuditBlock(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetFallbackGroupIDOnPromptAuditBlock(v)
+	})
+}
+
+// AddFallbackGroupIDOnPromptAuditBlock adds v to the "fallback_group_id_on_prompt_audit_block" field.
+func (u *GroupUpsertBulk) AddFallbackGroupIDOnPromptAuditBlock(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddFallbackGroupIDOnPromptAuditBlock(v)
+	})
+}
+
+// UpdateFallbackGroupIDOnPromptAuditBlock sets the "fallback_group_id_on_prompt_audit_block" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateFallbackGroupIDOnPromptAuditBlock() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateFallbackGroupIDOnPromptAuditBlock()
+	})
+}
+
+// ClearFallbackGroupIDOnPromptAuditBlock clears the value of the "fallback_group_id_on_prompt_audit_block" field.
+func (u *GroupUpsertBulk) ClearFallbackGroupIDOnPromptAuditBlock() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearFallbackGroupIDOnPromptAuditBlock()
 	})
 }
 
