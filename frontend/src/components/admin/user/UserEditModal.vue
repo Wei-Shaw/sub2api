@@ -38,6 +38,7 @@
         <Select
           v-model="form.role"
           :options="roleOptions"
+          :searchable="false"
         />
       </div>
       <div>
@@ -138,11 +139,11 @@ const accountOptions = ref<Account[]>([])
 const accountSearch = ref('')
 type EditableUserRole = 'admin' | 'user' | 'usage_viewer'
 
-const roleOptions = [
+const roleOptions = computed(() => [
   { value: 'admin', label: t('admin.users.roles.admin') },
   { value: 'user', label: t('admin.users.roles.user') },
   { value: 'usage_viewer', label: t('admin.users.roles.usage_viewer') }
-]
+])
 const form = reactive({
   email: '',
   password: '',

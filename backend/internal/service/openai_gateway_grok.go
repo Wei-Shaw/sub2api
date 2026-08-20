@@ -495,6 +495,10 @@ func patchGrokResponsesBodyBase(body []byte, upstreamModel string) ([]byte, erro
 	if err != nil {
 		return nil, err
 	}
+	out, err = stripRedundantGrokViewImageTool(out)
+	if err != nil {
+		return nil, err
+	}
 	out, err = sanitizeGrokReasoningNullContent(out)
 	if err != nil {
 		return nil, err
@@ -558,7 +562,7 @@ func normalizeGrokResponsesReasoningEffort(body []byte, upstreamModel string) ([
 		if !value.Exists() {
 			continue
 		}
-		normalized, keep := normalizeGrokReasoningEffortValue(value.String())
+		normalized, keep := normalizeGrokReasoningEffortValue(value.String(), upstreamModel)
 		if !supportsEffort || !keep {
 			out, err = sjson.DeleteBytes(out, field)
 		} else {
@@ -569,7 +573,7 @@ func normalizeGrokResponsesReasoningEffort(body []byte, upstreamModel string) ([
 		}
 	}
 	if camel := gjson.GetBytes(out, "reasoningEffort"); camel.Exists() {
-		normalized, keep := normalizeGrokReasoningEffortValue(camel.String())
+		normalized, keep := normalizeGrokReasoningEffortValue(camel.String(), upstreamModel)
 		out, err = sjson.DeleteBytes(out, "reasoningEffort")
 		if err != nil {
 			return nil, fmt.Errorf("remove Grok reasoningEffort: %w", err)
@@ -595,7 +599,7 @@ func normalizeGrokChatReasoningEffort(body []byte, upstreamModel string) ([]byte
 	if raw == "" {
 		raw = strings.TrimSpace(gjson.GetBytes(body, "reasoningEffort").String())
 	}
-	normalized, keep := normalizeGrokReasoningEffortValue(raw)
+	normalized, keep := normalizeGrokReasoningEffortValue(raw, upstreamModel)
 	keep = keep && grokSupportsReasoningEffort(upstreamModel)
 	out := body
 	var err error
@@ -615,18 +619,28 @@ func normalizeGrokChatReasoningEffort(body []byte, upstreamModel string) ([]byte
 	return out, err
 }
 
-func normalizeGrokReasoningEffortValue(raw string) (string, bool) {
+func normalizeGrokReasoningEffortValue(raw, model string) (string, bool) {
 	value := strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToLower(strings.TrimSpace(raw)))
 	switch value {
 	case "none", "low", "medium", "high":
 		return value, true
 	case "minimal":
 		return "low", true
-	case "xhigh", "extrahigh", "max", "ultra":
+	case "xhigh", "extrahigh":
+		if grokSupportsXHighReasoningEffort(model) {
+			return "xhigh", true
+		}
+		return "high", true
+	case "max", "ultra":
 		return "high", true
 	default:
 		return "", false
 	}
+}
+
+func grokSupportsXHighReasoningEffort(model string) bool {
+	model = strings.ToLower(xai.StripGrokProviderPrefix(strings.TrimSpace(model)))
+	return model == "grok-4.6" || model == "grok-4.6-latest"
 }
 
 func grokSupportsReasoningEffort(model string) bool {
@@ -757,6 +771,69 @@ func sanitizeGrokResponsesInput(body []byte) ([]byte, error) {
 	return sjson.SetRawBytes(body, "tools", encodedTools)
 }
 
+// An inline input_image is already visible to Grok. Keeping Codex's local
+// view_image tool in the same turn can make Grok announce a tool call without
+// actually calling it, so remove only that redundant automatic choice.
+func stripRedundantGrokViewImageTool(body []byte) ([]byte, error) {
+	input := gjson.GetBytes(body, "input")
+	if !input.IsArray() {
+		return body, nil
+	}
+	items := input.Array()
+	if len(items) == 0 {
+		return body, nil
+	}
+	current := items[len(items)-1]
+	if strings.TrimSpace(current.Get("role").String()) != "user" ||
+		!openAIJSONValueMayContainImageInput(current) {
+		return body, nil
+	}
+
+	toolChoice := gjson.GetBytes(body, "tool_choice")
+	if toolChoice.IsObject() && strings.TrimSpace(toolChoice.Get("type").String()) == "function" {
+		choiceName := strings.TrimSpace(toolChoice.Get("name").String())
+		if choiceName == "" {
+			choiceName = strings.TrimSpace(toolChoice.Get("function.name").String())
+		}
+		if choiceName == "view_image" {
+			return body, nil
+		}
+	}
+
+	tools := gjson.GetBytes(body, "tools")
+	if !tools.IsArray() {
+		return body, nil
+	}
+	filtered := make([]json.RawMessage, 0, len(tools.Array()))
+	changed := false
+	for _, tool := range tools.Array() {
+		if strings.TrimSpace(tool.Get("type").String()) == "function" &&
+			strings.TrimSpace(tool.Get("name").String()) == "view_image" {
+			changed = true
+			continue
+		}
+		filtered = append(filtered, json.RawMessage(tool.Raw))
+	}
+	if !changed {
+		return body, nil
+	}
+	if len(filtered) == 0 && strings.TrimSpace(toolChoice.String()) == "required" {
+		return body, nil
+	}
+
+	if len(filtered) == 0 {
+		out, err := sjson.DeleteBytes(body, "tools")
+		if err != nil {
+			return nil, err
+		}
+		return sjson.DeleteBytes(out, "parallel_tool_calls")
+	}
+	encoded, err := json.Marshal(filtered)
+	if err != nil {
+		return nil, err
+	}
+	return sjson.SetRawBytes(body, "tools", encoded)
+}
 func grokResponsesToolDedupKey(tool gjson.Result) string {
 	toolType := strings.TrimSpace(tool.Get("type").String())
 	if toolType != "" {

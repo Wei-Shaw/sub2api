@@ -1661,7 +1661,7 @@
           </div>
         </div>
 
-        <!-- Header Override Section (anthropic/openai apikey only) -->
+        <!-- Header Override Section (eligible API-key platforms) -->
         <div
           v-if="isHeaderOverrideCapable(form.platform, 'apikey')"
           class="border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -2958,6 +2958,7 @@
       <!-- OpenAI WS Mode 三态（off/ctx_pool/passthrough） -->
       <div
         v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
+        data-testid="create-openai-ws-mode"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between">
@@ -3044,9 +3045,9 @@
         </div>
       </div>
 
-      <!-- OpenAI OAuth Codex 官方客户端限制开关 -->
+      <!-- OpenAI API 长上下文计费开关 -->
       <div
-        v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
+        v-if="form.platform === 'openai' && !hideAccountLongContextBilling && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -3740,6 +3741,7 @@ import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -3856,6 +3858,10 @@ const emit = defineEmits<{
 }>()
 
 const appStore = useAppStore()
+
+const hideAccountLongContextBilling = computed(() => {
+  return allSelectedGroupsEnableLongContextPricing(form.group_ids, props.groups)
+})
 
 // OAuth composables
 const oauth = useAccountOAuth() // For Anthropic OAuth
@@ -5458,7 +5464,7 @@ const handleSubmit = async () => {
     credentials.custom_error_codes = [...selectedErrorCodes.value]
   }
 
-  // Add header override if enabled (anthropic/openai/grok apikey)
+  // Add header override if enabled for this API-key platform
   if (isHeaderOverrideCapable(form.platform, 'apikey')) {
     if (headerOverrideEnabled.value) {
       const headerError = validateHeaderOverrideRows(headerOverrideRows.value)

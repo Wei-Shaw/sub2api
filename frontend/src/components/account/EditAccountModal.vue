@@ -540,7 +540,7 @@
         </div>
       </div>
 
-      <!-- Header Override Section (anthropic/openai apikey + grok apikey/oauth) -->
+      <!-- Header Override Section (eligible API-key platforms + grok OAuth) -->
       <div v-if="headerOverrideCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <div>
@@ -1966,7 +1966,7 @@
 
       <!-- OpenAI API 长上下文计费开关 -->
       <div
-        v-if="account?.platform === 'openai' && !isSparkShadow && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
+        v-if="account?.platform === 'openai' && !isSparkShadow && !hideAccountLongContextBilling && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -2811,6 +2811,7 @@ import {
 } from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
@@ -2850,6 +2851,10 @@ const authStore = useAuthStore()
 // Spark 影子账号(parent_account_id 非空):代理恒继承母账号,不可独立编辑(外审 B/P1),
 // 故隐藏代理选择器。
 const isSparkShadow = computed(() => props.account?.parent_account_id != null)
+
+const hideAccountLongContextBilling = computed(() => {
+  return allSelectedGroupsEnableLongContextPricing(form.group_ids, props.groups)
+})
 
 const handleOllamaCloudUsageUpdated = (state: OllamaCloudUsageState) => {
   if (props.account) emit('updated', { ...props.account, ollama_cloud_usage: state })
@@ -3730,7 +3735,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   loadTempUnschedRules(credentials)
   loadAccountSchedulingThresholdOverride(newAccount.platform, credentials)
 
-  // Load header override state (anthropic/openai apikey + grok apikey/oauth)
+  // Load header override state for eligible account platforms/types
   headerOverrideEnabled.value = false
   headerOverrideRows.value = []
   if (newAccount.credentials && isHeaderOverrideCapable(newAccount.platform, newAccount.type)) {
@@ -4520,7 +4525,7 @@ const handleSubmit = async () => {
         delete newCredentials.custom_error_codes
       }
 
-      // Add header override if enabled (anthropic/openai/grok apikey)
+      // Add header override if enabled for this API-key platform
       if (isHeaderOverrideCapable(props.account.platform, 'apikey')) {
         if (headerOverrideEnabled.value) {
           const headerError = validateHeaderOverrideRows(headerOverrideRows.value)

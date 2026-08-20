@@ -7,11 +7,13 @@ const {
   probeUpstreamBillingMock,
   importCodexSessionMock,
   createOpenAICodexPATMock,
+  authIsSimpleMode,
 } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
   probeUpstreamBillingMock: vi.fn(),
   importCodexSessionMock: vi.fn(),
   createOpenAICodexPATMock: vi.fn(),
+  authIsSimpleMode: { value: true },
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -23,7 +25,11 @@ vi.mock('@/stores/app', () => ({
 }))
 
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({ isSimpleMode: true }),
+  useAuthStore: () => ({
+    get isSimpleMode() {
+      return authIsSimpleMode.value
+    },
+  }),
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -84,9 +90,29 @@ const OAuthAuthorizationFlowStub = defineComponent({
   `,
 })
 
-function mountModal() {
+const GroupSelectorStub = defineComponent({
+  name: 'GroupSelector',
+  props: {
+    modelValue: {
+      type: Array,
+      default: () => [],
+    },
+  },
+  emits: ['update:modelValue'],
+  template: `
+    <button
+      type="button"
+      data-testid="select-pricing-groups"
+      @click="$emit('update:modelValue', [1, 2])"
+    >
+      groups
+    </button>
+  `,
+})
+
+function mountModal(groups: any[] = []) {
   return mount(CreateAccountModal, {
-    props: { show: true, proxies: [], groups: [] },
+    props: { show: true, proxies: [], groups },
     global: {
       stubs: {
         BaseDialog: BaseDialogStub,
@@ -97,7 +123,7 @@ function mountModal() {
         PlatformIcon: true,
         ProxySelector: true,
         ProxyAdBanner: true,
-        GroupSelector: true,
+        GroupSelector: GroupSelectorStub,
         ModelWhitelistSelector: true,
         QuotaLimitCard: true,
       },
@@ -147,6 +173,7 @@ async function openCodexImportStep(toggleClicks = 0) {
 
 describe('CreateAccountModal OpenAI long-context billing', () => {
   beforeEach(() => {
+    authIsSimpleMode.value = true
     createAccountMock.mockReset().mockResolvedValue({ id: 42, platform: 'openai', type: 'apikey' })
     probeUpstreamBillingMock.mockReset().mockResolvedValue({})
     importCodexSessionMock.mockReset().mockResolvedValue({
@@ -158,6 +185,34 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
       warnings: [],
     })
     createOpenAICodexPATMock.mockReset().mockResolvedValue({})
+  })
+
+  it('hides only the redundant account toggle when every selected group enables tier pricing', async () => {
+    authIsSimpleMode.value = false
+    const wrapper = mountModal([
+      { id: 1, long_context_pricing_enabled: true },
+      { id: 2, long_context_pricing_enabled: true },
+    ])
+
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('[data-testid="select-pricing-groups"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="openai-long-context-billing-toggle"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="create-openai-ws-mode"]').exists()).toBe(true)
+  })
+
+  it('keeps the account toggle when any selected group disables tier pricing', async () => {
+    authIsSimpleMode.value = false
+    const wrapper = mountModal([
+      { id: 1, long_context_pricing_enabled: true },
+      { id: 2, long_context_pricing_enabled: false },
+    ])
+
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('[data-testid="select-pricing-groups"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="openai-long-context-billing-toggle"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="create-openai-ws-mode"]').exists()).toBe(true)
   })
 
   it('sends false explicitly for normal OpenAI account creation by default', async () => {
