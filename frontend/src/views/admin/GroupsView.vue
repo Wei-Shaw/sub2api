@@ -4422,6 +4422,10 @@ import type {
   GroupPlatform,
   SubscriptionType,
 REDACTED from "@/types";
+import {
+  CONCRETE_PLATFORM_OPTIONS,
+  GROUP_PLATFORM_OPTIONS,
+REDACTED from "@/constants/platforms";
 import type { Column REDACTED from "@/components/common/types";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import TablePageLayout from "@/components/layout/TablePageLayout.vue";
@@ -4740,40 +4744,15 @@ const exclusiveOptions = computed(() => [
   { value: "false", label: t("admin.groups.nonExclusive") REDACTED,
 ]);
 
-const platformOptions = computed(() => [
-  { value: "anthropic", label: "Anthropic" REDACTED,
-  { value: "openai", label: "OpenAI" REDACTED,
-  { value: "gemini", label: "Gemini" REDACTED,
-  { value: "antigravity", label: "Antigravity" REDACTED,
-  { value: "grok", label: "Grok" REDACTED,
-  { value: "kimi", label: "Kimi" REDACTED,
-  { value: "zhipu", label: "Zhipu GLM" REDACTED,
-  { value: "deepseek", label: "DeepSeek" REDACTED,
-  { value: "composite", label: "Composite" REDACTED,
-]);
+const platformOptions = computed(() => [...GROUP_PLATFORM_OPTIONS]);
 
 const platformFilterOptions = computed(() => [
   { value: "", label: t("admin.groups.allPlatforms") REDACTED,
-  { value: "anthropic", label: "Anthropic" REDACTED,
-  { value: "openai", label: "OpenAI" REDACTED,
-  { value: "gemini", label: "Gemini" REDACTED,
-  { value: "antigravity", label: "Antigravity" REDACTED,
-  { value: "grok", label: "Grok" REDACTED,
-  { value: "kimi", label: "Kimi" REDACTED,
-  { value: "zhipu", label: "Zhipu GLM" REDACTED,
-  { value: "deepseek", label: "DeepSeek" REDACTED,
-  { value: "composite", label: "Composite" REDACTED,
+  ...GROUP_PLATFORM_OPTIONS,
 ]);
 
 const compositeRoutePlatformOptions = computed(() => [
-  { value: "anthropic", label: "Anthropic" REDACTED,
-  { value: "openai", label: "OpenAI" REDACTED,
-  { value: "gemini", label: "Gemini" REDACTED,
-  { value: "antigravity", label: "Antigravity" REDACTED,
-  { value: "grok", label: "Grok" REDACTED,
-  { value: "kimi", label: "Kimi" REDACTED,
-  { value: "zhipu", label: "Zhipu GLM" REDACTED,
-  { value: "deepseek", label: "DeepSeek" REDACTED,
+  ...CONCRETE_PLATFORM_OPTIONS,
 ]);
 
 const compositeRouteEndpointOptions = computed(() => [
