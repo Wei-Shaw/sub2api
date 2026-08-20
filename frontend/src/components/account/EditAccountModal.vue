@@ -2508,41 +2508,6 @@
           </div>
         </div>
 
-        <!-- TLS Fingerprint -->
-        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
-          <div class="flex items-center justify-between">
-            <div>
-              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.tlsFingerprint.label') }}</label>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.accounts.quotaControl.tlsFingerprint.hint') }}
-              </p>
-            </div>
-            <button
-              type="button"
-              @click="tlsFingerprintEnabled = !tlsFingerprintEnabled"
-              :class="[
-                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-                tlsFingerprintEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-              ]"
-            >
-              <span
-                :class="[
-                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                  tlsFingerprintEnabled ? 'translate-x-5' : 'translate-x-0'
-                ]"
-              />
-            </button>
-          </div>
-          <!-- Profile selector -->
-          <div v-if="tlsFingerprintEnabled" class="mt-3">
-            <select v-model="tlsFingerprintProfileId" class="input">
-              <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
-              <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
-              <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
-            </select>
-          </div>
-        </div>
-
         <!-- Session ID Masking -->
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
           <div class="flex items-center justify-between">
@@ -2642,6 +2607,46 @@
               class="input"
               :placeholder="t('admin.accounts.quotaControl.customBaseUrl.urlHint')"
             />
+          </div>
+        </div>
+      </div>
+
+      <!-- TLS Fingerprint (Anthropic OAuth/SetupToken + OpenAI OAuth) -->
+      <div
+        v-if="(account?.platform === 'anthropic' && (account?.type === 'oauth' || account?.type === 'setup-token')) || (account?.platform === 'openai' && account?.type === 'oauth')"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+      >
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.tlsFingerprint.label') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaControl.tlsFingerprint.hint') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="tlsFingerprintEnabled = !tlsFingerprintEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                tlsFingerprintEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  tlsFingerprintEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <!-- Profile selector -->
+          <div v-if="tlsFingerprintEnabled" class="mt-3">
+            <select v-model="tlsFingerprintProfileId" class="input">
+              <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
+              <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
+              <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+            </select>
           </div>
         </div>
       </div>
@@ -4310,6 +4315,12 @@ function loadQuotaControlSettings(account: Account) {
   customBaseUrlEnabled.value = false
   customBaseUrl.value = ''
 
+  // TLS fingerprint applies to Anthropic OAuth/SetupToken AND OpenAI OAuth
+  if (account.enable_tls_fingerprint === true) {
+    tlsFingerprintEnabled.value = true
+  }
+  tlsFingerprintProfileId.value = account.tls_fingerprint_profile_id ?? null
+
   // Remaining quota control settings only apply to Anthropic accounts
   if (account.platform !== 'anthropic') {
     return
@@ -4343,12 +4354,6 @@ function loadQuotaControlSettings(account: Account) {
 
   // UMQ mode（独立于 RPM 加载，防止编辑无 RPM 账号时丢失已有配置）
   userMsgQueueMode.value = account.user_msg_queue_mode ?? ''
-
-  // Load TLS fingerprint setting
-  if (account.enable_tls_fingerprint === true) {
-    tlsFingerprintEnabled.value = true
-  }
-  tlsFingerprintProfileId.value = account.tls_fingerprint_profile_id ?? null
 
   // Load session ID masking setting
   if (account.session_id_masking_enabled === true) {
@@ -4956,19 +4961,6 @@ const handleSubmit = async () => {
       }
       delete newExtra.user_msg_queue_enabled  // 清理旧字段
 
-      // TLS fingerprint setting
-      if (tlsFingerprintEnabled.value) {
-        newExtra.enable_tls_fingerprint = true
-        if (tlsFingerprintProfileId.value) {
-          newExtra.tls_fingerprint_profile_id = tlsFingerprintProfileId.value
-        } else {
-          delete newExtra.tls_fingerprint_profile_id
-        }
-      } else {
-        delete newExtra.enable_tls_fingerprint
-        delete newExtra.tls_fingerprint_profile_id
-      }
-
       // Session ID masking setting
       if (sessionIdMaskingEnabled.value) {
         newExtra.session_id_masking_enabled = true
@@ -4994,6 +4986,27 @@ const handleSubmit = async () => {
         delete newExtra.custom_base_url
       }
 
+      updatePayload.extra = newExtra
+    }
+
+    // TLS fingerprint setting (Anthropic OAuth/SetupToken + OpenAI OAuth)
+    if (
+      (props.account.platform === 'anthropic' && (props.account.type === 'oauth' || props.account.type === 'setup-token')) ||
+      (props.account.platform === 'openai' && props.account.type === 'oauth')
+    ) {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
+      const newExtra: Record<string, unknown> = { ...currentExtra }
+      if (tlsFingerprintEnabled.value) {
+        newExtra.enable_tls_fingerprint = true
+        if (tlsFingerprintProfileId.value) {
+          newExtra.tls_fingerprint_profile_id = tlsFingerprintProfileId.value
+        } else {
+          delete newExtra.tls_fingerprint_profile_id
+        }
+      } else {
+        delete newExtra.enable_tls_fingerprint
+        delete newExtra.tls_fingerprint_profile_id
+      }
       updatePayload.extra = newExtra
     }
 
