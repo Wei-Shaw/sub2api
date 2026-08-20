@@ -96,6 +96,8 @@ type ChannelModelPricing struct {
 	OutputPrice      *float64            `json:"output_price"`
 	CacheWritePrice  *float64            `json:"cache_write_price"`
 	CacheReadPrice   *float64            `json:"cache_read_price"`
+	FastMultiplier   *float64            `json:"fast_multiplier"`
+	FlexMultiplier   *float64            `json:"flex_multiplier"`
 	ImageInputPrice  *float64            `json:"image_input_price"`
 	ImageOutputPrice *float64            `json:"image_output_price"`
 	PerRequestPrice  *float64            `json:"per_request_price"`
@@ -120,19 +122,23 @@ REDACTED
 
 // PricingInterval 定价区间（token 区间 / 按次分层 / 图片分辨率分层）
 type PricingInterval struct {
-	ID              int64     `json:"id,omitempty"`
-	PricingID       int64     `json:"pricing_id,omitempty"`
-	MinTokens       int       `json:"min_tokens"`
-	MaxTokens       *int      `json:"max_tokens"`
-	TierLabel       string    `json:"tier_label"`
-	InputPrice      *float64  `json:"input_price"`
-	OutputPrice     *float64  `json:"output_price"`
-	CacheWritePrice *float64  `json:"cache_write_price"`
-	CacheReadPrice  *float64  `json:"cache_read_price"`
-	PerRequestPrice *float64  `json:"per_request_price"`
-	SortOrder       int       `json:"sort_order"`
-	CreatedAt       time.Time `json:"created_at,omitempty"`
-	UpdatedAt       time.Time `json:"updated_at,omitempty"`
+	ID                   int64     `json:"id,omitempty"`
+	PricingID            int64     `json:"pricing_id,omitempty"`
+	MinTokens            int       `json:"min_tokens"`
+	MaxTokens            *int      `json:"max_tokens"`
+	TierLabel            string    `json:"tier_label"`
+	InputPrice           *float64  `json:"input_price"`
+	OutputPrice          *float64  `json:"output_price"`
+	CacheWritePrice      *float64  `json:"cache_write_price"`
+	CacheReadPrice       *float64  `json:"cache_read_price"`
+	InputMultiplier      *float64  `json:"input_multiplier"`
+	OutputMultiplier     *float64  `json:"output_multiplier"`
+	CacheWriteMultiplier *float64  `json:"cache_write_multiplier"`
+	CacheReadMultiplier  *float64  `json:"cache_read_multiplier"`
+	PerRequestPrice      *float64  `json:"per_request_price"`
+	SortOrder            int       `json:"sort_order"`
+	CreatedAt            time.Time `json:"created_at,omitempty"`
+	UpdatedAt            time.Time `json:"updated_at,omitempty"`
 REDACTED
 
 // IsActive 判断渠道是否启用
@@ -358,7 +364,7 @@ REDACTED
 	return validateIntervalPrices(iv, idx)
 REDACTED
 
-// validateIntervalPrices 校验区间内所有价格字段 >= 0
+// validateIntervalPrices 校验区间价格 >= 0、倍率 > 0。
 func validateIntervalPrices(iv *PricingInterval, idx int) error {
 	prices := []struct {
 		name string
@@ -373,6 +379,20 @@ REDACTED
 	for _, p := range prices {
 		if p.val != nil && *p.val < 0 {
 			return fmt.Errorf("interval #%d: %s must be >= 0", idx+1, p.name)
+	REDACTED
+REDACTED
+	multipliers := []struct {
+		name string
+		val  *float64
+REDACTED{
+		{"input_multiplier", iv.InputMultiplierREDACTED,
+		{"output_multiplier", iv.OutputMultiplierREDACTED,
+		{"cache_write_multiplier", iv.CacheWriteMultiplierREDACTED,
+		{"cache_read_multiplier", iv.CacheReadMultiplierREDACTED,
+REDACTED
+	for _, multiplier := range multipliers {
+		if multiplier.val != nil && *multiplier.val <= 0 {
+			return fmt.Errorf("interval #%d: %s must be > 0", idx+1, multiplier.name)
 	REDACTED
 REDACTED
 	return nil

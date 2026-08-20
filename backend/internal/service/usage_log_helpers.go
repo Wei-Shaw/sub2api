@@ -10,6 +10,13 @@ REDACTED
 	return &trimmed
 REDACTED
 
+func optionalStringValue(value *string) string {
+	if value == nil {
+		return ""
+REDACTED
+	return strings.TrimSpace(*value)
+REDACTED
+
 func forwardResultBillingModel(requestedModel, upstreamModel string) string {
 	if trimmed := strings.TrimSpace(requestedModel); trimmed != "" {
 		return trimmed
