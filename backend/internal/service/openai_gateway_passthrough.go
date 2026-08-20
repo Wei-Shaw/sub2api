@@ -1491,7 +1491,15 @@ REDACTED
 	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
 		return true
 REDACTED
-	return isOpenAITransientProcessingError(http.StatusBadRequest, message, payload)
+	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
+		return true
+REDACTED
+	combined := strings.ToLower(strings.TrimSpace(message + " " +
+		gjson.GetBytes(payload, "error.message").String() + " " +
+		gjson.GetBytes(payload, "response.error.message").String()))
+	return strings.Contains(combined, "temporary") ||
+		strings.Contains(combined, "try again") ||
+		strings.Contains(combined, "please retry")
 REDACTED
 
 func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(

@@ -133,7 +133,8 @@ func TestResponsesFailoverExhaustedAfterForwardedTerminalMarksOpsWithoutDuplicat
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	official := "event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"official failure\"REDACTEDREDACTEDREDACTED\n\n"
-	_, _ = recorder.Write([]byte(official))
+	_, err := c.Writer.Write([]byte(official))
+REDACTED
 	service.MarkOpsStreamError(c, "server_error", "official failure", http.StatusBadGateway)
 
 	(&GatewayHandler{REDACTED).handleResponsesFailoverExhausted(c, &service.UpstreamFailoverError{

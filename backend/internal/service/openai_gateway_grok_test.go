@@ -418,10 +418,9 @@ REDACTED{
 			wantToolChoice: true,
 	REDACTED,
 		{
-			name:           "malformed non-array tools remain untouched",
-			body:           `{"input":"hello","tools":{"type":"function","name":"lookup"REDACTED,"tool_choice":"auto"REDACTED`,
-			wantTools:      true,
-			wantToolChoice: true,
+			name:      "malformed non-array tools drop orphan controls",
+			body:      `{"input":"hello","tools":{"type":"function","name":"lookup"REDACTED,"tool_choice":"auto"REDACTED`,
+			wantTools: true,
 	REDACTED,
 REDACTED
 
