@@ -1,8 +1,9 @@
 /**
- * 请求延迟健康度分档（用于用量明细"延迟"列的纵向健康扫视）。
+ * 请求性能健康度分档（用于用量明细"性能"列的纵向健康扫视）。
  *
  * 首 Token（TTFT）：10s 内正常，10-30s 偏慢，30-60s 缓慢，60s 及以上严重。
  * 总耗时：流式请求整体时长天然更长，阈值放宽为 1min / 3min / 5min。
+ * 生成速度：30tps 及以上正常，15-30tps 偏慢，5-15tps 缓慢，低于 5tps 严重。
  */
 export type LatencySeverity = 'good' | 'warn' | 'slow' | 'critical'
 
@@ -16,6 +17,12 @@ export const DURATION_THRESHOLDS_MS = {
   warn: 60_000,
   slow: 180_000,
   critical: 300_000,
+} as const
+
+export const GENERATION_TPS_THRESHOLDS = {
+  good: 30,
+  warn: 15,
+  slow: 5,
 } as const
 
 interface Thresholds {
@@ -36,6 +43,13 @@ export const firstTokenSeverity = (ms: number): LatencySeverity =>
 
 export const durationSeverity = (ms: number): LatencySeverity =>
   classify(ms, DURATION_THRESHOLDS_MS)
+
+export const generationTpsSeverity = (tps: number): LatencySeverity => {
+  if (tps >= GENERATION_TPS_THRESHOLDS.good) return 'good'
+  if (tps >= GENERATION_TPS_THRESHOLDS.warn) return 'warn'
+  if (tps >= GENERATION_TPS_THRESHOLDS.slow) return 'slow'
+  return 'critical'
+}
 
 export const LATENCY_TEXT_CLASSES: Record<LatencySeverity, string> = {
   good: 'text-emerald-600 dark:text-emerald-400',

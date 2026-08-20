@@ -66,6 +66,9 @@ const messages: Record<string, string> = {
 	'usage.upstreamResponseModel': 'Upstream response',
 	'usage.modelVariant': 'Possible version variant',
 	'usage.modelMismatch': 'Different model',
+	'usage.latencyFirstToken': 'First',
+	'usage.latencyDuration': 'Total',
+	'usage.performanceSpeed': 'Speed',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -87,6 +90,7 @@ const DataTableStub = {
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
+        <slot name="cell-latency" :row="row" />
         <slot name="cell-request_id" :row="row" />
       </div>
     </div>
@@ -418,6 +422,58 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('Per-image price')
     expect(text).toContain('not recorded')
     expect(text).not.toContain('(2K)')
+  })
+})
+
+describe('admin UsageTable performance', () => {
+  it('shows generation speed below first-token and total duration', () => {
+    const row = {
+      request_id: 'req-performance-1',
+      model: 'gpt-5.4',
+      input_tokens: 100,
+      output_tokens: 120,
+      image_output_tokens: 0,
+      first_token_ms: 1000,
+      duration_ms: 4000,
+    }
+
+    const wrapper = mount(UsageTable, {
+      props: { data: [row], loading: false, columns: [] },
+      global: {
+        stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true },
+      },
+    })
+
+    expect(wrapper.text()).toContain('First')
+    expect(wrapper.text()).toContain('Total')
+    expect(wrapper.text()).toContain('Speed')
+    const speed = wrapper.get('[data-testid="usage-performance-speed"]')
+    expect(speed.text()).toBe('40.0tps')
+    expect(speed.classes()).toContain('text-emerald-600')
+  })
+
+  it('does not estimate generation speed without a valid first-token sample', () => {
+    const row = {
+      request_id: 'req-performance-no-ttft',
+      model: 'gpt-5.4',
+      input_tokens: 100,
+      output_tokens: 120,
+      image_output_tokens: 0,
+      first_token_ms: null,
+      duration_ms: 4000,
+    }
+
+    const wrapper = mount(UsageTable, {
+      props: { data: [row], loading: false, columns: [] },
+      global: {
+        stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true },
+      },
+    })
+
+    const speed = wrapper.get('[data-testid="usage-performance-speed"]')
+    expect(wrapper.text()).toContain('Speed')
+    expect(speed.text()).toBe('-')
+    expect(speed.classes()).toContain('text-gray-400')
   })
 })
 

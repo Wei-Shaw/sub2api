@@ -214,7 +214,7 @@
           </div>
         </template>
 
-        <!-- 合并首字/总耗时的健康度列：左侧色条上端随首字档、下端随总耗时档，中段(40%-60%)短渐变过渡，便于纵向扫视整体健康状况 -->
+        <!-- 合并首字/总耗时/生成速度的性能列：左侧色条上端随首字档、下端随总耗时档，中段(40%-60%)短渐变过渡 -->
         <template #cell-latency="{ row }">
           <div class="flex items-stretch gap-2">
             <span
@@ -230,6 +230,12 @@
               <span v-else class="text-gray-400 dark:text-gray-500">-</span>
               <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyDuration') }}</span>
               <span class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[durationSeverity(row.duration_ms ?? 0)]">{{ formatDuration(row.duration_ms) }}</span>
+              <span class="text-gray-400 dark:text-gray-500">{{ t('usage.performanceSpeed') }}</span>
+              <span
+                data-testid="usage-performance-speed"
+                class="font-medium tabular-nums"
+                :class="generationTpsTextClass(row)"
+              >{{ formatGenerationTps(row) }}</span>
             </div>
           </div>
         </template>
@@ -512,6 +518,7 @@ import {
   LATENCY_TEXT_CLASSES,
   durationSeverity,
   firstTokenSeverity,
+  generationTpsSeverity,
 } from '@/utils/latencyHealth'
 import {
   BILLING_MODE_TOKEN,
@@ -687,6 +694,39 @@ const formatDuration = (ms: number | null | undefined): string => {
   const totalSec = Math.round(ms / 1000)
   if (totalSec < 3600) return `${Math.floor(totalSec / 60)}m ${totalSec % 60}s`
   return `${Math.floor(totalSec / 3600)}h ${Math.floor((totalSec % 3600) / 60)}m`
+}
+
+// 生成速度排除首 Token 到达前的等待时间，只对有效的流式文本输出进行估算。
+const generationTps = (row: AdminUsageLog): number | null => {
+  const firstTokenMs = row.first_token_ms
+  const durationMs = row.duration_ms
+  const outputTokens = textOutputTokens(row)
+  if (
+    firstTokenMs == null ||
+    durationMs == null ||
+    !Number.isFinite(firstTokenMs) ||
+    !Number.isFinite(durationMs) ||
+    !Number.isFinite(outputTokens) ||
+    firstTokenMs < 0 ||
+    durationMs <= firstTokenMs ||
+    outputTokens <= 0
+  ) {
+    return null
+  }
+
+  return outputTokens * 1000 / (durationMs - firstTokenMs)
+}
+
+const formatGenerationTps = (row: AdminUsageLog): string => {
+  const tps = generationTps(row)
+  return tps == null ? '-' : `${tps.toFixed(1)}tps`
+}
+
+const generationTpsTextClass = (row: AdminUsageLog): string => {
+  const tps = generationTps(row)
+  return tps == null
+    ? 'text-gray-400 dark:text-gray-500'
+    : LATENCY_TEXT_CLASSES[generationTpsSeverity(tps)]
 }
 
 // Cost tooltip functions
