@@ -360,7 +360,7 @@ func (s *GatewayService) SelectImageAccountMixed(
 ) (*Account, error) {
 	state := APIKeyRoutingStateFromContext(ctx)
 	if state == nil || len(state.Candidates(groupID)) == 0 {
-		return s.selectImageAccountMixedSingle(ctx, groupID, sessionHash, requestedModel, excludedIDs, imageCapability, falAPI, preferPlatform)
+		return s.selectImageAccountMixedSingle(ctx, groupID, sessionHash, requestedModel, excludedIDs, imageCapability, falAPI, preferPlatform, nil)
 	}
 	start := state.EffectiveIndex()
 	var lastErr error
@@ -373,7 +373,50 @@ func (s *GatewayService) SelectImageAccountMixed(
 			return nil, err
 		}
 		candidateModel := s.apiKeyFallbackCandidateModel(ctx, state.apiKey.GroupID, requestedModel)
-		account, err := s.selectImageAccountMixedSingle(ctx, state.apiKey.GroupID, sessionHash, candidateModel, excludedIDs, imageCapability, falAPI, preferPlatform)
+		account, err := s.selectImageAccountMixedSingle(ctx, state.apiKey.GroupID, sessionHash, candidateModel, excludedIDs, imageCapability, falAPI, preferPlatform, nil)
+		if err == nil {
+			state.Commit(index)
+			return account, nil
+		}
+		if !IsAPIKeyFallbackSelectionError(err) {
+			return nil, err
+		}
+		lastErr = err
+		start = index + 1
+	}
+}
+
+// SelectAsyncImageAccountInGroup selects an account for the asynchronous
+// /api/v1/model image facade. Only queue-style image providers are eligible;
+// synchronous OpenAI image accounts cannot serve this protocol.
+func (s *GatewayService) SelectAsyncImageAccountInGroup(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	falAPI string,
+) (*Account, error) {
+	allowedPlatforms := map[string]struct{}{
+		PlatformFal:      {},
+		PlatformLeonardo: {},
+	}
+	state := APIKeyRoutingStateFromContext(ctx)
+	if state == nil || len(state.Candidates(groupID)) == 0 {
+		return s.selectImageAccountMixedSingle(ctx, groupID, sessionHash, requestedModel, excludedIDs, OpenAIImagesCapabilityBasic, falAPI, "", allowedPlatforms)
+	}
+	start := state.EffectiveIndex()
+	var lastErr error
+	for {
+		index, err := state.EnsureEligibleFrom(ctx, start)
+		if err != nil {
+			if lastErr != nil {
+				return nil, lastErr
+			}
+			return nil, err
+		}
+		candidateModel := s.apiKeyFallbackCandidateModel(ctx, state.apiKey.GroupID, requestedModel)
+		account, err := s.selectImageAccountMixedSingle(ctx, state.apiKey.GroupID, sessionHash, candidateModel, excludedIDs, OpenAIImagesCapabilityBasic, falAPI, "", allowedPlatforms)
 		if err == nil {
 			state.Commit(index)
 			return account, nil
@@ -395,6 +438,7 @@ func (s *GatewayService) selectImageAccountMixedSingle(
 	imageCapability OpenAIImagesCapability,
 	falAPI string,
 	preferPlatform string,
+	allowedPlatforms map[string]struct{},
 ) (*Account, error) {
 	accounts, err := s.listSchedulableImageAccounts(ctx, groupID)
 	if err != nil {
@@ -411,6 +455,12 @@ func (s *GatewayService) selectImageAccountMixedSingle(
 	eligibleByPlatform := make(map[string]int, 2)
 	for i := range accounts {
 		diagnostic := s.buildImageSelectionDiagnostic(ctx, &accounts[i], requestedModel, imageCapability, falAPI, groupID, excludedIDs)
+		if len(allowedPlatforms) > 0 {
+			if _, allowed := allowedPlatforms[accounts[i].Platform]; !allowed {
+				diagnostic.Eligible = false
+				diagnostic.RejectionReason = "platform_not_supported_by_facade"
+			}
+		}
 		diagnostics[accounts[i].ID] = diagnostic
 		if diagnostic.Eligible {
 			eligibleCount++

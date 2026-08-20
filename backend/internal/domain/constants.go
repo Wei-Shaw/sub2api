@@ -227,7 +227,8 @@ var DefaultFalModelMapping = map[string]string{
 // Leonardo task API model. The current Leonardo bridge supports text-to-image
 // generation only.
 var DefaultLeonardoModelMapping = map[string]string{
-	"gpt-image-2": "gpt-image-2",
+	"gpt-image-2":        "gpt-image-2",
+	"openai/gpt-image-2": "gpt-image-2",
 }
 
 // FalSlugTextToImage 是 fal 文生图默认应用 slug。

@@ -538,30 +538,15 @@ func RegisterGatewayRoutes(
 		falGroup.PUT("/*path", h.FalGateway.Native)
 	}
 
-	// 视频异步门面（/api/v1/model/*path，fal 原生协议）。
+	// 通用异步模型门面（/api/v1/model/*path，fal queue 兼容协议）。
 	//
 	// 注意：该前缀与面板 API的 /api/v1 共存但语义不同——
 	// 面板路由走 JWT，这里走 API Key 鉴权。gin 基数树中
 	// /api/v1/model/*path 与 /api/v1/model-plaza 等静态路由分属不同分支，不冲突。
 	//
-	// 与 /fal 图片门面的关键区别：
-	//   - 不强制 platform=fal，允许混合分组接入（分组内可挂 fal / atlascloud / apiz 等账号）
-	//   - handler 内部按 slug 白名单过滤，仅接收视频模型
-	//   - 选号阶段做混合分组选号，按“该模型属于哪个平台”转发到对应平台账号
+	// handler 先判断任务类型，再分别从 fal/leonardo 图片池或
+	// fal/atlascloud/apiz 视频池中选号。视频功能开关仅在视频分支校验。
 	tasksGroup := r.Group("/api/v1/model")
-	tasksGroup.Use(func(c *gin.Context) {
-		if strings.HasSuffix(strings.Trim(c.Request.URL.Path, "/"), "/estimate_pricing") {
-			c.Next()
-			return
-		}
-		if settingService == nil || !settingService.IsVideoFeatureEnabled(c.Request.Context()) {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error": gin.H{"type": "feature_disabled", "message": "Video feature is disabled"},
-			})
-			return
-		}
-		c.Next()
-	})
 	tasksGroup.Use(bodyLimit)
 	tasksGroup.Use(clientRequestID)
 	tasksGroup.Use(opsErrorLogger)
@@ -569,9 +554,9 @@ func RegisterGatewayRoutes(
 	tasksGroup.Use(gin.HandlerFunc(apiKeyAuth))
 	tasksGroup.Use(requireGroupAnthropic)
 	{
-		tasksGroup.POST("/*path", h.FalVideoGateway.Native)
-		tasksGroup.GET("/*path", h.FalVideoGateway.Native)
-		tasksGroup.PUT("/*path", h.FalVideoGateway.Native)
+		tasksGroup.POST("/*path", h.ModelAPIGateway.Native)
+		tasksGroup.GET("/*path", h.ModelAPIGateway.Native)
+		tasksGroup.PUT("/*path", h.ModelAPIGateway.Native)
 	}
 
 }

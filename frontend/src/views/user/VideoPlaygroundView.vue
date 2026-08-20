@@ -663,8 +663,17 @@
             </div>
             <div
               v-if="resultType === 'video' && primaryPreview.source === 'payload' && playground.phase.value === 'completed'"
-              class="flex justify-end"
+              class="flex flex-wrap justify-start gap-2"
             >
+              <button
+                type="button"
+                class="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+                :disabled="downloadingVideoURLs.has(primaryPreview.url)"
+                @click="downloadVideo(primaryPreview.url)"
+              >
+                <Icon name="download" size="xs" />
+                {{ downloadingVideoURLs.has(primaryPreview.url) ? t('videoModels.playground.downloadingVideo') : t('videoModels.playground.downloadVideo') }}
+              </button>
               <button
                 type="button"
                 class="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600"
@@ -953,8 +962,43 @@ const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 const playground = useVideoPlayground()
+const downloadingVideoURLs = reactive(new Set<string>())
 const savingMaterialURLs = reactive(new Set<string>())
 const savedMaterialURLs = reactive(new Set<string>())
+
+function videoDownloadFileName(url: string): string {
+  try {
+    const parsed = new URL(url, window.location.href)
+    const segment = parsed.pathname.split('/').filter(Boolean).pop()
+    if (segment) return decodeURIComponent(segment)
+  } catch {
+    // Use the stable fallback below for malformed or non-standard URLs.
+  }
+  return `video-${Date.now()}.mp4`
+}
+
+async function downloadVideo(url: string) {
+  const normalized = url.trim()
+  if (!normalized || downloadingVideoURLs.has(normalized)) return
+  downloadingVideoURLs.add(normalized)
+  try {
+    const response = await fetch(normalized)
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const blobURL = URL.createObjectURL(await response.blob())
+    const link = document.createElement('a')
+    link.href = blobURL
+    link.download = videoDownloadFileName(normalized)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(blobURL)
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
+    appStore.showError(t('videoModels.playground.downloadVideoFailed', { msg: message }))
+  } finally {
+    downloadingVideoURLs.delete(normalized)
+  }
+}
 
 async function saveVideoToMaterials(url: string) {
   const normalized = url.trim()

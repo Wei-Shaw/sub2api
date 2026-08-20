@@ -51,6 +51,17 @@ func openaiImageAccount(id int64, priority int) Account {
 	}
 }
 
+func leonardoImageAccount(id int64, priority int) Account {
+	return Account{
+		ID:          id,
+		Platform:    PlatformLeonardo,
+		Type:        AccountTypeAPIKey,
+		Priority:    priority,
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+}
+
 func TestGatewayService_SelectImageAccountMixed(t *testing.T) {
 	const t2iModel = "gpt-image-2"
 	const upstream = "openai/gpt-image-2"
@@ -268,4 +279,35 @@ func TestGatewayService_SelectImageAccountMixed(t *testing.T) {
 		require.Equal(t, int64(1), selected[0].ContextMap()["account_id"])
 		require.Equal(t, PlatformOpenAI, selected[0].ContextMap()["platform"])
 	})
+}
+
+func TestGatewayService_SelectAsyncImageAccountInGroup(t *testing.T) {
+	const requestedModel = "openai/gpt-image-2"
+	const upstreamModel = "gpt-image-2"
+	groupID := int64(8899)
+	ctx := withTestGroup(context.Background(), groupID)
+	repo := newImageMixedRepo([]Account{
+		openaiImageAccount(1, 1),
+		{
+			ID:          2,
+			Platform:    PlatformFal,
+			Type:        AccountTypeAPIKey,
+			Priority:    1,
+			Status:      StatusDisabled,
+			Schedulable: false,
+		},
+		leonardoImageAccount(3, 3),
+	})
+	svc := &GatewayService{
+		accountRepo: repo,
+		cache:       &mockGatewayCacheForPlatform{},
+		cfg:         testConfig(),
+		resolver:    newFalUpstreamPricingResolver(t, groupID, upstreamModel, 0.25),
+	}
+
+	account, err := svc.SelectAsyncImageAccountInGroup(ctx, &groupID, "", requestedModel, nil, "")
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, int64(3), account.ID)
+	require.Equal(t, PlatformLeonardo, account.Platform)
 }

@@ -25,4 +25,14 @@ describe('VideoPlaygroundView output payload fallback', () => {
     expect(viewSource).toContain('userMaterialsAPI.importFromUrl(normalized)')
     expect(viewSource).toContain("t('videoModels.playground.saveToMaterials')")
   })
+
+  it('shows left-aligned download and material actions for completed videos', () => {
+    expect(viewSource).toContain('class="flex flex-wrap justify-start gap-2"')
+    expect(viewSource.indexOf('@click="downloadVideo(primaryPreview.url)"')).toBeLessThan(
+      viewSource.indexOf('@click="saveVideoToMaterials(primaryPreview.url)"'),
+    )
+    expect(viewSource).toContain('const response = await fetch(normalized)')
+    expect(viewSource).toContain('link.download = videoDownloadFileName(normalized)')
+    expect(viewSource).toContain('<Icon name="download" size="xs" />')
+  })
 })

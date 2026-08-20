@@ -27,6 +27,9 @@ export default {
     playgroundComingSoon: 'Playground coming soon.',
     playground: {
       title: 'Video Playground',
+      downloadVideo: 'Download',
+      downloadingVideo: 'Downloading…',
+      downloadVideoFailed: 'Failed to download video: {msg}',
       saveToMaterials: 'Save to library',
       savingToMaterials: 'Saving…',
       savedToMaterials: 'Saved',

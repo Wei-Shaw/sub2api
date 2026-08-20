@@ -85,7 +85,7 @@ type Handlers struct {
 	AsyncImage                *AsyncImageHandler
 	BatchImage                *BatchImageHandler
 	FalGateway                *FalGatewayHandler
-	FalVideoGateway           *FalVideoGatewayHandler
+	ModelAPIGateway           *ModelAPIGatewayHandler
 	Plaza                     *PlazaHandler
 	SupportTicket             *SupportTicketHandler
 	SupportTicketAttachment   *SupportTicketAttachmentHandler

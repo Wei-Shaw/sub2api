@@ -27,6 +27,9 @@ export default {
     playgroundComingSoon: '演练台即将上线。',
     playground: {
       title: '视频演练台',
+      downloadVideo: '下载',
+      downloadingVideo: '下载中…',
+      downloadVideoFailed: '下载视频失败：{msg}',
       saveToMaterials: '收藏到素材库',
       savingToMaterials: '收藏中…',
       savedToMaterials: '已收藏',

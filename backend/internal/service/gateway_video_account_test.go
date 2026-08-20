@@ -154,6 +154,49 @@ func TestPrepareVideoRequestPayloadOverridesAtlasCloudModel(t *testing.T) {
 	require.Equal(t, "explicit-model", original["model"])
 }
 
+func TestPrepareVideoRequestPayloadAdaptsAtlasCloudSeedance25ImageToVideo(t *testing.T) {
+	original := map[string]any{
+		"image_url":         "https://example.com/first.png",
+		"aspect_ratio":      " auto ",
+		"end_image_url":     "https://example.com/last.png",
+		"watermark":         true,
+		"output_format":     "webm",
+		"return_last_frame": true,
+	}
+	prepared := prepareVideoRequestPayload(
+		&Account{Platform: PlatformAtlasCloud},
+		" bytedance/seedance-2.5/image-to-video ",
+		original,
+	)
+
+	require.Equal(t, "https://example.com/first.png", prepared["image"])
+	require.Equal(t, "adaptive", prepared["ratio"])
+	require.Equal(t, "https://example.com/last.png", prepared["last_image"])
+	require.Equal(t, false, prepared["watermark"])
+	require.Equal(t, "mp4", prepared["output_format"])
+	require.Equal(t, false, prepared["return_last_frame"])
+	require.NotContains(t, prepared, "image_url")
+	require.NotContains(t, prepared, "aspect_ratio")
+	require.NotContains(t, prepared, "end_image_url")
+
+	// The persisted client request remains in the universal API shape.
+	require.Equal(t, "https://example.com/first.png", original["image_url"])
+	require.Equal(t, " auto ", original["aspect_ratio"])
+	require.Equal(t, "https://example.com/last.png", original["end_image_url"])
+	require.Equal(t, true, original["watermark"])
+}
+
+func TestPrepareVideoRequestPayloadPreservesExplicitRatioForAtlasCloudSeedance25(t *testing.T) {
+	prepared := prepareVideoRequestPayload(
+		&Account{Platform: PlatformAtlasCloud},
+		"bytedance/seedance-2.5/image-to-video",
+		map[string]any{"aspect_ratio": "9:16"},
+	)
+
+	require.Equal(t, "9:16", prepared["ratio"])
+	require.NotContains(t, prepared, "aspect_ratio")
+}
+
 func TestPrepareVideoRequestPayloadPreservesNonAutoAtlasCloudParams(t *testing.T) {
 	for _, duration := range []any{12, "12", nil} {
 		original := map[string]any{

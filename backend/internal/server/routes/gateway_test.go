@@ -48,7 +48,7 @@ func (r *videoFeatureRouteSettingRepo) GetAll(context.Context) (map[string]strin
 }
 func (r *videoFeatureRouteSettingRepo) Delete(context.Context, string) error { return nil }
 
-func TestGatewayRoutesVideoFeatureDisabledRejectsBeforeAuth(t *testing.T) {
+func TestGatewayRoutesModelAPIDoesNotApplyVideoFeatureGateBeforeAuth(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	authCalled := false
@@ -56,7 +56,10 @@ func TestGatewayRoutesVideoFeatureDisabledRejectsBeforeAuth(t *testing.T) {
 	RegisterGatewayRoutes(
 		router,
 		&handler.Handlers{},
-		servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) { authCalled = true; c.Next() }),
+		servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
+			authCalled = true
+			c.AbortWithStatus(http.StatusTeapot)
+		}),
 		nil, nil, nil, settingService, nil,
 		&config.Config{Gateway: config.GatewayConfig{MaxBodySize: 1024}},
 	)
@@ -64,9 +67,8 @@ func TestGatewayRoutesVideoFeatureDisabledRejectsBeforeAuth(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/model/bytedance/seedance", strings.NewReader(`{}`))
 	router.ServeHTTP(recorder, request)
-	require.Equal(t, http.StatusForbidden, recorder.Code)
-	require.False(t, authCalled)
-	require.Contains(t, recorder.Body.String(), `"type":"feature_disabled"`)
+	require.Equal(t, http.StatusTeapot, recorder.Code)
+	require.True(t, authCalled)
 }
 
 func TestGatewayRoutesEstimatePricingBypassesVideoFeatureGate(t *testing.T) {

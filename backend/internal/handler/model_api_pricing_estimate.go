@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func (h *FalVideoGatewayHandler) estimatePricing(c *gin.Context, path string) {
+func (h *ModelAPIGatewayHandler) estimatePricing(c *gin.Context, path string) {
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok || apiKey == nil {
 		h.jsonError(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")

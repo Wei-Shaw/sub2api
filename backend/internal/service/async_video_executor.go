@@ -359,15 +359,40 @@ func prepareVideoRequestPayload(account *Account, upstreamModel string, payload 
 	if account == nil || account.Platform != PlatformAtlasCloud || strings.TrimSpace(upstreamModel) == "" {
 		return payload
 	}
-	prepared := make(map[string]any, len(payload)+1)
+	model := strings.TrimSpace(upstreamModel)
+	prepared := make(map[string]any, len(payload)+6)
 	for key, value := range payload {
 		prepared[key] = value
 	}
-	prepared["model"] = strings.TrimSpace(upstreamModel)
+	prepared["model"] = model
 	if duration, ok := prepared["duration"].(string); ok && strings.EqualFold(strings.TrimSpace(duration), "auto") {
 		prepared["duration"] = -1
 	}
+	if strings.EqualFold(model, "bytedance/seedance-2.5/image-to-video") {
+		adaptAtlasCloudSeedance25ImageToVideoPayload(prepared)
+	}
 	return prepared
+}
+
+func adaptAtlasCloudSeedance25ImageToVideoPayload(payload map[string]any) {
+	if image, ok := payload["image_url"]; ok {
+		payload["image"] = image
+		delete(payload, "image_url")
+	}
+	if ratio, ok := payload["aspect_ratio"]; ok {
+		if value, isString := ratio.(string); isString && strings.EqualFold(strings.TrimSpace(value), "auto") {
+			ratio = "adaptive"
+		}
+		payload["ratio"] = ratio
+		delete(payload, "aspect_ratio")
+	}
+	if lastImage, ok := payload["end_image_url"]; ok {
+		payload["last_image"] = lastImage
+		delete(payload, "end_image_url")
+	}
+	payload["watermark"] = false
+	payload["output_format"] = "mp4"
+	payload["return_last_frame"] = false
 }
 
 // WaitForTerminal 伪同步阻塞等待任务终态（当前实现保留，供未来 OpenAI 风格视频门面复用）。
