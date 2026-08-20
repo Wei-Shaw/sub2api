@@ -139,6 +139,16 @@ REDACTED
 
 type GrokRealtimeUpstream struct{ conn openAIWSClientConn REDACTED
 
+// GrokRealtimeDialError preserves an HTTP status returned before WebSocket
+// upgrade so handlers can apply the normal Grok account policy.
+type GrokRealtimeDialError struct {
+	StatusCode int
+	Err        error
+REDACTED
+
+func (e *GrokRealtimeDialError) Error() string { return e.Err.Error() REDACTED
+func (e *GrokRealtimeDialError) Unwrap() error { return e.Err REDACTED
+
 func (u *GrokRealtimeUpstream) Close() error {
 	if u == nil || u.conn == nil {
 		return nil
@@ -171,11 +181,20 @@ REDACTED
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 REDACTED
-	conn, _, _, err := s.getOpenAIWSPassthroughDialer().Dial(ctx, u.String(), headers, proxyURL)
+	conn, status, _, err := s.getOpenAIWSPassthroughDialer().Dial(ctx, u.String(), headers, proxyURL)
 	if err != nil {
-		return nil, err
+		return nil, &GrokRealtimeDialError{StatusCode: status, Err: errREDACTED
 REDACTED
 	return &GrokRealtimeUpstream{conn: connREDACTED, nil
+REDACTED
+
+// HandleGrokRealtimeUpstreamError applies the shared Grok account policy to a
+// failed pre-accept WebSocket handshake.
+func (s *OpenAIGatewayService) HandleGrokRealtimeUpstreamError(ctx context.Context, account *Account, statusCode int, body []byte) {
+	if statusCode <= 0 {
+		statusCode = http.StatusBadGateway
+REDACTED
+	s.handleGrokAccountUpstreamError(ctx, account, statusCode, nil, body)
 REDACTED
 
 func (s *OpenAIGatewayService) ProxyGrokRealtimeConn(ctx context.Context, c *gin.Context, client *coderws.Conn, upstream *GrokRealtimeUpstream) (bool, error) {
