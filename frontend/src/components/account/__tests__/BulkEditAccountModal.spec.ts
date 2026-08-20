@@ -217,6 +217,24 @@ describe('BulkEditAccountModal', () => {
     expect(wrapper.findAll('[data-testid="grok-base-url-preset"]').length).toBe(0)
   })
 
+  it.each(['kimi', 'zhipu', 'deepseek'])('全部目标为 %s API Key 时展示请求头覆写', (platform) => {
+    const wrapper = mountModal({
+      selectedPlatforms: [platform],
+      selectedTypes: ['apikey']
+    })
+
+    expect(wrapper.find('#bulk-edit-header-override-enabled').exists()).toBe(true)
+  })
+
+  it.each(['kimi', 'zhipu', 'deepseek'])('目标为 %s OAuth 时不展示请求头覆写', (platform) => {
+    const wrapper = mountModal({
+      selectedPlatforms: [platform],
+      selectedTypes: ['oauth']
+    })
+
+    expect(wrapper.find('#bulk-edit-header-override-enabled').exists()).toBe(false)
+  })
+
   it('全部目标为 Grok OAuth 时，第三方 base_url 正常提交', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['grok'],
