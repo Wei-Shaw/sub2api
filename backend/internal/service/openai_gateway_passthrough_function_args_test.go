@@ -71,6 +71,48 @@ func TestHandleStreamingResponsePassthroughDeduplicatesFunctionCallArguments(t *
 	requireJSONArgument(t, gjson.Get(completed, "response.output.1.arguments").String())
 }
 
+func TestHandleStreamingResponsePassthroughNormalizesStrictMessageShape(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstreamBody := strings.Join([]string{
+		passthroughSSEData(`{"type":"response.output_item.added","output_index":0,"item":{"type":"message","role":"assistant"}}`),
+		passthroughSSEData(`{"type":"response.output_item.done","output_index":0,"item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok","annotations":null,"logprobs":null}]}}`),
+		passthroughSSEData(`{"type":"response.completed","response":{"id":"resp_strict","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}]}}`),
+		"data: [DONE]\n\n",
+	}, "")
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}
+
+	svc := &OpenAIGatewayService{}
+	result, err := svc.handleStreamingResponsePassthrough(context.Background(), resp, c, &Account{ID: 1}, time.Now(), "gpt-5.4", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	events := collectSSEDataPayloads(t, rec.Body.String())
+	added := findSSEEvent(t, events, "response.output_item.added", "")
+	done := findSSEEvent(t, events, "response.output_item.done", "")
+	completed := findSSEEvent(t, events, "response.completed", "")
+
+	messageID := gjson.Get(added, "item.id").String()
+	require.True(t, strings.HasPrefix(messageID, "msg_"))
+	require.Equal(t, messageID, gjson.Get(done, "item.id").String())
+	require.Equal(t, messageID, gjson.Get(completed, "response.output.0.id").String())
+	require.Equal(t, "in_progress", gjson.Get(added, "item.status").String())
+	require.Equal(t, "completed", gjson.Get(done, "item.status").String())
+	require.Equal(t, "completed", gjson.Get(completed, "response.output.0.status").String())
+	require.True(t, gjson.Get(done, "item.content.0.annotations").IsArray())
+	require.True(t, gjson.Get(done, "item.content.0.logprobs").IsArray())
+	require.True(t, gjson.Get(completed, "response.output.0.content.0.annotations").IsArray())
+	require.True(t, gjson.Get(completed, "response.output.0.content.0.logprobs").IsArray())
+}
+
 func TestForwardResponsesChatCompletionsFallbackKeepsFunctionArgumentsSingle(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

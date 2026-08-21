@@ -454,6 +454,7 @@ type BufferedResponseAccumulator struct {
 	reasoning            strings.Builder
 	funcCalls            []bufferedFuncCall
 	outputIndexToFuncIdx map[int]int
+	messageItemID        string
 }
 
 // NewBufferedResponseAccumulator returns an initialised accumulator.
@@ -469,11 +470,20 @@ func NewBufferedResponseAccumulator() *BufferedResponseAccumulator {
 func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) {
 	switch event.Type {
 	case "response.output_text.delta":
+		if a.messageItemID == "" && event.ItemID != "" {
+			a.messageItemID = event.ItemID
+		}
 		if event.Delta != "" {
 			_, _ = a.text.WriteString(event.Delta)
 		}
 	case "response.output_item.added":
-		if event.Item != nil && (event.Item.Type == "function_call" || event.Item.Type == "custom_tool_call") {
+		if event.Item == nil {
+			return
+		}
+		if event.Item.Type == "message" && a.messageItemID == "" && event.Item.ID != "" {
+			a.messageItemID = event.Item.ID
+		}
+		if event.Item.Type == "function_call" || event.Item.Type == "custom_tool_call" {
 			idx := len(a.funcCalls)
 			a.outputIndexToFuncIdx[event.OutputIndex] = idx
 			a.funcCalls = append(a.funcCalls, bufferedFuncCall{
@@ -516,9 +526,14 @@ func (a *BufferedResponseAccumulator) BuildOutput() []ResponsesOutput {
 	}
 
 	if a.text.Len() > 0 {
+		if a.messageItemID == "" {
+			a.messageItemID = generateMessageItemID()
+		}
 		out = append(out, ResponsesOutput{
-			Type: "message",
-			Role: "assistant",
+			Type:   "message",
+			ID:     a.messageItemID,
+			Role:   "assistant",
+			Status: "completed",
 			Content: []ResponsesContentPart{{
 				Type: "output_text",
 				Text: a.text.String(),
