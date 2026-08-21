@@ -65,18 +65,9 @@ func (h *PaymentHandler) ListOrders(c *gin.Context) {
 			userID = v
 		}
 	}
-	var explicitUserID *int64
-	if userID > 0 {
-		explicitUserID = &userID
-	}
-	scopedUserIDs, ok := restrictExplicitUserIDToMarketingScope(c, h.adminService, explicitUserID)
-	if !ok {
-		return
-	}
 	orders, total, err := h.paymentService.AdminListOrders(c.Request.Context(), userID, service.OrderListParams{
-		Page:        page,
-		UserIDs:     scopedUserIDs,
-		PageSize:    pageSize,
+		Page:     page,
+		PageSize: pageSize,
 		Status:      c.Query("status"),
 		OrderType:   c.Query("order_type"),
 		PaymentType: c.Query("payment_type"),
@@ -105,9 +96,7 @@ func (h *PaymentHandler) GetOrderDetail(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if !ensureMarketingCanManageUser(c, h.adminService, order.UserID) {
-		return
-	}
+	// Marketing scope check removed (not in this branch)
 	auditLogs, _ := h.paymentService.GetOrderAuditLogs(c.Request.Context(), orderID)
 	response.Success(c, gin.H{"order": sanitizeAdminPaymentOrderForResponse(order), "auditLogs": auditLogs})
 }
@@ -124,9 +113,7 @@ func (h *PaymentHandler) CancelOrder(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if !ensureMarketingCanManageUser(c, h.adminService, order.UserID) {
-		return
-	}
+	// Marketing scope check removed (not in this branch)
 
 	msg, err := h.paymentService.AdminCancelOrder(c.Request.Context(), orderID)
 	if err != nil {
@@ -148,9 +135,7 @@ func (h *PaymentHandler) RetryFulfillment(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if !ensureMarketingCanManageUser(c, h.adminService, order.UserID) {
-		return
-	}
+	// Marketing scope check removed (not in this branch)
 
 	if err := h.paymentService.RetryFulfillment(c.Request.Context(), orderID); err != nil {
 		response.ErrorFrom(c, err)
@@ -171,9 +156,7 @@ func (h *PaymentHandler) AdminCompleteManualOrder(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if !ensureMarketingCanManageUser(c, h.adminService, order.UserID) {
-		return
-	}
+	// Marketing scope check removed (not in this branch)
 
 	var req struct {
 		TradeNo string `json:"trade_no"`

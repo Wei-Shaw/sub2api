@@ -160,6 +160,8 @@ type AffiliateInviteRecord struct {
 	AffCode         string    `json:"aff_code"`
 	TotalRebate     float64   `json:"total_rebate"`
 	CreatedAt       time.Time `json:"created_at"`
+	// Enriched by handler
+	InviteeDeviceCode string `json:"invitee_device_code,omitempty"`
 }
 
 // AffiliateRebateRecord 是一笔返利入账流水。非订单来源（兑换码、管理员充值）
@@ -180,6 +182,8 @@ type AffiliateRebateRecord struct {
 	PaymentType     string    `json:"payment_type"`
 	OrderStatus     string    `json:"order_status"`
 	CreatedAt       time.Time `json:"created_at"`
+	// Enriched by handler
+	InviteeDeviceCode string `json:"invitee_device_code,omitempty"`
 }
 
 // AffiliateTransferRecord 是一笔返利额度流出：Action 为 transfer（用户转入余额）
@@ -201,6 +205,8 @@ type AffiliateTransferRecord struct {
 	FrozenQuota         float64   `json:"-"`
 	HistoryQuota        float64   `json:"-"`
 	CreatedAt           time.Time `json:"created_at"`
+	// Enriched by handler
+	DeviceCode string `json:"device_code,omitempty"`
 }
 
 // AffiliateWithdrawResult 是线下提现登记完成后的流水 ID 与额度快照。
