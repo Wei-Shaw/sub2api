@@ -1,0 +1,255 @@
+name: Docker Token2 Preview Deploy
+
+on:
+  push:
+    branches:
+      - feat/upstream-minimal-bot-sales
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: sub2api-token2-preview
+  cancel-in-progress: false
+
+env:
+  IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/sub2api
+  APP_DIR: ${{ secrets.SSH_APP_DIR || '/home/ubuntu/apps/sub2api' }}
+  TOKEN2_DOMAIN: token2.v-claw.org
+  TOKEN2_SERVER_PORT: '8081'
+
+jobs:
+  build:
+    name: Build and Push Token2 Image
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, '[deploy-token2]')
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: sha-${{ github.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_REPO }}
+          tags: |
+            type=raw,value=sha-${{ github.sha }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT=${{ github.sha }}
+            DATE=${{ github.run_id }}
+
+  deploy:
+    name: Deploy Sidecar on VM via SSH
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, '[deploy-token2]')
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload sidecar deployment manifests
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          target: ${{ env.APP_DIR }}
+          overwrite: true
+          rm: false
+          source: >-
+            deploy/docker-compose.token2.yml,
+            deploy/token2.v-claw.org.conf
+
+      - name: Deploy sidecar and configure domain
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          APP_DIR: ${{ env.APP_DIR }}
+          IMAGE_REPO: ${{ env.IMAGE_REPO }}
+          IMAGE_TAG: sha-${{ github.sha }}
+          GHCR_USERNAME: ${{ github.repository_owner }}
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+          TOKEN2_DOMAIN: ${{ env.TOKEN2_DOMAIN }}
+          TOKEN2_SERVER_PORT: ${{ env.TOKEN2_SERVER_PORT }}
+          RUN_ID: ${{ github.run_id }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          envs: APP_DIR,IMAGE_REPO,IMAGE_TAG,GHCR_USERNAME,GHCR_PAT,TOKEN2_DOMAIN,TOKEN2_SERVER_PORT,RUN_ID
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            APP_DIR_CLEAN="$(printf '%s' "$APP_DIR" | sed 's/[[:space:]]*$//')"
+            DEPLOY_DIR="${APP_DIR_CLEAN:-/home/ubuntu/apps/sub2api}/deploy"
+            TOKEN2_COMPOSE_FILE="$DEPLOY_DIR/docker-compose.token2.yml"
+            TOKEN2_NGINX_FILE="$DEPLOY_DIR/token2.v-claw.org.conf"
+            TOKEN2_PROJECT="sub2api-token2"
+            TOKEN2_CONTAINER="sub2api-token2"
+            TOKEN2_SERVER_PORT="${TOKEN2_SERVER_PORT:-8081}"
+            ROLLBACK_DIR="$DEPLOY_DIR/backups/token2-rollout-${RUN_ID:-manual}"
+            NGINX_AVAILABLE="/etc/nginx/sites-available/${TOKEN2_DOMAIN}.conf"
+            NGINX_ENABLED="/etc/nginx/sites-enabled/${TOKEN2_DOMAIN}.conf"
+            CERT_DIR="/etc/letsencrypt/live/$TOKEN2_DOMAIN"
+            ROLLBACK_NEEDED=true
+            NGINX_EXISTED=0
+
+            test -f "$DEPLOY_DIR/.env"
+            test -f "$DEPLOY_DIR/docker-compose.prod.yml"
+            test -f "$TOKEN2_COMPOSE_FILE"
+            test -f "$TOKEN2_NGINX_FILE"
+            sudo -n true
+
+            PROD_CONTAINER_ID="$(docker inspect sub2api --format '{{.Id}}')"
+            PROD_IMAGE="$(docker inspect sub2api --format '{{.Config.Image}}')"
+            PROD_STARTED_AT="$(docker inspect sub2api --format '{{.State.StartedAt}}')"
+            PROD_NETWORK="$(docker inspect sub2api --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}')"
+            test -n "$PROD_CONTAINER_ID"
+            test -n "$PROD_NETWORK"
+
+            export IMAGE_REPO IMAGE_TAG TOKEN2_NETWORK TOKEN2_SERVER_PORT
+            TOKEN2_NETWORK="$PROD_NETWORK"
+            export TOKEN2_NETWORK
+            IMAGE_REF="${IMAGE_REPO}:${IMAGE_TAG}"
+            test "$IMAGE_REF" != ":"
+
+            mkdir -p "$ROLLBACK_DIR" "$DEPLOY_DIR/token2-data"
+            chmod 700 "$ROLLBACK_DIR"
+
+            if sudo test -e "$NGINX_AVAILABLE"; then
+              sudo cp -a "$NGINX_AVAILABLE" "$ROLLBACK_DIR/token2.vhost.previous"
+              NGINX_EXISTED=1
+            fi
+
+            rollback() {
+              rc="$?"
+              if [ "$ROLLBACK_NEEDED" = true ]; then
+                echo "Token2 rollout failed; reverting sidecar and Nginx config" >&2
+                docker compose -p "$TOKEN2_PROJECT" --env-file "$DEPLOY_DIR/.env" -f "$TOKEN2_COMPOSE_FILE" down --remove-orphans || true
+                if [ "$NGINX_EXISTED" = 1 ]; then
+                  sudo cp -a "$ROLLBACK_DIR/token2.vhost.previous" "$NGINX_AVAILABLE" || true
+                  sudo ln -sfn "$NGINX_AVAILABLE" "$NGINX_ENABLED" || true
+                else
+                  sudo rm -f "$NGINX_AVAILABLE" "$NGINX_ENABLED" || true
+                fi
+                sudo nginx -t && sudo systemctl reload nginx || true
+              fi
+              exit "$rc"
+            }
+            trap rollback EXIT
+
+            echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+            docker compose -p "$TOKEN2_PROJECT" --env-file "$DEPLOY_DIR/.env" -f "$TOKEN2_COMPOSE_FILE" config --quiet
+
+            BACKUP_PATH="$ROLLBACK_DIR/sub2api_pre_token2_$(date -u +%Y%m%d-%H%M%S).dump"
+            docker exec sub2api-postgres sh -lc 'pg_dump -Fc -U "${POSTGRES_USER:-sub2api}" -d "${POSTGRES_DB:-sub2api}"' > "$BACKUP_PATH"
+            chmod 600 "$BACKUP_PATH"
+            test -s "$BACKUP_PATH"
+            printf 'PostgreSQL backup: %s (%s bytes)\n' "$BACKUP_PATH" "$(wc -c < "$BACKUP_PATH")"
+
+            echo 'Migration tables before rollout:'
+            docker exec sub2api-postgres sh -lc 'psql -Atqc "select table_name from information_schema.tables where table_schema = '\''public'\'' and table_name in ('\''user_devices'\'', '\''bot_sales_fulfillments'\'') order by table_name"' || true
+
+            docker compose -p "$TOKEN2_PROJECT" --env-file "$DEPLOY_DIR/.env" -f "$TOKEN2_COMPOSE_FILE" pull
+            docker compose -p "$TOKEN2_PROJECT" --env-file "$DEPLOY_DIR/.env" -f "$TOKEN2_COMPOSE_FILE" up -d --force-recreate --no-deps sub2api-token2
+
+            TOKEN2_CONTAINER_ID="$(docker inspect "$TOKEN2_CONTAINER" --format '{{.Id}}')"
+            test -n "$TOKEN2_CONTAINER_ID"
+            ACTUAL_IMAGE="$(docker inspect "$TOKEN2_CONTAINER_ID" --format '{{.Config.Image}}')"
+            test "$ACTUAL_IMAGE" = "$IMAGE_REF"
+
+            ready=false
+            for attempt in $(seq 1 60); do
+              status="$(docker inspect "$TOKEN2_CONTAINER_ID" --format '{{.State.Status}}')"
+              health="$(docker inspect "$TOKEN2_CONTAINER_ID" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}')"
+              echo "token2 status attempt=$attempt status=$status health=$health"
+              if [ "$status" = exited ] || [ "$status" = dead ]; then
+                docker logs --tail 200 "$TOKEN2_CONTAINER_ID" >&2 || true
+                exit 1
+              fi
+              if [ "$health" = healthy ] || curl --fail --silent --show-error --max-time 5 "http://127.0.0.1:${TOKEN2_SERVER_PORT}/health" >/dev/null 2>&1; then
+                ready=true
+                break
+              fi
+              sleep 5
+            done
+            if [ "$ready" != true ]; then
+              docker inspect "$TOKEN2_CONTAINER_ID" >&2 || true
+              docker logs --tail 200 "$TOKEN2_CONTAINER_ID" >&2 || true
+              exit 1
+            fi
+
+            if ! sudo test -s "$CERT_DIR/fullchain.pem" || ! sudo test -s "$CERT_DIR/privkey.pem"; then
+              sudo install -d -m 755 /var/www/certbot
+              sudo tee "$NGINX_AVAILABLE" >/dev/null <<EOF
+            server {
+                listen 80;
+                listen [::]:80;
+                server_name $TOKEN2_DOMAIN;
+                location ^~ /.well-known/acme-challenge/ {
+                    root /var/www/certbot;
+                    default_type text/plain;
+                }
+                location / { return 404; }
+            }
+            EOF
+              sudo ln -sfn "$NGINX_AVAILABLE" "$NGINX_ENABLED"
+              sudo nginx -t
+              sudo systemctl reload nginx
+              sudo certbot certonly --webroot -w /var/www/certbot -d "$TOKEN2_DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --keep-until-expiring
+            fi
+            sudo test -s "$CERT_DIR/fullchain.pem"
+            sudo test -s "$CERT_DIR/privkey.pem"
+
+            sudo install -m 0644 "$TOKEN2_NGINX_FILE" "$NGINX_AVAILABLE"
+            sudo ln -sfn "$NGINX_AVAILABLE" "$NGINX_ENABLED"
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+            curl --fail --retry 30 --retry-delay 2 --retry-all-errors --max-time 10 --resolve "$TOKEN2_DOMAIN:443:127.0.0.1" "https://$TOKEN2_DOMAIN/health"
+            curl --fail --retry 30 --retry-delay 2 --retry-all-errors --max-time 10 "https://$TOKEN2_DOMAIN/health"
+            curl --fail --retry 10 --retry-delay 2 --retry-all-errors --max-time 10 --resolve token.v-claw.org:443:127.0.0.1 https://token.v-claw.org/health
+
+            test "$(docker inspect sub2api --format '{{.Id}}')" = "$PROD_CONTAINER_ID"
+            test "$(docker inspect sub2api --format '{{.Config.Image}}')" = "$PROD_IMAGE"
+            test "$(docker inspect sub2api --format '{{.State.StartedAt}}')" = "$PROD_STARTED_AT"
+            docker inspect "$TOKEN2_CONTAINER_ID" --format 'token2 image={{.Config.Image}} state={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} memory={{.HostConfig.Memory}} nano_cpus={{.HostConfig.NanoCpus}} pids={{.HostConfig.PidsLimit}} log_driver={{.HostConfig.LogConfig.Type}}'
+
+            echo 'Migration tables after rollout:'
+            MIGRATION_TABLES="$(docker exec sub2api-postgres sh -lc 'psql -Atqc "select table_name from information_schema.tables where table_schema = '\''public'\'' and table_name in ('\''user_devices'\'', '\''bot_sales_fulfillments'\'') order by table_name"' || true)"
+            printf '%s\n' "$MIGRATION_TABLES"
+            case "$MIGRATION_TABLES" in
+              *bot_sales_fulfillments*) ;;
+              *)
+                echo 'Expected bot_sales_fulfillments table is missing after rollout' >&2
+                exit 1
+                ;;
+            esac
+
+            ROLLBACK_NEEDED=false
+            echo "Token2 sidecar deployed: $IMAGE_REF -> https://$TOKEN2_DOMAIN"

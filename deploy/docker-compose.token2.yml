@@ -1,0 +1,72 @@
+services:
+  sub2api-token2:
+    image: ${IMAGE_REPO:?IMAGE_REPO is required}:${IMAGE_TAG:?IMAGE_TAG is required}
+    container_name: sub2api-token2
+    restart: unless-stopped
+    init: true
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    cpus: "${TOKEN2_CPUS:-1.0}"
+    mem_limit: "${TOKEN2_MEMORY_LIMIT:-1g}"
+    memswap_limit: "${TOKEN2_MEMORY_SWAP_LIMIT:-1g}"
+    pids_limit: ${TOKEN2_PIDS_LIMIT:-512}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "127.0.0.1:${TOKEN2_SERVER_PORT:-8081}:8080"
+    volumes:
+      - ./token2-data:/app/data
+    environment:
+      - AUTO_SETUP=true
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - SERVER_MODE=${SERVER_MODE:-release}
+      - RUN_MODE=${RUN_MODE:-standard}
+      - DATABASE_HOST=${TOKEN2_DATABASE_HOST:-postgres}
+      - DATABASE_PORT=5432
+      - DATABASE_USER=${POSTGRES_USER:-sub2api}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - DATABASE_DBNAME=${POSTGRES_DB:-sub2api}
+      - DATABASE_SSLMODE=disable
+      - DATABASE_MAX_OPEN_CONNS=${TOKEN2_DATABASE_MAX_OPEN_CONNS:-10}
+      - DATABASE_MAX_IDLE_CONNS=${TOKEN2_DATABASE_MAX_IDLE_CONNS:-5}
+      - DATABASE_CONN_MAX_LIFETIME_MINUTES=${DATABASE_CONN_MAX_LIFETIME_MINUTES:-30}
+      - DATABASE_CONN_MAX_IDLE_TIME_MINUTES=${DATABASE_CONN_MAX_IDLE_TIME_MINUTES:-5}
+      - REDIS_HOST=${TOKEN2_REDIS_HOST:-redis}
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=${TOKEN2_REDIS_DB:-1}
+      - REDIS_POOL_SIZE=${TOKEN2_REDIS_POOL_SIZE:-64}
+      - REDIS_MIN_IDLE_CONNS=${TOKEN2_REDIS_MIN_IDLE_CONNS:-2}
+      - REDIS_ENABLE_TLS=${REDIS_ENABLE_TLS:-false}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sub2api.local}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - JWT_SECRET=${JWT_SECRET:-}
+      - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24}
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-}
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
+      - SECURITY_URL_ALLOWLIST_ENABLED=${SECURITY_URL_ALLOWLIST_ENABLED:-false}
+      - SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=${SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP:-false}
+      - ANTIGRAVITY_USER_AGENT_VERSION=${ANTIGRAVITY_USER_AGENT_VERSION:-1.22.2}
+    networks:
+      - production-sub2api
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+networks:
+  production-sub2api:
+    external: true
+    name: ${TOKEN2_NETWORK:?TOKEN2_NETWORK is required}
