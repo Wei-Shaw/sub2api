@@ -116,7 +116,9 @@ func sanitizeGroupMessagesDispatchFields(g *Group) {
 	if g == nil || g.Platform == PlatformOpenAI {
 		return
 REDACTED
-	g.AllowMessagesDispatch = false
+	if g.Platform != PlatformComposite {
+		g.AllowMessagesDispatch = false
+REDACTED
 	g.DefaultMappedModel = ""
 	g.MessagesDispatchModelConfig = OpenAIMessagesDispatchModelConfig{REDACTED
 REDACTED

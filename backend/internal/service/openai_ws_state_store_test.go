@@ -28,6 +28,27 @@ REDACTED
 	require.Zero(t, accountID)
 REDACTED
 
+func TestOpenAIWSStateStore_HTTPResponseOwnerPersistsAcrossStoreInstances(t *testing.T) {
+	cache := &stubGatewayCache{REDACTED
+	ctx := context.Background()
+	groupID := int64(8)
+	writer := NewOpenAIWSStateStore(cache)
+
+	require.NoError(t, writer.BindHTTPResponseOwner(ctx, groupID, "resp_owned", 201, 301, time.Minute))
+	userID, apiKeyID, found, err := writer.GetHTTPResponseOwner(ctx, groupID, "resp_owned")
+REDACTED
+	require.True(t, found)
+	require.Equal(t, int64(201), userID)
+	require.Equal(t, int64(301), apiKeyID)
+
+	reader := NewOpenAIWSStateStore(cache)
+	userID, apiKeyID, found, err = reader.GetHTTPResponseOwner(ctx, groupID, "resp_owned")
+REDACTED
+	require.True(t, found)
+	require.Equal(t, int64(201), userID)
+	require.Equal(t, int64(301), apiKeyID)
+REDACTED
+
 func TestOpenAIWSStateStore_ResponseConnTTL(t *testing.T) {
 	store := NewOpenAIWSStateStore(nil)
 	store.BindResponseConn("resp_conn", "conn_1", 30*time.Millisecond)

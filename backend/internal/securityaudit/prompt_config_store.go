@@ -136,12 +136,26 @@ REDACTED
 	previous := m.snapshot.Load()
 	m.snapshot.Store(&activeConfigSnapshot{storage: cloneStorageConfig(storage), active: cloneActiveConfig(active), loadedAt: nowREDACTED)
 	m.configUntrusted.Store(false)
-	m.clearLoadError()
+	recovered := m.clearLoadError()
 	m.logInvalidTokenEndpoints(previous, active)
-	LogInfo(EventConfigLoaded, map[string]any{
-		"config_version": storage.ConfigVersion, "status": "loaded",
-REDACTED)
+	// refreshLoop calls Reload every 5s, so logging every successful load turns
+	// config_loaded into a heartbeat that buries real config changes.
+	if recovered || shouldLogConfigLoaded(previous, storage, active) {
+		LogInfo(EventConfigLoaded, map[string]any{
+			"config_version": storage.ConfigVersion, "status": "loaded",
+	REDACTED)
+REDACTED
 	return nil
+REDACTED
+
+// shouldLogConfigLoaded reports whether a successful reload carries news: the
+// first snapshot, a new config version (every admin save bumps it under the
+// advisory lock in UpdateConfig) or a flip of the global risk control gate,
+// which lives in its own setting and so leaves the version untouched.
+func shouldLogConfigLoaded(previous *activeConfigSnapshot, storage storageConfig, active ActiveConfig) bool {
+	return previous == nil ||
+		previous.storage.ConfigVersion != storage.ConfigVersion ||
+		previous.active.RiskControlEnabled != active.RiskControlEnabled
 REDACTED
 
 // logInvalidTokenEndpoints warns once per change (not on every 5s refresh)
@@ -490,11 +504,15 @@ REDACTED
 	m.stateMu.Unlock()
 REDACTED
 
-func (m *ConfigManager) clearLoadError() {
+// clearLoadError drops the recorded load failure and reports whether one was
+// pending, so callers can tell a recovery apart from an unchanged reload.
+func (m *ConfigManager) clearLoadError() bool {
 	m.stateMu.Lock()
+	recovered := m.lastLoadError != ""
 	m.lastLoadError = ""
 	m.lastErrorAt = nil
 	m.stateMu.Unlock()
+	return recovered
 REDACTED
 
 func cloneStorageConfig(cfg storageConfig) storageConfig {

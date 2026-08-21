@@ -54,7 +54,7 @@ const (
 
 	// Antigravity API 端点
 	antigravityProdBaseURL  = "https://cloudcode-pa.googleapis.com"
-	antigravityDailyBaseURL = "https://daily-cloudcode-pa.sandbox.googleapis.com"
+	antigravityDailyBaseURL = "https://daily-cloudcode-pa.googleapis.com"
 )
 
 var userAgentVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)

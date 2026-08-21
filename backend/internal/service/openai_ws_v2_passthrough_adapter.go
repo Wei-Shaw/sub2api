@@ -28,6 +28,7 @@ type openAIWSClientFrameConn struct {
 	// The relay observes upstream payloads, while clients must keep seeing the
 	// model identifier they supplied for the current turn.
 	restoreResponseModel func([]byte) []byte
+	restoreToolNames     func([]byte) []byte
 REDACTED
 
 // openAIWSPolicyEnforcingFrameConn wraps a client-side FrameConn and runs
@@ -85,11 +86,9 @@ REDACTED
 	return c.inner.Close()
 REDACTED
 
-// openAIWSPassthroughPolicyModelForFrame returns the upstream-perspective
-// model name that should be passed to evaluateOpenAIFastPolicy for a single
-// passthrough WS frame. Mirrors the HTTP-side normalization
-// (account.GetMappedModel + normalizeOpenAIModelForUpstream) so the WS path
-// matches model whitelists identically.
+// openAIWSPassthroughPolicyModelForFrame returns the model actually forwarded
+// by a passthrough WS frame. Passthrough only replaces authentication, so an
+// account's ordinary model_mapping and Codex aliases must not rewrite it.
 func openAIWSPassthroughPolicyModelForFrame(account *Account, payload []byte) string {
 	if account == nil || len(payload) == 0 {
 		return ""
@@ -98,7 +97,7 @@ REDACTED
 	if original == "" {
 		return ""
 REDACTED
-	return normalizeOpenAIModelForUpstream(account, account.GetMappedModel(original))
+	return original
 REDACTED
 
 // openAIWSPassthroughPolicyModelFromSessionFrame returns the upstream model
@@ -130,7 +129,7 @@ REDACTED
 	if original == "" {
 		return ""
 REDACTED
-	return normalizeOpenAIModelForUpstream(account, account.GetMappedModel(original))
+	return original
 REDACTED
 
 type openAIWSPassthroughUsageMeta struct {
@@ -639,6 +638,9 @@ REDACTED
 		if c.restoreResponseModel != nil {
 			payload = c.restoreResponseModel(payload)
 	REDACTED
+		if c.restoreToolNames != nil {
+			payload = c.restoreToolNames(payload)
+	REDACTED
 REDACTED
 	return c.conn.Write(ctx, msgType, payload)
 REDACTED
@@ -662,6 +664,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	hooks *OpenAIWSIngressHooks,
 	wsDecision OpenAIWSProtocolDecision,
 ) error {
+	// The same request context survives scheduler failover attempts. Clear any
+	// reverse mapping installed by the prior account before processing frames.
+	setCodexToolNameReverse(c, nil)
 	if s == nil {
 		return errors.New("service is nil")
 REDACTED
@@ -674,7 +679,7 @@ REDACTED
 	if err := validateOpenAIWSBearerToken(account, token); err != nil {
 		return err
 REDACTED
-	if account.IsOpenAIOAuth() && isOpenAIResponsesLiteWebSocketPayload(firstClientMessage) {
+	if account.IsOpenAIOAuthLike() && isOpenAIResponsesLiteWebSocketPayload(firstClientMessage) {
 		liteFirstMessage, _, liteErr := normalizeOpenAIResponsesLiteToolsPayload(firstClientMessage)
 		if liteErr != nil {
 			return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, liteErr.Error(), liteErr)
@@ -729,6 +734,21 @@ REDACTED
 	if capturedSessionModel != "" && capturedSessionModel != strings.TrimSpace(gjson.GetBytes(firstClientMessage, "model").String()) {
 		firstClientMessage = s.ReplaceModelInBody(firstClientMessage, capturedSessionModel)
 REDACTED
+	if normalized, compatibilityChanged, normalizeErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(firstClientMessage, account); normalizeErr != nil {
+		return fmt.Errorf("normalize first websocket response.create: %w", normalizeErr)
+REDACTED else if compatibilityChanged {
+		firstClientMessage = normalized
+REDACTED
+	if account.IsOpenAIOAuthLike() {
+		aliasedBody, reverse, aliased, aliasErr := aliasOpenAIOAuthReservedToolNamesBody(firstClientMessage)
+		if aliasErr != nil {
+			return aliasErr
+	REDACTED
+		updateCodexToolNameReverseForWSFrame(c, firstClientMessage, reverse)
+		if aliased {
+			firstClientMessage = aliasedBody
+	REDACTED
+REDACTED
 	usageMeta := newOpenAIWSPassthroughUsageMeta(initialRequestModel, firstClientMessage)
 	updatedFirst, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, capturedSessionModel, firstClientMessage)
 	if policyErr != nil {
@@ -767,6 +787,8 @@ REDACTED
 	// goroutine）和 OnTurnComplete / final result（runUpstreamToClient
 	// goroutine）之间同步当前 turn 的 usage metadata。
 	usageMeta.initFromFirstFrame(firstClientMessage, capturedSessionModel)
+	_, initialUpstreamModel := usageMeta.turnModels(initialRequestModel)
+	SetOpsUpstreamModel(c, initialUpstreamModel)
 	promptCacheKey := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "prompt_cache_key").String())
 
 	wsURL, err := s.buildOpenAIResponsesWSURL(account)
@@ -863,10 +885,7 @@ REDACTED
 		s.handleOpenAIWSDialTransientFailure(ctx, account, capturedSessionModel, dialErr)
 		if statusCode == http.StatusTooManyRequests {
 			s.persistOpenAIWSRateLimitSignal(ctx, account, handshakeHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(err.Error()))
-			return &UpstreamFailoverError{
-				StatusCode:      http.StatusTooManyRequests,
-				ResponseHeaders: cloneHeader(handshakeHeaders),
-		REDACTED
+			return s.newOpenAIWSRateLimitFailoverError(account, handshakeHeaders, nil, err.Error())
 	REDACTED
 		return s.mapOpenAIWSPassthroughDialError(err, statusCode, handshakeHeaders)
 REDACTED
@@ -929,6 +948,9 @@ REDACTED
 			requestModel, upstreamModel := usageMeta.turnModels("")
 			return replaceOpenAIWSMessageModel(payload, upstreamModel, requestModel)
 	REDACTED,
+		restoreToolNames: func(payload []byte) []byte {
+			return restoreCodexToolNamesFromContext(c, payload)
+	REDACTED,
 REDACTED
 	policyClientConn := &openAIWSPolicyEnforcingFrameConn{
 		inner: clientFrameConn,
@@ -957,7 +979,24 @@ REDACTED
 			REDACTED()
 		REDACTED
 			if isResponseCreate {
-				if account.IsOpenAIOAuth() && isOpenAIResponsesLiteWebSocketPayload(payload) {
+				if normalized, compatibilityChanged, normalizeErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(payload, account); normalizeErr != nil {
+					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", normalizeErr)
+			REDACTED else if compatibilityChanged {
+					payload = normalized
+			REDACTED
+		REDACTED
+			if account.IsOpenAIOAuthLike() && (isResponseCreate || eventType == "session.update") {
+				aliasedBody, reverse, aliased, aliasErr := aliasOpenAIOAuthReservedToolNamesBody(payload)
+				if aliasErr != nil {
+					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, aliasErr.Error(), aliasErr)
+			REDACTED
+				updateCodexToolNameReverseForWSFrame(c, payload, reverse)
+				if aliased {
+					payload = aliasedBody
+			REDACTED
+		REDACTED
+			if isResponseCreate {
+				if account.IsOpenAIOAuthLike() && isOpenAIResponsesLiteWebSocketPayload(payload) {
 					litePayload, _, liteErr := normalizeOpenAIResponsesLiteToolsPayload(payload)
 					if liteErr != nil {
 						return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, liteErr.Error(), liteErr)
@@ -1038,6 +1077,8 @@ REDACTED
 			//     service_tier 时按 default 处理，billing 应如实反映。
 			if policyErr == nil && blocked == nil && isResponseCreate {
 				usageMeta.updateFromResponseCreate(out, model, requestModelForThisFrame)
+				_, actualModel := usageMeta.turnModels(requestModelForThisFrame)
+				SetOpsUpstreamModel(c, actualModel)
 				responseCreateAtCopy := responseCreateAt
 				acceptedTurnStartedAt.Store(&responseCreateAtCopy)
 				acceptedTurn = true
@@ -1090,6 +1131,7 @@ REDACTED
 	if hooks != nil {
 		firstTurnStartedAt = hooks.InitialTurnStartedAt
 REDACTED
+	failureAccountSideEffectsApplied := false
 	relayResult, relayExit := openaiwsv2.RunEntry(openaiwsv2.EntryInput{
 		Ctx:                ctx,
 		ClientConn:         policyClientConn,
@@ -1172,6 +1214,10 @@ REDACTED
 			REDACTED
 		REDACTED,
 			AfterClientWrite: func(msgType coderws.MessageType, payload []byte, writeErr error) {
+				if msgType == coderws.MessageText && writeErr == nil {
+					eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
+					markOpenAIWSClientVisibleFailure(c, eventType, payload)
+			REDACTED
 				if msgType == coderws.MessageText && openAIWSPassthroughIsTerminalOutput(payload) {
 					turnLifecycle.finishTerminalWrite(writeErr == nil, clientFrameConn.markTurnCompleted)
 			REDACTED
@@ -1192,17 +1238,18 @@ REDACTED
 					return nil
 			REDACTED
 				eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
-				if isOpenAIWSTerminalEvent(eventType) {
-					s.handleOpenAIWSTerminalTransientFailure(ctx, account, capturedSessionModel, handshakeHeaders, payload)
-			REDACTED
-				if eventType == "error" {
-					s.handleOpenAIWSErrorEventTransientFailure(ctx, account, capturedSessionModel, handshakeHeaders, payload)
-			REDACTED
-				if wroteDownstream || eventType != "error" {
-					return nil
+				if eventType == "response.created" {
+					failureAccountSideEffectsApplied = false
 			REDACTED
 				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(payload)
-				if !isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
+				isPreOutputRateLimit := eventType == "error" && !wroteDownstream && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw)
+				if (eventType == "error" || eventType == "response.failed") && !failureAccountSideEffectsApplied && !isPreOutputRateLimit {
+					failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, capturedSessionModel, handshakeHeaders, payload)
+			REDACTED
+				if eventType != "error" {
+					return nil
+			REDACTED
+				if wroteDownstream || !isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
 					return nil
 			REDACTED
 				s.persistOpenAIWSRateLimitSignal(ctx, account, handshakeHeaders, payload, errCodeRaw, errTypeRaw, errMsgRaw)
@@ -1213,11 +1260,7 @@ REDACTED
 					truncateOpenAIWSLogValue(errTypeRaw, openAIWSLogValueMaxLen),
 					truncateOpenAIWSLogValue(errMsgRaw, openAIWSLogValueMaxLen),
 				)
-				return &UpstreamFailoverError{
-					StatusCode:      http.StatusTooManyRequests,
-					ResponseBody:    append([]byte(nil), payload...),
-					ResponseHeaders: cloneHeader(handshakeHeaders),
-			REDACTED
+				return s.newOpenAIWSRateLimitFailoverError(account, handshakeHeaders, payload, errMsgRaw)
 		REDACTED,
 			OnTrace: func(event openaiwsv2.RelayTraceEvent) {
 				logOpenAIWSV2Passthrough(
@@ -1235,6 +1278,9 @@ REDACTED
 	REDACTED,
 REDACTED)
 	if cause := context.Cause(ctx); cause != nil {
+		if isOpenAIWSSessionPreempted(ctx) {
+			return errOpenAIWSSessionPreempted
+	REDACTED
 		status := coderws.StatusGoingAway
 		reason := "websocket request canceled"
 		if errors.Is(cause, ErrOpenAIWSIngressLeaseLost) {

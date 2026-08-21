@@ -221,6 +221,49 @@ func normalizeOpenAIWSTerminalEvent(eventType string) string {
 REDACTED
 REDACTED
 
+// markOpenAIWSClientVisibleFailure records only terminal/error protocol events
+// that were delivered to the client. Callers invoke it only after any hidden
+// failover/recovery decision and a successful downstream write.
+func markOpenAIWSClientVisibleFailure(c *gin.Context, eventType string, payload []byte) {
+	eventType = strings.TrimSpace(eventType)
+	if eventType != "error" && eventType != "response.failed" {
+		return
+REDACTED
+	prefix := "error"
+	if eventType == "response.failed" {
+		prefix = "response.error"
+REDACTED
+	code := strings.TrimSpace(gjson.GetBytes(payload, prefix+".code").String())
+	errType := strings.TrimSpace(gjson.GetBytes(payload, prefix+".type").String())
+	message := strings.TrimSpace(gjson.GetBytes(payload, prefix+".message").String())
+	if eventType == "response.failed" && code == "" && errType == "" && message == "" {
+		prefix = "error"
+		code = strings.TrimSpace(gjson.GetBytes(payload, prefix+".code").String())
+		errType = strings.TrimSpace(gjson.GetBytes(payload, prefix+".type").String())
+		message = strings.TrimSpace(gjson.GetBytes(payload, prefix+".message").String())
+REDACTED
+	status := int(gjson.GetBytes(payload, prefix+".status_code").Int())
+	if status == 0 {
+		status = int(gjson.GetBytes(payload, prefix+".status").Int())
+REDACTED
+	if status == 0 && eventType == "error" {
+		status = int(gjson.GetBytes(payload, "status").Int())
+REDACTED
+	if status == 0 {
+		status = openAIWSErrorHTTPStatusFromRaw(code, errType)
+REDACTED
+	if errType == "" {
+		errType = "upstream_error"
+REDACTED
+	if code == "" {
+		code = strings.ReplaceAll(eventType, ".", "_")
+REDACTED
+	if message == "" {
+		message = "upstream websocket request failed"
+REDACTED
+	MarkOpsStreamFailure(c, errType, code, message, status)
+REDACTED
+
 func openAIWSPayloadTransientStatus(payload []byte) int {
 	if len(payload) == 0 {
 		return 0
@@ -270,10 +313,7 @@ func (s *OpenAIGatewayService) handleOpenAIWSTerminalTransientFailure(ctx contex
 	if terminalEvent != "response.failed" {
 		return terminalEvent
 REDACTED
-	status := openAIWSPayloadTransientStatus(payload)
-	if status != 0 {
-		s.handleOpenAIAccountUpstreamError(ctx, account, status, headers, payload, canonicalModel)
-REDACTED
+	s.handleOpenAIWSFailureAccountSideEffects(ctx, account, canonicalModel, headers, payload)
 	return terminalEvent
 REDACTED
 
@@ -286,6 +326,32 @@ REDACTED
 	if status != 0 {
 		s.handleOpenAIAccountUpstreamError(ctx, account, status, headers, payload, canonicalModel)
 REDACTED
+REDACTED
+
+// handleOpenAIWSFailureAccountSideEffects applies both structured credential
+// failures and transient failures. Its return value lets stream callers avoid
+// applying the same transition twice for an error/response.failed pair.
+func (s *OpenAIGatewayService) handleOpenAIWSFailureAccountSideEffects(ctx context.Context, account *Account, canonicalModel string, headers http.Header, payload []byte) bool {
+	message := extractOpenAISSEErrorMessage(payload)
+	status := openAIStreamFailureStatus(payload, message)
+	switch status {
+	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
+		s.handleOpenAIStreamTerminalAccountSideEffects(nil, account, payload, message, headers)
+		return true
+	case http.StatusForbidden:
+		if !openAIStream403AccountFailure(payload, message) {
+			return false
+	REDACTED
+		s.handleOpenAIStreamTerminalAccountSideEffects(nil, account, payload, message, headers)
+		return true
+REDACTED
+
+	status = openAIWSPayloadTransientStatus(payload)
+	if status == 0 {
+		return false
+REDACTED
+	s.handleOpenAIAccountUpstreamError(ctx, account, status, headers, payload, canonicalModel)
+	return true
 REDACTED
 
 func (s *OpenAIGatewayService) handleOpenAIWSDialTransientFailure(ctx context.Context, account *Account, canonicalModel string, err error) {
@@ -486,9 +552,11 @@ REDACTED
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return 0, nil, "", nil
 REDACTED
-	// 非 WSv2 场景（如 force_http/全局关闭）不应使用 previous_response_id 粘连，
-	// 以保持“回滚到 HTTP”后的历史行为一致性。
-	if s.getOpenAIWSProtocolResolver().Resolve(account).Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
+	// OAuth/SetupToken continuation state lives on the WSv2 session and cannot
+	// survive an HTTP fallback. Official API-key Responses HTTP requests are
+	// different: previous_response_id is supported by the provider and scoped to
+	// the selected key/project, so the response-id binding must retain that key.
+	if !account.IsOpenAIApiKey() && s.getOpenAIWSProtocolResolver().Resolve(account).Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
 		return 0, nil, "", nil
 REDACTED
 	if shouldClearStickySession(account, requestedModel) || !account.IsOpenAI() || !account.IsSchedulable() {
@@ -617,6 +685,18 @@ REDACTED
 		return
 REDACTED
 	s.handleOpenAIAccountUpstreamError(ctx, account, http.StatusTooManyRequests, headers, responseBody)
+REDACTED
+
+func (s *OpenAIGatewayService) newOpenAIWSRateLimitFailoverError(account *Account, headers http.Header, responseBody []byte, message string) *UpstreamFailoverError {
+	return s.newOpenAIAccountFailoverError(
+		account,
+		http.StatusTooManyRequests,
+		headers,
+		responseBody,
+		strings.TrimSpace(message),
+		false,
+		false,
+	)
 REDACTED
 
 func classifyOpenAIWSErrorEventFromRaw(codeRaw, errTypeRaw, msgRaw string) (string, bool) {

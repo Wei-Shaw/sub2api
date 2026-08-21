@@ -345,6 +345,18 @@ REDACTED {
 REDACTED
 REDACTED
 
+func TestGatewayRoutesCompositeVideoGenerationAllowed(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformComposite)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/videos/generations", strings.NewReader(`{"model":"grok-imagine-video-1.5","prompt":"waves"REDACTED`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.NotEqual(t, http.StatusNotFound, w.Code)
+	require.NotContains(t, w.Body.String(), "not supported")
+REDACTED
+
 func TestGatewayRoutesCompositeOpenAIOnlyEndpointsRequireOpenAITarget(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformComposite)
 

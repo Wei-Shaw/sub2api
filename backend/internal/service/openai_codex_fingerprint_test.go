@@ -64,6 +64,8 @@ func TestGetCodexFingerprintMode(t *testing.T) {
 REDACTED{
 		{"nil 账号", nil, codexFingerprintOffREDACTED,
 		{"非 OAuth 账号", &Account{Platform: PlatformOpenAI, Type: "api_key"REDACTED, codexFingerprintOffREDACTED,
+		{"OpenAI setup token", &Account{Platform: PlatformOpenAI, Type: AccountTypeSetupToken, Extra: map[string]any{codexFingerprintModeExtraKey: "session"REDACTEDREDACTED, codexFingerprintSessionREDACTED,
+		{"Anthropic setup token", &Account{Platform: PlatformAnthropic, Type: AccountTypeSetupToken, Extra: map[string]any{codexFingerprintModeExtraKey: "session"REDACTEDREDACTED, codexFingerprintOffREDACTED,
 		// 收敛是显式 opt-in：缺省/空/非法一律 off（#5610）。存量账号普遍没有这个
 		// extra 键，升级不得把它们静默切进收敛。
 		{"无 extra 默认 off", newTestOAuthAccount(1, nil), codexFingerprintOffREDACTED,

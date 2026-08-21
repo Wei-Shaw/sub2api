@@ -43,6 +43,37 @@ REDACTED
 	acc.Flush(fn)
 REDACTED
 
+func forEachOpenAISSEFrame(body string, fn func(string, []byte)) {
+	if fn == nil || strings.TrimSpace(body) == "" {
+		return
+REDACTED
+	var parser openAICompatSSEFrameParser
+	emit := func(frame openAICompatSSEFrame, ok bool) {
+		if !ok {
+			return
+	REDACTED
+		emitData := func(value string) {
+			value = strings.TrimSpace(value)
+			if value == "" || value == "[DONE]" {
+				return
+		REDACTED
+			data := []byte(value)
+			fn(effectiveOpenAISSEEventType(data, frame.EventType), data)
+	REDACTED
+		if gjson.Valid(frame.Data) {
+			emitData(frame.Data)
+			return
+	REDACTED
+		for _, value := range strings.Split(frame.Data, "\n") {
+			emitData(value)
+	REDACTED
+REDACTED
+	for _, line := range strings.Split(body, "\n") {
+		emit(parser.AddLine(strings.TrimRight(line, "\r")))
+REDACTED
+	emit(parser.Finish())
+REDACTED
+
 func emitOpenAISSEDataPayloads(lines []string, fn func([]byte)) {
 	if fn == nil || len(lines) == 0 {
 		return

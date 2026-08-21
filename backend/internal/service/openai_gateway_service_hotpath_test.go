@@ -719,7 +719,7 @@ REDACTED
 	require.Equal(t, "gpt-image-2", result.BillingModel)
 REDACTED
 
-func TestOpenAIGatewayService_Forward_HTTPDeletesPreviousResponseIDWhenPresent(t *testing.T) {
+func TestOpenAIGatewayService_Forward_HTTPPreservesPreviousResponseIDForAPIKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{REDACTED
 	cfg.Security.URLAllowlist.Enabled = false
@@ -756,7 +756,7 @@ REDACTED {
 		result, err := svc.Forward(context.Background(), c, account, body)
 	REDACTED
 		require.NotNil(t, result)
-		require.False(t, gjson.GetBytes(upstream.lastBody, "previous_response_id").Exists())
+		require.True(t, gjson.GetBytes(upstream.lastBody, "previous_response_id").Exists())
 REDACTED
 REDACTED
 
@@ -920,9 +920,16 @@ REDACTED{
 			wantValue: "xhigh",
 	REDACTED,
 		{
-			name:      "DeepSeek max 归一化为 xhigh",
+			name:      "DeepSeek V4 保留 max",
 			body:      []byte(`{"reasoning_effort":"max"REDACTED`),
 			model:     "deepseek-v4-pro",
+			wantNil:   false,
+			wantValue: "max",
+	REDACTED,
+		{
+			name:      "旧模型仍将 max 归一化为 xhigh",
+			body:      []byte(`{"reasoning_effort":"max"REDACTED`),
+			model:     "gpt-5.5",
 			wantNil:   false,
 			wantValue: "xhigh",
 	REDACTED,

@@ -54,11 +54,75 @@ func TestClassifyGrokUpstreamFailure_EmptyUpstream(t *testing.T) {
 	require.Equal(t, 4*time.Minute, d.Cooldown)
 REDACTED
 
+func TestClassifyGrokUpstreamFailure_ModelCapacityUsesShortCooldown(t *testing.T) {
+	d := classifyGrokUpstreamFailure(http.StatusTooManyRequests,
+		[]byte(`{"error":{"message":"The model is currently at capacity due to high demand"REDACTEDREDACTED`), "grok-4.6")
+	require.Equal(t, GrokFailureModelCapacity, d.Class)
+	require.Equal(t, time.Minute, d.Cooldown)
+	require.False(t, d.BlockModel)
+REDACTED
+
 func TestClassifyGrokUpstreamFailure_Billing(t *testing.T) {
 	d := classifyGrokUpstreamFailure(http.StatusForbidden, []byte(`{"code":"personal-team-blocked:spending-limit","error":"spending limit reached"REDACTED`), "")
 	require.Equal(t, GrokFailureBilling, d.Class)
 	require.True(t, d.ShouldCooldown)
 	require.True(t, d.ShouldFailover)
+REDACTED
+
+func TestClassifyGrokUpstreamFailure_GrokSubscriptionRequiredIsBilling(t *testing.T) {
+	d := classifyGrokUpstreamFailure(http.StatusPaymentRequired,
+		[]byte(`{"error":{"message":"You have run out of credits or need a Grok subscription"REDACTEDREDACTED`), "grok-4.6")
+	require.Equal(t, GrokFailureBilling, d.Class)
+	require.True(t, d.ShouldFailover)
+	require.True(t, d.ShouldCooldown)
+REDACTED
+
+func TestGrokRetryableOnSameAccount_CapacityAndRateLimit(t *testing.T) {
+	account := &Account{ID: 9105, Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED
+	require.True(t, grokRetryableOnSameAccount(account, http.StatusTooManyRequests,
+		[]byte(`{"error":{"message":"The model is currently at capacity due to high demand"REDACTEDREDACTED`)))
+	require.False(t, grokRetryableOnSameAccount(account, http.StatusTooManyRequests,
+		[]byte(`{"error":{"message":"rate limit exceeded"REDACTEDREDACTED`)))
+	require.False(t, grokRetryableOnSameAccount(account, http.StatusPaymentRequired,
+		[]byte(`{"error":{"message":"You have run out of credits or need a Grok subscription"REDACTEDREDACTED`)))
+	poolAccount := &Account{ID: 9108, Platform: PlatformGrok, Type: AccountTypeOAuth,
+REDACTED"pool_mode": trueREDACTEDREDACTED
+	require.False(t, grokRetryableOnSameAccount(poolAccount, http.StatusTooManyRequests,
+		[]byte(`{"error":{"code":"subscription:free-usage-exhausted"REDACTEDREDACTED`)),
+		"pool free-usage must fail over instead of retrying the exhausted account")
+	require.False(t, grokRetryableOnSameAccount(account, http.StatusBadRequest,
+		[]byte(`{"error":{"message":"capacity field is invalid"REDACTEDREDACTED`)))
+	nonGrok := &Account{ID: 9106, Platform: PlatformOpenAI, Type: AccountTypeOAuthREDACTED
+	require.False(t, grokRetryableOnSameAccount(nonGrok, http.StatusTooManyRequests,
+		[]byte(`{"error":{"message":"model at capacity"REDACTEDREDACTED`)))
+REDACTED
+
+func TestShouldMarkGrokTeamModelRateLimit_ExcludesCapacity(t *testing.T) {
+	require.False(t, shouldMarkGrokTeamModelRateLimit(http.StatusTooManyRequests,
+		[]byte(`{"error":{"message":"The model is currently at capacity due to high demand"REDACTEDREDACTED`)))
+	require.True(t, shouldMarkGrokTeamModelRateLimit(http.StatusTooManyRequests,
+		[]byte(`{"error":{"message":"rate limit exceeded"REDACTEDREDACTED`)))
+	require.True(t, shouldMarkGrokTeamModelRateLimit(http.StatusBadRequest,
+		[]byte(`{"error":{"code":"subscription:free-usage-exhausted"REDACTEDREDACTED`)))
+	require.False(t, shouldMarkGrokTeamModelRateLimit(http.StatusBadRequest,
+		[]byte(`{"error":{"message":"invalid request"REDACTEDREDACTED`)))
+REDACTED
+
+func TestGrokSameAccountRetryMetadata_CapacityDeadline(t *testing.T) {
+	account := &Account{ID: 9107, Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED
+	retryable, delay, deadline, retryMax := grokSameAccountRetryMetadata(account, http.StatusTooManyRequests,
+		[]byte(`{"error":{"message":"model capacity exceeded"REDACTEDREDACTED`))
+	require.True(t, retryable)
+	require.Equal(t, 500*time.Millisecond, delay)
+	require.WithinDuration(t, time.Now().Add(30*time.Second), deadline, 2*time.Second)
+	require.Equal(t, 1, retryMax)
+
+	retryable, delay, deadline, retryMax = grokSameAccountRetryMetadata(account, http.StatusTooManyRequests,
+		[]byte(`{"error":{"message":"rate limit exceeded"REDACTEDREDACTED`))
+	require.False(t, retryable)
+	require.Zero(t, delay)
+	require.True(t, deadline.IsZero())
+	require.Zero(t, retryMax)
 REDACTED
 
 func TestClassifyGrokUpstreamFailure_ValidationNoCool(t *testing.T) {
@@ -75,10 +139,46 @@ func TestClassifyGrokUpstreamFailure_FreeUsageWinsOver5xx(t *testing.T) {
 	require.NotEqual(t, GrokFailureServer, d.Class)
 REDACTED
 
+func TestClassifyGrokUpstreamFailure_CompatibilityDoesNotCooldown(t *testing.T) {
+	cases := []string{
+		`{"error":{"message":"Could not decode the compaction blob. Ensure it is unmodified from the compact response"REDACTEDREDACTED`,
+		`{"code":"compaction_decode_error","message":"invalid response history"REDACTED`,
+REDACTED
+	for _, body := range cases {
+		d := classifyGrokUpstreamFailure(http.StatusUnprocessableEntity, []byte(body), "grok-4.6")
+		require.Equal(t, GrokFailureCompatibility, d.Class, body)
+		require.True(t, d.ShouldFailover, body)
+		require.False(t, d.ShouldCooldown, body)
+		require.Zero(t, d.Cooldown, body)
+REDACTED
+REDACTED
+
+func TestClassifyGrokUpstreamFailure_CompatibilityRequiresClientError(t *testing.T) {
+	body := []byte(`{"error":{"message":"upstream failed while handling the compaction blob"REDACTEDREDACTED`)
+	for _, status := range []int{http.StatusBadGateway, http.StatusInternalServerErrorREDACTED {
+		d := classifyGrokUpstreamFailure(status, body, "grok-4.6")
+		require.NotEqual(t, GrokFailureCompatibility, d.Class)
+		require.True(t, d.ShouldCooldown)
+REDACTED
+REDACTED
+
+func TestClassifyGrokUpstreamFailure_GenericShapeErrorDoesNotFailover(t *testing.T) {
+	d := classifyGrokUpstreamFailure(http.StatusBadRequest,
+		[]byte(`{"error":{"message":"data did not match any variant of the untagged enum content"REDACTEDREDACTED`), "grok-4.6")
+	require.NotEqual(t, GrokFailureCompatibility, d.Class)
+	require.False(t, d.ShouldFailover)
+REDACTED
+
 func TestShouldFailoverGrokUpstreamError_FreeUsageBody(t *testing.T) {
 	svc := &OpenAIGatewayService{REDACTED
 	body := []byte(`{"error":{"code":"subscription:free-usage-exhausted","message":"free usage exhausted"REDACTEDREDACTED`)
 	require.True(t, svc.shouldFailoverGrokUpstreamError(http.StatusBadRequest, body))
+REDACTED
+
+func TestShouldFailoverGrokUpstreamError_CompatibilityBody(t *testing.T) {
+	svc := &OpenAIGatewayService{REDACTED
+	body := []byte(`{"error":{"message":"Could not decode the compaction blob"REDACTEDREDACTED`)
+	require.True(t, svc.shouldFailoverGrokUpstreamError(http.StatusUnprocessableEntity, body))
 REDACTED
 
 func TestShouldFailoverGrokUpstreamError_ContentPolicyStillNoFailover(t *testing.T) {
@@ -147,6 +247,19 @@ func TestHandleGrokAccountUpstreamError_MultiAgentCapacityBlocksOnlyThatModel(t 
 	require.Zero(t, repo.tempUnschedCalls)
 	require.True(t, isGrokModelQuotaBlocked(account.ID, "grok-4.20-multi-agent-0309", time.Now()))
 	require.False(t, isGrokModelQuotaBlocked(account.ID, "grok-4.5", time.Now()))
+REDACTED
+
+func TestHandleGrokAccountUpstreamError_CapacityNeverCoolsAccount(t *testing.T) {
+	repo := &grokQuotaAccountRepo{REDACTED
+	svc := &OpenAIGatewayService{accountRepo: repoREDACTED
+	account := &Account{ID: 9121, Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED
+	ctx := withGrokTeamRateLimitModel(context.Background(), "grok-4.6")
+
+	svc.handleGrokAccountUpstreamError(ctx, account, http.StatusTooManyRequests, nil,
+		[]byte(`{"error":{"message":"The model is currently at capacity due to high demand"REDACTEDREDACTED`))
+
+	require.Zero(t, repo.tempUnschedCalls)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
 REDACTED
 
 func TestHandleGrokAccountUpstreamError_FreeUsageDoesNotCoolPoolMode(t *testing.T) {

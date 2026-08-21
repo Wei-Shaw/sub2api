@@ -85,7 +85,7 @@ REDACTED
 REDACTED
 
 	require.True(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "public-alias"))
-	svc.ReportOpenAIAccountScheduleResult(account.ID, canonicalModel, true, nil)
+	svc.ReportOpenAIAccountScheduleResult(account, canonicalModel, true, nil)
 	require.False(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "public-alias"))
 REDACTED
 

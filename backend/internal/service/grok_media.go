@@ -59,6 +59,8 @@ type GrokMediaRequestInfo struct {
 	N               int
 	Size            string
 	SizeTier        string
+	AspectRatio     string
+	ImageResolution string
 	Resolution      string
 	DurationSeconds int
 	InputImageURLs  []string
@@ -127,6 +129,8 @@ REDACTED
 	info.Prompt = strings.TrimSpace(info.Prompt)
 	info.Size = strings.TrimSpace(info.Size)
 	info.SizeTier = NormalizeImageBillingTierOrDefault(info.Size)
+	info.AspectRatio = strings.TrimSpace(info.AspectRatio)
+	info.ImageResolution = grokImagineImageResolution(info.ImageResolution)
 	info.Resolution = NormalizeVideoBillingResolutionOrDefault(info.Resolution)
 	info.DurationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(info.DurationSeconds)
 	if info.N <= 0 {
@@ -142,7 +146,8 @@ REDACTED
 	info.Model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	info.Prompt = strings.TrimSpace(gjson.GetBytes(body, "prompt").String())
 	info.Size = strings.TrimSpace(gjson.GetBytes(body, "size").String())
-	info.Resolution = strings.TrimSpace(gjson.GetBytes(body, "resolution").String())
+	info.AspectRatio = strings.TrimSpace(gjson.GetBytes(body, "aspect_ratio").String())
+	assignGrokMediaResolution(strings.TrimSpace(gjson.GetBytes(body, "resolution").String()), info)
 	if duration := gjson.GetBytes(body, "duration"); duration.Exists() && duration.Type == gjson.Number {
 		info.DurationSeconds = int(duration.Int())
 REDACTED
@@ -255,8 +260,10 @@ REDACTED
 			info.Prompt = value
 		case "size":
 			info.Size = value
+		case "aspect_ratio":
+			info.AspectRatio = value
 		case "resolution":
-			info.Resolution = value
+			assignGrokMediaResolution(value, info)
 		case "duration":
 			if duration, err := strconv.Atoi(value); err == nil {
 				info.DurationSeconds = duration
@@ -934,6 +941,12 @@ REDACTED
 	if info.Size != "" {
 		payload["size"] = info.Size
 REDACTED
+	if info.ImageResolution != "" {
+		payload["resolution"] = info.ImageResolution
+REDACTED
+	if info.AspectRatio != "" {
+		payload["aspect_ratio"] = info.AspectRatio
+REDACTED
 
 	images := make([]map[string]string, 0, len(info.InputImageURLs)+len(info.Uploads))
 	for _, imageURL := range info.InputImageURLs {
@@ -1106,10 +1119,7 @@ func sanitizeGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conte
 REDACTED
 	switch endpoint {
 	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits:
-		if !gjson.GetBytes(body, "size").Exists() {
-			return body, contentType, nil
-	REDACTED
-		out, err := sjson.DeleteBytes(body, "size")
+		out, err := applyGrokImagineImageGeometry(body)
 		if err != nil {
 			return nil, "", fmt.Errorf("sanitize grok media size: %w", err)
 	REDACTED
@@ -1288,11 +1298,16 @@ REDACTED
 		Detail:             upstreamDetail,
 REDACTED)
 	if kind == "failover" {
+		retryable, retryDelay, retryDeadline, retryMax := grokSameAccountRetryMetadata(account, resp.StatusCode, body)
 		return nil, &UpstreamFailoverError{
-			StatusCode:             resp.StatusCode,
-			ResponseBody:           body,
-			ResponseHeaders:        resp.Header.Clone(),
-			RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+			StatusCode:               resp.StatusCode,
+			ResponseBody:             body,
+			ResponseHeaders:          resp.Header.Clone(),
+			RetryableOnSameAccount:   retryable,
+			RequestScopedTransient:   retryable && resp.StatusCode == http.StatusTooManyRequests,
+			SameAccountRetryDelay:    retryDelay,
+			SameAccountRetryDeadline: retryDeadline,
+			SameAccountRetryMax:      retryMax,
 	REDACTED
 REDACTED
 

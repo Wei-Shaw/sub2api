@@ -12,9 +12,40 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type blockingOpsResponseWriter struct {
+	gin.ResponseWriter
+	writeStarted chan struct{REDACTED
+	writeRelease chan struct{REDACTED
+REDACTED
+
+func (w *blockingOpsResponseWriter) WriteString(s string) (int, error) {
+	close(w.writeStarted)
+	<-w.writeRelease
+	return w.ResponseWriter.WriteString(s)
+REDACTED
+
+type deterministicOpsCaptureWriterStatePool struct {
+	states []*opsCaptureWriterState
+REDACTED
+
+func (p *deterministicOpsCaptureWriterStatePool) Get() any {
+	if len(p.states) == 0 {
+		return &opsCaptureWriterState{limit: opsCaptureWriterLimitREDACTED
+REDACTED
+	last := len(p.states) - 1
+	state := p.states[last]
+	p.states = p.states[:last]
+	return state
+REDACTED
+
+func (p *deterministicOpsCaptureWriterStatePool) Put(value any) {
+	if state, ok := value.(*opsCaptureWriterState); ok && state != nil {
+		p.states = append(p.states, state)
+REDACTED
+REDACTED
+
 func TestOpsCaptureWriter_NilInnerWriter_NoPanic(t *testing.T) {
 	w := &opsCaptureWriter{REDACTED
-	w.ResponseWriter = nil
 
 	assert.NotPanics(t, func() {
 		assert.Equal(t, 0, w.Status())
@@ -87,4 +118,87 @@ REDACTED)
 REDACTED)
 	require.Equal(t, http.StatusOK, outerStatus)
 	require.Equal(t, http.StatusOK, recorder.Code)
+REDACTED
+
+func TestOpsCaptureWriter_StaleLeaseCannotReachReacquiredState(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	pool := &deterministicOpsCaptureWriterStatePool{REDACTED
+
+	firstRecorder := httptest.NewRecorder()
+	firstContext, _ := gin.CreateTestContext(firstRecorder)
+	stale := acquireOpsCaptureWriterFromPool(pool, firstContext.Writer)
+	releaseOpsCaptureWriter(stale)
+
+	secondRecorder := httptest.NewRecorder()
+	secondContext, _ := gin.CreateTestContext(secondRecorder)
+	current := acquireOpsCaptureWriterFromPool(pool, secondContext.Writer)
+	defer releaseOpsCaptureWriter(current)
+	require.NotSame(t, stale, current)
+	require.Same(t, stale.state, current.state)
+
+	current.WriteHeader(http.StatusInternalServerError)
+	_, err := current.WriteString("current")
+REDACTED
+	require.Equal(t, []byte("current"), current.capturedBytes())
+
+	n, err := stale.WriteString("stale")
+REDACTED
+	require.Zero(t, n)
+	require.Nil(t, stale.capturedBytes())
+	require.Equal(t, []byte("current"), current.capturedBytes())
+	require.NotContains(t, secondRecorder.Body.String(), "stale")
+
+	// Releasing the stale handle must not return an active state to the pool.
+	releaseOpsCaptureWriter(stale)
+	thirdRecorder := httptest.NewRecorder()
+	thirdContext, _ := gin.CreateTestContext(thirdRecorder)
+	other := acquireOpsCaptureWriterFromPool(pool, thirdContext.Writer)
+	defer releaseOpsCaptureWriter(other)
+	require.NotSame(t, current.state, other.state)
+REDACTED
+
+func TestOpsCaptureWriter_ReleaseWaitsForDelegatedWriteWithoutHoldingStateMutex(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	pool := &deterministicOpsCaptureWriterStatePool{REDACTED
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	inner := &blockingOpsResponseWriter{
+		ResponseWriter: ctx.Writer,
+		writeStarted:   make(chan struct{REDACTED),
+		writeRelease:   make(chan struct{REDACTED),
+REDACTED
+	w := acquireOpsCaptureWriterFromPool(pool, inner)
+
+	writeDone := make(chan struct{REDACTED)
+	go func() {
+		defer close(writeDone)
+		_, _ = w.WriteString("body")
+REDACTED()
+	<-inner.writeStarted
+
+	if !w.state.mu.TryLock() {
+		t.Fatal("state mutex remained held across the delegated network write")
+REDACTED
+	w.state.mu.Unlock()
+
+	releaseDone := make(chan struct{REDACTED)
+	go func() {
+		releaseOpsCaptureWriter(w)
+		close(releaseDone)
+REDACTED()
+	select {
+	case <-releaseDone:
+		t.Fatal("release returned while a delegated write was still active")
+	case <-time.After(20 * time.Millisecond):
+REDACTED
+	require.Empty(t, pool.states)
+
+	close(inner.writeRelease)
+	<-writeDone
+	select {
+	case <-releaseDone:
+	case <-time.After(time.Second):
+		t.Fatal("release did not finish after the delegated write returned")
+REDACTED
+	require.Len(t, pool.states, 1)
 REDACTED

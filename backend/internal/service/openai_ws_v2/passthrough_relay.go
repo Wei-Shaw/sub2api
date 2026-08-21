@@ -1,6 +1,7 @@
 package openai_ws_v2
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -13,6 +14,8 @@ import (
 
 	coderws "github.com/coder/websocket"
 	"github.com/tidwall/gjson"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
 type FrameConn interface {
@@ -94,6 +97,7 @@ REDACTED
 
 type relayState struct {
 	usage             Usage
+	turnUsage         Usage
 	requestModelMu    sync.RWMutex
 	requestModel      string
 	pendingTurnStart  atomic.Pointer[time.Time]
@@ -104,6 +108,7 @@ type relayState struct {
 	firstTokenMs      *int
 	turnTimingByID    map[string]*relayTurnTiming
 	activeTurn        *relayTurnTiming
+	pendingBareError  *observedUpstreamEvent
 REDACTED
 
 type relayExitSignal struct {
@@ -265,30 +270,34 @@ REDACTED
 	if !options.StartClientAfterFirstDownstream {
 		startClientReader()
 REDACTED
-	go runUpstreamToClient(
-		relayCtx,
-		upstreamConn,
-		writeClient,
-		startAt,
-		nowFn,
-		state,
-		options.OnUsageParseFailure,
-		options.OnTurnComplete,
-		options.BeforeWriteClient,
-		options.BeforeClientWrite,
-		options.AfterClientWrite,
-		func(msgType coderws.MessageType, payload []byte) {
-			if options.StartClientAfterFirstDownstream {
-				startClientReader()
-		REDACTED
-	REDACTED,
-		&dropDownstreamWrites,
-		upstreamToClientFrames,
-		droppedDownstreamFrames,
-		markActivity,
-		onTrace,
-		exitCh,
-	)
+	upstreamDone := make(chan struct{REDACTED)
+	go func() {
+		defer close(upstreamDone)
+		runUpstreamToClient(
+			relayCtx,
+			upstreamConn,
+			writeClient,
+			startAt,
+			nowFn,
+			state,
+			options.OnUsageParseFailure,
+			options.OnTurnComplete,
+			options.BeforeWriteClient,
+			options.BeforeClientWrite,
+			options.AfterClientWrite,
+			func(msgType coderws.MessageType, payload []byte) {
+				if options.StartClientAfterFirstDownstream {
+					startClientReader()
+			REDACTED
+		REDACTED,
+			&dropDownstreamWrites,
+			upstreamToClientFrames,
+			droppedDownstreamFrames,
+			markActivity,
+			onTrace,
+			exitCh,
+		)
+REDACTED()
 	go runIdleWatchdog(relayCtx, nowFn, options.IdleTimeout, &lastActivity, onTrace, exitCh)
 
 	firstExit := <-exitCh
@@ -342,7 +351,12 @@ REDACTED
 
 	relayCancel()
 	_ = upstreamConn.Close()
+	// ReadFrame observes relayCtx cancellation and Close is the transport-level
+	// fallback. Join the reader before touching relayState or firing the final
+	// turn callback; otherwise a late read can race Relay's result settlement.
+	<-upstreamDone
 
+	emitTurnComplete(options.OnTurnComplete, state, finalizePendingBareError(state, nowFn()))
 	enrichResult(&result, state, nowFn().Sub(startAt))
 	result.ClientToUpstreamFrames = clientToUpstreamFrames.Load()
 	result.UpstreamToClientFrames = upstreamToClientFrames.Load()
@@ -509,6 +523,7 @@ func runUpstreamToClient(
 	for {
 		msgType, payload, err := upstreamConn.ReadFrame(ctx)
 		if err != nil {
+			emitTurnComplete(onTurnComplete, state, finalizePendingBareError(state, nowFn()))
 			emitRelayTrace(onTrace, RelayTraceEvent{
 				Stage:           "read_upstream_failed",
 				Direction:       "upstream_to_client",
@@ -546,6 +561,10 @@ func runUpstreamToClient(
 		observedEvent := observedUpstreamEvent{REDACTED
 		switch msgType {
 		case coderws.MessageText:
+			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
+			if shouldFinalizePendingBareError(state, payload, eventType) {
+				emitTurnComplete(onTurnComplete, state, finalizePendingBareError(state, nowFn()))
+		REDACTED
 			observedEvent = observeUpstreamMessage(state, payload, startAt, nowFn, onUsageParseFailure)
 		case coderws.MessageBinary:
 			// binary frame 直接透传，不进入 JSON 观测路径（避免无效解析开销）。
@@ -738,8 +757,59 @@ REDACTED
 	if !isTerminalEvent(eventType) {
 		return observed
 REDACTED
-	observed.terminal = true
 	state.terminalEventType = eventType
+	if eventType == "error" {
+		// Some Responses servers emit error immediately before response.failed.
+		// Defer turn settlement so the authoritative failed usage can replace
+		// this fallback instead of billing both terminal frames.
+		if observed.responseID == "" {
+			observed.responseID = openAIWSRelayActiveTurnID(state)
+	REDACTED
+		pending := observed
+		state.pendingBareError = &pending
+		return observed
+REDACTED
+	state.pendingBareError = nil
+	return finalizeObservedRelayTerminal(state, observed, now)
+REDACTED
+
+func shouldFinalizePendingBareError(state *relayState, payload []byte, eventType string) bool {
+	if state == nil || state.pendingBareError == nil {
+		return false
+REDACTED
+	eventType = strings.TrimSpace(eventType)
+	if eventType == "" || eventType == "error" || eventType == "response.failed" {
+		return false
+REDACTED
+	if isTerminalEvent(eventType) || eventType == "response.created" {
+		return true
+REDACTED
+	// Auxiliary provider frames may be interleaved between error and its
+	// authoritative response.failed. Only a response event identifying a
+	// different turn closes the pending error.
+	responseID := strings.TrimSpace(gjson.GetBytes(payload, "response.id").String())
+	if responseID == "" || state.pendingBareError.responseID == "" {
+		return false
+REDACTED
+	return responseID != state.pendingBareError.responseID
+REDACTED
+
+func finalizePendingBareError(state *relayState, now time.Time) observedUpstreamEvent {
+	if state == nil || state.pendingBareError == nil {
+		return observedUpstreamEvent{REDACTED
+REDACTED
+	observed := *state.pendingBareError
+	state.pendingBareError = nil
+	return finalizeObservedRelayTerminal(state, observed, now)
+REDACTED
+
+func finalizeObservedRelayTerminal(state *relayState, observed observedUpstreamEvent, now time.Time) observedUpstreamEvent {
+	if state == nil || strings.TrimSpace(observed.eventType) == "" {
+		return observedUpstreamEvent{REDACTED
+REDACTED
+	observed.usage = finalizeRelayTurnUsage(state)
+	observed.terminal = true
+	responseID := strings.TrimSpace(observed.responseID)
 	if responseID != "" {
 		state.lastResponseID = responseID
 		if turnTiming, ok := openAIWSRelayDeleteTurnTiming(state, responseID); ok {
@@ -755,6 +825,9 @@ REDACTED
 			observed.duration = duration
 			observed.firstToken = openAIWSRelayCloneIntPtr(turnTiming.firstTokenMs)
 	REDACTED
+REDACTED else {
+		state.consumePendingTurnStartedAt()
+		openAIWSRelayDiscardActiveTurnTiming(state)
 REDACTED
 	return observed
 REDACTED
@@ -768,7 +841,7 @@ func emitTurnComplete(
 		return
 REDACTED
 	responseID := strings.TrimSpace(observed.responseID)
-	if responseID == "" {
+	if responseID == "" && strings.TrimSpace(observed.eventType) != "error" {
 		return
 REDACTED
 	requestModel := ""
@@ -890,6 +963,31 @@ REDACTED
 	return *timing, true
 REDACTED
 
+func openAIWSRelayDiscardActiveTurnTiming(state *relayState) {
+	if state == nil || state.activeTurn == nil {
+		return
+REDACTED
+	active := state.activeTurn
+	for responseID, timing := range state.turnTimingByID {
+		if timing == active {
+			delete(state.turnTimingByID, responseID)
+	REDACTED
+REDACTED
+	state.activeTurn = nil
+REDACTED
+
+func openAIWSRelayActiveTurnID(state *relayState) string {
+	if state == nil || state.activeTurn == nil {
+		return ""
+REDACTED
+	for responseID, timing := range state.turnTimingByID {
+		if timing == state.activeTurn {
+			return responseID
+	REDACTED
+REDACTED
+	return ""
+REDACTED
+
 func openAIWSRelayCloneIntPtr(v *int) *int {
 	if v == nil {
 		return nil
@@ -904,10 +1002,13 @@ func parseUsageAndAccumulate(
 	eventType string,
 	onParseFailure func(eventType string, usageRaw string),
 ) Usage {
-	if state == nil || len(message) == 0 || !shouldParseUsage(eventType) {
+	if state == nil || len(message) == 0 || !shouldParseUsage(eventType) || !bytes.Contains(message, []byte(`"usage"`)) {
 		return Usage{REDACTED
 REDACTED
 	usageResult := gjson.GetBytes(message, "response.usage")
+	if !usageResult.Exists() {
+		usageResult = gjson.GetBytes(message, "usage")
+REDACTED
 	if !usageResult.Exists() {
 		return Usage{REDACTED
 REDACTED
@@ -920,25 +1021,26 @@ REDACTED
 		return Usage{REDACTED
 REDACTED
 
-	inputResult := gjson.GetBytes(message, "response.usage.input_tokens")
+	inputResult := usageResult.Get("input_tokens")
 	if !inputResult.Exists() {
-		inputResult = gjson.GetBytes(message, "response.usage.prompt_tokens")
+		inputResult = usageResult.Get("prompt_tokens")
 REDACTED
-	outputResult := gjson.GetBytes(message, "response.usage.output_tokens")
+	outputResult := usageResult.Get("output_tokens")
 	if !outputResult.Exists() {
-		outputResult = gjson.GetBytes(message, "response.usage.completion_tokens")
+		outputResult = usageResult.Get("completion_tokens")
 REDACTED
-	cachedResult := gjson.GetBytes(message, "response.usage.input_tokens_details.cached_tokens")
+	cachedResult := usageResult.Get("input_tokens_details.cached_tokens")
 	if !cachedResult.Exists() {
-		cachedResult = gjson.GetBytes(message, "response.usage.prompt_tokens_details.cached_tokens")
+		cachedResult = usageResult.Get("prompt_tokens_details.cached_tokens")
 REDACTED
 	imageTokens := usageResult.Get("output_tokens_details.image_tokens").Int()
 	if imageTokens == 0 {
 		imageTokens = usageResult.Get("completion_tokens_details.image_tokens").Int()
 REDACTED
 
-	inputTokens, inputOK := parseUsageIntField(inputResult, true)
-	outputTokens, outputOK := parseUsageIntField(outputResult, true)
+	requireTotals := isTerminalEvent(strings.TrimSpace(eventType))
+	inputTokens, inputOK := parseUsageIntField(inputResult, requireTotals)
+	outputTokens, outputOK := parseUsageIntField(outputResult, requireTotals)
 	cachedTokens, cachedOK := parseUsageIntField(cachedResult, false)
 	if !inputOK || !outputOK || !cachedOK {
 		recordUsageParseFailure()
@@ -948,6 +1050,15 @@ REDACTED
 		// 解析失败时不做部分字段累加，避免计费 usage 出现“半有效”状态。
 		return Usage{REDACTED
 REDACTED
+	reasoningTokens := usageResult.Get("output_tokens_details.reasoning_tokens").Int()
+	if reasoningTokens == 0 {
+		reasoningTokens = usageResult.Get("completion_tokens_details.reasoning_tokens").Int()
+REDACTED
+	if reasoningTokens > 0 {
+		outputTokens = int(xai.IncludeIndependentReasoningTokens(
+			int64(inputTokens), int64(outputTokens), usageResult.Get("total_tokens").Int(), reasoningTokens,
+		))
+REDACTED
 	parsedUsage := Usage{
 		InputTokens:              inputTokens,
 		OutputTokens:             outputTokens,
@@ -956,12 +1067,56 @@ REDACTED
 		ImageOutputTokens:        int(imageTokens),
 REDACTED
 
-	state.usage.InputTokens += parsedUsage.InputTokens
-	state.usage.OutputTokens += parsedUsage.OutputTokens
-	state.usage.CacheCreationInputTokens += parsedUsage.CacheCreationInputTokens
-	state.usage.CacheReadInputTokens += parsedUsage.CacheReadInputTokens
-	state.usage.ImageOutputTokens += parsedUsage.ImageOutputTokens
+	if isTerminalEvent(strings.TrimSpace(eventType)) {
+		if relayUsageHasTokens(parsedUsage) || !relayUsageHasTokens(state.turnUsage) {
+			state.turnUsage = parsedUsage
+	REDACTED
+REDACTED else {
+		mergeRelayUsageNonZero(&state.turnUsage, parsedUsage)
+		return Usage{REDACTED
+REDACTED
 	return parsedUsage
+REDACTED
+
+func relayUsageHasTokens(usage Usage) bool {
+	return usage.InputTokens > 0 || usage.OutputTokens > 0 ||
+		usage.CacheCreationInputTokens > 0 || usage.CacheReadInputTokens > 0 ||
+		usage.ImageOutputTokens > 0
+REDACTED
+
+func mergeRelayUsageNonZero(dst *Usage, src Usage) {
+	if dst == nil {
+		return
+REDACTED
+	if src.InputTokens > 0 {
+		dst.InputTokens = src.InputTokens
+REDACTED
+	if src.OutputTokens > 0 {
+		dst.OutputTokens = src.OutputTokens
+REDACTED
+	if src.CacheCreationInputTokens > 0 {
+		dst.CacheCreationInputTokens = src.CacheCreationInputTokens
+REDACTED
+	if src.CacheReadInputTokens > 0 {
+		dst.CacheReadInputTokens = src.CacheReadInputTokens
+REDACTED
+	if src.ImageOutputTokens > 0 {
+		dst.ImageOutputTokens = src.ImageOutputTokens
+REDACTED
+REDACTED
+
+func finalizeRelayTurnUsage(state *relayState) Usage {
+	if state == nil {
+		return Usage{REDACTED
+REDACTED
+	turnUsage := state.turnUsage
+	state.usage.InputTokens += turnUsage.InputTokens
+	state.usage.OutputTokens += turnUsage.OutputTokens
+	state.usage.CacheCreationInputTokens += turnUsage.CacheCreationInputTokens
+	state.usage.CacheReadInputTokens += turnUsage.CacheReadInputTokens
+	state.usage.ImageOutputTokens += turnUsage.ImageOutputTokens
+	state.turnUsage = Usage{REDACTED
+	return turnUsage
 REDACTED
 
 func parseUsageIntField(value gjson.Result, required bool) (int, bool) {
@@ -1057,8 +1212,8 @@ REDACTED
 REDACTED
 
 func isTerminalEvent(eventType string) bool {
-	switch eventType {
-	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
+	switch strings.TrimSpace(eventType) {
+	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled", "error":
 		return true
 	default:
 		return false
@@ -1066,12 +1221,11 @@ REDACTED
 REDACTED
 
 func shouldParseUsage(eventType string) bool {
-	switch eventType {
-	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
+	eventType = strings.TrimSpace(eventType)
+	if eventType == "error" || isTerminalEvent(eventType) {
 		return true
-	default:
-		return false
 REDACTED
+	return strings.HasPrefix(eventType, "response.") && !strings.HasSuffix(eventType, ".delta")
 REDACTED
 
 func isTokenEvent(eventType string) bool {

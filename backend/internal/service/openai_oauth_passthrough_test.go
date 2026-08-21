@@ -666,7 +666,7 @@ REDACTED
 	setOpenAIResponsesNamespaceNames(c, names)
 
 	result, err := (&OpenAIGatewayService{cfg: &config.Config{REDACTEDREDACTED).handleNonStreamingResponsePassthrough(
-		context.Background(), resp, c, "gpt-5.5", "",
+		context.Background(), resp, c, &Account{ID: 91REDACTED, "gpt-5.5", "",
 	)
 REDACTED
 	require.NotNil(t, result)
