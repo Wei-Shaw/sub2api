@@ -151,6 +151,7 @@ jobs:
               if [ "$ROLLBACK_NEEDED" = true ]; then
                 echo "Token2 rollout failed; reverting sidecar and Nginx config" >&2
                 docker compose -p "$TOKEN2_PROJECT" --env-file "$DEPLOY_DIR/.env" -f "$TOKEN2_COMPOSE_FILE" down --remove-orphans || true
+                docker rm -f "$TOKEN2_CONTAINER" >/dev/null 2>&1 || true
                 if [ "$NGINX_EXISTED" = 1 ]; then
                   sudo cp -a "$ROLLBACK_DIR/token2.vhost.previous" "$NGINX_AVAILABLE" || true
                   sudo ln -sfn "$NGINX_AVAILABLE" "$NGINX_ENABLED" || true
@@ -175,6 +176,8 @@ jobs:
             echo 'Migration tables before rollout:'
             docker exec sub2api-postgres sh -lc 'psql -Atqc "select table_name from information_schema.tables where table_schema = '\''public'\'' and table_name in ('\''user_devices'\'', '\''bot_sales_fulfillments'\'') order by table_name"' || true
 
+            docker compose -p "$TOKEN2_PROJECT" --env-file "$DEPLOY_DIR/.env" -f "$TOKEN2_COMPOSE_FILE" down --remove-orphans || true
+            docker rm -f "$TOKEN2_CONTAINER" >/dev/null 2>&1 || true
             docker compose -p "$TOKEN2_PROJECT" --env-file "$DEPLOY_DIR/.env" -f "$TOKEN2_COMPOSE_FILE" pull
             docker compose -p "$TOKEN2_PROJECT" --env-file "$DEPLOY_DIR/.env" -f "$TOKEN2_COMPOSE_FILE" up -d --force-recreate --no-deps sub2api-token2
 

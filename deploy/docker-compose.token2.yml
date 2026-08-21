@@ -14,8 +14,6 @@ services:
     pids_limit: ${TOKEN2_PIDS_LIMIT:-512}
     security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
     ports:
       - "127.0.0.1:${TOKEN2_SERVER_PORT:-8081}:8080"
     volumes:
