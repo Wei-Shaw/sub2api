@@ -4,6 +4,8 @@ Sub2API can forward OpenAI Responses requests to an API-key account without rewr
 
 One working use case is [`codex-chatgpt-web`](https://github.com/miuuyy/codex-chatgpt-web), an unofficial local bridge that drives a signed-in ChatGPT web session. In that arrangement, Sub2API remains the public API gateway while the browser session stays on a trusted workstation or bridge VM.
 
+If you want the shortest UI-first setup path, start with [OpenAI web bridge quick start](./openai-web-bridge-quickstart.md). Return to this document for the production topology, security rationale, native request envelope, and full acceptance matrix.
+
 ## What strict mode forwards
 
 Strict mode supports these HTTP endpoints:
@@ -100,6 +102,8 @@ Use your actual Compose gateway instead of assuming `172.18.0.1`. Store the brid
 
 Use a release containing [the effort-popover recovery fix](https://github.com/miuuyy/codex-chatgpt-web/pull/133). Version 2.1.11 without that fix can intermittently observe the current ChatGPT effort slider and then lose it during a popover rerender. Manually opening the menu is not a reliable deployment procedure.
 
+That fix is scoped to effort selection. It does not address the separate response-lifecycle failure where ChatGPT removes the active assistant response DOM before the bridge observes terminal completion.
+
 Browser-only mode exposes these model IDs when the signed-in account supports them:
 
 - `chatgpt-web/light`
@@ -174,7 +178,7 @@ The equivalent account fields are:
 }
 ```
 
-The placeholder API key satisfies the API-key account shape but is not sent when upstream authentication is `none`. Never reuse the Sub2API downstream API key as this placeholder or bridge header secret.
+The account uses the API-key account shape, but the current create/edit UI permits the upstream API key to remain blank when upstream authentication is explicitly `none`. Never reuse the Sub2API downstream API key as an upstream key or bridge header secret.
 
 ## Client request envelope
 
@@ -227,7 +231,7 @@ Do not call the integration complete until all of these pass through Sub2API:
 7. The TLS bridge path returns 404 without its secret header.
 8. The public Sub2API health check remains green after the proxy and account changes.
 
-The browser-only reference deployment used for this guide passed all eight checks with `chatgpt-web/high`.
+The browser-only reference deployment passed the full matrix, but later canaries found intermittent ChatGPT response-DOM loss on the High lane. Re-qualify each tier independently after bridge or ChatGPT UI changes. The current user-first quickstart begins with `chatgpt-web/light`, which passed the latest BYOK Chat staging and production exact-marker checks.
 
 ## Does this use ChatGPT web allowance?
 
