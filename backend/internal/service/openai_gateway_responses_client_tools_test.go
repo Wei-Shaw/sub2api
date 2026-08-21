@@ -77,6 +77,26 @@ func TestAdaptOpenAIResponsesClientToolsRejectsTrailingData(t *testing.T) {
 	}
 }
 
+func TestResponsesFunctionUpstreamsLowerToolSearchDiscoveryOutput(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"tool_search"}],"input":[{"type":"tool_search_output","call_id":"search_1","tools":[{"type":"namespace","name":"github"}],"status":"completed","execution":"client"}]}`)
+	adapters := map[string]func([]byte) ([]byte, apicompat.ResponsesClientToolMapping, error){
+		"OpenAI API-key": adaptOpenAIResponsesClientTools,
+		"Grok":           adaptGrokResponsesClientTools,
+	}
+	for name, adapt := range adapters {
+		t.Run(name, func(t *testing.T) {
+			adapted, mapping, err := adapt(body)
+			require.NoError(t, err)
+			require.True(t, mapping.ToolSearch)
+			require.Equal(t, "function_call_output", gjson.GetBytes(adapted, "input.0.type").String())
+			require.JSONEq(t, `[{"name":"github","type":"namespace"}]`, gjson.GetBytes(adapted, "input.0.output").String())
+			require.False(t, gjson.GetBytes(adapted, "input.0.tools").Exists())
+			require.False(t, gjson.GetBytes(adapted, "input.0.status").Exists())
+			require.False(t, gjson.GetBytes(adapted, "input.0.execution").Exists())
+		})
+	}
+}
+
 func TestClearOpenAIResponsesClientToolMappingRemovesStaleContextState(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())

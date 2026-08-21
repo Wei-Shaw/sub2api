@@ -714,7 +714,9 @@ type ChatToolCall struct {
 
 // ChatFunctionCall contains the function name and arguments.
 type ChatFunctionCall struct {
-	Name      string `json:"name"`
+	// Empty name is omitted so streamed arguments-only deltas never overwrite
+	// the tool name a client accumulated from the first delta.
+	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments"`
 }
 

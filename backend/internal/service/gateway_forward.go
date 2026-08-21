@@ -88,11 +88,21 @@ func sleepWithContext(ctx context.Context, d time.Duration) error {
 }
 
 // Forward 转发请求到Claude API
-func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest) (*ForwardResult, error) {
+func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest) (result *ForwardResult, err error) {
 	startTime := time.Now()
 	if parsed == nil {
 		return nil, fmt.Errorf("parse request: empty request")
 	}
+	// Anthropic Fast is requested with speed=fast rather than OpenAI's
+	// service_tier. Attach it at this shared boundary so passthrough, OAuth and
+	// partial-stream results all use the same billing and usage-log path.
+	defer func() {
+		if result != nil {
+			if tier := anthropicSpeedServiceTier(account, parsed.Speed, anthropicSpeedModel(parsed, result)); tier != nil {
+				result.ServiceTier = tier
+			}
+		}
+	}()
 	beginUpstreamResponseModelObservation(c)
 
 	// Web Search 模拟：纯 web_search 请求时，直接调用搜索 API 构造响应
@@ -886,6 +896,50 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		FirstTokenMs:                  firstTokenMs,
 		ClientDisconnect:              clientDisconnect,
 	}, nil
+}
+
+func anthropicSpeedModel(parsed *ParsedRequest, result *ForwardResult) string {
+	if result != nil {
+		if upstreamModel := strings.TrimSpace(result.UpstreamModel); upstreamModel != "" {
+			return upstreamModel
+		}
+	}
+	if parsed == nil {
+		return ""
+	}
+	return parsed.Model
+}
+
+// anthropicSpeedServiceTier 把 Anthropic 的 speed=fast 归一成可计费的 "fast" tier。
+//
+// Fast mode 目前只在 Claude Opus 5 / Opus 4.8 上存在，且不支持 Bedrock 等第三方
+// 承载（Opus 4.7 的 fast mode 已被移除，传 speed=fast 会直接报错）。这里按模型和
+// 平台收紧，避免上游根本没跑 fast 时仍然按 2x 计费——宁可漏收也不能多收。
+//
+// 注：判据是请求参数而非响应里的 usage.speed。等 usage 解析链路统一暴露该字段后，
+// 应改为以响应为准。
+func anthropicSpeedServiceTier(account *Account, speed, model string) *string {
+	if account == nil || account.Platform != PlatformAnthropic || speed != "fast" {
+		return nil
+	}
+	if account.IsBedrock() || !modelSupportsAnthropicFastMode(model) {
+		return nil
+	}
+	tier := "fast"
+	return &tier
+}
+
+// modelSupportsAnthropicFastMode 判断模型是否属于支持 fast mode 的 Opus 5 / Opus 4.8。
+func modelSupportsAnthropicFastMode(model string) bool {
+	modelLower := strings.ToLower(strings.TrimSpace(model))
+	if !strings.Contains(modelLower, "opus") {
+		return false
+	}
+	// "opus-5" 必须先判：不能用裸 "5" 匹配，否则 claude-opus-4-5 会被误判。
+	if strings.Contains(modelLower, "opus-5") || strings.Contains(modelLower, "opus5") {
+		return true
+	}
+	return strings.Contains(modelLower, "4.8") || strings.Contains(modelLower, "4-8")
 }
 
 // ResolveChannelMapping 委托渠道服务解析模型映射

@@ -2299,15 +2299,38 @@ func (s *OpenAIGatewayService) isOpenAIAccountTransportCompatible(account *Accou
 	return s.getOpenAIWSProtocolResolver().Resolve(account).Transport == requiredTransport
 }
 
-func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(accountID int64, model string, success bool, firstTokenMs *int) {
+func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Account, model string, success bool, firstTokenMs *int, observedErr ...error) bool {
+	if account == nil {
+		return false
+	}
+	accountID := account.ID
+	healthTripped := false
+	if s != nil && s.rateLimitService != nil {
+		if success {
+			s.rateLimitService.ObserveOpenAIAPIKeyHealthSuccess(context.Background(), account)
+		} else if len(observedErr) > 0 && observedErr[0] != nil {
+			healthTripped = s.rateLimitService.ObserveOpenAIAPIKeyHealthFailure(context.Background(), account, observedErr[0])
+		}
+	}
 	if success {
+		s.openaiOAuth429RetryStartedAt.Delete(accountID)
 		s.clearOpenAIAccountModelTransientState(accountID, normalizeOpenAIAccountModelTransientModel(model))
 	}
 	scheduler := s.getOpenAIAccountScheduler(context.Background())
 	if scheduler == nil {
-		return
+		return healthTripped
 	}
 	scheduler.ReportResult(accountID, success, firstTokenMs)
+	return healthTripped
+}
+
+// ObserveOpenAIAccountHealthFailure records failures that cannot reach the
+// scheduler-result path, for example after semantic response bytes were sent.
+func (s *OpenAIGatewayService) ObserveOpenAIAccountHealthFailure(ctx context.Context, account *Account, observedErr error) bool {
+	if s == nil || s.rateLimitService == nil || account == nil || observedErr == nil {
+		return false
+	}
+	return s.rateLimitService.ObserveOpenAIAPIKeyHealthFailure(ctx, account, observedErr)
 }
 
 func (s *OpenAIGatewayService) RecordOpenAIAccountSwitch() {
@@ -2663,7 +2686,7 @@ func openAIUpstreamCostFactors(accounts []*Account, now time.Time, oauthScheduli
 			continue
 		}
 		factors[account.ID] = openAIUpstreamCostNeutralFactor
-		if !account.IsOpenAIApiKey() && !account.IsOpenAIOAuth() {
+		if !account.IsOpenAIApiKey() && !account.IsOpenAIOAuthLike() {
 			continue
 		}
 		eligibleCount++
@@ -2727,7 +2750,7 @@ func newOpenAILegacyUpstreamRateOrder(accounts []*Account, now time.Time, oauthS
 		// 与 openAIUpstreamCostFactors 使用同一道平台门控：只有 OpenAI 平台账号
 		// 的倍率参与 legacy 低倍率优先排序。上游自报倍率来自中转方，不能让它对
 		// 其他平台的调度产生影响——否则自报低价即可吸走流量，而实际结算走本地倍率。
-		if !account.IsOpenAIApiKey() && !account.IsOpenAIOAuth() {
+		if !account.IsOpenAIApiKey() && !account.IsOpenAIOAuthLike() {
 			continue
 		}
 		rate, ok := openAISchedulingRate(account, now, oauthSchedulingRateMultiplier)
@@ -2745,7 +2768,7 @@ func newOpenAILegacyUpstreamRateOrder(accounts []*Account, now time.Time, oauthS
 }
 
 func openAISchedulingRate(account *Account, now time.Time, oauthSchedulingRateMultiplier float64) (float64, bool) {
-	if account != nil && account.IsOpenAIOAuth() {
+	if account != nil && account.IsOpenAIOAuthLike() {
 		return oauthSchedulingRateMultiplier, true
 	}
 	return openAIFreshUpstreamBillingRate(account, now)

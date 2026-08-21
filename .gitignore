@@ -148,6 +148,7 @@ docs/*
 frontend/coverage/
 aicodex
 output/
+.codegraph/
 
 # Vitest / Vite cache at repo root
 .vite/

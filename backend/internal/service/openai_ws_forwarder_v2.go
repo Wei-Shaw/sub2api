@@ -569,8 +569,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 					message = corrected
 				}
 			}
+			message = restoreCodexToolNamesFromContext(c, message)
 		}
-		if openAIWSEventShouldParseUsage(eventType) {
+		if openAIWSMessageShouldParseUsage(eventType, message) {
 			parseOpenAIWSResponseUsageFromCompletedEvent(message, usage)
 		}
 		imageCounter.AddSSEData(message)
@@ -694,6 +695,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 
 		if isTerminalEvent {
+			if !clientDisconnected {
+				markOpenAIWSClientVisibleFailure(c, eventType, message)
+			}
 			upstreamTerminalEvent = normalizeOpenAIWSTerminalEvent(eventType)
 			if !clientDisconnected {
 				upstreamTerminalEvent = s.handleOpenAIWSTerminalTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
