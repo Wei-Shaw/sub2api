@@ -42,12 +42,13 @@ var (
 		"EMAIL_DOMAIN_REGISTRATION_LIMIT",
 		"this email domain cannot register another account; use a mainstream email or contact support to add the enterprise domain",
 	)
-	ErrRegDisabled             = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
-	ErrServiceUnavailable      = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
-	ErrInvitationCodeRequired  = infraerrors.BadRequest("INVITATION_CODE_REQUIRED", "invitation code is required")
-	ErrInvitationCodeInvalid   = infraerrors.BadRequest("INVITATION_CODE_INVALID", "invalid or used invitation code")
-	ErrOAuthInvitationRequired = infraerrors.Forbidden("OAUTH_INVITATION_REQUIRED", "invitation code required to complete oauth registration")
-	ErrCaptchaProviderConflict = infraerrors.ServiceUnavailable("CAPTCHA_PROVIDER_CONFLICT", "multiple captcha providers are enabled")
+	ErrRegDisabled                = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
+	ErrServiceUnavailable         = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
+	ErrInvitationCodeRequired     = infraerrors.BadRequest("INVITATION_CODE_REQUIRED", "invitation code is required")
+	ErrInvitationCodeInvalid      = infraerrors.BadRequest("INVITATION_CODE_INVALID", "invalid or used invitation code")
+	ErrOAuthInvitationRequired    = infraerrors.Forbidden("OAUTH_INVITATION_REQUIRED", "invitation code required to complete oauth registration")
+	ErrBootstrapAPIKeyUnavailable = infraerrors.ServiceUnavailable("BOOTSTRAP_API_KEY_UNAVAILABLE", "failed to provision bootstrap api keys")
+	ErrCaptchaProviderConflict    = infraerrors.ServiceUnavailable("CAPTCHA_PROVIDER_CONFLICT", "multiple captcha providers are enabled")
 )
 
 // maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
@@ -71,22 +72,24 @@ type JWTClaims struct {
 
 // AuthService 认证服务
 type AuthService struct {
-	entClient             *dbent.Client
-	userRepo              UserRepository
-	redeemRepo            RedeemCodeRepository
-	refreshTokenCache     RefreshTokenCache
-	cfg                   *config.Config
-	settingService        *SettingService
-	emailService          *EmailService
-	turnstileService      *TurnstileService
-	tencentCaptchaService *TencentCaptchaService
-	aliyunCaptchaService  *AliyunCaptchaService
-	emailQueueService     *EmailQueueService
-	promoService          *PromoService
-	affiliateService      *AffiliateService
-	defaultSubAssigner    DefaultSubscriptionAssigner
-	userPlatformQuotaRepo UserPlatformQuotaRepository
-	inviteLoginDeviceRepo UserDeviceRepository
+	entClient                *dbent.Client
+	userRepo                 UserRepository
+	redeemRepo               RedeemCodeRepository
+	refreshTokenCache        RefreshTokenCache
+	cfg                      *config.Config
+	settingService           *SettingService
+	emailService             *EmailService
+	turnstileService         *TurnstileService
+	tencentCaptchaService    *TencentCaptchaService
+	aliyunCaptchaService     *AliyunCaptchaService
+	emailQueueService        *EmailQueueService
+	promoService             *PromoService
+	affiliateService         *AffiliateService
+	defaultSubAssigner       DefaultSubscriptionAssigner
+	userPlatformQuotaRepo    UserPlatformQuotaRepository
+	inviteLoginDeviceRepo    UserDeviceRepository
+	inviteBootstrapAPIKeySvc InviteBootstrapAPIKeyService
+	groupRepo                GroupRepository
 }
 
 type CaptchaProof struct {
@@ -94,6 +97,19 @@ type CaptchaProof struct {
 	TurnstileToken string
 	TencentTicket  string
 	TencentRandstr string
+}
+
+type InviteBootstrapAPIKey struct {
+	ID       int64
+	Name     string
+	Key      string
+	GroupID  int64
+	Platform string
+}
+
+type InviteBootstrapAPIKeyService interface {
+	GetAvailableGroups(ctx context.Context, userID int64) ([]Group, error)
+	Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error)
 }
 
 type DefaultSubscriptionAssigner interface {
@@ -153,6 +169,20 @@ func (s *AuthService) SetTencentCaptchaService(tencentCaptchaService *TencentCap
 
 func (s *AuthService) SetAliyunCaptchaService(aliyunCaptchaService *AliyunCaptchaService) {
 	s.aliyunCaptchaService = aliyunCaptchaService
+}
+
+// SetInviteBootstrapAPIKeyService injects API key provisioning for invite-login.
+func (s *AuthService) SetInviteBootstrapAPIKeyService(svc InviteBootstrapAPIKeyService) {
+	if s != nil {
+		s.inviteBootstrapAPIKeySvc = svc
+	}
+}
+
+// SetInviteBootstrapGroupRepository injects the group source used by subscription invites.
+func (s *AuthService) SetInviteBootstrapGroupRepository(repo GroupRepository) {
+	if s != nil {
+		s.groupRepo = repo
+	}
 }
 
 // Register 用户注册，返回token和用户

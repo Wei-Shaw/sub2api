@@ -72,6 +72,8 @@ func ProvideAuthService(
 	affiliateService *AffiliateService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
 	userDeviceRepo UserDeviceRepository,
+	inviteBootstrapAPIKeySvc InviteBootstrapAPIKeyService,
+	groupRepo GroupRepository,
 ) *AuthService {
 	svc := NewAuthService(
 		entClient,
@@ -91,6 +93,8 @@ func ProvideAuthService(
 	svc.SetTencentCaptchaService(tencentCaptchaService)
 	svc.SetAliyunCaptchaService(aliyunCaptchaService)
 	svc.SetInviteLoginDeviceResolver(userDeviceRepo)
+	svc.SetInviteBootstrapAPIKeyService(inviteBootstrapAPIKeySvc)
+	svc.SetInviteBootstrapGroupRepository(groupRepo)
 	return svc
 }
 
