@@ -302,6 +302,25 @@ func TestRefreshIfNeeded_AlreadyRefreshed(t *testing.T) {
 	require.Equal(t, 0, executor.refreshCalls)
 }
 
+func TestRefreshNow_RefreshesEvenWhenTokenIsNotNearExpiry(t *testing.T) {
+	account := &Account{ID: 51, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive}
+	repo := &refreshAPIAccountRepo{account: account}
+	cache := &refreshAPICacheStub{lockResult: true}
+	executor := &refreshAPIExecutorStub{
+		needsRefresh: false,
+		credentials:  map[string]any{"access_token": "forced-token"},
+	}
+
+	result, err := NewOAuthRefreshAPI(repo, cache).RefreshNow(context.Background(), account, executor)
+
+	require.NoError(t, err)
+	require.True(t, result.Refreshed)
+	require.Equal(t, "forced-token", result.NewCredentials["access_token"])
+	require.Equal(t, 1, executor.refreshCalls)
+	require.Equal(t, 1, repo.updateCredentialsCalls)
+	require.Equal(t, 1, cache.releaseCalls)
+}
+
 func TestRefreshIfNeeded_RefreshError(t *testing.T) {
 	account := &Account{ID: 6, Platform: PlatformAnthropic, Status: StatusActive}
 	repo := &refreshAPIAccountRepo{account: account}

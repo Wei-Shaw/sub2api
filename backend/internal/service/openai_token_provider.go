@@ -270,6 +270,39 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 	return accessToken, nil
 }
 
+// ForceRefresh refreshes an OpenAI OAuth credential after the upstream has
+// explicitly rejected the current token with a refreshable rate-limit error.
+func (p *OpenAITokenProvider) ForceRefresh(ctx context.Context, account *Account) (*Account, error) {
+	if p == nil || p.refreshAPI == nil || p.executor == nil {
+		return nil, errors.New("openai forced token refresh is not configured")
+	}
+	if account == nil || !account.IsOpenAIOAuth() || account.IsCredentialShadow() || account.IsOpenAIPersonalAccessToken() {
+		return nil, errors.New("account is not a refreshable openai oauth account")
+	}
+	if strings.TrimSpace(account.GetOpenAIRefreshToken()) == "" {
+		return nil, errors.New("openai oauth refresh token is missing")
+	}
+
+	p.ensureMetrics()
+	p.metrics.refreshRequests.Add(1)
+	p.metrics.touchNow()
+	result, err := p.refreshAPI.RefreshNow(ctx, account, p.executor)
+	if err != nil {
+		p.metrics.refreshFailure.Add(1)
+		return nil, err
+	}
+	if result == nil || result.LockHeld || !result.Refreshed || result.Account == nil {
+		return nil, errors.New("openai forced token refresh did not complete")
+	}
+	p.metrics.refreshSuccess.Add(1)
+	if p.tokenCache != nil {
+		if err := p.tokenCache.DeleteAccessToken(ctx, OpenAITokenCacheKey(account)); err != nil {
+			slog.Warn("openai_forced_token_cache_delete_failed", "account_id", account.ID, "error", err)
+		}
+	}
+	return result.Account, nil
+}
+
 // disableAccountMissingRefreshToken 在请求路径上发现 OpenAI OAuth 账号
 // 凭证已过期且 refresh_token 缺失时，将账号标记为 error 状态。
 // 这是一种永久性故障：仅靠后续请求或 TokenRefreshService 不会自愈
