@@ -255,39 +255,38 @@ func (s *AntigravityGatewayService) handleAntigravityModelRateLimitBeforePolicy(
 	return true
 }
 
-// mapAntigravityModel 获取映射后的模型名
-// 完全依赖映射配置：账户映射（通配符）→ 默认映射兜底（DefaultAntigravityModelMapping）
-// 注意：返回空字符串表示模型不被支持，调度时会过滤掉该账号
+// mapAntigravityModel 返回 Antigravity 要发送给上游的模型名。
+//
+// 渠道映射在请求进入账号调度前已经完成。对最近一次探测结果中出现的
+// 模型，直接透传请求名，不再要求账号先把它写进 model_mapping；这就是
+// 新模型自动可用的关键。旧账号的 model_mapping 仅作为历史兼容兜底，
+// 不再阻断探测快照中的新模型。
 func mapAntigravityModel(account *Account, requestedModel string) string {
 	if account == nil {
 		return ""
 	}
-	requestedModel = strings.TrimPrefix(requestedModel, "models/")
+	requestedModel = strings.TrimPrefix(strings.TrimSpace(requestedModel), "models/")
+	if requestedModel == "" {
+		return ""
+	}
+	if snapshot := account.UpstreamModelSnapshot(); snapshot != nil {
+		for _, model := range snapshot.Models {
+			if strings.TrimSpace(model) == requestedModel {
+				return requestedModel
+			}
+		}
+	}
 
-	// 获取映射表（未配置时自动使用 DefaultAntigravityModelMapping）
+	// 历史账号兼容：快照尚未包含该模型时，继续使用旧映射处理已有模型。
+	// 调度阶段随后仍会用 HasSyncedUpstreamModel 做真实能力检查。
 	mapping := account.GetModelMapping()
 	if len(mapping) == 0 {
-		return "" // 无映射配置（非 Antigravity 平台）
+		return ""
 	}
-
-	// 通过映射表查询（支持精确匹配 + 通配符）
 	mapped := account.GetMappedModel(requestedModel)
-
-	// 判断是否映射成功（mapped != requestedModel 说明找到了映射规则）
-	if mapped != requestedModel {
+	if mapped != requestedModel || account.IsModelSupported(requestedModel) {
 		return mapped
 	}
-
-	// 如果 mapped == requestedModel，检查是否在映射表中配置（精确或通配符）
-	// 这区分两种情况：
-	// 1. 映射表中有 "model-a": "model-a"（显式透传）→ 返回 model-a
-	// 2. 通配符匹配 "claude-*": "claude-sonnet-4-5" 恰好目标等于请求名 → 返回 model-a
-	// 3. 映射表中没有 model-a 的配置 → 返回空（不支持）
-	if account.IsModelSupported(requestedModel) {
-		return requestedModel
-	}
-
-	// 未在映射表中配置的模型，返回空字符串（不支持）
 	return ""
 }
 
