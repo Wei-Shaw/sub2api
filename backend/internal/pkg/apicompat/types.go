@@ -298,6 +298,29 @@ type ResponsesContentPart struct {
 	Type     string `json:"type"` // "input_text" | "output_text" | "input_image"
 	Text     string `json:"text,omitempty"`
 	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
+	// Annotations 仅出现在响应侧 output_text 块上，且必须始终存在（OpenAI Responses
+	// API spec 要求；严格遵循该 schema 的客户端如 @ai-sdk/openai 的 Zod 会因缺失
+	// 该字段拒绝响应）。请求侧 input_text/input_image 不需要此字段。
+	//
+	// 类型用指针切片 + omitempty 是为了同时满足两种语义：
+	//   - 请求侧构造（nil 指针）→ 序列化时剔除字段，避免给上游塞无效数据
+	//   - 响应侧构造（指向空切片）→ 序列化为 "annotations":[]
+	// 使用 EmptyResponsesAnnotations() 取一个非 nil 的 *[]ResponsesAnnotation。
+	Annotations *[]ResponsesAnnotation `json:"annotations,omitempty"`
+}
+
+// ResponsesAnnotation 描述 output_text 内容部分中的一条标注（如 file_citation、
+// url_citation 等）。当前仅暴露公共的 type 字段；如有其他字段，由更上层 API 类型
+// 扩展。
+type ResponsesAnnotation struct {
+	Type string `json:"type,omitempty"`
+}
+
+// EmptyResponsesAnnotations 返回一个指向非 nil 空切片的指针，适用于构造响应侧
+// output_text content part，使其序列化时输出 "annotations":[]。
+func EmptyResponsesAnnotations() *[]ResponsesAnnotation {
+	empty := []ResponsesAnnotation{}
+	return &empty
 }
 
 // ResponsesTool describes a tool in the Responses API.

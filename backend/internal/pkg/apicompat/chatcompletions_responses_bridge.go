@@ -1185,8 +1185,9 @@ func chatMessageToResponsesOutput(message ChatMessage, customTools map[string]bo
 			ID:   generateItemID(),
 			Role: "assistant",
 			Content: []ResponsesContentPart{{
-				Type: "output_text",
-				Text: text,
+				Type:        "output_text",
+				Text:        text,
+				Annotations: EmptyResponsesAnnotations(),
 			}},
 			Status: "completed",
 		})
@@ -1260,11 +1261,15 @@ func toolSearchCallArgumentsJSON(arguments string) json.RawMessage {
 
 func emptyResponsesMessageOutput() ResponsesOutput {
 	return ResponsesOutput{
-		Type:    "message",
-		ID:      generateItemID(),
-		Role:    "assistant",
-		Content: []ResponsesContentPart{{Type: "output_text", Text: ""}},
-		Status:  "completed",
+		Type: "message",
+		ID:   generateItemID(),
+		Role: "assistant",
+		Content: []ResponsesContentPart{{
+			Type:        "output_text",
+			Text:        "",
+			Annotations: EmptyResponsesAnnotations(),
+		}},
+		Status: "completed",
 	}
 }
 
@@ -1902,8 +1907,9 @@ func (state *ChatCompletionsToResponsesStreamState) chatOutput() []ResponsesOutp
 			ID:   nonEmpty(state.MessageItemID, generateItemID()),
 			Role: "assistant",
 			Content: []ResponsesContentPart{{
-				Type: "output_text",
-				Text: state.Text.String(),
+				Type:        "output_text",
+				Text:        state.Text.String(),
+				Annotations: EmptyResponsesAnnotations(),
 			}},
 			Status: "completed",
 		})

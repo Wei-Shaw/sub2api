@@ -502,12 +502,18 @@ func (a *BufferedResponseAccumulator) HasContent() bool {
 // BuildOutput constructs a []ResponsesOutput from the accumulated delta
 // content. The order matches what ResponsesToChatCompletions expects:
 // reasoning → message → function_calls.
+//
+// 每个 output 项都会填充 ID（reasoning/message/function_call），且 message
+// 的 content part 会显式初始化 Annotations 为空切片，确保最终 JSON 中输出
+// "annotations":[]。这避免严格遵循 Responses API schema 的客户端（如
+// @ai-sdk/openai 的 Zod）因缺失字段而拒绝响应。
 func (a *BufferedResponseAccumulator) BuildOutput() []ResponsesOutput {
 	var out []ResponsesOutput
 
 	if a.reasoning.Len() > 0 {
 		out = append(out, ResponsesOutput{
 			Type: "reasoning",
+			ID:   generateItemID(),
 			Summary: []ResponsesSummary{{
 				Type: "summary_text",
 				Text: a.reasoning.String(),
@@ -518,10 +524,12 @@ func (a *BufferedResponseAccumulator) BuildOutput() []ResponsesOutput {
 	if a.text.Len() > 0 {
 		out = append(out, ResponsesOutput{
 			Type: "message",
+			ID:   generateItemID(),
 			Role: "assistant",
 			Content: []ResponsesContentPart{{
-				Type: "output_text",
-				Text: a.text.String(),
+				Type:        "output_text",
+				Text:        a.text.String(),
+				Annotations: EmptyResponsesAnnotations(),
 			}},
 		})
 	}
@@ -529,6 +537,7 @@ func (a *BufferedResponseAccumulator) BuildOutput() []ResponsesOutput {
 	for i := range a.funcCalls {
 		out = append(out, ResponsesOutput{
 			Type:      "function_call",
+			ID:        generateItemID(),
 			CallID:    a.funcCalls[i].CallID,
 			Name:      a.funcCalls[i].Name,
 			Arguments: a.funcCalls[i].Args.String(),
