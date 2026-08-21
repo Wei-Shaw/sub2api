@@ -6,8 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,6 +46,13 @@ type failingOpenAIHTTPUpstream struct {
 	calls int
 }
 
+type failingResponseBody struct {
+	err error
+}
+
+func (b failingResponseBody) Read([]byte) (int, error) { return 0, b.err }
+func (b failingResponseBody) Close() error             { return nil }
+
 func (u *failingOpenAIHTTPUpstream) Do(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
 	u.calls++
 	return nil, u.err
@@ -52,6 +61,104 @@ func (u *failingOpenAIHTTPUpstream) Do(_ *http.Request, _ string, _ int64, _ int
 func (u *failingOpenAIHTTPUpstream) DoWithTLS(_ *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
 	u.calls++
 	return nil, u.err
+}
+
+func TestHandleNonStreamingResponse_HTTP2ReadErrorFailsOverBeforeWrite(t *testing.T) {
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	account := &Account{ID: 501, Name: "h2-read", Platform: PlatformOpenAI}
+	c, rec := newOpenAITransportErrTestContext()
+	readErr := errors.New("stream error: stream ID 37; INTERNAL_ERROR; received from peer")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       failingResponseBody{err: readErr},
+	}
+
+	_, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, account, "gpt-5.4", "gpt-5.4")
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.Equal(t, 0, rec.Body.Len(), "下游尚未写入时必须交给 handler 切换账号")
+}
+
+func TestHandleNonStreamingResponsePassthrough_HTTP2ReadErrorFailsOverBeforeWrite(t *testing.T) {
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	account := &Account{ID: 504, Name: "h2-read-passthrough", Platform: PlatformOpenAI}
+	c, rec := newOpenAITransportErrTestContext()
+	readErr := errors.New("stream error: stream ID 41; INTERNAL_ERROR; received from peer")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       failingResponseBody{err: readErr},
+	}
+
+	_, err := svc.handleNonStreamingResponsePassthrough(c.Request.Context(), resp, c, account, "gpt-5.4", "gpt-5.4")
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.Equal(t, 0, rec.Body.Len())
+}
+
+func TestHandleNonStreamingResponse_ReadErrorAfterWriteDoesNotFailOver(t *testing.T) {
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	account := &Account{ID: 502, Name: "h2-written", Platform: PlatformOpenAI}
+	c, rec := newOpenAITransportErrTestContext()
+	c.Data(http.StatusOK, "text/plain", []byte("already written"))
+	readErr := errors.New("stream error: stream ID 39; INTERNAL_ERROR; received from peer")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       failingResponseBody{err: readErr},
+	}
+
+	_, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, account, "gpt-5.4", "gpt-5.4")
+
+	require.ErrorIs(t, err, readErr)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr), "已写入下游后不能重放请求")
+	require.Equal(t, "already written", rec.Body.String())
+}
+
+func TestHandleNonStreamingResponse_ContextCanceledDoesNotFailOver(t *testing.T) {
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	account := &Account{ID: 503, Name: "client-gone", Platform: PlatformOpenAI}
+	c, rec := newOpenAITransportErrTestContext()
+	readErr := fmt.Errorf("read response body: %w", context.Canceled)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       failingResponseBody{err: readErr},
+	}
+
+	_, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, account, "gpt-5.4", "gpt-5.4")
+
+	require.ErrorIs(t, err, context.Canceled)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
+	require.Equal(t, 0, rec.Body.Len())
+}
+
+func TestHandleNonStreamingResponse_TooLargeDoesNotFailOver(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.UpstreamResponseReadMaxBytes = 1
+	svc := &OpenAIGatewayService{cfg: cfg}
+	account := &Account{ID: 505, Name: "too-large", Platform: PlatformOpenAI}
+	c, rec := newOpenAITransportErrTestContext()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader("{}")),
+	}
+
+	_, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, account, "gpt-5.4", "gpt-5.4")
+
+	require.ErrorIs(t, err, ErrUpstreamResponseBodyTooLarge)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr), "响应体超限已经写入格式化错误，不能重放请求")
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	require.Contains(t, rec.Body.String(), "Upstream response too large")
 }
 
 // A durable proxy/credential failure must (a) temporarily unschedule the account
