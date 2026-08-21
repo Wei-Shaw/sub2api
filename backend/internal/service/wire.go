@@ -72,6 +72,7 @@ func ProvideAuthService(
 	affiliateService *AffiliateService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
 	mcpOAuthService *MCPOAuthService,
+	userDeviceRepo UserDeviceRepository,
 ) *AuthService {
 	svc := NewAuthService(
 		entClient,
@@ -93,6 +94,7 @@ func ProvideAuthService(
 	if mcpOAuthService != nil {
 		svc.SetMCPGrantRevoker(mcpOAuthService)
 	}
+	svc.SetInviteLoginDeviceResolver(userDeviceRepo)
 	return svc
 }
 
@@ -863,6 +865,8 @@ func ProvideAPIKeyService(
 var ProviderSet = wire.NewSet(
 	// Core services
 	ProvideAuthService,
+	NewVClawClaimService,
+	NewBotSalesFulfillmentService,
 	NewPasskeyService,
 	NewUserService,
 	NewMCPOAuthService,

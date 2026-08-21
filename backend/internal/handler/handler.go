@@ -48,6 +48,7 @@ type AdminHandlers struct {
 // Handlers contains all HTTP handlers
 type Handlers struct {
 	Auth             *AuthHandler
+	VClaw            *VClawHandler
 	User             *UserHandler
 	MCPOAuth         *MCPOAuthHandler
 	APIKey           *APIKeyHandler
@@ -69,6 +70,7 @@ type Handlers struct {
 	ModelPlaza       *ModelPlazaHandler
 	AsyncImage       *AsyncImageHandler
 	BatchImage       *BatchImageHandler
+	BotSales         *BotSalesHandler
 }
 
 // BuildInfo contains build-time information

@@ -87,6 +87,7 @@ type AuthService struct {
 	defaultSubAssigner    DefaultSubscriptionAssigner
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 	mcpGrantRevoker       MCPGrantRevoker
+	inviteLoginDeviceRepo UserDeviceRepository
 }
 
 type CaptchaProof struct {
