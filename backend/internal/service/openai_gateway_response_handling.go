@@ -45,10 +45,12 @@ type openaiNonStreamingResult struct {
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*openaiStreamingResult, error) {
-	return s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, mappedModel, "")
+	return s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, mappedModel, "", nil)
 }
 
-func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel, reasoningEffort string) (*openaiStreamingResult, error) {
+// dsmlGuard 仅以 observe 语义接入本 relay：检测并记 ops，不扣流不重试（本函数的
+// 逐事件缓冲写出与 attempt 级状态量多，扣流/重试改造独立为后续工作）。
+func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel, reasoningEffort string, dsmlGuard *openAIDSMLLeakGuard) (*openaiStreamingResult, error) {
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
@@ -383,6 +385,10 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				failureDelivered = true
 			}
 		}
+		if dsmlGuard.LeakVerdict() {
+			appendDSMLGuardOpsEvent(c, account, upstreamRequestID,
+				"dsml leak detected on responses lane (observe; recovery not wired on this lane yet)", "")
+		}
 		if sawTerminalEvent && !sawFailedEvent {
 			s.clearOpenAIProxyStreamDisconnect(account)
 		}
@@ -470,6 +476,10 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	processSSELine := func(line string, queueDrained bool) {
 		if streamEarlyErr != nil {
 			return
+		}
+		if dsmlGuard != nil {
+			// observe 语义：只记账（正文累积/工具调用/终态），不改写任何字节。
+			_ = dsmlGuard.HandleLine(line)
 		}
 		if eventType, ok := extractOpenAISSEEventLine(line); ok {
 			pendingSSEEventType = eventType

@@ -147,6 +147,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	// CN 供应商 anthropic 协议账号：/v1/responses 入站是交叉协议组合
 	// （Responses 客户端 × Anthropic 上游），转成 Anthropic 请求走原生端点。
 	// 不能落到下面的 raw-CC 分支——其 URL 构造会把 anthropic base 当 CC base 用。
+	// TODO(dsml-guard): anthropic lane response-side detection；本 lane 的
+	// Responses 形态历史清洗（input[] 而非 messages[]）一并推迟到该改造。
 	if account.IsAnthropicProtocol() {
 		return s.forwardResponsesViaNativeAnthropic(ctx, c, account, body, reqModel)
 	}
@@ -1109,7 +1111,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		searchCount := 0
 		var imageOutputSizes []string
 		if reqStream {
-			streamResult, err := s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue)
+			// DSML 泄漏防护：native Responses lane 目前只接观察（本 lane 此前无任何
+			// 检测器）。恒用 observe 语义——扣流/重试尚未在此 relay 落地。
+			var dsmlGuard *openAIDSMLLeakGuard
+			if s.dsmlGuardActiveForBody(upstreamModel, body) {
+				dsmlGuard = newOpenAIDSMLLeakGuard(true)
+			}
+			streamResult, err := s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue, dsmlGuard)
 			if err != nil {
 				if signal, ok := asOpenAICompactFallbackSignal(err); ok {
 					if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
