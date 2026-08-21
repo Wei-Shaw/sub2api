@@ -291,6 +291,8 @@ REDACTED
 			return s.testCNProviderAdaptiveConnection(c, account, modelID, prompt)
 		case APIProtocolChatCompletions:
 			return s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt)
+		case APIProtocolAnthropic:
+			return s.testCNProviderAnthropicConnection(c, account, modelID)
 	REDACTED
 REDACTED
 
