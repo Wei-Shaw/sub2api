@@ -294,7 +294,7 @@ func (idx *Catalog) StorefrontItems(platform string) []StorefrontItem {
 		}
 		out = append(out, StorefrontItem{
 			ID:          entry.ID,
-			DisplayName: firstNonEmpty(entry.DisplayName, entry.ID),
+			DisplayName: storefrontDisplayName(entry),
 			Platforms:   append([]string(nil), entry.Platforms...),
 			CanonicalID: entry.CanonicalID,
 			Price:       entry.Price,
@@ -302,6 +302,23 @@ func (idx *Catalog) StorefrontItems(platform string) []StorefrontItem {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
+}
+
+func storefrontDisplayName(entry *Entry) string {
+	if entry == nil {
+		return ""
+	}
+	name := firstNonEmpty(entry.DisplayName, entry.ID)
+	if !strings.HasPrefix(entry.CanonicalID, "gemini-") {
+		return name
+	}
+	for _, suffix := range thinkingTierSuffixes {
+		if entry.ID != entry.CanonicalID+suffix {
+			continue
+		}
+		return name + " (" + strings.ToUpper(suffix[1:2]) + suffix[2:] + ")"
+	}
+	return name
 }
 
 func entryHasPlatform(entry *Entry, platform string) bool {

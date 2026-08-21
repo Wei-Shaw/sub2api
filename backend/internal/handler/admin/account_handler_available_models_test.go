@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
@@ -140,6 +141,64 @@ func TestAccountHandlerGetAvailableModels_GrokDefaultsToXAIModelsWithoutMapping(
 	}
 	require.Contains(t, ids, "grok-4.3")
 	require.Contains(t, ids, "grok-build-0.1")
+}
+
+func TestAccountHandlerGetAvailableModels_AntigravityUsesUpstreamSnapshot(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID:       47,
+			Name:     "antigravity-upstream-snapshot",
+			Platform: service.PlatformAntigravity,
+			Type:     service.AccountTypeOAuth,
+			Status:   service.StatusActive,
+			Extra: service.ApplyUpstreamModelSnapshot(nil, []string{
+				"gemini-3.7-flash-tiered",
+			}, time.Now().UTC()),
+		},
+	}
+	router := setupAvailableModelsRouter(svc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/47/models", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Data, 1)
+	require.Equal(t, "gemini-3.7-flash-tiered", resp.Data[0].ID)
+}
+
+func TestAccountHandlerGetAvailableModels_AntigravityWithoutSnapshotDoesNotUseStaticCatalog(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID:       48,
+			Name:     "antigravity-unsynced",
+			Platform: service.PlatformAntigravity,
+			Type:     service.AccountTypeOAuth,
+			Status:   service.StatusActive,
+		},
+	}
+	router := setupAvailableModelsRouter(svc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/48/models", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Empty(t, resp.Data)
 }
 
 func TestAccountHandlerGetAvailableModels_OpenAIOAuthUsesExplicitModelMapping(t *testing.T) {

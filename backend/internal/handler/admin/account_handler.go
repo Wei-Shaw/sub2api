@@ -2657,8 +2657,7 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 
 	// Handle Antigravity accounts: return Claude + Gemini models
 	if account.Platform == service.PlatformAntigravity {
-		// 直接复用 antigravity.DefaultModels()，与 /v1/models 端点保持同步
-		response.Success(c, antigravity.DefaultModels())
+		response.Success(c, antigravitySnapshotModels(account))
 		return
 	}
 
@@ -3076,12 +3075,31 @@ func writeAccountDefaultModels(c *gin.Context, account *service.Account) {
 	case service.PlatformGemini:
 		response.Success(c, geminicli.DefaultModels)
 	case service.PlatformAntigravity:
-		response.Success(c, antigravity.DefaultModels())
+		response.Success(c, antigravitySnapshotModels(account))
 	case service.PlatformGrok:
 		response.Success(c, xai.DefaultModels())
 	default:
 		response.Success(c, claude.DefaultModels)
 	}
+}
+
+func antigravitySnapshotModels(account *service.Account) []antigravity.ClaudeModel {
+	if account == nil {
+		return []antigravity.ClaudeModel{}
+	}
+	snapshot := account.UpstreamModelSnapshot()
+	if snapshot == nil || len(snapshot.Models) == 0 {
+		return []antigravity.ClaudeModel{}
+	}
+	models := make([]antigravity.ClaudeModel, 0, len(snapshot.Models))
+	for _, modelID := range snapshot.Models {
+		models = append(models, antigravity.ClaudeModel{
+			ID:          modelID,
+			Type:        "model",
+			DisplayName: modelID,
+		})
+	}
+	return models
 }
 
 // GetAntigravityDefaultModelMapping 获取 Antigravity 平台的默认模型映射

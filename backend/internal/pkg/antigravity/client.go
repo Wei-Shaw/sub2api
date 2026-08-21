@@ -657,6 +657,21 @@ type FetchAvailableModelsResponse struct {
 // FetchAvailableModels 获取可用模型和配额信息，返回解析后的结构体和原始 JSON
 // 支持 URL fallback：sandbox → daily → prod
 func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectID string) (*FetchAvailableModelsResponse, map[string]any, error) {
+	return c.fetchAvailableModelsFromURLs(ctx, accessToken, projectID, BaseURLs)
+}
+
+// FetchAvailableModelsAtURL fetches the model list from the exact endpoint used
+// for an account's request traffic. Capability snapshots must reflect that
+// endpoint rather than a different successful fallback endpoint.
+func (c *Client) FetchAvailableModelsAtURL(ctx context.Context, accessToken, projectID, baseURL string) (*FetchAvailableModelsResponse, map[string]any, error) {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if baseURL == "" {
+		return nil, nil, errors.New("antigravity model-list base URL is empty")
+	}
+	return c.fetchAvailableModelsFromURLs(ctx, accessToken, projectID, []string{baseURL})
+}
+
+func (c *Client) fetchAvailableModelsFromURLs(ctx context.Context, accessToken, projectID string, availableURLs []string) (*FetchAvailableModelsResponse, map[string]any, error) {
 	if c == nil || c.httpClient == nil {
 		return nil, nil, errors.New("antigravity client is not configured")
 	}
@@ -667,8 +682,9 @@ func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectI
 		return nil, nil, fmt.Errorf("序列化请求失败: %w", err)
 	}
 
-	// 固定顺序：prod -> daily
-	availableURLs := BaseURLs
+	if len(availableURLs) == 0 {
+		return nil, nil, errors.New("no antigravity model-list URL is configured")
+	}
 
 	fetchClient := c.fetchAvailableModelsHTTPClient()
 	var lastErr error

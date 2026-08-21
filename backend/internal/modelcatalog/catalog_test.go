@@ -98,6 +98,18 @@ func TestStorefrontItemsScopesThinkingTiersToAntigravity(t *testing.T) {
 	require.Contains(t, antigravity, "gemini-3.7-flash-high")
 }
 
+func TestStorefrontItemsLabelsGeminiThinkingTiers(t *testing.T) {
+	labels := make(map[string]string)
+	for _, item := range StorefrontItems("antigravity") {
+		labels[item.ID] = item.DisplayName
+	}
+
+	require.Equal(t, "Gemini 3.7 Flash", labels["gemini-3.7-flash"])
+	require.Equal(t, "Gemini 3.7 Flash (High)", labels["gemini-3.7-flash-high"])
+	require.Equal(t, "Gemini 3.7 Flash (Medium)", labels["gemini-3.7-flash-medium"])
+	require.Equal(t, "Gemini 3.7 Flash (Low)", labels["gemini-3.7-flash-low"])
+}
+
 func TestPublicIDsAndDefaultMappings(t *testing.T) {
 	ids := PublicIDs("antigravity")
 	require.Contains(t, ids, "gemini-3.7-flash")
