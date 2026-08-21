@@ -73,6 +73,8 @@ func ProvideAuthService(
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
 	mcpOAuthService *MCPOAuthService,
 	userDeviceRepo UserDeviceRepository,
+	inviteBootstrapAPIKeySvc InviteBootstrapAPIKeyService,
+	groupRepo GroupRepository,
 ) *AuthService {
 	svc := NewAuthService(
 		entClient,
@@ -95,6 +97,8 @@ func ProvideAuthService(
 		svc.SetMCPGrantRevoker(mcpOAuthService)
 	}
 	svc.SetInviteLoginDeviceResolver(userDeviceRepo)
+	svc.SetInviteBootstrapAPIKeyService(inviteBootstrapAPIKeySvc)
+	svc.SetInviteBootstrapGroupRepository(groupRepo)
 	return svc
 }
 

@@ -127,11 +127,12 @@ func captchaProof(turnstileToken, tencentTicket, tencentRandstr string) service.
 
 // AuthResponse 认证响应格式（匹配前端期望）
 type AuthResponse struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token,omitempty"` // 新增：Refresh Token
-	ExpiresIn    int       `json:"expires_in,omitempty"`    // 新增：Access Token有效期（秒）
-	TokenType    string    `json:"token_type"`
-	User         *dto.User `json:"user"`
+	AccessToken      string                          `json:"access_token"`
+	RefreshToken     string                          `json:"refresh_token,omitempty"` // 新增：Refresh Token
+	ExpiresIn        int                             `json:"expires_in,omitempty"`    // 新增：Access Token有效期（秒）
+	TokenType        string                          `json:"token_type"`
+	User             *dto.User                       `json:"user"`
+	BootstrapAPIKeys []InviteBootstrapAPIKeyResponse `json:"bootstrap_api_keys,omitempty"`
 }
 
 func ensureLoginUserActive(user *service.User) error {
@@ -268,14 +269,14 @@ func (h *AuthHandler) InviteLogin(c *gin.Context) {
 		return
 	}
 
-	apiKeysResp := make([]BootstrapAPIKeyResponse, 0, len(result.BootstrapAPIKeys))
+	apiKeysResp := make([]InviteBootstrapAPIKeyResponse, 0, len(result.BootstrapAPIKeys))
 	for _, key := range result.BootstrapAPIKeys {
-		apiKeysResp = append(apiKeysResp, BootstrapAPIKeyResponse{
-			ID:       key.ID,
-			Name:     key.Name,
-			Key:      key.Key,
-			GroupID:  key.GroupID,
-			Platform: key.Platform,
+		apiKeysResp = append(apiKeysResp, InviteBootstrapAPIKeyResponse{
+			Platform:   key.Platform,
+			GroupID:    key.GroupID,
+			APIKeyID:   key.ID,
+			APIKey:     key.Key,
+			APIKeyName: key.Name,
 		})
 	}
 
@@ -310,14 +311,14 @@ func (h *AuthHandler) RedeemLogin(c *gin.Context) {
 		return
 	}
 
-	apiKeysResp := make([]BootstrapAPIKeyResponse, 0, len(result.BootstrapAPIKeys))
+	apiKeysResp := make([]InviteBootstrapAPIKeyResponse, 0, len(result.BootstrapAPIKeys))
 	for _, key := range result.BootstrapAPIKeys {
-		apiKeysResp = append(apiKeysResp, BootstrapAPIKeyResponse{
-			ID:       key.ID,
-			Name:     key.Name,
-			Key:      key.Key,
-			GroupID:  key.GroupID,
-			Platform: key.Platform,
+		apiKeysResp = append(apiKeysResp, InviteBootstrapAPIKeyResponse{
+			Platform:   key.Platform,
+			GroupID:    key.GroupID,
+			APIKeyID:   key.ID,
+			APIKey:     key.Key,
+			APIKeyName: key.Name,
 		})
 	}
 
