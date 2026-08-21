@@ -212,23 +212,34 @@ type AnthropicDelta struct {
 
 // ResponsesRequest is the request body for POST /v1/responses.
 type ResponsesRequest struct {
-	Model              string              `json:"model"`
-	Instructions       string              `json:"instructions,omitempty"`
-	Input              json.RawMessage     `json:"input"` // string or []ResponsesInputItem
-	MaxOutputTokens    *int                `json:"max_output_tokens,omitempty"`
-	Temperature        *float64            `json:"temperature,omitempty"`
-	TopP               *float64            `json:"top_p,omitempty"`
-	Stream             bool                `json:"stream,omitempty"`
-	Tools              []ResponsesTool     `json:"tools,omitempty"`
-	Include            []string            `json:"include,omitempty"`
-	Store              *bool               `json:"store,omitempty"`
-	ParallelToolCalls  *bool               `json:"parallel_tool_calls,omitempty"`
-	Reasoning          *ResponsesReasoning `json:"reasoning,omitempty"`
-	Text               *ResponsesText      `json:"text,omitempty"`
-	ToolChoice         json.RawMessage     `json:"tool_choice,omitempty"`
-	ServiceTier        string              `json:"service_tier,omitempty"`
-	PromptCacheKey     string              `json:"prompt_cache_key,omitempty"`
-	PreviousResponseID string              `json:"previous_response_id,omitempty"`
+	Model              string                       `json:"model"`
+	Instructions       string                       `json:"instructions,omitempty"`
+	Input              json.RawMessage              `json:"input"` // string or []ResponsesInputItem
+	MaxOutputTokens    *int                         `json:"max_output_tokens,omitempty"`
+	Temperature        *float64                     `json:"temperature,omitempty"`
+	TopP               *float64                     `json:"top_p,omitempty"`
+	Stream             bool                         `json:"stream,omitempty"`
+	Tools              []ResponsesTool              `json:"tools,omitempty"`
+	Include            []string                     `json:"include,omitempty"`
+	Store              *bool                        `json:"store,omitempty"`
+	ParallelToolCalls  *bool                        `json:"parallel_tool_calls,omitempty"`
+	Reasoning          *ResponsesReasoning          `json:"reasoning,omitempty"`
+	Text               *ResponsesText               `json:"text,omitempty"`
+	ToolChoice         json.RawMessage              `json:"tool_choice,omitempty"`
+	ServiceTier        string                       `json:"service_tier,omitempty"`
+	PromptCacheKey     string                       `json:"prompt_cache_key,omitempty"`
+	PromptCacheOptions *ResponsesPromptCacheOptions `json:"prompt_cache_options,omitempty"`
+	PreviousResponseID string                       `json:"previous_response_id,omitempty"`
+}
+
+// ResponsesPromptCacheOptions controls request-wide prompt cache behavior.
+type ResponsesPromptCacheOptions struct {
+	Mode string `json:"mode"` // "implicit" | "explicit"
+}
+
+// ResponsesPromptCacheBreakpoint marks the end of a reusable prompt prefix.
+type ResponsesPromptCacheBreakpoint struct {
+	Mode string `json:"mode"` // "explicit"
 }
 
 // ResponsesReasoning configures reasoning effort in the Responses API.
@@ -295,9 +306,13 @@ func (i *ResponsesInputItem) UnmarshalJSON(data []byte) error {
 
 // ResponsesContentPart is a typed content part in a Responses message.
 type ResponsesContentPart struct {
-	Type     string `json:"type"` // "input_text" | "output_text" | "input_image"
-	Text     string `json:"text,omitempty"`
-	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
+	Type                  string                          `json:"type"` // "input_text" | "output_text" | "input_image"
+	Text                  string                          `json:"text,omitempty"`
+	ImageURL              string                          `json:"image_url,omitempty"` // data URI for input_image
+	FileID                string                          `json:"file_id,omitempty"`
+	FileData              string                          `json:"file_data,omitempty"`
+	Filename              string                          `json:"filename,omitempty"`
+	PromptCacheBreakpoint *ResponsesPromptCacheBreakpoint `json:"prompt_cache_breakpoint,omitempty"`
 }
 
 // ResponsesTool describes a tool in the Responses API.

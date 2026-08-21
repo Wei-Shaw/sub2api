@@ -26,6 +26,98 @@ func TestShouldAutoInjectPromptCacheKeyForCompat(t *testing.T) {
 	require.False(t, shouldAutoInjectPromptCacheKeyForCompat("gpt-4o"))
 }
 
+func TestResolveOpenAIResponsesPromptCacheMode(t *testing.T) {
+	account := func(platform, accountType, mode string) *Account {
+		result := &Account{Platform: platform, Type: accountType}
+		if mode != "" {
+			result.Extra = map[string]any{OpenAIPromptCacheModeExtraKey: mode}
+		}
+		return result
+	}
+	tests := []struct {
+		name                string
+		account             *Account
+		wantMode            string
+		wantMappedMarkers   bool
+		wantSentBreakpoints bool
+		wantExplicitOptions bool
+	}{
+		{
+			name:     "nil account",
+			wantMode: OpenAIPromptCacheModeOff,
+		},
+		{
+			name:     "missing mode",
+			account:  account(PlatformOpenAI, AccountTypeAPIKey, ""),
+			wantMode: OpenAIPromptCacheModeOff,
+		},
+		{
+			name:     "explicit off",
+			account:  account(PlatformOpenAI, AccountTypeAPIKey, OpenAIPromptCacheModeOff),
+			wantMode: OpenAIPromptCacheModeOff,
+		},
+		{
+			name:     "invalid mode",
+			account:  account(PlatformOpenAI, AccountTypeAPIKey, "automatic"),
+			wantMode: OpenAIPromptCacheModeOff,
+		},
+		{
+			name:     "mode is exact",
+			account:  account(PlatformOpenAI, AccountTypeAPIKey, " implicit_breakpoints "),
+			wantMode: OpenAIPromptCacheModeOff,
+		},
+		{
+			name: "non string mode",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+				Extra:    map[string]any{OpenAIPromptCacheModeExtraKey: true},
+			},
+			wantMode: OpenAIPromptCacheModeOff,
+		},
+		{
+			name:              "stable key only",
+			account:           account(PlatformOpenAI, AccountTypeAPIKey, OpenAIPromptCacheModeStableKeyOnly),
+			wantMode:          OpenAIPromptCacheModeStableKeyOnly,
+			wantMappedMarkers: true,
+		},
+		{
+			name:                "implicit breakpoints",
+			account:             account(PlatformOpenAI, AccountTypeAPIKey, OpenAIPromptCacheModeImplicitBreakpoints),
+			wantMode:            OpenAIPromptCacheModeImplicitBreakpoints,
+			wantMappedMarkers:   true,
+			wantSentBreakpoints: true,
+		},
+		{
+			name:                "explicit only",
+			account:             account(PlatformOpenAI, AccountTypeAPIKey, OpenAIPromptCacheModeExplicitOnly),
+			wantMode:            OpenAIPromptCacheModeExplicitOnly,
+			wantMappedMarkers:   true,
+			wantSentBreakpoints: true,
+			wantExplicitOptions: true,
+		},
+		{
+			name:     "OpenAI OAuth",
+			account:  account(PlatformOpenAI, AccountTypeOAuth, OpenAIPromptCacheModeExplicitOnly),
+			wantMode: OpenAIPromptCacheModeOff,
+		},
+		{
+			name:     "Grok API key",
+			account:  account(PlatformGrok, AccountTypeAPIKey, OpenAIPromptCacheModeExplicitOnly),
+			wantMode: OpenAIPromptCacheModeOff,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.wantMode, resolveOpenAIResponsesPromptCacheMode(tt.account))
+			require.Equal(t, tt.wantMappedMarkers, mapsAnthropicPromptCacheBreakpoints(tt.account))
+			require.Equal(t, tt.wantSentBreakpoints, sendsOpenAIResponsesPromptCacheBreakpoints(tt.account))
+			require.Equal(t, tt.wantExplicitOptions, sendsOpenAIResponsesPromptCacheOptions(tt.account))
+		})
+	}
+}
+
 func TestDeriveCompatPromptCacheKey_StableAcrossLaterTurns(t *testing.T) {
 	base := &apicompat.ChatCompletionsRequest{
 		Model: "gpt-5.4",

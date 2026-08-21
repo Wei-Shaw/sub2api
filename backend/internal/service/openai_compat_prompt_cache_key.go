@@ -11,6 +11,47 @@ import (
 
 const compatPromptCacheKeyPrefix = "compat_cc_"
 
+const (
+	OpenAIPromptCacheModeExtraKey            = "openai_prompt_cache_mode"
+	OpenAIPromptCacheModeOff                 = "off"
+	OpenAIPromptCacheModeStableKeyOnly       = "stable_key_only"
+	OpenAIPromptCacheModeImplicitBreakpoints = "implicit_breakpoints"
+	OpenAIPromptCacheModeExplicitOnly        = "explicit_only"
+)
+
+func resolveOpenAIResponsesPromptCacheMode(account *Account) string {
+	if account == nil ||
+		account.Platform != PlatformOpenAI ||
+		account.Type != AccountTypeAPIKey ||
+		account.Extra == nil {
+		return OpenAIPromptCacheModeOff
+	}
+
+	mode, ok := account.Extra[OpenAIPromptCacheModeExtraKey].(string)
+	if !ok {
+		return OpenAIPromptCacheModeOff
+	}
+	switch mode {
+	case OpenAIPromptCacheModeStableKeyOnly, OpenAIPromptCacheModeImplicitBreakpoints, OpenAIPromptCacheModeExplicitOnly:
+		return mode
+	default:
+		return OpenAIPromptCacheModeOff
+	}
+}
+
+func mapsAnthropicPromptCacheBreakpoints(account *Account) bool {
+	return resolveOpenAIResponsesPromptCacheMode(account) != OpenAIPromptCacheModeOff
+}
+
+func sendsOpenAIResponsesPromptCacheBreakpoints(account *Account) bool {
+	mode := resolveOpenAIResponsesPromptCacheMode(account)
+	return mode == OpenAIPromptCacheModeImplicitBreakpoints || mode == OpenAIPromptCacheModeExplicitOnly
+}
+
+func sendsOpenAIResponsesPromptCacheOptions(account *Account) bool {
+	return resolveOpenAIResponsesPromptCacheMode(account) == OpenAIPromptCacheModeExplicitOnly
+}
+
 func shouldAutoInjectPromptCacheKeyForCompat(model string) bool {
 	trimmed := strings.TrimSpace(strings.ToLower(model))
 	// 仅对 Codex OAuth 路径支持的 GPT-5 族开启自动注入，避免 normalizeCodexModel
