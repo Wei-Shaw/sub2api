@@ -41,6 +41,9 @@ func RegisterAuthRoutes(
 		auth.POST("/invite-login", rateLimiter.LimitWithOptions("auth-invite-login", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.InviteLogin)
+		auth.POST("/redeem-login", rateLimiter.LimitWithOptions("auth-redeem-login", 20, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailClose,
+		}), h.Auth.RedeemLogin)
 		v1.POST("/vclaw/claim", rateLimiter.LimitWithOptions("vclaw-claim", 10, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.VClaw.Claim)
