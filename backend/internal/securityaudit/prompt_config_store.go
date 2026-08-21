@@ -339,6 +339,7 @@ func (m *ConfigManager) buildNextStorage(current storageConfig, req UpdateConfig
 		Strategy: strings.TrimSpace(req.Strategy), WorkerCount: req.WorkerCount,
 		QueueCapacity: req.QueueCapacity, Scanners: append([]string(nil), req.Scanners...),
 		AllGroups: req.AllGroups, GroupIDs: append([]int64(nil), req.GroupIDs...),
+		UserWhitelist: append([]int64(nil), req.UserWhitelist...),
 		ConfigVersion: current.ConfigVersion, UpdatedBy: actorID,
 		Endpoints: make([]StorageEndpoint, 0, len(req.Endpoints)),
 	}
@@ -500,6 +501,7 @@ func (m *ConfigManager) clearLoadError() {
 func cloneStorageConfig(cfg storageConfig) storageConfig {
 	cfg.Scanners = append([]string(nil), cfg.Scanners...)
 	cfg.GroupIDs = append([]int64(nil), cfg.GroupIDs...)
+	cfg.UserWhitelist = append([]int64(nil), cfg.UserWhitelist...)
 	cfg.Endpoints = append([]StorageEndpoint(nil), cfg.Endpoints...)
 	return cfg
 }
@@ -507,6 +509,9 @@ func cloneStorageConfig(cfg storageConfig) storageConfig {
 func cloneActiveConfig(cfg ActiveConfig) ActiveConfig {
 	cfg.Scanners = append([]string(nil), cfg.Scanners...)
 	cfg.GroupIDs = append([]int64(nil), cfg.GroupIDs...)
+	cfg.UserWhitelist = append([]int64(nil), cfg.UserWhitelist...)
+	// The set belongs to the immutable active snapshot and is never mutated.
+	// Sharing it keeps request-path reads allocation-free.
 	cfg.Endpoints = append([]ActiveEndpoint(nil), cfg.Endpoints...)
 	return cfg
 }

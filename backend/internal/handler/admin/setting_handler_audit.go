@@ -597,6 +597,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.CyberSessionBlockTTLSeconds != after.CyberSessionBlockTTLSeconds {
 		changed = append(changed, "cyber_session_block_ttl_seconds")
 	}
+	if !int64SlicesEqual(before.CyberSessionBlockUserWhitelist, after.CyberSessionBlockUserWhitelist) {
+		changed = append(changed, "cyber_session_block_user_whitelist")
+	}
 	// Default platform quotas（JSON map，整体比较）
 	if !equalPlatformQuotaSettings(before.DefaultPlatformQuotas, after.DefaultPlatformQuotas) {
 		changed = append(changed, service.SettingKeyDefaultPlatformQuotas)
@@ -860,4 +863,16 @@ func stringSetting(value *string, fallback string) string {
 		return fallback
 	}
 	return *value
+}
+
+func int64SlicesEqual(a, b []int64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

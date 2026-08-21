@@ -903,3 +903,21 @@ func TestSettingService_StalePasskeyTrueWithoutConfigReportsDisabled(t *testing.
 	require.NoError(t, err)
 	require.False(t, settings.PasskeyEnabled)
 }
+
+func TestSettingService_UpdateSettings_RejectsOversizedCyberSessionBlockUserWhitelist(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+	ids := make([]int64, maxUserIDWhitelistItems+1)
+	for i := range ids {
+		ids[i] = int64(i + 1)
+	}
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		CyberSessionBlockEnabled:       true,
+		CyberSessionBlockTTLSeconds:    3600,
+		CyberSessionBlockUserWhitelist: ids,
+	})
+	require.Error(t, err)
+	require.Equal(t, "INVALID_CYBER_SESSION_BLOCK_USER_WHITELIST", infraerrors.Reason(err))
+	require.Nil(t, repo.updates)
+}

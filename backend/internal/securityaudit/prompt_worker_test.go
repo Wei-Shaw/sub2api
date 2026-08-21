@@ -302,6 +302,12 @@ func TestEnqueuerSkipsOffOutOfScopeAndNoText(t *testing.T) {
 			cfg.GroupIDs = []int64{9}
 			return cfg
 		}(), req: asyncRequest()},
+		{name: "user whitelisted", cfg: func() ActiveConfig {
+			cfg := asyncConfig()
+			cfg.UserWhitelist = []int64{7}
+			cfg.userWhitelistSet = map[int64]struct{}{7: {}}
+			return cfg
+		}(), req: Request{UserID: 7, Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"user","content":"payload canary text"}]}`)}},
 		{name: "no user text", cfg: asyncConfig(), req: Request{Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"function","content":"not audited"}]}`)}},
 	}
 	for _, tt := range tests {

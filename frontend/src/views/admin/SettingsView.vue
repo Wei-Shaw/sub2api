@@ -7231,17 +7231,35 @@
               <Toggle v-model="form.cyber_session_block_enabled" />
             </div>
 
-            <div v-if="form.cyber_session_block_enabled">
-              <label class="input-label">
-                {{ t('admin.settings.features.riskControl.cyberSessionBlockTTL') }}
-                <span class="text-red-500">*</span>
-              </label>
-              <input
-                v-model.number="form.cyber_session_block_ttl_seconds"
-                type="number"
-                min="1"
-                class="input"
-              />
+            <div v-if="form.cyber_session_block_enabled" class="space-y-4">
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.features.riskControl.cyberSessionBlockTTL') }}
+                  <span class="text-red-500">*</span>
+                </label>
+                <input
+                  v-model.number="form.cyber_session_block_ttl_seconds"
+                  type="number"
+                  min="1"
+                  class="input"
+                />
+              </div>
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.features.riskControl.cyberSessionBlockUserWhitelist') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.riskControl.cyberSessionBlockUserWhitelistHint') }}
+                </p>
+                <div class="mt-2">
+                  <UserIDWhitelistInput
+                    v-model="form.cyber_session_block_user_whitelist"
+                    :placeholder="t('admin.settings.features.riskControl.cyberSessionBlockUserWhitelistPlaceholder')"
+                    :hint="t('admin.settings.features.riskControl.cyberSessionBlockUserWhitelistInputHint')"
+                    :aria-label="t('admin.settings.features.riskControl.cyberSessionBlockUserWhitelist')"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -8758,6 +8776,7 @@ import PaymentProviderDialog from "@/components/payment/PaymentProviderDialog.vu
 import GroupBadge from "@/components/common/GroupBadge.vue";
 import GroupOptionItem from "@/components/common/GroupOptionItem.vue";
 import Toggle from "@/components/common/Toggle.vue";
+import UserIDWhitelistInput from "@/components/common/UserIDWhitelistInput.vue";
 import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
@@ -9522,6 +9541,7 @@ const form = reactive<SettingsForm>({
   risk_control_enabled: false,
   cyber_session_block_enabled: false,
   cyber_session_block_ttl_seconds: 3600,
+  cyber_session_block_user_whitelist: [] as number[],
   payment_min_amount: 1,
   payment_max_amount: 10000,
   payment_daily_limit: 50000,
@@ -11323,6 +11343,9 @@ async function saveSettings() {
       cyber_session_block_enabled: form.cyber_session_block_enabled,
       cyber_session_block_ttl_seconds:
         Number(form.cyber_session_block_ttl_seconds) || 3600,
+      cyber_session_block_user_whitelist: [
+        ...(form.cyber_session_block_user_whitelist || []),
+      ],
       payment_min_amount: Number(form.payment_min_amount) || 0,
       payment_max_amount: Number(form.payment_max_amount) || 0,
       payment_daily_limit: Number(form.payment_daily_limit) || 0,

@@ -137,12 +137,13 @@ type cachedCodexRestrictionPolicy struct {
 	expiresAt int64 // unix nano
 }
 
-// cachedCyberSessionBlockRuntime cyber 会话屏蔽开关+TTL 进程内缓存（60s TTL）。
+// cachedCyberSessionBlockRuntime cyber 会话屏蔽开关+TTL+白名单进程内缓存（60s TTL）。
 // GetCyberSessionBlockRuntime 在网关请求热路径上被调用，避免每次访问 DB。
 type cachedCyberSessionBlockRuntime struct {
-	enabled   bool
-	ttl       time.Duration
-	expiresAt int64 // unix nano
+	enabled       bool
+	ttl           time.Duration
+	userWhitelist map[int64]struct{}
+	expiresAt     int64 // unix nano
 }
 
 const cyberSessionBlockRuntimeCacheTTL = 60 * time.Second
@@ -157,12 +158,33 @@ const openAIQuotaAutoPauseSettingsRefreshKey = "openai_quota_auto_pause_settings
 
 // GetCyberSessionBlockRuntime 返回 (开关, TTL)，进程内缓存 ~60s，
 // 供网关热路径读取时避免 DB 往返。
-// 两个 setting key 在单次 singleflight 里一起读取，减少 DB 往返。
-// 默认值：开关 false，TTL 1h（与粘性会话对齐）。
+// 三个 setting key 在单次 singleflight 里一起读取，减少 DB 往返。
+// 默认值：开关 false，TTL 1h（与粘性会话对齐），白名单为空。
 func (s *SettingService) GetCyberSessionBlockRuntime(ctx context.Context) (bool, time.Duration) {
+	entry := s.cyberSessionBlockRuntime(ctx)
+	if entry == nil {
+		return false, time.Hour
+	}
+	return entry.enabled, entry.ttl
+}
+
+// IsCyberSessionBlockUserWhitelisted 判断用户是否豁免会话屏蔽。
+func (s *SettingService) IsCyberSessionBlockUserWhitelisted(ctx context.Context, userID int64) bool {
+	if userID <= 0 {
+		return false
+	}
+	entry := s.cyberSessionBlockRuntime(ctx)
+	if entry == nil || len(entry.userWhitelist) == 0 {
+		return false
+	}
+	_, ok := entry.userWhitelist[userID]
+	return ok
+}
+
+func (s *SettingService) cyberSessionBlockRuntime(ctx context.Context) *cachedCyberSessionBlockRuntime {
 	if cached, ok := s.cyberSessionBlockRuntimeCache.Load().(*cachedCyberSessionBlockRuntime); ok && cached != nil {
 		if time.Now().UnixNano() < cached.expiresAt {
-			return cached.enabled, cached.ttl
+			return cached
 		}
 	}
 	result, _, _ := s.cyberSessionBlockRuntimeSF.Do("cyber_session_block_runtime", func() (any, error) {
@@ -176,6 +198,7 @@ func (s *SettingService) GetCyberSessionBlockRuntime(ctx context.Context) (bool,
 
 		enabledVal, enabledErr := s.settingRepo.GetValue(dbCtx, SettingKeyCyberSessionBlockEnabled)
 		ttlVal, ttlErr := s.settingRepo.GetValue(dbCtx, SettingKeyCyberSessionBlockTTLSeconds)
+		whitelistVal, whitelistErr := s.settingRepo.GetValue(dbCtx, SettingKeyCyberSessionBlockUserWhitelist)
 
 		if enabledErr != nil && !errors.Is(enabledErr, ErrSettingNotFound) {
 			slog.Warn("failed to get cyber_session_block_enabled setting", "error", enabledErr)
@@ -198,17 +221,42 @@ func (s *SettingService) GetCyberSessionBlockRuntime(ctx context.Context) (bool,
 		}
 
 		entry := &cachedCyberSessionBlockRuntime{
-			enabled:   enabled,
-			ttl:       ttl,
-			expiresAt: time.Now().Add(cyberSessionBlockRuntimeCacheTTL).UnixNano(),
+			enabled:       enabled,
+			ttl:           ttl,
+			userWhitelist: parseCyberSessionBlockUserWhitelist(whitelistVal, whitelistErr),
+			expiresAt:     time.Now().Add(cyberSessionBlockRuntimeCacheTTL).UnixNano(),
 		}
 		s.cyberSessionBlockRuntimeCache.Store(entry)
 		return entry, nil
 	})
 	if entry, ok := result.(*cachedCyberSessionBlockRuntime); ok && entry != nil {
-		return entry.enabled, entry.ttl
+		return entry
 	}
-	return false, time.Hour
+	return nil
+}
+
+func parseCyberSessionBlockUserWhitelist(raw string, err error) map[int64]struct{} {
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var ids []int64
+	if unmarshalErr := json.Unmarshal([]byte(raw), &ids); unmarshalErr != nil {
+		slog.Warn("failed to parse cyber_session_block_user_whitelist", "error", unmarshalErr)
+		return nil
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	set := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id > 0 {
+			set[id] = struct{}{}
+		}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	return set
 }
 
 // GetAntigravityUserAgentVersion 返回 Antigravity 上游请求使用的版本号。

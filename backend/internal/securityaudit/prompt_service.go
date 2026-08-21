@@ -111,6 +111,12 @@ func (s *PromptService) Enqueue(_ context.Context, req Request) error {
 	if s == nil || s.enqueuer == nil || s.EffectiveMode() != ModeAsync {
 		return nil
 	}
+	// Skip before taking a local slot so whitelist traffic cannot starve real audit work.
+	if s.config != nil {
+		if cfg, ok := s.config.Active(); ok && cfg.IsUserWhitelisted(req.UserID) {
+			return nil
+		}
+	}
 	select {
 	case s.enqueueSlots <- struct{}{}:
 	default:
@@ -153,7 +159,7 @@ func (s *PromptService) Evaluate(ctx context.Context, req Request) (*PromptDecis
 		}
 		return &PromptDecision{Kind: DecisionAllow, AllowNextStage: true}, nil
 	}
-	if cfg.EffectiveMode() != ModeBlocking || !cfg.IncludesGroup(req.GroupID) {
+	if cfg.EffectiveMode() != ModeBlocking || !cfg.IncludesGroup(req.GroupID) || cfg.IsUserWhitelisted(req.UserID) {
 		return &PromptDecision{Kind: DecisionAllow, AllowNextStage: true}, nil
 	}
 	snapshot, err := ExtractBlockingPromptSnapshot(req, cfg.BlockingLatestTurnOnly)

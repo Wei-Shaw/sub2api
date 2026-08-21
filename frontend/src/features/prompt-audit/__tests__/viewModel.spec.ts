@@ -22,6 +22,7 @@ const config = (): PromptAuditConfig => ({
   scanners: SCANNER_CATALOG.map((item) => item.id),
   all_groups: true,
   group_ids: [],
+  user_whitelist: [],
   endpoints: [{
     id: 'guard-1', name: 'Guard One', protocol: 'openai_compatible', base_url: 'http://127.0.0.1:8000',
     model: 'sileader/qwen3guard:0.6b', timeout_ms: 3000, input_limit: 4000, enabled: true,
@@ -35,8 +36,8 @@ const config = (): PromptAuditConfig => ({
 
 describe('Prompt Audit view model', () => {
   it('normalizes legacy null collections from the public config', () => {
-    const legacy = { ...config(), group_ids: null, scanners: null, endpoints: null } as unknown as PromptAuditConfig
-    expect(configToDraft(legacy)).toMatchObject({ group_ids: [], scanners: [], endpoints: [] })
+    const legacy = { ...config(), group_ids: null, user_whitelist: null, scanners: null, endpoints: null } as unknown as PromptAuditConfig
+    expect(configToDraft(legacy)).toMatchObject({ group_ids: [], user_whitelist: [], scanners: [], endpoints: [] })
   })
 
   it('models all nine official input scanners', () => {

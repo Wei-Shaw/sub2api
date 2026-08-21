@@ -14,17 +14,18 @@ import (
 )
 
 const (
-	DefaultWorkerCount   = 4
-	MaxWorkerCount       = 32
-	DefaultQueueCapacity = 32768
-	MaxQueueCapacity     = 100000
-	DefaultTimeoutMS     = 3000
-	MinTimeoutMS         = 100
-	MaxTimeoutMS         = 30000
-	DefaultInputLimit    = 4000
-	MinInputLimit        = 128
-	MaxInputLimit        = 100000
-	DefaultPayloadTTL    = 30 * time.Minute
+	DefaultWorkerCount    = 4
+	MaxWorkerCount        = 32
+	DefaultQueueCapacity  = 32768
+	MaxQueueCapacity      = 100000
+	DefaultTimeoutMS      = 3000
+	MinTimeoutMS          = 100
+	MaxTimeoutMS          = 30000
+	DefaultInputLimit     = 4000
+	MinInputLimit         = 128
+	MaxInputLimit         = 100000
+	DefaultPayloadTTL     = 30 * time.Minute
+	maxUserWhitelistItems = 1000
 )
 
 type SecretEncryptor interface {
@@ -74,6 +75,7 @@ type storageConfig struct {
 	Scanners               []string          `json:"scanners"`
 	AllGroups              bool              `json:"all_groups"`
 	GroupIDs               []int64           `json:"group_ids"`
+	UserWhitelist          []int64           `json:"user_whitelist"`
 	Endpoints              []StorageEndpoint `json:"endpoints"`
 	ConfigVersion          int64             `json:"config_version"`
 	UpdatedAt              time.Time         `json:"updated_at"`
@@ -110,6 +112,8 @@ type ActiveConfig struct {
 	Scanners               []string
 	AllGroups              bool
 	GroupIDs               []int64
+	UserWhitelist          []int64
+	userWhitelistSet       map[int64]struct{}
 	Endpoints              []ActiveEndpoint
 	ConfigVersion          int64
 	UpdatedAt              time.Time
@@ -142,6 +146,7 @@ type PublicConfig struct {
 	Scanners               []string         `json:"scanners"`
 	AllGroups              bool             `json:"all_groups"`
 	GroupIDs               []int64          `json:"group_ids"`
+	UserWhitelist          []int64          `json:"user_whitelist"`
 	Endpoints              []PublicEndpoint `json:"endpoints"`
 	ConfigVersion          int64            `json:"config_version"`
 	UpdatedAt              time.Time        `json:"updated_at"`
@@ -174,6 +179,7 @@ type UpdateConfigRequest struct {
 	Scanners               []string         `json:"scanners"`
 	AllGroups              bool             `json:"all_groups"`
 	GroupIDs               []int64          `json:"group_ids"`
+	UserWhitelist          []int64          `json:"user_whitelist"`
 	Endpoints              []UpdateEndpoint `json:"endpoints"`
 }
 
@@ -189,6 +195,7 @@ func DefaultStorageConfig() storageConfig {
 		Scanners:               append([]string(nil), AllScannerIDs...),
 		AllGroups:              true,
 		GroupIDs:               []int64{},
+		UserWhitelist:          []int64{},
 		Endpoints:              []StorageEndpoint{},
 		ConfigVersion:          1,
 	}
@@ -230,6 +237,7 @@ func normalizeStorageConfig(cfg *storageConfig) {
 	}
 	cfg.Scanners = canonicalScannerIDs(cfg.Scanners)
 	cfg.GroupIDs = canonicalInt64s(cfg.GroupIDs)
+	cfg.UserWhitelist = canonicalUserWhitelist(cfg.UserWhitelist)
 	// Preserve an invalid blocking-without-audit combination so validation can
 	// reject it instead of silently changing administrator intent.
 	for i := range cfg.Endpoints {
@@ -269,6 +277,9 @@ func validateStorageConfig(cfg storageConfig) error {
 	}
 	if !cfg.AllGroups && len(cfg.GroupIDs) == 0 {
 		return infraerrors.BadRequest("prompt_audit_groups_required", "指定分组模式至少需要选择一个分组")
+	}
+	if err := validateUserWhitelist(cfg.UserWhitelist); err != nil {
+		return err
 	}
 	if len(cfg.Scanners) == 0 {
 		return infraerrors.BadRequest("prompt_audit_scanners_required", "至少需要启用一个风险分类")
@@ -333,6 +344,9 @@ func validateUpdateConfigRequest(req UpdateConfigRequest) error {
 			}
 		}
 	}
+	if len(req.UserWhitelist) > maxUserWhitelistItems {
+		return infraerrors.BadRequest("prompt_audit_invalid_user_whitelist", "提示词审计用户白名单超出允许范围")
+	}
 	for _, endpoint := range req.Endpoints {
 		if endpoint.TimeoutMS < MinTimeoutMS || endpoint.TimeoutMS > MaxTimeoutMS {
 			return infraerrors.BadRequest("prompt_audit_invalid_timeout", "审计节点超时超出允许范围")
@@ -365,6 +379,14 @@ func (cfg ActiveConfig) IncludesGroup(groupID *int64) bool {
 	return i < len(cfg.GroupIDs) && cfg.GroupIDs[i] == *groupID
 }
 
+func (cfg ActiveConfig) IsUserWhitelisted(userID int64) bool {
+	if userID <= 0 || len(cfg.userWhitelistSet) == 0 {
+		return false
+	}
+	_, ok := cfg.userWhitelistSet[userID]
+	return ok
+}
+
 func (cfg ActiveConfig) EnabledEndpoints() []ActiveEndpoint {
 	result := make([]ActiveEndpoint, 0, len(cfg.Endpoints))
 	for _, ep := range cfg.Endpoints {
@@ -394,6 +416,7 @@ func PublicFromStorage(cfg storageConfig, riskControlEnabled bool, invalidTokenE
 	}
 	scanners := append([]string{}, cfg.Scanners...)
 	groupIDs := append([]int64{}, cfg.GroupIDs...)
+	userWhitelist := append([]int64{}, cfg.UserWhitelist...)
 	endpoints := make([]PublicEndpoint, 0, len(cfg.Endpoints))
 	for _, ep := range cfg.Endpoints {
 		hasToken := strings.TrimSpace(ep.TokenCiphertext) != ""
@@ -415,7 +438,7 @@ func PublicFromStorage(cfg storageConfig, riskControlEnabled bool, invalidTokenE
 		Enabled: cfg.Enabled, BlockingEnabled: cfg.BlockingEnabled, BlockingLatestTurnOnly: cfg.BlockingLatestTurnOnly, StorePassEvents: cfg.StorePassEvents,
 		EffectiveMode: active.EffectiveMode(), Strategy: cfg.Strategy, WorkerCount: cfg.WorkerCount,
 		QueueCapacity: cfg.QueueCapacity, Scanners: scanners, AllGroups: cfg.AllGroups,
-		GroupIDs: groupIDs, Endpoints: endpoints, ConfigVersion: cfg.ConfigVersion,
+		GroupIDs: groupIDs, UserWhitelist: userWhitelist, Endpoints: endpoints, ConfigVersion: cfg.ConfigVersion,
 		UpdatedAt: cfg.UpdatedAt, UpdatedBy: cfg.UpdatedBy, ChangeSummary: cfg.ChangeSummary,
 	}
 }
@@ -426,10 +449,11 @@ func ActiveFromStorage(cfg storageConfig, riskControlEnabled bool, encryptor Sec
 		BlockingLatestTurnOnly: cfg.BlockingLatestTurnOnly,
 		StorePassEvents:        cfg.StorePassEvents, Strategy: cfg.Strategy, WorkerCount: cfg.WorkerCount,
 		QueueCapacity: cfg.QueueCapacity, Scanners: append([]string(nil), cfg.Scanners...), AllGroups: cfg.AllGroups,
-		GroupIDs: append([]int64(nil), cfg.GroupIDs...), ConfigVersion: cfg.ConfigVersion,
+		GroupIDs: append([]int64(nil), cfg.GroupIDs...), UserWhitelist: append([]int64(nil), cfg.UserWhitelist...), ConfigVersion: cfg.ConfigVersion,
 		UpdatedAt: cfg.UpdatedAt, UpdatedBy: cfg.UpdatedBy, ChangeSummary: cfg.ChangeSummary,
 		Endpoints: make([]ActiveEndpoint, 0, len(cfg.Endpoints)),
 	}
+	active.userWhitelistSet = int64Set(active.UserWhitelist)
 	for _, ep := range cfg.Endpoints {
 		token := ""
 		tokenInvalid := false
@@ -469,10 +493,15 @@ func changeSummary(cfg storageConfig) string {
 		AllGroups              bool   `json:"all_groups"`
 		GroupCount             int    `json:"group_count"`
 		GroupHash              string `json:"group_hash"`
-	}{cfg.Enabled, cfg.BlockingEnabled, cfg.BlockingLatestTurnOnly, cfg.StorePassEvents, len(cfg.Endpoints), len(cfg.Scanners), cfg.AllGroups, len(cfg.GroupIDs), ""}
+		UserWhitelistCount     int    `json:"user_whitelist_count"`
+		UserWhitelistHash      string `json:"user_whitelist_hash"`
+	}{cfg.Enabled, cfg.BlockingEnabled, cfg.BlockingLatestTurnOnly, cfg.StorePassEvents, len(cfg.Endpoints), len(cfg.Scanners), cfg.AllGroups, len(cfg.GroupIDs), "", len(cfg.UserWhitelist), ""}
 	rawGroups, _ := json.Marshal(cfg.GroupIDs)
 	digest := sha256.Sum256(rawGroups)
 	summary.GroupHash = hex.EncodeToString(digest[:])
+	rawUsers, _ := json.Marshal(cfg.UserWhitelist)
+	userDigest := sha256.Sum256(rawUsers)
+	summary.UserWhitelistHash = hex.EncodeToString(userDigest[:])
 	raw, _ := json.Marshal(summary)
 	return string(raw)
 }
@@ -492,6 +521,37 @@ func canonicalInt64s(values []int64) []int64 {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
 	return result
+}
+
+func canonicalUserWhitelist(values []int64) []int64 {
+	result := canonicalInt64s(values)
+	if len(result) > maxUserWhitelistItems {
+		return result[:maxUserWhitelistItems]
+	}
+	return result
+}
+
+func validateUserWhitelist(values []int64) error {
+	if len(values) > maxUserWhitelistItems {
+		return infraerrors.BadRequest("prompt_audit_invalid_user_whitelist", "提示词审计用户白名单超出允许范围")
+	}
+	for _, userID := range values {
+		if userID <= 0 {
+			return infraerrors.BadRequest("prompt_audit_invalid_user_whitelist", "提示词审计用户白名单 ID 无效")
+		}
+	}
+	return nil
+}
+
+func int64Set(values []int64) map[int64]struct{} {
+	if len(values) == 0 {
+		return nil
+	}
+	set := make(map[int64]struct{}, len(values))
+	for _, value := range values {
+		set[value] = struct{}{}
+	}
+	return set
 }
 
 func canonicalScannerIDs(values []string) []string {

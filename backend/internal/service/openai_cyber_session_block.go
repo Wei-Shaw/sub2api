@@ -57,14 +57,28 @@ func (s *OpenAIGatewayService) CyberSessionBlockRuntime(ctx context.Context) (bo
 	return s.settingService.GetCyberSessionBlockRuntime(ctx)
 }
 
+func (s *OpenAIGatewayService) isCyberSessionBlockUserWhitelisted(ctx context.Context, userID int64) bool {
+	if s == nil || s.settingService == nil || userID <= 0 {
+		return false
+	}
+	return s.settingService.IsCyberSessionBlockUserWhitelisted(ctx, userID)
+}
+
+// IsCyberSessionBlockUserWhitelisted 判断用户是否豁免会话屏蔽。
+// 连接内本地 flag 也必须走同一判断，避免白名单用户在同 WS 连接的后续 turn 被拦。
+func (s *OpenAIGatewayService) IsCyberSessionBlockUserWhitelisted(ctx context.Context, userID int64) bool {
+	return s.isCyberSessionBlockUserWhitelisted(ctx, userID)
+}
+
 // MarkCyberSessionBlocked 把会话写入屏蔽表（写入点：cyber 命中后）。
-// 开关关闭、key 为空或存储不可用时静默跳过。
-func (s *OpenAIGatewayService) MarkCyberSessionBlocked(ctx context.Context, key string) {
+// 开关关闭、白名单用户、key 为空或存储不可用时静默跳过。
+// 白名单只豁免屏蔽表，不影响 RecordCyberPolicyEvent / 用量 / ops 事件落库。
+func (s *OpenAIGatewayService) MarkCyberSessionBlocked(ctx context.Context, key string, userID int64) {
 	if key == "" {
 		return
 	}
 	enabled, ttl := s.CyberSessionBlockRuntime(ctx)
-	if !enabled {
+	if !enabled || s.isCyberSessionBlockUserWhitelisted(ctx, userID) {
 		return
 	}
 	store := s.cyberSessionBlockStore()
@@ -76,14 +90,15 @@ func (s *OpenAIGatewayService) MarkCyberSessionBlocked(ctx context.Context, key 
 	}
 }
 
-// IsCyberSessionBlocked 查询会话是否被屏蔽（拦截点）。开关关闭、key 为空、
-// 存储不可用或查询出错时返回 false（fail-open：屏蔽是增强防护，不阻断主链路）。
-func (s *OpenAIGatewayService) IsCyberSessionBlocked(ctx context.Context, key string) bool {
+// IsCyberSessionBlocked 查询会话是否被屏蔽（拦截点）。开关关闭、白名单用户、
+// key 为空、存储不可用或查询出错时返回 false（fail-open：屏蔽是增强防护，不阻断主链路）。
+// 白名单用户即使历史上已被写入屏蔽表，后续请求也不再拦截。
+func (s *OpenAIGatewayService) IsCyberSessionBlocked(ctx context.Context, key string, userID int64) bool {
 	if key == "" {
 		return false
 	}
 	enabled, _ := s.CyberSessionBlockRuntime(ctx)
-	if !enabled {
+	if !enabled || s.isCyberSessionBlockUserWhitelisted(ctx, userID) {
 		return false
 	}
 	store := s.cyberSessionBlockStore()

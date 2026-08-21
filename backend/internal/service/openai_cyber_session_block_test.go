@@ -168,12 +168,12 @@ func (c *comboCacheAndStore) IsCyberSessionBlocked(ctx context.Context, key stri
 // empty key, nil service, store missing → always false / no panic.
 func TestIsCyberSessionBlocked_EmptyKeyAndNilService(t *testing.T) {
 	var nilSvc *OpenAIGatewayService
-	require.False(t, nilSvc.IsCyberSessionBlocked(context.Background(), "k"))
-	require.NotPanics(t, func() { nilSvc.MarkCyberSessionBlocked(context.Background(), "k") })
+	require.False(t, nilSvc.IsCyberSessionBlocked(context.Background(), "k", 1))
+	require.NotPanics(t, func() { nilSvc.MarkCyberSessionBlocked(context.Background(), "k", 1) })
 
 	svc := &OpenAIGatewayService{}
-	require.False(t, svc.IsCyberSessionBlocked(context.Background(), ""))
-	require.False(t, svc.IsCyberSessionBlocked(context.Background(), "k"), "no store + no settings → fail-open false")
+	require.False(t, svc.IsCyberSessionBlocked(context.Background(), "", 0))
+	require.False(t, svc.IsCyberSessionBlocked(context.Background(), "k", 1), "no store + no settings → fail-open false")
 }
 
 // TestCyberSessionBlock_RoundTrip exercises the type-assertion success path:
@@ -201,14 +201,38 @@ func TestCyberSessionBlock_RoundTrip(t *testing.T) {
 	const testKey = "deadbeef1234"
 
 	// Before marking: not blocked.
-	require.False(t, svc.IsCyberSessionBlocked(ctx, testKey))
+	require.False(t, svc.IsCyberSessionBlocked(ctx, testKey, 7))
 
 	// Mark as blocked.
-	svc.MarkCyberSessionBlocked(ctx, testKey)
+	svc.MarkCyberSessionBlocked(ctx, testKey, 7)
 
 	// After marking: blocked.
-	require.True(t, svc.IsCyberSessionBlocked(ctx, testKey))
+	require.True(t, svc.IsCyberSessionBlocked(ctx, testKey, 7))
 
 	// Different key: still not blocked.
-	require.False(t, svc.IsCyberSessionBlocked(ctx, "other-key"))
+	require.False(t, svc.IsCyberSessionBlocked(ctx, "other-key", 7))
+}
+
+func TestCyberSessionBlock_UserWhitelistSkipsMarkAndRead(t *testing.T) {
+	settingSvc := &SettingService{
+		settingRepo: &fakeSettingRepo{
+			vals: map[string]string{
+				SettingKeyCyberSessionBlockEnabled:       "true",
+				SettingKeyCyberSessionBlockTTLSeconds:    "60",
+				SettingKeyCyberSessionBlockUserWhitelist: "[7,9]",
+			},
+		},
+	}
+	combo := &comboCacheAndStore{}
+	svc := &OpenAIGatewayService{cache: combo, settingService: settingSvc}
+	ctx := context.Background()
+
+	svc.MarkCyberSessionBlocked(ctx, "deadbeef1234", 7)
+	require.False(t, svc.IsCyberSessionBlocked(ctx, "deadbeef1234", 7))
+
+	svc.MarkCyberSessionBlocked(ctx, "deadbeef1234", 8)
+	require.True(t, svc.IsCyberSessionBlocked(ctx, "deadbeef1234", 8))
+	require.False(t, svc.IsCyberSessionBlocked(ctx, "deadbeef1234", 9))
+	require.True(t, svc.IsCyberSessionBlockUserWhitelisted(ctx, 7))
+	require.False(t, svc.IsCyberSessionBlockUserWhitelisted(ctx, 8))
 }

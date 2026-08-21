@@ -53,6 +53,7 @@ export default {
     policy: {
       title: '审计策略', description: '配置适用分组、九类输入风险、Worker 与队列边界。', scope: '适用范围', allGroups: '全部分组', selectedGroups: '指定分组',
       searchGroups: '搜索分组', noGroups: '没有匹配分组', missingGroups: '配置中包含已删除的分组 ID', selectedCount: '已选择 {count} 个分组',
+      userWhitelist: '用户白名单', userWhitelistHint: '名单内用户跳过提示词审计。输入用户 ID 后回车确认。', userWhitelistPlaceholder: '输入用户 ID', userWhitelistInputHint: '回车、逗号或空格确认；展示格式为 用户ID(邮箱)。',
       scanners: 'Qwen3Guard 输入风险分类', workerCount: 'Worker 数量', queueCapacity: '持久队列容量', strategy: '节点策略', strategyHint: '按配置顺序优先尝试，必要时故障切换。',
     },
     saveBar: { enabled: '启用提示词审计', blocking: '同步阻止', blockingLatestTurnOnly: '仅审最新输入和上一轮输出', storePass: '保存安全事件', dirty: '有未保存的更改', synced: '配置已同步' },

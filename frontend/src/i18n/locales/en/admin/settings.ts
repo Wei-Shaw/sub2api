@@ -61,6 +61,10 @@ export default {
           cyberSessionBlock: 'Cyber session auto-block',
           cyberSessionBlockHint: 'When enabled, sessions hit by upstream cyber_policy are blocked locally for the TTL and no longer forwarded. Only the offending session is blocked; other sessions on the same key are unaffected.',
           cyberSessionBlockTTL: 'Block TTL (seconds)',
+          cyberSessionBlockUserWhitelist: 'User whitelist',
+          cyberSessionBlockUserWhitelistHint: 'Whitelisted users skip session blocking; cyber events are still recorded. Enter a user ID and press Enter.',
+          cyberSessionBlockUserWhitelistPlaceholder: 'Enter user ID',
+          cyberSessionBlockUserWhitelistInputHint: 'Confirm with Enter, comma, or space. Chips show userID(email).',
         },
         affiliate: {
           title: 'Affiliate (Invite Rebate)',
