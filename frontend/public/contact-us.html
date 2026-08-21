@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>联系我们</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7fafc;
+      --panel: #ffffff;
+      --line: #dbe3ef;
+      --text: #111827;
+      --muted: #667085;
+      --brand: #4f8cff;
+      --accent: #27c6a6;
+      --soft: #eef4ff;
+      --shadow: 0 18px 60px rgba(15, 23, 42, .12);
+    }
+
+    [data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #0f141b;
+      --panel: #151b24;
+      --line: #263241;
+      --text: #e8eef6;
+      --muted: #9aa8ba;
+      --brand: #68a0ff;
+      --accent: #39d9b8;
+      --soft: #1c2b3d;
+      --shadow: 0 18px 60px rgba(0, 0, 0, .35);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.6 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    .page {
+      min-height: 100vh;
+      padding: 28px;
+      display: grid;
+      align-items: start;
+    }
+
+    .wrap {
+      width: min(1040px, 100%);
+      margin: 0 auto;
+      display: grid;
+      gap: 18px;
+    }
+
+    .header {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 22px;
+      box-shadow: var(--shadow);
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: center;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(24px, 3vw, 34px);
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .sub {
+      margin: 8px 0 0;
+      color: var(--muted);
+      max-width: 620px;
+    }
+
+    .status {
+      flex: 0 0 auto;
+      border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+      background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+      color: var(--accent);
+      border-radius: 999px;
+      padding: 7px 11px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 18px;
+      min-height: 220px;
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+
+    .card h2 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    .muted { color: var(--muted); }
+
+    .qr-box {
+      border: 1px dashed color-mix(in srgb, var(--brand) 45%, var(--line));
+      background: var(--soft);
+      border-radius: 8px;
+      min-height: 260px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    .qr-box img {
+      max-width: 100%;
+      max-height: 360px;
+      display: block;
+    }
+
+    .placeholder {
+      text-align: center;
+      color: var(--muted);
+      padding: 22px;
+    }
+
+    .info-list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .info-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 10px;
+    }
+
+    .info-item:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .label { color: var(--muted); }
+    .value {
+      font-weight: 750;
+      text-align: right;
+      word-break: break-all;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .btn {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .btn.primary {
+      border-color: transparent;
+      background: var(--brand);
+      color: #fff;
+    }
+
+    .notice {
+      border: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel) 80%, var(--soft));
+      border-radius: 8px;
+      padding: 14px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 780px) {
+      .page { padding: 14px; }
+      .header { display: grid; }
+      .grid { grid-template-columns: 1fr; }
+      .status { width: fit-content; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="wrap">
+      <section class="header">
+        <div>
+          <h1>联系我们</h1>
+        </div>
+        <div class="status">在线支持</div>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <h2>客服二维码</h2>
+          <div id="qrBox" class="qr-box">
+            <div class="placeholder">请在 HTML 中填写二维码图片链接</div>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2>加入社群</h2>
+          <ul class="info-list">
+            <li class="info-item">
+              <span class="label">群号</span>
+              <span id="groupNumber" class="value">待填写</span>
+            </li>
+            <li class="info-item">
+              <span class="label">客服邮箱</span>
+              <span id="supportEmail" class="value">待填写</span>
+            </li>
+            <li class="info-item">
+              <span class="label">服务时间</span>
+              <span id="serviceHours" class="value">09:00 - 23:00</span>
+            </li>
+          </ul>
+          <div class="actions">
+            <button id="copyGroupBtn" class="btn primary" type="button">复制群号</button>
+            <a id="mailBtn" class="btn" href="#">发送邮件</a>
+          </div>
+        </article>
+      </section>
+
+    
+    </div>
+  </main>
+  <script src="./contact-us.js"></script>
+</body>
+</html>

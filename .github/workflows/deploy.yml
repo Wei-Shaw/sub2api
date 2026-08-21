@@ -1,0 +1,186 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      deploy_path:
+        description: Remote deploy directory
+        required: false
+        default: /opt/1panel/apps/sub2api/sub2api
+      compose_file:
+        description: Compose file relative to deploy directory
+        required: false
+        default: docker-compose.yml
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  DEPLOY_PATH: ${{ github.event.inputs.deploy_path || vars.DEPLOY_PATH || '/opt/1panel/apps/sub2api/sub2api' }}
+  COMPOSE_FILE: ${{ github.event.inputs.compose_file || vars.DEPLOY_COMPOSE_FILE || 'docker-compose.yml' }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set image name
+        id: meta
+        shell: bash
+        run: |
+          OWNER_LOWER="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          REPO_LOWER="$(echo "${REPO_NAME}" | tr '[:upper:]' '[:lower:]')"
+          echo "image=${REGISTRY}/${OWNER_LOWER}/${REPO_LOWER}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate deploy configuration
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          TOTP_ENCRYPTION_KEY: ${{ secrets.TOTP_ENCRYPTION_KEY }}
+        run: |
+          missing=0
+          for name in DEPLOY_HOST DEPLOY_USER SERVER_SSH_KEY POSTGRES_PASSWORD JWT_SECRET TOTP_ENCRYPTION_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required secret: ${name}"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:latest
+            ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Make GHCR package public
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          IMAGE: ${{ github.event.repository.name }}
+        run: |
+          OWNER_LOWER="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          IMAGE_LOWER="$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')"
+          gh api --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "/users/${OWNER_LOWER}/packages/container/${IMAGE_LOWER}/visibility" \
+            -f visibility=public
+
+      - name: Prepare remote directory
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: DEPLOY_PATH
+          script: |
+            set -e
+            mkdir -p "$DEPLOY_PATH"
+        env:
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
+
+      - name: Upload compose file
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: deploy/1panel/docker-compose.yml
+          target: ${{ env.DEPLOY_PATH }}
+          strip_components: 2
+          overwrite: true
+
+      - name: Deploy to Aliyun server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: IMAGE_NAME,DEPLOY_PATH,COMPOSE_FILE,GHCR_USERNAME,GHCR_TOKEN,POSTGRES_PASSWORD,JWT_SECRET,TOTP_ENCRYPTION_KEY,ADMIN_EMAIL,ADMIN_PASSWORD
+          script: |
+            set -e
+            mkdir -p "$DEPLOY_PATH"
+            cd "$DEPLOY_PATH"
+
+            docker --version
+            docker compose version
+            docker network inspect 1panel-network >/dev/null 2>&1 || docker network create 1panel-network
+
+            if [ ! -f .env ]; then
+              umask 077
+              {
+                printf '%s\n' "CONTAINER_NAME=sub2api"
+                printf '%s\n' "PANEL_APP_PORT_HTTP=8080"
+                printf '%s\n' "IMAGE_NAME=${IMAGE_NAME}"
+                printf '%s\n' "POSTGRES_USER=sub2api"
+                printf '%s\n' "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
+                printf '%s\n' "POSTGRES_DB=sub2api"
+                printf '%s\n' "REDIS_PASSWORD="
+                printf '%s\n' "ADMIN_EMAIL=${ADMIN_EMAIL}"
+                printf '%s\n' "ADMIN_PASSWORD=${ADMIN_PASSWORD}"
+                printf '%s\n' "JWT_SECRET=${JWT_SECRET}"
+                printf '%s\n' "TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}"
+                printf '%s\n' "TZ=Asia/Shanghai"
+                printf '%s\n' "SERVER_MODE=release"
+                printf '%s\n' "RUN_MODE=standard"
+                printf '%s\n' "SECURITY_URL_ALLOWLIST_ENABLED=false"
+                printf '%s\n' "SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=true"
+                printf '%s\n' "SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=true"
+              } > .env
+            fi
+
+            if [ -n "$GHCR_TOKEN" ]; then
+              echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+            fi
+
+            if [ -f "$COMPOSE_FILE" ]; then
+              sed -i \
+                -e "s|image: weishaw/sub2api:latest|image: ${IMAGE_NAME}|g" \
+                -e "s|image: ghcr.io/amanibey/cozy-sub2api:latest|image: ${IMAGE_NAME}|g" \
+                "$COMPOSE_FILE"
+            fi
+
+            IMAGE_NAME="$IMAGE_NAME" docker compose -f "$COMPOSE_FILE" pull
+            IMAGE_NAME="$IMAGE_NAME" docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
+            docker image prune -f
+        env:
+          IMAGE_NAME: ${{ steps.meta.outputs.image }}
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
+          COMPOSE_FILE: ${{ env.COMPOSE_FILE }}
+          GHCR_USERNAME: ${{ github.repository_owner }}
+          GHCR_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          TOTP_ENCRYPTION_KEY: ${{ secrets.TOTP_ENCRYPTION_KEY }}
+          ADMIN_EMAIL: ${{ vars.ADMIN_EMAIL || 'admin@sub2api.local' }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}

@@ -81,6 +81,7 @@ export default defineConfig(({ mode }) => {
   // 加载环境变量
   const env = loadEnv(mode, process.cwd(), '')
   const backendUrl = env.VITE_DEV_PROXY_TARGET || 'http://localhost:8080'
+  const aiProxyTarget = env.VITE_AI_PROXY_TARGET || 'https://api.99812731.xyz'
   const devPort = Number(env.VITE_DEV_PORT || 3000)
 
   return {
@@ -157,14 +158,20 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0',
       port: devPort,
+      cors: {
+        origin: '*',
+        methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+      },
       proxy: {
         '/api': {
           target: backendUrl,
           changeOrigin: true
         },
         '/v1': {
-          target: backendUrl,
-          changeOrigin: true
+          target: aiProxyTarget,
+          changeOrigin: true,
+          secure: true
         },
         '/setup': {
           target: backendUrl,

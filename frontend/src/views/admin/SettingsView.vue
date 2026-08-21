@@ -7720,7 +7720,7 @@
                       v-model="form.payment_product_name_prefix"
                       type="text"
                       class="input"
-                      placeholder="Sub2API"
+                      placeholder="CozyToken"
                     />
                   </div>
                   <div>
@@ -7742,7 +7742,7 @@
                       class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300"
                     >
                       {{
-                        (form.payment_product_name_prefix || "Sub2API") +
+                        (form.payment_product_name_prefix || "CozyToken") +
                         " 100 " +
                         (form.payment_product_name_suffix || "CNY")
                       }}
@@ -8115,7 +8115,7 @@
                     </div>
                   </div>
                 </div>
-                <!-- Row 4: Enabled payment types (provider badges like sub2apipay) -->
+                <!-- Row 4: Enabled payment types (provider badges like CozyTokenpay) -->
                 <div>
                   <label class="input-label">{{
                     t("admin.settings.payment.enabledPaymentTypes")
@@ -8802,14 +8802,14 @@ function localText(zh: string, en: string): string {
 
 const paymentGuideHref = computed(() =>
   locale.value.startsWith("zh")
-    ? "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md"
-    : "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md",
+    ? "https://github.com/Wei-Shaw/CozyToken/blob/main/docs/PAYMENT_CN.md"
+    : "https://github.com/Wei-Shaw/CozyToken/blob/main/docs/PAYMENT.md",
 );
 
 const paymentMethodsHref = computed(() =>
   locale.value.startsWith("zh")
-    ? "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md#支持的支付方式"
-    : "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md#supported-payment-methods",
+    ? "https://github.com/Wei-Shaw/CozyToken/blob/main/docs/PAYMENT_CN.md#支持的支付方式"
+    : "https://github.com/Wei-Shaw/CozyToken/blob/main/docs/PAYMENT.md#supported-payment-methods",
 );
 
 type SettingsTab =
@@ -9508,7 +9508,7 @@ const form = reactive<SettingsForm>({
   default_subscriptions: [],
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
-  site_name: "Sub2API",
+  site_name: "CozyToken",
   site_logo: "",
   site_subtitle: "Subscription to API Conversion Platform",
   api_base_url: "",
@@ -10547,6 +10547,50 @@ function moveMenuItem(index: number, direction: -1 | 1) {
   });
 }
 
+function getFrontendOrigin(): string {
+  if (typeof window === "undefined") return "";
+  return window.location.origin || `${window.location.protocol}//${window.location.host}`;
+}
+
+function resolveBuiltinCustomMenuUrl(item: (typeof form.custom_menu_items)[number]): string {
+  const id = String(item.id || "").toLowerCase();
+  const label = String(item.label || "").trim().toLowerCase();
+  const url = String(item.url || "").trim().toLowerCase();
+  const origin = getFrontendOrigin();
+  if (!origin) return "";
+
+  if (
+    id.includes("online-chat") ||
+    label.includes("在线聊天") ||
+    label.includes("online chat") ||
+    url.includes("/online-chat.html")
+  ) {
+    return `${origin}/online-chat.html`;
+  }
+
+  if (
+    id.includes("contact-us") ||
+    label.includes("联系我们") ||
+    label.includes("contact us") ||
+    url.includes("/contact-us.html")
+  ) {
+    return `${origin}/contact-us.html`;
+  }
+
+  return "";
+}
+
+function normalizeCustomMenuItemsForSave() {
+  return form.custom_menu_items.map((item, index) => {
+    const builtinUrl = resolveBuiltinCustomMenuUrl(item);
+    return {
+      ...item,
+      url: builtinUrl || item.url,
+      sort_order: index,
+    };
+  });
+}
+
 // Custom endpoint management
 function addEndpoint() {
   form.custom_endpoints.push({ name: "", endpoint: "", description: "" });
@@ -11149,7 +11193,7 @@ async function saveSettings() {
       hide_ccs_import_button: form.hide_ccs_import_button,
       table_default_page_size: form.table_default_page_size,
       table_page_size_options: form.table_page_size_options,
-      custom_menu_items: form.custom_menu_items,
+      custom_menu_items: normalizeCustomMenuItemsForSave(),
       custom_endpoints: form.custom_endpoints,
       frontend_url: form.frontend_url,
       smtp_host: form.smtp_host,

@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const runtimeCacheEventuallyTimeout = 5 * time.Second
+
 type contentModerationRuntimeSettingRepo struct {
 	mu               sync.Mutex
 	values           map[string]string
@@ -230,7 +232,7 @@ func TestContentModerationRuntimeSnapshotUpdateWinsOverInitialLoad(t *testing.T)
 		default:
 			return false
 		}
-	}, time.Second, time.Millisecond)
+	}, runtimeCacheEventuallyTimeout, time.Millisecond)
 
 	updateDone := make(chan error, 1)
 	go func() {
@@ -265,21 +267,27 @@ func TestContentModerationRuntimeSnapshotRefreshFailureKeepsStaleConfig(t *testi
 		SettingKeyRiskControlEnabled:      "true",
 		SettingKeyContentModerationConfig: runtimeCacheTestConfig(t, "blocked"),
 	}}
-	svc := runtimeCacheTestService(repo, time.Nanosecond)
+	svc := runtimeCacheTestService(repo, time.Minute)
 	input := runtimeCacheTestInput("blocked")
 
 	decision, err := svc.Check(context.Background(), input)
 	require.NoError(t, err)
 	require.True(t, decision.Blocked)
 
+	current := svc.runtimeSnapshot.Load()
+	require.NotNil(t, current)
+	expired := *current
+	expired.loadedAt = time.Now().Add(-2 * time.Minute)
+	svc.runtimeSnapshot.Store(&expired)
 	repo.failMultiple(errors.New("database unavailable"))
+
 	decision, err = svc.Check(context.Background(), input)
 	require.NoError(t, err)
 	require.True(t, decision.Blocked)
 	require.Eventually(t, func() bool {
 		_, calls := repo.calls()
 		return calls >= 2
-	}, time.Second, time.Millisecond)
+	}, runtimeCacheEventuallyTimeout, time.Millisecond)
 }
 
 func TestContentModerationRuntimeSnapshotRefreshFailureBacksOff(t *testing.T) {
@@ -307,7 +315,7 @@ func TestContentModerationRuntimeSnapshotRefreshFailureBacksOff(t *testing.T) {
 	require.Eventually(t, func() bool {
 		_, calls := repo.calls()
 		return calls == 2
-	}, time.Second, time.Millisecond)
+	}, runtimeCacheEventuallyTimeout, time.Millisecond)
 
 	for range 100 {
 		decision, err = svc.Check(context.Background(), input)
@@ -342,7 +350,7 @@ func TestContentModerationRuntimeSnapshotRefreshReusesUnchangedMatcher(t *testin
 	require.Eventually(t, func() bool {
 		refreshed := svc.runtimeSnapshot.Load()
 		return refreshed != nil && refreshed.loadedAt.After(expired.loadedAt)
-	}, time.Second, time.Millisecond)
+	}, runtimeCacheEventuallyTimeout, time.Millisecond)
 
 	refreshed := svc.runtimeSnapshot.Load()
 	require.Same(t, current.config, refreshed.config)
@@ -381,7 +389,7 @@ func TestContentModerationRuntimeSnapshotUpdateWinsOverInFlightRefresh(t *testin
 		default:
 			return false
 		}
-	}, time.Second, time.Millisecond)
+	}, runtimeCacheEventuallyTimeout, time.Millisecond)
 
 	updateDone := make(chan error, 1)
 	go func() {

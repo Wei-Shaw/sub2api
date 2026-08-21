@@ -21,7 +21,7 @@ export interface IpGeoEntry {
 }
 
 const IDLE_ENTRY: IpGeoEntry = { status: 'idle' }
-const CACHE_STORAGE_KEY = 'sub2api:ip-geo-cache:v1'
+const CACHE_STORAGE_KEY = 'CozyToken:ip-geo-cache:v1'
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000
 const BATCH_CHUNK_SIZE = 50
 const GEO_SINGLE_URL = 'https://get.geojs.io/v1/ip/geo'

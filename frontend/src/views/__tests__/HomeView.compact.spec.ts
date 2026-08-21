@@ -92,6 +92,12 @@ describe('HomeView compact mode', () => {
     expect(wrapper.get('[data-testid="compact-home"]').text()).toContain('Test site')
   })
 
+  it('keeps compact mode aligned with the light-only theme', () => {
+    const wrapper = mountHome({ compact_home_enabled: true })
+
+    expect(wrapper.get('[data-testid="compact-home"]').find('button').exists()).toBe(false)
+  })
+
   it.each([undefined, false])('selects the default home when compact mode is %s', (enabled) => {
     const settings = enabled === undefined ? {} : { compact_home_enabled: enabled }
     const wrapper = mountHome(settings)

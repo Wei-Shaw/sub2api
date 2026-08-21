@@ -1,0 +1,14 @@
+additionalProperties:
+    formFields:
+        - default: 8080
+          envKey: PANEL_APP_PORT_HTTP
+          labelEn: HTTP Port
+          labelZh: HTTP 端口
+          required: true
+          type: number
+        - default: 8443
+          envKey: PANEL_APP_PORT_HTTPS
+          labelEn: HTTPS Port
+          labelZh: HTTPS 端口
+          required: true
+          type: number

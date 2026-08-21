@@ -1,5 +1,5 @@
 /**
- * Vue Router configuration for Sub2API frontend
+ * Vue Router configuration for CozyToken frontend
  * Defines all application routes with lazy loading and navigation guards
  */
 
@@ -459,6 +459,18 @@ const routes: RouteRecordRaw[] = [
       title: 'Group Management',
       titleKey: 'admin.groups.title',
       descriptionKey: 'admin.groups.description'
+    }
+  },
+  {
+    path: '/admin/pricing',
+    name: 'AdminPricing',
+    component: () => import('@/views/admin/AdminPricingView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Pricing',
+      titleKey: 'admin.pricing.title',
+      descriptionKey: 'admin.pricing.description'
     }
   },
   {
@@ -927,6 +939,7 @@ router.beforeEach(async (to, _from, next) => {
   if (authStore.isSimpleMode) {
     const restrictedPaths = [
       '/admin/groups',
+      '/admin/pricing',
       '/admin/subscriptions',
       '/admin/redeem',
       '/subscriptions',
