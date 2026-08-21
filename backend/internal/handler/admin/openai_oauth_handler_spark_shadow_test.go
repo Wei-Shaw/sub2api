@@ -19,7 +19,17 @@ import (
 func TestCreateShadow_ReturnsCreatedShadow(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	stub := &stubAdminService{}
+	stub := &stubAdminService{getAccountResult: &service.Account{
+		ID:       42,
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "parent-secret",
+		},
+		Extra: map[string]any{
+			"openai_device_id": "parent-device",
+		},
+	}}
 	h := NewOpenAIOAuthHandler(nil, stub, nil, nil)
 
 	router := gin.New()
@@ -49,6 +59,16 @@ func TestCreateShadow_ReturnsCreatedShadow(t *testing.T) {
 
 	// name round-trips
 	require.Equal(t, "p-spark", data["name"])
+
+	credentialsStatus, ok := data["credentials_status"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, credentialsStatus["has_access_token"])
+	require.NotContains(t, data["credentials"], "access_token")
+
+	extra, ok := data["extra"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "parent-device", extra["openai_device_id"])
+	require.Equal(t, false, extra["openai_long_context_billing_enabled"])
 }
 
 func TestCreateShadow_InvalidID(t *testing.T) {

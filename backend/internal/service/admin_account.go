@@ -1413,7 +1413,7 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 		shadow.GroupIDs = groupIDs
 	}
 
-	return InheritOpenAIShadowUpstreamProfile(shadow, parent), nil
+	return shadow, nil
 }
 
 // propagateProxyToShadows syncs proxyID to all spark shadow accounts of parentID.

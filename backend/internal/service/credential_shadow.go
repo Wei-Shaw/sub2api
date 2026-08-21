@@ -83,6 +83,10 @@ func InheritOpenAIShadowUpstreamProfile(shadow, parent *Account) *Account {
 	}
 	for _, key := range openAIShadowUpstreamProfileExtraKeys {
 		delete(projected.Extra, key)
+		if key == openAILongContextBillingEnabledKey {
+			projected.Extra[key] = parent.IsOpenAILongContextBillingEnabled()
+			continue
+		}
 		if value, ok := parent.Extra[key]; ok {
 			projected.Extra[key] = value
 		}

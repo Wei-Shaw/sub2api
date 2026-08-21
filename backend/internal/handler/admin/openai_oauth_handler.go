@@ -592,6 +592,11 @@ func (h *OpenAIOAuthHandler) CreateShadow(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	parent, err := h.adminService.GetAccount(c.Request.Context(), parentID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 
 	shadow, err := h.adminService.CreateShadow(c.Request.Context(), parentID, service.ShadowOptions{
 		Name:        req.Name,
@@ -604,7 +609,8 @@ func (h *OpenAIOAuthHandler) CreateShadow(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.AccountFromServiceShallow(shadow))
+	effective := service.InheritOpenAIShadowUpstreamProfile(shadow, parent)
+	response.Success(c, dto.AccountFromServiceShallow(effective))
 }
 
 // ResetQuota consumes one rate-limit reset credit for an OpenAI account.
