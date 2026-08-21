@@ -1,0 +1,363 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	stderrors "errors"
+	"math"
+	"regexp"
+	"strings"
+	"time"
+
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+)
+
+var botSalesDeviceCodePattern = regexp.MustCompile(`^DLG-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$`)
+
+type BotSalesBuyer struct {
+	ExternalUserID string `json:"external_user_id,omitempty"`
+	Email          string `json:"email,omitempty"`
+	TelegramID     string `json:"telegram_id,omitempty"`
+}
+
+type BotSalesFulfillmentRequest struct {
+	IdempotencyKey      string        `json:"-"`
+	ExternalOrderCode   string        `json:"external_order_code" binding:"required"`
+	ExternalOrderItemID string        `json:"external_order_item_id" binding:"required"`
+	Buyer               BotSalesBuyer `json:"buyer"`
+	BalanceAmount       float64       `json:"balance_amount" binding:"required"`
+	IssueDeviceCode     bool          `json:"issue_device_code"`
+	DeviceCode          string        `json:"device_code,omitempty"`
+}
+
+type BotSalesFulfillmentResponse struct {
+	FulfillmentID       int64   `json:"fulfillment_id"`
+	ExternalOrderCode   string  `json:"external_order_code"`
+	ExternalOrderItemID string  `json:"external_order_item_id"`
+	UserID              int64   `json:"user_id"`
+	Email               string  `json:"email"`
+	BalanceAdded        float64 `json:"balance_added"`
+	Balance             float64 `json:"balance"`
+	DeviceLoginCode     string  `json:"device_login_code,omitempty"`
+	Replayed            bool    `json:"replayed,omitempty"`
+}
+
+func normalizeBotSalesFulfillmentRequest(input BotSalesFulfillmentRequest) (BotSalesFulfillmentRequest, error) {
+	input.ExternalOrderCode = strings.TrimSpace(input.ExternalOrderCode)
+	input.ExternalOrderItemID = strings.TrimSpace(input.ExternalOrderItemID)
+	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
+	input.Buyer.ExternalUserID = strings.TrimSpace(input.Buyer.ExternalUserID)
+	input.Buyer.Email = strings.ToLower(strings.TrimSpace(input.Buyer.Email))
+	input.Buyer.TelegramID = strings.TrimSpace(input.Buyer.TelegramID)
+	input.DeviceCode = strings.ToUpper(strings.TrimSpace(input.DeviceCode))
+
+	switch {
+	case input.ExternalOrderCode == "":
+		return BotSalesFulfillmentRequest{}, infraerrors.BadRequest("BOT_SALES_ORDER_CODE_REQUIRED", "external_order_code is required")
+	case input.ExternalOrderItemID == "":
+		return BotSalesFulfillmentRequest{}, infraerrors.BadRequest("BOT_SALES_ORDER_ITEM_REQUIRED", "external_order_item_id is required")
+	case !math.IsNaN(input.BalanceAmount) && !math.IsInf(input.BalanceAmount, 0) && input.BalanceAmount > 0:
+		// Valid amount.
+	default:
+		return BotSalesFulfillmentRequest{}, infraerrors.BadRequest("BOT_SALES_BALANCE_AMOUNT_INVALID", "balance_amount must be a finite positive number")
+	}
+
+	if input.DeviceCode != "" && !botSalesDeviceCodePattern.MatchString(input.DeviceCode) {
+		return BotSalesFulfillmentRequest{}, infraerrors.BadRequest("BOT_SALES_DEVICE_CODE_INVALID", "device_code must match DLG-XXXX-XXXX-XXXX")
+	}
+	if input.IdempotencyKey == "" {
+		return BotSalesFulfillmentRequest{}, infraerrors.BadRequest("BOT_SALES_IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key is required")
+	}
+	return input, nil
+}
+
+func botSalesFulfillmentFingerprint(input BotSalesFulfillmentRequest) (string, error) {
+	payload := struct {
+		ExternalOrderCode   string        `json:"external_order_code"`
+		ExternalOrderItemID string        `json:"external_order_item_id"`
+		Buyer               BotSalesBuyer `json:"buyer"`
+		BalanceAmount       float64       `json:"balance_amount"`
+		IssueDeviceCode     bool          `json:"issue_device_code"`
+		DeviceCode          string        `json:"device_code,omitempty"`
+	}{
+		ExternalOrderCode:   input.ExternalOrderCode,
+		ExternalOrderItemID: input.ExternalOrderItemID,
+		Buyer:               input.Buyer,
+		BalanceAmount:       input.BalanceAmount,
+		IssueDeviceCode:     input.IssueDeviceCode,
+		DeviceCode:          input.DeviceCode,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+// botSalesFulfillmentUserRepository is intentionally narrower than UserRepository.
+// Keeping the integration on the existing balance primitives avoids changing the
+// upstream provider/accounting paths.
+type botSalesFulfillmentUserRepository interface {
+	GetByID(context.Context, int64) (*User, error)
+	GetByEmail(context.Context, string) (*User, error)
+	Create(context.Context, *User) error
+	AdjustBalance(context.Context, int64, float64) (BalanceChange, error)
+}
+
+type BotSalesFulfillmentService struct {
+	client       *dbent.Client
+	users        botSalesFulfillmentUserRepository
+	devices      UserDeviceRepository
+	claimService *VClawClaimService
+}
+
+func NewBotSalesFulfillmentService(client *dbent.Client, users UserRepository, devices UserDeviceRepository, claimService *VClawClaimService) *BotSalesFulfillmentService {
+	return &BotSalesFulfillmentService{client: client, users: users, devices: devices, claimService: claimService}
+}
+
+// Fulfill is implemented below the HTTP handler so bot-sales and future admin
+// tooling share exactly the same validation and accounting contract.
+func (s *BotSalesFulfillmentService) Fulfill(ctx context.Context, input BotSalesFulfillmentRequest) (*BotSalesFulfillmentResponse, error) {
+	input, err := normalizeBotSalesFulfillmentRequest(input)
+	if err != nil {
+		return nil, err
+	}
+	if s == nil || s.client == nil || s.users == nil || s.devices == nil {
+		return nil, infraerrors.ServiceUnavailable("BOT_SALES_NOT_CONFIGURED", "bot-sales fulfillment is not configured")
+	}
+	return s.fulfillInTransaction(ctx, input)
+}
+
+type botSalesFulfillmentRecord struct {
+	id                 int64
+	status             string
+	requestFingerprint string
+	responseJSON       string
+}
+
+func (s *BotSalesFulfillmentService) fulfillInTransaction(ctx context.Context, input BotSalesFulfillmentRequest) (*BotSalesFulfillmentResponse, error) {
+	fingerprint, err := botSalesFulfillmentFingerprint(input)
+	if err != nil {
+		return nil, infraerrors.InternalServer("BOT_SALES_FINGERPRINT_FAILED", "failed to fingerprint fulfillment request")
+	}
+
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return nil, infraerrors.ServiceUnavailable("BOT_SALES_DATABASE_UNAVAILABLE", "failed to start fulfillment transaction")
+	}
+	rollback := func() {
+		_ = tx.Rollback()
+	}
+	txCtx := dbent.NewTxContext(ctx, tx)
+
+	record, inserted, err := claimBotSalesFulfillmentRecord(txCtx, tx.Client(), input, fingerprint)
+	if err != nil {
+		rollback()
+		return nil, err
+	}
+	if !inserted {
+		if record.requestFingerprint != fingerprint {
+			rollback()
+			return nil, infraerrors.Conflict("BOT_SALES_IDEMPOTENCY_CONFLICT", "fulfillment key is already bound to a different request")
+		}
+		if record.status == "succeeded" {
+			var response BotSalesFulfillmentResponse
+			if err := json.Unmarshal([]byte(record.responseJSON), &response); err != nil {
+				rollback()
+				return nil, infraerrors.InternalServer("BOT_SALES_RESPONSE_CORRUPT", "stored fulfillment response is invalid")
+			}
+			response.Replayed = true
+			rollback()
+			return &response, nil
+		}
+		rollback()
+		return nil, infraerrors.Conflict("BOT_SALES_FULFILLMENT_IN_PROGRESS", "fulfillment is already being processed")
+	}
+
+	response, err := s.applyBotSalesFulfillment(txCtx, input)
+	if err != nil {
+		rollback()
+		return nil, err
+	}
+	response.FulfillmentID = record.id
+	responseBody, err := json.Marshal(response)
+	if err != nil {
+		rollback()
+		return nil, infraerrors.InternalServer("BOT_SALES_RESPONSE_ENCODE_FAILED", "failed to encode fulfillment response")
+	}
+	if _, err := tx.Client().ExecContext(txCtx, `
+		UPDATE bot_sales_fulfillments
+		SET status = 'succeeded', user_id = $1, response_json = $2, updated_at = NOW()
+		WHERE id = $3 AND status = 'processing'
+	`, response.UserID, string(responseBody), record.id); err != nil {
+		rollback()
+		return nil, infraerrors.ServiceUnavailable("BOT_SALES_FULFILLMENT_RECORD_FAILED", "failed to finalize fulfillment record")
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, infraerrors.ServiceUnavailable("BOT_SALES_DATABASE_COMMIT_FAILED", "failed to commit fulfillment")
+	}
+	return response, nil
+}
+
+func claimBotSalesFulfillmentRecord(ctx context.Context, client *dbent.Client, input BotSalesFulfillmentRequest, fingerprint string) (botSalesFulfillmentRecord, bool, error) {
+	result, err := client.ExecContext(ctx, `
+		INSERT INTO bot_sales_fulfillments
+			(idempotency_key, external_order_code, external_order_item_id, request_fingerprint, status, balance_amount)
+		VALUES ($1, $2, $3, $4, 'processing', $5)
+		ON CONFLICT DO NOTHING
+	`, input.IdempotencyKey, input.ExternalOrderCode, input.ExternalOrderItemID, fingerprint, input.BalanceAmount)
+	if err != nil {
+		return botSalesFulfillmentRecord{}, false, infraerrors.ServiceUnavailable("BOT_SALES_FULFILLMENT_RECORD_FAILED", "failed to reserve fulfillment record")
+	}
+	inserted, err := result.RowsAffected()
+	if err != nil {
+		return botSalesFulfillmentRecord{}, false, infraerrors.ServiceUnavailable("BOT_SALES_FULFILLMENT_RECORD_FAILED", "failed to inspect fulfillment reservation")
+	}
+	record, err := readBotSalesFulfillmentRecord(ctx, client, input)
+	if err != nil {
+		return botSalesFulfillmentRecord{}, false, err
+	}
+	return record, inserted == 1, nil
+}
+
+func readBotSalesFulfillmentRecord(ctx context.Context, client *dbent.Client, input BotSalesFulfillmentRequest) (botSalesFulfillmentRecord, error) {
+	rows, err := client.QueryContext(ctx, `
+		SELECT id, status, request_fingerprint, COALESCE(response_json, '')
+		FROM bot_sales_fulfillments
+		WHERE idempotency_key = $1
+		   OR (external_order_code = $2 AND external_order_item_id = $3)
+		ORDER BY CASE WHEN idempotency_key = $1 THEN 0 ELSE 1 END, id
+		LIMIT 1
+		FOR UPDATE
+	`, input.IdempotencyKey, input.ExternalOrderCode, input.ExternalOrderItemID)
+	if err != nil {
+		return botSalesFulfillmentRecord{}, infraerrors.ServiceUnavailable("BOT_SALES_FULFILLMENT_RECORD_FAILED", "failed to read fulfillment record")
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return botSalesFulfillmentRecord{}, infraerrors.ServiceUnavailable("BOT_SALES_FULFILLMENT_RECORD_FAILED", "failed to read fulfillment record")
+		}
+		return botSalesFulfillmentRecord{}, infraerrors.InternalServer("BOT_SALES_FULFILLMENT_RECORD_MISSING", "fulfillment reservation disappeared")
+	}
+	var record botSalesFulfillmentRecord
+	if err := rows.Scan(&record.id, &record.status, &record.requestFingerprint, &record.responseJSON); err != nil {
+		return botSalesFulfillmentRecord{}, infraerrors.ServiceUnavailable("BOT_SALES_FULFILLMENT_RECORD_FAILED", "failed to decode fulfillment record")
+	}
+	return record, nil
+}
+
+func (s *BotSalesFulfillmentService) applyBotSalesFulfillment(ctx context.Context, input BotSalesFulfillmentRequest) (*BotSalesFulfillmentResponse, error) {
+	var (
+		user       *User
+		deviceCode = input.DeviceCode
+	)
+
+	switch {
+	case deviceCode != "":
+		device, err := s.devices.GetByDeviceCode(ctx, deviceCode)
+		if err != nil {
+			if stderrors.Is(err, ErrUserDeviceNotFound) {
+				return nil, infraerrors.NotFound("BOT_SALES_DEVICE_NOT_FOUND", "device_code does not identify a device")
+			}
+			return nil, infraerrors.ServiceUnavailable("BOT_SALES_DEVICE_LOOKUP_FAILED", "failed to resolve device_code")
+		}
+		if device == nil || !device.IsActive() {
+			return nil, ErrDeviceRevoked
+		}
+		user, err = s.users.GetByID(ctx, device.UserID)
+		if err != nil {
+			return nil, infraerrors.NotFound("BOT_SALES_USER_NOT_FOUND", "device owner was not found")
+		}
+	case input.Buyer.Email != "":
+		var err error
+		user, err = s.users.GetByEmail(ctx, input.Buyer.Email)
+		if err != nil {
+			if dbent.IsNotFound(err) || stderrors.Is(err, ErrUserNotFound) {
+				return nil, infraerrors.NotFound("BOT_SALES_USER_NOT_FOUND", "buyer email was not found")
+			}
+			return nil, infraerrors.ServiceUnavailable("BOT_SALES_USER_LOOKUP_FAILED", "failed to resolve buyer email")
+		}
+	case !input.IssueDeviceCode:
+		return nil, infraerrors.BadRequest("BOT_SALES_DEVICE_REQUIRED", "issue_device_code is required when buyer has no existing account")
+	default:
+		if s.claimService == nil {
+			return nil, infraerrors.ServiceUnavailable("BOT_SALES_CLAIM_NOT_CONFIGURED", "device claim service is not configured")
+		}
+		deviceHash, err := randomHexString(32)
+		if err != nil {
+			return nil, infraerrors.ServiceUnavailable("BOT_SALES_DEVICE_HASH_FAILED", "failed to generate device identity")
+		}
+		claim, err := s.claimService.Claim(ctx, VClawClaimRequest{Device: VClawDeviceInput{
+			DeviceHash:         deviceHash,
+			FingerprintVersion: 1,
+			Platform:           "bot-sales",
+			Arch:               "server",
+		}})
+		if err != nil {
+			return nil, err
+		}
+		user, err = s.users.GetByID(ctx, claim.UserID)
+		if err != nil {
+			return nil, infraerrors.ServiceUnavailable("BOT_SALES_USER_LOOKUP_FAILED", "failed to load claimed user")
+		}
+		deviceCode = claim.DeviceLoginCode
+	}
+	if user == nil || user.ID <= 0 {
+		return nil, infraerrors.ServiceUnavailable("BOT_SALES_USER_LOOKUP_FAILED", "buyer user is unavailable")
+	}
+
+	if input.IssueDeviceCode && input.DeviceCode == "" && deviceCode == "" {
+		code, err := generateDeviceLoginCode()
+		if err != nil {
+			return nil, infraerrors.ServiceUnavailable("BOT_SALES_DEVICE_CODE_FAILED", "failed to generate device login code")
+		}
+		deviceHash, err := randomHexString(32)
+		if err != nil {
+			return nil, infraerrors.ServiceUnavailable("BOT_SALES_DEVICE_HASH_FAILED", "failed to generate device identity")
+		}
+		now := time.Now().UTC()
+		if err := s.devices.Create(ctx, &UserDevice{
+			UserID:             user.ID,
+			DeviceCode:         &code,
+			DeviceHash:         deviceHash,
+			FingerprintVersion: 1,
+			Platform:           "bot-sales",
+			Arch:               "server",
+			Status:             UserDeviceStatusActive,
+			FirstClaimedAt:     now,
+			LastClaimedAt:      &now,
+		}); err != nil {
+			return nil, infraerrors.ServiceUnavailable("BOT_SALES_DEVICE_CREATE_FAILED", "failed to create device login code")
+		}
+		deviceCode = code
+	}
+
+	change, err := s.users.AdjustBalance(ctx, user.ID, input.BalanceAmount)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.clientFromContext(ctx).ExecContext(ctx, `
+		UPDATE users SET total_recharged = total_recharged + $1, updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+	`, input.BalanceAmount, user.ID); err != nil {
+		return nil, infraerrors.ServiceUnavailable("BOT_SALES_BALANCE_AUDIT_FAILED", "failed to update recharge total")
+	}
+	return &BotSalesFulfillmentResponse{
+		ExternalOrderCode:   input.ExternalOrderCode,
+		ExternalOrderItemID: input.ExternalOrderItemID,
+		UserID:              user.ID,
+		Email:               user.Email,
+		BalanceAdded:        input.BalanceAmount,
+		Balance:             change.New,
+		DeviceLoginCode:     deviceCode,
+	}, nil
+}
+
+func (s *BotSalesFulfillmentService) clientFromContext(ctx context.Context) *dbent.Client {
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		return tx.Client()
+	}
+	return s.client
+}

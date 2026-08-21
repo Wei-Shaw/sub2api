@@ -34,6 +34,9 @@ func RegisterAdminRoutes(
 		// 部署与运营合规确认
 		registerAdminComplianceRoutes(admin, h)
 
+		// Bot-sales token fulfillment (narrow internal contract)
+		admin.POST("/bot-sales/fulfill", h.BotSales.Fulfill)
+
 		// 仪表盘
 		registerDashboardRoutes(admin, h)
 
