@@ -1,9 +1,11 @@
 package securityaudit
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -453,4 +455,52 @@ REDACTED
 			require.Equal(t, tt.reason, infraerrors.Reason(err))
 	REDACTED)
 REDACTED
+REDACTED
+
+// Regression coverage for issue #5732: refreshLoop reloads every 5s, so
+// config_loaded must stay a change signal instead of ~17k identical lines a
+// day, while still reporting the first load, real config changes and a
+// recovery from a failed reload.
+func TestConfigLoadedIsLoggedOnlyWhenSomethingChanged(t *testing.T) {
+	storage := DefaultStorageConfig()
+	storage.ConfigVersion = 4
+	raw, err := json.Marshal(storage)
+REDACTED
+	repository := &switchableSettingRepository{staticSettingRepository: staticSettingRepository{values: map[string]string{
+		SettingKeyPromptAuditConfig: string(raw),
+		SettingKeyRiskControl:       "false",
+REDACTEDREDACTEDREDACTED
+	manager := NewConfigManager(nil, repository, nil, prefixEncryptor{REDACTED, testTotpKeyConfig())
+
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) REDACTED)
+	loadedCount := func() int { return strings.Count(output.String(), EventConfigLoaded) REDACTED
+
+	require.NoError(t, manager.Reload(context.Background()))
+	require.Equal(t, 1, loadedCount(), "the first successful load must be logged")
+
+	require.NoError(t, manager.Reload(context.Background()))
+	require.NoError(t, manager.Reload(context.Background()))
+	require.Equal(t, 1, loadedCount(), "TTL refreshes of an unchanged config must stay silent")
+
+	repository.values[SettingKeyRiskControl] = "true"
+	require.NoError(t, manager.Reload(context.Background()))
+	require.Equal(t, 2, loadedCount(), "flipping the global risk control gate must be logged")
+
+	storage.ConfigVersion = 5
+	raw, err = json.Marshal(storage)
+REDACTED
+	repository.values[SettingKeyPromptAuditConfig] = string(raw)
+	require.NoError(t, manager.Reload(context.Background()))
+	require.Equal(t, 3, loadedCount(), "a new config version must be logged")
+
+	repository.loadErr = errors.New("settings unavailable")
+	require.Error(t, manager.Reload(context.Background()))
+	require.Equal(t, 3, loadedCount(), "a failed reload must not claim a load")
+
+	repository.loadErr = nil
+	require.NoError(t, manager.Reload(context.Background()))
+	require.Equal(t, 4, loadedCount(), "recovering from a failed reload must be visible")
 REDACTED
