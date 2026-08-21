@@ -198,8 +198,8 @@ func (c *Client) Status(ctx context.Context, statusURL string) (*fal.StatusRespo
 // ResultRaw 拉取任务最终结果的原始 payload。
 //
 // atlascloud 结果结构为 { outputs:["https://.../result.mp4", ...] }。
-// 为兼容 service 层的 fal.ExtractVideoURLs（识别 {video:{url}} / {videos:[{url}]}），
-// 这里把 outputs 映射成 fal 风格结构，并保留原始字段透传给客户端。
+// 对外收敛为通用视频结构 {video:{url,file_name}, videos:[...]}，不透传
+// id/status/model/metrics/时间戳等 atlascloud 私有任务字段。
 func (c *Client) ResultRaw(ctx context.Context, responseURL string) (map[string]any, error) {
 	if strings.TrimSpace(responseURL) == "" {
 		return nil, errors.New("atlascloud: response url is empty")
@@ -208,11 +208,7 @@ func (c *Client) ResultRaw(ctx context.Context, responseURL string) (map[string]
 	if err != nil {
 		return nil, err
 	}
-	out := resp.Raw
-	if out == nil {
-		out = make(map[string]any)
-	}
-	// 注入 fal 风格视频结构，便于 ExtractVideoURLs 抽取与 COS 转存的 URL 替换。
+	out := make(map[string]any, 2)
 	if len(resp.Outputs) > 0 {
 		videos := make([]any, 0, len(resp.Outputs))
 		for _, u := range resp.Outputs {
@@ -220,7 +216,11 @@ func (c *Client) ResultRaw(ctx context.Context, responseURL string) (map[string]
 			if u == "" {
 				continue
 			}
-			videos = append(videos, map[string]any{"url": u})
+			video := map[string]any{"url": u}
+			if fileName := atlasCloudVideoFileNameFromURL(u); fileName != "" {
+				video["file_name"] = fileName
+			}
+			videos = append(videos, video)
 		}
 		if len(videos) > 0 {
 			// 第一个作为主 video 对象，全部放入 videos 数组。
@@ -231,6 +231,21 @@ func (c *Client) ResultRaw(ctx context.Context, responseURL string) (map[string]
 		}
 	}
 	return out, nil
+}
+
+func atlasCloudVideoFileNameFromURL(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return ""
+	}
+	path := strings.TrimRight(parsed.Path, "/")
+	if path == "" {
+		return ""
+	}
+	if index := strings.LastIndex(path, "/"); index >= 0 {
+		return path[index+1:]
+	}
+	return path
 }
 
 // BuildStatusURL 回退拼接 status url（atlascloud 状态/结果同一端点）。

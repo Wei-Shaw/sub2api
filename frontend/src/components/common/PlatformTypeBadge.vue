@@ -101,6 +101,7 @@ const platformLabel = computed(() => {
   if (props.platform === 'kiro') return 'Kiro'
   if (props.platform === 'grok') return 'Grok'
   if (props.platform === 'fal') return 'Fal'
+  if (props.platform === 'leonardo') return 'Leonardo'
   if (props.platform === 'atlascloud') return 'AtlasCloud'
   if (props.platform === 'apiz') return 'apiz'
   if (props.platform === 'kimi') return 'Kimi'
@@ -204,6 +205,9 @@ const platformClass = computed(() => {
   if (props.platform === 'fal') {
     return 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400'
   }
+  if (props.platform === 'leonardo') {
+    return 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400'
+  }
   if (props.platform === 'atlascloud') {
     return 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400'
   }
@@ -240,6 +244,9 @@ const typeClass = computed(() => {
   }
   if (props.platform === 'fal') {
     return 'bg-pink-100 text-pink-600 dark:bg-pink-900/30 dark:text-pink-400'
+  }
+  if (props.platform === 'leonardo') {
+    return 'bg-cyan-100 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-400'
   }
   if (props.platform === 'kiro') {
     return 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300'

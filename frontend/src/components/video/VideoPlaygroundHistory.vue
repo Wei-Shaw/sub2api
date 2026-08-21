@@ -56,8 +56,14 @@
           :class="firstUrl(item) ? 'cursor-zoom-in' : ''"
           @click.stop="firstUrl(item) ? openVideo(item) : null"
         >
+          <img
+            v-if="firstUrl(item) && item.media_type === 'image'"
+            :src="firstUrl(item)"
+            alt=""
+            class="h-full w-full object-cover"
+          />
           <video
-            v-if="firstUrl(item)"
+            v-else-if="firstUrl(item)"
             :src="firstUrl(item)"
             muted
             preload="metadata"
@@ -472,7 +478,7 @@ function onReplay(item: VideoTaskItem | null) {
 function firstUrl(item: VideoTaskItem): string {
   const cos = item.cos_urls || []
   if (cos.length > 0 && cos[0]) return cos[0]
-  const urls = item.video_urls || []
+  const urls = item.media_type === 'image' ? (item.image_urls || []) : (item.video_urls || [])
   return urls[0] || ''
 }
 

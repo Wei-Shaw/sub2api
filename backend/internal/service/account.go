@@ -656,6 +656,9 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		if a.Platform == domain.PlatformFal {
 			return domain.DefaultFalModelMapping
 		}
+		if a.Platform == domain.PlatformLeonardo {
+			return domain.DefaultLeonardoModelMapping
+		}
 		if a.Platform == domain.PlatformGrok {
 			return xai.DefaultModelMapping()
 		}
@@ -669,6 +672,9 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		// fal 平台使用默认映射
 		if a.Platform == domain.PlatformFal {
 			return domain.DefaultFalModelMapping
+		}
+		if a.Platform == domain.PlatformLeonardo {
+			return domain.DefaultLeonardoModelMapping
 		}
 		if a.Platform == domain.PlatformGrok {
 			return xai.DefaultModelMapping()
@@ -705,6 +711,9 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 	// fal 平台使用默认映射
 	if a.Platform == domain.PlatformFal {
 		return domain.DefaultFalModelMapping
+	}
+	if a.Platform == domain.PlatformLeonardo {
+		return domain.DefaultLeonardoModelMapping
 	}
 	if a.Platform == domain.PlatformGrok {
 		return xai.DefaultModelMapping()
@@ -1092,6 +1101,29 @@ func (a *Account) FalSyncBaseURL() string {
 		return strings.TrimRight(baseURL, "/")
 	}
 	return domain.FalSyncBaseURL
+}
+
+func (a *Account) LeonardoAPIKey() string {
+	return strings.TrimSpace(a.GetCredential("api_key"))
+}
+
+func (a *Account) LeonardoBaseURL() string {
+	if baseURL := strings.TrimSpace(a.GetCredential("base_url")); baseURL != "" {
+		return strings.TrimRight(baseURL, "/")
+	}
+	return "http://127.0.0.1:28080"
+}
+
+func (a *Account) LeonardoEstimatedCreditCost() float64 {
+	raw := strings.TrimSpace(a.GetCredential("estimated_credit_cost"))
+	if raw == "" {
+		return 8
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil || value <= 0 {
+		return 8
+	}
+	return value
 }
 
 // AtlasCloudAPIKey 返回 atlascloud 账号的上游凭证。

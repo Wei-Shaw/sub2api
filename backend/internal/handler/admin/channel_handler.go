@@ -594,9 +594,9 @@ func (h *ChannelHandler) SyncPricingModels(c *gin.Context) {
 		return
 	}
 
-	// fal 走 per-request / per-second 计费，LiteLLM 定价目录并不覆盖 fal，
+	// fal / leonardo 走媒体任务计费，LiteLLM 定价目录并不覆盖它们，
 	// 因此这里直接返回空列表，前端会命中"已经是最新"的提示，避免 4xx 报错。
-	if platform == service.PlatformFal {
+	if platform == service.PlatformFal || platform == service.PlatformLeonardo {
 		response.Success(c, gin.H{"models": []string{}})
 		return
 	}

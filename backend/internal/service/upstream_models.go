@@ -92,6 +92,19 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 		return s.fetchFalUpstreamModels(ctx, account)
 	}
 
+	// Leonardo exposes task submission/status endpoints rather than a models
+	// listing endpoint. Return the configured/default bridge models locally.
+	if account.Platform == PlatformLeonardo {
+		models := make([]string, 0, len(account.GetModelMapping()))
+		for model := range account.GetModelMapping() {
+			if strings.TrimSpace(model) != "" {
+				models = append(models, model)
+			}
+		}
+		sort.Strings(models)
+		return models, nil
+	}
+
 	if s.httpUpstream == nil {
 		return nil, newUpstreamModelSyncConfigError("Upstream HTTP client is not configured", nil)
 	}

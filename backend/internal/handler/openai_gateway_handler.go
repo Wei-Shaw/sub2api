@@ -44,9 +44,9 @@ type OpenAIGatewayHandler struct {
 	imageLimiter               *imageConcurrencyLimiter
 	maxAccountSwitches         int
 	cfg                        *config.Config
-	// falImageFallback 用于在 openai 分组没有可用 openai 账号时，把 /v1/images 请求
-	// 回退到分组内挂载的 fal 账号（经 fal 伪同步门面出图）。由路由注册阶段注入。
-	falImageFallback *FalGatewayHandler
+	// imageGatewayFallback 用于在 openai 分组没有可用 openai 账号时，把 /v1/images 请求
+	// 转发到分组内挂载的图片账号。由路由注册阶段注入。
+	imageGatewayFallback *ImageGatewayHandler
 }
 
 type openAIWSTurnChannelMappingSnapshot struct {
@@ -96,10 +96,10 @@ type grokMediaEligibilityProber interface {
 	ProbeMediaEligibility(ctx context.Context, accountID int64) (bool, string, error)
 }
 
-// SetFalImageFallback 注入 fal 伪同步门面，作为 openai 图片调度的跨平台兜底。
+// SetImageGatewayFallback 注入共享图片门面，作为 OpenAI 图片调度的跨平台兜底。
 // 在路由注册阶段调用一次（此时两个 handler 均已构造完成）。
-func (h *OpenAIGatewayHandler) SetFalImageFallback(fal *FalGatewayHandler) {
-	h.falImageFallback = fal
+func (h *OpenAIGatewayHandler) SetImageGatewayFallback(imageGateway *ImageGatewayHandler) {
+	h.imageGatewayFallback = imageGateway
 }
 
 const maxOpenAIFirstOutputTimeoutSwitches = 1

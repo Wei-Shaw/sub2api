@@ -171,7 +171,14 @@ func ToOpenAIResponse(resp *Response, created int64) *OpenAIImagesResponse {
 		if url == "" {
 			continue
 		}
-		out.Data = append(out.Data, OpenAIImageData{URL: url})
+		out.Data = append(out.Data, OpenAIImageData{
+			URL:         url,
+			ContentType: strings.TrimSpace(img.ContentType),
+			Width:       img.Width,
+			Height:      img.Height,
+			FileName:    strings.TrimSpace(img.FileName),
+			FileSize:    img.FileSize,
+		})
 	}
 	return out
 }
@@ -207,7 +214,14 @@ func OpenAIResponseToFal(resp *OpenAIImagesResponse) *Response {
 		if url == "" {
 			continue
 		}
-		out.Images = append(out.Images, Image{URL: url})
+		out.Images = append(out.Images, Image{
+			URL:         url,
+			ContentType: strings.TrimSpace(d.ContentType),
+			Width:       d.Width,
+			Height:      d.Height,
+			FileName:    strings.TrimSpace(d.FileName),
+			FileSize:    d.FileSize,
+		})
 	}
 	return out
 }

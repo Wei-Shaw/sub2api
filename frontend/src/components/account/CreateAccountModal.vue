@@ -170,6 +170,19 @@
           </button>
           <button
             type="button"
+            @click="form.platform = 'leonardo'"
+            :class="[
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
+              form.platform === 'leonardo'
+                ? 'bg-white text-indigo-600 shadow-sm dark:bg-dark-600 dark:text-indigo-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="leonardo" size="sm" />
+            Leonardo
+          </button>
+          <button
+            type="button"
             @click="form.platform = 'atlascloud'"
             :class="[
               'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
@@ -4467,6 +4480,7 @@ const baseUrlHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   if (form.platform === 'fal') return t('admin.accounts.fal.baseUrlHint')
+  if (form.platform === 'leonardo') return t('admin.accounts.leonardo.baseUrlHint')
   if (form.platform === 'grok') return t('admin.accounts.grok.baseUrlHint')
   if (form.platform === 'atlascloud') return t('admin.accounts.atlascloud.baseUrlHint')
   if (form.platform === 'apiz') return t('admin.accounts.apiz.baseUrlHint')
@@ -4477,6 +4491,7 @@ const apiKeyHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
   if (form.platform === 'fal') return t('admin.accounts.fal.apiKeyHint')
+  if (form.platform === 'leonardo') return t('admin.accounts.leonardo.apiKeyHint')
   if (form.platform === 'kiro') return t('admin.accounts.kiro.apiKeyHint')
   if (form.platform === 'grok') return t('admin.accounts.grok.apiKeyHint')
   if (form.platform === 'atlascloud') return t('admin.accounts.atlascloud.apiKeyHint')
@@ -4496,6 +4511,8 @@ const apiKeyBaseUrlPlaceholder = computed(() => {
       return 'https://generativelanguage.googleapis.com'
     case 'grok':
       return 'https://api.x.ai/v1'
+    case 'leonardo':
+      return 'http://127.0.0.1:28080'
     default:
       return 'https://api.anthropic.com'
   }
@@ -4511,6 +4528,8 @@ const apiKeyValuePlaceholder = computed(() => {
       return 'xai-...'
     case 'fal':
       return 'FAL_KEY (xxxxxxxx:xxxxxxxx)'
+    case 'leonardo':
+      return 'leo-proxy-api-key'
     case 'kimi':
       return 'sk-...'
     case 'zhipu':
@@ -5313,6 +5332,8 @@ watch(
             ? 'https://generativelanguage.googleapis.com'
           : newPlatform === 'fal'
             ? ''
+          : newPlatform === 'leonardo'
+            ? 'http://127.0.0.1:28080'
           : newPlatform === 'kiro'
             ? ''
             : newPlatform === 'grok'
@@ -5367,7 +5388,7 @@ watch(
       accountCategory.value = 'oauth-based'
     }
     // fal / atlascloud / apiz 仅支持 apikey 类型，强制走通用 apikey 输入
-    if (newPlatform === 'fal' || newPlatform === 'atlascloud' || newPlatform === 'apiz') {
+    if (newPlatform === 'fal' || newPlatform === 'leonardo' || newPlatform === 'atlascloud' || newPlatform === 'apiz') {
       accountCategory.value = 'apikey'
     }
     // Reset Bedrock fields when switching platforms
@@ -6411,6 +6432,8 @@ const handleSubmit = async () => {
         ? 'https://generativelanguage.googleapis.com'
         : form.platform === 'grok'
           ? 'https://api.x.ai/v1'
+          : form.platform === 'leonardo'
+            ? 'http://127.0.0.1:28080'
           : 'https://api.anthropic.com'
 
   // Build credentials with optional model mapping

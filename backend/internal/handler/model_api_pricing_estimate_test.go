@@ -55,7 +55,7 @@ func TestExtractEstimateImageCount(t *testing.T) {
 	require.ErrorContains(t, err, "positive integer")
 }
 
-func TestFalVideoGatewayNativeEstimatePricing(t *testing.T) {
+func TestModelAPIGatewayNativeEstimatePricing(t *testing.T) {
 	price := 0.1
 	apiKey := &service.APIKey{Group: &service.Group{
 		ID:                9,
@@ -70,7 +70,7 @@ func TestFalVideoGatewayNativeEstimatePricing(t *testing.T) {
 		&service.BillingService{},
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 	)
-	h := NewFalVideoGatewayHandler(gatewayService, nil, nil)
+	h := NewModelAPIGatewayHandler(gatewayService, nil, nil, nil, nil, nil)
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

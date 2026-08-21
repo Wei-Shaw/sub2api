@@ -459,7 +459,7 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 		return usage, err
 	}
 
-	if account.Platform == PlatformFal {
+	if account.Platform == PlatformFal || account.Platform == PlatformLeonardo {
 		return s.getLocalWindowUsage(ctx, account)
 	}
 
@@ -635,7 +635,7 @@ func (s *AccountUsageService) GetUsageBatch(ctx context.Context, accountIDs []in
 			var usageErr error
 			if supportsAnthropicPassiveUsage(account) {
 				usage, usageErr = s.getPassiveUsageForAccount(gctx, account)
-			} else if account.Platform == PlatformFal {
+			} else if account.Platform == PlatformFal || account.Platform == PlatformLeonardo {
 				usage, usageErr = s.getLocalWindowUsage(gctx, account)
 			} else {
 				usage, usageErr = s.getUsageForAccount(gctx, account, force)

@@ -20,6 +20,9 @@ const openaiModels = [
   'gpt-image-1', 'gpt-image-1.5', 'gpt-image-2'
 ]
 
+// Leonardo task proxy currently exposes GPT Image 2 for text-to-image.
+const leonardoModels = ['gpt-image-2']
+
 // Anthropic Claude
 export const claudeModels = [
   'claude-3-5-sonnet-20241022', 'claude-3-5-sonnet-20240620',
@@ -336,6 +339,10 @@ const openaiPresetMappings = [
   { label: 'Sonnet→5.4', from: 'claude-sonnet-4-6', to: 'gpt-5.4', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' }
 ]
 
+const leonardoPresetMappings = [
+  { label: 'GPT Image 2', from: 'gpt-image-2', to: 'gpt-image-2', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' }
+]
+
 const geminiPresetMappings = [
   { label: 'Flash 2.0', from: 'gemini-2.0-flash', to: 'gemini-2.0-flash', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' },
   { label: '2.5 Flash', from: 'gemini-2.5-flash', to: 'gemini-2.5-flash', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
@@ -491,6 +498,7 @@ export function getModelsByPlatform(platform: string): string[] {
     // fal 的可选模型为动态列表（来自 fal 平台 models 接口），无硬编码清单，
     // 这里返回空，避免回退到 claudeModels 造成"模型限制显示 Claude 模型"的错觉。
     case 'fal': return []
+    case 'leonardo': return leonardoModels
     case 'atlascloud': return atlascloudModels
     case 'apiz': return apizModels
     case 'kiro': return kiroModels
@@ -522,6 +530,7 @@ export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'grok' || platform === 'xai') return grokPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'kiro') return kiroPresetMappings
+  if (platform === 'leonardo') return leonardoPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
   // apiz 是视频类平台，模型映射需要用户根据自身账号里配置的真实上游 model
   // 手动填写（例如 fal-ai/bytedance/... -> bytedance-seedance-1-0-pro-t2v），

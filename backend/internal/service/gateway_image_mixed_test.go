@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -44,6 +46,17 @@ func openaiImageAccount(id int64, priority int) Account {
 	return Account{
 		ID:          id,
 		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Priority:    priority,
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+}
+
+func leonardoImageAccount(id int64, priority int) Account {
+	return Account{
+		ID:          id,
+		Platform:    PlatformLeonardo,
 		Type:        AccountTypeAPIKey,
 		Priority:    priority,
 		Status:      StatusActive,
@@ -268,4 +281,90 @@ func TestGatewayService_SelectImageAccountMixed(t *testing.T) {
 		require.Equal(t, int64(1), selected[0].ContextMap()["account_id"])
 		require.Equal(t, PlatformOpenAI, selected[0].ContextMap()["platform"])
 	})
+}
+
+func TestGatewayService_SelectAsyncImageAccountInGroup(t *testing.T) {
+	const requestedModel = "openai/gpt-image-2"
+	const upstreamModel = "gpt-image-2"
+	groupID := int64(8899)
+	ctx := withTestGroup(context.Background(), groupID)
+	repo := newImageMixedRepo([]Account{
+		openaiImageAccount(1, 1),
+		{
+			ID:          2,
+			Platform:    PlatformFal,
+			Type:        AccountTypeAPIKey,
+			Priority:    1,
+			Status:      StatusDisabled,
+			Schedulable: false,
+		},
+		leonardoImageAccount(3, 3),
+	})
+	svc := &GatewayService{
+		accountRepo: repo,
+		cache:       &mockGatewayCacheForPlatform{},
+		cfg:         testConfig(),
+		resolver:    newFalUpstreamPricingResolver(t, groupID, upstreamModel, 0.25),
+	}
+
+	account, err := svc.SelectAsyncImageAccountInGroup(ctx, &groupID, "", requestedModel, nil, "")
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, int64(3), account.ID)
+	require.Equal(t, PlatformLeonardo, account.Platform)
+}
+
+func TestGatewayService_SelectAsyncImageAccountInGroupAllowsLeonardoEditMapping(t *testing.T) {
+	const requestedModel = "openai/gpt-image-2/edit"
+	const upstreamModel = "gpt-image-2"
+	groupID := int64(8900)
+	ctx := withTestGroup(context.Background(), groupID)
+	account := leonardoImageAccount(57, 1)
+	account.Credentials = map[string]any{
+		"model_mapping": map[string]any{requestedModel: upstreamModel},
+	}
+	repo := newImageMixedRepo([]Account{account})
+	svc := &GatewayService{
+		accountRepo: repo,
+		cache:       &mockGatewayCacheForPlatform{},
+		cfg:         testConfig(),
+		resolver:    newFalUpstreamPricingResolver(t, groupID, upstreamModel, 0.25),
+	}
+
+	selected, err := svc.SelectAsyncImageAccountInGroup(ctx, &groupID, "", requestedModel, nil, FalAPIEdit)
+	require.NoError(t, err)
+	require.NotNil(t, selected)
+	require.Equal(t, int64(57), selected.ID)
+	require.Equal(t, PlatformLeonardo, selected.Platform)
+}
+
+func TestGatewayService_SelectAsyncImageAccountUsesGroupModelPricing(t *testing.T) {
+	const requestedModel = "gpt-image-2"
+	groupID := int64(9901)
+	price := 0.25
+	group := &Group{
+		ID:       groupID,
+		Platform: PlatformComposite,
+		Status:   StatusActive,
+		Hydrated: true,
+		ModelPricing: []ChannelModelPricing{{
+			Models:          []string{requestedModel},
+			BillingMode:     BillingModeImage,
+			PerRequestPrice: &price,
+		}},
+	}
+	ctx := context.WithValue(context.Background(), ctxkey.Group, group)
+	repo := newImageMixedRepo([]Account{leonardoImageAccount(57, 1)})
+	svc := &GatewayService{
+		accountRepo: repo,
+		cache:       &mockGatewayCacheForPlatform{},
+		cfg:         testConfig(),
+		resolver:    NewModelPricingResolver(nil, NewBillingService(&config.Config{}, nil)),
+	}
+	require.True(t, svc.falAccountPricingConfigured(ctx, &repo.accounts[0], requestedModel, "", &groupID))
+
+	account, err := svc.SelectAsyncImageAccountInGroup(ctx, &groupID, "", requestedModel, nil, "")
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, PlatformLeonardo, account.Platform)
 }

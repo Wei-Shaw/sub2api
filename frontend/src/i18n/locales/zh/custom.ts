@@ -2422,6 +2422,7 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         fal: 'fal',
+        leonardo: 'Leonardo',
         kiro: 'Kiro',
         grok: 'Grok',
         // 媒体平台：渠道编辑页的平台勾选与 tab 标题也复用这份显示名
@@ -3595,6 +3596,7 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         fal: 'fal',
+        leonardo: 'Leonardo',
         kiro: 'Kiro',
         grok: 'Grok',
       },
@@ -3901,6 +3903,10 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
       fal: {
         baseUrlHint: '留空使用 fal 官方 API（https://fal.run）',
         apiKeyHint: '您的 fal API Key（FAL_KEY），直接填写密钥本身，不要带 “Key ” 前缀',
+      },
+      leonardo: {
+        baseUrlHint: 'Leonardo 任务代理地址，默认 http://127.0.0.1:28080',
+        apiKeyHint: 'Leonardo 代理 API Key，通过 X-API-Key 请求头发送',
       },
       // OpenAI specific hints
       openai: {

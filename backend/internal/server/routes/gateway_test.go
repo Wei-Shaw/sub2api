@@ -48,7 +48,7 @@ func (r *videoFeatureRouteSettingRepo) GetAll(context.Context) (map[string]strin
 }
 func (r *videoFeatureRouteSettingRepo) Delete(context.Context, string) error { return nil }
 
-func TestGatewayRoutesVideoFeatureDisabledRejectsBeforeAuth(t *testing.T) {
+func TestGatewayRoutesModelAPIDoesNotApplyVideoFeatureGateBeforeAuth(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	authCalled := false
@@ -56,7 +56,10 @@ func TestGatewayRoutesVideoFeatureDisabledRejectsBeforeAuth(t *testing.T) {
 	RegisterGatewayRoutes(
 		router,
 		&handler.Handlers{},
-		servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) { authCalled = true; c.Next() }),
+		servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
+			authCalled = true
+			c.AbortWithStatus(http.StatusTeapot)
+		}),
 		nil, nil, nil, settingService, nil,
 		&config.Config{Gateway: config.GatewayConfig{MaxBodySize: 1024}},
 	)
@@ -64,9 +67,8 @@ func TestGatewayRoutesVideoFeatureDisabledRejectsBeforeAuth(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/model/bytedance/seedance", strings.NewReader(`{}`))
 	router.ServeHTTP(recorder, request)
-	require.Equal(t, http.StatusForbidden, recorder.Code)
-	require.False(t, authCalled)
-	require.Contains(t, recorder.Body.String(), `"type":"feature_disabled"`)
+	require.Equal(t, http.StatusTeapot, recorder.Code)
+	require.True(t, authCalled)
 }
 
 func TestGatewayRoutesEstimatePricingBypassesVideoFeatureGate(t *testing.T) {
@@ -142,7 +144,7 @@ func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string
 		&handler.Handlers{
 			Gateway:       &handler.GatewayHandler{},
 			OpenAIGateway: &handler.OpenAIGatewayHandler{},
-			FalGateway:    &handler.FalGatewayHandler{},
+			ImageGateway:  &handler.ImageGatewayHandler{},
 			AsyncImage:    handler.NewAsyncImageHandler(nil, nil),
 		},
 		servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
@@ -243,7 +245,7 @@ func newImagesStatusRouteTestRouter(auth gin.HandlerFunc, store service.Response
 		&handler.Handlers{
 			Gateway:       &handler.GatewayHandler{},
 			OpenAIGateway: openAIHandler,
-			FalGateway:    &handler.FalGatewayHandler{},
+			ImageGateway:  &handler.ImageGatewayHandler{},
 		},
 		servermiddleware.APIKeyAuthMiddleware(auth),
 		nil,
@@ -709,10 +711,8 @@ func TestGatewayRoutesImagesUnsupportedPlatformReturns404(t *testing.T) {
 	require.Contains(t, w.Body.String(), "not supported for this platform")
 }
 
-// TestGatewayRoutesFalNativeGroupIsRegistered 验证 /fal 原生路由组已注册并由 fal 门面分发。
-// GET /fal/{model}（无 /requests、无 /status）命中 Native 的 default 分支，返回门面自定义 404，
-// 据此与「路由未注册」的 gin 默认 404 区分。
-func TestGatewayRoutesFalNativeGroupIsRegistered(t *testing.T) {
+// TestGatewayRoutesFalPathRemoved 验证旧 /fal 路径不再暴露。
+func TestGatewayRoutesFalPathRemoved(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformFal)
 
 	req := httptest.NewRequest(http.MethodGet, "/fal/openai/gpt-image-2", nil)
@@ -720,7 +720,6 @@ func TestGatewayRoutesFalNativeGroupIsRegistered(t *testing.T) {
 
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusNotFound, w.Code)
-	require.Contains(t, w.Body.String(), "Unsupported fal endpoint")
 }
 
 // TestGatewayRoutesResponsesSubpathRejectsNonConformingSubpaths 端到端锁定不变式：

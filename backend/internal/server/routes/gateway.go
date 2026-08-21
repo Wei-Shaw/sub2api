@@ -41,9 +41,9 @@ func RegisterGatewayRoutes(
 	compositeTarget := compositeTargetPlatformMiddleware(compositeResolver)
 	compositeGeminiTarget := compositeGeminiTargetPlatformMiddleware(compositeResolver)
 
-	// 跨平台兜底：openai 分组内挂载的 fal 账号可服务 /v1/images（无可用 openai 账号时回退到 fal 伪同步门面）。
-	if h.OpenAIGateway != nil && h.FalGateway != nil {
-		h.OpenAIGateway.SetFalImageFallback(h.FalGateway)
+	// 跨平台兜底：OpenAI 分组内挂载的图片账号可服务 /v1/images。
+	if h.OpenAIGateway != nil && h.ImageGateway != nil {
+		h.OpenAIGateway.SetImageGatewayFallback(h.ImageGateway)
 	}
 
 	// 未分组 Key 拦截中间件（按协议格式区分错误响应）
@@ -85,7 +85,7 @@ func RegisterGatewayRoutes(
 	}
 	// imagesHandler 按 group 平台分流图片请求：
 	//   - OpenAI 平台走 OpenAI 同步门面
-	//   - fal 平台走 fal 伪同步门面
+	//   - FAL/Leonardo 平台走共享图片门面
 	//   - Grok 平台走 Grok
 	//   - 其它平台返回 404
 	imagesHandler := func(c *gin.Context) {
@@ -94,8 +94,8 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.Images(c)
 		case service.PlatformGrok:
 			h.OpenAIGateway.GrokImages(c)
-		case service.PlatformFal:
-			h.FalGateway.Images(c)
+		case service.PlatformFal, service.PlatformLeonardo:
+			h.ImageGateway.Images(c)
 		default:
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 			c.JSON(http.StatusNotFound, gin.H{
@@ -523,45 +523,15 @@ func RegisterGatewayRoutes(
 		antigravityV1Beta.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
 	}
 
-	// fal 原生异步门面（仅使用 fal 账户，不混合调度）
-	falGroup := r.Group("/fal")
-	falGroup.Use(bodyLimit)
-	falGroup.Use(clientRequestID)
-	falGroup.Use(opsErrorLogger)
-	falGroup.Use(endpointNorm)
-	falGroup.Use(middleware.ForcePlatform(service.PlatformFal))
-	falGroup.Use(gin.HandlerFunc(apiKeyAuth))
-	falGroup.Use(requireGroupAnthropic)
-	{
-		falGroup.POST("/*path", h.FalGateway.Native)
-		falGroup.GET("/*path", h.FalGateway.Native)
-		falGroup.PUT("/*path", h.FalGateway.Native)
-	}
-
-	// 视频异步门面（/api/v1/model/*path，fal 原生协议）。
+	// 通用异步模型门面（/api/v1/model/*path，异步媒体 queue 兼容协议）。
 	//
 	// 注意：该前缀与面板 API的 /api/v1 共存但语义不同——
 	// 面板路由走 JWT，这里走 API Key 鉴权。gin 基数树中
 	// /api/v1/model/*path 与 /api/v1/model-plaza 等静态路由分属不同分支，不冲突。
 	//
-	// 与 /fal 图片门面的关键区别：
-	//   - 不强制 platform=fal，允许混合分组接入（分组内可挂 fal / atlascloud / apiz 等账号）
-	//   - handler 内部按 slug 白名单过滤，仅接收视频模型
-	//   - 选号阶段做混合分组选号，按“该模型属于哪个平台”转发到对应平台账号
+	// handler 先判断任务类型，再分别从 fal/leonardo 图片池或
+	// fal/atlascloud/apiz 视频池中选号。视频功能开关仅在视频分支校验。
 	tasksGroup := r.Group("/api/v1/model")
-	tasksGroup.Use(func(c *gin.Context) {
-		if strings.HasSuffix(strings.Trim(c.Request.URL.Path, "/"), "/estimate_pricing") {
-			c.Next()
-			return
-		}
-		if settingService == nil || !settingService.IsVideoFeatureEnabled(c.Request.Context()) {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error": gin.H{"type": "feature_disabled", "message": "Video feature is disabled"},
-			})
-			return
-		}
-		c.Next()
-	})
 	tasksGroup.Use(bodyLimit)
 	tasksGroup.Use(clientRequestID)
 	tasksGroup.Use(opsErrorLogger)
@@ -569,9 +539,9 @@ func RegisterGatewayRoutes(
 	tasksGroup.Use(gin.HandlerFunc(apiKeyAuth))
 	tasksGroup.Use(requireGroupAnthropic)
 	{
-		tasksGroup.POST("/*path", h.FalVideoGateway.Native)
-		tasksGroup.GET("/*path", h.FalVideoGateway.Native)
-		tasksGroup.PUT("/*path", h.FalVideoGateway.Native)
+		tasksGroup.POST("/*path", h.ModelAPIGateway.Native)
+		tasksGroup.GET("/*path", h.ModelAPIGateway.Native)
+		tasksGroup.PUT("/*path", h.ModelAPIGateway.Native)
 	}
 
 }

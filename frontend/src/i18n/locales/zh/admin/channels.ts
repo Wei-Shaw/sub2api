@@ -113,6 +113,17 @@ export default {
         noGroupsAvailable: '暂无可用分组',
         inOtherChannel: '已属于「{name}」',
         modelPricing: '模型定价',
+        pricingClipboard: {
+          copy: '复制定价',
+          paste: '粘贴定价',
+          copied: '定价已复制到剪贴板',
+          importTitle: '导入模型定价',
+          importHint: '粘贴由本页面复制的 JSON 定价数组，应用后会替换当前列表。',
+          placeholder: '在此粘贴 JSON 定价数组',
+          apply: '应用导入',
+          imported: '已导入 {count} 条定价',
+          invalid: '定价 JSON 格式无效，请确认内容来自定价复制按钮。'
+        },
         models: '模型列表',
         modelsPlaceholder: '输入完整模型名后按回车添加',
         modelInputHint: '按回车添加，支持粘贴批量导入',

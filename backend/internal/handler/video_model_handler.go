@@ -33,6 +33,7 @@ type VideoModelHandler struct {
 	pricingResolver   *service.ModelPricingResolver
 	modelIntroService *service.ModelIntroService
 	videoService      *service.AsyncVideoService
+	mediaService      *service.AsyncMediaService
 }
 
 // NewVideoModelHandler 构造视频模型只读 handler。
@@ -46,6 +47,7 @@ func NewVideoModelHandler(
 	pricingResolver *service.ModelPricingResolver,
 	modelIntroService *service.ModelIntroService,
 	videoService *service.AsyncVideoService,
+	mediaService *service.AsyncMediaService,
 ) *VideoModelHandler {
 	return &VideoModelHandler{
 		apiKeyService:     apiKeyService,
@@ -53,6 +55,7 @@ func NewVideoModelHandler(
 		pricingResolver:   pricingResolver,
 		modelIntroService: modelIntroService,
 		videoService:      videoService,
+		mediaService:      mediaService,
 	}
 }
 
@@ -352,6 +355,8 @@ type videoTaskItem struct {
 	CosURLs           []string       `json:"cos_urls"`
 	RequestPayload    map[string]any `json:"request_payload"`
 	ResultPayload     map[string]any `json:"result_payload"`
+	ImageURLs         []string       `json:"image_urls,omitempty"`
+	MediaType         string         `json:"media_type,omitempty"`
 	CreatedAt         string         `json:"created_at"`
 	FinishedAt        string         `json:"finished_at,omitempty"`
 }
@@ -370,7 +375,7 @@ func (h *VideoModelHandler) ListTasks(c *gin.Context) {
 		response.Error(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	if h.videoService == nil {
+	if h.videoService == nil && h.mediaService == nil {
 		response.Error(c, http.StatusInternalServerError, "video service unavailable")
 		return
 	}
@@ -386,15 +391,35 @@ func (h *VideoModelHandler) ListTasks(c *gin.Context) {
 	pageSize := parseIntQuery(c, "page_size", 20, 1, 100)
 	offset := (page - 1) * pageSize
 
-	tasks, total, err := h.videoService.ListByUserAndSlug(c.Request.Context(), subject.UserID, slug, offset, pageSize)
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "list video tasks: "+err.Error())
-		return
+	var items []videoTaskItem
+	var total int64
+	var err error
+	if isImagePlaygroundModel(slug) {
+		if h.mediaService == nil {
+			response.Error(c, http.StatusInternalServerError, "image service unavailable")
+			return
+		}
+		tasks, taskTotal, listErr := h.mediaService.ListByUserAndModel(c.Request.Context(), subject.UserID, slug, offset, pageSize)
+		total, err = taskTotal, listErr
+		items = make([]videoTaskItem, 0, len(tasks))
+		for _, t := range tasks {
+			items = append(items, toMediaTaskItem(t))
+		}
+	} else {
+		if h.videoService == nil {
+			response.Error(c, http.StatusInternalServerError, "video service unavailable")
+			return
+		}
+		tasks, taskTotal, listErr := h.videoService.ListByUserAndSlug(c.Request.Context(), subject.UserID, slug, offset, pageSize)
+		total, err = taskTotal, listErr
+		items = make([]videoTaskItem, 0, len(tasks))
+		for _, t := range tasks {
+			items = append(items, toVideoTaskItem(t))
+		}
 	}
-
-	items := make([]videoTaskItem, 0, len(tasks))
-	for _, t := range tasks {
-		items = append(items, toVideoTaskItem(t))
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "list playground tasks: "+err.Error())
+		return
 	}
 	response.Success(c, gin.H{
 		"items":     items,
@@ -414,7 +439,7 @@ func (h *VideoModelHandler) GetTaskByRequestID(c *gin.Context) {
 		response.Error(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	if h.videoService == nil {
+	if h.videoService == nil && h.mediaService == nil {
 		response.Error(c, http.StatusInternalServerError, "video service unavailable")
 		return
 	}
@@ -423,17 +448,30 @@ func (h *VideoModelHandler) GetTaskByRequestID(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "missing 'rid'")
 		return
 	}
-	task, err := h.videoService.GetTaskByInternalID(c.Request.Context(), rid)
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "get video task: "+err.Error())
-		return
+	if h.videoService != nil {
+		task, err := h.videoService.GetTaskByInternalID(c.Request.Context(), rid)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, "get video task: "+err.Error())
+			return
+		}
+		if task != nil && task.UserID == subject.UserID {
+			response.Success(c, toVideoTaskItem(task))
+			return
+		}
 	}
-	if task == nil || task.UserID != subject.UserID {
-		// 保持"未找到"和"非本人任务"响应一致，防止探测存在性。
-		response.Error(c, http.StatusNotFound, "task not found")
-		return
+	if h.mediaService != nil {
+		task, err := h.mediaService.GetTaskByInternalID(c.Request.Context(), rid)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, "get image task: "+err.Error())
+			return
+		}
+		if task != nil && task.UserID == subject.UserID {
+			response.Success(c, toMediaTaskItem(task))
+			return
+		}
 	}
-	response.Success(c, toVideoTaskItem(task))
+	// Keep not-found and non-owner responses identical to prevent task probing.
+	response.Error(c, http.StatusNotFound, "task not found")
 }
 
 // GetTaskByID GET /user/video-models/tasks/:id
@@ -448,7 +486,7 @@ func (h *VideoModelHandler) GetTaskByID(c *gin.Context) {
 		response.Error(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	if h.videoService == nil {
+	if h.videoService == nil && h.mediaService == nil {
 		response.Error(c, http.StatusInternalServerError, "video service unavailable")
 		return
 	}
@@ -462,16 +500,29 @@ func (h *VideoModelHandler) GetTaskByID(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "invalid 'id'")
 		return
 	}
-	task, err := h.videoService.GetTaskByID(c.Request.Context(), id)
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "get video task: "+err.Error())
-		return
+	if h.videoService != nil {
+		task, err := h.videoService.GetTaskByID(c.Request.Context(), id)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, "get video task: "+err.Error())
+			return
+		}
+		if task != nil && task.UserID == subject.UserID {
+			response.Success(c, toVideoTaskItem(task))
+			return
+		}
 	}
-	if task == nil || task.UserID != subject.UserID {
-		response.Error(c, http.StatusNotFound, "task not found")
-		return
+	if h.mediaService != nil {
+		task, err := h.mediaService.GetTaskByID(c.Request.Context(), id)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, "get image task: "+err.Error())
+			return
+		}
+		if task != nil && task.UserID == subject.UserID {
+			response.Success(c, toMediaTaskItem(task))
+			return
+		}
 	}
-	response.Success(c, toVideoTaskItem(task))
+	response.Error(c, http.StatusNotFound, "task not found")
 }
 
 // GetTaskByIDAdmin GET /admin/video-tasks/by-id/:id
@@ -547,6 +598,78 @@ func toVideoTaskItem(t *service.AsyncVideoTask) videoTaskItem {
 		item.CosURLs = []string{}
 	}
 	return item
+}
+
+func toMediaTaskItem(t *service.AsyncMediaTask) videoTaskItem {
+	if t == nil {
+		return videoTaskItem{}
+	}
+	deref := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return *p
+	}
+	imageURLs := append([]string(nil), t.ImageURLs...)
+	cosURLs := append([]string(nil), t.CosURLs...)
+	errorReason := ""
+	if strings.TrimSpace(deref(t.ErrorReason)) != "" {
+		errorReason = "Image generation failed. Please try again later."
+	}
+	images := make([]any, 0, len(imageURLs))
+	for i, u := range imageURLs {
+		entry := map[string]any{"url": u}
+		if i < len(t.ImageMetadata) {
+			metadata := t.ImageMetadata[i]
+			entry["content_type"] = metadata.ContentType
+			entry["file_name"] = metadata.FileName
+			entry["file_size"] = metadata.FileSize
+			entry["width"] = metadata.Width
+			entry["height"] = metadata.Height
+		}
+		images = append(images, entry)
+	}
+	item := videoTaskItem{
+		ID:                t.ID,
+		InternalRequestID: t.InternalRequestID,
+		UpstreamRequestID: deref(t.UpstreamRequestID),
+		RequestedModel:    t.RequestedModel,
+		Status:            t.Status,
+		Resolution:        deref(t.ImageSize),
+		FinalCost:         t.FinalCost,
+		HeldCost:          t.HeldCost,
+		ErrorReason:       errorReason,
+		VideoURLs:         imageURLs,
+		ImageURLs:         imageURLs,
+		CosURLs:           cosURLs,
+		MediaType:         "image",
+		ResultPayload:     map[string]any{"images": images},
+		CreatedAt:         t.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+	}
+	if imageURLs == nil {
+		item.ImageURLs = []string{}
+		item.VideoURLs = []string{}
+	}
+	if cosURLs == nil {
+		item.CosURLs = []string{}
+	}
+	if t.FinishedAt != nil && !t.FinishedAt.IsZero() {
+		item.FinishedAt = t.FinishedAt.UTC().Format("2006-01-02T15:04:05Z")
+	}
+	return item
+}
+
+func isImagePlaygroundModel(model string) bool {
+	normalized := strings.ToLower(strings.Trim(strings.TrimSpace(model), "/"))
+	if _, ok := domain.DefaultLeonardoModelMapping[normalized]; ok {
+		return true
+	}
+	for _, segment := range strings.Split(normalized, "/") {
+		if service.IsGPTImageGenerationModel(segment) {
+			return true
+		}
+	}
+	return false
 }
 
 // parseIntQuery 是 c.Query 的整数化封装，越界回落默认值。

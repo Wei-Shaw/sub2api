@@ -47,6 +47,7 @@ const (
 	PlatformKiro       = domain.PlatformKiro
 	PlatformGrok       = domain.PlatformGrok
 	PlatformFal        = domain.PlatformFal
+	PlatformLeonardo   = domain.PlatformLeonardo
 	PlatformAtlasCloud = domain.PlatformAtlasCloud
 	PlatformApiz       = domain.PlatformApiz
 	// 国产 OpenAI 兼容供应商（与 grok 一样经 OpenAI 网关转发）。
@@ -109,6 +110,7 @@ var AllowedQuotaPlatforms = []string{
 	PlatformKiro,
 	PlatformGrok,
 	PlatformFal,
+	PlatformLeonardo,
 	PlatformAtlasCloud,
 	PlatformApiz,
 	PlatformKimi,

@@ -1066,6 +1066,7 @@ const platformFilterOptions = computed(() => [
   { value: 'kiro', label: 'Kiro' },
   { value: 'grok', label: 'Grok' },
   { value: 'fal', label: 'fal' },
+  { value: 'leonardo', label: 'Leonardo' },
   { value: 'atlascloud', label: 'AtlasCloud' },
   { value: 'apiz', label: 'apiz' }
 ])

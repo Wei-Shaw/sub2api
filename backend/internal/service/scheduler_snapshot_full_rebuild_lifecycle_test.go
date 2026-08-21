@@ -416,7 +416,7 @@ func TestSchedulerFullRebuildPreservesGroupZeroActiveHistoricalAndInvalidRegistr
 	svc := newFullRebuildLifecycleService(cache, nil, accounts, groups, config.RunModeStandard)
 
 	require.NoError(t, svc.rebuildFullSnapshot(context.Background(), "test"))
-	require.Equal(t, groupLifecycleBucketCount()+23, cache.captureAttemptCount())
+	require.Equal(t, 2*groupLifecycleBucketCount()+3, cache.captureAttemptCount())
 	require.Equal(t, 2*groupLifecycleAccountQueryCount()+3, accounts.callCount())
 	groups.mu.Lock()
 	require.Equal(t, 1, groups.listCalls)

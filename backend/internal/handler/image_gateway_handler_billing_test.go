@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFalBuildSubmitInputUsesEffectiveGroupImageRate(t *testing.T) {
+func TestImageBuildSubmitInputUsesEffectiveGroupImageRate(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest("POST", "/v1/images/generations", nil)
@@ -24,7 +24,7 @@ func TestFalBuildSubmitInputUsesEffectiveGroupImageRate(t *testing.T) {
 		Group:   &service.Group{ID: groupID, RateMultiplier: 0.2},
 	}
 	account := &service.Account{ID: 3, Platform: service.PlatformFal, RateMultiplier: &accountRate}
-	h := &FalGatewayHandler{imagesService: &service.OpenAIGatewayService{}}
+	h := &ImageGatewayHandler{imagesService: &service.OpenAIGatewayService{}}
 
 	input := h.buildSubmitInput(
 		c, apiKey, middleware2.AuthSubject{UserID: 1}, service.AsyncMediaFacadeOpenAI,

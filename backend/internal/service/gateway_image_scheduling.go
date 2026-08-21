@@ -360,7 +360,7 @@ func (s *GatewayService) SelectImageAccountMixed(
 ) (*Account, error) {
 	state := APIKeyRoutingStateFromContext(ctx)
 	if state == nil || len(state.Candidates(groupID)) == 0 {
-		return s.selectImageAccountMixedSingle(ctx, groupID, sessionHash, requestedModel, excludedIDs, imageCapability, falAPI, preferPlatform)
+		return s.selectImageAccountMixedSingle(ctx, groupID, sessionHash, requestedModel, excludedIDs, imageCapability, falAPI, preferPlatform, nil)
 	}
 	start := state.EffectiveIndex()
 	var lastErr error
@@ -373,7 +373,50 @@ func (s *GatewayService) SelectImageAccountMixed(
 			return nil, err
 		}
 		candidateModel := s.apiKeyFallbackCandidateModel(ctx, state.apiKey.GroupID, requestedModel)
-		account, err := s.selectImageAccountMixedSingle(ctx, state.apiKey.GroupID, sessionHash, candidateModel, excludedIDs, imageCapability, falAPI, preferPlatform)
+		account, err := s.selectImageAccountMixedSingle(ctx, state.apiKey.GroupID, sessionHash, candidateModel, excludedIDs, imageCapability, falAPI, preferPlatform, nil)
+		if err == nil {
+			state.Commit(index)
+			return account, nil
+		}
+		if !IsAPIKeyFallbackSelectionError(err) {
+			return nil, err
+		}
+		lastErr = err
+		start = index + 1
+	}
+}
+
+// SelectAsyncImageAccountInGroup selects an account for the asynchronous
+// /api/v1/model image facade. Only queue-style image providers are eligible;
+// synchronous OpenAI image accounts cannot serve this protocol.
+func (s *GatewayService) SelectAsyncImageAccountInGroup(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	falAPI string,
+) (*Account, error) {
+	allowedPlatforms := map[string]struct{}{
+		PlatformFal:      {},
+		PlatformLeonardo: {},
+	}
+	state := APIKeyRoutingStateFromContext(ctx)
+	if state == nil || len(state.Candidates(groupID)) == 0 {
+		return s.selectImageAccountMixedSingle(ctx, groupID, sessionHash, requestedModel, excludedIDs, OpenAIImagesCapabilityBasic, falAPI, "", allowedPlatforms)
+	}
+	start := state.EffectiveIndex()
+	var lastErr error
+	for {
+		index, err := state.EnsureEligibleFrom(ctx, start)
+		if err != nil {
+			if lastErr != nil {
+				return nil, lastErr
+			}
+			return nil, err
+		}
+		candidateModel := s.apiKeyFallbackCandidateModel(ctx, state.apiKey.GroupID, requestedModel)
+		account, err := s.selectImageAccountMixedSingle(ctx, state.apiKey.GroupID, sessionHash, candidateModel, excludedIDs, OpenAIImagesCapabilityBasic, falAPI, "", allowedPlatforms)
 		if err == nil {
 			state.Commit(index)
 			return account, nil
@@ -395,6 +438,7 @@ func (s *GatewayService) selectImageAccountMixedSingle(
 	imageCapability OpenAIImagesCapability,
 	falAPI string,
 	preferPlatform string,
+	allowedPlatforms map[string]struct{},
 ) (*Account, error) {
 	accounts, err := s.listSchedulableImageAccounts(ctx, groupID)
 	if err != nil {
@@ -411,6 +455,12 @@ func (s *GatewayService) selectImageAccountMixedSingle(
 	eligibleByPlatform := make(map[string]int, 2)
 	for i := range accounts {
 		diagnostic := s.buildImageSelectionDiagnostic(ctx, &accounts[i], requestedModel, imageCapability, falAPI, groupID, excludedIDs)
+		if len(allowedPlatforms) > 0 {
+			if _, allowed := allowedPlatforms[accounts[i].Platform]; !allowed {
+				diagnostic.Eligible = false
+				diagnostic.RejectionReason = "platform_not_supported_by_facade"
+			}
+		}
 		diagnostics[accounts[i].ID] = diagnostic
 		if diagnostic.Eligible {
 			eligibleCount++
@@ -421,6 +471,8 @@ func (s *GatewayService) selectImageAccountMixedSingle(
 	selectionPolicy := "priority_last_used"
 	if strings.EqualFold(strings.TrimSpace(preferPlatform), PlatformFal) {
 		selectionPolicy = "fal_first_then_priority_last_used"
+	} else if strings.EqualFold(strings.TrimSpace(preferPlatform), PlatformLeonardo) {
+		selectionPolicy = "leonardo_first_then_priority_last_used"
 	}
 	reqLog := logger.FromContext(ctx)
 	if reqLog.Core().Enabled(zap.DebugLevel) {
@@ -498,6 +550,13 @@ func (s *GatewayService) selectImageAccountMixedSingle(
 		} else {
 			selectionReason = "preferred_fal_pool"
 		}
+	} else if strings.EqualFold(strings.TrimSpace(preferPlatform), PlatformLeonardo) {
+		selected = pick(PlatformLeonardo)
+		if selected == nil {
+			selectionReason = "leonardo_pool_empty"
+		} else {
+			selectionReason = "preferred_leonardo_pool"
+		}
 	} else {
 		selected = pick("")
 	}
@@ -553,6 +612,9 @@ func (s *GatewayService) buildImageSelectionDiagnostic(
 	case PlatformFal:
 		diagnostic.ModelSupported = s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, falAPI)
 		diagnostic.CapabilitySupported = true
+	case PlatformLeonardo:
+		diagnostic.ModelSupported = s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, "")
+		diagnostic.CapabilitySupported = true
 	}
 	diagnostic.RequestSupported = s.imageAccountSupportsRequest(ctx, account, requestedModel, imageCapability, falAPI)
 	diagnostic.PricingConfigured = s.falAccountPricingConfigured(ctx, account, requestedModel, falAPI, groupID)
@@ -560,9 +622,15 @@ func (s *GatewayService) buildImageSelectionDiagnostic(
 	diagnostic.QuotaOK = s.isAccountSchedulableForQuota(account)
 	diagnostic.WindowCostOK = s.isAccountSchedulableForWindowCost(ctx, account, false)
 	diagnostic.RPMOK = s.isAccountSchedulableForRPM(ctx, account, false)
-	if account.Platform == PlatformFal {
+	switch account.Platform {
+	case PlatformFal:
 		diagnostic.UpstreamModel = resolveFalUpstreamModel(account, requestedModel, falAPI == FalAPIEdit)
-	} else {
+	case PlatformLeonardo:
+		diagnostic.UpstreamModel = strings.TrimSpace(account.GetModelMapping()[requestedModel])
+		if diagnostic.UpstreamModel == "" {
+			diagnostic.UpstreamModel = "gpt-image-2"
+		}
+	default:
 		diagnostic.UpstreamModel = account.GetMappedModel(requestedModel)
 	}
 
@@ -761,7 +829,12 @@ func (s *GatewayService) listSchedulableImageAccounts(ctx context.Context, group
 	if err != nil {
 		return nil, fmt.Errorf("query fal accounts failed: %w", err)
 	}
-	return append(openAIAccounts, falAccounts...), nil
+	leonardoAccounts, _, err := s.listSchedulableAccounts(ctx, groupID, PlatformLeonardo, false)
+	if err != nil {
+		return nil, fmt.Errorf("query leonardo accounts failed: %w", err)
+	}
+	accounts := append(openAIAccounts, falAccounts...)
+	return append(accounts, leonardoAccounts...), nil
 }
 
 func (s *GatewayService) imageAccountSupportsRequest(ctx context.Context, account *Account, requestedModel string, capability OpenAIImagesCapability, falAPI string) bool {
@@ -770,30 +843,44 @@ func (s *GatewayService) imageAccountSupportsRequest(ctx context.Context, accoun
 		return (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, "")) && account.SupportsOpenAIImageCapability(capability)
 	case PlatformFal:
 		return s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, falAPI)
+	case PlatformLeonardo:
+		return s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, "")
 	default:
 		return false
 	}
 }
 
 func (s *GatewayService) falAccountPricingConfigured(ctx context.Context, account *Account, requestedModel, falAPI string, groupID *int64) bool {
-	if account == nil || account.Platform != PlatformFal {
+	if account == nil || (account.Platform != PlatformFal && account.Platform != PlatformLeonardo) {
 		return true
 	}
 	if s.resolver == nil {
 		return false
 	}
 	upstreamModel := resolveFalUpstreamModel(account, requestedModel, falAPI == FalAPIEdit)
-	resolved := s.resolver.Resolve(ctx, PricingInput{Model: upstreamModel, GroupID: groupID})
-	if resolved != nil && resolved.Source == PricingSourceChannel {
+	if account.Platform == PlatformLeonardo {
+		upstreamModel = strings.TrimSpace(account.GetModelMapping()[requestedModel])
+		if upstreamModel == "" {
+			upstreamModel = "gpt-image-2"
+		}
+	}
+	// Group model pricing lives on the hydrated Group and must be passed to the
+	// resolver explicitly. Otherwise media account selection only recognizes
+	// channel pricing and incorrectly rejects FAL/Leonardo accounts.
+	var group *Group
+	if groupID != nil {
+		group = s.groupFromContext(ctx, *groupID)
+		if group == nil && s.groupRepo != nil {
+			group, _ = s.groupRepo.GetByIDLite(ctx, *groupID)
+		}
+	}
+	resolved := s.resolver.Resolve(ctx, PricingInput{Model: upstreamModel, GroupID: groupID, Group: group})
+	if resolved != nil && (resolved.Source == PricingSourceGroup || resolved.Source == PricingSourceChannel) {
 		return (resolved.Mode == BillingModeImage || resolved.Mode == BillingModePerRequest) &&
 			(len(resolved.RequestTiers) > 0 || resolved.DefaultPerRequestPrice > 0)
 	}
 	if groupID == nil {
 		return false
-	}
-	group := s.groupFromContext(ctx, *groupID)
-	if group == nil && s.groupRepo != nil {
-		group, _ = s.groupRepo.GetByIDLite(ctx, *groupID)
 	}
 	if group == nil {
 		return false

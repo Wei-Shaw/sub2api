@@ -9,6 +9,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -84,7 +85,7 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 			if !canBeCompositeMemberPlatform(acc.Platform) {
 				continue
 			}
-		} else if acc.Platform != platform && (platform != PlatformOpenAI || acc.Platform != PlatformFal) {
+		} else if acc.Platform != platform && (platform != PlatformOpenAI || (acc.Platform != PlatformFal && acc.Platform != PlatformLeonardo)) {
 			continue
 		}
 		for model := range acc.GetModelMapping() {
@@ -249,6 +250,12 @@ func defaultModelsListCandidateIDs(platform string) []string {
 		return ids
 	case PlatformGrok:
 		return xai.DefaultModelIDs()
+	case PlatformLeonardo:
+		ids := make([]string, 0, len(domain.DefaultLeonardoModelMapping))
+		for id := range domain.DefaultLeonardoModelMapping {
+			ids = append(ids, id)
+		}
+		return ids
 	case PlatformComposite:
 		return compositeDefaultModelsListCandidateIDs()
 	default:
@@ -269,7 +276,7 @@ func defaultAllowImageGenerationForPlatform(platform string) bool {
 func compositeDefaultModelsListCandidateIDs() []string {
 	seen := make(map[string]struct{})
 	ids := make([]string, 0)
-	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok} {
+	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformLeonardo} {
 		for _, id := range defaultModelsListCandidateIDs(platform) {
 			if _, ok := seen[id]; ok {
 				continue

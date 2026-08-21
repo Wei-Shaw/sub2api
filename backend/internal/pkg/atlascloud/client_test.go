@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -80,6 +81,46 @@ func TestDoPredictionReadsStatusAndOutputsFromData(t *testing.T) {
 	}
 	if _, ok := resp.Raw["data"]; !ok {
 		t.Fatalf("raw response should retain data envelope: %#v", resp.Raw)
+	}
+}
+
+func TestResultRawNormalizesCompletedPrediction(t *testing.T) {
+	client := testClientWithResponse(`{
+		"id":"pred_abc123",
+		"status":"completed",
+		"model":"model-name",
+		"outputs":["https://storage.atlascloud.ai/outputs/result.mp4?token=secret"],
+		"metrics":{"predict_time":45.2},
+		"created_at":"2025-01-01T00:00:00Z",
+		"completed_at":"2025-01-01T00:00:10Z"
+	}`)
+
+	result, err := client.ResultRaw(context.Background(), "https://atlas.example.test/api/v1/model/prediction/pred_abc123")
+	if err != nil {
+		t.Fatalf("ResultRaw returned error: %v", err)
+	}
+	wantVideo := map[string]any{
+		"url":       "https://storage.atlascloud.ai/outputs/result.mp4?token=secret",
+		"file_name": "result.mp4",
+	}
+	want := map[string]any{
+		"video":  wantVideo,
+		"videos": []any{wantVideo},
+	}
+	if !reflect.DeepEqual(result, want) {
+		t.Fatalf("ResultRaw = %#v, want %#v", result, want)
+	}
+}
+
+func TestResultRawReturnsEmptyPayloadWithoutOutputURLs(t *testing.T) {
+	client := testClientWithResponse(`{"id":"pred_abc123","status":"completed","outputs":[" "]}`)
+
+	result, err := client.ResultRaw(context.Background(), "https://atlas.example.test/api/v1/model/prediction/pred_abc123")
+	if err != nil {
+		t.Fatalf("ResultRaw returned error: %v", err)
+	}
+	if len(result) != 0 {
+		t.Fatalf("ResultRaw = %#v, want empty payload", result)
 	}
 }
 
