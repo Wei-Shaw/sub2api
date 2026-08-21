@@ -620,6 +620,59 @@ REDACTED
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 REDACTED
 
+func TestOpenAIGatewayService_SelectAccountForTokenCount_DoesNotAcquireGenerationSlot(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10115)
+	acquiredIDs := make([]int64, 0)
+	accounts := []Account{
+		{
+			ID: 36501, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+			Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0,
+	REDACTED"openai_capabilities": []any{"chat_completions"REDACTEDREDACTED,
+	REDACTED,
+		{
+			ID: 36502, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+			Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5,
+	REDACTED"openai_capabilities": []any{"embeddings"REDACTEDREDACTED,
+	REDACTED,
+		{
+			ID: 36503, Platform: PlatformGrok, Type: AccountTypeAPIKey,
+			Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 10,
+	REDACTED"openai_capabilities": []any{"chat_completions"REDACTEDREDACTED,
+	REDACTED,
+		{
+			ID: 36504, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+			Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 15,
+	REDACTED
+				"openai_capabilities": []any{"chat_completions"REDACTED,
+				"model_mapping":       map[string]any{"gpt-4o": "gpt-4o"REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	svc := &OpenAIGatewayService{
+		accountRepo: schedulerTestOpenAIAccountRepo{accounts: accountsREDACTED,
+		cache:       &schedulerTestGatewayCache{REDACTED,
+		cfg:         &config.Config{REDACTED,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{
+			acquireResults: map[int64]bool{36501: falseREDACTED,
+			acquiredIDs:    &acquiredIDs,
+	REDACTED),
+REDACTED
+
+	account, err := svc.SelectAccountForTokenCount(
+		ctx,
+		&groupID,
+		"",
+		"gpt-5.1",
+		OpenAIEndpointCapabilityChatCompletions,
+		PlatformOpenAI,
+	)
+REDACTED
+	require.NotNil(t, account)
+	require.Equal(t, int64(36501), account.ID)
+	require.Empty(t, acquiredIDs, "token counting must not acquire a generation slot")
+REDACTED
+
 // 生图意图的 /v1/responses 请求要求 OpenAIEndpointCapabilityResponses：探测确认
 // 不支持 Responses API 的 APIKey 账号必须被排除，避免 forward 阶段降级为无法生图
 // 的 Chat Completions 直转（#4417）。

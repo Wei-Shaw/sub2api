@@ -99,22 +99,9 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// Only persistent inbound WebSocket sessions participate in preemption.
-	// HTTP ingress that opportunistically uses an upstream WS is handled by
-	// forwardOpenAIWSV2 and deliberately never reaches this registration.
-	preemptSessionHash := ""
-	preemptGroupID := getOpenAIGroupIDFromContext(c)
-	if account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {
-		preemptSessionHash = s.GenerateSessionHash(c, firstClientMessage)
-REDACTED
-	if preemptCtx, cleanupPreempt, armed, preemptedPrevious := s.beginOpenAIWSSessionPreemptContext(
-		ctx,
-		account,
-		preemptGroupID,
-		getAPIKeyIDFromContext(c),
-		preemptSessionHash,
-		false,
-	); armed {
+	// The handler normally owns this registration across retry attempts. Direct
+	// callers still get the same session-scoped preemption behavior here.
+	if preemptCtx, cleanupPreempt, armed := s.BeginOpenAIWSIngressSessionPreemption(ctx, c, account, firstClientMessage); armed {
 		ctx = preemptCtx
 		defer cleanupPreempt()
 		defer func() {
@@ -122,12 +109,6 @@ REDACTED
 				returnErr = errOpenAIWSSessionPreempted
 		REDACTED
 	REDACTED()
-		if preemptedPrevious {
-			if stateStore := s.getOpenAIWSStateStore(); stateStore != nil {
-				stateStore.DeleteSessionTurnState(preemptGroupID, preemptSessionHash)
-				stateStore.DeleteSessionConn(preemptGroupID, preemptSessionHash)
-		REDACTED
-	REDACTED
 REDACTED
 
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)

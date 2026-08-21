@@ -1280,6 +1280,18 @@ REDACTED
 
 	entry := &service.OpsInsertErrorLogInput{StatusCode: finalStatusREDACTED
 	applyOpsUpstreamFieldsFromContext(c, entry)
+	if len(entry.UpstreamErrors) > 0 {
+		visibleEvents := make([]*service.OpsUpstreamErrorEvent, 0, len(entry.UpstreamErrors))
+		for _, event := range entry.UpstreamErrors {
+			if event != nil && !event.SkipMonitoring {
+				visibleEvents = append(visibleEvents, event)
+		REDACTED
+	REDACTED
+		if len(visibleEvents) == 0 {
+			return
+	REDACTED
+		applyOpsUpstreamErrorEvents(entry, visibleEvents)
+REDACTED
 	if entry.UpstreamStatusCode == nil && entry.UpstreamErrorMessage == nil &&
 		entry.UpstreamErrorDetail == nil && len(entry.UpstreamErrors) == 0 {
 		return
@@ -1350,7 +1362,7 @@ REDACTED
 
 	apiKey := getOpsAPIKey(c)
 	fallbackPlatform := guessPlatformFromPath(entry.RequestPath)
-	var requestContext context.Context = context.Background()
+	requestContext := context.Background()
 	if c.Request != nil {
 		requestContext = c.Request.Context()
 REDACTED
@@ -1668,46 +1680,39 @@ REDACTED
 REDACTED
 	if v, ok := c.Get(service.OpsUpstreamErrorsKey); ok {
 		if events, ok := v.([]*service.OpsUpstreamErrorEvent); ok && len(events) > 0 {
-			entry.UpstreamErrors = events
-			var last *service.OpsUpstreamErrorEvent
-			for i := len(events) - 1; i >= 0; i-- {
-				if events[i] != nil {
-					last = events[i]
-					break
-			REDACTED
-		REDACTED
-			if last == nil {
-				return
-		REDACTED
-			if last.Stage == string(service.GatewayFailureStageAccountAuth) {
-				code := 0
-				entry.UpstreamStatusCode = &code
-				entry.UpstreamErrorMessage = nil
-				if message := strings.TrimSpace(last.Message); message != "" {
-					entry.UpstreamErrorMessage = &message
-			REDACTED
-				entry.UpstreamErrorDetail = nil
-				if detail := strings.TrimSpace(last.Detail); detail != "" {
-					entry.UpstreamErrorDetail = &detail
-			REDACTED
-		REDACTED else {
-				entry.UpstreamStatusCode = nil
-				if last.UpstreamStatusCode > 0 {
-					code := last.UpstreamStatusCode
-					entry.UpstreamStatusCode = &code
-			REDACTED
-				entry.UpstreamErrorMessage = nil
-				if strings.TrimSpace(last.Message) != "" {
-					message := strings.TrimSpace(last.Message)
-					entry.UpstreamErrorMessage = &message
-			REDACTED
-				entry.UpstreamErrorDetail = nil
-				if strings.TrimSpace(last.Detail) != "" {
-					detail := strings.TrimSpace(last.Detail)
-					entry.UpstreamErrorDetail = &detail
-			REDACTED
-		REDACTED
+			applyOpsUpstreamErrorEvents(entry, events)
 	REDACTED
+REDACTED
+REDACTED
+
+func applyOpsUpstreamErrorEvents(entry *service.OpsInsertErrorLogInput, events []*service.OpsUpstreamErrorEvent) {
+	entry.UpstreamErrors = events
+	var last *service.OpsUpstreamErrorEvent
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i] != nil {
+			last = events[i]
+			break
+	REDACTED
+REDACTED
+	if last == nil {
+		return
+REDACTED
+
+	entry.UpstreamStatusCode = nil
+	entry.UpstreamErrorMessage = nil
+	entry.UpstreamErrorDetail = nil
+	if last.Stage == string(service.GatewayFailureStageAccountAuth) {
+		code := 0
+		entry.UpstreamStatusCode = &code
+REDACTED else if last.UpstreamStatusCode > 0 {
+		code := last.UpstreamStatusCode
+		entry.UpstreamStatusCode = &code
+REDACTED
+	if message := strings.TrimSpace(last.Message); message != "" {
+		entry.UpstreamErrorMessage = &message
+REDACTED
+	if detail := strings.TrimSpace(last.Detail); detail != "" {
+		entry.UpstreamErrorDetail = &detail
 REDACTED
 REDACTED
 

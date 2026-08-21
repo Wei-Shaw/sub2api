@@ -67,7 +67,7 @@ REDACTED{
 			expected:   ErrorPolicySkipped,
 	REDACTED,
 		{
-			name: "global_529_bypasses_custom_error_code_filter",
+			name: "custom_error_codes_excluding_529_skip_global_cooldown",
 			account: &Account{
 				ID:       33,
 				Type:     AccountTypeAPIKey,
@@ -79,16 +79,42 @@ REDACTED{
 		REDACTED,
 			statusCode: 529,
 			body:       []byte(`{"error":{"message":"overloaded"REDACTEDREDACTED`),
-			expected:   ErrorPolicyMatched,
+			expected:   ErrorPolicySkipped,
 	REDACTED,
 		{
-			name: "global_529_bypasses_pool_mode",
+			name: "pool_mode_skips_global_529_cooldown",
 			account: &Account{
 				ID:       34,
 				Type:     AccountTypeAPIKey,
 				Platform: PlatformOpenAI,
 		REDACTED
 					"pool_mode": true,
+			REDACTED,
+		REDACTED,
+			statusCode: 529,
+			body:       []byte(`{"error":{"message":"overloaded"REDACTEDREDACTED`),
+			expected:   ErrorPolicySkipped,
+	REDACTED,
+		{
+			name: "ordinary_account_uses_global_529_cooldown",
+			account: &Account{
+				ID:       35,
+				Type:     AccountTypeAPIKey,
+				Platform: PlatformOpenAI,
+		REDACTED,
+			statusCode: 529,
+			body:       []byte(`{"error":{"message":"overloaded"REDACTEDREDACTED`),
+			expected:   ErrorPolicyMatched,
+	REDACTED,
+		{
+			name: "custom_error_codes_including_529_take_precedence",
+			account: &Account{
+				ID:       36,
+				Type:     AccountTypeAPIKey,
+				Platform: PlatformOpenAI,
+		REDACTED
+					"custom_error_codes_enabled": true,
+					"custom_error_codes":         []any{float64(529)REDACTED,
 			REDACTED,
 		REDACTED,
 			statusCode: 529,

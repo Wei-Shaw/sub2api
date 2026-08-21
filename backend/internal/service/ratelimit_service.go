@@ -252,11 +252,6 @@ const (
 // 自定义错误码开启时覆盖后续所有逻辑（包括临时不可调度）。
 func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Account, statusCode int, responseBody []byte, requestedModel ...string) ErrorPolicyResult {
 	ctx = withTempUnschedulableModel(ctx, requestedModel)
-	// 529 is governed by the global overload cooldown. Return Matched before
-	// local pool/custom-code filters so every caller reaches HandleUpstreamError.
-	if statusCode == 529 {
-		return ErrorPolicyMatched
-REDACTED
 	if account.IsCustomErrorCodesEnabled() {
 		if account.ShouldHandleErrorCode(statusCode) {
 			return ErrorPolicyMatched
@@ -271,6 +266,11 @@ REDACTED
 			return ErrorPolicyTempUnscheduled
 	REDACTED
 		return ErrorPolicySkipped
+REDACTED
+	// The global overload cooldown is the default for ordinary accounts. Explicit
+	// account policies above retain precedence over this fallback.
+	if statusCode == 529 {
+		return ErrorPolicyMatched
 REDACTED
 	if s.tryTempUnschedulable(ctx, account, statusCode, responseBody, firstRequestedModel(requestedModel)) {
 		return ErrorPolicyTempUnscheduled
@@ -287,14 +287,6 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	s.maybeHandleOpenAITeamLinkedError(ctx, account, statusCode, responseBody)
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
-	// The configured 529 cooldown is a global overload policy. Apply it before
-	// pool-mode and custom-code gates so those local retry policies cannot leave
-	// an overloaded account eligible for new requests.
-	if statusCode == 529 {
-		s.handle529(ctx, account)
-		return false
-REDACTED
-
 	// 池模式默认不标记本地账号状态；但管理员显式配置的临时不可调度规则优先。
 	// 401 保留现有认证错误语义，不在这里改变池模式的认证处理。
 	if account.IsPoolMode() && !customErrorCodesEnabled {
@@ -309,6 +301,15 @@ REDACTED
 	// 如果启用且错误码不在列表中，则不处理（不停止调度、不标记限流/过载）
 	if !account.ShouldHandleErrorCode(statusCode) {
 		slog.Info("account_error_code_skipped", "account_id", account.ID, "status_code", statusCode)
+		return false
+REDACTED
+
+	if statusCode == 529 {
+		if customErrorCodesEnabled {
+			s.handleCustomErrorCode(ctx, account, statusCode, extractUpstreamErrorMessage(responseBody))
+			return true
+	REDACTED
+		s.handle529(ctx, account)
 		return false
 REDACTED
 
@@ -499,7 +500,7 @@ REDACTED
 		s.handle429(ctx, account, headers, responseBody)
 		shouldDisable = false
 	case 529:
-		// Handled before pool/custom-code policy gates above.
+		// Handled after pool/custom-code policy gates above.
 		shouldDisable = false
 	default:
 		// 自定义错误码启用时：在列表中的错误码都应该停止调度

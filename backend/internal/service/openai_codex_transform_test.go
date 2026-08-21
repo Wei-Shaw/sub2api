@@ -142,9 +142,11 @@ REDACTED
 	input, ok := reqBody["input"].([]any)
 	require.True(t, ok)
 	require.Len(t, input, 3)
-	require.Equal(t, "fc_previous_turn", input[0].(map[string]any)["id"])
-	require.Equal(t, "fc_remote_item", input[1].(map[string]any)["id"])
-	require.Equal(t, "vendor_remote_item", input[2].(map[string]any)["id"])
+	for i, expectedID := range []string{"fc_previous_turn", "fc_remote_item", "vendor_remote_item"REDACTED {
+		item, itemOK := input[i].(map[string]any)
+		require.True(t, itemOK)
+		require.Equal(t, expectedID, item["id"])
+REDACTED
 REDACTED
 
 func TestApplyCodexOAuthTransform_BoundsLongCallIDsAndPreservesPairing(t *testing.T) {

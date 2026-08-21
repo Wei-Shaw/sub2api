@@ -5,10 +5,13 @@ package service
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -108,6 +111,44 @@ func TestOpenAIWSSessionPreemptContextEligibilityAndLocalCancellation(t *testing
 	require.False(t, sessionConnExists)
 	firstCleanup()
 	secondCleanup()
+REDACTED
+
+func TestOpenAIWSIngressSessionPreemptionSurvivesNestedForwardCleanup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(7)
+	newContext := func() *gin.Context {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+		c.Set("api_key", &APIKey{ID: 11, GroupID: &groupIDREDACTED)
+		return c
+REDACTED
+
+	svc := &OpenAIGatewayService{REDACTED
+	account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuthREDACTED
+	firstMessage := []byte(`{"type":"response.create","prompt_cache_key":"session-1","input":"hello"REDACTED`)
+
+	firstCtx, firstCleanup, armed := svc.BeginOpenAIWSIngressSessionPreemption(
+		context.Background(), newContext(), account, firstMessage,
+	)
+	require.True(t, armed)
+	defer firstCleanup()
+
+	// ProxyResponsesWebSocketFromClient enters the same helper for each upstream
+	// attempt. Its cleanup must not release the handler-owned registration.
+	nestedCtx, nestedCleanup, armed := svc.BeginOpenAIWSIngressSessionPreemption(
+		firstCtx, newContext(), account, firstMessage,
+	)
+	require.True(t, armed)
+	require.Equal(t, firstCtx, nestedCtx)
+	nestedCleanup()
+	require.NoError(t, firstCtx.Err())
+
+	_, secondCleanup, armed := svc.BeginOpenAIWSIngressSessionPreemption(
+		context.Background(), newContext(), account, firstMessage,
+	)
+	require.True(t, armed)
+	defer secondCleanup()
+	require.True(t, IsOpenAIWSSessionPreemptedError(context.Cause(firstCtx)))
 REDACTED
 
 func TestOpenAIWSSessionPreemptRemoteClaimAndStaleReleaseAreAtomic(t *testing.T) {

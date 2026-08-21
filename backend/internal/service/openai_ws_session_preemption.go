@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
@@ -36,6 +37,49 @@ type openAIWSSessionPreemptKey struct {
 	groupID     int64
 	apiKeyID    int64
 	sessionHash string
+REDACTED
+
+type openAIWSSessionPreemptContextKey struct{REDACTED
+
+// BeginOpenAIWSIngressSessionPreemption keeps a persistent inbound WS session
+// registered across upstream retry attempts. Nested forwarding calls reuse the
+// registration so returning from one attempt cannot create a preemption gap.
+func (s *OpenAIGatewayService) BeginOpenAIWSIngressSessionPreemption(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	firstClientMessage []byte,
+) (context.Context, func(), bool) {
+	if ctx == nil {
+		ctx = context.Background()
+REDACTED
+	if armed, _ := ctx.Value(openAIWSSessionPreemptContextKey{REDACTED).(bool); armed {
+		return ctx, func() {REDACTED, true
+REDACTED
+
+	preemptSessionHash := ""
+	preemptGroupID := getOpenAIGroupIDFromContext(c)
+	if account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {
+		preemptSessionHash = s.GenerateSessionHash(c, firstClientMessage)
+REDACTED
+	preemptCtx, cleanup, armed, preemptedPrevious := s.beginOpenAIWSSessionPreemptContext(
+		ctx,
+		account,
+		preemptGroupID,
+		getAPIKeyIDFromContext(c),
+		preemptSessionHash,
+		false,
+	)
+	if !armed {
+		return ctx, func() {REDACTED, false
+REDACTED
+	if preemptedPrevious {
+		if stateStore := s.getOpenAIWSStateStore(); stateStore != nil {
+			stateStore.DeleteSessionTurnState(preemptGroupID, preemptSessionHash)
+			stateStore.DeleteSessionConn(preemptGroupID, preemptSessionHash)
+	REDACTED
+REDACTED
+	return context.WithValue(preemptCtx, openAIWSSessionPreemptContextKey{REDACTED, true), cleanup, true
 REDACTED
 
 func newOpenAIWSSessionPreemptKey(groupID, apiKeyID int64, sessionHash string) (openAIWSSessionPreemptKey, bool) {

@@ -176,17 +176,10 @@ REDACTED
 REDACTED()
 	<-inner.writeStarted
 
-	mutexAvailable := make(chan struct{REDACTED)
-	go func() {
-		w.state.mu.Lock()
-		w.state.mu.Unlock()
-		close(mutexAvailable)
-REDACTED()
-	select {
-	case <-mutexAvailable:
-	case <-time.After(time.Second):
+	if !w.state.mu.TryLock() {
 		t.Fatal("state mutex remained held across the delegated network write")
 REDACTED
+	w.state.mu.Unlock()
 
 	releaseDone := make(chan struct{REDACTED)
 	go func() {
