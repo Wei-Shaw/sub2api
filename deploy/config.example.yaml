@@ -258,6 +258,21 @@ gateway:
   #
   # 注意：开启后会影响所有客户端的行为（不仅限于 VS Code / Codex CLI），请谨慎开启。
   force_codex_cli: false
+  # DSML leak guard: heal deepseek-v4 tool calls leaked as plain text (in-place retry on the
+  # same account) and scrub leaked DSML fragments from assistant history (cures the cascade).
+  # DSML 泄漏防护：拦截 deepseek-v4 把工具调用漏成正文的坏流并对同账号原地重试，
+  # 同时从请求历史的 assistant 消息中剥离已泄漏的 DSML 碎片（治级联）。
+  dsml_guard_enabled: true
+  # Model prefixes the guard applies to (prefix match against the upstream model id).
+  # 防护生效的上游模型前缀列表（对上游模型 ID 做前缀匹配）。
+  dsml_guard_models: ["deepseek-v4"]
+  # Max in-place retries on the same account after a confirmed leak. Exhausted = release
+  # the held output unchanged (never an error to the client).
+  # 判定泄漏后同账号最大原地重试次数；耗尽则原样放行被扣输出（绝不向客户端报错）。
+  dsml_guard_max_retries: 1
+  # Observe mode: detect and log only - no holding, no retry, no history scrub (grey release).
+  # 灰度观察模式：只检测记录，不扣流、不重试、不清洗历史。
+  dsml_guard_observe: false
   # Stop rewriting load-shed Codex originators to the official CLI identity.
   # 关闭「把落在上游降载桶的 Codex originator 改写为官方 CLI 身份（codex_cli_rs）」。
   #
