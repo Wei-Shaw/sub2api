@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
@@ -141,5 +142,41 @@ REDACTED
 	if strings.EqualFold(strings.TrimSpace(gjson.GetBytes(retryBody, "model").String()), currentModel) {
 		return currentBody, "", false
 REDACTED
+	return retryBody, fallbackModel, true
+REDACTED
+
+func (s *OpenAIGatewayService) applyOpenAIPassthroughCompactFallbackFromSignal(
+	c *gin.Context,
+	account *Account,
+	requestedModel string,
+	body []byte,
+	err error,
+	alreadyRetried bool,
+	resp *http.Response,
+) ([]byte, string, bool) {
+	signal, ok := asOpenAICompactFallbackSignal(err)
+	if !ok {
+		return body, "", false
+REDACTED
+	retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
+		c, account, requestedModel, body, http.StatusBadRequest, signal.message, signal.payload, alreadyRetried,
+	)
+	if !retry {
+		return body, "", false
+REDACTED
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+REDACTED
+	fromModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+	accountName := ""
+	if account != nil {
+		accountName = account.Name
+REDACTED
+	SetOpsUpstreamModel(c, fallbackModel)
+	logger.LegacyPrintf(
+		"service.openai_gateway",
+		"[OpenAI passthrough] Retrying explicit compact request once with fallback model (account: %s, from: %s, to: %s, upstream_code: %s)",
+		accountName, fromModel, fallbackModel, extractUpstreamErrorCode(signal.payload),
+	)
 	return retryBody, fallbackModel, true
 REDACTED
