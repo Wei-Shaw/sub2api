@@ -1073,6 +1073,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		}
 		applyOpsLatencyFieldsFromContext(c, entry)
 		applyOpsUpstreamFieldsFromContext(c, entry)
+		suppressOpsUpstreamAttributionForLocalModelConfiguration(c, entry)
 
 		if apiKey != nil {
 			entry.APIKeyID = &apiKey.ID
@@ -1249,7 +1250,11 @@ func isCountTokensRequest(c *gin.Context) bool {
 	if c == nil || c.Request == nil || c.Request.URL == nil {
 		return false
 	}
-	return strings.Contains(c.Request.URL.Path, "/count_tokens")
+	return isTokenCountRequestPath(c.Request.URL.Path)
+}
+
+func isTokenCountRequestPath(path string) bool {
+	return strings.Contains(path, "/count_tokens") || strings.Contains(path, "/responses/input_tokens")
 }
 
 func applyOpsLatencyFieldsFromContext(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
@@ -1332,6 +1337,19 @@ func applyOpsUpstreamFieldsFromContext(c *gin.Context, entry *service.OpsInsertE
 			}
 		}
 	}
+}
+
+func suppressOpsUpstreamAttributionForLocalModelConfiguration(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
+	if entry == nil || !service.HasOpsClientBusinessLimited(c) || service.OpsClientBusinessLimitedReason(c) != service.OpsClientBusinessLimitedReasonLocalModelConfiguration {
+		return
+	}
+	entry.AccountID = nil
+	entry.UpstreamEndpoint = ""
+	entry.UpstreamModel = ""
+	entry.UpstreamStatusCode = nil
+	entry.UpstreamErrorMessage = nil
+	entry.UpstreamErrorDetail = nil
+	entry.UpstreamErrors = nil
 }
 
 func getContextLatencyMs(c *gin.Context, key string) *int64 {
@@ -1546,23 +1564,27 @@ func classifyOpsErrorLog(c *gin.Context, errType, message, code string, status i
 	phase = classifyOpsPhase(errType, message, code)
 	routingCapacityLimited := isOpsRoutingCapacityLimited(c)
 	clientBusinessLimited := service.HasOpsClientBusinessLimited(c)
+	localModelConfiguration := clientBusinessLimited && service.OpsClientBusinessLimitedReason(c) == service.OpsClientBusinessLimitedReasonLocalModelConfiguration
 	upstreamError := hasOpsUpstreamErrorContext(c)
 	accountAuthFailure := hasOpsAccountAuthFailure(c)
-	if accountAuthFailure && !routingCapacityLimited {
+	if localModelConfiguration {
+		phase = "routing"
+	} else if accountAuthFailure && !routingCapacityLimited {
 		phase = "account_auth"
 	} else if upstreamError && !routingCapacityLimited {
 		phase = "upstream"
 	}
-	if clientBusinessLimited && !upstreamError && !routingCapacityLimited {
+	if clientBusinessLimited && !upstreamError && !routingCapacityLimited && !localModelConfiguration {
 		phase = "auth"
 	}
 	if routingCapacityLimited {
 		phase = "routing"
 	}
 	msg := strings.ToLower(message)
-	localClientAuthError := !upstreamError && phase == "auth" && isOpsClientAuthError(code, msg)
-	localBusinessLimited := !upstreamError && classifyOpsIsBusinessLimited(errType, phase, code, status, message, localClientAuthError)
-	isBusinessLimited = routingCapacityLimited || (clientBusinessLimited && !upstreamError) || localBusinessLimited
+	effectiveUpstreamError := upstreamError && !localModelConfiguration
+	localClientAuthError := !effectiveUpstreamError && phase == "auth" && isOpsClientAuthError(code, msg)
+	localBusinessLimited := !effectiveUpstreamError && classifyOpsIsBusinessLimited(errType, phase, code, status, message, localClientAuthError)
+	isBusinessLimited = localModelConfiguration || routingCapacityLimited || (clientBusinessLimited && !effectiveUpstreamError) || localBusinessLimited
 	errorOwner = classifyOpsErrorOwner(phase, message)
 	errorSource = classifyOpsErrorSource(phase, message)
 	return phase, isBusinessLimited, errorOwner, errorSource
@@ -1774,7 +1796,7 @@ func shouldSkipOpsErrorLog(ctx context.Context, ops *service.OpsService, message
 	bodyLower := strings.ToLower(body)
 
 	// Check if count_tokens errors should be ignored
-	if settings.IgnoreCountTokensErrors && strings.Contains(requestPath, "/count_tokens") {
+	if settings.IgnoreCountTokensErrors && isTokenCountRequestPath(requestPath) {
 		return true
 	}
 

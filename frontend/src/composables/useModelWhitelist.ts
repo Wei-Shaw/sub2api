@@ -157,8 +157,8 @@ const xaiModels = [
   'grok-imagine',
   'grok-imagine-image-quality',
   'grok-imagine-image',
+  'grok-imagine-image-2.0',
   'grok-imagine-video',
-  'grok-imagine-video-1.5-preview',
   'grok-imagine-video-1.5'
 ]
 
@@ -182,7 +182,9 @@ const yiModels = [
 // Moonshot/Kimi
 const moonshotModels = [
   'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k',
-  'kimi-latest'
+  'kimi-latest',
+  'kimi-for-coding',
+  'kimi-k2'
 ]
 
 // 字节跳动 豆包
@@ -428,7 +430,8 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'grok': return xaiModels
     case 'cohere': return cohereModels
     case 'yi': return yiModels
-    case 'moonshot': return moonshotModels
+    case 'moonshot':
+    case 'kimi': return moonshotModels
     case 'doubao': return doubaoModels
     case 'minimax': return minimaxModels
     case 'baidu': return baiduModels

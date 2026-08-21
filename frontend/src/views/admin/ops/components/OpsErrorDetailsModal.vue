@@ -112,6 +112,17 @@ async function fetchErrorLogs() {
     }
     Object.assign(params, buildOpsErrorTimeParams(props.timeRange, props.customStartTime, props.customEndTime))
 
+    if (props.timeRange === 'custom') {
+      if (props.customStartTime && props.customEndTime) {
+        params.start_time = props.customStartTime
+        params.end_time = props.customEndTime
+        delete params.time_range
+      } else {
+        // Safety fallback: avoid sending time_range=custom (backend doesn't support it)
+        params.time_range = '1h'
+      }
+    }
+
     const platform = String(props.platform || '').trim()
     if (platform) params.platform = platform
     if (typeof props.groupId === 'number' && props.groupId > 0) params.group_id = props.groupId
