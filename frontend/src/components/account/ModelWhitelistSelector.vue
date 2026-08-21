@@ -92,9 +92,24 @@
       </div>
     </div>
 
+    <div
+      v-if="usesUpstreamModelList"
+      data-testid="upstream-model-snapshot"
+      class="mb-3 text-xs text-gray-500 dark:text-gray-400"
+    >
+      <template v-if="upstreamModels.length > 0">
+        {{ t('admin.accounts.upstreamModelCapabilitiesAvailable', { count: upstreamModels.length }) }}
+      </template>
+      <template v-else>{{ t('admin.accounts.upstreamModelCapabilitiesEmpty') }}</template>
+      <span v-if="upstreamModelSnapshot?.synced_at">
+        {{ t('admin.accounts.upstreamModelCapabilitiesSyncedAt', { time: formatDateTime(upstreamModelSnapshot.synced_at) }) }}
+      </span>
+    </div>
+
     <!-- Quick Actions -->
     <div class="mb-4 flex flex-wrap gap-2">
       <button
+        v-if="!usesUpstreamModelList"
         type="button"
         @click="fillRelated"
         class="rounded-lg border border-blue-200 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/30"
@@ -108,7 +123,7 @@
         :disabled="isSyncingUpstream"
         class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-gray-900/30"
       >
-        {{ isSyncingUpstream ? t('admin.accounts.syncUpstreamModelsLoading') : t('admin.accounts.syncUpstreamModels') }}
+        {{ isSyncingUpstream ? t('admin.accounts.syncUpstreamModelsLoading') : t('admin.accounts.refreshUpstreamModels') }}
       </button>
       <button
         type="button"
@@ -150,10 +165,12 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { accountsAPI } from '@/api/admin/accounts'
 import type { SyncUpstreamPreviewParams } from '@/api/admin/accounts'
+import type { UpstreamModelSnapshot } from '@/types'
 import { useClipboard } from '@/composables/useClipboard'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
+import { formatDateTime } from '@/utils/format'
 
 const { t } = useI18n()
 
@@ -168,6 +185,7 @@ const props = defineProps<{
     base_url?: string
     api_key: string
   }
+  upstreamModelSnapshot?: UpstreamModelSnapshot
 }>()
 
 const emit = defineEmits<{
@@ -182,6 +200,13 @@ const searchQuery = ref('')
 const customModel = ref('')
 const isComposing = ref(false)
 const isSyncingUpstream = ref(false)
+const refreshedUpstreamModelSnapshot = ref<UpstreamModelSnapshot | null>(null)
+const upstreamModelSnapshot = computed(() => refreshedUpstreamModelSnapshot.value ?? props.upstreamModelSnapshot)
+const usesUpstreamModelList = computed(() => Boolean(props.accountId || props.syncCredentials))
+const upstreamModels = computed(() => {
+  const models = upstreamModelSnapshot.value?.models ?? []
+  return Array.from(new Set(models.map(model => model.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+})
 const normalizedPlatforms = computed(() => {
   const rawPlatforms =
     props.platforms && props.platforms.length > 0
@@ -221,18 +246,28 @@ const canSyncUpstream = computed(() => {
 })
 
 const availableOptions = computed(() => {
+  if (usesUpstreamModelList.value) {
+    return upstreamModels.value.map(value => ({ value, label: value }))
+  }
+
+  let curatedOptions = allModels
   if (normalizedPlatforms.value.length === 0) {
-    return allModels
-  }
-
-  const allowedModels = new Set<string>()
-  for (const platform of normalizedPlatforms.value) {
-    for (const model of getModelsByPlatform(platform)) {
-      allowedModels.add(model)
+    curatedOptions = allModels
+  } else {
+    const allowedModels = new Set<string>()
+    for (const platform of normalizedPlatforms.value) {
+      for (const model of getModelsByPlatform(platform)) {
+        allowedModels.add(model)
+      }
     }
+    curatedOptions = allModels.filter(model => allowedModels.has(model.value))
   }
 
-  return allModels.filter(model => allowedModels.has(model.value))
+  const upstreamModelIDs = new Set(upstreamModels.value)
+  return [
+    ...upstreamModels.value.map(value => ({ value, label: value })),
+    ...curatedOptions.filter(model => !upstreamModelIDs.has(model.value))
+  ]
 })
 
 const filteredModels = computed(() => {
@@ -312,21 +347,11 @@ const syncUpstreamModels = async () => {
       return
     }
 
-    const newModels = [...props.modelValue]
-    let addedCount = 0
-    for (const model of upstreamModels) {
-      if (!newModels.includes(model)) {
-        newModels.push(model)
-        addedCount += 1
-      }
+    refreshedUpstreamModelSnapshot.value = {
+      models: upstreamModels,
+      synced_at: result.synced_at ?? new Date().toISOString()
     }
-
-    emit('update:modelValue', newModels)
-    if (addedCount > 0) {
-      appStore.showSuccess(t('admin.accounts.syncUpstreamModelsSuccess', { count: addedCount, total: upstreamModels.length }))
-    } else {
-      appStore.showInfo(t('admin.accounts.syncUpstreamModelsNoChanges', { count: upstreamModels.length }))
-    }
+    appStore.showSuccess(t('admin.accounts.refreshUpstreamModelsSuccess', { count: upstreamModels.length }))
   } catch (error) {
     const message = error instanceof Error ? error.message : t('admin.accounts.syncUpstreamModelsFailed')
     appStore.showError(t('admin.accounts.syncUpstreamModelsError', { message }))

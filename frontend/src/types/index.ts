@@ -1126,6 +1126,12 @@ export interface OllamaCloudUsageSettings {
   debounce_minutes: number
 }
 
+/** Last successful model-capability probe for one upstream account. */
+export interface UpstreamModelSnapshot {
+  models: string[]
+  synced_at?: string
+}
+
 export interface Account {
   id: number
   name: string
@@ -1143,6 +1149,7 @@ export interface Account {
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
+    upstream_model_snapshot?: UpstreamModelSnapshot
     upstream_billing_probe_enabled?: boolean
     upstream_billing_rate_sync_enabled?: boolean
     upstream_billing_probe?: UpstreamBillingProbeSnapshot

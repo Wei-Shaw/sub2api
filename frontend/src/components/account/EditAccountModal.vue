@@ -213,7 +213,12 @@
 
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
-              <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+              <ModelWhitelistSelector
+                v-model="allowedModels"
+                :platform="account?.platform || 'anthropic'"
+                :account-id="account?.id"
+                :upstream-model-snapshot="account?.extra?.upstream_model_snapshot"
+              />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
                 <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -642,7 +647,12 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+            <ModelWhitelistSelector
+              v-model="allowedModels"
+              :platform="account?.platform || 'anthropic'"
+              :account-id="account?.id"
+              :upstream-model-snapshot="account?.extra?.upstream_model_snapshot"
+            />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -854,7 +864,12 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+            <ModelWhitelistSelector
+              v-model="allowedModels"
+              :platform="account?.platform || 'anthropic'"
+              :account-id="account?.id"
+              :upstream-model-snapshot="account?.extra?.upstream_model_snapshot"
+            />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -1209,8 +1224,26 @@
               :disabled="isSyncingAntigravityUpstream || !account?.id"
               class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-gray-900/30"
             >
-              {{ isSyncingAntigravityUpstream ? t('admin.accounts.syncUpstreamModelsLoading') : t('admin.accounts.syncUpstreamModels') }}
+              {{ isSyncingAntigravityUpstream ? t('admin.accounts.syncUpstreamModelsLoading') : t('admin.accounts.refreshUpstreamModels') }}
             </button>
+          </div>
+
+          <div class="mb-4 text-xs text-gray-500 dark:text-gray-400">
+            <p class="font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.upstreamModelCapabilitiesTitle') }}</p>
+            <p class="mt-1">{{ t('admin.accounts.upstreamModelCapabilitiesHint') }}</p>
+            <p v-if="antigravityUpstreamModelSnapshot?.synced_at" class="mt-1">
+              {{ t('admin.accounts.upstreamModelCapabilitiesSyncedAt', { time: formatDateTime(antigravityUpstreamModelSnapshot.synced_at) }) }}
+            </p>
+            <div v-if="antigravityUpstreamModels.length > 0" data-testid="antigravity-upstream-models" class="mt-2 flex flex-wrap gap-1.5">
+              <span
+                v-for="model in antigravityUpstreamModels"
+                :key="model"
+                class="rounded bg-gray-100 px-2 py-1 font-mono text-gray-700 dark:bg-dark-600 dark:text-gray-300"
+              >
+                {{ model }}
+              </span>
+            </div>
+            <p v-else class="mt-2">{{ t('admin.accounts.upstreamModelCapabilitiesEmpty') }}</p>
           </div>
 
           <div v-if="antigravityModelMappings.length > 0" class="mb-3 space-y-2">
@@ -2789,7 +2822,8 @@ import type {
   OpenAICompactMode,
   OpenAIResponsesMode,
   OpenAIEndpointCapability,
-  OllamaCloudUsageState
+  OllamaCloudUsageState,
+  UpstreamModelSnapshot
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -3110,6 +3144,11 @@ const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist'
 const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
 const isSyncingAntigravityUpstream = ref(false)
+const antigravityUpstreamModelSnapshot = ref<UpstreamModelSnapshot | null>(null)
+const antigravityUpstreamModels = computed(() => {
+  const models = antigravityUpstreamModelSnapshot.value?.models ?? []
+  return Array.from(new Set(models.map(model => model.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+})
 const tempUnschedEnabled = ref(false)
 const accountSchedulingThresholdOverrideEnabled = ref(false)
 const accountSchedulingThresholdOverrideValue = ref(100)
@@ -3770,6 +3809,13 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load antigravity model mapping (Antigravity 只支持映射模式)
   if (newAccount.platform === 'antigravity') {
     const credentials = newAccount.credentials as Record<string, unknown> | undefined
+    const upstreamSnapshot = newAccount.extra?.upstream_model_snapshot
+    antigravityUpstreamModelSnapshot.value = upstreamSnapshot
+      ? {
+          models: [...upstreamSnapshot.models],
+          synced_at: upstreamSnapshot.synced_at
+        }
+      : null
 
     // Antigravity 始终使用映射模式
     antigravityModelRestrictionMode.value = 'mapping'
@@ -3797,6 +3843,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     antigravityModelRestrictionMode.value = 'mapping'
     antigravityWhitelistModels.value = []
     antigravityModelMappings.value = []
+    antigravityUpstreamModelSnapshot.value = null
   }
 
   // Load quota control settings (Anthropic OAuth/SetupToken only)
@@ -4066,20 +4113,11 @@ const syncAntigravityUpstreamModels = async () => {
       return
     }
 
-    let addedCount = 0
-    for (const model of upstreamModels) {
-      const exists = antigravityModelMappings.value.some((mapping) => mapping.from === model)
-      if (!exists) {
-        antigravityModelMappings.value.push({ from: model, to: model })
-        addedCount += 1
-      }
+    antigravityUpstreamModelSnapshot.value = {
+      models: upstreamModels,
+      synced_at: result.synced_at ?? new Date().toISOString()
     }
-
-    if (addedCount > 0) {
-      appStore.showSuccess(t('admin.accounts.syncUpstreamModelsSuccess', { count: addedCount, total: upstreamModels.length }))
-    } else {
-      appStore.showInfo(t('admin.accounts.syncUpstreamModelsNoChanges', { count: upstreamModels.length }))
-    }
+    appStore.showSuccess(t('admin.accounts.refreshUpstreamModelsSuccess', { count: upstreamModels.length }))
   } catch (error) {
     const message = error instanceof Error ? error.message : t('admin.accounts.syncUpstreamModelsFailed')
     appStore.showError(t('admin.accounts.syncUpstreamModelsError', { message }))
