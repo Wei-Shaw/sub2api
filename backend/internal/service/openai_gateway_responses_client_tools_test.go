@@ -77,6 +77,26 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestResponsesFunctionUpstreamsLowerToolSearchDiscoveryOutput(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"tool_search"REDACTED],"input":[{"type":"tool_search_output","call_id":"search_1","tools":[{"type":"namespace","name":"github"REDACTED],"status":"completed","execution":"client"REDACTED]REDACTED`)
+	adapters := map[string]func([]byte) ([]byte, apicompat.ResponsesClientToolMapping, error){
+		"OpenAI API-key": adaptOpenAIResponsesClientTools,
+		"Grok":           adaptGrokResponsesClientTools,
+REDACTED
+	for name, adapt := range adapters {
+		t.Run(name, func(t *testing.T) {
+			adapted, mapping, err := adapt(body)
+		REDACTED
+			require.True(t, mapping.ToolSearch)
+			require.Equal(t, "function_call_output", gjson.GetBytes(adapted, "input.0.type").String())
+			require.JSONEq(t, `[{"name":"github","type":"namespace"REDACTED]`, gjson.GetBytes(adapted, "input.0.output").String())
+			require.False(t, gjson.GetBytes(adapted, "input.0.tools").Exists())
+			require.False(t, gjson.GetBytes(adapted, "input.0.status").Exists())
+			require.False(t, gjson.GetBytes(adapted, "input.0.execution").Exists())
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestClearOpenAIResponsesClientToolMappingRemovesStaleContextState(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())

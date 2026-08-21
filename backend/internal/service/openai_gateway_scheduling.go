@@ -66,9 +66,23 @@ REDACTED
 
 	sessionID := explicitOpenAIHeaderSessionID(c)
 	if sessionID == "" && len(body) > 0 {
-		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
+		sessionID = strings.TrimSpace(openAIRequestPayloadView(body).Get("prompt_cache_key").String())
 REDACTED
 	return sessionID
+REDACTED
+
+// openAIRequestPayloadView unwraps Responses WebSocket event envelopes while
+// leaving ordinary HTTP objects untouched even when they contain a response
+// field for another purpose.
+func openAIRequestPayloadView(body []byte) gjson.Result {
+	root := parseRawJSONView(body)
+	eventType := strings.ToLower(strings.TrimSpace(root.Get("type").String()))
+	if strings.HasPrefix(eventType, "response.") {
+		if response := root.Get("response"); response.Exists() && response.IsObject() {
+			return response
+	REDACTED
+REDACTED
+	return root
 REDACTED
 
 // explicitOpenAIRequestSessionID extends the common OpenAI session signals
@@ -91,7 +105,7 @@ REDACTED
 		sessionID = strings.TrimSpace(c.GetHeader(grokConversationIDHeader))
 REDACTED
 	if sessionID == "" && len(body) > 0 {
-		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
+		sessionID = strings.TrimSpace(openAIRequestPayloadView(body).Get("prompt_cache_key").String())
 REDACTED
 	if sessionID == "" && isGrokRequestContext(c) && len(body) > 0 {
 		sessionID = grokPreviousResponseSessionSeed(body)
@@ -241,6 +255,33 @@ REDACTED
 // SelectAccountForModelWithExclusions 选择支持指定模型的账号，同时排除指定的账号。
 func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED) (*Account, error) {
 	return s.selectAccountForModelWithExclusions(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, 0, "", false)
+REDACTED
+
+// SelectAccountForTokenCount selects an account for a non-billable token-count
+// request. It applies the normal platform, model, capability, and runtime
+// eligibility checks without acquiring or waiting for a generation slot.
+func (s *OpenAIGatewayService) SelectAccountForTokenCount(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash string,
+	requestedModel string,
+	requiredCapability OpenAIEndpointCapability,
+	platform string,
+) (*Account, error) {
+	ctx = WithOpenAIProfitControlSuppressed(ctx)
+	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
+	return s.selectAccountForModelWithExclusions(
+		ctx,
+		groupID,
+		platform,
+		sessionHash,
+		requestedModel,
+		nil,
+		false,
+		0,
+		requiredCapability,
+		false,
+	)
 REDACTED
 
 // NormalizeOpenAICompatiblePlatform 保留 grok 与国产 OpenAI 兼容供应商（kimi/zhipu/
@@ -719,6 +760,17 @@ REDACTED
 		return upstreamModel
 REDACTED
 
+	// Compact mappings are keyed by the client-visible model. Prefer an exact
+	// compact rule before ordinary account mapping; otherwise a normal alias can
+	// hide the compact-specific rule and make scheduling disagree with Forward.
+	if requireCompact && account != nil {
+		if compactModel, matched := account.ResolveCompactMappedModel(strings.TrimSpace(requestedModel)); matched {
+			if compactModel = strings.TrimSpace(compactModel); compactModel != "" {
+				return compactModel
+		REDACTED
+	REDACTED
+REDACTED
+
 	upstreamModel := resolveOpenAIForwardModel(account, requestedModel, "")
 	if upstreamModel == "" {
 		return ""
@@ -730,6 +782,39 @@ REDACTED
 	REDACTED
 REDACTED
 	return normalizeOpenAIModelForUpstream(account, upstreamModel)
+REDACTED
+
+// ResolveOpenAIAccountUpstreamModelForRequest exposes the scheduler's exact
+// account mapping chain to handler-side outcome reporting.
+func ResolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedModel string, requireCompact bool) string {
+	return resolveOpenAIAccountUpstreamModelForRequest(account, requestedModel, requireCompact)
+REDACTED
+
+// resolveOpenAIForwardMappedModels is the shared account mapping chain for
+// Forward callers. billingModel retains the ordinary mapping used for usage
+// accounting, while upstreamModel is the model the scheduler has admitted.
+func resolveOpenAIForwardMappedModels(account *Account, requestedModel string, requireCompact bool) (billingModel, upstreamModel string) {
+	requestedModel = strings.TrimSpace(requestedModel)
+	if account != nil && account.IsOpenAIPassthroughEnabled() {
+		billingModel = requestedModel
+REDACTED else if account != nil {
+		billingModel = strings.TrimSpace(account.GetMappedModel(requestedModel))
+REDACTED
+	if billingModel == "" {
+		billingModel = requestedModel
+REDACTED
+	upstreamModel = resolveOpenAIAccountUpstreamModelForRequest(account, requestedModel, requireCompact)
+	if strings.TrimSpace(upstreamModel) == "" {
+		upstreamModel = billingModel
+REDACTED
+	return billingModel, upstreamModel
+REDACTED
+
+func resolveOpenAIErrorSchedulingModel(billingModel, upstreamModel string) string {
+	if upstreamModel = strings.TrimSpace(upstreamModel); upstreamModel != "" {
+		return upstreamModel
+REDACTED
+	return strings.TrimSpace(billingModel)
 REDACTED
 
 func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED, requireCompact bool, stickyAccountID int64, requiredCapability OpenAIEndpointCapability, preferLowUpstreamRate bool) (*Account, error) {

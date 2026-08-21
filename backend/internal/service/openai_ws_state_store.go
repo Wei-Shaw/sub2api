@@ -13,6 +13,8 @@ import (
 
 const (
 	openAIWSResponseAccountCachePrefix = "openai:response:"
+	openAIHTTPResponseOwnerUserPrefix  = "openai:http-response-owner:user:"
+	openAIHTTPResponseOwnerKeyPrefix   = "openai:http-response-owner:key:"
 	openAIWSStateStoreCleanupInterval  = time.Minute
 	openAIWSStateStoreCleanupMaxPerMap = 512
 	openAIWSStateStoreMaxEntriesPerMap = 65536
@@ -21,6 +23,12 @@ const (
 
 type openAIWSAccountBinding struct {
 	accountID int64
+	expiresAt time.Time
+REDACTED
+
+type openAIHTTPResponseOwnerBinding struct {
+	userID    int64
+	apiKeyID  int64
 	expiresAt time.Time
 REDACTED
 
@@ -49,6 +57,8 @@ type OpenAIWSStateStore interface {
 	BindResponseAccount(ctx context.Context, groupID int64, responseID string, accountID int64, ttl time.Duration) error
 	GetResponseAccount(ctx context.Context, groupID int64, responseID string) (int64, error)
 	DeleteResponseAccount(ctx context.Context, groupID int64, responseID string) error
+	BindHTTPResponseOwner(ctx context.Context, groupID int64, responseID string, userID, apiKeyID int64, ttl time.Duration) error
+	GetHTTPResponseOwner(ctx context.Context, groupID int64, responseID string) (userID, apiKeyID int64, found bool, err error)
 
 	BindResponseConn(responseID, connID string, ttl time.Duration)
 	GetResponseConn(responseID string) (string, bool)
@@ -68,6 +78,8 @@ type defaultOpenAIWSStateStore struct {
 
 	responseToAccountMu  sync.RWMutex
 	responseToAccount    map[string]openAIWSAccountBinding
+	responseOwnerMu      sync.RWMutex
+	responseOwners       map[string]openAIHTTPResponseOwnerBinding
 	responseToConnMu     sync.RWMutex
 	responseToConn       map[string]openAIWSConnBinding
 	sessionToTurnStateMu sync.RWMutex
@@ -83,12 +95,79 @@ func NewOpenAIWSStateStore(cache GatewayCache) OpenAIWSStateStore {
 	store := &defaultOpenAIWSStateStore{
 		cache:              cache,
 		responseToAccount:  make(map[string]openAIWSAccountBinding, 256),
+		responseOwners:     make(map[string]openAIHTTPResponseOwnerBinding, 256),
 		responseToConn:     make(map[string]openAIWSConnBinding, 256),
 		sessionToTurnState: make(map[string]openAIWSTurnStateBinding, 256),
 		sessionToConn:      make(map[string]openAIWSSessionConnBinding, 256),
 REDACTED
 	store.lastCleanupUnixNano.Store(time.Now().UnixNano())
 	return store
+REDACTED
+
+func (s *defaultOpenAIWSStateStore) BindHTTPResponseOwner(ctx context.Context, groupID int64, responseID string, userID, apiKeyID int64, ttl time.Duration) error {
+	id := normalizeOpenAIWSResponseID(responseID)
+	if id == "" || userID <= 0 || apiKeyID <= 0 {
+		return nil
+REDACTED
+	ttl = normalizeOpenAIWSTTL(ttl)
+	s.maybeCleanup()
+
+	mapKey := openAIWSResponseAccountMapKey(groupID, id)
+	s.responseOwnerMu.Lock()
+	ensureBindingCapacity(s.responseOwners, mapKey, openAIWSStateStoreMaxEntriesPerMap)
+	s.responseOwners[mapKey] = openAIHTTPResponseOwnerBinding{
+		userID: userID, apiKeyID: apiKeyID, expiresAt: time.Now().Add(ttl),
+REDACTED
+	s.responseOwnerMu.Unlock()
+
+	if s.cache == nil {
+		return nil
+REDACTED
+	cacheCtx, cancel := withOpenAIWSStateStoreRedisTimeout(ctx)
+	defer cancel()
+	if err := s.cache.SetSessionAccountID(cacheCtx, groupID, openAIHTTPResponseOwnerCacheKey(openAIHTTPResponseOwnerUserPrefix, id), userID, ttl); err != nil {
+		return err
+REDACTED
+	return s.cache.SetSessionAccountID(cacheCtx, groupID, openAIHTTPResponseOwnerCacheKey(openAIHTTPResponseOwnerKeyPrefix, id), apiKeyID, ttl)
+REDACTED
+
+func (s *defaultOpenAIWSStateStore) GetHTTPResponseOwner(ctx context.Context, groupID int64, responseID string) (int64, int64, bool, error) {
+	id := normalizeOpenAIWSResponseID(responseID)
+	if id == "" {
+		return 0, 0, false, nil
+REDACTED
+	s.maybeCleanup()
+
+	now := time.Now()
+	mapKey := openAIWSResponseAccountMapKey(groupID, id)
+	s.responseOwnerMu.RLock()
+	if binding, ok := s.responseOwners[mapKey]; ok && now.Before(binding.expiresAt) {
+		s.responseOwnerMu.RUnlock()
+		return binding.userID, binding.apiKeyID, true, nil
+REDACTED
+	s.responseOwnerMu.RUnlock()
+
+	if s.cache == nil {
+		return 0, 0, false, nil
+REDACTED
+	cacheCtx, cancel := withOpenAIWSStateStoreRedisTimeout(ctx)
+	defer cancel()
+	userID, err := s.cache.GetSessionAccountID(cacheCtx, groupID, openAIHTTPResponseOwnerCacheKey(openAIHTTPResponseOwnerUserPrefix, id))
+	if err != nil || userID <= 0 {
+		return 0, 0, false, err
+REDACTED
+	apiKeyID, err := s.cache.GetSessionAccountID(cacheCtx, groupID, openAIHTTPResponseOwnerCacheKey(openAIHTTPResponseOwnerKeyPrefix, id))
+	if err != nil || apiKeyID <= 0 {
+		return 0, 0, false, err
+REDACTED
+
+	s.responseOwnerMu.Lock()
+	ensureBindingCapacity(s.responseOwners, mapKey, openAIWSStateStoreMaxEntriesPerMap)
+	s.responseOwners[mapKey] = openAIHTTPResponseOwnerBinding{
+		userID: userID, apiKeyID: apiKeyID, expiresAt: now.Add(time.Minute),
+REDACTED
+	s.responseOwnerMu.Unlock()
+	return userID, apiKeyID, true, nil
 REDACTED
 
 func (s *defaultOpenAIWSStateStore) BindResponseAccount(ctx context.Context, groupID int64, responseID string, accountID int64, ttl time.Duration) error {
@@ -113,6 +192,22 @@ REDACTED
 	cacheCtx, cancel := withOpenAIWSStateStoreRedisTimeout(ctx)
 	defer cancel()
 	return s.cache.SetSessionAccountID(cacheCtx, groupID, cacheKey, accountID, ttl)
+REDACTED
+
+func cleanupExpiredHTTPResponseOwnerBindings(bindings map[string]openAIHTTPResponseOwnerBinding, now time.Time, maxScan int) {
+	if len(bindings) == 0 || maxScan <= 0 {
+		return
+REDACTED
+	scanned := 0
+	for key, binding := range bindings {
+		if now.After(binding.expiresAt) {
+			delete(bindings, key)
+	REDACTED
+		scanned++
+		if scanned >= maxScan {
+			break
+	REDACTED
+REDACTED
 REDACTED
 
 func (s *defaultOpenAIWSStateStore) GetResponseAccount(ctx context.Context, groupID int64, responseID string) (int64, error) {
@@ -319,6 +414,10 @@ REDACTED
 	cleanupExpiredAccountBindings(s.responseToAccount, now, openAIWSStateStoreCleanupMaxPerMap)
 	s.responseToAccountMu.Unlock()
 
+	s.responseOwnerMu.Lock()
+	cleanupExpiredHTTPResponseOwnerBindings(s.responseOwners, now, openAIWSStateStoreCleanupMaxPerMap)
+	s.responseOwnerMu.Unlock()
+
 	s.responseToConnMu.Lock()
 	cleanupExpiredConnBindings(s.responseToConn, now, openAIWSStateStoreCleanupMaxPerMap)
 	s.responseToConnMu.Unlock()
@@ -417,6 +516,11 @@ REDACTED
 func openAIWSResponseAccountCacheKey(responseID string) string {
 	sum := sha256.Sum256([]byte(responseID))
 	return openAIWSResponseAccountCachePrefix + hex.EncodeToString(sum[:])
+REDACTED
+
+func openAIHTTPResponseOwnerCacheKey(prefix, responseID string) string {
+	sum := sha256.Sum256([]byte(responseID))
+	return prefix + hex.EncodeToString(sum[:])
 REDACTED
 
 // openAIWSResponseAccountMapKey 本地热缓存按分组隔离的 key，与 Redis 层保持一致，避免跨组命中。

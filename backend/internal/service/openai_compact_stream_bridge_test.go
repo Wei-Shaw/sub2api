@@ -318,7 +318,7 @@ REDACTED, "\n")
 		Body:       io.NopCloser(strings.NewReader(upstreamSSE)),
 REDACTED
 
-	result, err := svc.handleNonStreamingResponsePassthrough(context.Background(), resp, c, "gpt-5.5", "")
+	result, err := svc.handleNonStreamingResponsePassthrough(context.Background(), resp, c, nil, "gpt-5.5", "")
 REDACTED
 	require.NotNil(t, result)
 
@@ -512,7 +512,7 @@ func TestHandleNonStreamingResponsePassthrough_CompactClientStreamBridgesToSSE(t
 	REDACTED`)),
 REDACTED
 
-	result, err := svc.handleNonStreamingResponsePassthrough(context.Background(), resp, c, "gpt-5.5", "")
+	result, err := svc.handleNonStreamingResponsePassthrough(context.Background(), resp, c, nil, "gpt-5.5", "")
 REDACTED
 	require.NotNil(t, result)
 

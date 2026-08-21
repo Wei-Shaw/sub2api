@@ -387,10 +387,7 @@ func TestOpenAIResponseFlush_FailedAndErrorEventsFlushAtBoundaries(t *testing.T)
 		require.Contains(t, flushes[1], "response.failed")
 REDACTED)
 
-	t.Run("retryable error event buffered until terminal", func(t *testing.T) {
-		// 可重试类 error 帧不算客户端输出：保持在 attempt 缓冲中不单独 flush，
-		// 为随后可能到达的 response.failed 保留 pre-output failover 能力，
-		// 与终止帧一起出站。
+	t.Run("bare error synthesizes failed before done", func(t *testing.T) {
 		body := "data: {\"type\":\"error\",\"error\":{\"message\":\"failed\"REDACTEDREDACTED\n\n" +
 			"data: [DONE]\n\n"
 		recorder := newOpenAIResponseFlushRecorder()
@@ -400,7 +397,31 @@ REDACTED)
 	REDACTED
 		require.NotNil(t, result)
 		gotBody, flushes := recorder.snapshot()
-		require.Equal(t, body, gotBody)
+		require.NotContains(t, gotBody, `"type":"error"`)
+		require.Equal(t, 1, strings.Count(gotBody, `"type":"response.failed"`))
+		require.Contains(t, gotBody, `"status":"failed"`)
+		require.NotContains(t, gotBody, "[DONE]")
+		require.Len(t, flushes, 1)
+REDACTED)
+
+	t.Run("bare error forwards following failed and drains terminal usage", func(t *testing.T) {
+		errorEvent := "data: {\"type\":\"error\",\"error\":{\"code\":\"invalid_request\",\"message\":\"bad request\"REDACTEDREDACTED\n\n"
+		body := errorEvent +
+			"data: {\"type\":\"response.failed\",\"response\":{\"id\":\"resp_failed\",\"usage\":{\"input_tokens\":9,\"output_tokens\":2REDACTED,\"error\":{\"code\":\"invalid_request\",\"message\":\"bad request\"REDACTEDREDACTEDREDACTED\n\n" +
+			"data: [DONE]\n\n"
+		recorder := newOpenAIResponseFlushRecorder()
+
+		result, err := runOpenAIResponseFlushTest(recorder, io.NopCloser(strings.NewReader(body)), config.GatewayConfig{REDACTED)
+
+	REDACTED
+		require.NotNil(t, result)
+		require.Equal(t, 9, result.usage.InputTokens)
+		require.Equal(t, 2, result.usage.OutputTokens)
+		gotBody, flushes := recorder.snapshot()
+		require.NotContains(t, gotBody, `"type":"error"`)
+		require.Equal(t, 1, strings.Count(gotBody, `"type":"response.failed"`))
+		require.Contains(t, gotBody, `"id":"resp_failed"`)
+		require.NotContains(t, gotBody, "[DONE]")
 		require.Len(t, flushes, 1)
 REDACTED)
 
@@ -414,9 +435,107 @@ REDACTED)
 	REDACTED
 		require.NotNil(t, result)
 		gotBody, flushes := recorder.snapshot()
-		require.Equal(t, body, gotBody)
-		require.Len(t, flushes, 2)
+		require.NotContains(t, gotBody, `"type":"error"`)
+		require.Equal(t, 1, strings.Count(gotBody, `"type":"response.failed"`))
+		require.Len(t, flushes, 1)
 REDACTED)
+REDACTED
+
+func TestOpenAIResponseFlush_BareErrorFollowedByCompletedUsesCompletedTerminal(t *testing.T) {
+	body := "data: {\"type\":\"error\",\"error\":{\"code\":\"transient\",\"message\":\"retrying\"REDACTEDREDACTED\n\n" +
+		"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_recovered\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":7,\"output_tokens\":3REDACTEDREDACTEDREDACTED\n\n"
+	recorder := newOpenAIResponseFlushRecorder()
+
+	result, err := runOpenAIResponseFlushTest(recorder, io.NopCloser(strings.NewReader(body)), config.GatewayConfig{REDACTED)
+
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, 7, result.usage.InputTokens)
+	require.Equal(t, 3, result.usage.OutputTokens)
+	gotBody, _ := recorder.snapshot()
+	require.NotContains(t, gotBody, `"type":"error"`)
+	require.NotContains(t, gotBody, `"type":"response.failed"`)
+	require.Contains(t, gotBody, `"type":"response.completed"`)
+REDACTED
+
+func TestOpenAIResponseFlush_CompatibleAPIKeyDoesNotUseCodexBareErrorSynthesis(t *testing.T) {
+	body := "data: {\"type\":\"error\",\"error\":{\"code\":\"provider_error\",\"message\":\"provider failed\"REDACTEDREDACTED\n\n"
+	recorder := newOpenAIResponseFlushRecorder()
+	account := &Account{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED
+
+	result, err := runOpenAIResponseFlushTestWithAccount(recorder, io.NopCloser(strings.NewReader(body)), config.GatewayConfig{REDACTED, account)
+
+REDACTED
+	require.NotNil(t, result)
+	gotBody, _ := recorder.snapshot()
+	require.Contains(t, gotBody, `"type":"error"`)
+	require.NotContains(t, gotBody, `"type":"response.failed"`)
+REDACTED
+
+func TestOpenAIResponseFlush_RecentBareErrorAllowsCompletedBeforeIdleTimeout(t *testing.T) {
+	reader, writer := io.Pipe()
+	defer func() { _ = writer.Close() REDACTED()
+	recorder := newOpenAIResponseFlushRecorder()
+	resultCh, errCh := runOpenAIResponseFlushTestAsync(recorder, reader, config.GatewayConfig{StreamDataIntervalTimeout: 1REDACTED)
+
+	// Place the bare error shortly before the first ticker firing. It is fresh
+	// data, so the ticker must leave the stream open for an authoritative event.
+	time.Sleep(700 * time.Millisecond)
+	_, err := io.WriteString(writer, "data: {\"type\":\"error\",\"error\":{\"code\":\"transient\",\"message\":\"retrying\"REDACTEDREDACTED\n\n")
+REDACTED
+	time.Sleep(500 * time.Millisecond)
+	_, err = io.WriteString(writer, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_late\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":5,\"output_tokens\":1REDACTEDREDACTEDREDACTED\n\n")
+REDACTED
+	require.NoError(t, writer.Close())
+
+	require.NoError(t, <-errCh)
+	result := <-resultCh
+	require.NotNil(t, result)
+	require.Equal(t, 5, result.usage.InputTokens)
+	gotBody, _ := recorder.snapshot()
+	require.Contains(t, gotBody, `"type":"response.completed"`)
+	require.NotContains(t, gotBody, `"type":"response.failed"`)
+REDACTED
+
+func TestOpenAIResponseFlush_BareErrorTimeoutSynthesizesFailed(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  config.GatewayConfig
+REDACTED{
+		{
+			name: "stream interval timeout",
+			cfg:  config.GatewayConfig{StreamDataIntervalTimeout: 1REDACTED,
+	REDACTED,
+		{
+			name: "first output timeout",
+			cfg:  config.GatewayConfig{OpenAIFirstOutputTimeoutSeconds: 1REDACTED,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader, writer := io.Pipe()
+			defer func() { _ = writer.Close() REDACTED()
+			recorder := newOpenAIResponseFlushRecorder()
+			resultCh, errCh := runOpenAIResponseFlushTestAsync(recorder, reader, tt.cfg)
+
+			_, writeErr := io.WriteString(writer, "data: {\"type\":\"error\",\"error\":{\"code\":\"invalid_request\",\"message\":\"bad request\"REDACTEDREDACTED\n\n")
+			require.NoError(t, writeErr)
+
+			select {
+			case err := <-errCh:
+			REDACTED
+				require.Contains(t, err.Error(), "upstream response failed")
+			case <-time.After(3 * time.Second):
+				t.Fatal("timed out waiting for bare error terminal synthesis")
+		REDACTED
+			require.NotNil(t, <-resultCh)
+			body, flushes := recorder.snapshot()
+			require.NotContains(t, body, `"type":"error"`)
+			require.Equal(t, 1, strings.Count(body, `"type":"response.failed"`))
+			require.Len(t, flushes, 1)
+	REDACTED)
+REDACTED
 REDACTED
 
 func TestOpenAIResponseFlush_ReusedTypeKeepsSSEBytesAndTerminalSemantics(t *testing.T) {
@@ -471,6 +590,10 @@ REDACTED
 REDACTED
 
 func runOpenAIResponseFlushTest(recorder *openAIResponseFlushRecorder, body io.ReadCloser, gatewayCfg config.GatewayConfig) (*openaiStreamingResult, error) {
+	return runOpenAIResponseFlushTestWithAccount(recorder, body, gatewayCfg, &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuthREDACTED)
+REDACTED
+
+func runOpenAIResponseFlushTestWithAccount(recorder *openAIResponseFlushRecorder, body io.ReadCloser, gatewayCfg config.GatewayConfig, account *Account) (*openaiStreamingResult, error) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
@@ -483,7 +606,7 @@ REDACTED
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
 		Body:       body,
 REDACTED
-	return svc.handleStreamingResponse(context.Background(), resp, c, &Account{ID: 1, Platform: PlatformOpenAIREDACTED, time.Now(), "gpt-5", "gpt-5")
+	return svc.handleStreamingResponse(context.Background(), resp, c, account, time.Now(), "gpt-5", "gpt-5")
 REDACTED
 
 func runOpenAIResponseFlushTestAsync(recorder *openAIResponseFlushRecorder, body io.ReadCloser, gatewayCfg config.GatewayConfig) (<-chan *openaiStreamingResult, <-chan error) {

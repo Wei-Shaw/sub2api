@@ -121,9 +121,11 @@ REDACTED
 				c.Header("X-Accel-Buffering", "no")
 				*streamStarted = true
 		REDACTED
-			if _, err := fmt.Fprint(c.Writer, string(h.pingFormat)); err != nil {
+			written, err := fmt.Fprint(c.Writer, string(h.pingFormat))
+			if err != nil {
 				return nil, err
 		REDACTED
+			recordGatewayStreamHeartbeat(c, written)
 			flusher.Flush()
 
 		case <-timer.C:
@@ -226,9 +228,11 @@ REDACTED
 				c.Header("X-Accel-Buffering", "no")
 				*streamStarted = true
 		REDACTED
-			if _, err := fmt.Fprint(c.Writer, string(h.pingFormat)); err != nil {
+			written, err := fmt.Fprint(c.Writer, string(h.pingFormat))
+			if err != nil {
 				return err
 		REDACTED
+			recordGatewayStreamHeartbeat(c, written)
 			flusher.Flush()
 		case <-timer.C:
 			return nil

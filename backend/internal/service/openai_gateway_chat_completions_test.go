@@ -489,6 +489,46 @@ REDACTED
 	require.NotContains(t, rec.Body.String(), "[DONE]")
 REDACTED
 
+func TestForwardAsChatCompletions_StreamBareErrorAfterOutputDoesNotFailOver(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gpt-5.5","messages":[{"role":"user","content":"hello"REDACTED],"stream":trueREDACTED`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"partial"REDACTED`,
+		"",
+		`event: error`,
+		`data: {"type":"error","error":{"type":"server_error","code":"server_error","message":"temporary upstream failure"REDACTEDREDACTED`,
+		"",
+		`data: [DONE]`,
+		"",
+REDACTED, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+REDACTEDREDACTED
+	svc := &OpenAIGatewayService{httpUpstream: upstreamREDACTED
+	account := &Account{
+		ID: 1, Name: "openai-oauth", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
+REDACTED"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
+REDACTED
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.5")
+
+REDACTED
+	require.NotNil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
+	require.Contains(t, rec.Body.String(), "partial")
+	require.Contains(t, rec.Body.String(), "temporary upstream failure")
+	require.NotContains(t, rec.Body.String(), "[DONE]")
+REDACTED
+
 func TestForwardAsChatCompletions_StreamCyberPolicyNoFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

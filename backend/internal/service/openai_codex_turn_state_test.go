@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -247,6 +249,19 @@ func TestWriteOpenAIPassthroughResponseHeaders_RelaysAndClearsTurnState(t *testi
 	// 上游缺失时清除残留（failover 换号防串扰）
 	writeOpenAIPassthroughResponseHeaders(dst, http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED, nil)
 	require.Empty(t, dst.Get("X-Codex-Turn-State"))
+REDACTED
+
+func TestWriteOpenAIPassthroughResponseHeaders_RelaysReasoningIncluded(t *testing.T) {
+	dst := http.Header{REDACTED
+	src := http.Header{REDACTED
+	src.Set("X-Reasoning-Included", "1")
+
+	writeOpenAIPassthroughResponseHeaders(
+		dst,
+		src,
+		responseheaders.CompileHeaderFilter(config.ResponseHeaderConfig{REDACTED),
+	)
+	require.Equal(t, "1", dst.Get("X-Reasoning-Included"))
 REDACTED
 
 func TestEnsureOpenAIRemoteCompactionV2BetaFeature(t *testing.T) {

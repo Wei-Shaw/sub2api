@@ -28,7 +28,7 @@ REDACTED{
 		{name: "invalid JSON", data: `{"type":`, want: falseREDACTED,
 		{name: "terminal with trailing garbage", data: `{"type":"response.completed"REDACTED trailing`, want: trueREDACTED,
 		{name: "nonterminal with trailing garbage", data: `{"type":"response.output_text.delta"REDACTED trailing`, want: falseREDACTED,
-		{name: "type whitespace remains nonterminal", data: `{"type":" response.completed "REDACTED`, want: falseREDACTED,
+		{name: "type whitespace is normalized", data: `{"type":" response.completed "REDACTED`, want: trueREDACTED,
 REDACTED
 
 	for _, tt := range tests {

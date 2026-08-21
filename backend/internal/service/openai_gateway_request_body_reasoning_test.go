@@ -199,3 +199,74 @@ REDACTED
 	_, hasInput := reqBody["input"]
 	assert.False(t, hasInput, "bare reasoning skeleton should be dropped, emptying input")
 REDACTED
+
+func TestNormalizeOpenAIAPIKeyStoreFalseReasoningReplay(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5","store":false,"input":[` +
+		`{"type":"reasoning","id":"rs_encrypted","call_id":"remove","encrypted_content":"cipher","summary":null,"opaque":9007199254740993REDACTED,` +
+		`{"type":"reasoning","id":"rs_server_only","summary":[{"type":"summary_text","text":"drop"REDACTED]REDACTED,` +
+		`{"type":"item_reference","id":"rs_server_only"REDACTED,` +
+		`{"type":"item_reference","id":"msg_keep"REDACTED,` +
+		`{"type":"message","id":"msg_keep","role":"user","content":"continue"REDACTED` +
+		`]REDACTED`)
+
+	normalized, changed, err := normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body, false)
+REDACTED
+	require.True(t, changed)
+	require.Equal(t, int64(3), gjson.GetBytes(normalized, "input.#").Int())
+	require.Equal(t, "reasoning", gjson.GetBytes(normalized, "input.0.type").String())
+	require.False(t, gjson.GetBytes(normalized, "input.0.id").Exists())
+	require.False(t, gjson.GetBytes(normalized, "input.0.call_id").Exists())
+	require.Equal(t, "cipher", gjson.GetBytes(normalized, "input.0.encrypted_content").String())
+	require.True(t, gjson.GetBytes(normalized, "input.0.summary").IsArray())
+	require.Equal(t, "9007199254740993", gjson.GetBytes(normalized, "input.0.opaque").Raw)
+	require.Equal(t, "msg_keep", gjson.GetBytes(normalized, "input.1.id").String())
+	require.Equal(t, "message", gjson.GetBytes(normalized, "input.2.type").String())
+REDACTED
+
+func TestNormalizeOpenAIAPIKeyStoreFalseReasoningReplayRequiresExplicitStoreFalse(t *testing.T) {
+	for _, body := range []string{
+		`{"input":[{"type":"reasoning","id":"rs_keep"REDACTED]REDACTED`,
+		`{"store":true,"input":[{"type":"reasoning","id":"rs_keep"REDACTED]REDACTED`,
+REDACTED {
+		normalized, changed, err := normalizeOpenAIAPIKeyStoreFalseReasoningReplay([]byte(body), false)
+	REDACTED
+		require.False(t, changed)
+		require.Equal(t, body, string(normalized))
+REDACTED
+REDACTED
+
+func TestNormalizeOpenAIAPIKeyStoreFalseReasoningReplayKnownCompactMode(t *testing.T) {
+	body := []byte(`{"input":[{"type":"reasoning","id":"rs_drop","summary":[]REDACTED,{"type":"message","content":"continue"REDACTED]REDACTED`)
+
+	normalized, changed, err := normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body, true)
+
+REDACTED
+	require.True(t, changed)
+	require.Equal(t, int64(1), gjson.GetBytes(normalized, "input.#").Int())
+	require.Equal(t, "message", gjson.GetBytes(normalized, "input.0.type").String())
+REDACTED
+
+func TestNormalizeOpenAIAPIKeyStoreFalseReasoningReplayRejectsEmptyEncryptedContent(t *testing.T) {
+	for _, encrypted := range []string{"null", `""`, `"   "`, "123"REDACTED {
+		body := []byte(`{"store":false,"input":[{"type":"reasoning","id":"rs_drop","encrypted_content":` + encrypted + `REDACTED,{"type":"message","content":"continue"REDACTED]REDACTED`)
+		normalized, changed, err := normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body, false)
+	REDACTED
+		require.True(t, changed)
+		require.Equal(t, int64(1), gjson.GetBytes(normalized, "input.#").Int())
+		require.Equal(t, "message", gjson.GetBytes(normalized, "input.0.type").String())
+REDACTED
+REDACTED
+
+func TestNormalizeOpenAIParallelToolCallsWithoutTools(t *testing.T) {
+	withTools := []byte(`{"tools":[{"type":"function","name":"lookup"REDACTED],"parallel_tool_calls":falseREDACTED`)
+	normalized, changed, err := normalizeOpenAIParallelToolCallsWithoutTools(withTools)
+REDACTED
+	require.False(t, changed)
+	require.Equal(t, string(withTools), string(normalized))
+
+	withoutTools := []byte(`{"input":"hi","parallel_tool_calls":trueREDACTED`)
+	normalized, changed, err = normalizeOpenAIParallelToolCallsWithoutTools(withoutTools)
+REDACTED
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(normalized, "parallel_tool_calls").Exists())
+REDACTED

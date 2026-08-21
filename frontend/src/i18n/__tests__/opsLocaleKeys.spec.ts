@@ -21,12 +21,26 @@ describe('ops locale key completeness', () => {
     'admin.ops.timeRange.custom',
     'admin.ops.customTimeRange.startTime',
     'admin.ops.customTimeRange.endTime',
+    'admin.ops.errorDetail.upstreamStatus',
+    'admin.ops.errorDetail.rootCause',
+    'admin.ops.errorDetail.diagnosticPayloads',
+    'admin.ops.errorDetail.payloads.client',
+    'admin.ops.errorDetail.payloads.upstream_message',
+    'admin.ops.errorDetail.payloads.upstream_detail',
+    'admin.ops.errorDetail.payloads.upstream_events',
   ]
 
   for (const key of requiredKeys) {
     it(`en locale has ${keyREDACTED`, () => {
       const enKeys = flattenKeys(en)
       expect(enKeys).toContain(key)
+    REDACTED)
+  REDACTED
+
+  for (const key of requiredKeys) {
+    it(`zh locale has ${keyREDACTED`, () => {
+      const zhKeys = flattenKeys(zh)
+      expect(zhKeys).toContain(key)
     REDACTED)
   REDACTED
 REDACTED)

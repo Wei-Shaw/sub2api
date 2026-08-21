@@ -41,6 +41,16 @@ type closeSpyFrameConn struct {
 	closeCalls atomic.Int32
 REDACTED
 
+type cancelJoinProbeFrameConn struct {
+	readStarted  chan struct{REDACTED
+	readCanceled chan struct{REDACTED
+	allowReturn  chan struct{REDACTED
+	readReturned chan struct{REDACTED
+	startOnce    sync.Once
+	cancelOnce   sync.Once
+	returnOnce   sync.Once
+REDACTED
+
 func newPassthroughTestFrameConn(frames []passthroughTestFrame, autoClose bool) *passthroughTestFrameConn {
 	c := &passthroughTestFrameConn{
 		readCh: make(chan passthroughTestFrame, len(frames)+1),
@@ -178,6 +188,38 @@ func (c *closeSpyFrameConn) CloseCalls() int32 {
 REDACTED
 	return c.closeCalls.Load()
 REDACTED
+
+func newCancelJoinProbeFrameConn() *cancelJoinProbeFrameConn {
+	return &cancelJoinProbeFrameConn{
+		readStarted:  make(chan struct{REDACTED),
+		readCanceled: make(chan struct{REDACTED),
+		allowReturn:  make(chan struct{REDACTED),
+		readReturned: make(chan struct{REDACTED),
+REDACTED
+REDACTED
+
+func (c *cancelJoinProbeFrameConn) ReadFrame(ctx context.Context) (coderws.MessageType, []byte, error) {
+	c.startOnce.Do(func() { close(c.readStarted) REDACTED)
+	<-ctx.Done()
+	c.cancelOnce.Do(func() { close(c.readCanceled) REDACTED)
+	<-c.allowReturn
+	c.returnOnce.Do(func() { close(c.readReturned) REDACTED)
+	return coderws.MessageText, nil, ctx.Err()
+REDACTED
+
+func (c *cancelJoinProbeFrameConn) WriteFrame(ctx context.Context, _ coderws.MessageType, _ []byte) error {
+	if ctx == nil {
+		ctx = context.Background()
+REDACTED
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return nil
+REDACTED
+REDACTED
+
+func (c *cancelJoinProbeFrameConn) Close() error { return nil REDACTED
 
 func TestRelay_BasicRelayAndUsage(t *testing.T) {
 	t.Parallel()
@@ -372,6 +414,58 @@ REDACTED)
 	require.GreaterOrEqual(t, upstreamConn.CloseCalls(), int32(1))
 REDACTED
 
+func TestRelay_JoinsUpstreamReaderBeforeReturning(t *testing.T) {
+	t.Parallel()
+
+	clientConn := &closeSpyFrameConn{REDACTED
+	upstreamConn := newCancelJoinProbeFrameConn()
+	ctx, cancel := context.WithCancel(context.Background())
+	resultCh := make(chan *RelayExit, 1)
+
+	go func() {
+		_, relayExit := Relay(
+			ctx,
+			clientConn,
+			upstreamConn,
+			[]byte(`{"type":"response.create","model":"gpt-4o","input":[]REDACTED`),
+			RelayOptions{REDACTED,
+		)
+		resultCh <- relayExit
+REDACTED()
+
+	select {
+	case <-upstreamConn.readStarted:
+	case <-time.After(time.Second):
+		t.Fatal("upstream reader did not start")
+REDACTED
+	cancel()
+	select {
+	case <-upstreamConn.readCanceled:
+	case <-time.After(time.Second):
+		t.Fatal("upstream reader did not observe relay cancellation")
+REDACTED
+	select {
+	case <-resultCh:
+		t.Fatal("Relay returned before the upstream reader exited")
+	case <-time.After(50 * time.Millisecond):
+REDACTED
+
+	close(upstreamConn.allowReturn)
+	select {
+	case relayExit := <-resultCh:
+		require.NotNil(t, relayExit)
+		require.ErrorIs(t, relayExit.Err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("Relay did not return after the upstream reader exited")
+REDACTED
+	select {
+	case <-upstreamConn.readReturned:
+	default:
+		t.Fatal("Relay returned before the upstream reader completion signal")
+REDACTED
+	require.Zero(t, clientConn.CloseCalls(), "错误路径不应提前关闭客户端连接")
+REDACTED
+
 func TestRelay_NilConnections(t *testing.T) {
 	t.Parallel()
 
@@ -470,6 +564,68 @@ REDACTED)
 	require.Equal(t, 4, turns[1].Usage.OutputTokens)
 	require.Equal(t, 5, result.Usage.InputTokens)
 	require.Equal(t, 5, result.Usage.OutputTokens)
+REDACTED
+
+func TestRelay_OnTurnComplete_BareErrorWithoutIDBeforeLaterCompleted(t *testing.T) {
+	t.Parallel()
+
+	clientConn := newPassthroughTestFrameConn(nil, false)
+	upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{
+		{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"error","usage":{"input_tokens":5,"output_tokens":1REDACTED,"error":{"message":"first turn failed"REDACTEDREDACTED`),
+	REDACTED,
+		{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"response.completed","response":{"id":"resp_next","usage":{"input_tokens":3,"output_tokens":2REDACTEDREDACTEDREDACTED`),
+	REDACTED,
+REDACTED, true)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	turns := make([]RelayTurnResult, 0, 2)
+	result, relayExit := Relay(
+		ctx,
+		clientConn,
+		upstreamConn,
+		[]byte(`{"type":"response.create","model":"gpt-5.6-sol","input":[]REDACTED`),
+		RelayOptions{OnTurnComplete: func(turn RelayTurnResult) { turns = append(turns, turn) REDACTEDREDACTED,
+	)
+
+	require.Nil(t, relayExit)
+	require.Len(t, turns, 2)
+	require.Equal(t, "error", turns[0].TerminalEventType)
+	require.Empty(t, turns[0].RequestID)
+	require.Equal(t, Usage{InputTokens: 5, OutputTokens: 1REDACTED, turns[0].Usage)
+	require.Equal(t, "response.completed", turns[1].TerminalEventType)
+	require.Equal(t, "resp_next", turns[1].RequestID)
+	require.Equal(t, Usage{InputTokens: 3, OutputTokens: 2REDACTED, turns[1].Usage)
+	require.Equal(t, Usage{InputTokens: 8, OutputTokens: 3REDACTED, result.Usage)
+REDACTED
+
+func TestRelay_OnTurnComplete_AuxiliaryFrameDoesNotSettleBareErrorBeforeFailed(t *testing.T) {
+	t.Parallel()
+
+	clientConn := newPassthroughTestFrameConn(nil, false)
+	upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{
+		{msgType: coderws.MessageText, payload: []byte(`{"type":"error","error":{"code":"server_error","message":"failed"REDACTEDREDACTED`)REDACTED,
+		{msgType: coderws.MessageText, payload: []byte(`{"type":"rate_limits.updated","rate_limits":[{"name":"requests","remaining":1REDACTED]REDACTED`)REDACTED,
+		{msgType: coderws.MessageText, payload: []byte(`{"type":"response.failed","response":{"id":"resp_authoritative","usage":{"input_tokens":7,"output_tokens":2REDACTED,"error":{"code":"server_error","message":"failed"REDACTEDREDACTEDREDACTED`)REDACTED,
+REDACTED, true)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	turns := make([]RelayTurnResult, 0, 1)
+	result, relayExit := Relay(ctx, clientConn, upstreamConn, []byte(`{"type":"response.create","model":"gpt-5.6-sol","input":[]REDACTED`), RelayOptions{
+		OnTurnComplete: func(turn RelayTurnResult) { turns = append(turns, turn) REDACTED,
+REDACTED)
+
+	require.Nil(t, relayExit)
+	require.Len(t, turns, 1)
+	require.Equal(t, "response.failed", turns[0].TerminalEventType)
+	require.Equal(t, "resp_authoritative", turns[0].RequestID)
+	require.Equal(t, Usage{InputTokens: 7, OutputTokens: 2REDACTED, turns[0].Usage)
+	require.Equal(t, turns[0].Usage, result.Usage)
 REDACTED
 
 func TestRelay_OnTurnComplete_UsesCurrentResponseCreateModel(t *testing.T) {
