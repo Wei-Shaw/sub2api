@@ -304,7 +304,14 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 
 	if promptCacheKey != "" {
 		apiKeyID := getAPIKeyIDFromContext(c)
-		upstreamReq.Header.Set("session_id", generateSessionUUID(isolateOpenAISessionID(apiKeyID, promptCacheKey)))
+		var isolatedSessionID string
+		if taintAccountID := openAICodexTaintSanitizeAccountID(c); taintAccountID != 0 {
+			// 切号净化：session 头改为账号感知派生（同账号同会话稳定、切号变值）。
+			isolatedSessionID = deriveCodexTaintUUID("pck", apiKeyID, taintAccountID, promptCacheKey)
+		} else {
+			isolatedSessionID = generateSessionUUID(isolateOpenAISessionID(apiKeyID, promptCacheKey))
+		}
+		upstreamReq.Header.Set("session_id", isolatedSessionID)
 	}
 
 	// 7. Send request

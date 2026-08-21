@@ -2372,12 +2372,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
-		RiskControlEnabled:          updatedSettings.RiskControlEnabled,
-		CyberSessionBlockEnabled:    updatedSettings.CyberSessionBlockEnabled,
-		CyberSessionBlockTTLSeconds: updatedSettings.CyberSessionBlockTTLSeconds,
+		RiskControlEnabled:                    updatedSettings.RiskControlEnabled,
+		CyberSessionBlockEnabled:              updatedSettings.CyberSessionBlockEnabled,
+		CyberSessionBlockTTLSeconds:           updatedSettings.CyberSessionBlockTTLSeconds,
 		CodexSessionSwitchPurificationEnabled: updatedSettings.CodexSessionSwitchPurificationEnabled,
-		AccountSchedulingThresholds: updatedSettings.AccountSchedulingThresholds,
-		AllowUserViewErrorRequests:  updatedSettings.AllowUserViewErrorRequests,
+		AccountSchedulingThresholds:           updatedSettings.AccountSchedulingThresholds,
+		AllowUserViewErrorRequests:            updatedSettings.AllowUserViewErrorRequests,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)

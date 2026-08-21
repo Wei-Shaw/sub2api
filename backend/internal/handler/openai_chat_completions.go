@@ -147,6 +147,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
+	var chatBridgeTaint openAIPassthroughFailoverState
 
 	// 分组利润控制：chat completions 文本入口请求级装门并固定 pricingAt。
 	ccPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
@@ -231,6 +232,17 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
 		writerSizeBeforeForward := c.Writer.Size()
+		// 切号净化：chat completions 桥的 attempt 跟踪（session 头在 service 层
+		// 按标记派生改写；桥 input 为网关生成，无服务端铸造 id）。
+		if chatBridgeTaint.firstAttemptAccountID == 0 {
+			chatBridgeTaint.firstAttemptAccountID = account.ID
+		}
+		if h.gatewayService.TrackOpenAICodexSessionAttemptForTaint(c, account, chatBridgeTaint.firstAttemptAccountID) {
+			reqLog.Info("openai.codex_session_taint_rekeyed",
+				zap.Int64("account_id", account.ID),
+				zap.Int64("first_attempt_account_id", chatBridgeTaint.firstAttemptAccountID),
+			)
+		}
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
