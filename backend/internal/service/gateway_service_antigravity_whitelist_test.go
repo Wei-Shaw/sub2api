@@ -254,6 +254,27 @@ func TestGatewayService_isModelSupportedByAccount_UsesUpstreamSnapshot(t *testin
 	require.False(t, svc.isModelSupportedByAccount(account, "gpt-4"))
 }
 
+func TestGatewayService_isModelSupportedByAccount_NewSnapshotModelIgnoresLegacyMapping(t *testing.T) {
+	svc := &GatewayService{}
+	account := &Account{
+		Platform: PlatformAntigravity,
+		Credentials: map[string]any{
+			// 模拟线上旧账号：缺少 model_mapping_restricts，且保存的映射没有新模型。
+			"model_mapping": map[string]any{
+				"gemini-3.6-flash": "gemini-3.6-flash-tiered",
+			},
+		},
+		Extra: ApplyUpstreamModelSnapshot(nil, []string{
+			"gemini-3.7-flash-high",
+			"gemini-3.7-flash-tiered",
+		}, testTimeUTC()),
+	}
+
+	require.True(t, svc.isModelSupportedByAccount(account, "gemini-3.7-flash-high"))
+	require.True(t, svc.isModelSupportedByAccount(account, "gemini-3.7-flash-tiered"))
+	require.False(t, svc.isModelSupportedByAccount(account, "gemini-3.8-flash"))
+}
+
 func testTimeUTC() time.Time {
 	return time.Date(2026, 8, 19, 0, 0, 0, 0, time.UTC)
 }
