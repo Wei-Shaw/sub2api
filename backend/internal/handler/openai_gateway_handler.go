@@ -1088,6 +1088,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
+	var messagesBridgeTaint openAIPassthroughFailoverState
 	effectiveMappedModel := preferredMappedModel
 
 	// 分组利润控制：Messages 文本入口同样请求级装门并固定 pricingAt。
@@ -1179,6 +1180,17 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		// 应用渠道模型映射到请求体
 		forwardBody := mappedBodyForMessages(channelMappingMsg.Mapped, channelMappingMsg.MappedModel)
 		writerSizeBeforeForward := c.Writer.Size()
+		// 切号净化：桥路径的 attempt 跟踪（session 头在 service 层按标记派生改写；
+		// 桥 input 无服务端铸造 id，body 不需要改写）。
+		if messagesBridgeTaint.firstAttemptAccountID == 0 {
+			messagesBridgeTaint.firstAttemptAccountID = account.ID
+		}
+		if h.gatewayService.TrackOpenAICodexSessionAttemptForTaint(c, account, messagesBridgeTaint.firstAttemptAccountID) {
+			reqLog.Info("openai.codex_session_taint_rekeyed",
+				zap.Int64("account_id", account.ID),
+				zap.Int64("first_attempt_account_id", messagesBridgeTaint.firstAttemptAccountID),
+			)
+		}
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
