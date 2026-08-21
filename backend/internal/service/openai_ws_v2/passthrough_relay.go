@@ -72,6 +72,7 @@ type RelayOptions struct {
 	TakeNextTurnStartedAt           func() time.Time
 	FirstMessageType                coderws.MessageType
 	FirstMessageSent                bool
+	FailOnInitialUpstreamDisconnect bool
 	StartClientAfterFirstDownstream bool
 	OnUsageParseFailure             func(eventType string, usageRaw string)
 	OnTurnComplete                  func(turn RelayTurnResult)
@@ -378,6 +379,25 @@ func Relay(
 			Stage:           stage,
 			Err:             exitErr,
 			WroteDownstream: combinedWroteDownstream,
+		}
+	}
+	if options.FailOnInitialUpstreamDisconnect &&
+		firstExit.stage == "read_upstream" &&
+		!combinedWroteDownstream {
+		exitErr := firstExit.err
+		if exitErr == nil {
+			exitErr = io.EOF
+		}
+		emitRelayTrace(onTrace, RelayTraceEvent{
+			Stage:           "relay_exit",
+			Direction:       relayDirectionFromStage(firstExit.stage),
+			Graceful:        false,
+			WroteDownstream: false,
+			Error:           relayErrorString(exitErr),
+		})
+		return result, &RelayExit{
+			Stage: "read_upstream",
+			Err:   exitErr,
 		}
 	}
 	if firstExit.graceful && (!hasSecondExit || secondExit.graceful) {

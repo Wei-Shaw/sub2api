@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,6 +22,7 @@ import (
 type stagedPassthroughFrame struct {
 	messageType coderws.MessageType
 	payload     []byte
+	err         error
 }
 
 type stagedPassthroughConn struct {
@@ -42,6 +44,10 @@ func (c *stagedPassthroughConn) Send(payload string) {
 	c.frames <- stagedPassthroughFrame{messageType: coderws.MessageText, payload: []byte(payload)}
 }
 
+func (c *stagedPassthroughConn) Fail(err error) {
+	c.frames <- stagedPassthroughFrame{err: err}
+}
+
 func (c *stagedPassthroughConn) WriteJSON(context.Context, any) error { return nil }
 
 func (c *stagedPassthroughConn) ReadMessage(ctx context.Context) ([]byte, error) {
@@ -61,6 +67,9 @@ func (c *stagedPassthroughConn) ReadFrame(ctx context.Context) (coderws.MessageT
 	case <-c.closed:
 		return coderws.MessageText, nil, errOpenAIWSConnClosed
 	case frame := <-c.frames:
+		if frame.err != nil {
+			return frame.messageType, nil, frame.err
+		}
 		return frame.messageType, append([]byte(nil), frame.payload...), nil
 	}
 }
@@ -96,11 +105,28 @@ func (c *stagedPassthroughConn) Close() error {
 }
 
 type stagedPassthroughDialer struct {
-	conn openAIWSClientConn
+	mu    sync.Mutex
+	conn  openAIWSClientConn
+	conns []openAIWSClientConn
+	calls int
 }
 
 func (d *stagedPassthroughDialer) Dial(context.Context, string, http.Header, string) (openAIWSClientConn, int, http.Header, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.calls++
+	if len(d.conns) > 0 {
+		conn := d.conns[0]
+		d.conns = d.conns[1:]
+		return conn, http.StatusSwitchingProtocols, http.Header{}, nil
+	}
 	return d.conn, http.StatusSwitchingProtocols, http.Header{}, nil
+}
+
+func (d *stagedPassthroughDialer) CallCount() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.calls
 }
 
 func newPassthroughLifecycleService(cfg *config.Config, upstream *stagedPassthroughConn) *OpenAIGatewayService {
@@ -218,6 +244,117 @@ func requirePassthroughUpstreamWrite(t *testing.T, upstream *stagedPassthroughCo
 	case <-time.After(timeout):
 		t.Fatal("passthrough request was not forwarded upstream")
 		return nil
+	}
+}
+
+func TestPassthroughLifecycle_PreOutputUpstreamFailureRetriesOnce(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	controlCtx, cancelControl := context.WithCancel(context.Background())
+	defer cancelControl()
+	firstUpstream := newStagedPassthroughConn()
+	secondUpstream := newStagedPassthroughConn()
+	firstUpstream.Send(`{"type":"error","error":{"code":"server_error","message":"stale upstream socket"}}`)
+	secondUpstream.Send(`{"type":"response.completed","response":{"id":"resp_retry","status":"completed","output":[]}}`)
+
+	svc := newPassthroughLifecycleService(passthroughLifecycleConfig(), firstUpstream)
+	dialer, ok := svc.openaiWSPassthroughDialer.(*stagedPassthroughDialer)
+	require.True(t, ok)
+	dialer.conns = []openAIWSClientConn{firstUpstream, secondUpstream}
+	server, serverErr := startPassthroughLifecycleServer(t, controlCtx, svc, passthroughLifecycleAccount())
+	defer server.Close()
+	clientConn := dialPassthroughLifecycleClient(t, server)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	firstWrite := requirePassthroughUpstreamWrite(t, firstUpstream, time.Second)
+	retryWrite := requirePassthroughUpstreamWrite(t, secondUpstream, time.Second)
+	require.Equal(t, "response.create", gjson.GetBytes(firstWrite, "type").String())
+	require.Equal(t, firstWrite, retryWrite, "retry must replay the exact first request")
+
+	event, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "response.completed", gjson.GetBytes(event, "type").String())
+	require.Equal(t, 2, dialer.CallCount())
+
+	_ = clientConn.CloseNow()
+	select {
+	case err := <-serverErr:
+		require.NoError(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("passthrough relay did not finish after client disconnect")
+	}
+}
+
+func TestPassthroughLifecycle_PreOutputEOFRetriesOnce(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	controlCtx, cancelControl := context.WithCancel(context.Background())
+	defer cancelControl()
+	firstUpstream := newStagedPassthroughConn()
+	secondUpstream := newStagedPassthroughConn()
+	firstUpstream.Fail(io.EOF)
+	secondUpstream.Send(`{"type":"response.completed","response":{"id":"resp_eof_retry","status":"completed","output":[]}}`)
+
+	svc := newPassthroughLifecycleService(passthroughLifecycleConfig(), firstUpstream)
+	dialer, ok := svc.openaiWSPassthroughDialer.(*stagedPassthroughDialer)
+	require.True(t, ok)
+	dialer.conns = []openAIWSClientConn{firstUpstream, secondUpstream}
+	server, serverErr := startPassthroughLifecycleServer(t, controlCtx, svc, passthroughLifecycleAccount())
+	defer server.Close()
+	clientConn := dialPassthroughLifecycleClient(t, server)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	_ = requirePassthroughUpstreamWrite(t, firstUpstream, time.Second)
+	_ = requirePassthroughUpstreamWrite(t, secondUpstream, time.Second)
+	event, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "response.completed", gjson.GetBytes(event, "type").String())
+	require.Equal(t, 2, dialer.CallCount())
+
+	_ = clientConn.CloseNow()
+	select {
+	case err := <-serverErr:
+		require.NoError(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("passthrough relay did not finish after client disconnect")
+	}
+}
+
+func TestPassthroughLifecycle_PreOutputFailureWritesResponseFailedAfterRetryExhausted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	controlCtx, cancelControl := context.WithCancel(context.Background())
+	defer cancelControl()
+	firstUpstream := newStagedPassthroughConn()
+	secondUpstream := newStagedPassthroughConn()
+	firstUpstream.Send(`{"type":"error","error":{"code":"server_error","message":"first socket failed"}}`)
+	secondUpstream.Send(`{"type":"error","error":{"code":"server_error","message":"second socket failed"}}`)
+
+	svc := newPassthroughLifecycleService(passthroughLifecycleConfig(), firstUpstream)
+	dialer, ok := svc.openaiWSPassthroughDialer.(*stagedPassthroughDialer)
+	require.True(t, ok)
+	dialer.conns = []openAIWSClientConn{firstUpstream, secondUpstream}
+	server, serverErr := startPassthroughLifecycleServer(t, controlCtx, svc, passthroughLifecycleAccount())
+	defer server.Close()
+	clientConn := dialPassthroughLifecycleClient(t, server)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	_ = requirePassthroughUpstreamWrite(t, firstUpstream, time.Second)
+	_ = requirePassthroughUpstreamWrite(t, secondUpstream, time.Second)
+	event, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "response.failed", gjson.GetBytes(event, "type").String())
+	require.Equal(t, "upstream_connection_error", gjson.GetBytes(event, "response.error.code").String())
+
+	_, err = readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	var closeErr coderws.CloseError
+	require.ErrorAs(t, err, &closeErr)
+	require.Equal(t, coderws.StatusInternalError, closeErr.Code)
+	require.Equal(t, 2, dialer.CallCount())
+	select {
+	case err := <-serverErr:
+		var serverCloseErr *OpenAIWSClientCloseError
+		require.ErrorAs(t, err, &serverCloseErr)
+		require.Equal(t, coderws.StatusInternalError, serverCloseErr.StatusCode())
+	case <-time.After(3 * time.Second):
+		t.Fatal("passthrough relay did not report exhausted retries")
 	}
 }
 
