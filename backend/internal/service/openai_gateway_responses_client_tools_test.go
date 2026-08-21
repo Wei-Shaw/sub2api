@@ -108,32 +108,7 @@ func TestClearOpenAIResponsesClientToolMappingRemovesStaleContextState(t *testin
 	require.False(t, ok)
 REDACTED
 
-func TestShouldAdaptOpenAIResponsesClientToolsForDeepSeekResponses(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	body := openAIClientToolsRequest(true)
-
-	deepSeekResponses := &Account{
-		Platform: PlatformDeepseek,
-		Type:     AccountTypeAPIKey,
-REDACTED
-			"api_protocol": APIProtocolResponses,
-	REDACTED,
-REDACTED
-	require.True(t, shouldAdaptOpenAIResponsesClientTools(deepSeekResponses, c, body))
-
-	deepSeekChat := &Account{
-		Platform: PlatformDeepseek,
-		Type:     AccountTypeAPIKey,
-REDACTED
-			"api_protocol": APIProtocolChatCompletions,
-	REDACTED,
-REDACTED
-	require.False(t, shouldAdaptOpenAIResponsesClientTools(deepSeekChat, c, body))
-REDACTED
-
-func TestDeepSeekResponsesPassthroughRestoresClientToolsStreaming(t *testing.T) {
+func TestDeepSeekResponsesForwardRestoresClientToolsStreaming(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := openAIClientToolsRequest(true)
 	recorder := httptest.NewRecorder()
@@ -163,17 +138,88 @@ REDACTED
 	REDACTED,
 REDACTED
 
-	result, err := svc.forwardOpenAIPassthrough(
-		context.Background(), c, account, body, body, "gpt-5.4", false, nil, true, time.Now(),
-	)
+	result, err := svc.Forward(context.Background(), c, account, body)
 
 REDACTED
 	require.NotNil(t, result)
 	assertOpenAIClientToolsLowered(t, upstream.lastBody)
+	require.Equal(t, "/responses", upstream.lastReq.URL.Path)
 	output := recorder.Body.String()
 	require.Contains(t, output, `"type":"custom_tool_call"`)
 	require.Contains(t, output, `"type":"response.custom_tool_call_input.done"`)
 	require.Contains(t, output, `"input":"pwd"`)
+REDACTED
+
+func TestDeepSeekAdaptiveResponsesForwardRestoresClientToolsNonStreaming(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := openAIClientToolsRequest(false)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+		Body: io.NopCloser(strings.NewReader(`{"id":"resp_ds_adaptive_tools","status":"completed","output":[
+			{"type":"function_call","id":"i1","call_id":"c1","name":"exec","arguments":"{\"input\":\"pwd\"REDACTED"REDACTED,
+			{"type":"function_call","id":"i2","call_id":"c2","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"REDACTED"REDACTED],
+			"usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTED`)),
+REDACTEDREDACTED
+	svc := openAIClientToolsTestService(upstream)
+	account := &Account{
+		ID:       5662,
+		Platform: PlatformDeepseek,
+		Type:     AccountTypeAPIKey,
+REDACTED
+			"api_key":      "test-key",
+			"api_protocol": APIProtocolAdaptive,
+			"api_base_urls": map[string]any{
+				APIProtocolResponses: "https://relay.example",
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+
+REDACTED
+	require.NotNil(t, result)
+	assertOpenAIClientToolsLowered(t, upstream.lastBody)
+	require.Equal(t, "/responses", upstream.lastReq.URL.Path)
+	require.Equal(t, "custom_tool_call", gjson.Get(recorder.Body.String(), "output.0.type").String())
+	require.Equal(t, "pwd", gjson.Get(recorder.Body.String(), "output.0.input").String())
+	require.Equal(t, "custom_tool_call", gjson.Get(recorder.Body.String(), "output.1.type").String())
+	require.Equal(t, "*** Begin Patch", gjson.Get(recorder.Body.String(), "output.1.input").String())
+REDACTED
+
+func TestDeepSeekResponsesCompactSkipsClientToolAdaptation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := openAIClientToolsRequest(false)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(body))
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_compact","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTED`)),
+REDACTEDREDACTED
+	svc := openAIClientToolsTestService(upstream)
+	account := &Account{
+		ID:       5663,
+		Platform: PlatformDeepseek,
+		Type:     AccountTypeAPIKey,
+REDACTED
+			"api_key":      "test-key",
+			"api_protocol": APIProtocolResponses,
+			"base_url":     "https://relay.example",
+	REDACTED,
+REDACTED
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+
+REDACTED
+	require.Equal(t, "custom", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
+	require.Equal(t, "/responses/compact", upstream.lastReq.URL.Path)
 REDACTED
 
 func TestOpenAIPassthroughAPIKeyRestoresClientToolsNonStreaming(t *testing.T) {
