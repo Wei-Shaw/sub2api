@@ -2794,9 +2794,19 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 
 	if err := h.accountTestService.StoreUpstreamModelSnapshot(c.Request.Context(), account, models); err != nil {
 		slog.Warn("store_upstream_model_snapshot_failed", "account_id", accountID, "error", err)
+		response.InternalError(c, "Failed to store upstream model snapshot")
+		return
 	}
 
-	response.Success(c, gin.H{"models": models})
+	snapshot := account.UpstreamModelSnapshot()
+	syncedAt := ""
+	if snapshot != nil {
+		syncedAt = snapshot.SyncedAt
+	}
+	response.Success(c, gin.H{
+		"models":    models,
+		"synced_at": syncedAt,
+	})
 }
 
 // SyncUpstreamModelsPreview handles syncing live supported models using provided credentials (no account ID needed).

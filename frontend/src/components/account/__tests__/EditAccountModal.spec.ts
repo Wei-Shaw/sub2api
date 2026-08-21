@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { mount } from '@vue/test-utils'
 
-const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, syncUpstreamModelsMock, authIsSimpleMode } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
   checkMixedChannelRiskMock: vi.fn(),
+  syncUpstreamModelsMock: vi.fn(),
   authIsSimpleMode: { value: true }
 }))
 
@@ -28,7 +29,8 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       update: updateAccountMock,
-      checkMixedChannelRisk: checkMixedChannelRiskMock
+      checkMixedChannelRisk: checkMixedChannelRiskMock,
+      syncUpstreamModels: syncUpstreamModelsMock
     },
     settings: {
       getWebSearchEmulationConfig: vi.fn().mockResolvedValue({ enabled: false, providers: [] }),
@@ -1349,5 +1351,37 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty(
       'antigravity_project_id'
     )
+  })
+
+  it('shows Antigravity upstream capabilities without changing model mappings', async () => {
+    const account = buildAntigravityAccount()
+    account.extra = {
+      upstream_model_snapshot: {
+        models: ['gemini-3.7-flash'],
+        synced_at: '2026-08-21T00:00:00Z'
+      }
+    }
+    syncUpstreamModelsMock.mockReset().mockResolvedValue({
+      models: ['gemini-3.7-flash', 'gemini-future-9.9']
+    })
+
+    const wrapper = mountModal(account)
+    expect(wrapper.get('[data-testid="antigravity-upstream-models"]').text()).toContain('gemini-3.7-flash')
+
+    const refreshButton = wrapper
+      .findAll('button')
+      .find(button => button.text().includes('admin.accounts.refreshUpstreamModels'))
+    expect(refreshButton).toBeDefined()
+    await refreshButton!.trigger('click')
+
+    expect(wrapper.get('[data-testid="antigravity-upstream-models"]').text()).toContain('gemini-future-9.9')
+
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'gemini-2.5-flash': 'gemini-2.5-flash'
+    })
   })
 })

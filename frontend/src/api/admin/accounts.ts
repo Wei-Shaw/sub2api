@@ -541,6 +541,7 @@ export async function getAvailableModels(id: number): Promise<ClaudeModel[]> {
 
 export interface SyncUpstreamModelsResult {
   models: string[]
+  synced_at?: string
 }
 
 /**

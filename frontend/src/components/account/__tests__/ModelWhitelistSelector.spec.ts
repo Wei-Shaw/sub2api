@@ -29,11 +29,12 @@ vi.mock('@/composables/useClipboard', () => ({
 
 import ModelWhitelistSelector from '../ModelWhitelistSelector.vue'
 
-function mountSelector() {
+function mountSelector(props: Record<string, unknown> = {}) {
   return mount(ModelWhitelistSelector, {
     props: {
       modelValue: [],
-      platform: 'openai'
+      platform: 'openai',
+      ...props
     },
     global: {
       stubs: {
@@ -85,5 +86,23 @@ describe('ModelWhitelistSelector', () => {
 
     expect(wrapper.emitted('update:modelValue')).toEqual([[['gpt-5.6-sol']]])
     expect(copyToClipboard).not.toHaveBeenCalled()
+  })
+
+  it('shows models from the account upstream snapshot even when they are not in the static catalog', async () => {
+    const wrapper = mountSelector({
+      platform: 'antigravity',
+      accountId: 3,
+      upstreamModelSnapshot: {
+        models: ['gemini-3.7-flash', 'gemini-future-9.9'],
+        synced_at: '2026-08-21T00:00:00Z'
+      }
+    })
+
+    expect(wrapper.get('[data-testid="upstream-model-snapshot"]').exists()).toBe(true)
+
+    await wrapper.get('div.cursor-pointer').trigger('click')
+
+    expect(findModelRow(wrapper, 'gemini-3.7-flash')).toBeTruthy()
+    expect(findModelRow(wrapper, 'gemini-future-9.9')).toBeTruthy()
   })
 })
