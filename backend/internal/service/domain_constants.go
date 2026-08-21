@@ -541,6 +541,10 @@ const (
 	// SettingKeyStreamTimeoutSettings stores JSON config for stream timeout handling.
 	SettingKeyStreamTimeoutSettings = "stream_timeout_settings"
 
+	// SettingKeyImageInputFallbackSettings stores JSON config for automatic
+	// handling of upstream "unknown variant `image_url`" (image input unsupported) errors.
+	SettingKeyImageInputFallbackSettings = "image_input_fallback_settings"
+
 	// =========================
 	// Request Rectifier (请求整流器)
 	// =========================

@@ -1041,6 +1041,16 @@ type GatewayConfig struct {
 	// 上游错误响应体记录最大字节数（超过会截断）
 	LogUpstreamErrorBodyMaxBytes int `mapstructure:"log_upstream_error_body_max_bytes"`
 
+	// ImageInputFallback: 上游不支持图片输入（如 serde 报错 unknown variant `image_url`）
+	// 时的自动降级策略。
+	//   - off（默认）：不处理，原样返回上游错误
+	//   - strip：删除请求中的图片内容后重试
+	//   - describe：调用配置的视觉模型为图片生成描述，用描述文本替换图片后重试；
+	//     未配置 ImageInputVision 或调用失败时自动退化为 strip
+	ImageInputFallback string `mapstructure:"image_input_fallback"`
+	// ImageInputVision: describe 模式使用的 OpenAI 兼容视觉描述模型配置。
+	ImageInputVision GatewayImageInputVisionConfig `mapstructure:"image_input_vision"`
+
 	// API-key 账号在客户端未提供 anthropic-beta 时，是否按需自动补齐（默认关闭以保持兼容）
 	InjectBetaForAPIKey bool `mapstructure:"inject_beta_for_apikey"`
 
@@ -1141,6 +1151,18 @@ type GatewayOpenAIHTTP2Config struct {
 	FallbackWindowSeconds int `mapstructure:"fallback_window_seconds"`
 	// FallbackTTLSeconds: 触发后回退 HTTP/1.1 的持续时间（秒）
 	FallbackTTLSeconds int `mapstructure:"fallback_ttl_seconds"`
+}
+
+// GatewayImageInputVisionConfig describe 模式使用的 OpenAI 兼容视觉描述模型配置。
+type GatewayImageInputVisionConfig struct {
+	// BaseURL: OpenAI 兼容端点地址，例如 https://api.openai.com/v1
+	BaseURL string `mapstructure:"base_url"`
+	// APIKey: 视觉模型 API Key
+	APIKey string `mapstructure:"api_key"`
+	// Model: 支持图片理解的模型名，例如 gpt-4o-mini
+	Model string `mapstructure:"model"`
+	// TimeoutSeconds: 单张图片描述请求超时时间（秒），0 使用默认 60s
+	TimeoutSeconds int `mapstructure:"timeout_seconds"`
 }
 
 // GatewayOpenAIProxyStreamCircuitConfig controls the bounded, in-process
@@ -2554,6 +2576,15 @@ func setEnvReachableDefaults() {
 	viper.SetDefault("gateway.session_idle_timeout_minutes", 0)
 	viper.SetDefault("gateway.user_message_queue.mode", "")
 	viper.SetDefault("update.proxy_url", "")
+	// Image input fallback (upstream "unknown variant `image_url`" handling).
+	// Registered with empty defaults so GATEWAY_IMAGE_INPUT_FALLBACK and
+	// GATEWAY_IMAGE_INPUT_VISION_* env vars are reachable by AutomaticEnv in
+	// env-driven deployments that never touch config.yaml.
+	viper.SetDefault("gateway.image_input_fallback", "")
+	viper.SetDefault("gateway.image_input_vision.base_url", "")
+	viper.SetDefault("gateway.image_input_vision.api_key", "")
+	viper.SetDefault("gateway.image_input_vision.model", "")
+	viper.SetDefault("gateway.image_input_vision.timeout_seconds", 0)
 
 	// sticky_escape_enabled is the one exception to the zero-value rule: its
 	// effective default is true, applied post-unmarshal via a viper.IsSet guard.

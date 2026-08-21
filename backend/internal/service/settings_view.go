@@ -501,6 +501,43 @@ func DefaultStreamTimeoutSettings() *StreamTimeoutSettings {
 	}
 }
 
+// ImageInputFallbackMode 上游不支持图片输入时的降级处理方式
+const (
+	ImageInputFallbackModeOff      = "off"      // 不处理，原样返回上游错误
+	ImageInputFallbackModeStrip    = "strip"    // 删除图片内容后重试
+	ImageInputFallbackModeDescribe = "describe" // 用视觉模型描述替换图片后重试
+)
+
+// ImageInputFallbackSettings 上游不支持图片输入（unknown variant `image_url`）时的自动降级配置。
+type ImageInputFallbackSettings struct {
+	// Mode 降级处理方式: off | strip | describe（空值=未配置，回退到环境变量配置）
+	Mode string `json:"mode"`
+	// Models 主动处理的目标模型匹配列表（逗号分隔，支持子串匹配）。
+	// 命中这些模型的请求会在发送到上游之前主动处理图片输入（多模态模拟）；
+	// 为空时仅在收到上游“不支持图片输入”错误后被动重试。
+	Models string `json:"models"`
+	// VisionBaseURL 视觉描述模型的 OpenAI 兼容端点地址，例如 https://api.openai.com/v1
+	VisionBaseURL string `json:"vision_base_url"`
+	// VisionAPIKey 视觉描述模型 API Key（仅写入时使用，读取时返回 configured 标志）
+	VisionAPIKey string `json:"vision_api_key"`
+	// VisionModel 支持图片理解的视觉描述模型名
+	VisionModel string `json:"vision_model"`
+	// VisionTimeoutSeconds 单张图片描述请求超时时间（秒），0 使用默认 60s
+	VisionTimeoutSeconds int `json:"vision_timeout_seconds"`
+}
+
+// DefaultImageInputFallbackSettings 返回默认的图片输入降级配置（未配置）。
+func DefaultImageInputFallbackSettings() *ImageInputFallbackSettings {
+	return &ImageInputFallbackSettings{
+		Mode:                 "",
+		Models:               "",
+		VisionBaseURL:        "",
+		VisionAPIKey:         "",
+		VisionModel:          "",
+		VisionTimeoutSeconds: 0,
+	}
+}
+
 // RectifierSettings 请求整流器配置
 type RectifierSettings struct {
 	Enabled                  bool     `json:"enabled"`                    // 总开关

@@ -112,6 +112,29 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 
 	if resp.StatusCode >= 400 {
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
+		// 图片输入降级被动重试：上游不支持图片输入（unknown variant `image_url`）时，
+		// 删除/用视觉模型描述替换图片后重试一次。
+		if retryBody, retryReason, retryChanged, retryErr := s.normalizeOpenAIImageInputUnsupportedRetryBody(ctx, s.cfg, resp.StatusCode, chatBody, respBody); retryErr != nil {
+			return nil, fmt.Errorf("normalize image input fallback retry body: %w", retryErr)
+		} else if retryChanged {
+			retryResp, sendErr := s.sendCCUpstreamRequest(ctx, c, account, targetURL, retryBody, clientStream, apiKey, account.GetOpenAIUserAgent(), "")
+			if sendErr != nil {
+				return nil, sendErr
+			}
+			defer func() { _ = retryResp.Body.Close() }()
+			if retryResp.StatusCode >= 400 {
+				retryRespBody, retryUpstreamMsg := s.readOpenAIUpstreamError(retryResp)
+				if foErr := s.failoverOpenAIUpstreamHTTPError(ctx, c, account, retryResp, retryRespBody, retryUpstreamMsg, upstreamModel); foErr != nil {
+					return nil, foErr
+				}
+				return s.handleErrorResponse(ctx, retryResp, c, account, retryBody, billingModel)
+			}
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying responses fallback request after %s (account: %s)", retryReason, account.Name)
+			if clientStream {
+				return s.streamChatCompletionsAsResponses(c, retryResp, originalModel, customTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+			}
+			return s.bufferChatCompletionsAsResponses(c, retryResp, originalModel, customTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		}
 		if foErr := s.failoverOpenAIUpstreamHTTPError(ctx, c, account, resp, respBody, upstreamMsg, upstreamModel); foErr != nil {
 			return nil, foErr
 		}

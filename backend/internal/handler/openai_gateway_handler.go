@@ -354,6 +354,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	// 多模态模拟：命中主动处理模型名单的请求，在调度到上游之前先处理图片输入。
+	body = h.applyOpenAIImageInputFallbackBeforeUpstream(c, body)
 
 	// 使用 gjson 只读提取字段做校验，避免完整 Unmarshal
 	modelResult := gjson.GetBytes(body, "model")

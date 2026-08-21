@@ -591,6 +591,197 @@
             </div>
           </div>
 
+          <!-- Image Input Fallback Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.imageInputFallback.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.imageInputFallback.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <!-- Loading State -->
+              <div
+                v-if="imageInputFallbackLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+
+              <template v-else>
+                <!-- Mode -->
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.imageInputFallback.mode") }}
+                  </label>
+                  <select v-model="imageInputFallbackForm.mode" class="input w-64">
+                    <option value="off">
+                      {{ t("admin.settings.imageInputFallback.modeOff") }}
+                    </option>
+                    <option value="strip">
+                      {{ t("admin.settings.imageInputFallback.modeStrip") }}
+                    </option>
+                    <option value="describe">
+                      {{ t("admin.settings.imageInputFallback.modeDescribe") }}
+                    </option>
+                  </select>
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.imageInputFallback.modeHint") }}
+                  </p>
+                </div>
+
+                <!-- Proactive models (multimodal emulation) -->
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.imageInputFallback.models") }}
+                  </label>
+                  <input
+                    v-model="imageInputFallbackForm.models"
+                    type="text"
+                    class="input w-full"
+                    :placeholder="
+                      t('admin.settings.imageInputFallback.modelsPlaceholder')
+                    "
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.imageInputFallback.modelsHint") }}
+                  </p>
+                </div>
+
+                <!-- Vision config (only for describe mode) -->
+                <div
+                  v-if="imageInputFallbackForm.mode === 'describe'"
+                  class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.imageInputFallback.visionBaseUrl") }}
+                    </label>
+                    <input
+                      v-model="imageInputFallbackForm.vision_base_url"
+                      type="text"
+                      class="input w-full"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.imageInputFallback.visionBaseUrlHint") }}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.imageInputFallback.visionApiKey") }}
+                    </label>
+                    <input
+                      v-model="imageInputFallbackApiKey"
+                      type="password"
+                      autocomplete="new-password"
+                      class="input w-full"
+                      :placeholder="
+                        imageInputFallbackForm.vision_api_key_configured
+                          ? t(
+                              'admin.settings.imageInputFallback.visionApiKeyPlaceholderConfigured',
+                            )
+                          : t(
+                              'admin.settings.imageInputFallback.visionApiKeyPlaceholder',
+                            )
+                      "
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.imageInputFallback.visionApiKeyHint") }}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.imageInputFallback.visionModel") }}
+                    </label>
+                    <input
+                      v-model="imageInputFallbackForm.vision_model"
+                      type="text"
+                      class="input w-64"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.imageInputFallback.visionModelHint") }}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.imageInputFallback.visionTimeout") }}
+                    </label>
+                    <input
+                      v-model.number="imageInputFallbackForm.vision_timeout_seconds"
+                      type="number"
+                      min="0"
+                      max="300"
+                      class="input w-32"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.imageInputFallback.visionTimeoutHint") }}
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Save Button -->
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    @click="saveImageInputFallbackSettings"
+                    :disabled="imageInputFallbackSaving"
+                    class="btn btn-primary btn-sm"
+                  >
+                    <svg
+                      v-if="imageInputFallbackSaving"
+                      class="mr-1 h-4 w-4 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"
+                      ></circle>
+                      <path
+                        class="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    {{
+                      imageInputFallbackSaving
+                        ? t("common.saving")
+                        : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- Request Rectifier Settings -->
           <div class="card">
             <div
@@ -8961,6 +9152,19 @@ const streamTimeoutForm = reactive({
   threshold_window_minutes: 10,
 });
 
+// Image Input Fallback 状态（上游不支持图片输入时自动降级处理）
+const imageInputFallbackLoading = ref(true);
+const imageInputFallbackSaving = ref(false);
+const imageInputFallbackApiKey = ref("");
+const imageInputFallbackForm = reactive({
+  mode: "strip" as "off" | "strip" | "describe",
+  models: "",
+  vision_base_url: "",
+  vision_api_key_configured: false,
+  vision_model: "",
+  vision_timeout_seconds: 60,
+});
+
 // Rectifier 状态
 const rectifierLoading = ref(true);
 const rectifierSaving = ref(false);
@@ -11889,6 +12093,51 @@ async function saveStreamTimeoutSettings() {
   }
 }
 
+// Image Input Fallback 方法
+async function loadImageInputFallbackSettings() {
+  imageInputFallbackLoading.value = true;
+  try {
+    const settings =
+      await adminAPI.settings.getImageInputFallbackSettings();
+    Object.assign(imageInputFallbackForm, settings);
+    imageInputFallbackApiKey.value = "";
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
+  } finally {
+    imageInputFallbackLoading.value = false;
+  }
+}
+
+async function saveImageInputFallbackSettings() {
+  imageInputFallbackSaving.value = true;
+  try {
+    const updated =
+      await adminAPI.settings.updateImageInputFallbackSettings({
+        mode: imageInputFallbackForm.mode,
+        models: imageInputFallbackForm.models,
+        vision_base_url: imageInputFallbackForm.vision_base_url,
+        vision_model: imageInputFallbackForm.vision_model,
+        vision_timeout_seconds:
+          imageInputFallbackForm.vision_timeout_seconds,
+        ...(imageInputFallbackApiKey.value.trim() !== ""
+          ? { vision_api_key: imageInputFallbackApiKey.value.trim() }
+          : {}),
+      });
+    Object.assign(imageInputFallbackForm, updated);
+    imageInputFallbackApiKey.value = "";
+    appStore.showSuccess(t("admin.settings.imageInputFallback.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.imageInputFallback.saveFailed"),
+      ),
+    );
+  } finally {
+    imageInputFallbackSaving.value = false;
+  }
+}
+
 // Rectifier 方法
 async function loadRectifierSettings() {
   rectifierLoading.value = true;
@@ -12496,6 +12745,7 @@ onMounted(() => {
   loadRateLimit429CooldownSettings();
   loadPanelRateLimitSettings();
   loadStreamTimeoutSettings();
+  loadImageInputFallbackSettings();
   loadRectifierSettings();
   loadBetaPolicySettings();
   loadProviders();

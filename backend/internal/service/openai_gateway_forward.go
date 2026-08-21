@@ -107,6 +107,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	nativeDeepSeekResponses := account.Platform == PlatformDeepseek &&
 		(account.GetAPIProtocol() == APIProtocolResponses || account.IsAdaptiveAPIProtocol())
 
+	// 多模态模拟：命中主动处理模型名单的请求，在发送到上游之前先处理图片输入，
+	// 避免不支持图片输入的模型返回 unknown variant `image_url` 错误。
+	if preBody, preReason, preChanged, preErr := s.maybeApplyImageInputFallbackBeforeUpstream(ctx, s.cfg, body); preErr != nil {
+		return nil, fmt.Errorf("apply image input fallback before upstream: %w", preErr)
+	} else if preChanged {
+		body = preBody
+		requestView = newOpenAIRequestView(body)
+		reqModel, reqStream, promptCacheKey = requestView.Model, requestView.Stream, requestView.PromptCacheKey
+		originalModel = reqModel
+		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] %s for model %s before upstream (account: %s)", preReason, reqModel, account.Name)
+	}
+
 	if account.Platform == PlatformGrok {
 		return s.forwardGrokResponses(ctx, c, account, body, originalModel, reqStream, startTime)
 	}
@@ -921,6 +933,15 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			if retryBody, reason, changed, retryErr := normalizeOpenAIResponsesRejectedFieldRetryBody(resp.StatusCode, body, respBody); retryErr != nil {
 				return nil, fmt.Errorf("normalize rejected Responses field retry body: %w", retryErr)
+			} else if changed && rejectedFieldRetryState.Allow(retryBody) {
+				body = retryBody
+				requestView = newOpenAIRequestView(body)
+				reqBody = nil
+				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request after %s (account: %s)", reason, account.Name)
+				continue
+			}
+			if retryBody, reason, changed, retryErr := s.normalizeOpenAIImageInputUnsupportedRetryBody(ctx, s.cfg, resp.StatusCode, body, respBody); retryErr != nil {
+				return nil, fmt.Errorf("normalize image input fallback retry body: %w", retryErr)
 			} else if changed && rejectedFieldRetryState.Allow(retryBody) {
 				body = retryBody
 				requestView = newOpenAIRequestView(body)
