@@ -651,6 +651,9 @@ export interface SystemSettings {
   cyber_session_block_enabled: boolean;
   cyber_session_block_ttl_seconds: number;
 
+  // Codex session switch purification (cross-account id rekey)
+  codex_session_switch_purification_enabled: boolean;
+
   payment_min_amount: number;
   payment_max_amount: number;
   payment_daily_limit: number;
@@ -961,6 +964,9 @@ export interface UpdateSettingsRequest {
   // Cyber session block
   cyber_session_block_enabled?: boolean;
   cyber_session_block_ttl_seconds?: number;
+
+  // Codex session switch purification (cross-account id rekey)
+  codex_session_switch_purification_enabled?: boolean;
 
   payment_min_amount?: number;
   payment_max_amount?: number;

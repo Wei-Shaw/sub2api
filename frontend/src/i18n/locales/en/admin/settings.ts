@@ -471,6 +471,8 @@ export default {
         fingerprintUnificationHint: 'Unify X-Stainless-* headers across users sharing the same OAuth account. Disabling passes through each client\'s original headers.',
         metadataPassthrough: 'Metadata Passthrough',
         metadataPassthroughHint: 'Pass through client\'s original metadata.user_id without rewriting. May improve upstream cache hit rates.',
+        codexSessionSwitchPurification: 'Codex Session Switch Purification',
+        codexSessionSwitchPurificationHint: 'After a session switches accounts due to quota exhaustion, rekey cross-account linkable session/message ids to per-account derived values in subsequent requests. Encrypted reasoning content is preserved. Only affects sessions that actually switched accounts.',
         cchSigning: 'CCH Signing',
         cchSigningHint: 'Sign the billing header in forwarded requests with CCH hash. When disabled, the placeholder is preserved.',
         claudeOAuthSystemPromptInjection: 'Claude OAuth System Blocks',

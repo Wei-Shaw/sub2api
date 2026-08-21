@@ -464,6 +464,8 @@ export default {
         fingerprintUnificationHint: '统一共享同一 OAuth 账号的用户的 X-Stainless-* 请求头。关闭后透传客户端原始请求头。',
         metadataPassthrough: 'Metadata 透传',
         metadataPassthroughHint: '透传客户端原始 metadata.user_id，不进行重写。可能提高上游缓存命中率。',
+        codexSessionSwitchPurification: 'Codex 会话切号净化',
+        codexSessionSwitchPurificationHint: '会话因额度切换账号后，将后续请求中可跨账号关联的会话与消息 id 改写为新账号下的映射值，推理加密内容保留。仅影响发生过切号的会话，正常请求不受影响。',
         cchSigning: 'CCH 签名',
         cchSigningHint: '对转发请求的 billing header 进行 CCH 哈希签名。关闭时保留原始占位符。',
         claudeOAuthSystemPromptInjection: 'Claude OAuth System 注入',

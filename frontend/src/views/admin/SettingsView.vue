@@ -5312,6 +5312,31 @@
                 <Toggle v-model="form.enable_metadata_passthrough" />
               </div>
 
+              <!-- Codex Session Switch Purification -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.codexSessionSwitchPurification",
+                      )
+                    }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.codexSessionSwitchPurificationHint",
+                      )
+                    }}
+                  </p>
+                </div>
+                <Toggle
+                  v-model="form.codex_session_switch_purification_enabled"
+                />
+              </div>
+
               <!-- CCH Signing -->
               <div class="flex items-center justify-between">
                 <div>
@@ -9713,6 +9738,7 @@ const form = reactive<SettingsForm>({
   // Gateway forwarding behavior
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
+  codex_session_switch_purification_enabled: false,
   enable_cch_signing: false,
   enable_claude_oauth_system_prompt_injection: true,
   claude_oauth_system_prompt: "",
@@ -11284,6 +11310,8 @@ async function saveSettings() {
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
+      codex_session_switch_purification_enabled:
+        form.codex_session_switch_purification_enabled,
       enable_cch_signing: form.enable_cch_signing,
       enable_claude_oauth_system_prompt_injection:
         form.enable_claude_oauth_system_prompt_injection,
