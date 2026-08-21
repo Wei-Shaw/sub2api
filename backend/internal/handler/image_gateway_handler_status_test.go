@@ -7,7 +7,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-func TestFalStatusFromTaskMapsTerminalFailureToFailed(t *testing.T) {
+func TestImageStatusFromTaskMapsTerminalFailureToFailed(t *testing.T) {
 	tests := []struct {
 		name   string
 		status string
@@ -23,9 +23,9 @@ func TestFalStatusFromTaskMapsTerminalFailureToFailed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := falStatusFromTask(&service.AsyncMediaTask{Status: tt.status})
+			got := imageStatusFromTask(&service.AsyncMediaTask{Status: tt.status})
 			if got != tt.want {
-				t.Fatalf("falStatusFromTask(%q) = %q, want %q", tt.status, got, tt.want)
+				t.Fatalf("imageStatusFromTask(%q) = %q, want %q", tt.status, got, tt.want)
 			}
 		})
 	}

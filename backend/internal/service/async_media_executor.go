@@ -401,11 +401,13 @@ func (s *AsyncMediaService) pollOnce(ctx context.Context, task *AsyncMediaTask, 
 	}
 
 	imageURLs, imageOutputSizes := extractFalImageResult(result)
+	imageMetadata := extractFalImageMetadata(result)
 	if len(imageURLs) == 0 {
 		s.markFailedAndRefund(ctx, task, billingType, "upstream returned no images")
 		return task, true, nil
 	}
 
+	task.ImageMetadata = imageMetadata
 	s.markSucceeded(ctx, task, account.BillingRateMultiplier(), billingType, imageURLs, imageOutputSizes)
 	return task, true, nil
 }
@@ -449,7 +451,7 @@ func (s *AsyncMediaService) markSucceeded(ctx context.Context, task *AsyncMediaT
 		finalTotalCost = asyncMediaBaseCost(finalCost, task.RateMultiplier)
 	}
 
-	updated, err := s.taskRepo.MarkSucceeded(ctx, task.ID, imageURLs, cosURLs, finalCost)
+	updated, err := s.taskRepo.MarkSucceeded(ctx, task.ID, imageURLs, cosURLs, task.ImageMetadata, finalCost)
 	if err != nil {
 		logger.L().Error("async_media.mark_succeeded_failed", zap.Int64("task_id", task.ID), zap.Error(err))
 		return
@@ -1038,53 +1040,6 @@ func (s *AsyncMediaService) newLeonardoClient(account *Account) (*leonardo.Clien
 }
 
 // ----- helpers -----
-
-func extractFalImageResult(resp *fal.Response) ([]string, []string) {
-	if resp == nil {
-		return nil, nil
-	}
-	urls := make([]string, 0, len(resp.Images))
-	sizes := make([]string, 0, len(resp.Images))
-	for _, img := range resp.Images {
-		if u := strings.TrimSpace(img.URL); u != "" {
-			urls = append(urls, u)
-			size := ""
-			if img.Width > 0 && img.Height > 0 {
-				size = fmt.Sprintf("%dx%d", img.Width, img.Height)
-			}
-			sizes = append(sizes, size)
-		}
-	}
-	return urls, sizes
-}
-
-func extractLeonardoImageResult(task *leonardo.Task) ([]string, []string, []ImageOutputMetadata) {
-	if task == nil {
-		return nil, nil, nil
-	}
-	urls := make([]string, 0, len(task.Output.Media))
-	sizes := make([]string, 0, len(task.Output.Media))
-	metadata := make([]ImageOutputMetadata, 0, len(task.Output.Media))
-	for _, media := range task.Output.Media {
-		if url := strings.TrimSpace(media.URL); url != "" {
-			urls = append(urls, url)
-			size := ""
-			if media.Width > 0 && media.Height > 0 {
-				size = fmt.Sprintf("%dx%d", media.Width, media.Height)
-			}
-			sizes = append(sizes, size)
-			contentType := strings.TrimSpace(media.Type)
-			if contentType == "" {
-				contentType = strings.TrimSpace(media.MediaType)
-			}
-			if contentType == "" {
-				contentType = strings.TrimSpace(media.MIMEType)
-			}
-			metadata = append(metadata, ImageOutputMetadata{URL: url, ContentType: contentType, Width: media.Width, Height: media.Height})
-		}
-	}
-	return urls, sizes, metadata
-}
 
 func mergeImageOutputSizes(current, fallback []string, count int) []string {
 	if count < 0 {

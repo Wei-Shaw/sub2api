@@ -113,6 +113,17 @@ export default {
         noGroupsAvailable: 'No groups available',
         inOtherChannel: 'In "{name}"',
         modelPricing: 'Model Pricing',
+        pricingClipboard: {
+          copy: 'Copy pricing',
+          paste: 'Paste pricing',
+          copied: 'Pricing copied to clipboard',
+          importTitle: 'Import model pricing',
+          importHint: 'Paste a JSON pricing array copied from this page. Applying it replaces the current list.',
+          placeholder: 'Paste the JSON pricing array here',
+          apply: 'Apply import',
+          imported: 'Imported {count} pricing entries',
+          invalid: 'Invalid pricing JSON. Use the pricing copy button to create a compatible export.'
+        },
         models: 'Models',
         modelsPlaceholder: 'Type full model name and press Enter',
         modelInputHint: 'Press Enter to add, supports paste for batch import.',

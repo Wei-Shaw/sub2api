@@ -41,9 +41,9 @@ func RegisterGatewayRoutes(
 	compositeTarget := compositeTargetPlatformMiddleware(compositeResolver)
 	compositeGeminiTarget := compositeGeminiTargetPlatformMiddleware(compositeResolver)
 
-	// 跨平台兜底：openai 分组内挂载的 fal 账号可服务 /v1/images（无可用 openai 账号时回退到 fal 伪同步门面）。
-	if h.OpenAIGateway != nil && h.FalGateway != nil {
-		h.OpenAIGateway.SetFalImageFallback(h.FalGateway)
+	// 跨平台兜底：OpenAI 分组内挂载的图片账号可服务 /v1/images。
+	if h.OpenAIGateway != nil && h.ImageGateway != nil {
+		h.OpenAIGateway.SetImageGatewayFallback(h.ImageGateway)
 	}
 
 	// 未分组 Key 拦截中间件（按协议格式区分错误响应）
@@ -85,7 +85,7 @@ func RegisterGatewayRoutes(
 	}
 	// imagesHandler 按 group 平台分流图片请求：
 	//   - OpenAI 平台走 OpenAI 同步门面
-	//   - fal 平台走 fal 伪同步门面
+	//   - FAL/Leonardo 平台走共享图片门面
 	//   - Grok 平台走 Grok
 	//   - 其它平台返回 404
 	imagesHandler := func(c *gin.Context) {
@@ -95,7 +95,7 @@ func RegisterGatewayRoutes(
 		case service.PlatformGrok:
 			h.OpenAIGateway.GrokImages(c)
 		case service.PlatformFal, service.PlatformLeonardo:
-			h.FalGateway.Images(c)
+			h.ImageGateway.Images(c)
 		default:
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 			c.JSON(http.StatusNotFound, gin.H{
@@ -523,22 +523,7 @@ func RegisterGatewayRoutes(
 		antigravityV1Beta.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
 	}
 
-	// fal 原生异步门面（仅使用 fal 账户，不混合调度）
-	falGroup := r.Group("/fal")
-	falGroup.Use(bodyLimit)
-	falGroup.Use(clientRequestID)
-	falGroup.Use(opsErrorLogger)
-	falGroup.Use(endpointNorm)
-	falGroup.Use(middleware.ForcePlatform(service.PlatformFal))
-	falGroup.Use(gin.HandlerFunc(apiKeyAuth))
-	falGroup.Use(requireGroupAnthropic)
-	{
-		falGroup.POST("/*path", h.FalGateway.Native)
-		falGroup.GET("/*path", h.FalGateway.Native)
-		falGroup.PUT("/*path", h.FalGateway.Native)
-	}
-
-	// 通用异步模型门面（/api/v1/model/*path，fal queue 兼容协议）。
+	// 通用异步模型门面（/api/v1/model/*path，异步媒体 queue 兼容协议）。
 	//
 	// 注意：该前缀与面板 API的 /api/v1 共存但语义不同——
 	// 面板路由走 JWT，这里走 API Key 鉴权。gin 基数树中

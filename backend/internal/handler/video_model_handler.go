@@ -612,12 +612,18 @@ func toMediaTaskItem(t *service.AsyncMediaTask) videoTaskItem {
 	}
 	imageURLs := append([]string(nil), t.ImageURLs...)
 	cosURLs := append([]string(nil), t.CosURLs...)
+	errorReason := ""
+	if strings.TrimSpace(deref(t.ErrorReason)) != "" {
+		errorReason = "Image generation failed. Please try again later."
+	}
 	images := make([]any, 0, len(imageURLs))
 	for i, u := range imageURLs {
 		entry := map[string]any{"url": u}
 		if i < len(t.ImageMetadata) {
 			metadata := t.ImageMetadata[i]
 			entry["content_type"] = metadata.ContentType
+			entry["file_name"] = metadata.FileName
+			entry["file_size"] = metadata.FileSize
 			entry["width"] = metadata.Width
 			entry["height"] = metadata.Height
 		}
@@ -632,7 +638,7 @@ func toMediaTaskItem(t *service.AsyncMediaTask) videoTaskItem {
 		Resolution:        deref(t.ImageSize),
 		FinalCost:         t.FinalCost,
 		HeldCost:          t.HeldCost,
-		ErrorReason:       deref(t.ErrorReason),
+		ErrorReason:       errorReason,
 		VideoURLs:         imageURLs,
 		ImageURLs:         imageURLs,
 		CosURLs:           cosURLs,

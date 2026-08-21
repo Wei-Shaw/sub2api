@@ -206,23 +206,23 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 
 	for {
 		selectionMode := "openai_scheduler"
-		if h.falImageFallback != nil {
-			selectionMode = "mixed_openai_fal"
+		if h.imageGatewayFallback != nil {
+			selectionMode = "mixed_openai_image"
 		}
 		reqLog.Debug("openai.images.account_selecting",
 			zap.Int("excluded_account_count", len(failedAccountIDs)),
 			zap.String("selection_mode", selectionMode),
 			zap.String("prefer_platform", preferPlatform),
-			zap.String("fal_api", falAPIForOpenAIImages(parsed)),
+			zap.String("image_api", imageAPIForOpenAIImages(parsed)),
 		)
 
 		var selection *service.AccountSelectionResult
 		var scheduleDecision service.OpenAIAccountScheduleDecision
 
-		if h.falImageFallback != nil {
-			// 混合调度：openai + fal 账号同池，按“优先级 + 最久未用”统一选号（不做 fallback）。
-			// preferPlatform="fal" 时反转为 fal 优先 + openai 兜底。
-			account, selErr := h.falImageFallback.SelectMixedImageAccount(
+		if h.imageGatewayFallback != nil {
+			// 混合调度：OpenAI 与图片平台账号同池，按“优先级 + 最久未用”统一选号。
+			// preferPlatform="fal" 时反转为图片平台优先 + OpenAI 兜底。
+			account, selErr := h.imageGatewayFallback.SelectMixedImageAccount(
 				requestCtx,
 				apiKey.GroupID,
 				sessionHash,
@@ -264,7 +264,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				return
 			}
 
-			// fal 平台：走 fal 伪同步门面，响应一旦写出即终结（计费由 AsyncMediaService 承担，
+			// 图片平台：走共享异步图片门面，响应一旦写出即终结（计费由 AsyncMediaService 承担，
 			// 本 handler 不再重复记账）。失败的 openai 账号可经混合池重选切到 fal，反之亦然。
 			if account.Platform == service.PlatformFal || account.Platform == service.PlatformLeonardo {
 				setOpsSelectedAccount(c, account.ID, account.Platform)
@@ -277,9 +277,9 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				if imageStatusRequestID != "" {
 					h.gatewayService.MarkResponsesImageStatusRunning(c.Request.Context(), imageStatusRequestID)
 				}
-				falSucceeded := h.falImageFallback.ServeOpenAIImagesWithAccount(c, reqLog, apiKey, subject, parsed, account)
-				imageStatusForwarded = imageStatusRequestID != "" && falSucceeded
-				reqLog.Debug("openai.images.served_by_fal", zap.Int64("account_id", account.ID), zap.Int("switch_count", switchCount))
+				imageSucceeded := h.imageGatewayFallback.ServeOpenAIImagesWithAccount(c, reqLog, apiKey, subject, parsed, account)
+				imageStatusForwarded = imageStatusRequestID != "" && imageSucceeded
+				reqLog.Debug("openai.images.served_by_image_gateway", zap.Int64("account_id", account.ID), zap.Int("switch_count", switchCount))
 				return
 			}
 
@@ -298,7 +298,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			}
 			selection = sel
 		} else {
-			// 未挂载 fal 门面：退化为纯 openai 调度。
+			// 未挂载图片门面：退化为纯 OpenAI 调度。
 			sel, decision, selErr := h.gatewayService.SelectAccountWithSchedulerForImages(
 				requestCtx,
 				apiKey.GroupID,
@@ -355,7 +355,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			scheduleDecision = decision
 		}
 
-		if h.falImageFallback == nil {
+		if h.imageGatewayFallback == nil {
 			reqLog.Debug("openai.images.account_schedule_decision",
 				zap.String("layer", scheduleDecision.Layer),
 				zap.Bool("sticky_session_hit", scheduleDecision.StickySessionHit),

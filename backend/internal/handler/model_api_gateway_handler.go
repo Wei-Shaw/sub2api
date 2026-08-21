@@ -208,7 +208,8 @@ func (h *ModelAPIGatewayHandler) nativeImageSubmit(
 		case errors.Is(err, service.ErrAsyncMediaPricingMissing):
 			h.jsonError(c, http.StatusServiceUnavailable, "pricing_unavailable", "Image model pricing is not configured for this group/channel; please contact the administrator")
 		default:
-			h.jsonError(c, http.StatusBadGateway, "api_error", "Failed to submit image task: "+err.Error())
+			// Provider/network details stay in server logs and must not be exposed to clients.
+			h.jsonError(c, http.StatusBadGateway, "api_error", publicImageSubmitFailure)
 		}
 		return
 	}
@@ -303,7 +304,7 @@ func (h *ModelAPIGatewayHandler) nativeVideoSubmit(
 			h.jsonError(c, http.StatusPaymentRequired, "insufficient_balance", "Insufficient balance to hold the estimated cost for this video task. Please recharge and try again.")
 			return
 		}
-		h.jsonError(c, http.StatusBadGateway, "api_error", "Failed to submit video task: "+err.Error())
+		h.jsonError(c, http.StatusBadGateway, "api_error", publicVideoSubmitFailure)
 		return
 	}
 
@@ -333,7 +334,7 @@ func (h *ModelAPIGatewayHandler) nativeStatus(c *gin.Context, reqID string) {
 				mediaTask = updated
 			}
 		}
-		status = mediaFalStatusFromTask(mediaTask)
+		status = imageStatusFromTask(mediaTask)
 	} else {
 		if account != nil {
 			if updated, _, _ := h.videoService.AdvanceTask(c.Request.Context(), videoTask, account); updated != nil {
@@ -373,11 +374,7 @@ func (h *ModelAPIGatewayHandler) nativeResult(c *gin.Context, reqID string) {
 		return
 	}
 	if videoTask.Status != service.AsyncVideoStatusSucceeded {
-		reason := "video generation failed"
-		if videoTask.ErrorReason != nil && *videoTask.ErrorReason != "" {
-			reason = *videoTask.ErrorReason
-		}
-		h.jsonError(c, http.StatusBadGateway, "api_error", reason)
+		h.jsonError(c, http.StatusBadGateway, "api_error", publicVideoFailure)
 		return
 	}
 	// 原样透传 fal result payload（例如 { video: {url, ...}, seed, ... }）。
@@ -452,22 +449,14 @@ func (h *ModelAPIGatewayHandler) loadTaskAndAccount(c *gin.Context, reqID string
 
 func (h *ModelAPIGatewayHandler) writeMediaResult(c *gin.Context, reqID string, task *service.AsyncMediaTask) {
 	if !task.IsTerminal() {
-		c.JSON(http.StatusAccepted, fal.StatusResponse{Status: mediaFalStatusFromTask(task), RequestID: reqID})
+		c.JSON(http.StatusAccepted, fal.StatusResponse{Status: imageStatusFromTask(task), RequestID: reqID})
 		return
 	}
 	if task.Status != service.AsyncMediaStatusSucceeded {
-		reason := "image generation failed"
-		if task.ErrorReason != nil && strings.TrimSpace(*task.ErrorReason) != "" {
-			reason = strings.TrimSpace(*task.ErrorReason)
-		}
-		h.jsonError(c, http.StatusBadGateway, "api_error", reason)
+		h.jsonError(c, http.StatusBadGateway, "api_error", publicImageFailure)
 		return
 	}
-	response := &fal.Response{Images: []fal.Image{}}
-	for _, url := range task.ResultURLs() {
-		response.Images = append(response.Images, fal.Image{URL: url})
-	}
-	c.JSON(http.StatusOK, response)
+	writeAsyncImageResult(c, task)
 }
 
 func (h *ModelAPIGatewayHandler) callbackBase(c *gin.Context, model, reqID string) string {
@@ -539,7 +528,7 @@ func modelAPIIsKnownImageModel(model string) bool {
 	return false
 }
 
-func mediaFalStatusFromTask(task *service.AsyncMediaTask) string {
+func imageStatusFromTask(task *service.AsyncMediaTask) string {
 	switch task.Status {
 	case service.AsyncMediaStatusSucceeded:
 		return fal.StatusCompleted

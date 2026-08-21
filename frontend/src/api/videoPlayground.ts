@@ -44,6 +44,14 @@ export interface StatusResponse {
 export interface ResultResponse {
   video?: { url?: string; content_type?: string; file_name?: string; file_size?: number }
   videos?: Array<{ url?: string; content_type?: string; file_name?: string; file_size?: number }>
+  images?: Array<{
+    url?: string
+    content_type?: string
+    file_name?: string
+    file_size?: number
+    width?: number
+    height?: number
+  }>
   seed?: number
   [k: string]: unknown
 }

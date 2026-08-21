@@ -34,10 +34,13 @@ type SubmitRequest struct {
 }
 
 type Media struct {
+	ID        string `json:"id,omitempty"`
 	URL       string `json:"url"`
 	Type      string `json:"type,omitempty"`
 	MediaType string `json:"media_type,omitempty"`
 	MIMEType  string `json:"mime_type,omitempty"`
+	FileName  string `json:"file_name,omitempty"`
+	FileSize  int64  `json:"file_size,omitempty"`
 	Width     int    `json:"width,omitempty"`
 	Height    int    `json:"height,omitempty"`
 }

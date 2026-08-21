@@ -93,7 +93,7 @@ func TestMediaFalStatusFromTaskMapsTerminalFailureToFailed(t *testing.T) {
 		service.AsyncMediaStatusExpired,
 	} {
 		t.Run(status, func(t *testing.T) {
-			require.Equal(t, fal.StatusFailed, mediaFalStatusFromTask(&service.AsyncMediaTask{Status: status}))
+			require.Equal(t, fal.StatusFailed, imageStatusFromTask(&service.AsyncMediaTask{Status: status}))
 		})
 	}
 }
