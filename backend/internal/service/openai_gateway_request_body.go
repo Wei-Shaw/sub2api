@@ -1506,8 +1506,19 @@ func normalizeOpenAIReasoningEffort(raw string) string {
 	}
 }
 
+// isOpenAIMaxReasoningEffortModel reports whether the upstream model supports
+// max as a distinct reasoning effort instead of treating it as an xhigh alias.
+// Provider-prefixed model IDs are matched by their final path segment.
+func isOpenAIMaxReasoningEffortModel(model string) bool {
+	if isOpenAIGPT56Model(model) {
+		return true
+	}
+	modelID := strings.ToLower(lastOpenAIModelSegment(model))
+	return modelID == "deepseek-v4" || strings.HasPrefix(modelID, "deepseek-v4-")
+}
+
 func normalizeOpenAIReasoningEffortForModel(raw, model string) string {
-	if strings.EqualFold(strings.TrimSpace(raw), "max") && isOpenAIGPT56Model(model) {
+	if strings.EqualFold(strings.TrimSpace(raw), "max") && isOpenAIMaxReasoningEffortModel(model) {
 		return "max"
 	}
 	return normalizeOpenAIReasoningEffort(raw)

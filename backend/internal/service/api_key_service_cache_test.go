@@ -304,6 +304,7 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesReasoningEffortPolicy(t *testi
 			MaxReasoningEffort: "medium",
 			ReasoningEffortMappings: []ReasoningEffortMapping{
 				{From: "max", To: "xhigh"},
+				{Model: "gpt-5.6-sol", From: "ultra", To: "xhigh"},
 			},
 		},
 	}

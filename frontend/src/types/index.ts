@@ -541,6 +541,7 @@ export interface OpenAIMessagesDispatchModelConfig {
 }
 
 export interface ReasoningEffortMapping {
+  model?: string
   from: string
   to: string
 }

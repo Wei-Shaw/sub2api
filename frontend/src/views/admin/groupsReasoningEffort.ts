@@ -9,6 +9,10 @@ const openAIReasoningEffortValues = [
   "max",
 ] as const;
 
+const maxReasoningEffortMappingValueLength = 64;
+
+const countUnicodeCodePoints = (value: string): number => Array.from(value).length;
+
 const reasoningEffortValuesForPlatform = (
   platform: GroupPlatform,
 ): readonly string[] =>
@@ -41,6 +45,30 @@ export function normalizeReasoningEffortForPlatform(
     : "";
 }
 
+export function normalizeReasoningEffortMappingSource(
+  value: string | null | undefined,
+): string {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  const compact = normalized.replace(/[-_ ]/g, "");
+  if (compact === "extrahigh" || compact === "xhigh") return "xhigh";
+  if (
+    compact === "minimal" ||
+    compact === "low" ||
+    compact === "medium" ||
+    compact === "high" ||
+    compact === "max"
+  ) {
+    return compact;
+  }
+  return normalized;
+}
+
+export function normalizeReasoningEffortMappingModel(
+  value: string | null | undefined,
+): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
 export interface ReasoningEffortMappingRow extends ReasoningEffortMapping {
   id: string;
 }
@@ -50,11 +78,13 @@ export type ReasoningEffortMappingErrorCode =
   | "toRequired"
   | "duplicateFrom"
   | "unsupportedFrom"
-  | "unsupportedTo";
+  | "unsupportedTo"
+  | "modelTooLong"
+  | "fromTooLong";
 
 export type ReasoningEffortMappingErrors = Record<
   string,
-  Partial<Record<"from" | "to", ReasoningEffortMappingErrorCode>>
+  Partial<Record<"model" | "from" | "to", ReasoningEffortMappingErrorCode>>
 >;
 
 let nextMappingRowID = 0;
@@ -65,6 +95,7 @@ export function createReasoningEffortMappingRow(
   nextMappingRowID += 1;
   return {
     id: `reasoning-effort-mapping-${nextMappingRowID}`,
+    model: mapping.model ?? "",
     from: mapping.from ?? "",
     to: mapping.to ?? "",
   };
@@ -75,10 +106,11 @@ export function reasoningEffortMappingsToRows(
   platform: GroupPlatform = "openai",
 ): ReasoningEffortMappingRow[] {
   return (mappings ?? []).flatMap((mapping) => {
-    const from = normalizeReasoningEffortForPlatform(platform, mapping.from);
+    const model = normalizeReasoningEffortMappingModel(mapping.model);
+    const from = normalizeReasoningEffortMappingSource(mapping.from);
     const to = normalizeReasoningEffortForPlatform(platform, mapping.to);
     return from && to
-      ? [createReasoningEffortMappingRow({ from, to })]
+      ? [createReasoningEffortMappingRow({ model, from, to })]
       : [];
   });
 }
@@ -86,10 +118,14 @@ export function reasoningEffortMappingsToRows(
 export function reasoningEffortMappingsToAPI(
   rows: ReasoningEffortMappingRow[],
 ): ReasoningEffortMapping[] {
-  return rows.map((row) => ({
-    from: row.from.trim(),
-    to: row.to.trim(),
-  }));
+  return rows.map((row) => {
+    const model = normalizeReasoningEffortMappingModel(row.model);
+    return {
+      ...(model ? { model } : {}),
+      from: normalizeReasoningEffortMappingSource(row.from),
+      to: row.to.trim().toLowerCase(),
+    };
+  });
 }
 
 export function validateReasoningEffortMappings(
@@ -100,14 +136,22 @@ export function validateReasoningEffortMappings(
   const sourceRows = new Map<string, ReasoningEffortMappingRow[]>();
 
   rows.forEach((row) => {
-    const from = row.from.trim();
+    const model = normalizeReasoningEffortMappingModel(row.model);
+    const from = normalizeReasoningEffortMappingSource(row.from);
     const to = row.to.trim();
+    if (countUnicodeCodePoints(model) > maxReasoningEffortMappingValueLength) {
+      errors[row.id] = { ...errors[row.id], model: "modelTooLong" };
+    }
     if (!from) {
       errors[row.id] = { ...errors[row.id], from: "fromRequired" };
-    } else if (!normalizeReasoningEffortForPlatform(platform, from)) {
+    } else if (from === "none") {
+      errors[row.id] = { ...errors[row.id], from: "unsupportedFrom" };
+    } else if (countUnicodeCodePoints(from) > maxReasoningEffortMappingValueLength) {
+      errors[row.id] = { ...errors[row.id], from: "fromTooLong" };
+    } else if (!supportsReasoningEffortPolicyPlatform(platform)) {
       errors[row.id] = { ...errors[row.id], from: "unsupportedFrom" };
     } else {
-      const key = from.toLowerCase();
+      const key = `${model}\u0000${from}`;
       sourceRows.set(key, [...(sourceRows.get(key) ?? []), row]);
     }
     if (!to) {

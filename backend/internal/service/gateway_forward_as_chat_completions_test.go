@@ -30,7 +30,23 @@ func TestExtractCCReasoningEffortFromBody(t *testing.T) {
 	})
 
 	t.Run("DeepSeek max", func(t *testing.T) {
-		got := extractCCReasoningEffortFromBody([]byte(`{"reasoning_effort":"Max"}`))
+		got := extractCCReasoningEffortFromBody([]byte(`{"model":"provider/deepseek-v4-pro","reasoning_effort":"Max"}`))
+		require.NotNil(t, got)
+		require.Equal(t, "max", *got)
+	})
+
+	t.Run("mapped DeepSeek alias max", func(t *testing.T) {
+		got := extractCCReasoningEffortFromBody(
+			[]byte(`{"model":"client-alias","reasoning_effort":"Max"}`),
+			"deepseek-v4-pro",
+			"client-alias",
+		)
+		require.NotNil(t, got)
+		require.Equal(t, "max", *got)
+	})
+
+	t.Run("non max capable model folds max to xhigh", func(t *testing.T) {
+		got := extractCCReasoningEffortFromBody([]byte(`{"model":"gpt-5.5","reasoning_effort":"Max"}`))
 		require.NotNil(t, got)
 		require.Equal(t, "xhigh", *got)
 	})

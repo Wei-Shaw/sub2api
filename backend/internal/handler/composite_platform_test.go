@@ -8,6 +8,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestCompositeTargetPlatformAllowedResolvesKnownAllowedModel(t *testing.T) {
@@ -108,6 +109,7 @@ func TestOpenAIReasoningEffortPolicyForCompositeTarget(t *testing.T) {
 		MaxReasoningEffort: "medium",
 		ReasoningEffortMappings: []service.ReasoningEffortMapping{
 			{From: "max", To: "xhigh"},
+			{Model: "gpt-5.6-sol", From: "ultra", To: "xhigh"},
 		},
 	}
 	apiKey := &service.APIKey{Group: group}
@@ -124,6 +126,17 @@ func TestOpenAIReasoningEffortPolicyForCompositeTarget(t *testing.T) {
 	bound, changed := service.ApplyOpenAIReasoningEffortPolicyFromContext(openAICtx.Request.Context(), body)
 	require.True(t, changed)
 	require.JSONEq(t, `{"reasoning":{"effort":"medium"}}`, string(bound))
+
+	modelBoundCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	modelBoundCtx.Request = httptest.NewRequest("POST", "/v1/messages", nil)
+	modelBoundCtx.Request = modelBoundCtx.Request.WithContext(service.WithResolvedTargetPlatform(modelBoundCtx.Request.Context(), service.PlatformOpenAI))
+	bindOpenAIReasoningEffortPolicyForMessagesRequest(modelBoundCtx, apiKey, []byte(`{"model":"gpt-5.6-sol","output_config":{"effort":"ultra"}}`))
+	modelBound, changed := service.ApplyOpenAIReasoningEffortPolicyFromContext(
+		modelBoundCtx.Request.Context(),
+		[]byte(`{"model":"mapped-upstream","reasoning":{"effort":"ultra"}}`),
+	)
+	require.True(t, changed)
+	require.Equal(t, "medium", gjson.GetBytes(modelBound, "reasoning.effort").String())
 
 	omittedCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	omittedCtx.Request = httptest.NewRequest("POST", "/v1/messages", nil)

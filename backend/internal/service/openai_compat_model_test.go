@@ -313,6 +313,68 @@ func TestForwardAsAnthropic_PreservesMaxForFinalGPT56ResponsesModel(t *testing.T
 	}
 }
 
+func TestForwardAsAnthropic_MessagesPolicyMapsOriginalEffortAfterResponsesBridge(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.5","max_tokens":16,"messages":[{"role":"user","content":"hello"}],"output_config":{"effort":"max"},"stream":false}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: openAICompatSSECompletedResponse("resp_messages_policy", "gpt-5.5")}
+	svc := &OpenAIGatewayService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := rawGPT56ResponsesAPIKeyAccount("gpt-5.5", "gpt-5.5")
+	ctx := WithOpenAIMessagesReasoningEffortPolicy(
+		context.Background(),
+		"",
+		[]ReasoningEffortMapping{{Model: "gpt-5.5", From: "max", To: "high"}},
+		"gpt-5.5",
+		"max",
+	)
+
+	result, err := svc.ForwardAsAnthropic(ctx, c, account, body, "", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "high", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
+	require.NotNil(t, result.ReasoningEffort)
+	require.Equal(t, "high", *result.ReasoningEffort)
+}
+
+func TestForwardAsAnthropic_MessagesPolicyKeepsConvertedEffortWhenOriginalSourceIsUnmapped(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.5","max_tokens":16,"messages":[{"role":"user","content":"hello"}],"output_config":{"effort":"max"},"stream":false}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: openAICompatSSECompletedResponse("resp_messages_policy_unmapped", "gpt-5.5")}
+	svc := &OpenAIGatewayService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := rawGPT56ResponsesAPIKeyAccount("gpt-5.5", "gpt-5.5")
+	ctx := WithOpenAIMessagesReasoningEffortPolicy(
+		context.Background(),
+		"",
+		[]ReasoningEffortMapping{{From: "ultra", To: "low"}},
+		"gpt-5.5",
+		"max",
+	)
+
+	result, err := svc.ForwardAsAnthropic(ctx, c, account, body, "", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "xhigh", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
+	require.NotNil(t, result.ReasoningEffort)
+	require.Equal(t, "xhigh", *result.ReasoningEffort)
+}
+
 func rawGPT56ResponsesAPIKeyAccount(requestedModel, mappedModel string) *Account {
 	return &Account{
 		ID:          501,
