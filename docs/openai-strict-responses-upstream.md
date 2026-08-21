@@ -63,7 +63,7 @@ The following Caddy pattern reuses an existing valid certificate, adds no public
 ```caddyfile
 @codex_chatgpt_web_bridge {
   path /_internal/codex-chatgpt-web/*
-  header X-Codex-Bridge-Auth {$CODEX_CHATGPT_WEB_BRIDGE_SECRET}
+  header X-Bridge-Secret {$CODEX_CHATGPT_WEB_BRIDGE_SECRET}
 }
 handle @codex_chatgpt_web_bridge {
   uri strip_prefix /_internal/codex-chatgpt-web
@@ -145,7 +145,7 @@ Create an account with:
 | Responses forwarding mode | `strict_raw` |
 | Upstream authentication | `none` |
 | Concurrency | `1` initially |
-| Header overrides | Enable `X-Codex-Bridge-Auth` with the random proxy secret |
+| Header overrides | Enable `X-Bridge-Secret` with the random proxy secret |
 | Groups | The bridge group created above |
 
 The equivalent account fields are:
@@ -160,7 +160,7 @@ The equivalent account fields are:
     "openai_upstream_auth_mode": "none",
     "header_override_enabled": true,
     "header_overrides": {
-      "x-codex-bridge-auth": "replace-with-a-random-secret"
+      "x-bridge-secret": "replace-with-a-random-secret"
     },
     "model_mapping": {
       "chatgpt-web/high": "chatgpt-web/high"
