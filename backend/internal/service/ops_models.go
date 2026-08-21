@@ -20,6 +20,7 @@ type OpsSystemLog struct {
 	Platform        string         `json:"platform"`
 	Model           string         `json:"model"`
 	Extra           map[string]any `json:"extra,omitempty"`
+	DeviceCode      string         `json:"device_code,omitempty"`
 }
 
 type OpsErrorLog struct {
@@ -74,6 +75,7 @@ type OpsErrorLog struct {
 	// 关联 api_key 名称（LEFT JOIN api_keys 取得；软删只覆盖 key 列，name 保留，故已删 key 仍有原名）。
 	APIKeyName    string `json:"api_key_name,omitempty"`
 	APIKeyDeleted bool   `json:"api_key_deleted,omitempty"`
+	DeviceCode    string `json:"device_code,omitempty"`
 }
 
 type OpsErrorLogDetail struct {
