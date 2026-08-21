@@ -1634,6 +1634,40 @@ func TestClient_FetchAvailableModels_URLFallback_RealCall(t *testing.T) {
 	}
 }
 
+func TestClient_FetchAvailableModelsAtURL_UsesOnlySelectedEndpoint(t *testing.T) {
+	selectedCalls := 0
+	selected := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		selectedCalls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":{"gemini-3.7-flash-tiered":{}}}`))
+	}))
+	defer selected.Close()
+
+	otherCalls := 0
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		otherCalls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":{"gemini-3.6-flash-tiered":{}}}`))
+	}))
+	defer other.Close()
+
+	withMockBaseURLs(t, []string{other.URL})
+	client := mustNewClient(t, "")
+	resp, _, err := client.FetchAvailableModelsAtURL(context.Background(), "token", "proj", selected.URL)
+	if err != nil {
+		t.Fatalf("FetchAvailableModelsAtURL failed: %v", err)
+	}
+	if _, ok := resp.Models["gemini-3.7-flash-tiered"]; !ok {
+		t.Fatal("selected endpoint model was not returned")
+	}
+	if selectedCalls != 1 {
+		t.Errorf("selected endpoint calls = %d, want 1", selectedCalls)
+	}
+	if otherCalls != 0 {
+		t.Errorf("fallback endpoint calls = %d, want 0", otherCalls)
+	}
+}
+
 func TestClient_FetchAvailableModels_AllURLsFail_RealCall(t *testing.T) {
 	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

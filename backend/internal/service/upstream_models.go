@@ -464,7 +464,15 @@ func (s *AccountTestService) fetchAntigravityOAuthUpstreamModels(ctx context.Con
 	if err != nil {
 		return nil, newUpstreamModelSyncConfigError("Failed to configure Antigravity client", err)
 	}
-	modelsResp, _, err := client.FetchAvailableModels(ctx, accessToken, strings.TrimSpace(account.GetCredential("project_id")))
+	// Probe the same endpoint selected for the account's actual traffic. Pro and
+	// Ultra accounts use daily, where newly released models can appear before prod.
+	baseURL := resolveAntigravityForwardBaseURL(account)
+	modelsResp, _, err := client.FetchAvailableModelsAtURL(
+		ctx,
+		accessToken,
+		strings.TrimSpace(account.GetCredential("project_id")),
+		baseURL,
+	)
 	if err != nil {
 		return nil, newUpstreamModelSyncUpstreamError("Failed to fetch Antigravity available models", err)
 	}
