@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -32,6 +33,17 @@ import (
 // 处理路径）；call_id 按字符串配对、值任意，call/output 两侧同函数改写即
 // 保持配对；encrypted_content 与 id 无绑定（compaction 密文挂客户端新铸
 // cmp_ id 回放是官方固化行为），密文一律原样保留。
+
+// CodexTaintSanitizationError 表示切号净化失败（如 turn-metadata 无法解析）。
+// 按约定净化失败必须拒绝请求而非回退透传——带着未净化的跨账号标识发出去
+// 比失败更糟。该错误不是 UpstreamFailoverError，handler 不会换号重试。
+type CodexTaintSanitizationError struct {
+	Reason string
+}
+
+func (e *CodexTaintSanitizationError) Error() string {
+	return "codex session taint sanitization failed: " + e.Reason
+}
 
 // codexTaintIDNamespace 是改写派生的固定 UUIDv5 命名空间。改写值必须跨轮
 // 字节稳定，因此用确定性 UUIDv5 而非随机 v4/v7（与官方合成 output id 的
@@ -183,6 +195,36 @@ func openAICodexTaintSanitizeAccountID(c *gin.Context) int64 {
 	return accountID
 }
 
+// CodexSessionSwitchPurificationEnabled 返回切号净化总开关。
+func (s *OpenAIGatewayService) CodexSessionSwitchPurificationEnabled(ctx context.Context) bool {
+	if s == nil || s.settingService == nil {
+		return false
+	}
+	return s.settingService.GetCodexSessionSwitchPurificationEnabled(ctx)
+}
+
+// TrackOpenAICodexSessionAttemptForTaint 每次出站 attempt 前由 handler failover
+// 循环调用：设置开关开启时记录会话→账号溯源（发出即记录），并在检测到跨账号
+// 续写时设置净化标记（本次 attempt 账号 ID 进 gin context，transform/header
+// 层读取）。firstAttemptAccountID 是本次请求循环内第一个尝试的账号（由调用方
+// 持有，0 表示尚未记录）；跨请求粘性由内部溯源表维护——会话只要曾被多个账号
+// 服务过，后续请求的首个 attempt 也直接净化（客户端 rollout 每轮重放老账号
+// 的 id）。返回是否激活净化（供调用方记日志）。
+func (s *OpenAIGatewayService) TrackOpenAICodexSessionAttemptForTaint(c *gin.Context, account *Account, firstAttemptAccountID int64) bool {
+	if s == nil || c == nil || account == nil || account.ID <= 0 {
+		return false
+	}
+	if !s.CodexSessionSwitchPurificationEnabled(c.Request.Context()) {
+		return false
+	}
+	s.noteOpenAICodexSessionAttempt(c, account)
+	if (firstAttemptAccountID != 0 && firstAttemptAccountID != account.ID) || s.isOpenAICodexSessionTainted(c) {
+		setOpenAICodexTaintSanitize(c, account.ID)
+		return true
+	}
+	return false
+}
+
 // resolveOpenAICodexTaintInstallationID 返回净化模式下的 installation_id：
 // 账号真实 device_id → 指纹种子派生（账号级稳定，与指纹收敛一致）→ taint
 // 派生兜底（账号+API Key 确定，仍跨轮稳定）。
@@ -232,14 +274,14 @@ func applyCodexTaintTurnMetadata(h http.Header, apiKeyID, accountID int64, insta
 	}
 	var metadata map[string]any
 	if err := json.Unmarshal([]byte(raw), &metadata); err != nil || metadata == nil {
-		return fmt.Errorf("codex taint: unparsable x-codex-turn-metadata header")
+		return &CodexTaintSanitizationError{Reason: "unparsable x-codex-turn-metadata header"}
 	}
 	if !rewriteCodexTaintMetadataMap(metadata, apiKeyID, accountID, installationID) {
 		return nil
 	}
 	rebuilt, err := json.Marshal(metadata)
 	if err != nil {
-		return fmt.Errorf("codex taint: re-encode x-codex-turn-metadata: %w", err)
+		return &CodexTaintSanitizationError{Reason: "re-encode x-codex-turn-metadata: " + err.Error()}
 	}
 	h.Set("x-codex-turn-metadata", string(rebuilt))
 	return nil
@@ -306,12 +348,12 @@ func applyCodexTaintClientMetadata(c *gin.Context, reqBody map[string]any, accou
 	if raw, ok := existing["x-codex-turn-metadata"].(string); ok && strings.TrimSpace(raw) != "" {
 		var metadata map[string]any
 		if err := json.Unmarshal([]byte(raw), &metadata); err != nil || metadata == nil {
-			return fmt.Errorf("codex taint: unparsable client_metadata.x-codex-turn-metadata")
+			return &CodexTaintSanitizationError{Reason: "unparsable client_metadata.x-codex-turn-metadata"}
 		}
 		if rewriteCodexTaintMetadataMap(metadata, apiKeyID, taintAccountID, installationID) {
 			rebuilt, err := json.Marshal(metadata)
 			if err != nil {
-				return fmt.Errorf("codex taint: re-encode client_metadata.x-codex-turn-metadata: %w", err)
+				return &CodexTaintSanitizationError{Reason: "re-encode client_metadata.x-codex-turn-metadata: " + err.Error()}
 			}
 			existing["x-codex-turn-metadata"] = string(rebuilt)
 			changed = true

@@ -383,3 +383,46 @@ func TestApplyCodexTaintClientMetadata(t *testing.T) {
 	require.NoError(t, applyCodexTaintClientMetadata(newSessionTaintTestContext(t, 7, "x"), plain, &Account{ID: 42}, 7))
 	require.Equal(t, "sess-old", plain["client_metadata"].(map[string]any)["session_id"])
 }
+
+// TestTrackOpenAICodexSessionAttemptForTaint covers the handler-facing tracker:
+// switch enabled → first attempt records without tainting, same-account retries
+// stay clean, an account switch activates rekeying (marker = new account),
+// stickiness re-activates on the next request's first attempt, and a disabled
+// switch tracks nothing.
+func TestTrackOpenAICodexSessionAttemptForTaint(t *testing.T) {
+	enabled := func() *OpenAIGatewayService {
+		return &OpenAIGatewayService{settingService: &SettingService{settingRepo: &fakeSettingRepo{vals: map[string]string{
+			SettingKeyCodexSessionSwitchPurificationEnabled: "true",
+		}}}}
+	}
+
+	svc := enabled()
+	c := newSessionTaintTestContext(t, 7, "sess-track")
+
+	// First attempt: records provenance, no rekey marker.
+	require.False(t, svc.TrackOpenAICodexSessionAttemptForTaint(c, &Account{ID: 1}, 0))
+	require.Zero(t, openAICodexTaintSanitizeAccountID(c))
+
+	// Same-account retry: still clean.
+	require.False(t, svc.TrackOpenAICodexSessionAttemptForTaint(c, &Account{ID: 1}, 1))
+	require.Zero(t, openAICodexTaintSanitizeAccountID(c))
+
+	// Account switch: rekey activated, marker = the new account.
+	require.True(t, svc.TrackOpenAICodexSessionAttemptForTaint(c, &Account{ID: 2}, 1))
+	require.Equal(t, int64(2), openAICodexTaintSanitizeAccountID(c))
+
+	// Next request (fresh context), even back on account 1: sticky taint.
+	c2 := newSessionTaintTestContext(t, 7, "sess-track")
+	require.True(t, svc.TrackOpenAICodexSessionAttemptForTaint(c2, &Account{ID: 1}, 0))
+	require.Equal(t, int64(1), openAICodexTaintSanitizeAccountID(c2))
+
+	// Disabled switch: no tracking, no marker, even across accounts.
+	svcOff := &OpenAIGatewayService{settingService: &SettingService{settingRepo: &fakeSettingRepo{vals: map[string]string{}}}}
+	c3 := newSessionTaintTestContext(t, 7, "sess-off")
+	require.False(t, svcOff.TrackOpenAICodexSessionAttemptForTaint(c3, &Account{ID: 1}, 0))
+	require.False(t, svcOff.TrackOpenAICodexSessionAttemptForTaint(c3, &Account{ID: 2}, 1))
+	require.Zero(t, openAICodexTaintSanitizeAccountID(c3))
+
+	// Nil-safety.
+	require.False(t, svc.TrackOpenAICodexSessionAttemptForTaint(nil, &Account{ID: 1}, 0))
+}

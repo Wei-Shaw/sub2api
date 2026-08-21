@@ -610,7 +610,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// 跨 passthrough 边界的 failover：从 Kiro 等透传账号切到 Bedrock 等非透传账号前，
 		// 从不可变的 canonical forwardBody 派生本次尝试 body 并整块剔除上游私有的加密
 		// reasoning item（含耦合的 id/summary），避免非透传上游 400 拒绝 Kiro reasoning 形态。
-		attemptBody := h.deriveOpenAIForwardAttemptBody(reqLog, forwardBody, account, &passthroughFailoverState)
+		attemptBody := h.deriveOpenAIForwardAttemptBody(c, reqLog, forwardBody, account, &passthroughFailoverState)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -686,6 +686,17 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					zap.Error(err),
 				)
 			} else {
+				// 切号净化失败（如 turn-metadata 无法解析）：按约定直接拒绝该请求，
+				// 不换号重试（数据问题换号也一样失败），返回可排查的错误原因。
+				var taintErr *service.CodexTaintSanitizationError
+				if errors.As(err, &taintErr) {
+					reqLog.Error("openai.codex_taint_sanitization_failed",
+						zap.Int64("account_id", account.ID),
+						zap.Error(err),
+					)
+					h.handleStreamingAwareError(c, http.StatusBadGateway, "codex_taint_sanitization_failed", taintErr.Reason, streamStarted)
+					return
+				}
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					if failoverClientGone(c) {
@@ -1244,6 +1255,17 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					zap.Error(err),
 				)
 			} else {
+				// 切号净化失败（如 turn-metadata 无法解析）：按约定直接拒绝该请求，
+				// 不换号重试（数据问题换号也一样失败），返回可排查的错误原因。
+				var taintErr *service.CodexTaintSanitizationError
+				if errors.As(err, &taintErr) {
+					reqLog.Error("openai.codex_taint_sanitization_failed",
+						zap.Int64("account_id", account.ID),
+						zap.Error(err),
+					)
+					h.handleStreamingAwareError(c, http.StatusBadGateway, "codex_taint_sanitization_failed", taintErr.Reason, streamStarted)
+					return
+				}
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					if failoverClientGone(c) {
