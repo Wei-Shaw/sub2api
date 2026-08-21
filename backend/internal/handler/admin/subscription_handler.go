@@ -30,14 +30,12 @@ func toResponsePagination(p *pagination.PaginationResult) *response.PaginationRe
 // SubscriptionHandler handles admin subscription management
 type SubscriptionHandler struct {
 	subscriptionService *service.SubscriptionService
-	adminService        service.AdminService
 }
 
 // NewSubscriptionHandler creates a new admin subscription handler
-func NewSubscriptionHandler(subscriptionService *service.SubscriptionService, adminService service.AdminService) *SubscriptionHandler {
+func NewSubscriptionHandler(subscriptionService *service.SubscriptionService) *SubscriptionHandler {
 	return &SubscriptionHandler{
 		subscriptionService: subscriptionService,
-		adminService:        adminService,
 	}
 }
 
@@ -81,17 +79,12 @@ func (h *SubscriptionHandler) List(c *gin.Context) {
 	}
 	status := c.Query("status")
 	platform := c.Query("platform")
-	deviceCode := c.Query("device_code")
 
 	// Parse sorting parameters
 	sortBy := c.DefaultQuery("sort_by", "created_at")
 	sortOrder := c.DefaultQuery("sort_order", "desc")
 
-	scopedUserIDs, ok := restrictExplicitUserIDToMarketingScope(c, h.adminService, userID)
-	if !ok {
-		return
-	}
-	subscriptions, pagination, err := h.subscriptionService.ListScoped(c.Request.Context(), page, pageSize, userID, groupID, scopedUserIDs, status, platform, deviceCode, sortBy, sortOrder)
+	subscriptions, pagination, err := h.subscriptionService.List(c.Request.Context(), page, pageSize, userID, groupID, status, platform, sortBy, sortOrder)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -118,9 +111,6 @@ func (h *SubscriptionHandler) GetByID(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if !ensureMarketingCanManageUser(c, h.adminService, subscription.UserID) {
-		return
-	}
 
 	response.Success(c, dto.UserSubscriptionFromServiceAdmin(subscription))
 }
@@ -131,15 +121,6 @@ func (h *SubscriptionHandler) GetProgress(c *gin.Context) {
 	subscriptionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid subscription ID")
-		return
-	}
-
-	subscription, err := h.subscriptionService.GetByID(c.Request.Context(), subscriptionID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	if !ensureMarketingCanManageUser(c, h.adminService, subscription.UserID) {
 		return
 	}
 
@@ -158,10 +139,6 @@ func (h *SubscriptionHandler) Assign(c *gin.Context) {
 	var req AssignSubscriptionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-	}
-
-	if !ensureMarketingCanManageUser(c, h.adminService, req.UserID) {
 		return
 	}
 
@@ -190,12 +167,6 @@ func (h *SubscriptionHandler) BulkAssign(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
-	}
-
-	for _, userID := range req.UserIDs {
-		if !ensureMarketingCanManageUser(c, h.adminService, userID) {
-			return
-		}
 	}
 
 	// Get admin user ID from context
@@ -242,15 +213,6 @@ func (h *SubscriptionHandler) Extend(c *gin.Context) {
 		return
 	}
 
-	subscription, err := h.subscriptionService.GetByID(c.Request.Context(), subscriptionID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	if !ensureMarketingCanManageUser(c, h.adminService, subscription.UserID) {
-		return
-	}
-
 	var req AdjustSubscriptionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
@@ -288,15 +250,6 @@ func (h *SubscriptionHandler) ResetQuota(c *gin.Context) {
 		response.BadRequest(c, "Invalid subscription ID")
 		return
 	}
-	subscription, err := h.subscriptionService.GetByID(c.Request.Context(), subscriptionID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	if !ensureMarketingCanManageUser(c, h.adminService, subscription.UserID) {
-		return
-	}
-
 	var req ResetSubscriptionQuotaRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
@@ -321,15 +274,6 @@ func (h *SubscriptionHandler) Revoke(c *gin.Context) {
 	subscriptionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid subscription ID")
-		return
-	}
-
-	subscription, err := h.subscriptionService.GetByID(c.Request.Context(), subscriptionID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	if !ensureMarketingCanManageUser(c, h.adminService, subscription.UserID) {
 		return
 	}
 

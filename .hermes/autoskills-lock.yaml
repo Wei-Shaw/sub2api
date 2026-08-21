@@ -1,0 +1,6 @@
+version: 1
+skills:
+  - software-development/project-memory-autobootstrap
+  - software-development/project-memory-coding
+  - software-development/beads-workflow
+generated_by: /root/.hermes/scripts/project-memory/bootstrap_project.py

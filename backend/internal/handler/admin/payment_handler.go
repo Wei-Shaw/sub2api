@@ -1,18 +1,11 @@
 package admin
 
 import (
-	"context"
-	"encoding/base64"
-	"fmt"
-	"io"
-	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -22,15 +15,13 @@ import (
 type PaymentHandler struct {
 	paymentService *service.PaymentService
 	configService  *service.PaymentConfigService
-	adminService   service.AdminService
 }
 
 // NewPaymentHandler creates a new admin PaymentHandler.
-func NewPaymentHandler(paymentService *service.PaymentService, configService *service.PaymentConfigService, adminService service.AdminService) *PaymentHandler {
+func NewPaymentHandler(paymentService *service.PaymentService, configService *service.PaymentConfigService) *PaymentHandler {
 	return &PaymentHandler{
 		paymentService: paymentService,
 		configService:  configService,
-		adminService:   adminService,
 	}
 }
 
@@ -66,8 +57,8 @@ func (h *PaymentHandler) ListOrders(c *gin.Context) {
 		}
 	}
 	orders, total, err := h.paymentService.AdminListOrders(c.Request.Context(), userID, service.OrderListParams{
-		Page:     page,
-		PageSize: pageSize,
+		Page:        page,
+		PageSize:    pageSize,
 		Status:      c.Query("status"),
 		OrderType:   c.Query("order_type"),
 		PaymentType: c.Query("payment_type"),
@@ -96,7 +87,6 @@ func (h *PaymentHandler) GetOrderDetail(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	// Marketing scope check removed (not in this branch)
 	auditLogs, _ := h.paymentService.GetOrderAuditLogs(c.Request.Context(), orderID)
 	response.Success(c, gin.H{"order": sanitizeAdminPaymentOrderForResponse(order), "auditLogs": auditLogs})
 }
@@ -108,13 +98,6 @@ func (h *PaymentHandler) CancelOrder(c *gin.Context) {
 	if !ok {
 		return
 	}
-	order, err := h.paymentService.GetOrderByID(c.Request.Context(), orderID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	// Marketing scope check removed (not in this branch)
-
 	msg, err := h.paymentService.AdminCancelOrder(c.Request.Context(), orderID)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -130,13 +113,6 @@ func (h *PaymentHandler) RetryFulfillment(c *gin.Context) {
 	if !ok {
 		return
 	}
-	order, err := h.paymentService.GetOrderByID(c.Request.Context(), orderID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	// Marketing scope check removed (not in this branch)
-
 	if err := h.paymentService.RetryFulfillment(c.Request.Context(), orderID); err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -144,80 +120,9 @@ func (h *PaymentHandler) RetryFulfillment(c *gin.Context) {
 	response.Success(c, gin.H{"message": "fulfillment retried"})
 }
 
-// AdminCompleteManualOrder marks a pending manual QR payment as paid and runs fulfillment.
-// POST /api/v1/admin/payment/orders/:id/manual-complete
-func (h *PaymentHandler) AdminCompleteManualOrder(c *gin.Context) {
-	orderID, ok := parseIDParam(c, "id")
-	if !ok {
-		return
-	}
-	order, err := h.paymentService.GetOrderByID(c.Request.Context(), orderID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	// Marketing scope check removed (not in this branch)
-
-	var req struct {
-		TradeNo string `json:"trade_no"`
-		Note    string `json:"note"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil && err != io.EOF {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-	}
-	adminUserID := int64(0)
-	if subject, ok := servermiddleware.GetAuthSubjectFromContext(c); ok {
-		adminUserID = subject.UserID
-	}
-	if err := h.paymentService.AdminCompleteManualOrder(c.Request.Context(), orderID, adminUserID, req.TradeNo, req.Note); err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, gin.H{"message": "manual payment completed"})
-}
-
-// UploadManualQRCode accepts a small QR-code image and returns a data URL that
-// can be stored in provider config under manualQrCodeImg.
-// POST /api/v1/admin/payment/providers/manual-qr
-func (h *PaymentHandler) UploadManualQRCode(c *gin.Context) {
-	const maxManualQRBytes = 1024 * 1024
-	file, err := c.FormFile("file")
-	if err != nil {
-		response.BadRequest(c, "file is required")
-		return
-	}
-	if file.Size <= 0 || file.Size > maxManualQRBytes {
-		response.BadRequest(c, "file must be a non-empty image up to 1MB")
-		return
-	}
-	src, err := file.Open()
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed to read upload")
-		return
-	}
-	defer func() { _ = src.Close() }()
-	data, err := io.ReadAll(io.LimitReader(src, maxManualQRBytes+1))
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed to read upload")
-		return
-	}
-	if len(data) == 0 || len(data) > maxManualQRBytes {
-		response.BadRequest(c, "file must be a non-empty image up to 1MB")
-		return
-	}
-	contentType := http.DetectContentType(data)
-	if !strings.HasPrefix(contentType, "image/") {
-		response.BadRequest(c, "file must be an image")
-		return
-	}
-	dataURL := fmt.Sprintf("data:%s;base64,%s", contentType, base64.StdEncoding.EncodeToString(data))
-	response.Success(c, gin.H{"url": dataURL, "content_type": contentType, "size": len(data)})
-}
-
 type AdminPaymentOrderResult struct {
-	ID                  int64          `json:"id"`
-	UserID              int64          `json:"user_id"`
+	ID                  int64      `json:"id"`
+	UserID              int64      `json:"user_id"`
 	UserEmail           string         `json:"user_email,omitempty"`
 	UserName            string         `json:"user_name,omitempty"`
 	UserNotes           *string        `json:"user_notes,omitempty"`
@@ -271,34 +176,6 @@ func sanitizeAdminPaymentOrdersForResponse(orders []*dbent.PaymentOrder) []*Admi
 	return out
 }
 
-func enrichOrdersWithDeviceCode(ctx context.Context, paymentService *service.PaymentService, orders []*AdminPaymentOrderResult) []*AdminPaymentOrderResult {
-	if len(orders) == 0 || paymentService == nil {
-		return orders
-	}
-	// Collect unique user IDs.
-	userIDSet := make(map[int64]struct{}, len(orders))
-	for _, o := range orders {
-		if o != nil && o.UserID > 0 {
-			userIDSet[o.UserID] = struct{}{}
-		}
-	}
-	if len(userIDSet) == 0 {
-		return orders
-	}
-	userIDs := make([]int64, 0, len(userIDSet))
-	for id := range userIDSet {
-		userIDs = append(userIDs, id)
-	}
-
-	deviceCodes := paymentService.GetDeviceCodesByUserIDs(ctx, userIDs)
-	for _, o := range orders {
-		if o != nil {
-			o.DeviceCode = deviceCodes[o.UserID]
-		}
-	}
-	return orders
-}
-
 func sanitizeAdminPaymentOrderForResponse(order *dbent.PaymentOrder) *AdminPaymentOrderResult {
 	if order == nil {
 		return nil
@@ -327,7 +204,6 @@ func sanitizeAdminPaymentOrderForResponse(order *dbent.PaymentOrder) *AdminPayme
 		SubscriptionDays:    order.SubscriptionDays,
 		ProviderInstanceID:  order.ProviderInstanceID,
 		ProviderKey:         order.ProviderKey,
-		ProviderSnapshot:    sanitizeAdminProviderSnapshot(order.ProviderSnapshot),
 		Status:              order.Status,
 		RefundAmount:        order.RefundAmount,
 		RefundReason:        order.RefundReason,
@@ -349,19 +225,6 @@ func sanitizeAdminPaymentOrderForResponse(order *dbent.PaymentOrder) *AdminPayme
 	}
 }
 
-func sanitizeAdminProviderSnapshot(snapshot map[string]any) map[string]any {
-	out := make(map[string]any)
-	for _, key := range []string{"schema_version", "provider_instance_id", "provider_key", "payment_mode", "currency"} {
-		if value, ok := snapshot[key]; ok {
-			out[key] = value
-		}
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
-}
-
 // AdminProcessRefundRequest is the request body for admin refund processing.
 type AdminProcessRefundRequest struct {
 	Amount        float64 `json:"amount"`
@@ -381,15 +244,6 @@ func (h *PaymentHandler) ProcessRefund(c *gin.Context) {
 	var req AdminProcessRefundRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-	}
-
-	order, err := h.paymentService.GetOrderByID(c.Request.Context(), orderID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	if !ensureMarketingCanManageUser(c, h.adminService, order.UserID) {
 		return
 	}
 
@@ -551,69 +405,6 @@ func (h *PaymentHandler) DeletePlan(c *gin.Context) {
 	response.Success(c, gin.H{"message": "deleted"})
 }
 
-// --- Balance Packages ---
-
-// ListBalancePackages returns all balance recharge packages.
-// GET /api/v1/admin/payment/balance-packages
-func (h *PaymentHandler) ListBalancePackages(c *gin.Context) {
-	packages, err := h.configService.ListBalanceRechargePackages(c.Request.Context())
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, packages)
-}
-
-// CreateBalancePackage creates a new balance recharge package.
-// POST /api/v1/admin/payment/balance-packages
-func (h *PaymentHandler) CreateBalancePackage(c *gin.Context) {
-	var req service.CreateBalancePackageRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-	}
-	pkg, err := h.configService.CreateBalancePackage(c.Request.Context(), req)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Created(c, pkg)
-}
-
-// UpdateBalancePackage updates an existing balance recharge package.
-// PUT /api/v1/admin/payment/balance-packages/:id
-func (h *PaymentHandler) UpdateBalancePackage(c *gin.Context) {
-	id, ok := parseIDParam(c, "id")
-	if !ok {
-		return
-	}
-	var req service.UpdateBalancePackageRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-	}
-	pkg, err := h.configService.UpdateBalancePackage(c.Request.Context(), id, req)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, pkg)
-}
-
-// DeleteBalancePackage deletes a balance recharge package.
-// DELETE /api/v1/admin/payment/balance-packages/:id
-func (h *PaymentHandler) DeleteBalancePackage(c *gin.Context) {
-	id, ok := parseIDParam(c, "id")
-	if !ok {
-		return
-	}
-	if err := h.configService.DeleteBalancePackage(c.Request.Context(), id); err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, gin.H{"message": "deleted"})
-}
-
 // --- Provider Instances ---
 
 // ListProviders returns all payment provider instances.
@@ -625,22 +416,6 @@ func (h *PaymentHandler) ListProviders(c *gin.Context) {
 		return
 	}
 	response.Success(c, providers)
-}
-
-// ListSepayBankAccounts returns SePay bank accounts for a temporary API token.
-// POST /api/v1/admin/payment/providers/sepay/bank-accounts
-func (h *PaymentHandler) ListSepayBankAccounts(c *gin.Context) {
-	var req service.ListSepayBankAccountsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-	}
-	accounts, err := h.configService.ListSepayBankAccounts(c.Request.Context(), req)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, accounts)
 }
 
 // CreateProvider creates a new payment provider instance.
