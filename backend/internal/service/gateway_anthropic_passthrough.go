@@ -418,6 +418,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	var firstTokenMs *int
 	clientDisconnected := false
 	sawTerminalEvent := false
+	protocolGuard := newAnthropicPassthroughSSEGuard()
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -504,6 +505,19 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 		select {
 		case ev, ok := <-events:
 			if !ok {
+				guardedLines, guardErr := protocolGuard.Flush()
+				if !clientDisconnected && len(guardedLines) > 0 {
+					disconnected, completedEvent := writeAnthropicGuardedLines(w, c, flusher, guardedLines)
+					clientDisconnected = disconnected
+					if completedEvent {
+						lastDataAt = time.Now()
+						resetKeepaliveTimer()
+						inPartialEvent = false
+					}
+				}
+				if guardErr != nil {
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, guardErr
+				}
 				if !clientDisconnected {
 					// 兜底补刷，确保最后一个未以空行结尾的事件也能及时送达客户端。
 					flusher.Flush()
@@ -555,23 +569,23 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 				}
 			}
 
-			if !clientDisconnected {
-				restored := string(reverseToolNamesIfPresent(c, []byte(line)))
-				if _, err := io.WriteString(w, restored); err != nil {
-					clientDisconnected = true
+			guardedLines, guardErr := protocolGuard.PushLine(line)
+			if line != "" {
+				inPartialEvent = true
+			}
+			if !clientDisconnected && len(guardedLines) > 0 {
+				disconnected, completedEvent := writeAnthropicGuardedLines(w, c, flusher, guardedLines)
+				clientDisconnected = disconnected
+				if clientDisconnected {
 					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
-				} else if _, err := io.WriteString(w, "\n"); err != nil {
-					clientDisconnected = true
-					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
-				} else if line == "" {
-					// 按 SSE 事件边界刷出，减少每行 flush 带来的 syscall 开销。
-					flusher.Flush()
+				} else if completedEvent {
 					lastDataAt = time.Now()
 					resetKeepaliveTimer()
 					inPartialEvent = false
-				} else {
-					inPartialEvent = true
 				}
+			}
+			if guardErr != nil {
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, guardErr
 			}
 
 		case <-intervalCh:
@@ -807,6 +821,11 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 		if err := json.Unmarshal(body, &raw); err != nil {
 			return nil, invalidNonStreamingJSONFailoverError(ctx, s.rateLimitService, resp, account, body, err)
 		}
+		normalizedBody, protocolErr := normalizeAnthropicPassthroughResponseBody(body)
+		if protocolErr != nil {
+			return nil, anthropicProtocolFailoverError(resp, account, protocolErr)
+		}
+		body = normalizedBody
 	}
 
 	usage := parseClaudeUsageFromResponseBody(body)
