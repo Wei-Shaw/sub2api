@@ -196,6 +196,7 @@ func TestChannelMonitorV2SQLTaxonomyContainsGoNeedles(t *testing.T) {
 		"invalid_request",
 		"model not supported",
 		"billing hard limit",
+		"insufficient account balance",
 		"no healthy upstream account",
 		"rate_limit",
 		"gateway timeout",
