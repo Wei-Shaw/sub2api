@@ -13,6 +13,10 @@ export interface MessagesDispatchFormState {
   exact_model_mappings: MessagesDispatchMappingRow[];
 REDACTED
 
+export function supportsMessagesDispatchPlatform(platform: string): boolean {
+  return platform === "openai" || platform === "composite";
+REDACTED
+
 export function createDefaultMessagesDispatchFormState(): MessagesDispatchFormState {
   return {
     allow_messages_dispatch: false,

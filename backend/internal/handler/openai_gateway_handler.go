@@ -223,14 +223,13 @@ REDACTED
 REDACTED
 	// 国产供应商分组与 grok 同语义:/v1/messages 就是其主要服务形态(anthropic
 	// 协议账号原生直通 Claude Code),无需 allow_messages_dispatch 开关授权——
-	// 该开关对非 openai 平台恒被 sanitizeGroupMessagesDispatchFields 置 false,
+	// 该开关对非 openai/composite 平台恒被 sanitizeGroupMessagesDispatchFields 置 false,
 	// 若不豁免,CN 分组将永远 403。
 	if service.IsCNProvider(apiKey.Group.Platform) {
 		return true
 REDACTED
-	// composite 分组解析到 grok/CN 目标时与对应独立分组同语义豁免：sanitize
-	// 对 composite 同样恒置 false,不豁免则这些目标的 /v1/messages 永远 403；
-	// 解析到 openai 目标仍受开关控制,维持现状。
+	// composite 分组解析到 grok/CN 目标时与对应独立分组同语义豁免；
+	// 解析到 openai 目标则受 composite 分组自身的可配置开关控制。
 	if apiKey.Group.Platform == service.PlatformComposite && c != nil && c.Request != nil {
 		if platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context()); ok &&
 			(platform == service.PlatformGrok || service.IsCNProvider(platform)) {

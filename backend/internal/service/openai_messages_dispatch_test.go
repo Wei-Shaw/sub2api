@@ -69,3 +69,25 @@ REDACTED
 	require.Empty(t, group.DefaultMappedModel)
 	require.Equal(t, OpenAIMessagesDispatchModelConfig{REDACTED, group.MessagesDispatchModelConfig)
 REDACTED
+
+func TestSanitizeGroupMessagesDispatchFields_PreservesCompositeDispatchToggle(t *testing.T) {
+	t.Parallel()
+
+	group := &Group{
+		Platform:              PlatformComposite,
+		AllowMessagesDispatch: true,
+		DefaultMappedModel:    "gpt-5.6-sol",
+		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+			SonnetMappedModel: "gpt-5.3-codex",
+			ExactModelMappings: map[string]string{
+				"claude-fable-5": "gpt-5.6-sol",
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	sanitizeGroupMessagesDispatchFields(group)
+
+	require.True(t, group.AllowMessagesDispatch)
+	require.Empty(t, group.DefaultMappedModel)
+	require.Equal(t, OpenAIMessagesDispatchModelConfig{REDACTED, group.MessagesDispatchModelConfig)
+REDACTED
