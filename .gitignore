@@ -156,6 +156,7 @@ docs/*
 frontend/coverage/
 aicodex
 output/
+.codegraph/
 
 # impeccable-ignore-start
 # Ephemeral Impeccable output; shared design/config artifacts remain trackable.

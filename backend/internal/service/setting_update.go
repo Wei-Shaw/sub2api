@@ -423,7 +423,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if v := strings.TrimSpace(settings.GrokDefaultTextModel); v != "" {
 		updates[SettingKeyGrokDefaultTextModel] = v
 	} else {
-		updates[SettingKeyGrokDefaultTextModel] = "grok-4.5"
+		updates[SettingKeyGrokDefaultTextModel] = "grok-4.6"
 	}
 	updates[SettingKeyGrokCrossClientModelMapEnabled] = strconv.FormatBool(settings.GrokCrossClientModelMapEnabled)
 	updates[SettingKeyGrokDefaultBaseURLMode] = normalizeGrokDefaultBaseURLMode(settings.GrokDefaultBaseURLMode)

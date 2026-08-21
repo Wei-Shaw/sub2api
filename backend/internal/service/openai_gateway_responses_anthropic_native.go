@@ -75,7 +75,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	anthropicReq.Model = upstreamModel
 
-	reasoningEffort := ExtractResponsesReasoningEffortFromBody(body)
+	reasoningEffort := ExtractResponsesReasoningEffortFromBody(body, upstreamModel, billingModel, originalModel)
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, billingModel)
 
 	// 5. Force upstream streaming（客户端原始终决定响应格式；

@@ -27,6 +27,13 @@ func AdaptResponsesClientTools(req map[string]any) (ResponsesClientToolMapping, 
 	if !ok || len(tools) == 0 {
 		return ResponsesClientToolMapping{}, false, nil
 	}
+	discovered, err := promoteResponsesToolSearchDiscoveries(req)
+	if err != nil {
+		return ResponsesClientToolMapping{}, false, err
+	}
+	if discovered {
+		tools, _ = req["tools"].([]any)
+	}
 
 	adapter := ResponsesClientToolMapping{CustomTools: make(map[string]bool)}
 	functionNames := make(map[string]bool)
@@ -73,7 +80,7 @@ func AdaptResponsesClientTools(req map[string]any) (ResponsesClientToolMapping, 
 
 	tools, _ = req["tools"].([]any)
 	lowered := make([]any, 0, len(tools))
-	changed := flattened
+	changed := discovered || flattened
 	seenSearch := false
 	for _, raw := range tools {
 		tool, ok := raw.(map[string]any)
@@ -115,7 +122,11 @@ func AdaptResponsesClientTools(req map[string]any) (ResponsesClientToolMapping, 
 	if changed {
 		req["tools"] = lowered
 	}
-	if rewriteClientToolHistory(req["input"], &adapter) {
+	historyChanged, err := rewriteClientToolHistory(req["input"], &adapter)
+	if err != nil {
+		return ResponsesClientToolMapping{}, false, err
+	}
+	if historyChanged {
 		changed = true
 	}
 	if rewriteClientToolChoice(req, &adapter) {
@@ -138,6 +149,7 @@ func AdaptResponsesClientTools(req map[string]any) (ResponsesClientToolMapping, 
 func AdaptResponsesClientToolsWithInheritedMapping(
 	req map[string]any,
 	inherited ResponsesClientToolMapping,
+	inheritedLoweredTools ...[]any,
 ) (ResponsesClientToolMapping, bool, error) {
 	if req == nil {
 		return ResponsesClientToolMapping{}, false, nil
@@ -148,8 +160,15 @@ func AdaptResponsesClientToolsWithInheritedMapping(
 	if len(inherited.CustomTools) == 0 && !inherited.ToolSearch && len(inherited.NamespaceTools) == 0 {
 		return ResponsesClientToolMapping{}, false, nil
 	}
+	if len(inheritedLoweredTools) > 0 && len(inheritedLoweredTools[0]) > 0 {
+		req["tools"] = restoreInheritedResponsesClientToolDeclarations(inheritedLoweredTools[0], inherited)
+		return AdaptResponsesClientTools(req)
+	}
 
-	changed := rewriteClientToolHistory(req["input"], &inherited)
+	changed, err := rewriteClientToolHistory(req["input"], &inherited)
+	if err != nil {
+		return ResponsesClientToolMapping{}, false, err
+	}
 	if len(inherited.NamespaceTools) > 0 {
 		before := changed
 		rewriteNamespaceQualifiedCalls(req["input"], inherited.NamespaceTools)
@@ -174,14 +193,16 @@ func copyClientTool(tool map[string]any) map[string]any {
 	return copy
 }
 
-func rewriteClientToolHistory(value any, adapter *ResponsesClientToolMapping) bool {
+func rewriteClientToolHistory(value any, adapter *ResponsesClientToolMapping) (bool, error) {
 	changed := false
-	var visit func(any)
-	visit = func(value any) {
+	var visit func(any) error
+	visit = func(value any) error {
 		switch typed := value.(type) {
 		case []any:
 			for _, item := range typed {
-				visit(item)
+				if err := visit(item); err != nil {
+					return err
+				}
 			}
 		case map[string]any:
 			typ := strings.TrimSpace(stringValue(typed["type"]))
@@ -210,19 +231,30 @@ func rewriteClientToolHistory(value any, adapter *ResponsesClientToolMapping) bo
 				}
 			case "tool_search_output":
 				if adapter.ToolSearch {
+					callID := strings.TrimSpace(stringValue(typed["call_id"]))
+					if callID == "" {
+						return fmt.Errorf("tool_search_output requires a non-empty string call_id before it can be lowered to function_call_output")
+					}
 					typed["type"] = "function_call_output"
 					dropInvalidLoweredFunctionItemID(typed)
-					normalizeClientToolOutput(typed)
+					if err := normalizeToolSearchOutput(typed); err != nil {
+						return err
+					}
 					changed = true
 				}
 			}
 			for _, child := range typed {
-				visit(child)
+				if err := visit(child); err != nil {
+					return err
+				}
 			}
 		}
+		return nil
 	}
-	visit(value)
-	return changed
+	if err := visit(value); err != nil {
+		return false, err
+	}
+	return changed, nil
 }
 
 // dropInvalidLoweredFunctionItemID removes Codex client-only item IDs such as
@@ -254,6 +286,47 @@ func normalizeClientToolOutput(item map[string]any) {
 		return
 	}
 	item["output"] = string(encoded)
+}
+
+// normalizeToolSearchOutput converts both tool_search output wire shapes into
+// the string output required by function_call_output. Older clients send an
+// output field directly; newer Codex clients return discovered definitions in
+// a top-level tools field. Codex treats that field's value as the tool output,
+// so serialize the value directly rather than wrapping it in another object.
+func normalizeToolSearchOutput(item map[string]any) error {
+	if output, hasOutput := item["output"]; hasOutput {
+		switch typed := output.(type) {
+		case string:
+			item["output"] = typed
+		case nil:
+			item["output"] = ""
+		default:
+			encoded, err := json.Marshal(typed)
+			if err != nil {
+				return fmt.Errorf("tool_search_output output cannot be encoded as function_call_output output: %w", err)
+			}
+			item["output"] = string(encoded)
+		}
+		dropToolSearchOutputPrivateFields(item)
+		return nil
+	}
+	tools, hasTools := item["tools"]
+	if !hasTools {
+		return fmt.Errorf("tool_search_output requires output or tools before it can be lowered to function_call_output")
+	}
+	encoded, err := json.Marshal(tools)
+	if err != nil {
+		return fmt.Errorf("tool_search_output tools cannot be encoded as function_call_output output: %w", err)
+	}
+	item["output"] = string(encoded)
+	dropToolSearchOutputPrivateFields(item)
+	return nil
+}
+
+func dropToolSearchOutputPrivateFields(item map[string]any) {
+	delete(item, "tools")
+	delete(item, "status")
+	delete(item, "execution")
 }
 
 func rewriteClientToolChoice(req map[string]any, adapter *ResponsesClientToolMapping) bool {

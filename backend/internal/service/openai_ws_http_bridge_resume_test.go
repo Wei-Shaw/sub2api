@@ -97,7 +97,10 @@ func TestProxyOpenAIWSHTTPBridgeTurnLaterTurnDoesNotFailOverAfterDownstreamOutpu
 	require.False(t, errors.As(err, &failoverErr))
 	require.Len(t, writes, 2)
 	require.Equal(t, "response.output_text.delta", gjson.GetBytes(writes[0], "type").String())
-	require.Equal(t, "error", gjson.GetBytes(writes[1], "type").String())
+	// P0.1: after downstream output, retain the upstream error and synthesize
+	// the official Responses terminal so Codex clients do not see a bare error
+	// followed by a closed stream.
+	require.Equal(t, "response.failed", gjson.GetBytes(writes[1], "type").String())
 }
 
 func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t *testing.T) {

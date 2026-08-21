@@ -186,6 +186,16 @@ security:
     # Allow skipping TLS verification for proxy probe (debug only)
     # 允许代理探测时跳过 TLS 证书验证（仅用于调试）
     insecure_skip_verify: false
+    # Optional ordered probe targets. Leave empty to use the built-in ip-api/ipify fallback.
+    # parser supports: ip-api, ipify, chatgpt-trace
+    # 可选的有序探测目标。留空时使用内置 ip-api/ipify 回退。
+    # parser 支持：ip-api、ipify、chatgpt-trace
+    urls: []
+    # urls:
+    #   - url: "https://chatgpt.com/cdn-cgi/trace"
+    #     parser: "chatgpt-trace"
+    #   - url: "https://api64.ipify.org?format=json"
+    #     parser: "ipify"
   proxy_fallback:
     # Allow auxiliary services (update check, pricing data) to fallback to direct
     # connection when proxy initialization fails. Does NOT affect AI gateway connections.
@@ -204,6 +214,9 @@ gateway:
   # OpenAI/Codex upstream response header timeout (seconds, 0=disabled)
   # OpenAI/Codex 等待上游响应头超时时间（秒，0=禁用本地响应头超时）
   openai_response_header_timeout: 0
+  # Grok text Responses first-byte timeout (seconds, 0=disabled; default 120)
+  # Grok 文本 Responses 首字节超时时间（秒，0=禁用；默认 120）
+  grok_response_header_timeout: 120
   # Native OpenAI HTTP Responses first semantic output timeout (seconds, 0=disabled)
   # Includes response-header wait; does not apply to passthrough or WebSocket transports.
   # A timed-out request may already have incurred upstream usage; account failover can therefore duplicate upstream billing.

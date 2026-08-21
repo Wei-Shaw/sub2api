@@ -1902,13 +1902,13 @@ func (c *openAIWSCaptureConn) WriteJSON(ctx context.Context, value any) error {
 		c.writes = append(c.writes, cloneMapStringAny(payload))
 	case json.RawMessage:
 		var parsed map[string]any
-		if err := json.Unmarshal(payload, &parsed); err == nil {
+		if err := decodeOpenAIJSONUseNumber(payload, &parsed); err == nil {
 			c.lastWrite = cloneMapStringAny(parsed)
 			c.writes = append(c.writes, cloneMapStringAny(parsed))
 		}
 	case []byte:
 		var parsed map[string]any
-		if err := json.Unmarshal(payload, &parsed); err == nil {
+		if err := decodeOpenAIJSONUseNumber(payload, &parsed); err == nil {
 			c.lastWrite = cloneMapStringAny(parsed)
 			c.writes = append(c.writes, cloneMapStringAny(parsed))
 		}
