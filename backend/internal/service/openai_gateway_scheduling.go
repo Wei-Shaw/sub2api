@@ -452,6 +452,25 @@ func shouldAutoPauseOpenAIAccountByQuota(ctx context.Context, account *Account) 
 	if account == nil || !account.IsOpenAI() {
 		return false, openAIQuotaAutoPauseDecision{}
 	}
+	// /v1/images/* 专用生图端点豁免文本额度自动暂停（issue #1886）。
+	//
+	// OAuth 账号在上游持有两套互不相干的配额：Codex 文本用量走 5h/7d 滚动窗口，
+	// gpt-image 系列生图走自己的限额（命中后上游返回的 429 带 "for limit gpt-image"
+	// / "input-images per min"）。文本窗口打满不代表生图不可用，但自动暂停是账号
+	// 维度的——只要文本窗口到阈值，账号就整体退出候选池，仍有生图额度的账号也再
+	// 拿不到 /v1/images/* 请求。
+	//
+	// 豁免刻意只认最窄口径 OpenAIImagesEndpointFromContext（仅 /v1/images/* 入站）：
+	// Responses 端点内嵌生图工具的请求同样消耗文本额度，必须继续受暂停约束，
+	// 所以这里不能改用 OpenAIImageGenerationIntentFromContext。
+	//
+	// 生图额度自身耗尽时不会因此空转：HandleOpenAIImageRateLimit 会写入
+	// openai:image_generation 维度冷却，选中后的 DB 复核
+	// （isOpenAICompatibleAccountEligibleForRequest → IsSchedulableForModelWithContext）
+	// 会拦下该账号。方向上也与既有语义对称——图片被限流时同样不封停整个账号。
+	if OpenAIImagesEndpointFromContext(ctx) {
+		return false, openAIQuotaAutoPauseDecision{}
+	}
 	// Per-account explicit-disable flags must take precedence over the global default.
 	// Without these, leaving the account threshold blank means "use global default",
 	// so an admin has no way to exempt a single account from auto-pause once a global
