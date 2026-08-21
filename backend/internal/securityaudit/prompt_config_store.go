@@ -134,14 +134,27 @@ func (m *ConfigManager) Reload(ctx context.Context) error {
 	}
 	now := m.clock.Now()
 	previous := m.snapshot.Load()
+	recovered := m.hasLoadError()
 	m.snapshot.Store(&activeConfigSnapshot{storage: cloneStorageConfig(storage), active: cloneActiveConfig(active), loadedAt: now})
 	m.configUntrusted.Store(false)
 	m.clearLoadError()
 	m.logInvalidTokenEndpoints(previous, active)
-	LogInfo(EventConfigLoaded, map[string]any{
-		"config_version": storage.ConfigVersion, "status": "loaded",
-	})
+	if shouldLogConfigLoaded(previous, active, recovered) {
+		LogInfo(EventConfigLoaded, map[string]any{
+			"config_version": storage.ConfigVersion, "status": "loaded",
+		})
+	}
 	return nil
+}
+
+// shouldLogConfigLoaded keeps successful reloads observable without emitting
+// an INFO entry for every unchanged five-second fallback refresh. A recovery
+// is logged even when the active configuration itself did not change.
+func shouldLogConfigLoaded(previous *activeConfigSnapshot, active ActiveConfig, recovered bool) bool {
+	return previous == nil ||
+		recovered ||
+		previous.active.ConfigVersion != active.ConfigVersion ||
+		previous.active.RiskControlEnabled != active.RiskControlEnabled
 }
 
 // logInvalidTokenEndpoints warns once per change (not on every 5s refresh)
@@ -488,6 +501,15 @@ func (m *ConfigManager) recordLoadError(_ error) {
 	m.lastLoadError = stableErrorMessage("config_load_failed")
 	m.lastErrorAt = &now
 	m.stateMu.Unlock()
+}
+
+func (m *ConfigManager) hasLoadError() bool {
+	if m == nil {
+		return false
+	}
+	m.stateMu.RLock()
+	defer m.stateMu.RUnlock()
+	return m.lastLoadError != ""
 }
 
 func (m *ConfigManager) clearLoadError() {
