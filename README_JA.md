@@ -190,6 +190,7 @@ Sub2API は、AI 製品のサブスクリプションから API クォータを�
 - **レート制限** - 設定可能なリクエスト数およびトークンレート制限
 - **内蔵決済システム** - EasyPay、Alipay、WeChat Pay、Stripe に対応。ユーザーのセルフサービスチャージが可能で、別途決済サービスのデプロイは不要（[設定ガイド](docs/PAYMENT.md)）
 - **管理ダッシュボード** - 監視・管理のための Web インターフェース
+- **Strict Responses 上流** - OpenAI Responses をネイティブ実装する上流へのリクエスト本文と SSE の忠実な転送（[運用ガイド](docs/openai-strict-responses-upstream.md)）
 - **外部システム連携** - 外部システム（チケット管理など）を iframe 経由で管理ダッシュボードに埋め込み可能
 
 ## エコシステム
