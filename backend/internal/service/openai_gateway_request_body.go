@@ -1507,8 +1507,31 @@ REDACTED
 REDACTED
 
 func normalizeOpenAIReasoningEffortForModel(raw, model string) string {
-	if strings.EqualFold(strings.TrimSpace(raw), "max") && isOpenAIGPT56Model(model) {
+	if strings.EqualFold(strings.TrimSpace(raw), "max") && supportsOpenAIReasoningEffortMax(model) {
 		return "max"
 REDACTED
 	return normalizeOpenAIReasoningEffort(raw)
+REDACTED
+
+// supportsOpenAIReasoningEffortMax reports model families whose upstream scale
+// has a distinct max level. Other models keep the legacy max -> xhigh behavior.
+func supportsOpenAIReasoningEffortMax(model string) bool {
+	if isOpenAIGPT56Model(model) {
+		return true
+REDACTED
+
+	normalized := strings.ToLower(lastOpenAIModelSegment(model))
+	normalized = strings.ReplaceAll(normalized, "_", "-")
+	switch {
+	case strings.HasPrefix(normalized, "deepseek-v4"):
+		return true
+	case strings.HasPrefix(normalized, "glm-"):
+		return true
+	case strings.HasPrefix(normalized, "kimi-"), strings.HasPrefix(normalized, "moonshot-"):
+		return true
+	case normalized == "k3" || strings.HasPrefix(normalized, "k3-"):
+		return true
+	default:
+		return false
+REDACTED
 REDACTED

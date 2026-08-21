@@ -920,9 +920,16 @@ REDACTED{
 			wantValue: "xhigh",
 	REDACTED,
 		{
-			name:      "DeepSeek max 归一化为 xhigh",
+			name:      "DeepSeek V4 保留 max",
 			body:      []byte(`{"reasoning_effort":"max"REDACTED`),
 			model:     "deepseek-v4-pro",
+			wantNil:   false,
+			wantValue: "max",
+	REDACTED,
+		{
+			name:      "旧模型仍将 max 归一化为 xhigh",
+			body:      []byte(`{"reasoning_effort":"max"REDACTED`),
+			model:     "gpt-5.5",
 			wantNil:   false,
 			wantValue: "xhigh",
 	REDACTED,
