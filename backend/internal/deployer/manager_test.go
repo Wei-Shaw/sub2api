@@ -845,25 +845,14 @@ func TestStartIsIdempotentForSameRequest(t *testing.T) {
 	if first.ID != second.ID {
 		t.Fatalf("job ids differ: %s != %s", first.ID, second.ID)
 	}
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		current, jobErr := manager.Job(first.ID)
-		if jobErr != nil {
-			t.Fatal(jobErr)
-		}
-		if current.Status != JobStatusRunning {
-			if current.Status != JobStatusFailed {
-				t.Fatalf("status=%s, want failed", current.Status)
-			}
-			port, readErr := readUpstreamPort(cfg.NginxUpstreamPath)
-			if readErr != nil || port != cfg.Slots[0].Port {
-				t.Fatalf("rollback upstream port=%d err=%v", port, readErr)
-			}
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
+	current := waitForFinishedJob(t, manager, first.ID)
+	if current.Status != JobStatusFailed {
+		t.Fatalf("status=%s, want failed", current.Status)
 	}
-	t.Fatal("deployment goroutine did not finish")
+	port, readErr := readUpstreamPort(cfg.NginxUpstreamPath)
+	if readErr != nil || port != cfg.Slots[0].Port {
+		t.Fatalf("rollback upstream port=%d err=%v", port, readErr)
+	}
 }
 
 func TestStartRejectsReusedRequestIDWithDifferentExpectedVersion(t *testing.T) {
