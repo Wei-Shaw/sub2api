@@ -32,6 +32,23 @@ func newTestOAuthAccount(id int64, extra map[string]any) *Account {
 	}
 }
 
+func TestPrepareCodexFingerprintExtraForCreateDefaultsOpenAIOAuthToSession(t *testing.T) {
+	prepared := prepareCodexFingerprintExtraForCreate(PlatformOpenAI, AccountTypeOAuth, nil)
+
+	require.Equal(t, string(codexFingerprintSession), prepared[codexFingerprintModeExtraKey])
+	seed, ok := prepared[codexFingerprintSeedExtraKey].(string)
+	require.True(t, ok)
+	require.NotEqual(t, uuid.Nil, uuid.MustParse(seed))
+}
+
+func TestPrepareCodexFingerprintExtraForCreatePreservesExplicitFull(t *testing.T) {
+	prepared := prepareCodexFingerprintExtraForCreate(PlatformOpenAI, AccountTypeOAuth, map[string]any{
+		codexFingerprintModeExtraKey: string(codexFingerprintFull),
+	})
+
+	require.Equal(t, string(codexFingerprintFull), prepared[codexFingerprintModeExtraKey])
+}
+
 // --- deriveStableUUIDv4 ---
 
 func TestDeriveStableUUIDv4_Deterministic(t *testing.T) {

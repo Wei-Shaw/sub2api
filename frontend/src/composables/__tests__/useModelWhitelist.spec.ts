@@ -4,9 +4,26 @@ vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn()
 }))
 
-import { buildModelMappingObject, getModelsByPlatform, splitModelMappingObject } from '../useModelWhitelist'
+import {
+  buildModelMappingObject,
+  getDefaultAccountModels,
+  getModelsByPlatform,
+  splitModelMappingObject
+} from '../useModelWhitelist'
 
 describe('useModelWhitelist', () => {
+  it('仅为 OpenAI 账号提供三个默认 GPT 模型', () => {
+    expect(getDefaultAccountModels('openai')).toEqual([
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+      'gpt-5.5'
+    ])
+
+    for (const platform of ['anthropic', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek']) {
+      expect(getDefaultAccountModels(platform)).toEqual([])
+    }
+  })
+
   it('openai 模型列表包含 GPT-5.4 官方快照', () => {
     const models = getModelsByPlatform('openai')
 

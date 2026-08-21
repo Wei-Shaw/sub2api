@@ -20,6 +20,14 @@ const openaiModels = [
   'gpt-image-1', 'gpt-image-1.5', 'gpt-image-2'
 ]
 
+// 新建账号时只为 OpenAI 平台预选这三个模型。其他平台保持空白，
+// 避免把平台模型清单误当成账号级默认 model_mapping 持久化。
+export const DEFAULT_OPENAI_ACCOUNT_MODELS = [
+  'gpt-5.6-sol',
+  'gpt-5.6-terra',
+  'gpt-5.5'
+] as const
+
 // Anthropic Claude
 export const claudeModels = [
   'claude-3-5-sonnet-20241022', 'claude-3-5-sonnet-20240620',
@@ -440,6 +448,10 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'perplexity': return perplexityModels
     default: return claudeModels
   }
+}
+
+export function getDefaultAccountModels(platform: string): string[] {
+  return platform === 'openai' ? [...DEFAULT_OPENAI_ACCOUNT_MODELS] : []
 }
 
 // 按平台获取预设映射
