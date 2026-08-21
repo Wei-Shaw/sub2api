@@ -21,7 +21,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageitem"
 	"github.com/Wei-Shaw/sub2api/ent/batchimagejob"
-	"github.com/Wei-Shaw/sub2api/ent/billingapp"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -32,6 +31,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/innerapiapp"
 	"github.com/Wei-Shaw/sub2api/ent/managedpolicy"
 	"github.com/Wei-Shaw/sub2api/ent/managedpolicyaction"
 	"github.com/Wei-Shaw/sub2api/ent/memberpolicyattachment"
@@ -488,33 +488,6 @@ func (f TraverseBatchImageJob) Traverse(ctx context.Context, q ent.Query) error 
 	return fmt.Errorf("unexpected query type %T. expect *ent.BatchImageJobQuery", q)
 }
 
-// The BillingAppFunc type is an adapter to allow the use of ordinary function as a Querier.
-type BillingAppFunc func(context.Context, *ent.BillingAppQuery) (ent.Value, error)
-
-// Query calls f(ctx, q).
-func (f BillingAppFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
-	if q, ok := q.(*ent.BillingAppQuery); ok {
-		return f(ctx, q)
-	}
-	return nil, fmt.Errorf("unexpected query type %T. expect *ent.BillingAppQuery", q)
-}
-
-// The TraverseBillingApp type is an adapter to allow the use of ordinary function as Traverser.
-type TraverseBillingApp func(context.Context, *ent.BillingAppQuery) error
-
-// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
-func (f TraverseBillingApp) Intercept(next ent.Querier) ent.Querier {
-	return next
-}
-
-// Traverse calls f(ctx, q).
-func (f TraverseBillingApp) Traverse(ctx context.Context, q ent.Query) error {
-	if q, ok := q.(*ent.BillingAppQuery); ok {
-		return f(ctx, q)
-	}
-	return fmt.Errorf("unexpected query type %T. expect *ent.BillingAppQuery", q)
-}
-
 // The ChannelMonitorFunc type is an adapter to allow the use of ordinary function as a Querier.
 type ChannelMonitorFunc func(context.Context, *ent.ChannelMonitorQuery) (ent.Value, error)
 
@@ -783,6 +756,33 @@ func (f TraverseIdentityAdoptionDecision) Traverse(ctx context.Context, q ent.Qu
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.IdentityAdoptionDecisionQuery", q)
+}
+
+// The InnerAPIAppFunc type is an adapter to allow the use of ordinary function as a Querier.
+type InnerAPIAppFunc func(context.Context, *ent.InnerAPIAppQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f InnerAPIAppFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.InnerAPIAppQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.InnerAPIAppQuery", q)
+}
+
+// The TraverseInnerAPIApp type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseInnerAPIApp func(context.Context, *ent.InnerAPIAppQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseInnerAPIApp) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseInnerAPIApp) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.InnerAPIAppQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.InnerAPIAppQuery", q)
 }
 
 // The ManagedPolicyFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -2056,8 +2056,6 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.BatchImageItemQuery, predicate.BatchImageItem, batchimageitem.OrderOption]{typ: ent.TypeBatchImageItem, tq: q}, nil
 	case *ent.BatchImageJobQuery:
 		return &query[*ent.BatchImageJobQuery, predicate.BatchImageJob, batchimagejob.OrderOption]{typ: ent.TypeBatchImageJob, tq: q}, nil
-	case *ent.BillingAppQuery:
-		return &query[*ent.BillingAppQuery, predicate.BillingApp, billingapp.OrderOption]{typ: ent.TypeBillingApp, tq: q}, nil
 	case *ent.ChannelMonitorQuery:
 		return &query[*ent.ChannelMonitorQuery, predicate.ChannelMonitor, channelmonitor.OrderOption]{typ: ent.TypeChannelMonitor, tq: q}, nil
 	case *ent.ChannelMonitorDailyRollupQuery:
@@ -2078,6 +2076,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.IdempotencyRecordQuery, predicate.IdempotencyRecord, idempotencyrecord.OrderOption]{typ: ent.TypeIdempotencyRecord, tq: q}, nil
 	case *ent.IdentityAdoptionDecisionQuery:
 		return &query[*ent.IdentityAdoptionDecisionQuery, predicate.IdentityAdoptionDecision, identityadoptiondecision.OrderOption]{typ: ent.TypeIdentityAdoptionDecision, tq: q}, nil
+	case *ent.InnerAPIAppQuery:
+		return &query[*ent.InnerAPIAppQuery, predicate.InnerAPIApp, innerapiapp.OrderOption]{typ: ent.TypeInnerAPIApp, tq: q}, nil
 	case *ent.ManagedPolicyQuery:
 		return &query[*ent.ManagedPolicyQuery, predicate.ManagedPolicy, managedpolicy.OrderOption]{typ: ent.TypeManagedPolicy, tq: q}, nil
 	case *ent.ManagedPolicyActionQuery:

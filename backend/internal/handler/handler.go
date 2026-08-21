@@ -51,7 +51,7 @@ type AdminHandlers struct {
 	OidcClient                *admin.OidcClientHandler
 	OidcSigningKey            *admin.OidcSigningKeyHandler
 	OidcProviderSettings      *admin.OidcProviderSettingsHandler
-	BillingApp                *admin.BillingAppHandler
+	InnerAPIApp               *admin.InnerAPIAppHandler
 	Compliance                *admin.ComplianceHandler
 	CostCenter                *admin.CostCenterHandler
 	COSImage                  *admin.COSImageHandler

@@ -28,7 +28,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageitem"
 	"github.com/Wei-Shaw/sub2api/ent/batchimagejob"
-	"github.com/Wei-Shaw/sub2api/ent/billingapp"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -39,6 +38,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/innerapiapp"
 	"github.com/Wei-Shaw/sub2api/ent/managedpolicy"
 	"github.com/Wei-Shaw/sub2api/ent/managedpolicyaction"
 	"github.com/Wei-Shaw/sub2api/ent/memberpolicyattachment"
@@ -120,8 +120,6 @@ type Client struct {
 	BatchImageItem *BatchImageItemClient
 	// BatchImageJob is the client for interacting with the BatchImageJob builders.
 	BatchImageJob *BatchImageJobClient
-	// BillingApp is the client for interacting with the BillingApp builders.
-	BillingApp *BillingAppClient
 	// ChannelMonitor is the client for interacting with the ChannelMonitor builders.
 	ChannelMonitor *ChannelMonitorClient
 	// ChannelMonitorDailyRollup is the client for interacting with the ChannelMonitorDailyRollup builders.
@@ -142,6 +140,8 @@ type Client struct {
 	IdempotencyRecord *IdempotencyRecordClient
 	// IdentityAdoptionDecision is the client for interacting with the IdentityAdoptionDecision builders.
 	IdentityAdoptionDecision *IdentityAdoptionDecisionClient
+	// InnerAPIApp is the client for interacting with the InnerAPIApp builders.
+	InnerAPIApp *InnerAPIAppClient
 	// ManagedPolicy is the client for interacting with the ManagedPolicy builders.
 	ManagedPolicy *ManagedPolicyClient
 	// ManagedPolicyAction is the client for interacting with the ManagedPolicyAction builders.
@@ -258,7 +258,6 @@ func (c *Client) init() {
 	c.BatchImageEvent = NewBatchImageEventClient(c.config)
 	c.BatchImageItem = NewBatchImageItemClient(c.config)
 	c.BatchImageJob = NewBatchImageJobClient(c.config)
-	c.BillingApp = NewBillingAppClient(c.config)
 	c.ChannelMonitor = NewChannelMonitorClient(c.config)
 	c.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(c.config)
 	c.ChannelMonitorHistory = NewChannelMonitorHistoryClient(c.config)
@@ -269,6 +268,7 @@ func (c *Client) init() {
 	c.Group = NewGroupClient(c.config)
 	c.IdempotencyRecord = NewIdempotencyRecordClient(c.config)
 	c.IdentityAdoptionDecision = NewIdentityAdoptionDecisionClient(c.config)
+	c.InnerAPIApp = NewInnerAPIAppClient(c.config)
 	c.ManagedPolicy = NewManagedPolicyClient(c.config)
 	c.ManagedPolicyAction = NewManagedPolicyActionClient(c.config)
 	c.MemberPolicyAttachment = NewMemberPolicyAttachmentClient(c.config)
@@ -420,7 +420,6 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		BatchImageEvent:               NewBatchImageEventClient(cfg),
 		BatchImageItem:                NewBatchImageItemClient(cfg),
 		BatchImageJob:                 NewBatchImageJobClient(cfg),
-		BillingApp:                    NewBillingAppClient(cfg),
 		ChannelMonitor:                NewChannelMonitorClient(cfg),
 		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
 		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
@@ -431,6 +430,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Group:                         NewGroupClient(cfg),
 		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
 		IdentityAdoptionDecision:      NewIdentityAdoptionDecisionClient(cfg),
+		InnerAPIApp:                   NewInnerAPIAppClient(cfg),
 		ManagedPolicy:                 NewManagedPolicyClient(cfg),
 		ManagedPolicyAction:           NewManagedPolicyActionClient(cfg),
 		MemberPolicyAttachment:        NewMemberPolicyAttachmentClient(cfg),
@@ -509,7 +509,6 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		BatchImageEvent:               NewBatchImageEventClient(cfg),
 		BatchImageItem:                NewBatchImageItemClient(cfg),
 		BatchImageJob:                 NewBatchImageJobClient(cfg),
-		BillingApp:                    NewBillingAppClient(cfg),
 		ChannelMonitor:                NewChannelMonitorClient(cfg),
 		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
 		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
@@ -520,6 +519,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Group:                         NewGroupClient(cfg),
 		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
 		IdentityAdoptionDecision:      NewIdentityAdoptionDecisionClient(cfg),
+		InnerAPIApp:                   NewInnerAPIAppClient(cfg),
 		ManagedPolicy:                 NewManagedPolicyClient(cfg),
 		ManagedPolicyAction:           NewManagedPolicyActionClient(cfg),
 		MemberPolicyAttachment:        NewMemberPolicyAttachmentClient(cfg),
@@ -598,10 +598,10 @@ func (c *Client) Use(hooks ...Hook) {
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.AsyncMediaTask, c.AsyncVideoTask, c.AuthIdentity, c.AuthIdentityChannel,
 		c.BalanceLedger, c.BatchImageEvent, c.BatchImageItem, c.BatchImageJob,
-		c.BillingApp, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
-		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
-		c.CompanyUpgradeApplication, c.CompositeModelRoute, c.ErrorPassthroughRule,
-		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.ManagedPolicy,
+		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
+		c.ChannelMonitorRequestTemplate, c.CompanyUpgradeApplication,
+		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
+		c.IdentityAdoptionDecision, c.InnerAPIApp, c.ManagedPolicy,
 		c.ManagedPolicyAction, c.MemberPolicyAttachment, c.NotificationOutbox,
 		c.OidcAccessToken, c.OidcAuthorizationCode, c.OidcClient, c.OidcConsent,
 		c.OidcRefreshToken, c.Organization, c.OrganizationAuditEvent,
@@ -628,10 +628,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.AsyncMediaTask, c.AsyncVideoTask, c.AuthIdentity, c.AuthIdentityChannel,
 		c.BalanceLedger, c.BatchImageEvent, c.BatchImageItem, c.BatchImageJob,
-		c.BillingApp, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
-		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
-		c.CompanyUpgradeApplication, c.CompositeModelRoute, c.ErrorPassthroughRule,
-		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.ManagedPolicy,
+		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
+		c.ChannelMonitorRequestTemplate, c.CompanyUpgradeApplication,
+		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
+		c.IdentityAdoptionDecision, c.InnerAPIApp, c.ManagedPolicy,
 		c.ManagedPolicyAction, c.MemberPolicyAttachment, c.NotificationOutbox,
 		c.OidcAccessToken, c.OidcAuthorizationCode, c.OidcClient, c.OidcConsent,
 		c.OidcRefreshToken, c.Organization, c.OrganizationAuditEvent,
@@ -680,8 +680,6 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.BatchImageItem.mutate(ctx, m)
 	case *BatchImageJobMutation:
 		return c.BatchImageJob.mutate(ctx, m)
-	case *BillingAppMutation:
-		return c.BillingApp.mutate(ctx, m)
 	case *ChannelMonitorMutation:
 		return c.ChannelMonitor.mutate(ctx, m)
 	case *ChannelMonitorDailyRollupMutation:
@@ -702,6 +700,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.IdempotencyRecord.mutate(ctx, m)
 	case *IdentityAdoptionDecisionMutation:
 		return c.IdentityAdoptionDecision.mutate(ctx, m)
+	case *InnerAPIAppMutation:
+		return c.InnerAPIApp.mutate(ctx, m)
 	case *ManagedPolicyMutation:
 		return c.ManagedPolicy.mutate(ctx, m)
 	case *ManagedPolicyActionMutation:
@@ -2771,139 +2771,6 @@ func (c *BatchImageJobClient) mutate(ctx context.Context, m *BatchImageJobMutati
 	}
 }
 
-// BillingAppClient is a client for the BillingApp schema.
-type BillingAppClient struct {
-	config
-}
-
-// NewBillingAppClient returns a client for the BillingApp from the given config.
-func NewBillingAppClient(c config) *BillingAppClient {
-	return &BillingAppClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `billingapp.Hooks(f(g(h())))`.
-func (c *BillingAppClient) Use(hooks ...Hook) {
-	c.hooks.BillingApp = append(c.hooks.BillingApp, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `billingapp.Intercept(f(g(h())))`.
-func (c *BillingAppClient) Intercept(interceptors ...Interceptor) {
-	c.inters.BillingApp = append(c.inters.BillingApp, interceptors...)
-}
-
-// Create returns a builder for creating a BillingApp entity.
-func (c *BillingAppClient) Create() *BillingAppCreate {
-	mutation := newBillingAppMutation(c.config, OpCreate)
-	return &BillingAppCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of BillingApp entities.
-func (c *BillingAppClient) CreateBulk(builders ...*BillingAppCreate) *BillingAppCreateBulk {
-	return &BillingAppCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *BillingAppClient) MapCreateBulk(slice any, setFunc func(*BillingAppCreate, int)) *BillingAppCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &BillingAppCreateBulk{err: fmt.Errorf("calling to BillingAppClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*BillingAppCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &BillingAppCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for BillingApp.
-func (c *BillingAppClient) Update() *BillingAppUpdate {
-	mutation := newBillingAppMutation(c.config, OpUpdate)
-	return &BillingAppUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *BillingAppClient) UpdateOne(_m *BillingApp) *BillingAppUpdateOne {
-	mutation := newBillingAppMutation(c.config, OpUpdateOne, withBillingApp(_m))
-	return &BillingAppUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *BillingAppClient) UpdateOneID(id int64) *BillingAppUpdateOne {
-	mutation := newBillingAppMutation(c.config, OpUpdateOne, withBillingAppID(id))
-	return &BillingAppUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for BillingApp.
-func (c *BillingAppClient) Delete() *BillingAppDelete {
-	mutation := newBillingAppMutation(c.config, OpDelete)
-	return &BillingAppDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *BillingAppClient) DeleteOne(_m *BillingApp) *BillingAppDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *BillingAppClient) DeleteOneID(id int64) *BillingAppDeleteOne {
-	builder := c.Delete().Where(billingapp.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &BillingAppDeleteOne{builder}
-}
-
-// Query returns a query builder for BillingApp.
-func (c *BillingAppClient) Query() *BillingAppQuery {
-	return &BillingAppQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeBillingApp},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a BillingApp entity by its id.
-func (c *BillingAppClient) Get(ctx context.Context, id int64) (*BillingApp, error) {
-	return c.Query().Where(billingapp.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *BillingAppClient) GetX(ctx context.Context, id int64) *BillingApp {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// Hooks returns the client hooks.
-func (c *BillingAppClient) Hooks() []Hook {
-	return c.hooks.BillingApp
-}
-
-// Interceptors returns the client interceptors.
-func (c *BillingAppClient) Interceptors() []Interceptor {
-	return c.inters.BillingApp
-}
-
-func (c *BillingAppClient) mutate(ctx context.Context, m *BillingAppMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&BillingAppCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&BillingAppUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&BillingAppUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&BillingAppDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown BillingApp mutation op: %q", m.Op())
-	}
-}
-
 // ChannelMonitorClient is a client for the ChannelMonitor schema.
 type ChannelMonitorClient struct {
 	config
@@ -4507,6 +4374,139 @@ func (c *IdentityAdoptionDecisionClient) mutate(ctx context.Context, m *Identity
 		return (&IdentityAdoptionDecisionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown IdentityAdoptionDecision mutation op: %q", m.Op())
+	}
+}
+
+// InnerAPIAppClient is a client for the InnerAPIApp schema.
+type InnerAPIAppClient struct {
+	config
+}
+
+// NewInnerAPIAppClient returns a client for the InnerAPIApp from the given config.
+func NewInnerAPIAppClient(c config) *InnerAPIAppClient {
+	return &InnerAPIAppClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `innerapiapp.Hooks(f(g(h())))`.
+func (c *InnerAPIAppClient) Use(hooks ...Hook) {
+	c.hooks.InnerAPIApp = append(c.hooks.InnerAPIApp, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `innerapiapp.Intercept(f(g(h())))`.
+func (c *InnerAPIAppClient) Intercept(interceptors ...Interceptor) {
+	c.inters.InnerAPIApp = append(c.inters.InnerAPIApp, interceptors...)
+}
+
+// Create returns a builder for creating a InnerAPIApp entity.
+func (c *InnerAPIAppClient) Create() *InnerAPIAppCreate {
+	mutation := newInnerAPIAppMutation(c.config, OpCreate)
+	return &InnerAPIAppCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of InnerAPIApp entities.
+func (c *InnerAPIAppClient) CreateBulk(builders ...*InnerAPIAppCreate) *InnerAPIAppCreateBulk {
+	return &InnerAPIAppCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *InnerAPIAppClient) MapCreateBulk(slice any, setFunc func(*InnerAPIAppCreate, int)) *InnerAPIAppCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &InnerAPIAppCreateBulk{err: fmt.Errorf("calling to InnerAPIAppClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*InnerAPIAppCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &InnerAPIAppCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for InnerAPIApp.
+func (c *InnerAPIAppClient) Update() *InnerAPIAppUpdate {
+	mutation := newInnerAPIAppMutation(c.config, OpUpdate)
+	return &InnerAPIAppUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *InnerAPIAppClient) UpdateOne(_m *InnerAPIApp) *InnerAPIAppUpdateOne {
+	mutation := newInnerAPIAppMutation(c.config, OpUpdateOne, withInnerAPIApp(_m))
+	return &InnerAPIAppUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *InnerAPIAppClient) UpdateOneID(id int64) *InnerAPIAppUpdateOne {
+	mutation := newInnerAPIAppMutation(c.config, OpUpdateOne, withInnerAPIAppID(id))
+	return &InnerAPIAppUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for InnerAPIApp.
+func (c *InnerAPIAppClient) Delete() *InnerAPIAppDelete {
+	mutation := newInnerAPIAppMutation(c.config, OpDelete)
+	return &InnerAPIAppDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *InnerAPIAppClient) DeleteOne(_m *InnerAPIApp) *InnerAPIAppDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *InnerAPIAppClient) DeleteOneID(id int64) *InnerAPIAppDeleteOne {
+	builder := c.Delete().Where(innerapiapp.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &InnerAPIAppDeleteOne{builder}
+}
+
+// Query returns a query builder for InnerAPIApp.
+func (c *InnerAPIAppClient) Query() *InnerAPIAppQuery {
+	return &InnerAPIAppQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeInnerAPIApp},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a InnerAPIApp entity by its id.
+func (c *InnerAPIAppClient) Get(ctx context.Context, id int64) (*InnerAPIApp, error) {
+	return c.Query().Where(innerapiapp.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *InnerAPIAppClient) GetX(ctx context.Context, id int64) *InnerAPIApp {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *InnerAPIAppClient) Hooks() []Hook {
+	return c.hooks.InnerAPIApp
+}
+
+// Interceptors returns the client interceptors.
+func (c *InnerAPIAppClient) Interceptors() []Interceptor {
+	return c.inters.InnerAPIApp
+}
+
+func (c *InnerAPIAppClient) mutate(ctx context.Context, m *InnerAPIAppMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&InnerAPIAppCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&InnerAPIAppUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&InnerAPIAppUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&InnerAPIAppDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown InnerAPIApp mutation op: %q", m.Op())
 	}
 }
 
@@ -11314,13 +11314,13 @@ type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AsyncMediaTask,
 		AsyncVideoTask, AuthIdentity, AuthIdentityChannel, BalanceLedger,
-		BatchImageEvent, BatchImageItem, BatchImageJob, BillingApp, ChannelMonitor,
+		BatchImageEvent, BatchImageItem, BatchImageJob, ChannelMonitor,
 		ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, CompanyUpgradeApplication, CompositeModelRoute,
 		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
-		ManagedPolicy, ManagedPolicyAction, MemberPolicyAttachment, NotificationOutbox,
-		OidcAccessToken, OidcAuthorizationCode, OidcClient, OidcConsent,
-		OidcRefreshToken, Organization, OrganizationAuditEvent,
+		InnerAPIApp, ManagedPolicy, ManagedPolicyAction, MemberPolicyAttachment,
+		NotificationOutbox, OidcAccessToken, OidcAuthorizationCode, OidcClient,
+		OidcConsent, OidcRefreshToken, Organization, OrganizationAuditEvent,
 		OrganizationFinancialLedger, OrganizationMemberSpendLimit,
 		OrganizationMembership, OrganizationNameChangeRequest, PaymentAuditLog,
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
@@ -11335,13 +11335,13 @@ type (
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AsyncMediaTask,
 		AsyncVideoTask, AuthIdentity, AuthIdentityChannel, BalanceLedger,
-		BatchImageEvent, BatchImageItem, BatchImageJob, BillingApp, ChannelMonitor,
+		BatchImageEvent, BatchImageItem, BatchImageJob, ChannelMonitor,
 		ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, CompanyUpgradeApplication, CompositeModelRoute,
 		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
-		ManagedPolicy, ManagedPolicyAction, MemberPolicyAttachment, NotificationOutbox,
-		OidcAccessToken, OidcAuthorizationCode, OidcClient, OidcConsent,
-		OidcRefreshToken, Organization, OrganizationAuditEvent,
+		InnerAPIApp, ManagedPolicy, ManagedPolicyAction, MemberPolicyAttachment,
+		NotificationOutbox, OidcAccessToken, OidcAuthorizationCode, OidcClient,
+		OidcConsent, OidcRefreshToken, Organization, OrganizationAuditEvent,
 		OrganizationFinancialLedger, OrganizationMemberSpendLimit,
 		OrganizationMembership, OrganizationNameChangeRequest, PaymentAuditLog,
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,

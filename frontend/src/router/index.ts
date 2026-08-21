@@ -827,15 +827,15 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/admin/billing-apps',
-    name: 'AdminBillingApps',
-    component: () => import('@/views/admin/BillingAppsView.vue'),
+    path: '/admin/inner-api-apps',
+    name: 'AdminInnerAPIApps',
+    component: () => import('@/views/admin/InnerAPIAppsView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: true,
-      title: 'Billing Apps',
-      titleKey: 'billingApps.admin.title',
-      descriptionKey: 'billingApps.admin.description'
+      title: 'Inner API Apps',
+      titleKey: 'innerApiApps.admin.title',
+      descriptionKey: 'innerApiApps.admin.description'
     }
   },
   {

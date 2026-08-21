@@ -42,6 +42,7 @@ func NewModelIntroService(db *sql.DB) *ModelIntroService {
 //     object/array 走预格式化 JSON 展示。
 //   - Description：字段说明，可为空。
 //   - Default：预留的默认值/示例（仅供文档/复制场景，不参与渲染）。
+//   - MaxChars：仅 string 字段可选的最大字符数；为空表示不限制。
 //
 // 主输出字段由 ModelIntro.ResultField 指示，不再在 OutputFieldSpec 上标记 primary；
 // 主结果的媒体渲染类型由 ModelIntro.ResultType（video / image）决定。
@@ -74,6 +75,7 @@ type OutputFieldSpec struct {
 	Options     []any          `json:"options,omitempty"`
 	Properties  map[string]any `json:"properties,omitempty"`
 	Items       any            `json:"items,omitempty"`
+	MaxChars    *int           `json:"max_chars,omitempty"`
 }
 
 // ModelIntro 是 service 层返回的模型介绍实体。
@@ -568,6 +570,17 @@ func normalizeOutputFields(fields []OutputFieldSpec) error {
 			return infraerrors.BadRequest(modelIntroErrCodeInvalid,
 				fmt.Sprintf("output_fields[].type must be one of string/number/boolean/object/array, got %q", f.Type))
 		}
+		if err := normalizeMaxChars(&f.MaxChars, f.Type, fmt.Sprintf("output_fields[%d]", i)); err != nil {
+			return err
+		}
+		for key, child := range f.Properties {
+			if err := normalizeNestedOutputSchema(child, fmt.Sprintf("output_fields[%d].properties.%s", i, key)); err != nil {
+				return err
+			}
+		}
+		if err := normalizeNestedOutputSchema(f.Items, fmt.Sprintf("output_fields[%d].items", i)); err != nil {
+			return err
+		}
 		// Enum=false 时保证 Options 为空；Enum=true 但没给候选也允许（前端可能后补）。
 		if !f.Enum {
 			f.Options = nil
@@ -593,6 +606,102 @@ func normalizeOutputFields(fields []OutputFieldSpec) error {
 		default:
 			f.Properties = nil
 			f.Items = nil
+		}
+	}
+	return nil
+}
+
+// normalizeMaxChars validates the optional output string limit. A pointer is
+// used so omitted and zero values can be distinguished at the JSON boundary.
+func normalizeMaxChars(maxChars **int, fieldType, path string) error {
+	if *maxChars == nil {
+		return nil
+	}
+	if fieldType != "string" {
+		return infraerrors.BadRequest(modelIntroErrCodeInvalid,
+			fmt.Sprintf("%s.max_chars is only supported for string fields", path))
+	}
+	if **maxChars <= 0 {
+		return infraerrors.BadRequest(modelIntroErrCodeInvalid,
+			fmt.Sprintf("%s.max_chars must be greater than 0", path))
+	}
+	return nil
+}
+
+// normalizeNestedOutputSchema validates max_chars in object properties and
+// array items. Nested schemas are intentionally represented as map[string]any
+// for backwards compatibility, so this helper validates only the fields this
+// service owns without changing unrelated extension keys.
+func normalizeNestedOutputSchema(raw any, path string) error {
+	if raw == nil {
+		return nil
+	}
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+	typ, _ := m["type"].(string)
+	typ = strings.ToLower(strings.TrimSpace(typ))
+	if typ == "" {
+		// Nested schemas created by the shared editor omit type and infer it from
+		// their shape/value. Mirror that inference before validating max_chars.
+		switch value := m["value"].(type) {
+		case bool:
+			typ = "boolean"
+		case float64, float32, int, int32, int64, json.Number:
+			typ = "number"
+		default:
+			if _, exists := m["items"]; exists {
+				typ = "array"
+			} else if _, exists := m["properties"]; exists {
+				typ = "object"
+			} else {
+				_ = value
+				typ = "string"
+			}
+		}
+	}
+	var maxChars *int
+	if rawMax, exists := m["max_chars"]; exists {
+		switch n := rawMax.(type) {
+		case float64:
+			if n != float64(int(n)) {
+				return infraerrors.BadRequest(modelIntroErrCodeInvalid,
+					fmt.Sprintf("%s.max_chars must be an integer", path))
+			}
+			v := int(n)
+			maxChars = &v
+		case int:
+			maxChars = &n
+		case json.Number:
+			v, err := n.Int64()
+			if err != nil {
+				return infraerrors.BadRequest(modelIntroErrCodeInvalid,
+					fmt.Sprintf("%s.max_chars must be an integer", path))
+			}
+			iv := int(v)
+			maxChars = &iv
+		default:
+			return infraerrors.BadRequest(modelIntroErrCodeInvalid,
+				fmt.Sprintf("%s.max_chars must be an integer", path))
+		}
+	}
+	if err := normalizeMaxChars(&maxChars, typ, path); err != nil {
+		return err
+	}
+	if maxChars != nil {
+		m["max_chars"] = *maxChars
+	}
+	if props, ok := m["properties"].(map[string]any); ok {
+		for key, child := range props {
+			if err := normalizeNestedOutputSchema(child, path+".properties."+key); err != nil {
+				return err
+			}
+		}
+	}
+	if items, ok := m["items"]; ok {
+		if err := normalizeNestedOutputSchema(items, path+".items"); err != nil {
+			return err
 		}
 	}
 	return nil

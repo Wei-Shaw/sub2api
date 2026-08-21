@@ -54,7 +54,7 @@
       <!-- URL 形态：给一个可点击的链接 -->
       <a
         v-if="leafIsUrl"
-        :href="leafText"
+        :href="leafRawText"
         target="_blank"
         rel="noopener noreferrer"
         class="block break-all rounded bg-gray-50 px-2 py-1 font-mono text-[11px] text-blue-600 hover:underline dark:bg-gray-900 dark:text-blue-400"
@@ -160,6 +160,8 @@ export interface SchemaNode {
   descriptionEn?: string
   children: SchemaNode[]
   items: SchemaNode | null
+  /** string 叶子的可选最大字符数；未设置表示不限制。 */
+  maxChars?: number
 }
 
 const { t, locale } = useI18n()
@@ -199,7 +201,7 @@ const localizedDescription = computed<string>(() => {
  *   - 对象/数组：本组件叶子分支不应出现这些类型（rawType 已由父层判定），
  *     这里做兜底 JSON.stringify。
  */
-const leafText = computed<string>(() => {
+const leafRawText = computed<string>(() => {
   const v = props.value
   if (v === null || v === undefined) return ''
   if (typeof v === 'string') return v
@@ -211,6 +213,13 @@ const leafText = computed<string>(() => {
   }
 })
 
+const leafText = computed<string>(() => {
+  const text = leafRawText.value
+  const max = props.node.rawType === 'string' ? props.node.maxChars ?? 0 : 0
+  if (!max || Array.from(text).length <= max) return text
+  return Array.from(text).slice(0, max).join('')
+})
+
 /**
  * leafIsUrl：叶子是否应作为链接展示。
  * 启发式判断：string 叶子值以 http:// 或 https:// 起始时按链接展示。
@@ -218,7 +227,7 @@ const leafText = computed<string>(() => {
  * object/array）语义偏离。
  */
 const leafIsUrl = computed<boolean>(() => {
-  const s = leafText.value
+  const s = leafRawText.value
   return typeof s === 'string' && /^https?:\/\//i.test(s)
 })
 

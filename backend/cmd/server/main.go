@@ -172,9 +172,9 @@ func runMainServer() {
 
 	log.Printf("Server started on %s", app.Server.Addr)
 
-	// 启动余额 RPC 服务（独立端口；未启用时为 no-op）
-	if err := app.BalanceRPC.Start(); err != nil {
-		log.Fatalf("Failed to start balance rpc server: %v", err)
+	// 启动内部 API RPC 服务（独立端口；未启用时为 no-op）
+	if err := app.InnerAPIRPC.Start(); err != nil {
+		log.Fatalf("Failed to start inner api rpc server: %v", err)
 	}
 
 	// 等待中断信号
@@ -184,8 +184,8 @@ func runMainServer() {
 
 	log.Println("Shutting down server...")
 
-	// 先停余额 RPC，再优雅关闭 HTTP server
-	app.BalanceRPC.Stop()
+	// 先停内部 API RPC，再优雅关闭 HTTP server
+	app.InnerAPIRPC.Stop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

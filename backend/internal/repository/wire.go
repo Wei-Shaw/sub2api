@@ -66,6 +66,7 @@ func ProvideSchedulerCache(rdb *redis.Client, cfg *config.Config) service.Schedu
 // ProviderSet is the Wire provider set for all repositories
 var ProviderSet = wire.NewSet(
 	NewUserRepository,
+	NewUserAccountRepository,
 	NewAPIKeyRepository,
 	NewGroupRepository,
 	NewAdminGroupRepository,
@@ -81,8 +82,8 @@ var ProviderSet = wire.NewSet(
 	NewAnnouncementReadRepository,
 	NewUsageLogRepository,
 	NewUsageBillingRepository,
-	NewBillingAppRepository,    // 余额 RPC：接入方身份仓储
-	NewBalanceLedgerRepository, // 余额 RPC：永久流水账本仓储
+	NewInnerAPIAppRepository,   // 内部 API RPC：接入方身份仓储
+	NewBalanceLedgerRepository, // 内部 API RPC：永久流水账本仓储
 	NewCostCenterRepository,
 	NewOrganizationRepository,
 	NewNotificationOutboxRepository,

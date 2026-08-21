@@ -35,8 +35,15 @@ type userRepository struct {
 }
 
 var _ service.RedeemUserAdjustmentRepository = (*userRepository)(nil)
+var _ service.UserAccountRepository = (*userRepository)(nil)
 
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
+	return newUserRepositoryWithSQL(client, sqlDB)
+}
+
+// NewUserAccountRepository 暴露只按 account_id / 内部 ID 做身份映射的最小仓储接口，
+// 供 inner_api 使用；完整 UserRepository 仍由 NewUserRepository 提供。
+func NewUserAccountRepository(client *dbent.Client, sqlDB *sql.DB) service.UserAccountRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
 }
 
@@ -261,6 +268,27 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, 
 		return nil, err
 	}
 	if v, ok := groups[id]; ok {
+		out.AllowedGroups = v
+	}
+	return out, nil
+}
+
+func (r *userRepository) GetByAccountID(ctx context.Context, accountID string) (*service.User, error) {
+	accountID = strings.TrimSpace(accountID)
+	if accountID == "" {
+		return nil, service.ErrUserNotFound
+	}
+	m, err := r.client.User.Query().Where(dbuser.AccountIDEQ(accountID)).Only(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+
+	out := userEntityToService(m)
+	groups, err := r.loadAllowedGroups(ctx, []int64{m.ID})
+	if err != nil {
+		return nil, err
+	}
+	if v, ok := groups[m.ID]; ok {
 		out.AllowedGroups = v
 	}
 	return out, nil

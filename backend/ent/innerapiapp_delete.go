@@ -8,30 +8,30 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/Wei-Shaw/sub2api/ent/billingapp"
+	"github.com/Wei-Shaw/sub2api/ent/innerapiapp"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 )
 
-// BillingAppDelete is the builder for deleting a BillingApp entity.
-type BillingAppDelete struct {
+// InnerAPIAppDelete is the builder for deleting a InnerAPIApp entity.
+type InnerAPIAppDelete struct {
 	config
 	hooks    []Hook
-	mutation *BillingAppMutation
+	mutation *InnerAPIAppMutation
 }
 
-// Where appends a list predicates to the BillingAppDelete builder.
-func (_d *BillingAppDelete) Where(ps ...predicate.BillingApp) *BillingAppDelete {
+// Where appends a list predicates to the InnerAPIAppDelete builder.
+func (_d *InnerAPIAppDelete) Where(ps ...predicate.InnerAPIApp) *InnerAPIAppDelete {
 	_d.mutation.Where(ps...)
 	return _d
 }
 
 // Exec executes the deletion query and returns how many vertices were deleted.
-func (_d *BillingAppDelete) Exec(ctx context.Context) (int, error) {
+func (_d *InnerAPIAppDelete) Exec(ctx context.Context) (int, error) {
 	return withHooks(ctx, _d.sqlExec, _d.mutation, _d.hooks)
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_d *BillingAppDelete) ExecX(ctx context.Context) int {
+func (_d *InnerAPIAppDelete) ExecX(ctx context.Context) int {
 	n, err := _d.Exec(ctx)
 	if err != nil {
 		panic(err)
@@ -39,8 +39,8 @@ func (_d *BillingAppDelete) ExecX(ctx context.Context) int {
 	return n
 }
 
-func (_d *BillingAppDelete) sqlExec(ctx context.Context) (int, error) {
-	_spec := sqlgraph.NewDeleteSpec(billingapp.Table, sqlgraph.NewFieldSpec(billingapp.FieldID, field.TypeInt64))
+func (_d *InnerAPIAppDelete) sqlExec(ctx context.Context) (int, error) {
+	_spec := sqlgraph.NewDeleteSpec(innerapiapp.Table, sqlgraph.NewFieldSpec(innerapiapp.FieldID, field.TypeInt64))
 	if ps := _d.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
@@ -56,32 +56,32 @@ func (_d *BillingAppDelete) sqlExec(ctx context.Context) (int, error) {
 	return affected, err
 }
 
-// BillingAppDeleteOne is the builder for deleting a single BillingApp entity.
-type BillingAppDeleteOne struct {
-	_d *BillingAppDelete
+// InnerAPIAppDeleteOne is the builder for deleting a single InnerAPIApp entity.
+type InnerAPIAppDeleteOne struct {
+	_d *InnerAPIAppDelete
 }
 
-// Where appends a list predicates to the BillingAppDelete builder.
-func (_d *BillingAppDeleteOne) Where(ps ...predicate.BillingApp) *BillingAppDeleteOne {
+// Where appends a list predicates to the InnerAPIAppDelete builder.
+func (_d *InnerAPIAppDeleteOne) Where(ps ...predicate.InnerAPIApp) *InnerAPIAppDeleteOne {
 	_d._d.mutation.Where(ps...)
 	return _d
 }
 
 // Exec executes the deletion query.
-func (_d *BillingAppDeleteOne) Exec(ctx context.Context) error {
+func (_d *InnerAPIAppDeleteOne) Exec(ctx context.Context) error {
 	n, err := _d._d.Exec(ctx)
 	switch {
 	case err != nil:
 		return err
 	case n == 0:
-		return &NotFoundError{billingapp.Label}
+		return &NotFoundError{innerapiapp.Label}
 	default:
 		return nil
 	}
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_d *BillingAppDeleteOne) ExecX(ctx context.Context) {
+func (_d *InnerAPIAppDeleteOne) ExecX(ctx context.Context) {
 	if err := _d.Exec(ctx); err != nil {
 		panic(err)
 	}

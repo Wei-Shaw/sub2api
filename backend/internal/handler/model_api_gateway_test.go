@@ -67,7 +67,7 @@ func performModelAPISubmit(t *testing.T, handler *ModelAPIGatewayHandler, path, 
 }
 
 func TestModelAPIGatewayKnownImageNeverFallsThroughToVideoValidation(t *testing.T) {
-	handler := NewModelAPIGatewayHandler(newModelAPITestGatewayService(), nil, nil, nil, nil, nil)
+	handler := NewModelAPIGatewayHandler(newModelAPITestGatewayService(), nil, nil, nil, nil, nil, nil)
 
 	recorder := performModelAPISubmit(t, handler, "/api/v1/model/openai/gpt-image-2", `{"prompt":"studio photo"}`)
 
@@ -78,7 +78,7 @@ func TestModelAPIGatewayKnownImageNeverFallsThroughToVideoValidation(t *testing.
 
 func TestModelAPIGatewayVideoFeatureGateOnlyAppliesAfterMediaRouting(t *testing.T) {
 	settingService := service.NewSettingService(&modelAPIDisabledSettingRepo{}, &config.Config{})
-	handler := NewModelAPIGatewayHandler(newModelAPITestGatewayService(), nil, nil, nil, nil, settingService)
+	handler := NewModelAPIGatewayHandler(newModelAPITestGatewayService(), nil, nil, nil, nil, settingService, nil)
 
 	recorder := performModelAPISubmit(t, handler, "/api/v1/model/bytedance/seedance-2.5/image-to-video", `{"resolution":"720p"}`)
 

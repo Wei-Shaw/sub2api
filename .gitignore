@@ -135,15 +135,6 @@ deploy/docker-compose.override.yml
 .go-build-cache/
 .golangci-lint-cache/
 vite.config.js
-docs/*
-!docs/PAYMENT.md
-!docs/PAYMENT_CN.md
-!docs/ADMIN_PAYMENT_INTEGRATION_API.md
-!docs/BALANCE_RPC.md
-!docs/BALANCE_RPC_INTEGRATION.md
-!docs/ASYNC_IMAGE_TASKS.md
-!docs/legal/
-!docs/legal/*.md
 .serena/
 .codex/
 frontend/coverage/

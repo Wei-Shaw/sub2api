@@ -71,6 +71,7 @@ func (e *providerTestEnv) newUser(t *testing.T) *dbent.User {
 	u, err := e.client.User.Create().
 		SetEmail("alice@example.com").
 		SetUsername("alice").
+		SetAccountID("acct_test_alice").
 		SetPasswordHash("hash").
 		SetRole(RoleUser).
 		SetStatus(StatusActive).
@@ -492,6 +493,7 @@ func TestOidcProvider_BuildUserInfo_ScopedClaims(t *testing.T) {
 	require.Nil(t, uerr)
 	require.Equal(t, "alice", claims["name"])
 	require.Equal(t, "alice@example.com", claims["email"])
+	require.Equal(t, "acct_test_alice", claims["account_id"])
 	require.Equal(t, true, claims["email_verified"])
 	// 未授权的私有 scope 不应出现
 	_, hasBalance := claims["sub2api_balance"]

@@ -1229,3 +1229,18 @@ image_storage:
   presign_expiry_hours: 24
   # 当上游返回的是图片 url 时，下载该图片再转存的字节上限（默认 32MB）
   max_download_bytes: 33554432
+
+# =============================================================================
+# Composite Material Upload (Composite 图片编辑内部素材上传)
+# =============================================================================
+# Composite 编辑请求中的 image_urls / mask_url 若为 data URL，Go 网关先通过
+# Inner API RPC 上传素材，再把返回的 URL 转发给上游。凭据仅配置在服务端。
+composite_material:
+  enabled: false
+  host: "127.0.0.1"
+  port: 9100
+  app_id: ""
+  token: ""
+  # 留空时使用当前 API key 所属用户的 account_id。
+  account_id: ""
+  max_bytes: 52428800

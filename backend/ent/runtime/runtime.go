@@ -18,7 +18,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageitem"
 	"github.com/Wei-Shaw/sub2api/ent/batchimagejob"
-	"github.com/Wei-Shaw/sub2api/ent/billingapp"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -29,6 +28,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/innerapiapp"
 	"github.com/Wei-Shaw/sub2api/ent/managedpolicy"
 	"github.com/Wei-Shaw/sub2api/ent/managedpolicyaction"
 	"github.com/Wei-Shaw/sub2api/ent/memberpolicyattachment"
@@ -950,65 +950,6 @@ func init() {
 	batchimagejob.DefaultUpdatedAt = batchimagejobDescUpdatedAt.Default.(func() time.Time)
 	// batchimagejob.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	batchimagejob.UpdateDefaultUpdatedAt = batchimagejobDescUpdatedAt.UpdateDefault.(func() time.Time)
-	billingappMixin := schema.BillingApp{}.Mixin()
-	billingappMixinFields0 := billingappMixin[0].Fields()
-	_ = billingappMixinFields0
-	billingappFields := schema.BillingApp{}.Fields()
-	_ = billingappFields
-	// billingappDescCreatedAt is the schema descriptor for created_at field.
-	billingappDescCreatedAt := billingappMixinFields0[0].Descriptor()
-	// billingapp.DefaultCreatedAt holds the default value on creation for the created_at field.
-	billingapp.DefaultCreatedAt = billingappDescCreatedAt.Default.(func() time.Time)
-	// billingappDescUpdatedAt is the schema descriptor for updated_at field.
-	billingappDescUpdatedAt := billingappMixinFields0[1].Descriptor()
-	// billingapp.DefaultUpdatedAt holds the default value on creation for the updated_at field.
-	billingapp.DefaultUpdatedAt = billingappDescUpdatedAt.Default.(func() time.Time)
-	// billingapp.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
-	billingapp.UpdateDefaultUpdatedAt = billingappDescUpdatedAt.UpdateDefault.(func() time.Time)
-	// billingappDescAppID is the schema descriptor for app_id field.
-	billingappDescAppID := billingappFields[0].Descriptor()
-	// billingapp.AppIDValidator is a validator for the "app_id" field. It is called by the builders before save.
-	billingapp.AppIDValidator = func() func(string) error {
-		validators := billingappDescAppID.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-		}
-		return func(app_id string) error {
-			for _, fn := range fns {
-				if err := fn(app_id); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}()
-	// billingappDescAppName is the schema descriptor for app_name field.
-	billingappDescAppName := billingappFields[1].Descriptor()
-	// billingapp.AppNameValidator is a validator for the "app_name" field. It is called by the builders before save.
-	billingapp.AppNameValidator = func() func(string) error {
-		validators := billingappDescAppName.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-		}
-		return func(app_name string) error {
-			for _, fn := range fns {
-				if err := fn(app_name); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}()
-	// billingappDescEnabled is the schema descriptor for enabled field.
-	billingappDescEnabled := billingappFields[2].Descriptor()
-	// billingapp.DefaultEnabled holds the default value on creation for the enabled field.
-	billingapp.DefaultEnabled = billingappDescEnabled.Default.(bool)
-	// billingappDescTokenVersion is the schema descriptor for token_version field.
-	billingappDescTokenVersion := billingappFields[3].Descriptor()
-	// billingapp.DefaultTokenVersion holds the default value on creation for the token_version field.
-	billingapp.DefaultTokenVersion = billingappDescTokenVersion.Default.(int)
 	channelmonitorMixin := schema.ChannelMonitor{}.Mixin()
 	channelmonitorMixinFields0 := channelmonitorMixin[0].Fields()
 	_ = channelmonitorMixinFields0
@@ -1762,6 +1703,69 @@ func init() {
 	identityadoptiondecisionDescDecidedAt := identityadoptiondecisionFields[4].Descriptor()
 	// identityadoptiondecision.DefaultDecidedAt holds the default value on creation for the decided_at field.
 	identityadoptiondecision.DefaultDecidedAt = identityadoptiondecisionDescDecidedAt.Default.(func() time.Time)
+	innerapiappMixin := schema.InnerAPIApp{}.Mixin()
+	innerapiappMixinFields0 := innerapiappMixin[0].Fields()
+	_ = innerapiappMixinFields0
+	innerapiappFields := schema.InnerAPIApp{}.Fields()
+	_ = innerapiappFields
+	// innerapiappDescCreatedAt is the schema descriptor for created_at field.
+	innerapiappDescCreatedAt := innerapiappMixinFields0[0].Descriptor()
+	// innerapiapp.DefaultCreatedAt holds the default value on creation for the created_at field.
+	innerapiapp.DefaultCreatedAt = innerapiappDescCreatedAt.Default.(func() time.Time)
+	// innerapiappDescUpdatedAt is the schema descriptor for updated_at field.
+	innerapiappDescUpdatedAt := innerapiappMixinFields0[1].Descriptor()
+	// innerapiapp.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	innerapiapp.DefaultUpdatedAt = innerapiappDescUpdatedAt.Default.(func() time.Time)
+	// innerapiapp.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	innerapiapp.UpdateDefaultUpdatedAt = innerapiappDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// innerapiappDescAppID is the schema descriptor for app_id field.
+	innerapiappDescAppID := innerapiappFields[0].Descriptor()
+	// innerapiapp.AppIDValidator is a validator for the "app_id" field. It is called by the builders before save.
+	innerapiapp.AppIDValidator = func() func(string) error {
+		validators := innerapiappDescAppID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(app_id string) error {
+			for _, fn := range fns {
+				if err := fn(app_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// innerapiappDescAppName is the schema descriptor for app_name field.
+	innerapiappDescAppName := innerapiappFields[1].Descriptor()
+	// innerapiapp.AppNameValidator is a validator for the "app_name" field. It is called by the builders before save.
+	innerapiapp.AppNameValidator = func() func(string) error {
+		validators := innerapiappDescAppName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(app_name string) error {
+			for _, fn := range fns {
+				if err := fn(app_name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// innerapiappDescEnabled is the schema descriptor for enabled field.
+	innerapiappDescEnabled := innerapiappFields[2].Descriptor()
+	// innerapiapp.DefaultEnabled holds the default value on creation for the enabled field.
+	innerapiapp.DefaultEnabled = innerapiappDescEnabled.Default.(bool)
+	// innerapiappDescTokenVersion is the schema descriptor for token_version field.
+	innerapiappDescTokenVersion := innerapiappFields[3].Descriptor()
+	// innerapiapp.DefaultTokenVersion holds the default value on creation for the token_version field.
+	innerapiapp.DefaultTokenVersion = innerapiappDescTokenVersion.Default.(int)
+	// innerapiappDescPermissions is the schema descriptor for permissions field.
+	innerapiappDescPermissions := innerapiappFields[4].Descriptor()
+	// innerapiapp.DefaultPermissions holds the default value on creation for the permissions field.
+	innerapiapp.DefaultPermissions = innerapiappDescPermissions.Default.([]string)
 	managedpolicyFields := schema.ManagedPolicy{}.Fields()
 	_ = managedpolicyFields
 	// managedpolicyDescPolicyKey is the schema descriptor for policy_key field.

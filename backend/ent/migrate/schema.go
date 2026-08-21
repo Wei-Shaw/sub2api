@@ -863,29 +863,6 @@ var (
 			},
 		},
 	}
-	// BillingAppsColumns holds the columns for the "billing_apps" table.
-	BillingAppsColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeInt64, Increment: true},
-		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
-		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
-		{Name: "app_id", Type: field.TypeString, Unique: true, Size: 64},
-		{Name: "app_name", Type: field.TypeString, Size: 100},
-		{Name: "enabled", Type: field.TypeBool, Default: true},
-		{Name: "token_version", Type: field.TypeInt, Default: 1},
-	}
-	// BillingAppsTable holds the schema information for the "billing_apps" table.
-	BillingAppsTable = &schema.Table{
-		Name:       "billing_apps",
-		Columns:    BillingAppsColumns,
-		PrimaryKey: []*schema.Column{BillingAppsColumns[0]},
-		Indexes: []*schema.Index{
-			{
-				Name:    "billingapp_enabled",
-				Unique:  false,
-				Columns: []*schema.Column{BillingAppsColumns[5]},
-			},
-		},
-	}
 	// ChannelMonitorsColumns holds the columns for the "channel_monitors" table.
 	ChannelMonitorsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1414,6 +1391,30 @@ var (
 				Name:    "identityadoptiondecision_identity_id",
 				Unique:  false,
 				Columns: []*schema.Column{IdentityAdoptionDecisionsColumns[6]},
+			},
+		},
+	}
+	// InnerAPIAppsColumns holds the columns for the "inner_api_apps" table.
+	InnerAPIAppsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "app_id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "app_name", Type: field.TypeString, Size: 100},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "token_version", Type: field.TypeInt, Default: 1},
+		{Name: "permissions", Type: field.TypeJSON},
+	}
+	// InnerAPIAppsTable holds the schema information for the "inner_api_apps" table.
+	InnerAPIAppsTable = &schema.Table{
+		Name:       "inner_api_apps",
+		Columns:    InnerAPIAppsColumns,
+		PrimaryKey: []*schema.Column{InnerAPIAppsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "innerapiapp_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{InnerAPIAppsColumns[5]},
 			},
 		},
 	}
@@ -3287,7 +3288,6 @@ var (
 		BatchImageEventsTable,
 		BatchImageItemsTable,
 		BatchImageJobsTable,
-		BillingAppsTable,
 		ChannelMonitorsTable,
 		ChannelMonitorDailyRollupsTable,
 		ChannelMonitorHistoriesTable,
@@ -3298,6 +3298,7 @@ var (
 		GroupsTable,
 		IdempotencyRecordsTable,
 		IdentityAdoptionDecisionsTable,
+		InnerAPIAppsTable,
 		ManagedPoliciesTable,
 		ManagedPolicyActionsTable,
 		MemberPolicyAttachmentsTable,
@@ -3397,9 +3398,6 @@ func init() {
 	BatchImageJobsTable.Annotation = &entsql.Annotation{
 		Table: "batch_image_jobs",
 	}
-	BillingAppsTable.Annotation = &entsql.Annotation{
-		Table: "billing_apps",
-	}
 	ChannelMonitorsTable.ForeignKeys[0].RefTable = ChannelMonitorRequestTemplatesTable
 	ChannelMonitorsTable.Annotation = &entsql.Annotation{
 		Table: "channel_monitors",
@@ -3435,6 +3433,9 @@ func init() {
 	IdentityAdoptionDecisionsTable.ForeignKeys[1].RefTable = PendingAuthSessionsTable
 	IdentityAdoptionDecisionsTable.Annotation = &entsql.Annotation{
 		Table: "identity_adoption_decisions",
+	}
+	InnerAPIAppsTable.Annotation = &entsql.Annotation{
+		Table: "inner_api_apps",
 	}
 	ManagedPoliciesTable.Annotation = &entsql.Annotation{
 		Table: "managed_policies",

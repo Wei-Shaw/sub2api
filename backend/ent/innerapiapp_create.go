@@ -11,25 +11,25 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/Wei-Shaw/sub2api/ent/billingapp"
+	"github.com/Wei-Shaw/sub2api/ent/innerapiapp"
 )
 
-// BillingAppCreate is the builder for creating a BillingApp entity.
-type BillingAppCreate struct {
+// InnerAPIAppCreate is the builder for creating a InnerAPIApp entity.
+type InnerAPIAppCreate struct {
 	config
-	mutation *BillingAppMutation
+	mutation *InnerAPIAppMutation
 	hooks    []Hook
 	conflict []sql.ConflictOption
 }
 
 // SetCreatedAt sets the "created_at" field.
-func (_c *BillingAppCreate) SetCreatedAt(v time.Time) *BillingAppCreate {
+func (_c *InnerAPIAppCreate) SetCreatedAt(v time.Time) *InnerAPIAppCreate {
 	_c.mutation.SetCreatedAt(v)
 	return _c
 }
 
 // SetNillableCreatedAt sets the "created_at" field if the given value is not nil.
-func (_c *BillingAppCreate) SetNillableCreatedAt(v *time.Time) *BillingAppCreate {
+func (_c *InnerAPIAppCreate) SetNillableCreatedAt(v *time.Time) *InnerAPIAppCreate {
 	if v != nil {
 		_c.SetCreatedAt(*v)
 	}
@@ -37,13 +37,13 @@ func (_c *BillingAppCreate) SetNillableCreatedAt(v *time.Time) *BillingAppCreate
 }
 
 // SetUpdatedAt sets the "updated_at" field.
-func (_c *BillingAppCreate) SetUpdatedAt(v time.Time) *BillingAppCreate {
+func (_c *InnerAPIAppCreate) SetUpdatedAt(v time.Time) *InnerAPIAppCreate {
 	_c.mutation.SetUpdatedAt(v)
 	return _c
 }
 
 // SetNillableUpdatedAt sets the "updated_at" field if the given value is not nil.
-func (_c *BillingAppCreate) SetNillableUpdatedAt(v *time.Time) *BillingAppCreate {
+func (_c *InnerAPIAppCreate) SetNillableUpdatedAt(v *time.Time) *InnerAPIAppCreate {
 	if v != nil {
 		_c.SetUpdatedAt(*v)
 	}
@@ -51,25 +51,25 @@ func (_c *BillingAppCreate) SetNillableUpdatedAt(v *time.Time) *BillingAppCreate
 }
 
 // SetAppID sets the "app_id" field.
-func (_c *BillingAppCreate) SetAppID(v string) *BillingAppCreate {
+func (_c *InnerAPIAppCreate) SetAppID(v string) *InnerAPIAppCreate {
 	_c.mutation.SetAppID(v)
 	return _c
 }
 
 // SetAppName sets the "app_name" field.
-func (_c *BillingAppCreate) SetAppName(v string) *BillingAppCreate {
+func (_c *InnerAPIAppCreate) SetAppName(v string) *InnerAPIAppCreate {
 	_c.mutation.SetAppName(v)
 	return _c
 }
 
 // SetEnabled sets the "enabled" field.
-func (_c *BillingAppCreate) SetEnabled(v bool) *BillingAppCreate {
+func (_c *InnerAPIAppCreate) SetEnabled(v bool) *InnerAPIAppCreate {
 	_c.mutation.SetEnabled(v)
 	return _c
 }
 
 // SetNillableEnabled sets the "enabled" field if the given value is not nil.
-func (_c *BillingAppCreate) SetNillableEnabled(v *bool) *BillingAppCreate {
+func (_c *InnerAPIAppCreate) SetNillableEnabled(v *bool) *InnerAPIAppCreate {
 	if v != nil {
 		_c.SetEnabled(*v)
 	}
@@ -77,32 +77,38 @@ func (_c *BillingAppCreate) SetNillableEnabled(v *bool) *BillingAppCreate {
 }
 
 // SetTokenVersion sets the "token_version" field.
-func (_c *BillingAppCreate) SetTokenVersion(v int) *BillingAppCreate {
+func (_c *InnerAPIAppCreate) SetTokenVersion(v int) *InnerAPIAppCreate {
 	_c.mutation.SetTokenVersion(v)
 	return _c
 }
 
 // SetNillableTokenVersion sets the "token_version" field if the given value is not nil.
-func (_c *BillingAppCreate) SetNillableTokenVersion(v *int) *BillingAppCreate {
+func (_c *InnerAPIAppCreate) SetNillableTokenVersion(v *int) *InnerAPIAppCreate {
 	if v != nil {
 		_c.SetTokenVersion(*v)
 	}
 	return _c
 }
 
-// Mutation returns the BillingAppMutation object of the builder.
-func (_c *BillingAppCreate) Mutation() *BillingAppMutation {
+// SetPermissions sets the "permissions" field.
+func (_c *InnerAPIAppCreate) SetPermissions(v []string) *InnerAPIAppCreate {
+	_c.mutation.SetPermissions(v)
+	return _c
+}
+
+// Mutation returns the InnerAPIAppMutation object of the builder.
+func (_c *InnerAPIAppCreate) Mutation() *InnerAPIAppMutation {
 	return _c.mutation
 }
 
-// Save creates the BillingApp in the database.
-func (_c *BillingAppCreate) Save(ctx context.Context) (*BillingApp, error) {
+// Save creates the InnerAPIApp in the database.
+func (_c *InnerAPIAppCreate) Save(ctx context.Context) (*InnerAPIApp, error) {
 	_c.defaults()
 	return withHooks(ctx, _c.sqlSave, _c.mutation, _c.hooks)
 }
 
 // SaveX calls Save and panics if Save returns an error.
-func (_c *BillingAppCreate) SaveX(ctx context.Context) *BillingApp {
+func (_c *InnerAPIAppCreate) SaveX(ctx context.Context) *InnerAPIApp {
 	v, err := _c.Save(ctx)
 	if err != nil {
 		panic(err)
@@ -111,72 +117,79 @@ func (_c *BillingAppCreate) SaveX(ctx context.Context) *BillingApp {
 }
 
 // Exec executes the query.
-func (_c *BillingAppCreate) Exec(ctx context.Context) error {
+func (_c *InnerAPIAppCreate) Exec(ctx context.Context) error {
 	_, err := _c.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_c *BillingAppCreate) ExecX(ctx context.Context) {
+func (_c *InnerAPIAppCreate) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
 
 // defaults sets the default values of the builder before save.
-func (_c *BillingAppCreate) defaults() {
+func (_c *InnerAPIAppCreate) defaults() {
 	if _, ok := _c.mutation.CreatedAt(); !ok {
-		v := billingapp.DefaultCreatedAt()
+		v := innerapiapp.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
 	}
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
-		v := billingapp.DefaultUpdatedAt()
+		v := innerapiapp.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
 	if _, ok := _c.mutation.Enabled(); !ok {
-		v := billingapp.DefaultEnabled
+		v := innerapiapp.DefaultEnabled
 		_c.mutation.SetEnabled(v)
 	}
 	if _, ok := _c.mutation.TokenVersion(); !ok {
-		v := billingapp.DefaultTokenVersion
+		v := innerapiapp.DefaultTokenVersion
 		_c.mutation.SetTokenVersion(v)
+	}
+	if _, ok := _c.mutation.Permissions(); !ok {
+		v := innerapiapp.DefaultPermissions
+		_c.mutation.SetPermissions(v)
 	}
 }
 
 // check runs all checks and user-defined validators on the builder.
-func (_c *BillingAppCreate) check() error {
+func (_c *InnerAPIAppCreate) check() error {
 	if _, ok := _c.mutation.CreatedAt(); !ok {
-		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "BillingApp.created_at"`)}
+		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "InnerAPIApp.created_at"`)}
 	}
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
-		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "BillingApp.updated_at"`)}
+		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "InnerAPIApp.updated_at"`)}
 	}
 	if _, ok := _c.mutation.AppID(); !ok {
-		return &ValidationError{Name: "app_id", err: errors.New(`ent: missing required field "BillingApp.app_id"`)}
+		return &ValidationError{Name: "app_id", err: errors.New(`ent: missing required field "InnerAPIApp.app_id"`)}
 	}
 	if v, ok := _c.mutation.AppID(); ok {
-		if err := billingapp.AppIDValidator(v); err != nil {
-			return &ValidationError{Name: "app_id", err: fmt.Errorf(`ent: validator failed for field "BillingApp.app_id": %w`, err)}
+		if err := innerapiapp.AppIDValidator(v); err != nil {
+			return &ValidationError{Name: "app_id", err: fmt.Errorf(`ent: validator failed for field "InnerAPIApp.app_id": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.AppName(); !ok {
-		return &ValidationError{Name: "app_name", err: errors.New(`ent: missing required field "BillingApp.app_name"`)}
+		return &ValidationError{Name: "app_name", err: errors.New(`ent: missing required field "InnerAPIApp.app_name"`)}
 	}
 	if v, ok := _c.mutation.AppName(); ok {
-		if err := billingapp.AppNameValidator(v); err != nil {
-			return &ValidationError{Name: "app_name", err: fmt.Errorf(`ent: validator failed for field "BillingApp.app_name": %w`, err)}
+		if err := innerapiapp.AppNameValidator(v); err != nil {
+			return &ValidationError{Name: "app_name", err: fmt.Errorf(`ent: validator failed for field "InnerAPIApp.app_name": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Enabled(); !ok {
-		return &ValidationError{Name: "enabled", err: errors.New(`ent: missing required field "BillingApp.enabled"`)}
+		return &ValidationError{Name: "enabled", err: errors.New(`ent: missing required field "InnerAPIApp.enabled"`)}
 	}
 	if _, ok := _c.mutation.TokenVersion(); !ok {
-		return &ValidationError{Name: "token_version", err: errors.New(`ent: missing required field "BillingApp.token_version"`)}
+		return &ValidationError{Name: "token_version", err: errors.New(`ent: missing required field "InnerAPIApp.token_version"`)}
+	}
+	if _, ok := _c.mutation.Permissions(); !ok {
+		return &ValidationError{Name: "permissions", err: errors.New(`ent: missing required field "InnerAPIApp.permissions"`)}
 	}
 	return nil
 }
 
-func (_c *BillingAppCreate) sqlSave(ctx context.Context) (*BillingApp, error) {
+func (_c *InnerAPIAppCreate) sqlSave(ctx context.Context) (*InnerAPIApp, error) {
 	if err := _c.check(); err != nil {
 		return nil, err
 	}
@@ -194,35 +207,39 @@ func (_c *BillingAppCreate) sqlSave(ctx context.Context) (*BillingApp, error) {
 	return _node, nil
 }
 
-func (_c *BillingAppCreate) createSpec() (*BillingApp, *sqlgraph.CreateSpec) {
+func (_c *InnerAPIAppCreate) createSpec() (*InnerAPIApp, *sqlgraph.CreateSpec) {
 	var (
-		_node = &BillingApp{config: _c.config}
-		_spec = sqlgraph.NewCreateSpec(billingapp.Table, sqlgraph.NewFieldSpec(billingapp.FieldID, field.TypeInt64))
+		_node = &InnerAPIApp{config: _c.config}
+		_spec = sqlgraph.NewCreateSpec(innerapiapp.Table, sqlgraph.NewFieldSpec(innerapiapp.FieldID, field.TypeInt64))
 	)
 	_spec.OnConflict = _c.conflict
 	if value, ok := _c.mutation.CreatedAt(); ok {
-		_spec.SetField(billingapp.FieldCreatedAt, field.TypeTime, value)
+		_spec.SetField(innerapiapp.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
 	}
 	if value, ok := _c.mutation.UpdatedAt(); ok {
-		_spec.SetField(billingapp.FieldUpdatedAt, field.TypeTime, value)
+		_spec.SetField(innerapiapp.FieldUpdatedAt, field.TypeTime, value)
 		_node.UpdatedAt = value
 	}
 	if value, ok := _c.mutation.AppID(); ok {
-		_spec.SetField(billingapp.FieldAppID, field.TypeString, value)
+		_spec.SetField(innerapiapp.FieldAppID, field.TypeString, value)
 		_node.AppID = value
 	}
 	if value, ok := _c.mutation.AppName(); ok {
-		_spec.SetField(billingapp.FieldAppName, field.TypeString, value)
+		_spec.SetField(innerapiapp.FieldAppName, field.TypeString, value)
 		_node.AppName = value
 	}
 	if value, ok := _c.mutation.Enabled(); ok {
-		_spec.SetField(billingapp.FieldEnabled, field.TypeBool, value)
+		_spec.SetField(innerapiapp.FieldEnabled, field.TypeBool, value)
 		_node.Enabled = value
 	}
 	if value, ok := _c.mutation.TokenVersion(); ok {
-		_spec.SetField(billingapp.FieldTokenVersion, field.TypeInt, value)
+		_spec.SetField(innerapiapp.FieldTokenVersion, field.TypeInt, value)
 		_node.TokenVersion = value
+	}
+	if value, ok := _c.mutation.Permissions(); ok {
+		_spec.SetField(innerapiapp.FieldPermissions, field.TypeJSON, value)
+		_node.Permissions = value
 	}
 	return _node, _spec
 }
@@ -230,7 +247,7 @@ func (_c *BillingAppCreate) createSpec() (*BillingApp, *sqlgraph.CreateSpec) {
 // OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
 // of the `INSERT` statement. For example:
 //
-//	client.BillingApp.Create().
+//	client.InnerAPIApp.Create().
 //		SetCreatedAt(v).
 //		OnConflict(
 //			// Update the row with the new values
@@ -239,13 +256,13 @@ func (_c *BillingAppCreate) createSpec() (*BillingApp, *sqlgraph.CreateSpec) {
 //		).
 //		// Override some of the fields with custom
 //		// update values.
-//		Update(func(u *ent.BillingAppUpsert) {
+//		Update(func(u *ent.InnerAPIAppUpsert) {
 //			SetCreatedAt(v+v).
 //		}).
 //		Exec(ctx)
-func (_c *BillingAppCreate) OnConflict(opts ...sql.ConflictOption) *BillingAppUpsertOne {
+func (_c *InnerAPIAppCreate) OnConflict(opts ...sql.ConflictOption) *InnerAPIAppUpsertOne {
 	_c.conflict = opts
-	return &BillingAppUpsertOne{
+	return &InnerAPIAppUpsertOne{
 		create: _c,
 	}
 }
@@ -253,108 +270,120 @@ func (_c *BillingAppCreate) OnConflict(opts ...sql.ConflictOption) *BillingAppUp
 // OnConflictColumns calls `OnConflict` and configures the columns
 // as conflict target. Using this option is equivalent to using:
 //
-//	client.BillingApp.Create().
+//	client.InnerAPIApp.Create().
 //		OnConflict(sql.ConflictColumns(columns...)).
 //		Exec(ctx)
-func (_c *BillingAppCreate) OnConflictColumns(columns ...string) *BillingAppUpsertOne {
+func (_c *InnerAPIAppCreate) OnConflictColumns(columns ...string) *InnerAPIAppUpsertOne {
 	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
-	return &BillingAppUpsertOne{
+	return &InnerAPIAppUpsertOne{
 		create: _c,
 	}
 }
 
 type (
-	// BillingAppUpsertOne is the builder for "upsert"-ing
-	//  one BillingApp node.
-	BillingAppUpsertOne struct {
-		create *BillingAppCreate
+	// InnerAPIAppUpsertOne is the builder for "upsert"-ing
+	//  one InnerAPIApp node.
+	InnerAPIAppUpsertOne struct {
+		create *InnerAPIAppCreate
 	}
 
-	// BillingAppUpsert is the "OnConflict" setter.
-	BillingAppUpsert struct {
+	// InnerAPIAppUpsert is the "OnConflict" setter.
+	InnerAPIAppUpsert struct {
 		*sql.UpdateSet
 	}
 )
 
 // SetUpdatedAt sets the "updated_at" field.
-func (u *BillingAppUpsert) SetUpdatedAt(v time.Time) *BillingAppUpsert {
-	u.Set(billingapp.FieldUpdatedAt, v)
+func (u *InnerAPIAppUpsert) SetUpdatedAt(v time.Time) *InnerAPIAppUpsert {
+	u.Set(innerapiapp.FieldUpdatedAt, v)
 	return u
 }
 
 // UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
-func (u *BillingAppUpsert) UpdateUpdatedAt() *BillingAppUpsert {
-	u.SetExcluded(billingapp.FieldUpdatedAt)
+func (u *InnerAPIAppUpsert) UpdateUpdatedAt() *InnerAPIAppUpsert {
+	u.SetExcluded(innerapiapp.FieldUpdatedAt)
 	return u
 }
 
 // SetAppID sets the "app_id" field.
-func (u *BillingAppUpsert) SetAppID(v string) *BillingAppUpsert {
-	u.Set(billingapp.FieldAppID, v)
+func (u *InnerAPIAppUpsert) SetAppID(v string) *InnerAPIAppUpsert {
+	u.Set(innerapiapp.FieldAppID, v)
 	return u
 }
 
 // UpdateAppID sets the "app_id" field to the value that was provided on create.
-func (u *BillingAppUpsert) UpdateAppID() *BillingAppUpsert {
-	u.SetExcluded(billingapp.FieldAppID)
+func (u *InnerAPIAppUpsert) UpdateAppID() *InnerAPIAppUpsert {
+	u.SetExcluded(innerapiapp.FieldAppID)
 	return u
 }
 
 // SetAppName sets the "app_name" field.
-func (u *BillingAppUpsert) SetAppName(v string) *BillingAppUpsert {
-	u.Set(billingapp.FieldAppName, v)
+func (u *InnerAPIAppUpsert) SetAppName(v string) *InnerAPIAppUpsert {
+	u.Set(innerapiapp.FieldAppName, v)
 	return u
 }
 
 // UpdateAppName sets the "app_name" field to the value that was provided on create.
-func (u *BillingAppUpsert) UpdateAppName() *BillingAppUpsert {
-	u.SetExcluded(billingapp.FieldAppName)
+func (u *InnerAPIAppUpsert) UpdateAppName() *InnerAPIAppUpsert {
+	u.SetExcluded(innerapiapp.FieldAppName)
 	return u
 }
 
 // SetEnabled sets the "enabled" field.
-func (u *BillingAppUpsert) SetEnabled(v bool) *BillingAppUpsert {
-	u.Set(billingapp.FieldEnabled, v)
+func (u *InnerAPIAppUpsert) SetEnabled(v bool) *InnerAPIAppUpsert {
+	u.Set(innerapiapp.FieldEnabled, v)
 	return u
 }
 
 // UpdateEnabled sets the "enabled" field to the value that was provided on create.
-func (u *BillingAppUpsert) UpdateEnabled() *BillingAppUpsert {
-	u.SetExcluded(billingapp.FieldEnabled)
+func (u *InnerAPIAppUpsert) UpdateEnabled() *InnerAPIAppUpsert {
+	u.SetExcluded(innerapiapp.FieldEnabled)
 	return u
 }
 
 // SetTokenVersion sets the "token_version" field.
-func (u *BillingAppUpsert) SetTokenVersion(v int) *BillingAppUpsert {
-	u.Set(billingapp.FieldTokenVersion, v)
+func (u *InnerAPIAppUpsert) SetTokenVersion(v int) *InnerAPIAppUpsert {
+	u.Set(innerapiapp.FieldTokenVersion, v)
 	return u
 }
 
 // UpdateTokenVersion sets the "token_version" field to the value that was provided on create.
-func (u *BillingAppUpsert) UpdateTokenVersion() *BillingAppUpsert {
-	u.SetExcluded(billingapp.FieldTokenVersion)
+func (u *InnerAPIAppUpsert) UpdateTokenVersion() *InnerAPIAppUpsert {
+	u.SetExcluded(innerapiapp.FieldTokenVersion)
 	return u
 }
 
 // AddTokenVersion adds v to the "token_version" field.
-func (u *BillingAppUpsert) AddTokenVersion(v int) *BillingAppUpsert {
-	u.Add(billingapp.FieldTokenVersion, v)
+func (u *InnerAPIAppUpsert) AddTokenVersion(v int) *InnerAPIAppUpsert {
+	u.Add(innerapiapp.FieldTokenVersion, v)
+	return u
+}
+
+// SetPermissions sets the "permissions" field.
+func (u *InnerAPIAppUpsert) SetPermissions(v []string) *InnerAPIAppUpsert {
+	u.Set(innerapiapp.FieldPermissions, v)
+	return u
+}
+
+// UpdatePermissions sets the "permissions" field to the value that was provided on create.
+func (u *InnerAPIAppUpsert) UpdatePermissions() *InnerAPIAppUpsert {
+	u.SetExcluded(innerapiapp.FieldPermissions)
 	return u
 }
 
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
-//	client.BillingApp.Create().
+//	client.InnerAPIApp.Create().
 //		OnConflict(
 //			sql.ResolveWithNewValues(),
 //		).
 //		Exec(ctx)
-func (u *BillingAppUpsertOne) UpdateNewValues() *BillingAppUpsertOne {
+func (u *InnerAPIAppUpsertOne) UpdateNewValues() *InnerAPIAppUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
 		if _, exists := u.create.mutation.CreatedAt(); exists {
-			s.SetIgnore(billingapp.FieldCreatedAt)
+			s.SetIgnore(innerapiapp.FieldCreatedAt)
 		}
 	}))
 	return u
@@ -363,124 +392,138 @@ func (u *BillingAppUpsertOne) UpdateNewValues() *BillingAppUpsertOne {
 // Ignore sets each column to itself in case of conflict.
 // Using this option is equivalent to using:
 //
-//	client.BillingApp.Create().
+//	client.InnerAPIApp.Create().
 //	    OnConflict(sql.ResolveWithIgnore()).
 //	    Exec(ctx)
-func (u *BillingAppUpsertOne) Ignore() *BillingAppUpsertOne {
+func (u *InnerAPIAppUpsertOne) Ignore() *InnerAPIAppUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
 	return u
 }
 
 // DoNothing configures the conflict_action to `DO NOTHING`.
 // Supported only by SQLite and PostgreSQL.
-func (u *BillingAppUpsertOne) DoNothing() *BillingAppUpsertOne {
+func (u *InnerAPIAppUpsertOne) DoNothing() *InnerAPIAppUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.DoNothing())
 	return u
 }
 
-// Update allows overriding fields `UPDATE` values. See the BillingAppCreate.OnConflict
+// Update allows overriding fields `UPDATE` values. See the InnerAPIAppCreate.OnConflict
 // documentation for more info.
-func (u *BillingAppUpsertOne) Update(set func(*BillingAppUpsert)) *BillingAppUpsertOne {
+func (u *InnerAPIAppUpsertOne) Update(set func(*InnerAPIAppUpsert)) *InnerAPIAppUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
-		set(&BillingAppUpsert{UpdateSet: update})
+		set(&InnerAPIAppUpsert{UpdateSet: update})
 	}))
 	return u
 }
 
 // SetUpdatedAt sets the "updated_at" field.
-func (u *BillingAppUpsertOne) SetUpdatedAt(v time.Time) *BillingAppUpsertOne {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertOne) SetUpdatedAt(v time.Time) *InnerAPIAppUpsertOne {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.SetUpdatedAt(v)
 	})
 }
 
 // UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
-func (u *BillingAppUpsertOne) UpdateUpdatedAt() *BillingAppUpsertOne {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertOne) UpdateUpdatedAt() *InnerAPIAppUpsertOne {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.UpdateUpdatedAt()
 	})
 }
 
 // SetAppID sets the "app_id" field.
-func (u *BillingAppUpsertOne) SetAppID(v string) *BillingAppUpsertOne {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertOne) SetAppID(v string) *InnerAPIAppUpsertOne {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.SetAppID(v)
 	})
 }
 
 // UpdateAppID sets the "app_id" field to the value that was provided on create.
-func (u *BillingAppUpsertOne) UpdateAppID() *BillingAppUpsertOne {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertOne) UpdateAppID() *InnerAPIAppUpsertOne {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.UpdateAppID()
 	})
 }
 
 // SetAppName sets the "app_name" field.
-func (u *BillingAppUpsertOne) SetAppName(v string) *BillingAppUpsertOne {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertOne) SetAppName(v string) *InnerAPIAppUpsertOne {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.SetAppName(v)
 	})
 }
 
 // UpdateAppName sets the "app_name" field to the value that was provided on create.
-func (u *BillingAppUpsertOne) UpdateAppName() *BillingAppUpsertOne {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertOne) UpdateAppName() *InnerAPIAppUpsertOne {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.UpdateAppName()
 	})
 }
 
 // SetEnabled sets the "enabled" field.
-func (u *BillingAppUpsertOne) SetEnabled(v bool) *BillingAppUpsertOne {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertOne) SetEnabled(v bool) *InnerAPIAppUpsertOne {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.SetEnabled(v)
 	})
 }
 
 // UpdateEnabled sets the "enabled" field to the value that was provided on create.
-func (u *BillingAppUpsertOne) UpdateEnabled() *BillingAppUpsertOne {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertOne) UpdateEnabled() *InnerAPIAppUpsertOne {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.UpdateEnabled()
 	})
 }
 
 // SetTokenVersion sets the "token_version" field.
-func (u *BillingAppUpsertOne) SetTokenVersion(v int) *BillingAppUpsertOne {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertOne) SetTokenVersion(v int) *InnerAPIAppUpsertOne {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.SetTokenVersion(v)
 	})
 }
 
 // AddTokenVersion adds v to the "token_version" field.
-func (u *BillingAppUpsertOne) AddTokenVersion(v int) *BillingAppUpsertOne {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertOne) AddTokenVersion(v int) *InnerAPIAppUpsertOne {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.AddTokenVersion(v)
 	})
 }
 
 // UpdateTokenVersion sets the "token_version" field to the value that was provided on create.
-func (u *BillingAppUpsertOne) UpdateTokenVersion() *BillingAppUpsertOne {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertOne) UpdateTokenVersion() *InnerAPIAppUpsertOne {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.UpdateTokenVersion()
 	})
 }
 
+// SetPermissions sets the "permissions" field.
+func (u *InnerAPIAppUpsertOne) SetPermissions(v []string) *InnerAPIAppUpsertOne {
+	return u.Update(func(s *InnerAPIAppUpsert) {
+		s.SetPermissions(v)
+	})
+}
+
+// UpdatePermissions sets the "permissions" field to the value that was provided on create.
+func (u *InnerAPIAppUpsertOne) UpdatePermissions() *InnerAPIAppUpsertOne {
+	return u.Update(func(s *InnerAPIAppUpsert) {
+		s.UpdatePermissions()
+	})
+}
+
 // Exec executes the query.
-func (u *BillingAppUpsertOne) Exec(ctx context.Context) error {
+func (u *InnerAPIAppUpsertOne) Exec(ctx context.Context) error {
 	if len(u.create.conflict) == 0 {
-		return errors.New("ent: missing options for BillingAppCreate.OnConflict")
+		return errors.New("ent: missing options for InnerAPIAppCreate.OnConflict")
 	}
 	return u.create.Exec(ctx)
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (u *BillingAppUpsertOne) ExecX(ctx context.Context) {
+func (u *InnerAPIAppUpsertOne) ExecX(ctx context.Context) {
 	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
 
 // Exec executes the UPSERT query and returns the inserted/updated ID.
-func (u *BillingAppUpsertOne) ID(ctx context.Context) (id int64, err error) {
+func (u *InnerAPIAppUpsertOne) ID(ctx context.Context) (id int64, err error) {
 	node, err := u.create.Save(ctx)
 	if err != nil {
 		return id, err
@@ -489,7 +532,7 @@ func (u *BillingAppUpsertOne) ID(ctx context.Context) (id int64, err error) {
 }
 
 // IDX is like ID, but panics if an error occurs.
-func (u *BillingAppUpsertOne) IDX(ctx context.Context) int64 {
+func (u *InnerAPIAppUpsertOne) IDX(ctx context.Context) int64 {
 	id, err := u.ID(ctx)
 	if err != nil {
 		panic(err)
@@ -497,28 +540,28 @@ func (u *BillingAppUpsertOne) IDX(ctx context.Context) int64 {
 	return id
 }
 
-// BillingAppCreateBulk is the builder for creating many BillingApp entities in bulk.
-type BillingAppCreateBulk struct {
+// InnerAPIAppCreateBulk is the builder for creating many InnerAPIApp entities in bulk.
+type InnerAPIAppCreateBulk struct {
 	config
 	err      error
-	builders []*BillingAppCreate
+	builders []*InnerAPIAppCreate
 	conflict []sql.ConflictOption
 }
 
-// Save creates the BillingApp entities in the database.
-func (_c *BillingAppCreateBulk) Save(ctx context.Context) ([]*BillingApp, error) {
+// Save creates the InnerAPIApp entities in the database.
+func (_c *InnerAPIAppCreateBulk) Save(ctx context.Context) ([]*InnerAPIApp, error) {
 	if _c.err != nil {
 		return nil, _c.err
 	}
 	specs := make([]*sqlgraph.CreateSpec, len(_c.builders))
-	nodes := make([]*BillingApp, len(_c.builders))
+	nodes := make([]*InnerAPIApp, len(_c.builders))
 	mutators := make([]Mutator, len(_c.builders))
 	for i := range _c.builders {
 		func(i int, root context.Context) {
 			builder := _c.builders[i]
 			builder.defaults()
 			var mut Mutator = MutateFunc(func(ctx context.Context, m Mutation) (Value, error) {
-				mutation, ok := m.(*BillingAppMutation)
+				mutation, ok := m.(*InnerAPIAppMutation)
 				if !ok {
 					return nil, fmt.Errorf("unexpected mutation type %T", m)
 				}
@@ -566,7 +609,7 @@ func (_c *BillingAppCreateBulk) Save(ctx context.Context) ([]*BillingApp, error)
 }
 
 // SaveX is like Save, but panics if an error occurs.
-func (_c *BillingAppCreateBulk) SaveX(ctx context.Context) []*BillingApp {
+func (_c *InnerAPIAppCreateBulk) SaveX(ctx context.Context) []*InnerAPIApp {
 	v, err := _c.Save(ctx)
 	if err != nil {
 		panic(err)
@@ -575,13 +618,13 @@ func (_c *BillingAppCreateBulk) SaveX(ctx context.Context) []*BillingApp {
 }
 
 // Exec executes the query.
-func (_c *BillingAppCreateBulk) Exec(ctx context.Context) error {
+func (_c *InnerAPIAppCreateBulk) Exec(ctx context.Context) error {
 	_, err := _c.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_c *BillingAppCreateBulk) ExecX(ctx context.Context) {
+func (_c *InnerAPIAppCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
 		panic(err)
 	}
@@ -590,7 +633,7 @@ func (_c *BillingAppCreateBulk) ExecX(ctx context.Context) {
 // OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
 // of the `INSERT` statement. For example:
 //
-//	client.BillingApp.CreateBulk(builders...).
+//	client.InnerAPIApp.CreateBulk(builders...).
 //		OnConflict(
 //			// Update the row with the new values
 //			// the was proposed for insertion.
@@ -598,13 +641,13 @@ func (_c *BillingAppCreateBulk) ExecX(ctx context.Context) {
 //		).
 //		// Override some of the fields with custom
 //		// update values.
-//		Update(func(u *ent.BillingAppUpsert) {
+//		Update(func(u *ent.InnerAPIAppUpsert) {
 //			SetCreatedAt(v+v).
 //		}).
 //		Exec(ctx)
-func (_c *BillingAppCreateBulk) OnConflict(opts ...sql.ConflictOption) *BillingAppUpsertBulk {
+func (_c *InnerAPIAppCreateBulk) OnConflict(opts ...sql.ConflictOption) *InnerAPIAppUpsertBulk {
 	_c.conflict = opts
-	return &BillingAppUpsertBulk{
+	return &InnerAPIAppUpsertBulk{
 		create: _c,
 	}
 }
@@ -612,36 +655,36 @@ func (_c *BillingAppCreateBulk) OnConflict(opts ...sql.ConflictOption) *BillingA
 // OnConflictColumns calls `OnConflict` and configures the columns
 // as conflict target. Using this option is equivalent to using:
 //
-//	client.BillingApp.Create().
+//	client.InnerAPIApp.Create().
 //		OnConflict(sql.ConflictColumns(columns...)).
 //		Exec(ctx)
-func (_c *BillingAppCreateBulk) OnConflictColumns(columns ...string) *BillingAppUpsertBulk {
+func (_c *InnerAPIAppCreateBulk) OnConflictColumns(columns ...string) *InnerAPIAppUpsertBulk {
 	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
-	return &BillingAppUpsertBulk{
+	return &InnerAPIAppUpsertBulk{
 		create: _c,
 	}
 }
 
-// BillingAppUpsertBulk is the builder for "upsert"-ing
-// a bulk of BillingApp nodes.
-type BillingAppUpsertBulk struct {
-	create *BillingAppCreateBulk
+// InnerAPIAppUpsertBulk is the builder for "upsert"-ing
+// a bulk of InnerAPIApp nodes.
+type InnerAPIAppUpsertBulk struct {
+	create *InnerAPIAppCreateBulk
 }
 
 // UpdateNewValues updates the mutable fields using the new values that
 // were set on create. Using this option is equivalent to using:
 //
-//	client.BillingApp.Create().
+//	client.InnerAPIApp.Create().
 //		OnConflict(
 //			sql.ResolveWithNewValues(),
 //		).
 //		Exec(ctx)
-func (u *BillingAppUpsertBulk) UpdateNewValues() *BillingAppUpsertBulk {
+func (u *InnerAPIAppUpsertBulk) UpdateNewValues() *InnerAPIAppUpsertBulk {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
 		for _, b := range u.create.builders {
 			if _, exists := b.mutation.CreatedAt(); exists {
-				s.SetIgnore(billingapp.FieldCreatedAt)
+				s.SetIgnore(innerapiapp.FieldCreatedAt)
 			}
 		}
 	}))
@@ -651,125 +694,139 @@ func (u *BillingAppUpsertBulk) UpdateNewValues() *BillingAppUpsertBulk {
 // Ignore sets each column to itself in case of conflict.
 // Using this option is equivalent to using:
 //
-//	client.BillingApp.Create().
+//	client.InnerAPIApp.Create().
 //		OnConflict(sql.ResolveWithIgnore()).
 //		Exec(ctx)
-func (u *BillingAppUpsertBulk) Ignore() *BillingAppUpsertBulk {
+func (u *InnerAPIAppUpsertBulk) Ignore() *InnerAPIAppUpsertBulk {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
 	return u
 }
 
 // DoNothing configures the conflict_action to `DO NOTHING`.
 // Supported only by SQLite and PostgreSQL.
-func (u *BillingAppUpsertBulk) DoNothing() *BillingAppUpsertBulk {
+func (u *InnerAPIAppUpsertBulk) DoNothing() *InnerAPIAppUpsertBulk {
 	u.create.conflict = append(u.create.conflict, sql.DoNothing())
 	return u
 }
 
-// Update allows overriding fields `UPDATE` values. See the BillingAppCreateBulk.OnConflict
+// Update allows overriding fields `UPDATE` values. See the InnerAPIAppCreateBulk.OnConflict
 // documentation for more info.
-func (u *BillingAppUpsertBulk) Update(set func(*BillingAppUpsert)) *BillingAppUpsertBulk {
+func (u *InnerAPIAppUpsertBulk) Update(set func(*InnerAPIAppUpsert)) *InnerAPIAppUpsertBulk {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
-		set(&BillingAppUpsert{UpdateSet: update})
+		set(&InnerAPIAppUpsert{UpdateSet: update})
 	}))
 	return u
 }
 
 // SetUpdatedAt sets the "updated_at" field.
-func (u *BillingAppUpsertBulk) SetUpdatedAt(v time.Time) *BillingAppUpsertBulk {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertBulk) SetUpdatedAt(v time.Time) *InnerAPIAppUpsertBulk {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.SetUpdatedAt(v)
 	})
 }
 
 // UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
-func (u *BillingAppUpsertBulk) UpdateUpdatedAt() *BillingAppUpsertBulk {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertBulk) UpdateUpdatedAt() *InnerAPIAppUpsertBulk {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.UpdateUpdatedAt()
 	})
 }
 
 // SetAppID sets the "app_id" field.
-func (u *BillingAppUpsertBulk) SetAppID(v string) *BillingAppUpsertBulk {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertBulk) SetAppID(v string) *InnerAPIAppUpsertBulk {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.SetAppID(v)
 	})
 }
 
 // UpdateAppID sets the "app_id" field to the value that was provided on create.
-func (u *BillingAppUpsertBulk) UpdateAppID() *BillingAppUpsertBulk {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertBulk) UpdateAppID() *InnerAPIAppUpsertBulk {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.UpdateAppID()
 	})
 }
 
 // SetAppName sets the "app_name" field.
-func (u *BillingAppUpsertBulk) SetAppName(v string) *BillingAppUpsertBulk {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertBulk) SetAppName(v string) *InnerAPIAppUpsertBulk {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.SetAppName(v)
 	})
 }
 
 // UpdateAppName sets the "app_name" field to the value that was provided on create.
-func (u *BillingAppUpsertBulk) UpdateAppName() *BillingAppUpsertBulk {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertBulk) UpdateAppName() *InnerAPIAppUpsertBulk {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.UpdateAppName()
 	})
 }
 
 // SetEnabled sets the "enabled" field.
-func (u *BillingAppUpsertBulk) SetEnabled(v bool) *BillingAppUpsertBulk {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertBulk) SetEnabled(v bool) *InnerAPIAppUpsertBulk {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.SetEnabled(v)
 	})
 }
 
 // UpdateEnabled sets the "enabled" field to the value that was provided on create.
-func (u *BillingAppUpsertBulk) UpdateEnabled() *BillingAppUpsertBulk {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertBulk) UpdateEnabled() *InnerAPIAppUpsertBulk {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.UpdateEnabled()
 	})
 }
 
 // SetTokenVersion sets the "token_version" field.
-func (u *BillingAppUpsertBulk) SetTokenVersion(v int) *BillingAppUpsertBulk {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertBulk) SetTokenVersion(v int) *InnerAPIAppUpsertBulk {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.SetTokenVersion(v)
 	})
 }
 
 // AddTokenVersion adds v to the "token_version" field.
-func (u *BillingAppUpsertBulk) AddTokenVersion(v int) *BillingAppUpsertBulk {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertBulk) AddTokenVersion(v int) *InnerAPIAppUpsertBulk {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.AddTokenVersion(v)
 	})
 }
 
 // UpdateTokenVersion sets the "token_version" field to the value that was provided on create.
-func (u *BillingAppUpsertBulk) UpdateTokenVersion() *BillingAppUpsertBulk {
-	return u.Update(func(s *BillingAppUpsert) {
+func (u *InnerAPIAppUpsertBulk) UpdateTokenVersion() *InnerAPIAppUpsertBulk {
+	return u.Update(func(s *InnerAPIAppUpsert) {
 		s.UpdateTokenVersion()
 	})
 }
 
+// SetPermissions sets the "permissions" field.
+func (u *InnerAPIAppUpsertBulk) SetPermissions(v []string) *InnerAPIAppUpsertBulk {
+	return u.Update(func(s *InnerAPIAppUpsert) {
+		s.SetPermissions(v)
+	})
+}
+
+// UpdatePermissions sets the "permissions" field to the value that was provided on create.
+func (u *InnerAPIAppUpsertBulk) UpdatePermissions() *InnerAPIAppUpsertBulk {
+	return u.Update(func(s *InnerAPIAppUpsert) {
+		s.UpdatePermissions()
+	})
+}
+
 // Exec executes the query.
-func (u *BillingAppUpsertBulk) Exec(ctx context.Context) error {
+func (u *InnerAPIAppUpsertBulk) Exec(ctx context.Context) error {
 	if u.create.err != nil {
 		return u.create.err
 	}
 	for i, b := range u.create.builders {
 		if len(b.conflict) != 0 {
-			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the BillingAppCreateBulk instead", i)
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the InnerAPIAppCreateBulk instead", i)
 		}
 	}
 	if len(u.create.conflict) == 0 {
-		return errors.New("ent: missing options for BillingAppCreateBulk.OnConflict")
+		return errors.New("ent: missing options for InnerAPIAppCreateBulk.OnConflict")
 	}
 	return u.create.Exec(ctx)
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (u *BillingAppUpsertBulk) ExecX(ctx context.Context) {
+func (u *InnerAPIAppUpsertBulk) ExecX(ctx context.Context) {
 	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}

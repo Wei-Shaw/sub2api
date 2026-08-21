@@ -1,22 +1,22 @@
-# 余额 RPC 接入文档（Balance Ledger RPC）
+# 内部 API RPC 运维文档（Inner API RPC）
 
-面向「扣费 app」接入方：通过 tRPC-Go 在独立端口调用余额账本服务，做余额扣费 / 部分退费 / 查询。
+面向内部服务接入方：通过 tRPC-Go 在独立端口调用余额和素材服务。每个接入 app 通过授权权限决定可调用的方法。
 
 ## 1. 概览
 
 - **传输**：tRPC-Go（protocol=`trpc`，network=`tcp`），监听端口独立于 HTTP API（`server.port`）。
-- **服务名**：`sub2api.balance.v1.BalanceLedger`
-- **方法**：`Deduct` / `Refund` / `GetBalance`
-- **proto**：`backend/internal/rpc/balancepb/balance.proto`
+- **服务名**：`sub2api.inner.v1.InnerAPI`
+- **余额方法**：`Deduct` / `Refund` / `GetBalance`
+- **proto**：`backend/internal/rpc/innerpb/inner_api.proto`
 - **金额**：一律用**十进制字符串**传输（如 `"12.34"`），服务端按 `decimal(20,8)` 处理，避免二进制浮点误差。
-- **边界**：本服务只动 `users.balance`，不触碰 apikey 配额 / 限流 / 账号配额 / 订阅用量（那些由网关计费链路负责）。接入方只能冲销**自己**经本 RPC 产生的扣费。
+- **边界**：余额方法只动 `users.balance`，不触碰 apikey 配额 / 限流 / 账号配额 / 订阅用量。素材方法只操作用户素材服务。
 
 ## 2. 启用与配置
 
 `config.yaml`：
 
 ```yaml
-balance_rpc:
+inner_api_rpc:
   enabled: true       # 关闭时不监听第二端口，行为等价现状
   host: "0.0.0.0"
   port: 9100          # 必须 != server.port
@@ -33,21 +33,21 @@ balance_rpc:
 服务端每次调用**解密 token**：解密成功（GCM 认证标签校验通过）即证明该 token 由本方签发，
 再校验解密出的 `app_id` 对应 app 存在且未停用。**数据库不存储任何 token 或 hash**。
 
-每个接入方是一个「扣费 app」，由管理员在后台创建：
+每个接入方是一个内部 API app，由管理员在后台创建并授权：
 
 | 操作 | 接口 |
 |------|------|
-| 列表 | `GET  /api/admin/billing-apps` |
-| 创建 | `POST /api/admin/billing-apps`  body `{"app_name":"xxx"}` |
-| 费用统计 | `GET  /api/admin/billing-apps/:app_id/stats`（累计扣费/退费/净扣费/笔数） |
-| 启停 | `PATCH /api/admin/billing-apps/:app_id/enabled` body `{"enabled":false}` |
-| 刷新 token | `POST /api/admin/billing-apps/:app_id/refresh-token`（旧 token 立即失效，返回新 token） |
-| 删除 | `DELETE /api/admin/billing-apps/:app_id`（token 立即失效，历史流水保留） |
+| 列表 | `GET  /api/v1/admin/inner-api-apps` |
+| 创建 | `POST /api/v1/admin/inner-api-apps`  body `{"app_name":"xxx","permissions":["materials:read"]}` |
+| 授权 | `PATCH /api/v1/admin/inner-api-apps/:app_id/permissions` body `{"permissions":["balance:read"]}` |
+| 启停 | `PATCH /api/v1/admin/inner-api-apps/:app_id/enabled` body `{"enabled":false}` |
+| 刷新 token | `POST /api/v1/admin/inner-api-apps/:app_id/refresh-token`（旧 token 立即失效，返回新 token） |
+| 删除 | `DELETE /api/v1/admin/inner-api-apps/:app_id`（token 立即失效） |
 
 创建响应包含一次性 `token`（**仅此一次返回**，库里不存）：
 
 ```json
-{ "id": 1, "app_id": "bapp_xxxx", "app_name": "xxx", "enabled": true, "token": "base64 密文，请妥善保存" }
+{ "id": 1, "app_id": "iapp_xxxx", "app_name": "xxx", "enabled": true, "permissions": ["materials:read"], "token": "base64 密文，请妥善保存" }
 ```
 
 调用 RPC 时通过 **tRPC metadata** 携带 token：
@@ -62,14 +62,14 @@ Go 客户端示例（per-call metadata 携带 token）：
 ```go
 import (
     "trpc.group/trpc-go/trpc-go/client"
-    pb "github.com/Wei-Shaw/sub2api/internal/rpc/balancepb"
+    pb "github.com/Wei-Shaw/sub2api/internal/rpc/innerpb"
 )
 
-proxy := pb.NewBalanceLedgerClientProxy(
+proxy := pb.NewInnerAPIClientProxy(
     client.WithTarget("ip://127.0.0.1:9100"),
 )
 rsp, err := proxy.Deduct(ctx, &pb.DeductRequest{
-    UserId:      1,
+    AccountId:   "acct_root_abc123",
     RequestId:   "order-123",
     Amount:      "12.34",
     Description: "purchase",
@@ -84,7 +84,7 @@ rsp, err := proxy.Deduct(ctx, &pb.DeductRequest{
 
 | 字段 | 说明 |
 |------|------|
-| `user_id` | 目标用户 |
+| `account_id` | 目标用户的稳定对外账户标识，不是数据库 `users.id` |
 | `request_id` | **幂等键**：同一 app 相同 request_id 只扣一次 |
 | `amount` | 扣费金额（十进制字符串，> 0） |
 | `description` | **必填**，扣费原因 |
@@ -109,7 +109,7 @@ rsp, err := proxy.Deduct(ctx, &pb.DeductRequest{
 
 ### GetBalance（查询余额）
 
-入参 `user_id`，返回 `balance`（十进制字符串，缓存优先、未命中回源 DB）。
+入参 `account_id`，返回 `balance`（十进制字符串，缓存优先、未命中回源 DB）。响应中的付款方也使用 `payer_account_id`。
 
 ## 5. 幂等键约定
 

@@ -1,7 +1,7 @@
 // Package service: 用户素材库。
 //
 // 素材库是"给演练台的图片/音频/视频输入控件用的用户私有文件仓库"。功能拆分：
-//  1. 上传字节 / 从 URL 导入 → 转存到 COS（用户 ID 前缀目录）→ 落库记录；
+//  1. 上传字节 / 从 URL 导入 → 转存到 COS（密钥派生的用户目录）→ 落库记录；
 //  2. 按 user_id 分页读取；
 //  3. 软删：DB 立即标记 deleted_at；COS 对象保留一段时间后由后台清理任务真删。
 //     本文件只做前两步；后台清理任务先不实现（避免摊得太大）。
@@ -13,7 +13,10 @@ package service
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base32"
 	"errors"
 	"fmt"
 	"net/http"
@@ -22,6 +25,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
@@ -33,6 +37,13 @@ const (
 	MaterialImageMaxBytes int64 = 32 << 20
 	MaterialAudioMaxBytes int64 = 64 << 20
 	MaterialVideoMaxBytes int64 = 512 << 20
+)
+
+// ErrMaterialPathIdentityUnavailable 表示无法为素材生成不可枚举的用户目录。
+// 不回退到明文 user_id，避免身份信息泄漏。
+var ErrMaterialPathIdentityUnavailable = infraerrors.InternalServer(
+	"MATERIAL_PATH_IDENTITY_UNAVAILABLE",
+	"material path identity is unavailable",
 )
 
 // 每用户配额。单文件上限之外还必须有"总量"上限，否则任何登录用户都能通过
@@ -54,7 +65,7 @@ type UserMaterial struct {
 	ID          int64
 	UserID      int64
 	FileName    string // 原始文件名（前端展示用；上传时若为空会由 URL 派生）
-	CosKey      string // COS 桶内 key，"users/{user_id}/materials/YYYY/MM/{uuid}.{ext}"
+	CosKey      string // COS 桶内 key，用户目录由 user_id + account_id 的密钥派生值生成
 	CosURL      string // 对外可访问 URL（写回业务侧、传给上游模型用的就是它）
 	ContentType string
 	SizeBytes   int64
@@ -75,14 +86,23 @@ type UserMaterialRepository interface {
 
 // UserMaterialService 负责编排"字节 / URL → COS → DB"三步。
 type UserMaterialService struct {
-	repo UserMaterialRepository
-	cos  *COSImageTransferService
+	repo     UserMaterialRepository
+	cos      *COSImageTransferService
+	userRepo UserRepository
+	pathKey  []byte
 }
 
-// NewUserMaterialService 构造。cos 允许为 nil：此时所有写入类操作会返回 ErrCOSNotConfigured，
+// NewUserMaterialService 构造。写入素材时会用 userRepo 读取 account_id，
+// 再结合 cfg.JWT.Secret 派生不可枚举的用户目录；缺少任一身份材料时拒绝写入。
+// cos 允许为 nil：此时所有写入类操作会返回 ErrCOSNotConfigured，
 // 但 List / GetByID 仍可用（只是历史数据的只读视图）。
-func NewUserMaterialService(repo UserMaterialRepository, cos *COSImageTransferService) *UserMaterialService {
-	return &UserMaterialService{repo: repo, cos: cos}
+func NewUserMaterialService(repo UserMaterialRepository, cos *COSImageTransferService, userRepo UserRepository, cfg *config.Config) *UserMaterialService {
+	var pathKey []byte
+	if cfg != nil && strings.TrimSpace(cfg.JWT.Secret) != "" {
+		domainKey := sha256.Sum256([]byte("sub2api/material-path/v1\x00" + cfg.JWT.Secret))
+		pathKey = domainKey[:]
+	}
+	return &UserMaterialService{repo: repo, cos: cos, userRepo: userRepo, pathKey: pathKey}
 }
 
 // UploadBytes 把上传上来的字节转存到 COS 并落库。
@@ -125,7 +145,11 @@ func (s *UserMaterialService) UploadBytes(ctx context.Context, userID int64, fil
 		return nil, err
 	}
 
-	key := buildUserMaterialKey(userID, filename, ct)
+	userPrefix, err := s.materialUserPrefix(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	key := buildUserMaterialKey(userPrefix, filename, ct)
 	cosURL, err := s.cos.UploadBytesWithKey(ctx, key, data, ct)
 	if err != nil {
 		return nil, fmt.Errorf("upload to cos: %w", err)
@@ -212,7 +236,11 @@ func (s *UserMaterialService) ImportFromURL(ctx context.Context, userID int64, s
 
 	// 文件名：URL 最后一段（去 query），实在没有就用 key 的 base。
 	fname := deriveFileNameFromURL(srcURL)
-	key := buildUserMaterialKey(userID, fname, ct)
+	userPrefix, err := s.materialUserPrefix(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	key := buildUserMaterialKey(userPrefix, fname, ct)
 	cosURL, err := s.cos.UploadBytesWithKey(ctx, key, data, ct)
 	if err != nil {
 		return nil, fmt.Errorf("upload to cos: %w", err)
@@ -315,12 +343,27 @@ func (s *UserMaterialService) checkQuota(ctx context.Context, userID, incomingBy
 
 // ------------------------------- helpers -------------------------------
 
-// buildUserMaterialKey 生成 COS 对象 key："users/{user_id}/materials/YYYY/MM/{uuid}{ext}"。
-func buildUserMaterialKey(userID int64, filename, contentType string) string {
+// materialUserPrefix 生成不可枚举的用户目录。account_id 参与计算，避免仅凭连续数据库 ID 猜测目录。
+func (s *UserMaterialService) materialUserPrefix(ctx context.Context, userID int64) (string, error) {
+	if s == nil || len(s.pathKey) == 0 || s.userRepo == nil {
+		return "", ErrMaterialPathIdentityUnavailable
+	}
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil || user == nil || strings.TrimSpace(user.AccountID) == "" {
+		return "", ErrMaterialPathIdentityUnavailable
+	}
+	h := hmac.New(sha256.New, s.pathKey)
+	_, _ = fmt.Fprintf(h, "%d\x00%s", userID, strings.TrimSpace(user.AccountID))
+	encoded := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(h.Sum(nil))
+	return "u_" + strings.ToLower(encoded[:32]), nil
+}
+
+// buildUserMaterialKey 生成 COS 对象 key。用户目录是密钥派生值，不包含原始 user_id/account_id。
+func buildUserMaterialKey(userPrefix, filename, contentType string) string {
 	ext := ExtFromURLOrType(filename, contentType)
 	now := time.Now().UTC()
-	return fmt.Sprintf("users/%d/materials/%04d/%02d/%s%s",
-		userID, now.Year(), int(now.Month()), uuid.NewString(), ext)
+	return fmt.Sprintf("users/%s/materials/%04d/%02d/%s%s",
+		userPrefix, now.Year(), int(now.Month()), uuid.NewString(), ext)
 }
 
 // checkMaterialSize 按 kind 校验体积上限。

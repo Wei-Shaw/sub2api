@@ -25,7 +25,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageitem"
 	"github.com/Wei-Shaw/sub2api/ent/batchimagejob"
-	"github.com/Wei-Shaw/sub2api/ent/billingapp"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -36,6 +35,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/innerapiapp"
 	"github.com/Wei-Shaw/sub2api/ent/managedpolicy"
 	"github.com/Wei-Shaw/sub2api/ent/managedpolicyaction"
 	"github.com/Wei-Shaw/sub2api/ent/memberpolicyattachment"
@@ -155,7 +155,6 @@ func checkColumn(t, c string) error {
 			batchimageevent.Table:               batchimageevent.ValidColumn,
 			batchimageitem.Table:                batchimageitem.ValidColumn,
 			batchimagejob.Table:                 batchimagejob.ValidColumn,
-			billingapp.Table:                    billingapp.ValidColumn,
 			channelmonitor.Table:                channelmonitor.ValidColumn,
 			channelmonitordailyrollup.Table:     channelmonitordailyrollup.ValidColumn,
 			channelmonitorhistory.Table:         channelmonitorhistory.ValidColumn,
@@ -166,6 +165,7 @@ func checkColumn(t, c string) error {
 			group.Table:                         group.ValidColumn,
 			idempotencyrecord.Table:             idempotencyrecord.ValidColumn,
 			identityadoptiondecision.Table:      identityadoptiondecision.ValidColumn,
+			innerapiapp.Table:                   innerapiapp.ValidColumn,
 			managedpolicy.Table:                 managedpolicy.ValidColumn,
 			managedpolicyaction.Table:           managedpolicyaction.ValidColumn,
 			memberpolicyattachment.Table:        memberpolicyattachment.ValidColumn,

@@ -395,6 +395,7 @@
                 <ParamSchemaEditor
                   :model-value="row"
                   :removable="true"
+                  :allow-max-chars="true"
                   @update:modelValue="onOutputRowUpdate(idx, $event)"
                   @remove="removeOutputField(idx)"
                 />
@@ -1684,6 +1685,7 @@ function outputFieldToSchemaRow(f: OutputFieldSpec): SchemaRow {
     description: f.description || '',
     isEnum: f.enum === true,
     optionsText,
+    maxChars: typeof f.max_chars === 'number' && f.max_chars > 0 ? Math.trunc(f.max_chars) : 0,
   })
 }
 
@@ -1757,6 +1759,9 @@ function schemaRowsToOutputFields(rows: SchemaRow[]): OutputFieldSpec[] {
       defaultStr = (row.value || '').trim()
     }
     if (defaultStr) spec.default = defaultStr
+    if (type === 'string' && Number.isFinite(row.maxChars) && row.maxChars > 0) {
+      spec.max_chars = Math.trunc(row.maxChars)
+    }
     if (row.isEnum && (type === 'string' || type === 'number' || type === 'boolean')) {
       spec.enum = true
       const opts = row.optionsText

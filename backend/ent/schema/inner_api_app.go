@@ -10,28 +10,28 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// BillingApp 代表一个接入余额 RPC 的「扣费 app」。
-// 鉴权采用无状态 token：app 的 secret = AES-256-GCM(本地密钥, payload{app_id})，
+// InnerAPIApp 代表一个接入内部 API RPC 的服务 app。
+// 鉴权采用无状态 token：token = AES-256-GCM(本地密钥, payload{app_id, version})，
 // DB 不存任何密文/hash；本表仅做接入方注册（app_id / 名称 / 启停）与审计。
-type BillingApp struct {
+type InnerAPIApp struct {
 	ent.Schema
 }
 
-func (BillingApp) Annotations() []schema.Annotation {
+func (InnerAPIApp) Annotations() []schema.Annotation {
 	return []schema.Annotation{
-		entsql.Annotation{Table: "billing_apps"},
+		entsql.Annotation{Table: "inner_api_apps"},
 	}
 }
 
-func (BillingApp) Mixin() []ent.Mixin {
+func (InnerAPIApp) Mixin() []ent.Mixin {
 	return []ent.Mixin{
 		mixins.TimeMixin{},
 	}
 }
 
-func (BillingApp) Fields() []ent.Field {
+func (InnerAPIApp) Fields() []ent.Field {
 	return []ent.Field{
-		// 对外暴露的业务主键，如 "bapp_<base32>"
+		// 对外暴露的业务主键，如 "iapp_<base32>"
 		field.String("app_id").
 			MaxLen(64).
 			NotEmpty().
@@ -44,10 +44,13 @@ func (BillingApp) Fields() []ent.Field {
 		// token 版本：刷新 token 时 +1，使旧 token（携带旧版本）失效。
 		field.Int("token_version").
 			Default(1),
+		// 方法级授权；只允许 service 层定义的四种权限值。
+		field.JSON("permissions", []string{}).
+			Default([]string{}),
 	}
 }
 
-func (BillingApp) Indexes() []ent.Index {
+func (InnerAPIApp) Indexes() []ent.Index {
 	return []ent.Index{
 		// app_id 已 Unique() 声明
 		index.Fields("enabled"),

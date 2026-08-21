@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 
 	"github.com/stretchr/testify/require"
@@ -28,13 +30,13 @@ func (r *ownerScopedMaterialRepo) GetByID(_ context.Context, userID, id int64) (
 func TestUserMaterialGetByIDIsOwnerScoped(t *testing.T) {
 	t.Run("passes owner into repository query", func(t *testing.T) {
 		repo := &ownerScopedMaterialRepo{wantUserID: 22, wantID: 7, material: &UserMaterial{ID: 7, UserID: 22}}
-		material, err := NewUserMaterialService(repo, nil).GetByID(context.Background(), 22, 7)
+		material, err := NewUserMaterialService(repo, nil, nil, nil).GetByID(context.Background(), 22, 7)
 		require.NoError(t, err)
 		require.Equal(t, int64(22), material.UserID)
 	})
 	t.Run("other owner is indistinguishable from missing", func(t *testing.T) {
 		repo := &ownerScopedMaterialRepo{wantUserID: 99, wantID: 7, material: nil}
-		material, err := NewUserMaterialService(repo, nil).GetByID(context.Background(), 99, 7)
+		material, err := NewUserMaterialService(repo, nil, nil, nil).GetByID(context.Background(), 99, 7)
 		require.Nil(t, material)
 		require.ErrorIs(t, err, sql.ErrNoRows)
 	})
@@ -115,12 +117,12 @@ func (r *quotaStubRepo) UsageByUser(context.Context, int64) (int64, int64, error
 
 func TestCheckQuota(t *testing.T) {
 	t.Run("allows when well under both limits", func(t *testing.T) {
-		s := NewUserMaterialService(&quotaStubRepo{count: 10, totalBytes: 1 << 20}, nil)
+		s := NewUserMaterialService(&quotaStubRepo{count: 10, totalBytes: 1 << 20}, nil, nil, nil)
 		require.NoError(t, s.checkQuota(context.Background(), 1, 1<<20))
 	})
 
 	t.Run("rejects when count limit reached", func(t *testing.T) {
-		s := NewUserMaterialService(&quotaStubRepo{count: MaterialMaxCountPerUser}, nil)
+		s := NewUserMaterialService(&quotaStubRepo{count: MaterialMaxCountPerUser}, nil, nil, nil)
 		err := s.checkQuota(context.Background(), 1, 1)
 		require.Error(t, err)
 		require.Equal(t, "MATERIAL_COUNT_QUOTA_EXCEEDED", infraerrors.Reason(err))
@@ -128,27 +130,71 @@ func TestCheckQuota(t *testing.T) {
 	})
 
 	t.Run("rejects when incoming bytes would exceed size limit", func(t *testing.T) {
-		s := NewUserMaterialService(&quotaStubRepo{count: 1, totalBytes: MaterialMaxTotalBytesPerUser - 10}, nil)
+		s := NewUserMaterialService(&quotaStubRepo{count: 1, totalBytes: MaterialMaxTotalBytesPerUser - 10}, nil, nil, nil)
 		err := s.checkQuota(context.Background(), 1, 11)
 		require.Error(t, err)
 		require.Equal(t, "MATERIAL_SIZE_QUOTA_EXCEEDED", infraerrors.Reason(err))
 	})
 
 	t.Run("allows when incoming bytes exactly fit", func(t *testing.T) {
-		s := NewUserMaterialService(&quotaStubRepo{count: 1, totalBytes: MaterialMaxTotalBytesPerUser - 10}, nil)
+		s := NewUserMaterialService(&quotaStubRepo{count: 1, totalBytes: MaterialMaxTotalBytesPerUser - 10}, nil, nil, nil)
 		require.NoError(t, s.checkQuota(context.Background(), 1, 10))
 	})
 
 	t.Run("zero increment still catches an already-full account", func(t *testing.T) {
 		// ImportFromURL 的下载前预检用的就是 incoming=0：已经超额时不该白拉一遍大文件。
-		s := NewUserMaterialService(&quotaStubRepo{count: 1, totalBytes: MaterialMaxTotalBytesPerUser + 1}, nil)
+		s := NewUserMaterialService(&quotaStubRepo{count: 1, totalBytes: MaterialMaxTotalBytesPerUser + 1}, nil, nil, nil)
 		require.Error(t, s.checkQuota(context.Background(), 1, 0))
 	})
 
 	t.Run("fails open when the usage query errors", func(t *testing.T) {
 		// 配额是成本保护而非安全边界：DB 抖动时不应让正常用户传不了东西
 		// （单文件上限那一层仍然生效）。
-		s := NewUserMaterialService(&quotaStubRepo{err: errors.New("db down")}, nil)
+		s := NewUserMaterialService(&quotaStubRepo{err: errors.New("db down")}, nil, nil, nil)
 		require.NoError(t, s.checkQuota(context.Background(), 1, 1<<30))
 	})
+}
+
+type materialPathUserRepo struct {
+	UserRepository
+	user *User
+}
+
+func (r *materialPathUserRepo) GetByID(context.Context, int64) (*User, error) {
+	return r.user, nil
+}
+
+func TestMaterialUserPrefixIsOpaqueAndBoundToAccount(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.JWT.Secret = "test-jwt-secret"
+	userRepo := &materialPathUserRepo{user: &User{ID: 7, AccountID: "acct_public_7"}}
+	svc := NewUserMaterialService(nil, nil, userRepo, cfg)
+
+	prefix, err := svc.materialUserPrefix(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("materialUserPrefix: %v", err)
+	}
+	if strings.Contains(prefix, "acct_public_7") || strings.HasPrefix(prefix, "users/7") {
+		t.Fatalf("prefix leaks identity: %q", prefix)
+	}
+	if !strings.HasPrefix(prefix, "u_") || len(prefix) != 34 {
+		t.Fatalf("prefix format = %q", prefix)
+	}
+
+	userRepo.user.AccountID = "acct_public_other"
+	otherPrefix, err := svc.materialUserPrefix(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("materialUserPrefix for changed account: %v", err)
+	}
+	if prefix == otherPrefix {
+		t.Fatal("expected account_id to affect the derived prefix")
+	}
+}
+
+func TestMaterialUserPrefixDoesNotFallbackWithoutIdentity(t *testing.T) {
+	svc := NewUserMaterialService(nil, nil, nil, &config.Config{JWT: config.JWTConfig{Secret: "test-jwt-secret"}})
+	_, err := svc.materialUserPrefix(context.Background(), 1)
+	if !errors.Is(err, ErrMaterialPathIdentityUnavailable) {
+		t.Fatalf("expected identity error, got %v", err)
+	}
 }

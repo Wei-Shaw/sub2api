@@ -70,7 +70,7 @@ func TestModelAPIGatewayNativeEstimatePricing(t *testing.T) {
 		&service.BillingService{},
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 	)
-	h := NewModelAPIGatewayHandler(gatewayService, nil, nil, nil, nil, nil)
+	h := NewModelAPIGatewayHandler(gatewayService, nil, nil, nil, nil, nil, nil)
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

@@ -3,17 +3,18 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/Wei-Shaw/sub2api/ent/billingapp"
+	"github.com/Wei-Shaw/sub2api/ent/innerapiapp"
 )
 
-// BillingApp is the model entity for the BillingApp schema.
-type BillingApp struct {
+// InnerAPIApp is the model entity for the InnerAPIApp schema.
+type InnerAPIApp struct {
 	config `json:"-"`
 	// ID of the ent.
 	ID int64 `json:"id,omitempty"`
@@ -29,21 +30,25 @@ type BillingApp struct {
 	Enabled bool `json:"enabled,omitempty"`
 	// TokenVersion holds the value of the "token_version" field.
 	TokenVersion int `json:"token_version,omitempty"`
+	// Permissions holds the value of the "permissions" field.
+	Permissions  []string `json:"permissions,omitempty"`
 	selectValues sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
-func (*BillingApp) scanValues(columns []string) ([]any, error) {
+func (*InnerAPIApp) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case billingapp.FieldEnabled:
+		case innerapiapp.FieldPermissions:
+			values[i] = new([]byte)
+		case innerapiapp.FieldEnabled:
 			values[i] = new(sql.NullBool)
-		case billingapp.FieldID, billingapp.FieldTokenVersion:
+		case innerapiapp.FieldID, innerapiapp.FieldTokenVersion:
 			values[i] = new(sql.NullInt64)
-		case billingapp.FieldAppID, billingapp.FieldAppName:
+		case innerapiapp.FieldAppID, innerapiapp.FieldAppName:
 			values[i] = new(sql.NullString)
-		case billingapp.FieldCreatedAt, billingapp.FieldUpdatedAt:
+		case innerapiapp.FieldCreatedAt, innerapiapp.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -53,54 +58,62 @@ func (*BillingApp) scanValues(columns []string) ([]any, error) {
 }
 
 // assignValues assigns the values that were returned from sql.Rows (after scanning)
-// to the BillingApp fields.
-func (_m *BillingApp) assignValues(columns []string, values []any) error {
+// to the InnerAPIApp fields.
+func (_m *InnerAPIApp) assignValues(columns []string, values []any) error {
 	if m, n := len(values), len(columns); m < n {
 		return fmt.Errorf("mismatch number of scan values: %d != %d", m, n)
 	}
 	for i := range columns {
 		switch columns[i] {
-		case billingapp.FieldID:
+		case innerapiapp.FieldID:
 			value, ok := values[i].(*sql.NullInt64)
 			if !ok {
 				return fmt.Errorf("unexpected type %T for field id", value)
 			}
 			_m.ID = int64(value.Int64)
-		case billingapp.FieldCreatedAt:
+		case innerapiapp.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
 			} else if value.Valid {
 				_m.CreatedAt = value.Time
 			}
-		case billingapp.FieldUpdatedAt:
+		case innerapiapp.FieldUpdatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field updated_at", values[i])
 			} else if value.Valid {
 				_m.UpdatedAt = value.Time
 			}
-		case billingapp.FieldAppID:
+		case innerapiapp.FieldAppID:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field app_id", values[i])
 			} else if value.Valid {
 				_m.AppID = value.String
 			}
-		case billingapp.FieldAppName:
+		case innerapiapp.FieldAppName:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field app_name", values[i])
 			} else if value.Valid {
 				_m.AppName = value.String
 			}
-		case billingapp.FieldEnabled:
+		case innerapiapp.FieldEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field enabled", values[i])
 			} else if value.Valid {
 				_m.Enabled = value.Bool
 			}
-		case billingapp.FieldTokenVersion:
+		case innerapiapp.FieldTokenVersion:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field token_version", values[i])
 			} else if value.Valid {
 				_m.TokenVersion = int(value.Int64)
+			}
+		case innerapiapp.FieldPermissions:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field permissions", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Permissions); err != nil {
+					return fmt.Errorf("unmarshal field permissions: %w", err)
+				}
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -109,34 +122,34 @@ func (_m *BillingApp) assignValues(columns []string, values []any) error {
 	return nil
 }
 
-// Value returns the ent.Value that was dynamically selected and assigned to the BillingApp.
+// Value returns the ent.Value that was dynamically selected and assigned to the InnerAPIApp.
 // This includes values selected through modifiers, order, etc.
-func (_m *BillingApp) Value(name string) (ent.Value, error) {
+func (_m *InnerAPIApp) Value(name string) (ent.Value, error) {
 	return _m.selectValues.Get(name)
 }
 
-// Update returns a builder for updating this BillingApp.
-// Note that you need to call BillingApp.Unwrap() before calling this method if this BillingApp
+// Update returns a builder for updating this InnerAPIApp.
+// Note that you need to call InnerAPIApp.Unwrap() before calling this method if this InnerAPIApp
 // was returned from a transaction, and the transaction was committed or rolled back.
-func (_m *BillingApp) Update() *BillingAppUpdateOne {
-	return NewBillingAppClient(_m.config).UpdateOne(_m)
+func (_m *InnerAPIApp) Update() *InnerAPIAppUpdateOne {
+	return NewInnerAPIAppClient(_m.config).UpdateOne(_m)
 }
 
-// Unwrap unwraps the BillingApp entity that was returned from a transaction after it was closed,
+// Unwrap unwraps the InnerAPIApp entity that was returned from a transaction after it was closed,
 // so that all future queries will be executed through the driver which created the transaction.
-func (_m *BillingApp) Unwrap() *BillingApp {
+func (_m *InnerAPIApp) Unwrap() *InnerAPIApp {
 	_tx, ok := _m.config.driver.(*txDriver)
 	if !ok {
-		panic("ent: BillingApp is not a transactional entity")
+		panic("ent: InnerAPIApp is not a transactional entity")
 	}
 	_m.config.driver = _tx.drv
 	return _m
 }
 
 // String implements the fmt.Stringer.
-func (_m *BillingApp) String() string {
+func (_m *InnerAPIApp) String() string {
 	var builder strings.Builder
-	builder.WriteString("BillingApp(")
+	builder.WriteString("InnerAPIApp(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
@@ -155,9 +168,12 @@ func (_m *BillingApp) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("token_version=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TokenVersion))
+	builder.WriteString(", ")
+	builder.WriteString("permissions=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Permissions))
 	builder.WriteByte(')')
 	return builder.String()
 }
 
-// BillingApps is a parsable slice of BillingApp.
-type BillingApps []*BillingApp
+// InnerAPIApps is a parsable slice of InnerAPIApp.
+type InnerAPIApps []*InnerAPIApp

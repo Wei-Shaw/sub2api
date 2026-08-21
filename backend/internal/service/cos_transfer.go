@@ -766,7 +766,7 @@ func splitScheme(endpoint string) (scheme, host string, ok bool) {
 //
 // 与 UploadImageBytes / TransferImages 的差别：
 //   1. 允许调用方指定完整对象 key，跳过 cfg.Prefix 的自动拼接，从而支持
-//      "users/{user_id}/materials/YYYY/MM/{uuid}.{ext}" 这类按用户隔离的目录结构；
+//      "users/u_<opaque>/materials/YYYY/MM/{uuid}.{ext}" 这类按用户隔离的目录结构；
 //   2. 支持任意 MIME（image/audio/video），不再限定 image/*；
 //   3. 由调用方（UserMaterialService）负责元信息落库，本层只做"字节到桶"的搬运。
 //

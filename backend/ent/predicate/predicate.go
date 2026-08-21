@@ -45,9 +45,6 @@ type BatchImageItem func(*sql.Selector)
 // BatchImageJob is the predicate function for batchimagejob builders.
 type BatchImageJob func(*sql.Selector)
 
-// BillingApp is the predicate function for billingapp builders.
-type BillingApp func(*sql.Selector)
-
 // ChannelMonitor is the predicate function for channelmonitor builders.
 type ChannelMonitor func(*sql.Selector)
 
@@ -77,6 +74,9 @@ type IdempotencyRecord func(*sql.Selector)
 
 // IdentityAdoptionDecision is the predicate function for identityadoptiondecision builders.
 type IdentityAdoptionDecision func(*sql.Selector)
+
+// InnerAPIApp is the predicate function for innerapiapp builders.
+type InnerAPIApp func(*sql.Selector)
 
 // ManagedPolicy is the predicate function for managedpolicy builders.
 type ManagedPolicy func(*sql.Selector)

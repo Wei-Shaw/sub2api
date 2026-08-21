@@ -8,11 +8,6 @@ package main
 
 import (
 	"context"
-	"log"
-	"net/http"
-	"sync"
-	"time"
-
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
@@ -26,9 +21,14 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
+	"log"
+	"net/http"
+	"sync"
+	"time"
+)
 
+import (
 	_ "embed"
-
 	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
 )
 
@@ -331,12 +331,12 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	oidcConsentService := service.NewOidcConsentService(client)
 	oidcProviderService := service.NewOidcProviderService(client, settingRepository, oidcSigningService, oidcClientService, oidcConsentService)
 	oidcProviderSettingsHandler := admin.NewOidcProviderSettingsHandler(oidcProviderService)
-	billingAppRepository := repository.NewBillingAppRepository(client)
-	billingAppTokenCodec := service.NewBillingAppTokenCodec(configConfig)
-	billingAppService := service.NewBillingAppService(billingAppRepository, billingAppTokenCodec)
+	innerAPIAppRepository := repository.NewInnerAPIAppRepository(client)
+	innerAPITokenCodec := service.NewInnerAPITokenCodec(configConfig)
+	innerAPIAppService := service.NewInnerAPIAppService(innerAPIAppRepository, innerAPITokenCodec)
 	balanceLedgerRepository := repository.NewBalanceLedgerRepository(db)
 	balanceLedgerService := service.ProvideBalanceLedgerService(balanceLedgerRepository, billingCacheService, billingContextResolver)
-	billingAppHandler := admin.NewBillingAppHandler(billingAppService, balanceLedgerService)
+	innerAPIAppHandler := admin.NewInnerAPIAppHandler(innerAPIAppService, balanceLedgerService)
 	complianceHandler := admin.NewComplianceHandler(settingService)
 	cosImageHandler := admin.NewCOSImageHandler(cosImageTransferService)
 	adminFileService := service.NewAdminFileService(cosImageTransferService)
@@ -352,7 +352,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	costCenterHandler := admin.NewCostCenterHandler(costCenterService)
 	upstreamBillingProbeService := service.ProvideUpstreamBillingProbeService(accountRepository, accountTestService, settingService, leaderLockCache, db)
 	ollamaCloudUsageService := service.ProvideOllamaCloudUsageService(accountRepository, httpUpstream, settingService, secretEncryptor, configConfig, leaderLockCache, db)
-	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, kiroOAuthHandler, grokOAuthHandler, cnProviderHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, contentModerationHandler, promptAdminHandler, paymentHandler, rechargePromoHandler, modelIntroHandler, affiliateHandler, supportTicketHandler, supportTicketNotificationHandler, supportFaqHandler, supportDocIndexHandler, supportChatLogHandler, oidcClientHandler, oidcSigningKeyHandler, oidcProviderSettingsHandler, billingAppHandler, complianceHandler, cosImageHandler, fileHandler, asyncMediaConfigHandler, auditLogHandler, costCenterHandler, upstreamBillingProbeService, ollamaCloudUsageService)
+	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, kiroOAuthHandler, grokOAuthHandler, cnProviderHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, contentModerationHandler, promptAdminHandler, paymentHandler, rechargePromoHandler, modelIntroHandler, affiliateHandler, supportTicketHandler, supportTicketNotificationHandler, supportFaqHandler, supportDocIndexHandler, supportChatLogHandler, oidcClientHandler, oidcSigningKeyHandler, oidcProviderSettingsHandler, innerAPIAppHandler, complianceHandler, cosImageHandler, fileHandler, asyncMediaConfigHandler, auditLogHandler, costCenterHandler, upstreamBillingProbeService, ollamaCloudUsageService)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)
 	userMsgQueueCache := repository.NewUserMsgQueueCache(redisClient)
 	userMessageQueueService := service.ProvideUserMessageQueueService(userMsgQueueCache, rpmCache, configConfig)
@@ -363,7 +363,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	imageGatewayHandler := handler.NewImageGatewayHandler(gatewayService, openAIGatewayService, asyncMediaService, cosImageTransferService, configConfig)
 	asyncVideoTaskRepository := repository.NewAsyncVideoTaskRepository(client, db)
 	asyncVideoService := service.ProvideAsyncVideoService(asyncVideoTaskRepository, userRepository, billingService, deferredService, billingContextResolver, billingCacheService, modelPricingResolver, costCenterService, cosImageTransferService, opsService, configConfig)
-	modelAPIGatewayHandler := handler.NewModelAPIGatewayHandler(gatewayService, openAIGatewayService, accountService, asyncMediaService, asyncVideoService, settingService)
+	modelAPIGatewayHandler := handler.NewModelAPIGatewayHandler(gatewayService, openAIGatewayService, accountService, asyncMediaService, asyncVideoService, settingService, configConfig)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo, notificationEmailService)
 	totpHandler := handler.NewTotpHandler(totpService)
 	passkeyRepository := repository.NewPasskeyRepository(db)
@@ -403,7 +403,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	organizationHandler := handler.NewOrganizationHandler(organizationService, authService, companyOperationsMonitor, opsService, ssoSessionService)
 	videoModelHandler := handler.NewVideoModelHandler(apiKeyService, accountRepository, modelPricingResolver, modelIntroService, asyncVideoService, asyncMediaService)
 	userMaterialRepository := repository.NewUserMaterialRepository(db)
-	userMaterialService := service.NewUserMaterialService(userMaterialRepository, cosImageTransferService)
+	userMaterialService := service.NewUserMaterialService(userMaterialRepository, cosImageTransferService, userRepository, configConfig)
 	userMaterialHandler := handler.NewUserMaterialHandler(userMaterialService)
 	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)
 	idempotencyCleanupService := service.ProvideIdempotencyCleanupService(idempotencyRepository, configConfig)
@@ -422,7 +422,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	cleaner := inbox.ProvideCleaner(inboxRepository, inboxConfig)
 	engine := server.ProvideRouter(configConfig, handlers, jwtAuthMiddleware, optionalJWTAuthMiddleware, adminAuthMiddleware, apiKeyAuthMiddleware, auditLogMiddleware, stepUpAuthMiddleware, apiKeyService, subscriptionService, opsService, settingService, oidcProviderService, oidcSigningService, compositeRouteResolver, redisClient, inboxHandler, wsHandler, coordinator, cleaner)
 	httpServer := server.ProvideHTTPServer(configConfig, engine)
-	balanceRPCServer := rpc.NewBalanceRPCServer(configConfig, balanceLedgerService, billingAppService)
+	userAccountRepository := repository.NewUserAccountRepository(client, db)
+	innerAPIRPCServer := rpc.NewInnerAPIRPCServer(configConfig, balanceLedgerService, userMaterialService, userAccountRepository, innerAPIAppService)
 	opsMetricsCollector := service.ProvideOpsMetricsCollector(opsRepository, settingRepository, accountRepository, concurrencyService, db, redisClient, configConfig)
 	opsAggregationService := service.ProvideOpsAggregationService(opsRepository, settingRepository, db, redisClient, configConfig)
 	opsAlertEvaluatorService := service.ProvideOpsAlertEvaluatorService(opsService, opsRepository, emailService, redisClient, configConfig, proxyRepository)
@@ -445,7 +446,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, notificationOutboxWorker, companyOperationsMonitor, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, kiroOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, supportChatLegacyDetector, asyncMediaReconciler, upstreamBillingProbeService, ollamaCloudUsageService, auditLogService, promptService)
 	application := &Application{
 		Server:      httpServer,
-		BalanceRPC:  balanceRPCServer,
+		InnerAPIRPC: innerAPIRPCServer,
 		PromptAudit: promptService,
 		Cleanup:     v,
 	}
@@ -456,7 +457,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 
 type Application struct {
 	Server      *http.Server
-	BalanceRPC  *rpc.BalanceRPCServer
+	InnerAPIRPC *rpc.InnerAPIRPCServer
 	PromptAudit *securityaudit.PromptService
 	Cleanup     func()
 }

@@ -61,6 +61,7 @@ export type OutputFieldType = 'string' | 'number' | 'boolean' | 'object' | 'arra
  *   - required?：字段是否必然存在（语义/文档提示，前端只用于展示徽章）
  *   - enum?：字段是否枚举
  *   - options?：与 enum 配套的候选值列表；enum=false 时应缺省
+ *   - max_chars?：仅 string 字段的最大字符数；未填写时不限制
  *
  * 为让"object / array 类型能保存嵌套子字段"，额外扩展两个可选字段：
  *   - properties?：type='object' 时使用；键为子字段名，值为一份递归 schema
@@ -82,6 +83,7 @@ export interface OutputFieldSpec {
   options?: unknown[]
   properties?: Record<string, unknown>
   items?: unknown
+  max_chars?: number
 }
 
 /**
