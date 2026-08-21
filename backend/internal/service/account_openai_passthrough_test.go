@@ -141,6 +141,8 @@ func TestAccount_StrictResponsesUsesMappingAsModelAllowlist(t *testing.T) {
 	}
 	require.True(t, account.IsModelSupported("custom/model"))
 	require.False(t, account.IsModelSupported("other/model"))
+	require.Equal(t, "custom/model", resolveOpenAIAccountUpstreamModelForRequest(account, "custom/model", false))
+	require.Equal(t, "custom/model", resolveOpenAIAccountUpstreamModelForRequest(account, "custom/model", true))
 }
 
 func TestValidateOpenAIResponsesForwardingAccount(t *testing.T) {
