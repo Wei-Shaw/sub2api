@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -91,6 +92,10 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(upstreamBody, upstreamModel); normalized {
 		upstreamBody = normalizedBody
 	}
+
+	// 3b. DSML 泄漏防护·请求侧：从 assistant 历史里剥离已泄漏的 DSML 碎片（治级联）。
+	// 不清洗则污染历史会诱导模型复漏，响应侧的原地重试也会大概率失效。
+	upstreamBody = s.applyDSMLHistoryScrub(c, account, upstreamModel, upstreamBody)
 
 	// 4. Apply OpenAI fast policy on the CC body
 	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, upstreamBody)
@@ -230,7 +235,21 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	var result *OpenAIForwardResult
 	var forwardErr error
 	if clientStream {
-		result, forwardErr = s.streamRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
+		// DSML 泄漏防护·响应侧：门控命中时挂检测器；enforce 模式下再挂同账号
+		// 同请求体的原地重发闭包（重试不走 handler 的 failover 循环——那条路只在
+		// 零字节写出时可用，而这里 reasoning 已直播）。
+		var dsmlGuard *openAIDSMLLeakGuard
+		var dsmlResend func() (*http.Response, error)
+		if s.dsmlGuardActiveForBody(upstreamModel, upstreamBody) {
+			dsmlGuard = newOpenAIDSMLLeakGuard(s.cfg.Gateway.DSMLGuardObserve)
+			if !s.cfg.Gateway.DSMLGuardObserve {
+				resendBody := upstreamBody
+				dsmlResend = func() (*http.Response, error) {
+					return s.sendCCUpstreamRequest(ctx, c, account, targetURL, resendBody, clientStream, token, customUA, grokCacheIdentity)
+				}
+			}
+		}
+		result, forwardErr = s.streamRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body), dsmlGuard, dsmlResend)
 	} else {
 		result, forwardErr = s.bufferRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
@@ -259,6 +278,12 @@ func (s *OpenAIGatewayService) rawChatCompletionsURL(account *Account) (string, 
 // usage 字段仅在客户端请求 stream_options.include_usage=true 时出现于上游响应中。
 // 网关会对上游强制打开 include_usage 以保证计费完整，并原样向下游透传 usage，
 // 让级联代理或下游计费系统也能拿到完整用量。
+//
+// dsmlGuard 非 nil 时启用 DSML 泄漏防护（见 openai_dsml_leak_guard.go）：
+// reasoning 照常直播，正文通道进入 128 字节 sniff 扣留；终局判定为泄漏且
+// dsmlResend 可用时，丢弃被扣坏流、对同账号重发同一请求体，下一个 attempt 的
+// 事件续写进同一条客户端 SSE。重试耗尽或重发失败一律原样冲洗被扣输出——
+// 误判的最坏代价是延迟，绝不向客户端造错、绝不丢数据。
 func (s *OpenAIGatewayService) streamRawChatCompletions(
 	c *gin.Context,
 	resp *http.Response,
@@ -270,6 +295,8 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	serviceTier *string,
 	startTime time.Time,
 	requestBodyLen int,
+	dsmlGuard *openAIDSMLLeakGuard,
+	dsmlResend func() (*http.Response, error),
 ) (*OpenAIForwardResult, error) {
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
@@ -277,7 +304,6 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	}
 	requestID := resp.Header.Get("x-request-id")
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
-	scanner := s.newUpstreamSSEScanner(resp.Body)
 
 	var usage OpenAIUsage
 	var firstTokenMs *int
@@ -286,7 +312,11 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	pendingLines := make([]string, 0, 8)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 
-	writeLine := func(line string) {
+	// writeMu 串行化扫描循环与 DSML 保活 goroutine 对 c.Writer 及输出状态的访问。
+	// 无 guard 时没有第二个写者，锁无竞争。
+	var writeMu sync.Mutex
+
+	writeLineLocked := func(line string) {
 		if clientDisconnected {
 			return
 		}
@@ -315,69 +345,231 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 				zap.Error(werr),
 				zap.String("request_id", requestID),
 			)
+			return
+		}
+		c.Writer.Flush()
+	}
+	writeLine := func(line string) {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		writeLineLocked(line)
+	}
+
+	// content-hold 生效期间的 SSE 注释保活：reasoning 已直播、正文被扣住时，
+	// 防止零字节间隔触发客户端/中间层空闲超时。零字节不变量在 relay 内重试
+	// 方案下无须保持（保活仅在已开流、即 clientOutputStarted 后写出）。
+	if dsmlGuard != nil && !dsmlGuard.observeOnly {
+		keepaliveStop := make(chan struct{})
+		var keepaliveDone sync.WaitGroup
+		keepaliveDone.Add(1)
+		// 必须 join：不等 goroutine 退出就返回的话，一次已越过 select 的 tick 可能
+		// 在外层中间件回收 pooled writer 之后才拿到 writeMu 并写 c.Writer。
+		defer func() {
+			close(keepaliveStop)
+			keepaliveDone.Wait()
+		}()
+		go func() {
+			defer keepaliveDone.Done()
+			ticker := time.NewTicker(dsmlGuardKeepaliveInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-keepaliveStop:
+					return
+				case <-ticker.C:
+					if !dsmlGuard.Holding() {
+						continue
+					}
+					writeMu.Lock()
+					if clientOutputStarted && !clientDisconnected {
+						if _, werr := c.Writer.WriteString(dsmlGuardKeepaliveComment + "\n\n"); werr != nil {
+							clientDisconnected = true
+						} else {
+							c.Writer.Flush()
+						}
+					}
+					writeMu.Unlock()
+				}
+			}
+		}()
+	}
+
+	originalResp := resp
+	defer func() {
+		if resp != originalResp {
+			_ = resp.Body.Close()
+		}
+	}()
+
+	maxAttempts := 1
+	if dsmlGuard != nil && !dsmlGuard.observeOnly && dsmlResend != nil && s.cfg != nil && s.cfg.Gateway.DSMLGuardMaxRetries > 0 {
+		maxAttempts = 1 + s.cfg.Gateway.DSMLGuardMaxRetries
+	}
+	attempt := 1
+	var attemptUsages []string
+	var retryFallbackUsage OpenAIUsage
+	var scanErr error
+	flushHeld := func() {
+		for _, held := range dsmlGuard.TakeHeldLines() {
+			writeLine(held)
 		}
 	}
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		refusalDetector.ObserveSSELine(line)
-		if payload, ok := extractOpenAISSEDataLine(line); ok {
-			trimmedPayload := strings.TrimSpace(payload)
-			if trimmedPayload != "[DONE]" {
-				observer.ObserveOpenAI([]byte(payload), strings.TrimSpace(gjson.Get(payload, "type").String()))
-				usageOnlyChunk := isOpenAIChatUsageOnlyStreamChunk(payload)
-				if u := extractCCStreamUsage(payload); u != nil {
-					usage = *u
-				}
-				if firstTokenMs == nil && !usageOnlyChunk {
-					elapsed := int(time.Since(startTime).Milliseconds())
-					firstTokenMs = &elapsed
+	for {
+		scanner := s.newUpstreamSSEScanner(resp.Body)
+		for scanner.Scan() {
+			line := scanner.Text()
+			refusalDetector.ObserveSSELine(line)
+			if payload, ok := extractOpenAISSEDataLine(line); ok {
+				trimmedPayload := strings.TrimSpace(payload)
+				if trimmedPayload != "[DONE]" {
+					observer.ObserveOpenAI([]byte(payload), strings.TrimSpace(gjson.Get(payload, "type").String()))
+					usageOnlyChunk := isOpenAIChatUsageOnlyStreamChunk(payload)
+					if u := extractCCStreamUsage(payload); u != nil {
+						usage = *u
+					}
+					if firstTokenMs == nil && !usageOnlyChunk {
+						elapsed := int(time.Since(startTime).Milliseconds())
+						firstTokenMs = &elapsed
+					}
 				}
 			}
-		}
-		line = applyOllamaCloudRawChatCompletionsSSELine(account, line)
-		line = stripEmptyChatToolCallIdentityFromSSELine(line)
+			line = applyOllamaCloudRawChatCompletionsSSELine(account, line)
+			line = stripEmptyChatToolCallIdentityFromSSELine(line)
 
-		writeLine(line)
-		if line == "" {
-			if !clientDisconnected && clientOutputStarted {
-				c.Writer.Flush()
+			if dsmlGuard == nil {
+				writeLine(line)
+				continue
 			}
-			continue
+			for _, out := range dsmlGuard.HandleLine(line) {
+				writeLine(out)
+			}
 		}
-		if !clientDisconnected && clientOutputStarted {
-			c.Writer.Flush()
+		scanErr = scanner.Err()
+
+		if dsmlGuard == nil || dsmlGuard.observeOnly || !dsmlGuard.LeakVerdict() {
+			break
+		}
+
+		// 泄漏判定成立（enforce 模式）：坏流的正文一个字节都没写给客户端。
+		attemptUsages = append(attemptUsages, fmt.Sprintf("attempt %d usage: input=%d output=%d", attempt, usage.InputTokens, usage.OutputTokens))
+		if attempt >= maxAttempts {
+			// 耗尽即放行：最后一次 attempt 的被扣输出原样冲洗（降级 = 今天的行为）。
+			appendDSMLGuardOpsEvent(c, account, requestID,
+				fmt.Sprintf("dsml leak persisted after %d attempt(s); released held output unchanged", attempt),
+				strings.Join(attemptUsages, "; "))
+			flushHeld()
+			break
+		}
+
+		_ = resp.Body.Close()
+		newResp, retryErr := dsmlResend()
+		if retryErr != nil {
+			appendDSMLGuardOpsEvent(c, account, requestID,
+				"dsml leak detected but retry request failed; released held output unchanged",
+				retryErr.Error())
+			flushHeld()
+			break
+		}
+		if newResp.StatusCode >= 400 {
+			_, upstreamMsg := s.readOpenAIUpstreamError(newResp)
+			_ = newResp.Body.Close()
+			appendDSMLGuardOpsEvent(c, account, requestID,
+				fmt.Sprintf("dsml leak retry got HTTP %d; released held output unchanged", newResp.StatusCode),
+				upstreamMsg)
+			flushHeld()
+			break
+		}
+
+		// 重试可行：丢弃坏 attempt 的全部被扣行（含终态帧、usage、[DONE]），
+		// 同一条客户端 SSE 续写下一个 attempt。
+		discardedLines, discardedBytes := dsmlGuard.ResetForRetry()
+		appendDSMLGuardOpsEvent(c, account, requestID,
+			fmt.Sprintf("dsml tool-call leak detected in text channel; discarded %d held line(s) (%d bytes) and retried on same account (attempt %d/%d)", discardedLines, discardedBytes, attempt+1, maxAttempts),
+			strings.Join(attemptUsages, "; "))
+		writeMu.Lock()
+		if !clientOutputStarted {
+			// 客户端尚未收到任何字节：坏 attempt 的前导行（role/reasoning）也一并
+			// 丢弃，客户端将只看到干净 attempt，TTFT 也随之复位。
+			pendingLines = pendingLines[:0]
+			firstTokenMs = nil
+		}
+		writeMu.Unlock()
+		// 换新 refusal detector：其旗标单调锁存，坏 attempt 的 sawContent 会让
+		// 下一个 attempt 的真 silent refusal 失去零字节 failover 资格。
+		refusalDetector = newOpenAIChatSilentRefusalDetector(requestBodyLen)
+		// 换新 response-model observer：Observe() 在模型串不一致时单调锁存
+		// conflict=true，坏 attempt 的观察会让 response_model 计费静默降级为
+		// baseline。begin 会同时刷新 gin context 里的引用，计费读取的即新观察。
+		observer = beginUpstreamResponseModelObservation(c)
+		resp = newResp
+		if rid := strings.TrimSpace(newResp.Header.Get("x-request-id")); rid != "" {
+			requestID = rid
+		}
+		// 计费口径：只记最后一次 attempt 的 usage（各 attempt 的 usage 已入 ops
+		// 事件）；上一 attempt 的 usage 留作断流兜底，见循环后的回退。
+		retryFallbackUsage = usage
+		usage = OpenAIUsage{}
+		attempt++
+	}
+
+	if usage.InputTokens == 0 && usage.OutputTokens == 0 &&
+		(retryFallbackUsage.InputTokens != 0 || retryFallbackUsage.OutputTokens != 0) {
+		// 最后一次 attempt 在 usage chunk 之前断流：回退计上一 attempt 的 usage，
+		// 避免上游已双计费而网关计零。
+		usage = retryFallbackUsage
+	}
+
+	if dsmlGuard != nil {
+		// 上游中途断流等场景的 fail-open：残留被扣行原样冲洗，绝不丢数据。
+		flushHeld()
+		if dsmlGuard.observeOnly && dsmlGuard.LeakVerdict() {
+			appendDSMLGuardOpsEvent(c, account, requestID,
+				"dsml leak detected (observe mode; stream passed through unchanged)", "")
+		}
+		if dsmlGuard.LateMarkerSeen() {
+			appendDSMLGuardOpsEvent(c, account, requestID,
+				"dsml marker appeared after sniff release; stream not recoverable", "")
+		}
+		if dsmlGuard.CapReleased() {
+			appendDSMLGuardOpsEvent(c, account, requestID,
+				"dsml guard hold cap exceeded; released held output unchanged", "")
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+	if scanErr != nil {
+		if !errors.Is(scanErr, context.Canceled) && !errors.Is(scanErr, context.DeadlineExceeded) {
 			logger.L().Warn("openai chat_completions raw: stream read error",
-				zap.Error(err),
+				zap.Error(scanErr),
 				zap.String("request_id", requestID),
 			)
 		}
-	} else if !clientDisconnected && !clientOutputStarted {
-		if refusalDetector.IsSilentRefusal() {
-			return nil, newOpenAISilentRefusalFailoverError(c, account, requestID)
-		}
-		if len(pendingLines) > 0 {
-			writeStreamHeaders()
-			for _, pending := range pendingLines {
-				if _, werr := c.Writer.WriteString(pending + "\n"); werr != nil {
-					clientDisconnected = true
-					logger.L().Debug("openai chat_completions raw: client disconnected during final flush",
-						zap.Error(werr),
-						zap.String("request_id", requestID),
-					)
-					break
+	} else {
+		writeMu.Lock()
+		if !clientDisconnected && !clientOutputStarted {
+			if refusalDetector.IsSilentRefusal() {
+				writeMu.Unlock()
+				return nil, newOpenAISilentRefusalFailoverError(c, account, requestID)
+			}
+			if len(pendingLines) > 0 {
+				writeStreamHeaders()
+				for _, pending := range pendingLines {
+					if _, werr := c.Writer.WriteString(pending + "\n"); werr != nil {
+						clientDisconnected = true
+						logger.L().Debug("openai chat_completions raw: client disconnected during final flush",
+							zap.Error(werr),
+							zap.String("request_id", requestID),
+						)
+						break
+					}
+				}
+				if !clientDisconnected {
+					c.Writer.Flush()
+					clientOutputStarted = true
 				}
 			}
-			if !clientDisconnected {
-				c.Writer.Flush()
-				clientOutputStarted = true
-			}
 		}
+		writeMu.Unlock()
 	}
 
 	return &OpenAIForwardResult{
