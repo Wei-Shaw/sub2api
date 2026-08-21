@@ -145,7 +145,13 @@
             class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
           >
             <p class="mb-3 text-sm text-blue-700 dark:text-blue-300">
-              {{ t(getOAuthKey('refreshTokenDesc')) }}
+              {{
+                t(
+                  reauthorize && platform === 'openai'
+                    ? 'admin.accounts.oauth.openai.refreshTokenReauthDesc'
+                    : getOAuthKey('refreshTokenDesc')
+                )
+              }}
             </p>
 
             <!-- Refresh Token Input -->
@@ -156,7 +162,7 @@
                 <Icon name="key" size="sm" class="text-blue-500" />
                 Refresh Token
                 <span
-                  v-if="parsedRefreshTokenCount > 1"
+                  v-if="!reauthorize && parsedRefreshTokenCount > 1"
                   class="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white"
                 >
                   {{ t('admin.accounts.oauth.keysCount', { count: parsedRefreshTokenCount }) }}
@@ -166,10 +172,16 @@
                 v-model="refreshTokenInput"
                 rows="3"
                 class="input w-full resize-y font-mono text-sm"
-                :placeholder="t(getOAuthKey('refreshTokenPlaceholder'))"
+                :placeholder="
+                  t(
+                    reauthorize && platform === 'openai'
+                      ? 'admin.accounts.oauth.openai.refreshTokenReauthPlaceholder'
+                      : getOAuthKey('refreshTokenPlaceholder')
+                  )
+                "
               ></textarea>
               <p
-                v-if="parsedRefreshTokenCount > 1"
+                v-if="!reauthorize && parsedRefreshTokenCount > 1"
                 class="mt-1 text-xs text-blue-600 dark:text-blue-400"
               >
                 {{ t('admin.accounts.oauth.batchCreateAccounts', { count: parsedRefreshTokenCount }) }}
@@ -366,7 +378,15 @@
                 ></path>
               </svg>
               <Icon v-else name="sparkles" size="sm" class="mr-2" />
-              {{ loading ? t(getOAuthKey('validating')) : t(getOAuthKey('validateAndCreate')) }}
+              {{
+                loading
+                  ? t(getOAuthKey('validating'))
+                  : t(
+                      reauthorize && platform === 'openai'
+                        ? 'admin.accounts.oauth.openai.validateAndReauthorize'
+                        : getOAuthKey('validateAndCreate')
+                    )
+              }}
             </button>
           </div>
         </div>
@@ -377,7 +397,15 @@
             class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
           >
             <p class="mb-3 text-sm text-blue-700 dark:text-blue-300">
-              {{ t(isAgentIdentityInput ? 'admin.accounts.oauth.openai.agentIdentityDesc' : 'admin.accounts.oauth.openai.codexSessionDesc') }}
+              {{
+                t(
+                  isAgentIdentityInput
+                    ? 'admin.accounts.oauth.openai.agentIdentityDesc'
+                    : reauthorize
+                      ? 'admin.accounts.oauth.openai.codexSessionReauthDesc'
+                      : 'admin.accounts.oauth.openai.codexSessionDesc'
+                )
+              }}
             </p>
 
             <div class="mb-4">
@@ -387,7 +415,7 @@
                 <Icon name="key" size="sm" class="text-blue-500" />
                 {{ t(isAgentIdentityInput ? 'admin.accounts.oauth.openai.agentIdentityInputLabel' : 'admin.accounts.oauth.openai.codexSessionInputLabel') }}
                 <span
-                  v-if="parsedCodexSessionCount > 1"
+                  v-if="!reauthorize && parsedCodexSessionCount > 1"
                   class="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white"
                 >
                   {{ t('admin.accounts.oauth.keysCount', { count: parsedCodexSessionCount }) }}
@@ -397,7 +425,15 @@
                 v-model="codexSessionInput"
                 rows="8"
                 class="input w-full resize-y font-mono text-sm"
-                :placeholder="t(isAgentIdentityInput ? 'admin.accounts.oauth.openai.agentIdentityPlaceholder' : 'admin.accounts.oauth.openai.codexSessionPlaceholder')"
+                :placeholder="
+                  t(
+                    isAgentIdentityInput
+                      ? 'admin.accounts.oauth.openai.agentIdentityPlaceholder'
+                      : reauthorize
+                        ? 'admin.accounts.oauth.openai.codexSessionReauthPlaceholder'
+                        : 'admin.accounts.oauth.openai.codexSessionPlaceholder'
+                  )
+                "
                 spellcheck="false"
               ></textarea>
               <p class="mt-1 text-xs text-blue-600 dark:text-blue-400">
@@ -444,7 +480,11 @@
               {{
                 loading
                   ? t('admin.accounts.oauth.openai.validating')
-                  : t('admin.accounts.oauth.openai.codexSessionImportAndCreate')
+                  : t(
+                      reauthorize
+                        ? 'admin.accounts.oauth.openai.codexSessionImportAndReauthorize'
+                        : 'admin.accounts.oauth.openai.codexSessionImportAndCreate'
+                    )
               }}
             </button>
           </div>
@@ -456,7 +496,13 @@
             class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
           >
             <p class="mb-3 text-sm text-blue-700 dark:text-blue-300">
-              {{ t('admin.accounts.oauth.openai.codexPatDesc') }}
+              {{
+                t(
+                  reauthorize
+                    ? 'admin.accounts.oauth.openai.codexPatReauthDesc'
+                    : 'admin.accounts.oauth.openai.codexPatDesc'
+                )
+              }}
             </p>
 
             <div class="mb-4">
@@ -470,7 +516,13 @@
                 v-model="codexPATInput"
                 rows="3"
                 class="input w-full resize-y font-mono text-sm"
-                :placeholder="t('admin.accounts.oauth.openai.codexPatPlaceholder')"
+                :placeholder="
+                  t(
+                    reauthorize
+                      ? 'admin.accounts.oauth.openai.codexPatReauthPlaceholder'
+                      : 'admin.accounts.oauth.openai.codexPatPlaceholder'
+                  )
+                "
                 spellcheck="false"
               ></textarea>
               <p class="mt-1 text-xs text-blue-600 dark:text-blue-400">
@@ -517,7 +569,11 @@
               {{
                 loading
                   ? t('admin.accounts.oauth.openai.validating')
-                  : t('admin.accounts.oauth.openai.codexPatImportAndCreate')
+                  : t(
+                      reauthorize
+                        ? 'admin.accounts.oauth.openai.codexPatImportAndReauthorize'
+                        : 'admin.accounts.oauth.openai.codexPatImportAndCreate'
+                    )
               }}
             </button>
           </div>
@@ -932,6 +988,7 @@ interface Props {
   initialEmailPassword?: string
   platform?: AccountPlatform // Platform type for different UI/text
   showProjectId?: boolean // New prop to control project ID visibility
+  reauthorize?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -957,7 +1014,8 @@ const props = withDefaults(defineProps<Props>(), {
   initialInputMethod: 'manual',
   initialEmailPassword: '',
   platform: 'anthropic',
-  showProjectId: true
+  showProjectId: true,
+  reauthorize: false
 })
 
 const emit = defineEmits<{

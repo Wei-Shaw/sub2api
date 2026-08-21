@@ -1599,6 +1599,8 @@
           </div>
           <button
             type="button"
+            data-testid="edit-openai-passthrough-toggle"
+            :disabled="isSparkShadow"
             @click="openaiPassthroughEnabled = !openaiPassthroughEnabled"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
@@ -1630,6 +1632,7 @@
           <button
             type="button"
             data-testid="edit-openai-flatten-namespaces-toggle"
+            :disabled="isSparkShadow"
             @click="openaiFlattenNamespacesEnabled = !openaiFlattenNamespacesEnabled"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
@@ -1678,6 +1681,7 @@
                 :key="option.value"
                 type="button"
                 :data-testid="`codex-image-tool-${option.value}`"
+                :disabled="isSparkShadow"
                 @click="codexImageToolMode = option.value"
                 :class="[
                   'group flex min-h-[62px] items-start gap-2 rounded-md border px-3 py-2 text-left transition-all',
@@ -1722,14 +1726,14 @@
             </p>
           </div>
           <div class="w-52">
-            <Select v-model="openaiResponsesWebSocketV2Mode" data-testid="edit-openai-ws-mode-select" :options="openAIWSModeOptions" />
+            <Select v-model="openaiResponsesWebSocketV2Mode" data-testid="edit-openai-ws-mode-select" :options="openAIWSModeOptions" :disabled="isSparkShadow" />
           </div>
         </div>
       </div>
 
-      <!-- OpenAI APIKey Responses API support mode -->
+      <!-- OpenAI Responses API support mode -->
       <div
-        v-if="account?.platform === 'openai' && account?.type === 'apikey'"
+        v-if="account?.platform === 'openai' && (account?.type === 'apikey' || isSparkShadow)"
         class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -1743,13 +1747,13 @@
             <Select
               v-model="openAIResponsesMode"
               :options="openAIResponsesModeOptions"
-              :disabled="!openAITextGenerationCapabilityEnabled"
+              :disabled="isSparkShadow || !openAITextGenerationCapabilityEnabled"
               data-testid="openai-responses-mode-select"
             />
           </div>
         </div>
         <div
-          v-if="openAITextGenerationCapabilityEnabled"
+          v-if="isSparkShadow || openAITextGenerationCapabilityEnabled"
           class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-700 dark:text-gray-300"
         >
           <span class="font-medium">{{ t(openAIResponsesStatusKey) }}</span>
@@ -1761,7 +1765,7 @@
         >
           {{ t('admin.accounts.openai.responsesModeTextDisabledHint') }}
         </div>
-        <div>
+        <div v-if="account?.type === 'apikey'">
           <label class="input-label mb-2 block">{{ t('admin.accounts.openai.endpointCapabilities') }}</label>
           <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label
@@ -1980,7 +1984,7 @@
 
       <!-- OpenAI API 长上下文计费开关 -->
       <div
-        v-if="account?.platform === 'openai' && !isSparkShadow && !hideAccountLongContextBilling && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
+        v-if="account?.platform === 'openai' && !hideAccountLongContextBilling && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -1995,6 +1999,7 @@
             data-testid="openai-long-context-billing-toggle"
             role="switch"
             :aria-checked="openAILongContextBillingEnabled"
+            :disabled="isSparkShadow"
             @click="openAILongContextBillingEnabled = !openAILongContextBillingEnabled"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
@@ -2024,6 +2029,8 @@
           </div>
           <button
             type="button"
+            data-testid="edit-codex-cli-only-toggle"
+            :disabled="isSparkShadow"
             @click="codexCLIOnlyEnabled = !codexCLIOnlyEnabled"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
@@ -2050,6 +2057,8 @@
           </div>
           <button
             type="button"
+            data-testid="edit-codex-cli-only-app-server-toggle"
+            :disabled="isSparkShadow"
             @click="codexCLIOnlyAppServerEnabled = !codexCLIOnlyAppServerEnabled"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
@@ -2079,8 +2088,24 @@
             </p>
           </div>
           <div class="w-52 flex-shrink-0">
-            <Select v-model="codexFingerprintMode" data-testid="edit-codex-fingerprint-mode-select" :options="codexFingerprintModeOptions" />
+            <Select v-model="codexFingerprintMode" data-testid="edit-codex-fingerprint-mode-select" :options="codexFingerprintModeOptions" :disabled="isSparkShadow" />
           </div>
+        </div>
+      </div>
+
+      <div
+        v-if="account?.platform === 'openai' && account?.type === 'oauth'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <span class="input-label mb-0 block">{{ t('admin.accounts.openai.codexInstallationId') }}</span>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.openai.codexInstallationIdDesc') }}
+        </p>
+        <div
+          data-testid="openai-codex-installation-id"
+          class="mt-2 select-all break-all rounded-lg bg-gray-50 px-3 py-2 font-mono text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-200"
+        >
+          {{ account?.extra?.openai_device_id || t('admin.accounts.openai.codexInstallationIdPending') }}
         </div>
       </div>
 
@@ -2114,7 +2139,7 @@
             </p>
           </div>
           <div class="w-44">
-            <Select v-model="openAICompactMode" :options="openAICompactModeOptions" />
+            <Select v-model="openAICompactMode" data-testid="edit-openai-compact-mode-select" :options="openAICompactModeOptions" :disabled="isSparkShadow" />
           </div>
         </div>
         <div class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-700 dark:text-gray-300">
@@ -3554,7 +3579,7 @@ const buildModelRestrictionMapping = () =>
   buildModelMappingObject('combined', allowedModels.value, modelMappings.value)
 
 const applyOpenAIModelMappingCredentials = (credentials: Record<string, unknown>) => {
-  const shouldApplyModelMapping = !openaiPassthroughEnabled.value
+  const shouldApplyModelMapping = isSparkShadow.value || !openaiPassthroughEnabled.value
 
   if (shouldApplyModelMapping) {
     const modelMapping = buildModelRestrictionMapping()
@@ -3659,8 +3684,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       ? readPlanType(newAccount.credentials as Record<string, unknown> | undefined)
       : ''
     openAICompactMode.value = (extra?.openai_compact_mode as OpenAICompactMode) || 'auto'
-    if (newAccount.type === 'apikey') {
+    if (newAccount.type === 'apikey' || newAccount.parent_account_id != null) {
       openAIResponsesMode.value = normalizeOpenAIResponsesMode(extra?.openai_responses_mode)
+    }
+    if (newAccount.type === 'apikey') {
       openAIEndpointCapabilities.value = readOpenAIEndpointCapabilities(
         newAccount.credentials as Record<string, unknown> | undefined
       )
@@ -3668,10 +3695,19 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         openAIResponsesMode.value = 'auto'
       }
     }
+    const nestedOpenAIExtra = extra?.openai !== null && typeof extra?.openai === 'object'
+      ? extra.openai as Record<string, unknown>
+      : undefined
     const codexImageGenerationBridgeValue = typeof extra?.codex_image_generation_bridge === 'boolean'
       ? extra.codex_image_generation_bridge
-      : extra?.codex_image_generation_bridge_enabled
-    if (extra?.codex_image_generation_explicit_tool_policy === 'strip') {
+      : typeof extra?.codex_image_generation_bridge_enabled === 'boolean'
+        ? extra.codex_image_generation_bridge_enabled
+        : typeof nestedOpenAIExtra?.codex_image_generation_bridge === 'boolean'
+          ? nestedOpenAIExtra.codex_image_generation_bridge
+          : nestedOpenAIExtra?.codex_image_generation_bridge_enabled
+    const codexImageGenerationExplicitToolPolicy = extra?.codex_image_generation_explicit_tool_policy ??
+      nestedOpenAIExtra?.codex_image_generation_explicit_tool_policy
+    if (codexImageGenerationExplicitToolPolicy === 'strip') {
       codexImageToolMode.value = 'block'
     } else if (codexImageGenerationBridgeValue === true) {
       codexImageToolMode.value = 'enabled'
@@ -3684,6 +3720,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       fallbackEnabledKeys: ['responses_websockets_v2_enabled', 'openai_ws_enabled'],
       defaultMode: OPENAI_WS_MODE_OFF
     })
+    if (newAccount.parent_account_id != null && extra?.openai_ws_force_http === true) {
+      openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_HTTP_BRIDGE
+    }
     openaiAPIKeyResponsesWebSocketV2Mode.value = resolveOpenAIWSModeFromExtra(extra, {
       modeKey: 'openai_apikey_responses_websockets_v2_mode',
       enabledKey: 'openai_apikey_responses_websockets_v2_enabled',
@@ -4521,8 +4560,10 @@ const handleSubmit = async () => {
 
   const updatePayload: Record<string, unknown> = { ...form }
   try {
-    // 后端期望 proxy_id: 0 表示清除代理，而不是 null
-    if (updatePayload.proxy_id === null) {
+    if (isSparkShadow.value) {
+      delete updatePayload.proxy_id
+    } else if (updatePayload.proxy_id === null) {
+      // 后端期望 proxy_id: 0 表示清除代理，而不是 null
       updatePayload.proxy_id = 0
     }
     if (form.expires_at === null) {
@@ -5020,7 +5061,7 @@ const handleSubmit = async () => {
     }
 
     // For OpenAI OAuth/SetupToken/API Key accounts, handle passthrough mode in extra
-    if (props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'setup-token' || props.account.type === 'apikey')) {
+    if (props.account.platform === 'openai' && !isSparkShadow.value && (props.account.type === 'oauth' || props.account.type === 'setup-token' || props.account.type === 'apikey')) {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true

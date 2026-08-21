@@ -549,6 +549,22 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	if account.IsCredentialShadow() && input.Extra != nil {
+		for _, key := range openAIShadowUpstreamProfileExtraKeys {
+			if _, ok := input.Extra[key]; ok {
+				return nil, infraerrors.New(http.StatusBadRequest, "SPARK_SHADOW_PROFILE_INHERITED",
+					"spark shadow upstream profile is inherited from parent account")
+			}
+		}
+		if openAIExtra, ok := input.Extra[PlatformOpenAI].(map[string]any); ok {
+			for _, key := range openAIShadowUpstreamProfileNestedExtraKeys {
+				if _, ok := openAIExtra[key]; ok {
+					return nil, infraerrors.New(http.StatusBadRequest, "SPARK_SHADOW_PROFILE_INHERITED",
+						"spark shadow upstream profile is inherited from parent account")
+				}
+			}
+		}
+	}
 	var normalizedExtra map[string]any
 	if input.Extra != nil {
 		normalizedExtra, err = normalizeOpenAILongContextBillingUpdateExtra(account, input)

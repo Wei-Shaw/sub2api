@@ -1,15 +1,19 @@
 package admin
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
 )
 
 func TestParseCodexSessionImportEntriesSupportsRawTokenJSONAndArray(t *testing.T) {
@@ -880,6 +884,116 @@ func TestImportCodexSessionsWithRefreshTokenKeepsExistingDedup(t *testing.T) {
 	}
 	if got := svc.updatedAccounts[0].input.Credentials["refresh_token"]; got != "refresh-new" {
 		t.Fatalf("updated refresh_token = %v, want refresh-new", got)
+	}
+}
+
+func TestImportCodexSessionsReauthorizesSpecifiedAccount(t *testing.T) {
+	targetID := int64(14)
+	svc := newCodexImportMemoryAdminService([]service.Account{
+		{
+			ID:       targetID,
+			Platform: service.PlatformOpenAI,
+			Type:     service.AccountTypeOAuth,
+			Credentials: map[string]any{
+				"access_token":  "old-access-token",
+				"refresh_token": "old-refresh-token",
+				"id_token":      "old-id-token",
+				"model_mapping": map[string]any{"spark": "spark"},
+			},
+		},
+		{
+			ID:       15,
+			Platform: service.PlatformOpenAI,
+			Type:     service.AccountTypeOAuth,
+			Credentials: map[string]any{
+				"chatgpt_account_id": "workspace-match",
+				"auth_mode":          service.OpenAIAuthModeAgentIdentity,
+			},
+		},
+	})
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	result, err := handler.importCodexSessions(context.Background(), CodexSessionImportRequest{
+		AccountID: &targetID,
+	}, []codexImportEntry{{
+		Index: 1,
+		Value: buildAgentIdentityImportValue(t, "runtime-new", "workspace-match", "user-match", "task-new"),
+	}})
+
+	if err != nil {
+		t.Fatalf("importCodexSessions error = %v", err)
+	}
+	if result.Updated != 1 || len(svc.createdAccounts) != 0 || len(svc.updatedAccounts) != 1 {
+		t.Fatalf("result = %+v, created = %d, updated = %d", result, len(svc.createdAccounts), len(svc.updatedAccounts))
+	}
+	update := svc.updatedAccounts[0]
+	if update.id != targetID {
+		t.Fatalf("updated account ID = %d, want %d", update.id, targetID)
+	}
+	if got := update.input.Credentials["auth_mode"]; got != service.OpenAIAuthModeAgentIdentity {
+		t.Fatalf("updated auth_mode = %v, want agentIdentity", got)
+	}
+	if got := update.input.Credentials["agent_private_key"]; got == nil || got == "" {
+		t.Fatalf("updated agent_private_key = %v, want imported key", got)
+	}
+	for _, key := range []string{"access_token", "refresh_token", "id_token"} {
+		if got := update.input.Credentials[key]; got != "" {
+			t.Fatalf("updated %s = %v, want cleared value", key, got)
+		}
+	}
+	if _, ok := update.input.Credentials["model_mapping"]; !ok {
+		t.Fatalf("updated credentials lost model_mapping: %v", update.input.Credentials)
+	}
+	if update.input.ExpiresAt == nil || *update.input.ExpiresAt != 0 {
+		t.Fatalf("updated expires_at = %v, want explicit clear", update.input.ExpiresAt)
+	}
+}
+
+func TestImportCodexSessionsRejectsSpecifiedShadowAccount(t *testing.T) {
+	parentID := int64(20)
+	targetID := int64(21)
+	svc := newCodexImportMemoryAdminService([]service.Account{{
+		ID:              targetID,
+		Platform:        service.PlatformOpenAI,
+		Type:            service.AccountTypeOAuth,
+		ParentAccountID: &parentID,
+	}})
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	_, err := handler.importCodexSessions(context.Background(), CodexSessionImportRequest{
+		AccountID: &targetID,
+	}, []codexImportEntry{{
+		Index: 1,
+		Value: buildCodexRefreshImportValue(t, "workspace-new", "user-new", "refresh-new"),
+	}})
+
+	if err == nil || !strings.Contains(err.Error(), "non-shadow OpenAI OAuth account") {
+		t.Fatalf("importCodexSessions error = %v, want invalid target error", err)
+	}
+	if len(svc.updatedAccounts) != 0 || len(svc.createdAccounts) != 0 {
+		t.Fatalf("updated = %d, created = %d, want no writes", len(svc.updatedAccounts), len(svc.createdAccounts))
+	}
+}
+
+func TestImportCodexSessionReauthorizationRejectsMultipleCredentials(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	stub := newStubAdminService()
+	handler := NewAccountHandler(stub, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.POST("/accounts/import/codex-session", handler.ImportCodexSession)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/accounts/import/codex-session", bytes.NewBufferString(
+		`{"account_id":1,"content":"token-one\ntoken-two"}`,
+	))
+	request.Header.Set("Content-Type", "application/json")
+
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if stub.updateAccountCalls != 0 || len(stub.createdAccounts) != 0 {
+		t.Fatalf("update calls = %d, created = %d, want no writes", stub.updateAccountCalls, len(stub.createdAccounts))
 	}
 }
 

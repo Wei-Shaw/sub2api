@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -18,6 +19,18 @@ func enrichShadowParentInfo(items []AccountWithConcurrency, parents map[int64]*s
 		if p == nil {
 			continue
 		}
+		effective := service.InheritOpenAIShadowUpstreamProfile(&service.Account{
+			ID:              a.ID,
+			Platform:        a.Platform,
+			Type:            a.Type,
+			Credentials:     a.Credentials,
+			Extra:           a.Extra,
+			ParentAccountID: a.ParentAccountID,
+		}, p)
+		projected := dto.AccountFromServiceShallow(effective)
+		a.Credentials = projected.Credentials
+		a.CredentialsStatus = projected.CredentialsStatus
+		a.Extra = projected.Extra
 		a.ParentEmail = p.GetCredential("email")
 		a.ParentPlanType = p.GetCredential("plan_type")
 		a.ParentSubscriptionExpiresAt = p.GetCredential("subscription_expires_at")

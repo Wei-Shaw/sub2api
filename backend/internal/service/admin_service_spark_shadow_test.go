@@ -689,6 +689,29 @@ func TestUpdateAccount_RejectsCredentialWriteToShadow(t *testing.T) {
 	require.NoError(t, err, "影子的非凭据字段更新应正常")
 }
 
+func TestUpdateAccountRejectsSparkShadowInheritedProfileExtra(t *testing.T) {
+	ctx := context.Background()
+	repo := newSparkShadowRepoStub()
+	svc := &adminServiceImpl{accountRepo: repo}
+	parent := &Account{
+		Name: "profile-parent", Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+		Status: StatusActive, Credentials: map[string]any{"access_token": "parent-token"},
+	}
+	require.NoError(t, repo.Create(ctx, parent))
+	shadow, err := svc.CreateShadow(ctx, parent.ID, ShadowOptions{Name: "profile-shadow"})
+	require.NoError(t, err)
+
+	for _, extra := range []map[string]any{
+		{"codex_fingerprint_mode": "full"},
+		{PlatformOpenAI: map[string]any{"codex_image_generation_bridge": true}},
+	} {
+		_, err = svc.UpdateAccount(ctx, shadow.ID, &UpdateAccountInput{Extra: extra})
+		require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+		require.Equal(t, "SPARK_SHADOW_PROFILE_INHERITED", infraerrors.Reason(err))
+		require.Equal(t, "spark shadow upstream profile is inherited from parent account", infraerrors.Message(err))
+	}
+}
+
 // TestBulkUpdateAccounts_PropagatesProxyToShadow verifies that bulk-updating
 // accounts' ProxyID propagates the new value to each account's spark shadow.
 func TestBulkUpdateAccounts_PropagatesProxyToShadow(t *testing.T) {

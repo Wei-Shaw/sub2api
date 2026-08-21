@@ -192,6 +192,11 @@ type OpenAICodexPATCreateRequest struct {
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"`
 }
 
+type OpenAICodexPATValidateRequest struct {
+	AccessToken string `json:"access_token" binding:"required"`
+	ProxyID     *int64 `json:"proxy_id"`
+}
+
 // RefreshToken refreshes an OpenAI OAuth token
 // POST /api/v1/admin/openai/refresh-token
 func (h *OpenAIOAuthHandler) RefreshToken(c *gin.Context) {
@@ -460,6 +465,34 @@ func (h *OpenAIOAuthHandler) CreateAccountFromCodexPAT(c *gin.Context) {
 	response.Success(c, dto.AccountFromService(account))
 }
 
+// ValidateCodexPAT validates a Codex personal access token without creating an account.
+func (h *OpenAIOAuthHandler) ValidateCodexPAT(c *gin.Context) {
+	var req OpenAICodexPATValidateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	var proxyURL string
+	if req.ProxyID != nil {
+		proxy, err := h.adminService.GetProxy(c.Request.Context(), *req.ProxyID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if proxy != nil {
+			proxyURL = proxy.URL()
+		}
+	}
+
+	tokenInfo, err := h.openaiOAuthService.ValidateCodexPersonalAccessToken(c.Request.Context(), req.AccessToken, proxyURL)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, tokenInfo)
+}
+
 func buildOpenAICodexPATAccountName(name string, tokenInfo *service.OpenAITokenInfo) string {
 	name = strings.TrimSpace(name)
 	if name != "" {
@@ -559,6 +592,11 @@ func (h *OpenAIOAuthHandler) CreateShadow(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	parent, err := h.adminService.GetAccount(c.Request.Context(), parentID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 
 	shadow, err := h.adminService.CreateShadow(c.Request.Context(), parentID, service.ShadowOptions{
 		Name:        req.Name,
@@ -571,7 +609,8 @@ func (h *OpenAIOAuthHandler) CreateShadow(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.AccountFromServiceShallow(shadow))
+	effective := service.InheritOpenAIShadowUpstreamProfile(shadow, parent)
+	response.Success(c, dto.AccountFromServiceShallow(effective))
 }
 
 // ResetQuota consumes one rate-limit reset credit for an OpenAI account.

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -22,6 +23,7 @@ import (
 const codexImportClockSkewSeconds int64 = 120
 
 type CodexSessionImportRequest struct {
+	AccountID               *int64         `json:"account_id"`
 	Content                 string         `json:"content"`
 	Contents                []string       `json:"contents"`
 	Name                    string         `json:"name"`
@@ -151,6 +153,10 @@ func (h *AccountHandler) ImportCodexSession(c *gin.Context) {
 		response.BadRequest(c, "请输入 accessToken 或 Codex session JSON")
 		return
 	}
+	if req.AccountID != nil && len(entries) != 1 {
+		response.BadRequest(c, "重新授权仅支持单个 Codex 凭据")
+		return
+	}
 
 	executeAdminIdempotentJSON(c, "admin.accounts.import_codex_session", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		return h.importCodexSessions(ctx, req, entries)
@@ -168,6 +174,16 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 		return result, err
 	}
 	index := buildCodexAccountIndex(existingAccounts)
+	var targetAccount *service.Account
+	if req.AccountID != nil {
+		targetAccount, err = h.adminService.GetAccount(ctx, *req.AccountID)
+		if err != nil {
+			return result, err
+		}
+		if !targetAccount.IsOpenAIOAuth() || targetAccount.IsCredentialShadow() {
+			return result, infraerrors.BadRequest("INVALID_CODEX_REAUTH_ACCOUNT", "Codex re-authorization requires a non-shadow OpenAI OAuth account")
+		}
+	}
 
 	updateExisting := true
 	if req.UpdateExisting != nil {
@@ -254,7 +270,11 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 		markCodexIdentitySeen(seenIdentity, item.IdentityKeys, entry.Index, item.UserID)
 
 		existing, matchedKey := index.Find(item.IdentityKeys, item.UserID)
-		if existing != nil && updateExisting {
+		if targetAccount != nil {
+			existing = targetAccount
+			matchedKey = ""
+		}
+		if existing != nil && (updateExisting || targetAccount != nil) {
 			if strings.HasPrefix(matchedKey, "account:") && item.UserID != "" &&
 				codexCredentialString(existing.Credentials, "chatgpt_user_id") == "" {
 				result.Warnings = append(result.Warnings, CodexSessionImportMessage{
@@ -263,7 +283,7 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 					Message: "已有账号未记录 chatgpt_user_id，已按共享的 chatgpt_account_id 匹配并回填，请确认两者属于同一用户",
 				})
 			}
-			preserveExistingRefresh := item.RefreshToken == "" &&
+			preserveExistingRefresh := targetAccount == nil && item.RefreshToken == "" &&
 				codexCredentialString(existing.Credentials, "refresh_token") != ""
 			if preserveExistingRefresh {
 				result.Warnings = append(result.Warnings, CodexSessionImportMessage{
@@ -274,7 +294,36 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 				effectiveExpiresAt = nil
 				autoPauseOnExpired = nil
 			}
+			if targetAccount != nil && item.IsAgentIdentity && !existing.IsOpenAIAgentIdentity() && req.ExpiresAt == nil {
+				clearExpiry := int64(0)
+				effectiveExpiresAt = &clearExpiry
+			}
 			mergedCredentials := mergeCodexImportCredentials(existing.Credentials, credentials, item)
+			if targetAccount != nil {
+				if item.IsAgentIdentity {
+					mergedCredentials["access_token"] = ""
+					mergedCredentials["refresh_token"] = ""
+					mergedCredentials["id_token"] = ""
+					delete(mergedCredentials, "client_id")
+					delete(mergedCredentials, "expires_at")
+					delete(mergedCredentials, "openai_auth_mode")
+					delete(mergedCredentials, "token_type")
+				} else {
+					mergedCredentials["agent_private_key"] = ""
+					delete(mergedCredentials, "auth_mode")
+					delete(mergedCredentials, "openai_auth_mode")
+					delete(mergedCredentials, "agent_runtime_id")
+					delete(mergedCredentials, "task_id")
+					delete(mergedCredentials, "token_type")
+					if item.RefreshToken == "" {
+						mergedCredentials["refresh_token"] = ""
+						delete(mergedCredentials, "client_id")
+					}
+					if item.IDToken == "" {
+						mergedCredentials["id_token"] = ""
+					}
+				}
+			}
 			mergedExtra := mergeCodexImportMap(existing.Extra, extra)
 			updateInput := &service.UpdateAccountInput{
 				Credentials:        mergedCredentials,
