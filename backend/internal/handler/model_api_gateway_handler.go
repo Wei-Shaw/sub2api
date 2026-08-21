@@ -543,6 +543,8 @@ func mediaFalStatusFromTask(task *service.AsyncMediaTask) string {
 	switch task.Status {
 	case service.AsyncMediaStatusSucceeded:
 		return fal.StatusCompleted
+	case service.AsyncMediaStatusFailed, service.AsyncMediaStatusRefunded, service.AsyncMediaStatusExpired:
+		return fal.StatusFailed
 	case service.AsyncMediaStatusPending:
 		return fal.StatusInQueue
 	default:

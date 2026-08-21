@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/fal"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -83,4 +84,16 @@ func TestModelAPIGatewayVideoFeatureGateOnlyAppliesAfterMediaRouting(t *testing.
 
 	require.Equal(t, http.StatusForbidden, recorder.Code, recorder.Body.String())
 	require.Contains(t, recorder.Body.String(), `"type":"feature_disabled"`)
+}
+
+func TestMediaFalStatusFromTaskMapsTerminalFailureToFailed(t *testing.T) {
+	for _, status := range []string{
+		service.AsyncMediaStatusFailed,
+		service.AsyncMediaStatusRefunded,
+		service.AsyncMediaStatusExpired,
+	} {
+		t.Run(status, func(t *testing.T) {
+			require.Equal(t, fal.StatusFailed, mediaFalStatusFromTask(&service.AsyncMediaTask{Status: status}))
+		})
+	}
 }

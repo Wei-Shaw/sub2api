@@ -63,9 +63,9 @@ func (t *Task) IsFailed() bool {
 
 func (t *Task) FailureMessage() string {
 	if t == nil || t.Error == nil {
-		return "leonardo task failed"
+		return "task failed"
 	}
-	return fmt.Sprintf("leonardo task failed: %v", t.Error)
+	return fmt.Sprintf("task failed: %v", t.Error)
 }
 
 func BuildSubmitRequest(model string, input fal.ImageGenInput, estimatedCreditCost float64) *SubmitRequest {

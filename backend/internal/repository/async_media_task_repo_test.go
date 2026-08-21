@@ -50,7 +50,7 @@ func TestAsyncMediaTaskRepositoryTerminalUsageLogUpsertsZeroCostTimeoutRecord(t 
 	require.Contains(t, normalized, "image_output_size")
 	require.Contains(t, normalized, "image_size_breakdown")
 	require.Contains(t, normalized, "account_rate_multiplier")
-	require.Contains(t, normalized, "EXCLUDED.billing_status = 'charged'")
+	require.Contains(t, normalized, "EXCLUDED.billing_status IN ('charged', 'refunded')")
 	require.Contains(t, normalized, "COALESCE(usage_logs.actual_cost, 0) = 0")
 	require.Contains(t, normalized, "COALESCE(usage_logs.total_cost, 0) = 0")
 	require.NotContains(t, normalized, "COALESCE(usage_logs.image_count, 0) = 0")

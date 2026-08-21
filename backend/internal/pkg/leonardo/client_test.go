@@ -136,6 +136,14 @@ func TestBuildSubmitRequestTextToImageOmitsReferenceImages(t *testing.T) {
 	require.NotContains(t, string(raw), "reference_image_urls")
 }
 
+func TestTaskFailureMessageOmitsPlatformName(t *testing.T) {
+	require.Equal(t, "task failed", (&Task{Status: StatusFailed}).FailureMessage())
+	require.Equal(t, "task failed: An error occurred.", (&Task{
+		Status: StatusFailed,
+		Error:  "An error occurred.",
+	}).FailureMessage())
+}
+
 func jsonResponse(status int, value any) *http.Response {
 	raw, _ := json.Marshal(value)
 	return &http.Response{

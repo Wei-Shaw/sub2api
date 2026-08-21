@@ -365,7 +365,7 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 			authz_generation = EXCLUDED.authz_generation
 		WHERE usage_logs.task_id = EXCLUDED.task_id
 			OR (
-				EXCLUDED.billing_status = 'charged'
+				EXCLUDED.billing_status IN ('charged', 'refunded')
 				AND COALESCE(usage_logs.actual_cost, 0) = 0
 				AND COALESCE(usage_logs.total_cost, 0) = 0
 			)`
