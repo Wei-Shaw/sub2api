@@ -211,6 +211,60 @@ func (s *SettingService) GetCyberSessionBlockRuntime(ctx context.Context) (bool,
 	return false, time.Hour
 }
 
+// cachedCodexSessionSwitchPurification Codex 会话切号净化开关进程内缓存（60s TTL）。
+type cachedCodexSessionSwitchPurification struct {
+	enabled   bool
+	expiresAt int64 // unix nano
+}
+
+const codexSessionSwitchPurificationCacheTTL = 60 * time.Second
+const codexSessionSwitchPurificationErrorTTL = 5 * time.Second
+const codexSessionSwitchPurificationDBTimeout = 5 * time.Second
+
+// GetCodexSessionSwitchPurificationEnabled 返回 Codex 会话切号净化开关。
+// 网关热路径读取，进程内缓存 ~60s 避免每次 DB 往返；默认关闭（fail-closed）。
+func (s *SettingService) GetCodexSessionSwitchPurificationEnabled(ctx context.Context) bool {
+	if s == nil {
+		return false
+	}
+	if cached, ok := s.codexSessionSwitchPurificationCache.Load().(*cachedCodexSessionSwitchPurification); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.enabled
+		}
+	}
+	result, _, _ := s.codexSessionSwitchPurificationSF.Do("codex_session_switch_purification", func() (any, error) {
+		if cached, ok := s.codexSessionSwitchPurificationCache.Load().(*cachedCodexSessionSwitchPurification); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached, nil
+			}
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), codexSessionSwitchPurificationDBTimeout)
+		defer cancel()
+
+		val, err := s.settingRepo.GetValue(dbCtx, SettingKeyCodexSessionSwitchPurificationEnabled)
+		if err != nil && !errors.Is(err, ErrSettingNotFound) {
+			slog.Warn("failed to get codex_session_switch_purification_enabled setting", "error", err)
+			entry := &cachedCodexSessionSwitchPurification{
+				enabled:   false,
+				expiresAt: time.Now().Add(codexSessionSwitchPurificationErrorTTL).UnixNano(),
+			}
+			s.codexSessionSwitchPurificationCache.Store(entry)
+			return entry, nil
+		}
+
+		entry := &cachedCodexSessionSwitchPurification{
+			enabled:   err == nil && strings.TrimSpace(val) == "true",
+			expiresAt: time.Now().Add(codexSessionSwitchPurificationCacheTTL).UnixNano(),
+		}
+		s.codexSessionSwitchPurificationCache.Store(entry)
+		return entry, nil
+	})
+	if entry, ok := result.(*cachedCodexSessionSwitchPurification); ok && entry != nil {
+		return entry.enabled
+	}
+	return false
+}
+
 // GetAntigravityUserAgentVersion 返回 Antigravity 上游请求使用的版本号。
 // 后台设置优先；为空、缺失或非法时回退到 ANTIGRAVITY_USER_AGENT_VERSION / 内置默认值。
 func (s *SettingService) GetAntigravityUserAgentVersion(ctx context.Context) string {

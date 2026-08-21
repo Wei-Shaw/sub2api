@@ -444,6 +444,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// cyber 会话屏蔽开关 + TTL
 	updates[SettingKeyCyberSessionBlockEnabled] = strconv.FormatBool(settings.CyberSessionBlockEnabled)
+	updates[SettingKeyCodexSessionSwitchPurificationEnabled] = strconv.FormatBool(settings.CodexSessionSwitchPurificationEnabled)
 	if settings.CyberSessionBlockTTLSeconds > 0 {
 		updates[SettingKeyCyberSessionBlockTTLSeconds] = strconv.Itoa(settings.CyberSessionBlockTTLSeconds)
 	}
@@ -724,6 +725,11 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	s.openAICodexUACache.Store(&cachedOpenAICodexUserAgent{
 		value:     codexUA,
 		expiresAt: time.Now().Add(openAICodexUserAgentCacheTTL).UnixNano(),
+	})
+	s.codexSessionSwitchPurificationSF.Forget("codex_session_switch_purification")
+	s.codexSessionSwitchPurificationCache.Store(&cachedCodexSessionSwitchPurification{
+		enabled:   settings.CodexSessionSwitchPurificationEnabled,
+		expiresAt: time.Now().Add(codexSessionSwitchPurificationCacheTTL).UnixNano(),
 	})
 	// 版本号缓存只做失效，不在此重算：生效值还取决于自动同步写入的 synced 键，
 	// 这里没有它的最新值，重算会把同步结果覆盖成陈旧值。

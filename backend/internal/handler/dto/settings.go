@@ -327,6 +327,9 @@ type SystemSettings struct {
 	CyberSessionBlockEnabled    bool `json:"cyber_session_block_enabled"`
 	CyberSessionBlockTTLSeconds int  `json:"cyber_session_block_ttl_seconds"`
 
+	// Codex 会话切号净化开关（跨账号 id 确定性改写）
+	CodexSessionSwitchPurificationEnabled bool `json:"codex_session_switch_purification_enabled"`
+
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 

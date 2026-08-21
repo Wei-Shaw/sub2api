@@ -357,6 +357,9 @@ type UpdateSettingsRequest struct {
 	CyberSessionBlockEnabled    *bool `json:"cyber_session_block_enabled"`
 	CyberSessionBlockTTLSeconds *int  `json:"cyber_session_block_ttl_seconds"`
 
+	// Codex 会话切号净化开关（跨账号 id 确定性改写）
+	CodexSessionSwitchPurificationEnabled *bool `json:"codex_session_switch_purification_enabled"`
+
 	// OpenAI fast/flex policy (optional, only updated when provided)
 	OpenAIFastPolicySettings *dto.OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
 
@@ -1956,6 +1959,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.CyberSessionBlockEnabled
 		}(),
+		CodexSessionSwitchPurificationEnabled: func() bool {
+			if req.CodexSessionSwitchPurificationEnabled != nil {
+				return *req.CodexSessionSwitchPurificationEnabled
+			}
+			return previousSettings.CodexSessionSwitchPurificationEnabled
+		}(),
 		CyberSessionBlockTTLSeconds: func() int {
 			if req.CyberSessionBlockTTLSeconds != nil {
 				return *req.CyberSessionBlockTTLSeconds
@@ -2366,6 +2375,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RiskControlEnabled:          updatedSettings.RiskControlEnabled,
 		CyberSessionBlockEnabled:    updatedSettings.CyberSessionBlockEnabled,
 		CyberSessionBlockTTLSeconds: updatedSettings.CyberSessionBlockTTLSeconds,
+		CodexSessionSwitchPurificationEnabled: updatedSettings.CodexSessionSwitchPurificationEnabled,
 		AccountSchedulingThresholds: updatedSettings.AccountSchedulingThresholds,
 		AllowUserViewErrorRequests:  updatedSettings.AllowUserViewErrorRequests,
 	}

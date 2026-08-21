@@ -216,6 +216,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyCyberSessionBlockEnabled:    "false",
 		SettingKeyCyberSessionBlockTTLSeconds: "3600",
 
+		// Codex 会话切号净化（默认关闭，仅影响发生过跨账号切换的会话）
+		SettingKeyCodexSessionSwitchPurificationEnabled: "false",
+
 		// Claude Code version check (default: empty = disabled)
 		SettingKeyMinClaudeCodeVersion: "",
 		SettingKeyMaxClaudeCodeVersion: "",
@@ -834,6 +837,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else {
 		result.CyberSessionBlockTTLSeconds = 3600
 	}
+
+	// Codex 会话切号净化（默认关闭，严格 true 才启用）
+	result.CodexSessionSwitchPurificationEnabled = settings[SettingKeyCodexSessionSwitchPurificationEnabled] == "true"
 
 	// Claude Code version check
 	result.MinClaudeCodeVersion = settings[SettingKeyMinClaudeCodeVersion]

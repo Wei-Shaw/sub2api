@@ -168,8 +168,11 @@ type SystemSettings struct {
 	DefaultConcurrency           int
 	DefaultBalance               float64
 	RiskControlEnabled           bool
-	CyberSessionBlockEnabled     bool
-	CyberSessionBlockTTLSeconds  int
+	CyberSessionBlockEnabled       bool
+	CyberSessionBlockTTLSeconds    int
+	// CodexSessionSwitchPurificationEnabled: 会话跨账号切换后将请求中的
+	// 可关联 id 确定性改写为新账号下的映射值(默认关)。
+	CodexSessionSwitchPurificationEnabled bool
 	AffiliateEnabled             bool
 	AffiliateRebateRate          float64
 	AffiliateRebateFreezeHours   int
