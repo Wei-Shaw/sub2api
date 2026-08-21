@@ -1009,9 +1009,7 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestResolveAntigravityForwardBaseURL_DefaultDaily(t *testing.T) {
-	t.Setenv(antigravityForwardBaseURLEnv, "")
-
+func TestResolveAntigravityForwardBaseURL(t *testing.T) {
 	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
 	defer func() {
 		antigravity.BaseURLs = oldBaseURLs
@@ -1019,10 +1017,46 @@ REDACTED()
 
 	prodURL := "https://prod.test"
 	dailyURL := "https://daily.test"
-	antigravity.BaseURLs = []string{dailyURL, prodURLREDACTED
+	antigravity.BaseURLs = []string{prodURL, dailyURLREDACTED
 
-	resolved := resolveAntigravityForwardBaseURL()
-	require.Equal(t, dailyURL, resolved)
+	tests := []struct {
+		name    string
+		env     string
+		account *Account
+		want    string
+REDACTED{
+		{
+			name: "pro defaults to daily", account: &Account{Credentials: map[string]any{"plan_type": " Pro "REDACTEDREDACTED,
+			want: dailyURL,
+	REDACTED,
+		{
+			name: "ultra defaults to daily", account: &Account{Credentials: map[string]any{"plan_type": "ULTRA"REDACTEDREDACTED,
+			want: dailyURL,
+	REDACTED,
+		{name: "free defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": "free"REDACTEDREDACTED, want: prodURLREDACTED,
+		{name: "abnormal defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": "Abnormal"REDACTEDREDACTED, want: prodURLREDACTED,
+		{name: "unknown defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": "enterprise"REDACTEDREDACTED, want: prodURLREDACTED,
+		{name: "malformed defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": map[string]any{"name": "pro"REDACTEDREDACTEDREDACTED, want: prodURLREDACTED,
+		{name: "missing defaults to prod", account: &Account{Credentials: map[string]any{REDACTEDREDACTED, want: prodURLREDACTED,
+		{name: "nil account defaults to prod", account: nil, want: prodURLREDACTED,
+		{
+			name: "daily override wins for free tier", env: " daily ",
+			account: &Account{Credentials: map[string]any{"plan_type": "free"REDACTEDREDACTED,
+			want:    dailyURL,
+	REDACTED,
+		{
+			name: "prod override wins for paid tier", env: " PROD ",
+			account: &Account{Credentials: map[string]any{"plan_type": "pro"REDACTEDREDACTED,
+			want:    prodURL,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(antigravityForwardBaseURLEnv, tt.env)
+			require.Equal(t, tt.want, resolveAntigravityForwardBaseURL(tt.account))
+	REDACTED)
+REDACTED
 REDACTED
 
 func TestAntigravityAccountSwitchError_Error(t *testing.T) {
