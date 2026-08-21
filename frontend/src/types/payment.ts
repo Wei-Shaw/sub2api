@@ -198,6 +198,7 @@ export interface SubscriptionPlan {
   features: string[]
   for_sale: boolean
   sort_order: number
+  currency_overrides?: Record<string, number>
 }
 
 export interface BalancePackage {
@@ -206,9 +207,8 @@ export interface BalancePackage {
   label: string
   description: string
   amount_ledger: number
-  credit_ledger: number
-  bonus_ledger: number
-  credit_multiplier: number
+  actual_credits: number
+  credit_unit: string
   balance_group_id?: number | null
   group_id?: number | null
   group_name?: string
@@ -217,8 +217,9 @@ export interface BalancePackage {
   group_subscription_type?: string
   badge: string
   popular: boolean
-  for_sale: boolean
+  for_sale?: boolean
   sort_order: number
+  currency_overrides?: Record<string, number>
   created_at?: string
   updated_at?: string
 }
@@ -374,7 +375,75 @@ export interface DashboardStats {
   today_count: number
   total_count: number
   avg_amount: CurrencyAmounts
+  pending_orders: number
+  revenue_by_currency: CurrencyRevenue[]
   daily_series: DailyPaymentStats[]
   payment_methods: PaymentMethodStats[]
   top_users: Record<string, TopUserPaymentStats[]>
+  deposits: DepositStats
+}
+
+export interface DepositStats {
+  total_events: number
+  total_ledger_amount: CurrencyAmounts
+  total_credits: number
+  subscription_assignments: number
+  paid_topups: number
+  redeem_deposits: number
+  admin_adjustments: number
+  manual_assignments: number
+  auto_assignments: number
+  by_source: DepositSourceStat[]
+  top_recipients: DepositRecipientStat[]
+  recent_events: DepositEventStat[]
+}
+
+export interface DepositSourceStat {
+  source: string
+  count: number
+  ledger_amount: CurrencyAmounts
+  credits: number
+  subscription_assignments: number
+  last_deposit_at?: string
+}
+
+export interface DepositRecipientStat {
+  user_id: number
+  email: string
+  username?: string
+  count: number
+  ledger_amount: CurrencyAmounts
+  credits: number
+  subscription_assignments: number
+  last_deposit_at?: string
+  last_source?: string
+}
+
+export interface DepositEventStat {
+  source: string
+  user_id: number
+  email: string
+  username?: string
+  ledger_amount: number
+  credits: number
+  currency?: string
+  subscription_assignments: number
+  validity_days?: number
+  group_id?: number
+  group_name?: string
+  platform?: string
+  operator_id?: number
+  operator_email?: string
+  payment_type?: string
+  reference_type?: string
+  reference_id?: string
+  occurred_at: string
+}
+
+export interface CurrencyRevenue {
+  currency: string
+  today_amount: number
+  total_amount: number
+  today_count: number
+  total_count: number
 }
