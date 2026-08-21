@@ -561,6 +561,26 @@ func TestChatCompletionsToResponses_LegacyFunctions(t *testing.T) {
 	assert.NotContains(t, tc, "function")
 }
 
+func TestChatCompletionsToResponses_NormalizesChatFunctionToolChoice(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model:      "gpt-4o",
+		Messages:   []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		ToolChoice: json.RawMessage(`{"type":"function","function":{"name":"get_weather"}}`),
+		Tools: []ChatTool{{
+			Type: "function",
+			Function: &ChatFunction{
+				Name:       "get_weather",
+				Parameters: json.RawMessage(`{"type":"object"}`),
+			},
+		}},
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Tools, 1)
+	assert.JSONEq(t, `{"type":"function","name":"get_weather"}`, string(resp.ToolChoice))
+}
+
 func TestChatCompletionsToResponses_ServiceTier(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model:       "gpt-4o",
