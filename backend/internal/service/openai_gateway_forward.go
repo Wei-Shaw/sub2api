@@ -418,10 +418,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			// 切号净化：taint 标记由 handler failover 循环按本次 attempt 账号
 			// 设置（openai_codex_session_taint.go）；0 = 不净化，行为与历史一致。
 			codexResult = applyCodexOAuthTransformWithOptions(decoded, codexOAuthTransformOptions{
-				IsCodexCLI:      isCodexCLI,
-				IsCompact:       isCompactRequest,
-				TaintAccountID:  openAICodexTaintSanitizeAccountID(c),
-				TaintAPIKeyID:   getAPIKeyIDFromContext(c),
+				IsCodexCLI:     isCodexCLI,
+				IsCompact:      isCompactRequest,
+				TaintAccountID: openAICodexTaintSanitizeAccountID(c),
+				TaintAPIKeyID:  getAPIKeyIDFromContext(c),
 			})
 		}
 		if codexResult.Modified {
@@ -430,6 +430,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// 带真实 device_id 时补齐 client_metadata 安装标识，与真实 Codex 对齐（compact 形态不同，跳过）。
 		if !isCompactRequest && applyCodexClientMetadata(decoded, account) {
 			markDecodedModified()
+		}
+		// 切号净化：client_metadata 内嵌标识与头侧同一套派生改写（指纹收敛
+		// 档在后续步骤覆盖同字段，天然优先）。
+		if err := applyCodexTaintClientMetadata(c, decoded, account, getAPIKeyIDFromContext(c)); err != nil {
+			return nil, err
 		}
 		stageCodexFingerprintIDs(c, nil)
 		// 指纹收敛：一次性解析收敛 ID，请求体和出站头共享同一份 IDs（保证 turn_id 等随机字段一致）。
@@ -1151,22 +1156,42 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 			req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
 		}
 		apiKeyID := getAPIKeyIDFromContext(c)
+		taintAccountID := openAICodexTaintSanitizeAccountID(c)
 		if isOpenAIResponsesCompactPath(c) {
 			req.Header.Set("accept", "application/json")
 			if req.Header.Get("version") == "" {
 				req.Header.Set("version", CodexCanonicalClientVersion())
 			}
 			compactSession := resolveOpenAICompactSessionID(c)
-			req.Header.Set("session_id", isolateOpenAISessionID(apiKeyID, compactSession))
+			if taintAccountID != 0 {
+				// 切号净化：compact 会话头同样账号感知派生，消除跨账号同值。
+				req.Header.Set("session_id", deriveCodexTaintUUID("compact-session", apiKeyID, taintAccountID, compactSession))
+			} else {
+				req.Header.Set("session_id", isolateOpenAISessionID(apiKeyID, compactSession))
+			}
 		} else {
 			req.Header.Set("accept", "text/event-stream")
 		}
 		if promptCacheKey != "" {
-			isolated := isolateOpenAISessionID(apiKeyID, promptCacheKey)
-			req.Header.Set("session_id", isolated)
-			if !compatMessagesBridge || clientConversationID != "" {
-				req.Header.Set("conversation_id", isolated)
+			if taintAccountID != 0 && !compatMessagesBridge {
+				// 切号净化：transform 已把 prompt_cache_key 改写为账号感知派生
+				// UUID；session 头直接复用同一值（官方 session_id == prompt_cache_key）。
+				req.Header.Set("session_id", promptCacheKey)
+				if !compatMessagesBridge || clientConversationID != "" {
+					req.Header.Set("conversation_id", promptCacheKey)
+				}
+			} else {
+				isolated := isolateOpenAISessionID(apiKeyID, promptCacheKey)
+				req.Header.Set("session_id", isolated)
+				if !compatMessagesBridge || clientConversationID != "" {
+					req.Header.Set("conversation_id", isolated)
+				}
 			}
+		}
+		// 切号净化的 installation/window/turn-metadata 头改写。置于指纹收敛
+		// 之前：收敛档（device/session/full）在下方覆盖同字段，天然优先。
+		if err := applyCodexTaintHeaders(c, req.Header, account, apiKeyID); err != nil {
+			return nil, err
 		}
 	} else if isOpenAIResponsesCompactPath(c) {
 		// compact 上游是 unary JSON 协议：API-key 账号也显式声明 Accept，

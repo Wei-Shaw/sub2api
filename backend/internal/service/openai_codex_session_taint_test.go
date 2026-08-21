@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -271,4 +272,114 @@ func TestApplyCodexOAuthTransform_TaintPromptCacheKey(t *testing.T) {
 		SkipDefaultInstructions: true,
 	})
 	require.Equal(t, "client-key-1", plain["prompt_cache_key"], "no taint → untouched")
+}
+
+// TestResolveOpenAICodexTaintInstallationID covers the installation-id
+// derivation chain: account device_id → fingerprint seed → taint-derived UUID.
+func TestResolveOpenAICodexTaintInstallationID(t *testing.T) {
+	// Account with a real device_id wins.
+	withDevice := &Account{ID: 42, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"openai_device_id": "dev-real"}}
+	require.Equal(t, "dev-real", resolveOpenAICodexTaintInstallationID(withDevice, 7, 42))
+
+	// No device, no seed → deterministic taint derivation.
+	bare := &Account{ID: 42, Extra: map[string]any{}}
+	v1 := resolveOpenAICodexTaintInstallationID(bare, 7, 42)
+	require.Len(t, v1, 36)
+	require.Equal(t, v1, resolveOpenAICodexTaintInstallationID(bare, 7, 42), "deterministic")
+	require.NotEqual(t, v1, resolveOpenAICodexTaintInstallationID(bare, 7, 43), "account-sensitive")
+
+	// Nil account → taint derivation.
+	require.Len(t, resolveOpenAICodexTaintInstallationID(nil, 7, 42), 36)
+}
+
+// TestApplyCodexTaintHeaders covers header-side taint rewriting: installation
+// and window headers rederived, turn-metadata embedded ids rekeyed with the
+// session_id==thread_id equality preserved, unrelated fields (git info) kept.
+func TestApplyCodexTaintHeaders(t *testing.T) {
+	c := newSessionTaintTestContext(t, 7, "sess-h")
+	setOpenAICodexTaintSanitize(c, 42)
+	h := http.Header{}
+	h.Set("x-codex-installation-id", "11111111-2222-3333-4444-555555555555")
+	h.Set("x-codex-window-id", "win-old")
+	h.Set("x-codex-turn-metadata", `{"installation_id":"inst-old","session_id":"sess-old","thread_id":"sess-old","turn_id":"turn-old","window_id":"sess-old:0","git":{"remote_url":"x"}}`)
+
+	require.NoError(t, applyCodexTaintHeaders(c, h, &Account{ID: 42}, 7))
+
+	require.NotEqual(t, "11111111-2222-3333-4444-555555555555", h.Get("x-codex-installation-id"))
+	require.NotEqual(t, "win-old", h.Get("x-codex-window-id"))
+
+	var meta map[string]any
+	require.NoError(t, json.Unmarshal([]byte(h.Get("x-codex-turn-metadata")), &meta))
+	require.Equal(t, meta["session_id"], meta["thread_id"], "official session==thread equality preserved")
+	require.NotEqual(t, "sess-old", meta["session_id"])
+	require.NotEqual(t, "turn-old", meta["turn_id"])
+	require.NotEqual(t, "inst-old", meta["installation_id"])
+	require.NotEqual(t, "sess-old:0", meta["window_id"])
+	require.Equal(t, "x", meta["git"].(map[string]any)["remote_url"], "unrelated fields kept verbatim")
+}
+
+// TestApplyCodexTaintHeaders_InvalidMetadata pins the fail-closed rule: an
+// unparsable turn-metadata header must surface an error (caller rejects the
+// request) instead of silently passing it through.
+func TestApplyCodexTaintHeaders_InvalidMetadata(t *testing.T) {
+	c := newSessionTaintTestContext(t, 7, "sess-h2")
+	setOpenAICodexTaintSanitize(c, 42)
+	h := http.Header{}
+	h.Set("x-codex-turn-metadata", "not-json{")
+	require.Error(t, applyCodexTaintHeaders(c, h, &Account{ID: 42}, 7))
+}
+
+// TestApplyCodexTaintHeaders_DisabledNoop verifies zero taint marker leaves
+// headers untouched.
+func TestApplyCodexTaintHeaders_DisabledNoop(t *testing.T) {
+	c := newSessionTaintTestContext(t, 7, "sess-h3")
+	h := http.Header{}
+	h.Set("x-codex-window-id", "win-old")
+	require.NoError(t, applyCodexTaintHeaders(c, h, &Account{ID: 42}, 7))
+	require.Equal(t, "win-old", h.Get("x-codex-window-id"))
+}
+
+// TestApplyCodexTaintClientMetadata covers body client_metadata rewriting:
+// top-level ids rederived, embedded turn-metadata JSON rekeyed, session_id ==
+// thread_id equality kept, unrelated fields preserved, and fail-closed on an
+// unparsable embedded JSON.
+func TestApplyCodexTaintClientMetadata(t *testing.T) {
+	c := newSessionTaintTestContext(t, 7, "sess-cm")
+	setOpenAICodexTaintSanitize(c, 42)
+	body := map[string]any{
+		"client_metadata": map[string]any{
+			"session_id":              "sess-old",
+			"thread_id":               "sess-old",
+			"turn_id":                 "turn-old",
+			"x-codex-window-id":       "win-old",
+			"x-codex-installation-id": "inst-old",
+			"x-codex-turn-metadata":   `{"session_id":"sess-old","thread_id":"sess-old","cli_version":"0.146.0"}`,
+		},
+	}
+	require.NoError(t, applyCodexTaintClientMetadata(c, body, &Account{ID: 42}, 7))
+
+	cm := body["client_metadata"].(map[string]any)
+	require.NotEqual(t, "sess-old", cm["session_id"])
+	require.Equal(t, cm["session_id"], cm["thread_id"], "session==thread equality kept")
+	require.NotEqual(t, "turn-old", cm["turn_id"])
+	require.NotEqual(t, "win-old", cm["x-codex-window-id"])
+	require.NotEqual(t, "inst-old", cm["x-codex-installation-id"])
+
+	var meta map[string]any
+	require.NoError(t, json.Unmarshal([]byte(cm["x-codex-turn-metadata"].(string)), &meta))
+	require.Equal(t, cm["session_id"], meta["session_id"], "embedded metadata matches top-level session_id")
+	require.Equal(t, "0.146.0", meta["cli_version"], "unrelated fields kept")
+
+	// Fail-closed on unparsable embedded metadata.
+	bad := map[string]any{
+		"client_metadata": map[string]any{"x-codex-turn-metadata": "not-json{"},
+	}
+	require.Error(t, applyCodexTaintClientMetadata(c, bad, &Account{ID: 42}, 7))
+
+	// Disabled marker → untouched.
+	plain := map[string]any{
+		"client_metadata": map[string]any{"session_id": "sess-old"},
+	}
+	require.NoError(t, applyCodexTaintClientMetadata(newSessionTaintTestContext(t, 7, "x"), plain, &Account{ID: 42}, 7))
+	require.Equal(t, "sess-old", plain["client_metadata"].(map[string]any)["session_id"])
 }

@@ -1,7 +1,9 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -179,4 +181,145 @@ func openAICodexTaintSanitizeAccountID(c *gin.Context) int64 {
 		return 0
 	}
 	return accountID
+}
+
+// resolveOpenAICodexTaintInstallationID 返回净化模式下的 installation_id：
+// 账号真实 device_id → 指纹种子派生（账号级稳定，与指纹收敛一致）→ taint
+// 派生兜底（账号+API Key 确定，仍跨轮稳定）。
+func resolveOpenAICodexTaintInstallationID(account *Account, apiKeyID, accountID int64) string {
+	if account != nil {
+		seed, _ := codexFingerprintSeed(account.Extra)
+		if id := resolveConvergedInstallationID(account, seed); id != "" {
+			return id
+		}
+	}
+	return deriveCodexTaintUUID("install", apiKeyID, accountID, "installation")
+}
+
+// applyCodexTaintHeaders 对出站头应用切号净化：installation/window 头派生
+// 改写、turn-metadata 内嵌标识改写。session_id/conversation_id 头由调用点
+// 复用 transform 已派生的 prompt_cache_key（官方 session_id 头 == prompt_cache_key）。
+// 指纹收敛档（device/session/full）在 buildUpstreamRequest 后续步骤覆盖同
+// 字段，天然优先；off 档则保留此处派生值。x-codex-turn-state 已有专门的跨
+// 账号剥离守卫（openai_codex_turn_state.go），此处不碰。
+// 返回 error 仅当 turn-metadata 存在但无法解析——净化失败宁可拒绝请求，
+// 不回退透传（跨账号矛盾信号比失败更糟）。
+func applyCodexTaintHeaders(c *gin.Context, h http.Header, account *Account, apiKeyID int64) error {
+	taintAccountID := openAICodexTaintSanitizeAccountID(c)
+	if taintAccountID == 0 || h == nil {
+		return nil
+	}
+
+	installationID := resolveOpenAICodexTaintInstallationID(account, apiKeyID, taintAccountID)
+	if raw := strings.TrimSpace(h.Get("x-codex-installation-id")); raw != "" && raw != installationID {
+		h.Set("x-codex-installation-id", installationID)
+	}
+	if raw := h.Get("x-codex-window-id"); raw != "" {
+		if derived := deriveCodexTaintUUID("window", apiKeyID, taintAccountID, raw); derived != "" {
+			h.Set("x-codex-window-id", derived)
+		}
+	}
+	return applyCodexTaintTurnMetadata(h, apiKeyID, taintAccountID, installationID)
+}
+
+// applyCodexTaintTurnMetadata 改写 x-codex-turn-metadata 头内嵌标识。与指纹
+// 收敛的宽松版（非法值重建）不同，这里解析失败必须报错：taint 净化失败
+// 直接拒绝该请求。
+func applyCodexTaintTurnMetadata(h http.Header, apiKeyID, accountID int64, installationID string) error {
+	raw := strings.TrimSpace(h.Get("x-codex-turn-metadata"))
+	if raw == "" {
+		return nil
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal([]byte(raw), &metadata); err != nil || metadata == nil {
+		return fmt.Errorf("codex taint: unparsable x-codex-turn-metadata header")
+	}
+	if !rewriteCodexTaintMetadataMap(metadata, apiKeyID, accountID, installationID) {
+		return nil
+	}
+	rebuilt, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("codex taint: re-encode x-codex-turn-metadata: %w", err)
+	}
+	h.Set("x-codex-turn-metadata", string(rebuilt))
+	return nil
+}
+
+// rewriteCodexTaintMetadataMap 是 turn-metadata 字段改写的共享核心（头版与
+// client_metadata 内嵌版共用）：session_id 与 thread_id 走同一派生（官方二者
+// 同值，原值相等 → 派生后仍相等）；turn_id/window_id 独立派生；其余字段
+// （git/sandbox 等）原样保留。返回是否有改动。
+func rewriteCodexTaintMetadataMap(metadata map[string]any, apiKeyID, accountID int64, installationID string) bool {
+	changed := false
+	rederive := func(key, domain string) {
+		if v, ok := metadata[key].(string); ok && v != "" {
+			if derived := deriveCodexTaintUUID(domain, apiKeyID, accountID, v); derived != "" && derived != v {
+				metadata[key] = derived
+				changed = true
+			}
+		}
+	}
+	rederive("session_id", "pck")
+	rederive("thread_id", "pck")
+	rederive("turn_id", "turn")
+	rederive("window_id", "window")
+	if v, ok := metadata["installation_id"].(string); ok && v != "" && installationID != "" && v != installationID {
+		metadata["installation_id"] = installationID
+		changed = true
+	}
+	return changed
+}
+
+// applyCodexTaintClientMetadata 对请求体 client_metadata 应用切号净化，与
+// 头侧（applyCodexTaintHeaders）同一套派生：顶层 session_id/thread_id/
+// turn_id/x-codex-window-id/x-codex-installation-id 与内嵌
+// x-codex-turn-metadata JSON 同步改写，避免头与 body 自相矛盾。
+func applyCodexTaintClientMetadata(c *gin.Context, reqBody map[string]any, account *Account, apiKeyID int64) error {
+	taintAccountID := openAICodexTaintSanitizeAccountID(c)
+	if taintAccountID == 0 || reqBody == nil {
+		return nil
+	}
+	existing, ok := reqBody["client_metadata"].(map[string]any)
+	if !ok || existing == nil {
+		return nil
+	}
+
+	changed := false
+	installationID := resolveOpenAICodexTaintInstallationID(account, apiKeyID, taintAccountID)
+	if v, ok := existing["x-codex-installation-id"].(string); ok && v != "" && installationID != "" && v != installationID {
+		existing["x-codex-installation-id"] = installationID
+		changed = true
+	}
+	rederive := func(key, domain string) {
+		if v, ok := existing[key].(string); ok && v != "" {
+			if derived := deriveCodexTaintUUID(domain, apiKeyID, taintAccountID, v); derived != "" && derived != v {
+				existing[key] = derived
+				changed = true
+			}
+		}
+	}
+	rederive("session_id", "pck")
+	rederive("thread_id", "pck")
+	rederive("turn_id", "turn")
+	rederive("x-codex-window-id", "window")
+
+	if raw, ok := existing["x-codex-turn-metadata"].(string); ok && strings.TrimSpace(raw) != "" {
+		var metadata map[string]any
+		if err := json.Unmarshal([]byte(raw), &metadata); err != nil || metadata == nil {
+			return fmt.Errorf("codex taint: unparsable client_metadata.x-codex-turn-metadata")
+		}
+		if rewriteCodexTaintMetadataMap(metadata, apiKeyID, taintAccountID, installationID) {
+			rebuilt, err := json.Marshal(metadata)
+			if err != nil {
+				return fmt.Errorf("codex taint: re-encode client_metadata.x-codex-turn-metadata: %w", err)
+			}
+			existing["x-codex-turn-metadata"] = string(rebuilt)
+			changed = true
+		}
+	}
+
+	if changed {
+		reqBody["client_metadata"] = existing
+	}
+	return nil
 }
