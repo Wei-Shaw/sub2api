@@ -9,23 +9,56 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+const (
+	contentModerationInputClassText                = "user_text"
+	contentModerationInputClassImage               = "user_image"
+	contentModerationInputClassTextImage           = "user_text_image"
+	contentModerationInputClassToolContinuation    = "tool_continuation"
+	contentModerationInputClassNonUserContinuation = "non_user_continuation"
+	contentModerationInputClassEmpty               = "empty"
+	contentModerationInputClassInvalidJSON         = "invalid_json"
+	contentModerationInputClassUnsupported         = "unsupported_nonempty"
+
+	contentModerationInputShapeMissing = "missing"
+	contentModerationInputShapeString  = "string"
+	contentModerationInputShapeObject  = "object"
+	contentModerationInputShapeArray   = "array"
+	contentModerationInputShapeOther   = "other"
+
+	responsesItemKindNone       = "none"
+	responsesItemKindUser       = "user"
+	responsesItemKindAssistant  = "assistant"
+	responsesItemKindToolCall   = "tool_call"
+	responsesItemKindToolOutput = "tool_output"
+	responsesItemKindReasoning  = "reasoning"
+	responsesItemKindOther      = "other"
+)
+
 func ExtractContentModerationText(protocol string, body []byte) string {
 	return ExtractContentModerationInput(protocol, body).Text
 }
 
 func ExtractContentModerationInput(protocol string, body []byte) ContentModerationInput {
-	if len(body) == 0 || !gjson.ValidBytes(body) {
-		return ContentModerationInput{}
+	if len(body) == 0 {
+		return newContentModerationInput(nil, nil, contentModerationInputClassEmpty, contentModerationInputShapeMissing, responsesItemKindNone, 0, false)
+	}
+	if !gjson.ValidBytes(body) {
+		return newContentModerationInput(nil, nil, contentModerationInputClassInvalidJSON, contentModerationInputShapeOther, responsesItemKindOther, 0, protocol == ContentModerationProtocolOpenAIResponses)
 	}
 	var parts []string
 	var images []string
+	classification := ""
+	inputShape := contentModerationInputShapeMissing
+	tailItemKind := responsesItemKindNone
+	itemCount := 0
+	failClosed := false
 	switch protocol {
 	case ContentModerationProtocolAnthropicMessages:
 		collectLastAnthropicUserMessage(gjson.GetBytes(body, "messages"), &parts, &images)
 	case ContentModerationProtocolOpenAIChat:
 		collectLastRoleMessage(gjson.GetBytes(body, "messages"), "user", &parts, &images)
 	case ContentModerationProtocolOpenAIResponses:
-		collectLastResponsesInput(gjson.GetBytes(body, "input"), &parts, &images)
+		return extractResponsesContentModerationInput(gjson.GetBytes(body, "input"))
 	case ContentModerationProtocolGemini:
 		collectLastGeminiContent(gjson.GetBytes(body, "contents"), &parts, &images)
 	case ContentModerationProtocolOpenAIImages:
@@ -36,12 +69,39 @@ func ExtractContentModerationInput(protocol string, body []byte) ContentModerati
 		collectLastRoleMessage(gjson.GetBytes(body, "messages"), "user", &parts, &images)
 		collectLastGeminiContent(gjson.GetBytes(body, "contents"), &parts, &images)
 	}
+	return newContentModerationInput(parts, images, classification, inputShape, tailItemKind, itemCount, failClosed)
+}
+
+func newContentModerationInput(parts []string, images []string, classification string, inputShape string, tailItemKind string, itemCount int, failClosed bool) ContentModerationInput {
 	out := ContentModerationInput{
-		Text:   normalizeContentModerationText(strings.Join(parts, "\n")),
-		Images: normalizeModerationImages(images),
+		Text:           normalizeContentModerationText(strings.Join(parts, "\n")),
+		Images:         normalizeModerationImages(images),
+		classification: classification,
+		inputShape:     inputShape,
+		tailItemKind:   tailItemKind,
+		itemCount:      itemCount,
+		failClosed:     failClosed,
 	}
 	out.Normalize()
+	if out.classification == "" {
+		out.classification = classifyExtractedModerationInput(out)
+	}
 	return out
+}
+
+func classifyExtractedModerationInput(input ContentModerationInput) string {
+	hasText := strings.TrimSpace(input.Text) != ""
+	hasImages := len(input.Images) > 0
+	switch {
+	case hasText && hasImages:
+		return contentModerationInputClassTextImage
+	case hasText:
+		return contentModerationInputClassText
+	case hasImages:
+		return contentModerationInputClassImage
+	default:
+		return contentModerationInputClassEmpty
+	}
 }
 
 func collectLastRoleMessage(messages gjson.Result, role string, parts *[]string, images *[]string) {
@@ -121,54 +181,144 @@ func isAnthropicSystemReminderText(text string) bool {
 	return strings.HasPrefix(strings.TrimSpace(text), "<system-reminder>")
 }
 
-func collectLastResponsesInput(input gjson.Result, parts *[]string, images *[]string) {
+func extractResponsesContentModerationInput(input gjson.Result) ContentModerationInput {
 	switch {
 	case !input.Exists():
-		return
+		return newContentModerationInput(nil, nil, contentModerationInputClassEmpty, contentModerationInputShapeMissing, responsesItemKindNone, 0, false)
 	case input.Type == gjson.String:
-		addModerationText(parts, input.String())
+		var parts []string
+		addModerationText(&parts, input.String())
+		return newContentModerationInput(parts, nil, "", contentModerationInputShapeString, responsesItemKindUser, 1, false)
 	case input.IsArray():
 		array := input.Array()
 		if len(array) == 0 {
-			return
+			return newContentModerationInput(nil, nil, contentModerationInputClassEmpty, contentModerationInputShapeArray, responsesItemKindNone, 0, false)
 		}
-		last := array[len(array)-1]
-		if !isResponsesUserTextItem(last) {
-			return
+		tailKind := classifyResponsesItem(array[len(array)-1])
+		switch tailKind {
+		case responsesItemKindToolCall, responsesItemKindToolOutput:
+			return newContentModerationInput(nil, nil, contentModerationInputClassToolContinuation, contentModerationInputShapeArray, tailKind, len(array), false)
+		case responsesItemKindAssistant, responsesItemKindReasoning:
+			return newContentModerationInput(nil, nil, contentModerationInputClassNonUserContinuation, contentModerationInputShapeArray, tailKind, len(array), false)
+		case responsesItemKindOther:
+			return newContentModerationInput(nil, nil, contentModerationInputClassUnsupported, contentModerationInputShapeArray, tailKind, len(array), true)
 		}
-		collectContentValue(last.Get("content"), parts, images)
-		if last.Get("type").String() == "input_text" || last.Get("text").Exists() {
-			collectContentValue(last, parts, images)
+		var parts []string
+		var images []string
+		failClosed := false
+		start := len(array) - 1
+		for start > 0 && classifyResponsesItem(array[start-1]) == responsesItemKindUser {
+			start--
 		}
-	case input.IsObject():
-		if isResponsesUserTextItem(input) {
-			collectContentValue(input.Get("content"), parts, images)
-			if input.Get("type").String() == "input_text" || input.Get("text").Exists() {
-				collectContentValue(input, parts, images)
+		for idx := start; idx < len(array); idx++ {
+			item := array[idx]
+			beforeText := len(parts)
+			beforeImages := len(images)
+			collectResponsesUserItem(item, &parts, &images)
+			if len(parts) == beforeText && len(images) == beforeImages && responsesUserItemHasNonEmptyContent(item) {
+				failClosed = true
 			}
 		}
+		classification := ""
+		if failClosed && normalizeContentModerationText(strings.Join(parts, "\n")) == "" && len(images) == 0 {
+			classification = contentModerationInputClassUnsupported
+		}
+		return newContentModerationInput(parts, images, classification, contentModerationInputShapeArray, tailKind, len(array), failClosed)
+	case input.IsObject():
+		kind := classifyResponsesItem(input)
+		if kind != responsesItemKindUser {
+			classification := contentModerationInputClassUnsupported
+			failClosed := true
+			if kind == responsesItemKindToolCall || kind == responsesItemKindToolOutput {
+				classification = contentModerationInputClassToolContinuation
+				failClosed = false
+			} else if kind == responsesItemKindAssistant || kind == responsesItemKindReasoning {
+				classification = contentModerationInputClassNonUserContinuation
+				failClosed = false
+			}
+			return newContentModerationInput(nil, nil, classification, contentModerationInputShapeObject, kind, 1, failClosed)
+		}
+		var parts []string
+		var images []string
+		collectResponsesUserItem(input, &parts, &images)
+		failClosed := len(parts) == 0 && len(images) == 0 && responsesUserItemHasNonEmptyContent(input)
+		classification := ""
+		if failClosed {
+			classification = contentModerationInputClassUnsupported
+		}
+		return newContentModerationInput(parts, images, classification, contentModerationInputShapeObject, kind, 1, failClosed)
+	default:
+		return newContentModerationInput(nil, nil, contentModerationInputClassUnsupported, contentModerationInputShapeOther, responsesItemKindOther, 1, true)
 	}
 }
 
-func isResponsesUserTextItem(item gjson.Result) bool {
+func collectLastResponsesInput(input gjson.Result, parts *[]string, images *[]string) {
+	extracted := extractResponsesContentModerationInput(input)
+	if extracted.IsEmpty() {
+		return
+	}
+	if extracted.Text != "" {
+		*parts = append(*parts, extracted.Text)
+	}
+	*images = append(*images, extracted.Images...)
+}
+
+func classifyResponsesItem(item gjson.Result) string {
 	role := strings.ToLower(strings.TrimSpace(item.Get("role").String()))
-	if role == "user" {
-		return responseItemHasModerationText(item)
+	switch role {
+	case "user":
+		return responsesItemKindUser
+	case "assistant", "developer", "system":
+		return responsesItemKindAssistant
+	case "tool", "function":
+		return responsesItemKindToolOutput
 	}
 	if role != "" {
-		return false
+		return responsesItemKindOther
 	}
-	return responseItemHasModerationText(item)
+	typ := strings.ToLower(strings.TrimSpace(item.Get("type").String()))
+	switch typ {
+	case "input_text", "input_image", "text", "image", "image_url":
+		return responsesItemKindUser
+	case "function_call_output", "computer_call_output", "local_shell_call_output", "mcp_call_output", "custom_tool_call_output":
+		return responsesItemKindToolOutput
+	case "function_call", "computer_call", "local_shell_call", "web_search_call", "file_search_call", "mcp_call", "custom_tool_call":
+		return responsesItemKindToolCall
+	case "reasoning":
+		return responsesItemKindReasoning
+	case "message":
+		return responsesItemKindOther
+	case "":
+		if item.Get("content").Exists() || item.Get("text").Exists() || item.Get("image_url").Exists() {
+			return responsesItemKindUser
+		}
+	}
+	return responsesItemKindOther
 }
 
-func responseItemHasModerationText(item gjson.Result) bool {
-	var parts []string
-	var images []string
-	collectContentValue(item.Get("content"), &parts, &images)
-	if item.Get("type").String() == "input_text" || item.Get("text").Exists() {
-		collectContentValue(item, &parts, &images)
+func collectResponsesUserItem(item gjson.Result, parts *[]string, images *[]string) {
+	collectContentValue(item.Get("content"), parts, images)
+	typ := strings.ToLower(strings.TrimSpace(item.Get("type").String()))
+	if typ == "input_text" || typ == "input_image" || typ == "text" || typ == "image" || typ == "image_url" || item.Get("text").Exists() || item.Get("image_url").Exists() {
+		collectContentValue(item, parts, images)
 	}
-	return normalizeContentModerationText(strings.Join(parts, "\n")) != "" || len(images) > 0
+}
+
+func responsesUserItemHasNonEmptyContent(item gjson.Result) bool {
+	for _, path := range []string{"content", "text", "image_url", "url", "file_id"} {
+		value := item.Get(path)
+		if !value.Exists() || value.Type == gjson.Null {
+			continue
+		}
+		if value.Type == gjson.String && strings.TrimSpace(value.String()) == "" {
+			continue
+		}
+		if value.IsArray() && len(value.Array()) == 0 {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func collectLastGeminiContent(contents gjson.Result, parts *[]string, images *[]string) {
