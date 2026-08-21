@@ -748,6 +748,9 @@ REDACTED
 	if err := svc.MigrateCodexBodyFingerprintToSignals(context.Background()); err != nil {
 		logger.LegacyPrintf("service.setting", "Warning: migrate codex body fingerprint to signals failed: %v", err)
 REDACTED
+	if err := svc.MigrateGrokDefaultTextModel(context.Background()); err != nil {
+		logger.LegacyPrintf("service.setting", "Warning: migrate Grok default text model failed: %v", err)
+REDACTED
 	antigravity.SetUserAgentVersionResolver(svc.GetAntigravityUserAgentVersion)
 	// enforceCodexIdentityHeaders 是所有 Codex 出站路径共用的纯函数收口点，拿不到 ctx，
 	// 故注入无参解析器；解析器内部自带 60s TTL 缓存，热路径不触库。

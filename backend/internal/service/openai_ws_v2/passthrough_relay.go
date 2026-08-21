@@ -14,6 +14,8 @@ import (
 
 	coderws "github.com/coder/websocket"
 	"github.com/tidwall/gjson"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
 type FrameConn interface {
@@ -1039,6 +1041,15 @@ REDACTED
 	REDACTED
 		// 解析失败时不做部分字段累加，避免计费 usage 出现“半有效”状态。
 		return Usage{REDACTED
+REDACTED
+	reasoningTokens := usageResult.Get("output_tokens_details.reasoning_tokens").Int()
+	if reasoningTokens == 0 {
+		reasoningTokens = usageResult.Get("completion_tokens_details.reasoning_tokens").Int()
+REDACTED
+	if reasoningTokens > 0 {
+		outputTokens = int(xai.IncludeIndependentReasoningTokens(
+			int64(inputTokens), int64(outputTokens), usageResult.Get("total_tokens").Int(), reasoningTokens,
+		))
 REDACTED
 	parsedUsage := Usage{
 		InputTokens:              inputTokens,

@@ -116,8 +116,9 @@ func isGrokAccountAccessCode(value string) bool {
 		"subscription_required",
 		"entitlement_required",
 		"not_entitled",
-		"plan_required",
-		"permission_denied":
+		"plan_required":
+		// permission-denied is omitted: xAI reuses it for both entitlement
+		// refusals and request-scoped safety blocks, so the message decides.
 		return true
 	default:
 		return false
@@ -173,6 +174,7 @@ REDACTED
 		"prompt violates policy",
 		"input violates content policy",
 		"input violates policy",
+		"violates usage guidelines",
 REDACTED {
 		if strings.Contains(lower, phrase) {
 			return true
@@ -207,7 +209,7 @@ REDACTED
 REDACTED
 	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
 	switch decision.Class {
-	case GrokFailureFreeUsage, GrokFailureEmptyUpstream, GrokFailureBilling, GrokFailureModelCapacity:
+	case GrokFailureFreeUsage, GrokFailureEmptyUpstream, GrokFailureBilling, GrokFailureModelCapacity, GrokFailureCompatibility:
 		return decision.ShouldFailover
 REDACTED
 	return s.shouldFailoverUpstreamError(statusCode)

@@ -3509,6 +3509,30 @@ func TestExtractOpenAIUsageFromJSONBytes_AcceptsResponseAndChatUsageShapes(t *te
 	usage, ok = extractOpenAIUsageFromJSONBytes([]byte(`{"usage":{"input_tokens":20,"output_tokens":2,"cache_read_input_tokens":19,"input_tokens_details":{"cached_tokens":0REDACTEDREDACTEDREDACTED`))
 	require.True(t, ok)
 	require.Zero(t, usage.CacheReadInputTokens, "官方嵌套缓存读取字段显式为零时仍应优先于兼容顶层别名")
+
+	// xAI reports reasoning_tokens outside visible output_tokens. Only the
+	// arithmetic-consistent shape is independent; OpenAI's canonical shape
+	// already includes reasoning in completion/output_tokens.
+	usage, ok = extractOpenAIUsageFromJSONBytes([]byte(`{"usage":{"input_tokens":10000,"output_tokens":500,"total_tokens":10800,"output_tokens_details":{"reasoning_tokens":300REDACTEDREDACTEDREDACTED`))
+	require.True(t, ok)
+	require.Equal(t, 800, usage.OutputTokens)
+	usage, ok = extractOpenAIUsageFromJSONBytes([]byte(`{"usage":{"input_tokens":10000,"output_tokens":500,"total_tokens":10500,"output_tokens_details":{"reasoning_tokens":300REDACTEDREDACTEDREDACTED`))
+	require.True(t, ok)
+	require.Equal(t, 500, usage.OutputTokens)
+REDACTED
+
+func TestExtractOpenAIUsageFromJSONBytes_IncludesGrokReasoningTokens(t *testing.T) {
+	usage, ok := extractOpenAIUsageFromJSONBytes([]byte(`{"usage":{"prompt_tokens":32,"completion_tokens":9,"total_tokens":135,"completion_tokens_details":{"reasoning_tokens":94REDACTEDREDACTEDREDACTED`))
+	require.True(t, ok)
+	require.Equal(t, 103, usage.OutputTokens, "Grok Chat usage bills visible completion plus reasoning tokens")
+
+	usage, ok = extractOpenAIUsageFromJSONBytes([]byte(`{"usage":{"input_tokens":32,"output_tokens":103,"total_tokens":135,"output_tokens_details":{"reasoning_tokens":94REDACTEDREDACTEDREDACTED`))
+	require.True(t, ok)
+	require.Equal(t, 103, usage.OutputTokens, "Responses output_tokens already includes reasoning when total confirms it")
+
+	usage, ok = extractOpenAIUsageFromJSONBytes([]byte(`{"usage":{"input_tokens":32,"output_tokens":9,"total_tokens":135,"output_tokens_details":{"reasoning_tokens":94REDACTEDREDACTEDREDACTED`))
+	require.True(t, ok)
+	require.Equal(t, 103, usage.OutputTokens, "Responses detail-only shape is normalized when total exposes the full output")
 REDACTED
 
 func TestExtractCodexFinalResponse_SampleReplay(t *testing.T) {

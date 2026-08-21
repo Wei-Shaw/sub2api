@@ -325,6 +325,29 @@ func TestParseUsageAndEnrichCoverage(t *testing.T) {
 	enrichResult(nil, state, 0)
 REDACTED
 
+func TestParseUsageAndAccumulateIncludesIndependentReasoningTokens(t *testing.T) {
+	t.Parallel()
+
+	state := &relayState{REDACTED
+	got := parseUsageAndAccumulate(
+		state,
+		[]byte(`{"type":"response.completed","response":{"usage":{"input_tokens":32,"output_tokens":9,"total_tokens":151,"output_tokens_details":{"reasoning_tokens":110REDACTEDREDACTEDREDACTEDREDACTED`),
+		"response.completed",
+		nil,
+	)
+	require.Equal(t, 32, got.InputTokens)
+	require.Equal(t, 119, got.OutputTokens)
+
+	state = &relayState{REDACTED
+	got = parseUsageAndAccumulate(
+		state,
+		[]byte(`{"type":"response.completed","response":{"usage":{"input_tokens":32,"output_tokens":119,"total_tokens":151,"output_tokens_details":{"reasoning_tokens":110REDACTEDREDACTEDREDACTEDREDACTED`),
+		"response.completed",
+		nil,
+	)
+	require.Equal(t, 119, got.OutputTokens, "inclusive Responses output must not double-count reasoning")
+REDACTED
+
 func TestParseUsageAndAccumulateAcceptsChatUsageAliases(t *testing.T) {
 	t.Parallel()
 

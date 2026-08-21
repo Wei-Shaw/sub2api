@@ -15,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -1395,6 +1396,17 @@ REDACTED
 	outputTokens := value.Get("output_tokens").Int()
 	if outputTokens == 0 {
 		outputTokens = value.Get("completion_tokens").Int()
+REDACTED
+	// xAI reports visible output separately from reasoning_tokens; OpenAI
+	// folds reasoning into completion/output. Use total_tokens to tell them apart.
+	reasoningTokens := max(int(firstPositiveGJSONInt(
+		value.Get("completion_tokens_details.reasoning_tokens"),
+		value.Get("output_tokens_details.reasoning_tokens"),
+	)), 0)
+	if reasoningTokens > 0 {
+		outputTokens = xai.IncludeIndependentReasoningTokens(
+			inputTokens, outputTokens, value.Get("total_tokens").Int(), int64(reasoningTokens),
+		)
 REDACTED
 	cacheReadTokens := openAICacheReadTokensFromUsage(value)
 	cacheCreationTokens := openAICacheCreationTokensFromUsage(value)
