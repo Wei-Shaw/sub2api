@@ -101,7 +101,7 @@ const (
 	AccountTestModeGrokRealtime = "realtime"
 
 	defaultGrokRealtimeTestModel = "grok-voice-latest"
-	grokRealtimeProbeTimeout     = 12 * time.Second
+	grokRealtimeProbeTimeout     = DefaultGrokRealtimeDialTimeout
 )
 
 // isOpenAIImageModel checks if the model is an OpenAI image generation model (e.g. gpt-image-2).

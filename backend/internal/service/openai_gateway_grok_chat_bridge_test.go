@@ -251,7 +251,7 @@ REDACTED
 	require.NotNil(t, result)
 	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
 	require.Equal(t, grokChatResponsesEndpoint, result.UpstreamEndpoint)
-	require.Equal(t, "grok-4.5", result.UpstreamModel)
+	require.Equal(t, "grok-4.6", result.UpstreamModel)
 	require.Equal(t, 9908, result.Usage.InputTokens)
 	require.Equal(t, 12, result.Usage.OutputTokens)
 	require.Equal(t, 9856, result.Usage.CacheReadInputTokens)
@@ -352,7 +352,7 @@ REDACTED
 			c.Request.Header.Set("X-Request-ID", "generic-"+tt.requestID)
 			c.Set("api_key", &APIKey{ID: 7111REDACTED)
 
-			identity := resolveGrokCacheIdentity(c, tt.body, "", "grok-4.5")
+			identity := resolveGrokCacheIdentity(c, tt.body, "", "grok-4.6")
 			require.NotEmpty(t, identity)
 			if index == 0 {
 				stableIdentity = identity
@@ -406,8 +406,8 @@ REDACTEDREDACTED
 		accountRepo:       repo,
 REDACTED
 
-	firstTurnIdentity := resolveGrokCacheIdentity(c, firstTurnBody, "", "grok-4.5")
-	extendedTurnIdentity := resolveGrokCacheIdentity(c, body, "", "grok-4.5")
+	firstTurnIdentity := resolveGrokCacheIdentity(c, firstTurnBody, "", "grok-4.6")
+	extendedTurnIdentity := resolveGrokCacheIdentity(c, body, "", "grok-4.6")
 	require.NotEmpty(t, firstTurnIdentity)
 	require.Equal(t, firstTurnIdentity, extendedTurnIdentity)
 
@@ -463,8 +463,8 @@ REDACTEDREDACTED
 		accountRepo:       repo,
 REDACTED
 
-	firstTurnIdentity := resolveGrokCacheIdentity(c, firstTurnBody, "", "grok-4.5")
-	extendedTurnIdentity := resolveGrokCacheIdentity(c, body, "", "grok-4.5")
+	firstTurnIdentity := resolveGrokCacheIdentity(c, firstTurnBody, "", "grok-4.6")
+	extendedTurnIdentity := resolveGrokCacheIdentity(c, body, "", "grok-4.6")
 	require.NotEmpty(t, firstTurnIdentity)
 	require.Equal(t, firstTurnIdentity, extendedTurnIdentity)
 
@@ -534,7 +534,7 @@ func TestForwardGrokChatRuntimeGateFallsBackToRaw(t *testing.T) {
 		mappedModel  string
 		wantUpstream string
 REDACTED{
-		{name: "missing cache identity", wantUpstream: "grok-4.5"REDACTED,
+		{name: "missing cache identity", wantUpstream: "grok-4.6"REDACTED,
 		{name: "non cache capable mapped model", setAPIKey: true, mappedModel: "grok-4.3", wantUpstream: "grok-4.3"REDACTED,
 REDACTED
 
