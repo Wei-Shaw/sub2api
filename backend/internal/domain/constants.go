@@ -138,6 +138,11 @@ var DefaultAntigravityModelMapping = map[string]string{
 	"gemini-3.1-flash-image": "gemini-3.1-flash-image",
 	// Gemini 3.1 image preview 映射
 	"gemini-3.1-flash-image-preview": "gemini-3.1-flash-image",
+	// Gemini 3.5 Flash. The bare model ID is a stable client-facing alias;
+	// Antigravity currently exposes low and extra-low wire IDs.
+	"gemini-3.5-flash":           "gemini-3.5-flash-low",
+	"gemini-3.5-flash-extra-low": "gemini-3.5-flash-extra-low",
+	"gemini-3.5-flash-low":       "gemini-3.5-flash-low",
 	// Gemini 3.6 Flash tiered models
 	"gemini-3.6-flash":        "gemini-3.6-flash",
 	"gemini-3.6-flash-high":   "gemini-3.6-flash-high",

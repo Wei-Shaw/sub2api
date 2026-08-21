@@ -73,6 +73,21 @@ func TestDefaultAntigravityModelMapping_Gemini36FlashModels(t *testing.T) {
 	}
 }
 
+func TestDefaultAntigravityModelMapping_Gemini35FlashModels(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"gemini-3.5-flash":           "gemini-3.5-flash-low",
+		"gemini-3.5-flash-extra-low": "gemini-3.5-flash-extra-low",
+		"gemini-3.5-flash-low":       "gemini-3.5-flash-low",
+	}
+	for from, want := range cases {
+		if got := DefaultAntigravityModelMapping[from]; got != want {
+			t.Fatalf("unexpected Gemini 3.5 mapping for %q: got %q want %q", from, got, want)
+		}
+	}
+}
+
 func TestDefaultBedrockModelMapping_ContainsNewClaudeModels(t *testing.T) {
 	t.Parallel()
 

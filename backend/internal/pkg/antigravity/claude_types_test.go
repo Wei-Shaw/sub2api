@@ -33,3 +33,18 @@ func TestDefaultModels_ContainsNewAndLegacyImageModels(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultModels_ContainsGemini35FlashModels(t *testing.T) {
+	t.Parallel()
+
+	models := DefaultModels()
+	byID := make(map[string]ClaudeModel, len(models))
+	for _, model := range models {
+		byID[model.ID] = model
+	}
+	for _, id := range []string{"gemini-3.5-flash", "gemini-3.5-flash-extra-low", "gemini-3.5-flash-low"} {
+		if _, ok := byID[id]; !ok {
+			t.Fatalf("expected Antigravity model %q", id)
+		}
+	}
+}

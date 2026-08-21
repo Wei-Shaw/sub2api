@@ -104,6 +104,14 @@ describe('useModelWhitelist', () => {
     expect(models).toContain('gemini-3.1-pro')
   })
 
+  it('antigravity 模型列表包含 Gemini 3.5 Flash wire IDs', () => {
+    const models = getModelsByPlatform('antigravity')
+
+    expect(models).toContain('gemini-3.5-flash')
+    expect(models).toContain('gemini-3.5-flash-extra-low')
+    expect(models).toContain('gemini-3.5-flash-low')
+  })
+
   it('whitelist 模式会忽略通配符条目', () => {
     const mapping = buildModelMappingObject('whitelist', ['claude-*', 'gemini-3.1-flash-image'], [])
     expect(mapping).toEqual({

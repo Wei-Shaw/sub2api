@@ -797,15 +797,21 @@ func normalizeModelNameForPricing(model string) string {
 	return normalizeGeminiThinkingTierAlias(model)
 }
 
-// normalizeGeminiThinkingTierAlias maps Antigravity's Gemini 3.6 Flash
-// thinking-tier model IDs to the public base model. The tier controls reasoning
-// behavior, not the published token rate, so this keeps -high/-low/-medium and
-// -tiered requests on the same price card as gemini-3.6-flash.
+// normalizeGeminiThinkingTierAlias maps Antigravity's tiered Flash wire IDs to
+// their public base models. The tier controls reasoning behavior rather than
+// token pricing.
 func normalizeGeminiThinkingTierAlias(model string) string {
-	const baseModel = "gemini-3.6-flash"
+	const gemini35 = "gemini-3.5-flash"
+	for _, tier := range []string{"-extra-low", "-low"} {
+		if model == gemini35+tier {
+			return gemini35
+		}
+	}
+
+	const gemini36 = "gemini-3.6-flash"
 	for _, tier := range []string{"-high", "-low", "-medium", "-tiered"} {
-		if model == baseModel+tier {
-			return baseModel
+		if model == gemini36+tier {
+			return gemini36
 		}
 	}
 	return model
