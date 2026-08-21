@@ -468,6 +468,11 @@ type OpenAIGatewayService struct {
 	// 剥离跨账号回带（openai_codex_turn_state.go）。
 	openaiCodexTurnStateOrigins sync.Map
 	openaiCodexTurnStateWrites  atomic.Uint64
+	// openaiCodexSessionTaints: 下游会话 seed → openAICodexSessionTaint，记录
+	// 该会话曾被哪些账号服务过；发生过跨账号切换的会话进入净化模式（出站
+	// id 确定性改写，openai_codex_session_taint.go）。
+	openaiCodexSessionTaints      sync.Map
+	openaiCodexSessionTaintWrites atomic.Uint64
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
