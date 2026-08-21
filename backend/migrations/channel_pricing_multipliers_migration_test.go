@@ -36,8 +36,8 @@ func TestChannelPricingMultipliersMigration(t *testing.T) {
 		{"channel_pricing_intervals", "channel_pricing_intervals_cache_read_multiplier_positive", "cache_read_multiplier"},
 	}
 	for _, constraint := range constraints {
-		require.Contains(t, sql, "conname = '"+constraint.name+"' AND conrelid = '"+constraint.table+"'::regclass")
 		require.Contains(t, sql, "ALTER TABLE "+constraint.table+" ADD CONSTRAINT "+constraint.name+
 			" CHECK ("+constraint.column+" IS NULL OR "+constraint.column+" > 0)")
+		require.Contains(t, sql, "CHECK ("+constraint.column+" IS NULL OR "+constraint.column+" > 0) NOT VALID")
 	}
 }

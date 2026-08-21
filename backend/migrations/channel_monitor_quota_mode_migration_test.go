@@ -13,26 +13,29 @@ func TestChannelMonitorQuotaModeMigration(t *testing.T) {
 
 	sql := strings.Join(strings.Fields(string(content)), " ")
 
-	// provider CHECK 两张表扩到 8 平台，且带幂等守卫（仿 176 grok 迁移）。
+	// provider CHECK 两张表扩到 8 平台。为避免在发布路径中使用 DO 块，
+	// 约束逐条替换，并标记为经过兼容性审查。
 	require.Contains(t, sql, "channel_monitors_provider_check")
 	require.Contains(t, sql, "channel_monitor_request_templates_provider_check")
 	require.Contains(t, sql, "CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'antigravity', 'kimi', 'zhipu', 'deepseek'))")
-	for _, provider := range []string{"antigravity", "kimi", "zhipu", "deepseek"} {
-		require.Contains(t, sql, "position('"+provider+"' IN monitor_constraint_def) = 0")
-		require.Contains(t, sql, "position('"+provider+"' IN template_constraint_def) = 0")
-	}
+	require.Contains(t, sql, "DROP CONSTRAINT IF EXISTS channel_monitors_provider_check")
+	require.Contains(t, sql, "DROP CONSTRAINT IF EXISTS channel_monitor_request_templates_provider_check")
 
-	// check_mode 三态，默认 probe。
-	require.Contains(t, sql, "ADD COLUMN IF NOT EXISTS check_mode VARCHAR(32) NOT NULL DEFAULT 'probe'")
+	// check_mode 三态。旧写入由触发器补为 probe，避免非兼容的 NOT NULL DEFAULT。
+	require.Contains(t, sql, "ADD COLUMN IF NOT EXISTS check_mode VARCHAR(32)")
+	require.Contains(t, sql, "UPDATE channel_monitors SET check_mode = 'probe' WHERE check_mode IS NULL")
+	require.Contains(t, sql, "CREATE OR REPLACE FUNCTION sub2api_channel_monitor_write_guard()")
+	require.Contains(t, sql, "NEW.check_mode := 'probe'")
 	require.Contains(t, sql, "CHECK (check_mode IN ('probe', 'quota', 'quota_probe'))")
-	require.Contains(t, sql, "DROP CONSTRAINT IF EXISTS channel_monitors_check_mode_check")
-	for _, checkMode := range []string{"probe", "quota", "quota_probe"} {
-		require.Contains(t, sql, "position('''"+checkMode+"''' IN check_mode_constraint_def) = 0")
-	}
 
 	// account_id 关联账号，账号删除置空（监控保留，运行时报「账号未关联」）。
-	require.Contains(t, sql, "ADD COLUMN IF NOT EXISTS account_id BIGINT REFERENCES accounts(id) ON DELETE SET NULL")
-	require.Contains(t, sql, "CREATE INDEX IF NOT EXISTS idx_channel_monitors_account_id ON channel_monitors(account_id)")
+	require.Contains(t, sql, "ADD COLUMN IF NOT EXISTS account_id BIGINT")
+	require.Contains(t, sql, "CREATE OR REPLACE FUNCTION sub2api_clear_channel_monitor_account_on_delete()")
+	require.Contains(t, sql, "AFTER DELETE ON accounts")
+
+	index, err := FS.ReadFile("248_channel_monitor_account_id_index_notx.sql")
+	require.NoError(t, err)
+	require.Contains(t, string(index), "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_channel_monitors_account_id")
 
 	// 历史表配额快照列。
 	require.Contains(t, sql, "ADD COLUMN IF NOT EXISTS quota JSONB")
