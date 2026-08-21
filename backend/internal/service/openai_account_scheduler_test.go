@@ -34,6 +34,26 @@ func (r schedulerTestOpenAIAccountRepo) GetByID(ctx context.Context, id int64) (
 	return nil, errors.New("account not found")
 }
 
+func (r schedulerTestOpenAIAccountRepo) ListModelAvailabilityCandidates(_ context.Context, _ *int64, platforms []string, _ bool) ([]Account, error) {
+	platformSet := make(map[string]struct{}, len(platforms))
+	for _, platform := range platforms {
+		platformSet[platform] = struct{}{}
+	}
+	result := make([]Account, 0, len(r.accounts))
+	for _, account := range r.accounts {
+		if account.Status != StatusActive || !account.Schedulable {
+			continue
+		}
+		if len(platformSet) > 0 {
+			if _, ok := platformSet[account.Platform]; !ok {
+				continue
+			}
+		}
+		result = append(result, account)
+	}
+	return result, nil
+}
+
 func (r schedulerTestOpenAIAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error) {
 	var result []Account
 	for _, acc := range r.accounts {
@@ -2678,6 +2698,35 @@ func TestOpenAIAccountScheduler_SkipsAccountBlockedForRequestedModel(t *testing.
 
 	require.False(t, scheduler.isAccountRequestCompatible(context.Background(), account, OpenAIAccountScheduleRequest{RequestedModel: "gpt-5.5"}))
 	require.True(t, scheduler.isAccountRequestCompatible(context.Background(), account, OpenAIAccountScheduleRequest{RequestedModel: "gpt-5.6-sol"}))
+}
+
+func TestOpenAICompactScheduling_IgnoresOrdinaryQuotaAndRuntimeBlock(t *testing.T) {
+	now := time.Now()
+	resetAt := now.Add(time.Hour)
+	account := &Account{
+		ID:               21634,
+		Platform:         PlatformOpenAI,
+		Type:             AccountTypeOAuth,
+		Status:           StatusActive,
+		Schedulable:      true,
+		RateLimitResetAt: &resetAt,
+		Extra: map[string]any{
+			"openai_compact_supported": true,
+			"codex_7d_used_percent":    100.0,
+			"codex_7d_reset_at":        resetAt.Format(time.RFC3339),
+			"codex_usage_updated_at":   now.Format(time.RFC3339),
+		},
+	}
+	ctx := withOpenAIQuotaAutoPauseSettings(context.Background(), OpsOpenAIAccountQuotaAutoPauseSettings{DefaultThreshold7d: 0.9})
+
+	require.False(t, isOpenAICompatibleAccountEligibleForRequest(ctx, account, PlatformOpenAI, "gpt-5.6-sol", false, ""))
+	require.True(t, isOpenAICompatibleAccountEligibleForRequest(ctx, account, PlatformOpenAI, "gpt-5.6-sol", true, ""))
+
+	svc := &OpenAIGatewayService{}
+	svc.BlockAccountScheduling(account, resetAt, "429")
+	scheduler := &defaultOpenAIAccountScheduler{service: svc}
+	require.False(t, scheduler.isAccountRequestCompatible(ctx, account, OpenAIAccountScheduleRequest{RequestedModel: "gpt-5.6-sol"}))
+	require.True(t, scheduler.isAccountRequestCompatible(ctx, account, OpenAIAccountScheduleRequest{RequestedModel: "gpt-5.6-sol", RequireCompact: true}))
 }
 
 func TestReportOpenAIAccountScheduleResult_SuccessClearsModelTransientState(t *testing.T) {

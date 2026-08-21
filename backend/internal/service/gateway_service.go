@@ -563,6 +563,13 @@ func shouldClearStickySession(account *Account, requestedModel string) bool {
 	return false
 }
 
+func shouldClearStickySessionForOpenAIRequest(ctx context.Context, account *Account, requestedModel string, requireCompact bool) bool {
+	if !requireCompact {
+		return shouldClearStickySession(account, requestedModel)
+	}
+	return account != nil && !account.IsSchedulableForCompactModelWithContext(ctx, requestedModel)
+}
+
 type AccountWaitPlan struct {
 	AccountID      int64
 	MaxConcurrency int
