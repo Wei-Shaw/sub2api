@@ -17,7 +17,28 @@ const maxOpenAIResponsesRejectedFieldRetries = 6
 var (
 	openAIResponsesRejectedNamespaceParamPattern = regexp.MustCompile(`(?i)^input\[(\d+)\]\.namespace$`)
 	openAIResponsesRejectedMessageParamPattern   = regexp.MustCompile(`(?i)(?:unknown|unsupported)[ _-]+parameter\s*(?::|=|is)?\s*["']?(max_output_tokens|input\[\d+\]\.namespace)(?:["']|\b)`)
+	// ChatGPT internal Codex 端点点名拒绝顶层字段时用的是另一种文案，例如
+	// "prompt_cache_retention is not supported on this model"（code 为
+	// invalid_parameter），与上面的 "unknown/unsupported parameter: X" 形态不同。
+	openAIResponsesRejectedUnsupportedOnModelPattern = regexp.MustCompile(`(?i)^([a-z0-9_]+)\s+is\s+not\s+supported\s+(?:on|with|for|by)\s+this\s+model`)
 )
+
+// openAIResponsesStrippableRejectedParams 是被上游以 400 点名拒绝后，可以安全剥离
+// 并重试一次的顶层可选字段。
+//
+// 判据是「删掉它等价于客户端从没发过这个字段」：这些字段只影响提示缓存策略、
+// 调用方标识与用量统计口径，不参与生成语义，剥掉不会改变模型输出。
+//
+// 刻意不含 model / input / instructions / tools / reasoning 等语义关键字段——
+// 那些被拒时必须把错误如实返回客户端，而不是悄悄改写请求再重试。
+var openAIResponsesStrippableRejectedParams = map[string]struct{}{
+	"prompt_cache_retention": {},
+	"prompt_cache_options":   {},
+	"safety_identifier":      {},
+	"stream_options":         {},
+	"metadata":               {},
+	"user":                   {},
+}
 
 type openAIResponsesRejectedFieldRetryState struct {
 	attempts       int
@@ -62,14 +83,27 @@ func normalizeOpenAIResponsesRejectedFieldRetryBody(statusCode int, body, respon
 
 	code := strings.ToLower(strings.TrimSpace(extractUpstreamErrorCode(responseBody)))
 	message := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
-	if !isExplicitOpenAIResponsesFieldRejection(code, message) {
-		return nil, "", false, nil
-	}
 
 	param := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, "error.param").String()))
 	if param == "" {
 		param = openAIResponsesRejectedParamFromMessage(message)
 	}
+
+	// 已知可安全剥离的顶层可选字段：只要上游点名拒绝，就剥掉重试一次。
+	//
+	// 这一支刻意不走 isExplicitOpenAIResponsesFieldRejection 的 code 白名单：
+	// 这类拒绝的 code 并不统一（ChatGPT internal 实测用 invalid_parameter，
+	// 文案为 "X is not supported on this model"），靠 code 判定会漏。安全性由
+	// openAIResponsesStrippableRejectedParams 白名单保证——只有明确无生成语义的
+	// 字段才会被剥离，其余 param（含 model、input[N].name 等）一律不动。
+	if retryBody, reason, changed, err := stripRejectedOptionalParam(body, param); err != nil || changed {
+		return retryBody, reason, changed, err
+	}
+
+	if !isExplicitOpenAIResponsesFieldRejection(code, message) {
+		return nil, "", false, nil
+	}
+
 	if index, ok := openAIResponsesRejectedNamespaceIndex(param); ok {
 		return removeOpenAIResponsesRejectedNamespaceAtIndex(body, index)
 	}
@@ -93,11 +127,43 @@ func isExplicitOpenAIResponsesFieldRejection(code, message string) bool {
 }
 
 func openAIResponsesRejectedParamFromMessage(message string) string {
-	match := openAIResponsesRejectedMessageParamPattern.FindStringSubmatch(strings.TrimSpace(message))
-	if len(match) != 2 {
-		return ""
+	trimmed := strings.TrimSpace(message)
+	if match := openAIResponsesRejectedMessageParamPattern.FindStringSubmatch(trimmed); len(match) == 2 {
+		return strings.ToLower(strings.TrimSpace(match[1]))
 	}
-	return strings.ToLower(strings.TrimSpace(match[1]))
+	// "X is not supported on this model" 形态：上游通常同时给了 error.param，
+	// 这里只是缺失时的兜底。
+	if match := openAIResponsesRejectedUnsupportedOnModelPattern.FindStringSubmatch(trimmed); len(match) == 2 {
+		return strings.ToLower(strings.TrimSpace(match[1]))
+	}
+	return ""
+}
+
+// stripRejectedOptionalParam 在 param 命中可剥离白名单且请求体确实带了该字段时，
+// 删除它并返回可用于重试的 body。
+//
+// param 形如 "prompt_cache_options.ttl" 时按其顶层字段处理：上游拒的是该对象的
+// 内容，整体删掉即等价于没发这个对象。非白名单 param（含 "input[74].name" 这类
+// 带下标的路径）一律返回 changed=false，交给后续分支或如实回传客户端。
+func stripRejectedOptionalParam(body []byte, param string) ([]byte, string, bool, error) {
+	if param == "" {
+		return nil, "", false, nil
+	}
+	topLevel := param
+	if idx := strings.IndexByte(topLevel, '.'); idx > 0 {
+		topLevel = topLevel[:idx]
+	}
+	if _, strippable := openAIResponsesStrippableRejectedParams[topLevel]; !strippable {
+		return nil, "", false, nil
+	}
+	if !gjson.GetBytes(body, topLevel).Exists() {
+		return nil, "", false, nil
+	}
+	retryBody, err := sjson.DeleteBytes(body, topLevel)
+	if err != nil {
+		return nil, "", false, fmt.Errorf("delete rejected %s: %w", topLevel, err)
+	}
+	return retryBody, topLevel + " parameter rejection", true, nil
 }
 
 func openAIResponsesRejectedNamespaceIndex(param string) (int, bool) {
