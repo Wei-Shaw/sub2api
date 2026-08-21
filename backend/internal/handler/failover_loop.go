@@ -83,13 +83,21 @@ REDACTED
 	if !sameAccountRetryDeadlineAllows(failoverErr) {
 		return false
 REDACTED
-	// Deadline-window retries (OAuth 429) may pass retryLimit=0 and are not
-	// bound to pool_mode_retry_count. Pool-mode callers pass a positive limit.
-	if !failoverErr.SameAccountRetryDeadline.IsZero() && retryLimit <= 0 {
-		return true
+	// Error-specific caps (Grok capacity/stream-idle) remain hard limits even
+	// when the error also carries a freshly reconstructed deadline.
+	if failoverErr.SameAccountRetryMax > 0 {
+		if retryLimit <= 0 {
+			return false
+	REDACTED
+		if failoverErr.SameAccountRetryMax < retryLimit {
+			retryLimit = failoverErr.SameAccountRetryMax
+	REDACTED
+		return retryCount < retryLimit
 REDACTED
-	if failoverErr.SameAccountRetryMax > 0 && (retryLimit <= 0 || failoverErr.SameAccountRetryMax < retryLimit) {
-		retryLimit = failoverErr.SameAccountRetryMax
+	// OAuth 429 explicitly opts into a deadline window. It is intentionally not
+	// bounded by the ordinary/default pool retry count.
+	if !failoverErr.SameAccountRetryDeadline.IsZero() {
+		return true
 REDACTED
 	return retryLimit > 0 && retryCount < retryLimit
 REDACTED
@@ -202,10 +210,7 @@ REDACTED
 
 	// 同账号重试不算切换账号，粘性会话仅在实际切换时强制缓存计费。
 	retryCount := s.SameAccountRetryCount[accountID]
-	if failoverErr.SameAccountRetryMax > 0 && failoverErr.SameAccountRetryMax < retryLimit {
-		retryLimit = failoverErr.SameAccountRetryMax
-REDACTED
-	sameAccountRetry := failoverErr.RetryableOnSameAccount && retryLimit > 0 && retryCount < retryLimit && sameAccountRetryDeadlineAllows(failoverErr)
+	sameAccountRetry := sameAccountRetryAllowed(failoverErr, retryCount, retryLimit)
 	if needForceCacheBilling(s.hasBoundSession, failoverErr, sameAccountRetry) {
 		s.ForceCacheBilling = true
 REDACTED
