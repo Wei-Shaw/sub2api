@@ -30,6 +30,107 @@ func TestOpenAIResponsesRejectedFieldRetryStateRejectsDuplicateBodyAndCap(t *tes
 	require.False(t, state.Allow([]byte(`{"model":"gpt-5.5","variant":"overflow"}`)))
 }
 
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyRemovesRejectedReasoningContent(t *testing.T) {
+	body := []byte(`{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"keep user"}]},{"type":"reasoning","id":"rs_keep","summary":[{"type":"summary_text","text":"keep summary"}],"encrypted_content":"keep encrypted","content":[{"type":"reasoning_text","text":"remove content"}]},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"keep assistant"}]}]}`)
+	responseBody := []byte(`{"error":{"code":"array_above_max_length","message":"Invalid 'input[1].content': array too long. Expected an array with maximum length 0, but got an array with length 1 instead.","param":"input[1].content","type":"invalid_request_error"}}`)
+
+	retryBody, reason, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, responseBody)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "indexed reasoning content array rejection", reason)
+	require.False(t, gjson.GetBytes(retryBody, "input.1.content").Exists())
+	require.Equal(t, "rs_keep", gjson.GetBytes(retryBody, "input.1.id").String())
+	require.Equal(t, "keep summary", gjson.GetBytes(retryBody, "input.1.summary.0.text").String())
+	require.Equal(t, "keep encrypted", gjson.GetBytes(retryBody, "input.1.encrypted_content").String())
+	require.Equal(t, "keep user", gjson.GetBytes(retryBody, "input.0.content.0.text").String())
+	require.Equal(t, "keep assistant", gjson.GetBytes(retryBody, "input.2.content.0.text").String())
+}
+
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyRejectsUnsafeReasoningContentRetries(t *testing.T) {
+	validError := `{"error":{"code":"array_above_max_length","message":"Invalid input content","param":"input[0].content","type":"invalid_request_error"}}`
+	tests := []struct {
+		name         string
+		statusCode   int
+		body         string
+		responseBody string
+	}{
+		{
+			name:         "non bad request status",
+			statusCode:   http.StatusUnprocessableEntity,
+			body:         `{"input":[{"type":"reasoning","content":[{"type":"reasoning_text","text":"keep"}]}]}`,
+			responseBody: validError,
+		},
+		{
+			name:         "wrong error code",
+			statusCode:   http.StatusBadRequest,
+			body:         `{"input":[{"type":"reasoning","content":[{"type":"reasoning_text","text":"keep"}]}]}`,
+			responseBody: `{"error":{"code":"invalid_request_error","message":"Invalid input content","param":"input[0].content","type":"invalid_request_error"}}`,
+		},
+		{
+			name:         "message-only parameter is not trusted",
+			statusCode:   http.StatusBadRequest,
+			body:         `{"input":[{"type":"reasoning","content":[{"type":"reasoning_text","text":"keep"}]}]}`,
+			responseBody: `{"error":{"code":"array_above_max_length","message":"Invalid 'input[0].content'","type":"invalid_request_error"}}`,
+		},
+		{
+			name:         "message item",
+			statusCode:   http.StatusBadRequest,
+			body:         `{"input":[{"type":"message","content":[{"type":"input_text","text":"keep"}]}]}`,
+			responseBody: validError,
+		},
+		{
+			name:         "function call item",
+			statusCode:   http.StatusBadRequest,
+			body:         `{"input":[{"type":"function_call","content":[{"type":"input_text","text":"keep"}],"arguments":"{}"}]}`,
+			responseBody: validError,
+		},
+		{
+			name:         "missing content",
+			statusCode:   http.StatusBadRequest,
+			body:         `{"input":[{"type":"reasoning","summary":[]}]}`,
+			responseBody: validError,
+		},
+		{
+			name:         "empty content array",
+			statusCode:   http.StatusBadRequest,
+			body:         `{"input":[{"type":"reasoning","content":[]}]}`,
+			responseBody: validError,
+		},
+		{
+			name:         "negative index",
+			statusCode:   http.StatusBadRequest,
+			body:         `{"input":[{"type":"reasoning","content":[{"type":"reasoning_text","text":"keep"}]}]}`,
+			responseBody: `{"error":{"code":"array_above_max_length","message":"Invalid input content","param":"input[-1].content","type":"invalid_request_error"}}`,
+		},
+		{
+			name:         "out of range index",
+			statusCode:   http.StatusBadRequest,
+			body:         `{"input":[{"type":"reasoning","content":[{"type":"reasoning_text","text":"keep"}]}]}`,
+			responseBody: `{"error":{"code":"array_above_max_length","message":"Invalid input content","param":"input[9].content","type":"invalid_request_error"}}`,
+		},
+		{
+			name:         "different structured parameter",
+			statusCode:   http.StatusBadRequest,
+			body:         `{"input":[{"type":"reasoning","content":[{"type":"reasoning_text","text":"keep"}]}]}`,
+			responseBody: `{"error":{"code":"array_above_max_length","message":"Invalid input content","param":"input[0].summary","type":"invalid_request_error"}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			retryBody, _, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(
+				tt.statusCode,
+				[]byte(tt.body),
+				[]byte(tt.responseBody),
+			)
+			require.NoError(t, err)
+			require.False(t, changed)
+			require.Nil(t, retryBody)
+		})
+	}
+}
+
 func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyRejectsAmbiguousErrors(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -189,6 +290,28 @@ func TestOpenAIGatewayService_RetriesExplicitMaxOutputTokensRejection(t *testing
 	require.Equal(t, int64(4096), gjson.GetBytes(upstream.bodies[0], "max_output_tokens").Int())
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "max_output_tokens").Exists())
 	require.Equal(t, "keep", gjson.GetBytes(upstream.bodies[1], "input.0.content.max_output_tokens").String())
+}
+
+func TestOpenAIGatewayService_RetriesRejectedReasoningContent(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","stream":false,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]},{"type":"reasoning","summary":[{"type":"summary_text","text":"keep"}],"content":[{"type":"reasoning_text","text":"remove"}]}]}`)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusBadRequest, `{"error":{"code":"array_above_max_length","message":"Invalid 'input[1].content': array too long. Expected an array with maximum length 0, but got an array with length 1 instead.","param":"input[1].content","type":"invalid_request_error"}}`),
+		newOpenAIRejectedFieldTestResponse(http.StatusOK, `{"output":[],"usage":{"input_tokens":1,"output_tokens":1,"input_tokens_details":{"cached_tokens":0}}}`),
+	}}
+
+	result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+		context.Background(),
+		newOpenAIRejectedFieldTestContext(body),
+		newOpenAIOAuthNamespaceTestAccount(),
+		body,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 2)
+	require.True(t, gjson.GetBytes(upstream.bodies[0], "input.1.content").Exists())
+	require.False(t, gjson.GetBytes(upstream.bodies[1], "input.1.content").Exists())
+	require.Equal(t, "keep", gjson.GetBytes(upstream.bodies[1], "input.1.summary.0.text").String())
 }
 
 func TestOpenAIGatewayService_ComposesProactiveNamespaceStripWithRejectedFieldRetry(t *testing.T) {
