@@ -13,10 +13,12 @@ import (
 
 type openAIAPIKeyHealthSettingRepo struct {
 	SettingRepository
-	value string
+	value    string
+	getCalls int
 REDACTED
 
 func (r *openAIAPIKeyHealthSettingRepo) GetValue(context.Context, string) (string, error) {
+	r.getCalls++
 	return r.value, nil
 REDACTED
 
@@ -35,7 +37,6 @@ REDACTED
 type openAIAPIKeyHealthCacheStub struct {
 	TempUnschedCache
 	recordCalls int
-	resetCalls  int
 	setCalls    int
 	tripped     bool
 REDACTED
@@ -43,11 +44,6 @@ REDACTED
 func (c *openAIAPIKeyHealthCacheStub) RecordOpenAIAPIKeyHealthFailure(context.Context, int64, int, int) (int64, bool, error) {
 	c.recordCalls++
 	return 3, c.tripped, nil
-REDACTED
-
-func (c *openAIAPIKeyHealthCacheStub) ResetOpenAIAPIKeyHealthFailures(context.Context, int64) error {
-	c.resetCalls++
-	return nil
 REDACTED
 
 func (c *openAIAPIKeyHealthCacheStub) SetTempUnsched(context.Context, int64, *TempUnschedState) error {
@@ -127,10 +123,11 @@ REDACTED
 	require.Contains(t, repo.reason, openAIAPIKeyHealthBreakerReason)
 REDACTED
 
-func TestOpenAIAPIKeyHealthSuccessResetsOnlyEligiblePoolAccount(t *testing.T) {
+func TestOpenAIAPIKeyHealthSuccessDoesNotTouchSettingsOrCache(t *testing.T) {
 	encoded, err := json.Marshal(OpenAIAPIKeyHealthBreakerSettings{Enabled: true, WindowMinutes: 1, FailureThreshold: 3, CooldownMinutes: 5REDACTED)
 REDACTED
-	settings := NewSettingService(&openAIAPIKeyHealthSettingRepo{value: string(encoded)REDACTED, &config.Config{REDACTED)
+	settingRepo := &openAIAPIKeyHealthSettingRepo{value: string(encoded)REDACTED
+	settings := NewSettingService(settingRepo, &config.Config{REDACTED)
 	cache := &openAIAPIKeyHealthCacheStub{REDACTED
 	svc := NewRateLimitService(&openAIAPIKeyHealthAccountRepo{REDACTED, nil, &config.Config{REDACTED, nil, cache)
 	svc.SetSettingService(settings)
@@ -138,5 +135,6 @@ REDACTED
 
 	svc.ObserveOpenAIAPIKeyHealthSuccess(context.Background(), openAIHealthPoolAccount())
 	svc.ObserveOpenAIAPIKeyHealthSuccess(context.Background(), &Account{ID: 43, Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED)
-	require.Equal(t, 1, cache.resetCalls)
+	require.Zero(t, settingRepo.getCalls)
+	require.Zero(t, cache.recordCalls)
 REDACTED

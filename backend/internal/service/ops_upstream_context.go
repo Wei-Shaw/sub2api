@@ -388,7 +388,9 @@ type OpsUpstreamErrorEvent struct {
 	Detail  string `json:"detail,omitempty"`
 
 	// SkipMonitoring is request-local rule state. It is intentionally excluded
-	// from persisted attempt JSON and only lets the final attempt control Ops.
+	// from persisted attempt JSON. The logger consults it only when this event is
+	// the final client-visible failure; recovered attempts remain provider-health
+	// telemetry and do not count as failed requests.
 	SkipMonitoring bool `json:"-"`
 REDACTED
 
@@ -427,11 +429,10 @@ REDACTED
 	checkSkipMonitoringForUpstreamEvent(c, &evCopy)
 REDACTED
 
-// checkSkipMonitoringForUpstreamEvent checks whether the upstream error event
-// matches a passthrough rule with skip_monitoring=true and, if so, sets the
-// OpsSkipPassthroughKey on the context.  This ensures intermediate retry /
-// failover errors (which never go through the final applyErrorPassthroughRule
-// path) can still suppress ops_error_logs recording.
+// checkSkipMonitoringForUpstreamEvent snapshots whether this attempt matches a
+// skip_monitoring passthrough rule. The final failure decides whether the
+// request error is hidden; an intermediate recovered attempt cannot suppress a
+// later client-visible failure.
 func checkSkipMonitoringForUpstreamEvent(c *gin.Context, ev *OpsUpstreamErrorEvent) {
 	if ev.UpstreamStatusCode == 0 {
 		return

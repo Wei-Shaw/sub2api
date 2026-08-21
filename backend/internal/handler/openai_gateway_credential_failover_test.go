@@ -326,12 +326,15 @@ REDACTED)
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/openai/v1/responses", nil))
 
 	require.Equal(t, http.StatusOK, recorder.Code)
-	require.Zero(t, OpsErrorLogQueueLength())
-	select {
-	case job := <-opsErrorLogQueue:
-		t.Fatalf("successful failover must not create ops error row: %+v", job.entry)
-	default:
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.Equal(t, http.StatusOK, job.entry.StatusCode)
+	require.Equal(t, string(service.GatewayFailureStageAccountAuth), job.entry.ErrorPhase)
+	require.NotNil(t, job.entry.UpstreamErrorsJSON)
+	events, err := service.ParseOpsUpstreamErrors(*job.entry.UpstreamErrorsJSON)
 REDACTED
+	require.Len(t, events, 2)
+	require.Equal(t, string(service.GatewayFailureStageAccountAuth), events[1].Stage)
 REDACTED
 
 func TestOpsWebSocketCredentialFailoverSuccessDoesNotCreateRequestError(t *testing.T) {
@@ -354,12 +357,15 @@ REDACTED)
 	router.ServeHTTP(recorder, request)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
-	require.Zero(t, OpsErrorLogQueueLength())
-	select {
-	case job := <-opsErrorLogQueue:
-		t.Fatalf("successful websocket failover must not create ops error row: %+v", job.entry)
-	default:
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.Equal(t, http.StatusOK, job.entry.StatusCode)
+	require.Equal(t, string(service.GatewayFailureStageAccountAuth), job.entry.ErrorPhase)
+	require.NotNil(t, job.entry.UpstreamErrorsJSON)
+	events, err := service.ParseOpsUpstreamErrors(*job.entry.UpstreamErrorsJSON)
 REDACTED
+	require.Len(t, events, 1)
+	require.Equal(t, string(service.GatewayFailureStageAccountAuth), events[0].Stage)
 REDACTED
 
 func TestOpsWebSocketCredentialFailoverExhaustedIsRecorded(t *testing.T) {

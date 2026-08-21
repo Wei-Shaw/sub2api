@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/alicebob/miniredis/v2"
@@ -10,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOpenAIAPIKeyHealthCacheTripsAndSuccessResetsWindow(t *testing.T) {
+func TestOpenAIAPIKeyHealthCacheTripsWithinRollingWindow(t *testing.T) {
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()REDACTED)
 	t.Cleanup(func() { _ = client.Close() REDACTED)
@@ -18,18 +19,32 @@ func TestOpenAIAPIKeyHealthCacheTripsAndSuccessResetsWindow(t *testing.T) {
 	require.True(t, ok)
 
 	ctx := context.Background()
-	for attempt := 1; attempt <= 2; attempt++ {
-		count, tripped, err := store.RecordOpenAIAPIKeyHealthFailure(ctx, 42, 1, 3)
-	REDACTED
-		require.EqualValues(t, attempt, count)
-		require.False(t, tripped)
-REDACTED
-	require.NoError(t, store.ResetOpenAIAPIKeyHealthFailures(ctx, 42))
-
 	for attempt := 1; attempt <= 3; attempt++ {
 		count, tripped, err := store.RecordOpenAIAPIKeyHealthFailure(ctx, 42, 1, 3)
 	REDACTED
 		require.EqualValues(t, attempt, count)
 		require.Equal(t, attempt == 3, tripped)
 REDACTED
+REDACTED
+
+func TestOpenAIAPIKeyHealthCacheDropsFailuresOutsideRollingWindow(t *testing.T) {
+	server := miniredis.RunT(t)
+	now := time.Unix(1_700_000_000, 0)
+	server.SetTime(now)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()REDACTED)
+	t.Cleanup(func() { _ = client.Close() REDACTED)
+	store, ok := NewTempUnschedCache(client).(service.OpenAIAPIKeyHealthCache)
+	require.True(t, ok)
+
+	ctx := context.Background()
+	count, tripped, err := store.RecordOpenAIAPIKeyHealthFailure(ctx, 42, 1, 3)
+REDACTED
+	require.EqualValues(t, 1, count)
+	require.False(t, tripped)
+
+	server.SetTime(now.Add(61 * time.Second))
+	count, tripped, err = store.RecordOpenAIAPIKeyHealthFailure(ctx, 42, 1, 3)
+REDACTED
+	require.EqualValues(t, 1, count)
+	require.False(t, tripped)
 REDACTED

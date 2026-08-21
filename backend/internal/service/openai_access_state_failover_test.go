@@ -24,22 +24,59 @@ func (r *openAIStream403AccountRepo) SetError(context.Context, int64, string) er
 	return nil
 REDACTED
 
+type openAIAuthPolicyAccountRepo struct {
+	AccountRepository
+	tempCalls     int
+	setErrorCalls int
+REDACTED
+
+func (r *openAIAuthPolicyAccountRepo) SetTempUnschedulable(context.Context, int64, time.Time, string) error {
+	r.tempCalls++
+	return nil
+REDACTED
+
+func (r *openAIAuthPolicyAccountRepo) SetError(context.Context, int64, string) error {
+	r.setErrorCalls++
+	return nil
+REDACTED
+
+type openAIAuthPolicy403Counter struct {
+	counts []int64
+REDACTED
+
+func (s *openAIAuthPolicy403Counter) IncrementOpenAI403Count(context.Context, int64, int) (int64, error) {
+	if len(s.counts) == 0 {
+		return 1, nil
+REDACTED
+	count := s.counts[0]
+	s.counts = s.counts[1:]
+	return count, nil
+REDACTED
+
+func (*openAIAuthPolicy403Counter) ResetOpenAI403Count(context.Context, int64) error {
+	return nil
+REDACTED
+
 func TestOpenAIUpstreamAccessStateClassification(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
+		want bool
 REDACTED{
-		{"workspace_code", `{"detail":{"code":"deactivated_workspace"REDACTEDREDACTED`REDACTED,
-		{"disabled_account", `{"error":{"message":"Your account is disabled"REDACTEDREDACTED`REDACTED,
-		{"suspended_workspace", `{"response":{"error":{"message":"This workspace has been suspended"REDACTEDREDACTEDREDACTED`REDACTED,
-		{"deactivated_organization", `{"detail":{"message":"The organization is deactivated"REDACTEDREDACTED`REDACTED,
-		{"scalar_detail", `{"detail":"This workspace has been disabled"REDACTED`REDACTED,
-		{"suspended_org_code", `{"error":{"code":"org_suspended"REDACTEDREDACTED`REDACTED,
+		{"workspace_code", `{"detail":{"code":"deactivated_workspace"REDACTEDREDACTED`, trueREDACTED,
+		{"disabled_account_message", `{"error":{"message":"Your account is disabled"REDACTEDREDACTED`, falseREDACTED,
+		{"suspended_workspace_message", `{"response":{"error":{"message":"This workspace has been suspended"REDACTEDREDACTEDREDACTED`, falseREDACTED,
+		{"deactivated_organization_message", `{"detail":{"message":"The organization is deactivated"REDACTEDREDACTED`, falseREDACTED,
+		{"scalar_detail", `{"detail":"This workspace has been disabled"REDACTED`, falseREDACTED,
+		{"suspended_org_code", `{"error":{"code":"org_suspended"REDACTEDREDACTED`, trueREDACTED,
 REDACTED
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body := []byte(tt.body)
-			require.True(t, isOpenAIUpstreamAccessStateError("", body))
+			require.Equal(t, tt.want, isOpenAIUpstreamAccessStateError("", body))
+			if !tt.want {
+				return
+		REDACTED
 			require.True(t, (&OpenAIGatewayService{REDACTED).shouldFailoverOpenAIUpstreamResponse(http.StatusForbidden, "", body))
 			require.True(t, shouldFailoverOpenAIPassthroughResponse(&Account{Type: AccountTypeOAuthREDACTED, http.StatusForbidden, body))
 
@@ -60,6 +97,93 @@ func TestOpenAIUpstreamAccessStateDoesNotScanEchoedJSON(t *testing.T) {
 	body := []byte(`{"error":{"code":"invalid_request_error","message":"Invalid input"REDACTED,"echo":{"prompt":"my account is disabled"REDACTEDREDACTED`)
 	require.False(t, isOpenAIUpstreamAccessStateError("", body))
 	require.False(t, shouldFailoverOpenAIPassthroughResponse(&Account{Type: AccountTypeOAuthREDACTED, http.StatusBadRequest, body))
+REDACTED
+
+func TestOpenAIHTTPAccessStateDoesNotTrustBadRequestMessage(t *testing.T) {
+	body := []byte(`{"error":{"type":"invalid_request_error","code":"unknown_parameter","message":"Unknown parameter: account disabled"REDACTEDREDACTED`)
+	svc := &OpenAIGatewayService{REDACTED
+
+	require.False(t, isOpenAIUpstreamAccessStateError("", body), "free-form stream messages are not durable account evidence")
+	require.False(t, isOpenAIHTTPUpstreamAccessStateError(http.StatusBadRequest, "", body))
+	require.False(t, svc.shouldFailoverOpenAIUpstreamResponse(http.StatusBadRequest, "", body))
+	require.False(t, shouldFailoverOpenAIPassthroughResponse(&Account{Type: AccountTypeOAuthREDACTED, http.StatusBadRequest, body))
+
+	err := newOpenAIUpstreamFailoverError(http.StatusBadRequest, nil, body, "", false)
+	require.False(t, err.IsCredentialFailure())
+REDACTED
+
+func TestOpenAIHTTPAccessStateBadRequestDoesNotDisableAccount(t *testing.T) {
+	repo := &openAIStream403AccountRepo{REDACTED
+	svc := &OpenAIGatewayService{rateLimitService: &RateLimitService{accountRepo: repoREDACTEDREDACTED
+	account := &Account{ID: 925, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: trueREDACTED
+	body := []byte(`{"error":{"code":"unknown_parameter","message":"Unknown parameter: account disabled"REDACTEDREDACTED`)
+
+	disabled := svc.handleOpenAIAccountUpstreamError(context.Background(), account, http.StatusBadRequest, nil, body)
+
+	require.False(t, disabled)
+	require.Zero(t, repo.setErrorCalls)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+REDACTED
+
+func TestOpenAIStreamEchoedAccessStateMessageDoesNotDisableOrFailover(t *testing.T) {
+	repo := &openAIStream403AccountRepo{REDACTED
+	svc := &OpenAIGatewayService{rateLimitService: &RateLimitService{accountRepo: repoREDACTEDREDACTED
+	account := &Account{ID: 926, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: trueREDACTED
+	payload := []byte(`{"type":"response.failed","response":{"error":{"type":"invalid_request_error","code":"unknown_parameter","message":"Unknown parameter: account disabled"REDACTEDREDACTEDREDACTED`)
+	message := extractOpenAISSEErrorMessage(payload)
+
+	require.False(t, isOpenAIUpstreamAccessStateError(message, payload))
+	require.False(t, openAIStreamFailedEventShouldFailover(payload, message))
+	status, disabled := svc.handleOpenAIStreamTerminalAccountSideEffects(nil, account, payload, message, nil)
+	require.Equal(t, http.StatusBadGateway, status)
+	require.False(t, disabled)
+	require.Zero(t, repo.setErrorCalls)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+REDACTED
+
+func TestOpenAIHTTPAccessStateTrustsStructuredCode(t *testing.T) {
+	repo := &openAIStream403AccountRepo{REDACTED
+	svc := &OpenAIGatewayService{rateLimitService: &RateLimitService{accountRepo: repoREDACTEDREDACTED
+	account := &Account{ID: 930, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: trueREDACTED
+	body := []byte(`{"error":{"code":"organization_deactivated","message":"request rejected"REDACTEDREDACTED`)
+
+	require.True(t, isOpenAIHTTPUpstreamAccessStateError(http.StatusBadRequest, "", body))
+	require.True(t, svc.shouldFailoverOpenAIUpstreamResponse(http.StatusBadRequest, "", body))
+	require.True(t, svc.handleOpenAIAccountUpstreamError(context.Background(), account, http.StatusBadRequest, nil, body))
+	require.Equal(t, 1, repo.setErrorCalls)
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+REDACTED
+
+func TestOpenAIHTTPAuthMessagesUseExistingStatusPolicies(t *testing.T) {
+	t.Run("oauth 401 remains recoverable", func(t *testing.T) {
+		repo := &openAIAuthPolicyAccountRepo{REDACTED
+		rateLimits := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
+		svc := &OpenAIGatewayService{rateLimitService: rateLimitsREDACTED
+		account := &Account{ID: 931, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true,
+	REDACTED"refresh_token": "refreshable"REDACTEDREDACTED
+		body := []byte(`{"error":{"message":"account is disabled"REDACTEDREDACTED`)
+
+		require.False(t, isOpenAIHTTPUpstreamAccessStateError(http.StatusUnauthorized, "", body))
+		require.True(t, svc.handleOpenAIAccountUpstreamError(context.Background(), account, http.StatusUnauthorized, nil, body))
+		require.Zero(t, repo.setErrorCalls)
+		require.Equal(t, 1, repo.tempCalls)
+REDACTED)
+
+	t.Run("403 uses counter cooldown", func(t *testing.T) {
+		repo := &openAIAuthPolicyAccountRepo{REDACTED
+		counter := &openAIAuthPolicy403Counter{counts: []int64{1REDACTEDREDACTED
+		rateLimits := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
+		rateLimits.openAI403CounterCache = counter
+		svc := &OpenAIGatewayService{rateLimitService: rateLimitsREDACTED
+		rateLimits.SetAccountRuntimeBlocker(svc)
+		account := &Account{ID: 932, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: trueREDACTED
+		body := []byte(`{"error":{"message":"workspace has been suspended"REDACTEDREDACTED`)
+
+		require.False(t, isOpenAIHTTPUpstreamAccessStateError(http.StatusForbidden, "", body))
+		require.True(t, svc.handleOpenAIAccountUpstreamError(context.Background(), account, http.StatusForbidden, nil, body))
+		require.Zero(t, repo.setErrorCalls)
+		require.Equal(t, 1, repo.tempCalls)
+REDACTED)
 REDACTED
 
 func TestOpenAICyberPolicyWrapped5xxNeverFailsOver(t *testing.T) {

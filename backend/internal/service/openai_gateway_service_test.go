@@ -536,6 +536,7 @@ func TestOpenAIGatewayService_BindHTTPResponseAccount(t *testing.T) {
 	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
 	groupID := int64(4201)
 	c.Set("api_key", &APIKey{ID: 501, GroupID: &groupIDREDACTED)
+	SetOpenAIHTTPResponseOwner(c, 601, 501)
 
 	svc := &OpenAIGatewayService{REDACTED
 	account := &Account{ID: 37001, Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED
@@ -544,6 +545,22 @@ func TestOpenAIGatewayService_BindHTTPResponseAccount(t *testing.T) {
 	got, err := svc.getOpenAIWSStateStore().GetResponseAccount(context.Background(), groupID, "resp_http_001")
 REDACTED
 	require.Equal(t, account.ID, got)
+
+	owned, err := svc.ValidateOpenAIHTTPResponseOwner(context.Background(), groupID, "resp_http_001", 601, 501)
+REDACTED
+	require.True(t, owned)
+
+	owned, err = svc.ValidateOpenAIHTTPResponseOwner(context.Background(), groupID, "resp_http_001", 601, 502)
+REDACTED
+	require.True(t, owned, "API keys owned by the same downstream user remain interoperable")
+
+	owned, err = svc.ValidateOpenAIHTTPResponseOwner(context.Background(), groupID, "resp_http_001", 602, 501)
+REDACTED
+	require.False(t, owned)
+
+	owned, err = svc.ValidateOpenAIHTTPResponseOwner(context.Background(), groupID, "resp_unknown", 601, 501)
+REDACTED
+	require.False(t, owned)
 REDACTED
 
 func TestOpenAIGatewayService_GenerateExplicitSessionHash_SkipsContentFallback(t *testing.T) {

@@ -1,7 +1,10 @@
 package service
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -89,11 +92,7 @@ REDACTED
 		case "model_not_found", "model_not_available", "unsupported_model", "invalid_model":
 			return true
 	REDACTED
-		if strings.Contains(value, "model") && (strings.Contains(value, "not found") ||
-			strings.Contains(value, "does not exist") ||
-			strings.Contains(value, "unavailable") ||
-			strings.Contains(value, "unsupported") ||
-			strings.Contains(value, "not supported")) {
+		if isExplicitOpenAIModelAvailabilityMessage(value) {
 			return true
 	REDACTED
 REDACTED
@@ -113,6 +112,121 @@ REDACTED
 		return strings.TrimSpace(upstreamMsg) == ""
 REDACTED
 	return false
+REDACTED
+
+func isExplicitOpenAIModelAvailabilityMessage(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return false
+REDACTED
+	for _, phrase := range []string{
+		"model not found",
+		"model does not exist",
+		"model is unavailable",
+		"model is not available",
+		"model is unsupported",
+		"model is not supported",
+		"unsupported model",
+REDACTED {
+		if strings.Contains(value, phrase) {
+			return true
+	REDACTED
+REDACTED
+	// OpenAI commonly identifies the missing model between the word "model"
+	// and the terminal availability phrase, for example: "The model `x` does
+	// not exist". Requiring the message to start with the model subject avoids
+	// treating unrelated feature errors such as "model output is not supported"
+	// as a signal to change models.
+	if strings.HasPrefix(value, "the model ") || strings.HasPrefix(value, "model ") {
+		return strings.Contains(value, " does not exist") ||
+			strings.Contains(value, " was not found") ||
+			strings.Contains(value, " is unavailable") ||
+			strings.Contains(value, " is not available")
+REDACTED
+	return false
+REDACTED
+
+func openAICompactFallbackErrorResponse(resp *http.Response, signal *openAICompactFallbackSignal) (*http.Response, []byte) {
+	headers := make(http.Header)
+	if resp != nil {
+		headers = resp.Header.Clone()
+REDACTED
+	if headers.Get("Content-Type") == "" {
+		headers.Set("Content-Type", "application/json")
+REDACTED
+	payload := normalizeOpenAICompactFallbackHTTPErrorPayload(signal)
+	return &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     headers,
+		Body:       io.NopCloser(bytes.NewReader(payload)),
+REDACTED, payload
+REDACTED
+
+func normalizeOpenAICompactFallbackHTTPErrorPayload(signal *openAICompactFallbackSignal) []byte {
+	if signal == nil {
+		return nil
+REDACTED
+	payload := append([]byte(nil), signal.payload...)
+	var terminal struct {
+		Error    json.RawMessage `json:"error"`
+		Response struct {
+			Error json.RawMessage `json:"error"`
+	REDACTED `json:"response"`
+REDACTED
+	if json.Unmarshal(payload, &terminal) != nil || len(bytes.TrimSpace(terminal.Response.Error)) == 0 ||
+		bytes.Equal(bytes.TrimSpace(terminal.Response.Error), []byte("null")) {
+		return payload
+REDACTED
+	// Standard HTTP error handlers consume error.message/type/code. A streamed
+	// response.failed terminal nests the same object under response.error, so
+	// normalize only that envelope at the stream-to-HTTP boundary.
+	normalized, err := json.Marshal(struct {
+		Error json.RawMessage `json:"error"`
+REDACTED{Error: terminal.Response.ErrorREDACTED)
+	if err != nil {
+		return payload
+REDACTED
+	return normalized
+REDACTED
+
+func (s *OpenAIGatewayService) appendOpenAICompactFallbackRetryOps(
+	c *gin.Context,
+	account *Account,
+	resp *http.Response,
+	payload []byte,
+	message string,
+	passthrough bool,
+) {
+	if account == nil {
+		return
+REDACTED
+	statusCode := http.StatusBadRequest
+	requestID := ""
+	if resp != nil {
+		statusCode = resp.StatusCode
+		requestID = resp.Header.Get("x-request-id")
+REDACTED
+	detail := ""
+	if s != nil && s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+		if maxBytes <= 0 {
+			maxBytes = 2048
+	REDACTED
+		detail = truncateString(string(payload), maxBytes)
+REDACTED
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		Platform:             account.Platform,
+		AccountID:            account.ID,
+		AccountName:          account.Name,
+		UpstreamStatusCode:   statusCode,
+		UpstreamRequestID:    requestID,
+		Passthrough:          passthrough,
+		Kind:                 "retry",
+		Reason:               "compact_model_fallback",
+		Message:              sanitizeUpstreamErrorMessage(strings.TrimSpace(message)),
+		Detail:               detail,
+		UpstreamResponseBody: detail,
+REDACTED)
 REDACTED
 
 // prepareOpenAICompactFallbackRetry returns a body for one safe, same-account
@@ -164,6 +278,7 @@ REDACTED
 	if !retry {
 		return body, "", false
 REDACTED
+	s.appendOpenAICompactFallbackRetryOps(c, account, resp, signal.payload, signal.message, true)
 	if resp != nil && resp.Body != nil {
 		_ = resp.Body.Close()
 REDACTED

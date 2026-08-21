@@ -141,8 +141,3 @@ REDACTED
 REDACTED
 	return count, tripped == 1, nil
 REDACTED
-
-func (c *tempUnschedCache) ResetOpenAIAPIKeyHealthFailures(ctx context.Context, accountID int64) error {
-	key := c.openAIAPIKeyHealthKey(accountID)
-	return c.rdb.Del(ctx, key, key+":sequence").Err()
-REDACTED

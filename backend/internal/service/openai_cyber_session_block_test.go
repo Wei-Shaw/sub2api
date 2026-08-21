@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -75,11 +77,32 @@ func TestCyberTranscriptBlockKeysWebSocketResponseCreate(t *testing.T) {
 	require.Len(t, CyberSessionTranscriptBlockKeys(88, body), 2)
 REDACTED
 
+func TestCyberTranscriptLookupKeysAreBoundedAndKeepNewestOrder(t *testing.T) {
+	messages := make([]map[string]string, maxOpenAICyberTranscriptLookupKeys+44)
+	for i := range messages {
+		messages[i] = map[string]string{"role": "user", "content": "message-" + strconv.Itoa(i)REDACTED
+REDACTED
+	body, err := json.Marshal(map[string]any{"messages": messagesREDACTED)
+REDACTED
+
+	keys := CyberSessionTranscriptLookupKeys(77, body)
+	require.Len(t, keys, maxOpenAICyberTranscriptLookupKeys)
+
+	firstRetainedBody, err := json.Marshal(map[string]any{"messages": messages[:45]REDACTED)
+REDACTED
+	firstRetainedPrefix := CyberSessionTranscriptLookupKeys(77, firstRetainedBody)
+	require.Equal(t, firstRetainedPrefix[len(firstRetainedPrefix)-1], keys[0])
+
+	fullKey := CyberSessionTranscriptBlockKeys(77, body)[0]
+	require.Equal(t, fullKey, keys[len(keys)-1])
+REDACTED
+
 // --- fakes ---
 
 type fakeCyberBlockStore struct {
-	blocked map[string]bool
-	scopes  map[string]bool
+	blocked   map[string]bool
+	scopes    map[string]bool
+	findCalls int
 REDACTED
 
 var _ CyberSessionBlockStore = (*fakeCyberBlockStore)(nil)
@@ -105,6 +128,7 @@ func (f *fakeCyberBlockStore) IsCyberSessionScopeActive(_ context.Context, scope
 REDACTED
 
 func (f *fakeCyberBlockStore) FindCyberSessionBlocked(_ context.Context, keys []string) (string, error) {
+	f.findCalls++
 	for _, key := range keys {
 		if f.blocked[key] {
 			return key, nil
@@ -269,6 +293,34 @@ REDACTEDREDACTEDREDACTED
 	scopeKey := CyberSessionScopeKey(9, clientIP, userAgent)
 	svc.MarkCyberSessionBlocked(ctx, scopeKey, []string{blockKeyREDACTED)
 	require.Equal(t, blockKey, svc.FindCyberSessionBlockedForRequest(ctx, 9, nextCtx, nextBody, clientIP, "Codex CLI 1.2.4"))
+REDACTED
+
+func TestFindCyberSessionBlockedForRequestFailsClosedOnScopedTranscriptOverflow(t *testing.T) {
+	settingSvc := &SettingService{settingRepo: &fakeSettingRepo{vals: map[string]string{
+		SettingKeyCyberSessionBlockEnabled:    "true",
+		SettingKeyCyberSessionBlockTTLSeconds: "60",
+REDACTEDREDACTEDREDACTED
+	combo := &comboCacheAndStore{REDACTED
+	svc := &OpenAIGatewayService{cache: combo, settingService: settingSvcREDACTED
+	ctx := context.Background()
+	const apiKeyID = int64(9)
+	const clientIP = "203.0.113.20"
+	const userAgent = "Codex CLI 1.2.3"
+
+	messages := make([]map[string]string, maxOpenAICyberTranscriptLookupKeys+1)
+	for i := range messages {
+		messages[i] = map[string]string{"role": "user", "content": "message-" + strconv.Itoa(i)REDACTED
+REDACTED
+	body, err := json.Marshal(map[string]any{"messages": messagesREDACTED)
+REDACTED
+	c, _ := newCyberBlockTestCtx(nil, string(body))
+	require.Empty(t, svc.FindCyberSessionBlockedForRequest(ctx, apiKeyID, c, body, clientIP, userAgent),
+		"overflow alone must not bypass the scope gate")
+	combo.store.scopes = map[string]bool{CyberSessionScopeKey(apiKeyID, clientIP, userAgent): trueREDACTED
+
+	require.Equal(t, cyberSessionTranscriptLookupOverflowBlockKey,
+		svc.FindCyberSessionBlockedForRequest(ctx, apiKeyID, c, body, clientIP, userAgent))
+	require.Zero(t, combo.store.findCalls, "overflow must not issue an unbounded Redis lookup")
 REDACTED
 
 func TestCyberSessionScopeKeyNormalizesUserAgentVersion(t *testing.T) {

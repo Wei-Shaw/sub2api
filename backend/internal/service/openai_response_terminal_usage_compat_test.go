@@ -9,6 +9,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestEffectiveOpenAISSEEventTypePrefersPayload(t *testing.T) {
@@ -31,6 +32,17 @@ func TestExtractOpenAISSETerminalEventUsesEventField(t *testing.T) {
 	require.Equal(t, "provider failed", extractOpenAISSEErrorMessage(payload))
 REDACTED
 
+func TestExtractOpenAISSETerminalEventUsesFinalAuthoritativeTerminal(t *testing.T) {
+	t.Parallel()
+
+	body := "data: {\"type\":\"error\",\"error\":{\"message\":\"recovering\"REDACTEDREDACTED\n\n" +
+		"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\"REDACTEDREDACTED\n\n"
+	eventType, payload, ok := extractOpenAISSETerminalEvent(body)
+	require.True(t, ok)
+	require.Equal(t, "response.completed", eventType)
+	require.Equal(t, "resp_1", gjson.GetBytes(payload, "response.id").String())
+REDACTED
+
 func TestParseSSEUsageEffectiveTerminalRules(t *testing.T) {
 	t.Parallel()
 
@@ -45,6 +57,17 @@ func TestParseSSEUsageEffectiveTerminalRules(t *testing.T) {
 
 	svc.parseSSEUsageBytesWithType([]byte(`{"response":{"usage":{"input_tokens":2,"output_tokens":0,"input_tokens_details":{"cached_tokens":0REDACTEDREDACTEDREDACTEDREDACTED`), "response.completed", usage)
 	require.Equal(t, OpenAIUsage{InputTokens: 2REDACTED, *usage)
+REDACTED
+
+func BenchmarkParseSSEUsageNoUsageDelta(b *testing.B) {
+	svc := &OpenAIGatewayService{REDACTED
+	usage := &OpenAIUsage{REDACTED
+	payload := []byte(`{"type":"response.output_text.delta","delta":"hello"REDACTED`)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		svc.parseSSEUsageBytesWithType(payload, "response.output_text.delta", usage)
+REDACTED
 REDACTED
 
 func TestOpenAICompatTerminalResponseSynthesizesBareError(t *testing.T) {

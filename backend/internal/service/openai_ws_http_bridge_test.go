@@ -758,6 +758,40 @@ REDACTED)
 	require.Equal(t, "resp_eof", gjson.GetBytes(writes[1], "response.id").String())
 REDACTED
 
+func TestProxyOpenAIWSHTTPBridgeTurnBareErrorFollowedByCompletedUsesCompleted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := strings.Join([]string{
+		`data: {"type":"response.created","response":{"id":"resp_recovered","status":"in_progress"REDACTEDREDACTED`,
+		``,
+		`data: {"type":"error","error":{"code":"transient","message":"retrying"REDACTEDREDACTED`,
+		``,
+		`data: {"type":"response.completed","response":{"id":"resp_recovered","status":"completed","output":[],"usage":{"input_tokens":8,"output_tokens":4REDACTEDREDACTEDREDACTED`,
+		``,
+REDACTED, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))REDACTEDREDACTED
+	svc := &OpenAIGatewayService{cfg: &config.Config{REDACTED, httpUpstream: upstreamREDACTED
+	account := &Account{ID: 113, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1REDACTED
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	payload := []byte(`{"type":"response.create","model":"gpt-5","input":"hi"REDACTED`)
+	var writes [][]byte
+
+	result, err := svc.proxyOpenAIWSHTTPBridgeTurn(context.Background(), c, account, "sk-test", payload, len(payload), "gpt-5", "", "", "", "", 2, func(message []byte) error {
+		writes = append(writes, append([]byte(nil), message...))
+		return nil
+REDACTED)
+
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, "response.completed", result.UpstreamTerminalEvent)
+	require.Equal(t, 8, result.Usage.InputTokens)
+	require.Equal(t, 4, result.Usage.OutputTokens)
+	require.Len(t, writes, 2)
+	require.Equal(t, "response.created", gjson.GetBytes(writes[0], "type").String())
+	require.Equal(t, "response.completed", gjson.GetBytes(writes[1], "type").String())
+REDACTED
+
 func TestProxyOpenAIWSHTTPBridgeTurnStagesMetadataBeforeCapacityFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := strings.Join([]string{

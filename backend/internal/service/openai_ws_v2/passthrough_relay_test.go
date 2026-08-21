@@ -41,6 +41,16 @@ type closeSpyFrameConn struct {
 	closeCalls atomic.Int32
 REDACTED
 
+type cancelJoinProbeFrameConn struct {
+	readStarted  chan struct{REDACTED
+	readCanceled chan struct{REDACTED
+	allowReturn  chan struct{REDACTED
+	readReturned chan struct{REDACTED
+	startOnce    sync.Once
+	cancelOnce   sync.Once
+	returnOnce   sync.Once
+REDACTED
+
 func newPassthroughTestFrameConn(frames []passthroughTestFrame, autoClose bool) *passthroughTestFrameConn {
 	c := &passthroughTestFrameConn{
 		readCh: make(chan passthroughTestFrame, len(frames)+1),
@@ -178,6 +188,38 @@ func (c *closeSpyFrameConn) CloseCalls() int32 {
 REDACTED
 	return c.closeCalls.Load()
 REDACTED
+
+func newCancelJoinProbeFrameConn() *cancelJoinProbeFrameConn {
+	return &cancelJoinProbeFrameConn{
+		readStarted:  make(chan struct{REDACTED),
+		readCanceled: make(chan struct{REDACTED),
+		allowReturn:  make(chan struct{REDACTED),
+		readReturned: make(chan struct{REDACTED),
+REDACTED
+REDACTED
+
+func (c *cancelJoinProbeFrameConn) ReadFrame(ctx context.Context) (coderws.MessageType, []byte, error) {
+	c.startOnce.Do(func() { close(c.readStarted) REDACTED)
+	<-ctx.Done()
+	c.cancelOnce.Do(func() { close(c.readCanceled) REDACTED)
+	<-c.allowReturn
+	c.returnOnce.Do(func() { close(c.readReturned) REDACTED)
+	return coderws.MessageText, nil, ctx.Err()
+REDACTED
+
+func (c *cancelJoinProbeFrameConn) WriteFrame(ctx context.Context, _ coderws.MessageType, _ []byte) error {
+	if ctx == nil {
+		ctx = context.Background()
+REDACTED
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return nil
+REDACTED
+REDACTED
+
+func (c *cancelJoinProbeFrameConn) Close() error { return nil REDACTED
 
 func TestRelay_BasicRelayAndUsage(t *testing.T) {
 	t.Parallel()
@@ -370,6 +412,58 @@ REDACTED)
 	require.Equal(t, "idle_timeout", relayExit.Stage)
 	require.Zero(t, clientConn.CloseCalls(), "错误路径不应提前关闭客户端连接，交给上层决定 close code")
 	require.GreaterOrEqual(t, upstreamConn.CloseCalls(), int32(1))
+REDACTED
+
+func TestRelay_JoinsUpstreamReaderBeforeReturning(t *testing.T) {
+	t.Parallel()
+
+	clientConn := &closeSpyFrameConn{REDACTED
+	upstreamConn := newCancelJoinProbeFrameConn()
+	ctx, cancel := context.WithCancel(context.Background())
+	resultCh := make(chan *RelayExit, 1)
+
+	go func() {
+		_, relayExit := Relay(
+			ctx,
+			clientConn,
+			upstreamConn,
+			[]byte(`{"type":"response.create","model":"gpt-4o","input":[]REDACTED`),
+			RelayOptions{REDACTED,
+		)
+		resultCh <- relayExit
+REDACTED()
+
+	select {
+	case <-upstreamConn.readStarted:
+	case <-time.After(time.Second):
+		t.Fatal("upstream reader did not start")
+REDACTED
+	cancel()
+	select {
+	case <-upstreamConn.readCanceled:
+	case <-time.After(time.Second):
+		t.Fatal("upstream reader did not observe relay cancellation")
+REDACTED
+	select {
+	case <-resultCh:
+		t.Fatal("Relay returned before the upstream reader exited")
+	case <-time.After(50 * time.Millisecond):
+REDACTED
+
+	close(upstreamConn.allowReturn)
+	select {
+	case relayExit := <-resultCh:
+		require.NotNil(t, relayExit)
+		require.ErrorIs(t, relayExit.Err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("Relay did not return after the upstream reader exited")
+REDACTED
+	select {
+	case <-upstreamConn.readReturned:
+	default:
+		t.Fatal("Relay returned before the upstream reader completion signal")
+REDACTED
+	require.Zero(t, clientConn.CloseCalls(), "错误路径不应提前关闭客户端连接")
 REDACTED
 
 func TestRelay_NilConnections(t *testing.T) {

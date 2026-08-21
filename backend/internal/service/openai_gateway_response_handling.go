@@ -251,7 +251,7 @@ REDACTED
 	capacityFailoverSuppressedLogged := false
 	failedMessage := ""
 	clientOutputStarted := false
-	codexFailureTerminal := account != nil && account.Platform == PlatformOpenAI
+	codexFailureTerminal := account != nil && account.IsOpenAIOAuthLike()
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	var streamEarlyErr error
 	terminalFailurePending := false
@@ -478,6 +478,18 @@ REDACTED
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
 			eventType := effectiveOpenAISSEEventType(dataBytes, pendingSSEEventType)
+			if codexFailureTerminal && sawBareError && !sawResponseFailed &&
+				(eventType == "response.completed" || eventType == "response.done") {
+				// A later successful terminal is authoritative over a pending bare
+				// error. Keep its usage and terminal visible to the client.
+				sawBareError = false
+				sawFailedEvent = false
+				terminalFailurePending = false
+				suppressCurrentEvent = false
+				bareErrorPayload = nil
+				bareErrorAccountSideEffectsPending = false
+				failedMessage = ""
+		REDACTED
 			if codexFailureTerminal && sawBareError && !sawResponseFailed && eventType != "response.failed" {
 				suppressCurrentEvent = true
 		REDACTED
@@ -862,16 +874,16 @@ REDACTED(scanBuf)
 		REDACTED
 
 		case <-intervalCh:
-			if codexFailureTerminal && sawBareError && !sawResponseFailed {
-				_ = resp.Body.Close()
-				return finalizeStream()
-		REDACTED
 			if failureDelivered {
 				return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
 		REDACTED
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
 			if time.Since(lastRead) < streamInterval {
 				continue
+		REDACTED
+			if codexFailureTerminal && sawBareError && !sawResponseFailed {
+				_ = resp.Body.Close()
+				return finalizeStream()
 		REDACTED
 			if clientDisconnected {
 				return resultWithUsage(), fmt.Errorf("stream usage incomplete after timeout")
@@ -899,7 +911,7 @@ REDACTED(scanBuf)
 				stopFirstOutputTimer()
 				continue
 		REDACTED
-			if codexFailureTerminal && sawBareError && !sawResponseFailed {
+			if codexFailureTerminal && sawBareError && !sawResponseFailed && len(events) == 0 {
 				_ = resp.Body.Close()
 				return finalizeStream()
 		REDACTED
@@ -1181,6 +1193,12 @@ func (s *OpenAIGatewayService) parseSSEUsageBytesWithType(data []byte, eventType
 	if usage == nil || len(data) == 0 || bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
 		return
 REDACTED
+	// Usage is absent from nearly every delta event. Avoid full JSON validation
+	// and four gjson path scans on that hot path while retaining progressive
+	// usage from compatible upstreams on any event type.
+	if !bytes.Contains(data, []byte(`"usage"`)) {
+		return
+REDACTED
 	parsedUsage, ok := extractOpenAIUsageFromJSONBytes(data)
 	if !ok {
 		return
@@ -1368,6 +1386,57 @@ REDACTED
 	return strings.TrimSpace(gjson.GetBytes(body, "response.id").String())
 REDACTED
 
+const openAIHTTPResponseOwnerContextKey = "openai_http_response_owner"
+
+type openAIHTTPResponseOwner struct {
+	userID   int64
+	apiKeyID int64
+REDACTED
+
+// SetOpenAIHTTPResponseOwner marks the authenticated downstream owner whose
+// successful Responses IDs may be used for later HTTP continuations.
+func SetOpenAIHTTPResponseOwner(c *gin.Context, userID, apiKeyID int64) {
+	if c == nil || userID <= 0 || apiKeyID <= 0 {
+		return
+REDACTED
+	c.Set(openAIHTTPResponseOwnerContextKey, openAIHTTPResponseOwner{userID: userID, apiKeyID: apiKeyIDREDACTED)
+REDACTED
+
+// ValidateOpenAIHTTPResponseOwner authorizes a continuation by downstream
+// tenant. API key identity is retained in the binding, while keys owned by the
+// same user remain interoperable.
+func (s *OpenAIGatewayService) ValidateOpenAIHTTPResponseOwner(
+	ctx context.Context,
+	groupID int64,
+	responseID string,
+	userID, apiKeyID int64,
+) (bool, error) {
+	if s == nil || strings.TrimSpace(responseID) == "" || userID <= 0 || apiKeyID <= 0 {
+		return false, nil
+REDACTED
+	ownerUserID, ownerAPIKeyID, found, err := s.getOpenAIWSStateStore().GetHTTPResponseOwner(ctx, groupID, responseID)
+	if err != nil || !found {
+		return false, err
+REDACTED
+	return ownerUserID == userID || (ownerUserID <= 0 && ownerAPIKeyID == apiKeyID), nil
+REDACTED
+
+// BindOpenAIHTTPResponseOwner records an HTTP continuation owner independently
+// from the upstream account selected for that response.
+func (s *OpenAIGatewayService) BindOpenAIHTTPResponseOwner(
+	ctx context.Context,
+	groupID int64,
+	responseID string,
+	userID, apiKeyID int64,
+) error {
+	if s == nil {
+		return nil
+REDACTED
+	return s.getOpenAIWSStateStore().BindHTTPResponseOwner(
+		ctx, groupID, responseID, userID, apiKeyID, s.openAIWSResponseStickyTTL(),
+	)
+REDACTED
+
 func (s *OpenAIGatewayService) bindHTTPResponseAccount(ctx context.Context, c *gin.Context, account *Account, responseID string) {
 	if s == nil || account == nil || account.ID <= 0 {
 		return
@@ -1383,6 +1452,21 @@ REDACTED
 	groupID := getOpenAIGroupIDFromContext(c)
 	ttl := s.openAIWSResponseStickyTTL()
 	logOpenAIWSBindResponseAccountWarn(groupID, account.ID, responseID, store.BindResponseAccount(ctx, groupID, responseID, account.ID, ttl))
+	if rawOwner, ok := c.Get(openAIHTTPResponseOwnerContextKey); ok {
+		if owner, ok := rawOwner.(openAIHTTPResponseOwner); ok && owner.userID > 0 && owner.apiKeyID > 0 {
+			if err := s.BindOpenAIHTTPResponseOwner(ctx, groupID, responseID, owner.userID, owner.apiKeyID); err != nil {
+				logger.L().Warn(
+					"openai.http_bind_response_owner_failed",
+					zap.Int64("group_id", groupID),
+					zap.Int64("account_id", account.ID),
+					zap.Int64("user_id", owner.userID),
+					zap.Int64("api_key_id", owner.apiKeyID),
+					zap.String("response_id", truncateOpenAIWSLogValue(responseID, openAIWSIDValueMaxLen)),
+					zap.Error(err),
+				)
+		REDACTED
+	REDACTED
+REDACTED
 REDACTED
 
 func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
@@ -1665,9 +1749,6 @@ func extractOpenAISSETerminalEvent(body string) (string, []byte, bool) {
 	var terminalType string
 	var terminalPayload []byte
 	forEachOpenAISSEFrame(body, func(eventType string, data []byte) {
-		if terminalPayload != nil {
-			return
-	REDACTED
 		switch eventType {
 		case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled", "error":
 			terminalType = eventType

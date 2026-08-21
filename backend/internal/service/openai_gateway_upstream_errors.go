@@ -260,7 +260,7 @@ REDACTED
 	if isOpenAIContextWindowError(upstreamMsg, upstreamBody) {
 		return false
 REDACTED
-	if isOpenAIUpstreamAccessStateError(upstreamMsg, upstreamBody) {
+	if isOpenAIHTTPUpstreamAccessStateError(statusCode, upstreamMsg, upstreamBody) {
 		return true
 REDACTED
 	if isOpenAIRequestBodyTooLargeError(statusCode, upstreamMsg, upstreamBody) {
@@ -306,7 +306,7 @@ REDACTED
 		failoverErr.ClientStatusCode = http.StatusRequestEntityTooLarge
 		failoverErr.ClientMessage = OpenAIRequestBodyTooLargeClientMessage
 REDACTED
-	if isOpenAIUpstreamAccessStateError(upstreamMsg, responseBody) {
+	if isOpenAIHTTPUpstreamAccessStateError(statusCode, upstreamMsg, responseBody) {
 		failoverErr.RetryableOnSameAccount = false
 		failoverErr.RequestScopedTransient = false
 		failoverErr.Stage = GatewayFailureStageAccountAuth
@@ -359,57 +359,40 @@ const (
 )
 
 // isOpenAIUpstreamAccessStateError recognizes provider-side credential state
-// failures from explicit structured fields. Valid JSON is never scanned as a
-// blob because it may contain echoed user input with the same words.
-func isOpenAIUpstreamAccessStateError(upstreamMsg string, body []byte) bool {
-	matchCode := func(value string) bool {
-		value = strings.ToLower(strings.TrimSpace(value))
-		if value == "deactivated_workspace" {
-			return true
-	REDACTED
-		for _, subject := range []string{"workspace", "account", "organization", "org"REDACTED {
-			for _, state := range []string{"deactivated", "disabled", "suspended"REDACTED {
-				if value == subject+"_"+state || value == state+"_"+subject {
-					return true
-			REDACTED
-		REDACTED
-	REDACTED
+// failures only from explicit structured codes. Free-form messages may contain
+// echoed user input, including inside stream terminal error.message fields.
+func isOpenAIUpstreamAccessStateError(_ string, body []byte) bool {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return false
-REDACTED
-	matchMessage := func(value string) bool {
-		value = strings.ToLower(strings.TrimSpace(value))
-		for _, subject := range []string{"workspace", "account", "organization", "org"REDACTED {
-			for _, state := range []string{"deactivated", "disabled", "suspended"REDACTED {
-				if strings.Contains(value, subject+" is "+state) ||
-					strings.Contains(value, subject+" has been "+state) ||
-					strings.Contains(value, subject+" "+state) {
-					return true
-			REDACTED
-		REDACTED
-	REDACTED
-		return false
-REDACTED
-
-	if matchMessage(upstreamMsg) {
-		return true
-REDACTED
-	if len(body) == 0 {
-		return false
-REDACTED
-	if !gjson.ValidBytes(body) {
-		return matchMessage(string(body)) || matchCode(string(body))
 REDACTED
 	for _, path := range []string{"error.code", "response.error.code", "detail.code", "code"REDACTED {
-		if matchCode(gjson.GetBytes(body, path).String()) {
-			return true
-	REDACTED
-REDACTED
-	for _, path := range []string{"error.message", "response.error.message", "detail.message", "detail", "message"REDACTED {
-		if matchMessage(gjson.GetBytes(body, path).String()) {
+		if isOpenAIUpstreamAccessStateCode(gjson.GetBytes(body, path).String()) {
 			return true
 	REDACTED
 REDACTED
 	return false
+REDACTED
+
+func isOpenAIUpstreamAccessStateCode(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "deactivated_workspace" {
+		return true
+REDACTED
+	for _, subject := range []string{"workspace", "account", "organization", "org"REDACTED {
+		for _, state := range []string{"deactivated", "disabled", "suspended"REDACTED {
+			if value == subject+"_"+state || value == state+"_"+subject {
+				return true
+		REDACTED
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+// isOpenAIHTTPUpstreamAccessStateError is deliberately status-independent:
+// known provider codes are durable evidence, while 401/403 messages without
+// such a code must flow through the existing authentication/403 policies.
+func isOpenAIHTTPUpstreamAccessStateError(_ int, _ string, body []byte) bool {
+	return isOpenAIUpstreamAccessStateError("", body)
 REDACTED
 
 func openAICapacityShedClientMessage(upstreamMsg string, body []byte) string {

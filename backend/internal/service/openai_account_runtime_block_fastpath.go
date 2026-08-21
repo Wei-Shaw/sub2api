@@ -65,7 +65,7 @@ REDACTED
 REDACTED
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
-	if account != nil && account.Platform == PlatformOpenAI && isOpenAIUpstreamAccessStateError("", responseBody) {
+	if account != nil && account.Platform == PlatformOpenAI && isOpenAIHTTPUpstreamAccessStateError(statusCode, "", responseBody) {
 		message := "OpenAI upstream account or workspace is unavailable"
 		if upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(responseBody)); upstreamMsg != "" {
 			message = upstreamMsg
