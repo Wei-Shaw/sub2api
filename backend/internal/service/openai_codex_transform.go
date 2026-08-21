@@ -84,6 +84,12 @@ type codexOAuthTransformOptions struct {
 	SkipDefaultInstructions             bool
 	PreserveToolCallIDs                 bool
 	OmitPromotedSystemMessagesFromInput bool
+	// TaintAccountID/TaintAPIKeyID 非零时启用切号净化：input 中的服务端铸造
+	// id 确定性改写为该账号下的映射值，prompt_cache_key 改写为账号感知派生
+	// UUID（openai_codex_session_taint.go）。仅原生 /v1/responses OAuth 路径
+	// 传入；兼容桥（PreserveToolCallIDs）不启用。
+	TaintAccountID int64
+	TaintAPIKeyID  int64
 }
 
 const (
@@ -246,6 +252,18 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 		if isOpenAICompatMessagesBridgeRequestBody(reqBody) {
 			delete(reqBody, "prompt_cache_key")
 			result.Modified = true
+		} else if opts.TaintAccountID != 0 && opts.TaintAPIKeyID != 0 {
+			// 切号净化：prompt_cache_key 是跨账号恒定的会话标识（S 级交叉），
+			// 改写为账号感知派生值——同账号同会话稳定（缓存字节不变），切号
+			// 自动变值。与出站 session_id 头使用同一派生（官方两者相等）。
+			if key := result.PromptCacheKey; key != "" {
+				derived := deriveCodexTaintUUID("pck", opts.TaintAPIKeyID, opts.TaintAccountID, key)
+				if derived != "" && derived != v {
+					reqBody["prompt_cache_key"] = derived
+					result.PromptCacheKey = derived
+					result.Modified = true
+				}
+			}
 		}
 	}
 
@@ -284,6 +302,7 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 		input = filterCodexInputWithOptions(input, codexInputFilterOptions{
 			PreserveReferences: needsToolContinuation,
 			PreserveCallIDs:    opts.PreserveToolCallIDs,
+			TaintAccountID:     opts.TaintAccountID,
 		})
 		reqBody["input"] = input
 		result.Modified = true
@@ -1347,6 +1366,10 @@ func isInstructionsEmpty(reqBody map[string]any) bool {
 type codexInputFilterOptions struct {
 	PreserveReferences bool
 	PreserveCallIDs    bool
+	// TaintAccountID 非零时启用切号净化：服务端铸造 id 确定性改写为该账号
+	// 下的映射值（rekeyCodexTaintID），跨账号字符串交叉随之消除。同账号同
+	// 旧 id 恒得同新 id，input 字节跨轮稳定，不影响 prompt cache 前缀命中。
+	TaintAccountID int64
 }
 
 // filterCodexInput 按需过滤 item_reference 与 id。
@@ -1392,6 +1415,20 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 			newItem := make(map[string]any, len(m))
 			for key, value := range m {
 				if key == "id" {
+					// 切号净化：带 encrypted_content 的 reasoning id 确定性改写
+					// （密文与 id 无绑定——compaction 密文挂客户端新铸 cmp_ id
+					// 回放是官方固化行为）；无密文时维持剥离（404 风险仅存在于
+					// 服务端按 id 取内容的无密文场景）。
+					if opts.TaintAccountID != 0 {
+						if enc, ok := m["encrypted_content"].(string); ok && strings.TrimSpace(enc) != "" {
+							if idStr, ok := value.(string); ok {
+								if rekeyed := rekeyCodexTaintID(opts.TaintAccountID, idStr); rekeyed != "" {
+									newItem["id"] = rekeyed
+									continue
+								}
+							}
+						}
+					}
 					// rs_* id replayed under store=false 404s; strip it.
 					continue
 				}
@@ -1423,7 +1460,9 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 		}
 
 		if typ == "item_reference" {
-			if !opts.PreserveReferences {
+			// 切号净化：被引用 id 已全部改写，引用必然悬空；且官方客户端从不
+			// 构造 item_reference（全量重放不依赖引用），直接删除。
+			if !opts.PreserveReferences || opts.TaintAccountID != 0 {
 				continue
 			}
 			newItem := make(map[string]any, len(m))
@@ -1463,6 +1502,14 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 
 			if callID != "" {
 				fixedCallID := fixCallIDPrefix(callID)
+				// 切号净化：call_id 值由上游铸造、可跨账号账本交叉；改写为本
+				// 账号派生值。call 与 output 两侧走同一函数 → 配对保持。
+				// PreserveCallIDs 兼容桥不启用（TaintAccountID 恒为 0）。
+				if opts.TaintAccountID != 0 && !opts.PreserveCallIDs && fixedCallID != "" {
+					if rekeyed := rekeyCodexTaintID(opts.TaintAccountID, fixedCallID); rekeyed != "" {
+						fixedCallID = rekeyed
+					}
+				}
 				if fixedCallID != callID {
 					ensureCopy()
 					newItem["call_id"] = fixedCallID
@@ -1491,7 +1538,18 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 			}
 		}
 
-		if !opts.PreserveReferences {
+		if opts.TaintAccountID != 0 {
+			// 切号净化：合法前缀 id → 确定性改写；legacy 无前缀 id → 删除
+			// （官方发送前同样剥掉）。无 id 的 item 不动（官方常态存在）。
+			if id, ok := m["id"].(string); ok && id != "" {
+				ensureCopy()
+				if rekeyed := rekeyCodexTaintID(opts.TaintAccountID, id); rekeyed != "" {
+					newItem["id"] = rekeyed
+				} else {
+					delete(newItem, "id")
+				}
+			}
+		} else if !opts.PreserveReferences {
 			ensureCopy()
 			delete(newItem, "id")
 		} else if id, ok := m["id"].(string); ok && shouldStripOpenAIResponsesInputItemID(typ, id) {

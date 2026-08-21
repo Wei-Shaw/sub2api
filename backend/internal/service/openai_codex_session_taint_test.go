@@ -172,3 +172,103 @@ func TestOpenAICodexTaintSanitizeContextRoundTrip(t *testing.T) {
 
 	require.Zero(t, openAICodexTaintSanitizeAccountID(nil), "nil context is safe")
 }
+
+// TestFilterCodexInput_TaintRekey covers taint-mode input filtering: prefixed
+// item ids are rekeyed (deterministic, prefix inherited), reasoning keeps its
+// id only when encrypted_content is present, call/output call_id pairing
+// survives rekeying, legacy unprefixed ids are dropped, and item_reference is
+// removed (the referenced id no longer exists after rekeying; the official
+// client never emits item_reference).
+func TestFilterCodexInput_TaintRekey(t *testing.T) {
+	input := []any{
+		map[string]any{"type": "message", "role": "user", "id": "msg_old1", "content": "hi"},
+		map[string]any{"type": "reasoning", "id": "rs_old1", "encrypted_content": "ENC", "summary": []any{}},
+		map[string]any{"type": "reasoning", "id": "rs_old2", "summary": []any{}},
+		map[string]any{"type": "function_call", "id": "fc_old1", "call_id": "fc_call1", "name": "shell"},
+		map[string]any{"type": "function_call_output", "call_id": "fc_call1", "output": "ok"},
+		map[string]any{"type": "message", "role": "assistant", "id": "legacy-no-underscore"},
+		map[string]any{"type": "item_reference", "id": "msg_old1"},
+	}
+	out := filterCodexInputWithOptions(input, codexInputFilterOptions{
+		PreserveReferences: true,
+		TaintAccountID:     9,
+	})
+	require.Len(t, out, 6, "item_reference dropped")
+
+	msg := out[0].(map[string]any)
+	require.Equal(t, rekeyCodexTaintID(9, "msg_old1"), msg["id"])
+	require.NotEqual(t, "msg_old1", msg["id"])
+
+	rsEnc := out[1].(map[string]any)
+	require.Equal(t, rekeyCodexTaintID(9, "rs_old1"), rsEnc["id"], "reasoning with ciphertext keeps a rekeyed id")
+	require.Equal(t, "ENC", rsEnc["encrypted_content"], "ciphertext verbatim")
+
+	rsPlain := out[2].(map[string]any)
+	_, hasID := rsPlain["id"]
+	require.False(t, hasID, "reasoning without ciphertext keeps the historical strip behavior")
+
+	fc := out[3].(map[string]any)
+	require.Equal(t, rekeyCodexTaintID(9, "fc_old1"), fc["id"])
+	rekeyedCall := rekeyCodexTaintID(9, "fc_call1")
+	require.Equal(t, rekeyedCall, fc["call_id"])
+
+	fco := out[4].(map[string]any)
+	require.Equal(t, rekeyedCall, fco["call_id"], "call/output pairing survives rekeying")
+
+	legacy := out[5].(map[string]any)
+	_, hasID = legacy["id"]
+	require.False(t, hasID, "legacy unprefixed id dropped")
+}
+
+// TestFilterCodexInput_TaintDisabledUnchanged pins the default behavior:
+// without a taint account the filter behaves exactly as before (ids preserved
+// under PreserveReferences, historical reasoning-id strip kept).
+func TestFilterCodexInput_TaintDisabledUnchanged(t *testing.T) {
+	input := []any{
+		map[string]any{"type": "message", "role": "user", "id": "msg_old1", "content": "hi"},
+		map[string]any{"type": "reasoning", "id": "rs_old1", "encrypted_content": "ENC", "summary": []any{}},
+		map[string]any{"type": "function_call", "id": "fc_old1", "call_id": "fc_call1", "name": "shell"},
+		map[string]any{"type": "function_call_output", "call_id": "fc_call1", "output": "ok"},
+	}
+	out := filterCodexInputWithOptions(input, codexInputFilterOptions{PreserveReferences: true})
+	require.Equal(t, "msg_old1", out[0].(map[string]any)["id"])
+	_, hasRS := out[1].(map[string]any)["id"]
+	require.False(t, hasRS, "historical rs_* strip unaffected")
+	require.Equal(t, "fc_old1", out[2].(map[string]any)["id"])
+	require.Equal(t, "fc_call1", out[2].(map[string]any)["call_id"])
+}
+
+// TestApplyCodexOAuthTransform_TaintPromptCacheKey covers the top-level
+// prompt_cache_key rewrite: under taint it becomes the account-aware derived
+// UUID shared with the outbound session_id header; without taint it is
+// untouched.
+func TestApplyCodexOAuthTransform_TaintPromptCacheKey(t *testing.T) {
+	body := map[string]any{
+		"model":            "gpt-5",
+		"prompt_cache_key": "client-key-1",
+		"input": []any{
+			map[string]any{"type": "message", "role": "user", "content": "hi"},
+		},
+	}
+	res := applyCodexOAuthTransformWithOptions(body, codexOAuthTransformOptions{
+		IsCodexCLI:              true,
+		TaintAccountID:          9,
+		TaintAPIKeyID:           7,
+		SkipDefaultInstructions: true,
+	})
+	require.Equal(t, deriveCodexTaintUUID("pck", 7, 9, "client-key-1"), body["prompt_cache_key"])
+	require.Equal(t, deriveCodexTaintUUID("pck", 7, 9, "client-key-1"), res.PromptCacheKey)
+
+	plain := map[string]any{
+		"model":            "gpt-5",
+		"prompt_cache_key": "client-key-1",
+		"input": []any{
+			map[string]any{"type": "message", "role": "user", "content": "hi"},
+		},
+	}
+	applyCodexOAuthTransformWithOptions(plain, codexOAuthTransformOptions{
+		IsCodexCLI:              true,
+		SkipDefaultInstructions: true,
+	})
+	require.Equal(t, "client-key-1", plain["prompt_cache_key"], "no taint → untouched")
+}

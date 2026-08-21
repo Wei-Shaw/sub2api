@@ -415,7 +415,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			ensureCodexOAuthInstructionsField(decoded)
 			markDecodedModified()
 		} else {
-			codexResult = applyCodexOAuthTransform(decoded, isCodexCLI, isCompactRequest)
+			// 切号净化：taint 标记由 handler failover 循环按本次 attempt 账号
+			// 设置（openai_codex_session_taint.go）；0 = 不净化，行为与历史一致。
+			codexResult = applyCodexOAuthTransformWithOptions(decoded, codexOAuthTransformOptions{
+				IsCodexCLI:      isCodexCLI,
+				IsCompact:       isCompactRequest,
+				TaintAccountID:  openAICodexTaintSanitizeAccountID(c),
+				TaintAPIKeyID:   getAPIKeyIDFromContext(c),
+			})
 		}
 		if codexResult.Modified {
 			markDecodedModified()
