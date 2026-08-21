@@ -14,6 +14,10 @@ export default {
     login: 'Login',
     getStarted: 'Get Started',
     goToDashboard: 'Go to Dashboard',
+    legal: {
+      title: 'Legal documents',
+      description: 'Review the service terms, usage policy, supported regions, and service-specific terms before you sign in.'
+    },
     // User-focused value proposition
     heroSubtitle: 'One Key, All AI Models',
     heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
