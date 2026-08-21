@@ -164,6 +164,20 @@ func (c *comboCacheAndStore) IsCyberSessionBlocked(ctx context.Context, key stri
 
 // --- tests ---
 
+// TestMarkGetOpsSessionBlocked verifies the gin-context session-block marker
+// helpers: absent → false, set → visible, nil context is safe.
+func TestMarkGetOpsSessionBlocked(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	require.False(t, GetOpsSessionBlocked(c), "no mark initially")
+
+	MarkOpsSessionBlocked(c)
+	require.True(t, GetOpsSessionBlocked(c), "mark must be visible after set")
+
+	require.False(t, GetOpsSessionBlocked(nil), "nil context → false")
+	require.NotPanics(t, func() { MarkOpsSessionBlocked(nil) }, "nil context mark must not panic")
+}
+
 // TestIsCyberSessionBlocked_EmptyKeyAndNilService covers the fail-open paths:
 // empty key, nil service, store missing → always false / no panic.
 func TestIsCyberSessionBlocked_EmptyKeyAndNilService(t *testing.T) {

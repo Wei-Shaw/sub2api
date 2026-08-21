@@ -3213,6 +3213,9 @@ func (h *OpenAIGatewayHandler) rejectIfCyberSessionBlocked(c *gin.Context, apiKe
 	if !h.gatewayService.IsCyberSessionBlocked(c.Request.Context(), key) {
 		return false
 	}
+	// 标记本地会话屏蔽：OpsErrorLoggerMiddleware 据此跳过自身兜底落库，
+	// 仅保留 enqueueCyberSessionBlockedOpsEntry 的显式条目，避免同 ID 双写。
+	service.MarkOpsSessionBlocked(c)
 	// body-signal compact 心跳可能已把响应头提交为 200（cyber 检查在用户槽位
 	// 长等待之后执行）：以 response.failed 终止事件回传；未提交时停拍后照常
 	// 写 JSON（#3887）。

@@ -20,3 +20,15 @@ func TestOpsErrorLoggerMiddlewareSkipsCyber(t *testing.T) {
 	require.NotNil(t, service.GetOpsCyberPolicy(c), "前置：mark 已设置")
 	require.True(t, shouldSkipOpsErrorLogForCyber(c), "cyber mark 命中应跳过中间件落库")
 }
+
+// 本地会话屏蔽标记存在时，中间件同样必须跳过自身落库（由
+// enqueueCyberSessionBlockedOpsEntry 显式落 cyber_policy_session_blocked）。
+func TestOpsErrorLoggerMiddlewareSkipsSessionBlock(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	service.MarkOpsSessionBlocked(c)
+
+	require.True(t, service.GetOpsSessionBlocked(c), "前置：session block 标记已设置")
+	require.True(t, shouldSkipOpsErrorLogForCyber(c), "session block 标记命中应跳过中间件落库")
+}
