@@ -13,3 +13,10 @@
 - 原因：该脚本下额外的 `--` 被传给 Vite，后续参数未被解析为 CLI 选项。
 - 处理：直接使用 `pnpm run preview --host 127.0.0.1 --port 4177`。
 - 验证：启动日志必须显示 `http://127.0.0.1:4177/`，再执行浏览器 QA。
+
+## Docker 中 pnpm 9 无法读取 pnpm 11 workspace 配置
+
+- 现象：依赖安装成功，但 `pnpm run build` 报 `packages field missing or empty`；提前复制 workspace 配置后，pnpm 9 frozen install 可能继续报 overrides 不匹配。
+- 原因：pnpm 9 要求 workspace 明确声明 `packages`，并从 `package.json#pnpm.overrides` 读取覆盖；pnpm 11 则从 `pnpm-workspace.yaml` 读取覆盖。
+- 处理：单包项目声明 `packages: ['.']`，在两个位置保留同值 overrides，并让 Docker 在安装前复制 `pnpm-workspace.yaml`。
+- 验证：分别使用根 Dockerfile 和 `deploy/Dockerfile` 构建 `frontend-builder`，其中 frozen install 必须显示锁文件已是最新。
