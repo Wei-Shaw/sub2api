@@ -27,6 +27,7 @@ import (
 	"golang.org/x/net/http2"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/gatewaydebug"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
@@ -158,9 +159,10 @@ type openAIHTTP2FallbackState struct {
 // 7. 代理变更时清空旧连接池，避免复用错误代理
 // 8. 账号并发数与连接池上限对应（账号隔离策略下）
 type httpUpstreamService struct {
-	cfg     *config.Config                  // 全局配置
-	mu      sync.RWMutex                    // 保护 clients map 的读写锁
-	clients map[string]*upstreamClientEntry // 客户端缓存池，key 由隔离策略决定
+	cfg         *config.Config                  // 全局配置
+	mu          sync.RWMutex                    // 保护 clients map 的读写锁
+	clients     map[string]*upstreamClientEntry // 客户端缓存池，key 由隔离策略决定
+	debugLogger *gatewaydebug.Logger
 	// OpenAI 走 HTTP/HTTPS 代理时的 H2->H1 回退状态（key=标准化 proxyKey）
 	openAIHTTP2Fallbacks sync.Map
 }
@@ -175,8 +177,9 @@ type httpUpstreamService struct {
 //   - service.HTTPUpstream 接口实现
 func NewHTTPUpstream(cfg *config.Config) service.HTTPUpstream {
 	return &httpUpstreamService{
-		cfg:     cfg,
-		clients: make(map[string]*upstreamClientEntry),
+		cfg:         cfg,
+		clients:     make(map[string]*upstreamClientEntry),
+		debugLogger: gatewaydebug.Default(),
 	}
 }
 
@@ -215,8 +218,10 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	// 执行请求
 	client := httpClientForUpstreamRequest(entry.client, req)
 	client = httpClientWithGrokAccessDeniedFallback(client)
+	debugTrace := s.beginUpstreamDebugTrace(req, proxyURL, accountID, profile)
 	resp, err := servertiming.Do(client, req)
 	if err != nil {
+		debugTrace.logTransportError(err)
 		s.recordOpenAIHTTP2Failure(profile, entry.protocolMode, entry.proxyKey, err)
 		// 请求失败，立即减少计数
 		atomic.AddInt64(&entry.inFlight, -1)
@@ -227,6 +232,8 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 
 	// 如果上游返回了压缩内容，解压后再交给业务层
 	decompressResponseBody(resp)
+	debugTrace.logResponse(resp)
+	resp.Body = debugTrace.wrapResponseBody(resp.Body)
 
 	// 包装响应体，在关闭时自动减少计数并更新时间戳
 	// 这确保了流式响应（如 SSE）在完全读取前不会被淘汰
@@ -279,8 +286,10 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 
 	client := httpClientForUpstreamRequest(entry.client, req)
 	client = httpClientWithGrokAccessDeniedFallback(client)
+	debugTrace := s.beginUpstreamDebugTrace(req, proxyURL, accountID, upstreamProfile)
 	resp, err := servertiming.Do(client, req)
 	if err != nil {
+		debugTrace.logTransportError(err)
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
 		slog.Debug("tls_fingerprint_request_failed", "account_id", accountID, "error", err)
@@ -288,6 +297,8 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	}
 
 	decompressResponseBody(resp)
+	debugTrace.logResponse(resp)
+	resp.Body = debugTrace.wrapResponseBody(resp.Body)
 
 	resp.Body = wrapTrackedBody(resp.Body, func() {
 		atomic.AddInt64(&entry.inFlight, -1)
