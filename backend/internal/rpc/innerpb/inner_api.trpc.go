@@ -34,6 +34,8 @@ type InnerAPIService interface {
 	AddMaterialByUrl(ctx context.Context, req *AddMaterialByUrlRequest) (*AddMaterialByUrlResponse, error)
 
 	DeleteMaterial(ctx context.Context, req *DeleteMaterialRequest) (*DeleteMaterialResponse, error)
+
+	BatchDeleteMaterials(ctx context.Context, req *BatchDeleteMaterialsRequest) (*BatchDeleteMaterialsResponse, error)
 }
 
 func InnerAPIService_Deduct_Handler(svr interface{}, ctx context.Context, f server.FilterFunc) (interface{}, error) {
@@ -180,6 +182,24 @@ func InnerAPIService_DeleteMaterial_Handler(svr interface{}, ctx context.Context
 	return rsp, nil
 }
 
+func InnerAPIService_BatchDeleteMaterials_Handler(svr interface{}, ctx context.Context, f server.FilterFunc) (interface{}, error) {
+	req := &BatchDeleteMaterialsRequest{}
+	filters, err := f(req)
+	if err != nil {
+		return nil, err
+	}
+	handleFunc := func(ctx context.Context, reqbody interface{}) (interface{}, error) {
+		return svr.(InnerAPIService).BatchDeleteMaterials(ctx, reqbody.(*BatchDeleteMaterialsRequest))
+	}
+
+	var rsp interface{}
+	rsp, err = filters.Filter(ctx, req, handleFunc)
+	if err != nil {
+		return nil, err
+	}
+	return rsp, nil
+}
+
 // InnerAPIServer_ServiceDesc descriptor for server.RegisterService.
 var InnerAPIServer_ServiceDesc = server.ServiceDesc{
 	ServiceName: "sub2api.inner.v1.InnerAPI",
@@ -216,6 +236,10 @@ var InnerAPIServer_ServiceDesc = server.ServiceDesc{
 		{
 			Name: "/sub2api.inner.v1.InnerAPI/DeleteMaterial",
 			Func: InnerAPIService_DeleteMaterial_Handler,
+		},
+		{
+			Name: "/sub2api.inner.v1.InnerAPI/BatchDeleteMaterials",
+			Func: InnerAPIService_BatchDeleteMaterials_Handler,
 		},
 	},
 }
@@ -255,6 +279,9 @@ func (s *UnimplementedInnerAPI) AddMaterialByUrl(ctx context.Context, req *AddMa
 func (s *UnimplementedInnerAPI) DeleteMaterial(ctx context.Context, req *DeleteMaterialRequest) (*DeleteMaterialResponse, error) {
 	return nil, errors.New("rpc DeleteMaterial of service InnerAPI is not implemented")
 }
+func (s *UnimplementedInnerAPI) BatchDeleteMaterials(ctx context.Context, req *BatchDeleteMaterialsRequest) (*BatchDeleteMaterialsResponse, error) {
+	return nil, errors.New("rpc BatchDeleteMaterials of service InnerAPI is not implemented")
+}
 
 // END --------------------------------- Default Unimplemented Server Service --------------------------------- END
 
@@ -279,6 +306,8 @@ type InnerAPIClientProxy interface {
 	AddMaterialByUrl(ctx context.Context, req *AddMaterialByUrlRequest, opts ...client.Option) (rsp *AddMaterialByUrlResponse, err error)
 
 	DeleteMaterial(ctx context.Context, req *DeleteMaterialRequest, opts ...client.Option) (rsp *DeleteMaterialResponse, err error)
+
+	BatchDeleteMaterials(ctx context.Context, req *BatchDeleteMaterialsRequest, opts ...client.Option) (rsp *BatchDeleteMaterialsResponse, err error)
 }
 
 type InnerAPIClientProxyImpl struct {
@@ -444,6 +473,26 @@ func (c *InnerAPIClientProxyImpl) DeleteMaterial(ctx context.Context, req *Delet
 	callopts = append(callopts, c.opts...)
 	callopts = append(callopts, opts...)
 	rsp := &DeleteMaterialResponse{}
+	if err := c.client.Invoke(ctx, req, rsp, callopts...); err != nil {
+		return nil, err
+	}
+	return rsp, nil
+}
+
+func (c *InnerAPIClientProxyImpl) BatchDeleteMaterials(ctx context.Context, req *BatchDeleteMaterialsRequest, opts ...client.Option) (*BatchDeleteMaterialsResponse, error) {
+	ctx, msg := codec.WithCloneMessage(ctx)
+	defer codec.PutBackMessage(msg)
+	msg.WithClientRPCName("/sub2api.inner.v1.InnerAPI/BatchDeleteMaterials")
+	msg.WithCalleeServiceName(InnerAPIServer_ServiceDesc.ServiceName)
+	msg.WithCalleeApp("")
+	msg.WithCalleeServer("")
+	msg.WithCalleeService("InnerAPI")
+	msg.WithCalleeMethod("BatchDeleteMaterials")
+	msg.WithSerializationType(codec.SerializationTypePB)
+	callopts := make([]client.Option, 0, len(c.opts)+len(opts))
+	callopts = append(callopts, c.opts...)
+	callopts = append(callopts, opts...)
+	rsp := &BatchDeleteMaterialsResponse{}
 	if err := c.client.Invoke(ctx, req, rsp, callopts...); err != nil {
 		return nil, err
 	}

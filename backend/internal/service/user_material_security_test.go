@@ -119,6 +119,73 @@ type addMaterialRepo struct {
 	material *UserMaterial
 }
 
+type batchDeleteMaterialRepo struct {
+	UserMaterialRepository
+	wantUserID int64
+	gotIDs     []string
+	deletedIDs []string
+	calls      int
+}
+
+func (r *batchDeleteMaterialRepo) SoftDeleteByPublicIDs(_ context.Context, userID int64, publicIDs []string) ([]string, error) {
+	r.calls++
+	if userID != r.wantUserID {
+		return nil, errors.New("unscoped material batch delete")
+	}
+	r.gotIDs = append([]string(nil), publicIDs...)
+	return append([]string(nil), r.deletedIDs...), nil
+}
+
+func TestBatchDeleteMaterialsValidatesAndPreservesRequestOrder(t *testing.T) {
+	const (
+		first  = "550e8400-e29b-41d4-a716-446655440000"
+		second = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+		third  = "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+	)
+	repo := &batchDeleteMaterialRepo{
+		wantUserID: 7,
+		deletedIDs: []string{third, first},
+	}
+	svc := NewUserMaterialService(repo, nil, nil, nil)
+
+	deleted, err := svc.BatchDeleteByPublicIDs(context.Background(), 7, []string{
+		"  " + first + "  ", second, first, third,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{first, second, third}, repo.gotIDs, "repository input must be normalized and deduplicated")
+	require.Equal(t, []string{first, third}, deleted, "response must follow the first occurrence in request order")
+	require.Equal(t, 1, repo.calls)
+}
+
+func TestBatchDeleteMaterialsRejectsInvalidRequestBeforeRepositoryCall(t *testing.T) {
+	repo := &batchDeleteMaterialRepo{wantUserID: 7}
+	svc := NewUserMaterialService(repo, nil, nil, nil)
+
+	tests := []struct {
+		name   string
+		userID int64
+		ids    []string
+		reason string
+	}{
+		{name: "invalid user", userID: 0, ids: []string{"550e8400-e29b-41d4-a716-446655440000"}, reason: "INVALID_USER"},
+		{name: "empty ids", userID: 7, ids: nil, reason: "INVALID_IDS"},
+		{name: "invalid id identifies indexed parameter", userID: 7, ids: []string{"550e8400-e29b-41d4-a716-446655440000", "not-a-uuid"}, reason: "INVALID_ID"},
+		{name: "too many ids", userID: 7, ids: make([]string, MaterialBatchDeleteMaxIDs+1), reason: "TOO_MANY_IDS"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			callsBefore := repo.calls
+			_, err := svc.BatchDeleteByPublicIDs(context.Background(), tc.userID, tc.ids)
+			require.Error(t, err)
+			require.Equal(t, tc.reason, infraerrors.Reason(err))
+			require.Equal(t, callsBefore, repo.calls, "repository must not be called for invalid input")
+			if tc.name == "invalid id identifies indexed parameter" {
+				require.Contains(t, err.Error(), "ids[1]")
+			}
+		})
+	}
+}
+
 func (r *addMaterialRepo) UsageByUser(context.Context, int64) (int64, int64, error) {
 	return 0, 0, nil
 }

@@ -7,12 +7,11 @@
 package innerpb
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -1094,6 +1093,110 @@ func (x *DeleteMaterialResponse) GetDeleted() bool {
 	return false
 }
 
+type BatchDeleteMaterialsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AccountId     string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	Ids           []string               `protobuf:"bytes,2,rep,name=ids,proto3" json:"ids,omitempty"` // opaque public material identifiers; maximum 100
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchDeleteMaterialsRequest) Reset() {
+	*x = BatchDeleteMaterialsRequest{}
+	mi := &file_internal_rpc_innerpb_inner_api_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchDeleteMaterialsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchDeleteMaterialsRequest) ProtoMessage() {}
+
+func (x *BatchDeleteMaterialsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_rpc_innerpb_inner_api_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchDeleteMaterialsRequest.ProtoReflect.Descriptor instead.
+func (*BatchDeleteMaterialsRequest) Descriptor() ([]byte, []int) {
+	return file_internal_rpc_innerpb_inner_api_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *BatchDeleteMaterialsRequest) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+func (x *BatchDeleteMaterialsRequest) GetIds() []string {
+	if x != nil {
+		return x.Ids
+	}
+	return nil
+}
+
+type BatchDeleteMaterialsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DeletedIds    []string               `protobuf:"bytes,1,rep,name=deleted_ids,json=deletedIds,proto3" json:"deleted_ids,omitempty"` // IDs actually deleted, in request order
+	DeletedCount  int32                  `protobuf:"varint,2,opt,name=deleted_count,json=deletedCount,proto3" json:"deleted_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchDeleteMaterialsResponse) Reset() {
+	*x = BatchDeleteMaterialsResponse{}
+	mi := &file_internal_rpc_innerpb_inner_api_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchDeleteMaterialsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchDeleteMaterialsResponse) ProtoMessage() {}
+
+func (x *BatchDeleteMaterialsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_rpc_innerpb_inner_api_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchDeleteMaterialsResponse.ProtoReflect.Descriptor instead.
+func (*BatchDeleteMaterialsResponse) Descriptor() ([]byte, []int) {
+	return file_internal_rpc_innerpb_inner_api_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *BatchDeleteMaterialsResponse) GetDeletedIds() []string {
+	if x != nil {
+		return x.DeletedIds
+	}
+	return nil
+}
+
+func (x *BatchDeleteMaterialsResponse) GetDeletedCount() int32 {
+	if x != nil {
+		return x.DeletedCount
+	}
+	return 0
+}
+
 var File_internal_rpc_innerpb_inner_api_proto protoreflect.FileDescriptor
 
 const file_internal_rpc_innerpb_inner_api_proto_rawDesc = "" +
@@ -1188,7 +1291,15 @@ const file_internal_rpc_innerpb_inner_api_proto_rawDesc = "" +
 	"\x02id\x18\x02 \x01(\tR\x02id\"B\n" +
 	"\x16DeleteMaterialResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
-	"\adeleted\x18\x02 \x01(\bR\adeleted2\xe5\x05\n" +
+	"\adeleted\x18\x02 \x01(\bR\adeleted\"N\n" +
+	"\x1bBatchDeleteMaterialsRequest\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\x12\x10\n" +
+	"\x03ids\x18\x02 \x03(\tR\x03ids\"d\n" +
+	"\x1cBatchDeleteMaterialsResponse\x12\x1f\n" +
+	"\vdeleted_ids\x18\x01 \x03(\tR\n" +
+	"deletedIds\x12#\n" +
+	"\rdeleted_count\x18\x02 \x01(\x05R\fdeletedCount2\xdc\x06\n" +
 	"\bInnerAPI\x12K\n" +
 	"\x06Deduct\x12\x1f.sub2api.inner.v1.DeductRequest\x1a .sub2api.inner.v1.DeductResponse\x12K\n" +
 	"\x06Refund\x12\x1f.sub2api.inner.v1.RefundRequest\x1a .sub2api.inner.v1.RefundResponse\x12W\n" +
@@ -1198,7 +1309,8 @@ const file_internal_rpc_innerpb_inner_api_proto_rawDesc = "" +
 	"\vGetMaterial\x12$.sub2api.inner.v1.GetMaterialRequest\x1a\x1a.sub2api.inner.v1.Material\x12c\n" +
 	"\x0eUploadMaterial\x12'.sub2api.inner.v1.UploadMaterialRequest\x1a(.sub2api.inner.v1.UploadMaterialResponse\x12i\n" +
 	"\x10AddMaterialByUrl\x12).sub2api.inner.v1.AddMaterialByUrlRequest\x1a*.sub2api.inner.v1.AddMaterialByUrlResponse\x12c\n" +
-	"\x0eDeleteMaterial\x12'.sub2api.inner.v1.DeleteMaterialRequest\x1a(.sub2api.inner.v1.DeleteMaterialResponseB2Z0github.com/Wei-Shaw/sub2api/internal/rpc/innerpbb\x06proto3"
+	"\x0eDeleteMaterial\x12'.sub2api.inner.v1.DeleteMaterialRequest\x1a(.sub2api.inner.v1.DeleteMaterialResponse\x12u\n" +
+	"\x14BatchDeleteMaterials\x12-.sub2api.inner.v1.BatchDeleteMaterialsRequest\x1a..sub2api.inner.v1.BatchDeleteMaterialsResponseB2Z0github.com/Wei-Shaw/sub2api/internal/rpc/innerpbb\x06proto3"
 
 var (
 	file_internal_rpc_innerpb_inner_api_proto_rawDescOnce sync.Once
@@ -1212,24 +1324,26 @@ func file_internal_rpc_innerpb_inner_api_proto_rawDescGZIP() []byte {
 	return file_internal_rpc_innerpb_inner_api_proto_rawDescData
 }
 
-var file_internal_rpc_innerpb_inner_api_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_internal_rpc_innerpb_inner_api_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_internal_rpc_innerpb_inner_api_proto_goTypes = []any{
-	(*DeductRequest)(nil),            // 0: sub2api.inner.v1.DeductRequest
-	(*DeductResponse)(nil),           // 1: sub2api.inner.v1.DeductResponse
-	(*RefundRequest)(nil),            // 2: sub2api.inner.v1.RefundRequest
-	(*RefundResponse)(nil),           // 3: sub2api.inner.v1.RefundResponse
-	(*GetBalanceRequest)(nil),        // 4: sub2api.inner.v1.GetBalanceRequest
-	(*GetBalanceResponse)(nil),       // 5: sub2api.inner.v1.GetBalanceResponse
-	(*Material)(nil),                 // 6: sub2api.inner.v1.Material
-	(*ListMaterialsRequest)(nil),     // 7: sub2api.inner.v1.ListMaterialsRequest
-	(*ListMaterialsResponse)(nil),    // 8: sub2api.inner.v1.ListMaterialsResponse
-	(*GetMaterialRequest)(nil),       // 9: sub2api.inner.v1.GetMaterialRequest
-	(*UploadMaterialRequest)(nil),    // 10: sub2api.inner.v1.UploadMaterialRequest
-	(*UploadMaterialResponse)(nil),   // 11: sub2api.inner.v1.UploadMaterialResponse
-	(*AddMaterialByUrlRequest)(nil),  // 12: sub2api.inner.v1.AddMaterialByUrlRequest
-	(*AddMaterialByUrlResponse)(nil), // 13: sub2api.inner.v1.AddMaterialByUrlResponse
-	(*DeleteMaterialRequest)(nil),    // 14: sub2api.inner.v1.DeleteMaterialRequest
-	(*DeleteMaterialResponse)(nil),   // 15: sub2api.inner.v1.DeleteMaterialResponse
+	(*DeductRequest)(nil),                // 0: sub2api.inner.v1.DeductRequest
+	(*DeductResponse)(nil),               // 1: sub2api.inner.v1.DeductResponse
+	(*RefundRequest)(nil),                // 2: sub2api.inner.v1.RefundRequest
+	(*RefundResponse)(nil),               // 3: sub2api.inner.v1.RefundResponse
+	(*GetBalanceRequest)(nil),            // 4: sub2api.inner.v1.GetBalanceRequest
+	(*GetBalanceResponse)(nil),           // 5: sub2api.inner.v1.GetBalanceResponse
+	(*Material)(nil),                     // 6: sub2api.inner.v1.Material
+	(*ListMaterialsRequest)(nil),         // 7: sub2api.inner.v1.ListMaterialsRequest
+	(*ListMaterialsResponse)(nil),        // 8: sub2api.inner.v1.ListMaterialsResponse
+	(*GetMaterialRequest)(nil),           // 9: sub2api.inner.v1.GetMaterialRequest
+	(*UploadMaterialRequest)(nil),        // 10: sub2api.inner.v1.UploadMaterialRequest
+	(*UploadMaterialResponse)(nil),       // 11: sub2api.inner.v1.UploadMaterialResponse
+	(*AddMaterialByUrlRequest)(nil),      // 12: sub2api.inner.v1.AddMaterialByUrlRequest
+	(*AddMaterialByUrlResponse)(nil),     // 13: sub2api.inner.v1.AddMaterialByUrlResponse
+	(*DeleteMaterialRequest)(nil),        // 14: sub2api.inner.v1.DeleteMaterialRequest
+	(*DeleteMaterialResponse)(nil),       // 15: sub2api.inner.v1.DeleteMaterialResponse
+	(*BatchDeleteMaterialsRequest)(nil),  // 16: sub2api.inner.v1.BatchDeleteMaterialsRequest
+	(*BatchDeleteMaterialsResponse)(nil), // 17: sub2api.inner.v1.BatchDeleteMaterialsResponse
 }
 var file_internal_rpc_innerpb_inner_api_proto_depIdxs = []int32{
 	6,  // 0: sub2api.inner.v1.ListMaterialsResponse.items:type_name -> sub2api.inner.v1.Material
@@ -1242,16 +1356,18 @@ var file_internal_rpc_innerpb_inner_api_proto_depIdxs = []int32{
 	10, // 7: sub2api.inner.v1.InnerAPI.UploadMaterial:input_type -> sub2api.inner.v1.UploadMaterialRequest
 	12, // 8: sub2api.inner.v1.InnerAPI.AddMaterialByUrl:input_type -> sub2api.inner.v1.AddMaterialByUrlRequest
 	14, // 9: sub2api.inner.v1.InnerAPI.DeleteMaterial:input_type -> sub2api.inner.v1.DeleteMaterialRequest
-	1,  // 10: sub2api.inner.v1.InnerAPI.Deduct:output_type -> sub2api.inner.v1.DeductResponse
-	3,  // 11: sub2api.inner.v1.InnerAPI.Refund:output_type -> sub2api.inner.v1.RefundResponse
-	5,  // 12: sub2api.inner.v1.InnerAPI.GetBalance:output_type -> sub2api.inner.v1.GetBalanceResponse
-	8,  // 13: sub2api.inner.v1.InnerAPI.ListMaterials:output_type -> sub2api.inner.v1.ListMaterialsResponse
-	6,  // 14: sub2api.inner.v1.InnerAPI.GetMaterial:output_type -> sub2api.inner.v1.Material
-	11, // 15: sub2api.inner.v1.InnerAPI.UploadMaterial:output_type -> sub2api.inner.v1.UploadMaterialResponse
-	13, // 16: sub2api.inner.v1.InnerAPI.AddMaterialByUrl:output_type -> sub2api.inner.v1.AddMaterialByUrlResponse
-	15, // 17: sub2api.inner.v1.InnerAPI.DeleteMaterial:output_type -> sub2api.inner.v1.DeleteMaterialResponse
-	10, // [10:18] is the sub-list for method output_type
-	2,  // [2:10] is the sub-list for method input_type
+	16, // 10: sub2api.inner.v1.InnerAPI.BatchDeleteMaterials:input_type -> sub2api.inner.v1.BatchDeleteMaterialsRequest
+	1,  // 11: sub2api.inner.v1.InnerAPI.Deduct:output_type -> sub2api.inner.v1.DeductResponse
+	3,  // 12: sub2api.inner.v1.InnerAPI.Refund:output_type -> sub2api.inner.v1.RefundResponse
+	5,  // 13: sub2api.inner.v1.InnerAPI.GetBalance:output_type -> sub2api.inner.v1.GetBalanceResponse
+	8,  // 14: sub2api.inner.v1.InnerAPI.ListMaterials:output_type -> sub2api.inner.v1.ListMaterialsResponse
+	6,  // 15: sub2api.inner.v1.InnerAPI.GetMaterial:output_type -> sub2api.inner.v1.Material
+	11, // 16: sub2api.inner.v1.InnerAPI.UploadMaterial:output_type -> sub2api.inner.v1.UploadMaterialResponse
+	13, // 17: sub2api.inner.v1.InnerAPI.AddMaterialByUrl:output_type -> sub2api.inner.v1.AddMaterialByUrlResponse
+	15, // 18: sub2api.inner.v1.InnerAPI.DeleteMaterial:output_type -> sub2api.inner.v1.DeleteMaterialResponse
+	17, // 19: sub2api.inner.v1.InnerAPI.BatchDeleteMaterials:output_type -> sub2api.inner.v1.BatchDeleteMaterialsResponse
+	11, // [11:20] is the sub-list for method output_type
+	2,  // [2:11] is the sub-list for method input_type
 	2,  // [2:2] is the sub-list for extension type_name
 	2,  // [2:2] is the sub-list for extension extendee
 	0,  // [0:2] is the sub-list for field type_name
@@ -1268,7 +1384,7 @@ func file_internal_rpc_innerpb_inner_api_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_rpc_innerpb_inner_api_proto_rawDesc), len(file_internal_rpc_innerpb_inner_api_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

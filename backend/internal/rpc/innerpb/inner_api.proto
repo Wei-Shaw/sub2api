@@ -16,6 +16,7 @@ service InnerAPI {
   rpc UploadMaterial(UploadMaterialRequest) returns (UploadMaterialResponse);
   rpc AddMaterialByUrl(AddMaterialByUrlRequest) returns (AddMaterialByUrlResponse);
   rpc DeleteMaterial(DeleteMaterialRequest) returns (DeleteMaterialResponse);
+  rpc BatchDeleteMaterials(BatchDeleteMaterialsRequest) returns (BatchDeleteMaterialsResponse);
 }
 
 message DeductRequest {
@@ -123,4 +124,14 @@ message DeleteMaterialRequest {
 message DeleteMaterialResponse {
   string id = 1; // opaque public material identifier
   bool deleted = 2;
+}
+
+message BatchDeleteMaterialsRequest {
+  string account_id = 1;
+  repeated string ids = 2; // opaque public material identifiers; maximum 100
+}
+
+message BatchDeleteMaterialsResponse {
+  repeated string deleted_ids = 1; // IDs actually deleted, in request order
+  int32 deleted_count = 2;
 }

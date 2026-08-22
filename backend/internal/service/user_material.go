@@ -40,6 +40,8 @@ const (
 	MaterialImageMaxBytes int64 = 32 << 20
 	MaterialAudioMaxBytes int64 = 64 << 20
 	MaterialVideoMaxBytes int64 = 512 << 20
+	// MaterialBatchDeleteMaxIDs limits one batch delete request.
+	MaterialBatchDeleteMaxIDs = 100
 )
 
 // ErrMaterialPathIdentityUnavailable 表示无法为素材生成不可枚举的用户目录。
@@ -86,6 +88,7 @@ type UserMaterialRepository interface {
 	List(ctx context.Context, userID int64, kind, keyword string, offset, limit int) ([]*UserMaterial, int64, error)
 	SoftDelete(ctx context.Context, userID, id int64) error
 	SoftDeleteByPublicID(ctx context.Context, userID int64, publicID string) error
+	SoftDeleteByPublicIDs(ctx context.Context, userID int64, publicIDs []string) ([]string, error)
 	// UsageByUser 返回该用户未删除素材的条数与总字节数，用于配额校验。
 	UsageByUser(ctx context.Context, userID int64) (count int64, totalBytes int64, err error)
 }
@@ -390,6 +393,56 @@ func (s *UserMaterialService) DeleteByPublicID(ctx context.Context, userID int64
 		return infraerrors.BadRequest("INVALID_ID", "invalid material id")
 	}
 	return s.repo.SoftDeleteByPublicID(ctx, userID, strings.TrimSpace(publicID))
+}
+
+// BatchDeleteByPublicIDs validates the complete request before soft-deleting
+// the caller's materials. Missing, already deleted, and foreign IDs are omitted.
+func (s *UserMaterialService) BatchDeleteByPublicIDs(ctx context.Context, userID int64, publicIDs []string) ([]string, error) {
+	if userID <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_USER", "invalid user id")
+	}
+	if len(publicIDs) == 0 {
+		return nil, infraerrors.BadRequest("INVALID_IDS", "ids must contain at least one material id")
+	}
+	if len(publicIDs) > MaterialBatchDeleteMaxIDs {
+		return nil, infraerrors.BadRequest("TOO_MANY_IDS",
+			fmt.Sprintf("ids must contain at most %d material ids", MaterialBatchDeleteMaxIDs))
+	}
+
+	normalized := make([]string, 0, len(publicIDs))
+	seen := make(map[string]struct{}, len(publicIDs))
+	for i, publicID := range publicIDs {
+		parsed, err := uuid.Parse(strings.TrimSpace(publicID))
+		if err != nil {
+			return nil, infraerrors.BadRequest("INVALID_ID",
+				fmt.Sprintf("ids[%d] is not a valid material id", i))
+		}
+		canonical := parsed.String()
+		if _, ok := seen[canonical]; ok {
+			continue
+		}
+		seen[canonical] = struct{}{}
+		normalized = append(normalized, canonical)
+	}
+
+	deleted, err := s.repo.SoftDeleteByPublicIDs(ctx, userID, normalized)
+	if err != nil {
+		return nil, err
+	}
+	deletedSet := make(map[string]struct{}, len(deleted))
+	for _, publicID := range deleted {
+		parsed, err := uuid.Parse(publicID)
+		if err == nil {
+			deletedSet[parsed.String()] = struct{}{}
+		}
+	}
+	ordered := make([]string, 0, len(deletedSet))
+	for _, publicID := range normalized {
+		if _, ok := deletedSet[publicID]; ok {
+			ordered = append(ordered, publicID)
+		}
+	}
+	return ordered, nil
 }
 
 // checkQuota 校验"再写入 incomingBytes 字节"是否会突破该用户的素材库配额。

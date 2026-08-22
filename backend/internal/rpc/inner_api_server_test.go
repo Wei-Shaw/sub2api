@@ -14,6 +14,19 @@ type innerAPIUserAccountRepoStub struct {
 	byID      *service.User
 }
 
+type innerAPIBatchDeleteMaterialRepoStub struct {
+	service.UserMaterialRepository
+	userID     int64
+	ids        []string
+	deletedIDs []string
+}
+
+func (r *innerAPIBatchDeleteMaterialRepoStub) SoftDeleteByPublicIDs(_ context.Context, userID int64, ids []string) ([]string, error) {
+	r.userID = userID
+	r.ids = append([]string(nil), ids...)
+	return append([]string(nil), r.deletedIDs...), nil
+}
+
 func (r *innerAPIUserAccountRepoStub) GetByAccountID(context.Context, string) (*service.User, error) {
 	return r.byAccount, nil
 }
@@ -122,6 +135,7 @@ func TestRequiredPermission(t *testing.T) {
 		{"materials upload", &innerpb.UploadMaterialRequest{}, service.InnerAPIPermissionMaterialsWrite},
 		{"materials add by url", &innerpb.AddMaterialByUrlRequest{}, service.InnerAPIPermissionMaterialsWrite},
 		{"materials delete", &innerpb.DeleteMaterialRequest{}, service.InnerAPIPermissionMaterialsWrite},
+		{"materials batch delete", &innerpb.BatchDeleteMaterialsRequest{}, service.InnerAPIPermissionMaterialsWrite},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -129,5 +143,42 @@ func TestRequiredPermission(t *testing.T) {
 				t.Fatalf("requiredPermission()=%q want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestBatchDeleteMaterialsRequestSummary(t *testing.T) {
+	ids := []string{
+		"550e8400-e29b-41d4-a716-446655440000",
+		"6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+	}
+	summary := innerAPIRequestSummary(&innerpb.BatchDeleteMaterialsRequest{
+		AccountId: "acct_7",
+		Ids:       ids,
+	})
+	if summary["account_id"] != "acct_7" || summary["id_count"] != 2 {
+		t.Fatalf("batch delete request summary = %#v", summary)
+	}
+}
+
+func TestInnerAPIBatchDeleteMaterials(t *testing.T) {
+	first := "550e8400-e29b-41d4-a716-446655440000"
+	second := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+	materialRepo := &innerAPIBatchDeleteMaterialRepoStub{deletedIDs: []string{second}}
+	materialService := service.NewUserMaterialService(materialRepo, nil, nil, nil)
+	userRepo := &innerAPIUserAccountRepoStub{byAccount: &service.User{ID: 7, AccountID: "acct_7"}}
+	server := newInnerAPIServer(nil, materialService, userRepo)
+
+	response, err := server.BatchDeleteMaterials(context.Background(), &innerpb.BatchDeleteMaterialsRequest{
+		AccountId: "acct_7",
+		Ids:       []string{first, second},
+	})
+	if err != nil {
+		t.Fatalf("BatchDeleteMaterials() error = %v", err)
+	}
+	if materialRepo.userID != 7 || len(materialRepo.ids) != 2 {
+		t.Fatalf("repository call = user %d ids %#v", materialRepo.userID, materialRepo.ids)
+	}
+	if response.GetDeletedCount() != 1 || len(response.GetDeletedIds()) != 1 || response.GetDeletedIds()[0] != second {
+		t.Fatalf("BatchDeleteMaterials() response = %#v", response)
 	}
 }

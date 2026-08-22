@@ -176,6 +176,24 @@ func (s *innerAPIServer) DeleteMaterial(ctx context.Context, req *innerpb.Delete
 	return &innerpb.DeleteMaterialResponse{Id: req.GetId(), Deleted: true}, nil
 }
 
+func (s *innerAPIServer) BatchDeleteMaterials(ctx context.Context, req *innerpb.BatchDeleteMaterialsRequest) (*innerpb.BatchDeleteMaterialsResponse, error) {
+	if s.materials == nil {
+		return nil, toTRPCError(service.ErrCOSNotConfigured)
+	}
+	user, err := s.userByAccountID(ctx, req.GetAccountId())
+	if err != nil {
+		return nil, toTRPCError(err)
+	}
+	deletedIDs, err := s.materials.BatchDeleteByPublicIDs(ctx, user.ID, req.GetIds())
+	if err != nil {
+		return nil, toTRPCError(err)
+	}
+	return &innerpb.BatchDeleteMaterialsResponse{
+		DeletedIds:   deletedIDs,
+		DeletedCount: int32(len(deletedIDs)),
+	}, nil
+}
+
 func materialResponse(item *service.UserMaterial, accountID string) *innerpb.Material {
 	if item == nil {
 		return &innerpb.Material{}

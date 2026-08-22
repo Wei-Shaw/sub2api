@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 )
 
 type userMaterialRepository struct {
@@ -173,6 +174,38 @@ WHERE public_id = $1 AND user_id = $2 AND deleted_at IS NULL
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// SoftDeleteByPublicIDs atomically soft-deletes all matching materials owned by
+// the user and returns only the public IDs changed by this statement.
+func (r *userMaterialRepository) SoftDeleteByPublicIDs(ctx context.Context, userID int64, publicIDs []string) ([]string, error) {
+	if len(publicIDs) == 0 {
+		return []string{}, nil
+	}
+	const q = `
+UPDATE user_materials
+SET deleted_at = NOW()
+WHERE user_id = $1 AND public_id = ANY($2::uuid[]) AND deleted_at IS NULL
+RETURNING public_id
+`
+	rows, err := r.db.QueryContext(ctx, q, userID, pq.Array(publicIDs))
+	if err != nil {
+		return nil, fmt.Errorf("batch soft delete user_materials by public id: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	deleted := make([]string, 0, len(publicIDs))
+	for rows.Next() {
+		var publicID string
+		if err := rows.Scan(&publicID); err != nil {
+			return nil, fmt.Errorf("scan batch deleted user_material public id: %w", err)
+		}
+		deleted = append(deleted, publicID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate batch deleted user_material public ids: %w", err)
+	}
+	return deleted, nil
 }
 
 // UsageByUser 统计该用户未删除素材的条数与总字节数，供服务层做配额校验。

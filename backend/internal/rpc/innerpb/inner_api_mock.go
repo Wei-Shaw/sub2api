@@ -56,6 +56,21 @@ func (mr *MockInnerAPIServiceMockRecorder) AddMaterialByUrl(ctx, req any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMaterialByUrl", reflect.TypeOf((*MockInnerAPIService)(nil).AddMaterialByUrl), ctx, req)
 }
 
+// BatchDeleteMaterials mocks base method.
+func (m *MockInnerAPIService) BatchDeleteMaterials(ctx context.Context, req *BatchDeleteMaterialsRequest) (*BatchDeleteMaterialsResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BatchDeleteMaterials", ctx, req)
+	ret0, _ := ret[0].(*BatchDeleteMaterialsResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BatchDeleteMaterials indicates an expected call of BatchDeleteMaterials.
+func (mr *MockInnerAPIServiceMockRecorder) BatchDeleteMaterials(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchDeleteMaterials", reflect.TypeOf((*MockInnerAPIService)(nil).BatchDeleteMaterials), ctx, req)
+}
+
 // Deduct mocks base method.
 func (m *MockInnerAPIService) Deduct(ctx context.Context, req *DeductRequest) (*DeductResponse, error) {
 	m.ctrl.T.Helper()
@@ -203,6 +218,26 @@ func (mr *MockInnerAPIClientProxyMockRecorder) AddMaterialByUrl(ctx, req any, op
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{ctx, req}, opts...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMaterialByUrl", reflect.TypeOf((*MockInnerAPIClientProxy)(nil).AddMaterialByUrl), varargs...)
+}
+
+// BatchDeleteMaterials mocks base method.
+func (m *MockInnerAPIClientProxy) BatchDeleteMaterials(ctx context.Context, req *BatchDeleteMaterialsRequest, opts ...client.Option) (*BatchDeleteMaterialsResponse, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, req}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "BatchDeleteMaterials", varargs...)
+	ret0, _ := ret[0].(*BatchDeleteMaterialsResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BatchDeleteMaterials indicates an expected call of BatchDeleteMaterials.
+func (mr *MockInnerAPIClientProxyMockRecorder) BatchDeleteMaterials(ctx, req any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, req}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchDeleteMaterials", reflect.TypeOf((*MockInnerAPIClientProxy)(nil).BatchDeleteMaterials), varargs...)
 }
 
 // Deduct mocks base method.
