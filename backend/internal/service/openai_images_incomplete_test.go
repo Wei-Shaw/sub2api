@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -158,6 +159,91 @@ REDACTED
 REDACTED
 	if !strings.Contains(imgErr.Message, "安全系统") && !strings.Contains(imgErr.Message, "违规") {
 		t.Fatalf("refusal message should carry model's reason, got %q", imgErr.Message)
+REDACTED
+REDACTED
+
+func TestImagesOAuthNonStreaming_TextFallbackReturnsCapabilityError(t *testing.T) {
+	upstreamSSE := "event: response.created\n" +
+		"data: {\"type\":\"response.created\",\"response\":{\"id\":\"r\",\"status\":\"in_progress\",\"model\":\"gpt-5.4-mini\",\"output\":[]REDACTEDREDACTED\n\n" +
+		"event: response.output_text.delta\n" +
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"Here's a polished image prompt for your request.\"REDACTED\n\n" +
+		"event: response.completed\n" +
+		"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"r\",\"status\":\"completed\",\"model\":\"gpt-5.4-mini\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"Here's a polished image prompt for your request.\"REDACTED]REDACTED],\"tool_usage\":{\"image_gen\":{\"output_tokens\":0REDACTEDREDACTEDREDACTEDREDACTED\n\n"
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{REDACTED, Body: io.NopCloser(strings.NewReader(upstreamSSE))REDACTED
+
+	svc := &OpenAIGatewayService{REDACTED
+	_, _, _, err := svc.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, "b64_json", "gpt-image-2")
+
+	var imgErr *OpenAIImagesUpstreamError
+	if !errors.As(err, &imgErr) {
+		t.Fatalf("expected *OpenAIImagesUpstreamError, got %T: %v", err, err)
+REDACTED
+	if imgErr.StatusCode != http.StatusBadGateway {
+		t.Fatalf("text fallback should be retryable 502, got %d", imgErr.StatusCode)
+REDACTED
+	if imgErr.Code != "image_generation_unavailable" {
+		t.Fatalf("text fallback should identify missing image execution, got %q", imgErr.Code)
+REDACTED
+REDACTED
+
+func TestImagesOAuthStreaming_TextFallbackReturnsCapabilityError(t *testing.T) {
+	upstreamSSE := "event: response.output_text.delta\n" +
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"Here's a polished image prompt for your request.\"REDACTED\n\n" +
+		"event: response.completed\n" +
+		"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"r\",\"status\":\"completed\",\"model\":\"gpt-5.4-mini\",\"output\":[]REDACTEDREDACTED\n\n"
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{REDACTED, Body: io.NopCloser(strings.NewReader(upstreamSSE))REDACTED
+
+	svc := &OpenAIGatewayService{REDACTED
+	_, _, _, _, err := svc.handleOpenAIImagesOAuthStreamingResponse(resp, c, time.Now(), "b64_json", "image_generation", "gpt-image-2")
+
+	var imgErr *OpenAIImagesUpstreamError
+	if !errors.As(err, &imgErr) {
+		t.Fatalf("expected *OpenAIImagesUpstreamError, got %T: %v", err, err)
+REDACTED
+	if imgErr.StatusCode != http.StatusBadGateway {
+		t.Fatalf("streaming text fallback should be retryable 502, got %d", imgErr.StatusCode)
+REDACTED
+	if imgErr.Code != "image_generation_unavailable" {
+		t.Fatalf("streaming text fallback should identify missing image execution, got %q", imgErr.Code)
+REDACTED
+	if strings.Contains(rec.Body.String(), "event: error") {
+		t.Fatal("retryable text fallback must remain unflushed for failover")
+REDACTED
+REDACTED
+
+func TestImagesOAuthStreaming_SplitSafetyRefusalReturns400(t *testing.T) {
+	upstreamSSE := "event: response.output_text.delta\n" +
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"安全系\"REDACTED\n\n" +
+		"event: response.output_text.delta\n" +
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"统拒绝生成\"REDACTED\n\n" +
+		"event: response.completed\n" +
+		"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"r\",\"status\":\"completed\",\"output\":[]REDACTEDREDACTED\n\n"
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{REDACTED, Body: io.NopCloser(strings.NewReader(upstreamSSE))REDACTED
+
+	svc := &OpenAIGatewayService{REDACTED
+	_, _, _, _, err := svc.handleOpenAIImagesOAuthStreamingResponse(resp, c, time.Now(), "b64_json", "image_generation", "gpt-image-2")
+
+	var imgErr *OpenAIImagesUpstreamError
+	if !errors.As(err, &imgErr) {
+		t.Fatalf("expected *OpenAIImagesUpstreamError, got %T: %v", err, err)
+REDACTED
+	if imgErr.StatusCode != http.StatusBadRequest || imgErr.Code != "content_policy_violation" {
+		t.Fatalf("split safety refusal should remain a content-policy 400, got status=%d code=%q", imgErr.StatusCode, imgErr.Code)
+REDACTED
+	if !strings.Contains(rec.Body.String(), "event: error") {
+		t.Fatal("content-policy refusal must reach the streaming client")
 REDACTED
 REDACTED
 
