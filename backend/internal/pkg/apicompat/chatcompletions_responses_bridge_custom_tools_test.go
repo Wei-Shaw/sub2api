@@ -280,6 +280,18 @@ REDACTED
 	assert.Contains(t, string(out.Tools[0].Function.Parameters), `"query"`)
 REDACTED
 
+func TestResponsesToChatCompletionsRequest_DropsDeferredFlagWithToolSearch(t *testing.T) {
+	var req ResponsesRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"model":"glm-5.2","input":"hi","tools":[{"type":"tool_search"REDACTED,{"type":"function","name":"shell","defer_loading":trueREDACTED]REDACTED`), &req))
+
+	out, err := ResponsesToChatCompletionsRequest(&req)
+REDACTED
+	encoded, err := json.Marshal(out)
+REDACTED
+	require.NotContains(t, string(encoded), "defer_loading")
+	require.Contains(t, string(encoded), `"name":"tool_search"`)
+REDACTED
+
 // codex 只在 ResponseItem 为 tool_search_call 变体且 execution=client 时执行
 // tool search；同名 function_call 会命中 ToolSearchHandler 后因 payload 不匹配
 // 触发 FunctionCallError::Fatal，直接中止整个 turn，因此回程必须还原项类型。

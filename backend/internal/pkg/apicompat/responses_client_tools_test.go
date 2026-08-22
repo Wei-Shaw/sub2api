@@ -66,6 +66,33 @@ REDACTED
 	require.Equal(t, "team__send", namespaceCall["name"])
 REDACTED
 
+func TestAdaptResponsesClientTools_RemovesDeferredFlagsWhenToolSearchIsLowered(t *testing.T) {
+	req := map[string]any{
+		"tools": []any{
+			map[string]any{"type": "tool_search"REDACTED,
+			map[string]any{"type": "function", "name": "shell", "defer_loading": trueREDACTED,
+			map[string]any{"type": "function", "name": "apply_patch"REDACTED,
+	REDACTED,
+REDACTED
+
+	_, changed, err := AdaptResponsesClientTools(req)
+REDACTED
+	require.True(t, changed)
+	tools := requireResponsesClientToolValue[[]any](t, req["tools"])
+	require.Equal(t, toolSearchProxyName, requireResponsesClientToolValue[map[string]any](t, tools[0])["name"])
+	require.NotContains(t, requireResponsesClientToolValue[map[string]any](t, tools[1]), "defer_loading")
+REDACTED
+
+func TestStripResponsesDeferredToolFlags_PreservesFlagsWithBuiltInToolSearch(t *testing.T) {
+	tools := []any{
+		map[string]any{"type": "tool_search"REDACTED,
+		map[string]any{"type": "function", "name": "shell", "defer_loading": trueREDACTED,
+REDACTED
+
+	require.False(t, stripResponsesDeferredToolFlags(tools))
+	require.Equal(t, true, requireResponsesClientToolValue[map[string]any](t, tools[1])["defer_loading"])
+REDACTED
+
 func TestAdaptResponsesClientTools_LowersDiscoveredToolSearchOutput(t *testing.T) {
 	requestJSON := `{
 		"tools":[{"type":"tool_search"REDACTED],
