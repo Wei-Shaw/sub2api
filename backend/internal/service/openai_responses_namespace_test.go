@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -232,4 +233,39 @@ func TestStripOpenAIResponsesInputNamespacesKeepsToolCallNamespaces(t *testing.T
 	for index := 0; index < 8; index++ {
 		require.False(t, gjson.GetBytes(strippedAll, "input."+strconv.Itoa(index)+".namespace").Exists())
 	}
+}
+
+func TestFlattenOpenAIResponsesNamespaces_RoundTripsDynamicNodeREPLCall(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(nil)
+	body := []byte(`{
+		"model":"gpt-5.6-terra",
+		"tools":[
+			{"type":"function","name":"get_goal","parameters":{"type":"object"}},
+			{"type":"tool_search"}
+		],
+		"input":[
+			{"type":"tool_search_output","call_id":"search_1","output":{"groups":["mcp__node_repl"]}},
+			{"type":"additional_tools","tools":[
+				{"type":"namespace","name":"mcp__node_repl","tools":[
+					{"type":"function","name":"js","parameters":{"type":"object"}}
+				]}
+			]},
+			{"type":"message","role":"user","content":"return 42"}
+		]
+	}`)
+
+	flattened, err := flattenOpenAIResponsesNamespaces(c, body)
+	require.NoError(t, err)
+	require.Equal(t, "mcp__node_repl__js", gjson.GetBytes(flattened, `input.#(type=="additional_tools").tools.0.name`).String())
+	require.Equal(t, "function", gjson.GetBytes(flattened, `input.#(type=="additional_tools").tools.0.type`).String())
+
+	arguments := `{"code":"nodeRepl.write(6 * 7)","title":"Node REPL routing test","timeout_ms":10000}`
+	upstream := []byte(`{"type":"response.output_item.done","item":{"type":"function_call","call_id":"call_js","name":"mcp__node_repl__js","arguments":` + strconv.Quote(arguments) + `}}`)
+	restored, err := restoreOpenAIResponsesNamespacePayload(c, upstream)
+	require.NoError(t, err)
+	require.Equal(t, "function_call", gjson.GetBytes(restored, "item.type").String())
+	require.Equal(t, "js", gjson.GetBytes(restored, "item.name").String())
+	require.Equal(t, "mcp__node_repl", gjson.GetBytes(restored, "item.namespace").String())
+	require.JSONEq(t, arguments, gjson.GetBytes(restored, "item.arguments").String())
 }
