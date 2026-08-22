@@ -25,10 +25,20 @@ for compose_file in \
 do
   tab=$(printf '\t')
   while IFS="$tab" read -r key value; do
+    # .env.example intentionally includes high-capacity tuning examples for
+    # these values. An unconfigured Compose deployment must retain the
+    # backend defaults instead of silently adopting the examples.
+    case "$key" in
+      GATEWAY_MAX_CONNS_PER_HOST) value=1024 ;;
+      GATEWAY_MAX_IDLE_CONNS) value=2560 ;;
+      GATEWAY_MAX_IDLE_CONNS_PER_HOST) value=120 ;;
+    esac
+
     expected=$(printf '      - %s=${%s:-%sREDACTED' "$key" "$key" "$value")
-    count=$(grep -Fxc "$expected" "$compose_file" || true)
-    if [ "$count" -ne 1 ]; then
-      printf '%s must pass %s with the documented default exactly once\n' "$compose_file" "$key" >&2
+    expected_count=$(grep -Fxc "$expected" "$compose_file" || true)
+    key_count=$(grep -Ec "^[[:space:]]*-[[:space:]]*${keyREDACTED([[:space:]]*=.*)?[[:space:]]*$" "$compose_file" || true)
+    if [ "$expected_count" -ne 1 ] || [ "$key_count" -ne 1 ]; then
+      printf '%s must pass %s with the expected fallback exactly once\n' "$compose_file" "$key" >&2
       exit 1
     fi
   done < "$gateway_variables"
