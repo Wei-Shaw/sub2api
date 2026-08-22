@@ -235,16 +235,16 @@ func AnalyzeToolCallOutputContextCoverageBytes(body []byte) ToolCallOutputContex
 		return coverage
 REDACTED
 	input := parseRawJSONView(body).Get("input")
-	if !input.IsArray() {
+	if !input.IsArray() && !input.IsObject() {
 		return coverage
 REDACTED
 
 	missingCallID := false
 	var outputCallIDs map[string]struct{REDACTED
 	var contextIDs map[string]struct{REDACTED
-	input.ForEach(func(_, item gjson.Result) bool {
+	analyzeItem := func(item gjson.Result) {
 		if !item.IsObject() {
-			return true
+			return
 	REDACTED
 		itemType := item.Get("type").String()
 		switch {
@@ -253,7 +253,7 @@ REDACTED
 			callID := strings.TrimSpace(item.Get("call_id").String())
 			if callID == "" {
 				missingCallID = true
-				return true
+				return
 		REDACTED
 			if outputCallIDs == nil {
 				outputCallIDs = make(map[string]struct{REDACTED)
@@ -262,7 +262,7 @@ REDACTED
 		case isCodexToolCallContextItemType(itemType):
 			callID := strings.TrimSpace(item.Get("call_id").String())
 			if callID == "" {
-				return true
+				return
 		REDACTED
 			if contextIDs == nil {
 				contextIDs = make(map[string]struct{REDACTED)
@@ -271,15 +271,22 @@ REDACTED
 		case itemType == "item_reference":
 			idValue := strings.TrimSpace(item.Get("id").String())
 			if idValue == "" {
-				return true
+				return
 		REDACTED
 			if contextIDs == nil {
 				contextIDs = make(map[string]struct{REDACTED)
 		REDACTED
 			contextIDs[idValue] = struct{REDACTED{REDACTED
 	REDACTED
-		return true
-REDACTED)
+REDACTED
+	if input.IsArray() {
+		input.ForEach(func(_, item gjson.Result) bool {
+			analyzeItem(item)
+			return true
+	REDACTED)
+REDACTED else {
+		analyzeItem(input)
+REDACTED
 
 	if !coverage.HasFunctionCallOutput || missingCallID {
 		return coverage
