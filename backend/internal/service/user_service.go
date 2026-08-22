@@ -67,13 +67,14 @@ var (
 type UserListFilters struct {
 	Status    string // User status filter
 	Role      string // User role filter
-	Search    string // Search in email, username
+	Search    string // Search in email, username, API/redeem/device code
 	GroupName string // Filter by allowed group name (fuzzy match)
 	// APIKeyGroupID filters users who own at least one non-soft-deleted API key
 	// bound to this group (api_keys.group_id). 0 = no filter. Covers all three
 	// group types since it matches the key's group directly, not allowed_groups.
-	APIKeyGroupID int64
-	Attributes    map[int64]string // Custom attribute filters: attributeID -> value
+	APIKeyGroupID          int64
+	DeviceActivationStatus string           // Filter by bound device status
+	Attributes             map[int64]string // Custom attribute filters: attributeID -> value
 	// IncludeSubscriptions controls whether ListWithFilters should load active subscriptions.
 	// For large datasets this can be expensive; admin list pages should enable it on demand.
 	// nil means not specified (default: load subscriptions for backward compatibility).
