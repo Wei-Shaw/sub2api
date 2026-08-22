@@ -98,6 +98,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 		zap.String("upstream_model", upstreamModel),
 		zap.Bool("stream", clientStream),
 	)
+	SetOpsUpstreamModel(c, upstreamModel)
 
 	// Build and send upstream request via the shared CC pipeline
 	apiKey, targetURL, err := s.resolveCCFallbackTarget(account)
@@ -230,6 +231,20 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 			Duration:        time.Since(startTime),
 			FirstTokenMs:    scan.FirstTokenMs,
 		}, fmt.Errorf("stream usage incomplete: %w", scan.Err)
+	}
+	if err := state.ValidateToolCallArguments(); err != nil {
+		return &OpenAIForwardResult{
+			RequestID:       requestID,
+			Usage:           scan.Usage,
+			Model:           originalModel,
+			BillingModel:    billingModel,
+			UpstreamModel:   upstreamModel,
+			ReasoningEffort: reasoningEffort,
+			ServiceTier:     serviceTier,
+			Stream:          true,
+			Duration:        time.Since(startTime),
+			FirstTokenMs:    scan.FirstTokenMs,
+		}, fmt.Errorf("invalid tool call arguments from upstream: %w", err)
 	}
 
 	finalEvents := apicompat.FinalizeChatCompletionsResponsesStream(state)

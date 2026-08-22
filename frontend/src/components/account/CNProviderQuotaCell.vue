@@ -1,12 +1,52 @@
 <template>
-  <div v-if="visible" class="space-y-1">
+  <div
+    v-if="visible"
+    data-test="cn-provider-quota"
+    class="min-w-[220px] space-y-1"
+  >
+    <!-- Tier rows: 5h + weekly utilization bars (snapshot renders on mount) -->
+    <div v-if="data?.success && data.tiers?.length" class="space-y-1">
+      <div
+        v-for="tier in data.tiers"
+        :key="tier.window"
+        data-test="cn-provider-quota-tier"
+        class="flex min-w-0 items-center gap-1.5 text-[10px] leading-4"
+      >
+        <span
+          data-test="cn-provider-quota-label"
+          class="w-14 shrink-0 whitespace-nowrap text-gray-500 dark:text-gray-400"
+        >
+          {{ windowLabel(tier.window) }}
+        </span>
+        <div class="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
+          <div
+            class="h-full rounded-full transition-all"
+            :class="utilizationColor(tier.used_percent)"
+            :style="{ width: `${Math.min(100, Math.max(0, tier.used_percent))}%` }"
+          />
+        </div>
+        <span :class="['shrink-0 font-medium', utilizationTextColor(tier.used_percent)]">
+          {{ Math.round(tier.used_percent) }}%
+        </span>
+        <span
+          v-if="tier.reset_at"
+          class="min-w-0 truncate text-gray-400 dark:text-gray-500"
+          :title="tier.reset_at"
+        >
+          · {{ formatReset(tier.reset_at) }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Explicit refresh action (aligned with the OpenAI "Query" / Grok "Probe"
+         buttons): a verb label tells users this chip is clickable. The previous
+         noun label ("5h/weekly") read as a passive caption and users could not
+         discover the manual refresh. -->
     <div class="flex flex-wrap items-center gap-1.5">
       <button
         type="button"
-        :class="[
-          'inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-dark-600',
-          platformTextClass(account.platform)
-        ]"
+        data-test="cn-provider-quota-probe"
+        class="inline-flex items-center gap-0.5 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium leading-4 text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
         :disabled="loading"
         :title="t('admin.accounts.cnProviders.probeTooltip')"
         @click="handleProbe()"
@@ -25,31 +65,15 @@
             d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
           />
         </svg>
-        {{ t('admin.accounts.cnProviders.window5h') }}/{{ t('admin.accounts.cnProviders.windowWeekly') }}
+        {{ t('admin.accounts.cnProviders.probe') }}
       </button>
     </div>
 
-    <!-- Tier rows: 5h + weekly utilization bars -->
-    <div v-if="data?.success && data.tiers?.length" class="space-y-1">
-      <div v-for="tier in data.tiers" :key="tier.window" class="flex items-center gap-1.5 text-[10px]">
-        <span class="w-10 shrink-0 text-gray-500 dark:text-gray-400">{{ windowLabel(tier.window) }}</span>
-        <div class="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
-          <div
-            class="h-full rounded-full transition-all"
-            :class="utilizationColor(tier.used_percent)"
-            :style="{ width: `${Math.min(100, Math.max(0, tier.used_percent))}%` }"
-          />
-        </div>
-        <span :class="['shrink-0 font-medium', utilizationTextColor(tier.used_percent)]">
-          {{ Math.round(tier.used_percent) }}%
-        </span>
-        <span v-if="tier.reset_at" class="truncate text-gray-400 dark:text-gray-500" :title="tier.reset_at">
-          · {{ formatReset(tier.reset_at) }}
-        </span>
-      </div>
-    </div>
-
-    <div v-if="error" class="truncate text-[10px] text-red-600 dark:text-red-400" :title="error">
+    <div
+      v-if="error"
+      class="truncate text-[10px] leading-4 text-red-600 dark:text-red-400"
+      :title="error"
+    >
       {{ truncatedError }}
     </div>
   </div>
@@ -61,7 +85,6 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { CNProviderQuotaProbeResult } from '@/api/admin/cnProviders'
 import type { Account } from '@/types'
-import { platformTextClass } from '@/utils/platformColors'
 import { cnQuotaCellVisible } from './credentialsBuilder'
 
 const props = defineProps<{
