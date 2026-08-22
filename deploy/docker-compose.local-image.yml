@@ -1,0 +1,3 @@
+services:
+  sub2api:
+    image: sub2api:latest
