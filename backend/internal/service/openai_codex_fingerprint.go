@@ -352,6 +352,22 @@ func resolveCodexFingerprintIDsFromRequest(account *Account, clientHeaders http.
 	return resolveCodexFingerprintIDs(account, clientSessionID, mode)
 }
 
+// resolveGatewayCodexFingerprintIDs uses the deployment JWT secret as the
+// HMAC namespace for production requests. This keeps the account pseudonyms
+// stable across process restarts and consistent across gateway replicas.
+// Unit/test services without a configured JWT secret retain the process-local
+// fallback used by the low-level helpers.
+func (s *OpenAIGatewayService) resolveGatewayCodexFingerprintIDs(account *Account, clientHeaders http.Header) *codexFingerprintIDs {
+	secret := ""
+	if s != nil && s.cfg != nil {
+		secret = strings.TrimSpace(s.cfg.JWT.Secret)
+	}
+	if codexFingerprintSecretUsable(secret) {
+		return resolveCodexFingerprintIDsFromRequest(account, clientHeaders, secret)
+	}
+	return resolveCodexFingerprintIDsFromRequest(account, clientHeaders)
+}
+
 // applyCodexFingerprintHeaders 按预计算的收敛 ID 改写出站 HTTP 头中的设备指纹。
 // 在 buildUpstreamRequest 的白名单透传之后、enforceCodexIdentityHeaders 之前调用。
 func applyCodexFingerprintHeaders(h http.Header, ids *codexFingerprintIDs) {
