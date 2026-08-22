@@ -268,6 +268,61 @@ func TestBuildAntigravityCompatGeminiBody_ConfiguresMixedToolInvocations(t *test
 	}
 }
 
+func TestAntigravityCompat_FlattensLocalToolSchemaRefsInFinalUpstreamPayload(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	schema := `{"type":"object","properties":{"item":{"$ref":"#/$defs/Item"}},"required":["item"],"$defs":{"Item":{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}}}`
+
+	tests := []struct {
+		name string
+		path string
+		body string
+		call func(*AntigravityGatewayService, context.Context, *gin.Context, *Account, []byte) (*ForwardResult, error)
+	}{
+		{
+			name: "chat completions",
+			path: "/v1/chat/completions",
+			body: `{"model":"gemini-3.1-pro-high","messages":[{"role":"user","content":"hello"}],"tools":[{"type":"function","function":{"name":"lookup","description":"Lookup","parameters":` + schema + `}}]}`,
+			call: func(svc *AntigravityGatewayService, ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+				return svc.ForwardAsChatCompletions(ctx, c, account, body, nil)
+			},
+		},
+		{
+			name: "responses",
+			path: "/v1/responses",
+			body: `{"model":"gemini-3.1-pro-high","input":"hello","tools":[{"type":"function","name":"lookup","description":"Lookup","parameters":` + schema + `}]}`,
+			call: func(svc *AntigravityGatewayService, ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+				return svc.ForwardAsResponses(ctx, c, account, body, nil)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(tt.body)
+			upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
+			svc := newAntigravityCompatService(
+				config.GatewayConfig{MaxLineSize: defaultMaxLineSize},
+				upstream,
+			)
+			c, recorder := newAntigravityCompatContext(http.MethodPost, tt.path, body)
+
+			result, err := tt.call(svc, context.Background(), c, newAntigravityCompatAccount(AccountTypeOAuth), body)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, http.StatusOK, recorder.Code)
+			require.Len(t, upstream.requestBodies, 1)
+
+			require.Equal(t, "object", gjson.GetBytes(upstream.requestBodies[0], "request.tools.0.functionDeclarations.0.parameters.properties.item.type").String())
+			require.Equal(t, "string", gjson.GetBytes(upstream.requestBodies[0], "request.tools.0.functionDeclarations.0.parameters.properties.item.properties.name.type").String())
+			require.Equal(t, "name", gjson.GetBytes(upstream.requestBodies[0], "request.tools.0.functionDeclarations.0.parameters.properties.item.required.0").String())
+			payload := string(upstream.requestBodies[0])
+			require.NotContains(t, payload, `"$ref"`)
+			require.NotContains(t, payload, `"$defs"`)
+			require.NotContains(t, payload, `"definitions"`)
+		})
+	}
+}
+
 func TestAntigravityCompatPreservesChatTokenLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tests := []struct {

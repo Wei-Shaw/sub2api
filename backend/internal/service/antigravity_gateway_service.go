@@ -226,6 +226,18 @@ func (s *AntigravityGatewayService) handleAntigravityLocationUnsupported(
 		const accountError = "Antigravity account location is not supported for API use"
 		if err := s.accountRepo.SetError(opCtx, account.ID, accountError); err != nil {
 			logger.LegacyPrintf("service.antigravity_gateway", "%s location_unsupported_disable_failed account=%d error=%v", prefix, account.ID, err)
+			// Permanent isolation is the safety property of this path. If the
+			// durable state write fails, do not claim account-level isolation or
+			// retry into a pool that may immediately select the same account.
+			return &UpstreamFailoverError{
+				StatusCode:        statusCode,
+				ResponseBody:      body,
+				ResponseHeaders:   headers.Clone(),
+				Stage:             GatewayFailureStageInference,
+				Scope:             GatewayFailureScopeProvider,
+				Reason:            GatewayFailureReason("antigravity_location_unsupported_persist_failed"),
+				NextAccountAction: NextAccountStop,
+			}
 		} else {
 			logger.LegacyPrintf("service.antigravity_gateway", "%s location_unsupported account_disabled=true account=%d", prefix, account.ID)
 		}

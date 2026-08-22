@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type geminiCompatHTTPUpstreamStub struct {
@@ -498,6 +499,76 @@ func TestConvertClaudeToolsToGeminiTools_PreservesWebSearchAlongsideFunctions(t 
 	googleSearch, ok := searchDecl["googleSearch"].(map[string]any)
 	require.True(t, ok)
 	require.Empty(t, googleSearch)
+}
+
+func TestConvertClaudeMessagesToGeminiGenerateContent_FlattensToolSchemaRefs(t *testing.T) {
+	newSchema := func() map[string]any {
+		return map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"item": map[string]any{"$ref": "#/$defs/Item"},
+			},
+			"required": []any{"item"},
+			"$defs": map[string]any{
+				"Item": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"name": map[string]any{"type": "string"},
+					},
+					"required": []any{"name"},
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name string
+		tool map[string]any
+	}{
+		{
+			name: "standard tool",
+			tool: map[string]any{
+				"name":         "standard_lookup",
+				"description":  "Lookup an item",
+				"input_schema": newSchema(),
+			},
+		},
+		{
+			name: "custom tool",
+			tool: map[string]any{
+				"type": "custom",
+				"name": "custom_lookup",
+				"custom": map[string]any{
+					"description":  "Lookup an item",
+					"input_schema": newSchema(),
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := json.Marshal(map[string]any{
+				"messages": []any{
+					map[string]any{"role": "user", "content": "hello"},
+				},
+				"tools": []any{tt.tool},
+			})
+			require.NoError(t, err)
+
+			converted, err := convertClaudeMessagesToGeminiGenerateContent(body)
+			require.NoError(t, err)
+
+			path := "tools.0.functionDeclarations.0.parameters"
+			require.Equal(t, "OBJECT", gjson.GetBytes(converted, path+".properties.item.type").String())
+			require.Equal(t, "STRING", gjson.GetBytes(converted, path+".properties.item.properties.name.type").String())
+			require.Equal(t, "name", gjson.GetBytes(converted, path+".properties.item.required.0").String())
+			payload := string(converted)
+			require.NotContains(t, payload, `"$ref"`)
+			require.NotContains(t, payload, `"$defs"`)
+			require.NotContains(t, payload, `"definitions"`)
+		})
+	}
 }
 
 func TestGeminiHandleNativeNonStreamingResponse_DebugDisabledDoesNotEmitHeaderLogs(t *testing.T) {

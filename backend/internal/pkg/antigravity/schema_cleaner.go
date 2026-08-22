@@ -14,7 +14,7 @@ func CleanJSONSchema(schema map[string]any) map[string]any {
 	}
 	// 0. 预处理：展开 $ref (Schema Flattening)
 	// (Go map 是引用的，直接修改 schema)
-	flattenRefs(schema, extractDefs(schema))
+	FlattenJSONSchemaRefs(schema)
 
 	// 递归清理
 	cleaned := cleanJSONSchemaRecursive(schema)
@@ -24,6 +24,17 @@ func CleanJSONSchema(schema map[string]any) map[string]any {
 	}
 
 	return result
+}
+
+// FlattenJSONSchemaRefs expands local JSON Schema references in-place and
+// removes the definitions containers. Callers that need to apply a separate
+// compatibility cleaner afterwards can use this without changing the rest of
+// the schema normalization pipeline.
+func FlattenJSONSchemaRefs(schema map[string]any) {
+	if schema == nil {
+		return
+	}
+	flattenRefs(schema, extractDefs(schema))
 }
 
 // extractDefs 提取并移除定义的 helper

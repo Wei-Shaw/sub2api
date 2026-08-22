@@ -487,11 +487,13 @@ func cleanGeminiRequest(body []byte) ([]byte, error) {
 					continue
 				}
 
-				if params, ok := funcMap["parameters"].(map[string]any); ok {
-					antigravity.DeepCleanUndefined(params)
-					cleaned := antigravity.CleanJSONSchema(params)
-					funcMap["parameters"] = cleaned
-					modified = true
+				for _, schemaKey := range []string{"parameters", "parametersJsonSchema", "parameters_json_schema"} {
+					if params, ok := funcMap[schemaKey].(map[string]any); ok {
+						antigravity.DeepCleanUndefined(params)
+						cleaned := antigravity.CleanJSONSchema(params)
+						funcMap[schemaKey] = cleaned
+						modified = true
+					}
 				}
 			}
 		}

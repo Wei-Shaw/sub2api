@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 // antigravityFailingWriter 模拟客户端断开连接的 gin.ResponseWriter
@@ -199,6 +200,7 @@ type locationRestrictionErrorCall struct {
 type locationRestrictionAccountRepoStub struct {
 	AccountRepository
 	setErrorCalls []locationRestrictionErrorCall
+	setErrorErr   error
 }
 
 type locationRestrictionCacheCall struct {
@@ -216,7 +218,7 @@ type locationRestrictionCacheStub struct {
 
 func (r *locationRestrictionAccountRepoStub) SetError(ctx context.Context, id int64, reason string) error {
 	r.setErrorCalls = append(r.setErrorCalls, locationRestrictionErrorCall{accountID: id, reason: reason, ctxErr: ctx.Err()})
-	return nil
+	return r.setErrorErr
 }
 
 func (c *locationRestrictionCacheStub) DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error {
@@ -419,6 +421,58 @@ func TestAntigravityGatewayService_ForwardGemini_PreservesServerSideToolInvocati
 	require.NotContains(t, toolConfig, "include_server_side_tool_invocations")
 }
 
+func TestAntigravityGatewayService_ForwardGemini_FlattensJSONSchemaRefsInFinalUpstreamPayload(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	schema := `{"type":"object","properties":{"item":{"$ref":"#/$defs/Item"}},"required":["item"],"$defs":{"Item":{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}}}`
+
+	tests := []struct {
+		name         string
+		declarations string
+		schemaField  string
+	}{
+		{name: "camel parametersJsonSchema", declarations: "functionDeclarations", schemaField: "parametersJsonSchema"},
+		{name: "snake parameters_json_schema", declarations: "function_declarations", schemaField: "parameters_json_schema"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(`{"contents":[{"role":"user","parts":[{"text":"hello"}]}],"tools":[{"` + tt.declarations + `":[{"name":"lookup","` + tt.schemaField + `":` + schema + `}]}]}`)
+			writer := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(writer)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-flash:generateContent", bytes.NewReader(body))
+
+			upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader("data: {\"response\":{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{}}}\n\n")),
+			}}}
+			svc := &AntigravityGatewayService{
+				settingService: NewSettingService(&antigravitySettingRepoStub{}, &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}),
+				tokenProvider:  &AntigravityTokenProvider{},
+				httpUpstream:   upstream,
+			}
+			account := &Account{
+				ID: 107, Name: "native-schema-ref", Platform: PlatformAntigravity, Type: AccountTypeOAuth, Status: StatusActive, Concurrency: 1,
+				Credentials: map[string]any{"access_token": "token", "project_id": "project-107", "model_mapping": map[string]any{"gemini-2.5-flash": "gemini-2.5-flash"}},
+			}
+
+			result, err := svc.ForwardGemini(context.Background(), c, account, "gemini-2.5-flash", "generateContent", false, body, false)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Len(t, upstream.requestBodies, 1)
+
+			path := "request.tools.0." + tt.declarations + ".0." + tt.schemaField
+			require.Equal(t, "object", gjson.GetBytes(upstream.requestBodies[0], path+".properties.item.type").String())
+			require.Equal(t, "string", gjson.GetBytes(upstream.requestBodies[0], path+".properties.item.properties.name.type").String())
+			require.Equal(t, "name", gjson.GetBytes(upstream.requestBodies[0], path+".properties.item.required.0").String())
+			payload := string(upstream.requestBodies[0])
+			require.NotContains(t, payload, `"$ref"`)
+			require.NotContains(t, payload, `"$defs"`)
+			require.NotContains(t, payload, `"definitions"`)
+		})
+	}
+}
+
 func TestAntigravityGatewayService_ForwardGemini_LocationUnsupportedDisablesAccountAndFailsOver(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`)
@@ -499,6 +553,37 @@ func TestAntigravityGatewayService_HandleLocationUnsupportedUsesUncancelledConte
 	require.True(t, cache.deleteCalls[0].hasDeadline)
 	require.WithinDuration(t, startedAt.Add(antigravityLocationUnsupportedDisableTimeout), cache.deleteCalls[0].deadline, time.Second)
 	require.Empty(t, writer.Body.String())
+}
+
+func TestAntigravityGatewayService_HandleLocationUnsupported_SetErrorFailureStopsFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	writer := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(writer)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-flash:generateContent", bytes.NewReader(nil))
+
+	repo := &locationRestrictionAccountRepoStub{setErrorErr: errors.New("database unavailable")}
+	cache := &locationRestrictionCacheStub{}
+	svc := &AntigravityGatewayService{accountRepo: repo, cache: cache}
+	account := &Account{ID: 106, Name: "persist-failure-location-restricted", Platform: PlatformAntigravity}
+
+	failoverErr := svc.handleAntigravityLocationUnsupported(
+		context.Background(),
+		c,
+		"[antigravity-Forward] account=persist-failure-location-restricted",
+		account,
+		http.StatusBadRequest,
+		http.Header{"X-Request-Id": []string{"location-persist-failure-400"}},
+		[]byte(`{"error":{"message":"User location is not supported for the API use."}}`),
+		77,
+		"session-persist-failure-location",
+	)
+
+	require.NotNil(t, failoverErr)
+	require.Equal(t, NextAccountStop, failoverErr.NextAccountAction)
+	require.Equal(t, GatewayFailureScopeProvider, failoverErr.Scope)
+	require.Equal(t, GatewayFailureReason("antigravity_location_unsupported_persist_failed"), failoverErr.Reason)
+	require.Len(t, repo.setErrorCalls, 1)
+	require.Empty(t, cache.deleteCalls, "do not clear sticky state as if durable isolation succeeded")
 }
 
 func TestAntigravityGatewayService_ForwardGemini_MissingProjectReturnsLocalError(t *testing.T) {

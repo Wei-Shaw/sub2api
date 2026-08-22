@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
@@ -3495,6 +3496,11 @@ func convertClaudeToolsToGeminiTools(tools any) []any {
 				"type":       "object",
 				"properties": map[string]any{},
 			}
+		}
+		// 先展开本地 $ref；旧兼容清理器会删除定义容器，不能让它
+		// 在展开前吞掉 $defs/definitions，否则工具参数会退化成空对象。
+		if paramsMap, ok := params.(map[string]any); ok {
+			antigravity.FlattenJSONSchemaRefs(paramsMap)
 		}
 		// 清理 JSON Schema
 		cleanedParams := cleanToolSchema(params)
