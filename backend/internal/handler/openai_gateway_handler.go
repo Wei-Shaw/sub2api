@@ -514,6 +514,9 @@ REDACTED
 	if h.rejectIfCyberSessionBlocked(c, apiKey, sessionHashBody, reqModel, cyberBlockFormatResponses) {
 		return
 REDACTED
+	c.Request = c.Request.WithContext(service.WithOpenAIGuardianParentAffinity(
+		c.Request.Context(), c, sessionHashBody, reqModel,
+	))
 	requireCompact := legacyCompact
 
 	maxAccountSwitches := h.maxAccountSwitches
@@ -2004,6 +2007,7 @@ REDACTED
 		firstMessage,
 		openAIWSIngressFallbackSessionSeed(subject.UserID, apiKey.ID, apiKey.GroupID),
 	)
+	ctx = service.WithOpenAIGuardianParentAffinity(ctx, c, firstMessage, reqModel)
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
 	profitVetoCount := 0
