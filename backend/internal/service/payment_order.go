@@ -13,6 +13,8 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
+	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/ent/userdevice"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -891,6 +893,7 @@ func (s *PaymentService) AdminListOrders(ctx context.Context, userID int64, p Or
 			paymentorder.OutTradeNoContainsFold(p.Keyword),
 			paymentorder.UserEmailContainsFold(p.Keyword),
 			paymentorder.UserNameContainsFold(p.Keyword),
+			paymentorder.HasUserWith(dbuser.HasDevicesWith(userdevice.DeviceCodeContainsFold(p.Keyword))),
 		))
 	}
 	total, err := q.Clone().Count(ctx)

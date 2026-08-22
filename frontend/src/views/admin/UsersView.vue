@@ -29,6 +29,7 @@
                 :options="[
                   { value: '', label: t('admin.users.allRoles') },
                   { value: 'admin', label: t('admin.users.admin') },
+                  { value: 'marketing', label: t('admin.users.marketing') },
                   { value: 'user', label: t('admin.users.user') }
                 ]"
                 @change="applyFilter"
@@ -42,8 +43,19 @@
                 :options="[
                   { value: '', label: t('admin.users.allStatus') },
                   { value: 'active', label: t('common.active') },
+                  { value: 'pending_activation', label: t('admin.users.status.pending_activation') },
+                  { value: 'blocked', label: t('admin.users.status.blocked') },
                   { value: 'disabled', label: t('admin.users.disabled') }
                 ]"
+                @change="applyFilter"
+              />
+            </div>
+
+            <!-- Device activation filter (visible when enabled) -->
+            <div v-if="visibleFilters.has('device_activation')" class="w-full sm:w-48">
+              <Select
+                v-model="filters.deviceActivation"
+                :options="deviceActivationFilterOptions"
                 @change="applyFilter"
               />
             </div>
@@ -290,7 +302,7 @@
           @sort="handleSort"
           @update:selected-keys="handleSelectedKeysUpdate"
         >
-          <template #cell-email="{ value }">
+          <template #cell-email="{ row, value }">
             <div class="flex items-center gap-2">
               <div
                 class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30"
@@ -299,7 +311,26 @@
                   {{ value.charAt(0).toUpperCase() }}
                 </span>
               </div>
-              <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <div class="flex min-w-0 flex-col gap-1">
+                <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+                <div v-if="shouldShowIdentityCode(row)" class="flex min-w-0 items-center gap-1.5">
+                  <span
+                    class="inline-flex min-w-0 max-w-[12rem] items-center rounded-md bg-primary-50 px-1.5 py-0.5 text-xs font-medium text-primary-700 ring-1 ring-inset ring-primary-200 dark:bg-primary-900/20 dark:text-primary-300 dark:ring-primary-800"
+                    :title="row.primary_redeem_code || t('admin.users.identityCodeUser')"
+                  >
+                    <span class="truncate font-mono">{{ row.primary_redeem_code }}</span>
+                  </span>
+                  <button
+                    type="button"
+                    class="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+                    :title="t('admin.users.copyIdentityCode')"
+                    :aria-label="t('admin.users.copyIdentityCode')"
+                    @click.stop="copyIdentityCode(row)"
+                  >
+                    <Icon name="copy" size="xs" :stroke-width="2" />
+                  </button>
+                </div>
+              </div>
             </div>
           </template>
 
@@ -594,6 +625,12 @@
             </div>
           </template>
 
+          <template #cell-device_activation="{ row }">
+            <span :class="['badge', deviceActivationBadgeClass(row.device_activation_status)]">
+              {{ deviceActivationLabel(row.device_activation_status) }}
+            </span>
+          </template>
+
           <template #cell-created_at="{ value }">
             <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatDateTime(value) }}</span>
           </template>
@@ -833,6 +870,48 @@ import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
 
 const appStore = useAppStore()
 
+const DEVICE_ACTIVATION_COLUMN_KEY = 'device_activation'
+const identityRedeemTypes = new Set(['device_login', 'device_claim', 'invitation'])
+const identityCodePrefixes = ['DLG-', 'DCL-', 'INV-']
+
+const shouldShowIdentityCode = (user: AdminUser) => {
+  const code = user.primary_redeem_code?.trim().toUpperCase()
+  if (!code) return false
+  const codeType = user.primary_redeem_type?.trim().toLowerCase()
+  return codeType ? identityRedeemTypes.has(codeType) : identityCodePrefixes.some((prefix) => code.startsWith(prefix))
+}
+
+const copyIdentityCode = async (user: AdminUser) => {
+  if (!shouldShowIdentityCode(user) || !user.primary_redeem_code) return
+  try {
+    await navigator.clipboard.writeText(user.primary_redeem_code)
+    appStore.showSuccess(t('admin.users.identityCodeCopied'))
+  } catch (error) {
+    appStore.showError(t('admin.users.failedToCopyIdentityCode'))
+    console.error('Failed to copy identity code:', error)
+  }
+}
+
+const deviceActivationLabel = (status?: string | null) => {
+  if (!status) return t('admin.users.deviceActivation.none')
+  return t(`admin.users.deviceActivation.${status}`, status)
+}
+
+const deviceActivationBadgeClass = (status?: string | null) => {
+  if (status === 'active') return 'badge-green'
+  if (status === 'pending_activation') return 'badge-yellow'
+  if (status === 'revoked' || status === 'blocked') return 'badge-red'
+  return 'badge-gray'
+}
+
+const deviceActivationFilterOptions = computed(() => [
+  { value: '', label: t('admin.users.deviceActivation.all') },
+  { value: 'pending_activation', label: t('admin.users.deviceActivation.pending_activation') },
+  { value: 'active', label: t('admin.users.deviceActivation.active') },
+  { value: 'revoked', label: t('admin.users.deviceActivation.revoked') },
+  { value: 'blocked', label: t('admin.users.deviceActivation.blocked') }
+])
+
 // Generate dynamic attribute columns from enabled definitions
 const attributeColumns = computed<Column[]>(() =>
   attributeDefinitions.value
@@ -899,6 +978,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'usage_antigravity', label: t('admin.users.columns.usageAntigravity'), sortable: false },
   { key: 'concurrency', label: t('admin.users.columns.concurrency'), sortable: true },
   { key: 'status', label: t('admin.users.columns.status'), sortable: true },
+  { key: DEVICE_ACTIVATION_COLUMN_KEY, label: t('admin.users.columns.deviceActivation'), sortable: false },
   { key: 'last_active_at', label: t('admin.users.columns.lastActive'), sortable: true },
   { key: 'last_used_at', label: t('admin.users.columns.lastUsed'), sortable: true },
   { key: 'created_at', label: t('admin.users.columns.created'), sortable: true },
@@ -922,8 +1002,7 @@ const DEFAULT_HIDDEN_COLUMNS = [
 ]
 const REMOVED_COLUMNS = new Set(['last_login_at'])
 // 强制可见列：加载时会被强制移出 hiddenColumns，并在列设置 UI 上 disabled。
-// 当前没有列需要强制可见 —— last_active_at 已改为可被用户隐藏。
-const FORCED_VISIBLE_COLUMNS = new Set<string>()
+const FORCED_VISIBLE_COLUMNS = new Set([DEVICE_ACTIVATION_COLUMN_KEY])
 
 // localStorage keys for column settings
 const HIDDEN_COLUMNS_KEY = 'user-hidden-columns'
@@ -1129,13 +1208,14 @@ const apiKeyGroupFilterOptions = computed(() =>
 const filters = reactive({
   role: '',
   status: '',
+  deviceActivation: '' as '' | NonNullable<AdminUser['device_activation_status']>,
   group: '',  // group name for fuzzy match, '' = all
   apiKeyGroup: null as number | null  // group id bound to the user's API keys, null = all
 })
 const activeAttributeFilters = reactive<Record<number, string>>({})
 
 // Visible filters tracking (which filters are shown in the UI)
-// Keys: 'role', 'status', 'attr_${id}'
+// Keys: 'role', 'status', 'device_activation', 'attr_${id}'
 const visibleFilters = reactive<Set<string>>(new Set())
 
 // Dropdown states
@@ -1159,6 +1239,7 @@ const filterableAttributes = computed(() =>
 const builtInFilters = computed(() => [
   { key: 'role', name: t('admin.users.columns.role'), type: 'select' as const },
   { key: 'status', name: t('admin.users.columns.status'), type: 'select' as const },
+  { key: DEVICE_ACTIVATION_COLUMN_KEY, name: t('admin.users.columns.deviceActivation'), type: 'select' as const },
   { key: 'group', name: t('admin.users.authorizedGroupFilter'), type: 'select' as const },
   { key: 'apiKeyGroup', name: t('admin.users.apiKeyGroupFilter'), type: 'select' as const }
 ])
@@ -1178,6 +1259,7 @@ const loadSavedFilters = () => {
       const parsed = JSON.parse(savedValues)
       if (parsed.role) filters.role = parsed.role
       if (parsed.status) filters.status = parsed.status
+      if (parsed.deviceActivation) filters.deviceActivation = parsed.deviceActivation
       if (parsed.group) filters.group = parsed.group
       if (typeof parsed.apiKeyGroup === 'number') filters.apiKeyGroup = parsed.apiKeyGroup
       if (parsed.attributes) {
@@ -1198,6 +1280,7 @@ const saveFiltersToStorage = () => {
     const values = {
       role: filters.role,
       status: filters.status,
+      deviceActivation: filters.deviceActivation,
       group: filters.group,
       apiKeyGroup: filters.apiKeyGroup,
       attributes: activeAttributeFilters
@@ -1603,6 +1686,7 @@ const loadUsers = async () => {
       {
         role: filters.role as any,
         status: filters.status as any,
+        device_activation_status: filters.deviceActivation || undefined,
         search: searchQuery.value || undefined,
         group_name: filters.group || undefined,
         api_key_group_id: filters.apiKeyGroup ?? undefined,
@@ -1695,6 +1779,7 @@ const toggleBuiltInFilter = (key: string) => {
     visibleFilters.delete(key)
     if (key === 'role') filters.role = ''
     if (key === 'status') filters.status = ''
+    if (key === DEVICE_ACTIVATION_COLUMN_KEY) filters.deviceActivation = ''
     if (key === 'group') filters.group = ''
     if (key === 'apiKeyGroup') filters.apiKeyGroup = null
   } else {

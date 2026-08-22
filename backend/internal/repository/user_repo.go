@@ -16,9 +16,11 @@ import (
 	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
+	"github.com/Wei-Shaw/sub2api/ent/userdevice"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -548,8 +550,14 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 				dbuser.UsernameContainsFold(filters.Search),
 				dbuser.NotesContainsFold(filters.Search),
 				dbuser.HasAPIKeysWith(apikey.KeyContainsFold(filters.Search)),
+				dbuser.HasRedeemCodesWith(redeemcode.CodeContainsFold(filters.Search)),
+				dbuser.HasDevicesWith(userdevice.DeviceHashContainsFold(filters.Search)),
+				dbuser.HasDevicesWith(userdevice.DeviceCodeContainsFold(filters.Search)),
 			),
 		)
+	}
+	if filters.DeviceActivationStatus != "" {
+		q = q.Where(dbuser.HasDevicesWith(userdevice.StatusEQ(filters.DeviceActivationStatus)))
 	}
 
 	if filters.GroupName != "" {
@@ -643,6 +651,19 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	for id, u := range userMap {
 		if groups, ok := allowedGroupsByUser[id]; ok {
 			u.AllowedGroups = groups
+		}
+	}
+
+	primaryByUser, err := r.loadPrimaryDeviceIdentities(ctx, userIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	for id, u := range userMap {
+		if identity, ok := primaryByUser[id]; ok {
+			u.PrimaryRedeemCode = identity.code
+			u.PrimaryRedeemType = identity.codeType
+			u.HasDeviceBinding = identity.hasBinding
+			u.DeviceActivationStatus = identity.status
 		}
 	}
 
@@ -1529,6 +1550,83 @@ func (r *userRepository) syncUserAllowedGroupsWithClient(ctx context.Context, cl
 	}
 
 	return nil
+}
+
+type primaryDeviceIdentity struct {
+	code       *string
+	codeType   *string
+	hasBinding bool
+	status     *string
+}
+
+// loadPrimaryDeviceIdentities returns the most recently active device identity
+// for each user. The direct device_code is preferred; legacy redeem-code edges
+// remain a fallback for bindings created before device_code was added.
+func (r *userRepository) loadPrimaryDeviceIdentities(ctx context.Context, userIDs []int64) (map[int64]primaryDeviceIdentity, error) {
+	result := make(map[int64]primaryDeviceIdentity, len(userIDs))
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+
+	devices, err := r.client.UserDevice.Query().
+		Where(userdevice.UserIDIn(userIDs...)).
+		Order(
+			dbent.Desc(userdevice.FieldLastLoginAt),
+			dbent.Desc(userdevice.FieldLastClaimedAt),
+			dbent.Desc(userdevice.FieldCreatedAt),
+			dbent.Desc(userdevice.FieldID),
+		).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, device := range devices {
+		identity := result[device.UserID]
+		identity.hasBinding = true
+		if identity.status == nil {
+			status := device.Status
+			identity.status = &status
+		}
+		if identity.code == nil {
+			if device.DeviceCode != nil && strings.TrimSpace(*device.DeviceCode) != "" {
+				code := *device.DeviceCode
+				codeType := service.RedeemTypeDeviceLogin
+				identity.code = &code
+				identity.codeType = &codeType
+			}
+		}
+		result[device.UserID] = identity
+	}
+
+	// Legacy invitation/device redeem codes may identify a user even when the
+	// user-device row has not yet been backfilled with a direct device_code.
+	redeems, err := r.client.RedeemCode.Query().
+		Where(
+			redeemcode.UsedByIn(userIDs...),
+			redeemcode.TypeIn(service.RedeemTypeDeviceLogin, service.RedeemTypeDeviceClaim, service.RedeemTypeInvitation),
+		).
+		Order(dbent.Desc(redeemcode.FieldUsedAt), dbent.Desc(redeemcode.FieldCreatedAt), dbent.Desc(redeemcode.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, redeem := range redeems {
+		if redeem.UsedBy == nil {
+			continue
+		}
+		userID := *redeem.UsedBy
+		identity := result[userID]
+		if identity.code == nil {
+			code := redeem.Code
+			codeType := redeem.Type
+			identity.code = &code
+			identity.codeType = &codeType
+			result[userID] = identity
+		}
+	}
+
+	return result, nil
 }
 
 func applyUserEntityToService(dst *service.User, src *dbent.User) {

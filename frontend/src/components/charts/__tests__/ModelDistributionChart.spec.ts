@@ -156,7 +156,7 @@ describe('ModelDistributionChart', () => {
         modelStats: [],
         enableRankingView: true,
         rankingItems: [
-          { user_id: 1, email: 'alpha@example.com', username: 'alpha', actual_cost: 12, requests: 10, tokens: 1000 },
+          { user_id: 1, email: 'alpha@example.com', username: 'alpha', device_code: 'DEV-A', actual_cost: 12, requests: 10, tokens: 1000 },
           { user_id: 2, email: 'beta@example.com', username: '   ', actual_cost: 8, requests: 6, tokens: 600 },
           { user_id: 3, email: '   ', username: '', actual_cost: 0, requests: 0, tokens: 0 },
         ],
@@ -177,7 +177,7 @@ describe('ModelDistributionChart', () => {
 
     const chartData = JSON.parse(wrapper.find('.chart-data').text())
     expect(chartData.labels).toEqual([
-      '#1 alpha',
+      '#1 DEV-A',
       '#2 beta@example.com',
       '#3 User #3',
       'Others',
@@ -189,7 +189,8 @@ describe('ModelDistributionChart', () => {
 
     const rows = wrapper.findAll('tbody tr')
     expect(rows).toHaveLength(4)
-    expect(rows[0].text()).toContain('alpha')
+    expect(rows[0].text()).toContain('DEV-A')
+    expect(rows[0].text()).not.toContain('alpha')
     expect(rows[0].text()).not.toContain('alpha@example.com')
     expect(rows[1].text()).toContain('beta@example.com')
     expect(rows[2].text()).toContain('User #3')

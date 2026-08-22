@@ -79,12 +79,13 @@ func (h *SubscriptionHandler) List(c *gin.Context) {
 	}
 	status := c.Query("status")
 	platform := c.Query("platform")
+	deviceCode := c.Query("device_code")
 
 	// Parse sorting parameters
 	sortBy := c.DefaultQuery("sort_by", "created_at")
 	sortOrder := c.DefaultQuery("sort_order", "desc")
 
-	subscriptions, pagination, err := h.subscriptionService.List(c.Request.Context(), page, pageSize, userID, groupID, status, platform, sortBy, sortOrder)
+	subscriptions, pagination, err := h.subscriptionService.ListScoped(c.Request.Context(), page, pageSize, userID, groupID, nil, status, platform, deviceCode, sortBy, sortOrder)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

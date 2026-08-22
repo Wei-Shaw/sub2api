@@ -10,6 +10,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 
@@ -224,4 +225,33 @@ func TestUserRepositoryCreateSerializesNormalizedEmailConflictsUnderConcurrency(
 	count, err := client.User.Query().Where(userEmailLookupPredicate("race@example.com")).Count(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
+}
+
+func TestUserRepositoryListWithFiltersMatchesDeviceCode(t *testing.T) {
+	repo, client := newUserEntRepo(t)
+	ctx := context.Background()
+
+	user := &service.User{
+		Email:        "device-search@example.com",
+		Username:     "device-search-user",
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+	}
+	require.NoError(t, repo.Create(ctx, user))
+
+	_, err := client.UserDevice.Create().
+		SetUserID(user.ID).
+		SetDeviceCode("DLG-SRCH-USER-0001").
+		SetDeviceHash("device-search-hash").
+		SetPlatform("test").
+		SetArch("amd64").
+		Save(ctx)
+	require.NoError(t, err)
+
+	users, page, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, service.UserListFilters{Search: "dlg-srch-user"})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), page.Total)
+	require.Len(t, users, 1)
+	require.Equal(t, user.ID, users[0].ID)
 }

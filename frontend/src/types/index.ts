@@ -109,6 +109,7 @@ export interface AdminUser extends User {
   primary_redeem_code?: string | null
   primary_redeem_type?: string | null
   has_device_binding?: boolean
+  device_activation_status?: 'active' | 'pending_activation' | 'revoked' | 'blocked' | null
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
   // 为 true 时该用户仅可使用 allowed_groups 中列出的公开分组。
@@ -2049,6 +2050,7 @@ export interface UserUsageTrendPoint {
   user_id: number
   email: string
   username: string
+  device_code?: string
   requests: number
   tokens: number
   cost: number // 标准计费
@@ -2059,6 +2061,7 @@ export interface UserSpendingRankingItem {
   user_id: number
   email: string
   username: string
+  device_code?: string
   actual_cost: number
   requests: number
   tokens: number

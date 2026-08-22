@@ -103,6 +103,7 @@ func (r *usageLogRepository) GetUserUsageTrend(ctx context.Context, startTime, e
 			u.user_id,
 			COALESCE(us.email, '') as email,
 			COALESCE(us.username, '') as username,
+			COALESCE((SELECT ud.device_code FROM user_devices ud WHERE ud.user_id = u.user_id AND ud.device_code IS NOT NULL ORDER BY ud.id DESC LIMIT 1), '') as device_code,
 			COUNT(*) as requests,
 			COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens,
 			COALESCE(SUM(u.total_cost), 0) as cost,
@@ -131,7 +132,7 @@ func (r *usageLogRepository) GetUserUsageTrend(ctx context.Context, startTime, e
 	results = make([]UserUsageTrendPoint, 0)
 	for rows.Next() {
 		var row UserUsageTrendPoint
-		if err = rows.Scan(&row.Date, &row.UserID, &row.Email, &row.Username, &row.Requests, &row.Tokens, &row.Cost, &row.ActualCost); err != nil {
+		if err = rows.Scan(&row.Date, &row.UserID, &row.Email, &row.Username, &row.DeviceCode, &row.Requests, &row.Tokens, &row.Cost, &row.ActualCost); err != nil {
 			return nil, err
 		}
 		results = append(results, row)
@@ -155,6 +156,7 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 				u.user_id,
 				COALESCE(us.email, '') as email,
 				COALESCE(us.username, '') as username,
+				COALESCE((SELECT ud.device_code FROM user_devices ud WHERE ud.user_id = u.user_id AND ud.device_code IS NOT NULL ORDER BY ud.id DESC LIMIT 1), '') as device_code,
 				COALESCE(SUM(u.actual_cost), 0) as actual_cost,
 				COUNT(*) as requests,
 				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens
@@ -168,6 +170,7 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 				user_id,
 				email,
 				username,
+				device_code,
 				actual_cost,
 				requests,
 				tokens,
@@ -182,6 +185,7 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 			user_id,
 			email,
 			username,
+			device_code,
 			actual_cost,
 			requests,
 			tokens,
@@ -209,7 +213,7 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 	totalTokens := int64(0)
 	for rows.Next() {
 		var row UserSpendingRankingItem
-		if err = rows.Scan(&row.UserID, &row.Email, &row.Username, &row.ActualCost, &row.Requests, &row.Tokens, &totalActualCost, &totalRequests, &totalTokens); err != nil {
+		if err = rows.Scan(&row.UserID, &row.Email, &row.Username, &row.DeviceCode, &row.ActualCost, &row.Requests, &row.Tokens, &totalActualCost, &totalRequests, &totalTokens); err != nil {
 			return nil, err
 		}
 		ranking = append(ranking, row)

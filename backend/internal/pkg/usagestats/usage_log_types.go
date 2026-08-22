@@ -140,6 +140,7 @@ type UserUsageTrendPoint struct {
 	UserID     int64   `json:"user_id"`
 	Email      string  `json:"email"`
 	Username   string  `json:"username"`
+	DeviceCode string  `json:"device_code,omitempty"`
 	Requests   int64   `json:"requests"`
 	Tokens     int64   `json:"tokens"`
 	Cost       float64 `json:"cost"`        // 标准计费
@@ -151,6 +152,7 @@ type UserSpendingRankingItem struct {
 	UserID     int64   `json:"user_id"`
 	Email      string  `json:"email"`
 	Username   string  `json:"username"`
+	DeviceCode string  `json:"device_code,omitempty"`
 	ActualCost float64 `json:"actual_cost"` // 实际扣除
 	Requests   int64   `json:"requests"`
 	Tokens     int64   `json:"tokens"`
