@@ -600,6 +600,7 @@ export default {
       cacheRead: 'Read',
       paidPrice: 'Your Price (Discounted)',
       officialPrice: 'Official Price',
+      referencePrice: 'Reference price',
       rate: 'Rate',
       unitPerMillion: '$ / 1M tokens',
       perUnitRequest: '/ request',

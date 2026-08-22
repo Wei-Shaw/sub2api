@@ -206,6 +206,13 @@ func TestListPlazaGroups_OfficialPricingFill(t *testing.T) {
 			CacheCreationInputTokenCost:         3.75e-6,
 			CacheCreationInputTokenCostAbove1hr: 6e-6,
 			CacheReadInputTokenCost:             3e-7,
+			OfficialPricingTiers: []LiteLLMOfficialPricingTier{{
+				MinInputTokens:     200000,
+				InputCostPerToken:  6e-6,
+				OutputCostPerToken: 22.5e-6,
+			}},
+			PricingReferenceModel: "claude-reference",
+			PricingReferenceNote:  "Published reference price",
 		},
 		"token-absent": {Mode: "image_generation", TokenPricingAbsent: true, OutputCostPerImage: 0.04},
 	})
@@ -229,6 +236,11 @@ func TestListPlazaGroups_OfficialPricingFill(t *testing.T) {
 	require.InDelta(t, 3e-6, *official.InputPrice, 1e-12)
 	require.InDelta(t, 6e-6, *official.CacheWrite1hPrice, 1e-12)
 	require.InDelta(t, 3e-7, *official.CacheReadPrice, 1e-12)
+	require.Equal(t, "claude-reference", official.ReferenceModel)
+	require.Equal(t, "Published reference price", official.ReferenceNote)
+	require.Len(t, official.Tiers, 1)
+	require.Equal(t, 200000, official.Tiers[0].MinInputTokens)
+	require.InDelta(t, 6e-6, *official.Tiers[0].InputPrice, 1e-12)
 	// 未命中:nil(GetModelPricing 的 claude 系列模糊匹配对非 claude 名不生效)
 	require.Nil(t, byName["unknown-model"].OfficialPricing)
 	// TokenPricingAbsent 条目不作为官方 token 价展示
