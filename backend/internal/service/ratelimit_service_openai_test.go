@@ -117,6 +117,40 @@ func TestCalculateOpenAI429ResetTime_NoCodexHeaders(t *testing.T) {
 	}
 }
 
+func TestCalculateOpenAI429ResetTime_PrefersRetryAfterSeconds(t *testing.T) {
+	svc := &RateLimitService{}
+	headers := http.Header{"Retry-After": []string{"45"}}
+	headers.Set("x-codex-primary-used-percent", "100")
+	headers.Set("x-codex-primary-reset-after-seconds", "3600")
+	headers.Set("x-codex-primary-window-minutes", "300")
+
+	before := time.Now()
+	resetAt := svc.calculateOpenAI429ResetTime(headers)
+	after := time.Now()
+	require.NotNil(t, resetAt)
+	require.GreaterOrEqual(t, resetAt.UnixNano(), before.Add(45*time.Second).UnixNano())
+	require.LessOrEqual(t, resetAt.UnixNano(), after.Add(45*time.Second).UnixNano())
+}
+
+func TestCalculateOpenAI429ResetTime_PrefersRetryAfterHTTPDate(t *testing.T) {
+	svc := &RateLimitService{}
+	expected := time.Now().Add(90 * time.Second).UTC().Truncate(time.Second)
+	headers := http.Header{"Retry-After": []string{expected.Format(http.TimeFormat)}}
+
+	resetAt := svc.calculateOpenAI429ResetTime(headers)
+	require.NotNil(t, resetAt)
+	require.WithinDuration(t, expected, *resetAt, 2*time.Second)
+}
+
+func TestOpenAIOAuth429FallbackCooldownHasMinimum(t *testing.T) {
+	svc := &RateLimitService{}
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+
+	cooldown, enabled := svc.get429FallbackCooldown(context.Background(), account)
+	require.True(t, enabled)
+	require.GreaterOrEqual(t, cooldown, openAIOAuth429MinimumCooldown)
+}
+
 func TestCalculateOpenAI429ResetTime_ReversedWindowOrder(t *testing.T) {
 	svc := &RateLimitService{}
 

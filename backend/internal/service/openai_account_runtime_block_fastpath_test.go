@@ -114,26 +114,6 @@ func TestOpenAI429RetryDelayHonorsBoundedRetryAfter(t *testing.T) {
 	require.Equal(t, openAIOAuth429MaxRetryDelay, openAIOAuth429SameAccountRetryDelay(http.Header{"Retry-After": []string{"90"}}, deadline))
 }
 
-func TestIsCodexOAuthRefreshable429(t *testing.T) {
-	account := &Account{
-		ID:       42,
-		Platform: PlatformOpenAI,
-		Type:     AccountTypeOAuth,
-		Credentials: map[string]any{
-			"refresh_token": "refresh-token",
-		},
-	}
-
-	require.True(t, isCodexOAuthRefreshable429(account, http.StatusTooManyRequests, []byte(`{"detail":"Rate limit exceeded"}`)))
-	require.True(t, isCodexOAuthRefreshable429(account, http.StatusTooManyRequests, []byte(`{"detail":" rate LIMIT exceeded "}`)))
-	require.False(t, isCodexOAuthRefreshable429(account, http.StatusTooManyRequests, []byte(`{"error":{"type":"usage_limit_reached"}}`)))
-	require.False(t, isCodexOAuthRefreshable429(account, http.StatusUnauthorized, []byte(`{"detail":"Rate limit exceeded"}`)))
-
-	apiKey := *account
-	apiKey.Type = AccountTypeAPIKey
-	require.False(t, isCodexOAuthRefreshable429(&apiKey, http.StatusTooManyRequests, []byte(`{"detail":"Rate limit exceeded"}`)))
-}
-
 // TestOpenAI429FastPath_SkipsSparkShadow 外审第8轮 P1:spark 影子被选中后若 /responses 返回 429,
 // 不得按 global x-codex-* 信号写内存运行时熔断(否则 spark 被冷却到 global reset、单影子场景无可用账号)。
 func TestOpenAI429FastPath_SkipsSparkShadow(t *testing.T) {

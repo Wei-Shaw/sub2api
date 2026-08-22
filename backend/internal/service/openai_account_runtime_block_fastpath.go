@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -12,8 +11,7 @@ import (
 
 const (
 	openAIAccountStateUpdateTimeout       = 5 * time.Second
-	openAIOAuth429RefreshTimeout          = 30 * time.Second
-	openAIOAuth429FallbackCooldown        = 5 * time.Second
+	openAIOAuth429FallbackCooldown        = time.Minute
 	openAIOAuth429RetryWindow             = 2 * time.Minute
 	openAIOAuth429RetryDelay              = 500 * time.Millisecond
 	openAIOAuth429MaxRetryDelay           = 8 * time.Second
@@ -113,17 +111,10 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	if statusCode == http.StatusTooManyRequests {
 		s.markOpenAIOAuth429RateLimited(stateCtx, account, headers, responseBody)
 	}
-	refreshAfter429 := isCodexOAuthRefreshable429(account, statusCode, responseBody)
 	if s.rateLimitService == nil {
-		if refreshAfter429 {
-			s.refreshCodexOAuthAfter429(ctx, account)
-		}
 		return false
 	}
 	shouldDisable := s.rateLimitService.HandleUpstreamError(stateCtx, account, statusCode, headers, responseBody)
-	if refreshAfter429 {
-		s.refreshCodexOAuthAfter429(ctx, account)
-	}
 	modelTempMatched := statusCode != http.StatusUnauthorized && tempUnschedulableModel(stateCtx, nil) != "" &&
 		len(matchTempUnschedulableRules(account, statusCode, responseBody)) > 0
 	if shouldDisable && !modelTempMatched {
@@ -151,60 +142,6 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		}
 	}
 	return shouldDisable
-}
-
-func isCodexOAuthRefreshable429(account *Account, statusCode int, responseBody []byte) bool {
-	if statusCode != http.StatusTooManyRequests || !isOpenAIOAuthAccount(account) || account.IsShadow() || account.IsOpenAIPersonalAccessToken() {
-		return false
-	}
-	var payload struct {
-		Detail string `json:"detail"`
-	}
-	if json.Unmarshal(responseBody, &payload) != nil {
-		return false
-	}
-	return strings.EqualFold(strings.TrimSpace(payload.Detail), "Rate limit exceeded")
-}
-
-func (s *OpenAIGatewayService) refreshCodexOAuthAfter429(ctx context.Context, account *Account) {
-	if s == nil || s.openAITokenProvider == nil || s.accountRepo == nil || account == nil {
-		return
-	}
-	base := context.Background()
-	if ctx != nil {
-		base = context.WithoutCancel(ctx)
-	}
-	refreshCtx, cancel := context.WithTimeout(base, openAIOAuth429RefreshTimeout)
-	defer cancel()
-	refreshed, err := s.openAITokenProvider.ForceRefresh(refreshCtx, account)
-	if err != nil {
-		slog.Warn("codex_oauth_429_token_refresh_failed", "account_id", account.ID, "error", err)
-		return
-	}
-	if err := s.accountRepo.ClearError(refreshCtx, account.ID); err != nil {
-		slog.Warn("codex_oauth_429_clear_error_failed", "account_id", account.ID, "error", err)
-		return
-	}
-	if err := s.accountRepo.ClearRateLimit(refreshCtx, account.ID); err != nil {
-		slog.Warn("codex_oauth_429_clear_rate_limit_failed", "account_id", account.ID, "error", err)
-		return
-	}
-	if err := s.accountRepo.ClearModelRateLimits(refreshCtx, account.ID); err != nil {
-		slog.Warn("codex_oauth_429_clear_model_limits_failed", "account_id", account.ID, "error", err)
-		return
-	}
-	if err := s.accountRepo.ClearTempUnschedulable(refreshCtx, account.ID); err != nil {
-		slog.Warn("codex_oauth_429_clear_temp_unschedulable_failed", "account_id", account.ID, "error", err)
-		return
-	}
-	s.ClearAccountSchedulingBlock(account.ID)
-	account.Status = refreshed.Status
-	account.ErrorMessage = ""
-	account.RateLimitedAt = nil
-	account.RateLimitResetAt = nil
-	account.TempUnschedulableUntil = nil
-	account.TempUnschedulableReason = ""
-	slog.Info("codex_oauth_429_token_refreshed_and_status_reset", "account_id", account.ID)
 }
 
 func shouldCooldownOpenAITransientUpstreamError(statusCode int, responseBody []byte) bool {

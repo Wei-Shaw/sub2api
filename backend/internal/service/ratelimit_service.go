@@ -70,6 +70,9 @@ const geminiPrecheckCacheTTL = time.Minute
 const (
 	defaultRateLimit429CooldownSeconds = 5
 	maxRateLimit429CooldownSeconds     = 7200
+	// Codex OAuth 账号的 detail-only 429 通常表示账号/工作区短窗口限流，
+	// 而不是 OAuth 凭据失效。5 秒会导致窗口未恢复就再次进入调度。
+	openAIOAuth429MinimumCooldown = 60 * time.Second
 )
 
 const (
@@ -1235,6 +1238,10 @@ func (s *RateLimitService) apply429FallbackRateLimit(ctx context.Context, accoun
 }
 
 func (s *RateLimitService) get429FallbackCooldown(ctx context.Context, account *Account) (time.Duration, bool) {
+	minimum := time.Duration(0)
+	if isOpenAIOAuthAccount(account) && !account.IsShadow() {
+		minimum = openAIOAuth429MinimumCooldown
+	}
 	if s.settingService != nil {
 		settings, err := s.settingService.GetRateLimit429CooldownSettings(ctx)
 		if err == nil && settings != nil {
@@ -1242,14 +1249,22 @@ func (s *RateLimitService) get429FallbackCooldown(ctx context.Context, account *
 				return 0, false
 			}
 			seconds := clampRateLimit429CooldownSeconds(settings.CooldownSeconds)
-			return time.Duration(seconds) * time.Second, true
+			cooldown := time.Duration(seconds) * time.Second
+			if cooldown < minimum {
+				cooldown = minimum
+			}
+			return cooldown, true
 		}
 		slog.Warn("rate_limit_429_settings_read_failed", "account_id", account.ID, "error", err)
 	}
 
 	seconds := defaultRateLimit429CooldownSeconds
 	seconds = clampRateLimit429CooldownSeconds(seconds)
-	return time.Duration(seconds) * time.Second, true
+	cooldown := time.Duration(seconds) * time.Second
+	if cooldown < minimum {
+		cooldown = minimum
+	}
+	return cooldown, true
 }
 
 func clampRateLimit429CooldownSeconds(seconds int) int {
@@ -1265,6 +1280,12 @@ func clampRateLimit429CooldownSeconds(seconds int) int {
 // calculateOpenAI429ResetTime 从 OpenAI 429 响应头计算正确的重置时间
 // 返回 nil 表示无法从响应头中确定重置时间
 func calculateOpenAI429ResetTime(headers http.Header) *time.Time {
+	now := time.Now()
+	// Retry-After is the upstream's explicit retry boundary and must take
+	// precedence over inferred Codex window metadata.
+	if resetAt := parseRetryAfterResetTime(headers, now); resetAt != nil && resetAt.After(now) {
+		return resetAt
+	}
 	snapshot := ParseCodexRateLimitHeaders(headers)
 	if snapshot == nil {
 		return nil
@@ -1274,8 +1295,6 @@ func calculateOpenAI429ResetTime(headers http.Header) *time.Time {
 	if normalized == nil {
 		return nil
 	}
-
-	now := time.Now()
 
 	// 判断哪个限制被触发（used_percent >= 100）
 	is7dExhausted := normalized.Used7dPercent != nil && *normalized.Used7dPercent >= 100
