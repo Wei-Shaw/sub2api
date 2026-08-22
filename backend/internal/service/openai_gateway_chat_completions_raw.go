@@ -336,6 +336,7 @@ REDACTED
 		REDACTED
 	REDACTED
 		line = applyOllamaCloudRawChatCompletionsSSELine(account, line)
+		line = stripEmptyChatToolCallIdentityFromSSELine(line)
 
 		writeLine(line)
 		if line == "" {

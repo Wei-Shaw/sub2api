@@ -607,6 +607,86 @@ REDACTED
 	require.Contains(t, rec.Body.String(), "data: [DONE]")
 REDACTED
 
+// TestForwardAsRawChatCompletions_StripsEmptyToolCallIdentity 端到端验证 raw
+// CC 流式直转路径剔除 DashScope/DeepSeek 后续参数 delta 的空 id/name：
+// 下游仍保留首包合法 id/name 与 arguments 碎片，但后续 delta 不再带
+// `"id":""` / `"name":""`，避免 dsh 等客户端用 `!== undefined` 合并时把
+// 首包合法值覆盖掉（ToolNotFoundError: unknown tool ""）。
+func TestForwardAsRawChatCompletions_StripsEmptyToolCallIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"deepseek-v4-flash","messages":[{"role":"user","content":"weather"REDACTED],"stream":trueREDACTED`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_tool","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_example","type":"function","function":{"name":"web_search","arguments":""REDACTEDREDACTED]REDACTEDREDACTED]REDACTED`,
+		"",
+		`data: {"id":"chatcmpl_tool","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"","type":"function","function":{"name":"","arguments":"{\"query\":"REDACTEDREDACTED]REDACTEDREDACTED]REDACTED`,
+		"",
+		`data: {"id":"chatcmpl_tool","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"","type":"function","function":{"name":"","arguments":"\"example\"REDACTED"REDACTEDREDACTED]REDACTEDREDACTED]REDACTED`,
+		"",
+		`data: {"id":"chatcmpl_tool","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{REDACTED,"finish_reason":"tool_calls"REDACTED]REDACTED`,
+		"",
+		"data: [DONE]",
+		"",
+REDACTED, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "x-request-id": []string{"rid_tool_identity"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+REDACTEDREDACTED
+
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+REDACTED
+	account := rawChatCompletionsTestAccount()
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+REDACTED
+	require.NotNil(t, result)
+
+	downstream := rec.Body.String()
+	require.Contains(t, downstream, `"id":"call_example"`)
+	require.Contains(t, downstream, `"name":"web_search"`)
+	require.Contains(t, downstream, `{\"query\":`)
+	require.Contains(t, downstream, `\"example\"REDACTED`)
+	require.Contains(t, downstream, "data: [DONE]")
+	require.NotContains(t, downstream, `"id":""`)
+	require.NotContains(t, downstream, `"name":""`)
+
+	// 逐条扫下游 data payload：后续参数 delta 的 tool_calls.0.id /
+	// function.name 必须已剔除（Exists() == false），首包合法值保留。
+	followUpSeen := false
+	for _, line := range strings.Split(downstream, "\n") {
+		payload, ok := extractOpenAISSEDataLine(line)
+		if !ok {
+			continue
+	REDACTED
+		trimmed := strings.TrimSpace(payload)
+		if trimmed == "" || trimmed == "[DONE]" {
+			continue
+	REDACTED
+		delta := gjson.Get(payload, "choices.0.delta")
+		if !delta.Exists() || !delta.Get("tool_calls").Exists() {
+			continue
+	REDACTED
+		id := delta.Get("tool_calls.0.id")
+		if id.String() == "call_example" {
+			require.Equal(t, "web_search", delta.Get("tool_calls.0.function.name").String())
+			continue
+	REDACTED
+		require.False(t, id.Exists(), "empty id must be stripped: %s", payload)
+		require.False(t, delta.Get("tool_calls.0.function.name").Exists(), "empty name must be stripped: %s", payload)
+		require.NotEmpty(t, delta.Get("tool_calls.0.function.arguments").String())
+		followUpSeen = true
+REDACTED
+	require.True(t, followUpSeen)
+REDACTED
+
 func TestForwardAsRawChatCompletions_ClientDisconnectDrainsUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
