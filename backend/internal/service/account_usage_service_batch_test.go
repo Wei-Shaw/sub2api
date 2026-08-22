@@ -46,6 +46,9 @@ func (r *usageBatchLogRepoStub) ListByModelAndTimeRange(context.Context, string,
 func (r *usageBatchLogRepoStub) GetAccountWindowStats(context.Context, int64, time.Time) (*usagestats.AccountStats, error) {
 	return &usagestats.AccountStats{}, nil
 }
+func (r *usageBatchLogRepoStub) GetAccountWindowStatsRange(context.Context, int64, time.Time, time.Time) (*usagestats.WindowTokenStats, error) {
+	return &usagestats.WindowTokenStats{}, nil
+}
 func (r *usageBatchLogRepoStub) GetAccountTodayStats(context.Context, int64) (*usagestats.AccountStats, error) {
 	return &usagestats.AccountStats{}, nil
 }

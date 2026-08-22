@@ -1461,7 +1461,28 @@ export default {
         todayTokens: 'Today Tokens',
         todayCost: 'Today Cost',
         usageTrend: '30-Day Cost & Request Trend',
-        noData: 'No usage data available for this account'
+        noData: 'No usage data available for this account',
+        windowHistory: {
+          title: 'Rolling-Window Usage History',
+          subtitle: 'Per-window token usage vs utilization; a declining implied limit signals quota shrinkage',
+          emptyTitle: 'No window usage data yet',
+          emptyDesc:
+            'This section is fully passive: OpenAI/Codex accounts are recorded automatically once traffic flows through this server; Anthropic and CN coding-plan accounts need an account-scoped quota check (quota / quota_probe mode) configured in channel monitoring before data appears.',
+          empty: 'No window usage data yet',
+          openBadge: 'In progress',
+          impliedLimitHint: 'Implied limit = window tokens ÷ final utilization',
+          chartTokens: 'Window Tokens',
+          chartPeak: 'Peak Utilization',
+          chartFinal: 'Final Utilization',
+          chartImplied: 'Implied Limit',
+          tableWindow: 'Window',
+          tableRequests: 'Requests',
+          tableTokens: 'Tokens',
+          tablePeak: 'Peak',
+          tableFinal: 'Final',
+          tableImplied: 'Implied Limit',
+          tableSamples: 'Samples'
+        }
       },
       usageWindow: {
         statsTitle: '5-Hour Window Usage Statistics',

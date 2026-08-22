@@ -408,6 +408,107 @@
           </div>
         </div>
 
+        <!-- Rolling-Window Usage History (passive statistics, platform-gated request) -->
+        <div v-if="windowHistory" class="card p-4">
+          <div class="mb-1 flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.accounts.stats.windowHistory.title') }}
+            </h3>
+          </div>
+          <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.stats.windowHistory.subtitle') }}
+          </p>
+
+          <!-- Passive-source explanation when nothing has been recorded yet -->
+          <div
+            v-if="windowTabs.length === 0"
+            class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-dark-600 dark:bg-dark-700/40 dark:text-gray-400"
+          >
+            <p class="font-medium">{{ t('admin.accounts.stats.windowHistory.emptyTitle') }}</p>
+            <p class="mt-1">{{ t('admin.accounts.stats.windowHistory.emptyDesc') }}</p>
+          </div>
+
+          <template v-else>
+            <!-- Window type tabs -->
+            <div class="mb-3 flex flex-wrap gap-2">
+              <button
+                v-for="tab in windowTabs"
+                :key="tab"
+                type="button"
+                @click="activeWindowType = tab"
+                :class="[
+                  'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                  activeWindowType === tab
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-300 dark:hover:bg-dark-500'
+                ]"
+              >
+                {{ windowTypeLabel(tab) }}
+              </button>
+            </div>
+
+            <AccountWindowHistoryChart :entries="activeEntries" :loading="historyLoading" />
+
+            <!-- Recent windows table -->
+            <div v-if="recentEntries.length > 0" class="mt-4 overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="text-gray-500 dark:text-gray-400">
+                  <tr class="border-b border-gray-200 dark:border-dark-600">
+                    <th class="py-2 pr-3 font-medium">
+                      {{ t('admin.accounts.stats.windowHistory.tableWindow') }}
+                    </th>
+                    <th class="py-2 pr-3 font-medium">
+                      {{ t('admin.accounts.stats.windowHistory.tableRequests') }}
+                    </th>
+                    <th class="py-2 pr-3 font-medium">
+                      {{ t('admin.accounts.stats.windowHistory.tableTokens') }}
+                    </th>
+                    <th class="py-2 pr-3 font-medium">
+                      {{ t('admin.accounts.stats.windowHistory.tablePeak') }}
+                    </th>
+                    <th class="py-2 pr-3 font-medium">
+                      {{ t('admin.accounts.stats.windowHistory.tableFinal') }}
+                    </th>
+                    <th class="py-2 pr-3 font-medium">
+                      {{ t('admin.accounts.stats.windowHistory.tableImplied') }}
+                    </th>
+                    <th class="py-2 font-medium">
+                      {{ t('admin.accounts.stats.windowHistory.tableSamples') }}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="text-gray-900 dark:text-gray-100">
+                  <tr
+                    v-for="entry in recentEntries"
+                    :key="entry.window_end"
+                    class="border-b border-gray-100 last:border-0 dark:border-dark-700/50"
+                  >
+                    <td class="py-1.5 pr-3 whitespace-nowrap">
+                      {{ formatWindowRange(entry) }}
+                      <span
+                        v-if="!entry.finalized"
+                        class="ml-1 rounded bg-blue-100 px-1 py-0.5 text-[10px] text-blue-700 dark:bg-blue-500/20 dark:text-blue-400"
+                      >
+                        {{ t('admin.accounts.stats.windowHistory.openBadge') }}
+                      </span>
+                    </td>
+                    <td class="py-1.5 pr-3">{{ entry.requests ?? '—' }}</td>
+                    <td class="py-1.5 pr-3">{{ entry.tokens_total != null ? formatTokens(entry.tokens_total) : '—' }}</td>
+                    <td class="py-1.5 pr-3">{{ entry.peak_used_percent.toFixed(1) }}%</td>
+                    <td class="py-1.5 pr-3">
+                      {{ entry.final_used_percent != null ? entry.final_used_percent.toFixed(1) + '%' : '—' }}
+                    </td>
+                    <td class="py-1.5 pr-3" :title="t('admin.accounts.stats.windowHistory.impliedLimitHint')">
+                      {{ formatImpliedLimit(entry) }}
+                    </td>
+                    <td class="py-1.5 text-gray-400 dark:text-gray-500">{{ entry.sample_count }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </template>
+        </div>
+
         <!-- Model Distribution -->
         <ModelDistributionChart :model-stats="stats.models" :loading="false" />
 
@@ -466,9 +567,15 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
+import AccountWindowHistoryChart from '@/components/charts/AccountWindowHistoryChart.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { adminAPI } from '@/api/admin'
-import type { Account, AccountUsageStatsResponse } from '@/types'
+import type {
+  Account,
+  AccountUsageStatsResponse,
+  AccountWindowUsageEntry,
+  AccountWindowHistoryResponse
+} from '@/types'
 
 ChartJS.register(
   CategoryScale,
@@ -492,8 +599,22 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
+// 窗口历史数据可能存在的平台（纯被动统计的覆盖面）：OpenAI/Codex 由网关
+// 从真实流量响应头自动记录；Anthropic 与国产 coding plan 依赖渠道监控的
+// 配额快照（需配置了按账号的 quota/quota_probe 监控）。其余平台
+// （Gemini/Grok 等）没有滚动窗口数据源，整块隐藏也不发无效请求
+const windowHistorySupportedPlatform = computed(() => {
+  const account = props.account
+  if (!account) return false
+  return ['openai', 'anthropic', 'kimi', 'zhipu', 'deepseek'].includes(account.platform)
+})
+
 const loading = ref(false)
 const stats = ref<AccountUsageStatsResponse | null>(null)
+// 滚动窗口用量历史（独立加载：失败仅隐藏本区块，不影响主统计）
+const windowHistory = ref<AccountWindowHistoryResponse | null>(null)
+const historyLoading = ref(false)
+const activeWindowType = ref('')
 
 // Dark mode detection
 const isDarkMode = computed(() => {
@@ -650,22 +771,91 @@ watch(
       await loadStats()
     } else {
       stats.value = null
+      windowHistory.value = null
+      activeWindowType.value = ''
     }
   }
 )
 
+// 窗口 tab 顺序：固定偏好顺序在前，未知类型按字典序追加
+const WINDOW_TAB_ORDER = ['5h', '7d', '7d-sonnet', '7d-fable', 'weekly']
+
+const windowTabs = computed(() => {
+  const keys = Object.keys(windowHistory.value?.windows || {}).filter(
+    (k) => (windowHistory.value?.windows[k] || []).length > 0
+  )
+  return keys.sort((a, b) => {
+    const ia = WINDOW_TAB_ORDER.indexOf(a)
+    const ib = WINDOW_TAB_ORDER.indexOf(b)
+    if (ia !== -1 && ib !== -1) return ia - ib
+    if (ia !== -1) return -1
+    if (ib !== -1) return 1
+    return a.localeCompare(b)
+  })
+})
+
+// tab 集合变化后校正选中项（弹窗重开/数据刷新）
+watch(windowTabs, (tabs) => {
+  if (tabs.length > 0 && !tabs.includes(activeWindowType.value)) {
+    activeWindowType.value = tabs[0]
+  }
+})
+
+const activeEntries = computed(() => {
+  if (!activeWindowType.value) return []
+  return windowHistory.value?.windows[activeWindowType.value] || []
+})
+
+// 表格取最近 10 个窗口，新 → 旧
+const recentEntries = computed(() => activeEntries.value.slice(-10).reverse())
+
+// 窗口类型 tab 标签复用渠道监控的配额窗口文案（7d-sonnet → 7dSonnet）
+const WINDOW_LABEL_KEYS: Record<string, string> = {
+  '5h': '5h',
+  '7d': '7d',
+  '7d-sonnet': '7dSonnet',
+  '7d-fable': '7dFable',
+  weekly: 'weekly'
+}
+
+const windowTypeLabel = (windowType: string): string => {
+  const key = WINDOW_LABEL_KEYS[windowType]
+  return key ? t(`monitorCommon.quota.windows.${key}`) : windowType
+}
+
 const loadStats = async () => {
   if (!props.account) return
 
+  // 请求守卫：快速关闭/切换账号时，迟到的旧账号响应不得覆盖新状态
+  const accountId = props.account.id
+  const isCurrent = () => props.account?.id === accountId
+
   loading.value = true
+  // 窗口历史与 stats 并行加载：失败仅隐藏本区块（此时 stats 可能已正常展示）；
+  // 无数据源平台直接不发请求（避免无效往返）
+  historyLoading.value = windowHistorySupportedPlatform.value
+  const historyPromise = windowHistorySupportedPlatform.value
+    ? adminAPI.accounts
+        .getWindowHistory(accountId, 30)
+        .catch((error) => {
+          console.error('Failed to load account window history:', error)
+          return null
+        })
+    : Promise.resolve(null)
+
   try {
-    stats.value = await adminAPI.accounts.getStats(props.account.id, 30)
+    const loaded = await adminAPI.accounts.getStats(accountId, 30)
+    if (isCurrent()) stats.value = loaded
   } catch (error) {
     console.error('Failed to load account stats:', error)
-    stats.value = null
+    if (isCurrent()) stats.value = null
   } finally {
     loading.value = false
   }
+
+  const history = await historyPromise
+  historyLoading.value = false
+  if (isCurrent()) windowHistory.value = history
 }
 
 const handleClose = () => {
@@ -709,5 +899,30 @@ const formatDuration = (ms: number): string => {
     return `${(ms / 1000).toFixed(2)}s`
   }
   return `${Math.round(ms)}ms`
+}
+
+// ---- Rolling-window history helpers ----
+
+const formatWindowRange = (entry: AccountWindowUsageEntry): string => {
+  const fmt = (iso: string) => {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return iso
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+  return `${fmt(entry.window_start)} → ${fmt(entry.window_end)}`
+}
+
+// 推算限额：由「窗口 token ÷ 最终使用率」反推；最终使用率 <5% 时反推误差
+// 过大，显示 —
+const formatImpliedLimit = (entry: AccountWindowUsageEntry): string => {
+  if (
+    entry.final_used_percent != null &&
+    entry.final_used_percent >= 5 &&
+    entry.tokens_total
+  ) {
+    return formatTokens(entry.tokens_total / (entry.final_used_percent / 100))
+  }
+  return '—'
 }
 </script>

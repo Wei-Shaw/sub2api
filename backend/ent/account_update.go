@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/account"
+	"github.com/Wei-Shaw/sub2api/ent/accountwindowusagehistory"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
@@ -633,6 +634,21 @@ func (_u *AccountUpdate) AddUsageLogs(v ...*UsageLog) *AccountUpdate {
 	return _u.AddUsageLogIDs(ids...)
 }
 
+// AddWindowUsageHistoryIDs adds the "window_usage_histories" edge to the AccountWindowUsageHistory entity by IDs.
+func (_u *AccountUpdate) AddWindowUsageHistoryIDs(ids ...int64) *AccountUpdate {
+	_u.mutation.AddWindowUsageHistoryIDs(ids...)
+	return _u
+}
+
+// AddWindowUsageHistories adds the "window_usage_histories" edges to the AccountWindowUsageHistory entity.
+func (_u *AccountUpdate) AddWindowUsageHistories(v ...*AccountWindowUsageHistory) *AccountUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddWindowUsageHistoryIDs(ids...)
+}
+
 // Mutation returns the AccountMutation object of the builder.
 func (_u *AccountUpdate) Mutation() *AccountMutation {
 	return _u.mutation
@@ -711,6 +727,27 @@ func (_u *AccountUpdate) RemoveUsageLogs(v ...*UsageLog) *AccountUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveUsageLogIDs(ids...)
+}
+
+// ClearWindowUsageHistories clears all "window_usage_histories" edges to the AccountWindowUsageHistory entity.
+func (_u *AccountUpdate) ClearWindowUsageHistories() *AccountUpdate {
+	_u.mutation.ClearWindowUsageHistories()
+	return _u
+}
+
+// RemoveWindowUsageHistoryIDs removes the "window_usage_histories" edge to AccountWindowUsageHistory entities by IDs.
+func (_u *AccountUpdate) RemoveWindowUsageHistoryIDs(ids ...int64) *AccountUpdate {
+	_u.mutation.RemoveWindowUsageHistoryIDs(ids...)
+	return _u
+}
+
+// RemoveWindowUsageHistories removes "window_usage_histories" edges to AccountWindowUsageHistory entities.
+func (_u *AccountUpdate) RemoveWindowUsageHistories(v ...*AccountWindowUsageHistory) *AccountUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveWindowUsageHistoryIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -1144,6 +1181,51 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.WindowUsageHistoriesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.WindowUsageHistoriesTable,
+			Columns: []string{account.WindowUsageHistoriesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(accountwindowusagehistory.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedWindowUsageHistoriesIDs(); len(nodes) > 0 && !_u.mutation.WindowUsageHistoriesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.WindowUsageHistoriesTable,
+			Columns: []string{account.WindowUsageHistoriesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(accountwindowusagehistory.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.WindowUsageHistoriesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.WindowUsageHistoriesTable,
+			Columns: []string{account.WindowUsageHistoriesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(accountwindowusagehistory.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -1773,6 +1855,21 @@ func (_u *AccountUpdateOne) AddUsageLogs(v ...*UsageLog) *AccountUpdateOne {
 	return _u.AddUsageLogIDs(ids...)
 }
 
+// AddWindowUsageHistoryIDs adds the "window_usage_histories" edge to the AccountWindowUsageHistory entity by IDs.
+func (_u *AccountUpdateOne) AddWindowUsageHistoryIDs(ids ...int64) *AccountUpdateOne {
+	_u.mutation.AddWindowUsageHistoryIDs(ids...)
+	return _u
+}
+
+// AddWindowUsageHistories adds the "window_usage_histories" edges to the AccountWindowUsageHistory entity.
+func (_u *AccountUpdateOne) AddWindowUsageHistories(v ...*AccountWindowUsageHistory) *AccountUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddWindowUsageHistoryIDs(ids...)
+}
+
 // Mutation returns the AccountMutation object of the builder.
 func (_u *AccountUpdateOne) Mutation() *AccountMutation {
 	return _u.mutation
@@ -1851,6 +1948,27 @@ func (_u *AccountUpdateOne) RemoveUsageLogs(v ...*UsageLog) *AccountUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveUsageLogIDs(ids...)
+}
+
+// ClearWindowUsageHistories clears all "window_usage_histories" edges to the AccountWindowUsageHistory entity.
+func (_u *AccountUpdateOne) ClearWindowUsageHistories() *AccountUpdateOne {
+	_u.mutation.ClearWindowUsageHistories()
+	return _u
+}
+
+// RemoveWindowUsageHistoryIDs removes the "window_usage_histories" edge to AccountWindowUsageHistory entities by IDs.
+func (_u *AccountUpdateOne) RemoveWindowUsageHistoryIDs(ids ...int64) *AccountUpdateOne {
+	_u.mutation.RemoveWindowUsageHistoryIDs(ids...)
+	return _u
+}
+
+// RemoveWindowUsageHistories removes "window_usage_histories" edges to AccountWindowUsageHistory entities.
+func (_u *AccountUpdateOne) RemoveWindowUsageHistories(v ...*AccountWindowUsageHistory) *AccountUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveWindowUsageHistoryIDs(ids...)
 }
 
 // Where appends a list predicates to the AccountUpdate builder.
@@ -2314,6 +2432,51 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.WindowUsageHistoriesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.WindowUsageHistoriesTable,
+			Columns: []string{account.WindowUsageHistoriesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(accountwindowusagehistory.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedWindowUsageHistoriesIDs(); len(nodes) > 0 && !_u.mutation.WindowUsageHistoriesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.WindowUsageHistoriesTable,
+			Columns: []string{account.WindowUsageHistoriesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(accountwindowusagehistory.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.WindowUsageHistoriesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.WindowUsageHistoriesTable,
+			Columns: []string{account.WindowUsageHistoriesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(accountwindowusagehistory.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

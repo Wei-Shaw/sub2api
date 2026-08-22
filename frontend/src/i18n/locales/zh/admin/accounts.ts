@@ -1511,7 +1511,28 @@ export default {
         todayTokens: '今日 Token',
         todayCost: '今日费用',
         usageTrend: '30天费用与请求趋势',
-        noData: '该账号暂无使用数据'
+        noData: '该账号暂无使用数据',
+        windowHistory: {
+          title: '滚动窗口用量历史',
+          subtitle: '窗口内 Token 用量与使用率；推算限额随时间下降即为限额缩水信号',
+          emptyTitle: '暂无窗口用量数据',
+          emptyDesc:
+            '本区块为纯被动统计：OpenAI/Codex 账号经本服务产生流量后自动记录；Anthropic 与国产 coding plan 账号需在渠道监控中配置按账号的配额检测（quota / quota_probe 模式）后才会产生数据。',
+          empty: '暂无窗口用量数据',
+          openBadge: '进行中',
+          impliedLimitHint: '推算限额 = 窗口 Token ÷ 最终使用率',
+          chartTokens: '窗口 Token',
+          chartPeak: '峰值使用率',
+          chartFinal: '最终使用率',
+          chartImplied: '推算限额',
+          tableWindow: '窗口',
+          tableRequests: '请求',
+          tableTokens: 'Token 用量',
+          tablePeak: '峰值',
+          tableFinal: '最终',
+          tableImplied: '推算限额',
+          tableSamples: '采样'
+        }
       }
     },
 

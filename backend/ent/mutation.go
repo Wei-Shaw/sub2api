@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/ent/accountwindowusagehistory"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -67,6 +68,7 @@ const (
 	TypeAPIKey                        = "APIKey"
 	TypeAccount                       = "Account"
 	TypeAccountGroup                  = "AccountGroup"
+	TypeAccountWindowUsageHistory     = "AccountWindowUsageHistory"
 	TypeAnnouncement                  = "Announcement"
 	TypeAnnouncementRead              = "AnnouncementRead"
 	TypeAuthIdentity                  = "AuthIdentity"
@@ -2282,60 +2284,63 @@ func (m *APIKeyMutation) ResetEdge(name string) error {
 // AccountMutation represents an operation that mutates the Account nodes in the graph.
 type AccountMutation struct {
 	config
-	op                          Op
-	typ                         string
-	id                          *int64
-	created_at                  *time.Time
-	updated_at                  *time.Time
-	deleted_at                  *time.Time
-	name                        *string
-	notes                       *string
-	platform                    *string
-	_type                       *string
-	credentials                 *map[string]interface{}
-	extra                       *map[string]interface{}
-	proxy_fallback_origin_id    *int64
-	addproxy_fallback_origin_id *int64
-	concurrency                 *int
-	addconcurrency              *int
-	load_factor                 *int
-	addload_factor              *int
-	priority                    *int
-	addpriority                 *int
-	rate_multiplier             *float64
-	addrate_multiplier          *float64
-	status                      *string
-	error_message               *string
-	last_used_at                *time.Time
-	expires_at                  *time.Time
-	auto_pause_on_expired       *bool
-	schedulable                 *bool
-	rate_limited_at             *time.Time
-	rate_limit_reset_at         *time.Time
-	overload_until              *time.Time
-	temp_unschedulable_until    *time.Time
-	temp_unschedulable_reason   *string
-	session_window_start        *time.Time
-	session_window_end          *time.Time
-	session_window_status       *string
-	quota_dimension             *account.QuotaDimension
-	clearedFields               map[string]struct{}
-	groups                      map[int64]struct{}
-	removedgroups               map[int64]struct{}
-	clearedgroups               bool
-	proxy                       *int64
-	clearedproxy                bool
-	parent                      *int64
-	clearedparent               bool
-	children                    map[int64]struct{}
-	removedchildren             map[int64]struct{}
-	clearedchildren             bool
-	usage_logs                  map[int64]struct{}
-	removedusage_logs           map[int64]struct{}
-	clearedusage_logs           bool
-	done                        bool
-	oldValue                    func(context.Context) (*Account, error)
-	predicates                  []predicate.Account
+	op                            Op
+	typ                           string
+	id                            *int64
+	created_at                    *time.Time
+	updated_at                    *time.Time
+	deleted_at                    *time.Time
+	name                          *string
+	notes                         *string
+	platform                      *string
+	_type                         *string
+	credentials                   *map[string]interface{}
+	extra                         *map[string]interface{}
+	proxy_fallback_origin_id      *int64
+	addproxy_fallback_origin_id   *int64
+	concurrency                   *int
+	addconcurrency                *int
+	load_factor                   *int
+	addload_factor                *int
+	priority                      *int
+	addpriority                   *int
+	rate_multiplier               *float64
+	addrate_multiplier            *float64
+	status                        *string
+	error_message                 *string
+	last_used_at                  *time.Time
+	expires_at                    *time.Time
+	auto_pause_on_expired         *bool
+	schedulable                   *bool
+	rate_limited_at               *time.Time
+	rate_limit_reset_at           *time.Time
+	overload_until                *time.Time
+	temp_unschedulable_until      *time.Time
+	temp_unschedulable_reason     *string
+	session_window_start          *time.Time
+	session_window_end            *time.Time
+	session_window_status         *string
+	quota_dimension               *account.QuotaDimension
+	clearedFields                 map[string]struct{}
+	groups                        map[int64]struct{}
+	removedgroups                 map[int64]struct{}
+	clearedgroups                 bool
+	proxy                         *int64
+	clearedproxy                  bool
+	parent                        *int64
+	clearedparent                 bool
+	children                      map[int64]struct{}
+	removedchildren               map[int64]struct{}
+	clearedchildren               bool
+	usage_logs                    map[int64]struct{}
+	removedusage_logs             map[int64]struct{}
+	clearedusage_logs             bool
+	window_usage_histories        map[int64]struct{}
+	removedwindow_usage_histories map[int64]struct{}
+	clearedwindow_usage_histories bool
+	done                          bool
+	oldValue                      func(context.Context) (*Account, error)
+	predicates                    []predicate.Account
 }
 
 var _ ent.Mutation = (*AccountMutation)(nil)
@@ -4104,6 +4109,60 @@ func (m *AccountMutation) ResetUsageLogs() {
 	m.removedusage_logs = nil
 }
 
+// AddWindowUsageHistoryIDs adds the "window_usage_histories" edge to the AccountWindowUsageHistory entity by ids.
+func (m *AccountMutation) AddWindowUsageHistoryIDs(ids ...int64) {
+	if m.window_usage_histories == nil {
+		m.window_usage_histories = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.window_usage_histories[ids[i]] = struct{}{}
+	}
+}
+
+// ClearWindowUsageHistories clears the "window_usage_histories" edge to the AccountWindowUsageHistory entity.
+func (m *AccountMutation) ClearWindowUsageHistories() {
+	m.clearedwindow_usage_histories = true
+}
+
+// WindowUsageHistoriesCleared reports if the "window_usage_histories" edge to the AccountWindowUsageHistory entity was cleared.
+func (m *AccountMutation) WindowUsageHistoriesCleared() bool {
+	return m.clearedwindow_usage_histories
+}
+
+// RemoveWindowUsageHistoryIDs removes the "window_usage_histories" edge to the AccountWindowUsageHistory entity by IDs.
+func (m *AccountMutation) RemoveWindowUsageHistoryIDs(ids ...int64) {
+	if m.removedwindow_usage_histories == nil {
+		m.removedwindow_usage_histories = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.window_usage_histories, ids[i])
+		m.removedwindow_usage_histories[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedWindowUsageHistories returns the removed IDs of the "window_usage_histories" edge to the AccountWindowUsageHistory entity.
+func (m *AccountMutation) RemovedWindowUsageHistoriesIDs() (ids []int64) {
+	for id := range m.removedwindow_usage_histories {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// WindowUsageHistoriesIDs returns the "window_usage_histories" edge IDs in the mutation.
+func (m *AccountMutation) WindowUsageHistoriesIDs() (ids []int64) {
+	for id := range m.window_usage_histories {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetWindowUsageHistories resets all changes to the "window_usage_histories" edge.
+func (m *AccountMutation) ResetWindowUsageHistories() {
+	m.window_usage_histories = nil
+	m.clearedwindow_usage_histories = false
+	m.removedwindow_usage_histories = nil
+}
+
 // Where appends a list predicates to the AccountMutation builder.
 func (m *AccountMutation) Where(ps ...predicate.Account) {
 	m.predicates = append(m.predicates, ps...)
@@ -4915,7 +4974,7 @@ func (m *AccountMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *AccountMutation) AddedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.groups != nil {
 		edges = append(edges, account.EdgeGroups)
 	}
@@ -4930,6 +4989,9 @@ func (m *AccountMutation) AddedEdges() []string {
 	}
 	if m.usage_logs != nil {
 		edges = append(edges, account.EdgeUsageLogs)
+	}
+	if m.window_usage_histories != nil {
+		edges = append(edges, account.EdgeWindowUsageHistories)
 	}
 	return edges
 }
@@ -4964,13 +5026,19 @@ func (m *AccountMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case account.EdgeWindowUsageHistories:
+		ids := make([]ent.Value, 0, len(m.window_usage_histories))
+		for id := range m.window_usage_histories {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *AccountMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.removedgroups != nil {
 		edges = append(edges, account.EdgeGroups)
 	}
@@ -4979,6 +5047,9 @@ func (m *AccountMutation) RemovedEdges() []string {
 	}
 	if m.removedusage_logs != nil {
 		edges = append(edges, account.EdgeUsageLogs)
+	}
+	if m.removedwindow_usage_histories != nil {
+		edges = append(edges, account.EdgeWindowUsageHistories)
 	}
 	return edges
 }
@@ -5005,13 +5076,19 @@ func (m *AccountMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case account.EdgeWindowUsageHistories:
+		ids := make([]ent.Value, 0, len(m.removedwindow_usage_histories))
+		for id := range m.removedwindow_usage_histories {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *AccountMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.clearedgroups {
 		edges = append(edges, account.EdgeGroups)
 	}
@@ -5026,6 +5103,9 @@ func (m *AccountMutation) ClearedEdges() []string {
 	}
 	if m.clearedusage_logs {
 		edges = append(edges, account.EdgeUsageLogs)
+	}
+	if m.clearedwindow_usage_histories {
+		edges = append(edges, account.EdgeWindowUsageHistories)
 	}
 	return edges
 }
@@ -5044,6 +5124,8 @@ func (m *AccountMutation) EdgeCleared(name string) bool {
 		return m.clearedchildren
 	case account.EdgeUsageLogs:
 		return m.clearedusage_logs
+	case account.EdgeWindowUsageHistories:
+		return m.clearedwindow_usage_histories
 	}
 	return false
 }
@@ -5080,6 +5162,9 @@ func (m *AccountMutation) ResetEdge(name string) error {
 		return nil
 	case account.EdgeUsageLogs:
 		m.ResetUsageLogs()
+		return nil
+	case account.EdgeWindowUsageHistories:
+		m.ResetWindowUsageHistories()
 		return nil
 	}
 	return fmt.Errorf("unknown Account edge %s", name)
@@ -5568,6 +5653,1711 @@ func (m *AccountGroupMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown AccountGroup edge %s", name)
+}
+
+// AccountWindowUsageHistoryMutation represents an operation that mutates the AccountWindowUsageHistory nodes in the graph.
+type AccountWindowUsageHistoryMutation struct {
+	config
+	op                       Op
+	typ                      string
+	id                       *int64
+	created_at               *time.Time
+	updated_at               *time.Time
+	window_type              *string
+	window_start             *time.Time
+	window_end               *time.Time
+	peak_used_percent        *float64
+	addpeak_used_percent     *float64
+	last_used_percent        *float64
+	addlast_used_percent     *float64
+	sample_count             *int
+	addsample_count          *int
+	last_sample_at           *time.Time
+	requests                 *int64
+	addrequests              *int64
+	tokens_total             *int64
+	addtokens_total          *int64
+	tokens_input             *int64
+	addtokens_input          *int64
+	tokens_output            *int64
+	addtokens_output         *int64
+	tokens_cache_creation    *int64
+	addtokens_cache_creation *int64
+	tokens_cache_read        *int64
+	addtokens_cache_read     *int64
+	finalized_at             *time.Time
+	clearedFields            map[string]struct{}
+	account                  *int64
+	clearedaccount           bool
+	done                     bool
+	oldValue                 func(context.Context) (*AccountWindowUsageHistory, error)
+	predicates               []predicate.AccountWindowUsageHistory
+}
+
+var _ ent.Mutation = (*AccountWindowUsageHistoryMutation)(nil)
+
+// accountwindowusagehistoryOption allows management of the mutation configuration using functional options.
+type accountwindowusagehistoryOption func(*AccountWindowUsageHistoryMutation)
+
+// newAccountWindowUsageHistoryMutation creates new mutation for the AccountWindowUsageHistory entity.
+func newAccountWindowUsageHistoryMutation(c config, op Op, opts ...accountwindowusagehistoryOption) *AccountWindowUsageHistoryMutation {
+	m := &AccountWindowUsageHistoryMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAccountWindowUsageHistory,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAccountWindowUsageHistoryID sets the ID field of the mutation.
+func withAccountWindowUsageHistoryID(id int64) accountwindowusagehistoryOption {
+	return func(m *AccountWindowUsageHistoryMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *AccountWindowUsageHistory
+		)
+		m.oldValue = func(ctx context.Context) (*AccountWindowUsageHistory, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().AccountWindowUsageHistory.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAccountWindowUsageHistory sets the old AccountWindowUsageHistory of the mutation.
+func withAccountWindowUsageHistory(node *AccountWindowUsageHistory) accountwindowusagehistoryOption {
+	return func(m *AccountWindowUsageHistoryMutation) {
+		m.oldValue = func(context.Context) (*AccountWindowUsageHistory, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AccountWindowUsageHistoryMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AccountWindowUsageHistoryMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AccountWindowUsageHistoryMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AccountWindowUsageHistoryMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().AccountWindowUsageHistory.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *AccountWindowUsageHistoryMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *AccountWindowUsageHistoryMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *AccountWindowUsageHistoryMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *AccountWindowUsageHistoryMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetAccountID sets the "account_id" field.
+func (m *AccountWindowUsageHistoryMutation) SetAccountID(i int64) {
+	m.account = &i
+}
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) AccountID() (r int64, exists bool) {
+	v := m.account
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountID returns the old "account_id" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+	}
+	return oldValue.AccountID, nil
+}
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *AccountWindowUsageHistoryMutation) ResetAccountID() {
+	m.account = nil
+}
+
+// SetWindowType sets the "window_type" field.
+func (m *AccountWindowUsageHistoryMutation) SetWindowType(s string) {
+	m.window_type = &s
+}
+
+// WindowType returns the value of the "window_type" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) WindowType() (r string, exists bool) {
+	v := m.window_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWindowType returns the old "window_type" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldWindowType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWindowType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWindowType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWindowType: %w", err)
+	}
+	return oldValue.WindowType, nil
+}
+
+// ResetWindowType resets all changes to the "window_type" field.
+func (m *AccountWindowUsageHistoryMutation) ResetWindowType() {
+	m.window_type = nil
+}
+
+// SetWindowStart sets the "window_start" field.
+func (m *AccountWindowUsageHistoryMutation) SetWindowStart(t time.Time) {
+	m.window_start = &t
+}
+
+// WindowStart returns the value of the "window_start" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) WindowStart() (r time.Time, exists bool) {
+	v := m.window_start
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWindowStart returns the old "window_start" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldWindowStart(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWindowStart is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWindowStart requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWindowStart: %w", err)
+	}
+	return oldValue.WindowStart, nil
+}
+
+// ResetWindowStart resets all changes to the "window_start" field.
+func (m *AccountWindowUsageHistoryMutation) ResetWindowStart() {
+	m.window_start = nil
+}
+
+// SetWindowEnd sets the "window_end" field.
+func (m *AccountWindowUsageHistoryMutation) SetWindowEnd(t time.Time) {
+	m.window_end = &t
+}
+
+// WindowEnd returns the value of the "window_end" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) WindowEnd() (r time.Time, exists bool) {
+	v := m.window_end
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWindowEnd returns the old "window_end" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldWindowEnd(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWindowEnd is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWindowEnd requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWindowEnd: %w", err)
+	}
+	return oldValue.WindowEnd, nil
+}
+
+// ResetWindowEnd resets all changes to the "window_end" field.
+func (m *AccountWindowUsageHistoryMutation) ResetWindowEnd() {
+	m.window_end = nil
+}
+
+// SetPeakUsedPercent sets the "peak_used_percent" field.
+func (m *AccountWindowUsageHistoryMutation) SetPeakUsedPercent(f float64) {
+	m.peak_used_percent = &f
+	m.addpeak_used_percent = nil
+}
+
+// PeakUsedPercent returns the value of the "peak_used_percent" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) PeakUsedPercent() (r float64, exists bool) {
+	v := m.peak_used_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPeakUsedPercent returns the old "peak_used_percent" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldPeakUsedPercent(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPeakUsedPercent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPeakUsedPercent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPeakUsedPercent: %w", err)
+	}
+	return oldValue.PeakUsedPercent, nil
+}
+
+// AddPeakUsedPercent adds f to the "peak_used_percent" field.
+func (m *AccountWindowUsageHistoryMutation) AddPeakUsedPercent(f float64) {
+	if m.addpeak_used_percent != nil {
+		*m.addpeak_used_percent += f
+	} else {
+		m.addpeak_used_percent = &f
+	}
+}
+
+// AddedPeakUsedPercent returns the value that was added to the "peak_used_percent" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedPeakUsedPercent() (r float64, exists bool) {
+	v := m.addpeak_used_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPeakUsedPercent resets all changes to the "peak_used_percent" field.
+func (m *AccountWindowUsageHistoryMutation) ResetPeakUsedPercent() {
+	m.peak_used_percent = nil
+	m.addpeak_used_percent = nil
+}
+
+// SetLastUsedPercent sets the "last_used_percent" field.
+func (m *AccountWindowUsageHistoryMutation) SetLastUsedPercent(f float64) {
+	m.last_used_percent = &f
+	m.addlast_used_percent = nil
+}
+
+// LastUsedPercent returns the value of the "last_used_percent" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) LastUsedPercent() (r float64, exists bool) {
+	v := m.last_used_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastUsedPercent returns the old "last_used_percent" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldLastUsedPercent(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastUsedPercent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastUsedPercent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastUsedPercent: %w", err)
+	}
+	return oldValue.LastUsedPercent, nil
+}
+
+// AddLastUsedPercent adds f to the "last_used_percent" field.
+func (m *AccountWindowUsageHistoryMutation) AddLastUsedPercent(f float64) {
+	if m.addlast_used_percent != nil {
+		*m.addlast_used_percent += f
+	} else {
+		m.addlast_used_percent = &f
+	}
+}
+
+// AddedLastUsedPercent returns the value that was added to the "last_used_percent" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedLastUsedPercent() (r float64, exists bool) {
+	v := m.addlast_used_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLastUsedPercent resets all changes to the "last_used_percent" field.
+func (m *AccountWindowUsageHistoryMutation) ResetLastUsedPercent() {
+	m.last_used_percent = nil
+	m.addlast_used_percent = nil
+}
+
+// SetSampleCount sets the "sample_count" field.
+func (m *AccountWindowUsageHistoryMutation) SetSampleCount(i int) {
+	m.sample_count = &i
+	m.addsample_count = nil
+}
+
+// SampleCount returns the value of the "sample_count" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) SampleCount() (r int, exists bool) {
+	v := m.sample_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSampleCount returns the old "sample_count" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldSampleCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSampleCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSampleCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSampleCount: %w", err)
+	}
+	return oldValue.SampleCount, nil
+}
+
+// AddSampleCount adds i to the "sample_count" field.
+func (m *AccountWindowUsageHistoryMutation) AddSampleCount(i int) {
+	if m.addsample_count != nil {
+		*m.addsample_count += i
+	} else {
+		m.addsample_count = &i
+	}
+}
+
+// AddedSampleCount returns the value that was added to the "sample_count" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedSampleCount() (r int, exists bool) {
+	v := m.addsample_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSampleCount resets all changes to the "sample_count" field.
+func (m *AccountWindowUsageHistoryMutation) ResetSampleCount() {
+	m.sample_count = nil
+	m.addsample_count = nil
+}
+
+// SetLastSampleAt sets the "last_sample_at" field.
+func (m *AccountWindowUsageHistoryMutation) SetLastSampleAt(t time.Time) {
+	m.last_sample_at = &t
+}
+
+// LastSampleAt returns the value of the "last_sample_at" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) LastSampleAt() (r time.Time, exists bool) {
+	v := m.last_sample_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastSampleAt returns the old "last_sample_at" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldLastSampleAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastSampleAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastSampleAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastSampleAt: %w", err)
+	}
+	return oldValue.LastSampleAt, nil
+}
+
+// ClearLastSampleAt clears the value of the "last_sample_at" field.
+func (m *AccountWindowUsageHistoryMutation) ClearLastSampleAt() {
+	m.last_sample_at = nil
+	m.clearedFields[accountwindowusagehistory.FieldLastSampleAt] = struct{}{}
+}
+
+// LastSampleAtCleared returns if the "last_sample_at" field was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) LastSampleAtCleared() bool {
+	_, ok := m.clearedFields[accountwindowusagehistory.FieldLastSampleAt]
+	return ok
+}
+
+// ResetLastSampleAt resets all changes to the "last_sample_at" field.
+func (m *AccountWindowUsageHistoryMutation) ResetLastSampleAt() {
+	m.last_sample_at = nil
+	delete(m.clearedFields, accountwindowusagehistory.FieldLastSampleAt)
+}
+
+// SetRequests sets the "requests" field.
+func (m *AccountWindowUsageHistoryMutation) SetRequests(i int64) {
+	m.requests = &i
+	m.addrequests = nil
+}
+
+// Requests returns the value of the "requests" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) Requests() (r int64, exists bool) {
+	v := m.requests
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequests returns the old "requests" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldRequests(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequests is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequests requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequests: %w", err)
+	}
+	return oldValue.Requests, nil
+}
+
+// AddRequests adds i to the "requests" field.
+func (m *AccountWindowUsageHistoryMutation) AddRequests(i int64) {
+	if m.addrequests != nil {
+		*m.addrequests += i
+	} else {
+		m.addrequests = &i
+	}
+}
+
+// AddedRequests returns the value that was added to the "requests" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedRequests() (r int64, exists bool) {
+	v := m.addrequests
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearRequests clears the value of the "requests" field.
+func (m *AccountWindowUsageHistoryMutation) ClearRequests() {
+	m.requests = nil
+	m.addrequests = nil
+	m.clearedFields[accountwindowusagehistory.FieldRequests] = struct{}{}
+}
+
+// RequestsCleared returns if the "requests" field was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) RequestsCleared() bool {
+	_, ok := m.clearedFields[accountwindowusagehistory.FieldRequests]
+	return ok
+}
+
+// ResetRequests resets all changes to the "requests" field.
+func (m *AccountWindowUsageHistoryMutation) ResetRequests() {
+	m.requests = nil
+	m.addrequests = nil
+	delete(m.clearedFields, accountwindowusagehistory.FieldRequests)
+}
+
+// SetTokensTotal sets the "tokens_total" field.
+func (m *AccountWindowUsageHistoryMutation) SetTokensTotal(i int64) {
+	m.tokens_total = &i
+	m.addtokens_total = nil
+}
+
+// TokensTotal returns the value of the "tokens_total" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) TokensTotal() (r int64, exists bool) {
+	v := m.tokens_total
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTokensTotal returns the old "tokens_total" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldTokensTotal(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTokensTotal is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTokensTotal requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTokensTotal: %w", err)
+	}
+	return oldValue.TokensTotal, nil
+}
+
+// AddTokensTotal adds i to the "tokens_total" field.
+func (m *AccountWindowUsageHistoryMutation) AddTokensTotal(i int64) {
+	if m.addtokens_total != nil {
+		*m.addtokens_total += i
+	} else {
+		m.addtokens_total = &i
+	}
+}
+
+// AddedTokensTotal returns the value that was added to the "tokens_total" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedTokensTotal() (r int64, exists bool) {
+	v := m.addtokens_total
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearTokensTotal clears the value of the "tokens_total" field.
+func (m *AccountWindowUsageHistoryMutation) ClearTokensTotal() {
+	m.tokens_total = nil
+	m.addtokens_total = nil
+	m.clearedFields[accountwindowusagehistory.FieldTokensTotal] = struct{}{}
+}
+
+// TokensTotalCleared returns if the "tokens_total" field was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) TokensTotalCleared() bool {
+	_, ok := m.clearedFields[accountwindowusagehistory.FieldTokensTotal]
+	return ok
+}
+
+// ResetTokensTotal resets all changes to the "tokens_total" field.
+func (m *AccountWindowUsageHistoryMutation) ResetTokensTotal() {
+	m.tokens_total = nil
+	m.addtokens_total = nil
+	delete(m.clearedFields, accountwindowusagehistory.FieldTokensTotal)
+}
+
+// SetTokensInput sets the "tokens_input" field.
+func (m *AccountWindowUsageHistoryMutation) SetTokensInput(i int64) {
+	m.tokens_input = &i
+	m.addtokens_input = nil
+}
+
+// TokensInput returns the value of the "tokens_input" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) TokensInput() (r int64, exists bool) {
+	v := m.tokens_input
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTokensInput returns the old "tokens_input" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldTokensInput(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTokensInput is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTokensInput requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTokensInput: %w", err)
+	}
+	return oldValue.TokensInput, nil
+}
+
+// AddTokensInput adds i to the "tokens_input" field.
+func (m *AccountWindowUsageHistoryMutation) AddTokensInput(i int64) {
+	if m.addtokens_input != nil {
+		*m.addtokens_input += i
+	} else {
+		m.addtokens_input = &i
+	}
+}
+
+// AddedTokensInput returns the value that was added to the "tokens_input" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedTokensInput() (r int64, exists bool) {
+	v := m.addtokens_input
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearTokensInput clears the value of the "tokens_input" field.
+func (m *AccountWindowUsageHistoryMutation) ClearTokensInput() {
+	m.tokens_input = nil
+	m.addtokens_input = nil
+	m.clearedFields[accountwindowusagehistory.FieldTokensInput] = struct{}{}
+}
+
+// TokensInputCleared returns if the "tokens_input" field was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) TokensInputCleared() bool {
+	_, ok := m.clearedFields[accountwindowusagehistory.FieldTokensInput]
+	return ok
+}
+
+// ResetTokensInput resets all changes to the "tokens_input" field.
+func (m *AccountWindowUsageHistoryMutation) ResetTokensInput() {
+	m.tokens_input = nil
+	m.addtokens_input = nil
+	delete(m.clearedFields, accountwindowusagehistory.FieldTokensInput)
+}
+
+// SetTokensOutput sets the "tokens_output" field.
+func (m *AccountWindowUsageHistoryMutation) SetTokensOutput(i int64) {
+	m.tokens_output = &i
+	m.addtokens_output = nil
+}
+
+// TokensOutput returns the value of the "tokens_output" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) TokensOutput() (r int64, exists bool) {
+	v := m.tokens_output
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTokensOutput returns the old "tokens_output" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldTokensOutput(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTokensOutput is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTokensOutput requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTokensOutput: %w", err)
+	}
+	return oldValue.TokensOutput, nil
+}
+
+// AddTokensOutput adds i to the "tokens_output" field.
+func (m *AccountWindowUsageHistoryMutation) AddTokensOutput(i int64) {
+	if m.addtokens_output != nil {
+		*m.addtokens_output += i
+	} else {
+		m.addtokens_output = &i
+	}
+}
+
+// AddedTokensOutput returns the value that was added to the "tokens_output" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedTokensOutput() (r int64, exists bool) {
+	v := m.addtokens_output
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearTokensOutput clears the value of the "tokens_output" field.
+func (m *AccountWindowUsageHistoryMutation) ClearTokensOutput() {
+	m.tokens_output = nil
+	m.addtokens_output = nil
+	m.clearedFields[accountwindowusagehistory.FieldTokensOutput] = struct{}{}
+}
+
+// TokensOutputCleared returns if the "tokens_output" field was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) TokensOutputCleared() bool {
+	_, ok := m.clearedFields[accountwindowusagehistory.FieldTokensOutput]
+	return ok
+}
+
+// ResetTokensOutput resets all changes to the "tokens_output" field.
+func (m *AccountWindowUsageHistoryMutation) ResetTokensOutput() {
+	m.tokens_output = nil
+	m.addtokens_output = nil
+	delete(m.clearedFields, accountwindowusagehistory.FieldTokensOutput)
+}
+
+// SetTokensCacheCreation sets the "tokens_cache_creation" field.
+func (m *AccountWindowUsageHistoryMutation) SetTokensCacheCreation(i int64) {
+	m.tokens_cache_creation = &i
+	m.addtokens_cache_creation = nil
+}
+
+// TokensCacheCreation returns the value of the "tokens_cache_creation" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) TokensCacheCreation() (r int64, exists bool) {
+	v := m.tokens_cache_creation
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTokensCacheCreation returns the old "tokens_cache_creation" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldTokensCacheCreation(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTokensCacheCreation is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTokensCacheCreation requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTokensCacheCreation: %w", err)
+	}
+	return oldValue.TokensCacheCreation, nil
+}
+
+// AddTokensCacheCreation adds i to the "tokens_cache_creation" field.
+func (m *AccountWindowUsageHistoryMutation) AddTokensCacheCreation(i int64) {
+	if m.addtokens_cache_creation != nil {
+		*m.addtokens_cache_creation += i
+	} else {
+		m.addtokens_cache_creation = &i
+	}
+}
+
+// AddedTokensCacheCreation returns the value that was added to the "tokens_cache_creation" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedTokensCacheCreation() (r int64, exists bool) {
+	v := m.addtokens_cache_creation
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearTokensCacheCreation clears the value of the "tokens_cache_creation" field.
+func (m *AccountWindowUsageHistoryMutation) ClearTokensCacheCreation() {
+	m.tokens_cache_creation = nil
+	m.addtokens_cache_creation = nil
+	m.clearedFields[accountwindowusagehistory.FieldTokensCacheCreation] = struct{}{}
+}
+
+// TokensCacheCreationCleared returns if the "tokens_cache_creation" field was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) TokensCacheCreationCleared() bool {
+	_, ok := m.clearedFields[accountwindowusagehistory.FieldTokensCacheCreation]
+	return ok
+}
+
+// ResetTokensCacheCreation resets all changes to the "tokens_cache_creation" field.
+func (m *AccountWindowUsageHistoryMutation) ResetTokensCacheCreation() {
+	m.tokens_cache_creation = nil
+	m.addtokens_cache_creation = nil
+	delete(m.clearedFields, accountwindowusagehistory.FieldTokensCacheCreation)
+}
+
+// SetTokensCacheRead sets the "tokens_cache_read" field.
+func (m *AccountWindowUsageHistoryMutation) SetTokensCacheRead(i int64) {
+	m.tokens_cache_read = &i
+	m.addtokens_cache_read = nil
+}
+
+// TokensCacheRead returns the value of the "tokens_cache_read" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) TokensCacheRead() (r int64, exists bool) {
+	v := m.tokens_cache_read
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTokensCacheRead returns the old "tokens_cache_read" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldTokensCacheRead(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTokensCacheRead is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTokensCacheRead requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTokensCacheRead: %w", err)
+	}
+	return oldValue.TokensCacheRead, nil
+}
+
+// AddTokensCacheRead adds i to the "tokens_cache_read" field.
+func (m *AccountWindowUsageHistoryMutation) AddTokensCacheRead(i int64) {
+	if m.addtokens_cache_read != nil {
+		*m.addtokens_cache_read += i
+	} else {
+		m.addtokens_cache_read = &i
+	}
+}
+
+// AddedTokensCacheRead returns the value that was added to the "tokens_cache_read" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedTokensCacheRead() (r int64, exists bool) {
+	v := m.addtokens_cache_read
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearTokensCacheRead clears the value of the "tokens_cache_read" field.
+func (m *AccountWindowUsageHistoryMutation) ClearTokensCacheRead() {
+	m.tokens_cache_read = nil
+	m.addtokens_cache_read = nil
+	m.clearedFields[accountwindowusagehistory.FieldTokensCacheRead] = struct{}{}
+}
+
+// TokensCacheReadCleared returns if the "tokens_cache_read" field was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) TokensCacheReadCleared() bool {
+	_, ok := m.clearedFields[accountwindowusagehistory.FieldTokensCacheRead]
+	return ok
+}
+
+// ResetTokensCacheRead resets all changes to the "tokens_cache_read" field.
+func (m *AccountWindowUsageHistoryMutation) ResetTokensCacheRead() {
+	m.tokens_cache_read = nil
+	m.addtokens_cache_read = nil
+	delete(m.clearedFields, accountwindowusagehistory.FieldTokensCacheRead)
+}
+
+// SetFinalizedAt sets the "finalized_at" field.
+func (m *AccountWindowUsageHistoryMutation) SetFinalizedAt(t time.Time) {
+	m.finalized_at = &t
+}
+
+// FinalizedAt returns the value of the "finalized_at" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) FinalizedAt() (r time.Time, exists bool) {
+	v := m.finalized_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFinalizedAt returns the old "finalized_at" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldFinalizedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFinalizedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFinalizedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFinalizedAt: %w", err)
+	}
+	return oldValue.FinalizedAt, nil
+}
+
+// ClearFinalizedAt clears the value of the "finalized_at" field.
+func (m *AccountWindowUsageHistoryMutation) ClearFinalizedAt() {
+	m.finalized_at = nil
+	m.clearedFields[accountwindowusagehistory.FieldFinalizedAt] = struct{}{}
+}
+
+// FinalizedAtCleared returns if the "finalized_at" field was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) FinalizedAtCleared() bool {
+	_, ok := m.clearedFields[accountwindowusagehistory.FieldFinalizedAt]
+	return ok
+}
+
+// ResetFinalizedAt resets all changes to the "finalized_at" field.
+func (m *AccountWindowUsageHistoryMutation) ResetFinalizedAt() {
+	m.finalized_at = nil
+	delete(m.clearedFields, accountwindowusagehistory.FieldFinalizedAt)
+}
+
+// ClearAccount clears the "account" edge to the Account entity.
+func (m *AccountWindowUsageHistoryMutation) ClearAccount() {
+	m.clearedaccount = true
+	m.clearedFields[accountwindowusagehistory.FieldAccountID] = struct{}{}
+}
+
+// AccountCleared reports if the "account" edge to the Account entity was cleared.
+func (m *AccountWindowUsageHistoryMutation) AccountCleared() bool {
+	return m.clearedaccount
+}
+
+// AccountIDs returns the "account" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// AccountID instead. It exists only for internal usage by the builders.
+func (m *AccountWindowUsageHistoryMutation) AccountIDs() (ids []int64) {
+	if id := m.account; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetAccount resets all changes to the "account" edge.
+func (m *AccountWindowUsageHistoryMutation) ResetAccount() {
+	m.account = nil
+	m.clearedaccount = false
+}
+
+// Where appends a list predicates to the AccountWindowUsageHistoryMutation builder.
+func (m *AccountWindowUsageHistoryMutation) Where(ps ...predicate.AccountWindowUsageHistory) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AccountWindowUsageHistoryMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AccountWindowUsageHistoryMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.AccountWindowUsageHistory, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AccountWindowUsageHistoryMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AccountWindowUsageHistoryMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (AccountWindowUsageHistory).
+func (m *AccountWindowUsageHistoryMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AccountWindowUsageHistoryMutation) Fields() []string {
+	fields := make([]string, 0, 17)
+	if m.created_at != nil {
+		fields = append(fields, accountwindowusagehistory.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, accountwindowusagehistory.FieldUpdatedAt)
+	}
+	if m.account != nil {
+		fields = append(fields, accountwindowusagehistory.FieldAccountID)
+	}
+	if m.window_type != nil {
+		fields = append(fields, accountwindowusagehistory.FieldWindowType)
+	}
+	if m.window_start != nil {
+		fields = append(fields, accountwindowusagehistory.FieldWindowStart)
+	}
+	if m.window_end != nil {
+		fields = append(fields, accountwindowusagehistory.FieldWindowEnd)
+	}
+	if m.peak_used_percent != nil {
+		fields = append(fields, accountwindowusagehistory.FieldPeakUsedPercent)
+	}
+	if m.last_used_percent != nil {
+		fields = append(fields, accountwindowusagehistory.FieldLastUsedPercent)
+	}
+	if m.sample_count != nil {
+		fields = append(fields, accountwindowusagehistory.FieldSampleCount)
+	}
+	if m.last_sample_at != nil {
+		fields = append(fields, accountwindowusagehistory.FieldLastSampleAt)
+	}
+	if m.requests != nil {
+		fields = append(fields, accountwindowusagehistory.FieldRequests)
+	}
+	if m.tokens_total != nil {
+		fields = append(fields, accountwindowusagehistory.FieldTokensTotal)
+	}
+	if m.tokens_input != nil {
+		fields = append(fields, accountwindowusagehistory.FieldTokensInput)
+	}
+	if m.tokens_output != nil {
+		fields = append(fields, accountwindowusagehistory.FieldTokensOutput)
+	}
+	if m.tokens_cache_creation != nil {
+		fields = append(fields, accountwindowusagehistory.FieldTokensCacheCreation)
+	}
+	if m.tokens_cache_read != nil {
+		fields = append(fields, accountwindowusagehistory.FieldTokensCacheRead)
+	}
+	if m.finalized_at != nil {
+		fields = append(fields, accountwindowusagehistory.FieldFinalizedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AccountWindowUsageHistoryMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case accountwindowusagehistory.FieldCreatedAt:
+		return m.CreatedAt()
+	case accountwindowusagehistory.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case accountwindowusagehistory.FieldAccountID:
+		return m.AccountID()
+	case accountwindowusagehistory.FieldWindowType:
+		return m.WindowType()
+	case accountwindowusagehistory.FieldWindowStart:
+		return m.WindowStart()
+	case accountwindowusagehistory.FieldWindowEnd:
+		return m.WindowEnd()
+	case accountwindowusagehistory.FieldPeakUsedPercent:
+		return m.PeakUsedPercent()
+	case accountwindowusagehistory.FieldLastUsedPercent:
+		return m.LastUsedPercent()
+	case accountwindowusagehistory.FieldSampleCount:
+		return m.SampleCount()
+	case accountwindowusagehistory.FieldLastSampleAt:
+		return m.LastSampleAt()
+	case accountwindowusagehistory.FieldRequests:
+		return m.Requests()
+	case accountwindowusagehistory.FieldTokensTotal:
+		return m.TokensTotal()
+	case accountwindowusagehistory.FieldTokensInput:
+		return m.TokensInput()
+	case accountwindowusagehistory.FieldTokensOutput:
+		return m.TokensOutput()
+	case accountwindowusagehistory.FieldTokensCacheCreation:
+		return m.TokensCacheCreation()
+	case accountwindowusagehistory.FieldTokensCacheRead:
+		return m.TokensCacheRead()
+	case accountwindowusagehistory.FieldFinalizedAt:
+		return m.FinalizedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AccountWindowUsageHistoryMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case accountwindowusagehistory.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case accountwindowusagehistory.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case accountwindowusagehistory.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case accountwindowusagehistory.FieldWindowType:
+		return m.OldWindowType(ctx)
+	case accountwindowusagehistory.FieldWindowStart:
+		return m.OldWindowStart(ctx)
+	case accountwindowusagehistory.FieldWindowEnd:
+		return m.OldWindowEnd(ctx)
+	case accountwindowusagehistory.FieldPeakUsedPercent:
+		return m.OldPeakUsedPercent(ctx)
+	case accountwindowusagehistory.FieldLastUsedPercent:
+		return m.OldLastUsedPercent(ctx)
+	case accountwindowusagehistory.FieldSampleCount:
+		return m.OldSampleCount(ctx)
+	case accountwindowusagehistory.FieldLastSampleAt:
+		return m.OldLastSampleAt(ctx)
+	case accountwindowusagehistory.FieldRequests:
+		return m.OldRequests(ctx)
+	case accountwindowusagehistory.FieldTokensTotal:
+		return m.OldTokensTotal(ctx)
+	case accountwindowusagehistory.FieldTokensInput:
+		return m.OldTokensInput(ctx)
+	case accountwindowusagehistory.FieldTokensOutput:
+		return m.OldTokensOutput(ctx)
+	case accountwindowusagehistory.FieldTokensCacheCreation:
+		return m.OldTokensCacheCreation(ctx)
+	case accountwindowusagehistory.FieldTokensCacheRead:
+		return m.OldTokensCacheRead(ctx)
+	case accountwindowusagehistory.FieldFinalizedAt:
+		return m.OldFinalizedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown AccountWindowUsageHistory field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountWindowUsageHistoryMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case accountwindowusagehistory.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case accountwindowusagehistory.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case accountwindowusagehistory.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountID(v)
+		return nil
+	case accountwindowusagehistory.FieldWindowType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWindowType(v)
+		return nil
+	case accountwindowusagehistory.FieldWindowStart:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWindowStart(v)
+		return nil
+	case accountwindowusagehistory.FieldWindowEnd:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWindowEnd(v)
+		return nil
+	case accountwindowusagehistory.FieldPeakUsedPercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPeakUsedPercent(v)
+		return nil
+	case accountwindowusagehistory.FieldLastUsedPercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastUsedPercent(v)
+		return nil
+	case accountwindowusagehistory.FieldSampleCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSampleCount(v)
+		return nil
+	case accountwindowusagehistory.FieldLastSampleAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastSampleAt(v)
+		return nil
+	case accountwindowusagehistory.FieldRequests:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequests(v)
+		return nil
+	case accountwindowusagehistory.FieldTokensTotal:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTokensTotal(v)
+		return nil
+	case accountwindowusagehistory.FieldTokensInput:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTokensInput(v)
+		return nil
+	case accountwindowusagehistory.FieldTokensOutput:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTokensOutput(v)
+		return nil
+	case accountwindowusagehistory.FieldTokensCacheCreation:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTokensCacheCreation(v)
+		return nil
+	case accountwindowusagehistory.FieldTokensCacheRead:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTokensCacheRead(v)
+		return nil
+	case accountwindowusagehistory.FieldFinalizedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFinalizedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountWindowUsageHistory field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedFields() []string {
+	var fields []string
+	if m.addpeak_used_percent != nil {
+		fields = append(fields, accountwindowusagehistory.FieldPeakUsedPercent)
+	}
+	if m.addlast_used_percent != nil {
+		fields = append(fields, accountwindowusagehistory.FieldLastUsedPercent)
+	}
+	if m.addsample_count != nil {
+		fields = append(fields, accountwindowusagehistory.FieldSampleCount)
+	}
+	if m.addrequests != nil {
+		fields = append(fields, accountwindowusagehistory.FieldRequests)
+	}
+	if m.addtokens_total != nil {
+		fields = append(fields, accountwindowusagehistory.FieldTokensTotal)
+	}
+	if m.addtokens_input != nil {
+		fields = append(fields, accountwindowusagehistory.FieldTokensInput)
+	}
+	if m.addtokens_output != nil {
+		fields = append(fields, accountwindowusagehistory.FieldTokensOutput)
+	}
+	if m.addtokens_cache_creation != nil {
+		fields = append(fields, accountwindowusagehistory.FieldTokensCacheCreation)
+	}
+	if m.addtokens_cache_read != nil {
+		fields = append(fields, accountwindowusagehistory.FieldTokensCacheRead)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AccountWindowUsageHistoryMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case accountwindowusagehistory.FieldPeakUsedPercent:
+		return m.AddedPeakUsedPercent()
+	case accountwindowusagehistory.FieldLastUsedPercent:
+		return m.AddedLastUsedPercent()
+	case accountwindowusagehistory.FieldSampleCount:
+		return m.AddedSampleCount()
+	case accountwindowusagehistory.FieldRequests:
+		return m.AddedRequests()
+	case accountwindowusagehistory.FieldTokensTotal:
+		return m.AddedTokensTotal()
+	case accountwindowusagehistory.FieldTokensInput:
+		return m.AddedTokensInput()
+	case accountwindowusagehistory.FieldTokensOutput:
+		return m.AddedTokensOutput()
+	case accountwindowusagehistory.FieldTokensCacheCreation:
+		return m.AddedTokensCacheCreation()
+	case accountwindowusagehistory.FieldTokensCacheRead:
+		return m.AddedTokensCacheRead()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountWindowUsageHistoryMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case accountwindowusagehistory.FieldPeakUsedPercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPeakUsedPercent(v)
+		return nil
+	case accountwindowusagehistory.FieldLastUsedPercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLastUsedPercent(v)
+		return nil
+	case accountwindowusagehistory.FieldSampleCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSampleCount(v)
+		return nil
+	case accountwindowusagehistory.FieldRequests:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRequests(v)
+		return nil
+	case accountwindowusagehistory.FieldTokensTotal:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTokensTotal(v)
+		return nil
+	case accountwindowusagehistory.FieldTokensInput:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTokensInput(v)
+		return nil
+	case accountwindowusagehistory.FieldTokensOutput:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTokensOutput(v)
+		return nil
+	case accountwindowusagehistory.FieldTokensCacheCreation:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTokensCacheCreation(v)
+		return nil
+	case accountwindowusagehistory.FieldTokensCacheRead:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTokensCacheRead(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountWindowUsageHistory numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AccountWindowUsageHistoryMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(accountwindowusagehistory.FieldLastSampleAt) {
+		fields = append(fields, accountwindowusagehistory.FieldLastSampleAt)
+	}
+	if m.FieldCleared(accountwindowusagehistory.FieldRequests) {
+		fields = append(fields, accountwindowusagehistory.FieldRequests)
+	}
+	if m.FieldCleared(accountwindowusagehistory.FieldTokensTotal) {
+		fields = append(fields, accountwindowusagehistory.FieldTokensTotal)
+	}
+	if m.FieldCleared(accountwindowusagehistory.FieldTokensInput) {
+		fields = append(fields, accountwindowusagehistory.FieldTokensInput)
+	}
+	if m.FieldCleared(accountwindowusagehistory.FieldTokensOutput) {
+		fields = append(fields, accountwindowusagehistory.FieldTokensOutput)
+	}
+	if m.FieldCleared(accountwindowusagehistory.FieldTokensCacheCreation) {
+		fields = append(fields, accountwindowusagehistory.FieldTokensCacheCreation)
+	}
+	if m.FieldCleared(accountwindowusagehistory.FieldTokensCacheRead) {
+		fields = append(fields, accountwindowusagehistory.FieldTokensCacheRead)
+	}
+	if m.FieldCleared(accountwindowusagehistory.FieldFinalizedAt) {
+		fields = append(fields, accountwindowusagehistory.FieldFinalizedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AccountWindowUsageHistoryMutation) ClearField(name string) error {
+	switch name {
+	case accountwindowusagehistory.FieldLastSampleAt:
+		m.ClearLastSampleAt()
+		return nil
+	case accountwindowusagehistory.FieldRequests:
+		m.ClearRequests()
+		return nil
+	case accountwindowusagehistory.FieldTokensTotal:
+		m.ClearTokensTotal()
+		return nil
+	case accountwindowusagehistory.FieldTokensInput:
+		m.ClearTokensInput()
+		return nil
+	case accountwindowusagehistory.FieldTokensOutput:
+		m.ClearTokensOutput()
+		return nil
+	case accountwindowusagehistory.FieldTokensCacheCreation:
+		m.ClearTokensCacheCreation()
+		return nil
+	case accountwindowusagehistory.FieldTokensCacheRead:
+		m.ClearTokensCacheRead()
+		return nil
+	case accountwindowusagehistory.FieldFinalizedAt:
+		m.ClearFinalizedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountWindowUsageHistory nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AccountWindowUsageHistoryMutation) ResetField(name string) error {
+	switch name {
+	case accountwindowusagehistory.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case accountwindowusagehistory.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case accountwindowusagehistory.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case accountwindowusagehistory.FieldWindowType:
+		m.ResetWindowType()
+		return nil
+	case accountwindowusagehistory.FieldWindowStart:
+		m.ResetWindowStart()
+		return nil
+	case accountwindowusagehistory.FieldWindowEnd:
+		m.ResetWindowEnd()
+		return nil
+	case accountwindowusagehistory.FieldPeakUsedPercent:
+		m.ResetPeakUsedPercent()
+		return nil
+	case accountwindowusagehistory.FieldLastUsedPercent:
+		m.ResetLastUsedPercent()
+		return nil
+	case accountwindowusagehistory.FieldSampleCount:
+		m.ResetSampleCount()
+		return nil
+	case accountwindowusagehistory.FieldLastSampleAt:
+		m.ResetLastSampleAt()
+		return nil
+	case accountwindowusagehistory.FieldRequests:
+		m.ResetRequests()
+		return nil
+	case accountwindowusagehistory.FieldTokensTotal:
+		m.ResetTokensTotal()
+		return nil
+	case accountwindowusagehistory.FieldTokensInput:
+		m.ResetTokensInput()
+		return nil
+	case accountwindowusagehistory.FieldTokensOutput:
+		m.ResetTokensOutput()
+		return nil
+	case accountwindowusagehistory.FieldTokensCacheCreation:
+		m.ResetTokensCacheCreation()
+		return nil
+	case accountwindowusagehistory.FieldTokensCacheRead:
+		m.ResetTokensCacheRead()
+		return nil
+	case accountwindowusagehistory.FieldFinalizedAt:
+		m.ResetFinalizedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountWindowUsageHistory field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.account != nil {
+		edges = append(edges, accountwindowusagehistory.EdgeAccount)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case accountwindowusagehistory.EdgeAccount:
+		if id := m.account; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AccountWindowUsageHistoryMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AccountWindowUsageHistoryMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedaccount {
+		edges = append(edges, accountwindowusagehistory.EdgeAccount)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) EdgeCleared(name string) bool {
+	switch name {
+	case accountwindowusagehistory.EdgeAccount:
+		return m.clearedaccount
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AccountWindowUsageHistoryMutation) ClearEdge(name string) error {
+	switch name {
+	case accountwindowusagehistory.EdgeAccount:
+		m.ClearAccount()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountWindowUsageHistory unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AccountWindowUsageHistoryMutation) ResetEdge(name string) error {
+	switch name {
+	case accountwindowusagehistory.EdgeAccount:
+		m.ResetAccount()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountWindowUsageHistory edge %s", name)
 }
 
 // AnnouncementMutation represents an operation that mutates the Announcement nodes in the graph.

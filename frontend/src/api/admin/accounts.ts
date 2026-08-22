@@ -13,6 +13,7 @@ import type {
   WindowStats,
   ClaudeModel,
   AccountUsageStatsResponse,
+  AccountWindowHistoryResponse,
   TempUnschedulableStatus,
   AdminDataPayload,
   AdminDataImportResult,
@@ -289,6 +290,23 @@ export async function getStats(id: number, days: number = 30): Promise<AccountUs
   const { data } = await apiClient.get<AccountUsageStatsResponse>(`/admin/accounts/${id}/stats`, {
     params: { days }
   })
+  return data
+}
+
+/**
+ * Get account rolling-window usage history (opt-in tracking)
+ * @param id - Account ID
+ * @param days - Number of days to look back (default: 30, max: 90)
+ * @returns Window usage entries grouped by window type ("5h" | "7d" | ...), oldest first
+ */
+export async function getWindowHistory(
+  id: number,
+  days: number = 30
+): Promise<AccountWindowHistoryResponse> {
+  const { data } = await apiClient.get<AccountWindowHistoryResponse>(
+    `/admin/accounts/${id}/window-history`,
+    { params: { days } }
+  )
   return data
 }
 
@@ -999,6 +1017,7 @@ export const accountsAPI = {
   refreshCredentials,
   applyOAuthCredentials,
   getStats,
+  getWindowHistory,
   clearError,
   getUsage,
   getBatchUsage,

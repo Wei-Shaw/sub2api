@@ -517,6 +517,7 @@ func ProvideOpsAlertEvaluatorService(
 // ProvideOpsCleanupService creates and starts OpsCleanupService (cron scheduled).
 // channelMonitorSvc 让维护任务（聚合 + 历史/聚合软删）跟随 ops 清理 cron 一起跑，
 // 共享 leader lock + heartbeat。
+// windowUsageIngester 让账号滚动窗口历史的保留期清理同样跟随 ops 清理 cron。
 // settingRepo 让 cleanup service 自己读 ops_advanced_settings.data_retention 覆盖 cfg；
 // opsService 用来反向注入 cleanup hook，以便 UI 改清理设置时能 Reload cron。
 func ProvideOpsCleanupService(
@@ -527,8 +528,9 @@ func ProvideOpsCleanupService(
 	channelMonitorSvc *ChannelMonitorService,
 	settingRepo SettingRepository,
 	opsService *OpsService,
+	windowUsageIngester *AccountWindowUsageIngester,
 ) *OpsCleanupService {
-	svc := NewOpsCleanupService(opsRepo, db, redisClient, cfg, channelMonitorSvc, settingRepo)
+	svc := NewOpsCleanupService(opsRepo, db, redisClient, cfg, channelMonitorSvc, settingRepo, windowUsageIngester)
 	svc.Start()
 	if opsService != nil {
 		opsService.SetCleanupReloader(svc)
@@ -914,6 +916,8 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorService,
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorQuotaFetcher,
+	ProvideAccountWindowUsageIngester,
+	NewAccountWindowUsageHistoryService,
 	ProvideChannelMonitorV2Service,
 	ProvideChannelMonitorV2Aggregator,
 	NewChannelMonitorRequestTemplateService,
@@ -989,6 +993,17 @@ func ProvideChannelMonitorRunner(
 	}
 	r.Start()
 	return r
+}
+
+// ProvideAccountWindowUsageIngester 创建并启动账号滚动窗口用量采集器（纯被动）。
+// Stop 由 cmd/server 的 cleanup function 调用。
+func ProvideAccountWindowUsageIngester(
+	windowRepo AccountWindowUsageRepository,
+	usageLogRepo UsageLogRepository,
+) *AccountWindowUsageIngester {
+	g := NewAccountWindowUsageIngester(windowRepo, usageLogRepo)
+	g.Start()
+	return g
 }
 
 // ProvideChannelMonitorV2Service wires settings for user-facing privacy flags

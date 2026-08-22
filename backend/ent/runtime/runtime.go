@@ -7,6 +7,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/ent/accountwindowusagehistory"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -266,6 +267,51 @@ func init() {
 	accountgroupDescCreatedAt := accountgroupFields[3].Descriptor()
 	// accountgroup.DefaultCreatedAt holds the default value on creation for the created_at field.
 	accountgroup.DefaultCreatedAt = accountgroupDescCreatedAt.Default.(func() time.Time)
+	accountwindowusagehistoryMixin := schema.AccountWindowUsageHistory{}.Mixin()
+	accountwindowusagehistoryMixinFields0 := accountwindowusagehistoryMixin[0].Fields()
+	_ = accountwindowusagehistoryMixinFields0
+	accountwindowusagehistoryFields := schema.AccountWindowUsageHistory{}.Fields()
+	_ = accountwindowusagehistoryFields
+	// accountwindowusagehistoryDescCreatedAt is the schema descriptor for created_at field.
+	accountwindowusagehistoryDescCreatedAt := accountwindowusagehistoryMixinFields0[0].Descriptor()
+	// accountwindowusagehistory.DefaultCreatedAt holds the default value on creation for the created_at field.
+	accountwindowusagehistory.DefaultCreatedAt = accountwindowusagehistoryDescCreatedAt.Default.(func() time.Time)
+	// accountwindowusagehistoryDescUpdatedAt is the schema descriptor for updated_at field.
+	accountwindowusagehistoryDescUpdatedAt := accountwindowusagehistoryMixinFields0[1].Descriptor()
+	// accountwindowusagehistory.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	accountwindowusagehistory.DefaultUpdatedAt = accountwindowusagehistoryDescUpdatedAt.Default.(func() time.Time)
+	// accountwindowusagehistory.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	accountwindowusagehistory.UpdateDefaultUpdatedAt = accountwindowusagehistoryDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// accountwindowusagehistoryDescWindowType is the schema descriptor for window_type field.
+	accountwindowusagehistoryDescWindowType := accountwindowusagehistoryFields[1].Descriptor()
+	// accountwindowusagehistory.WindowTypeValidator is a validator for the "window_type" field. It is called by the builders before save.
+	accountwindowusagehistory.WindowTypeValidator = func() func(string) error {
+		validators := accountwindowusagehistoryDescWindowType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(window_type string) error {
+			for _, fn := range fns {
+				if err := fn(window_type); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// accountwindowusagehistoryDescPeakUsedPercent is the schema descriptor for peak_used_percent field.
+	accountwindowusagehistoryDescPeakUsedPercent := accountwindowusagehistoryFields[4].Descriptor()
+	// accountwindowusagehistory.DefaultPeakUsedPercent holds the default value on creation for the peak_used_percent field.
+	accountwindowusagehistory.DefaultPeakUsedPercent = accountwindowusagehistoryDescPeakUsedPercent.Default.(float64)
+	// accountwindowusagehistoryDescLastUsedPercent is the schema descriptor for last_used_percent field.
+	accountwindowusagehistoryDescLastUsedPercent := accountwindowusagehistoryFields[5].Descriptor()
+	// accountwindowusagehistory.DefaultLastUsedPercent holds the default value on creation for the last_used_percent field.
+	accountwindowusagehistory.DefaultLastUsedPercent = accountwindowusagehistoryDescLastUsedPercent.Default.(float64)
+	// accountwindowusagehistoryDescSampleCount is the schema descriptor for sample_count field.
+	accountwindowusagehistoryDescSampleCount := accountwindowusagehistoryFields[6].Descriptor()
+	// accountwindowusagehistory.DefaultSampleCount holds the default value on creation for the sample_count field.
+	accountwindowusagehistory.DefaultSampleCount = accountwindowusagehistoryDescSampleCount.Default.(int)
 	announcementFields := schema.Announcement{}.Fields()
 	_ = announcementFields
 	// announcementDescTitle is the schema descriptor for title field.

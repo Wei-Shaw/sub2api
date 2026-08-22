@@ -2596,6 +2596,10 @@ func (r *stubUsageLogRepo) GetAccountWindowStats(ctx context.Context, accountID 
 	return nil, errors.New("not implemented")
 }
 
+func (r *stubUsageLogRepo) GetAccountWindowStatsRange(ctx context.Context, accountID int64, startTime, endTime time.Time) (*usagestats.WindowTokenStats, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (r *stubUsageLogRepo) GetAccountTodayStats(ctx context.Context, accountID int64) (*usagestats.AccountStats, error) {
 	return nil, errors.New("not implemented")
 }

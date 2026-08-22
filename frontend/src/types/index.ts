@@ -1154,6 +1154,8 @@ export interface Account {
   last_used_at: string | null
   expires_at: number | null
   auto_pause_on_expired: boolean
+  /** opt-in rolling-window usage history tracking (adds upstream usage API calls) */
+  window_tracking_enabled: boolean
   created_at: string
   updated_at: string
   proxy?: Proxy
@@ -1426,6 +1428,7 @@ export interface CreateAccountRequest {
   auto_pause_on_expired?: boolean
   upstream_billing_probe_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
+  window_tracking_enabled?: boolean
 }
 
 export interface UpdateAccountRequest {
@@ -1447,6 +1450,7 @@ export interface UpdateAccountRequest {
   upstream_billing_probe_enabled?: boolean
   upstream_billing_rate_sync_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
+  window_tracking_enabled?: boolean
 }
 
 export interface CheckMixedChannelRequest {
@@ -2146,6 +2150,31 @@ export interface AccountUsageStatsResponse {
   models: ModelStat[]
   endpoints: EndpointStat[]
   upstream_endpoints: EndpointStat[]
+}
+
+// ==================== Account Rolling-Window Usage History ====================
+
+/** Single rolling-window usage record (one window period, one window type). */
+export interface AccountWindowUsageEntry {
+  window_start: string
+  window_end: string
+  /** null until the window is finalized (tokens rebuilt from usage_logs) */
+  requests: number | null
+  tokens_total: number | null
+  tokens_input: number | null
+  tokens_output: number | null
+  tokens_cache_creation: number | null
+  tokens_cache_read: number | null
+  peak_used_percent: number
+  /** final utilization observed before the window closed; null while open */
+  final_used_percent: number | null
+  sample_count: number
+  finalized: boolean
+}
+
+/** Response of GET /admin/accounts/:id/window-history — grouped by window type ("5h" | "7d" | ...), oldest first. */
+export interface AccountWindowHistoryResponse {
+  windows: Record<string, AccountWindowUsageEntry[]>
 }
 
 // ==================== User Attribute Types ====================

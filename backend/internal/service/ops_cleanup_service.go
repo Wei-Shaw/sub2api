@@ -40,8 +40,9 @@ return 0
 // - Multi-instance: best-effort Redis leader lock so only one node runs cleanup.
 // - Safety: deletes in batches to avoid long transactions.
 //
-// 附带：在 runCleanupOnce 末尾调用 ChannelMonitorService.RunDailyMaintenance，
-// 统一共享 cron schedule + leader lock + heartbeat，避免再引一套调度。
+// 附带：在 runCleanupOnce 末尾调用 ChannelMonitorService.RunDailyMaintenance
+// 与 AccountWindowUsageIngester.RunDailyMaintenance，统一共享 cron schedule +
+// leader lock + heartbeat，避免再引一套调度。
 type OpsCleanupService struct {
 	opsRepo           OpsRepository
 	db                *sql.DB
@@ -49,6 +50,8 @@ type OpsCleanupService struct {
 	cfg               *config.Config
 	channelMonitorSvc *ChannelMonitorService
 	settingRepo       SettingRepository
+	// windowUsageIngester 账号滚动窗口历史的保留期清理（nil 容忍，测试构造）
+	windowUsageIngester *AccountWindowUsageIngester
 
 	instanceID string
 
@@ -71,15 +74,17 @@ func NewOpsCleanupService(
 	cfg *config.Config,
 	channelMonitorSvc *ChannelMonitorService,
 	settingRepo SettingRepository,
+	windowUsageIngester *AccountWindowUsageIngester,
 ) *OpsCleanupService {
 	return &OpsCleanupService{
-		opsRepo:           opsRepo,
-		db:                db,
-		redisClient:       redisClient,
-		cfg:               cfg,
-		channelMonitorSvc: channelMonitorSvc,
-		settingRepo:       settingRepo,
-		instanceID:        uuid.NewString(),
+		opsRepo:             opsRepo,
+		db:                  db,
+		redisClient:         redisClient,
+		cfg:                 cfg,
+		channelMonitorSvc:   channelMonitorSvc,
+		settingRepo:         settingRepo,
+		windowUsageIngester: windowUsageIngester,
+		instanceID:          uuid.NewString(),
 	}
 }
 
@@ -331,6 +336,11 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 		if err := s.channelMonitorSvc.RunDailyMaintenance(ctx); err != nil {
 			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] channel monitor maintenance failed: %v", err)
 		}
+	}
+
+	// 账号滚动窗口历史的保留期清理（错误已在内部打到 slog）。
+	if s.windowUsageIngester != nil {
+		s.windowUsageIngester.RunDailyMaintenance(ctx)
 	}
 
 	return out, nil

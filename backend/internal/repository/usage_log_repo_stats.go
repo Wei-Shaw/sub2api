@@ -334,6 +334,39 @@ func (r *usageLogRepository) GetAccountWindowStats(ctx context.Context, accountI
 	return stats, nil
 }
 
+// GetAccountWindowStatsRange 聚合账号在 [startTime, endTime) 内的 token 明细统计
+// （滚动窗口用量历史 finalization 的数据源，只含 token 维度，不含费用）。
+func (r *usageLogRepository) GetAccountWindowStatsRange(ctx context.Context, accountID int64, startTime, endTime time.Time) (*usagestats.WindowTokenStats, error) {
+	query := `
+		SELECT
+			COUNT(*) as requests,
+			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as tokens_total,
+			COALESCE(SUM(input_tokens), 0) as tokens_input,
+			COALESCE(SUM(output_tokens), 0) as tokens_output,
+			COALESCE(SUM(cache_creation_tokens), 0) as tokens_cache_creation,
+			COALESCE(SUM(cache_read_tokens), 0) as tokens_cache_read
+		FROM usage_logs
+		WHERE account_id = $1 AND created_at >= $2 AND created_at < $3
+	`
+
+	stats := &usagestats.WindowTokenStats{}
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		query,
+		[]any{accountID, startTime, endTime},
+		&stats.Requests,
+		&stats.TokensTotal,
+		&stats.TokensInput,
+		&stats.TokensOutput,
+		&stats.TokensCacheCreation,
+		&stats.TokensCacheRead,
+	); err != nil {
+		return nil, err
+	}
+	return stats, nil
+}
+
 // GetAccountWindowStatsBatch 批量获取同一窗口起点下多个账号的统计数据。
 // 返回 map[accountID]*AccountStats，未命中的账号会返回零值统计，便于上层直接复用。
 func (r *usageLogRepository) GetAccountWindowStatsBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]*usagestats.AccountStats, error) {
