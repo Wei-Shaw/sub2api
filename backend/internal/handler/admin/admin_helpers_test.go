@@ -21,15 +21,35 @@ func TestParseTimeRange(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/?start_date=2024-01-01&end_date=2024-01-02&timezone=UTC", nil)
 	c.Request = req
 
-	start, end := parseTimeRange(c)
-	require.Equal(t, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), start)
-	require.Equal(t, time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC), end)
+	timeRange := parseTimeRange(c)
+	require.Equal(t, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), timeRange.Start)
+	require.Equal(t, time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC), timeRange.End)
+	require.Equal(t, "2024-01-01", timeRange.StartLabel())
+	require.Equal(t, "2024-01-02", timeRange.EndLabel())
 
 	req = httptest.NewRequest(http.MethodGet, "/?start_date=bad&timezone=UTC", nil)
 	c.Request = req
-	start, end = parseTimeRange(c)
-	require.False(t, start.IsZero())
-	require.False(t, end.IsZero())
+	timeRange = parseTimeRange(c)
+	require.False(t, timeRange.Start.IsZero())
+	require.False(t, timeRange.End.IsZero())
+}
+
+func TestParseTimeRange_RFC3339EchoesRealBoundaries(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	// Second-precision inputs are truncated to the minute so cache keys form stable buckets.
+	req := httptest.NewRequest(http.MethodGet,
+		"/?start_date=2024-01-01T10%3A30%3A45%2B08%3A00&end_date=2024-01-02T10%3A30%3A45%2B08%3A00&timezone=UTC", nil)
+	c.Request = req
+
+	timeRange := parseTimeRange(c)
+	require.True(t, timeRange.StartHasTime)
+	require.True(t, timeRange.EndHasTime)
+	require.True(t, timeRange.Start.Equal(time.Date(2024, 1, 1, 2, 30, 0, 0, time.UTC)))
+	require.True(t, timeRange.End.Equal(time.Date(2024, 1, 2, 2, 30, 0, 0, time.UTC)))
+	require.Equal(t, "2024-01-01T10:30:00+08:00", timeRange.StartLabel())
+	require.Equal(t, "2024-01-02T10:30:00+08:00", timeRange.EndLabel())
 }
 
 func TestParseOpsViewParam(t *testing.T) {

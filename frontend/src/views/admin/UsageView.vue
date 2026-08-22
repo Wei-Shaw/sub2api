@@ -190,7 +190,7 @@ import { useAppStore } from '@/stores/app'; import { adminAPI } from '@/api/admi
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatReasoningEffort } from '@/utils/format'
 import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usageRequestType'
-import { getLast24HourRange, hasTimeComponent, parseRangeBoundary, toDateInputValue } from '@/utils/dateRange'
+import { getGranularityForRange, getLast24HourRange, hasTimeComponent, toDateInputValue } from '@/utils/dateRange'
 import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
@@ -273,13 +273,6 @@ const handleRankingSelectUser = (userId: number, email: string) => {
 }
 
 const granularityOptions = computed(() => [{ value: 'day', label: t('admin.dashboard.day') }, { value: 'hour', label: t('admin.dashboard.hour') }])
-// Use local timezone to avoid UTC timezone issues
-const getGranularityForRange = (start: string, end: string): 'day' | 'hour' => {
-  const startTime = parseRangeBoundary(start).getTime()
-  const endTime = parseRangeBoundary(end).getTime()
-  const daysDiff = Math.ceil((endTime - startTime) / (1000 * 60 * 60 * 24))
-  return daysDiff <= 1 ? 'hour' : 'day'
-}
 const defaultRange = getLast24HourRange()
 const startDate = ref(defaultRange.start); const endDate = ref(defaultRange.end)
 const filters = ref<AdminUsageQueryParams>({ user_id: undefined, model: undefined, group_id: undefined, request_type: undefined, billing_type: null, start_date: startDate.value, end_date: endDate.value })
@@ -787,11 +780,10 @@ const showErrorModal = ref(false)
 const selectedErrorId = ref<number | null>(null)
 
 // 注意：'YYYY-MM-DDT00:00:00' 无时区后缀，按本地时区解析后再转 UTC——与页面其它日期处理语义一致，刻意如此，勿改成 'T00:00:00Z'
-const toRFC3339 = (d: string | undefined, endOfDay = false): string | undefined => {
-  if (!d) return undefined
-  if (hasTimeComponent(d)) return new Date(d).toISOString()
-  return new Date(d + (endOfDay ? 'T23:59:59.999' : 'T00:00:00')).toISOString()
-}
+const toRFC3339 = (d: string | undefined, endOfDay = false): string | undefined =>
+  d
+    ? new Date(hasTimeComponent(d) ? d : d + (endOfDay ? 'T23:59:59.999' : 'T00:00:00')).toISOString()
+    : undefined
 
 const loadAdminErrors = async () => {
   errLoading.value = true

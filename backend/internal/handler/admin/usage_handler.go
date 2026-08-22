@@ -166,14 +166,10 @@ func (h *UsageHandler) List(c *gin.Context) {
 	}
 
 	if endDateStr := c.Query("end_date"); endDateStr != "" {
-		t, hasTime, err := timezone.ParseDateOrDateTimeInUserLocation(endDateStr, userTZ)
+		t, _, err := timezone.ParseRangeEndInUserLocation(endDateStr, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD or RFC3339")
 			return
-		}
-		// Use half-open range [start, end); date-only values cover the whole end day (DST-safe).
-		if !hasTime {
-			t = t.AddDate(0, 0, 1)
 		}
 		endTime = &t
 	}
@@ -314,15 +310,10 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD or RFC3339")
 			return
 		}
-		var endHasTime bool
-		endTime, endHasTime, err = timezone.ParseDateOrDateTimeInUserLocation(endDateStr, userTZ)
+		endTime, _, err = timezone.ParseRangeEndInUserLocation(endDateStr, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD or RFC3339")
 			return
-		}
-		// 与 SQL 条件 created_at < end 对齐，纯日期使用次日 00:00 作为上边界（DST-safe）。
-		if !endHasTime {
-			endTime = endTime.AddDate(0, 0, 1)
 		}
 	} else {
 		period := c.DefaultQuery("period", "today")

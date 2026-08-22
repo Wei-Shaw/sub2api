@@ -76,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import {
@@ -90,6 +90,8 @@ interface DatePreset {
   labelKey: string
   value: string
   getRange: () => { start: string; end: string }
+  /** 自定义识别当前范围是否属于该预设;缺省时按 getRange() 的值精确比较 */
+  matches?: (start: string, end: string) => boolean
 }
 
 interface Props {
@@ -161,7 +163,9 @@ const presets: DatePreset[] = [
   {
     labelKey: 'dates.last24Hours',
     value: 'last24Hours',
-    getRange: getLast24HourRange
+    getRange: getLast24HourRange,
+    // 滚动范围带时间部分;只有本预设会生成这样的边界
+    matches: (start, end) => hasTimeComponent(start) && hasTimeComponent(end)
   },
   {
     labelKey: 'dates.last7Days',
@@ -241,24 +245,16 @@ const formatDate = (dateStr: string): string => {
 
 // Native date inputs only understand YYYY-MM-DD; editing either input
 // normalizes a rolling (datetime) range back to whole days
-const startDateInput = computed({
-  get: () => (localStartDate.value ? toDateInputValue(localStartDate.value) : ''),
-  set: (v: string) => {
-    localStartDate.value = v
-    if (localEndDate.value && hasTimeComponent(localEndDate.value)) {
-      localEndDate.value = toDateInputValue(localEndDate.value)
+const dateInput = (own: Ref<string>, other: Ref<string>) =>
+  computed({
+    get: () => toDateInputValue(own.value),
+    set: (v: string) => {
+      own.value = v
+      other.value = toDateInputValue(other.value)
     }
-  }
-})
-const endDateInput = computed({
-  get: () => (localEndDate.value ? toDateInputValue(localEndDate.value) : ''),
-  set: (v: string) => {
-    localEndDate.value = v
-    if (localStartDate.value && hasTimeComponent(localStartDate.value)) {
-      localStartDate.value = toDateInputValue(localStartDate.value)
-    }
-  }
-})
+  })
+const startDateInput = dateInput(localStartDate, localEndDate)
+const endDateInput = dateInput(localEndDate, localStartDate)
 
 const isPresetActive = (preset: DatePreset): boolean => {
   return activePreset.value === preset.value
@@ -271,26 +267,14 @@ const selectPreset = (preset: DatePreset) => {
   activePreset.value = preset.value
 }
 
+const matchesCurrentRange = (preset: DatePreset): boolean => {
+  if (preset.matches) return preset.matches(localStartDate.value, localEndDate.value)
+  const range = preset.getRange()
+  return range.start === localStartDate.value && range.end === localEndDate.value
+}
+
 const onDateChange = () => {
-  // Rolling ranges carry a time component; only the last24Hours preset produces them
-  if (
-    localStartDate.value &&
-    localEndDate.value &&
-    hasTimeComponent(localStartDate.value) &&
-    hasTimeComponent(localEndDate.value)
-  ) {
-    activePreset.value = 'last24Hours'
-    return
-  }
-  // Check if current dates match any preset
-  activePreset.value = null
-  for (const preset of presets) {
-    const range = preset.getRange()
-    if (range.start === localStartDate.value && range.end === localEndDate.value) {
-      activePreset.value = preset.value
-      break
-    }
-  }
+  activePreset.value = presets.find(matchesCurrentRange)?.value ?? null
 }
 
 const toggle = () => {

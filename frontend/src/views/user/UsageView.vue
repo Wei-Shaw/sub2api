@@ -231,7 +231,7 @@ import Icon from '@/components/icons/Icon.vue'
 import UserErrorRequestsTable from '@/components/user/UserErrorRequestsTable.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatReasoningEffort } from '@/utils/format'
-import { getLast24HourRange, parseRangeBoundary, toDateInputValue } from '@/utils/dateRange'
+import { getGranularityForRange, getLast24HourRange, toDateInputValue } from '@/utils/dateRange'
 import { getBillingModeLabel, getDisplayBillingMode as resolveDisplayBillingMode } from '@/utils/billingMode'
 import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usageRequestType'
 import type {
@@ -324,12 +324,6 @@ let abortController: AbortController | null = null
 let chartReqSeq = 0
 let statsReqSeq = 0
 let modelStatsReqSeq = 0
-
-const getGranularityForRange = (start: string, end: string): 'day' | 'hour' => {
-  const startTime = parseRangeBoundary(start).getTime()
-  const endTime = parseRangeBoundary(end).getTime()
-  return Math.ceil((endTime - startTime) / (1000 * 60 * 60 * 24)) <= 1 ? 'hour' : 'day'
-}
 
 const defaultRange = getLast24HourRange()
 const startDate = ref(defaultRange.start)

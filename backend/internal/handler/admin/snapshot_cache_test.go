@@ -33,6 +33,22 @@ func TestSnapshotCache_Expiration(t *testing.T) {
 	require.False(t, ok, "expired entry should not be returned")
 }
 
+func TestSnapshotCache_SetSweepsExpired(t *testing.T) {
+	c := newSnapshotCache(1 * time.Millisecond)
+
+	// One-shot keys are never looked up again, so only Set can reclaim them.
+	c.Set("stale1", "value")
+	c.Set("stale2", "value")
+	time.Sleep(5 * time.Millisecond)
+
+	c.Set("fresh", "value")
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	require.Len(t, c.items, 1)
+	require.Contains(t, c.items, "fresh")
+}
+
 func TestSnapshotCache_GetEmptyKey(t *testing.T) {
 	c := newSnapshotCache(5 * time.Second)
 	_, ok := c.Get("")
