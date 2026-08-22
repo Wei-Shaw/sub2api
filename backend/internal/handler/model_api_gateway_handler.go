@@ -178,6 +178,20 @@ func (h *ModelAPIGatewayHandler) nativeImageSubmit(
 	if strings.EqualFold(modelAPIImageAPI(model), service.FalAPIEdit) {
 		input.IsEdit = true
 	}
+	requestParameters := map[string]any{
+		"prompt":        service.TruncateUsageRequestPrompt(request.Prompt),
+		"image_size":    request.ImageSize,
+		"quality":       request.Quality,
+		"num_images":    request.NumImages,
+		"output_format": request.OutputFormat,
+		"sync_mode":     request.SyncMode,
+	}
+	if len(request.ImageURLs) > 0 {
+		requestParameters["image_urls"] = request.ImageURLs
+	}
+	if request.MaskURL != "" {
+		requestParameters["mask_url"] = request.MaskURL
+	}
 
 	billingType := service.BillingTypeBalance
 	if subscription, _ := middleware2.GetSubscriptionFromContext(c); subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType() {
@@ -198,6 +212,7 @@ func (h *ModelAPIGatewayHandler) nativeImageSubmit(
 		InternalRequestID: modelAPIInternalRequestID(c),
 		RequestedModel:    model,
 		Input:             input,
+		RequestParameters: requestParameters,
 		BillingType:       billingType,
 		RateMultiplier:    rateMultiplier,
 		RateMultiplierSet: true,

@@ -91,7 +91,7 @@ var (
 	ErrSpendLimitThreshold = infraerrors.BadRequest("ORGANIZATION_SPEND_ALERT_THRESHOLD_INVALID", "alert threshold must be between 1 and 100 percent")
 )
 
-var iamLoginNamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+var iamLoginNamePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._-]{0,63}$`)
 
 // companyIDPattern matches a company identifier: a leading 'c' prefix followed
 // by 15 digits (first digit 1-9), e.g. "c123456789012345". IAM principals use

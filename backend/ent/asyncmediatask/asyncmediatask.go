@@ -55,6 +55,8 @@ const (
 	FieldQuality = "quality"
 	// FieldNumImages holds the string denoting the num_images field in the database.
 	FieldNumImages = "num_images"
+	// FieldRequestParameters holds the string denoting the request_parameters field in the database.
+	FieldRequestParameters = "request_parameters"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldHeldCost holds the string denoting the held_cost field in the database.
@@ -111,6 +113,7 @@ var Columns = []string{
 	FieldImageSize,
 	FieldQuality,
 	FieldNumImages,
+	FieldRequestParameters,
 	FieldStatus,
 	FieldHeldCost,
 	FieldFinalCost,

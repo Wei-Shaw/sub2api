@@ -60,6 +60,8 @@ type AsyncMediaTask struct {
 	Quality *string `json:"quality,omitempty"`
 	// 请求生成的图片数量
 	NumImages int `json:"num_images,omitempty"`
+	// 脱敏后的客户端请求参数
+	RequestParameters map[string]interface{} `json:"request_parameters,omitempty"`
 	// 任务状态：pending/running/succeeded/failed/refunded/expired
 	Status string `json:"status,omitempty"`
 	// 预扣费金额
@@ -96,7 +98,7 @@ func (*AsyncMediaTask) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case asyncmediatask.FieldImageUrls, asyncmediatask.FieldCosUrls:
+		case asyncmediatask.FieldRequestParameters, asyncmediatask.FieldImageUrls, asyncmediatask.FieldCosUrls:
 			values[i] = new([]byte)
 		case asyncmediatask.FieldHeldCost, asyncmediatask.FieldFinalCost, asyncmediatask.FieldRateMultiplier:
 			values[i] = new(sql.NullFloat64)
@@ -265,6 +267,14 @@ func (_m *AsyncMediaTask) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field num_images", values[i])
 			} else if value.Valid {
 				_m.NumImages = int(value.Int64)
+			}
+		case asyncmediatask.FieldRequestParameters:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field request_parameters", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.RequestParameters); err != nil {
+					return fmt.Errorf("unmarshal field request_parameters: %w", err)
+				}
 			}
 		case asyncmediatask.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -486,6 +496,9 @@ func (_m *AsyncMediaTask) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("num_images=")
 	builder.WriteString(fmt.Sprintf("%v", _m.NumImages))
+	builder.WriteString(", ")
+	builder.WriteString("request_parameters=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RequestParameters))
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)

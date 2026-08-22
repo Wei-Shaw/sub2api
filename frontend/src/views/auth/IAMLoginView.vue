@@ -25,7 +25,7 @@
             required
             autocomplete="username"
             maxlength="91"
-            pattern="[A-Za-z0-9._-]{1,64}@c[1-9][0-9]{14}\.opentk\.ai"
+            pattern="[A-Za-z][A-Za-z0-9._-]{0,63}@c[1-9][0-9]{14}\.opentk\.ai"
             :disabled="authActionDisabled"
           />
         </div>

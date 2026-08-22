@@ -1062,6 +1062,7 @@ export default {
     imageQuality: 'Quality',
     imageDetails: 'Image details',
     imageRequestParameters: 'Request parameters',
+    imageRequestParametersJson: 'Request parameters JSON',
     imageRequestResolution: 'Requested resolution',
     imageResultAndBilling: 'Result and billing',
     imageParameterNotRecorded: 'Not recorded',

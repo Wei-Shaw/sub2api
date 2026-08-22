@@ -4,12 +4,23 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
-	BillingTypeBalance      int8 = 0 // 钱包余额
-	BillingTypeSubscription int8 = 1 // 订阅套餐
+	BillingTypeBalance          int8 = 0 // 钱包余额
+	BillingTypeSubscription     int8 = 1 // 订阅套餐
+	MaxUsageRequestPromptLength      = 2048
 )
+
+// TruncateUsageRequestPrompt bounds the prompt copied into usage metadata. It
+// counts Unicode code points so truncation never leaves invalid UTF-8 behind.
+func TruncateUsageRequestPrompt(prompt string) string {
+	if utf8.RuneCountInString(prompt) <= MaxUsageRequestPromptLength {
+		return prompt
+	}
+	return string([]rune(prompt)[:MaxUsageRequestPromptLength])
+}
 
 type RequestType int16
 
@@ -102,16 +113,19 @@ func ApplyLegacyRequestFields(requestType RequestType, fallbackStream bool, fall
 }
 
 type UsageLog struct {
-	ID              int64
-	UserID          int64
-	APIKeyID        int64
-	AccountID       int64
-	RequestID       string
-	OrganizationID  *int64
-	PayerUserID     *int64
-	BalanceSource   *string
-	AuthzGeneration *int64
-	Model           string
+	ID        int64
+	UserID    int64
+	APIKeyID  int64
+	AccountID int64
+	RequestID string
+	// RequestParameters contains sanitized request parameters for detail views.
+	// It is populated for image requests; historical rows may leave it nil.
+	RequestParameters map[string]any
+	OrganizationID    *int64
+	PayerUserID       *int64
+	BalanceSource     *string
+	AuthzGeneration   *int64
+	Model             string
 	// RequestedModel is the client-requested model name recorded for stable user/admin display.
 	// Empty should be treated as Model for backward compatibility with historical rows.
 	RequestedModel string

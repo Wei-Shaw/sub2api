@@ -42,6 +42,11 @@ func (UsageLog) Fields() []ent.Field {
 		field.String("request_id").
 			MaxLen(64).
 			NotEmpty(),
+		// RequestParameters stores the sanitized client request parameters for
+		// detail views. It is optional so historical usage rows remain valid.
+		field.JSON("request_parameters", map[string]any{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.String("model").
 			MaxLen(100).
 			NotEmpty(),

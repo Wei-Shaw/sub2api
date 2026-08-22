@@ -7564,6 +7564,7 @@ type AsyncMediaTaskMutation struct {
 	quality             *string
 	num_images          *int
 	addnum_images       *int
+	request_parameters  *map[string]interface{}
 	status              *string
 	held_cost           *float64
 	addheld_cost        *float64
@@ -8798,6 +8799,55 @@ func (m *AsyncMediaTaskMutation) ResetNumImages() {
 	m.addnum_images = nil
 }
 
+// SetRequestParameters sets the "request_parameters" field.
+func (m *AsyncMediaTaskMutation) SetRequestParameters(value map[string]interface{}) {
+	m.request_parameters = &value
+}
+
+// RequestParameters returns the value of the "request_parameters" field in the mutation.
+func (m *AsyncMediaTaskMutation) RequestParameters() (r map[string]interface{}, exists bool) {
+	v := m.request_parameters
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestParameters returns the old "request_parameters" field's value of the AsyncMediaTask entity.
+// If the AsyncMediaTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AsyncMediaTaskMutation) OldRequestParameters(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestParameters is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestParameters requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestParameters: %w", err)
+	}
+	return oldValue.RequestParameters, nil
+}
+
+// ClearRequestParameters clears the value of the "request_parameters" field.
+func (m *AsyncMediaTaskMutation) ClearRequestParameters() {
+	m.request_parameters = nil
+	m.clearedFields[asyncmediatask.FieldRequestParameters] = struct{}{}
+}
+
+// RequestParametersCleared returns if the "request_parameters" field was cleared in this mutation.
+func (m *AsyncMediaTaskMutation) RequestParametersCleared() bool {
+	_, ok := m.clearedFields[asyncmediatask.FieldRequestParameters]
+	return ok
+}
+
+// ResetRequestParameters resets all changes to the "request_parameters" field.
+func (m *AsyncMediaTaskMutation) ResetRequestParameters() {
+	m.request_parameters = nil
+	delete(m.clearedFields, asyncmediatask.FieldRequestParameters)
+}
+
 // SetStatus sets the "status" field.
 func (m *AsyncMediaTaskMutation) SetStatus(s string) {
 	m.status = &s
@@ -9558,7 +9608,7 @@ func (m *AsyncMediaTaskMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AsyncMediaTaskMutation) Fields() []string {
-	fields := make([]string, 0, 35)
+	fields := make([]string, 0, 36)
 	if m.created_at != nil {
 		fields = append(fields, asyncmediatask.FieldCreatedAt)
 	}
@@ -9621,6 +9671,9 @@ func (m *AsyncMediaTaskMutation) Fields() []string {
 	}
 	if m.num_images != nil {
 		fields = append(fields, asyncmediatask.FieldNumImages)
+	}
+	if m.request_parameters != nil {
+		fields = append(fields, asyncmediatask.FieldRequestParameters)
 	}
 	if m.status != nil {
 		fields = append(fields, asyncmediatask.FieldStatus)
@@ -9714,6 +9767,8 @@ func (m *AsyncMediaTaskMutation) Field(name string) (ent.Value, bool) {
 		return m.Quality()
 	case asyncmediatask.FieldNumImages:
 		return m.NumImages()
+	case asyncmediatask.FieldRequestParameters:
+		return m.RequestParameters()
 	case asyncmediatask.FieldStatus:
 		return m.Status()
 	case asyncmediatask.FieldHeldCost:
@@ -9793,6 +9848,8 @@ func (m *AsyncMediaTaskMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldQuality(ctx)
 	case asyncmediatask.FieldNumImages:
 		return m.OldNumImages(ctx)
+	case asyncmediatask.FieldRequestParameters:
+		return m.OldRequestParameters(ctx)
 	case asyncmediatask.FieldStatus:
 		return m.OldStatus(ctx)
 	case asyncmediatask.FieldHeldCost:
@@ -9976,6 +10033,13 @@ func (m *AsyncMediaTaskMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetNumImages(v)
+		return nil
+	case asyncmediatask.FieldRequestParameters:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestParameters(v)
 		return nil
 	case asyncmediatask.FieldStatus:
 		v, ok := value.(string)
@@ -10291,6 +10355,9 @@ func (m *AsyncMediaTaskMutation) ClearedFields() []string {
 	if m.FieldCleared(asyncmediatask.FieldQuality) {
 		fields = append(fields, asyncmediatask.FieldQuality)
 	}
+	if m.FieldCleared(asyncmediatask.FieldRequestParameters) {
+		fields = append(fields, asyncmediatask.FieldRequestParameters)
+	}
 	if m.FieldCleared(asyncmediatask.FieldSizeTier) {
 		fields = append(fields, asyncmediatask.FieldSizeTier)
 	}
@@ -10373,6 +10440,9 @@ func (m *AsyncMediaTaskMutation) ClearField(name string) error {
 		return nil
 	case asyncmediatask.FieldQuality:
 		m.ClearQuality()
+		return nil
+	case asyncmediatask.FieldRequestParameters:
+		m.ClearRequestParameters()
 		return nil
 	case asyncmediatask.FieldSizeTier:
 		m.ClearSizeTier()
@@ -10474,6 +10544,9 @@ func (m *AsyncMediaTaskMutation) ResetField(name string) error {
 		return nil
 	case asyncmediatask.FieldNumImages:
 		m.ResetNumImages()
+		return nil
+	case asyncmediatask.FieldRequestParameters:
+		m.ResetRequestParameters()
 		return nil
 	case asyncmediatask.FieldStatus:
 		m.ResetStatus()
@@ -77829,6 +77902,7 @@ type UsageLogMutation struct {
 	authz_generation             *int64
 	addauthz_generation          *int64
 	request_id                   *string
+	request_parameters           *map[string]interface{}
 	model                        *string
 	requested_model              *string
 	upstream_model               *string
@@ -78414,6 +78488,55 @@ func (m *UsageLogMutation) OldRequestID(ctx context.Context) (v string, err erro
 // ResetRequestID resets all changes to the "request_id" field.
 func (m *UsageLogMutation) ResetRequestID() {
 	m.request_id = nil
+}
+
+// SetRequestParameters sets the "request_parameters" field.
+func (m *UsageLogMutation) SetRequestParameters(value map[string]interface{}) {
+	m.request_parameters = &value
+}
+
+// RequestParameters returns the value of the "request_parameters" field in the mutation.
+func (m *UsageLogMutation) RequestParameters() (r map[string]interface{}, exists bool) {
+	v := m.request_parameters
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestParameters returns the old "request_parameters" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldRequestParameters(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestParameters is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestParameters requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestParameters: %w", err)
+	}
+	return oldValue.RequestParameters, nil
+}
+
+// ClearRequestParameters clears the value of the "request_parameters" field.
+func (m *UsageLogMutation) ClearRequestParameters() {
+	m.request_parameters = nil
+	m.clearedFields[usagelog.FieldRequestParameters] = struct{}{}
+}
+
+// RequestParametersCleared returns if the "request_parameters" field was cleared in this mutation.
+func (m *UsageLogMutation) RequestParametersCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldRequestParameters]
+	return ok
+}
+
+// ResetRequestParameters resets all changes to the "request_parameters" field.
+func (m *UsageLogMutation) ResetRequestParameters() {
+	m.request_parameters = nil
+	delete(m.clearedFields, usagelog.FieldRequestParameters)
 }
 
 // SetModel sets the "model" field.
@@ -81142,7 +81265,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 56)
+	fields := make([]string, 0, 57)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -81166,6 +81289,9 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.request_id != nil {
 		fields = append(fields, usagelog.FieldRequestID)
+	}
+	if m.request_parameters != nil {
+		fields = append(fields, usagelog.FieldRequestParameters)
 	}
 	if m.model != nil {
 		fields = append(fields, usagelog.FieldModel)
@@ -81335,6 +81461,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.AccountID()
 	case usagelog.FieldRequestID:
 		return m.RequestID()
+	case usagelog.FieldRequestParameters:
+		return m.RequestParameters()
 	case usagelog.FieldModel:
 		return m.Model()
 	case usagelog.FieldRequestedModel:
@@ -81456,6 +81584,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldAccountID(ctx)
 	case usagelog.FieldRequestID:
 		return m.OldRequestID(ctx)
+	case usagelog.FieldRequestParameters:
+		return m.OldRequestParameters(ctx)
 	case usagelog.FieldModel:
 		return m.OldModel(ctx)
 	case usagelog.FieldRequestedModel:
@@ -81616,6 +81746,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRequestID(v)
+		return nil
+	case usagelog.FieldRequestParameters:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestParameters(v)
 		return nil
 	case usagelog.FieldModel:
 		v, ok := value.(string)
@@ -82298,6 +82435,9 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldAuthzGeneration) {
 		fields = append(fields, usagelog.FieldAuthzGeneration)
 	}
+	if m.FieldCleared(usagelog.FieldRequestParameters) {
+		fields = append(fields, usagelog.FieldRequestParameters)
+	}
 	if m.FieldCleared(usagelog.FieldRequestedModel) {
 		fields = append(fields, usagelog.FieldRequestedModel)
 	}
@@ -82404,6 +82544,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldAuthzGeneration:
 		m.ClearAuthzGeneration()
+		return nil
+	case usagelog.FieldRequestParameters:
+		m.ClearRequestParameters()
 		return nil
 	case usagelog.FieldRequestedModel:
 		m.ClearRequestedModel()
@@ -82517,6 +82660,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldRequestID:
 		m.ResetRequestID()
+		return nil
+	case usagelog.FieldRequestParameters:
+		m.ResetRequestParameters()
 		return nil
 	case usagelog.FieldModel:
 		m.ResetModel()

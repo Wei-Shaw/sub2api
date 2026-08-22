@@ -713,7 +713,7 @@
         <div>
           <label class="input-label" for="iam-member-login-name">{{ t('organization.login.loginName') }}</label>
           <div class="flex min-w-0 flex-col sm:flex-row">
-            <input id="iam-member-login-name" v-model.trim="createForm.loginName" class="input min-w-0 flex-1 sm:rounded-r-none" required pattern="[A-Za-z0-9._-]{1,64}" autocomplete="off">
+            <input id="iam-member-login-name" v-model.trim="createForm.loginName" class="input min-w-0 flex-1 sm:rounded-r-none" required pattern="[A-Za-z][A-Za-z0-9._-]{0,63}" autocomplete="off">
             <span data-testid="iam-principal-suffix" class="flex min-h-10 max-w-full items-center break-all rounded-md border border-gray-300 bg-gray-50 px-3 font-mono text-xs text-gray-600 sm:-ml-px sm:rounded-l-none sm:whitespace-nowrap dark:border-dark-600 dark:bg-dark-900 dark:text-dark-300">
               @{{ organization?.company_id }}.opentk.ai
             </span>

@@ -24,7 +24,7 @@ const asyncMediaTaskColumns = `
 	id, internal_request_id, upstream_request_id, status_url, response_url,
 	account_id, api_key_id, user_id, organization_id, payer_user_id, balance_source, authz_generation, group_id, channel_id,
 	facade, requested_model, upstream_model,
-	image_size, quality, num_images,
+	image_size, quality, num_images, request_parameters,
 	status, held_cost, final_cost, rate_multiplier, size_tier,
 	image_urls, cos_urls, image_metadata,
 	error_reason, fail_deadline_at, finished_at,
@@ -57,13 +57,17 @@ func (r *asyncMediaTaskRepository) Create(ctx context.Context, task *service.Asy
 	if err != nil {
 		return fmt.Errorf("marshal image_metadata: %w", err)
 	}
+	requestParametersJSON, err := marshalAnyMap(task.RequestParameters)
+	if err != nil {
+		return fmt.Errorf("marshal request_parameters: %w", err)
+	}
 
 	query := `
 		INSERT INTO async_media_tasks (
 			internal_request_id, upstream_request_id, status_url, response_url,
 			account_id, api_key_id, user_id, organization_id, payer_user_id, balance_source, authz_generation, group_id, channel_id,
 			facade, requested_model, upstream_model,
-			image_size, quality, num_images,
+			image_size, quality, num_images, request_parameters,
 			status, held_cost, final_cost, rate_multiplier, size_tier,
 			image_urls, cos_urls, image_metadata,
 			error_reason, fail_deadline_at, finished_at,
@@ -72,18 +76,18 @@ func (r *asyncMediaTaskRepository) Create(ctx context.Context, task *service.Asy
 			$1, $2, $3, $4,
 			$5, $6, $7, $8, $9, $10, $11, $12, $13,
 			$14, $15, $16,
-			$17, $18, $19,
-			$20, $21, $22, $23, $24,
-			$25, $26, $27,
-			$28, $29, $30,
-			$31, $32, $33, $34
+			$17, $18, $19, $20,
+			$21, $22, $23, $24, $25,
+			$26, $27, $28,
+			$29, $30, $31,
+			$32, $33, $34, $35
 		) RETURNING id, created_at, updated_at`
 
 	return scanSingleRow(ctx, r.sql, query, []any{
 		task.InternalRequestID, task.UpstreamRequestID, task.StatusURL, task.ResponseURL,
 		task.AccountID, task.APIKeyID, task.UserID, task.OrganizationID, task.PayerUserID, task.BalanceSource, task.AuthzGeneration, task.GroupID, task.ChannelID,
 		task.Facade, task.RequestedModel, task.UpstreamModel,
-		task.ImageSize, task.Quality, task.NumImages,
+		task.ImageSize, task.Quality, task.NumImages, requestParametersJSON,
 		task.Status, task.HeldCost, task.FinalCost, task.RateMultiplier, task.SizeTier,
 		imageURLsJSON, cosURLsJSON, imageMetadataJSON,
 		task.ErrorReason, task.FailDeadlineAt, task.FinishedAt,
@@ -298,6 +302,10 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 	if err != nil {
 		return false, fmt.Errorf("marshal cos_url: %w", err)
 	}
+	requestParametersJSON, err := marshalAnyMap(in.RequestParameters)
+	if err != nil {
+		return false, fmt.Errorf("marshal request_parameters: %w", err)
+	}
 
 	var taskID any
 	if in.TaskID > 0 {
@@ -320,6 +328,7 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 			image_output_size, image_size_source, image_size_breakdown,
 			billing_mode, billing_tier,
 			task_id, image_urls, cos_url, billing_status,
+			request_parameters,
 			inbound_endpoint, upstream_endpoint, duration_ms, ip_address, user_agent,
 			organization_id, payer_user_id, balance_source, authz_generation, account_rate_multiplier,
 			created_at
@@ -333,8 +342,9 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 			$19, $20, $21,
 			$22, $23,
 			$24, $25, $26, $27,
-			$28, $29, $30, $31, $32,
-			$33, $34, $35, $36, $37,
+			$28,
+			$29, $30, $31, $32, $33,
+			$34, $35, $36, $37, $38,
 			NOW()
 		)
 		ON CONFLICT (request_id, api_key_id) DO UPDATE SET
@@ -364,6 +374,7 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 			image_urls = EXCLUDED.image_urls,
 			cos_url = EXCLUDED.cos_url,
 			billing_status = EXCLUDED.billing_status,
+			request_parameters = EXCLUDED.request_parameters,
 			inbound_endpoint = EXCLUDED.inbound_endpoint,
 			upstream_endpoint = EXCLUDED.upstream_endpoint,
 			duration_ms = EXCLUDED.duration_ms,
@@ -390,6 +401,7 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 		nullIfEmpty(in.ImageOutputSize), nullIfEmpty(in.ImageSizeSource), nullStringIntMapJSON(in.ImageSizeBreakdown),
 		string(service.BillingModeImage), nullIfEmpty(in.BillingTier),
 		taskID, imageURLsJSON, cosURLsJSON, nullIfEmpty(in.BillingStatus),
+		requestParametersJSON,
 		nullIfEmpty(in.InboundEndpoint), nullIfEmpty(in.UpstreamEndpoint), durationMs, nullIfEmpty(in.ClientIP), nullIfEmpty(in.UserAgent),
 		in.OrganizationID, in.PayerUserID, in.BalanceSource, in.AuthzGeneration, in.AccountRateMultiplier,
 	)
@@ -421,12 +433,12 @@ func (r *asyncMediaTaskRepository) queryOne(ctx context.Context, query string, a
 
 func scanAsyncMediaTask(rows *sql.Rows) (*service.AsyncMediaTask, error) {
 	task := &service.AsyncMediaTask{}
-	var imageURLsJSON, cosURLsJSON, imageMetadataJSON []byte
+	var imageURLsJSON, cosURLsJSON, imageMetadataJSON, requestParametersJSON []byte
 	if err := rows.Scan(
 		&task.ID, &task.InternalRequestID, &task.UpstreamRequestID, &task.StatusURL, &task.ResponseURL,
 		&task.AccountID, &task.APIKeyID, &task.UserID, &task.OrganizationID, &task.PayerUserID, &task.BalanceSource, &task.AuthzGeneration, &task.GroupID, &task.ChannelID,
 		&task.Facade, &task.RequestedModel, &task.UpstreamModel,
-		&task.ImageSize, &task.Quality, &task.NumImages,
+		&task.ImageSize, &task.Quality, &task.NumImages, &requestParametersJSON,
 		&task.Status, &task.HeldCost, &task.FinalCost, &task.RateMultiplier, &task.SizeTier,
 		&imageURLsJSON, &cosURLsJSON, &imageMetadataJSON,
 		&task.ErrorReason, &task.FailDeadlineAt, &task.FinishedAt,
@@ -442,6 +454,7 @@ func scanAsyncMediaTask(rows *sql.Rows) (*service.AsyncMediaTask, error) {
 			return nil, fmt.Errorf("unmarshal image_metadata: %w", err)
 		}
 	}
+	task.RequestParameters = unmarshalAnyMap(requestParametersJSON)
 	return task, nil
 }
 

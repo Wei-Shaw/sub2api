@@ -247,6 +247,22 @@ func TestOrganizationServiceCreateIAMMemberRejectsInvalidPasswordLength(t *testi
 	require.Nil(t, repo.createdUser)
 }
 
+func TestOrganizationServiceCreateIAMMemberRejectsLoginNamesWithoutLeadingLetter(t *testing.T) {
+	for _, loginName := range []string{"1reader", ".reader", "-reader", "_reader"} {
+		t.Run(loginName, func(t *testing.T) {
+			repo := &organizationRepoStub{}
+			service := NewOrganizationService(repo, &organizationUserRepoStub{}, companyTestConfig())
+
+			member, password, err := service.CreateIAMMember(context.Background(), 1, loginName, "", "", "initial-password", true)
+
+			require.ErrorIs(t, err, ErrIAMLoginName)
+			require.Nil(t, member)
+			require.Empty(t, password)
+			require.Nil(t, repo.createdUser)
+		})
+	}
+}
+
 func TestOrganizationServiceAdminCreateOrganizationSubscription(t *testing.T) {
 	repo := &organizationRepoStub{adminOrgSub: &OrganizationSubscription{ID: 7, OrganizationID: 11, GroupID: 13}}
 	service := NewOrganizationService(repo, &organizationUserRepoStub{}, companyTestConfig())

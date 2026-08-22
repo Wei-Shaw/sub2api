@@ -129,7 +129,8 @@ type AsyncMediaSubmitInput struct {
 	InternalRequestID string // 网关侧生成的内部请求 ID（幂等键）
 	RequestedModel    string // 客户端请求模型（映射前）
 
-	Input fal.ImageGenInput // 协议无关的图片请求描述
+	Input             fal.ImageGenInput // 协议无关的图片请求描述
+	RequestParameters map[string]any    // sanitized non-binary client parameters for usage details
 
 	BillingType       int8    // 0=balance / 1=subscription
 	RateMultiplier    float64 // 下游图片计费倍率
@@ -204,18 +205,19 @@ func (s *AsyncMediaService) SubmitAsync(ctx context.Context, in *AsyncMediaSubmi
 		UpstreamModel:     amStrPtr(upstreamModel),
 		// ImageSize 存客户端原始 size（如 "1024x1024"），结算阶段据此命中分组二维矩阵；
 		// 已归一化的计费档位（"2K" 等）单独存入 SizeTier 字段。
-		ImageSize:        amStrPtr(rawSize),
-		Quality:          amStrPtr(quality),
-		NumImages:        numImages,
-		Status:           AsyncMediaStatusPending,
-		HeldCost:         heldCost,
-		RateMultiplier:   in.RateMultiplier,
-		SizeTier:         amStrPtr(sizeTier),
-		FailDeadlineAt:   &failDeadline,
-		ClientIP:         amStrPtr(in.ClientIP),
-		UserAgent:        amStrPtr(in.UserAgent),
-		InboundEndpoint:  amStrPtr(in.InboundEndpoint),
-		UpstreamEndpoint: amStrPtr(asyncImageUpstreamEndpoint(in.Account, upstreamModel)),
+		ImageSize:         amStrPtr(rawSize),
+		Quality:           amStrPtr(quality),
+		NumImages:         numImages,
+		RequestParameters: in.RequestParameters,
+		Status:            AsyncMediaStatusPending,
+		HeldCost:          heldCost,
+		RateMultiplier:    in.RateMultiplier,
+		SizeTier:          amStrPtr(sizeTier),
+		FailDeadlineAt:    &failDeadline,
+		ClientIP:          amStrPtr(in.ClientIP),
+		UserAgent:         amStrPtr(in.UserAgent),
+		InboundEndpoint:   amStrPtr(in.InboundEndpoint),
+		UpstreamEndpoint:  amStrPtr(asyncImageUpstreamEndpoint(in.Account, upstreamModel)),
 	}
 	if err := s.taskRepo.Create(ctx, task); err != nil {
 		// 落库失败：回滚预扣费，避免漏退。
@@ -571,6 +573,7 @@ func (s *AsyncMediaService) writeTerminalUsageLog(
 		ImageOutputSize:       outputMetadata.OutputSize,
 		ImageSizeSource:       asyncMediaUsageLogImageSizeSource(task),
 		ImageSizeBreakdown:    outputMetadata.Breakdown,
+		RequestParameters:     task.RequestParameters,
 		BillingTier:           asyncMediaUsageLogImageSize(task),
 		TaskID:                task.ID,
 		ImageURLs:             imageURLs,

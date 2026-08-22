@@ -1439,6 +1439,16 @@ func NumImagesLTE(v int) predicate.AsyncMediaTask {
 	return predicate.AsyncMediaTask(sql.FieldLTE(FieldNumImages, v))
 }
 
+// RequestParametersIsNil applies the IsNil predicate on the "request_parameters" field.
+func RequestParametersIsNil() predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldIsNull(FieldRequestParameters))
+}
+
+// RequestParametersNotNil applies the NotNil predicate on the "request_parameters" field.
+func RequestParametersNotNil() predicate.AsyncMediaTask {
+	return predicate.AsyncMediaTask(sql.FieldNotNull(FieldRequestParameters))
+}
+
 // StatusEQ applies the EQ predicate on the "status" field.
 func StatusEQ(v string) predicate.AsyncMediaTask {
 	return predicate.AsyncMediaTask(sql.FieldEQ(FieldStatus, v))

@@ -107,6 +107,12 @@ func (_c *UsageLogCreate) SetRequestID(v string) *UsageLogCreate {
 	return _c
 }
 
+// SetRequestParameters sets the "request_parameters" field.
+func (_c *UsageLogCreate) SetRequestParameters(v map[string]interface{}) *UsageLogCreate {
+	_c.mutation.SetRequestParameters(v)
+	return _c
+}
+
 // SetModel sets the "model" field.
 func (_c *UsageLogCreate) SetModel(v string) *UsageLogCreate {
 	_c.mutation.SetModel(v)
@@ -1112,6 +1118,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 		_spec.SetField(usagelog.FieldRequestID, field.TypeString, value)
 		_node.RequestID = value
 	}
+	if value, ok := _c.mutation.RequestParameters(); ok {
+		_spec.SetField(usagelog.FieldRequestParameters, field.TypeJSON, value)
+		_node.RequestParameters = value
+	}
 	if value, ok := _c.mutation.Model(); ok {
 		_spec.SetField(usagelog.FieldModel, field.TypeString, value)
 		_node.Model = value
@@ -1568,6 +1578,24 @@ func (u *UsageLogUpsert) SetRequestID(v string) *UsageLogUpsert {
 // UpdateRequestID sets the "request_id" field to the value that was provided on create.
 func (u *UsageLogUpsert) UpdateRequestID() *UsageLogUpsert {
 	u.SetExcluded(usagelog.FieldRequestID)
+	return u
+}
+
+// SetRequestParameters sets the "request_parameters" field.
+func (u *UsageLogUpsert) SetRequestParameters(v map[string]interface{}) *UsageLogUpsert {
+	u.Set(usagelog.FieldRequestParameters, v)
+	return u
+}
+
+// UpdateRequestParameters sets the "request_parameters" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRequestParameters() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRequestParameters)
+	return u
+}
+
+// ClearRequestParameters clears the value of the "request_parameters" field.
+func (u *UsageLogUpsert) ClearRequestParameters() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRequestParameters)
 	return u
 }
 
@@ -2632,6 +2660,27 @@ func (u *UsageLogUpsertOne) SetRequestID(v string) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateRequestID() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateRequestID()
+	})
+}
+
+// SetRequestParameters sets the "request_parameters" field.
+func (u *UsageLogUpsertOne) SetRequestParameters(v map[string]interface{}) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRequestParameters(v)
+	})
+}
+
+// UpdateRequestParameters sets the "request_parameters" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRequestParameters() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRequestParameters()
+	})
+}
+
+// ClearRequestParameters clears the value of the "request_parameters" field.
+func (u *UsageLogUpsertOne) ClearRequestParameters() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRequestParameters()
 	})
 }
 
@@ -4005,6 +4054,27 @@ func (u *UsageLogUpsertBulk) SetRequestID(v string) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateRequestID() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateRequestID()
+	})
+}
+
+// SetRequestParameters sets the "request_parameters" field.
+func (u *UsageLogUpsertBulk) SetRequestParameters(v map[string]interface{}) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRequestParameters(v)
+	})
+}
+
+// UpdateRequestParameters sets the "request_parameters" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRequestParameters() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRequestParameters()
+	})
+}
+
+// ClearRequestParameters clears the value of the "request_parameters" field.
+func (u *UsageLogUpsertBulk) ClearRequestParameters() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRequestParameters()
 	})
 }
 

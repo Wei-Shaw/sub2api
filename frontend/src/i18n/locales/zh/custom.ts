@@ -1062,6 +1062,7 @@ export default {
     imageQuality: '质量',
     imageDetails: '出图详情',
     imageRequestParameters: '请求参数',
+    imageRequestParametersJson: '请求参数 JSON',
     imageRequestResolution: '请求分辨率',
     imageResultAndBilling: '结果与计费',
     imageParameterNotRecorded: '未记录',

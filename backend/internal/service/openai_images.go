@@ -158,6 +158,74 @@ func (r *OpenAIImagesRequest) IsEdits() bool {
 	return r != nil && r.Endpoint == openAIImagesEditsEndpoint
 }
 
+// RequestParameters returns the non-binary request parameters that are safe to
+// persist with an image usage record. Multipart file contents are intentionally
+// omitted; their metadata and any URL inputs remain available for diagnostics.
+func (r *OpenAIImagesRequest) RequestParameters() map[string]any {
+	if r == nil {
+		return nil
+	}
+	params := make(map[string]any)
+	putString := func(key, value string) {
+		if value = strings.TrimSpace(value); value != "" {
+			params[key] = value
+		}
+	}
+	putString("model", r.Model)
+	if prompt := TruncateUsageRequestPrompt(strings.TrimSpace(r.Prompt)); prompt != "" {
+		params["prompt"] = prompt
+	}
+	putString("size", r.Size)
+	putString("quality", r.Quality)
+	putString("response_format", r.ResponseFormat)
+	putString("background", r.Background)
+	putString("output_format", r.OutputFormat)
+	putString("moderation", r.Moderation)
+	putString("input_fidelity", r.InputFidelity)
+	putString("style", r.Style)
+	if r.N > 0 {
+		params["n"] = r.N
+	}
+	if r.Stream {
+		params["stream"] = true
+	}
+	if r.OutputCompression != nil {
+		params["output_compression"] = *r.OutputCompression
+	}
+	if r.PartialImages != nil {
+		params["partial_images"] = *r.PartialImages
+	}
+	if len(r.InputImageURLs) > 0 {
+		params["images"] = append([]string(nil), r.InputImageURLs...)
+	}
+	if r.MaskImageURL != "" {
+		params["mask"] = map[string]any{"image_url": r.MaskImageURL}
+	} else if r.HasMask {
+		params["mask"] = true
+	}
+	if len(r.Uploads) > 0 || r.MaskUpload != nil {
+		uploads := make([]map[string]any, 0, len(r.Uploads)+1)
+		for _, upload := range r.Uploads {
+			uploads = append(uploads, map[string]any{
+				"field":        upload.FieldName,
+				"file_name":    upload.FileName,
+				"content_type": upload.ContentType,
+				"bytes":        len(upload.Data),
+			})
+		}
+		if r.MaskUpload != nil {
+			uploads = append(uploads, map[string]any{
+				"field":        "mask",
+				"file_name":    r.MaskUpload.FileName,
+				"content_type": r.MaskUpload.ContentType,
+				"bytes":        len(r.MaskUpload.Data),
+			})
+		}
+		params["uploads"] = uploads
+	}
+	return params
+}
+
 func (r *OpenAIImagesRequest) StickySessionSeed() string {
 	if r == nil {
 		return ""

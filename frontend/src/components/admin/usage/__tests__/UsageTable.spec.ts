@@ -56,6 +56,7 @@ const messages: Record<string, string> = {
   'usage.imageQuality': 'Quality',
   'usage.imageDetails': 'Image details',
   'usage.imageRequestParameters': 'Request parameters',
+  'usage.imageRequestParametersJson': 'Request parameters JSON',
   'usage.imageRequestResolution': 'Requested resolution',
   'usage.imageResultAndBilling': 'Result and billing',
   'usage.imageParameterNotRecorded': 'Not recorded',
@@ -521,6 +522,7 @@ describe('admin UsageTable tooltip', () => {
           image_size: '4K',
           image_size_source: 'output',
           image_size_breakdown: { '4K': 2 },
+          request_parameters: { prompt: 'a mountain lake', n: 2 },
           cos_urls: ['https://cdn.example.com/result.png'],
         }],
         loading: false,
@@ -541,6 +543,8 @@ describe('admin UsageTable tooltip', () => {
 
     const dialog = wrapper.get('[data-testid="image-usage-detail-dialog"]')
     expect(dialog.text()).toContain('Request parameters')
+    expect(dialog.text()).toContain('Request parameters JSON')
+    expect(dialog.text()).toContain('a mountain lake')
     expect(dialog.text()).toContain('Requested resolution')
     expect(dialog.text()).toContain('3840x2160')
     expect(dialog.text()).toContain('Quality')
