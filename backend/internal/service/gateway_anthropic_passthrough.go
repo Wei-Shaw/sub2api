@@ -507,13 +507,8 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 			if !ok {
 				guardedLines, guardErr := protocolGuard.Flush()
 				if !clientDisconnected && len(guardedLines) > 0 {
-					disconnected, completedEvent := writeAnthropicGuardedLines(w, c, flusher, guardedLines)
+					disconnected, _ := writeAnthropicGuardedLines(w, c, flusher, guardedLines)
 					clientDisconnected = disconnected
-					if completedEvent {
-						lastDataAt = time.Now()
-						resetKeepaliveTimer()
-						inPartialEvent = false
-					}
 				}
 				if guardErr != nil {
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, guardErr

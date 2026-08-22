@@ -2,9 +2,10 @@ package service
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -12,9 +13,11 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-const rawAnthropicToolCallMarker = `<invoke name="`
-
-var rawAnthropicToolCallNamePattern = regexp.MustCompile(`<invoke\s+name="([^"]+)">`)
+const (
+	rawAnthropicToolCallMarker             = `<invoke`
+	maxAnthropicToolCallCandidateBytes     = 64 * 1024
+	maxAnthropicToolCallDeferredEventBytes = 128 * 1024
+)
 
 type anthropicToolCallProtocolError struct {
 	reason string
@@ -25,30 +28,75 @@ func (e *anthropicToolCallProtocolError) Error() string {
 }
 
 func rawAnthropicToolCallNames(text string) ([]string, bool) {
-	matches := rawAnthropicToolCallNamePattern.FindAllStringSubmatch(text, -1)
-	if len(matches) == 0 || strings.Count(text, "</invoke>") < len(matches) {
+	if len(text) == 0 || len(text) > maxAnthropicToolCallCandidateBytes {
 		return nil, false
 	}
-	names := make([]string, 0, len(matches))
-	for _, match := range matches {
-		if len(match) < 2 || strings.TrimSpace(match[1]) == "" {
+	decoder := xml.NewDecoder(strings.NewReader("<raw-tool-calls>" + text + "</raw-tool-calls>"))
+	names := make([]string, 0, 1)
+	depth := 0
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			return names, len(names) > 0
+		}
+		if err != nil {
 			return nil, false
 		}
-		names = append(names, strings.TrimSpace(match[1]))
+		switch value := token.(type) {
+		case xml.StartElement:
+			depth++
+			if depth == 1 {
+				if value.Name.Local != "raw-tool-calls" {
+					return nil, false
+				}
+				continue
+			}
+			if depth != 2 {
+				continue
+			}
+			if value.Name.Local != "invoke" {
+				return nil, false
+			}
+			name := ""
+			for _, attribute := range value.Attr {
+				if attribute.Name.Local == "name" {
+					name = strings.TrimSpace(attribute.Value)
+					break
+				}
+			}
+			if name == "" {
+				return nil, false
+			}
+			names = append(names, name)
+		case xml.EndElement:
+			depth--
+			if depth < 0 {
+				return nil, false
+			}
+		case xml.CharData:
+			if depth == 1 && strings.TrimSpace(string(value)) != "" {
+				return nil, false
+			}
+		case xml.Comment:
+			if depth == 1 {
+				return nil, false
+			}
+		case xml.Directive, xml.ProcInst:
+			return nil, false
+		}
 	}
-	return names, true
 }
 
-func splitRawAnthropicToolCallText(text string) (visible string, names []string, found, complete bool) {
+func splitRawAnthropicToolCallText(text string) (visible string, names []string, found bool) {
 	markerIndex := strings.Index(text, rawAnthropicToolCallMarker)
 	if markerIndex < 0 {
-		return text, nil, false, true
+		return text, nil, false
 	}
 	rawNames, isComplete := rawAnthropicToolCallNames(text[markerIndex:])
 	if !isComplete {
-		return text[:markerIndex], nil, true, false
+		return text, nil, false
 	}
-	return text[:markerIndex], rawNames, true, true
+	return text[:markerIndex], rawNames, true
 }
 
 func sameToolNameMultiset(left, right []string) bool {
@@ -67,15 +115,7 @@ func sameToolNameMultiset(left, right []string) bool {
 	return true
 }
 
-func validateAnthropicToolCallProtocol(stopReason string, rawToolNames, structuredToolNames []string) error {
-	if len(rawToolNames) > 0 {
-		if len(structuredToolNames) == 0 {
-			return &anthropicToolCallProtocolError{reason: "raw tool-call markup had no structured tool_use block"}
-		}
-		if !sameToolNameMultiset(rawToolNames, structuredToolNames) {
-			return &anthropicToolCallProtocolError{reason: "raw and structured tool names disagree"}
-		}
-	}
+func validateAnthropicToolCallProtocol(stopReason string, structuredToolNames []string) error {
 	if stopReason == "tool_use" && len(structuredToolNames) == 0 {
 		return &anthropicToolCallProtocolError{reason: "stop_reason=tool_use had no structured tool_use block"}
 	}
@@ -91,10 +131,14 @@ func normalizeAnthropicPassthroughResponseBody(body []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	normalizedContent := make([]json.RawMessage, 0, len(envelope.Content))
+	type rawCandidate struct {
+		blockIndex int
+		visible    string
+	}
+	candidates := make([]rawCandidate, 0, 1)
 	rawToolNames := make([]string, 0)
 	structuredToolNames := make([]string, 0)
-	for _, rawBlock := range envelope.Content {
+	for blockIndex, rawBlock := range envelope.Content {
 		var block struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
@@ -105,35 +149,43 @@ func normalizeAnthropicPassthroughResponseBody(body []byte) ([]byte, error) {
 		}
 		switch block.Type {
 		case "text":
-			visible, names, found, complete := splitRawAnthropicToolCallText(block.Text)
+			visible, names, found := splitRawAnthropicToolCallText(block.Text)
 			if found {
-				if !complete {
-					return nil, &anthropicToolCallProtocolError{reason: "raw tool-call markup was incomplete"}
-				}
 				rawToolNames = append(rawToolNames, names...)
-				if visible == "" {
-					continue
-				}
-				normalizedBlock, err := sjson.SetBytes(rawBlock, "text", visible)
-				if err != nil {
-					return nil, err
-				}
-				normalizedContent = append(normalizedContent, normalizedBlock)
-				continue
+				candidates = append(candidates, rawCandidate{blockIndex: blockIndex, visible: visible})
 			}
 		case "tool_use":
 			if strings.TrimSpace(block.Name) != "" {
 				structuredToolNames = append(structuredToolNames, strings.TrimSpace(block.Name))
 			}
 		}
-		normalizedContent = append(normalizedContent, rawBlock)
 	}
 
-	if err := validateAnthropicToolCallProtocol(envelope.StopReason, rawToolNames, structuredToolNames); err != nil {
+	if err := validateAnthropicToolCallProtocol(envelope.StopReason, structuredToolNames); err != nil {
 		return nil, err
 	}
-	if len(rawToolNames) == 0 {
+	if len(candidates) == 0 || envelope.StopReason != "tool_use" || !sameToolNameMultiset(rawToolNames, structuredToolNames) {
 		return body, nil
+	}
+	candidateByBlock := make(map[int]rawCandidate, len(candidates))
+	for _, candidate := range candidates {
+		candidateByBlock[candidate.blockIndex] = candidate
+	}
+	normalizedContent := make([]json.RawMessage, 0, len(envelope.Content))
+	for blockIndex, rawBlock := range envelope.Content {
+		candidate, ok := candidateByBlock[blockIndex]
+		if !ok {
+			normalizedContent = append(normalizedContent, rawBlock)
+			continue
+		}
+		if candidate.visible == "" {
+			continue
+		}
+		normalizedBlock, err := sjson.SetBytes(rawBlock, "text", candidate.visible)
+		if err != nil {
+			return nil, err
+		}
+		normalizedContent = append(normalizedContent, normalizedBlock)
 	}
 	contentJSON, err := json.Marshal(normalizedContent)
 	if err != nil {
@@ -163,16 +215,22 @@ func anthropicProtocolFailoverError(resp *http.Response, account *Account, proto
 }
 
 type anthropicPassthroughTextBlockState struct {
-	pending      string
-	rawCandidate strings.Builder
-	readingRaw   bool
+	pending           string
+	rawCandidate      strings.Builder
+	readingRaw        bool
+	detectionDisabled bool
 }
 
 type anthropicPassthroughSSEGuard struct {
 	eventLines          []string
 	textBlocks          map[int]*anthropicPassthroughTextBlockState
-	rawToolNames        []string
 	structuredToolNames []string
+	deferredLines       []string
+	deferredBytes       int
+	deferredCandidate   string
+	deferredBlockIndex  int
+	deferring           bool
+	passthrough         bool
 }
 
 func newAnthropicPassthroughSSEGuard() *anthropicPassthroughSSEGuard {
@@ -182,9 +240,12 @@ func newAnthropicPassthroughSSEGuard() *anthropicPassthroughSSEGuard {
 }
 
 func (g *anthropicPassthroughSSEGuard) PushLine(line string) ([]string, error) {
+	if g.passthrough {
+		return []string{line}, nil
+	}
 	if line != "" {
 		g.eventLines = append(g.eventLines, line)
-		if g.canEagerEmitEvent(line) {
+		if !g.deferring && g.canEagerEmitEvent(line) {
 			lines := append([]string(nil), g.eventLines...)
 			g.eventLines = nil
 			return lines, nil
@@ -196,6 +257,19 @@ func (g *anthropicPassthroughSSEGuard) PushLine(line string) ([]string, error) {
 	}
 	lines, err := g.transformEvent(g.eventLines)
 	g.eventLines = nil
+	if err != nil {
+		return append(lines, ""), err
+	}
+	if g.deferring {
+		deferredEventLines := append(lines, "")
+		if !g.deferLines(deferredEventLines) {
+			resolved := g.resolveDeferred(false)
+			resolved = append(resolved, deferredEventLines...)
+			g.passthrough = true
+			return resolved, nil
+		}
+		return nil, nil
+	}
 	return append(lines, ""), err
 }
 
@@ -213,12 +287,80 @@ func (g *anthropicPassthroughSSEGuard) canEagerEmitEvent(line string) bool {
 }
 
 func (g *anthropicPassthroughSSEGuard) Flush() ([]string, error) {
-	if len(g.eventLines) == 0 {
-		return nil, nil
+	if g.passthrough {
+		lines := append([]string(nil), g.eventLines...)
+		g.eventLines = nil
+		return lines, nil
 	}
-	lines, err := g.transformEvent(g.eventLines)
-	g.eventLines = nil
-	return lines, err
+	output := make([]string, 0)
+	if len(g.eventLines) > 0 {
+		lines, err := g.transformEvent(g.eventLines)
+		g.eventLines = nil
+		if err != nil {
+			return lines, err
+		}
+		if g.deferring {
+			if !g.deferLines(lines) {
+				output = append(output, g.resolveDeferred(false)...)
+				output = append(output, lines...)
+			}
+		} else {
+			output = append(output, lines...)
+		}
+	}
+	if g.deferring {
+		output = append(output, g.resolveDeferred(false)...)
+	}
+	for index, state := range g.textBlocks {
+		text := state.pending
+		if state.readingRaw {
+			text += state.rawCandidate.String()
+		}
+		if text != "" {
+			output = append(output, g.syntheticTextDelta(index, text)...)
+		}
+	}
+	return output, nil
+}
+
+func (g *anthropicPassthroughSSEGuard) deferLines(lines []string) bool {
+	additionalBytes := 0
+	for _, line := range lines {
+		additionalBytes += len(line) + 1
+	}
+	if additionalBytes > maxAnthropicToolCallDeferredEventBytes-g.deferredBytes {
+		return false
+	}
+	g.deferredLines = append(g.deferredLines, lines...)
+	g.deferredBytes += additionalBytes
+	return true
+}
+
+func (g *anthropicPassthroughSSEGuard) beginDeferredCandidate(index int, candidate string) {
+	g.deferring = true
+	g.deferredBlockIndex = index
+	g.deferredCandidate = candidate
+	g.deferredBytes = len(candidate)
+}
+
+func (g *anthropicPassthroughSSEGuard) resolveDeferred(stripCandidate bool) []string {
+	lines := make([]string, 0, len(g.deferredLines)+3)
+	if !stripCandidate && g.deferredCandidate != "" {
+		lines = append(lines, g.syntheticTextDelta(g.deferredBlockIndex, g.deferredCandidate)...)
+	}
+	lines = append(lines, g.deferredLines...)
+	g.deferredLines = nil
+	g.deferredBytes = 0
+	g.deferredCandidate = ""
+	g.deferredBlockIndex = 0
+	g.deferring = false
+	return lines
+}
+
+func (g *anthropicPassthroughSSEGuard) resolveDeferredForStopReason(stopReason string) []string {
+	rawToolNames, complete := rawAnthropicToolCallNames(g.deferredCandidate)
+	stripCandidate := complete && stopReason == "tool_use" && sameToolNameMultiset(rawToolNames, g.structuredToolNames)
+	return g.resolveDeferred(stripCandidate)
 }
 
 func (g *anthropicPassthroughSSEGuard) transformEvent(lines []string) ([]string, error) {
@@ -288,13 +430,8 @@ func (g *anthropicPassthroughSSEGuard) transformEvent(lines []string) ([]string,
 		delete(g.textBlocks, index)
 		flushText := state.pending
 		if state.readingRaw {
-			candidate := state.rawCandidate.String()
-			if names, complete := rawAnthropicToolCallNames(candidate); complete {
-				g.rawToolNames = append(g.rawToolNames, names...)
-				flushText = ""
-			} else {
-				return anthropicProtocolSSEErrorLines(), &anthropicToolCallProtocolError{reason: "raw tool-call markup was incomplete"}
-			}
+			g.beginDeferredCandidate(index, state.rawCandidate.String())
+			return append([]string(nil), lines...), nil
 		}
 		if flushText == "" {
 			return append([]string(nil), lines...), nil
@@ -302,28 +439,49 @@ func (g *anthropicPassthroughSSEGuard) transformEvent(lines []string) ([]string,
 		return append(g.syntheticTextDelta(index, flushText), append([]string(nil), lines...)...), nil
 	case "message_delta":
 		stopReason := gjson.Get(data, "delta.stop_reason").String()
-		if err := validateAnthropicToolCallProtocol(stopReason, g.rawToolNames, g.structuredToolNames); err != nil {
+		if err := validateAnthropicToolCallProtocol(stopReason, g.structuredToolNames); err != nil {
+			g.resolveDeferred(true)
 			return anthropicProtocolSSEErrorLines(), err
 		}
+		if g.deferring {
+			resolved := g.resolveDeferredForStopReason(stopReason)
+			return append(resolved, lines...), nil
+		}
 	case "message_stop":
-		if err := validateAnthropicToolCallProtocol("", g.rawToolNames, g.structuredToolNames); err != nil {
-			return anthropicProtocolSSEErrorLines(), err
+		if g.deferring {
+			resolved := g.resolveDeferred(false)
+			return append(resolved, lines...), nil
 		}
 	}
 	return append([]string(nil), lines...), nil
 }
 
 func (g *anthropicPassthroughSSEGuard) consumeTextDelta(state *anthropicPassthroughTextBlockState, text string) string {
+	if state.detectionDisabled {
+		return text
+	}
 	if state.readingRaw {
-		state.rawCandidate.WriteString(text)
+		if state.rawCandidate.Len()+len(text) > maxAnthropicToolCallCandidateBytes {
+			restored := state.rawCandidate.String() + text
+			state.rawCandidate.Reset()
+			state.readingRaw = false
+			state.detectionDisabled = true
+			return restored
+		}
+		_, _ = state.rawCandidate.WriteString(text)
 		return ""
 	}
 	combined := state.pending + text
 	markerIndex := strings.Index(combined, rawAnthropicToolCallMarker)
 	if markerIndex >= 0 {
+		candidate := combined[markerIndex:]
 		state.pending = ""
+		if len(candidate) > maxAnthropicToolCallCandidateBytes {
+			state.detectionDisabled = true
+			return combined
+		}
 		state.readingRaw = true
-		state.rawCandidate.WriteString(combined[markerIndex:])
+		_, _ = state.rawCandidate.WriteString(candidate)
 		return combined[:markerIndex]
 	}
 	pendingLength := longestRawToolCallMarkerPrefixSuffix(combined)
