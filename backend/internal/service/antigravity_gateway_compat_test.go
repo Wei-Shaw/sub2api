@@ -376,6 +376,64 @@ func TestAntigravityCompatUnauthorizedIsCredentialFailure(t *testing.T) {
 	require.Empty(t, recorder.Body.String())
 }
 
+func TestAntigravityCompatLocationUnsupportedDisablesAccountAndFailsOver(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name    string
+		path    string
+		body    []byte
+		forward func(*AntigravityGatewayService, context.Context, *gin.Context, *Account, []byte) (*ForwardResult, error)
+	}{
+		{
+			name: "chat completions",
+			path: "/v1/chat/completions",
+			body: []byte(`{"model":"gemini-3.1-pro-high","messages":[{"role":"user","content":"ok"}]}`),
+			forward: func(svc *AntigravityGatewayService, ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+				return svc.ForwardAsChatCompletions(ctx, c, account, body, nil)
+			},
+		},
+		{
+			name: "responses",
+			path: "/v1/responses",
+			body: []byte(`{"model":"gemini-3.1-pro-high","input":"ok"}`),
+			forward: func(svc *AntigravityGatewayService, ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+				return svc.ForwardAsResponses(ctx, c, account, body, nil)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{{
+				StatusCode: http.StatusBadRequest,
+				Header:     http.Header{"X-Request-Id": []string{"location-compat-400"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"code":400,"message":"User location is not supported for the API use.","status":"FAILED_PRECONDITION"}}`)),
+			}}}
+			repo := &locationRestrictionAccountRepoStub{}
+			svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+			svc.accountRepo = repo
+			c, recorder := newAntigravityCompatContext(http.MethodPost, tt.path, tt.body)
+
+			result, err := tt.forward(
+				svc,
+				context.Background(),
+				c,
+				newAntigravityCompatAccount(AccountTypeOAuth),
+				tt.body,
+			)
+
+			require.Nil(t, result)
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.Equal(t, NextAccountRetry, failoverErr.NextAccountAction)
+			require.Equal(t, GatewayFailureScopeAccount, failoverErr.Scope)
+			require.Empty(t, recorder.Body.String())
+			require.Len(t, repo.setErrorCalls, 1)
+			require.Equal(t, int64(3757), repo.setErrorCalls[0].accountID)
+		})
+	}
+}
+
 func TestAntigravityCompatEmptyStreamTriggersFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

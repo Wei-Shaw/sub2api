@@ -15,15 +15,17 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
 
 const (
-	antigravityStickySessionTTL = time.Hour
-	antigravityMaxRetries       = 3
-	antigravityRetryBaseDelay   = 1 * time.Second
-	antigravityRetryMaxDelay    = 16 * time.Second
+	antigravityStickySessionTTL                  = time.Hour
+	antigravityMaxRetries                        = 3
+	antigravityRetryBaseDelay                    = 1 * time.Second
+	antigravityRetryMaxDelay                     = 16 * time.Second
+	antigravityLocationUnsupportedDisableTimeout = 30 * time.Second
 
 	// 限流相关常量
 	// antigravityRateLimitThreshold 限流等待/切换阈值
@@ -195,6 +197,61 @@ func (s *AntigravityGatewayService) getUpstreamErrorDetail(body []byte) string {
 		return ""
 	}
 	return truncateString(string(body), maxBytes)
+}
+
+func isAntigravityLocationUnsupportedError(respBody []byte) bool {
+	msg := strings.ToLower(strings.TrimSpace(extractAntigravityErrorMessage(respBody)))
+	return strings.Contains(msg, "user location is not supported for the api use")
+}
+
+func (s *AntigravityGatewayService) handleAntigravityLocationUnsupported(
+	ctx context.Context,
+	c *gin.Context,
+	prefix string,
+	account *Account,
+	statusCode int,
+	headers http.Header,
+	body []byte,
+	groupID int64,
+	sessionHash string,
+) *UpstreamFailoverError {
+	if statusCode != http.StatusBadRequest || account == nil || !isAntigravityLocationUnsupportedError(body) {
+		return nil
+	}
+
+	opCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), antigravityLocationUnsupportedDisableTimeout)
+	defer cancel()
+
+	if s.accountRepo != nil {
+		const accountError = "Antigravity account location is not supported for API use"
+		if err := s.accountRepo.SetError(opCtx, account.ID, accountError); err != nil {
+			logger.LegacyPrintf("service.antigravity_gateway", "%s location_unsupported_disable_failed account=%d error=%v", prefix, account.ID, err)
+		} else {
+			logger.LegacyPrintf("service.antigravity_gateway", "%s location_unsupported account_disabled=true account=%d", prefix, account.ID)
+		}
+	}
+	s.clearStickySession(opCtx, groupID, sessionHash)
+
+	upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractAntigravityErrorMessage(body)))
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		Platform:           account.Platform,
+		AccountID:          account.ID,
+		AccountName:        account.Name,
+		UpstreamStatusCode: statusCode,
+		UpstreamRequestID:  headers.Get("x-request-id"),
+		Kind:               "account_location_unsupported",
+		Message:            upstreamMsg,
+		Detail:             s.getUpstreamErrorDetail(body),
+	})
+	return &UpstreamFailoverError{
+		StatusCode:        statusCode,
+		ResponseBody:      body,
+		ResponseHeaders:   headers.Clone(),
+		Stage:             GatewayFailureStageInference,
+		Scope:             GatewayFailureScopeAccount,
+		Reason:            GatewayFailureReason("antigravity_location_unsupported"),
+		NextAccountAction: NextAccountRetry,
+	}
 }
 
 // checkErrorPolicy nil 安全的包装

@@ -407,6 +407,9 @@ func (s *AntigravityGatewayService) handleAntigravityCompatHTTPError(
 	resp *http.Response,
 ) error {
 	body := s.readUpstreamErrorBody(resp)
+	if failoverErr := s.handleAntigravityLocationUnsupported(ctx, c, call.prefix, account, resp.StatusCode, resp.Header, body, 0, ""); failoverErr != nil {
+		return failoverErr
+	}
 	s.handleUpstreamError(
 		ctx,
 		call.prefix,

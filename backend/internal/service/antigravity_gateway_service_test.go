@@ -190,6 +190,47 @@ type recordingInternal500CounterCache struct {
 	resetCalls     []int64
 }
 
+type locationRestrictionErrorCall struct {
+	accountID int64
+	reason    string
+	ctxErr    error
+}
+
+type locationRestrictionAccountRepoStub struct {
+	AccountRepository
+	setErrorCalls []locationRestrictionErrorCall
+}
+
+type locationRestrictionCacheCall struct {
+	groupID     int64
+	sessionHash string
+	ctxErr      error
+	deadline    time.Time
+	hasDeadline bool
+}
+
+type locationRestrictionCacheStub struct {
+	GatewayCache
+	deleteCalls []locationRestrictionCacheCall
+}
+
+func (r *locationRestrictionAccountRepoStub) SetError(ctx context.Context, id int64, reason string) error {
+	r.setErrorCalls = append(r.setErrorCalls, locationRestrictionErrorCall{accountID: id, reason: reason, ctxErr: ctx.Err()})
+	return nil
+}
+
+func (c *locationRestrictionCacheStub) DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error {
+	deadline, hasDeadline := ctx.Deadline()
+	c.deleteCalls = append(c.deleteCalls, locationRestrictionCacheCall{
+		groupID:     groupID,
+		sessionHash: sessionHash,
+		ctxErr:      ctx.Err(),
+		deadline:    deadline,
+		hasDeadline: hasDeadline,
+	})
+	return nil
+}
+
 func (c *recordingInternal500CounterCache) IncrementInternal500Count(_ context.Context, accountID int64) (int64, error) {
 	c.incrementCalls = append(c.incrementCalls, accountID)
 	return int64(len(c.incrementCalls)), nil
@@ -378,6 +419,88 @@ func TestAntigravityGatewayService_ForwardGemini_PreservesServerSideToolInvocati
 	require.NotContains(t, toolConfig, "include_server_side_tool_invocations")
 }
 
+func TestAntigravityGatewayService_ForwardGemini_LocationUnsupportedDisablesAccountAndFailsOver(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`)
+	writer := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(writer)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-flash:generateContent", bytes.NewReader(body))
+
+	upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"X-Request-Id": []string{"location-native-400"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"code":400,"message":"User location is not supported for the API use.","status":"FAILED_PRECONDITION"}}`)),
+	}}}
+	repo := &locationRestrictionAccountRepoStub{}
+	cache := &stubSmartRetryCache{}
+	svc := &AntigravityGatewayService{
+		accountRepo:    repo,
+		cache:          cache,
+		settingService: NewSettingService(&antigravitySettingRepoStub{}, &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}),
+		tokenProvider:  &AntigravityTokenProvider{},
+		httpUpstream:   upstream,
+	}
+	account := &Account{
+		ID: 104, Name: "native-location-restricted", Platform: PlatformAntigravity, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1,
+		Credentials: map[string]any{"access_token": "token", "project_id": "project-104", "model_mapping": map[string]any{"gemini-2.5-flash": "gemini-2.5-flash"}},
+	}
+
+	result, err := svc.ForwardGemini(context.Background(), c, account, "gemini-2.5-flash", "generateContent", false, body, true, WithForwardGeminiSession(77, "session-location-restricted"))
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, NextAccountRetry, failoverErr.NextAccountAction)
+	require.Equal(t, GatewayFailureScopeAccount, failoverErr.Scope)
+	require.Empty(t, writer.Body.String())
+	require.Len(t, repo.setErrorCalls, 1)
+	require.Equal(t, int64(104), repo.setErrorCalls[0].accountID)
+	require.NoError(t, repo.setErrorCalls[0].ctxErr)
+	require.Len(t, cache.deleteCalls, 1)
+	require.Equal(t, int64(77), cache.deleteCalls[0].groupID)
+	require.Equal(t, "session-location-restricted", cache.deleteCalls[0].sessionHash)
+}
+
+func TestAntigravityGatewayService_HandleLocationUnsupportedUsesUncancelledContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	writer := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(writer)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-flash:generateContent", bytes.NewReader(nil))
+
+	repo := &locationRestrictionAccountRepoStub{}
+	cache := &locationRestrictionCacheStub{}
+	svc := &AntigravityGatewayService{accountRepo: repo, cache: cache}
+	account := &Account{ID: 105, Name: "cancelled-location-restricted", Platform: PlatformAntigravity}
+	reqCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	startedAt := time.Now()
+
+	failoverErr := svc.handleAntigravityLocationUnsupported(
+		reqCtx,
+		c,
+		"[antigravity-Forward] account=cancelled-location-restricted",
+		account,
+		http.StatusBadRequest,
+		http.Header{"X-Request-Id": []string{"location-cancelled-400"}},
+		[]byte(`{"error":{"message":"User location is not supported for the API use."}}`),
+		77,
+		"session-cancelled-location",
+	)
+
+	require.NotNil(t, failoverErr)
+	require.Equal(t, NextAccountRetry, failoverErr.NextAccountAction)
+	require.Len(t, repo.setErrorCalls, 1)
+	require.Equal(t, int64(105), repo.setErrorCalls[0].accountID)
+	require.NoError(t, repo.setErrorCalls[0].ctxErr)
+	require.Len(t, cache.deleteCalls, 1)
+	require.Equal(t, int64(77), cache.deleteCalls[0].groupID)
+	require.Equal(t, "session-cancelled-location", cache.deleteCalls[0].sessionHash)
+	require.NoError(t, cache.deleteCalls[0].ctxErr)
+	require.True(t, cache.deleteCalls[0].hasDeadline)
+	require.WithinDuration(t, startedAt.Add(antigravityLocationUnsupportedDisableTimeout), cache.deleteCalls[0].deadline, time.Second)
+	require.Empty(t, writer.Body.String())
+}
+
 func TestAntigravityGatewayService_ForwardGemini_MissingProjectReturnsLocalError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	writer := httptest.NewRecorder()
@@ -483,6 +606,66 @@ func TestAntigravityGatewayService_Forward_PromptTooLong(t *testing.T) {
 	require.True(t, ok)
 	require.Len(t, events, 1)
 	require.Equal(t, "prompt_too_long", events[0].Kind)
+}
+
+func TestAntigravityGatewayService_Forward_LocationUnsupportedDisablesAccountAndFailsOver(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	writer := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(writer)
+
+	body := []byte(`{"model":"gemini-3.6-flash-high","messages":[{"role":"user","content":"hi"}],"max_tokens":8}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+
+	respBody := []byte(`{"error":{"code":400,"message":"User location is not supported for the API use.","status":"FAILED_PRECONDITION"}}`)
+	upstream := &httpUpstreamStub{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"X-Request-Id": []string{"location-400"}},
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+	}}
+	repo := &locationRestrictionAccountRepoStub{}
+	svc := &AntigravityGatewayService{
+		accountRepo:    repo,
+		settingService: NewSettingService(&antigravitySettingRepoStub{}, &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}),
+		tokenProvider:  &AntigravityTokenProvider{},
+		httpUpstream:   upstream,
+	}
+	account := &Account{
+		ID:          1,
+		Name:        "location-restricted",
+		Platform:    PlatformAntigravity,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token": "token",
+			"project_id":   "project-1",
+			"model_mapping": map[string]any{
+				"gemini-3.6-flash-high": "gemini-3.6-flash-high",
+			},
+		},
+	}
+
+	result, err := svc.Forward(context.Background(), c, account, body, true)
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadRequest, failoverErr.StatusCode)
+	require.Equal(t, NextAccountRetry, failoverErr.NextAccountAction)
+	require.Equal(t, GatewayFailureScopeAccount, failoverErr.Scope)
+	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.Empty(t, writer.Body.String())
+	require.Len(t, repo.setErrorCalls, 1)
+	require.Equal(t, int64(1), repo.setErrorCalls[0].accountID)
+	require.Contains(t, repo.setErrorCalls[0].reason, "location")
+
+	raw, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := raw.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.NotEmpty(t, events)
+	require.Equal(t, "account_location_unsupported", events[len(events)-1].Kind)
 }
 
 // TestAntigravityGatewayService_Forward_ModelRateLimitTriggersFailover

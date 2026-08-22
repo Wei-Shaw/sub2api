@@ -46,43 +46,98 @@ func extractDefs(schema map[string]any) map[string]any {
 
 // flattenRefs 递归展开 $ref
 func flattenRefs(schema map[string]any, defs map[string]any) {
-	if len(defs) == 0 {
-		return // 无需展开
-	}
+	flattenRefsRecursive(schema, defs, make(map[string]bool))
+}
 
+func flattenRefsRecursive(schema map[string]any, defs map[string]any, resolving map[string]bool) {
 	// 检查并替换 $ref
 	if ref, ok := schema["$ref"].(string); ok {
 		delete(schema, "$ref")
-		// 解析引用名 (例如 #/$defs/MyType -> MyType)
-		parts := strings.Split(ref, "/")
-		refName := parts[len(parts)-1]
 
-		if defSchema, exists := defs[refName]; exists {
-			if defMap, ok := defSchema.(map[string]any); ok {
-				// 合并定义内容 (不覆盖现有 key)
-				for k, v := range defMap {
-					if _, has := schema[k]; !has {
-						schema[k] = deepCopy(v) // 需深拷贝避免共享引用
+		resolved := false
+		if refName, local := localDefinitionRefName(ref); local {
+			if defSchema, exists := defs[refName]; exists && !resolving[refName] {
+				if defMap, ok := defSchema.(map[string]any); ok {
+					resolving[refName] = true
+					resolvedDef, _ := deepCopy(defMap).(map[string]any)
+					flattenRefsRecursive(resolvedDef, defs, resolving)
+					delete(resolving, refName)
+					// 合并定义内容 (不覆盖现有 key)
+					for k, v := range resolvedDef {
+						if _, has := schema[k]; !has {
+							schema[k] = v
+						}
 					}
+					resolved = true
 				}
-				// 递归处理刚刚合并进来的内容
-				flattenRefs(schema, defs)
 			}
+		}
+
+		// Gemini 不接受 $ref。外部引用、缺失定义和循环引用无法安全展开时，
+		// 降级为无属性约束的内联对象，保留请求可执行性且不泄漏不支持字段。
+		if !resolved && !hasSchemaShape(schema) {
+			schema["type"] = "object"
 		}
 	}
 
 	// 遍历子节点
 	for _, v := range schema {
 		if subMap, ok := v.(map[string]any); ok {
-			flattenRefs(subMap, defs)
+			flattenRefsRecursive(subMap, defs, resolving)
 		} else if subArr, ok := v.([]any); ok {
 			for _, item := range subArr {
 				if itemMap, ok := item.(map[string]any); ok {
-					flattenRefs(itemMap, defs)
+					flattenRefsRecursive(itemMap, defs, resolving)
 				}
 			}
 		}
 	}
+}
+
+func localDefinitionRefName(ref string) (string, bool) {
+	var token string
+	switch {
+	case strings.HasPrefix(ref, "#/$defs/"):
+		token = strings.TrimPrefix(ref, "#/$defs/")
+	case strings.HasPrefix(ref, "#/definitions/"):
+		token = strings.TrimPrefix(ref, "#/definitions/")
+	default:
+		return "", false
+	}
+	if token == "" || strings.Contains(token, "/") {
+		return "", false
+	}
+
+	var decoded strings.Builder
+	decoded.Grow(len(token))
+	for i := 0; i < len(token); i++ {
+		if token[i] != '~' {
+			decoded.WriteByte(token[i])
+			continue
+		}
+		if i+1 >= len(token) {
+			return "", false
+		}
+		i++
+		switch token[i] {
+		case '0':
+			decoded.WriteByte('~')
+		case '1':
+			decoded.WriteByte('/')
+		default:
+			return "", false
+		}
+	}
+	return decoded.String(), true
+}
+
+func hasSchemaShape(schema map[string]any) bool {
+	for _, key := range []string{"type", "properties", "items", "enum", "anyOf", "oneOf", "allOf"} {
+		if _, ok := schema[key]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // deepCopy 深拷贝 (简单实现，仅针对 JSON 类型)

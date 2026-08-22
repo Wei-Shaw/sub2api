@@ -286,6 +286,55 @@ func TestBuildTools_PreservesWebSearchAlongsideFunctions(t *testing.T) {
 	require.Equal(t, 5, result[1].GoogleSearch.EnhancedContent.ImageSearch.MaxResultCount)
 }
 
+func TestTransformClaudeToGeminiWithOptions_RemovesUnresolvedToolSchemaRefs(t *testing.T) {
+	claudeReq := &ClaudeRequest{
+		Model: "gemini-3.6-flash-high",
+		Messages: []ClaudeMessage{{
+			Role:    "user",
+			Content: json.RawMessage(`"inspect the value"`),
+		}},
+		Tools: []ClaudeTool{{
+			Name:        "inspect_value",
+			Description: "Inspect a structured value",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"direct": map[string]any{"$ref": "#/components/schemas/Value"},
+					"list": map[string]any{
+						"type":  "array",
+						"items": map[string]any{"$ref": "#/components/schemas/Value"},
+					},
+					"nested": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"value": map[string]any{"$ref": "#/components/schemas/Value"},
+						},
+					},
+				},
+			},
+		}},
+	}
+
+	body, err := TransformClaudeToGeminiWithOptions(
+		claudeReq,
+		"project-1",
+		"gemini-3.6-flash-high",
+		DefaultTransformOptions(),
+	)
+
+	require.NoError(t, err)
+	require.NotContains(t, string(body), `"$ref"`)
+
+	var req V1InternalRequest
+	require.NoError(t, json.Unmarshal(body, &req))
+	params := req.Request.Tools[0].FunctionDeclarations[0].Parameters
+	properties := params["properties"].(map[string]any)
+	require.NotEmpty(t, properties["direct"].(map[string]any)["type"])
+	require.NotEmpty(t, properties["list"].(map[string]any)["items"].(map[string]any)["type"])
+	nested := properties["nested"].(map[string]any)["properties"].(map[string]any)
+	require.NotEmpty(t, nested["value"].(map[string]any)["type"])
+}
+
 func TestBuildGenerationConfig_ThinkingDynamicBudget(t *testing.T) {
 	tests := []struct {
 		name        string

@@ -375,6 +375,10 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 				}
 			}
 
+			if failoverErr := s.handleAntigravityLocationUnsupported(ctx, c, prefix, account, resp.StatusCode, resp.Header, respBody, 0, ""); failoverErr != nil {
+				return nil, failoverErr
+			}
+
 			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, originalModel, 0, "", isStickySession)
 
 			// 精确匹配服务端配置类 400 错误，触发同账号重试 + failover

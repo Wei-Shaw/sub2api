@@ -334,6 +334,9 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 		if unwrapErr != nil || len(unwrappedForOps) == 0 {
 			unwrappedForOps = respBody
 		}
+		if failoverErr := s.handleAntigravityLocationUnsupported(ctx, c, prefix, account, resp.StatusCode, resp.Header, unwrappedForOps, forwardOpts.groupID, forwardOpts.sessionHash); failoverErr != nil {
+			return nil, failoverErr
+		}
 		s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, originalModel, forwardOpts.groupID, forwardOpts.sessionHash, isStickySession)
 		upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(unwrappedForOps))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
