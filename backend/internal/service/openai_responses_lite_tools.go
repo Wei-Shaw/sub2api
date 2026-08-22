@@ -7,6 +7,17 @@ import (
 	"strings"
 )
 
+type openAIResponsesLiteValidationError struct {
+	param   string
+	message string
+REDACTED
+
+func (e *openAIResponsesLiteValidationError) Error() string { return e.message REDACTED
+
+func newOpenAIResponsesLiteValidationError(param, format string, args ...any) error {
+	return &openAIResponsesLiteValidationError{param: param, message: fmt.Sprintf(format, args...)REDACTED
+REDACTED
+
 // normalizeOpenAIResponsesLiteTools applies the Responses Lite request
 // contract: reasoning must cover all turns, and private namespace declarations
 // use the input.additional_tools carrier. Other top-level tools must belong to
@@ -16,18 +27,27 @@ func normalizeOpenAIResponsesLiteTools(reqBody map[string]any) (bool, error) {
 	if reqBody == nil {
 		return false, nil
 REDACTED
+	if parallel, exists := reqBody["parallel_tool_calls"]; exists {
+		if _, ok := parallel.(bool); !ok {
+			return false, newOpenAIResponsesLiteValidationError("parallel_tool_calls", "responses Lite requires parallel_tool_calls to be a boolean")
+	REDACTED
+REDACTED
 	if rawReasoning, exists := reqBody["reasoning"]; exists && rawReasoning != nil {
 		if _, ok := rawReasoning.(map[string]any); !ok {
-			return false, fmt.Errorf("responses Lite requires reasoning to be an object")
+			return false, newOpenAIResponsesLiteValidationError("reasoning", "responses Lite requires reasoning to be an object")
 	REDACTED
 REDACTED
 	rawTools, exists := reqBody["tools"]
 	if !exists || rawTools == nil {
-		return ensureOpenAIResponsesLiteReasoningContext(reqBody)
+		changed, err := ensureOpenAIResponsesLiteReasoningContext(reqBody)
+		if err != nil {
+			return false, err
+	REDACTED
+		return ensureOpenAIResponsesLiteParallelToolCalls(reqBody, changed)
 REDACTED
 	tools, ok := rawTools.([]any)
 	if !ok {
-		return false, fmt.Errorf("responses Lite requires tools to be an array")
+		return false, newOpenAIResponsesLiteValidationError("tools", "responses Lite requires tools to be an array")
 REDACTED
 
 	topLevelTools := make([]any, 0, len(tools))
@@ -57,7 +77,11 @@ REDACTED
 	REDACTED
 REDACTED
 	if len(namespaceTools) == 0 {
-		return ensureOpenAIResponsesLiteReasoningContext(reqBody)
+		changed, err := ensureOpenAIResponsesLiteReasoningContext(reqBody)
+		if err != nil {
+			return false, err
+	REDACTED
+		return ensureOpenAIResponsesLiteParallelToolCalls(reqBody, changed)
 REDACTED
 
 	input, err := appendOpenAIResponsesLiteAdditionalTools(reqBody["input"], namespaceTools)
@@ -73,7 +97,36 @@ REDACTED
 REDACTED else {
 		reqBody["tools"] = topLevelTools
 REDACTED
+	return ensureOpenAIResponsesLiteParallelToolCalls(reqBody, true)
+REDACTED
+
+func ensureOpenAIResponsesLiteParallelToolCalls(reqBody map[string]any, changed bool) (bool, error) {
+	parallel := reqBody["parallel_tool_calls"]
+	if !openAIResponsesLiteHasTools(reqBody) {
+		return changed, nil
+REDACTED
+	if parallel == false {
+		return changed, nil
+REDACTED
+	reqBody["parallel_tool_calls"] = false
 	return true, nil
+REDACTED
+
+func openAIResponsesLiteHasTools(reqBody map[string]any) bool {
+	if tools, ok := reqBody["tools"].([]any); ok && len(tools) > 0 {
+		return true
+REDACTED
+	input, _ := reqBody["input"].([]any)
+	for _, rawItem := range input {
+		item, ok := rawItem.(map[string]any)
+		if !ok || strings.TrimSpace(firstNonEmptyString(item["type"])) != "additional_tools" {
+			continue
+	REDACTED
+		if tools, ok := item["tools"].([]any); ok && len(tools) > 0 {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 func ensureOpenAIResponsesLiteReasoningContext(reqBody map[string]any) (bool, error) {
@@ -84,7 +137,7 @@ func ensureOpenAIResponsesLiteReasoningContext(reqBody map[string]any) (bool, er
 REDACTED
 	reasoning, ok := rawReasoning.(map[string]any)
 	if !ok {
-		return false, fmt.Errorf("responses Lite requires reasoning to be an object")
+		return false, newOpenAIResponsesLiteValidationError("reasoning", "responses Lite requires reasoning to be an object")
 REDACTED
 	if context, ok := reasoning["context"].(string); ok && context == "all_turns" {
 		return false, nil
