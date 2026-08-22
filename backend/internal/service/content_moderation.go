@@ -1959,18 +1959,28 @@ func (s *ContentModerationService) sendFlaggedNotificationSideEffects(ctx contex
 	if cfg.EmailOnHit {
 		if err := s.sendViolationEmail(ctx, cfg, log); err != nil {
 			slog.Warn("content_moderation.email_failed", "user_id", *log.UserID, "email", log.UserEmail, "error", err)
-		} else {
+		} else if s.isNotificationEmailEnabled(ctx, NotificationEmailEventContentModerationViolation) {
 			emailSent = true
 		}
 	}
 	if autoBanJustApplied {
 		if err := s.sendAccountDisabledEmail(ctx, cfg, log); err != nil {
 			slog.Warn("content_moderation.ban_email_failed", "user_id", *log.UserID, "email", log.UserEmail, "error", err)
-		} else {
+		} else if s.isNotificationEmailEnabled(ctx, NotificationEmailEventContentModerationDisabled) {
 			emailSent = true
 		}
 	}
 	log.EmailSent = emailSent
+}
+
+func (s *ContentModerationService) isNotificationEmailEnabled(ctx context.Context, event string) bool {
+	if s == nil || s.emailService == nil {
+		return false
+	}
+	if s.emailService.notificationEmailService == nil {
+		return true
+	}
+	return s.emailService.notificationEmailService.ResolveChannels(ctx, event).Email
 }
 
 func (s *ContentModerationService) sendViolationEmail(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog) error {
@@ -3056,13 +3066,13 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 	if s.emailService != nil && strings.TrimSpace(log.UserEmail) != "" {
 		if err := s.sendCyberPolicyEmail(ctx, log); err != nil {
 			slog.Warn("content_moderation.cyber_email_failed", "user_id", in.UserID, "error", err)
-		} else {
+		} else if s.isNotificationEmailEnabled(ctx, NotificationEmailEventCyberPolicyNotice) {
 			emailSent = true
 		}
 		if autoBanned {
 			if err := s.sendAccountDisabledEmail(ctx, cfg, log); err != nil {
 				slog.Warn("content_moderation.cyber_ban_email_failed", "user_id", in.UserID, "error", err)
-			} else {
+			} else if s.isNotificationEmailEnabled(ctx, NotificationEmailEventContentModerationDisabled) {
 				emailSent = true
 			}
 		}

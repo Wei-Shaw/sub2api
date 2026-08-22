@@ -198,7 +198,7 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 	rulesEvaluated := 0
 	eventsCreated := 0
 	eventsResolved := 0
-	emailsSent := 0
+	notificationsDispatched := 0
 
 	now := time.Now().UTC()
 	safeEnd := now.Truncate(time.Minute)
@@ -292,8 +292,8 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 
 			eventsCreated++
 			if created != nil && created.ID > 0 {
-				if s.maybeSendAlertEmail(ctx, runtimeCfg, rule, created) {
-					emailsSent++
+				if s.maybeNotifyAlert(ctx, runtimeCfg, rule, created) {
+					notificationsDispatched++
 				}
 			}
 			continue
@@ -310,7 +310,7 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 		}
 	}
 
-	result := truncateString(fmt.Sprintf("rules=%d enabled=%d evaluated=%d created=%d resolved=%d emails_sent=%d", rulesTotal, rulesEnabled, rulesEvaluated, eventsCreated, eventsResolved, emailsSent), 2048)
+	result := truncateString(fmt.Sprintf("rules=%d enabled=%d evaluated=%d created=%d resolved=%d notifications_dispatched=%d", rulesTotal, rulesEnabled, rulesEvaluated, eventsCreated, eventsResolved, notificationsDispatched), 2048)
 	s.recordHeartbeatSuccess(runAt, time.Since(startedAt), result)
 }
 
@@ -675,76 +675,123 @@ func buildOpsAlertDescription(rule *OpsAlertRule, value float64, windowMinutes i
 	)
 }
 
-func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runtimeCfg *OpsAlertRuntimeSettings, rule *OpsAlertRule, event *OpsAlertEvent) bool {
+// maybeNotifyAlert delivers a fired alert over whichever channels are enabled.
+//
+// rule.NotifyEmail is treated as a channel-agnostic "notify for this rule"
+// switch: the email-specific configuration below (recipients, rate limit,
+// Alert.Enabled) gates only the email channel, so an operator can run
+// webhook-only alerting without leaving a mailbox configured.
+func (s *OpsAlertEvaluatorService) maybeNotifyAlert(ctx context.Context, runtimeCfg *OpsAlertRuntimeSettings, rule *OpsAlertRule, event *OpsAlertEvent) bool {
 	if s == nil || s.emailService == nil || s.opsService == nil || event == nil || rule == nil {
 		return false
 	}
-	if event.EmailSent {
-		return false
-	}
-	if !rule.NotifyEmail {
-		return false
-	}
 
+	notificationService := s.emailService.notificationEmailService
 	emailCfg, err := s.opsService.GetEmailNotificationConfig(ctx)
-	if err != nil || emailCfg == nil || !emailCfg.Alert.Enabled {
+	minSeverity := ""
+	if err == nil && emailCfg != nil {
+		minSeverity = strings.TrimSpace(emailCfg.Alert.MinSeverity)
+	}
+	// The severity floor and silence filter notification delivery, not alert
+	// creation. They apply equally to email and webhook channels.
+	if !shouldNotifyOpsAlertByMinSeverity(minSeverity, strings.TrimSpace(rule.Severity)) {
+		return false
+	}
+	if runtimeCfg != nil && runtimeCfg.Silencing.Enabled && isOpsAlertSilenced(time.Now().UTC(), rule, event, runtimeCfg.Silencing) {
 		return false
 	}
 
-	if len(emailCfg.Alert.Recipients) == 0 {
-		return false
+	emailConfigured := err == nil && emailCfg != nil && emailCfg.Alert.Enabled && len(emailCfg.Alert.Recipients) > 0
+	emailChannelEnabled := emailConfigured
+	webhookEnabled := false
+	if notificationService != nil {
+		channels := notificationService.ResolveChannels(ctx, NotificationEmailEventOpsAlert)
+		emailChannelEnabled = emailConfigured && channels.Email
+		webhookEnabled = channels.Webhook
 	}
-	if !shouldSendOpsAlertEmailByMinSeverity(strings.TrimSpace(emailCfg.Alert.MinSeverity), strings.TrimSpace(rule.Severity)) {
+	if !emailChannelEnabled && !webhookEnabled {
 		return false
 	}
 
-	if runtimeCfg != nil && runtimeCfg.Silencing.Enabled {
-		if isOpsAlertSilenced(time.Now().UTC(), rule, event, runtimeCfg.Silencing) {
-			return false
+	variables := opsAlertEmailVariables(rule, event)
+	webhookDispatched := false
+	if webhookEnabled {
+		result, err := notificationService.SendWithResult(ctx, NotificationEmailSendInput{
+			Event:             NotificationEmailEventOpsAlert,
+			SourceType:        "ops_alert",
+			SourceID:          fmt.Sprintf("%d", event.ID),
+			Variables:         variables,
+			WebhookData:       newOpsAlertWebhookData(rule, event),
+			WebhookOccurredAt: event.FiredAt,
+		})
+		if err == nil {
+			webhookDispatched = result.WebhookQueued
 		}
 	}
 
-	// Apply/update rate limiter.
-	s.emailLimiter.SetLimit(emailCfg.Alert.RateLimitPerHour)
+	// notify_email, Alert.Enabled, recipients and rate limits are all email-only
+	// gates. A webhook is already dispatched above when its channel is enabled.
+	emailEligible := emailChannelEnabled && !event.EmailSent && rule.NotifyEmail
+	if !emailEligible {
+		return webhookDispatched
+	}
 
+	s.emailLimiter.SetLimit(emailCfg.Alert.RateLimitPerHour)
 	subject := fmt.Sprintf("[Ops Alert][%s] %s", strings.TrimSpace(rule.Severity), strings.TrimSpace(rule.Name))
 	body := buildOpsAlertEmailBody(rule, event)
 
-	anySent := false
+	anyEmailSent := false
 	for _, to := range emailCfg.Alert.Recipients {
 		addr := strings.TrimSpace(to)
-		if addr == "" {
+		if addr == "" || !s.emailLimiter.Allow(time.Now().UTC()) {
 			continue
 		}
-		if !s.emailLimiter.Allow(time.Now().UTC()) {
-			continue
-		}
-		if s.emailService.notificationEmailService != nil {
-			if err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+		if notificationService != nil {
+			result, err := notificationService.SendWithResult(ctx, NotificationEmailSendInput{
 				Event:          NotificationEmailEventOpsAlert,
 				RecipientEmail: addr,
 				RecipientName:  emailRecipientName(addr),
 				SourceType:     "ops_alert",
 				SourceID:       fmt.Sprintf("%d", event.ID),
-				Variables:      opsAlertEmailVariables(rule, event),
-			}); err == nil {
-				anySent = true
+				Variables:      variables,
+				emailOnly:      true,
+			})
+			if err == nil && result.EmailSent {
+				anyEmailSent = true
 				continue
-			} else if !shouldFallbackNotificationEmail(err) {
+			} else if err == nil || !shouldFallbackNotificationEmail(err) {
 				continue
 			}
 		}
-		if err := s.emailService.SendEmail(ctx, addr, subject, body); err != nil {
-			// Ignore per-recipient failures; continue best-effort.
-			continue
+		if err := s.emailService.SendEmail(ctx, addr, subject, body); err == nil {
+			anyEmailSent = true
 		}
-		anySent = true
 	}
 
-	if anySent {
+	if anyEmailSent {
 		_ = s.opsRepo.UpdateAlertEventEmailSent(context.Background(), event.ID, true)
 	}
-	return anySent
+	return anyEmailSent || webhookDispatched
+}
+
+// opsAlertWebhookData uses the existing Ops domain DTOs directly so webhook
+// consumers receive the source event, not a sender-rendered representation.
+type opsAlertWebhookData struct {
+	Rule  OpsAlertRule  `json:"rule"`
+	Alert OpsAlertEvent `json:"alert"`
+}
+
+func newOpsAlertWebhookData(rule *OpsAlertRule, event *OpsAlertEvent) opsAlertWebhookData {
+	// The evaluator does not mutate these objects after scheduling delivery, so
+	// the struct copies preserve their DTO JSON shape for the async marshal.
+	var data opsAlertWebhookData
+	if rule != nil {
+		data.Rule = *rule
+	}
+	if event != nil {
+		data.Alert = *event
+	}
+	return data
 }
 
 func opsAlertEmailVariables(rule *OpsAlertRule, event *OpsAlertEvent) map[string]string {
@@ -820,7 +867,7 @@ func buildOpsAlertEmailBody(rule *OpsAlertRule, event *OpsAlertEvent) string {
 	)
 }
 
-func shouldSendOpsAlertEmailByMinSeverity(minSeverity string, ruleSeverity string) bool {
+func shouldNotifyOpsAlertByMinSeverity(minSeverity string, ruleSeverity string) bool {
 	minSeverity = strings.ToLower(strings.TrimSpace(minSeverity))
 	if minSeverity == "" {
 		return true

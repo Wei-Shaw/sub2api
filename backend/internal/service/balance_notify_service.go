@@ -188,7 +188,7 @@ func (s *BalanceNotifyService) CheckAccountQuotaAfterIncrement(ctx context.Conte
 		return
 	}
 	adminEmails := s.getAccountQuotaNotifyEmails(ctx)
-	if len(adminEmails) == 0 {
+	if len(adminEmails) == 0 && !s.quotaAlertWebhookEnabled(ctx) {
 		return
 	}
 
@@ -408,6 +408,25 @@ func (s *BalanceNotifyService) sendQuotaAlertEmails(adminEmails []string, accoun
 	}
 
 	if s.notificationEmailService != nil {
+		variables := map[string]string{
+			"account_id":      strconv.FormatInt(accountID, 10),
+			"account_name":    accountName,
+			"platform":        platform,
+			"quota_dimension": dimLabel,
+			"quota_used":      fmt.Sprintf("%.2f", used),
+			"quota_limit":     fmt.Sprintf("%.2f", dim.limit),
+			"quota_remaining": fmt.Sprintf("%.2f", remaining),
+			"quota_threshold": thresholdDisplay,
+		}
+		sourceID := fmt.Sprintf("%d-%s", accountID, dim.name)
+		reminderKey := time.Now().UTC().Format("2006-01-02")
+
+		// One webhook per quota event, dispatched before the mailbox loop and
+		// with an empty recipient. The loop below is email-only: letting each
+		// recipient attempt the webhook would restart a failed delivery per
+		// mailbox, exceeding the configured retry budget.
+		s.dispatchQuotaAlertWebhook(sourceID, reminderKey, variables)
+
 		fallbackRecipients := make([]string, 0, len(adminEmails))
 		for _, to := range adminEmails {
 			ctx, cancel := context.WithTimeout(context.Background(), emailSendTimeout)
@@ -416,18 +435,10 @@ func (s *BalanceNotifyService) sendQuotaAlertEmails(adminEmails []string, accoun
 				RecipientEmail: to,
 				RecipientName:  emailRecipientName(to),
 				SourceType:     "account_quota",
-				SourceID:       fmt.Sprintf("%d-%s", accountID, dim.name),
-				ReminderKey:    time.Now().UTC().Format("2006-01-02"),
-				Variables: map[string]string{
-					"account_id":      strconv.FormatInt(accountID, 10),
-					"account_name":    accountName,
-					"platform":        platform,
-					"quota_dimension": dimLabel,
-					"quota_used":      fmt.Sprintf("%.2f", used),
-					"quota_limit":     fmt.Sprintf("%.2f", dim.limit),
-					"quota_remaining": fmt.Sprintf("%.2f", remaining),
-					"quota_threshold": thresholdDisplay,
-				},
+				SourceID:       sourceID,
+				ReminderKey:    reminderKey,
+				Variables:      variables,
+				emailOnly:      true,
 			})
 			cancel()
 			if err != nil {
@@ -552,4 +563,36 @@ func (s *BalanceNotifyService) buildQuotaAlertEmailBody(accountID int64, account
 		limitStr = "无限制 / Unlimited"
 	}
 	return fmt.Sprintf(quotaAlertEmailTemplate, siteName, accountID, accountName, platform, dimLabel, used, limitStr, remaining, thresholdDisplay)
+}
+
+// quotaAlertWebhookEnabled reports whether the account quota alert can still be
+// delivered when no admin mailbox is configured.
+func (s *BalanceNotifyService) quotaAlertWebhookEnabled(ctx context.Context) bool {
+	if s == nil || s.notificationEmailService == nil {
+		return false
+	}
+	return s.notificationEmailService.ResolveChannels(ctx, NotificationEmailEventAccountQuotaAlert).Webhook
+}
+
+// dispatchQuotaAlertWebhook sends the channel-agnostic copy of a quota alert.
+// An empty recipient marks it as the single per-event dispatch; the mailbox
+// loop that follows runs email-only.
+func (s *BalanceNotifyService) dispatchQuotaAlertWebhook(sourceID, reminderKey string, variables map[string]string) {
+	if s == nil || s.notificationEmailService == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), emailSendTimeout)
+	defer cancel()
+	if !s.notificationEmailService.ResolveChannels(ctx, NotificationEmailEventAccountQuotaAlert).Webhook {
+		return
+	}
+	if err := s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+		Event:       NotificationEmailEventAccountQuotaAlert,
+		SourceType:  "account_quota",
+		SourceID:    sourceID,
+		ReminderKey: reminderKey,
+		Variables:   variables,
+	}); err != nil {
+		slog.Warn("account quota alert webhook dispatch failed", "source_id", sourceID, "err", err.Error())
+	}
 }
