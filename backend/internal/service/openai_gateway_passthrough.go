@@ -92,6 +92,17 @@ REDACTED
 	return mapping, ok && typed && hasOpenAIResponsesClientToolMapping(mapping)
 REDACTED
 
+func setOpenAIResponsesClientToolMapping(c *gin.Context, mapping apicompat.ResponsesClientToolMapping) {
+	if c == nil {
+		return
+REDACTED
+	if !hasOpenAIResponsesClientToolMapping(mapping) {
+		clearOpenAIResponsesClientToolMapping(c)
+		return
+REDACTED
+	c.Set(openAIResponsesClientToolMappingContextKey, mapping)
+REDACTED
+
 // clearOpenAIResponsesClientToolMapping removes mapping state from the prior
 // forwarding attempt. Forward retries accounts on the same Gin context.
 func clearOpenAIResponsesClientToolMapping(c *gin.Context) {
@@ -101,6 +112,15 @@ REDACTED
 	if _, exists := c.Get(openAIResponsesClientToolMappingContextKey); exists {
 		c.Set(openAIResponsesClientToolMappingContextKey, apicompat.ResponsesClientToolMapping{REDACTED)
 REDACTED
+REDACTED
+
+func restoreOpenAIResponsesClientToolPayload(c *gin.Context, payload []byte) ([]byte, error) {
+	mapping, ok := openAIResponsesClientToolMapping(c)
+	if !ok || !bytes.Contains(payload, []byte(`"function_call"`)) || !json.Valid(payload) {
+		return payload, nil
+REDACTED
+	restored, _, err := apicompat.RestoreResponsesClientToolPayload(payload, mapping)
+	return restored, err
 REDACTED
 
 func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
@@ -210,7 +230,7 @@ REDACTED
 			return nil, adaptErr
 	REDACTED
 		body = adaptedBody
-		c.Set(openAIResponsesClientToolMappingContextKey, mapping)
+		setOpenAIResponsesClientToolMapping(c, mapping)
 REDACTED
 
 	sanitizedBody, sanitized, err := sanitizeEmptyBase64InputImagesInOpenAIBody(body)
@@ -2099,11 +2119,9 @@ REDACTED
 		return nil, fmt.Errorf("restore OpenAI passthrough namespace response: %w", err)
 REDACTED
 	body = restoreCodexToolNamesFromContext(c, body)
-	if mapping, ok := openAIResponsesClientToolMapping(c); ok && json.Valid(body) {
-		body, _, err = apicompat.RestoreResponsesClientToolPayload(body, mapping)
-		if err != nil {
-			return nil, fmt.Errorf("restore OpenAI Responses client tools: %w", err)
-	REDACTED
+	body, err = restoreOpenAIResponsesClientToolPayload(c, body)
+	if err != nil {
+		return nil, fmt.Errorf("restore OpenAI Responses client tools: %w", err)
 REDACTED
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
