@@ -10,12 +10,12 @@ import (
 
 func TestUserPublicAccountIDsRemainJSONStrings(t *testing.T) {
 	dto := UserFromServiceShallow(&service.User{
-		AccountID: "1719905235756637", ExternalUserID: "201705485041478971", IdentityType: "iam", LoginName: "finance",
+		AccountID: "1719905235756637", IdentityType: "iam", LoginName: "finance",
 	})
 	wire, err := json.Marshal(dto)
 	require.NoError(t, err)
 	require.Contains(t, string(wire), `"account_id":"1719905235756637"`)
-	require.Contains(t, string(wire), `"external_user_id":"201705485041478971"`)
+	require.NotContains(t, string(wire), `"external_user_id"`)
 }
 
 func TestUserFromServiceAdminIncludesIAMPrincipal(t *testing.T) {

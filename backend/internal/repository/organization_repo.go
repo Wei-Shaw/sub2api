@@ -765,8 +765,8 @@ func (r *organizationRepository) CreateIAMMember(ctx context.Context, ownerID in
 	if err != nil {
 		return nil, err
 	}
-	var accountID, companyID string
-	if err := tx.QueryRowContext(ctx, `SELECT o.account_id,COALESCE(o.company_id,'') FROM organizations o WHERE o.id=$1`, orgID).Scan(&accountID, &companyID); err != nil {
+	var companyID string
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(o.company_id,'') FROM organizations o WHERE o.id=$1`, orgID).Scan(&companyID); err != nil {
 		return nil, err
 	}
 	var count int
@@ -776,42 +776,62 @@ func (r *organizationRepository) CreateIAMMember(ctx context.Context, ownerID in
 	if count >= memberLimit {
 		return nil, service.ErrIAMMemberLimit
 	}
+	var loginNameTaken bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM organization_memberships m
+			JOIN users existing ON existing.id=m.user_id
+			WHERE m.organization_id=$1
+			  AND m.role='member'
+			  AND m.status<>'archived'
+			  AND existing.identity_type='iam'
+			  AND existing.deleted_at IS NULL
+			  AND lower(existing.login_name)=lower($2)
+		)`, orgID, user.LoginName).Scan(&loginNameTaken); err != nil {
+		return nil, err
+	}
+	if loginNameTaken {
+		return nil, service.ErrIAMLoginName
+	}
 	var userID int64
-	var externalID string
+	var memberAccountID string
 	for attempt := 0; attempt < 20; attempt++ {
-		externalID, err = accountid.GenerateIAM()
-		if err != nil {
-			return nil, err
+		accountID, generateErr := accountid.GenerateRoot()
+		if generateErr != nil {
+			return nil, generateErr
 		}
-		if _, err = tx.ExecContext(ctx, `SAVEPOINT iam_external_id_retry`); err != nil {
+		if _, err = tx.ExecContext(ctx, `SAVEPOINT iam_account_id_retry`); err != nil {
 			return nil, err
 		}
 		err = tx.QueryRowContext(ctx, `
-			INSERT INTO users(account_id,external_user_id,identity_type,login_name,username,password_hash,role,balance,frozen_balance,concurrency,status,signup_source,must_change_password,recovery_email,authz_generation,created_at,updated_at)
-			VALUES($1,$2,'iam',$3,$4,$5,'user',0,0,5,'active','email',$6,$7,1,NOW(),NOW()) RETURNING id`,
-			accountID, externalID, user.LoginName, user.Username, user.PasswordHash, user.MustChangePassword, nullableString(user.RecoveryEmail)).Scan(&userID)
+			INSERT INTO users(account_id,identity_type,login_name,username,password_hash,role,balance,frozen_balance,concurrency,status,signup_source,must_change_password,recovery_email,authz_generation,created_at,updated_at)
+			VALUES($1,'iam',$2,$3,$4,'user',0,0,5,'active','email',$5,$6,1,NOW(),NOW()) RETURNING id`,
+			accountID, user.LoginName, user.Username, user.PasswordHash, user.MustChangePassword, nullableString(user.RecoveryEmail)).Scan(&userID)
 		if err == nil {
-			_, err = tx.ExecContext(ctx, `RELEASE SAVEPOINT iam_external_id_retry`)
+			memberAccountID = accountID
+			_, err = tx.ExecContext(ctx, `RELEASE SAVEPOINT iam_account_id_retry`)
 			break
 		}
 		insertErr := err
-		if _, rollbackErr := tx.ExecContext(ctx, `ROLLBACK TO SAVEPOINT iam_external_id_retry`); rollbackErr != nil {
-			return nil, fmt.Errorf("rollback IAM public ID retry savepoint: %w", rollbackErr)
+		if _, rollbackErr := tx.ExecContext(ctx, `ROLLBACK TO SAVEPOINT iam_account_id_retry`); rollbackErr != nil {
+			return nil, fmt.Errorf("rollback IAM account ID retry savepoint: %w", rollbackErr)
 		}
-		if _, releaseErr := tx.ExecContext(ctx, `RELEASE SAVEPOINT iam_external_id_retry`); releaseErr != nil {
-			return nil, fmt.Errorf("release IAM public ID retry savepoint: %w", releaseErr)
+		if _, releaseErr := tx.ExecContext(ctx, `RELEASE SAVEPOINT iam_account_id_retry`); releaseErr != nil {
+			return nil, fmt.Errorf("release IAM account ID retry savepoint: %w", releaseErr)
 		}
-		if !isConstraintNamed(insertErr, "external_user_id") {
-			if isConstraintNamed(insertErr, "users_iam_login_unique_active") {
-				return nil, service.ErrIAMLoginName
-			}
-			return nil, insertErr
+		if isConstraintNamed(insertErr, "users_account_id_unique") {
+			accountid.RecordCollisionRetry()
+			err = insertErr
+			continue
 		}
-		accountid.RecordCollisionRetry()
-		err = insertErr
+		if isConstraintNamed(insertErr, "users_iam_login_unique_active") {
+			return nil, service.ErrIAMLoginName
+		}
+		return nil, insertErr
 	}
 	if err != nil {
-		return nil, fmt.Errorf("IAM external ID collision retry limit exhausted: %w", err)
+		return nil, fmt.Errorf("IAM account ID collision retry limit exhausted: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO organization_memberships(organization_id,user_id,role,status) VALUES($1,$2,'member','active')`, orgID, userID); err != nil {
 		return nil, err
@@ -822,7 +842,7 @@ func (r *organizationRepository) CreateIAMMember(ctx context.Context, ownerID in
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return &service.IAMMember{UserID: userID, ExternalUserID: externalID, Username: user.Username, LoginName: user.LoginName, Principal: service.CanonicalIAMPrincipal(user.LoginName, companyID), Status: "active", Balance: "0", FrozenBalance: "0", RecoveryEmail: user.RecoveryEmail, MustChangePassword: user.MustChangePassword, PolicyNames: []string{}, CreatedAt: time.Now().UTC()}, nil
+	return &service.IAMMember{UserID: userID, AccountID: memberAccountID, Username: user.Username, LoginName: user.LoginName, Principal: service.CanonicalIAMPrincipal(user.LoginName, companyID), Status: "active", Balance: "0", FrozenBalance: "0", RecoveryEmail: user.RecoveryEmail, MustChangePassword: user.MustChangePassword, PolicyNames: []string{}, CreatedAt: time.Now().UTC()}, nil
 }
 
 func (r *organizationRepository) ListIAMMembers(ctx context.Context, actorID int64) ([]service.IAMMember, int, error) {
@@ -837,7 +857,7 @@ func (r *organizationRepository) ListIAMMembers(ctx context.Context, actorID int
 		return nil, 0, err
 	}
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT u.id,u.external_user_id,u.username,u.login_name,m.status,u.balance::text,u.frozen_balance::text,
+		SELECT u.id,u.account_id,u.username,u.login_name,m.status,u.balance::text,u.frozen_balance::text,
 		       COALESCE(u.recovery_email,''),u.recovery_email_verified_at,u.must_change_password,u.created_at,
 		       COALESCE(array_agg(DISTINCT p.policy_key) FILTER(WHERE a.detached_at IS NULL AND p.id IS NOT NULL),'{}')
 		FROM organization_memberships m JOIN users u ON u.id=m.user_id
@@ -852,7 +872,7 @@ func (r *organizationRepository) ListIAMMembers(ctx context.Context, actorID int
 	members := make([]service.IAMMember, 0)
 	for rows.Next() {
 		var member service.IAMMember
-		if err := rows.Scan(&member.UserID, &member.ExternalUserID, &member.Username, &member.LoginName, &member.Status, &member.Balance, &member.FrozenBalance, &member.RecoveryEmail, &member.RecoveryVerifiedAt, &member.MustChangePassword, &member.CreatedAt, pq.Array(&member.PolicyNames)); err != nil {
+		if err := rows.Scan(&member.UserID, &member.AccountID, &member.Username, &member.LoginName, &member.Status, &member.Balance, &member.FrozenBalance, &member.RecoveryEmail, &member.RecoveryVerifiedAt, &member.MustChangePassword, &member.CreatedAt, pq.Array(&member.PolicyNames)); err != nil {
 			return nil, 0, err
 		}
 		member.Principal = service.CanonicalIAMPrincipal(member.LoginName, org.CompanyID)
@@ -871,7 +891,7 @@ func (r *organizationRepository) GetIAMMember(ctx context.Context, actorID, memb
 	}
 	var member service.IAMMember
 	err = r.db.QueryRowContext(ctx, `
-		SELECT u.id,u.external_user_id,u.username,u.login_name,m.status,u.balance::text,u.frozen_balance::text,
+		SELECT u.id,u.account_id,u.username,u.login_name,m.status,u.balance::text,u.frozen_balance::text,
 		       COALESCE(u.recovery_email,''),u.recovery_email_verified_at,u.must_change_password,u.created_at,
 		       COALESCE(array_agg(DISTINCT p.policy_key) FILTER(WHERE a.detached_at IS NULL AND p.id IS NOT NULL),'{}')
 		FROM organization_memberships m JOIN users u ON u.id=m.user_id
@@ -879,7 +899,7 @@ func (r *organizationRepository) GetIAMMember(ctx context.Context, actorID, memb
 		LEFT JOIN managed_policies p ON p.id=a.policy_id
 		WHERE m.organization_id=$1 AND m.user_id=$2 AND m.role='member'
 		GROUP BY u.id,m.status`, org.OrganizationID, memberUserID).
-		Scan(&member.UserID, &member.ExternalUserID, &member.Username, &member.LoginName, &member.Status, &member.Balance,
+		Scan(&member.UserID, &member.AccountID, &member.Username, &member.LoginName, &member.Status, &member.Balance,
 			&member.FrozenBalance, &member.RecoveryEmail, &member.RecoveryVerifiedAt,
 			&member.MustChangePassword, &member.CreatedAt, pq.Array(&member.PolicyNames))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -978,10 +998,12 @@ func (r *organizationRepository) UpdateIAMPassword(ctx context.Context, actorID,
 func (r *organizationRepository) FindIAMByPrincipal(ctx context.Context, loginName, companyID string) (*service.User, *service.OrganizationContext, error) {
 	var user service.User
 	err := r.db.QueryRowContext(ctx, `
-		SELECT u.id,COALESCE(u.email,''),u.account_id,u.external_user_id,u.identity_type,u.login_name,u.password_hash,u.role,u.balance,u.frozen_balance,u.concurrency,u.status,u.must_change_password,COALESCE(u.recovery_email,''),u.recovery_email_verified_at,u.authz_generation,u.created_at,u.updated_at
-		FROM users u JOIN organizations o ON o.account_id=u.account_id
+		SELECT u.id,COALESCE(u.email,''),u.account_id,u.identity_type,u.login_name,u.password_hash,u.role,u.balance,u.frozen_balance,u.concurrency,u.status,u.must_change_password,COALESCE(u.recovery_email,''),u.recovery_email_verified_at,u.authz_generation,u.created_at,u.updated_at
+		FROM users u
+		JOIN organization_memberships m ON m.user_id=u.id AND m.role='member' AND m.status='active'
+		JOIN organizations o ON o.id=m.organization_id
 		WHERE o.company_id=$1 AND lower(u.login_name)=lower($2) AND u.identity_type='iam' AND u.deleted_at IS NULL`, companyID, loginName).
-		Scan(&user.ID, &user.Email, &user.AccountID, &user.ExternalUserID, &user.IdentityType, &user.LoginName, &user.PasswordHash, &user.Role, &user.Balance, &user.FrozenBalance, &user.Concurrency, &user.Status, &user.MustChangePassword, &user.RecoveryEmail, &user.RecoveryEmailVerifiedAt, &user.AuthzGeneration, &user.CreatedAt, &user.UpdatedAt)
+		Scan(&user.ID, &user.Email, &user.AccountID, &user.IdentityType, &user.LoginName, &user.PasswordHash, &user.Role, &user.Balance, &user.FrozenBalance, &user.Concurrency, &user.Status, &user.MustChangePassword, &user.RecoveryEmail, &user.RecoveryEmailVerifiedAt, &user.AuthzGeneration, &user.CreatedAt, &user.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil, service.ErrInvalidCredentials
 	}

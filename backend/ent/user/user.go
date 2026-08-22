@@ -25,8 +25,6 @@ const (
 	FieldEmail = "email"
 	// FieldAccountID holds the string denoting the account_id field in the database.
 	FieldAccountID = "account_id"
-	// FieldExternalUserID holds the string denoting the external_user_id field in the database.
-	FieldExternalUserID = "external_user_id"
 	// FieldIdentityType holds the string denoting the identity_type field in the database.
 	FieldIdentityType = "identity_type"
 	// FieldLoginName holds the string denoting the login_name field in the database.
@@ -224,7 +222,6 @@ var Columns = []string{
 	FieldDeletedAt,
 	FieldEmail,
 	FieldAccountID,
-	FieldExternalUserID,
 	FieldIdentityType,
 	FieldLoginName,
 	FieldMustChangePassword,
@@ -287,8 +284,6 @@ var (
 	EmailValidator func(string) error
 	// AccountIDValidator is a validator for the "account_id" field. It is called by the builders before save.
 	AccountIDValidator func(string) error
-	// ExternalUserIDValidator is a validator for the "external_user_id" field. It is called by the builders before save.
-	ExternalUserIDValidator func(string) error
 	// DefaultIdentityType holds the default value on creation for the "identity_type" field.
 	DefaultIdentityType string
 	// IdentityTypeValidator is a validator for the "identity_type" field. It is called by the builders before save.
@@ -372,11 +367,6 @@ func ByEmail(opts ...sql.OrderTermOption) OrderOption {
 // ByAccountID orders the results by the account_id field.
 func ByAccountID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAccountID, opts...).ToFunc()
-}
-
-// ByExternalUserID orders the results by the external_user_id field.
-func ByExternalUserID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldExternalUserID, opts...).ToFunc()
 }
 
 // ByIdentityType orders the results by the identity_type field.

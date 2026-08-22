@@ -22,9 +22,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/accountid"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
+	"go.uber.org/zap"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -82,45 +84,31 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 		userIn.IdentityType = "root"
 	}
 	for attempt := 0; attempt < publicIDCreateAttempts; attempt++ {
-		if userIn.ExternalUserID == "" {
-			var generated string
-			var err error
-			if userIn.IdentityType == "iam" {
-				generated, err = accountid.GenerateIAM()
-			} else {
-				generated, err = accountid.GenerateRoot()
-				userIn.AccountID = generated
-			}
+		generatedAccountID := false
+		if strings.TrimSpace(userIn.AccountID) == "" {
+			generated, err := accountid.GenerateRoot()
 			if err != nil {
 				return err
 			}
-			userIn.ExternalUserID = generated
+			userIn.AccountID = generated
+			generatedAccountID = true
 		}
 		err := r.createWithPublicID(ctx, userIn, guardEmailAlias, domainLimit)
 		if err == nil {
 			return nil
 		}
-		if !dbent.IsConstraintError(err) || !strings.Contains(strings.ToLower(err.Error()), "external_user_id") {
+		if !generatedAccountID || !dbent.IsConstraintError(err) || !strings.Contains(strings.ToLower(err.Error()), "account_id") {
 			return err
 		}
 		accountid.RecordCollisionRetry()
-		userIn.ExternalUserID = ""
-		if userIn.IdentityType == "root" {
-			userIn.AccountID = ""
-		}
+		userIn.AccountID = ""
 	}
-	return fmt.Errorf("public account ID collision retry limit exhausted")
+	return fmt.Errorf("account ID collision retry limit exhausted")
 }
 
 func (r *userRepository) createWithPublicID(ctx context.Context, userIn *service.User, guardEmailAlias bool, domainLimit string) error {
-	if userIn.IdentityType == "root" && userIn.AccountID != userIn.ExternalUserID {
-		return fmt.Errorf("root account ID and external user ID must match")
-	}
-	if userIn.IdentityType == "iam" && userIn.AccountID == "" {
-		return fmt.Errorf("IAM account ID is required")
-	}
-	if userIn.ExternalUserID == "" {
-		return fmt.Errorf("external user ID is required")
+	if strings.TrimSpace(userIn.AccountID) == "" {
+		return fmt.Errorf("account ID is required")
 	}
 
 	// 统一使用 ent 的事务：保证用户与允许分组的更新原子化，
@@ -217,7 +205,6 @@ func (r *userRepository) createWithPublicID(ctx context.Context, userIn *service
 		SetNillableLastActiveAt(userIn.LastActiveAt).
 		SetRpmLimit(userIn.RPMLimit).
 		SetAccountID(userIn.AccountID).
-		SetExternalUserID(userIn.ExternalUserID).
 		SetIdentityType(userIn.IdentityType).
 		SetMustChangePassword(userIn.MustChangePassword).
 		SetRecoveryEmail(userIn.RecoveryEmail).
@@ -231,7 +218,7 @@ func (r *userRepository) createWithPublicID(ctx context.Context, userIn *service
 	}
 	created, err := createOp.Save(txCtx)
 	if err != nil {
-		if dbent.IsConstraintError(err) && strings.Contains(strings.ToLower(err.Error()), "external_user_id") {
+		if dbent.IsConstraintError(err) && strings.Contains(strings.ToLower(err.Error()), "account_id") {
 			return err
 		}
 		return translatePersistenceError(err, nil, service.ErrEmailExists)
@@ -280,6 +267,33 @@ func (r *userRepository) GetByAccountID(ctx context.Context, accountID string) (
 	}
 	m, err := r.client.User.Query().Where(dbuser.AccountIDEQ(accountID)).Only(ctx)
 	if err != nil {
+		if dbent.IsNotSingular(err) {
+			matches, listErr := r.client.User.Query().
+				Where(dbuser.AccountIDEQ(accountID)).
+				Order(dbuser.ByID()).
+				All(ctx)
+			if listErr != nil {
+				logger.L().Debug("user account_id lookup returned multiple users; failed to load matches",
+					zap.String("account_id", accountID),
+					zap.Error(listErr))
+			} else {
+				result := make([]map[string]any, 0, len(matches))
+				for _, match := range matches {
+					result = append(result, map[string]any{
+						"id":            match.ID,
+						"account_id":    match.AccountID,
+						"identity_type": match.IdentityType,
+						"login_name":    match.LoginName,
+						"status":        match.Status,
+						"deleted":       match.DeletedAt != nil,
+					})
+				}
+				logger.L().Debug("user account_id lookup returned multiple users",
+					zap.String("account_id", accountID),
+					zap.Int("match_count", len(result)),
+					zap.Any("matches", result))
+			}
+		}
 		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
 
@@ -1670,7 +1684,6 @@ func applyUserEntityToService(dst *service.User, src *dbent.User) {
 	}
 	dst.ID = src.ID
 	dst.AccountID = src.AccountID
-	dst.ExternalUserID = src.ExternalUserID
 	dst.IdentityType = src.IdentityType
 	dst.LoginName = src.LoginName
 	dst.MustChangePassword = src.MustChangePassword

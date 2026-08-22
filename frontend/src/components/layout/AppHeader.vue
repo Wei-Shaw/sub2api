@@ -160,7 +160,6 @@
                 </div>
                 <dl class="mt-3 space-y-1.5 text-xs">
                   <div data-testid="user-menu-account-identity" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.accountIdentity.label') }}</dt><dd>{{ t(user.identity_type === 'iam' ? 'organization.accountIdentity.iam' : 'organization.accountIdentity.root') }}</dd></div>
-                  <div v-if="user.identity_type === 'iam' && user.external_user_id" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.iamUserId') }}</dt><dd class="break-all font-mono text-right">{{ user.external_user_id }}</dd></div>
                   <div v-if="user.iam_principal" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.principal') }}</dt><dd class="break-all font-mono text-right">{{ user.iam_principal }}</dd></div>
                   <div v-if="organization" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.companyName') }}</dt><dd class="text-right">{{ organization.company_name }}</dd></div>
                   <div v-if="organization" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.role') }}</dt><dd>{{ t(`organization.roleValue.${organization.role}`) }} / {{ t(`organization.status.${organization.membership_status}`) }}</dd></div>

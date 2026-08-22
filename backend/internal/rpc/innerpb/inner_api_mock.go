@@ -21,6 +21,7 @@ import (
 type MockInnerAPIService struct {
 	ctrl     *gomock.Controller
 	recorder *MockInnerAPIServiceMockRecorder
+	isgomock struct{}
 }
 
 // MockInnerAPIServiceMockRecorder is the mock recorder for MockInnerAPIService.
@@ -40,9 +41,19 @@ func (m *MockInnerAPIService) EXPECT() *MockInnerAPIServiceMockRecorder {
 	return m.recorder
 }
 
-// ISGOMOCK indicates that this struct is a gomock mock.
-func (m *MockInnerAPIService) ISGOMOCK() struct{} {
-	return struct{}{}
+// AddMaterialByUrl mocks base method.
+func (m *MockInnerAPIService) AddMaterialByUrl(ctx context.Context, req *AddMaterialByUrlRequest) (*AddMaterialByUrlResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddMaterialByUrl", ctx, req)
+	ret0, _ := ret[0].(*AddMaterialByUrlResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AddMaterialByUrl indicates an expected call of AddMaterialByUrl.
+func (mr *MockInnerAPIServiceMockRecorder) AddMaterialByUrl(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMaterialByUrl", reflect.TypeOf((*MockInnerAPIService)(nil).AddMaterialByUrl), ctx, req)
 }
 
 // Deduct mocks base method.
@@ -154,6 +165,7 @@ func (mr *MockInnerAPIServiceMockRecorder) UploadMaterial(ctx, req any) *gomock.
 type MockInnerAPIClientProxy struct {
 	ctrl     *gomock.Controller
 	recorder *MockInnerAPIClientProxyMockRecorder
+	isgomock struct{}
 }
 
 // MockInnerAPIClientProxyMockRecorder is the mock recorder for MockInnerAPIClientProxy.
@@ -173,9 +185,24 @@ func (m *MockInnerAPIClientProxy) EXPECT() *MockInnerAPIClientProxyMockRecorder 
 	return m.recorder
 }
 
-// ISGOMOCK indicates that this struct is a gomock mock.
-func (m *MockInnerAPIClientProxy) ISGOMOCK() struct{} {
-	return struct{}{}
+// AddMaterialByUrl mocks base method.
+func (m *MockInnerAPIClientProxy) AddMaterialByUrl(ctx context.Context, req *AddMaterialByUrlRequest, opts ...client.Option) (*AddMaterialByUrlResponse, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, req}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "AddMaterialByUrl", varargs...)
+	ret0, _ := ret[0].(*AddMaterialByUrlResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AddMaterialByUrl indicates an expected call of AddMaterialByUrl.
+func (mr *MockInnerAPIClientProxyMockRecorder) AddMaterialByUrl(ctx, req any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, req}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMaterialByUrl", reflect.TypeOf((*MockInnerAPIClientProxy)(nil).AddMaterialByUrl), varargs...)
 }
 
 // Deduct mocks base method.

@@ -2929,7 +2929,6 @@ var (
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "email", Type: field.TypeString, Nullable: true, Size: 255},
 		{Name: "account_id", Type: field.TypeString, Nullable: true, Size: 16},
-		{Name: "external_user_id", Type: field.TypeString, Nullable: true, Size: 18},
 		{Name: "identity_type", Type: field.TypeString, Size: 16, Default: "root"},
 		{Name: "login_name", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "must_change_password", Type: field.TypeBool, Default: false},
@@ -2966,7 +2965,7 @@ var (
 			{
 				Name:    "user_status",
 				Unique:  false,
-				Columns: []*schema.Column{UsersColumns[18]},
+				Columns: []*schema.Column{UsersColumns[17]},
 			},
 			{
 				Name:    "user_deleted_at",
@@ -2974,16 +2973,8 @@ var (
 				Columns: []*schema.Column{UsersColumns[3]},
 			},
 			{
-				Name:    "user_external_user_id",
-				Unique:  true,
-				Columns: []*schema.Column{UsersColumns[6]},
-				Annotation: &entsql.IndexAnnotation{
-					Where: "external_user_id IS NOT NULL AND external_user_id <> ''",
-				},
-			},
-			{
 				Name:    "user_account_id",
-				Unique:  false,
+				Unique:  true,
 				Columns: []*schema.Column{UsersColumns[5]},
 			},
 		},

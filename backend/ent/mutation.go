@@ -82823,7 +82823,6 @@ type UserMutation struct {
 	deleted_at                    *time.Time
 	email                         *string
 	account_id                    *string
-	external_user_id              *string
 	identity_type                 *string
 	login_name                    *string
 	must_change_password          *bool
@@ -83220,55 +83219,6 @@ func (m *UserMutation) AccountIDCleared() bool {
 func (m *UserMutation) ResetAccountID() {
 	m.account_id = nil
 	delete(m.clearedFields, user.FieldAccountID)
-}
-
-// SetExternalUserID sets the "external_user_id" field.
-func (m *UserMutation) SetExternalUserID(s string) {
-	m.external_user_id = &s
-}
-
-// ExternalUserID returns the value of the "external_user_id" field in the mutation.
-func (m *UserMutation) ExternalUserID() (r string, exists bool) {
-	v := m.external_user_id
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldExternalUserID returns the old "external_user_id" field's value of the User entity.
-// If the User object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserMutation) OldExternalUserID(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldExternalUserID is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldExternalUserID requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldExternalUserID: %w", err)
-	}
-	return oldValue.ExternalUserID, nil
-}
-
-// ClearExternalUserID clears the value of the "external_user_id" field.
-func (m *UserMutation) ClearExternalUserID() {
-	m.external_user_id = nil
-	m.clearedFields[user.FieldExternalUserID] = struct{}{}
-}
-
-// ExternalUserIDCleared returns if the "external_user_id" field was cleared in this mutation.
-func (m *UserMutation) ExternalUserIDCleared() bool {
-	_, ok := m.clearedFields[user.FieldExternalUserID]
-	return ok
-}
-
-// ResetExternalUserID resets all changes to the "external_user_id" field.
-func (m *UserMutation) ResetExternalUserID() {
-	m.external_user_id = nil
-	delete(m.clearedFields, user.FieldExternalUserID)
 }
 
 // SetIdentityType sets the "identity_type" field.
@@ -85242,7 +85192,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 32)
+	fields := make([]string, 0, 31)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -85257,9 +85207,6 @@ func (m *UserMutation) Fields() []string {
 	}
 	if m.account_id != nil {
 		fields = append(fields, user.FieldAccountID)
-	}
-	if m.external_user_id != nil {
-		fields = append(fields, user.FieldExternalUserID)
 	}
 	if m.identity_type != nil {
 		fields = append(fields, user.FieldIdentityType)
@@ -85357,8 +85304,6 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.Email()
 	case user.FieldAccountID:
 		return m.AccountID()
-	case user.FieldExternalUserID:
-		return m.ExternalUserID()
 	case user.FieldIdentityType:
 		return m.IdentityType()
 	case user.FieldLoginName:
@@ -85430,8 +85375,6 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldEmail(ctx)
 	case user.FieldAccountID:
 		return m.OldAccountID(ctx)
-	case user.FieldExternalUserID:
-		return m.OldExternalUserID(ctx)
 	case user.FieldIdentityType:
 		return m.OldIdentityType(ctx)
 	case user.FieldLoginName:
@@ -85527,13 +85470,6 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAccountID(v)
-		return nil
-	case user.FieldExternalUserID:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetExternalUserID(v)
 		return nil
 	case user.FieldIdentityType:
 		v, ok := value.(string)
@@ -85843,9 +85779,6 @@ func (m *UserMutation) ClearedFields() []string {
 	if m.FieldCleared(user.FieldAccountID) {
 		fields = append(fields, user.FieldAccountID)
 	}
-	if m.FieldCleared(user.FieldExternalUserID) {
-		fields = append(fields, user.FieldExternalUserID)
-	}
 	if m.FieldCleared(user.FieldLoginName) {
 		fields = append(fields, user.FieldLoginName)
 	}
@@ -85893,9 +85826,6 @@ func (m *UserMutation) ClearField(name string) error {
 	case user.FieldAccountID:
 		m.ClearAccountID()
 		return nil
-	case user.FieldExternalUserID:
-		m.ClearExternalUserID()
-		return nil
 	case user.FieldLoginName:
 		m.ClearLoginName()
 		return nil
@@ -85942,9 +85872,6 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldAccountID:
 		m.ResetAccountID()
-		return nil
-	case user.FieldExternalUserID:
-		m.ResetExternalUserID()
 		return nil
 	case user.FieldIdentityType:
 		m.ResetIdentityType()

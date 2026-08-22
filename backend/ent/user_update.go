@@ -1135,9 +1135,6 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.AccountIDCleared() {
 		_spec.ClearField(user.FieldAccountID, field.TypeString)
 	}
-	if _u.mutation.ExternalUserIDCleared() {
-		_spec.ClearField(user.FieldExternalUserID, field.TypeString)
-	}
 	if _u.mutation.LoginNameCleared() {
 		_spec.ClearField(user.FieldLoginName, field.TypeString)
 	}
@@ -3040,9 +3037,6 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if _u.mutation.AccountIDCleared() {
 		_spec.ClearField(user.FieldAccountID, field.TypeString)
-	}
-	if _u.mutation.ExternalUserIDCleared() {
-		_spec.ClearField(user.FieldExternalUserID, field.TypeString)
 	}
 	if _u.mutation.LoginNameCleared() {
 		_spec.ClearField(user.FieldLoginName, field.TypeString)

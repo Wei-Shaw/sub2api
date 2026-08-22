@@ -1,3 +1,5 @@
+//go:build unit
+
 package service
 
 import (
@@ -5,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -109,6 +112,49 @@ type quotaStubRepo struct {
 	count      int64
 	totalBytes int64
 	err        error
+}
+
+type addMaterialRepo struct {
+	UserMaterialRepository
+	material *UserMaterial
+}
+
+func (r *addMaterialRepo) UsageByUser(context.Context, int64) (int64, int64, error) {
+	return 0, 0, nil
+}
+
+func (r *addMaterialRepo) Insert(_ context.Context, material *UserMaterial) (int64, error) {
+	material.ID = 91
+	material.PublicID = "550e8400-e29b-41d4-a716-446655440000"
+	r.material = material
+	return material.ID, nil
+}
+
+func TestAddMaterialByURLRequiresConfiguredPublicCOSOrigin(t *testing.T) {
+	store := &fakeObjectStore{}
+	cos, _ := newCOSServiceForTest(t, store)
+	enableCOS(t, cos)
+	repo := &addMaterialRepo{}
+	svc := NewUserMaterialService(repo, cos, nil, nil)
+
+	material, err := svc.AddMaterialByURL(context.Background(), 7, "https://cdn.example.com/images/reference.png")
+	require.NoError(t, err)
+	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", material.PublicID)
+	require.Equal(t, "https://cdn.example.com/images/reference.png", material.CosURL)
+	require.Equal(t, "url", material.Source)
+	require.Equal(t, "image", material.Kind)
+	require.Equal(t, int32(0), atomic.LoadInt32(&store.uploads), "URL registration must not upload or download bytes")
+
+	for _, raw := range []string{
+		"https://evil.example.com/reference.png",
+		"http://cdn.example.com/reference.png",
+		"https://cdn.example.com/reference.png?signature=leak",
+		"https://cdn.example.com.evil.example/reference.png",
+	} {
+		_, err := svc.AddMaterialByURL(context.Background(), 7, raw)
+		require.Error(t, err, "raw=%q", raw)
+		require.Equal(t, "INVALID_URL", infraerrors.Reason(err), "raw=%q", raw)
+	}
 }
 
 func (r *quotaStubRepo) UsageByUser(context.Context, int64) (int64, int64, error) {

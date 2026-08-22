@@ -27,8 +27,6 @@ type User struct {
 	Email string `json:"email,omitempty"`
 	// AccountID holds the value of the "account_id" field.
 	AccountID string `json:"account_id,omitempty"`
-	// ExternalUserID holds the value of the "external_user_id" field.
-	ExternalUserID string `json:"external_user_id,omitempty"`
 	// IdentityType holds the value of the "identity_type" field.
 	IdentityType string `json:"identity_type,omitempty"`
 	// LoginName holds the value of the "login_name" field.
@@ -270,7 +268,7 @@ func (*User) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case user.FieldID, user.FieldAuthzGeneration, user.FieldConcurrency, user.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
-		case user.FieldEmail, user.FieldAccountID, user.FieldExternalUserID, user.FieldIdentityType, user.FieldLoginName, user.FieldRecoveryEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldSignupSource, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails:
+		case user.FieldEmail, user.FieldAccountID, user.FieldIdentityType, user.FieldLoginName, user.FieldRecoveryEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldSignupSource, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails:
 			values[i] = new(sql.NullString)
 		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldRecoveryEmailVerifiedAt, user.FieldTotpEnabledAt, user.FieldLastLoginAt, user.FieldLastActiveAt:
 			values[i] = new(sql.NullTime)
@@ -325,12 +323,6 @@ func (_m *User) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field account_id", values[i])
 			} else if value.Valid {
 				_m.AccountID = value.String
-			}
-		case user.FieldExternalUserID:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field external_user_id", values[i])
-			} else if value.Valid {
-				_m.ExternalUserID = value.String
 			}
 		case user.FieldIdentityType:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -621,9 +613,6 @@ func (_m *User) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("account_id=")
 	builder.WriteString(_m.AccountID)
-	builder.WriteString(", ")
-	builder.WriteString("external_user_id=")
-	builder.WriteString(_m.ExternalUserID)
 	builder.WriteString(", ")
 	builder.WriteString("identity_type=")
 	builder.WriteString(_m.IdentityType)

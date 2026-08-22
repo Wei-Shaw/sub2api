@@ -42,6 +42,7 @@ func TestMaterialResponse(t *testing.T) {
 	createdAt := time.Date(2026, 8, 21, 3, 20, 36, 0, time.UTC)
 	got := materialResponse(&service.UserMaterial{
 		ID:          42,
+		PublicID:    "550e8400-e29b-41d4-a716-446655440000",
 		UserID:      7,
 		FileName:    "reference.png",
 		CosURL:      "https://cdn.example.test/reference.png",
@@ -52,8 +53,8 @@ func TestMaterialResponse(t *testing.T) {
 		CreatedAt:   createdAt,
 	}, "acct_7")
 
-	if got.GetId() != 42 || got.GetAccountId() != "acct_7" {
-		t.Fatalf("material identity = (%d, %q), want (42, %q)", got.GetId(), got.GetAccountId(), "acct_7")
+	if got.GetId() != "550e8400-e29b-41d4-a716-446655440000" || got.GetAccountId() != "acct_7" {
+		t.Fatalf("material identity = (%q, %q), want opaque id and %q", got.GetId(), got.GetAccountId(), "acct_7")
 	}
 	if got.GetFileName() != "reference.png" || got.GetUrl() != "https://cdn.example.test/reference.png" {
 		t.Fatalf("material file = (%q, %q)", got.GetFileName(), got.GetUrl())
@@ -119,6 +120,7 @@ func TestRequiredPermission(t *testing.T) {
 		{"materials list", &innerpb.ListMaterialsRequest{}, service.InnerAPIPermissionMaterialsRead},
 		{"materials get", &innerpb.GetMaterialRequest{}, service.InnerAPIPermissionMaterialsRead},
 		{"materials upload", &innerpb.UploadMaterialRequest{}, service.InnerAPIPermissionMaterialsWrite},
+		{"materials add by url", &innerpb.AddMaterialByUrlRequest{}, service.InnerAPIPermissionMaterialsWrite},
 		{"materials delete", &innerpb.DeleteMaterialRequest{}, service.InnerAPIPermissionMaterialsWrite},
 	}
 	for _, tc := range cases {

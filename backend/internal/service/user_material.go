@@ -19,7 +19,10 @@ import (
 	"encoding/base32"
 	"errors"
 	"fmt"
+	"mime"
 	"net/http"
+	"net/url"
+	"path"
 	"strings"
 	"time"
 
@@ -63,6 +66,7 @@ const (
 // UserMaterial 是一条素材库记录（领域模型）。DB 侧字段一一对应 user_materials 表。
 type UserMaterial struct {
 	ID          int64
+	PublicID    string // opaque UUID exposed to RPC callers; never the database id
 	UserID      int64
 	FileName    string // 原始文件名（前端展示用；上传时若为空会由 URL 派生）
 	CosKey      string // COS 桶内 key，用户目录由 user_id + account_id 的密钥派生值生成
@@ -78,8 +82,10 @@ type UserMaterial struct {
 type UserMaterialRepository interface {
 	Insert(ctx context.Context, m *UserMaterial) (int64, error)
 	GetByID(ctx context.Context, userID, id int64) (*UserMaterial, error)
+	GetByPublicID(ctx context.Context, userID int64, publicID string) (*UserMaterial, error)
 	List(ctx context.Context, userID int64, kind, keyword string, offset, limit int) ([]*UserMaterial, int64, error)
 	SoftDelete(ctx context.Context, userID, id int64) error
+	SoftDeleteByPublicID(ctx context.Context, userID int64, publicID string) error
 	// UsageByUser 返回该用户未删除素材的条数与总字节数，用于配额校验。
 	UsageByUser(ctx context.Context, userID int64) (count int64, totalBytes int64, err error)
 }
@@ -265,6 +271,49 @@ func (s *UserMaterialService) ImportFromURL(ctx context.Context, userID int64, s
 	return m, nil
 }
 
+// AddMaterialByURL registers an already-public COS URL without downloading or
+// copying it. The caller is restricted to the configured public COS origin.
+func (s *UserMaterialService) AddMaterialByURL(ctx context.Context, userID int64, rawURL string) (*UserMaterial, error) {
+	if userID <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_USER", "invalid user id")
+	}
+	if s == nil || s.cos == nil {
+		return nil, ErrCOSNotConfigured
+	}
+	cfg, err := s.cos.GetConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if cfg == nil || !cfg.Enabled || !cfg.IsConfigured() || strings.TrimSpace(cfg.PublicBaseURL) == "" {
+		return nil, ErrCOSNotConfigured
+	}
+	publicURL, err := validatePublicCOSURL(rawURL, cfg.PublicBaseURL)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkQuota(ctx, userID, 0); err != nil {
+		return nil, err
+	}
+	parsed, _ := url.Parse(publicURL)
+	filename := deriveFileNameFromURL(publicURL)
+	contentType := mime.TypeByExtension(path.Ext(parsed.Path))
+	if contentType == "" || !strings.HasPrefix(contentType, "image/") {
+		contentType = "image/*"
+	}
+	m := &UserMaterial{
+		UserID:      userID,
+		FileName:    truncateRunes(filename, 512),
+		CosURL:      publicURL,
+		ContentType: contentType,
+		Kind:        "image",
+		Source:      "url",
+	}
+	if _, err := s.repo.Insert(ctx, m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // List 分页读取当前用户的素材。kind 为空时不过滤类型；keyword 走文件名前缀匹配。
 func (s *UserMaterialService) List(ctx context.Context, userID int64, kind, keyword string, page, pageSize int) ([]*UserMaterial, int64, error) {
 	if userID <= 0 {
@@ -314,6 +363,35 @@ func (s *UserMaterialService) GetByID(ctx context.Context, userID, id int64) (*U
 	return m, nil
 }
 
+// GetByPublicID resolves the opaque UUID exposed by the internal RPC.
+func (s *UserMaterialService) GetByPublicID(ctx context.Context, userID int64, publicID string) (*UserMaterial, error) {
+	if userID <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_USER", "invalid user id")
+	}
+	if !isMaterialPublicID(publicID) {
+		return nil, infraerrors.BadRequest("INVALID_ID", "invalid material id")
+	}
+	m, err := s.repo.GetByPublicID(ctx, userID, strings.TrimSpace(publicID))
+	if err != nil {
+		return nil, err
+	}
+	if m == nil {
+		return nil, sql.ErrNoRows
+	}
+	return m, nil
+}
+
+// DeleteByPublicID soft-deletes a material using its opaque UUID.
+func (s *UserMaterialService) DeleteByPublicID(ctx context.Context, userID int64, publicID string) error {
+	if userID <= 0 {
+		return infraerrors.BadRequest("INVALID_USER", "invalid user id")
+	}
+	if !isMaterialPublicID(publicID) {
+		return infraerrors.BadRequest("INVALID_ID", "invalid material id")
+	}
+	return s.repo.SoftDeleteByPublicID(ctx, userID, strings.TrimSpace(publicID))
+}
+
 // checkQuota 校验"再写入 incomingBytes 字节"是否会突破该用户的素材库配额。
 //
 // incomingBytes 传 0 时只校验条数与当前总量是否已达上限（用于下载前的预检，
@@ -339,6 +417,52 @@ func (s *UserMaterialService) checkQuota(ctx context.Context, userID, incomingBy
 				totalBytes, MaterialMaxTotalBytesPerUser))
 	}
 	return nil
+}
+
+func isMaterialPublicID(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) != 36 {
+		return false
+	}
+	_, err := uuid.Parse(value)
+	return err == nil
+}
+
+func validatePublicCOSURL(rawURL, rawBaseURL string) (string, error) {
+	value := strings.TrimSpace(rawURL)
+	baseValue := strings.TrimRight(strings.TrimSpace(rawBaseURL), "/")
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
+		return "", infraerrors.BadRequest("INVALID_URL", "url must be a public COS HTTP(S) URL")
+	}
+	base, err := url.Parse(baseValue)
+	if err != nil || base.Scheme == "" || base.Host == "" || base.User != nil || base.Fragment != "" {
+		return "", ErrCOSNotConfigured
+	}
+	if !isHTTPScheme(parsed.Scheme) || !isHTTPScheme(base.Scheme) {
+		return "", ErrCOSNotConfigured
+	}
+	if !strings.EqualFold(parsed.Scheme, base.Scheme) || !strings.EqualFold(parsed.Hostname(), base.Hostname()) || effectiveURLPort(parsed) != effectiveURLPort(base) {
+		return "", infraerrors.BadRequest("INVALID_URL", "url must use the configured public COS domain")
+	}
+	if parsed.RawQuery != "" {
+		return "", infraerrors.BadRequest("INVALID_URL", "url query parameters are not allowed")
+	}
+	return value, nil
+}
+
+func isHTTPScheme(scheme string) bool {
+	return strings.EqualFold(scheme, "http") || strings.EqualFold(scheme, "https")
+}
+
+func effectiveURLPort(value *url.URL) string {
+	if port := value.Port(); port != "" {
+		return port
+	}
+	if strings.EqualFold(value.Scheme, "https") {
+		return "443"
+	}
+	return "80"
 }
 
 // ------------------------------- helpers -------------------------------

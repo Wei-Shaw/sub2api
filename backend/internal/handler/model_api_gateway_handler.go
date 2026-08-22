@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/fal"
@@ -36,7 +35,6 @@ type ModelAPIGatewayHandler struct {
 	mediaService   *service.AsyncMediaService
 	videoService   *service.AsyncVideoService
 	settingService *service.SettingService
-	cfg            *config.Config
 }
 
 // NewModelAPIGatewayHandler creates the shared asynchronous model facade.
@@ -47,7 +45,6 @@ func NewModelAPIGatewayHandler(
 	mediaService *service.AsyncMediaService,
 	videoService *service.AsyncVideoService,
 	settingService *service.SettingService,
-	cfg *config.Config,
 ) *ModelAPIGatewayHandler {
 	return &ModelAPIGatewayHandler{
 		gatewayService: gatewayService,
@@ -56,7 +53,6 @@ func NewModelAPIGatewayHandler(
 		mediaService:   mediaService,
 		videoService:   videoService,
 		settingService: settingService,
-		cfg:            cfg,
 	}
 }
 
@@ -119,15 +115,8 @@ func (h *ModelAPIGatewayHandler) nativeSubmit(c *gin.Context, model string) {
 		return
 	}
 	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite && strings.EqualFold(modelAPIImageAPI(model), service.FalAPIEdit) {
-		payload, err = h.prepareCompositeMaterialPayload(c.Request.Context(), apiKey, payload)
-		if err != nil {
-			reqLog.Warn("model_api.composite_material_upload_failed", zap.Error(err))
+		if err := validateCompositeEditURLs(payload); err != nil {
 			h.jsonError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-			return
-		}
-		body, err = json.Marshal(payload)
-		if err != nil {
-			h.jsonError(c, http.StatusBadRequest, "invalid_request_error", "Invalid image request body")
 			return
 		}
 	}

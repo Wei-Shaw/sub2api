@@ -100,7 +100,6 @@ export interface User {
   updated_at: string
   deleted_at?: string | null
   account_id?: string
-  external_user_id?: string
   identity_type?: 'root' | 'iam'
   login_name?: string
   iam_principal?: string

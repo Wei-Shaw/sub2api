@@ -2,14 +2,17 @@ package rpc
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/rpc/innerpb"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"go.uber.org/zap"
 
 	trpc "trpc.group/trpc-go/trpc-go"
 	"trpc.group/trpc-go/trpc-go/codec"
@@ -139,7 +142,66 @@ func (s *InnerAPIRPCServer) authFilter(ctx context.Context, req any, next filter
 	if permission := requiredPermission(req); permission != "" && !app.HasPermission(permission) {
 		return nil, errs.New(int(errs.RetServerAuthFail), "permission denied")
 	}
-	return next(ctx, req)
+
+	logger.L().Debug("rpc.inner_api request received",
+		zap.String("app_id", app.AppID),
+		zap.Any("request", innerAPIRequestSummary(req)))
+
+	started := time.Now()
+	result, err := next(ctx, req)
+	if err != nil {
+		logger.LegacyPrintf("rpc.inner_api",
+			"handler returned error: method=%T app_id=%s elapsed=%s error_type=%T error=%v",
+			req, app.AppID, time.Since(started), err, err)
+	}
+	return result, err
+}
+
+// innerAPIRequestSummary records request fields useful for debugging without
+// writing credentials or uploaded binary content to the log.
+func innerAPIRequestSummary(req any) map[string]any {
+	summary := map[string]any{"type": fmt.Sprintf("%T", req)}
+	switch r := req.(type) {
+	case *innerpb.DeductRequest:
+		summary["account_id"] = r.GetAccountId()
+		summary["request_id"] = r.GetRequestId()
+		summary["amount"] = r.GetAmount()
+		summary["description"] = r.GetDescription()
+		summary["extra_bytes"] = len(r.GetExtra())
+	case *innerpb.RefundRequest:
+		summary["refund_request_id"] = r.GetRefundRequestId()
+		summary["original_request_id"] = r.GetOriginalRequestId()
+		summary["amount"] = r.GetAmount()
+		summary["description"] = r.GetDescription()
+		summary["extra_bytes"] = len(r.GetExtra())
+	case *innerpb.GetBalanceRequest:
+		summary["account_id"] = r.GetAccountId()
+	case *innerpb.ListMaterialsRequest:
+		summary["account_id"] = r.GetAccountId()
+		summary["kind"] = r.GetKind()
+		summary["keyword"] = r.GetKeyword()
+		summary["page"] = r.GetPage()
+		summary["page_size"] = r.GetPageSize()
+	case *innerpb.GetMaterialRequest:
+		summary["account_id"] = r.GetAccountId()
+		summary["id"] = r.GetId()
+	case *innerpb.UploadMaterialRequest:
+		summary["account_id"] = r.GetAccountId()
+		summary["file_name"] = r.GetFileName()
+		summary["content_type"] = r.GetContentType()
+		data := r.GetData()
+		summary["data_bytes"] = len(data)
+		if len(data) > 0 {
+			summary["data_sha256"] = fmt.Sprintf("%x", sha256.Sum256(data))
+		}
+	case *innerpb.AddMaterialByUrlRequest:
+		summary["account_id"] = r.GetAccountId()
+		summary["url"] = r.GetUrl()
+	case *innerpb.DeleteMaterialRequest:
+		summary["account_id"] = r.GetAccountId()
+		summary["id"] = r.GetId()
+	}
+	return summary
 }
 
 func requiredPermission(req any) string {
@@ -150,7 +212,7 @@ func requiredPermission(req any) string {
 		return service.InnerAPIPermissionBalanceRead
 	case *innerpb.ListMaterialsRequest, *innerpb.GetMaterialRequest:
 		return service.InnerAPIPermissionMaterialsRead
-	case *innerpb.UploadMaterialRequest, *innerpb.DeleteMaterialRequest:
+	case *innerpb.UploadMaterialRequest, *innerpb.AddMaterialByUrlRequest, *innerpb.DeleteMaterialRequest:
 		return service.InnerAPIPermissionMaterialsWrite
 	default:
 		return ""

@@ -35,17 +35,12 @@ func (User) Mixin() []ent.Mixin {
 
 func (User) Fields() []ent.Field {
 	return []ent.Field{
-		// 唯一约束通过部分索引实现（WHERE deleted_at IS NULL），支持软删除后重用
-		// 见迁移文件 016_soft_delete_partial_unique_indexes.sql
+		// account_id 是用户对外稳定标识，不因软删除而复用。
 		field.String("email").
 			MaxLen(255).
 			Optional(),
 		field.String("account_id").
 			MaxLen(16).
-			Optional().
-			Immutable(),
-		field.String("external_user_id").
-			MaxLen(18).
 			Optional().
 			Immutable(),
 		field.String("identity_type").
@@ -172,9 +167,6 @@ func (User) Indexes() []ent.Index {
 		// email 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("status"),
 		index.Fields("deleted_at"),
-		index.Fields("external_user_id").
-			Unique().
-			Annotations(entsql.IndexWhere("external_user_id IS NOT NULL AND external_user_id <> ''")),
-		index.Fields("account_id"),
+		index.Fields("account_id").Unique(),
 	}
 }

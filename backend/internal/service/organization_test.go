@@ -65,7 +65,7 @@ func (s *organizationRepoStub) CreateIAMMember(_ context.Context, _ int64, user 
 	if s.createErr != nil {
 		return nil, s.createErr
 	}
-	return &IAMMember{UserID: 2, ExternalUserID: "201705485041478971", Username: user.Username, LoginName: user.LoginName, Principal: CanonicalIAMPrincipal(user.LoginName, "c123456789012345"), Status: MembershipStatusActive, MustChangePassword: user.MustChangePassword, PolicyNames: []string{}}, nil
+	return &IAMMember{UserID: 2, AccountID: "2719905235756637", Username: user.Username, LoginName: user.LoginName, Principal: CanonicalIAMPrincipal(user.LoginName, "c123456789012345"), Status: MembershipStatusActive, MustChangePassword: user.MustChangePassword, PolicyNames: []string{}}, nil
 }
 func (s *organizationRepoStub) FindIAMByPrincipal(_ context.Context, loginName, companyID string) (*User, *OrganizationContext, error) {
 	s.findLoginName = loginName

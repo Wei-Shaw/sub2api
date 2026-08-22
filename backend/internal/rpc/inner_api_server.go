@@ -4,11 +4,13 @@ package rpc
 import (
 	"context"
 	"math"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/rpc/innerpb"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"trpc.group/trpc-go/trpc-go/errs"
@@ -122,7 +124,7 @@ func (s *innerAPIServer) GetMaterial(ctx context.Context, req *innerpb.GetMateri
 	if err != nil {
 		return nil, toTRPCError(err)
 	}
-	item, err := s.materials.GetByID(ctx, user.ID, req.GetId())
+	item, err := s.materials.GetByPublicID(ctx, user.ID, req.GetId())
 	if err != nil {
 		return nil, toTRPCError(err)
 	}
@@ -145,6 +147,21 @@ func (s *innerAPIServer) UploadMaterial(ctx context.Context, req *innerpb.Upload
 	return &innerpb.UploadMaterialResponse{Material: material, FileUrl: material.GetUrl()}, nil
 }
 
+func (s *innerAPIServer) AddMaterialByUrl(ctx context.Context, req *innerpb.AddMaterialByUrlRequest) (*innerpb.AddMaterialByUrlResponse, error) {
+	if s.materials == nil {
+		return nil, toTRPCError(service.ErrCOSNotConfigured)
+	}
+	user, err := s.userByAccountID(ctx, req.GetAccountId())
+	if err != nil {
+		return nil, toTRPCError(err)
+	}
+	item, err := s.materials.AddMaterialByURL(ctx, user.ID, req.GetUrl())
+	if err != nil {
+		return nil, toTRPCError(err)
+	}
+	return &innerpb.AddMaterialByUrlResponse{MaterialId: item.PublicID}, nil
+}
+
 func (s *innerAPIServer) DeleteMaterial(ctx context.Context, req *innerpb.DeleteMaterialRequest) (*innerpb.DeleteMaterialResponse, error) {
 	if s.materials == nil {
 		return nil, toTRPCError(service.ErrCOSNotConfigured)
@@ -153,7 +170,7 @@ func (s *innerAPIServer) DeleteMaterial(ctx context.Context, req *innerpb.Delete
 	if err != nil {
 		return nil, toTRPCError(err)
 	}
-	if err := s.materials.Delete(ctx, user.ID, req.GetId()); err != nil {
+	if err := s.materials.DeleteByPublicID(ctx, user.ID, req.GetId()); err != nil {
 		return nil, toTRPCError(err)
 	}
 	return &innerpb.DeleteMaterialResponse{Id: req.GetId(), Deleted: true}, nil
@@ -168,7 +185,7 @@ func materialResponse(item *service.UserMaterial, accountID string) *innerpb.Mat
 		createdAt = item.CreatedAt.UTC().Format(time.RFC3339)
 	}
 	return &innerpb.Material{
-		Id: item.ID, AccountId: accountID, FileName: item.FileName, Url: item.CosURL,
+		Id: item.PublicID, AccountId: accountID, FileName: item.FileName, Url: item.CosURL,
 		ContentType: item.ContentType, SizeBytes: item.SizeBytes, Kind: item.Kind,
 		Source: item.Source, CreatedAt: createdAt,
 	}
@@ -222,5 +239,21 @@ func toTRPCError(err error) error {
 	if err == nil {
 		return nil
 	}
-	return errs.New(infraerrors.Code(err), infraerrors.Message(err))
+	code := infraerrors.Code(err)
+	reason := infraerrors.Reason(err)
+	message := infraerrors.Message(err)
+	if code >= 500 {
+		method := "unknown"
+		if pc, _, _, ok := runtime.Caller(1); ok {
+			if fn := runtime.FuncForPC(pc); fn != nil {
+				method = fn.Name()
+			}
+		}
+		// Keep the public tRPC response generic, but retain the original error
+		// here so database/configuration failures are diagnosable from logs.
+		logger.LegacyPrintf("rpc.inner_api",
+			"handler error mapped to internal: method=%s code=%d reason=%q message=%q error_type=%T error=%v",
+			method, code, reason, message, err, err)
+	}
+	return errs.New(code, message)
 }

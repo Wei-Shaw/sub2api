@@ -108,7 +108,6 @@ describe('AppHeader company upgrade menu', () => {
       role: 'user',
       email: '',
       account_id: '1719905235756637',
-      external_user_id: '201705485041478971',
     }
 
     const wrapper = mountHeader()

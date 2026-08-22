@@ -100,7 +100,6 @@ type Config struct {
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	AsyncMedia              AsyncMediaConfig              `mapstructure:"async_media"`
 	InnerAPIRPC             InnerAPIRPCConfig             `mapstructure:"inner_api_rpc"`
-	CompositeMaterial       CompositeMaterialConfig       `mapstructure:"composite_material"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
 	Company                 CompanyConfig                 `mapstructure:"company"`
@@ -1475,18 +1474,6 @@ type InnerAPIRPCConfig struct {
 	EncryptionKey string `mapstructure:"encryption_key"`
 }
 
-// CompositeMaterialConfig 配置 Composite 图片编辑请求中的内部素材上传。
-// 凭据只在 Go 后端读取，不下发到前端或用户可见配置。
-type CompositeMaterialConfig struct {
-	Enabled   bool   `mapstructure:"enabled"`
-	Host      string `mapstructure:"host"`
-	Port      int    `mapstructure:"port"`
-	AppID     string `mapstructure:"app_id"`
-	Token     string `mapstructure:"token"`
-	AccountID string `mapstructure:"account_id"`
-	MaxBytes  int64  `mapstructure:"max_bytes"`
-}
-
 func (s *ServerConfig) Address() string {
 	return fmt.Sprintf("%s:%d", s.Host, s.Port)
 }
@@ -2639,13 +2626,6 @@ func setEnvReachableDefaults() {
 	viper.SetDefault("inner_api_rpc.host", "")
 	viper.SetDefault("inner_api_rpc.port", 0)
 	viper.SetDefault("inner_api_rpc.encryption_key", "")
-	viper.SetDefault("composite_material.enabled", false)
-	viper.SetDefault("composite_material.host", "")
-	viper.SetDefault("composite_material.port", 0)
-	viper.SetDefault("composite_material.app_id", "")
-	viper.SetDefault("composite_material.token", "")
-	viper.SetDefault("composite_material.account_id", "")
-	viper.SetDefault("composite_material.max_bytes", int64(50*1024*1024))
 
 	// Company account and IAM rollout gates default closed. Operators must
 	// explicitly attest that public IDs and every billing path are ready.

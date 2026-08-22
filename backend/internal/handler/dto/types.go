@@ -13,7 +13,6 @@ type User struct {
 	ID                 int64      `json:"id"`
 	Email              string     `json:"email"`
 	AccountID          string     `json:"account_id"`
-	ExternalUserID     string     `json:"external_user_id"`
 	IdentityType       string     `json:"identity_type"`
 	LoginName          string     `json:"login_name,omitempty"`
 	IAMPrincipal       string     `json:"iam_principal,omitempty"`

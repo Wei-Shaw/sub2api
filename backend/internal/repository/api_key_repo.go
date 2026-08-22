@@ -938,7 +938,6 @@ func userEntityToService(u *dbent.User) *service.User {
 		ID:                         u.ID,
 		Email:                      u.Email,
 		AccountID:                  u.AccountID,
-		ExternalUserID:             u.ExternalUserID,
 		IdentityType:               u.IdentityType,
 		LoginName:                  u.LoginName,
 		MustChangePassword:         u.MustChangePassword,

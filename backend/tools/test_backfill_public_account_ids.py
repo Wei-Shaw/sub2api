@@ -14,8 +14,8 @@ SPEC.loader.exec_module(MODULE)
 
 
 class BackfillPublicAccountIDsTest(unittest.TestCase):
-    def test_generated_ids_are_root_format_and_unique(self):
-        values = {MODULE.generate_root_id() for _ in range(1000)}
+    def test_generated_ids_are_account_format_and_unique(self):
+        values = {MODULE.generate_account_id() for _ in range(1000)}
         self.assertEqual(1000, len(values))
         for value in values:
             self.assertRegex(value, r"^[1-9][0-9]{15}$")
@@ -27,7 +27,7 @@ class BackfillPublicAccountIDsTest(unittest.TestCase):
 
         with mock.patch.object(
             MODULE,
-            "generate_root_id",
+            "generate_account_id",
             side_effect=["1719905235756637", "1719905235756638"],
         ):
             value = MODULE.next_unique_id(cursor, retries=2, counts=counts)
@@ -36,14 +36,14 @@ class BackfillPublicAccountIDsTest(unittest.TestCase):
         self.assertEqual(1, counts.collisions)
         self.assertEqual(2, cursor.execute.call_count)
 
-    def test_run_refuses_partially_populated_rows(self):
+    def test_run_refuses_duplicate_root_rows(self):
         cursor = mock.Mock()
         cursor.fetchone.return_value = (1,)
         connection = mock.Mock()
         connection.cursor.return_value = cursor
 
         with mock.patch.object(MODULE, "connect", return_value=connection):
-            with self.assertRaisesRegex(RuntimeError, "partially populated"):
+            with self.assertRaisesRegex(RuntimeError, "duplicate root"):
                 MODULE.run(
                     "postgresql://unused",
                     batch_size=10,
@@ -55,8 +55,27 @@ class BackfillPublicAccountIDsTest(unittest.TestCase):
         connection.close.assert_called_once_with()
 
     def test_counts_reports_resume_cursor(self):
-        counts = MODULE.Counts(scanned=2, populated=2, last_cursor=42)
+        counts = MODULE.Counts(scanned=2, reassigned=2, last_cursor=42)
         self.assertEqual(42, counts.last_cursor)
+
+    def test_run_only_selects_iam_or_missing_account_ids(self):
+        cursor = mock.Mock()
+        cursor.fetchone.return_value = (0,)
+        cursor.fetchall.side_effect = [[], []]
+        connection = mock.Mock()
+        connection.cursor.return_value = cursor
+
+        with mock.patch.object(MODULE, "connect", return_value=connection):
+            MODULE.run(
+                "postgresql://unused",
+                batch_size=10,
+                start_after=0,
+                retries=2,
+                dry_run=True,
+            )
+
+        select_statements = [call.args[0] for call in cursor.execute.call_args_list]
+        self.assertTrue(any("identity_type = 'iam'" in sql and "account_id IS NULL" in sql for sql in select_statements))
 
 
 if __name__ == "__main__":

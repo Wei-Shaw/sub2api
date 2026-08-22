@@ -4,7 +4,6 @@ package repository
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	dbmigrations "github.com/Wei-Shaw/sub2api/migrations"
@@ -13,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPublicAccountIdentifierMigrationBothPhases(t *testing.T) {
+func TestUserAccountIDMigrationReassignsIAMUsers(t *testing.T) {
 	ctx := context.Background()
 	conn, err := integrationDB.Conn(ctx)
 	require.NoError(t, err)
@@ -42,33 +41,41 @@ func TestPublicAccountIdentifierMigrationBothPhases(t *testing.T) {
 	_, err = conn.ExecContext(ctx, string(phaseOne))
 	require.NoError(t, err)
 
-	var legacyID int64
-	require.NoError(t, conn.QueryRowContext(ctx, `INSERT INTO users(email) VALUES('legacy@example.com') RETURNING id`).Scan(&legacyID))
-	_, err = conn.ExecContext(ctx, `INSERT INTO users(email,account_id,external_user_id,identity_type) VALUES('invalid@example.com','0123456789012345','0123456789012345','root')`)
-	require.Error(t, err)
 	_, err = conn.ExecContext(ctx, `INSERT INTO users(email,account_id,external_user_id,identity_type) VALUES('root@example.com','1719905235756637','1719905235756637','root')`)
 	require.NoError(t, err)
-	_, err = conn.ExecContext(ctx, `INSERT INTO users(email,account_id,external_user_id,identity_type) VALUES('duplicate@example.com','1719905235756637','1719905235756637','root')`)
-	require.Error(t, err)
-
-	finalize, err := os.ReadFile("../../tools/finalize_public_account_identifiers.sql")
-	require.NoError(t, err)
-	_, err = conn.ExecContext(ctx, string(finalize))
-	require.Error(t, err, "phase two must refuse an unbackfilled legacy row")
-
-	_, err = conn.ExecContext(ctx, `UPDATE users SET account_id='2719905235756637',external_user_id='2719905235756637',identity_type='root' WHERE id=$1`, legacyID)
-	require.NoError(t, err)
-	_, err = conn.ExecContext(ctx, string(finalize))
-	require.NoError(t, err)
-
-	_, err = conn.ExecContext(ctx, `INSERT INTO users(email,identity_type) VALUES('missing@example.com','root')`)
-	require.Error(t, err)
-	_, err = conn.ExecContext(ctx, `INSERT INTO users(email,account_id,external_user_id,identity_type) VALUES('mismatch@example.com','3719905235756637','4719905235756637','root')`)
-	require.Error(t, err)
 	_, err = conn.ExecContext(ctx, `INSERT INTO users(email,account_id,external_user_id,identity_type,login_name) VALUES('iam@example.com','1719905235756637','201705485041478971','iam','finance.reader')`)
 	require.NoError(t, err)
-	_, err = conn.ExecContext(ctx, `INSERT INTO users(email,account_id,external_user_id,identity_type,login_name,deleted_at) VALUES('reused@example.com','1719905235756637','201705485041478971','iam','archived',NOW())`)
-	require.Error(t, err, "soft-deleted public IDs remain globally reserved")
+	_, err = conn.ExecContext(ctx, `INSERT INTO users(email,account_id,external_user_id,identity_type,login_name) VALUES('iam2@example.com','1719905235756637','237123304625250835','iam','test231')`)
+	require.NoError(t, err)
+	_, err = conn.ExecContext(ctx, `INSERT INTO users(email,account_id,external_user_id,identity_type,login_name) VALUES('iam3@example.com','2719905235756637','271990523575663701','iam','already.unique')`)
+	require.NoError(t, err)
+
+	migration, err := dbmigrations.FS.ReadFile("231_user_account_ids.sql")
+	require.NoError(t, err)
+	_, err = conn.ExecContext(ctx, string(migration))
+	require.NoError(t, err)
+
+	var total, duplicate int
+	require.NoError(t, conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&total))
+	require.Equal(t, 4, total)
+	require.NoError(t, conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT account_id FROM users GROUP BY account_id HAVING COUNT(*) > 1) duplicates`).Scan(&duplicate))
+	require.Zero(t, duplicate)
+
+	var rootAccount, iamAccount, iam2Account, uniqueIAMAccount string
+	require.NoError(t, conn.QueryRowContext(ctx, `SELECT account_id FROM users WHERE identity_type='root'`).Scan(&rootAccount))
+	require.NoError(t, conn.QueryRowContext(ctx, `SELECT account_id FROM users WHERE login_name='finance.reader'`).Scan(&iamAccount))
+	require.NoError(t, conn.QueryRowContext(ctx, `SELECT account_id FROM users WHERE login_name='test231'`).Scan(&iam2Account))
+	require.NoError(t, conn.QueryRowContext(ctx, `SELECT account_id FROM users WHERE login_name='already.unique'`).Scan(&uniqueIAMAccount))
+	require.Equal(t, "1719905235756637", rootAccount)
+	require.NotEqual(t, rootAccount, iamAccount)
+	require.NotEqual(t, rootAccount, iam2Account)
+	require.NotEqual(t, iamAccount, iam2Account)
+	require.Equal(t, "2719905235756637", uniqueIAMAccount)
+	require.Regexp(t, `^[1-9][0-9]{15}$`, iamAccount)
+	require.Regexp(t, `^[1-9][0-9]{15}$`, iam2Account)
+
+	_, err = conn.ExecContext(ctx, `SELECT external_user_id FROM users`)
+	require.Error(t, err, "external_user_id must be removed by the migration")
 }
 
 func TestCompanyManagedPolicySeedsAreExactAndIdempotent(t *testing.T) {

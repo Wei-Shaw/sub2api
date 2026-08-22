@@ -363,7 +363,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	imageGatewayHandler := handler.NewImageGatewayHandler(gatewayService, openAIGatewayService, asyncMediaService, cosImageTransferService, configConfig)
 	asyncVideoTaskRepository := repository.NewAsyncVideoTaskRepository(client, db)
 	asyncVideoService := service.ProvideAsyncVideoService(asyncVideoTaskRepository, userRepository, billingService, deferredService, billingContextResolver, billingCacheService, modelPricingResolver, costCenterService, cosImageTransferService, opsService, configConfig)
-	modelAPIGatewayHandler := handler.NewModelAPIGatewayHandler(gatewayService, openAIGatewayService, accountService, asyncMediaService, asyncVideoService, settingService, configConfig)
+	modelAPIGatewayHandler := handler.NewModelAPIGatewayHandler(gatewayService, openAIGatewayService, accountService, asyncMediaService, asyncVideoService, settingService)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo, notificationEmailService)
 	totpHandler := handler.NewTotpHandler(totpService)
 	passkeyRepository := repository.NewPasskeyRepository(db)

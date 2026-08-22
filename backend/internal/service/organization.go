@@ -246,7 +246,7 @@ type AdminOrganizationDetail struct {
 
 type IAMMember struct {
 	UserID             int64      `json:"user_id"`
-	ExternalUserID     string     `json:"external_user_id"`
+	AccountID          string     `json:"account_id"`
 	Username           string     `json:"username"`
 	LoginName          string     `json:"login_name"`
 	Principal          string     `json:"principal"`

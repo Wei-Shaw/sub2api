@@ -169,8 +169,8 @@ describe('organization views', () => {
     })
     api.listMembers.mockResolvedValue({
       items: [
-        { user_id: 99, login_name: 'self', principal: 'self@company.opentk.ai', external_user_id: '201705485041478971', status: 'active', balance: '5', frozen_balance: '0', policy_names: ['CompanySharedBalanceUse'], must_change_password: false, created_at: '2026-01-01T00:00:00Z' },
-        { user_id: 100, login_name: 'other-member', principal: 'other@company.opentk.ai', external_user_id: '201705485041478972', status: 'active', balance: '8', frozen_balance: '0', policy_names: [], must_change_password: false, created_at: '2026-01-01T00:00:00Z' },
+        { user_id: 99, account_id: '4714045153338228', login_name: 'self', principal: 'self@company.opentk.ai', status: 'active', balance: '5', frozen_balance: '0', policy_names: ['CompanySharedBalanceUse'], must_change_password: false, created_at: '2026-01-01T00:00:00Z' },
+        { user_id: 100, account_id: '8392014857201143', login_name: 'other-member', principal: 'other@company.opentk.ai', status: 'active', balance: '8', frozen_balance: '0', policy_names: [], must_change_password: false, created_at: '2026-01-01T00:00:00Z' },
       ],
       member_limit: 20,
       used_slots: 2,
@@ -281,7 +281,7 @@ describe('organization views', () => {
       finance: { balance_source: 'self', available: '100', frozen: '0', total: '100' },
     })
     api.listMembers.mockResolvedValue({
-      items: [{ user_id: 42, username: 'Finance Reader', login_name: 'reader', principal: 'reader@company.opentk.ai', external_user_id: '201705485041478971', status: 'active', balance: '0', frozen_balance: '0', recovery_email: 'reader@example.com', recovery_email_verified_at: '2026-01-01T00:00:00Z', policy_names: [], must_change_password: false, created_at: '2026-01-01T00:00:00Z' }],
+      items: [{ user_id: 42, account_id: '8392014857201143', username: 'Finance Reader', login_name: 'reader', principal: 'reader@company.opentk.ai', status: 'active', balance: '0', frozen_balance: '0', recovery_email: 'reader@example.com', recovery_email_verified_at: '2026-01-01T00:00:00Z', policy_names: [], must_change_password: false, created_at: '2026-01-01T00:00:00Z' }],
       member_limit: 20,
       used_slots: 1,
     })
@@ -358,7 +358,7 @@ describe('organization views', () => {
       finance: { balance_source: 'self', available: '100', frozen: '0', total: '100' }
     })
     api.listMembers.mockResolvedValue({
-      items: [{ user_id: 42, login_name: 'reader', principal: 'reader@1719905235756637.opentk.ai', external_user_id: '201705485041478971', status: 'active', balance: '5', frozen_balance: '0', policy_names: [], must_change_password: false, created_at: '2026-01-01T00:00:00Z' }],
+      items: [{ user_id: 42, account_id: '8392014857201143', login_name: 'reader', principal: 'reader@1719905235756637.opentk.ai', status: 'active', balance: '5', frozen_balance: '0', policy_names: [], must_change_password: false, created_at: '2026-01-01T00:00:00Z' }],
       member_limit: 20,
       used_slots: 1,
     })

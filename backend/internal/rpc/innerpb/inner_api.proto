@@ -14,6 +14,7 @@ service InnerAPI {
   rpc ListMaterials(ListMaterialsRequest) returns (ListMaterialsResponse);
   rpc GetMaterial(GetMaterialRequest) returns (Material);
   rpc UploadMaterial(UploadMaterialRequest) returns (UploadMaterialResponse);
+  rpc AddMaterialByUrl(AddMaterialByUrlRequest) returns (AddMaterialByUrlResponse);
   rpc DeleteMaterial(DeleteMaterialRequest) returns (DeleteMaterialResponse);
 }
 
@@ -62,7 +63,7 @@ message GetBalanceResponse {
 }
 
 message Material {
-  int64 id = 1;
+  string id = 1; // opaque public material identifier; never the database id
   string account_id = 2;
   string file_name = 3;
   string url = 4;
@@ -90,7 +91,7 @@ message ListMaterialsResponse {
 
 message GetMaterialRequest {
   string account_id = 1;
-  int64 id = 2;
+  string id = 2; // opaque public material identifier
 }
 
 message UploadMaterialRequest {
@@ -105,12 +106,21 @@ message UploadMaterialResponse {
   string file_url = 2;
 }
 
+message AddMaterialByUrlRequest {
+  string account_id = 1;
+  string url = 2;
+}
+
+message AddMaterialByUrlResponse {
+  string material_id = 1; // opaque public material identifier
+}
+
 message DeleteMaterialRequest {
   string account_id = 1;
-  int64 id = 2;
+  string id = 2; // opaque public material identifier
 }
 
 message DeleteMaterialResponse {
-  int64 id = 1;
+  string id = 1; // opaque public material identifier
   bool deleted = 2;
 }
