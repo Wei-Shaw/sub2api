@@ -157,6 +157,7 @@ REDACTED
 			return nil, fmt.Errorf("normalize Grok chat reasoning effort: %w", err)
 	REDACTED
 REDACTED
+	upstreamBody = applyOllamaCloudRawChatCompletionsRequest(account, upstreamBody)
 
 	logger.L().Debug("openai chat_completions raw: forwarding without protocol conversion",
 		zap.Int64("account_id", account.ID),
@@ -334,6 +335,7 @@ REDACTED
 			REDACTED
 		REDACTED
 	REDACTED
+		line = applyOllamaCloudRawChatCompletionsSSELine(account, line)
 
 		writeLine(line)
 		if line == "" {
@@ -465,6 +467,7 @@ REDACTED
 		upstreamRequestID := firstNonEmpty(requestID, resp.Header.Get("xai-request-id"))
 		return nil, newGrokMissingUsageFailoverError(c, account, upstreamRequestID)
 REDACTED
+	respBody = applyOllamaCloudRawChatCompletionsResponse(account, respBody)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
