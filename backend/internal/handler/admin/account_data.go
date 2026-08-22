@@ -66,6 +66,7 @@ type DataAccount struct {
 	Extra              map[string]any `json:"extra,omitempty"`
 	ProxyKey           *string        `json:"proxy_key,omitempty"`
 	Concurrency        int            `json:"concurrency"`
+	LoadFactor         *int           `json:"load_factor,omitempty"`
 	Priority           int            `json:"priority"`
 	RateMultiplier     *float64       `json:"rate_multiplier,omitempty"`
 	ExpiresAt          *int64         `json:"expires_at,omitempty"`
@@ -208,6 +209,7 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			Extra:              acc.Extra,
 			ProxyKey:           proxyKey,
 			Concurrency:        acc.Concurrency,
+			LoadFactor:         acc.LoadFactor,
 			Priority:           acc.Priority,
 			RateMultiplier:     acc.RateMultiplier,
 			ExpiresAt:          expiresAt,
@@ -438,6 +440,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			Extra:                item.Extra,
 			ProxyID:              proxyID,
 			Concurrency:          item.Concurrency,
+			LoadFactor:           item.LoadFactor,
 			Priority:             item.Priority,
 			RateMultiplier:       item.RateMultiplier,
 			GroupIDs:             nil,
@@ -695,6 +698,9 @@ func validateDataAccount(item DataAccount) error {
 	}
 	if item.RateMultiplier != nil && *item.RateMultiplier < 0 {
 		return errors.New("rate_multiplier must be >= 0")
+	}
+	if item.LoadFactor != nil && (*item.LoadFactor <= 0 || *item.LoadFactor > 10000) {
+		return errors.New("load_factor must be between 1 and 10000")
 	}
 	if item.Concurrency < 0 {
 		return errors.New("concurrency must be >= 0")
