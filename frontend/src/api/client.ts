@@ -17,6 +17,10 @@ import { getAPIBaseURL } from './url'
 export { buildApiUrl, buildGatewayUrl } from './url'
 
 // ==================== Axios Instance Configuration ====================
+type InternalApiRequestConfig = InternalAxiosRequestConfig & {
+  _retry?: boolean
+  skipAuthRefreshReasons?: readonly string[]
+}
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: getAPIBaseURL(),
@@ -107,7 +111,7 @@ apiClient.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
+    const originalRequest = error.config as InternalApiRequestConfig
 
     // Handle common errors
     if (error.response) {
@@ -162,7 +166,9 @@ apiClient.interceptors.response.use(
 
       // 401: Try to refresh the token if we have a refresh token
       // This handles TOKEN_EXPIRED, INVALID_TOKEN, TOKEN_REVOKED, etc.
-      if (status === 401 && !originalRequest._retry) {
+      const skipAuthRefresh =
+        typeof apiData.reason === 'string' && originalRequest.skipAuthRefreshReasons?.includes(apiData.reason)
+      if (status === 401 && !skipAuthRefresh && !originalRequest._retry) {
         const refreshToken = localStorage.getItem('refresh_token')
         const isAuthEndpoint =
           url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh')

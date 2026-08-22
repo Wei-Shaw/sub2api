@@ -26,6 +26,7 @@ type OpenAIOAuthHandler struct {
 
 type openAIQuotaService interface {
 	QueryUsage(ctx context.Context, accountID int64) (*service.OpenAIQuotaUsage, error)
+	QueryCodexAnalytics(ctx context.Context, accountID int64, query service.OpenAICodexAnalyticsQuery) (*service.OpenAICodexAnalytics, error)
 	CacheResetCreditsSnapshot(ctx context.Context, accountID int64, credits *service.OpenAIRateLimitResetCredits) error
 	ResetCredit(ctx context.Context, accountID int64) (*service.OpenAIQuotaResetResult, error)
 }
@@ -494,6 +495,67 @@ func (h *OpenAIOAuthHandler) QueryQuota(c *gin.Context) {
 		return
 	}
 	response.Success(c, usage)
+}
+
+// QueryCodexAnalytics returns official ChatGPT activity alongside Sub2API-managed traffic.
+// GET /api/v1/admin/accounts/:id/codex-analytics
+func (h *OpenAIOAuthHandler) QueryCodexAnalytics(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	query := service.OpenAICodexAnalyticsQuery{Period: service.OpenAICodexAnalyticsCurrent7Days}
+	period := strings.TrimSpace(c.Query("period"))
+	if period != "" {
+		query.Period = service.OpenAICodexAnalyticsPeriodMode(period)
+	}
+	switch query.Period {
+	case service.OpenAICodexAnalyticsCurrent7Days:
+		if strings.TrimSpace(c.Query("days")) != "" {
+			response.BadRequest(c, "days is only valid for recent period")
+			return
+		}
+	case service.OpenAICodexAnalyticsRecent:
+		days, parseErr := strconv.Atoi(strings.TrimSpace(c.Query("days")))
+		if parseErr != nil || days < 1 || days > 30 {
+			response.BadRequest(c, "days must be between 1 and 30")
+			return
+		}
+		query.Days = days
+	default:
+		response.BadRequest(c, "period must be current_7d or recent")
+		return
+	}
+	if h.quotaService == nil {
+		response.BadRequest(c, "openai quota service is not enabled")
+		return
+	}
+
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if account == nil {
+		response.NotFound(c, "Account not found")
+		return
+	}
+	if account.Platform != service.PlatformOpenAI {
+		response.BadRequest(c, "Account platform must be openai")
+		return
+	}
+	if account.Type != service.AccountTypeOAuth {
+		response.BadRequest(c, "Account type must be oauth")
+		return
+	}
+
+	analytics, err := h.quotaService.QueryCodexAnalytics(c.Request.Context(), accountID, query)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, analytics)
 }
 
 // RefreshQuota queries the rate-limit / quota usage AND persists the reset-credit

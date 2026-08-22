@@ -1479,6 +1479,111 @@ export default {
       audioReceived: '已收到第 {count} 段测试音频',
       videoPreview: '生成视频：',
       videoReceived: '已收到第 {count} 段测试视频',
+      codexAnalytics: {
+        action: '分析',
+        openAction: '打开 Codex 分析',
+        openActionFor: '打开 {name} 的 Codex 分析',
+        title: 'Codex 分析',
+        loading: '正在加载官方账号活动与托管流量...',
+        retry: '重试',
+        periodRange: '{start} 至 {end}',
+        periodSelector: {
+          label: '分析周期',
+          currentCycle: '当前 7 天周期',
+          recent7: '最近 7 天',
+          recent14: '最近 14 天',
+          recent30: '最近 30 天'
+        },
+        cacheExpires: '缓存至 {time}',
+        fresh: '实时响应',
+        unavailable: '暂无数据',
+        scopeDescription: '本视图全程分别标注 OpenAI 账号活动与 Sub2API 托管流量的数据来源。',
+        localFallback: '本地数据回退：',
+        warning: '警告：',
+        warnings: {
+          current_7d_window_unavailable: '官方 7 天窗口暂不可用或无效，已改为展示最近 7 天的分析数据。',
+          official_daily_buckets_approximate_period: '官方账号活动仅按日汇总，周期包含非整日边界时数据可能为近似值。',
+          rate_limits_unavailable: '当前 ChatGPT 限额暂不可用。',
+          official_profile_unavailable: '官方账号活动暂不可用。',
+          cache_read_failed: '分析缓存暂不可用，已获取实时数据。',
+          cache_write_failed: '已返回实时分析数据，但本次未写入缓存。'
+        },
+        overview: '活动概览',
+        officialVsManaged: '官方总量反映 OpenAI 账号活动；Token 拆分、请求、模型与成本反映 Sub2API 托管流量。',
+        rateLimits: '官方限额窗口',
+        noManagedTraffic: '此周期内没有 Sub2API 托管流量',
+        sources: {
+          openai: 'OpenAI 账号活动',
+          sub2api: 'Sub2API 托管流量'
+        },
+        kpis: {
+          officialTokens: '官方总 Token',
+          managedTokens: '托管总 Token',
+          requests: '请求数',
+          currentLimit: '当前限额用量',
+          input: '输入 Token',
+          output: '输出 Token',
+          cache: '缓存 Token',
+          cacheRead: '缓存读取 Token',
+          cacheHitRate: '缓存命中率',
+          estimatedCost: '预估成本',
+          resetCountdown: '剩余重置倒计时'
+        },
+        windows: {
+          fiveHour: '5 小时窗口',
+          sevenDay: '7 天窗口',
+          available: '可用',
+          nearLimit: '接近限额',
+          limited: '已达限额',
+          unavailable: '暂无数据',
+          resetsIn: '{time} 后重置',
+          resetting: '正在重置',
+          resetUnknown: '暂无重置时间',
+          noReset: '暂无窗口数据'
+        },
+        profile: {
+          title: '官方账号档案',
+          lifetimeTokens: '生命周期 Token',
+          peakDailyTokens: '单日峰值 Token',
+          longestTurn: '最长运行轮次',
+          currentStreak: '当前连续天数',
+          longestStreak: '最长连续天数',
+          seconds: '{count} 秒',
+          minutes: '{count} 分钟',
+          days: '{count} 天'
+        },
+        trend: {
+          title: '每日 Token 活动',
+          description: '堆叠柱展示 Sub2API 托管流量；橙色指标在有数据时展示 OpenAI 官方账号活动。',
+          input: '托管输入',
+          output: '托管输出',
+          cache: '托管缓存',
+          official: '官方总量'
+        },
+        models: {
+          title: '托管流量模型构成',
+          description: '展示 Sub2API 用量日志中的前三个模型，其余流量合并展示。',
+          other: '其他'
+        },
+        empty: {
+          title: '此周期暂无活动',
+          description: 'OpenAI 未返回官方账号总量，Sub2API 在所选周期内也没有托管流量记录。'
+        },
+        errors: {
+          unauthorized: {
+            title: 'OpenAI 授权已过期',
+            description: '请从账号操作中重新授权此 OAuth 账号，然后重试分析。'
+          },
+          'rate-limited': {
+            title: 'OpenAI 分析请求已限流',
+            description: '请等待上游重试窗口结束，然后重新加载分析。'
+          },
+          generic: {
+            title: '分析数据加载失败',
+            description: '请重试请求。现有账号调度与用量轮询会继续正常运行。'
+          }
+        }
+      },
       // Stats Modal
       viewStats: '查看统计',
       usageStatistics: '使用统计',

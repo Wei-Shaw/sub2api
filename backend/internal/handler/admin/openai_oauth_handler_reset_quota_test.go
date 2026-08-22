@@ -17,15 +17,20 @@ import (
 )
 
 type openAIQuotaWorkflowStub struct {
-	resetResult *service.OpenAIQuotaResetResult
-	resetErr    error
-	queryResult *service.OpenAIQuotaUsage
-	queryErr    error
-	cacheErr    error
+	resetResult     *service.OpenAIQuotaResetResult
+	resetErr        error
+	queryResult     *service.OpenAIQuotaUsage
+	queryErr        error
+	cacheErr        error
+	analyticsResult *service.OpenAICodexAnalytics
+	analyticsErr    error
 
-	resetCalls int
-	queryCalls int
-	cacheCalls int
+	resetCalls     int
+	queryCalls     int
+	cacheCalls     int
+	analyticsCalls int
+	analyticsID    int64
+	analyticsQuery service.OpenAICodexAnalyticsQuery
 
 	queryCtxErr error
 	cacheCtxErr error
@@ -40,6 +45,13 @@ func (s *openAIQuotaWorkflowStub) QueryUsage(ctx context.Context, _ int64) (*ser
 	s.queryCalls++
 	s.queryCtxErr = ctx.Err()
 	return s.queryResult, s.queryErr
+}
+
+func (s *openAIQuotaWorkflowStub) QueryCodexAnalytics(_ context.Context, accountID int64, query service.OpenAICodexAnalyticsQuery) (*service.OpenAICodexAnalytics, error) {
+	s.analyticsCalls++
+	s.analyticsID = accountID
+	s.analyticsQuery = query
+	return s.analyticsResult, s.analyticsErr
 }
 
 func (s *openAIQuotaWorkflowStub) CacheResetCreditsSnapshot(ctx context.Context, _ int64, _ *service.OpenAIRateLimitResetCredits) error {

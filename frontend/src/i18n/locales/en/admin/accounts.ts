@@ -1429,6 +1429,111 @@ export default {
       audioReceived: 'Received test audio #{count}',
       videoPreview: 'Generated video:',
       videoReceived: 'Received test video #{count}',
+      codexAnalytics: {
+        action: 'Analytics',
+        openAction: 'Open Codex analytics',
+        openActionFor: 'Open Codex analytics for {name}',
+        title: 'Codex Analytics',
+        loading: 'Loading official account activity and managed traffic...',
+        retry: 'Retry',
+        periodRange: '{start} to {end}',
+        periodSelector: {
+          label: 'Analytics period',
+          currentCycle: 'Current 7d cycle',
+          recent7: 'Recent 7 days',
+          recent14: 'Recent 14 days',
+          recent30: 'Recent 30 days'
+        },
+        cacheExpires: 'Cached until {time}',
+        fresh: 'Fresh response',
+        unavailable: 'Unavailable',
+        scopeDescription: 'OpenAI account activity and Sub2API-managed traffic use separate source labels throughout this view.',
+        localFallback: 'Local fallback:',
+        warning: 'Warning:',
+        warnings: {
+          current_7d_window_unavailable: 'The official seven-day window was unavailable or invalid. Recent seven-day analytics are shown instead.',
+          official_daily_buckets_approximate_period: 'Official account activity is available only in daily buckets and may approximate partial-day period boundaries.',
+          rate_limits_unavailable: 'Current ChatGPT rate limits are temporarily unavailable.',
+          official_profile_unavailable: 'Official account activity is temporarily unavailable.',
+          cache_read_failed: 'The analytics cache was unavailable, so fresh data was fetched.',
+          cache_write_failed: 'Fresh analytics were returned without caching.'
+        },
+        overview: 'Activity overview',
+        officialVsManaged: 'Official totals reflect the OpenAI account. Token splits, requests, models, and cost reflect traffic managed by Sub2API.',
+        rateLimits: 'Official rate-limit windows',
+        noManagedTraffic: 'No Sub2API-managed traffic in this period',
+        sources: {
+          openai: 'OpenAI account activity',
+          sub2api: 'Sub2API-managed traffic'
+        },
+        kpis: {
+          officialTokens: 'Official total tokens',
+          managedTokens: 'Managed total tokens',
+          requests: 'Requests',
+          currentLimit: 'Current limit used',
+          input: 'Input tokens',
+          output: 'Output tokens',
+          cache: 'Cache tokens',
+          cacheRead: 'Cache-read tokens',
+          cacheHitRate: 'Cache hit rate',
+          estimatedCost: 'Estimated cost',
+          resetCountdown: 'Remaining reset countdown'
+        },
+        windows: {
+          fiveHour: '5-hour window',
+          sevenDay: '7-day window',
+          available: 'Available',
+          nearLimit: 'Near limit',
+          limited: 'Limit reached',
+          unavailable: 'Unavailable',
+          resetsIn: 'Resets in {time}',
+          resetting: 'Resetting now',
+          resetUnknown: 'Reset time unavailable',
+          noReset: 'Window data unavailable'
+        },
+        profile: {
+          title: 'Official account profile',
+          lifetimeTokens: 'Lifetime tokens',
+          peakDailyTokens: 'Peak daily tokens',
+          longestTurn: 'Longest running turn',
+          currentStreak: 'Current streak',
+          longestStreak: 'Longest streak',
+          seconds: '{count}s',
+          minutes: '{count} min',
+          days: '{count} days'
+        },
+        trend: {
+          title: 'Daily token activity',
+          description: 'Stacked bars show Sub2API-managed traffic. The orange indicator shows OpenAI official account activity when available.',
+          input: 'Managed input',
+          output: 'Managed output',
+          cache: 'Managed cache',
+          official: 'Official total'
+        },
+        models: {
+          title: 'Managed traffic by model',
+          description: 'Top three models from Sub2API usage logs, grouped with the remaining traffic.',
+          other: 'Other'
+        },
+        empty: {
+          title: 'No activity for this period',
+          description: 'OpenAI reported no official account total, and Sub2API recorded no managed traffic during the selected period.'
+        },
+        errors: {
+          unauthorized: {
+            title: 'OpenAI authorization expired',
+            description: 'Reauthorize this OAuth account from the account actions, then retry analytics.'
+          },
+          'rate-limited': {
+            title: 'OpenAI analytics is rate limited',
+            description: 'Wait for the upstream retry window, then load analytics again.'
+          },
+          generic: {
+            title: 'Analytics could not be loaded',
+            description: 'Retry the request. Existing account scheduling and usage polling remain available.'
+          }
+        }
+      },
       // Stats Modal
       viewStats: 'View Stats',
       usageStatistics: 'Usage Statistics',

@@ -117,7 +117,7 @@ func TestGetOpenAIUsage_SparkShadow_WritesExtraAndReturnsNonEmptyWindows(t *test
 	}))
 	defer srv.Close()
 
-	quotaService := NewOpenAIQuotaService(repo, nil, tokenProvider, newQuotaRedirectingFactory(srv))
+	quotaService := NewOpenAIQuotaService(repo, nil, tokenProvider, newQuotaRedirectingFactory(srv), nil, nil)
 	svc := &AccountUsageService{
 		accountRepo:        repo,
 		openAIQuotaService: quotaService,

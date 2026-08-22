@@ -1,8 +1,3 @@
-/**
- * Admin Accounts API endpoints
- * Handles AI platform account management for administrators
- */
-
 import { apiClient } from '../client'
 import type {
   Account,
@@ -289,6 +284,119 @@ export async function getStats(id: number, days: number = 30): Promise<AccountUs
   const { data } = await apiClient.get<AccountUsageStatsResponse>(`/admin/accounts/${id}/stats`, {
     params: { days }
   })
+  return data
+}
+
+export interface CodexAnalyticsRateLimitWindow {
+  used_percent?: number | null
+  reset_at?: number | string | null
+  reset_after_seconds?: number | null
+  limit_window_seconds?: number | null
+  limit_reached?: boolean | null
+  allowed?: boolean | null
+}
+
+export interface CodexAnalyticsDailyUsageBucket {
+  start_date?: string | null
+  date?: string | null
+  tokens?: number | null
+  total_tokens?: number | null
+  [key: string]: unknown
+}
+export type CodexAnalyticsPeriodMode = 'current_7d' | 'recent'
+
+export type CodexAnalyticsPeriodQuery =
+  | { period: 'current_7d' }
+  | { period: 'recent'; days: number }
+
+export const DEFAULT_CODEX_ANALYTICS_PERIOD_QUERY: CodexAnalyticsPeriodQuery = {
+  period: 'current_7d'
+}
+
+export interface CodexAnalyticsResponse {
+  account_id: number
+  period_days: number
+  fetched_at: number | string
+  period_mode: CodexAnalyticsPeriodMode
+  period_start: number
+  period_end: number
+  data_scope: {
+    official_account_activity?: string | null
+    managed_traffic?: string | null
+    rate_limits?: string | null
+  }
+  cache: {
+    hit: boolean
+    ttl_seconds: number
+    expires_at: number | string
+  }
+  rate_limits: {
+    five_hour?: CodexAnalyticsRateLimitWindow | null
+    seven_day?: CodexAnalyticsRateLimitWindow | null
+  }
+  profile: {
+    lifetime_tokens?: number | null
+    peak_daily_tokens?: number | null
+    longest_running_turn_seconds?: number | null
+    current_streak_days?: number | null
+    longest_streak_days?: number | null
+    daily_usage_buckets: CodexAnalyticsDailyUsageBucket[]
+  }
+  summary: {
+    official_total_tokens?: number | null
+    managed_total_tokens: number
+    input_tokens: number
+    output_tokens: number
+    cache_tokens: number
+    cache_read_tokens: number
+    cache_hit_rate: number
+    estimated_cost: number
+    requests: number
+    current_limit_used_percent: number
+  }
+  time_series: Array<{
+    date: string
+    official_total_tokens?: number | null
+    input_tokens: number
+    output_tokens: number
+    cache_tokens: number
+    total_tokens: number
+    requests: number
+    estimated_cost: number
+  }>
+  models: Array<{
+    model: string
+    input_tokens: number
+    output_tokens: number
+    cache_tokens: number
+    total_tokens: number
+    requests: number
+    estimated_cost: number
+  }>
+  warnings?: Array<{ code: string; message: string }>
+}
+
+/** Fetch the combined official-account and Sub2API-managed Codex analytics view. */
+export async function getCodexAnalytics(
+  id: number,
+  periodQuery: CodexAnalyticsPeriodQuery = DEFAULT_CODEX_ANALYTICS_PERIOD_QUERY,
+  options?: { signal?: AbortSignal }
+): Promise<CodexAnalyticsResponse> {
+  const params = periodQuery.period === 'recent'
+    ? { period: periodQuery.period, days: Math.min(30, Math.max(1, Math.trunc(periodQuery.days))) }
+    : { period: periodQuery.period }
+  const config = {
+    params,
+    signal: options?.signal,
+    skipAuthRefreshReasons: [
+      'OPENAI_QUOTA_UPSTREAM_ERROR',
+      'OPENAI_CODEX_PROFILE_UNAUTHORIZED'
+    ]
+  }
+  const { data } = await apiClient.get<CodexAnalyticsResponse>(
+    `/admin/accounts/${id}/codex-analytics`,
+    config
+  )
   return data
 }
 
@@ -999,6 +1107,7 @@ export const accountsAPI = {
   refreshCredentials,
   applyOAuthCredentials,
   getStats,
+  getCodexAnalytics,
   clearError,
   getUsage,
   getBatchUsage,

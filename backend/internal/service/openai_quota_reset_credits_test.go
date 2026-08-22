@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -171,7 +172,7 @@ func TestQueryUsageResetCreditCountPrecedence(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			svc := NewOpenAIQuotaService(repo, nil, tokenProvider, newQuotaRedirectingFactory(srv))
+			svc := NewOpenAIQuotaService(repo, nil, tokenProvider, newQuotaRedirectingFactory(srv), nil, nil)
 			usage, err := svc.QueryUsage(context.Background(), 100)
 			require.NoError(t, err)
 			require.NotNil(t, usage)
@@ -183,6 +184,53 @@ func TestQueryUsageResetCreditCountPrecedence(t *testing.T) {
 			require.NotNil(t, usage.RateLimitResetCredits)
 			require.Equal(t, tt.wantCount, usage.RateLimitResetCredits.AvailableCount)
 			require.Len(t, usage.RateLimitResetCredits.Credits, tt.wantCredits)
+		})
+	}
+}
+
+func TestQueryUsageRedactsSensitiveUpstreamErrorBody(t *testing.T) {
+	const (
+		accessToken  = "upstream-access-secret"
+		refreshToken = "upstream-refresh-secret"
+		password     = "upstream-password-secret"
+		responseBody = `{"access_token":"upstream-access-secret","refresh_token":"upstream-refresh-secret","password":"upstream-password-secret","detail":"authentication failed"}`
+	)
+
+	for _, status := range []int{http.StatusUnauthorized, http.StatusTooManyRequests} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			account := &Account{
+				ID:       100,
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+				Status:   StatusActive,
+				Credentials: map[string]any{
+					"chatgpt_account_id": "org-parent123",
+				},
+			}
+			repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{100: account}}
+			tokenCache := &stubQuotaTokenCache{tokens: map[string]string{
+				OpenAITokenCacheKey(account): "fake-token",
+			}}
+			tokenProvider := NewOpenAITokenProvider(repo, tokenCache, nil)
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("content-type", "application/json")
+				w.WriteHeader(status)
+				_, _ = w.Write([]byte(responseBody))
+			}))
+			defer srv.Close()
+
+			svc := NewOpenAIQuotaService(repo, nil, tokenProvider, newQuotaRedirectingFactory(srv), nil, nil)
+			_, err := svc.QueryUsage(context.Background(), 100)
+			require.Error(t, err)
+			require.Equal(t, status, infraerrors.Code(err))
+			require.Equal(t, "OPENAI_QUOTA_UPSTREAM_ERROR", infraerrors.Reason(err))
+
+			errorText := infraerrors.Message(err)
+			require.Contains(t, errorText, "***")
+			for _, secret := range []string{accessToken, refreshToken, password} {
+				require.NotContains(t, errorText, secret)
+			}
 		})
 	}
 }

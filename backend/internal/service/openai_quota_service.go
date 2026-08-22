@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,8 +13,20 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 	"github.com/imroc/req/v3"
+	"golang.org/x/sync/singleflight"
 )
+
+// ErrCodexAnalyticsCacheMiss identifies an absent Codex analytics cache entry.
+var ErrCodexAnalyticsCacheMiss = errors.New("codex analytics cache miss")
+
+// CodexAnalyticsCache stores serialized analytics responses behind the service boundary.
+type CodexAnalyticsCache interface {
+	Get(ctx context.Context, key string) ([]byte, time.Duration, error)
+	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
+	Delete(ctx context.Context, key string) error
+}
 
 // ErrSparkShadowResetNotSupported is returned when ResetCredit is called on a
 // spark shadow account. Shadow accounts do not hold credentials of their own;
@@ -120,6 +133,9 @@ type OpenAIQuotaService struct {
 	privacyClientFactory PrivacyClientFactory
 	agentIdentityTaskMu  sync.Mutex
 	agentIdentityWS      agentIdentityWSConnectionInvalidator
+	analyticsUsageRepo   codexAnalyticsUsageRepository
+	analyticsCache       CodexAnalyticsCache
+	analyticsFlight      singleflight.Group
 }
 
 // NewOpenAIQuotaService constructs a quota service. token provider is required —
@@ -130,12 +146,16 @@ func NewOpenAIQuotaService(
 	proxyRepo ProxyRepository,
 	tokenProvider *OpenAITokenProvider,
 	privacyClientFactory PrivacyClientFactory,
+	analyticsUsageRepo codexAnalyticsUsageRepository,
+	analyticsCache CodexAnalyticsCache,
 ) *OpenAIQuotaService {
 	return &OpenAIQuotaService{
 		accountRepo:          accountRepo,
 		proxyRepo:            proxyRepo,
 		tokenProvider:        tokenProvider,
 		privacyClientFactory: privacyClientFactory,
+		analyticsUsageRepo:   analyticsUsageRepo,
+		analyticsCache:       analyticsCache,
 	}
 }
 
@@ -180,7 +200,7 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 				continue
 			}
 			status := resp.StatusCode
-			body := truncate(s.redactQuotaErrorBody(ctx, accountID, resp.String()), 240)
+			body := truncate(logredact.RedactText(s.redactQuotaErrorBody(ctx, accountID, resp.String())), 240)
 			slog.Warn("openai_quota_query_failed", "account_id", accountID, "status", status, "body", body)
 			return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_UPSTREAM_ERROR", "upstream returned %d: %s", status, body)
 		}
