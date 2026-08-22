@@ -25,4 +25,15 @@ describe('admin user isolation API', () => {
     await expect(lookup(request)).resolves.toEqual(response)
     expect(post).toHaveBeenCalledWith('/admin/user-isolation/lookup', request)
   })
+
+  it('omits the account for a global lookup', async () => {
+    const request: UserIsolationLookupRequest = {
+      isolation_id: `u1_${'B'.repeat(43)}`
+    }
+    post.mockResolvedValue({ data: {} })
+
+    await lookup(request)
+
+    expect(post).toHaveBeenCalledWith('/admin/user-isolation/lookup', request)
+  })
 })

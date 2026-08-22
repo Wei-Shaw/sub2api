@@ -1,7 +1,7 @@
 import { apiClient } from '../client'
 
 export interface UserIsolationLookupRequest {
-  account_id: number
+  account_id?: number
   isolation_id: string
 }
 

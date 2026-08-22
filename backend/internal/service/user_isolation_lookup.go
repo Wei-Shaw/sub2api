@@ -11,7 +11,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
 const userIsolationLookupPageSize = 1000
@@ -28,14 +27,31 @@ var (
 	)
 	ErrUserIsolationLookupNotFound = infraerrors.NotFound(
 		"USER_ISOLATION_USER_NOT_FOUND",
-		"no user matches this isolation ID for the selected account",
+		"no user matches this isolation ID",
+	)
+	ErrUserIsolationLookupNoAccounts = infraerrors.NotFound(
+		"USER_ISOLATION_ACCOUNTS_NOT_FOUND",
+		"no accounts have user isolation enabled",
+	)
+	ErrUserIsolationLookupBusy = infraerrors.TooManyRequests(
+		"USER_ISOLATION_LOOKUP_BUSY",
+		"another global user isolation lookup is already running",
 	)
 )
+
+type UserIsolationCandidateRepository interface {
+	ListUserIsolationCandidateIDs(ctx context.Context, afterID int64, limit int) ([]int64, error)
+}
+
+type UserIsolationAccountCandidateRepository interface {
+	ListUserIsolationAccounts(ctx context.Context) ([]Account, error)
+}
 
 type UserIsolationLookupService struct {
 	userRepo    UserRepository
 	accountRepo AccountRepository
 	cfg         *config.Config
+	globalScan  chan struct{}
 }
 
 type UserIsolationLookupAccount struct {
@@ -68,6 +84,7 @@ func NewUserIsolationLookupService(
 		userRepo:    userRepo,
 		accountRepo: accountRepo,
 		cfg:         cfg,
+		globalScan:  make(chan struct{}, 1),
 	}
 }
 
@@ -76,8 +93,8 @@ func (s *UserIsolationLookupService) Lookup(
 	accountID int64,
 	isolationID string,
 ) (*UserIsolationLookupResult, error) {
-	if accountID <= 0 {
-		return nil, infraerrors.BadRequest("INVALID_ACCOUNT_ID", "account ID must be positive")
+	if accountID < 0 {
+		return nil, infraerrors.BadRequest("INVALID_ACCOUNT_ID", "account ID cannot be negative")
 	}
 	normalizedID, err := normalizeManagedUserIsolationID(isolationID)
 	if err != nil {
@@ -87,47 +104,91 @@ func (s *UserIsolationLookupService) Lookup(
 		return nil, infraerrors.New(http.StatusInternalServerError, "USER_ISOLATION_LOOKUP_UNAVAILABLE", "user isolation lookup is unavailable")
 	}
 
-	account, err := s.accountRepo.GetByID(ctx, accountID)
+	accounts, err := s.lookupAccounts(ctx, accountID)
 	if err != nil {
 		return nil, err
-	}
-	if account == nil {
-		return nil, ErrAccountNotFound
-	}
-	if !account.IsUserIsolationEnabled() || !supportsManagedUserIsolationAccount(account) {
-		return nil, ErrUserIsolationLookupDisabled
 	}
 	if s.cfg == nil || strings.TrimSpace(s.cfg.Security.UserIsolationSecret) == "" {
 		return nil, infraerrors.New(http.StatusInternalServerError, "USER_ISOLATION_SECRET_UNAVAILABLE", "user isolation secret is unavailable")
 	}
+	candidateRepo, ok := s.userRepo.(UserIsolationCandidateRepository)
+	if !ok {
+		return nil, infraerrors.New(http.StatusInternalServerError, "USER_ISOLATION_LOOKUP_UNAVAILABLE", "user isolation candidate lookup is unavailable")
+	}
 
-	includeSubscriptions := false
-	for page := 1; ; page++ {
-		users, pageResult, err := s.userRepo.ListWithFilters(
-			ctx,
-			pagination.PaginationParams{
-				Page:      page,
-				PageSize:  userIsolationLookupPageSize,
-				SortBy:    "id",
-				SortOrder: pagination.SortOrderAsc,
-			},
-			UserListFilters{IncludeSubscriptions: &includeSubscriptions},
-		)
-		if err != nil {
-			return nil, err
-		}
-		for i := range users {
-			candidate := deriveManagedUserIsolationID(s.cfg.Security.UserIsolationSecret, account, users[i].ID)
-			if hmac.Equal([]byte(candidate), []byte(normalizedID)) {
-				return newUserIsolationLookupResult(account, &users[i]), nil
-			}
-		}
-		if len(users) < userIsolationLookupPageSize || pageResult == nil || page >= pageResult.Pages {
-			break
+	if accountID == 0 {
+		select {
+		case s.globalScan <- struct{}{}:
+			defer func() { <-s.globalScan }()
+		default:
+			return nil, ErrUserIsolationLookupBusy
 		}
 	}
 
+	var afterID int64
+	for {
+		userIDs, err := candidateRepo.ListUserIsolationCandidateIDs(ctx, afterID, userIsolationLookupPageSize)
+		if err != nil {
+			return nil, err
+		}
+		for _, userID := range userIDs {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			for i := range accounts {
+				candidate := deriveManagedUserIsolationID(s.cfg.Security.UserIsolationSecret, &accounts[i], userID)
+				if !hmac.Equal([]byte(candidate), []byte(normalizedID)) {
+					continue
+				}
+				user, err := s.userRepo.GetByID(ctx, userID)
+				if err != nil {
+					return nil, err
+				}
+				return newUserIsolationLookupResult(&accounts[i], user), nil
+			}
+		}
+		if len(userIDs) < userIsolationLookupPageSize {
+			break
+		}
+		afterID = userIDs[len(userIDs)-1]
+	}
+
 	return nil, ErrUserIsolationLookupNotFound
+}
+
+func (s *UserIsolationLookupService) lookupAccounts(ctx context.Context, accountID int64) ([]Account, error) {
+	if accountID > 0 {
+		account, err := s.accountRepo.GetByID(ctx, accountID)
+		if err != nil {
+			return nil, err
+		}
+		if account == nil {
+			return nil, ErrAccountNotFound
+		}
+		if !account.IsUserIsolationEnabled() || !supportsManagedUserIsolationAccount(account) {
+			return nil, ErrUserIsolationLookupDisabled
+		}
+		return []Account{*account}, nil
+	}
+
+	candidateRepo, ok := s.accountRepo.(UserIsolationAccountCandidateRepository)
+	if !ok {
+		return nil, infraerrors.New(http.StatusInternalServerError, "USER_ISOLATION_LOOKUP_UNAVAILABLE", "user isolation account lookup is unavailable")
+	}
+	accounts, err := candidateRepo.ListUserIsolationAccounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	eligible := accounts[:0]
+	for i := range accounts {
+		if accounts[i].IsUserIsolationEnabled() && supportsManagedUserIsolationAccount(&accounts[i]) {
+			eligible = append(eligible, accounts[i])
+		}
+	}
+	if len(eligible) == 0 {
+		return nil, ErrUserIsolationLookupNoAccounts
+	}
+	return eligible, nil
 }
 
 func normalizeManagedUserIsolationID(value string) (string, error) {

@@ -27,6 +27,7 @@
               :search-placeholder="t('admin.userIsolationLookup.searchAccount')"
               :empty-text="t('admin.userIsolationLookup.noEligibleAccounts')"
               :loading="accountsLoading"
+              :disabled="locating"
               searchable
               remote
               clearable
@@ -46,6 +47,7 @@
               maxlength="46"
               autocomplete="off"
               spellcheck="false"
+              :disabled="locating"
               class="input font-mono"
               :placeholder="t('admin.userIsolationLookup.isolationIDPlaceholder')"
               data-test="isolation-id"
@@ -129,8 +131,10 @@ const accountsLoading = ref(false)
 const locating = ref(false)
 const result = ref<UserIsolationLookupResult | null>(null)
 const errorMessage = ref('')
+const accountSearchPageSize = 100
+const accountSearchResultLimit = 20
 
-const canLookup = computed(() => selectedAccountID.value !== null && isolationID.value.trim().length > 0)
+const canLookup = computed(() => isolationID.value.trim().length > 0)
 const statusLabel = computed(() => {
   if (!result.value) return '-'
   return result.value.user.status === 'active' ? t('common.active') : t('admin.users.disabled')
@@ -162,14 +166,24 @@ function isUserIsolationEnabled(account: Account): boolean {
 async function searchAccounts(query: string): Promise<void> {
   accountsLoading.value = true
   try {
-    const response = await adminAPI.accounts.list(1, 20, {
-      search: query || undefined,
-      lite: 'true'
-    })
     const selected = accountOptions.value.find(option => option.value === selectedAccountID.value)
-    const options = response.items.filter(isUserIsolationEnabled).map(accountOption)
+    const options: AccountSelectOption[] = []
+    let page = 1
+    let scanned = 0
+
+    while (options.length < accountSearchResultLimit) {
+      const response = await adminAPI.accounts.list(page, accountSearchPageSize, {
+        search: query || undefined,
+        lite: 'true'
+      })
+      options.push(...response.items.filter(isUserIsolationEnabled).map(accountOption))
+      scanned += response.items.length
+      if (response.items.length === 0 || scanned >= response.total) break
+      page += 1
+    }
+
     if (selected && !options.some(option => option.value === selected.value)) options.unshift(selected)
-    accountOptions.value = options
+    accountOptions.value = options.slice(0, accountSearchResultLimit)
   } catch (error) {
     errorMessage.value = extractApiErrorMessage(error, t('admin.userIsolationLookup.errors.default'))
   } finally {
@@ -194,14 +208,14 @@ async function loadRouteAccount(): Promise<void> {
 }
 
 async function lookupUser(): Promise<void> {
-  if (!canLookup.value || selectedAccountID.value === null) return
+  if (!canLookup.value) return
   locating.value = true
   result.value = null
   errorMessage.value = ''
   try {
     result.value = await adminAPI.userIsolation.lookup({
-      account_id: selectedAccountID.value,
-      isolation_id: isolationID.value.trim()
+      isolation_id: isolationID.value.trim(),
+      ...(selectedAccountID.value !== null ? { account_id: selectedAccountID.value } : {})
     })
   } catch (error) {
     const code = extractApiErrorCode(error)

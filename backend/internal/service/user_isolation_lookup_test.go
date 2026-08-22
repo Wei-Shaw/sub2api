@@ -6,15 +6,21 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
 
 type userIsolationLookupAccountRepoStub struct {
 	AccountRepository
-	account *Account
-	err     error
-	calls   int
+	account   *Account
+	accounts  []Account
+	err       error
+	calls     int
+	listCalls int
+}
+
+func (r *userIsolationLookupAccountRepoStub) ListUserIsolationAccounts(context.Context) ([]Account, error) {
+	r.listCalls++
+	return r.accounts, r.err
 }
 
 func (r *userIsolationLookupAccountRepoStub) GetByID(context.Context, int64) (*Account, error) {
@@ -24,30 +30,34 @@ func (r *userIsolationLookupAccountRepoStub) GetByID(context.Context, int64) (*A
 
 type userIsolationLookupUserRepoStub struct {
 	UserRepository
-	users                []User
-	calls                int
-	includeSubscriptions []*bool
+	users          []User
+	candidateCalls int
+	getCalls       int
 }
 
-func (r *userIsolationLookupUserRepoStub) ListWithFilters(
-	_ context.Context,
-	params pagination.PaginationParams,
-	filters UserListFilters,
-) ([]User, *pagination.PaginationResult, error) {
-	r.calls++
-	r.includeSubscriptions = append(r.includeSubscriptions, filters.IncludeSubscriptions)
-	start := params.Offset()
-	if start >= len(r.users) {
-		return []User{}, &pagination.PaginationResult{Page: params.Page, PageSize: params.Limit()}, nil
+func (r *userIsolationLookupUserRepoStub) ListUserIsolationCandidateIDs(_ context.Context, afterID int64, limit int) ([]int64, error) {
+	r.candidateCalls++
+	ids := make([]int64, 0, limit)
+	for i := range r.users {
+		if r.users[i].ID <= afterID {
+			continue
+		}
+		ids = append(ids, r.users[i].ID)
+		if len(ids) == limit {
+			break
+		}
 	}
-	end := min(start+params.Limit(), len(r.users))
-	pages := (len(r.users) + params.Limit() - 1) / params.Limit()
-	return r.users[start:end], &pagination.PaginationResult{
-		Total:    int64(len(r.users)),
-		Page:     params.Page,
-		PageSize: params.Limit(),
-		Pages:    pages,
-	}, nil
+	return ids, nil
+}
+
+func (r *userIsolationLookupUserRepoStub) GetByID(_ context.Context, id int64) (*User, error) {
+	r.getCalls++
+	for i := range r.users {
+		if r.users[i].ID == id {
+			return &r.users[i], nil
+		}
+	}
+	return nil, ErrUserNotFound
 }
 
 func userIsolationLookupTestAccount() *Account {
@@ -90,11 +100,46 @@ func TestUserIsolationLookupFindsUserAcrossPages(t *testing.T) {
 	require.Equal(t, target.ID, result.User.ID)
 	require.Equal(t, "risk@example.com", result.User.Email)
 	require.Equal(t, StatusDisabled, result.User.Status)
-	require.Equal(t, 2, userRepo.calls)
-	for _, include := range userRepo.includeSubscriptions {
-		require.NotNil(t, include)
-		require.False(t, *include)
+	require.Equal(t, 2, userRepo.candidateCalls)
+	require.Equal(t, 1, userRepo.getCalls)
+	require.Equal(t, 1, accountRepo.calls)
+	require.Zero(t, accountRepo.listCalls)
+}
+
+func TestUserIsolationLookupFindsUserAcrossAllEnabledAccounts(t *testing.T) {
+	first := userIsolationLookupTestAccount()
+	second := Account{
+		ID:       8,
+		Name:     "second-account",
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{UserIsolationEnabledExtraKey: true},
 	}
+	unsupported := Account{
+		ID: 9, Platform: PlatformGemini, Type: AccountTypeAPIKey,
+		Extra: map[string]any{UserIsolationEnabledExtraKey: true},
+	}
+	notEnabled := Account{ID: 10, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	users := make([]User, userIsolationLookupPageSize+1)
+	for i := range users {
+		users[i] = User{ID: int64(i + 1), Email: "other@example.com", Status: StatusActive}
+	}
+	target := &users[len(users)-1]
+	target.Email = "risk@example.com"
+	accountRepo := &userIsolationLookupAccountRepoStub{accounts: []Account{*first, unsupported, notEnabled, second}}
+	userRepo := &userIsolationLookupUserRepoStub{users: users}
+	cfg := userIsolationLookupTestConfig()
+	svc := NewUserIsolationLookupService(userRepo, accountRepo, cfg)
+	isolationID := deriveManagedUserIsolationID(cfg.Security.UserIsolationSecret, &second, target.ID)
+
+	result, err := svc.Lookup(context.Background(), 0, isolationID)
+	require.NoError(t, err)
+	require.Equal(t, second.ID, result.Account.ID)
+	require.Equal(t, target.ID, result.User.ID)
+	require.Equal(t, 1, accountRepo.listCalls)
+	require.Zero(t, accountRepo.calls)
+	require.Equal(t, 2, userRepo.candidateCalls)
+	require.Equal(t, 1, userRepo.getCalls)
 }
 
 func TestUserIsolationLookupRejectsInvalidIDBeforeRepositories(t *testing.T) {
@@ -106,7 +151,7 @@ func TestUserIsolationLookupRejectsInvalidIDBeforeRepositories(t *testing.T) {
 	require.Nil(t, result)
 	require.Equal(t, "INVALID_USER_ISOLATION_ID", infraerrors.Reason(err))
 	require.Zero(t, accountRepo.calls)
-	require.Zero(t, userRepo.calls)
+	require.Zero(t, userRepo.candidateCalls)
 }
 
 func TestUserIsolationLookupRequiresEnabledSupportedAccount(t *testing.T) {
@@ -120,7 +165,7 @@ func TestUserIsolationLookupRequiresEnabledSupportedAccount(t *testing.T) {
 	result, err := svc.Lookup(context.Background(), account.ID, validID)
 	require.Nil(t, result)
 	require.Equal(t, "USER_ISOLATION_NOT_ENABLED", infraerrors.Reason(err))
-	require.Zero(t, userRepo.calls)
+	require.Zero(t, userRepo.candidateCalls)
 }
 
 func TestUserIsolationLookupReturnsNotFound(t *testing.T) {
@@ -151,5 +196,33 @@ func TestUserIsolationLookupRejectsMissingSecret(t *testing.T) {
 	result, err := svc.Lookup(context.Background(), account.ID, validID)
 	require.Nil(t, result)
 	require.Equal(t, "USER_ISOLATION_SECRET_UNAVAILABLE", infraerrors.Reason(err))
-	require.Zero(t, userRepo.calls)
+	require.Zero(t, userRepo.candidateCalls)
+}
+
+func TestUserIsolationLookupGlobalScanRequiresEligibleAccounts(t *testing.T) {
+	accountRepo := &userIsolationLookupAccountRepoStub{accounts: []Account{{
+		ID: 1, Platform: PlatformGemini, Type: AccountTypeAPIKey,
+	}}}
+	userRepo := &userIsolationLookupUserRepoStub{}
+	svc := NewUserIsolationLookupService(userRepo, accountRepo, userIsolationLookupTestConfig())
+	validID := deriveManagedUserIsolationID(userIsolationLookupTestConfig().Security.UserIsolationSecret, userIsolationLookupTestAccount(), 1)
+
+	result, err := svc.Lookup(context.Background(), 0, validID)
+	require.Nil(t, result)
+	require.Equal(t, "USER_ISOLATION_ACCOUNTS_NOT_FOUND", infraerrors.Reason(err))
+	require.Zero(t, userRepo.candidateCalls)
+}
+
+func TestUserIsolationLookupRejectsConcurrentGlobalScan(t *testing.T) {
+	account := userIsolationLookupTestAccount()
+	accountRepo := &userIsolationLookupAccountRepoStub{accounts: []Account{*account}}
+	userRepo := &userIsolationLookupUserRepoStub{}
+	svc := NewUserIsolationLookupService(userRepo, accountRepo, userIsolationLookupTestConfig())
+	svc.globalScan <- struct{}{}
+	validID := deriveManagedUserIsolationID(userIsolationLookupTestConfig().Security.UserIsolationSecret, account, 1)
+
+	result, err := svc.Lookup(context.Background(), 0, validID)
+	require.Nil(t, result)
+	require.Equal(t, "USER_ISOLATION_LOOKUP_BUSY", infraerrors.Reason(err))
+	require.Zero(t, userRepo.candidateCalls)
 }

@@ -13,7 +13,7 @@ type UserIsolationHandler struct {
 }
 
 type userIsolationLookupRequest struct {
-	AccountID   int64  `json:"account_id" binding:"required,gt=0"`
+	AccountID   int64  `json:"account_id" binding:"omitempty,gte=0"`
 	IsolationID string `json:"isolation_id" binding:"required"`
 }
 

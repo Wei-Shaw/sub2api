@@ -51,8 +51,8 @@ function mountView() {
       stubs: {
         AppLayout: { template: '<div><slot /></div>' },
         Select: {
-          props: ['modelValue', 'options'],
-          template: '<div data-test="account-select-stub">{{ modelValue }}</div>'
+          props: ['modelValue', 'options', 'disabled'],
+          template: '<button type="button" :disabled="disabled">{{ modelValue }}:{{ options.length }}</button>'
         },
         Icon: true
       }
@@ -84,6 +84,63 @@ describe('UserIsolationView', () => {
     expect(getAccount).toHaveBeenCalledWith(7)
     expect(lookup).toHaveBeenCalledWith({ account_id: 7, isolation_id: isolationID })
     expect(wrapper.get('[data-test="result"]').text()).toContain('risk@example.com')
+  })
+
+  it('looks up across all enabled accounts when no account is selected', async () => {
+    routeQuery.account_id = undefined
+    const wrapper = mountView()
+    await flushPromises()
+
+    const isolationID = `u1_${'B'.repeat(43)}`
+    await wrapper.get('[data-test="isolation-id"]').setValue(isolationID)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(getAccount).not.toHaveBeenCalled()
+    expect(listAccounts).toHaveBeenCalled()
+    expect(lookup).toHaveBeenCalledWith({ isolation_id: isolationID })
+  })
+
+  it('continues through account pages until it finds enabled accounts', async () => {
+    routeQuery.account_id = undefined
+    const disabledAccounts = Array.from({ length: 100 }, (_, index) => ({
+      ...account,
+      id: index + 1,
+      extra: {}
+    }))
+    listAccounts
+      .mockResolvedValueOnce({ items: disabledAccounts, total: 101, pages: 2 })
+      .mockResolvedValueOnce({ items: [{ ...account, id: 101 }], total: 101, pages: 2 })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(listAccounts).toHaveBeenNthCalledWith(1, 1, 100, { search: undefined, lite: 'true' })
+    expect(listAccounts).toHaveBeenNthCalledWith(2, 2, 100, { search: undefined, lite: 'true' })
+    expect(wrapper.get('[data-test="account-select"]').text()).toBe(':1')
+  })
+
+  it('locks lookup inputs until the request finishes', async () => {
+    let resolveLookup!: (value: Awaited<ReturnType<typeof lookup>>) => void
+    lookup.mockReturnValueOnce(new Promise(resolve => {
+      resolveLookup = resolve
+    }))
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="isolation-id"]').setValue(`u1_${'A'.repeat(43)}`)
+
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.get('[data-test="account-select"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-test="isolation-id"]').attributes('disabled')).toBeDefined()
+
+    resolveLookup({
+      account: { id: 7, name: 'risk-account', platform: 'openai', type: 'apikey' },
+      user: { id: 42, email: 'risk@example.com', username: 'risk', status: 'active' }
+    })
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="account-select"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-test="isolation-id"]').attributes('disabled')).toBeUndefined()
   })
 
   it('links the matched user to management and usage records', async () => {
