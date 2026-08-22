@@ -3288,6 +3288,42 @@
       </div>
 
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.userIsolation.title') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{
+                t(
+                  userIsolationSupported
+                    ? 'admin.accounts.userIsolation.description'
+                    : 'admin.accounts.userIsolation.unsupported'
+                )
+              }}
+            </p>
+            <p
+              v-if="userIsolationCapability.risk"
+              data-testid="create-user-isolation-risk"
+              class="mt-1 text-xs text-amber-600 dark:text-amber-400"
+            >
+              {{ t('admin.accounts.userIsolation.riskWarning') }}
+            </p>
+            <p
+              v-if="userIsolationCapability.experimental"
+              data-testid="create-user-isolation-experimental"
+              class="mt-1 text-xs text-amber-600 dark:text-amber-400"
+            >
+              {{ t('admin.accounts.userIsolation.experimentalWarning') }}
+            </p>
+          </div>
+          <Toggle
+            v-if="userIsolationSupported"
+            v-model="userIsolationEnabled"
+            data-testid="create-user-isolation-toggle"
+          />
+        </div>
+      </div>
+
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <!-- Mixed Scheduling (only for antigravity accounts) -->
         <div v-if="form.platform === 'antigravity'" class="flex items-center gap-2">
           <label class="flex cursor-pointer items-center gap-2">
@@ -3776,6 +3812,10 @@ import {
 } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import {
+  getUserIsolationCapability,
+  USER_ISOLATION_EXTRA_KEY
+} from '@/utils/userIsolation'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
@@ -3954,6 +3994,7 @@ const accountMode = ref<CnAccountMode>('payg')
 // API 协议决定转发端点与格式：cc=现有转换链，anthropic=原生直通（Claude Code），
 // responses=deepseek 原生 Responses 端点（Codex）。与账号类型正交。
 const apiProtocol = ref<CnApiProtocol>('adaptive')
+const userIsolationEnabled = ref(false)
 const adaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   chat_completions: '',
   anthropic: '',
@@ -4461,6 +4502,13 @@ const form = reactive({
   rate_multiplier: 1,
   group_ids: [] as number[],
   expires_at: null as number | null
+})
+const userIsolationCapability = computed(() =>
+  getUserIsolationCapability(form.platform, form.type, accountMode.value, apiProtocol.value)
+)
+const userIsolationSupported = computed(() => userIsolationCapability.value.available)
+watch(userIsolationSupported, (supported) => {
+  if (!supported) userIsolationEnabled.value = false
 })
 
 // Helper to check if current type needs OAuth flow
@@ -5019,6 +5067,7 @@ const resetForm = () => {
   addMethod.value = 'oauth'
   accountMode.value = 'payg'
   apiProtocol.value = 'adaptive'
+  userIsolationEnabled.value = false
   adaptiveBaseUrls.value = { chat_completions: '', anthropic: '', responses: '' }
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
@@ -5223,6 +5272,23 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
     extra.web_search_emulation = webSearchEmulationMode.value
   }
 
+  return Object.keys(extra).length > 0 ? extra : undefined
+}
+
+const buildUserIsolationExtra = (
+  base: Record<string, unknown> | undefined,
+  platform: AccountPlatform,
+  type: AccountType
+): Record<string, unknown> | undefined => {
+  const extra: Record<string, unknown> = { ...(base || {}) }
+  if (
+    getUserIsolationCapability(platform, type, accountMode.value, apiProtocol.value).available &&
+    userIsolationEnabled.value
+  ) {
+    extra[USER_ISOLATION_EXTRA_KEY] = true
+  } else {
+    delete extra[USER_ISOLATION_EXTRA_KEY]
+  }
   return Object.keys(extra).length > 0 ? extra : undefined
 }
 
@@ -5554,7 +5620,11 @@ const handleSubmit = async () => {
   }
 
   form.credentials = credentials
-  const extra = buildAnthropicExtra(buildOpenAIExtra())
+  const extra = buildUserIsolationExtra(
+    buildAnthropicExtra(buildOpenAIExtra()),
+    form.platform,
+    'apikey'
+  )
 
   await doCreateAccount({
     ...form,
@@ -5653,6 +5723,7 @@ const createAccountAndFinish = async (
       finalExtra = quotaExtra
     }
   }
+  finalExtra = buildUserIsolationExtra(finalExtra, platform, type)
   if (platform === 'openai') {
     if (type === 'apikey') {
       applyOpenAIEndpointCapabilities(credentials)
@@ -5731,7 +5802,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
 
         const credentials = grokOAuth.buildCredentials(tokenInfo)
         applyGrokOAuthUpstreamConfig(credentials)
-        const extra = grokOAuth.buildExtraInfo(tokenInfo)
+        const extra = buildUserIsolationExtra(grokOAuth.buildExtraInfo(tokenInfo), 'grok', 'oauth')
         const accountName = refreshTokens.length > 1 ? `${form.name || tokenInfo.email || 'Grok OAuth Account'} #${i + 1}` : (form.name || tokenInfo.email || 'Grok OAuth Account')
 
         const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
@@ -5818,6 +5889,7 @@ const handleGrokImportSSO = async (ssoInput: string) => {
       proxy_id: form.proxy_id,
       group_ids: form.group_ids,
       credentials,
+      extra: buildUserIsolationExtra(undefined, 'grok', 'oauth'),
       concurrency: form.concurrency,
       load_factor: form.load_factor ?? undefined,
       priority: form.priority,
@@ -5901,7 +5973,7 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
 
         const credentials = grokOAuth.buildCredentials(tokenInfo)
         applyGrokOAuthUpstreamConfig(credentials)
-        const extra = grokOAuth.buildExtraInfo(tokenInfo)
+        const extra = buildUserIsolationExtra(grokOAuth.buildExtraInfo(tokenInfo), 'grok', 'oauth')
         const accountName =
           lines.length > 1
             ? `${form.name || tokenInfo.email || 'Grok OAuth Account'} #${i + 1}`
@@ -5995,7 +6067,7 @@ const handleOpenAIExchange = async (authCode: string) => {
 
     const credentials = oauthClient.buildCredentials(tokenInfo)
     const oauthExtra = oauthClient.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
-    const extra = buildOpenAIExtra(oauthExtra)
+    const extra = buildUserIsolationExtra(buildOpenAIExtra(oauthExtra), 'openai', 'oauth')
     const shouldCreateOpenAI = form.platform === 'openai'
 
     // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
@@ -6125,7 +6197,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
   oauthClient.error.value = ''
 
   try {
-    const extra = buildOpenAICodexImportExtra()
+    const extra = buildUserIsolationExtra(buildOpenAICodexImportExtra(), 'openai', 'oauth')
     const result = await adminAPI.accounts.importCodexSession({
       content: trimmed,
       name: form.name,
@@ -6203,7 +6275,7 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
   oauthClient.error.value = ''
 
   try {
-    const extra = buildOpenAICodexImportExtra()
+    const extra = buildUserIsolationExtra(buildOpenAICodexImportExtra(), 'openai', 'oauth')
     await adminAPI.accounts.createOpenAICodexPAT({
       access_token: trimmed,
       name: form.name,
@@ -6278,7 +6350,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
           credentials.client_id = clientId
         }
         const oauthExtra = oauthClient.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
-        const extra = buildOpenAIExtra(oauthExtra)
+        const extra = buildUserIsolationExtra(buildOpenAIExtra(oauthExtra), 'openai', 'oauth')
 
         // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
         if (shouldCreateOpenAI && !isOpenAIModelRestrictionDisabled.value) {
@@ -6785,7 +6857,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           platform: form.platform,
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
           credentials,
-          extra,
+          extra: buildUserIsolationExtra(extra, form.platform, addMethod.value as AccountType),
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,

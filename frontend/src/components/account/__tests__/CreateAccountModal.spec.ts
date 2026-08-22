@@ -154,7 +154,8 @@ async function selectButtonByText(wrapper: ReturnType<typeof mountModal>, text: 
 async function submitApiKeyAccount(
   platform: 'openai' | 'anthropic',
   enableLongContextBilling = false,
-  disableUpstreamBillingProbe = false
+  disableUpstreamBillingProbe = false,
+  enableUserIsolation = false
 ) {
   const wrapper = mountModal()
   await selectButtonByText(wrapper, platform === 'openai' ? 'OpenAI' : 'admin.accounts.claudeConsole')
@@ -169,16 +170,22 @@ async function submitApiKeyAccount(
   if (disableUpstreamBillingProbe) {
     await wrapper.get('[data-testid="upstream-billing-auto-probe"]').trigger('click')
   }
+  if (enableUserIsolation) {
+    await wrapper.get('[data-testid="create-user-isolation-toggle"]').trigger('click')
+  }
   await wrapper.get('form#create-account-form').trigger('submit.prevent')
   await flushPromises()
   return wrapper
 }
 
-async function openCodexImportStep(toggleClicks = 0) {
+async function openCodexImportStep(toggleClicks = 0, enableUserIsolation = false) {
   const wrapper = mountModal()
   await selectButtonByText(wrapper, 'OpenAI')
   for (let click = 0; click < toggleClicks; click += 1) {
     await wrapper.get('[data-testid="openai-long-context-billing-toggle"]').trigger('click')
+  }
+  if (enableUserIsolation) {
+    await wrapper.get('[data-testid="create-user-isolation-toggle"]').trigger('click')
   }
   await wrapper.get('form#create-account-form input[type="text"]').setValue('Codex import')
   await wrapper.get('form#create-account-form').trigger('submit.prevent')
@@ -199,6 +206,16 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
       warnings: [],
     })
     createOpenAICodexPATMock.mockReset().mockResolvedValue({})
+  })
+
+  it('opens subscription user isolation with a risk warning', () => {
+    const wrapper = mountModal()
+
+    expect(wrapper.find('[data-testid="create-user-isolation-toggle"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="create-user-isolation-risk"]').text()).toContain(
+      'admin.accounts.userIsolation.riskWarning'
+    )
+    expect(wrapper.find('[data-testid="create-user-isolation-experimental"]').exists()).toBe(false)
   })
 
   it('hides only the redundant account toggle when every selected group enables tier pricing', async () => {
@@ -355,6 +372,13 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(true)
   })
 
+  it('stores user isolation on a supported API key account', async () => {
+    await submitApiKeyAccount('openai', false, false, true)
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra?.user_isolation_enabled).toBe(true)
+  })
+
   it('omits the OpenAI setting for non-OpenAI account creation', async () => {
     await submitApiKeyAccount('anthropic')
 
@@ -402,6 +426,14 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
     expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBeUndefined()
+  })
+
+  it('stores user isolation when importing a Codex session', async () => {
+    const wrapper = await openCodexImportStep(0, true)
+    await wrapper.get('[data-testid="import-codex-session"]').trigger('click')
+    await flushPromises()
+
+    expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra?.user_isolation_enabled).toBe(true)
   })
 
   it('leaves Codex PAT import billing ownership to the backend', async () => {

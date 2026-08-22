@@ -863,6 +863,53 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
+  it('批量开启用户隔离时只提交账号级 extra 开关', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['deepseek'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-user-isolation-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-user-isolation-toggle"]').trigger('click')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        user_isolation_enabled: true
+      }
+    })
+  })
+
+  it('为智谱批量账号开放用户隔离', () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['zhipu'],
+      selectedTypes: ['apikey']
+    })
+
+    expect(wrapper.find('#bulk-edit-user-isolation-enabled').exists()).toBe(true)
+  })
+
+  it('展示批量账号汇总出的风控和实验性提示', () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['kimi'],
+      selectedTypes: ['apikey'],
+      target: {
+        mode: 'selected',
+        userIsolationHasRisk: true,
+        userIsolationIsExperimental: true
+      }
+    })
+
+    expect(wrapper.get('[data-testid="bulk-user-isolation-risk"]').text()).toContain(
+      'admin.accounts.userIsolation.riskWarning'
+    )
+    expect(wrapper.get('[data-testid="bulk-user-isolation-experimental"]').text()).toContain(
+      'admin.accounts.userIsolation.experimentalWarning'
+    )
+  })
+
   it('开启 OpenAI 自动透传时不再同时提交模型限制', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],

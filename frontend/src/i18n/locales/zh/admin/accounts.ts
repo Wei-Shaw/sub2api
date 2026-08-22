@@ -94,6 +94,13 @@ export default {
       schedulableEnabled: '调度已开启',
       schedulableDisabled: '调度已关闭',
       failedToToggleSchedulable: '切换调度状态失败',
+      userIsolation: {
+        title: '用户隔离',
+        description: '向上游发送匿名且稳定的终端用户标识',
+        unsupported: '当前供应商、账号类型或协议不支持用户隔离',
+        riskWarning: '可能造成风控，请谨慎使用',
+        experimentalWarning: '实验性功能，供应商可能暂未支持'
+      },
       groupCountTotal: '共 {count} 个分组',
       columns: {
         name: '名称',

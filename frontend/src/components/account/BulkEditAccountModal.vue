@@ -31,6 +31,62 @@
         </p>
       </div>
 
+      <div
+        v-if="allUserIsolationCapable"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="mb-3 flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0" for="bulk-edit-user-isolation-enabled">
+              {{ t('admin.accounts.userIsolation.title') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.userIsolation.description') }}
+            </p>
+            <p
+              v-if="userIsolationHasRisk"
+              data-testid="bulk-user-isolation-risk"
+              class="mt-1 text-xs text-amber-600 dark:text-amber-400"
+            >
+              {{ t('admin.accounts.userIsolation.riskWarning') }}
+            </p>
+            <p
+              v-if="userIsolationIsExperimental"
+              data-testid="bulk-user-isolation-experimental"
+              class="mt-1 text-xs text-amber-600 dark:text-amber-400"
+            >
+              {{ t('admin.accounts.userIsolation.experimentalWarning') }}
+            </p>
+          </div>
+          <input
+            id="bulk-edit-user-isolation-enabled"
+            v-model="enableUserIsolation"
+            type="checkbox"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <button
+          type="button"
+          role="switch"
+          data-testid="bulk-edit-user-isolation-toggle"
+          :disabled="!enableUserIsolation"
+          :aria-checked="userIsolationEnabled"
+          :class="[
+            'relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+            enableUserIsolation ? 'cursor-pointer' : 'cursor-not-allowed opacity-50',
+            userIsolationEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+          ]"
+          @click="userIsolationEnabled = !userIsolationEnabled"
+        >
+          <span
+            :class="[
+              'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+              userIsolationEnabled ? 'translate-x-5' : 'translate-x-0'
+            ]"
+          />
+        </button>
+      </div>
+
       <!-- OpenAI passthrough -->
       <div
         v-if="allOpenAIPassthroughCapable"
@@ -1515,6 +1571,7 @@ import {
   resolveOpenAIWSModeConcurrencyHintKey
 } from '@/utils/openaiWsMode'
 import type { OpenAIWSMode } from '@/utils/openaiWsMode'
+import { getUserIsolationCapability, USER_ISOLATION_EXTRA_KEY } from '@/utils/userIsolation'
 interface Props {
   show: boolean
   accountIds: number[]
@@ -1526,6 +1583,8 @@ interface Props {
     previewCount?: number
     selectedPlatforms?: AccountPlatform[]
     selectedTypes?: AccountType[]
+    userIsolationHasRisk?: boolean
+    userIsolationIsExperimental?: boolean
   }
   proxies: ProxyConfig[]
   groups: AdminGroup[]
@@ -1598,6 +1657,21 @@ const allBillingProbeCapable = computed(() => {
     targetSelectedTypes.value.every(t => t === 'apikey')
   )
 })
+const targetUserIsolationCapabilities = computed(() =>
+  targetSelectedPlatforms.value.flatMap(platform =>
+    targetSelectedTypes.value.map(type => getUserIsolationCapability(platform, type))
+  )
+)
+const allUserIsolationCapable = computed(() =>
+  targetUserIsolationCapabilities.value.length > 0 &&
+  targetUserIsolationCapabilities.value.every(capability => capability.available)
+)
+const userIsolationHasRisk = computed(
+  () => props.target?.userIsolationHasRisk ?? targetUserIsolationCapabilities.value.some(capability => capability.risk !== null)
+)
+const userIsolationIsExperimental = computed(
+  () => props.target?.userIsolationIsExperimental ?? targetUserIsolationCapabilities.value.some(capability => capability.experimental)
+)
 
 // 是否全部为支持请求头覆写的平台/账号类型
 // 所选平台 × 所选类型的全组合均需具备覆写资格（实际选中账号是该组合的子集，
@@ -1669,6 +1743,7 @@ const enableCodexCLIOnlyAppServer = ref(false)
 const enableOpenAICompactMode = ref(false)
 const enableOpenAICompactModelMapping = ref(false)
 const enableRpmLimit = ref(false)
+const enableUserIsolation = ref(false)
 
 // State - field values
 const submitting = ref(false)
@@ -1721,6 +1796,7 @@ const bulkBaseRpm = ref<number | null>(null)
 const bulkRpmStrategy = ref<'tiered' | 'sticky_exempt'>('tiered')
 const bulkRpmStickyBuffer = ref<number | null>(null)
 const userMsgQueueMode = ref<string | null>(null)
+const userIsolationEnabled = ref(false)
 const umqModeOptions = computed(() => [
   { value: '', label: t('admin.accounts.quotaControl.rpmLimit.umqModeOff') },
   { value: 'throttle', label: t('admin.accounts.quotaControl.rpmLimit.umqModeThrottle') },
@@ -1982,6 +2058,10 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     }
   }
 
+  if (enableUserIsolation.value && allUserIsolationCapable.value) {
+    ensureExtra()[USER_ISOLATION_EXTRA_KEY] = userIsolationEnabled.value
+  }
+
   // 同时校验可见性：勾选后又改了目标筛选条件时，不应把该键写到非 OAuth 账号上
   if (enableOpenAIFlattenNamespaces.value && allOpenAIOAuthOnly.value) {
     const extra = ensureExtra()
@@ -2189,6 +2269,7 @@ const handleSubmit = async () => {
 
   const hasAnyFieldEnabled =
     enableBaseUrl.value ||
+    enableUserIsolation.value ||
     enableOpenAIPassthrough.value ||
     enableOpenAIFlattenNamespaces.value ||
     (enableOpenAILongContextBilling.value && allOpenAIPassthroughCapable.value) ||
@@ -2366,6 +2447,7 @@ watch(
       enableOpenAICompactMode.value = false
       enableOpenAICompactModelMapping.value = false
       enableRpmLimit.value = false
+      enableUserIsolation.value = false
 
       // Reset all values
       baseUrl.value = ''
@@ -2401,6 +2483,7 @@ watch(
       bulkRpmStrategy.value = 'tiered'
       bulkRpmStickyBuffer.value = null
       userMsgQueueMode.value = null
+      userIsolationEnabled.value = false
 
       // Reset mixed channel warning state
       showMixedChannelWarning.value = false

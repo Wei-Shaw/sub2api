@@ -2771,6 +2771,42 @@
         </div>
       </div>
 
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.userIsolation.title') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{
+                t(
+                  userIsolationSupported
+                    ? 'admin.accounts.userIsolation.description'
+                    : 'admin.accounts.userIsolation.unsupported'
+                )
+              }}
+            </p>
+            <p
+              v-if="userIsolationCapability.risk"
+              data-testid="edit-user-isolation-risk"
+              class="mt-1 text-xs text-amber-600 dark:text-amber-400"
+            >
+              {{ t('admin.accounts.userIsolation.riskWarning') }}
+            </p>
+            <p
+              v-if="userIsolationCapability.experimental"
+              data-testid="edit-user-isolation-experimental"
+              class="mt-1 text-xs text-amber-600 dark:text-amber-400"
+            >
+              {{ t('admin.accounts.userIsolation.experimentalWarning') }}
+            </p>
+          </div>
+          <Toggle
+            v-if="userIsolationSupported || userIsolationEnabled"
+            v-model="userIsolationEnabled"
+            data-testid="edit-user-isolation-toggle"
+          />
+        </div>
+      </div>
+
       <!-- Group Selection - 仅标准模式显示 -->
       <GroupSelector
         v-if="!authStore.isSimpleMode"
@@ -2887,6 +2923,10 @@ import {
 } from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import {
+  getUserIsolationCapability,
+  USER_ISOLATION_EXTRA_KEY
+} from '@/utils/userIsolation'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
@@ -2987,11 +3027,23 @@ const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek'>(() => {
 })
 const editApiProtocol = ref<CnApiProtocol>('adaptive')
 const editAccountMode = ref<CnAccountMode>('payg')
+const userIsolationEnabled = ref(false)
 const editAdaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   chat_completions: '',
   anthropic: '',
   responses: ''
 })
+const userIsolationCapability = computed(() =>
+  props.account
+    ? getUserIsolationCapability(
+        props.account.platform,
+        props.account.type,
+        editAccountMode.value,
+        editApiProtocol.value
+      )
+    : { available: false, experimental: false, risk: null }
+)
+const userIsolationSupported = computed(() => userIsolationCapability.value.available)
 // 回填窗口标志：syncFormFromAccount 会同步改写 editAccountMode / editApiProtocol，
 // 而 watcher（pre-flush）在同步代码执行完之后才触发——若不抑制，会把刚恢复的
 // 存储版 base_url（可能是用户自定义/中转地址）覆盖为官方预设并在下次保存时持久化。
@@ -3683,6 +3735,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedScheduling.value = false
   allowOverages.value = false
 	const extra = newAccount.extra as Record<string, unknown> | undefined
+	userIsolationEnabled.value = extra?.[USER_ISOLATION_EXTRA_KEY] === true
 	mixedScheduling.value = extra?.mixed_scheduling === true
 	allowOverages.value = extra?.allow_overages === true
 	autoPause5hThreshold.value = typeof extra?.auto_pause_5h_threshold === 'number' ? extra.auto_pause_5h_threshold * 100 : null
@@ -5269,6 +5322,21 @@ const handleSubmit = async () => {
       }
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
+      updatePayload.extra = newExtra
+    }
+
+    const currentUserIsolationExtra = (updatePayload.extra as Record<string, unknown>) ||
+      ((props.account.extra as Record<string, unknown>) || {})
+    if (
+      userIsolationSupported.value ||
+      Object.prototype.hasOwnProperty.call(currentUserIsolationExtra, USER_ISOLATION_EXTRA_KEY)
+    ) {
+      const newExtra = { ...currentUserIsolationExtra }
+      if (userIsolationEnabled.value) {
+        newExtra[USER_ISOLATION_EXTRA_KEY] = true
+      } else {
+        delete newExtra[USER_ISOLATION_EXTRA_KEY]
+      }
       updatePayload.extra = newExtra
     }
 

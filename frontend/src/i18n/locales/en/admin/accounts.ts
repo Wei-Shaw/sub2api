@@ -96,6 +96,13 @@ export default {
       schedulableEnabled: 'Scheduling enabled',
       schedulableDisabled: 'Scheduling disabled',
       failedToToggleSchedulable: 'Failed to toggle scheduling status',
+      userIsolation: {
+        title: 'User isolation',
+        description: 'Send a stable, anonymous end-user identifier upstream',
+        unsupported: 'User isolation is unavailable for this provider, account type, or protocol',
+        riskWarning: 'May trigger upstream risk controls. Use with caution.',
+        experimentalWarning: 'Experimental feature. The provider may not support it yet.'
+      },
       groupCountTotal: '{count} groups total',
       platforms: {
         anthropic: 'Anthropic',
