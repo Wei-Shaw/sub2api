@@ -232,14 +232,14 @@ func managedUserIsolationValue(
 	if !ok {
 		return "", "", fmt.Errorf("user isolation is enabled but unsupported for platform %s, account type %s, endpoint %s", account.Platform, account.Type, endpoint)
 	}
-	if cfg == nil || strings.TrimSpace(cfg.JWT.Secret) == "" {
-		return "", "", fmt.Errorf("user isolation is enabled but JWT secret is unavailable")
+	if cfg == nil || strings.TrimSpace(cfg.Security.UserIsolationSecret) == "" {
+		return "", "", fmt.Errorf("user isolation is enabled but user isolation secret is unavailable")
 	}
 	userID, _ := ctx.Value(ctxkey.UserID).(int64)
 	if userID <= 0 {
 		return "", "", fmt.Errorf("user isolation is enabled but authenticated user ID is unavailable")
 	}
-	return path, deriveManagedUserIsolationID(cfg.JWT.Secret, account, userID), nil
+	return path, deriveManagedUserIsolationID(cfg.Security.UserIsolationSecret, account, userID), nil
 }
 
 func resolveUserIsolationPath(account *Account, endpoint userIsolationEndpoint) (string, bool) {

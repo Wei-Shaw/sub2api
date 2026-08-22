@@ -725,7 +725,10 @@ type SecurityConfig struct {
 	ResponseHeaders ResponseHeaderConfig `mapstructure:"response_headers"`
 	CSP             CSPConfig            `mapstructure:"csp"`
 	ProxyFallback   ProxyFallbackConfig  `mapstructure:"proxy_fallback"`
-	ProxyProbe      ProxyProbeConfig     `mapstructure:"proxy_probe"`
+	// UserIsolationSecret is generated and loaded from security_secrets at startup.
+	// It must not be sourced from or serialized into regular configuration.
+	UserIsolationSecret string           `mapstructure:"-" json:"-" yaml:"-"`
+	ProxyProbe          ProxyProbeConfig `mapstructure:"proxy_probe"`
 	// TrustForwardedIPForAPIKeyACL enables legacy raw forwarded-header takeover.
 	// When disabled, server.trusted_proxies is authoritative for all client-IP consumers.
 	TrustForwardedIPForAPIKeyACL  bool                                       `mapstructure:"trust_forwarded_ip_for_api_key_acl"`

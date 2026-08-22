@@ -58,21 +58,30 @@ func TestEnsureBootstrapSecretsGenerateAndPersistJWTSecret(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, cfg.JWT.Secret)
 	require.GreaterOrEqual(t, len([]byte(cfg.JWT.Secret)), 32)
+	require.NotEmpty(t, cfg.Security.UserIsolationSecret)
+	require.NotEqual(t, cfg.JWT.Secret, cfg.Security.UserIsolationSecret)
 
 	stored, err := client.SecuritySecret.Query().Where(securitysecret.KeyEQ(securitySecretKeyJWT)).Only(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, cfg.JWT.Secret, stored.Value)
+
+	isolationStored, err := client.SecuritySecret.Query().Where(securitysecret.KeyEQ(securitySecretKeyUserIsolation)).Only(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, cfg.Security.UserIsolationSecret, isolationStored.Value)
 }
 
 func TestEnsureBootstrapSecretsLoadExistingJWTSecret(t *testing.T) {
 	client := newSecuritySecretTestClient(t)
 	_, err := client.SecuritySecret.Create().SetKey(securitySecretKeyJWT).SetValue("existing-jwt-secret-32bytes-long!!!!").Save(context.Background())
 	require.NoError(t, err)
+	_, err = client.SecuritySecret.Create().SetKey(securitySecretKeyUserIsolation).SetValue("existing-isolation-secret-32bytes-long").Save(context.Background())
+	require.NoError(t, err)
 
 	cfg := &config.Config{}
 	err = ensureBootstrapSecrets(context.Background(), client, cfg)
 	require.NoError(t, err)
 	require.Equal(t, "existing-jwt-secret-32bytes-long!!!!", cfg.JWT.Secret)
+	require.Equal(t, "existing-isolation-secret-32bytes-long", cfg.Security.UserIsolationSecret)
 }
 
 func TestEnsureBootstrapSecretsRejectInvalidStoredSecret(t *testing.T) {

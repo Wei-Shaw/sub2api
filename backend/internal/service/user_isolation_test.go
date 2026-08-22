@@ -19,7 +19,12 @@ func userIsolationTestContext(userID int64) context.Context {
 }
 
 func userIsolationTestConfig() *config.Config {
-	return &config.Config{JWT: config.JWTConfig{Secret: "01234567890123456789012345678901"}}
+	return &config.Config{
+		JWT: config.JWTConfig{Secret: "jwt-secret-0123456789012345678901"},
+		Security: config.SecurityConfig{
+			UserIsolationSecret: "isolation-secret-01234567890123456",
+		},
+	}
 }
 
 func TestDeriveManagedUserIsolationIDIsStableAndAccountScoped(t *testing.T) {
@@ -31,6 +36,19 @@ func TestDeriveManagedUserIsolationIDIsStableAndAccountScoped(t *testing.T) {
 	require.NotEqual(t, first, deriveManagedUserIsolationID("secret", &Account{ID: 12, Platform: PlatformOpenAI}, 42))
 	require.Len(t, first, 46)
 	require.Regexp(t, `^u1_[A-Za-z0-9_-]+$`, first)
+}
+
+func TestManagedUserIsolationIDDoesNotDependOnJWTSecret(t *testing.T) {
+	account := &Account{ID: 11, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	first := userIsolationTestConfig()
+	second := userIsolationTestConfig()
+	second.JWT.Secret = "rotated-jwt-secret-0123456789012345"
+
+	require.Equal(
+		t,
+		deriveManagedUserIsolationID(first.Security.UserIsolationSecret, account, 42),
+		deriveManagedUserIsolationID(second.Security.UserIsolationSecret, account, 42),
+	)
 }
 
 func TestApplyManagedUserIsolationUsesFinalProtocolField(t *testing.T) {
@@ -130,7 +148,7 @@ func TestApplyManagedUserIsolationUsesFinalProtocolField(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			body, err := applyManagedUserIsolation(userIsolationTestContext(42), userIsolationTestConfig(), tt.account, tt.endpoint, []byte(`{"model":"test","user":"spoofed","user_id":"spoofed","safety_identifier":"spoofed","metadata":{"user_id":"spoofed"}}`))
 			require.NoError(t, err)
-			want := deriveManagedUserIsolationID(userIsolationTestConfig().JWT.Secret, tt.account, 42)
+			want := deriveManagedUserIsolationID(userIsolationTestConfig().Security.UserIsolationSecret, tt.account, 42)
 			require.Equal(t, want, gjson.GetBytes(body, tt.path).String())
 		})
 	}
@@ -342,7 +360,7 @@ func TestBuildDeepSeekResponsesRequestAppliesUserIsolationAfterNormalization(t *
 	wireBody, err := io.ReadAll(req.Body)
 	require.NoError(t, err)
 
-	require.Equal(t, deriveManagedUserIsolationID(userIsolationTestConfig().JWT.Secret, account, 42), gjson.GetBytes(wireBody, "user").String())
+	require.Equal(t, deriveManagedUserIsolationID(userIsolationTestConfig().Security.UserIsolationSecret, account, 42), gjson.GetBytes(wireBody, "user").String())
 	require.False(t, gjson.GetBytes(wireBody, "store").Bool())
 	require.False(t, gjson.GetBytes(wireBody, "previous_response_id").Exists())
 }
@@ -384,7 +402,7 @@ func TestBuildSubscriptionResponsesRequestsApplyUserIsolation(t *testing.T) {
 			require.NoError(t, err)
 			wireBody, err := io.ReadAll(req.Body)
 			require.NoError(t, err)
-			require.Equal(t, deriveManagedUserIsolationID(userIsolationTestConfig().JWT.Secret, tt.account, 42), gjson.GetBytes(wireBody, tt.path).String())
+			require.Equal(t, deriveManagedUserIsolationID(userIsolationTestConfig().Security.UserIsolationSecret, tt.account, 42), gjson.GetBytes(wireBody, tt.path).String())
 		})
 	}
 }
@@ -438,7 +456,7 @@ func TestBuildAnthropicRequestAppliesUserIsolationAtWireBoundary(t *testing.T) {
 			)
 			require.NoError(t, err)
 			require.NotNil(t, req)
-			require.Equal(t, deriveManagedUserIsolationID(userIsolationTestConfig().JWT.Secret, account, 42), gjson.GetBytes(wireBody, "metadata.user_id").String())
+			require.Equal(t, deriveManagedUserIsolationID(userIsolationTestConfig().Security.UserIsolationSecret, account, 42), gjson.GetBytes(wireBody, "metadata.user_id").String())
 		})
 	}
 }
