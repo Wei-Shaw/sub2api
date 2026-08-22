@@ -45,7 +45,7 @@ func BenchmarkHTTPUpstreamProxyClient(b *testing.B) {
 		settings := defaultPoolSettings(cfg)
 		for i := 0; i < b.N; i++ {
 			// 每次迭代都创建新客户端，包含 Transport 分配
-			transport, err := buildUpstreamTransport(settings, parsedProxy)
+			transport, err := buildUpstreamTransport(settings, parsedProxy, upstreamProtocolModeDefault)
 			if err != nil {
 				b.Fatalf("创建 Transport 失败: %v", err)
 			}

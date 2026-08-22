@@ -29,7 +29,14 @@ func BackendModeUserGuard(settingService *service.SettingService) gin.HandlerFun
 
 func backendModeAllowsAuthPath(path string) bool {
 	path = strings.ToLower(strings.TrimSpace(path))
-	for _, suffix := range []string{"/auth/login", "/auth/login/2fa", "/auth/logout", "/auth/refresh"} {
+	for _, suffix := range []string{
+		"/auth/login",
+		"/auth/login/2fa",
+		"/auth/passkey/login/begin",
+		"/auth/passkey/login/finish",
+		"/auth/logout",
+		"/auth/refresh",
+	} {
 		if strings.HasSuffix(path, suffix) {
 			return true
 		}
@@ -43,6 +50,8 @@ func backendModeAllowsAuthPath(path string) bool {
 		"/auth/oauth/github/callback",
 		"/auth/oauth/google/callback",
 		"/auth/oauth/dingtalk/callback",
+		"/auth/oauth/github/complete-registration",
+		"/auth/oauth/google/complete-registration",
 		"/auth/oauth/linuxdo/complete-registration",
 		"/auth/oauth/wechat/complete-registration",
 		"/auth/oauth/oidc/complete-registration",

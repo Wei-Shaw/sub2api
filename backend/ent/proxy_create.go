@@ -131,6 +131,62 @@ func (_c *ProxyCreate) SetNillableStatus(v *string) *ProxyCreate {
 	return _c
 }
 
+// SetExpiresAt sets the "expires_at" field.
+func (_c *ProxyCreate) SetExpiresAt(v time.Time) *ProxyCreate {
+	_c.mutation.SetExpiresAt(v)
+	return _c
+}
+
+// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillableExpiresAt(v *time.Time) *ProxyCreate {
+	if v != nil {
+		_c.SetExpiresAt(*v)
+	}
+	return _c
+}
+
+// SetFallbackMode sets the "fallback_mode" field.
+func (_c *ProxyCreate) SetFallbackMode(v string) *ProxyCreate {
+	_c.mutation.SetFallbackMode(v)
+	return _c
+}
+
+// SetNillableFallbackMode sets the "fallback_mode" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillableFallbackMode(v *string) *ProxyCreate {
+	if v != nil {
+		_c.SetFallbackMode(*v)
+	}
+	return _c
+}
+
+// SetBackupProxyID sets the "backup_proxy_id" field.
+func (_c *ProxyCreate) SetBackupProxyID(v int64) *ProxyCreate {
+	_c.mutation.SetBackupProxyID(v)
+	return _c
+}
+
+// SetNillableBackupProxyID sets the "backup_proxy_id" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillableBackupProxyID(v *int64) *ProxyCreate {
+	if v != nil {
+		_c.SetBackupProxyID(*v)
+	}
+	return _c
+}
+
+// SetExpiryWarnDays sets the "expiry_warn_days" field.
+func (_c *ProxyCreate) SetExpiryWarnDays(v int) *ProxyCreate {
+	_c.mutation.SetExpiryWarnDays(v)
+	return _c
+}
+
+// SetNillableExpiryWarnDays sets the "expiry_warn_days" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillableExpiryWarnDays(v *int) *ProxyCreate {
+	if v != nil {
+		_c.SetExpiryWarnDays(*v)
+	}
+	return _c
+}
+
 // AddAccountIDs adds the "accounts" edge to the Account entity by IDs.
 func (_c *ProxyCreate) AddAccountIDs(ids ...int64) *ProxyCreate {
 	_c.mutation.AddAccountIDs(ids...)
@@ -144,6 +200,11 @@ func (_c *ProxyCreate) AddAccounts(v ...*Account) *ProxyCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddAccountIDs(ids...)
+}
+
+// SetBackupProxy sets the "backup_proxy" edge to the Proxy entity.
+func (_c *ProxyCreate) SetBackupProxy(v *Proxy) *ProxyCreate {
+	return _c.SetBackupProxyID(v.ID)
 }
 
 // Mutation returns the ProxyMutation object of the builder.
@@ -201,6 +262,14 @@ func (_c *ProxyCreate) defaults() error {
 		v := proxy.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.FallbackMode(); !ok {
+		v := proxy.DefaultFallbackMode
+		_c.mutation.SetFallbackMode(v)
+	}
+	if _, ok := _c.mutation.ExpiryWarnDays(); !ok {
+		v := proxy.DefaultExpiryWarnDays
+		_c.mutation.SetExpiryWarnDays(v)
+	}
 	return nil
 }
 
@@ -256,6 +325,17 @@ func (_c *ProxyCreate) check() error {
 		if err := proxy.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Proxy.status": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.FallbackMode(); !ok {
+		return &ValidationError{Name: "fallback_mode", err: errors.New(`ent: missing required field "Proxy.fallback_mode"`)}
+	}
+	if v, ok := _c.mutation.FallbackMode(); ok {
+		if err := proxy.FallbackModeValidator(v); err != nil {
+			return &ValidationError{Name: "fallback_mode", err: fmt.Errorf(`ent: validator failed for field "Proxy.fallback_mode": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ExpiryWarnDays(); !ok {
+		return &ValidationError{Name: "expiry_warn_days", err: errors.New(`ent: missing required field "Proxy.expiry_warn_days"`)}
 	}
 	return nil
 }
@@ -324,6 +404,18 @@ func (_c *ProxyCreate) createSpec() (*Proxy, *sqlgraph.CreateSpec) {
 		_spec.SetField(proxy.FieldStatus, field.TypeString, value)
 		_node.Status = value
 	}
+	if value, ok := _c.mutation.ExpiresAt(); ok {
+		_spec.SetField(proxy.FieldExpiresAt, field.TypeTime, value)
+		_node.ExpiresAt = &value
+	}
+	if value, ok := _c.mutation.FallbackMode(); ok {
+		_spec.SetField(proxy.FieldFallbackMode, field.TypeString, value)
+		_node.FallbackMode = value
+	}
+	if value, ok := _c.mutation.ExpiryWarnDays(); ok {
+		_spec.SetField(proxy.FieldExpiryWarnDays, field.TypeInt, value)
+		_node.ExpiryWarnDays = value
+	}
 	if nodes := _c.mutation.AccountsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -338,6 +430,23 @@ func (_c *ProxyCreate) createSpec() (*Proxy, *sqlgraph.CreateSpec) {
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.BackupProxyIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   proxy.BackupProxyTable,
+			Columns: []string{proxy.BackupProxyColumn},
+			Bidi:    true,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxy.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.BackupProxyID = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
@@ -521,6 +630,72 @@ func (u *ProxyUpsert) SetStatus(v string) *ProxyUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *ProxyUpsert) UpdateStatus() *ProxyUpsert {
 	u.SetExcluded(proxy.FieldStatus)
+	return u
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (u *ProxyUpsert) SetExpiresAt(v time.Time) *ProxyUpsert {
+	u.Set(proxy.FieldExpiresAt, v)
+	return u
+}
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdateExpiresAt() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldExpiresAt)
+	return u
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (u *ProxyUpsert) ClearExpiresAt() *ProxyUpsert {
+	u.SetNull(proxy.FieldExpiresAt)
+	return u
+}
+
+// SetFallbackMode sets the "fallback_mode" field.
+func (u *ProxyUpsert) SetFallbackMode(v string) *ProxyUpsert {
+	u.Set(proxy.FieldFallbackMode, v)
+	return u
+}
+
+// UpdateFallbackMode sets the "fallback_mode" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdateFallbackMode() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldFallbackMode)
+	return u
+}
+
+// SetBackupProxyID sets the "backup_proxy_id" field.
+func (u *ProxyUpsert) SetBackupProxyID(v int64) *ProxyUpsert {
+	u.Set(proxy.FieldBackupProxyID, v)
+	return u
+}
+
+// UpdateBackupProxyID sets the "backup_proxy_id" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdateBackupProxyID() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldBackupProxyID)
+	return u
+}
+
+// ClearBackupProxyID clears the value of the "backup_proxy_id" field.
+func (u *ProxyUpsert) ClearBackupProxyID() *ProxyUpsert {
+	u.SetNull(proxy.FieldBackupProxyID)
+	return u
+}
+
+// SetExpiryWarnDays sets the "expiry_warn_days" field.
+func (u *ProxyUpsert) SetExpiryWarnDays(v int) *ProxyUpsert {
+	u.Set(proxy.FieldExpiryWarnDays, v)
+	return u
+}
+
+// UpdateExpiryWarnDays sets the "expiry_warn_days" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdateExpiryWarnDays() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldExpiryWarnDays)
+	return u
+}
+
+// AddExpiryWarnDays adds v to the "expiry_warn_days" field.
+func (u *ProxyUpsert) AddExpiryWarnDays(v int) *ProxyUpsert {
+	u.Add(proxy.FieldExpiryWarnDays, v)
 	return u
 }
 
@@ -720,6 +895,83 @@ func (u *ProxyUpsertOne) SetStatus(v string) *ProxyUpsertOne {
 func (u *ProxyUpsertOne) UpdateStatus() *ProxyUpsertOne {
 	return u.Update(func(s *ProxyUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (u *ProxyUpsertOne) SetExpiresAt(v time.Time) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetExpiresAt(v)
+	})
+}
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdateExpiresAt() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateExpiresAt()
+	})
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (u *ProxyUpsertOne) ClearExpiresAt() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearExpiresAt()
+	})
+}
+
+// SetFallbackMode sets the "fallback_mode" field.
+func (u *ProxyUpsertOne) SetFallbackMode(v string) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetFallbackMode(v)
+	})
+}
+
+// UpdateFallbackMode sets the "fallback_mode" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdateFallbackMode() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateFallbackMode()
+	})
+}
+
+// SetBackupProxyID sets the "backup_proxy_id" field.
+func (u *ProxyUpsertOne) SetBackupProxyID(v int64) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetBackupProxyID(v)
+	})
+}
+
+// UpdateBackupProxyID sets the "backup_proxy_id" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdateBackupProxyID() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateBackupProxyID()
+	})
+}
+
+// ClearBackupProxyID clears the value of the "backup_proxy_id" field.
+func (u *ProxyUpsertOne) ClearBackupProxyID() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearBackupProxyID()
+	})
+}
+
+// SetExpiryWarnDays sets the "expiry_warn_days" field.
+func (u *ProxyUpsertOne) SetExpiryWarnDays(v int) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetExpiryWarnDays(v)
+	})
+}
+
+// AddExpiryWarnDays adds v to the "expiry_warn_days" field.
+func (u *ProxyUpsertOne) AddExpiryWarnDays(v int) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.AddExpiryWarnDays(v)
+	})
+}
+
+// UpdateExpiryWarnDays sets the "expiry_warn_days" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdateExpiryWarnDays() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateExpiryWarnDays()
 	})
 }
 
@@ -1085,6 +1337,83 @@ func (u *ProxyUpsertBulk) SetStatus(v string) *ProxyUpsertBulk {
 func (u *ProxyUpsertBulk) UpdateStatus() *ProxyUpsertBulk {
 	return u.Update(func(s *ProxyUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (u *ProxyUpsertBulk) SetExpiresAt(v time.Time) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetExpiresAt(v)
+	})
+}
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdateExpiresAt() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateExpiresAt()
+	})
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (u *ProxyUpsertBulk) ClearExpiresAt() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearExpiresAt()
+	})
+}
+
+// SetFallbackMode sets the "fallback_mode" field.
+func (u *ProxyUpsertBulk) SetFallbackMode(v string) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetFallbackMode(v)
+	})
+}
+
+// UpdateFallbackMode sets the "fallback_mode" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdateFallbackMode() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateFallbackMode()
+	})
+}
+
+// SetBackupProxyID sets the "backup_proxy_id" field.
+func (u *ProxyUpsertBulk) SetBackupProxyID(v int64) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetBackupProxyID(v)
+	})
+}
+
+// UpdateBackupProxyID sets the "backup_proxy_id" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdateBackupProxyID() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateBackupProxyID()
+	})
+}
+
+// ClearBackupProxyID clears the value of the "backup_proxy_id" field.
+func (u *ProxyUpsertBulk) ClearBackupProxyID() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearBackupProxyID()
+	})
+}
+
+// SetExpiryWarnDays sets the "expiry_warn_days" field.
+func (u *ProxyUpsertBulk) SetExpiryWarnDays(v int) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetExpiryWarnDays(v)
+	})
+}
+
+// AddExpiryWarnDays adds v to the "expiry_warn_days" field.
+func (u *ProxyUpsertBulk) AddExpiryWarnDays(v int) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.AddExpiryWarnDays(v)
+	})
+}
+
+// UpdateExpiryWarnDays sets the "expiry_warn_days" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdateExpiryWarnDays() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateExpiryWarnDays()
 	})
 }
 

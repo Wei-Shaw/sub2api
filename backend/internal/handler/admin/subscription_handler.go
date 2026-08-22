@@ -249,8 +249,9 @@ func (h *SubscriptionHandler) ResetQuota(c *gin.Context) {
 	response.Success(c, dto.UserSubscriptionFromServiceAdmin(sub))
 }
 
-// Revoke handles revoking a subscription
-// DELETE /api/v1/admin/subscriptions/:id
+// Revoke handles revoking a subscription.
+// POST /api/v1/admin/subscriptions/:id/revoke
+// DELETE /api/v1/admin/subscriptions/:id is kept for backward compatibility.
 func (h *SubscriptionHandler) Revoke(c *gin.Context) {
 	subscriptionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -265,6 +266,24 @@ func (h *SubscriptionHandler) Revoke(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"message": "Subscription revoked successfully"})
+}
+
+// Restore handles restoring a revoked subscription.
+// POST /api/v1/admin/subscriptions/:id/restore
+func (h *SubscriptionHandler) Restore(c *gin.Context) {
+	subscriptionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid subscription ID")
+		return
+	}
+
+	subscription, err := h.subscriptionService.RestoreSubscription(c.Request.Context(), subscriptionID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.UserSubscriptionFromServiceAdmin(subscription))
 }
 
 // ListByGroup handles listing subscriptions for a specific group

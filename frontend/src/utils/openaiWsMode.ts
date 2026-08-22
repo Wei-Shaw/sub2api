@@ -1,16 +1,19 @@
 export const OPENAI_WS_MODE_OFF = 'off'
 export const OPENAI_WS_MODE_CTX_POOL = 'ctx_pool'
 export const OPENAI_WS_MODE_PASSTHROUGH = 'passthrough'
+export const OPENAI_WS_MODE_HTTP_BRIDGE = 'http_bridge'
 
 export type OpenAIWSMode =
   | typeof OPENAI_WS_MODE_OFF
   | typeof OPENAI_WS_MODE_CTX_POOL
   | typeof OPENAI_WS_MODE_PASSTHROUGH
+  | typeof OPENAI_WS_MODE_HTTP_BRIDGE
 
 const OPENAI_WS_MODES = new Set<OpenAIWSMode>([
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_CTX_POOL,
-  OPENAI_WS_MODE_PASSTHROUGH
+  OPENAI_WS_MODE_PASSTHROUGH,
+  OPENAI_WS_MODE_HTTP_BRIDGE
 ])
 
 export interface ResolveOpenAIWSModeOptions {
@@ -44,7 +47,7 @@ export const isOpenAIWSModeEnabled = (mode: OpenAIWSMode): boolean => {
 export const resolveOpenAIWSModeConcurrencyHintKey = (
   mode: OpenAIWSMode
 ): 'admin.accounts.openai.wsModeConcurrencyHint' | 'admin.accounts.openai.wsModePassthroughHint' => {
-  if (mode === OPENAI_WS_MODE_PASSTHROUGH) {
+  if (mode === OPENAI_WS_MODE_PASSTHROUGH || mode === OPENAI_WS_MODE_HTTP_BRIDGE) {
     return 'admin.accounts.openai.wsModePassthroughHint'
   }
   return 'admin.accounts.openai.wsModeConcurrencyHint'

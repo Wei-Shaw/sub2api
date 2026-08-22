@@ -26,6 +26,10 @@ const (
 	LevelWarn  = zapcore.WarnLevel
 	LevelError = zapcore.ErrorLevel
 	LevelFatal = zapcore.FatalLevel
+
+	// OpsSystemLogSkipField keeps an event in the standard logger while
+	// preventing the database-backed Ops system-log sink from indexing it.
+	OpsSystemLogSkipField = "ops_system_log_skip"
 )
 
 type Sink interface {

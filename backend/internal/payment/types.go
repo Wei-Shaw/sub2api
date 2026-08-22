@@ -31,6 +31,7 @@ const (
 	OrderStatusFailed            = "FAILED"
 	OrderStatusRefundRequested   = "REFUND_REQUESTED"
 	OrderStatusRefunding         = "REFUNDING"
+	OrderStatusRefundPending     = "REFUND_PENDING"
 	OrderStatusPartiallyRefunded = "PARTIALLY_REFUNDED"
 	OrderStatusRefunded          = "REFUNDED"
 	OrderStatusRefundFailed      = "REFUND_FAILED"
@@ -98,16 +99,19 @@ func GetBasePaymentType(t string) string {
 
 // CreatePaymentRequest holds the parameters for creating a new payment.
 type CreatePaymentRequest struct {
-	OrderID            string // Internal order ID
-	Amount             string // 支付金额，按服务商实例配置的币种解释
-	PaymentType        string // e.g. "alipay", "wxpay", "stripe"
-	Subject            string // Product description
-	NotifyURL          string // Webhook callback URL
-	ReturnURL          string // Browser redirect URL after payment
-	OpenID             string // WeChat JSAPI payer OpenID when available
-	ClientIP           string // Payer's IP address
-	IsMobile           bool   // Whether the request comes from a mobile device
-	InstanceSubMethods string // Comma-separated sub-methods from instance supported_types (for Stripe)
+	OrderID     string // Internal order ID
+	Amount      string // 支付金额，按服务商实例配置的币种解释
+	PaymentType string // e.g. "alipay", "wxpay", "stripe"
+	Subject     string // Product description
+	NotifyURL   string // Webhook callback URL
+	ReturnURL   string // Browser redirect URL after payment
+	OpenID      string // WeChat JSAPI payer OpenID when available
+	ClientIP    string // Payer's IP address
+	IsMobile    bool   // Whether the request comes from a mobile device
+	// AlipayMobilePrecreate routes a mobile Alipay request through
+	// alipay.trade.precreate instead of alipay.trade.wap.pay.
+	AlipayMobilePrecreate bool
+	InstanceSubMethods    string // Comma-separated sub-methods from instance supported_types (for Stripe)
 }
 
 // CreatePaymentResultType describes the shape of the create-payment result.
@@ -181,6 +185,15 @@ type RefundRequest struct {
 	Reason  string
 }
 
+// RefundQueryRequest contains identifiers needed to query a previously
+// requested refund.
+type RefundQueryRequest struct {
+	TradeNo  string
+	OrderID  string
+	RefundID string
+	Amount   string
+}
+
 // RefundResponse is returned after a refund request.
 type RefundResponse struct {
 	RefundID string
@@ -213,6 +226,12 @@ type Provider interface {
 	VerifyNotification(ctx context.Context, rawBody string, headers map[string]string) (*PaymentNotification, error)
 	// Refund requests a refund from the upstream provider.
 	Refund(ctx context.Context, req RefundRequest) (*RefundResponse, error)
+}
+
+// RefundQueryProvider extends Provider with refund status querying.
+type RefundQueryProvider interface {
+	Provider
+	QueryRefund(ctx context.Context, req RefundQueryRequest) (*RefundResponse, error)
 }
 
 // CancelableProvider extends Provider with the ability to cancel pending payments.

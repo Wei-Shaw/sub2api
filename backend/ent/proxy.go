@@ -37,6 +37,14 @@ type Proxy struct {
 	Password *string `json:"password,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
+	// Proxy expiration time (NULL means never expires).
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	// Fallback target on expiry: none | proxy | direct.
+	FallbackMode string `json:"fallback_mode,omitempty"`
+	// Backup proxy id when fallback_mode=proxy (self-reference).
+	BackupProxyID *int64 `json:"backup_proxy_id,omitempty"`
+	// Days before expiry to flag as expiring-soon (per proxy).
+	ExpiryWarnDays int `json:"expiry_warn_days,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the ProxyQuery when eager-loading is set.
 	Edges        ProxyEdges `json:"edges"`
@@ -47,9 +55,11 @@ type Proxy struct {
 type ProxyEdges struct {
 	// Accounts holds the value of the accounts edge.
 	Accounts []*Account `json:"accounts,omitempty"`
+	// BackupProxy holds the value of the backup_proxy edge.
+	BackupProxy *Proxy `json:"backup_proxy,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [1]bool
+	loadedTypes [2]bool
 }
 
 // AccountsOrErr returns the Accounts value or an error if the edge
@@ -61,16 +71,27 @@ func (e ProxyEdges) AccountsOrErr() ([]*Account, error) {
 	return nil, &NotLoadedError{edge: "accounts"}
 }
 
+// BackupProxyOrErr returns the BackupProxy value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e ProxyEdges) BackupProxyOrErr() (*Proxy, error) {
+	if e.BackupProxy != nil {
+		return e.BackupProxy, nil
+	} else if e.loadedTypes[1] {
+		return nil, &NotFoundError{label: proxy.Label}
+	}
+	return nil, &NotLoadedError{edge: "backup_proxy"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*Proxy) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case proxy.FieldID, proxy.FieldPort:
+		case proxy.FieldID, proxy.FieldPort, proxy.FieldBackupProxyID, proxy.FieldExpiryWarnDays:
 			values[i] = new(sql.NullInt64)
-		case proxy.FieldName, proxy.FieldProtocol, proxy.FieldHost, proxy.FieldUsername, proxy.FieldPassword, proxy.FieldStatus:
+		case proxy.FieldName, proxy.FieldProtocol, proxy.FieldHost, proxy.FieldUsername, proxy.FieldPassword, proxy.FieldStatus, proxy.FieldFallbackMode:
 			values[i] = new(sql.NullString)
-		case proxy.FieldCreatedAt, proxy.FieldUpdatedAt, proxy.FieldDeletedAt:
+		case proxy.FieldCreatedAt, proxy.FieldUpdatedAt, proxy.FieldDeletedAt, proxy.FieldExpiresAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -156,6 +177,32 @@ func (_m *Proxy) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Status = value.String
 			}
+		case proxy.FieldExpiresAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field expires_at", values[i])
+			} else if value.Valid {
+				_m.ExpiresAt = new(time.Time)
+				*_m.ExpiresAt = value.Time
+			}
+		case proxy.FieldFallbackMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field fallback_mode", values[i])
+			} else if value.Valid {
+				_m.FallbackMode = value.String
+			}
+		case proxy.FieldBackupProxyID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field backup_proxy_id", values[i])
+			} else if value.Valid {
+				_m.BackupProxyID = new(int64)
+				*_m.BackupProxyID = value.Int64
+			}
+		case proxy.FieldExpiryWarnDays:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field expiry_warn_days", values[i])
+			} else if value.Valid {
+				_m.ExpiryWarnDays = int(value.Int64)
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -172,6 +219,11 @@ func (_m *Proxy) Value(name string) (ent.Value, error) {
 // QueryAccounts queries the "accounts" edge of the Proxy entity.
 func (_m *Proxy) QueryAccounts() *AccountQuery {
 	return NewProxyClient(_m.config).QueryAccounts(_m)
+}
+
+// QueryBackupProxy queries the "backup_proxy" edge of the Proxy entity.
+func (_m *Proxy) QueryBackupProxy() *ProxyQuery {
+	return NewProxyClient(_m.config).QueryBackupProxy(_m)
 }
 
 // Update returns a builder for updating this Proxy.
@@ -232,6 +284,22 @@ func (_m *Proxy) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
+	builder.WriteString(", ")
+	if v := _m.ExpiresAt; v != nil {
+		builder.WriteString("expires_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("fallback_mode=")
+	builder.WriteString(_m.FallbackMode)
+	builder.WriteString(", ")
+	if v := _m.BackupProxyID; v != nil {
+		builder.WriteString("backup_proxy_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("expiry_warn_days=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ExpiryWarnDays))
 	builder.WriteByte(')')
 	return builder.String()
 }

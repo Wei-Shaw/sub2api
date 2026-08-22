@@ -31,7 +31,7 @@ export async function list(
   pageSize: number = 20,
   filters?: {
     protocol?: string
-    status?: 'active' | 'inactive'
+    status?: 'active' | 'inactive' | 'expired'
     search?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
@@ -251,7 +251,7 @@ export async function exportData(options?: {
   ids?: number[]
   filters?: {
     protocol?: string
-    status?: 'active' | 'inactive'
+    status?: 'active' | 'inactive' | 'expired'
     search?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'

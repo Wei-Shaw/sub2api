@@ -1,6 +1,6 @@
 .PHONY: build generate test test-unit test-integration test-e2e
 
-VERSION ?= $(shell tr -d '\r\n' < ./cmd/server/VERSION)
+VERSION ?= $(shell ./scripts/resolve-version.sh)
 LDFLAGS ?= -s -w -X main.Version=$(VERSION)
 
 build:

@@ -8,6 +8,18 @@ permissions:
   contents: read
 
 jobs:
+  shell:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check deployment scripts
+        run: |
+          /bin/bash -n deploy/apple-container.sh
+          /bin/bash deploy/tests/apple-container-test.sh
+          /bin/sh deploy/tests/docker-compose-security-test.sh
+          /bin/sh deploy/tests/docker-runtime-resources-test.sh
+          /bin/sh deploy/test-caddyfile-cache.sh
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -20,7 +32,7 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.26.3'
+          go version | grep -q 'go1.26.6'
       - name: Unit tests
         working-directory: backend
         run: make test-unit
@@ -33,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9
       - name: Setup Node.js
@@ -60,7 +72,7 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.26.3'
+          go version | grep -q 'go1.26.6'
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:

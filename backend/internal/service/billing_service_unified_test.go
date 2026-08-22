@@ -60,6 +60,28 @@ func TestCalculateCostUnified_TokenMode(t *testing.T) {
 	require.Equal(t, string(BillingModeToken), cost.BillingMode)
 }
 
+func TestCalculateCostUnified_TokenModeAppliesRateMultiplierToImageTokens(t *testing.T) {
+	bs := newTestBillingService()
+	resolver := NewModelPricingResolver(nil, bs)
+
+	tokens := UsageTokens{InputTokens: 1000, OutputTokens: 600, ImageOutputTokens: 100}
+	cost, err := bs.CalculateCostUnified(CostInput{
+		Ctx:            context.Background(),
+		Model:          "claude-sonnet-4",
+		Tokens:         tokens,
+		RateMultiplier: 3.0,
+		Resolver:       resolver,
+	})
+	require.NoError(t, err)
+
+	textInput := 1000 * 3e-6
+	textOutput := 500 * 15e-6
+	imageOutput := 100 * 15e-6
+	require.InDelta(t, textInput+textOutput+imageOutput, cost.TotalCost, 1e-10)
+	require.InDelta(t, (textInput+textOutput+imageOutput)*3.0, cost.ActualCost, 1e-10)
+	require.InDelta(t, imageOutput, cost.ImageOutputCost, 1e-10)
+}
+
 func TestCalculateCostUnified_PerRequestMode(t *testing.T) {
 	// Set up a ChannelService with a per-request pricing channel
 	cs := newTestChannelServiceWithCache(t, &channelCache{
@@ -145,6 +167,154 @@ func TestCalculateCostUnified_ImageMode(t *testing.T) {
 	require.InDelta(t, 0.20, cost.TotalCost, 1e-10)
 	require.InDelta(t, 0.20, cost.ActualCost, 1e-10)
 	require.Equal(t, string(BillingModeImage), cost.BillingMode)
+}
+
+func channelTimeResolvedForTest(base *ModelPricing, intervals []PricingInterval) *ResolvedPricing {
+	return &ResolvedPricing{
+		Mode:        BillingModeToken,
+		BasePricing: base,
+		Intervals:   intervals,
+		Source:      PricingSourceChannel,
+		channelPricing: &ChannelModelPricing{
+			BillingMode: BillingModeToken,
+			TimePricing: &ChannelTimePricing{
+				Timezone: "Asia/Shanghai",
+				Periods: []ChannelTimePricingPeriod{{
+					StartTime:  "09:00",
+					EndTime:    "12:00",
+					Multiplier: 2,
+				}},
+			},
+		},
+		longContextPricingEnabled: true,
+	}
+}
+
+func TestCalculateCostUnified_ChannelTimePricingScalesBaseAndActualCost(t *testing.T) {
+	billing := NewBillingService(&config.Config{}, nil)
+	resolved := channelTimeResolvedForTest(&ModelPricing{InputPricePerToken: 0.001}, nil)
+
+	cost, err := billing.CalculateCostUnified(CostInput{
+		Ctx:            context.Background(),
+		Model:          "model",
+		Tokens:         UsageTokens{InputTokens: 1000},
+		RateMultiplier: 0.8,
+		Resolver:       &ModelPricingResolver{},
+		Resolved:       resolved,
+		PricingAt:      time.Date(2026, 8, 17, 1, 0, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+	require.InDelta(t, 2.0, cost.InputCost, 1e-12)
+	require.InDelta(t, 2.0, cost.TotalCost, 1e-12)
+	require.InDelta(t, 1.6, cost.ActualCost, 1e-12)
+}
+
+func TestCalculateCostUnified_ChannelTimePricingScalesMatchingInterval(t *testing.T) {
+	intervalInputPrice := 0.003
+	resolved := channelTimeResolvedForTest(
+		&ModelPricing{InputPricePerToken: 0.001},
+		[]PricingInterval{{MinTokens: 0, InputPrice: &intervalInputPrice}},
+	)
+	billing := NewBillingService(&config.Config{}, nil)
+
+	cost, err := billing.CalculateCostUnified(CostInput{
+		Ctx:       context.Background(),
+		Model:     "model",
+		Tokens:    UsageTokens{InputTokens: 1000},
+		Resolver:  &ModelPricingResolver{},
+		Resolved:  resolved,
+		PricingAt: time.Date(2026, 8, 17, 1, 0, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+	require.InDelta(t, 6.0, cost.InputCost, 1e-12)
+	require.InDelta(t, 6.0, cost.TotalCost, 1e-12)
+}
+
+func TestCalculateCostUnified_ChannelTimePricingScalesBaseOnUnmatchedInterval(t *testing.T) {
+	intervalInputPrice := 0.003
+	resolved := channelTimeResolvedForTest(
+		&ModelPricing{InputPricePerToken: 0.001},
+		[]PricingInterval{{MinTokens: 2000, InputPrice: &intervalInputPrice}},
+	)
+	billing := NewBillingService(&config.Config{}, nil)
+
+	cost, err := billing.CalculateCostUnified(CostInput{
+		Ctx:       context.Background(),
+		Model:     "model",
+		Tokens:    UsageTokens{InputTokens: 1000},
+		Resolver:  &ModelPricingResolver{},
+		Resolved:  resolved,
+		PricingAt: time.Date(2026, 8, 17, 1, 0, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+	require.InDelta(t, 2.0, cost.InputCost, 1e-12)
+	require.InDelta(t, 2.0, cost.TotalCost, 1e-12)
+}
+
+func TestCalculateCostUnified_ChannelTimePricingDoesNotApplyToGroupPricing(t *testing.T) {
+	resolved := channelTimeResolvedForTest(&ModelPricing{InputPricePerToken: 0.001}, nil)
+	resolved.Source = PricingSourceGroup
+	billing := NewBillingService(&config.Config{}, nil)
+
+	cost, err := billing.CalculateCostUnified(CostInput{
+		Ctx:       context.Background(),
+		Model:     "model",
+		Tokens:    UsageTokens{InputTokens: 1000},
+		Resolver:  &ModelPricingResolver{},
+		Resolved:  resolved,
+		PricingAt: time.Date(2026, 8, 17, 1, 0, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+	require.InDelta(t, 1.0, cost.TotalCost, 1e-12)
+}
+
+func TestCalculateCostUnified_ChannelTimePricingDoesNotApplyOutsideMatchingTime(t *testing.T) {
+	resolved := channelTimeResolvedForTest(&ModelPricing{InputPricePerToken: 0.001}, nil)
+	billing := NewBillingService(&config.Config{}, nil)
+
+	for _, pricingAt := range []time.Time{
+		time.Time{},
+		time.Date(2026, 8, 17, 5, 0, 0, 0, time.UTC),
+	} {
+		cost, err := billing.CalculateCostUnified(CostInput{
+			Ctx:       context.Background(),
+			Model:     "model",
+			Tokens:    UsageTokens{InputTokens: 1000},
+			Resolver:  &ModelPricingResolver{},
+			Resolved:  resolved,
+			PricingAt: pricingAt,
+		})
+		require.NoError(t, err)
+		require.InDelta(t, 1.0, cost.TotalCost, 1e-12)
+	}
+}
+
+func TestApplyCostBreakdownMultiplierScalesAllMonetaryFields(t *testing.T) {
+	cost := &CostBreakdown{
+		InputCost:                 1,
+		ImageInputCost:            2,
+		OutputCost:                3,
+		ImageOutputCost:           4,
+		CacheCreationCost:         5,
+		CacheReadCost:             6,
+		TotalCost:                 21,
+		ActualCost:                42,
+		BillingMode:               string(BillingModeToken),
+		LongContextBillingApplied: true,
+	}
+
+	applyCostBreakdownMultiplier(cost, 1.5)
+
+	require.InDelta(t, 1.5, cost.InputCost, 1e-12)
+	require.InDelta(t, 3.0, cost.ImageInputCost, 1e-12)
+	require.InDelta(t, 4.5, cost.OutputCost, 1e-12)
+	require.InDelta(t, 6.0, cost.ImageOutputCost, 1e-12)
+	require.InDelta(t, 7.5, cost.CacheCreationCost, 1e-12)
+	require.InDelta(t, 9.0, cost.CacheReadCost, 1e-12)
+	require.InDelta(t, 31.5, cost.TotalCost, 1e-12)
+	require.InDelta(t, 63.0, cost.ActualCost, 1e-12)
+	require.Equal(t, string(BillingModeToken), cost.BillingMode)
+	require.True(t, cost.LongContextBillingApplied)
 }
 
 // TestCalculateCostUnified_RateMultiplierZeroProducesZero 锁定新行为：

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	dbaccount "github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
@@ -88,7 +89,10 @@ func mustCreateGroup(t *testing.T, client *dbent.Client, g *service.Group) *serv
 		SetStatus(g.Status).
 		SetSubscriptionType(g.SubscriptionType).
 		SetRateMultiplier(g.RateMultiplier).
-		SetIsExclusive(g.IsExclusive)
+		SetIsExclusive(g.IsExclusive).
+		SetProfitControlEnabled(g.ProfitControlEnabled).
+		SetProfitMinMargin(g.ProfitMinMargin).
+		SetProfitSafetyBuffer(g.ProfitSafetyBuffer)
 	if g.Description != "" {
 		create.SetDescription(g.Description)
 	}
@@ -232,6 +236,12 @@ func mustCreateAccount(t *testing.T, client *dbent.Client, a *service.Account) *
 	}
 	if !a.UpdatedAt.IsZero() {
 		create.SetUpdatedAt(a.UpdatedAt)
+	}
+	if a.ParentAccountID != nil {
+		create.SetParentAccountID(*a.ParentAccountID)
+	}
+	if a.QuotaDimension != "" {
+		create.SetQuotaDimension(dbaccount.QuotaDimension(a.QuotaDimension))
 	}
 
 	created, err := create.Save(ctx)

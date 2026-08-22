@@ -7,7 +7,6 @@ import { apiClient } from './client'
 import type {
   PaymentConfig,
   SubscriptionPlan,
-  PaymentChannel,
   MethodLimitsResponse,
   CheckoutInfoResponse,
   CreateOrderRequest,
@@ -15,6 +14,14 @@ import type {
   PaymentOrder
 } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
+
+export interface PublicOrderVerifyResult {
+  out_trade_no: string
+  status: string
+  paid: boolean
+  created_at: string
+  expires_at: string
+}
 
 export const paymentAPI = {
   /** Get payment configuration (enabled types, limits, etc.) */
@@ -25,11 +32,6 @@ export const paymentAPI = {
   /** Get available subscription plans */
   getPlans() {
     return apiClient.get<SubscriptionPlan[]>('/payment/plans')
-  },
-
-  /** Get available payment channels */
-  getChannels() {
-    return apiClient.get<PaymentChannel[]>('/payment/channels')
   },
 
   /** Get all checkout page data in a single call */
@@ -69,12 +71,12 @@ export const paymentAPI = {
 
   /** Legacy-compatible public order lookup by out_trade_no */
   verifyOrderPublic(outTradeNo: string) {
-    return apiClient.post<PaymentOrder>('/payment/public/orders/verify', { out_trade_no: outTradeNo })
+    return apiClient.post<PublicOrderVerifyResult>('/payment/public/orders/verify', { out_trade_no: outTradeNo })
   },
 
   /** Resolve an order from a signed resume token without auth */
   resolveOrderPublicByResumeToken(resumeToken: string) {
-    return apiClient.post<PaymentOrder>('/payment/public/orders/resolve', { resume_token: resumeToken })
+    return apiClient.post<PublicOrderVerifyResult>('/payment/public/orders/resolve', { resume_token: resumeToken })
   },
 
   /** Request a refund for a completed order */
