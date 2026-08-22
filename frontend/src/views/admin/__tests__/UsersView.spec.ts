@@ -18,6 +18,14 @@ const {
   getBatchUserAttributes: vi.fn()
 }))
 
+const { routeQuery } = vi.hoisted(() => ({
+  routeQuery: {} as Record<string, string | undefined>
+}))
+
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ query: routeQuery })
+}))
+
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     users: {
@@ -123,6 +131,7 @@ describe('admin UsersView', () => {
   beforeEach(() => {
     vi.useRealTimers()
     localStorage.clear()
+    delete routeQuery.search
 
     listUsers.mockReset()
     getAllGroups.mockReset()
@@ -141,6 +150,46 @@ describe('admin UsersView', () => {
     getBatchUsersUsage.mockResolvedValue({ stats: {} })
     listEnabledDefinitions.mockResolvedValue([])
     getBatchUserAttributes.mockResolvedValue({ values: {} })
+  })
+
+  it('applies the routed search query to the initial user request', async () => {
+    routeQuery.search = 'risk@example.com'
+
+    mount(UsersView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: { template: '<div><slot name="filters" /><slot name="table" /></div>' },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: true,
+          EmptyState: true,
+          GroupBadge: true,
+          Select: true,
+          UserAttributesConfigModal: true,
+          UserConcurrencyCell: true,
+          UserCreateModal: true,
+          UserEditModal: true,
+          BulkEditUserModal: true,
+          UserPlatformQuotaModal: true,
+          UserApiKeysModal: true,
+          UserAllowedGroupsModal: true,
+          UserBalanceModal: true,
+          UserBalanceHistoryModal: true,
+          GroupReplaceModal: true,
+          Icon: true,
+          Teleport: true
+        }
+      }
+    })
+    await flushPromises()
+
+    expect(listUsers).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ search: 'risk@example.com' }),
+      expect.any(Object)
+    )
   })
 
   afterEach(() => {

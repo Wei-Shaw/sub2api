@@ -54,6 +54,16 @@
               <Icon name="refresh" size="sm" />
               {{ t('admin.accounts.resetQuota') }}
             </button>
+            <RouterLink
+              v-if="hasUserIsolation"
+              :to="{ path: '/admin/user-isolation', query: { account_id: String(account.id) } }"
+              class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+              data-test="locate-risk-user"
+              @click="$emit('close')"
+            >
+              <Icon name="user" size="sm" class="text-amber-500" />
+              {{ t('admin.userIsolationLookup.title') }}
+            </RouterLink>
           </template>
         </div>
       </div>
@@ -106,6 +116,7 @@ const hasQuotaLimit = computed(() => {
     (props.account?.quota_weekly_limit ?? 0) > 0
   )
 })
+const hasUserIsolation = computed(() => props.account?.extra?.user_isolation_enabled === true)
 
 const handleKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Escape') emit('close')

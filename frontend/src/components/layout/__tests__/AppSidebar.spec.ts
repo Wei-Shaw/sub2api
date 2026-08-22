@@ -53,3 +53,11 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
 })
+
+describe('AppSidebar risk user lookup navigation', () => {
+  it('keeps the lookup visible independently from the risk-control feature flag', () => {
+    expect(componentSource).toContain("{ path: '/admin/user-isolation', label: t('nav.userIsolationLookup'), icon: UserIcon }")
+    expect(componentSource).toContain("{ path: '/admin/risk-control', label: t('nav.contentModeration'), icon: ShieldIcon, featureFlag: flagRiskControl }")
+    expect(componentSource).not.toContain("expandOnly: true,\n      featureFlag: flagRiskControl,\n      children:")
+  })
+})

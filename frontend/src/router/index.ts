@@ -623,6 +623,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/user-isolation',
+    name: 'AdminUserIsolation',
+    component: () => import('@/views/admin/UserIsolationView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Risk User Lookup',
+      titleKey: 'admin.userIsolationLookup.title',
+      descriptionKey: 'admin.userIsolationLookup.description'
+    }
+  },
+  {
     path: '/admin/usage',
     name: 'AdminUsage',
     component: () => import('@/views/admin/UsageView.vue'),
