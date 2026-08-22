@@ -36,7 +36,7 @@ func computeDashboardHealthScoreWithThresholds(now time.Time, overview *OpsDashb
 }
 
 // computeBusinessHealth calculates business health score (0-100)
-// Components: Error Rate (50%) + TTFT (50%)
+// Components: Error Rate (40%) + TTFT (40%) + SLA (20%)
 func computeBusinessHealth(overview *OpsDashboardOverview, thresholds *OpsMetricThresholds) float64 {
 	if thresholds == nil {
 		thresholds = defaultOpsMetricThresholds()
@@ -71,8 +71,27 @@ func computeBusinessHealth(overview *OpsDashboardOverview, thresholds *OpsMetric
 		ttftScore = scoreHighIsBad(p99, ttftThreshold*2, ttftThreshold*6)
 	}
 
-	// Weighted combination: 50% error rate + 50% TTFT
-	return errorScore*0.5 + ttftScore*0.5
+	slaScore := 100.0
+	hasSLASample := overview.RequestCountSLA > 0
+	if hasSLASample {
+		slaPercent := clampFloat64(overview.SLA*100, 0, 100)
+		slaThreshold := clampFloat64(
+			thresholdOrDefault(thresholds.SLAPercentMin, defaults.SLAPercentMin),
+			0,
+			100,
+		)
+		// Keep the configured boundary authoritative, while allowing the score
+		// to decay over a small deficit rather than dropping discontinuously.
+		slaZeroDeficit := math.Max(0.1, slaThreshold*0.02)
+		slaScore = scoreHighIsBad(slaThreshold-slaPercent, 0, slaZeroDeficit)
+	}
+
+	if !hasSLASample {
+		// Preserve the historical error/TTFT split when this window has no SLA
+		// sample; otherwise the mere absence of SLA data would rescale both.
+		return errorScore*0.5 + ttftScore*0.5
+	}
+	return errorScore*0.4 + ttftScore*0.4 + slaScore*0.2
 }
 
 func scoreHighIsBad(v float64, goodAtOrBelow float64, zeroAtOrAbove float64) float64 {

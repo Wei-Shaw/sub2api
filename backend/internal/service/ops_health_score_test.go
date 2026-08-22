@@ -74,6 +74,7 @@ func TestComputeDashboardHealthScore_UsesConfiguredThresholds(t *testing.T) {
 		ErrorCountTotal:   3,
 		ErrorCountSLA:     3,
 		UpstreamErrorRate: 0.0254,
+		SLA:               0.995,
 		TTFT:              OpsPercentiles{P99: &ttftP99},
 		SystemMetrics: &OpsSystemMetricsSnapshot{
 			DBOK:               boolPtr(true),
@@ -88,10 +89,12 @@ func TestComputeDashboardHealthScore_UsesConfiguredThresholds(t *testing.T) {
 	reqErr := 20.0
 	upstreamErr := 20.0
 	ttftMax := 25_000.0
+	slaMin := 90.0
 	tunedScore := computeDashboardHealthScoreWithThresholds(time.Now().UTC(), ov, &OpsMetricThresholds{
 		RequestErrorRatePercentMax:  &reqErr,
 		UpstreamErrorRatePercentMax: &upstreamErr,
 		TTFTp99MsMax:                &ttftMax,
+		SLAPercentMin:               &slaMin,
 	})
 
 	require.Greater(t, tunedScore, defaultScore)
@@ -194,8 +197,8 @@ func TestComputeDashboardHealthScore_Comprehensive(t *testing.T) {
 					MemoryUsagePercent: float64Ptr(75),
 				},
 			},
-			wantMin: 96,
-			wantMax: 97,
+			wantMin: 80,
+			wantMax: 85,
 		},
 		{
 			name: "DB failure",
@@ -270,8 +273,8 @@ func TestComputeDashboardHealthScore_Comprehensive(t *testing.T) {
 					MemoryUsagePercent: float64Ptr(30),
 				},
 			},
-			wantMin: 84,
-			wantMax: 85,
+			wantMin: 70,
+			wantMax: 75,
 		},
 		{
 			name: "combined failures - business healthy + infra degraded",
@@ -406,6 +409,46 @@ func TestComputeBusinessHealth(t *testing.T) {
 			require.LessOrEqual(t, score, 100.0, "score must be <= 100")
 		})
 	}
+}
+
+func TestComputeBusinessHealthUsesConfiguredSLAThreshold(t *testing.T) {
+	t.Parallel()
+
+	healthyOverview := &OpsDashboardOverview{
+		RequestCountSLA:   100,
+		SLA:               0.995,
+		ErrorRate:         0,
+		UpstreamErrorRate: 0,
+	}
+	require.InDelta(t, 100.0, computeBusinessHealth(healthyOverview, defaultOpsMetricThresholds()), 1e-9)
+
+	belowOverview := &OpsDashboardOverview{
+		RequestCountSLA:   100,
+		SLA:               0.9949,
+		ErrorRate:         0,
+		UpstreamErrorRate: 0,
+	}
+	require.Less(t, computeBusinessHealth(belowOverview, defaultOpsMetricThresholds()), 100.0)
+
+	customThreshold := 90.0
+	custom := &OpsMetricThresholds{
+		SLAPercentMin: &customThreshold,
+	}
+	atCustomOverview := &OpsDashboardOverview{
+		RequestCountSLA:   100,
+		SLA:               0.90,
+		ErrorRate:         0,
+		UpstreamErrorRate: 0,
+	}
+	require.InDelta(t, 100.0, computeBusinessHealth(atCustomOverview, custom), 1e-9)
+
+	belowCustomOverview := &OpsDashboardOverview{
+		RequestCountSLA:   100,
+		SLA:               0.899,
+		ErrorRate:         0,
+		UpstreamErrorRate: 0,
+	}
+	require.Less(t, computeBusinessHealth(belowCustomOverview, custom), 100.0)
 }
 
 func TestComputeInfraHealth(t *testing.T) {

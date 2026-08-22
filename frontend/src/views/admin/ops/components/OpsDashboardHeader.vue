@@ -11,6 +11,7 @@ import type { OpsRequestDetailsPreset } from './OpsRequestDetailsModal.vue'
 import { useAdminSettingsStore } from '@/stores'
 import { formatNumber } from '@/utils/format'
 import { formatMemorySizeMB } from '../utils/opsFormatters'
+import { getSLAProgressPercent, getSLAThresholdLevel } from '../utils/slaThresholds'
 
 type RealtimeWindow = '1min' | '5min' | '30min' | '1h'
 
@@ -221,21 +222,6 @@ function openErrorDetails(kind: 'request' | 'upstream') {
 // --- Threshold checking helpers ---
 type ThresholdLevel = 'normal' | 'warning' | 'critical'
 
-function getSLAThresholdLevel(slaPercent: number | null): ThresholdLevel {
-  if (slaPercent == null) return 'normal'
-  const threshold = props.thresholds?.sla_percent_min
-  if (threshold == null) return 'normal'
-
-  // SLA is "higher is better":
-  // - below threshold => critical
-  // - within +0.1% buffer => warning
-  const warningBuffer = 0.1
-
-  if (slaPercent < threshold) return 'critical'
-  if (slaPercent < threshold + warningBuffer) return 'warning'
-  return 'normal'
-}
-
 function getTTFTThresholdLevel(ttftMs: number | null): ThresholdLevel {
   if (ttftMs == null) return 'normal'
   const threshold = props.thresholds?.ttft_p99_ms_max
@@ -397,6 +383,14 @@ const slaPercent = computed(() => {
   if ((overview.value?.request_count_sla ?? 0) <= 0) return null
   return v * 100
 })
+
+const slaThresholdLevel = computed(() =>
+  getSLAThresholdLevel(slaPercent.value, props.thresholds?.sla_percent_min)
+)
+
+const slaProgressPercent = computed(() =>
+  getSLAProgressPercent(slaPercent.value, props.thresholds?.sla_percent_min)
+)
 
 const errorRatePercent = computed(() => {
   const v = overview.value?.error_rate
@@ -594,18 +588,21 @@ const diagnosisReport = computed<DiagnosisItem[]>(() => {
   }
 
   // SLA diagnostics
-  const slaPct = (ov.sla ?? 0) * 100
-  if (slaPct < 90) {
+  const slaPct =
+    typeof ov.sla === 'number' && (ov.request_count_sla ?? 0) > 0 ? ov.sla * 100 : null
+  const slaLabel = slaPct?.toFixed(2) ?? '-'
+  const slaLevel = getSLAThresholdLevel(slaPct, props.thresholds?.sla_percent_min)
+  if (slaLevel === 'critical') {
     report.push({
       type: 'critical',
-      message: t('admin.ops.diagnosis.slaCritical', { sla: slaPct.toFixed(2) }),
+      message: t('admin.ops.diagnosis.slaCritical', { sla: slaLabel }),
       impact: t('admin.ops.diagnosis.slaCriticalImpact'),
       action: t('admin.ops.diagnosis.slaCriticalAction')
     })
-  } else if (slaPct < 98) {
+  } else if (slaLevel === 'warning') {
     report.push({
       type: 'warning',
-      message: t('admin.ops.diagnosis.slaLow', { sla: slaPct.toFixed(2) }),
+      message: t('admin.ops.diagnosis.slaLow', { sla: slaLabel }),
       impact: t('admin.ops.diagnosis.slaLowImpact'),
       action: t('admin.ops.diagnosis.slaLowAction')
     })
@@ -1256,7 +1253,7 @@ function handleToolbarRefresh() {
             <div class="flex items-center gap-2">
               <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.sla') }}</span>
               <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.sla')" />
-              <span class="h-1.5 w-1.5 rounded-full" :class="getSLAThresholdLevel(slaPercent) === 'critical' ? 'bg-red-500' : getSLAThresholdLevel(slaPercent) === 'warning' ? 'bg-yellow-500' : 'bg-green-500'"></span>
+              <span class="h-1.5 w-1.5 rounded-full" :class="slaThresholdLevel === 'critical' ? 'bg-red-500' : slaThresholdLevel === 'warning' ? 'bg-yellow-500' : 'bg-green-500'"></span>
             </div>
             <button
               v-if="!props.fullscreen"
@@ -1267,11 +1264,11 @@ function handleToolbarRefresh() {
               {{ t('admin.ops.requestDetails.details') }}
             </button>
           </div>
-          <div class="mt-2 text-3xl font-black" :class="getThresholdColorClass(getSLAThresholdLevel(slaPercent))">
+          <div class="mt-2 text-3xl font-black" :class="getThresholdColorClass(slaThresholdLevel)">
             {{ slaPercent == null ? '-' : `${slaPercent.toFixed(3)}%` }}
           </div>
           <div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
-            <div class="h-full transition-all" :class="getSLAThresholdLevel(slaPercent) === 'critical' ? 'bg-red-500' : getSLAThresholdLevel(slaPercent) === 'warning' ? 'bg-yellow-500' : 'bg-green-500'" :style="{ width: `${Math.max((slaPercent ?? 0) - 90, 0) * 10}%` }"></div>
+            <div class="h-full transition-all" :class="slaThresholdLevel === 'critical' ? 'bg-red-500' : slaThresholdLevel === 'warning' ? 'bg-yellow-500' : 'bg-green-500'" :style="{ width: `${slaProgressPercent}%` }"></div>
           </div>
           <div class="mt-3 text-xs">
             <div class="flex justify-between">
