@@ -125,11 +125,21 @@ func RegisterAdminRoutes(
 		// 独立提示词输入审计
 		registerPromptAuditRoutes(admin, h)
 
+		// 上游用户隔离风险定位
+		registerUserIsolationRoutes(admin, h)
+
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+	}
+}
+
+func registerUserIsolationRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	userIsolation := admin.Group("/user-isolation")
+	{
+		userIsolation.POST("/lookup", h.Admin.UserIsolation.Lookup)
 	}
 }
 
