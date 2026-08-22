@@ -232,6 +232,20 @@ REDACTED)
 			FirstTokenMs:    scan.FirstTokenMs,
 	REDACTED, fmt.Errorf("stream usage incomplete: %w", scan.Err)
 REDACTED
+	if err := state.ValidateToolCallArguments(); err != nil {
+		return &OpenAIForwardResult{
+			RequestID:       requestID,
+			Usage:           scan.Usage,
+			Model:           originalModel,
+			BillingModel:    billingModel,
+			UpstreamModel:   upstreamModel,
+			ReasoningEffort: reasoningEffort,
+			ServiceTier:     serviceTier,
+			Stream:          true,
+			Duration:        time.Since(startTime),
+			FirstTokenMs:    scan.FirstTokenMs,
+	REDACTED, fmt.Errorf("invalid tool call arguments from upstream: %w", err)
+REDACTED
 
 	finalEvents := apicompat.FinalizeChatCompletionsResponsesStream(state)
 	s.cacheReasoningItemsFromEvents(finalEvents)
