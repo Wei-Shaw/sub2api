@@ -2,7 +2,7 @@
   <AppLayout>
     <TablePageLayout compact class="account-page-compact">
       <template #filters>
-        <div class="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto">
+        <div class="flex min-w-0 flex-col gap-2 lg:flex-row lg:flex-nowrap lg:items-center">
           <AccountTableFilters
             v-model:searchQuery="params.search"
             :filters="params"
@@ -12,6 +12,7 @@
             @update:searchQuery="debouncedReload"
           />
           <AccountTableActions
+            class="self-end lg:self-auto"
             :loading="loading"
             @refresh="handleManualRefresh"
             @create="showCreate = true"

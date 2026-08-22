@@ -11,7 +11,7 @@
 - 探测请求和透支期请求都可能产生真实上游用量和费用。
 - 此行为可能不符合上游服务条款。部署者必须自行确认合规性，并承担账号限制、服务中断等风险。
 - 官方 Sub2API 安装脚本和 `weishaw/sub2api:latest` 镜像不包含本 Fork 的透支功能。
-- 本 Fork 的后台更新检查读取 `DeanZFC/sub2api-overdraft`，不会把官方 Sub2API Release 当作本项目更新。
+- 本 Fork 的后台更新检查读取 `clansty/sub2api`，不会把官方 Sub2API Release 当作本项目更新。
 
 ## 功能范围
 
@@ -45,12 +45,12 @@
 ```bash
 sudo mkdir -p /opt
 cd /opt
-sudo git clone https://github.com/DeanZFC/sub2api-overdraft.git
-sudo chown -R "$(id -u):$(id -g)" /opt/sub2api-overdraft
-cd /opt/sub2api-overdraft/deploy
+sudo git clone https://github.com/clansty/sub2api.git
+sudo chown -R "$(id -u):$(id -g)" /opt/sub2api
+cd /opt/sub2api/deploy
 ```
 
-仓库默认分支是 `codex-overdraft`。确认当前分支：
+仓库默认分支是 `clansty`。确认当前分支：
 
 ```bash
 git branch --show-current
@@ -59,7 +59,7 @@ git branch --show-current
 预期输出：
 
 ```text
-codex-overdraft
+clansty
 ```
 
 ### 2. 创建环境配置
@@ -148,7 +148,7 @@ docker compose \
 Compose 本地目录部署的实际配置通常位于：
 
 ```text
-/opt/sub2api-overdraft/deploy/data/config.yaml
+/opt/sub2api/deploy/data/config.yaml
 ```
 
 它在容器内对应：
@@ -193,17 +193,17 @@ git remote -v
 有未提交代码时先保存：
 
 ```bash
-git stash push -u -m "server changes before codex-overdraft switch"
+git stash push -u -m "server changes before clansty switch"
 ```
 
 然后连接本 Fork 并切换到公开分支：
 
 ```bash
-git remote set-url origin https://github.com/DeanZFC/sub2api-overdraft.git
+git remote set-url origin https://github.com/clansty/sub2api.git
 git fetch origin
-git switch codex-overdraft 2>/dev/null || \
-  git switch -c codex-overdraft --track origin/codex-overdraft
-git pull --ff-only origin codex-overdraft
+git switch clansty 2>/dev/null || \
+  git switch -c clansty --track origin/clansty
+git pull --ff-only origin clansty
 ```
 
 如果 Git 报 `detected dubious ownership`，确认目录确实是本项目后再执行：
@@ -362,7 +362,7 @@ sudo systemctl reload nginx
 
 ## 日常升级本 Fork
 
-源码镜像的当前版本来自仓库根目录的 `FORK_VERSION`。后台检查更新时读取 GitHub 上 `codex-overdraft` 分支的同名文件：远端版本更高时显示更新提示，版本一致时显示最新。源码构建不会执行二进制在线更新或在线回退，以免官方程序覆盖 Fork 功能。
+源码镜像的当前版本来自仓库根目录的 `FORK_VERSION`。后台检查更新时读取 GitHub 上 `clansty` 分支的同名文件：远端版本更高时显示更新提示，版本一致时显示最新。源码构建不会执行二进制在线更新或在线回退，以免官方程序覆盖 Fork 功能。
 
 运行数据均位于被 Git 忽略的目录中，正常 `git pull` 不会覆盖：
 
@@ -376,10 +376,10 @@ deploy/redis_data/
 升级步骤：
 
 ```bash
-cd /opt/sub2api-overdraft
+cd /opt/sub2api
 git status --short
-git switch codex-overdraft
-git pull --ff-only origin codex-overdraft
+git switch clansty
+git pull --ff-only origin clansty
 
 cd deploy
 docker compose \
@@ -388,22 +388,22 @@ docker compose \
   up -d --build
 ```
 
-如果服务器目录是 `/opt/sub2api`，只需替换第一条路径。升级完成后重新执行“判断功能是否生效”中的镜像、环境变量和日志检查。
+如果服务器使用了其他目录，只需替换第一条路径。升级完成后重新执行“判断功能是否生效”中的镜像、环境变量和日志检查。
 
-更新后可在管理后台点击刷新，版本应显示为类似 `v0.1.179-overdraft.1`，更新方式应提示源码构建使用 `git pull`。也可以直接检查容器内二进制版本：
+更新后可在管理后台点击刷新，版本应显示为 `v0.1.179-custom`，更新方式应提示源码构建使用 `git pull`。也可以直接检查容器内二进制版本：
 
 ```bash
 docker exec sub2api /app/sub2api -version
 ```
 
-维护者发布新的源码版本时必须递增 `FORK_VERSION`，例如从 `0.1.177-overdraft.3` 改为 `0.1.177-overdraft.4`。同步到新的上游 Sub2API 版本时，使用 `0.1.179-overdraft.1` 这样的版本号。
+维护者发布新的源码版本时必须递增 `FORK_VERSION`，例如从 `0.1.179-custom` 改为 `0.1.179-custom.1`。同步到新的上游 Sub2API 版本时，先同步 `backend/cmd/server/VERSION` 中的基础版本号。
 
 ## 合并 Sub2API 官方更新
 
 本仓库保留两个分支角色：
 
 - `main`：尽量跟随官方 `Wei-Shaw/sub2api`，作为上游基线。
-- `codex-overdraft`：本项目默认分支，包含透支功能和公开文档。
+- `clansty`：本项目默认分支，包含透支功能和公开文档。
 
 维护者可这样合并官方更新：
 
@@ -411,7 +411,7 @@ docker exec sub2api /app/sub2api -version
 git remote get-url upstream >/dev/null 2>&1 || \
   git remote add upstream https://github.com/Wei-Shaw/sub2api.git
 git fetch upstream
-git switch codex-overdraft
+git switch clansty
 git merge upstream/main
 ```
 
@@ -434,7 +434,7 @@ pnpm exec vitest run \
 
 cd ..
 git diff --check
-git push origin codex-overdraft
+git push origin clansty
 ```
 
 更详细的实现文件和升级核对清单见 [CODEX_QUOTA_OVERDRAFT_CUSTOMIZATION.md](CODEX_QUOTA_OVERDRAFT_CUSTOMIZATION.md)。
@@ -463,7 +463,7 @@ docker compose \
 数据库建议使用 `pg_dump` 做一致性备份：
 
 ```bash
-cd /opt/sub2api-overdraft/deploy
+cd /opt/sub2api/deploy
 mkdir -p backups
 docker compose \
   -f docker-compose.local.yml \
@@ -495,7 +495,7 @@ docker compose \
 jsonb_build_object($1::text, $2::jsonb)
 ```
 
-拉取最新 `codex-overdraft` 分支并使用 `--build --force-recreate` 重建应用容器。
+拉取最新 `clansty` 分支并使用 `--build --force-recreate` 重建应用容器。
 
 ### API 返回 503 `no available accounts`
 

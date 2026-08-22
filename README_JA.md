@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="assets/logo.svg" alt="Sub2API Logo" width="128" />
+<img src="assets/logo.svg" alt="sub2api-overdraft Logo" width="128" />
 
-# Sub2API
+# sub2api-overdraft
 
 [![Go](https://img.shields.io/badge/Go-1.27.0-00ADD8.svg)](https://golang.org/)
 [![Vue](https://img.shields.io/badge/Vue-3.4+-4FC08D.svg)](https://vuejs.org/)
@@ -10,13 +10,38 @@
 [![Redis](https://img.shields.io/badge/Redis-7+-DC382D.svg)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
 
-<a href="https://trendshift.io/repositories/21823" target="_blank"><img src="https://trendshift.io/api/badge/repositories/21823" alt="Wei-Shaw%2Fsub2api | Trendshift" width="250" height="55"/></a>
-
-**サブスクリプションクォータ配分のための AI API ゲートウェイプラットフォーム**
+**Codex 5h / 7d クォータのオーバードラフト検証・集計・回復機能を追加した AI API ゲートウェイ**
 
 [English](README.md) | [中文](README_CN.md) | 日本語
 
 </div>
+
+> [!IMPORTANT]
+> これは [Wei-Shaw/sub2api](https://github.com/Wei-Shaw/sub2api) の非公式 Fork であり、Sub2API の公式リリースではありません。公式インストールスクリプトと `weishaw/sub2api:latest` イメージには、本 Fork のオーバードラフト機能は含まれていません。
+
+## Fork の追加機能
+
+- Codex の 5h または 7d クォータが 100% に達した後、最大 5 回の実リクエストで利用可否を検証します。
+- 検証成功後もアカウントをスケジュール対象に保ち、リクエスト数、Token、コスト、回復時刻を表示します。
+- `pending`、`passed`、`failed`、`inconclusive`、`recovered` の状態を管理画面と PostgreSQL に保存します。
+- 判定不能な検証は 1 分、3 分、10 分後に再試行し、再起動後も PostgreSQL の保存状態から再開します。
+- PostgreSQL の atomic claim により複数インスタンスで重複検証を防ぎ、最終失敗・アカウント停止・スケジューラ通知を同一トランザクションで保存します。追加の schema migration は不要です。
+
+ソースビルド、既存環境からの移行、検証、更新、ロールバック、Nginx、トラブルシューティングについては、**[中国語のデプロイ・運用ガイド](CODEX_OVERDRAFT_DEPLOYMENT_CN.md)** を参照してください。
+
+```bash
+git clone https://github.com/clansty/sub2api.git
+cd sub2api/deploy
+cp .env.example .env
+# .env に POSTGRES_PASSWORD、JWT_SECRET、TOTP_ENCRYPTION_KEY を設定
+mkdir -p data postgres_data redis_data
+docker compose \
+  -f docker-compose.local.yml \
+  -f docker-compose.overdraft.yml \
+  up -d --build
+```
+
+本 Fork は [GNU LGPL-3.0](LICENSE) を継承し、上流の著作権表示を保持します。以下の機能、デプロイ、スポンサー情報は上流 Sub2API の文書を継承したものであり、上流のスポンサーが本 Fork を支援または承認していることを意味しません。
 
 ## ⚠️ 重要なお知らせ
 

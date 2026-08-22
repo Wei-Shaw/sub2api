@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="assets/logo.svg" alt="Sub2API Logo" width="128" />
+<img src="assets/logo.svg" alt="sub2api-overdraft Logo" width="128" />
 
-# Sub2API
+# sub2api-overdraft
 
 [![Go](https://img.shields.io/badge/Go-1.27.0-00ADD8.svg)](https://golang.org/)
 [![Vue](https://img.shields.io/badge/Vue-3.4+-4FC08D.svg)](https://vuejs.org/)
@@ -10,13 +10,44 @@
 [![Redis](https://img.shields.io/badge/Redis-7+-DC382D.svg)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
 
-<a href="https://trendshift.io/repositories/21823" target="_blank"><img src="https://trendshift.io/api/badge/repositories/21823" alt="Wei-Shaw%2Fsub2api | Trendshift" width="250" height="55"/></a>
-
-**AI API Gateway Platform for Subscription Quota Distribution**
+**AI API gateway with Codex 5h / 7d quota overdraft probing, tracking, and recovery**
 
 English | [中文](README_CN.md) | [日本語](README_JA.md)
 
 </div>
+
+> [!IMPORTANT]
+> This is an unofficial fork of [Wei-Shaw/sub2api](https://github.com/Wei-Shaw/sub2api), not an official Sub2API release. The upstream install script and `weishaw/sub2api:latest` image do not contain the overdraft feature. Build this fork from source as documented below.
+
+## Fork Features
+
+- Pre-arms ordinary OAuth text traffic with the overdraft payload at 95% usage and uses successful business traffic as direct evidence after usage reaches 100%.
+- Marks an injected request's explicit quota 429 as terminal for that cycle; when business evidence is unavailable, runs at most one independent probe per quota cycle.
+- Keeps an account schedulable after a successful probe and tracks overdraft requests, tokens, cost, and recovery for both windows independently.
+- Exposes `pending`, `passed`, `failed`, `inconclusive`, and `recovered` states in the admin UI and PostgreSQL.
+- Treats transient 429s, timeouts, network failures, and 5xx responses as inconclusive without automatic background retries.
+- Uses an atomic PostgreSQL claim for multi-instance deployments and atomically commits terminal failure, account pause, and scheduler notification without a schema migration.
+- Supports an immediate configuration rollback to the upstream scheduling behavior.
+
+See the **[Chinese deployment and operations guide](CODEX_OVERDRAFT_DEPLOYMENT_CN.md)** for source builds, migration, verification, upgrades, rollback, Nginx, and troubleshooting. Maintainers should also read [CODEX_QUOTA_OVERDRAFT_CUSTOMIZATION.md](CODEX_QUOTA_OVERDRAFT_CUSTOMIZATION.md).
+
+Quick start:
+
+```bash
+git clone https://github.com/clansty/sub2api.git
+cd sub2api/deploy
+cp .env.example .env
+# Set POSTGRES_PASSWORD, JWT_SECRET, and TOTP_ENCRYPTION_KEY in .env
+mkdir -p data postgres_data redis_data
+docker compose \
+  -f docker-compose.local.yml \
+  -f docker-compose.overdraft.yml \
+  up -d --build
+```
+
+This fork remains licensed under [GNU LGPL-3.0](LICENSE) and preserves upstream attribution. The overdraft behavior may conflict with upstream provider terms and may incur real usage or account restrictions. Operators are responsible for compliance and risk.
+
+The remaining feature, deployment, sponsor, and license text is inherited from the upstream Sub2API documentation. Upstream sponsorship does not imply sponsorship or endorsement of this fork.
 
 ## ⚠️ Important Notice
 
@@ -640,32 +671,6 @@ Or set `GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED=true` in the environment.
 Use `http_bridge` for client-WebSocket/upstream-HTTP operation when rolling out
 or mitigating upstream WebSocket issues.
 
-#### Force OpenAI upstream HTTP/SSE
-
-When an egress proxy or network repeatedly reconnects OpenAI Responses
-WebSockets, set the global fallback in the persisted deployment configuration:
-
-```yaml
-gateway:
-  openai_ws:
-    force_http: true
-```
-
-For Compose and Apple container deployments, the equivalent `.env` setting is:
-
-```bash
-GATEWAY_OPENAI_WS_FORCE_HTTP=true
-```
-
-This selects HTTP/SSE for OpenAI upstream Responses traffic that would
-otherwise use WebSocket. It does not change the client-facing protocol or force
-HTTP/1.1; configure `gateway.openai_http2.enabled` (or
-`GATEWAY_OPENAI_HTTP2_ENABLED=false`) separately when a proxy is incompatible
-with HTTP/2. Unlike the account-level `http_bridge` mode, this global fallback
-takes effect without enabling `mode_router_v2_enabled`. Keep the setting in the
-deployment's persisted `.env` or `config.yaml`, rather than inside a running
-container, so it is read again after an image update or container recreation.
-
 #### ⚠️ Important: Creating the Admin Account
 
 The initial admin account is **only created via the setup wizard** (served at `http://<host>:8080` on first run). The `default.admin_email` / `default.admin_password` fields in `config.yaml` are **not used** to create it — they exist in the template for historical reasons.
@@ -744,7 +749,7 @@ Sub2API supports both Grok subscription accounts through xAI OAuth and standard 
 - Codex CLI style Responses WebSocket ingress is accepted on the Responses targets and bridged to xAI HTTP/SSE Responses upstream
 - Text models: `grok-4.5`, `grok-4.3`, `grok-build-0.1`, `grok-composer-2.5-fast`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning`, and `grok-4.20-multi-agent-0309`
 - Media targets for Grok groups: `/v1/images/generations`, `/images/generations`, `/v1/images/edits`, `/images/edits`, `/v1/videos/generations`, `/videos/generations`, `/v1/videos/edits`, `/videos/edits`, `/v1/videos/extensions`, `/videos/extensions`, `/v1/videos/{request_id}`, and `/videos/{request_id}`. Generation, editing, and extension requests require the group image-generation permission.
-- Media models: `grok-imagine`, `grok-imagine-image-quality`, `grok-imagine-image`, `grok-imagine-image-2.0`, `grok-imagine-edit`, `grok-imagine-video`, and `grok-imagine-video-1.5`
+- Media models: `grok-imagine`, `grok-imagine-image-quality`, `grok-imagine-image`, `grok-imagine-edit`, `grok-imagine-video`, and `grok-imagine-video-1.5`
 - JSON image-edit and video-generation requests accept image references in `image`, `images`, `reference_images`, and `mask` objects. Use `url` for xAI-compatible payloads; the legacy `image_url` field remains accepted and is normalized to `url` before forwarding.
 - Out of scope for this provider: TTS, transcription, browser automation, cookies, and Grok web scraping
 

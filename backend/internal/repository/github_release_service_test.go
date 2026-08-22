@@ -3,6 +3,7 @@ package repository
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -391,6 +392,39 @@ func (s *GitHubReleaseServiceSuite) TestFetchRecentReleases_Success() {
 	require.Len(s.T(), releases[0].Assets, 1)
 	require.True(s.T(), releases[1].Prerelease)
 	require.Equal(s.T(), "v1.0.0", releases[2].TagName)
+}
+
+func (s *GitHubReleaseServiceSuite) TestFetchRepositoryFile_Success() {
+	encoded := base64.StdEncoding.EncodeToString([]byte("0.1.176-overdraft.1\n"))
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(s.T(), "/repos/clansty/sub2api/contents/FORK_VERSION", r.URL.Path)
+		require.Equal(s.T(), "clansty", r.URL.Query().Get("ref"))
+		require.Equal(s.T(), "application/vnd.github.v3+json", r.Header.Get("Accept"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"encoding":"base64","content":"` + encoded + `"}`))
+	}))
+	s.client = &githubReleaseClient{
+		httpClient:         &http.Client{Transport: &testTransport{testServerURL: s.srv.URL}},
+		downloadHTTPClient: &http.Client{},
+	}
+
+	content, err := s.client.FetchRepositoryFile(
+		context.Background(),
+		"clansty/sub2api",
+		"clansty",
+		"FORK_VERSION",
+	)
+
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), "0.1.176-overdraft.1\n", string(content))
+}
+
+func (s *GitHubReleaseServiceSuite) TestFetchRepositoryFile_RejectsTraversal() {
+	s.client = newTestGitHubReleaseClient()
+
+	_, err := s.client.FetchRepositoryFile(context.Background(), "test/repo", "main", "../secret")
+
+	require.Error(s.T(), err)
 }
 
 func (s *GitHubReleaseServiceSuite) TestFetchRecentReleases_Non200() {
