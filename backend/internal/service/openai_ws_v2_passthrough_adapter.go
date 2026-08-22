@@ -780,6 +780,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, blocked.Message, blocked)
 	}
 	firstClientMessage = updatedFirst
+	isolatedFirst, isolationErr := applyManagedUserIsolation(ctx, s.cfg, account, userIsolationEndpointResponses, firstClientMessage)
+	if isolationErr != nil {
+		return isolationErr
+	}
+	firstClientMessage = isolatedFirst
 
 	// 在 policy filter 之后再提取 service_tier / reasoning_effort 用于
 	// usage 上报：filter
@@ -1076,6 +1081,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				payload = s.ReplaceModelInBody(payload, model)
 			}
 			out, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, model, payload)
+			if policyErr == nil && blocked == nil && isResponseCreate {
+				isolated, isolationErr := applyManagedUserIsolation(ctx, s.cfg, account, userIsolationEndpointResponses, out)
+				if isolationErr != nil {
+					return payload, nil, isolationErr
+				}
+				out = isolated
+			}
 			// 多轮 passthrough usage：仅在成功（non-block / non-err）
 			// 的 response.create 帧上更新 usageMeta，使用
 			// filter 处理后的 payload，与首帧 policy-after-extract 语义

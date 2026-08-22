@@ -71,6 +71,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	}
 	setOpenAIWSTurnMetadata(payload, turnMetadata)
 	applyStagedCodexFingerprintClientMetadata(c, account, payload)
+	if err := applyManagedUserIsolationToMap(ctx, s.cfg, account, userIsolationEndpointResponses, payload); err != nil {
+		return nil, wrapOpenAIWSFallback("user_isolation", err)
+	}
 	previousResponseID := openAIWSPayloadString(payload, "previous_response_id")
 	previousResponseIDKind := ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
 	promptCacheKey := strings.TrimSpace(clientPromptCacheKey)

@@ -180,6 +180,12 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	userAgent string,
 	grokCacheIdentity string,
 ) (*http.Response, error) {
+	isolatedBody, isolationErr := applyManagedUserIsolation(ctx, s.cfg, account, userIsolationEndpointChatCompletions, body)
+	if isolationErr != nil {
+		return nil, isolationErr
+	}
+	body = isolatedBody
+
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	upstreamReq, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, targetURL, bytes.NewReader(body))
 	releaseUpstreamCtx()
