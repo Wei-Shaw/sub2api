@@ -9,7 +9,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
-	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userdevice"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -262,7 +261,7 @@ func (r *userSubscriptionRepository) List(ctx context.Context, params pagination
 		q = q.Where(usersubscription.HasGroupWith(groupPredicates...))
 	}
 	if deviceCode != "" {
-		q = q.Where(usersubscription.HasUserWith(dbuser.HasDevicesWith(userdevice.DeviceCodeContainsFold(deviceCode))))
+		q = q.Where(usersubscription.HasUserWith(user.HasDevicesWith(userdevice.DeviceCodeContainsFold(deviceCode))))
 	}
 
 	// Status filtering with real-time expiration check

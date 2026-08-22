@@ -234,7 +234,7 @@ func readBotSalesFulfillmentRecord(ctx context.Context, client *dbent.Client, in
 	if err != nil {
 		return botSalesFulfillmentRecord{}, infraerrors.ServiceUnavailable("BOT_SALES_FULFILLMENT_RECORD_FAILED", "failed to read fulfillment record")
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
 			return botSalesFulfillmentRecord{}, infraerrors.ServiceUnavailable("BOT_SALES_FULFILLMENT_RECORD_FAILED", "failed to read fulfillment record")
