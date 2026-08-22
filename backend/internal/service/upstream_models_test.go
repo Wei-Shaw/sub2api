@@ -140,6 +140,11 @@ REDACTED{
 			body: `{"data":[{"id":"canonical-id","model":"display-model"REDACTED]REDACTED`,
 			want: []string{"canonical-id"REDACTED,
 	REDACTED,
+		{
+			name: "codex manifest uses slug",
+			body: `{"models":[{"slug":"gpt-5.6-sol"REDACTED,{"slug":"gpt-5.5-codex"REDACTED]REDACTED`,
+			want: []string{"gpt-5.5-codex", "gpt-5.6-sol"REDACTED,
+	REDACTED,
 REDACTED
 
 	for _, tt := range tests {
@@ -152,6 +157,53 @@ REDACTED
 			require.Equal(t, tt.want, got)
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestBuildUpstreamModelsRequestSupportsOpenAIOAuth(t *testing.T) {
+	svc := &AccountTestService{cfg: upstreamModelSyncTestConfig()REDACTED
+	account := &Account{
+		ID:       11,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"access_token":       "openai-oauth-token",
+			"chatgpt_account_id": "chatgpt-account",
+	REDACTED,
+REDACTED
+
+	req, err := svc.buildUpstreamModelsRequest(context.Background(), account)
+REDACTED
+	require.Equal(t, chatgptCodexModelsURL, req.URL.Scheme+"://"+req.URL.Host+req.URL.Path)
+	require.NotEmpty(t, req.URL.Query().Get("client_version"))
+	require.Equal(t, "Bearer openai-oauth-token", req.Header.Get("Authorization"))
+	require.Equal(t, "chatgpt-account", req.Header.Get("chatgpt-account-id"))
+	require.NotEmpty(t, req.Header.Get("Originator"))
+	require.NotEmpty(t, req.Header.Get("User-Agent"))
+	require.NotEmpty(t, req.Header.Get("Version"))
+REDACTED
+
+func TestFetchUpstreamSupportedModelsParsesOpenAIOAuthManifest(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(`{"models":[{"slug":"gpt-5.6-sol"REDACTED,{"slug":"gpt-5.5-codex"REDACTED]REDACTED`)),
+REDACTEDREDACTED
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          upstreamModelSyncTestConfig(),
+REDACTED
+
+	models, err := svc.FetchUpstreamSupportedModels(context.Background(), &Account{
+		ID:       12,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"access_token": "openai-oauth-token",
+	REDACTED,
+REDACTED)
+REDACTED
+	require.Equal(t, []string{"gpt-5.5-codex", "gpt-5.6-sol"REDACTED, models)
+	require.Equal(t, "Bearer openai-oauth-token", upstream.lastReq.Header.Get("Authorization"))
 REDACTED
 
 func TestExtractGrokUpstreamModelIDs(t *testing.T) {
