@@ -55,6 +55,13 @@ func TestWriteSuccessResponse(t *testing.T) {
 			wantBody:        "",
 		},
 		{
+			name:            "sepay returns JSON success body",
+			providerKey:     payment.TypeSePay,
+			wantCode:        http.StatusOK,
+			wantContentType: "application/json",
+			wantBody:        `{"success":true}`,
+		},
+		{
 			name:            "easypay returns plain text success",
 			providerKey:     "easypay",
 			wantCode:        http.StatusOK,
@@ -177,6 +184,18 @@ func TestExtractOutTradeNo(t *testing.T) {
 			providerKey: payment.TypeAirwallex,
 			rawBody:     `{"name":"payment_intent.succeeded","data":{"object":{"merchant_order_id":"sub2_awx_123"}}}`,
 			want:        "sub2_awx_123",
+		},
+		{
+			name:        "sepay json payload with code",
+			providerKey: payment.TypeSePay,
+			rawBody:     `{"code":"sub2_20260814aB3kX9mQ","transferType":"in","transferAmount":50000}`,
+			want:        "sub2_20260814aB3kX9mQ",
+		},
+		{
+			name:        "sepay json payload with null code",
+			providerKey: payment.TypeSePay,
+			rawBody:     `{"code":null,"transferType":"in","transferAmount":50000}`,
+			want:        "",
 		},
 	}
 

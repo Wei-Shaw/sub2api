@@ -48,6 +48,9 @@ func (s *PaymentService) HandlePaymentNotification(ctx context.Context, n *payme
 		if oid, ok := parseLegacyPaymentOrderID(n.OrderID, err); ok {
 			return s.confirmPayment(ctx, oid, n.TradeNo, n.Amount, pk, n.Metadata)
 		}
+		if oid, ok := s.resolveSepayNotificationOrderID(ctx, pk, n.OrderID); ok {
+			return s.confirmPayment(ctx, oid, n.TradeNo, n.Amount, pk, n.Metadata)
+		}
 		if dbent.IsNotFound(err) {
 			return fmt.Errorf("%w: out_trade_no=%s", ErrOrderNotFound, n.OrderID)
 		}
@@ -73,6 +76,22 @@ func parseLegacyPaymentOrderID(orderID string, lookupErr error) (int64, bool) {
 		return 0, false
 	}
 	return oid, true
+}
+
+// resolveSepayNotificationOrderID resolves lenient SePay codes (uppercased,
+// prefix-stripped, or separator-stripped by banks) to the internal order ID.
+func (s *PaymentService) resolveSepayNotificationOrderID(ctx context.Context, providerKey, code string) (int64, bool) {
+	if strings.TrimSpace(providerKey) != payment.TypeSePay {
+		return 0, false
+	}
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return 0, false
+	}
+	if order := s.findSepayOrderByCode(ctx, code); order != nil {
+		return order.ID, true
+	}
+	return 0, false
 }
 
 func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo string, paid float64, pk string, metadata map[string]string) error {

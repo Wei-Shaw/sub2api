@@ -7875,6 +7875,29 @@
                   </div>
                   <div>
                     <label class="input-label">{{
+                      t("admin.settings.payment.subscriptionUsdToVndRate")
+                    }}</label>
+                    <input
+                      :value="form.payment_subscription_usd_to_vnd_rate || ''"
+                      @input="
+                        form.payment_subscription_usd_to_vnd_rate =
+                          parseFloat(
+                            ($event.target as HTMLInputElement).value,
+                          ) || 0
+                      "
+                      type="number"
+                      step="1"
+                      min="0"
+                      class="input"
+                      :placeholder="
+                        t(
+                          'admin.settings.payment.subscriptionUsdToVndRateDisabled',
+                        )
+                      "
+                    />
+                  </div>
+                  <div>
+                    <label class="input-label">{{
                       t("admin.settings.payment.rechargeFeeRate")
                     }}</label>
                     <div class="relative">
@@ -9530,6 +9553,7 @@ const form = reactive<SettingsForm>({
   payment_balance_disabled: false,
   payment_balance_recharge_multiplier: 1,
   payment_subscription_usd_to_cny_rate: 0,
+  payment_subscription_usd_to_vnd_rate: 0,
   payment_recharge_fee_rate: 0,
   payment_enabled_types: [],
   payment_help_image_url: "",
@@ -11334,6 +11358,8 @@ async function saveSettings() {
         Number(form.payment_balance_recharge_multiplier) || 1,
       payment_subscription_usd_to_cny_rate:
         Number(form.payment_subscription_usd_to_cny_rate) || 0,
+      payment_subscription_usd_to_vnd_rate:
+        Number(form.payment_subscription_usd_to_vnd_rate) || 0,
       payment_recharge_fee_rate: Number(form.payment_recharge_fee_rate) || 0,
       payment_enabled_types: form.payment_enabled_types,
       payment_load_balance_strategy: form.payment_load_balance_strategy,
@@ -12134,6 +12160,7 @@ const allPaymentTypes = computed(() => [
   { value: "wxpay", label: t("payment.methods.wxpay") },
   { value: "stripe", label: t("payment.methods.stripe") },
   { value: "airwallex", label: t("payment.methods.airwallex") },
+  { value: "sepay", label: t("payment.methods.sepay") },
 ]);
 
 function isPaymentTypeEnabled(type: string): boolean {
@@ -12191,6 +12218,7 @@ const providerKeyOptions = computed(() => [
   { value: "wxpay", label: t("admin.settings.payment.providerWxpay") },
   { value: "stripe", label: t("admin.settings.payment.providerStripe") },
   { value: "airwallex", label: t("admin.settings.payment.providerAirwallex") },
+  { value: "sepay", label: t("admin.settings.payment.providerSepay") },
 ]);
 
 const enabledProviderKeyOptions = computed(() => {

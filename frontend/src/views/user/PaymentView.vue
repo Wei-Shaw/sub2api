@@ -19,12 +19,14 @@
             :amount="paymentState.amount"
             :pay-amount="paymentState.payAmount"
             :qr-code="paymentState.qrCode"
+            :qr-image-url="paymentState.qrImageUrl"
             :expires-at="paymentState.expiresAt"
             :payment-type="paymentState.paymentType"
             :pay-url="paymentState.payUrl"
             :order-type="paymentState.orderType"
             :currency="paymentState.currency || selectedCurrency"
             :out-trade-no="paymentState.outTradeNo"
+            :transfer-info="paymentState.transferInfo"
             :mobile-alipay-deep-link="paymentState.alipayMobilePrecreateDeepLink"
             @done="onPaymentDone"
             @success="onPaymentSuccess"
@@ -351,6 +353,8 @@ function emptyPaymentState(): PaymentRecoverySnapshot {
     orderId: 0,
     amount: 0,
     qrCode: '',
+    qrImageUrl: '',
+    transferInfo: undefined,
     expiresAt: '',
     paymentType: '',
     payUrl: '',
@@ -502,7 +506,7 @@ function onPaymentSettled() {
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
   methods: {}, global_min: 0, global_max: 0,
-  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, subscription_usd_to_cny_rate: 0, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
+  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, subscription_usd_to_cny_rate: 0, subscription_usd_to_vnd_rate: 0, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
 })
 
 const tabs = computed(() => {
@@ -524,7 +528,20 @@ const subscriptionUsdToCnyRate = computed(() => {
   const rate = checkout.value.subscription_usd_to_cny_rate
   return Number.isFinite(rate) && rate > 0 ? rate : 0
 })
-const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
+// 订阅 VND 换算汇率（1 USD = X VND）。0 = 未配置（后端会拒绝 VND 订阅下单）。
+const subscriptionUsdToVndRate = computed(() => {
+  const rate = checkout.value.subscription_usd_to_vnd_rate
+  return Number.isFinite(rate) && rate > 0 ? rate : 0
+})
+// VND 充值按 USD→VND 汇率折算为美元余额（与后端 calculateRechargeCreditedBalance 严格镜像）；
+// 其他币种维持倍率行为。
+const creditedAmount = computed(() => {
+  const rate = subscriptionUsdToVndRate.value
+  const amount = rate > 0 && selectedCurrency.value === 'VND'
+    ? validAmount.value / rate
+    : validAmount.value * balanceRechargeMultiplier.value
+  return Math.round(amount * 100) / 100
+})
 
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
@@ -593,6 +610,10 @@ function ceilPaymentAmount(value: number, currency: string): number {
 }
 
 function subscriptionPaymentAmountForCurrency(value: number, currency: string): number {
+  if (currency === 'VND') {
+    const vndRate = subscriptionUsdToVndRate.value
+    return vndRate > 0 ? roundPaymentAmount(value * vndRate, currency) : roundPaymentAmount(value, currency)
+  }
   const rate = subscriptionUsdToCnyRate.value
   if (rate <= 0 || currency !== DEFAULT_PAYMENT_CURRENCY) return roundPaymentAmount(value, currency)
   return roundPaymentAmount(value * rate, currency)

@@ -58,8 +58,6 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if plan != nil {
 		orderAmount = plan.Price
 		limitAmount = plan.Price
-	} else if req.OrderType == payment.OrderTypeBalance {
-		orderAmount = calculateCreditedBalance(req.Amount, cfg.BalanceRechargeMultiplier)
 	}
 	feeRate := cfg.RechargeFeeRate
 	methodCurrency := payment.DefaultPaymentCurrency
@@ -69,7 +67,20 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 			return nil, err
 		}
 	}
-	payAmountStr, payAmount, err := calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate, methodCurrency, req.OrderType, cfg.SubscriptionUSDToCNYRate)
+	if req.OrderType == payment.OrderTypeBalance {
+		credited, cerr := calculateRechargeCreditedBalance(req.Amount, methodCurrency, cfg)
+		if cerr != nil {
+			return nil, cerr
+		}
+		orderAmount = credited
+	}
+	if req.OrderType == payment.OrderTypeSubscription && methodCurrency == payment.CurrencyVND {
+		if normalizeSubscriptionUSDToVNDRate(cfg.SubscriptionUSDToVNDRate) <= 0 {
+			return nil, infraerrors.BadRequest("SUBSCRIPTION_VND_RATE_REQUIRED",
+				"subscription orders via VND methods require the USD to VND rate to be configured")
+		}
+	}
+	payAmountStr, payAmount, err := calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate, methodCurrency, req.OrderType, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +96,7 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		selectedCurrency = paymentProviderConfigCurrency(sel.ProviderKey, sel.Config)
 	}
 	if selectedCurrency != methodCurrency {
-		payAmountStr, payAmount, err = calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate, selectedCurrency, req.OrderType, cfg.SubscriptionUSDToCNYRate)
+		payAmountStr, payAmount, err = calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate, selectedCurrency, req.OrderType, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -302,6 +313,12 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 	if providerKey == payment.TypeAirwallex {
 		if accountID := strings.TrimSpace(sel.Config["accountId"]); accountID != "" {
 			snapshot["merchant_id"] = accountID
+		}
+		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
+	}
+	if providerKey == payment.TypeSePay {
+		if bankAccountNumber := strings.TrimSpace(sel.Config["bankAccountNumber"]); bankAccountNumber != "" {
+			snapshot["merchant_id"] = bankAccountNumber
 		}
 		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
 	}
@@ -643,20 +660,31 @@ func calculateCreateOrderPayAmount(limitAmount, feeRate float64, currency string
 	return payAmountStr, payAmount, nil
 }
 
-func calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate float64, currency, orderType string, usdToCnyRate float64) (string, float64, error) {
+func calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate float64, currency, orderType string, cfg *PaymentConfig) (string, float64, error) {
 	paymentAmount := limitAmount
 	if orderType == payment.OrderTypeSubscription {
-		paymentAmount = calculateSubscriptionGatewayBaseAmount(limitAmount, usdToCnyRate, currency)
+		paymentAmount = calculateSubscriptionGatewayBaseAmount(limitAmount, cfg, currency)
 	}
 	return calculateCreateOrderPayAmount(paymentAmount, feeRate, currency)
 }
 
 // calculateSubscriptionGatewayBaseAmount 计算订阅订单的网关扣款基数。
-// 换算是显式 opt-in：仅当管理员配置了订阅汇率（rate > 0，1 USD = rate CNY）
-// 且网关币种为 CNY 时，按 price × rate 换算；未配置时保持 price 直付的存量行为。
-func calculateSubscriptionGatewayBaseAmount(amount, usdToCnyRate float64, currency string) float64 {
-	rate := normalizeSubscriptionUSDToCNYRate(usdToCnyRate)
-	if rate <= 0 || currency != payment.DefaultPaymentCurrency {
+// 换算是显式 opt-in：CNY 通道按 SUBSCRIPTION_USD_TO_CNY_RATE、VND 通道按
+// SUBSCRIPTION_USD_TO_VND_RATE（1 USD = rate），未配置时保持 price 直付。
+func calculateSubscriptionGatewayBaseAmount(amount float64, cfg *PaymentConfig, currency string) float64 {
+	if cfg == nil {
+		return amount
+	}
+	var rate float64
+	switch currency {
+	case payment.DefaultPaymentCurrency:
+		rate = normalizeSubscriptionUSDToCNYRate(cfg.SubscriptionUSDToCNYRate)
+	case payment.CurrencyVND:
+		rate = normalizeSubscriptionUSDToVNDRate(cfg.SubscriptionUSDToVNDRate)
+	default:
+		return amount
+	}
+	if rate <= 0 {
 		return amount
 	}
 	return decimal.NewFromFloat(amount).
@@ -729,9 +757,25 @@ func classifyCreatePaymentError(req CreateOrderRequest, providerKey string, err 
 	return infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", fmt.Sprintf("payment gateway error: %s", err.Error()))
 }
 
+// buildPaymentTransferInfo exposes manual bank-transfer details for providers
+// whose QR encodes a bank transfer (SePay VietQR).
+func buildPaymentTransferInfo(sel *payment.InstanceSelection, pr *payment.CreatePaymentResponse, payAmount float64, order *dbent.PaymentOrder) *PaymentTransferInfo {
+	if sel == nil || pr == nil || strings.TrimSpace(sel.ProviderKey) != payment.TypeSePay {
+		return nil
+	}
+	return &PaymentTransferInfo{
+		AccountNumber: strings.TrimSpace(sel.Config["bankAccountNumber"]),
+		AccountName:   strings.TrimSpace(sel.Config["accountName"]),
+		BankBin:       strings.TrimSpace(sel.Config["bankBin"]),
+		Amount:        payment.FormatAmountForCurrency(payAmount, pr.Currency),
+		Content:       payment.StripTransferSeparators(order.OutTradeNo),
+	}
+}
+
 func buildCreateOrderResponse(order *dbent.PaymentOrder, req CreateOrderRequest, payAmount float64, sel *payment.InstanceSelection, pr *payment.CreatePaymentResponse, resultType payment.CreatePaymentResultType) *CreateOrderResponse {
 	return &CreateOrderResponse{
 		OrderID:      order.ID,
+		TransferInfo: buildPaymentTransferInfo(sel, pr, payAmount, order),
 		Amount:       order.Amount,
 		PayAmount:    payAmount,
 		FeeRate:      order.FeeRate,
@@ -741,6 +785,7 @@ func buildCreateOrderResponse(order *dbent.PaymentOrder, req CreateOrderRequest,
 		OutTradeNo:   order.OutTradeNo,
 		PayURL:       pr.PayURL,
 		QRCode:       pr.QRCode,
+		QRImageURL:   pr.QRImageURL,
 		ClientSecret: pr.ClientSecret,
 		IntentID:     pr.IntentID,
 		Currency:     pr.Currency,

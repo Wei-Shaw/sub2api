@@ -16,9 +16,10 @@ const VISIBLE_METHOD_ALIASES = {
   wxpay_direct: 'wxpay',
   stripe: 'stripe',
   airwallex: 'airwallex',
+  sepay: 'sepay',
 } as const
 
-export type VisiblePaymentMethod = 'alipay' | 'wxpay' | 'stripe' | 'airwallex'
+export type VisiblePaymentMethod = 'alipay' | 'wxpay' | 'stripe' | 'airwallex' | 'sepay'
 export type StripeVisibleMethod = 'alipay' | 'wechat_pay'
 export type PaymentLaunchKind =
   | 'qr_waiting'
@@ -31,14 +32,24 @@ export type PaymentLaunchKind =
   | 'wechat_jsapi'
   | 'unhandled'
 
+export interface PaymentTransferDisplayInfo {
+  accountNumber: string
+  accountName: string
+  bankBin: string
+  amount: string
+  content: string
+}
+
 export interface PaymentRecoverySnapshot {
   orderId: number
   amount: number
   qrCode: string
+  qrImageUrl?: string
   expiresAt: string
   paymentType: string
   payUrl: string
   outTradeNo: string
+  transferInfo?: PaymentTransferDisplayInfo
   clientSecret: string
   intentId: string
   currency: string
@@ -155,6 +166,7 @@ export function decidePaymentLaunch(
     orderId: result.order_id,
     amount: result.amount,
     qrCode: result.qr_code || '',
+    qrImageUrl: result.qr_image_url || '',
     expiresAt: result.expires_at || '',
     paymentType: visibleMethod,
     payUrl: result.pay_url || '',
@@ -167,6 +179,15 @@ export function decidePaymentLaunch(
     payAmount: result.pay_amount,
     orderType: context.orderType,
     paymentMode: (result.payment_mode || '').trim(),
+    transferInfo: result.transfer_info
+      ? {
+          accountNumber: result.transfer_info.account_number || '',
+          accountName: result.transfer_info.account_name || '',
+          bankBin: result.transfer_info.bank_bin || '',
+          amount: result.transfer_info.amount || '',
+          content: result.transfer_info.content || '',
+        }
+      : undefined,
     resumeToken: result.resume_token || '',
     alipayMobilePrecreateDeepLink: result.alipay_mobile_precreate_deep_link === true,
   }, context.now)
@@ -297,6 +318,8 @@ export function readPaymentRecoverySnapshot(
       || typeof parsed.resumeToken !== 'string'
       || (parsed.alipayMobilePrecreateDeepLink != null && typeof parsed.alipayMobilePrecreateDeepLink !== 'boolean')
       || typeof parsed.createdAt !== 'number'
+      || (parsed.transferInfo != null && typeof parsed.transferInfo !== 'object')
+      || (parsed.qrImageUrl != null && typeof parsed.qrImageUrl !== 'string')
     ) {
       return null
     }
@@ -314,10 +337,12 @@ export function readPaymentRecoverySnapshot(
       orderId: parsed.orderId,
       amount: parsed.amount,
       qrCode: parsed.qrCode,
+      qrImageUrl: parsed.qrImageUrl || '',
       expiresAt: parsed.expiresAt,
       paymentType: parsed.paymentType,
       payUrl: parsed.payUrl,
       outTradeNo: parsed.outTradeNo || '',
+      transferInfo: parsed.transferInfo,
       clientSecret: parsed.clientSecret,
       intentId: parsed.intentId || '',
       currency: parsed.currency || '',

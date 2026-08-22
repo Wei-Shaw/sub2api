@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"testing"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/stretchr/testify/require"
 )
@@ -186,6 +187,29 @@ func TestBuildPaymentOrderProviderSnapshot_IncludesProviderCurrency(t *testing.T
 	}, CreateOrderRequest{})
 	require.Equal(t, "USD", airwallexSnapshot["currency"])
 	require.Equal(t, "acct-78", airwallexSnapshot["merchant_id"])
+}
+
+func TestBuildPaymentOrderProviderSnapshot_IncludesSePayVNDAndBankAccount(t *testing.T) {
+	t.Parallel()
+
+	snapshot := buildPaymentOrderProviderSnapshot(&payment.InstanceSelection{
+		InstanceID:  "99",
+		ProviderKey: payment.TypeSePay,
+		Config: map[string]string{
+			"apiToken":          "secret-token",
+			"bankAccountNumber": "0123456789",
+			"bankBin":           "970422",
+			"webhookSecret":     "secret",
+		},
+	}, CreateOrderRequest{PaymentType: payment.TypeSePay})
+
+	require.Equal(t, payment.CurrencyVND, snapshot["currency"])
+	require.Equal(t, "0123456789", snapshot["merchant_id"])
+	require.NotContains(t, snapshot, "apiToken")
+	require.NotContains(t, snapshot, "webhookSecret")
+
+	order := &dbent.PaymentOrder{ProviderSnapshot: snapshot}
+	require.Equal(t, "VND", PaymentOrderCurrency(order))
 }
 
 func valueOrEmpty(v *string) string {

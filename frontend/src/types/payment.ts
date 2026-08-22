@@ -35,6 +35,7 @@ export interface PaymentConfig {
   balance_disabled: boolean
   balance_recharge_multiplier: number
   subscription_usd_to_cny_rate: number
+  subscription_usd_to_vnd_rate: number
   enabled_payment_types: PaymentType[]
   help_image_url: string
   help_text: string
@@ -70,6 +71,7 @@ export interface CheckoutInfoResponse {
   balance_recharge_multiplier: number
   /** Subscription CNY conversion rate (1 USD = X CNY); 0 = disabled, plan price is charged as-is */
   subscription_usd_to_cny_rate: number
+  subscription_usd_to_vnd_rate: number
   recharge_fee_rate: number
   help_text: string
   help_image_url: string
@@ -198,11 +200,22 @@ export interface WechatJSAPIPayload {
   paySign?: string
 }
 
+/** Manual bank-transfer details for gateways whose QR encodes a transfer (SePay VietQR). */
+export interface PaymentTransferInfo {
+  account_number?: string
+  account_name?: string
+  bank_bin?: string
+  amount?: string
+  content?: string
+}
+
 export interface CreateOrderResult {
+  transfer_info?: PaymentTransferInfo
   order_id: number
   amount: number
   pay_url?: string
   qr_code?: string
+  qr_image_url?: string
   client_secret?: string
   intent_id?: string
   currency?: string

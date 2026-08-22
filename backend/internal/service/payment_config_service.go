@@ -27,7 +27,10 @@ const (
 	SettingBalanceRechargeMult = "BALANCE_RECHARGE_MULTIPLIER"
 	// SettingSubscriptionUSDToCNYRate 是订阅 CNY 换算汇率（1 USD = X CNY）。
 	// 0/未配置 = 关闭换算（订阅按 price 数值直付），显式配置后 CNY 通道订阅按 price × rate 收款。
-	SettingSubscriptionUSDToCNYRate      = "SUBSCRIPTION_USD_TO_CNY_RATE"
+	SettingSubscriptionUSDToCNYRate = "SUBSCRIPTION_USD_TO_CNY_RATE"
+	// SettingSubscriptionUSDToVNDRate 是订阅 VND 换算汇率（1 USD = X VND）。
+	// 0/未配置 = 关闭换算。SePay（VND）订阅必须配置该项，否则下单被拒绝。
+	SettingSubscriptionUSDToVNDRate      = "SUBSCRIPTION_USD_TO_VND_RATE"
 	SettingRechargeFeeRate               = "RECHARGE_FEE_RATE"
 	SettingProductNamePrefix             = "PRODUCT_NAME_PREFIX"
 	SettingProductNameSuffix             = "PRODUCT_NAME_SUFFIX"
@@ -61,6 +64,7 @@ type PaymentConfig struct {
 	BalanceRechargeMultiplier float64  `json:"balance_recharge_multiplier"`
 	// SubscriptionUSDToCNYRate 为 0 时订阅换算关闭（兼容存量行为）。
 	SubscriptionUSDToCNYRate float64 `json:"subscription_usd_to_cny_rate"`
+	SubscriptionUSDToVNDRate float64 `json:"subscription_usd_to_vnd_rate"`
 	RechargeFeeRate          float64 `json:"recharge_fee_rate"`
 	LoadBalanceStrategy      string  `json:"load_balance_strategy"`
 	ProductNamePrefix        string  `json:"product_name_prefix"`
@@ -94,6 +98,7 @@ type UpdatePaymentConfigRequest struct {
 	BalanceDisabled           *bool    `json:"balance_disabled"`
 	BalanceRechargeMultiplier *float64 `json:"balance_recharge_multiplier"`
 	SubscriptionUSDToCNYRate  *float64 `json:"subscription_usd_to_cny_rate"`
+	SubscriptionUSDToVNDRate  *float64 `json:"subscription_usd_to_vnd_rate"`
 	RechargeFeeRate           *float64 `json:"recharge_fee_rate"`
 	LoadBalanceStrategy       *string  `json:"load_balance_strategy"`
 	ProductNamePrefix         *string  `json:"product_name_prefix"`
@@ -219,7 +224,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 	keys := []string{
 		SettingPaymentEnabled, SettingMinRechargeAmount, SettingMaxRechargeAmount,
 		SettingDailyRechargeLimit, SettingOrderTimeoutMinutes, SettingMaxPendingOrders,
-		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingSubscriptionUSDToCNYRate, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
+		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingSubscriptionUSDToCNYRate, SettingSubscriptionUSDToVNDRate, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
 		SettingProductNamePrefix, SettingProductNameSuffix,
 		SettingHelpImageURL, SettingHelpText,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
@@ -249,6 +254,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		BalanceDisabled:           vals[SettingBalancePayDisabled] == "true",
 		BalanceRechargeMultiplier: normalizeBalanceRechargeMultiplier(pcParseFloat(vals[SettingBalanceRechargeMult], defaultBalanceRechargeMultiplier)),
 		SubscriptionUSDToCNYRate:  normalizeSubscriptionUSDToCNYRate(pcParseFloat(vals[SettingSubscriptionUSDToCNYRate], 0)),
+		SubscriptionUSDToVNDRate:  normalizeSubscriptionUSDToVNDRate(pcParseFloat(vals[SettingSubscriptionUSDToVNDRate], 0)),
 		RechargeFeeRate:           pcParseFloat(vals[SettingRechargeFeeRate], 0),
 		LoadBalanceStrategy:       vals[SettingLoadBalanceStrategy],
 		ProductNamePrefix:         vals[SettingProductNamePrefix],
@@ -333,6 +339,12 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 			return infraerrors.BadRequest("INVALID_SUBSCRIPTION_USD_TO_CNY_RATE", "subscription USD to CNY rate must be 0 (disabled) or a positive number")
 		}
 	}
+	if req.SubscriptionUSDToVNDRate != nil {
+		v := *req.SubscriptionUSDToVNDRate
+		if v < 0 {
+			return infraerrors.BadRequest("INVALID_SUBSCRIPTION_USD_TO_VND_RATE", "subscription USD to VND rate must be 0 (disabled) or a positive number")
+		}
+	}
 	if req.RechargeFeeRate != nil {
 		v := *req.RechargeFeeRate
 		if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > 100 {
@@ -369,10 +381,15 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		m[SettingBalancePayDisabled] = formatBoolOrEmpty(req.BalanceDisabled)
 	}
 	if req.BalanceRechargeMultiplier != nil {
-		m[SettingBalanceRechargeMult] = formatPositiveFloat(req.BalanceRechargeMultiplier)
+		// Exact precision: VND-scale multipliers (e.g. 0.00004) round to
+		// "0.00" under the 2-decimal formatter and silently reset to 1.
+		m[SettingBalanceRechargeMult] = formatPositiveFloatExact(req.BalanceRechargeMultiplier)
 	}
 	if req.SubscriptionUSDToCNYRate != nil {
 		m[SettingSubscriptionUSDToCNYRate] = formatPositiveFloatExact(req.SubscriptionUSDToCNYRate)
+	}
+	if req.SubscriptionUSDToVNDRate != nil {
+		m[SettingSubscriptionUSDToVNDRate] = formatPositiveFloatExact(req.SubscriptionUSDToVNDRate)
 	}
 	if req.RechargeFeeRate != nil {
 		m[SettingRechargeFeeRate] = formatNonNegativeFloat(req.RechargeFeeRate)

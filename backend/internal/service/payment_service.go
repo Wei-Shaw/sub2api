@@ -87,6 +87,17 @@ type CreateOrderRequest struct {
 	Locale          string
 }
 
+// PaymentTransferInfo describes a manual bank transfer for gateways whose QR
+// encodes a transfer (SePay VietQR): customers whose banking app cannot apply
+// the QR prefill still see the account, amount and required transfer content.
+type PaymentTransferInfo struct {
+	AccountNumber string `json:"account_number,omitempty"`
+	AccountName   string `json:"account_name,omitempty"`
+	BankBin       string `json:"bank_bin,omitempty"`
+	Amount        string `json:"amount,omitempty"`
+	Content       string `json:"content,omitempty"`
+}
+
 type CreateOrderResponse struct {
 	OrderID                       int64                           `json:"order_id"`
 	Amount                        float64                         `json:"amount"`
@@ -96,6 +107,8 @@ type CreateOrderResponse struct {
 	ResultType                    payment.CreatePaymentResultType `json:"result_type,omitempty"`
 	PaymentType                   string                          `json:"payment_type"`
 	OutTradeNo                    string                          `json:"out_trade_no,omitempty"`
+	TransferInfo                  *PaymentTransferInfo            `json:"transfer_info,omitempty"`
+	QRImageURL                    string                          `json:"qr_image_url,omitempty"`
 	PayURL                        string                          `json:"pay_url,omitempty"`
 	QRCode                        string                          `json:"qr_code,omitempty"`
 	ClientSecret                  string                          `json:"client_secret,omitempty"`

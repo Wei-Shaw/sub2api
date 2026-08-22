@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  METHOD_ORDER,
   PAYMENT_CURRENCY_OPTIONS,
   PROVIDER_CONFIG_FIELDS,
+  PROVIDER_SUPPORTED_TYPES,
+  WEBHOOK_PATHS,
   isBuiltInAlipayMethod,
   isBuiltInWxpayMethod,
   parseEasyPayCustomMethods,
@@ -91,5 +94,27 @@ describe('built-in payment method helpers', () => {
     expect(isBuiltInWxpayMethod('wxpay')).toBe(true)
     expect(isBuiltInWxpayMethod('wxpay_direct')).toBe(true)
     expect(isBuiltInWxpayMethod('card_wxpay')).toBe(false)
+  })
+})
+
+describe('PROVIDER_CONFIG_FIELDS.sepay', () => {
+  const findField = (key: string) =>
+    (PROVIDER_CONFIG_FIELDS.sepay || []).find(f => f.key === key)
+
+  it('declares sepay supported types and method order', () => {
+    expect(PROVIDER_SUPPORTED_TYPES.sepay).toEqual(['sepay'])
+    expect(METHOD_ORDER).toContain('sepay')
+    expect(WEBHOOK_PATHS.sepay).toBe('/api/v1/payment/webhook/sepay')
+  })
+
+  it('marks credentials as sensitive and bank details as required', () => {
+    expect(findField('apiToken')?.sensitive).toBe(true)
+    expect(findField('webhookSecret')?.sensitive).toBe(true)
+    expect(findField('webhookApiKey')?.sensitive).toBe(true)
+    expect(findField('bankAccountNumber')?.optional).toBeUndefined()
+    expect(findField('bankBin')?.optional).toBeUndefined()
+    expect(findField('accountName')?.optional).toBe(true)
+    expect(findField('webhookApiKey')?.optional).toBe(true)
+    expect(findField('apiBase')?.defaultValue).toBe('https://userapi.sepay.vn')
   })
 })
