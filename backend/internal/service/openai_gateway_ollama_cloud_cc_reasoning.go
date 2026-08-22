@@ -51,7 +51,8 @@ func applyOllamaCloudRawChatCompletionsRequest(account *Account, body []byte) []
 	if !isOllamaCloudRawChatCompletionsAccount(account) || len(body) == 0 {
 		return body
 REDACTED
-	return normalizeOllamaCloudChatCompletionsRequest(body)
+	body = normalizeOllamaCloudChatCompletionsRequest(body)
+	return clampOllamaCloudMaxTokens(account, body)
 REDACTED
 
 func applyOllamaCloudRawChatCompletionsResponse(account *Account, body []byte) []byte {
