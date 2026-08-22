@@ -949,13 +949,17 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	if err != nil {
 		return nil, err
 	}
-	_, userIsolationUpdateRequested := input.Extra[UserIsolationEnabledExtraKey]
+	_, userIsolationExtraUpdateRequested := input.Extra[UserIsolationEnabledExtraKey]
+	_, userIsolationModeUpdateRequested := input.Credentials["account_mode"]
+	_, userIsolationProtocolUpdateRequested := input.Credentials["api_protocol"]
+	userIsolationValidationRequired := userIsolationExtraUpdateRequested ||
+		userIsolationModeUpdateRequested || userIsolationProtocolUpdateRequested
 
 	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil || userIsolationUpdateRequested {
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil || userIsolationValidationRequired {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
@@ -975,7 +979,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		}
 		result.LongContextInheritedCount = inheritedCount
 	}
-	if userIsolationUpdateRequested {
+	if userIsolationValidationRequired {
 		for _, accountID := range input.AccountIDs {
 			account, ok := targetsByID[accountID]
 			if !ok {

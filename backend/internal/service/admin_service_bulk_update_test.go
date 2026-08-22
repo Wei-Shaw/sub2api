@@ -166,6 +166,52 @@ func TestAdminService_BulkUpdateAccounts_AllSuccessIDs(t *testing.T) {
 	require.Len(t, result.Results, 3)
 }
 
+func TestAdminService_BulkUpdateAccounts_RejectsUnsupportedUserIsolationUpdate(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{
+		getByIDsAccounts: []*Account{{
+			ID:       1,
+			Platform: PlatformGemini,
+			Type:     AccountTypeAPIKey,
+		}},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1},
+		Extra:      map[string]any{UserIsolationEnabledExtraKey: true},
+	})
+
+	require.Nil(t, result)
+	requireApplicationErrorReason(t, err, "USER_ISOLATION_UNSUPPORTED")
+	require.Zero(t, repo.bulkUpdateCalls)
+}
+
+func TestAdminService_BulkUpdateAccounts_AllowsExperimentalUserIsolationProtocolChange(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{
+		getByIDsAccounts: []*Account{{
+			ID:       1,
+			Platform: PlatformZhipu,
+			Type:     AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"account_mode": AccountModePayG,
+				"api_protocol": APIProtocolChatCompletions,
+			},
+			Extra: map[string]any{UserIsolationEnabledExtraKey: true},
+		}},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs:  []int64{1},
+		Credentials: map[string]any{"api_protocol": APIProtocolAnthropic},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.Success)
+	require.Equal(t, 1, repo.bulkUpdateCalls)
+}
+
 func TestAdminService_BulkUpdateAccounts_RejectsRateChangeForSyncedAccounts(t *testing.T) {
 	repo := &accountRepoStubForBulkUpdate{
 		getByIDsAccounts: []*Account{
