@@ -247,11 +247,16 @@ type OpenAIForwardResult struct {
 	// response before any client-facing rewrite or protocol conversion.
 	UpstreamResponseModel         string
 	UpstreamResponseModelConflict bool
+	// UpstreamResponseServiceTier is the tier the upstream reports having used
+	// (response service_tier: "priority" / "default" / "flex" / ...); "" when not declared.
+	UpstreamResponseServiceTier string
 	// UpstreamEndpoint is the actual upstream API path used for this request.
 	// It avoids guessing when one downstream protocol can use multiple upstream endpoints.
 	UpstreamEndpoint string
-	// ServiceTier records the OpenAI Responses API service tier, e.g. "priority" / "flex".
-	// Nil means the request did not specify a recognized tier.
+	// ServiceTier records the OpenAI Responses API service tier requested by the
+	// client, e.g. "priority" / "flex". Nil means the request did not specify a
+	// recognized tier. Usage recording lowers it to UpstreamResponseServiceTier
+	// when the upstream reports a cheaper tier (see ResolveBillingServiceTier).
 	ServiceTier *string
 	// ReasoningEffort is extracted from request body (reasoning.effort) or derived from model suffix.
 	// Stored for usage records display; nil means not provided / not applicable.
