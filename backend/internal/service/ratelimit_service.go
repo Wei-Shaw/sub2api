@@ -975,6 +975,24 @@ func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account
 		return false
 	}
 
+	// OpenAI-compatible API-key providers commonly expose chat/completions but
+	// reject Responses, tool, or policy-specific requests with a plain-text or
+	// generic JSON 403. A successful account test only proves the key works for
+	// the tested endpoint; it does not make every endpoint supported. Unless the
+	// response contains an explicit billing marker, keep this request-scoped and
+	// do not put a usable third-party key into the account cooldown state.
+	if account.Type == AccountTypeAPIKey {
+		text := strings.ToLower(strings.TrimSpace(upstreamMsg + "\n" + string(responseBody)))
+		if !containsOpenAI403BillingMarker(text) {
+			slog.Warn(
+				"openai_apikey_403_skips_account_penalty",
+				"account_id", account.ID,
+				"upstream_message", upstreamMsg,
+			)
+			return false
+		}
+	}
+
 	msg := buildForbiddenErrorMessage(
 		"Access forbidden (403):",
 		upstreamMsg,
