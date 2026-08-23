@@ -6,3 +6,4 @@
 - The host profile does not expose `pnpm` or `corepack`; use the Dockerfile build or an ephemeral Node/Corepack verification container with a separate dependency volume instead of installing package-manager files into the worktree.
 - `frontend` writes the official Vite build to `backend/internal/web/dist`; root-owned files there can make `npm run build` fail with `EACCES`. Repair ownership/mode in the local checkout before rerunning the canonical build; do not use an out-of-tree build as release proof.
 - DLG/invitation codes are bearer credentials; audit-body redaction must cover `invitation_code`, `device_code`, and `claim_code` in addition to generic token/key fields.
+- Responses Lite serial-tool normalization must key off `PlatformOpenAI` rather than OAuth account type: API-key accounts can also receive `X-OpenAI-Internal-Codex-Responses-Lite: true`, and the API-key compatibility helper does not rewrite `parallel_tool_calls=true` when tools are present.
