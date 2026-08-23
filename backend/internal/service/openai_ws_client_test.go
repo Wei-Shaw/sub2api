@@ -51,6 +51,28 @@ func TestCoderOpenAIWSClientDialer_TLSProfileProxiesPlainHTTPWithoutDoubleProxyi
 	require.NoError(t, err)
 	require.Nil(t, proxyURL)
 }
+
+func TestCoderOpenAIWSClientDialer_TLSCacheUsesConvergedHTTP1Profile(t *testing.T) {
+	dialer := newDefaultOpenAIWSClientDialer()
+	impl, ok := dialer.(*coderOpenAIWSClientDialer)
+	require.True(t, ok)
+	h2Profile := &tlsfingerprint.Profile{
+		CipherSuites:  []uint16{0x1301},
+		ALPNProtocols: []string{"h2", "http/1.1"},
+	}
+
+	h2Client, err := impl.proxyHTTPClientWithTLS("", h2Profile)
+	require.NoError(t, err)
+	require.Equal(t, []string{"h2", "http/1.1"}, h2Profile.ALPNProtocols,
+		"cache normalization must not mutate the caller's profile")
+	h1Client, err := impl.proxyHTTPClientWithTLS("", &tlsfingerprint.Profile{
+		CipherSuites:  []uint16{0x1301},
+		ALPNProtocols: []string{"http/1.1"},
+	})
+	require.NoError(t, err)
+	require.Same(t, h2Client, h1Client,
+		"profiles with identical effective WebSocket ALPN must share one cache entry")
+}
 func TestCoderOpenAIWSClientDialer_ProxyHTTPClientInvalidURL(t *testing.T) {
 	dialer := newDefaultOpenAIWSClientDialer()
 	impl, ok := dialer.(*coderOpenAIWSClientDialer)

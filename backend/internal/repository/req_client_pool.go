@@ -41,6 +41,13 @@ var sharedReqClients sync.Map
 // getSharedReqClient 获取共享的 req 客户端实例
 // 性能优化：相同配置复用同一客户端，避免重复创建
 func getSharedReqClient(opts reqClientOptions) (*req.Client, error) {
+	// req 客户端路径通过 Transport.SetDialTLS 安装 uTLS dialer，没有 ALPN
+	// 嗅探，只讲 HTTP/1.1：profile 若广播 "h2"，TLS 层会协商出 h2 而
+	// transport 仍按 HTTP/1.1 写请求，所有请求在运行时失败。因此在派生
+	// 缓存键和 dialer 之前，先把 ALPN 收敛到 HTTP/1.1（在 clone 上修改，
+	// 不动调用方共享的 profile 对象），保证缓存键与实际使用的 profile 一致。
+	opts.TLSProfile = http1OnlyTLSProfile(opts.TLSProfile)
+
 	key := buildReqClientKey(opts)
 	if cached, ok := sharedReqClients.Load(key); ok {
 		if c, ok := cached.(*req.Client); ok {
@@ -95,6 +102,13 @@ func instrumentReqClient(client *req.Client) *req.Client {
 		return timed.RoundTrip
 	})
 	return client
+}
+
+// http1OnlyTLSProfile 返回 ALPN 收敛为 HTTP/1.1 的 profile 副本。
+// req 客户端路径（SetDialTLS）只讲 HTTP/1.1，见 getSharedReqClient 的说明。
+// 返回 clone，不修改传入的共享 profile；nil 输入返回 nil。
+func http1OnlyTLSProfile(profile *tlsfingerprint.Profile) *tlsfingerprint.Profile {
+	return tlsfingerprint.HTTP1OnlyProfile(profile)
 }
 
 func buildReqClientKey(opts reqClientOptions) string {

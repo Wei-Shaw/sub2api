@@ -182,6 +182,11 @@ func (d *coderOpenAIWSClientDialer) proxyHTTPClientWithTLS(proxy string, profile
 	if d == nil {
 		return nil, errors.New("openai ws dialer is nil")
 	}
+	// WebSocket handshakes only need HTTP/1.1, and the bare uTLS dialers below
+	// sit on a standard-library transport that cannot drive HTTP/2 over them.
+	// Converge ALPN on a clone before the cache key so an h2-advertising
+	// profile cannot negotiate a protocol the transport cannot serve.
+	profile = tlsfingerprint.HTTP1OnlyProfile(profile)
 	normalizedProxy := strings.TrimSpace(proxy)
 	var parsedProxyURL *url.URL
 	if normalizedProxy != "" {

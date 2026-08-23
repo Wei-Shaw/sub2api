@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -234,6 +235,68 @@ func TestSOCKS5ProxyDialerBasic(t *testing.T) {
 	}
 	if dialer.proxyURL != proxyURL {
 		t.Error("expected proxyURL to be set")
+	}
+}
+
+func TestHTTPProxyDialerHonorsContextAfterTCPConnect(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = ln.Close() }()
+	accepted := make(chan struct{})
+	go func() {
+		conn, acceptErr := ln.Accept()
+		if acceptErr != nil {
+			return
+		}
+		close(accepted)
+		defer func() { _ = conn.Close() }()
+		// Simulate a proxy that accepts TCP but never answers CONNECT.
+		time.Sleep(400 * time.Millisecond)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	dialer := NewHTTPProxyDialer(&Profile{}, mustParseURL("http://"+ln.Addr().String()))
+	started := time.Now()
+	_, err = dialer.DialTLSContext(ctx, "tcp", "example.com:443")
+	require.Error(t, err)
+	require.Less(t, time.Since(started), 250*time.Millisecond,
+		"context cancellation must interrupt a silent proxy after TCP connect")
+	select {
+	case <-accepted:
+	default:
+		t.Fatal("test did not reach the post-connect proxy handshake")
+	}
+}
+
+func TestSOCKS5ProxyDialerHonorsContextDuringHandshake(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = ln.Close() }()
+	accepted := make(chan struct{})
+	go func() {
+		conn, acceptErr := ln.Accept()
+		if acceptErr != nil {
+			return
+		}
+		close(accepted)
+		defer func() { _ = conn.Close() }()
+		// Simulate a SOCKS server that never completes method negotiation.
+		time.Sleep(400 * time.Millisecond)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	dialer := NewSOCKS5ProxyDialer(&Profile{}, mustParseURL("socks5://"+ln.Addr().String()))
+	started := time.Now()
+	_, err = dialer.DialTLSContext(ctx, "tcp", "example.com:443")
+	require.Error(t, err)
+	require.Less(t, time.Since(started), 250*time.Millisecond,
+		"context cancellation must interrupt SOCKS negotiation")
+	select {
+	case <-accepted:
+	default:
+		t.Fatal("test did not reach the SOCKS handshake")
 	}
 }
 

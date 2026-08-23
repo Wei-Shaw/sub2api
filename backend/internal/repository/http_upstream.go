@@ -1412,39 +1412,35 @@ func enableOpenAIHTTP2KeepAlive(transport *http.Transport) (*http2.Transport, er
 	return h2, nil
 }
 
-// buildUpstreamTransportWithTLSFingerprint 构建带 TLS 指纹伪装的 Transport
-// 使用 utls 库模拟 Claude CLI 的 TLS 指纹
+// buildUpstreamTransportWithTLSFingerprint 构建带 TLS 指纹伪装的 RoundTripper。
+// 使用 utls 库模拟目标客户端的 TLS 指纹。
+//
+// 自定义 profile 返回 *tlsfingerprint.TLSRoundTripper：首次请求用 uTLS 引导
+// 连接嗅探 ALPN，协商出 h2 则委托 http2.Transport，否则委托 http.Transport。
+// 这绕开了 net/http 的 H2 升级钩子对 *tls.Conn 的类型断言（*utls.UConn 无法
+// 通过该断言，导致即使协商出 h2 也静默降级 H1）。注意 h2 路径的 HTTP/2 帧
+// （SETTINGS/窗口/header 顺序）是 Go x/net/http2 默认特征，与 ClientHello
+// 声称的浏览器在帧级并不一致——这是已知折衷；帧级对齐只有内置 Chrome
+// preset 路径（req ImpersonateChrome 全栈）才提供。
 //
 // 参数:
-//   - settings: 连接池配置
+//   - settings: 连接池配置（应用于 H1 transport；H2 使用 keepalive 探测参数）
 //   - proxyURL: 代理 URL（nil 表示直连）
 //   - profile: TLS 指纹配置
 //
-// 返回:
-//   - *http.Transport: 配置好的 Transport 实例
-//   - error: 配置错误
-//
 // 代理类型处理:
 //   - nil/空: 直连，使用 TLSFingerprintDialer
-//   - http/https: HTTP 代理，使用 HTTPProxyDialer（CONNECT 隧道 + utls 握手）
+//   - http: HTTP 代理，使用 HTTPProxyDialer（CONNECT 隧道 + utls 握手）
 //   - socks5: SOCKS5 代理，使用 SOCKS5ProxyDialer（SOCKS5 隧道 + utls 握手）
-func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *url.URL, profile *tlsfingerprint.Profile) (*http.Transport, error) {
-	transport := &http.Transport{
-		MaxIdleConns:          settings.maxIdleConns,
-		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
-		MaxConnsPerHost:       settings.maxConnsPerHost,
-		IdleConnTimeout:       settings.idleConnTimeout,
-		ResponseHeaderTimeout: settings.responseHeaderTimeout,
-		// 禁用默认的 TLS，我们使用自定义的 DialTLSContext
-		ForceAttemptHTTP2: false,
-	}
-
+//   - https/未知: 回退普通代理配置（无 TLS 指纹），返回 *http.Transport
+func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *url.URL, profile *tlsfingerprint.Profile) (http.RoundTripper, error) {
 	// 根据代理类型选择合适的 TLS 指纹 Dialer
+	var dial tlsfingerprint.UtlsDialFunc
 	if proxyURL == nil {
 		// 直连：使用 TLSFingerprintDialer
 		slog.Debug("tls_fingerprint_transport_direct")
 		dialer := tlsfingerprint.NewDialer(profile, nil)
-		transport.DialTLSContext = dialer.DialTLSContext
+		dial = dialer.DialTLSContext
 	} else {
 		scheme := strings.ToLower(proxyURL.Scheme)
 		switch scheme {
@@ -1452,26 +1448,39 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 			// SOCKS5 代理：使用 SOCKS5ProxyDialer
 			slog.Debug("tls_fingerprint_transport_socks5", "proxy", proxyURL.Host)
 			socks5Dialer := tlsfingerprint.NewSOCKS5ProxyDialer(profile, proxyURL)
-			transport.DialTLSContext = socks5Dialer.DialTLSContext
+			dial = socks5Dialer.DialTLSContext
 		case "https":
 			// The fingerprint dialer emits a plaintext CONNECT preface and cannot
 			// establish TLS to an HTTPS proxy. Keep proxy routing via net/http.
 			return buildUpstreamTransport(settings, proxyURL, upstreamProtocolModeDefault)
 		case "http":
-			// HTTP/HTTPS 代理：使用 HTTPProxyDialer（CONNECT 隧道）
+			// HTTP 代理：使用 HTTPProxyDialer（CONNECT 隧道）
 			slog.Debug("tls_fingerprint_transport_http_connect", "proxy", proxyURL.Host)
 			httpDialer := tlsfingerprint.NewHTTPProxyDialer(profile, proxyURL)
-			transport.DialTLSContext = httpDialer.DialTLSContext
+			dial = httpDialer.DialTLSContext
 		default:
 			// 未知代理类型，回退到普通代理配置（无 TLS 指纹）
 			slog.Debug("tls_fingerprint_transport_unknown_scheme_fallback", "scheme", scheme)
-			if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
-				return nil, err
-			}
+			return buildUpstreamTransport(settings, proxyURL, upstreamProtocolModeDefault)
 		}
 	}
 
-	return transport, nil
+	h1 := &http.Transport{
+		MaxIdleConns:          settings.maxIdleConns,
+		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
+		MaxConnsPerHost:       settings.maxConnsPerHost,
+		IdleConnTimeout:       settings.idleConnTimeout,
+		ResponseHeaderTimeout: settings.responseHeaderTimeout,
+	}
+	// 与 OpenAI H2 路径一致：启用 PING 健康探测，剔除被代理/NAT 静默掐断的
+	// 死连接，避免请求挂到 TCP 重传超时。x/net/http2.Transport 没有
+	// ResponseHeaderTimeout 字段（该超时仅作用于 h1 transport）；h2 路径的
+	// 响应时限由调用方的 http.Client.Timeout / 请求 context 承担。
+	h2 := &http2.Transport{
+		ReadIdleTimeout: openAIHTTP2ReadIdleTimeout,
+		PingTimeout:     openAIHTTP2PingTimeout,
+	}
+	return tlsfingerprint.NewTLSRoundTripper(dial, h1, h2), nil
 }
 
 // trackedBody 带跟踪功能的响应体包装器

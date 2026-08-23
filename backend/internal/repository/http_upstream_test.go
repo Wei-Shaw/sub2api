@@ -100,14 +100,42 @@ func TestHTTPUpstreamDoWithTLSPlainHTTPUsesConfiguredSOCKSProxy(t *testing.T) {
 func TestTLSFingerprintHTTPSProxyFallsBackWithoutBypassingProxy(t *testing.T) {
 	proxyURL, err := url.Parse("https://user:pass@proxy.example:8443")
 	require.NoError(t, err)
-	transport, err := buildUpstreamTransportWithTLSFingerprint(poolSettings{}, proxyURL, &tlsfingerprint.Profile{Name: "test"})
+	rt, err := buildUpstreamTransportWithTLSFingerprint(poolSettings{}, proxyURL, &tlsfingerprint.Profile{Name: "test"})
 	require.NoError(t, err)
+	transport, ok := rt.(*http.Transport)
+	require.True(t, ok, "HTTPS proxy fallback must keep the plain net/http transport, got %T", rt)
 	require.NotNil(t, transport.Proxy)
 	require.Nil(t, transport.DialTLSContext)
 	req := &http.Request{URL: &url.URL{Scheme: "https", Host: "upstream.example"}}
 	resolved, err := transport.Proxy(req)
 	require.NoError(t, err)
 	require.Equal(t, "https://user:pass@proxy.example:8443", resolved.String())
+}
+
+func TestTLSFingerprintTransportUsesALPNSniffingRoundTripper(t *testing.T) {
+	profile := &tlsfingerprint.Profile{Name: "test", ALPNProtocols: []string{"h2", "http/1.1"}}
+
+	t.Run("direct", func(t *testing.T) {
+		rt, err := buildUpstreamTransportWithTLSFingerprint(poolSettings{}, nil, profile)
+		require.NoError(t, err)
+		require.IsType(t, &tlsfingerprint.TLSRoundTripper{}, rt)
+	})
+
+	t.Run("http proxy", func(t *testing.T) {
+		proxyURL, err := url.Parse("http://user:pass@proxy.example:8080")
+		require.NoError(t, err)
+		rt, err := buildUpstreamTransportWithTLSFingerprint(poolSettings{}, proxyURL, profile)
+		require.NoError(t, err)
+		require.IsType(t, &tlsfingerprint.TLSRoundTripper{}, rt)
+	})
+
+	t.Run("socks5 proxy", func(t *testing.T) {
+		proxyURL, err := url.Parse("socks5://proxy.example:1080")
+		require.NoError(t, err)
+		rt, err := buildUpstreamTransportWithTLSFingerprint(poolSettings{}, proxyURL, profile)
+		require.NoError(t, err)
+		require.IsType(t, &tlsfingerprint.TLSRoundTripper{}, rt)
+	})
 }
 
 func startTestSOCKS5Proxy(t *testing.T) (string, *atomic.Int64) {
@@ -668,9 +696,9 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileTLSFingerprintDoesNotInheritGeneric
 	svc := s.newService()
 	entry, err := svc.getClientEntryWithTLS("", 1, 1, &tlsfingerprint.Profile{Name: "test"}, service.HTTPUpstreamProfileOpenAI, false, false)
 	require.NoError(s.T(), err)
-	transport, ok := entry.client.Transport.(*http.Transport)
-	require.True(s.T(), ok, "expected *http.Transport")
-	require.Equal(s.T(), time.Duration(0), transport.ResponseHeaderTimeout, "OpenAI TLS path should not inherit generic header timeout")
+	rt, ok := entry.client.Transport.(*tlsfingerprint.TLSRoundTripper)
+	require.True(s.T(), ok, "custom profiles use the ALPN-sniffing TLSRoundTripper, got %T", entry.client.Transport)
+	require.Equal(s.T(), time.Duration(0), rt.HTTP1Transport().ResponseHeaderTimeout, "OpenAI TLS path should not inherit generic header timeout")
 }
 
 func (s *HTTPUpstreamSuite) TestOpenAIBuiltInTLSFingerprintUsesChromeHTTP2Transport() {

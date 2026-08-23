@@ -66,6 +66,12 @@ var validateResolvedIP = urlvalidator.ValidateResolvedIP
 // 性能优化：相同配置复用同一客户端，避免重复创建 Transport
 // 安全说明：代理配置失败时直接返回错误，不会回退到直连，避免 IP 关联风险
 func GetClient(opts Options) (*http.Client, error) {
+	// The uTLS dialer paths in buildTransport install a bare fingerprinted
+	// dialer on a standard-library transport, which can only speak HTTP/1.1
+	// over those connections. Converge ALPN on a clone before deriving the
+	// cache key so an h2-advertising profile cannot negotiate a protocol the
+	// transport cannot serve, and the key always matches the effective profile.
+	opts.TLSProfile = tlsfingerprint.HTTP1OnlyProfile(opts.TLSProfile)
 	key := buildClientKey(opts)
 	if cached, ok := sharedClients.Load(key); ok {
 		if client, ok := cached.(*http.Client); ok {

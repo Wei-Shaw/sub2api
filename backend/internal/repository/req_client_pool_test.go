@@ -17,6 +17,44 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGetSharedReqClient_ConstrainsH2ProfileToHTTP1(t *testing.T) {
+	sharedReqClients = sync.Map{}
+	h2Profile := &tlsfingerprint.Profile{
+		Name:          "h2 profile",
+		CipherSuites:  []uint16{0x1301},
+		ALPNProtocols: []string{"h2", "http/1.1"},
+	}
+	h2Opts := reqClientOptions{Timeout: 7 * time.Second, TLSProfile: h2Profile}
+
+	h2Client, err := getSharedReqClient(h2Opts)
+	require.NoError(t, err)
+	require.NotNil(t, h2Client.GetTransport().DialTLSContext)
+
+	// The caller's shared profile object must not be mutated.
+	require.Equal(t, []string{"h2", "http/1.1"}, h2Profile.ALPNProtocols)
+
+	// The converged cache key matches an explicit HTTP/1.1 profile: both
+	// profiles resolve to the same shared client instead of two ambiguous
+	// cache entries for the same wire behavior.
+	h1Opts := reqClientOptions{Timeout: 7 * time.Second, TLSProfile: &tlsfingerprint.Profile{
+		Name:          "h1 profile",
+		CipherSuites:  []uint16{0x1301},
+		ALPNProtocols: []string{"http/1.1"},
+	}}
+	h1Client, err := getSharedReqClient(h1Opts)
+	require.NoError(t, err)
+	require.Same(t, h2Client, h1Client)
+}
+
+func TestHTTP1OnlyTLSProfile(t *testing.T) {
+	require.Nil(t, http1OnlyTLSProfile(nil))
+
+	profile := &tlsfingerprint.Profile{ALPNProtocols: []string{"h2", "http/1.1"}}
+	clone := http1OnlyTLSProfile(profile)
+	require.Equal(t, []string{"http/1.1"}, clone.ALPNProtocols)
+	require.Equal(t, []string{"h2", "http/1.1"}, profile.ALPNProtocols, "original profile must stay untouched")
+}
+
 func TestGetSharedReqClient_TLSProfileSeparatesCacheByContent(t *testing.T) {
 	sharedReqClients = sync.Map{}
 	first := reqClientOptions{Timeout: time.Second, TLSProfile: &tlsfingerprint.Profile{CipherSuites: []uint16{0x1301}}}
