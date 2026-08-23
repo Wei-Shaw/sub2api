@@ -138,25 +138,7 @@
             <span
               :class="[
                 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
-                value === 'anthropic'
-                  ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-                  : value === 'openai'
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                    : value === 'antigravity'
-                      ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                      : value === 'fal'
-                        ? 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400'
-                      : value === 'grok'
-                        ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100'
-                          : value === 'kiro'
-                            ? 'bg-violet-500/10 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300'
-                        : value === 'kimi'
-                          ? 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400'
-                          : value === 'zhipu'
-                            ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
-                            : value === 'deepseek'
-                              ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400'
-                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                platformBadgeLightClass(value),
               ]"
             >
               <PlatformIcon :platform="value" size="xs" />
@@ -863,15 +845,22 @@
             class="overflow-hidden rounded-lg border border-gray-200 bg-gray-50/50 dark:border-dark-600 dark:bg-dark-800/40"
           >
             <div class="flex items-center gap-2 border-b border-gray-200 p-3 dark:border-dark-600">
-              <input
-                v-model="createModelsListState.draft"
-                type="text"
-                class="input min-w-0 flex-1"
-                :disabled="createModelsListLoading"
-                :placeholder="t('admin.groups.modelsList.manualPlaceholder')"
-                :aria-label="t('admin.groups.modelsList.manualPlaceholder')"
-                @keydown.enter.prevent="addModelsListDraft(createModelsListState)"
-              />
+              <div class="relative min-w-0 flex-1">
+                <Icon
+                  name="search"
+                  size="sm"
+                  class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                />
+                <input
+                  v-model="createModelsListState.draft"
+                  type="search"
+                  class="input w-full pl-9"
+                  :disabled="createModelsListLoading"
+                  :placeholder="t('admin.groups.modelsList.manualPlaceholder')"
+                  :aria-label="t('admin.groups.modelsList.manualPlaceholder')"
+                  @keydown.enter.prevent="addModelsListDraft(createModelsListState)"
+                />
+              </div>
               <button
                 type="button"
                 class="btn btn-secondary h-10 w-10 flex-shrink-0 p-0"
@@ -919,13 +908,19 @@
                 {{ t("admin.groups.modelsList.loading") }}
               </p>
               <p
-                v-else-if="createModelsListState.items.length === 0"
+                v-else-if="createFilteredModelsListItems.length === 0"
                 class="text-xs text-gray-500 dark:text-gray-400"
               >
-                {{ t("admin.groups.modelsList.empty") }}
+                {{
+                  t(
+                    createModelsListState.draft.trim()
+                      ? "admin.groups.modelsList.noSearchResults"
+                      : "admin.groups.modelsList.empty",
+                  )
+                }}
               </p>
               <div
-                v-for="(item, index) in createModelsListState.items"
+                v-for="(item, index) in createFilteredModelsListItems"
                 :key="item.id"
                 class="flex items-center gap-2 rounded border border-gray-200 bg-white px-3 py-2 dark:border-dark-600 dark:bg-dark-800"
               >
@@ -938,6 +933,7 @@
                   {{ item.id }}
                 </span>
                 <button
+                  v-if="!createModelsListState.draft.trim()"
                   type="button"
                   :disabled="index === 0"
                   class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40 dark:hover:bg-dark-600 dark:hover:text-gray-200"
@@ -946,6 +942,7 @@
                   <Icon name="arrowUp" size="sm" />
                 </button>
                 <button
+                  v-if="!createModelsListState.draft.trim()"
                   type="button"
                   :disabled="index === createModelsListState.items.length - 1"
                   class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40 dark:hover:bg-dark-600 dark:hover:text-gray-200"
@@ -2766,15 +2763,22 @@
             class="overflow-hidden rounded-lg border border-gray-200 bg-gray-50/50 dark:border-dark-600 dark:bg-dark-800/40"
           >
             <div class="flex items-center gap-2 border-b border-gray-200 p-3 dark:border-dark-600">
-              <input
-                v-model="editModelsListState.draft"
-                type="text"
-                class="input min-w-0 flex-1"
-                :disabled="editModelsListLoading"
-                :placeholder="t('admin.groups.modelsList.manualPlaceholder')"
-                :aria-label="t('admin.groups.modelsList.manualPlaceholder')"
-                @keydown.enter.prevent="addModelsListDraft(editModelsListState)"
-              />
+              <div class="relative min-w-0 flex-1">
+                <Icon
+                  name="search"
+                  size="sm"
+                  class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                />
+                <input
+                  v-model="editModelsListState.draft"
+                  type="search"
+                  class="input w-full pl-9"
+                  :disabled="editModelsListLoading"
+                  :placeholder="t('admin.groups.modelsList.manualPlaceholder')"
+                  :aria-label="t('admin.groups.modelsList.manualPlaceholder')"
+                  @keydown.enter.prevent="addModelsListDraft(editModelsListState)"
+                />
+              </div>
               <button
                 type="button"
                 class="btn btn-secondary h-10 w-10 flex-shrink-0 p-0"
@@ -2822,13 +2826,19 @@
                 {{ t("admin.groups.modelsList.loading") }}
               </p>
               <p
-                v-else-if="editModelsListState.items.length === 0"
+                v-else-if="editFilteredModelsListItems.length === 0"
                 class="text-xs text-gray-500 dark:text-gray-400"
               >
-                {{ t("admin.groups.modelsList.empty") }}
+                {{
+                  t(
+                    editModelsListState.draft.trim()
+                      ? "admin.groups.modelsList.noSearchResults"
+                      : "admin.groups.modelsList.empty",
+                  )
+                }}
               </p>
               <div
-                v-for="(item, index) in editModelsListState.items"
+                v-for="(item, index) in editFilteredModelsListItems"
                 :key="item.id"
                 class="flex items-center gap-2 rounded border border-gray-200 bg-white px-3 py-2 dark:border-dark-600 dark:bg-dark-800"
               >
@@ -2841,6 +2851,7 @@
                   {{ item.id }}
                 </span>
                 <button
+                  v-if="!editModelsListState.draft.trim()"
                   type="button"
                   :disabled="index === 0"
                   class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40 dark:hover:bg-dark-600 dark:hover:text-gray-200"
@@ -2849,6 +2860,7 @@
                   <Icon name="arrowUp" size="sm" />
                 </button>
                 <button
+                  v-if="!editModelsListState.draft.trim()"
                   type="button"
                   :disabled="index === editModelsListState.items.length - 1"
                   class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40 dark:hover:bg-dark-600 dark:hover:text-gray-200"
@@ -4322,27 +4334,7 @@
                 <span
                   :class="[
                     'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-                    group.platform === 'anthropic'
-                      ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-                      : group.platform === 'openai'
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                        : group.platform === 'antigravity'
-                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                          : group.platform === 'fal'
-                            ? 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400'
-                          : group.platform === 'leonardo'
-                            ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400'
-                          : group.platform === 'grok'
-                            ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100'
-                          : group.platform === 'kiro'
-                            ? 'bg-violet-500/10 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300'
-                            : group.platform === 'kimi'
-                              ? 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400'
-                              : group.platform === 'zhipu'
-                                ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
-                                : group.platform === 'deepseek'
-                                  ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400'
-                                  : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                    platformBadgeLightClass(group.platform),
                   ]"
                 >
                   {{ t("admin.groups.platforms." + group.platform) }}
@@ -4828,6 +4820,7 @@ import { createStableObjectKeyResolver } from "@/utils/stableObjectKey";
 import { extractApiErrorMessage } from "@/utils/apiError";
 import { useKeyedDebouncedSearch } from "@/composables/useKeyedDebouncedSearch";
 import { getPersistedPageSize } from "@/composables/usePersistedPageSize";
+import { platformBadgeLightClass } from "@/utils/platformColors";
 import {
   createDefaultMessagesDispatchFormState,
   messagesDispatchConfigToFormState,
@@ -4839,6 +4832,7 @@ import {
   addModelsListItems,
   buildModelsListConfig,
   createModelsListState as createInitialModelsListState,
+  filterModelsListItems,
   invertModelsListSelection,
   moveModelsListItem,
   selectAllModelsListItems,
@@ -5441,6 +5435,12 @@ const createModelsListSelectedCount = computed(
 );
 const editModelsListSelectedCount = computed(
   () => editModelsListState.items.filter((item) => item.selected).length,
+);
+const createFilteredModelsListItems = computed(() =>
+  filterModelsListItems(createModelsListState.items, createModelsListState.draft),
+);
+const editFilteredModelsListItems = computed(() =>
+  filterModelsListItems(editModelsListState.items, editModelsListState.draft),
 );
 
 const createForm = reactive({

@@ -805,7 +805,7 @@ let abortController: AbortController | null = null
 // 注意：这里不含 'composite' —— composite 是分组侧的"混合"标记，
 // 渠道按具体平台分 tab，混合分组会通过 getGroupsForPlatform 出现在每个 tab 里。
 const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'fal', 'leonardo', 'atlascloud', 'apiz', 'kimi', 'zhipu', 'deepseek']
-const compositePlatforms: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'leonardo']
+const compositePlatforms: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'leonardo', 'atlascloud', 'apiz']
 
 // ── Helpers ──
 function formatDate(value: string): string {

@@ -4,6 +4,7 @@ import {
   addModelsListItems,
   buildModelsListConfig,
   createModelsListState,
+  filterModelsListItems,
   hydrateModelsListState,
   invertModelsListSelection,
   moveModelsListItem,
@@ -150,5 +151,20 @@ describe("groupsModelsList", () => {
       { id: "gpt-5.4", selected: true },
       { id: "gpt-5.4-mini", selected: true },
     ]);
+  });
+
+  it("filters model IDs case-insensitively without changing their order", () => {
+    const state = hydrateModelsListState(null, [
+      "gpt-5.5",
+      "openai/GPT-Image-2",
+      "claude-sonnet-4",
+    ]);
+
+    expect(filterModelsListItems(state.items, "  gPt  ")).toEqual([
+      { id: "gpt-5.5", selected: true },
+      { id: "openai/GPT-Image-2", selected: true },
+    ]);
+    expect(filterModelsListItems(state.items, "missing-model")).toEqual([]);
+    expect(filterModelsListItems(state.items, "")).toBe(state.items);
   });
 });

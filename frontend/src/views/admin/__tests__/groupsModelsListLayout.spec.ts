@@ -17,6 +17,12 @@ describe("groups models list layout", () => {
     expect(groupsViewSource).not.toContain("sticky top-0");
   });
 
+  it("uses one input for both filtering and adding custom models", () => {
+    expect(groupsViewSource.match(/v-model="createModelsListState\.draft"/g)).toHaveLength(1);
+    expect(groupsViewSource.match(/v-model="editModelsListState\.draft"/g)).toHaveLength(1);
+    expect(groupsViewSource).not.toContain("ModelsListState.search");
+  });
+
   it("keeps platform badge colors centralized for Kiro", () => {
     expect(groupsViewSource).toContain("platformBadgeLightClass(value)");
     expect(groupsViewSource).toContain("platformBadgeLightClass(group.platform)");

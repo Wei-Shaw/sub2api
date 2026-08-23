@@ -24,6 +24,17 @@ export const createModelsListState = (
   items: [],
 })
 
+export const filterModelsListItems = (
+  items: ModelsListItem[],
+  search: string,
+): ModelsListItem[] => {
+  const query = search.trim().toLowerCase()
+  if (!query) {
+    return items
+  }
+  return items.filter(item => item.id.toLowerCase().includes(query))
+}
+
 export const hydrateModelsListState = (
   config: Partial<ModelsListConfig> | null | undefined,
   candidates: string[],

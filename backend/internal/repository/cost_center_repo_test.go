@@ -78,6 +78,39 @@ func TestListCostCenterEventsExcludesUpstreamAndHydratesNames(t *testing.T) {
 	}
 }
 
+func TestSummarizeIncludesSettledRebateAmountNetOfReversals(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	repo := NewCostCenterRepository(db)
+	start := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 1, 0)
+
+	mock.ExpectQuery("SELECT .*category='rebate'.*FROM cost_center_events WHERE").
+		WithArgs(start, end).
+		WillReturnRows(sqlmock.NewRows([]string{"cash", "realized", "promo", "expenses", "rebate", "pending", "unknown"}).
+			AddRow(100.0, 80.0, 5.0, 30.0, 12.5, 4.0, 0.0))
+	mock.ExpectQuery("SELECT .*FROM cost_center_subscription_entitlements WHERE").
+		WithArgs(start, end).
+		WillReturnRows(sqlmock.NewRows([]string{"deferred", "expired"}).AddRow(20.0, 3.0))
+
+	summary, err := repo.Summarize(context.Background(), service.CostCenterReportFilter{Start: start, End: end})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.RebateAmount != 12.5 {
+		t.Fatalf("unexpected rebate amount: %v", summary.RebateAmount)
+	}
+	if summary.CashProfit != 70 || summary.OperatingProfit != 50 {
+		t.Fatalf("rebate breakdown must not be subtracted twice: %+v", summary)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestReverseEventAppendsCompensatingEvent(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

@@ -159,6 +159,7 @@ const cards = computed(() => summary.value ? [
   { key: 'cash', label: t('admin.costCenter.cashIncome'), description: t('admin.costCenter.cashIncomeHelp'), value: summary.value.cash_income, class: 'text-emerald-600' },
   { key: 'realized', label: t('admin.costCenter.realizedIncome'), description: t('admin.costCenter.realizedIncomeHelp'), value: summary.value.realized_income, class: 'text-emerald-600' },
   { key: 'expenses', label: t('admin.costCenter.expenses'), description: t('admin.costCenter.expensesHelp'), value: summary.value.settled_expenses, class: 'text-red-600' },
+  { key: 'rebate', label: t('admin.costCenter.rebateAmount'), description: t('admin.costCenter.rebateAmountHelp'), value: summary.value.rebate_amount ?? 0, class: 'text-rose-600' },
   { key: 'cashProfit', label: t('admin.costCenter.cashProfit'), description: t('admin.costCenter.cashProfitHelp'), value: summary.value.cash_profit, class: 'text-blue-600' },
   { key: 'operatingProfit', label: t('admin.costCenter.operatingProfit'), description: t('admin.costCenter.operatingProfitHelp'), value: summary.value.operating_profit, class: 'text-blue-600' },
   { key: 'deferred', label: t('admin.costCenter.deferredSubscription'), description: t('admin.costCenter.deferredSubscriptionHelp'), value: summary.value.deferred_subscription_usd, class: 'text-amber-600' },

@@ -5,6 +5,7 @@ export interface CostCenterSummary {
   realized_income: number
   promotional_consumption: number
   settled_expenses: number
+  rebate_amount: number
   pending_forecast: number
   cash_profit: number
   operating_profit: number
