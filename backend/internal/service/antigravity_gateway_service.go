@@ -198,17 +198,18 @@ func (s *AntigravityGatewayService) getUpstreamErrorDetail(body []byte) string {
 }
 
 // checkErrorPolicy nil 安全的包装
-func (s *AntigravityGatewayService) checkErrorPolicy(ctx context.Context, account *Account, statusCode int, body []byte) ErrorPolicyResult {
+func (s *AntigravityGatewayService) checkErrorPolicy(ctx context.Context, account *Account, statusCode int, body []byte, requestedModel ...string) ErrorPolicyResult {
 	if s.rateLimitService == nil {
 		return ErrorPolicyNone
 	}
-	return s.rateLimitService.CheckErrorPolicy(ctx, account, statusCode, body)
+	return s.rateLimitService.CheckErrorPolicy(ctx, account, statusCode, body, firstRequestedModel(requestedModel))
 }
 
 // applyErrorPolicy 应用错误策略结果，返回是否应终止当前循环及应返回的状态码。
 // ErrorPolicySkipped 时 outStatus 为 500（前端约定：未命中的错误返回 500）。
 func (s *AntigravityGatewayService) applyErrorPolicy(p antigravityRetryLoopParams, statusCode int, headers http.Header, respBody []byte) (handled bool, outStatus int, retErr error) {
-	switch s.checkErrorPolicy(p.ctx, p.account, statusCode, respBody) {
+	modelKey := resolveFinalAntigravityModelKey(p.ctx, p.account, p.requestedModel)
+	switch s.checkErrorPolicy(p.ctx, p.account, statusCode, respBody, modelKey) {
 	case ErrorPolicySkipped:
 		if s.handleAntigravityModelRateLimitBeforePolicy(p, statusCode, headers, respBody) {
 			return true, statusCode, nil

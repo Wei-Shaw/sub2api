@@ -135,6 +135,7 @@ func TestNormalizeOpenAIResponsesLiteTools_ConvertsStringInput(t *testing.T) {
 
 func TestNormalizeOpenAIResponsesLiteTools_KeepsSupportedTopLevelTools(t *testing.T) {
 	reqBody := map[string]any{
+		"reasoning": map[string]any{"context": "all_turns"},
 		"tools": []any{
 			map[string]any{"type": "function", "name": "shell"},
 			map[string]any{"type": "custom", "name": "exec"},
@@ -148,6 +149,46 @@ func TestNormalizeOpenAIResponsesLiteTools_KeepsSupportedTopLevelTools(t *testin
 	require.NoError(t, err)
 	require.False(t, changed)
 	require.Len(t, reqBody["tools"], 4)
+}
+
+func TestNormalizeOpenAIResponsesLiteTools_EnsuresReasoningContext(t *testing.T) {
+	tests := []struct {
+		name      string
+		reasoning any
+	}{
+		{name: "missing"},
+		{name: "missing context", reasoning: map[string]any{"effort": "high"}},
+		{name: "wrong context", reasoning: map[string]any{"effort": "medium", "context": "current_turn"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reqBody := map[string]any{"input": "hello"}
+			if tt.reasoning != nil {
+				reqBody["reasoning"] = tt.reasoning
+			}
+
+			changed, err := normalizeOpenAIResponsesLiteTools(reqBody)
+
+			require.NoError(t, err)
+			require.True(t, changed)
+			reasoning := reqBody["reasoning"].(map[string]any)
+			require.Equal(t, "all_turns", reasoning["context"])
+			if tt.name != "missing" {
+				require.Equal(t, tt.reasoning.(map[string]any)["effort"], reasoning["effort"])
+			}
+		})
+	}
+}
+
+func TestNormalizeOpenAIResponsesLiteTools_RejectsNonObjectReasoning(t *testing.T) {
+	reqBody := map[string]any{"reasoning": "high"}
+
+	changed, err := normalizeOpenAIResponsesLiteTools(reqBody)
+
+	require.ErrorContains(t, err, "reasoning to be an object")
+	require.False(t, changed)
+	require.Equal(t, "high", reqBody["reasoning"])
 }
 
 func TestNormalizeOpenAIResponsesLiteTools_RejectsUnsupportedTools(t *testing.T) {
@@ -240,6 +281,7 @@ func TestOpenAIGatewayServiceForward_NormalizesResponsesLiteToolsForOAuth(t *tes
 			}
 			body := []byte(`{
 				"model":"gpt-5.6-terra","stream":true,"instructions":"test",
+				"reasoning":{"effort":"high","context":"current_turn"},
 				"tools":[
 					{"type":"function","name":"shell","parameters":{"type":"object"}},
 					{"type":"custom","name":"exec"},
@@ -255,6 +297,8 @@ func TestOpenAIGatewayServiceForward_NormalizesResponsesLiteToolsForOAuth(t *tes
 			require.NoError(t, err)
 			require.NotNil(t, result)
 			require.Equal(t, "true", upstream.lastReq.Header.Get(responsesLiteHeader))
+			require.Equal(t, "high", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
+			require.Equal(t, "all_turns", gjson.GetBytes(upstream.lastBody, "reasoning.context").String())
 			require.False(t, gjson.GetBytes(upstream.lastBody, `tools.#(type=="namespace")`).Exists())
 			require.Equal(t, "shell", gjson.GetBytes(upstream.lastBody, `tools.#(type=="function").name`).String())
 			require.Equal(t, "exec", gjson.GetBytes(upstream.lastBody, `tools.#(type=="custom").name`).String())

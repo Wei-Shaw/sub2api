@@ -649,6 +649,12 @@ func TestNormalizeCompletedImageGenerationStatus(t *testing.T) {
 			want:        `{"type":"response.output_item.added","item":{"type":"image_generation_call","status":"generating","result":"image-data"}}`,
 			wantChanged: false,
 		},
+		{
+			name:        "done preserves base64 result",
+			input:       `{"type":"response.done","response":{"output":[{"type":"image_generation_call","status":"generating","result":"iVBORw0KGgoAAAANSUhEUg/+=="}]}}`,
+			want:        `{"type":"response.done","response":{"output":[{"type":"image_generation_call","status":"completed","result":"iVBORw0KGgoAAAANSUhEUg/+=="}]}}`,
+			wantChanged: true,
+		},
 	}
 
 	for _, tt := range tests {

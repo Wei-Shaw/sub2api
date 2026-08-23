@@ -9,9 +9,15 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
+const simpleModeDefaultGroupDescription = "Auto-created default group"
+
 func ensureSimpleModeDefaultGroups(ctx context.Context, client *dbent.Client) error {
 	if client == nil {
 		return fmt.Errorf("nil ent client")
+	}
+
+	if err := backfillSimpleModeGrokDefaultImageGeneration(ctx, client); err != nil {
+		return err
 	}
 
 	requiredByPlatform := map[string]int{
@@ -65,12 +71,13 @@ func createGroupIfNotExists(ctx context.Context, client *dbent.Client, name, pla
 
 	_, err = client.Group.Create().
 		SetName(name).
-		SetDescription("Auto-created default group").
+		SetDescription(simpleModeDefaultGroupDescription).
 		SetPlatform(platform).
 		SetStatus(service.StatusActive).
 		SetSubscriptionType(service.SubscriptionTypeStandard).
 		SetRateMultiplier(1.0).
 		SetIsExclusive(false).
+		SetAllowImageGeneration(platform == service.PlatformGrok).
 		Save(ctx)
 	if err != nil {
 		if dbent.IsConstraintError(err) {
@@ -78,6 +85,24 @@ func createGroupIfNotExists(ctx context.Context, client *dbent.Client, name, pla
 			return nil
 		}
 		return fmt.Errorf("create default group %s: %w", name, err)
+	}
+	return nil
+}
+
+func backfillSimpleModeGrokDefaultImageGeneration(ctx context.Context, client *dbent.Client) error {
+	_, err := client.Group.Update().
+		Where(
+			group.NameEQ(service.PlatformGrok+"-default"),
+			group.PlatformEQ(service.PlatformGrok),
+			group.DescriptionEQ(simpleModeDefaultGroupDescription),
+			group.StatusEQ(service.StatusActive),
+			group.AllowImageGenerationEQ(false),
+			group.DeletedAtIsNil(),
+		).
+		SetAllowImageGeneration(true).
+		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("backfill auto-created grok default image generation: %w", err)
 	}
 	return nil
 }

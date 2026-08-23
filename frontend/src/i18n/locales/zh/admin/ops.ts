@@ -72,6 +72,7 @@ export default {
         runtimeConfigResetFailed: '重置日志配置失败',
         cleanupConfirm: '确定要清理匹配当前筛选条件的系统日志吗？此操作不可撤销。',
         cleanupSuccess: '清理完成，已删除 {count} 条日志。',
+        cleanupFilterRequired: '清理需要至少一个筛选条件（起止时间或其他字段）',
         cleanupFailed: '清理系统日志失败'
       },
       requestsTotal: '请求（总计）',
@@ -338,7 +339,16 @@ export default {
         time: '时间',
         phase: '阶段',
         status: '状态码',
+        upstreamStatus: '上游状态码',
         message: '消息',
+        rootCause: '根因',
+        diagnosticPayloads: '诊断载荷',
+        payloads: {
+          client: '客户端响应',
+          upstream_message: '上游消息',
+          upstream_detail: '上游详情',
+          upstream_events: '上游事件'
+        },
         basicInfo: '基本信息',
         platform: '平台',
         model: '模型',
@@ -381,8 +391,6 @@ export default {
         suggestPlatform: '🚨 平台错误，建议立即排查修复',
         suggestGeneric: '查看详情了解更多信息',
         apiKeyPrefix: 'Key 前缀',
-        attemptedKeyPrefix: '尝试的 Key 前缀',
-        deletedKeyOwner: '已删除 Key 所有者',
         keyDeletedBadge: 'Key 已删除'
       },
       requestDetails: {
@@ -713,8 +721,6 @@ export default {
           '启用后，客户端主动断开连接（context canceled）的错误将不会写入错误日志。',
         ignoreNoAvailableAccounts: '忽略无可用账号错误',
         ignoreNoAvailableAccountsHint: '启用后，"No available accounts" 错误将不会写入错误日志（不推荐，这通常是配置问题）。',
-        ignoreInvalidApiKeyErrors: '忽略无效 API Key 错误',
-        ignoreInvalidApiKeyErrorsHint: '启用后，无效或缺失 API Key 的错误（INVALID_API_KEY、API_KEY_REQUIRED）将不会写入错误日志。',
         ignoreInsufficientBalanceErrors: '忽略余额不足错误',
         ignoreInsufficientBalanceErrorsHint: '启用后，账号余额不足（Insufficient balance）的错误将不会写入错误日志。',
         autoRefresh: '自动刷新',

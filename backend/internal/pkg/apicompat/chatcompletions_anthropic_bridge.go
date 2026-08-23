@@ -390,7 +390,7 @@ func ChatCompletionsResponseToAnthropic(resp *ChatCompletionsResponse, model str
 		if len(resp.Choices) > 0 {
 			choice := resp.Choices[0]
 			out.Content = chatMessageToAnthropicBlocks(choice.Message)
-			out.StopReason = chatFinishReasonToAnthropicStopReason(choice.FinishReason, out.Content)
+			out.StopReason = AnthropicStopReasonPtr(chatFinishReasonToAnthropicStopReason(choice.FinishReason, out.Content))
 			// "length" → "max_tokens" is handled by chatFinishReasonToAnthropicStopReason;
 			// Anthropic conveys max-tokens via stop_reason only, no incomplete_details field.
 		}
@@ -404,9 +404,9 @@ func ChatCompletionsResponseToAnthropic(resp *ChatCompletionsResponse, model str
 	}
 	// Empty choices / nil response never enter the choices branch above; the
 	// double-conversion path still reports a completed turn ("end_turn"), and
-	// stop_reason "" is invalid for strict Anthropic clients.
-	if out.StopReason == "" {
-		out.StopReason = chatFinishReasonToAnthropicStopReason("", out.Content)
+	// stop_reason null/"" is invalid for completed non-stream responses.
+	if AnthropicStopReasonString(out.StopReason) == "" {
+		out.StopReason = AnthropicStopReasonPtr(chatFinishReasonToAnthropicStopReason("", out.Content))
 	}
 	// The double-conversion path generates a response id when the upstream
 	// omits one (ChatCompletionsResponseToResponses); clients treat it as required.
@@ -423,19 +423,20 @@ func ChatCompletionsResponseToAnthropic(resp *ChatCompletionsResponse, model str
 // + the reasoning→thinking mapping in ResponsesToAnthropic.
 func chatMessageToAnthropicBlocks(message ChatMessage) []AnthropicContentBlock {
 	var blocks []AnthropicContentBlock
+	reasoning := message.reasoningText()
 
-	if message.ReasoningContent != "" {
+	if reasoning != "" {
 		blocks = append(blocks, AnthropicContentBlock{
 			Type:     "thinking",
-			Thinking: message.ReasoningContent,
+			Thinking: reasoning,
 		})
 	}
 
 	text := chatMessageContentText(message.Content)
 	// DeepSeek reasoning-only fallback: when there is no text and no tool calls,
 	// surface the reasoning content as visible text so the turn isn't empty.
-	if text == "" && strings.TrimSpace(message.ReasoningContent) != "" && len(message.ToolCalls) == 0 {
-		text = message.ReasoningContent
+	if text == "" && strings.TrimSpace(reasoning) != "" && len(message.ToolCalls) == 0 {
+		text = reasoning
 	}
 	if text != "" || len(message.ToolCalls) == 0 {
 		blocks = append(blocks, AnthropicContentBlock{Type: "text", Text: text})
@@ -608,11 +609,12 @@ func ChatCompletionsChunkToAnthropicEvents(
 
 	for _, choice := range chunk.Choices {
 		// Reasoning content → thinking block.
-		if choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "" {
+		reasoning := choice.Delta.reasoningText()
+		if reasoning != nil && *reasoning != "" {
 			events = append(events, ensureCCAnthropicThinkingBlock(state)...)
 			events = append(events, ccAnthropicDelta(state, &AnthropicDelta{
 				Type:     "thinking_delta",
-				Thinking: *choice.Delta.ReasoningContent,
+				Thinking: *reasoning,
 			})...)
 		}
 
@@ -701,12 +703,13 @@ func ensureCCAnthropicMessageStart(state *ChatCompletionsToAnthropicStreamState)
 	return []AnthropicStreamEvent{{
 		Type: "message_start",
 		Message: &AnthropicResponse{
-			ID:      state.ResponseID,
-			Type:    "message",
-			Role:    "assistant",
-			Content: []AnthropicContentBlock{},
-			Model:   state.Model,
-			Usage:   AnthropicUsage{InputTokens: 0, OutputTokens: 0},
+			ID:         state.ResponseID,
+			Type:       "message",
+			Role:       "assistant",
+			Content:    []AnthropicContentBlock{},
+			Model:      state.Model,
+			StopReason: nil, // JSON null; never ""
+			Usage:      AnthropicUsage{InputTokens: 0, OutputTokens: 0},
 		},
 	}}
 }

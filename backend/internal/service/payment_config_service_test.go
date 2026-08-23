@@ -73,6 +73,20 @@ func TestPcParseInt(t *testing.T) {
 	}
 }
 
+func TestAlipayMobilePrecreateEnvironmentOverride(t *testing.T) {
+	svc := &PaymentConfigService{}
+
+	t.Setenv(SettingAlipayMobilePrecreateDeepLink, "true")
+	if !svc.parsePaymentConfig(map[string]string{SettingAlipayMobilePrecreateDeepLink: "false"}).AlipayMobilePrecreateDeepLink {
+		t.Fatal("expected environment variable to enable mobile Alipay precreate")
+	}
+
+	t.Setenv(SettingAlipayMobilePrecreateDeepLink, "false")
+	if svc.parsePaymentConfig(map[string]string{SettingAlipayMobilePrecreateDeepLink: "true"}).AlipayMobilePrecreateDeepLink {
+		t.Fatal("expected environment variable to disable mobile Alipay precreate")
+	}
+}
+
 func TestParsePaymentConfig(t *testing.T) {
 	t.Parallel()
 
@@ -102,22 +116,26 @@ func TestParsePaymentConfig(t *testing.T) {
 		if len(cfg.EnabledTypes) != 0 {
 			t.Fatalf("expected empty EnabledTypes, got %v", cfg.EnabledTypes)
 		}
+		if cfg.AlipayMobilePrecreateDeepLink {
+			t.Fatal("expected AlipayMobilePrecreateDeepLink=false by default")
+		}
 	})
 
 	t.Run("all values populated", func(t *testing.T) {
 		t.Parallel()
 		vals := map[string]string{
-			SettingPaymentEnabled:      "true",
-			SettingMinRechargeAmount:   "5.00",
-			SettingMaxRechargeAmount:   "1000.00",
-			SettingDailyRechargeLimit:  "5000.00",
-			SettingOrderTimeoutMinutes: "15",
-			SettingMaxPendingOrders:    "5",
-			SettingEnabledPaymentTypes: "alipay,wxpay,stripe",
-			SettingBalancePayDisabled:  "true",
-			SettingLoadBalanceStrategy: "least_amount",
-			SettingProductNamePrefix:   "PRE",
-			SettingProductNameSuffix:   "SUF",
+			SettingPaymentEnabled:                "true",
+			SettingMinRechargeAmount:             "5.00",
+			SettingMaxRechargeAmount:             "1000.00",
+			SettingDailyRechargeLimit:            "5000.00",
+			SettingOrderTimeoutMinutes:           "15",
+			SettingMaxPendingOrders:              "5",
+			SettingEnabledPaymentTypes:           "alipay,wxpay,stripe",
+			SettingBalancePayDisabled:            "true",
+			SettingLoadBalanceStrategy:           "least_amount",
+			SettingProductNamePrefix:             "PRE",
+			SettingProductNameSuffix:             "SUF",
+			SettingAlipayMobilePrecreateDeepLink: "true",
 		}
 		cfg := svc.parsePaymentConfig(vals)
 
@@ -156,6 +174,9 @@ func TestParsePaymentConfig(t *testing.T) {
 		}
 		if cfg.ProductNameSuffix != "SUF" {
 			t.Fatalf("ProductNameSuffix = %q, want %q", cfg.ProductNameSuffix, "SUF")
+		}
+		if !cfg.AlipayMobilePrecreateDeepLink {
+			t.Fatal("expected AlipayMobilePrecreateDeepLink=true")
 		}
 	})
 
@@ -420,7 +441,12 @@ func (s *paymentConfigSettingRepoStub) GetAll(context.Context) (map[string]strin
 func (s *paymentConfigSettingRepoStub) Delete(context.Context, string) error { return nil }
 
 func TestUpdatePaymentConfig_PersistsVisibleMethodRouting(t *testing.T) {
-	repo := &paymentConfigSettingRepoStub{values: map[string]string{}}
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{
+		SettingPaymentVisibleMethodAlipayEnabled: "false",
+		SettingPaymentVisibleMethodAlipaySource:  VisibleMethodSourceOfficialAlipay,
+		SettingPaymentVisibleMethodWxpayEnabled:  "true",
+		SettingPaymentVisibleMethodWxpaySource:   VisibleMethodSourceEasyPayWechat,
+	}}
 	svc := &PaymentConfigService{settingRepo: repo}
 
 	alipayEnabled := true
@@ -446,6 +472,82 @@ func TestUpdatePaymentConfig_PersistsVisibleMethodRouting(t *testing.T) {
 	}
 	if repo.values[SettingPaymentVisibleMethodWxpaySource] != VisibleMethodSourceOfficialWechat {
 		t.Fatalf("wxpay source = %q, want %q", repo.values[SettingPaymentVisibleMethodWxpaySource], VisibleMethodSourceOfficialWechat)
+	}
+}
+
+func TestUpdatePaymentConfig_OmittedVisibleMethodRoutingIsPreserved(t *testing.T) {
+	wantVisibleMethods := map[string]string{
+		SettingPaymentVisibleMethodAlipayEnabled: "true",
+		SettingPaymentVisibleMethodAlipaySource:  VisibleMethodSourceEasyPayAlipay,
+		SettingPaymentVisibleMethodWxpayEnabled:  "false",
+		SettingPaymentVisibleMethodWxpaySource:   VisibleMethodSourceOfficialWechat,
+	}
+	initial := make(map[string]string, len(wantVisibleMethods))
+	for key, value := range wantVisibleMethods {
+		initial[key] = value
+	}
+	repo := &paymentConfigSettingRepoStub{values: initial}
+	svc := &PaymentConfigService{settingRepo: repo}
+
+	enabled := true
+	err := svc.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{Enabled: &enabled})
+	if err != nil {
+		t.Fatalf("UpdatePaymentConfig returned error: %v", err)
+	}
+
+	visibleMethodKeys := []string{
+		SettingPaymentVisibleMethodAlipayEnabled,
+		SettingPaymentVisibleMethodAlipaySource,
+		SettingPaymentVisibleMethodWxpayEnabled,
+		SettingPaymentVisibleMethodWxpaySource,
+	}
+	for _, key := range visibleMethodKeys {
+		if _, ok := repo.updates[key]; ok {
+			t.Fatalf("omitted visible method setting %q was written", key)
+		}
+		if repo.values[key] != wantVisibleMethods[key] {
+			t.Fatalf("visible method setting %q = %q, want preserved value %q", key, repo.values[key], wantVisibleMethods[key])
+		}
+	}
+	if repo.updates[SettingPaymentEnabled] != "true" {
+		t.Fatalf("payment enabled update = %q, want true", repo.updates[SettingPaymentEnabled])
+	}
+}
+
+func TestUpdatePaymentConfig_PersistsExplicitEmptyAndFalseValues(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{
+		SettingEnabledPaymentTypes: "alipay,wxpay",
+		SettingBalancePayDisabled:  "true",
+		SettingProductNamePrefix:   "existing",
+	}}
+	svc := &PaymentConfigService{settingRepo: repo}
+
+	falseValue := false
+	emptyString := ""
+	err := svc.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{
+		EnabledTypes:      []string{},
+		BalanceDisabled:   &falseValue,
+		ProductNamePrefix: &emptyString,
+	})
+	if err != nil {
+		t.Fatalf("UpdatePaymentConfig returned error: %v", err)
+	}
+
+	want := map[string]string{
+		SettingEnabledPaymentTypes: "",
+		SettingBalancePayDisabled:  "false",
+		SettingProductNamePrefix:   "",
+	}
+	if len(repo.updates) != len(want) {
+		t.Fatalf("updates = %v, want exactly %v", repo.updates, want)
+	}
+	for key, value := range want {
+		if repo.updates[key] != value {
+			t.Fatalf("update %q = %q, want %q", key, repo.updates[key], value)
+		}
+		if repo.values[key] != value {
+			t.Fatalf("stored %q = %q, want %q", key, repo.values[key], value)
+		}
 	}
 }
 

@@ -55,14 +55,24 @@ type schedulerAccountQueryKey struct {
 // mixed 与历史模式保持独立。每个 task 都用 defer 消费 remaining，最后一个消费者会立即释放结果，
 // 避免把账号切片的生命周期扩大到整轮 full rebuild。
 type schedulerAccountQueryCache struct {
-	remaining map[schedulerAccountQueryKey]int
-	accounts  map[schedulerAccountQueryKey][]Account
+	remaining          map[schedulerAccountQueryKey]int
+	accounts           map[schedulerAccountQueryKey][]Account
+	snapshotAccountIDs map[schedulerAccountQueryKey][]int64
+}
+
+// schedulerSnapshotAccountIDWriter 是 SchedulerCache 的可选批次优化能力。
+// 首次完整发布成功后返回实际可编码账号 ID；同一查询结果的后续桶只需发布这些 ID，
+// 避免重复序列化并覆盖全局账号缓存。未实现该接口的缓存继续走原 SetSnapshot 路径。
+type schedulerSnapshotAccountIDWriter interface {
+	SetSnapshotAndReturnAccountIDs(ctx context.Context, bucket SchedulerBucket, token SchedulerBucketWriteToken, accounts []Account) ([]int64, error)
+	SetSnapshotByAccountIDs(ctx context.Context, bucket SchedulerBucket, token SchedulerBucketWriteToken, accountIDs []int64) error
 }
 
 func newSchedulerAccountQueryCache(taskSets ...[]schedulerBucketWriteTask) *schedulerAccountQueryCache {
 	queries := &schedulerAccountQueryCache{
-		remaining: make(map[schedulerAccountQueryKey]int),
-		accounts:  make(map[schedulerAccountQueryKey][]Account),
+		remaining:          make(map[schedulerAccountQueryKey]int),
+		accounts:           make(map[schedulerAccountQueryKey][]Account),
+		snapshotAccountIDs: make(map[schedulerAccountQueryKey][]int64),
 	}
 	for _, tasks := range taskSets {
 		for _, task := range tasks {
@@ -93,6 +103,7 @@ func (c *schedulerAccountQueryCache) release(bucket SchedulerBucket) {
 	if remaining <= 0 {
 		delete(c.remaining, key)
 		delete(c.accounts, key)
+		delete(c.snapshotAccountIDs, key)
 		return
 	}
 	c.remaining[key] = remaining
@@ -202,15 +213,24 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 	bucket := s.bucketFor(groupID, platform, mode)
 	var writeToken SchedulerBucketWriteToken
 	canPublish := false
+	if err := ctx.Err(); err != nil {
+		return nil, useMixed, err
+	}
 
 	if s.cache != nil {
 		cached, hit, err := s.cache.GetSnapshot(ctx, bucket)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, useMixed, ctxErr
+		}
 		if err != nil {
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] cache read failed: bucket=%s err=%v", bucket.String(), err)
 		} else if hit {
 			return derefAccounts(cached), useMixed, nil
 		}
 		token, err := s.cache.CaptureBucketWriteToken(ctx, bucket)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, useMixed, ctxErr
+		}
 		if err != nil {
 			if errors.Is(err, ErrSchedulerBucketRetired) || errors.Is(err, ErrSchedulerBucketWriteFenced) {
 				slog.Debug("[Scheduler] cache publish fenced", "bucket", bucket.String())
@@ -234,6 +254,9 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 	if err != nil {
 		return nil, useMixed, err
 	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, useMixed, ctxErr
+	}
 
 	if s.cache != nil && canPublish {
 		if err := s.cache.SetSnapshot(fallbackCtx, bucket, writeToken, accounts); err != nil {
@@ -252,8 +275,14 @@ func (s *SchedulerSnapshotService) GetAccount(ctx context.Context, accountID int
 	if accountID <= 0 {
 		return nil, nil
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if s.cache != nil {
 		account, err := s.cache.GetAccount(ctx, accountID)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		if err != nil {
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] account cache read failed: id=%d err=%v", accountID, err)
 		} else if account != nil {
@@ -275,6 +304,17 @@ func (s *SchedulerSnapshotService) GetGroupByID(ctx context.Context, groupID int
 		return nil, nil
 	}
 	return s.groupRepo.GetByID(ctx, groupID)
+}
+
+// GetGroupByIDLite 获取分组配置但不加载账号计数聚合。
+// 利润门只需要平台、倍率、利润与高峰字段，GetByID 附带的那条账号计数聚合
+// 查询纯属浪费——composite / 模型路由 / fallback 每次装门都要付一次，WS 更是
+// 每个 turn 一次，且发生在「是否启用利润控制」判定之前。
+func (s *SchedulerSnapshotService) GetGroupByIDLite(ctx context.Context, groupID int64) (*Group, error) {
+	if s.groupRepo == nil {
+		return nil, nil
+	}
+	return s.groupRepo.GetByIDLite(ctx, groupID)
 }
 
 // UpdateAccountInCache 立即更新 Redis 中单个账号的数据（用于模型限流后立即生效）
@@ -529,11 +569,13 @@ func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, p
 		}
 	}
 
-	if s.cache != nil {
-		for _, id := range ids {
-			if _, ok := found[id]; ok {
-				continue
-			}
+	allAccountsFound := true
+	for _, id := range ids {
+		if _, ok := found[id]; ok {
+			continue
+		}
+		allAccountsFound = false
+		if s.cache != nil {
 			if err := s.cache.DeleteAccount(ctx, id); err != nil {
 				return err
 			}
@@ -544,7 +586,67 @@ func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, p
 	for gid := range rebuildGroupSet {
 		rebuildGroupIDs = append(rebuildGroupIDs, gid)
 	}
-	return s.rebuildByGroupIDs(ctx, rebuildGroupIDs, "account_bulk_change", seen)
+
+	// 缺失账户无法确定原平台，保留全平台重建以避免遗留旧快照。
+	if !allAccountsFound {
+		return s.rebuildByGroupIDs(ctx, rebuildGroupIDs, "account_bulk_change", seen)
+	}
+
+	platformGroupSets := make(map[string]map[int64]struct{}, len(accounts))
+	addPlatformGroups := func(platform string, groupIDs []int64) {
+		groupSet := platformGroupSets[platform]
+		if groupSet == nil {
+			groupSet = make(map[int64]struct{}, len(groupIDs))
+			platformGroupSets[platform] = groupSet
+		}
+		for _, groupID := range groupIDs {
+			groupSet[groupID] = struct{}{}
+		}
+	}
+	for _, account := range accounts {
+		if account == nil || account.ID <= 0 {
+			continue
+		}
+		accountGroupIDs := s.normalizeGroupIDs(account.GroupIDs)
+		switch account.Platform {
+		case PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek:
+			addPlatformGroups(account.Platform, accountGroupIDs)
+		case PlatformAntigravity:
+			// 批量更新可能刚关闭 mixed_scheduling，仍需清理两个兼容平台的旧快照。
+			addPlatformGroups(PlatformAntigravity, accountGroupIDs)
+			addPlatformGroups(PlatformAnthropic, accountGroupIDs)
+			addPlatformGroups(PlatformGemini, accountGroupIDs)
+		default:
+			return s.rebuildByGroupIDs(ctx, rebuildGroupIDs, "account_bulk_change", seen)
+		}
+	}
+
+	// payload 携带更新前的组；只扩散到本事件实际涉及的平台，避免平台间交叉重建。
+	if len(preloadGroupIDs) > 0 {
+		preloadGroupIDs = s.normalizeGroupIDs(preloadGroupIDs)
+		for platform := range platformGroupSets {
+			addPlatformGroups(platform, preloadGroupIDs)
+		}
+	}
+
+	bucketCapacity := 0
+	for _, groupSet := range platformGroupSets {
+		bucketCapacity += len(groupSet) * 3
+	}
+	buckets := make([]SchedulerBucket, 0, bucketCapacity)
+	for _, platform := range schedulerSnapshotPlatforms() {
+		groupSet, ok := platformGroupSets[platform]
+		if !ok {
+			continue
+		}
+		platformGroupIDs := make([]int64, 0, len(groupSet))
+		for groupID := range groupSet {
+			platformGroupIDs = append(platformGroupIDs, groupID)
+		}
+		sort.Slice(platformGroupIDs, func(i, j int) bool { return platformGroupIDs[i] < platformGroupIDs[j] })
+		buckets = append(buckets, s.bucketsForPlatform(platform, platformGroupIDs, seen)...)
+	}
+	return s.rebuildBuckets(ctx, buckets, "account_bulk_change")
 }
 
 func (s *SchedulerSnapshotService) handleAccountEvent(ctx context.Context, accountID *int64, payload map[string]any, seen map[batchSeenKey]struct{}) error {
@@ -722,8 +824,8 @@ func (s *SchedulerSnapshotService) rebuildByAccount(ctx context.Context, account
 	return s.rebuildBuckets(ctx, buckets, reason)
 }
 
-func schedulerSnapshotPlatforms() [5]string {
-	return [5]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok}
+func schedulerSnapshotPlatforms() [8]string {
+	return [8]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek}
 }
 
 // 生命周期辅助函数有意排除 group0；full rebuild 构造 group0 canonical 集时必须显式调用 canonical helper。
@@ -735,7 +837,7 @@ func schedulerBucketsForGroup(groupID int64) []SchedulerBucket {
 }
 
 func schedulerCanonicalBuckets(groupID int64) []SchedulerBucket {
-	buckets := make([]SchedulerBucket, 0, 12)
+	buckets := make([]SchedulerBucket, 0, 18)
 	for _, platform := range schedulerSnapshotPlatforms() {
 		buckets = append(buckets,
 			SchedulerBucket{GroupID: groupID, Platform: platform, Mode: SchedulerModeSingle},
@@ -753,7 +855,7 @@ func (s *SchedulerSnapshotService) rebuildByGroupIDs(ctx context.Context, groupI
 	if len(groupIDs) == 0 {
 		return nil
 	}
-	buckets := make([]SchedulerBucket, 0, len(groupIDs)*12)
+	buckets := make([]SchedulerBucket, 0, len(groupIDs)*18)
 	for _, platform := range schedulerSnapshotPlatforms() {
 		buckets = append(buckets, s.bucketsForPlatform(platform, groupIDs, seen)...)
 	}
@@ -869,7 +971,7 @@ func (s *SchedulerSnapshotService) rebuildBucketWithTokenPolicyAndQueryCache(
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild failed: bucket=%s reason=%s err=%v", bucket.String(), reason, err)
 		return err
 	}
-	if err := s.cache.SetSnapshot(rebuildCtx, bucket, task.token, accounts); err != nil {
+	if err := s.setRebuildSnapshot(rebuildCtx, task, accounts, queries); err != nil {
 		if errors.Is(err, ErrSchedulerBucketRetired) || errors.Is(err, ErrSchedulerBucketWriteFenced) {
 			slog.Debug("[Scheduler] rebuild fenced", "bucket", bucket.String(), "reason", reason)
 			if strict {
@@ -881,6 +983,38 @@ func (s *SchedulerSnapshotService) rebuildBucketWithTokenPolicyAndQueryCache(
 		return err
 	}
 	slog.Debug("[Scheduler] rebuild ok", "bucket", bucket.String(), "reason", reason, "size", len(accounts))
+	return nil
+}
+
+func (s *SchedulerSnapshotService) setRebuildSnapshot(
+	ctx context.Context,
+	task schedulerBucketWriteTask,
+	accounts []Account,
+	queries *schedulerAccountQueryCache,
+) error {
+	writer, ok := s.cache.(schedulerSnapshotAccountIDWriter)
+	key, reusable := schedulerAccountQueryKeyForBucket(task.bucket)
+	if !ok || queries == nil || !reusable {
+		return s.cache.SetSnapshot(ctx, task.bucket, task.token, accounts)
+	}
+
+	if accountIDs, exists := queries.snapshotAccountIDs[key]; exists {
+		return writer.SetSnapshotByAccountIDs(ctx, task.bucket, task.token, accountIDs)
+	}
+	if queries.remaining[key] <= 1 {
+		return s.cache.SetSnapshot(ctx, task.bucket, task.token, accounts)
+	}
+
+	accountIDs, err := writer.SetSnapshotAndReturnAccountIDs(ctx, task.bucket, task.token, accounts)
+	if err != nil {
+		return err
+	}
+	if queries.remaining[key] > 1 {
+		// 必须保存实际成功编码并写入的有序 ID，不能从原账号切片重新推导；
+		// 否则不可编码账号会只出现在后续桶中，破坏两个快照的成员一致性。
+		// 返回切片由当前批次独占，直接接管可避免 10k 账号场景再次复制。
+		queries.snapshotAccountIDs[key] = accountIDs
+	}
 	return nil
 }
 

@@ -41,6 +41,10 @@ type TotpCache interface {
 	IncrementVerifyAttempts(ctx context.Context, userID int64) (int, error)
 	GetVerifyAttempts(ctx context.Context, userID int64) (int, error)
 	ClearVerifyAttempts(ctx context.Context, userID int64) error
+
+	// Step-up grant methods (敏感操作 sudo 窗口)
+	SetStepUpGrant(ctx context.Context, userID int64, sessionKey string, ttl time.Duration) error
+	HasStepUpGrant(ctx context.Context, userID int64, sessionKey string) (bool, error)
 }
 
 // SecretEncryptor defines encryption operations for TOTP secrets
@@ -137,6 +141,31 @@ func (s *TotpService) GetStatus(ctx context.Context, userID int64) (*TotpStatus,
 	}, nil
 }
 
+// usesEmailVerification 判断 TOTP 启用/停用时的身份校验方式。
+// 管理员一律使用密码校验：管理员账号的邮箱常为占位地址收不到验证码，
+// 且管理员凭证失守时攻击者往往同时控制通知邮箱，邮箱验证码不构成有效防线。
+// 普通用户维持原有行为：开启邮箱验证时用邮箱验证码，否则用密码。
+func (s *TotpService) usesEmailVerification(ctx context.Context, user *User) bool {
+	return user.Role != RoleAdmin && s.settingService.IsEmailVerifyEnabled(ctx)
+}
+
+// verifyIdentity 按 usesEmailVerification 的结果校验邮箱验证码或密码。
+func (s *TotpService) verifyIdentity(ctx context.Context, user *User, emailCode, password string) error {
+	if s.usesEmailVerification(ctx, user) {
+		if emailCode == "" {
+			return ErrVerifyCodeRequired
+		}
+		return s.emailService.VerifyCode(ctx, user.Email, emailCode)
+	}
+	if password == "" {
+		return ErrPasswordRequired
+	}
+	if !user.CheckPassword(password) {
+		return ErrPasswordIncorrect
+	}
+	return nil
+}
+
 // InitiateSetup starts the TOTP setup process
 // If email verification is enabled, emailCode is required; otherwise password is required
 func (s *TotpService) InitiateSetup(ctx context.Context, userID int64, emailCode, password string) (*TotpSetupResponse, error) {
@@ -155,23 +184,8 @@ func (s *TotpService) InitiateSetup(ctx context.Context, userID int64, emailCode
 		return nil, ErrTotpAlreadyEnabled
 	}
 
-	// Verify identity based on email verification setting
-	if s.settingService.IsEmailVerifyEnabled(ctx) {
-		// Email verification enabled - verify email code
-		if emailCode == "" {
-			return nil, ErrVerifyCodeRequired
-		}
-		if err := s.emailService.VerifyCode(ctx, user.Email, emailCode); err != nil {
-			return nil, err
-		}
-	} else {
-		// Email verification disabled - verify password
-		if password == "" {
-			return nil, ErrPasswordRequired
-		}
-		if !user.CheckPassword(password) {
-			return nil, ErrPasswordIncorrect
-		}
+	if err := s.verifyIdentity(ctx, user, emailCode, password); err != nil {
+		return nil, err
 	}
 
 	// Generate a new TOTP key
@@ -302,23 +316,8 @@ func (s *TotpService) Disable(ctx context.Context, userID int64, emailCode, pass
 		return ErrTotpNotSetup
 	}
 
-	// Verify identity based on email verification setting
-	if s.settingService.IsEmailVerifyEnabled(ctx) {
-		// Email verification enabled - verify email code
-		if emailCode == "" {
-			return ErrVerifyCodeRequired
-		}
-		if err := s.emailService.VerifyCode(ctx, user.Email, emailCode); err != nil {
-			return err
-		}
-	} else {
-		// Email verification disabled - verify password
-		if password == "" {
-			return ErrPasswordRequired
-		}
-		if !user.CheckPassword(password) {
-			return ErrPasswordIncorrect
-		}
+	if err := s.verifyIdentity(ctx, user, emailCode, password); err != nil {
+		return err
 	}
 
 	// Disable TOTP
@@ -399,6 +398,26 @@ func (s *TotpService) VerifyCode(ctx context.Context, userID int64, code string)
 	_ = s.cache.ClearVerifyAttempts(ctx, userID)
 
 	return nil
+}
+
+// StepUpGrantTTL 敏感操作 step-up 验证的有效窗口（sudo 模式）。
+const StepUpGrantTTL = 15 * time.Minute
+
+// VerifyStepUp 校验 TOTP 码并授予当前会话一段时间的 step-up 权限。
+// 返回授权有效期，供前端展示/设置提醒。
+func (s *TotpService) VerifyStepUp(ctx context.Context, userID int64, sessionKey, code string) (time.Duration, error) {
+	if err := s.VerifyCode(ctx, userID, code); err != nil {
+		return 0, err
+	}
+	if err := s.cache.SetStepUpGrant(ctx, userID, sessionKey, StepUpGrantTTL); err != nil {
+		return 0, fmt.Errorf("store step-up grant: %w", err)
+	}
+	return StepUpGrantTTL, nil
+}
+
+// HasStepUpGrant 检查当前会话是否在 step-up 有效期内。
+func (s *TotpService) HasStepUpGrant(ctx context.Context, userID int64, sessionKey string) (bool, error) {
+	return s.cache.HasStepUpGrant(ctx, userID, sessionKey)
 }
 
 // CreateLoginSession creates a temporary login session for 2FA
@@ -508,12 +527,17 @@ type VerificationMethod struct {
 	Method string `json:"method"` // "email" or "password"
 }
 
-// GetVerificationMethod returns the verification method for TOTP operations
-func (s *TotpService) GetVerificationMethod(ctx context.Context) *VerificationMethod {
-	if s.settingService.IsEmailVerifyEnabled(ctx) {
-		return &VerificationMethod{Method: "email"}
+// GetVerificationMethod returns the verification method for TOTP operations.
+// 与 verifyIdentity 保持同一判定：管理员一律返回 password。
+func (s *TotpService) GetVerificationMethod(ctx context.Context, userID int64) (*VerificationMethod, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
 	}
-	return &VerificationMethod{Method: "password"}
+	if s.usesEmailVerification(ctx, user) {
+		return &VerificationMethod{Method: "email"}, nil
+	}
+	return &VerificationMethod{Method: "password"}, nil
 }
 
 // SendVerifyCode sends an email verification code for TOTP operations

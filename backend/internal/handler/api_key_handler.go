@@ -3,6 +3,8 @@ package handler
 
 import (
 	"context"
+	"errors"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -46,20 +48,57 @@ type CreateAPIKeyRequest struct {
 
 // UpdateAPIKeyRequest represents the update API key request payload
 type UpdateAPIKeyRequest struct {
-	Name        string   `json:"name"`
-	GroupID     *int64   `json:"group_id"`
-	Status      string   `json:"status" binding:"omitempty,oneof=active inactive"`
-	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单
-	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
-	Quota       *float64 `json:"quota"`        // 配额限制 (USD), 0=无限制
-	ExpiresAt   *string  `json:"expires_at"`   // 过期时间 (ISO 8601)
-	ResetQuota  *bool    `json:"reset_quota"`  // 重置已用配额
+	Name        string    `json:"name"`
+	GroupID     *int64    `json:"group_id"`
+	Status      string    `json:"status" binding:"omitempty,oneof=active inactive"`
+	IPWhitelist *[]string `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
+	IPBlacklist *[]string `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
+	Quota       *float64  `json:"quota"`        // 配额限制 (USD), 0=无限制
+	ExpiresAt   *string   `json:"expires_at"`   // 过期时间 (ISO 8601)
+	ResetQuota  *bool     `json:"reset_quota"`  // 重置已用配额
 
 	// Rate limit fields (nil = no change, 0 = unlimited)
 	RateLimit5h         *float64 `json:"rate_limit_5h"`
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // 重置限速用量
+}
+
+func validAPIKeyLimit(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 }
+
+func validateAPIKeyCreateRequest(req CreateAPIKeyRequest) error {
+	if req.Quota != nil && !validAPIKeyLimit(*req.Quota) {
+		return errors.New("invalid quota")
+	}
+	if req.RateLimit5h != nil && !validAPIKeyLimit(*req.RateLimit5h) {
+		return errors.New("invalid rate_limit_5h")
+	}
+	if req.RateLimit1d != nil && !validAPIKeyLimit(*req.RateLimit1d) {
+		return errors.New("invalid rate_limit_1d")
+	}
+	if req.RateLimit7d != nil && !validAPIKeyLimit(*req.RateLimit7d) {
+		return errors.New("invalid rate_limit_7d")
+	}
+	if req.ExpiresInDays != nil && *req.ExpiresInDays <= 0 {
+		return errors.New("invalid expires_in_days")
+	}
+	return nil
+}
+
+func validateAPIKeyUpdateRequest(req UpdateAPIKeyRequest) error {
+	if req.Quota != nil && !validAPIKeyLimit(*req.Quota) {
+		return errors.New("invalid quota")
+	}
+	if req.RateLimit5h != nil && !validAPIKeyLimit(*req.RateLimit5h) {
+		return errors.New("invalid rate_limit_5h")
+	}
+	if req.RateLimit1d != nil && !validAPIKeyLimit(*req.RateLimit1d) {
+		return errors.New("invalid rate_limit_1d")
+	}
+	if req.RateLimit7d != nil && !validAPIKeyLimit(*req.RateLimit7d) {
+		return errors.New("invalid rate_limit_7d")
+	}
+	return nil
 }
 
 // List handles listing user's API keys with pagination
@@ -152,6 +191,10 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	if err := validateAPIKeyCreateRequest(req); err != nil {
+		response.BadRequest(c, "Invalid request: numeric limits must be finite and non-negative, and expires_in_days must be greater than zero")
+		return
+	}
 
 	svcReq := service.CreateAPIKeyRequest{
 		Name:          req.Name,
@@ -201,6 +244,10 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 	var req UpdateAPIKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := validateAPIKeyUpdateRequest(req); err != nil {
+		response.BadRequest(c, "Invalid request: numeric limits must be finite and non-negative")
 		return
 	}
 

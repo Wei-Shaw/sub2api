@@ -156,6 +156,34 @@ func (m *mockAccountRepoForPlatform) ListSchedulableUngroupedByPlatform(ctx cont
 func (m *mockAccountRepoForPlatform) ListSchedulableUngroupedByPlatforms(ctx context.Context, platforms []string) ([]Account, error) {
 	return m.ListSchedulableByPlatforms(ctx, platforms)
 }
+func (m *mockAccountRepoForPlatform) ListModelAvailabilityCandidates(_ context.Context, groupID *int64, platforms []string, includeGrouped bool) ([]Account, error) {
+	platformSet := make(map[string]struct{}, len(platforms))
+	for _, platform := range platforms {
+		platformSet[platform] = struct{}{}
+	}
+	result := make([]Account, 0, len(m.accounts))
+	for _, acc := range m.accounts {
+		if _, ok := platformSet[acc.Platform]; !ok || acc.Status != StatusActive || !acc.Schedulable {
+			continue
+		}
+		if groupID != nil {
+			inGroup := false
+			for _, accountGroup := range acc.AccountGroups {
+				if accountGroup.GroupID == *groupID {
+					inGroup = true
+					break
+				}
+			}
+			if !inGroup {
+				continue
+			}
+		} else if !includeGrouped && (len(acc.AccountGroups) > 0 || len(acc.GroupIDs) > 0) {
+			continue
+		}
+		result = append(result, acc)
+	}
+	return result, nil
+}
 func (m *mockAccountRepoForPlatform) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
 	return nil
 }
@@ -247,6 +275,27 @@ func (m *mockGatewayCacheForPlatform) DeleteSessionAccountID(ctx context.Context
 	m.deletedSessions[sessionHash]++
 	delete(m.sessionBindings, sessionHash)
 	return nil
+}
+
+func (m *mockGatewayCacheForPlatform) SetGrokVideoPendingBilling(_ context.Context, _ string, _ []byte, _ time.Duration) error {
+	return nil
+}
+func (m *mockGatewayCacheForPlatform) GetGrokVideoPendingBilling(_ context.Context, _ string) ([]byte, error) {
+	return nil, nil
+}
+func (m *mockGatewayCacheForPlatform) ClaimGrokVideoBilled(_ context.Context, _ string, _ time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (m *mockGatewayCacheForPlatform) ReleaseGrokVideoBilled(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockGatewayCacheForPlatform) SetReasoningContent(_ context.Context, _ string, _ string, _ time.Duration) error {
+	return nil
+}
+func (m *mockGatewayCacheForPlatform) GetReasoningContent(_ context.Context, _ string) (string, error) {
+	return "", ErrReasoningContentNotFound
 }
 
 type mockGroupRepoForGateway struct {

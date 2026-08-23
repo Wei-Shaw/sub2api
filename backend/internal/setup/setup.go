@@ -19,6 +19,7 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -95,6 +96,7 @@ type DatabaseConfig struct {
 type RedisConfig struct {
 	Host      string `json:"host" yaml:"host"`
 	Port      int    `json:"port" yaml:"port"`
+	Username  string `json:"username" yaml:"username"`
 	Password  string `json:"password" yaml:"password"`
 	DB        int    `json:"db" yaml:"db"`
 	EnableTLS bool   `json:"enable_tls" yaml:"enable_tls"`
@@ -146,9 +148,23 @@ func decideAdminBootstrap(totalUsers, adminUsers int64) adminBootstrapDecision {
 	}
 }
 
+func skipSetupEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("SKIP_SETUP"))) {
+	case "true", "1", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
 // NeedsSetup checks if the system needs initial setup
 // Uses multiple checks to prevent attackers from forcing re-setup by deleting config
 func NeedsSetup() bool {
+	if skipSetupEnabled() {
+		logger.L().Debug("setup.needs_setup_bypassed", zap.String("reason", "skip_setup_enabled"))
+		return false
+	}
+
 	// Check 1: Config file must not exist
 	if _, err := os.Stat(GetConfigFilePath()); !os.IsNotExist(err) {
 		return false // Config exists, no setup needed
@@ -251,6 +267,7 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 func TestRedisConnection(cfg *RedisConfig) error {
 	opts := &redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+		Username: cfg.Username,
 		Password: cfg.Password,
 		DB:       cfg.DB,
 	}
@@ -570,6 +587,7 @@ func AutoSetupFromEnv() error {
 		Redis: RedisConfig{
 			Host:      getEnvOrDefault("REDIS_HOST", "localhost"),
 			Port:      getEnvIntOrDefault("REDIS_PORT", 6379),
+			Username:  getEnvOrDefault("REDIS_USERNAME", ""),
 			Password:  getEnvOrDefault("REDIS_PASSWORD", ""),
 			DB:        getEnvIntOrDefault("REDIS_DB", 0),
 			EnableTLS: getEnvOrDefault("REDIS_ENABLE_TLS", "false") == "true",

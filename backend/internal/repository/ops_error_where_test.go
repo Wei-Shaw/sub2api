@@ -137,26 +137,17 @@ func TestBuildOpsErrorLogsWhere_CyberPolicyStatusExemption(t *testing.T) {
 	}
 }
 
-func TestBuildOpsErrorLogsWhere_MatchDeletedKeyOwner(t *testing.T) {
+func TestBuildOpsErrorLogsWhere_UserOwnershipIsDirectOnly(t *testing.T) {
 	uid := int64(42)
-
-	// 开关开启 → 归属放宽为 OR(user_id 或 deleted_key_owner_user_id),且共用同一占位符
-	on := &service.OpsErrorLogFilter{UserID: &uid, MatchDeletedKeyOwner: true}
-	whereOn, argsOn := buildOpsErrorLogsWhere(on)
-	if !strings.Contains(whereOn, "(e.user_id = $1 OR e.deleted_key_owner_user_id = $1)") {
-		t.Fatalf("MatchDeletedKeyOwner=true should widen to OR, got: %s", whereOn)
+	filter := &service.OpsErrorLogFilter{UserID: &uid}
+	where, args := buildOpsErrorLogsWhere(filter)
+	if !strings.Contains(where, "e.user_id = $1") {
+		t.Fatalf("user scope should match user_id exactly, got: %s", where)
 	}
-	if len(argsOn) != 1 || argsOn[0] != uid {
-		t.Fatalf("expected single reused arg %d, got %v", uid, argsOn)
+	if len(args) != 1 || args[0] != uid {
+		t.Fatalf("expected user id arg %d, got %v", uid, args)
 	}
-
-	// 开关关闭(默认)→ 仅精确 user_id,绝不出现 deleted_key_owner_user_id(admin 回归)
-	off := &service.OpsErrorLogFilter{UserID: &uid}
-	whereOff, _ := buildOpsErrorLogsWhere(off)
-	if !strings.Contains(whereOff, "e.user_id = $1") {
-		t.Fatalf("default should match user_id exactly, got: %s", whereOff)
-	}
-	if strings.Contains(whereOff, "deleted_key_owner_user_id") {
-		t.Fatalf("default must NOT include deleted_key_owner_user_id, got: %s", whereOff)
+	if strings.Contains(where, "deleted_key_owner_user_id") {
+		t.Fatalf("user ownership must not depend on deleted-key attribution: %s", where)
 	}
 }

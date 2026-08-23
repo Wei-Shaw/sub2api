@@ -27,10 +27,12 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/v1/embeddings", EndpointEmbeddings},
 		{"/v1/alpha/search", EndpointAlphaSearch},
 		{"/v1/responses", EndpointResponses},
+		{"/v1/responses/input_tokens", EndpointResponsesInputTokens},
 		{"/v1/responses/compact", EndpointResponsesCompact},
 		{"/v1/responses/compact/detail", EndpointResponsesCompact},
 		{"/v1/images/generations", EndpointImagesGenerations},
 		{"/v1/images/edits", EndpointImagesEdits},
+		{"/v1/images/tasks/imgtask_123", EndpointImageTasks},
 		{"/v1/videos/generations", EndpointVideosGenerations},
 		{"/v1/videos/req_123", EndpointVideos},
 		{"/v1beta/models", EndpointGeminiModels},
@@ -49,12 +51,15 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 
 		// Bare top-level alias route "/responses" — root vs. compact.
 		{"/responses", EndpointResponses},
+		{"/responses/input_tokens", EndpointResponsesInputTokens},
 		{"/responses/compact", EndpointResponsesCompact},
 		{"/responses/compact/detail", EndpointResponsesCompact},
 		{"/alpha/search", EndpointAlphaSearch},
+		{"/images/tasks/imgtask_123", EndpointImageTasks},
 
 		// Bare Codex direct alias route — root vs. compact.
 		{"/backend-api/codex/responses", EndpointResponses},
+		{"/backend-api/codex/responses/input_tokens", EndpointResponsesInputTokens},
 		{"/backend-api/codex/responses/compact", EndpointResponsesCompact},
 		{"/backend-api/codex/responses/compact/detail", EndpointResponsesCompact},
 		{"/backend-api/codex/alpha/search", EndpointAlphaSearch},
@@ -98,6 +103,7 @@ func TestDeriveUpstreamEndpoint(t *testing.T) {
 
 		// OpenAI — root Responses.
 		{"openai responses root", EndpointResponses, "/v1/responses", service.PlatformOpenAI, EndpointResponses},
+		{"openai responses input tokens", EndpointResponsesInputTokens, "/v1/responses/input_tokens", service.PlatformOpenAI, EndpointResponsesInputTokens},
 
 		// OpenAI — compact, raw path carries the derivable "/compact"
 		// (or nested) suffix, which must be preserved on the upstream
@@ -142,6 +148,40 @@ func TestDeriveUpstreamEndpoint(t *testing.T) {
 			require.Equal(t, tt.want, DeriveUpstreamEndpoint(tt.inbound, tt.rawPath, tt.platform))
 		})
 	}
+}
+
+func TestShouldUseAntigravityCompat(t *testing.T) {
+	tests := []struct {
+		name    string
+		account *service.Account
+		want    bool
+	}{
+		{"oauth", &service.Account{Platform: service.PlatformAntigravity, Type: service.AccountTypeOAuth}, true},
+		{"setup token", &service.Account{Platform: service.PlatformAntigravity, Type: service.AccountTypeSetupToken}, false},
+		{"upstream", &service.Account{Platform: service.PlatformAntigravity, Type: service.AccountTypeUpstream}, false},
+		{"api key", &service.Account{Platform: service.PlatformAntigravity, Type: service.AccountTypeAPIKey}, false},
+		{"anthropic oauth", &service.Account{Platform: service.PlatformAnthropic, Type: service.AccountTypeOAuth}, false},
+		{"nil", nil, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, shouldUseAntigravityCompat(tt.account))
+		})
+	}
+}
+
+func TestGetUpstreamEndpointPrefersRuntimeOverride(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, EndpointChatCompletions, nil)
+	c.Set(ctxKeyInboundEndpoint, EndpointChatCompletions)
+
+	setActualUpstreamEndpoint(c, EndpointAntigravityGenerateContent)
+	require.Equal(t, EndpointAntigravityGenerateContent, GetUpstreamEndpoint(c, service.PlatformAntigravity))
+
+	setActualUpstreamEndpoint(c, "")
+	require.Equal(t, EndpointMessages, GetUpstreamEndpoint(c, service.PlatformAntigravity))
 }
 
 func TestResolveOpenAIUpstreamEndpointPrefersForwardResult(t *testing.T) {

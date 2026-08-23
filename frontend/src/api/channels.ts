@@ -39,6 +39,7 @@ export interface UserSupportedModelPricing {
   output_price: number | null
   cache_write_price: number | null
   cache_read_price: number | null
+  image_input_price: number | null
   image_output_price: number | null
   per_request_price: number | null
   intervals: UserPricingInterval[]

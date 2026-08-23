@@ -163,3 +163,28 @@ func TestAnthropicPairing_SingleCall(t *testing.T) {
 	require.True(t, hasToolUse(parseContentBlocks(msgs[1].Content), "call_A"))
 	require.True(t, hasToolResult(parseContentBlocks(msgs[2].Content), "call_A"))
 }
+
+func TestResponsesToAnthropic_FunctionOutputContentArray(t *testing.T) {
+	msgs := convertAnthropic(t, `[
+		{"type":"function_call","call_id":"call_A","name":"view_image","arguments":"{}"},
+		{"type":"function_call_output","call_id":"call_A","output":[
+			{"type":"input_text","text":"image loaded"},
+			{"type":"input_image","image_url":"data:image/png;base64,YQ=="}
+		]}
+	]`)
+
+	require.Len(t, msgs, 2)
+	resultBlocks := parseContentBlocks(msgs[1].Content)
+	require.Len(t, resultBlocks, 1)
+	require.Equal(t, "tool_result", resultBlocks[0].Type)
+
+	var content []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(resultBlocks[0].Content, &content))
+	require.Len(t, content, 2)
+	require.Equal(t, "text", content[0].Type)
+	require.Equal(t, "image loaded", content[0].Text)
+	require.Equal(t, "image", content[1].Type)
+	require.NotNil(t, content[1].Source)
+	require.Equal(t, "image/png", content[1].Source.MediaType)
+	require.Equal(t, "YQ==", content[1].Source.Data)
+}

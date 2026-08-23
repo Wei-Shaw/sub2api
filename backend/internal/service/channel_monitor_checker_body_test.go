@@ -199,7 +199,7 @@ func TestGrokMonitorConfiguration(t *testing.T) {
 	if err := validateProvider(MonitorProviderGrok); err != nil {
 		t.Fatalf("grok provider should be supported: %v", err)
 	}
-	if got := normalizeMonitorPrimaryModel(MonitorProviderGrok, ""); got != MonitorDefaultGrokModel {
+	if got := normalizeMonitorPrimaryModel(MonitorProviderGrok, MonitorCheckModeProbe, ""); got != MonitorDefaultGrokModel {
 		t.Fatalf("expected default Grok model %q, got %q", MonitorDefaultGrokModel, got)
 	}
 	if err := validateAPIMode(MonitorProviderGrok, MonitorAPIModeChatCompletions); err != nil {
@@ -449,5 +449,52 @@ func TestRunCheckForModel_ReplaceMode_EmptyResponseIsFailed(t *testing.T) {
 	}
 	if !strings.Contains(res.Message, "replace-mode") {
 		t.Errorf("failure message should hint replace-mode, got %q", res.Message)
+	}
+}
+
+func TestExtractAnthropicMonitorText(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "text block after thinking",
+			body: `{"content":[{"type":"thinking","thinking":""},{"type":"text","text":"2"}]}`,
+			want: "2",
+		},
+		{
+			name: "single text block",
+			body: `{"content":[{"type":"text","text":"2"}]}`,
+			want: "2",
+		},
+		{
+			name: "thinking only",
+			body: `{"content":[{"type":"thinking","thinking":""}]}`,
+			want: "",
+		},
+		{
+			name: "multiple text blocks",
+			body: `{"content":[{"type":"text","text":"answer"},{"type":"tool_use","name":"x"},{"type":"text","text":"2"}]}`,
+			want: "answer\n2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractAnthropicMonitorText([]byte(tt.body))
+			if got != tt.want {
+				t.Fatalf("extractAnthropicMonitorText() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateChallenge_AnthropicTextAfterThinking(t *testing.T) {
+	body := []byte(`{"content":[{"type":"thinking","thinking":""},{"type":"text","text":"答案是 2"}]}`)
+	respText := extractAnthropicMonitorText(body)
+
+	if !validateChallenge(respText, "2") {
+		t.Fatalf("validateChallenge(%q, %q) = false, want true", respText, "2")
 	}
 }

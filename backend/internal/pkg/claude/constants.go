@@ -48,7 +48,8 @@ const MessageBetaHeaderWithTools = BetaClaudeCode + "," + BetaOAuth + "," + Beta
 // CountTokensBetaHeader count_tokens 请求使用的 anthropic-beta header
 const CountTokensBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaTokenCounting
 
-// HaikuBetaHeader Haiku 模型使用的 anthropic-beta header（不需要 claude-code beta）
+// HaikuBetaHeader Haiku 模型在 OAuth 真实客户端透传路径上的默认 anthropic-beta header。
+// OAuth mimic 路径统一使用 FullClaudeCodeMimicryBetas。
 const HaikuBetaHeader = BetaOAuth + "," + BetaInterleavedThinking
 
 // APIKeyBetaHeader API-key 账号建议使用的 anthropic-beta header（不包含 oauth）
@@ -65,15 +66,15 @@ const DefaultCacheControlTTL = "5m"
 // CLICurrentVersion 是 sub2api 当前对外伪装的 Claude Code CLI 版本号（三段 semver）。
 // 用于 billing attribution block 中的 cc_version=X.Y.Z.{fp} 前缀以及 fingerprint 计算。
 // 必须与 DefaultHeaders["User-Agent"] 中的版本号严格一致；不一致会被 Anthropic 判第三方。
-const CLICurrentVersion = "2.1.161"
+const CLICurrentVersion = "2.1.220"
 
 // FullClaudeCodeMimicryBetas 返回最"像"真实 Claude Code CLI 的完整 beta 列表，
 // 用于 OAuth 账号伪装成 Claude Code 时使用。
 // 顺序与真实 CLI 抓包一致。
 //
 // 使用建议：
-//   - OAuth 账号 + 非 haiku：追加这整份列表，再按需保留 client 带来的 beta。
-//   - OAuth 账号 + haiku：Anthropic 对 haiku 不做 third-party 判定，使用 HaikuBetaHeader 即可。
+//   - OAuth mimic：所有模型（包括 Haiku）都使用这整份列表。
+//   - OAuth 真实客户端透传：保留客户端 beta；未提供时使用模型对应默认值。
 //   - API-key 账号：不要使用本函数，参见 APIKeyBetaHeader。
 //   - 不默认加入 redact-thinking，避免上游抹除 thinking 内容；客户端显式传入时由合并逻辑保留。
 func FullClaudeCodeMimicryBetas() []string {
@@ -145,6 +146,12 @@ var DefaultModels = []Model{
 		Type:        "model",
 		DisplayName: "Claude Opus 4.8",
 		CreatedAt:   "2026-05-29T00:00:00Z",
+	},
+	{
+		ID:          "claude-opus-5",
+		Type:        "model",
+		DisplayName: "Claude Opus 5",
+		CreatedAt:   "2026-07-25T00:00:00Z",
 	},
 	{
 		ID:          "claude-sonnet-5",

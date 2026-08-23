@@ -5,10 +5,13 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import OpsErrorLogTable from './OpsErrorLogTable.vue'
 import { opsAPI, type OpsErrorLog } from '@/api/admin/ops'
+import { buildOpsErrorTimeParams } from '../utils/opsErrorParams'
 
 interface Props {
   show: boolean
   timeRange: string
+  customStartTime?: string | null
+  customEndTime?: string | null
   platform?: string
   groupId?: number | null
   errorType: 'request' | 'upstream'
@@ -103,10 +106,21 @@ async function fetchErrorLogs() {
     const params: Record<string, any> = {
       page: page.value,
       page_size: pageSize.value,
-      time_range: props.timeRange,
       view: viewMode.value,
       sort_by: sortBy.value,
       sort_order: sortOrder.value
+    }
+    Object.assign(params, buildOpsErrorTimeParams(props.timeRange, props.customStartTime, props.customEndTime))
+
+    if (props.timeRange === 'custom') {
+      if (props.customStartTime && props.customEndTime) {
+        params.start_time = props.customStartTime
+        params.end_time = props.customEndTime
+        delete params.time_range
+      } else {
+        // Safety fallback: avoid sending time_range=custom (backend doesn't support it)
+        params.time_range = '1h'
+      }
     }
 
     const platform = String(props.platform || '').trim()
@@ -160,7 +174,7 @@ watch(
 )
 
 watch(
-  () => [props.timeRange, props.platform, props.groupId] as const,
+  () => [props.timeRange, props.customStartTime, props.customEndTime, props.platform, props.groupId] as const,
   () => {
     if (!props.show) return
     page.value = 1
@@ -204,7 +218,7 @@ watch(
     <div class="flex h-full min-h-0 flex-col">
       <!-- Filters -->
       <div class="mb-4 flex-shrink-0 border-b border-gray-200 pb-4 dark:border-dark-700">
-        <div class="grid grid-cols-8 gap-2">
+        <div class="grid grid-cols-2 gap-2 md:grid-cols-8">
           <div class="col-span-2 compact-select">
             <div class="relative group">
               <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">

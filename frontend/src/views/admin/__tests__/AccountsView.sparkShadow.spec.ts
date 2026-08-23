@@ -5,6 +5,7 @@ import AccountsView from '../AccountsView.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
 
 // 外审 F2:AccountActionMenu emit 'create-spark-shadow',但 AccountsView 此前未监听,
 // 导致按钮点击无效。本测试通过真实组件引用 emit 该事件,断言父页面接线调用 API。
@@ -37,6 +38,7 @@ vi.mock('@/api/admin', () => ({
       listWithEtag,
       getBatchTodayStats,
       duplicate: duplicateAccount,
+      getUpstreamBillingProbeSettings: vi.fn().mockResolvedValue({ enabled: true, interval_minutes: 30 }),
       createSparkShadow,
       delete: vi.fn(),
       batchClearError: vi.fn(),
@@ -206,7 +208,7 @@ describe('admin AccountsView — 外审 F2:spark 影子创建接线', () => {
   })
 })
 
-// Task 6: 影子行 parent_* OR 兜底展示
+// 账号行展示
 const mountViewWithRow = () =>
   mount(AccountsView, {
     global: {
@@ -254,7 +256,7 @@ const mountViewWithRow = () =>
     }
   })
 
-describe('admin AccountsView — 影子行 parent_* OR 兜底展示', () => {
+describe('admin AccountsView — 账号行展示', () => {
   beforeEach(() => {
     localStorage.clear()
     for (const fn of [listAccounts, listWithEtag, getBatchTodayStats, getAllProxies, getAllGroups, duplicateAccount, createSparkShadow, showSuccess, showError]) {
@@ -268,6 +270,8 @@ describe('admin AccountsView — 影子行 parent_* OR 兜底展示', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
 
@@ -303,7 +307,48 @@ describe('admin AccountsView — 影子行 parent_* OR 兜底展示', () => {
     wrapper.unmount()
   })
 
-  it('passes fresh Grok billing and quota snapshots before stale credential fallbacks', async () => {
+  it('仅将具有安全 base_url 的 API Key 账号名称链接到站点主页', async () => {
+    listAccounts.mockResolvedValue({
+      items: [
+        { id: 101, name: 'relay-account', platform: 'openai', type: 'apikey', credentials: { base_url: 'https://relay.example.com/api/v1/' } },
+        { id: 102, name: 'oauth-account', platform: 'openai', type: 'oauth', credentials: { base_url: 'https://oauth.example.com/v1' } },
+        { id: 103, name: 'invalid-url', platform: 'openai', type: 'apikey', credentials: { base_url: 'javascript:alert(1)' } },
+      ],
+      total: 3,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = mountViewWithRow()
+    await flushPromises()
+
+    const links = wrapper.findAll('a')
+    expect(links).toHaveLength(1)
+    const [link] = links
+    expect(link.text()).toBe('relay-account')
+    expect(link.attributes()).toMatchObject({
+      href: 'https://relay.example.com',
+      target: '_blank',
+      rel: 'noopener noreferrer',
+    })
+    expect(link.classes()).toEqual(expect.arrayContaining([
+      'border-dotted',
+      'text-gray-900',
+      'dark:text-white',
+    ]))
+    expect(link.classes()).not.toContain('text-primary-600')
+    const tooltip = wrapper.findComponent(HelpTooltip)
+    expect(tooltip.props('content')).toBe('https://relay.example.com')
+    expect(tooltip.props('widthClass')).toBe('w-max max-w-sm break-all')
+    expect(tooltip.classes()).toEqual(expect.arrayContaining(['self-start']))
+    expect(wrapper.text()).toContain('oauth-account')
+    expect(wrapper.text()).toContain('invalid-url')
+
+    wrapper.unmount()
+  })
+
+  it('prefers persisted Grok JWT tier over lagging billing/quota snapshots', async () => {
     const grokAccounts = [
       {
         id: 201,
@@ -353,6 +398,63 @@ describe('admin AccountsView — 影子行 parent_* OR 兜底展示', () => {
         type: 'oauth',
         credentials: { plan_type: 'SuperGrok' },
       },
+      {
+        id: 206,
+        name: 'supergrokpro-responses-quota',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { subscription_tier: 'SuperGrokPro' },
+        extra: {
+          grok_billing_snapshot: { plan: 'SuperGrok' },
+          grok_usage_snapshot: {
+            model: 'grok-4.5',
+            last_headers_seen_at: new Date().toISOString(),
+            requests: { limit: 8300 },
+            tokens: { limit: 53_000_000 },
+          },
+          grok_quota_snapshot: {
+            model: 'grok-4.6',
+            last_headers_seen_at: new Date().toISOString(),
+            requests: { limit: 8300 },
+            tokens: { limit: 53_000_000 },
+          },
+        },
+      },
+      {
+        id: 207,
+        name: 'supergrokpro-other-model-quota',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { subscription_tier: 'SuperGrokPro' },
+        extra: {
+          grok_billing_snapshot: { plan: 'SuperGrok' },
+          grok_usage_snapshot: {
+            model: 'grok-4.6',
+            last_headers_seen_at: new Date().toISOString(),
+            requests: { limit: 8300 },
+            tokens: { limit: 53_000_000 },
+          },
+        },
+      },
+      {
+        id: 208,
+        name: 'usage-over-legacy-quota',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: {},
+        extra: {
+          grok_usage_snapshot: { subscription_tier: 'SuperGrok' },
+          grok_quota_snapshot: { subscription_tier: 'Free' },
+        },
+      },
+      {
+        id: 209,
+        name: 'legacy-quota-alias',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: {},
+        extra: { grok_quota_snapshot: { subscription_tier: 'SuperGrok' } },
+      },
     ]
 
     listAccounts.mockResolvedValue({
@@ -368,13 +470,113 @@ describe('admin AccountsView — 影子行 parent_* OR 兜底展示', () => {
 
     const badges = wrapper.findAllComponents(PlatformTypeBadge)
     expect(badges.map((badge) => badge.props('planType'))).toEqual([
+      'FREE',
+      'SuperGrok Heavy',
+      'FREE',
+      'BASIC',
       'SuperGrok',
       'SuperGrok Heavy',
       'SuperGrok',
-      'BASIC',
+      'SuperGrok',
       'SuperGrok',
     ])
 
+    wrapper.unmount()
+  })
+
+  it('skips malformed Grok plan fields and safely uses the next valid fallback', async () => {
+    const grokAccounts = [
+      {
+        id: 210,
+        name: 'legacy-fallback',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: {},
+        extra: {
+          grok_usage_snapshot: { subscription_tier: { name: 'SuperGrok Heavy' } },
+          grok_quota_snapshot: { subscription_tier: 'SuperGrok' },
+        },
+      },
+      {
+        id: 211,
+        name: 'credential-plan-fallback',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { subscription_tier: 0, plan_type: 'SuperGrok Heavy' },
+        extra: {
+          grok_billing_snapshot: { plan: {} },
+          grok_usage_snapshot: { subscription_tier: 1 },
+          grok_quota_snapshot: { subscription_tier: [] },
+          subscription_tier: '   ',
+        },
+      },
+      {
+        id: 212,
+        name: 'no-valid-plan',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { subscription_tier: {}, plan_type: 2 },
+        parent_plan_type: [],
+        extra: {
+          grok_billing_snapshot: { plan: [] },
+          grok_usage_snapshot: { subscription_tier: 1 },
+          grok_quota_snapshot: { subscription_tier: {} },
+          subscription_tier: null,
+        },
+      },
+    ]
+
+    listAccounts.mockResolvedValue({
+      items: grokAccounts,
+      total: grokAccounts.length,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = mountViewWithRow()
+    await flushPromises()
+
+    expect(wrapper.findAllComponents(PlatformTypeBadge).map((badge) => badge.props('planType'))).toEqual([
+      'SuperGrok',
+      'SuperGrok Heavy',
+      undefined,
+    ])
+    wrapper.unmount()
+  })
+
+  it('replaces a Grok row when auto refresh returns a changed canonical usage snapshot', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+
+    const initialAccount = {
+      id: 213,
+      name: 'refresh-tier',
+      platform: 'grok',
+      type: 'oauth',
+      extra: { grok_usage_snapshot: { subscription_tier: 'Free', status_code: 200 } },
+    }
+    const refreshedAccount = {
+      ...initialAccount,
+      extra: { grok_usage_snapshot: { subscription_tier: 'SuperGrok', status_code: 200 } },
+    }
+    listAccounts.mockResolvedValue({ items: [initialAccount], total: 1, page: 1, page_size: 20, pages: 1 })
+    listWithEtag.mockResolvedValueOnce({
+      notModified: false,
+      etag: 'grok-snapshot-2',
+      data: { items: [refreshedAccount], total: 1, page: 1, page_size: 20, pages: 1 },
+    })
+
+    const wrapper = mountViewWithRow()
+    await flushPromises()
+    expect(wrapper.findComponent(PlatformTypeBadge).props('planType')).toBe('Free')
+
+    await vi.advanceTimersByTimeAsync(6000)
+    await flushPromises()
+
+    expect(listWithEtag).toHaveBeenCalledTimes(1)
+    expect(wrapper.findComponent(PlatformTypeBadge).props('planType')).toBe('SuperGrok')
     wrapper.unmount()
   })
 })

@@ -69,9 +69,20 @@ func (g *Group) ResolveMessagesDispatchModel(requestedModel string) string {
 	}
 
 	if g.Platform == PlatformGrok {
-		if claudeMessagesDispatchFamily(requestedModel) != "" {
-			return xai.DefaultModelMapping()["grok"]
+		if claudeMessagesDispatchFamily(requestedModel) == "" {
+			return ""
 		}
+		opts := xai.RuntimeModelMappingOptions()
+		if !opts.EnableCrossClientMap {
+			return ""
+		}
+		return xai.ModelMappingWithOptions(opts)["claude-*"]
+	}
+
+	// 国产供应商分组:调度级模型映射不适用(其配置被 sanitize 置空,且下方的
+	// gpt-5.x 默认值是 openai 专属,发给 CN 上游必错)。模型改写完全交给账号级
+	// model_mapping;anthropic 协议上游本身接受 claude-* 模型名。
+	if IsCNProvider(g.Platform) {
 		return ""
 	}
 
@@ -105,7 +116,9 @@ func sanitizeGroupMessagesDispatchFields(g *Group) {
 	if g == nil || g.Platform == PlatformOpenAI {
 		return
 	}
-	g.AllowMessagesDispatch = false
+	if g.Platform != PlatformComposite {
+		g.AllowMessagesDispatch = false
+	}
 	g.DefaultMappedModel = ""
 	g.MessagesDispatchModelConfig = OpenAIMessagesDispatchModelConfig{}
 }

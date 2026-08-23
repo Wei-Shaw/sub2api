@@ -347,8 +347,13 @@ func removeCustomFieldFromTools(body []byte) []byte {
 }
 
 // claudeVersionRe 匹配 Claude 模型 ID 中的版本号部分
-// 支持 claude-{tier}-{major}-{minor} 和 claude-{tier}-{major}.{minor} 格式
-var claudeVersionRe = regexp.MustCompile(`claude-(?:haiku|sonnet|opus)-(\d+)[-.](\d+)`)
+// 支持 claude-{tier}-{major}-{minor} 和 claude-{tier}-{major}.{minor} 格式；
+// minor 可选，用于覆盖只有主版本号的新模型 ID（claude-opus-5 / claude-sonnet-5），
+// 此时 matches[2] 为空串，调用方 strconv.Atoi 得到 minor=0。
+// 缺少可选 minor 时这类 ID 完全不匹配，会被当作"旧模型"降级处理：
+// thinking.enabled 不转 adaptive（Opus 5 上游已移除 budget_tokens，直接 400）、
+// cache_control.ttl 被剥离、tool search 被过滤。
+var claudeVersionRe = regexp.MustCompile(`claude-(?:haiku|sonnet|opus)-(\d+)(?:[-.](\d+))?`)
 
 // isBedrockClaude45OrNewer 判断 Bedrock 模型 ID 是否为 Claude 4.5 或更新版本
 // Claude 4.5+ 支持 cache_control 中的 ttl 字段（"5m" 和 "1h"）

@@ -8,6 +8,18 @@ const (
 	// ForcePlatform 强制平台（用于 /antigravity 路由），由 middleware.ForcePlatform 设置
 	ForcePlatform Key = "ctx_force_platform"
 
+	// ResolvedTargetPlatform 是 composite 分组按请求模型解析出的真实目标平台。
+	ResolvedTargetPlatform Key = "ctx_resolved_target_platform"
+
+	// ResolvedUpstreamModel 是 composite 分组将公开模型名解析到的上游模型名。
+	ResolvedUpstreamModel Key = "ctx_resolved_upstream_model"
+
+	// RequestedPublicModel 是客户端原始请求中的公开模型名。
+	RequestedPublicModel Key = "ctx_requested_public_model"
+
+	// CompositeRouteSource 标识 composite 解析结果来自显式路由还是内置模型探测。
+	CompositeRouteSource Key = "ctx_composite_route_source"
+
 	// RequestID 为服务端生成/透传的请求 ID。
 	RequestID Key = "ctx_request_id"
 
@@ -37,6 +49,12 @@ const (
 
 	// OpenAIImageGenerationIntent 标识 OpenAI 请求会触发生图能力（用于图片能力维度限流）
 	OpenAIImageGenerationIntent Key = "ctx_openai_image_generation_intent"
+
+	// OpenAIImagesEndpoint 标识请求是从 /v1/images/* 入站的。
+	// 与 OpenAIImageGenerationIntent 的区别：后者只表示"这次请求会生图"，
+	// /v1/responses 带图片模型时也会置位；本 key 只在专用生图端点置位，
+	// 用于区分"用错端点"与"端点用对了但账号没能力"。
+	OpenAIImagesEndpoint Key = "ctx_openai_images_endpoint"
 
 	// Group 认证后的分组信息，由 API Key 认证中间件设置
 	Group Key = "ctx_group"

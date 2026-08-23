@@ -343,6 +343,178 @@ describe('EditAccountModal', () => {
     })
   })
 
+  it('preserves adaptive GLM endpoints on submit', async () => {
+    const account = buildAccount()
+    account.platform = 'zhipu'
+    account.credentials = {
+      api_key: 'sk-glm',
+      account_mode: 'coding',
+      api_protocol: 'adaptive',
+      base_url: 'https://open.bigmodel.cn/api/coding/paas/v4',
+      api_base_urls: {
+        chat_completions: 'https://open.bigmodel.cn/api/coding/paas/v4',
+        anthropic: 'https://open.bigmodel.cn/api/anthropic'
+      }
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      account_mode: 'coding',
+      api_protocol: 'adaptive',
+      base_url: 'https://open.bigmodel.cn/api/coding/paas/v4',
+      api_base_urls: {
+        chat_completions: 'https://open.bigmodel.cn/api/coding/paas/v4',
+        anthropic: 'https://open.bigmodel.cn/api/anthropic'
+      }
+    })
+  })
+
+  it.each([
+    ['explicit Chat Completions', 'chat_completions'],
+    ['legacy missing protocol', undefined]
+  ])('preserves a custom CN relay for %s accounts', async (_name, storedProtocol) => {
+    const account = buildAccount()
+    account.platform = 'zhipu'
+    account.credentials = {
+      api_key: 'sk-glm',
+      account_mode: 'payg',
+      base_url: 'https://relay.example.com/v1'
+    }
+    if (storedProtocol) {
+      account.credentials.api_protocol = storedProtocol
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const submittedCredentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+    expect(submittedCredentials).toMatchObject({
+      account_mode: 'payg',
+      api_protocol: 'chat_completions',
+      base_url: 'https://relay.example.com/v1'
+    })
+    expect(submittedCredentials).not.toHaveProperty('api_base_urls')
+  })
+
+  it('uses the legacy base_url when adaptive endpoints are missing', async () => {
+    const account = buildAccount()
+    account.platform = 'zhipu'
+    account.credentials = {
+      api_key: 'sk-glm',
+      account_mode: 'payg',
+      api_protocol: 'adaptive',
+      base_url: 'https://relay.example.com/v1',
+      api_base_urls: {
+        chat_completions: '   '
+      }
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      api_protocol: 'adaptive',
+      base_url: 'https://relay.example.com/v1',
+      api_base_urls: {
+        chat_completions: 'https://relay.example.com/v1',
+        anthropic: 'https://open.bigmodel.cn/api/anthropic'
+      }
+    })
+  })
+
+  it('carries a fixed Chat relay into Adaptive when the user switches protocols', async () => {
+    const account = buildAccount()
+    account.platform = 'zhipu'
+    account.credentials = {
+      api_key: 'sk-glm',
+      account_mode: 'payg',
+      api_protocol: 'chat_completions',
+      base_url: 'https://relay.example.com/v1'
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    const adaptiveButton = wrapper
+      .findAll('button')
+      .find(button => button.text().includes('admin.accounts.cnProviders.apiProtocol.adaptive'))
+    expect(adaptiveButton).toBeDefined()
+    await adaptiveButton!.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      api_protocol: 'adaptive',
+      base_url: 'https://relay.example.com/v1',
+      api_base_urls: {
+        chat_completions: 'https://relay.example.com/v1'
+      }
+    })
+  })
+
+  it.each([
+    {
+      name: 'Anthropic',
+      platform: 'zhipu',
+      protocol: 'anthropic',
+      baseUrl: 'https://relay.example.com/anthropic',
+      expectedBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      expectedProtocolUrls: {
+        chat_completions: 'https://open.bigmodel.cn/api/paas/v4',
+        anthropic: 'https://relay.example.com/anthropic'
+      }
+    },
+    {
+      name: 'Responses',
+      platform: 'deepseek',
+      protocol: 'responses',
+      baseUrl: 'https://relay.example.com/responses',
+      expectedBaseUrl: 'https://api.deepseek.com',
+      expectedProtocolUrls: {
+        chat_completions: 'https://api.deepseek.com',
+        anthropic: 'https://api.deepseek.com/anthropic',
+        responses: 'https://relay.example.com/responses'
+      }
+    }
+  ])('keeps a fixed $name relay in its protocol slot when switching to Adaptive', async (testCase) => {
+    const account = buildAccount()
+    account.platform = testCase.platform
+    account.credentials = {
+      api_key: 'sk-cn',
+      account_mode: 'payg',
+      api_protocol: testCase.protocol,
+      base_url: testCase.baseUrl
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    const adaptiveButton = wrapper
+      .findAll('button')
+      .find(button => button.text().includes('admin.accounts.cnProviders.apiProtocol.adaptive'))
+    expect(adaptiveButton).toBeDefined()
+    await adaptiveButton!.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      api_protocol: 'adaptive',
+      base_url: testCase.expectedBaseUrl,
+      api_base_urls: testCase.expectedProtocolUrls
+    })
+  })
+
   it('preserves model mappings when editing the whitelist', async () => {
     const account = buildAccount()
     account.credentials.model_mapping = {
@@ -414,6 +586,57 @@ describe('EditAccountModal', () => {
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_long_context_billing_enabled).toBe(false)
+  })
+
+  it('loads and clears the OAuth-only Codex namespace flatten toggle', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    account.extra = {
+      openai_responses_flatten_namespaces: true
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="edit-openai-flatten-namespaces-toggle"]')
+
+    // 关闭后应从 extra 中删除该键，而不是写入 false
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty(
+      'openai_responses_flatten_namespaces'
+    )
+  })
+
+  it('submits the Codex namespace flatten toggle when switched on', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="edit-openai-flatten-namespaces-toggle"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_flatten_namespaces).toBe(
+      true
+    )
+  })
+
+  it('hides the Codex namespace flatten toggle for non-OAuth OpenAI accounts', async () => {
+    const account = buildAccount()
+    const wrapper = mountModal(account)
+
+    expect(wrapper.find('[data-testid="edit-openai-flatten-namespaces-toggle"]').exists()).toBe(
+      false
+    )
   })
 
   it('defaults legacy OpenAI accounts to long-context billing disabled', async () => {
@@ -588,6 +811,134 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_supported).toBe(false)
   })
 
+  it('submits the account upstream billing auto-probe setting', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="upstream-billing-auto-probe"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.upstream_billing_probe_enabled).toBe(true)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty(
+      'upstream_billing_probe_enabled'
+    )
+  })
+
+  it('exposes the upstream billing auto-probe toggle for non-OpenAI API-key accounts', async () => {
+    // 探测已放宽到全部 API-key 平台：grok 账号同样能开启并保存。
+    const account = buildAccount()
+    account.platform = 'grok'
+    account.name = 'grok-relay'
+    account.credentials = { api_key: 'sk-grok', base_url: 'https://relay.example/v1' }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="upstream-billing-auto-probe"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.upstream_billing_probe_enabled).toBe(true)
+  })
+
+  it('enabling rate sync also enables probing and stops submitting a manual rate', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const syncToggle = wrapper.get('[data-testid="upstream-billing-rate-sync"]')
+    const probeToggle = wrapper.get('[data-testid="upstream-billing-auto-probe"]')
+    const rateInput = wrapper.get<HTMLInputElement>('[data-testid="account-rate-multiplier"]')
+    expect(syncToggle.attributes('aria-checked')).toBe('false')
+    expect(probeToggle.attributes('aria-checked')).toBe('false')
+    expect(rateInput.element.disabled).toBe(false)
+    expect(wrapper.text()).toContain('admin.accounts.billingRateMultiplierHint')
+    expect(wrapper.text()).not.toContain('admin.accounts.upstreamBilling.syncRateManagedHint')
+
+    await syncToggle.trigger('click')
+    expect(syncToggle.attributes('aria-checked')).toBe('true')
+    expect(probeToggle.attributes('aria-checked')).toBe('true')
+    expect(rateInput.element.disabled).toBe(true)
+    expect(wrapper.text()).toContain('admin.accounts.upstreamBilling.syncRateManagedHint')
+    expect(wrapper.text()).not.toContain('admin.accounts.billingRateMultiplierHint')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload?.upstream_billing_probe_enabled).toBe(true)
+    expect(payload?.upstream_billing_rate_sync_enabled).toBe(true)
+    expect(payload).not.toHaveProperty('rate_multiplier')
+  })
+
+  it('disabling probing also disables rate sync and restores manual rate editing', async () => {
+    const account = buildAccount()
+    account.extra = {
+      upstream_billing_probe_enabled: true,
+      upstream_billing_rate_sync_enabled: true
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const syncToggle = wrapper.get('[data-testid="upstream-billing-rate-sync"]')
+    const probeToggle = wrapper.get('[data-testid="upstream-billing-auto-probe"]')
+    const rateInput = wrapper.get<HTMLInputElement>('[data-testid="account-rate-multiplier"]')
+    expect(syncToggle.attributes('aria-checked')).toBe('true')
+    expect(rateInput.element.disabled).toBe(true)
+
+    await probeToggle.trigger('click')
+    expect(probeToggle.attributes('aria-checked')).toBe('false')
+    expect(syncToggle.attributes('aria-checked')).toBe('false')
+    expect(rateInput.element.disabled).toBe(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload?.upstream_billing_probe_enabled).toBe(false)
+    expect(payload?.upstream_billing_rate_sync_enabled).toBe(false)
+    expect(payload?.rate_multiplier).toBe(1)
+  })
+
+  it('disabling only rate sync keeps automatic probing enabled', async () => {
+    const account = buildAccount()
+    account.extra = {
+      upstream_billing_probe_enabled: true,
+      upstream_billing_rate_sync_enabled: true
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="upstream-billing-rate-sync"]').trigger('click')
+    expect(wrapper.get('[data-testid="upstream-billing-auto-probe"]').attributes('aria-checked')).toBe(
+      'true'
+    )
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload?.upstream_billing_probe_enabled).toBe(true)
+    expect(payload?.upstream_billing_rate_sync_enabled).toBe(false)
+    expect(payload?.rate_multiplier).toBe(1)
+  })
+
   it('clears OpenAI APIKey Responses override when set back to auto', async () => {
     const account = buildAccount()
     account.extra = {
@@ -753,6 +1104,10 @@ describe('EditAccountModal', () => {
 
     const wrapper = mountModal(account)
 
+    expect(wrapper.text()).toContain('admin.accounts.openai.codexImageTool')
+    expect(wrapper.text()).toContain('admin.accounts.openai.codexImageToolDesc')
+    expect(wrapper.text()).toContain('admin.accounts.openai.codexImageToolEnabledDesc')
+
     await wrapper.get('button[data-testid="codex-image-tool-enabled"]').trigger('click')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
@@ -790,6 +1145,9 @@ describe('EditAccountModal', () => {
     updateAccountMock.mockResolvedValue(account)
 
     const wrapper = mountModal(account)
+
+    expect(wrapper.text()).toContain('admin.accounts.openai.codexImageToolBlock')
+    expect(wrapper.text()).toContain('admin.accounts.openai.codexImageToolBlockDesc')
 
     await wrapper.get('button[data-testid="codex-image-tool-block"]').trigger('click')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')

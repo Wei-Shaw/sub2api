@@ -1,6 +1,7 @@
 package apicompat
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -9,15 +10,44 @@ import (
 	"time"
 )
 
+const (
+	toolOutputMediaMarker      = "[Tool output media moved to the following user message]"
+	toolOutputMediaAttribution = "[Tool output media for call %s]"
+)
+
+type toolOutputMediaByCallID map[string][]ChatContentPart
+
+// ResponsesToChatOptions carries optional hooks for
+// ResponsesToChatCompletionsRequestWithOptions. All fields are optional; a nil
+// *ResponsesToChatOptions behaves exactly like ResponsesToChatCompletionsRequest.
+type ResponsesToChatOptions struct {
+	// ReasoningContentByID looks up the cached reasoning text for a reasoning
+	// item id. Codex histories may carry reasoning items with no plaintext
+	// summary (empty summary + opaque encrypted_content, e.g. after remote
+	// compaction); DeepSeek's thinking mode rejects such histories with 400
+	// "The `reasoning_content` in the thinking mode must be passed back to the
+	// API". The gateway caches the reasoning text it streamed under the item
+	// id, so the lookup restores the reasoning_content the client can no
+	// longer provide. Return "" on a miss. A nil lookup keeps the original
+	// behavior.
+	ReasoningContentByID func(itemID string) string
+}
+
 // ResponsesToChatCompletionsRequest converts a Responses API request into a
 // Chat Completions request for upstreams that only implement
 // /v1/chat/completions.
 func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsRequest, error) {
+	return ResponsesToChatCompletionsRequestWithOptions(req, nil)
+}
+
+// ResponsesToChatCompletionsRequestWithOptions is ResponsesToChatCompletionsRequest
+// with optional hooks (see ResponsesToChatOptions).
+func ResponsesToChatCompletionsRequestWithOptions(req *ResponsesRequest, opts *ResponsesToChatOptions) (*ChatCompletionsRequest, error) {
 	if req == nil {
 		return nil, fmt.Errorf("responses request is nil")
 	}
 
-	messages, err := responsesInputToChatMessages(req.Instructions, req.Input)
+	messages, err := responsesInputToChatMessagesWithOptions(req.Instructions, req.Input, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -54,6 +84,9 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 		for _, tool := range out.Tools {
 			if tool.Function != nil {
 				declared[tool.Function.Name] = true
+			}
+			if strings.EqualFold(strings.TrimSpace(tool.Type), "x_search") {
+				declared["x_search"] = true
 			}
 		}
 		if tc := responsesToolChoiceToChatToolChoice(req.ToolChoice, declared); len(tc) > 0 {
@@ -191,6 +224,12 @@ func HasToolSearchTool(tools []ResponsesTool) bool {
 // scattered across per-item cases, and makes unknown future codex item types
 // fail safe instead of leaking into the upstream request.
 func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage) ([]ChatMessage, error) {
+	return responsesInputToChatMessagesWithOptions(instructions, inputRaw, nil)
+}
+
+// responsesInputToChatMessagesWithOptions is responsesInputToChatMessages with
+// optional hooks (see ResponsesToChatOptions).
+func responsesInputToChatMessagesWithOptions(instructions string, inputRaw json.RawMessage, opts *ResponsesToChatOptions) ([]ChatMessage, error) {
 	var messages []ChatMessage
 	if strings.TrimSpace(instructions) != "" {
 		content, _ := json.Marshal(instructions)
@@ -215,16 +254,16 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 		return nil, fmt.Errorf("parse responses input: %w", err)
 	}
 
-	built, err := buildChatMessagesFromItems(messages, rawItems)
+	built, mediaByCallID, err := buildChatMessagesFromItems(messages, rawItems, opts)
 	if err != nil {
 		return nil, err
 	}
-	return normalizeChatMessages(built), nil
+	return normalizeChatMessagesWithToolOutputMedia(built, mediaByCallID), nil
 }
 
 // buildChatMessagesFromItems walks the Responses input items and appends the
 // corresponding Chat messages.
-func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessage) ([]ChatMessage, error) {
+func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessage, opts *ResponsesToChatOptions) ([]ChatMessage, toolOutputMediaByCallID, error) {
 	// pendingReasoning holds the reasoning text from a reasoning item until the
 	// assistant message it belongs to is emitted. DeepSeek's thinking mode
 	// requires the reasoning_content that produced a tool call to be passed back
@@ -232,6 +271,23 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 	// across an assistant message (so a following tool call in the same turn
 	// still receives it); any other role ends the thinking span.
 	var pendingReasoning string
+	// lastTurnReasoning is the most recent reasoning text of the current turn,
+	// surviving tool outputs. DeepSeek emits reasoning only once per turn, so
+	// chained tool calls (reasoning → call A → output A → call B) leave call B's
+	// assistant message without reasoning_content and DeepSeek 400s the history;
+	// replaying the turn's reasoning on B's message satisfies the contract. Only
+	// a user-side item ends the turn and clears it.
+	var lastTurnReasoning string
+	mediaByCallID := make(toolOutputMediaByCallID)
+	invalidFunctionCallIDs := make(map[string]struct{})
+	invalidEmptyFunctionCallOutputs := 0
+
+	reasoningForAssistant := func() string {
+		if pendingReasoning != "" {
+			return pendingReasoning
+		}
+		return lastTurnReasoning
+	}
 
 	for _, raw := range rawItems {
 		raw = bytesTrimSpace(raw)
@@ -246,9 +302,10 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 				content, _ := json.Marshal(text)
 				messages = append(messages, ChatMessage{Role: "user", Content: content})
 				pendingReasoning = ""
+				lastTurnReasoning = ""
 				continue
 			}
-			return nil, fmt.Errorf("parse responses input item: %w", err)
+			return nil, nil, fmt.Errorf("parse responses input item: %w", err)
 		}
 
 		role := chatCompletionsBridgeRole(rawString(item["role"]))
@@ -257,12 +314,40 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 		case "reasoning":
 			if txt := extractResponsesReasoningText(item); txt != "" {
 				pendingReasoning = txt
+			} else if opts != nil && opts.ReasoningContentByID != nil {
+				// No plaintext summary (encrypted-only reasoning, e.g. after codex
+				// remote compaction): fall back to the gateway-side cache keyed
+				// by the reasoning item id, which always round-trips in history.
+				if id := rawString(item["id"]); id != "" {
+					if cached := opts.ReasoningContentByID(id); cached != "" {
+						pendingReasoning = cached
+					}
+				}
+			}
+			if pendingReasoning != "" {
+				lastTurnReasoning = pendingReasoning
 			}
 			continue
 		case "function_call":
 			arguments := rawString(item["arguments"])
 			if strings.TrimSpace(arguments) == "" {
 				arguments = "{}"
+			}
+			callID := rawString(item["call_id"])
+			if !json.Valid([]byte(arguments)) {
+				// A previous streamed turn can leave a truncated function_call in
+				// Codex history (for example after an upstream SSE parse failure or
+				// an output-limit interruption). Do not forward that item to a
+				// Chat Completions provider, which rejects the entire request. Its
+				// matching output is skipped below as well, allowing the next user
+				// turn to self-heal instead of repeatedly replaying the poison.
+				if callID != "" {
+					invalidFunctionCallIDs[callID] = struct{}{}
+				} else {
+					invalidEmptyFunctionCallOutputs++
+				}
+				pendingReasoning = ""
+				continue
 			}
 			name := rawString(item["name"])
 			// namespace 子工具的历史调用带 namespace 字段，需与请求方向的摊平
@@ -271,14 +356,14 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 				name = flattenNamespaceToolName(ns, name)
 			}
 			toolCall := ChatToolCall{
-				ID:   rawString(item["call_id"]),
+				ID:   callID,
 				Type: "function",
 				Function: ChatFunctionCall{
 					Name:      name,
 					Arguments: arguments,
 				},
 			}
-			messages = appendAssistantToolCall(messages, toolCall, pendingReasoning)
+			messages = appendAssistantToolCall(messages, toolCall, reasoningForAssistant())
 			pendingReasoning = ""
 			continue
 		case "tool_search_call":
@@ -299,7 +384,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 					Arguments: arguments,
 				},
 			}
-			messages = appendAssistantToolCall(messages, toolCall, pendingReasoning)
+			messages = appendAssistantToolCall(messages, toolCall, reasoningForAssistant())
 			pendingReasoning = ""
 			continue
 		case "custom_tool_call":
@@ -315,20 +400,39 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 					Arguments: string(arguments),
 				},
 			}
-			messages = appendAssistantToolCall(messages, toolCall, pendingReasoning)
+			messages = appendAssistantToolCall(messages, toolCall, reasoningForAssistant())
 			pendingReasoning = ""
 			continue
 		case "function_call_output", "custom_tool_call_output", "tool_search_output":
 			outputRaw := bytesTrimSpace(item["output"])
-			outputText := rawString(outputRaw)
-			if outputText == "" && len(outputRaw) > 0 && string(outputRaw) != "null" && string(outputRaw) != `""` {
-				// 对象/数组形式的输出（如 tool_search 的结果列表）整体字符串化。
-				outputText = string(outputRaw)
+			callID := rawString(item["call_id"])
+			if callID == "" && invalidEmptyFunctionCallOutputs > 0 {
+				invalidEmptyFunctionCallOutputs--
+				pendingReasoning = ""
+				continue
+			}
+			if _, skipped := invalidFunctionCallIDs[callID]; skipped {
+				pendingReasoning = ""
+				continue
+			}
+			delete(mediaByCallID, callID)
+
+			outputText, media, rewritten := extractToolOutputMedia(outputRaw)
+			if rewritten {
+				if callID != "" {
+					mediaByCallID[callID] = media
+				}
+			} else {
+				outputText = rawString(outputRaw)
+				if outputText == "" && len(outputRaw) > 0 && string(outputRaw) != "null" && string(outputRaw) != `""` {
+					// 对象/数组形式的输出（如 tool_search 的结果列表）整体字符串化。
+					outputText = string(outputRaw)
+				}
 			}
 			content, _ := json.Marshal(outputText)
 			messages = append(messages, ChatMessage{
 				Role:       "tool",
-				ToolCallID: rawString(item["call_id"]),
+				ToolCallID: callID,
 				Content:    content,
 			})
 			pendingReasoning = ""
@@ -337,14 +441,16 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 			content, _ := json.Marshal(rawString(item["text"]))
 			messages = append(messages, ChatMessage{Role: "user", Content: content})
 			pendingReasoning = ""
+			lastTurnReasoning = ""
 			continue
 		case "input_image":
 			content, err := chatContentFromSingleResponsesPart(itemType, item)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			messages = append(messages, ChatMessage{Role: "user", Content: content})
 			pendingReasoning = ""
+			lastTurnReasoning = ""
 			continue
 		}
 
@@ -367,16 +473,161 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 		}
 		chatContent, err := responsesContentToChatContent(content, role)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		messages = append(messages, ChatMessage{Role: role, Content: chatContent})
-		// Reasoning only survives across an assistant text message.
-		if role != "assistant" {
+		msg := ChatMessage{Role: role, Content: chatContent}
+		// DeepSeek thinking mode requires the reasoning_content from a prior
+		// reasoning-only / plain-text assistant turn to be passed back on its
+		// assistant message; dropping it yields 400 "The `reasoning_content` in
+		// the thinking mode must be passed back to the API" on the next turn.
+		// A following function_call in the same turn still receives it because
+		// appendAssistantToolCall merges into this message and only fills
+		// ReasoningContent when it is still empty.
+		if role == "assistant" {
+			msg.ReasoningContent = reasoningForAssistant()
 			pendingReasoning = ""
+		} else {
+			pendingReasoning = ""
+			lastTurnReasoning = ""
 		}
+		messages = append(messages, msg)
 	}
 
-	return messages, nil
+	return messages, mediaByCallID, nil
+}
+
+// extractToolOutputMedia rewrites only recognized image nodes. Media-free
+// outputs return rewritten=false so the caller can preserve their original
+// bytes and prompt-cache prefix.
+func extractToolOutputMedia(outputRaw json.RawMessage) (string, []ChatContentPart, bool) {
+	outputRaw = bytesTrimSpace(outputRaw)
+	if len(outputRaw) == 0 || string(outputRaw) == "null" {
+		return "", nil, false
+	}
+
+	var outputString string
+	if err := json.Unmarshal(outputRaw, &outputString); err == nil {
+		if isToolOutputImageDataURL(outputString) {
+			return toolOutputMediaMarker, []ChatContentPart{toolOutputImagePart(outputString)}, true
+		}
+
+		nested, ok := decodeToolOutputJSON([]byte(outputString))
+		if !ok {
+			return "", nil, false
+		}
+		rewritten, media, changed := rewriteToolOutputMediaValue(nested)
+		if !changed {
+			return "", nil, false
+		}
+		encoded, err := json.Marshal(rewritten)
+		if err != nil {
+			return "", nil, false
+		}
+		return string(encoded), media, true
+	}
+
+	value, ok := decodeToolOutputJSON(outputRaw)
+	if !ok {
+		return "", nil, false
+	}
+	rewritten, media, changed := rewriteToolOutputMediaValue(value)
+	if !changed {
+		return "", nil, false
+	}
+	encoded, err := json.Marshal(rewritten)
+	if err != nil {
+		return "", nil, false
+	}
+	return string(encoded), media, true
+}
+
+func decodeToolOutputJSON(raw []byte) (any, bool) {
+	if !json.Valid(raw) {
+		return nil, false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return nil, false
+	}
+	return value, true
+}
+
+func rewriteToolOutputMediaValue(value any) (any, []ChatContentPart, bool) {
+	switch typed := value.(type) {
+	case []any:
+		var media []ChatContentPart
+		changed := false
+		for i, item := range typed {
+			rewritten, itemMedia, itemChanged := rewriteToolOutputMediaValue(item)
+			if !itemChanged {
+				continue
+			}
+			typed[i] = rewritten
+			media = append(media, itemMedia...)
+			changed = true
+		}
+		return typed, media, changed
+	case map[string]any:
+		if imageURL, ok := recognizedToolOutputImageURL(typed); ok {
+			return map[string]any{
+				"type": "input_text",
+				"text": toolOutputMediaMarker,
+			}, []ChatContentPart{toolOutputImagePart(imageURL)}, true
+		}
+
+		content, ok := typed["content"]
+		if !ok {
+			return typed, nil, false
+		}
+		rewritten, media, changed := rewriteToolOutputMediaValue(content)
+		if !changed {
+			return typed, nil, false
+		}
+		typed["content"] = rewritten
+		return typed, media, true
+	default:
+		return value, nil, false
+	}
+}
+
+func recognizedToolOutputImageURL(value map[string]any) (string, bool) {
+	partType, _ := value["type"].(string)
+	if partType != "input_image" && partType != "image_url" {
+		return "", false
+	}
+
+	switch imageURL := value["image_url"].(type) {
+	case string:
+		return imageURL, strings.TrimSpace(imageURL) != ""
+	case map[string]any:
+		url, _ := imageURL["url"].(string)
+		return url, strings.TrimSpace(url) != ""
+	default:
+		return "", false
+	}
+}
+
+func isToolOutputImageDataURL(value string) bool {
+	const prefix = "data:image/"
+	const separator = ";base64,"
+	if !strings.HasPrefix(value, prefix) {
+		return false
+	}
+	separatorIndex := strings.Index(value[len(prefix):], separator)
+	if separatorIndex <= 0 {
+		return false
+	}
+	payloadIndex := len(prefix) + separatorIndex + len(separator)
+	return payloadIndex < len(value)
+}
+
+func toolOutputImagePart(imageURL string) ChatContentPart {
+	return ChatContentPart{
+		Type:     "image_url",
+		ImageURL: &ChatImageURL{URL: imageURL},
+	}
 }
 
 // appendAssistantToolCall merges a tool call into the chat message list.
@@ -417,6 +668,10 @@ func appendAssistantToolCall(messages []ChatMessage, toolCall ChatToolCall, pend
 // tool replies and intervening messages are emitted in their natural position
 // but never between an assistant tool_calls message and its replies.
 func normalizeChatMessages(messages []ChatMessage) []ChatMessage {
+	return normalizeChatMessagesWithToolOutputMedia(messages, nil)
+}
+
+func normalizeChatMessagesWithToolOutputMedia(messages []ChatMessage, mediaByCallID toolOutputMediaByCallID) []ChatMessage {
 	// Index every tool reply by its tool_call_id (last wins on duplicates).
 	replies := make(map[string]ChatMessage)
 	for _, m := range messages {
@@ -463,6 +718,23 @@ func normalizeChatMessages(messages []ChatMessage) []ChatMessage {
 			for _, tc := range kept {
 				out = append(out, replies[tc.ID])
 			}
+
+			var mediaParts []ChatContentPart
+			for _, tc := range kept {
+				media := mediaByCallID[tc.ID]
+				if len(media) == 0 {
+					continue
+				}
+				mediaParts = append(mediaParts, ChatContentPart{
+					Type: "text",
+					Text: fmt.Sprintf(toolOutputMediaAttribution, tc.ID),
+				})
+				mediaParts = append(mediaParts, media...)
+			}
+			if len(mediaParts) > 0 {
+				content, _ := json.Marshal(mediaParts)
+				out = append(out, ChatMessage{Role: "user", Content: content})
+			}
 		default:
 			out = append(out, m)
 		}
@@ -508,6 +780,26 @@ func extractResponsesReasoningText(item map[string]json.RawMessage) string {
 		collect(item["content"])
 	}
 	return strings.Join(parts, "\n")
+}
+
+// ExtractResponsesReasoningItem parses a raw Responses input item and, when it
+// is a reasoning item, returns its id and extractable plaintext (summary
+// preferred, content fallback). ok is false for non-reasoning items. It exists
+// for the gateway-side reasoning cache: items with plaintext get (re)cached so
+// later encrypted-only replicas of the same item id can be restored.
+func ExtractResponsesReasoningItem(raw json.RawMessage) (id string, text string, ok bool) {
+	raw = bytesTrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return "", "", false
+	}
+	var item map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &item); err != nil {
+		return "", "", false
+	}
+	if rawString(item["type"]) != "reasoning" {
+		return "", "", false
+	}
+	return rawString(item["id"]), extractResponsesReasoningText(item), true
 }
 
 func chatCompletionsBridgeRole(role string) string {
@@ -673,6 +965,16 @@ func responsesToolsToChatTools(tools []ResponsesTool) ([]ChatTool, error) {
 				return nil, err
 			}
 			out = append(out, flattened...)
+		case "x_search":
+			out = append(out, ChatTool{
+				Type:                     "x_search",
+				AllowedXHandles:          tool.AllowedXHandles,
+				ExcludedXHandles:         tool.ExcludedXHandles,
+				FromDate:                 tool.FromDate,
+				ToDate:                   tool.ToDate,
+				EnableImageUnderstanding: tool.EnableImageUnderstanding,
+				EnableVideoUnderstanding: tool.EnableVideoUnderstanding,
+			})
 		}
 		// 其余类型（web_search、image_generation 等服务端工具）在 chat 上游没有
 		// 对应能力，维持丢弃。
@@ -774,6 +1076,15 @@ func responsesToolChoiceToChatToolChoice(raw json.RawMessage, declared map[strin
 	}
 	var name string
 	switch rawString(choice["type"]) {
+	case "x_search":
+		if !declared["x_search"] {
+			return nil
+		}
+		out, err := json.Marshal(map[string]any{"type": "x_search"})
+		if err != nil {
+			return raw
+		}
+		return out
 	case "tool_search":
 		// tool_search 未被丢弃而是降级为同名 function 代理（见
 		// responsesToolsToChatTools），强制选择它同样降级为 function 选择，
@@ -879,20 +1190,21 @@ func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model str
 
 func chatMessageToResponsesOutput(message ChatMessage, customTools map[string]bool, toolSearch bool, namespaceTools map[string]NamespacedToolName) []ResponsesOutput {
 	var outputs []ResponsesOutput
-	if message.ReasoningContent != "" {
+	reasoning := message.reasoningText()
+	if reasoning != "" {
 		outputs = append(outputs, ResponsesOutput{
 			Type: "reasoning",
 			ID:   generateItemID(),
 			Summary: []ResponsesSummary{{
 				Type: "summary_text",
-				Text: message.ReasoningContent,
+				Text: reasoning,
 			}},
 		})
 	}
 
 	text := chatMessageContentText(message.Content)
-	if text == "" && strings.TrimSpace(message.ReasoningContent) != "" && len(message.ToolCalls) == 0 {
-		text = message.ReasoningContent
+	if text == "" && strings.TrimSpace(reasoning) != "" && len(message.ToolCalls) == 0 {
+		text = reasoning
 	}
 	if text != "" || len(message.ToolCalls) == 0 {
 		outputs = append(outputs, ResponsesOutput{
@@ -931,6 +1243,13 @@ func chatMessageToResponsesOutput(message ChatMessage, customTools map[string]bo
 				Arguments: arguments,
 				Status:    "completed",
 			})
+			continue
+		}
+		// Ordinary Responses function_call arguments must contain valid JSON.
+		// Do not mark a truncated non-streaming Chat tool call as completed;
+		// Codex would persist it and poison the next request in the same way as
+		// the streaming variant guarded by ValidateToolCallArguments.
+		if !json.Valid([]byte(arguments)) {
 			continue
 		}
 		if ns, ok := namespaceTools[toolCall.Function.Name]; ok {
@@ -1121,6 +1440,33 @@ func NewChatCompletionsToResponsesStreamState(model string) *ChatCompletionsToRe
 	}
 }
 
+// ValidateToolCallArguments checks the accumulated function-call arguments
+// before the stream is finalized. A tool call whose argument stream was
+// truncated must not be emitted as a completed Responses item: Codex will
+// persist it and replay it on the next turn, where a Chat Completions provider
+// rejects the whole request.
+func (state *ChatCompletionsToResponsesStreamState) ValidateToolCallArguments() error {
+	if state == nil {
+		return nil
+	}
+	for idx, toolCall := range state.ToolCalls {
+		if toolCall == nil {
+			continue
+		}
+		if state.toolIsCustom[idx] || state.toolIsToolSearch[idx] {
+			continue
+		}
+		arguments := strings.TrimSpace(toolCall.Function.Arguments)
+		if arguments == "" {
+			continue
+		}
+		if !json.Valid([]byte(arguments)) {
+			return fmt.Errorf("tool call %q (%s) arguments are invalid JSON", toolCall.ID, toolCall.Function.Name)
+		}
+	}
+	return nil
+}
+
 func (state *ChatCompletionsToResponsesStreamState) allocOutputIndex() int {
 	idx := state.nextOutputIndex
 	state.nextOutputIndex++
@@ -1154,13 +1500,14 @@ func ChatCompletionsChunkToResponsesEvents(
 		// (output_item.added + reasoning_summary_part.added) before the first
 		// delta, otherwise a strict client discards the delta. The leading
 		// empty-string reasoning delta upstreams send is filtered out.
-		if choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "" {
+		reasoning := choice.Delta.reasoningText()
+		if reasoning != nil && *reasoning != "" {
 			events = append(events, ensureChatReasoningItem(state)...)
-			_, _ = state.Reasoning.WriteString(*choice.Delta.ReasoningContent)
+			_, _ = state.Reasoning.WriteString(*reasoning)
 			events = append(events, chatToResponsesEvent(state, "response.reasoning_summary_text.delta", &ResponsesStreamEvent{
 				OutputIndex:  state.ReasoningIndex,
 				SummaryIndex: 0,
-				Delta:        *choice.Delta.ReasoningContent,
+				Delta:        *reasoning,
 				ItemID:       state.ReasoningItemID,
 			}))
 		}
