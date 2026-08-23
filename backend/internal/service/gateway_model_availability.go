@@ -95,6 +95,10 @@ func (s *GatewayService) DiagnoseModelAvailabilityForPlatform(
 		// hiccup'd).
 		return ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}
 	}
+	supportModel := requestedModel
+	if groupID != nil && s.channelService != nil {
+		supportModel = s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel).MappedModel
+	}
 
 	diag := ModelAvailabilityDiagnosis{}
 	for i := range accounts {
@@ -102,7 +106,7 @@ func (s *GatewayService) DiagnoseModelAvailabilityForPlatform(
 			continue
 		}
 		diag.HasAccountsInPool = true
-		if s.isModelSupportedByAccountWithContext(ctx, &accounts[i], requestedModel) {
+		if s.isModelSupportedByAccountWithContext(ctx, &accounts[i], supportModel) {
 			diag.HasModelSupport = true
 			return diag
 		}

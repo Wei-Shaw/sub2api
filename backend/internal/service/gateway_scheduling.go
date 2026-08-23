@@ -850,11 +850,15 @@ func (s *GatewayService) HasPromptAuditFallbackAccounts(ctx context.Context, gro
 	if err != nil {
 		return false, err
 	}
+	supportModel := model
+	if s.channelService != nil {
+		supportModel = s.channelService.ResolveChannelMapping(ctx, group.ID, model).MappedModel
+	}
 	checkUpstreamRestriction := s.needsUpstreamChannelRestrictionCheck(ctx, &groupID)
 	for i := range accounts {
 		account := &accounts[i]
 		if promptAuditFallbackAccountCompatible(ctx, group.Platform, account.Platform, protocol, model, account.IsMixedSchedulingEnabled()) &&
-			promptAuditFallbackAccountSupportsModel(account, model) &&
+			promptAuditFallbackAccountSupportsModel(account, supportModel) &&
 			(!checkUpstreamRestriction || !s.isUpstreamModelRestrictedByChannel(ctx, groupID, account, model)) {
 			return true, nil
 		}
@@ -1160,7 +1164,22 @@ func (s *GatewayService) isAccountSchedulableForModelSelection(ctx context.Conte
 	if account == nil {
 		return false
 	}
-	return account.IsSchedulableForModelWithContext(ctx, requestedModel)
+	return account.IsSchedulableForModelWithContext(ctx, s.channelMappedModelForAccountSupport(ctx, requestedModel))
+}
+
+// channelMappedModelForAccountSupport returns the model that the selected
+// channel will expose to the account. Account model support must be checked
+// against this value, otherwise a public alias such as luna is rejected before
+// the channel mapping to terra can be applied.
+func (s *GatewayService) channelMappedModelForAccountSupport(ctx context.Context, requestedModel string) string {
+	if strings.TrimSpace(requestedModel) == "" || s == nil || s.channelService == nil || ctx == nil {
+		return requestedModel
+	}
+	group, ok := ctx.Value(ctxkey.Group).(*Group)
+	if !ok || !IsGroupContextValid(group) {
+		return requestedModel
+	}
+	return s.channelService.ResolveChannelMapping(ctx, group.ID, requestedModel).MappedModel
 }
 
 // isAccountInGroup checks if the account belongs to the specified group.
@@ -2589,6 +2608,7 @@ func summarizeSelectionFailureStats(stats selectionFailureStats) string {
 // isModelSupportedByAccountWithContext 根据账户平台检查模型支持（带 context）
 // 对于 Antigravity 平台，会先获取映射后的最终模型名（包括 thinking 后缀）再检查支持
 func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Context, account *Account, requestedModel string) bool {
+	requestedModel = s.channelMappedModelForAccountSupport(ctx, requestedModel)
 	if account.Platform == PlatformAntigravity {
 		if strings.TrimSpace(requestedModel) == "" {
 			return true

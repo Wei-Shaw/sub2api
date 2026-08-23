@@ -10,6 +10,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGatewayService_ModelSupportUsesChannelMappedModelAcrossPlatforms(t *testing.T) {
+	t.Parallel()
+
+	channelSvc := newTestChannelService(makeStandardRepo(Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10},
+		ModelMapping: map[string]map[string]string{
+			PlatformAnthropic: {"public-luna": "claude-terra"},
+		},
+	}, map[int64]string{10: PlatformAnthropic}))
+	svc := &GatewayService{channelService: channelSvc}
+	group := &Group{ID: 10, Platform: PlatformAnthropic, Status: StatusActive, Hydrated: true}
+	ctx := svc.withGroupContext(context.Background(), group)
+	account := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"claude-terra": "claude-terra"},
+		},
+	}
+
+	require.True(t, svc.isModelSupportedByAccountWithContext(ctx, account, "public-luna"))
+}
+
 func TestImagePlaygroundModelEligible_RequestedAndChannelMapped(t *testing.T) {
 	t.Parallel()
 

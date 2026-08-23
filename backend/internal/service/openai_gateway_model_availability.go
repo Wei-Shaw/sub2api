@@ -53,6 +53,13 @@ func (s *OpenAIGatewayService) DiagnoseModelAvailabilityForPlatform(
 		return ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}
 	}
 
+	// 渠道映射发生在账号映射之前。可用性诊断必须沿用调度/转发链路，
+	// 用渠道映射后的模型检查账号，否则会把“luna -> terra”误判为无账号支持。
+	supportModel := requestedModel
+	if groupID != nil && s.channelService != nil {
+		supportModel = s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel).MappedModel
+	}
+
 	diag := ModelAvailabilityDiagnosis{}
 	for i := range accounts {
 		diag.HasAccountsInPool = true
@@ -60,7 +67,7 @@ func (s *OpenAIGatewayService) DiagnoseModelAvailabilityForPlatform(
 		// (openai_account_scheduler.isAccountRequestCompatible): empty
 		// model_mapping accepts everything; otherwise the explicit / wildcard
 		// mapping must match.
-		if accounts[i].IsModelSupported(requestedModel) {
+		if accounts[i].IsModelSupported(supportModel) {
 			diag.HasModelSupport = true
 			return diag
 		}
