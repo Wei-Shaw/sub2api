@@ -471,6 +471,44 @@ REDACTED {
 REDACTED
 REDACTED
 
+func TestCleanToolSchema_RemovesNestedDeprecatedAndNormalizesMixedScalarEnum(t *testing.T) {
+	schema := map[string]any{
+		"anyOf": []any{
+			map[string]any{
+				"type":       "string",
+				"deprecated": true,
+		REDACTED,
+			map[string]any{
+				"enum": []any{"enabled", false, float64(1), nilREDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	cleaned, ok := cleanToolSchema(schema).(map[string]any)
+	require.True(t, ok)
+	anyOf, ok := cleaned["anyOf"].([]any)
+	require.True(t, ok)
+	require.Len(t, anyOf, 2)
+
+	deprecatedSchema, ok := anyOf[0].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, deprecatedSchema, "deprecated")
+
+	enumSchema, ok := anyOf[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, []any{"enabled", "false", "1", "null"REDACTED, enumSchema["enum"])
+REDACTED
+
+func TestCleanToolSchema_DropsEnumWithNonScalarValue(t *testing.T) {
+	schema := map[string]any{
+		"enum": []any{"valid", map[string]any{"invalid": trueREDACTEDREDACTED,
+REDACTED
+
+	cleaned, ok := cleanToolSchema(schema).(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, cleaned, "enum")
+REDACTED
+
 func TestConvertClaudeToolsToGeminiTools_PreservesWebSearchAlongsideFunctions(t *testing.T) {
 	tools := []any{
 		map[string]any{

@@ -3587,11 +3587,19 @@ REDACTED
 			if key == "$schema" || key == "$id" || key == "$ref" ||
 				key == "$defs" || key == "definitions" ||
 				key == "additionalProperties" || key == "patternProperties" || key == "minLength" ||
-				key == "maxLength" || key == "minItems" || key == "maxItems" || key == "exclusiveMinimum" {
+				key == "maxLength" || key == "minItems" || key == "maxItems" || key == "exclusiveMinimum" ||
+				key == "deprecated" {
 				continue
 		REDACTED
 			// 递归清理嵌套对象
 			cleaned[key] = cleanToolSchema(value)
+	REDACTED
+		if enum, ok := cleaned["enum"].([]any); ok {
+			if normalized, ok := normalizeGeminiEnum(enum); ok {
+				cleaned["enum"] = normalized
+		REDACTED else {
+				delete(cleaned, "enum")
+		REDACTED
 	REDACTED
 		// 规范化 type 字段为大写
 		if typeVal, ok := cleaned["type"].(string); ok {
@@ -3625,6 +3633,28 @@ REDACTED
 	default:
 		return v
 REDACTED
+REDACTED
+
+func normalizeGeminiEnum(values []any) ([]any, bool) {
+	normalized := make([]any, len(values))
+	for i, value := range values {
+		if stringValue, ok := value.(string); ok {
+			normalized[i] = stringValue
+			continue
+	REDACTED
+
+		switch value.(type) {
+		case nil, bool, float32, float64, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, json.Number:
+			encoded, err := json.Marshal(value)
+			if err != nil {
+				return nil, false
+		REDACTED
+			normalized[i] = string(encoded)
+		default:
+			return nil, false
+	REDACTED
+REDACTED
+	return normalized, true
 REDACTED
 
 func incrementIntegralSchemaBound(value any) (any, bool) {
