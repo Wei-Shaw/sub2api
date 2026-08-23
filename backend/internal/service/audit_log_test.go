@@ -76,6 +76,18 @@ func TestRedactAuditBody_BareSessionKeyRedacted(t *testing.T) {
 	}
 }
 
+func TestRedactAuditBody_DeviceLoginCodesAreRedacted(t *testing.T) {
+	raw := []byte(`{"invitation_code":"DLG-ABCD-EFGH-JKLM","device_code":"DLG-WXYZ-2345-6789","device_hash":"hash"}`)
+	out := RedactAuditBody(raw, "application/json")
+
+	if strings.Contains(out, "DLG-ABCD-EFGH-JKLM") || strings.Contains(out, "DLG-WXYZ-2345-6789") {
+		t.Fatalf("device login credential leaked in audit body: %s", out)
+	}
+	if !strings.Contains(out, `"invitation_code":"***"`) || !strings.Contains(out, `"device_code":"***"`) {
+		t.Fatalf("device login credential fields were not redacted: %s", out)
+	}
+}
+
 // TestRedactAuditBody_AuthoritativeTablesSynced 覆盖曾经漏网的凭证字段：
 // 账号 credentials 敏感子键、支付渠道无分隔符密钥、字符串值内嵌凭证的 proxy_key / custom_key，
 // 以及 camelCase 等命名变体（归一化比对）。

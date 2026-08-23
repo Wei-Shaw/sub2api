@@ -726,8 +726,9 @@ async function handlePasswordLogin(): Promise<void> {
 }
 
 async function handleRedeemLogin(): Promise<void> {
-  await authStore.redeemLogin({
+  await authStore.inviteLogin({
     invitation_code: inviteForm.invitation_code,
+    client_kind: 'web',
     turnstile_token:
       turnstileEnabled.value || aliyunCaptchaEnabled.value ? turnstileToken.value : undefined,
     tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,

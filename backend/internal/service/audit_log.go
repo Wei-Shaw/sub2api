@@ -128,6 +128,9 @@ var auditBodySensitiveExactKeys = func() map[string]struct{} {
 		"code", "codes", "pin", "cvv",
 		"authorization", "cookie", "x-api-key",
 		"key",
+		// Invitation/device login codes are bearer credentials and must not be
+		// persisted in authentication audit request bodies.
+		"invitation_code", "device_code", "claim_code",
 		// 字符串值内嵌完整凭证的字段：
 		// proxy_key 为 protocol|host|port|username|password 拼接，
 		// custom_key 为用户自设的平台 API Key 明文，

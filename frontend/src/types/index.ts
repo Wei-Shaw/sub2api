@@ -142,6 +142,7 @@ export interface InviteLoginRequest extends ActionCaptchaRequestProof {
   invitation_code: string
   device_hash?: string
   install_id?: string
+  client_kind?: string
 }
 
 export interface RedeemLoginRequest extends ActionCaptchaRequestProof {
