@@ -160,7 +160,6 @@
                 </div>
                 <dl class="mt-3 space-y-1.5 text-xs">
                   <div data-testid="user-menu-account-identity" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.accountIdentity.label') }}</dt><dd>{{ t(user.identity_type === 'iam' ? 'organization.accountIdentity.iam' : 'organization.accountIdentity.root') }}</dd></div>
-                  <div v-if="user.identity_type === 'iam' && user.external_user_id" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.iamUserId') }}</dt><dd class="break-all font-mono text-right">{{ user.external_user_id }}</dd></div>
                   <div v-if="user.iam_principal" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.principal') }}</dt><dd class="break-all font-mono text-right">{{ user.iam_principal }}</dd></div>
                   <div v-if="organization" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.companyName') }}</dt><dd class="text-right">{{ organization.company_name }}</dd></div>
                   <div v-if="organization" class="flex justify-between gap-3"><dt class="text-gray-500">{{ t('organization.role') }}</dt><dd>{{ t(`organization.roleValue.${organization.role}`) }} / {{ t(`organization.status.${organization.membership_status}`) }}</dd></div>
@@ -207,6 +206,16 @@
                   <Icon name="users" size="sm" />
                   {{ t('organization.console') }}
                 </router-link>
+
+                <button
+                  type="button"
+                  class="dropdown-item w-full"
+                  data-testid="developer-keys-menu-item"
+                  @click="openDeveloperKeys"
+                >
+                  <Icon name="key" size="sm" />
+                  {{ t('developerKeys.menu') }}
+                </button>
 
                 <a
                   v-if="authStore.isAdmin"
@@ -292,6 +301,8 @@
       </div>
     </div>
   </header>
+
+  <DeveloperKeysDialog :show="developerKeysDialogOpen" @close="developerKeysDialogOpen = false" />
 </template>
 
 <script setup lang="ts">
@@ -304,6 +315,7 @@ import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import HomeProductsMenu from '@/components/common/HomeProductsMenu.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
+import DeveloperKeysDialog from '@/components/user/DeveloperKeysDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { canOpenCompanyUpgrade as canOpenCompanyUpgradeForUser } from '@/router/organizationAccess'
@@ -328,6 +340,7 @@ const canOpenCompanyUpgrade = computed(() => canOpenCompanyUpgradeForUser(
   appStore.cachedPublicSettings?.company_applications_enabled === true,
 ))
 const dropdownOpen = ref(false)
+const developerKeysDialogOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => sanitizeUrl(appStore.docUrl))
@@ -399,6 +412,11 @@ function toggleDropdown() {
 
 function closeDropdown() {
   dropdownOpen.value = false
+}
+
+function openDeveloperKeys() {
+  closeDropdown()
+  developerKeysDialogOpen.value = true
 }
 
 async function handleLogout() {

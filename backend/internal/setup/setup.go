@@ -447,8 +447,8 @@ func createAdminUser(cfg *SetupConfig) (bool, string, error) {
 
 	_, err = db.ExecContext(
 		ctx,
-		`INSERT INTO users (email, account_id, external_user_id, identity_type, password_hash, role, balance, concurrency, status, created_at, updated_at)
-		 VALUES ($1, $2, $2, 'root', $3, $4, $5, $6, $7, $8, $9)`,
+		`INSERT INTO users (email, account_id, identity_type, password_hash, role, balance, concurrency, status, created_at, updated_at)
+			 VALUES ($1, $2, 'root', $3, $4, $5, $6, $7, $8, $9)`,
 		admin.Email,
 		publicID,
 		admin.PasswordHash,

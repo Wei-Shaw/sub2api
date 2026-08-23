@@ -1,0 +1,144 @@
+syntax = "proto3";
+
+package sub2api.inner.v1;
+
+option go_package = "github.com/Wei-Shaw/sub2api/internal/rpc/innerpb";
+
+// InnerAPI 内部服务 RPC：余额账本和素材库能力。
+// 金额一律用十进制字符串传输，避免二进制浮点污染账本。
+// 鉴权走 tRPC metadata（app-token），不在 message 内。
+service InnerAPI {
+  rpc Deduct(DeductRequest) returns (DeductResponse);
+  rpc Refund(RefundRequest) returns (RefundResponse);
+  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
+  rpc ListMaterials(ListMaterialsRequest) returns (ListMaterialsResponse);
+  rpc GetMaterial(GetMaterialRequest) returns (Material);
+  rpc UploadMaterial(UploadMaterialRequest) returns (UploadMaterialResponse);
+  rpc AddMaterialByUrl(AddMaterialByUrlRequest) returns (AddMaterialByUrlResponse);
+  rpc RenameMaterial(RenameMaterialRequest) returns (Material);
+  rpc DeleteMaterial(DeleteMaterialRequest) returns (DeleteMaterialResponse);
+  rpc BatchDeleteMaterials(BatchDeleteMaterialsRequest) returns (BatchDeleteMaterialsResponse);
+}
+
+message DeductRequest {
+  string account_id  = 1;  // 对外账户标识，不是 users.id
+  string request_id  = 2;  // 幂等键
+  string amount      = 3;  // 十进制字符串
+  string description = 4;  // 必填，扣费原因
+  string extra       = 5;  // jsonb 文本，接入方自存
+}
+
+message DeductResponse {
+  bool   applied       = 1;  // false = 幂等重放
+  string balance_after = 2;
+  string payer_account_id = 3;
+  string balance_source = 4;
+  int64  organization_id = 5;
+  int64  authz_generation = 6;
+}
+
+message RefundRequest {
+  string refund_request_id   = 1;  // 本笔退款幂等键
+  string original_request_id = 2;  // 被冲销的原扣 request_id
+  string amount              = 3;  // 部分退金额，十进制字符串
+  string description         = 4;  // 必填，退费原因
+  string extra               = 5;
+}
+
+message RefundResponse {
+  bool   applied        = 1;
+  string balance_after  = 2;
+  string refunded_total = 3;  // 原扣累计已退
+  string payer_account_id = 4;
+  string balance_source = 5;
+  int64  organization_id = 6;
+  int64  authz_generation = 7;
+}
+
+message GetBalanceRequest  { string account_id = 1; }
+message GetBalanceResponse {
+  string balance = 1;
+  string payer_account_id = 2;
+  string balance_source = 3;
+  int64 organization_id = 4;
+  int64 authz_generation = 5;
+}
+
+message Material {
+  string id = 1; // opaque public material identifier; never the database id
+  string account_id = 2;
+  string file_name = 3;
+  string url = 4;
+  string content_type = 5;
+  int64 size_bytes = 6;
+  string kind = 7;
+  string source = 8;
+  string created_at = 9;
+}
+
+message ListMaterialsRequest {
+  string account_id = 1;
+  string kind = 2;
+  string keyword = 3;
+  int32 page = 4;
+  int32 page_size = 5;
+}
+
+message ListMaterialsResponse {
+  repeated Material items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message GetMaterialRequest {
+  string account_id = 1;
+  string id = 2; // opaque public material identifier
+}
+
+message UploadMaterialRequest {
+  string account_id = 1;
+  string file_name = 2;
+  string content_type = 3;
+  bytes data = 4;
+}
+
+message UploadMaterialResponse {
+  Material material = 1;
+  string file_url = 2;
+}
+
+message AddMaterialByUrlRequest {
+  string account_id = 1;
+  string url = 2;
+}
+
+message AddMaterialByUrlResponse {
+  string material_id = 1; // opaque public material identifier
+}
+
+message RenameMaterialRequest {
+  string account_id = 1;
+  string id = 2; // opaque public material identifier
+  string file_name = 3; // display name only; does not change the object key or URL
+}
+
+message DeleteMaterialRequest {
+  string account_id = 1;
+  string id = 2; // opaque public material identifier
+}
+
+message DeleteMaterialResponse {
+  string id = 1; // opaque public material identifier
+  bool deleted = 2;
+}
+
+message BatchDeleteMaterialsRequest {
+  string account_id = 1;
+  repeated string ids = 2; // opaque public material identifiers; maximum 100
+}
+
+message BatchDeleteMaterialsResponse {
+  repeated string deleted_ids = 1; // IDs actually deleted, in request order
+  int32 deleted_count = 2;
+}

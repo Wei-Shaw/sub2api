@@ -65,7 +65,7 @@ func (s *organizationRepoStub) CreateIAMMember(_ context.Context, _ int64, user 
 	if s.createErr != nil {
 		return nil, s.createErr
 	}
-	return &IAMMember{UserID: 2, ExternalUserID: "201705485041478971", Username: user.Username, LoginName: user.LoginName, Principal: CanonicalIAMPrincipal(user.LoginName, "c123456789012345"), Status: MembershipStatusActive, MustChangePassword: user.MustChangePassword, PolicyNames: []string{}}, nil
+	return &IAMMember{UserID: 2, AccountID: "2719905235756637", Username: user.Username, LoginName: user.LoginName, Principal: CanonicalIAMPrincipal(user.LoginName, "c123456789012345"), Status: MembershipStatusActive, MustChangePassword: user.MustChangePassword, PolicyNames: []string{}}, nil
 }
 func (s *organizationRepoStub) FindIAMByPrincipal(_ context.Context, loginName, companyID string) (*User, *OrganizationContext, error) {
 	s.findLoginName = loginName
@@ -245,6 +245,22 @@ func TestOrganizationServiceCreateIAMMemberRejectsInvalidPasswordLength(t *testi
 	require.Nil(t, member)
 	require.Empty(t, password)
 	require.Nil(t, repo.createdUser)
+}
+
+func TestOrganizationServiceCreateIAMMemberRejectsLoginNamesWithoutLeadingLetter(t *testing.T) {
+	for _, loginName := range []string{"1reader", ".reader", "-reader", "_reader"} {
+		t.Run(loginName, func(t *testing.T) {
+			repo := &organizationRepoStub{}
+			service := NewOrganizationService(repo, &organizationUserRepoStub{}, companyTestConfig())
+
+			member, password, err := service.CreateIAMMember(context.Background(), 1, loginName, "", "", "initial-password", true)
+
+			require.ErrorIs(t, err, ErrIAMLoginName)
+			require.Nil(t, member)
+			require.Empty(t, password)
+			require.Nil(t, repo.createdUser)
+		})
+	}
 }
 
 func TestOrganizationServiceAdminCreateOrganizationSubscription(t *testing.T) {

@@ -137,8 +137,8 @@ func RegisterAdminRoutes(
 		// OIDC Provider（第三方客户端 + 签名密钥管理）
 		registerOidcAdminRoutes(admin, h)
 
-		// 余额 RPC 接入方（扣费 app）管理
-		registerBillingAppRoutes(admin, h)
+		// 内部 API RPC 接入方管理
+		registerInnerAPIAppRoutes(admin, h)
 
 		// 模型介绍（cover / 默认参数 / 描述）
 		registerModelIntroRoutes(admin, h)
@@ -217,19 +217,20 @@ func registerOidcAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	}
 }
 
-// registerBillingAppRoutes 注册余额 RPC 接入方（扣费 app）的 admin 管理路由。
-func registerBillingAppRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
-	if h.Admin.BillingApp == nil {
+// registerInnerAPIAppRoutes 注册内部 API RPC 接入方的 admin 管理路由。
+func registerInnerAPIAppRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h.Admin.InnerAPIApp == nil {
 		return
 	}
-	apps := admin.Group("/billing-apps")
+	apps := admin.Group("/inner-api-apps")
 	{
-		apps.GET("", h.Admin.BillingApp.List)
-		apps.POST("", h.Admin.BillingApp.Create)
-		apps.GET("/:app_id/stats", h.Admin.BillingApp.Stats)
-		apps.PATCH("/:app_id/enabled", h.Admin.BillingApp.SetEnabled)
-		apps.POST("/:app_id/refresh-token", h.Admin.BillingApp.RefreshToken)
-		apps.DELETE("/:app_id", h.Admin.BillingApp.Delete)
+		apps.GET("", h.Admin.InnerAPIApp.List)
+		apps.POST("", h.Admin.InnerAPIApp.Create)
+		apps.GET("/:app_id/stats", h.Admin.InnerAPIApp.Stats)
+		apps.PATCH("/:app_id/enabled", h.Admin.InnerAPIApp.SetEnabled)
+		apps.PATCH("/:app_id/permissions", h.Admin.InnerAPIApp.SetPermissions)
+		apps.POST("/:app_id/refresh-token", h.Admin.InnerAPIApp.RefreshToken)
+		apps.DELETE("/:app_id", h.Admin.InnerAPIApp.Delete)
 	}
 }
 

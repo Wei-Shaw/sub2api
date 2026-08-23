@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 )
 
 type userMaterialRepository struct {
@@ -32,31 +33,89 @@ func (r *userMaterialRepository) Insert(ctx context.Context, m *service.UserMate
 	const q = `
 INSERT INTO user_materials (user_id, file_name, cos_key, cos_url, content_type, size_bytes, kind, source, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-RETURNING id, created_at
+RETURNING id, public_id, created_at
 `
 	var id int64
+	var publicID string
 	var createdAt time.Time
 	if err := r.db.QueryRowContext(ctx, q,
 		m.UserID, m.FileName, m.CosKey, m.CosURL,
 		m.ContentType, m.SizeBytes, m.Kind, m.Source,
-	).Scan(&id, &createdAt); err != nil {
+	).Scan(&id, &publicID, &createdAt); err != nil {
 		return 0, fmt.Errorf("insert user_material: %w", err)
 	}
 	m.ID = id
+	m.PublicID = publicID
 	m.CreatedAt = createdAt
 	return id, nil
+}
+
+func (r *userMaterialRepository) GetByPublicID(ctx context.Context, userID int64, publicID string) (*service.UserMaterial, error) {
+	const q = `
+SELECT id, public_id, user_id, file_name, cos_key, cos_url, content_type, size_bytes, kind, source, created_at
+FROM user_materials
+WHERE public_id = $1 AND user_id = $2 AND deleted_at IS NULL
+`
+	row := r.db.QueryRowContext(ctx, q, publicID, userID)
+	m := &service.UserMaterial{}
+	if err := row.Scan(&m.ID, &m.PublicID, &m.UserID, &m.FileName, &m.CosKey, &m.CosURL,
+		&m.ContentType, &m.SizeBytes, &m.Kind, &m.Source, &m.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil //nolint:nilnil
+		}
+		return nil, fmt.Errorf("get user_material by public id: %w", err)
+	}
+	return m, nil
+}
+
+func (r *userMaterialRepository) UpdateFileNameByID(ctx context.Context, userID, id int64, fileName string) (*service.UserMaterial, error) {
+	const q = `
+UPDATE user_materials
+SET file_name = $3
+WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+RETURNING id, public_id, user_id, file_name, cos_key, cos_url, content_type, size_bytes, kind, source, created_at
+`
+	row := r.db.QueryRowContext(ctx, q, id, userID, fileName)
+	m := &service.UserMaterial{}
+	if err := row.Scan(&m.ID, &m.PublicID, &m.UserID, &m.FileName, &m.CosKey, &m.CosURL,
+		&m.ContentType, &m.SizeBytes, &m.Kind, &m.Source, &m.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil //nolint:nilnil
+		}
+		return nil, fmt.Errorf("rename user_material by id: %w", err)
+	}
+	return m, nil
+}
+
+func (r *userMaterialRepository) UpdateFileNameByPublicID(ctx context.Context, userID int64, publicID, fileName string) (*service.UserMaterial, error) {
+	const q = `
+UPDATE user_materials
+SET file_name = $3
+WHERE public_id = $1 AND user_id = $2 AND deleted_at IS NULL
+RETURNING id, public_id, user_id, file_name, cos_key, cos_url, content_type, size_bytes, kind, source, created_at
+`
+	row := r.db.QueryRowContext(ctx, q, publicID, userID, fileName)
+	m := &service.UserMaterial{}
+	if err := row.Scan(&m.ID, &m.PublicID, &m.UserID, &m.FileName, &m.CosKey, &m.CosURL,
+		&m.ContentType, &m.SizeBytes, &m.Kind, &m.Source, &m.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil //nolint:nilnil
+		}
+		return nil, fmt.Errorf("rename user_material by public id: %w", err)
+	}
+	return m, nil
 }
 
 // GetByID 按 user_id + id 原子查询；归属不匹配与不存在使用相同结果。
 func (r *userMaterialRepository) GetByID(ctx context.Context, userID, id int64) (*service.UserMaterial, error) {
 	const q = `
-SELECT id, user_id, file_name, cos_key, cos_url, content_type, size_bytes, kind, source, created_at
+SELECT id, public_id, user_id, file_name, cos_key, cos_url, content_type, size_bytes, kind, source, created_at
 FROM user_materials
 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 `
 	row := r.db.QueryRowContext(ctx, q, id, userID)
 	m := &service.UserMaterial{}
-	if err := row.Scan(&m.ID, &m.UserID, &m.FileName, &m.CosKey, &m.CosURL,
+	if err := row.Scan(&m.ID, &m.PublicID, &m.UserID, &m.FileName, &m.CosKey, &m.CosURL,
 		&m.ContentType, &m.SizeBytes, &m.Kind, &m.Source, &m.CreatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil //nolint:nilnil
@@ -96,7 +155,7 @@ func (r *userMaterialRepository) List(ctx context.Context, userID int64, kind, k
 		return nil, 0, fmt.Errorf("count user_materials: %w", err)
 	}
 
-	listQ := "SELECT id, user_id, file_name, cos_key, cos_url, content_type, size_bytes, kind, source, created_at FROM user_materials " +
+	listQ := "SELECT id, public_id, user_id, file_name, cos_key, cos_url, content_type, size_bytes, kind, source, created_at FROM user_materials " +
 		whereSQL + fmt.Sprintf(" ORDER BY created_at DESC, id DESC LIMIT $%d OFFSET $%d", idx, idx+1)
 	args = append(args, limit, offset)
 
@@ -109,7 +168,7 @@ func (r *userMaterialRepository) List(ctx context.Context, userID int64, kind, k
 	out := make([]*service.UserMaterial, 0, limit)
 	for rows.Next() {
 		m := &service.UserMaterial{}
-		if err := rows.Scan(&m.ID, &m.UserID, &m.FileName, &m.CosKey, &m.CosURL,
+		if err := rows.Scan(&m.ID, &m.PublicID, &m.UserID, &m.FileName, &m.CosKey, &m.CosURL,
 			&m.ContentType, &m.SizeBytes, &m.Kind, &m.Source, &m.CreatedAt); err != nil {
 			return nil, 0, fmt.Errorf("scan user_material: %w", err)
 		}
@@ -137,6 +196,54 @@ WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+func (r *userMaterialRepository) SoftDeleteByPublicID(ctx context.Context, userID int64, publicID string) error {
+	const q = `
+UPDATE user_materials
+SET deleted_at = NOW()
+WHERE public_id = $1 AND user_id = $2 AND deleted_at IS NULL
+`
+	res, err := r.db.ExecContext(ctx, q, publicID, userID)
+	if err != nil {
+		return fmt.Errorf("soft delete user_material by public id: %w", err)
+	}
+	if aff, _ := res.RowsAffected(); aff == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// SoftDeleteByPublicIDs atomically soft-deletes all matching materials owned by
+// the user and returns only the public IDs changed by this statement.
+func (r *userMaterialRepository) SoftDeleteByPublicIDs(ctx context.Context, userID int64, publicIDs []string) ([]string, error) {
+	if len(publicIDs) == 0 {
+		return []string{}, nil
+	}
+	const q = `
+UPDATE user_materials
+SET deleted_at = NOW()
+WHERE user_id = $1 AND public_id = ANY($2::uuid[]) AND deleted_at IS NULL
+RETURNING public_id
+`
+	rows, err := r.db.QueryContext(ctx, q, userID, pq.Array(publicIDs))
+	if err != nil {
+		return nil, fmt.Errorf("batch soft delete user_materials by public id: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	deleted := make([]string, 0, len(publicIDs))
+	for rows.Next() {
+		var publicID string
+		if err := rows.Scan(&publicID); err != nil {
+			return nil, fmt.Errorf("scan batch deleted user_material public id: %w", err)
+		}
+		deleted = append(deleted, publicID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate batch deleted user_material public ids: %w", err)
+	}
+	return deleted, nil
 }
 
 // UsageByUser 统计该用户未删除素材的条数与总字节数，供服务层做配额校验。

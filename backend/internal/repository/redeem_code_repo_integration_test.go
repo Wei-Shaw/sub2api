@@ -35,6 +35,7 @@ func TestRedeemCodeRepoSuite(t *testing.T) {
 func (s *RedeemCodeRepoSuite) createUser(email string) *dbent.User {
 	u, err := s.client.User.Create().
 		SetEmail(email).
+		SetAccountID(mustGenerateRootAccountID(s.T())).
 		SetPasswordHash("test-password-hash").
 		Save(s.ctx)
 	s.Require().NoError(err, "create user")

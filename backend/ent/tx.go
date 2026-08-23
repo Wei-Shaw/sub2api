@@ -40,8 +40,6 @@ type Tx struct {
 	BatchImageItem *BatchImageItemClient
 	// BatchImageJob is the client for interacting with the BatchImageJob builders.
 	BatchImageJob *BatchImageJobClient
-	// BillingApp is the client for interacting with the BillingApp builders.
-	BillingApp *BillingAppClient
 	// ChannelMonitor is the client for interacting with the ChannelMonitor builders.
 	ChannelMonitor *ChannelMonitorClient
 	// ChannelMonitorDailyRollup is the client for interacting with the ChannelMonitorDailyRollup builders.
@@ -54,6 +52,8 @@ type Tx struct {
 	CompanyUpgradeApplication *CompanyUpgradeApplicationClient
 	// CompositeModelRoute is the client for interacting with the CompositeModelRoute builders.
 	CompositeModelRoute *CompositeModelRouteClient
+	// DeveloperKey is the client for interacting with the DeveloperKey builders.
+	DeveloperKey *DeveloperKeyClient
 	// ErrorPassthroughRule is the client for interacting with the ErrorPassthroughRule builders.
 	ErrorPassthroughRule *ErrorPassthroughRuleClient
 	// Group is the client for interacting with the Group builders.
@@ -62,6 +62,8 @@ type Tx struct {
 	IdempotencyRecord *IdempotencyRecordClient
 	// IdentityAdoptionDecision is the client for interacting with the IdentityAdoptionDecision builders.
 	IdentityAdoptionDecision *IdentityAdoptionDecisionClient
+	// InnerAPIApp is the client for interacting with the InnerAPIApp builders.
+	InnerAPIApp *InnerAPIAppClient
 	// ManagedPolicy is the client for interacting with the ManagedPolicy builders.
 	ManagedPolicy *ManagedPolicyClient
 	// ManagedPolicyAction is the client for interacting with the ManagedPolicyAction builders.
@@ -298,17 +300,18 @@ func (tx *Tx) init() {
 	tx.BatchImageEvent = NewBatchImageEventClient(tx.config)
 	tx.BatchImageItem = NewBatchImageItemClient(tx.config)
 	tx.BatchImageJob = NewBatchImageJobClient(tx.config)
-	tx.BillingApp = NewBillingAppClient(tx.config)
 	tx.ChannelMonitor = NewChannelMonitorClient(tx.config)
 	tx.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(tx.config)
 	tx.ChannelMonitorHistory = NewChannelMonitorHistoryClient(tx.config)
 	tx.ChannelMonitorRequestTemplate = NewChannelMonitorRequestTemplateClient(tx.config)
 	tx.CompanyUpgradeApplication = NewCompanyUpgradeApplicationClient(tx.config)
 	tx.CompositeModelRoute = NewCompositeModelRouteClient(tx.config)
+	tx.DeveloperKey = NewDeveloperKeyClient(tx.config)
 	tx.ErrorPassthroughRule = NewErrorPassthroughRuleClient(tx.config)
 	tx.Group = NewGroupClient(tx.config)
 	tx.IdempotencyRecord = NewIdempotencyRecordClient(tx.config)
 	tx.IdentityAdoptionDecision = NewIdentityAdoptionDecisionClient(tx.config)
+	tx.InnerAPIApp = NewInnerAPIAppClient(tx.config)
 	tx.ManagedPolicy = NewManagedPolicyClient(tx.config)
 	tx.ManagedPolicyAction = NewManagedPolicyActionClient(tx.config)
 	tx.MemberPolicyAttachment = NewMemberPolicyAttachmentClient(tx.config)

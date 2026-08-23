@@ -284,6 +284,12 @@ func (_c *AsyncMediaTaskCreate) SetNillableNumImages(v *int) *AsyncMediaTaskCrea
 	return _c
 }
 
+// SetRequestParameters sets the "request_parameters" field.
+func (_c *AsyncMediaTaskCreate) SetRequestParameters(v map[string]interface{}) *AsyncMediaTaskCreate {
+	_c.mutation.SetRequestParameters(v)
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *AsyncMediaTaskCreate) SetStatus(v string) *AsyncMediaTaskCreate {
 	_c.mutation.SetStatus(v)
@@ -767,6 +773,10 @@ func (_c *AsyncMediaTaskCreate) createSpec() (*AsyncMediaTask, *sqlgraph.CreateS
 		_spec.SetField(asyncmediatask.FieldNumImages, field.TypeInt, value)
 		_node.NumImages = value
 	}
+	if value, ok := _c.mutation.RequestParameters(); ok {
+		_spec.SetField(asyncmediatask.FieldRequestParameters, field.TypeJSON, value)
+		_node.RequestParameters = value
+	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(asyncmediatask.FieldStatus, field.TypeString, value)
 		_node.Status = value
@@ -1244,6 +1254,24 @@ func (u *AsyncMediaTaskUpsert) UpdateNumImages() *AsyncMediaTaskUpsert {
 // AddNumImages adds v to the "num_images" field.
 func (u *AsyncMediaTaskUpsert) AddNumImages(v int) *AsyncMediaTaskUpsert {
 	u.Add(asyncmediatask.FieldNumImages, v)
+	return u
+}
+
+// SetRequestParameters sets the "request_parameters" field.
+func (u *AsyncMediaTaskUpsert) SetRequestParameters(v map[string]interface{}) *AsyncMediaTaskUpsert {
+	u.Set(asyncmediatask.FieldRequestParameters, v)
+	return u
+}
+
+// UpdateRequestParameters sets the "request_parameters" field to the value that was provided on create.
+func (u *AsyncMediaTaskUpsert) UpdateRequestParameters() *AsyncMediaTaskUpsert {
+	u.SetExcluded(asyncmediatask.FieldRequestParameters)
+	return u
+}
+
+// ClearRequestParameters clears the value of the "request_parameters" field.
+func (u *AsyncMediaTaskUpsert) ClearRequestParameters() *AsyncMediaTaskUpsert {
+	u.SetNull(asyncmediatask.FieldRequestParameters)
 	return u
 }
 
@@ -1969,6 +1997,27 @@ func (u *AsyncMediaTaskUpsertOne) AddNumImages(v int) *AsyncMediaTaskUpsertOne {
 func (u *AsyncMediaTaskUpsertOne) UpdateNumImages() *AsyncMediaTaskUpsertOne {
 	return u.Update(func(s *AsyncMediaTaskUpsert) {
 		s.UpdateNumImages()
+	})
+}
+
+// SetRequestParameters sets the "request_parameters" field.
+func (u *AsyncMediaTaskUpsertOne) SetRequestParameters(v map[string]interface{}) *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.SetRequestParameters(v)
+	})
+}
+
+// UpdateRequestParameters sets the "request_parameters" field to the value that was provided on create.
+func (u *AsyncMediaTaskUpsertOne) UpdateRequestParameters() *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.UpdateRequestParameters()
+	})
+}
+
+// ClearRequestParameters clears the value of the "request_parameters" field.
+func (u *AsyncMediaTaskUpsertOne) ClearRequestParameters() *AsyncMediaTaskUpsertOne {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.ClearRequestParameters()
 	})
 }
 
@@ -2901,6 +2950,27 @@ func (u *AsyncMediaTaskUpsertBulk) AddNumImages(v int) *AsyncMediaTaskUpsertBulk
 func (u *AsyncMediaTaskUpsertBulk) UpdateNumImages() *AsyncMediaTaskUpsertBulk {
 	return u.Update(func(s *AsyncMediaTaskUpsert) {
 		s.UpdateNumImages()
+	})
+}
+
+// SetRequestParameters sets the "request_parameters" field.
+func (u *AsyncMediaTaskUpsertBulk) SetRequestParameters(v map[string]interface{}) *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.SetRequestParameters(v)
+	})
+}
+
+// UpdateRequestParameters sets the "request_parameters" field to the value that was provided on create.
+func (u *AsyncMediaTaskUpsertBulk) UpdateRequestParameters() *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.UpdateRequestParameters()
+	})
+}
+
+// ClearRequestParameters clears the value of the "request_parameters" field.
+func (u *AsyncMediaTaskUpsertBulk) ClearRequestParameters() *AsyncMediaTaskUpsertBulk {
+	return u.Update(func(s *AsyncMediaTaskUpsert) {
+		s.ClearRequestParameters()
 	})
 }
 

@@ -31,7 +31,7 @@ Each organization SHALL have a configurable IAM-member limit that defaults to 20
 - **THEN** the owner SHALL be able to create one replacement while the archived member's history remains retained
 
 ### Requirement: IAM login principal
-An IAM login name SHALL contain 1 to 64 ASCII letters, digits, periods, hyphens, or underscores and SHALL be unique case-insensitively among non-archived users in the organization. The canonical IAM principal SHALL be `<login_name>@<16-digit-root-account-id>.opentk.ai`. The IAM login UI SHALL collect this complete principal and password without a separate root-account-ID field. IAM authentication SHALL parse the principal, resolve exactly one organization member, and SHALL not treat the optional recovery email as a login identifier.
+An IAM login name SHALL contain 1 to 64 ASCII letters, digits, periods, hyphens, or underscores and SHALL be unique case-insensitively among non-archived users in the organization. The canonical IAM principal SHALL be `<login_name>@<company-id>.opentk.ai`. The IAM login UI SHALL collect this complete principal and password without a separate company-ID field. IAM authentication SHALL parse the principal, resolve exactly one organization member through `organizations.company_id` and `organization_memberships`, and SHALL not treat the optional recovery email as a login identifier.
 
 #### Scenario: Canonical principal is created
 - **WHEN** the owner creates login name `finance.reader`

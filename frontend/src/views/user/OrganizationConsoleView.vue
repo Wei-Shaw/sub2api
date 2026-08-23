@@ -88,7 +88,7 @@
               <tr>
                 <th class="p-3">{{ t('organization.usage.username') }}</th>
                 <th class="p-3">{{ t('organization.login.loginName') }}</th>
-                <th class="p-3">{{ t('organization.iamUserId') }}</th>
+                <th class="p-3">{{ t('organization.accountId') }}</th>
                 <th class="p-3">{{ t('common.status') }}</th>
                 <th class="p-3">{{ t('organization.finance.available') }}</th>
                 <th class="p-3">{{ t('organization.policies') }}</th>
@@ -105,7 +105,7 @@
                     <button class="icon-btn shrink-0" :title="t('keys.copyToClipboard')" :aria-label="t('keys.copyToClipboard')" @click="copyToClipboard(member.principal, t('organization.members.copied'))"><Icon name="copy" size="sm" /></button>
                   </div>
                 </td>
-                <td class="p-3 font-mono text-xs">{{ member.external_user_id }}</td>
+                <td class="p-3 font-mono text-xs">{{ member.account_id }}</td>
                 <td class="p-3">{{ t(`organization.status.${member.status}`) }}</td>
                 <td class="p-3 font-mono">{{ companyAmount(member.balance) }}</td>
                 <td class="max-w-xs p-3">
@@ -171,7 +171,7 @@
                 <span class="block truncate">{{ member.username || member.login_name }}</span>
                 <span class="block truncate text-xs text-gray-500">{{ member.login_name }}</span>
               </span>
-              <span class="font-mono text-xs text-gray-400">{{ member.external_user_id }}</span>
+              <span class="font-mono text-xs text-gray-400">{{ member.account_id }}</span>
             </label>
             <p v-if="configurableMembers.length === 0" class="p-2 text-sm text-gray-500">{{ t('organization.spendLimits.noMembers') }}</p>
           </div>
@@ -713,7 +713,7 @@
         <div>
           <label class="input-label" for="iam-member-login-name">{{ t('organization.login.loginName') }}</label>
           <div class="flex min-w-0 flex-col sm:flex-row">
-            <input id="iam-member-login-name" v-model.trim="createForm.loginName" class="input min-w-0 flex-1 sm:rounded-r-none" required pattern="[A-Za-z0-9._-]{1,64}" autocomplete="off">
+            <input id="iam-member-login-name" v-model.trim="createForm.loginName" class="input min-w-0 flex-1 sm:rounded-r-none" required pattern="[A-Za-z][A-Za-z0-9._-]{0,63}" autocomplete="off">
             <span data-testid="iam-principal-suffix" class="flex min-h-10 max-w-full items-center break-all rounded-md border border-gray-300 bg-gray-50 px-3 font-mono text-xs text-gray-600 sm:-ml-px sm:rounded-l-none sm:whitespace-nowrap dark:border-dark-600 dark:bg-dark-900 dark:text-dark-300">
               @{{ organization?.company_id }}.opentk.ai
             </span>

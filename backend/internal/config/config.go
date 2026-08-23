@@ -99,7 +99,7 @@ type Config struct {
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	AsyncMedia              AsyncMediaConfig              `mapstructure:"async_media"`
-	BalanceRPC              BalanceRPCConfig              `mapstructure:"balance_rpc"`
+	InnerAPIRPC             InnerAPIRPCConfig             `mapstructure:"inner_api_rpc"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
 	Company                 CompanyConfig                 `mapstructure:"company"`
@@ -1463,9 +1463,9 @@ type GatewaySchedulingConfig struct {
 	FullRebuildIntervalSeconds int `mapstructure:"full_rebuild_interval_seconds"`
 }
 
-// BalanceRPCConfig 余额 RPC（tRPC-Go）服务配置。监听端口独立于 HTTP server.port。
-type BalanceRPCConfig struct {
-	Enabled bool   `mapstructure:"enabled"` // 是否启用第二端口的余额 RPC 服务
+// InnerAPIRPCConfig 内部 API RPC（tRPC-Go）服务配置。监听端口独立于 HTTP server.port。
+type InnerAPIRPCConfig struct {
+	Enabled bool   `mapstructure:"enabled"` // 是否启用第二端口的内部 API RPC 服务
 	Host    string `mapstructure:"host"`    // 监听 IP，默认 0.0.0.0
 	Port    int    `mapstructure:"port"`    // 监听端口（必须 != server.port）
 	// EncryptionKey 接入方 token 的本地加解密密钥（32 字节，64 hex 字符）。
@@ -2619,13 +2619,13 @@ func setEnvReachableDefaults() {
 	viper.SetDefault("dingtalk_connect.sync_corp_email_attr_name", "")
 
 	// Balance RPC (tRPC-Go) service. Registered with zero-valued defaults so the
-	// BALANCE_RPC_* environment variables are reachable via AutomaticEnv even
+	// INNER_API_RPC_* environment variables are reachable via AutomaticEnv even
 	// when config.yaml omits the block; otherwise viper.Unmarshal would drop
 	// them and silently disable the second-port balance service.
-	viper.SetDefault("balance_rpc.enabled", false)
-	viper.SetDefault("balance_rpc.host", "")
-	viper.SetDefault("balance_rpc.port", 0)
-	viper.SetDefault("balance_rpc.encryption_key", "")
+	viper.SetDefault("inner_api_rpc.enabled", false)
+	viper.SetDefault("inner_api_rpc.host", "")
+	viper.SetDefault("inner_api_rpc.port", 0)
+	viper.SetDefault("inner_api_rpc.encryption_key", "")
 
 	// Company account and IAM rollout gates default closed. Operators must
 	// explicitly attest that public IDs and every billing path are ready.

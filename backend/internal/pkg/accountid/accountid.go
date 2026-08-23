@@ -9,7 +9,6 @@ import (
 
 const (
 	RootLength = 16
-	IAMLength  = 18
 	// CompanyLength is the total length of a company identifier, including the
 	// leading 'c' prefix (1 prefix character followed by 15 digits).
 	CompanyLength = 16
@@ -26,8 +25,6 @@ func RecordCollisionRetry() { collisionRetries.Add(1) }
 func CurrentMetrics() Metrics { return Metrics{CollisionRetries: collisionRetries.Load()} }
 
 func GenerateRoot() (string, error) { return generate(rand.Reader, RootLength) }
-
-func GenerateIAM() (string, error) { return generate(rand.Reader, IAMLength) }
 
 // GenerateCompany returns a company account identifier: a leading 'c' prefix
 // followed by 15 digits (first digit 1-9), e.g. "c123456789012345". The prefix

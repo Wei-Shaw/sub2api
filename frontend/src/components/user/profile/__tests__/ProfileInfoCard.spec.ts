@@ -152,7 +152,6 @@ describe('ProfileInfoCard', () => {
       props: {
         user: createUser({
           account_id: '1719905235756637',
-          external_user_id: '201705485041478971',
           identity_type: 'iam',
           organization: { organization_id: 1 } as User['organization'],
         }),

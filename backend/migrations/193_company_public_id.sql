@@ -2,7 +2,7 @@
 --
 -- 设计说明：
 --   * company_id 形如 'c' + 15 位数字（共 16 个字符），与数字型 account_id 分离：
---     - account_id 仍复用 owner 的 16 位数字账号，并用于 IAM 成员账号派生
+--     - account_id 是每个用户自己的 16 位数字账号；IAM 用户不复用 owner 的账号
 --       （users.account_id 存在数字格式 CHECK 约束，因此不能直接改成以 'c' 开头）。
 --     - company_id 则是公司自身对外展示、检索用的唯一标识。
 --   * 历史组织回填一个确定性的 company_id；新组织在审批通过时随机生成（见 accountid.GenerateCompany）。

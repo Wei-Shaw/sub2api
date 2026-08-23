@@ -1025,9 +1025,11 @@ var ProviderSet = wire.NewSet(
 	NewSsoSessionService,
 	NewOidcSigningService,
 	NewOidcClientService,
-	NewBillingAppTokenCodec,     // 余额 RPC：接入方 token AES-GCM 加解密
-	NewBillingAppService,        // 余额 RPC：接入方身份与鉴权
-	ProvideBalanceLedgerService, // 余额 RPC：扣/退/查账本服务
+	NewInnerAPITokenCodec,       // 内部 API RPC：接入方 token AES-GCM 加解密
+	NewInnerAPIAppService,       // 内部 API RPC：接入方身份与鉴权
+	NewDeveloperKeyService,      // 用户级开发者文件 API 密钥
+	NewDeveloperFileService,     // 开发者密钥文件暂存 API
+	ProvideBalanceLedgerService, // 内部 API RPC：扣/退/查账本服务
 	NewOidcConsentService,
 	NewOidcProviderService,
 )

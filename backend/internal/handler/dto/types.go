@@ -13,7 +13,6 @@ type User struct {
 	ID                 int64      `json:"id"`
 	Email              string     `json:"email"`
 	AccountID          string     `json:"account_id"`
-	ExternalUserID     string     `json:"external_user_id"`
 	IdentityType       string     `json:"identity_type"`
 	LoginName          string     `json:"login_name,omitempty"`
 	IAMPrincipal       string     `json:"iam_principal,omitempty"`
@@ -516,12 +515,13 @@ type BatchUpdateRedeemCodesRequest struct {
 
 // UsageLog 是普通用户接口使用的 usage log DTO（不包含管理员字段）。
 type UsageLog struct {
-	ID        int64  `json:"id"`
-	UserID    int64  `json:"user_id"`
-	APIKeyID  int64  `json:"api_key_id"`
-	AccountID int64  `json:"account_id"`
-	RequestID string `json:"request_id"`
-	Model     string `json:"model"`
+	ID                int64          `json:"id"`
+	UserID            int64          `json:"user_id"`
+	APIKeyID          int64          `json:"api_key_id"`
+	AccountID         int64          `json:"account_id"`
+	RequestID         string         `json:"request_id"`
+	Model             string         `json:"model"`
+	RequestParameters map[string]any `json:"request_parameters,omitempty"`
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
 	ServiceTier *string `json:"service_tier,omitempty"`
 	// ReasoningEffort is the request's reasoning effort level.

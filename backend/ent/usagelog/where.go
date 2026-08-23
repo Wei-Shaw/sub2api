@@ -670,6 +670,16 @@ func RequestIDContainsFold(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldContainsFold(FieldRequestID, v))
 }
 
+// RequestParametersIsNil applies the IsNil predicate on the "request_parameters" field.
+func RequestParametersIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldRequestParameters))
+}
+
+// RequestParametersNotNil applies the NotNil predicate on the "request_parameters" field.
+func RequestParametersNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldRequestParameters))
+}
+
 // ModelEQ applies the EQ predicate on the "model" field.
 func ModelEQ(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldModel, v))

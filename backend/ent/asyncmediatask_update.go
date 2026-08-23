@@ -442,6 +442,18 @@ func (_u *AsyncMediaTaskUpdate) AddNumImages(v int) *AsyncMediaTaskUpdate {
 	return _u
 }
 
+// SetRequestParameters sets the "request_parameters" field.
+func (_u *AsyncMediaTaskUpdate) SetRequestParameters(v map[string]interface{}) *AsyncMediaTaskUpdate {
+	_u.mutation.SetRequestParameters(v)
+	return _u
+}
+
+// ClearRequestParameters clears the value of the "request_parameters" field.
+func (_u *AsyncMediaTaskUpdate) ClearRequestParameters() *AsyncMediaTaskUpdate {
+	_u.mutation.ClearRequestParameters()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *AsyncMediaTaskUpdate) SetStatus(v string) *AsyncMediaTaskUpdate {
 	_u.mutation.SetStatus(v)
@@ -984,6 +996,12 @@ func (_u *AsyncMediaTaskUpdate) sqlSave(ctx context.Context) (_node int, err err
 	if value, ok := _u.mutation.AddedNumImages(); ok {
 		_spec.AddField(asyncmediatask.FieldNumImages, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.RequestParameters(); ok {
+		_spec.SetField(asyncmediatask.FieldRequestParameters, field.TypeJSON, value)
+	}
+	if _u.mutation.RequestParametersCleared() {
+		_spec.ClearField(asyncmediatask.FieldRequestParameters, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(asyncmediatask.FieldStatus, field.TypeString, value)
 	}
@@ -1505,6 +1523,18 @@ func (_u *AsyncMediaTaskUpdateOne) SetNillableNumImages(v *int) *AsyncMediaTaskU
 // AddNumImages adds value to the "num_images" field.
 func (_u *AsyncMediaTaskUpdateOne) AddNumImages(v int) *AsyncMediaTaskUpdateOne {
 	_u.mutation.AddNumImages(v)
+	return _u
+}
+
+// SetRequestParameters sets the "request_parameters" field.
+func (_u *AsyncMediaTaskUpdateOne) SetRequestParameters(v map[string]interface{}) *AsyncMediaTaskUpdateOne {
+	_u.mutation.SetRequestParameters(v)
+	return _u
+}
+
+// ClearRequestParameters clears the value of the "request_parameters" field.
+func (_u *AsyncMediaTaskUpdateOne) ClearRequestParameters() *AsyncMediaTaskUpdateOne {
+	_u.mutation.ClearRequestParameters()
 	return _u
 }
 
@@ -2079,6 +2109,12 @@ func (_u *AsyncMediaTaskUpdateOne) sqlSave(ctx context.Context) (_node *AsyncMed
 	}
 	if value, ok := _u.mutation.AddedNumImages(); ok {
 		_spec.AddField(asyncmediatask.FieldNumImages, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.RequestParameters(); ok {
+		_spec.SetField(asyncmediatask.FieldRequestParameters, field.TypeJSON, value)
+	}
+	if _u.mutation.RequestParametersCleared() {
+		_spec.ClearField(asyncmediatask.FieldRequestParameters, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(asyncmediatask.FieldStatus, field.TypeString, value)

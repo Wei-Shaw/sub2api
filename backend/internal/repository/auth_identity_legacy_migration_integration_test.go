@@ -26,21 +26,21 @@ func TestAuthIdentityLegacyExternalBackfillMigration(t *testing.T) {
 
 	var linuxDoUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ('legacy-linuxdo@example.com', 'hash', 'user', 'active', 0, 1)
-RETURNING id`).Scan(&linuxDoUserID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'legacy-linuxdo@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t)).Scan(&linuxDoUserID))
 
 	var wechatUnionUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ('legacy-wechat-union@example.com', 'hash', 'user', 'active', 0, 1)
-RETURNING id`).Scan(&wechatUnionUserID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'legacy-wechat-union@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t)).Scan(&wechatUnionUserID))
 
 	var wechatOpenIDOnlyUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ('legacy-wechat-openid@example.com', 'hash', 'user', 'active', 0, 1)
-RETURNING id`).Scan(&wechatOpenIDOnlyUserID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'legacy-wechat-openid@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t)).Scan(&wechatOpenIDOnlyUserID))
 
 	var syntheticAuthIdentityID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
@@ -200,27 +200,27 @@ func TestAuthIdentityLegacyExternalMigrations_ChainHandlesMalformedAndNonObjectM
 
 	var linuxDoMalformedUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ('legacy-linuxdo-malformed@example.com', 'hash', 'user', 'active', 0, 1)
-RETURNING id`).Scan(&linuxDoMalformedUserID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'legacy-linuxdo-malformed@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t)).Scan(&linuxDoMalformedUserID))
 
 	var linuxDoArrayUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ('legacy-linuxdo-array@example.com', 'hash', 'user', 'active', 0, 1)
-RETURNING id`).Scan(&linuxDoArrayUserID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'legacy-linuxdo-array@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t)).Scan(&linuxDoArrayUserID))
 
 	var wechatUnionArrayUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ('legacy-wechat-array@example.com', 'hash', 'user', 'active', 0, 1)
-RETURNING id`).Scan(&wechatUnionArrayUserID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'legacy-wechat-array@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t)).Scan(&wechatUnionArrayUserID))
 
 	var wechatOpenIDArrayUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ('legacy-wechat-openid-array@example.com', 'hash', 'user', 'active', 0, 1)
-RETURNING id`).Scan(&wechatOpenIDArrayUserID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'legacy-wechat-openid-array@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t)).Scan(&wechatOpenIDArrayUserID))
 
 	var linuxDoMalformedLegacyID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
@@ -377,9 +377,9 @@ func TestAuthIdentityLegacyExternalSafetyMigration_ReportsConflictsAndDowngrades
 	} {
 		var userID int64
 		require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ($1, 'hash', 'user', 'active', 0, 1)
-RETURNING id`, email).Scan(&userID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, $2, 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t), email).Scan(&userID))
 		userIDs = append(userIDs, userID)
 	}
 
@@ -589,27 +589,27 @@ func TestAuthIdentityLegacyExternalBackfillMigration_SkipsAmbiguousCanonicalSubj
 
 	var linuxDoFirstUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ('legacy-linuxdo-ambiguous-a@example.com', 'hash', 'user', 'active', 0, 1)
-RETURNING id`).Scan(&linuxDoFirstUserID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'legacy-linuxdo-ambiguous-a@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t)).Scan(&linuxDoFirstUserID))
 
 	var linuxDoSecondUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ('legacy-linuxdo-ambiguous-b@example.com', 'hash', 'user', 'active', 0, 1)
-RETURNING id`).Scan(&linuxDoSecondUserID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'legacy-linuxdo-ambiguous-b@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t)).Scan(&linuxDoSecondUserID))
 
 	var wechatFirstUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ('legacy-wechat-ambiguous-a@example.com', 'hash', 'user', 'active', 0, 1)
-RETURNING id`).Scan(&wechatFirstUserID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'legacy-wechat-ambiguous-a@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t)).Scan(&wechatFirstUserID))
 
 	var wechatSecondUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ('legacy-wechat-ambiguous-b@example.com', 'hash', 'user', 'active', 0, 1)
-RETURNING id`).Scan(&wechatSecondUserID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'legacy-wechat-ambiguous-b@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t)).Scan(&wechatSecondUserID))
 
 	require.NoError(t, tx.QueryRowContext(ctx, `
 INSERT INTO user_external_identities (
@@ -715,27 +715,27 @@ func TestAuthIdentityLegacyExternalMigrations_ReportAmbiguousCanonicalSubjectsWi
 
 	var linuxDoFirstUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ('legacy-linuxdo-conflict-a@example.com', 'hash', 'user', 'active', 0, 1)
-RETURNING id`).Scan(&linuxDoFirstUserID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'legacy-linuxdo-conflict-a@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t)).Scan(&linuxDoFirstUserID))
 
 	var linuxDoSecondUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ('legacy-linuxdo-conflict-b@example.com', 'hash', 'user', 'active', 0, 1)
-RETURNING id`).Scan(&linuxDoSecondUserID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'legacy-linuxdo-conflict-b@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t)).Scan(&linuxDoSecondUserID))
 
 	var wechatFirstUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ('legacy-wechat-conflict-a@example.com', 'hash', 'user', 'active', 0, 1)
-RETURNING id`).Scan(&wechatFirstUserID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'legacy-wechat-conflict-a@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t)).Scan(&wechatFirstUserID))
 
 	var wechatSecondUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ('legacy-wechat-conflict-b@example.com', 'hash', 'user', 'active', 0, 1)
-RETURNING id`).Scan(&wechatSecondUserID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'legacy-wechat-conflict-b@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t)).Scan(&wechatSecondUserID))
 
 	var linuxDoFirstLegacyID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
@@ -855,15 +855,15 @@ ALTER COLUMN report_type TYPE VARCHAR(40);
 
 	var oidcSyntheticUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ('oidc-before-121@oidc-connect.invalid', 'hash', 'user', 'active', 0, 1)
-RETURNING id`).Scan(&oidcSyntheticUserID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'oidc-before-121@oidc-connect.invalid', 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t)).Scan(&oidcSyntheticUserID))
 
 	var linuxdoLegacyUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO users (email, password_hash, role, status, balance, concurrency)
-VALUES ('legacy-linuxdo-before-121@example.com', 'hash', 'user', 'active', 0, 1)
-RETURNING id`).Scan(&linuxdoLegacyUserID))
+INSERT INTO users (account_id, email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'legacy-linuxdo-before-121@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`, mustGenerateRootAccountID(t)).Scan(&linuxdoLegacyUserID))
 
 	var invalidMetadataLegacyID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `

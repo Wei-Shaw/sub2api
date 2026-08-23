@@ -169,6 +169,21 @@
           @input="emitChange"
         />
       </div>
+      <!-- string 专属：输出值最大字符数；留空/0 表示不限制。 -->
+      <div v-if="allowMaxChars && node.type === 'string'" class="flex w-28 flex-col gap-1">
+        <label class="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+          {{ t('admin.modelIntros.fields.labelMaxChars') }}
+        </label>
+        <input
+          v-model.number="node.maxChars"
+          type="number"
+          min="0"
+          class="input h-8 text-xs"
+          :placeholder="t('admin.modelIntros.fields.maxCharsUnlimited')"
+          :title="t('admin.modelIntros.fields.maxCharsHint')"
+          @input="onMaxCharsChange"
+        />
+      </div>
       <div
         v-if="node.type === 'string' && node.widget === 'PromptTextArea'"
         class="flex min-w-64 flex-1 flex-col gap-1"
@@ -372,6 +387,7 @@
             :model-value="child"
             :removable="true"
             :allow-array-defaults="allowArrayDefaults"
+            :allow-max-chars="allowMaxChars"
             :reference-field-options="referenceFieldOptions"
             :can-move-up="i > 0"
             :can-move-down="i < node.children.length - 1"
@@ -425,6 +441,7 @@
           :is-array-item="true"
           :array-index="0"
           :allow-array-defaults="allowArrayDefaults"
+          :allow-max-chars="allowMaxChars"
           :reference-field-options="referenceFieldOptions"
           @update:modelValue="onItemsUpdate"
         />
@@ -596,6 +613,8 @@ const props = defineProps<{
   canMoveDown?: boolean
   /** 是否允许为 array 配置请求默认值；输出 schema 关闭此能力。 */
   allowArrayDefaults?: boolean
+  /** 是否允许为 string 输出字段配置最大字符数。 */
+  allowMaxChars?: boolean
   /** 根参数 schema 自动计算出的可引用媒体字段路径。 */
   referenceFieldOptions?: string[]
 }>()
@@ -847,6 +866,12 @@ function onMaxItemsChange() {
   if (Number.isFinite(max) && max > 0 && node.arrayDefaults.length > Math.trunc(max)) {
     node.arrayDefaults.splice(Math.trunc(max))
   }
+  emitChange()
+}
+
+function onMaxCharsChange() {
+  const value = Number(node.maxChars)
+  node.maxChars = Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0
   emitChange()
 }
 

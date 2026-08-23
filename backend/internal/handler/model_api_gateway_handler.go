@@ -114,6 +114,12 @@ func (h *ModelAPIGatewayHandler) nativeSubmit(c *gin.Context, model string) {
 		h.jsonError(c, http.StatusBadRequest, "invalid_request_error", "Invalid JSON body")
 		return
 	}
+	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite && strings.EqualFold(modelAPIImageAPI(model), service.FalAPIEdit) {
+		if err := validateCompositeEditURLs(payload); err != nil {
+			h.jsonError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return
+		}
+	}
 
 	// Probe the asynchronous image pool first. Pricing mode and account model
 	// mappings keep video-only endpoints out of this pool. Known image models
@@ -172,6 +178,20 @@ func (h *ModelAPIGatewayHandler) nativeImageSubmit(
 	if strings.EqualFold(modelAPIImageAPI(model), service.FalAPIEdit) {
 		input.IsEdit = true
 	}
+	requestParameters := map[string]any{
+		"prompt":        service.TruncateUsageRequestPrompt(request.Prompt),
+		"image_size":    request.ImageSize,
+		"quality":       request.Quality,
+		"num_images":    request.NumImages,
+		"output_format": request.OutputFormat,
+		"sync_mode":     request.SyncMode,
+	}
+	if len(request.ImageURLs) > 0 {
+		requestParameters["image_urls"] = request.ImageURLs
+	}
+	if request.MaskURL != "" {
+		requestParameters["mask_url"] = request.MaskURL
+	}
 
 	billingType := service.BillingTypeBalance
 	if subscription, _ := middleware2.GetSubscriptionFromContext(c); subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType() {
@@ -192,6 +212,7 @@ func (h *ModelAPIGatewayHandler) nativeImageSubmit(
 		InternalRequestID: modelAPIInternalRequestID(c),
 		RequestedModel:    model,
 		Input:             input,
+		RequestParameters: requestParameters,
 		BillingType:       billingType,
 		RateMultiplier:    rateMultiplier,
 		RateMultiplierSet: true,

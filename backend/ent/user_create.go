@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/developerkey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
@@ -101,20 +102,6 @@ func (_c *UserCreate) SetAccountID(v string) *UserCreate {
 func (_c *UserCreate) SetNillableAccountID(v *string) *UserCreate {
 	if v != nil {
 		_c.SetAccountID(*v)
-	}
-	return _c
-}
-
-// SetExternalUserID sets the "external_user_id" field.
-func (_c *UserCreate) SetExternalUserID(v string) *UserCreate {
-	_c.mutation.SetExternalUserID(v)
-	return _c
-}
-
-// SetNillableExternalUserID sets the "external_user_id" field if the given value is not nil.
-func (_c *UserCreate) SetNillableExternalUserID(v *string) *UserCreate {
-	if v != nil {
-		_c.SetExternalUserID(*v)
 	}
 	return _c
 }
@@ -490,6 +477,21 @@ func (_c *UserCreate) AddAPIKeys(v ...*APIKey) *UserCreate {
 	return _c.AddAPIKeyIDs(ids...)
 }
 
+// AddDeveloperKeyIDs adds the "developer_keys" edge to the DeveloperKey entity by IDs.
+func (_c *UserCreate) AddDeveloperKeyIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddDeveloperKeyIDs(ids...)
+	return _c
+}
+
+// AddDeveloperKeys adds the "developer_keys" edges to the DeveloperKey entity.
+func (_c *UserCreate) AddDeveloperKeys(v ...*DeveloperKey) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddDeveloperKeyIDs(ids...)
+}
+
 // AddRedeemCodeIDs adds the "redeem_codes" edge to the RedeemCode entity by IDs.
 func (_c *UserCreate) AddRedeemCodeIDs(ids ...int64) *UserCreate {
 	_c.mutation.AddRedeemCodeIDs(ids...)
@@ -825,11 +827,6 @@ func (_c *UserCreate) check() error {
 			return &ValidationError{Name: "account_id", err: fmt.Errorf(`ent: validator failed for field "User.account_id": %w`, err)}
 		}
 	}
-	if v, ok := _c.mutation.ExternalUserID(); ok {
-		if err := user.ExternalUserIDValidator(v); err != nil {
-			return &ValidationError{Name: "external_user_id", err: fmt.Errorf(`ent: validator failed for field "User.external_user_id": %w`, err)}
-		}
-	}
 	if _, ok := _c.mutation.IdentityType(); !ok {
 		return &ValidationError{Name: "identity_type", err: errors.New(`ent: missing required field "User.identity_type"`)}
 	}
@@ -971,10 +968,6 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		_spec.SetField(user.FieldAccountID, field.TypeString, value)
 		_node.AccountID = value
 	}
-	if value, ok := _c.mutation.ExternalUserID(); ok {
-		_spec.SetField(user.FieldExternalUserID, field.TypeString, value)
-		_node.ExternalUserID = value
-	}
 	if value, ok := _c.mutation.IdentityType(); ok {
 		_spec.SetField(user.FieldIdentityType, field.TypeString, value)
 		_node.IdentityType = value
@@ -1088,6 +1081,22 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(apikey.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.DeveloperKeysIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.DeveloperKeysTable,
+			Columns: []string{user.DeveloperKeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(developerkey.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -1795,9 +1804,6 @@ func (u *UserUpsertOne) UpdateNewValues() *UserUpsertOne {
 		}
 		if _, exists := u.create.mutation.AccountID(); exists {
 			s.SetIgnore(user.FieldAccountID)
-		}
-		if _, exists := u.create.mutation.ExternalUserID(); exists {
-			s.SetIgnore(user.FieldExternalUserID)
 		}
 		if _, exists := u.create.mutation.IdentityType(); exists {
 			s.SetIgnore(user.FieldIdentityType)
@@ -2507,9 +2513,6 @@ func (u *UserUpsertBulk) UpdateNewValues() *UserUpsertBulk {
 			}
 			if _, exists := b.mutation.AccountID(); exists {
 				s.SetIgnore(user.FieldAccountID)
-			}
-			if _, exists := b.mutation.ExternalUserID(); exists {
-				s.SetIgnore(user.FieldExternalUserID)
 			}
 			if _, exists := b.mutation.IdentityType(); exists {
 				s.SetIgnore(user.FieldIdentityType)

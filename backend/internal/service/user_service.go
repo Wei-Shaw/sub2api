@@ -184,6 +184,13 @@ type UserRepository interface {
 	DisableTotp(ctx context.Context, userID int64) error
 }
 
+// UserAccountRepository 供对外内部 API 按稳定 account_id 做身份映射。
+// 它刻意独立于 UserRepository，避免要求所有只面向业务服务的测试替身实现该查询。
+type UserAccountRepository interface {
+	GetByAccountID(ctx context.Context, accountID string) (*User, error)
+	GetByIDIncludeDeleted(ctx context.Context, id int64) (*User, error)
+}
+
 // RegistrationEmailDomainRepository 是生产用户仓储为非白名单域名单账户兜底策略提供的可选能力。
 // 它独立于 UserRepository，避免无关测试桩和服务消费者实现注册专用方法。
 type RegistrationEmailDomainRepository interface {

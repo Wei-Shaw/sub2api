@@ -149,7 +149,7 @@ func (h *ImageGatewayHandler) Images(c *gin.Context) {
 	if imageStatusRequestID != "" && h.imagesService != nil {
 		h.imagesService.MarkResponsesImageStatusRunning(c.Request.Context(), imageStatusRequestID)
 	}
-	imageStatusCompleted = h.runPseudoSync(c, reqLog, apiKey, subject, service.AsyncMediaFacadeOpenAI, parsed.Model, account, input, func(task *service.AsyncMediaTask) {
+	imageStatusCompleted = h.runPseudoSync(c, reqLog, apiKey, subject, service.AsyncMediaFacadeOpenAI, parsed.Model, account, input, parsed.RequestParameters(), func(task *service.AsyncMediaTask) {
 		h.writeOpenAIImagesResponse(c, reqLog, parsed, task)
 	})
 }
@@ -187,7 +187,7 @@ func (h *ImageGatewayHandler) ServeOpenAIImagesWithAccount(
 	account *service.Account,
 ) bool {
 	input := buildImageInputFromOpenAI(parsed)
-	return h.runPseudoSync(c, reqLog, apiKey, subject, service.AsyncMediaFacadeOpenAI, parsed.Model, account, input, func(task *service.AsyncMediaTask) {
+	return h.runPseudoSync(c, reqLog, apiKey, subject, service.AsyncMediaFacadeOpenAI, parsed.Model, account, input, parsed.RequestParameters(), func(task *service.AsyncMediaTask) {
 		h.writeOpenAIImagesResponse(c, reqLog, parsed, task)
 	})
 }
@@ -347,9 +347,10 @@ func (h *ImageGatewayHandler) runPseudoSync(
 	requestedModel string,
 	account *service.Account,
 	input fal.ImageGenInput,
+	requestParameters map[string]any,
 	onSuccess func(task *service.AsyncMediaTask),
 ) bool {
-	submitInput := h.buildSubmitInput(c, apiKey, subject, facade, requestedModel, account, input)
+	submitInput := h.buildSubmitInput(c, apiKey, subject, facade, requestedModel, account, input, requestParameters)
 
 	task, err := h.asyncMedia.SubmitAsync(c.Request.Context(), submitInput)
 	if err != nil {
@@ -445,6 +446,7 @@ func (h *ImageGatewayHandler) buildSubmitInput(
 	requestedModel string,
 	account *service.Account,
 	input fal.ImageGenInput,
+	requestParameters ...map[string]any,
 ) *service.AsyncMediaSubmitInput {
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	billingType := service.BillingTypeBalance
@@ -453,6 +455,10 @@ func (h *ImageGatewayHandler) buildSubmitInput(
 	}
 
 	rateMultiplier := h.imagesService.ResolveImageRateMultiplier(c.Request.Context(), subject.UserID, apiKey)
+	var params map[string]any
+	if len(requestParameters) > 0 {
+		params = requestParameters[0]
+	}
 
 	return &service.AsyncMediaSubmitInput{
 		Account:           account,
@@ -465,6 +471,7 @@ func (h *ImageGatewayHandler) buildSubmitInput(
 		InternalRequestID: imageInternalRequestID(c),
 		RequestedModel:    requestedModel,
 		Input:             input,
+		RequestParameters: params,
 		BillingType:       billingType,
 		RateMultiplier:    rateMultiplier,
 		RateMultiplierSet: true,

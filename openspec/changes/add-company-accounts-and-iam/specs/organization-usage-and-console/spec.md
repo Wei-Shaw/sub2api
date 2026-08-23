@@ -85,7 +85,7 @@ The system-settings feature panel SHALL expose the company application, IAM, pub
 - **AND** a non-HTTP(S) URL SHALL be rejected by the settings API
 
 ### Requirement: Account-menu identity information
-The current-user payload, account menu, and profile SHALL display public account ID and whether the identity is a root/main account or an IAM/sub-account for every user. A company root SHALL additionally display company name and owner role. An IAM user SHALL additionally display company name, IAM login principal, immutable IAM user ID, member status, effective policy names, and non-sensitive balance-source information.
+The current-user payload, account menu, and profile SHALL display the user's immutable public account ID and whether the identity is a root/main account or an IAM/sub-account for every user. A company root SHALL additionally display company name and owner role. An IAM user SHALL additionally display company name, IAM login principal, its immutable account ID, member status, effective policy names, and non-sensitive balance-source information.
 
 #### Scenario: Root account menu
 - **WHEN** an approved company owner opens the account menu
@@ -93,7 +93,7 @@ The current-user payload, account menu, and profile SHALL display public account
 
 #### Scenario: IAM account menu
 - **WHEN** an IAM user opens the account menu
-- **THEN** it SHALL show the shared 16-digit root account ID, sub-account identity, 18-digit IAM user ID, login principal, company, member status, and policy names
+- **THEN** it SHALL show the IAM user's own 16-digit account ID, sub-account identity, login principal, company, member status, and policy names
 - **AND** root balance amounts SHALL be omitted unless finance-read permission is effective
 
 ### Requirement: Frontend enforcement mirrors backend authorization

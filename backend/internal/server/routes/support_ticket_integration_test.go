@@ -4,13 +4,13 @@
 //
 // 工单系统端到端 HTTP 集成测试。在真正的 Postgres testcontainer 上跑：
 //
-//   1. PG 容器启动 + 应用所有 migrations（含 150_add_support_tickets.sql）
-//   2. 真实 ent client + SupportTicketRepository + SupportTicketService + handler
-//   3. 真实 Gin 路由（用户端走 RegisterSupportRoutes；admin 端按 admin.go 的挂载
-//      约定就地组装：在 /api/v1/admin 子组下挂 /support/tickets/...）
-//   4. 用一个测试专用的 stub auth middleware 通过 X-Test-User-ID / X-Test-Role
-//      头注入登录态——避开 JWT 签发逻辑（已被 jwt_auth 单测覆盖），把焦点放在
-//      工单业务流程上。
+//  1. PG 容器启动 + 应用所有 migrations（含 150_add_support_tickets.sql）
+//  2. 真实 ent client + SupportTicketRepository + SupportTicketService + handler
+//  3. 真实 Gin 路由（用户端走 RegisterSupportRoutes；admin 端按 admin.go 的挂载
+//     约定就地组装：在 /api/v1/admin 子组下挂 /support/tickets/...）
+//  4. 用一个测试专用的 stub auth middleware 通过 X-Test-User-ID / X-Test-Role
+//     头注入登录态——避开 JWT 签发逻辑（已被 jwt_auth 单测覆盖），把焦点放在
+//     工单业务流程上。
 //
 // 之所以放在 routes 包：
 //   - handler 包位于 routes 上游，无法在 handler 测试里 import routes 而避免循环依赖
@@ -291,6 +291,7 @@ func (s *SupportTicketIntegrationSuite) SetupTest() {
 func (s *SupportTicketIntegrationSuite) createUser(email, role string) int64 {
 	u, err := s.entClient.User.Create().
 		SetEmail(email).
+		SetAccountID(mustGenerateRouteTestAccountID(s.T())).
 		SetPasswordHash("test-password-hash").
 		SetRole(role).
 		Save(context.Background())
@@ -421,15 +422,15 @@ func (s *SupportTicketIntegrationSuite) decodeData(env apiEnvelope, out any) {
 
 // TestEndToEndFlow 覆盖完整工单生命周期：
 //
-//   1. user1 创建工单（status=open, 默认 normal）
-//   2. user1 列表能看到自己工单（不含 chat_context）
-//   3. user2 GET 同一工单 → 404（owner 隔离）
-//   4. user1 追加回复（status 仍为 open，user 回复不触发跃迁）
-//   5. admin 回复 → status 自动跃迁 open→in_progress
-//   6. admin PATCH priority=high
-//   7. user1 关闭工单（status=closed, closed_at 非空）
-//   8. user1 在已关闭工单上再追加回复 → 409
-//   9. admin PATCH 试图把 closed 改回 open → 409
+//  1. user1 创建工单（status=open, 默认 normal）
+//  2. user1 列表能看到自己工单（不含 chat_context）
+//  3. user2 GET 同一工单 → 404（owner 隔离）
+//  4. user1 追加回复（status 仍为 open，user 回复不触发跃迁）
+//  5. admin 回复 → status 自动跃迁 open→in_progress
+//  6. admin PATCH priority=high
+//  7. user1 关闭工单（status=closed, closed_at 非空）
+//  8. user1 在已关闭工单上再追加回复 → 409
+//  9. admin PATCH 试图把 closed 改回 open → 409
 func (s *SupportTicketIntegrationSuite) TestEndToEndFlow() {
 	chatCtx := "user: 我充值后没到账\nassistant: 已记录"
 

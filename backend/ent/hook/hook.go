@@ -165,18 +165,6 @@ func (f BatchImageJobFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BatchImageJobMutation", m)
 }
 
-// The BillingAppFunc type is an adapter to allow the use of ordinary
-// function as BillingApp mutator.
-type BillingAppFunc func(context.Context, *ent.BillingAppMutation) (ent.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f BillingAppFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.BillingAppMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BillingAppMutation", m)
-}
-
 // The ChannelMonitorFunc type is an adapter to allow the use of ordinary
 // function as ChannelMonitor mutator.
 type ChannelMonitorFunc func(context.Context, *ent.ChannelMonitorMutation) (ent.Value, error)
@@ -249,6 +237,18 @@ func (f CompositeModelRouteFunc) Mutate(ctx context.Context, m ent.Mutation) (en
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CompositeModelRouteMutation", m)
 }
 
+// The DeveloperKeyFunc type is an adapter to allow the use of ordinary
+// function as DeveloperKey mutator.
+type DeveloperKeyFunc func(context.Context, *ent.DeveloperKeyMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f DeveloperKeyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.DeveloperKeyMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DeveloperKeyMutation", m)
+}
+
 // The ErrorPassthroughRuleFunc type is an adapter to allow the use of ordinary
 // function as ErrorPassthroughRule mutator.
 type ErrorPassthroughRuleFunc func(context.Context, *ent.ErrorPassthroughRuleMutation) (ent.Value, error)
@@ -295,6 +295,18 @@ func (f IdentityAdoptionDecisionFunc) Mutate(ctx context.Context, m ent.Mutation
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.IdentityAdoptionDecisionMutation", m)
+}
+
+// The InnerAPIAppFunc type is an adapter to allow the use of ordinary
+// function as InnerAPIApp mutator.
+type InnerAPIAppFunc func(context.Context, *ent.InnerAPIAppMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f InnerAPIAppFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.InnerAPIAppMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.InnerAPIAppMutation", m)
 }
 
 // The ManagedPolicyFunc type is an adapter to allow the use of ordinary

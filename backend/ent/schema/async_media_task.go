@@ -108,6 +108,10 @@ func (AsyncMediaTask) Fields() []ent.Field {
 		field.Int("num_images").
 			Default(1).
 			Comment("请求生成的图片数量"),
+		field.JSON("request_parameters", map[string]any{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("脱敏后的客户端请求参数"),
 
 		// 状态与计费
 		field.String("status").

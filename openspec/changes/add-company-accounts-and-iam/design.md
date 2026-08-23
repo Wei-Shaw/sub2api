@@ -4,7 +4,7 @@ Sub2API currently models every login as an independent user. `users` owns email 
 
 This change adds a second authorization boundary without granting system-admin access: an approved company root owns one organization, creates IAM identities, assigns system-managed policies, allocates funds, and views company-scoped usage. It also changes the meaning of billing for IAM users, so authentication, gateway billing, balance RPC, asynchronous media settlement, usage, email delivery, and frontend navigation must move together.
 
-Alibaba Cloud's private account-ID generation algorithm is not public and cannot be reproduced from example IDs. The compatible contract we can implement is its visible identity hierarchy: one 16-digit root account ID shared as the IAM account namespace, an independent 18-digit IAM user ID, and an IAM login principal composed as `<login_name>@<root-account-id>.opentk.ai`.
+Alibaba Cloud's private account-ID generation algorithm is not public and cannot be reproduced from example IDs. The compatible contract we can implement is a stable 16-digit public account ID for every user, a separate immutable company ID for each enterprise, and an IAM login principal composed as `<login_name>@<company-id>.opentk.ai`. IAM users keep their own account ID; the company ID is used only to identify the enterprise in the principal and membership lookup.
 
 Project constraints:
 
@@ -44,17 +44,17 @@ Project constraints:
 
 Public identity fields are strings:
 
-| Identity | `account_id` | `external_user_id` | Login |
+| Identity | `account_id` | Enterprise association | Login |
 | --- | --- | --- | --- |
-| Personal root | independent 16 digits | same 16 digits | existing email login |
-| Company root | existing root 16 digits | same 16 digits | existing email login |
-| IAM user | company root's 16 digits | independent 18 digits | `<login_name>@<account_id>.opentk.ai` + password |
+| Personal root | independent 16 digits | none | existing email login |
+| Company root | immutable root 16 digits | owner membership and `company_id` | existing email login |
+| IAM user | independent 16 digits | membership to organization identified by `company_id` | `<login_name>@<company_id>.opentk.ai` + password |
 
-Both generators use rejection sampling over a cryptographically secure byte stream: select the first decimal digit uniformly from `1..9`, then each remaining digit uniformly from `0..9`. Go uses `crypto/rand`; the operator backfill uses Python `secrets`. A database uniqueness conflict causes bounded regeneration. IDs contain no timestamp, shard, primary key, account type bit, or check digit.
+The account-ID generator uses rejection sampling over a cryptographically secure byte stream: select the first decimal digit uniformly from `1..9`, then each remaining digit uniformly from `0..9`. Go uses `crypto/rand`; the operator backfill uses Python `secrets`. A database uniqueness conflict causes bounded regeneration. IDs contain no timestamp, shard, primary key, account type bit, or check digit.
 
-The 16-digit root namespace has `9 * 10^15` candidates and the 18-digit IAM namespace has `9 * 10^17`. Random generation does not eliminate collision probability, so the global database uniqueness constraint remains authoritative. IDs are never changed or returned to the pool after soft deletion.
+The 16-digit account-ID namespace has `9 * 10^15` candidates. Random generation does not eliminate collision probability, so the global database uniqueness constraint remains authoritative. IDs are never changed or returned to the pool after soft deletion.
 
-**Alternative: Snowflake/time-based decimal IDs.** Rejected because timestamp and worker layout are predictable, operationally couple uniqueness to worker configuration, and do not match the opaque external-ID behavior requested.
+**Alternative: Snowflake/time-based decimal IDs.** Rejected because timestamp and worker layout are predictable, operationally couple uniqueness to worker configuration, and do not match the opaque public-ID behavior requested.
 
 **Alternative: derive IAM IDs from the root ID or login name.** Rejected because it leaks relationships, makes rename semantics difficult, and reduces the independent namespace.
 
@@ -62,8 +62,8 @@ The 16-digit root namespace has `9 * 10^15` candidates and the 18-digit IAM name
 
 The additive schema is:
 
-- `users`: add nullable-at-first `account_id`, `external_user_id`, `identity_type` (`root|iam`), normalized IAM `login_name`, `must_change_password`, `recovery_email`, `recovery_email_verified_at`, and an authorization generation. `email` becomes nullable for IAM rows; personal/root login continues to require it. Use a global unique index on populated `external_user_id` and a partial case-insensitive unique index on `(account_id, lower(login_name))` for non-archived IAM users.
-- `organizations`: internal ID, unique root `account_id`, owner user ID, current name, normalized name for similarity search, `active|suspended` status, approval/effective time, and member limit defaulting to 20.
+- `users`: add nullable-at-first `account_id`, `identity_type` (`root|iam`), normalized IAM `login_name`, `must_change_password`, `recovery_email`, `recovery_email_verified_at`, and an authorization generation. `email` becomes nullable for IAM rows; personal/root login continues to require it. Install a global unique index on `account_id`; member creation enforces case-insensitive login-name uniqueness within the organization through the membership relationship.
+- `organizations`: internal ID, immutable unique `company_id`, legacy/root owner account snapshot for compatibility, owner user ID, current name, normalized name for similarity search, `active|suspended` status, approval/effective time, and member limit defaulting to 20.
 - `organization_memberships`: unique user membership, organization, `owner|member` role, lifecycle status, authorization generation, and archive metadata. Approval creates exactly one owner membership; phase-one constraints prevent a second owner.
 - `company_upgrade_applications`: applicant, requested name, status, fee amount/currency snapshot, reservation idempotency key, reviewer/reason/timestamps, and ledger references.
 - `organization_name_change_requests`: organization, old/new name snapshots, review state, reviewer/reason/timestamps.
@@ -81,22 +81,22 @@ Making `users.email` nullable is preferable to generating fake IAM email address
 
 ### 3. Roll out identifiers in two schema phases
 
-The first migration adds nullable fields, format checks that apply only when values are non-null, and a partial global unique index on `external_user_id`. New root creation dual-writes IDs immediately. A standalone script in `backend/tools/`:
+The first migration adds nullable fields and format checks that apply only when values are non-null. New user creation writes account IDs immediately. A standalone script in `backend/tools/`:
 
 1. supports `--dry-run`, batch size, start-after cursor, and bounded retries;
 2. locks a bounded set of rows, skips populated users, and commits each batch;
-3. assigns every legacy user root semantics (`account_id == external_user_id`, 16 digits);
-4. reports scanned, populated, skipped, collision-retried, and failed counts without printing sensitive user data.
+3. preserves existing unique IDs, assigns fresh 16-digit IDs only to IAM users with shared IDs or rows missing an ID, and never rewrites organization ownership automatically;
+4. reports scanned, reassigned, skipped, collision-retried, and failed counts without printing sensitive user data.
 
-After operators verify zero null/invalid rows, a second migration replaces the partial index with a global unique constraint, makes both identifiers non-null, and enforces identity-specific length/equality checks. IAM creation is feature-gated until the second migration is complete.
+After operators verify zero null/invalid rows, a second migration makes `account_id` non-null, enforces its 16-digit format, installs the global unique constraint, and removes the obsolete `external_user_id` column. IAM creation is feature-gated until the second migration is complete.
 
 **Alternative: assign IDs in one blocking migration.** Rejected because a large users table would create an uncontrolled migration transaction and make operational retries difficult.
 
 ### 4. Separate IAM login from personal login
 
-Add `/api/v1/auth/iam/login` and an IAM mode on the existing login view. The UI collects the complete `<login_name>@<account_id>.opentk.ai` principal and password, and the backend parses the principal to recover the normalized login name and 16-digit account ID. This avoids a separate account-ID field and keeps the canonical identity self-contained.
+Add `/api/v1/auth/iam/login` and an IAM mode on the existing login view. The UI collects the complete `<login_name>@<company_id>.opentk.ai` principal and password, and the backend parses the principal to recover the normalized login name and company ID. This avoids a separate company-ID field and keeps the canonical enterprise identity self-contained.
 
-The IAM login query uses `(account_id, lower(login_name))`, then verifies organization and membership status before password verification. It returns the existing token-pair shape with additional identity, organization, authorization-generation, and `must_change_password` claims. Member creation accepts an owner-entered password and the frontend offers a Web Crypto-based generator; `must_change_password` defaults to true but the owner may clear it. Owner-reset passwords continue to use `crypto/rand` and require a password change. Password plaintext is returned only by the create/reset command and is never persisted or logged.
+The IAM login query parses and validates the company ID from the principal, then resolves `(organization.company_id, lower(login_name))` through `organization_memberships` before checking organization and membership status and verifying the password. It returns the existing token-pair shape with additional identity, organization, authorization-generation, and `must_change_password` claims. Member creation accepts an owner-entered password and the frontend offers a Web Crypto-based generator; `must_change_password` defaults to true but the owner may clear it. Owner-reset passwords continue to use `crypto/rand` and require a password change. Password plaintext is returned only by the create/reset command and is never persisted or logged.
 
 All IAM API-key authentication resolves current membership and authorization generation, rather than trusting policy claims captured when the key was created. IAM recovery email is optional and must be verified before self-service recovery; otherwise the owner resets the password.
 

@@ -515,7 +515,7 @@ export default {
     channelStatus: 'Channel Status',
     riskControl: 'Risk Control',
     oidcClients: 'OIDC Clients',
-    billingApps: 'Billing Apps',
+    innerApiApps: 'Inner API Apps',
   },
 
   // Auth
@@ -1062,6 +1062,7 @@ export default {
     imageQuality: 'Quality',
     imageDetails: 'Image details',
     imageRequestParameters: 'Request parameters',
+    imageRequestParametersJson: 'Request parameters JSON',
     imageRequestResolution: 'Requested resolution',
     imageResultAndBilling: 'Result and billing',
     imageParameterNotRecorded: 'Not recorded',
@@ -5350,6 +5351,9 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
         labelMaxItems: 'Max items',
         maxItemsUnlimited: 'No limit',
         maxItemsHint: 'Maximum number of elements the playground allows; 0 or empty means no limit.',
+        labelMaxChars: 'Max chars',
+        maxCharsUnlimited: 'No limit',
+        maxCharsHint: 'Maximum characters displayed for a string output; 0 or empty means no limit.',
         addArrayItem: 'Add item',
         arrayItemsEmpty: 'No items yet. Add an item, then enter its default value.',
         arrayDefaultPlaceholder: 'Enter a default value',
@@ -8386,18 +8390,19 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
     buy_now: 'Buy now',
   },
 
-  billingApps: {
+  innerApiApps: {
     admin: {
-      title: 'Billing Apps',
-      description: 'Manage apps that call the balance RPC (create, enable/disable)',
+      title: 'Inner API Apps',
+      description: 'Manage internal API apps and their balance/material permissions',
       createButton: 'Create App',
-      empty: 'No billing apps yet',
-      loadFailed: 'Failed to load billing apps',
+      empty: 'No internal API apps yet',
+      loadFailed: 'Failed to load internal API apps',
       toggleFailed: 'Failed to update status',
       table: {
         name: 'Name',
         appId: 'App ID',
         enabled: 'Status',
+        permissions: 'Permissions',
         actions: 'Actions'
       },
       status: {
@@ -8408,6 +8413,7 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
         enable: 'Enable',
         disable: 'Disable',
         stats: 'Cost',
+        permissions: 'Permissions',
         refreshToken: 'Refresh Token',
         delete: 'Delete'
       },
@@ -8428,20 +8434,32 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
         failed: 'Failed to refresh'
       },
       deleteConfirm: {
-        title: '⚠️ Delete Billing App',
+        title: '⚠️ Delete Internal API App',
         body: 'High-risk action: delete "{name}"? Its token is invalidated immediately and cannot be recovered; all of its deduct/refund calls will fail — potentially affecting billing and orders for the related users (historical ledger is kept). Make sure this app is truly no longer in use.',
         confirm: 'I understand the risk, delete',
         cancel: 'Cancel',
         failed: 'Failed to delete'
       },
       form: {
-        createTitle: 'Create Billing App',
+        createTitle: 'Create Internal API App',
         appName: 'Name',
         appNamePlaceholder: 'e.g. Settlement service',
+        permissions: 'Authorized permissions',
+        savePermissions: 'Save permissions',
         nameRequired: 'Name is required',
         cancel: 'Cancel',
         save: 'Create',
         saveFailed: 'Failed to create'
+      },
+      permissions: {
+        balance_write: 'Deduct / refund balance',
+        balance_read: 'Read balance',
+        materials_read: 'Read materials',
+        materials_write: 'Upload / delete materials'
+      },
+      permissionsDialog: {
+        title: 'Edit permissions for {name}',
+        failed: 'Failed to save permissions'
       },
       tokenReveal: {
         title: 'One-time Token',

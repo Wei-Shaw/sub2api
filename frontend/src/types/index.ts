@@ -100,7 +100,6 @@ export interface User {
   updated_at: string
   deleted_at?: string | null
   account_id?: string
-  external_user_id?: string
   identity_type?: 'root' | 'iam'
   login_name?: string
   iam_principal?: string
@@ -1781,6 +1780,7 @@ export interface UsageLog {
   account_id: number | null
   request_id: string
   model: string
+  request_parameters?: Record<string, unknown> | null
   service_tier?: string | null
   reasoning_effort?: string | null
   inbound_endpoint?: string | null

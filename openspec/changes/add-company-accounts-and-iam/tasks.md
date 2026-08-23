@@ -1,11 +1,11 @@
 ## 1. Public Account Identifier Foundation
 
-- [x] 1.1 Add the phase-one SQL migration and matching Ent user fields for nullable `account_id`, `external_user_id`, `identity_type`, IAM login metadata, nullable IAM email handling, format checks, and the partial global unique index.
-- [x] 1.2 Implement centralized 16-digit root and 18-digit IAM CSPRNG generators using unbiased rejection sampling, bounded uniqueness retries, and unit/concurrency tests.
-- [x] 1.3 Dual-write root identifiers in registration, OAuth provisioning, setup-admin creation, test fixtures, and every other user-creation path while preserving existing email login behavior.
-- [x] 1.4 Add `backend/tools/` Python backfill with `secrets`, dry-run, batch/cursor resume, collision retry, safe reporting, and script tests against duplicate and partially populated data.
-- [x] 1.5 Add an operator verification query/command and the phase-two SQL migration that refuses incomplete data, makes IDs required, installs the full global unique constraint, and enforces root/IAM length and equality semantics.
-- [x] 1.6 Extend current-user, admin-user, and profile DTO mappers to serialize public IDs as strings and add regression tests proving no JSON numeric coercion or identifier mutation.
+- [x] 1.1 Add the account-only SQL migration and matching Ent user field for immutable 16-digit `account_id`, identity type, IAM login metadata, and the global unique account index.
+- [x] 1.2 Use one centralized 16-digit CSPRNG account-ID generator with unbiased rejection sampling and bounded uniqueness retries for every user type.
+- [x] 1.3 Generate independent IAM account IDs and resolve enterprise membership through `organization_memberships` and `organizations.company_id`.
+- [x] 1.4 Update the standalone Python backfill with `secrets`, dry-run, batch/cursor resume, collision retry, duplicate-root protection, and safe reporting.
+- [x] 1.5 Add the migration that reassigns shared IAM account IDs, refuses ambiguous duplicate roots, installs the full account-ID constraint, and removes the obsolete `external_user_id` column.
+- [x] 1.6 Update current-user, admin-user, IAM-member, and profile DTOs to expose only string `account_id` values.
 
 ## 2. Organization Persistence And Configuration
 
@@ -35,7 +35,7 @@
 
 ## 5. IAM Member Lifecycle And Authentication
 
-- [x] 5.1 Implement owner-only member creation with login-name validation/normalization, canonical principal construction, independent 18-digit ID generation, zero balance/grants, and trusted organization scoping.
+- [x] 5.1 Implement owner-only member creation with login-name validation/normalization, canonical principal construction from `company_id`, independent account-ID generation, zero balance/grants, and trusted organization scoping.
 - [x] 5.2 Enforce the configurable 20 non-archived member limit inside a serialized organization transaction and test active/disabled/archive accounting plus concurrent twentieth-member creation.
 - [x] 5.3 Generate a secure initial password, persist only its hash, return plaintext exactly once, and add redaction tests covering logs, audit events, subsequent reads, and error responses.
 - [x] 5.4 Add `/auth/iam/login` principal/password authentication with organization/member status checks, generic failure responses, existing token-pair compatibility, and no recovery-email login.
@@ -91,7 +91,7 @@
 - [x] 10.8 Add company usage and finance-read views by reusing user-safe usage components while excluding all admin-only columns and filters.
 - [x] 10.9 Add organization route metadata/sidebar predicates and direct-navigation guards for personal, owner, IAM-policy, first-login-restricted, and suspended states.
 - [x] 10.10 Add Chinese/English locale strings and focused component/store/router/API tests for menu visibility, IAM restrictions, approval states, redaction, and mobile/desktop text containment.
-- [x] 10.11 Add owner-entered or securely generated IAM initial passwords, a default-on first-login password-change option, and single-field canonical `<login_name>@<account_id>.opentk.ai` principals across creation, display, and authentication.
+- [x] 10.11 Add owner-entered or securely generated IAM initial passwords, a default-on first-login password-change option, and single-field canonical `<login_name>@<company_id>.opentk.ai` principals across creation, display, and authentication.
 
 ## 11. Audit, Reconciliation, And Rollout Verification
 

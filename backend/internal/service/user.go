@@ -15,7 +15,6 @@ type User struct {
 	CompanyID               string
 	CompanyName             string
 	OrganizationRole        string
-	ExternalUserID          string
 	IdentityType            string
 	LoginName               string
 	MustChangePassword      bool

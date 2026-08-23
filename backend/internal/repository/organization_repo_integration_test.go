@@ -30,7 +30,6 @@ func createOrganizationRoot(t *testing.T, client *dbent.Client, balance float64,
 	created, err := client.User.Create().
 		SetEmail(fmt.Sprintf("company-%s@example.com", uuid.NewString())).
 		SetAccountID(id).
-		SetExternalUserID(id).
 		SetIdentityType(service.IdentityTypeRoot).
 		SetPasswordHash("integration-hash").
 		SetRole(role).
@@ -38,7 +37,7 @@ func createOrganizationRoot(t *testing.T, client *dbent.Client, balance float64,
 		SetBalance(balance).
 		Save(context.Background())
 	require.NoError(t, err)
-	return &service.User{ID: created.ID, Email: created.Email, AccountID: id, ExternalUserID: id, IdentityType: service.IdentityTypeRoot, Role: role, Status: service.StatusActive, Balance: balance}
+	return &service.User{ID: created.ID, Email: created.Email, AccountID: id, IdentityType: service.IdentityTypeRoot, Role: role, Status: service.StatusActive, Balance: balance}
 }
 
 func isolateOrganizationIntegrationTest(t *testing.T) {
@@ -394,6 +393,9 @@ func TestIAMMemberLimitConcurrentArchiveAndLoginReuse(t *testing.T) {
 	}
 	require.Equal(t, 1, successes)
 	require.Equal(t, 1, limitFailures)
+
+	_, err := repo.CreateIAMMember(ctx, owner.ID, &service.User{LoginName: "member-01", PasswordHash: "hash"}, 25)
+	require.ErrorIs(t, err, service.ErrIAMLoginName)
 
 	require.NoError(t, repo.SetIAMMemberStatus(ctx, owner.ID, memberIDs[0], service.MembershipStatusArchived))
 	replacement, err := repo.CreateIAMMember(ctx, owner.ID, &service.User{LoginName: "member-00", PasswordHash: "hash"}, 20)

@@ -381,7 +381,7 @@ func (s *UserRepoSuite) TestListWithFilters_LoadsIAMCompanyID() {
 		Email:        "iam-member@test.com",
 		IdentityType: "iam",
 		LoginName:    "finance",
-		AccountID:    owner.AccountID,
+		AccountID:    "2719905235756637",
 	})
 
 	var organizationID int64

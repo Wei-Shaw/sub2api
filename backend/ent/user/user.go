@@ -25,8 +25,6 @@ const (
 	FieldEmail = "email"
 	// FieldAccountID holds the string denoting the account_id field in the database.
 	FieldAccountID = "account_id"
-	// FieldExternalUserID holds the string denoting the external_user_id field in the database.
-	FieldExternalUserID = "external_user_id"
 	// FieldIdentityType holds the string denoting the identity_type field in the database.
 	FieldIdentityType = "identity_type"
 	// FieldLoginName holds the string denoting the login_name field in the database.
@@ -81,6 +79,8 @@ const (
 	FieldRpmLimit = "rpm_limit"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
+	// EdgeDeveloperKeys holds the string denoting the developer_keys edge name in mutations.
+	EdgeDeveloperKeys = "developer_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
 	EdgeRedeemCodes = "redeem_codes"
 	// EdgeSubscriptions holds the string denoting the subscriptions edge name in mutations.
@@ -118,6 +118,13 @@ const (
 	APIKeysInverseTable = "api_keys"
 	// APIKeysColumn is the table column denoting the api_keys relation/edge.
 	APIKeysColumn = "user_id"
+	// DeveloperKeysTable is the table that holds the developer_keys relation/edge.
+	DeveloperKeysTable = "developer_keys"
+	// DeveloperKeysInverseTable is the table name for the DeveloperKey entity.
+	// It exists in this package in order to avoid circular dependency with the "developerkey" package.
+	DeveloperKeysInverseTable = "developer_keys"
+	// DeveloperKeysColumn is the table column denoting the developer_keys relation/edge.
+	DeveloperKeysColumn = "user_id"
 	// RedeemCodesTable is the table that holds the redeem_codes relation/edge.
 	RedeemCodesTable = "redeem_codes"
 	// RedeemCodesInverseTable is the table name for the RedeemCode entity.
@@ -224,7 +231,6 @@ var Columns = []string{
 	FieldDeletedAt,
 	FieldEmail,
 	FieldAccountID,
-	FieldExternalUserID,
 	FieldIdentityType,
 	FieldLoginName,
 	FieldMustChangePassword,
@@ -287,8 +293,6 @@ var (
 	EmailValidator func(string) error
 	// AccountIDValidator is a validator for the "account_id" field. It is called by the builders before save.
 	AccountIDValidator func(string) error
-	// ExternalUserIDValidator is a validator for the "external_user_id" field. It is called by the builders before save.
-	ExternalUserIDValidator func(string) error
 	// DefaultIdentityType holds the default value on creation for the "identity_type" field.
 	DefaultIdentityType string
 	// IdentityTypeValidator is a validator for the "identity_type" field. It is called by the builders before save.
@@ -372,11 +376,6 @@ func ByEmail(opts ...sql.OrderTermOption) OrderOption {
 // ByAccountID orders the results by the account_id field.
 func ByAccountID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAccountID, opts...).ToFunc()
-}
-
-// ByExternalUserID orders the results by the external_user_id field.
-func ByExternalUserID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldExternalUserID, opts...).ToFunc()
 }
 
 // ByIdentityType orders the results by the identity_type field.
@@ -520,6 +519,20 @@ func ByAPIKeysCount(opts ...sql.OrderTermOption) OrderOption {
 func ByAPIKeys(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newAPIKeysStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByDeveloperKeysCount orders the results by developer_keys count.
+func ByDeveloperKeysCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newDeveloperKeysStep(), opts...)
+	}
+}
+
+// ByDeveloperKeys orders the results by developer_keys terms.
+func ByDeveloperKeys(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newDeveloperKeysStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
 
@@ -723,6 +736,13 @@ func newAPIKeysStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(APIKeysInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, APIKeysTable, APIKeysColumn),
+	)
+}
+func newDeveloperKeysStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(DeveloperKeysInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, DeveloperKeysTable, DeveloperKeysColumn),
 	)
 }
 func newRedeemCodesStep() *sqlgraph.Step {

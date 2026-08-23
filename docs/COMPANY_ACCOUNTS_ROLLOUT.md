@@ -2,26 +2,42 @@
 
 Run every command from a release build that contains the company-account code. Keep `company.applications_enabled` and `company.iam_enabled` false until the final gate. Take a database backup and record the release SHA before starting.
 
-## 1. Add Nullable Public IDs
+## 1. Prepare And Inspect
 
-1. Apply `backend/migrations/187_public_account_identifiers.sql` through the normal migration runner. This phase deliberately permits null public IDs.
-2. Deploy dual-write code while these fields remain nullable.
-3. Dry-run the legacy backfill:
+1. Stop all application instances except the one maintenance/canary instance that will run the migration. Keep `company.applications_enabled`, `company.iam_enabled`, `company.public_ids_finalized`, and `company.billing_integration_enabled` false.
+2. Take a PostgreSQL backup and record the release SHA:
+
+   ```bash
+   pg_dump --format=custom --file=/secure/backup/sub2api-before-account-id-migration.dump "$DATABASE_URL"
+   ```
+
+3. Check for ambiguous duplicate root IDs. This must return zero rows; do not continue if it returns any row:
+
+   ```bash
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "
+   SELECT account_id, COUNT(*) AS root_count
+   FROM users
+   WHERE identity_type = 'root' AND account_id IS NOT NULL
+   GROUP BY account_id HAVING COUNT(*) > 1;"
+   ```
+
+4. If migration `187_public_account_identifiers.sql` is already recorded in `schema_migrations`, run the legacy backfill before starting the new release. It is optional for correctness because migration 231 also handles remaining shared/missing rows, but it reduces the final migration transaction for large tables:
 
    ```bash
    cd backend
    python3 tools/backfill_public_account_ids.py --dsn "$DATABASE_URL" --dry-run --batch-size 500
    ```
 
-4. Run bounded batches. Record the printed cursor and resume with `--start-after` after interruption:
+5. Run bounded batches. Re-running from `--start-after 0` is safe because already unique IDs are skipped:
 
    ```bash
+   cd backend
    python3 tools/backfill_public_account_ids.py --dsn "$DATABASE_URL" --batch-size 500 --start-after 0
    ```
 
-   The script prints `last_cursor`. If interrupted, pass that exact value to `--start-after`; reruns also skip already populated rows.
+   The script prints `last_cursor` when it completes. If a batch run is interrupted, resume from a recorded cursor when available; restarting at `0` is also safe.
 
-5. Verify the result. `missing_ids`, `invalid_account_ids`, `invalid_root_ids`, `invalid_iam_ids`, and `duplicate_external_ids` must all be zero:
+6. Verify the result. Missing, malformed, or duplicate account IDs must be zero:
 
    ```bash
    psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tools/verify_public_account_identifiers.sql
@@ -29,16 +45,17 @@ Run every command from a release build that contains the company-account code. K
 
    Never log or export generated IDs together with email or password data.
 
-## 2. Finalize IDs And Company Schema
+## 2. Apply The Release Migration
 
-1. Apply `backend/tools/finalize_public_account_identifiers.sql` only after verification. It intentionally fails on missing or malformed IDs:
+1. Deploy the release containing `231_user_account_ids.sql` and start exactly one instance with a sufficiently long migration timeout (for example `SETUP_MIGRATION_TIMEOUT_SECONDS=1800`). `InitEnt` runs the normal migration runner; it applies pending migrations in filename order and records them in `schema_migrations`.
+2. Migration 231 preserves unique IDs, gives shared IAM/missing rows fresh 16-digit IDs, aborts on duplicate root ownership, removes `external_user_id`, makes `account_id` non-null, and installs the global unique index. It is transactional; if it fails, restore/fix the reported data and rerun rather than editing rows manually.
+3. For a DBA-controlled staged rollout, the standalone finalizer remains available, but only run it after verification and only when no pending migration runner will concurrently apply 231:
 
    ```bash
    psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tools/finalize_public_account_identifiers.sql
    ```
 
-2. Apply `backend/migrations/188_company_accounts.sql`, `189_company_billing_snapshots.sql`, and `190_company_application_idempotency_scope.sql` through the migration runner.
-3. Confirm the idempotent policy seed is exact:
+4. Confirm the idempotent policy seed is exact:
 
    ```sql
    SELECT p.policy_key, p.policy_type, p.version, array_agg(a.action ORDER BY a.action)
@@ -49,7 +66,7 @@ Run every command from a release build that contains the company-account code. K
    ```
 
    The result must contain one version-1 `system` row per policy. The only actions are `organization.finance.balance.read` and `organization.balance.shared.use`, respectively.
-4. Set only `company.public_ids_finalized=true`; keep both product switches false.
+5. Set only `company.public_ids_finalized=true`; keep both product switches false until the billing and reconciliation gates pass.
 
 ## 3. Billing And Reconciliation Gate
 

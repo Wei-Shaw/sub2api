@@ -80,11 +80,6 @@ func AccountID(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldAccountID, v))
 }
 
-// ExternalUserID applies equality check predicate on the "external_user_id" field. It's identical to ExternalUserIDEQ.
-func ExternalUserID(v string) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldExternalUserID, v))
-}
-
 // IdentityType applies equality check predicate on the "identity_type" field. It's identical to IdentityTypeEQ.
 func IdentityType(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldIdentityType, v))
@@ -493,81 +488,6 @@ func AccountIDEqualFold(v string) predicate.User {
 // AccountIDContainsFold applies the ContainsFold predicate on the "account_id" field.
 func AccountIDContainsFold(v string) predicate.User {
 	return predicate.User(sql.FieldContainsFold(FieldAccountID, v))
-}
-
-// ExternalUserIDEQ applies the EQ predicate on the "external_user_id" field.
-func ExternalUserIDEQ(v string) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldExternalUserID, v))
-}
-
-// ExternalUserIDNEQ applies the NEQ predicate on the "external_user_id" field.
-func ExternalUserIDNEQ(v string) predicate.User {
-	return predicate.User(sql.FieldNEQ(FieldExternalUserID, v))
-}
-
-// ExternalUserIDIn applies the In predicate on the "external_user_id" field.
-func ExternalUserIDIn(vs ...string) predicate.User {
-	return predicate.User(sql.FieldIn(FieldExternalUserID, vs...))
-}
-
-// ExternalUserIDNotIn applies the NotIn predicate on the "external_user_id" field.
-func ExternalUserIDNotIn(vs ...string) predicate.User {
-	return predicate.User(sql.FieldNotIn(FieldExternalUserID, vs...))
-}
-
-// ExternalUserIDGT applies the GT predicate on the "external_user_id" field.
-func ExternalUserIDGT(v string) predicate.User {
-	return predicate.User(sql.FieldGT(FieldExternalUserID, v))
-}
-
-// ExternalUserIDGTE applies the GTE predicate on the "external_user_id" field.
-func ExternalUserIDGTE(v string) predicate.User {
-	return predicate.User(sql.FieldGTE(FieldExternalUserID, v))
-}
-
-// ExternalUserIDLT applies the LT predicate on the "external_user_id" field.
-func ExternalUserIDLT(v string) predicate.User {
-	return predicate.User(sql.FieldLT(FieldExternalUserID, v))
-}
-
-// ExternalUserIDLTE applies the LTE predicate on the "external_user_id" field.
-func ExternalUserIDLTE(v string) predicate.User {
-	return predicate.User(sql.FieldLTE(FieldExternalUserID, v))
-}
-
-// ExternalUserIDContains applies the Contains predicate on the "external_user_id" field.
-func ExternalUserIDContains(v string) predicate.User {
-	return predicate.User(sql.FieldContains(FieldExternalUserID, v))
-}
-
-// ExternalUserIDHasPrefix applies the HasPrefix predicate on the "external_user_id" field.
-func ExternalUserIDHasPrefix(v string) predicate.User {
-	return predicate.User(sql.FieldHasPrefix(FieldExternalUserID, v))
-}
-
-// ExternalUserIDHasSuffix applies the HasSuffix predicate on the "external_user_id" field.
-func ExternalUserIDHasSuffix(v string) predicate.User {
-	return predicate.User(sql.FieldHasSuffix(FieldExternalUserID, v))
-}
-
-// ExternalUserIDIsNil applies the IsNil predicate on the "external_user_id" field.
-func ExternalUserIDIsNil() predicate.User {
-	return predicate.User(sql.FieldIsNull(FieldExternalUserID))
-}
-
-// ExternalUserIDNotNil applies the NotNil predicate on the "external_user_id" field.
-func ExternalUserIDNotNil() predicate.User {
-	return predicate.User(sql.FieldNotNull(FieldExternalUserID))
-}
-
-// ExternalUserIDEqualFold applies the EqualFold predicate on the "external_user_id" field.
-func ExternalUserIDEqualFold(v string) predicate.User {
-	return predicate.User(sql.FieldEqualFold(FieldExternalUserID, v))
-}
-
-// ExternalUserIDContainsFold applies the ContainsFold predicate on the "external_user_id" field.
-func ExternalUserIDContainsFold(v string) predicate.User {
-	return predicate.User(sql.FieldContainsFold(FieldExternalUserID, v))
 }
 
 // IdentityTypeEQ applies the EQ predicate on the "identity_type" field.
@@ -1915,6 +1835,29 @@ func HasAPIKeys() predicate.User {
 func HasAPIKeysWith(preds ...predicate.APIKey) predicate.User {
 	return predicate.User(func(s *sql.Selector) {
 		step := newAPIKeysStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasDeveloperKeys applies the HasEdge predicate on the "developer_keys" edge.
+func HasDeveloperKeys() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, DeveloperKeysTable, DeveloperKeysColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasDeveloperKeysWith applies the HasEdge predicate on the "developer_keys" edge with a given conditions (other predicates).
+func HasDeveloperKeysWith(preds ...predicate.DeveloperKey) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newDeveloperKeysStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

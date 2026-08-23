@@ -4,7 +4,8 @@
 -- 前两种最终会把源文件转存到 COS，并在本表登记一条记录，供后续复用。
 --
 -- 关键字段：
---   cos_key  : COS 桶内对象 key，以 "users/{user_id}/materials/YYYY/MM/{uuid}.{ext}" 为前缀
+--   cos_key  : COS 桶内对象 key，以 "users/u_<opaque>/materials/YYYY/MM/{uuid}.{ext}" 为前缀；
+--              用户目录由 user_id + account_id 经服务端密钥派生，历史记录直接使用已保存的完整 key
 --   cos_url  : 对外可访问 URL（受 COS 公共 base URL 影响），业务侧写回上游 API 用的就是它
 --   kind     : image | audio | video，按 Content-Type 主类型分流；便于素材库按类型过滤
 --   source   : upload | url_import，区分本地上传与外链导入

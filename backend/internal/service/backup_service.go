@@ -132,6 +132,12 @@ type BackupObjectCopier interface {
 	CopyObject(ctx context.Context, srcKey, dstKey string) error
 }
 
+// BackupObjectSizedUploader streams a body with a known size. Developer file
+// uploads use this extension so large multipart files are not buffered in RAM.
+type BackupObjectSizedUploader interface {
+	UploadSized(ctx context.Context, key string, body io.Reader, size int64, contentType string) error
+}
+
 // BackupObjectStoreFactory creates an object store from S3 config
 type BackupObjectStoreFactory func(ctx context.Context, cfg *BackupS3Config) (BackupObjectStore, error)
 

@@ -41,6 +41,7 @@ func (s *UserSubscriptionRepoSuite) mustCreateUser(email string, role string) *s
 
 	u, err := s.client.User.Create().
 		SetEmail(email).
+		SetAccountID(mustGenerateRootAccountID(s.T())).
 		SetPasswordHash("test-password-hash").
 		SetStatus(service.StatusActive).
 		SetRole(role).
@@ -888,6 +889,7 @@ func (s *UserSubscriptionRepoSuite) TestTxContext_RollbackIsolation() {
 
 	userEnt, err := tx.Client().User.Create().
 		SetEmail("tx-user-" + suffix + "@example.com").
+		SetAccountID(mustGenerateRootAccountID(s.T())).
 		SetPasswordHash("test").
 		Save(txCtx)
 	s.Require().NoError(err, "create user in tx")

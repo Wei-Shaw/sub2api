@@ -511,7 +511,7 @@ export default {
     channelStatus: '渠道状态',
     riskControl: '风控中心',
     oidcClients: 'OIDC 客户端',
-    billingApps: '扣费 App',
+    innerApiApps: '内部 API App',
   },
 
   // Auth
@@ -1062,6 +1062,7 @@ export default {
     imageQuality: '质量',
     imageDetails: '出图详情',
     imageRequestParameters: '请求参数',
+    imageRequestParametersJson: '请求参数 JSON',
     imageRequestResolution: '请求分辨率',
     imageResultAndBilling: '结果与计费',
     imageParameterNotRecorded: '未记录',
@@ -5505,6 +5506,9 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
         labelMaxItems: '最大个数',
         maxItemsUnlimited: '不限',
         maxItemsHint: '演练台里该数组最多能填几个元素；0 或留空表示不限制。',
+        labelMaxChars: '最大字符数',
+        maxCharsUnlimited: '不限',
+        maxCharsHint: 'string 输出值最多展示多少个字符；0 或留空表示不限制。',
         addArrayItem: '添加元素',
         arrayItemsEmpty: '暂无元素；点击“添加元素”后填写对应的默认值。',
         arrayDefaultPlaceholder: '填写默认值',
@@ -8568,18 +8572,19 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
   },
 
   // OIDC Provider（sub2api 作为 OIDC 身份提供方对外提供单点登录）
-  billingApps: {
+  innerApiApps: {
     admin: {
-      title: '扣费 App 管理',
-      description: '管理通过余额 RPC 接入的扣费应用（创建、启停）',
+      title: '内部 API App 管理',
+      description: '管理内部 API 接入应用及其余额、素材权限',
       createButton: '创建 App',
-      empty: '暂无扣费 App',
-      loadFailed: '加载扣费 App 列表失败',
+      empty: '暂无内部 API App',
+      loadFailed: '加载内部 API App 列表失败',
       toggleFailed: '启停失败',
       table: {
         name: '名称',
         appId: 'App ID',
         enabled: '状态',
+        permissions: '权限',
         actions: '操作'
       },
       status: {
@@ -8590,6 +8595,7 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
         enable: '启用',
         disable: '停用',
         stats: '费用',
+        permissions: '权限',
         refreshToken: '刷新 Token',
         delete: '删除'
       },
@@ -8610,20 +8616,32 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
         failed: '刷新失败'
       },
       deleteConfirm: {
-        title: '⚠️ 删除扣费 App',
+        title: '⚠️ 删除内部 API App',
         body: '高风险操作：确定删除「{name}」？删除后该 App 的 Token 立即失效且无法恢复，其所有扣费/退费调用将全部失败，可能影响相关用户的计费与下单（历史流水保留）。请确认该 App 确实不再使用。',
         confirm: '我已知晓风险，删除',
         cancel: '取消',
         failed: '删除失败'
       },
       form: {
-        createTitle: '创建扣费 App',
+        createTitle: '创建内部 API App',
         appName: '名称',
         appNamePlaceholder: '例如：结算服务',
+        permissions: '授权权限',
+        savePermissions: '保存权限',
         nameRequired: '请填写名称',
         cancel: '取消',
         save: '创建',
         saveFailed: '创建失败'
+      },
+      permissions: {
+        balance_write: '扣费 / 退费',
+        balance_read: '读取余额',
+        materials_read: '读取素材',
+        materials_write: '上传 / 删除素材'
+      },
+      permissionsDialog: {
+        title: '编辑 {name} 的权限',
+        failed: '保存权限失败'
       },
       tokenReveal: {
         title: '一次性 Token',

@@ -61,6 +61,7 @@ export const DEFAULT_TEXTAREA_ROWS = 3
  *   - widget：string 叶子可选 input/textarea/image；array 可选媒体 URL 组控件
  *   - textareaRows：仅 widget='textarea' 有意义
  *   - maxItems：仅 array 有意义，限制演练台里最多能填几个元素
+ *   - maxChars：仅 string 有意义，输出展示的最大字符数；0 表示不限制
  *
  * uid 用于 v-for 稳定 key，避免元素乱序时 DOM 复用导致输入失焦。
  */
@@ -96,6 +97,7 @@ export interface SchemaRow {
    * 演练台会据此禁用"添加"按钮、并在提交前做一次校验。
    */
   maxItems: number
+  maxChars: number
   /** 仅 type='array' 有意义：请求参数预填的多个默认元素。空数组不落库。 */
   arrayDefaults: unknown[]
   children: SchemaRow[]
@@ -127,6 +129,7 @@ export function makeSchemaRow(overrides: Partial<SchemaRow> = {}): SchemaRow {
     textareaRows: overrides.textareaRows ?? DEFAULT_TEXTAREA_ROWS,
     referenceFields: overrides.referenceFields ?? [],
     maxItems: overrides.maxItems ?? 0,
+    maxChars: overrides.maxChars ?? 0,
     arrayDefaults: overrides.arrayDefaults ?? [],
     children: overrides.children ?? [],
     items: overrides.items ?? null,
@@ -406,6 +409,9 @@ export function rowToSchema(row: SchemaRow): Record<string, unknown> {
     out.enum = true
     out.options = splitOptions(row.optionsText).map((s) => coerceOption(s, row.type))
   }
+  if (row.type === 'string' && Number.isFinite(row.maxChars) && row.maxChars > 0) {
+    out.max_chars = Math.trunc(row.maxChars)
+  }
   // widget/rows 仅对 string 叶子有意义；widget='input' 视为默认，不写入以保持
   // 存储 shape 与旧数据一致（避免历史无该字段的行升级后 diff 变噪）。
   if (row.type === 'string') {
@@ -557,7 +563,7 @@ export function schemaToRow(key: string, raw: unknown): SchemaRow {
     }
     // 叶子 spec
     const isLeafSpec =
-      'value' in obj || 'required' in obj || 'description' in obj || 'enum' in obj || 'options' in obj
+      'value' in obj || 'required' in obj || 'description' in obj || 'enum' in obj || 'options' in obj || 'max_chars' in obj
     if (isLeafSpec) {
       const inner = obj.value
       let type: SchemaRowType = 'string'
@@ -627,6 +633,7 @@ export function schemaToRow(key: string, raw: unknown): SchemaRow {
         optionsText,
         widget,
         textareaRows,
+        maxChars: normalizeMaxChars(obj.max_chars),
         referenceFields: Array.isArray(obj.reference_fields)
           ? obj.reference_fields.filter((field): field is string => typeof field === 'string').map((field) => field.trim()).filter(Boolean)
           : [],
@@ -635,6 +642,11 @@ export function schemaToRow(key: string, raw: unknown): SchemaRow {
   }
   // 完全非结构化的原始值 → 当叶子默认值处理。
   return makeSchemaRow({ key, ...inferLeafFieldsFromPlain(raw) })
+}
+
+function normalizeMaxChars(value: unknown): number {
+  const n = Number(value)
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0
 }
 
 /**

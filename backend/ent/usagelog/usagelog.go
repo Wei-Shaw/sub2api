@@ -30,6 +30,8 @@ const (
 	FieldAccountID = "account_id"
 	// FieldRequestID holds the string denoting the request_id field in the database.
 	FieldRequestID = "request_id"
+	// FieldRequestParameters holds the string denoting the request_parameters field in the database.
+	FieldRequestParameters = "request_parameters"
 	// FieldModel holds the string denoting the model field in the database.
 	FieldModel = "model"
 	// FieldRequestedModel holds the string denoting the requested_model field in the database.
@@ -186,6 +188,7 @@ var Columns = []string{
 	FieldAPIKeyID,
 	FieldAccountID,
 	FieldRequestID,
+	FieldRequestParameters,
 	FieldModel,
 	FieldRequestedModel,
 	FieldUpstreamModel,

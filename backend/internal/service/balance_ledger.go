@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"sort"
+	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-// 余额 RPC 账本相关错误。
+// 内部 API RPC 账本相关错误。
 var (
 	// ErrBalanceInsufficient 余额不足（不透支）。
 	ErrBalanceInsufficient = infraerrors.Conflict("INSUFFICIENT_BALANCE", "insufficient balance")
@@ -16,10 +18,13 @@ var (
 	ErrOriginalDeductNotFound = infraerrors.NotFound("ORIGINAL_DEDUCT_NOT_FOUND", "original deduction not found")
 	// ErrLedgerRequestConflict 相同 request_id 但参数与首次不一致。
 	ErrLedgerRequestConflict = infraerrors.Conflict("LEDGER_REQUEST_CONFLICT", "request_id reused with different parameters")
-	// ErrBillingAppNotFound 接入方不存在。
-	ErrBillingAppNotFound = infraerrors.NotFound("BILLING_APP_NOT_FOUND", "billing app not found")
-	// ErrBillingAppUnauthenticated 接入方鉴权失败（不存在 / 停用 / secret 不匹配，统一错误）。
-	ErrBillingAppUnauthenticated = infraerrors.Unauthorized("BILLING_APP_UNAUTHENTICATED", "invalid billing app credentials")
+	// ErrInnerAPIAppNotFound 接入方不存在。
+	ErrInnerAPIAppNotFound = infraerrors.NotFound("INNER_API_APP_NOT_FOUND", "inner api app not found")
+	// ErrInnerAPIAppUnauthenticated 接入方鉴权失败（不存在 / 停用 / token 不匹配，统一错误）。
+	ErrInnerAPIAppUnauthenticated = infraerrors.Unauthorized("INNER_API_APP_UNAUTHENTICATED", "invalid inner api app credentials")
+	// ErrInnerAPIAppPermissionDenied 接入方没有调用目标方法的权限。
+	ErrInnerAPIAppPermissionDenied  = infraerrors.Forbidden("INNER_API_APP_PERMISSION_DENIED", "inner api app permission denied")
+	ErrInnerAPIAppInvalidPermission = infraerrors.BadRequest("INNER_API_APP_INVALID_PERMISSION", "invalid inner api app permission")
 )
 
 // 账本流水类型。
@@ -28,24 +33,71 @@ const (
 	BalanceLedgerKindRefund int8 = 2
 )
 
-// BillingApp 接入方身份领域模型。
-type BillingApp struct {
+// InnerAPIApp 接入方身份领域模型。
+type InnerAPIApp struct {
 	ID           int64
 	AppID        string
 	AppName      string
 	Enabled      bool
 	TokenVersion int
+	Permissions  []string
 }
 
-// BillingAppRepository 接入方身份仓储。
-type BillingAppRepository interface {
-	GetByAppID(ctx context.Context, appID string) (*BillingApp, error)
-	Create(ctx context.Context, app *BillingApp) (*BillingApp, error)
+const (
+	InnerAPIPermissionBalanceWrite   = "balance:write"
+	InnerAPIPermissionBalanceRead    = "balance:read"
+	InnerAPIPermissionMaterialsRead  = "materials:read"
+	InnerAPIPermissionMaterialsWrite = "materials:write"
+)
+
+var validInnerAPIPermissions = map[string]struct{}{
+	InnerAPIPermissionBalanceWrite:   {},
+	InnerAPIPermissionBalanceRead:    {},
+	InnerAPIPermissionMaterialsRead:  {},
+	InnerAPIPermissionMaterialsWrite: {},
+}
+
+// ValidateInnerAPIPermissions 校验并规范化 app 权限，拒绝未知权限和重复项。
+func ValidateInnerAPIPermissions(permissions []string) ([]string, error) {
+	seen := make(map[string]struct{}, len(permissions))
+	out := make([]string, 0, len(permissions))
+	for _, permission := range permissions {
+		permission = strings.TrimSpace(permission)
+		if _, ok := validInnerAPIPermissions[permission]; !ok {
+			return nil, ErrInnerAPIAppInvalidPermission
+		}
+		if _, ok := seen[permission]; ok {
+			continue
+		}
+		seen[permission] = struct{}{}
+		out = append(out, permission)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func (app *InnerAPIApp) HasPermission(permission string) bool {
+	if app == nil {
+		return false
+	}
+	for _, granted := range app.Permissions {
+		if granted == permission {
+			return true
+		}
+	}
+	return false
+}
+
+// InnerAPIAppRepository 接入方身份仓储。
+type InnerAPIAppRepository interface {
+	GetByAppID(ctx context.Context, appID string) (*InnerAPIApp, error)
+	Create(ctx context.Context, app *InnerAPIApp) (*InnerAPIApp, error)
 	SetEnabled(ctx context.Context, appID string, enabled bool) error
+	SetPermissions(ctx context.Context, appID string, permissions []string) error
 	// BumpTokenVersion 自增 token_version 并返回新值，用于刷新 token（旧 token 失效）。
 	BumpTokenVersion(ctx context.Context, appID string) (int, error)
 	Delete(ctx context.Context, appID string) error
-	List(ctx context.Context) ([]*BillingApp, error)
+	List(ctx context.Context) ([]*InnerAPIApp, error)
 }
 
 // AppLedgerStats 某接入方的累计扣费统计。

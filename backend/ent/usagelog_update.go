@@ -190,6 +190,18 @@ func (_u *UsageLogUpdate) SetNillableRequestID(v *string) *UsageLogUpdate {
 	return _u
 }
 
+// SetRequestParameters sets the "request_parameters" field.
+func (_u *UsageLogUpdate) SetRequestParameters(v map[string]interface{}) *UsageLogUpdate {
+	_u.mutation.SetRequestParameters(v)
+	return _u
+}
+
+// ClearRequestParameters clears the value of the "request_parameters" field.
+func (_u *UsageLogUpdate) ClearRequestParameters() *UsageLogUpdate {
+	_u.mutation.ClearRequestParameters()
+	return _u
+}
+
 // SetModel sets the "model" field.
 func (_u *UsageLogUpdate) SetModel(v string) *UsageLogUpdate {
 	_u.mutation.SetModel(v)
@@ -1391,6 +1403,12 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.RequestID(); ok {
 		_spec.SetField(usagelog.FieldRequestID, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.RequestParameters(); ok {
+		_spec.SetField(usagelog.FieldRequestParameters, field.TypeJSON, value)
+	}
+	if _u.mutation.RequestParametersCleared() {
+		_spec.ClearField(usagelog.FieldRequestParameters, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.Model(); ok {
 		_spec.SetField(usagelog.FieldModel, field.TypeString, value)
 	}
@@ -1996,6 +2014,18 @@ func (_u *UsageLogUpdateOne) SetNillableRequestID(v *string) *UsageLogUpdateOne 
 	if v != nil {
 		_u.SetRequestID(*v)
 	}
+	return _u
+}
+
+// SetRequestParameters sets the "request_parameters" field.
+func (_u *UsageLogUpdateOne) SetRequestParameters(v map[string]interface{}) *UsageLogUpdateOne {
+	_u.mutation.SetRequestParameters(v)
+	return _u
+}
+
+// ClearRequestParameters clears the value of the "request_parameters" field.
+func (_u *UsageLogUpdateOne) ClearRequestParameters() *UsageLogUpdateOne {
+	_u.mutation.ClearRequestParameters()
 	return _u
 }
 
@@ -3229,6 +3259,12 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if value, ok := _u.mutation.RequestID(); ok {
 		_spec.SetField(usagelog.FieldRequestID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RequestParameters(); ok {
+		_spec.SetField(usagelog.FieldRequestParameters, field.TypeJSON, value)
+	}
+	if _u.mutation.RequestParametersCleared() {
+		_spec.ClearField(usagelog.FieldRequestParameters, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.Model(); ok {
 		_spec.SetField(usagelog.FieldModel, field.TypeString, value)

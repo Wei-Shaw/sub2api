@@ -263,7 +263,7 @@
                     v-else
                     class="break-all rounded bg-gray-50 px-2 py-1 text-xs text-gray-800 dark:bg-gray-900 dark:text-gray-200"
                   >
-                    {{ leafToText(leaf) }}
+                    {{ leafToText(leaf, item.spec.max_chars) }}
                   </div>
                 </template>
 
@@ -486,15 +486,20 @@ const resolvedOutputs = computed<ResolvedOutput[]>(() => {
 // - video / image / url：取叶子字符串或 leaf.url；不是字符串时返回空串。
 // - text / number：取 String(leaf)；对象时 JSON 序列化。
 // - json：直接返回美化 JSON。
-function leafToText(v: unknown): string {
+function leafToText(v: unknown, maxChars?: number): string {
   if (v === null || v === undefined) return ''
-  if (typeof v === 'string') return v
-  if (typeof v === 'number' || typeof v === 'boolean') return String(v)
-  try {
-    return JSON.stringify(v)
-  } catch {
-    return String(v)
+  let text: string
+  if (typeof v === 'string') text = v
+  else if (typeof v === 'number' || typeof v === 'boolean') text = String(v)
+  else {
+    try {
+      text = JSON.stringify(v)
+    } catch {
+      text = String(v)
+    }
   }
+  const max = typeof maxChars === 'number' && maxChars > 0 ? Math.trunc(maxChars) : 0
+  return max > 0 ? Array.from(text).slice(0, max).join('') : text
 }
 function leafToUrl(v: unknown): string {
   if (typeof v === 'string' && v) return v

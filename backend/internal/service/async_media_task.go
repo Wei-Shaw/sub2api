@@ -52,6 +52,8 @@ type AsyncMediaTask struct {
 	ImageSize *string
 	Quality   *string
 	NumImages int
+	// RequestParameters contains sanitized non-binary client parameters for usage details.
+	RequestParameters map[string]any
 
 	Status         string
 	HeldCost       float64
@@ -146,6 +148,7 @@ type TerminalUsageLogInput struct {
 	ImageOutputSize    string
 	ImageSizeSource    string
 	ImageSizeBreakdown map[string]int
+	RequestParameters  map[string]any
 	BillingTier        string // size_tier
 
 	TaskID        int64

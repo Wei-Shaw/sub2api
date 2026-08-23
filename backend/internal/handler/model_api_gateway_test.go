@@ -76,6 +76,20 @@ func TestModelAPIGatewayKnownImageNeverFallsThroughToVideoValidation(t *testing.
 	require.NotContains(t, recorder.Body.String(), "Missing 'resolution'")
 }
 
+func TestModelAPIGatewayCompositeEditRejectsNonURLImageParameter(t *testing.T) {
+	handler := NewModelAPIGatewayHandler(newModelAPITestGatewayService(), nil, nil, nil, nil, nil)
+
+	recorder := performModelAPISubmit(t, handler, "/api/v1/model/gpt-image-2/edit", `{"image_urls":["https://example.test/reference.png","data:image/png;base64,aW1hZ2U="]}`)
+
+	require.Equal(t, http.StatusBadRequest, recorder.Code, recorder.Body.String())
+	require.JSONEq(t, `{
+		"error": {
+			"type": "invalid_request_error",
+			"message": "invalid parameter 'image_urls[1]': must be a valid HTTP or HTTPS URL"
+		}
+	}`, recorder.Body.String())
+}
+
 func TestModelAPIGatewayVideoFeatureGateOnlyAppliesAfterMediaRouting(t *testing.T) {
 	settingService := service.NewSettingService(&modelAPIDisabledSettingRepo{}, &config.Config{})
 	handler := NewModelAPIGatewayHandler(newModelAPITestGatewayService(), nil, nil, nil, nil, settingService)

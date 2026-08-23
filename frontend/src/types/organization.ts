@@ -95,7 +95,7 @@ export interface AdminOrganizationDetail {
 
 export interface IAMMember {
   user_id: number
-  external_user_id: string
+  account_id: string
   username: string
   login_name: string
   principal: string

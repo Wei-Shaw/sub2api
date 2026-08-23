@@ -254,7 +254,7 @@ func (s *OidcProviderService) Discovery(ctx context.Context) (map[string]any, er
 		"code_challenge_methods_supported":      []string{"S256"},
 		"claims_supported": []string{
 			"sub", "iss", "aud", "exp", "iat", "auth_time", "nonce", "acr",
-			"name", "preferred_username", "email", "email_verified",
+			"name", "preferred_username", "email", "email_verified", "account_id",
 		},
 	}, nil
 }
@@ -788,6 +788,9 @@ func (s *OidcProviderService) BuildUserInfo(ctx context.Context, accessTokenValu
 	claims := map[string]any{
 		"sub": strconv.FormatInt(resolved.UserID, 10),
 	}
+	// account_id 是对外稳定用户标识，供 RP 调用 inner_api 等内部能力时使用；
+	// 不把数据库 users.id 作为可供外部传递的用户标识。
+	claims["account_id"] = user.AccountID
 	scopes := resolved.Scopes
 	if containsString(scopes, OidcScopeProfile) {
 		claims["name"] = user.Username
@@ -893,9 +896,11 @@ func (s *OidcProviderService) signIDToken(ctx context.Context, clientID string, 
 	if strings.TrimSpace(nonce) != "" {
 		claims["nonce"] = nonce
 	}
-	// 标准身份声明 (私有 scope 绝不进 id_token)
-	if containsString(scopes, OidcScopeProfile) || containsString(scopes, OidcScopeEmail) {
-		if user, err := s.client.User.Get(ctx, userID); err == nil {
+	// account_id 始终写入 ID Token；标准 profile/email 声明仍按 scope 写入，
+	// 私有 scope 绝不进 ID Token。
+	if user, err := s.client.User.Get(ctx, userID); err == nil {
+		claims["account_id"] = user.AccountID
+		if containsString(scopes, OidcScopeProfile) || containsString(scopes, OidcScopeEmail) {
 			if containsString(scopes, OidcScopeProfile) {
 				claims["name"] = user.Username
 				claims["preferred_username"] = user.Username

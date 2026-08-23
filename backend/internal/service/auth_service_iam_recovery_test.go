@@ -40,7 +40,6 @@ func TestIAMVerifiedRecoveryEmailCanResetPassword(t *testing.T) {
 
 	user, err := client.User.Create().
 		SetAccountID("1719905235756637").
-		SetExternalUserID("201705485041478971").
 		SetIdentityType(service.IdentityTypeIAM).
 		SetLoginName("finance.reader").
 		SetPasswordHash("old-hash").
@@ -75,7 +74,6 @@ func TestIAMUnverifiedRecoveryEmailCannotResetPassword(t *testing.T) {
 
 	_, err := client.User.Create().
 		SetAccountID("1719905235756637").
-		SetExternalUserID("201705485041478971").
 		SetIdentityType(service.IdentityTypeIAM).
 		SetLoginName("finance.reader").
 		SetPasswordHash("old-hash").

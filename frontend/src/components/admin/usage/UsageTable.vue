@@ -358,6 +358,12 @@
           <dt class="text-gray-500 dark:text-gray-400">{{ t('usage.imageCount') }}</dt>
           <dd class="text-right font-medium text-gray-900 dark:text-white">{{ imageDetailsRow.image_count }}{{ t('usage.imageUnit') }}</dd>
         </dl>
+        <div v-if="formatRequestParameters(imageDetailsRow)" class="mt-4">
+          <h5 class="mb-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
+            {{ t('usage.imageRequestParametersJson') }}
+          </h5>
+          <pre class="max-h-64 overflow-auto rounded-md bg-gray-50 p-3 text-left text-xs leading-5 text-gray-700 dark:bg-dark-800 dark:text-gray-300">{{ formatRequestParameters(imageDetailsRow) }}</pre>
+        </div>
       </section>
 
       <section class="border-t border-gray-200 pt-4 dark:border-dark-700">
@@ -836,6 +842,15 @@ const openImageDetails = (row: AdminUsageLog) => {
 
 const closeImageDetails = () => {
   imageDetailsRow.value = null
+}
+
+const formatRequestParameters = (row: AdminUsageLog): string => {
+  if (!row.request_parameters || Object.keys(row.request_parameters).length === 0) return ''
+  try {
+    return JSON.stringify(row.request_parameters, null, 2) ?? ''
+  } catch {
+    return ''
+  }
 }
 
 // 超过 1 分钟简化为 "Xm Ys"，免去人工换算（超过 1 小时再进位为 "Xh Ym"）

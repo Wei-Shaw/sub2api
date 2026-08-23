@@ -49,6 +49,7 @@ func (s *UserProfileIdentityRepoSuite) mustCreateUser(label string) *dbent.User 
 
 	user, err := s.client.User.Create().
 		SetEmail(fmt.Sprintf("%s-%d@example.com", label, time.Now().UnixNano())).
+		SetAccountID(mustGenerateRootAccountID(s.T())).
 		SetPasswordHash("test-password-hash").
 		SetRole("user").
 		SetStatus("active").

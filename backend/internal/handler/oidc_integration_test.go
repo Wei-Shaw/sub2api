@@ -147,6 +147,7 @@ func TestOidcIntegration_AuthCodePKCERefreshFlow(t *testing.T) {
 	require.Equal(t, "https://op.example.com", claims["iss"])
 	require.Equal(t, rp.ClientID, claims["aud"])
 	require.Equal(t, strconv.FormatInt(userID, 10), claims["sub"])
+	require.Equal(t, "acct_test_bob", claims["account_id"])
 	require.Equal(t, nonce, claims["nonce"])
 
 	// ── 4. Refresh：轮转出新 refresh + 可验证的新 id token ────────────────────
@@ -178,6 +179,7 @@ func TestOidcIntegration_AuthCodePKCERefreshFlow(t *testing.T) {
 	require.Equal(t, strconv.FormatInt(userID, 10), info["sub"])
 	require.Equal(t, "bob", info["name"])
 	require.Equal(t, "bob@example.com", info["email"])
+	require.Equal(t, "acct_test_bob", info["account_id"])
 
 	// ── 6. 旧 refresh token 复用应触发整 family 吊销 ──────────────────────────
 	reuse := e.postToken(url.Values{

@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// 余额 RPC 入参校验错误。
+// 内部 API RPC 账本入参校验错误。
 var (
 	// ErrLedgerInvalidAmount 金额必须为正。
 	ErrLedgerInvalidAmount = infraerrors.BadRequest("LEDGER_INVALID_AMOUNT", "amount must be positive")

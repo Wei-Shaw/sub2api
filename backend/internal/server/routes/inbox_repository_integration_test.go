@@ -22,7 +22,16 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/inbox"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/accountid"
+	"github.com/stretchr/testify/require"
 )
+
+func mustGenerateRouteTestAccountID(t *testing.T) string {
+	t.Helper()
+	accountID, err := accountid.GenerateRoot()
+	require.NoError(t, err, "generate account id")
+	return accountID
+}
 
 func inboxJSON(s string) json.RawMessage { return json.RawMessage(s) }
 
@@ -31,6 +40,7 @@ func inboxCreateUser(t *testing.T, ent *dbent.Client, email string) int64 {
 	t.Helper()
 	u, err := ent.User.Create().
 		SetEmail(email).
+		SetAccountID(mustGenerateRouteTestAccountID(t)).
 		SetPasswordHash("test-hash").
 		SetRole("user").
 		Save(context.Background())

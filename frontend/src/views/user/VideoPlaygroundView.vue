@@ -2081,6 +2081,9 @@ function adaptOutputFieldToNode(key: string, raw: unknown): SchemaNode {
     const description = typeof obj.description === 'string' ? obj.description : ''
     // description_en：中英双文字段说明的英文版；渲染层按 locale 选。
     const descriptionEn = typeof obj.description_en === 'string' ? obj.description_en : ''
+    const maxChars = typeof obj.max_chars === 'number' && obj.max_chars > 0
+      ? Math.trunc(obj.max_chars)
+      : undefined
     // object
     if (rawType === 'object' || obj.properties) {
       const children: SchemaNode[] = []
@@ -2096,6 +2099,7 @@ function adaptOutputFieldToNode(key: string, raw: unknown): SchemaNode {
         required,
         description,
         descriptionEn,
+        maxChars,
         children,
         items: null,
       }
@@ -2109,6 +2113,7 @@ function adaptOutputFieldToNode(key: string, raw: unknown): SchemaNode {
         required,
         description,
         descriptionEn,
+        maxChars,
         children: [],
         items,
       }
@@ -2120,6 +2125,7 @@ function adaptOutputFieldToNode(key: string, raw: unknown): SchemaNode {
       required,
       description,
       descriptionEn,
+      maxChars,
       children: [],
       items: null,
     }

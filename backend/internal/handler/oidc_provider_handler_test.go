@@ -190,6 +190,7 @@ func (e *oidcHandlerTestEnv) createUser(t *testing.T) int64 {
 	u, err := e.client.User.Create().
 		SetEmail("bob@example.com").
 		SetUsername("bob").
+		SetAccountID("acct_test_bob").
 		SetPasswordHash("hash").
 		SetRole(service.RoleUser).
 		SetStatus(service.StatusActive).
@@ -385,6 +386,7 @@ func TestOidcHandler_UserInfo_BearerReturnsClaims(t *testing.T) {
 	require.NoError(t, json.Unmarshal(uw.Body.Bytes(), &claims))
 	require.Equal(t, "bob", claims["name"])
 	require.Equal(t, "bob@example.com", claims["email"])
+	require.Equal(t, "acct_test_bob", claims["account_id"])
 }
 
 func TestOidcHandler_UserInfo_MissingTokenChallenges(t *testing.T) {
