@@ -119,6 +119,18 @@ func normalizeOpenAIResponsesRejectedFieldRetryBody(statusCode int, body, respon
 	code := strings.ToLower(strings.TrimSpace(extractUpstreamErrorCode(responseBody)))
 	message := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
 	param := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, "error.param").String()))
+	responsesLiteMessage := strings.ToLower(responsesLiteHeader + " requires `parallel_tool_calls` to be false.")
+	parallelToolCalls := gjson.GetBytes(body, "parallel_tool_calls")
+	if code == "unsupported_value" &&
+		param == "parallel_tool_calls" &&
+		message == responsesLiteMessage &&
+		parallelToolCalls.Type == gjson.True {
+		retryBody, err := sjson.SetBytes(body, "parallel_tool_calls", false)
+		if err != nil {
+			return nil, "", false, fmt.Errorf("serialize Responses Lite parallel_tool_calls retry: %w", err)
+		}
+		return retryBody, "Responses Lite parallel_tool_calls rejection", true, nil
+	}
 	if code == "invalid_function_parameters" &&
 		openAIResponsesToolParametersParamPattern.MatchString(param) &&
 		openAIResponsesMissingSchemaTypePattern.MatchString(message) {

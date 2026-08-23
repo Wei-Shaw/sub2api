@@ -3,6 +3,7 @@
 Record durable architecture/product decisions here.
 
 ## 2026-08-23
+- API-key relay compatibility: preserve normal OpenAI parallel-tool behavior on first attempt. If an upstream relay returns the exact Responses Lite `unsupported_value` rejection for `parallel_tool_calls=true`, use the existing bounded rejected-field retry to resend with `false`; do not globally serialize every API-key request and do not retry near-match errors. This covers relays that apply the private Lite contract downstream of sub2api's inbound-header normalizer.
 - Security policy: accept persistent DLG bearer semantics for this compatibility fix. A valid DLG code may be replayed until its `user_devices` binding or owner is deactivated/revoked; expiry, one-time consume, replay prevention, and post-login rotation are explicitly deferred and are not release blockers for this scoped change.
 - Required controls: canonical 12-character code format, direct binding/owner active checks, captcha verification, fail-closed Redis-backed rate limiting on `/auth/invite-login`, no credential values in logs/audit bodies, and operational revoke by changing device/owner status. Any future lifecycle hardening must be a separately approved contract change with bot-sales compatibility and rollback design.
 - Release boundary: merge/release still requires CI and independent review; production mutation is not part of this change.

@@ -58,6 +58,19 @@ func TestOpenAIResponsesRejectedFieldRetryStateForRequestSharesBoundedBudgetAcro
 	require.False(t, overflow.Allow([]byte(`{"new":"retry"}`)))
 }
 
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyForcesResponsesLiteSerialTools(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","tools":[{"type":"function","name":"shell"}],"parallel_tool_calls":true}`)
+	responseBody := []byte(`{"error":{"code":"unsupported_value","message":"X-OpenAI-Internal-Codex-Responses-Lite requires ` + "`parallel_tool_calls`" + ` to be false.","param":"parallel_tool_calls","type":"invalid_request_error"}}`)
+
+	retryBody, reason, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, responseBody)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "Responses Lite parallel_tool_calls rejection", reason)
+	require.True(t, gjson.GetBytes(retryBody, "parallel_tool_calls").Exists())
+	require.False(t, gjson.GetBytes(retryBody, "parallel_tool_calls").Bool())
+}
+
 func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyRejectsAmbiguousErrors(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -88,6 +101,26 @@ func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyRejectsAmbiguousErrors(t 
 			name:         "structured target conflicts with message target",
 			body:         []byte(`{"max_output_tokens":4096,"truncation":"auto"}`),
 			responseBody: []byte(`{"error":{"code":"unsupported_parameter","message":"Unsupported parameter: truncation.","param":"max_output_tokens"}}`),
+		},
+		{
+			name:         "Responses Lite message with wrong code",
+			body:         []byte(`{"parallel_tool_calls":true}`),
+			responseBody: []byte(`{"error":{"code":"invalid_request_error","message":"X-OpenAI-Internal-Codex-Responses-Lite requires ` + "`parallel_tool_calls`" + ` to be false.","param":"parallel_tool_calls"}}`),
+		},
+		{
+			name:         "Responses Lite message with wrong param",
+			body:         []byte(`{"parallel_tool_calls":true}`),
+			responseBody: []byte(`{"error":{"code":"unsupported_value","message":"X-OpenAI-Internal-Codex-Responses-Lite requires ` + "`parallel_tool_calls`" + ` to be false.","param":"tools"}}`),
+		},
+		{
+			name:         "ambiguous parallel tool calls message",
+			body:         []byte(`{"parallel_tool_calls":true}`),
+			responseBody: []byte(`{"error":{"code":"unsupported_value","message":"parallel_tool_calls is not supported","param":"parallel_tool_calls"}}`),
+		},
+		{
+			name:         "already serial Responses Lite body",
+			body:         []byte(`{"parallel_tool_calls":false}`),
+			responseBody: []byte(`{"error":{"code":"unsupported_value","message":"X-OpenAI-Internal-Codex-Responses-Lite requires ` + "`parallel_tool_calls`" + ` to be false.","param":"parallel_tool_calls"}}`),
 		},
 	}
 
@@ -330,6 +363,28 @@ func TestOpenAIGatewayService_APIKeyRetriesExplicitlyRejectedTopLevelTruncation(
 	require.Equal(t, "auto", gjson.GetBytes(upstream.bodies[0], "truncation").String())
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "truncation").Exists())
 	require.Equal(t, "keep", gjson.GetBytes(upstream.bodies[1], "input").String())
+}
+
+func TestOpenAIGatewayService_APIKeyRetriesResponsesLiteParallelToolCallsRejection(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","stream":true,"input":"run the tool","tools":[{"type":"function","name":"shell","parameters":{"type":"object"}}],"parallel_tool_calls":true}`)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusBadRequest, `{"error":{"code":"unsupported_value","message":"X-OpenAI-Internal-Codex-Responses-Lite requires `+"`parallel_tool_calls`"+` to be false.","param":"parallel_tool_calls","type":"invalid_request_error"}}`),
+		newOpenAIRejectedFieldTestResponse(http.StatusOK, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_ok\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\ndata: [DONE]\n\n"),
+	}}
+	upstream.responses[1].Header.Set("Content-Type", "text/event-stream")
+
+	result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+		context.Background(), newOpenAIRejectedFieldTestContext(body), newOpenAIRejectedFieldTestAccount(), body,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 2)
+	require.Len(t, upstream.requests, 2)
+	require.Empty(t, upstream.requests[0].Header.Get(responsesLiteHeader), "the relay can apply the Lite contract after sub2api forwards the request")
+	require.True(t, gjson.GetBytes(upstream.bodies[0], "parallel_tool_calls").Bool())
+	require.True(t, gjson.GetBytes(upstream.bodies[1], "parallel_tool_calls").Exists())
+	require.False(t, gjson.GetBytes(upstream.bodies[1], "parallel_tool_calls").Bool())
 }
 
 func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyRejectsUnsafeIndexedMutations(t *testing.T) {
