@@ -377,6 +377,20 @@ func normalizeOpenAIParallelToolCallsWithoutTools(body []byte) ([]byte, bool, er
 	return normalized, true, nil
 }
 
+// Responses Lite rejects omitted or true parallel_tool_calls, even when tools are present.
+// Normalize it before account routing so API-key and OAuth paths follow the same contract.
+func normalizeOpenAIResponsesLiteParallelToolCalls(body []byte) ([]byte, bool, error) {
+	parallel := gjson.GetBytes(body, "parallel_tool_calls")
+	if parallel.Type == gjson.False {
+		return body, false, nil
+	}
+	normalized, err := sjson.SetBytes(body, "parallel_tool_calls", false)
+	if err != nil {
+		return body, false, fmt.Errorf("normalize Responses Lite parallel_tool_calls: %w", err)
+	}
+	return normalized, true, nil
+}
+
 func normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body []byte, knownStoreFalse bool) ([]byte, bool, error) {
 	if !knownStoreFalse && gjson.GetBytes(body, "store").Type != gjson.False {
 		return body, false, nil

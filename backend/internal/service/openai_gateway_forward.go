@@ -56,6 +56,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if legacyIngressChanged {
 		body = legacyIngressBody
 	}
+	responsesLite := isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader))
+	if responsesLite {
+		liteBody, changed, liteErr := normalizeOpenAIResponsesLiteParallelToolCalls(body)
+		if liteErr != nil {
+			return nil, liteErr
+		}
+		if changed {
+			body = liteBody
+		}
+	}
 	// 在分流到 passthrough / Codex transform / 原生 ChatCompletions 之前统一修正
 	// 显式为 null 的工具 Schema type，否则 upstream 的 400 会被归一成可重试的 502，
 	// 同一份坏定义在账号池里反复重放。
@@ -73,7 +83,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			body = reasoningBody
 		}
 	}
-	if account.IsOpenAIOAuthLike() && isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader)) {
+	if account.IsOpenAIOAuthLike() && responsesLite {
 		liteBody, changed, liteErr := normalizeOpenAIResponsesLiteToolsPayload(body)
 		if liteErr != nil {
 			setOpsUpstreamError(c, http.StatusBadRequest, liteErr.Error(), "")
