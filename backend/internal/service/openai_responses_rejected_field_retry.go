@@ -116,21 +116,26 @@ func normalizeOpenAIResponsesRejectedFieldRetryBody(statusCode int, body, respon
 		return nil, "", false, nil
 	}
 
-	code := strings.ToLower(strings.TrimSpace(extractUpstreamErrorCode(responseBody)))
-	message := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
-	param := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, "error.param").String()))
-	responsesLiteMessage := strings.ToLower(responsesLiteHeader + " requires `parallel_tool_calls` to be false.")
+	responseCode := gjson.GetBytes(responseBody, "error.code")
+	responseMessage := gjson.GetBytes(responseBody, "error.message")
+	responseParam := gjson.GetBytes(responseBody, "error.param")
 	parallelToolCalls := gjson.GetBytes(body, "parallel_tool_calls")
-	if code == "unsupported_value" &&
-		param == "parallel_tool_calls" &&
-		message == responsesLiteMessage &&
-		parallelToolCalls.Type == gjson.True {
+	if gjson.ValidBytes(body) && gjson.ParseBytes(body).IsObject() &&
+		gjson.ValidBytes(responseBody) && gjson.ParseBytes(responseBody).IsObject() &&
+		responseCode.Type == gjson.String && responseCode.String() == "unsupported_value" &&
+		responseMessage.Type == gjson.String && responseMessage.String() == responsesLiteHeader+" requires `parallel_tool_calls` to be false." &&
+		responseParam.Type == gjson.String && responseParam.String() == "parallel_tool_calls" &&
+		(!parallelToolCalls.Exists() || parallelToolCalls.Type == gjson.True) {
 		retryBody, err := sjson.SetBytes(body, "parallel_tool_calls", false)
 		if err != nil {
 			return nil, "", false, fmt.Errorf("serialize Responses Lite parallel_tool_calls retry: %w", err)
 		}
 		return retryBody, "Responses Lite parallel_tool_calls rejection", true, nil
 	}
+
+	code := strings.ToLower(strings.TrimSpace(extractUpstreamErrorCode(responseBody)))
+	message := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
+	param := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, "error.param").String()))
 	if code == "invalid_function_parameters" &&
 		openAIResponsesToolParametersParamPattern.MatchString(param) &&
 		openAIResponsesMissingSchemaTypePattern.MatchString(message) {
