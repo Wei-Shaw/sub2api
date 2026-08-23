@@ -14,8 +14,8 @@ func TestParseOpenAIRateLimitResetCreditDetails_PreservesAvailableCreditOrder(t 
 		"availableCount":"2",
 		"credits":[
 			{"reset_type":"codex_rate_limits","status":"redeemed","expires_at":"2026-07-01T04:05:06Z"REDACTED,
-			{"reset_type":"codex_rate_limits","status":"available","expires_at":"2026-07-04T04:05:06Z"REDACTED,
-			{"resetType":"codex_rate_limits","status":"available","expiresAt":"2026-07-03T04:05:06Z"REDACTED,
+			{"id":"credit-later","reset_type":"codex_rate_limits","status":"available","expires_at":"2026-07-04T04:05:06Z"REDACTED,
+			{"creditId":"credit-earlier","resetType":"codex_rate_limits","status":"available","expiresAt":"2026-07-03T04:05:06Z"REDACTED,
 			{"reset_type":"other","status":"available","expires_at":"2026-07-02T04:05:06Z"REDACTED
 		]
 REDACTED`)
@@ -28,6 +28,10 @@ REDACTED
 		{ExpiresAt: "2026-07-04T04:05:06Z"REDACTED,
 		{ExpiresAt: "2026-07-03T04:05:06Z"REDACTED,
 REDACTED, details.Credits)
+	require.Equal(t, []openAIAutoResetCreditCandidate{
+		{ID: "credit-later", ExpiresAt: "2026-07-04T04:05:06Z"REDACTED,
+		{ID: "credit-earlier", ExpiresAt: "2026-07-03T04:05:06Z"REDACTED,
+REDACTED, details.AutoResetCandidates)
 REDACTED
 
 func TestQueryUsageResetCreditCountPrecedence(t *testing.T) {

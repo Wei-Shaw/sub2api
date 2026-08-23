@@ -34,18 +34,20 @@ type openAIAccountStateRecoverer interface {
 	RecoverAccountState(ctx context.Context, accountID int64, options service.AccountRecoveryOptions) (*service.SuccessfulTestRecoveryResult, error)
 REDACTED
 
-const (
-	openAIQuotaResetWarningCacheRefreshFailed    = "reset_credit_cache_refresh_failed"
-	openAIQuotaResetWarningAccountRecoveryFailed = "account_state_recovery_failed"
-	openAIQuotaResetWarningAccountRefreshFailed  = "account_state_refresh_failed"
-)
-
 // openAIQuotaResetPostProcessTimeout bounds the work performed AFTER the
 // (non-refundable) reset credit has already been consumed upstream. The whole
 // request must stay comfortably inside the panel HTTP client timeout, otherwise
 // the browser aborts a mutation that already succeeded and the operator retries
 // it — spending a second credit.
 const openAIQuotaResetPostProcessTimeout = 8 * time.Second
+
+// 保留 handler 包内的告警码名称，避免共享工作流下沉到 service 后破坏既有测试和包内调用。
+// 实际值统一引用 service 常量，防止手动重置与自动重置的响应码发生漂移。
+const (
+	openAIQuotaResetWarningCacheRefreshFailed    = service.OpenAIQuotaResetWarningCacheRefreshFailed
+	openAIQuotaResetWarningAccountRecoveryFailed = service.OpenAIQuotaResetWarningAccountRecoveryFailed
+	openAIQuotaResetWarningAccountRefreshFailed  = service.OpenAIQuotaResetWarningAccountRefreshFailed
+)
 
 type openAIQuotaResetResponse struct {
 	service.OpenAIQuotaResetResult
@@ -493,6 +495,7 @@ REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
+	service.NotifyOpenAIAutoResetCredit(accountID)
 	response.Success(c, usage)
 REDACTED
 
@@ -523,6 +526,7 @@ REDACTED
 		response.Error(c, http.StatusInternalServerError, "openai quota query returned an empty result")
 		return
 REDACTED
+	service.NotifyOpenAIAutoResetCredit(accountID)
 
 	refreshResponse := openAIQuotaRefreshResponse{OpenAIQuotaUsage: *usageREDACTED
 	// A failed snapshot write leaves the previous cache intact — report it as a
@@ -600,54 +604,19 @@ REDACTED
 	postCtx, cancelPost := openAIQuotaResetPostProcessContext(c.Request.Context())
 	defer cancelPost()
 
-	// Step 1 — unblocking the account is the whole point of consuming a credit
-	// (#3672 / #3740), so it runs FIRST and is never gated on the display cache.
-	// Recovery is DB-only and leaves the manual `schedulable` switch untouched.
-	if h.rateLimitService == nil {
-		resetResponse.WarningCode = openAIQuotaResetWarningAccountRecoveryFailed
-		response.Success(c, resetResponse)
-		return
+	postResult := service.RunOpenAIQuotaResetPostProcess(
+		postCtx,
+		accountID,
+		h.quotaService,
+		h.rateLimitService,
+		h.adminService.GetAccount,
+	)
+	resetResponse.Quota = postResult.Quota
+	resetResponse.CacheRefreshed = postResult.CacheRefreshed
+	resetResponse.AccountStateRecovered = postResult.AccountStateRecovered
+	resetResponse.WarningCode = postResult.WarningCode
+	if postResult.Account != nil {
+		resetResponse.Account = dto.AccountFromService(postResult.Account)
 REDACTED
-	if _, err := h.rateLimitService.RecoverAccountState(postCtx, accountID, service.AccountRecoveryOptions{
-		InvalidateToken: true,
-REDACTED); err != nil {
-		// Recovery failures are almost always storage-level; the remaining steps
-		// share that dependency, so stop here instead of compounding the failure.
-		slog.Warn("openai_quota_reset_account_recovery_failed", "account_id", accountID, "error", err)
-		resetResponse.WarningCode = openAIQuotaResetWarningAccountRecoveryFailed
-		response.Success(c, resetResponse)
-		return
-REDACTED
-	resetResponse.AccountStateRecovered = true
-
-	// Step 2 — refresh the reset-credit display cache. A failure here is reported
-	// but must not hide the recovered account row produced by step 3.
-	usage, usageErr := h.quotaService.QueryUsage(postCtx, accountID)
-	switch {
-	case usageErr != nil || usage == nil:
-		slog.Warn("openai_quota_reset_cache_refresh_failed", "account_id", accountID, "error", usageErr)
-		resetResponse.WarningCode = openAIQuotaResetWarningCacheRefreshFailed
-	default:
-		if err := h.quotaService.CacheResetCreditsSnapshot(postCtx, accountID, usage.RateLimitResetCredits); err != nil {
-			slog.Warn("openai_quota_reset_cache_refresh_failed", "account_id", accountID, "error", err)
-			resetResponse.WarningCode = openAIQuotaResetWarningCacheRefreshFailed
-	REDACTED else {
-			resetResponse.Quota = usage
-			resetResponse.CacheRefreshed = true
-	REDACTED
-REDACTED
-
-	// Step 3 — hand back the post-recovery account row so the list drops the
-	// stale rate-limit badge without waiting for the next poll.
-	account, err := h.adminService.GetAccount(postCtx, accountID)
-	if err != nil {
-		slog.Warn("openai_quota_reset_account_refresh_failed", "account_id", accountID, "error", err)
-		if resetResponse.WarningCode == "" {
-			resetResponse.WarningCode = openAIQuotaResetWarningAccountRefreshFailed
-	REDACTED
-		response.Success(c, resetResponse)
-		return
-REDACTED
-	resetResponse.Account = dto.AccountFromService(account)
 	response.Success(c, resetResponse)
 REDACTED
