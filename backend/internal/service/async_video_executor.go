@@ -52,6 +52,7 @@ type AsyncVideoService struct {
 	userRepo               UserRepository
 	billing                *BillingService
 	pricingResolver        *ModelPricingResolver
+	groupRepo              GroupRepository
 	deferred               *DeferredService
 	billingContextResolver *BillingContextResolver
 	balanceCache           interface {
@@ -106,6 +107,13 @@ func (s *AsyncVideoService) SetBillingContextResolver(resolver *BillingContextRe
 func (s *AsyncVideoService) SetPricingResolver(r *ModelPricingResolver) {
 	if s != nil {
 		s.pricingResolver = r
+	}
+}
+
+// SetGroupRepository injects the group reader used to hydrate per-model pricing.
+func (s *AsyncVideoService) SetGroupRepository(repo GroupRepository) {
+	if s != nil {
+		s.groupRepo = repo
 	}
 }
 
@@ -232,10 +240,10 @@ func (s *AsyncVideoService) SubmitAsync(ctx context.Context, in *AsyncVideoSubmi
 		gid := *in.GroupID
 		groupID = &gid
 	}
-	resolved := s.pricingResolver.Resolve(ctx, PricingInput{
-		Model:   in.RequestedModel,
-		GroupID: groupID,
-	})
+	resolved, err := s.resolveVideoPricing(ctx, in.RequestedModel, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("async video: resolve pricing: %w", err)
+	}
 	if resolved == nil || resolved.Mode != BillingModeVideo {
 		return nil, fmt.Errorf("async video: no video pricing configured for model %q in current group", in.RequestedModel)
 	}
@@ -353,6 +361,25 @@ func (s *AsyncVideoService) SubmitAsync(ctx context.Context, in *AsyncVideoSubmi
 		s.deferred.ScheduleLastUsedUpdate(in.Account.ID)
 	}
 	return task, nil
+}
+
+func (s *AsyncVideoService) resolveVideoPricing(ctx context.Context, model string, groupID *int64) (*ResolvedPricing, error) {
+	if s == nil || s.pricingResolver == nil {
+		return nil, nil
+	}
+	var group *Group
+	if s.groupRepo != nil && groupID != nil && *groupID > 0 {
+		var err error
+		group, err = s.groupRepo.GetByIDLite(ctx, *groupID)
+		if err != nil {
+			return nil, fmt.Errorf("load group %d: %w", *groupID, err)
+		}
+	}
+	return s.pricingResolver.Resolve(ctx, PricingInput{
+		Model:   model,
+		GroupID: groupID,
+		Group:   group,
+	}), nil
 }
 
 func prepareVideoRequestPayload(account *Account, upstreamModel string, payload map[string]any) map[string]any {

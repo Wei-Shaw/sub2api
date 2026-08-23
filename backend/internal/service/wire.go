@@ -1164,6 +1164,7 @@ func ProvideAsyncVideoService(
 	billingContextResolver *BillingContextResolver,
 	billingCache *BillingCacheService,
 	pricingResolver *ModelPricingResolver,
+	groupRepo GroupRepository,
 	costCenter *CostCenterService,
 	cosTransfer *COSImageTransferService,
 	opsService *OpsService,
@@ -1174,6 +1175,7 @@ func ProvideAsyncVideoService(
 	svc.SetBillingContextResolver(billingContextResolver)
 	svc.SetBalanceCache(billingCache)
 	svc.SetPricingResolver(pricingResolver)
+	svc.SetGroupRepository(groupRepo)
 	svc.SetCostCenterWriter(costCenter)
 	svc.SetCOSTransferService(cosTransfer)
 	svc.SetOpsService(opsService)

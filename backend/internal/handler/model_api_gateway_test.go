@@ -19,9 +19,13 @@ import (
 
 type modelAPINoAccountRepo struct {
 	service.AccountRepository
+	listCalls *int
 }
 
 func (r *modelAPINoAccountRepo) ListSchedulableByGroupIDAndPlatform(context.Context, int64, string) ([]service.Account, error) {
+	if r.listCalls != nil {
+		(*r.listCalls)++
+	}
 	return nil, nil
 }
 
@@ -34,8 +38,12 @@ func (r *modelAPIDisabledSettingRepo) GetValue(context.Context, string) (string,
 }
 
 func newModelAPITestGatewayService() *service.GatewayService {
+	return newModelAPITestGatewayServiceWithRepo(&modelAPINoAccountRepo{})
+}
+
+func newModelAPITestGatewayServiceWithRepo(repo service.AccountRepository) *service.GatewayService {
 	return service.NewGatewayService(
-		&modelAPINoAccountRepo{}, nil, nil, nil, nil, nil, nil, nil, &config.Config{}, nil, nil,
+		repo, nil, nil, nil, nil, nil, nil, nil, &config.Config{}, nil, nil,
 		&service.BillingService{},
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 	)
@@ -98,6 +106,19 @@ func TestModelAPIGatewayVideoFeatureGateOnlyAppliesAfterMediaRouting(t *testing.
 
 	require.Equal(t, http.StatusForbidden, recorder.Code, recorder.Body.String())
 	require.Contains(t, recorder.Body.String(), `"type":"feature_disabled"`)
+}
+
+func TestModelAPIGatewayExplicitVideoSkipsImageAccountProbe(t *testing.T) {
+	listCalls := 0
+	repo := &modelAPINoAccountRepo{listCalls: &listCalls}
+	settingService := service.NewSettingService(&modelAPIDisabledSettingRepo{}, &config.Config{})
+	handler := NewModelAPIGatewayHandler(newModelAPITestGatewayServiceWithRepo(repo), nil, nil, nil, nil, settingService)
+
+	recorder := performModelAPISubmit(t, handler, "/api/v1/model/bytedance/seedance-2.5/text-to-video", `{"resolution":"720p"}`)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code, recorder.Body.String())
+	require.Contains(t, recorder.Body.String(), `"type":"feature_disabled"`)
+	require.Zero(t, listCalls, "explicit video requests must not query the image account pool")
 }
 
 func TestMediaFalStatusFromTaskMapsTerminalFailureToFailed(t *testing.T) {

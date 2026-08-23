@@ -97,6 +97,23 @@ func TestVideoAccountSupportsRequestUsesAtlasWhitelistWhenMappingDoesNotMatch(t 
 	))
 }
 
+func TestVideoAccountSupportsRequestUsesExactAtlasMappingForSeedanceTextToVideo(t *testing.T) {
+	service := &GatewayService{}
+	const model = "bytedance/seedance-2.5/text-to-video"
+	account := &Account{
+		Platform: PlatformAtlasCloud,
+		Extra:    map[string]any{"video_models_enabled": true},
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{model: model},
+		},
+	}
+
+	mappingSupported, whitelistSupported := videoMappingSupportsRequest(account, model)
+	require.True(t, mappingSupported)
+	require.False(t, whitelistSupported)
+	require.True(t, service.videoAccountSupportsRequest(context.Background(), account, model, ""))
+}
+
 func TestVideoAccountSupportsRequestRejectsUnknownModelWithoutMappingOrWhitelist(t *testing.T) {
 	service := &GatewayService{}
 	for _, platform := range []string{PlatformAtlasCloud, PlatformApiz} {

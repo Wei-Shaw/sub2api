@@ -874,10 +874,11 @@ func (s *GatewayService) falAccountPricingConfigured(ctx context.Context, accoun
 			group, _ = s.groupRepo.GetByIDLite(ctx, *groupID)
 		}
 	}
-	resolved := s.resolver.Resolve(ctx, PricingInput{Model: upstreamModel, GroupID: groupID, Group: group})
-	if resolved != nil && (resolved.Source == PricingSourceGroup || resolved.Source == PricingSourceChannel) {
-		return (resolved.Mode == BillingModeImage || resolved.Mode == BillingModePerRequest) &&
-			(len(resolved.RequestTiers) > 0 || resolved.DefaultPerRequestPrice > 0)
+	for _, pricingModel := range imagePricingModelCandidates(requestedModel, upstreamModel) {
+		resolved := s.resolver.Resolve(ctx, PricingInput{Model: pricingModel, GroupID: groupID, Group: group})
+		if isConfiguredImagePricing(resolved) {
+			return true
+		}
 	}
 	if groupID == nil {
 		return false
@@ -893,4 +894,30 @@ func (s *GatewayService) falAccountPricingConfigured(ctx context.Context, accoun
 		}
 	}
 	return false
+}
+
+func imagePricingModelCandidates(requestedModel, upstreamModel string) []string {
+	seen := make(map[string]struct{}, 2)
+	models := make([]string, 0, 2)
+	for _, model := range []string{requestedModel, upstreamModel} {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		key := strings.ToLower(model)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		models = append(models, model)
+	}
+	return models
+}
+
+func isConfiguredImagePricing(resolved *ResolvedPricing) bool {
+	if resolved == nil || (resolved.Source != PricingSourceGroup && resolved.Source != PricingSourceChannel) {
+		return false
+	}
+	return (resolved.Mode == BillingModeImage || resolved.Mode == BillingModePerRequest) &&
+		(len(resolved.RequestTiers) > 0 || resolved.DefaultPerRequestPrice > 0)
 }
