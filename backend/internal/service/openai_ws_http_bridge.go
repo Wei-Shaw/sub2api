@@ -474,6 +474,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	responseID := ""
 	usage := OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
+	strictWireNormalizer := newOpenAIWSStrictWireNormalizer()
 	var firstTokenMs *int
 	reqStream := openAIWSPayloadBoolFromRaw(body, "stream", true)
 	eventCount := 0
@@ -606,6 +607,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 
 		upstreamMessage := []byte(openAICompatPayloadWithEventType(trimmedData, pendingSSEEventType))
 		if normalized, changed := normalizeCompletedImageGenerationStatus(upstreamMessage); changed {
+			upstreamMessage = normalized
+		}
+		if normalized, changed := strictWireNormalizer.normalize(upstreamMessage); changed {
 			upstreamMessage = normalized
 		}
 		eventType, eventResponseID, _ := parseOpenAIWSEventEnvelope(upstreamMessage)

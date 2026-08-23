@@ -29,6 +29,10 @@ type openAIWSClientFrameConn struct {
 	// model identifier they supplied for the current turn.
 	restoreResponseModel func([]byte) []byte
 	restoreToolNames     func([]byte) []byte
+	// strictWire carries per-turn output-item state. WriteFrame is the only
+	// method that touches it, and the passthrough relay drives WriteFrame from
+	// the single runUpstreamToClient goroutine, so it needs no locking.
+	strictWire *openAIWSStrictWireNormalizer
 }
 
 // openAIWSPolicyEnforcingFrameConn wraps a client-side FrameConn and runs
@@ -635,6 +639,9 @@ func (c *openAIWSClientFrameConn) WriteFrame(ctx context.Context, msgType coderw
 		if normalized, changed := normalizeCompletedImageGenerationStatus(payload); changed {
 			payload = normalized
 		}
+		if normalized, changed := c.strictWire.normalize(payload); changed {
+			payload = normalized
+		}
 		if c.restoreResponseModel != nil {
 			payload = c.restoreResponseModel(payload)
 		}
@@ -940,6 +947,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		controlCtx:           ctx,
 		interTurnIdleTimeout: s.openAIWSIngressInterTurnIdleTimeout(),
 		interTurnStarted:     make(chan struct{}, 1),
+		strictWire:           newOpenAIWSStrictWireNormalizer(),
 		restoreResponseModel: func(payload []byte) []byte {
 			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
 			if !openAIWSEventMayContainModel(eventType) {

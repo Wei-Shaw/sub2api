@@ -350,6 +350,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
+	strictWireNormalizer := newOpenAIWSStrictWireNormalizer()
 	var firstTokenMs *int
 	responseID := ""
 	var finalResponse []byte
@@ -519,6 +520,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			return nil, fmt.Errorf("openai ws read event: %w", readErr)
 		}
 		if normalized, changed := normalizeCompletedImageGenerationStatus(message); changed {
+			message = normalized
+		}
+		if normalized, changed := strictWireNormalizer.normalize(message); changed {
 			message = normalized
 		}
 
