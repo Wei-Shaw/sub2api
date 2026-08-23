@@ -189,18 +189,24 @@
 
           <template #cell-usage="{ row }">
             <div class="text-sm">
-              <div class="flex items-center gap-1.5">
-                <span class="text-gray-500 dark:text-gray-400">{{ t('keys.today') }}:</span>
-                <span class="font-medium text-gray-900 dark:text-white">
-                  ${{ (usageStats[row.id]?.today_actual_cost ?? 0).toFixed(4) }}
-                </span>
+              <div v-if="usageLoading" data-test="usage-loading" class="space-y-1.5 py-0.5">
+                <div class="h-4 w-24 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
+                <div class="h-4 w-28 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
               </div>
-              <div class="mt-0.5 flex items-center gap-1.5">
-                <span class="text-gray-500 dark:text-gray-400">{{ t('keys.total') }}:</span>
-                <span class="font-medium text-gray-900 dark:text-white">
-                  ${{ (usageStats[row.id]?.total_actual_cost ?? 0).toFixed(4) }}
-                </span>
-              </div>
+              <template v-else>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('keys.today') }}:</span>
+                  <span class="font-medium text-gray-900 dark:text-white">
+                    ${{ (usageStats[row.id]?.today_actual_cost ?? 0).toFixed(4) }}
+                  </span>
+                </div>
+                <div class="mt-0.5 flex items-center gap-1.5">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('keys.total') }}:</span>
+                  <span class="font-medium text-gray-900 dark:text-white">
+                    ${{ (usageStats[row.id]?.total_actual_cost ?? 0).toFixed(4) }}
+                  </span>
+                </div>
+              </template>
               <!-- Quota progress (if quota is set) -->
               <div v-if="row.quota > 0" class="mt-1.5">
                 <div class="flex items-center gap-1.5">
@@ -1276,6 +1282,7 @@ const submitting = ref(false)
 const now = ref(new Date())
 let resetTimer: ReturnType<typeof setInterval> | null = null
 const usageStats = ref<Record<string, BatchApiKeyUsageStats>>({})
+const usageLoading = ref(false)
 const userGroupRates = ref<Record<number, number>>({})
 
 const pagination = ref({
@@ -1451,12 +1458,44 @@ const isAbortError = (error: unknown) => {
   return name === 'AbortError' || code === 'ERR_CANCELED'
 }
 
+const loadApiKeyUsage = async (keys: ApiKey[], controller: AbortController) => {
+  if (keys.length === 0) {
+    if (abortController === controller) {
+      usageStats.value = {}
+      usageLoading.value = false
+    }
+    return
+  }
+
+  const { signal } = controller
+  usageStats.value = {}
+  usageLoading.value = true
+  try {
+    const usageResponse = await usageAPI.getDashboardApiKeysUsage(
+      keys.map((key) => key.id),
+      { signal }
+    )
+    if (!signal.aborted && abortController === controller) {
+      usageStats.value = usageResponse.stats
+    }
+  } catch (error) {
+    if (!isAbortError(error)) {
+      console.error('Failed to load usage stats:', error)
+    }
+  } finally {
+    if (abortController === controller) {
+      usageLoading.value = false
+    }
+  }
+}
+
 const loadApiKeys = async () => {
   abortController?.abort()
   const controller = new AbortController()
   abortController = controller
   const { signal } = controller
   loading.value = true
+  usageLoading.value = false
   try {
     // Build filters
     const filters: {
@@ -1480,19 +1519,10 @@ const loadApiKeys = async () => {
     pagination.value.total = response.total
     pagination.value.pages = response.pages
 
-    // Load usage stats for all API keys in the list
-    if (response.items.length > 0) {
-      const keyIds = response.items.map((k) => k.id)
-      try {
-        const usageResponse = await usageAPI.getDashboardApiKeysUsage(keyIds, { signal })
-        if (signal.aborted) return
-        usageStats.value = usageResponse.stats
-      } catch (e) {
-        if (!isAbortError(e)) {
-          console.error('Failed to load usage stats:', e)
-        }
-      }
+    if (abortController === controller) {
+      loading.value = false
     }
+    void loadApiKeyUsage(response.items, controller)
   } catch (error) {
     if (isAbortError(error)) {
       return
@@ -1964,6 +1994,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  abortController?.abort()
   document.removeEventListener('click', closeGroupSelector)
   if (resetTimer) clearInterval(resetTimer)
 })
