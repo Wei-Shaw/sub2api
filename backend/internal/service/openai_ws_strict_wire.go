@@ -17,12 +17,14 @@ import (
 // Strict clients deserialize both forms and require the fields to agree.
 type openAIWSStrictWireNormalizer struct {
 	itemIDs   map[int]string
+	itemTypes map[int]string
 	snapshots map[int]json.RawMessage
 }
 
 func newOpenAIWSStrictWireNormalizer() *openAIWSStrictWireNormalizer {
 	return &openAIWSStrictWireNormalizer{
 		itemIDs:   make(map[int]string),
+		itemTypes: make(map[int]string),
 		snapshots: make(map[int]json.RawMessage),
 	}
 }
@@ -105,7 +107,13 @@ func (n *openAIWSStrictWireNormalizer) normalizeItem(
 	updated := data
 	changed := false
 	itemType := strings.TrimSpace(item.Get("type").String())
-	if snapshot := n.snapshots[outputIndex]; len(snapshot) > 0 {
+	// A terminal rebuild may drop or reorder items, so the same array position
+	// can hold a different item than it did during the lifecycle events. Only
+	// inherit remembered state when the type still agrees, otherwise fields
+	// from one item type leak onto another (a reasoning summary landing on a
+	// message, for example).
+	inheritsRememberedState := n.rememberedTypeMatches(outputIndex, itemType)
+	if snapshot := n.snapshots[outputIndex]; inheritsRememberedState && len(snapshot) > 0 {
 		var snapshotObject map[string]json.RawMessage
 		if json.Unmarshal(snapshot, &snapshotObject) == nil {
 			updated, changed = mergeOpenAIWSItemSnapshot(updated, path, snapshotObject)
@@ -120,7 +128,9 @@ func (n *openAIWSStrictWireNormalizer) normalizeItem(
 
 	itemID := strings.TrimSpace(item.Get("id").String())
 	if itemID == "" {
-		itemID = n.itemIDs[outputIndex]
+		if inheritsRememberedState {
+			itemID = n.itemIDs[outputIndex]
+		}
 		if itemID == "" {
 			itemID = generateOpenAIWSStrictItemID(prefix)
 		}
@@ -131,6 +141,7 @@ func (n *openAIWSStrictWireNormalizer) normalizeItem(
 		}
 	} else {
 		n.itemIDs[outputIndex] = itemID
+		n.itemTypes[outputIndex] = itemType
 	}
 
 	item = gjson.GetBytes(updated, path)
@@ -305,6 +316,20 @@ func (n *openAIWSStrictWireNormalizer) rememberSnapshot(index int, raw string) {
 		return
 	}
 	n.snapshots[index] = json.RawMessage(append([]byte(nil), raw...))
+	if itemType := strings.TrimSpace(gjson.Get(raw, "type").String()); itemType != "" {
+		n.itemTypes[index] = itemType
+	}
+}
+
+// rememberedTypeMatches reports whether the state remembered for outputIndex
+// describes an item of the same type. An unknown or disagreeing type means the
+// remembered state belongs to a different item and must not be applied.
+func (n *openAIWSStrictWireNormalizer) rememberedTypeMatches(outputIndex int, itemType string) bool {
+	if n == nil || itemType == "" {
+		return false
+	}
+	remembered := strings.TrimSpace(n.itemTypes[outputIndex])
+	return remembered != "" && remembered == itemType
 }
 
 // openAIWSStrictItemStatusForResponseStatus maps a response-level status onto

@@ -127,3 +127,40 @@ func TestOpenAIWSStrictWireNormalizerLeavesUnknownResponseStatusAlone(t *testing
 	require.False(t, gjson.GetBytes(normalized, "response.output.0.status").Exists(),
 		"an unmappable response status must not be copied onto the item")
 }
+
+// A terminal rebuild can collapse several lifecycle items into a single output
+// entry, leaving array position 0 holding a different item than the one the
+// lifecycle events reported there. Remembered state must not leak across that
+// mismatch.
+func TestOpenAIWSStrictWireNormalizerDoesNotLeakStateAcrossItemTypes(t *testing.T) {
+	normalizer := newOpenAIWSStrictWireNormalizer()
+
+	_, _ = normalizer.normalize([]byte(`{
+		"type":"response.output_item.done",
+		"output_index":0,
+		"item":{"id":"rs_1","type":"reasoning","summary":[{"type":"summary_text","text":"thinking"}],"encrypted_content":"secret"}
+	}`))
+	_, _ = normalizer.normalize([]byte(`{
+		"type":"response.output_item.done",
+		"output_index":1,
+		"item":{"id":"msg_1","type":"message","status":"completed","phase":"final_answer","role":"assistant","content":[{"type":"output_text","text":"hi","annotations":[],"logprobs":[]}]}
+	}`))
+
+	// The terminal event kept only one message, now sitting at index 0 where
+	// the reasoning item used to be.
+	completed, _ := normalizer.normalize([]byte(`{
+		"type":"response.completed",
+		"response":{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi"}]}]}
+	}`))
+
+	terminal := gjson.GetBytes(completed, "response.output.0")
+	require.Equal(t, "message", terminal.Get("type").String())
+	require.NotEqual(t, "rs_1", terminal.Get("id").String(),
+		"a message must not inherit the reasoning item's id")
+	require.True(t, strings.HasPrefix(terminal.Get("id").String(), "msg_"))
+	require.False(t, terminal.Get("summary").Exists(),
+		"the reasoning item's summary must not leak onto a message")
+	require.False(t, terminal.Get("encrypted_content").Exists(),
+		"the reasoning item's encrypted_content must not leak onto a message")
+	require.Equal(t, "completed", terminal.Get("status").String())
+}
