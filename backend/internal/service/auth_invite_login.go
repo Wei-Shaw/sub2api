@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -35,6 +36,14 @@ func (s *AuthService) InviteLogin(ctx context.Context, input InviteLoginInput) (
 	code := strings.TrimSpace(input.InvitationCode)
 	if code == "" {
 		return nil, ErrInvitationCodeRequired
+	}
+	if isDeviceLoginCode(code) {
+		code = strings.ToUpper(code)
+		binding, err := s.resolveDirectInviteDeviceCode(ctx, code)
+		if err != nil {
+			return nil, err
+		}
+		return s.inviteLoginWithDirectDeviceCode(ctx, binding, code, input)
 	}
 	if s == nil || s.redeemRepo == nil {
 		return nil, ErrServiceUnavailable
@@ -95,8 +104,64 @@ func (s *AuthService) inviteLoginWithDeviceCode(ctx context.Context, redeemCode 
 	if !binding.IsActive() {
 		return nil, ErrDeviceRevoked
 	}
-	if normalizeDeviceHash(binding.DeviceHash) != normalizeDeviceHash(input.DeviceHash) {
+	deviceHash := normalizeDeviceHash(input.DeviceHash)
+	if normalizeDeviceHash(binding.DeviceHash) != deviceHash {
 		return nil, ErrDeviceMismatch
+	}
+	if err := validateInviteLoginInstallID(binding, input.InstallID); err != nil {
+		return nil, err
+	}
+	return s.completeInviteDeviceLogin(ctx, binding, redeemCode, true)
+}
+
+func (s *AuthService) resolveDirectInviteDeviceCode(ctx context.Context, code string) (*UserDevice, error) {
+	if s == nil || s.inviteLoginDeviceRepo == nil {
+		return nil, ErrServiceUnavailable
+	}
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if !isDeviceLoginCode(code) {
+		return nil, ErrInvitationCodeInvalid
+	}
+	binding, err := s.inviteLoginDeviceRepo.GetByDeviceCode(ctx, code)
+	if err != nil {
+		if errors.Is(err, ErrUserDeviceNotFound) {
+			return nil, ErrInvitationCodeInvalid
+		}
+		return nil, ErrServiceUnavailable
+	}
+	if binding == nil {
+		return nil, ErrInvitationCodeInvalid
+	}
+	return binding, nil
+}
+
+func (s *AuthService) inviteLoginWithDirectDeviceCode(ctx context.Context, binding *UserDevice, code string, input InviteLoginInput) (*InviteLoginResult, error) {
+	if binding == nil || !binding.IsActive() {
+		return nil, ErrDeviceRevoked
+	}
+	deviceHash, err := validateInviteLoginDeviceInputForClient(input)
+	if err != nil {
+		return nil, err
+	}
+	if deviceHash != "" && normalizeDeviceHash(binding.DeviceHash) != deviceHash {
+		return nil, ErrDeviceMismatch
+	}
+	if err := validateInviteLoginInstallID(binding, input.InstallID); err != nil {
+		return nil, err
+	}
+	return s.completeInviteDeviceLogin(ctx, binding, &RedeemCode{
+		Code:   code,
+		Type:   RedeemTypeDeviceLogin,
+		Status: StatusUnused,
+	}, false)
+}
+
+func (s *AuthService) completeInviteDeviceLogin(ctx context.Context, binding *UserDevice, redeemCode *RedeemCode, provisionBootstrap bool) (*InviteLoginResult, error) {
+	if s == nil || s.userRepo == nil || binding == nil {
+		return nil, ErrServiceUnavailable
+	}
+	if !binding.IsActive() {
+		return nil, ErrDeviceRevoked
 	}
 	user, err := s.userRepo.GetByID(ctx, binding.UserID)
 	if err != nil || user == nil {
@@ -106,9 +171,12 @@ func (s *AuthService) inviteLoginWithDeviceCode(ctx context.Context, redeemCode 
 		return nil, err
 	}
 
-	bootstrapKeys, err := s.provisionInviteBootstrapAPIKeys(ctx, user.ID, redeemCode)
-	if err != nil {
-		return nil, err
+	var bootstrapKeys []InviteBootstrapAPIKey
+	if provisionBootstrap {
+		bootstrapKeys, err = s.provisionInviteBootstrapAPIKeys(ctx, user.ID, redeemCode)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := s.inviteLoginDeviceRepo.UpdateLastLoginAt(ctx, binding.ID, time.Now().UTC()); err != nil {
 		return nil, ErrServiceUnavailable
@@ -144,17 +212,45 @@ func (s *AuthService) completeInviteBootstrapLogin(ctx context.Context, redeemCo
 }
 
 func validateInviteLoginDeviceInput(input InviteLoginInput) error {
-	deviceHash := normalizeDeviceHash(input.DeviceHash)
+	_, err := validateInviteLoginDeviceHash(input.DeviceHash, false)
+	return err
+}
+
+func validateInviteLoginDeviceInputForClient(input InviteLoginInput) (string, error) {
+	return validateInviteLoginDeviceHash(input.DeviceHash, isWebInviteLogin(input))
+}
+
+func validateInviteLoginDeviceHash(value string, allowMissing bool) (string, error) {
+	deviceHash := normalizeDeviceHash(value)
 	if deviceHash == "" {
-		return ErrDeviceHashRequired
+		if allowMissing {
+			return "", nil
+		}
+		return "", ErrDeviceHashRequired
 	}
 	if len(deviceHash) != 64 {
-		return ErrDeviceHashInvalid
+		return "", ErrDeviceHashInvalid
 	}
 	for _, ch := range deviceHash {
 		if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
-			return ErrDeviceHashInvalid
+			return "", ErrDeviceHashInvalid
 		}
+	}
+	return deviceHash, nil
+}
+
+func isWebInviteLogin(input InviteLoginInput) bool {
+	return strings.EqualFold(strings.TrimSpace(input.ClientKind), "web")
+}
+
+func validateInviteLoginInstallID(binding *UserDevice, installID string) error {
+	if binding == nil || binding.InstallID == nil {
+		return nil
+	}
+	boundInstallID := strings.TrimSpace(*binding.InstallID)
+	inputInstallID := strings.TrimSpace(installID)
+	if boundInstallID != "" && inputInstallID != "" && !strings.EqualFold(boundInstallID, inputInstallID) {
+		return ErrDeviceMismatch
 	}
 	return nil
 }

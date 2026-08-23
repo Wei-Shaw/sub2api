@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   },
   push: vi.fn(),
   login: vi.fn(),
-  redeemLogin: vi.fn(),
+  inviteLogin: vi.fn(),
   login2FA: vi.fn(),
   showSuccess: vi.fn(),
   showError: vi.fn(),
@@ -42,7 +42,7 @@ vi.mock('vue-i18n', () => ({
 vi.mock('@/stores', () => ({
   useAuthStore: () => ({
     login: (...args: unknown[]) => mocks.login(...args),
-    redeemLogin: (...args: unknown[]) => mocks.redeemLogin(...args),
+    inviteLogin: (...args: unknown[]) => mocks.inviteLogin(...args),
     login2FA: (...args: unknown[]) => mocks.login2FA(...args)
   }),
   useAppStore: () => ({
@@ -108,7 +108,7 @@ describe('LoginView redeem-code login', () => {
       token_type: 'Bearer',
       user: { id: 1 }
     })
-    mocks.redeemLogin.mockResolvedValue({ id: 1 })
+    mocks.inviteLogin.mockResolvedValue({ id: 1 })
   })
 
   it('renders the redeem-code mode and submits to redeem login API wiring', async () => {
@@ -124,8 +124,9 @@ describe('LoginView redeem-code login', () => {
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
-    expect(mocks.redeemLogin).toHaveBeenCalledWith({
+    expect(mocks.inviteLogin).toHaveBeenCalledWith({
       invitation_code: 'INV-TEST-001',
+      client_kind: 'web',
       turnstile_token: undefined
     })
     expect(mocks.clearAllAffiliateReferralCodes).toHaveBeenCalled()

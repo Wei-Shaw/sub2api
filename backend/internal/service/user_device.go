@@ -2,11 +2,14 @@ package service
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
+
+var deviceLoginCodePattern = regexp.MustCompile(`^DLG-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$`)
 
 const (
 	RedeemTypeDeviceClaim = "device_claim"
@@ -55,6 +58,10 @@ type UserDevice struct {
 
 func (d *UserDevice) IsActive() bool {
 	return d != nil && strings.TrimSpace(d.Status) == UserDeviceStatusActive
+}
+
+func isDeviceLoginCode(value string) bool {
+	return deviceLoginCodePattern.MatchString(strings.ToUpper(strings.TrimSpace(value)))
 }
 
 type UserDeviceRepository interface {
