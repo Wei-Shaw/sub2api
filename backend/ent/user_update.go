@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/developerkey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
@@ -529,6 +530,21 @@ func (_u *UserUpdate) AddAPIKeys(v ...*APIKey) *UserUpdate {
 	return _u.AddAPIKeyIDs(ids...)
 }
 
+// AddDeveloperKeyIDs adds the "developer_keys" edge to the DeveloperKey entity by IDs.
+func (_u *UserUpdate) AddDeveloperKeyIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddDeveloperKeyIDs(ids...)
+	return _u
+}
+
+// AddDeveloperKeys adds the "developer_keys" edges to the DeveloperKey entity.
+func (_u *UserUpdate) AddDeveloperKeys(v ...*DeveloperKey) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddDeveloperKeyIDs(ids...)
+}
+
 // AddRedeemCodeIDs adds the "redeem_codes" edge to the RedeemCode entity by IDs.
 func (_u *UserUpdate) AddRedeemCodeIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddRedeemCodeIDs(ids...)
@@ -748,6 +764,27 @@ func (_u *UserUpdate) RemoveAPIKeys(v ...*APIKey) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveAPIKeyIDs(ids...)
+}
+
+// ClearDeveloperKeys clears all "developer_keys" edges to the DeveloperKey entity.
+func (_u *UserUpdate) ClearDeveloperKeys() *UserUpdate {
+	_u.mutation.ClearDeveloperKeys()
+	return _u
+}
+
+// RemoveDeveloperKeyIDs removes the "developer_keys" edge to DeveloperKey entities by IDs.
+func (_u *UserUpdate) RemoveDeveloperKeyIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveDeveloperKeyIDs(ids...)
+	return _u
+}
+
+// RemoveDeveloperKeys removes "developer_keys" edges to DeveloperKey entities.
+func (_u *UserUpdate) RemoveDeveloperKeys(v ...*DeveloperKey) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveDeveloperKeyIDs(ids...)
 }
 
 // ClearRedeemCodes clears all "redeem_codes" edges to the RedeemCode entity.
@@ -1290,6 +1327,51 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(apikey.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.DeveloperKeysCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.DeveloperKeysTable,
+			Columns: []string{user.DeveloperKeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(developerkey.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedDeveloperKeysIDs(); len(nodes) > 0 && !_u.mutation.DeveloperKeysCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.DeveloperKeysTable,
+			Columns: []string{user.DeveloperKeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(developerkey.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.DeveloperKeysIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.DeveloperKeysTable,
+			Columns: []string{user.DeveloperKeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(developerkey.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -2402,6 +2484,21 @@ func (_u *UserUpdateOne) AddAPIKeys(v ...*APIKey) *UserUpdateOne {
 	return _u.AddAPIKeyIDs(ids...)
 }
 
+// AddDeveloperKeyIDs adds the "developer_keys" edge to the DeveloperKey entity by IDs.
+func (_u *UserUpdateOne) AddDeveloperKeyIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddDeveloperKeyIDs(ids...)
+	return _u
+}
+
+// AddDeveloperKeys adds the "developer_keys" edges to the DeveloperKey entity.
+func (_u *UserUpdateOne) AddDeveloperKeys(v ...*DeveloperKey) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddDeveloperKeyIDs(ids...)
+}
+
 // AddRedeemCodeIDs adds the "redeem_codes" edge to the RedeemCode entity by IDs.
 func (_u *UserUpdateOne) AddRedeemCodeIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddRedeemCodeIDs(ids...)
@@ -2621,6 +2718,27 @@ func (_u *UserUpdateOne) RemoveAPIKeys(v ...*APIKey) *UserUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveAPIKeyIDs(ids...)
+}
+
+// ClearDeveloperKeys clears all "developer_keys" edges to the DeveloperKey entity.
+func (_u *UserUpdateOne) ClearDeveloperKeys() *UserUpdateOne {
+	_u.mutation.ClearDeveloperKeys()
+	return _u
+}
+
+// RemoveDeveloperKeyIDs removes the "developer_keys" edge to DeveloperKey entities by IDs.
+func (_u *UserUpdateOne) RemoveDeveloperKeyIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveDeveloperKeyIDs(ids...)
+	return _u
+}
+
+// RemoveDeveloperKeys removes "developer_keys" edges to DeveloperKey entities.
+func (_u *UserUpdateOne) RemoveDeveloperKeys(v ...*DeveloperKey) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveDeveloperKeyIDs(ids...)
 }
 
 // ClearRedeemCodes clears all "redeem_codes" edges to the RedeemCode entity.
@@ -3193,6 +3311,51 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(apikey.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.DeveloperKeysCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.DeveloperKeysTable,
+			Columns: []string{user.DeveloperKeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(developerkey.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedDeveloperKeysIDs(); len(nodes) > 0 && !_u.mutation.DeveloperKeysCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.DeveloperKeysTable,
+			Columns: []string{user.DeveloperKeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(developerkey.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.DeveloperKeysIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.DeveloperKeysTable,
+			Columns: []string{user.DeveloperKeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(developerkey.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

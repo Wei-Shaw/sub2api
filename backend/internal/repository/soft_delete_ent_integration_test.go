@@ -28,6 +28,7 @@ func createEntUser(t *testing.T, ctx context.Context, client *dbent.Client, emai
 
 	u, err := client.User.Create().
 		SetEmail(email).
+		SetAccountID(mustGenerateRootAccountID(t)).
 		SetPasswordHash("test-password-hash").
 		Save(ctx)
 	require.NoError(t, err, "create ent user")

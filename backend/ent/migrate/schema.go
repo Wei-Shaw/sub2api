@@ -1153,6 +1153,38 @@ var (
 			},
 		},
 	}
+	// DeveloperKeysColumns holds the columns for the "developer_keys" table.
+	DeveloperKeysColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "key_prefix", Type: field.TypeString, Size: 24},
+		{Name: "key_hash", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "last_used_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// DeveloperKeysTable holds the schema information for the "developer_keys" table.
+	DeveloperKeysTable = &schema.Table{
+		Name:       "developer_keys",
+		Columns:    DeveloperKeysColumns,
+		PrimaryKey: []*schema.Column{DeveloperKeysColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "developer_keys_users_developer_keys",
+				Columns:    []*schema.Column{DeveloperKeysColumns[7]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "developerkey_user_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{DeveloperKeysColumns[7], DeveloperKeysColumns[1]},
+			},
+		},
+	}
 	// ErrorPassthroughRulesColumns holds the columns for the "error_passthrough_rules" table.
 	ErrorPassthroughRulesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -3287,6 +3319,7 @@ var (
 		ChannelMonitorRequestTemplatesTable,
 		CompanyUpgradeApplicationsTable,
 		CompositeModelRoutesTable,
+		DeveloperKeysTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
@@ -3412,6 +3445,10 @@ func init() {
 	CompositeModelRoutesTable.ForeignKeys[0].RefTable = GroupsTable
 	CompositeModelRoutesTable.Annotation = &entsql.Annotation{
 		Table: "composite_model_routes",
+	}
+	DeveloperKeysTable.ForeignKeys[0].RefTable = UsersTable
+	DeveloperKeysTable.Annotation = &entsql.Annotation{
+		Table: "developer_keys",
 	}
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",

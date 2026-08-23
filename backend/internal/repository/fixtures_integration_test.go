@@ -9,9 +9,17 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	dbaccount "github.com/Wei-Shaw/sub2api/ent/account"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/accountid"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+func mustGenerateRootAccountID(t *testing.T) string {
+	t.Helper()
+	accountID, err := accountid.GenerateRoot()
+	require.NoError(t, err, "generate account id")
+	return accountID
+}
 
 func mustCreateUser(t *testing.T, client *dbent.Client, u *service.User) *service.User {
 	t.Helper()
@@ -35,6 +43,7 @@ func mustCreateUser(t *testing.T, client *dbent.Client, u *service.User) *servic
 
 	create := client.User.Create().
 		SetEmail(u.Email).
+		SetAccountID(mustGenerateRootAccountID(t)).
 		SetPasswordHash(u.PasswordHash).
 		SetRole(u.Role).
 		SetStatus(u.Status).

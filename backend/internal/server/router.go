@@ -29,6 +29,7 @@ func SetupRouter(
 	optionalJWTAuth middleware2.OptionalJWTAuthMiddleware,
 	adminAuth middleware2.AdminAuthMiddleware,
 	apiKeyAuth middleware2.APIKeyAuthMiddleware,
+	developerKeyAuth middleware2.DeveloperKeyAuthMiddleware,
 	auditLog middleware2.AuditLogMiddleware,
 	stepUpAuth middleware2.StepUpAuthMiddleware,
 	apiKeyService *service.APIKeyService,
@@ -94,7 +95,7 @@ func SetupRouter(
 	}
 
 	// 注册路由
-	registerRoutes(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient, inboxHandler, inboxWS)
+	registerRoutes(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, developerKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient, inboxHandler, inboxWS)
 
 	return r
 }
@@ -107,6 +108,7 @@ func registerRoutes(
 	optionalJWTAuth middleware2.OptionalJWTAuthMiddleware,
 	adminAuth middleware2.AdminAuthMiddleware,
 	apiKeyAuth middleware2.APIKeyAuthMiddleware,
+	developerKeyAuth middleware2.DeveloperKeyAuthMiddleware,
 	auditLog middleware2.AuditLogMiddleware,
 	stepUpAuth middleware2.StepUpAuthMiddleware,
 	apiKeyService *service.APIKeyService,
@@ -132,6 +134,7 @@ func registerRoutes(
 	// 注册各模块路由
 	routes.RegisterAuthRoutes(v1, h, jwtAuth, auditLog, redisClient, settingService, panelRateLimiter)
 	routes.RegisterUserRoutes(v1, h, jwtAuth, auditLog, settingService, panelRateLimiter)
+	routes.RegisterDeveloperFileRoutes(v1, h, developerKeyAuth, settingService, panelRateLimiter)
 	routes.RegisterOrganizationRoutes(v1, h, jwtAuth, auditLog, settingService)
 	routes.RegisterSupportRoutes(v1, h, jwtAuth, optionalJWTAuth, settingService, middleware.NewRateLimiter(redisClient))
 	routes.RegisterModelPlazaRoutes(v1, h, optionalJWTAuth, settingService, panelRateLimiter)

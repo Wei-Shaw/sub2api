@@ -15,6 +15,7 @@ service InnerAPI {
   rpc GetMaterial(GetMaterialRequest) returns (Material);
   rpc UploadMaterial(UploadMaterialRequest) returns (UploadMaterialResponse);
   rpc AddMaterialByUrl(AddMaterialByUrlRequest) returns (AddMaterialByUrlResponse);
+  rpc RenameMaterial(RenameMaterialRequest) returns (Material);
   rpc DeleteMaterial(DeleteMaterialRequest) returns (DeleteMaterialResponse);
   rpc BatchDeleteMaterials(BatchDeleteMaterialsRequest) returns (BatchDeleteMaterialsResponse);
 }
@@ -114,6 +115,12 @@ message AddMaterialByUrlRequest {
 
 message AddMaterialByUrlResponse {
   string material_id = 1; // opaque public material identifier
+}
+
+message RenameMaterialRequest {
+  string account_id = 1;
+  string id = 2; // opaque public material identifier
+  string file_name = 3; // display name only; does not change the object key or URL
 }
 
 message DeleteMaterialRequest {

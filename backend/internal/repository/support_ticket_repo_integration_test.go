@@ -42,6 +42,7 @@ func TestSupportTicketRepoSuite(t *testing.T) {
 func (s *SupportTicketRepoSuite) createUser(email string) int64 {
 	u, err := s.client.User.Create().
 		SetEmail(email).
+		SetAccountID(mustGenerateRootAccountID(s.T())).
 		SetPasswordHash("test-password-hash").
 		Save(s.ctx)
 	s.Require().NoError(err, "create user")

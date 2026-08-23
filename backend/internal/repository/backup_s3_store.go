@@ -62,6 +62,23 @@ func (s *S3BackupStore) Upload(ctx context.Context, key string, body io.Reader, 
 	return int64(len(data)), nil
 }
 
+// UploadSized streams a body whose exact content length is already known.
+func (s *S3BackupStore) UploadSized(ctx context.Context, key string, body io.Reader, size int64, contentType string) error {
+	finish := servertiming.ObserveDependency(ctx, "s3")
+	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:        &s.bucket,
+		Key:           &key,
+		Body:          body,
+		ContentLength: &size,
+		ContentType:   &contentType,
+	})
+	finish()
+	if err != nil {
+		return fmt.Errorf("S3 PutObject sized stream: %w", err)
+	}
+	return nil
+}
+
 func (s *S3BackupStore) UploadFile(ctx context.Context, key string, filePath string, contentType string) (int64, error) {
 	file, err := os.Open(filePath)
 	if err != nil {

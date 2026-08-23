@@ -143,6 +143,34 @@ func (h *UserMaterialHandler) List(c *gin.Context) {
 	})
 }
 
+// Rename PATCH /user/materials/:id body: {"file_name":"new name.png"}.
+// Only the display name changes; the COS object key and URL stay stable.
+func (h *UserMaterialHandler) Rename(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Error(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id, err := strconv.ParseInt(strings.TrimSpace(c.Param("id")), 10, 64)
+	if err != nil || id <= 0 {
+		response.Error(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		FileName string `json:"file_name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid body: "+err.Error())
+		return
+	}
+	material, err := h.svc.Rename(c.Request.Context(), subject.UserID, id, req.FileName)
+	if err != nil {
+		respondUserMaterialErr(c, err)
+		return
+	}
+	response.Success(c, toUserMaterialItem(material))
+}
+
 // Delete DELETE /user/materials/:id  软删自己的素材。
 func (h *UserMaterialHandler) Delete(c *gin.Context) {
 	subject, ok := middleware.GetAuthSubjectFromContext(c)

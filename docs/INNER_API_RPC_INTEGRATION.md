@@ -4,7 +4,7 @@
 
 ## 1. 这是什么
 
-一个通过 **tRPC-Go** 暴露的内部服务，当前提供余额能力，后续扩展素材能力。每个 app 只能调用被授权的接口：
+一个通过 **tRPC-Go** 暴露的内部服务，提供余额账本和素材库能力。每个 app 只能调用被授权的接口：
 
 | 方法 | 作用 |
 |------|------|
@@ -12,7 +12,9 @@
 | `Refund` | 凭原扣流水退款（支持部分退、幂等） |
 | `GetBalance` | 查某用户当前余额 |
 | `ListMaterials` / `GetMaterial` | 查询素材列表或单个素材 |
-| `UploadMaterial` / `DeleteMaterial` | 上传或删除素材 |
+| `UploadMaterial` / `AddMaterialByUrl` | 上传素材，或把已有 COS URL 加入素材库 |
+| `RenameMaterial` | 修改素材展示名称 |
+| `DeleteMaterial` / `BatchDeleteMaterials` | 单个或批量删除素材 |
 
 权限在创建或后台编辑 app 时授予，未授予的方法会返回统一的 `RetServerAuthFail`：
 
@@ -21,7 +23,7 @@
 | `balance:write` | `Deduct`, `Refund` |
 | `balance:read` | `GetBalance` |
 | `materials:read` | `ListMaterials`, `GetMaterial` |
-| `materials:write` | `UploadMaterial`, `DeleteMaterial` |
+| `materials:write` | `UploadMaterial`, `AddMaterialByUrl`, `RenameMaterial`, `DeleteMaterial`, `BatchDeleteMaterials` |
 
 - 服务名：`sub2api.inner.v1.InnerAPI`
 - 监听：**独立端口**（由平台方在 `inner_api_rpc.port` 配置，例如 `9100`），与 HTTP API 不同端口
@@ -61,7 +63,10 @@ service InnerAPI {
   rpc ListMaterials(ListMaterialsRequest) returns (ListMaterialsResponse);
   rpc GetMaterial(GetMaterialRequest) returns (Material);
   rpc UploadMaterial(UploadMaterialRequest) returns (UploadMaterialResponse);
+  rpc AddMaterialByUrl(AddMaterialByUrlRequest) returns (AddMaterialByUrlResponse);
+  rpc RenameMaterial(RenameMaterialRequest) returns (Material);
   rpc DeleteMaterial(DeleteMaterialRequest) returns (DeleteMaterialResponse);
+  rpc BatchDeleteMaterials(BatchDeleteMaterialsRequest) returns (BatchDeleteMaterialsResponse);
 }
 
 message DeductRequest {
@@ -107,7 +112,7 @@ message GetBalanceResponse {
 }
 
 message Material {
-  int64 id = 1;
+  string id = 1; // 对外不透明素材 ID，不是数据库主键
   string account_id = 2;
   string file_name = 3;
   string url = 4;
@@ -130,7 +135,7 @@ message ListMaterialsResponse {
   int32 page = 3;
   int32 page_size = 4;
 }
-message GetMaterialRequest { string account_id = 1; int64 id = 2; }
+message GetMaterialRequest { string account_id = 1; string id = 2; }
 message UploadMaterialRequest {
   string account_id = 1;
   string file_name = 2;
@@ -141,8 +146,26 @@ message UploadMaterialResponse {
   Material material = 1;
   string file_url = 2;
 }
-message DeleteMaterialRequest { string account_id = 1; int64 id = 2; }
-message DeleteMaterialResponse { int64 id = 1; bool deleted = 2; }
+message AddMaterialByUrlRequest {
+  string account_id = 1;
+  string url = 2;
+}
+message AddMaterialByUrlResponse { string material_id = 1; }
+message RenameMaterialRequest {
+  string account_id = 1;
+  string id = 2;
+  string file_name = 3;
+}
+message DeleteMaterialRequest { string account_id = 1; string id = 2; }
+message DeleteMaterialResponse { string id = 1; bool deleted = 2; }
+message BatchDeleteMaterialsRequest {
+  string account_id = 1;
+  repeated string ids = 2; // 最多 100 个
+}
+message BatchDeleteMaterialsResponse {
+  repeated string deleted_ids = 1;
+  int32 deleted_count = 2;
+}
 ```
 
 ## 5. Go 客户端示例
@@ -197,7 +220,7 @@ func refund(ctx context.Context) error {
 
 > 非 Go 语言：需要支持 trpc 协议的客户端。多数接入方用 Go，其它语言请联系平台方。
 
-素材上传和删除示例：
+素材写入、重命名和删除示例：
 
 ```go
 // 上传：data 是文件原始字节，单文件大小和类型由平台素材服务校验。
@@ -212,14 +235,35 @@ if err != nil {
 }
 fmt.Println(uploaded.GetFileUrl(), uploaded.GetMaterial().GetId(), uploaded.GetMaterial().GetSizeBytes())
 
+// 已有同一 COS 公网域名下的 URL 时，可以直接加入素材库。
+// File API 返回的临时 URL 会被移动到该用户的正式素材目录。
+added, err := newProxy().AddMaterialByUrl(ctx, &pb.AddMaterialByUrlRequest{
+    AccountId: "acct_root_abc123",
+    Url:       developerFileURL,
+}, client.WithMetaData("app-token", []byte(innerAPIToken)))
+if err != nil {
+    return err
+}
+
+renamed, err := newProxy().RenameMaterial(ctx, &pb.RenameMaterialRequest{
+    AccountId: "acct_root_abc123",
+    Id:        added.GetMaterialId(),
+    FileName:  "新的展示名称.png",
+}, client.WithMetaData("app-token", []byte(innerAPIToken)))
+if err != nil {
+    return err
+}
+
 // 删除：按 account_id + 素材 id 删除，只能删除该用户自己的素材。
 _, err = newProxy().DeleteMaterial(ctx, &pb.DeleteMaterialRequest{
     AccountId: "acct_root_abc123",
-    Id:     uploaded.GetId(),
+    Id:        renamed.GetId(),
 }, client.WithMetaData("app-token", []byte(innerAPIToken)))
 ```
 
-`DeleteMaterial` 是软删除，素材记录会从用户素材列表中消失；对象存储清理由平台后台任务处理。上传和删除都需要 `materials:write`，接口不会接受 URL 代替文件字节，也不会允许跨用户操作。
+`RenameMaterial` 只修改展示名称，不修改对象键或 URL。`DeleteMaterial` 和 `BatchDeleteMaterials` 是软删除，素材记录会从用户素材列表中消失；对象存储清理由平台后台任务处理。上述写接口都需要 `materials:write`，且不允许跨用户操作。
+
+File API 上传临时文件并通过 `AddMaterialByUrl` 转入素材库的完整流程，见 [开发者密钥与 File API 接入文档](./DEVELOPER_KEY_FILE_API_INTEGRATION.md)。
 
 ## 6. 幂等约定（重要）
 

@@ -49,7 +49,9 @@ var (
 	// ErrCOSNotConfigured 表示 COS 转存尚未启用/配置完整。
 	// 用户素材库、图片输入控件依赖 COS 转存；未配置时应向用户提示"请联系管理员配置存储"，
 	// 而不是静默回退（这些能力就是围绕 COS 建的）。
-	ErrCOSNotConfigured = infraerrors.BadRequest("COS_NOT_CONFIGURED", "cos image transfer is not enabled or not configured")
+	ErrCOSNotConfigured        = infraerrors.BadRequest("COS_NOT_CONFIGURED", "cos image transfer is not enabled or not configured")
+	ErrCOSStreamingUnsupported = infraerrors.InternalServer("COS_STREAMING_UNSUPPORTED", "configured object store does not support streaming uploads")
+	ErrCOSMoveUnsupported      = infraerrors.InternalServer("COS_MOVE_UNSUPPORTED", "configured object store does not support server-side moves")
 )
 
 // COSImageConfig 全局图片转存配置（腾讯云 COS 兼容 S3 协议）。
@@ -819,6 +821,126 @@ func (s *COSImageTransferService) UploadBytesWithKey(ctx context.Context, key st
 	cosURL := s.buildPublicURL(cfg, key)
 	logger.LegacyPrintf("service.cos_transfer", "[COS] UploadBytesWithKey succeeded: %s", cosURL)
 	return cosURL, nil
+}
+
+// UploadReaderWithKey streams a known-size body to a caller-selected object key.
+func (s *COSImageTransferService) UploadReaderWithKey(ctx context.Context, key string, body io.Reader, size int64, contentType string) (string, error) {
+	key, err := sanitizeObjectKey(key)
+	if err != nil {
+		return "", err
+	}
+	if body == nil || size <= 0 {
+		return "", infraerrors.BadRequest("EMPTY_FILE", "uploaded file is empty")
+	}
+	cfg, err := s.loadConfig(ctx)
+	if err != nil {
+		return "", err
+	}
+	if cfg == nil || !cfg.Enabled || !cfg.IsConfigured() {
+		return "", ErrCOSNotConfigured
+	}
+	store, err := s.getOrCreateStore(ctx, cfg)
+	if err != nil {
+		return "", err
+	}
+	uploader, ok := store.(BackupObjectSizedUploader)
+	if !ok {
+		return "", ErrCOSStreamingUnsupported
+	}
+	ct := strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0])
+	if ct == "" {
+		ct = "application/octet-stream"
+	}
+	if err := uploader.UploadSized(ctx, key, io.LimitReader(body, size), size, ct); err != nil {
+		return "", err
+	}
+	return s.buildPublicURL(cfg, key), nil
+}
+
+// PublicURLToKey validates a URL against the configured public COS base and
+// returns the decoded object key relative to that base path.
+func (s *COSImageTransferService) PublicURLToKey(ctx context.Context, rawURL string) (string, error) {
+	cfg, err := s.loadConfig(ctx)
+	if err != nil {
+		return "", err
+	}
+	if cfg == nil || !cfg.Enabled || !cfg.IsConfigured() {
+		return "", ErrCOSNotConfigured
+	}
+	baseURL := s.publicBaseURL(cfg)
+	value := strings.TrimSpace(rawURL)
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", infraerrors.BadRequest("INVALID_FILE_URL", "url must be an unqualified public COS URL")
+	}
+	base, err := url.Parse(baseURL)
+	if err != nil || base.Scheme == "" || base.Host == "" {
+		return "", ErrCOSNotConfigured
+	}
+	if !strings.EqualFold(parsed.Scheme, base.Scheme) || !strings.EqualFold(parsed.Hostname(), base.Hostname()) || effectiveURLPort(parsed) != effectiveURLPort(base) {
+		return "", infraerrors.BadRequest("INVALID_FILE_URL", "url must use the configured public COS domain")
+	}
+	basePath := strings.TrimRight(base.Path, "/")
+	prefix := basePath + "/"
+	if !strings.HasPrefix(parsed.Path, prefix) {
+		return "", infraerrors.BadRequest("INVALID_FILE_URL", "url is outside the configured COS path")
+	}
+	key, err := sanitizeObjectKey(strings.TrimPrefix(parsed.Path, prefix))
+	if err != nil {
+		return "", infraerrors.BadRequest("INVALID_FILE_URL", "url contains an invalid object key")
+	}
+	return key, nil
+}
+
+// MoveFile performs the object-store rename primitive: server-side copy then delete.
+func (s *COSImageTransferService) MoveFile(ctx context.Context, srcKey, dstKey string) (string, error) {
+	srcKey, err := sanitizeObjectKey(srcKey)
+	if err != nil {
+		return "", err
+	}
+	dstKey, err = sanitizeObjectKey(dstKey)
+	if err != nil {
+		return "", err
+	}
+	if srcKey == dstKey {
+		return "", infraerrors.BadRequest("INVALID_FILE_MOVE", "source and destination are identical")
+	}
+	cfg, err := s.loadConfig(ctx)
+	if err != nil {
+		return "", err
+	}
+	if cfg == nil || !cfg.Enabled || !cfg.IsConfigured() {
+		return "", ErrCOSNotConfigured
+	}
+	store, err := s.getOrCreateStore(ctx, cfg)
+	if err != nil {
+		return "", err
+	}
+	copier, ok := store.(BackupObjectCopier)
+	if !ok {
+		return "", ErrCOSMoveUnsupported
+	}
+	if err := copier.CopyObject(ctx, srcKey, dstKey); err != nil {
+		return "", err
+	}
+	if err := store.Delete(ctx, srcKey); err != nil {
+		return "", fmt.Errorf("copied to %s but failed to delete source %s: %w", dstKey, srcKey, err)
+	}
+	return s.buildPublicURL(cfg, dstKey), nil
+}
+
+func (s *COSImageTransferService) publicBaseURL(cfg *COSImageConfig) string {
+	if base := strings.TrimRight(cfg.PublicBaseURL, "/"); base != "" {
+		return base
+	}
+	endpoint := strings.TrimRight(cfg.Endpoint, "/")
+	if cfg.ForcePathStyle {
+		return endpoint + "/" + cfg.Bucket
+	}
+	if scheme, host, ok := splitScheme(endpoint); ok {
+		return fmt.Sprintf("%s://%s.%s", scheme, cfg.Bucket, host)
+	}
+	return endpoint + "/" + cfg.Bucket
 }
 
 // ErrUntrustedURLBlocked 表示用户提供的 URL 指向内网/回环/云元数据地址，被 SSRF 策略拒绝。

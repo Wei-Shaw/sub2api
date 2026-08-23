@@ -25,6 +25,7 @@ import (
 	"path"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -63,6 +64,13 @@ const (
 	MaterialMaxCountPerUser int64 = 500
 	// MaterialMaxTotalBytesPerUser 单用户未删除素材的总字节上限。
 	MaterialMaxTotalBytesPerUser int64 = 5 << 30 // 5 GiB
+	// MaterialFileNameMaxRunes matches user_materials.file_name VARCHAR(512).
+	MaterialFileNameMaxRunes = 512
+)
+
+var (
+	ErrMaterialInvalidFileName = infraerrors.BadRequest("INVALID_FILE_NAME", "material file name is invalid")
+	ErrMaterialNotFound        = infraerrors.NotFound("MATERIAL_NOT_FOUND", "material not found")
 )
 
 // UserMaterial 是一条素材库记录（领域模型）。DB 侧字段一一对应 user_materials 表。
@@ -85,6 +93,8 @@ type UserMaterialRepository interface {
 	Insert(ctx context.Context, m *UserMaterial) (int64, error)
 	GetByID(ctx context.Context, userID, id int64) (*UserMaterial, error)
 	GetByPublicID(ctx context.Context, userID int64, publicID string) (*UserMaterial, error)
+	UpdateFileNameByID(ctx context.Context, userID, id int64, fileName string) (*UserMaterial, error)
+	UpdateFileNameByPublicID(ctx context.Context, userID int64, publicID, fileName string) (*UserMaterial, error)
 	List(ctx context.Context, userID int64, kind, keyword string, offset, limit int) ([]*UserMaterial, int64, error)
 	SoftDelete(ctx context.Context, userID, id int64) error
 	SoftDeleteByPublicID(ctx context.Context, userID int64, publicID string) error
@@ -311,7 +321,42 @@ func (s *UserMaterialService) AddMaterialByURL(ctx context.Context, userID int64
 		Kind:        "image",
 		Source:      "url",
 	}
+
+	// Developer file uploads are temporary. Only URLs inside the configured
+	// file_uploads root are candidates for a move; ordinary same-origin COS URLs
+	// retain the historical register-without-copy behavior.
+	sourceKey, keyErr := s.cos.PublicURLToKey(ctx, publicURL)
+	fileRoot := developerFileRoot(cfg) + "/"
+	moved := false
+	if keyErr == nil && strings.HasPrefix(sourceKey, fileRoot) {
+		userPrefix, prefixErr := s.materialUserPrefix(ctx, userID)
+		if prefixErr != nil {
+			return nil, prefixErr
+		}
+		ownedPrefix, prefixErr := developerFileUserPrefix(cfg, userPrefix)
+		if prefixErr != nil {
+			return nil, prefixErr
+		}
+		if !strings.HasPrefix(sourceKey, ownedPrefix+"/") {
+			return nil, ErrDeveloperFileForbidden
+		}
+		destinationKey := buildUserMaterialKey(userPrefix, filename, contentType)
+		destinationURL, moveErr := s.cos.MoveFile(ctx, sourceKey, destinationKey)
+		if moveErr != nil {
+			return nil, fmt.Errorf("move temporary upload to material storage: %w", moveErr)
+		}
+		m.CosKey = destinationKey
+		m.CosURL = destinationURL
+		moved = true
+	}
 	if _, err := s.repo.Insert(ctx, m); err != nil {
+		if moved {
+			if _, rollbackErr := s.cos.MoveFile(ctx, m.CosKey, sourceKey); rollbackErr != nil {
+				logger.LegacyPrintf("service.user_material",
+					"[MATERIAL] rollback temporary file move failed src=%s dst=%s err=%v",
+					m.CosKey, sourceKey, rollbackErr)
+			}
+		}
 		return nil, err
 	}
 	return m, nil
@@ -382,6 +427,61 @@ func (s *UserMaterialService) GetByPublicID(ctx context.Context, userID int64, p
 		return nil, sql.ErrNoRows
 	}
 	return m, nil
+}
+
+// Rename updates only the display name using the numeric ID exposed by the
+// authenticated user HTTP API. The COS object key and URL remain unchanged.
+func (s *UserMaterialService) Rename(ctx context.Context, userID, id int64, fileName string) (*UserMaterial, error) {
+	if userID <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_USER", "invalid user id")
+	}
+	if id <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_ID", "invalid material id")
+	}
+	fileName, err := normalizeMaterialFileName(fileName)
+	if err != nil {
+		return nil, err
+	}
+	material, err := s.repo.UpdateFileNameByID(ctx, userID, id, fileName)
+	if err != nil {
+		return nil, err
+	}
+	if material == nil {
+		return nil, ErrMaterialNotFound
+	}
+	return material, nil
+}
+
+// RenameByPublicID updates only the display name. The COS object key and URL
+// remain unchanged, and ownership is enforced atomically by the repository.
+func (s *UserMaterialService) RenameByPublicID(ctx context.Context, userID int64, publicID, fileName string) (*UserMaterial, error) {
+	if userID <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_USER", "invalid user id")
+	}
+	if !isMaterialPublicID(publicID) {
+		return nil, infraerrors.BadRequest("INVALID_ID", "invalid material id")
+	}
+	fileName, err := normalizeMaterialFileName(fileName)
+	if err != nil {
+		return nil, err
+	}
+	parsedID, _ := uuid.Parse(strings.TrimSpace(publicID))
+	material, err := s.repo.UpdateFileNameByPublicID(ctx, userID, parsedID.String(), fileName)
+	if err != nil {
+		return nil, err
+	}
+	if material == nil {
+		return nil, ErrMaterialNotFound
+	}
+	return material, nil
+}
+
+func normalizeMaterialFileName(fileName string) (string, error) {
+	fileName = strings.TrimSpace(fileName)
+	if fileName == "" || !utf8.ValidString(fileName) || utf8.RuneCountInString(fileName) > MaterialFileNameMaxRunes {
+		return "", ErrMaterialInvalidFileName
+	}
+	return fileName, nil
 }
 
 // DeleteByPublicID soft-deletes a material using its opaque UUID.
@@ -533,6 +633,12 @@ func (s *UserMaterialService) materialUserPrefix(ctx context.Context, userID int
 	_, _ = fmt.Fprintf(h, "%d\x00%s", userID, strings.TrimSpace(user.AccountID))
 	encoded := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(h.Sum(nil))
 	return "u_" + strings.ToLower(encoded[:32]), nil
+}
+
+// UserStoragePrefix returns the opaque directory shared by temporary uploads
+// and durable user materials.
+func (s *UserMaterialService) UserStoragePrefix(ctx context.Context, userID int64) (string, error) {
+	return s.materialUserPrefix(ctx, userID)
 }
 
 // buildUserMaterialKey 生成 COS 对象 key。用户目录是密钥派生值，不包含原始 user_id/account_id。

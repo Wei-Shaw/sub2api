@@ -162,6 +162,21 @@ func (s *innerAPIServer) AddMaterialByUrl(ctx context.Context, req *innerpb.AddM
 	return &innerpb.AddMaterialByUrlResponse{MaterialId: item.PublicID}, nil
 }
 
+func (s *innerAPIServer) RenameMaterial(ctx context.Context, req *innerpb.RenameMaterialRequest) (*innerpb.Material, error) {
+	if s.materials == nil {
+		return nil, toTRPCError(service.ErrCOSNotConfigured)
+	}
+	user, err := s.userByAccountID(ctx, req.GetAccountId())
+	if err != nil {
+		return nil, toTRPCError(err)
+	}
+	item, err := s.materials.RenameByPublicID(ctx, user.ID, req.GetId(), req.GetFileName())
+	if err != nil {
+		return nil, toTRPCError(err)
+	}
+	return materialResponse(item, user.AccountID), nil
+}
+
 func (s *innerAPIServer) DeleteMaterial(ctx context.Context, req *innerpb.DeleteMaterialRequest) (*innerpb.DeleteMaterialResponse, error) {
 	if s.materials == nil {
 		return nil, toTRPCError(service.ErrCOSNotConfigured)

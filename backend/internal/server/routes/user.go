@@ -85,12 +85,13 @@ func RegisterUserRoutes(
 
 			// 用户素材库（图片输入控件 + 独立素材库页共用）：
 			//   - upload/import-url 走 heavy 限流：文件上传/下载对上游 COS 有一定压力
-			//   - list/delete 走 global 限流即可
+			//   - list/rename/delete 走 global 限流即可
 			materials := user.Group("/materials")
 			{
 				materials.GET("", h.UserMaterial.List)
 				materials.POST("/upload", panelRateLimiter.Heavy(), h.UserMaterial.Upload)
 				materials.POST("/import-url", panelRateLimiter.Heavy(), h.UserMaterial.ImportFromURL)
+				materials.PATCH("/:id", h.UserMaterial.Rename)
 				materials.DELETE("/:id", h.UserMaterial.Delete)
 			}
 		}
@@ -105,6 +106,13 @@ func RegisterUserRoutes(
 			keys.POST("", h.APIKey.Create)
 			keys.PUT("/:id", h.APIKey.Update)
 			keys.DELETE("/:id", h.APIKey.Delete)
+		}
+
+		developerKeys := authenticated.Group("/user/developer-keys")
+		{
+			developerKeys.GET("", h.DeveloperKey.List)
+			developerKeys.POST("", h.DeveloperKey.Create)
+			developerKeys.DELETE("/:id", h.DeveloperKey.Delete)
 		}
 
 		// 用户可用分组（非管理员接口）

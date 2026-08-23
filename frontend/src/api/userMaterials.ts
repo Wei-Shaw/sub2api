@@ -5,6 +5,7 @@
  *   - list(kind?, keyword?, page?, pageSize?)  按类型 / 文件名过滤 + 分页
  *   - upload(file)                             multipart 上传单文件
  *   - importFromUrl(url)                       后端下载外链再转存到 COS
+ *   - rename(id, fileName)                     修改自己的素材展示名称
  *   - remove(id)                               软删自己的素材
  *
  * 所有接口都以当前 JWT 用户为主体，后端强制过滤 user_id，无需在前端传 userId。
@@ -69,6 +70,13 @@ const userMaterialsAPI = {
    */
   importFromUrl(url: string) {
     return apiClient.post<UserMaterialItem>('/user/materials/import-url', { url })
+  },
+
+  /**
+   * rename：只修改展示名称，不移动 COS 对象，也不改变素材 URL。
+   */
+  rename(id: number, fileName: string) {
+    return apiClient.patch<UserMaterialItem>(`/user/materials/${id}`, { file_name: fileName })
   },
 
   /**

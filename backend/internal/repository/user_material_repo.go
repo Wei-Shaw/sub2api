@@ -68,6 +68,44 @@ WHERE public_id = $1 AND user_id = $2 AND deleted_at IS NULL
 	return m, nil
 }
 
+func (r *userMaterialRepository) UpdateFileNameByID(ctx context.Context, userID, id int64, fileName string) (*service.UserMaterial, error) {
+	const q = `
+UPDATE user_materials
+SET file_name = $3
+WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+RETURNING id, public_id, user_id, file_name, cos_key, cos_url, content_type, size_bytes, kind, source, created_at
+`
+	row := r.db.QueryRowContext(ctx, q, id, userID, fileName)
+	m := &service.UserMaterial{}
+	if err := row.Scan(&m.ID, &m.PublicID, &m.UserID, &m.FileName, &m.CosKey, &m.CosURL,
+		&m.ContentType, &m.SizeBytes, &m.Kind, &m.Source, &m.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil //nolint:nilnil
+		}
+		return nil, fmt.Errorf("rename user_material by id: %w", err)
+	}
+	return m, nil
+}
+
+func (r *userMaterialRepository) UpdateFileNameByPublicID(ctx context.Context, userID int64, publicID, fileName string) (*service.UserMaterial, error) {
+	const q = `
+UPDATE user_materials
+SET file_name = $3
+WHERE public_id = $1 AND user_id = $2 AND deleted_at IS NULL
+RETURNING id, public_id, user_id, file_name, cos_key, cos_url, content_type, size_bytes, kind, source, created_at
+`
+	row := r.db.QueryRowContext(ctx, q, publicID, userID, fileName)
+	m := &service.UserMaterial{}
+	if err := row.Scan(&m.ID, &m.PublicID, &m.UserID, &m.FileName, &m.CosKey, &m.CosURL,
+		&m.ContentType, &m.SizeBytes, &m.Kind, &m.Source, &m.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil //nolint:nilnil
+		}
+		return nil, fmt.Errorf("rename user_material by public id: %w", err)
+	}
+	return m, nil
+}
+
 // GetByID 按 user_id + id 原子查询；归属不匹配与不存在使用相同结果。
 func (r *userMaterialRepository) GetByID(ctx context.Context, userID, id int64) (*service.UserMaterial, error) {
 	const q = `

@@ -33,6 +33,8 @@ type InnerAPIService interface {
 
 	AddMaterialByUrl(ctx context.Context, req *AddMaterialByUrlRequest) (*AddMaterialByUrlResponse, error)
 
+	RenameMaterial(ctx context.Context, req *RenameMaterialRequest) (*Material, error)
+
 	DeleteMaterial(ctx context.Context, req *DeleteMaterialRequest) (*DeleteMaterialResponse, error)
 
 	BatchDeleteMaterials(ctx context.Context, req *BatchDeleteMaterialsRequest) (*BatchDeleteMaterialsResponse, error)
@@ -164,6 +166,24 @@ func InnerAPIService_AddMaterialByUrl_Handler(svr interface{}, ctx context.Conte
 	return rsp, nil
 }
 
+func InnerAPIService_RenameMaterial_Handler(svr interface{}, ctx context.Context, f server.FilterFunc) (interface{}, error) {
+	req := &RenameMaterialRequest{}
+	filters, err := f(req)
+	if err != nil {
+		return nil, err
+	}
+	handleFunc := func(ctx context.Context, reqbody interface{}) (interface{}, error) {
+		return svr.(InnerAPIService).RenameMaterial(ctx, reqbody.(*RenameMaterialRequest))
+	}
+
+	var rsp interface{}
+	rsp, err = filters.Filter(ctx, req, handleFunc)
+	if err != nil {
+		return nil, err
+	}
+	return rsp, nil
+}
+
 func InnerAPIService_DeleteMaterial_Handler(svr interface{}, ctx context.Context, f server.FilterFunc) (interface{}, error) {
 	req := &DeleteMaterialRequest{}
 	filters, err := f(req)
@@ -234,6 +254,10 @@ var InnerAPIServer_ServiceDesc = server.ServiceDesc{
 			Func: InnerAPIService_AddMaterialByUrl_Handler,
 		},
 		{
+			Name: "/sub2api.inner.v1.InnerAPI/RenameMaterial",
+			Func: InnerAPIService_RenameMaterial_Handler,
+		},
+		{
 			Name: "/sub2api.inner.v1.InnerAPI/DeleteMaterial",
 			Func: InnerAPIService_DeleteMaterial_Handler,
 		},
@@ -276,6 +300,9 @@ func (s *UnimplementedInnerAPI) UploadMaterial(ctx context.Context, req *UploadM
 func (s *UnimplementedInnerAPI) AddMaterialByUrl(ctx context.Context, req *AddMaterialByUrlRequest) (*AddMaterialByUrlResponse, error) {
 	return nil, errors.New("rpc AddMaterialByUrl of service InnerAPI is not implemented")
 }
+func (s *UnimplementedInnerAPI) RenameMaterial(ctx context.Context, req *RenameMaterialRequest) (*Material, error) {
+	return nil, errors.New("rpc RenameMaterial of service InnerAPI is not implemented")
+}
 func (s *UnimplementedInnerAPI) DeleteMaterial(ctx context.Context, req *DeleteMaterialRequest) (*DeleteMaterialResponse, error) {
 	return nil, errors.New("rpc DeleteMaterial of service InnerAPI is not implemented")
 }
@@ -304,6 +331,8 @@ type InnerAPIClientProxy interface {
 	UploadMaterial(ctx context.Context, req *UploadMaterialRequest, opts ...client.Option) (rsp *UploadMaterialResponse, err error)
 
 	AddMaterialByUrl(ctx context.Context, req *AddMaterialByUrlRequest, opts ...client.Option) (rsp *AddMaterialByUrlResponse, err error)
+
+	RenameMaterial(ctx context.Context, req *RenameMaterialRequest, opts ...client.Option) (rsp *Material, err error)
 
 	DeleteMaterial(ctx context.Context, req *DeleteMaterialRequest, opts ...client.Option) (rsp *DeleteMaterialResponse, err error)
 
@@ -453,6 +482,26 @@ func (c *InnerAPIClientProxyImpl) AddMaterialByUrl(ctx context.Context, req *Add
 	callopts = append(callopts, c.opts...)
 	callopts = append(callopts, opts...)
 	rsp := &AddMaterialByUrlResponse{}
+	if err := c.client.Invoke(ctx, req, rsp, callopts...); err != nil {
+		return nil, err
+	}
+	return rsp, nil
+}
+
+func (c *InnerAPIClientProxyImpl) RenameMaterial(ctx context.Context, req *RenameMaterialRequest, opts ...client.Option) (*Material, error) {
+	ctx, msg := codec.WithCloneMessage(ctx)
+	defer codec.PutBackMessage(msg)
+	msg.WithClientRPCName("/sub2api.inner.v1.InnerAPI/RenameMaterial")
+	msg.WithCalleeServiceName(InnerAPIServer_ServiceDesc.ServiceName)
+	msg.WithCalleeApp("")
+	msg.WithCalleeServer("")
+	msg.WithCalleeService("InnerAPI")
+	msg.WithCalleeMethod("RenameMaterial")
+	msg.WithSerializationType(codec.SerializationTypePB)
+	callopts := make([]client.Option, 0, len(c.opts)+len(opts))
+	callopts = append(callopts, c.opts...)
+	callopts = append(callopts, opts...)
+	rsp := &Material{}
 	if err := c.client.Invoke(ctx, req, rsp, callopts...); err != nil {
 		return nil, err
 	}

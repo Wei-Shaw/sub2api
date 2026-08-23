@@ -56,6 +56,11 @@ func (p *PanelRateLimiter) Heavy() gin.HandlerFunc {
 	return p.userScoped("heavy", func(s service.PanelRateLimitSettings) int { return s.HeavyRPM })
 }
 
+// DeveloperFile applies an independent bucket using the heavy-operation limit.
+func (p *PanelRateLimiter) DeveloperFile() gin.HandlerFunc {
+	return p.userScoped("developer-file", func(s service.PanelRateLimitSettings) int { return s.HeavyRPM })
+}
+
 func (p *PanelRateLimiter) userScoped(scope string, limitOf func(service.PanelRateLimitSettings) int) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if p == nil || p.limiter == nil || p.settingService == nil {

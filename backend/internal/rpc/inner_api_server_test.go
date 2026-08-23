@@ -21,6 +21,21 @@ type innerAPIBatchDeleteMaterialRepoStub struct {
 	deletedIDs []string
 }
 
+type innerAPIRenameMaterialRepoStub struct {
+	service.UserMaterialRepository
+	userID   int64
+	publicID string
+	fileName string
+	material *service.UserMaterial
+}
+
+func (r *innerAPIRenameMaterialRepoStub) UpdateFileNameByPublicID(_ context.Context, userID int64, publicID, fileName string) (*service.UserMaterial, error) {
+	r.userID = userID
+	r.publicID = publicID
+	r.fileName = fileName
+	return r.material, nil
+}
+
 func (r *innerAPIBatchDeleteMaterialRepoStub) SoftDeleteByPublicIDs(_ context.Context, userID int64, ids []string) ([]string, error) {
 	r.userID = userID
 	r.ids = append([]string(nil), ids...)
@@ -134,6 +149,7 @@ func TestRequiredPermission(t *testing.T) {
 		{"materials get", &innerpb.GetMaterialRequest{}, service.InnerAPIPermissionMaterialsRead},
 		{"materials upload", &innerpb.UploadMaterialRequest{}, service.InnerAPIPermissionMaterialsWrite},
 		{"materials add by url", &innerpb.AddMaterialByUrlRequest{}, service.InnerAPIPermissionMaterialsWrite},
+		{"materials rename", &innerpb.RenameMaterialRequest{}, service.InnerAPIPermissionMaterialsWrite},
 		{"materials delete", &innerpb.DeleteMaterialRequest{}, service.InnerAPIPermissionMaterialsWrite},
 		{"materials batch delete", &innerpb.BatchDeleteMaterialsRequest{}, service.InnerAPIPermissionMaterialsWrite},
 	}
@@ -143,6 +159,35 @@ func TestRequiredPermission(t *testing.T) {
 				t.Fatalf("requiredPermission()=%q want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestInnerAPIRenameMaterial(t *testing.T) {
+	publicID := "550e8400-e29b-41d4-a716-446655440000"
+	materialRepo := &innerAPIRenameMaterialRepoStub{material: &service.UserMaterial{
+		PublicID: publicID,
+		UserID:   7,
+		FileName: "renamed.png",
+		CosKey:   "users/u/material.png",
+		CosURL:   "https://cdn.example.com/material.png",
+	}}
+	materialService := service.NewUserMaterialService(materialRepo, nil, nil, nil)
+	userRepo := &innerAPIUserAccountRepoStub{byAccount: &service.User{ID: 7, AccountID: "acct_7"}}
+	server := newInnerAPIServer(nil, materialService, userRepo)
+
+	response, err := server.RenameMaterial(context.Background(), &innerpb.RenameMaterialRequest{
+		AccountId: "acct_7",
+		Id:        publicID,
+		FileName:  "  renamed.png  ",
+	})
+	if err != nil {
+		t.Fatalf("RenameMaterial() error = %v", err)
+	}
+	if materialRepo.userID != 7 || materialRepo.publicID != publicID || materialRepo.fileName != "renamed.png" {
+		t.Fatalf("repository call = user %d id %q name %q", materialRepo.userID, materialRepo.publicID, materialRepo.fileName)
+	}
+	if response.GetId() != publicID || response.GetAccountId() != "acct_7" || response.GetFileName() != "renamed.png" {
+		t.Fatalf("RenameMaterial() response = %#v", response)
 	}
 }
 

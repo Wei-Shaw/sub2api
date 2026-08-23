@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -19,6 +19,7 @@ const stores = vi.hoisted(() => ({
   },
   onboarding: { replay: vi.fn() },
   adminSettings: { customMenuItems: [] },
+  routerPush: vi.fn(),
 }))
 
 vi.mock('@/stores', () => ({
@@ -31,8 +32,13 @@ vi.mock('@/stores/adminSettings', () => ({
   useAdminSettingsStore: () => stores.adminSettings,
 }))
 
+vi.mock('@/utils/featureFlags', () => ({
+  FeatureFlags: { modelPlaza: 'model_plaza' },
+  isFeatureFlagEnabled: () => false,
+}))
+
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: stores.routerPush }),
   useRoute: () => ({ name: 'Dashboard', params: {}, meta: {}, path: '/dashboard' }),
 }))
 
@@ -54,6 +60,10 @@ function mountHeader() {
         Icon: true,
         LocaleSwitcher: true,
         SubscriptionProgressMini: true,
+        DeveloperKeysDialog: {
+          props: ['show'],
+          template: '<div data-testid="developer-keys-dialog" :data-show="String(show)" />',
+        },
         RouterLink: {
           props: ['to'],
           template: '<a :data-to="to"><slot /></a>',
@@ -65,6 +75,7 @@ function mountHeader() {
 
 describe('AppHeader company upgrade menu', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     stores.app.cachedPublicSettings = { company_applications_enabled: false }
     stores.auth.user = { id: 1, identity_type: 'root', role: 'user', email: 'root@example.com' }
   })
@@ -113,5 +124,42 @@ describe('AppHeader company upgrade menu', () => {
     const wrapper = mountHeader()
     await wrapper.get('button[aria-label="common.userMenu"]').trigger('click')
     expect(wrapper.get('[data-testid="user-menu-account-identity"]').text()).toContain('organization.accountIdentity.iam')
+  })
+
+  it('opens developer keys after API keys when enterprise management is unavailable', async () => {
+    const wrapper = mountHeader()
+    await wrapper.get('button[aria-label="common.userMenu"]').trigger('click')
+
+    const apiKeys = wrapper.get('[data-to="/keys"]')
+    const developerKeys = wrapper.get('[data-testid="developer-keys-menu-item"]')
+    expect(apiKeys.element.compareDocumentPosition(developerKeys.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    await developerKeys.trigger('click')
+    await flushPromises()
+    expect((wrapper.vm as unknown as { dropdownOpen: boolean }).dropdownOpen).toBe(false)
+    expect(wrapper.get('[data-testid="developer-keys-dialog"]').attributes('data-show')).toBe('true')
+    expect(stores.routerPush).not.toHaveBeenCalled()
+  })
+
+  it('places developer keys immediately after enterprise management when available', async () => {
+    stores.auth.user = {
+      id: 1,
+      identity_type: 'root',
+      role: 'user',
+      email: 'root@example.com',
+      organization: {
+        organization_status: 'active',
+        membership_status: 'active',
+        role: 'owner',
+        actions: [],
+      },
+    }
+
+    const wrapper = mountHeader()
+    await wrapper.get('button[aria-label="common.userMenu"]').trigger('click')
+
+    const enterprise = wrapper.get('[data-to="/organization"]')
+    const developerKeys = wrapper.get('[data-testid="developer-keys-menu-item"]')
+    expect(enterprise.element.nextElementSibling).toBe(developerKeys.element)
   })
 })

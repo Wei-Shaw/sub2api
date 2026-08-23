@@ -197,6 +197,10 @@ func innerAPIRequestSummary(req any) map[string]any {
 	case *innerpb.AddMaterialByUrlRequest:
 		summary["account_id"] = r.GetAccountId()
 		summary["url"] = r.GetUrl()
+	case *innerpb.RenameMaterialRequest:
+		summary["account_id"] = r.GetAccountId()
+		summary["id"] = r.GetId()
+		summary["file_name"] = r.GetFileName()
 	case *innerpb.DeleteMaterialRequest:
 		summary["account_id"] = r.GetAccountId()
 		summary["id"] = r.GetId()
@@ -216,7 +220,7 @@ func requiredPermission(req any) string {
 		return service.InnerAPIPermissionBalanceRead
 	case *innerpb.ListMaterialsRequest, *innerpb.GetMaterialRequest:
 		return service.InnerAPIPermissionMaterialsRead
-	case *innerpb.UploadMaterialRequest, *innerpb.AddMaterialByUrlRequest, *innerpb.DeleteMaterialRequest, *innerpb.BatchDeleteMaterialsRequest:
+	case *innerpb.UploadMaterialRequest, *innerpb.AddMaterialByUrlRequest, *innerpb.RenameMaterialRequest, *innerpb.DeleteMaterialRequest, *innerpb.BatchDeleteMaterialsRequest:
 		return service.InnerAPIPermissionMaterialsWrite
 	default:
 		return ""

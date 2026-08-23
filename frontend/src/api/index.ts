@@ -23,6 +23,11 @@ export { passkeyAPI, type PasskeyCredentialSummary } from './passkey'
 export { default as announcementsAPI } from './announcements'
 export { channelMonitorUserAPI } from './channelMonitor'
 export { organizationAPI, type IAMLoginRequest } from './organization'
+export {
+  developerKeysAPI,
+  type DeveloperKey,
+  type CreateDeveloperKeyResponse,
+} from './developerKeys'
 
 // Admin APIs
 export { adminAPI } from './admin'

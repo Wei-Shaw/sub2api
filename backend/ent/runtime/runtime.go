@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/companyupgradeapplication"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
+	"github.com/Wei-Shaw/sub2api/ent/developerkey"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -1311,6 +1312,75 @@ func init() {
 	compositemodelrouteDescEnabled := compositemodelrouteFields[7].Descriptor()
 	// compositemodelroute.DefaultEnabled holds the default value on creation for the enabled field.
 	compositemodelroute.DefaultEnabled = compositemodelrouteDescEnabled.Default.(bool)
+	developerkeyMixin := schema.DeveloperKey{}.Mixin()
+	developerkeyMixinFields0 := developerkeyMixin[0].Fields()
+	_ = developerkeyMixinFields0
+	developerkeyFields := schema.DeveloperKey{}.Fields()
+	_ = developerkeyFields
+	// developerkeyDescCreatedAt is the schema descriptor for created_at field.
+	developerkeyDescCreatedAt := developerkeyMixinFields0[0].Descriptor()
+	// developerkey.DefaultCreatedAt holds the default value on creation for the created_at field.
+	developerkey.DefaultCreatedAt = developerkeyDescCreatedAt.Default.(func() time.Time)
+	// developerkeyDescUpdatedAt is the schema descriptor for updated_at field.
+	developerkeyDescUpdatedAt := developerkeyMixinFields0[1].Descriptor()
+	// developerkey.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	developerkey.DefaultUpdatedAt = developerkeyDescUpdatedAt.Default.(func() time.Time)
+	// developerkey.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	developerkey.UpdateDefaultUpdatedAt = developerkeyDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// developerkeyDescName is the schema descriptor for name field.
+	developerkeyDescName := developerkeyFields[1].Descriptor()
+	// developerkey.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	developerkey.NameValidator = func() func(string) error {
+		validators := developerkeyDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// developerkeyDescKeyPrefix is the schema descriptor for key_prefix field.
+	developerkeyDescKeyPrefix := developerkeyFields[2].Descriptor()
+	// developerkey.KeyPrefixValidator is a validator for the "key_prefix" field. It is called by the builders before save.
+	developerkey.KeyPrefixValidator = func() func(string) error {
+		validators := developerkeyDescKeyPrefix.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(key_prefix string) error {
+			for _, fn := range fns {
+				if err := fn(key_prefix); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// developerkeyDescKeyHash is the schema descriptor for key_hash field.
+	developerkeyDescKeyHash := developerkeyFields[3].Descriptor()
+	// developerkey.KeyHashValidator is a validator for the "key_hash" field. It is called by the builders before save.
+	developerkey.KeyHashValidator = func() func(string) error {
+		validators := developerkeyDescKeyHash.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(key_hash string) error {
+			for _, fn := range fns {
+				if err := fn(key_hash); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	errorpassthroughruleMixin := schema.ErrorPassthroughRule{}.Mixin()
 	errorpassthroughruleMixinFields0 := errorpassthroughruleMixin[0].Fields()
 	_ = errorpassthroughruleMixinFields0

@@ -207,6 +207,16 @@
                   {{ t('organization.console') }}
                 </router-link>
 
+                <button
+                  type="button"
+                  class="dropdown-item w-full"
+                  data-testid="developer-keys-menu-item"
+                  @click="openDeveloperKeys"
+                >
+                  <Icon name="key" size="sm" />
+                  {{ t('developerKeys.menu') }}
+                </button>
+
                 <a
                   v-if="authStore.isAdmin"
                   href="https://github.com/Wei-Shaw/sub2api"
@@ -291,6 +301,8 @@
       </div>
     </div>
   </header>
+
+  <DeveloperKeysDialog :show="developerKeysDialogOpen" @close="developerKeysDialogOpen = false" />
 </template>
 
 <script setup lang="ts">
@@ -303,6 +315,7 @@ import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import HomeProductsMenu from '@/components/common/HomeProductsMenu.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
+import DeveloperKeysDialog from '@/components/user/DeveloperKeysDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { canOpenCompanyUpgrade as canOpenCompanyUpgradeForUser } from '@/router/organizationAccess'
@@ -327,6 +340,7 @@ const canOpenCompanyUpgrade = computed(() => canOpenCompanyUpgradeForUser(
   appStore.cachedPublicSettings?.company_applications_enabled === true,
 ))
 const dropdownOpen = ref(false)
+const developerKeysDialogOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => sanitizeUrl(appStore.docUrl))
@@ -398,6 +412,11 @@ function toggleDropdown() {
 
 function closeDropdown() {
   dropdownOpen.value = false
+}
+
+function openDeveloperKeys() {
+  closeDropdown()
+  developerKeysDialogOpen.value = true
 }
 
 async function handleLogout() {

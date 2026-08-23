@@ -63,6 +63,9 @@ type CompanyUpgradeApplication func(*sql.Selector)
 // CompositeModelRoute is the predicate function for compositemodelroute builders.
 type CompositeModelRoute func(*sql.Selector)
 
+// DeveloperKey is the predicate function for developerkey builders.
+type DeveloperKey func(*sql.Selector)
+
 // ErrorPassthroughRule is the predicate function for errorpassthroughrule builders.
 type ErrorPassthroughRule func(*sql.Selector)
 
