@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { baseCompile } from '@intlify/message-compiler'
 
 import en from '../locales/en'
+import vi from '../locales/vi'
 import zh from '../locales/zh'
 
 // vue-i18n 在运行时才编译消息：文案里未转义的花括号（如内嵌 JSON 示例
@@ -32,7 +33,8 @@ function collectCompileErrors(node: unknown, path: string, out: string[]): void 
 describe('locale messages compile', () => {
   it.each([
     ['zh', zh],
-    ['en', en]
+    ['en', en],
+    ['vi', vi]
   ] as const)('%s messages all compile without placeholder errors', (locale, messages) => {
     const errors: string[] = []
     collectCompileErrors(messages, locale, errors)

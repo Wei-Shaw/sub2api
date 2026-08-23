@@ -1,4 +1,29 @@
-export default {
+import viAdditionsA from './vi-additions-a'
+import viAdditionsB from './vi-additions-b'
+import viAdditionsC from './vi-additions-c'
+import viAdditionsD from './vi-additions-d'
+
+type LocaleObject = Record<string, unknown>
+
+function isLocaleObject(value: unknown): value is LocaleObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function mergeLocaleMessages(base: LocaleObject, ...additionsList: LocaleObject[]): LocaleObject {
+  const merged: LocaleObject = { ...base }
+
+  for (const additions of additionsList) {
+    for (const [key, value] of Object.entries(additions)) {
+      merged[key] = isLocaleObject(merged[key]) && isLocaleObject(value)
+        ? mergeLocaleMessages(merged[key] as LocaleObject, value)
+        : value
+    }
+  }
+
+  return merged
+}
+
+const vi = {
   // Home Page
   home: {
     viewOnGithub: 'Xem trên GitHub',
@@ -1758,8 +1783,8 @@ export default {
       editUser: 'Chỉnh sửa người dùng',
       deleteUser: 'Xóa người dùng',
       deleteConfirmMessage: 'Bạn có chắc muốn xóa người dùng \'{email}\' không? Thao tác này không thể hoàn tác.',
-      searchPlaceholder: 'Tìm mờ theo email / tên người dùng / ghi chú / API Key / redeem code...',
-      searchUsers: 'Tìm mờ theo email / tên người dùng / ghi chú / API Key / redeem code / mã thiết bị',
+      searchPlaceholder: 'Tìm kiếm mờ theo email / tên người dùng / ghi chú / API Key / redeem code...',
+      searchUsers: 'Tìm kiếm mờ theo email / tên người dùng / ghi chú / API Key / redeem code / mã thiết bị',
       roleFilter: 'Lọc theo vai trò',
       allRoles: 'Tất cả vai trò',
       allStatus: 'Tất cả trạng thái',
@@ -2418,7 +2443,7 @@ export default {
         maxTokensGreaterThanMin: 'Khoảng #{index}: số token tối đa ({max}) phải lớn hơn số token tối thiểu ({min})',
         priceNonNegative: 'Khoảng #{index}: {name} không được âm',
         unboundedLast: 'Khoảng #{index}: khoảng không giới hạn (để trống token tối đa) chỉ được là khoảng cuối cùng',
-        overlap: 'Khoảng #{prevIndex} và #{index} bị chồng lấn: cận trên trước đó ({prevMax}) lớn hơn cận dưới hiện tại ({min})',
+        overlap: 'Khoảng #{previousIndex} và #{currentIndex} bị chồng lấn: cận trên trước đó ({previousMax}) lớn hơn cận dưới hiện tại ({currentMin})',
         priceNames: {
           input: 'Giá input',
           output: 'Giá output',
@@ -2538,7 +2563,7 @@ export default {
         noGroupsInChannel: 'Chưa chọn nhóm nào trong tab nền tảng phía trên',
         unnamed: 'Chưa đặt tên',
         codexImageGenerationBridge: 'Cầu nối tạo ảnh Codex',
-        codexImageGenerationBridgeHint: 'Khi bật, các yêu cầu văn bản Codex /responses trong nhóm OpenAI có thể tự động được cấp công cụ image_generation. Hãy giữ tắt trừ khi các tài khoản được định tuyến hỗ trợ tạo ảnh.',
+        codexImageGenerationBridgeHint: 'Khi bật, chỉ các request văn bản Codex /responses không phải Responses Lite trong nhóm OpenAI mới được tự động chèn công cụ hosted image_generation. Cầu nối không chèn công cụ cho Responses Lite; việc xử lý image_gen cục bộ tuân theo chính sách client và tài khoản. Chỉ bật khi các tài khoản được định tuyến hỗ trợ tạo hình ảnh.',
         bedrockCCCompat: 'Tương thích Bedrock CC',
         bedrockCCCompatHint: '⚠️ Sau khi bật, request của tài khoản Bedrock trong kênh này sẽ được xử lý tương thích Claude Code (chuyển kiểu thinking, dọn ID tool_use)',
 }
@@ -2689,7 +2714,7 @@ export default {
       resetInMinutes: 'Đặt lại sau {minutes} phút',
       resetInHoursMinutes: 'Đặt lại sau {hours} giờ {minutes} phút',
       resetInDaysHours: 'Đặt lại sau {days} ngày {hours} giờ',
-      daysRemaining: 'Số ngày còn lại',
+      daysRemaining: 'Còn {days} ngày',
       remainingDays: 'Ngày còn lại',
       noExpiration: 'Không có thời hạn hết hạn',
       status: {
@@ -3229,7 +3254,7 @@ export default {
         responsesWebsocketsV2Desc:
           'Mặc định tắt. Sau khi bật, có thể sử dụng khả năng giao thức responses_websockets_v2 (chịu ràng buộc bởi công tắc toàn cục của gateway và công tắc theo loại tài khoản).',
         wsMode: 'WS mode',
-        wsModeDesc: 'Chỉ có hiệu lực với loại tài khoản OpenAI hiện tại.',
+        wsModeDesc: 'Chỉ áp dụng cho loại tài khoản OpenAI hiện tại; các chế độ WS của tài khoản, gồm http_bridge, chỉ có hiệu lực khi gateway.openai_ws.mode_router_v2_enabled=true toàn cục.',
         wsModeOff: 'Tắt (off)',
         wsModeCtxPool: 'Pool ngữ cảnh (ctx_pool)',
         wsModePassthrough: 'Passthrough',
@@ -3254,7 +3279,7 @@ export default {
         compactModeForceOff: 'Buộc tắt',
         responsesMode: 'Hỗ trợ Responses API',
         responsesModeDesc:
-          'Chỉ áp dụng cho tài khoản OpenAI API Key. Auto bám theo kết quả dò tương thích; chỉ ép route khi chắc chắn upstream hỗ trợ hoặc không hỗ trợ /v1/responses.',
+          'Chỉ áp dụng cho luồng chuyển tiếp văn bản của OpenAI API Key. Auto bám theo kết quả dò; các chế độ force sẽ ghi đè kết quả dò.',
         responsesModeAuto: 'Tự động',
         responsesModeForceResponses: 'Buộc dùng Responses',
         responsesModeForceChatCompletions: 'Buộc dùng Chat Completions',
@@ -3901,7 +3926,7 @@ export default {
       imagePromptLabel: 'Prompt sinh ảnh',
       imagePromptPlaceholder: 'Ví dụ: tạo một chú mèo mướp màu cam đội mũ phi hành gia, phong cách minh họa pixel, nền đơn sắc.',
       imagePromptDefault: 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
-      imageTestHint: 'Sau khi chọn model ảnh, hệ thống sẽ trực tiếp gửi bài kiểm tra sinh ảnh và hiển thị ảnh trả về bên dưới.',
+      imageTestHint: 'Gọi độc lập /v1/images/generations và hiển thị hình ảnh trả về bên dưới.',
       imageTestMode: 'Chế độ: kiểm tra sinh ảnh',
       imagePreview: 'Kết quả tạo ảnh:',
       imageReceived: 'Đã nhận ảnh kiểm tra thứ {count}',
@@ -4129,7 +4154,7 @@ export default {
       batchInput: 'Danh sách proxy',
       batchInputPlaceholder:
         "Nhập một proxy trên mỗi dòng, hỗ trợ các định dạng sau:\nsocks5://user:pass{'@'}192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass{'@'}proxy.example.com:443",
-      batchInputHint: 'Hỗ trợ giao thức http, https, socks5 theo định dạng: giao_thức://[tên_người_dùng:mật_khẩu{\'@\'}]máy_chủ:cổng',
+      batchInputHint: "Hỗ trợ giao thức http, https, socks5. Định dạng: protocol://[user:pass{'@'}]host:port",
       parsedCount: 'Hợp lệ {count}',
       invalidCount: 'Không hợp lệ {count}',
       duplicateCount: 'Trùng lặp {count}',
@@ -5515,7 +5540,7 @@ export default {
         emailSuffixWhitelist: 'Danh sách trắng tên miền email',
         emailSuffixWhitelistHint:
           "Chỉ cho phép đăng ký bằng email thuộc các tên miền được chỉ định (ví dụ {'@'}qq.com, {'@'}gmail.com)",
-        emailSuffixWhitelistPlaceholder: 'example.com',
+        emailSuffixWhitelistPlaceholder: "{'@'}example.com, *.edu.cn",
         emailSuffixWhitelistInputHint: 'Để trống nghĩa là không giới hạn',
         promoCode: 'Mã khuyến mãi',
         promoCodeHint: 'Cho phép người dùng dùng mã khuyến mãi khi đăng ký',
@@ -5703,8 +5728,8 @@ export default {
         antigravityUserAgentVersionPlaceholder: '1.23.2',
         antigravityUserAgentVersionHint: 'Để trống sẽ dùng ANTIGRAVITY_USER_AGENT_VERSION hoặc giá trị mặc định 1.23.2; khi điền thì cài đặt backend được ưu tiên.',
         openaiCodexUserAgent: 'OpenAI Codex UA',
-        openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
-        openaiCodexUserAgentHint: 'Dùng để vượt qua thử thách Cloudflare browser-UA ở upstream OpenAI. Chỉ áp dụng khi User-Agent của client được nhận diện là trình duyệt (Mozilla/...). Để trống để dùng mặc định tích hợp.',
+        openaiCodexUserAgentPlaceholder: 'codex-tui/0.146.1 (Ubuntu 22.4.0; x86_64) WindowsTerminal (codex-tui; 0.146.1)',
+        openaiCodexUserAgentHint: 'User-Agent Codex đầy đủ dùng cho mọi request outbound, cho phép tùy chỉnh dấu vân tay OS / kiến trúc / terminal. Để trống để tạo định danh codex-tui chuẩn từ phiên bản bên dưới (khuyến nghị). Nếu điền, cả phần version đầu và cuối vẫn được đồng bộ theo phiên bản bên dưới, tránh ghim UA vào bản phát hành cũ — khi thiếu công suất, upstream phân tải theo danh tính client và ưu tiên loại bỏ danh tính cũ hoặc không chính thức bằng server_is_overloaded.',
         openaiAllowClaudeCodeCodexPlugin: 'Cho phép dùng plugin Codex trong Claude Code',
         openaiAllowClaudeCodeCodexPluginDesc: 'Công tắc toàn cục, chỉ áp dụng cho tài khoản OpenAI OAuth đã bật “Chỉ cho phép client Codex chính thức”. Sau khi bật, mọi tài khoản kiểu này sẽ cho phép thêm request qua plugin Codex của Claude Code (khớp chính xác originator=Claude Code), không cần cấu hình từng tài khoản; request upstream vẫn được passthrough.',
       },
@@ -6484,9 +6509,9 @@ export default {
         fallbackAction: 'Hành động dự phòng',
         fallbackActionHint: 'Hành động cho các model không khớp whitelist.',
         fallbackErrorMessagePlaceholder: 'Thông báo lỗi tùy chỉnh khi các model ngoài whitelist bị chặn',
-        modelPatternPlaceholder: 'ví dụ: gpt-5.5 hoặc gpt-5.5*',
+        modelPatternPlaceholder: 'ví dụ: gpt-5.6-sol hoặc gpt-5.6*',
         modelWhitelist: 'Whitelist model',
-        modelWhitelistHint: 'Để trống để áp dụng cho tất cả model. Hỗ trợ khớp chính xác và tiền tố wildcard (ví dụ: gpt-5.5*).',
+        modelWhitelistHint: 'Để trống để áp dụng cho tất cả model. Hỗ trợ khớp chính xác và tiền tố wildcard (ví dụ: gpt-5.6*)',
         removeRule: 'Xóa quy tắc',
         ruleHeader: 'Quy tắc #{index}',
         saveHint: 'Được lưu cùng với cài đặt hệ thống (nhấn nút Lưu chung ở cuối trang).',
@@ -6515,7 +6540,7 @@ export default {
         title: 'Kiểm soát truy cập IP cho API Key',
         description: 'Kiểm soát API Key whitelist và blacklist dùng IP client nào để phán định',
         trustForwardedIp: 'Tin cậy IP client do reverse proxy chuyển tiếp',
-        trustForwardedIpHint: 'Mặc định tắt. Chỉ bật khi origin chỉ cho phép Cloudflare hoặc Nginx reverse proxy truy cập; sau khi bật, whitelist/blacklist IP của API Key sẽ dùng CF-Connecting-IP, X-Real-IP hoặc X-Forwarded-For, nhất quán với IP request trong bản ghi sử dụng.',
+        trustForwardedIpHint: 'Mặc định bật để tương thích khi nâng cấp. Khi bật, giá trị thô từ CF-Connecting-IP, X-Real-IP hoặc X-Forwarded-For sẽ tiếp quản việc phân giải IP client thay cho server.trusted_proxies. Tắt để bắt buộc dùng chuỗi trusted proxy của Gin được cấu hình bởi server.trusted_proxies. Chỉ bật chế độ tiếp quản khi không thể truy cập trực tiếp origin. Thay đổi công tắc này sẽ làm thay đổi dấu vân tay IP của các session hiện có.',
       },
       platformQuota: {
         platform: 'Nền tảng',
@@ -6719,7 +6744,7 @@ export default {
       apiKeyConfigured: 'Đã cấu hình',
       apiKeyCount: '{count} khóa',
       apiKeyFailureCount: '{count} lần lỗi',
-      apiKeyFreezeRule: 'Ba lần lỗi liên tiếp sẽ đóng băng một khóa trong 1 phút; vòng quay kiểm duyệt sẽ bỏ qua các khóa đang bị đóng băng.',
+      apiKeyFreezeRule: 'Lỗi 400 không đóng băng; lỗi 401/403 đóng băng 10 phút; lỗi 429/529 đóng băng 1 phút; các lỗi HTTP khác đóng băng 10 giây.',
       apiKeyFrozenUntil: 'Bị đóng băng đến {time}',
       apiKeyHTTPStatus: 'HTTP {status}',
       apiKeyHealth: 'Tình trạng khả dụng của khóa',
@@ -7010,7 +7035,7 @@ export default {
     notEnabledTitle: 'Tính năng này chưa được bật',
     notEnabledDesc: 'Quản trị viên hiện chưa bật cổng nạp tiền / đăng ký, vui lòng liên hệ quản trị viên.',
     notConfiguredTitle: 'Liên kết nạp tiền / đăng ký chưa được cấu hình',
-    notConfiguredDesc: 'Quản trị viên đã bật lối vào nhưng դեռ chưa cấu hình liên kết nạp tiền / đăng ký, vui lòng liên hệ quản trị viên.'
+    notConfiguredDesc: 'Quản trị viên đã bật lối vào nhưng chưa cấu hình URL nạp tiền / đăng ký. Vui lòng liên hệ quản trị viên.'
   },
 
   // Custom Page (iframe embed)
@@ -7047,7 +7072,7 @@ export default {
     viewAll: 'Xem tất cả thông báo',
     markedAsRead: 'Đã đánh dấu là đã đọc',
     allMarkedAsRead: 'Tất cả thông báo đã được đánh dấu là đã đọc',
-    newCount: 'Có {count} thông báo mới',
+    newCount: '{count} thông báo mới | {count} thông báo mới',
     readAt: 'Thời gian đã đọc',
     read: 'Đã đọc',
     unread: 'Chưa đọc',
@@ -7363,7 +7388,7 @@ export default {
     amountTooLow: 'Số tiền tối thiểu là {min}',
     amountTooHigh: 'Số tiền tối đa là {max}',
     amountNoMethod: 'Không có phương thức thanh toán khả dụng cho số tiền này',
-    rechargeRatePreview: 'Tỷ giá hiện tại: {local} = {usd}',
+    rechargeRatePreview: 'Tỷ giá hiện tại: 1 CNY = {usd} USD',
     fxRateMissing: 'Đang thiếu tỷ giá cho: {currencies}. Vui lòng liên hệ hỗ trợ trước khi thanh toán.',
     fxRateStale: 'Tỷ giá từ {source} có thể đã cũ; hệ thống sẽ khóa quote tại thời điểm thanh toán.',
     fxRateUpdated: 'Tỷ giá từ {source}, cập nhật lúc {time}.',
@@ -7684,3 +7709,11 @@ export default {
   },
 
 }
+
+export default mergeLocaleMessages(
+  vi,
+  viAdditionsA,
+  viAdditionsB,
+  viAdditionsC,
+  viAdditionsD,
+)

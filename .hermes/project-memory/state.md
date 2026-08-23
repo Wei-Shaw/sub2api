@@ -1,32 +1,31 @@
 # State
 
 ## Current focus
-- DLG web device-code login vertical slice is locally implemented and verification-complete; release handoff remains gated on security decision, independent review/CI, and approval.
+- Vietnamese locale coverage and translation quality are complete on a dedicated branch; local verification is complete, while push/PR, independent review, and CI remain pending.
 
 ## Repo
-- Branch: `feat/upstream-minimal-bot-sales`
+- Branch: `feat/vietnamese-locale-coverage`
 - Remote: `https://github.com/cong91/sub2api.git`
 
 ## Active changes
-- Direct canonical `DLG-XXXX-XXXX-XXXX` codes resolve `user_devices.device_code` through `/auth/invite-login`.
-- Active device and owner checks, `last_login_at`, existing token pair, and no bootstrap API-key/subscription provisioning are covered.
-- Web `LoginView` sends `client_kind=web`; legacy redeem flow remains separate.
-- `bot-sales` fulfillment source is unchanged.
+- Vietnamese messages are split between `frontend/src/i18n/locales/vi.ts` and `vi-additions-a.ts` through `vi-additions-d.ts`.
+- Locale regression tests cover zh-to-vi key coverage, message compilation, and en-to-vi placeholder parity.
+- Technical literals such as endpoints, field names, model identifiers, environment variables, and code placeholders are preserved during translation cleanup.
 
 ## Verification
-- Backend: `go vet ./...`, bounded `go test ./...`, focused DLG unit tests, and full unit-tagged service suite passed.
-- Frontend: official `npm run build`, `npm run typecheck`, lint, focused login test, and full Vitest suite passed (`242` files / `1703` tests).
-- Preview smoke fetched `/` and the generated entry asset successfully.
-- Root-owned local build artifacts were repaired in-place; no generated `dist` files are tracked.
-- Audit request-body redaction now covers invitation/device/claim codes; regression coverage was added before the commit boundary.
+- Frontend lint: `npm run lint:check` passed.
+- Frontend typecheck: `npm run typecheck` passed.
+- Full Vitest suite: `npm run test:run` passed (`243` files / `1706` tests).
+- Production build: `npm run build` passed; Vite emitted existing dynamic-import and large-chunk warnings only.
+- Locale parity script passed: en/zh each have 7,916 keys; vi has 8,567 keys; missing zh-to-vi keys `0`; placeholder mismatches `0`.
+- `git diff --check` passed.
 
 ## Release blockers / risks
-- DLG remains a persistent bearer credential; expiry, replay prevention, and post-login rotation are not implemented. Persistent-bearer semantics are now explicitly accepted for this compatibility change; lifecycle hardening remains a separately approved follow-up.
-- Independent delegated review was unavailable because the configured reviewer model returned HTTP 404; self-review is recorded but does not replace formal review/CI.
-- No commit, push, PR, or production deployment has occurred.
+- No push, PR, or production deployment has occurred for this locale branch.
+- Independent delegated review was unavailable because the configured reviewer model returned HTTP 404; self-review and local verification do not replace formal review/CI.
 
 ## Beads
-- br-missing: install beads_rust; .beads not initialized
+- br-missing: install beads_rust; `.beads` not initialized.
 
 ## Bootstrap metadata
 - mode: smart
