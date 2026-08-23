@@ -406,10 +406,16 @@ func (s *OpenAIGatewayService) isAccountModelSupportedForRequest(ctx context.Con
 		return false
 	}
 	channelMappedModel := requestedModel
+	channelMapped := false
 	if groupID != nil && s != nil && s.channelService != nil {
-		channelMappedModel = s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel).MappedModel
+		mapping := s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel)
+		channelMappedModel = mapping.MappedModel
+		channelMapped = mapping.Mapped
 	}
 	if !openAIImagesRequestFromContext(ctx) || account.Platform != PlatformOpenAI {
+		if channelMapped {
+			return account.HasSyncedUpstreamModel(channelMappedModel)
+		}
 		return account.IsModelSupported(channelMappedModel)
 	}
 	return isOpenAIImageModelSupportedByAccount(account, requestedModel, channelMappedModel)

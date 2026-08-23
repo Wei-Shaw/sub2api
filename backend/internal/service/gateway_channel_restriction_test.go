@@ -13,26 +13,44 @@ import (
 func TestGatewayService_ModelSupportUsesChannelMappedModelAcrossPlatforms(t *testing.T) {
 	t.Parallel()
 
-	channelSvc := newTestChannelService(makeStandardRepo(Channel{
-		ID:       1,
-		Status:   StatusActive,
-		GroupIDs: []int64{10},
-		ModelMapping: map[string]map[string]string{
-			PlatformAnthropic: {"public-luna": "claude-terra"},
-		},
-	}, map[int64]string{10: PlatformAnthropic}))
-	svc := &GatewayService{channelService: channelSvc}
-	group := &Group{ID: 10, Platform: PlatformAnthropic, Status: StatusActive, Hydrated: true}
-	ctx := svc.withGroupContext(context.Background(), group)
-	account := &Account{
-		Platform: PlatformAnthropic,
-		Type:     AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"model_mapping": map[string]any{"claude-terra": "claude-terra"},
-		},
+	tests := []struct {
+		name     string
+		platform string
+		target   string
+	}{
+		{name: "anthropic", platform: PlatformAnthropic, target: "claude-terra"},
+		{name: "gemini", platform: PlatformGemini, target: "gemini-terra"},
+		{name: "antigravity", platform: PlatformAntigravity, target: "custom-terra"},
 	}
 
-	require.True(t, svc.isModelSupportedByAccountWithContext(ctx, account, "public-luna"))
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			channelSvc := newTestChannelService(makeStandardRepo(Channel{
+				ID:       1,
+				Status:   StatusActive,
+				GroupIDs: []int64{10},
+				ModelMapping: map[string]map[string]string{
+					tt.platform: {"public-luna": tt.target},
+				},
+			}, map[int64]string{10: tt.platform}))
+			svc := &GatewayService{channelService: channelSvc}
+			group := &Group{ID: 10, Platform: tt.platform, Status: StatusActive, Hydrated: true}
+			ctx := svc.withGroupContext(context.Background(), group)
+			account := &Account{
+				Platform: tt.platform,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					// 冲突的旧账号映射不能把渠道目标当成“不支持”。
+					"model_mapping": map[string]any{"public-luna": "stale-account-target"},
+				},
+			}
+
+			require.True(t, svc.isModelSupportedByAccountWithContext(ctx, account, "public-luna"))
+		})
+	}
 }
 
 func TestImagePlaygroundModelEligible_RequestedAndChannelMapped(t *testing.T) {

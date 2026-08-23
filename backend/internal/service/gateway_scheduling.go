@@ -1164,22 +1164,23 @@ func (s *GatewayService) isAccountSchedulableForModelSelection(ctx context.Conte
 	if account == nil {
 		return false
 	}
-	return account.IsSchedulableForModelWithContext(ctx, s.channelMappedModelForAccountSupport(ctx, requestedModel))
+	model, _ := s.channelModelForAccountSupport(ctx, requestedModel)
+	return account.IsSchedulableForModelWithContext(ctx, model)
 }
 
-// channelMappedModelForAccountSupport returns the model that the selected
-// channel will expose to the account. Account model support must be checked
-// against this value, otherwise a public alias such as luna is rejected before
-// the channel mapping to terra can be applied.
-func (s *GatewayService) channelMappedModelForAccountSupport(ctx context.Context, requestedModel string) string {
+// channelModelForAccountSupport returns the model exposed to the account and
+// whether the channel actually mapped it. A matched channel mapping is
+// authoritative: account-level mapping keys must not act as a second whitelist.
+func (s *GatewayService) channelModelForAccountSupport(ctx context.Context, requestedModel string) (string, bool) {
 	if strings.TrimSpace(requestedModel) == "" || s == nil || s.channelService == nil || ctx == nil {
-		return requestedModel
+		return requestedModel, false
 	}
 	group, ok := ctx.Value(ctxkey.Group).(*Group)
 	if !ok || !IsGroupContextValid(group) {
-		return requestedModel
+		return requestedModel, false
 	}
-	return s.channelService.ResolveChannelMapping(ctx, group.ID, requestedModel).MappedModel
+	mapping := s.channelService.ResolveChannelMapping(ctx, group.ID, requestedModel)
+	return mapping.MappedModel, mapping.Mapped
 }
 
 // isAccountInGroup checks if the account belongs to the specified group.
@@ -2608,10 +2609,16 @@ func summarizeSelectionFailureStats(stats selectionFailureStats) string {
 // isModelSupportedByAccountWithContext 根据账户平台检查模型支持（带 context）
 // 对于 Antigravity 平台，会先获取映射后的最终模型名（包括 thinking 后缀）再检查支持
 func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Context, account *Account, requestedModel string) bool {
-	requestedModel = s.channelMappedModelForAccountSupport(ctx, requestedModel)
+	requestedModel, channelMapped := s.channelModelForAccountSupport(ctx, requestedModel)
 	if account.Platform == PlatformAntigravity {
 		if strings.TrimSpace(requestedModel) == "" {
 			return true
+		}
+		if channelMapped {
+			if enabled, ok := ThinkingEnabledFromContext(ctx); ok {
+				requestedModel = applyThinkingModelSuffix(requestedModel, enabled)
+			}
+			return account.HasSyncedUpstreamModel(requestedModel)
 		}
 		// 使用与转发阶段一致的映射逻辑：自定义映射优先 → 默认映射兜底
 		mapped := mapAntigravityModel(account, requestedModel)
@@ -2628,7 +2635,28 @@ func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Contex
 		}
 		return account.HasSyncedUpstreamModel(mapped)
 	}
+	if channelMapped {
+		return s.isChannelMappedModelSupportedByAccount(account, requestedModel)
+	}
 	return s.isModelSupportedByAccount(account, requestedModel)
+}
+
+func (s *GatewayService) isChannelMappedModelSupportedByAccount(account *Account, model string) bool {
+	if account == nil {
+		return false
+	}
+	if account.IsBedrock() {
+		_, ok := ResolveBedrockModelID(account, model)
+		return ok
+	}
+	if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
+		if account.Type == AccountTypeServiceAccount {
+			model = normalizeVertexAnthropicModelID(claude.NormalizeModelID(model))
+		} else {
+			model = claude.NormalizeModelID(model)
+		}
+	}
+	return account.HasSyncedUpstreamModel(model)
 }
 
 // isModelSupportedByAccount 根据账户平台检查模型支持（无 context，用于非 Antigravity 平台）

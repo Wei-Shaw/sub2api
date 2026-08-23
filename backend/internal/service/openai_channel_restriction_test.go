@@ -59,8 +59,8 @@ func TestOpenAISelectAccountForModelWithExclusions_ChannelMappingRunsBeforeAccou
 				Status:      StatusActive,
 				Schedulable: true,
 				Credentials: map[string]any{
-					// 账号只声明真实上游模型；公共别名由渠道负责转换。
-					"model_mapping": map[string]any{"gpt-5.6-terra": "gpt-5.6-terra"},
+					// 冲突的旧账号映射不得覆盖渠道的权威映射。
+					"model_mapping": map[string]any{"gpt-5.6-luna": "gpt-5.6-sol"},
 				},
 			},
 		}},
