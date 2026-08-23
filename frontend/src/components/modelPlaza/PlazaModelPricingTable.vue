@@ -381,14 +381,19 @@ function hasOfficialCache(o: NonNullable<PlazaModel['official_pricing']>): boole
   return o.cache_write_price != null || o.cache_read_price != null || o.cache_write_1h_price != null
 REDACTED
 
+/** 上下文档位按下限升序展示(后端已升序,此处兜底)。 */
+function sortByContext(intervals: UserPricingInterval[]): UserPricingInterval[] {
+  return [...intervals].sort((a, b) => a.min_tokens - b.min_tokens)
+REDACTED
+
 /** token 模式的阶梯定价(内联进输入/输出/缓存列)。 */
 function tokenIntervals(m: PlazaModel): UserPricingInterval[] {
-  return m.pricing?.intervals ?? []
+  return sortByContext(m.pricing?.intervals ?? [])
 REDACTED
 
 /** 官方阶梯(后端按目录规则合成,不受分组开关影响)。 */
 function officialIntervals(m: PlazaModel): UserPricingInterval[] {
-  return m.official_pricing?.intervals ?? []
+  return sortByContext(m.official_pricing?.intervals ?? [])
 REDACTED
 
 /** 任一档带缓存价才按档渲染缓存列;否则沿用平价的写入/读取两行。 */
@@ -409,18 +414,14 @@ function requestIntervals(m: PlazaModel): UserPricingInterval[] {
   return (m.pricing?.intervals ?? []).filter((iv) => iv.per_request_price != null)
 REDACTED
 
-/** 档位标签:优先管理员配置的 tier_label,否则按 token 区间生成(≤200K / >200K / 100–200K / 200K–1M)。 */
+/**
+ * 档位标签:优先后端/管理员给出的 tier_label,否则按区间生成统一形态——
+ * 有上限为「≤上限」,末档为「>下限」;档位升序排列,相邻的 ≤100K / ≤200K 即表示 (100K,200K]。
+ */
 function tierLabel(iv: UserPricingInterval): string {
   if (iv.tier_label) return iv.tier_label
   const { min_tokens: min, max_tokens: max REDACTED = iv
-  if (max == null) return `>${formatTokenCount(min)REDACTED`
-  if (min === 0) return `≤${formatTokenCount(max)REDACTED`
-  const lo = formatTokenCount(min)
-  const hi = formatTokenCount(max)
-  // 同单位时省略前一个单位(100–200K),节省列宽
-  const unit = hi.slice(-1)
-  if (/[KM]/.test(unit) && lo.endsWith(unit)) return `${lo.slice(0, -1)REDACTED–${hiREDACTED`
-  return `${loREDACTED–${hiREDACTED`
+  return max == null ? `>${formatTokenCount(min)REDACTED` : `≤${formatTokenCount(max)REDACTED`
 REDACTED
 
 function formatTokenCount(n: number): string {

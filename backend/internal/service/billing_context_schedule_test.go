@@ -106,7 +106,7 @@ func scheduleScenarios() []scheduleScenario {
 		REDACTED,
 	REDACTED,
 		{
-			name: "渠道倍率区间按渠道平价覆盖后的 base 折算", model: "claude-sonnet-4", platform: PlatformAnthropic, groupPlatform: PlatformAnthropic,
+			name: "渠道倍率区间按渠道平价覆盖后的 base 折算（区间自定义标签不用于档位）", model: "claude-sonnet-4", platform: PlatformAnthropic, groupPlatform: PlatformAnthropic,
 			group: enabledGroup(PlatformAnthropic), wantBasis: ContextPricingBasisWholeRequest,
 			channel: sonnetChannel(
 				PricingInterval{MinTokens: 0, MaxTokens: intPtr(200000), InputMultiplier: p(1)REDACTED,
@@ -114,8 +114,8 @@ func scheduleScenarios() []scheduleScenario {
 			),
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 2)
-				requireTier(t, s.Tiers[0], 0, intPtr(200000), "", p(2e-6), p(15e-6), p(3.75e-6), p(0.3e-6))
-				requireTier(t, s.Tiers[1], 200000, nil, "long", p(4e-6), p(22.5e-6), p(7.5e-6), p(0.6e-6))
+				requireTier(t, s.Tiers[0], 0, intPtr(200000), "≤200K", p(2e-6), p(15e-6), p(3.75e-6), p(0.3e-6))
+				requireTier(t, s.Tiers[1], 200000, nil, ">200K", p(4e-6), p(22.5e-6), p(7.5e-6), p(0.6e-6))
 		REDACTED,
 	REDACTED,
 		{
@@ -139,9 +139,9 @@ func scheduleScenarios() []scheduleScenario {
 			),
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 3)
-				requireTier(t, s.Tiers[0], 0, intPtr(100000), "", p(1e-6), p(15e-6), p(3.75e-6), p(0.3e-6))
-				requireTier(t, s.Tiers[1], 100000, intPtr(200000), "", p(2e-6), p(15e-6), p(3.75e-6), p(0.3e-6))
-				requireTier(t, s.Tiers[2], 200000, nil, "", p(4e-6), p(15e-6), p(3.75e-6), p(0.3e-6))
+				requireTier(t, s.Tiers[0], 0, intPtr(100000), "≤100K", p(1e-6), p(15e-6), p(3.75e-6), p(0.3e-6))
+				requireTier(t, s.Tiers[1], 100000, intPtr(200000), "≤200K", p(2e-6), p(15e-6), p(3.75e-6), p(0.3e-6))
+				requireTier(t, s.Tiers[2], 200000, nil, ">200K", p(4e-6), p(15e-6), p(3.75e-6), p(0.3e-6))
 		REDACTED,
 	REDACTED,
 		{
@@ -153,8 +153,8 @@ func scheduleScenarios() []scheduleScenario {
 			),
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 2)
-				requireTier(t, s.Tiers[0], 0, intPtr(200000), "", p(2e-6), p(15e-6), p(3.75e-6), p(0.3e-6))
-				requireTier(t, s.Tiers[1], 200000, nil, "", p(4e-6), p(15e-6), p(3.75e-6), p(0.3e-6))
+				requireTier(t, s.Tiers[0], 0, intPtr(200000), "≤200K", p(2e-6), p(15e-6), p(3.75e-6), p(0.3e-6))
+				requireTier(t, s.Tiers[1], 200000, nil, ">200K", p(4e-6), p(15e-6), p(3.75e-6), p(0.3e-6))
 		REDACTED,
 	REDACTED,
 		{
@@ -166,8 +166,8 @@ func scheduleScenarios() []scheduleScenario {
 			),
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 3)
-				requireTier(t, s.Tiers[1], 200000, intPtr(1000000), "", p(4e-6), p(15e-6), p(3.75e-6), p(0.3e-6))
-				requireTier(t, s.Tiers[2], 1000000, nil, "", p(2e-6), p(15e-6), p(3.75e-6), p(0.3e-6))
+				requireTier(t, s.Tiers[1], 200000, intPtr(1000000), "≤1M", p(4e-6), p(15e-6), p(3.75e-6), p(0.3e-6))
+				requireTier(t, s.Tiers[2], 1000000, nil, ">1M", p(2e-6), p(15e-6), p(3.75e-6), p(0.3e-6))
 		REDACTED,
 	REDACTED,
 		{
@@ -336,6 +336,13 @@ func TestResolveContextPricingSchedule_Scenarios(t *testing.T) {
 			for i := 1; i < len(sched.Tiers); i++ {
 				require.NotNil(t, sched.Tiers[i-1].MaxTokens)
 				require.Equal(t, *sched.Tiers[i-1].MaxTokens, sched.Tiers[i].MinTokens, "档位连续")
+				require.Less(t, sched.Tiers[i-1].MinTokens, sched.Tiers[i].MinTokens, "档位按上下文升序")
+		REDACTED
+			if len(sched.Tiers) > 1 {
+				for i, tier := range sched.Tiers {
+					require.NotEmpty(t, tier.Label, "多档时每档都有标签 #%d", i)
+			REDACTED
+				require.Nil(t, sched.Tiers[len(sched.Tiers)-1].MaxTokens, "末档无上限")
 		REDACTED
 			if sc.check != nil {
 				sc.check(t, sched)

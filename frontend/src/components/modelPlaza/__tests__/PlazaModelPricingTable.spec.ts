@@ -507,23 +507,21 @@ describe('PlazaModelPricingTable 长上下文阶梯', () => {
     expect(marginal.findAll('tbody td')[0].text()).toContain('modelPlaza.table.marginalBadge')
   REDACTED)
 
-  it('自定义中间档标签同单位时省略前一个单位', () => {
+  it('无标签的多档按区间生成统一形态(≤上限 / >下限),并按下限升序展示', () => {
     const model = ladderModel({
       pricing: {
         ...ladderModel().pricing!,
+        // 故意乱序:展示必须按上下文从低到高
         intervals: [
-          { ...ladderIntervals()[0], max_tokens: 100000, tier_label: '' REDACTED,
+          { ...ladderIntervals()[1], min_tokens: 1000000, tier_label: '' REDACTED,
           { ...ladderIntervals()[0], min_tokens: 100000, max_tokens: 200000, tier_label: '' REDACTED,
-          { ...ladderIntervals()[1], min_tokens: 200000, max_tokens: 1000000, tier_label: '' REDACTED,
-          { ...ladderIntervals()[1], min_tokens: 1000000, tier_label: '' REDACTED
+          { ...ladderIntervals()[0], max_tokens: 100000, tier_label: '' REDACTED,
+          { ...ladderIntervals()[1], min_tokens: 200000, max_tokens: 1000000, tier_label: '' REDACTED
         ]
       REDACTED
     REDACTED)
-    const text = mountTable([model], 1).findAll('tbody td')[1].text()
-    expect(text).toContain('≤100K')
-    expect(text).toContain('100–200K')
-    expect(text).toContain('200K–1M')
-    expect(text).toContain('>1M')
+    const rows = mountTable([model], 1).findAll('tbody td')[1].findAll('.leading-5')
+    expect(rows.map((r) => r.text().split(/\s+/)[0])).toEqual(['≤100K', '≤200K', '≤1M', '>1M'])
   REDACTED)
 
   it('官方无 intervals 字段(旧响应)时官方列保持平价,实付无阶梯时缓存列保持两行', () => {
