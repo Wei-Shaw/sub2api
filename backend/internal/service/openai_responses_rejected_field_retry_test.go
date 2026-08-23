@@ -71,6 +71,20 @@ func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyForcesResponsesLiteSerial
 	require.False(t, gjson.GetBytes(retryBody, "parallel_tool_calls").Bool())
 }
 
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyAddsResponsesLiteSerialToolsWhenMissing(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","tools":[{"type":"function","name":"shell"}]}`)
+	responseBody := []byte(`{"error":{"code":"unsupported_value","message":"X-OpenAI-Internal-Codex-Responses-Lite requires ` + "`parallel_tool_calls`" + ` to be false.","param":"parallel_tool_calls","type":"invalid_request_error"}}`)
+
+	retryBody, reason, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, responseBody)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "Responses Lite parallel_tool_calls rejection", reason)
+	require.True(t, gjson.GetBytes(retryBody, "parallel_tool_calls").Exists())
+	require.Equal(t, gjson.False, gjson.GetBytes(retryBody, "parallel_tool_calls").Type)
+	require.False(t, gjson.GetBytes(retryBody, "parallel_tool_calls").Bool())
+}
+
 func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyRejectsAmbiguousErrors(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -121,6 +135,51 @@ func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyRejectsAmbiguousErrors(t 
 			name:         "already serial Responses Lite body",
 			body:         []byte(`{"parallel_tool_calls":false}`),
 			responseBody: []byte(`{"error":{"code":"unsupported_value","message":"X-OpenAI-Internal-Codex-Responses-Lite requires ` + "`parallel_tool_calls`" + ` to be false.","param":"parallel_tool_calls"}}`),
+		},
+		{
+			name:         "null Responses Lite body",
+			body:         []byte(`{"parallel_tool_calls":null}`),
+			responseBody: []byte(`{"error":{"code":"unsupported_value","message":"X-OpenAI-Internal-Codex-Responses-Lite requires ` + "`parallel_tool_calls`" + ` to be false.","param":"parallel_tool_calls"}}`),
+		},
+		{
+			name:         "string Responses Lite body",
+			body:         []byte(`{"parallel_tool_calls":"true"}`),
+			responseBody: []byte(`{"error":{"code":"unsupported_value","message":"X-OpenAI-Internal-Codex-Responses-Lite requires ` + "`parallel_tool_calls`" + ` to be false.","param":"parallel_tool_calls"}}`),
+		},
+		{
+			name:         "missing field with wrong code",
+			body:         []byte(`{}`),
+			responseBody: []byte(`{"error":{"code":"invalid_request_error","message":"X-OpenAI-Internal-Codex-Responses-Lite requires ` + "`parallel_tool_calls`" + ` to be false.","param":"parallel_tool_calls"}}`),
+		},
+		{
+			name:         "Responses Lite code differs by case",
+			body:         []byte(`{"parallel_tool_calls":true}`),
+			responseBody: []byte(`{"error":{"code":"UNSUPPORTED_VALUE","message":"X-OpenAI-Internal-Codex-Responses-Lite requires ` + "`parallel_tool_calls`" + ` to be false.","param":"parallel_tool_calls"}}`),
+		},
+		{
+			name:         "Responses Lite param has surrounding whitespace",
+			body:         []byte(`{"parallel_tool_calls":true}`),
+			responseBody: []byte(`{"error":{"code":"unsupported_value","message":"X-OpenAI-Internal-Codex-Responses-Lite requires ` + "`parallel_tool_calls`" + ` to be false.","param":" parallel_tool_calls "}}`),
+		},
+		{
+			name:         "Responses Lite message differs by case",
+			body:         []byte(`{"parallel_tool_calls":true}`),
+			responseBody: []byte(`{"error":{"code":"unsupported_value","message":"x-openai-internal-codex-responses-lite requires ` + "`parallel_tool_calls`" + ` to be false.","param":"parallel_tool_calls"}}`),
+		},
+		{
+			name:         "Responses Lite message has trailing whitespace",
+			body:         []byte(`{"parallel_tool_calls":true}`),
+			responseBody: []byte(`{"error":{"code":"unsupported_value","message":"X-OpenAI-Internal-Codex-Responses-Lite requires ` + "`parallel_tool_calls`" + ` to be false. ","param":"parallel_tool_calls"}}`),
+		},
+		{
+			name:         "malformed Responses Lite request body",
+			body:         []byte(`{"parallel_tool_calls":tru}`),
+			responseBody: []byte(`{"error":{"code":"unsupported_value","message":"X-OpenAI-Internal-Codex-Responses-Lite requires ` + "`parallel_tool_calls`" + ` to be false.","param":"parallel_tool_calls"}}`),
+		},
+		{
+			name:         "malformed Responses Lite response body",
+			body:         []byte(`{"parallel_tool_calls":true}`),
+			responseBody: []byte(`{"error":{"code":"unsupported_value","message":"X-OpenAI-Internal-Codex-Responses-Lite requires ` + "`parallel_tool_calls`" + ` to be false.","param":"parallel_tool_calls"}`),
 		},
 	}
 
