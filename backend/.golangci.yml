@@ -57,6 +57,10 @@ linters:
         - G304
         - G306
         - G404
+        # G703/G704 是 G304/G107 的污点分析版：网关本职就是按配置转发到上游 URL、按配置写本地文件，
+        # 污点来源即配置本身，规则不适用。
+        - G703
+        - G704
       severity: high
       confidence: high
     errcheck:
