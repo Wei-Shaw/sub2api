@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apiz"
@@ -21,6 +22,7 @@ import (
 const (
 	defaultAsyncVideoPollInterval = 2 * time.Second
 	defaultAsyncVideoFailTimeout  = 30 * time.Minute
+	maxAsyncVideoErrorReasonRunes = 512
 	// defaultAutoDurationSeconds 在客户端传 duration="auto" 或缺失时用作
 	// 预扣（冻结）秒数：即前端"预估费用"里 duration="auto" 的估算口径必须
 	// 与它保持一致，否则会出现"UI 提示预估 X，但后端预扣 Y"的错位。
@@ -28,12 +30,20 @@ const (
 	defaultAutoDurationSeconds = 10
 )
 
-var videoErrorPlatformNamePattern = regexp.MustCompile(`(?i)\b(?:apiz|atlascloud|fal)(?:\.ai)?\b[\s:,-]*`)
+var asyncVideoRefundRetryDelays = [...]time.Duration{
+	1 * time.Minute,
+	3 * time.Minute,
+	9 * time.Minute,
+}
 
-// SanitizeVideoErrorReason removes internal upstream platform names from errors
-// exposed in playground history while preserving status codes and diagnostics.
+var videoErrorPlatformNamePattern = regexp.MustCompile(`(?i)\b(?:apiz|atlascloud|fal)(?:\.ai)?\b[\s:,-]*`)
+var videoErrorURLPattern = regexp.MustCompile(`(?i)https?://[^\s<>"']+`)
+
+// SanitizeVideoErrorReason removes internal upstream platform names and URLs
+// from errors exposed in playground history while preserving useful details.
 func SanitizeVideoErrorReason(reason string) string {
-	cleaned := videoErrorPlatformNamePattern.ReplaceAllString(reason, "")
+	cleaned := videoErrorURLPattern.ReplaceAllString(reason, "[URL]")
+	cleaned = videoErrorPlatformNamePattern.ReplaceAllString(cleaned, "")
 	return strings.TrimSpace(cleaned)
 }
 
@@ -66,8 +76,17 @@ type AsyncVideoService struct {
 	cosService *COSImageTransferService
 	opsService *OpsService
 
+	videoTransferMu     sync.Mutex
+	videoTransferStates map[int64]*asyncVideoTransferState
+
 	pollInterval time.Duration
 	failTimeout  time.Duration
+}
+
+type asyncVideoTransferState struct {
+	done      chan struct{}
+	videoURLs []string
+	mapping   map[string]string
 }
 
 // NewAsyncVideoService 创建视频执行内核。
@@ -295,6 +314,7 @@ func (s *AsyncVideoService) SubmitAsync(ctx context.Context, in *AsyncVideoSubmi
 		DurationSeconds:   storedDuration,
 		AspectRatio:       amStrPtr(in.AspectRatio),
 		Status:            AsyncVideoStatusPending,
+		BillingType:       in.BillingType,
 		HeldCost:          heldCost,
 		RateMultiplier:    in.RateMultiplier,
 		UnitPriceSnapshot: unitPrice,
@@ -392,11 +412,24 @@ func prepareVideoRequestPayload(account *Account, upstreamModel string, payload 
 		prepared[key] = value
 	}
 	prepared["model"] = model
-	if duration, ok := prepared["duration"].(string); ok && strings.EqualFold(strings.TrimSpace(duration), "auto") {
-		prepared["duration"] = -1
+	if duration, ok := prepared["duration"].(string); ok {
+		duration = strings.TrimSpace(duration)
+		switch {
+		case strings.EqualFold(duration, "auto"):
+			prepared["duration"] = -1
+		case duration != "":
+			if value, err := strconv.Atoi(duration); err == nil {
+				prepared["duration"] = value
+			} else if value, err := strconv.ParseFloat(duration, 64); err == nil {
+				prepared["duration"] = value
+			}
+		}
 	}
 	if strings.EqualFold(model, "bytedance/seedance-2.5/image-to-video") {
 		adaptAtlasCloudSeedance25ImageToVideoPayload(prepared)
+	}
+	if strings.EqualFold(model, "bytedance/seedance-2.5/reference-to-video") {
+		adaptAtlasCloudSeedance25ReferenceToVideoPayload(prepared)
 	}
 	return prepared
 }
@@ -420,6 +453,20 @@ func adaptAtlasCloudSeedance25ImageToVideoPayload(payload map[string]any) {
 	payload["watermark"] = false
 	payload["output_format"] = "mp4"
 	payload["return_last_frame"] = false
+}
+
+func adaptAtlasCloudSeedance25ReferenceToVideoPayload(payload map[string]any) {
+	for source, target := range map[string]string{
+		"image_urls": "reference_images",
+		"audio_urls": "reference_audios",
+		"video_urls": "reference_videos",
+	} {
+		if value, ok := payload[source]; ok {
+			payload[target] = value
+			delete(payload, source)
+		}
+	}
+	payload["omni_reference_task_type"] = "auto"
 }
 
 // WaitForTerminal 伪同步阻塞等待任务终态（当前实现保留，供未来 OpenAI 风格视频门面复用）。
@@ -469,7 +516,7 @@ func (s *AsyncVideoService) AdvanceTask(ctx context.Context, task *AsyncVideoTas
 	if account == nil {
 		return task, false, errors.New("async video advance: account is nil")
 	}
-	return s.pollOnce(ctx, task, account, BillingTypeBalance)
+	return s.pollOnce(ctx, task, account, asyncVideoBillingType(task))
 }
 
 // CancelTask 取消一个在飞任务并退费。
@@ -489,7 +536,7 @@ func (s *AsyncVideoService) CancelTask(ctx context.Context, task *AsyncVideoTask
 			}
 		}
 	}
-	s.markFailedAndRefund(ctx, task, BillingTypeBalance, "cancelled by client")
+	s.markFailedAndRefund(ctx, task, asyncVideoBillingType(task), "cancelled by client")
 	return nil
 }
 
@@ -498,16 +545,27 @@ func (s *AsyncVideoService) ReconcileTask(ctx context.Context, task *AsyncVideoT
 	if task == nil {
 		return nil
 	}
-	billingType := BillingTypeBalance
-	if task.FailDeadlineAt != nil && time.Now().After(*task.FailDeadlineAt) {
-		s.markFailedAndRefund(ctx, task, billingType, "fail deadline exceeded")
+	if task.IsTerminal() {
 		return nil
 	}
+	billingType := asyncVideoBillingType(task)
 	if account == nil {
+		if task.FailDeadlineAt != nil && time.Now().After(*task.FailDeadlineAt) {
+			s.markFailedAndRefund(ctx, task, billingType, "fail deadline exceeded")
+			return nil
+		}
 		return errors.New("async video reconcile: account is nil")
 	}
-	_, _, err := s.pollOnce(ctx, task, account, billingType)
-	return err
+	_, done, err := s.pollOnce(ctx, task, account, billingType)
+	if err != nil || done {
+		return err
+	}
+	// 截止时间仅在查询确认上游仍未终结后判断，避免服务重启时把已经
+	// 完成、但本地状态尚未同步的任务直接判为超时。
+	if task.FailDeadlineAt != nil && time.Now().After(*task.FailDeadlineAt) {
+		s.markFailedAndRefund(ctx, task, billingType, "fail deadline exceeded")
+	}
+	return nil
 }
 
 // ListUnfinished 扫描未终结任务供 reconciler 使用。
@@ -546,19 +604,22 @@ func (s *AsyncVideoService) pollOnce(ctx context.Context, task *AsyncVideoTask, 
 		return task, false, nil
 	}
 
-	responseURL := st.ResponseURL
-	if responseURL == "" && task.ResponseURL != nil {
-		responseURL = *task.ResponseURL
-	}
-	result, err := client.ResultRaw(ctx, responseURL)
-	if err != nil {
-		var apiErr *fal.APIError
-		if errors.As(err, &apiErr) && apiErr.StatusCode >= 400 && apiErr.StatusCode < 500 {
-			logUpstreamErrorDump(ctx, "async_video.upstream_result_error", task, apiErr)
-			s.markFailedAndRefund(ctx, task, billingType, fmt.Sprintf("result %d: %s", apiErr.StatusCode, compactUpstreamBody(apiErr.Body)))
-			return task, true, nil
+	result := st.Result
+	if result == nil {
+		responseURL := st.ResponseURL
+		if responseURL == "" && task.ResponseURL != nil {
+			responseURL = *task.ResponseURL
 		}
-		return task, false, nil
+		result, err = client.ResultRaw(ctx, responseURL)
+		if err != nil {
+			var apiErr *fal.APIError
+			if errors.As(err, &apiErr) && apiErr.StatusCode >= 400 && apiErr.StatusCode < 500 {
+				logUpstreamErrorDump(ctx, "async_video.upstream_result_error", task, apiErr)
+				s.markFailedAndRefund(ctx, task, billingType, fmt.Sprintf("result %d: %s", apiErr.StatusCode, compactUpstreamBody(apiErr.Body)))
+				return task, true, nil
+			}
+			return task, false, nil
+		}
 	}
 
 	videoURLs := fal.ExtractVideoURLs(result)
@@ -635,6 +696,7 @@ func (s *AsyncVideoService) markSucceeded(ctx context.Context, task *AsyncVideoT
 		logger.L().Error("async_video.mark_succeeded_failed", zap.Int64("task_id", task.ID), zap.Error(err))
 		return
 	}
+	s.clearVideoTransferState(task.ID)
 	if !updated {
 		return
 	}
@@ -662,6 +724,19 @@ func (s *AsyncVideoService) transferVideosToCOS(ctx context.Context, task *Async
 		return videoURLs, result
 	}
 
+	state, leader := s.beginVideoTransfer(task.ID)
+	if !leader {
+		select {
+		case <-state.done:
+			if len(state.mapping) > 0 {
+				replaceURLsInPayload(result, state.mapping)
+			}
+			return append([]string(nil), state.videoURLs...), result
+		case <-ctx.Done():
+			return videoURLs, result
+		}
+	}
+
 	cosURLs, allOK := s.cosService.TransferVideos(ctx, videoURLs)
 	mapping := make(map[string]string, len(videoURLs))
 	successCount := 0
@@ -679,6 +754,7 @@ func (s *AsyncVideoService) transferVideosToCOS(ctx context.Context, task *Async
 	if len(mapping) > 0 {
 		replaceURLsInPayload(result, mapping)
 	}
+	s.completeVideoTransfer(state, newVideoURLs, mapping)
 
 	logger.L().Info("async_video.cos_transfer.completed",
 		zap.Int64("task_id", task.ID),
@@ -687,6 +763,37 @@ func (s *AsyncVideoService) transferVideosToCOS(ctx context.Context, task *Async
 		zap.Bool("all_ok", allOK))
 
 	return newVideoURLs, result
+}
+
+func (s *AsyncVideoService) beginVideoTransfer(taskID int64) (*asyncVideoTransferState, bool) {
+	s.videoTransferMu.Lock()
+	defer s.videoTransferMu.Unlock()
+	if s.videoTransferStates == nil {
+		s.videoTransferStates = make(map[int64]*asyncVideoTransferState)
+	}
+	if state, ok := s.videoTransferStates[taskID]; ok {
+		return state, false
+	}
+	state := &asyncVideoTransferState{done: make(chan struct{})}
+	s.videoTransferStates[taskID] = state
+	return state, true
+}
+
+func (s *AsyncVideoService) completeVideoTransfer(state *asyncVideoTransferState, videoURLs []string, mapping map[string]string) {
+	s.videoTransferMu.Lock()
+	state.videoURLs = append([]string(nil), videoURLs...)
+	state.mapping = make(map[string]string, len(mapping))
+	for source, destination := range mapping {
+		state.mapping[source] = destination
+	}
+	close(state.done)
+	s.videoTransferMu.Unlock()
+}
+
+func (s *AsyncVideoService) clearVideoTransferState(taskID int64) {
+	s.videoTransferMu.Lock()
+	delete(s.videoTransferStates, taskID)
+	s.videoTransferMu.Unlock()
 }
 
 // replaceURLsInPayload 递归遍历 payload，把命中 mapping 的 URL 字符串替换为 COS URL。
@@ -719,38 +826,134 @@ func replaceURLsInPayload(node any, mapping map[string]string) any {
 	}
 }
 
-// markFailedAndRefund 失败终态：退还全部预扣、置 refunded/expired、终态写 usage_log（refunded）。
+// markFailedAndRefund first persists the generation failure, then attempts the
+// refund. A failed refund is retried by AsyncVideoReconciler after 1/3/9 minutes.
 func (s *AsyncVideoService) markFailedAndRefund(ctx context.Context, task *AsyncVideoTask, billingType int8, reason string) {
-	reason = SanitizeVideoErrorReason(reason)
-	status := AsyncVideoStatusRefunded
-	if task.FailDeadlineAt != nil && time.Now().After(*task.FailDeadlineAt) {
-		status = AsyncVideoStatusExpired
+	if task == nil {
+		return
 	}
-	updated, err := s.taskRepo.MarkRefunded(ctx, task.ID, status, reason)
+	fullReason := SanitizeVideoErrorReason(reason)
+	persistedReason := truncateAsyncVideoError(fullReason)
+	failureStatus := AsyncVideoStatusFailed
+	if task.FailDeadlineAt != nil && time.Now().After(*task.FailDeadlineAt) {
+		failureStatus = AsyncVideoStatusExpired
+	}
+	firstRetryAt := time.Now().Add(asyncVideoRefundRetryDelays[0])
+	updated, err := s.taskRepo.MarkFailed(ctx, task.ID, failureStatus, persistedReason, firstRetryAt)
 	if err != nil {
-		reasonPreview := reason
-		if len(reasonPreview) > 4000 {
-			reasonPreview = reasonPreview[:4000] + "...(truncated)"
-		}
-		logger.L().Error("async_video.mark_refunded_failed",
+		logger.L().Error("async_video.mark_failed_failed",
 			zap.Int64("task_id", task.ID),
-			zap.String("status", status),
-			zap.Int("reason_len", len(reason)),
-			zap.String("reason", reasonPreview),
+			zap.String("status", failureStatus),
+			zap.Int("reason_len", len([]rune(fullReason))),
+			zap.String("reason", persistedReason),
 			zap.Error(err))
 		return
 	}
 	if !updated {
 		return
 	}
-	task.Status = status
-	task.ErrorReason = amStrPtr(reason)
-	if task.HeldCost > 0 {
-		s.refund(ctx, billingType, asyncVideoBillingContext(task), task.HeldCost)
+	task.Status = failureStatus
+	task.BillingType = billingType
+	task.ErrorReason = amStrPtr(persistedReason)
+	task.RefundStatus = AsyncVideoRefundStatusPending
+	task.RefundAttempts = 0
+	task.RefundNextRetryAt = &firstRetryAt
+	task.RefundError = nil
+
+	// The generation failure must be visible before any refund is attempted.
+	s.recordTerminalVideoError(ctx, task, fullReason)
+	if err := s.completeFailedTaskRefund(ctx, task); err != nil {
+		refundError := truncateAsyncVideoError(err.Error())
+		scheduled, scheduleErr := s.taskRepo.ScheduleRefundRetry(ctx, task.ID, 0, firstRetryAt, refundError)
+		if scheduleErr != nil {
+			logger.L().Error("async_video.refund_retry_schedule_failed", zap.Int64("task_id", task.ID), zap.Error(scheduleErr))
+			return
+		}
+		if scheduled {
+			task.RefundStatus = AsyncVideoRefundStatusPending
+			task.RefundNextRetryAt = &firstRetryAt
+			task.RefundError = amStrPtr(refundError)
+		}
+		logger.L().Warn("async_video.refund_retry_scheduled",
+			zap.Int64("task_id", task.ID), zap.Int("attempt", 0), zap.Time("next_retry_at", firstRetryAt), zap.Error(err))
 	}
-	// 失败任务不属于实际用量，不能写入 usage_logs。任务本身仍保留失败原因，
-	// 并将非客户端取消类失败写入 ops_error_logs 供“错误记录”查看。
-	s.recordTerminalVideoError(ctx, task, reason)
+}
+
+func (s *AsyncVideoService) completeFailedTaskRefund(ctx context.Context, task *AsyncVideoTask) error {
+	status := AsyncVideoStatusRefunded
+	if task.Status == AsyncVideoStatusExpired {
+		status = AsyncVideoStatusExpired
+	}
+	applied, payerID, err := s.taskRepo.CompleteRefund(ctx, task.ID, status)
+	if err != nil {
+		return err
+	}
+	if !applied {
+		return nil
+	}
+	task.Status = status
+	task.FinalCost = 0
+	task.RefundStatus = AsyncVideoRefundStatusSucceeded
+	task.RefundNextRetryAt = nil
+	task.RefundError = nil
+	if task.BillingType == BillingTypeBalance && payerID > 0 && s.balanceCache != nil {
+		if err := s.balanceCache.InvalidateUserBalance(ctx, payerID); err != nil {
+			logger.L().Warn("async_video.balance_cache_invalidate_failed", zap.Int64("payer_user_id", payerID), zap.Error(err))
+		}
+	}
+	return nil
+}
+
+// RetryPendingRefund executes one claimed timer retry. RefundAttempts counts
+// timer retries only; the immediate refund performed on failure is not counted.
+func (s *AsyncVideoService) RetryPendingRefund(ctx context.Context, task *AsyncVideoTask) error {
+	if task == nil || (task.RefundStatus != AsyncVideoRefundStatusPending && task.RefundStatus != AsyncVideoRefundStatusProcessing) {
+		return nil
+	}
+	attempt := task.RefundAttempts
+	if task.RefundStatus == AsyncVideoRefundStatusPending {
+		claimed, err := s.taskRepo.ClaimRefundRetry(ctx, task.ID, task.RefundAttempts)
+		if err != nil || !claimed {
+			return err
+		}
+		attempt++
+		task.RefundAttempts = attempt
+		task.RefundStatus = AsyncVideoRefundStatusProcessing
+	}
+	task.RefundNextRetryAt = nil
+	if refundErr := s.completeFailedTaskRefund(ctx, task); refundErr == nil {
+		logger.L().Info("async_video.refund_retry_succeeded", zap.Int64("task_id", task.ID), zap.Int("attempt", attempt))
+		return nil
+	} else if attempt >= len(asyncVideoRefundRetryDelays) {
+		refundError := truncateAsyncVideoError(refundErr.Error())
+		updated, markErr := s.taskRepo.MarkRefundFailed(ctx, task.ID, attempt, refundError)
+		if markErr != nil {
+			return fmt.Errorf("mark refund failed: %w", markErr)
+		}
+		if updated {
+			task.Status = AsyncVideoStatusRefundFailed
+			task.RefundStatus = AsyncVideoRefundStatusFailed
+			task.RefundError = amStrPtr(refundError)
+		}
+		logger.L().Error("async_video.refund_failed_permanently",
+			zap.Int64("task_id", task.ID), zap.Int("attempts", attempt), zap.Error(refundErr))
+		return nil
+	} else {
+		nextRetryAt := time.Now().Add(asyncVideoRefundRetryDelays[attempt])
+		refundError := truncateAsyncVideoError(refundErr.Error())
+		updated, scheduleErr := s.taskRepo.ScheduleRefundRetry(ctx, task.ID, attempt, nextRetryAt, refundError)
+		if scheduleErr != nil {
+			return fmt.Errorf("schedule refund retry: %w", scheduleErr)
+		}
+		if updated {
+			task.RefundStatus = AsyncVideoRefundStatusPending
+			task.RefundNextRetryAt = &nextRetryAt
+			task.RefundError = amStrPtr(refundError)
+		}
+		logger.L().Warn("async_video.refund_retry_scheduled",
+			zap.Int64("task_id", task.ID), zap.Int("attempt", attempt), zap.Time("next_retry_at", nextRetryAt), zap.Error(refundErr))
+		return nil
+	}
 }
 
 func (s *AsyncVideoService) recordTerminalVideoError(ctx context.Context, task *AsyncVideoTask, reason string) {
@@ -1120,6 +1323,22 @@ func asyncVideoPayerID(task *AsyncVideoTask) int64 {
 		return task.UserID
 	}
 	return 0
+}
+
+func asyncVideoBillingType(task *AsyncVideoTask) int8 {
+	if task != nil && task.BillingType != 0 {
+		return task.BillingType
+	}
+	return BillingTypeBalance
+}
+
+func truncateAsyncVideoError(value string) string {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) <= maxAsyncVideoErrorReasonRunes {
+		return string(runes)
+	}
+	const suffix = "..."
+	return string(runes[:maxAsyncVideoErrorReasonRunes-len([]rune(suffix))]) + suffix
 }
 
 func asyncVideoBillingContext(task *AsyncVideoTask) *BillingContext {

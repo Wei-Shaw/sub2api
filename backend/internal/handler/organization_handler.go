@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ type OrganizationHandler struct {
 	auth         *service.AuthService
 	operations   *service.CompanyOperationsMonitor
 	ops          *service.OpsService
+	video        *service.AsyncVideoService
 	// sso 用于在 IAM 子账号登录/改密/禁用时联动 sub2api_sso（HttpOnly Cookie）。
 	// 当 oidc_provider.enabled=false 时 IssueIfProviderEnabled 为 no-op；
 	// RevokeAllForUser 幂等，无 SSO 会话时也安全。允许为 nil（测试场景）。
@@ -71,8 +73,8 @@ func (f optionalDecimalString) Pointer() *string {
 	return f.value
 }
 
-func NewOrganizationHandler(organization *service.OrganizationService, auth *service.AuthService, operations *service.CompanyOperationsMonitor, ops *service.OpsService, sso *service.SsoSessionService) *OrganizationHandler {
-	return &OrganizationHandler{organization: organization, auth: auth, operations: operations, ops: ops, sso: sso}
+func NewOrganizationHandler(organization *service.OrganizationService, auth *service.AuthService, operations *service.CompanyOperationsMonitor, ops *service.OpsService, sso *service.SsoSessionService, video *service.AsyncVideoService) *OrganizationHandler {
+	return &OrganizationHandler{organization: organization, auth: auth, operations: operations, ops: ops, sso: sso, video: video}
 }
 
 // issueIAMSsoSession 在 IAM 子账号登录/改密后，尽力签发 OIDC Provider 的 HttpOnly SSO cookie，
@@ -903,32 +905,58 @@ func (h *OrganizationHandler) Usage(c *gin.Context) {
 	if !ok {
 		return
 	}
-	filter := service.OrganizationUsageFilter{
-		Model: c.Query("model"), Endpoint: c.Query("endpoint"), Status: c.Query("status"),
-		Page: parsePositiveQuery(c.Query("page"), 1), PageSize: parsePositiveQuery(c.Query("page_size"), 20),
-	}
-	if value := c.Query("start"); value != "" {
-		filter.Start, _ = time.Parse(time.RFC3339, value)
-	}
-	if value := c.Query("end"); value != "" {
-		filter.End, _ = time.Parse(time.RFC3339, value)
-	}
-	if value := c.Query("member_id"); value != "" {
-		if id, err := strconv.ParseInt(value, 10, 64); err == nil && id > 0 {
-			filter.MemberID = &id
-		}
-	}
-	if value := c.Query("api_key_id"); value != "" {
-		if id, err := strconv.ParseInt(value, 10, 64); err == nil && id > 0 {
-			filter.APIKeyID = &id
-		}
-	}
+	filter := organizationUsageTimeFilter(c)
+	filter.Page = parsePositiveQuery(c.Query("page"), 1)
+	filter.PageSize = parsePositiveQuery(c.Query("page_size"), 20)
 	items, total, err := h.organization.ListUsage(c.Request.Context(), userID, filter)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 	response.Success(c, response.PaginatedData{Items: items, Total: total, Page: filter.Page, PageSize: filter.PageSize, Pages: int((total + int64(filter.PageSize) - 1) / int64(filter.PageSize))})
+}
+
+// UsageVideoTask returns the video task referenced by one organization-scoped
+// usage row. The usage ID is the authorization boundary: this avoids numeric
+// task ID collisions between async image and video tables and allows finance
+// readers to inspect records created by other members of the same company.
+func (h *OrganizationHandler) UsageVideoTask(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	if h.video == nil {
+		response.Error(c, http.StatusInternalServerError, "video service unavailable")
+		return
+	}
+	usageID, err := strconv.ParseInt(strings.TrimSpace(c.Param("usage_id")), 10, 64)
+	if err != nil || usageID <= 0 {
+		response.Error(c, http.StatusBadRequest, "invalid usage_id")
+		return
+	}
+	rows, _, err := h.organization.ListUsage(c.Request.Context(), userID, service.OrganizationUsageFilter{
+		UsageID:  &usageID,
+		Page:     1,
+		PageSize: 1,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if len(rows) != 1 || rows[0].BillingMode != string(service.BillingModeVideo) || rows[0].TaskID == nil {
+		response.ErrorFrom(c, service.ErrUsageLogNotFound)
+		return
+	}
+	task, err := h.video.GetTaskByID(c.Request.Context(), *rows[0].TaskID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "get video task: "+err.Error())
+		return
+	}
+	if task == nil || task.UserID != rows[0].MemberUserID {
+		response.ErrorFrom(c, service.ErrUsageLogNotFound)
+		return
+	}
+	response.Success(c, toVideoTaskItem(task))
 }
 
 func organizationUsageTimeFilter(c *gin.Context) service.OrganizationUsageFilter {

@@ -134,10 +134,8 @@ func (h *VideoModelHandler) List(c *gin.Context) {
 		return
 	}
 	groupSet := make(map[int64]struct{}, len(userGroups))
-	groupIDList := make([]int64, 0, len(userGroups))
 	for i := range userGroups {
 		groupSet[userGroups[i].ID] = struct{}{}
-		groupIDList = append(groupIDList, userGroups[i].ID)
 	}
 
 	// 2. 所有视频平台账号（含非 active 的一并拉，稍后按 status 过滤）。
@@ -173,7 +171,7 @@ func (h *VideoModelHandler) List(c *gin.Context) {
 				continue
 			}
 			seen[low] = seenValue{}
-			items = append(items, h.buildVideoModelItem(ctx, slug, groupIDList))
+			items = append(items, h.buildVideoModelItem(ctx, slug, userGroups))
 		}
 	}
 
@@ -228,7 +226,7 @@ func accountBelongsToAny(a *service.Account, groupSet map[int64]struct{}) bool {
 //   - 首个命中的分组作为该 model 的定价来源（多分组不合并、不去重档位）；
 //   - 把 RequestTiers[].TierLabel/PerRequestPrice 原样拍平；
 //   - DefaultPerRequestPrice > 0 时追加一档 resolution="default"，作为未命中档位的兜底提示。
-func (h *VideoModelHandler) buildVideoModelItem(ctx context.Context, slug string, groupIDs []int64) videoModelItem {
+func (h *VideoModelHandler) buildVideoModelItem(ctx context.Context, slug string, groups []service.Group) videoModelItem {
 	parts := strings.Split(slug, "/")
 	family := ""
 	variant := ""
@@ -241,7 +239,7 @@ func (h *VideoModelHandler) buildVideoModelItem(ctx context.Context, slug string
 		variant = parts[len(parts)-1]
 	}
 
-	pricing := h.resolveVideoPricing(ctx, slug, groupIDs)
+	pricing := h.resolveVideoPricing(ctx, slug, groups)
 	intro := h.resolveModelIntro(ctx, slug)
 
 	return videoModelItem{
@@ -293,15 +291,17 @@ func (h *VideoModelHandler) resolveModelIntro(ctx context.Context, slug string) 
 // resolveVideoPricing 用 ModelPricingResolver 从用户所有 group 中查找该模型的视频定价。
 //
 // 保证返回值非 nil（空列表 = 尚未配置定价）。
-func (h *VideoModelHandler) resolveVideoPricing(ctx context.Context, slug string, groupIDs []int64) []videoModelPricingItem {
+func (h *VideoModelHandler) resolveVideoPricing(ctx context.Context, slug string, groups []service.Group) []videoModelPricingItem {
 	if h.pricingResolver == nil {
 		return []videoModelPricingItem{}
 	}
-	for _, gid := range groupIDs {
-		g := gid
+	for i := range groups {
+		group := &groups[i]
+		groupID := group.ID
 		resolved := h.pricingResolver.Resolve(ctx, service.PricingInput{
 			Model:   slug,
-			GroupID: &g,
+			GroupID: &groupID,
+			Group:   group,
 		})
 		if resolved == nil || resolved.Mode != service.BillingModeVideo {
 			continue
@@ -330,7 +330,9 @@ func (h *VideoModelHandler) resolveVideoPricing(ctx context.Context, slug string
 				Enabled:        true,
 			})
 		}
-		return out
+		if len(out) > 0 {
+			return out
+		}
 	}
 	return []videoModelPricingItem{}
 }

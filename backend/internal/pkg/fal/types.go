@@ -96,6 +96,10 @@ type StatusResponse struct {
 	RequestID     string `json:"request_id,omitempty"`
 	QueuePosition int    `json:"queue_position,omitempty"`
 	ResponseURL   string `json:"response_url,omitempty"`
+
+	// Result carries a completed result returned together with the status.
+	// It is internal-only and is omitted from public status responses.
+	Result map[string]any `json:"-"`
 }
 
 // IsTerminal reports whether the status represents a completed (terminal) state.

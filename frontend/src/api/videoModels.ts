@@ -67,7 +67,7 @@ export interface VideoTaskItem {
   internal_request_id: string
   upstream_request_id: string
   requested_model: string
-  status: string // pending / running / succeeded / failed / refunded / expired
+  status: string // pending / running / succeeded / failed / refunded / expired / refund_failed
   resolution: string
   duration_seconds: number
   aspect_ratio: string

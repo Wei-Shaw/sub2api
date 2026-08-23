@@ -113,6 +113,8 @@ func (r *AsyncVideoReconciler) Stop() {
 
 func (r *AsyncVideoReconciler) loop() {
 	defer r.wg.Done()
+	// 启动后立即接管遗留的未完成任务，避免先空等一个扫描周期。
+	r.runOnce(r.parentCtx)
 	ticker := time.NewTicker(r.Interval())
 	defer ticker.Stop()
 	for {
@@ -131,13 +133,27 @@ func (r *AsyncVideoReconciler) runOnce(ctx context.Context) {
 	tasks, err := r.taskRepo.ListUnfinished(ctx, r.batchSize)
 	if err != nil {
 		logger.L().Warn("async_video.reconcile_list_failed", zap.Error(err))
+	} else {
+		for _, task := range tasks {
+			if ctx.Err() != nil {
+				return
+			}
+			r.reconcileOne(ctx, task)
+		}
+	}
+
+	refunds, err := r.taskRepo.ListPendingRefunds(ctx, r.batchSize)
+	if err != nil {
+		logger.L().Warn("async_video.refund_reconcile_list_failed", zap.Error(err))
 		return
 	}
-	for _, task := range tasks {
+	for _, task := range refunds {
 		if ctx.Err() != nil {
 			return
 		}
-		r.reconcileOne(ctx, task)
+		if err := r.exec.RetryPendingRefund(ctx, task); err != nil {
+			logger.L().Warn("async_video.refund_reconcile_failed", zap.Int64("task_id", task.ID), zap.Error(err))
+		}
 	}
 }
 

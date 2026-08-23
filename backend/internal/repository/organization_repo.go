@@ -2188,6 +2188,9 @@ func (r *organizationRepository) organizationUsageScope(ctx context.Context, use
 	if !filter.End.IsZero() {
 		add("l.created_at < $%d", filter.End)
 	}
+	if filter.UsageID != nil {
+		add("l.id = $%d", *filter.UsageID)
+	}
 	if filter.MemberID != nil {
 		add("l.user_id = $%d AND EXISTS(SELECT 1 FROM organization_memberships mx WHERE mx.organization_id=l.organization_id AND mx.user_id=l.user_id)", *filter.MemberID)
 	}

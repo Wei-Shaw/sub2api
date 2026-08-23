@@ -556,44 +556,62 @@ func init() {
 	asyncvideotask.DefaultStatus = asyncvideotaskDescStatus.Default.(string)
 	// asyncvideotask.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	asyncvideotask.StatusValidator = asyncvideotaskDescStatus.Validators[0].(func(string) error)
+	// asyncvideotaskDescBillingType is the schema descriptor for billing_type field.
+	asyncvideotaskDescBillingType := asyncvideotaskFields[20].Descriptor()
+	// asyncvideotask.DefaultBillingType holds the default value on creation for the billing_type field.
+	asyncvideotask.DefaultBillingType = asyncvideotaskDescBillingType.Default.(int8)
 	// asyncvideotaskDescHeldCost is the schema descriptor for held_cost field.
-	asyncvideotaskDescHeldCost := asyncvideotaskFields[20].Descriptor()
+	asyncvideotaskDescHeldCost := asyncvideotaskFields[21].Descriptor()
 	// asyncvideotask.DefaultHeldCost holds the default value on creation for the held_cost field.
 	asyncvideotask.DefaultHeldCost = asyncvideotaskDescHeldCost.Default.(float64)
 	// asyncvideotaskDescFinalCost is the schema descriptor for final_cost field.
-	asyncvideotaskDescFinalCost := asyncvideotaskFields[21].Descriptor()
+	asyncvideotaskDescFinalCost := asyncvideotaskFields[22].Descriptor()
 	// asyncvideotask.DefaultFinalCost holds the default value on creation for the final_cost field.
 	asyncvideotask.DefaultFinalCost = asyncvideotaskDescFinalCost.Default.(float64)
 	// asyncvideotaskDescRateMultiplier is the schema descriptor for rate_multiplier field.
-	asyncvideotaskDescRateMultiplier := asyncvideotaskFields[22].Descriptor()
+	asyncvideotaskDescRateMultiplier := asyncvideotaskFields[23].Descriptor()
 	// asyncvideotask.DefaultRateMultiplier holds the default value on creation for the rate_multiplier field.
 	asyncvideotask.DefaultRateMultiplier = asyncvideotaskDescRateMultiplier.Default.(float64)
 	// asyncvideotaskDescUnitPriceSnapshot is the schema descriptor for unit_price_snapshot field.
-	asyncvideotaskDescUnitPriceSnapshot := asyncvideotaskFields[23].Descriptor()
+	asyncvideotaskDescUnitPriceSnapshot := asyncvideotaskFields[24].Descriptor()
 	// asyncvideotask.DefaultUnitPriceSnapshot holds the default value on creation for the unit_price_snapshot field.
 	asyncvideotask.DefaultUnitPriceSnapshot = asyncvideotaskDescUnitPriceSnapshot.Default.(float64)
 	// asyncvideotaskDescUpstreamCost is the schema descriptor for upstream_cost field.
-	asyncvideotaskDescUpstreamCost := asyncvideotaskFields[24].Descriptor()
+	asyncvideotaskDescUpstreamCost := asyncvideotaskFields[25].Descriptor()
 	// asyncvideotask.DefaultUpstreamCost holds the default value on creation for the upstream_cost field.
 	asyncvideotask.DefaultUpstreamCost = asyncvideotaskDescUpstreamCost.Default.(float64)
 	// asyncvideotaskDescErrorReason is the schema descriptor for error_reason field.
-	asyncvideotaskDescErrorReason := asyncvideotaskFields[29].Descriptor()
+	asyncvideotaskDescErrorReason := asyncvideotaskFields[30].Descriptor()
 	// asyncvideotask.ErrorReasonValidator is a validator for the "error_reason" field. It is called by the builders before save.
 	asyncvideotask.ErrorReasonValidator = asyncvideotaskDescErrorReason.Validators[0].(func(string) error)
+	// asyncvideotaskDescRefundStatus is the schema descriptor for refund_status field.
+	asyncvideotaskDescRefundStatus := asyncvideotaskFields[31].Descriptor()
+	// asyncvideotask.DefaultRefundStatus holds the default value on creation for the refund_status field.
+	asyncvideotask.DefaultRefundStatus = asyncvideotaskDescRefundStatus.Default.(string)
+	// asyncvideotask.RefundStatusValidator is a validator for the "refund_status" field. It is called by the builders before save.
+	asyncvideotask.RefundStatusValidator = asyncvideotaskDescRefundStatus.Validators[0].(func(string) error)
+	// asyncvideotaskDescRefundAttempts is the schema descriptor for refund_attempts field.
+	asyncvideotaskDescRefundAttempts := asyncvideotaskFields[32].Descriptor()
+	// asyncvideotask.DefaultRefundAttempts holds the default value on creation for the refund_attempts field.
+	asyncvideotask.DefaultRefundAttempts = asyncvideotaskDescRefundAttempts.Default.(int)
+	// asyncvideotaskDescRefundError is the schema descriptor for refund_error field.
+	asyncvideotaskDescRefundError := asyncvideotaskFields[34].Descriptor()
+	// asyncvideotask.RefundErrorValidator is a validator for the "refund_error" field. It is called by the builders before save.
+	asyncvideotask.RefundErrorValidator = asyncvideotaskDescRefundError.Validators[0].(func(string) error)
 	// asyncvideotaskDescClientIP is the schema descriptor for client_ip field.
-	asyncvideotaskDescClientIP := asyncvideotaskFields[32].Descriptor()
+	asyncvideotaskDescClientIP := asyncvideotaskFields[37].Descriptor()
 	// asyncvideotask.ClientIPValidator is a validator for the "client_ip" field. It is called by the builders before save.
 	asyncvideotask.ClientIPValidator = asyncvideotaskDescClientIP.Validators[0].(func(string) error)
 	// asyncvideotaskDescUserAgent is the schema descriptor for user_agent field.
-	asyncvideotaskDescUserAgent := asyncvideotaskFields[33].Descriptor()
+	asyncvideotaskDescUserAgent := asyncvideotaskFields[38].Descriptor()
 	// asyncvideotask.UserAgentValidator is a validator for the "user_agent" field. It is called by the builders before save.
 	asyncvideotask.UserAgentValidator = asyncvideotaskDescUserAgent.Validators[0].(func(string) error)
 	// asyncvideotaskDescInboundEndpoint is the schema descriptor for inbound_endpoint field.
-	asyncvideotaskDescInboundEndpoint := asyncvideotaskFields[34].Descriptor()
+	asyncvideotaskDescInboundEndpoint := asyncvideotaskFields[39].Descriptor()
 	// asyncvideotask.InboundEndpointValidator is a validator for the "inbound_endpoint" field. It is called by the builders before save.
 	asyncvideotask.InboundEndpointValidator = asyncvideotaskDescInboundEndpoint.Validators[0].(func(string) error)
 	// asyncvideotaskDescUpstreamEndpoint is the schema descriptor for upstream_endpoint field.
-	asyncvideotaskDescUpstreamEndpoint := asyncvideotaskFields[35].Descriptor()
+	asyncvideotaskDescUpstreamEndpoint := asyncvideotaskFields[40].Descriptor()
 	// asyncvideotask.UpstreamEndpointValidator is a validator for the "upstream_endpoint" field. It is called by the builders before save.
 	asyncvideotask.UpstreamEndpointValidator = asyncvideotaskDescUpstreamEndpoint.Validators[0].(func(string) error)
 	authidentityMixin := schema.AuthIdentity{}.Mixin()

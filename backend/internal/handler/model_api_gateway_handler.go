@@ -600,6 +600,8 @@ func videoFalStatusFromTask(task *service.AsyncVideoTask) string {
 	switch task.Status {
 	case service.AsyncVideoStatusSucceeded:
 		return fal.StatusCompleted
+	case service.AsyncVideoStatusFailed, service.AsyncVideoStatusRefunded, service.AsyncVideoStatusExpired, service.AsyncVideoStatusRefundFailed:
+		return fal.StatusFailed
 	case service.AsyncVideoStatusPending:
 		return fal.StatusInQueue
 	default:

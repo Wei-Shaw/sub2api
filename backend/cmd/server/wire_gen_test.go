@@ -50,6 +50,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 	idempotencyCleanupSvc := service.NewIdempotencyCleanupService(nil, cfg)
 	schedulerSnapshotSvc := service.NewSchedulerSnapshotService(nil, nil, nil, nil, cfg)
 	opsSystemLogSinkSvc := service.NewOpsSystemLogSink(nil)
+	asyncVideoReconciler := service.NewAsyncVideoReconciler(nil, nil, nil)
 
 	cleanup := provideCleanup(
 		nil, // entClient
@@ -97,6 +98,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // quotaFlusher
 		nil, // supportChatLegacyDetector
 		nil, // asyncMediaReconciler
+		asyncVideoReconciler,
 		nil, // upstreamBillingProbe
 		nil, // ollamaCloudUsage
 		nil, // auditLog

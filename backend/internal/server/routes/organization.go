@@ -62,6 +62,7 @@ func RegisterOrganizationRoutes(
 		organizationScoped.GET("/dashboard/user-breakdown", h.Organization.UserBreakdown)
 		organizationScoped.GET("/dashboard/users-trend", h.Organization.UsersTrend)
 		organizationScoped.GET("/usage", h.Organization.Usage)
+		organizationScoped.GET("/usage/:usage_id/video-task", h.Organization.UsageVideoTask)
 		organizationScoped.GET("/usage/api-keys/search", h.Organization.SearchAPIKeys)
 		organizationScoped.GET("/usage/stats", h.Organization.UsageStats)
 		organizationScoped.GET("/usage/trend", h.Organization.UsageTrend)

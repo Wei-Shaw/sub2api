@@ -407,7 +407,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	notificationOutboxRepository := repository.NewNotificationOutboxRepository(db)
 	notificationOutboxWorker := service.ProvideNotificationOutboxWorker(notificationOutboxRepository, notificationEmailService, configConfig)
 	companyOperationsMonitor := service.ProvideCompanyOperationsMonitor(organizationService, notificationOutboxWorker, apiKeyService, configConfig)
-	organizationHandler := handler.NewOrganizationHandler(organizationService, authService, companyOperationsMonitor, opsService, ssoSessionService)
+	organizationHandler := handler.NewOrganizationHandler(organizationService, authService, companyOperationsMonitor, opsService, ssoSessionService, asyncVideoService)
 	videoModelHandler := handler.NewVideoModelHandler(apiKeyService, accountRepository, modelPricingResolver, modelIntroService, asyncVideoService, asyncMediaService)
 	userMaterialHandler := handler.NewUserMaterialHandler(userMaterialService)
 	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)
@@ -449,7 +449,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorV2Aggregator := service.ProvideChannelMonitorV2Aggregator(channelMonitorV2Repository, db, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
 	supportChatLegacyDetector := service.ProvideSupportChatLegacyDetector(settingService)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, notificationOutboxWorker, companyOperationsMonitor, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, kiroOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, supportChatLegacyDetector, asyncMediaReconciler, upstreamBillingProbeService, ollamaCloudUsageService, auditLogService, promptService)
+	asyncVideoReconciler := service.ProvideAsyncVideoReconciler(asyncVideoTaskRepository, asyncVideoService, accountRepository, configConfig)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, notificationOutboxWorker, companyOperationsMonitor, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, kiroOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, supportChatLegacyDetector, asyncMediaReconciler, asyncVideoReconciler, upstreamBillingProbeService, ollamaCloudUsageService, auditLogService, promptService)
 	application := &Application{
 		Server:      httpServer,
 		InnerAPIRPC: innerAPIRPCServer,
@@ -526,6 +527,7 @@ func provideCleanup(
 
 	_ *service.SupportChatLegacyDetector,
 	asyncMediaReconciler *service.AsyncMediaReconciler,
+	asyncVideoReconciler *service.AsyncVideoReconciler,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	auditLog *service.AuditLogService,
@@ -778,6 +780,12 @@ func provideCleanup(
 			{"AsyncMediaReconciler", func() error {
 				if asyncMediaReconciler != nil {
 					asyncMediaReconciler.Stop()
+				}
+				return nil
+			}},
+			{"AsyncVideoReconciler", func() error {
+				if asyncVideoReconciler != nil {
+					asyncVideoReconciler.Stop()
 				}
 				return nil
 			}},

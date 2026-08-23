@@ -1,5 +1,6 @@
 import { apiClient } from './client'
 import type { CreateOrderResult } from '@/types/payment'
+import type { VideoTaskItem } from '@/api/videoModels'
 import type {
   AuthResponse,
   CompanyApplication,
@@ -240,6 +241,10 @@ export const organizationAPI = {
     const { data } = await apiClient.get('/organization/usage', { params })
     return data
   },
+	async getUsageVideoTask(usageID: number): Promise<VideoTaskItem> {
+		const { data } = await apiClient.get<VideoTaskItem>(`/organization/usage/${usageID}/video-task`)
+		return data
+	},
 	async searchUsageAPIKeys(query = '', memberID?: number): Promise<Array<{ id: number; name: string }>> {
 		const { data } = await apiClient.get<{ items: Array<{ id: number; name: string }> }>('/organization/usage/api-keys/search', {
 			params: { q: query || undefined, member_id: memberID },

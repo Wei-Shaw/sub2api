@@ -34,7 +34,7 @@ func TestRequireOrganizationDerivesScopeFromAuthenticatedSubject(t *testing.T) {
 		MembershipStatus:   service.MembershipStatusActive,
 		Role:               service.OrganizationRoleOwner,
 	}}
-	handler := NewOrganizationHandler(service.NewOrganizationService(repo, nil, &config.Config{}), nil, nil, nil, nil)
+	handler := NewOrganizationHandler(service.NewOrganizationService(repo, nil, &config.Config{}), nil, nil, nil, nil, nil)
 
 	router := gin.New()
 	router.GET("/organization",

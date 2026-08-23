@@ -90,7 +90,7 @@
               {{ t(`videoModels.playground.historyStatus.${normalizedStatus(item.status)}`) }}
             </span>
             <span class="truncate text-xs text-gray-500 dark:text-gray-400">
-              {{ formatTime(item.created_at) }}
+              {{ formatDateTime(item.created_at) }}
             </span>
           </div>
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600 dark:text-gray-300">
@@ -196,7 +196,7 @@
             <div class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('videoModels.playground.historyDetail.createdAt') }}
             </div>
-            <div class="mt-1 font-mono text-xs">{{ formatTime(detailTask.created_at) }}</div>
+            <div class="mt-1 font-mono text-xs">{{ formatDateTime(detailTask.created_at) }}</div>
           </div>
           <div>
             <div class="text-xs text-gray-500 dark:text-gray-400">
@@ -369,6 +369,7 @@ import { useI18n } from 'vue-i18n'
 import videoModelsAPI, { type VideoTaskItem } from '@/api/videoModels'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { useAppStore } from '@/stores/app'
+import { formatDateTime } from '@/utils/format'
 
 const props = defineProps<{ slug: string }>()
 const emit = defineEmits<{
@@ -482,16 +483,6 @@ function firstUrl(item: VideoTaskItem): string {
   return urls[0] || ''
 }
 
-function formatTime(iso: string): string {
-  try {
-    const d = new Date(iso)
-    if (Number.isNaN(d.getTime())) return iso
-    return d.toLocaleString()
-  } catch {
-    return iso
-  }
-}
-
 /**
  * formatElapsed：计算从 created_at 到 finished_at 的耗时（秒/分钟）。
  *   - finished_at 缺失时（任务未结束）返回 '-'
@@ -548,6 +539,7 @@ function normalizedStatus(s: string): string {
     case 'running':
     case 'pending':
     case 'failed':
+    case 'refund_failed':
     case 'refunded':
       return s
     case 'expired':
@@ -565,6 +557,7 @@ function statusBadgeClass(s: string): string {
     case 'pending':
       return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
     case 'failed':
+    case 'refund_failed':
       return 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
     case 'refunded':
       return 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'

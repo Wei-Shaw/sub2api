@@ -9,6 +9,20 @@ const viewSource = readFileSync(
 )
 
 describe('VideoPlaygroundView output payload fallback', () => {
+
+  it('does not expose task cancellation from the playground', () => {
+    expect(viewSource).not.toContain('playground.cancel')
+    expect(viewSource).not.toContain('onCancel')
+    expect(viewSource).not.toContain('videoModels.playground.btnCancel')
+    expect(viewSource).not.toContain('videoModels.playground.confirmClose')
+  })
+
+  it('keeps the pricing table entry visible after the model loads', () => {
+    expect(viewSource).toContain('v-if="model"\n            type="button"')
+    expect(viewSource).toContain("t('videoModels.noPricing')")
+    expect(viewSource).not.toContain('v-if="model && model.pricing && model.pricing.length > 0"\n            type="button"')
+  })
+
   it('shows output field examples until a real result payload is available', () => {
     expect(viewSource).toContain(
       'JSON.stringify(buildOutputExamplePayload(outputFields.value), null, 2)',
@@ -18,6 +32,9 @@ describe('VideoPlaygroundView output payload fallback', () => {
     expect(viewSource).not.toContain(
       'v-if="playground.resultPayload.value"\n                class="max-h-96',
     )
+    expect(viewSource).not.toContain('videoModels.playground.previewFromDefault')
+    expect(viewSource).toContain(`v-if="resultType !== 'video'"`)
+    expect(viewSource).not.toContain(':alt="primaryPreview.source')
   })
 
   it('saves only completed payload videos into the current user material library', () => {
@@ -28,11 +45,11 @@ describe('VideoPlaygroundView output payload fallback', () => {
 
   it('shows left-aligned download and material actions for completed videos', () => {
     expect(viewSource).toContain('class="flex flex-wrap justify-start gap-2"')
-    expect(viewSource.indexOf('@click="downloadVideo(primaryPreview.url)"')).toBeLessThan(
+    expect(viewSource.indexOf(':href="primaryPreview.url"')).toBeLessThan(
       viewSource.indexOf('@click="saveVideoToMaterials(primaryPreview.url)"'),
     )
-    expect(viewSource).toContain('const response = await fetch(normalized)')
-    expect(viewSource).toContain('link.download = videoDownloadFileName(normalized)')
+    expect(viewSource).toContain(':download="videoDownloadFileName(primaryPreview.url)"')
+    expect(viewSource).not.toContain('fetch(normalized)')
     expect(viewSource).toContain('<Icon name="download" size="xs" />')
   })
 })

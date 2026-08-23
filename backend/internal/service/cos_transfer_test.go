@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -47,6 +48,12 @@ type noopEncryptor struct{}
 
 func (noopEncryptor) Encrypt(s string) (string, error) { return s, nil }
 func (noopEncryptor) Decrypt(s string) (string, error) { return s, nil }
+
+type videoTransferRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f videoTransferRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 // fakeObjectStore 记录上传次数，可配置失败次数模拟重试。
 type fakeObjectStore struct {
@@ -105,6 +112,42 @@ func enableCOS(t *testing.T, svc *COSImageTransferService) {
 		PublicBaseURL:   "https://cdn.example.com",
 	})
 	require.NoError(t, err)
+}
+
+func TestAsyncVideoTransferRetriesAtMostThreeTimesPerTask(t *testing.T) {
+	store := &fakeObjectStore{}
+	cosService, _ := newCOSServiceForTest(t, store)
+	enableCOS(t, cosService)
+
+	var attempts int32
+	cosService.httpClient = &http.Client{Transport: videoTransferRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		atomic.AddInt32(&attempts, 1)
+		return &http.Response{
+			StatusCode: http.StatusBadGateway,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("upstream unavailable")),
+			Request:    req,
+		}, nil
+	})}
+
+	videoService := NewAsyncVideoService(nil, nil, nil)
+	videoService.SetCOSTransferService(cosService)
+	task := &AsyncVideoTask{ID: 42}
+	const originalURL = "https://atlas.example.test/video.mp4"
+
+	for range 2 {
+		result := map[string]any{"video": map[string]any{"url": originalURL}}
+		urls, gotResult := videoService.transferVideosToCOS(
+			context.Background(), task, []string{originalURL}, result,
+		)
+		require.Equal(t, []string{originalURL}, urls)
+		video, ok := gotResult["video"].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, originalURL, video["url"])
+	}
+
+	require.EqualValues(t, cosTransferMaxAttempts, attempts)
+	require.Zero(t, atomic.LoadInt32(&store.uploads))
 }
 
 // fakeImageServer 返回固定的图片字节，记录被请求次数。

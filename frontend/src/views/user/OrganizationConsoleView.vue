@@ -380,7 +380,7 @@
       </div>
       <div v-else class="card overflow-x-auto">
         <table class="w-full min-w-[820px] text-sm">
-          <thead class="bg-gray-50 text-left dark:bg-dark-800">
+          <thead class="bg-gray-50 text-left text-xs font-medium uppercase text-gray-500 dark:bg-dark-800 dark:text-dark-400">
             <tr>
               <th class="p-3">{{ t('organization.subscriptions.group') }}</th>
               <th class="p-3">{{ t('organization.subscriptions.rate') }}</th>
@@ -390,7 +390,7 @@
               <th v-if="canManageSubscriptions" class="p-3">{{ t('common.actions') }}</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody class="divide-y divide-gray-200 bg-white text-sm text-gray-900 dark:divide-dark-700 dark:bg-dark-900 dark:text-white">
             <tr v-for="item in subscriptions" :key="item.id" class="border-t border-gray-100 dark:border-dark-700">
               <td class="p-3">
                 <div class="font-medium">{{ item.group_name }}</div>
@@ -483,10 +483,11 @@
         <button type="button" class="border-b-2 px-4 py-2 text-sm font-medium" :class="usageDetailTab === 'errors' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500'" @click="switchUsageDetailTab('errors')">{{ t('usage.tabs.errors') }}</button>
       </div>
 
-      <div class="space-y-3 p-4">
-        <div class="grid items-end gap-3 md:grid-cols-3 xl:grid-cols-4">
-          <div><label class="input-label">{{ t('organization.usage.member') }}</label><Select v-model="usageFilters.memberId" :options="usageMemberOptions" searchable @change="onUsageMemberChange" /></div>
-          <div ref="usageAPIKeySearchRef" class="relative">
+      <div class="space-y-4 p-4 sm:p-6">
+        <div class="flex flex-wrap items-end justify-between gap-4">
+          <div data-testid="organization-usage-filters" class="flex flex-1 flex-wrap items-end gap-4">
+          <div class="w-full sm:w-auto sm:min-w-[240px]"><label class="input-label">{{ t('organization.usage.member') }}</label><Select v-model="usageFilters.memberId" :options="usageMemberOptions" searchable @change="onUsageMemberChange" /></div>
+          <div ref="usageAPIKeySearchRef" class="relative w-full sm:w-auto sm:min-w-[240px]">
             <label class="input-label">{{ t('organization.usage.apiKey') }}</label>
             <input v-model="usageAPIKeyKeyword" class="input w-full pr-8" :placeholder="t('organization.usage.searchApiKeyPlaceholder')" @input="debounceUsageAPIKeySearch" @focus="onUsageAPIKeyFocus">
             <button v-if="usageFilters.apiKeyId" type="button" class="absolute right-2 top-9 text-gray-400" aria-label="Clear API key filter" @click="clearUsageAPIKey">✕</button>
@@ -494,14 +495,14 @@
               <button v-for="key in usageAPIKeyResults" :key="key.id" type="button" class="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-700" @click="selectUsageAPIKey(key)"><span class="truncate">{{ key.name || `#${key.id}` }}</span><span class="ml-2 text-xs text-gray-400">#{{ key.id }}</span></button>
             </div>
           </div>
-          <div><label class="input-label">{{ t('organization.usage.model') }}</label><input v-model.trim="usageFilters.model" class="input w-full" :placeholder="t('organization.usage.model')" @input="debounceUsageFilterChange"></div>
-          <div v-if="usageDetailTab === 'usage'"><label class="input-label">{{ t('admin.usage.group') }}</label><Select v-model="usageFilters.groupId" :options="usageGroupOptions" searchable @change="applyUsageFilters" /></div>
-          <div v-if="usageDetailTab === 'usage'"><label class="input-label">{{ t('admin.usage.billingType') }}</label><Select v-model="usageFilters.billingType" :options="usageBillingTypeOptions" @change="applyUsageFilters" /></div>
-          <div v-if="usageDetailTab === 'usage'"><label class="input-label">{{ t('admin.usage.billingMode') }}</label><Select v-model="usageFilters.billingMode" :options="usageBillingModeOptions" @change="applyUsageFilters" /></div>
-          <div v-else><label class="input-label">{{ t('usage.errors.category') }}</label><Select v-model="usageErrorFilters.category" :options="usageErrorCategoryOptions" @change="loadUsageErrors(1)" /></div>
-          <div v-if="usageDetailTab === 'errors'"><label class="input-label">{{ t('usage.errors.status') }}</label><input v-model.trim="usageErrorFilters.statusCode" class="input w-full" type="number" min="0" :placeholder="t('usage.errors.status')" @input="debounceUsageFilterChange"></div>
-        </div>
-        <div class="flex justify-end gap-2">
+          <div data-testid="organization-usage-model-filter" class="w-full sm:w-auto sm:min-w-[220px]"><label class="input-label">{{ t('organization.usage.model') }}</label><Select v-model="usageFilters.model" :options="usageModelOptions" searchable @change="applyUsageFilters" /></div>
+          <div v-if="usageDetailTab === 'usage'" class="w-full sm:w-auto sm:min-w-[200px]"><label class="input-label">{{ t('admin.usage.group') }}</label><Select v-model="usageFilters.groupId" :options="usageGroupOptions" searchable @change="applyUsageFilters" /></div>
+          <div v-if="usageDetailTab === 'usage'" class="w-full sm:w-auto sm:min-w-[200px]"><label class="input-label">{{ t('admin.usage.billingType') }}</label><Select v-model="usageFilters.billingType" :options="usageBillingTypeOptions" @change="applyUsageFilters" /></div>
+          <div v-if="usageDetailTab === 'usage'" class="w-full sm:w-auto sm:min-w-[200px]"><label class="input-label">{{ t('admin.usage.billingMode') }}</label><Select v-model="usageFilters.billingMode" :options="usageBillingModeOptions" @change="applyUsageFilters" /></div>
+          <div v-else class="w-full sm:w-auto sm:min-w-[180px]"><label class="input-label">{{ t('usage.errors.category') }}</label><Select v-model="usageErrorFilters.category" :options="usageErrorCategoryOptions" @change="loadUsageErrors(1)" /></div>
+          <div v-if="usageDetailTab === 'errors'" class="w-full sm:w-auto sm:min-w-[180px]"><label class="input-label">{{ t('usage.errors.status') }}</label><input v-model.trim="usageErrorFilters.statusCode" class="input w-full" type="number" min="0" :placeholder="t('usage.errors.status')" @input="debounceUsageFilterChange"></div>
+          </div>
+        <div class="flex w-full items-center justify-end gap-2 sm:w-auto">
         <button type="button" class="btn btn-secondary" :disabled="usageLoading || usageErrorsLoading" @click="refreshUsageDetails">
           <Icon name="refresh" size="sm" />
           {{ t('common.refresh') }}
@@ -519,15 +520,16 @@
           </div>
         </div>
         </div>
+        </div>
       </div>
       <template v-if="usageDetailTab === 'usage'">
       <div class="overflow-x-auto rounded-md border border-gray-200 dark:border-dark-700">
-        <table class="w-full min-w-[1900px] text-sm">
-          <thead class="bg-gray-50 text-left dark:bg-dark-800">
+        <table class="w-full min-w-[1900px] divide-y divide-gray-200 text-sm dark:divide-dark-700">
+          <thead class="bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:bg-dark-800 dark:text-dark-400">
             <tr><th v-if="isUsageColumnVisible('member_login')" class="p-3">{{ t('organization.usage.member') }}</th><th v-if="isUsageColumnVisible('username')" class="p-3">{{ t('organization.usage.username') }}</th><th v-if="isUsageColumnVisible('api_key')" class="p-3">{{ t('organization.usage.apiKey') }}</th><th v-if="isUsageColumnVisible('model')" class="p-3">{{ t('organization.usage.model') }}</th><th v-if="isUsageColumnVisible('endpoint')" class="p-3">{{ t('organization.usage.endpoint') }}</th><th v-if="isUsageColumnVisible('group')" class="p-3">{{ t('admin.usage.group') }}</th><th v-if="isUsageColumnVisible('type')" class="p-3">{{ t('usage.type') }}</th><th v-if="isUsageColumnVisible('billing_type')" class="p-3">{{ t('admin.usage.billingType') }}</th><th v-if="isUsageColumnVisible('billing_mode')" class="p-3">{{ t('admin.usage.billingMode') }}</th><th v-if="isUsageColumnVisible('tokens')" class="p-3">{{ t('usage.tokens') }}</th><th v-if="isUsageColumnVisible('result')" class="p-3">{{ t('usage.result') }}</th><th v-if="isUsageColumnVisible('cost')" class="p-3">{{ t('usage.cost') }}</th><th v-if="isUsageColumnVisible('balance_source')" class="p-3">{{ t('organization.balanceSource.label') }}</th><th v-if="isUsageColumnVisible('latency')" class="p-3">{{ t('usage.latency') }}</th><th v-if="isUsageColumnVisible('ip_address')" class="p-3">{{ t('admin.usage.ipAddress') }}</th><th v-if="isUsageColumnVisible('user_agent')" class="p-3">{{ t('usage.userAgent') }}</th><th v-if="isUsageColumnVisible('created_at')" class="p-3">{{ t('organization.usage.time') }}</th></tr>
           </thead>
-          <tbody>
-            <tr v-for="row in usagePage.items" :key="row.id" class="border-t border-gray-100 dark:border-dark-700">
+          <tbody class="divide-y divide-gray-200 bg-white text-sm text-gray-900 dark:divide-dark-700 dark:bg-dark-900 dark:text-gray-100">
+            <tr v-for="row in usagePage.items" :key="row.id" class="hover:bg-gray-50 dark:hover:bg-dark-800">
               <td v-if="isUsageColumnVisible('member_login')" class="p-3">{{ row.member_login }}</td>
               <td v-if="isUsageColumnVisible('username')" class="p-3">{{ row.member_username || '-' }}</td>
               <td v-if="isUsageColumnVisible('api_key')" class="p-3">{{ row.api_key_name || '-' }}</td>
@@ -550,8 +552,9 @@
                   <button
                     v-if="isVideoUsage(row) && row.task_id"
                     type="button"
+					:data-testid="`organization-video-detail-${row.id}`"
                     class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-500/10"
-                    @click="openVideoDetail(row.task_id as number)"
+                    @click="openVideoDetail(row)"
                   >{{ t('common.detail', '详情') }}</button>
                   <span v-else-if="!usageResultURLs(row).length && !(isVideoUsage(row) && row.task_id)">-</span>
                 </div>
@@ -559,20 +562,21 @@
               <td v-if="isUsageColumnVisible('cost')" class="p-3 font-mono"><div class="font-medium text-green-600 dark:text-green-400">${{ formatUsageCost(row.actual_cost) }}</div><div class="text-[11px] text-gray-400" :title="`${t('usage.rate')}: ${row.rate_multiplier || 1}x`">${{ formatUsageCost(row.total_cost) }}</div></td>
               <td v-if="isUsageColumnVisible('balance_source')" class="p-3 whitespace-nowrap">{{ t(`organization.balanceSource.${row.balance_source || 'self'}`) }}</td>
               <td v-if="isUsageColumnVisible('latency')" class="p-3"><UsageLatencyCell :first-token-ms="row.first_token_ms" :duration-ms="row.duration_ms" /></td>
-              <td v-if="isUsageColumnVisible('ip_address')" class="p-3 font-mono text-xs">{{ row.ip_address || '-' }}</td>
-              <td v-if="isUsageColumnVisible('user_agent')" class="max-w-xs truncate p-3 text-xs" :title="row.user_agent">{{ row.user_agent || '-' }}</td>
-              <td v-if="isUsageColumnVisible('created_at')" class="p-3 whitespace-nowrap">{{ new Date(row.created_at).toLocaleString() }}</td>
+              <td v-if="isUsageColumnVisible('ip_address')" class="p-3"><span v-if="row.ip_address" class="font-mono text-sm text-gray-600 dark:text-gray-400">{{ row.ip_address }}</span><span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span></td>
+              <td v-if="isUsageColumnVisible('user_agent')" class="p-3"><span v-if="row.user_agent" class="block max-w-[320px] truncate text-sm text-gray-600 dark:text-gray-400" :title="row.user_agent">{{ row.user_agent }}</span><span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span></td>
+              <td v-if="isUsageColumnVisible('created_at')" class="p-3 whitespace-nowrap"><span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDateTime(row.created_at) }}</span></td>
             </tr>
           </tbody>
         </table>
       </div>
-      <div class="flex items-center justify-between gap-3 text-sm">
-        <span class="text-gray-500">{{ t('organization.usage.total', { total: usagePage.total }) }}</span>
-        <div class="flex gap-2">
-          <button class="btn btn-secondary btn-sm" :disabled="usageLoading || usagePage.page <= 1" @click="loadUsage(usagePage.page - 1)">{{ t('organization.usage.previous') }}</button>
-          <button class="btn btn-secondary btn-sm" :disabled="usageLoading || usagePage.page >= usagePage.pages" @click="loadUsage(usagePage.page + 1)">{{ t('organization.usage.next') }}</button>
-        </div>
-      </div>
+      <Pagination
+		v-if="usagePage.total > 0"
+		:page="usagePage.page"
+		:total="usagePage.total"
+		:page-size="usagePage.page_size"
+		@update:page="loadUsage"
+		@update:pageSize="onUsagePageSize"
+	  />
       </template>
       <UserErrorRequestsTable
         v-else
@@ -854,6 +858,7 @@
     <VideoTaskDetailModal
       v-model:show="videoDetailVisible"
       :task-id="videoDetailTaskId"
+	  :organization-usage-id="videoDetailUsageId"
     />
   </AppLayout>
 </template>
@@ -887,6 +892,7 @@ import UsageTokenSummaryCard from '@/components/usage/UsageTokenSummaryCard.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { getLocale } from '@/i18n'
 import { getBillingModeBadgeClass, getBillingModeLabel, isVideoUsage } from '@/utils/billingMode'
+import { formatDateTime } from '@/utils/format'
 import VideoTaskDetailModal from '@/components/user/VideoTaskDetailModal.vue'
 import type { DashboardStats, EndpointStat, FinanceSummary, GroupStat, IAMMember, ManagedPolicy, ModelStat, OrganizationContext, OrganizationSpendLimitRule, OrganizationSpendUsage, OrganizationSubscription, OrganizationUsageParams, OrganizationUsageRow, OrganizationUsageStats, OrganizationUsageTrendPoint, PaginatedOrganizationUsage, UserBreakdownItem, UserErrorRequest, UserSpendingRankingItem, UserUsageTrendPoint } from '@/types'
 import type { PlazaPlanCard } from '@/api/plaza'
@@ -1035,6 +1041,14 @@ const usageBillingModeOptions = computed(() => [
   { value: 'image', label: t('admin.usage.billingModeImage') },
   { value: 'video', label: t('admin.usage.billingModeVideo') },
 ])
+const usageModelOptions = computed(() => {
+  const names = new Set(modelStats.value.map(item => item.model).filter(Boolean))
+  if (usageFilters.model) names.add(usageFilters.model)
+  return [
+    { value: '', label: t('admin.usage.allModels') },
+    ...Array.from(names).sort().map(model => ({ value: model, label: model })),
+  ]
+})
 
 const usageColumns = computed(() => [
   { key: 'member_login', label: t('organization.usage.member') },
@@ -1368,8 +1382,10 @@ function enterpriseBillingTypeLabel(row: OrganizationUsageRow): string {
 // 弹窗内部默认走 /user/video-models/tasks/by-id/:id，当前登录用户只能看自己发起的任务（后端强制归属校验）。
 const videoDetailVisible = ref(false)
 const videoDetailTaskId = ref<number | null>(null)
-function openVideoDetail(taskId: number) {
-  videoDetailTaskId.value = taskId
+const videoDetailUsageId = ref<number | null>(null)
+function openVideoDetail(row: OrganizationUsageRow) {
+	videoDetailTaskId.value = row.task_id || null
+	videoDetailUsageId.value = row.id
   videoDetailVisible.value = true
 }
 
@@ -1556,6 +1572,11 @@ async function loadUsage(page = 1) {
   } finally {
     usageLoading.value = false
   }
+}
+
+function onUsagePageSize(pageSize: number) {
+	usagePage.value.page_size = pageSize
+	void loadUsage(1)
 }
 
 // ============================================================================

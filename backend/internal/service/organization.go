@@ -488,6 +488,7 @@ type OrganizationSettingsRepository interface {
 }
 
 type OrganizationUsageFilter struct {
+	UsageID     *int64
 	Start       time.Time
 	End         time.Time
 	MemberID    *int64

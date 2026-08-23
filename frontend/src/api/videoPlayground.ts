@@ -17,7 +17,7 @@ import axios, { AxiosInstance } from 'axios'
 // 由 Vite dev proxy 或生产 Caddy 转发到后端。
 const playgroundClient: AxiosInstance = axios.create({
   baseURL: '/api/v1/model',
-  timeout: 60_000, // 视频任务提交/取消/查询本身很快；60s 兜底防止 hang 死
+  timeout: 60_000, // 视频任务提交/查询本身很快；60s 兜底防止 hang 死
   headers: {
     'Content-Type': 'application/json',
   },
@@ -53,12 +53,6 @@ export interface ResultResponse {
     height?: number
   }>
   seed?: number
-  [k: string]: unknown
-}
-
-export interface CancelResponse {
-  status?: string
-  message?: string
   [k: string]: unknown
 }
 
@@ -126,22 +120,6 @@ export async function result(
 }
 
 /**
- * 取消任务
- */
-export async function cancel(
-  slug: string,
-  requestId: string,
-  apiKey: string
-): Promise<CancelResponse> {
-  const { data } = await playgroundClient.put<CancelResponse>(
-    `/${slug}/requests/${requestId}/cancel`,
-    {},
-    { headers: authHeader(apiKey) }
-  )
-  return data
-}
-
-/**
  * 从 fal result payload 中抽出可播放的 video URL 列表（尽量鲁棒）。
  */
 export function extractVideoUrls(payload: ResultResponse | undefined | null): string[] {
@@ -162,7 +140,6 @@ export const videoPlaygroundAPI = {
   submit,
   status,
   result,
-  cancel,
   extractVideoUrls,
 }
 

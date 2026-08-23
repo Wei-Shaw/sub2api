@@ -7,12 +7,19 @@ import (
 
 // 异步视频任务状态常量（与 AsyncMediaStatus* 语义一致，独立命名避免耦合）。
 const (
-	AsyncVideoStatusPending   = "pending"
-	AsyncVideoStatusRunning   = "running"
-	AsyncVideoStatusSucceeded = "succeeded"
-	AsyncVideoStatusFailed    = "failed"
-	AsyncVideoStatusRefunded  = "refunded"
-	AsyncVideoStatusExpired   = "expired"
+	AsyncVideoStatusPending      = "pending"
+	AsyncVideoStatusRunning      = "running"
+	AsyncVideoStatusSucceeded    = "succeeded"
+	AsyncVideoStatusFailed       = "failed"
+	AsyncVideoStatusRefunded     = "refunded"
+	AsyncVideoStatusExpired      = "expired"
+	AsyncVideoStatusRefundFailed = "refund_failed"
+
+	AsyncVideoRefundStatusNone       = "none"
+	AsyncVideoRefundStatusProcessing = "processing"
+	AsyncVideoRefundStatusPending    = "pending"
+	AsyncVideoRefundStatusSucceeded  = "succeeded"
+	AsyncVideoRefundStatusFailed     = "failed"
 )
 
 // 异步视频任务对外门面常量。
@@ -51,6 +58,7 @@ type AsyncVideoTask struct {
 	AspectRatio     *string // 仅记录，不参与计费
 
 	Status            string
+	BillingType       int8
 	HeldCost          float64
 	FinalCost         float64
 	RateMultiplier    float64
@@ -62,9 +70,13 @@ type AsyncVideoTask struct {
 	VideoURLs      []string       // 从 result 提取的 video url
 	CosURLs        []string       // 预留转存（本轮不启用）
 
-	ErrorReason    *string
-	FailDeadlineAt *time.Time
-	FinishedAt     *time.Time
+	ErrorReason       *string
+	RefundStatus      string
+	RefundAttempts    int
+	RefundNextRetryAt *time.Time
+	RefundError       *string
+	FailDeadlineAt    *time.Time
+	FinishedAt        *time.Time
 
 	ClientIP         *string
 	UserAgent        *string
@@ -81,7 +93,7 @@ func (t *AsyncVideoTask) IsTerminal() bool {
 		return false
 	}
 	switch t.Status {
-	case AsyncVideoStatusSucceeded, AsyncVideoStatusRefunded, AsyncVideoStatusExpired:
+	case AsyncVideoStatusSucceeded, AsyncVideoStatusFailed, AsyncVideoStatusRefunded, AsyncVideoStatusExpired, AsyncVideoStatusRefundFailed:
 		return true
 	default:
 		return false
@@ -149,8 +161,13 @@ type AsyncVideoTaskRepository interface {
 	GetByUpstreamRequestID(ctx context.Context, upstreamRequestID string) (*AsyncVideoTask, error)
 	UpdateUpstreamRef(ctx context.Context, id int64, upstreamRequestID, statusURL, responseURL string) error
 	MarkSucceeded(ctx context.Context, id int64, videoURLs, cosURLs []string, resultPayload map[string]any, finalCost float64, durationSeconds int, upstreamCost float64) (bool, error)
-	MarkRefunded(ctx context.Context, id int64, status, errorReason string) (bool, error)
+	MarkFailed(ctx context.Context, id int64, status, errorReason string, firstRetryAt time.Time) (bool, error)
+	CompleteRefund(ctx context.Context, id int64, status string) (bool, int64, error)
+	ScheduleRefundRetry(ctx context.Context, id int64, attempts int, nextRetryAt time.Time, refundError string) (bool, error)
+	ClaimRefundRetry(ctx context.Context, id int64, expectedAttempts int) (bool, error)
+	MarkRefundFailed(ctx context.Context, id int64, attempts int, refundError string) (bool, error)
 	ListUnfinished(ctx context.Context, limit int) ([]*AsyncVideoTask, error)
+	ListPendingRefunds(ctx context.Context, limit int) ([]*AsyncVideoTask, error)
 	// ListByUserAndSlug 分页列出某用户在指定模型 slug 下的历史任务。
 	// slug 为空时表示全部模型（Q3-1: B 方案会按 slug 过滤，A 方案传空串）。
 	// 按 created_at DESC 排序，返回 tasks 切片以及总数（用于分页）。

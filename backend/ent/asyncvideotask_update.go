@@ -456,6 +456,27 @@ func (_u *AsyncVideoTaskUpdate) SetNillableStatus(v *string) *AsyncVideoTaskUpda
 	return _u
 }
 
+// SetBillingType sets the "billing_type" field.
+func (_u *AsyncVideoTaskUpdate) SetBillingType(v int8) *AsyncVideoTaskUpdate {
+	_u.mutation.ResetBillingType()
+	_u.mutation.SetBillingType(v)
+	return _u
+}
+
+// SetNillableBillingType sets the "billing_type" field if the given value is not nil.
+func (_u *AsyncVideoTaskUpdate) SetNillableBillingType(v *int8) *AsyncVideoTaskUpdate {
+	if v != nil {
+		_u.SetBillingType(*v)
+	}
+	return _u
+}
+
+// AddBillingType adds value to the "billing_type" field.
+func (_u *AsyncVideoTaskUpdate) AddBillingType(v int8) *AsyncVideoTaskUpdate {
+	_u.mutation.AddBillingType(v)
+	return _u
+}
+
 // SetHeldCost sets the "held_cost" field.
 func (_u *AsyncVideoTaskUpdate) SetHeldCost(v float64) *AsyncVideoTaskUpdate {
 	_u.mutation.ResetHeldCost()
@@ -638,6 +659,81 @@ func (_u *AsyncVideoTaskUpdate) SetNillableErrorReason(v *string) *AsyncVideoTas
 // ClearErrorReason clears the value of the "error_reason" field.
 func (_u *AsyncVideoTaskUpdate) ClearErrorReason() *AsyncVideoTaskUpdate {
 	_u.mutation.ClearErrorReason()
+	return _u
+}
+
+// SetRefundStatus sets the "refund_status" field.
+func (_u *AsyncVideoTaskUpdate) SetRefundStatus(v string) *AsyncVideoTaskUpdate {
+	_u.mutation.SetRefundStatus(v)
+	return _u
+}
+
+// SetNillableRefundStatus sets the "refund_status" field if the given value is not nil.
+func (_u *AsyncVideoTaskUpdate) SetNillableRefundStatus(v *string) *AsyncVideoTaskUpdate {
+	if v != nil {
+		_u.SetRefundStatus(*v)
+	}
+	return _u
+}
+
+// SetRefundAttempts sets the "refund_attempts" field.
+func (_u *AsyncVideoTaskUpdate) SetRefundAttempts(v int) *AsyncVideoTaskUpdate {
+	_u.mutation.ResetRefundAttempts()
+	_u.mutation.SetRefundAttempts(v)
+	return _u
+}
+
+// SetNillableRefundAttempts sets the "refund_attempts" field if the given value is not nil.
+func (_u *AsyncVideoTaskUpdate) SetNillableRefundAttempts(v *int) *AsyncVideoTaskUpdate {
+	if v != nil {
+		_u.SetRefundAttempts(*v)
+	}
+	return _u
+}
+
+// AddRefundAttempts adds value to the "refund_attempts" field.
+func (_u *AsyncVideoTaskUpdate) AddRefundAttempts(v int) *AsyncVideoTaskUpdate {
+	_u.mutation.AddRefundAttempts(v)
+	return _u
+}
+
+// SetRefundNextRetryAt sets the "refund_next_retry_at" field.
+func (_u *AsyncVideoTaskUpdate) SetRefundNextRetryAt(v time.Time) *AsyncVideoTaskUpdate {
+	_u.mutation.SetRefundNextRetryAt(v)
+	return _u
+}
+
+// SetNillableRefundNextRetryAt sets the "refund_next_retry_at" field if the given value is not nil.
+func (_u *AsyncVideoTaskUpdate) SetNillableRefundNextRetryAt(v *time.Time) *AsyncVideoTaskUpdate {
+	if v != nil {
+		_u.SetRefundNextRetryAt(*v)
+	}
+	return _u
+}
+
+// ClearRefundNextRetryAt clears the value of the "refund_next_retry_at" field.
+func (_u *AsyncVideoTaskUpdate) ClearRefundNextRetryAt() *AsyncVideoTaskUpdate {
+	_u.mutation.ClearRefundNextRetryAt()
+	return _u
+}
+
+// SetRefundError sets the "refund_error" field.
+func (_u *AsyncVideoTaskUpdate) SetRefundError(v string) *AsyncVideoTaskUpdate {
+	_u.mutation.SetRefundError(v)
+	return _u
+}
+
+// SetNillableRefundError sets the "refund_error" field if the given value is not nil.
+func (_u *AsyncVideoTaskUpdate) SetNillableRefundError(v *string) *AsyncVideoTaskUpdate {
+	if v != nil {
+		_u.SetRefundError(*v)
+	}
+	return _u
+}
+
+// ClearRefundError clears the value of the "refund_error" field.
+func (_u *AsyncVideoTaskUpdate) ClearRefundError() *AsyncVideoTaskUpdate {
+	_u.mutation.ClearRefundError()
 	return _u
 }
 
@@ -864,6 +960,16 @@ func (_u *AsyncVideoTaskUpdate) check() error {
 			return &ValidationError{Name: "error_reason", err: fmt.Errorf(`ent: validator failed for field "AsyncVideoTask.error_reason": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RefundStatus(); ok {
+		if err := asyncvideotask.RefundStatusValidator(v); err != nil {
+			return &ValidationError{Name: "refund_status", err: fmt.Errorf(`ent: validator failed for field "AsyncVideoTask.refund_status": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RefundError(); ok {
+		if err := asyncvideotask.RefundErrorValidator(v); err != nil {
+			return &ValidationError{Name: "refund_error", err: fmt.Errorf(`ent: validator failed for field "AsyncVideoTask.refund_error": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ClientIP(); ok {
 		if err := asyncvideotask.ClientIPValidator(v); err != nil {
 			return &ValidationError{Name: "client_ip", err: fmt.Errorf(`ent: validator failed for field "AsyncVideoTask.client_ip": %w`, err)}
@@ -1028,6 +1134,12 @@ func (_u *AsyncVideoTaskUpdate) sqlSave(ctx context.Context) (_node int, err err
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(asyncvideotask.FieldStatus, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.BillingType(); ok {
+		_spec.SetField(asyncvideotask.FieldBillingType, field.TypeInt8, value)
+	}
+	if value, ok := _u.mutation.AddedBillingType(); ok {
+		_spec.AddField(asyncvideotask.FieldBillingType, field.TypeInt8, value)
+	}
 	if value, ok := _u.mutation.HeldCost(); ok {
 		_spec.SetField(asyncvideotask.FieldHeldCost, field.TypeFloat64, value)
 	}
@@ -1097,6 +1209,27 @@ func (_u *AsyncVideoTaskUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if _u.mutation.ErrorReasonCleared() {
 		_spec.ClearField(asyncvideotask.FieldErrorReason, field.TypeString)
+	}
+	if value, ok := _u.mutation.RefundStatus(); ok {
+		_spec.SetField(asyncvideotask.FieldRefundStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RefundAttempts(); ok {
+		_spec.SetField(asyncvideotask.FieldRefundAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedRefundAttempts(); ok {
+		_spec.AddField(asyncvideotask.FieldRefundAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.RefundNextRetryAt(); ok {
+		_spec.SetField(asyncvideotask.FieldRefundNextRetryAt, field.TypeTime, value)
+	}
+	if _u.mutation.RefundNextRetryAtCleared() {
+		_spec.ClearField(asyncvideotask.FieldRefundNextRetryAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.RefundError(); ok {
+		_spec.SetField(asyncvideotask.FieldRefundError, field.TypeString, value)
+	}
+	if _u.mutation.RefundErrorCleared() {
+		_spec.ClearField(asyncvideotask.FieldRefundError, field.TypeString)
 	}
 	if value, ok := _u.mutation.FailDeadlineAt(); ok {
 		_spec.SetField(asyncvideotask.FieldFailDeadlineAt, field.TypeTime, value)
@@ -1581,6 +1714,27 @@ func (_u *AsyncVideoTaskUpdateOne) SetNillableStatus(v *string) *AsyncVideoTaskU
 	return _u
 }
 
+// SetBillingType sets the "billing_type" field.
+func (_u *AsyncVideoTaskUpdateOne) SetBillingType(v int8) *AsyncVideoTaskUpdateOne {
+	_u.mutation.ResetBillingType()
+	_u.mutation.SetBillingType(v)
+	return _u
+}
+
+// SetNillableBillingType sets the "billing_type" field if the given value is not nil.
+func (_u *AsyncVideoTaskUpdateOne) SetNillableBillingType(v *int8) *AsyncVideoTaskUpdateOne {
+	if v != nil {
+		_u.SetBillingType(*v)
+	}
+	return _u
+}
+
+// AddBillingType adds value to the "billing_type" field.
+func (_u *AsyncVideoTaskUpdateOne) AddBillingType(v int8) *AsyncVideoTaskUpdateOne {
+	_u.mutation.AddBillingType(v)
+	return _u
+}
+
 // SetHeldCost sets the "held_cost" field.
 func (_u *AsyncVideoTaskUpdateOne) SetHeldCost(v float64) *AsyncVideoTaskUpdateOne {
 	_u.mutation.ResetHeldCost()
@@ -1763,6 +1917,81 @@ func (_u *AsyncVideoTaskUpdateOne) SetNillableErrorReason(v *string) *AsyncVideo
 // ClearErrorReason clears the value of the "error_reason" field.
 func (_u *AsyncVideoTaskUpdateOne) ClearErrorReason() *AsyncVideoTaskUpdateOne {
 	_u.mutation.ClearErrorReason()
+	return _u
+}
+
+// SetRefundStatus sets the "refund_status" field.
+func (_u *AsyncVideoTaskUpdateOne) SetRefundStatus(v string) *AsyncVideoTaskUpdateOne {
+	_u.mutation.SetRefundStatus(v)
+	return _u
+}
+
+// SetNillableRefundStatus sets the "refund_status" field if the given value is not nil.
+func (_u *AsyncVideoTaskUpdateOne) SetNillableRefundStatus(v *string) *AsyncVideoTaskUpdateOne {
+	if v != nil {
+		_u.SetRefundStatus(*v)
+	}
+	return _u
+}
+
+// SetRefundAttempts sets the "refund_attempts" field.
+func (_u *AsyncVideoTaskUpdateOne) SetRefundAttempts(v int) *AsyncVideoTaskUpdateOne {
+	_u.mutation.ResetRefundAttempts()
+	_u.mutation.SetRefundAttempts(v)
+	return _u
+}
+
+// SetNillableRefundAttempts sets the "refund_attempts" field if the given value is not nil.
+func (_u *AsyncVideoTaskUpdateOne) SetNillableRefundAttempts(v *int) *AsyncVideoTaskUpdateOne {
+	if v != nil {
+		_u.SetRefundAttempts(*v)
+	}
+	return _u
+}
+
+// AddRefundAttempts adds value to the "refund_attempts" field.
+func (_u *AsyncVideoTaskUpdateOne) AddRefundAttempts(v int) *AsyncVideoTaskUpdateOne {
+	_u.mutation.AddRefundAttempts(v)
+	return _u
+}
+
+// SetRefundNextRetryAt sets the "refund_next_retry_at" field.
+func (_u *AsyncVideoTaskUpdateOne) SetRefundNextRetryAt(v time.Time) *AsyncVideoTaskUpdateOne {
+	_u.mutation.SetRefundNextRetryAt(v)
+	return _u
+}
+
+// SetNillableRefundNextRetryAt sets the "refund_next_retry_at" field if the given value is not nil.
+func (_u *AsyncVideoTaskUpdateOne) SetNillableRefundNextRetryAt(v *time.Time) *AsyncVideoTaskUpdateOne {
+	if v != nil {
+		_u.SetRefundNextRetryAt(*v)
+	}
+	return _u
+}
+
+// ClearRefundNextRetryAt clears the value of the "refund_next_retry_at" field.
+func (_u *AsyncVideoTaskUpdateOne) ClearRefundNextRetryAt() *AsyncVideoTaskUpdateOne {
+	_u.mutation.ClearRefundNextRetryAt()
+	return _u
+}
+
+// SetRefundError sets the "refund_error" field.
+func (_u *AsyncVideoTaskUpdateOne) SetRefundError(v string) *AsyncVideoTaskUpdateOne {
+	_u.mutation.SetRefundError(v)
+	return _u
+}
+
+// SetNillableRefundError sets the "refund_error" field if the given value is not nil.
+func (_u *AsyncVideoTaskUpdateOne) SetNillableRefundError(v *string) *AsyncVideoTaskUpdateOne {
+	if v != nil {
+		_u.SetRefundError(*v)
+	}
+	return _u
+}
+
+// ClearRefundError clears the value of the "refund_error" field.
+func (_u *AsyncVideoTaskUpdateOne) ClearRefundError() *AsyncVideoTaskUpdateOne {
+	_u.mutation.ClearRefundError()
 	return _u
 }
 
@@ -2002,6 +2231,16 @@ func (_u *AsyncVideoTaskUpdateOne) check() error {
 			return &ValidationError{Name: "error_reason", err: fmt.Errorf(`ent: validator failed for field "AsyncVideoTask.error_reason": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RefundStatus(); ok {
+		if err := asyncvideotask.RefundStatusValidator(v); err != nil {
+			return &ValidationError{Name: "refund_status", err: fmt.Errorf(`ent: validator failed for field "AsyncVideoTask.refund_status": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RefundError(); ok {
+		if err := asyncvideotask.RefundErrorValidator(v); err != nil {
+			return &ValidationError{Name: "refund_error", err: fmt.Errorf(`ent: validator failed for field "AsyncVideoTask.refund_error": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ClientIP(); ok {
 		if err := asyncvideotask.ClientIPValidator(v); err != nil {
 			return &ValidationError{Name: "client_ip", err: fmt.Errorf(`ent: validator failed for field "AsyncVideoTask.client_ip": %w`, err)}
@@ -2183,6 +2422,12 @@ func (_u *AsyncVideoTaskUpdateOne) sqlSave(ctx context.Context) (_node *AsyncVid
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(asyncvideotask.FieldStatus, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.BillingType(); ok {
+		_spec.SetField(asyncvideotask.FieldBillingType, field.TypeInt8, value)
+	}
+	if value, ok := _u.mutation.AddedBillingType(); ok {
+		_spec.AddField(asyncvideotask.FieldBillingType, field.TypeInt8, value)
+	}
 	if value, ok := _u.mutation.HeldCost(); ok {
 		_spec.SetField(asyncvideotask.FieldHeldCost, field.TypeFloat64, value)
 	}
@@ -2252,6 +2497,27 @@ func (_u *AsyncVideoTaskUpdateOne) sqlSave(ctx context.Context) (_node *AsyncVid
 	}
 	if _u.mutation.ErrorReasonCleared() {
 		_spec.ClearField(asyncvideotask.FieldErrorReason, field.TypeString)
+	}
+	if value, ok := _u.mutation.RefundStatus(); ok {
+		_spec.SetField(asyncvideotask.FieldRefundStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RefundAttempts(); ok {
+		_spec.SetField(asyncvideotask.FieldRefundAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedRefundAttempts(); ok {
+		_spec.AddField(asyncvideotask.FieldRefundAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.RefundNextRetryAt(); ok {
+		_spec.SetField(asyncvideotask.FieldRefundNextRetryAt, field.TypeTime, value)
+	}
+	if _u.mutation.RefundNextRetryAtCleared() {
+		_spec.ClearField(asyncvideotask.FieldRefundNextRetryAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.RefundError(); ok {
+		_spec.SetField(asyncvideotask.FieldRefundError, field.TypeString, value)
+	}
+	if _u.mutation.RefundErrorCleared() {
+		_spec.ClearField(asyncvideotask.FieldRefundError, field.TypeString)
 	}
 	if value, ok := _u.mutation.FailDeadlineAt(); ok {
 		_spec.SetField(asyncvideotask.FieldFailDeadlineAt, field.TypeTime, value)

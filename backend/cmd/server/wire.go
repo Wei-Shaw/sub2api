@@ -135,6 +135,7 @@ func provideCleanup(
 	// 没有 Stop / 状态需要清理。参数保留以避免 wire prune 掉它。
 	_ *service.SupportChatLegacyDetector,
 	asyncMediaReconciler *service.AsyncMediaReconciler,
+	asyncVideoReconciler *service.AsyncVideoReconciler,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	auditLog *service.AuditLogService,
@@ -388,6 +389,12 @@ func provideCleanup(
 			{"AsyncMediaReconciler", func() error {
 				if asyncMediaReconciler != nil {
 					asyncMediaReconciler.Stop()
+				}
+				return nil
+			}},
+			{"AsyncVideoReconciler", func() error {
+				if asyncVideoReconciler != nil {
+					asyncVideoReconciler.Stop()
 				}
 				return nil
 			}},

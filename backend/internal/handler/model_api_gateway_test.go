@@ -132,3 +132,16 @@ func TestMediaFalStatusFromTaskMapsTerminalFailureToFailed(t *testing.T) {
 		})
 	}
 }
+
+func TestVideoFalStatusFromTaskMapsTerminalFailureToFailed(t *testing.T) {
+	for _, status := range []string{
+		service.AsyncVideoStatusFailed,
+		service.AsyncVideoStatusRefunded,
+		service.AsyncVideoStatusExpired,
+		service.AsyncVideoStatusRefundFailed,
+	} {
+		t.Run(status, func(t *testing.T) {
+			require.Equal(t, fal.StatusFailed, videoFalStatusFromTask(&service.AsyncVideoTask{Status: status}))
+		})
+	}
+}

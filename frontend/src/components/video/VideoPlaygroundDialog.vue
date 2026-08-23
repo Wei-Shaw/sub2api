@@ -303,13 +303,6 @@
         </div>
         <div class="flex items-center gap-2">
           <button
-            v-if="playground.isBusy.value"
-            @click="onCancel"
-            class="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-          >
-            {{ t('videoModels.playground.btnCancel') }}
-          </button>
-          <button
             v-if="playground.isTerminal.value"
             @click="playground.reset"
             class="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
@@ -647,14 +640,6 @@ async function onSubmit() {
   await playground.start(props.slug, body, selectedKey.value.key)
 }
 
-async function onCancel() {
-  if (!selectedKey.value) {
-    playground.reset()
-    return
-  }
-  await playground.cancel(props.slug, selectedKey.value.key)
-}
-
 // ============ 展示辅助 ============
 function maskKey(key: string): string {
   if (!key) return '-'
@@ -745,15 +730,6 @@ const prettyResult = computed(() => {
 
 // ============ 生命周期与关闭 ============
 function tryClose() {
-  if (playground.isBusy.value) {
-    const ok = window.confirm(t('videoModels.playground.confirmClose'))
-    if (!ok) return
-    if (selectedKey.value) {
-      void playground.cancel(props.slug, selectedKey.value.key)
-    } else {
-      playground.reset()
-    }
-  }
   emit('update:open', false)
 }
 
