@@ -542,21 +542,31 @@
               <td v-if="isUsageColumnVisible('tokens')" class="p-3"><UsageTokenBreakdown :input-tokens="row.input_tokens" :output-tokens="row.output_tokens" :cache-creation-tokens="row.cache_creation_tokens || 0" :cache-read-tokens="row.cache_read_tokens || 0" :cache-creation-5m-tokens="row.cache_creation_5m_tokens || 0" :cache-creation-1h-tokens="row.cache_creation_1h_tokens || 0" /></td>
               <td v-if="isUsageColumnVisible('result')" class="p-3">
                 <div class="flex flex-col items-start gap-1">
-                  <!-- 图片行：展示缩略图网格。视频行不走这里，避免将视频 URL 当图片渲染导致裂图。 -->
-                  <div v-if="!isVideoUsage(row) && usageResultURLs(row).length" class="flex max-w-[180px] flex-wrap gap-1.5">
-                    <a v-for="(url, index) in usageResultURLs(row)" :key="index" :href="url" target="_blank" rel="noopener noreferrer" class="block h-12 w-12 overflow-hidden rounded border border-gray-200 hover:ring-2 hover:ring-blue-400 dark:border-dark-700">
-                      <img :src="url" loading="lazy" alt="result" class="h-full w-full object-cover">
-                    </a>
+                  <div v-if="usageResultURLs(row).length" class="flex max-w-[180px] flex-wrap gap-1.5">
+                    <template v-if="isVideoUsage(row)">
+                      <a
+                        v-for="(url, index) in usageResultURLs(row)"
+                        :key="`video-${index}`"
+                        :data-testid="`organization-video-result-${row.id}-${index}`"
+                        :href="url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        :title="t('usage.resultDownload')"
+                        class="relative block h-12 w-12 overflow-hidden rounded border border-gray-200 bg-black transition hover:ring-2 hover:ring-amber-400 dark:border-dark-700"
+                      >
+                        <video :src="url" muted preload="metadata" class="h-full w-full object-cover" />
+                        <span class="absolute inset-0 flex items-center justify-center">
+                          <Icon name="play" size="sm" class="text-white drop-shadow" />
+                        </span>
+                      </a>
+                    </template>
+                    <template v-else>
+                      <a v-for="(url, index) in usageResultURLs(row)" :key="index" :href="url" target="_blank" rel="noopener noreferrer" class="block h-12 w-12 overflow-hidden rounded border border-gray-200 hover:ring-2 hover:ring-blue-400 dark:border-dark-700">
+                        <img :src="url" loading="lazy" alt="result" class="h-full w-full object-cover">
+                      </a>
+                    </template>
                   </div>
-                  <!-- 视频行专属详情入口：点击弹窗展示完整 task_id / 参数 / 视频预览。 -->
-                  <button
-                    v-if="isVideoUsage(row) && row.task_id"
-                    type="button"
-					:data-testid="`organization-video-detail-${row.id}`"
-                    class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-500/10"
-                    @click="openVideoDetail(row)"
-                  >{{ t('common.detail', '详情') }}</button>
-                  <span v-else-if="!usageResultURLs(row).length && !(isVideoUsage(row) && row.task_id)">-</span>
+                  <span v-if="!usageResultURLs(row).length">-</span>
                 </div>
               </td>
               <td v-if="isUsageColumnVisible('cost')" class="p-3 font-mono"><div class="font-medium text-green-600 dark:text-green-400">${{ formatUsageCost(row.actual_cost) }}</div><div class="text-[11px] text-gray-400" :title="`${t('usage.rate')}: ${row.rate_multiplier || 1}x`">${{ formatUsageCost(row.total_cost) }}</div></td>
@@ -854,12 +864,6 @@
       </form>
     </div>
     </div>
-    <!-- 视频任务详情弹窗：使用记录视频行"详情"按钮触发。 -->
-    <VideoTaskDetailModal
-      v-model:show="videoDetailVisible"
-      :task-id="videoDetailTaskId"
-	  :organization-usage-id="videoDetailUsageId"
-    />
   </AppLayout>
 </template>
 
@@ -893,7 +897,6 @@ import { useClipboard } from '@/composables/useClipboard'
 import { getLocale } from '@/i18n'
 import { getBillingModeBadgeClass, getBillingModeLabel, isVideoUsage } from '@/utils/billingMode'
 import { formatDateTime } from '@/utils/format'
-import VideoTaskDetailModal from '@/components/user/VideoTaskDetailModal.vue'
 import type { DashboardStats, EndpointStat, FinanceSummary, GroupStat, IAMMember, ManagedPolicy, ModelStat, OrganizationContext, OrganizationSpendLimitRule, OrganizationSpendUsage, OrganizationSubscription, OrganizationUsageParams, OrganizationUsageRow, OrganizationUsageStats, OrganizationUsageTrendPoint, PaginatedOrganizationUsage, UserBreakdownItem, UserErrorRequest, UserSpendingRankingItem, UserUsageTrendPoint } from '@/types'
 import type { PlazaPlanCard } from '@/api/plaza'
 import { useAuthStore } from '@/stores'
@@ -1376,17 +1379,6 @@ function enterpriseBillingTypeLabel(row: OrganizationUsageRow): string {
   if (src === 'shared') return '共享余额'
   if (src === 'company') return '企业余额'
   return '钱包余额'
-}
-
-// 视频任务详情弹窗：企业使用记录视频行点"详情"时触发。
-// 弹窗内部默认走 /user/video-models/tasks/by-id/:id，当前登录用户只能看自己发起的任务（后端强制归属校验）。
-const videoDetailVisible = ref(false)
-const videoDetailTaskId = ref<number | null>(null)
-const videoDetailUsageId = ref<number | null>(null)
-function openVideoDetail(row: OrganizationUsageRow) {
-	videoDetailTaskId.value = row.task_id || null
-	videoDetailUsageId.value = row.id
-  videoDetailVisible.value = true
 }
 
 /** 企业余额格式化：不做千分位分组、货币符号仅保留 $（不含 US），空值返回破折号。 */

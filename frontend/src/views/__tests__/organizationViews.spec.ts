@@ -426,7 +426,7 @@ describe('organization views', () => {
     expect(usageTable!.element.parentElement?.classList.contains('overflow-x-auto')).toBe(true)
   })
 
-	it('loads organization video details by usage id and renders numbered pagination', async () => {
+	it('renders organization video results without a detail action and keeps numbered pagination', async () => {
 		api.getContext.mockResolvedValue({
 			organization: { organization_id: 1, account_id: '1719905235756637', company_name: 'Example', organization_status: 'active', membership_status: 'active', role: 'owner', actions: [] },
 			finance: { balance_source: 'self', available: '100', frozen: '0', total: '100' },
@@ -443,38 +443,21 @@ describe('organization views', () => {
 			}],
 			total: 45, page: 1, page_size: 20, pages: 3,
 		})
-		api.getUsageVideoTask.mockResolvedValue({
-			id: 17,
-			internal_request_id: 'video-request',
-			upstream_request_id: 'upstream-task',
-			requested_model: 'bytedance/seedance-2.5/text-to-video',
-			status: 'succeeded',
-			resolution: '720p',
-			duration_seconds: 5,
-			aspect_ratio: '16:9',
-			final_cost: 1.25,
-			held_cost: 1.25,
-			error_reason: '',
-			video_urls: ['https://cdn.example.test/video.mp4'],
-			cos_urls: [],
-			request_payload: {},
-			result_payload: {},
-			created_at: '2026-08-23T13:16:31Z',
-		})
 		await router.replace('/organization?tab=usage')
 
 		const wrapper = mount(OrganizationConsoleView, mountOptions)
 		await flushPromises()
 		;(wrapper.vm as unknown as { activeTab: string }).activeTab = 'usage'
 		await wrapper.vm.$nextTick()
-		await wrapper.get('[data-testid="organization-video-detail-88"]').trigger('click')
-		await flushPromises()
-
-		expect(api.getUsageVideoTask).toHaveBeenCalledWith(88)
+		const videoResult = wrapper.get('[data-testid="organization-video-result-88-0"]')
+		expect(videoResult.attributes('href')).toBe('https://cdn.example.test/video.mp4')
+		expect(videoResult.get('video').attributes('src')).toBe('https://cdn.example.test/video.mp4')
+		expect(wrapper.find('img[src="https://cdn.example.test/video.mp4"]').exists()).toBe(false)
+		expect(wrapper.find('[data-testid="organization-video-detail-88"]').exists()).toBe(false)
+		expect(api.getUsageVideoTask).not.toHaveBeenCalled()
 		expect(wrapper.text()).toContain('$1.250000')
 		expect(wrapper.text()).toContain('21:16:31')
 		expect(wrapper.text()).not.toMatch(/\b(?:AM|PM)\b/i)
-		expect(document.body.querySelector('a[href="https://cdn.example.test/video.mp4"]')).not.toBeNull()
 		expect(wrapper.text()).toContain('2')
 		expect(wrapper.text()).toContain('3')
 		wrapper.unmount()
