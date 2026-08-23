@@ -16,10 +16,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/curve25519"
 	"golang.org/x/crypto/nacl/box"
 )
+
+func TestResolveOpenAIAuthTLSProfileDefaultsAndHonorsContext(t *testing.T) {
+	defaultProfile := resolveOpenAIAuthTLSProfile(context.Background())
+	require.Equal(t, tlsfingerprint.PresetChrome120HTTP1, defaultProfile.Preset)
+
+	override := &tlsfingerprint.Profile{Name: "agent override", CipherSuites: []uint16{0x1301}}
+	ctx := WithOpenAIUpstreamTLSProfile(context.Background(), override)
+	require.Same(t, override, resolveOpenAIAuthTLSProfile(ctx))
+}
 
 func newTestAgentIdentityKey(t *testing.T) (agentIdentityKey, string) {
 	t.Helper()

@@ -9,8 +9,46 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/stretchr/testify/require"
 )
+
+func TestBuildTransportWithTLSProfileUsesContentKeyAndUTLSDialer(t *testing.T) {
+	firstProfile := &tlsfingerprint.Profile{CipherSuites: []uint16{0x1301}}
+	secondProfile := &tlsfingerprint.Profile{CipherSuites: []uint16{0x1302}}
+	base := Options{Timeout: time.Second, TLSProfile: firstProfile}
+
+	transport, err := buildTransport(base)
+	require.NoError(t, err)
+	require.NotNil(t, transport.DialTLSContext)
+	require.False(t, transport.ForceAttemptHTTP2)
+
+	changed := base
+	changed.TLSProfile = secondProfile
+	require.NotEqual(t, buildClientKey(base), buildClientKey(changed))
+}
+
+func TestBuildTransportWithTLSProfileProxiesPlainHTTPWithoutDoubleProxyingHTTPS(t *testing.T) {
+	transport, err := buildTransport(Options{
+		ProxyURL:   "http://proxy.example:8080",
+		TLSProfile: &tlsfingerprint.Profile{CipherSuites: []uint16{0x1301}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, transport.DialTLSContext)
+	require.NotNil(t, transport.Proxy)
+
+	httpReq, err := http.NewRequest(http.MethodGet, "http://upstream.example/v1", nil)
+	require.NoError(t, err)
+	proxyURL, err := transport.Proxy(httpReq)
+	require.NoError(t, err)
+	require.Equal(t, "http://proxy.example:8080", proxyURL.String())
+
+	httpsReq, err := http.NewRequest(http.MethodGet, "https://upstream.example/v1", nil)
+	require.NoError(t, err)
+	proxyURL, err = transport.Proxy(httpsReq)
+	require.NoError(t, err)
+	require.Nil(t, proxyURL, "the fingerprint dialer already owns HTTPS proxy tunneling")
+}
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 

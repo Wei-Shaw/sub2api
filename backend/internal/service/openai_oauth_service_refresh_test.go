@@ -9,13 +9,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/imroc/req/v3"
 	"github.com/stretchr/testify/require"
 )
 
 type openaiOAuthClientRefreshStub struct {
 	refreshCalls int32
+	lastProfile  *tlsfingerprint.Profile
 }
 
 func (s *openaiOAuthClientRefreshStub) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*openai.TokenResponse, error) {
@@ -29,7 +32,28 @@ func (s *openaiOAuthClientRefreshStub) RefreshToken(ctx context.Context, refresh
 
 func (s *openaiOAuthClientRefreshStub) RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL string, clientID string) (*openai.TokenResponse, error) {
 	atomic.AddInt32(&s.refreshCalls, 1)
-	return nil, errors.New("not implemented")
+	s.lastProfile = OpenAIUpstreamTLSProfileFromContext(ctx)
+	return &openai.TokenResponse{AccessToken: "refreshed", RefreshToken: "rotated", ExpiresIn: 3600}, nil
+}
+
+func TestOpenAIOAuthService_RefreshAccountTokenPassesConfiguredTLSProfile(t *testing.T) {
+	client := &openaiOAuthClientRefreshStub{}
+	svc := NewOpenAIOAuthService(nil, client)
+	svc.tlsFPProfileService = &TLSFingerprintProfileService{localCache: map[int64]*model.TLSFingerprintProfile{
+		81: {ID: 81, Name: "oauth override", CipherSuites: []uint16{0x1301}},
+	}}
+	account := &Account{
+		ID: 81, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+		Credentials: map[string]any{"refresh_token": "rt", "client_id": "client"},
+		Extra:       map[string]any{"tls_fingerprint_profile_id": int64(81)},
+	}
+
+	info, err := svc.RefreshAccountToken(context.Background(), account)
+
+	require.NoError(t, err)
+	require.Equal(t, "refreshed", info.AccessToken)
+	require.NotNil(t, client.lastProfile)
+	require.Equal(t, "oauth override", client.lastProfile.Name)
 }
 
 func TestOpenAIOAuthService_RefreshAccountToken_NoRefreshTokenUsesExistingAccessToken(t *testing.T) {

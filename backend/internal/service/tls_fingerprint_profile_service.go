@@ -11,6 +11,42 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 )
 
+type openAIUpstreamTLSProfileContextKey struct{}
+
+// WithOpenAIUpstreamTLSProfile carries an already-resolved account profile to
+// auth-domain helpers that intentionally do not depend on the profile service.
+func WithOpenAIUpstreamTLSProfile(ctx context.Context, profile *tlsfingerprint.Profile) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if profile == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, openAIUpstreamTLSProfileContextKey{}, profile)
+}
+
+func OpenAIUpstreamTLSProfileFromContext(ctx context.Context) *tlsfingerprint.Profile {
+	if ctx == nil {
+		return nil
+	}
+	profile, _ := ctx.Value(openAIUpstreamTLSProfileContextKey{}).(*tlsfingerprint.Profile)
+	return profile
+}
+
+func resolveOpenAIAuthTLSProfile(ctx context.Context) *tlsfingerprint.Profile {
+	if profile := OpenAIUpstreamTLSProfileFromContext(ctx); profile != nil {
+		return profile
+	}
+	return tlsfingerprint.NewOpenAIChrome120Profile()
+}
+
+func withOpenAIAccountTLSProfile(ctx context.Context, resolver *TLSFingerprintProfileService, account *Account) context.Context {
+	if resolver != nil {
+		return WithOpenAIUpstreamTLSProfile(ctx, resolver.ResolveTLSProfile(account))
+	}
+	return WithOpenAIUpstreamTLSProfile(ctx, (&TLSFingerprintProfileService{}).ResolveTLSProfile(account))
+}
+
 // TLSFingerprintProfileRepository 定义 TLS 指纹模板的数据访问接口
 type TLSFingerprintProfileRepository interface {
 	List(ctx context.Context) ([]*model.TLSFingerprintProfile, error)
@@ -171,13 +207,44 @@ func (s *TLSFingerprintProfileService) getRandomProfile() *tlsfingerprint.Profil
 // ResolveTLSProfile 根据 Account 的配置解析出运行时 TLS Profile
 //
 // 逻辑：
-//  1. 未启用 TLS 指纹 → 返回 nil（不伪装）
-//  2. 启用 + 绑定了 profile_id → 从缓存查找对应 profile
-//  3. 启用 + 未绑定或找不到 → 返回空 Profile（使用代码内置默认值）
+//  1. OpenAI OAuth/APIKey + 绑定了 profile_id → 使用绑定 profile
+//  2. OpenAI OAuth/APIKey + 未绑定或找不到 → 使用内置 Chrome 120 HTTP/1.1 profile
+//  3. 其他账号未启用 TLS 指纹 → 返回 nil（不伪装）
+//  4. 其他账号启用 + 绑定了 profile_id → 从缓存查找对应 profile
+//  5. 其他账号启用 + 未绑定或找不到 → 使用代码内置 Node.js 默认值
 func (s *TLSFingerprintProfileService) ResolveTLSProfile(account *Account) *tlsfingerprint.Profile {
-	if account == nil || !account.IsTLSFingerprintEnabled() {
+	if account == nil {
 		return nil
 	}
+
+	if account.Platform == PlatformOpenAI && (account.Type == AccountTypeOAuth || account.Type == AccountTypeAPIKey) {
+		if profile := s.resolveConfiguredTLSProfile(account); profile != nil {
+			return profile
+		}
+		return tlsfingerprint.NewOpenAIChrome120Profile()
+	}
+
+	if !account.IsTLSFingerprintEnabled() {
+		return nil
+	}
+	if profile := s.resolveConfiguredTLSProfile(account); profile != nil {
+		return profile
+	}
+	// TLS 启用但无绑定 profile → 空 Profile → dialer 使用内置默认值
+	return &tlsfingerprint.Profile{Name: "Built-in Default (Node.js 24.x)"}
+}
+
+func (s *OpenAIGatewayService) resolveHTTPUpstreamTLSProfile(account *Account) *tlsfingerprint.Profile {
+	if s != nil && s.tlsFPProfileService != nil {
+		return s.tlsFPProfileService.ResolveTLSProfile(account)
+	}
+	// Keep lightweight service tests and deliberately minimal embedders usable.
+	// Production construction injects the shared profile service below; without
+	// it, built-in defaults remain available but database-backed overrides do not.
+	return (&TLSFingerprintProfileService{}).ResolveTLSProfile(account)
+}
+
+func (s *TLSFingerprintProfileService) resolveConfiguredTLSProfile(account *Account) *tlsfingerprint.Profile {
 	id := account.GetTLSFingerprintProfileID()
 	if id > 0 {
 		if p := s.GetProfileByID(id); p != nil {
@@ -190,8 +257,7 @@ func (s *TLSFingerprintProfileService) ResolveTLSProfile(account *Account) *tlsf
 			return p
 		}
 	}
-	// TLS 启用但无绑定 profile → 空 Profile → dialer 使用内置默认值
-	return &tlsfingerprint.Profile{Name: "Built-in Default (Node.js 24.x)"}
+	return nil
 }
 
 // --- 缓存管理 ---

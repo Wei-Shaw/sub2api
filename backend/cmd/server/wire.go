@@ -49,6 +49,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 
 		// Privacy client factory for OpenAI training opt-out
 		providePrivacyClientFactory,
+		provideOpenAITLSProfileClientFactory,
 
 		// BuildInfo provider
 		provideServiceBuildInfo,
@@ -65,6 +66,10 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 
 func providePrivacyClientFactory() service.PrivacyClientFactory {
 	return repository.CreatePrivacyReqClient
+}
+
+func provideOpenAITLSProfileClientFactory() service.OpenAITLSProfileClientFactory {
+	return repository.CreateOpenAITLSProfileReqClient
 }
 
 func provideServiceBuildInfo(buildInfo handler.BuildInfo) service.BuildInfo {

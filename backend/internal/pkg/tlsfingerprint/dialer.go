@@ -19,6 +19,7 @@ import (
 // Profile contains TLS fingerprint configuration.
 // All slice fields use built-in defaults when empty.
 type Profile struct {
+	Preset              Preset // Optional built-in ClientHello template
 	Name                string // Profile name for identification
 	CipherSuites        []uint16
 	Curves              []uint16
@@ -30,6 +31,28 @@ type Profile struct {
 	KeyShareGroups      []uint16 // Empty uses [X25519]
 	PSKModes            []uint16 // Empty uses [psk_dhe_ke]
 	Extensions          []uint16 // Extension type IDs in order; empty uses default Node.js 24.x order
+}
+
+// Preset identifies a built-in ClientHello template. User-defined profiles
+// leave this empty and continue to use the explicit fields above.
+type Preset string
+
+const (
+	// PresetChrome120HTTP1 is Chrome 120's uTLS template constrained to
+	// HTTP/1.1. The shared net/http transport uses a custom uTLS connection and
+	// cannot safely hand that connection to net/http's crypto/tls-only H2 hook.
+	PresetChrome120HTTP1 Preset = "chrome-120-http1"
+)
+
+// NewOpenAIChrome120Profile returns the built-in OpenAI account default.
+// Real Codex uses Rust/hyper rather than Chrome, so this is deliberately a
+// stable "not Go" compromise, not a claim of byte-for-byte Codex parity.
+// Chrome 120 also matches the existing OpenAI privacy-path impersonation.
+func NewOpenAIChrome120Profile() *Profile {
+	return &Profile{
+		Preset: PresetChrome120HTTP1,
+		Name:   "Built-in OpenAI Default (Chrome 120, HTTP/1.1)",
+	}
 }
 
 // Dialer creates TLS connections with custom fingerprints.
@@ -334,6 +357,17 @@ func isGREASEValue(v uint16) bool {
 // buildClientHelloSpecFromProfile constructs ClientHelloSpec from a Profile.
 // This is a standalone function that can be used by both Dialer and HTTPProxyDialer.
 func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
+	if profile != nil && profile.Preset == PresetChrome120HTTP1 {
+		if spec, err := buildChrome120HTTP1Spec(); err == nil {
+			return spec
+		} else {
+			// The preset is compiled into the pinned uTLS version, so this should
+			// only be reachable after an incompatible dependency change. Preserve
+			// availability with the existing non-Go Node.js template.
+			slog.Warn("tls_fingerprint_chrome_preset_failed", "error", err)
+		}
+	}
+
 	// Resolve effective values (profile overrides or built-in defaults)
 	cipherSuites := defaultCipherSuites
 	if profile != nil && len(profile.CipherSuites) > 0 {
@@ -454,6 +488,30 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 		TLSVersMax:         utls.VersionTLS13,
 		TLSVersMin:         utls.VersionTLS10,
 	}
+}
+
+func buildChrome120HTTP1Spec() (*utls.ClientHelloSpec, error) {
+	spec, err := utls.UTLSIdToSpec(utls.HelloChrome_120)
+	if err != nil {
+		return nil, fmt.Errorf("build Chrome 120 ClientHello preset: %w", err)
+	}
+
+	extensions := make([]utls.TLSExtension, 0, len(spec.Extensions))
+	for _, extension := range spec.Extensions {
+		switch typed := extension.(type) {
+		case *utls.ALPNExtension:
+			typed.AlpnProtocols = []string{"http/1.1"}
+			extensions = append(extensions, typed)
+		case *utls.ApplicationSettingsExtension:
+			// ALPS carries HTTP/2 settings and must not remain when the only
+			// advertised application protocol is HTTP/1.1.
+			continue
+		default:
+			extensions = append(extensions, extension)
+		}
+	}
+	spec.Extensions = extensions
+	return &spec, nil
 }
 
 // toUint8s converts []uint16 to []uint8 (for utls fields that require []uint8).

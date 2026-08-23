@@ -13,9 +13,12 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/imroc/req/v3"
 	"github.com/stretchr/testify/require"
 
@@ -31,9 +34,11 @@ type stubQuotaAccountRepo struct {
 	extraUpdates     map[int64]map[string]any
 	extraUpdateCalls int
 	extraUpdateErr   error
+	getByIDCalls     atomic.Int64
 }
 
 func (r *stubQuotaAccountRepo) GetByID(_ context.Context, id int64) (*Account, error) {
+	r.getByIDCalls.Add(1)
 	acc, ok := r.accounts[id]
 	if !ok {
 		return nil, fmt.Errorf("account %d not found", id)
@@ -378,7 +383,7 @@ func TestPrepareUpstreamCallShadowResolve(t *testing.T) {
 		return req.C(), nil
 	})
 
-	_, chatGPTAccountID, _, _, err := svc.prepareUpstreamCall(ctx, 200)
+	_, _, chatGPTAccountID, _, _, err := svc.prepareUpstreamCall(ctx, 200)
 	require.NoError(t, err, "shadow resolve should succeed; got error: %v", err)
 	require.Equal(t, "org-parent123", chatGPTAccountID,
 		"prepareUpstreamCall should use parent's chatgpt_account_id after shadow resolve")
@@ -537,6 +542,7 @@ func TestQueryUsageIncludesResetCreditExpirations_EndToEnd(t *testing.T) {
 		Credentials: map[string]any{
 			"chatgpt_account_id": "org-parent123",
 		},
+		Extra: map[string]any{"tls_fingerprint_profile_id": int64(76)},
 	}
 	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{100: account}}
 	tokenCache := &stubQuotaTokenCache{tokens: map[string]string{
@@ -565,6 +571,14 @@ func TestQueryUsageIncludesResetCreditExpirations_EndToEnd(t *testing.T) {
 	defer srv.Close()
 
 	svc := NewOpenAIQuotaService(repo, nil, tokenProvider, newQuotaRedirectingFactory(srv))
+	svc.tlsFPProfileService = &TLSFingerprintProfileService{localCache: map[int64]*model.TLSFingerprintProfile{
+		76: {ID: 76, Name: "quota account override", CipherSuites: []uint16{0x1301}},
+	}}
+	var capturedProfile *tlsfingerprint.Profile
+	svc.tlsProfileClientFactory = func(proxyURL string, profile *tlsfingerprint.Profile) (*req.Client, error) {
+		capturedProfile = profile
+		return newQuotaRedirectingFactory(srv)(proxyURL)
+	}
 	usage, err := svc.QueryUsage(ctx, 100)
 	require.NoError(t, err)
 	require.NotNil(t, usage)
@@ -572,6 +586,9 @@ func TestQueryUsageIncludesResetCreditExpirations_EndToEnd(t *testing.T) {
 	require.Equal(t, 2, usage.RateLimitResetCredits.AvailableCount)
 	require.Equal(t, 1, detailCalls)
 	require.Equal(t, openaiQuotaCodexBeta, capturedBeta)
+	require.NotNil(t, capturedProfile)
+	require.Equal(t, "quota account override", capturedProfile.Name)
+	require.Equal(t, int64(4), repo.getByIDCalls.Load(), "quota query should reuse the account loaded by prepareUpstreamCall when building its client")
 	require.Equal(t, []OpenAIRateLimitResetCreditDetail{
 		{ExpiresAt: "2026-07-03T04:05:06Z"},
 		{ExpiresAt: "2026-07-04T04:05:06Z"},

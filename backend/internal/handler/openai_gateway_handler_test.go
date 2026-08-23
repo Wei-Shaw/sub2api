@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -1931,7 +1932,6 @@ type openAIWSFailoverHandlerAccountRepoStub struct {
 }
 
 type openAIHTTPPassthroughFailoverUpstream struct {
-	service.HTTPUpstream
 	mu         sync.Mutex
 	accountIDs []int64
 }
@@ -1947,6 +1947,10 @@ func (u *openAIHTTPPassthroughFailoverUpstream) Do(_ *http.Request, _ string, ac
 	}, nil
 }
 
+func (u *openAIHTTPPassthroughFailoverUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
 func (u *openAIHTTPPassthroughFailoverUpstream) calls() []int64 {
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -1954,7 +1958,6 @@ func (u *openAIHTTPPassthroughFailoverUpstream) calls() []int64 {
 }
 
 type openAIHTTPPassthroughAuthFailoverUpstream struct {
-	service.HTTPUpstream
 	mu         sync.Mutex
 	accountIDs []int64
 	statusCode int
@@ -1978,6 +1981,10 @@ func (u *openAIHTTPPassthroughAuthFailoverUpstream) Do(_ *http.Request, _ string
 	}, nil
 }
 
+func (u *openAIHTTPPassthroughAuthFailoverUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
 func (u *openAIHTTPPassthroughAuthFailoverUpstream) calls() []int64 {
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -1985,7 +1992,6 @@ func (u *openAIHTTPPassthroughAuthFailoverUpstream) calls() []int64 {
 }
 
 type openAIHTTPPassthroughSSERateLimitUpstream struct {
-	service.HTTPUpstream
 	mu         sync.Mutex
 	accountIDs []int64
 }
@@ -2010,6 +2016,10 @@ func (u *openAIHTTPPassthroughSSERateLimitUpstream) Do(_ *http.Request, _ string
 		},
 		Body: io.NopCloser(strings.NewReader(body)),
 	}, nil
+}
+
+func (u *openAIHTTPPassthroughSSERateLimitUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
 func (u *openAIHTTPPassthroughSSERateLimitUpstream) calls() []int64 {

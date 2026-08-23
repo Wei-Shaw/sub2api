@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,6 +26,31 @@ func TestCoderOpenAIWSClientDialer_ProxyHTTPClientReuse(t *testing.T) {
 	require.NotSame(t, c1, c3, "不同代理地址应分离客户端")
 }
 
+func TestCoderOpenAIWSClientDialer_TLSProfileProxiesPlainHTTPWithoutDoubleProxyingHTTPS(t *testing.T) {
+	dialer := newDefaultOpenAIWSClientDialer()
+	impl, ok := dialer.(*coderOpenAIWSClientDialer)
+	require.True(t, ok)
+	client, err := impl.proxyHTTPClientWithTLS("http://proxy.example:8080", &tlsfingerprint.Profile{
+		CipherSuites: []uint16{0x1301},
+	})
+	require.NoError(t, err)
+	transport, ok := client.Transport.(*http.Transport)
+	require.True(t, ok)
+	require.NotNil(t, transport.DialTLSContext)
+	require.NotNil(t, transport.Proxy)
+
+	httpReq, err := http.NewRequest(http.MethodGet, "http://upstream.example/v1", nil)
+	require.NoError(t, err)
+	proxyURL, err := transport.Proxy(httpReq)
+	require.NoError(t, err)
+	require.Equal(t, "http://proxy.example:8080", proxyURL.String())
+
+	httpsReq, err := http.NewRequest(http.MethodGet, "https://upstream.example/v1", nil)
+	require.NoError(t, err)
+	proxyURL, err = transport.Proxy(httpsReq)
+	require.NoError(t, err)
+	require.Nil(t, proxyURL)
+}
 func TestCoderOpenAIWSClientDialer_ProxyHTTPClientInvalidURL(t *testing.T) {
 	dialer := newDefaultOpenAIWSClientDialer()
 	impl, ok := dialer.(*coderOpenAIWSClientDialer)

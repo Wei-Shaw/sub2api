@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -27,11 +28,14 @@ import (
 func f64p(v float64) *float64 { return &v }
 
 type httpUpstreamRecorder struct {
-	lastReq      *http.Request
-	lastBody     []byte
-	lastProxyURL string
-	requests     []*http.Request
-	bodies       [][]byte
+	lastReq        *http.Request
+	lastBody       []byte
+	lastProxyURL   string
+	lastTLSProfile *tlsfingerprint.Profile
+	doCalls        int
+	doWithTLSCalls int
+	requests       []*http.Request
+	bodies         [][]byte
 
 	resp      *http.Response
 	responses []*http.Response
@@ -64,6 +68,11 @@ func (r passthroughErrReadCloser) Close() error {
 }
 
 func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	u.doCalls++
+	return u.record(req, proxyURL)
+}
+
+func (u *httpUpstreamRecorder) record(req *http.Request, proxyURL string) (*http.Response, error) {
 	u.lastReq = req
 	u.lastProxyURL = proxyURL
 	if req != nil && req.Body != nil {
@@ -86,7 +95,9 @@ func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID 
 }
 
 func (u *httpUpstreamRecorder) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
-	return u.Do(req, proxyURL, accountID, accountConcurrency)
+	u.doWithTLSCalls++
+	u.lastTLSProfile = profile
+	return u.record(req, proxyURL)
 }
 
 func TestOpenAIGatewayService_ResponsesUnknownModelDoesNotFallbackToGPT54(t *testing.T) {
@@ -417,19 +428,25 @@ func TestOpenAIGatewayService_OAuthPassthrough_StreamKeepsToolNameAndBodyNormali
 	svc := &OpenAIGatewayService{
 		cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}},
 		httpUpstream: upstream,
+		tlsFPProfileService: &TLSFingerprintProfileService{localCache: map[int64]*model.TLSFingerprintProfile{
+			17: {ID: 17, Name: "operator compact override", CipherSuites: []uint16{0x1301}},
+		}},
 		openAITokenProvider: &OpenAITokenProvider{ // minimal: will be bypassed by nil cache/service, but GetAccessToken uses provider only if non-nil
 			accountRepo: nil,
 		},
 	}
 
 	account := &Account{
-		ID:             123,
-		Name:           "acc",
-		Platform:       PlatformOpenAI,
-		Type:           AccountTypeOAuth,
-		Concurrency:    1,
-		Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
-		Extra:          map[string]any{"openai_passthrough": true},
+		ID:          123,
+		Name:        "acc",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+		Extra: map[string]any{
+			"openai_passthrough":         true,
+			"tls_fingerprint_profile_id": int64(17),
+		},
 		Status:         StatusActive,
 		Schedulable:    true,
 		RateMultiplier: f64p(1),
@@ -442,6 +459,10 @@ func TestOpenAIGatewayService_OAuthPassthrough_StreamKeepsToolNameAndBodyNormali
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.True(t, result.Stream)
+	require.Zero(t, upstream.doCalls)
+	require.Equal(t, 1, upstream.doWithTLSCalls)
+	require.Equal(t, "operator compact override", upstream.lastTLSProfile.Name)
+	require.Empty(t, upstream.lastTLSProfile.Preset)
 
 	// 1) 透传 OAuth 请求体与旧链路关键行为保持一致：store=false + stream=true。
 	require.Equal(t, false, gjson.GetBytes(upstream.lastBody, "store").Bool())
@@ -794,6 +815,9 @@ func TestOpenAIGatewayService_OAuthPassthrough_CompactUsesJSONAndKeepsNonStreami
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.False(t, result.Stream)
+	require.Zero(t, upstream.doCalls)
+	require.Equal(t, 1, upstream.doWithTLSCalls)
+	require.Equal(t, tlsfingerprint.PresetChrome120HTTP1, upstream.lastTLSProfile.Preset)
 
 	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "stream").Exists())
@@ -941,6 +965,9 @@ func TestOpenAIGatewayService_OAuthPassthrough_DisabledUsesLegacyTransform(t *te
 
 	_, err := svc.Forward(context.Background(), c, account, inputBody)
 	require.NoError(t, err)
+	require.Zero(t, upstream.doCalls)
+	require.Equal(t, 1, upstream.doWithTLSCalls)
+	require.Equal(t, tlsfingerprint.PresetChrome120HTTP1, upstream.lastTLSProfile.Preset)
 
 	// legacy path rewrites request body (not byte-equal)
 	require.NotEqual(t, inputBody, upstream.lastBody)
@@ -2190,6 +2217,66 @@ func TestOpenAIGatewayService_CodexFingerprintMessagesBridgeDoesNotInjectBodyPro
 	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").Exists())
 	require.Equal(t, wantSession, gjson.GetBytes(upstream.lastBody, "client_metadata.session_id").String())
 	require.Equal(t, wantSession, upstream.lastReq.Header.Get("session_id"))
+}
+
+func TestOpenAIGatewayService_OpenAICompatibilityHTTPPathsUseConfiguredTLSProfile(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		body    []byte
+		forward func(*OpenAIGatewayService, *gin.Context, *Account, []byte) (*OpenAIForwardResult, error)
+	}{
+		{
+			name: "chat completions bridge",
+			path: "/v1/chat/completions",
+			body: []byte(`{"model":"gpt-5.5","messages":[{"role":"user","content":"hello"}]}`),
+			forward: func(svc *OpenAIGatewayService, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+				return svc.ForwardAsChatCompletions(context.Background(), c, account, body, "chat-tls-profile", "")
+			},
+		},
+		{
+			name: "anthropic messages bridge",
+			path: "/v1/messages",
+			body: []byte(`{"model":"gpt-5.5","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`),
+			forward: func(svc *OpenAIGatewayService, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+				return svc.ForwardAsAnthropic(context.Background(), c, account, body, "messages-tls-profile", "")
+			},
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, tt.path, bytes.NewReader(tt.body))
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusBadRequest,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"stop after request capture"}}`)),
+			}}
+			svc := &OpenAIGatewayService{
+				cfg:           &config.Config{},
+				httpUpstream:  upstream,
+				toolCorrector: NewCodexToolCorrector(),
+				tlsFPProfileService: &TLSFingerprintProfileService{localCache: map[int64]*model.TLSFingerprintProfile{
+					17: {ID: 17, Name: "operator compatibility override", CipherSuites: []uint16{0x1301}},
+				}},
+			}
+			account := newTestOAuthAccount(int64(6200+i), map[string]any{
+				codexFingerprintModeExtraKey: "off",
+				"tls_fingerprint_profile_id": int64(17),
+			})
+			account.Credentials = map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-account"}
+			account.Status, account.Schedulable, account.Concurrency = StatusActive, true, 1
+
+			_, _ = tt.forward(svc, c, account, tt.body)
+
+			require.Zero(t, upstream.doCalls)
+			require.Equal(t, 1, upstream.doWithTLSCalls)
+			require.NotNil(t, upstream.lastTLSProfile)
+			require.Equal(t, "operator compatibility override", upstream.lastTLSProfile.Name)
+		})
+	}
 }
 
 func TestOpenAIGatewayService_CodexCLIOnly_RejectsNonCodexClient(t *testing.T) {

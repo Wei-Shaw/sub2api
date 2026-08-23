@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -70,6 +71,9 @@ func TestForwardEmbeddings_APIKeyPassthroughRecordsUsageAndBatchInput(t *testing
 	svc := &OpenAIGatewayService{
 		cfg:          &config.Config{},
 		httpUpstream: upstream,
+		tlsFPProfileService: &TLSFingerprintProfileService{localCache: map[int64]*model.TLSFingerprintProfile{
+			73: {ID: 73, Name: "embeddings custom base override", CipherSuites: []uint16{0x1301}},
+		}},
 	}
 	account := &Account{
 		ID:       42,
@@ -82,6 +86,7 @@ func TestForwardEmbeddings_APIKeyPassthroughRecordsUsageAndBatchInput(t *testing
 				"nowledge-embedding": "jina-embeddings-v5-text-small",
 			},
 		},
+		Extra: map[string]any{"tls_fingerprint_profile_id": int64(73)},
 	}
 
 	result, err := svc.ForwardEmbeddings(context.Background(), c, account, reqBody, "")
@@ -103,6 +108,10 @@ func TestForwardEmbeddings_APIKeyPassthroughRecordsUsageAndBatchInput(t *testing
 	require.Equal(t, "world", gjson.GetBytes(upstream.lastBody, "input.1").String())
 	require.Equal(t, "float", gjson.GetBytes(upstream.lastBody, "encoding_format").String())
 	require.Equal(t, int64(256), gjson.GetBytes(upstream.lastBody, "dimensions").Int())
+	require.Zero(t, upstream.doCalls)
+	require.Equal(t, 1, upstream.doWithTLSCalls)
+	require.NotNil(t, upstream.lastTLSProfile)
+	require.Equal(t, "embeddings custom base override", upstream.lastTLSProfile.Name)
 }
 
 func TestForwardEmbeddings_AccessStateUsesTypedFailover(t *testing.T) {

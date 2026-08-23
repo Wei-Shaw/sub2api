@@ -18,6 +18,7 @@ type OpenAIOAuthService struct {
 	proxyRepo            ProxyRepository
 	oauthClient          OpenAIOAuthClient
 	privacyClientFactory PrivacyClientFactory // 用于调用 chatgpt.com/backend-api（ImpersonateChrome）
+	tlsFPProfileService  *TLSFingerprintProfileService
 }
 
 // NewOpenAIOAuthService creates a new OpenAI OAuth service
@@ -343,6 +344,7 @@ func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *A
 	if account.Type != AccountTypeOAuth {
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_INVALID_ACCOUNT_TYPE", "account is not an OAuth account")
 	}
+	ctx = withOpenAIAccountTLSProfile(ctx, s.tlsFPProfileService, account)
 
 	var proxyURL string
 	if account.ProxyID != nil && s.proxyRepo != nil {
