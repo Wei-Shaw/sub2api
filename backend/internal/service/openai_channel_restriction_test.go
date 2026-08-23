@@ -39,6 +39,41 @@ func TestOpenAISelectAccountForModelWithExclusions_ChannelMappedRestrictionRejec
 	require.NotErrorIs(t, err, ErrNoAvailableAccounts)
 }
 
+func TestOpenAISelectAccountForModelWithExclusions_ChannelMappingRunsBeforeAccountModelSupport(t *testing.T) {
+	t.Parallel()
+
+	channelSvc := newTestChannelService(makeStandardRepo(Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10},
+		ModelMapping: map[string]map[string]string{
+			PlatformOpenAI: {"gpt-5.6-luna": "gpt-5.6-terra"},
+		},
+	}, map[int64]string{10: PlatformOpenAI}))
+
+	svc := &OpenAIGatewayService{
+		accountRepo: stubOpenAIAccountRepo{accounts: []Account{
+			{
+				ID:          1,
+				Platform:    PlatformOpenAI,
+				Status:      StatusActive,
+				Schedulable: true,
+				Credentials: map[string]any{
+					// 冲突的旧账号映射不得覆盖渠道的权威映射。
+					"model_mapping": map[string]any{"gpt-5.6-luna": "gpt-5.6-sol"},
+				},
+			},
+		}},
+		channelService: channelSvc,
+	}
+
+	groupID := int64(10)
+	account, err := svc.SelectAccountForModelWithExclusions(context.Background(), &groupID, "", "gpt-5.6-luna", nil)
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, int64(1), account.ID)
+}
+
 func TestOpenAISelectAccountForModelWithExclusions_UpstreamRestrictionSkipsDisallowedAccount(t *testing.T) {
 	t.Parallel()
 

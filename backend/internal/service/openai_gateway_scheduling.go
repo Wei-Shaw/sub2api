@@ -319,7 +319,7 @@ func openAICompactSupportTier(account *Account) int {
 // 注意：对 spark 影子账号，调用方还须额外调用 parentHealthyForShadow(account, lookup)
 // 检查母账号凭据可用性；该检查未内置于本函数，以避免注入 DB 依赖。
 func isOpenAICompatibleAccountEligibleForRequest(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) bool {
-	if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, account, platform, requestedModel, requireCompact, requiredCapability) {
+	if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, account, platform, requestedModel, requestedModel, requireCompact, requiredCapability) {
 		return false
 	}
 	// 分组利润控制：legacy 引擎的粘性/候选循环与 DB recheck 共用
@@ -333,9 +333,13 @@ func isOpenAICompatibleAccountEligibleForRequest(ctx context.Context, account *A
 // isOpenAICompatibleAccountEligibleForRequestBeforeProfit applies every
 // ordinary scheduling gate. Legacy selection uses it before classifying the
 // profit veto so earlier failures retain their actual reason.
-func isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) bool {
+func isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx context.Context, account *Account, platform string, requestedModel string, supportModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) bool {
 	platform = NormalizeOpenAICompatiblePlatform(platform)
-	if account == nil || account.Platform != platform || !account.IsOpenAICompatible() || !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
+	schedulableModel := requestedModel
+	if supportModel != "" {
+		schedulableModel = supportModel
+	}
+	if account == nil || account.Platform != platform || !account.IsOpenAICompatible() || !account.IsSchedulableForModelWithContext(ctx, schedulableModel) {
 		return false
 	}
 	if account.IsOpenAI() {
@@ -362,7 +366,7 @@ func isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx context.Context
 			return false
 		}
 	}
-	if requestedModel != "" && !openAIImagesRequestFromContext(ctx) && !account.IsModelSupported(requestedModel) {
+	if supportModel != "" && !openAIImagesRequestFromContext(ctx) && !account.IsModelSupported(supportModel) {
 		return false
 	}
 	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
@@ -378,16 +382,41 @@ func isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx context.Context
 	return true
 }
 
+// isOpenAICompatibleAccountEligibleForRequestWithoutModelSupport applies the
+// ordinary scheduling gates but leaves model support to the caller. OpenAI
+// channel mappings must be resolved before that check because the account
+// sees the channel-mapped model, not the public request alias.
+func isOpenAICompatibleAccountEligibleForRequestWithoutModelSupport(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) bool {
+	return isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, account, platform, requestedModel, "", requireCompact, requiredCapability)
+}
+
+func isOpenAICompatibleAccountEligibleForRequestWithoutModelSupportWithProfit(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) bool {
+	if !isOpenAICompatibleAccountEligibleForRequestWithoutModelSupport(ctx, account, platform, requestedModel, requireCompact, requiredCapability) {
+		return false
+	}
+	vetoed, _ := openAIProfitControlVetoReason(ctx, account)
+	return !vetoed
+}
+
 func (s *OpenAIGatewayService) isAccountModelSupportedForRequest(ctx context.Context, groupID *int64, account *Account, requestedModel string) bool {
 	if requestedModel == "" {
 		return true
 	}
-	if !openAIImagesRequestFromContext(ctx) || account == nil || account.Platform != PlatformOpenAI {
-		return account != nil && account.IsModelSupported(requestedModel)
+	if account == nil {
+		return false
 	}
 	channelMappedModel := requestedModel
+	channelMapped := false
 	if groupID != nil && s != nil && s.channelService != nil {
-		channelMappedModel = s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel).MappedModel
+		mapping := s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel)
+		channelMappedModel = mapping.MappedModel
+		channelMapped = mapping.Mapped
+	}
+	if !openAIImagesRequestFromContext(ctx) || account.Platform != PlatformOpenAI {
+		if channelMapped {
+			return account.HasSyncedUpstreamModel(channelMappedModel)
+		}
+		return account.IsModelSupported(channelMappedModel)
 	}
 	return isOpenAIImageModelSupportedByAccount(account, requestedModel, channelMappedModel)
 }
@@ -400,7 +429,7 @@ func (s *OpenAIGatewayService) isAccountEligibleForRequest(
 	requireCompact bool,
 	requiredCapability OpenAIEndpointCapability,
 ) bool {
-	return isOpenAICompatibleAccountEligibleForRequest(
+	return isOpenAICompatibleAccountEligibleForRequestWithoutModelSupportWithProfit(
 		ctx, account, platform, requestedModel, requireCompact, requiredCapability,
 	) && s.isAccountModelSupportedForRequest(ctx, groupID, account, requestedModel)
 }
@@ -1402,7 +1431,7 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountBeforeProfit(
 		fresh = current
 	}
 
-	if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, fresh, platform, requestedModel, requireCompact, requiredCapability) ||
+	if !isOpenAICompatibleAccountEligibleForRequestWithoutModelSupport(ctx, fresh, platform, requestedModel, requireCompact, requiredCapability) ||
 		!s.isAccountModelSupportedForRequest(ctx, groupID, fresh, requestedModel) {
 		return nil
 	}
@@ -1452,7 +1481,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.schedulerSnapshot == nil || s.accountRepo == nil {
-		if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, account, platform, requestedModel, requireCompact, requiredCapability) ||
+		if !isOpenAICompatibleAccountEligibleForRequestWithoutModelSupport(ctx, account, platform, requestedModel, requireCompact, requiredCapability) ||
 			!s.isAccountModelSupportedForRequest(ctx, groupID, account, requestedModel) {
 			return nil
 		}
@@ -1475,7 +1504,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	if !s.openAIAccountMatchesSchedulingGroup(latest, groupID) {
 		return nil
 	}
-	if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, latest, platform, requestedModel, requireCompact, requiredCapability) ||
+	if !isOpenAICompatibleAccountEligibleForRequestWithoutModelSupport(ctx, latest, platform, requestedModel, requireCompact, requiredCapability) ||
 		!s.isAccountModelSupportedForRequest(ctx, groupID, latest, requestedModel) {
 		return nil
 	}
