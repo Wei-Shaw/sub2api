@@ -255,7 +255,7 @@ REDACTED)
 	models := []SupportedModel{
 		{Name: "claude-opus-4-5", Platform: "anthropic"REDACTED,
 REDACTED
-	svc.fillGlobalPricingFallback(models)
+	fillGlobalPricingFallback(svc.pricingService, models)
 	require.NotNil(t, models[0].Pricing)
 	require.NotNil(t, models[0].Pricing.InputPrice)
 	require.InDelta(t, 5e-6, *models[0].Pricing.InputPrice, 1e-12)
@@ -281,7 +281,7 @@ REDACTED)
 		REDACTED,
 	REDACTED,
 REDACTED
-	svc.fillGlobalPricingFallback(models)
+	fillGlobalPricingFallback(svc.pricingService, models)
 	require.NotNil(t, models[0].Pricing)
 	require.Equal(t, BillingModeImage, models[0].Pricing.BillingMode)
 	require.NotNil(t, models[0].Pricing.ImageOutputPrice)
@@ -302,7 +302,7 @@ REDACTED
 	models := []SupportedModel{
 		{Name: "served-model", Platform: "anthropic", Pricing: existingREDACTED,
 REDACTED
-	svc.fillGlobalPricingFallback(models)
+	fillGlobalPricingFallback(svc.pricingService, models)
 	require.Same(t, existing, models[0].Pricing)
 REDACTED
 

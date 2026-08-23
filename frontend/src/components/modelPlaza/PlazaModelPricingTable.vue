@@ -1,14 +1,14 @@
 <template>
   <div class="plaza-pricing-table overflow-x-auto" :style="accentStyle">
-    <table class="w-full min-w-[860px] table-fixed border-collapse text-sm tabular-nums">
+    <table class="w-full min-w-[1000px] table-fixed border-collapse text-sm tabular-nums">
       <colgroup>
-        <col class="w-[22%]" />
-        <col class="w-[10%]" />
-        <col class="w-[10%]" />
-        <col class="w-[14%]" />
-        <col class="w-[10%]" />
-        <col class="w-[10%]" />
-        <col class="w-[14%]" />
+        <col class="w-[20%]" />
+        <col class="w-[11%]" />
+        <col class="w-[9%]" />
+        <col class="w-[15%]" />
+        <col class="w-[11%]" />
+        <col class="w-[9%]" />
+        <col class="w-[15%]" />
         <col class="w-[10%]" />
       </colgroup>
       <thead>
@@ -81,10 +81,17 @@
               >
                 {{ billingModeLabel(m) REDACTEDREDACTED
               </span>
+              <span
+                v-if="m.long_context_basis === 'marginal'"
+                class="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-dark-700/70 dark:text-dark-300"
+                :title="t('modelPlaza.table.tierHintMarginal')"
+              >
+                {{ t('modelPlaza.table.marginalBadge') REDACTEDREDACTED
+              </span>
             </div>
           </td>
 
-          <!-- token 计费:输入 / 输出(阶梯内联)/ 缓存(写/读) -->
+          <!-- token 计费:输入 / 输出 / 缓存(写/读),有阶梯时每档一行;档位标签只放输入列,其余列按行对齐 -->
           <template v-if="billingMode(m) === BILLING_MODE_TOKEN">
             <td class="pz-cell px-3 py-2.5 align-middle font-mono font-semibold text-gray-900 dark:text-gray-50">
               <template v-if="tokenIntervals(m).length">
@@ -93,7 +100,7 @@
                   :key="idx"
                   class="whitespace-nowrap text-xs leading-5"
                 >
-                  <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ tierLabel(iv) REDACTEDREDACTED</span>
+                  <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500" :title="tierHint(m)">{{ tierLabel(iv) REDACTEDREDACTED</span>
                   {{ paidPerMillion(iv.input_price) REDACTEDREDACTED
                 </div>
               </template>
@@ -105,16 +112,32 @@
                   v-for="(iv, idx) in tokenIntervals(m)"
                   :key="idx"
                   class="whitespace-nowrap text-xs leading-5"
+                  :title="tierHint(m)"
                 >
-                  <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ tierLabel(iv) REDACTEDREDACTED</span>
                   {{ paidPerMillion(iv.output_price) REDACTEDREDACTED
                 </div>
               </template>
               <template v-else>{{ paidPerMillion(m.pricing?.output_price) REDACTEDREDACTED</template>
             </td>
             <td class="pz-cell px-3 py-2.5 align-middle">
+              <template v-if="hasTierCachePricing(tokenIntervals(m))">
+                <div
+                  v-for="(iv, idx) in tokenIntervals(m)"
+                  :key="idx"
+                  class="whitespace-nowrap font-mono text-xs leading-5 text-gray-800 dark:text-gray-200"
+                  :title="tierHint(m)"
+                >
+                  <template v-if="iv.cache_write_price != null || iv.cache_read_price != null">
+                    <span class="font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheWriteShort') REDACTEDREDACTED</span>
+                    {{ paidPerMillion(iv.cache_write_price) REDACTEDREDACTED
+                    <span class="ml-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheReadShort') REDACTEDREDACTED</span>
+                    {{ paidPerMillion(iv.cache_read_price) REDACTEDREDACTED
+                  </template>
+                  <span v-else class="text-gray-400 dark:text-dark-500">-</span>
+                </div>
+              </template>
               <div
-                v-if="hasCachePricing(m)"
+                v-else-if="hasCachePricing(m)"
                 class="space-y-0.5 font-mono text-xs text-gray-800 dark:text-gray-200"
               >
                 <div>
@@ -157,18 +180,54 @@
             </td>
           </template>
 
-          <!-- 官方价格(LiteLLM 参考价,不乘倍率) -->
+          <!-- 官方价格(参考价,不乘倍率;官方有阶梯时每档一行) -->
           <td
             class="border-l border-gray-100 px-3 py-2.5 align-middle font-mono text-xs text-gray-500 dark:border-dark-700/60 dark:text-dark-400"
           >
-            {{ official(m.official_pricing?.input_price) REDACTEDREDACTED
+            <template v-if="officialIntervals(m).length">
+              <div
+                v-for="(iv, idx) in officialIntervals(m)"
+                :key="idx"
+                class="whitespace-nowrap leading-5"
+              >
+                <span class="mr-1 font-sans text-gray-400 dark:text-dark-500" :title="t('modelPlaza.table.tierHint')">{{ tierLabel(iv) REDACTEDREDACTED</span>
+                {{ official(iv.input_price) REDACTEDREDACTED
+              </div>
+            </template>
+            <template v-else>{{ official(m.official_pricing?.input_price) REDACTEDREDACTED</template>
           </td>
           <td class="px-3 py-2.5 align-middle font-mono text-xs text-gray-500 dark:text-dark-400">
-            {{ official(m.official_pricing?.output_price) REDACTEDREDACTED
+            <template v-if="officialIntervals(m).length">
+              <div
+                v-for="(iv, idx) in officialIntervals(m)"
+                :key="idx"
+                class="whitespace-nowrap leading-5"
+                :title="t('modelPlaza.table.tierHint')"
+              >
+                {{ official(iv.output_price) REDACTEDREDACTED
+              </div>
+            </template>
+            <template v-else>{{ official(m.official_pricing?.output_price) REDACTEDREDACTED</template>
           </td>
           <td class="px-3 py-2.5 align-middle">
+            <template v-if="hasTierCachePricing(officialIntervals(m))">
+              <div
+                v-for="(iv, idx) in officialIntervals(m)"
+                :key="idx"
+                class="whitespace-nowrap font-mono text-xs leading-5 text-gray-500 dark:text-dark-400"
+                :title="t('modelPlaza.table.tierHint')"
+              >
+                <template v-if="iv.cache_write_price != null || iv.cache_read_price != null">
+                  <span class="font-sans text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheWriteShort') REDACTEDREDACTED</span>
+                  {{ official(iv.cache_write_price) REDACTEDREDACTED
+                  <span class="ml-1 font-sans text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheReadShort') REDACTEDREDACTED</span>
+                  {{ official(iv.cache_read_price) REDACTEDREDACTED
+                </template>
+                <span v-else class="text-gray-400 dark:text-dark-500">-</span>
+              </div>
+            </template>
             <div
-              v-if="m.official_pricing && hasOfficialCache(m.official_pricing)"
+              v-else-if="m.official_pricing && hasOfficialCache(m.official_pricing)"
               class="space-y-0.5 font-mono text-xs text-gray-500 dark:text-dark-400"
             >
               <div>
@@ -322,23 +381,46 @@ function hasOfficialCache(o: NonNullable<PlazaModel['official_pricing']>): boole
   return o.cache_write_price != null || o.cache_read_price != null || o.cache_write_1h_price != null
 REDACTED
 
-/** token 模式的阶梯定价(内联进输入/输出列)。 */
+/** token 模式的阶梯定价(内联进输入/输出/缓存列)。 */
 function tokenIntervals(m: PlazaModel): UserPricingInterval[] {
   return m.pricing?.intervals ?? []
 REDACTED
+
+/** 官方阶梯(后端按目录规则合成,不受分组开关影响)。 */
+function officialIntervals(m: PlazaModel): UserPricingInterval[] {
+  return m.official_pricing?.intervals ?? []
+REDACTED
+
+/** 任一档带缓存价才按档渲染缓存列;否则沿用平价的写入/读取两行。 */
+function hasTierCachePricing(intervals: UserPricingInterval[]): boolean {
+  return intervals.some((iv) => iv.cache_write_price != null || iv.cache_read_price != null)
+REDACTED
+
+/** 档位说明:整单按档计价,或(平台旧规则)仅超出部分按档计价。 */
+function tierHint(m: PlazaModel): string {
+  return m.long_context_basis === 'marginal'
+    ? t('modelPlaza.table.tierHintMarginal')
+    : t('modelPlaza.table.tierHint')
+REDACTED
+
 
 /** 按次/按图模式的阶梯定价(仅保留配了按次价的档位)。 */
 function requestIntervals(m: PlazaModel): UserPricingInterval[] {
   return (m.pricing?.intervals ?? []).filter((iv) => iv.per_request_price != null)
 REDACTED
 
-/** 档位标签:优先管理员配置的 tier_label,否则按 token 区间生成(≤200K / >200K / 200K–1M)。 */
+/** 档位标签:优先管理员配置的 tier_label,否则按 token 区间生成(≤200K / >200K / 100–200K / 200K–1M)。 */
 function tierLabel(iv: UserPricingInterval): string {
   if (iv.tier_label) return iv.tier_label
   const { min_tokens: min, max_tokens: max REDACTED = iv
   if (max == null) return `>${formatTokenCount(min)REDACTED`
   if (min === 0) return `≤${formatTokenCount(max)REDACTED`
-  return `${formatTokenCount(min)REDACTED–${formatTokenCount(max)REDACTED`
+  const lo = formatTokenCount(min)
+  const hi = formatTokenCount(max)
+  // 同单位时省略前一个单位(100–200K),节省列宽
+  const unit = hi.slice(-1)
+  if (/[KM]/.test(unit) && lo.endsWith(unit)) return `${lo.slice(0, -1)REDACTED–${hiREDACTED`
+  return `${loREDACTED–${hiREDACTED`
 REDACTED
 
 function formatTokenCount(n: number): string {

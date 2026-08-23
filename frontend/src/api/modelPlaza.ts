@@ -5,9 +5,9 @@
  */
 
 import { apiClient REDACTED from './client'
-import type { UserSupportedModelPricing REDACTED from './channels'
+import type { UserPricingInterval, UserSupportedModelPricing REDACTED from './channels'
 
-/** LiteLLM 官方参考价（USD per token，字段缺失 = 官方数据未覆盖）。 */
+/** 官方参考价（USD per token，与计费目录同源；字段缺失 = 目录未覆盖）。 */
 export interface PlazaOfficialPricing {
   input_price: number | null
   output_price: number | null
@@ -16,13 +16,25 @@ export interface PlazaOfficialPricing {
   /** 1h 缓存写入（LiteLLM cache_creation_above_1hr），多数模型缺失。 */
   cache_write_1h_price?: number | null
   cache_read_price: number | null
+  /** 官方长上下文阶梯（多档模型才有），不受分组开关影响。 */
+  intervals?: UserPricingInterval[]
 REDACTED
+
+/**
+ * 多档时的计价基准：
+ * - whole_request：整单按所在档单价计价（目录阶梯、渠道区间）；
+ * - marginal：仅超出阈值的部分按该档单价计价（平台旧规则）。
+ */
+export type PlazaLongContextBasis = 'whole_request' | 'marginal'
 
 export interface PlazaModel {
   name: string
   platform: string
+  /** 实收口径的展示定价：多档时 intervals 为各档绝对单价（已由计费服务折算）。 */
   pricing: UserSupportedModelPricing | null
   official_pricing: PlazaOfficialPricing | null
+  /** 仅多档模型返回。 */
+  long_context_basis?: PlazaLongContextBasis
 REDACTED
 
 export interface ModelPlazaGroup {
@@ -43,6 +55,8 @@ export interface ModelPlazaGroup {
   /** 生图独立倍率：true 时图片计费模型的实付倍率取 image_rate_multiplier，不取分组/专属倍率。 */
   image_rate_independent: boolean
   image_rate_multiplier: number
+  /** 分组是否启用长上下文阶梯计费；false 时实付列只展示最低档，官方阶梯仅供参考。 */
+  long_context_pricing_enabled: boolean
   models: PlazaModel[]
 REDACTED
 

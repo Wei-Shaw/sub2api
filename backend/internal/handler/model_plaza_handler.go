@@ -17,39 +17,43 @@ import (
 //   - 匿名：仅非专属分组（订阅型照常展示）；
 //   - 登录：非专属分组 + user_allowed_groups 授权的专属分组（不检查订阅有效性）。
 type ModelPlazaHandler struct {
-	channelService *service.ChannelService
+	plazaService   *service.ModelPlazaService
 	apiKeyService  *service.APIKeyService
 	settingService *service.SettingService
 REDACTED
 
 // NewModelPlazaHandler 创建模型广场 handler。
 func NewModelPlazaHandler(
-	channelService *service.ChannelService,
+	plazaService *service.ModelPlazaService,
 	apiKeyService *service.APIKeyService,
 	settingService *service.SettingService,
 ) *ModelPlazaHandler {
 	return &ModelPlazaHandler{
-		channelService: channelService,
+		plazaService:   plazaService,
 		apiKeyService:  apiKeyService,
 		settingService: settingService,
 REDACTED
 REDACTED
 
-// modelPlazaOfficialPricing LiteLLM 官方参考价（USD per token）。
+// modelPlazaOfficialPricing 官方参考价（USD per token，与计费目录同源）。
 type modelPlazaOfficialPricing struct {
 	InputPrice        *float64 `json:"input_price"`
 	OutputPrice       *float64 `json:"output_price"`
 	CacheWritePrice   *float64 `json:"cache_write_price"`
 	CacheWrite1hPrice *float64 `json:"cache_write_1h_price,omitempty"`
 	CacheReadPrice    *float64 `json:"cache_read_price"`
+	// Intervals 官方长上下文阶梯，仅多档模型给出。
+	Intervals []userPricingIntervalDTO `json:"intervals,omitempty"`
 REDACTED
 
-// modelPlazaModel 广场模型条目：渠道定价（白名单形态）+ 官方参考价。
+// modelPlazaModel 广场模型条目：实收口径展示定价（白名单形态）+ 官方参考价。
 type modelPlazaModel struct {
 	Name            string                     `json:"name"`
 	Platform        string                     `json:"platform"`
 	Pricing         *userSupportedModelPricing `json:"pricing"`
 	OfficialPricing *modelPlazaOfficialPricing `json:"official_pricing"`
+	// LongContextBasis 多档时的计价基准："whole_request"（整单按档）| "marginal"（仅超出部分）。
+	LongContextBasis string `json:"long_context_basis,omitempty"`
 REDACTED
 
 // modelPlazaGroup 广场分组条目（白名单字段）。
@@ -68,9 +72,11 @@ type modelPlazaGroup struct {
 	IsExclusive        bool     `json:"is_exclusive"`
 	// 生图独立倍率：为 true 时图片计费模型的实付倍率取 ImageRateMultiplier，
 	// 不取分组/用户专属倍率。
-	ImageRateIndependent bool              `json:"image_rate_independent"`
-	ImageRateMultiplier  float64           `json:"image_rate_multiplier"`
-	Models               []modelPlazaModel `json:"models"`
+	ImageRateIndependent bool    `json:"image_rate_independent"`
+	ImageRateMultiplier  float64 `json:"image_rate_multiplier"`
+	// 分组是否启用长上下文阶梯计费；关闭时模型实付列只展示最低档/基础价。
+	LongContextPricingEnabled bool              `json:"long_context_pricing_enabled"`
+	Models                    []modelPlazaModel `json:"models"`
 REDACTED
 
 // modelPlazaResponse 广场页响应。
@@ -98,7 +104,7 @@ REDACTED
 		return
 REDACTED
 
-	groups, err := h.channelService.ListPlazaGroups(c.Request.Context())
+	groups, err := h.plazaService.ListGroups(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -161,27 +167,29 @@ func toModelPlazaGroupDTO(g *service.PlazaGroup, userRates map[int64]float64) mo
 	for i := range g.Models {
 		m := &g.Models[i]
 		models = append(models, modelPlazaModel{
-			Name:            m.Name,
-			Platform:        m.Platform,
-			Pricing:         toUserPricing(m.Pricing),
-			OfficialPricing: toModelPlazaOfficialPricing(m.OfficialPricing),
+			Name:             m.Name,
+			Platform:         m.Platform,
+			Pricing:          toUserPricing(m.Pricing),
+			OfficialPricing:  toModelPlazaOfficialPricing(m.OfficialPricing),
+			LongContextBasis: string(m.LongContextBasis),
 	REDACTED)
 REDACTED
 	dto := modelPlazaGroup{
-		ID:                   g.ID,
-		Name:                 g.Name,
-		Description:          g.Description,
-		Platform:             g.Platform,
-		SubscriptionType:     g.SubscriptionType,
-		RateMultiplier:       g.RateMultiplier,
-		PeakRateEnabled:      g.PeakRateEnabled,
-		PeakStart:            g.PeakStart,
-		PeakEnd:              g.PeakEnd,
-		PeakRateMultiplier:   g.PeakRateMultiplier,
-		IsExclusive:          g.IsExclusive,
-		ImageRateIndependent: g.ImageRateIndependent,
-		ImageRateMultiplier:  g.ImageRateMultiplier,
-		Models:               models,
+		ID:                        g.ID,
+		Name:                      g.Name,
+		Description:               g.Description,
+		Platform:                  g.Platform,
+		SubscriptionType:          g.SubscriptionType,
+		RateMultiplier:            g.RateMultiplier,
+		PeakRateEnabled:           g.PeakRateEnabled,
+		PeakStart:                 g.PeakStart,
+		PeakEnd:                   g.PeakEnd,
+		PeakRateMultiplier:        g.PeakRateMultiplier,
+		IsExclusive:               g.IsExclusive,
+		ImageRateIndependent:      g.ImageRateIndependent,
+		ImageRateMultiplier:       g.ImageRateMultiplier,
+		LongContextPricingEnabled: g.LongContextPricingEnabled,
+		Models:                    models,
 REDACTED
 	if rate, ok := userRates[g.ID]; ok {
 		dto.UserRateMultiplier = &rate
@@ -200,5 +208,6 @@ REDACTED
 		CacheWritePrice:   p.CacheWritePrice,
 		CacheWrite1hPrice: p.CacheWrite1hPrice,
 		CacheReadPrice:    p.CacheReadPrice,
+		Intervals:         toUserPricingIntervals(p.Intervals),
 REDACTED
 REDACTED

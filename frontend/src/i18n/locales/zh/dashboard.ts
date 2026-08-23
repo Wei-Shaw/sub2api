@@ -594,7 +594,8 @@ export default {
     detail: {
       noModels: '该分组暂未配置模型',
       noPricing: '未配置定价',
-      peakNote: '高峰时段 {windowREDACTED 计费倍率 ×{multiplierREDACTED'
+      peakNote: '高峰时段 {windowREDACTED 计费倍率 ×{multiplierREDACTED',
+      longContextDisabledNote: '该分组未启用长上下文阶梯计费，超阈值请求仍按基础档计费，官方阶梯仅供参考'
     REDACTED,
     table: {
       model: '模型',
@@ -603,6 +604,11 @@ export default {
       cache: '缓存',
       cacheWrite: '写入',
       cacheRead: '读取',
+      cacheWriteShort: '写',
+      cacheReadShort: '读',
+      tierHint: '按单次请求的总上下文（输入 + 缓存写入 + 缓存读取）所在档位对整单计价',
+      tierHintMarginal: '仅超过阈值的部分按该档计价，输出不加价',
+      marginalBadge: '超出部分计价',
       paidPrice: '实付价格(折后)',
       officialPrice: '官方价格',
       rate: '折扣倍率',

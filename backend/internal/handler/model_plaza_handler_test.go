@@ -91,7 +91,7 @@ REDACTED
 		"id", "name", "description", "platform", "subscription_type",
 		"rate_multiplier", "user_rate_multiplier", "is_exclusive", "models",
 		"peak_rate_enabled", "peak_start", "peak_end", "peak_rate_multiplier",
-		"image_rate_independent", "image_rate_multiplier",
+		"image_rate_independent", "image_rate_multiplier", "long_context_pricing_enabled",
 REDACTED {
 		_, exists := decoded[key]
 		require.Truef(t, exists, "plaza group DTO must expose %q", key)
@@ -109,6 +109,10 @@ REDACTED
 	require.Contains(t, official, "cache_read_price")
 	_, has1h := official["cache_write_1h_price"]
 	require.False(t, has1h, "1h 缓存写价为 nil 时应 omitempty")
+	_, hasOfficialIntervals := official["intervals"]
+	require.False(t, hasOfficialIntervals, "官方无阶梯时 intervals 应 omitempty")
+	_, hasBasis := model["long_context_basis"]
+	require.False(t, hasBasis, "单档模型不输出 long_context_basis")
 
 	// 无专属倍率:user_rate_multiplier 整个字段省略
 	dtoNoRate := toModelPlazaGroupDTO(&g, nil)
@@ -122,6 +126,56 @@ REDACTED
 
 func TestToModelPlazaOfficialPricing_NilPassthrough(t *testing.T) {
 	require.Nil(t, toModelPlazaOfficialPricing(nil))
+REDACTED
+
+func TestToModelPlazaGroupDTO_LongContextTiersAndBasis(t *testing.T) {
+	maxTokens := 272000
+	g := service.PlazaGroup{
+		ID: 3, Name: "ladder", Platform: "openai", SubscriptionType: "standard", RateMultiplier: 1,
+		LongContextPricingEnabled: true,
+		Models: []service.PlazaModel{{
+			Name:     "gpt-5.4",
+			Platform: "openai",
+			Pricing: &service.ChannelModelPricing{
+				BillingMode: service.BillingModeToken,
+				InputPrice:  testPtr(2.5e-6),
+				Intervals: []service.PricingInterval{
+					{MinTokens: 0, MaxTokens: &maxTokens, TierLabel: "≤272K", InputPrice: testPtr(2.5e-6)REDACTED,
+					{MinTokens: 272000, TierLabel: ">272K", InputPrice: testPtr(5e-6)REDACTED,
+			REDACTED,
+		REDACTED,
+			OfficialPricing: &service.PlazaOfficialPricing{
+				InputPrice: testPtr(2.5e-6),
+				Intervals: []service.PricingInterval{
+					{MinTokens: 0, MaxTokens: &maxTokens, TierLabel: "≤272K", InputPrice: testPtr(2.5e-6)REDACTED,
+					{MinTokens: 272000, TierLabel: ">272K", InputPrice: testPtr(5e-6)REDACTED,
+			REDACTED,
+		REDACTED,
+			LongContextBasis: service.ContextPricingBasisWholeRequest,
+REDACTED
+REDACTED
+
+	raw, err := json.Marshal(toModelPlazaGroupDTO(&g, nil))
+REDACTED
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+	require.Equal(t, true, decoded["long_context_pricing_enabled"])
+
+	model := decoded["models"].([]any)[0].(map[string]any)
+	require.Equal(t, "whole_request", model["long_context_basis"])
+
+	pricing := model["pricing"].(map[string]any)
+	paidTiers := pricing["intervals"].([]any)
+	require.Len(t, paidTiers, 2)
+	require.Equal(t, ">272K", paidTiers[1].(map[string]any)["tier_label"])
+
+	official := model["official_pricing"].(map[string]any)
+	officialTiers := official["intervals"].([]any)
+	require.Len(t, officialTiers, 2)
+	first := officialTiers[0].(map[string]any)
+	require.Equal(t, "≤272K", first["tier_label"])
+	require.InDelta(t, 272000, first["max_tokens"].(float64), 0)
+	require.Contains(t, first, "cache_write_price", "区间 DTO 字段齐全（nil 输出 null）")
 REDACTED
 
 func testPtr(v float64) *float64 { return &v REDACTED

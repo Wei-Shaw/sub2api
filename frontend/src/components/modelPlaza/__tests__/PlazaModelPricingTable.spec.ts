@@ -405,3 +405,133 @@ describe('PlazaModelPricingTable', () => {
     expect(wrapper.text()).toContain('OpenAI')
   REDACTED)
 REDACTED)
+
+describe('PlazaModelPricingTable 长上下文阶梯', () => {
+  function ladderIntervals() {
+    return [
+      {
+        min_tokens: 0,
+        max_tokens: 272000,
+        tier_label: '≤272K',
+        input_price: 5e-6,
+        output_price: 3e-5,
+        cache_write_price: 6.25e-6,
+        cache_read_price: 5e-7,
+        per_request_price: null
+      REDACTED,
+      {
+        min_tokens: 272000,
+        max_tokens: null,
+        tier_label: '>272K',
+        input_price: 1e-5,
+        output_price: 4.5e-5,
+        cache_write_price: 1.25e-5,
+        cache_read_price: 1e-6,
+        per_request_price: null
+      REDACTED
+    ]
+  REDACTED
+
+  function ladderModel(overrides: Partial<PlazaModel> = {REDACTED): PlazaModel {
+    return tokenModel({
+      name: 'gpt-5.6-sol',
+      platform: 'openai',
+      pricing: {
+        billing_mode: 'token',
+        input_price: 5e-6,
+        output_price: 3e-5,
+        cache_write_price: 6.25e-6,
+        cache_read_price: 5e-7,
+        image_input_price: null,
+        image_output_price: null,
+        per_request_price: null,
+        intervals: ladderIntervals()
+      REDACTED,
+      official_pricing: {
+        input_price: 5e-6,
+        output_price: 3e-5,
+        cache_write_price: 6.25e-6,
+        cache_read_price: 5e-7,
+        intervals: ladderIntervals()
+      REDACTED,
+      long_context_basis: 'whole_request',
+      ...overrides
+    REDACTED)
+  REDACTED
+
+  it('实付缓存列按档分行并乘倍率,每档一行与输入/输出列对齐;档位标签只在输入列', () => {
+    const wrapper = mountTable([ladderModel()], 0.5)
+    const cells = wrapper.findAll('tbody td')
+    const cacheCell = cells[3]
+    const rows = cacheCell.findAll('.leading-5')
+    expect(rows).toHaveLength(2)
+    // 写 6.25 × 0.5 / 读 0.5 × 0.5;高档 12.5 × 0.5 / 1 × 0.5
+    expect(rows[0].text()).toContain('modelPlaza.table.cacheWriteShort')
+    expect(rows[0].text()).toContain('$3.125')
+    expect(rows[0].text()).toContain('$0.25')
+    expect(rows[1].text()).toContain('$6.25')
+    expect(rows[1].text()).toContain('$0.50')
+    // 输入列带标签,输出/缓存列只按行对齐不重复标签
+    expect(cells[1].text()).toContain('≤272K')
+    expect(cells[1].text()).toContain('>272K')
+    expect(cells[2].text()).not.toContain('272K')
+    expect(cacheCell.text()).not.toContain('272K')
+    expect(cells[1].findAll('.leading-5')).toHaveLength(2)
+    expect(cells[2].findAll('.leading-5')).toHaveLength(2)
+  REDACTED)
+
+  it('官方三列按 official_pricing.intervals 分档且不乘倍率,不内联 1h', () => {
+    const wrapper = mountTable([ladderModel()], 0.5)
+    const cells = wrapper.findAll('tbody td')
+    expect(cells[4].text()).toContain('≤272K')
+    expect(cells[4].text()).toContain('$5.00')
+    expect(cells[4].text()).toContain('>272K')
+    expect(cells[4].text()).toContain('$10.00')
+    expect(cells[5].text()).toContain('$30.00')
+    expect(cells[5].text()).toContain('$45.00')
+    expect(cells[6].text()).toContain('$6.25')
+    expect(cells[6].text()).toContain('$12.50')
+    expect(cells[6].text()).toContain('$1.00')
+    expect(cells[6].text()).not.toContain('(1h')
+  REDACTED)
+
+  it('整单计价的档位标签带 tooltip;边际计价在模型名旁加徽章并换用边际说明', () => {
+    const whole = mountTable([ladderModel()], 1)
+    const wholeLabels = whole.findAll('tbody td span[title="modelPlaza.table.tierHint"]')
+    expect(wholeLabels.length).toBeGreaterThan(0)
+    expect(whole.text()).not.toContain('modelPlaza.table.marginalBadge')
+
+    const marginal = mountTable([ladderModel({ long_context_basis: 'marginal' REDACTED)], 1)
+    const marginalLabels = marginal.findAll('tbody td span[title="modelPlaza.table.tierHintMarginal"]')
+    expect(marginalLabels.length).toBeGreaterThan(0)
+    expect(marginal.findAll('tbody td')[0].text()).toContain('modelPlaza.table.marginalBadge')
+  REDACTED)
+
+  it('自定义中间档标签同单位时省略前一个单位', () => {
+    const model = ladderModel({
+      pricing: {
+        ...ladderModel().pricing!,
+        intervals: [
+          { ...ladderIntervals()[0], max_tokens: 100000, tier_label: '' REDACTED,
+          { ...ladderIntervals()[0], min_tokens: 100000, max_tokens: 200000, tier_label: '' REDACTED,
+          { ...ladderIntervals()[1], min_tokens: 200000, max_tokens: 1000000, tier_label: '' REDACTED,
+          { ...ladderIntervals()[1], min_tokens: 1000000, tier_label: '' REDACTED
+        ]
+      REDACTED
+    REDACTED)
+    const text = mountTable([model], 1).findAll('tbody td')[1].text()
+    expect(text).toContain('≤100K')
+    expect(text).toContain('100–200K')
+    expect(text).toContain('200K–1M')
+    expect(text).toContain('>1M')
+  REDACTED)
+
+  it('官方无 intervals 字段(旧响应)时官方列保持平价,实付无阶梯时缓存列保持两行', () => {
+    const wrapper = mountTable([tokenModel()], 1)
+    const cells = wrapper.findAll('tbody td')
+    expect(cells[3].text()).toContain('modelPlaza.table.cacheWrite')
+    expect(cells[3].text()).toContain('modelPlaza.table.cacheRead')
+    expect(cells[3].findAll('.leading-5')).toHaveLength(0)
+    expect(cells[6].text()).toContain('(1h')
+  REDACTED)
+REDACTED)
