@@ -7,6 +7,7 @@
 ## Frontend
 - Build: `pnpm run build` (also runs `vue-tsc -b`); host profile may lack pnpm, so the Dockerfile build is the canonical fallback.
 - Targeted tests/typecheck: `pnpm exec vitest run src/i18n/__tests__/localeRegistry.spec.ts src/i18n/__tests__/localesMessageCompile.spec.ts` and `pnpm exec vue-tsc --noEmit`.
+- Host verification with the installed dependency tree: `npm run lint:check`, `npm run typecheck`, `npm run test:run`, and `npm run build` from `frontend`.
 
 ## Docker production deploy
 - GitHub Actions workflow: `.github/workflows/docker-build-deploy.yml`; pushes `main` build `ghcr.io/${{ github.repository_owner }}/sub2api:sha-${{ github.sha }}` then deploys over SSH to the production VM's `${SSH_APP_DIR:-/home/ubuntu/apps/sub2api}/deploy` and verifies `/health`.
