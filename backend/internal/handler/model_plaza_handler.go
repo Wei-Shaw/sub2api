@@ -46,6 +46,19 @@ type modelPlazaOfficialPricing struct {
 	Intervals []userPricingIntervalDTO `json:"intervals,omitempty"`
 REDACTED
 
+// modelPlazaTimePricingPeriod 分时倍率时段（配置时区当天 [start, end)）。
+type modelPlazaTimePricingPeriod struct {
+	StartTime  string  `json:"start_time"`
+	EndTime    string  `json:"end_time"`
+	Multiplier float64 `json:"multiplier"`
+REDACTED
+
+// modelPlazaTimePricing 计费会生效的分时倍率（仅倍率 ≠ 1 的时段）。
+type modelPlazaTimePricing struct {
+	Timezone string                        `json:"timezone"`
+	Periods  []modelPlazaTimePricingPeriod `json:"periods"`
+REDACTED
+
 // modelPlazaModel 广场模型条目：实收口径展示定价（白名单形态）+ 官方参考价。
 type modelPlazaModel struct {
 	Name            string                     `json:"name"`
@@ -54,6 +67,8 @@ type modelPlazaModel struct {
 	OfficialPricing *modelPlazaOfficialPricing `json:"official_pricing"`
 	// LongContextBasis 多档时的计价基准："whole_request"（整单按档）| "marginal"（仅超出部分）。
 	LongContextBasis string `json:"long_context_basis,omitempty"`
+	// TimePricing 分时倍率时段，落在时段内的请求整单乘倍率；无分时省略。
+	TimePricing *modelPlazaTimePricing `json:"time_pricing,omitempty"`
 REDACTED
 
 // modelPlazaGroup 广场分组条目（白名单字段）。
@@ -172,6 +187,7 @@ func toModelPlazaGroupDTO(g *service.PlazaGroup, userRates map[int64]float64) mo
 			Pricing:          toUserPricing(m.Pricing),
 			OfficialPricing:  toModelPlazaOfficialPricing(m.OfficialPricing),
 			LongContextBasis: string(m.LongContextBasis),
+			TimePricing:      toModelPlazaTimePricing(m.TimePricing),
 	REDACTED)
 REDACTED
 	dto := modelPlazaGroup{
@@ -195,6 +211,22 @@ REDACTED
 		dto.UserRateMultiplier = &rate
 REDACTED
 	return dto
+REDACTED
+
+// toModelPlazaTimePricing 转换分时倍率；nil 透传（JSON 省略）。
+func toModelPlazaTimePricing(p *service.TimePricingSchedule) *modelPlazaTimePricing {
+	if p == nil || len(p.Periods) == 0 {
+		return nil
+REDACTED
+	periods := make([]modelPlazaTimePricingPeriod, 0, len(p.Periods))
+	for _, period := range p.Periods {
+		periods = append(periods, modelPlazaTimePricingPeriod{
+			StartTime:  period.StartTime,
+			EndTime:    period.EndTime,
+			Multiplier: period.Multiplier,
+	REDACTED)
+REDACTED
+	return &modelPlazaTimePricing{Timezone: p.Timezone, Periods: periodsREDACTED
 REDACTED
 
 // toModelPlazaOfficialPricing 转换官方参考价；nil 透传（前端显示 "-"）。

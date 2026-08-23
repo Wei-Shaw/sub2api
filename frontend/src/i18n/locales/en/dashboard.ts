@@ -604,6 +604,8 @@ export default {
       tierHint: 'The whole request is billed at the tier matching its total context (input + cache write + cache read)',
       tierHintMarginal: 'Only the portion above the threshold is billed at this tier; output is unaffected',
       marginalBadge: 'excess-only tiers',
+      timePricingRowHint: 'Requests made within this period ({timezoneREDACTED time) are billed at the prices in this row',
+      timePricingRateHint: 'Effective rate {rateREDACTED × period multiplier {multiplierREDACTED',
       paidPrice: 'Your Price (Discounted)',
       officialPrice: 'Official Price',
       rate: 'Rate',

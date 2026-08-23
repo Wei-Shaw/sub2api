@@ -27,14 +27,30 @@ REDACTED
  */
 export type PlazaLongContextBasis = 'whole_request' | 'marginal'
 
+/** 分时倍率时段：配置时区当天 [start_time, end_time) 内整单实付乘 multiplier。 */
+export interface PlazaTimePricingPeriod {
+  start_time: string
+  end_time: string
+  multiplier: number
+REDACTED
+
+/** 计费会生效的分时倍率（仅倍率 ≠ 1 的时段，已按开始时间升序）。 */
+export interface PlazaTimePricing {
+  /** IANA 时区名，如 Asia/Shanghai。 */
+  timezone: string
+  periods: PlazaTimePricingPeriod[]
+REDACTED
+
 export interface PlazaModel {
   name: string
   platform: string
-  /** 实收口径的展示定价：多档时 intervals 为各档绝对单价（已由计费服务折算）。 */
+  /** 实收口径的展示定价：多档时 intervals 为各档绝对单价（已由计费服务折算）；均为标准时段价。 */
   pricing: UserSupportedModelPricing | null
   official_pricing: PlazaOfficialPricing | null
   /** 仅多档模型返回。 */
   long_context_basis?: PlazaLongContextBasis
+  /** 仅配置了分时倍率的模型返回。 */
+  time_pricing?: PlazaTimePricing
 REDACTED
 
 export interface ModelPlazaGroup {

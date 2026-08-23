@@ -27,6 +27,8 @@ type PlazaModel struct {
 	OfficialPricing *PlazaOfficialPricing
 	// LongContextBasis 多档时的计价基准（整单 / 仅超出部分），单档为空。
 	LongContextBasis ContextPricingBasis
+	// TimePricing 计费会生效的分时倍率时段；无分时为 nil。
+	TimePricing *TimePricingSchedule
 REDACTED
 
 // PlazaGroup 模型广场中以分组为顶层的条目。
@@ -233,6 +235,7 @@ func (s *ModelPlazaService) fillDisplayPricing(ctx context.Context, m *PlazaMode
 			if len(sched.Tiers) > 1 {
 				m.LongContextBasis = sched.Basis
 		REDACTED
+			m.TimePricing = sched.TimePricing
 			return
 	REDACTED
 REDACTED

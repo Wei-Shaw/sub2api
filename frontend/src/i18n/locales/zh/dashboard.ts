@@ -609,6 +609,8 @@ export default {
       tierHint: '按单次请求的总上下文（输入 + 缓存写入 + 缓存读取）所在档位对整单计价',
       tierHintMarginal: '仅超过阈值的部分按该档计价，输出不加价',
       marginalBadge: '超出部分计价',
+      timePricingRowHint: '按 {timezoneREDACTED 时间，在该时段内发起的请求按本行价格计费',
+      timePricingRateHint: '生效倍率 {rateREDACTED × 时段倍率 {multiplierREDACTED',
       paidPrice: '实付价格(折后)',
       officialPrice: '官方价格',
       rate: '折扣倍率',

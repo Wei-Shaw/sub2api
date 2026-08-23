@@ -469,3 +469,27 @@ REDACTED
 	require.Nil(t, m.Pricing.CacheWritePrice, "目录无价且渠道未配置 → 无价")
 	require.Nil(t, m.OfficialPricing)
 REDACTED
+
+func TestListGroups_TimePricingPassthrough(t *testing.T) {
+	channels := []Channel{{
+		ID: 1, Name: "ch", Status: StatusActive, GroupIDs: []int64{10REDACTED,
+		ModelPricing: []ChannelModelPricing{{
+			Platform: PlatformDeepseek, Models: []string{"deepseek-chat"REDACTED, BillingMode: BillingModeToken,
+			InputPrice: testPtrFloat64(0.28e-6), OutputPrice: testPtrFloat64(0.42e-6),
+			TimePricing: &ChannelTimePricing{Timezone: "Asia/Shanghai", Periods: []ChannelTimePricingPeriod{
+				{StartTime: "00:30", EndTime: "08:30", Multiplier: 0.5REDACTED,
+	REDACTED
+REDACTED
+REDACTEDREDACTED
+	groups := []Group{{ID: 10, Name: "cn", Platform: PlatformDeepseek, RateMultiplier: 1, LongContextPricingEnabled: trueREDACTEDREDACTED
+	svc := newPlazaServiceWithBilling(channels, groups, map[int64]string{10: PlatformDeepseekREDACTED, nil)
+	out, err := svc.ListGroups(context.Background())
+REDACTED
+	m := out[0].Models[0]
+	require.NotNil(t, m.TimePricing)
+	require.Equal(t, "Asia/Shanghai", m.TimePricing.Timezone)
+	require.Len(t, m.TimePricing.Periods, 1)
+	require.InDelta(t, 0.5, m.TimePricing.Periods[0].Multiplier, 1e-12)
+	// 展示单价为标准时段价
+	require.InDelta(t, 0.28e-6, *m.Pricing.InputPrice, 1e-15)
+REDACTED

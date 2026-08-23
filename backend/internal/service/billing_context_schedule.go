@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"time"
 )
 
 // ContextPricingBasis 阶梯的计价基准。
@@ -30,11 +31,26 @@ type ContextPricingTier struct {
 	CacheRead  *float64
 REDACTED
 
+// TimePricingPeriod 分时倍率时段：配置时区当天 [StartTime, EndTime) 内整单费用乘 Multiplier。
+type TimePricingPeriod struct {
+	StartTime  string
+	EndTime    string
+	Multiplier float64
+REDACTED
+
+// TimePricingSchedule 分组+模型生效的分时倍率（仅列出倍率 ≠ 1 的时段，按开始时间升序）。
+type TimePricingSchedule struct {
+	Timezone string
+	Periods  []TimePricingPeriod
+REDACTED
+
 // ContextPricingSchedule 分组+模型按上下文长度分档的有效单价表。
 // 单价由真实计费函数探针得出，与扣费同源；单档表示无阶梯。
+// Tiers 为标准时段单价；TimePricing 非 nil 时，落在时段内的请求整单再乘对应倍率。
 type ContextPricingSchedule struct {
-	Basis ContextPricingBasis
-	Tiers []ContextPricingTier
+	Basis       ContextPricingBasis
+	Tiers       []ContextPricingTier
+	TimePricing *TimePricingSchedule
 REDACTED
 
 // ContextPricingScheduleInput 阶梯表查询输入。
@@ -126,7 +142,53 @@ REDACTED
 	if legacy != nil {
 		basis = ContextPricingBasisMarginal
 REDACTED
-	return &ContextPricingSchedule{Basis: basis, Tiers: tiersREDACTED, nil
+	return &ContextPricingSchedule{Basis: basis, Tiers: tiers, TimePricing: resolvedTimePricingSchedule(resolved)REDACTED, nil
+REDACTED
+
+// resolvedTimePricingSchedule 列出计费会生效的分时倍率时段。
+// 时段来自解析到的渠道定价配置，每个时段的倍率用计费自己的 resolvedChannelTimeMultiplier
+// 在时段内取值：定价来源不是渠道（分组价卡覆盖）、配置非法等情况下计费按 1 计，
+// 这里也就自然得到"无分时"。倍率为 1 的时段不列出。
+func resolvedTimePricingSchedule(resolved *ResolvedPricing) *TimePricingSchedule {
+	if resolved == nil || resolved.channelPricing == nil || resolved.channelPricing.TimePricing == nil {
+		return nil
+REDACTED
+	cfg := resolved.channelPricing.TimePricing
+	location, err := loadChannelTimePricingLocation(cfg.Timezone)
+	if err != nil {
+		return nil
+REDACTED
+	type probedPeriod struct {
+		start  int
+		period TimePricingPeriod
+REDACTED
+	probed := make([]probedPeriod, 0, len(cfg.Periods))
+	for _, period := range cfg.Periods {
+		start, err := parseChannelTime(period.StartTime, false)
+		if err != nil {
+			continue
+	REDACTED
+		// 时段按每日循环，取任意一天该时段开始后 1 秒作为探针时刻。
+		at := time.Date(2026, time.January, 1, 0, 0, start+1, 0, location)
+		multiplier := resolvedChannelTimeMultiplier(resolved, at)
+		if multiplier == 1 {
+			continue
+	REDACTED
+		probed = append(probed, probedPeriod{start: start, period: TimePricingPeriod{
+			StartTime:  period.StartTime,
+			EndTime:    period.EndTime,
+			Multiplier: multiplier,
+	REDACTEDREDACTED)
+REDACTED
+	if len(probed) == 0 {
+		return nil
+REDACTED
+	sort.SliceStable(probed, func(i, j int) bool { return probed[i].start < probed[j].start REDACTED)
+	out := &TimePricingSchedule{Timezone: cfg.Timezone, Periods: make([]TimePricingPeriod, 0, len(probed))REDACTED
+	for _, p := range probed {
+		out.Periods = append(out.Periods, p.period)
+REDACTED
+	return out
 REDACTED
 
 // contextBreakpointPlan 描述断点来源。

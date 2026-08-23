@@ -113,6 +113,8 @@ REDACTED
 	require.False(t, hasOfficialIntervals, "官方无阶梯时 intervals 应 omitempty")
 	_, hasBasis := model["long_context_basis"]
 	require.False(t, hasBasis, "单档模型不输出 long_context_basis")
+	_, hasTimePricing := model["time_pricing"]
+	require.False(t, hasTimePricing, "无分时时不输出 time_pricing")
 
 	// 无专属倍率:user_rate_multiplier 整个字段省略
 	dtoNoRate := toModelPlazaGroupDTO(&g, nil)
@@ -179,3 +181,30 @@ REDACTED
 REDACTED
 
 func testPtr(v float64) *float64 { return &v REDACTED
+
+func TestToModelPlazaGroupDTO_TimePricing(t *testing.T) {
+	g := service.PlazaGroup{
+		ID: 4, Name: "cn", Platform: "deepseek", SubscriptionType: "standard", RateMultiplier: 1,
+		Models: []service.PlazaModel{{
+			Name:     "deepseek-chat",
+			Platform: "deepseek",
+			Pricing:  &service.ChannelModelPricing{BillingMode: service.BillingModeToken, InputPrice: testPtr(0.28e-6)REDACTED,
+			TimePricing: &service.TimePricingSchedule{Timezone: "Asia/Shanghai", Periods: []service.TimePricingPeriod{
+				{StartTime: "00:30", EndTime: "08:30", Multiplier: 0.5REDACTED,
+	REDACTED
+REDACTED
+REDACTED
+	raw, err := json.Marshal(toModelPlazaGroupDTO(&g, nil))
+REDACTED
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+	model := decoded["models"].([]any)[0].(map[string]any)
+	tp := model["time_pricing"].(map[string]any)
+	require.Equal(t, "Asia/Shanghai", tp["timezone"])
+	periods := tp["periods"].([]any)
+	require.Len(t, periods, 1)
+	first := periods[0].(map[string]any)
+	require.Equal(t, "00:30", first["start_time"])
+	require.Equal(t, "08:30", first["end_time"])
+	require.InDelta(t, 0.5, first["multiplier"].(float64), 1e-12)
+REDACTED

@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
@@ -490,4 +491,92 @@ func assertCostClose(t *testing.T, want, got float64, format string, args ...any
 REDACTED
 	tolerance := 1e-12 + 1e-9*math.Abs(want)
 	require.InDeltaf(t, want, got, tolerance, format, args...)
+REDACTED
+
+func sonnetChannelWithTimePricing(tp *ChannelTimePricing) []ChannelModelPricing {
+	return []ChannelModelPricing{{
+		Platform: PlatformAnthropic, Models: []string{"claude-sonnet-4"REDACTED, BillingMode: BillingModeToken,
+		InputPrice: testPtrFloat64(2e-6), TimePricing: tp,
+REDACTEDREDACTED
+REDACTED
+
+func TestResolveContextPricingSchedule_TimePricing(t *testing.T) {
+	valid := &ChannelTimePricing{Timezone: "Asia/Shanghai", Periods: []ChannelTimePricingPeriod{
+		{StartTime: "18:00", EndTime: "22:00:00", Multiplier: 1.2REDACTED,
+		{StartTime: "00:30", EndTime: "08:30", Multiplier: 0.5REDACTED,
+		{StartTime: "12:00", EndTime: "13:00", Multiplier: 1REDACTED,
+REDACTEDREDACTED
+
+	t.Run("渠道分时按开始时间升序列出且跳过倍率 1 的时段", func(t *testing.T) {
+		bs, resolver := newTokenCostTestEnv(t, PlatformAnthropic, sonnetChannelWithTimePricing(valid), nil)
+		sched, err := bs.ResolveContextPricingSchedule(context.Background(), resolver, ContextPricingScheduleInput{
+			Model: "claude-sonnet-4", Group: enabledGroup(PlatformAnthropic), Platform: PlatformAnthropic,
+	REDACTED)
+	REDACTED
+		require.NotNil(t, sched.TimePricing)
+		require.Equal(t, "Asia/Shanghai", sched.TimePricing.Timezone)
+		require.Equal(t, []TimePricingPeriod{
+			{StartTime: "00:30", EndTime: "08:30", Multiplier: 0.5REDACTED,
+			{StartTime: "18:00", EndTime: "22:00:00", Multiplier: 1.2REDACTED,
+	REDACTED, sched.TimePricing.Periods)
+		// 阶梯表单价是标准时段价，不含分时倍率
+		requirePrice(t, testPtrFloat64(2e-6), sched.Tiers[0].Input, "input")
+
+		// 对账：时段内的真实计费 = 标准单价 × token × 倍率
+		group := enabledGroup(PlatformAnthropic)
+		gid := group.ID
+		resolved := resolver.Resolve(context.Background(), PricingInput{Model: "claude-sonnet-4", GroupID: &gid, Group: groupREDACTED)
+		loc, err := time.LoadLocation("Asia/Shanghai")
+	REDACTED
+		for _, tc := range []struct {
+			at   time.Time
+			want float64
+	REDACTED{
+			{time.Date(2026, 8, 23, 3, 0, 0, 0, loc), 0.5REDACTED,
+			{time.Date(2026, 8, 23, 12, 30, 0, 0, loc), 1REDACTED,
+			{time.Date(2026, 8, 23, 21, 59, 59, 0, loc), 1.2REDACTED,
+			{time.Date(2026, 8, 23, 22, 0, 0, 0, loc), 1REDACTED,
+	REDACTED {
+			cost, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
+				Ctx: context.Background(), Model: "claude-sonnet-4", Group: group, Tokens: UsageTokens{InputTokens: 1000REDACTED,
+				RateMultiplier: 1, PricingAt: tc.at, Resolver: resolver, Resolved: resolved,
+		REDACTED)
+		REDACTED
+			assertCostClose(t, 1000*2e-6*tc.want, cost.ActualCost, "at %s", tc.at)
+	REDACTED
+REDACTED)
+
+	t.Run("配置非法时计费按 1 计，阶梯表不列分时", func(t *testing.T) {
+		invalid := &ChannelTimePricing{Timezone: "Asia/Shanghai", Periods: []ChannelTimePricingPeriod{
+			{StartTime: "00:30", EndTime: "08:30", Multiplier: 0.5REDACTED,
+			{StartTime: "08:00", EndTime: "09:00", Multiplier: 0.8REDACTED, // 与上一段重叠
+	REDACTEDREDACTED
+		bs, resolver := newTokenCostTestEnv(t, PlatformAnthropic, sonnetChannelWithTimePricing(invalid), nil)
+		sched, err := bs.ResolveContextPricingSchedule(context.Background(), resolver, ContextPricingScheduleInput{
+			Model: "claude-sonnet-4", Group: enabledGroup(PlatformAnthropic), Platform: PlatformAnthropic,
+	REDACTED)
+	REDACTED
+		require.Nil(t, sched.TimePricing)
+REDACTED)
+
+	t.Run("分组价卡覆盖后渠道分时不再生效", func(t *testing.T) {
+		bs, resolver := newTokenCostTestEnv(t, PlatformAnthropic, sonnetChannelWithTimePricing(valid), nil)
+		group := &Group{ID: 100, Platform: PlatformAnthropic, LongContextPricingEnabled: true, ModelPricing: []ChannelModelPricing{{
+			Models: []string{"claude-sonnet-4"REDACTED, BillingMode: BillingModeToken, InputPrice: testPtrFloat64(1e-6),
+	REDACTEDREDACTEDREDACTED
+		sched, err := bs.ResolveContextPricingSchedule(context.Background(), resolver, ContextPricingScheduleInput{
+			Model: "claude-sonnet-4", Group: group, Platform: PlatformAnthropic,
+	REDACTED)
+	REDACTED
+		require.Nil(t, sched.TimePricing)
+REDACTED)
+
+	t.Run("无分时配置为 nil", func(t *testing.T) {
+		bs, resolver := newTokenCostTestEnv(t, PlatformAnthropic, sonnetChannelWithTimePricing(nil), nil)
+		sched, err := bs.ResolveContextPricingSchedule(context.Background(), resolver, ContextPricingScheduleInput{
+			Model: "claude-sonnet-4", Group: enabledGroup(PlatformAnthropic), Platform: PlatformAnthropic,
+	REDACTED)
+	REDACTED
+		require.Nil(t, sched.TimePricing)
+REDACTED)
 REDACTED

@@ -2,14 +2,14 @@
   <div class="plaza-pricing-table overflow-x-auto" :style="accentStyle">
     <table class="w-full min-w-[1000px] table-fixed border-collapse text-sm tabular-nums">
       <colgroup>
-        <col class="w-[20%]" />
+        <col class="w-[25%]" />
         <col class="w-[11%]" />
         <col class="w-[9%]" />
-        <col class="w-[15%]" />
+        <col class="w-[14%]" />
         <col class="w-[11%]" />
-        <col class="w-[9%]" />
-        <col class="w-[15%]" />
-        <col class="w-[10%]" />
+        <col class="w-[8%]" />
+        <col class="w-[14%]" />
+        <col class="w-[8%]" />
       </colgroup>
       <thead>
         <tr
@@ -58,14 +58,22 @@
       </thead>
       <tbody>
         <tr
-          v-for="m in sortedModels"
-          :key="`${m.platformREDACTED:${m.nameREDACTED`"
+          v-for="{ model: m, period, key REDACTED in rows"
+          :key="key"
           class="border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50/70 dark:border-dark-800 dark:hover:bg-dark-800/50"
         >
-          <!-- 模型名 + 非 token 计费模式徽章 -->
+          <!-- 模型名 + 非 token 计费模式徽章;分时时段行额外标注时段 -->
           <td class="border-r border-gray-100 py-2.5 pl-5 pr-4 align-middle dark:border-dark-700/60">
             <div class="flex flex-wrap items-center gap-1.5">
               <span class="font-medium text-gray-900 dark:text-white">{{ m.name REDACTEDREDACTED</span>
+              <!-- 时段徽章紧跟模型名,其余徽章排在后面,空间不足时先换行的是它们 -->
+              <span
+                v-if="period"
+                class="inline-flex items-center whitespace-nowrap rounded-md bg-gray-100 px-1 py-0.5 font-mono text-[10px] font-medium text-gray-500 dark:bg-dark-700/70 dark:text-dark-300"
+                :title="t('modelPlaza.table.timePricingRowHint', { timezone: m.time_pricing?.timezone REDACTED)"
+              >
+                {{ formatTimeWindow(period) REDACTEDREDACTED
+              </span>
               <span
                 v-if="platform && m.platform !== platform"
                 :class="[
@@ -101,10 +109,10 @@
                   class="whitespace-nowrap text-xs leading-5"
                 >
                   <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500" :title="tierHint(m)">{{ tierLabel(iv) REDACTEDREDACTED</span>
-                  {{ paidPerMillion(iv.input_price) REDACTEDREDACTED
+                  {{ paidPerMillion(iv.input_price, period) REDACTEDREDACTED
                 </div>
               </template>
-              <template v-else>{{ paidPerMillion(m.pricing?.input_price) REDACTEDREDACTED</template>
+              <template v-else>{{ paidPerMillion(m.pricing?.input_price, period) REDACTEDREDACTED</template>
             </td>
             <td class="pz-cell px-3 py-2.5 align-middle font-mono font-semibold text-gray-900 dark:text-gray-50">
               <template v-if="tokenIntervals(m).length">
@@ -114,10 +122,10 @@
                   class="whitespace-nowrap text-xs leading-5"
                   :title="tierHint(m)"
                 >
-                  {{ paidPerMillion(iv.output_price) REDACTEDREDACTED
+                  {{ paidPerMillion(iv.output_price, period) REDACTEDREDACTED
                 </div>
               </template>
-              <template v-else>{{ paidPerMillion(m.pricing?.output_price) REDACTEDREDACTED</template>
+              <template v-else>{{ paidPerMillion(m.pricing?.output_price, period) REDACTEDREDACTED</template>
             </td>
             <td class="pz-cell px-3 py-2.5 align-middle">
               <template v-if="hasTierCachePricing(tokenIntervals(m))">
@@ -129,9 +137,9 @@
                 >
                   <template v-if="iv.cache_write_price != null || iv.cache_read_price != null">
                     <span class="font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheWriteShort') REDACTEDREDACTED</span>
-                    {{ paidPerMillion(iv.cache_write_price) REDACTEDREDACTED
+                    {{ paidPerMillion(iv.cache_write_price, period) REDACTEDREDACTED
                     <span class="ml-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheReadShort') REDACTEDREDACTED</span>
-                    {{ paidPerMillion(iv.cache_read_price) REDACTEDREDACTED
+                    {{ paidPerMillion(iv.cache_read_price, period) REDACTEDREDACTED
                   </template>
                   <span v-else class="text-gray-400 dark:text-dark-500">-</span>
                 </div>
@@ -142,11 +150,11 @@
               >
                 <div>
                   <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheWrite') REDACTEDREDACTED</span>
-                  {{ paidPerMillion(m.pricing?.cache_write_price) REDACTEDREDACTED
+                  {{ paidPerMillion(m.pricing?.cache_write_price, period) REDACTEDREDACTED
                 </div>
                 <div>
                   <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheRead') REDACTEDREDACTED</span>
-                  {{ paidPerMillion(m.pricing?.cache_read_price) REDACTEDREDACTED
+                  {{ paidPerMillion(m.pricing?.cache_read_price, period) REDACTEDREDACTED
                 </div>
               </div>
               <span v-else class="text-gray-400 dark:text-dark-500">-</span>
@@ -246,12 +254,18 @@
             <span v-else class="text-gray-400 dark:text-dark-500">-</span>
           </td>
 
-          <!-- 折扣倍率(生图独立倍率行展示独立倍率;专属倍率划线展示原倍率) -->
+          <!-- 折扣倍率(分时时段行展示 生效倍率×时段倍率;生图独立倍率行展示独立倍率;专属倍率划线展示原倍率) -->
           <td
             class="border-l border-gray-100 py-2.5 pl-3 pr-5 text-right align-middle font-mono text-xs dark:border-dark-700/60"
           >
             <span
-              v-if="usesIndependentImageRate(m)"
+              v-if="period"
+              class="font-bold text-primary-600 dark:text-primary-400"
+              :title="t('modelPlaza.table.timePricingRateHint', { rate: effectiveRate, multiplier: period.multiplier REDACTED)"
+              >{{ periodRate(period) REDACTEDREDACTEDx</span
+            >
+            <span
+              v-else-if="usesIndependentImageRate(m)"
               class="font-bold text-gray-700 dark:text-gray-300"
               >{{ requestRate(m) REDACTEDREDACTEDx</span
             >
@@ -277,7 +291,7 @@ import {
   BILLING_MODE_IMAGE,
   type BillingMode
 REDACTED from '@/constants/channel'
-import type { PlazaModel REDACTED from '@/api/modelPlaza'
+import type { PlazaModel, PlazaTimePricingPeriod REDACTED from '@/api/modelPlaza'
 import type { UserPricingInterval REDACTED from '@/api/channels'
 
 const props = defineProps<{
@@ -338,10 +352,35 @@ REDACTED
 /** 价格统一保底 2 位小数,更长的有效小数原样保留。 */
 const MIN_DECIMALS = 2
 
-/** 实付价 = 渠道单价 × 生效倍率,按 $/1M token 展示。 */
-function paidPerMillion(value: number | null | undefined): string {
+/** 表格行:每个模型一行标准价;配置了分时倍率的模型再按时段各加一行。 */
+interface PlazaRow {
+  model: PlazaModel
+  period: PlazaTimePricingPeriod | null
+  key: string
+REDACTED
+
+const rows = computed<PlazaRow[]>(() =>
+  sortedModels.value.flatMap((m) => {
+    const base: PlazaRow = { model: m, period: null, key: `${m.platformREDACTED:${m.nameREDACTED` REDACTED
+    const periodRows = timePeriods(m).map<PlazaRow>((p, idx) => ({
+      model: m,
+      period: p,
+      key: `${m.platformREDACTED:${m.nameREDACTED:${idxREDACTED`
+    REDACTED))
+    return [base, ...periodRows]
+  REDACTED)
+)
+
+/** 时段行的生效倍率 = 生效倍率 × 时段倍率(去掉浮点噪声)。 */
+function periodRate(period: PlazaTimePricingPeriod): number {
+  return Math.round(effectiveRate.value * period.multiplier * 1000) / 1000
+REDACTED
+
+/** 实付价 = 渠道单价 × 生效倍率(时段行再乘时段倍率),按 $/1M token 展示。 */
+function paidPerMillion(value: number | null | undefined, period: PlazaTimePricingPeriod | null = null): string {
   if (value == null) return '-'
-  return formatScaled(value * effectiveRate.value, PER_MILLION, MIN_DECIMALS)
+  const rate = period ? periodRate(period) : effectiveRate.value
+  return formatScaled(value * rate, PER_MILLION, MIN_DECIMALS)
 REDACTED
 
 /** 图片计费模型且分组开启生图独立倍率:实付倍率取独立倍率,与计费口径一致。 */
@@ -379,6 +418,17 @@ REDACTED
 
 function hasOfficialCache(o: NonNullable<PlazaModel['official_pricing']>): boolean {
   return o.cache_write_price != null || o.cache_read_price != null || o.cache_write_1h_price != null
+REDACTED
+
+/** 分时倍率时段(后端只给出倍率 ≠ 1 的时段,已升序)。 */
+function timePeriods(m: PlazaModel): PlazaTimePricingPeriod[] {
+  return m.time_pricing?.periods ?? []
+REDACTED
+
+/** “00:30–08:30”;整分钟的 HH:mm:ss 省略秒。 */
+function formatTimeWindow(p: PlazaTimePricingPeriod): string {
+  const clock = (v: string) => v.replace(/^(\d{2REDACTED:\d{2REDACTED):00$/, '$1')
+  return `${clock(p.start_time)REDACTED–${clock(p.end_time)REDACTED`
 REDACTED
 
 /** 上下文档位按下限升序展示(后端已升序,此处兜底)。 */
