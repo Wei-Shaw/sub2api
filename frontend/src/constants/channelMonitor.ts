@@ -14,6 +14,7 @@ export const PROVIDER_ANTHROPIC: Provider = 'anthropic'
 export const PROVIDER_GEMINI: Provider = 'gemini'
 export const PROVIDER_GROK: Provider = 'grok'
 export const PROVIDER_ANTIGRAVITY: Provider = 'antigravity'
+export const PROVIDER_KIRO: Provider = 'kiro'
 export const PROVIDER_KIMI: Provider = 'kimi'
 export const PROVIDER_ZHIPU: Provider = 'zhipu'
 export const PROVIDER_DEEPSEEK: Provider = 'deepseek'
@@ -39,13 +40,18 @@ export const PROVIDERS: readonly Provider[] = [
   PROVIDER_GEMINI,
   PROVIDER_GROK,
   PROVIDER_ANTIGRAVITY,
+  PROVIDER_KIRO,
   PROVIDER_KIMI,
   PROVIDER_ZHIPU,
   PROVIDER_DEEPSEEK,
 ]
 
-/** 仅支持配额模式（无探活 adapter）的 provider。 */
-export const QUOTA_ONLY_PROVIDERS: readonly Provider[] = [PROVIDER_ANTIGRAVITY]
+/**
+ * 仅支持配额模式（无探活 adapter）的 provider。
+ * 与后端 service.probeCapableProviders 的补集保持一致：
+ * antigravity 上游仅 IDE 代理形态；kiro 走 AWS CodeWhisperer event-stream 协议。
+ */
+export const QUOTA_ONLY_PROVIDERS: readonly Provider[] = [PROVIDER_ANTIGRAVITY, PROVIDER_KIRO]
 
 export const CHECK_MODES: readonly CheckMode[] = [
   CHECK_MODE_PROBE,

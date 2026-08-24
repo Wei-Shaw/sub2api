@@ -1212,7 +1212,20 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 		CacheCreationInputTokens: cacheCreationTokens,
 		CacheReadInputTokens:     cacheReadTokens,
 		ImageOutputTokens:        int(imageOutputTokens),
+		KiroCredits:              kiroCreditsFromUsageGJSON(value),
 	}, true
+}
+
+func mergeOpenAIUsageKiroCreditsFromJSON(usage *OpenAIUsage, body []byte) {
+	if usage == nil || len(body) == 0 || !gjson.ValidBytes(body) {
+		return
+	}
+	for _, path := range []string{"usage", "response.usage", "message.usage"} {
+		if credits := kiroCreditsFromUsageGJSON(gjson.GetBytes(body, path)); credits > 0 {
+			usage.KiroCredits = credits
+			return
+		}
+	}
 }
 
 func openAICacheReadTokensFromUsage(value gjson.Result) int {

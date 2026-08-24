@@ -14,7 +14,7 @@ import (
 
 func setupUpstreamBillingProbeRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	handler := NewAccountHandler(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	handler.SetUpstreamBillingProbeService(service.NewUpstreamBillingProbeService(nil, nil, nil))
 
 	router := gin.New()

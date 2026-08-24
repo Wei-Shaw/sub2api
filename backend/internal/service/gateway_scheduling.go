@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kirocooldown"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
@@ -675,6 +676,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 
 	if len(candidates) == 0 {
+		if s.tryRecoverKiroCooldownPool(ctx, accounts, requestedModel, excludedIDs, useMixed) {
+			retryCtx := context.WithValue(ctx, kiroCooldownRecoveryAttemptedKey, true)
+			return s.SelectAccountWithLoadAwareness(retryCtx, groupID, sessionHash, requestedModel, excludedIDs, metadataUserID, sub2apiUserID)
+		}
 		return nil, ErrNoAvailableAccounts
 	}
 
@@ -1157,7 +1162,10 @@ func (s *GatewayService) isAccountSchedulableForSelection(account *Account) bool
 	if account == nil {
 		return false
 	}
-	return account.IsSchedulable()
+	if !account.IsSchedulable() {
+		return false
+	}
+	return s.isKiroRuntimeSchedulable(context.Background(), account)
 }
 
 func (s *GatewayService) isAccountSchedulableForModelSelection(ctx context.Context, account *Account, requestedModel string) bool {
@@ -1165,7 +1173,81 @@ func (s *GatewayService) isAccountSchedulableForModelSelection(ctx context.Conte
 		return false
 	}
 	model, _ := s.channelModelForAccountSupport(ctx, requestedModel)
-	return account.IsSchedulableForModelWithContext(ctx, model)
+	if !account.IsSchedulableForModelWithContext(ctx, model) {
+		return false
+	}
+	return s.isKiroRuntimeSchedulable(ctx, account)
+}
+
+func (s *GatewayService) isKiroRuntimeSchedulable(ctx context.Context, account *Account) bool {
+	if !isKiroDirectModeAccount(account) || s == nil || s.kiroCooldownStore == nil {
+		return true
+	}
+	state, err := s.getKiroCooldownState(ctx, buildKiroAccountKey(account))
+	if err != nil {
+		return true
+	}
+	return state == nil || !state.Active
+}
+
+func (s *GatewayService) tryRecoverKiroCooldownPool(ctx context.Context, accounts []Account, requestedModel string, excludedIDs map[int64]struct{}, allowMixedScheduling bool) bool {
+	if s == nil || s.kiroCooldownStore == nil || ctx.Value(kiroCooldownRecoveryAttemptedKey) == true {
+		return false
+	}
+	tokenKeys := s.kiroTransientCooldownRecoveryKeys(ctx, accounts, requestedModel, excludedIDs, allowMixedScheduling)
+	if len(tokenKeys) == 0 {
+		return false
+	}
+	cleared, err := s.kiroCooldownStore.ClearEarliestTransientCooldown(ctx, tokenKeys)
+	if err != nil {
+		logger.LegacyPrintf("service.gateway", "Kiro cooldown pool recovery failed: %v", err)
+		return false
+	}
+	if cleared {
+		logger.LegacyPrintf("service.gateway", "Kiro cooldown pool recovery cleared one transient cooldown")
+	}
+	return cleared
+}
+
+func (s *GatewayService) kiroTransientCooldownRecoveryKeys(ctx context.Context, accounts []Account, requestedModel string, excludedIDs map[int64]struct{}, allowMixedScheduling bool) []string {
+	tokenKeys := make([]string, 0, len(accounts))
+	eligible := 0
+	for i := range accounts {
+		acc := &accounts[i]
+		if !isKiroDirectModeAccount(acc) {
+			if allowMixedScheduling {
+				continue
+			}
+			return nil
+		}
+		if _, excluded := excludedIDs[acc.ID]; excluded {
+			continue
+		}
+		if !acc.IsSchedulable() {
+			continue
+		}
+		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+			continue
+		}
+		if !s.isAccountSchedulableForQuota(acc) ||
+			!s.isAccountSchedulableForWindowCost(ctx, acc, false) ||
+			!s.isAccountSchedulableForRPM(ctx, acc, false) {
+			continue
+		}
+		eligible++
+		state, err := s.getKiroCooldownState(ctx, buildKiroAccountKey(acc))
+		if err != nil || state == nil || !state.Active {
+			return nil
+		}
+		if state.Reason != kirocooldown.CooldownReason429 {
+			return nil
+		}
+		tokenKeys = append(tokenKeys, buildKiroAccountKey(acc))
+	}
+	if eligible == 0 || len(tokenKeys) != eligible {
+		return nil
+	}
+	return tokenKeys
 }
 
 // channelModelForAccountSupport returns the model exposed to the account and
@@ -2138,6 +2220,10 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 
 	if selected == nil {
 		stats := s.logDetailedSelectionFailure(ctx, groupID, sessionHash, requestedModel, platform, accounts, excludedIDs, false)
+		if s.tryRecoverKiroCooldownPool(ctx, accounts, requestedModel, excludedIDs, false) {
+			retryCtx := context.WithValue(ctx, kiroCooldownRecoveryAttemptedKey, true)
+			return s.selectAccountForModelWithPlatform(retryCtx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+		}
 		if requestedModel != "" {
 			return nil, fmt.Errorf("%w supporting model: %s (%s)", ErrNoAvailableAccounts, requestedModel, summarizeSelectionFailureStats(stats))
 		}

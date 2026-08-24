@@ -410,6 +410,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		videoDurationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
 		usageLog.VideoDurationSeconds = &videoDurationSeconds
 	}
+	if account.Platform == PlatformKiro && result.Usage.KiroCredits > 0 {
+		kiroCredits := result.Usage.KiroCredits
+		usageLog.KiroCredits = &kiroCredits
+	}
 	if cost != nil {
 		usageLog.InputCost = cost.InputCost
 		usageLog.ImageInputCost = cost.ImageInputCost

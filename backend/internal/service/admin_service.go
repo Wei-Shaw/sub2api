@@ -98,6 +98,8 @@ type AdminService interface {
 	EnsureOpenAIPrivacy(ctx context.Context, account *Account) string
 	// EnsureAntigravityPrivacy 检查 Antigravity OAuth 账号 privacy_mode，未设置则调用 setUserSettings 并持久化。
 	EnsureAntigravityPrivacy(ctx context.Context, account *Account) string
+	// EnsureKiroProfileArn 检查 Kiro OAuth 账号是否已有 profile_arn，缺失或为占位符则解析并持久化。
+	EnsureKiroProfileArn(ctx context.Context, account *Account) string
 	// ForceOpenAIPrivacy 强制重新设置 OpenAI OAuth 账号隐私，无论当前状态。
 	ForceOpenAIPrivacy(ctx context.Context, account *Account) string
 	// ForceAntigravityPrivacy 强制重新设置 Antigravity OAuth 账号隐私，无论当前状态。
@@ -277,6 +279,15 @@ type CreateGroupInput struct {
 	MaxReasoningEffort string
 	// ReasoningEffortMappings OpenAI/Codex 推理强度精确映射。
 	ReasoningEffortMappings []ReasoningEffortMapping
+	// Kiro 模拟缓存配置（仅 kiro 分组生效）
+	KiroCacheEmulationEnabled       bool
+	KiroAutoStickyEnabled           *bool
+	KiroStickySessionTTLSeconds     *int
+	KiroCacheEmulationRatio         *float64
+	KiroCacheEmulationMode          *string
+	KiroCacheCreationEmulationRatio *float64
+	KiroCacheReadEmulationRatio     *float64
+	KiroEndpointMode                *string
 	// 分组利润控制（五个 token 平台分组可启用；margin/buffer 为小数，nil 按 0 处理）
 	ProfitControlEnabled bool
 	ProfitMinMargin      *float64
@@ -354,6 +365,15 @@ type UpdateGroupInput struct {
 	MaxReasoningEffort *string
 	// ReasoningEffortMappings nil 表示不修改，空数组表示清空，非空数组表示替换。
 	ReasoningEffortMappings *[]ReasoningEffortMapping
+	// Kiro 模拟缓存配置（仅 kiro 分组生效）
+	KiroCacheEmulationEnabled       *bool
+	KiroAutoStickyEnabled           *bool
+	KiroStickySessionTTLSeconds     *int
+	KiroCacheEmulationRatio         *float64
+	KiroCacheEmulationMode          *string
+	KiroCacheCreationEmulationRatio *float64
+	KiroCacheReadEmulationRatio     *float64
+	KiroEndpointMode                *string
 	// 分组利润控制（nil 表示不修改；margin/buffer 为小数）
 	ProfitControlEnabled *bool
 	ProfitMinMargin      *float64

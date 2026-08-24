@@ -699,6 +699,13 @@ export async function getAntigravityDefaultModelMapping(): Promise<Record<string
   return data
 }
 
+export async function getKiroDefaultModelMapping(): Promise<Record<string, string>> {
+  const { data } = await apiClient.get<Record<string, string>>(
+    '/admin/accounts/kiro/default-model-mapping'
+  )
+  return data
+}
+
 /**
  * Refresh OpenAI token using refresh token
  * @param refreshToken - The refresh token

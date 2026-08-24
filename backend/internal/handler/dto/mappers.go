@@ -162,6 +162,13 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		RateLimitedAccountCount:     g.RateLimitedAccountCount,
 		SortOrder:                   g.SortOrder,
 	}
+	// Admin endpoints expose stored configuration so disabled or zero-ratio
+	// groups can be edited without effective runtime values masking the inputs.
+	out.KiroCacheEmulationEnabled = g.KiroCacheEmulationEnabled
+	out.KiroCacheEmulationRatio = g.KiroCacheEmulationRatio
+	out.KiroCacheEmulationMode = g.KiroCacheEmulationMode
+	out.KiroCacheCreationEmulationRatio = g.KiroCacheCreationEmulationRatio
+	out.KiroCacheReadEmulationRatio = g.KiroCacheReadEmulationRatio
 	if len(g.AccountGroups) > 0 {
 		out.AccountGroups = make([]AccountGroup, 0, len(g.AccountGroups))
 		for i := range g.AccountGroups {
@@ -221,6 +228,14 @@ func groupFromServiceBase(g *service.Group) Group {
 		RPMLimit:                          g.RPMLimit,
 		MaxReasoningEffort:                g.MaxReasoningEffort,
 		ReasoningEffortMappings:           g.ReasoningEffortMappings,
+		KiroCacheEmulationEnabled:       g.EffectiveKiroCacheEmulationEnabled(),
+		KiroAutoStickyEnabled:           g.EffectiveKiroAutoStickyEnabled(),
+		KiroStickySessionTTLSeconds:     g.EffectiveKiroStickySessionTTLSeconds(),
+		KiroCacheEmulationRatio:         g.EffectiveKiroCacheEmulationRatio(),
+		KiroCacheEmulationMode:          g.EffectiveKiroCacheEmulationMode(),
+		KiroCacheCreationEmulationRatio: g.EffectiveKiroCacheCreationEmulationRatio(),
+		KiroCacheReadEmulationRatio:     g.EffectiveKiroCacheReadEmulationRatio(),
+		KiroEndpointMode:                g.EffectiveKiroEndpointMode(),
 		CreatedAt:                         g.CreatedAt,
 		UpdatedAt:                         g.UpdatedAt,
 	}
@@ -266,6 +281,12 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		OverloadUntil:           a.OverloadUntil,
 		TempUnschedulableUntil:  a.TempUnschedulableUntil,
 		TempUnschedulableReason: a.TempUnschedulableReason,
+		KiroQuotaState:          a.KiroQuotaState,
+		KiroQuotaReason:         a.KiroQuotaReason,
+		KiroQuotaResetAt:        a.KiroQuotaResetAt,
+		KiroRuntimeState:        a.KiroRuntimeState,
+		KiroRuntimeReason:       a.KiroRuntimeReason,
+		KiroRuntimeResetAt:      a.KiroRuntimeResetAt,
 		SessionWindowStart:      a.SessionWindowStart,
 		SessionWindowEnd:        a.SessionWindowEnd,
 		SessionWindowStatus:     a.SessionWindowStatus,

@@ -62,6 +62,7 @@ func TestRefreshSingleAccountRoutesGrokThroughGrokOAuthService(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		grokOAuth,
 		nil,
 		nil,

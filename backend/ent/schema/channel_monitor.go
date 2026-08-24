@@ -36,12 +36,12 @@ func (ChannelMonitor) Fields() []ent.Field {
 			MaxLen(100),
 		field.Enum("provider").
 			Values("openai", "anthropic", "gemini", "grok",
-				"antigravity", "kimi", "zhipu", "deepseek"),
+				"antigravity", "kiro", "kimi", "zhipu", "deepseek"),
 		// check_mode: 'probe' | 'quota' | 'quota_probe'
 		//   probe       - LLM 探活（默认，原有行为）
 		//   quota       - 仅查关联账号的用量/余额（零 LLM 成本；endpoint/api_key 可空）
 		//   quota_probe - 探活 + 配额并存（配额快照挂到主模型历史行）
-		// antigravity 无探活 adapter，仅允许 quota。
+		// antigravity / kiro 无探活 adapter，仅允许 quota。
 		field.String("check_mode").
 			Default("probe").
 			MaxLen(32).
@@ -50,6 +50,13 @@ func (ChannelMonitor) Fields() []ent.Field {
 		// 普通字段而非 edge（FK 由 SQL 迁移管理）；账号删除时数据库置空，
 		// 监控保留并报「账号未关联」。
 		field.Int64("account_id").
+			Optional().
+			Nillable(),
+		// group_id: 配额模式的组级数据源，聚合组内全部 active 账号的额度。
+		// 与 account_id 互斥（迁移 230 的 CHECK 约束在库层兜底）：一个账号额度
+		// 耗尽不代表渠道不可用，账号多的分组需要聚合口径。
+		// 同样是普通字段而非 edge（FK 由 SQL 迁移管理），分组删除时数据库置空。
+		field.Int64("group_id").
 			Optional().
 			Nillable(),
 		field.String("api_mode").
@@ -133,5 +140,6 @@ func (ChannelMonitor) Indexes() []ent.Index {
 		index.Fields("group_name"),
 		index.Fields("template_id"),
 		index.Fields("account_id"),
+		index.Fields("group_id"),
 	}
 }

@@ -156,6 +156,14 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		RPMLimit:                source.RPMLimit,
 		MaxReasoningEffort:      source.MaxReasoningEffort,
 		ReasoningEffortMappings: append([]ReasoningEffortMapping(nil), source.ReasoningEffortMappings...),
+		KiroCacheEmulationEnabled:       source.KiroCacheEmulationEnabled,
+		KiroAutoStickyEnabled:           source.KiroAutoStickyEnabled,
+		KiroStickySessionTTLSeconds:     source.KiroStickySessionTTLSeconds,
+		KiroCacheEmulationRatio:         source.KiroCacheEmulationRatio,
+		KiroCacheEmulationMode:          source.KiroCacheEmulationMode,
+		KiroCacheCreationEmulationRatio: source.KiroCacheCreationEmulationRatio,
+		KiroCacheReadEmulationRatio:     source.KiroCacheReadEmulationRatio,
+		KiroEndpointMode:                source.KiroEndpointMode,
 	}
 }
 

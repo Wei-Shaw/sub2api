@@ -326,6 +326,9 @@ func (s *BillingService) initFallbackPricing() {
 		SupportsCacheBreakdown:     false,
 	}
 
+	// Claude Haiku 4.5 当前与 Claude 3.5 Haiku 同价（Kiro 计费依赖该档位存在）
+	s.fallbackPrices["claude-haiku-4.5"] = s.fallbackPrices["claude-3-5-haiku"]
+
 	// Claude 4.6 Opus (与4.5同价)
 	s.fallbackPrices["claude-opus-4.6"] = s.fallbackPrices["claude-opus-4.5"]
 
@@ -768,6 +771,9 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		return s.fallbackPrices["claude-3-5-sonnet"]
 	}
 	if strings.Contains(modelLower, "haiku") {
+		if strings.Contains(modelLower, "4.5") || strings.Contains(modelLower, "4-5") {
+			return s.fallbackPrices["claude-haiku-4.5"]
+		}
 		if strings.Contains(modelLower, "3-5") || strings.Contains(modelLower, "3.5") {
 			return s.fallbackPrices["claude-3-5-haiku"]
 		}

@@ -357,6 +357,30 @@ func (s *GatewayService) buildOAuthMetadataUserID(parsed *ParsedRequest, account
 	return FormatMetadataUserID(userID, accountUUID, sessionID, uaVersion)
 }
 
+// shouldMimicClaudeCodeForAccount 判断某个账号在"客户端不是 Claude Code"时是否需要
+// 走 applyClaudeCodeOAuthMimicryToBody 的完整伪装链路。
+//
+// 伪装的唯一目的是规避 Anthropic 对第三方客户端的计费识别，因此前提是账号最终会打到
+// Anthropic：非 OAuth 账号没有这个问题，Kiro 账号的上游是 AWS CodeWhisperer，注入
+// billing attribution + "You are Claude Code" 身份对它没有任何收益。
+//
+// 对 Kiro 而言伪装还是有害的：它会把客户端真正的 instructions 从 system 里摘走、
+// 降级成一条普通 user 消息（外加一条伪造的 assistant 应答）。Codex CLI 这类客户端的
+// 工具调用契约、沙箱与审批语义都写在 instructions 里，降级后模型会以 Claude Code 的
+// 身份面对 Codex 的工具集，从而出现"没有工具调用权限"式的拒绝。
+//
+// /v1/messages 主路径在 forwardKiroMessages 处提前返回，天然绕开了伪装；这里把判断
+// 收敛成单一谓词，让 ForwardAsResponses / ForwardAsChatCompletions 与主路径行为一致。
+//
+// 用 IsKiro 而非 isKiroDirectModeAccount：带 base_url 的 Kiro 中转账号不走直连分支，
+// 但同样不该被伪装。
+func shouldMimicClaudeCodeForAccount(account *Account, isClaudeCodeClient bool) bool {
+	if account == nil || isClaudeCodeClient {
+		return false
+	}
+	return account.IsOAuth() && !account.IsKiro()
+}
+
 // applyClaudeCodeOAuthMimicryToBody 将"非 Claude Code 客户端 + Claude OAuth 账号"
 // 路径上原本只在 /v1/messages 里做的完整伪装应用到任意 body 上。
 //

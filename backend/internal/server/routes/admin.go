@@ -55,6 +55,9 @@ func RegisterAdminRoutes(
 		// Antigravity OAuth
 		registerAntigravityOAuthRoutes(admin, h)
 
+		// Kiro OAuth / IDC
+		registerKiroOAuthRoutes(admin, h)
+
 		// Grok OAuth
 		registerGrokOAuthRoutes(admin, h)
 
@@ -429,6 +432,7 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 
 		// Antigravity 默认模型映射
 		accounts.GET("/antigravity/default-model-mapping", h.Admin.Account.GetAntigravityDefaultModelMapping)
+		accounts.GET("/kiro/default-model-mapping", h.Admin.Account.GetKiroDefaultModelMapping)
 
 		// Spark 影子账号
 		accounts.POST("/:id/shadow", h.Admin.OpenAIOAuth.CreateShadow)
@@ -485,6 +489,17 @@ func registerAntigravityOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 		antigravity.POST("/oauth/auth-url", h.Admin.AntigravityOAuth.GenerateAuthURL)
 		antigravity.POST("/oauth/exchange-code", h.Admin.AntigravityOAuth.ExchangeCode)
 		antigravity.POST("/oauth/refresh-token", h.Admin.AntigravityOAuth.RefreshToken)
+	}
+}
+
+func registerKiroOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	kiro := admin.Group("/kiro")
+	{
+		kiro.POST("/oauth/auth-url", h.Admin.KiroOAuth.GenerateAuthURL)
+		kiro.POST("/oauth/idc-auth-url", h.Admin.KiroOAuth.GenerateIDCAuthURL)
+		kiro.POST("/oauth/exchange-code", h.Admin.KiroOAuth.ExchangeCode)
+		kiro.POST("/oauth/refresh-token", h.Admin.KiroOAuth.RefreshToken)
+		kiro.POST("/oauth/import-token", h.Admin.KiroOAuth.ImportToken)
 	}
 }
 

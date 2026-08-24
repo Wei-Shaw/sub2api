@@ -62,7 +62,7 @@ func TestTokenRefreshService_ensureOpenAIPrivacy_RetriesNonSuccessModes(t *testi
 		t.Run(mode, func(t *testing.T) {
 			t.Parallel()
 
-			service := NewTokenRefreshService(&tokenRefreshAccountRepo{}, nil, nil, nil, nil, nil, nil, cfg, nil)
+			service := NewTokenRefreshService(&tokenRefreshAccountRepo{}, nil, nil, nil, nil, nil, nil, nil, cfg, nil)
 			privacyCalls := 0
 			service.SetPrivacyDeps(func(proxyURL string) (*req.Client, error) {
 				privacyCalls++
