@@ -194,3 +194,79 @@ func TestUpstreamResponseModelObserverBoundsUntrustedModelName(t *testing.T) {
 
 	require.Len(t, []rune(observer.Model()), upstreamResponseModelMaxLength)
 REDACTED
+
+func TestUpstreamResponseModelObserverServiceTierTerminalEventWins(t *testing.T) {
+	observer := &upstreamResponseModelObserver{REDACTED
+
+	// response.created echoes the requested tier and must not count as a declaration.
+	observer.ObserveOpenAI([]byte(`{"type":"response.created","response":{"id":"resp_1","model":"gpt-5.6-sol","service_tier":"priority"REDACTEDREDACTED`), "response.created")
+	require.Equal(t, "", observer.ServiceTier())
+
+	observer.ObserveOpenAI([]byte(`{"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.6-sol","service_tier":"default","usage":{"input_tokens":1,"output_tokens":2REDACTEDREDACTEDREDACTED`), "response.completed")
+	require.Equal(t, "default", observer.ServiceTier())
+	require.False(t, observer.Conflict(), "tier echo must not be reported as a model conflict")
+REDACTED
+
+func TestUpstreamResponseModelObserverServiceTierUntypedPayloads(t *testing.T) {
+	t.Run("chat completions chunks agree", func(t *testing.T) {
+		observer := &upstreamResponseModelObserver{REDACTED
+		observer.ObserveOpenAI([]byte(`{"id":"chatcmpl-1","object":"chat.completion.chunk","model":"gpt-5.4","service_tier":"default","choices":[]REDACTED`), "")
+		observer.ObserveOpenAI([]byte(`{"id":"chatcmpl-1","object":"chat.completion.chunk","model":"gpt-5.4","service_tier":"default","choices":[]REDACTED`), "")
+		require.Equal(t, "default", observer.ServiceTier())
+REDACTED)
+
+	t.Run("disagreeing chunks are not trusted", func(t *testing.T) {
+		observer := &upstreamResponseModelObserver{REDACTED
+		observer.ObserveOpenAI([]byte(`{"model":"gpt-5.4","service_tier":"priority"REDACTED`), "")
+		observer.ObserveOpenAI([]byte(`{"model":"gpt-5.4","service_tier":"default"REDACTED`), "")
+		require.Equal(t, "", observer.ServiceTier())
+REDACTED)
+
+	t.Run("non-stream body normalises fast and drops auto", func(t *testing.T) {
+		observer := &upstreamResponseModelObserver{REDACTED
+		observer.ObserveOpenAI([]byte(`{"id":"resp_1","object":"response","model":"gpt-5.6-sol","service_tier":"fast"REDACTED`), "")
+		require.Equal(t, "priority", observer.ServiceTier())
+
+		auto := &upstreamResponseModelObserver{REDACTED
+		auto.ObserveOpenAI([]byte(`{"id":"resp_2","object":"response","model":"gpt-5.6-sol","service_tier":"auto"REDACTED`), "")
+		require.Equal(t, "", auto.ServiceTier())
+REDACTED)
+
+	t.Run("model-free deltas never declare a tier", func(t *testing.T) {
+		observer := &upstreamResponseModelObserver{REDACTED
+		observer.ObserveOpenAI([]byte(`{"type":"response.output_text.delta","delta":"hi","service_tier":"default"REDACTED`), "response.output_text.delta")
+		require.Equal(t, "", observer.ServiceTier())
+REDACTED)
+REDACTED
+
+func TestUpstreamResponseModelObserverServiceTierAnthropicSpeed(t *testing.T) {
+	t.Run("message_start reports standard", func(t *testing.T) {
+		observer := &upstreamResponseModelObserver{REDACTED
+		observer.ObserveAnthropic([]byte(`{"type":"message_start","message":{"id":"msg_1","model":"claude-opus-5","usage":{"input_tokens":8,"output_tokens":1,"speed":"standard"REDACTEDREDACTEDREDACTED`))
+		observer.ObserveAnthropic([]byte(`{"type":"message_delta","delta":{"stop_reason":"end_turn"REDACTED,"usage":{"output_tokens":12REDACTEDREDACTED`))
+		require.Equal(t, "standard", observer.ServiceTier())
+		require.Equal(t, "claude-opus-5", observer.Model())
+REDACTED)
+
+	t.Run("non-stream body reports fast", func(t *testing.T) {
+		observer := &upstreamResponseModelObserver{REDACTED
+		observer.ObserveAnthropic([]byte(`{"id":"msg_1","type":"message","model":"claude-opus-5","usage":{"input_tokens":8,"output_tokens":12,"speed":"fast"REDACTEDREDACTED`))
+		require.Equal(t, "fast", observer.ServiceTier())
+REDACTED)
+
+	t.Run("missing speed declares nothing", func(t *testing.T) {
+		observer := &upstreamResponseModelObserver{REDACTED
+		observer.ObserveAnthropic([]byte(`{"id":"msg_1","type":"message","model":"claude-opus-5","usage":{"input_tokens":8,"output_tokens":12REDACTEDREDACTED`))
+		require.Equal(t, "", observer.ServiceTier())
+REDACTED)
+REDACTED
+
+func TestObservedUpstreamResponseServiceTierFromContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(nil)
+	require.Equal(t, "", observedUpstreamResponseServiceTier(c))
+
+	observer := beginUpstreamResponseModelObservation(c)
+	observer.ObserveOpenAI([]byte(`{"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.6-sol","service_tier":"default"REDACTEDREDACTED`), "response.completed")
+	require.Equal(t, "default", observedUpstreamResponseServiceTier(c))
+REDACTED

@@ -744,3 +744,54 @@ REDACTED
 	require.True(t, observed.terminal)
 	require.Equal(t, "resp_fallback", observed.responseID)
 REDACTED
+
+func TestObserveUpstreamMessage_ResponseServiceTierOnlyFromTerminalEvents(t *testing.T) {
+	t.Parallel()
+
+	state := &relayState{requestModel: "gpt-5.6-sol"REDACTED
+	startAt := time.Unix(0, 0)
+	now := startAt
+	nowFn := func() time.Time {
+		now = now.Add(5 * time.Millisecond)
+		return now
+REDACTED
+
+	created := observeUpstreamMessage(
+		state,
+		[]byte(`{"type":"response.created","response":{"id":"resp_1","model":"gpt-5.6-sol","service_tier":"priority"REDACTEDREDACTED`),
+		startAt,
+		nowFn,
+		nil,
+	)
+	require.False(t, created.terminal)
+	require.Equal(t, "", created.responseServiceTier)
+
+	completed := observeUpstreamMessage(
+		state,
+		[]byte(`{"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.6-sol","service_tier":"default","usage":{"input_tokens":1,"output_tokens":2REDACTEDREDACTEDREDACTED`),
+		startAt,
+		nowFn,
+		nil,
+	)
+	require.True(t, completed.terminal)
+	require.Equal(t, "default", completed.responseServiceTier, "the echoed priority tier must lose to the terminal declaration")
+
+	var turn RelayTurnResult
+	emitTurnComplete(func(result RelayTurnResult) { turn = result REDACTED, state, completed)
+	require.Equal(t, "default", turn.ResponseServiceTier)
+
+	var result RelayResult
+	enrichResult(&result, state, now.Sub(startAt))
+	require.Equal(t, "default", result.ResponseServiceTier)
+
+	// A later turn without any declaration must not inherit the previous one.
+	observeUpstreamMessage(state, []byte(`{"type":"response.created","response":{"id":"resp_2","model":"gpt-5.6-sol"REDACTEDREDACTED`), startAt, nowFn, nil)
+	second := observeUpstreamMessage(
+		state,
+		[]byte(`{"type":"response.completed","response":{"id":"resp_2","model":"gpt-5.6-sol","usage":{"input_tokens":3,"output_tokens":4REDACTEDREDACTEDREDACTED`),
+		startAt,
+		nowFn,
+		nil,
+	)
+	require.Equal(t, "", second.responseServiceTier)
+REDACTED
