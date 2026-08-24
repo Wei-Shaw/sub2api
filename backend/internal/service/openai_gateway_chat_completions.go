@@ -95,13 +95,14 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	isResponsesShape := !gjson.GetBytes(body, "messages").Exists() && gjson.GetBytes(body, "input").Exists()
 
 	// 自适应账号的标准 Chat Completions 入站使用供应商原生 CC 端点。
-	// Responses 形状下，DeepSeek 继续走下方原生 Responses 链；Kimi/GLM
-	// 没有 Responses 端点，先转换成 Chat Completions 再直转。
+	// Responses 形状下，声明了原生 Responses 能力的平台（SupportsNativeResponses，
+	// 如 DeepSeek）继续走下方原生 Responses 链；其余 CN 平台没有 Responses 端点，
+	// 先转换成 Chat Completions 再直转。
 	if account.IsAdaptiveAPIProtocol() {
 		if !isResponsesShape {
 			return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 		}
-		if account.Platform != PlatformDeepseek {
+		if !cnSupportsNativeResponses(account.Platform) {
 			var responsesReq apicompat.ResponsesRequest
 			if err := json.Unmarshal(body, &responsesReq); err != nil {
 				return nil, fmt.Errorf("parse responses-shaped chat completions request: %w", err)

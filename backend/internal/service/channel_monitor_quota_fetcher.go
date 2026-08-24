@@ -197,15 +197,13 @@ func (f *ChannelMonitorQuotaFetcher) fetchUncached(ctx context.Context, accountI
 	// 账号只在路由前加载这一次；已加载的 account 直接传给数据源
 	// （GetUsageForAccount / QueryUsageForAccount / QueryBalanceForAccount），
 	// 下游服务不再各自 GetByID（每次含 proxies/groups 联查）。
-	switch account.Platform {
-	case domain.PlatformKimi, domain.PlatformZhipu, domain.PlatformDeepseek:
+	if IsCNProvider(account.Platform) {
 		if account.IsCodingPlan() {
 			return f.fetchCNQuota(ctx, account, now)
 		}
 		return f.fetchCNBalance(ctx, account, now)
-	default:
-		return f.fetchUsage(ctx, account, now)
 	}
+	return f.fetchUsage(ctx, account, now)
 }
 
 // fetchUsage 海外平台：AccountUsageService.GetUsageForAccount → 快照。
