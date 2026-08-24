@@ -8758,6 +8758,74 @@
 
           <EmailTemplateEditor />
 
+          <!-- Telegram Bot Notifications -->
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.telegramNotifications.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.telegramNotifications.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div>
+                  <label class="input-label">{{ t("admin.settings.telegramNotifications.botToken") }}</label>
+                  <input
+                    v-model="form.telegram_bot_token"
+                    type="password"
+                    class="input"
+                    autocomplete="new-password"
+                    :placeholder="form.telegram_bot_token_configured
+                      ? t('admin.settings.telegramNotifications.botTokenConfiguredPlaceholder')
+                      : t('admin.settings.telegramNotifications.botTokenPlaceholder')"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ form.telegram_bot_token_configured
+                      ? t("admin.settings.telegramNotifications.botTokenConfiguredHint")
+                      : t("admin.settings.telegramNotifications.botTokenHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label class="input-label">{{ t("admin.settings.telegramNotifications.chatId") }}</label>
+                  <input
+                    v-model="form.telegram_chat_id"
+                    type="text"
+                    class="input"
+                    :placeholder="t('admin.settings.telegramNotifications.chatIdPlaceholder')"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.telegramNotifications.chatIdHint") }}
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center gap-3 border-t border-gray-100 pt-4 dark:border-dark-700">
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  :disabled="testingTelegram || (!form.telegram_bot_token_configured && !form.telegram_bot_token) || !form.telegram_chat_id || loadFailed"
+                  @click="testTelegramConnection"
+                >
+                  {{ testingTelegram
+                    ? t("admin.settings.telegramNotifications.testing")
+                    : t("admin.settings.telegramNotifications.testConnection") }}
+                </button>
+              </div>
+              <div
+                v-for="item in telegramNotificationOptions"
+                :key="item.key"
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{ t(item.label) }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">{{ t(item.hint) }}</p>
+                </div>
+                <Toggle v-model="form[item.key]" />
+              </div>
+            </div>
+          </div>
+
           <!-- Balance Low Notification -->
           <div class="card">
             <div
@@ -9168,6 +9236,7 @@ const loading = ref(true);
 const loadFailed = ref(false);
 const saving = ref(false);
 const testingSmtp = ref(false);
+const testingTelegram = ref(false);
 const sendingTestEmail = ref(false);
 const smtpPasswordManuallyEdited = ref(false);
 const testEmailAddress = ref("");
@@ -9739,6 +9808,7 @@ type SettingsForm = Omit<
   github_oauth_client_secret: string;
   google_oauth_client_secret: string;
   force_email_on_third_party_signup: boolean;
+  telegram_bot_token: string;
   openai_low_upstream_rate_priority_enabled: boolean;
   openai_oauth_scheduling_rate_multiplier: number | "" | null;
   openai_advanced_scheduler_enabled: boolean;
@@ -10062,7 +10132,54 @@ const form = reactive<SettingsForm>({
   affiliate_enabled: false,
   // Allow user view error requests
   allow_user_view_error_requests: false,
+  // Telegram Bot Notifications
+  telegram_bot_token: "",
+  telegram_bot_token_configured: false,
+  telegram_chat_id: "",
+  telegram_notify_new_user: false,
+  telegram_notify_account_error: false,
+  telegram_notify_account_expired: false,
+  telegram_notify_payment_success: false,
+  telegram_notify_payment_failed: false,
+  telegram_notify_refund: false,
+  telegram_notify_sub_expired: false,
+  telegram_notify_balance_low: false,
+  telegram_notify_ops_alert: false,
+  telegram_notify_proxy_expired: false,
 });
+
+type TelegramNotificationKey =
+  | "telegram_notify_new_user"
+  | "telegram_notify_account_error"
+  | "telegram_notify_account_expired"
+  | "telegram_notify_payment_success"
+  | "telegram_notify_payment_failed"
+  | "telegram_notify_refund"
+  | "telegram_notify_sub_expired"
+  | "telegram_notify_balance_low"
+  | "telegram_notify_ops_alert"
+  | "telegram_notify_proxy_expired";
+
+const telegramNotificationOptions: Array<{
+  key: TelegramNotificationKey;
+  label: string;
+  hint: string;
+}> = [
+  ["newUser", "NewUser"],
+  ["accountError", "AccountError"],
+  ["accountExpired", "AccountExpired"],
+  ["paymentSuccess", "PaymentSuccess"],
+  ["paymentFailed", "PaymentFailed"],
+  ["refund", "Refund"],
+  ["subExpired", "SubExpired"],
+  ["balanceLow", "BalanceLow"],
+  ["opsAlert", "OpsAlert"],
+  ["proxyExpired", "ProxyExpired"],
+].map(([name, suffix]) => ({
+  key: `telegram_notify_${name}` as TelegramNotificationKey,
+  label: `admin.settings.telegramNotifications.notify${suffix}`,
+  hint: `admin.settings.telegramNotifications.notify${suffix}Hint`,
+}));
 
 // 人机验证 UI 状态：单卡片「总开关 + 服务商单选」，落库仍是三个独立
 // enabled 键（与上游一致），由下面的映射保证同一时间至多一家启用。
@@ -11795,6 +11912,19 @@ async function saveSettings() {
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
       allow_user_view_error_requests: form.allow_user_view_error_requests,
+      // Telegram Bot Notifications
+      telegram_bot_token: form.telegram_bot_token || undefined,
+      telegram_chat_id: form.telegram_chat_id,
+      telegram_notify_new_user: form.telegram_notify_new_user,
+      telegram_notify_account_error: form.telegram_notify_account_error,
+      telegram_notify_account_expired: form.telegram_notify_account_expired,
+      telegram_notify_payment_success: form.telegram_notify_payment_success,
+      telegram_notify_payment_failed: form.telegram_notify_payment_failed,
+      telegram_notify_refund: form.telegram_notify_refund,
+      telegram_notify_sub_expired: form.telegram_notify_sub_expired,
+      telegram_notify_balance_low: form.telegram_notify_balance_low,
+      telegram_notify_ops_alert: form.telegram_notify_ops_alert,
+      telegram_notify_proxy_expired: form.telegram_notify_proxy_expired,
     };
 
     // 仅当 openai_fast_policy_settings 已成功从后端加载时才回写，
@@ -11972,6 +12102,27 @@ async function testSmtpConnection() {
     );
   } finally {
     testingSmtp.value = false;
+  }
+}
+
+async function testTelegramConnection() {
+  testingTelegram.value = true;
+  try {
+    const result = await adminAPI.settings.testTelegramConnection({
+      telegram_chat_id: form.telegram_chat_id,
+    });
+    appStore.showSuccess(
+      result.message || t("admin.settings.telegramNotifications.testSuccess"),
+    );
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.telegramNotifications.testFailed"),
+      ),
+    );
+  } finally {
+    testingTelegram.value = false;
   }
 }
 

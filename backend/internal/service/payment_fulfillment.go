@@ -430,7 +430,19 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 }
 
 func (s *PaymentService) dispatchPaymentFulfillmentNotification(o *dbent.PaymentOrder, auditAction string) {
-	if s == nil || s.notificationEmailService == nil || o == nil {
+	if s == nil || o == nil {
+		return
+	}
+	if s.telegramNotifySvc != nil {
+		go func() {
+			orderType := "Balance Recharge"
+			if auditAction == "SUBSCRIPTION_SUCCESS" {
+				orderType = "Subscription"
+			}
+			s.telegramNotifySvc.NotifyPaymentSuccess(context.Background(), o.UserEmail, o.Amount, orderType, fmt.Sprintf("%d", o.ID))
+		}()
+	}
+	if s.notificationEmailService == nil {
 		return
 	}
 	go func() {
@@ -865,6 +877,9 @@ func (s *PaymentService) markFailed(ctx context.Context, oid int64, lease *payme
 	}
 	if c > 0 {
 		s.writeAuditLog(ctx, oid, "FULFILLMENT_FAILED", "system", map[string]any{"reason": r})
+		if s.telegramNotifySvc != nil {
+			go s.telegramNotifySvc.NotifyPaymentFailed(context.Background(), fmt.Sprintf("%d", oid), r)
+		}
 	}
 }
 
