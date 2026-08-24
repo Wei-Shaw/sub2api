@@ -270,3 +270,23 @@ REDACTED
 	require.True(t, changed)
 	require.False(t, gjson.GetBytes(normalized, "parallel_tool_calls").Exists())
 REDACTED
+
+// A Responses Lite body that has already been through normalizeOpenAIResponsesLiteTools
+// carries its tools in an input item of type "additional_tools" and no longer has a
+// top-level "tools" key. It still has tools, so the parallel_tool_calls:false that
+// ensureOpenAIResponsesLiteParallelToolCalls pinned must survive this normalization —
+// otherwise OpenAI applies its default of true and rejects the request.
+func TestNormalizeOpenAIParallelToolCallsWithoutTools_KeepsResponsesLiteAdditionalTools(t *testing.T) {
+	liteBody := []byte(`{"input":[{"type":"message","role":"user","content":"hi"REDACTED,{"type":"additional_tools","tools":[{"type":"function","name":"spawn_agent"REDACTED]REDACTED],"parallel_tool_calls":falseREDACTED`)
+	normalized, changed, err := normalizeOpenAIParallelToolCallsWithoutTools(liteBody)
+REDACTED
+	require.False(t, changed)
+	require.Equal(t, gjson.False, gjson.GetBytes(normalized, "parallel_tool_calls").Type)
+
+	// An empty additional_tools item carries no tools, so the field is still dropped.
+	emptyLiteBody := []byte(`{"input":[{"type":"additional_tools","tools":[]REDACTED],"parallel_tool_calls":trueREDACTED`)
+	normalized, changed, err = normalizeOpenAIParallelToolCallsWithoutTools(emptyLiteBody)
+REDACTED
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(normalized, "parallel_tool_calls").Exists())
+REDACTED
