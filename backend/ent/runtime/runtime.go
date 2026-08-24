@@ -288,18 +288,24 @@ func init() {
 	accountcodexdevicebinding.UpdateDefaultUpdatedAt = accountcodexdevicebindingDescUpdatedAt.UpdateDefault.(func() time.Time)
 	accountcodexdeviceslotFields := schema.AccountCodexDeviceSlot{}.Fields()
 	_ = accountcodexdeviceslotFields
+	// accountcodexdeviceslotDescProxyMode is the schema descriptor for proxy_mode field.
+	accountcodexdeviceslotDescProxyMode := accountcodexdeviceslotFields[3].Descriptor()
+	// accountcodexdeviceslot.DefaultProxyMode holds the default value on creation for the proxy_mode field.
+	accountcodexdeviceslot.DefaultProxyMode = accountcodexdeviceslotDescProxyMode.Default.(string)
+	// accountcodexdeviceslot.ProxyModeValidator is a validator for the "proxy_mode" field. It is called by the builders before save.
+	accountcodexdeviceslot.ProxyModeValidator = accountcodexdeviceslotDescProxyMode.Validators[0].(func(string) error)
 	// accountcodexdeviceslotDescState is the schema descriptor for state field.
-	accountcodexdeviceslotDescState := accountcodexdeviceslotFields[5].Descriptor()
+	accountcodexdeviceslotDescState := accountcodexdeviceslotFields[6].Descriptor()
 	// accountcodexdeviceslot.DefaultState holds the default value on creation for the state field.
 	accountcodexdeviceslot.DefaultState = accountcodexdeviceslotDescState.Default.(string)
 	// accountcodexdeviceslot.StateValidator is a validator for the "state" field. It is called by the builders before save.
 	accountcodexdeviceslot.StateValidator = accountcodexdeviceslotDescState.Validators[0].(func(string) error)
 	// accountcodexdeviceslotDescCreatedAt is the schema descriptor for created_at field.
-	accountcodexdeviceslotDescCreatedAt := accountcodexdeviceslotFields[6].Descriptor()
+	accountcodexdeviceslotDescCreatedAt := accountcodexdeviceslotFields[7].Descriptor()
 	// accountcodexdeviceslot.DefaultCreatedAt holds the default value on creation for the created_at field.
 	accountcodexdeviceslot.DefaultCreatedAt = accountcodexdeviceslotDescCreatedAt.Default.(func() time.Time)
 	// accountcodexdeviceslotDescUpdatedAt is the schema descriptor for updated_at field.
-	accountcodexdeviceslotDescUpdatedAt := accountcodexdeviceslotFields[7].Descriptor()
+	accountcodexdeviceslotDescUpdatedAt := accountcodexdeviceslotFields[8].Descriptor()
 	// accountcodexdeviceslot.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	accountcodexdeviceslot.DefaultUpdatedAt = accountcodexdeviceslotDescUpdatedAt.Default.(func() time.Time)
 	// accountcodexdeviceslot.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -360,16 +366,22 @@ func init() {
 	accountcodexprofileDescArchitecture := accountcodexprofileFields[3].Descriptor()
 	// accountcodexprofile.ArchitectureValidator is a validator for the "architecture" field. It is called by the builders before save.
 	accountcodexprofile.ArchitectureValidator = accountcodexprofileDescArchitecture.Validators[0].(func(string) error)
+	// accountcodexprofileDescProxyMode is the schema descriptor for proxy_mode field.
+	accountcodexprofileDescProxyMode := accountcodexprofileFields[4].Descriptor()
+	// accountcodexprofile.DefaultProxyMode holds the default value on creation for the proxy_mode field.
+	accountcodexprofile.DefaultProxyMode = accountcodexprofileDescProxyMode.Default.(string)
+	// accountcodexprofile.ProxyModeValidator is a validator for the "proxy_mode" field. It is called by the builders before save.
+	accountcodexprofile.ProxyModeValidator = accountcodexprofileDescProxyMode.Validators[0].(func(string) error)
 	// accountcodexprofileDescCatalogVersion is the schema descriptor for catalog_version field.
-	accountcodexprofileDescCatalogVersion := accountcodexprofileFields[7].Descriptor()
+	accountcodexprofileDescCatalogVersion := accountcodexprofileFields[8].Descriptor()
 	// accountcodexprofile.DefaultCatalogVersion holds the default value on creation for the catalog_version field.
 	accountcodexprofile.DefaultCatalogVersion = accountcodexprofileDescCatalogVersion.Default.(int64)
 	// accountcodexprofileDescCreatedAt is the schema descriptor for created_at field.
-	accountcodexprofileDescCreatedAt := accountcodexprofileFields[8].Descriptor()
+	accountcodexprofileDescCreatedAt := accountcodexprofileFields[9].Descriptor()
 	// accountcodexprofile.DefaultCreatedAt holds the default value on creation for the created_at field.
 	accountcodexprofile.DefaultCreatedAt = accountcodexprofileDescCreatedAt.Default.(func() time.Time)
 	// accountcodexprofileDescUpdatedAt is the schema descriptor for updated_at field.
-	accountcodexprofileDescUpdatedAt := accountcodexprofileFields[9].Descriptor()
+	accountcodexprofileDescUpdatedAt := accountcodexprofileFields[10].Descriptor()
 	// accountcodexprofile.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	accountcodexprofile.DefaultUpdatedAt = accountcodexprofileDescUpdatedAt.Default.(func() time.Time)
 	// accountcodexprofile.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

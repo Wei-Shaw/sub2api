@@ -104,6 +104,7 @@ type relayState struct {
 	turnUsage               Usage
 	requestModelMu          sync.RWMutex
 	requestModel            string
+	turnWroteDownstream     atomic.Bool
 	pendingTurnStart        atomic.Pointer[time.Time]
 	lastResponseID          string
 	lastResponseModel       string
@@ -205,6 +206,7 @@ func Relay(
 	}
 	writeClientFrameUpstream := func(msgType coderws.MessageType, payload []byte) error {
 		if isClientResponseCreateFrame(msgType, payload) {
+			state.turnWroteDownstream.Store(false)
 			state.setRequestModel(strings.TrimSpace(gjson.GetBytes(payload, "model").String()))
 			turnStartedAt := time.Time{}
 			if options.TakeNextTurnStartedAt != nil {
@@ -559,7 +561,7 @@ func runUpstreamToClient(
 		}
 		markActivity()
 		if beforeWriteClient != nil {
-			if err := beforeWriteClient(msgType, payload, wroteDownstream); err != nil {
+			if err := beforeWriteClient(msgType, payload, state.turnWroteDownstream.Load()); err != nil {
 				emitRelayTrace(onTrace, RelayTraceEvent{
 					Stage:           "upstream_message_rejected",
 					Direction:       "upstream_to_client",
@@ -630,6 +632,7 @@ func runUpstreamToClient(
 			return
 		}
 		wroteDownstream = true
+		state.turnWroteDownstream.Store(true)
 		if afterWriteClient != nil {
 			afterWriteClient(msgType, payload)
 		}

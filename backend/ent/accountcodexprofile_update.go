@@ -97,6 +97,20 @@ func (_u *AccountCodexProfileUpdate) ClearArchitecture() *AccountCodexProfileUpd
 	return _u
 }
 
+// SetProxyMode sets the "proxy_mode" field.
+func (_u *AccountCodexProfileUpdate) SetProxyMode(v string) *AccountCodexProfileUpdate {
+	_u.mutation.SetProxyMode(v)
+	return _u
+}
+
+// SetNillableProxyMode sets the "proxy_mode" field if the given value is not nil.
+func (_u *AccountCodexProfileUpdate) SetNillableProxyMode(v *string) *AccountCodexProfileUpdate {
+	if v != nil {
+		_u.SetProxyMode(*v)
+	}
+	return _u
+}
+
 // SetProxyID sets the "proxy_id" field.
 func (_u *AccountCodexProfileUpdate) SetProxyID(v int64) *AccountCodexProfileUpdate {
 	_u.mutation.ResetProxyID()
@@ -251,6 +265,11 @@ func (_u *AccountCodexProfileUpdate) check() error {
 			return &ValidationError{Name: "architecture", err: fmt.Errorf(`ent: validator failed for field "AccountCodexProfile.architecture": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ProxyMode(); ok {
+		if err := accountcodexprofile.ProxyModeValidator(v); err != nil {
+			return &ValidationError{Name: "proxy_mode", err: fmt.Errorf(`ent: validator failed for field "AccountCodexProfile.proxy_mode": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -283,6 +302,9 @@ func (_u *AccountCodexProfileUpdate) sqlSave(ctx context.Context) (_node int, er
 	}
 	if _u.mutation.ArchitectureCleared() {
 		_spec.ClearField(accountcodexprofile.FieldArchitecture, field.TypeString)
+	}
+	if value, ok := _u.mutation.ProxyMode(); ok {
+		_spec.SetField(accountcodexprofile.FieldProxyMode, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ProxyID(); ok {
 		_spec.SetField(accountcodexprofile.FieldProxyID, field.TypeInt64, value)
@@ -400,6 +422,20 @@ func (_u *AccountCodexProfileUpdateOne) SetNillableArchitecture(v *string) *Acco
 // ClearArchitecture clears the value of the "architecture" field.
 func (_u *AccountCodexProfileUpdateOne) ClearArchitecture() *AccountCodexProfileUpdateOne {
 	_u.mutation.ClearArchitecture()
+	return _u
+}
+
+// SetProxyMode sets the "proxy_mode" field.
+func (_u *AccountCodexProfileUpdateOne) SetProxyMode(v string) *AccountCodexProfileUpdateOne {
+	_u.mutation.SetProxyMode(v)
+	return _u
+}
+
+// SetNillableProxyMode sets the "proxy_mode" field if the given value is not nil.
+func (_u *AccountCodexProfileUpdateOne) SetNillableProxyMode(v *string) *AccountCodexProfileUpdateOne {
+	if v != nil {
+		_u.SetProxyMode(*v)
+	}
 	return _u
 }
 
@@ -570,6 +606,11 @@ func (_u *AccountCodexProfileUpdateOne) check() error {
 			return &ValidationError{Name: "architecture", err: fmt.Errorf(`ent: validator failed for field "AccountCodexProfile.architecture": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ProxyMode(); ok {
+		if err := accountcodexprofile.ProxyModeValidator(v); err != nil {
+			return &ValidationError{Name: "proxy_mode", err: fmt.Errorf(`ent: validator failed for field "AccountCodexProfile.proxy_mode": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -619,6 +660,9 @@ func (_u *AccountCodexProfileUpdateOne) sqlSave(ctx context.Context) (_node *Acc
 	}
 	if _u.mutation.ArchitectureCleared() {
 		_spec.ClearField(accountcodexprofile.FieldArchitecture, field.TypeString)
+	}
+	if value, ok := _u.mutation.ProxyMode(); ok {
+		_spec.SetField(accountcodexprofile.FieldProxyMode, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ProxyID(); ok {
 		_spec.SetField(accountcodexprofile.FieldProxyID, field.TypeInt64, value)

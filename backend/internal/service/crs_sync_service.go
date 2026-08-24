@@ -76,12 +76,13 @@ func guardCRSShadowParentInvariant(ctx context.Context, repo AccountRepository, 
 }
 
 type SyncFromCRSInput struct {
-	BaseURL             string
-	Username            string
-	Password            string
-	SyncProxies         bool
-	SelectedAccountIDs  []string // if non-empty, only create new accounts with these CRS IDs
-	CodexIdentityPolicy *CodexIdentityPolicySpec
+	BaseURL                               string
+	Username                              string
+	Password                              string
+	SyncProxies                           bool
+	SelectedAccountIDs                    []string // if non-empty, only create new accounts with these CRS IDs
+	CodexIdentityPolicy                   *CodexIdentityPolicySpec
+	OverrideExistingCodexIdentityPolicies bool
 }
 
 type SyncFromCRSItemResult struct {
@@ -266,6 +267,16 @@ func (s *CRSSyncService) fetchCRSExport(ctx context.Context, baseURL, username, 
 }
 
 func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput) (*SyncFromCRSResult, error) {
+	if input.OverrideExistingCodexIdentityPolicies && input.CodexIdentityPolicy == nil {
+		return nil, errors.New("codex_identity_policy is required when overriding existing identity policies")
+	}
+	if input.CodexIdentityPolicy != nil {
+		normalized, err := input.CodexIdentityPolicy.NormalizeAndValidate(PlatformOpenAI, AccountTypeOAuth)
+		if err != nil {
+			return nil, err
+		}
+		input.CodexIdentityPolicy = &normalized
+	}
 	exported, err := s.fetchCRSExport(ctx, input.BaseURL, input.Username, input.Password)
 	if err != nil {
 		return nil, err
@@ -707,6 +718,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 			continue
 		}
 
+		previousIdentityMode := existing.CodexIdentityPolicy.Mode
 		existing.Extra = extra
 		existing.Name = defaultName(src.Name, src.ID)
 		existing.Platform = PlatformOpenAI
@@ -719,11 +731,12 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		existing.Priority = priority
 		existing.Status = status
 		existing.Schedulable = src.Schedulable
-		if input.CodexIdentityPolicy != nil {
+		if input.OverrideExistingCodexIdentityPolicies {
 			existing.CodexIdentityPolicy = *input.CodexIdentityPolicy
 		}
 
-		requiresProvisioning := existing.CodexIdentityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool
+		requiresProvisioning := previousIdentityMode == CodexIdentityPolicyOSProfileDevicePool ||
+			existing.CodexIdentityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool
 		var updateErr error
 		if requiresProvisioning {
 			provisioningRepo, ok := s.accountRepo.(AccountProvisioningRepository)

@@ -503,7 +503,12 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		if contentType == "" {
 			contentType = "application/json"
 		}
-		c.Data(resp.StatusCode, contentType, body)
+		clientBody, restoreErr := restoreStagedCodexIdentityJSON(c, account, body)
+		if restoreErr != nil {
+			writeOpenAIPassthroughErrorEnvelope(c, http.StatusBadGateway, resp.Header, "Upstream request failed")
+			return nil, fmt.Errorf("restore Codex cyber-policy identity: %w", restoreErr)
+		}
+		c.Data(resp.StatusCode, contentType, clientBody)
 		if cyberMsg == "" {
 			return nil, fmt.Errorf("openai cyber_policy: %d", resp.StatusCode)
 		}

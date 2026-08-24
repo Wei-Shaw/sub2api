@@ -19,6 +19,8 @@ const (
 	FieldProfileID = "profile_id"
 	// FieldSlotIndex holds the string denoting the slot_index field in the database.
 	FieldSlotIndex = "slot_index"
+	// FieldProxyMode holds the string denoting the proxy_mode field in the database.
+	FieldProxyMode = "proxy_mode"
 	// FieldProxyID holds the string denoting the proxy_id field in the database.
 	FieldProxyID = "proxy_id"
 	// FieldEpoch holds the string denoting the epoch field in the database.
@@ -39,6 +41,7 @@ var Columns = []string{
 	FieldAccountID,
 	FieldProfileID,
 	FieldSlotIndex,
+	FieldProxyMode,
 	FieldProxyID,
 	FieldEpoch,
 	FieldState,
@@ -57,6 +60,10 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultProxyMode holds the default value on creation for the "proxy_mode" field.
+	DefaultProxyMode string
+	// ProxyModeValidator is a validator for the "proxy_mode" field. It is called by the builders before save.
+	ProxyModeValidator func(string) error
 	// DefaultState holds the default value on creation for the "state" field.
 	DefaultState string
 	// StateValidator is a validator for the "state" field. It is called by the builders before save.
@@ -90,6 +97,11 @@ func ByProfileID(opts ...sql.OrderTermOption) OrderOption {
 // BySlotIndex orders the results by the slot_index field.
 func BySlotIndex(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSlotIndex, opts...).ToFunc()
+}
+
+// ByProxyMode orders the results by the proxy_mode field.
+func ByProxyMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldProxyMode, opts...).ToFunc()
 }
 
 // ByProxyID orders the results by the proxy_id field.

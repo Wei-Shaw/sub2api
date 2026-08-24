@@ -10,6 +10,7 @@
         </p>
       </div>
       <button
+        ref="refreshButton"
         type="button"
         class="btn btn-secondary btn-sm shrink-0"
         :disabled="loading || finalizing"
@@ -82,10 +83,23 @@
           {{ copy('admin.accounts.codexIdentity.finalizeConfirm', 'Finalize only slots the server confirms are fully drained?') }}
         </span>
         <div class="flex shrink-0 justify-end gap-2">
-          <button type="button" class="btn btn-secondary btn-sm" :disabled="finalizing" @click="confirmingFinalize = false">
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            data-testid="cancel-finalize-draining"
+            :disabled="finalizing"
+            @click="closeFinalizeConfirmation"
+          >
             {{ copy('admin.accounts.codexIdentity.cancel', 'Cancel') }}
           </button>
-          <button type="button" class="btn btn-primary btn-sm" data-testid="confirm-finalize-draining" :disabled="finalizing" @click="finalizeDraining">
+          <button
+            ref="finalizeConfirmButton"
+            type="button"
+            class="btn btn-primary btn-sm"
+            data-testid="confirm-finalize-draining"
+            :disabled="finalizing"
+            @click="finalizeDraining"
+          >
             <Icon v-if="!finalizing" name="checkCircle" size="sm" />
             {{ finalizing
               ? copy('admin.accounts.codexIdentity.finalizing', 'Finalizing...')
@@ -93,7 +107,15 @@
           </button>
         </div>
       </div>
-      <button v-else type="button" class="btn btn-secondary btn-sm" data-testid="finalize-draining-slots" @click="confirmingFinalize = true">
+      <button
+        v-else
+        ref="finalizeTriggerButton"
+        type="button"
+        class="btn btn-secondary btn-sm"
+        data-testid="finalize-draining-slots"
+        :disabled="finalizing"
+        @click="openFinalizeConfirmation"
+      >
         <Icon name="checkCircle" size="sm" />
         {{ copy('admin.accounts.codexIdentity.finalizeDraining', 'Finalize drained slots') }}
       </button>
@@ -102,7 +124,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { CodexDeviceSlotSummary } from '@/api/admin/accounts'
@@ -132,7 +154,27 @@ const loading = ref(false)
 const finalizing = ref(false)
 const confirmingFinalize = ref(false)
 const errorMessage = ref('')
+const refreshButton = ref<HTMLButtonElement | null>(null)
+const finalizeTriggerButton = ref<HTMLButtonElement | null>(null)
+const finalizeConfirmButton = ref<HTMLButtonElement | null>(null)
 const drainingSlots = computed(() => slots.value.filter((slot) => slot.state === 'draining'))
+
+const focusFinalizeReturnTarget = async () => {
+  await nextTick()
+  const target = finalizeTriggerButton.value ?? refreshButton.value
+  target?.focus()
+}
+
+const openFinalizeConfirmation = async () => {
+  confirmingFinalize.value = true
+  await nextTick()
+  finalizeConfirmButton.value?.focus()
+}
+
+const closeFinalizeConfirmation = async () => {
+  confirmingFinalize.value = false
+  await focusFinalizeReturnTarget()
+}
 
 const loadSlots = async () => {
   loading.value = true
@@ -149,9 +191,11 @@ const loadSlots = async () => {
 const finalizeDraining = async () => {
   if (finalizing.value) return
   finalizing.value = true
+  let confirmationClosed = false
   try {
     const result = await adminAPI.accounts.finalizeCodexDrainingSlots(props.accountId)
     confirmingFinalize.value = false
+    confirmationClosed = true
     if (result.deleted > 0) {
       appStore.showSuccess(t('admin.accounts.codexIdentity.finalizeSuccess', { count: result.deleted }))
     } else {
@@ -163,6 +207,9 @@ const finalizeDraining = async () => {
     appStore.showError(error?.message || copy('admin.accounts.codexIdentity.finalizeFailed', 'Failed to finalize drained slots.'))
   } finally {
     finalizing.value = false
+    if (confirmationClosed) {
+      await focusFinalizeReturnTarget()
+    }
   }
 }
 
@@ -183,7 +230,7 @@ const profileLabel = (slot: CodexDeviceSlotSummary): string => {
 }
 
 const proxyLabel = (proxyID?: number | null): string => {
-  if (!proxyID) return copy('admin.accounts.codexIdentity.inheritedProxy', 'Inherited account proxy')
+  if (!proxyID) return copy('admin.accounts.codexIdentity.directConnection', 'Direct connection')
   const proxy = props.proxies.find((item) => item.id === proxyID)
   return `${copy('admin.accounts.codexIdentity.proxy', 'Proxy')}: ${proxy?.name ?? `#${proxyID}`}`
 }

@@ -690,6 +690,7 @@ export async function syncFromCrs(params: {
   sync_proxies?: boolean
   selected_account_ids?: string[]
   codex_identity_policy?: CodexIdentityPolicy
+  override_existing_codex_identity_policies?: boolean
 }): Promise<{
   created: number
   updated: number

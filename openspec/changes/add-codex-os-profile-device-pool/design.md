@@ -102,7 +102,9 @@ type CodexIdentityAttemptPlan struct {
 
 ### 8. Proxy 分层且变化创建新 epoch
 
-有效 proxy: slot override > profile override > account default。导入通过当前部署稳定 proxy key/name 映射，不能信任外部数值 ID。代理或 canonical Profile 改变必须建立新 epoch并排空旧槽位。
+Profile 与 slot 的代理路由使用显式 `proxy_mode=inherit|proxy|direct`；只有 `proxy` 可携带 `proxy_id`。有效路由按 slot > profile > account default 解析，`direct` 是终止继承的显式直连，不能用 `proxy_id=null` 同时表示继承和直连。代理到期回退为 direct 时必须持久化 `direct`，即使账号仍配置默认代理也不得重新继承。
+
+导入通过当前部署稳定 proxy key/name 映射，不能信任外部数值 ID。代理路由或 canonical Profile 改变必须建立新 epoch并排空旧槽位。已发布 migration 不改写；三态路由通过后续 migration 增量回填和约束。
 
 ### 9. 独立 Profile affinity namespace
 

@@ -54,6 +54,20 @@ func (_c *AccountCodexProfileCreate) SetNillableArchitecture(v *string) *Account
 	return _c
 }
 
+// SetProxyMode sets the "proxy_mode" field.
+func (_c *AccountCodexProfileCreate) SetProxyMode(v string) *AccountCodexProfileCreate {
+	_c.mutation.SetProxyMode(v)
+	return _c
+}
+
+// SetNillableProxyMode sets the "proxy_mode" field if the given value is not nil.
+func (_c *AccountCodexProfileCreate) SetNillableProxyMode(v *string) *AccountCodexProfileCreate {
+	if v != nil {
+		_c.SetProxyMode(*v)
+	}
+	return _c
+}
+
 // SetProxyID sets the "proxy_id" field.
 func (_c *AccountCodexProfileCreate) SetProxyID(v int64) *AccountCodexProfileCreate {
 	_c.mutation.SetProxyID(v)
@@ -157,6 +171,10 @@ func (_c *AccountCodexProfileCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *AccountCodexProfileCreate) defaults() {
+	if _, ok := _c.mutation.ProxyMode(); !ok {
+		v := accountcodexprofile.DefaultProxyMode
+		_c.mutation.SetProxyMode(v)
+	}
 	if _, ok := _c.mutation.CatalogVersion(); !ok {
 		v := accountcodexprofile.DefaultCatalogVersion
 		_c.mutation.SetCatalogVersion(v)
@@ -195,6 +213,14 @@ func (_c *AccountCodexProfileCreate) check() error {
 	if v, ok := _c.mutation.Architecture(); ok {
 		if err := accountcodexprofile.ArchitectureValidator(v); err != nil {
 			return &ValidationError{Name: "architecture", err: fmt.Errorf(`ent: validator failed for field "AccountCodexProfile.architecture": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ProxyMode(); !ok {
+		return &ValidationError{Name: "proxy_mode", err: errors.New(`ent: missing required field "AccountCodexProfile.proxy_mode"`)}
+	}
+	if v, ok := _c.mutation.ProxyMode(); ok {
+		if err := accountcodexprofile.ProxyModeValidator(v); err != nil {
+			return &ValidationError{Name: "proxy_mode", err: fmt.Errorf(`ent: validator failed for field "AccountCodexProfile.proxy_mode": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.SlotCount(); !ok {
@@ -254,6 +280,10 @@ func (_c *AccountCodexProfileCreate) createSpec() (*AccountCodexProfile, *sqlgra
 	if value, ok := _c.mutation.Architecture(); ok {
 		_spec.SetField(accountcodexprofile.FieldArchitecture, field.TypeString, value)
 		_node.Architecture = &value
+	}
+	if value, ok := _c.mutation.ProxyMode(); ok {
+		_spec.SetField(accountcodexprofile.FieldProxyMode, field.TypeString, value)
+		_node.ProxyMode = value
 	}
 	if value, ok := _c.mutation.ProxyID(); ok {
 		_spec.SetField(accountcodexprofile.FieldProxyID, field.TypeInt64, value)
@@ -388,6 +418,18 @@ func (u *AccountCodexProfileUpsert) UpdateArchitecture() *AccountCodexProfileUps
 // ClearArchitecture clears the value of the "architecture" field.
 func (u *AccountCodexProfileUpsert) ClearArchitecture() *AccountCodexProfileUpsert {
 	u.SetNull(accountcodexprofile.FieldArchitecture)
+	return u
+}
+
+// SetProxyMode sets the "proxy_mode" field.
+func (u *AccountCodexProfileUpsert) SetProxyMode(v string) *AccountCodexProfileUpsert {
+	u.Set(accountcodexprofile.FieldProxyMode, v)
+	return u
+}
+
+// UpdateProxyMode sets the "proxy_mode" field to the value that was provided on create.
+func (u *AccountCodexProfileUpsert) UpdateProxyMode() *AccountCodexProfileUpsert {
+	u.SetExcluded(accountcodexprofile.FieldProxyMode)
 	return u
 }
 
@@ -593,6 +635,20 @@ func (u *AccountCodexProfileUpsertOne) UpdateArchitecture() *AccountCodexProfile
 func (u *AccountCodexProfileUpsertOne) ClearArchitecture() *AccountCodexProfileUpsertOne {
 	return u.Update(func(s *AccountCodexProfileUpsert) {
 		s.ClearArchitecture()
+	})
+}
+
+// SetProxyMode sets the "proxy_mode" field.
+func (u *AccountCodexProfileUpsertOne) SetProxyMode(v string) *AccountCodexProfileUpsertOne {
+	return u.Update(func(s *AccountCodexProfileUpsert) {
+		s.SetProxyMode(v)
+	})
+}
+
+// UpdateProxyMode sets the "proxy_mode" field to the value that was provided on create.
+func (u *AccountCodexProfileUpsertOne) UpdateProxyMode() *AccountCodexProfileUpsertOne {
+	return u.Update(func(s *AccountCodexProfileUpsert) {
+		s.UpdateProxyMode()
 	})
 }
 
@@ -979,6 +1035,20 @@ func (u *AccountCodexProfileUpsertBulk) UpdateArchitecture() *AccountCodexProfil
 func (u *AccountCodexProfileUpsertBulk) ClearArchitecture() *AccountCodexProfileUpsertBulk {
 	return u.Update(func(s *AccountCodexProfileUpsert) {
 		s.ClearArchitecture()
+	})
+}
+
+// SetProxyMode sets the "proxy_mode" field.
+func (u *AccountCodexProfileUpsertBulk) SetProxyMode(v string) *AccountCodexProfileUpsertBulk {
+	return u.Update(func(s *AccountCodexProfileUpsert) {
+		s.SetProxyMode(v)
+	})
+}
+
+// UpdateProxyMode sets the "proxy_mode" field to the value that was provided on create.
+func (u *AccountCodexProfileUpsertBulk) UpdateProxyMode() *AccountCodexProfileUpsertBulk {
+	return u.Update(func(s *AccountCodexProfileUpsert) {
+		s.UpdateProxyMode()
 	})
 }
 

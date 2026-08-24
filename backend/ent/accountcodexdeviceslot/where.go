@@ -69,6 +69,11 @@ func SlotIndex(v int) predicate.AccountCodexDeviceSlot {
 	return predicate.AccountCodexDeviceSlot(sql.FieldEQ(FieldSlotIndex, v))
 }
 
+// ProxyMode applies equality check predicate on the "proxy_mode" field. It's identical to ProxyModeEQ.
+func ProxyMode(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldEQ(FieldProxyMode, v))
+}
+
 // ProxyID applies equality check predicate on the "proxy_id" field. It's identical to ProxyIDEQ.
 func ProxyID(v int64) predicate.AccountCodexDeviceSlot {
 	return predicate.AccountCodexDeviceSlot(sql.FieldEQ(FieldProxyID, v))
@@ -212,6 +217,71 @@ func SlotIndexLT(v int) predicate.AccountCodexDeviceSlot {
 // SlotIndexLTE applies the LTE predicate on the "slot_index" field.
 func SlotIndexLTE(v int) predicate.AccountCodexDeviceSlot {
 	return predicate.AccountCodexDeviceSlot(sql.FieldLTE(FieldSlotIndex, v))
+}
+
+// ProxyModeEQ applies the EQ predicate on the "proxy_mode" field.
+func ProxyModeEQ(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldEQ(FieldProxyMode, v))
+}
+
+// ProxyModeNEQ applies the NEQ predicate on the "proxy_mode" field.
+func ProxyModeNEQ(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldNEQ(FieldProxyMode, v))
+}
+
+// ProxyModeIn applies the In predicate on the "proxy_mode" field.
+func ProxyModeIn(vs ...string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldIn(FieldProxyMode, vs...))
+}
+
+// ProxyModeNotIn applies the NotIn predicate on the "proxy_mode" field.
+func ProxyModeNotIn(vs ...string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldNotIn(FieldProxyMode, vs...))
+}
+
+// ProxyModeGT applies the GT predicate on the "proxy_mode" field.
+func ProxyModeGT(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldGT(FieldProxyMode, v))
+}
+
+// ProxyModeGTE applies the GTE predicate on the "proxy_mode" field.
+func ProxyModeGTE(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldGTE(FieldProxyMode, v))
+}
+
+// ProxyModeLT applies the LT predicate on the "proxy_mode" field.
+func ProxyModeLT(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldLT(FieldProxyMode, v))
+}
+
+// ProxyModeLTE applies the LTE predicate on the "proxy_mode" field.
+func ProxyModeLTE(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldLTE(FieldProxyMode, v))
+}
+
+// ProxyModeContains applies the Contains predicate on the "proxy_mode" field.
+func ProxyModeContains(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldContains(FieldProxyMode, v))
+}
+
+// ProxyModeHasPrefix applies the HasPrefix predicate on the "proxy_mode" field.
+func ProxyModeHasPrefix(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldHasPrefix(FieldProxyMode, v))
+}
+
+// ProxyModeHasSuffix applies the HasSuffix predicate on the "proxy_mode" field.
+func ProxyModeHasSuffix(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldHasSuffix(FieldProxyMode, v))
+}
+
+// ProxyModeEqualFold applies the EqualFold predicate on the "proxy_mode" field.
+func ProxyModeEqualFold(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldEqualFold(FieldProxyMode, v))
+}
+
+// ProxyModeContainsFold applies the ContainsFold predicate on the "proxy_mode" field.
+func ProxyModeContainsFold(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldContainsFold(FieldProxyMode, v))
 }
 
 // ProxyIDEQ applies the EQ predicate on the "proxy_id" field.

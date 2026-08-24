@@ -68,6 +68,14 @@ type CodexUnsupportedProfilePolicy string
 
 const CodexUnsupportedProfileReject CodexUnsupportedProfilePolicy = "reject"
 
+type CodexProxyMode string
+
+const (
+	CodexProxyInherit  CodexProxyMode = "inherit"
+	CodexProxyExplicit CodexProxyMode = "proxy"
+	CodexProxyDirect   CodexProxyMode = "direct"
+)
+
 const (
 	defaultCodexAffinityTTLSeconds = 3600
 	minCodexAffinityTTLSeconds     = 60
@@ -88,8 +96,9 @@ type CodexSessionPolicySpec struct {
 // The installation ID is derived from the account seed and is never accepted
 // through this contract.
 type CodexDeviceSlotPolicy struct {
-	Index   int    `json:"index"`
-	ProxyID *int64 `json:"proxy_id,omitempty"`
+	Index     int            `json:"index"`
+	ProxyMode CodexProxyMode `json:"proxy_mode,omitempty"`
+	ProxyID   *int64         `json:"proxy_id,omitempty"`
 }
 
 // CodexOSProfilePolicy defines one canonical client surface for an OS class.
@@ -100,6 +109,7 @@ type CodexOSProfilePolicy struct {
 	CanonicalSurface CodexClientSurface      `json:"canonical_surface"`
 	Architecture     CodexArchitecture       `json:"architecture,omitempty"`
 	SlotCount        int                     `json:"slot_count"`
+	ProxyMode        CodexProxyMode          `json:"proxy_mode,omitempty"`
 	ProxyID          *int64                  `json:"proxy_id,omitempty"`
 	Epoch            int64                   `json:"epoch"`
 	CatalogVersion   int64                   `json:"catalog_version,omitempty"`
@@ -226,19 +236,19 @@ func hasUsableCodexProvisioningCredential(account *Account) bool {
 	if account == nil {
 		return false
 	}
+	if account.IsOpenAIAgentIdentity() {
+		if strings.TrimSpace(account.GetCredential("agent_runtime_id")) == "" {
+			return false
+		}
+		return ValidateOpenAIAgentIdentityPrivateKey(account.GetCredential("agent_private_key")) == nil
+	}
 	credentials := account.Credentials
 	for _, key := range []string{"access_token", "refresh_token"} {
 		if value, _ := credentials[key].(string); strings.TrimSpace(value) != "" {
 			return true
 		}
 	}
-	if !account.IsOpenAIAgentIdentity() {
-		return false
-	}
-	if strings.TrimSpace(account.GetCredential("agent_runtime_id")) == "" {
-		return false
-	}
-	return ValidateOpenAIAgentIdentityPrivateKey(account.GetCredential("agent_private_key")) == nil
+	return false
 }
 
 func (s CodexIdentityPolicySpec) NormalizeAndValidate(platform, accountType string) (CodexIdentityPolicySpec, error) {
@@ -373,6 +383,9 @@ func normalizeCodexOSProfile(profile CodexOSProfilePolicy) (CodexOSProfilePolicy
 			maxCodexDeviceSlotsPerProfile,
 		)
 	}
+	if err := normalizeCodexProxyRoute(&profile.ProxyMode, profile.ProxyID, "profile"); err != nil {
+		return CodexOSProfilePolicy{}, err
+	}
 
 	switch profile.OSClass {
 	case CodexOSWindows, CodexOSMacOS, CodexOSLinux:
@@ -394,7 +407,8 @@ func normalizeCodexOSProfile(profile CodexOSProfilePolicy) (CodexOSProfilePolicy
 	}
 
 	seenSlots := make(map[int]struct{}, len(profile.Slots))
-	for _, slot := range profile.Slots {
+	for i := range profile.Slots {
+		slot := &profile.Slots[i]
 		if slot.Index < 0 || slot.Index >= profile.SlotCount {
 			return CodexOSProfilePolicy{}, invalidCodexIdentityPolicy("slot index %d is outside configured slot_count", slot.Index)
 		}
@@ -402,15 +416,38 @@ func normalizeCodexOSProfile(profile CodexOSProfilePolicy) (CodexOSProfilePolicy
 			return CodexOSProfilePolicy{}, invalidCodexIdentityPolicy("duplicate slot index %d", slot.Index)
 		}
 		seenSlots[slot.Index] = struct{}{}
-		if slot.ProxyID != nil && *slot.ProxyID <= 0 {
-			return CodexOSProfilePolicy{}, invalidCodexIdentityPolicy("slot proxy_id must be positive")
+		if err := normalizeCodexProxyRoute(&slot.ProxyMode, slot.ProxyID, "slot"); err != nil {
+			return CodexOSProfilePolicy{}, err
 		}
-	}
-	if profile.ProxyID != nil && *profile.ProxyID <= 0 {
-		return CodexOSProfilePolicy{}, invalidCodexIdentityPolicy("profile proxy_id must be positive")
 	}
 	sort.Slice(profile.Slots, func(i, j int) bool { return profile.Slots[i].Index < profile.Slots[j].Index })
 	return profile, nil
+}
+
+func normalizeCodexProxyRoute(mode *CodexProxyMode, proxyID *int64, scope string) error {
+	if mode == nil {
+		return invalidCodexIdentityPolicy("%s proxy mode is required", scope)
+	}
+	if *mode == "" {
+		if proxyID != nil {
+			*mode = CodexProxyExplicit
+		} else {
+			*mode = CodexProxyInherit
+		}
+	}
+	switch *mode {
+	case CodexProxyInherit, CodexProxyDirect:
+		if proxyID != nil {
+			return invalidCodexIdentityPolicy("%s proxy_id is only valid when proxy_mode=proxy", scope)
+		}
+	case CodexProxyExplicit:
+		if proxyID == nil || *proxyID <= 0 {
+			return invalidCodexIdentityPolicy("%s proxy_mode=proxy requires a positive proxy_id", scope)
+		}
+	default:
+		return invalidCodexIdentityPolicy("unsupported %s proxy_mode %q", scope, *mode)
+	}
+	return nil
 }
 
 func PrepareCodexIdentityPolicyForCreate(
@@ -506,11 +543,11 @@ func codexProfileMaterial(profile CodexOSProfilePolicy) CodexOSProfilePolicy {
 func (s CodexIdentityPolicySpec) ReferencedProxyIDs() []int64 {
 	seen := make(map[int64]struct{})
 	for _, profile := range s.Profiles {
-		if profile.ProxyID != nil && *profile.ProxyID > 0 {
+		if profile.ProxyMode == CodexProxyExplicit && profile.ProxyID != nil && *profile.ProxyID > 0 {
 			seen[*profile.ProxyID] = struct{}{}
 		}
 		for _, slot := range profile.Slots {
-			if slot.ProxyID != nil && *slot.ProxyID > 0 {
+			if slot.ProxyMode == CodexProxyExplicit && slot.ProxyID != nil && *slot.ProxyID > 0 {
 				seen[*slot.ProxyID] = struct{}{}
 			}
 		}

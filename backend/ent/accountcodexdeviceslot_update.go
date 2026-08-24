@@ -91,6 +91,20 @@ func (_u *AccountCodexDeviceSlotUpdate) AddSlotIndex(v int) *AccountCodexDeviceS
 	return _u
 }
 
+// SetProxyMode sets the "proxy_mode" field.
+func (_u *AccountCodexDeviceSlotUpdate) SetProxyMode(v string) *AccountCodexDeviceSlotUpdate {
+	_u.mutation.SetProxyMode(v)
+	return _u
+}
+
+// SetNillableProxyMode sets the "proxy_mode" field if the given value is not nil.
+func (_u *AccountCodexDeviceSlotUpdate) SetNillableProxyMode(v *string) *AccountCodexDeviceSlotUpdate {
+	if v != nil {
+		_u.SetProxyMode(*v)
+	}
+	return _u
+}
+
 // SetProxyID sets the "proxy_id" field.
 func (_u *AccountCodexDeviceSlotUpdate) SetProxyID(v int64) *AccountCodexDeviceSlotUpdate {
 	_u.mutation.ResetProxyID()
@@ -202,6 +216,11 @@ func (_u *AccountCodexDeviceSlotUpdate) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *AccountCodexDeviceSlotUpdate) check() error {
+	if v, ok := _u.mutation.ProxyMode(); ok {
+		if err := accountcodexdeviceslot.ProxyModeValidator(v); err != nil {
+			return &ValidationError{Name: "proxy_mode", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceSlot.proxy_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.State(); ok {
 		if err := accountcodexdeviceslot.StateValidator(v); err != nil {
 			return &ValidationError{Name: "state", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceSlot.state": %w`, err)}
@@ -239,6 +258,9 @@ func (_u *AccountCodexDeviceSlotUpdate) sqlSave(ctx context.Context) (_node int,
 	}
 	if value, ok := _u.mutation.AddedSlotIndex(); ok {
 		_spec.AddField(accountcodexdeviceslot.FieldSlotIndex, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ProxyMode(); ok {
+		_spec.SetField(accountcodexdeviceslot.FieldProxyMode, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ProxyID(); ok {
 		_spec.SetField(accountcodexdeviceslot.FieldProxyID, field.TypeInt64, value)
@@ -341,6 +363,20 @@ func (_u *AccountCodexDeviceSlotUpdateOne) SetNillableSlotIndex(v *int) *Account
 // AddSlotIndex adds value to the "slot_index" field.
 func (_u *AccountCodexDeviceSlotUpdateOne) AddSlotIndex(v int) *AccountCodexDeviceSlotUpdateOne {
 	_u.mutation.AddSlotIndex(v)
+	return _u
+}
+
+// SetProxyMode sets the "proxy_mode" field.
+func (_u *AccountCodexDeviceSlotUpdateOne) SetProxyMode(v string) *AccountCodexDeviceSlotUpdateOne {
+	_u.mutation.SetProxyMode(v)
+	return _u
+}
+
+// SetNillableProxyMode sets the "proxy_mode" field if the given value is not nil.
+func (_u *AccountCodexDeviceSlotUpdateOne) SetNillableProxyMode(v *string) *AccountCodexDeviceSlotUpdateOne {
+	if v != nil {
+		_u.SetProxyMode(*v)
+	}
 	return _u
 }
 
@@ -468,6 +504,11 @@ func (_u *AccountCodexDeviceSlotUpdateOne) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *AccountCodexDeviceSlotUpdateOne) check() error {
+	if v, ok := _u.mutation.ProxyMode(); ok {
+		if err := accountcodexdeviceslot.ProxyModeValidator(v); err != nil {
+			return &ValidationError{Name: "proxy_mode", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceSlot.proxy_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.State(); ok {
 		if err := accountcodexdeviceslot.StateValidator(v); err != nil {
 			return &ValidationError{Name: "state", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceSlot.state": %w`, err)}
@@ -522,6 +563,9 @@ func (_u *AccountCodexDeviceSlotUpdateOne) sqlSave(ctx context.Context) (_node *
 	}
 	if value, ok := _u.mutation.AddedSlotIndex(); ok {
 		_spec.AddField(accountcodexdeviceslot.FieldSlotIndex, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ProxyMode(); ok {
+		_spec.SetField(accountcodexdeviceslot.FieldProxyMode, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ProxyID(); ok {
 		_spec.SetField(accountcodexdeviceslot.FieldProxyID, field.TypeInt64, value)

@@ -5998,6 +5998,7 @@ type AccountCodexDeviceSlotMutation struct {
 	addprofile_id *int64
 	slot_index    *int
 	addslot_index *int
+	proxy_mode    *string
 	proxy_id      *int64
 	addproxy_id   *int64
 	epoch         *int64
@@ -6277,6 +6278,42 @@ func (m *AccountCodexDeviceSlotMutation) ResetSlotIndex() {
 	m.addslot_index = nil
 }
 
+// SetProxyMode sets the "proxy_mode" field.
+func (m *AccountCodexDeviceSlotMutation) SetProxyMode(s string) {
+	m.proxy_mode = &s
+}
+
+// ProxyMode returns the value of the "proxy_mode" field in the mutation.
+func (m *AccountCodexDeviceSlotMutation) ProxyMode() (r string, exists bool) {
+	v := m.proxy_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProxyMode returns the old "proxy_mode" field's value of the AccountCodexDeviceSlot entity.
+// If the AccountCodexDeviceSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceSlotMutation) OldProxyMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProxyMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProxyMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProxyMode: %w", err)
+	}
+	return oldValue.ProxyMode, nil
+}
+
+// ResetProxyMode resets all changes to the "proxy_mode" field.
+func (m *AccountCodexDeviceSlotMutation) ResetProxyMode() {
+	m.proxy_mode = nil
+}
+
 // SetProxyID sets the "proxy_id" field.
 func (m *AccountCodexDeviceSlotMutation) SetProxyID(i int64) {
 	m.proxy_id = &i
@@ -6545,7 +6582,7 @@ func (m *AccountCodexDeviceSlotMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountCodexDeviceSlotMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m.account_id != nil {
 		fields = append(fields, accountcodexdeviceslot.FieldAccountID)
 	}
@@ -6554,6 +6591,9 @@ func (m *AccountCodexDeviceSlotMutation) Fields() []string {
 	}
 	if m.slot_index != nil {
 		fields = append(fields, accountcodexdeviceslot.FieldSlotIndex)
+	}
+	if m.proxy_mode != nil {
+		fields = append(fields, accountcodexdeviceslot.FieldProxyMode)
 	}
 	if m.proxy_id != nil {
 		fields = append(fields, accountcodexdeviceslot.FieldProxyID)
@@ -6584,6 +6624,8 @@ func (m *AccountCodexDeviceSlotMutation) Field(name string) (ent.Value, bool) {
 		return m.ProfileID()
 	case accountcodexdeviceslot.FieldSlotIndex:
 		return m.SlotIndex()
+	case accountcodexdeviceslot.FieldProxyMode:
+		return m.ProxyMode()
 	case accountcodexdeviceslot.FieldProxyID:
 		return m.ProxyID()
 	case accountcodexdeviceslot.FieldEpoch:
@@ -6609,6 +6651,8 @@ func (m *AccountCodexDeviceSlotMutation) OldField(ctx context.Context, name stri
 		return m.OldProfileID(ctx)
 	case accountcodexdeviceslot.FieldSlotIndex:
 		return m.OldSlotIndex(ctx)
+	case accountcodexdeviceslot.FieldProxyMode:
+		return m.OldProxyMode(ctx)
 	case accountcodexdeviceslot.FieldProxyID:
 		return m.OldProxyID(ctx)
 	case accountcodexdeviceslot.FieldEpoch:
@@ -6648,6 +6692,13 @@ func (m *AccountCodexDeviceSlotMutation) SetField(name string, value ent.Value) 
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetSlotIndex(v)
+		return nil
+	case accountcodexdeviceslot.FieldProxyMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProxyMode(v)
 		return nil
 	case accountcodexdeviceslot.FieldProxyID:
 		v, ok := value.(int64)
@@ -6813,6 +6864,9 @@ func (m *AccountCodexDeviceSlotMutation) ResetField(name string) error {
 		return nil
 	case accountcodexdeviceslot.FieldSlotIndex:
 		m.ResetSlotIndex()
+		return nil
+	case accountcodexdeviceslot.FieldProxyMode:
+		m.ResetProxyMode()
 		return nil
 	case accountcodexdeviceslot.FieldProxyID:
 		m.ResetProxyID()
@@ -7752,6 +7806,7 @@ type AccountCodexProfileMutation struct {
 	os_class           *string
 	canonical_surface  *string
 	architecture       *string
+	proxy_mode         *string
 	proxy_id           *int64
 	addproxy_id        *int64
 	slot_count         *int
@@ -8041,6 +8096,42 @@ func (m *AccountCodexProfileMutation) ArchitectureCleared() bool {
 func (m *AccountCodexProfileMutation) ResetArchitecture() {
 	m.architecture = nil
 	delete(m.clearedFields, accountcodexprofile.FieldArchitecture)
+}
+
+// SetProxyMode sets the "proxy_mode" field.
+func (m *AccountCodexProfileMutation) SetProxyMode(s string) {
+	m.proxy_mode = &s
+}
+
+// ProxyMode returns the value of the "proxy_mode" field in the mutation.
+func (m *AccountCodexProfileMutation) ProxyMode() (r string, exists bool) {
+	v := m.proxy_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProxyMode returns the old "proxy_mode" field's value of the AccountCodexProfile entity.
+// If the AccountCodexProfile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexProfileMutation) OldProxyMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProxyMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProxyMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProxyMode: %w", err)
+	}
+	return oldValue.ProxyMode, nil
+}
+
+// ResetProxyMode resets all changes to the "proxy_mode" field.
+func (m *AccountCodexProfileMutation) ResetProxyMode() {
+	m.proxy_mode = nil
 }
 
 // SetProxyID sets the "proxy_id" field.
@@ -8387,7 +8478,7 @@ func (m *AccountCodexProfileMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountCodexProfileMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.account_id != nil {
 		fields = append(fields, accountcodexprofile.FieldAccountID)
 	}
@@ -8399,6 +8490,9 @@ func (m *AccountCodexProfileMutation) Fields() []string {
 	}
 	if m.architecture != nil {
 		fields = append(fields, accountcodexprofile.FieldArchitecture)
+	}
+	if m.proxy_mode != nil {
+		fields = append(fields, accountcodexprofile.FieldProxyMode)
 	}
 	if m.proxy_id != nil {
 		fields = append(fields, accountcodexprofile.FieldProxyID)
@@ -8434,6 +8528,8 @@ func (m *AccountCodexProfileMutation) Field(name string) (ent.Value, bool) {
 		return m.CanonicalSurface()
 	case accountcodexprofile.FieldArchitecture:
 		return m.Architecture()
+	case accountcodexprofile.FieldProxyMode:
+		return m.ProxyMode()
 	case accountcodexprofile.FieldProxyID:
 		return m.ProxyID()
 	case accountcodexprofile.FieldSlotCount:
@@ -8463,6 +8559,8 @@ func (m *AccountCodexProfileMutation) OldField(ctx context.Context, name string)
 		return m.OldCanonicalSurface(ctx)
 	case accountcodexprofile.FieldArchitecture:
 		return m.OldArchitecture(ctx)
+	case accountcodexprofile.FieldProxyMode:
+		return m.OldProxyMode(ctx)
 	case accountcodexprofile.FieldProxyID:
 		return m.OldProxyID(ctx)
 	case accountcodexprofile.FieldSlotCount:
@@ -8511,6 +8609,13 @@ func (m *AccountCodexProfileMutation) SetField(name string, value ent.Value) err
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetArchitecture(v)
+		return nil
+	case accountcodexprofile.FieldProxyMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProxyMode(v)
 		return nil
 	case accountcodexprofile.FieldProxyID:
 		v, ok := value.(int64)
@@ -8692,6 +8797,9 @@ func (m *AccountCodexProfileMutation) ResetField(name string) error {
 		return nil
 	case accountcodexprofile.FieldArchitecture:
 		m.ResetArchitecture()
+		return nil
+	case accountcodexprofile.FieldProxyMode:
+		m.ResetProxyMode()
 		return nil
 	case accountcodexprofile.FieldProxyID:
 		m.ResetProxyID()

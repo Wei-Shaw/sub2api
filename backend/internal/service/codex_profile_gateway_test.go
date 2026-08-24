@@ -23,8 +23,26 @@ import (
 
 type codexProfileGatewayCache struct {
 	GatewayCache
-	values  map[string]int64
-	deleted map[string]bool
+	values      map[string]int64
+	deleted     map[string]bool
+	setCalls    int
+	failSetCall int
+}
+
+type codexProfileAtomicErrorCache struct {
+	*codexProfileGatewayCache
+}
+
+func (c *codexProfileAtomicErrorCache) RebindCodexProfileAffinity(
+	context.Context,
+	int64,
+	string,
+	string,
+	string,
+	int64,
+	time.Duration,
+) error {
+	return errors.New("injected atomic affinity error")
 }
 
 type codexDeviceLeaseCache struct {
@@ -70,6 +88,10 @@ func (c *codexProfileGatewayCache) GetSessionAccountID(_ context.Context, _ int6
 }
 
 func (c *codexProfileGatewayCache) SetSessionAccountID(_ context.Context, _ int64, key string, accountID int64, _ time.Duration) error {
+	c.setCalls++
+	if c.failSetCall > 0 && c.setCalls == c.failSetCall {
+		return errors.New("injected affinity cache write failure")
+	}
 	if c.values == nil {
 		c.values = make(map[string]int64)
 	}
@@ -259,6 +281,62 @@ func TestCodexProfileAffinityPartialBindingStillPreventsLegacyDowngrade(t *testi
 	require.False(t, svc.codexProfileAccountCompatible(ctx, offAccount))
 }
 
+func TestCodexProfileAffinityFallbackCacheFailsClosedOnPartialWrite(t *testing.T) {
+	cache := &codexProfileGatewayCache{values: map[string]int64{}, failSetCall: 2}
+	first := codexProfileTestAccount(t, 83, CodexOSLinux, CodexSurfaceCLI, CodexArchX8664, false)
+	second := codexProfileTestAccount(t, 84, CodexOSLinux, CodexSurfaceCLI, CodexArchX8664, false)
+	repo := &codexProfileGatewayAccountRepo{accounts: map[int64]*Account{first.ID: first, second.ID: second}}
+	svc := &OpenAIGatewayService{cache: cache, accountRepo: repo}
+	ctx := codexProfileTestContext(7, 101, CodexClientProfile{
+		OSClass: CodexOSLinux, Surface: CodexSurfaceCLI, Architecture: CodexArchX8664,
+	}, "no-bounce-session")
+	request, ok := codexProfileRequestFromContext(ctx)
+	require.True(t, ok)
+	indexKey := codexProfileAffinityKey(request, "no-bounce-session", 0, true)
+	bindingKey := codexProfileAffinityKey(request, "no-bounce-session", first.CodexIdentityPolicy.Version, false)
+	cache.values[indexKey] = first.ID
+	cache.values[bindingKey] = first.ID
+
+	handled, err := svc.setCodexProfileAffinityAccountID(ctx, nil, "no-bounce-session", second.ID)
+	require.True(t, handled)
+	require.ErrorContains(t, err, "injected affinity cache write failure")
+	require.NotContains(t, cache.values, indexKey, "a failed publish must not leave the old account index readable")
+	require.NotContains(t, cache.values, bindingKey, "the unpublished replacement binding must be removed")
+
+	accountID, handled, err := svc.getCodexProfileAffinityAccountID(ctx, nil, "no-bounce-session")
+	require.NoError(t, err)
+	require.False(t, handled)
+	require.Zero(t, accountID)
+}
+
+func TestCodexProfileAffinityAtomicErrorClearsAmbiguousBinding(t *testing.T) {
+	baseCache := &codexProfileGatewayCache{values: map[string]int64{}}
+	cache := &codexProfileAtomicErrorCache{codexProfileGatewayCache: baseCache}
+	first := codexProfileTestAccount(t, 85, CodexOSLinux, CodexSurfaceCLI, CodexArchX8664, false)
+	second := codexProfileTestAccount(t, 86, CodexOSLinux, CodexSurfaceCLI, CodexArchX8664, false)
+	svc := &OpenAIGatewayService{
+		cache: cache,
+		accountRepo: &codexProfileGatewayAccountRepo{
+			accounts: map[int64]*Account{first.ID: first, second.ID: second},
+		},
+	}
+	ctx := codexProfileTestContext(7, 101, CodexClientProfile{
+		OSClass: CodexOSLinux, Surface: CodexSurfaceCLI, Architecture: CodexArchX8664,
+	}, "ambiguous-session")
+	request, ok := codexProfileRequestFromContext(ctx)
+	require.True(t, ok)
+	indexKey := codexProfileAffinityKey(request, "ambiguous-session", 0, true)
+	bindingKey := codexProfileAffinityKey(request, "ambiguous-session", first.CodexIdentityPolicy.Version, false)
+	baseCache.values[indexKey] = first.ID
+	baseCache.values[bindingKey] = first.ID
+
+	handled, err := svc.setCodexProfileAffinityAccountID(ctx, nil, "ambiguous-session", second.ID)
+	require.True(t, handled)
+	require.ErrorContains(t, err, "injected atomic affinity error")
+	require.NotContains(t, baseCache.values, indexKey)
+	require.NotContains(t, baseCache.values, bindingKey)
+}
+
 func TestCodexProfilePolicyDoesNotFilterNonCodexRequestWithoutProfileContext(t *testing.T) {
 	account := codexProfileTestAccount(t, 78, CodexOSLinux, CodexSurfaceCLI, CodexArchX8664, false)
 	svc := &OpenAIGatewayService{}
@@ -292,6 +370,16 @@ func TestCodexProfileRepeatedStagePreservesAffinityActiveState(t *testing.T) {
 	require.True(t, codexProfileAffinityActive(c.Request.Context()))
 	stageCodexProfileRequest(c, []byte(`{"prompt_cache_key":"second"}`), "second")
 	require.True(t, codexProfileAffinityActive(c.Request.Context()), "restaging a later WS turn must retain the failover-mode marker")
+}
+
+func TestGenerateSessionHashFallbackRestagesProfileConversation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c := newCodexProfileGatewayContext(t, 7, 101, nil)
+	hash := (&OpenAIGatewayService{}).GenerateSessionHashWithFallback(c, []byte(`{}`), "stable-ws-fallback")
+	require.NotEmpty(t, hash)
+	request, ok := codexProfileRequestFromContext(c.Request.Context())
+	require.True(t, ok)
+	require.Equal(t, hash, request.ConversationHash)
 }
 
 func TestResponsesProfileContextFiltersHigherPriorityIncompatibleAccount(t *testing.T) {
@@ -434,6 +522,34 @@ func TestCodexProfilePassthroughJSONResponseRestoresKnownIdentityOnly(t *testing
 	require.NotNil(t, result)
 	require.Equal(t, "client-session", gjson.Get(recorder.Body.String(), "client_metadata.session_id").String())
 	require.Equal(t, alias, gjson.Get(recorder.Body.String(), "output.0.content.0.text").String())
+}
+
+func TestCodexProfileCyberErrorRestoresStructuredIdentityOnly(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	input := codexRuntimeAttemptInput(t)
+	plan, err := BuildCodexIdentityAttemptPlan(input)
+	require.NoError(t, err)
+	alias := plan.UpstreamValue(CodexIdentitySession)
+	account := &Account{ID: input.AccountID, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	stageCodexIdentityAttemptPlan(c, plan)
+	response := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": {"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"error":{"code":"cyber_policy","message":"ordinary text ` + alias + `","metadata":{"session_id":"` + alias + `"}}}`,
+		)),
+	}
+
+	result, err := (&OpenAIGatewayService{}).handleErrorResponse(
+		context.Background(), response, c, account, nil,
+	)
+	require.Nil(t, result)
+	require.ErrorContains(t, err, "cyber_policy")
+	require.Equal(t, "client-session", gjson.Get(recorder.Body.String(), "error.metadata.session_id").String())
+	require.Equal(t, "ordinary text "+alias, gjson.Get(recorder.Body.String(), "error.message").String())
 }
 
 func TestCodexProfileSharedDevicePreservesPR2WSAndStateIsolation(t *testing.T) {

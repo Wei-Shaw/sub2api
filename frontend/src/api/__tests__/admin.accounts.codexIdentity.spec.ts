@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultCodexIdentityPolicy } from '@/utils/codexIdentityValidation'
+import {
+  createDefaultCodexIdentityPolicy,
+  createDefaultCodexOSProfile
+} from '@/utils/codexIdentityValidation'
 
 const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 
@@ -63,6 +66,33 @@ describe('admin account Codex identity API payloads', () => {
       data,
       skip_default_group_bind: true
     })
+  })
+
+  it('keeps explicit direct profile and slot modes in API payloads', async () => {
+    const profile = createDefaultCodexOSProfile('linux')
+    profile.proxy_mode = 'direct'
+    profile.slots = [{ index: 0, proxy_mode: 'direct' }]
+    const policy = {
+      ...createDefaultCodexIdentityPolicy(),
+      mode: 'os_profile_device_pool' as const,
+      profiles: [profile]
+    }
+    const data = { exported_at: '2026-08-24T00:00:00Z', proxies: [], accounts: [] }
+
+    await importData({
+      data,
+      codex_identity_policy_override: policy,
+      override_imported_identity_policies: true
+    })
+
+    expect(post).toHaveBeenCalledWith('/admin/accounts/data', expect.objectContaining({
+      codex_identity_policy_override: expect.objectContaining({
+        profiles: [expect.objectContaining({
+          proxy_mode: 'direct',
+          slots: [{ index: 0, proxy_mode: 'direct' }]
+        })]
+      })
+    }))
   })
 
   it('uses the scoped device-slot lifecycle endpoints', async () => {

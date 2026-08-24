@@ -262,6 +262,7 @@ var (
 		{Name: "account_id", Type: field.TypeInt64},
 		{Name: "profile_id", Type: field.TypeInt64},
 		{Name: "slot_index", Type: field.TypeInt},
+		{Name: "proxy_mode", Type: field.TypeString, Size: 20, Default: "inherit"},
 		{Name: "proxy_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "epoch", Type: field.TypeInt64},
 		{Name: "state", Type: field.TypeString, Size: 20, Default: "active"},
@@ -277,7 +278,7 @@ var (
 			{
 				Name:    "accountcodexdeviceslot_profile_id_slot_index_epoch",
 				Unique:  true,
-				Columns: []*schema.Column{AccountCodexDeviceSlotsColumns[2], AccountCodexDeviceSlotsColumns[3], AccountCodexDeviceSlotsColumns[5]},
+				Columns: []*schema.Column{AccountCodexDeviceSlotsColumns[2], AccountCodexDeviceSlotsColumns[3], AccountCodexDeviceSlotsColumns[6]},
 			},
 			{
 				Name:    "accountcodexdeviceslot_id_account_id",
@@ -287,7 +288,7 @@ var (
 			{
 				Name:    "accountcodexdeviceslot_account_id_state",
 				Unique:  false,
-				Columns: []*schema.Column{AccountCodexDeviceSlotsColumns[1], AccountCodexDeviceSlotsColumns[6]},
+				Columns: []*schema.Column{AccountCodexDeviceSlotsColumns[1], AccountCodexDeviceSlotsColumns[7]},
 			},
 		},
 	}
@@ -317,6 +318,7 @@ var (
 		{Name: "os_class", Type: field.TypeString, Size: 20},
 		{Name: "canonical_surface", Type: field.TypeString, Size: 20},
 		{Name: "architecture", Type: field.TypeString, Nullable: true, Size: 20},
+		{Name: "proxy_mode", Type: field.TypeString, Size: 20, Default: "inherit"},
 		{Name: "proxy_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "slot_count", Type: field.TypeInt},
 		{Name: "epoch", Type: field.TypeInt64},
@@ -333,7 +335,7 @@ var (
 			{
 				Name:    "accountcodexprofile_account_id_os_class_epoch",
 				Unique:  true,
-				Columns: []*schema.Column{AccountCodexProfilesColumns[1], AccountCodexProfilesColumns[2], AccountCodexProfilesColumns[7]},
+				Columns: []*schema.Column{AccountCodexProfilesColumns[1], AccountCodexProfilesColumns[2], AccountCodexProfilesColumns[8]},
 			},
 			{
 				Name:    "accountcodexprofile_id_account_id",

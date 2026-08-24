@@ -25,6 +25,8 @@ type AccountCodexProfile struct {
 	CanonicalSurface string `json:"canonical_surface,omitempty"`
 	// Architecture holds the value of the "architecture" field.
 	Architecture *string `json:"architecture,omitempty"`
+	// ProxyMode holds the value of the "proxy_mode" field.
+	ProxyMode string `json:"proxy_mode,omitempty"`
 	// ProxyID holds the value of the "proxy_id" field.
 	ProxyID *int64 `json:"proxy_id,omitempty"`
 	// SlotCount holds the value of the "slot_count" field.
@@ -47,7 +49,7 @@ func (*AccountCodexProfile) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case accountcodexprofile.FieldID, accountcodexprofile.FieldAccountID, accountcodexprofile.FieldProxyID, accountcodexprofile.FieldSlotCount, accountcodexprofile.FieldEpoch, accountcodexprofile.FieldCatalogVersion:
 			values[i] = new(sql.NullInt64)
-		case accountcodexprofile.FieldOsClass, accountcodexprofile.FieldCanonicalSurface, accountcodexprofile.FieldArchitecture:
+		case accountcodexprofile.FieldOsClass, accountcodexprofile.FieldCanonicalSurface, accountcodexprofile.FieldArchitecture, accountcodexprofile.FieldProxyMode:
 			values[i] = new(sql.NullString)
 		case accountcodexprofile.FieldCreatedAt, accountcodexprofile.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -96,6 +98,12 @@ func (_m *AccountCodexProfile) assignValues(columns []string, values []any) erro
 			} else if value.Valid {
 				_m.Architecture = new(string)
 				*_m.Architecture = value.String
+			}
+		case accountcodexprofile.FieldProxyMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field proxy_mode", values[i])
+			} else if value.Valid {
+				_m.ProxyMode = value.String
 			}
 		case accountcodexprofile.FieldProxyID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -183,6 +191,9 @@ func (_m *AccountCodexProfile) String() string {
 		builder.WriteString("architecture=")
 		builder.WriteString(*v)
 	}
+	builder.WriteString(", ")
+	builder.WriteString("proxy_mode=")
+	builder.WriteString(_m.ProxyMode)
 	builder.WriteString(", ")
 	if v := _m.ProxyID; v != nil {
 		builder.WriteString("proxy_id=")

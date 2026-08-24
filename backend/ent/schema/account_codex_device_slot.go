@@ -15,6 +15,7 @@ func (AccountCodexDeviceSlot) Fields() []ent.Field {
 		field.Int64("account_id"),
 		field.Int64("profile_id"),
 		field.Int("slot_index"),
+		field.String("proxy_mode").Default("inherit").MaxLen(20),
 		field.Int64("proxy_id").Optional().Nillable(),
 		field.Int64("epoch"),
 		field.String("state").Default("active").MaxLen(20),

@@ -971,9 +971,25 @@ func (r *accountRepository) Delete(ctx context.Context, id int64) error {
 		// 已处于外部事务中（ErrTxStarted），复用当前 client
 		txClient = r.client
 	}
+	if _, err := txClient.Account.Query().Where(dbaccount.IDEQ(id)).ForUpdate().Only(ctx); err != nil {
+		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
+	}
 
 	if _, err := txClient.AccountGroup.Delete().Where(dbaccountgroup.AccountIDEQ(id)).Exec(ctx); err != nil {
 		return err
+	}
+	// Account uses soft deletion, so database ON DELETE CASCADE constraints do
+	// not run. Remove the non-soft-deleted identity graph explicitly in the
+	// same transaction to release proxy references and API-key bindings.
+	for _, statement := range []string{
+		"DELETE FROM account_codex_device_bindings WHERE account_id = $1",
+		"DELETE FROM account_codex_device_slots WHERE account_id = $1",
+		"DELETE FROM account_codex_profiles WHERE account_id = $1",
+		"DELETE FROM account_codex_identity_policies WHERE account_id = $1",
+	} {
+		if _, err := txClient.ExecContext(ctx, statement, id); err != nil {
+			return err
+		}
 	}
 	if _, err := txClient.ExecContext(ctx, "DELETE FROM scheduled_test_plans WHERE account_id = $1", id); err != nil {
 		return err

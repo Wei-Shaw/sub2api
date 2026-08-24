@@ -344,33 +344,7 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 }
 
 func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
-	// 存在唯一键约束 生成tombstone key 用来释放原key，长度远小于 128，满足 schema 限制
-	tombstoneKey := fmt.Sprintf("__deleted__%d__%d", id, time.Now().UnixNano())
-	// 显式软删除：避免依赖 Hook 行为，确保 deleted_at 一定被设置。
-	affected, err := r.client.APIKey.Update().
-		Where(apikey.IDEQ(id), apikey.DeletedAtIsNil()).
-		SetKey(tombstoneKey).
-		SetDeletedAt(time.Now()).
-		Save(ctx)
-	if err != nil {
-		if dbent.IsNotFound(err) {
-			return service.ErrAPIKeyNotFound
-		}
-		return err
-	}
-	if affected == 0 {
-		exists, err := r.client.APIKey.Query().
-			Where(apikey.IDEQ(id)).
-			Exist(mixins.SkipSoftDelete(ctx))
-		if err != nil {
-			return err
-		}
-		if exists {
-			return nil
-		}
-		return service.ErrAPIKeyNotFound
-	}
-	return nil
+	return r.DeleteWithAudit(ctx, id)
 }
 
 // DeleteWithAudit keeps the legacy method name for rolling-upgrade compatibility.
@@ -404,10 +378,11 @@ func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error 
 }
 
 func (r *apiKeyRepository) deleteWithTombstone(ctx context.Context, exec *dbent.Client, id int64, tombstoneKey string) error {
+	now := time.Now()
 	res, err := exec.ExecContext(ctx, `
 		UPDATE api_keys
-		SET key = $1, deleted_at = NOW(), updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL`, tombstoneKey, id)
+		SET key = $1, deleted_at = $2, updated_at = $2
+		WHERE id = $3 AND deleted_at IS NULL`, tombstoneKey, now, id)
 	if err != nil {
 		return err
 	}
@@ -423,10 +398,42 @@ func (r *apiKeyRepository) deleteWithTombstone(ctx context.Context, exec *dbent.
 		if existErr != nil {
 			return existErr
 		}
-		if exists {
-			return nil
+		if !exists {
+			return service.ErrAPIKeyNotFound
 		}
-		return service.ErrAPIKeyNotFound
+	}
+	return deleteCodexBindingsForAPIKey(ctx, exec, id)
+}
+
+func deleteCodexBindingsForAPIKey(ctx context.Context, client *dbent.Client, apiKeyID int64) error {
+	rows, err := client.QueryContext(ctx, `
+		DELETE FROM account_codex_device_bindings
+		WHERE api_key_id=$1
+		RETURNING account_id
+	`, apiKeyID)
+	if err != nil {
+		return err
+	}
+	accountIDs := make(map[int64]struct{})
+	for rows.Next() {
+		var accountID int64
+		if err := rows.Scan(&accountID); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		accountIDs[accountID] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for accountID := range accountIDs {
+		if _, err := finalizeDrainedCodexDeviceSlots(ctx, client, accountID); err != nil {
+			return err
+		}
 	}
 	return nil
 }

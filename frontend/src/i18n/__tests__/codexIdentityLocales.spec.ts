@@ -7,6 +7,9 @@ import { codexIdentityValidationMessageKey } from '@/utils/codexIdentityValidati
 const validationCodes = [
   'PROXY_INVALID',
   'PROXY_NOT_FOUND',
+  'PROXY_MODE_INVALID',
+  'PROXY_REQUIRED',
+  'PROXY_NOT_ALLOWED',
   'SURFACE_NOT_ALLOWED',
   'ARCHITECTURE_NOT_ALLOWED',
   'SLOT_COUNT_OUT_OF_RANGE',

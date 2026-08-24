@@ -21,6 +21,8 @@ const (
 	FieldCanonicalSurface = "canonical_surface"
 	// FieldArchitecture holds the string denoting the architecture field in the database.
 	FieldArchitecture = "architecture"
+	// FieldProxyMode holds the string denoting the proxy_mode field in the database.
+	FieldProxyMode = "proxy_mode"
 	// FieldProxyID holds the string denoting the proxy_id field in the database.
 	FieldProxyID = "proxy_id"
 	// FieldSlotCount holds the string denoting the slot_count field in the database.
@@ -44,6 +46,7 @@ var Columns = []string{
 	FieldOsClass,
 	FieldCanonicalSurface,
 	FieldArchitecture,
+	FieldProxyMode,
 	FieldProxyID,
 	FieldSlotCount,
 	FieldEpoch,
@@ -69,6 +72,10 @@ var (
 	CanonicalSurfaceValidator func(string) error
 	// ArchitectureValidator is a validator for the "architecture" field. It is called by the builders before save.
 	ArchitectureValidator func(string) error
+	// DefaultProxyMode holds the default value on creation for the "proxy_mode" field.
+	DefaultProxyMode string
+	// ProxyModeValidator is a validator for the "proxy_mode" field. It is called by the builders before save.
+	ProxyModeValidator func(string) error
 	// DefaultCatalogVersion holds the default value on creation for the "catalog_version" field.
 	DefaultCatalogVersion int64
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
@@ -105,6 +112,11 @@ func ByCanonicalSurface(opts ...sql.OrderTermOption) OrderOption {
 // ByArchitecture orders the results by the architecture field.
 func ByArchitecture(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldArchitecture, opts...).ToFunc()
+}
+
+// ByProxyMode orders the results by the proxy_mode field.
+func ByProxyMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldProxyMode, opts...).ToFunc()
 }
 
 // ByProxyID orders the results by the proxy_id field.

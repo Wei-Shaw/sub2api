@@ -74,6 +74,7 @@ describe('CodexDeviceSlotLifecycle', () => {
     expect(wrapper.text()).toContain('Windows / Desktop / x86_64')
     expect(wrapper.text()).toContain('Generic / Third-party')
     expect(wrapper.text()).toContain('Tokyo')
+    expect(wrapper.text()).toContain('Direct connection')
     expect(wrapper.text()).toContain('Draining')
     const row = wrapper.get('li')
     expect(row.classes()).toContain('grid-cols-1')
@@ -97,6 +98,37 @@ describe('CodexDeviceSlotLifecycle', () => {
     expect(listSlots).toHaveBeenCalledTimes(2)
     expect(showSuccess).toHaveBeenCalled()
     expect(wrapper.find('[data-testid="finalize-draining-slots"]').exists()).toBe(false)
+  })
+
+  it('moves keyboard focus into confirmation and restores it after cancel or finalize', async () => {
+    const wrapper = mount(CodexDeviceSlotLifecycle, {
+      attachTo: document.body,
+      props: { accountId: 10 },
+      global: { stubs: { Icon: true } },
+    })
+    await flushPromises()
+
+    const trigger = wrapper.get('[data-testid="finalize-draining-slots"]')
+    const triggerButton = trigger.element as HTMLButtonElement
+    triggerButton.focus()
+    await trigger.trigger('click')
+    await flushPromises()
+
+    const confirm = wrapper.get('[data-testid="confirm-finalize-draining"]')
+    expect(document.activeElement).toBe(confirm.element)
+    await wrapper.get('[data-testid="cancel-finalize-draining"]').trigger('click')
+    await flushPromises()
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="finalize-draining-slots"]').element)
+
+    await wrapper.get('[data-testid="finalize-draining-slots"]').trigger('click')
+    await flushPromises()
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="confirm-finalize-draining"]').element)
+    listSlots.mockResolvedValueOnce([activeSlot])
+    await wrapper.get('[data-testid="confirm-finalize-draining"]').trigger('click')
+    await flushPromises()
+
+    expect(document.activeElement).toBe(wrapper.get('button[aria-label="Refresh device slots"]').element)
+    wrapper.unmount()
   })
 
   it('shows an accessible error state and retry action', async () => {

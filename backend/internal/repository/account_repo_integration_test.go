@@ -507,6 +507,41 @@ func (s *AccountRepoSuite) TestDelete_WithGroupBindings() {
 	s.Require().Zero(count, "expected bindings to be removed")
 }
 
+func (s *AccountRepoSuite) TestDelete_RemovesCodexIdentityGraphDespiteAccountSoftDelete() {
+	user := mustCreateUser(s.T(), s.client, &service.User{Email: "delete-codex-graph@example.com"})
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-delete-codex-graph"})
+	policy := service.CodexIdentityPolicySpec{
+		Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []service.CodexOSProfilePolicy{{
+			OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI,
+			Architecture: service.CodexArchX8664, SlotCount: 1,
+		}},
+	}
+	account := &service.Account{
+		Name: "delete-codex-graph", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "test-token"}, Extra: map[string]any{},
+		Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	s.Require().NoError(s.repo.ProvisionAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}))
+	_, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	s.Require().NoError(err)
+
+	s.Require().NoError(s.repo.Delete(s.ctx, account.ID))
+	for table := range map[string]struct{}{
+		"account_codex_identity_policies": {},
+		"account_codex_profiles":          {},
+		"account_codex_device_slots":      {},
+		"account_codex_device_bindings":   {},
+	} {
+		var count int
+		s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM "+table+" WHERE account_id=$1", []any{account.ID}, &count))
+		s.Require().Zero(count, table)
+	}
+}
+
 // --- List / ListWithFilters ---
 
 func (s *AccountRepoSuite) TestList() {

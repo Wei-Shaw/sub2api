@@ -139,7 +139,29 @@
         </div>
       </div>
 
-      <div v-if="hasSelectedOpenAIOAuth" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div
+        v-if="hasExistingOpenAIOAuth"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="flex items-start gap-3 text-sm text-gray-700 dark:text-dark-300">
+          <input
+            v-model="overrideExistingCodexIdentityPolicies"
+            type="checkbox"
+            class="mt-0.5 rounded border-gray-300 dark:border-dark-600"
+            data-testid="crs-override-existing-codex-identity"
+          />
+          <span class="min-w-0">
+            <span class="block font-medium">
+              {{ t('admin.accounts.codexIdentity.crsOverrideExisting') }}
+            </span>
+            <span class="mt-1 block text-xs leading-5 text-gray-500 dark:text-dark-400">
+              {{ t('admin.accounts.codexIdentity.crsOverrideExistingDesc') }}
+            </span>
+          </span>
+        </label>
+      </div>
+
+      <div v-if="shouldConfigureCodexIdentityPolicy" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <CodexIdentityPolicyEditor
           v-model="codexIdentityPolicy"
           :proxies="proxies"
@@ -291,6 +313,7 @@ const previewResult = ref<PreviewFromCRSResult | null>(null)
 const selectedIds = ref(new Set<string>())
 const result = ref<Awaited<ReturnType<typeof adminAPI.accounts.syncFromCrs>> | null>(null)
 const codexIdentityPolicy = ref<CodexIdentityPolicy>(createDefaultCodexIdentityPolicy())
+const overrideExistingCodexIdentityPolicies = ref(false)
 
 const form = reactive({
   base_url: '',
@@ -310,6 +333,17 @@ const hasSelectedOpenAIOAuth = computed(() =>
     account.platform === 'openai' &&
     account.type === 'oauth'
   ) === true
+)
+
+const hasExistingOpenAIOAuth = computed(() =>
+  previewResult.value?.existing_accounts.some((account) =>
+    account.platform === 'openai' && account.type === 'oauth'
+  ) === true
+)
+
+const shouldConfigureCodexIdentityPolicy = computed(() =>
+  hasSelectedOpenAIOAuth.value ||
+  (hasExistingOpenAIOAuth.value && overrideExistingCodexIdentityPolicies.value)
 )
 
 const errorItems = computed(() => {
@@ -332,6 +366,7 @@ watch(
       form.password = ''
       form.sync_proxies = true
       codexIdentityPolicy.value = createDefaultCodexIdentityPolicy()
+      overrideExistingCodexIdentityPolicies.value = false
     }
   }
 )
@@ -347,6 +382,7 @@ const handleBack = () => {
   currentStep.value = 'input'
   previewResult.value = null
   selectedIds.value = new Set()
+  overrideExistingCodexIdentityPolicies.value = false
 }
 
 const selectAll = () => {
@@ -382,6 +418,7 @@ const handlePreview = async () => {
       password: form.password
     })
     previewResult.value = res
+    overrideExistingCodexIdentityPolicies.value = false
     // Auto-select all new accounts
     selectedIds.value = new Set(res.new_accounts.map((a) => a.crs_account_id))
     currentStep.value = 'preview'
@@ -398,7 +435,7 @@ const handleSync = async () => {
     return
   }
 
-  if (hasSelectedOpenAIOAuth.value) {
+  if (shouldConfigureCodexIdentityPolicy.value) {
     const identityValidation = validateCodexIdentityPolicy(codexIdentityPolicy.value, {
       availableProxyIDs: availableCodexIdentityProxyIDs(props.proxies)
     })
@@ -418,9 +455,11 @@ const handleSync = async () => {
       password: form.password,
       sync_proxies: form.sync_proxies,
       selected_account_ids: [...selectedIds.value],
-      codex_identity_policy: hasSelectedOpenAIOAuth.value
+      codex_identity_policy: shouldConfigureCodexIdentityPolicy.value
         ? serializeCodexIdentityPolicy(codexIdentityPolicy.value)
-        : undefined
+        : undefined,
+      override_existing_codex_identity_policies:
+        overrideExistingCodexIdentityPolicies.value || undefined
     })
     result.value = res
     currentStep.value = 'result'

@@ -25,6 +25,17 @@ func (r *accountRepository) UpdateProvisionedAccount(
 	rateSyncEnabled *bool,
 	rateMultiplier *float64,
 ) error {
+	return r.updateProvisionedAccount(ctx, spec, probeEnabled, rateSyncEnabled, rateMultiplier, true)
+}
+
+func (r *accountRepository) updateProvisionedAccount(
+	ctx context.Context,
+	spec *service.AccountProvisioningSpec,
+	probeEnabled *bool,
+	rateSyncEnabled *bool,
+	rateMultiplier *float64,
+	requireActiveProxies bool,
+) error {
 	if spec == nil || spec.Account == nil || spec.Account.ID <= 0 {
 		return service.ErrAccountNilInput
 	}
@@ -68,7 +79,7 @@ func (r *accountRepository) UpdateProvisionedAccount(
 		identityChanged = rotateProfilesInheritingAccountProxy(existingPolicy, &managedPolicy) || identityChanged
 	}
 	normalized.Identity = &managedPolicy
-	if err := validateProvisioningProxyReferences(ctx, txClient, account.ProxyID, managedPolicy); err != nil {
+	if err := validateProvisioningProxyReferences(ctx, txClient, account.ProxyID, managedPolicy, requireActiveProxies); err != nil {
 		return err
 	}
 	if accountProxyChanged {
@@ -147,7 +158,7 @@ func (r *accountRepository) ProvisionAccount(ctx context.Context, spec *service.
 		defer func() { _ = tx.Rollback() }()
 		txClient = tx.Client()
 	}
-	if err := validateProvisioningProxyReferences(ctx, txClient, account.ProxyID, policy); err != nil {
+	if err := validateProvisioningProxyReferences(ctx, txClient, account.ProxyID, policy, true); err != nil {
 		return err
 	}
 
@@ -310,15 +321,15 @@ func rotateProfilesInheritingAccountProxy(
 }
 
 func codexProfileInheritsAccountProxy(profile service.CodexOSProfilePolicy) bool {
-	if profile.ProxyID != nil {
+	if profile.ProxyMode != service.CodexProxyInherit {
 		return false
 	}
-	overridden := make(map[int]bool, len(profile.Slots))
+	overridden := make(map[int]service.CodexProxyMode, len(profile.Slots))
 	for _, slot := range profile.Slots {
-		overridden[slot.Index] = slot.ProxyID != nil
+		overridden[slot.Index] = slot.ProxyMode
 	}
 	for index := 0; index < profile.SlotCount; index++ {
-		if !overridden[index] {
+		if mode, exists := overridden[index]; !exists || mode == service.CodexProxyInherit {
 			return true
 		}
 	}
@@ -350,12 +361,12 @@ func snapshotRotatedInheritedAccountProxy(
 			continue
 		}
 		inheritedIndices := make([]int64, 0, oldProfile.SlotCount)
-		overrides := make(map[int]bool, len(oldProfile.Slots))
+		overrides := make(map[int]service.CodexProxyMode, len(oldProfile.Slots))
 		for _, slot := range oldProfile.Slots {
-			overrides[slot.Index] = slot.ProxyID != nil
+			overrides[slot.Index] = slot.ProxyMode
 		}
 		for index := 0; index < oldProfile.SlotCount; index++ {
-			if !overrides[index] {
+			if mode, exists := overrides[index]; !exists || mode == service.CodexProxyInherit {
 				inheritedIndices = append(inheritedIndices, int64(index))
 			}
 		}
@@ -379,7 +390,7 @@ func snapshotRotatedInheritedAccountProxy(
 		}
 		if _, err := client.ExecContext(ctx, `
 			UPDATE account_codex_device_slots AS slots
-			SET proxy_id=$1, updated_at=NOW()
+			SET proxy_mode='proxy', proxy_id=$1, updated_at=NOW()
 			FROM account_codex_profiles AS profiles
 			WHERE slots.profile_id=profiles.id
 			  AND slots.account_id=$2
@@ -476,17 +487,24 @@ func createProvisionedCodexIdentity(
 		if err != nil {
 			return err
 		}
-		overrides := make(map[int]*int64, len(profile.Slots))
+		overrides := make(map[int]service.CodexDeviceSlotPolicy, len(profile.Slots))
 		for _, slot := range profile.Slots {
-			overrides[slot.Index] = slot.ProxyID
+			overrides[slot.Index] = slot
 		}
 		for slotIndex := 0; slotIndex < profile.SlotCount; slotIndex++ {
+			override, exists := overrides[slotIndex]
+			proxyMode := service.CodexProxyInherit
+			var proxyID *int64
+			if exists {
+				proxyMode = override.ProxyMode
+				proxyID = override.ProxyID
+			}
 			if _, err := client.ExecContext(ctx, `
 				INSERT INTO account_codex_device_slots
-					(account_id, profile_id, slot_index, proxy_id, epoch, state)
-				VALUES ($1, $2, $3, $4, $5, 'active')
+					(account_id, profile_id, slot_index, proxy_mode, proxy_id, epoch, state)
+				VALUES ($1, $2, $3, $4, $5, $6, 'active')
 				ON CONFLICT (profile_id, slot_index, epoch) DO NOTHING
-			`, accountID, profileID, slotIndex, overrides[slotIndex], profile.Epoch); err != nil {
+			`, accountID, profileID, slotIndex, proxyMode, proxyID, profile.Epoch); err != nil {
 				return err
 			}
 		}
@@ -502,17 +520,18 @@ func insertProvisionedCodexProfile(
 ) (int64, error) {
 	rows, err := client.QueryContext(ctx, `
 		INSERT INTO account_codex_profiles
-			(account_id, os_class, canonical_surface, architecture, proxy_id, slot_count, epoch, catalog_version)
-		VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8)
+			(account_id, os_class, canonical_surface, architecture, proxy_mode, proxy_id, slot_count, epoch, catalog_version)
+		VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, $9)
 		ON CONFLICT (account_id, os_class, epoch) DO UPDATE SET
 			canonical_surface=EXCLUDED.canonical_surface,
 			architecture=EXCLUDED.architecture,
+			proxy_mode=EXCLUDED.proxy_mode,
 			proxy_id=EXCLUDED.proxy_id,
 			slot_count=EXCLUDED.slot_count,
 			catalog_version=EXCLUDED.catalog_version,
 			updated_at=NOW()
 		RETURNING id
-	`, accountID, profile.OSClass, profile.CanonicalSurface, profile.Architecture, profile.ProxyID, profile.SlotCount, profile.Epoch, profile.CatalogVersion)
+	`, accountID, profile.OSClass, profile.CanonicalSurface, profile.Architecture, profile.ProxyMode, profile.ProxyID, profile.SlotCount, profile.Epoch, profile.CatalogVersion)
 	if err != nil {
 		return 0, err
 	}
@@ -538,7 +557,11 @@ func validateProvisioningProxyReferences(
 	client *dbent.Client,
 	accountProxyID *int64,
 	policy service.CodexIdentityPolicySpec,
+	requireActive bool,
 ) error {
+	if policy.Mode != service.CodexIdentityPolicyOSProfileDevicePool {
+		return nil
+	}
 	proxyIDs := policy.ReferencedProxyIDs()
 	if accountProxyID != nil {
 		proxyIDs = append(proxyIDs, *accountProxyID)
@@ -577,7 +600,7 @@ func validateProvisioningProxyReferences(
 		if err := rows.Scan(&id, &status, &expiresAt); err != nil {
 			return err
 		}
-		if status != service.StatusActive || (expiresAt.Valid && !expiresAt.Time.After(now)) {
+		if requireActive && (status != service.StatusActive || (expiresAt.Valid && !expiresAt.Time.After(now))) {
 			return infraerrors.BadRequest("ACCOUNT_PROVISIONING_INVALID", fmt.Sprintf("proxy %d is not active", id))
 		}
 		valid[id] = struct{}{}

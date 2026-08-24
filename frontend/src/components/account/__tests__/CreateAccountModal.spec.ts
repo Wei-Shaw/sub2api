@@ -529,6 +529,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
     expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBeUndefined()
+    expect(importCodexSessionMock.mock.calls[0]?.[0]?.override_existing_codex_identity_policy).toBeUndefined()
     expect(importCodexSessionMock.mock.calls[0]?.[0]?.codex_identity_policy).toEqual({
       mode: 'off',
       binding_scope: 'api_key_os',
@@ -537,6 +538,25 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
       unsupported_policy: 'reject',
       profiles: []
     })
+  })
+
+  it('requires an explicit checkbox before a Codex session import replaces existing policies', async () => {
+    const wrapper = await openCodexImportStep()
+    const flow = wrapper.getComponent(OAuthAuthorizationFlowStub)
+    flow.vm.inputMethod = 'codex_session'
+    await wrapper.vm.$nextTick()
+
+    const override = wrapper.get('[data-testid="codex-session-override-existing-identity"]')
+    expect((override.element as HTMLInputElement).checked).toBe(false)
+    await override.setValue(true)
+    await wrapper.get('[data-testid="import-codex-session"]').trigger('click')
+    await flushPromises()
+
+    expect(importCodexSessionMock).toHaveBeenCalledWith(expect.objectContaining({
+      update_existing: true,
+      override_existing_codex_identity_policy: true,
+      codex_identity_policy: expect.objectContaining({ mode: 'off' }),
+    }))
   })
 
   it('passes the same identity policy through OAuth code exchange account creation', async () => {

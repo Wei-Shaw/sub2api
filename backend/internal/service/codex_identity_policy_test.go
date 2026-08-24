@@ -260,3 +260,52 @@ func TestAccountProvisioningAcceptsValidAgentIdentityCredential(t *testing.T) {
 	}).NormalizeAndValidate()
 	require.NoError(t, err)
 }
+
+func TestAccountProvisioningAgentIdentityCannotUseBearerTokenToBypassKeyValidation(t *testing.T) {
+	policy := CodexIdentityPolicySpec{
+		Mode: CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []CodexOSProfilePolicy{{
+			OSClass: CodexOSLinux, CanonicalSurface: CodexSurfaceCLI,
+			Architecture: CodexArchX8664, SlotCount: 1,
+		}},
+	}
+	_, err := (AccountProvisioningSpec{
+		Account: &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"auth_mode":         OpenAIAuthModeAgentIdentity,
+				"access_token":      "stale-bearer-token",
+				"agent_runtime_id":  "runtime-with-invalid-key",
+				"agent_private_key": "not-a-pkcs8-ed25519-key",
+			},
+		},
+		Identity: &policy, FinalStatus: StatusActive, Schedulable: true,
+		ProvisioningState: AccountProvisioningActive,
+	}).NormalizeAndValidate()
+	require.Error(t, err)
+}
+
+func TestCodexProxyModeDistinguishesDirectFromInherited(t *testing.T) {
+	proxyID := int64(17)
+	policy, err := (CodexIdentityPolicySpec{
+		Mode: CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []CodexOSProfilePolicy{
+			{
+				OSClass: CodexOSLinux, CanonicalSurface: CodexSurfaceCLI,
+				Architecture: CodexArchX8664, SlotCount: 1, ProxyMode: CodexProxyDirect,
+			},
+			{
+				OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceCLI,
+				Architecture: CodexArchX8664, SlotCount: 1, ProxyID: &proxyID,
+			},
+		},
+	}).NormalizeAndValidate(PlatformOpenAI, AccountTypeOAuth)
+	require.NoError(t, err)
+	require.Equal(t, CodexProxyDirect, policy.Profiles[0].ProxyMode)
+	require.Equal(t, CodexProxyExplicit, policy.Profiles[1].ProxyMode)
+
+	policy.Profiles[0].ProxyID = &proxyID
+	_, err = policy.NormalizeAndValidate(PlatformOpenAI, AccountTypeOAuth)
+	require.Error(t, err)
+}

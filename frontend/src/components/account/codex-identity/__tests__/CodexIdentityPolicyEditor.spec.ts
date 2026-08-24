@@ -156,4 +156,45 @@ describe('CodexIdentityPolicyEditor', () => {
     expect(wrapper.findAll('fieldset').length).toBeGreaterThan(1)
     expect(wrapper.findAll('[aria-describedby]').length).toBeGreaterThan(0)
   })
+
+  it('preserves and edits explicit direct, inherited, and proxy routes', async () => {
+    const wrapper = mountEditor({
+      ...createDefaultCodexIdentityPolicy(),
+      mode: 'os_profile_device_pool',
+      profiles: [{
+        os_class: 'windows',
+        canonical_surface: 'desktop',
+        architecture: 'x86_64',
+        slot_count: 2,
+        proxy_mode: 'direct',
+        slots: [{ index: 0, proxy_mode: 'direct' }],
+      }],
+    })
+
+    const profileProxy = wrapper.get('#test-policy-windows-proxy-profile-proxy')
+    const slotProxy = wrapper.get('#test-policy-windows-proxy-slot-0-proxy')
+    expect((profileProxy.element as HTMLSelectElement).value).toBe('direct')
+    expect((slotProxy.element as HTMLSelectElement).value).toBe('direct')
+
+    await profileProxy.setValue('7')
+    let harness = wrapper.vm as unknown as { policy: CodexIdentityPolicy }
+    expect(harness.policy.profiles?.[0]).toMatchObject({ proxy_mode: 'proxy', proxy_id: 7 })
+
+    await profileProxy.setValue('inherit')
+    harness = wrapper.vm as unknown as { policy: CodexIdentityPolicy }
+    expect(harness.policy.profiles?.[0]?.proxy_mode).toBe('inherit')
+    expect(harness.policy.profiles?.[0]).not.toHaveProperty('proxy_id')
+
+    await slotProxy.setValue('7')
+    harness = wrapper.vm as unknown as { policy: CodexIdentityPolicy }
+    expect(harness.policy.profiles?.[0]?.slots?.[0]).toEqual({
+      index: 0,
+      proxy_mode: 'proxy',
+      proxy_id: 7,
+    })
+
+    await slotProxy.setValue('direct')
+    harness = wrapper.vm as unknown as { policy: CodexIdentityPolicy }
+    expect(harness.policy.profiles?.[0]?.slots?.[0]).toEqual({ index: 0, proxy_mode: 'direct' })
+  })
 })

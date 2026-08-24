@@ -40,6 +40,20 @@ func (_c *AccountCodexDeviceSlotCreate) SetSlotIndex(v int) *AccountCodexDeviceS
 	return _c
 }
 
+// SetProxyMode sets the "proxy_mode" field.
+func (_c *AccountCodexDeviceSlotCreate) SetProxyMode(v string) *AccountCodexDeviceSlotCreate {
+	_c.mutation.SetProxyMode(v)
+	return _c
+}
+
+// SetNillableProxyMode sets the "proxy_mode" field if the given value is not nil.
+func (_c *AccountCodexDeviceSlotCreate) SetNillableProxyMode(v *string) *AccountCodexDeviceSlotCreate {
+	if v != nil {
+		_c.SetProxyMode(*v)
+	}
+	return _c
+}
+
 // SetProxyID sets the "proxy_id" field.
 func (_c *AccountCodexDeviceSlotCreate) SetProxyID(v int64) *AccountCodexDeviceSlotCreate {
 	_c.mutation.SetProxyID(v)
@@ -137,6 +151,10 @@ func (_c *AccountCodexDeviceSlotCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *AccountCodexDeviceSlotCreate) defaults() {
+	if _, ok := _c.mutation.ProxyMode(); !ok {
+		v := accountcodexdeviceslot.DefaultProxyMode
+		_c.mutation.SetProxyMode(v)
+	}
 	if _, ok := _c.mutation.State(); !ok {
 		v := accountcodexdeviceslot.DefaultState
 		_c.mutation.SetState(v)
@@ -161,6 +179,14 @@ func (_c *AccountCodexDeviceSlotCreate) check() error {
 	}
 	if _, ok := _c.mutation.SlotIndex(); !ok {
 		return &ValidationError{Name: "slot_index", err: errors.New(`ent: missing required field "AccountCodexDeviceSlot.slot_index"`)}
+	}
+	if _, ok := _c.mutation.ProxyMode(); !ok {
+		return &ValidationError{Name: "proxy_mode", err: errors.New(`ent: missing required field "AccountCodexDeviceSlot.proxy_mode"`)}
+	}
+	if v, ok := _c.mutation.ProxyMode(); ok {
+		if err := accountcodexdeviceslot.ProxyModeValidator(v); err != nil {
+			return &ValidationError{Name: "proxy_mode", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceSlot.proxy_mode": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.Epoch(); !ok {
 		return &ValidationError{Name: "epoch", err: errors.New(`ent: missing required field "AccountCodexDeviceSlot.epoch"`)}
@@ -217,6 +243,10 @@ func (_c *AccountCodexDeviceSlotCreate) createSpec() (*AccountCodexDeviceSlot, *
 	if value, ok := _c.mutation.SlotIndex(); ok {
 		_spec.SetField(accountcodexdeviceslot.FieldSlotIndex, field.TypeInt, value)
 		_node.SlotIndex = value
+	}
+	if value, ok := _c.mutation.ProxyMode(); ok {
+		_spec.SetField(accountcodexdeviceslot.FieldProxyMode, field.TypeString, value)
+		_node.ProxyMode = value
 	}
 	if value, ok := _c.mutation.ProxyID(); ok {
 		_spec.SetField(accountcodexdeviceslot.FieldProxyID, field.TypeInt64, value)
@@ -341,6 +371,18 @@ func (u *AccountCodexDeviceSlotUpsert) UpdateSlotIndex() *AccountCodexDeviceSlot
 // AddSlotIndex adds v to the "slot_index" field.
 func (u *AccountCodexDeviceSlotUpsert) AddSlotIndex(v int) *AccountCodexDeviceSlotUpsert {
 	u.Add(accountcodexdeviceslot.FieldSlotIndex, v)
+	return u
+}
+
+// SetProxyMode sets the "proxy_mode" field.
+func (u *AccountCodexDeviceSlotUpsert) SetProxyMode(v string) *AccountCodexDeviceSlotUpsert {
+	u.Set(accountcodexdeviceslot.FieldProxyMode, v)
+	return u
+}
+
+// UpdateProxyMode sets the "proxy_mode" field to the value that was provided on create.
+func (u *AccountCodexDeviceSlotUpsert) UpdateProxyMode() *AccountCodexDeviceSlotUpsert {
+	u.SetExcluded(accountcodexdeviceslot.FieldProxyMode)
 	return u
 }
 
@@ -515,6 +557,20 @@ func (u *AccountCodexDeviceSlotUpsertOne) AddSlotIndex(v int) *AccountCodexDevic
 func (u *AccountCodexDeviceSlotUpsertOne) UpdateSlotIndex() *AccountCodexDeviceSlotUpsertOne {
 	return u.Update(func(s *AccountCodexDeviceSlotUpsert) {
 		s.UpdateSlotIndex()
+	})
+}
+
+// SetProxyMode sets the "proxy_mode" field.
+func (u *AccountCodexDeviceSlotUpsertOne) SetProxyMode(v string) *AccountCodexDeviceSlotUpsertOne {
+	return u.Update(func(s *AccountCodexDeviceSlotUpsert) {
+		s.SetProxyMode(v)
+	})
+}
+
+// UpdateProxyMode sets the "proxy_mode" field to the value that was provided on create.
+func (u *AccountCodexDeviceSlotUpsertOne) UpdateProxyMode() *AccountCodexDeviceSlotUpsertOne {
+	return u.Update(func(s *AccountCodexDeviceSlotUpsert) {
+		s.UpdateProxyMode()
 	})
 }
 
@@ -866,6 +922,20 @@ func (u *AccountCodexDeviceSlotUpsertBulk) AddSlotIndex(v int) *AccountCodexDevi
 func (u *AccountCodexDeviceSlotUpsertBulk) UpdateSlotIndex() *AccountCodexDeviceSlotUpsertBulk {
 	return u.Update(func(s *AccountCodexDeviceSlotUpsert) {
 		s.UpdateSlotIndex()
+	})
+}
+
+// SetProxyMode sets the "proxy_mode" field.
+func (u *AccountCodexDeviceSlotUpsertBulk) SetProxyMode(v string) *AccountCodexDeviceSlotUpsertBulk {
+	return u.Update(func(s *AccountCodexDeviceSlotUpsert) {
+		s.SetProxyMode(v)
+	})
+}
+
+// UpdateProxyMode sets the "proxy_mode" field to the value that was provided on create.
+func (u *AccountCodexDeviceSlotUpsertBulk) UpdateProxyMode() *AccountCodexDeviceSlotUpsertBulk {
+	return u.Update(func(s *AccountCodexDeviceSlotUpsert) {
+		s.UpdateProxyMode()
 	})
 }
 

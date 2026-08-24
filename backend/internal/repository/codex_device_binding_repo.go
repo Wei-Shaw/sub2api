@@ -160,7 +160,13 @@ func (r *accountRepository) ListCodexDeviceSlots(
 		       COALESCE(profiles.architecture, ''), profiles.catalog_version, slots.slot_index, slots.epoch,
 		       slots.state, policies.version,
 		       (SELECT COUNT(*) FROM account_codex_device_bindings AS bindings WHERE bindings.slot_id=slots.id),
-		       COALESCE(slots.proxy_id, profiles.proxy_id, accounts.proxy_id)
+		       CASE
+		           WHEN slots.proxy_mode='direct' THEN NULL
+		           WHEN slots.proxy_mode='proxy' THEN slots.proxy_id
+		           WHEN profiles.proxy_mode='direct' THEN NULL
+		           WHEN profiles.proxy_mode='proxy' THEN profiles.proxy_id
+		           ELSE accounts.proxy_id
+		       END
 		FROM account_codex_device_slots AS slots
 		JOIN account_codex_profiles AS profiles ON profiles.id=slots.profile_id AND profiles.account_id=slots.account_id
 		JOIN account_codex_identity_policies AS policies ON policies.account_id=slots.account_id
@@ -262,6 +268,32 @@ func resolveCodexDeviceBinding(
 	apiKeyID int64,
 	osClass service.CodexOSClass,
 ) (*service.CodexResolvedDeviceSlot, error) {
+	eligibleRows, err := client.QueryContext(ctx, `
+		SELECT accounts.id
+		FROM accounts
+		JOIN api_keys ON api_keys.id=$2 AND api_keys.deleted_at IS NULL
+		WHERE accounts.id=$1
+		  AND accounts.deleted_at IS NULL
+		  AND accounts.provisioning_state='active'
+		  AND accounts.status='active'
+		  AND accounts.schedulable=TRUE
+		FOR SHARE OF accounts, api_keys
+	`, accountID, apiKeyID)
+	if err != nil {
+		return nil, err
+	}
+	eligible := eligibleRows.Next()
+	if rowsErr := eligibleRows.Err(); rowsErr != nil {
+		_ = eligibleRows.Close()
+		return nil, rowsErr
+	}
+	if err := eligibleRows.Close(); err != nil {
+		return nil, err
+	}
+	if !eligible {
+		return nil, service.ErrDeviceProfileUnsupported
+	}
+
 	if existing, err := loadCodexDeviceBinding(ctx, client, accountID, apiKeyID, osClass); err != nil {
 		return nil, err
 	} else if existing != nil {
@@ -348,7 +380,13 @@ func loadCodexDeviceBinding(
 		       profiles.id, slots.id, profiles.os_class, profiles.canonical_surface,
 		       COALESCE(profiles.architecture, ''), profiles.catalog_version, slots.slot_index, slots.epoch,
 		       slots.state, bindings.policy_version, bindings.updated_at, policies.affinity_ttl_seconds,
-		       COALESCE(slots.proxy_id, profiles.proxy_id, accounts.proxy_id)
+		       CASE
+		           WHEN slots.proxy_mode='direct' THEN NULL
+		           WHEN slots.proxy_mode='proxy' THEN slots.proxy_id
+		           WHEN profiles.proxy_mode='direct' THEN NULL
+		           WHEN profiles.proxy_mode='proxy' THEN profiles.proxy_id
+		           ELSE accounts.proxy_id
+		       END
 		FROM account_codex_device_bindings AS bindings
 		JOIN account_codex_device_slots AS slots ON slots.id=bindings.slot_id AND slots.account_id=bindings.account_id
 		JOIN account_codex_profiles AS profiles ON profiles.id=slots.profile_id AND profiles.account_id=slots.account_id

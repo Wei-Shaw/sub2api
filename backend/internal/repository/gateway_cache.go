@@ -18,6 +18,21 @@ const stickySessionPrefix = "sticky_session:"
 const openAIResponsesSessionWindowPrefix = "openai_responses_session_window:"
 const liveCallPrefix = "live:call:"
 
+var rebindCodexProfileAffinityScript = redis.NewScript(`
+local ttl = tonumber(ARGV[2])
+if ttl ~= nil and ttl > 0 then
+  redis.call("SET", KEYS[1], ARGV[1], "PX", ttl)
+  redis.call("SET", KEYS[2], ARGV[1], "PX", ttl)
+else
+  redis.call("SET", KEYS[1], ARGV[1])
+  redis.call("SET", KEYS[2], ARGV[1])
+end
+if #KEYS > 2 and KEYS[3] ~= "" and KEYS[3] ~= KEYS[1] then
+  redis.call("DEL", KEYS[3])
+end
+return 1
+`)
+
 type gatewayCache struct {
 	rdb *redis.Client
 }
@@ -51,6 +66,31 @@ func (c *gatewayCache) GetSessionAccountID(ctx context.Context, groupID int64, s
 func (c *gatewayCache) SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
 	key := buildSessionKey(groupID, sessionHash)
 	return c.rdb.Set(ctx, key, accountID, ttl).Err()
+}
+
+func (c *gatewayCache) RebindCodexProfileAffinity(
+	ctx context.Context,
+	groupID int64,
+	oldBindingKey string,
+	newBindingKey string,
+	indexKey string,
+	accountID int64,
+	ttl time.Duration,
+) error {
+	if c == nil || c.rdb == nil {
+		return errors.New("gateway cache unavailable")
+	}
+	if strings.TrimSpace(newBindingKey) == "" || strings.TrimSpace(indexKey) == "" || accountID <= 0 {
+		return errors.New("invalid Codex Profile affinity binding")
+	}
+	keys := []string{
+		buildSessionKey(groupID, newBindingKey),
+		buildSessionKey(groupID, indexKey),
+	}
+	if strings.TrimSpace(oldBindingKey) != "" {
+		keys = append(keys, buildSessionKey(groupID, oldBindingKey))
+	}
+	return rebindCodexProfileAffinityScript.Run(ctx, c.rdb, keys, accountID, ttl.Milliseconds()).Err()
 }
 
 func (c *gatewayCache) RefreshSessionTTL(ctx context.Context, groupID int64, sessionHash string, ttl time.Duration) error {
@@ -226,6 +266,7 @@ func (c *gatewayCache) ReleaseGrokVideoBilled(ctx context.Context, key string) e
 // Compile-time assertion: gatewayCache must implement CyberSessionBlockStore.
 var _ service.CyberSessionBlockStore = (*gatewayCache)(nil)
 var _ service.LiveCallStore = (*gatewayCache)(nil)
+var _ service.CodexProfileAffinityCache = (*gatewayCache)(nil)
 
 const reasoningContentPrefix = "reasoning_content:"
 

@@ -3455,6 +3455,28 @@
         @authorize-password="handleGrokAuthorizePassword"
       />
 
+      <div
+        v-if="isCodexSessionImportMethod"
+        class="rounded-lg border border-gray-200 px-4 py-3 dark:border-dark-600"
+      >
+        <label class="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+          <input
+            v-model="overrideExistingCodexIdentityPolicy"
+            type="checkbox"
+            class="mt-0.5 rounded border-gray-300 dark:border-dark-600"
+            data-testid="codex-session-override-existing-identity"
+          />
+          <span class="min-w-0">
+            <span class="block font-medium">
+              {{ t('admin.accounts.oauth.openai.codexSessionOverrideExisting') }}
+            </span>
+            <span class="mt-1 block text-xs leading-5 text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.oauth.openai.codexSessionOverrideExistingDesc') }}
+            </span>
+          </span>
+        </label>
+      </div>
+
     </div>
 
     <template #footer>
@@ -4260,6 +4282,7 @@ const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
 const codexIdentityPolicy = ref<CodexIdentityPolicy>(createDefaultCodexIdentityPolicy())
+const overrideExistingCodexIdentityPolicy = ref(false)
 watch(() => codexIdentityPolicy.value.mode, (mode) => {
   if (mode === 'os_profile_device_pool') codexFingerprintMode.value = 'off'
 })
@@ -4571,6 +4594,11 @@ const isGrokSSOInputMethod = computed(() => form.platform === 'grok' && oauthFlo
 const isManualInputMethod = computed(() => {
   return oauthFlowRef.value?.inputMethod === 'manual'
 })
+
+const isCodexSessionImportMethod = computed(() =>
+  form.platform === 'openai' &&
+  (oauthFlowRef.value?.inputMethod === 'codex_session' || oauthFlowRef.value?.inputMethod === 'agent_identity')
+)
 
 const expiresAtInput = computed({
   get: () => formatDateTimeLocal(form.expires_at),
@@ -5198,6 +5226,7 @@ const resetForm = () => {
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
   codexIdentityPolicy.value = createDefaultCodexIdentityPolicy()
+  overrideExistingCodexIdentityPolicy.value = false
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
   webSearchEmulationMode.value = 'default'
@@ -5706,6 +5735,7 @@ const handleSubmit = async () => {
 
 const goBackToBasicInfo = () => {
   step.value = 1
+  overrideExistingCodexIdentityPolicy.value = false
   oauth.resetState()
   openaiOAuth.resetState()
   geminiOAuth.resetState()
@@ -6283,6 +6313,8 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
       extra,
       update_existing: true,
+      override_existing_codex_identity_policy:
+        overrideExistingCodexIdentityPolicy.value || undefined,
       codex_identity_policy: serializeCodexIdentityPolicy(codexIdentityPolicy.value)
     })
 

@@ -1014,4 +1014,29 @@ describe('BulkEditAccountModal', () => {
       }
     })
   })
+
+  it('setup-token 账号不展示仅支持 OAuth 的 OS Profile 设备池操作', () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['setup-token']
+    })
+
+    expect(wrapper.find('#bulk-edit-codex-identity-enabled').exists()).toBe(false)
+  })
+
+  it('筛选全量模式不根据前 100 条预览推断 OS Profile 设备池资格', () => {
+    const wrapper = mountModal({
+      selectedPlatforms: [],
+      selectedTypes: [],
+      target: {
+        mode: 'filtered',
+        filters: { status: 'active' },
+        previewCount: 150,
+        selectedPlatforms: ['openai'],
+        selectedTypes: ['oauth']
+      }
+    })
+
+    expect(wrapper.find('#bulk-edit-codex-identity-enabled').exists()).toBe(false)
+  })
 })

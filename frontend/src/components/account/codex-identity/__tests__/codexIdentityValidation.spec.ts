@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CodexIdentityPolicy } from '@/types/codexIdentity'
 import {
   availableCodexIdentityProxyIDs,
+  cloneCodexOSProfile,
   createDefaultCodexIdentityPolicy,
   createDefaultCodexOSProfile,
   serializeCodexIdentityPolicy,
@@ -27,8 +28,9 @@ describe('Codex identity policy contract', () => {
     const linux = createDefaultCodexOSProfile('linux')
     linux.canonical_surface = 'desktop'
     linux.slot_count = 3
+    linux.proxy_mode = 'proxy'
     linux.proxy_id = 7
-    linux.slots = [{ index: 1, proxy_id: 8 }]
+    linux.slots = [{ index: 1, proxy_mode: 'proxy', proxy_id: 8 }]
     const generic = createDefaultCodexOSProfile('generic')
     generic.canonical_surface = 'third_party'
 
@@ -62,8 +64,9 @@ describe('Codex identity policy contract', () => {
     const generic = createDefaultCodexOSProfile('generic')
     generic.architecture = 'x86_64'
     generic.slot_count = 2
+    generic.proxy_mode = 'proxy'
     generic.proxy_id = 999
-    generic.slots = [{ index: 2, proxy_id: 1 }]
+    generic.slots = [{ index: 2, proxy_mode: 'proxy', proxy_id: 1 }]
     const policy: CodexIdentityPolicy = {
       ...createDefaultCodexIdentityPolicy(),
       mode: 'os_profile_device_pool',
@@ -102,7 +105,62 @@ describe('Codex identity policy contract', () => {
       canonical_surface: 'desktop',
       architecture: 'x86_64',
       slot_count: 1,
+      proxy_mode: 'inherit',
     })
+  })
+
+  it('infers omitted legacy modes and preserves explicit direct routes in payloads', () => {
+    const legacy = createDefaultCodexOSProfile('linux') as NonNullable<CodexIdentityPolicy['profiles']>[number]
+    delete (legacy as Partial<typeof legacy>).proxy_mode
+    legacy.proxy_id = 7
+    legacy.slot_count = 2
+    legacy.slots = [{ index: 1, proxy_id: 8 } as NonNullable<typeof legacy.slots>[number]]
+    const direct = createDefaultCodexOSProfile('windows')
+    direct.proxy_mode = 'direct'
+    direct.slots = [{ index: 0, proxy_mode: 'direct' }]
+    const directClone = cloneCodexOSProfile(direct)
+    expect(directClone).toEqual(direct)
+    directClone.proxy_mode = 'inherit'
+    expect(direct.proxy_mode).toBe('direct')
+
+    const serialized = serializeCodexIdentityPolicy({
+      ...createDefaultCodexIdentityPolicy(),
+      mode: 'os_profile_device_pool',
+      profiles: [legacy, direct],
+    })
+
+    expect(serialized.profiles?.[0]).toMatchObject({
+      proxy_mode: 'proxy',
+      proxy_id: 7,
+      slots: [{ index: 1, proxy_mode: 'proxy', proxy_id: 8 }],
+    })
+    expect(serialized.profiles?.[1]).toMatchObject({
+      proxy_mode: 'direct',
+      slots: [{ index: 0, proxy_mode: 'direct' }],
+    })
+    expect(serialized.profiles?.[1]).not.toHaveProperty('proxy_id')
+    expect(serialized.profiles?.[1]?.slots?.[0]).not.toHaveProperty('proxy_id')
+  })
+
+  it('rejects contradictory or unsupported proxy routes', () => {
+    const profile = createDefaultCodexOSProfile('windows')
+    profile.proxy_mode = 'proxy'
+    profile.slot_count = 2
+    profile.slots = [{ index: 0, proxy_mode: 'direct', proxy_id: 9 }]
+    const invalidMode = createDefaultCodexOSProfile('linux')
+    const invalidModeInput = invalidMode as unknown as { proxy_mode: string }
+    invalidModeInput.proxy_mode = 'rotate'
+    const result = validateCodexIdentityPolicy({
+      ...createDefaultCodexIdentityPolicy(),
+      mode: 'os_profile_device_pool',
+      profiles: [profile, invalidMode],
+    })
+
+    expect(result.errors.map((issue) => issue.code)).toEqual(expect.arrayContaining([
+      'PROXY_REQUIRED',
+      'PROXY_NOT_ALLOWED',
+      'PROXY_MODE_INVALID',
+    ]))
   })
 
   it('warns without invalidating explicit shared-session modes', () => {

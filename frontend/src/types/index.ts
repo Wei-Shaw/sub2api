@@ -1620,6 +1620,7 @@ export interface CodexSessionImportRequest {
   credential_extras?: Record<string, unknown>
   extra?: Record<string, unknown>
   update_existing?: boolean
+  override_existing_codex_identity_policy?: boolean
   skip_default_group_bind?: boolean
   confirm_mixed_channel_risk?: boolean
   codex_identity_policy?: CodexIdentityPolicy

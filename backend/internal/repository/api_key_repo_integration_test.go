@@ -190,6 +190,43 @@ func (s *APIKeyRepoSuite) TestDelete() {
 	s.Require().Error(err, "expected error after delete")
 }
 
+func (s *APIKeyRepoSuite) TestDelete_RemovesCodexDeviceBindingsDespiteAPIKeySoftDelete() {
+	user := s.mustCreateUser("delete-codex-binding@test.com")
+	key := &service.APIKey{
+		UserID: user.ID, Key: "sk-delete-codex-binding", Name: "Delete Binding", Status: service.StatusActive,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, key))
+	accountRepo := newAccountRepositoryWithSQL(s.client, s.repo.sql, nil)
+	policy := service.CodexIdentityPolicySpec{
+		Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []service.CodexOSProfilePolicy{{
+			OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI,
+			Architecture: service.CodexArchX8664, SlotCount: 1,
+		}},
+	}
+	account := &service.Account{
+		Name: "api-key-delete-binding", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "test-token"}, Extra: map[string]any{},
+		Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	s.Require().NoError(accountRepo.ProvisionAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}))
+	binding, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, key.ID, service.CodexOSLinux)
+	s.Require().NoError(err)
+	s.Require().NotZero(binding.BindingID)
+
+	s.Require().NoError(s.repo.Delete(s.ctx, key.ID))
+	var bindingCount int
+	s.Require().NoError(scanSingleRow(
+		s.ctx, s.repo.sql,
+		"SELECT COUNT(*) FROM account_codex_device_bindings WHERE api_key_id=$1",
+		[]any{key.ID}, &bindingCount,
+	))
+	s.Require().Zero(bindingCount)
+}
+
 func (s *APIKeyRepoSuite) TestCreate_AfterSoftDelete_AllowsSameKey() {
 	user := s.mustCreateUser("recreate-after-soft-delete@test.com")
 	const reusedKey = "sk-reuse-after-soft-delete"

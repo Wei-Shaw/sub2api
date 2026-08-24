@@ -18,10 +18,18 @@ var codexIdentityResponseContainerPaths = [][]string{
 	{"response", "client_metadata"},
 	{"response", "metadata"},
 	{"response", "headers"},
+	{"response", "error"},
+	{"response", "error", "client_metadata"},
+	{"response", "error", "metadata"},
+	{"response", "error", "headers"},
 	{"request"},
 	{"request", "client_metadata"},
 	{"request", "metadata"},
 	{"request", "headers"},
+	{"error"},
+	{"error", "client_metadata"},
+	{"error", "metadata"},
+	{"error", "headers"},
 }
 
 var codexIdentityJSONFields = map[CodexIdentityKind][]string{

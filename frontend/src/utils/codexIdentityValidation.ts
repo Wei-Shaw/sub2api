@@ -13,6 +13,7 @@ import {
   type CodexIdentityValidationResult,
   type CodexOSProfileID,
   type CodexOSProfilePolicy,
+  type CodexProxyMode,
   type CodexSessionPolicy,
 } from '@/types/codexIdentity'
 
@@ -33,6 +34,9 @@ const PROFILE_ARCHITECTURES: Record<CodexOSProfileID, readonly CodexArchitecture
 const VALIDATION_MESSAGE_KEYS: Record<string, string> = {
   PROXY_INVALID: 'proxyInvalid',
   PROXY_NOT_FOUND: 'proxyNotFound',
+  PROXY_MODE_INVALID: 'proxyModeInvalid',
+  PROXY_REQUIRED: 'proxyRequired',
+  PROXY_NOT_ALLOWED: 'proxyNotAllowed',
   SURFACE_NOT_ALLOWED: 'surfaceNotAllowed',
   ARCHITECTURE_NOT_ALLOWED: 'architectureNotAllowed',
   SLOT_COUNT_OUT_OF_RANGE: 'slotCountOutOfRange',
@@ -86,6 +90,7 @@ export const createDefaultCodexOSProfile = (id: CodexOSProfileID): CodexOSProfil
     os_class: id,
     ...defaults[id],
     slot_count: 1,
+    proxy_mode: 'inherit',
   }
 }
 
@@ -119,6 +124,38 @@ const validateProxyID = (
     addIssue(errors, 'PROXY_INVALID', path, 'The selected proxy identifier is invalid.')
   } else if (availableProxyIDs && !availableProxyIDs.has(proxyID)) {
     addIssue(errors, 'PROXY_NOT_FOUND', path, 'The selected proxy is unavailable.')
+  }
+}
+
+const CODEX_PROXY_MODES: readonly CodexProxyMode[] = ['inherit', 'proxy', 'direct']
+
+const inferredCodexProxyMode = (
+  mode: CodexProxyMode | '' | undefined,
+  proxyID: number | undefined,
+): CodexProxyMode => mode || (proxyID === undefined ? 'inherit' : 'proxy')
+
+const validateProxyRoute = (
+  modeInput: CodexProxyMode | '' | undefined,
+  proxyID: number | undefined,
+  path: string,
+  errors: CodexIdentityValidationIssue[],
+  availableProxyIDs?: ReadonlySet<number>,
+) => {
+  const mode = inferredCodexProxyMode(modeInput, proxyID)
+  if (!CODEX_PROXY_MODES.includes(mode)) {
+    addIssue(errors, 'PROXY_MODE_INVALID', `${path}.proxy_mode`, 'The selected proxy mode is invalid.')
+    return
+  }
+  if (mode === 'proxy') {
+    if (proxyID === undefined) {
+      addIssue(errors, 'PROXY_REQUIRED', `${path}.proxy_id`, 'Select a proxy for explicit proxy mode.')
+      return
+    }
+    validateProxyID(proxyID, `${path}.proxy_id`, errors, availableProxyIDs)
+    return
+  }
+  if (proxyID !== undefined) {
+    addIssue(errors, 'PROXY_NOT_ALLOWED', `${path}.proxy_id`, 'Proxy ID is only valid in explicit proxy mode.')
   }
 }
 
@@ -157,7 +194,7 @@ const validateProfile = (
       `Device slots must be between ${CODEX_DEVICE_SLOT_MIN} and ${CODEX_DEVICE_SLOT_MAX}.`,
     )
   }
-  validateProxyID(profile.proxy_id, `${path}.proxy_id`, errors, availableProxyIDs)
+  validateProxyRoute(profile.proxy_mode, profile.proxy_id, path, errors, availableProxyIDs)
 
   const seenSlots = new Set<number>()
   for (const slot of profile.slots ?? []) {
@@ -171,7 +208,7 @@ const validateProfile = (
       continue
     }
     seenSlots.add(slot.index)
-    validateProxyID(slot.proxy_id, `${slotPath}.proxy_id`, errors, availableProxyIDs)
+    validateProxyRoute(slot.proxy_mode, slot.proxy_id, slotPath, errors, availableProxyIDs)
   }
 }
 
@@ -322,20 +359,32 @@ export const normalizeCodexIdentityPolicy = (policy: CodexIdentityPolicy): Codex
     unsupported_policy: 'reject',
     profiles: policy.mode === 'off'
       ? []
-      : (policy.profiles ?? []).map((profile) => ({
-          os_class: profile.os_class,
-          canonical_surface: profile.canonical_surface,
-          architecture: profile.os_class === 'generic' ? '' : profile.architecture,
-          slot_count: profile.slot_count,
-          ...(profile.proxy_id === undefined ? {} : { proxy_id: profile.proxy_id }),
-          slots: (profile.slots ?? [])
-      .filter((slot) => slot.index >= 0 && slot.index < profile.slot_count)
-            .sort((left, right) => left.index - right.index)
-            .map((slot) => ({
-              index: slot.index,
-              ...(slot.proxy_id === undefined ? {} : { proxy_id: slot.proxy_id }),
-            })),
-        })),
+      : (policy.profiles ?? []).map((profile) => {
+          const proxyMode = inferredCodexProxyMode(profile.proxy_mode, profile.proxy_id)
+          return {
+            os_class: profile.os_class,
+            canonical_surface: profile.canonical_surface,
+            architecture: profile.os_class === 'generic' ? '' : profile.architecture,
+            slot_count: profile.slot_count,
+            proxy_mode: proxyMode,
+            ...(proxyMode === 'proxy' && profile.proxy_id !== undefined
+              ? { proxy_id: profile.proxy_id }
+              : {}),
+            slots: (profile.slots ?? [])
+              .filter((slot) => slot.index >= 0 && slot.index < profile.slot_count)
+              .sort((left, right) => left.index - right.index)
+              .map((slot) => {
+                const slotProxyMode = inferredCodexProxyMode(slot.proxy_mode, slot.proxy_id)
+                return {
+                  index: slot.index,
+                  proxy_mode: slotProxyMode,
+                  ...(slotProxyMode === 'proxy' && slot.proxy_id !== undefined
+                    ? { proxy_id: slot.proxy_id }
+                    : {}),
+                }
+              }),
+          }
+        }),
   }
   return normalized
 }

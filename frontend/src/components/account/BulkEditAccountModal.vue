@@ -885,7 +885,7 @@
         </div>
       </div>
 
-      <div v-if="allOpenAIOAuth" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div v-if="codexIdentityBulkEligible" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-start justify-between gap-4">
           <div>
             <label for="bulk-edit-codex-identity-enabled" class="input-label mb-0">
@@ -1618,6 +1618,12 @@ const allOpenAIOAuthOnly = computed(() => {
   )
 })
 
+const codexIdentityBulkEligible = computed(() => {
+  if (!allOpenAIOAuthOnly.value) return false
+  if (targetMode.value !== 'filtered') return true
+  return props.target?.filters?.platform === 'openai' && props.target?.filters?.type === 'oauth'
+})
+
 const allOpenAIAPIKey = computed(() => {
   return (
     targetSelectedPlatforms.value.length === 1 &&
@@ -2155,7 +2161,7 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.codex_fingerprint_mode = codexFingerprintMode.value
   }
 
-  if (enableCodexIdentityPolicy.value && allOpenAIOAuth.value) {
+  if (enableCodexIdentityPolicy.value && codexIdentityBulkEligible.value) {
     updates.codex_identity_policy = serializeCodexIdentityPolicy(codexIdentityPolicy.value)
   }
 
@@ -2284,7 +2290,7 @@ const handleSubmit = async () => {
     return
   }
 
-  if (enableCodexIdentityPolicy.value && allOpenAIOAuth.value) {
+  if (enableCodexIdentityPolicy.value && codexIdentityBulkEligible.value) {
     const identityValidation = validateCodexIdentityPolicy(codexIdentityPolicy.value, {
       availableProxyIDs: availableCodexIdentityProxyIDs(props.proxies)
     })

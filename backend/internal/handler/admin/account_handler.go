@@ -1146,12 +1146,13 @@ type TestAccountRequest struct {
 }
 
 type SyncFromCRSRequest struct {
-	BaseURL             string                           `json:"base_url" binding:"required"`
-	Username            string                           `json:"username" binding:"required"`
-	Password            string                           `json:"password" binding:"required"`
-	SyncProxies         *bool                            `json:"sync_proxies"`
-	SelectedAccountIDs  []string                         `json:"selected_account_ids"`
-	CodexIdentityPolicy *service.CodexIdentityPolicySpec `json:"codex_identity_policy,omitempty"`
+	BaseURL                               string                           `json:"base_url" binding:"required"`
+	Username                              string                           `json:"username" binding:"required"`
+	Password                              string                           `json:"password" binding:"required"`
+	SyncProxies                           *bool                            `json:"sync_proxies"`
+	SelectedAccountIDs                    []string                         `json:"selected_account_ids"`
+	CodexIdentityPolicy                   *service.CodexIdentityPolicySpec `json:"codex_identity_policy,omitempty"`
+	OverrideExistingCodexIdentityPolicies bool                             `json:"override_existing_codex_identity_policies"`
 }
 
 type PreviewFromCRSRequest struct {
@@ -1237,12 +1238,13 @@ func (h *AccountHandler) SyncFromCRS(c *gin.Context) {
 	}
 
 	result, err := h.crsSyncService.SyncFromCRS(c.Request.Context(), service.SyncFromCRSInput{
-		BaseURL:             req.BaseURL,
-		Username:            req.Username,
-		Password:            req.Password,
-		SyncProxies:         syncProxies,
-		SelectedAccountIDs:  req.SelectedAccountIDs,
-		CodexIdentityPolicy: req.CodexIdentityPolicy,
+		BaseURL:                               req.BaseURL,
+		Username:                              req.Username,
+		Password:                              req.Password,
+		SyncProxies:                           syncProxies,
+		SelectedAccountIDs:                    req.SelectedAccountIDs,
+		CodexIdentityPolicy:                   req.CodexIdentityPolicy,
+		OverrideExistingCodexIdentityPolicies: req.OverrideExistingCodexIdentityPolicies,
 	})
 	if err != nil {
 		// Provide detailed error message for CRS sync failures

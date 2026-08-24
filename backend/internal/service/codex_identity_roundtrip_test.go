@@ -196,6 +196,10 @@ func TestRestoreCodexIdentityJSONKnownFieldsOnly(t *testing.T) {
 		},
 		"response": map[string]any{
 			"metadata": map[string]any{"turn_id": turn},
+			"error": map[string]any{
+				"metadata": map[string]any{"session_id": session},
+				"message":  "nested error text contains " + session,
+			},
 			"output": []any{
 				map[string]any{
 					"type":       "message",
@@ -203,6 +207,10 @@ func TestRestoreCodexIdentityJSONKnownFieldsOnly(t *testing.T) {
 					"content":    "ordinary output contains " + session,
 				},
 			},
+		},
+		"error": map[string]any{
+			"metadata": map[string]any{"session_id": session},
+			"message":  "ordinary error text contains " + session,
 		},
 		"unknown": map[string]any{"session_id": session},
 	})
@@ -219,6 +227,10 @@ func TestRestoreCodexIdentityJSONKnownFieldsOnly(t *testing.T) {
 	require.Equal(t, "git@example.com:private/project.git", gjson.GetBytes(restored, "client_metadata.git_remote_url").String())
 	require.Equal(t, "0123456789012345678901234567890123456789", gjson.GetBytes(restored, "client_metadata.git_sha").String())
 	require.Equal(t, "client-install", gjson.GetBytes(restored, "headers.X-Codex-Installation-Id.0").String())
+	require.Equal(t, "client-session", gjson.GetBytes(restored, "error.metadata.session_id").String())
+	require.Equal(t, "ordinary error text contains "+session, gjson.GetBytes(restored, "error.message").String())
+	require.Equal(t, "client-session", gjson.GetBytes(restored, "response.error.metadata.session_id").String())
+	require.Equal(t, "nested error text contains "+session, gjson.GetBytes(restored, "response.error.message").String())
 
 	embedded := gjson.GetBytes(restored, "client_metadata.x-codex-turn-metadata").String()
 	require.Equal(t, "client-install", gjson.Get(embedded, "installation_id").String())

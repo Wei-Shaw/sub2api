@@ -329,14 +329,27 @@ func SelectCodexDeviceSlotIndex(seed, apiKeyScope string, profile CodexResolvedP
 
 func effectiveCodexProfileProxyID(account *Account, profile CodexOSProfilePolicy, slotIndex int) *int64 {
 	for _, slot := range profile.Slots {
-		if slot.Index == slotIndex && slot.ProxyID != nil {
-			id := *slot.ProxyID
-			return &id
+		if slot.Index != slotIndex {
+			continue
+		}
+		switch slot.ProxyMode {
+		case CodexProxyDirect:
+			return nil
+		case CodexProxyExplicit, "":
+			if slot.ProxyID != nil {
+				id := *slot.ProxyID
+				return &id
+			}
 		}
 	}
-	if profile.ProxyID != nil {
-		id := *profile.ProxyID
-		return &id
+	switch profile.ProxyMode {
+	case CodexProxyDirect:
+		return nil
+	case CodexProxyExplicit, "":
+		if profile.ProxyID != nil {
+			id := *profile.ProxyID
+			return &id
+		}
 	}
 	if account != nil && account.ProxyID != nil {
 		id := *account.ProxyID
@@ -776,11 +789,55 @@ func (s *OpenAIGatewayService) setCodexProfileAffinityAccountID(ctx context.Cont
 	markCodexProfileAffinityActive(ctx)
 	ttl := time.Duration(account.CodexIdentityPolicy.AffinityTTLSeconds) * time.Second
 	bindingKey := codexProfileAffinityKey(request, sessionHash, account.CodexIdentityPolicy.Version, false)
+	indexKey := codexProfileAffinityKey(request, sessionHash, 0, true)
+	oldBindingKey := ""
+	if oldAccountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), indexKey); err == nil && oldAccountID > 0 {
+		if oldAccount := s.codexProfileAccountByID(ctx, oldAccountID); oldAccount != nil {
+			oldBindingKey = codexProfileAffinityKey(request, sessionHash, oldAccount.CodexIdentityPolicy.Version, false)
+		}
+	}
+
+	if atomicCache, ok := s.cache.(CodexProfileAffinityCache); ok {
+		err := atomicCache.RebindCodexProfileAffinity(
+			ctx,
+			derefGroupID(groupID),
+			oldBindingKey,
+			bindingKey,
+			indexKey,
+			accountID,
+			ttl,
+		)
+		if err != nil {
+			// A transport error can make the Lua result ambiguous. Best-effort
+			// removal makes either outcome fail closed once Redis is reachable.
+			_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), indexKey)
+			_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), bindingKey)
+			if oldBindingKey != "" && oldBindingKey != bindingKey {
+				_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), oldBindingKey)
+			}
+		}
+		return true, err
+	}
+
+	// Test/degraded cache implementations may not provide the atomic extension.
+	// Remove the published index first so any later partial write fails closed
+	// instead of routing the next request back to the previous account.
+	if err := s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), indexKey); err != nil {
+		return true, err
+	}
+	if oldBindingKey != "" && oldBindingKey != bindingKey {
+		if err := s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), oldBindingKey); err != nil {
+			return true, err
+		}
+	}
 	if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), bindingKey, accountID, ttl); err != nil {
 		return true, err
 	}
-	indexKey := codexProfileAffinityKey(request, sessionHash, 0, true)
-	return true, s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), indexKey, accountID, ttl)
+	if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), indexKey, accountID, ttl); err != nil {
+		_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), bindingKey)
+		return true, err
+	}
+	return true, nil
 }
 
 func (s *OpenAIGatewayService) deleteCodexProfileAffinity(ctx context.Context, groupID *int64, sessionHash string) {

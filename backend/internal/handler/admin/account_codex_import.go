@@ -22,24 +22,25 @@ import (
 const codexImportClockSkewSeconds int64 = 120
 
 type CodexSessionImportRequest struct {
-	Content                 string                           `json:"content"`
-	Contents                []string                         `json:"contents"`
-	Name                    string                           `json:"name"`
-	Notes                   *string                          `json:"notes"`
-	GroupIDs                []int64                          `json:"group_ids"`
-	ProxyID                 *int64                           `json:"proxy_id"`
-	Concurrency             *int                             `json:"concurrency"`
-	Priority                *int                             `json:"priority"`
-	RateMultiplier          *float64                         `json:"rate_multiplier"`
-	LoadFactor              *int                             `json:"load_factor"`
-	ExpiresAt               *int64                           `json:"expires_at"`
-	AutoPauseOnExpired      *bool                            `json:"auto_pause_on_expired"`
-	CredentialExtras        map[string]any                   `json:"credential_extras"`
-	Extra                   map[string]any                   `json:"extra"`
-	UpdateExisting          *bool                            `json:"update_existing"`
-	SkipDefaultGroupBind    *bool                            `json:"skip_default_group_bind"`
-	ConfirmMixedChannelRisk *bool                            `json:"confirm_mixed_channel_risk"`
-	CodexIdentityPolicy     *service.CodexIdentityPolicySpec `json:"codex_identity_policy,omitempty"`
+	Content                        string                           `json:"content"`
+	Contents                       []string                         `json:"contents"`
+	Name                           string                           `json:"name"`
+	Notes                          *string                          `json:"notes"`
+	GroupIDs                       []int64                          `json:"group_ids"`
+	ProxyID                        *int64                           `json:"proxy_id"`
+	Concurrency                    *int                             `json:"concurrency"`
+	Priority                       *int                             `json:"priority"`
+	RateMultiplier                 *float64                         `json:"rate_multiplier"`
+	LoadFactor                     *int                             `json:"load_factor"`
+	ExpiresAt                      *int64                           `json:"expires_at"`
+	AutoPauseOnExpired             *bool                            `json:"auto_pause_on_expired"`
+	CredentialExtras               map[string]any                   `json:"credential_extras"`
+	Extra                          map[string]any                   `json:"extra"`
+	UpdateExisting                 *bool                            `json:"update_existing"`
+	OverrideExistingIdentityPolicy bool                             `json:"override_existing_codex_identity_policy"`
+	SkipDefaultGroupBind           *bool                            `json:"skip_default_group_bind"`
+	ConfirmMixedChannelRisk        *bool                            `json:"confirm_mixed_channel_risk"`
+	CodexIdentityPolicy            *service.CodexIdentityPolicySpec `json:"codex_identity_policy,omitempty"`
 }
 
 type CodexSessionImportResult struct {
@@ -142,6 +143,10 @@ func (h *AccountHandler) ImportCodexSession(c *gin.Context) {
 		response.BadRequest(c, "load_factor must be <= 10000")
 		return
 	}
+	if req.OverrideExistingIdentityPolicy && req.CodexIdentityPolicy == nil {
+		response.BadRequest(c, "codex_identity_policy is required when overriding existing identity policies")
+		return
+	}
 
 	entries, err := parseCodexSessionImportEntries(req)
 	if err != nil {
@@ -162,6 +167,9 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 	result := CodexSessionImportResult{
 		Total: len(entries),
 		Items: make([]CodexSessionImportItem, 0, len(entries)),
+	}
+	if req.OverrideExistingIdentityPolicy && req.CodexIdentityPolicy == nil {
+		return result, errors.New("codex_identity_policy is required when overriding existing identity policies")
 	}
 
 	existingAccounts, err := h.listAccountsFiltered(ctx, service.PlatformOpenAI, service.AccountTypeOAuth, "", "", 0, "", "created_at", "desc")
@@ -278,15 +286,17 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 			mergedCredentials := mergeCodexImportCredentials(existing.Credentials, credentials, item)
 			mergedExtra := mergeCodexImportMap(existing.Extra, extra)
 			updateInput := &service.UpdateAccountInput{
-				Credentials:         mergedCredentials,
-				Extra:               mergedExtra,
-				Concurrency:         req.Concurrency,
-				Priority:            req.Priority,
-				RateMultiplier:      req.RateMultiplier,
-				LoadFactor:          req.LoadFactor,
-				ExpiresAt:           effectiveExpiresAt,
-				AutoPauseOnExpired:  autoPauseOnExpired,
-				CodexIdentityPolicy: req.CodexIdentityPolicy,
+				Credentials:        mergedCredentials,
+				Extra:              mergedExtra,
+				Concurrency:        req.Concurrency,
+				Priority:           req.Priority,
+				RateMultiplier:     req.RateMultiplier,
+				LoadFactor:         req.LoadFactor,
+				ExpiresAt:          effectiveExpiresAt,
+				AutoPauseOnExpired: autoPauseOnExpired,
+			}
+			if req.OverrideExistingIdentityPolicy {
+				updateInput.CodexIdentityPolicy = req.CodexIdentityPolicy
 			}
 			if req.ProxyID != nil {
 				updateInput.ProxyID = req.ProxyID

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
 )
@@ -270,4 +271,151 @@ func (s *ProxyExpirySuite) runCodexOverrideExpiry(scope string) {
 	s.Require().NotEqual(oldBinding.SlotID, rebound.SlotID)
 	s.Require().NotNil(rebound.ProxyID)
 	s.Require().Equal(backup, *rebound.ProxyID)
+}
+
+func (s *ProxyExpirySuite) TestSweep_CodexProfileDirectFallbackDoesNotInheritAccountProxy() {
+	s.runCodexDirectFallback("profile")
+}
+
+func (s *ProxyExpirySuite) TestSweep_CodexSlotDirectFallbackDoesNotInheritAccountProxy() {
+	s.runCodexDirectFallback("slot")
+}
+
+func (s *ProxyExpirySuite) runCodexDirectFallback(scope string) {
+	future := time.Now().Add(24 * time.Hour)
+	accountProxy := s.mkProxy("p-codex-direct-account-"+scope, service.FallbackModeNone, &future, nil)
+	overrideProxy := s.mkProxy("p-codex-direct-override-"+scope, service.FallbackModeDirect, &future, nil)
+	accountRepo := newAccountRepositoryWithSQL(s.tx.Client(), s.tx, nil)
+	user := mustCreateUser(s.T(), s.tx.Client(), &service.User{Email: "proxy-expiry-direct-" + scope + "@example.com"})
+	apiKey := mustCreateApiKey(s.T(), s.tx.Client(), &service.APIKey{UserID: user.ID, Key: "sk-proxy-expiry-direct-" + scope})
+	profile := service.CodexOSProfilePolicy{
+		OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI,
+		Architecture: service.CodexArchX8664, SlotCount: 1,
+	}
+	if scope == "profile" {
+		profile.ProxyID = &overrideProxy
+	} else {
+		profile.Slots = []service.CodexDeviceSlotPolicy{{Index: 0, ProxyID: &overrideProxy}}
+	}
+	policy := service.CodexIdentityPolicySpec{
+		Mode:     service.CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []service.CodexOSProfilePolicy{profile},
+	}
+	account := &service.Account{
+		Name: "proxy-expiry-direct-" + scope, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "test-token"}, Extra: map[string]any{}, ProxyID: &accountProxy,
+		Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	s.Require().NoError(accountRepo.ProvisionAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}))
+	past := time.Now().Add(-time.Hour)
+	_, err := s.tx.Proxy.UpdateOneID(overrideProxy).SetExpiresAt(past).Save(s.ctx)
+	s.Require().NoError(err)
+
+	_, err = s.repo.SweepExpiredProxies(s.ctx, time.Now())
+	s.Require().NoError(err)
+	updated, err := accountRepo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	if scope == "profile" {
+		s.Require().Equal(service.CodexProxyDirect, updated.CodexIdentityPolicy.Profiles[0].ProxyMode)
+		s.Require().Nil(updated.CodexIdentityPolicy.Profiles[0].ProxyID)
+	} else {
+		s.Require().Equal(service.CodexProxyDirect, updated.CodexIdentityPolicy.Profiles[0].Slots[0].ProxyMode)
+		s.Require().Nil(updated.CodexIdentityPolicy.Profiles[0].Slots[0].ProxyID)
+	}
+	resolved, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	s.Require().NoError(err)
+	s.Require().Nil(resolved.ProxyID, "profile direct fallback must not inherit the account proxy")
+}
+
+func (s *ProxyExpirySuite) TestSweep_MultipleExpiredCodexOverridesDoNotBlockEachOther() {
+	future := time.Now().Add(24 * time.Hour)
+	linuxBackup := s.mkProxy("p-codex-multi-linux-backup", service.FallbackModeNone, &future, nil)
+	windowsBackup := s.mkProxy("p-codex-multi-windows-backup", service.FallbackModeNone, &future, nil)
+	linuxProxy := s.mkProxy("p-codex-multi-linux", service.FallbackModeProxy, &future, &linuxBackup)
+	windowsProxy := s.mkProxy("p-codex-multi-windows", service.FallbackModeProxy, &future, &windowsBackup)
+	accountRepo := newAccountRepositoryWithSQL(s.tx.Client(), s.tx, nil)
+	policy := service.CodexIdentityPolicySpec{
+		Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []service.CodexOSProfilePolicy{
+			{OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI, Architecture: service.CodexArchX8664, SlotCount: 1, ProxyID: &linuxProxy},
+			{OSClass: service.CodexOSWindows, CanonicalSurface: service.CodexSurfaceCLI, Architecture: service.CodexArchX8664, SlotCount: 1, ProxyID: &windowsProxy},
+		},
+	}
+	account := &service.Account{
+		Name: "proxy-expiry-multiple", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "test-token"}, Extra: map[string]any{},
+		Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	s.Require().NoError(accountRepo.ProvisionAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}))
+	past := time.Now().Add(-time.Hour)
+	_, err := s.tx.Proxy.Update().Where(proxy.IDIn(linuxProxy, windowsProxy)).SetExpiresAt(past).Save(s.ctx)
+	s.Require().NoError(err)
+
+	_, err = s.repo.SweepExpiredProxies(s.ctx, time.Now())
+	s.Require().NoError(err)
+	updated, err := accountRepo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	resolvedByOS := make(map[service.CodexOSClass]int64)
+	for _, profile := range updated.CodexIdentityPolicy.Profiles {
+		s.Require().Equal(service.CodexProxyExplicit, profile.ProxyMode)
+		s.Require().NotNil(profile.ProxyID)
+		resolvedByOS[profile.OSClass] = *profile.ProxyID
+	}
+	s.Require().Equal(linuxBackup, resolvedByOS[service.CodexOSLinux])
+	s.Require().Equal(windowsBackup, resolvedByOS[service.CodexOSWindows])
+}
+
+func (s *ProxyExpirySuite) TestProxyUsageIncludesCodexProfileAndSlotOverrides() {
+	future := time.Now().Add(24 * time.Hour)
+	profileProxy := s.mkProxy("p-codex-count-profile", service.FallbackModeNone, &future, nil)
+	slotProxy := s.mkProxy("p-codex-count-slot", service.FallbackModeNone, &future, nil)
+	accountRepo := newAccountRepositoryWithSQL(s.tx.Client(), s.tx, nil)
+	policy := service.CodexIdentityPolicySpec{
+		Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []service.CodexOSProfilePolicy{
+			{OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI, Architecture: service.CodexArchX8664, SlotCount: 1, ProxyID: &profileProxy},
+			{OSClass: service.CodexOSWindows, CanonicalSurface: service.CodexSurfaceCLI, Architecture: service.CodexArchX8664, SlotCount: 1, Slots: []service.CodexDeviceSlotPolicy{{Index: 0, ProxyID: &slotProxy}}},
+		},
+	}
+	account := &service.Account{
+		Name: "proxy-codex-count", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "test-token"}, Extra: map[string]any{},
+		Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	s.Require().NoError(accountRepo.ProvisionAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}))
+	for _, proxyID := range []int64{profileProxy, slotProxy} {
+		count, err := s.repo.CountAccountsByProxyID(s.ctx, proxyID)
+		s.Require().NoError(err)
+		s.Require().EqualValues(1, count)
+		summaries, err := s.repo.ListAccountSummariesByProxyID(s.ctx, proxyID)
+		s.Require().NoError(err)
+		s.Require().Len(summaries, 1)
+		s.Require().Equal(account.ID, summaries[0].ID)
+	}
+}
+
+func (s *ProxyExpirySuite) TestProvisionAccountOffModePreservesLegacyInactiveProxyCompatibility() {
+	past := time.Now().Add(-time.Hour)
+	proxyID := s.mkProxy("p-off-mode-expired", service.FallbackModeNone, &past, nil)
+	accountRepo := newAccountRepositoryWithSQL(s.tx.Client(), s.tx, nil)
+	policy := service.DefaultCodexIdentityPolicySpec()
+	account := &service.Account{
+		Name: "off-mode-expired-proxy", Platform: service.PlatformAnthropic, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-key"}, Extra: map[string]any{}, ProxyID: &proxyID,
+		Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	s.Require().NoError(accountRepo.ProvisionAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}))
+	s.Require().NotZero(account.ID)
 }

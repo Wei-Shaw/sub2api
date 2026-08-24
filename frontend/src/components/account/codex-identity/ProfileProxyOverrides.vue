@@ -11,7 +11,7 @@
       </div>
       <Select
         :id="`${idPrefix}-profile-proxy`"
-        :model-value="modelValue.proxy_id ?? null"
+        :model-value="profileProxySelection"
         :options="proxyOptions"
         :disabled="disabled"
         :aria-label="copy('admin.accounts.codexIdentity.profileProxy', 'Profile proxy')"
@@ -44,7 +44,7 @@
           </div>
           <Select
             :id="`${idPrefix}-slot-${slotIndex}-proxy`"
-            :model-value="slotProxyID(slotIndex)"
+            :model-value="slotProxySelection(slotIndex)"
             :options="slotProxyOptions"
             :disabled="disabled"
             :aria-label="`${copy('admin.accounts.codexIdentity.deviceSlot', 'Device slot')} ${slotIndex + 1}`"
@@ -64,6 +64,7 @@ import Icon from '@/components/icons/Icon.vue'
 import type {
   CodexIdentityProxyOption,
   CodexOSProfilePolicy,
+  CodexProxyMode,
 } from '@/types/codexIdentity'
 import { useCodexIdentityCopy } from './copy'
 import { cloneCodexOSProfile } from '@/utils/codexIdentityValidation'
@@ -102,8 +103,19 @@ const accountProxyHint = computed(() => {
   return `${copy('admin.accounts.codexIdentity.accountProxyInherit', 'Inherit account proxy')}: ${name}`
 })
 
+const normalizedProxyMode = (mode: CodexProxyMode | undefined, proxyID?: number): CodexProxyMode =>
+  mode || (proxyID === undefined ? 'inherit' : 'proxy')
+
+const profileProxySelection = computed<string | number>(() => {
+  const mode = normalizedProxyMode(props.modelValue.proxy_mode, props.modelValue.proxy_id)
+  return mode === 'proxy' && props.modelValue.proxy_id !== undefined
+    ? props.modelValue.proxy_id
+    : mode
+})
+
 const proxyOptions = computed(() => [
-  { value: null, label: copy('admin.accounts.codexIdentity.inheritAccountProxy', 'Inherit account proxy') },
+  { value: 'inherit', label: copy('admin.accounts.codexIdentity.inheritAccountProxy', 'Inherit account connection') },
+  { value: 'direct', label: copy('admin.accounts.codexIdentity.directConnection', 'Direct connection') },
   ...props.proxies.map((proxy) => ({
     value: proxy.id,
     label: proxyLabel(proxy),
@@ -112,7 +124,8 @@ const proxyOptions = computed(() => [
 ])
 
 const slotProxyOptions = computed(() => [
-  { value: null, label: copy('admin.accounts.codexIdentity.inheritProfileProxy', 'Inherit profile proxy') },
+  { value: 'inherit', label: copy('admin.accounts.codexIdentity.inheritProfileProxy', 'Inherit profile connection') },
+  { value: 'direct', label: copy('admin.accounts.codexIdentity.directConnection', 'Direct connection') },
   ...props.proxies.map((proxy) => ({
     value: proxy.id,
     label: proxyLabel(proxy),
@@ -125,21 +138,33 @@ const slotIndexes = computed(() => Array.from({ length: props.modelValue.slot_co
 const updateProfileProxy = (value: string | number | boolean | null) => {
   const next = cloneCodexOSProfile(props.modelValue)
   if (typeof value === 'number' && activeProxies.value.some((proxy) => proxy.id === value)) {
+    next.proxy_mode = 'proxy'
     next.proxy_id = value
+  } else if (value === 'direct') {
+    next.proxy_mode = 'direct'
+    delete next.proxy_id
   } else {
+    next.proxy_mode = 'inherit'
     delete next.proxy_id
   }
   emit('update:modelValue', next)
 }
 
-const slotProxyID = (slotIndex: number): number | null =>
-  props.modelValue.slots?.find((slot) => slot.index === slotIndex)?.proxy_id ?? null
+const slotProxySelection = (slotIndex: number): string | number => {
+  const slot = props.modelValue.slots?.find((item) => item.index === slotIndex)
+  const mode = normalizedProxyMode(slot?.proxy_mode, slot?.proxy_id)
+  return mode === 'proxy' && slot?.proxy_id !== undefined ? slot.proxy_id : mode
+}
 
 const updateSlotProxy = (slotIndex: number, value: string | number | boolean | null) => {
   const next = cloneCodexOSProfile(props.modelValue)
   const slots = (next.slots ?? []).filter((slot) => slot.index !== slotIndex)
   if (typeof value === 'number' && activeProxies.value.some((proxy) => proxy.id === value)) {
-    slots.push({ index: slotIndex, proxy_id: value })
+    slots.push({ index: slotIndex, proxy_mode: 'proxy', proxy_id: value })
+  } else if (value === 'direct') {
+    slots.push({ index: slotIndex, proxy_mode: 'direct' })
+  } else {
+    slots.push({ index: slotIndex, proxy_mode: 'inherit' })
   }
   next.slots = slots.sort((left, right) => left.index - right.index)
   emit('update:modelValue', next)

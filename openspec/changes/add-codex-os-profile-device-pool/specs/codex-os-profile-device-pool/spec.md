@@ -30,6 +30,12 @@ The system SHALL support Windows, macOS, Linux and Generic profiles with validat
 - **AND WHEN** a conversation has established Profile affinity
 - **THEN** failover SHALL NOT downgrade it to a default-off account
 
+#### Scenario: Explicit nested direct connection
+
+- **WHEN** a Profile or device slot selects `proxy_mode=direct` while the account has a default proxy
+- **THEN** requests resolved through that Profile or slot SHALL connect directly and SHALL NOT inherit the account proxy
+- **AND** `proxy_mode=inherit` SHALL remain distinguishable from explicit direct routing after save, import and proxy-expiry fallback
+
 ### Requirement: Stable device slots
 
 The system SHALL bind an authenticated API Key and OS Profile to a stable device slot within the selected OAuth account and derive identity from the account seed, Profile, slot and epoch.

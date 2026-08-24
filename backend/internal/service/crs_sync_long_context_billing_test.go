@@ -15,8 +15,10 @@ import (
 
 type crsLongContextAccountRepo struct {
 	AccountRepository
-	accounts map[string]*Account
-	nextID   int64
+	accounts            map[string]*Account
+	nextID              int64
+	plainUpdates        int
+	provisioningUpdates int
 }
 
 type crsOpenAILongContextSource struct {
@@ -49,8 +51,42 @@ func (r *crsLongContextAccountRepo) Create(_ context.Context, account *Account) 
 }
 
 func (r *crsLongContextAccountRepo) Update(_ context.Context, account *Account) error {
+	r.plainUpdates++
 	crsID, _ := account.Extra["crs_account_id"].(string)
 	r.accounts[crsID] = account
+	return nil
+}
+
+func (r *crsLongContextAccountRepo) ProvisionAccount(ctx context.Context, spec *AccountProvisioningSpec) error {
+	normalized, err := spec.NormalizeAndValidate()
+	if err != nil {
+		return err
+	}
+	normalized.Account.CodexIdentityPolicy = *normalized.Identity
+	normalized.Account.GroupIDs = append([]int64(nil), normalized.GroupIDs...)
+	return r.Create(ctx, normalized.Account)
+}
+
+func (r *crsLongContextAccountRepo) UpdateProvisionedAccount(
+	_ context.Context,
+	spec *AccountProvisioningSpec,
+	_ *bool,
+	_ *bool,
+	_ *float64,
+) error {
+	normalized, err := spec.NormalizeAndValidate()
+	if err != nil {
+		return err
+	}
+	account := normalized.Account
+	account.CodexIdentityPolicy = *normalized.Identity
+	account.GroupIDs = append([]int64(nil), normalized.GroupIDs...)
+	account.Status = normalized.FinalStatus
+	account.Schedulable = normalized.Schedulable
+	account.ProvisioningState = AccountProvisioningActive
+	crsID, _ := account.Extra["crs_account_id"].(string)
+	r.accounts[crsID] = account
+	r.provisioningUpdates++
 	return nil
 }
 
@@ -128,7 +164,83 @@ func TestCRSSyncOpenAILongContextBilling(t *testing.T) {
 	}
 }
 
+func TestCRSSyncCodexIdentityPolicyScopesNewAndExistingAccountsSeparately(t *testing.T) {
+	enabled := DefaultCodexIdentityPolicySpec()
+	enabled.Mode = CodexIdentityPolicyOSProfileDevicePool
+	enabled.Profiles = []CodexOSProfilePolicy{{
+		OSClass: CodexOSLinux, CanonicalSurface: CodexSurfaceCLI,
+		Architecture: CodexArchX8664, SlotCount: 1,
+	}}
+
+	tests := []struct {
+		name             string
+		existingPolicy   CodexIdentityPolicySpec
+		requestedPolicy  CodexIdentityPolicySpec
+		overrideExisting bool
+		wantMode         CodexIdentityPolicyMode
+	}{
+		{
+			name:           "new-account policy preserves an existing enabled policy by default",
+			existingPolicy: enabled, requestedPolicy: DefaultCodexIdentityPolicySpec(),
+			wantMode: CodexIdentityPolicyOSProfileDevicePool,
+		},
+		{
+			name:           "explicit override disables an existing policy through provisioning",
+			existingPolicy: enabled, requestedPolicy: DefaultCodexIdentityPolicySpec(),
+			overrideExisting: true, wantMode: CodexIdentityPolicyOff,
+		},
+		{
+			name:           "explicit override enables an existing policy through provisioning",
+			existingPolicy: DefaultCodexIdentityPolicySpec(), requestedPolicy: enabled,
+			overrideExisting: true, wantMode: CodexIdentityPolicyOSProfileDevicePool,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			const crsID = "crs-openai-1"
+			existing := &Account{
+				ID: 41, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+				Credentials: map[string]any{"access_token": "existing-token"},
+				Extra:       map[string]any{"crs_account_id": crsID},
+				Status:      StatusActive, Schedulable: true,
+				ProvisioningState:   AccountProvisioningActive,
+				CodexIdentityPolicy: tt.existingPolicy,
+			}
+			repo := newCRSLongContextAccountRepo(existing)
+			result := runCRSOpenAILongContextSyncWithInput(t, repo, crsOpenAILongContextSource{
+				collection:  "openaiOAuthAccounts",
+				credentials: map[string]any{"access_token": "synced-token"},
+			}, SyncFromCRSInput{
+				CodexIdentityPolicy:                   &tt.requestedPolicy,
+				OverrideExistingCodexIdentityPolicies: tt.overrideExisting,
+			})
+
+			require.Equal(t, "updated", result.Items[0].Action)
+			require.Equal(t, tt.wantMode, repo.accounts[crsID].CodexIdentityPolicy.Mode)
+			require.Equal(t, 1, repo.provisioningUpdates)
+			require.Zero(t, repo.plainUpdates, "on/off transitions and enabled-account sync must use provisioning")
+		})
+	}
+}
+
+func TestCRSSyncRejectsExistingIdentityOverrideWithoutPolicy(t *testing.T) {
+	_, err := (&CRSSyncService{}).SyncFromCRS(context.Background(), SyncFromCRSInput{
+		OverrideExistingCodexIdentityPolicies: true,
+	})
+	require.EqualError(t, err, "codex_identity_policy is required when overriding existing identity policies")
+}
+
 func runCRSOpenAILongContextSync(t *testing.T, repo AccountRepository, source crsOpenAILongContextSource) *SyncFromCRSResult {
+	return runCRSOpenAILongContextSyncWithInput(t, repo, source, SyncFromCRSInput{})
+}
+
+func runCRSOpenAILongContextSyncWithInput(
+	t *testing.T,
+	repo AccountRepository,
+	source crsOpenAILongContextSource,
+	input SyncFromCRSInput,
+) *SyncFromCRSResult {
 	t.Helper()
 	account := map[string]any{
 		"kind":        "openai",
@@ -159,11 +271,10 @@ func runCRSOpenAILongContextSync(t *testing.T, repo AccountRepository, source cr
 	cfg := &config.Config{}
 	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
 	service := NewCRSSyncService(repo, nil, nil, nil, nil, cfg)
-	result, err := service.SyncFromCRS(context.Background(), SyncFromCRSInput{
-		BaseURL:  server.URL,
-		Username: "admin",
-		Password: "password",
-	})
+	input.BaseURL = server.URL
+	input.Username = "admin"
+	input.Password = "password"
+	result, err := service.SyncFromCRS(context.Background(), input)
 	require.NoError(t, err)
 	return result
 }

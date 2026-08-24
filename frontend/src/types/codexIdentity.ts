@@ -11,6 +11,7 @@ export type CodexOSProfileID = (typeof CODEX_OS_PROFILE_IDS)[number]
 export type CodexIdentityPolicyMode = 'off' | 'os_profile_device_pool'
 export type CodexClientSurface = 'desktop' | 'cli' | 'sdk' | 'third_party'
 export type CodexArchitecture = 'x86_64' | 'arm64' | ''
+export type CodexProxyMode = 'inherit' | 'proxy' | 'direct'
 export type CodexSessionPolicyMode =
   | 'conversation_isolated'
   | 'api_key_shared'
@@ -19,7 +20,8 @@ export type CodexSessionPolicyMode =
 
 export interface CodexDeviceSlotPolicy {
   index: number
-  /** Omitted means inherit the profile/account proxy. */
+  proxy_mode: CodexProxyMode
+  /** Present only when proxy_mode is proxy. */
   proxy_id?: number
 }
 
@@ -29,7 +31,8 @@ export interface CodexOSProfilePolicy {
   /** Generic profiles must serialize this as an empty string. */
   architecture: CodexArchitecture
   slot_count: number
-  /** Omitted means inherit the account proxy. */
+  proxy_mode: CodexProxyMode
+  /** Present only when proxy_mode is proxy. */
   proxy_id?: number
   slots?: CodexDeviceSlotPolicy[]
 }

@@ -74,6 +74,11 @@ func Architecture(v string) predicate.AccountCodexProfile {
 	return predicate.AccountCodexProfile(sql.FieldEQ(FieldArchitecture, v))
 }
 
+// ProxyMode applies equality check predicate on the "proxy_mode" field. It's identical to ProxyModeEQ.
+func ProxyMode(v string) predicate.AccountCodexProfile {
+	return predicate.AccountCodexProfile(sql.FieldEQ(FieldProxyMode, v))
+}
+
 // ProxyID applies equality check predicate on the "proxy_id" field. It's identical to ProxyIDEQ.
 func ProxyID(v int64) predicate.AccountCodexProfile {
 	return predicate.AccountCodexProfile(sql.FieldEQ(FieldProxyID, v))
@@ -347,6 +352,71 @@ func ArchitectureEqualFold(v string) predicate.AccountCodexProfile {
 // ArchitectureContainsFold applies the ContainsFold predicate on the "architecture" field.
 func ArchitectureContainsFold(v string) predicate.AccountCodexProfile {
 	return predicate.AccountCodexProfile(sql.FieldContainsFold(FieldArchitecture, v))
+}
+
+// ProxyModeEQ applies the EQ predicate on the "proxy_mode" field.
+func ProxyModeEQ(v string) predicate.AccountCodexProfile {
+	return predicate.AccountCodexProfile(sql.FieldEQ(FieldProxyMode, v))
+}
+
+// ProxyModeNEQ applies the NEQ predicate on the "proxy_mode" field.
+func ProxyModeNEQ(v string) predicate.AccountCodexProfile {
+	return predicate.AccountCodexProfile(sql.FieldNEQ(FieldProxyMode, v))
+}
+
+// ProxyModeIn applies the In predicate on the "proxy_mode" field.
+func ProxyModeIn(vs ...string) predicate.AccountCodexProfile {
+	return predicate.AccountCodexProfile(sql.FieldIn(FieldProxyMode, vs...))
+}
+
+// ProxyModeNotIn applies the NotIn predicate on the "proxy_mode" field.
+func ProxyModeNotIn(vs ...string) predicate.AccountCodexProfile {
+	return predicate.AccountCodexProfile(sql.FieldNotIn(FieldProxyMode, vs...))
+}
+
+// ProxyModeGT applies the GT predicate on the "proxy_mode" field.
+func ProxyModeGT(v string) predicate.AccountCodexProfile {
+	return predicate.AccountCodexProfile(sql.FieldGT(FieldProxyMode, v))
+}
+
+// ProxyModeGTE applies the GTE predicate on the "proxy_mode" field.
+func ProxyModeGTE(v string) predicate.AccountCodexProfile {
+	return predicate.AccountCodexProfile(sql.FieldGTE(FieldProxyMode, v))
+}
+
+// ProxyModeLT applies the LT predicate on the "proxy_mode" field.
+func ProxyModeLT(v string) predicate.AccountCodexProfile {
+	return predicate.AccountCodexProfile(sql.FieldLT(FieldProxyMode, v))
+}
+
+// ProxyModeLTE applies the LTE predicate on the "proxy_mode" field.
+func ProxyModeLTE(v string) predicate.AccountCodexProfile {
+	return predicate.AccountCodexProfile(sql.FieldLTE(FieldProxyMode, v))
+}
+
+// ProxyModeContains applies the Contains predicate on the "proxy_mode" field.
+func ProxyModeContains(v string) predicate.AccountCodexProfile {
+	return predicate.AccountCodexProfile(sql.FieldContains(FieldProxyMode, v))
+}
+
+// ProxyModeHasPrefix applies the HasPrefix predicate on the "proxy_mode" field.
+func ProxyModeHasPrefix(v string) predicate.AccountCodexProfile {
+	return predicate.AccountCodexProfile(sql.FieldHasPrefix(FieldProxyMode, v))
+}
+
+// ProxyModeHasSuffix applies the HasSuffix predicate on the "proxy_mode" field.
+func ProxyModeHasSuffix(v string) predicate.AccountCodexProfile {
+	return predicate.AccountCodexProfile(sql.FieldHasSuffix(FieldProxyMode, v))
+}
+
+// ProxyModeEqualFold applies the EqualFold predicate on the "proxy_mode" field.
+func ProxyModeEqualFold(v string) predicate.AccountCodexProfile {
+	return predicate.AccountCodexProfile(sql.FieldEqualFold(FieldProxyMode, v))
+}
+
+// ProxyModeContainsFold applies the ContainsFold predicate on the "proxy_mode" field.
+func ProxyModeContainsFold(v string) predicate.AccountCodexProfile {
+	return predicate.AccountCodexProfile(sql.FieldContainsFold(FieldProxyMode, v))
 }
 
 // ProxyIDEQ applies the EQ predicate on the "proxy_id" field.

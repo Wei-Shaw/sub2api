@@ -16,6 +16,7 @@ func (AccountCodexProfile) Fields() []ent.Field {
 		field.String("os_class").MaxLen(20),
 		field.String("canonical_surface").MaxLen(20),
 		field.String("architecture").Optional().Nillable().MaxLen(20),
+		field.String("proxy_mode").Default("inherit").MaxLen(20),
 		field.Int64("proxy_id").Optional().Nillable(),
 		field.Int("slot_count"),
 		field.Int64("epoch"),
