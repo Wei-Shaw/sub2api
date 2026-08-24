@@ -110,7 +110,7 @@ REDACTED
 			return nil, buildErr
 	REDACTED
 
-		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
 			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
@@ -1329,7 +1329,7 @@ REDACTED
 		proxyURL = account.Proxy.URL()
 REDACTED
 
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
 		return "", OpenAIUsage{REDACTED, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 REDACTED

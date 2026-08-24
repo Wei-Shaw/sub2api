@@ -117,7 +117,7 @@ REDACTED
 		return nil, fmt.Errorf("build upstream request: %w", err)
 REDACTED
 
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
 REDACTED

@@ -470,15 +470,21 @@ REDACTED
 		req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
 		resp, err = s.httpUpstream.Do(req, request.proxyURL, request.accountID, request.accountConcurrency)
 REDACTED else {
-		client, clientErr := httpclient.GetClient(httpclient.Options{
-			ProxyURL:              request.proxyURL,
-			Timeout:               codexModelsManifestRequestTimeout,
-			ResponseHeaderTimeout: 10 * time.Second,
-	REDACTED)
-		if clientErr != nil {
-			return nil, infraerrors.Newf(http.StatusInternalServerError, "OPENAI_CODEX_MODELS_PROXY_INVALID", "invalid proxy configuration: %v", clientErr)
+		handled := false
+		if s.pluginManager != nil {
+			resp, handled, err = s.pluginManager.RoundTripOpenAIOAuth(reqCtx, req, request.proxyURL, request.credentialAccount)
 	REDACTED
-		resp, err = client.Do(req)
+		if !handled {
+			client, clientErr := httpclient.GetClient(httpclient.Options{
+				ProxyURL:              request.proxyURL,
+				Timeout:               codexModelsManifestRequestTimeout,
+				ResponseHeaderTimeout: 10 * time.Second,
+		REDACTED)
+			if clientErr != nil {
+				return nil, infraerrors.Newf(http.StatusInternalServerError, "OPENAI_CODEX_MODELS_PROXY_INVALID", "invalid proxy configuration: %v", clientErr)
+		REDACTED
+			resp, err = client.Do(req)
+	REDACTED
 REDACTED
 	if err != nil {
 		return nil, &codexModelsManifestUpstreamError{
