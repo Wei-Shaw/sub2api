@@ -162,8 +162,95 @@ REDACTED
 	changed, err := normalizeOpenAIResponsesLiteTools(reqBody)
 
 REDACTED
-	require.False(t, changed)
+	require.True(t, changed)
 	require.Len(t, reqBody["tools"], 4)
+	require.Equal(t, false, reqBody["parallel_tool_calls"])
+REDACTED
+
+func TestNormalizeOpenAIResponsesLiteTools_ForcesParallelToolCallsFalse(t *testing.T) {
+	tests := []struct {
+		name string
+		body map[string]any
+REDACTED{
+		{
+			name: "top-level tools",
+			body: map[string]any{
+				"tools":               []any{map[string]any{"type": "function", "name": "shell"REDACTEDREDACTED,
+				"parallel_tool_calls": true,
+		REDACTED,
+	REDACTED,
+		{
+			name: "input additional tools",
+			body: map[string]any{
+				"input": []any{map[string]any{
+					"type":  "additional_tools",
+					"tools": []any{map[string]any{"type": "namespace", "name": "collaboration"REDACTEDREDACTED,
+		REDACTED
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			changed, err := normalizeOpenAIResponsesLiteTools(tt.body)
+
+		REDACTED
+			require.True(t, changed)
+			require.Equal(t, false, tt.body["parallel_tool_calls"])
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestNormalizeOpenAIResponsesLiteTools_DoesNotAddParallelToolCallsWithoutTools(t *testing.T) {
+	reqBody := map[string]any{
+		"reasoning":           map[string]any{"context": "all_turns"REDACTED,
+		"parallel_tool_calls": true,
+REDACTED
+
+	changed, err := normalizeOpenAIResponsesLiteTools(reqBody)
+
+REDACTED
+	require.False(t, changed)
+	require.Equal(t, true, reqBody["parallel_tool_calls"])
+REDACTED
+
+func TestNormalizeOpenAIResponsesLiteTools_RejectsNonBooleanParallelToolCalls(t *testing.T) {
+	for _, value := range []any{"false", float64(0), nil, map[string]any{REDACTEDREDACTED {
+		reqBody := map[string]any{
+			"tools":               []any{map[string]any{"type": "function", "name": "shell"REDACTEDREDACTED,
+			"parallel_tool_calls": value,
+	REDACTED
+
+		changed, err := normalizeOpenAIResponsesLiteTools(reqBody)
+
+		require.ErrorContains(t, err, "parallel_tool_calls to be a boolean")
+		require.False(t, changed)
+		require.Equal(t, value, reqBody["parallel_tool_calls"])
+REDACTED
+
+	reqBody := map[string]any{"parallel_tool_calls": []any{REDACTEDREDACTED
+	changed, err := normalizeOpenAIResponsesLiteTools(reqBody)
+	require.ErrorContains(t, err, "parallel_tool_calls to be a boolean")
+	require.False(t, changed)
+REDACTED
+
+func TestNormalizeOpenAIResponsesLiteTools_ParallelToolCallsIsIdempotent(t *testing.T) {
+	reqBody := map[string]any{
+		"reasoning":           map[string]any{"context": "all_turns"REDACTED,
+		"tools":               []any{map[string]any{"type": "function", "name": "shell"REDACTEDREDACTED,
+		"parallel_tool_calls": true,
+REDACTED
+
+	changed, err := normalizeOpenAIResponsesLiteTools(reqBody)
+
+REDACTED
+	require.True(t, changed)
+	require.Equal(t, false, reqBody["parallel_tool_calls"])
+
+	changed, err = normalizeOpenAIResponsesLiteTools(reqBody)
+REDACTED
+	require.False(t, changed)
+	require.Equal(t, false, reqBody["parallel_tool_calls"])
 REDACTED
 
 func TestNormalizeOpenAIResponsesLiteTools_EnsuresReasoningContext(t *testing.T) {
@@ -245,6 +332,8 @@ REDACTED
 	require.False(t, gjson.GetBytes(updated, "tools").Exists())
 	require.Equal(t, "collaboration", gjson.GetBytes(updated, `input.#(type=="additional_tools").tools.0.name`).String())
 	require.Equal(t, "namespace", gjson.GetBytes(updated, "tool_choice.type").String())
+	require.True(t, gjson.GetBytes(updated, "parallel_tool_calls").Exists())
+	require.False(t, gjson.GetBytes(updated, "parallel_tool_calls").Bool())
 REDACTED
 
 func TestApplyCodexOAuthTransform_PreservesLiteNamespaceToolChoice(t *testing.T) {
@@ -297,6 +386,7 @@ func TestOpenAIGatewayServiceForward_NormalizesResponsesLiteToolsForOAuth(t *tes
 			body := []byte(`{
 				"model":"gpt-5.6-terra","stream":true,"instructions":"test",
 				"reasoning":{"effort":"high","context":"current_turn"REDACTED,
+				"parallel_tool_calls":true,
 				"tools":[
 					{"type":"function","name":"shell","parameters":{"type":"object"REDACTEDREDACTED,
 					{"type":"custom","name":"exec"REDACTED,
@@ -321,6 +411,45 @@ func TestOpenAIGatewayServiceForward_NormalizesResponsesLiteToolsForOAuth(t *tes
 			require.Equal(t, "collaboration", gjson.GetBytes(upstream.lastBody, `input.#(type=="additional_tools").tools.0.name`).String())
 			require.Equal(t, "namespace", gjson.GetBytes(upstream.lastBody, "tool_choice.type").String())
 			require.Equal(t, "collaboration", gjson.GetBytes(upstream.lastBody, "tool_choice.name").String())
+			require.True(t, gjson.GetBytes(upstream.lastBody, "parallel_tool_calls").Exists())
+			require.False(t, gjson.GetBytes(upstream.lastBody, "parallel_tool_calls").Bool())
+
+			badRec := httptest.NewRecorder()
+			badCtx, _ := gin.CreateTestContext(badRec)
+			badCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+			badCtx.Request.Header.Set(responsesLiteHeader, "true")
+			badUpstream := &httpUpstreamRecorder{REDACTED
+			svc.httpUpstream = badUpstream
+
+			result, err = svc.Forward(context.Background(), badCtx, account, []byte(`{"model":"gpt-5.6-terra","tools":[{"type":"function","name":"shell"REDACTED],"parallel_tool_calls":"false"REDACTED`))
+
+			require.ErrorContains(t, err, "parallel_tool_calls to be a boolean")
+			require.Nil(t, result)
+			require.Equal(t, http.StatusBadRequest, badRec.Code)
+			require.Equal(t, "invalid_request_error", gjson.Get(badRec.Body.String(), "error.type").String())
+			require.Equal(t, "parallel_tool_calls", gjson.Get(badRec.Body.String(), "error.param").String())
+			require.Contains(t, gjson.Get(badRec.Body.String(), "error.message").String(), "parallel_tool_calls to be a boolean")
+			require.Nil(t, badUpstream.lastReq)
+
+			for _, malformed := range []struct {
+				body      string
+				wantParam string
+		REDACTED{
+				{body: `{"model":"gpt-5.6-terra","tools":{REDACTEDREDACTED`, wantParam: "tools"REDACTED,
+				{body: `{"model":"gpt-5.6-terra","reasoning":[]REDACTED`, wantParam: "reasoning"REDACTED,
+		REDACTED {
+				rec := httptest.NewRecorder()
+				requestCtx, _ := gin.CreateTestContext(rec)
+				requestCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+				requestCtx.Request.Header.Set(responsesLiteHeader, "true")
+
+				result, err = svc.Forward(context.Background(), requestCtx, account, []byte(malformed.body))
+
+			REDACTED
+				require.Nil(t, result)
+				require.Equal(t, http.StatusBadRequest, rec.Code)
+				require.Equal(t, malformed.wantParam, gjson.Get(rec.Body.String(), "error.param").String())
+		REDACTED
 	REDACTED)
 REDACTED
 REDACTED
