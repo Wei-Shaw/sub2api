@@ -125,6 +125,11 @@ func Status(v string) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldStatus, v))
 }
 
+// ProvisioningState applies equality check predicate on the "provisioning_state" field. It's identical to ProvisioningStateEQ.
+func ProvisioningState(v string) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldProvisioningState, v))
+}
+
 // ErrorMessage applies equality check predicate on the "error_message" field. It's identical to ErrorMessageEQ.
 func ErrorMessage(v string) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldErrorMessage, v))
@@ -908,6 +913,71 @@ func StatusEqualFold(v string) predicate.Account {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.Account {
 	return predicate.Account(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// ProvisioningStateEQ applies the EQ predicate on the "provisioning_state" field.
+func ProvisioningStateEQ(v string) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldProvisioningState, v))
+}
+
+// ProvisioningStateNEQ applies the NEQ predicate on the "provisioning_state" field.
+func ProvisioningStateNEQ(v string) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldProvisioningState, v))
+}
+
+// ProvisioningStateIn applies the In predicate on the "provisioning_state" field.
+func ProvisioningStateIn(vs ...string) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldProvisioningState, vs...))
+}
+
+// ProvisioningStateNotIn applies the NotIn predicate on the "provisioning_state" field.
+func ProvisioningStateNotIn(vs ...string) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldProvisioningState, vs...))
+}
+
+// ProvisioningStateGT applies the GT predicate on the "provisioning_state" field.
+func ProvisioningStateGT(v string) predicate.Account {
+	return predicate.Account(sql.FieldGT(FieldProvisioningState, v))
+}
+
+// ProvisioningStateGTE applies the GTE predicate on the "provisioning_state" field.
+func ProvisioningStateGTE(v string) predicate.Account {
+	return predicate.Account(sql.FieldGTE(FieldProvisioningState, v))
+}
+
+// ProvisioningStateLT applies the LT predicate on the "provisioning_state" field.
+func ProvisioningStateLT(v string) predicate.Account {
+	return predicate.Account(sql.FieldLT(FieldProvisioningState, v))
+}
+
+// ProvisioningStateLTE applies the LTE predicate on the "provisioning_state" field.
+func ProvisioningStateLTE(v string) predicate.Account {
+	return predicate.Account(sql.FieldLTE(FieldProvisioningState, v))
+}
+
+// ProvisioningStateContains applies the Contains predicate on the "provisioning_state" field.
+func ProvisioningStateContains(v string) predicate.Account {
+	return predicate.Account(sql.FieldContains(FieldProvisioningState, v))
+}
+
+// ProvisioningStateHasPrefix applies the HasPrefix predicate on the "provisioning_state" field.
+func ProvisioningStateHasPrefix(v string) predicate.Account {
+	return predicate.Account(sql.FieldHasPrefix(FieldProvisioningState, v))
+}
+
+// ProvisioningStateHasSuffix applies the HasSuffix predicate on the "provisioning_state" field.
+func ProvisioningStateHasSuffix(v string) predicate.Account {
+	return predicate.Account(sql.FieldHasSuffix(FieldProvisioningState, v))
+}
+
+// ProvisioningStateEqualFold applies the EqualFold predicate on the "provisioning_state" field.
+func ProvisioningStateEqualFold(v string) predicate.Account {
+	return predicate.Account(sql.FieldEqualFold(FieldProvisioningState, v))
+}
+
+// ProvisioningStateContainsFold applies the ContainsFold predicate on the "provisioning_state" field.
+func ProvisioningStateContainsFold(v string) predicate.Account {
+	return predicate.Account(sql.FieldContainsFold(FieldProvisioningState, v))
 }
 
 // ErrorMessageEQ applies the EQ predicate on the "error_message" field.

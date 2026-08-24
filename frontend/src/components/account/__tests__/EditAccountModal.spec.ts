@@ -317,7 +317,8 @@ function mountModal(account = buildAccount()) {
         Icon: true,
         ProxySelector: true,
         GroupSelector: GroupSelectorStub,
-        ModelWhitelistSelector: ModelWhitelistSelectorStub
+        ModelWhitelistSelector: ModelWhitelistSelectorStub,
+        CodexDeviceSlotLifecycle: true
       }
     }
   })
@@ -1394,6 +1395,54 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty(
       'antigravity_project_id'
     )
+  })
+
+  it('submits the typed identity policy while stripping server-managed version and epoch', async () => {
+    const account = {
+      ...buildAccount(),
+      type: 'oauth',
+      codex_identity_policy: {
+        mode: 'os_profile_device_pool',
+        binding_scope: 'api_key_os',
+        session_policy: { mode: 'conversation_isolated' },
+        affinity_ttl_seconds: 3600,
+        unsupported_policy: 'reject',
+        version: 7,
+        profiles: [{
+          os_class: 'linux',
+          canonical_surface: 'desktop',
+          architecture: 'x86_64',
+          slot_count: 1,
+          epoch: 4
+        }]
+      }
+    } as any
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    expect(wrapper.find('[data-testid="edit-codex-fingerprint-mode-select"]').exists()).toBe(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    const policy = updateAccountMock.mock.calls[0]?.[1]?.codex_identity_policy
+    expect(policy).not.toHaveProperty('version')
+    expect(policy?.profiles?.[0]).not.toHaveProperty('epoch')
+    expect(policy?.profiles?.[0]).toMatchObject({
+      os_class: 'linux',
+      canonical_surface: 'desktop',
+      slot_count: 1
+    })
+  })
+
+  it('shows pending provisioning as not schedulable in the edit state area', () => {
+    const account = {
+      ...buildAccount(),
+      type: 'oauth',
+      provisioning_state: 'pending'
+    } as any
+    const wrapper = mountModal(account)
+
+    expect(wrapper.get('[data-testid="account-provisioning-pending"]').attributes('role')).toBe('status')
+    expect(wrapper.text()).toContain('admin.accounts.status.provisioningPendingHint')
   })
 })
 

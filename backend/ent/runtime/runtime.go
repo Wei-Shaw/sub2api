@@ -6,6 +6,10 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/ent/account"
+	"github.com/Wei-Shaw/sub2api/ent/accountcodexdevicebinding"
+	"github.com/Wei-Shaw/sub2api/ent/accountcodexdeviceslot"
+	"github.com/Wei-Shaw/sub2api/ent/accountcodexidentitypolicy"
+	"github.com/Wei-Shaw/sub2api/ent/accountcodexprofile"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
@@ -244,18 +248,132 @@ func init() {
 	account.DefaultStatus = accountDescStatus.Default.(string)
 	// account.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	account.StatusValidator = accountDescStatus.Validators[0].(func(string) error)
+	// accountDescProvisioningState is the schema descriptor for provisioning_state field.
+	accountDescProvisioningState := accountFields[13].Descriptor()
+	// account.DefaultProvisioningState holds the default value on creation for the provisioning_state field.
+	account.DefaultProvisioningState = accountDescProvisioningState.Default.(string)
+	// account.ProvisioningStateValidator is a validator for the "provisioning_state" field. It is called by the builders before save.
+	account.ProvisioningStateValidator = accountDescProvisioningState.Validators[0].(func(string) error)
+	// accountDescCodexIdentityPolicy is the schema descriptor for codex_identity_policy field.
+	accountDescCodexIdentityPolicy := accountFields[14].Descriptor()
+	// account.DefaultCodexIdentityPolicy holds the default value on creation for the codex_identity_policy field.
+	account.DefaultCodexIdentityPolicy = accountDescCodexIdentityPolicy.Default.(func() map[string]interface{})
 	// accountDescAutoPauseOnExpired is the schema descriptor for auto_pause_on_expired field.
-	accountDescAutoPauseOnExpired := accountFields[16].Descriptor()
+	accountDescAutoPauseOnExpired := accountFields[18].Descriptor()
 	// account.DefaultAutoPauseOnExpired holds the default value on creation for the auto_pause_on_expired field.
 	account.DefaultAutoPauseOnExpired = accountDescAutoPauseOnExpired.Default.(bool)
 	// accountDescSchedulable is the schema descriptor for schedulable field.
-	accountDescSchedulable := accountFields[17].Descriptor()
+	accountDescSchedulable := accountFields[19].Descriptor()
 	// account.DefaultSchedulable holds the default value on creation for the schedulable field.
 	account.DefaultSchedulable = accountDescSchedulable.Default.(bool)
 	// accountDescSessionWindowStatus is the schema descriptor for session_window_status field.
-	accountDescSessionWindowStatus := accountFields[25].Descriptor()
+	accountDescSessionWindowStatus := accountFields[27].Descriptor()
 	// account.SessionWindowStatusValidator is a validator for the "session_window_status" field. It is called by the builders before save.
 	account.SessionWindowStatusValidator = accountDescSessionWindowStatus.Validators[0].(func(string) error)
+	accountcodexdevicebindingFields := schema.AccountCodexDeviceBinding{}.Fields()
+	_ = accountcodexdevicebindingFields
+	// accountcodexdevicebindingDescOsClass is the schema descriptor for os_class field.
+	accountcodexdevicebindingDescOsClass := accountcodexdevicebindingFields[2].Descriptor()
+	// accountcodexdevicebinding.OsClassValidator is a validator for the "os_class" field. It is called by the builders before save.
+	accountcodexdevicebinding.OsClassValidator = accountcodexdevicebindingDescOsClass.Validators[0].(func(string) error)
+	// accountcodexdevicebindingDescCreatedAt is the schema descriptor for created_at field.
+	accountcodexdevicebindingDescCreatedAt := accountcodexdevicebindingFields[5].Descriptor()
+	// accountcodexdevicebinding.DefaultCreatedAt holds the default value on creation for the created_at field.
+	accountcodexdevicebinding.DefaultCreatedAt = accountcodexdevicebindingDescCreatedAt.Default.(func() time.Time)
+	// accountcodexdevicebindingDescUpdatedAt is the schema descriptor for updated_at field.
+	accountcodexdevicebindingDescUpdatedAt := accountcodexdevicebindingFields[6].Descriptor()
+	// accountcodexdevicebinding.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	accountcodexdevicebinding.DefaultUpdatedAt = accountcodexdevicebindingDescUpdatedAt.Default.(func() time.Time)
+	// accountcodexdevicebinding.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	accountcodexdevicebinding.UpdateDefaultUpdatedAt = accountcodexdevicebindingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	accountcodexdeviceslotFields := schema.AccountCodexDeviceSlot{}.Fields()
+	_ = accountcodexdeviceslotFields
+	// accountcodexdeviceslotDescState is the schema descriptor for state field.
+	accountcodexdeviceslotDescState := accountcodexdeviceslotFields[5].Descriptor()
+	// accountcodexdeviceslot.DefaultState holds the default value on creation for the state field.
+	accountcodexdeviceslot.DefaultState = accountcodexdeviceslotDescState.Default.(string)
+	// accountcodexdeviceslot.StateValidator is a validator for the "state" field. It is called by the builders before save.
+	accountcodexdeviceslot.StateValidator = accountcodexdeviceslotDescState.Validators[0].(func(string) error)
+	// accountcodexdeviceslotDescCreatedAt is the schema descriptor for created_at field.
+	accountcodexdeviceslotDescCreatedAt := accountcodexdeviceslotFields[6].Descriptor()
+	// accountcodexdeviceslot.DefaultCreatedAt holds the default value on creation for the created_at field.
+	accountcodexdeviceslot.DefaultCreatedAt = accountcodexdeviceslotDescCreatedAt.Default.(func() time.Time)
+	// accountcodexdeviceslotDescUpdatedAt is the schema descriptor for updated_at field.
+	accountcodexdeviceslotDescUpdatedAt := accountcodexdeviceslotFields[7].Descriptor()
+	// accountcodexdeviceslot.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	accountcodexdeviceslot.DefaultUpdatedAt = accountcodexdeviceslotDescUpdatedAt.Default.(func() time.Time)
+	// accountcodexdeviceslot.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	accountcodexdeviceslot.UpdateDefaultUpdatedAt = accountcodexdeviceslotDescUpdatedAt.UpdateDefault.(func() time.Time)
+	accountcodexidentitypolicyFields := schema.AccountCodexIdentityPolicy{}.Fields()
+	_ = accountcodexidentitypolicyFields
+	// accountcodexidentitypolicyDescMode is the schema descriptor for mode field.
+	accountcodexidentitypolicyDescMode := accountcodexidentitypolicyFields[1].Descriptor()
+	// accountcodexidentitypolicy.DefaultMode holds the default value on creation for the mode field.
+	accountcodexidentitypolicy.DefaultMode = accountcodexidentitypolicyDescMode.Default.(string)
+	// accountcodexidentitypolicy.ModeValidator is a validator for the "mode" field. It is called by the builders before save.
+	accountcodexidentitypolicy.ModeValidator = accountcodexidentitypolicyDescMode.Validators[0].(func(string) error)
+	// accountcodexidentitypolicyDescBindingScope is the schema descriptor for binding_scope field.
+	accountcodexidentitypolicyDescBindingScope := accountcodexidentitypolicyFields[2].Descriptor()
+	// accountcodexidentitypolicy.DefaultBindingScope holds the default value on creation for the binding_scope field.
+	accountcodexidentitypolicy.DefaultBindingScope = accountcodexidentitypolicyDescBindingScope.Default.(string)
+	// accountcodexidentitypolicy.BindingScopeValidator is a validator for the "binding_scope" field. It is called by the builders before save.
+	accountcodexidentitypolicy.BindingScopeValidator = accountcodexidentitypolicyDescBindingScope.Validators[0].(func(string) error)
+	// accountcodexidentitypolicyDescSessionPolicy is the schema descriptor for session_policy field.
+	accountcodexidentitypolicyDescSessionPolicy := accountcodexidentitypolicyFields[3].Descriptor()
+	// accountcodexidentitypolicy.DefaultSessionPolicy holds the default value on creation for the session_policy field.
+	accountcodexidentitypolicy.DefaultSessionPolicy = accountcodexidentitypolicyDescSessionPolicy.Default.(func() map[string]interface{})
+	// accountcodexidentitypolicyDescAffinityTTLSeconds is the schema descriptor for affinity_ttl_seconds field.
+	accountcodexidentitypolicyDescAffinityTTLSeconds := accountcodexidentitypolicyFields[4].Descriptor()
+	// accountcodexidentitypolicy.DefaultAffinityTTLSeconds holds the default value on creation for the affinity_ttl_seconds field.
+	accountcodexidentitypolicy.DefaultAffinityTTLSeconds = accountcodexidentitypolicyDescAffinityTTLSeconds.Default.(int)
+	// accountcodexidentitypolicyDescUnsupportedPolicy is the schema descriptor for unsupported_policy field.
+	accountcodexidentitypolicyDescUnsupportedPolicy := accountcodexidentitypolicyFields[5].Descriptor()
+	// accountcodexidentitypolicy.DefaultUnsupportedPolicy holds the default value on creation for the unsupported_policy field.
+	accountcodexidentitypolicy.DefaultUnsupportedPolicy = accountcodexidentitypolicyDescUnsupportedPolicy.Default.(string)
+	// accountcodexidentitypolicy.UnsupportedPolicyValidator is a validator for the "unsupported_policy" field. It is called by the builders before save.
+	accountcodexidentitypolicy.UnsupportedPolicyValidator = accountcodexidentitypolicyDescUnsupportedPolicy.Validators[0].(func(string) error)
+	// accountcodexidentitypolicyDescVersion is the schema descriptor for version field.
+	accountcodexidentitypolicyDescVersion := accountcodexidentitypolicyFields[6].Descriptor()
+	// accountcodexidentitypolicy.DefaultVersion holds the default value on creation for the version field.
+	accountcodexidentitypolicy.DefaultVersion = accountcodexidentitypolicyDescVersion.Default.(int64)
+	// accountcodexidentitypolicyDescCreatedAt is the schema descriptor for created_at field.
+	accountcodexidentitypolicyDescCreatedAt := accountcodexidentitypolicyFields[7].Descriptor()
+	// accountcodexidentitypolicy.DefaultCreatedAt holds the default value on creation for the created_at field.
+	accountcodexidentitypolicy.DefaultCreatedAt = accountcodexidentitypolicyDescCreatedAt.Default.(func() time.Time)
+	// accountcodexidentitypolicyDescUpdatedAt is the schema descriptor for updated_at field.
+	accountcodexidentitypolicyDescUpdatedAt := accountcodexidentitypolicyFields[8].Descriptor()
+	// accountcodexidentitypolicy.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	accountcodexidentitypolicy.DefaultUpdatedAt = accountcodexidentitypolicyDescUpdatedAt.Default.(func() time.Time)
+	// accountcodexidentitypolicy.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	accountcodexidentitypolicy.UpdateDefaultUpdatedAt = accountcodexidentitypolicyDescUpdatedAt.UpdateDefault.(func() time.Time)
+	accountcodexprofileFields := schema.AccountCodexProfile{}.Fields()
+	_ = accountcodexprofileFields
+	// accountcodexprofileDescOsClass is the schema descriptor for os_class field.
+	accountcodexprofileDescOsClass := accountcodexprofileFields[1].Descriptor()
+	// accountcodexprofile.OsClassValidator is a validator for the "os_class" field. It is called by the builders before save.
+	accountcodexprofile.OsClassValidator = accountcodexprofileDescOsClass.Validators[0].(func(string) error)
+	// accountcodexprofileDescCanonicalSurface is the schema descriptor for canonical_surface field.
+	accountcodexprofileDescCanonicalSurface := accountcodexprofileFields[2].Descriptor()
+	// accountcodexprofile.CanonicalSurfaceValidator is a validator for the "canonical_surface" field. It is called by the builders before save.
+	accountcodexprofile.CanonicalSurfaceValidator = accountcodexprofileDescCanonicalSurface.Validators[0].(func(string) error)
+	// accountcodexprofileDescArchitecture is the schema descriptor for architecture field.
+	accountcodexprofileDescArchitecture := accountcodexprofileFields[3].Descriptor()
+	// accountcodexprofile.ArchitectureValidator is a validator for the "architecture" field. It is called by the builders before save.
+	accountcodexprofile.ArchitectureValidator = accountcodexprofileDescArchitecture.Validators[0].(func(string) error)
+	// accountcodexprofileDescCatalogVersion is the schema descriptor for catalog_version field.
+	accountcodexprofileDescCatalogVersion := accountcodexprofileFields[7].Descriptor()
+	// accountcodexprofile.DefaultCatalogVersion holds the default value on creation for the catalog_version field.
+	accountcodexprofile.DefaultCatalogVersion = accountcodexprofileDescCatalogVersion.Default.(int64)
+	// accountcodexprofileDescCreatedAt is the schema descriptor for created_at field.
+	accountcodexprofileDescCreatedAt := accountcodexprofileFields[8].Descriptor()
+	// accountcodexprofile.DefaultCreatedAt holds the default value on creation for the created_at field.
+	accountcodexprofile.DefaultCreatedAt = accountcodexprofileDescCreatedAt.Default.(func() time.Time)
+	// accountcodexprofileDescUpdatedAt is the schema descriptor for updated_at field.
+	accountcodexprofileDescUpdatedAt := accountcodexprofileFields[9].Descriptor()
+	// accountcodexprofile.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	accountcodexprofile.DefaultUpdatedAt = accountcodexprofileDescUpdatedAt.Default.(func() time.Time)
+	// accountcodexprofile.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	accountcodexprofile.UpdateDefaultUpdatedAt = accountcodexprofileDescUpdatedAt.UpdateDefault.(func() time.Time)
 	accountgroupFields := schema.AccountGroup{}.Fields()
 	_ = accountgroupFields
 	// accountgroupDescPriority is the schema descriptor for priority field.

@@ -317,3 +317,58 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 	require.Len(t, adminSvc.createdAccounts, 1)
 	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
 }
+
+func TestDataImportIdentityOverrideOnlyAppliesToOpenAIOAuth(t *testing.T) {
+	override := &service.CodexIdentityPolicySpec{
+		Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []service.CodexOSProfilePolicy{{
+			OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI,
+			Architecture: service.CodexArchX8664, SlotCount: 1,
+		}},
+	}
+	req := DataImportRequest{
+		CodexIdentityPolicyOverride:      override,
+		OverrideImportedIdentityPolicies: true,
+	}
+
+	got, err := resolveDataImportCodexIdentityPolicy(req, DataAccount{
+		Platform: service.PlatformAnthropic,
+		Type:     service.AccountTypeOAuth,
+	}, nil)
+	require.NoError(t, err)
+	require.Nil(t, got)
+
+	got, err = resolveDataImportCodexIdentityPolicy(req, DataAccount{
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+	}, nil)
+	require.NoError(t, err)
+	require.Equal(t, service.CodexIdentityPolicyOSProfileDevicePool, got.Mode)
+}
+
+func TestDataImportIdentityPolicyRejectsNumericProxyIDsAndMapsStableKeys(t *testing.T) {
+	numericProxyID := int64(77)
+	item := DataAccount{
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+		CodexIdentityPolicy: &service.CodexIdentityPolicySpec{
+			Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+			Profiles: []service.CodexOSProfilePolicy{{
+				OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI,
+				Architecture: service.CodexArchX8664, SlotCount: 1, ProxyID: &numericProxyID,
+			}},
+		},
+	}
+	_, err := resolveImportedDataCodexIdentityPolicy(item, map[string]int64{})
+	require.Error(t, err)
+
+	item.CodexIdentityPolicy.Profiles[0].ProxyID = nil
+	key := "http|127.0.0.1|8080||"
+	item.CodexProfileProxies = map[string]DataCodexProfileProxyRefs{
+		"linux": {ProxyKey: &key},
+	}
+	got, err := resolveImportedDataCodexIdentityPolicy(item, map[string]int64{key: 12})
+	require.NoError(t, err)
+	require.NotNil(t, got.Profiles[0].ProxyID)
+	require.EqualValues(t, 12, *got.Profiles[0].ProxyID)
+}

@@ -209,6 +209,26 @@ func (_c *AccountCreate) SetNillableStatus(v *string) *AccountCreate {
 	return _c
 }
 
+// SetProvisioningState sets the "provisioning_state" field.
+func (_c *AccountCreate) SetProvisioningState(v string) *AccountCreate {
+	_c.mutation.SetProvisioningState(v)
+	return _c
+}
+
+// SetNillableProvisioningState sets the "provisioning_state" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableProvisioningState(v *string) *AccountCreate {
+	if v != nil {
+		_c.SetProvisioningState(*v)
+	}
+	return _c
+}
+
+// SetCodexIdentityPolicy sets the "codex_identity_policy" field.
+func (_c *AccountCreate) SetCodexIdentityPolicy(v map[string]interface{}) *AccountCreate {
+	_c.mutation.SetCodexIdentityPolicy(v)
+	return _c
+}
+
 // SetErrorMessage sets the "error_message" field.
 func (_c *AccountCreate) SetErrorMessage(v string) *AccountCreate {
 	_c.mutation.SetErrorMessage(v)
@@ -569,6 +589,17 @@ func (_c *AccountCreate) defaults() error {
 		v := account.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.ProvisioningState(); !ok {
+		v := account.DefaultProvisioningState
+		_c.mutation.SetProvisioningState(v)
+	}
+	if _, ok := _c.mutation.CodexIdentityPolicy(); !ok {
+		if account.DefaultCodexIdentityPolicy == nil {
+			return fmt.Errorf("ent: uninitialized account.DefaultCodexIdentityPolicy (forgotten import ent/runtime?)")
+		}
+		v := account.DefaultCodexIdentityPolicy()
+		_c.mutation.SetCodexIdentityPolicy(v)
+	}
 	if _, ok := _c.mutation.AutoPauseOnExpired(); !ok {
 		v := account.DefaultAutoPauseOnExpired
 		_c.mutation.SetAutoPauseOnExpired(v)
@@ -638,6 +669,17 @@ func (_c *AccountCreate) check() error {
 		if err := account.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Account.status": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.ProvisioningState(); !ok {
+		return &ValidationError{Name: "provisioning_state", err: errors.New(`ent: missing required field "Account.provisioning_state"`)}
+	}
+	if v, ok := _c.mutation.ProvisioningState(); ok {
+		if err := account.ProvisioningStateValidator(v); err != nil {
+			return &ValidationError{Name: "provisioning_state", err: fmt.Errorf(`ent: validator failed for field "Account.provisioning_state": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.CodexIdentityPolicy(); !ok {
+		return &ValidationError{Name: "codex_identity_policy", err: errors.New(`ent: missing required field "Account.codex_identity_policy"`)}
 	}
 	if _, ok := _c.mutation.AutoPauseOnExpired(); !ok {
 		return &ValidationError{Name: "auto_pause_on_expired", err: errors.New(`ent: missing required field "Account.auto_pause_on_expired"`)}
@@ -744,6 +786,14 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(account.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.ProvisioningState(); ok {
+		_spec.SetField(account.FieldProvisioningState, field.TypeString, value)
+		_node.ProvisioningState = value
+	}
+	if value, ok := _c.mutation.CodexIdentityPolicy(); ok {
+		_spec.SetField(account.FieldCodexIdentityPolicy, field.TypeJSON, value)
+		_node.CodexIdentityPolicy = value
 	}
 	if value, ok := _c.mutation.ErrorMessage(); ok {
 		_spec.SetField(account.FieldErrorMessage, field.TypeString, value)
@@ -1176,6 +1226,30 @@ func (u *AccountUpsert) SetStatus(v string) *AccountUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *AccountUpsert) UpdateStatus() *AccountUpsert {
 	u.SetExcluded(account.FieldStatus)
+	return u
+}
+
+// SetProvisioningState sets the "provisioning_state" field.
+func (u *AccountUpsert) SetProvisioningState(v string) *AccountUpsert {
+	u.Set(account.FieldProvisioningState, v)
+	return u
+}
+
+// UpdateProvisioningState sets the "provisioning_state" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateProvisioningState() *AccountUpsert {
+	u.SetExcluded(account.FieldProvisioningState)
+	return u
+}
+
+// SetCodexIdentityPolicy sets the "codex_identity_policy" field.
+func (u *AccountUpsert) SetCodexIdentityPolicy(v map[string]interface{}) *AccountUpsert {
+	u.Set(account.FieldCodexIdentityPolicy, v)
+	return u
+}
+
+// UpdateCodexIdentityPolicy sets the "codex_identity_policy" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateCodexIdentityPolicy() *AccountUpsert {
+	u.SetExcluded(account.FieldCodexIdentityPolicy)
 	return u
 }
 
@@ -1753,6 +1827,34 @@ func (u *AccountUpsertOne) SetStatus(v string) *AccountUpsertOne {
 func (u *AccountUpsertOne) UpdateStatus() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetProvisioningState sets the "provisioning_state" field.
+func (u *AccountUpsertOne) SetProvisioningState(v string) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetProvisioningState(v)
+	})
+}
+
+// UpdateProvisioningState sets the "provisioning_state" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateProvisioningState() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateProvisioningState()
+	})
+}
+
+// SetCodexIdentityPolicy sets the "codex_identity_policy" field.
+func (u *AccountUpsertOne) SetCodexIdentityPolicy(v map[string]interface{}) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetCodexIdentityPolicy(v)
+	})
+}
+
+// UpdateCodexIdentityPolicy sets the "codex_identity_policy" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateCodexIdentityPolicy() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateCodexIdentityPolicy()
 	})
 }
 
@@ -2538,6 +2640,34 @@ func (u *AccountUpsertBulk) SetStatus(v string) *AccountUpsertBulk {
 func (u *AccountUpsertBulk) UpdateStatus() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetProvisioningState sets the "provisioning_state" field.
+func (u *AccountUpsertBulk) SetProvisioningState(v string) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetProvisioningState(v)
+	})
+}
+
+// UpdateProvisioningState sets the "provisioning_state" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateProvisioningState() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateProvisioningState()
+	})
+}
+
+// SetCodexIdentityPolicy sets the "codex_identity_policy" field.
+func (u *AccountUpsertBulk) SetCodexIdentityPolicy(v map[string]interface{}) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetCodexIdentityPolicy(v)
+	})
+}
+
+// UpdateCodexIdentityPolicy sets the "codex_identity_policy" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateCodexIdentityPolicy() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateCodexIdentityPolicy()
 	})
 }
 

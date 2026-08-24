@@ -58,23 +58,32 @@ type DataProxy struct {
 // 影子的独立调度配置(priority/并发/分组/status 管理员可单独调)亦不在本备份范围,属已知局限
 // (外审第6轮裁决:保持排除 + 前端警告,而非升级格式做完整往返)。
 type DataAccount struct {
-	Name               string         `json:"name"`
-	Notes              *string        `json:"notes,omitempty"`
-	Platform           string         `json:"platform"`
-	Type               string         `json:"type"`
-	Credentials        map[string]any `json:"credentials"`
-	Extra              map[string]any `json:"extra,omitempty"`
-	ProxyKey           *string        `json:"proxy_key,omitempty"`
-	Concurrency        int            `json:"concurrency"`
-	Priority           int            `json:"priority"`
-	RateMultiplier     *float64       `json:"rate_multiplier,omitempty"`
-	ExpiresAt          *int64         `json:"expires_at,omitempty"`
-	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired,omitempty"`
+	Name                string                               `json:"name"`
+	Notes               *string                              `json:"notes,omitempty"`
+	Platform            string                               `json:"platform"`
+	Type                string                               `json:"type"`
+	Credentials         map[string]any                       `json:"credentials"`
+	Extra               map[string]any                       `json:"extra,omitempty"`
+	ProxyKey            *string                              `json:"proxy_key,omitempty"`
+	Concurrency         int                                  `json:"concurrency"`
+	Priority            int                                  `json:"priority"`
+	RateMultiplier      *float64                             `json:"rate_multiplier,omitempty"`
+	ExpiresAt           *int64                               `json:"expires_at,omitempty"`
+	AutoPauseOnExpired  *bool                                `json:"auto_pause_on_expired,omitempty"`
+	CodexIdentityPolicy *service.CodexIdentityPolicySpec     `json:"codex_identity_policy,omitempty"`
+	CodexProfileProxies map[string]DataCodexProfileProxyRefs `json:"codex_profile_proxies,omitempty"`
+}
+
+type DataCodexProfileProxyRefs struct {
+	ProxyKey      *string           `json:"proxy_key,omitempty"`
+	SlotProxyKeys map[string]string `json:"slot_proxy_keys,omitempty"`
 }
 
 type DataImportRequest struct {
-	Data                 DataPayload `json:"data"`
-	SkipDefaultGroupBind *bool       `json:"skip_default_group_bind"`
+	Data                             DataPayload                      `json:"data"`
+	SkipDefaultGroupBind             *bool                            `json:"skip_default_group_bind"`
+	CodexIdentityPolicyOverride      *service.CodexIdentityPolicySpec `json:"codex_identity_policy_override,omitempty"`
+	OverrideImportedIdentityPolicies bool                             `json:"override_imported_identity_policies"`
 }
 
 type DataImportResult struct {
@@ -199,19 +208,22 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			v := acc.ExpiresAt.Unix()
 			expiresAt = &v
 		}
+		identityPolicy, identityProxyRefs := exportDataCodexIdentityPolicy(acc.CodexIdentityPolicy, proxyKeyByID)
 		dataAccounts = append(dataAccounts, DataAccount{
-			Name:               acc.Name,
-			Notes:              acc.Notes,
-			Platform:           acc.Platform,
-			Type:               acc.Type,
-			Credentials:        acc.Credentials,
-			Extra:              acc.Extra,
-			ProxyKey:           proxyKey,
-			Concurrency:        acc.Concurrency,
-			Priority:           acc.Priority,
-			RateMultiplier:     acc.RateMultiplier,
-			ExpiresAt:          expiresAt,
-			AutoPauseOnExpired: &acc.AutoPauseOnExpired,
+			Name:                acc.Name,
+			Notes:               acc.Notes,
+			Platform:            acc.Platform,
+			Type:                acc.Type,
+			Credentials:         acc.Credentials,
+			Extra:               service.StripCodexFingerprintSeed(acc.Extra),
+			ProxyKey:            proxyKey,
+			Concurrency:         acc.Concurrency,
+			Priority:            acc.Priority,
+			RateMultiplier:      acc.RateMultiplier,
+			ExpiresAt:           expiresAt,
+			AutoPauseOnExpired:  &acc.AutoPauseOnExpired,
+			CodexIdentityPolicy: identityPolicy,
+			CodexProfileProxies: identityProxyRefs,
 		})
 	}
 
@@ -428,6 +440,12 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		}
 
 		enrichCredentialsFromIDToken(&item)
+		identityPolicy, policyErr := resolveDataImportCodexIdentityPolicy(req, item, proxyKeyToID)
+		if policyErr != nil {
+			result.AccountFailed++
+			result.Errors = append(result.Errors, DataImportError{Kind: "account", Name: item.Name, Message: policyErr.Error()})
+			continue
+		}
 
 		accountInput := &service.CreateAccountInput{
 			Name:                 item.Name,
@@ -443,6 +461,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			GroupIDs:             nil,
 			ExpiresAt:            item.ExpiresAt,
 			AutoPauseOnExpired:   item.AutoPauseOnExpired,
+			CodexIdentityPolicy:  identityPolicy,
 			SkipDefaultGroupBind: skipDefaultGroupBind,
 		}
 
@@ -571,24 +590,137 @@ func (h *AccountHandler) resolveExportProxies(ctx context.Context, accounts []se
 	seen := make(map[int64]struct{})
 	ids := make([]int64, 0)
 	for i := range accounts {
-		if accounts[i].ProxyID == nil {
-			continue
+		candidateIDs := accounts[i].CodexIdentityPolicy.ReferencedProxyIDs()
+		if accounts[i].ProxyID != nil {
+			candidateIDs = append(candidateIDs, *accounts[i].ProxyID)
 		}
-		id := *accounts[i].ProxyID
-		if id <= 0 {
-			continue
+		for _, id := range candidateIDs {
+			if id <= 0 {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
 		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		ids = append(ids, id)
 	}
 	if len(ids) == 0 {
 		return []service.Proxy{}, nil
 	}
 
 	return h.adminService.GetProxiesByIDs(ctx, ids)
+}
+
+func exportDataCodexIdentityPolicy(
+	policy service.CodexIdentityPolicySpec,
+	proxyKeyByID map[int64]string,
+) (*service.CodexIdentityPolicySpec, map[string]DataCodexProfileProxyRefs) {
+	cloned := policy
+	cloned.Profiles = append([]service.CodexOSProfilePolicy(nil), policy.Profiles...)
+	refs := make(map[string]DataCodexProfileProxyRefs)
+	for i := range cloned.Profiles {
+		profile := &cloned.Profiles[i]
+		profile.Slots = append([]service.CodexDeviceSlotPolicy(nil), policy.Profiles[i].Slots...)
+		profileRefs := DataCodexProfileProxyRefs{SlotProxyKeys: make(map[string]string)}
+		if profile.ProxyID != nil {
+			if key, ok := proxyKeyByID[*profile.ProxyID]; ok {
+				profileRefs.ProxyKey = &key
+			}
+			profile.ProxyID = nil
+		}
+		for slotIndex := range profile.Slots {
+			slot := &profile.Slots[slotIndex]
+			if slot.ProxyID == nil {
+				continue
+			}
+			if key, ok := proxyKeyByID[*slot.ProxyID]; ok {
+				profileRefs.SlotProxyKeys[strconv.Itoa(slot.Index)] = key
+			}
+			slot.ProxyID = nil
+		}
+		if profileRefs.ProxyKey != nil || len(profileRefs.SlotProxyKeys) > 0 {
+			refs[string(profile.OSClass)] = profileRefs
+		}
+	}
+	if len(refs) == 0 {
+		refs = nil
+	}
+	return &cloned, refs
+}
+
+func resolveImportedDataCodexIdentityPolicy(
+	item DataAccount,
+	proxyKeyToID map[string]int64,
+) (*service.CodexIdentityPolicySpec, error) {
+	if item.CodexIdentityPolicy == nil {
+		return nil, nil
+	}
+	policy := *item.CodexIdentityPolicy
+	policy.Profiles = append([]service.CodexOSProfilePolicy(nil), item.CodexIdentityPolicy.Profiles...)
+	for i := range policy.Profiles {
+		profile := &policy.Profiles[i]
+		profile.Slots = append([]service.CodexDeviceSlotPolicy(nil), item.CodexIdentityPolicy.Profiles[i].Slots...)
+		if profile.ProxyID != nil {
+			return nil, fmt.Errorf("numeric profile proxy_id is not accepted during data import")
+		}
+		for _, slot := range profile.Slots {
+			if slot.ProxyID != nil {
+				return nil, fmt.Errorf("numeric slot proxy_id is not accepted during data import")
+			}
+		}
+		refs := item.CodexProfileProxies[string(profile.OSClass)]
+		if refs.ProxyKey != nil {
+			proxyID, ok := proxyKeyToID[*refs.ProxyKey]
+			if !ok {
+				return nil, fmt.Errorf("profile %s proxy_key not found", profile.OSClass)
+			}
+			profile.ProxyID = &proxyID
+		}
+		slotsByIndex := make(map[int]*service.CodexDeviceSlotPolicy, len(profile.Slots))
+		for slotIndex := range profile.Slots {
+			slotsByIndex[profile.Slots[slotIndex].Index] = &profile.Slots[slotIndex]
+		}
+		for rawIndex, proxyKey := range refs.SlotProxyKeys {
+			index, err := strconv.Atoi(rawIndex)
+			if err != nil {
+				return nil, fmt.Errorf("profile %s has invalid slot index %q", profile.OSClass, rawIndex)
+			}
+			proxyID, ok := proxyKeyToID[proxyKey]
+			if !ok {
+				return nil, fmt.Errorf("profile %s slot %d proxy_key not found", profile.OSClass, index)
+			}
+			slot := slotsByIndex[index]
+			if slot == nil {
+				profile.Slots = append(profile.Slots, service.CodexDeviceSlotPolicy{Index: index, ProxyID: &proxyID})
+				continue
+			}
+			slot.ProxyID = &proxyID
+		}
+	}
+	return &policy, nil
+}
+
+func resolveDataImportCodexIdentityPolicy(
+	req DataImportRequest,
+	item DataAccount,
+	proxyKeyToID map[string]int64,
+) (*service.CodexIdentityPolicySpec, error) {
+	isOpenAIOAuth := item.Platform == service.PlatformOpenAI && item.Type == service.AccountTypeOAuth
+	if !isOpenAIOAuth {
+		if item.CodexIdentityPolicy != nil &&
+			item.CodexIdentityPolicy.Mode != "" &&
+			item.CodexIdentityPolicy.Mode != service.CodexIdentityPolicyOff {
+			return nil, fmt.Errorf("codex OS profile policy is only valid for OpenAI OAuth accounts")
+		}
+		return nil, nil
+	}
+	if req.CodexIdentityPolicyOverride != nil &&
+		(req.OverrideImportedIdentityPolicies || item.CodexIdentityPolicy == nil) {
+		override := *req.CodexIdentityPolicyOverride
+		return &override, nil
+	}
+	return resolveImportedDataCodexIdentityPolicy(item, proxyKeyToID)
 }
 
 func parseAccountIDs(c *gin.Context) ([]int64, error) {

@@ -991,4 +991,27 @@ describe('BulkEditAccountModal', () => {
       }
     })
   })
+
+  it('批量应用默认关闭的 OS Profile 策略，并与旧指纹模式互斥', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+
+    await wrapper.get('#bulk-edit-codex-identity-enabled').setValue(true)
+    expect(wrapper.find('[data-testid="bulk-codex-fingerprint-mode-select"]').exists()).toBe(false)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      codex_identity_policy: {
+        mode: 'off',
+        binding_scope: 'api_key_os',
+        session_policy: { mode: 'conversation_isolated' },
+        affinity_ttl_seconds: 3600,
+        unsupported_policy: 'reject',
+        profiles: []
+      }
+    })
+  })
 })

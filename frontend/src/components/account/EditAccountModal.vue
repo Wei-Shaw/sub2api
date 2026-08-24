@@ -1678,6 +1678,25 @@
         </div>
       </div>
 
+      <div
+        v-if="account?.platform === 'openai' && account?.type === 'oauth' && !isSparkShadow"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <CodexIdentityPolicyEditor
+          v-model="codexIdentityPolicy"
+          :proxies="proxies"
+          :account-proxy-id="form.proxy_id"
+          id-prefix="edit-codex-identity"
+        />
+      </div>
+
+      <CodexDeviceSlotLifecycle
+        v-if="account?.platform === 'openai' && account?.type === 'oauth' && !isSparkShadow"
+        :account-id="account.id"
+        :proxies="proxies"
+        id-prefix="edit-codex-device-slots"
+      />
+
       <!-- OpenAI Codex hosted image_generation bridge policy -->
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
@@ -2100,7 +2119,7 @@
 
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div
-        v-if="account?.platform === 'openai' && account?.type === 'oauth'"
+        v-if="account?.platform === 'openai' && account?.type === 'oauth' && codexIdentityPolicy.mode === 'off'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -2739,6 +2758,15 @@
       </div>
 
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div
+          v-if="account?.provisioning_state === 'pending'"
+          class="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"
+          role="status"
+          data-testid="account-provisioning-pending"
+        >
+          <Icon name="exclamationTriangle" size="sm" class="mt-0.5 shrink-0" />
+          <span>{{ t('admin.accounts.status.provisioningPendingHint') }}</span>
+        </div>
         <div>
           <label class="input-label">{{ t('common.status') }}</label>
           <Select v-model="form.status" :options="statusOptions" />
@@ -2881,7 +2909,8 @@ import type {
   OpenAICompactMode,
   OpenAIResponsesMode,
   OpenAIEndpointCapability,
-  OllamaCloudUsageState
+  OllamaCloudUsageState,
+  CodexIdentityPolicy
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -2898,6 +2927,15 @@ import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
+import { CodexDeviceSlotLifecycle, CodexIdentityPolicyEditor } from './codex-identity'
+import {
+  createDefaultCodexIdentityPolicy,
+  availableCodexIdentityProxyIDs,
+  codexIdentityValidationMessageKey,
+  normalizeCodexIdentityPolicy,
+  serializeCodexIdentityPolicy,
+  validateCodexIdentityPolicy
+} from '@/utils/codexIdentityValidation'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -3276,6 +3314,10 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
+const codexIdentityPolicy = ref<CodexIdentityPolicy>(createDefaultCodexIdentityPolicy())
+watch(() => codexIdentityPolicy.value.mode, (mode) => {
+  if (mode === 'os_profile_device_pool') codexFingerprintMode.value = 'off'
+})
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
 type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
@@ -3755,6 +3797,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
+  codexIdentityPolicy.value =
+    newAccount.platform === 'openai' && newAccount.type === 'oauth' && newAccount.codex_identity_policy
+      ? normalizeCodexIdentityPolicy(newAccount.codex_identity_policy)
+      : createDefaultCodexIdentityPolicy()
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
@@ -4634,6 +4680,18 @@ const handleSubmit = async () => {
   if (!props.account) return
   const accountID = props.account.id
 
+  if (props.account.platform === 'openai' && props.account.type === 'oauth' && !isSparkShadow.value) {
+    const identityValidation = validateCodexIdentityPolicy(codexIdentityPolicy.value, {
+      availableProxyIDs: availableCodexIdentityProxyIDs(props.proxies)
+    })
+    if (!identityValidation.valid) {
+      const issue = identityValidation.errors[0]
+      const key = issue ? codexIdentityValidationMessageKey(issue.code) : null
+      appStore.showError(key ? t(key) : issue?.message || t('admin.accounts.codexIdentity.fixErrors'))
+      return
+    }
+  }
+
   if (form.status !== 'active' && form.status !== 'inactive' && form.status !== 'error') {
     appStore.showError(t('admin.accounts.pleaseSelectStatus'))
     return
@@ -4647,6 +4705,9 @@ const handleSubmit = async () => {
 	}
 
   const updatePayload: Record<string, unknown> = { ...form }
+  if (props.account.platform === 'openai' && props.account.type === 'oauth' && !isSparkShadow.value) {
+    updatePayload.codex_identity_policy = serializeCodexIdentityPolicy(codexIdentityPolicy.value)
+  }
   try {
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
     if (updatePayload.proxy_id === null) {
@@ -5267,7 +5328,7 @@ const handleSubmit = async () => {
       // 指纹收敛模式：默认 off（不写入）；device/session/full 是显式 opt-in，
       // 必须落键，否则管理员的选择会被后端当作"未设置"而回落到 off（#5610）。
       if (props.account.type === 'oauth') {
-        if (codexFingerprintMode.value !== 'off') {
+        if (codexIdentityPolicy.value.mode === 'off' && codexFingerprintMode.value !== 'off') {
           newExtra.codex_fingerprint_mode = codexFingerprintMode.value
         } else {
           delete newExtra.codex_fingerprint_mode

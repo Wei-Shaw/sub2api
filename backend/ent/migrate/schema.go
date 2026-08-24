@@ -111,6 +111,8 @@ var (
 		{Name: "priority", Type: field.TypeInt, Default: 50},
 		{Name: "rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
+		{Name: "provisioning_state", Type: field.TypeString, Size: 20, Default: "pending"},
+		{Name: "codex_identity_policy", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "error_message", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "last_used_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "expires_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
@@ -136,13 +138,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "accounts_proxies_proxy",
-				Columns:    []*schema.Column{AccountsColumns[30]},
+				Columns:    []*schema.Column{AccountsColumns[32]},
 				RefColumns: []*schema.Column{ProxiesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "accounts_accounts_children",
-				Columns:    []*schema.Column{AccountsColumns[31]},
+				Columns:    []*schema.Column{AccountsColumns[33]},
 				RefColumns: []*schema.Column{AccountsColumns[0]},
 				OnDelete:   schema.Restrict,
 			},
@@ -164,9 +166,14 @@ var (
 				Columns: []*schema.Column{AccountsColumns[15]},
 			},
 			{
+				Name:    "account_provisioning_state",
+				Unique:  false,
+				Columns: []*schema.Column{AccountsColumns[16]},
+			},
+			{
 				Name:    "account_proxy_id",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[30]},
+				Columns: []*schema.Column{AccountsColumns[32]},
 			},
 			{
 				Name:    "account_priority",
@@ -176,27 +183,27 @@ var (
 			{
 				Name:    "account_last_used_at",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[17]},
+				Columns: []*schema.Column{AccountsColumns[19]},
 			},
 			{
 				Name:    "account_schedulable",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[20]},
+				Columns: []*schema.Column{AccountsColumns[22]},
 			},
 			{
 				Name:    "account_rate_limited_at",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[21]},
+				Columns: []*schema.Column{AccountsColumns[23]},
 			},
 			{
 				Name:    "account_rate_limit_reset_at",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[22]},
+				Columns: []*schema.Column{AccountsColumns[24]},
 			},
 			{
 				Name:    "account_overload_until",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[23]},
+				Columns: []*schema.Column{AccountsColumns[25]},
 			},
 			{
 				Name:    "account_platform_priority",
@@ -216,7 +223,122 @@ var (
 			{
 				Name:    "account_parent_account_id",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[31]},
+				Columns: []*schema.Column{AccountsColumns[33]},
+			},
+		},
+	}
+	// AccountCodexDeviceBindingsColumns holds the columns for the "account_codex_device_bindings" table.
+	AccountCodexDeviceBindingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "account_id", Type: field.TypeInt64},
+		{Name: "api_key_id", Type: field.TypeInt64},
+		{Name: "os_class", Type: field.TypeString, Size: 20},
+		{Name: "slot_id", Type: field.TypeInt64},
+		{Name: "policy_version", Type: field.TypeInt64},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// AccountCodexDeviceBindingsTable holds the schema information for the "account_codex_device_bindings" table.
+	AccountCodexDeviceBindingsTable = &schema.Table{
+		Name:       "account_codex_device_bindings",
+		Columns:    AccountCodexDeviceBindingsColumns,
+		PrimaryKey: []*schema.Column{AccountCodexDeviceBindingsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "accountcodexdevicebinding_account_id_api_key_id_os_class",
+				Unique:  true,
+				Columns: []*schema.Column{AccountCodexDeviceBindingsColumns[1], AccountCodexDeviceBindingsColumns[2], AccountCodexDeviceBindingsColumns[3]},
+			},
+			{
+				Name:    "accountcodexdevicebinding_api_key_id_os_class",
+				Unique:  false,
+				Columns: []*schema.Column{AccountCodexDeviceBindingsColumns[2], AccountCodexDeviceBindingsColumns[3]},
+			},
+		},
+	}
+	// AccountCodexDeviceSlotsColumns holds the columns for the "account_codex_device_slots" table.
+	AccountCodexDeviceSlotsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "account_id", Type: field.TypeInt64},
+		{Name: "profile_id", Type: field.TypeInt64},
+		{Name: "slot_index", Type: field.TypeInt},
+		{Name: "proxy_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "epoch", Type: field.TypeInt64},
+		{Name: "state", Type: field.TypeString, Size: 20, Default: "active"},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// AccountCodexDeviceSlotsTable holds the schema information for the "account_codex_device_slots" table.
+	AccountCodexDeviceSlotsTable = &schema.Table{
+		Name:       "account_codex_device_slots",
+		Columns:    AccountCodexDeviceSlotsColumns,
+		PrimaryKey: []*schema.Column{AccountCodexDeviceSlotsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "accountcodexdeviceslot_profile_id_slot_index_epoch",
+				Unique:  true,
+				Columns: []*schema.Column{AccountCodexDeviceSlotsColumns[2], AccountCodexDeviceSlotsColumns[3], AccountCodexDeviceSlotsColumns[5]},
+			},
+			{
+				Name:    "accountcodexdeviceslot_id_account_id",
+				Unique:  true,
+				Columns: []*schema.Column{AccountCodexDeviceSlotsColumns[0], AccountCodexDeviceSlotsColumns[1]},
+			},
+			{
+				Name:    "accountcodexdeviceslot_account_id_state",
+				Unique:  false,
+				Columns: []*schema.Column{AccountCodexDeviceSlotsColumns[1], AccountCodexDeviceSlotsColumns[6]},
+			},
+		},
+	}
+	// AccountCodexIdentityPoliciesColumns holds the columns for the "account_codex_identity_policies" table.
+	AccountCodexIdentityPoliciesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "account_id", Type: field.TypeInt64, Unique: true},
+		{Name: "mode", Type: field.TypeString, Size: 40, Default: "off"},
+		{Name: "binding_scope", Type: field.TypeString, Size: 40, Default: "api_key_os"},
+		{Name: "session_policy", Type: field.TypeJSON},
+		{Name: "affinity_ttl_seconds", Type: field.TypeInt, Default: 3600},
+		{Name: "unsupported_policy", Type: field.TypeString, Size: 40, Default: "reject"},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// AccountCodexIdentityPoliciesTable holds the schema information for the "account_codex_identity_policies" table.
+	AccountCodexIdentityPoliciesTable = &schema.Table{
+		Name:       "account_codex_identity_policies",
+		Columns:    AccountCodexIdentityPoliciesColumns,
+		PrimaryKey: []*schema.Column{AccountCodexIdentityPoliciesColumns[0]},
+	}
+	// AccountCodexProfilesColumns holds the columns for the "account_codex_profiles" table.
+	AccountCodexProfilesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "account_id", Type: field.TypeInt64},
+		{Name: "os_class", Type: field.TypeString, Size: 20},
+		{Name: "canonical_surface", Type: field.TypeString, Size: 20},
+		{Name: "architecture", Type: field.TypeString, Nullable: true, Size: 20},
+		{Name: "proxy_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "slot_count", Type: field.TypeInt},
+		{Name: "epoch", Type: field.TypeInt64},
+		{Name: "catalog_version", Type: field.TypeInt64, Default: 1},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// AccountCodexProfilesTable holds the schema information for the "account_codex_profiles" table.
+	AccountCodexProfilesTable = &schema.Table{
+		Name:       "account_codex_profiles",
+		Columns:    AccountCodexProfilesColumns,
+		PrimaryKey: []*schema.Column{AccountCodexProfilesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "accountcodexprofile_account_id_os_class_epoch",
+				Unique:  true,
+				Columns: []*schema.Column{AccountCodexProfilesColumns[1], AccountCodexProfilesColumns[2], AccountCodexProfilesColumns[7]},
+			},
+			{
+				Name:    "accountcodexprofile_id_account_id",
+				Unique:  true,
+				Columns: []*schema.Column{AccountCodexProfilesColumns[0], AccountCodexProfilesColumns[1]},
 			},
 		},
 	}
@@ -2089,6 +2211,10 @@ var (
 	Tables = []*schema.Table{
 		APIKeysTable,
 		AccountsTable,
+		AccountCodexDeviceBindingsTable,
+		AccountCodexDeviceSlotsTable,
+		AccountCodexIdentityPoliciesTable,
+		AccountCodexProfilesTable,
 		AccountGroupsTable,
 		AnnouncementsTable,
 		AnnouncementReadsTable,

@@ -500,6 +500,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 	}
 	service.SetOpenAIHTTPResponseOwner(c, subject.UserID, apiKey.ID)
+	c.Request = c.Request.WithContext(service.WithHTTPUpstreamIsolationScope(c.Request.Context(), subject.UserID, apiKey.ID))
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
@@ -641,6 +642,16 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		if err != nil {
 			if failoverClientGone(c) {
 				reqLog.Info("openai.account_select_aborted_client_disconnected", zap.Error(err))
+				return
+			}
+			if errors.Is(err, service.ErrDeviceProfileUnsupported) {
+				h.handleStreamingAwareError(
+					c,
+					http.StatusUnprocessableEntity,
+					"DEVICE_PROFILE_UNSUPPORTED",
+					"No available OAuth account supports the detected client device profile",
+					streamStarted,
+				)
 				return
 			}
 			reqLog.Warn("openai.account_select_failed",
@@ -810,6 +821,16 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			})
 		}
 		if err != nil {
+			if errors.Is(err, service.ErrCodexDeviceSessionBusy) {
+				h.handleStreamingAwareError(
+					c,
+					http.StatusTooManyRequests,
+					"CODEX_DEVICE_SESSION_BUSY",
+					"The selected Codex device is serving another conversation; retry shortly",
+					streamStarted,
+				)
+				return
+			}
 			if result != nil && result.ImageCount > 0 {
 				reqLog.Warn("openai.forward_partial_error_with_image_result",
 					zap.Int64("account_id", account.ID),
@@ -1246,6 +1267,16 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		if err != nil {
 			if failoverClientGone(c) {
 				reqLog.Info("openai_messages.account_select_aborted_client_disconnected", zap.Error(err))
+				return
+			}
+			if errors.Is(err, service.ErrDeviceProfileUnsupported) {
+				h.anthropicStreamingAwareError(
+					c,
+					http.StatusUnprocessableEntity,
+					"DEVICE_PROFILE_UNSUPPORTED",
+					"No available OAuth account supports the detected client device profile",
+					streamStarted,
+				)
 				return
 			}
 			reqLog.Warn("openai_messages.account_select_failed",
@@ -2391,11 +2422,16 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		return
 	}
 
+	ctx = service.WithHTTPUpstreamIsolationScope(ctx, subject.UserID, apiKey.ID)
+	c.Request = c.Request.WithContext(ctx)
 	sessionHash := h.gatewayService.GenerateSessionHashWithFallback(
 		c,
 		firstMessage,
 		openAIWSIngressFallbackSessionSeed(subject.UserID, apiKey.ID, apiKey.GroupID),
 	)
+	// GenerateSessionHashWithFallback stages the classified Profile on the
+	// request context. Carry that context into pricing and account selection.
+	ctx = c.Request.Context()
 	ctx = service.WithOpenAIGuardianParentAffinity(ctx, c, firstMessage, reqModel)
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -2507,6 +2543,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
+			if errors.Is(err, service.ErrDeviceProfileUnsupported) {
+				closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "DEVICE_PROFILE_UNSUPPORTED")
+				return
+			}
 			if lastFailoverErr != nil {
 				closeOpenAIWSFailoverExhausted(c, wsConn, lastFailoverErr)
 			} else {
@@ -2588,18 +2628,39 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			selection.Account = latest
 			accountReleaseFunc = fastReleaseFunc
 		}
-		// 准入完成：门并入连接 ctx，turn 级复核与 failover 重选共用。
+		// 准入完成：门并入本次上游尝试的 ctx；profile 设备租约仅在该尝试内生效。
 		ctx = admissionCtx
+		attemptCtx := ctx
 		// Account selection starts a fresh upstream attempt. Clear any model
 		// captured by the previous failover account before credential lookup.
 		setOpsSelectedAccount(c, account.ID, account.Platform)
-		currentAccountRelease = wrapReleaseOnDone(ctx, accountReleaseFunc)
-		if err := h.gatewayService.BindStickySessionAfterProfitAdmission(ctx, apiKey.GroupID, sessionHash, account.ID); err != nil {
+		preparedAccount, prepareErr := h.gatewayService.PrepareCodexProfileAttempt(attemptCtx, c, account, wsAttemptMessage)
+		if prepareErr != nil {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			if errors.Is(prepareErr, service.ErrCodexDeviceSessionBusy) {
+				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "CODEX_DEVICE_SESSION_BUSY")
+			} else if errors.Is(prepareErr, service.ErrDeviceProfileUnsupported) {
+				closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "DEVICE_PROFILE_UNSUPPORTED")
+			} else {
+				reqLog.Warn("openai.websocket_prepare_codex_profile_failed", zap.Int64("account_id", account.ID), zap.Error(prepareErr))
+				closeOpenAIClientWS(wsConn, coderws.StatusInternalError, "failed to prepare Codex device profile")
+			}
+			return
+		}
+		account = preparedAccount
+		selection.Account = preparedAccount
+		attemptCtx = h.gatewayService.CodexProfileAttemptContext(c, account, attemptCtx)
+		defer h.gatewayService.ReleaseCodexProfileAttempt(c, account)
+		currentAccountRelease = wrapReleaseOnDone(attemptCtx, accountReleaseFunc)
+		if err := h.gatewayService.BindStickySessionAfterProfitAdmission(attemptCtx, apiKey.GroupID, sessionHash, account.ID); err != nil {
 			reqLog.Warn("openai.websocket_bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 		}
 
-		token, _, err := h.gatewayService.GetRequestCredential(ctx, c, account)
+		token, _, err := h.gatewayService.GetRequestCredential(attemptCtx, c, account)
 		if err != nil {
+			h.gatewayService.ReleaseCodexProfileAttempt(c, account)
 			reqLog.Warn("openai.websocket_get_access_token_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			if ctx.Err() != nil {
 				return
@@ -2866,23 +2927,30 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 		// WebSocket 首包可能很大，hash 必须在 hooks 外算成字符串，避免 AfterTurn 闭包保活请求体。
 		requestPayloadHash = service.HashUsageRequestPayload(wsFirstMessage)
-		if preemptCtx, cleanupPreempt, armed := h.gatewayService.BeginOpenAIWSIngressSessionPreemption(ctx, c, account, wsFirstMessage); armed {
-			ctx = preemptCtx
+		if preemptCtx, cleanupPreempt, armed := h.gatewayService.BeginOpenAIWSIngressSessionPreemption(attemptCtx, c, account, wsFirstMessage); armed {
+			attemptCtx = preemptCtx
 			defer cleanupPreempt()
 		}
 
 		for {
-			err := h.gatewayService.ProxyResponsesWebSocketFromClient(ctx, c, wsConn, account, token, wsFirstMessage, hooks)
-			if err == nil {
+			proxyErr := h.gatewayService.ProxyResponsesWebSocketFromClient(attemptCtx, c, wsConn, account, token, wsFirstMessage, hooks)
+			if proxyErr == nil {
 				reqLog.Info("openai.websocket_ingress_closed", zap.Int64("account_id", account.ID))
 				return
 			}
-			if service.IsOpenAIWSSessionPreemptedError(err) {
+			if service.IsOpenAIWSSessionPreemptedError(proxyErr) {
 				return
 			}
 			var failoverErr *service.UpstreamFailoverError
-			if errors.As(err, &failoverErr) {
-				retryPayload, retryCurrentTurn := service.OpenAIWSCurrentTurnRetryPayload(err)
+			if errors.As(proxyErr, &failoverErr) {
+				retryPayload, retryCurrentTurn := service.OpenAIWSCurrentTurnRetryPayload(proxyErr)
+				if retryCurrentTurn && len(retryPayload) > 0 {
+					retryPayload, err = h.gatewayService.RestoreCodexProfileRetryPayload(c, account, retryPayload)
+					if err != nil {
+						closeOpenAIWSFailoverExhausted(c, wsConn, failoverErr)
+						return
+					}
+				}
 				nextAttemptMessage, retrySafe := openAIWSNextAttemptMessage(wsAttemptMessage, retryPayload, retryCurrentTurn)
 				if !retrySafe {
 					closeOpenAIWSFailoverExhausted(c, wsConn, failoverErr)
@@ -2899,7 +2967,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				if waitForWSSameAccountRetry(account, failoverErr) {
 					if failoverErr.ShouldReportAccountScheduleFailure() {
-						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, wsForwardModel, false, nil), false, nil, err)
+						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, wsForwardModel, false, nil), false, nil, proxyErr)
 					}
 					if !ensureUserSlotHeld() {
 						return
@@ -2919,29 +2987,31 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					wsFirstMessage = wsAttemptMessage
 					continue
 				}
+				h.gatewayService.ReleaseCodexProfileAttempt(c, account)
 				if handleWSFailover(account, failoverErr) {
 					break
 				}
 				return
 			}
 
-			if errors.Is(context.Cause(ctx), service.ErrOpenAIWSIngressLeaseLost) {
+			if errors.Is(context.Cause(attemptCtx), service.ErrOpenAIWSIngressLeaseLost) ||
+				errors.Is(context.Cause(attemptCtx), service.ErrCodexDeviceConversationLeaseLost) {
 				reqLog.Warn("openai.websocket_ingress_lease_lost",
 					zap.Int64("account_id", account.ID),
-					zap.Error(err),
+					zap.Error(proxyErr),
 				)
 				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "websocket ingress capacity lease lost; please reconnect")
 				return
 			}
 
 			var closeErr *service.OpenAIWSClientCloseError
-			hasClientCloseErr := errors.As(err, &closeErr)
-			if openAIWSIngressEndedByClient(err) {
+			hasClientCloseErr := errors.As(proxyErr, &closeErr)
+			if openAIWSIngressEndedByClient(proxyErr) {
 				closedFields := []zap.Field{zap.Int64("account_id", account.ID)}
 				if hasClientCloseErr {
 					closedFields = append(closedFields, zap.String("reason", closeErr.Reason()))
 				} else {
-					closedFields = append(closedFields, zap.Error(err))
+					closedFields = append(closedFields, zap.Error(proxyErr))
 				}
 				reqLog.Info("openai.websocket_ingress_closed_normally", closedFields...)
 				// A bare coderws.CloseError or a plain cancellation carries no
@@ -2955,13 +3025,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				return
 			}
 
-			if shouldReportOpenAIWSProxyAccountFailure(err) {
-				h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, wsForwardModel, false, nil), false, nil, err)
+			if shouldReportOpenAIWSProxyAccountFailure(proxyErr) {
+				h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, wsForwardModel, false, nil), false, nil, proxyErr)
 			}
-			closeStatus, closeReason := summarizeWSCloseErrorForLog(err)
+			closeStatus, closeReason := summarizeWSCloseErrorForLog(proxyErr)
 			proxyFailedFields := []zap.Field{
 				zap.Int64("account_id", account.ID),
-				zap.Error(err),
+				zap.Error(proxyErr),
 				zap.String("close_status", closeStatus),
 				zap.String("close_reason", closeReason),
 			}

@@ -2,6 +2,11 @@
  * Core Type Definitions for Sub2API Frontend
  */
 
+import type {
+  AccountProvisioningStatus,
+  CodexIdentityPolicy,
+} from './codexIdentity'
+
 // ==================== Common Types ====================
 
 export interface SelectOption {
@@ -1190,6 +1195,8 @@ export interface Account {
   priority: number
   rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
   status: 'active' | 'inactive' | 'error'
+  provisioning_state?: AccountProvisioningStatus
+  codex_identity_policy?: CodexIdentityPolicy
   error_message: string | null
   last_used_at: string | null
   expires_at: number | null
@@ -1466,6 +1473,7 @@ export interface CreateAccountRequest {
   auto_pause_on_expired?: boolean
   upstream_billing_probe_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
+  codex_identity_policy?: CodexIdentityPolicy
 }
 
 export interface UpdateAccountRequest {
@@ -1487,6 +1495,7 @@ export interface UpdateAccountRequest {
   upstream_billing_probe_enabled?: boolean
   upstream_billing_rate_sync_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
+  codex_identity_policy?: CodexIdentityPolicy
 }
 
 export interface CheckMixedChannelRequest {
@@ -1570,6 +1579,13 @@ export interface AdminDataAccount {
   rate_multiplier?: number | null
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  codex_identity_policy?: CodexIdentityPolicy
+  codex_profile_proxies?: Record<string, AdminDataCodexProfileProxyRefs>
+}
+
+export interface AdminDataCodexProfileProxyRefs {
+  proxy_key?: string | null
+  slot_proxy_keys?: Record<string, string>
 }
 
 export interface AdminDataImportError {
@@ -1606,6 +1622,7 @@ export interface CodexSessionImportRequest {
   update_existing?: boolean
   skip_default_group_bind?: boolean
   confirm_mixed_channel_risk?: boolean
+  codex_identity_policy?: CodexIdentityPolicy
 }
 
 export interface OpenAICodexPATCreateRequest {
@@ -1624,6 +1641,7 @@ export interface OpenAICodexPATCreateRequest {
   extra?: Record<string, unknown>
   skip_default_group_bind?: boolean
   confirm_mixed_channel_risk?: boolean
+  codex_identity_policy?: CodexIdentityPolicy
 }
 
 export interface CodexSessionImportMessage {
@@ -2411,3 +2429,5 @@ export type {
   PlatformQuotaWindow,
   PlatformQuotasResponse,
 } from '@/api/admin/users'
+
+export * from './codexIdentity'

@@ -1,0 +1,5 @@
+export { default as CodexIdentityPolicyEditor } from './CodexIdentityPolicyEditor.vue'
+export { default as CodexDeviceSlotLifecycle } from './CodexDeviceSlotLifecycle.vue'
+export { default as OSProfileRow } from './OSProfileRow.vue'
+export { default as ProfileProxyOverrides } from './ProfileProxyOverrides.vue'
+export { default as SessionPolicyEditor } from './SessionPolicyEditor.vue'

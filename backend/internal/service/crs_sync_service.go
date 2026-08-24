@@ -57,6 +57,10 @@ func guardCRSShadowParentInvariant(ctx context.Context, repo AccountRepository, 
 	if existing == nil {
 		return nil
 	}
+	if existing.CodexIdentityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool &&
+		(newPlatform != PlatformOpenAI || newType != AccountTypeOAuth) {
+		return fmt.Errorf("cannot convert an account with Codex OS profile device pool enabled to %s/%s; disable the identity policy first", newPlatform, newType)
+	}
 	// 目标仍是合法影子父(OpenAI OAuth)→ 放行(常见:OpenAI OAuth 分支重新同步母账号),免去一次查询。
 	if newPlatform == PlatformOpenAI && newType == AccountTypeOAuth {
 		return nil
@@ -72,11 +76,12 @@ func guardCRSShadowParentInvariant(ctx context.Context, repo AccountRepository, 
 }
 
 type SyncFromCRSInput struct {
-	BaseURL            string
-	Username           string
-	Password           string
-	SyncProxies        bool
-	SelectedAccountIDs []string // if non-empty, only create new accounts with these CRS IDs
+	BaseURL             string
+	Username            string
+	Password            string
+	SyncProxies         bool
+	SelectedAccountIDs  []string // if non-empty, only create new accounts with these CRS IDs
+	CodexIdentityPolicy *CodexIdentityPolicySpec
 }
 
 type SyncFromCRSItemResult struct {
@@ -431,7 +436,6 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		existing.Priority = priority
 		existing.Status = status
 		existing.Schedulable = src.Schedulable
-
 		if err := s.accountRepo.Update(ctx, existing); err != nil {
 			item.Action = "failed"
 			item.Error = "update failed: " + err.Error()
@@ -669,17 +673,22 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				result.Items = append(result.Items, item)
 				continue
 			}
+			identityPolicy := DefaultCodexIdentityPolicySpec()
+			if input.CodexIdentityPolicy != nil {
+				identityPolicy = *input.CodexIdentityPolicy
+			}
 			account := &Account{
-				Name:        defaultName(src.Name, src.ID),
-				Platform:    PlatformOpenAI,
-				Type:        AccountTypeOAuth,
-				Credentials: credentials,
-				Extra:       extra,
-				ProxyID:     proxyID,
-				Concurrency: concurrency,
-				Priority:    priority,
-				Status:      status,
-				Schedulable: src.Schedulable,
+				Name:                defaultName(src.Name, src.ID),
+				Platform:            PlatformOpenAI,
+				Type:                AccountTypeOAuth,
+				Credentials:         credentials,
+				Extra:               extra,
+				ProxyID:             proxyID,
+				Concurrency:         concurrency,
+				Priority:            priority,
+				Status:              status,
+				Schedulable:         src.Schedulable,
+				CodexIdentityPolicy: identityPolicy,
 			}
 			if err := s.accountRepo.Create(ctx, account); err != nil {
 				item.Action = "failed"
@@ -710,10 +719,29 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		existing.Priority = priority
 		existing.Status = status
 		existing.Schedulable = src.Schedulable
+		if input.CodexIdentityPolicy != nil {
+			existing.CodexIdentityPolicy = *input.CodexIdentityPolicy
+		}
 
-		if err := s.accountRepo.Update(ctx, existing); err != nil {
+		requiresProvisioning := existing.CodexIdentityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool
+		var updateErr error
+		if requiresProvisioning {
+			provisioningRepo, ok := s.accountRepo.(AccountProvisioningRepository)
+			if !ok {
+				updateErr = errors.New("account provisioning repository is not configured")
+			} else {
+				updateErr = provisioningRepo.UpdateProvisionedAccount(ctx, &AccountProvisioningSpec{
+					Account: existing, GroupIDs: append([]int64(nil), existing.GroupIDs...),
+					Identity: &existing.CodexIdentityPolicy, FinalStatus: existing.Status,
+					Schedulable: existing.Schedulable, ProvisioningState: AccountProvisioningActive,
+				}, nil, nil, existing.RateMultiplier)
+			}
+		} else {
+			updateErr = s.accountRepo.Update(ctx, existing)
+		}
+		if updateErr != nil {
 			item.Action = "failed"
-			item.Error = "update failed: " + err.Error()
+			item.Error = "update failed: " + updateErr.Error()
 			result.Failed++
 			result.Items = append(result.Items, item)
 			continue

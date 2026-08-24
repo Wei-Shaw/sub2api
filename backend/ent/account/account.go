@@ -48,6 +48,10 @@ const (
 	FieldRateMultiplier = "rate_multiplier"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldProvisioningState holds the string denoting the provisioning_state field in the database.
+	FieldProvisioningState = "provisioning_state"
+	// FieldCodexIdentityPolicy holds the string denoting the codex_identity_policy field in the database.
+	FieldCodexIdentityPolicy = "codex_identity_policy"
 	// FieldErrorMessage holds the string denoting the error_message field in the database.
 	FieldErrorMessage = "error_message"
 	// FieldLastUsedAt holds the string denoting the last_used_at field in the database.
@@ -147,6 +151,8 @@ var Columns = []string{
 	FieldPriority,
 	FieldRateMultiplier,
 	FieldStatus,
+	FieldProvisioningState,
+	FieldCodexIdentityPolicy,
 	FieldErrorMessage,
 	FieldLastUsedAt,
 	FieldExpiresAt,
@@ -214,6 +220,12 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultProvisioningState holds the default value on creation for the "provisioning_state" field.
+	DefaultProvisioningState string
+	// ProvisioningStateValidator is a validator for the "provisioning_state" field. It is called by the builders before save.
+	ProvisioningStateValidator func(string) error
+	// DefaultCodexIdentityPolicy holds the default value on creation for the "codex_identity_policy" field.
+	DefaultCodexIdentityPolicy func() map[string]interface{}
 	// DefaultAutoPauseOnExpired holds the default value on creation for the "auto_pause_on_expired" field.
 	DefaultAutoPauseOnExpired bool
 	// DefaultSchedulable holds the default value on creation for the "schedulable" field.
@@ -324,6 +336,11 @@ func ByRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByProvisioningState orders the results by the provisioning_state field.
+func ByProvisioningState(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldProvisioningState, opts...).ToFunc()
 }
 
 // ByErrorMessage orders the results by the error_message field.

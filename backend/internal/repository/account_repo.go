@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -123,18 +124,36 @@ func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedul
 }
 
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
-	if err := createAccountRecord(ctx, r.client, account); err != nil {
-		return err
+	if account == nil {
+		return service.ErrAccountNilInput
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue account create failed: account=%d err=%v", account.ID, err)
-	}
-	return nil
+	policy := account.CodexIdentityPolicy
+	return r.ProvisionAccount(ctx, &service.AccountProvisioningSpec{
+		Account:           account,
+		GroupIDs:          append([]int64(nil), account.GroupIDs...),
+		Identity:          &policy,
+		FinalStatus:       account.Status,
+		Schedulable:       account.Schedulable,
+		ProvisioningState: service.AccountProvisioningActive,
+	})
 }
 
 func createAccountRecord(ctx context.Context, client *dbent.Client, account *service.Account) error {
 	if account == nil {
 		return service.ErrAccountNilInput
+	}
+	account.Extra = service.PrepareCodexFingerprintExtraForCreate(account.Platform, account.Type, account.Extra)
+	if account.ProvisioningState == "" {
+		account.ProvisioningState = service.AccountProvisioningPending
+	}
+	policy, err := account.CodexIdentityPolicy.NormalizeAndValidate(account.Platform, account.Type)
+	if err != nil {
+		return err
+	}
+	account.CodexIdentityPolicy = policy
+	policyMap, err := service.EncodeCodexIdentityPolicy(policy)
+	if err != nil {
+		return err
 	}
 
 	builder := client.Account.Create().
@@ -147,6 +166,8 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 		SetConcurrency(account.Concurrency).
 		SetPriority(account.Priority).
 		SetStatus(account.Status).
+		SetProvisioningState(string(account.ProvisioningState)).
+		SetCodexIdentityPolicy(policyMap).
 		SetErrorMessage(account.ErrorMessage).
 		SetSchedulable(account.Schedulable).
 		SetAutoPauseOnExpired(account.AutoPauseOnExpired)
@@ -222,6 +243,12 @@ func (r *accountRepository) CreateWithAccountGroups(ctx context.Context, account
 		txClient = r.client
 	}
 
+	policy, err := service.PrepareCodexIdentityPolicyForCreate(account.CodexIdentityPolicy, account.Platform, account.Type)
+	if err != nil {
+		return err
+	}
+	account.CodexIdentityPolicy = policy
+	account.ProvisioningState = service.AccountProvisioningActive
 	if err := createAccountRecord(ctx, txClient, account); err != nil {
 		return err
 	}
@@ -243,6 +270,9 @@ func (r *accountRepository) CreateWithAccountGroups(ctx context.Context, account
 	}
 	account.GroupIDs = groupIDs
 	account.AccountGroups = append([]service.AccountGroup(nil), groups...)
+	if err := createProvisionedCodexIdentity(ctx, txClient, account.ID, policy); err != nil {
+		return err
+	}
 	if err := enqueueSchedulerOutbox(ctx, txClient, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(groupIDs)); err != nil {
 		return err
 	}
@@ -458,6 +488,16 @@ func (r *accountRepository) updateAccount(
 	if account == nil {
 		return nil
 	}
+	// The service object may have come from a full replacement request. Treat
+	// its seed as untrusted and let the row-locked merge below restore the
+	// database value; this preliminary pass also repairs legacy in-memory
+	// accounts before any scheduler snapshot is built.
+	account.Extra = service.PrepareCodexFingerprintExtraForUpdate(
+		account.Platform,
+		account.Type,
+		account.Extra,
+		account.Extra,
+	)
 
 	baseCtx := ctx
 	contextTx := dbent.TxFromContext(ctx)
@@ -520,6 +560,10 @@ func (r *accountRepository) updateLockedAccount(
 		return nil, err
 	}
 	account.Extra = extra
+	policyMap, err := service.EncodeCodexIdentityPolicy(account.CodexIdentityPolicy)
+	if err != nil {
+		return nil, err
+	}
 
 	schedulable := account.Schedulable
 	if account.Status == service.StatusError {
@@ -536,6 +580,8 @@ func (r *accountRepository) updateLockedAccount(
 		SetConcurrency(account.Concurrency).
 		SetPriority(account.Priority).
 		SetStatus(account.Status).
+		SetProvisioningState(string(account.ProvisioningState)).
+		SetCodexIdentityPolicy(policyMap).
 		SetErrorMessage(account.ErrorMessage).
 		SetSchedulable(schedulable).
 		SetAutoPauseOnExpired(account.AutoPauseOnExpired)
@@ -641,7 +687,11 @@ func lockAndMergeAccountProbeExtra(
 			extra -> 'upstream_billing_probe',
 			extra -> 'ollama_cloud_usage_session',
 			extra -> 'ollama_cloud_usage_auto_refresh',
-			extra -> 'ollama_cloud_usage_snapshot'
+			extra -> 'ollama_cloud_usage_snapshot',
+			extra -> 'codex_fingerprint_seed',
+			platform = 'openai' AND type = 'oauth',
+			codex_identity_policy,
+			provisioning_state
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
@@ -667,6 +717,10 @@ func lockAndMergeAccountProbeExtra(
 		currentOllamaSession         []byte
 		currentOllamaAutoRefresh     []byte
 		currentOllamaSnapshot        []byte
+		currentCodexFingerprintSeed  []byte
+		currentCodexFingerprintOwner bool
+		currentCodexIdentityPolicy   []byte
+		currentProvisioningState     string
 	)
 	if err := rows.Scan(
 		&identityUnchanged,
@@ -678,11 +732,32 @@ func lockAndMergeAccountProbeExtra(
 		&currentOllamaSession,
 		&currentOllamaAutoRefresh,
 		&currentOllamaSnapshot,
+		&currentCodexFingerprintSeed,
+		&currentCodexFingerprintOwner,
+		&currentCodexIdentityPolicy,
+		&currentProvisioningState,
 	); err != nil {
 		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	if account.ProvisioningState == "" {
+		account.ProvisioningState = service.AccountProvisioningState(currentProvisioningState)
+		if account.ProvisioningState == "" {
+			account.ProvisioningState = service.AccountProvisioningActive
+		}
+	}
+	if account.CodexIdentityPolicy.Mode == "" {
+		var rawPolicy map[string]any
+		if err := json.Unmarshal(currentCodexIdentityPolicy, &rawPolicy); err != nil {
+			return nil, fmt.Errorf("decode persisted Codex identity policy: %w", err)
+		}
+		policy, err := service.DecodeCodexIdentityPolicy(rawPolicy, account.Platform, account.Type)
+		if err != nil {
+			return nil, err
+		}
+		account.CodexIdentityPolicy = policy
 	}
 
 	extra := copyJSONMap(normalizeJSONMap(account.Extra))
@@ -696,6 +771,20 @@ func lockAndMergeAccountProbeExtra(
 	} {
 		delete(extra, key)
 	}
+	currentFingerprintExtra := make(map[string]any, 1)
+	if currentCodexFingerprintOwner {
+		if seed, ok, err := decodeAccountExtraJSON(currentCodexFingerprintSeed); err != nil {
+			return nil, err
+		} else if ok {
+			currentFingerprintExtra[service.CodexFingerprintSeedExtraKey] = seed
+		}
+	}
+	extra = service.PrepareCodexFingerprintExtraForUpdate(
+		account.Platform,
+		account.Type,
+		currentFingerprintExtra,
+		extra,
+	)
 	probeAccount := service.IsUpstreamBillingProbeIdentity(account.Platform, account.Type)
 	probeEnabled := false
 	probeEnabledPresent := false
@@ -1182,7 +1271,10 @@ func (r *accountRepository) ListByGroup(ctx context.Context, groupID int64) ([]s
 
 func (r *accountRepository) ListActive(ctx context.Context) ([]service.Account, error) {
 	accounts, err := r.client.Account.Query().
-		Where(dbaccount.StatusEQ(service.StatusActive)).
+		Where(
+			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.ProvisioningStateEQ(string(service.AccountProvisioningActive)),
+		).
 		Order(dbent.Asc(dbaccount.FieldPriority)).
 		All(ctx)
 	if err != nil {
@@ -1211,6 +1303,7 @@ func (r *accountRepository) ListOAuthRefreshCandidatePage(ctx context.Context, o
 		FROM accounts
 		WHERE deleted_at IS NULL
 			AND schedulable = TRUE
+			AND provisioning_state = 'active'
 			AND platform = ANY($1)
 			AND id > $2`
 	if options.ActiveOnly {
@@ -1292,6 +1385,7 @@ func (r *accountRepository) ListByPlatform(ctx context.Context, platform string)
 		Where(
 			dbaccount.PlatformEQ(platform),
 			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.ProvisioningStateEQ(string(service.AccountProvisioningActive)),
 		).
 		Order(dbent.Asc(dbaccount.FieldPriority)).
 		All(ctx)
@@ -1903,6 +1997,7 @@ func (r *accountRepository) schedulableAccountsQuery(now time.Time) *dbent.Accou
 	return r.client.Account.Query().
 		Where(
 			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.ProvisioningStateEQ(string(service.AccountProvisioningActive)),
 			dbaccount.SchedulableEQ(true),
 			tempUnschedulablePredicate(),
 			notExpiredPredicate(now),
@@ -1961,6 +2056,7 @@ func (r *accountRepository) ListSchedulableCapacityByGroupIDs(ctx context.Contex
 		WHERE ag.group_id = ANY($1)
 			AND a.deleted_at IS NULL
 			AND a.status = $2
+			AND a.provisioning_state = 'active'
 			AND a.schedulable = TRUE
 			AND (a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until <= $3)
 			AND (a.expires_at IS NULL OR a.expires_at > $3 OR a.auto_pause_on_expired = FALSE)
@@ -2009,6 +2105,7 @@ func (r *accountRepository) ListSchedulableByPlatform(ctx context.Context, platf
 		Where(
 			dbaccount.PlatformEQ(platform),
 			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.ProvisioningStateEQ(string(service.AccountProvisioningActive)),
 			dbaccount.SchedulableEQ(true),
 			tempUnschedulablePredicate(),
 			notExpiredPredicate(now),
@@ -2043,6 +2140,7 @@ func (r *accountRepository) ListSchedulableByPlatforms(ctx context.Context, plat
 		Where(
 			dbaccount.PlatformIn(platforms...),
 			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.ProvisioningStateEQ(string(service.AccountProvisioningActive)),
 			dbaccount.SchedulableEQ(true),
 			tempUnschedulablePredicate(),
 			notExpiredPredicate(now),
@@ -2063,6 +2161,7 @@ func (r *accountRepository) ListSchedulableUngroupedByPlatform(ctx context.Conte
 		Where(
 			dbaccount.PlatformEQ(platform),
 			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.ProvisioningStateEQ(string(service.AccountProvisioningActive)),
 			dbaccount.SchedulableEQ(true),
 			dbaccount.Not(dbaccount.HasAccountGroups()),
 			tempUnschedulablePredicate(),
@@ -2087,6 +2186,7 @@ func (r *accountRepository) ListSchedulableUngroupedByPlatforms(ctx context.Cont
 		Where(
 			dbaccount.PlatformIn(platforms...),
 			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.ProvisioningStateEQ(string(service.AccountProvisioningActive)),
 			dbaccount.SchedulableEQ(true),
 			dbaccount.Not(dbaccount.HasAccountGroups()),
 			tempUnschedulablePredicate(),
@@ -2138,6 +2238,7 @@ func (r *accountRepository) ListModelAvailabilityCandidates(
 
 	preds := []dbpredicate.Account{
 		dbaccount.StatusEQ(service.StatusActive),
+		dbaccount.ProvisioningStateEQ(string(service.AccountProvisioningActive)),
 		dbaccount.SchedulableEQ(true),
 		dbaccount.PlatformIn(platforms...),
 	}
@@ -3066,6 +3167,7 @@ func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID in
 		preds = append(preds, dbaccount.PlatformIn(opts.platforms...))
 	}
 	if opts.schedulable {
+		preds = append(preds, dbaccount.ProvisioningStateEQ(string(service.AccountProvisioningActive)))
 		preds = append(preds, dbaccount.SchedulableEQ(true))
 		if !opts.ignoreTransientState {
 			now := time.Now()
@@ -3368,6 +3470,15 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 
 	rateMultiplier := m.RateMultiplier
 
+	provisioningState := service.AccountProvisioningState(m.ProvisioningState)
+	policy, policyErr := service.DecodeCodexIdentityPolicy(m.CodexIdentityPolicy, m.Platform, m.Type)
+	if policyErr != nil {
+		// Invalid persisted identity configuration must fail closed in scheduler
+		// projections. Admin reads still receive the row for repair.
+		provisioningState = service.AccountProvisioningPending
+		policy = service.DefaultCodexIdentityPolicySpec()
+	}
+
 	return &service.Account{
 		ID:                      m.ID,
 		Name:                    m.Name,
@@ -3383,6 +3494,8 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		RateMultiplier:          &rateMultiplier,
 		LoadFactor:              m.LoadFactor,
 		Status:                  m.Status,
+		ProvisioningState:       provisioningState,
+		CodexIdentityPolicy:     policy,
 		ErrorMessage:            derefString(m.ErrorMessage),
 		LastUsedAt:              m.LastUsedAt,
 		ExpiresAt:               m.ExpiresAt,
@@ -3792,22 +3905,71 @@ func (r *accountRepository) ResetQuotaUsedAndClearRateLimitCooldown(ctx context.
 	return nil
 }
 
-// RevertProxyFallback 将账号的 proxy_id 切回 proxy_fallback_origin_id，并清空 origin 字段。
+// RevertProxyFallback 将账号默认 proxy_id 切回 proxy_fallback_origin_id，并清空 origin 字段。
+// Profile/slot proxy overrides do not currently carry an origin reference and
+// therefore are intentionally outside this revert operation.
 // 仅当 proxy_fallback_origin_id IS NOT NULL 时执行更新；
 // 若影响行数为 0，则返回 ErrAccountNotInFallback（账号存在但不在 fallback 状态）。
 func (r *accountRepository) RevertProxyFallback(ctx context.Context, accountID int64) error {
-	res, err := r.sql.ExecContext(ctx, `
-		UPDATE accounts SET proxy_id=proxy_fallback_origin_id, proxy_fallback_origin_id=NULL, updated_at=NOW()
-		WHERE id=$1 AND proxy_fallback_origin_id IS NOT NULL AND deleted_at IS NULL`, accountID)
-	if err != nil {
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
 		return err
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
+	client := r.client
+	exec := r.sql
+	if tx != nil {
+		defer func() { _ = tx.Rollback() }()
+		client = tx.Client()
+		exec = tx
+	}
+	row, err := client.Account.Query().Where(dbaccount.IDEQ(accountID)).ForUpdate().Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return service.ErrAccountNotInFallback
+		}
+		return err
+	}
+	if row.ProxyFallbackOriginID == nil {
 		return service.ErrAccountNotInFallback
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] revert fallback enqueue failed: account=%d err=%v", accountID, err)
+	account := accountEntityToService(row)
+	if account.CodexIdentityPolicy.Mode == service.CodexIdentityPolicyOSProfileDevicePool {
+		txRepo := newAccountRepositoryWithSQL(client, exec, nil)
+		loaded, err := txRepo.GetByID(ctx, accountID)
+		if err != nil {
+			return err
+		}
+		loaded.ProxyID = cloneOptionalInt64(row.ProxyFallbackOriginID)
+		if err := txRepo.UpdateProvisionedAccount(ctx, &service.AccountProvisioningSpec{
+			Account: loaded, GroupIDs: append([]int64(nil), loaded.GroupIDs...),
+			Identity: &loaded.CodexIdentityPolicy, FinalStatus: loaded.Status,
+			Schedulable: loaded.Schedulable, ProvisioningState: service.AccountProvisioningActive,
+		}, nil, nil, loaded.RateMultiplier); err != nil {
+			return err
+		}
+		if _, err := client.Account.UpdateOneID(accountID).ClearProxyFallbackOriginID().Save(ctx); err != nil {
+			return err
+		}
+	} else {
+		res, err := exec.ExecContext(ctx, `
+			UPDATE accounts SET proxy_id=proxy_fallback_origin_id, proxy_fallback_origin_id=NULL, updated_at=NOW()
+			WHERE id=$1 AND proxy_fallback_origin_id IS NOT NULL AND deleted_at IS NULL`, accountID)
+		if err != nil {
+			return err
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return service.ErrAccountNotInFallback
+		}
+		if err := enqueueSchedulerOutbox(ctx, exec, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil); err != nil {
+			return err
+		}
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		r.syncSchedulerAccountSnapshot(ctx, accountID)
 	}
 	return nil
 }

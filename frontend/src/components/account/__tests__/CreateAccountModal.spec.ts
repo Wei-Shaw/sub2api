@@ -9,6 +9,9 @@ const {
   showWarningMock,
   importCodexSessionMock,
   createOpenAICodexPATMock,
+  generateAuthUrlMock,
+  exchangeCodeMock,
+  refreshOpenAITokenMock,
   authIsSimpleMode,
 } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
@@ -17,6 +20,9 @@ const {
   showWarningMock: vi.fn(),
   importCodexSessionMock: vi.fn(),
   createOpenAICodexPATMock: vi.fn(),
+  generateAuthUrlMock: vi.fn(),
+  exchangeCodeMock: vi.fn(),
+  refreshOpenAITokenMock: vi.fn(),
   authIsSimpleMode: { value: true },
 }))
 
@@ -45,6 +51,9 @@ vi.mock('@/api/admin', () => ({
       checkMixedChannelRisk: vi.fn().mockResolvedValue({ has_risk: false }),
       importCodexSession: importCodexSessionMock,
       createOpenAICodexPAT: createOpenAICodexPATMock,
+      generateAuthUrl: generateAuthUrlMock,
+      exchangeCode: exchangeCodeMock,
+      refreshOpenAIToken: refreshOpenAITokenMock,
     },
     settings: {
       getWebSearchEmulationConfig: vi.fn().mockResolvedValue({ enabled: false, providers: [] }),
@@ -85,10 +94,12 @@ const OAuthAuthorizationFlowStub = defineComponent({
     showCodexPatOption: Boolean,
     initialInputMethod: String,
   },
-  data: () => ({ inputMethod: 'manual' }),
-  emits: ['import-codex-session', 'import-codex-pat'],
+  data: () => ({ inputMethod: 'manual', authCode: 'oauth-code', oauthState: 'oauth-state' }),
+  emits: ['generate-url', 'validate-refresh-token', 'import-codex-session', 'import-codex-pat'],
   template: `
     <div>
+      <button data-testid="generate-openai-url" @click="$emit('generate-url')">generate</button>
+      <button data-testid="validate-openai-rt" @click="$emit('validate-refresh-token', 'refresh-token')">rt</button>
       <button data-testid="import-codex-session" @click="$emit('import-codex-session', 'session-json')">session</button>
       <button data-testid="import-codex-pat" @click="$emit('import-codex-pat', 'pat-token')">pat</button>
     </div>
@@ -210,6 +221,22 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
       warnings: [],
     })
     createOpenAICodexPATMock.mockReset().mockResolvedValue({})
+    generateAuthUrlMock.mockReset().mockResolvedValue({
+      auth_url: 'https://auth.example.com/authorize?state=oauth-state',
+      session_id: 'oauth-session'
+    })
+    exchangeCodeMock.mockReset().mockResolvedValue({
+      access_token: 'oauth-access',
+      refresh_token: 'oauth-refresh',
+      expires_at: 123456,
+      email: 'oauth@example.com'
+    })
+    refreshOpenAITokenMock.mockReset().mockResolvedValue({
+      access_token: 'rt-access',
+      refresh_token: 'rt-refresh',
+      expires_at: 123456,
+      email: 'rt@example.com'
+    })
   })
 
   it('hides only the redundant account toggle when every selected group enables tier pricing', async () => {
@@ -502,6 +529,64 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
     expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBeUndefined()
+    expect(importCodexSessionMock.mock.calls[0]?.[0]?.codex_identity_policy).toEqual({
+      mode: 'off',
+      binding_scope: 'api_key_os',
+      session_policy: { mode: 'conversation_isolated' },
+      affinity_ttl_seconds: 3600,
+      unsupported_policy: 'reject',
+      profiles: []
+    })
+  })
+
+  it('passes the same identity policy through OAuth code exchange account creation', async () => {
+    const wrapper = await openCodexImportStep()
+    await wrapper.get('[data-testid="generate-openai-url"]').trigger('click')
+    await flushPromises()
+    const complete = wrapper.findAll('button').find((button) =>
+      button.text().includes('admin.accounts.oauth.completeAuth'))
+    expect(complete).toBeDefined()
+    await complete?.trigger('click')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledWith(expect.objectContaining({
+      platform: 'openai',
+      type: 'oauth',
+      codex_identity_policy: expect.objectContaining({
+        mode: 'off',
+        binding_scope: 'api_key_os',
+        unsupported_policy: 'reject'
+      })
+    }))
+  })
+
+  it('passes one reviewed policy snapshot through refresh-token batch creation', async () => {
+    const wrapper = await openCodexImportStep()
+    await wrapper.get('[data-testid="validate-openai-rt"]').trigger('click')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledWith(expect.objectContaining({
+      platform: 'openai',
+      type: 'oauth',
+      codex_identity_policy: expect.objectContaining({
+        mode: 'off',
+        session_policy: { mode: 'conversation_isolated' }
+      })
+    }))
+  })
+
+  it('hides the legacy fingerprint mode and blocks OAuth entry while a device-pool policy is incomplete', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    expect(wrapper.find('[data-testid="create-codex-fingerprint-mode-select"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="codex-identity-policy-toggle"]').trigger('click')
+    expect(wrapper.find('[data-testid="create-codex-fingerprint-mode-select"]').exists()).toBe(false)
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Invalid device pool')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+
+    expect(wrapper.find('[data-testid="generate-openai-url"]').exists()).toBe(false)
+    expect(createAccountMock).not.toHaveBeenCalled()
   })
 
   it('leaves Codex PAT import billing ownership to the backend', async () => {
@@ -511,6 +596,11 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(createOpenAICodexPATMock).toHaveBeenCalledTimes(1)
     expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBeUndefined()
+    expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.codex_identity_policy).toMatchObject({
+      mode: 'off',
+      binding_scope: 'api_key_os',
+      unsupported_policy: 'reject'
+    })
   })
 
   it('sends explicit true for Codex session import after the toggle is enabled', async () => {

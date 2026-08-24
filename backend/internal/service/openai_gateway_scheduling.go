@@ -170,6 +170,7 @@ func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) 
 		sessionID = deriveOpenAIContentSessionSeed(body)
 	}
 	if sessionID == "" {
+		stageCodexProfileRequest(c, body, "")
 		return ""
 	}
 
@@ -179,6 +180,7 @@ func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) 
 
 	currentHash, legacyHash := deriveOpenAISessionHashes(sessionID)
 	attachOpenAILegacySessionHashToGin(c, legacyHash)
+	stageCodexProfileRequest(c, body, currentHash)
 	return currentHash
 }
 
@@ -234,6 +236,9 @@ func resolveOpenAIUpstreamOriginator(c *gin.Context, isOfficialClient bool) stri
 func (s *OpenAIGatewayService) BindStickySession(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
 	if sessionHash == "" || accountID <= 0 {
 		return nil
+	}
+	if handled, err := s.setCodexProfileAffinityAccountID(ctx, groupID, sessionHash, accountID); handled {
+		return err
 	}
 	ttl := openaiStickySessionTTL
 	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds > 0 {
@@ -905,6 +910,9 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 	selected, compactBlocked, filterStats := s.selectBestAccount(ctx, groupID, platform, accounts, requestedModel, excludedIDs, requireCompact, requiredCapability, preferLowUpstreamRate)
 
 	if selected == nil {
+		if filterStats.reasons["codex_profile_incompatible"] == filterStats.pool && filterStats.pool > 0 {
+			return nil, codexProfileUnsupportedFromContext(ctx)
+		}
 		return nil, noAvailableOpenAISelectionError(requestedModel, compactBlocked, filterStats.summary(""))
 	}
 
@@ -937,7 +945,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 	accountID := stickyAccountID
 	if accountID <= 0 {
 		var err error
-		accountID, err = s.getStickySessionAccountID(ctx, groupID, sessionHash)
+		accountID, err = s.resolveCodexAwareStickyAccountID(ctx, groupID, sessionHash)
 		if err != nil || accountID <= 0 {
 			return nil
 		}
@@ -961,7 +969,8 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 
 	// 验证账号是否可用于当前请求
 	// Verify account is usable for current request
-	if !isOpenAICompatibleAccountEligibleForRequest(ctx, account, platform, requestedModel, false, requiredCapability) {
+	if !isOpenAICompatibleAccountEligibleForRequest(ctx, account, platform, requestedModel, false, requiredCapability) ||
+		!s.codexProfileAccountCompatible(ctx, account) {
 		return nil
 	}
 	if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
@@ -1015,10 +1024,18 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 			filterStats.exclude("excluded")
 			continue
 		}
+		if !s.codexProfileAccountCompatible(ctx, acc) {
+			filterStats.exclude("codex_profile_incompatible")
+			continue
+		}
 
 		fresh := s.resolveFreshSchedulableOpenAIAccountBeforeProfit(ctx, acc, platform, requestedModel, false, requiredCapability)
 		if fresh == nil {
 			filterStats.exclude("ineligible")
+			continue
+		}
+		if !s.codexProfileAccountCompatible(ctx, fresh) {
+			filterStats.exclude("codex_profile_incompatible")
 			continue
 		}
 		fresh = s.recheckSelectedOpenAIAccountFromDBBeforeProfit(ctx, fresh, groupID, platform, requestedModel, false, requiredCapability)
@@ -1125,9 +1142,12 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
 	var stickyAccountID int64
 	if sessionHash != "" && s.cache != nil {
-		if accountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash); err == nil {
+		if accountID, stickyErr := s.resolveCodexAwareStickyAccountID(ctx, groupID, sessionHash); stickyErr == nil {
 			stickyAccountID = accountID
 		}
+	}
+	if sticky := s.codexProfileAccountByID(ctx, stickyAccountID); sticky != nil && sticky.CodexIdentityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool {
+		ctx = withCodexProfileAffinityActive(ctx)
 	}
 	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
 		account, err := s.selectAccountForModelWithExclusions(ctx, groupID, platform, sessionHash, requestedModel, excludedIDs, requireCompact, stickyAccountID, requiredCapability, preferLowUpstreamRate)
@@ -1188,9 +1208,12 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				if clearSticky {
 					_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 				}
-				if !clearSticky && isOpenAICompatibleAccountEligibleForRequest(ctx, account, platform, requestedModel, false, requiredCapability) {
+				if !clearSticky && isOpenAICompatibleAccountEligibleForRequest(ctx, account, platform, requestedModel, false, requiredCapability) &&
+					s.codexProfileAccountCompatible(ctx, account) {
 					account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, groupID, platform, requestedModel, requireCompact, requiredCapability)
 					if account == nil {
+						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+					} else if !s.codexProfileAccountCompatible(ctx, account) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if !s.openAIAccountMatchesSchedulingGroup(account, groupID) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
@@ -1256,6 +1279,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		// are not selected again before the bucket is rebuilt.
 		if reason := openAICompatibleAccountEligibilityFailureReason(ctx, acc, platform, requestedModel, false, requiredCapability); reason != "" {
 			filterStats.exclude(reason)
+			continue
+		}
+		if !s.codexProfileAccountCompatible(ctx, acc) {
+			filterStats.exclude("codex_profile_incompatible")
 			continue
 		}
 		if !parentHealthyForShadow(acc, parentLookupL2) {
@@ -1537,6 +1564,9 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountBeforeProfit(
 	if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, fresh, platform, requestedModel, requireCompact, requiredCapability) {
 		return nil
 	}
+	if !s.codexProfileAccountCompatible(ctx, fresh) {
+		return nil
+	}
 	if !parentHealthyForShadow(fresh, s.parentAccountLookup(ctx)) {
 		return nil
 	}
@@ -1589,6 +1619,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 		if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, account, platform, requestedModel, requireCompact, requiredCapability) {
 			return nil
 		}
+		if !s.codexProfileAccountCompatible(ctx, account) {
+			return nil
+		}
 		if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, account) {
 			return nil
 		}
@@ -1612,6 +1645,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 		return nil
 	}
 	if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, latest, platform, requestedModel, requireCompact, requiredCapability) {
+		return nil
+	}
+	if !s.codexProfileAccountCompatible(ctx, latest) {
 		return nil
 	}
 	if !parentHealthyForShadow(latest, s.parentAccountLookup(ctx)) {

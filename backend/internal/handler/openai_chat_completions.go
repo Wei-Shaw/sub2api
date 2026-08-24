@@ -184,6 +184,16 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				reqLog.Info("openai_chat_completions.account_select_aborted_client_disconnected", zap.Error(err))
 				return
 			}
+			if errors.Is(err, service.ErrDeviceProfileUnsupported) {
+				h.handleStreamingAwareError(
+					c,
+					http.StatusUnprocessableEntity,
+					"DEVICE_PROFILE_UNSUPPORTED",
+					"No available OAuth account supports the detected client device profile",
+					streamStarted,
+				)
+				return
+			}
 			reqLog.Warn("openai_chat_completions.account_select_failed",
 				zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),

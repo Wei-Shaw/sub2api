@@ -13,6 +13,10 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent/account"
+	"github.com/Wei-Shaw/sub2api/ent/accountcodexdevicebinding"
+	"github.com/Wei-Shaw/sub2api/ent/accountcodexdeviceslot"
+	"github.com/Wei-Shaw/sub2api/ent/accountcodexidentitypolicy"
+	"github.com/Wei-Shaw/sub2api/ent/accountcodexprofile"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
@@ -66,6 +70,10 @@ const (
 	// Node types.
 	TypeAPIKey                        = "APIKey"
 	TypeAccount                       = "Account"
+	TypeAccountCodexDeviceBinding     = "AccountCodexDeviceBinding"
+	TypeAccountCodexDeviceSlot        = "AccountCodexDeviceSlot"
+	TypeAccountCodexIdentityPolicy    = "AccountCodexIdentityPolicy"
+	TypeAccountCodexProfile           = "AccountCodexProfile"
 	TypeAccountGroup                  = "AccountGroup"
 	TypeAnnouncement                  = "Announcement"
 	TypeAnnouncementRead              = "AnnouncementRead"
@@ -2305,6 +2313,8 @@ type AccountMutation struct {
 	rate_multiplier             *float64
 	addrate_multiplier          *float64
 	status                      *string
+	provisioning_state          *string
+	codex_identity_policy       *map[string]interface{}
 	error_message               *string
 	last_used_at                *time.Time
 	expires_at                  *time.Time
@@ -3177,6 +3187,78 @@ func (m *AccountMutation) OldStatus(ctx context.Context) (v string, err error) {
 // ResetStatus resets all changes to the "status" field.
 func (m *AccountMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetProvisioningState sets the "provisioning_state" field.
+func (m *AccountMutation) SetProvisioningState(s string) {
+	m.provisioning_state = &s
+}
+
+// ProvisioningState returns the value of the "provisioning_state" field in the mutation.
+func (m *AccountMutation) ProvisioningState() (r string, exists bool) {
+	v := m.provisioning_state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProvisioningState returns the old "provisioning_state" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldProvisioningState(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProvisioningState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProvisioningState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProvisioningState: %w", err)
+	}
+	return oldValue.ProvisioningState, nil
+}
+
+// ResetProvisioningState resets all changes to the "provisioning_state" field.
+func (m *AccountMutation) ResetProvisioningState() {
+	m.provisioning_state = nil
+}
+
+// SetCodexIdentityPolicy sets the "codex_identity_policy" field.
+func (m *AccountMutation) SetCodexIdentityPolicy(value map[string]interface{}) {
+	m.codex_identity_policy = &value
+}
+
+// CodexIdentityPolicy returns the value of the "codex_identity_policy" field in the mutation.
+func (m *AccountMutation) CodexIdentityPolicy() (r map[string]interface{}, exists bool) {
+	v := m.codex_identity_policy
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCodexIdentityPolicy returns the old "codex_identity_policy" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldCodexIdentityPolicy(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCodexIdentityPolicy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCodexIdentityPolicy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCodexIdentityPolicy: %w", err)
+	}
+	return oldValue.CodexIdentityPolicy, nil
+}
+
+// ResetCodexIdentityPolicy resets all changes to the "codex_identity_policy" field.
+func (m *AccountMutation) ResetCodexIdentityPolicy() {
+	m.codex_identity_policy = nil
 }
 
 // SetErrorMessage sets the "error_message" field.
@@ -4138,7 +4220,7 @@ func (m *AccountMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountMutation) Fields() []string {
-	fields := make([]string, 0, 31)
+	fields := make([]string, 0, 33)
 	if m.created_at != nil {
 		fields = append(fields, account.FieldCreatedAt)
 	}
@@ -4186,6 +4268,12 @@ func (m *AccountMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, account.FieldStatus)
+	}
+	if m.provisioning_state != nil {
+		fields = append(fields, account.FieldProvisioningState)
+	}
+	if m.codex_identity_policy != nil {
+		fields = append(fields, account.FieldCodexIdentityPolicy)
 	}
 	if m.error_message != nil {
 		fields = append(fields, account.FieldErrorMessage)
@@ -4272,6 +4360,10 @@ func (m *AccountMutation) Field(name string) (ent.Value, bool) {
 		return m.RateMultiplier()
 	case account.FieldStatus:
 		return m.Status()
+	case account.FieldProvisioningState:
+		return m.ProvisioningState()
+	case account.FieldCodexIdentityPolicy:
+		return m.CodexIdentityPolicy()
 	case account.FieldErrorMessage:
 		return m.ErrorMessage()
 	case account.FieldLastUsedAt:
@@ -4343,6 +4435,10 @@ func (m *AccountMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldRateMultiplier(ctx)
 	case account.FieldStatus:
 		return m.OldStatus(ctx)
+	case account.FieldProvisioningState:
+		return m.OldProvisioningState(ctx)
+	case account.FieldCodexIdentityPolicy:
+		return m.OldCodexIdentityPolicy(ctx)
 	case account.FieldErrorMessage:
 		return m.OldErrorMessage(ctx)
 	case account.FieldLastUsedAt:
@@ -4493,6 +4589,20 @@ func (m *AccountMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case account.FieldProvisioningState:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProvisioningState(v)
+		return nil
+	case account.FieldCodexIdentityPolicy:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCodexIdentityPolicy(v)
 		return nil
 	case account.FieldErrorMessage:
 		v, ok := value.(string)
@@ -4864,6 +4974,12 @@ func (m *AccountMutation) ResetField(name string) error {
 	case account.FieldStatus:
 		m.ResetStatus()
 		return nil
+	case account.FieldProvisioningState:
+		m.ResetProvisioningState()
+		return nil
+	case account.FieldCodexIdentityPolicy:
+		m.ResetCodexIdentityPolicy()
+		return nil
 	case account.FieldErrorMessage:
 		m.ResetErrorMessage()
 		return nil
@@ -5083,6 +5199,3568 @@ func (m *AccountMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Account edge %s", name)
+}
+
+// AccountCodexDeviceBindingMutation represents an operation that mutates the AccountCodexDeviceBinding nodes in the graph.
+type AccountCodexDeviceBindingMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *int64
+	account_id        *int64
+	addaccount_id     *int64
+	api_key_id        *int64
+	addapi_key_id     *int64
+	os_class          *string
+	slot_id           *int64
+	addslot_id        *int64
+	policy_version    *int64
+	addpolicy_version *int64
+	created_at        *time.Time
+	updated_at        *time.Time
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*AccountCodexDeviceBinding, error)
+	predicates        []predicate.AccountCodexDeviceBinding
+}
+
+var _ ent.Mutation = (*AccountCodexDeviceBindingMutation)(nil)
+
+// accountcodexdevicebindingOption allows management of the mutation configuration using functional options.
+type accountcodexdevicebindingOption func(*AccountCodexDeviceBindingMutation)
+
+// newAccountCodexDeviceBindingMutation creates new mutation for the AccountCodexDeviceBinding entity.
+func newAccountCodexDeviceBindingMutation(c config, op Op, opts ...accountcodexdevicebindingOption) *AccountCodexDeviceBindingMutation {
+	m := &AccountCodexDeviceBindingMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAccountCodexDeviceBinding,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAccountCodexDeviceBindingID sets the ID field of the mutation.
+func withAccountCodexDeviceBindingID(id int64) accountcodexdevicebindingOption {
+	return func(m *AccountCodexDeviceBindingMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *AccountCodexDeviceBinding
+		)
+		m.oldValue = func(ctx context.Context) (*AccountCodexDeviceBinding, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().AccountCodexDeviceBinding.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAccountCodexDeviceBinding sets the old AccountCodexDeviceBinding of the mutation.
+func withAccountCodexDeviceBinding(node *AccountCodexDeviceBinding) accountcodexdevicebindingOption {
+	return func(m *AccountCodexDeviceBindingMutation) {
+		m.oldValue = func(context.Context) (*AccountCodexDeviceBinding, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AccountCodexDeviceBindingMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AccountCodexDeviceBindingMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AccountCodexDeviceBindingMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AccountCodexDeviceBindingMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().AccountCodexDeviceBinding.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetAccountID sets the "account_id" field.
+func (m *AccountCodexDeviceBindingMutation) SetAccountID(i int64) {
+	m.account_id = &i
+	m.addaccount_id = nil
+}
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *AccountCodexDeviceBindingMutation) AccountID() (r int64, exists bool) {
+	v := m.account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountID returns the old "account_id" field's value of the AccountCodexDeviceBinding entity.
+// If the AccountCodexDeviceBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceBindingMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+	}
+	return oldValue.AccountID, nil
+}
+
+// AddAccountID adds i to the "account_id" field.
+func (m *AccountCodexDeviceBindingMutation) AddAccountID(i int64) {
+	if m.addaccount_id != nil {
+		*m.addaccount_id += i
+	} else {
+		m.addaccount_id = &i
+	}
+}
+
+// AddedAccountID returns the value that was added to the "account_id" field in this mutation.
+func (m *AccountCodexDeviceBindingMutation) AddedAccountID() (r int64, exists bool) {
+	v := m.addaccount_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *AccountCodexDeviceBindingMutation) ResetAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+}
+
+// SetAPIKeyID sets the "api_key_id" field.
+func (m *AccountCodexDeviceBindingMutation) SetAPIKeyID(i int64) {
+	m.api_key_id = &i
+	m.addapi_key_id = nil
+}
+
+// APIKeyID returns the value of the "api_key_id" field in the mutation.
+func (m *AccountCodexDeviceBindingMutation) APIKeyID() (r int64, exists bool) {
+	v := m.api_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKeyID returns the old "api_key_id" field's value of the AccountCodexDeviceBinding entity.
+// If the AccountCodexDeviceBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceBindingMutation) OldAPIKeyID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKeyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKeyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKeyID: %w", err)
+	}
+	return oldValue.APIKeyID, nil
+}
+
+// AddAPIKeyID adds i to the "api_key_id" field.
+func (m *AccountCodexDeviceBindingMutation) AddAPIKeyID(i int64) {
+	if m.addapi_key_id != nil {
+		*m.addapi_key_id += i
+	} else {
+		m.addapi_key_id = &i
+	}
+}
+
+// AddedAPIKeyID returns the value that was added to the "api_key_id" field in this mutation.
+func (m *AccountCodexDeviceBindingMutation) AddedAPIKeyID() (r int64, exists bool) {
+	v := m.addapi_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAPIKeyID resets all changes to the "api_key_id" field.
+func (m *AccountCodexDeviceBindingMutation) ResetAPIKeyID() {
+	m.api_key_id = nil
+	m.addapi_key_id = nil
+}
+
+// SetOsClass sets the "os_class" field.
+func (m *AccountCodexDeviceBindingMutation) SetOsClass(s string) {
+	m.os_class = &s
+}
+
+// OsClass returns the value of the "os_class" field in the mutation.
+func (m *AccountCodexDeviceBindingMutation) OsClass() (r string, exists bool) {
+	v := m.os_class
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOsClass returns the old "os_class" field's value of the AccountCodexDeviceBinding entity.
+// If the AccountCodexDeviceBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceBindingMutation) OldOsClass(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOsClass is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOsClass requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOsClass: %w", err)
+	}
+	return oldValue.OsClass, nil
+}
+
+// ResetOsClass resets all changes to the "os_class" field.
+func (m *AccountCodexDeviceBindingMutation) ResetOsClass() {
+	m.os_class = nil
+}
+
+// SetSlotID sets the "slot_id" field.
+func (m *AccountCodexDeviceBindingMutation) SetSlotID(i int64) {
+	m.slot_id = &i
+	m.addslot_id = nil
+}
+
+// SlotID returns the value of the "slot_id" field in the mutation.
+func (m *AccountCodexDeviceBindingMutation) SlotID() (r int64, exists bool) {
+	v := m.slot_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSlotID returns the old "slot_id" field's value of the AccountCodexDeviceBinding entity.
+// If the AccountCodexDeviceBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceBindingMutation) OldSlotID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSlotID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSlotID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSlotID: %w", err)
+	}
+	return oldValue.SlotID, nil
+}
+
+// AddSlotID adds i to the "slot_id" field.
+func (m *AccountCodexDeviceBindingMutation) AddSlotID(i int64) {
+	if m.addslot_id != nil {
+		*m.addslot_id += i
+	} else {
+		m.addslot_id = &i
+	}
+}
+
+// AddedSlotID returns the value that was added to the "slot_id" field in this mutation.
+func (m *AccountCodexDeviceBindingMutation) AddedSlotID() (r int64, exists bool) {
+	v := m.addslot_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSlotID resets all changes to the "slot_id" field.
+func (m *AccountCodexDeviceBindingMutation) ResetSlotID() {
+	m.slot_id = nil
+	m.addslot_id = nil
+}
+
+// SetPolicyVersion sets the "policy_version" field.
+func (m *AccountCodexDeviceBindingMutation) SetPolicyVersion(i int64) {
+	m.policy_version = &i
+	m.addpolicy_version = nil
+}
+
+// PolicyVersion returns the value of the "policy_version" field in the mutation.
+func (m *AccountCodexDeviceBindingMutation) PolicyVersion() (r int64, exists bool) {
+	v := m.policy_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPolicyVersion returns the old "policy_version" field's value of the AccountCodexDeviceBinding entity.
+// If the AccountCodexDeviceBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceBindingMutation) OldPolicyVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPolicyVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPolicyVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPolicyVersion: %w", err)
+	}
+	return oldValue.PolicyVersion, nil
+}
+
+// AddPolicyVersion adds i to the "policy_version" field.
+func (m *AccountCodexDeviceBindingMutation) AddPolicyVersion(i int64) {
+	if m.addpolicy_version != nil {
+		*m.addpolicy_version += i
+	} else {
+		m.addpolicy_version = &i
+	}
+}
+
+// AddedPolicyVersion returns the value that was added to the "policy_version" field in this mutation.
+func (m *AccountCodexDeviceBindingMutation) AddedPolicyVersion() (r int64, exists bool) {
+	v := m.addpolicy_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPolicyVersion resets all changes to the "policy_version" field.
+func (m *AccountCodexDeviceBindingMutation) ResetPolicyVersion() {
+	m.policy_version = nil
+	m.addpolicy_version = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *AccountCodexDeviceBindingMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *AccountCodexDeviceBindingMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the AccountCodexDeviceBinding entity.
+// If the AccountCodexDeviceBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceBindingMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *AccountCodexDeviceBindingMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *AccountCodexDeviceBindingMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *AccountCodexDeviceBindingMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the AccountCodexDeviceBinding entity.
+// If the AccountCodexDeviceBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceBindingMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *AccountCodexDeviceBindingMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the AccountCodexDeviceBindingMutation builder.
+func (m *AccountCodexDeviceBindingMutation) Where(ps ...predicate.AccountCodexDeviceBinding) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AccountCodexDeviceBindingMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AccountCodexDeviceBindingMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.AccountCodexDeviceBinding, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AccountCodexDeviceBindingMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AccountCodexDeviceBindingMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (AccountCodexDeviceBinding).
+func (m *AccountCodexDeviceBindingMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AccountCodexDeviceBindingMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.account_id != nil {
+		fields = append(fields, accountcodexdevicebinding.FieldAccountID)
+	}
+	if m.api_key_id != nil {
+		fields = append(fields, accountcodexdevicebinding.FieldAPIKeyID)
+	}
+	if m.os_class != nil {
+		fields = append(fields, accountcodexdevicebinding.FieldOsClass)
+	}
+	if m.slot_id != nil {
+		fields = append(fields, accountcodexdevicebinding.FieldSlotID)
+	}
+	if m.policy_version != nil {
+		fields = append(fields, accountcodexdevicebinding.FieldPolicyVersion)
+	}
+	if m.created_at != nil {
+		fields = append(fields, accountcodexdevicebinding.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, accountcodexdevicebinding.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AccountCodexDeviceBindingMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case accountcodexdevicebinding.FieldAccountID:
+		return m.AccountID()
+	case accountcodexdevicebinding.FieldAPIKeyID:
+		return m.APIKeyID()
+	case accountcodexdevicebinding.FieldOsClass:
+		return m.OsClass()
+	case accountcodexdevicebinding.FieldSlotID:
+		return m.SlotID()
+	case accountcodexdevicebinding.FieldPolicyVersion:
+		return m.PolicyVersion()
+	case accountcodexdevicebinding.FieldCreatedAt:
+		return m.CreatedAt()
+	case accountcodexdevicebinding.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AccountCodexDeviceBindingMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case accountcodexdevicebinding.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case accountcodexdevicebinding.FieldAPIKeyID:
+		return m.OldAPIKeyID(ctx)
+	case accountcodexdevicebinding.FieldOsClass:
+		return m.OldOsClass(ctx)
+	case accountcodexdevicebinding.FieldSlotID:
+		return m.OldSlotID(ctx)
+	case accountcodexdevicebinding.FieldPolicyVersion:
+		return m.OldPolicyVersion(ctx)
+	case accountcodexdevicebinding.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case accountcodexdevicebinding.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown AccountCodexDeviceBinding field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountCodexDeviceBindingMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case accountcodexdevicebinding.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountID(v)
+		return nil
+	case accountcodexdevicebinding.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKeyID(v)
+		return nil
+	case accountcodexdevicebinding.FieldOsClass:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOsClass(v)
+		return nil
+	case accountcodexdevicebinding.FieldSlotID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSlotID(v)
+		return nil
+	case accountcodexdevicebinding.FieldPolicyVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPolicyVersion(v)
+		return nil
+	case accountcodexdevicebinding.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case accountcodexdevicebinding.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountCodexDeviceBinding field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AccountCodexDeviceBindingMutation) AddedFields() []string {
+	var fields []string
+	if m.addaccount_id != nil {
+		fields = append(fields, accountcodexdevicebinding.FieldAccountID)
+	}
+	if m.addapi_key_id != nil {
+		fields = append(fields, accountcodexdevicebinding.FieldAPIKeyID)
+	}
+	if m.addslot_id != nil {
+		fields = append(fields, accountcodexdevicebinding.FieldSlotID)
+	}
+	if m.addpolicy_version != nil {
+		fields = append(fields, accountcodexdevicebinding.FieldPolicyVersion)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AccountCodexDeviceBindingMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case accountcodexdevicebinding.FieldAccountID:
+		return m.AddedAccountID()
+	case accountcodexdevicebinding.FieldAPIKeyID:
+		return m.AddedAPIKeyID()
+	case accountcodexdevicebinding.FieldSlotID:
+		return m.AddedSlotID()
+	case accountcodexdevicebinding.FieldPolicyVersion:
+		return m.AddedPolicyVersion()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountCodexDeviceBindingMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case accountcodexdevicebinding.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAccountID(v)
+		return nil
+	case accountcodexdevicebinding.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAPIKeyID(v)
+		return nil
+	case accountcodexdevicebinding.FieldSlotID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSlotID(v)
+		return nil
+	case accountcodexdevicebinding.FieldPolicyVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPolicyVersion(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountCodexDeviceBinding numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AccountCodexDeviceBindingMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AccountCodexDeviceBindingMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AccountCodexDeviceBindingMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown AccountCodexDeviceBinding nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AccountCodexDeviceBindingMutation) ResetField(name string) error {
+	switch name {
+	case accountcodexdevicebinding.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case accountcodexdevicebinding.FieldAPIKeyID:
+		m.ResetAPIKeyID()
+		return nil
+	case accountcodexdevicebinding.FieldOsClass:
+		m.ResetOsClass()
+		return nil
+	case accountcodexdevicebinding.FieldSlotID:
+		m.ResetSlotID()
+		return nil
+	case accountcodexdevicebinding.FieldPolicyVersion:
+		m.ResetPolicyVersion()
+		return nil
+	case accountcodexdevicebinding.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case accountcodexdevicebinding.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountCodexDeviceBinding field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AccountCodexDeviceBindingMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AccountCodexDeviceBindingMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AccountCodexDeviceBindingMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AccountCodexDeviceBindingMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AccountCodexDeviceBindingMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AccountCodexDeviceBindingMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AccountCodexDeviceBindingMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown AccountCodexDeviceBinding unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AccountCodexDeviceBindingMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown AccountCodexDeviceBinding edge %s", name)
+}
+
+// AccountCodexDeviceSlotMutation represents an operation that mutates the AccountCodexDeviceSlot nodes in the graph.
+type AccountCodexDeviceSlotMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int64
+	account_id    *int64
+	addaccount_id *int64
+	profile_id    *int64
+	addprofile_id *int64
+	slot_index    *int
+	addslot_index *int
+	proxy_id      *int64
+	addproxy_id   *int64
+	epoch         *int64
+	addepoch      *int64
+	state         *string
+	created_at    *time.Time
+	updated_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*AccountCodexDeviceSlot, error)
+	predicates    []predicate.AccountCodexDeviceSlot
+}
+
+var _ ent.Mutation = (*AccountCodexDeviceSlotMutation)(nil)
+
+// accountcodexdeviceslotOption allows management of the mutation configuration using functional options.
+type accountcodexdeviceslotOption func(*AccountCodexDeviceSlotMutation)
+
+// newAccountCodexDeviceSlotMutation creates new mutation for the AccountCodexDeviceSlot entity.
+func newAccountCodexDeviceSlotMutation(c config, op Op, opts ...accountcodexdeviceslotOption) *AccountCodexDeviceSlotMutation {
+	m := &AccountCodexDeviceSlotMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAccountCodexDeviceSlot,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAccountCodexDeviceSlotID sets the ID field of the mutation.
+func withAccountCodexDeviceSlotID(id int64) accountcodexdeviceslotOption {
+	return func(m *AccountCodexDeviceSlotMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *AccountCodexDeviceSlot
+		)
+		m.oldValue = func(ctx context.Context) (*AccountCodexDeviceSlot, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().AccountCodexDeviceSlot.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAccountCodexDeviceSlot sets the old AccountCodexDeviceSlot of the mutation.
+func withAccountCodexDeviceSlot(node *AccountCodexDeviceSlot) accountcodexdeviceslotOption {
+	return func(m *AccountCodexDeviceSlotMutation) {
+		m.oldValue = func(context.Context) (*AccountCodexDeviceSlot, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AccountCodexDeviceSlotMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AccountCodexDeviceSlotMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AccountCodexDeviceSlotMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AccountCodexDeviceSlotMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().AccountCodexDeviceSlot.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetAccountID sets the "account_id" field.
+func (m *AccountCodexDeviceSlotMutation) SetAccountID(i int64) {
+	m.account_id = &i
+	m.addaccount_id = nil
+}
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *AccountCodexDeviceSlotMutation) AccountID() (r int64, exists bool) {
+	v := m.account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountID returns the old "account_id" field's value of the AccountCodexDeviceSlot entity.
+// If the AccountCodexDeviceSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceSlotMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+	}
+	return oldValue.AccountID, nil
+}
+
+// AddAccountID adds i to the "account_id" field.
+func (m *AccountCodexDeviceSlotMutation) AddAccountID(i int64) {
+	if m.addaccount_id != nil {
+		*m.addaccount_id += i
+	} else {
+		m.addaccount_id = &i
+	}
+}
+
+// AddedAccountID returns the value that was added to the "account_id" field in this mutation.
+func (m *AccountCodexDeviceSlotMutation) AddedAccountID() (r int64, exists bool) {
+	v := m.addaccount_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *AccountCodexDeviceSlotMutation) ResetAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+}
+
+// SetProfileID sets the "profile_id" field.
+func (m *AccountCodexDeviceSlotMutation) SetProfileID(i int64) {
+	m.profile_id = &i
+	m.addprofile_id = nil
+}
+
+// ProfileID returns the value of the "profile_id" field in the mutation.
+func (m *AccountCodexDeviceSlotMutation) ProfileID() (r int64, exists bool) {
+	v := m.profile_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProfileID returns the old "profile_id" field's value of the AccountCodexDeviceSlot entity.
+// If the AccountCodexDeviceSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceSlotMutation) OldProfileID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProfileID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProfileID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProfileID: %w", err)
+	}
+	return oldValue.ProfileID, nil
+}
+
+// AddProfileID adds i to the "profile_id" field.
+func (m *AccountCodexDeviceSlotMutation) AddProfileID(i int64) {
+	if m.addprofile_id != nil {
+		*m.addprofile_id += i
+	} else {
+		m.addprofile_id = &i
+	}
+}
+
+// AddedProfileID returns the value that was added to the "profile_id" field in this mutation.
+func (m *AccountCodexDeviceSlotMutation) AddedProfileID() (r int64, exists bool) {
+	v := m.addprofile_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetProfileID resets all changes to the "profile_id" field.
+func (m *AccountCodexDeviceSlotMutation) ResetProfileID() {
+	m.profile_id = nil
+	m.addprofile_id = nil
+}
+
+// SetSlotIndex sets the "slot_index" field.
+func (m *AccountCodexDeviceSlotMutation) SetSlotIndex(i int) {
+	m.slot_index = &i
+	m.addslot_index = nil
+}
+
+// SlotIndex returns the value of the "slot_index" field in the mutation.
+func (m *AccountCodexDeviceSlotMutation) SlotIndex() (r int, exists bool) {
+	v := m.slot_index
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSlotIndex returns the old "slot_index" field's value of the AccountCodexDeviceSlot entity.
+// If the AccountCodexDeviceSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceSlotMutation) OldSlotIndex(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSlotIndex is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSlotIndex requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSlotIndex: %w", err)
+	}
+	return oldValue.SlotIndex, nil
+}
+
+// AddSlotIndex adds i to the "slot_index" field.
+func (m *AccountCodexDeviceSlotMutation) AddSlotIndex(i int) {
+	if m.addslot_index != nil {
+		*m.addslot_index += i
+	} else {
+		m.addslot_index = &i
+	}
+}
+
+// AddedSlotIndex returns the value that was added to the "slot_index" field in this mutation.
+func (m *AccountCodexDeviceSlotMutation) AddedSlotIndex() (r int, exists bool) {
+	v := m.addslot_index
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSlotIndex resets all changes to the "slot_index" field.
+func (m *AccountCodexDeviceSlotMutation) ResetSlotIndex() {
+	m.slot_index = nil
+	m.addslot_index = nil
+}
+
+// SetProxyID sets the "proxy_id" field.
+func (m *AccountCodexDeviceSlotMutation) SetProxyID(i int64) {
+	m.proxy_id = &i
+	m.addproxy_id = nil
+}
+
+// ProxyID returns the value of the "proxy_id" field in the mutation.
+func (m *AccountCodexDeviceSlotMutation) ProxyID() (r int64, exists bool) {
+	v := m.proxy_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProxyID returns the old "proxy_id" field's value of the AccountCodexDeviceSlot entity.
+// If the AccountCodexDeviceSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceSlotMutation) OldProxyID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProxyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProxyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProxyID: %w", err)
+	}
+	return oldValue.ProxyID, nil
+}
+
+// AddProxyID adds i to the "proxy_id" field.
+func (m *AccountCodexDeviceSlotMutation) AddProxyID(i int64) {
+	if m.addproxy_id != nil {
+		*m.addproxy_id += i
+	} else {
+		m.addproxy_id = &i
+	}
+}
+
+// AddedProxyID returns the value that was added to the "proxy_id" field in this mutation.
+func (m *AccountCodexDeviceSlotMutation) AddedProxyID() (r int64, exists bool) {
+	v := m.addproxy_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearProxyID clears the value of the "proxy_id" field.
+func (m *AccountCodexDeviceSlotMutation) ClearProxyID() {
+	m.proxy_id = nil
+	m.addproxy_id = nil
+	m.clearedFields[accountcodexdeviceslot.FieldProxyID] = struct{}{}
+}
+
+// ProxyIDCleared returns if the "proxy_id" field was cleared in this mutation.
+func (m *AccountCodexDeviceSlotMutation) ProxyIDCleared() bool {
+	_, ok := m.clearedFields[accountcodexdeviceslot.FieldProxyID]
+	return ok
+}
+
+// ResetProxyID resets all changes to the "proxy_id" field.
+func (m *AccountCodexDeviceSlotMutation) ResetProxyID() {
+	m.proxy_id = nil
+	m.addproxy_id = nil
+	delete(m.clearedFields, accountcodexdeviceslot.FieldProxyID)
+}
+
+// SetEpoch sets the "epoch" field.
+func (m *AccountCodexDeviceSlotMutation) SetEpoch(i int64) {
+	m.epoch = &i
+	m.addepoch = nil
+}
+
+// Epoch returns the value of the "epoch" field in the mutation.
+func (m *AccountCodexDeviceSlotMutation) Epoch() (r int64, exists bool) {
+	v := m.epoch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEpoch returns the old "epoch" field's value of the AccountCodexDeviceSlot entity.
+// If the AccountCodexDeviceSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceSlotMutation) OldEpoch(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEpoch is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEpoch requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEpoch: %w", err)
+	}
+	return oldValue.Epoch, nil
+}
+
+// AddEpoch adds i to the "epoch" field.
+func (m *AccountCodexDeviceSlotMutation) AddEpoch(i int64) {
+	if m.addepoch != nil {
+		*m.addepoch += i
+	} else {
+		m.addepoch = &i
+	}
+}
+
+// AddedEpoch returns the value that was added to the "epoch" field in this mutation.
+func (m *AccountCodexDeviceSlotMutation) AddedEpoch() (r int64, exists bool) {
+	v := m.addepoch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetEpoch resets all changes to the "epoch" field.
+func (m *AccountCodexDeviceSlotMutation) ResetEpoch() {
+	m.epoch = nil
+	m.addepoch = nil
+}
+
+// SetState sets the "state" field.
+func (m *AccountCodexDeviceSlotMutation) SetState(s string) {
+	m.state = &s
+}
+
+// State returns the value of the "state" field in the mutation.
+func (m *AccountCodexDeviceSlotMutation) State() (r string, exists bool) {
+	v := m.state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldState returns the old "state" field's value of the AccountCodexDeviceSlot entity.
+// If the AccountCodexDeviceSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceSlotMutation) OldState(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldState: %w", err)
+	}
+	return oldValue.State, nil
+}
+
+// ResetState resets all changes to the "state" field.
+func (m *AccountCodexDeviceSlotMutation) ResetState() {
+	m.state = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *AccountCodexDeviceSlotMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *AccountCodexDeviceSlotMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the AccountCodexDeviceSlot entity.
+// If the AccountCodexDeviceSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceSlotMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *AccountCodexDeviceSlotMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *AccountCodexDeviceSlotMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *AccountCodexDeviceSlotMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the AccountCodexDeviceSlot entity.
+// If the AccountCodexDeviceSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceSlotMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *AccountCodexDeviceSlotMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the AccountCodexDeviceSlotMutation builder.
+func (m *AccountCodexDeviceSlotMutation) Where(ps ...predicate.AccountCodexDeviceSlot) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AccountCodexDeviceSlotMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AccountCodexDeviceSlotMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.AccountCodexDeviceSlot, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AccountCodexDeviceSlotMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AccountCodexDeviceSlotMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (AccountCodexDeviceSlot).
+func (m *AccountCodexDeviceSlotMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AccountCodexDeviceSlotMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.account_id != nil {
+		fields = append(fields, accountcodexdeviceslot.FieldAccountID)
+	}
+	if m.profile_id != nil {
+		fields = append(fields, accountcodexdeviceslot.FieldProfileID)
+	}
+	if m.slot_index != nil {
+		fields = append(fields, accountcodexdeviceslot.FieldSlotIndex)
+	}
+	if m.proxy_id != nil {
+		fields = append(fields, accountcodexdeviceslot.FieldProxyID)
+	}
+	if m.epoch != nil {
+		fields = append(fields, accountcodexdeviceslot.FieldEpoch)
+	}
+	if m.state != nil {
+		fields = append(fields, accountcodexdeviceslot.FieldState)
+	}
+	if m.created_at != nil {
+		fields = append(fields, accountcodexdeviceslot.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, accountcodexdeviceslot.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AccountCodexDeviceSlotMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case accountcodexdeviceslot.FieldAccountID:
+		return m.AccountID()
+	case accountcodexdeviceslot.FieldProfileID:
+		return m.ProfileID()
+	case accountcodexdeviceslot.FieldSlotIndex:
+		return m.SlotIndex()
+	case accountcodexdeviceslot.FieldProxyID:
+		return m.ProxyID()
+	case accountcodexdeviceslot.FieldEpoch:
+		return m.Epoch()
+	case accountcodexdeviceslot.FieldState:
+		return m.State()
+	case accountcodexdeviceslot.FieldCreatedAt:
+		return m.CreatedAt()
+	case accountcodexdeviceslot.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AccountCodexDeviceSlotMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case accountcodexdeviceslot.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case accountcodexdeviceslot.FieldProfileID:
+		return m.OldProfileID(ctx)
+	case accountcodexdeviceslot.FieldSlotIndex:
+		return m.OldSlotIndex(ctx)
+	case accountcodexdeviceslot.FieldProxyID:
+		return m.OldProxyID(ctx)
+	case accountcodexdeviceslot.FieldEpoch:
+		return m.OldEpoch(ctx)
+	case accountcodexdeviceslot.FieldState:
+		return m.OldState(ctx)
+	case accountcodexdeviceslot.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case accountcodexdeviceslot.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown AccountCodexDeviceSlot field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountCodexDeviceSlotMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case accountcodexdeviceslot.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountID(v)
+		return nil
+	case accountcodexdeviceslot.FieldProfileID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProfileID(v)
+		return nil
+	case accountcodexdeviceslot.FieldSlotIndex:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSlotIndex(v)
+		return nil
+	case accountcodexdeviceslot.FieldProxyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProxyID(v)
+		return nil
+	case accountcodexdeviceslot.FieldEpoch:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEpoch(v)
+		return nil
+	case accountcodexdeviceslot.FieldState:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetState(v)
+		return nil
+	case accountcodexdeviceslot.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case accountcodexdeviceslot.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountCodexDeviceSlot field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AccountCodexDeviceSlotMutation) AddedFields() []string {
+	var fields []string
+	if m.addaccount_id != nil {
+		fields = append(fields, accountcodexdeviceslot.FieldAccountID)
+	}
+	if m.addprofile_id != nil {
+		fields = append(fields, accountcodexdeviceslot.FieldProfileID)
+	}
+	if m.addslot_index != nil {
+		fields = append(fields, accountcodexdeviceslot.FieldSlotIndex)
+	}
+	if m.addproxy_id != nil {
+		fields = append(fields, accountcodexdeviceslot.FieldProxyID)
+	}
+	if m.addepoch != nil {
+		fields = append(fields, accountcodexdeviceslot.FieldEpoch)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AccountCodexDeviceSlotMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case accountcodexdeviceslot.FieldAccountID:
+		return m.AddedAccountID()
+	case accountcodexdeviceslot.FieldProfileID:
+		return m.AddedProfileID()
+	case accountcodexdeviceslot.FieldSlotIndex:
+		return m.AddedSlotIndex()
+	case accountcodexdeviceslot.FieldProxyID:
+		return m.AddedProxyID()
+	case accountcodexdeviceslot.FieldEpoch:
+		return m.AddedEpoch()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountCodexDeviceSlotMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case accountcodexdeviceslot.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAccountID(v)
+		return nil
+	case accountcodexdeviceslot.FieldProfileID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddProfileID(v)
+		return nil
+	case accountcodexdeviceslot.FieldSlotIndex:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSlotIndex(v)
+		return nil
+	case accountcodexdeviceslot.FieldProxyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddProxyID(v)
+		return nil
+	case accountcodexdeviceslot.FieldEpoch:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddEpoch(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountCodexDeviceSlot numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AccountCodexDeviceSlotMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(accountcodexdeviceslot.FieldProxyID) {
+		fields = append(fields, accountcodexdeviceslot.FieldProxyID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AccountCodexDeviceSlotMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AccountCodexDeviceSlotMutation) ClearField(name string) error {
+	switch name {
+	case accountcodexdeviceslot.FieldProxyID:
+		m.ClearProxyID()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountCodexDeviceSlot nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AccountCodexDeviceSlotMutation) ResetField(name string) error {
+	switch name {
+	case accountcodexdeviceslot.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case accountcodexdeviceslot.FieldProfileID:
+		m.ResetProfileID()
+		return nil
+	case accountcodexdeviceslot.FieldSlotIndex:
+		m.ResetSlotIndex()
+		return nil
+	case accountcodexdeviceslot.FieldProxyID:
+		m.ResetProxyID()
+		return nil
+	case accountcodexdeviceslot.FieldEpoch:
+		m.ResetEpoch()
+		return nil
+	case accountcodexdeviceslot.FieldState:
+		m.ResetState()
+		return nil
+	case accountcodexdeviceslot.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case accountcodexdeviceslot.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountCodexDeviceSlot field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AccountCodexDeviceSlotMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AccountCodexDeviceSlotMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AccountCodexDeviceSlotMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AccountCodexDeviceSlotMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AccountCodexDeviceSlotMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AccountCodexDeviceSlotMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AccountCodexDeviceSlotMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown AccountCodexDeviceSlot unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AccountCodexDeviceSlotMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown AccountCodexDeviceSlot edge %s", name)
+}
+
+// AccountCodexIdentityPolicyMutation represents an operation that mutates the AccountCodexIdentityPolicy nodes in the graph.
+type AccountCodexIdentityPolicyMutation struct {
+	config
+	op                      Op
+	typ                     string
+	id                      *int64
+	account_id              *int64
+	addaccount_id           *int64
+	mode                    *string
+	binding_scope           *string
+	session_policy          *map[string]interface{}
+	affinity_ttl_seconds    *int
+	addaffinity_ttl_seconds *int
+	unsupported_policy      *string
+	version                 *int64
+	addversion              *int64
+	created_at              *time.Time
+	updated_at              *time.Time
+	clearedFields           map[string]struct{}
+	done                    bool
+	oldValue                func(context.Context) (*AccountCodexIdentityPolicy, error)
+	predicates              []predicate.AccountCodexIdentityPolicy
+}
+
+var _ ent.Mutation = (*AccountCodexIdentityPolicyMutation)(nil)
+
+// accountcodexidentitypolicyOption allows management of the mutation configuration using functional options.
+type accountcodexidentitypolicyOption func(*AccountCodexIdentityPolicyMutation)
+
+// newAccountCodexIdentityPolicyMutation creates new mutation for the AccountCodexIdentityPolicy entity.
+func newAccountCodexIdentityPolicyMutation(c config, op Op, opts ...accountcodexidentitypolicyOption) *AccountCodexIdentityPolicyMutation {
+	m := &AccountCodexIdentityPolicyMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAccountCodexIdentityPolicy,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAccountCodexIdentityPolicyID sets the ID field of the mutation.
+func withAccountCodexIdentityPolicyID(id int64) accountcodexidentitypolicyOption {
+	return func(m *AccountCodexIdentityPolicyMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *AccountCodexIdentityPolicy
+		)
+		m.oldValue = func(ctx context.Context) (*AccountCodexIdentityPolicy, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().AccountCodexIdentityPolicy.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAccountCodexIdentityPolicy sets the old AccountCodexIdentityPolicy of the mutation.
+func withAccountCodexIdentityPolicy(node *AccountCodexIdentityPolicy) accountcodexidentitypolicyOption {
+	return func(m *AccountCodexIdentityPolicyMutation) {
+		m.oldValue = func(context.Context) (*AccountCodexIdentityPolicy, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AccountCodexIdentityPolicyMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AccountCodexIdentityPolicyMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AccountCodexIdentityPolicyMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AccountCodexIdentityPolicyMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().AccountCodexIdentityPolicy.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetAccountID sets the "account_id" field.
+func (m *AccountCodexIdentityPolicyMutation) SetAccountID(i int64) {
+	m.account_id = &i
+	m.addaccount_id = nil
+}
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *AccountCodexIdentityPolicyMutation) AccountID() (r int64, exists bool) {
+	v := m.account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountID returns the old "account_id" field's value of the AccountCodexIdentityPolicy entity.
+// If the AccountCodexIdentityPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexIdentityPolicyMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+	}
+	return oldValue.AccountID, nil
+}
+
+// AddAccountID adds i to the "account_id" field.
+func (m *AccountCodexIdentityPolicyMutation) AddAccountID(i int64) {
+	if m.addaccount_id != nil {
+		*m.addaccount_id += i
+	} else {
+		m.addaccount_id = &i
+	}
+}
+
+// AddedAccountID returns the value that was added to the "account_id" field in this mutation.
+func (m *AccountCodexIdentityPolicyMutation) AddedAccountID() (r int64, exists bool) {
+	v := m.addaccount_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *AccountCodexIdentityPolicyMutation) ResetAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+}
+
+// SetMode sets the "mode" field.
+func (m *AccountCodexIdentityPolicyMutation) SetMode(s string) {
+	m.mode = &s
+}
+
+// Mode returns the value of the "mode" field in the mutation.
+func (m *AccountCodexIdentityPolicyMutation) Mode() (r string, exists bool) {
+	v := m.mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMode returns the old "mode" field's value of the AccountCodexIdentityPolicy entity.
+// If the AccountCodexIdentityPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexIdentityPolicyMutation) OldMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMode: %w", err)
+	}
+	return oldValue.Mode, nil
+}
+
+// ResetMode resets all changes to the "mode" field.
+func (m *AccountCodexIdentityPolicyMutation) ResetMode() {
+	m.mode = nil
+}
+
+// SetBindingScope sets the "binding_scope" field.
+func (m *AccountCodexIdentityPolicyMutation) SetBindingScope(s string) {
+	m.binding_scope = &s
+}
+
+// BindingScope returns the value of the "binding_scope" field in the mutation.
+func (m *AccountCodexIdentityPolicyMutation) BindingScope() (r string, exists bool) {
+	v := m.binding_scope
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBindingScope returns the old "binding_scope" field's value of the AccountCodexIdentityPolicy entity.
+// If the AccountCodexIdentityPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexIdentityPolicyMutation) OldBindingScope(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBindingScope is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBindingScope requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBindingScope: %w", err)
+	}
+	return oldValue.BindingScope, nil
+}
+
+// ResetBindingScope resets all changes to the "binding_scope" field.
+func (m *AccountCodexIdentityPolicyMutation) ResetBindingScope() {
+	m.binding_scope = nil
+}
+
+// SetSessionPolicy sets the "session_policy" field.
+func (m *AccountCodexIdentityPolicyMutation) SetSessionPolicy(value map[string]interface{}) {
+	m.session_policy = &value
+}
+
+// SessionPolicy returns the value of the "session_policy" field in the mutation.
+func (m *AccountCodexIdentityPolicyMutation) SessionPolicy() (r map[string]interface{}, exists bool) {
+	v := m.session_policy
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionPolicy returns the old "session_policy" field's value of the AccountCodexIdentityPolicy entity.
+// If the AccountCodexIdentityPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexIdentityPolicyMutation) OldSessionPolicy(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionPolicy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionPolicy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionPolicy: %w", err)
+	}
+	return oldValue.SessionPolicy, nil
+}
+
+// ResetSessionPolicy resets all changes to the "session_policy" field.
+func (m *AccountCodexIdentityPolicyMutation) ResetSessionPolicy() {
+	m.session_policy = nil
+}
+
+// SetAffinityTTLSeconds sets the "affinity_ttl_seconds" field.
+func (m *AccountCodexIdentityPolicyMutation) SetAffinityTTLSeconds(i int) {
+	m.affinity_ttl_seconds = &i
+	m.addaffinity_ttl_seconds = nil
+}
+
+// AffinityTTLSeconds returns the value of the "affinity_ttl_seconds" field in the mutation.
+func (m *AccountCodexIdentityPolicyMutation) AffinityTTLSeconds() (r int, exists bool) {
+	v := m.affinity_ttl_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAffinityTTLSeconds returns the old "affinity_ttl_seconds" field's value of the AccountCodexIdentityPolicy entity.
+// If the AccountCodexIdentityPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexIdentityPolicyMutation) OldAffinityTTLSeconds(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAffinityTTLSeconds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAffinityTTLSeconds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAffinityTTLSeconds: %w", err)
+	}
+	return oldValue.AffinityTTLSeconds, nil
+}
+
+// AddAffinityTTLSeconds adds i to the "affinity_ttl_seconds" field.
+func (m *AccountCodexIdentityPolicyMutation) AddAffinityTTLSeconds(i int) {
+	if m.addaffinity_ttl_seconds != nil {
+		*m.addaffinity_ttl_seconds += i
+	} else {
+		m.addaffinity_ttl_seconds = &i
+	}
+}
+
+// AddedAffinityTTLSeconds returns the value that was added to the "affinity_ttl_seconds" field in this mutation.
+func (m *AccountCodexIdentityPolicyMutation) AddedAffinityTTLSeconds() (r int, exists bool) {
+	v := m.addaffinity_ttl_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAffinityTTLSeconds resets all changes to the "affinity_ttl_seconds" field.
+func (m *AccountCodexIdentityPolicyMutation) ResetAffinityTTLSeconds() {
+	m.affinity_ttl_seconds = nil
+	m.addaffinity_ttl_seconds = nil
+}
+
+// SetUnsupportedPolicy sets the "unsupported_policy" field.
+func (m *AccountCodexIdentityPolicyMutation) SetUnsupportedPolicy(s string) {
+	m.unsupported_policy = &s
+}
+
+// UnsupportedPolicy returns the value of the "unsupported_policy" field in the mutation.
+func (m *AccountCodexIdentityPolicyMutation) UnsupportedPolicy() (r string, exists bool) {
+	v := m.unsupported_policy
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUnsupportedPolicy returns the old "unsupported_policy" field's value of the AccountCodexIdentityPolicy entity.
+// If the AccountCodexIdentityPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexIdentityPolicyMutation) OldUnsupportedPolicy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUnsupportedPolicy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUnsupportedPolicy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUnsupportedPolicy: %w", err)
+	}
+	return oldValue.UnsupportedPolicy, nil
+}
+
+// ResetUnsupportedPolicy resets all changes to the "unsupported_policy" field.
+func (m *AccountCodexIdentityPolicyMutation) ResetUnsupportedPolicy() {
+	m.unsupported_policy = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *AccountCodexIdentityPolicyMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *AccountCodexIdentityPolicyMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the AccountCodexIdentityPolicy entity.
+// If the AccountCodexIdentityPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexIdentityPolicyMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *AccountCodexIdentityPolicyMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *AccountCodexIdentityPolicyMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *AccountCodexIdentityPolicyMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *AccountCodexIdentityPolicyMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *AccountCodexIdentityPolicyMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the AccountCodexIdentityPolicy entity.
+// If the AccountCodexIdentityPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexIdentityPolicyMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *AccountCodexIdentityPolicyMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *AccountCodexIdentityPolicyMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *AccountCodexIdentityPolicyMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the AccountCodexIdentityPolicy entity.
+// If the AccountCodexIdentityPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexIdentityPolicyMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *AccountCodexIdentityPolicyMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the AccountCodexIdentityPolicyMutation builder.
+func (m *AccountCodexIdentityPolicyMutation) Where(ps ...predicate.AccountCodexIdentityPolicy) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AccountCodexIdentityPolicyMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AccountCodexIdentityPolicyMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.AccountCodexIdentityPolicy, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AccountCodexIdentityPolicyMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AccountCodexIdentityPolicyMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (AccountCodexIdentityPolicy).
+func (m *AccountCodexIdentityPolicyMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AccountCodexIdentityPolicyMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.account_id != nil {
+		fields = append(fields, accountcodexidentitypolicy.FieldAccountID)
+	}
+	if m.mode != nil {
+		fields = append(fields, accountcodexidentitypolicy.FieldMode)
+	}
+	if m.binding_scope != nil {
+		fields = append(fields, accountcodexidentitypolicy.FieldBindingScope)
+	}
+	if m.session_policy != nil {
+		fields = append(fields, accountcodexidentitypolicy.FieldSessionPolicy)
+	}
+	if m.affinity_ttl_seconds != nil {
+		fields = append(fields, accountcodexidentitypolicy.FieldAffinityTTLSeconds)
+	}
+	if m.unsupported_policy != nil {
+		fields = append(fields, accountcodexidentitypolicy.FieldUnsupportedPolicy)
+	}
+	if m.version != nil {
+		fields = append(fields, accountcodexidentitypolicy.FieldVersion)
+	}
+	if m.created_at != nil {
+		fields = append(fields, accountcodexidentitypolicy.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, accountcodexidentitypolicy.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AccountCodexIdentityPolicyMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case accountcodexidentitypolicy.FieldAccountID:
+		return m.AccountID()
+	case accountcodexidentitypolicy.FieldMode:
+		return m.Mode()
+	case accountcodexidentitypolicy.FieldBindingScope:
+		return m.BindingScope()
+	case accountcodexidentitypolicy.FieldSessionPolicy:
+		return m.SessionPolicy()
+	case accountcodexidentitypolicy.FieldAffinityTTLSeconds:
+		return m.AffinityTTLSeconds()
+	case accountcodexidentitypolicy.FieldUnsupportedPolicy:
+		return m.UnsupportedPolicy()
+	case accountcodexidentitypolicy.FieldVersion:
+		return m.Version()
+	case accountcodexidentitypolicy.FieldCreatedAt:
+		return m.CreatedAt()
+	case accountcodexidentitypolicy.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AccountCodexIdentityPolicyMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case accountcodexidentitypolicy.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case accountcodexidentitypolicy.FieldMode:
+		return m.OldMode(ctx)
+	case accountcodexidentitypolicy.FieldBindingScope:
+		return m.OldBindingScope(ctx)
+	case accountcodexidentitypolicy.FieldSessionPolicy:
+		return m.OldSessionPolicy(ctx)
+	case accountcodexidentitypolicy.FieldAffinityTTLSeconds:
+		return m.OldAffinityTTLSeconds(ctx)
+	case accountcodexidentitypolicy.FieldUnsupportedPolicy:
+		return m.OldUnsupportedPolicy(ctx)
+	case accountcodexidentitypolicy.FieldVersion:
+		return m.OldVersion(ctx)
+	case accountcodexidentitypolicy.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case accountcodexidentitypolicy.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown AccountCodexIdentityPolicy field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountCodexIdentityPolicyMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case accountcodexidentitypolicy.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountID(v)
+		return nil
+	case accountcodexidentitypolicy.FieldMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMode(v)
+		return nil
+	case accountcodexidentitypolicy.FieldBindingScope:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBindingScope(v)
+		return nil
+	case accountcodexidentitypolicy.FieldSessionPolicy:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionPolicy(v)
+		return nil
+	case accountcodexidentitypolicy.FieldAffinityTTLSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAffinityTTLSeconds(v)
+		return nil
+	case accountcodexidentitypolicy.FieldUnsupportedPolicy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUnsupportedPolicy(v)
+		return nil
+	case accountcodexidentitypolicy.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	case accountcodexidentitypolicy.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case accountcodexidentitypolicy.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountCodexIdentityPolicy field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AccountCodexIdentityPolicyMutation) AddedFields() []string {
+	var fields []string
+	if m.addaccount_id != nil {
+		fields = append(fields, accountcodexidentitypolicy.FieldAccountID)
+	}
+	if m.addaffinity_ttl_seconds != nil {
+		fields = append(fields, accountcodexidentitypolicy.FieldAffinityTTLSeconds)
+	}
+	if m.addversion != nil {
+		fields = append(fields, accountcodexidentitypolicy.FieldVersion)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AccountCodexIdentityPolicyMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case accountcodexidentitypolicy.FieldAccountID:
+		return m.AddedAccountID()
+	case accountcodexidentitypolicy.FieldAffinityTTLSeconds:
+		return m.AddedAffinityTTLSeconds()
+	case accountcodexidentitypolicy.FieldVersion:
+		return m.AddedVersion()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountCodexIdentityPolicyMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case accountcodexidentitypolicy.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAccountID(v)
+		return nil
+	case accountcodexidentitypolicy.FieldAffinityTTLSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAffinityTTLSeconds(v)
+		return nil
+	case accountcodexidentitypolicy.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVersion(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountCodexIdentityPolicy numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AccountCodexIdentityPolicyMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AccountCodexIdentityPolicyMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AccountCodexIdentityPolicyMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown AccountCodexIdentityPolicy nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AccountCodexIdentityPolicyMutation) ResetField(name string) error {
+	switch name {
+	case accountcodexidentitypolicy.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case accountcodexidentitypolicy.FieldMode:
+		m.ResetMode()
+		return nil
+	case accountcodexidentitypolicy.FieldBindingScope:
+		m.ResetBindingScope()
+		return nil
+	case accountcodexidentitypolicy.FieldSessionPolicy:
+		m.ResetSessionPolicy()
+		return nil
+	case accountcodexidentitypolicy.FieldAffinityTTLSeconds:
+		m.ResetAffinityTTLSeconds()
+		return nil
+	case accountcodexidentitypolicy.FieldUnsupportedPolicy:
+		m.ResetUnsupportedPolicy()
+		return nil
+	case accountcodexidentitypolicy.FieldVersion:
+		m.ResetVersion()
+		return nil
+	case accountcodexidentitypolicy.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case accountcodexidentitypolicy.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountCodexIdentityPolicy field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AccountCodexIdentityPolicyMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AccountCodexIdentityPolicyMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AccountCodexIdentityPolicyMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AccountCodexIdentityPolicyMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AccountCodexIdentityPolicyMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AccountCodexIdentityPolicyMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AccountCodexIdentityPolicyMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown AccountCodexIdentityPolicy unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AccountCodexIdentityPolicyMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown AccountCodexIdentityPolicy edge %s", name)
+}
+
+// AccountCodexProfileMutation represents an operation that mutates the AccountCodexProfile nodes in the graph.
+type AccountCodexProfileMutation struct {
+	config
+	op                 Op
+	typ                string
+	id                 *int64
+	account_id         *int64
+	addaccount_id      *int64
+	os_class           *string
+	canonical_surface  *string
+	architecture       *string
+	proxy_id           *int64
+	addproxy_id        *int64
+	slot_count         *int
+	addslot_count      *int
+	epoch              *int64
+	addepoch           *int64
+	catalog_version    *int64
+	addcatalog_version *int64
+	created_at         *time.Time
+	updated_at         *time.Time
+	clearedFields      map[string]struct{}
+	done               bool
+	oldValue           func(context.Context) (*AccountCodexProfile, error)
+	predicates         []predicate.AccountCodexProfile
+}
+
+var _ ent.Mutation = (*AccountCodexProfileMutation)(nil)
+
+// accountcodexprofileOption allows management of the mutation configuration using functional options.
+type accountcodexprofileOption func(*AccountCodexProfileMutation)
+
+// newAccountCodexProfileMutation creates new mutation for the AccountCodexProfile entity.
+func newAccountCodexProfileMutation(c config, op Op, opts ...accountcodexprofileOption) *AccountCodexProfileMutation {
+	m := &AccountCodexProfileMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAccountCodexProfile,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAccountCodexProfileID sets the ID field of the mutation.
+func withAccountCodexProfileID(id int64) accountcodexprofileOption {
+	return func(m *AccountCodexProfileMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *AccountCodexProfile
+		)
+		m.oldValue = func(ctx context.Context) (*AccountCodexProfile, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().AccountCodexProfile.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAccountCodexProfile sets the old AccountCodexProfile of the mutation.
+func withAccountCodexProfile(node *AccountCodexProfile) accountcodexprofileOption {
+	return func(m *AccountCodexProfileMutation) {
+		m.oldValue = func(context.Context) (*AccountCodexProfile, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AccountCodexProfileMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AccountCodexProfileMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AccountCodexProfileMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AccountCodexProfileMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().AccountCodexProfile.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetAccountID sets the "account_id" field.
+func (m *AccountCodexProfileMutation) SetAccountID(i int64) {
+	m.account_id = &i
+	m.addaccount_id = nil
+}
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *AccountCodexProfileMutation) AccountID() (r int64, exists bool) {
+	v := m.account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountID returns the old "account_id" field's value of the AccountCodexProfile entity.
+// If the AccountCodexProfile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexProfileMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+	}
+	return oldValue.AccountID, nil
+}
+
+// AddAccountID adds i to the "account_id" field.
+func (m *AccountCodexProfileMutation) AddAccountID(i int64) {
+	if m.addaccount_id != nil {
+		*m.addaccount_id += i
+	} else {
+		m.addaccount_id = &i
+	}
+}
+
+// AddedAccountID returns the value that was added to the "account_id" field in this mutation.
+func (m *AccountCodexProfileMutation) AddedAccountID() (r int64, exists bool) {
+	v := m.addaccount_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *AccountCodexProfileMutation) ResetAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+}
+
+// SetOsClass sets the "os_class" field.
+func (m *AccountCodexProfileMutation) SetOsClass(s string) {
+	m.os_class = &s
+}
+
+// OsClass returns the value of the "os_class" field in the mutation.
+func (m *AccountCodexProfileMutation) OsClass() (r string, exists bool) {
+	v := m.os_class
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOsClass returns the old "os_class" field's value of the AccountCodexProfile entity.
+// If the AccountCodexProfile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexProfileMutation) OldOsClass(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOsClass is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOsClass requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOsClass: %w", err)
+	}
+	return oldValue.OsClass, nil
+}
+
+// ResetOsClass resets all changes to the "os_class" field.
+func (m *AccountCodexProfileMutation) ResetOsClass() {
+	m.os_class = nil
+}
+
+// SetCanonicalSurface sets the "canonical_surface" field.
+func (m *AccountCodexProfileMutation) SetCanonicalSurface(s string) {
+	m.canonical_surface = &s
+}
+
+// CanonicalSurface returns the value of the "canonical_surface" field in the mutation.
+func (m *AccountCodexProfileMutation) CanonicalSurface() (r string, exists bool) {
+	v := m.canonical_surface
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCanonicalSurface returns the old "canonical_surface" field's value of the AccountCodexProfile entity.
+// If the AccountCodexProfile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexProfileMutation) OldCanonicalSurface(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCanonicalSurface is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCanonicalSurface requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCanonicalSurface: %w", err)
+	}
+	return oldValue.CanonicalSurface, nil
+}
+
+// ResetCanonicalSurface resets all changes to the "canonical_surface" field.
+func (m *AccountCodexProfileMutation) ResetCanonicalSurface() {
+	m.canonical_surface = nil
+}
+
+// SetArchitecture sets the "architecture" field.
+func (m *AccountCodexProfileMutation) SetArchitecture(s string) {
+	m.architecture = &s
+}
+
+// Architecture returns the value of the "architecture" field in the mutation.
+func (m *AccountCodexProfileMutation) Architecture() (r string, exists bool) {
+	v := m.architecture
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldArchitecture returns the old "architecture" field's value of the AccountCodexProfile entity.
+// If the AccountCodexProfile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexProfileMutation) OldArchitecture(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldArchitecture is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldArchitecture requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldArchitecture: %w", err)
+	}
+	return oldValue.Architecture, nil
+}
+
+// ClearArchitecture clears the value of the "architecture" field.
+func (m *AccountCodexProfileMutation) ClearArchitecture() {
+	m.architecture = nil
+	m.clearedFields[accountcodexprofile.FieldArchitecture] = struct{}{}
+}
+
+// ArchitectureCleared returns if the "architecture" field was cleared in this mutation.
+func (m *AccountCodexProfileMutation) ArchitectureCleared() bool {
+	_, ok := m.clearedFields[accountcodexprofile.FieldArchitecture]
+	return ok
+}
+
+// ResetArchitecture resets all changes to the "architecture" field.
+func (m *AccountCodexProfileMutation) ResetArchitecture() {
+	m.architecture = nil
+	delete(m.clearedFields, accountcodexprofile.FieldArchitecture)
+}
+
+// SetProxyID sets the "proxy_id" field.
+func (m *AccountCodexProfileMutation) SetProxyID(i int64) {
+	m.proxy_id = &i
+	m.addproxy_id = nil
+}
+
+// ProxyID returns the value of the "proxy_id" field in the mutation.
+func (m *AccountCodexProfileMutation) ProxyID() (r int64, exists bool) {
+	v := m.proxy_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProxyID returns the old "proxy_id" field's value of the AccountCodexProfile entity.
+// If the AccountCodexProfile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexProfileMutation) OldProxyID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProxyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProxyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProxyID: %w", err)
+	}
+	return oldValue.ProxyID, nil
+}
+
+// AddProxyID adds i to the "proxy_id" field.
+func (m *AccountCodexProfileMutation) AddProxyID(i int64) {
+	if m.addproxy_id != nil {
+		*m.addproxy_id += i
+	} else {
+		m.addproxy_id = &i
+	}
+}
+
+// AddedProxyID returns the value that was added to the "proxy_id" field in this mutation.
+func (m *AccountCodexProfileMutation) AddedProxyID() (r int64, exists bool) {
+	v := m.addproxy_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearProxyID clears the value of the "proxy_id" field.
+func (m *AccountCodexProfileMutation) ClearProxyID() {
+	m.proxy_id = nil
+	m.addproxy_id = nil
+	m.clearedFields[accountcodexprofile.FieldProxyID] = struct{}{}
+}
+
+// ProxyIDCleared returns if the "proxy_id" field was cleared in this mutation.
+func (m *AccountCodexProfileMutation) ProxyIDCleared() bool {
+	_, ok := m.clearedFields[accountcodexprofile.FieldProxyID]
+	return ok
+}
+
+// ResetProxyID resets all changes to the "proxy_id" field.
+func (m *AccountCodexProfileMutation) ResetProxyID() {
+	m.proxy_id = nil
+	m.addproxy_id = nil
+	delete(m.clearedFields, accountcodexprofile.FieldProxyID)
+}
+
+// SetSlotCount sets the "slot_count" field.
+func (m *AccountCodexProfileMutation) SetSlotCount(i int) {
+	m.slot_count = &i
+	m.addslot_count = nil
+}
+
+// SlotCount returns the value of the "slot_count" field in the mutation.
+func (m *AccountCodexProfileMutation) SlotCount() (r int, exists bool) {
+	v := m.slot_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSlotCount returns the old "slot_count" field's value of the AccountCodexProfile entity.
+// If the AccountCodexProfile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexProfileMutation) OldSlotCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSlotCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSlotCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSlotCount: %w", err)
+	}
+	return oldValue.SlotCount, nil
+}
+
+// AddSlotCount adds i to the "slot_count" field.
+func (m *AccountCodexProfileMutation) AddSlotCount(i int) {
+	if m.addslot_count != nil {
+		*m.addslot_count += i
+	} else {
+		m.addslot_count = &i
+	}
+}
+
+// AddedSlotCount returns the value that was added to the "slot_count" field in this mutation.
+func (m *AccountCodexProfileMutation) AddedSlotCount() (r int, exists bool) {
+	v := m.addslot_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSlotCount resets all changes to the "slot_count" field.
+func (m *AccountCodexProfileMutation) ResetSlotCount() {
+	m.slot_count = nil
+	m.addslot_count = nil
+}
+
+// SetEpoch sets the "epoch" field.
+func (m *AccountCodexProfileMutation) SetEpoch(i int64) {
+	m.epoch = &i
+	m.addepoch = nil
+}
+
+// Epoch returns the value of the "epoch" field in the mutation.
+func (m *AccountCodexProfileMutation) Epoch() (r int64, exists bool) {
+	v := m.epoch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEpoch returns the old "epoch" field's value of the AccountCodexProfile entity.
+// If the AccountCodexProfile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexProfileMutation) OldEpoch(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEpoch is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEpoch requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEpoch: %w", err)
+	}
+	return oldValue.Epoch, nil
+}
+
+// AddEpoch adds i to the "epoch" field.
+func (m *AccountCodexProfileMutation) AddEpoch(i int64) {
+	if m.addepoch != nil {
+		*m.addepoch += i
+	} else {
+		m.addepoch = &i
+	}
+}
+
+// AddedEpoch returns the value that was added to the "epoch" field in this mutation.
+func (m *AccountCodexProfileMutation) AddedEpoch() (r int64, exists bool) {
+	v := m.addepoch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetEpoch resets all changes to the "epoch" field.
+func (m *AccountCodexProfileMutation) ResetEpoch() {
+	m.epoch = nil
+	m.addepoch = nil
+}
+
+// SetCatalogVersion sets the "catalog_version" field.
+func (m *AccountCodexProfileMutation) SetCatalogVersion(i int64) {
+	m.catalog_version = &i
+	m.addcatalog_version = nil
+}
+
+// CatalogVersion returns the value of the "catalog_version" field in the mutation.
+func (m *AccountCodexProfileMutation) CatalogVersion() (r int64, exists bool) {
+	v := m.catalog_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCatalogVersion returns the old "catalog_version" field's value of the AccountCodexProfile entity.
+// If the AccountCodexProfile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexProfileMutation) OldCatalogVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCatalogVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCatalogVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCatalogVersion: %w", err)
+	}
+	return oldValue.CatalogVersion, nil
+}
+
+// AddCatalogVersion adds i to the "catalog_version" field.
+func (m *AccountCodexProfileMutation) AddCatalogVersion(i int64) {
+	if m.addcatalog_version != nil {
+		*m.addcatalog_version += i
+	} else {
+		m.addcatalog_version = &i
+	}
+}
+
+// AddedCatalogVersion returns the value that was added to the "catalog_version" field in this mutation.
+func (m *AccountCodexProfileMutation) AddedCatalogVersion() (r int64, exists bool) {
+	v := m.addcatalog_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCatalogVersion resets all changes to the "catalog_version" field.
+func (m *AccountCodexProfileMutation) ResetCatalogVersion() {
+	m.catalog_version = nil
+	m.addcatalog_version = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *AccountCodexProfileMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *AccountCodexProfileMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the AccountCodexProfile entity.
+// If the AccountCodexProfile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexProfileMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *AccountCodexProfileMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *AccountCodexProfileMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *AccountCodexProfileMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the AccountCodexProfile entity.
+// If the AccountCodexProfile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexProfileMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *AccountCodexProfileMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the AccountCodexProfileMutation builder.
+func (m *AccountCodexProfileMutation) Where(ps ...predicate.AccountCodexProfile) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AccountCodexProfileMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AccountCodexProfileMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.AccountCodexProfile, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AccountCodexProfileMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AccountCodexProfileMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (AccountCodexProfile).
+func (m *AccountCodexProfileMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AccountCodexProfileMutation) Fields() []string {
+	fields := make([]string, 0, 10)
+	if m.account_id != nil {
+		fields = append(fields, accountcodexprofile.FieldAccountID)
+	}
+	if m.os_class != nil {
+		fields = append(fields, accountcodexprofile.FieldOsClass)
+	}
+	if m.canonical_surface != nil {
+		fields = append(fields, accountcodexprofile.FieldCanonicalSurface)
+	}
+	if m.architecture != nil {
+		fields = append(fields, accountcodexprofile.FieldArchitecture)
+	}
+	if m.proxy_id != nil {
+		fields = append(fields, accountcodexprofile.FieldProxyID)
+	}
+	if m.slot_count != nil {
+		fields = append(fields, accountcodexprofile.FieldSlotCount)
+	}
+	if m.epoch != nil {
+		fields = append(fields, accountcodexprofile.FieldEpoch)
+	}
+	if m.catalog_version != nil {
+		fields = append(fields, accountcodexprofile.FieldCatalogVersion)
+	}
+	if m.created_at != nil {
+		fields = append(fields, accountcodexprofile.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, accountcodexprofile.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AccountCodexProfileMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case accountcodexprofile.FieldAccountID:
+		return m.AccountID()
+	case accountcodexprofile.FieldOsClass:
+		return m.OsClass()
+	case accountcodexprofile.FieldCanonicalSurface:
+		return m.CanonicalSurface()
+	case accountcodexprofile.FieldArchitecture:
+		return m.Architecture()
+	case accountcodexprofile.FieldProxyID:
+		return m.ProxyID()
+	case accountcodexprofile.FieldSlotCount:
+		return m.SlotCount()
+	case accountcodexprofile.FieldEpoch:
+		return m.Epoch()
+	case accountcodexprofile.FieldCatalogVersion:
+		return m.CatalogVersion()
+	case accountcodexprofile.FieldCreatedAt:
+		return m.CreatedAt()
+	case accountcodexprofile.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AccountCodexProfileMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case accountcodexprofile.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case accountcodexprofile.FieldOsClass:
+		return m.OldOsClass(ctx)
+	case accountcodexprofile.FieldCanonicalSurface:
+		return m.OldCanonicalSurface(ctx)
+	case accountcodexprofile.FieldArchitecture:
+		return m.OldArchitecture(ctx)
+	case accountcodexprofile.FieldProxyID:
+		return m.OldProxyID(ctx)
+	case accountcodexprofile.FieldSlotCount:
+		return m.OldSlotCount(ctx)
+	case accountcodexprofile.FieldEpoch:
+		return m.OldEpoch(ctx)
+	case accountcodexprofile.FieldCatalogVersion:
+		return m.OldCatalogVersion(ctx)
+	case accountcodexprofile.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case accountcodexprofile.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown AccountCodexProfile field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountCodexProfileMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case accountcodexprofile.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountID(v)
+		return nil
+	case accountcodexprofile.FieldOsClass:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOsClass(v)
+		return nil
+	case accountcodexprofile.FieldCanonicalSurface:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCanonicalSurface(v)
+		return nil
+	case accountcodexprofile.FieldArchitecture:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetArchitecture(v)
+		return nil
+	case accountcodexprofile.FieldProxyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProxyID(v)
+		return nil
+	case accountcodexprofile.FieldSlotCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSlotCount(v)
+		return nil
+	case accountcodexprofile.FieldEpoch:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEpoch(v)
+		return nil
+	case accountcodexprofile.FieldCatalogVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCatalogVersion(v)
+		return nil
+	case accountcodexprofile.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case accountcodexprofile.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountCodexProfile field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AccountCodexProfileMutation) AddedFields() []string {
+	var fields []string
+	if m.addaccount_id != nil {
+		fields = append(fields, accountcodexprofile.FieldAccountID)
+	}
+	if m.addproxy_id != nil {
+		fields = append(fields, accountcodexprofile.FieldProxyID)
+	}
+	if m.addslot_count != nil {
+		fields = append(fields, accountcodexprofile.FieldSlotCount)
+	}
+	if m.addepoch != nil {
+		fields = append(fields, accountcodexprofile.FieldEpoch)
+	}
+	if m.addcatalog_version != nil {
+		fields = append(fields, accountcodexprofile.FieldCatalogVersion)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AccountCodexProfileMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case accountcodexprofile.FieldAccountID:
+		return m.AddedAccountID()
+	case accountcodexprofile.FieldProxyID:
+		return m.AddedProxyID()
+	case accountcodexprofile.FieldSlotCount:
+		return m.AddedSlotCount()
+	case accountcodexprofile.FieldEpoch:
+		return m.AddedEpoch()
+	case accountcodexprofile.FieldCatalogVersion:
+		return m.AddedCatalogVersion()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountCodexProfileMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case accountcodexprofile.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAccountID(v)
+		return nil
+	case accountcodexprofile.FieldProxyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddProxyID(v)
+		return nil
+	case accountcodexprofile.FieldSlotCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSlotCount(v)
+		return nil
+	case accountcodexprofile.FieldEpoch:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddEpoch(v)
+		return nil
+	case accountcodexprofile.FieldCatalogVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCatalogVersion(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountCodexProfile numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AccountCodexProfileMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(accountcodexprofile.FieldArchitecture) {
+		fields = append(fields, accountcodexprofile.FieldArchitecture)
+	}
+	if m.FieldCleared(accountcodexprofile.FieldProxyID) {
+		fields = append(fields, accountcodexprofile.FieldProxyID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AccountCodexProfileMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AccountCodexProfileMutation) ClearField(name string) error {
+	switch name {
+	case accountcodexprofile.FieldArchitecture:
+		m.ClearArchitecture()
+		return nil
+	case accountcodexprofile.FieldProxyID:
+		m.ClearProxyID()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountCodexProfile nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AccountCodexProfileMutation) ResetField(name string) error {
+	switch name {
+	case accountcodexprofile.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case accountcodexprofile.FieldOsClass:
+		m.ResetOsClass()
+		return nil
+	case accountcodexprofile.FieldCanonicalSurface:
+		m.ResetCanonicalSurface()
+		return nil
+	case accountcodexprofile.FieldArchitecture:
+		m.ResetArchitecture()
+		return nil
+	case accountcodexprofile.FieldProxyID:
+		m.ResetProxyID()
+		return nil
+	case accountcodexprofile.FieldSlotCount:
+		m.ResetSlotCount()
+		return nil
+	case accountcodexprofile.FieldEpoch:
+		m.ResetEpoch()
+		return nil
+	case accountcodexprofile.FieldCatalogVersion:
+		m.ResetCatalogVersion()
+		return nil
+	case accountcodexprofile.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case accountcodexprofile.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountCodexProfile field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AccountCodexProfileMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AccountCodexProfileMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AccountCodexProfileMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AccountCodexProfileMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AccountCodexProfileMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AccountCodexProfileMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AccountCodexProfileMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown AccountCodexProfile unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AccountCodexProfileMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown AccountCodexProfile edge %s", name)
 }
 
 // AccountGroupMutation represents an operation that mutates the AccountGroup nodes in the graph.

@@ -139,6 +139,14 @@
         </div>
       </div>
 
+      <div v-if="hasSelectedOpenAIOAuth" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <CodexIdentityPolicyEditor
+          v-model="codexIdentityPolicy"
+          :proxies="proxies"
+          id-prefix="crs-codex-identity"
+        />
+      </div>
+
       <!-- Sync options summary -->
       <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-dark-400">
         <span>{{ t('admin.accounts.syncProxies') }}:</span>
@@ -247,9 +255,19 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import type { PreviewFromCRSResult } from '@/api/admin/accounts'
+import type { CodexIdentityPolicy, Proxy } from '@/types'
+import { CodexIdentityPolicyEditor } from './codex-identity'
+import {
+  createDefaultCodexIdentityPolicy,
+  availableCodexIdentityProxyIDs,
+  codexIdentityValidationMessageKey,
+  serializeCodexIdentityPolicy,
+  validateCodexIdentityPolicy
+} from '@/utils/codexIdentityValidation'
 
 interface Props {
   show: boolean
+  proxies?: Proxy[]
 }
 
 interface Emits {
@@ -257,7 +275,9 @@ interface Emits {
   (e: 'synced'): void
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  proxies: () => []
+})
 const emit = defineEmits<Emits>()
 
 const { t } = useI18n()
@@ -270,6 +290,7 @@ const syncing = ref(false)
 const previewResult = ref<PreviewFromCRSResult | null>(null)
 const selectedIds = ref(new Set<string>())
 const result = ref<Awaited<ReturnType<typeof adminAPI.accounts.syncFromCrs>> | null>(null)
+const codexIdentityPolicy = ref<CodexIdentityPolicy>(createDefaultCodexIdentityPolicy())
 
 const form = reactive({
   base_url: '',
@@ -282,6 +303,14 @@ const hasNewButNoneSelected = computed(() => {
   if (!previewResult.value) return false
   return previewResult.value.new_accounts.length > 0 && selectedIds.value.size === 0
 })
+
+const hasSelectedOpenAIOAuth = computed(() =>
+  previewResult.value?.new_accounts.some((account) =>
+    selectedIds.value.has(account.crs_account_id) &&
+    account.platform === 'openai' &&
+    account.type === 'oauth'
+  ) === true
+)
 
 const errorItems = computed(() => {
   if (!result.value?.items) return []
@@ -302,6 +331,7 @@ watch(
       form.username = ''
       form.password = ''
       form.sync_proxies = true
+      codexIdentityPolicy.value = createDefaultCodexIdentityPolicy()
     }
   }
 )
@@ -368,6 +398,18 @@ const handleSync = async () => {
     return
   }
 
+  if (hasSelectedOpenAIOAuth.value) {
+    const identityValidation = validateCodexIdentityPolicy(codexIdentityPolicy.value, {
+      availableProxyIDs: availableCodexIdentityProxyIDs(props.proxies)
+    })
+    if (!identityValidation.valid) {
+      const issue = identityValidation.errors[0]
+      const key = issue ? codexIdentityValidationMessageKey(issue.code) : null
+      appStore.showError(key ? t(key) : issue?.message || t('admin.accounts.codexIdentity.fixErrors'))
+      return
+    }
+  }
+
   syncing.value = true
   try {
     const res = await adminAPI.accounts.syncFromCrs({
@@ -375,7 +417,10 @@ const handleSync = async () => {
       username: form.username.trim(),
       password: form.password,
       sync_proxies: form.sync_proxies,
-      selected_account_ids: [...selectedIds.value]
+      selected_account_ids: [...selectedIds.value],
+      codex_identity_policy: hasSelectedOpenAIOAuth.value
+        ? serializeCodexIdentityPolicy(codexIdentityPolicy.value)
+        : undefined
     })
     result.value = res
     currentStep.value = 'result'

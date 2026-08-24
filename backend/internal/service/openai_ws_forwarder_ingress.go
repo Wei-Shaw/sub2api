@@ -466,6 +466,19 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 		}
 		normalized = policyApplied
+		plan, refreshProfileErr := refreshCodexProfileTurnPlan(c, account, normalized)
+		if refreshProfileErr != nil {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid Codex profile turn identity", refreshProfileErr)
+		}
+		if plan != nil {
+			profilePayload, changed, profileErr := ApplyCodexIdentityPlanToJSON(normalized, plan)
+			if profileErr != nil {
+				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid Codex profile identity payload", profileErr)
+			}
+			if changed {
+				normalized = profilePayload
+			}
+		}
 		ingressSessionOriginalModel = originalModel
 
 		return openAIWSClientPayload{
@@ -984,6 +997,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				upstreamMessage = normalized
 			}
 
+			restoredMessage, restoreErr := restoreStagedCodexIdentityJSON(c, account, upstreamMessage)
+			if restoreErr != nil {
+				lease.MarkBroken()
+				return nil, wrapOpenAIWSIngressTurnError("restore_identity", restoreErr, wroteDownstream)
+			}
+			upstreamMessage = restoredMessage
 			eventType, eventResponseID, _ := parseOpenAIWSEventEnvelope(upstreamMessage)
 			responseModelObserver.ObserveOpenAI(upstreamMessage, eventType)
 			if responseID == "" && eventResponseID != "" {

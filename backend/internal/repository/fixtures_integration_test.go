@@ -206,6 +206,7 @@ func mustCreateAccount(t *testing.T, client *dbent.Client, a *service.Account) *
 		SetConcurrency(a.Concurrency).
 		SetPriority(a.Priority).
 		SetStatus(a.Status).
+		SetProvisioningState(string(service.AccountProvisioningActive)).
 		SetSchedulable(a.Schedulable).
 		SetErrorMessage(a.ErrorMessage)
 

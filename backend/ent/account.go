@@ -51,6 +51,10 @@ type Account struct {
 	RateMultiplier float64 `json:"rate_multiplier,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
+	// ProvisioningState holds the value of the "provisioning_state" field.
+	ProvisioningState string `json:"provisioning_state,omitempty"`
+	// CodexIdentityPolicy holds the value of the "codex_identity_policy" field.
+	CodexIdentityPolicy map[string]interface{} `json:"codex_identity_policy,omitempty"`
 	// ErrorMessage holds the value of the "error_message" field.
 	ErrorMessage *string `json:"error_message,omitempty"`
 	// LastUsedAt holds the value of the "last_used_at" field.
@@ -169,7 +173,7 @@ func (*Account) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case account.FieldCredentials, account.FieldExtra:
+		case account.FieldCredentials, account.FieldExtra, account.FieldCodexIdentityPolicy:
 			values[i] = new([]byte)
 		case account.FieldAutoPauseOnExpired, account.FieldSchedulable:
 			values[i] = new(sql.NullBool)
@@ -177,7 +181,7 @@ func (*Account) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case account.FieldID, account.FieldProxyID, account.FieldProxyFallbackOriginID, account.FieldConcurrency, account.FieldLoadFactor, account.FieldPriority, account.FieldParentAccountID:
 			values[i] = new(sql.NullInt64)
-		case account.FieldName, account.FieldNotes, account.FieldPlatform, account.FieldType, account.FieldStatus, account.FieldErrorMessage, account.FieldTempUnschedulableReason, account.FieldSessionWindowStatus, account.FieldQuotaDimension:
+		case account.FieldName, account.FieldNotes, account.FieldPlatform, account.FieldType, account.FieldStatus, account.FieldProvisioningState, account.FieldErrorMessage, account.FieldTempUnschedulableReason, account.FieldSessionWindowStatus, account.FieldQuotaDimension:
 			values[i] = new(sql.NullString)
 		case account.FieldCreatedAt, account.FieldUpdatedAt, account.FieldDeletedAt, account.FieldLastUsedAt, account.FieldExpiresAt, account.FieldRateLimitedAt, account.FieldRateLimitResetAt, account.FieldOverloadUntil, account.FieldTempUnschedulableUntil, account.FieldSessionWindowStart, account.FieldSessionWindowEnd:
 			values[i] = new(sql.NullTime)
@@ -306,6 +310,20 @@ func (_m *Account) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
 				_m.Status = value.String
+			}
+		case account.FieldProvisioningState:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field provisioning_state", values[i])
+			} else if value.Valid {
+				_m.ProvisioningState = value.String
+			}
+		case account.FieldCodexIdentityPolicy:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field codex_identity_policy", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.CodexIdentityPolicy); err != nil {
+					return fmt.Errorf("unmarshal field codex_identity_policy: %w", err)
+				}
 			}
 		case account.FieldErrorMessage:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -532,6 +550,12 @@ func (_m *Account) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
+	builder.WriteString(", ")
+	builder.WriteString("provisioning_state=")
+	builder.WriteString(_m.ProvisioningState)
+	builder.WriteString(", ")
+	builder.WriteString("codex_identity_policy=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CodexIdentityPolicy))
 	builder.WriteString(", ")
 	if v := _m.ErrorMessage; v != nil {
 		builder.WriteString("error_message=")

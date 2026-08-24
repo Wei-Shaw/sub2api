@@ -37,6 +37,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, err
 	}
 	startTime := time.Now()
+	resolvedAccount, profileErr := s.prepareCodexProfileAttempt(ctx, c, account, body)
+	if profileErr != nil {
+		return nil, profileErr
+	}
+	account = resolvedAccount
+	defer s.ReleaseCodexProfileAttempt(c, account)
+	ctx = s.CodexProfileAttemptContext(c, account, ctx)
 	// 固定渠道映射后的请求级 canonical body；账号 normalize/strip 不得改写跨 failover hint。
 	canonicalImageIntentBody := body
 
@@ -531,7 +538,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		stageCodexFingerprintIDs(c, nil)
 		// 指纹收敛：一次性解析收敛 ID，请求体和出站头共享同一份 IDs（保证 turn_id 等随机字段一致）。
 		// fingerprintIDs 在此处解析，后续 buildUpstreamRequest 中使用同一份。
-		if !isCompactRequest {
+		if !isCompactRequest && stagedCodexIdentityAttemptPlan(c, account) == nil {
 			var clientHeaders http.Header
 			if c != nil && c.Request != nil {
 				clientHeaders = c.Request.Header
@@ -546,6 +553,15 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			// 无条件覆写（含 nil）：failover 从收敛账号切到 off 账号时，上一
 			// 账号的 IDs 不得残留（stageCodexFingerprintIDs 注释）。
 			stageCodexFingerprintIDs(c, fpIDs)
+		}
+		if plan := stagedCodexIdentityAttemptPlan(c, account); plan != nil {
+			profileChanged, profileErr := ApplyCodexIdentityPlanToMap(decoded, plan)
+			if profileErr != nil {
+				return nil, profileErr
+			}
+			if profileChanged {
+				markDecodedModified()
+			}
 		}
 		if codexResult.NormalizedModel != "" {
 			upstreamModel = codexResult.NormalizedModel
@@ -1425,12 +1441,14 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	applyCodexAccountIdentityHeaders(req.Header, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 
 	// 指纹收敛：使用 Forward() 中预计算的收敛 ID 改写出站头，与请求体使用同一份 IDs。
-	applyStagedCodexFingerprintHeaders(c, account, req.Header)
+	if !applyStagedCodexProfileHeaders(c, account, req.Header) {
+		applyStagedCodexFingerprintHeaders(c, account, req.Header)
+	}
 
 	// 终态收口：强制统一 OAuth 出站身份（User-Agent / originator / version 同源自洽）。
 	// 客户端自报身份不参与构造，浏览器型 UA 也因此不会再到达上游（原浏览器 UA 兜底已被吸收）。
 	if account.UsesOpenAICodexProtocol() {
-		enforceCodexIdentityHeadersWithUA(req.Header, s.codexIdentityOverrideUA(account))
+		enforceCodexIdentityHeadersForAttempt(c, account, req.Header, s.codexIdentityOverrideUA(account))
 	}
 
 	// Ensure required headers exist

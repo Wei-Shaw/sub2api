@@ -704,12 +704,22 @@ func (r *proxyRepository) sweepOneExpiredProxy(ctx context.Context, proxyID int6
 			return nil, txErr
 		}
 		// 已在外层事务中（集成测试场景），直接用 r.sql 执行
-		return r.sweepOneExpiredProxyOnExec(ctx, r.sql, proxyID, target, change)
+		profileAccountIDs, err := r.transitionExpiredProxyCodexAccounts(ctx, r.client, r.sql, proxyID, target, change)
+		if err != nil {
+			return nil, err
+		}
+		legacyAccountIDs, err := r.sweepOneExpiredProxyOnExec(ctx, r.sql, proxyID, target, change)
+		return append(profileAccountIDs, legacyAccountIDs...), err
 	}
 
 	// 使用新事务执行
 	var accountIDs []int64
 	var err error
+	profileAccountIDs, transitionErr := r.transitionExpiredProxyCodexAccounts(ctx, tx.Client(), tx, proxyID, target, change)
+	if transitionErr != nil {
+		_ = tx.Rollback()
+		return nil, transitionErr
+	}
 	accountIDs, err = r.sweepOneExpiredProxyOnExec(ctx, tx, proxyID, target, change)
 	if err != nil {
 		_ = tx.Rollback()
@@ -718,7 +728,125 @@ func (r *proxyRepository) sweepOneExpiredProxy(ctx context.Context, proxyID int6
 	if commitErr := tx.Commit(); commitErr != nil {
 		return nil, commitErr
 	}
+	return append(profileAccountIDs, accountIDs...), nil
+}
+
+func (r *proxyRepository) transitionExpiredProxyCodexAccounts(
+	ctx context.Context,
+	client *dbent.Client,
+	exec sqlExecutor,
+	proxyID int64,
+	target *int64,
+	change bool,
+) ([]int64, error) {
+	if !change {
+		return nil, nil
+	}
+	rows, err := exec.QueryContext(ctx, `
+		SELECT accounts.id
+		FROM accounts
+		WHERE accounts.deleted_at IS NULL
+		  AND COALESCE(accounts.codex_identity_policy->>'mode', 'off')='os_profile_device_pool'
+		  AND (
+		      (accounts.proxy_id=$1 AND accounts.proxy_fallback_origin_id IS NULL)
+		      OR EXISTS (
+		          SELECT 1 FROM account_codex_profiles AS profiles
+		          WHERE profiles.account_id=accounts.id AND profiles.proxy_id=$1
+		      )
+		      OR EXISTS (
+		          SELECT 1 FROM account_codex_device_slots AS slots
+		          WHERE slots.account_id=accounts.id AND slots.proxy_id=$1
+		      )
+		  )
+		ORDER BY accounts.id
+		FOR UPDATE
+	`, proxyID)
+	if err != nil {
+		return nil, err
+	}
+	accountIDs := make([]int64, 0)
+	for rows.Next() {
+		var accountID int64
+		if err := rows.Scan(&accountID); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		accountIDs = append(accountIDs, accountID)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	accountRepo := newAccountRepositoryWithSQL(client, exec, nil)
+	for _, accountID := range accountIDs {
+		account, err := accountRepo.GetByID(ctx, accountID)
+		if err != nil {
+			return nil, err
+		}
+		accountDefaultChanged := account.ProxyID != nil && *account.ProxyID == proxyID
+		if accountDefaultChanged {
+			account.ProxyID = cloneOptionalInt64(target)
+		}
+		policy := account.CodexIdentityPolicy
+		policy.Profiles = append([]service.CodexOSProfilePolicy(nil), account.CodexIdentityPolicy.Profiles...)
+		for profileIndex := range policy.Profiles {
+			profile := &policy.Profiles[profileIndex]
+			profile.Slots = append([]service.CodexDeviceSlotPolicy(nil), account.CodexIdentityPolicy.Profiles[profileIndex].Slots...)
+			if profile.ProxyID != nil && *profile.ProxyID == proxyID {
+				profile.ProxyID = cloneOptionalInt64(target)
+			}
+			for slotIndex := range profile.Slots {
+				if profile.Slots[slotIndex].ProxyID != nil && *profile.Slots[slotIndex].ProxyID == proxyID {
+					profile.Slots[slotIndex].ProxyID = cloneOptionalInt64(target)
+				}
+			}
+		}
+		if err := accountRepo.UpdateProvisionedAccount(ctx, &service.AccountProvisioningSpec{
+			Account: account, GroupIDs: append([]int64(nil), account.GroupIDs...),
+			Identity: &policy, FinalStatus: account.Status,
+			Schedulable: account.Schedulable, ProvisioningState: service.AccountProvisioningActive,
+		}, nil, nil, account.RateMultiplier); err != nil {
+			return nil, err
+		}
+		if accountDefaultChanged {
+			if _, err := exec.ExecContext(ctx, `
+				UPDATE accounts SET proxy_fallback_origin_id=$1, updated_at=NOW()
+				WHERE id=$2 AND deleted_at IS NULL
+			`, proxyID, accountID); err != nil {
+				return nil, err
+			}
+		}
+		if _, err := exec.ExecContext(ctx, `
+			DELETE FROM account_codex_device_bindings AS bindings
+			USING account_codex_device_slots AS slots,
+			      account_codex_profiles AS profiles,
+			      accounts
+			WHERE bindings.slot_id=slots.id
+			  AND slots.profile_id=profiles.id
+			  AND bindings.account_id=accounts.id
+			  AND bindings.account_id=$1
+			  AND slots.state='draining'
+			  AND COALESCE(slots.proxy_id, profiles.proxy_id, accounts.proxy_id)=$2
+		`, accountID, proxyID); err != nil {
+			return nil, err
+		}
+		if _, err := finalizeDrainedCodexDeviceSlots(ctx, client, accountID); err != nil {
+			return nil, err
+		}
+	}
 	return accountIDs, nil
+}
+
+func cloneOptionalInt64(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 // sweepOneExpiredProxyOnExec 在给定的 sqlExecutor 上执行：标记 expired + 改投账号。

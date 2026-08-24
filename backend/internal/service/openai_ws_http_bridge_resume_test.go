@@ -140,26 +140,59 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 			)),
 		},
 	}}
+	profileCache := &codexProfileGatewayCache{values: map[string]int64{}}
 	svc := &OpenAIGatewayService{
 		cfg:              cfg,
 		httpUpstream:     upstream,
-		cache:            &stubGatewayCache{},
+		cache:            profileCache,
 		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
 		toolCorrector:    NewCodexToolCorrector(),
 	}
-	account := &Account{
-		ID: 129, Name: "limited", Platform: PlatformOpenAI, Type: AccountTypeOAuth,
-		Status: StatusActive, Schedulable: true, Concurrency: 1,
-		Extra:       map[string]any{"openai_oauth_responses_websockets_v2_mode": OpenAIWSIngressModeHTTPBridge},
-		Credentials: map[string]any{"chatgpt_account_id": "account-a", "chatgpt_user_id": "user-a"},
+	groupID := int64(4202)
+	account := codexProfileTestAccount(t, 129, CodexOSWindows, CodexSurfaceDesktop, CodexArchX8664, false)
+	account.Name = "limited"
+	account.Concurrency = 1
+	account.CodexIdentityPolicy.SessionPolicy = CodexSessionPolicySpec{
+		Mode: CodexSessionDeviceShared, MaxActiveConversationsPerSlot: 1, DisableCrossKeyContinuation: true,
 	}
-	nextAccount := *account
-	nextAccount.ID = 130
+	account.Credentials["chatgpt_account_id"] = "account-a"
+	account.Credentials["chatgpt_user_id"] = "user-a"
+	account.Extra["openai_oauth_responses_websockets_v2_mode"] = OpenAIWSIngressModeHTTPBridge
+	nextAccount := codexProfileTestAccount(t, 130, CodexOSWindows, CodexSurfaceDesktop, CodexArchX8664, false)
 	nextAccount.Name = "replacement"
-	nextAccount.Credentials = map[string]any{"chatgpt_account_id": "account-b", "chatgpt_user_id": "user-b"}
+	nextAccount.Concurrency = 1
+	nextAccount.CodexIdentityPolicy.SessionPolicy = CodexSessionPolicySpec{
+		Mode: CodexSessionDeviceShared, MaxActiveConversationsPerSlot: 1, DisableCrossKeyContinuation: true,
+	}
+	nextAccount.Credentials["chatgpt_account_id"] = "account-b"
+	nextAccount.Credentials["chatgpt_user_id"] = "user-b"
+	nextAccount.Extra[codexFingerprintSeedExtraKey] = "22222222-2222-4222-8222-222222222222"
+	nextAccount.Extra["openai_oauth_responses_websockets_v2_mode"] = OpenAIWSIngressModeHTTPBridge
+	bindingRepo := &codexProfileGatewayAccountRepo{
+		accounts: map[int64]*Account{account.ID: account, nextAccount.ID: nextAccount},
+		resolvedSlots: map[int64]*CodexResolvedDeviceSlot{
+			account.ID: {
+				AccountID: account.ID, SlotID: 12901, ProfileID: 12900,
+				OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceDesktop,
+				Architecture: CodexArchX8664, CatalogVersion: 1,
+				SlotIndex: 0, Epoch: 4, State: "active", PolicyVersion: 1,
+			},
+			nextAccount.ID: {
+				AccountID: nextAccount.ID, SlotID: 13001, ProfileID: 13000,
+				OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceDesktop,
+				Architecture: CodexArchX8664, CatalogVersion: 1,
+				SlotIndex: 0, Epoch: 4, State: "active", PolicyVersion: 1,
+			},
+		},
+	}
+	svc.accountRepo = bindingRepo
+	deviceLeaseCache := &codexDeviceLeaseCache{}
+	svc.concurrencyService = NewConcurrencyService(deviceLeaseCache)
 
 	serverErrCh := make(chan error, 1)
 	failoverCh := make(chan []byte, 1)
+	sessionHashCh := make(chan string, 1)
+	identityCh := make(chan [4]string, 1)
 	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, nil)
 		if err != nil {
@@ -170,15 +203,37 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 
 		rec := httptest.NewRecorder()
 		ginCtx, _ := gin.CreateTestContext(rec)
-		ginCtx.Request = r.Clone(r.Context())
-		readCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		requestCtx := WithHTTPUpstreamIsolationScope(r.Context(), 7, 101)
+		ginCtx.Request = r.Clone(requestCtx)
+		ginCtx.Request.URL.Path = "/v1/responses"
+		ginCtx.Request.Header.Set("User-Agent", "codex_cli_rs/0.146.0 (Windows 11; arm64) WindowsTerminal")
+		ginCtx.Request.Header.Set("originator", "codex_cli_rs")
+		ginCtx.Set("api_key", &APIKey{ID: 101, GroupID: &groupID, User: &User{ID: 7}})
+		readCtx, cancel := context.WithTimeout(requestCtx, 3*time.Second)
 		_, firstMessage, readErr := conn.Read(readCtx)
 		cancel()
 		if readErr != nil {
 			serverErrCh <- readErr
 			return
 		}
-		proxyErr := svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "access-token-a", firstMessage, nil)
+		profileSessionHash := svc.GenerateSessionHashWithFallback(ginCtx, firstMessage, "profile-429")
+		if profileSessionHash == "" {
+			serverErrCh <- errors.New("missing profile session hash")
+			return
+		}
+		sessionHashCh <- profileSessionHash
+		preparedAccount, prepareErr := svc.PrepareCodexProfileAttempt(requestCtx, ginCtx, account, firstMessage)
+		if prepareErr != nil {
+			serverErrCh <- prepareErr
+			return
+		}
+		firstPlan := stagedCodexIdentityAttemptPlan(ginCtx, preparedAccount)
+		if _, bindErr := svc.setCodexProfileAffinityAccountID(ginCtx.Request.Context(), &groupID, profileSessionHash, preparedAccount.ID); bindErr != nil {
+			serverErrCh <- bindErr
+			return
+		}
+		proxyErr := svc.ProxyResponsesWebSocketFromClient(requestCtx, ginCtx, conn, preparedAccount, "access-token-a", firstMessage, nil)
+		svc.ReleaseCodexProfileAttempt(ginCtx, preparedAccount)
 		var failoverErr *UpstreamFailoverError
 		if !errors.As(proxyErr, &failoverErr) {
 			serverErrCh <- proxyErr
@@ -189,10 +244,32 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 			serverErrCh <- errors.New("missing current-turn retry payload")
 			return
 		}
+		retryPayload, prepareErr = svc.RestoreCodexProfileRetryPayload(ginCtx, preparedAccount, retryPayload)
+		if prepareErr != nil {
+			serverErrCh <- prepareErr
+			return
+		}
 		failoverCh <- retryPayload
+		preparedNext, prepareErr := svc.PrepareCodexProfileAttempt(requestCtx, ginCtx, nextAccount, retryPayload)
+		if prepareErr != nil {
+			serverErrCh <- prepareErr
+			return
+		}
+		nextPlan := stagedCodexIdentityAttemptPlan(ginCtx, preparedNext)
+		identityCh <- [4]string{
+			firstPlan.UpstreamValue(CodexIdentityInstallation),
+			firstPlan.UpstreamValue(CodexIdentitySession),
+			nextPlan.UpstreamValue(CodexIdentityInstallation),
+			nextPlan.UpstreamValue(CodexIdentitySession),
+		}
+		if _, bindErr := svc.setCodexProfileAffinityAccountID(ginCtx.Request.Context(), &groupID, profileSessionHash, preparedNext.ID); bindErr != nil {
+			serverErrCh <- bindErr
+			return
+		}
 		serverErrCh <- svc.ProxyResponsesWebSocketFromClient(
-			r.Context(), ginCtx, conn, &nextAccount, "access-token-b", retryPayload, nil,
+			requestCtx, ginCtx, conn, preparedNext, "access-token-b", retryPayload, nil,
 		)
+		svc.ReleaseCodexProfileAttempt(ginCtx, preparedNext)
 	}))
 	defer wsServer.Close()
 
@@ -210,7 +287,14 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 	readCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	_, completed, err := clientConn.Read(readCtx)
 	cancel()
-	require.NoError(t, err)
+	if err != nil {
+		select {
+		case serverErr := <-serverErrCh:
+			t.Fatalf("first client read failed: %v (server: %v)", err, serverErr)
+		default:
+			require.NoError(t, err)
+		}
+	}
 	require.Equal(t, "response.completed", gjson.GetBytes(completed, "type").String())
 
 	writeCtx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
@@ -253,11 +337,27 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 	}
 	require.Len(t, upstream.bodies, 3)
 	require.Contains(t, string(upstream.bodies[0]), "first")
-	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, "session", "client-session"), gjson.GetBytes(upstream.bodies[1], "client_metadata.session_id").String())
-	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, "thread", "client-thread"), gjson.GetBytes(upstream.bodies[1], "client_metadata.thread_id").String())
 	require.NotContains(t, string(upstream.bodies[2]), "previous_response_id")
 	require.Contains(t, string(upstream.bodies[2]), "second")
-	require.Equal(t, scopeCodexAccountIdentityValue(&nextAccount, 0, "session", "client-session"), gjson.GetBytes(upstream.bodies[2], "client_metadata.session_id").String())
-	require.Equal(t, scopeCodexAccountIdentityValue(&nextAccount, 0, "thread", "client-thread"), gjson.GetBytes(upstream.bodies[2], "client_metadata.thread_id").String())
+	identities := <-identityCh
+	require.NotEqual(t, identities[0], identities[2])
+	require.NotEqual(t, identities[1], identities[3])
+	require.Equal(t, identities[1], gjson.GetBytes(upstream.bodies[1], "client_metadata.session_id").String())
+	require.Equal(t, identities[2], gjson.GetBytes(upstream.bodies[2], "client_metadata.installation_id").String())
+	require.Equal(t, identities[3], gjson.GetBytes(upstream.bodies[2], "client_metadata.session_id").String())
+	require.NotContains(t, string(upstream.bodies[2]), identities[0], "retry payload must not treat the old account alias as client identity")
 	require.Empty(t, upstream.requests[2].Header.Get(openAIWSTurnStateHeader))
+
+	require.Equal(t, [][2]int64{{129, 130}}, bindingRepo.rebinds, "429 failover must atomically move the API-key/OS binding")
+	profileSessionHash := <-sessionHashCh
+	affinityCtx := codexProfileTestContext(7, 101, CodexClientProfile{
+		OSClass: CodexOSWindows, Surface: CodexSurfaceCLI, Architecture: CodexArchARM64,
+	}, profileSessionHash)
+	affinityAccountID, handled, err := svc.getCodexProfileAffinityAccountID(affinityCtx, &groupID, profileSessionHash)
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.Equal(t, int64(130), affinityAccountID, "affinity must remain on the replacement account for its TTL")
+	deviceLeaseCache.mu.Lock()
+	require.Empty(t, deviceLeaseCache.owners, "both device_shared attempt leases must be released across 429 failover")
+	deviceLeaseCache.mu.Unlock()
 }

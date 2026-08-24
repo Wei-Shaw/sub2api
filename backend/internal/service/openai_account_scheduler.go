@@ -502,7 +502,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	}
 	if accountID <= 0 {
 		var err error
-		accountID, err = s.service.getStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		accountID, err = s.service.resolveCodexAwareStickyAccountID(ctx, req.GroupID, sessionHash)
 		if err != nil || accountID <= 0 {
 			return nil, false, nil
 		}
@@ -1473,6 +1473,9 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		})
 	}
 	if len(filtered) == 0 {
+		if filterStats.reasons["codex_profile_incompatible"] == filterStats.pool && filterStats.pool > 0 {
+			return nil, 0, 0, 0, codexProfileUnsupportedFromContext(ctx)
+		}
 		return nil, 0, 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, false, filterStats.summary(""))
 	}
 
@@ -1807,6 +1810,9 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	}
 	if !accountSupportsOpenAICapabilities(account, req.RequiredCapability, req.RequiredImageCapability) {
 		return false, "capability_mismatch"
+	}
+	if s != nil && s.service != nil && !s.service.codexProfileAccountCompatible(ctx, account) {
+		return false, "codex_profile_incompatible"
 	}
 	// 分组利润控制：不合格账号在候选过滤与抢槽后终检阶段即被排除，
 	// 排序/评分/粘性/熔断只在合格账号之间工作；named reason 进入 filter stats。
@@ -2341,9 +2347,12 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 
 	var stickyAccountID int64
 	if sessionHash != "" && s.cache != nil {
-		if accountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash); err == nil && accountID > 0 {
+		if accountID, err := s.resolveCodexAwareStickyAccountID(ctx, groupID, sessionHash); err == nil && accountID > 0 {
 			stickyAccountID = accountID
 		}
+	}
+	if sticky := s.codexProfileAccountByID(ctx, stickyAccountID); sticky != nil && sticky.CodexIdentityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool {
+		ctx = withCodexProfileAffinityActive(ctx)
 	}
 	stickyWeighted := s.isOpenAIAdvancedSchedulerStickyWeightedEnabled(ctx)
 	subscriptionPriority := s.isOpenAIAdvancedSchedulerSubscriptionPriorityEnabled(ctx)
