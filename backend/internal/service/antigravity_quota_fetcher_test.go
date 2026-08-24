@@ -3,11 +3,16 @@
 package service
 
 import (
+	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 )
 
@@ -388,6 +393,36 @@ REDACTED
 	require.Equal(t, "GOOGLE_ONE_AI", info.AICredits[0].CreditType)
 	require.Equal(t, 25.0, info.AICredits[0].Amount)
 	require.Equal(t, 5.0, info.AICredits[0].MinimumBalance)
+REDACTED
+
+func TestFetchQuotaUsesConfiguredModelsListBodyLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":{"model-a":{REDACTEDREDACTEDREDACTED`))
+REDACTED))
+	defer server.Close()
+
+	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
+	oldAvailability := antigravity.DefaultURLAvailability
+	t.Cleanup(func() {
+		antigravity.BaseURLs = oldBaseURLs
+		antigravity.DefaultURLAvailability = oldAvailability
+REDACTED)
+	antigravity.BaseURLs = []string{server.URLREDACTED
+	antigravity.DefaultURLAvailability = antigravity.NewURLAvailability(time.Minute)
+
+	cfg := &config.Config{REDACTED
+	cfg.Gateway.ModelsListReadMaxBytes = 8
+	fetcher := NewAntigravityQuotaFetcher(nil, cfg)
+	_, err := fetcher.FetchQuota(context.Background(), &Account{
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"access_token": "token",
+			"project_id":   "project",
+	REDACTED,
+REDACTED, "")
+	require.ErrorContains(t, err, "响应超过 8 字节")
 REDACTED
 
 func TestFetchQuota_ForbiddenReturnsIsForbidden(t *testing.T) {
