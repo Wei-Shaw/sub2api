@@ -124,13 +124,13 @@ func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyAdaptsClientTools(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	sse := strings.Join([]string{
-		`data: {"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"type":"function_call","id":"item_exec","call_id":"call_exec","name":"exec","status":"in_progress"}}`,
+		`data: {"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"type":"function_call","id":"fc_exec","call_id":"call_exec","name":"exec","status":"in_progress"}}`,
 		``,
-		`data: {"type":"response.function_call_arguments.done","sequence_number":1,"output_index":0,"item_id":"item_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}"}`,
+		`data: {"type":"response.function_call_arguments.done","sequence_number":1,"output_index":0,"item_id":"fc_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}"}`,
 		``,
-		`data: {"type":"response.output_item.done","sequence_number":2,"output_index":0,"item":{"type":"function_call","id":"item_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}","status":"completed"}}`,
+		`data: {"type":"response.output_item.done","sequence_number":2,"output_index":0,"item":{"type":"function_call","id":"fc_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}","status":"completed"}}`,
 		``,
-		`data: {"type":"response.completed","sequence_number":3,"response":{"id":"resp_tools","status":"completed","output":[{"type":"function_call","id":"item_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+		`data: {"type":"response.completed","sequence_number":3,"response":{"id":"resp_tools","status":"completed","output":[{"type":"function_call","id":"fc_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
 		``,
 	}, "\n")
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
@@ -147,7 +147,7 @@ func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyAdaptsClientTools(t *testing.T) {
 		"type":"response.create","model":"gpt-5","stream":true,
 		"tools":[{"type":"custom","name":"exec","description":"Run a command"}],
 		"input":[
-			{"type":"custom_tool_call","id":"previous_item","call_id":"previous_call","name":"exec","input":"echo ready"},
+			{"type":"custom_tool_call","id":"ctc_previous","call_id":"previous_call","name":"exec","input":"echo ready"},
 			{"type":"custom_tool_call_output","call_id":"previous_call","output":"ready"}
 		]
 	}`)
@@ -169,6 +169,7 @@ func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyAdaptsClientTools(t *testing.T) {
 	require.NotNil(t, result)
 	require.Equal(t, "function", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
 	require.Equal(t, "function_call", gjson.GetBytes(upstream.lastBody, "input.0.type").String())
+	require.Equal(t, "fc_previous", gjson.GetBytes(upstream.lastBody, "input.0.id").String())
 	require.JSONEq(t, `{"input":"echo ready"}`, gjson.GetBytes(upstream.lastBody, "input.0.arguments").String())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "input.0.input").Exists())
 	require.Equal(t, "function_call_output", gjson.GetBytes(upstream.lastBody, "input.1.type").String())
@@ -184,14 +185,17 @@ func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyAdaptsClientTools(t *testing.T) {
 	}
 	require.NotEmpty(t, outputDone)
 	require.Equal(t, "custom_tool_call", gjson.GetBytes(outputDone, "item.type").String())
+	require.Equal(t, "ctc_exec", gjson.GetBytes(outputDone, "item.id").String())
 	require.Equal(t, "pwd", gjson.GetBytes(outputDone, "item.input").String())
 	require.False(t, gjson.GetBytes(outputDone, "item.arguments").Exists())
 	require.NotEmpty(t, completed)
 	require.Equal(t, "custom_tool_call", gjson.GetBytes(completed, "response.output.0.type").String())
+	require.Equal(t, "ctc_exec", gjson.GetBytes(completed, "response.output.0.id").String())
 	require.Equal(t, "pwd", gjson.GetBytes(completed, "response.output.0.input").String())
 	require.True(t, result.wsReplayInputExists)
 	require.Len(t, result.wsReplayInput, 1)
 	require.Equal(t, "custom_tool_call", gjson.GetBytes(result.wsReplayInput[0], "type").String())
+	require.Equal(t, "ctc_exec", gjson.GetBytes(result.wsReplayInput[0], "id").String())
 	require.Equal(t, "pwd", gjson.GetBytes(result.wsReplayInput[0], "input").String())
 }
 
@@ -199,11 +203,11 @@ func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyRestoresClientToolsInResponseDone(t *t
 	gin.SetMode(gin.TestMode)
 
 	sse := strings.Join([]string{
-		`data: {"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"type":"function_call","id":"item_exec","call_id":"call_exec","name":"exec","status":"in_progress"}}`,
+		`data: {"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"type":"function_call","id":"fc_exec_done","call_id":"call_exec","name":"exec","status":"in_progress"}}`,
 		``,
-		`data: {"type":"response.function_call_arguments.done","sequence_number":1,"output_index":0,"item_id":"item_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}"}`,
+		`data: {"type":"response.function_call_arguments.done","sequence_number":1,"output_index":0,"item_id":"fc_exec_done","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}"}`,
 		``,
-		`data: {"type":"response.done","sequence_number":2,"response":{"id":"resp_tools","status":"completed","output":[{"type":"function_call","id":"item_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+		`data: {"type":"response.done","sequence_number":2,"response":{"id":"resp_tools","status":"completed","output":[{"type":"function_call","id":"fc_exec_done","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
 		``,
 	}, "\n")
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
@@ -242,11 +246,13 @@ func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyRestoresClientToolsInResponseDone(t *t
 	require.Equal(t, "response.done", gjson.GetBytes(terminal, "type").String())
 	require.Equal(t, int64(3), gjson.GetBytes(terminal, "sequence_number").Int())
 	require.Equal(t, "custom_tool_call", gjson.GetBytes(terminal, "response.output.0.type").String())
+	require.Equal(t, "ctc_exec_done", gjson.GetBytes(terminal, "response.output.0.id").String())
 	require.Equal(t, "pwd", gjson.GetBytes(terminal, "response.output.0.input").String())
 	require.False(t, gjson.GetBytes(terminal, "response.output.0.arguments").Exists())
 	require.True(t, result.wsReplayInputExists)
 	require.Len(t, result.wsReplayInput, 1)
 	require.Equal(t, "custom_tool_call", gjson.GetBytes(result.wsReplayInput[0], "type").String())
+	require.Equal(t, "ctc_exec_done", gjson.GetBytes(result.wsReplayInput[0], "id").String())
 }
 
 func TestProxyOpenAIWSHTTPBridgeTurnGrokPromotesDiscoveryAndRestoresNamespaceSSE(t *testing.T) {

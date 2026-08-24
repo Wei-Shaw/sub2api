@@ -346,10 +346,13 @@ func TestForwardGrokResponsesAPIKeyRestoresClientToolsFromSSEForNonStreamingRequ
 	response := recorder.Body.Bytes()
 	require.True(t, json.Valid(response))
 	require.Equal(t, "custom_tool_call", gjson.GetBytes(response, "output.0.type").String())
+	require.Equal(t, "ctc_custom", gjson.GetBytes(response, "output.0.id").String())
 	require.Equal(t, "*** Begin Patch", gjson.GetBytes(response, "output.0.input").String())
 	require.Equal(t, "tool_search_call", gjson.GetBytes(response, "output.1.type").String())
+	require.Equal(t, "tsc_search", gjson.GetBytes(response, "output.1.id").String())
 	require.Equal(t, "client", gjson.GetBytes(response, "output.1.execution").String())
 	require.Equal(t, "collaboration", gjson.GetBytes(response, "output.2.namespace").String())
+	require.Equal(t, "fc_namespace", gjson.GetBytes(response, "output.2.id").String())
 	require.Equal(t, "send_message", gjson.GetBytes(response, "output.2.name").String())
 }
 
@@ -374,7 +377,7 @@ func TestForwardGrokResponsesClientToolContinuationSurvivesRepeated500Recovery(t
 			Body: io.NopCloser(strings.NewReader(`{
 				"id":"resp_recovery_tool","object":"response","model":"grok-4.5","status":"completed",
 				"output":[
-					{"type":"function_call","id":"item_custom_next","call_id":"call_custom_next","name":"apply_patch","arguments":"{\"input\":\"*** Recovery Patch\"}","status":"completed"}
+					{"type":"function_call","id":"fc_recovery_next","call_id":"call_custom_next","name":"apply_patch","arguments":"{\"input\":\"*** Recovery Patch\"}","status":"completed"}
 				],
 				"usage":{"input_tokens":3,"output_tokens":1,"total_tokens":4}
 			}`)),
@@ -431,6 +434,7 @@ func TestForwardGrokResponsesClientToolContinuationSurvivesRepeated500Recovery(t
 	recoveryResponse := recoveryRecorder.Body.Bytes()
 	require.True(t, json.Valid(recoveryResponse))
 	require.Equal(t, "custom_tool_call", gjson.GetBytes(recoveryResponse, "output.0.type").String())
+	require.Equal(t, "ctc_recovery_next", gjson.GetBytes(recoveryResponse, "output.0.id").String())
 	require.Equal(t, "call_custom_next", gjson.GetBytes(recoveryResponse, "output.0.call_id").String())
 	require.Equal(t, "apply_patch", gjson.GetBytes(recoveryResponse, "output.0.name").String())
 	require.Equal(t, "*** Recovery Patch", gjson.GetBytes(recoveryResponse, "output.0.input").String())
@@ -440,7 +444,7 @@ func TestForwardGrokResponsesClientToolContinuationSurvivesRepeated500Recovery(t
 		"model":"grok","stream":false,
 		"tools":[{"type":"custom","name":"apply_patch","description":"apply a patch","format":{"type":"grammar","syntax":"lark","definition":"start: /.+/"}}],
 		"input":[
-			{"type":"custom_tool_call","id":"item_custom_next","call_id":"call_custom_next","name":"apply_patch","input":"*** Recovery Patch"},
+			{"type":"custom_tool_call","id":"ctc_recovery_next","call_id":"call_custom_next","name":"apply_patch","input":"*** Recovery Patch"},
 			{"type":"custom_tool_call_output","call_id":"call_custom_next","output":"Done recovery"}
 		]
 	}`)
@@ -451,6 +455,7 @@ func TestForwardGrokResponsesClientToolContinuationSurvivesRepeated500Recovery(t
 	require.Len(t, upstream.bodies, 4)
 	finalUpstreamBody := upstream.bodies[3]
 	require.Equal(t, "function_call", gjson.GetBytes(finalUpstreamBody, "input.0.type").String())
+	require.False(t, gjson.GetBytes(finalUpstreamBody, "input.0.id").Exists(), "Grok ModelInput strips replay item IDs after client-tool lowering")
 	require.Equal(t, "call_custom_next", gjson.GetBytes(finalUpstreamBody, "input.0.call_id").String())
 	require.Equal(t, "apply_patch", gjson.GetBytes(finalUpstreamBody, "input.0.name").String())
 	require.JSONEq(t, `{"input":"*** Recovery Patch"}`, gjson.GetBytes(finalUpstreamBody, "input.0.arguments").String())
@@ -502,12 +507,16 @@ func TestForwardGrokResponsesAPIKeyRestoresClientToolsStreaming(t *testing.T) {
 	created := requireGrokProtocolFrame(t, frames, "response.created", "", "")
 	require.True(t, gjson.GetBytes(created.data, "upstream_extension.preserved").Bool())
 	customAdded := requireGrokProtocolFrame(t, frames, "response.output_item.added", "item.type", "custom_tool_call")
+	require.Equal(t, "ctc_custom", gjson.GetBytes(customAdded.data, "item.id").String())
 	require.Equal(t, "apply_patch", gjson.GetBytes(customAdded.data, "item.name").String())
 	customInputDelta := requireGrokProtocolFrame(t, frames, "response.custom_tool_call_input.delta", "", "")
+	require.Equal(t, "ctc_custom", gjson.GetBytes(customInputDelta.data, "item_id").String())
 	require.Equal(t, "*** Begin Patch", gjson.GetBytes(customInputDelta.data, "delta").String())
 	customInputDone := requireGrokProtocolFrame(t, frames, "response.custom_tool_call_input.done", "", "")
+	require.Equal(t, "ctc_custom", gjson.GetBytes(customInputDone.data, "item_id").String())
 	require.Equal(t, "*** Begin Patch", gjson.GetBytes(customInputDone.data, "input").String())
 	customDone := requireGrokProtocolFrame(t, frames, "response.output_item.done", "item.type", "custom_tool_call")
+	require.Equal(t, "ctc_custom", gjson.GetBytes(customDone.data, "item.id").String())
 	require.Equal(t, "*** Begin Patch", gjson.GetBytes(customDone.data, "item.input").String())
 
 	namespaceAdded := requireGrokProtocolFrame(t, frames, "response.output_item.added", "item.namespace", "collaboration")
@@ -519,20 +528,25 @@ func TestForwardGrokResponsesAPIKeyRestoresClientToolsStreaming(t *testing.T) {
 	require.False(t, gjson.GetBytes(namespaceArgumentsDone.data, "namespace").Exists())
 
 	searchAdded := requireGrokProtocolFrame(t, frames, "response.output_item.added", "item.type", "tool_search_call")
+	require.Equal(t, "tsc_search", gjson.GetBytes(searchAdded.data, "item.id").String())
 	require.Equal(t, "client", gjson.GetBytes(searchAdded.data, "item.execution").String())
 	searchDone := requireGrokProtocolFrame(t, frames, "response.output_item.done", "item.type", "tool_search_call")
+	require.Equal(t, "tsc_search", gjson.GetBytes(searchDone.data, "item.id").String())
 	require.Equal(t, "github", gjson.GetBytes(searchDone.data, "item.arguments.query").String())
 
 	for _, frame := range frames {
 		itemID := gjson.GetBytes(frame.data, "item_id").String()
-		if itemID == "item_custom" || itemID == "item_search" {
+		if itemID == "ctc_custom" || itemID == "tsc_search" {
 			require.NotContains(t, frame.event, "function_call_arguments", "client-only proxy argument events must not leak")
 		}
 	}
 	completed := requireGrokProtocolFrame(t, frames, "response.completed", "", "")
 	require.Equal(t, "custom_tool_call", gjson.GetBytes(completed.data, "response.output.0.type").String())
+	require.Equal(t, "ctc_custom", gjson.GetBytes(completed.data, "response.output.0.id").String())
 	require.Equal(t, "tool_search_call", gjson.GetBytes(completed.data, "response.output.1.type").String())
+	require.Equal(t, "tsc_search", gjson.GetBytes(completed.data, "response.output.1.id").String())
 	require.Equal(t, "collaboration", gjson.GetBytes(completed.data, "response.output.2.namespace").String())
+	require.Equal(t, "fc_namespace", gjson.GetBytes(completed.data, "response.output.2.id").String())
 }
 
 func TestGrokResponsesClientToolStreamBodyFlushesFrameBeforeEOF(t *testing.T) {
@@ -649,19 +663,19 @@ func assertGrokProtocolRequestLowered(t *testing.T, body []byte) {
 func grokProtocolUpstreamSSE() string {
 	events := []string{
 		`{"type":"response.created","sequence_number":40,"response":{"id":"resp_protocol_stream","model":"grok-4.5"},"upstream_extension":{"preserved":true}}`,
-		`{"type":"response.output_item.added","sequence_number":41,"output_index":0,"item":{"type":"function_call","id":"item_custom","call_id":"call_custom","name":"apply_patch","arguments":"","status":"in_progress"}}`,
-		`{"type":"response.function_call_arguments.delta","sequence_number":42,"output_index":0,"item_id":"item_custom","delta":"{\"input\":\"*** Begin"}`,
-		`{"type":"response.function_call_arguments.delta","sequence_number":43,"output_index":0,"item_id":"item_custom","delta":" Patch\"}"}`,
-		`{"type":"response.function_call_arguments.done","sequence_number":44,"output_index":0,"item_id":"item_custom","call_id":"call_custom","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}"}`,
-		`{"type":"response.output_item.done","sequence_number":45,"output_index":0,"item":{"type":"function_call","id":"item_custom","call_id":"call_custom","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}","status":"completed"}}`,
-		`{"type":"response.output_item.added","sequence_number":46,"output_index":1,"item":{"type":"function_call","id":"item_namespace","call_id":"call_namespace","name":"collaboration__send_message","arguments":"","status":"in_progress"}}`,
-		`{"type":"response.function_call_arguments.done","sequence_number":47,"output_index":1,"item_id":"item_namespace","call_id":"call_namespace","name":"collaboration__send_message","arguments":"{\"target\":\"root\"}"}`,
-		`{"type":"response.output_item.done","sequence_number":48,"output_index":1,"item":{"type":"function_call","id":"item_namespace","call_id":"call_namespace","name":"collaboration__send_message","arguments":"{\"target\":\"root\"}","status":"completed"}}`,
-		`{"type":"response.output_item.added","sequence_number":49,"output_index":2,"item":{"type":"function_call","id":"item_search","call_id":"call_search","name":"tool_search","arguments":"","status":"in_progress"}}`,
-		`{"type":"response.function_call_arguments.delta","sequence_number":50,"output_index":2,"item_id":"item_search","delta":"{\"query\":\"github\"}"}`,
-		`{"type":"response.function_call_arguments.done","sequence_number":51,"output_index":2,"item_id":"item_search","call_id":"call_search","name":"tool_search","arguments":"{\"query\":\"github\"}"}`,
-		`{"type":"response.output_item.done","sequence_number":52,"output_index":2,"item":{"type":"function_call","id":"item_search","call_id":"call_search","name":"tool_search","arguments":"{\"query\":\"github\"}","status":"completed"}}`,
-		`{"type":"response.completed","sequence_number":53,"response":{"id":"resp_protocol_stream","object":"response","model":"grok-4.5","status":"completed","output":[{"type":"function_call","id":"item_custom","call_id":"call_custom","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}"},{"type":"function_call","id":"item_search","call_id":"call_search","name":"tool_search","arguments":"{\"query\":\"github\"}"},{"type":"function_call","id":"item_namespace","call_id":"call_namespace","name":"collaboration__send_message","arguments":"{\"target\":\"root\"}"}],"usage":{"input_tokens":11,"output_tokens":4,"total_tokens":15}}}`,
+		`{"type":"response.output_item.added","sequence_number":41,"output_index":0,"item":{"type":"function_call","id":"fc_custom","call_id":"call_custom","name":"apply_patch","arguments":"","status":"in_progress"}}`,
+		`{"type":"response.function_call_arguments.delta","sequence_number":42,"output_index":0,"item_id":"fc_custom","delta":"{\"input\":\"*** Begin"}`,
+		`{"type":"response.function_call_arguments.delta","sequence_number":43,"output_index":0,"item_id":"fc_custom","delta":" Patch\"}"}`,
+		`{"type":"response.function_call_arguments.done","sequence_number":44,"output_index":0,"item_id":"fc_custom","call_id":"call_custom","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}"}`,
+		`{"type":"response.output_item.done","sequence_number":45,"output_index":0,"item":{"type":"function_call","id":"fc_custom","call_id":"call_custom","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}","status":"completed"}}`,
+		`{"type":"response.output_item.added","sequence_number":46,"output_index":1,"item":{"type":"function_call","id":"fc_namespace","call_id":"call_namespace","name":"collaboration__send_message","arguments":"","status":"in_progress"}}`,
+		`{"type":"response.function_call_arguments.done","sequence_number":47,"output_index":1,"item_id":"fc_namespace","call_id":"call_namespace","name":"collaboration__send_message","arguments":"{\"target\":\"root\"}"}`,
+		`{"type":"response.output_item.done","sequence_number":48,"output_index":1,"item":{"type":"function_call","id":"fc_namespace","call_id":"call_namespace","name":"collaboration__send_message","arguments":"{\"target\":\"root\"}","status":"completed"}}`,
+		`{"type":"response.output_item.added","sequence_number":49,"output_index":2,"item":{"type":"function_call","id":"fc_search","call_id":"call_search","name":"tool_search","arguments":"","status":"in_progress"}}`,
+		`{"type":"response.function_call_arguments.delta","sequence_number":50,"output_index":2,"item_id":"fc_search","delta":"{\"query\":\"github\"}"}`,
+		`{"type":"response.function_call_arguments.done","sequence_number":51,"output_index":2,"item_id":"fc_search","call_id":"call_search","name":"tool_search","arguments":"{\"query\":\"github\"}"}`,
+		`{"type":"response.output_item.done","sequence_number":52,"output_index":2,"item":{"type":"function_call","id":"fc_search","call_id":"call_search","name":"tool_search","arguments":"{\"query\":\"github\"}","status":"completed"}}`,
+		`{"type":"response.completed","sequence_number":53,"response":{"id":"resp_protocol_stream","object":"response","model":"grok-4.5","status":"completed","output":[{"type":"function_call","id":"fc_custom","call_id":"call_custom","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}"},{"type":"function_call","id":"fc_search","call_id":"call_search","name":"tool_search","arguments":"{\"query\":\"github\"}"},{"type":"function_call","id":"fc_namespace","call_id":"call_namespace","name":"collaboration__send_message","arguments":"{\"target\":\"root\"}"}],"usage":{"input_tokens":11,"output_tokens":4,"total_tokens":15}}}`,
 	}
 	var out strings.Builder
 	for _, event := range events {
