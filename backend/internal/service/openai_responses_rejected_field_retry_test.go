@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -680,4 +681,43 @@ func newOpenAIRejectedFieldTestResponse(status int, body string) *http.Response 
 		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
 		Body:       io.NopCloser(strings.NewReader(body)),
 REDACTED
+REDACTED
+
+// A replayed conversation carries many items of the same type, each with a
+// status the upstream schema rejects. One rejection must clear all of them:
+// clearing one index per round trip exhausts the bounded retry budget.
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyClearsStatusForWholeType(t *testing.T) {
+	input := make([]string, 0, 12)
+	for i := 0; i < 10; i++ {
+		input = append(input, `{"type":"tool_search_output","status":"completed","call_id":"call_`+strconv.Itoa(i)+`","tools":[]REDACTED`)
+REDACTED
+	input = append(input, `{"type":"message","role":"user","status":"completed","content":"hi"REDACTED`)
+	body := []byte(`{"input":[` + strings.Join(input, ",") + `]REDACTED`)
+
+	responseBody := []byte(`{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[7].status'.","param":"input[7].status"REDACTEDREDACTED`)
+	retryBody, reason, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, responseBody)
+REDACTED
+	require.True(t, changed)
+	require.NotEmpty(t, reason)
+
+	for i := 0; i < 10; i++ {
+		require.False(t, gjson.GetBytes(retryBody, "input."+strconv.Itoa(i)+".status").Exists(),
+			"every tool_search_output must lose its status in a single retry, index %d did not", i)
+		require.Equal(t, "call_"+strconv.Itoa(i), gjson.GetBytes(retryBody, "input."+strconv.Itoa(i)+".call_id").String(),
+			"unrelated fields must survive")
+REDACTED
+	require.Equal(t, "completed", gjson.GetBytes(retryBody, "input.10.status").String(),
+		"a different item type keeps its status: the rejection only proves this type has none")
+REDACTED
+
+// The rejected item may carry no type to match on.
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyClearsUntypedStatusAtIndexOnly(t *testing.T) {
+	body := []byte(`{"input":[{"status":"keep_a"REDACTED,{"status":"remove"REDACTED]REDACTED`)
+	responseBody := []byte(`{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[1].status'.","param":"input[1].status"REDACTEDREDACTED`)
+
+	retryBody, _, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, responseBody)
+REDACTED
+	require.True(t, changed)
+	require.Equal(t, "keep_a", gjson.GetBytes(retryBody, "input.0.status").String())
+	require.False(t, gjson.GetBytes(retryBody, "input.1.status").Exists())
 REDACTED
