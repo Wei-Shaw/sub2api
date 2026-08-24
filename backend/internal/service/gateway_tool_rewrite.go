@@ -248,14 +248,18 @@ func applyToolNameRewriteToBody(body []byte, rw *ToolNameRewrite) []byte {
 	return body
 }
 
-// applyToolsLastCacheBreakpoint 在 tools 数组最后一个工具上注入 cache_control
-// 断点，对齐 Parrot `tools[-1]["cache_control"] = {"type":"ephemeral","ttl":"1h"}`
-// 行为，但 ttl 按本仓规则：
+// applyToolsLastCacheBreakpoint 在最后一个非延迟加载工具上注入 cache_control
+// 断点。Anthropic 不允许 defer_loading=true 的工具携带 cache_control，
+// 因此会先清理所有延迟加载工具上的客户端断点。兼容官方顶层字段和
+// Claude Code 使用的 custom.defer_loading 字段。其余行为对齐 Parrot
+// `tools[-1]["cache_control"] = {"type":"ephemeral","ttl":"1h"}`，
+// 但 ttl 按本仓规则：
 //   - 客户端已为该 tool 显式设置 cache_control.ttl → 完全透传不覆盖
 //   - 否则注入 {"type":"ephemeral","ttl": claude.DefaultCacheControlTTL}
 //
 // 纯副作用函数，tools 不存在或为空数组时 no-op。
 func applyToolsLastCacheBreakpoint(body []byte) []byte {
+	body = stripDeferredToolCacheControl(body)
 	tools := gjson.GetBytes(body, "tools")
 	if !tools.IsArray() {
 		return body
@@ -264,7 +268,17 @@ func applyToolsLastCacheBreakpoint(body []byte) []byte {
 	if len(arr) == 0 {
 		return body
 	}
-	lastIdx := len(arr) - 1
+	lastIdx := -1
+	for idx, tool := range arr {
+		if isDeferredLoadingTool(tool) {
+			continue
+		}
+		lastIdx = idx
+	}
+	if lastIdx == -1 {
+		return body
+	}
+
 	existingCC := arr[lastIdx].Get("cache_control")
 
 	if existingCC.Exists() && existingCC.Get("ttl").String() != "" {
@@ -281,6 +295,29 @@ func applyToolsLastCacheBreakpoint(body []byte) []byte {
 	raw := fmt.Sprintf(`{"type":"ephemeral","ttl":%q}`, claude.DefaultCacheControlTTL)
 	if next, err := sjson.SetRawBytes(body, fmt.Sprintf("tools.%d.cache_control", lastIdx), []byte(raw)); err == nil {
 		body = next
+	}
+	return body
+}
+
+func isDeferredLoadingTool(tool gjson.Result) bool {
+	return tool.Get("defer_loading").Type == gjson.True ||
+		tool.Get("custom.defer_loading").Type == gjson.True
+}
+
+// stripDeferredToolCacheControl removes the cache marker Anthropic rejects on
+// deferred tools. Only the literal JSON boolean true enables deferred loading.
+func stripDeferredToolCacheControl(body []byte) []byte {
+	tools := gjson.GetBytes(body, "tools")
+	if !tools.IsArray() {
+		return body
+	}
+	for idx, tool := range tools.Array() {
+		if !isDeferredLoadingTool(tool) || !tool.Get("cache_control").Exists() {
+			continue
+		}
+		if next, err := sjson.DeleteBytes(body, fmt.Sprintf("tools.%d.cache_control", idx)); err == nil {
+			body = next
+		}
 	}
 	return body
 }

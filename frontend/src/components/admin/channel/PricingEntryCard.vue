@@ -87,7 +87,12 @@
             </label>
             <Select
               :modelValue="entry.billing_mode"
-              @update:modelValue="emit('update', { ...entry, billing_mode: $event as BillingMode, intervals: [] })"
+              @update:modelValue="emit('update', {
+                ...entry,
+                billing_mode: $event as BillingMode,
+                intervals: [],
+                time_pricing: { ...entry.time_pricing, periods: [] },
+              })"
               :options="billingModeOptions"
               class="mt-1"
             />
@@ -134,7 +139,20 @@
             </div>
           </div>
 
-          <!-- Token intervals (channel-only; group long-context uses official presets) -->
+          <div v-if="enableTierMultipliers" class="mt-3 grid max-w-md grid-cols-2 gap-2">
+            <div>
+              <label class="text-xs text-gray-400">{{ t('admin.channels.form.fastMultiplier') }}</label>
+              <input :value="entry.fast_multiplier" @input="emitField('fast_multiplier', ($event.target as HTMLInputElement).value)"
+                type="number" step="any" min="0.000001" class="input mt-0.5 text-sm" :placeholder="t('admin.channels.form.multiplierPlaceholder')" />
+            </div>
+            <div>
+              <label class="text-xs text-gray-400">{{ t('admin.channels.form.flexMultiplier') }}</label>
+              <input :value="entry.flex_multiplier" @input="emitField('flex_multiplier', ($event.target as HTMLInputElement).value)"
+                type="number" step="any" min="0.000001" class="input mt-0.5 text-sm" :placeholder="t('admin.channels.form.multiplierPlaceholder')" />
+            </div>
+          </div>
+
+          <!-- Channel token intervals; the group long-context toggle controls whether tiers apply. -->
           <div v-if="!hideTokenIntervals" class="mt-3">
             <div class="flex items-center justify-between">
               <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -151,11 +169,18 @@
                 :key="idx"
                 :interval="iv"
                 :mode="entry.billing_mode"
+                :enable-multipliers="enableTierMultipliers"
                 @update="updateInterval(idx, $event)"
                 @remove="removeInterval(idx)"
               />
             </div>
           </div>
+
+          <TimePricingSection
+            v-if="enableTimePricing"
+            :model-value="entry.time_pricing"
+            @update:model-value="emit('update', { ...entry, time_pricing: $event })"
+          />
         </div>
 
         <!-- Per-request mode -->
@@ -238,6 +263,7 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import IntervalRow from './IntervalRow.vue'
 import ModelTagInput from './ModelTagInput.vue'
+import TimePricingSection from './TimePricingSection.vue'
 import type { PricingFormEntry, IntervalFormEntry } from './types'
 import { perTokenToMTok, getPlatformTagClass } from './types'
 import type { BillingMode } from '@/api/admin/channels'
@@ -249,8 +275,12 @@ const props = withDefaults(defineProps<{
   entry: PricingFormEntry
   platform?: string
   hideTokenIntervals?: boolean
+  enableTimePricing?: boolean
+  enableTierMultipliers?: boolean
 }>(), {
   hideTokenIntervals: false,
+  enableTimePricing: false,
+  enableTierMultipliers: false,
 })
 
 const emit = defineEmits<{
@@ -283,6 +313,8 @@ function addInterval() {
     min_tokens: 0, max_tokens: null, tier_label: '',
     input_price: null, output_price: null, cache_write_price: null,
     cache_read_price: null, per_request_price: null,
+    input_multiplier: null, output_multiplier: null,
+    cache_write_multiplier: null, cache_read_multiplier: null,
     sort_order: intervals.length
   })
   emit('update', { ...props.entry, intervals })
@@ -297,6 +329,8 @@ function addMediaTier() {
     min_tokens: 0, max_tokens: null, tier_label: labels[intervals.length] || '',
     input_price: null, output_price: null, cache_write_price: null,
     cache_read_price: null, per_request_price: null,
+    input_multiplier: null, output_multiplier: null,
+    cache_write_multiplier: null, cache_read_multiplier: null,
     sort_order: intervals.length
   })
   emit('update', { ...props.entry, intervals })

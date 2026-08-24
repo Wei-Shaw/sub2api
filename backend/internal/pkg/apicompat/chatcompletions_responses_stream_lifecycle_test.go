@@ -214,6 +214,78 @@ func TestStream_ToolCallArgumentsInFirstChunkNotDoubled(t *testing.T) {
 	require.Equal(t, `{"cmd":"ls"}`, argsDelta.String())
 }
 
+func TestStream_InvalidToolArgumentsAreRejectedBeforeFinalize(t *testing.T) {
+	idx := 0
+	state := NewChatCompletionsToResponsesStreamState("deepseek-v4-flash")
+	chunk := &ChatCompletionsChunk{
+		Choices: []ChatChunkChoice{
+			{
+				Index: 0,
+				Delta: ChatDelta{
+					ToolCalls: []ChatToolCall{
+						{
+							Index: &idx,
+							ID:    "call_bad",
+							Type:  "function",
+							Function: ChatFunctionCall{
+								Name:      "exec_command",
+								Arguments: `{"cmd": "ssh root@HOST`,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	ChatCompletionsChunkToResponsesEvents(chunk, state)
+
+	err := state.ValidateToolCallArguments()
+	require.ErrorContains(t, err, "invalid JSON")
+}
+
+func TestStream_ValidToolCallAtOutputLimitKeepsIncompleteResponse(t *testing.T) {
+	idx := 0
+	state := NewChatCompletionsToResponsesStreamState("deepseek-v4-flash")
+	chunk := &ChatCompletionsChunk{
+		Choices: []ChatChunkChoice{
+			{
+				Index: 0,
+				Delta: ChatDelta{
+					ToolCalls: []ChatToolCall{
+						{
+							Index: &idx,
+							ID:    "call_at_limit",
+							Type:  "function",
+							Function: ChatFunctionCall{
+								Name:      "exec_command",
+								Arguments: `{}`,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	ChatCompletionsChunkToResponsesEvents(chunk, state)
+	state.FinishReason = "length"
+
+	require.NoError(t, state.ValidateToolCallArguments())
+	events := FinalizeChatCompletionsResponsesStream(state)
+	var sawArgsDone, sawIncomplete bool
+	for _, event := range events {
+		switch event.Type {
+		case "response.function_call_arguments.done":
+			sawArgsDone = true
+			require.Equal(t, `{}`, event.Arguments)
+		case "response.completed":
+			require.NotNil(t, event.Response)
+			sawIncomplete = event.Response.Status == "incomplete"
+		}
+	}
+	require.True(t, sawArgsDone)
+	require.True(t, sawIncomplete)
+}
+
 // TestStream_SSEWireComplete drives the full stream through SSE encoding and
 // asserts the function_call events carry complete fields on the wire.
 func TestStream_SSEWireComplete(t *testing.T) {

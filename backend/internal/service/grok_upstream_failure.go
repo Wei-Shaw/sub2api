@@ -26,6 +26,10 @@ const (
 	GrokFailureRateLimit     GrokUpstreamFailureClass = "rate_limit"
 	GrokFailureAuth          GrokUpstreamFailureClass = "auth_error"
 	GrokFailureServer        GrokUpstreamFailureClass = "server_error"
+	// GrokFailureCompatibility represents a request-history/body-shape that is
+	// incompatible with the selected account or upstream replay contract. It
+	// is account-independent: fail over, but never quarantine the pool.
+	GrokFailureCompatibility GrokUpstreamFailureClass = "compatibility_error"
 )
 
 // GrokUpstreamFailureDecision is a pure classification result. Callers map it
@@ -111,6 +115,20 @@ func classifyGrokUpstreamFailure(statusCode int, responseBody []byte, requestedM
 		}
 	}
 
+	// Responses replay/compaction payloads can be rejected by one Grok
+	// deployment while the same request is valid on another account. Treat
+	// these precise decoder/content-shape failures as account compatibility
+	// errors, rather than durable account health failures.
+	if isGrokCompatibilityError(statusCode, low, code) {
+		return GrokUpstreamFailureDecision{
+			Class:          GrokFailureCompatibility,
+			Model:          model,
+			ShouldFailover: true,
+			ShouldCooldown: false,
+			Reason:         firstNonEmpty(text, "grok response compatibility error"),
+		}
+	}
+
 	// Empty HTTP 200 / empty model output (often rewritten to synthetic 502).
 	if isGrokEmptyModelOutputText(low) || isGrokEmptyModelOutputCode(code) {
 		return GrokUpstreamFailureDecision{
@@ -129,7 +147,7 @@ func classifyGrokUpstreamFailure(statusCode int, responseBody []byte, requestedM
 		return GrokUpstreamFailureDecision{
 			Class:          GrokFailureModelCapacity,
 			Model:          model,
-			Cooldown:       3 * time.Minute,
+			Cooldown:       time.Minute,
 			ShouldCooldown: true,
 			ShouldFailover: true,
 			BlockModel:     false,
@@ -355,11 +373,92 @@ func isGrokBillingQuotaText(low string) bool {
 	if strings.Contains(low, "payment") && (strings.Contains(low, "required") || strings.Contains(low, "fail")) {
 		return true
 	}
-	if strings.Contains(low, "spending limit") || strings.Contains(low, "run out of credits") || strings.Contains(low, "out of credits") {
+	if strings.Contains(low, "spending limit") || strings.Contains(low, "run out of credits") || strings.Contains(low, "out of credits") ||
+		(strings.Contains(low, "need a grok subscription") || strings.Contains(low, "need grok subscription")) {
 		return true
 	}
 	if strings.Contains(low, "余额不足") || strings.Contains(low, "欠费") || strings.Contains(low, "需要付费") {
 		return true
+	}
+	return false
+}
+
+// grokRetryableOnSameAccount marks transient 429 classes for the shared
+// failover loop. Capacity and ordinary throttles are request/model pressure,
+// not evidence that the credential is invalid, so a bounded retry on the same
+// account is preferable before switching accounts. Free-usage and billing
+// exhaustion deliberately skip same-account retry and fail over immediately.
+func grokRetryableOnSameAccount(account *Account, statusCode int, responseBody []byte) bool {
+	if account == nil || !account.IsGrok() {
+		return false
+	}
+	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
+	switch decision.Class {
+	case GrokFailureFreeUsage, GrokFailureBilling, GrokFailureCompatibility:
+		// Quota/entitlement exhaustion is account state, not transient
+		// pressure. Retrying the same account only repeats the failure.
+		return false
+	case GrokFailureModelCapacity:
+		if statusCode == http.StatusTooManyRequests {
+			return true
+		}
+	}
+	return account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)
+}
+
+func grokSameAccountRetryMetadata(account *Account, statusCode int, responseBody []byte) (bool, time.Duration, time.Time, int) {
+	if !grokRetryableOnSameAccount(account, statusCode, responseBody) {
+		return false, 0, time.Time{}, 0
+	}
+	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
+	if decision.Class != GrokFailureModelCapacity {
+		return true, 0, time.Time{}, 0
+	}
+	// The error is reconstructed after every upstream attempt, so a deadline
+	// stored on the error cannot provide a request-wide window. Cap capacity
+	// retries explicitly to one replay; this remains effective even when the
+	// first attempt itself takes longer than the nominal 30-second window.
+	return true, 500 * time.Millisecond, time.Now().Add(30 * time.Second), 1
+}
+
+// shouldMarkGrokTeamModelRateLimit controls the process-local sibling-account
+// overlay. Model-capacity responses are request pressure, not a team quota;
+// marking them would hide healthy sibling credentials while the bounded
+// same-account retry is still in progress. Ordinary 429s and free-usage
+// exhaustion retain the existing quota/team isolation behavior.
+func shouldMarkGrokTeamModelRateLimit(statusCode int, responseBody []byte) bool {
+	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
+	if decision.Class == GrokFailureModelCapacity {
+		return false
+	}
+	return statusCode == http.StatusTooManyRequests || decision.Class == GrokFailureFreeUsage
+}
+
+func isGrokCompatibilityError(statusCode int, low, code string) bool {
+	if statusCode != http.StatusBadRequest && statusCode != http.StatusUnprocessableEntity {
+		return false
+	}
+	combined := strings.ToLower(strings.TrimSpace(low + " " + code))
+	// Compaction blobs are account/session-bound and frequently fail with 400
+	// or 422 after a reconnect. Also cover xAI's JSON decoder shape errors.
+	for _, phrase := range []string{
+		"could not decode the compaction blob",
+		"cannot decode the compaction blob",
+		"decode the compaction blob",
+		"ensure it is unmodified from the compact response",
+		"compaction blob",
+	} {
+		if strings.Contains(combined, phrase) {
+			return true
+		}
+	}
+	for _, marker := range []string{
+		"invalid_compaction",
+		"compaction_decode_error",
+	} {
+		if strings.Contains(combined, marker) {
+			return true
+		}
 	}
 	return false
 }
@@ -489,10 +588,11 @@ func (s *OpenAIGatewayService) applyGrokUpstreamFailureDecision(
 	case GrokFailureEmptyUpstream:
 		reason = "grok empty model output"
 	case GrokFailureModelCapacity:
-		if persistGrokTransientModelCooldown(account, decision) {
-			return true
-		}
-		reason = "grok model capacity"
+		// Capacity is scoped to the requested model. Never persist an account-wide
+		// unschedulable state for this transient class; the failover loop performs
+		// a bounded same-account retry before selecting another account.
+		_ = persistGrokTransientModelCooldown(account, decision)
+		return true
 	case GrokFailureRateLimit:
 		// Pure 429 without free-usage language keeps the existing rate-limit
 		// snapshot path (Retry-After / quota headers). Body-only rate-limit
@@ -501,6 +601,11 @@ func (s *OpenAIGatewayService) applyGrokUpstreamFailureDecision(
 		return false
 	case GrokFailureServer:
 		reason = "grok upstream temporary error"
+	case GrokFailureCompatibility:
+		// Deliberately no account mutation. The caller uses ShouldFailover to
+		// retry another account; cooling a pool for a request-shape mismatch
+		// would remove healthy accounts.
+		return true
 	default:
 		return false
 	}

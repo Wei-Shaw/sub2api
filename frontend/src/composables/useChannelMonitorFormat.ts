@@ -11,16 +11,24 @@
  */
 
 import { useI18n } from 'vue-i18n'
-import type { MonitorStatus, Provider } from '@/api/admin/channelMonitor'
+import type { CheckMode, MonitorStatus, Provider } from '@/api/admin/channelMonitor'
 import {
   PROVIDER_OPENAI,
   PROVIDER_ANTHROPIC,
   PROVIDER_GEMINI,
   PROVIDER_GROK,
+  PROVIDER_ANTIGRAVITY,
+  PROVIDER_KIMI,
+  PROVIDER_ZHIPU,
+  PROVIDER_DEEPSEEK,
+  PROVIDERS,
   STATUS_OPERATIONAL,
   STATUS_DEGRADED,
   STATUS_FAILED,
   STATUS_ERROR,
+  CHECK_MODE_PROBE,
+  CHECK_MODE_QUOTA,
+  CHECK_MODE_QUOTA_PROBE,
 } from '@/constants/channelMonitor'
 
 const NEUTRAL_BADGE = 'bg-gray-100 text-gray-800 dark:bg-dark-700 dark:text-gray-300'
@@ -58,15 +66,32 @@ export function useChannelMonitorFormat() {
   }
 
   function providerLabel(p: Provider | string): string {
-    if (
-      p === PROVIDER_OPENAI ||
-      p === PROVIDER_ANTHROPIC ||
-      p === PROVIDER_GEMINI ||
-      p === PROVIDER_GROK
-    ) {
+    if (PROVIDERS.includes(p as Provider)) {
       return t(`monitorCommon.providers.${p}`)
     }
     return p || '-'
+  }
+
+  function checkModeLabel(m: CheckMode | string): string {
+    if (m === 'probe' || m === 'quota' || m === 'quota_probe') {
+      return t(`monitorCommon.checkMode.${m}`)
+    }
+    return m || '-'
+  }
+
+  /**
+   * Display label for a monitor's primary model. Pure-quota monitors carry the
+   * literal placeholder "quota" (the probe target is an account, not a model),
+   * which must not leak into the UI as a fake model name — render the
+   * localized mode label instead. quota_probe keeps a real model name.
+   */
+  const QUOTA_MODEL_PLACEHOLDER = 'quota'
+
+  function formatMonitorModel(model: string): string {
+    if (model === QUOTA_MODEL_PLACEHOLDER) {
+      return t('monitorCommon.checkMode.quota')
+    }
+    return model
   }
 
   function providerBadgeClass(p: Provider | string): string {
@@ -79,6 +104,32 @@ export function useChannelMonitorFormat() {
         return 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
       case PROVIDER_GROK:
         return 'bg-zinc-100 text-zinc-700 dark:bg-zinc-500/15 dark:text-zinc-300'
+      // 配色与 utils/platformColors.ts 的平台色对齐：antigravity=purple /
+      // kimi=pink / zhipu=indigo / deepseek=teal。
+      case PROVIDER_ANTIGRAVITY:
+        return 'bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300'
+      case PROVIDER_KIMI:
+        return 'bg-pink-100 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300'
+      case PROVIDER_ZHIPU:
+        return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300'
+      case PROVIDER_DEEPSEEK:
+        return 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300'
+      default:
+        return NEUTRAL_BADGE
+    }
+  }
+
+  /**
+   * Tailwind class for the check-mode badge shown next to the provider badge
+   * in the admin monitor list. Quota-bearing modes = blue (数据源是账号配额),
+   * plain probe = neutral grey.
+   */
+  function checkModeBadgeClass(m: CheckMode | string): string {
+    switch (m) {
+      case CHECK_MODE_QUOTA:
+      case CHECK_MODE_QUOTA_PROBE:
+        return 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'
+      case CHECK_MODE_PROBE:
       default:
         return NEUTRAL_BADGE
     }
@@ -107,6 +158,22 @@ export function useChannelMonitorFormat() {
         return active
           ? 'border-zinc-500 bg-zinc-50 text-zinc-800 dark:bg-zinc-500/15 dark:text-zinc-200 dark:border-zinc-400'
           : 'border-gray-200 bg-white text-gray-600 hover:border-zinc-400 hover:text-zinc-800 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-zinc-500/50'
+      case PROVIDER_ANTIGRAVITY:
+        return active
+          ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-400'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-purple-300 hover:text-purple-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-purple-500/50'
+      case PROVIDER_KIMI:
+        return active
+          ? 'border-pink-500 bg-pink-50 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300 dark:border-pink-400'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-pink-300 hover:text-pink-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-pink-500/50'
+      case PROVIDER_ZHIPU:
+        return active
+          ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-400'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-indigo-300 hover:text-indigo-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-indigo-500/50'
+      case PROVIDER_DEEPSEEK:
+        return active
+          ? 'border-teal-500 bg-teal-50 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-400'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-teal-300 hover:text-teal-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-teal-500/50'
       default:
         return active
           ? 'border-gray-400 bg-gray-50 text-gray-700 dark:border-dark-500 dark:bg-dark-700 dark:text-gray-200'
@@ -147,7 +214,10 @@ export function useChannelMonitorFormat() {
     statusLabel,
     statusBadgeClass,
     providerLabel,
+    checkModeLabel,
+    formatMonitorModel,
     providerBadgeClass,
+    checkModeBadgeClass,
     providerPickerClass,
     formatLatency,
     formatPercent,
@@ -180,6 +250,14 @@ export function providerGradient(provider: string): string {
       return 'bg-gradient-to-br from-sky-50 to-indigo-100 dark:from-sky-500/10 dark:to-indigo-500/20'
     case PROVIDER_GROK:
       return 'bg-gradient-to-br from-zinc-50 to-neutral-200 dark:from-zinc-500/10 dark:to-neutral-500/20'
+    case PROVIDER_ANTIGRAVITY:
+      return 'bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-500/10 dark:to-purple-500/20'
+    case PROVIDER_KIMI:
+      return 'bg-gradient-to-br from-pink-50 to-pink-100 dark:from-pink-500/10 dark:to-pink-500/20'
+    case PROVIDER_ZHIPU:
+      return 'bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-500/10 dark:to-indigo-500/20'
+    case PROVIDER_DEEPSEEK:
+      return 'bg-gradient-to-br from-teal-50 to-teal-100 dark:from-teal-500/10 dark:to-teal-500/20'
     default:
       return 'bg-gradient-to-br from-gray-100 to-gray-200 dark:from-dark-700 dark:to-dark-600'
   }

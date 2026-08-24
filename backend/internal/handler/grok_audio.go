@@ -44,39 +44,84 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 		return
 	}
 
-	selection, _, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
-		c.Request.Context(),
-		apiKey.GroupID,
-		"",
-		"",
-		"grok-4.5",
-		nil,
-		service.OpenAIUpstreamTransportHTTPSSE,
-		// Grok only advertises chat_completions + media capabilities on HEAD.
-		service.OpenAIEndpointCapabilityChatCompletions,
-		false,
-		false,
-		false,
-		service.PlatformGrok,
-	)
-	if err != nil || selection == nil || selection.Account == nil {
-		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available Grok accounts")
-		return
-	}
-
-	var streamStarted bool
 	reqLog := requestLogger(c, "handler.openai_gateway.grok_realtime")
-	release, slotStatus := h.acquireResponsesAccountSlot(c, apiKey.GroupID, "", selection, true, &streamStarted, reqLog)
-	if slotStatus != openAISlotAcquireOK {
+	model := c.Query("model")
+	if strings.TrimSpace(model) == "" {
+		model = "grok-voice-latest"
+	}
+	// Keep the HTTP response uncommitted while selecting and probing an account.
+	// Realtime is not an HTTP streaming response; using reqStream=true here would
+	// let the wait queue flush an SSE ping before the WebSocket handshake succeeds.
+	failed := map[int64]struct{}{}
+	var selection *service.AccountSelectionResult
+	var release func()
+	var token string
+	var upstream *service.GrokRealtimeUpstream
+	var candidateSeen bool
+	for attempts := 0; attempts < 4; attempts++ {
+		// Realtime's voice model is not a text-model capability. Passing a
+		// concrete text model here would reject accounts mapped only to an
+		// older/default text model before the upstream handshake can decide.
+		// An empty requested model keeps account selection capability-based;
+		// the actual voice model remains in the upstream WS query below.
+		candidate, _, selectErr := h.gatewayService.SelectAccountWithSchedulerForCapability(
+			c.Request.Context(), apiKey.GroupID, "", "", "", failed,
+			service.OpenAIUpstreamTransportHTTPSSE,
+			service.OpenAIEndpointCapabilityChatCompletions,
+			false, false, false, service.PlatformGrok,
+		)
+		if selectErr != nil || candidate == nil || candidate.Account == nil {
+			break
+		}
+		candidateSeen = true
+		account := candidate.Account
+		var streamStarted bool
+		var slotStatus openAISlotAcquireResult
+		release, slotStatus = h.acquireResponsesAccountSlot(c, apiKey.GroupID, "", candidate, false, &streamStarted, reqLog)
+		if slotStatus != openAISlotAcquireOK {
+			if slotStatus == openAISlotAcquireFailed {
+				return
+			}
+			failed[account.ID] = struct{}{}
+			continue
+		}
+		var credErr error
+		token, _, credErr = h.gatewayService.GetRequestCredential(c.Request.Context(), c, account)
+		if credErr != nil {
+			release()
+			release = nil
+			failed[account.ID] = struct{}{}
+			continue
+		}
+		probeCtx, cancelProbe := context.WithTimeout(c.Request.Context(), service.DefaultGrokRealtimeDialTimeout)
+		candidateUpstream, openErr := h.gatewayService.OpenGrokRealtime(probeCtx, account, token, model)
+		cancelProbe()
+		if openErr != nil {
+			reqLog.Warn("grok_realtime.pre_accept_failed", zap.Int64("account_id", account.ID), zap.Error(openErr))
+			statusCode := http.StatusBadGateway
+			var dialErr *service.GrokRealtimeDialError
+			if errors.As(openErr, &dialErr) && dialErr.StatusCode > 0 {
+				statusCode = dialErr.StatusCode
+			}
+			h.gatewayService.HandleGrokRealtimeUpstreamError(c.Request.Context(), account, statusCode, []byte(openErr.Error()))
+			release()
+			release = nil
+			failed[account.ID] = struct{}{}
+			continue
+		}
+		selection, upstream = candidate, candidateUpstream
+		break
+	}
+	if selection == nil || selection.Account == nil || release == nil || upstream == nil {
+		if !candidateSeen {
+			h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available Grok accounts")
+		} else {
+			h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Grok realtime upstream unavailable")
+		}
 		return
 	}
 	defer release()
-
-	token, _, err := h.gatewayService.GetRequestCredential(c.Request.Context(), c, selection.Account)
-	if err != nil {
-		h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Grok credential unavailable")
-		return
-	}
+	defer func() { _ = upstream.Close() }()
 
 	conn, err := coderws.Accept(c.Writer, c.Request, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeover})
 	if err != nil {
@@ -84,12 +129,8 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 	}
 	defer func() { _ = conn.CloseNow() }()
 
-	model := c.Query("model")
-	if strings.TrimSpace(model) == "" {
-		model = "grok-voice-latest"
-	}
 	started := time.Now()
-	audioObserved, proxyErr := h.gatewayService.ProxyGrokRealtime(c.Request.Context(), c, conn, selection.Account, token, model)
+	audioObserved, proxyErr := h.gatewayService.ProxyGrokRealtimeConn(c.Request.Context(), c, conn, upstream)
 	elapsed := time.Since(started)
 	if proxyErr != nil {
 		reqLog.Info("grok_realtime.proxy_failed", zap.Error(proxyErr))

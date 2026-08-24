@@ -337,6 +337,7 @@ type UpdateSettingsRequest struct {
 	ChannelMonitorDingTalkSecret         string  `json:"channel_monitor_dingtalk_secret"`
 	ChannelMonitorDingTalkWebhookClear   bool    `json:"channel_monitor_dingtalk_webhook_clear"`
 	ChannelMonitorDingTalkSecretClear    bool    `json:"channel_monitor_dingtalk_secret_clear"`
+	ChannelMonitorShowQuota              *bool   `json:"channel_monitor_show_quota"`
 
 	// Grok model mapping policy
 	GrokDefaultTextModel           *string `json:"grok_default_text_model"`
@@ -1936,6 +1937,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.ChannelMonitorHideThroughput
 		}(),
+		ChannelMonitorShowQuota: func() bool {
+			if req.ChannelMonitorShowQuota != nil {
+				return *req.ChannelMonitorShowQuota
+			}
+			return previousSettings.ChannelMonitorShowQuota
+		}(),
 		GrokDefaultTextModel: func() string {
 			if req.GrokDefaultTextModel != nil {
 				return *req.GrokDefaultTextModel
@@ -2392,6 +2399,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorDingTalkEnabled:           updatedSettings.ChannelMonitorDingTalkEnabled,
 		ChannelMonitorDingTalkWebhookConfigured: updatedSettings.ChannelMonitorDingTalkWebhookConfigured,
 		ChannelMonitorDingTalkSecretConfigured:  updatedSettings.ChannelMonitorDingTalkSecretConfigured,
+		ChannelMonitorShowQuota:                 updatedSettings.ChannelMonitorShowQuota,
 
 		GrokDefaultTextModel:           updatedSettings.GrokDefaultTextModel,
 		GrokCrossClientModelMapEnabled: updatedSettings.GrokCrossClientModelMapEnabled,

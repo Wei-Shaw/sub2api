@@ -186,3 +186,14 @@ export function isChannelMonitorThroughputHidden(): boolean {
   const appStore = useAppStore()
   return Boolean(appStore.cachedPublicSettings?.channel_monitor_hide_throughput)
 }
+
+/**
+ * Show quota/balance snapshots on the user-facing monitor page
+ * (channel_monitor_show_quota, default off). The backend strips
+ * latest_quota server-side when the switch is off; this flag is
+ * defense-in-depth only. Admin views always show quota.
+ */
+export function isChannelMonitorQuotaVisible(): boolean {
+  const appStore = useAppStore()
+  return appStore.cachedPublicSettings?.channel_monitor_show_quota === true
+}

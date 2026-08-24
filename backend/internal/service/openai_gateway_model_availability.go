@@ -34,7 +34,7 @@ func (s *OpenAIGatewayService) DiagnoseModelAvailabilityForPlatform(
 		return ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}
 	}
 
-	platform = normalizeOpenAICompatiblePlatform(platform)
+	platform = NormalizeOpenAICompatiblePlatform(platform)
 	queryGroupID := groupID
 	includeGrouped := false
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {

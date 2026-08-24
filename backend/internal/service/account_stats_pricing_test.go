@@ -768,6 +768,26 @@ func TestResolveAccountStatsCost_FallsBackToLiteLLM(t *testing.T) {
 	require.InDelta(t, 0.2, *result, 1e-12)
 }
 
+func TestResolveAccountStatsCost_FallbackHonorsAnthropicFast(t *testing.T) {
+	channel := &Channel{ID: 1, Status: StatusActive}
+	cs := newTestChannelServiceForStats(t, channel, 10, "anthropic")
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"claude-opus-5": {
+			InputPricePerToken:  5e-6,
+			OutputPricePerToken: 25e-6,
+		},
+	})
+
+	result := resolveAccountStatsCost(
+		context.Background(), cs, bs,
+		1, 10, "claude-opus-5",
+		UsageTokens{InputTokens: 1_000_000, OutputTokens: 1_000_000},
+		1, 0, "fast",
+	)
+	require.NotNil(t, result)
+	require.InDelta(t, 60, *result, 1e-12)
+}
+
 func TestResolveAccountStatsCost_Gemini36FlashTierUsesFallbackPricing(t *testing.T) {
 	channel := &Channel{
 		ID:                         1,

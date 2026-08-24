@@ -809,6 +809,35 @@ func TestBuildOpenAIWSReplayInputSequence(t *testing.T) {
 		require.Equal(t, "new", gjson.GetBytes(items[0], "text").String())
 	})
 
+	t.Run("no_previous_response_id_custom_tool_history_does_not_accumulate", func(t *testing.T) {
+		previousFull := []json.RawMessage{
+			json.RawMessage(`{"type":"input_text","text":"stale"}`),
+			json.RawMessage(`{"type":"custom_tool_call","id":"stale_item","call_id":"stale_call","name":"exec","input":"stale"}`),
+		}
+		currentPayload := []byte(`{"input":[
+			{"type":"custom_tool_call","id":"item_1","call_id":"call_1","name":"exec","input":"pwd"},
+			{"type":"custom_tool_call_output","call_id":"call_1","output":"/tmp"},
+			{"type":"input_text","text":"continue"}
+		]}`)
+
+		for range 3 {
+			items, exists, err := buildOpenAIWSReplayInputSequence(
+				previousFull,
+				true,
+				currentPayload,
+				false,
+			)
+			require.NoError(t, err)
+			require.True(t, exists)
+			require.Len(t, items, 3)
+			require.Equal(t, "custom_tool_call", gjson.GetBytes(items[0], "type").String())
+			require.Equal(t, "call_1", gjson.GetBytes(items[0], "call_id").String())
+			require.Equal(t, "custom_tool_call_output", gjson.GetBytes(items[1], "type").String())
+			require.Equal(t, "call_1", gjson.GetBytes(items[1], "call_id").String())
+			previousFull = append(items, json.RawMessage(`{"type":"custom_tool_call","id":"replayed_item","call_id":"replayed_call","name":"exec","input":"ignored"}`))
+		}
+	})
+
 	t.Run("previous_response_id_delta_append", func(t *testing.T) {
 		items, exists, err := buildOpenAIWSReplayInputSequence(
 			lastFull,
@@ -821,6 +850,91 @@ func TestBuildOpenAIWSReplayInputSequence(t *testing.T) {
 		require.Len(t, items, 2)
 		require.Equal(t, "hello", gjson.GetBytes(items[0], "text").String())
 		require.Equal(t, "world", gjson.GetBytes(items[1], "text").String())
+	})
+
+	t.Run("previous_response_id_filters_orphan_historical_custom_tool_call", func(t *testing.T) {
+		previousFull := []json.RawMessage{
+			json.RawMessage(`{"type":"input_text","text":"hello"}`),
+			json.RawMessage(`{"type":"custom_tool_call","id":"item_orphan","call_id":"call_orphan","name":"exec","input":"pwd"}`),
+		}
+		items, exists, err := buildOpenAIWSReplayInputSequence(
+			previousFull,
+			true,
+			[]byte(`{"previous_response_id":"resp_1","input":[{"role":"user","content":"continue"}]}`),
+			true,
+		)
+		require.NoError(t, err)
+		require.True(t, exists)
+		require.Len(t, items, 2)
+		require.Equal(t, "hello", gjson.GetBytes(items[0], "text").String())
+		require.Equal(t, "user", gjson.GetBytes(items[1], "role").String())
+	})
+
+	t.Run("previous_response_id_preserves_paired_historical_function_call", func(t *testing.T) {
+		previousFull := []json.RawMessage{
+			json.RawMessage(`{"type":"function_call","id":"item_1","call_id":"call_1","name":"lookup","arguments":"{}"}`),
+			json.RawMessage(`{"type":"function_call_output","call_id":"call_1","output":"ok"}`),
+		}
+		items, exists, err := buildOpenAIWSReplayInputSequence(
+			previousFull,
+			true,
+			[]byte(`{"previous_response_id":"resp_1","input":[{"role":"user","content":"continue"}]}`),
+			true,
+		)
+		require.NoError(t, err)
+		require.True(t, exists)
+		require.Len(t, items, 3)
+		require.Equal(t, "function_call", gjson.GetBytes(items[0], "type").String())
+		require.Equal(t, "function_call_output", gjson.GetBytes(items[1], "type").String())
+	})
+
+	t.Run("previous_response_id_preserves_paired_historical_custom_tool_call", func(t *testing.T) {
+		previousFull := []json.RawMessage{
+			json.RawMessage(`{"type":"custom_tool_call","id":"item_1","call_id":"call_1","name":"exec","input":"pwd"}`),
+			json.RawMessage(`{"type":"custom_tool_call_output","call_id":"call_1","output":"/tmp"}`),
+		}
+		items, exists, err := buildOpenAIWSReplayInputSequence(
+			previousFull,
+			true,
+			[]byte(`{"previous_response_id":"resp_1","input":[{"role":"user","content":"continue"}]}`),
+			true,
+		)
+		require.NoError(t, err)
+		require.True(t, exists)
+		require.Len(t, items, 3)
+		require.Equal(t, "custom_tool_call", gjson.GetBytes(items[0], "type").String())
+		require.Equal(t, "custom_tool_call_output", gjson.GetBytes(items[1], "type").String())
+	})
+
+	t.Run("item_reference_does_not_complete_historical_call", func(t *testing.T) {
+		previousFull := []json.RawMessage{
+			json.RawMessage(`{"type":"custom_tool_call","id":"item_1","call_id":"call_1","name":"exec","input":"pwd"}`),
+		}
+		items, exists, err := buildOpenAIWSReplayInputSequence(
+			previousFull,
+			true,
+			[]byte(`{"previous_response_id":"resp_1","input":[{"type":"item_reference","id":"call_1"},{"role":"user","content":"continue"}]}`),
+			true,
+		)
+		require.NoError(t, err)
+		require.True(t, exists)
+		require.Len(t, items, 2)
+		require.Equal(t, "item_reference", gjson.GetBytes(items[0], "type").String())
+		require.Equal(t, "user", gjson.GetBytes(items[1], "role").String())
+	})
+
+	t.Run("previous_response_id_preserves_current_orphan_custom_tool_call", func(t *testing.T) {
+		items, exists, err := buildOpenAIWSReplayInputSequence(
+			lastFull,
+			true,
+			[]byte(`{"previous_response_id":"resp_1","input":[{"type":"custom_tool_call","id":"item_live","call_id":"call_live","name":"exec","input":"pwd"}]}`),
+			true,
+		)
+		require.NoError(t, err)
+		require.True(t, exists)
+		require.Len(t, items, 2)
+		require.Equal(t, "custom_tool_call", gjson.GetBytes(items[1], "type").String())
+		require.Equal(t, "call_live", gjson.GetBytes(items[1], "call_id").String())
 	})
 
 	t.Run("previous_response_id_full_input_replace", func(t *testing.T) {

@@ -94,6 +94,9 @@ func TestForwardBaseURLs_Daily优先(t *testing.T) {
 	if len(urls) == 0 {
 		t.Fatal("ForwardBaseURLs 返回空列表")
 	}
+	if antigravityDailyBaseURL != "https://daily-cloudcode-pa.googleapis.com" {
+		t.Fatalf("daily URL 未与官方客户端对齐: got %s", antigravityDailyBaseURL)
+	}
 
 	// daily URL 应排在第一位
 	if urls[0] != antigravityDailyBaseURL {

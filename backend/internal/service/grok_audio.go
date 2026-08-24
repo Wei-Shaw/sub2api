@@ -16,6 +16,10 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// DefaultGrokRealtimeDialTimeout bounds the pre-accept upstream handshake.
+// The timeout only covers dialing; an established session is not interrupted.
+const DefaultGrokRealtimeDialTimeout = 12 * time.Second
+
 // supportedGrokVoiceHTTPEndpoints are xAI Voice HTTP paths we forward as-is.
 var supportedGrokVoiceHTTPEndpoints = map[string]struct{}{
 	"tts":           {},
@@ -125,35 +129,79 @@ func (s *OpenAIGatewayService) ProxyGrokRealtime(ctx context.Context, c *gin.Con
 	if account.Platform != PlatformGrok {
 		return false, fmt.Errorf("account platform %s is not supported for grok realtime", account.Platform)
 	}
-	base, err := buildGrokVoiceURL(account, s.cfg, "realtime")
-	if err != nil {
-		return false, err
-	}
-	u, err := url.Parse(base)
-	if err != nil {
-		return false, err
-	}
-	u.Scheme = "wss"
-	u.RawQuery = "model=" + url.QueryEscape(firstNonEmpty(model, "grok-voice-latest"))
-	headers := http.Header{"Authorization": []string{"Bearer " + token}}
-	// Match media/voice HTTP: CLI headers only on CLI proxy hosts.
-	if account.IsGrokOAuth() && isGrokCLIProxyTarget(u.String()) {
-		applyGrokCLIHeaders(headers)
-	}
-	if account != nil {
-		account.ApplyHeaderOverrides(headers)
-	}
-
-	dialer := s.getOpenAIWSPassthroughDialer()
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
-	upstream, _, _, err := dialer.Dial(ctx, u.String(), headers, proxyURL)
+	upstream, err := s.OpenGrokRealtime(ctx, account, token, model)
 	if err != nil {
 		return false, err
 	}
 	defer func() { _ = upstream.Close() }()
+	return s.ProxyGrokRealtimeConn(ctx, c, client, upstream)
+}
+
+type GrokRealtimeUpstream struct{ conn openAIWSClientConn }
+
+// GrokRealtimeDialError preserves an HTTP status returned before WebSocket
+// upgrade so handlers can apply the normal Grok account policy.
+type GrokRealtimeDialError struct {
+	StatusCode int
+	Err        error
+}
+
+func (e *GrokRealtimeDialError) Error() string { return e.Err.Error() }
+func (e *GrokRealtimeDialError) Unwrap() error { return e.Err }
+
+func (u *GrokRealtimeUpstream) Close() error {
+	if u == nil || u.conn == nil {
+		return nil
+	}
+	return u.conn.Close()
+}
+
+func (s *OpenAIGatewayService) OpenGrokRealtime(ctx context.Context, account *Account, token, model string) (*GrokRealtimeUpstream, error) {
+	if s == nil || account == nil || account.Platform != PlatformGrok {
+		return nil, fmt.Errorf("grok realtime account is required")
+	}
+	base, err := buildGrokVoiceURL(account, s.cfg, "realtime")
+	if err != nil {
+		return nil, err
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return nil, err
+	}
+	u.Scheme = "wss"
+	q := u.Query()
+	q.Set("model", firstNonEmpty(model, "grok-voice-latest"))
+	u.RawQuery = q.Encode()
+	headers := http.Header{"Authorization": []string{"Bearer " + token}}
+	if account.IsGrokOAuth() && isGrokCLIProxyTarget(u.String()) {
+		applyGrokCLIHeaders(headers)
+	}
+	account.ApplyHeaderOverrides(headers)
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	conn, status, _, err := s.getOpenAIWSPassthroughDialer().Dial(ctx, u.String(), headers, proxyURL)
+	if err != nil {
+		return nil, &GrokRealtimeDialError{StatusCode: status, Err: err}
+	}
+	return &GrokRealtimeUpstream{conn: conn}, nil
+}
+
+// HandleGrokRealtimeUpstreamError applies the shared Grok account policy to a
+// failed pre-accept WebSocket handshake.
+func (s *OpenAIGatewayService) HandleGrokRealtimeUpstreamError(ctx context.Context, account *Account, statusCode int, body []byte) {
+	if statusCode <= 0 {
+		statusCode = http.StatusBadGateway
+	}
+	s.handleGrokAccountUpstreamError(ctx, account, statusCode, nil, body)
+}
+
+func (s *OpenAIGatewayService) ProxyGrokRealtimeConn(ctx context.Context, c *gin.Context, client *coderws.Conn, upstream *GrokRealtimeUpstream) (bool, error) {
+	if s == nil || client == nil || upstream == nil || upstream.conn == nil {
+		return false, fmt.Errorf("realtime connection is required")
+	}
+	conn := upstream.conn
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -163,7 +211,7 @@ func (s *OpenAIGatewayService) ProxyGrokRealtime(ctx context.Context, c *gin.Con
 	// Upstream → client
 	go func() {
 		for {
-			msg, readErr := upstream.ReadMessage(ctx)
+			msg, readErr := conn.ReadMessage(ctx)
 			if readErr != nil {
 				errCh <- readErr
 				return
@@ -197,7 +245,7 @@ func (s *OpenAIGatewayService) ProxyGrokRealtime(ctx context.Context, c *gin.Con
 				errCh <- fmt.Errorf("invalid realtime event: %w", unmarshalErr)
 				return
 			}
-			if writeErr := upstream.WriteJSON(ctx, raw); writeErr != nil {
+			if writeErr := conn.WriteJSON(ctx, raw); writeErr != nil {
 				errCh <- writeErr
 				return
 			}
@@ -205,6 +253,45 @@ func (s *OpenAIGatewayService) ProxyGrokRealtime(ctx context.Context, c *gin.Con
 	}()
 
 	return awaitGrokRealtimeAudioObserved(errCh, &audioObserved)
+}
+
+// ProbeGrokRealtime performs the upstream WebSocket handshake without sending
+// any client-visible events. Handlers use it before accepting the downstream
+// upgrade so authentication and endpoint failures remain ordinary HTTP errors.
+func (s *OpenAIGatewayService) ProbeGrokRealtime(ctx context.Context, account *Account, token, model string) error {
+	if s == nil || account == nil {
+		return fmt.Errorf("realtime service and account are required")
+	}
+	if account.Platform != PlatformGrok {
+		return fmt.Errorf("account platform %s is not supported for grok realtime", account.Platform)
+	}
+	base, err := buildGrokVoiceURL(account, s.cfg, "realtime")
+	if err != nil {
+		return err
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return err
+	}
+	u.Scheme = "wss"
+	q := u.Query()
+	q.Set("model", firstNonEmpty(model, "grok-voice-latest"))
+	u.RawQuery = q.Encode()
+	headers := http.Header{"Authorization": []string{"Bearer " + token}}
+	if account.IsGrokOAuth() && isGrokCLIProxyTarget(u.String()) {
+		applyGrokCLIHeaders(headers)
+	}
+	account.ApplyHeaderOverrides(headers)
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	dialer := s.getOpenAIWSPassthroughDialer()
+	conn, _, _, err := dialer.Dial(ctx, u.String(), headers, proxyURL)
+	if err != nil {
+		return err
+	}
+	return conn.Close()
 }
 
 func awaitGrokRealtimeAudioObserved(errCh <-chan error, audioObserved *atomic.Bool) (bool, error) {

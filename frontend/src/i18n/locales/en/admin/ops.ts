@@ -339,7 +339,16 @@ export default {
         time: 'Time',
         phase: 'Phase',
         status: 'Status',
+        upstreamStatus: 'Upstream Status',
         message: 'Message',
+        rootCause: 'Root Cause',
+        diagnosticPayloads: 'Diagnostic Payloads',
+        payloads: {
+          client: 'Client Response',
+          upstream_message: 'Upstream Message',
+          upstream_detail: 'Upstream Detail',
+          upstream_events: 'Upstream Events'
+        },
         basicInfo: 'Basic Info',
         platform: 'Platform',
         model: 'Model',

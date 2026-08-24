@@ -40,7 +40,7 @@ func TestOpenAIOAuthService_ValidateCodexPersonalAccessToken(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "Bearer at-test-token", gotAuthorization)
 	require.Equal(t, openai.CodexDefaultOriginator, gotOriginator)
-	require.Equal(t, codexCLIUserAgent, gotUserAgent)
+	require.Equal(t, CodexCanonicalUserAgent(), gotUserAgent)
 	require.Equal(t, OpenAIAuthModePersonalAccessToken, info.AuthMode)
 	require.Equal(t, "user@example.com", info.Email)
 	require.Equal(t, "user-123", info.ChatGPTUserID)

@@ -380,6 +380,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ChannelMonitorDingTalkEnabled:           settings.ChannelMonitorDingTalkEnabled,
 		ChannelMonitorDingTalkWebhookConfigured: settings.ChannelMonitorDingTalkWebhookConfigured,
 		ChannelMonitorDingTalkSecretConfigured:  settings.ChannelMonitorDingTalkSecretConfigured,
+		ChannelMonitorShowQuota:                 settings.ChannelMonitorShowQuota,
 
 		GrokDefaultTextModel:           settings.GrokDefaultTextModel,
 		GrokCrossClientModelMapEnabled: settings.GrokCrossClientModelMapEnabled,

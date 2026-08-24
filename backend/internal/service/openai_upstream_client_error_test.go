@@ -164,6 +164,7 @@ func TestHandleErrorResponse_NonDeterministicStatusesKeepGeneric502(t *testing.T
 		{"unprocessable", http.StatusUnprocessableEntity, `{"error":{"message":"Invalid schema for field messages"}}`,
 			http.StatusBadGateway, "upstream_error", "Upstream request failed"},
 		// 401/402/403 是网关运营方的凭据/账单问题，必须继续对客户端屏蔽上游账号状态。
+		// 403 的自由文本不能升级成 durable access-state typed failover；只有明确结构化 code 才可以。
 		{"unauthorized", http.StatusUnauthorized, `{"error":{"message":"Incorrect API key provided: sk-abc"}}`,
 			http.StatusBadGateway, "upstream_error", "Upstream authentication failed, please contact administrator"},
 		{"forbidden", http.StatusForbidden, `{"error":{"message":"Your account is deactivated"}}`,
@@ -183,8 +184,11 @@ func TestHandleErrorResponse_NonDeterministicStatusesKeepGeneric502(t *testing.T
 				newOpenAIUpstreamErrorResponse(tc.statusCode, tc.body),
 				c, newOpenAIUpstreamErrorTestAccount(), nil,
 			)
-
 			require.Error(t, err)
+			if tc.name == "forbidden" {
+				var failoverErr *UpstreamFailoverError
+				require.False(t, errors.As(err, &failoverErr))
+			}
 			require.Equal(t, tc.wantStatus, rec.Code)
 			require.Equal(t, tc.wantType, gjson.Get(rec.Body.String(), "error.type").String())
 			require.Equal(t, tc.wantMsg, gjson.Get(rec.Body.String(), "error.message").String())
