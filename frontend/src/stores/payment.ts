@@ -86,6 +86,16 @@ export const usePaymentStore = defineStore('payment', () => {
     currentOrder.value = null
   }
 
+  /** Get paginated order list */
+  async function getOrderList(params?: { limit?: number; status?: string }): Promise<PaymentOrder[]> {
+    try {
+      const result = await paymentAPI.getOrderList(params)
+      return result.data?.items || []
+    } catch {
+      return []
+    }
+  }
+
   return {
     config,
     currentOrder,
@@ -96,6 +106,7 @@ export const usePaymentStore = defineStore('payment', () => {
     fetchPlans,
     createOrder,
     pollOrderStatus,
-    clearCurrentOrder
+    clearCurrentOrder,
+    getOrderList
   }
 })

@@ -133,6 +133,14 @@
     @apply dark:hover:bg-[#62d9ad];
   }
 
+  .btn-dogpay {
+    @apply bg-[#10B981] text-white shadow-md shadow-[#10B981]/25;
+    @apply hover:bg-[#059669] hover:shadow-lg hover:shadow-[#10B981]/30;
+    @apply active:bg-[#047857];
+    @apply dark:bg-[#34D399] dark:text-gray-950 dark:shadow-[#10B981]/20;
+    @apply dark:hover:bg-[#10B981];
+  }
+
   .btn-alipay {
     @apply bg-[#00AEEF] text-white shadow-md shadow-[#00AEEF]/25;
     @apply hover:bg-[#009dd6] hover:shadow-lg hover:shadow-[#00AEEF]/30;

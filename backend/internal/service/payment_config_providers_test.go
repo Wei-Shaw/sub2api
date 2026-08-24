@@ -114,6 +114,39 @@ func TestValidateProviderRequest(t *testing.T) {
 	}
 }
 
+func TestDogPayProviderInstancesAlwaysDisableRefunds(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	svc := &PaymentConfigService{
+		entClient:     client,
+		encryptionKey: []byte("0123456789abcdef0123456789abcdef"),
+	}
+
+	instance, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
+		ProviderKey:     payment.TypeDogPay,
+		Name:            "DogPay",
+		Config:          map[string]string{"appId": "dogpay-app", "secret": "dogpay-secret"},
+		SupportedTypes:  []string{payment.TypeDogPay},
+		RefundEnabled:   true,
+		AllowUserRefund: true,
+	})
+	require.NoError(t, err)
+	require.False(t, instance.RefundEnabled)
+	require.False(t, instance.AllowUserRefund)
+
+	refundEnabled := true
+	allowUserRefund := true
+	updated, err := svc.UpdateProviderInstance(ctx, instance.ID, UpdateProviderInstanceRequest{
+		RefundEnabled:   &refundEnabled,
+		AllowUserRefund: &allowUserRefund,
+	})
+	require.NoError(t, err)
+	require.False(t, updated.RefundEnabled)
+	require.False(t, updated.AllowUserRefund)
+}
+
 func TestValidateEasyPayCustomMethods(t *testing.T) {
 	t.Parallel()
 

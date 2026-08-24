@@ -5,6 +5,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 )
 
 func paymentProviderConfigCurrency(providerKey string, cfg map[string]string) string {
@@ -14,6 +15,8 @@ func paymentProviderConfigCurrency(providerKey string, cfg map[string]string) st
 		if err == nil {
 			return currency
 		}
+	case payment.TypeDogPay:
+		return provider.DogPayFixedCurrency
 	}
 	return payment.DefaultPaymentCurrency
 }

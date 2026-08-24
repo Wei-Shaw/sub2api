@@ -178,6 +178,12 @@ func TestExtractOutTradeNo(t *testing.T) {
 			rawBody:     `{"name":"payment_intent.succeeded","data":{"object":{"merchant_order_id":"sub2_awx_123"}}}`,
 			want:        "sub2_awx_123",
 		},
+		{
+			name:        "dogpay payment payload",
+			providerKey: payment.TypeDogPay,
+			rawBody:     `{"event_identifier":"pay.transaction.update","data":{"callId":"sub2_dogpay_123"}}`,
+			want:        "sub2_dogpay_123",
+		},
 	}
 
 	for _, tt := range tests {

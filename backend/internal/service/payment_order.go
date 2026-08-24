@@ -305,6 +305,9 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 		}
 		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
 	}
+	if providerKey == payment.TypeDogPay {
+		snapshot["currency"] = provider.DogPayFixedCurrency
+	}
 
 	if len(snapshot) == 1 {
 		return nil

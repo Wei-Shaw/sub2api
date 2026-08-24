@@ -193,6 +193,7 @@ export default {
     buySubscription: 'Recharge / Subscription',
     docs: 'Docs',
     myOrders: 'My Orders',
+    wallet: 'Wallet',
     orderManagement: 'Orders',
     paymentDashboard: 'Payment Dashboard',
     paymentConfig: 'Payment Config',

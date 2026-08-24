@@ -54,6 +54,17 @@ export const paymentAPI = {
     return apiClient.get<BasePaginationResponse<PaymentOrder>>('/payment/orders/my', { params })
   },
 
+  /** Get current user's order list (simplified, uses paginated endpoint with small page size) */
+  getOrderList(params?: { limit?: number; status?: string }) {
+    return apiClient.get<BasePaginationResponse<PaymentOrder>>('/payment/orders/my', {
+      params: {
+        page: 1,
+        page_size: params?.limit || 5,
+        status: params?.status,
+      },
+    })
+  },
+
   /** Get a specific order by ID */
   getOrder(id: number) {
     return apiClient.get<PaymentOrder>(`/payment/orders/${id}`)

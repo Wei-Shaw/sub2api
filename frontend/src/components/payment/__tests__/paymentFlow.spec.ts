@@ -331,6 +331,20 @@ describe('buildCreateOrderPayload', () => {
     })
   })
 
+  it('uses the canonical payment result URL for DogPay', () => {
+    expect(buildCreateOrderPayload({
+      amount: 100,
+      paymentType: 'dogpay',
+      orderType: 'balance',
+      origin: 'https://app.example.com/',
+      isMobile: false,
+      isWechatBrowser: false,
+    })).toMatchObject({
+      payment_type: 'dogpay',
+      return_url: 'https://app.example.com/payment/result',
+    })
+  })
+
   it('passes is_mobile: false when forceQRCode is enabled for alipay', () => {
     expect(buildCreateOrderPayload({
       amount: 50,
