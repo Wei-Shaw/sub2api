@@ -479,6 +479,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		writeCtx, cancel := newOpenAIWSDownstreamWriteContext(ctx, hooks, s.openAIWSWriteTimeout())
 		defer cancel()
 		message = restoreCodexToolNamesFromContext(c, message)
+		eventType := strings.TrimSpace(gjson.GetBytes(message, "type").String())
+		if normalized, ok := normalizeOpenAIResponsesEventCreatedAt(message, eventType); ok {
+			message = normalized
+		}
 		return clientConn.Write(writeCtx, coderws.MessageText, message)
 	}
 

@@ -311,6 +311,33 @@ func TestPassthroughLifecycle_CompletedTurnStartsInterTurnIdle(t *testing.T) {
 	}
 }
 
+func TestPassthroughLifecycle_NormalizesCreatedAtBeforeClientWrite(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	controlCtx, cancelControl := context.WithCancelCause(context.Background())
+	defer cancelControl(context.Canceled)
+	upstream := newStagedPassthroughConn()
+	upstream.Send(`{"type":"response.completed","response":{"id":"resp_created_at","model":"gpt-5.1","created_at":0.5,"vendor_sequence":` + responsesCreatedAtLargeVendorInteger + `,"usage":{"input_tokens":1,"output_tokens":1}}}`)
+	server, serverErr := startPassthroughLifecycleServer(t, controlCtx, newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream), passthroughLifecycleAccount())
+	defer server.Close()
+	clientConn := dialPassthroughLifecycleClient(t, server)
+	defer func() { _ = clientConn.CloseNow() }()
+	require.Equal(t, "response.create", gjson.GetBytes(requirePassthroughUpstreamWrite(t, upstream, time.Second), "type").String())
+
+	event, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "response.completed", gjson.GetBytes(event, "type").String())
+	requireStrictPositiveIntegerJSONPath(t, event, "response.created_at")
+	require.Equal(t, responsesCreatedAtLargeVendorInteger, gjson.GetBytes(event, "response.vendor_sequence").Raw)
+
+	require.NoError(t, clientConn.Close(coderws.StatusNormalClosure, "done"))
+	select {
+	case err := <-serverErr:
+		require.NoError(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("passthrough created_at test did not exit")
+	}
+}
+
 func TestPassthroughLifecycle_ActiveTurnInactivityUsesReadTimeout(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())

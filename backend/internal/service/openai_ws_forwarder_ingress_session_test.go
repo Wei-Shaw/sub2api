@@ -113,8 +113,8 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_KeepLeaseAcrossT
 	captureConn := &openAIWSCaptureConn{
 		events: [][]byte{
 			[]byte(`{"type":"response.output_item.done","item":{"id":"ig_ingress_1","type":"image_generation_call","status":"generating","result":"iVBORw0KGgoAAAANSUhEUg/+=="}}`),
-			[]byte(`{"type":"response.completed","response":{"id":"resp_ingress_turn_1","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`),
-			[]byte(`{"type":"response.completed","response":{"id":"resp_ingress_turn_2","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`),
+			[]byte(`{"type":"response.completed","response":{"id":"resp_ingress_turn_1","model":"gpt-5.1","created_at":0.5,"vendor_sequence":` + responsesCreatedAtLargeVendorInteger + `,"usage":{"input_tokens":1,"output_tokens":1}}}`),
+			[]byte(`{"type":"response.completed","response":{"id":"resp_ingress_turn_2","model":"gpt-5.1","created_at":1e3,"vendor_sequence":` + responsesCreatedAtLargeVendorInteger + `,"usage":{"input_tokens":1,"output_tokens":1}}}`),
 		},
 	}
 	captureDialer := &openAIWSCaptureDialer{conn: captureConn}
@@ -228,6 +228,8 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_KeepLeaseAcrossT
 	firstTurnEvent := readMessage()
 	require.Equal(t, "response.completed", gjson.GetBytes(firstTurnEvent, "type").String())
 	require.Equal(t, "resp_ingress_turn_1", gjson.GetBytes(firstTurnEvent, "response.id").String())
+	requireStrictPositiveIntegerJSONPath(t, firstTurnEvent, "response.created_at")
+	require.Equal(t, responsesCreatedAtLargeVendorInteger, gjson.GetBytes(firstTurnEvent, "response.vendor_sequence").Raw)
 
 	writeMessage(`{
 		"type":"response.create",
@@ -242,6 +244,8 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_KeepLeaseAcrossT
 	secondTurnEvent := readMessage()
 	require.Equal(t, "response.completed", gjson.GetBytes(secondTurnEvent, "type").String())
 	require.Equal(t, "resp_ingress_turn_2", gjson.GetBytes(secondTurnEvent, "response.id").String())
+	requireStrictPositiveIntegerJSONPath(t, secondTurnEvent, "response.created_at")
+	require.Equal(t, responsesCreatedAtLargeVendorInteger, gjson.GetBytes(secondTurnEvent, "response.vendor_sequence").Raw)
 	require.Equal(t, "response.completed", <-turnTerminalCh, "首轮 turn 应保留成功终态")
 	require.Equal(t, "response.completed", <-turnTerminalCh, "第二轮 turn 应保留成功终态")
 

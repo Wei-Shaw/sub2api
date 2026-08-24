@@ -10,6 +10,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 // HTTP POST /v1/responses → forwardOpenAIWSV2 共用 stream/non-stream 的
@@ -50,7 +51,8 @@ func TestForwardOpenAIWSV2_UpstreamDefaultServiceTierWinsOverRequest(t *testing.
 
 			captureConn := &openAIWSCaptureConn{
 				events: [][]byte{
-					[]byte(`{"type":"response.completed","response":{"id":"resp_tier_v2","model":"gpt-5.5","status":"completed","service_tier":"default","usage":{"input_tokens":1,"output_tokens":1}}}`),
+					[]byte(`{"type":"response.created","response":{"id":"resp_tier_v2","model":"gpt-5.5","created_at":"invalid","vendor_sequence":` + responsesCreatedAtLargeVendorInteger + `}}`),
+					[]byte(`{"type":"response.completed","response":{"id":"resp_tier_v2","model":"gpt-5.5","created_at":1e3,"vendor_sequence":` + responsesCreatedAtLargeVendorInteger + `,"status":"completed","service_tier":"default","usage":{"input_tokens":1,"output_tokens":1}}}`),
 				},
 			}
 			captureDialer := &openAIWSCaptureDialer{conn: captureConn}
@@ -91,6 +93,24 @@ func TestForwardOpenAIWSV2_UpstreamDefaultServiceTierWinsOverRequest(t *testing.
 			require.Equal(t, "default", *result.ServiceTier)
 			require.Equal(t, "priority", captureConn.lastWrite["service_tier"],
 				"outbound WS payload still carries the requested Fast tier")
+			if tc.stream {
+				lifecycle := make(map[string][]byte)
+				forEachOpenAISSEFrame(rec.Body.String(), func(eventType string, data []byte) {
+					eventType = effectiveOpenAISSEEventType(data, eventType)
+					if eventType == "response.created" || eventType == "response.completed" {
+						lifecycle[eventType] = append([]byte(nil), data...)
+					}
+				})
+				for _, eventType := range []string{"response.created", "response.completed"} {
+					payload := lifecycle[eventType]
+					require.NotEmpty(t, payload, eventType)
+					requireStrictPositiveIntegerJSONPath(t, payload, "response.created_at")
+					require.Equal(t, responsesCreatedAtLargeVendorInteger, gjson.GetBytes(payload, "response.vendor_sequence").Raw)
+				}
+			} else {
+				requireStrictPositiveIntegerJSONPath(t, rec.Body.Bytes(), "created_at")
+				require.Equal(t, responsesCreatedAtLargeVendorInteger, gjson.GetBytes(rec.Body.Bytes(), "vendor_sequence").Raw)
+			}
 		})
 	}
 }

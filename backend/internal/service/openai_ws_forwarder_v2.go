@@ -579,6 +579,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 				}
 			}
 			message = restoreCodexToolNamesFromContext(c, message)
+			if normalized, ok := normalizeOpenAIResponsesEventCreatedAt(message, eventType); ok {
+				message = normalized
+			}
 		}
 		if openAIWSMessageShouldParseUsage(eventType, message) {
 			parseOpenAIWSResponseUsageFromCompletedEvent(message, usage)
@@ -731,6 +734,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			finalResponse = s.replaceModelInResponseBody(finalResponse, mappedModel, originalModel)
 		}
 		finalResponse = s.correctToolCallsInResponseBody(finalResponse)
+		if normalized, ok := normalizeOpenAIResponsesCreatedAt(finalResponse, "created_at"); ok {
+			finalResponse = normalized
+		}
 		populateOpenAIUsageFromResponseJSON(finalResponse, usage)
 		if responseID == "" {
 			responseID = strings.TrimSpace(gjson.GetBytes(finalResponse, "id").String())
