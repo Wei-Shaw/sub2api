@@ -58,7 +58,8 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 	var token string
 	var upstream *service.GrokRealtimeUpstream
 	var candidateSeen bool
-	for attempts := 0; attempts < 4; attempts++ {
+	accountAttemptLimit := h.maxAccountSwitches + 1
+	for attempts := 0; attempts < accountAttemptLimit; attempts++ {
 		// Realtime's voice model is not a text-model capability. Passing a
 		// concrete text model here would reject accounts mapped only to an
 		// older/default text model before the upstream handshake can decide.
