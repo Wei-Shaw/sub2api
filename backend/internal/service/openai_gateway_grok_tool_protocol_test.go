@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -350,6 +351,115 @@ func TestForwardGrokResponsesAPIKeyRestoresClientToolsFromSSEForNonStreamingRequ
 	require.Equal(t, "client", gjson.GetBytes(response, "output.1.execution").String())
 	require.Equal(t, "collaboration", gjson.GetBytes(response, "output.2.namespace").String())
 	require.Equal(t, "send_message", gjson.GetBytes(response, "output.2.name").String())
+}
+
+func TestForwardGrokResponsesClientToolContinuationSurvivesRepeated500Recovery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	continuationBody := grokClientToolProtocolRequest(false)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusInternalServerError,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"fixture transient 500 attempt 1"}}`)),
+		},
+		{
+			StatusCode: http.StatusInternalServerError,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"fixture transient 500 attempt 2"}}`)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{
+				"id":"resp_recovery_tool","object":"response","model":"grok-4.5","status":"completed",
+				"output":[
+					{"type":"function_call","id":"item_custom_next","call_id":"call_custom_next","name":"apply_patch","arguments":"{\"input\":\"*** Recovery Patch\"}","status":"completed"}
+				],
+				"usage":{"input_tokens":3,"output_tokens":1,"total_tokens":4}
+			}`)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{
+				"id":"resp_recovery_final","object":"response","model":"grok-4.5","status":"completed",
+				"output":[
+					{"type":"message","id":"msg_recovery_final","role":"assistant","status":"completed","content":[{"type":"output_text","text":"fixture-recovery-ok"}]}
+				],
+				"usage":{"input_tokens":4,"output_tokens":1,"total_tokens":5}
+			}`)),
+		},
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	account := grokProtocolAPIKeyAccount(7105)
+
+	forward := func(body []byte) (*httptest.ResponseRecorder, *OpenAIForwardResult, error) {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", false, time.Now())
+		return recorder, result, err
+	}
+
+	for attempt := 1; attempt <= 2; attempt++ {
+		recorder, result, err := forward(continuationBody)
+		require.Error(t, err, "transient attempt %d must remain an upstream failure", attempt)
+		require.Nil(t, result)
+		var failoverErr *UpstreamFailoverError
+		require.True(t, errors.As(err, &failoverErr), "transient attempt %d must reach the upstream failover boundary", attempt)
+		require.Equal(t, http.StatusInternalServerError, failoverErr.StatusCode)
+		require.Contains(t, string(failoverErr.ResponseBody), fmt.Sprintf("fixture transient 500 attempt %d", attempt))
+		require.Empty(t, recorder.Body.Bytes(), "transient attempt %d must not write a client response before failover", attempt)
+	}
+
+	recoveryRecorder, recoveryResult, err := forward(continuationBody)
+	require.NoError(t, err)
+	require.NotNil(t, recoveryResult)
+	require.Equal(t, "resp_recovery_tool", recoveryResult.ResponseID)
+	require.Len(t, upstream.bodies, 3)
+	for index, body := range upstream.bodies {
+		assertGrokProtocolRequestLowered(t, body)
+		require.NotContains(t, strings.ToLower(string(body)), "[tool call", "attempt %d flattened a tool call into text", index+1)
+		require.NotContains(t, strings.ToLower(string(body)), "[tool result", "attempt %d flattened a tool result into text", index+1)
+		if index > 0 {
+			require.Equal(t, upstream.bodies[0], body, "client retry body must remain byte-identical after gateway lowering")
+		}
+	}
+
+	recoveryResponse := recoveryRecorder.Body.Bytes()
+	require.True(t, json.Valid(recoveryResponse))
+	require.Equal(t, "custom_tool_call", gjson.GetBytes(recoveryResponse, "output.0.type").String())
+	require.Equal(t, "call_custom_next", gjson.GetBytes(recoveryResponse, "output.0.call_id").String())
+	require.Equal(t, "apply_patch", gjson.GetBytes(recoveryResponse, "output.0.name").String())
+	require.Equal(t, "*** Recovery Patch", gjson.GetBytes(recoveryResponse, "output.0.input").String())
+	require.False(t, gjson.GetBytes(recoveryResponse, "output.0.arguments").Exists())
+
+	secondContinuation := []byte(`{
+		"model":"grok","stream":false,
+		"tools":[{"type":"custom","name":"apply_patch","description":"apply a patch","format":{"type":"grammar","syntax":"lark","definition":"start: /.+/"}}],
+		"input":[
+			{"type":"custom_tool_call","id":"item_custom_next","call_id":"call_custom_next","name":"apply_patch","input":"*** Recovery Patch"},
+			{"type":"custom_tool_call_output","call_id":"call_custom_next","output":"Done recovery"}
+		]
+	}`)
+	finalRecorder, finalResult, err := forward(secondContinuation)
+	require.NoError(t, err)
+	require.NotNil(t, finalResult)
+	require.Equal(t, "resp_recovery_final", finalResult.ResponseID)
+	require.Len(t, upstream.bodies, 4)
+	finalUpstreamBody := upstream.bodies[3]
+	require.Equal(t, "function_call", gjson.GetBytes(finalUpstreamBody, "input.0.type").String())
+	require.Equal(t, "call_custom_next", gjson.GetBytes(finalUpstreamBody, "input.0.call_id").String())
+	require.Equal(t, "apply_patch", gjson.GetBytes(finalUpstreamBody, "input.0.name").String())
+	require.JSONEq(t, `{"input":"*** Recovery Patch"}`, gjson.GetBytes(finalUpstreamBody, "input.0.arguments").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(finalUpstreamBody, "input.1.type").String())
+	require.Equal(t, "call_custom_next", gjson.GetBytes(finalUpstreamBody, "input.1.call_id").String())
+	require.Equal(t, "Done recovery", gjson.GetBytes(finalUpstreamBody, "input.1.output").String())
+	require.NotContains(t, strings.ToLower(string(finalUpstreamBody)), "[tool call")
+	require.NotContains(t, strings.ToLower(string(finalUpstreamBody)), "[tool result")
+	require.Equal(t, "fixture-recovery-ok", gjson.Get(finalRecorder.Body.String(), "output.0.content.0.text").String())
 }
 
 func TestForwardGrokResponsesAPIKeyRestoresClientToolsStreaming(t *testing.T) {
