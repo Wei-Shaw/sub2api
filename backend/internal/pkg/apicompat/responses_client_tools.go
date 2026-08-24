@@ -452,7 +452,9 @@ func RestoreResponsesClientToolPayload(payload []byte, mapping ResponsesClientTo
 		return payload, false, nil
 	}
 	var value any
-	if err := json.Unmarshal(payload, &value); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
 		return payload, false, err
 	}
 	changed := restoreClientToolValue(value, &mapping)
@@ -677,9 +679,72 @@ func (r *ResponsesClientToolStreamRestorer) RestoreEvent(payload []byte) ([][]by
 		if err != nil {
 			return nil, false, err
 		}
+		encoded, err = preserveResponsesClientToolEventRawFields(payload, restored, encoded)
+		if err != nil {
+			return nil, false, err
+		}
 		result = append(result, encoded)
 	}
 	return result, true, nil
+}
+
+// preserveResponsesClientToolEventRawFields carries opaque upstream fields
+// through the typed lifecycle transform. Protocol fields intentionally removed
+// while converting function calls to client-tool calls stay removed.
+func preserveResponsesClientToolEventRawFields(payload []byte, restored ResponsesStreamEvent, encoded []byte) ([]byte, error) {
+	if restored.Item == nil || (restored.Type != "response.output_item.added" && restored.Type != "response.output_item.done") {
+		return encoded, nil
+	}
+
+	var originalRoot map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &originalRoot); err != nil {
+		return nil, err
+	}
+	var restoredRoot map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &restoredRoot); err != nil {
+		return nil, err
+	}
+	for key, value := range originalRoot {
+		if _, exists := restoredRoot[key]; !exists {
+			restoredRoot[key] = value
+		}
+	}
+
+	var originalItem map[string]json.RawMessage
+	if err := json.Unmarshal(originalRoot["item"], &originalItem); err != nil {
+		return encoded, nil
+	}
+	var restoredItem map[string]json.RawMessage
+	if err := json.Unmarshal(restoredRoot["item"], &restoredItem); err != nil {
+		return encoded, nil
+	}
+
+	blocked := map[string]bool{}
+	switch restored.Item.Type {
+	case "custom_tool_call":
+		blocked["arguments"] = true
+		blocked["namespace"] = true
+		if restored.Type == "response.output_item.added" {
+			blocked["input"] = true
+		}
+	case "tool_search_call":
+		blocked["name"] = true
+		blocked["namespace"] = true
+	}
+	for key, value := range originalItem {
+		if blocked[key] {
+			continue
+		}
+		if _, exists := restoredItem[key]; !exists {
+			restoredItem[key] = value
+		}
+	}
+	itemJSON, err := json.Marshal(restoredItem)
+	if err != nil {
+		return nil, err
+	}
+	restoredRoot["item"] = itemJSON
+	return json.Marshal(restoredRoot)
 }
 
 func isResponsesClientToolTerminalEvent(typ string) bool {
@@ -742,7 +807,9 @@ func (r *ResponsesClientToolStreamRestorer) resequenceRaw(payload []byte, sequen
 		return [][]byte{payload}, false, nil
 	}
 	var raw map[string]any
-	if err := json.Unmarshal(payload, &raw); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber()
+	if err := decoder.Decode(&raw); err != nil {
 		return nil, false, err
 	}
 	raw["sequence_number"] = r.nextSeq

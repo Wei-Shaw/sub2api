@@ -641,6 +641,60 @@ func TestResponsesClientToolStreamRestorer_RawEventsPreserveUnknownFieldsAndOutp
 	require.Equal(t, "pwd", done[1].Input)
 }
 
+func TestRestoreResponsesClientToolPayload_PreservesOpaqueFieldsAndLargeIntegers(t *testing.T) {
+	mapping := ResponsesClientToolMapping{CustomTools: map[string]bool{"exec": true}}
+	payload := []byte(`{"type":"response.completed","sequence_number":7,"vendor_sequence":900719925474099312345,"response":{"id":"resp_tools","output":[{"type":"function_call","id":"fc_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"echo hi\"}","status":"completed","vendor_counter":900719925474099312345,"vendor_extension":{"trace":"keep"}}]}}`)
+
+	restored, changed, err := RestoreResponsesClientToolPayload(payload, mapping)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "custom_tool_call", gjson.GetBytes(restored, "response.output.0.type").String())
+	require.Equal(t, "ctc_exec", gjson.GetBytes(restored, "response.output.0.id").String())
+	require.Equal(t, "echo hi", gjson.GetBytes(restored, "response.output.0.input").String())
+	require.Equal(t, "completed", gjson.GetBytes(restored, "response.output.0.status").String())
+	require.Equal(t, "keep", gjson.GetBytes(restored, "response.output.0.vendor_extension.trace").String())
+	require.Equal(t, "900719925474099312345", gjson.GetBytes(restored, "response.output.0.vendor_counter").Raw)
+	require.Equal(t, "900719925474099312345", gjson.GetBytes(restored, "vendor_sequence").Raw)
+}
+
+func TestResponsesClientToolStreamRestorer_PreservesOpaqueDoneItemFields(t *testing.T) {
+	restorer := NewResponsesClientToolStreamRestorer(ResponsesClientToolMapping{CustomTools: map[string]bool{"exec": true}})
+	payload := []byte(`{"type":"response.output_item.done","sequence_number":3,"output_index":0,"vendor_sequence":900719925474099312345,"item":{"type":"function_call","id":"fc_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"echo hi\"}","status":"completed","vendor_counter":900719925474099312345,"vendor_extension":{"trace":"keep"}}}`)
+
+	restored, changed, err := restorer.RestoreEvent(payload)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Len(t, restored, 1)
+	require.Equal(t, "custom_tool_call", gjson.GetBytes(restored[0], "item.type").String())
+	require.Equal(t, "ctc_exec", gjson.GetBytes(restored[0], "item.id").String())
+	require.Equal(t, "echo hi", gjson.GetBytes(restored[0], "item.input").String())
+	require.False(t, gjson.GetBytes(restored[0], "item.arguments").Exists())
+	require.Equal(t, "completed", gjson.GetBytes(restored[0], "item.status").String())
+	require.Equal(t, "keep", gjson.GetBytes(restored[0], "item.vendor_extension.trace").String())
+	require.Equal(t, "900719925474099312345", gjson.GetBytes(restored[0], "item.vendor_counter").Raw)
+	require.Equal(t, "900719925474099312345", gjson.GetBytes(restored[0], "vendor_sequence").Raw)
+}
+
+func TestResponsesClientToolStreamRestorer_ResequencePreservesLargeIntegers(t *testing.T) {
+	restorer := NewResponsesClientToolStreamRestorer(ResponsesClientToolMapping{CustomTools: map[string]bool{"exec": true}})
+
+	_, _, err := restorer.RestoreEvent([]byte(`{"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"type":"function_call","id":"fc_exec","call_id":"call_exec","name":"exec"}}`))
+	require.NoError(t, err)
+	suppressed, changed, err := restorer.RestoreEvent([]byte(`{"type":"response.function_call_arguments.delta","sequence_number":1,"output_index":0,"item_id":"fc_exec","delta":"{\"input\":\"echo hi\"}"}`))
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Empty(t, suppressed)
+
+	resequenced, changed, err := restorer.RestoreEvent([]byte(`{"type":"response.output_text.delta","sequence_number":2,"output_index":1,"delta":"ok","vendor_sequence":900719925474099312345}`))
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Len(t, resequenced, 1)
+	require.Equal(t, int64(1), gjson.GetBytes(resequenced[0], "sequence_number").Int())
+	require.Equal(t, "900719925474099312345", gjson.GetBytes(resequenced[0], "vendor_sequence").Raw)
+}
+
 func TestResponsesClientToolStreamRestorer_RestoresAllTerminalEvents(t *testing.T) {
 	for _, eventType := range []string{
 		"response.completed",
