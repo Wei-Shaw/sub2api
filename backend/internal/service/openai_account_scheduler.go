@@ -2123,6 +2123,10 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 	excludedIDs map[int64]struct{},
 	requiredCapability OpenAIImagesCapability,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	// 本入口只服务 /v1/images/*。handler 已在请求 ctx 上打过该标记，这里再补一次是
+	// 为不经 handler 装配 ctx 的内部调用兜底：标记同时决定生图请求豁免文本额度
+	// 自动暂停（shouldAutoPauseOpenAIAccountByQuota）与图片维度的限流口径。
+	ctx = WithOpenAIImagesEndpoint(ctx)
 	selection, decision, err := s.selectAccountWithScheduler(ctx, groupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", requiredCapability, false, PlatformOpenAI, false, false)
 	if err == nil && selection != nil && selection.Account != nil {
 		return selection, decision, nil
