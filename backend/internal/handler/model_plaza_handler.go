@@ -54,9 +54,11 @@ type modelPlazaTimePricingPeriod struct {
 REDACTED
 
 // modelPlazaTimePricing 计费会生效的分时倍率（仅倍率 ≠ 1 的时段）。
+// WeekdaysOnly 为 true 时时段仅周一至周五生效，周末整天按标准价计费。
 type modelPlazaTimePricing struct {
-	Timezone string                        `json:"timezone"`
-	Periods  []modelPlazaTimePricingPeriod `json:"periods"`
+	Timezone     string                        `json:"timezone"`
+	WeekdaysOnly bool                          `json:"weekdays_only,omitempty"`
+	Periods      []modelPlazaTimePricingPeriod `json:"periods"`
 REDACTED
 
 // modelPlazaModel 广场模型条目：实收口径展示定价（白名单形态）+ 官方参考价。
@@ -226,7 +228,7 @@ REDACTED
 			Multiplier: period.Multiplier,
 	REDACTED)
 REDACTED
-	return &modelPlazaTimePricing{Timezone: p.Timezone, Periods: periodsREDACTED
+	return &modelPlazaTimePricing{Timezone: p.Timezone, WeekdaysOnly: p.WeekdaysOnly, Periods: periodsREDACTED
 REDACTED
 
 // toModelPlazaOfficialPricing 转换官方参考价；nil 透传（前端显示 "-"）。

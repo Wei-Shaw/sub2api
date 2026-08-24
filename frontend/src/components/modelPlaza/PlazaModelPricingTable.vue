@@ -70,8 +70,11 @@
               <span
                 v-if="period"
                 class="inline-flex items-center whitespace-nowrap rounded-md bg-gray-100 px-1 py-0.5 font-mono text-[10px] font-medium text-gray-500 dark:bg-dark-700/70 dark:text-dark-300"
-                :title="t('modelPlaza.table.timePricingRowHint', { timezone: m.time_pricing?.timezone REDACTED)"
+                :title="timePricingRowHint(m)"
               >
+                <span v-if="m.time_pricing?.weekdays_only" class="mr-1 font-sans">{{
+                  t('modelPlaza.table.timePricingWeekdays')
+                REDACTEDREDACTED</span>
                 {{ formatTimeWindow(period) REDACTEDREDACTED
               </span>
               <span
@@ -423,6 +426,14 @@ REDACTED
 /** 分时倍率时段(后端只给出倍率 ≠ 1 的时段,已升序)。 */
 function timePeriods(m: PlazaModel): PlazaTimePricingPeriod[] {
   return m.time_pricing?.periods ?? []
+REDACTED
+
+/** 时段行 tooltip:仅工作日生效的配置换用带周末回落说明的文案。 */
+function timePricingRowHint(m: PlazaModel): string {
+  const key = m.time_pricing?.weekdays_only
+    ? 'modelPlaza.table.timePricingRowHintWeekdays'
+    : 'modelPlaza.table.timePricingRowHint'
+  return t(key, { timezone: m.time_pricing?.timezone REDACTED)
 REDACTED
 
 /** “00:30–08:30”;整分钟的 HH:mm:ss 省略秒。 */

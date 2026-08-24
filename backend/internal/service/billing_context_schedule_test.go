@@ -515,6 +515,7 @@ REDACTEDREDACTED
 	REDACTED
 		require.NotNil(t, sched.TimePricing)
 		require.Equal(t, "Asia/Shanghai", sched.TimePricing.Timezone)
+		require.False(t, sched.TimePricing.WeekdaysOnly)
 		require.Equal(t, []TimePricingPeriod{
 			{StartTime: "00:30", EndTime: "08:30", Multiplier: 0.5REDACTED,
 			{StartTime: "18:00", EndTime: "22:00:00", Multiplier: 1.2REDACTED,
@@ -536,6 +537,43 @@ REDACTEDREDACTED
 			{time.Date(2026, 8, 23, 12, 30, 0, 0, loc), 1REDACTED,
 			{time.Date(2026, 8, 23, 21, 59, 59, 0, loc), 1.2REDACTED,
 			{time.Date(2026, 8, 23, 22, 0, 0, 0, loc), 1REDACTED,
+	REDACTED {
+			cost, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
+				Ctx: context.Background(), Model: "claude-sonnet-4", Group: group, Tokens: UsageTokens{InputTokens: 1000REDACTED,
+				RateMultiplier: 1, PricingAt: tc.at, Resolver: resolver, Resolved: resolved,
+		REDACTED)
+		REDACTED
+			assertCostClose(t, 1000*2e-6*tc.want, cost.ActualCost, "at %s", tc.at)
+	REDACTED
+REDACTED)
+
+	t.Run("仅工作日配置透传标注且时段仍列出", func(t *testing.T) {
+		weekdays := &ChannelTimePricing{Timezone: "Asia/Shanghai", WeekdaysOnly: true, Periods: []ChannelTimePricingPeriod{
+			{StartTime: "00:30", EndTime: "08:30", Multiplier: 0.5REDACTED,
+	REDACTEDREDACTED
+		bs, resolver := newTokenCostTestEnv(t, PlatformAnthropic, sonnetChannelWithTimePricing(weekdays), nil)
+		sched, err := bs.ResolveContextPricingSchedule(context.Background(), resolver, ContextPricingScheduleInput{
+			Model: "claude-sonnet-4", Group: enabledGroup(PlatformAnthropic), Platform: PlatformAnthropic,
+	REDACTED)
+	REDACTED
+		require.NotNil(t, sched.TimePricing, "探针锚点必须落在工作日，否则仅工作日配置的时段会被整组剔除")
+		require.True(t, sched.TimePricing.WeekdaysOnly)
+		require.Equal(t, []TimePricingPeriod{
+			{StartTime: "00:30", EndTime: "08:30", Multiplier: 0.5REDACTED,
+	REDACTED, sched.TimePricing.Periods)
+
+		// 对账：工作日时段内乘倍率，周末同一时段按标准价
+		group := enabledGroup(PlatformAnthropic)
+		gid := group.ID
+		resolved := resolver.Resolve(context.Background(), PricingInput{Model: "claude-sonnet-4", GroupID: &gid, Group: groupREDACTED)
+		loc, err := time.LoadLocation("Asia/Shanghai")
+	REDACTED
+		for _, tc := range []struct {
+			at   time.Time
+			want float64
+	REDACTED{
+			{time.Date(2026, 8, 24, 3, 0, 0, 0, loc), 0.5REDACTED, // 周一
+			{time.Date(2026, 8, 23, 3, 0, 0, 0, loc), 1REDACTED,   // 周日
 	REDACTED {
 			cost, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
 				Ctx: context.Background(), Model: "claude-sonnet-4", Group: group, Tokens: UsageTokens{InputTokens: 1000REDACTED,

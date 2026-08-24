@@ -38,6 +38,8 @@ REDACTED
 export interface PlazaTimePricing {
   /** IANA 时区名，如 Asia/Shanghai。 */
   timezone: string
+  /** true 时时段仅周一至周五生效，周末整天按标准价计费。 */
+  weekdays_only?: boolean
   periods: PlazaTimePricingPeriod[]
 REDACTED
 

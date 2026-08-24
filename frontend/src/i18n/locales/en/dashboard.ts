@@ -605,6 +605,9 @@ export default {
       tierHintMarginal: 'Only the portion above the threshold is billed at this tier; output is unaffected',
       marginalBadge: 'excess-only tiers',
       timePricingRowHint: 'Requests made within this period ({timezoneREDACTED time) are billed at the prices in this row',
+      timePricingRowHintWeekdays:
+        'On weekdays (Mon–Fri) only, requests made within this period ({timezoneREDACTED time) are billed at the prices in this row; weekends use the standard prices',
+      timePricingWeekdays: 'Weekdays',
       timePricingRateHint: 'Effective rate {rateREDACTED × period multiplier {multiplierREDACTED',
       paidPrice: 'Your Price (Discounted)',
       officialPrice: 'Official Price',

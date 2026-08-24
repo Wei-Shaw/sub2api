@@ -610,6 +610,9 @@ export default {
       tierHintMarginal: '仅超过阈值的部分按该档计价，输出不加价',
       marginalBadge: '超出部分计价',
       timePricingRowHint: '按 {timezoneREDACTED 时间，在该时段内发起的请求按本行价格计费',
+      timePricingRowHintWeekdays:
+        '按 {timezoneREDACTED 时间，仅工作日（周一至周五）在该时段内发起的请求按本行价格计费，周末全天按标准价',
+      timePricingWeekdays: '工作日',
       timePricingRateHint: '生效倍率 {rateREDACTED × 时段倍率 {multiplierREDACTED',
       paidPrice: '实付价格(折后)',
       officialPrice: '官方价格',

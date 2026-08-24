@@ -192,6 +192,13 @@ func TestToModelPlazaGroupDTO_TimePricing(t *testing.T) {
 			TimePricing: &service.TimePricingSchedule{Timezone: "Asia/Shanghai", Periods: []service.TimePricingPeriod{
 				{StartTime: "00:30", EndTime: "08:30", Multiplier: 0.5REDACTED,
 	REDACTED
+	REDACTED, {
+			Name:     "deepseek-reasoner",
+			Platform: "deepseek",
+			Pricing:  &service.ChannelModelPricing{BillingMode: service.BillingModeToken, InputPrice: testPtr(0.56e-6)REDACTED,
+			TimePricing: &service.TimePricingSchedule{Timezone: "Asia/Shanghai", WeekdaysOnly: true, Periods: []service.TimePricingPeriod{
+				{StartTime: "00:30", EndTime: "08:30", Multiplier: 0.5REDACTED,
+	REDACTED
 REDACTED
 REDACTED
 	raw, err := json.Marshal(toModelPlazaGroupDTO(&g, nil))
@@ -201,10 +208,16 @@ REDACTED
 	model := decoded["models"].([]any)[0].(map[string]any)
 	tp := model["time_pricing"].(map[string]any)
 	require.Equal(t, "Asia/Shanghai", tp["timezone"])
+	_, hasWeekdaysOnly := tp["weekdays_only"]
+	require.False(t, hasWeekdaysOnly, "未开启仅工作日时字段省略")
 	periods := tp["periods"].([]any)
 	require.Len(t, periods, 1)
 	first := periods[0].(map[string]any)
 	require.Equal(t, "00:30", first["start_time"])
 	require.Equal(t, "08:30", first["end_time"])
 	require.InDelta(t, 0.5, first["multiplier"].(float64), 1e-12)
+
+	weekdaysModel := decoded["models"].([]any)[1].(map[string]any)
+	weekdaysTP := weekdaysModel["time_pricing"].(map[string]any)
+	require.Equal(t, true, weekdaysTP["weekdays_only"])
 REDACTED

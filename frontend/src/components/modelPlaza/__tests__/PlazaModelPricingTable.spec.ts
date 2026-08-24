@@ -582,6 +582,26 @@ describe('PlazaModelPricingTable 分时计价', () => {
     expect(nightCells[4].text()).toContain('$3.00')
   REDACTED)
 
+  it('仅工作日生效时时段行带工作日前缀,tooltip 换用周末回落文案', () => {
+    const model = timePricedModel()
+    model.time_pricing!.weekdays_only = true
+    const wrapper = mountTable([model], 1)
+    const trs = wrapper.findAll('tbody tr')
+    expect(trs).toHaveLength(3)
+
+    const nightCells = trs[1].findAll('td')
+    expect(nightCells[0].text()).toContain('modelPlaza.table.timePricingWeekdays')
+    expect(nightCells[0].text()).toContain('00:30–08:30')
+    expect(nightCells[0].find('[title="modelPlaza.table.timePricingRowHintWeekdays"]').exists()).toBe(true)
+    expect(nightCells[0].find('[title="modelPlaza.table.timePricingRowHint"]').exists()).toBe(false)
+  REDACTED)
+
+  it('每日生效(无 weekdays_only)不渲染工作日前缀', () => {
+    const wrapper = mountTable([timePricedModel()], 1)
+    expect(wrapper.find('tbody').text()).not.toContain('modelPlaza.table.timePricingWeekdays')
+    expect(wrapper.find('[title="modelPlaza.table.timePricingRowHint"]').exists()).toBe(true)
+  REDACTED)
+
   it('无分时倍率时只有一行,不渲染时段标注', () => {
     const wrapper = mountTable([tokenModel()], 1)
     expect(wrapper.findAll('tbody tr')).toHaveLength(1)
