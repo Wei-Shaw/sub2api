@@ -332,6 +332,12 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		if err != nil {
 			return nil, fmt.Errorf("adapt %s client tools: %w", openAIWSHTTPBridgeToolUpstreamName(account), err)
 		}
+		if account.Platform == PlatformGrok {
+			body, err = applyGrokCodexClientToolPolicies(body, clientToolMapping)
+			if err != nil {
+				return nil, fmt.Errorf("apply Grok WS HTTP bridge client-tool policy: %w", err)
+			}
+		}
 		if account.Platform == PlatformGrok && !grokExplicitToolsField && !grokExplicitToolIntent && len(inheritedLoweredTools) > 0 && hasGrokResponsesToolIntent(body) {
 			// This continuation omitted tools, so the pre-adapter source cannot
 			// represent the effective inherited declarations. Cache routing must

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -322,6 +323,109 @@ func TestProxyOpenAIWSHTTPBridgeTurnGrokPromotesDiscoveryAndRestoresNamespaceSSE
 	require.Equal(t, "multi_agent_v1", gjson.GetBytes(events[2], "item.namespace").String())
 	require.Equal(t, "spawn_agent", gjson.GetBytes(events[3], "response.output.0.name").String())
 	require.Equal(t, "multi_agent_v1", gjson.GetBytes(events[3], "response.output.0.namespace").String())
+}
+
+func TestProxyOpenAIWSHTTPBridgeTurnGrokForcesPendingWaitWithInheritedTools(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	completed := "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_done\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n"
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(completed))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(completed))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(completed))},
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID: 5767, Platform: PlatformGrok, Type: AccountTypeOAuth, Concurrency: 1,
+		Credentials: map[string]any{"base_url": xai.DefaultCLIBaseURL},
+	}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+
+	first, err := json.Marshal(map[string]any{
+		"type": "response.create", "model": "grok-4.6", "stream": true,
+		"tools": []any{
+			map[string]any{
+				"type": "custom", "name": "exec", "description": grokCodexExecDescriptionFixture,
+				"format": map[string]any{"type": "grammar"},
+			},
+			map[string]any{
+				"type": "function", "name": "wait", "description": "Wait for a yielded exec cell.",
+				"parameters": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"cell_id": map[string]any{"type": "string"},
+					},
+					"required": []any{"cell_id"},
+				},
+			},
+		},
+		"input": "start",
+	})
+	require.NoError(t, err)
+	_, err = svc.proxyOpenAIWSHTTPBridgeTurn(
+		context.Background(), c, account, "access-token", first, len(first),
+		"grok-4.6", "", "", "", "", 1, func([]byte) error { return nil },
+	)
+	require.NoError(t, err)
+
+	second := []byte(`{
+		"type":"response.create","model":"grok-4.6","stream":true,"tool_choice":"auto",
+		"input":[
+			{"type":"custom_tool_call","id":"ctc_exec_1","call_id":"call_exec_1","name":"exec","input":"await work"},
+			{"type":"custom_tool_call_output","id":"ctco_exec_1","call_id":"call_exec_1","output":[
+				{"type":"input_text","text":"Script running with cell ID 113"}
+			]}
+		]
+	}`)
+	_, err = svc.proxyOpenAIWSHTTPBridgeTurn(
+		context.Background(), c, account, "access-token", second, len(second),
+		"grok-4.6", "", "", "", "", 2, func([]byte) error { return nil },
+	)
+	require.NoError(t, err)
+
+	third := []byte(`{
+		"type":"response.create","model":"grok-4.6","stream":true,"tool_choice":"auto",
+		"input":[
+			{"type":"custom_tool_call","id":"ctc_exec_1","call_id":"call_exec_1","name":"exec","input":"await work"},
+			{"type":"custom_tool_call_output","id":"ctco_exec_1","call_id":"call_exec_1","output":"Script running with cell ID 113"},
+			{"type":"function_call","id":"fc_wait_1","call_id":"call_wait_1","name":"wait","arguments":"{\"cell_id\":\"113\"}"},
+			{"type":"function_call_output","id":"fco_wait_1","call_id":"call_wait_1","output":"Process exited with code 0\nfixture-terminal-ok"}
+		]
+	}`)
+	_, err = svc.proxyOpenAIWSHTTPBridgeTurn(
+		context.Background(), c, account, "access-token", third, len(third),
+		"grok-4.6", "", "", "", "", 3, func([]byte) error { return nil },
+	)
+	require.NoError(t, err)
+
+	require.Len(t, upstream.bodies, 3)
+	secondBody := upstream.bodies[1]
+	require.Equal(t, "function", gjson.GetBytes(secondBody, "tool_choice.type").String())
+	require.Equal(t, "wait", gjson.GetBytes(secondBody, "tool_choice.name").String())
+	require.False(t, gjson.GetBytes(secondBody, "tool_choice.function").Exists())
+	require.Equal(t, "function", gjson.GetBytes(secondBody, "tools.0.type").String())
+	require.Equal(t, "exec", gjson.GetBytes(secondBody, "tools.0.name").String())
+	require.Equal(t, 1, strings.Count(gjson.GetBytes(secondBody, "tools.0.description").String(), "CRITICAL ASYNC COMPLETION RULE"))
+	require.Equal(t, "function", gjson.GetBytes(secondBody, "tools.1.type").String())
+	require.Equal(t, "wait", gjson.GetBytes(secondBody, "tools.1.name").String())
+	require.Equal(t, 1, strings.Count(gjson.GetBytes(secondBody, "tools.1.description").String(), "CRITICAL WAIT CONTINUATION RULE"))
+	require.Equal(t, "function_call", gjson.GetBytes(secondBody, "input.0.type").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(secondBody, "input.1.type").String())
+	require.JSONEq(t, `[{"text":"Script running with cell ID 113","type":"input_text"}]`, gjson.GetBytes(secondBody, "input.1.output").String())
+	require.NotContains(t, gjson.GetBytes(secondBody, "instructions").String(), "CRITICAL TOOL RESULT RULE")
+
+	thirdBody := upstream.bodies[2]
+	require.Equal(t, "auto", gjson.GetBytes(thirdBody, "tool_choice").String())
+	require.Contains(t, gjson.GetBytes(thirdBody, "instructions").String(), "CRITICAL TOOL RESULT RULE")
+	require.Equal(t, "function_call", gjson.GetBytes(thirdBody, "input.2.type").String())
+	require.Equal(t, "wait", gjson.GetBytes(thirdBody, "input.2.name").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(thirdBody, "input.3.type").String())
+	require.Equal(t, "Process exited with code 0\nfixture-terminal-ok", gjson.GetBytes(thirdBody, "input.3.output").String())
 }
 
 func TestProxyOpenAIWSHTTPBridgeTurnGrokInheritsToolSearchAndPromotesFollowupDiscovery(t *testing.T) {

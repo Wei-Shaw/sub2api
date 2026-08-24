@@ -23,6 +23,11 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+const grokCodexExecDescriptionFixture = "Run JavaScript code to orchestrate/compose tool calls\n" +
+	"- Evaluates the provided JavaScript code in a fresh V8 isolate as an async module.\n" +
+	"- All nested tools are available on the global `tools` object, for example `await tools.exec_command(...)`.\n" +
+	"- `text(value: string | number | boolean | undefined | null)`: Appends a text item."
+
 func TestPatchGrokResponsesBodyWithClientToolsLowersCodexProtocol(t *testing.T) {
 	t.Parallel()
 
@@ -185,6 +190,214 @@ func TestPatchGrokResponsesBodyWithClientToolsRejectsTrailingJSONDocument(t *tes
 	require.Contains(t, strings.ToLower(err.Error()), "invalid json")
 	require.Nil(t, patched)
 	require.Empty(t, mapping.CustomTools)
+}
+
+func TestGrokCodexPendingCellForcesWaitToolChoice(t *testing.T) {
+	t.Parallel()
+
+	tools := []any{
+		map[string]any{
+			"type": "custom", "name": "exec", "description": grokCodexExecDescriptionFixture,
+			"format": map[string]any{"type": "grammar"},
+		},
+		map[string]any{
+			"type": "function", "name": "wait", "description": "Wait for a yielded exec cell.",
+			"parameters": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"cell_id": map[string]any{"type": "string"},
+				},
+				"required": []any{"cell_id"},
+			},
+		},
+	}
+	tests := []struct {
+		name                 string
+		input                []any
+		nonStreaming         bool
+		wantForcedWait       bool
+		wantTerminalGuidance bool
+	}{
+		{
+			name: "plain exec output is pending",
+			input: []any{
+				map[string]any{"type": "custom_tool_call", "call_id": "call_exec", "name": "exec", "input": "await work"},
+				map[string]any{"type": "custom_tool_call_output", "call_id": "call_exec", "output": "Script running with cell ID 113"},
+			},
+			wantForcedWait: true,
+		},
+		{
+			name: "plain exec output is pending non streaming",
+			input: []any{
+				map[string]any{"type": "custom_tool_call", "call_id": "call_exec", "name": "exec", "input": "await work"},
+				map[string]any{"type": "custom_tool_call_output", "call_id": "call_exec", "output": "Script running with cell ID 113"},
+			},
+			nonStreaming:   true,
+			wantForcedWait: true,
+		},
+		{
+			name: "structured exec output is pending",
+			input: []any{
+				map[string]any{"type": "custom_tool_call", "call_id": "call_exec", "name": "exec", "input": "await work"},
+				map[string]any{"type": "custom_tool_call_output", "call_id": "call_exec", "output": []any{
+					map[string]any{"type": "input_text", "text": "Script running with cell ID 113"},
+				}},
+			},
+			wantForcedWait: true,
+		},
+		{
+			name: "nested output carrier is pending",
+			input: []any{
+				map[string]any{"type": "custom_tool_call", "call_id": "call_exec", "name": "exec", "input": "await work"},
+				map[string]any{"type": "custom_tool_call_output", "call_id": "call_exec", "output": map[string]any{
+					"output": map[string]any{"text": "Script running with cell_id 113"},
+				}},
+			},
+			wantForcedWait: true,
+		},
+		{
+			name: "wait output remains pending",
+			input: []any{
+				map[string]any{"type": "function_call", "call_id": "call_wait", "name": "wait", "arguments": `{"cell_id":"113"}`},
+				map[string]any{"type": "function_call_output", "call_id": "call_wait", "output": []any{
+					map[string]any{"type": "input_text", "text": "Script running with cell ID 113"},
+				}},
+			},
+			wantForcedWait: true,
+		},
+		{
+			name: "terminal wait output wins over older pending exec",
+			input: []any{
+				map[string]any{"type": "custom_tool_call", "call_id": "call_exec", "name": "exec", "input": "await work"},
+				map[string]any{"type": "custom_tool_call_output", "call_id": "call_exec", "output": "Script running with cell ID 113"},
+				map[string]any{"type": "function_call", "call_id": "call_wait", "name": "wait", "arguments": `{"cell_id":"113"}`},
+				map[string]any{"type": "function_call_output", "call_id": "call_wait", "output": "Process exited with code 0\nfixture-terminal-ok"},
+			},
+			wantTerminalGuidance: true,
+		},
+		{
+			name: "nested exec command session is not a top level cell",
+			input: []any{
+				map[string]any{"type": "custom_tool_call", "call_id": "call_exec", "name": "exec", "input": "await work"},
+				map[string]any{"type": "custom_tool_call_output", "call_id": "call_exec", "output": map[string]any{
+					"session_id": 42,
+					"output":     "",
+				}},
+			},
+			wantTerminalGuidance: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			body, err := json.Marshal(map[string]any{
+				"model": "grok-4.6", "stream": !tt.nonStreaming, "tools": tools,
+				"tool_choice": "auto", "input": tt.input,
+			})
+			require.NoError(t, err)
+
+			patched, mapping, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.6")
+			require.NoError(t, err)
+			require.True(t, mapping.CustomTools["exec"])
+			require.False(t, mapping.CustomTools["wait"])
+			require.Equal(t, "function", gjson.GetBytes(patched, "tools.0.type").String())
+			require.Equal(t, "exec", gjson.GetBytes(patched, "tools.0.name").String())
+			require.Equal(t, "function", gjson.GetBytes(patched, "tools.1.type").String())
+			require.Equal(t, "wait", gjson.GetBytes(patched, "tools.1.name").String())
+			execDescription := gjson.GetBytes(patched, "tools.0.description").String()
+			require.Contains(t, execDescription, "CRITICAL ASYNC COMPLETION RULE")
+			require.Contains(t, execDescription, "tools.write_stdin")
+			require.Contains(t, execDescription, "Do not call top-level `exec` again")
+			waitDescription := gjson.GetBytes(patched, "tools.1.description").String()
+			require.Contains(t, waitDescription, "CRITICAL WAIT CONTINUATION RULE")
+			require.Contains(t, waitDescription, "nested `tools.exec_command` `session_id`")
+
+			if tt.wantForcedWait {
+				require.Equal(t, "function", gjson.GetBytes(patched, "tool_choice.type").String())
+				require.Equal(t, "wait", gjson.GetBytes(patched, "tool_choice.name").String())
+				require.False(t, gjson.GetBytes(patched, "tool_choice.function").Exists())
+				require.NotContains(t, gjson.GetBytes(patched, "instructions").String(), "CRITICAL TOOL RESULT RULE")
+				return
+			}
+			require.Equal(t, "auto", gjson.GetBytes(patched, "tool_choice").String())
+			if tt.wantTerminalGuidance {
+				require.Contains(t, gjson.GetBytes(patched, "instructions").String(), "CRITICAL TOOL RESULT RULE")
+			}
+		})
+	}
+}
+
+func TestGrokCodexPendingCellPolicyRequiresNativeWait(t *testing.T) {
+	t.Parallel()
+
+	body, err := json.Marshal(map[string]any{
+		"model": "grok-4.6", "stream": true, "tool_choice": "auto",
+		"tools": []any{map[string]any{
+			"type": "custom", "name": "exec", "description": grokCodexExecDescriptionFixture,
+			"format": map[string]any{"type": "grammar"},
+		}},
+		"input": []any{
+			map[string]any{"type": "custom_tool_call", "call_id": "call_exec", "name": "exec", "input": "await work"},
+			map[string]any{"type": "custom_tool_call_output", "call_id": "call_exec", "output": "Script running with cell ID 113"},
+		},
+	})
+	require.NoError(t, err)
+
+	patched, mapping, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.6")
+	require.NoError(t, err)
+	require.True(t, mapping.CustomTools["exec"])
+	require.Equal(t, "auto", gjson.GetBytes(patched, "tool_choice").String())
+	require.NotContains(t, gjson.GetBytes(patched, "tools.0.description").String(), "CRITICAL ASYNC COMPLETION RULE")
+	require.NotContains(t, gjson.GetBytes(patched, "instructions").String(), "CRITICAL TOOL RESULT RULE")
+}
+
+func TestGrokCodexTerminalOutputGuidanceDoesNotRequireWait(t *testing.T) {
+	t.Parallel()
+
+	body, err := json.Marshal(map[string]any{
+		"model": "grok-4.6", "stream": true, "tool_choice": "auto",
+		"tools": []any{map[string]any{
+			"type": "custom", "name": "exec", "description": grokCodexExecDescriptionFixture,
+			"format": map[string]any{"type": "grammar"},
+		}},
+		"input": []any{
+			map[string]any{"type": "custom_tool_call", "call_id": "call_exec", "name": "exec", "input": "await work"},
+			map[string]any{"type": "custom_tool_call_output", "call_id": "call_exec", "output": "Process exited with code 0\nfixture-terminal-ok"},
+		},
+	})
+	require.NoError(t, err)
+
+	patched, mapping, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.6")
+	require.NoError(t, err)
+	require.True(t, mapping.CustomTools["exec"])
+	require.Equal(t, "auto", gjson.GetBytes(patched, "tool_choice").String())
+	require.NotContains(t, gjson.GetBytes(patched, "tools.0.description").String(), "CRITICAL ASYNC COMPLETION RULE")
+	require.Contains(t, gjson.GetBytes(patched, "instructions").String(), "CRITICAL TOOL RESULT RULE")
+}
+
+func TestGrokCodexPendingCellPolicyIgnoresUnrelatedExec(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model":"grok-4.6","stream":true,"tool_choice":"auto",
+		"tools":[
+			{"type":"custom","name":"exec","description":"Run a user-defined job.","format":{"type":"grammar"}},
+			{"type":"function","name":"wait","description":"Wait for the job.","parameters":{"type":"object"}}
+		],
+		"input":[
+			{"type":"custom_tool_call","call_id":"call_exec","name":"exec","input":"start"},
+			{"type":"custom_tool_call_output","call_id":"call_exec","output":"Script running with cell ID 113"}
+		]
+	}`)
+
+	patched, mapping, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.6")
+	require.NoError(t, err)
+	require.True(t, mapping.CustomTools["exec"])
+	require.Equal(t, "auto", gjson.GetBytes(patched, "tool_choice").String())
+	require.NotContains(t, gjson.GetBytes(patched, "tools.0.description").String(), "CRITICAL ASYNC COMPLETION RULE")
+	require.NotContains(t, gjson.GetBytes(patched, "tools.1.description").String(), "CRITICAL WAIT CONTINUATION RULE")
+	require.NotContains(t, gjson.GetBytes(patched, "instructions").String(), "CRITICAL TOOL RESULT RULE")
 }
 
 func TestClearGrokResponsesClientToolMappingRemovesStaleContextState(t *testing.T) {
