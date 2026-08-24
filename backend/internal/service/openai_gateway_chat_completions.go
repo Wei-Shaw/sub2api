@@ -190,7 +190,8 @@ REDACTED
 				responsesBody = stripped
 		REDACTED
 	REDACTED
-		responsesBody, normalizedServiceTier, err := normalizeResponsesBodyServiceTier(responsesBody)
+		var normalizedServiceTier string
+		responsesBody, normalizedServiceTier, err = normalizeResponsesBodyServiceTier(responsesBody)
 		if err != nil {
 			return nil, fmt.Errorf("normalize service_tier in responses-shape body: %w", err)
 	REDACTED
@@ -371,11 +372,13 @@ REDACTED
 		return nil, handleErr
 REDACTED
 
-	// Propagate ServiceTier and ReasoningEffort to result for billing
+	// Propagate ServiceTier and ReasoningEffort to result for billing.
+	// 计费 tier 优先采用上游回显值；上游未回显时回退到最终出站 body（经过
+	// fast policy filter/force 之后）里的 tier，policy filter 删掉字段后不再
+	// 按原请求 Fast 计费。
 	if handleErr == nil && result != nil {
-		if responsesReq.ServiceTier != "" {
-			st := responsesReq.ServiceTier
-			result.ServiceTier = &st
+		if tier := resolvedOpenAIUpstreamServiceTier(c, extractOpenAIServiceTierFromBody(responsesBody)); tier != nil {
+			result.ServiceTier = tier
 	REDACTED
 		if responsesReq.Reasoning != nil && responsesReq.Reasoning.Effort != "" {
 			re := responsesReq.Reasoning.Effort
@@ -475,6 +478,7 @@ REDACTED
 		observer = beginUpstreamResponseModelObservation(c)
 REDACTED
 	observer.Observe(finalResponse.Model, true)
+	observer.ObserveServiceTier(finalResponse.ServiceTier, true)
 	if strings.TrimSpace(finalResponse.Status) == "failed" {
 		payload, _ := json.Marshal(gin.H{"type": "response.failed", "response": finalResponseREDACTED)
 		// cyber_policy 致命不可重试：不 failover，以 Chat Completions 错误格式回写（F4），
