@@ -39,6 +39,21 @@ type SystemSettings struct {
 	SMTPFromName           string
 	SMTPUseTLS             bool
 
+	// Telegram Bot Monitor
+	TelegramBotToken             string
+	TelegramBotTokenConfigured   bool
+	TelegramChatID               string
+	TelegramNotifyNewUser        bool
+	TelegramNotifyAccountError   bool
+	TelegramNotifyAccountExpired bool
+	TelegramNotifyPaymentSuccess bool
+	TelegramNotifyPaymentFailed  bool
+	TelegramNotifyRefund         bool
+	TelegramNotifySubExpired     bool
+	TelegramNotifyBalanceLow     bool
+	TelegramNotifyOpsAlert       bool
+	TelegramNotifyProxyExpired   bool
+
 	TurnstileEnabled                       bool
 	TurnstileSiteKey                       string
 	TurnstileSecretKey                     string

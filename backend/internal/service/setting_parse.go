@@ -169,6 +169,18 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyForceEmailOnThirdPartySignup:              "false",
 		SettingKeySMTPPort:                                  "587",
 		SettingKeySMTPUseTLS:                                "false",
+		SettingTelegramBotToken:                             "",
+		SettingTelegramChatID:                               "",
+		SettingTelegramNotifyNewUser:                        "false",
+		SettingTelegramNotifyAccountError:                   "false",
+		SettingTelegramNotifyAccountExpired:                 "false",
+		SettingTelegramNotifyPaymentSuccess:                 "false",
+		SettingTelegramNotifyPaymentFailed:                  "false",
+		SettingTelegramNotifyRefund:                         "false",
+		SettingTelegramNotifySubExpired:                     "false",
+		SettingTelegramNotifyBalanceLow:                     "false",
+		SettingTelegramNotifyOpsAlert:                       "false",
+		SettingTelegramNotifyProxyExpired:                   "false",
 		// Model fallback defaults
 		SettingKeyEnableModelFallback:      "false",
 		SettingKeyFallbackModelAnthropic:   "claude-3-5-sonnet-20241022",
@@ -341,6 +353,19 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		SMTPFrom:                               settings[SettingKeySMTPFrom],
 		SMTPFromName:                           settings[SettingKeySMTPFromName],
 		SMTPUseTLS:                             settings[SettingKeySMTPUseTLS] == "true",
+		TelegramBotToken:                       settings[SettingTelegramBotToken],
+		TelegramBotTokenConfigured:             settings[SettingTelegramBotToken] != "",
+		TelegramChatID:                         settings[SettingTelegramChatID],
+		TelegramNotifyNewUser:                  settings[SettingTelegramNotifyNewUser] == "true",
+		TelegramNotifyAccountError:             settings[SettingTelegramNotifyAccountError] == "true",
+		TelegramNotifyAccountExpired:           settings[SettingTelegramNotifyAccountExpired] == "true",
+		TelegramNotifyPaymentSuccess:           settings[SettingTelegramNotifyPaymentSuccess] == "true",
+		TelegramNotifyPaymentFailed:            settings[SettingTelegramNotifyPaymentFailed] == "true",
+		TelegramNotifyRefund:                   settings[SettingTelegramNotifyRefund] == "true",
+		TelegramNotifySubExpired:               settings[SettingTelegramNotifySubExpired] == "true",
+		TelegramNotifyBalanceLow:               settings[SettingTelegramNotifyBalanceLow] == "true",
+		TelegramNotifyOpsAlert:                 settings[SettingTelegramNotifyOpsAlert] == "true",
+		TelegramNotifyProxyExpired:             settings[SettingTelegramNotifyProxyExpired] == "true",
 		SMTPPasswordConfigured:                 settings[SettingKeySMTPPassword] != "",
 		TurnstileEnabled:                       settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:                       settings[SettingKeyTurnstileSiteKey],
@@ -963,6 +988,21 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	result.BalanceLowNotifyRechargeURL = settings[SettingKeyBalanceLowNotifyRechargeURL]
 	result.SubscriptionExpiryNotifyEnabled = !isFalseSettingValue(settings[SettingKeySubscriptionExpiryNotifyEnabled])
+
+	// Telegram Bot Monitor
+	result.TelegramBotToken = settings[SettingTelegramBotToken]
+	result.TelegramBotTokenConfigured = strings.TrimSpace(settings[SettingTelegramBotToken]) != ""
+	result.TelegramChatID = strings.TrimSpace(settings[SettingTelegramChatID])
+	result.TelegramNotifyNewUser = settings[SettingTelegramNotifyNewUser] == "true"
+	result.TelegramNotifyAccountError = settings[SettingTelegramNotifyAccountError] == "true"
+	result.TelegramNotifyAccountExpired = settings[SettingTelegramNotifyAccountExpired] == "true"
+	result.TelegramNotifyPaymentSuccess = settings[SettingTelegramNotifyPaymentSuccess] == "true"
+	result.TelegramNotifyPaymentFailed = settings[SettingTelegramNotifyPaymentFailed] == "true"
+	result.TelegramNotifyRefund = settings[SettingTelegramNotifyRefund] == "true"
+	result.TelegramNotifySubExpired = settings[SettingTelegramNotifySubExpired] == "true"
+	result.TelegramNotifyBalanceLow = settings[SettingTelegramNotifyBalanceLow] == "true"
+	result.TelegramNotifyOpsAlert = settings[SettingTelegramNotifyOpsAlert] == "true"
+	result.TelegramNotifyProxyExpired = settings[SettingTelegramNotifyProxyExpired] == "true"
 
 	// 账号限额通知
 	result.AccountQuotaNotifyEnabled = settings[SettingKeyAccountQuotaNotifyEnabled] == "true"

@@ -91,6 +91,7 @@ type AuthService struct {
 	inviteLoginDeviceRepo    UserDeviceRepository
 	inviteBootstrapAPIKeySvc InviteBootstrapAPIKeyService
 	groupRepo                GroupRepository
+	telegramNotifySvc        *TelegramNotifyService
 }
 
 type CaptchaProof struct {
@@ -179,6 +180,10 @@ func (s *AuthService) SetAliyunCaptchaService(aliyunCaptchaService *AliyunCaptch
 
 func (s *AuthService) SetMCPGrantRevoker(revoker MCPGrantRevoker) {
 	s.mcpGrantRevoker = revoker
+}
+
+func (s *AuthService) SetTelegramNotifyService(svc *TelegramNotifyService) {
+	s.telegramNotifySvc = svc
 }
 
 // SetInviteBootstrapAPIKeyService injects API key provisioning for invite-login.
@@ -301,6 +306,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		}
 	}
 	s.postAuthUserBootstrap(ctx, user, "email", true)
+	s.notifyNewUserRegistered(ctx, user.Email, "Email")
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 	// snapshot user × platform quota（fail-open）
 	_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
@@ -676,6 +682,7 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 			} else {
 				user = newUser
 				s.postAuthUserBootstrap(ctx, user, signupSource, false)
+				s.notifyNewUserRegistered(ctx, user.Email, signupSource)
 				s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 				// snapshot user × platform quota（fail-open）
 				_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
@@ -841,6 +848,7 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 					user = newUser
 					created = true
 					s.postAuthUserBootstrap(ctx, user, signupSource, false)
+					s.notifyNewUserRegistered(ctx, user.Email, signupSource)
 					s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 					// snapshot user × platform quota（fail-open）
 					_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
@@ -862,6 +870,7 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 					user = newUser
 					created = true
 					s.postAuthUserBootstrap(ctx, user, signupSource, false)
+					s.notifyNewUserRegistered(ctx, user.Email, signupSource)
 					s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 					// snapshot user × platform quota（fail-open）
 					_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
@@ -1026,6 +1035,13 @@ func (s *AuthService) bindOAuthAffiliate(ctx context.Context, userID int64, affi
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to bind affiliate inviter for user %d: %v", userID, err)
 		}
 	}
+}
+
+func (s *AuthService) notifyNewUserRegistered(ctx context.Context, email, source string) {
+	if s == nil || s.telegramNotifySvc == nil {
+		return
+	}
+	go s.telegramNotifySvc.NotifyNewUser(context.Background(), email, source)
 }
 
 func (s *AuthService) postAuthUserBootstrap(ctx context.Context, user *User, signupSource string, touchLogin bool) {
