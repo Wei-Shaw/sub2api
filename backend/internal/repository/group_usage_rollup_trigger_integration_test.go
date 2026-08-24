@@ -138,15 +138,19 @@ func TestGroupUsageRollupTriggerInvalidatesAPIKeyOnlyChanges(t *testing.T) {
 	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
 	defer func() { _ = tx.Rollback() }()
 
-	_, err := tx.ExecContext(ctx, `
-		INSERT INTO users (id) VALUES (1);
+	_, err := tx.ExecContext(ctx, `INSERT INTO users (id) VALUES (1)`)
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, `
 		UPDATE usage_group_rollup_state
 		SET closed_before = ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date,
 			retained_from = $2
-		WHERE id = 1;
+		WHERE id = 1
+	`, today, today.AddDate(0, 0, -30))
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO usage_logs (id, user_id, group_id, api_key_id, actual_cost, created_at)
-		VALUES (1, 1, NULL, 100, 1.25, $3);
-	`, today, today.AddDate(0, 0, -30), today.AddDate(0, 0, -3).Add(9*time.Hour))
+		VALUES (1, 1, NULL, 100, 1.25, $1)
+	`, today.AddDate(0, 0, -3).Add(9*time.Hour))
 	require.NoError(t, err)
 
 	assertClosedBefore := func(want string) {
@@ -163,18 +167,20 @@ func TestGroupUsageRollupTriggerInvalidatesAPIKeyOnlyChanges(t *testing.T) {
 	_, err = tx.ExecContext(ctx, `
 		UPDATE usage_group_rollup_state
 		SET closed_before = ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date
-		WHERE id = 1;
-		UPDATE usage_logs SET api_key_id = 101 WHERE id = 1;
+		WHERE id = 1
 	`, today)
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, `UPDATE usage_logs SET api_key_id = 101 WHERE id = 1`)
 	require.NoError(t, err)
 	assertClosedBefore(affectedDate)
 
 	_, err = tx.ExecContext(ctx, `
 		UPDATE usage_group_rollup_state
 		SET closed_before = ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date
-		WHERE id = 1;
-		DELETE FROM usage_logs WHERE id = 1;
+		WHERE id = 1
 	`, today)
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, `DELETE FROM usage_logs WHERE id = 1`)
 	require.NoError(t, err)
 	assertClosedBefore(affectedDate)
 }
