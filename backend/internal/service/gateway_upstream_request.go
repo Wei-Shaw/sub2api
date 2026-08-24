@@ -24,6 +24,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		req, err := s.buildUpstreamRequestAnthropicVertex(ctx, c, account, body, token, modelID, reqStream)
 		return req, body, err
 	}
+	if isKiroDirectModeAccount(account) {
+		return nil, nil, fmt.Errorf("kiro direct account must use the kiro forwarding path")
+	}
 
 	// 确定目标URL
 	targetURL := claudeAPIURL

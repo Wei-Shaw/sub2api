@@ -172,7 +172,7 @@
         </div>
 
         <!-- Tab Content -->
-        <form id="channel-form" @submit.prevent="handleSubmit" class="flex-1 overflow-y-auto pt-4">
+        <form id="channel-form" @submit.prevent="handleSubmit" class="channel-dialog-form flex-1 overflow-y-auto px-0.5 pt-4 pb-1">
           <!-- Basic Settings Tab -->
           <div v-show="activeTab === 'basic'" class="space-y-5">
             <!-- Name -->
@@ -331,10 +331,12 @@
                     {{ t('admin.channels.form.applyPricingToAccountStatsDesc') }}
                   </p>
                 </div>
-                <Toggle
-                  :modelValue="form.apply_pricing_to_account_stats"
-                  @update:modelValue="form.apply_pricing_to_account_stats = $event"
-                />
+                <div class="channel-dialog-toggle-control flex-shrink-0 p-1">
+                  <Toggle
+                    :modelValue="form.apply_pricing_to_account_stats"
+                    @update:modelValue="form.apply_pricing_to_account_stats = $event"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -393,7 +395,7 @@
             </div>
 
             <!-- Web Search Emulation (Anthropic only, hidden when global disabled) -->
-            <div v-if="section.platform === 'anthropic' && webSearchGlobalEnabled" class="border-t border-gray-200 pt-3 dark:border-dark-600">
+            <div v-if="supportsWebSearchEmulation(section.platform) && webSearchGlobalEnabled" class="border-t border-gray-200 pt-3 dark:border-dark-600">
               <div class="flex items-center justify-between">
                 <div>
                   <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
@@ -403,7 +405,9 @@
                     {{ t('admin.channels.form.webSearchEmulationHint') }}
                   </p>
                 </div>
-                <Toggle v-model="section.web_search_emulation" />
+                <div class="channel-dialog-toggle-control flex-shrink-0 p-1">
+                  <Toggle v-model="section.web_search_emulation" />
+                </div>
               </div>
             </div>
 
@@ -418,7 +422,9 @@
                     {{ t('admin.channels.form.codexImageGenerationBridgeHint') }}
                   </p>
                 </div>
-                <Toggle v-model="section.codex_image_generation_bridge" />
+                <div class="channel-dialog-toggle-control flex-shrink-0 p-1">
+                  <Toggle v-model="section.codex_image_generation_bridge" />
+                </div>
               </div>
             </div>
 
@@ -433,7 +439,9 @@
                     {{ t('admin.channels.form.bedrockCCCompatHint') }}
                   </p>
                 </div>
-                <Toggle v-model="section.bedrock_cc_compat" />
+                <div class="channel-dialog-toggle-control flex-shrink-0 p-1">
+                  <Toggle v-model="section.bedrock_cc_compat" />
+                </div>
               </div>
             </div>
 
@@ -492,11 +500,15 @@
                 <div class="flex items-center gap-2">
                   <button
                     type="button"
-                    @click="toggleCatalogPicker(sIdx)"
-                    :disabled="catalogPickerLoading === section.platform"
+                    @click="section.platform === 'kiro' ? fillKiroDefaultModels(sIdx) : toggleCatalogPicker(sIdx)"
+                    :disabled="fillingKiroPlatform === section.platform || catalogPickerLoading === section.platform"
                     class="text-xs text-gray-500 hover:text-primary-600 disabled:opacity-50"
                   >
-                    {{ catalogPickerLoading === section.platform ? t('admin.channels.form.syncingModels') : t('admin.channels.form.syncLatestModels') }}
+                    {{ section.platform === 'kiro'
+                      ? (fillingKiroPlatform === section.platform
+                        ? t('admin.channels.form.fillingDefaultModels', '填充中...')
+                        : t('admin.channels.form.fillDefaultModels', '填充默认模型'))
+                      : (catalogPickerLoading === section.platform ? t('admin.channels.form.syncingModels') : t('admin.channels.form.syncLatestModels')) }}
                   </button>
                   <button type="button" @click="addPricingEntry(sIdx)" class="text-xs text-primary-600 hover:text-primary-700">
                     + {{ t('common.add', 'Add') }}
@@ -741,6 +753,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
+import { getModelsByPlatform } from '@/composables/useModelWhitelist'
 import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule, CatalogStorefrontModel } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
 import { apiIntervalsToForm, apiTimePricingToForm, createDefaultTimePricingForm, findModelConflict, formIntervalsToAPI, formTimePricingToAPI, isValidPositiveMultiplier, mTokToPerToken, perTokenToMTok, validateIntervals, validateTimePricing } from '@/components/admin/channel/types'
@@ -881,9 +894,9 @@ const form = reactive({
 let abortController: AbortController | null = null
 
 // ── Platform config ──
-const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek']
+const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek']
 // Composite pricing/mapping may target every concrete schedulable provider.
-const compositePlatforms: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek']
+const compositePlatforms: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek']
 
 // ── Helpers ──
 function formatDate(value: string): string {
@@ -925,6 +938,10 @@ function getGroupsForPlatform(platform: GroupPlatform): AdminGroup[] {
   return allGroups.value.filter(
     g => g.platform === platform || (g.platform === 'composite' && compositePlatforms.includes(platform))
   )
+}
+
+function supportsWebSearchEmulation(platform: GroupPlatform): boolean {
+  return platform === 'anthropic' || platform === 'kiro'
 }
 
 // ── Group helpers ──
@@ -988,6 +1005,77 @@ function addPricingEntry(sectionIdx: number) {
     intervals: [],
     time_pricing: createDefaultTimePricingForm()
   })
+}
+
+// ── Kiro 默认模型填充（Kiro 无上游模型列表 API，使用本地目录 + 默认定价接口） ──
+const fillingKiroPlatform = ref<string | null>(null)
+
+function isKiroPlatform(platform: string): boolean {
+  return platform === 'kiro'
+}
+
+function createTokenPricingEntry(models: string[], defaults: Partial<PricingFormEntry> = {}): PricingFormEntry {
+  return {
+    models,
+    billing_mode: 'token',
+    input_price: defaults.input_price ?? null,
+    output_price: defaults.output_price ?? null,
+    cache_write_price: defaults.cache_write_price ?? null,
+    cache_read_price: defaults.cache_read_price ?? null,
+    fast_multiplier: defaults.fast_multiplier ?? null,
+    flex_multiplier: defaults.flex_multiplier ?? null,
+    image_input_price: defaults.image_input_price ?? null,
+    image_output_price: defaults.image_output_price ?? null,
+    per_request_price: null,
+    intervals: [],
+    time_pricing: createDefaultTimePricingForm()
+  }
+}
+
+async function fillKiroDefaultModels(sectionIdx: number) {
+  const section = form.platforms[sectionIdx]
+  const existingModels = new Set<string>()
+  for (const entry of section.model_pricing) {
+    for (const model of entry.models) existingModels.add(model)
+  }
+
+  const newModels = getModelsByPlatform('kiro').filter(model => !existingModels.has(model))
+  if (newModels.length === 0) {
+    appStore.showSuccess(t('admin.channels.form.fillDefaultModelsAlreadyConfigured', '默认模型已全部配置'))
+    return
+  }
+
+  if (!isKiroPlatform(section.platform) || fillingKiroPlatform.value) return
+  fillingKiroPlatform.value = section.platform
+  try {
+    const entries = await Promise.all(newModels.map(async (model) => {
+      const defaults = await loadDefaultPricingForRequestModel(model)
+      return createTokenPricingEntry([model], defaults)
+    }))
+
+    section.model_pricing.push(...entries)
+    appStore.showSuccess(t('admin.channels.form.fillDefaultModelsSuccess', { count: newModels.length }, `已填充 ${newModels.length} 个默认模型`))
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.channels.form.syncModelsError')))
+  } finally {
+    fillingKiroPlatform.value = null
+  }
+}
+
+async function loadDefaultPricingForRequestModel(model: string): Promise<Partial<PricingFormEntry>> {
+  try {
+    const result = await adminAPI.channels.getModelDefaultPricing(model)
+    if (!result.found) return {}
+    return {
+      input_price: perTokenToMTok(result.input_price ?? null),
+      output_price: perTokenToMTok(result.output_price ?? null),
+      cache_write_price: perTokenToMTok(result.cache_write_price ?? null),
+      cache_read_price: perTokenToMTok(result.cache_read_price ?? null),
+      image_output_price: perTokenToMTok(result.image_output_price ?? null)
+    }
+  } catch {
+    return {}
+  }
 }
 
 const catalogPickerSection = ref<number | null>(null)
@@ -1304,13 +1392,13 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
   }
   const uniqueGroupIds = Array.from(new Set(group_ids))
 
-  // Collect web_search_emulation (only anthropic platform supports it)
+  // Collect web_search_emulation (anthropic and kiro platforms support it)
   // Always write the key so that disabling in the UI correctly sets platform to false,
   // rather than leaving a stale true value from the cloned features_config.
   const wsEmulation: Record<string, boolean> = {}
   for (const section of form.platforms) {
     if (!section.enabled) continue
-    if (section.platform === 'anthropic') {
+    if (supportsWebSearchEmulation(section.platform)) {
       wsEmulation[section.platform] = !!section.web_search_emulation
     }
   }

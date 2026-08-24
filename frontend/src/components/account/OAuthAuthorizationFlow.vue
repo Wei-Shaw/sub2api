@@ -9,6 +9,36 @@
       <div class="flex-1">
         <h4 class="mb-3 font-semibold text-blue-900 dark:text-blue-200">{{ oauthTitle }}</h4>
 
+        <!-- External IdP 两阶段进度指示 -->
+        <div v-if="isExternalIdpFlow" class="mb-4">
+          <div class="flex items-center gap-2">
+            <span
+              :class="[
+                'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                !isExtIdpIdpStage
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+              ]"
+            >
+              {{ t('admin.accounts.oauth.kiro.extIdpStagePortal') }}
+            </span>
+            <Icon name="arrowRight" size="xs" class="text-gray-400" />
+            <span
+              :class="[
+                'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                isExtIdpIdpStage
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-gray-100 text-gray-400 dark:bg-dark-600 dark:text-gray-500'
+              ]"
+            >
+              {{ t('admin.accounts.oauth.kiro.extIdpStageIdp') }}
+            </span>
+          </div>
+          <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.oauth.kiro.extIdpStageHint') }}
+          </p>
+        </div>
+
         <!-- Auth Method Selection -->
         <div v-if="showMethodSelection" class="mb-4">
           <label class="mb-2 block text-sm font-medium text-blue-800 dark:text-blue-300">
@@ -731,6 +761,15 @@
                   {{ loading ? t('admin.accounts.oauth.generating') : oauthGenerateAuthUrl }}
                 </button>
                 <div v-else class="space-y-3">
+                  <div
+                    v-if="isExternalIdpFlow && isExtIdpIdpStage"
+                    class="flex items-start gap-2 rounded border border-emerald-300 bg-emerald-50 p-2 dark:border-emerald-700 dark:bg-emerald-900/30"
+                  >
+                    <Icon name="arrowRight" size="xs" class="mt-0.5 flex-shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    <p class="text-xs font-medium text-emerald-800 dark:text-emerald-300">
+                      {{ t('admin.accounts.oauth.kiro.extIdpNewUrlBadge') }}
+                    </p>
+                  </div>
                   <div class="flex items-center gap-2">
                     <input
                       :value="authUrl"
@@ -792,10 +831,10 @@
               </div>
               <div class="flex-1">
                 <p class="mb-2 font-medium text-blue-900 dark:text-blue-200">
-                  {{ oauthStep2OpenUrl }}
+                  {{ isExternalIdpFlow ? extIdpStep2Title : oauthStep2OpenUrl }}
                 </p>
                 <p class="text-sm text-blue-700 dark:text-blue-300">
-                  {{ oauthOpenUrlDesc }}
+                  {{ isExternalIdpFlow ? extIdpOpenDesc : oauthOpenUrlDesc }}
                 </p>
                 <!-- Local callback notice -->
                 <div
@@ -833,11 +872,11 @@
               </div>
               <div class="flex-1">
                 <p class="mb-2 font-medium text-blue-900 dark:text-blue-200">
-                  {{ oauthStep3EnterCode }}
+                  {{ isExternalIdpFlow ? extIdpStep3Title : oauthStep3EnterCode }}
                 </p>
                 <p
                   class="mb-3 text-sm text-blue-700 dark:text-blue-300"
-                  v-text="oauthAuthCodeDesc"
+                  v-text="isExternalIdpFlow ? extIdpAuthCodeDesc : oauthAuthCodeDesc"
                 ></p>
                 <div>
                   <label class="input-label">
@@ -848,11 +887,11 @@
                     v-model="authCodeInput"
                     rows="3"
                     class="input w-full resize-none font-mono text-sm"
-                    :placeholder="oauthAuthCodePlaceholder"
+                    :placeholder="isExternalIdpFlow ? extIdpAuthCodePlaceholder : oauthAuthCodePlaceholder"
                   ></textarea>
                   <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                     <Icon name="infoCircle" size="xs" class="mr-1 inline" />
-                    {{ oauthAuthCodeHint }}
+                    {{ isExternalIdpFlow ? extIdpAuthCodeHint : oauthAuthCodeHint }}
                   </p>
 
                   <!-- Gemini-specific state parameter warning -->
@@ -932,6 +971,8 @@ interface Props {
   initialEmailPassword?: string
   platform?: AccountPlatform // Platform type for different UI/text
   showProjectId?: boolean // New prop to control project ID visibility
+  isKiroExternalIdp?: boolean // Kiro External IdP(Entra ID)两阶段登录，切换分步引导 UI
+  externalIdpStage?: 'portal' | 'idp' // External IdP 当前阶段：portal=企业邮箱识别，idp=M365 授权
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -957,7 +998,9 @@ const props = withDefaults(defineProps<Props>(), {
   initialInputMethod: 'manual',
   initialEmailPassword: '',
   platform: 'anthropic',
-  showProjectId: true
+  showProjectId: true,
+  isKiroExternalIdp: false,
+  externalIdpStage: 'portal'
 })
 
 const emit = defineEmits<{
@@ -988,6 +1031,7 @@ const getOAuthKey = (key: string) => {
   if (props.platform === 'openai') return `admin.accounts.oauth.openai.${key}`
   if (props.platform === 'gemini') return `admin.accounts.oauth.gemini.${key}`
   if (props.platform === 'antigravity') return `admin.accounts.oauth.antigravity.${key}`
+  if (props.platform === 'kiro') return `admin.accounts.oauth.kiro.${key}`
   if (props.platform === 'grok') return `admin.accounts.oauth.grok.${key}`
   return `admin.accounts.oauth.${key}`
 }
@@ -1011,6 +1055,20 @@ const oauthImportantNotice = computed(() => {
   return ''
 })
 
+// External IdP(Kiro Entra ID)两阶段专属文案：按 portal/idp 阶段切换 step2/step3 说明与占位符。
+const isExternalIdpFlow = computed(() => props.isKiroExternalIdp === true)
+const isExtIdpIdpStage = computed(() => props.externalIdpStage === 'idp')
+const extIdpKey = (portalKey: string, idpKey: string) =>
+  t(getOAuthKey(isExtIdpIdpStage.value ? idpKey : portalKey))
+const extIdpStep2Title = computed(() => extIdpKey('extIdpStep2Portal', 'extIdpStep2Idp'))
+const extIdpOpenDesc = computed(() => extIdpKey('extIdpOpenDescPortal', 'extIdpOpenDescIdp'))
+const extIdpStep3Title = computed(() => extIdpKey('extIdpStep3Portal', 'extIdpStep3Idp'))
+const extIdpAuthCodeDesc = computed(() => extIdpKey('extIdpAuthCodeDescPortal', 'extIdpAuthCodeDescIdp'))
+const extIdpAuthCodePlaceholder = computed(() =>
+  extIdpKey('extIdpAuthCodePlaceholderPortal', 'extIdpAuthCodePlaceholderIdp')
+)
+const extIdpAuthCodeHint = computed(() => extIdpKey('extIdpAuthCodeHintPortal', 'extIdpAuthCodeHintIdp'))
+
 // Local state
 const inputMethod = ref<AuthInputMethod>(props.initialInputMethod)
 const isAgentIdentityInput = computed(() => inputMethod.value === 'agent_identity')
@@ -1024,6 +1082,8 @@ const ssoCookieInput = ref('')
 const emailPasswordInput = ref(props.initialEmailPassword || '')
 const showHelpDialog = ref(false)
 const oauthState = ref('')
+const oauthCallbackPath = ref('')
+const oauthLoginOption = ref('')
 const projectId = ref('')
 
 watch(
@@ -1129,10 +1189,10 @@ watch(inputMethod, (newVal) => {
   emit('update:inputMethod', newVal)
 })
 
-// Auto-extract code from callback URL (OpenAI/Gemini/Antigravity/Grok)
+// Auto-extract code from callback URL (OpenAI/Gemini/Antigravity/Kiro/Grok)
 // e.g., http://localhost:8085/callback?code=xxx...&state=...
 watch(authCodeInput, (newVal) => {
-  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity' && props.platform !== 'grok') return
+  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity' && props.platform !== 'kiro' && props.platform !== 'grok') return
 
   const trimmed = newVal.trim()
   // Check if it looks like a URL with code parameter
@@ -1142,7 +1202,11 @@ watch(authCodeInput, (newVal) => {
       const url = trimmed.includes('?') ? new URL(trimmed) : new URL(`http://localhost/callback?${trimmed.replace(/^\?/, '')}`)
       const code = url.searchParams.get('code')
       const stateParam = url.searchParams.get('state')
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'grok') && stateParam) {
+      if (props.platform === 'kiro') {
+        oauthCallbackPath.value = url.pathname || ''
+        oauthLoginOption.value = url.searchParams.get('login_option') || ''
+      }
+      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'kiro' || props.platform === 'grok') && stateParam) {
         oauthState.value = stateParam
       }
       if (code && code !== trimmed) {
@@ -1153,7 +1217,13 @@ watch(authCodeInput, (newVal) => {
       // If URL parsing fails, try regex extraction
       const match = trimmed.match(/[?&]code=([^&]+)/)
       const stateMatch = trimmed.match(/[?&]state=([^&]+)/)
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'grok') && stateMatch && stateMatch[1]) {
+      if (props.platform === 'kiro') {
+        const pathMatch = trimmed.match(/^https?:\/\/[^/]+(\/[^?]*)/)
+        oauthCallbackPath.value = pathMatch?.[1] || oauthCallbackPath.value
+        const loginOptionMatch = trimmed.match(/[?&]login_option=([^&]+)/)
+        oauthLoginOption.value = loginOptionMatch?.[1] || oauthLoginOption.value
+      }
+      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'kiro' || props.platform === 'grok') && stateMatch && stateMatch[1]) {
         oauthState.value = stateMatch[1]
       }
       if (match && match[1] && match[1] !== trimmed) {
@@ -1162,6 +1232,17 @@ watch(authCodeInput, (newVal) => {
     }
   }
 })
+
+// External IdP：从阶段1(portal)切到阶段2(idp)时，自动清空输入框，
+// 避免残留的门户 descriptor 被误当作第二阶段 code 重复提交。
+watch(
+  () => props.externalIdpStage,
+  (stage, prev) => {
+    if (props.isKiroExternalIdp && stage === 'idp' && prev === 'portal') {
+      authCodeInput.value = ''
+    }
+  }
+)
 
 // Methods
 const handleGenerateUrl = () => {
@@ -1217,6 +1298,8 @@ const handleImportSSO = () => {
 defineExpose({
   authCode: authCodeInput,
   oauthState,
+  oauthCallbackPath,
+  oauthLoginOption,
   projectId,
   sessionKey: sessionKeyInput,
   refreshToken: refreshTokenInput,
@@ -1229,6 +1312,8 @@ defineExpose({
   reset: () => {
     authCodeInput.value = ''
     oauthState.value = ''
+    oauthCallbackPath.value = ''
+    oauthLoginOption.value = ''
     projectId.value = ''
     sessionKeyInput.value = ''
     refreshTokenInput.value = ''

@@ -105,8 +105,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	}()
 	beginUpstreamResponseModelObservation(c)
 
-	// Web Search 模拟：纯 web_search 请求时，直接调用搜索 API 构造响应
-	if account != nil && s.shouldEmulateWebSearch(ctx, account, parsed.GroupID, parsed.Body.Bytes()) {
+	// Web Search 模拟：纯 web_search 请求时，直接调用搜索 API 构造响应。
+	// Kiro 直连账号在专用链路完成模型映射后再判断，避免使用未映射的请求体。
+	if account != nil && !isKiroDirectModeAccount(account) && s.shouldEmulateWebSearch(ctx, account, parsed.GroupID, parsed.Body.Bytes()) {
 		return s.handleWebSearchEmulation(ctx, c, account, parsed)
 	}
 
@@ -132,6 +133,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 	if account != nil && account.IsBedrock() {
 		return s.forwardBedrock(ctx, c, account, parsed, startTime)
+	}
+
+	if isKiroDirectModeAccount(account) {
+		return s.forwardKiroMessages(ctx, c, account, parsed, startTime)
 	}
 
 	// Beta policy: evaluate once; block check + cache filter set for buildUpstreamRequest.

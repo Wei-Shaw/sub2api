@@ -98,7 +98,7 @@ func NewGroupHandler(adminService service.AdminService, dashboardService *servic
 type CreateGroupRequest struct {
 	Name                      string                        `json:"name" binding:"required"`
 	Description               string                        `json:"description"`
-	Platform                  string                        `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek composite"`
+	Platform                  string                        `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity kiro grok kimi zhipu deepseek composite"`
 	RateMultiplier            float64                       `json:"rate_multiplier"`
 	IsExclusive               bool                          `json:"is_exclusive"`
 	SubscriptionType          string                        `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
@@ -159,6 +159,15 @@ type CreateGroupRequest struct {
 	MaxReasoningEffort string `json:"max_reasoning_effort"`
 	// OpenAI/Codex 推理强度精确映射。
 	ReasoningEffortMappings []service.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
+	// Kiro 模拟缓存配置（仅 kiro 分组生效）
+	KiroCacheEmulationEnabled       bool     `json:"kiro_cache_emulation_enabled"`
+	KiroAutoStickyEnabled           *bool    `json:"kiro_auto_sticky_enabled"`
+	KiroStickySessionTTLSeconds     *int     `json:"kiro_sticky_session_ttl_seconds"`
+	KiroCacheEmulationRatio         *float64 `json:"kiro_cache_emulation_ratio" binding:"omitempty,gte=0,lte=1"`
+	KiroCacheEmulationMode          *string  `json:"kiro_cache_emulation_mode" binding:"omitempty,oneof=uniform independent"`
+	KiroCacheCreationEmulationRatio *float64 `json:"kiro_cache_creation_emulation_ratio" binding:"omitempty,gte=0,lte=1"`
+	KiroCacheReadEmulationRatio     *float64 `json:"kiro_cache_read_emulation_ratio" binding:"omitempty,gte=0,lte=1"`
+	KiroEndpointMode                *string  `json:"kiro_endpoint_mode"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -167,7 +176,7 @@ type CreateGroupRequest struct {
 type UpdateGroupRequest struct {
 	Name                      string                         `json:"name"`
 	Description               *string                        `json:"description"`
-	Platform                  string                         `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek composite"`
+	Platform                  string                         `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity kiro grok kimi zhipu deepseek composite"`
 	RateMultiplier            *float64                       `json:"rate_multiplier"`
 	IsExclusive               *bool                          `json:"is_exclusive"`
 	Status                    string                         `json:"status" binding:"omitempty,oneof=active inactive"`
@@ -229,6 +238,15 @@ type UpdateGroupRequest struct {
 	MaxReasoningEffort *string `json:"max_reasoning_effort"`
 	// nil 不修改，空数组清空，非空数组替换。
 	ReasoningEffortMappings *[]service.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
+	// Kiro 模拟缓存配置（仅 kiro 分组生效）
+	KiroCacheEmulationEnabled       *bool    `json:"kiro_cache_emulation_enabled"`
+	KiroAutoStickyEnabled           *bool    `json:"kiro_auto_sticky_enabled"`
+	KiroStickySessionTTLSeconds     *int     `json:"kiro_sticky_session_ttl_seconds"`
+	KiroCacheEmulationRatio         *float64 `json:"kiro_cache_emulation_ratio" binding:"omitempty,gte=0,lte=1"`
+	KiroCacheEmulationMode          *string  `json:"kiro_cache_emulation_mode" binding:"omitempty,oneof=uniform independent"`
+	KiroCacheCreationEmulationRatio *float64 `json:"kiro_cache_creation_emulation_ratio" binding:"omitempty,gte=0,lte=1"`
+	KiroCacheReadEmulationRatio     *float64 `json:"kiro_cache_read_emulation_ratio" binding:"omitempty,gte=0,lte=1"`
+	KiroEndpointMode                *string  `json:"kiro_endpoint_mode"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -561,6 +579,14 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		RPMLimit:                          req.RPMLimit,
 		MaxReasoningEffort:                req.MaxReasoningEffort,
 		ReasoningEffortMappings:           req.ReasoningEffortMappings,
+		KiroCacheEmulationEnabled:         req.KiroCacheEmulationEnabled,
+		KiroAutoStickyEnabled:             req.KiroAutoStickyEnabled,
+		KiroStickySessionTTLSeconds:       req.KiroStickySessionTTLSeconds,
+		KiroCacheEmulationRatio:           req.KiroCacheEmulationRatio,
+		KiroCacheEmulationMode:            req.KiroCacheEmulationMode,
+		KiroCacheCreationEmulationRatio:   req.KiroCacheCreationEmulationRatio,
+		KiroCacheReadEmulationRatio:       req.KiroCacheReadEmulationRatio,
+		KiroEndpointMode:                  req.KiroEndpointMode,
 		CopyAccountsFromGroupIDs:          req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {
@@ -691,6 +717,14 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		RPMLimit:                          req.RPMLimit,
 		MaxReasoningEffort:                req.MaxReasoningEffort,
 		ReasoningEffortMappings:           req.ReasoningEffortMappings,
+		KiroCacheEmulationEnabled:         req.KiroCacheEmulationEnabled,
+		KiroAutoStickyEnabled:             req.KiroAutoStickyEnabled,
+		KiroStickySessionTTLSeconds:       req.KiroStickySessionTTLSeconds,
+		KiroCacheEmulationRatio:           req.KiroCacheEmulationRatio,
+		KiroCacheEmulationMode:            req.KiroCacheEmulationMode,
+		KiroCacheCreationEmulationRatio:   req.KiroCacheCreationEmulationRatio,
+		KiroCacheReadEmulationRatio:       req.KiroCacheReadEmulationRatio,
+		KiroEndpointMode:                  req.KiroEndpointMode,
 		CopyAccountsFromGroupIDs:          req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {

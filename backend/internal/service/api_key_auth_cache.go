@@ -115,6 +115,16 @@ type APIKeyAuthGroupSnapshot struct {
 	// ReasoningEffortMappings rewrites explicit effort values before the ceiling.
 	ReasoningEffortMappings []ReasoningEffortMapping `json:"reasoning_effort_mappings"`
 
+	// Kiro 模拟缓存配置（仅 Kiro 分组生效）
+	KiroCacheEmulationEnabled       bool    `json:"kiro_cache_emulation_enabled"`
+	KiroAutoStickyEnabled           bool    `json:"kiro_auto_sticky_enabled"`
+	KiroStickySessionTTLSeconds     int     `json:"kiro_sticky_session_ttl_seconds"`
+	KiroCacheEmulationRatio         float64 `json:"kiro_cache_emulation_ratio"`
+	KiroCacheEmulationMode          string  `json:"kiro_cache_emulation_mode"`
+	KiroCacheCreationEmulationRatio float64 `json:"kiro_cache_creation_emulation_ratio"`
+	KiroCacheReadEmulationRatio     float64 `json:"kiro_cache_read_emulation_ratio"`
+	KiroEndpointMode                string  `json:"kiro_endpoint_mode"`
+
 	// 高峰时段倍率：PeakRateEnabled 为 true 且请求时刻处于 [PeakStart, PeakEnd) 时，
 	// token 计费倍率额外乘以 PeakRateMultiplier（详见 Group.PeakMultiplierAt）。
 	// 必须随快照缓存，否则扣费路径拿到的 apiKey.Group 缺字段、高峰倍率失效。

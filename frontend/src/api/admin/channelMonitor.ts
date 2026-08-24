@@ -11,6 +11,7 @@ export type Provider =
   | 'gemini'
   | 'grok'
   | 'antigravity'
+  | 'kiro'
   | 'kimi'
   | 'zhipu'
   | 'deepseek'
@@ -55,6 +56,13 @@ export interface MonitorQuotaSnapshot {
   credential_invalid?: boolean
   error?: string
   fetched_at: string
+  /** 组级聚合：参与聚合的账号数。> 0 即表示这是聚合快照（单账号快照不带此字段） */
+  accounts_total?: number
+  /** 组级聚合：仍有额度可用的账号数 */
+  accounts_healthy?: number
+  /** 组级聚合：额度耗尽 / 余额不足 / 凭据失效的账号数。
+   * 抓取失败或超时的账号数 = accounts_total - healthy - exhausted */
+  accounts_exhausted?: number
 }
 
 export interface ChannelMonitor {
@@ -96,8 +104,10 @@ export interface ChannelMonitor {
   body_override: Record<string, unknown> | null
   /** 检测模式：probe（默认）/ quota / quota_probe */
   check_mode: CheckMode
-  /** 配额模式关联的账号 ID；探活模式为 null */
+  /** 配额模式关联的账号 ID；探活模式或绑定分组时为 null */
   account_id: number | null
+  /** 配额模式关联的分组 ID（聚合组内全部 active 账号）；与 account_id 互斥 */
+  group_id: number | null
   /** 主模型最近一次配额快照（配额模式；无历史时为 null） */
   latest_quota?: MonitorQuotaSnapshot | null
 }
@@ -134,10 +144,13 @@ export interface CreateParams {
   api_key: string
   /** 缺省 probe；antigravity 仅支持 quota */
   check_mode?: CheckMode
-  /** 配额模式必填：数据源账号（provider 需与账号平台一致）。
+  /** 配额模式的数据源账号（provider 需与账号平台一致）。与 group_id 二选一。
    * update 语义：>0=换绑，0=解绑（切回 probe 模式时前端发 0 清空存量关联）；
    * create 绝不发 0——后端会把 0 存成 &0 触发外键违约。 */
   account_id?: number | null
+  /** 配额模式的数据源分组，聚合组内全部 active 账号（provider 需与分组平台一致）。
+   * 与 account_id 互斥：设置一个后端会隐式清空另一个。0/null 语义同 account_id。 */
+  group_id?: number | null
   primary_model: string
   extra_models?: string[]
   group_name?: string

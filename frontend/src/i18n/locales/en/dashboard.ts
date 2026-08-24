@@ -432,6 +432,7 @@ export default {
       gemini: 'Gemini',
       grok: 'Grok',
       antigravity: 'Antigravity',
+      kiro: 'Kiro',
       kimi: 'Kimi',
       zhipu: 'Zhipu GLM',
       deepseek: 'DeepSeek'
@@ -446,6 +447,10 @@ export default {
     quota: {
       unavailable: 'Quota unavailable',
       resetSoon: 'resetting',
+      // Group aggregation summary: monitors bound to a group show how many accounts still have quota
+      accountsHealthy: '{healthy}/{total} accounts with quota',
+      accountsExhausted: '{count} exhausted',
+      accountsUnknown: '{count} unknown',
       windows: {
         '5h': '5h',
         '7d': '7d',

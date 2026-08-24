@@ -57,7 +57,7 @@ func newGatewayModelsHandlerForTest(repo service.AccountRepository) *GatewayHand
 		gatewayService: service.NewGatewayService(
 			repo,
 			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		),
 	}
 }
@@ -910,7 +910,8 @@ func TestGatewayModels_RestrictedChannelDoesNotFallBackToDefaults(t *testing.T) 
 				groupID: {{ID: 1, Platform: service.PlatformAntigravity}},
 			}},
 			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+			nil, nil, nil, nil, nil, nil,
+			nil, nil, nil, nil, nil, nil, nil,
 			channelSvc, nil, nil, nil, nil,
 		),
 	}
@@ -950,7 +951,8 @@ func TestGatewayModels_RestrictedChannelEmptyStorefrontStaysEmpty(t *testing.T) 
 				groupID: {{ID: 1, Platform: service.PlatformAntigravity}},
 			}},
 			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+			nil, nil, nil, nil, nil, nil,
+			nil, nil, nil, nil, nil, nil, nil,
 			channelSvc, nil, nil, nil, nil,
 		),
 	}
@@ -993,7 +995,8 @@ func TestGatewayModels_CompositeRestrictedEmptyStorefrontStaysEmpty(t *testing.T
 				},
 			}},
 			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+			nil, nil, nil, nil, nil, nil,
+			nil, nil, nil, nil, nil, nil, nil,
 			channelSvc, nil, nil, nil, nil,
 		),
 	}

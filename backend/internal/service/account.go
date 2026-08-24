@@ -4,8 +4,10 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"hash/fnv"
 	"log/slog"
+	"math"
 	"net/url"
 	"reflect"
 	"sort"
@@ -52,6 +54,13 @@ type Account struct {
 
 	TempUnschedulableUntil  *time.Time
 	TempUnschedulableReason string
+
+	KiroQuotaState     string
+	KiroQuotaReason    string
+	KiroQuotaResetAt   *time.Time
+	KiroRuntimeState   string
+	KiroRuntimeReason  string
+	KiroRuntimeResetAt *time.Time
 
 	SessionWindowStart  *time.Time
 	SessionWindowEnd    *time.Time
@@ -261,6 +270,10 @@ func (a *Account) IsPrivacySet() bool {
 
 func (a *Account) IsGemini() bool {
 	return a.Platform == PlatformGemini
+}
+
+func (a *Account) IsKiro() bool {
+	return a.Platform == PlatformKiro
 }
 
 func (a *Account) IsGrok() bool {
@@ -618,9 +631,12 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 
 func (a *Account) resolveStoredModelMapping(rawMapping map[string]any) map[string]string {
 	if a.Credentials == nil {
-		// Antigravity 平台使用默认映射
+		// Antigravity / Kiro 平台使用默认映射
 		if a.Platform == domain.PlatformAntigravity {
 			return domain.DefaultAntigravityModelMapping
+		}
+		if a.Platform == domain.PlatformKiro {
+			return domain.DefaultKiroModelMapping
 		}
 		if a.Platform == domain.PlatformGrok {
 			return xai.DefaultModelMapping()
@@ -629,9 +645,12 @@ func (a *Account) resolveStoredModelMapping(rawMapping map[string]any) map[strin
 		return nil
 	}
 	if len(rawMapping) == 0 {
-		// Antigravity 平台使用默认映射
+		// Antigravity / Kiro 平台使用默认映射
 		if a.Platform == domain.PlatformAntigravity {
 			return domain.DefaultAntigravityModelMapping
+		}
+		if a.Platform == domain.PlatformKiro {
+			return domain.DefaultKiroModelMapping
 		}
 		if a.Platform == domain.PlatformGrok {
 			return xai.DefaultModelMapping()
@@ -662,9 +681,12 @@ func (a *Account) resolveStoredModelMapping(rawMapping map[string]any) map[strin
 		return result
 	}
 
-	// Antigravity 平台使用默认映射
+	// Antigravity / Kiro 平台使用默认映射
 	if a.Platform == domain.PlatformAntigravity {
 		return domain.DefaultAntigravityModelMapping
+	}
+	if a.Platform == domain.PlatformKiro {
+		return domain.DefaultKiroModelMapping
 	}
 	if a.Platform == domain.PlatformGrok {
 		return xai.DefaultModelMapping()
@@ -998,6 +1020,9 @@ func (a *Account) GetBaseURL() string {
 	}
 	baseURL := a.GetCredential("base_url")
 	if baseURL == "" {
+		if a.Platform == PlatformKiro {
+			return ""
+		}
 		return "https://api.anthropic.com"
 	}
 	if a.Platform == PlatformAntigravity {
@@ -2222,6 +2247,48 @@ func (a *Account) IsAnthropicAPIKeyPassthroughEnabled() bool {
 	}
 	enabled, ok := a.Extra["anthropic_passthrough"].(bool)
 	return ok && enabled
+}
+
+// ValidateKiroCreditUnitPriceFromExtra rejects invalid account-level Kiro credit pricing.
+func ValidateKiroCreditUnitPriceFromExtra(extra map[string]any) error {
+	if extra == nil {
+		return nil
+	}
+	raw, ok := extra["kiro_credit_unit_price_usd"]
+	if !ok || raw == nil {
+		return nil
+	}
+
+	var value float64
+	switch v := raw.(type) {
+	case float64:
+		value = v
+	case float32:
+		value = float64(v)
+	case int:
+		value = float64(v)
+	case int64:
+		value = float64(v)
+	case json.Number:
+		parsed, err := v.Float64()
+		if err != nil {
+			return fmt.Errorf("kiro_credit_unit_price_usd must be a number")
+		}
+		value = parsed
+	case string:
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil {
+			return fmt.Errorf("kiro_credit_unit_price_usd must be a number")
+		}
+		value = parsed
+	default:
+		return fmt.Errorf("kiro_credit_unit_price_usd must be a number")
+	}
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
+		return fmt.Errorf("kiro_credit_unit_price_usd must be a finite number >= 0")
+	}
+	extra["kiro_credit_unit_price_usd"] = value
+	return nil
 }
 
 // WebSearch 模拟三态常量

@@ -404,19 +404,19 @@
               >{{ t('home.providers.supported') }}</span
             >
           </div>
-          <!-- More - Coming Soon -->
+          <!-- Kiro - Supported -->
           <div
-            class="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 opacity-60 dark:border-dark-700 dark:bg-dark-900"
+            class="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 dark:border-dark-700 dark:bg-dark-900"
           >
             <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 dark:bg-dark-800"
+              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600"
             >
-              <span class="text-xs font-semibold text-gray-900 dark:text-white">+</span>
+              <span class="text-xs font-bold text-white">K</span>
             </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.more') }}</span>
+            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.kiro') }}</span>
             <span
-              class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-dark-700 dark:text-dark-400"
-              >{{ t('home.providers.soon') }}</span
+              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
+              >{{ t('home.providers.supported') }}</span
             >
           </div>
         </div>
