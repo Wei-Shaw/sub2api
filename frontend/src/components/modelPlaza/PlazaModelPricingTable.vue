@@ -308,6 +308,13 @@ const props = defineProps<{
   /** 生图独立倍率:true 时图片计费模型的实付倍率取 imageRateMultiplier,不取分组/专属倍率。 */
   imageRateIndependent?: boolean
   imageRateMultiplier?: number | null
+  /**
+   * 高峰窗口描述(含倍率与服务器时区标注),空串/缺省 = 分组未启用高峰。
+   * 表格所有价格均为不含高峰因子的口径,该窗口仅用于分时时段行的 tooltip 披露:
+   * 与高峰重叠的部分实付还会再乘高峰倍率。
+   */
+  peakWindow?: string
+  peakRateMultiplier?: number | null
 REDACTED>()
 
 const { t REDACTED = useI18n()
@@ -428,12 +435,22 @@ function timePeriods(m: PlazaModel): PlazaTimePricingPeriod[] {
   return m.time_pricing?.periods ?? []
 REDACTED
 
-/** 时段行 tooltip:仅工作日生效的配置换用带周末回落说明的文案。 */
+/**
+ * 时段行 tooltip:仅工作日生效的配置换用带周末回落说明的文案;
+ * 分组启用高峰倍率时追加披露——本行价格不含高峰因子,与高峰窗口重叠的部分实付再乘高峰倍率。
+ */
 function timePricingRowHint(m: PlazaModel): string {
   const key = m.time_pricing?.weekdays_only
     ? 'modelPlaza.table.timePricingRowHintWeekdays'
     : 'modelPlaza.table.timePricingRowHint'
-  return t(key, { timezone: m.time_pricing?.timezone REDACTED)
+  let hint = t(key, { timezone: m.time_pricing?.timezone REDACTED)
+  if (props.peakWindow) {
+    hint += t('modelPlaza.table.timePricingRowHintPeak', {
+      window: props.peakWindow,
+      multiplier: props.peakRateMultiplier ?? 1
+    REDACTED)
+  REDACTED
+  return hint
 REDACTED
 
 /** “00:30–08:30”;整分钟的 HH:mm:ss 省略秒。 */

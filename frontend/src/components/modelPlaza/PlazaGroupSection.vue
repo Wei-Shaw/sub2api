@@ -61,6 +61,8 @@
         :user-rate-multiplier="group.user_rate_multiplier ?? null"
         :image-rate-independent="group.image_rate_independent"
         :image-rate-multiplier="group.image_rate_multiplier"
+        :peak-window="peakWindow"
+        :peak-rate-multiplier="group.peak_rate_multiplier"
       />
       <p v-else class="px-5 py-4 text-center text-sm text-gray-400 dark:text-dark-500">
         {{ t('modelPlaza.detail.noModels') REDACTEDREDACTED
@@ -88,14 +90,19 @@ REDACTED>()
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
 
-const peakNote = computed(() => {
+/** 高峰窗口描述(含倍率与服务器时区标注);分组未启用高峰为空串。 */
+const peakWindow = computed(() => {
   if (!hasPeakRate(props.group)) return ''
-  const window = formatPeakRateWindow(
+  return formatPeakRateWindow(
     props.group,
     serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset)
   )
+REDACTED)
+
+const peakNote = computed(() => {
+  if (!peakWindow.value) return ''
   return t('modelPlaza.detail.peakNote', {
-    window,
+    window: peakWindow.value,
     multiplier: props.group.peak_rate_multiplier
   REDACTED)
 REDACTED)

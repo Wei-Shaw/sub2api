@@ -43,7 +43,12 @@ function mountTable(
   models: PlazaModel[],
   rateMultiplier: number,
   userRateMultiplier?: number | null,
-  extraProps?: { imageRateIndependent?: boolean; imageRateMultiplier?: number | null REDACTED
+  extraProps?: {
+    imageRateIndependent?: boolean
+    imageRateMultiplier?: number | null
+    peakWindow?: string
+    peakRateMultiplier?: number | null
+  REDACTED
 ) {
   return mount(PlazaModelPricingTable, {
     props: { models, rateMultiplier, userRateMultiplier: userRateMultiplier ?? null, ...extraProps REDACTED
@@ -600,6 +605,25 @@ describe('PlazaModelPricingTable 分时计价', () => {
     const wrapper = mountTable([timePricedModel()], 1)
     expect(wrapper.find('tbody').text()).not.toContain('modelPlaza.table.timePricingWeekdays')
     expect(wrapper.find('[title="modelPlaza.table.timePricingRowHint"]').exists()).toBe(true)
+  REDACTED)
+
+  it('分组启用高峰倍率时时段行 tooltip 追加高峰披露,价格与倍率列保持不含高峰的口径', () => {
+    const wrapper = mountTable([timePricedModel()], 0.8, null, {
+      peakWindow: '14:00-18:00 ×1.5 (UTC+08:00)',
+      peakRateMultiplier: 1.5
+    REDACTED)
+    const nightCells = wrapper.findAll('tbody tr')[1].findAll('td')
+    const title = nightCells[0].find('[title*="modelPlaza.table.timePricingRowHint"]').attributes('title')
+    expect(title).toContain('modelPlaza.table.timePricingRowHintPeak')
+    // 行内数字仍是 基础倍率 × 时段倍率(0.8 × 0.5),高峰只进披露不进价格
+    expect(nightCells[1].text()).toContain('$1.20')
+    expect(nightCells[7].text()).toContain('0.4x')
+  REDACTED)
+
+  it('分组未启用高峰(peakWindow 缺省)时 tooltip 不含高峰披露', () => {
+    const wrapper = mountTable([timePricedModel()], 1)
+    const badge = wrapper.find('[title*="modelPlaza.table.timePricingRowHint"]')
+    expect(badge.attributes('title')).not.toContain('modelPlaza.table.timePricingRowHintPeak')
   REDACTED)
 
   it('无分时倍率时只有一行,不渲染时段标注', () => {
