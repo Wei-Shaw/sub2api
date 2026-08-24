@@ -26,7 +26,7 @@ type UserPlatformQuota struct {
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 	// UserID holds the value of the "user_id" field.
 	UserID int64 `json:"user_id,omitempty"`
-	// Platform holds the value of the "platform" field.
+	// 平台标识（anthropic/openai/gemini/antigravity/grok/国产供应商等）
 	Platform string `json:"platform,omitempty"`
 	// DailyLimitUsd holds the value of the "daily_limit_usd" field.
 	DailyLimitUsd *float64 `json:"daily_limit_usd,omitempty"`
