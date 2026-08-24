@@ -329,7 +329,8 @@ gateway:
     # 按账号类型细分开关
     oauth_enabled: true
     apikey_enabled: true
-    # 全局强制 HTTP（紧急回滚开关）
+    # 全局强制 OpenAI Responses 上游使用 HTTP/SSE，不使用 WebSocket（紧急回滚开关）。
+    # 此开关不强制 HTTP/1.1；HTTP/2 由 gateway.openai_http2 单独控制。
     force_http: false
     # 允许在 WSv2 下按策略恢复 store=true（默认 false）
     allow_store_recovery: false
