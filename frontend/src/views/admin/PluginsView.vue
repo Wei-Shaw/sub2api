@@ -378,6 +378,7 @@ const pluginFrame = ref<HTMLIFrameElement | null>(null);
 const uiLoading = ref(false);
 const uiError = ref("");
 const iframeHeight = ref(640);
+const pluginFrameLoaded = ref(false);
 const pendingBridgeRequests = new Map<string, number>();
 
 function errorMessage(error: unknown): string {
@@ -524,6 +525,8 @@ REDACTED
 async function openConfiguration(plugin: PluginInstallation): Promise<void> {
   configPlugin.value = plugin;
   uiSession.value = null;
+  pluginFrameLoaded.value = false;
+  clearPendingBridgeRequests();
   uiLoading.value = true;
   uiError.value = "";
   iframeHeight.value = 640;
@@ -537,6 +540,7 @@ REDACTED
 
 function closeConfiguration(): void {
   clearPendingBridgeRequests();
+  pluginFrameLoaded.value = false;
   configPlugin.value = null;
   uiSession.value = null;
   uiLoading.value = false;
@@ -551,7 +555,8 @@ REDACTED
 function handlePluginFrameLoad(): void {
   // A load can also be caused by a plugin navigating its iframe. Drop all
   // outstanding responses so a late config response is never sent to the new document.
-  clearPendingBridgeRequests();
+  if (pluginFrameLoaded.value) clearPendingBridgeRequests();
+  pluginFrameLoaded.value = true;
   uiLoading.value = false;
 REDACTED
 
