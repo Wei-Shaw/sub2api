@@ -52,7 +52,7 @@ func TestProxyOpenAIWSHTTPBridgeTurn_UpstreamDefaultServiceTierWinsOverRequest(t
 	// policy。本测试只覆盖局部 observer：canonical 请求 priority 被上游
 	// response.completed service_tier=default 覆盖。
 	sse := strings.Join([]string{
-		`data: {"type":"response.completed","response":{"id":"resp_tier","status":"completed","service_tier":"default","usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTEDREDACTED`,
+		`data: {"type":"response.completed","response":{"id":"resp_tier","model":"gpt-5.5","status":"completed","service_tier":"default","usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTEDREDACTED`,
 		``,
 REDACTED, "\n")
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
@@ -89,7 +89,7 @@ func TestProxyOpenAIWSHTTPBridgeTurn_UpstreamDefaultWinsOverFastAlias(t *testing
 	// 客户端别名 fast 同样被上游回显的 default 覆盖：局部 observer 的
 	// ServiceTier() 是唯一计费依据，绝不回退到请求侧 fast。
 	sse := strings.Join([]string{
-		`data: {"type":"response.completed","response":{"id":"resp_tier2","status":"completed","service_tier":"default","usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTEDREDACTED`,
+		`data: {"type":"response.completed","response":{"id":"resp_tier2","model":"gpt-5.5","status":"completed","service_tier":"default","usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTEDREDACTED`,
 		``,
 REDACTED, "\n")
 	upstream := &httpUpstreamRecorder{resp: &http.Response{

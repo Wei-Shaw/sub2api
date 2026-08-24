@@ -50,7 +50,7 @@ REDACTED
 
 			captureConn := &openAIWSCaptureConn{
 				events: [][]byte{
-					[]byte(`{"type":"response.completed","response":{"id":"resp_tier_v2","status":"completed","service_tier":"default","usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTEDREDACTED`),
+					[]byte(`{"type":"response.completed","response":{"id":"resp_tier_v2","model":"gpt-5.5","status":"completed","service_tier":"default","usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTEDREDACTED`),
 			REDACTED,
 		REDACTED
 			captureDialer := &openAIWSCaptureDialer{conn: captureConnREDACTED
