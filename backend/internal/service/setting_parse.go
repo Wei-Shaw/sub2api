@@ -205,7 +205,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyChannelMonitorShowQuota:              "false",
 
 		// Grok: safe defaults — no cross-vendor model rewrite unless operators enable it.
-		SettingKeyGrokDefaultTextModel:           "grok-4.5",
+		SettingKeyGrokDefaultTextModel:           "grok-4.6",
 		SettingKeyGrokCrossClientModelMapEnabled: "true",
 		SettingKeyGrokDefaultBaseURLMode:         GrokDefaultBaseURLModeCLI,
 
@@ -828,7 +828,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// Grok default mapping policy
 	result.GrokDefaultTextModel = strings.TrimSpace(settings[SettingKeyGrokDefaultTextModel])
 	if result.GrokDefaultTextModel == "" {
-		result.GrokDefaultTextModel = "grok-4.5"
+		result.GrokDefaultTextModel = "grok-4.6"
 	}
 	// Default true (missing/empty → enabled) so Claude/Codex→Grok mapping keeps working.
 	// Operators can set false to disable silent cross-client rewrite.

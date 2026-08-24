@@ -319,7 +319,7 @@ func TestHandlePassthroughSSEToJSON_CompactRawOutputItemDoneRepairsEmptyTerminal
 	}
 
 	result, err := svc.handleNonStreamingResponsePassthrough(openaiNonStreamingPassthroughInput{
-		response: resp, client: c, originalModel: "gpt-5.5",
+		ctx: context.Background(), response: resp, client: c, originalModel: "gpt-5.5",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -515,7 +515,7 @@ func TestHandleNonStreamingResponsePassthrough_CompactClientStreamBridgesToSSE(t
 	}
 
 	result, err := svc.handleNonStreamingResponsePassthrough(openaiNonStreamingPassthroughInput{
-		response: resp, client: c, originalModel: "gpt-5.5",
+		ctx: context.Background(), response: resp, client: c, originalModel: "gpt-5.5",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, result)

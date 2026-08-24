@@ -666,7 +666,10 @@ func TestOpenAIGatewayService_OAuthPassthrough_NamespaceNonStreamingResponse(t *
 	setOpenAIResponsesNamespaceNames(c, names)
 
 	result, err := (&OpenAIGatewayService{cfg: &config.Config{}}).handleNonStreamingResponsePassthrough(
-		openaiNonStreamingPassthroughInput{response: resp, client: c, originalModel: "gpt-5.5"},
+		openaiNonStreamingPassthroughInput{
+			ctx: context.Background(), response: resp, client: c,
+			account: &Account{ID: 91}, originalModel: "gpt-5.5",
+		},
 	)
 	require.NoError(t, err)
 	require.NotNil(t, result)

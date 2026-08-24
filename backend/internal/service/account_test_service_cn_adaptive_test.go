@@ -189,3 +189,91 @@ func TestAccountTestService_FixedCNChatProtocolStillTestsOnlyChatEndpoint(t *tes
 	require.Equal(t, "http://fixed-chat.example/v1/chat/completions", upstream.requests[0].URL.String())
 	require.Equal(t, 1, strings.Count(recorder.Body.String(), `"type":"test_complete"`))
 }
+
+func anthropicProtocolCNAccount(id int64, platform string, credentials map[string]any) *Account {
+	base := map[string]any{
+		"api_key":      "sk-anthropic-test",
+		"api_protocol": APIProtocolAnthropic,
+	}
+	for key, value := range credentials {
+		base[key] = value
+	}
+	return &Account{
+		ID:          id,
+		Name:        "anthropic-protocol-cn-test",
+		Platform:    platform,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Concurrency: 1,
+		Credentials: base,
+	}
+}
+
+func TestAccountTestService_AnthropicProtocolProbesNativeEndpointWithoutBetaQuery(t *testing.T) {
+	account := anthropicProtocolCNAccount(311, PlatformZhipu, map[string]any{
+		"base_url": "https://open.bigmodel.cn/api/anthropic",
+	})
+	svc, upstream := adaptiveCNAccountTestService(account, adaptiveCNAnthropicTestResponse())
+	c, recorder := newTestContext()
+
+	err := svc.TestAccountConnection(c, account.ID, "glm-4.7", "", AccountTestModeDefault)
+
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	req := upstream.requests[0]
+	// Native Anthropic path without the ?beta=true suffix the generic Claude tester appends.
+	require.Equal(t, "https://open.bigmodel.cn/api/anthropic/v1/messages", req.URL.String())
+	require.Empty(t, req.URL.RawQuery)
+	require.Equal(t, "sk-anthropic-test", req.Header.Get("x-api-key"))
+	require.Equal(t, "2023-06-01", req.Header.Get("anthropic-version"))
+	require.Contains(t, recorder.Body.String(), `"type":"test_complete"`)
+}
+
+func TestAccountTestService_AnthropicProtocolFallsBackToProviderDefaultNotAnthropicDotCom(t *testing.T) {
+	// base_url intentionally absent: forwarding resolves the per-platform default
+	// Anthropic endpoint. The old fall-through probed https://api.anthropic.com
+	// with the provider's API key.
+	account := anthropicProtocolCNAccount(312, PlatformZhipu, nil)
+	svc, upstream := adaptiveCNAccountTestService(account, adaptiveCNAnthropicTestResponse())
+	c, _ := newTestContext()
+
+	err := svc.TestAccountConnection(c, account.ID, "glm-4.7", "", AccountTestModeDefault)
+
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://open.bigmodel.cn/api/anthropic/v1/messages", upstream.requests[0].URL.String())
+}
+
+func TestAccountTestService_AnthropicProtocolRejectsOpenAICompatBaseURL(t *testing.T) {
+	account := anthropicProtocolCNAccount(313, PlatformZhipu, map[string]any{
+		"base_url": "https://open.bigmodel.cn/api/paas/v4",
+	})
+	svc, upstream := adaptiveCNAccountTestService(account)
+	c, recorder := newTestContext()
+
+	err := svc.TestAccountConnection(c, account.ID, "glm-4.7", "", AccountTestModeDefault)
+
+	require.Error(t, err)
+	// Fails fast locally: no upstream request with the wrong endpoint shape.
+	require.Empty(t, upstream.requests)
+	require.Contains(t, recorder.Body.String(), "looks like an OpenAI-compatible endpoint")
+	require.Contains(t, recorder.Body.String(), "https://open.bigmodel.cn/api/anthropic")
+}
+
+func TestAccountTestService_AnthropicProtocol401MarksAccountError(t *testing.T) {
+	account := anthropicProtocolCNAccount(314, PlatformKimi, map[string]any{
+		"base_url": "https://api.moonshot.cn/anthropic",
+	})
+	svc, _ := adaptiveCNAccountTestService(
+		account,
+		newJSONResponse(http.StatusUnauthorized, `{"error":{"message":"invalid key"}}`),
+	)
+	c, _ := newTestContext()
+
+	err := svc.TestAccountConnection(c, account.ID, "kimi-k2.5", "", AccountTestModeDefault)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "Anthropic endpoint returned 401")
+	repo := svc.accountRepo.(*openAIAccountTestRepo)
+	require.Equal(t, account.ID, repo.setErrorID)
+}

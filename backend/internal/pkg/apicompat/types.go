@@ -295,9 +295,14 @@ func (i *ResponsesInputItem) UnmarshalJSON(data []byte) error {
 
 // ResponsesContentPart is a typed content part in a Responses message.
 type ResponsesContentPart struct {
-	Type     string `json:"type"` // "input_text" | "output_text" | "input_image"
+	Type     string `json:"type"` // "input_text" | "output_text" | "input_image" | "input_file"
 	Text     string `json:"text,omitempty"`
 	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
+
+	// input_file fields.
+	Filename string `json:"filename,omitempty"`
+	FileData string `json:"file_data,omitempty"` // data URI
+	FileID   string `json:"file_id,omitempty"`
 }
 
 // ResponsesTool describes a tool in the Responses API.
@@ -670,15 +675,23 @@ type ChatMessage struct {
 
 // ChatContentPart is a typed content part in a multi-modal message.
 type ChatContentPart struct {
-	Type     string        `json:"type"` // "text" | "image_url"
+	Type     string        `json:"type"` // "text" | "image_url" | "file"
 	Text     string        `json:"text,omitempty"`
 	ImageURL *ChatImageURL `json:"image_url,omitempty"`
+	File     *ChatFile     `json:"file,omitempty"`
 }
 
 // ChatImageURL contains the URL for an image content part.
 type ChatImageURL struct {
 	URL    string `json:"url"`
 	Detail string `json:"detail,omitempty"` // "auto" | "low" | "high"
+}
+
+// ChatFile contains the payload of a "file" content part (e.g. PDF input).
+type ChatFile struct {
+	Filename string `json:"filename,omitempty"`
+	FileData string `json:"file_data,omitempty"` // data URI
+	FileID   string `json:"file_id,omitempty"`
 }
 
 // ChatTool describes a tool available to the model.
@@ -714,7 +727,9 @@ type ChatToolCall struct {
 
 // ChatFunctionCall contains the function name and arguments.
 type ChatFunctionCall struct {
-	Name      string `json:"name"`
+	// Empty name is omitted so streamed arguments-only deltas never overwrite
+	// the tool name a client accumulated from the first delta.
+	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments"`
 }
 
