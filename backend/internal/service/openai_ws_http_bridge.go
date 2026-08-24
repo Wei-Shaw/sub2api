@@ -407,7 +407,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		if buildErr != nil {
 			return nil, buildErr
 		}
-		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 		if err != nil {
 			if turn == 1 {
 				return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
@@ -513,6 +513,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			UpstreamModel:                 mappedModel,
 			UpstreamResponseModel:         responseModelObserver.Model(),
 			UpstreamResponseModelConflict: responseModelObserver.Conflict(),
+			UpstreamResponseServiceTier:   responseModelObserver.ServiceTier(),
 			ServiceTier:                   extractOpenAIServiceTierFromBody(body),
 			ReasoningEffort:               ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(body, mappedModel, originalModel), body, mappedModel),
 			Stream:                        reqStream,

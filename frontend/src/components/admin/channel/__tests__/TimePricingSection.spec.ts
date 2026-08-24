@@ -12,12 +12,34 @@ const SelectStub = {
   name: 'Select',
   props: ['modelValue', 'options'],
   emits: ['update:modelValue'],
-  template: '<button type="button" data-testid="timezone-select" />',
+  template: '<button type="button" v-bind="$attrs" />',
 }
 
 describe('TimePricingSection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('offers every-day and weekdays-only scopes', async () => {
+    const value = createDefaultTimePricingForm()
+    const wrapper = mount(TimePricingSection, {
+      props: { modelValue: value },
+      global: { stubs: { Select: SelectStub, Icon: true } },
+    })
+
+    const selects = wrapper.findAllComponents(SelectStub)
+    expect(selects).toHaveLength(2)
+    expect(selects[1].props('modelValue')).toBe(false)
+    expect(selects[1].props('options')).toEqual([
+      { value: false, label: 'admin.channels.form.timePricingEveryDay' },
+      { value: true, label: 'admin.channels.form.timePricingWeekdaysOnly' },
+    ])
+
+    selects[1].vm.$emit('update:modelValue', true)
+    expect(wrapper.emitted('update:modelValue')?.[0]?.[0]).toEqual({
+      ...value,
+      weekdays_only: true,
+    })
   })
 
   it('adds a neutral period immutably', async () => {
@@ -31,6 +53,7 @@ describe('TimePricingSection', () => {
 
     expect(wrapper.emitted('update:modelValue')?.[0]?.[0]).toEqual({
       timezone: 'Asia/Shanghai',
+      weekdays_only: false,
       periods: [{ start_time: '', end_time: '', multiplier: '1.00' }],
     })
     expect(value.periods).toHaveLength(0)

@@ -310,7 +310,7 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 	upstreamReq.Header.Set(liveAttestationHeader, attestation)
 	applyLiveUpstreamIdentityHeaders(upstreamReq.Header)
 
-	resp, err := s.httpUpstream.Do(upstreamReq, liveAccountProxyURL(account), account.ID, account.Concurrency)
+	resp, err := s.doOpenAIUpstream(upstreamReq, liveAccountProxyURL(account), account)
 	if err != nil {
 		logLiveCreateStageFailure(ctx, account.ID, "upstream_transport", err)
 		return nil, err

@@ -76,9 +76,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if account.IsOpenAIOAuthLike() && isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader)) {
 		liteBody, changed, liteErr := normalizeOpenAIResponsesLiteToolsPayload(body)
 		if liteErr != nil {
+			param := "tools"
+			var validationErr *openAIResponsesLiteValidationError
+			if errors.As(liteErr, &validationErr) {
+				param = validationErr.param
+			}
 			setOpsUpstreamError(c, http.StatusBadRequest, liteErr.Error(), "")
 			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
-				"type": "invalid_request_error", "message": liteErr.Error(), "param": "tools",
+				"type": "invalid_request_error", "message": liteErr.Error(), "param": param,
 			}})
 			return nil, liteErr
 		}
@@ -938,7 +943,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 		// Send request
 		upstreamStart := time.Now()
-		resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if headerGuard != nil && headerGuard.stopHeaderWait() {
 			if resp != nil && resp.Body != nil {
@@ -1174,6 +1179,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			UpstreamModel:                 upstreamModel,
 			UpstreamResponseModel:         observedUpstreamResponseModel(c),
 			UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+			UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
 			ServiceTier:                   serviceTier,
 			ReasoningEffort:               reasoningEffort,
 			Stream:                        reqStream,

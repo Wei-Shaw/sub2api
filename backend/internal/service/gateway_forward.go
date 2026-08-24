@@ -888,6 +888,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		UpstreamModel:                 mappedModel,
 		UpstreamResponseModel:         observedUpstreamResponseModel(c),
 		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+		UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
 		Stream:                        reqStream,
 		Duration:                      time.Since(startTime),
 		FirstTokenMs:                  firstTokenMs,
@@ -913,8 +914,9 @@ func anthropicSpeedModel(parsed *ParsedRequest, result *ForwardResult) string {
 // 承载（Opus 4.7 的 fast mode 已被移除，传 speed=fast 会直接报错）。这里按模型和
 // 平台收紧，避免上游根本没跑 fast 时仍然按 2x 计费——宁可漏收也不能多收。
 //
-// 注：判据是请求参数而非响应里的 usage.speed。等 usage 解析链路统一暴露该字段后，
-// 应改为以响应为准。
+// 这里只决定请求侧的档位；上游响应里的 usage.speed 由 UpstreamResponseServiceTier
+// 带回，用量记录时经 ResolveBillingServiceTier 只降不升（usage.speed=standard 则按
+// 标准价计费）。
 func anthropicSpeedServiceTier(account *Account, speed, model string) *string {
 	if account == nil || account.Platform != PlatformAnthropic || speed != "fast" {
 		return nil

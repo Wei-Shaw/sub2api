@@ -112,7 +112,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
-	forceHTTPBridge := account.Platform == PlatformGrok
+	forceHTTPBridge := account.Platform == PlatformGrok ||
+		(s.pluginManager != nil && s.pluginManager.ShouldRouteOpenAIOAuth(account))
 	modeRouterV2Enabled := s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.ModeRouterV2Enabled
 	ingressMode := OpenAIWSIngressModeCtxPool
 	if modeRouterV2Enabled && !forceHTTPBridge {
@@ -1162,6 +1163,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					UpstreamModel:                 mappedModel,
 					UpstreamResponseModel:         responseModelObserver.Model(),
 					UpstreamResponseModelConflict: responseModelObserver.Conflict(),
+					UpstreamResponseServiceTier:   responseModelObserver.ServiceTier(),
 					ServiceTier:                   extractOpenAIServiceTierFromBody(payload),
 					ReasoningEffort:               ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(payload, mappedModel, originalModel), payload, mappedModel),
 					Stream:                        reqStream,

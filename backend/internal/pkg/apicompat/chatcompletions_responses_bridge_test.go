@@ -65,7 +65,7 @@ func TestChatCompletionsResponseToResponses_SkipsInvalidFunctionArguments(t *tes
 		}},
 	}
 
-	out := ChatCompletionsResponseToResponses(resp, "deepseek-v4-flash", nil, false, nil)
+	out := ChatCompletionsResponseToResponses(resp, "deepseek-v4-flash", nil, nil, false, nil)
 	require.Equal(t, "incomplete", out.Status)
 	require.Len(t, out.Output, 1)
 	require.Equal(t, "function_call", out.Output[0].Type)

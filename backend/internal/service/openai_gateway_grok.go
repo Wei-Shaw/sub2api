@@ -110,7 +110,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 			return nil, buildErr
 		}
 
-		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
 			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
@@ -1091,6 +1091,19 @@ func sanitizeGrokResponsesTools(body []byte) ([]byte, error) {
 			filteredTools = append(filteredTools, raw)
 		}
 	}
+	if !grokRawToolsContainType(filteredTools, "tool_search") {
+		for index, raw := range filteredTools {
+			if !gjson.GetBytes(raw, "defer_loading").Exists() {
+				continue
+			}
+			cleaned, deleteErr := sjson.DeleteBytes(raw, "defer_loading")
+			if deleteErr != nil {
+				return nil, deleteErr
+			}
+			filteredTools[index] = cleaned
+			toolsChanged = true
+		}
+	}
 
 	var err error
 	if len(filteredTools) != len(rawTools) || toolsChanged {
@@ -1123,6 +1136,15 @@ func sanitizeGrokResponsesTools(body []byte) ([]byte, error) {
 		}
 	}
 	return body, nil
+}
+
+func grokRawToolsContainType(tools []json.RawMessage, want string) bool {
+	for _, tool := range tools {
+		if strings.TrimSpace(gjson.GetBytes(tool, "type").String()) == want {
+			return true
+		}
+	}
+	return false
 }
 
 func deleteGrokOrphanToolControls(body []byte) ([]byte, error) {
@@ -1329,7 +1351,7 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
 		return "", OpenAIUsage{}, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}

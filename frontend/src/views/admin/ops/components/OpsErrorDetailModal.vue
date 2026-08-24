@@ -211,6 +211,16 @@
         </div>
       </div>
     </div>
+    <template v-if="backToList" #footer>
+      <button
+        type="button"
+        class="btn btn-secondary"
+        data-testid="error-detail-back-to-list"
+        @click="goBack"
+      >
+        {{ t('admin.ops.errorDetail.backToList') }}
+      </button>
+    </template>
   </BaseDialog>
 </template>
 
@@ -228,10 +238,12 @@ interface Props {
   show: boolean
   errorId: number | null
   errorType?: 'request' | 'upstream'
+  backToList?: boolean
 }
 
 interface Emits {
   (e: 'update:show', value: boolean): void
+  (e: 'back'): void
 }
 
 const props = defineProps<Props>()
@@ -361,6 +373,11 @@ async function fetchCorrelatedUpstreamErrors(requestErrorId: number) {
 
 function close() {
   emit('update:show', false)
+}
+
+function goBack() {
+  emit('update:show', false)
+  emit('back')
 }
 
 function prettyJSON(raw?: string): string {

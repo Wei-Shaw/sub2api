@@ -385,6 +385,16 @@ func TestPatchGrokResponsesBodyDropsToolChoiceWhenNoSupportedToolsRemain(t *test
 	require.False(t, gjson.GetBytes(patched, "tool_choice").Exists())
 }
 
+func TestSanitizeGrokResponsesToolsRemovesDeferredFlagsWithToolSearch(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"tool_search"},{"type":"function","name":"shell","defer_loading":true},{"type":"function","name":"apply_patch"}]}`)
+
+	patched, err := sanitizeGrokResponsesTools(body)
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(patched, `tools.#(type=="tool_search")`).Exists())
+	require.False(t, gjson.GetBytes(patched, `tools.#(name=="shell").defer_loading`).Exists())
+	require.True(t, gjson.GetBytes(patched, `tools.#(name=="apply_patch")`).Exists())
+}
+
 func TestSanitizeGrokResponsesToolsKeepsToolChoiceOnlyWithSupportedTools(t *testing.T) {
 	t.Parallel()
 
