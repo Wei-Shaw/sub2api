@@ -1,22 +1,40 @@
 <template>
   <section class="mt-3 border-t border-gray-200 pt-3 dark:border-dark-600">
     <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-      <div class="min-w-0 flex-1 sm:max-w-sm">
+      <div class="min-w-0 flex-1 sm:max-w-2xl">
         <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">
           {{ t('admin.channels.form.timePricing') REDACTEDREDACTED
         </label>
-        <label class="mt-2 block text-xs text-gray-400">
-          {{ t('admin.channels.form.timezone') REDACTEDREDACTED
-        </label>
-        <Select
-          :model-value="modelValue.timezone"
-          :options="timezoneOptions"
-          :aria-label="t('admin.channels.form.timezone')"
-          searchable
-          creatable
-          class="mt-1 w-full"
-          @update:model-value="updateTimezone"
-        />
+        <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div class="min-w-0">
+            <label class="block text-xs text-gray-400">
+              {{ t('admin.channels.form.timezone') REDACTEDREDACTED
+            </label>
+            <Select
+              :model-value="modelValue.timezone"
+              :options="timezoneOptions"
+              :aria-label="t('admin.channels.form.timezone')"
+              data-testid="time-pricing-timezone"
+              searchable
+              creatable
+              class="mt-1 w-full"
+              @update:model-value="updateTimezone"
+            />
+          </div>
+          <div class="min-w-0">
+            <label class="block text-xs text-gray-400">
+              {{ t('admin.channels.form.timePricingDayScope') REDACTEDREDACTED
+            </label>
+            <Select
+              :model-value="modelValue.weekdays_only"
+              :options="dayScopeOptions"
+              :aria-label="t('admin.channels.form.timePricingDayScope')"
+              data-testid="time-pricing-day-scope"
+              class="mt-1 w-full"
+              @update:model-value="updateDayScope"
+            />
+          </div>
+        </div>
       </div>
       <button
         type="button"
@@ -99,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { getCurrentInstance REDACTED from 'vue'
+import { computed, getCurrentInstance REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -122,8 +140,17 @@ const timezoneOptions = COMMON_TIMEZONES.map(value => {
   return { value, label: offset ? `${valueREDACTED (${offsetREDACTED)` : value REDACTED
 REDACTED)
 
+const dayScopeOptions = computed(() => [
+  { value: false, label: t('admin.channels.form.timePricingEveryDay') REDACTED,
+  { value: true, label: t('admin.channels.form.timePricingWeekdaysOnly') REDACTED,
+])
+
 function updateTimezone(value: string | number | boolean | null) {
   emit('update:modelValue', { ...props.modelValue, timezone: String(value ?? '') REDACTED)
+REDACTED
+
+function updateDayScope(value: string | number | boolean | null) {
+  emit('update:modelValue', { ...props.modelValue, weekdays_only: value === true REDACTED)
 REDACTED
 
 function normalizeClockTime(value: string): string {
