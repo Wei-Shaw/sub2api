@@ -155,12 +155,26 @@ REDACTED
 	return *p
 REDACTED
 
+// AnthropicPromptTokensDetails holds OpenAI-compatible prompt token details
+// occasionally included by Anthropic-compatible providers.
+type AnthropicPromptTokensDetails struct {
+	CachedTokens int `json:"cached_tokens,omitempty"`
+REDACTED
+
 // AnthropicUsage holds token counts in Anthropic format.
 type AnthropicUsage struct {
 	InputTokens              int `json:"input_tokens"`
 	OutputTokens             int `json:"output_tokens"`
 	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	// Anthropic-compatible providers can also expose their native OpenAI-style
+	// total/cache fields. Preserve them so callers can normalize provider totals
+	// into Anthropic's mutually-exclusive billing buckets.
+	PromptTokens          int                           `json:"prompt_tokens,omitempty"`
+	CachedTokens          int                           `json:"cached_tokens,omitempty"`
+	PromptTokensDetails   *AnthropicPromptTokensDetails `json:"prompt_tokens_details,omitempty"`
+	PromptCacheHitTokens  *int                          `json:"prompt_cache_hit_tokens,omitempty"`
+	PromptCacheMissTokens *int                          `json:"prompt_cache_miss_tokens,omitempty"`
 REDACTED
 
 // ---------------------------------------------------------------------------
