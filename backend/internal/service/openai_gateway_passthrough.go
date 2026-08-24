@@ -500,6 +500,8 @@ REDACTED
 		if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
 			s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
 	REDACTED
+REDACTED else if account.ParentAccountID != nil {
+		notifyOpenAIAutoReset(*account.ParentAccountID)
 REDACTED
 
 	if usage == nil {
