@@ -112,7 +112,7 @@ func TestChatCompletionsResponseToResponses_PreservesServiceTier(t *testing.T) {
 REDACTED
 		Usage: &ChatUsage{PromptTokens: 1, CompletionTokens: 1, TotalTokens: 2REDACTED,
 REDACTED
-	resp := ChatCompletionsResponseToResponses(cc, "gpt-5.5", nil, false, nil)
+	resp := ChatCompletionsResponseToResponses(cc, "gpt-5.5", nil, nil, false, nil)
 	require.Equal(t, "default", resp.ServiceTier)
 
 	raw, err := json.Marshal(resp)
@@ -121,7 +121,7 @@ REDACTED
 REDACTED
 
 func TestChatCompletionsResponseToResponses_NilRespOmitsServiceTier(t *testing.T) {
-	resp := ChatCompletionsResponseToResponses(nil, "gpt-5.5", nil, false, nil)
+	resp := ChatCompletionsResponseToResponses(nil, "gpt-5.5", nil, nil, false, nil)
 	require.Empty(t, resp.ServiceTier)
 REDACTED
 
