@@ -282,6 +282,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     ['fal', 'fal'],
     ['atlascloud', 'AtlasCloud'],
     ['apiz', 'apiz'],
+    ['higgsfield', 'Higgsfield'],
   ] as const)('stores the video capability when creating a %s API key account', async (platform, buttonText) => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, buttonText)

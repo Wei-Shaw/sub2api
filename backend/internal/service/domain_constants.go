@@ -50,6 +50,7 @@ const (
 	PlatformLeonardo   = domain.PlatformLeonardo
 	PlatformAtlasCloud = domain.PlatformAtlasCloud
 	PlatformApiz       = domain.PlatformApiz
+	PlatformHiggsfield = domain.PlatformHiggsfield
 	// 国产 OpenAI 兼容供应商（与 grok 一样经 OpenAI 网关转发）。
 	PlatformKimi      = domain.PlatformKimi
 	PlatformZhipu     = domain.PlatformZhipu
@@ -113,6 +114,7 @@ var AllowedQuotaPlatforms = []string{
 	PlatformLeonardo,
 	PlatformAtlasCloud,
 	PlatformApiz,
+	PlatformHiggsfield,
 	PlatformKimi,
 	PlatformZhipu,
 	PlatformDeepseek,

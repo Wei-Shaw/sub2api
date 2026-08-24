@@ -192,7 +192,7 @@ func isConcreteRequestPlatform(platform string) bool {
 //   - isConcreteRequestPlatform 用于校验 composite 分组的"公共模型路由目标平台"，
 //     只能是 5 家 concrete 文本对话上游（anthropic/openai/gemini/antigravity/grok）。
 //   - canBeCompositeMemberPlatform 用于校验"composite 分组是否允许挂载该平台账号"，
-//     除了 5 家 concrete 上游，还包含 fal / atlascloud / apiz（在 composite 分组下参与
+//     除了 5 家 concrete 上游，还包含 fal / atlascloud / apiz / higgsfield（在 composite 分组下参与
 //     图片/视频的媒体旁路调度，不通过 composite 路由表暴露公共模型）。
 //
 // 使用点：
@@ -202,5 +202,5 @@ func canBeCompositeMemberPlatform(platform string) bool {
 	if isConcreteRequestPlatform(platform) {
 		return true
 	}
-	return platform == PlatformFal || platform == PlatformLeonardo || platform == PlatformAtlasCloud || platform == PlatformApiz
+	return platform == PlatformFal || platform == PlatformLeonardo || platform == PlatformAtlasCloud || platform == PlatformApiz || platform == PlatformHiggsfield
 }

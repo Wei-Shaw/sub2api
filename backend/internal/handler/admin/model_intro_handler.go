@@ -237,7 +237,7 @@ func (h *ModelIntroHandler) ListCandidates(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	accounts := make([]service.Account, 0, 16)
-	for _, platform := range []string{domain.PlatformFal, domain.PlatformAtlasCloud, domain.PlatformApiz} {
+	for _, platform := range []string{domain.PlatformFal, domain.PlatformAtlasCloud, domain.PlatformApiz, domain.PlatformHiggsfield} {
 		platformAccounts, err := h.accountService.ListByPlatform(ctx, platform)
 		if err != nil {
 			response.ErrorFrom(c, err)

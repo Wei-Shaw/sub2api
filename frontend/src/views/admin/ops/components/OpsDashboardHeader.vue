@@ -118,7 +118,8 @@ const platformOptions = computed(() => [
   { value: 'fal', label: 'fal' },
   { value: 'leonardo', label: 'Leonardo' },
   { value: 'atlascloud', label: 'AtlasCloud' },
-  { value: 'apiz', label: 'apiz' }
+  { value: 'apiz', label: 'apiz' },
+  { value: 'higgsfield', label: 'Higgsfield' }
 ])
 
 const timeRangeOptions = computed(() => [

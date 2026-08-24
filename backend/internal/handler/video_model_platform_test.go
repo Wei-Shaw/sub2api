@@ -20,6 +20,7 @@ func TestVideoModelSlugsForAccountUsesPlatformMappingDirection(t *testing.T) {
 		{platform: domain.PlatformFal, mapping: map[string]any{"alias": publicModel}},
 		{platform: domain.PlatformAtlasCloud, mapping: map[string]any{publicModel: "atlas-internal-model"}},
 		{platform: domain.PlatformApiz, mapping: map[string]any{publicModel: "apiz-internal-model"}},
+		{platform: domain.PlatformHiggsfield, mapping: map[string]any{publicModel: "higgsfield/application"}},
 	} {
 		t.Run(testCase.platform, func(t *testing.T) {
 			account := &service.Account{

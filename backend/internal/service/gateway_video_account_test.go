@@ -11,7 +11,7 @@ import (
 
 func TestVideoAccountSupportsRequestRejectsAccountWhenVideoDisabled(t *testing.T) {
 	service := &GatewayService{}
-	for _, platform := range []string{PlatformFal, PlatformAtlasCloud, PlatformApiz} {
+	for _, platform := range []string{PlatformFal, PlatformAtlasCloud, PlatformApiz, PlatformHiggsfield} {
 		t.Run(platform, func(t *testing.T) {
 			account := &Account{
 				Platform: platform,
@@ -55,6 +55,8 @@ func TestVideoAccountSupportsRequestUsesMappingKeysAndPlatformModelWhitelist(t *
 		{name: "fal endpoint whitelist value", platform: PlatformFal, requested: atlasModel, want: true},
 		{name: "atlascloud unknown model", platform: PlatformAtlasCloud, requested: "vendor/unknown/video", want: false},
 		{name: "apiz unknown model", platform: PlatformApiz, requested: "vendor/unknown/video", want: false},
+		{name: "higgsfield public mapping key", platform: PlatformHiggsfield, requested: publicModel, want: true},
+		{name: "higgsfield unknown model", platform: PlatformHiggsfield, requested: "vendor/unknown/video", want: false},
 		{name: "fal unknown model", platform: PlatformFal, requested: "vendor/unknown/video", want: false},
 	}
 

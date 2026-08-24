@@ -104,6 +104,7 @@ const platformLabel = computed(() => {
   if (props.platform === 'leonardo') return 'Leonardo'
   if (props.platform === 'atlascloud') return 'AtlasCloud'
   if (props.platform === 'apiz') return 'apiz'
+  if (props.platform === 'higgsfield') return 'Higgsfield'
   if (props.platform === 'kimi') return 'Kimi'
   if (props.platform === 'zhipu') return 'Zhipu GLM'
   if (props.platform === 'deepseek') return 'DeepSeek'
@@ -213,6 +214,9 @@ const platformClass = computed(() => {
   }
   if (props.platform === 'apiz') {
     return 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400'
+  }
+  if (props.platform === 'higgsfield') {
+    return 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-400'
   }
   if (props.platform === 'kiro') {
     return 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'

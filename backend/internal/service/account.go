@@ -1161,6 +1161,26 @@ func (a *Account) ApizBaseURL() string {
 	return domain.ApizBaseURL
 }
 
+// HiggsfieldAPIKey 返回 Higgsfield 账号使用的 API key。
+// Higgsfield SDK 支持单值 key，也支持 api_key:api_secret 组合值，网关原样透传。
+func (a *Account) HiggsfieldAPIKey() string {
+	if key := strings.TrimSpace(a.GetCredential("api_key")); key != "" {
+		if secret := strings.TrimSpace(a.GetCredential("api_secret")); secret != "" && !strings.Contains(key, ":") {
+			return key + ":" + secret
+		}
+		return key
+	}
+	return strings.TrimSpace(a.GetCredential("higgsfield_key"))
+}
+
+// HiggsfieldBaseURL 返回 Higgsfield API base URL。
+func (a *Account) HiggsfieldBaseURL() string {
+	if baseURL := strings.TrimSpace(a.GetCredential("base_url")); baseURL != "" {
+		return strings.TrimRight(baseURL, "/")
+	}
+	return domain.HiggsfieldBaseURL
+}
+
 // GetGeminiBaseURL 返回 Gemini 兼容端点的 base URL。
 // Antigravity 平台的 APIKey 账号自动拼接 /antigravity。
 func (a *Account) GetGeminiBaseURL(defaultBaseURL string) string {

@@ -495,7 +495,8 @@ const platformOptions = [
   { value: 'fal', label: 'fal' },
   { value: 'leonardo', label: 'Leonardo' },
   { value: 'atlascloud', label: 'AtlasCloud' },
-  { value: 'apiz', label: 'apiz' }
+  { value: 'apiz', label: 'apiz' },
+  { value: 'higgsfield', label: 'Higgsfield' }
 ]
 
 // Load rules when dialog opens

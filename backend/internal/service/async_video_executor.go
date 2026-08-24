@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apiz"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/atlascloud"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/fal"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/higgsfield"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"go.uber.org/zap"
 )
@@ -36,7 +37,7 @@ var asyncVideoRefundRetryDelays = [...]time.Duration{
 	9 * time.Minute,
 }
 
-var videoErrorPlatformNamePattern = regexp.MustCompile(`(?i)\b(?:apiz|atlascloud|fal)(?:\.ai)?\b[\s:,-]*`)
+var videoErrorPlatformNamePattern = regexp.MustCompile(`(?i)\b(?:apiz|atlascloud|higgsfield|fal)(?:\.ai)?\b[\s:,-]*`)
 var videoErrorURLPattern = regexp.MustCompile(`(?i)https?://[^\s<>"']+`)
 
 // SanitizeVideoErrorReason removes internal upstream platform names and URLs
@@ -1370,7 +1371,7 @@ func (s *AsyncVideoService) refund(ctx context.Context, billingType int8, billin
 // videoUpstreamClient 抽象异步视频上游的提交/轮询/取消能力，
 // 使执行内核（提交、轮询、结算、退费、COS 转存）与具体平台解耦。
 //
-// *fal.Client、*atlascloud.Client 与 *apiz.Client 均满足该接口。返回类型统一复用
+// *fal.Client、*atlascloud.Client、*apiz.Client 与 *higgsfield.Client 均满足该接口。返回类型统一复用
 // fal 包的 SubmitResponse/StatusResponse/APIError，因此 SubmitAsync /
 // pollOnce 中的 errors.As(err, &fal.APIError) 分支对各平台一致适用。
 type videoUpstreamClient interface {
@@ -1385,7 +1386,7 @@ type videoUpstreamClient interface {
 
 // newClient 基于账号平台与凭证构建对应的上游客户端。
 //
-// fal 账号走 fal queue/sync 协议；atlascloud / apiz 账号走各自的
+// fal 账号走 fal queue/sync 协议；atlascloud / apiz / higgsfield 账号走各自的
 // generate*/prediction 异步协议（均适配为 videoUpstreamClient）。
 func (s *AsyncVideoService) newClient(account *Account) (videoUpstreamClient, error) {
 	proxyURL := ""
@@ -1403,6 +1404,13 @@ func (s *AsyncVideoService) newClient(account *Account) (videoUpstreamClient, er
 		return apiz.NewClient(apiz.Config{
 			APIKey:   account.ApizAPIKey(),
 			BaseURL:  account.ApizBaseURL(),
+			ProxyURL: proxyURL,
+		})
+	}
+	if account.Platform == PlatformHiggsfield {
+		return higgsfield.NewClient(higgsfield.Config{
+			APIKey:   account.HiggsfieldAPIKey(),
+			BaseURL:  account.HiggsfieldBaseURL(),
 			ProxyURL: proxyURL,
 		})
 	}

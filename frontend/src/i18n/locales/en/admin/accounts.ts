@@ -709,6 +709,10 @@ export default {
         baseUrlHint: 'Enter the apiz API Base URL (without trailing slash). Leave blank to use the default https://api.apiz.ai.',
         apiKeyHint: 'Enter the API Key provided by apiz.'
       },
+      higgsfield: {
+        baseUrlHint: 'Enter the Higgsfield API Base URL (without trailing slash). Leave blank to use the default https://platform.higgsfield.ai.',
+        apiKeyHint: 'Enter the Higgsfield API key. If the platform gives you a key and secret, enter them as key:secret.'
+      },
       video: {
         modelsEnabled: 'Enable video models',
         modelsEnabledHint:

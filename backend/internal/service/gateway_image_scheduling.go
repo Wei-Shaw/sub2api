@@ -42,7 +42,7 @@ func (s *GatewayService) SelectFalAccountInGroup(ctx context.Context, groupID *i
 }
 
 // selectFalAccountInGroupSingle 视频异步任务的混合分组选号入口。
-// 视频链路统一走 /api/v1/model 门面，分组内可能同时存在 fal / atlascloud / apiz 平台账号；
+// 视频链路统一走 /api/v1/model 门面，分组内可能同时存在 fal / atlascloud / apiz / higgsfield 平台账号；
 // 这里按“哪个平台的账号支持该模型”做混合选号，选中后转发到对应平台的账号，
 // 而不是硬编码只取 fal 平台账号。
 func (s *GatewayService) selectFalAccountInGroupSingle(ctx context.Context, groupID *int64, sessionHash, requestedModel string, excludedIDs map[int64]struct{}, api string) (*Account, error) {
@@ -195,6 +195,7 @@ func (s *GatewayService) logVideoSelectionFailure(
 		PlatformFal:        0,
 		PlatformAtlasCloud: 0,
 		PlatformApiz:       0,
+		PlatformHiggsfield: 0,
 	}
 	for i := range schedulableAccounts {
 		platformCounts[schedulableAccounts[i].Platform]++
@@ -209,7 +210,7 @@ func (s *GatewayService) logVideoSelectionFailure(
 	if s == nil || s.accountRepo == nil {
 		queryErrors = append(queryErrors, "account repository unavailable")
 	}
-	for _, platform := range []string{PlatformFal, PlatformAtlasCloud, PlatformApiz} {
+	for _, platform := range []string{PlatformFal, PlatformAtlasCloud, PlatformApiz, PlatformHiggsfield} {
 		if s == nil || s.accountRepo == nil {
 			break
 		}
@@ -227,7 +228,7 @@ func (s *GatewayService) logVideoSelectionFailure(
 
 	logger.LegacyPrintf(
 		"service.gateway",
-		"[VideoSelectionFailure] group_id=%d model=%q api=%q schedulable_candidates=%d fal_candidates=%d atlascloud_candidates=%d apiz_candidates=%d bound_video_accounts=%d query_errors=%q",
+		"[VideoSelectionFailure] group_id=%d model=%q api=%q schedulable_candidates=%d fal_candidates=%d atlascloud_candidates=%d apiz_candidates=%d higgsfield_candidates=%d bound_video_accounts=%d query_errors=%q",
 		derefGroupID(groupID),
 		requestedModel,
 		api,
@@ -235,6 +236,7 @@ func (s *GatewayService) logVideoSelectionFailure(
 		platformCounts[PlatformFal],
 		platformCounts[PlatformAtlasCloud],
 		platformCounts[PlatformApiz],
+		platformCounts[PlatformHiggsfield],
 		len(boundAccounts),
 		queryErrors,
 	)
@@ -279,7 +281,7 @@ func (s *GatewayService) logVideoSelectionFailure(
 	}
 }
 
-// listSchedulableVideoAccounts 合并可参与视频调度的多平台账号（fal + atlascloud + apiz）。
+// listSchedulableVideoAccounts 合并可参与视频调度的多平台账号（fal + atlascloud + apiz + higgsfield）。
 func (s *GatewayService) listSchedulableVideoAccounts(ctx context.Context, groupID *int64) ([]Account, error) {
 	falAccounts, _, err := s.listSchedulableAccounts(ctx, groupID, PlatformFal, false)
 	if err != nil {
@@ -293,10 +295,15 @@ func (s *GatewayService) listSchedulableVideoAccounts(ctx context.Context, group
 	if err != nil {
 		return nil, fmt.Errorf("query apiz accounts failed: %w", err)
 	}
-	merged := make([]Account, 0, len(falAccounts)+len(atlasAccounts)+len(apizAccounts))
+	higgsfieldAccounts, _, err := s.listSchedulableAccounts(ctx, groupID, PlatformHiggsfield, false)
+	if err != nil {
+		return nil, fmt.Errorf("query higgsfield accounts failed: %w", err)
+	}
+	merged := make([]Account, 0, len(falAccounts)+len(atlasAccounts)+len(apizAccounts)+len(higgsfieldAccounts))
 	merged = append(merged, falAccounts...)
 	merged = append(merged, atlasAccounts...)
 	merged = append(merged, apizAccounts...)
+	merged = append(merged, higgsfieldAccounts...)
 	return merged, nil
 }
 
@@ -307,7 +314,7 @@ func (s *GatewayService) videoAccountSupportsRequest(_ context.Context, account 
 		return false
 	}
 	switch account.Platform {
-	case PlatformFal, PlatformAtlasCloud, PlatformApiz:
+	case PlatformFal, PlatformAtlasCloud, PlatformApiz, PlatformHiggsfield:
 		if !domain.IsVideoModelsEnabled(account.Extra) {
 			return false
 		}
@@ -331,7 +338,7 @@ func videoMappingSupportsRequest(account *Account, requestedModel string) (mappi
 		return mappingSupported, true
 	}
 	// fal 的 mapping value 是其原生 endpoint，同时也是账号实际支持的
-	// endpoint 白名单。atlascloud/apiz 的 value 是内部模型标识，不能用于
+	// endpoint 白名单。atlascloud/apiz/higgsfield 的 value 是内部模型标识，不能用于
 	// 判断公开请求模型是否在白名单中。
 	if account.Platform != PlatformFal {
 		return mappingSupported, false

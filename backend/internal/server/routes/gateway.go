@@ -530,7 +530,7 @@ func RegisterGatewayRoutes(
 	// /api/v1/model/*path 与 /api/v1/model-plaza 等静态路由分属不同分支，不冲突。
 	//
 	// handler 先判断任务类型，再分别从 fal/leonardo 图片池或
-	// fal/atlascloud/apiz 视频池中选号。视频功能开关仅在视频分支校验。
+	// fal/atlascloud/apiz/higgsfield 视频池中选号。视频功能开关仅在视频分支校验。
 	tasksGroup := r.Group("/api/v1/model")
 	tasksGroup.Use(bodyLimit)
 	tasksGroup.Use(clientRequestID)

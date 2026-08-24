@@ -778,6 +778,10 @@ export default {
         baseUrlHint: '填写 apiz 平台的 API Base URL（不含尾部斜杠），留空则使用默认 https://api.apiz.ai。',
         apiKeyHint: '填写 apiz 平台提供的 API Key。'
       },
+      higgsfield: {
+        baseUrlHint: '填写 Higgsfield API Base URL（不含尾部斜杠），留空则使用默认 https://platform.higgsfield.ai。',
+        apiKeyHint: '填写 Higgsfield API Key；如平台提供 API Key 和 Secret，请按 key:secret 格式填写。'
+      },
       video: {
         modelsEnabled: '支持视频模型',
         modelsEnabledHint:

@@ -2429,6 +2429,7 @@ export default {
         // 媒体平台：渠道编辑页的平台勾选与 tab 标题也复用这份显示名
         atlascloud: 'AtlasCloud',
         apiz: 'apiz',
+        higgsfield: 'Higgsfield',
         composite: '混合',
       },
       saving: '保存中...',

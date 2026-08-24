@@ -209,6 +209,19 @@
           </button>
           <button
             type="button"
+            @click="form.platform = 'higgsfield'"
+            :class="[
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
+              form.platform === 'higgsfield'
+                ? 'bg-white text-fuchsia-600 shadow-sm dark:bg-dark-600 dark:text-fuchsia-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="higgsfield" size="sm" />
+            Higgsfield
+          </button>
+          <button
+            type="button"
             @click="form.platform = 'kiro'"
             :class="[
               'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
@@ -4484,6 +4497,7 @@ const baseUrlHint = computed(() => {
   if (form.platform === 'grok') return t('admin.accounts.grok.baseUrlHint')
   if (form.platform === 'atlascloud') return t('admin.accounts.atlascloud.baseUrlHint')
   if (form.platform === 'apiz') return t('admin.accounts.apiz.baseUrlHint')
+  if (form.platform === 'higgsfield') return t('admin.accounts.higgsfield.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
 
@@ -4496,6 +4510,7 @@ const apiKeyHint = computed(() => {
   if (form.platform === 'grok') return t('admin.accounts.grok.apiKeyHint')
   if (form.platform === 'atlascloud') return t('admin.accounts.atlascloud.apiKeyHint')
   if (form.platform === 'apiz') return t('admin.accounts.apiz.apiKeyHint')
+  if (form.platform === 'higgsfield') return t('admin.accounts.higgsfield.apiKeyHint')
   return t('admin.accounts.apiKeyHint')
 })
 
@@ -5342,6 +5357,8 @@ watch(
             ? 'https://api.atlascloud.ai'
           : newPlatform === 'apiz'
             ? 'https://api.apiz.ai'
+          : newPlatform === 'higgsfield'
+            ? 'https://platform.higgsfield.ai'
               : 'https://api.anthropic.com'
     }
     // Clear model-related settings
@@ -5387,8 +5404,8 @@ watch(
     if (newPlatform !== 'anthropic' && accountCategory.value === 'bedrock') {
       accountCategory.value = 'oauth-based'
     }
-    // fal / atlascloud / apiz 仅支持 apikey 类型，强制走通用 apikey 输入
-    if (newPlatform === 'fal' || newPlatform === 'leonardo' || newPlatform === 'atlascloud' || newPlatform === 'apiz') {
+    // fal / atlascloud / apiz / higgsfield 仅支持 apikey 类型，强制走通用 apikey 输入
+    if (newPlatform === 'fal' || newPlatform === 'leonardo' || newPlatform === 'atlascloud' || newPlatform === 'apiz' || newPlatform === 'higgsfield') {
       accountCategory.value = 'apikey'
     }
     // Reset Bedrock fields when switching platforms
@@ -5960,7 +5977,7 @@ const handleClose = () => {
 }
 
 const isVideoAccountPlatform = (platform?: string): boolean =>
-  platform === 'fal' || platform === 'atlascloud' || platform === 'apiz'
+  platform === 'fal' || platform === 'atlascloud' || platform === 'apiz' || platform === 'higgsfield'
 
 const buildVideoExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
   if (!isVideoAccountPlatform(form.platform)) return base
@@ -6673,7 +6690,7 @@ const createAccountAndFinish = async (
     group_ids: form.group_ids,
     expires_at: form.expires_at,
     // 上游倍率探测仅对受支持的文本平台 apikey 账号开放（antigravity upstream 走本 helper）；
-    // 非 apikey 类型（bedrock/oauth）与媒体平台（fal/atlascloud/apiz）不传，后端不动作。
+    // 非 apikey 类型（bedrock/oauth）与媒体平台（fal/atlascloud/apiz/higgsfield）不传，后端不动作。
     upstream_billing_probe_enabled: supportsUpstreamBillingProbe(form.platform, type)
       ? upstreamBillingAutoProbeEnabled.value
       : undefined,

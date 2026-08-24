@@ -282,7 +282,7 @@ func (h *ModelAPIGatewayHandler) nativeVideoSubmit(
 	}
 
 	// 选号：视频链路统一走 /api/v1/model 门面，在当前混合分组内按“该模型属于哪个平台”
-	// 选出对应平台账号（fal / atlascloud / apiz），再转发到该账号。
+	// 选出对应平台账号（fal / atlascloud / apiz / higgsfield），再转发到该账号。
 	// slug 自带 api 段（如 .../text-to-video），api 传空串。
 	account, err := h.gatewayService.SelectFalAccountInGroup(c.Request.Context(), apiKey.GroupID, "", model, nil, "")
 	if err != nil || account == nil {

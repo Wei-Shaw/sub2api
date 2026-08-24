@@ -30,6 +30,7 @@ const (
 	PlatformLeonardo    = "leonardo"
 	PlatformAtlasCloud  = "atlascloud"
 	PlatformApiz        = "apiz"
+	PlatformHiggsfield  = "higgsfield"
 	// 国产 OpenAI 兼容供应商（经 OpenAI 网关转发，按 Chat Completions 协议）。
 	PlatformKimi      = "kimi"     // Kimi (月之暗面 / Moonshot)
 	PlatformZhipu     = "zhipu"    // 智谱 GLM (bigmodel)
@@ -310,6 +311,9 @@ const (
 // ApizBaseURL 是 apiz 平台默认 base URL，可由账户 credential "base_url" 覆盖。
 const ApizBaseURL = "https://api.apiz.ai"
 
+// HiggsfieldBaseURL 是 Higgsfield Cloud API 的默认 base URL。
+const HiggsfieldBaseURL = "https://platform.higgsfield.ai"
+
 // ============================================================
 // 视频模型识别
 // ============================================================
@@ -377,7 +381,7 @@ func IsVideoModelsEnabled(extra map[string]any) bool {
 }
 
 // VideoModelSlugs 从账号模型映射中提取对外视频模型名。
-// fal 的 value 是 endpoint；atlascloud/apiz 的 key 是统一门面的公开模型名。
+// fal 的 value 是 endpoint；atlascloud/apiz/higgsfield 的 key 是统一门面的公开模型名。
 func VideoModelSlugs(platform string, mapping map[string]string) []string {
 	out := make([]string, 0, len(mapping))
 	for requestedModel, upstreamModel := range mapping {

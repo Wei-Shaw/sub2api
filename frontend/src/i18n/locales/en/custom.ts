@@ -2414,6 +2414,7 @@ export default {
         // Media platforms: also reused by the channel editor's platform toggles and tabs
         atlascloud: 'AtlasCloud',
         apiz: 'apiz',
+        higgsfield: 'Higgsfield',
         composite: 'Composite',
       },
       deleteConfirm:

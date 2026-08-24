@@ -3336,7 +3336,7 @@ const upstreamBillingRateSyncEnabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
 const isVideoAccountPlatform = (platform?: string): boolean =>
-  platform === 'fal' || platform === 'atlascloud' || platform === 'apiz'
+  platform === 'fal' || platform === 'atlascloud' || platform === 'apiz' || platform === 'higgsfield'
 // 异步视频平台账号专属："支持视频模型" 开关。
 // 勾选后，账号的 model_mapping 中两段及以上的视频模型
 // 会被 /user/video-models 聚合并对当前用户暴露。缺省 false，与 backend
@@ -4847,7 +4847,7 @@ const handleSubmit = async () => {
     }
     updatePayload.auto_pause_on_expired = autoPauseOnExpired.value
     //仅受支持的文本平台 apikey 账号可开启上游倍率探测；媒体平台
-    // （fal / atlascloud / apiz）不实现 /v1/sub2api/billing，不提交该字段，
+    // （fal / atlascloud / apiz / higgsfield）不实现 /v1/sub2api/billing，不提交该字段，
     // 否则后端会以 UPSTREAM_BILLING_PROBE_ACCOUNT_INVALID 拒绝整个更新。
     if (supportsUpstreamBillingProbe(props.account.platform, props.account.type)) {
       updatePayload.upstream_billing_probe_enabled = upstreamBillingAutoProbeEnabled.value

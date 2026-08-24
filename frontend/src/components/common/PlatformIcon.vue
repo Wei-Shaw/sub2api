@@ -59,6 +59,10 @@
   <svg v-else-if="platform === 'apiz'" :class="sizeClass" viewBox="0 0 24 24" fill="currentColor">
     <path d="M19 2H5a3 3 0 0 0-3 3v14a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3V5a3 3 0 0 0-3-3zm-2.3 8.4-5.6 7.3a.6.6 0 0 1-1.07-.47l.72-4.23H8.02a.6.6 0 0 1-.47-.97l5.6-7.3a.6.6 0 0 1 1.07.47l-.72 4.23h2.73a.6.6 0 0 1 .47.97z" />
   </svg>
+  <!-- Higgsfield logo (stylized H) -->
+  <svg v-else-if="platform === 'higgsfield'" :class="sizeClass" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M5 3h4v6h6V3h4v18h-4v-8H9v8H5V3z" />
+  </svg>
   <!-- Grok / xAI logo mark (stylized angular X) -->
   <svg v-else-if="platform === 'grok'" :class="sizeClass" viewBox="0 0 24 24" fill="currentColor">
     <path

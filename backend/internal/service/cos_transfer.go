@@ -81,7 +81,7 @@ type COSImageTransferService struct {
 	settingRepo  SettingRepository
 	encryptor    SecretEncryptor
 	storeFactory BackupObjectStoreFactory
-	// httpClient 用于"可信来源"下载：URL 来自上游 API 的响应（fal/atlascloud/apiz
+	// httpClient 用于"可信来源"下载：URL 来自上游 API 的响应（fal/atlascloud/apiz/higgsfield
 	// 返回的临时图片/视频地址），管理员自己配置的上游地址亦属此列。
 	httpClient *http.Client
 	// untrustedClient 用于"用户可控 URL"下载（素材库 import-url）。

@@ -11,7 +11,7 @@ const channelsViewSource = readFileSync(
 );
 
 describe("composite channel platforms", () => {
-  it.each(["atlascloud", "apiz"])(
+  it.each(["atlascloud", "apiz", "higgsfield"])(
     "makes composite groups available to %s channel sections",
     (platform) => {
       const declaration = channelsViewSource.match(

@@ -25,6 +25,7 @@ func TestSanitizeVideoErrorReasonRemovesPlatformNames(t *testing.T) {
 	tests := map[string]string{
 		"status 400: apiz upstream failed: invalid input":                "status 400: upstream failed: invalid input",
 		"submit: atlascloud upstream failed, quota exhausted":            "submit: upstream failed, quota exhausted",
+		"submit: higgsfield upstream failed, quota exhausted":            "submit: upstream failed, quota exhausted",
 		"fal upstream error (HTTP 422): invalid request":                 "upstream error (HTTP 422): invalid request",
 		"FAL.AI: status 503: temporarily unavailable":                    "status 503: temporarily unavailable",
 		"status 400: see https://api.atlascloud.ai/task/123 for details": "status 400: see [URL] for details",

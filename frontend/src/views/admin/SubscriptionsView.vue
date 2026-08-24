@@ -1068,7 +1068,8 @@ const platformFilterOptions = computed(() => [
   { value: 'fal', label: 'fal' },
   { value: 'leonardo', label: 'Leonardo' },
   { value: 'atlascloud', label: 'AtlasCloud' },
-  { value: 'apiz', label: 'apiz' }
+  { value: 'apiz', label: 'apiz' },
+  { value: 'higgsfield', label: 'Higgsfield' }
 ])
 
 // Group options for assign (only subscription type groups)
