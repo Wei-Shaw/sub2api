@@ -320,6 +320,7 @@ export interface PublicSettings {
   video_feature_enabled: boolean
   model_plaza_enabled: boolean
   model_plaza_require_auth: boolean
+  plugin_management_enabled: boolean
   service_quota_enabled: boolean
   affiliate_enabled: boolean
   /** D1 客服工单总开关；关闭时 sidebar 入口隐藏，POST 工单接口直接 404。 */
@@ -1242,6 +1243,17 @@ export interface Account {
     codex_reset_credit_snapshot?: {
       available_count?: number
       credits?: { expires_at?: string }[]
+    }
+    auto_reset_credit_enabled?: boolean
+    auto_reset_credit_5h_threshold?: number
+    auto_reset_credit_7d_threshold?: number
+    codex_auto_reset_credit_state?: {
+      status?: 'checking' | 'available' | 'resetting' | 'success' | 'no_credit' | 'failed'
+      trigger_window?: string
+      available_count?: number
+      checked_at?: string
+      last_result_at?: string
+      error_code?: string
     }
   } & Record<string, unknown>)
   proxy_id: number | null

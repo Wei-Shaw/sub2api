@@ -16,6 +16,19 @@ import (
 const grokResponsesClientToolMappingContextKey = "grok_responses_client_tool_mapping"
 
 func adaptResponsesClientToolsForFunctionUpstream(body []byte, upstream string) ([]byte, apicompat.ResponsesClientToolMapping, error) {
+	return adaptResponsesClientToolsForFunctionUpstreamWithMapping(
+		body,
+		upstream,
+		apicompat.ResponsesClientToolMapping{},
+	)
+}
+
+func adaptResponsesClientToolsForFunctionUpstreamWithMapping(
+	body []byte,
+	upstream string,
+	inherited apicompat.ResponsesClientToolMapping,
+	inheritedLoweredTools ...[]any,
+) ([]byte, apicompat.ResponsesClientToolMapping, error) {
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
 	var requestBody map[string]any
@@ -23,7 +36,7 @@ func adaptResponsesClientToolsForFunctionUpstream(body []byte, upstream string) 
 		return body, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("decode %s Responses client tools: %w", upstream, err)
 	}
 
-	mapping, changed, err := apicompat.AdaptResponsesClientTools(requestBody)
+	mapping, changed, err := apicompat.AdaptResponsesClientToolsWithInheritedMapping(requestBody, inherited, inheritedLoweredTools...)
 	if err != nil {
 		return body, apicompat.ResponsesClientToolMapping{}, err
 	}

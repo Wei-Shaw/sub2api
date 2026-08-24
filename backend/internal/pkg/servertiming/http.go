@@ -53,12 +53,10 @@ func Do(client *http.Client, req *http.Request) (*http.Response, error) {
 		client = http.DefaultClient
 	}
 	if req == nil || !Active(req.Context()) {
-		//nolint:gosec // G704: 该 helper 是通用 http.Client.Do 转发层，URL 由调用方在业务代码中构造并校验。
-		return client.Do(req)
+		return client.Do(req) //nolint:gosec // G704: 通用埋点包装器，不构造 URL；请求由调用方构造，SSRF 信任边界在调用方
 	}
 	startedAt := time.Now()
-	//nolint:gosec // G704: 同上，SSRF 校验由调用方保证。
-	response, err := client.Do(req)
+	response, err := client.Do(req) //nolint:gosec // G704: 同上
 	RecordDependency(req.Context(), dependencyModule(req), startedAt, time.Now())
 	return response, err
 }

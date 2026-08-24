@@ -835,6 +835,9 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 					if updates := buildCodexSparkWindowExtraUpdates(quotaUsage, now); len(updates) > 0 {
 						mergeAccountExtra(account, updates)
 						s.persistOpenAICodexProbeSnapshot(account.ID, updates)
+						if account.ParentAccountID != nil {
+							notifyOpenAIAutoReset(*account.ParentAccountID)
+						}
 						if usage.UpdatedAt == nil {
 							usage.UpdatedAt = &now
 						}
@@ -1027,7 +1030,9 @@ func (s *AccountUsageService) persistOpenAICodexProbeSnapshot(accountID int64, u
 	go func() {
 		updateCtx, updateCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer updateCancel()
-		_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
+		if err := s.accountRepo.UpdateExtra(updateCtx, accountID, updates); err == nil {
+			notifyOpenAIAutoReset(accountID)
+		}
 	}()
 }
 
@@ -1899,36 +1904,4 @@ func buildGeminiUsageProgress(used, limit int64, resetAt time.Time, tokens int64
 // 用于账号列表页面显示当前窗口费用
 func (s *AccountUsageService) GetAccountWindowStats(ctx context.Context, accountID int64, startTime time.Time) (*usagestats.AccountStats, error) {
 	return s.usageLogRepo.GetAccountWindowStats(ctx, accountID, startTime)
-}
-
-func ProvideAccountUsageService(
-	accountRepo AccountRepository,
-	usageLogRepo UsageLogRepository,
-	usageFetcher ClaudeUsageFetcher,
-	geminiQuotaService *GeminiQuotaService,
-	antigravityQuotaFetcher *AntigravityQuotaFetcher,
-	grokQuotaFetcher *GrokQuotaFetcher,
-	grokQuotaService *GrokQuotaService,
-	openAIQuotaService *OpenAIQuotaService,
-	cache *UsageCache,
-	identityCache IdentityCache,
-	tlsFPProfileService *TLSFingerprintProfileService,
-	kiroTokenProvider *KiroTokenProvider,
-	openAIGatewayService *OpenAIGatewayService,
-) *AccountUsageService {
-	service := NewAccountUsageService(
-		accountRepo,
-		usageLogRepo,
-		usageFetcher,
-		geminiQuotaService,
-		antigravityQuotaFetcher,
-		grokQuotaFetcher,
-		grokQuotaService,
-		openAIQuotaService,
-		cache,
-		identityCache,
-		tlsFPProfileService,
-	).SetKiroTokenProvider(kiroTokenProvider)
-	service.agentIdentityWS = openAIGatewayService
-	return service
 }

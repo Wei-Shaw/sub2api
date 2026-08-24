@@ -78,6 +78,30 @@ func TestUpdateSettingsGrokDefaultBaseURLModeIsWritable(t *testing.T) {
 	require.Equal(t, service.GrokDefaultBaseURLModeEUWest1, repo.values[service.SettingKeyGrokDefaultBaseURLMode])
 }
 
+func TestUpdateSettingsHomeProductMenuItemsAreWritable(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyHomeProductMenuItems: `[]`,
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"home_product_menu_items": []map[string]any{
+			{
+				"id":         "atlascloud",
+				"label":      "AtlasCloud",
+				"url":        "https://atlascloud.ai",
+				"action":     "",
+				"visibility": "admin",
+				"sort_order": 99,
+			},
+		},
+	}, nil)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, `[{"id":"atlascloud","label":"AtlasCloud","icon_svg":"","url":"https://atlascloud.ai","action":"same_tab","visibility":"user","sort_order":0}]`,
+		repo.values[service.SettingKeyHomeProductMenuItems])
+	require.Contains(t, rec.Body.String(), `"home_product_menu_items":[{"action":"same_tab"`)
+}
+
 func TestUpdateSettingsRejectsTwoCaptchaProviders(t *testing.T) {
 	h, _ := newStepUpSwitchTestHandler(t, map[string]string{
 		service.SettingKeyTurnstileEnabled:   "true",

@@ -52,6 +52,12 @@ export default {
           priceDescription: 'Pricing notes (Markdown)',
           priceDescriptionHint: 'Rendered at the top of the plaza page. Use it for billing rules, exchange rates, promotions, etc.',
         },
+        pluginManagement: {
+          title: 'Plugin Management',
+          description: 'Controls whether the plugin management entry appears in the admin sidebar. This switch does not control plugin runtime state.',
+          enabled: 'Show Plugin Management',
+          enabledHint: 'Turning this off only hides the sidebar entry; loaded or running plugins are not stopped.',
+        },
         riskControl: {
           title: 'Risk Control',
           description: 'Enable the content moderation menu and gateway audit entry point. Disabled by default.',

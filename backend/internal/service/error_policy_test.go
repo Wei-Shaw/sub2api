@@ -67,6 +67,61 @@ func TestCheckErrorPolicy(t *testing.T) {
 			expected:   ErrorPolicySkipped,
 		},
 		{
+			name: "custom_error_codes_excluding_529_skip_global_cooldown",
+			account: &Account{
+				ID:       33,
+				Type:     AccountTypeAPIKey,
+				Platform: PlatformOpenAI,
+				Credentials: map[string]any{
+					"custom_error_codes_enabled": true,
+					"custom_error_codes":         []any{float64(429)},
+				},
+			},
+			statusCode: 529,
+			body:       []byte(`{"error":{"message":"overloaded"}}`),
+			expected:   ErrorPolicySkipped,
+		},
+		{
+			name: "pool_mode_skips_global_529_cooldown",
+			account: &Account{
+				ID:       34,
+				Type:     AccountTypeAPIKey,
+				Platform: PlatformOpenAI,
+				Credentials: map[string]any{
+					"pool_mode": true,
+				},
+			},
+			statusCode: 529,
+			body:       []byte(`{"error":{"message":"overloaded"}}`),
+			expected:   ErrorPolicySkipped,
+		},
+		{
+			name: "ordinary_account_uses_global_529_cooldown",
+			account: &Account{
+				ID:       35,
+				Type:     AccountTypeAPIKey,
+				Platform: PlatformOpenAI,
+			},
+			statusCode: 529,
+			body:       []byte(`{"error":{"message":"overloaded"}}`),
+			expected:   ErrorPolicyMatched,
+		},
+		{
+			name: "custom_error_codes_including_529_take_precedence",
+			account: &Account{
+				ID:       36,
+				Type:     AccountTypeAPIKey,
+				Platform: PlatformOpenAI,
+				Credentials: map[string]any{
+					"custom_error_codes_enabled": true,
+					"custom_error_codes":         []any{float64(529)},
+				},
+			},
+			statusCode: 529,
+			body:       []byte(`{"error":{"message":"overloaded"}}`),
+			expected:   ErrorPolicyMatched,
+		},
+		{
 			name: "temp_unschedulable_hit_returns_temp_unscheduled",
 			account: &Account{
 				ID:       4,
