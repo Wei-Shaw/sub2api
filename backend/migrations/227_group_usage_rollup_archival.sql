@@ -19,18 +19,22 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 DECLARE
+    old_date DATE;
+    new_date DATE;
     affected_date DATE;
     published_before DATE;
     archived_before DATE;
     configured_timezone TEXT := current_setting('TimeZone');
 BEGIN
     IF TG_OP = 'DELETE' THEN
-        affected_date := (OLD.created_at AT TIME ZONE configured_timezone)::date;
+        old_date := (OLD.created_at AT TIME ZONE configured_timezone)::date;
     ELSE
-        affected_date := LEAST(
-            (OLD.created_at AT TIME ZONE configured_timezone)::date,
-            (NEW.created_at AT TIME ZONE configured_timezone)::date
-        );
+        IF OLD.group_id IS NOT NULL OR OLD.api_key_id IS NOT NULL THEN
+            old_date := (OLD.created_at AT TIME ZONE configured_timezone)::date;
+        END IF;
+        IF NEW.group_id IS NOT NULL OR NEW.api_key_id IS NOT NULL THEN
+            new_date := (NEW.created_at AT TIME ZONE configured_timezone)::date;
+        END IF;
     END IF;
 
     -- 归档区间的日桶不可变：原始日志已被清理，重建只会得到残缺结果。
@@ -40,7 +44,17 @@ BEGIN
     FROM usage_group_rollup_state
     WHERE id = 1;
 
-    IF archived_before IS NOT NULL AND affected_date < archived_before THEN
+    IF old_date IS NOT NULL
+        AND (archived_before IS NULL OR old_date >= archived_before) THEN
+        affected_date := old_date;
+    END IF;
+    IF new_date IS NOT NULL
+        AND (archived_before IS NULL OR new_date >= archived_before)
+        AND (affected_date IS NULL OR new_date < affected_date) THEN
+        affected_date := new_date;
+    END IF;
+
+    IF affected_date IS NULL THEN
         IF TG_OP = 'DELETE' THEN
             RETURN OLD;
         END IF;
@@ -49,11 +63,32 @@ BEGIN
 
     -- 即使当前已发布水位尚未越过受影响日期，也必须先锁行。
     -- 否则并发关闭作业可能在本事务之后把水位推进，覆盖本次失效。
-    SELECT closed_before
-    INTO published_before
+    SELECT closed_before, (retained_from AT TIME ZONE configured_timezone)::date
+    INTO published_before, archived_before
     FROM usage_group_rollup_state
     WHERE id = 1
     FOR UPDATE;
+
+    -- retained_from may have advanced while the no-lock fast path was running.
+    -- Re-evaluate both UPDATE sides against the locked barrier so cleanup cannot
+    -- race this trigger into rewinding below the archive boundary.
+    affected_date := NULL;
+    IF old_date IS NOT NULL
+        AND (archived_before IS NULL OR old_date >= archived_before) THEN
+        affected_date := old_date;
+    END IF;
+    IF new_date IS NOT NULL
+        AND (archived_before IS NULL OR new_date >= archived_before)
+        AND (affected_date IS NULL OR new_date < affected_date) THEN
+        affected_date := new_date;
+    END IF;
+
+    IF affected_date IS NULL THEN
+        IF TG_OP = 'DELETE' THEN
+            RETURN OLD;
+        END IF;
+        RETURN NEW;
+    END IF;
 
     IF published_before > affected_date THEN
         UPDATE usage_group_rollup_state
@@ -81,23 +116,24 @@ DECLARE
     archived_before DATE;
     configured_timezone TEXT := current_setting('TimeZone');
 BEGIN
-    SELECT MIN((created_at AT TIME ZONE configured_timezone)::date)
-    INTO affected_date
-    FROM inserted_usage_logs
-    WHERE group_id IS NOT NULL OR api_key_id IS NOT NULL;
-
-    IF affected_date IS NULL THEN
-        RETURN NULL;
-    END IF;
-
     SELECT closed_before, (retained_from AT TIME ZONE configured_timezone)::date
     INTO published_before, archived_before
     FROM usage_group_rollup_state
     WHERE id = 1
     FOR KEY SHARE;
 
-    -- 迟到写入落在归档区间时同样无法重建，保持水位不动。
-    IF archived_before IS NOT NULL AND affected_date < archived_before THEN
+    -- 混合批量写入不能因为最老一行已归档就丢掉整批失效。先排除归档行，
+    -- 再从仍可重建的行里选择最早日期。
+    SELECT MIN((created_at AT TIME ZONE configured_timezone)::date)
+    INTO affected_date
+    FROM inserted_usage_logs
+    WHERE (group_id IS NOT NULL OR api_key_id IS NOT NULL)
+        AND (
+            archived_before IS NULL
+            OR (created_at AT TIME ZONE configured_timezone)::date >= archived_before
+        );
+
+    IF affected_date IS NULL THEN
         RETURN NULL;
     END IF;
 

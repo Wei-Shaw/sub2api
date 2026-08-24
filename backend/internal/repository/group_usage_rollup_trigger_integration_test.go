@@ -130,6 +130,74 @@ func TestGroupUsageRollupTriggerInvalidatesAboveRetentionBarrier(t *testing.T) {
 	require.Equal(t, "2026-07-03", closedBefore)
 }
 
+func TestGroupUsageRollupTriggerInvalidatesRetainedRowsInMixedArchivalInsert(t *testing.T) {
+	ctx := context.Background()
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
+	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
+	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	defer func() { _ = tx.Rollback() }()
+
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO groups (id) VALUES (10);
+		INSERT INTO users (id) VALUES (1);
+		UPDATE usage_group_rollup_state
+		SET closed_before = DATE '2026-08-14',
+			retained_from = TIMESTAMPTZ '2026-08-10 00:00:00+08'
+		WHERE id = 1;
+		INSERT INTO usage_logs (id, user_id, group_id, api_key_id, actual_cost, created_at) VALUES
+			(1, 1, 10, 100, 1, TIMESTAMPTZ '2026-08-09 12:00:00+08'),
+			(2, 1, 10, 100, 2, TIMESTAMPTZ '2026-08-12 12:00:00+08');
+	`)
+	require.NoError(t, err)
+
+	var closedBefore string
+	require.NoError(t, tx.QueryRowContext(ctx, `
+		SELECT closed_before::text FROM usage_group_rollup_state WHERE id = 1
+	`).Scan(&closedBefore))
+	require.Equal(t, "2026-08-12", closedBefore, "同批归档行不得掩盖保留区间的失效")
+}
+
+func TestGroupUsageRollupTriggerInvalidatesRetainedSideOfCrossBarrierUpdate(t *testing.T) {
+	ctx := context.Background()
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
+	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
+	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	defer func() { _ = tx.Rollback() }()
+
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO groups (id) VALUES (10);
+		INSERT INTO users (id) VALUES (1);
+		INSERT INTO usage_logs (id, user_id, group_id, api_key_id, actual_cost, created_at)
+		VALUES (1, 1, 10, 100, 1, TIMESTAMPTZ '2026-08-12 12:00:00+08');
+		UPDATE usage_group_rollup_state
+		SET closed_before = DATE '2026-08-14',
+			retained_from = TIMESTAMPTZ '2026-08-10 00:00:00+08'
+		WHERE id = 1;
+		UPDATE usage_logs
+		SET created_at = TIMESTAMPTZ '2026-08-09 12:00:00+08'
+		WHERE id = 1;
+	`)
+	require.NoError(t, err)
+
+	var closedBefore string
+	require.NoError(t, tx.QueryRowContext(ctx, `
+		SELECT closed_before::text FROM usage_group_rollup_state WHERE id = 1
+	`).Scan(&closedBefore))
+	require.Equal(t, "2026-08-12", closedBefore, "移入归档区间时必须清掉原保留日桶")
+
+	_, err = tx.ExecContext(ctx, `
+		UPDATE usage_group_rollup_state SET closed_before = DATE '2026-08-14' WHERE id = 1;
+		UPDATE usage_logs
+		SET created_at = TIMESTAMPTZ '2026-08-11 12:00:00+08'
+		WHERE id = 1;
+	`)
+	require.NoError(t, err)
+	require.NoError(t, tx.QueryRowContext(ctx, `
+		SELECT closed_before::text FROM usage_group_rollup_state WHERE id = 1
+	`).Scan(&closedBefore))
+	require.Equal(t, "2026-08-11", closedBefore, "移出归档区间时必须重建新保留日桶")
+}
+
 func TestGroupUsageRollupTriggerInvalidatesAPIKeyOnlyChanges(t *testing.T) {
 	ctx := context.Background()
 	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
@@ -348,6 +416,61 @@ func TestSyncGroupUsageRollupsChunksByDayAndReleasesLockBetweenDays(t *testing.T
 	require.InDelta(t, 15, result[0].TotalCost, 0.0000001)
 	require.InDelta(t, 5, result[0].TodayCost, 0.0000001)
 	require.InDelta(t, 4, result[0].YesterdayCost, 0.0000001)
+}
+
+func TestSyncGroupUsageRollupsClearsInvalidatedDayAfterAllRawRowsAreDeleted(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
+	todayStart := time.Date(2026, 8, 12, 16, 0, 0, 0, time.UTC)
+	archiveBoundary := time.Date(2026, 8, 9, 16, 0, 0, 0, time.UTC)
+
+	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
+	seedTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	_, err := seedTx.ExecContext(ctx, `
+		INSERT INTO groups (id) VALUES (10);
+		INSERT INTO users (id) VALUES (1);
+		INSERT INTO usage_logs (id, user_id, group_id, api_key_id, actual_cost, created_at) VALUES
+			(1, 1, 10, 100, 7, TIMESTAMPTZ '2026-08-10 12:00:00+08'),
+			(2, 1, 10, 100, 3, TIMESTAMPTZ '2026-08-11 12:00:00+08');
+		INSERT INTO usage_group_daily_rollups (bucket_date, group_id, actual_cost, computed_at)
+		VALUES (DATE '2026-08-10', 10, 7, NOW());
+		INSERT INTO usage_apikey_daily_rollups (bucket_date, api_key_id, actual_cost, request_count, computed_at)
+		VALUES (DATE '2026-08-10', 100, 7, 1, NOW());
+	`)
+	require.NoError(t, err)
+	_, err = seedTx.ExecContext(ctx, `
+		UPDATE usage_group_rollup_state
+		SET closed_before = DATE '2026-08-13', retained_from = $1
+		WHERE id = 1
+	`, archiveBoundary)
+	require.NoError(t, err)
+	_, err = seedTx.ExecContext(ctx, `DELETE FROM usage_logs WHERE id = 1`)
+	require.NoError(t, err)
+	require.NoError(t, seedTx.Commit())
+
+	scopedDB := newGroupUsageRollupSchemaDB(t, schema)
+	var invalidatedAt string
+	require.NoError(t, scopedDB.QueryRowContext(ctx, `
+		SELECT closed_before::text FROM usage_group_rollup_state WHERE id = 1
+	`).Scan(&invalidatedAt))
+	require.Equal(t, "2026-08-10", invalidatedAt)
+
+	require.NoError(t, newDashboardAggregationRepositoryWithSQL(scopedDB).SyncGroupUsageRollups(ctx, todayStart))
+
+	var staleBuckets int
+	require.NoError(t, scopedDB.QueryRowContext(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM usage_group_daily_rollups WHERE bucket_date = DATE '2026-08-10')
+			+ (SELECT COUNT(*) FROM usage_apikey_daily_rollups WHERE bucket_date = DATE '2026-08-10')
+	`).Scan(&staleBuckets))
+	require.Zero(t, staleBuckets, "明细已清空的失效日必须同时清掉两种日桶")
+
+	var retainedFrom time.Time
+	require.NoError(t, scopedDB.QueryRowContext(ctx, `
+		SELECT retained_from FROM usage_group_rollup_state WHERE id = 1
+	`).Scan(&retainedFrom))
+	require.True(t, retainedFrom.Equal(archiveBoundary), "同步不得把归档屏障推进到当前最早明细")
 }
 
 // 分块把锁持有压到单日：即便有写入正持有状态行的 KEY SHARE，

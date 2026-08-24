@@ -115,7 +115,10 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 // groupUsageSyncMaxDaysPerRun 限制单次同步推进的天数。
 // 回填/时区切换可能横跨很长区间，分块本身不会阻塞写入，但一轮跑太久会挤占
 // 定时器与 leader 锁；余量走下个周期，水位已持久化因而可以续跑。
-const groupUsageSyncMaxDaysPerRun = 400
+const (
+	groupUsageSyncMaxDaysPerRun = 400
+	groupUsageInitialDate       = "1970-01-01"
+)
 
 // SyncGroupUsageRollups 将服务端配置时区今日以前的用量发布为分组日桶。
 //
@@ -216,38 +219,64 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupDayInTx(ctx context
 		}
 	}
 
-	var earliest sql.NullTime
-	if err := scanSingleRow(ctx, r.sql, "SELECT MIN(created_at) FROM usage_logs", nil, &earliest); err != nil {
-		return false, fmt.Errorf("读取最早用量记录: %w", err)
-	}
-	retainedFrom := todayStart
-	if earliest.Valid {
-		retainedFrom = earliest.Time.UTC()
-	}
-	retainedDate := service.GroupUsageDate(retainedFrom)
-	retainedDateTime, err := service.ParseGroupUsageDate(retainedDate)
+	archiveDate := service.GroupUsageDate(previousRetainedFrom)
+	archiveDateTime, err := service.ParseGroupUsageDate(archiveDate)
 	if err != nil {
 		return false, err
 	}
-	// 重建下界不能早于 retainedDate：更早的原始日志已被清理，
-	// 那段日桶是不可重算的历史沉淀，只能原样保留。
-	rebuildStartDate := retainedDate
-	rebuildStart := retainedDateTime
-	if !timezoneChanged && closedTime.After(retainedDateTime) {
+
+	// retained_from 只表示显式归档屏障，不能跟随当前 MIN(created_at) 前移。
+	// 否则删除最早一个保留日的全部明细后，同步会跳过该空日并留下陈旧日桶。
+	rebuildStartDate := archiveDate
+	rebuildStart := archiveDateTime
+	if !timezoneChanged && closedTime.After(archiveDateTime) {
 		rebuildStartDate = closedBefore
 		rebuildStart = closedTime
 	}
-	if timezoneChanged && previousRetainedFrom.Before(retainedFrom) {
+
+	// 1970 是未初始化哨兵，不代表要从 1970 逐日回填。仅在水位也未初始化，
+	// 或未归档的存量数据切换时区时，读取一次最早明细作为启动下界；后续块
+	// 直接从 closed_before 续跑。这个启动优化绝不写回 retained_from。
+	initialRetention := previousRetainedFrom.Equal(time.Unix(0, 0).UTC())
+	if initialRetention && (closedBefore == groupUsageInitialDate || timezoneChanged) {
+		var earliest sql.NullTime
+		if err := scanSingleRow(ctx, r.sql, "SELECT MIN(created_at) FROM usage_logs", nil, &earliest); err != nil {
+			return false, fmt.Errorf("读取最早用量记录: %w", err)
+		}
+		bootstrapStart := todayDateTime
+		bootstrapStartDate := todayDate
+		if earliest.Valid {
+			bootstrapStartDate = service.GroupUsageDate(earliest.Time.UTC())
+			bootstrapStart, err = service.ParseGroupUsageDate(bootstrapStartDate)
+			if err != nil {
+				return false, err
+			}
+		}
+		if timezoneChanged && closedBefore != groupUsageInitialDate {
+			previousClosedTime, parseErr := service.ParseGroupUsageDate(closedBefore)
+			if parseErr != nil {
+				return false, fmt.Errorf("解析分组用量汇总水位 %q: %w", closedBefore, parseErr)
+			}
+			if previousClosedTime.Before(bootstrapStart) {
+				bootstrapStart = previousClosedTime
+				bootstrapStartDate = closedBefore
+			}
+		}
+		rebuildStart = bootstrapStart
+		rebuildStartDate = bootstrapStartDate
+	}
+
+	if timezoneChanged && previousRetainedFrom.After(time.Unix(0, 0).UTC()) {
 		logger.LegacyPrintf(
 			"repository.group_usage_rollup",
 			"[GroupUsageRollup] 时区切换为 %s，%s 以前的日桶因原始日志已归档无法重建，保留旧时区口径",
 			timezoneName,
-			retainedDate,
+			archiveDate,
 		)
 	}
 	if !rebuildStart.Before(todayDateTime) {
 		// 归档屏障已越过今日：没有可发布的历史日，仅把状态对齐到今日。
-		return true, r.publishGroupUsageWatermark(ctx, todayDate, todayDate, retainedFrom, timezoneName)
+		return true, r.publishGroupUsageWatermark(ctx, todayDate, todayDate, timezoneName)
 	}
 
 	// 本块只重建 [rebuildStart, nextClosed) 这一个自然日。
@@ -268,7 +297,7 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupDayInTx(ctx context
 	if done {
 		trimFrom = todayDate
 	}
-	if err := r.publishGroupUsageWatermark(ctx, nextClosedDate, trimFrom, retainedFrom, timezoneName); err != nil {
+	if err := r.publishGroupUsageWatermark(ctx, nextClosedDate, trimFrom, timezoneName); err != nil {
 		return false, err
 	}
 	return done, nil
@@ -349,12 +378,11 @@ func (r *dashboardAggregationRepository) rebuildUsageDailyRollupsForDay(
 }
 
 // publishGroupUsageWatermark 推进发布水位。trimFrom 非空时一并删除该日期及以后的日桶。
-// 归档屏障只增不减：迟到的历史写入不得把它拉回，否则会解除已归档日桶的保护。
+// retained_from 只由显式归档流程推进；普通同步不得拿当前最早明细改写归档边界。
 func (r *dashboardAggregationRepository) publishGroupUsageWatermark(
 	ctx context.Context,
 	closedBefore string,
 	trimFrom string,
-	retainedFrom time.Time,
 	timezoneName string,
 ) error {
 	if trimFrom != "" {
@@ -375,11 +403,10 @@ func (r *dashboardAggregationRepository) publishGroupUsageWatermark(
 	if _, err := r.sql.ExecContext(ctx, `
 		UPDATE usage_group_rollup_state
 		SET closed_before = $1::date,
-			retained_from = GREATEST(retained_from, $2::timestamptz),
-			timezone_name = $3,
+			timezone_name = $2,
 			updated_at = NOW()
 		WHERE id = 1
-	`, closedBefore, retainedFrom, timezoneName); err != nil {
+	`, closedBefore, timezoneName); err != nil {
 		return fmt.Errorf("更新分组用量汇总水位: %w", err)
 	}
 	return nil
