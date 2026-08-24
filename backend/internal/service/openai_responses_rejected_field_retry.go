@@ -271,18 +271,56 @@ func openAIResponsesRejectedInputIndex(pattern *regexp.Regexp, param string) (in
 	return 0, false
 }
 
+// removeOpenAIResponsesRejectedStatusAtIndex drops the status field the
+// upstream rejected, and the status of every other input item sharing the
+// rejected item's type.
+//
+// The upstream names one offending index per response, but a replayed
+// conversation routinely carries dozens of items of the same type, each with a
+// status its schema does not accept. Clearing one index per round trip would
+// need one retry per item and exhaust the bounded retry budget long before the
+// request could succeed. Items of other types keep their status: the rejection
+// only proves that this type has no status field.
 func removeOpenAIResponsesRejectedStatusAtIndex(body []byte, index int) ([]byte, string, bool, error) {
 	itemPath := fmt.Sprintf("input.%d", index)
-	if !gjson.GetBytes(body, itemPath).IsObject() {
+	rejected := gjson.GetBytes(body, itemPath)
+	if !rejected.IsObject() {
 		return nil, "", false, nil
 	}
-	statusPath := itemPath + ".status"
-	if !gjson.GetBytes(body, statusPath).Exists() {
+	if !gjson.GetBytes(body, itemPath+".status").Exists() {
 		return nil, "", false, nil
 	}
-	retryBody, err := sjson.DeleteBytes(body, statusPath)
-	if err != nil {
-		return nil, "", false, fmt.Errorf("delete rejected status at input[%d]: %w", index, err)
+
+	retryBody := body
+	cleared := 0
+	rejectedType := strings.TrimSpace(rejected.Get("type").String())
+	if input := gjson.GetBytes(body, "input"); rejectedType != "" && input.IsArray() {
+		// Deleting a field never shifts array indexes, so positions read from
+		// the original body stay valid against the rewritten one.
+		for itemIndex, item := range input.Array() {
+			if !item.IsObject() || strings.TrimSpace(item.Get("type").String()) != rejectedType {
+				continue
+			}
+			statusPath := fmt.Sprintf("input.%d.status", itemIndex)
+			if !gjson.GetBytes(retryBody, statusPath).Exists() {
+				continue
+			}
+			next, err := sjson.DeleteBytes(retryBody, statusPath)
+			if err != nil {
+				return nil, "", false, fmt.Errorf("delete rejected status at input[%d]: %w", itemIndex, err)
+			}
+			retryBody = next
+			cleared++
+		}
+	}
+	if cleared == 0 {
+		// The rejected item carries no type to match on; fall back to clearing
+		// just the index the upstream named.
+		next, err := sjson.DeleteBytes(retryBody, itemPath+".status")
+		if err != nil {
+			return nil, "", false, fmt.Errorf("delete rejected status at input[%d]: %w", index, err)
+		}
+		retryBody = next
 	}
 	return retryBody, "indexed status parameter rejection", true, nil
 }
