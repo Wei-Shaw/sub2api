@@ -130,6 +130,55 @@ func TestGroupUsageRollupTriggerInvalidatesAboveRetentionBarrier(t *testing.T) {
 	require.Equal(t, "2026-07-03", closedBefore)
 }
 
+func TestGroupUsageRollupTriggerInvalidatesAPIKeyOnlyChanges(t *testing.T) {
+	ctx := context.Background()
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
+	today := appTimezone.Today()
+	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
+	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	defer func() { _ = tx.Rollback() }()
+
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO users (id) VALUES (1);
+		UPDATE usage_group_rollup_state
+		SET closed_before = ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date,
+			retained_from = $2
+		WHERE id = 1;
+		INSERT INTO usage_logs (id, user_id, group_id, api_key_id, actual_cost, created_at)
+		VALUES (1, 1, NULL, 100, 1.25, $3);
+	`, today, today.AddDate(0, 0, -30), today.AddDate(0, 0, -3).Add(9*time.Hour))
+	require.NoError(t, err)
+
+	assertClosedBefore := func(want string) {
+		t.Helper()
+		var closedBefore string
+		require.NoError(t, tx.QueryRowContext(ctx, `
+			SELECT closed_before::text FROM usage_group_rollup_state WHERE id = 1
+		`).Scan(&closedBefore))
+		require.Equal(t, want, closedBefore)
+	}
+	affectedDate := today.AddDate(0, 0, -3).Format("2006-01-02")
+	assertClosedBefore(affectedDate)
+
+	_, err = tx.ExecContext(ctx, `
+		UPDATE usage_group_rollup_state
+		SET closed_before = ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date
+		WHERE id = 1;
+		UPDATE usage_logs SET api_key_id = 101 WHERE id = 1;
+	`, today)
+	require.NoError(t, err)
+	assertClosedBefore(affectedDate)
+
+	_, err = tx.ExecContext(ctx, `
+		UPDATE usage_group_rollup_state
+		SET closed_before = ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date
+		WHERE id = 1;
+		DELETE FROM usage_logs WHERE id = 1;
+	`, today)
+	require.NoError(t, err)
+	assertClosedBefore(affectedDate)
+}
+
 // CleanupUsageLogs 的完整归档路径：删掉保留期以外的原始日志后，
 // 发布水位不动、历史日桶一行不少、分组累计用量不变——即「不重新算」。
 func TestCleanupUsageLogsArchivesWithoutRecomputingRollups(t *testing.T) {
@@ -169,6 +218,7 @@ func TestCleanupUsageLogsArchivesWithoutRecomputingRollups(t *testing.T) {
 
 	aggRepo := newDashboardAggregationRepositoryWithSQL(tx)
 	require.NoError(t, aggRepo.CleanupUsageLogs(ctx, cutoff))
+	archiveBoundary := appTimezone.StartOfDay(cutoff).UTC()
 
 	var remaining int
 	require.NoError(t, tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_logs").Scan(&remaining))
@@ -182,7 +232,7 @@ func TestCleanupUsageLogsArchivesWithoutRecomputingRollups(t *testing.T) {
 		WHERE id = 1
 	`).Scan(&closedBefore, &retainedFrom))
 	require.Equal(t, "2026-08-14", closedBefore, "归档不得回退发布水位")
-	require.True(t, retainedFrom.Equal(cutoff), "归档屏障应推进到 cutoff")
+	require.True(t, retainedFrom.Equal(archiveBoundary), "归档屏障应推进到完整自然日边界")
 
 	var buckets int
 	require.NoError(t, tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_group_daily_rollups").Scan(&buckets))
@@ -194,6 +244,36 @@ func TestCleanupUsageLogsArchivesWithoutRecomputingRollups(t *testing.T) {
 	require.InDelta(t, before[0].TotalCost, after[0].TotalCost, 0.0000001, "累计用量不得因归档缩水")
 	require.InDelta(t, 4, after[0].TodayCost, 0.0000001)
 	require.InDelta(t, 3, after[0].YesterdayCost, 0.0000001)
+}
+
+func TestCleanupUsageLogsKeepsPartialCutoffDay(t *testing.T) {
+	ctx := context.Background()
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
+	cutoff := time.Date(2026, 8, 1, 12, 0, 0, 0, appTimezone.Location())
+
+	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
+	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	defer func() { _ = tx.Rollback() }()
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO users (id) VALUES (1);
+		INSERT INTO usage_logs (id, user_id, api_key_id, actual_cost, created_at) VALUES
+			(1, 1, 100, 1, TIMESTAMPTZ '2026-07-31 23:59:59+08'),
+			(2, 1, 100, 2, TIMESTAMPTZ '2026-08-01 07:00:00+08');
+	`)
+	require.NoError(t, err)
+
+	require.NoError(t, newDashboardAggregationRepositoryWithSQL(tx).CleanupUsageLogs(ctx, cutoff))
+	var ids []int64
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM usage_logs ORDER BY id`)
+	require.NoError(t, err)
+	for rows.Next() {
+		var id int64
+		require.NoError(t, rows.Scan(&id))
+		ids = append(ids, id)
+	}
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+	require.Equal(t, []int64{2}, ids, "cutoff 当天必须整日保留，避免重建残缺日桶")
 }
 
 // 多天回填必须按天分块提交：每块结束就释放 usage_group_rollup_state 的行锁，
@@ -869,6 +949,56 @@ func TestGetBatchAPIKeyUsageStatsMatchesRawAggregate(t *testing.T) {
 	for id, raw := range rawTotals {
 		require.InDelta(t, raw, stats[id].TotalActualCost, 0.0000001, "api_key %d 日桶口径偏离明细", id)
 	}
+
+	// 非整日范围的首尾片段必须走明细，不能把边界日的整桶错误计入。
+	partialStats, err := usageRepo.GetBatchAPIKeyUsageStats(
+		ctx,
+		[]int64{100},
+		today.AddDate(0, 0, -3).Add(12*time.Hour),
+		today.AddDate(0, 0, -1).Add(12*time.Hour),
+	)
+	require.NoError(t, err)
+	require.InDelta(t, 5.0, partialStats[100].TotalActualCost, 0.0000001)
+
+	// 存量日桶时区与当前配置不一致时，必须回落到明细而不是信任旧口径。
+	_, err = scopedDB.ExecContext(ctx, `
+		UPDATE usage_group_rollup_state SET timezone_name = 'America/New_York' WHERE id = 1
+	`)
+	require.NoError(t, err)
+	fallbackStats, err := usageRepo.GetBatchAPIKeyUsageStats(
+		ctx, []int64{100}, today.AddDate(0, 0, -5), today.AddDate(0, 0, 1))
+	require.NoError(t, err)
+	require.InDelta(t, 15.0, fallbackStats[100].TotalActualCost, 0.0000001)
+}
+
+func TestAPIKeyRollupMigrationRewindsExistingWatermarkForBackfill(t *testing.T) {
+	ctx := context.Background()
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
+	today := appTimezone.Today()
+
+	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
+	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	defer func() { _ = tx.Rollback() }()
+	retainedFrom := today.AddDate(0, 0, -3)
+	_, err := tx.ExecContext(ctx, `
+		UPDATE usage_group_rollup_state
+		SET closed_before = ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date,
+			retained_from = $2,
+			timezone_name = 'Asia/Shanghai'
+		WHERE id = 1;
+	`, today, retainedFrom)
+	require.NoError(t, err)
+
+	migrationSQL, err := migrations.FS.ReadFile("229_usage_apikey_daily_rollups.sql")
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, string(migrationSQL))
+	require.NoError(t, err)
+
+	var closedBefore string
+	require.NoError(t, tx.QueryRowContext(ctx, `
+		SELECT closed_before::text FROM usage_group_rollup_state WHERE id = 1
+	`).Scan(&closedBefore))
+	require.Equal(t, retainedFrom.Format("2006-01-02"), closedBefore)
 }
 
 // 水位缺失时不能返回 0：宁可退化成全量扫明细（慢但正确）。

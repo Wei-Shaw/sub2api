@@ -27,16 +27,10 @@ BEGIN
     IF TG_OP = 'DELETE' THEN
         affected_date := (OLD.created_at AT TIME ZONE configured_timezone)::date;
     ELSE
-        IF OLD.group_id IS NULL THEN
-            affected_date := (NEW.created_at AT TIME ZONE configured_timezone)::date;
-        ELSIF NEW.group_id IS NULL THEN
-            affected_date := (OLD.created_at AT TIME ZONE configured_timezone)::date;
-        ELSE
-            affected_date := LEAST(
-                (OLD.created_at AT TIME ZONE configured_timezone)::date,
-                (NEW.created_at AT TIME ZONE configured_timezone)::date
-            );
-        END IF;
+        affected_date := LEAST(
+            (OLD.created_at AT TIME ZONE configured_timezone)::date,
+            (NEW.created_at AT TIME ZONE configured_timezone)::date
+        );
     END IF;
 
     -- 归档区间的日桶不可变：原始日志已被清理，重建只会得到残缺结果。
@@ -90,7 +84,7 @@ BEGIN
     SELECT MIN((created_at AT TIME ZONE configured_timezone)::date)
     INTO affected_date
     FROM inserted_usage_logs
-    WHERE group_id IS NOT NULL;
+    WHERE group_id IS NOT NULL OR api_key_id IS NOT NULL;
 
     IF affected_date IS NULL THEN
         RETURN NULL;
@@ -117,6 +111,32 @@ BEGIN
     RETURN NULL;
 END;
 $$;
+
+-- group 与 api_key 共用发布水位，任一维度发生历史变更都必须使该水位失效。
+DROP TRIGGER IF EXISTS usage_logs_group_rollup_invalidate_delete ON usage_logs;
+CREATE TRIGGER usage_logs_group_rollup_invalidate_delete
+AFTER DELETE ON usage_logs
+FOR EACH ROW
+WHEN (OLD.group_id IS NOT NULL OR OLD.api_key_id IS NOT NULL)
+EXECUTE FUNCTION invalidate_group_usage_rollup_state();
+
+DROP TRIGGER IF EXISTS usage_logs_group_rollup_invalidate_update ON usage_logs;
+CREATE TRIGGER usage_logs_group_rollup_invalidate_update
+AFTER UPDATE OF created_at, group_id, api_key_id, actual_cost ON usage_logs
+FOR EACH ROW
+WHEN (
+    (
+        OLD.created_at IS DISTINCT FROM NEW.created_at
+        OR OLD.group_id IS DISTINCT FROM NEW.group_id
+        OR OLD.api_key_id IS DISTINCT FROM NEW.api_key_id
+        OR OLD.actual_cost IS DISTINCT FROM NEW.actual_cost
+    )
+    AND (
+        OLD.group_id IS NOT NULL OR NEW.group_id IS NOT NULL
+        OR OLD.api_key_id IS NOT NULL OR NEW.api_key_id IS NOT NULL
+    )
+)
+EXECUTE FUNCTION invalidate_group_usage_rollup_state();
 
 -- 存量修复：把此前被清理拉坏的水位收回到归档屏障之后，
 -- 避免升级后首次同步仍然全量重建保留窗口。

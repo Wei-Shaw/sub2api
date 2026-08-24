@@ -564,13 +564,21 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 	if endTime.IsZero() {
 		endTime = time.Now()
 	}
-	// 历史段按自然日桶结算，因此把起点对齐到当地日边界：
-	// 否则首日会按整天计入，与 startTime 的精确时刻不符。
-	startTime = timezone.StartOfDay(startTime)
 
 	for _, id := range normalizedAPIKeyIDs {
 		result[id] = &BatchAPIKeyUsageStats{APIKeyID: id}
 	}
+	if !endTime.After(startTime) {
+		return result, nil
+	}
+
+	// 日桶只覆盖查询区间内的完整自然日。首尾不足一天的片段继续读明细，
+	// 从而保持与原始 [startTime, endTime) 查询完全一致。
+	rollupStart := timezone.StartOfDay(startTime)
+	if startTime.After(rollupStart) {
+		rollupStart = rollupStart.AddDate(0, 0, 1)
+	}
+	rollupEnd := timezone.StartOfDay(endTime)
 
 	// 历史段读日桶、当日段读明细。
 	//
@@ -580,20 +588,33 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 	// 其发布水位 usage_group_rollup_state.closed_before 之前的日期才是已结算的，
 	// 水位当天及之后仍以原始日志为准，避免与尾段重复计入。
 	query := `
-		WITH state_raw AS (
-			SELECT closed_before, timezone_name
+		WITH state_values AS (
+			SELECT
+				COUNT(*) = 1
+					AND MAX(timezone_name) = $5
+					AND MAX(closed_before) <= ($4::timestamptz AT TIME ZONE $5::text)::date AS valid,
+				MAX(closed_before) AS closed_before
 			FROM usage_group_rollup_state
 			WHERE id = 1
 		),
 		state AS (
-			-- 恒返回一行：水位缺失时退化成 1970，historical 为空、tail 覆盖全窗口，
-			-- 即回落到直接扫明细的旧行为（慢但正确），而不是返回 0。
 			SELECT
-				COALESCE((SELECT closed_before FROM state_raw), DATE '1970-01-01') AS closed_before,
-				COALESCE(
-					(SELECT closed_before::timestamp AT TIME ZONE timezone_name FROM state_raw),
-					TIMESTAMPTZ '1970-01-01 00:00:00+00'
-				) AS tail_start
+				valid,
+				CASE
+					WHEN valid THEN GREATEST(
+						($6::timestamptz AT TIME ZONE $5::text)::date,
+						LEAST(closed_before, ($7::timestamptz AT TIME ZONE $5::text)::date)
+					)
+					ELSE ($6::timestamptz AT TIME ZONE $5::text)::date
+				END AS rollup_end_date,
+				CASE
+					WHEN valid THEN GREATEST(
+						($6::timestamptz AT TIME ZONE $5::text)::date,
+						LEAST(closed_before, ($7::timestamptz AT TIME ZONE $5::text)::date)
+					)::timestamp AT TIME ZONE $5::text
+					ELSE $6::timestamptz
+				END AS rollup_end
+			FROM state_values
 		),
 		historical AS (
 			SELECT
@@ -601,23 +622,37 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 				COALESCE(SUM(rollup.actual_cost), 0) AS total_cost
 			FROM usage_apikey_daily_rollups rollup
 			CROSS JOIN state
-			WHERE rollup.api_key_id = ANY($1)
-				AND rollup.bucket_date >= ($2::timestamptz AT TIME ZONE $5::text)::date
-				AND rollup.bucket_date < state.closed_before
+			WHERE state.valid
+				AND rollup.api_key_id = ANY($1)
+				AND rollup.bucket_date >= ($6::timestamptz AT TIME ZONE $5::text)::date
+				AND rollup.bucket_date < state.rollup_end_date
 			GROUP BY rollup.api_key_id
 		),
-		tail AS (
-			SELECT
-				ul.api_key_id,
-				COALESCE(SUM(ul.actual_cost) FILTER (
-					WHERE ul.created_at >= $2 AND ul.created_at < $3
-				), 0) AS total_cost,
-				COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $4), 0) AS today_cost
+		raw_segments AS (
+			-- 两个不重叠的小区间分别走 (api_key_id, created_at) 索引：
+			-- 首日不足一天的前缀，以及日桶发布水位之后的尾段。
+			SELECT ul.api_key_id, ul.actual_cost, ul.created_at
+			FROM usage_logs ul
+			WHERE ul.api_key_id = ANY($1)
+				AND ul.created_at >= $2
+				AND ul.created_at < LEAST($3::timestamptz, $6::timestamptz)
+
+			UNION ALL
+
+			SELECT ul.api_key_id, ul.actual_cost, ul.created_at
 			FROM usage_logs ul
 			CROSS JOIN state
 			WHERE ul.api_key_id = ANY($1)
-				AND ul.created_at >= GREATEST(state.tail_start, LEAST($2, $4))
-			GROUP BY ul.api_key_id
+				AND ul.created_at >= GREATEST($2::timestamptz, state.rollup_end)
+				AND ul.created_at < $3
+		),
+		tail AS (
+			SELECT
+				api_key_id,
+				COALESCE(SUM(actual_cost), 0) AS total_cost,
+				COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $4), 0) AS today_cost
+			FROM raw_segments
+			GROUP BY api_key_id
 		)
 		SELECT
 			k.api_key_id,
@@ -628,7 +663,17 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 		LEFT JOIN tail ON tail.api_key_id = k.api_key_id
 	`
 	today := timezone.Today()
-	rows, err := r.sql.QueryContext(ctx, query, pq.Array(normalizedAPIKeyIDs), startTime, endTime, today, timezone.Name())
+	rows, err := r.sql.QueryContext(
+		ctx,
+		query,
+		pq.Array(normalizedAPIKeyIDs),
+		startTime,
+		endTime,
+		today,
+		timezone.Name(),
+		rollupStart,
+		rollupEnd,
+	)
 	if err != nil {
 		return nil, err
 	}

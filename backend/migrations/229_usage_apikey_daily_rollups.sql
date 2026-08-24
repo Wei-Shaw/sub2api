@@ -24,3 +24,14 @@ COMMENT ON COLUMN usage_apikey_daily_rollups.bucket_date IS 'usage_group_rollup_
 -- 查询侧按 api_key_id 取最近 N 天，故以 api_key_id 前导。
 CREATE INDEX IF NOT EXISTS idx_usage_apikey_daily_rollups_key_date
     ON usage_apikey_daily_rollups (api_key_id, bucket_date DESC);
+
+-- 升级安装里 group 水位可能已经追平，但新建的 api_key 表仍为空。把共享水位
+-- 回退到归档屏障，查询会先按旧路径扫明细，后台日结再从现存最早日志逐日回填。
+-- 新安装的初始水位与屏障都是 1970，该语句不会额外扩大回填范围。
+UPDATE usage_group_rollup_state
+SET closed_before = LEAST(
+        closed_before,
+        (retained_from AT TIME ZONE timezone_name)::date
+    ),
+    updated_at = NOW()
+WHERE id = 1;

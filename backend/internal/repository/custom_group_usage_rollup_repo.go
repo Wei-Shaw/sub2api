@@ -420,12 +420,19 @@ func invalidateGroupUsageRollupsAt(ctx context.Context, tx *sql.Tx, affectedAt t
 // 归档删除必须先调用它再删数据（能用事务时放进同一事务），失效触发器据此跳过水位回退，
 // 从而让已发布的历史日桶保持不变、不被重算。屏障单调递增，可重复调用。
 func advanceGroupUsageRetention(ctx context.Context, exec sqlExecutor, cutoff time.Time) error {
+	// 月分区按 UTC 边界切分，该边界可能落在配置时区的一天中间。屏障必须
+	// 上取整到下一个本地日边界，冻结包含已删除行的整个日桶。
+	localDayStart := timezone.StartOfDay(cutoff)
+	archiveBoundary := localDayStart
+	if !cutoff.Equal(localDayStart) {
+		archiveBoundary = localDayStart.AddDate(0, 0, 1)
+	}
 	if _, err := exec.ExecContext(ctx, `
 		UPDATE usage_group_rollup_state
 		SET retained_from = GREATEST(retained_from, $1::timestamptz),
 			updated_at = NOW()
 		WHERE id = 1
-	`, cutoff.UTC()); err != nil {
+	`, archiveBoundary.UTC()); err != nil {
 		return fmt.Errorf("推进分组用量归档屏障: %w", err)
 	}
 	return nil

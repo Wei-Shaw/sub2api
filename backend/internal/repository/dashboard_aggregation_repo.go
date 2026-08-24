@@ -258,6 +258,9 @@ func (r *dashboardAggregationRepository) CleanupUsageLogs(ctx context.Context, c
 	if isPartitioned {
 		return r.dropUsageLogsPartitions(ctx, cutoff)
 	}
+	// 日桶只能整日冻结。非分区 DELETE 若保留 cutoff 的时分秒，会删掉同一
+	// 自然日的前半段，随后只能重建出残缺日桶，因此只归档完整自然日。
+	cutoff = timezone.StartOfDay(cutoff).UTC()
 	return r.cleanupUsageLogsBatches(ctx, cutoff)
 }
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
@@ -229,6 +230,7 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsNonPartitionedAdvancesRet
 	db, mock := newSQLMock(t)
 	repo := newDashboardAggregationRepositoryWithSQL(db)
 	cutoff := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	archiveBoundary := timezone.StartOfDay(cutoff).UTC()
 
 	mock.ExpectQuery(`SELECT EXISTS`).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
@@ -236,10 +238,10 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsNonPartitionedAdvancesRet
 	mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectExec(`(?s)UPDATE usage_group_rollup_state.*retained_from = GREATEST`).
-		WithArgs(cutoff).
+		WithArgs(archiveBoundary).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(`(?s)DELETE FROM usage_logs`).
-		WithArgs(cutoff, usageLogsCleanupBatchSize).
+		WithArgs(archiveBoundary, usageLogsCleanupBatchSize).
 		WillReturnResult(sqlmock.NewResult(0, 2))
 	mock.ExpectCommit()
 
@@ -269,8 +271,8 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsPartitionedSortsAndAdvanc
 		name         string
 		retainedFrom time.Time
 	}{
-		{name: "usage_logs_202604", retainedFrom: mayStart},
-		{name: "usage_logs_202606", retainedFrom: julyStart},
+		{name: "usage_logs_202604", retainedFrom: timezone.StartOfDay(mayStart).AddDate(0, 0, 1).UTC()},
+		{name: "usage_logs_202606", retainedFrom: timezone.StartOfDay(julyStart).AddDate(0, 0, 1).UTC()},
 	} {
 		mock.ExpectBegin()
 		mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
@@ -292,6 +294,7 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsNonPartitionedFailureRoll
 	db, mock := newSQLMock(t)
 	repo := newDashboardAggregationRepositoryWithSQL(db)
 	cutoff := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	archiveBoundary := timezone.StartOfDay(cutoff).UTC()
 
 	mock.ExpectQuery(`SELECT EXISTS`).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
@@ -299,7 +302,7 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsNonPartitionedFailureRoll
 	mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectExec(`(?s)UPDATE usage_group_rollup_state.*retained_from = GREATEST`).
-		WithArgs(cutoff).
+		WithArgs(archiveBoundary).
 		WillReturnError(sql.ErrConnDone)
 	mock.ExpectRollback()
 
@@ -314,6 +317,7 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsPartitionFailureRollsBack
 	repo := newDashboardAggregationRepositoryWithSQL(db)
 	cutoff := time.Date(2026, 7, 18, 0, 0, 0, 0, time.UTC)
 	mayStart := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	mayArchiveBoundary := timezone.StartOfDay(mayStart).AddDate(0, 0, 1).UTC()
 	dropErr := errors.New("drop partition failed")
 
 	mock.ExpectQuery(`SELECT EXISTS`).
@@ -326,7 +330,7 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsPartitionFailureRollsBack
 	mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectExec(`(?s)UPDATE usage_group_rollup_state.*retained_from = GREATEST`).
-		WithArgs(mayStart).
+		WithArgs(mayArchiveBoundary).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(`DROP TABLE IF EXISTS "usage_logs_202604"`).
 		WillReturnError(dropErr)
