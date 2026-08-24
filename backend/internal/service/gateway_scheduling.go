@@ -1407,12 +1407,15 @@ func (s *GatewayService) IncrementAccountRPM(ctx context.Context, accountID int6
 }
 
 // checkAndRegisterSession 检查并注册会话，用于会话数量限制
-// 仅适用于 Anthropic OAuth/SetupToken 账号
+// 适用范围：Anthropic OAuth/SetupToken 账号，以及显式配置了 max_sessions 的
+// API Key 账号（多人共享同一上游 Key 的池化场景同样需要会话上限，否则单账号
+// 会堆积过多活跃会话，粘性绑定失效后引发整组会话迁移）。
+// 默认不生效：未配置 max_sessions（GetMaxSessions 返回 0）时直接放行，
+// 对存量账号行为零影响。
 // sessionID: 会话标识符（使用粘性会话的 hash）
 // 返回 true 表示允许（在限制内或会话已存在），false 表示拒绝（超出限制且是新会话）
 func (s *GatewayService) checkAndRegisterSession(ctx context.Context, account *Account, sessionID string) bool {
-	// 只检查 Anthropic OAuth/SetupToken 账号
-	if !account.IsAnthropicOAuthOrSetupToken() {
+	if !account.IsAnthropicOAuthOrSetupToken() && account.Type != AccountTypeAPIKey {
 		return true
 	}
 
