@@ -5,9 +5,9 @@
  *   1. submit → 拿 request_id
  *   2. 每 3 秒轮询 status（IN_QUEUE / IN_PROGRESS / COMPLETED / FAILED / CANCELED）
  *   3. status=COMPLETED 时 fetch result 并抽视频 URL
- *   4. cancel 与 reset
+ *   4. reset 本地状态（已提交任务仍在服务端继续执行）
  *
- * 不做超时兜底（视频渲染可以跑几分钟），但用户随时可以 cancel/reset。
+ * 不做超时兜底（视频渲染可以跑几分钟）。
  */
 
 import { ref, computed } from 'vue'
@@ -214,21 +214,6 @@ export function useVideoPlayground() {
     }
   }
 
-  async function cancel(slug: string, apiKey: string): Promise<void> {
-    if (!requestId.value) {
-      reset()
-      return
-    }
-    stopPolling()
-    try {
-      await videoPlaygroundAPI.cancel(slug, requestId.value, apiKey)
-    } catch {
-      // 无论 cancel 是否成功，本地都置为 canceled；后续用户可以再 reset。
-    }
-    phase.value = 'canceled'
-    stopTickTimer()
-  }
-
   function reset() {
     stopPolling()
     stopTickTimer()
@@ -265,7 +250,6 @@ export function useVideoPlayground() {
     isBusy,
     // actions
     start,
-    cancel,
     reset,
   }
 }

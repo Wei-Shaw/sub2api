@@ -319,11 +319,11 @@ func TestGatewayService_SelectAsyncImageAccountInGroupAllowsLeonardoEditMapping(
 	const upstreamModel = "gpt-image-2"
 	groupID := int64(8900)
 	ctx := withTestGroup(context.Background(), groupID)
-	account := leonardoImageAccount(57, 1)
-	account.Credentials = map[string]any{
+	leonardoAccount := leonardoImageAccount(57, 1)
+	leonardoAccount.Credentials = map[string]any{
 		"model_mapping": map[string]any{requestedModel: upstreamModel},
 	}
-	repo := newImageMixedRepo([]Account{account})
+	repo := newImageMixedRepo([]Account{leonardoAccount})
 	svc := &GatewayService{
 		accountRepo: repo,
 		cache:       &mockGatewayCacheForPlatform{},
@@ -339,7 +339,8 @@ func TestGatewayService_SelectAsyncImageAccountInGroupAllowsLeonardoEditMapping(
 }
 
 func TestGatewayService_SelectAsyncImageAccountUsesGroupModelPricing(t *testing.T) {
-	const requestedModel = "gpt-image-2"
+	const requestedModel = "openai/gpt-image-2"
+	const upstreamModel = "gpt-image-2"
 	groupID := int64(9901)
 	price := 0.25
 	group := &Group{
@@ -354,7 +355,11 @@ func TestGatewayService_SelectAsyncImageAccountUsesGroupModelPricing(t *testing.
 		}},
 	}
 	ctx := context.WithValue(context.Background(), ctxkey.Group, group)
-	repo := newImageMixedRepo([]Account{leonardoImageAccount(57, 1)})
+	pricingAccount := leonardoImageAccount(57, 1)
+	pricingAccount.Credentials = map[string]any{
+		"model_mapping": map[string]any{requestedModel: upstreamModel},
+	}
+	repo := newImageMixedRepo([]Account{pricingAccount})
 	svc := &GatewayService{
 		accountRepo: repo,
 		cache:       &mockGatewayCacheForPlatform{},

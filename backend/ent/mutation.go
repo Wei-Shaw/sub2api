@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"sync"
@@ -10681,6 +10681,8 @@ type AsyncVideoTaskMutation struct {
 	addduration_seconds    *int
 	aspect_ratio           *string
 	status                 *string
+	billing_type           *int8
+	addbilling_type        *int8
 	held_cost              *float64
 	addheld_cost           *float64
 	final_cost             *float64
@@ -10698,6 +10700,11 @@ type AsyncVideoTaskMutation struct {
 	cos_urls               *[]string
 	appendcos_urls         []string
 	error_reason           *string
+	refund_status          *string
+	refund_attempts        *int
+	addrefund_attempts     *int
+	refund_next_retry_at   *time.Time
+	refund_error           *string
 	fail_deadline_at       *time.Time
 	finished_at            *time.Time
 	client_ip              *string
@@ -11955,6 +11962,62 @@ func (m *AsyncVideoTaskMutation) ResetStatus() {
 	m.status = nil
 }
 
+// SetBillingType sets the "billing_type" field.
+func (m *AsyncVideoTaskMutation) SetBillingType(i int8) {
+	m.billing_type = &i
+	m.addbilling_type = nil
+}
+
+// BillingType returns the value of the "billing_type" field in the mutation.
+func (m *AsyncVideoTaskMutation) BillingType() (r int8, exists bool) {
+	v := m.billing_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBillingType returns the old "billing_type" field's value of the AsyncVideoTask entity.
+// If the AsyncVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AsyncVideoTaskMutation) OldBillingType(ctx context.Context) (v int8, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBillingType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBillingType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBillingType: %w", err)
+	}
+	return oldValue.BillingType, nil
+}
+
+// AddBillingType adds i to the "billing_type" field.
+func (m *AsyncVideoTaskMutation) AddBillingType(i int8) {
+	if m.addbilling_type != nil {
+		*m.addbilling_type += i
+	} else {
+		m.addbilling_type = &i
+	}
+}
+
+// AddedBillingType returns the value that was added to the "billing_type" field in this mutation.
+func (m *AsyncVideoTaskMutation) AddedBillingType() (r int8, exists bool) {
+	v := m.addbilling_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBillingType resets all changes to the "billing_type" field.
+func (m *AsyncVideoTaskMutation) ResetBillingType() {
+	m.billing_type = nil
+	m.addbilling_type = nil
+}
+
 // SetHeldCost sets the "held_cost" field.
 func (m *AsyncVideoTaskMutation) SetHeldCost(f float64) {
 	m.held_cost = &f
@@ -12512,6 +12575,196 @@ func (m *AsyncVideoTaskMutation) ResetErrorReason() {
 	delete(m.clearedFields, asyncvideotask.FieldErrorReason)
 }
 
+// SetRefundStatus sets the "refund_status" field.
+func (m *AsyncVideoTaskMutation) SetRefundStatus(s string) {
+	m.refund_status = &s
+}
+
+// RefundStatus returns the value of the "refund_status" field in the mutation.
+func (m *AsyncVideoTaskMutation) RefundStatus() (r string, exists bool) {
+	v := m.refund_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRefundStatus returns the old "refund_status" field's value of the AsyncVideoTask entity.
+// If the AsyncVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AsyncVideoTaskMutation) OldRefundStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRefundStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRefundStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRefundStatus: %w", err)
+	}
+	return oldValue.RefundStatus, nil
+}
+
+// ResetRefundStatus resets all changes to the "refund_status" field.
+func (m *AsyncVideoTaskMutation) ResetRefundStatus() {
+	m.refund_status = nil
+}
+
+// SetRefundAttempts sets the "refund_attempts" field.
+func (m *AsyncVideoTaskMutation) SetRefundAttempts(i int) {
+	m.refund_attempts = &i
+	m.addrefund_attempts = nil
+}
+
+// RefundAttempts returns the value of the "refund_attempts" field in the mutation.
+func (m *AsyncVideoTaskMutation) RefundAttempts() (r int, exists bool) {
+	v := m.refund_attempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRefundAttempts returns the old "refund_attempts" field's value of the AsyncVideoTask entity.
+// If the AsyncVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AsyncVideoTaskMutation) OldRefundAttempts(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRefundAttempts is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRefundAttempts requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRefundAttempts: %w", err)
+	}
+	return oldValue.RefundAttempts, nil
+}
+
+// AddRefundAttempts adds i to the "refund_attempts" field.
+func (m *AsyncVideoTaskMutation) AddRefundAttempts(i int) {
+	if m.addrefund_attempts != nil {
+		*m.addrefund_attempts += i
+	} else {
+		m.addrefund_attempts = &i
+	}
+}
+
+// AddedRefundAttempts returns the value that was added to the "refund_attempts" field in this mutation.
+func (m *AsyncVideoTaskMutation) AddedRefundAttempts() (r int, exists bool) {
+	v := m.addrefund_attempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRefundAttempts resets all changes to the "refund_attempts" field.
+func (m *AsyncVideoTaskMutation) ResetRefundAttempts() {
+	m.refund_attempts = nil
+	m.addrefund_attempts = nil
+}
+
+// SetRefundNextRetryAt sets the "refund_next_retry_at" field.
+func (m *AsyncVideoTaskMutation) SetRefundNextRetryAt(t time.Time) {
+	m.refund_next_retry_at = &t
+}
+
+// RefundNextRetryAt returns the value of the "refund_next_retry_at" field in the mutation.
+func (m *AsyncVideoTaskMutation) RefundNextRetryAt() (r time.Time, exists bool) {
+	v := m.refund_next_retry_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRefundNextRetryAt returns the old "refund_next_retry_at" field's value of the AsyncVideoTask entity.
+// If the AsyncVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AsyncVideoTaskMutation) OldRefundNextRetryAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRefundNextRetryAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRefundNextRetryAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRefundNextRetryAt: %w", err)
+	}
+	return oldValue.RefundNextRetryAt, nil
+}
+
+// ClearRefundNextRetryAt clears the value of the "refund_next_retry_at" field.
+func (m *AsyncVideoTaskMutation) ClearRefundNextRetryAt() {
+	m.refund_next_retry_at = nil
+	m.clearedFields[asyncvideotask.FieldRefundNextRetryAt] = struct{}{}
+}
+
+// RefundNextRetryAtCleared returns if the "refund_next_retry_at" field was cleared in this mutation.
+func (m *AsyncVideoTaskMutation) RefundNextRetryAtCleared() bool {
+	_, ok := m.clearedFields[asyncvideotask.FieldRefundNextRetryAt]
+	return ok
+}
+
+// ResetRefundNextRetryAt resets all changes to the "refund_next_retry_at" field.
+func (m *AsyncVideoTaskMutation) ResetRefundNextRetryAt() {
+	m.refund_next_retry_at = nil
+	delete(m.clearedFields, asyncvideotask.FieldRefundNextRetryAt)
+}
+
+// SetRefundError sets the "refund_error" field.
+func (m *AsyncVideoTaskMutation) SetRefundError(s string) {
+	m.refund_error = &s
+}
+
+// RefundError returns the value of the "refund_error" field in the mutation.
+func (m *AsyncVideoTaskMutation) RefundError() (r string, exists bool) {
+	v := m.refund_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRefundError returns the old "refund_error" field's value of the AsyncVideoTask entity.
+// If the AsyncVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AsyncVideoTaskMutation) OldRefundError(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRefundError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRefundError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRefundError: %w", err)
+	}
+	return oldValue.RefundError, nil
+}
+
+// ClearRefundError clears the value of the "refund_error" field.
+func (m *AsyncVideoTaskMutation) ClearRefundError() {
+	m.refund_error = nil
+	m.clearedFields[asyncvideotask.FieldRefundError] = struct{}{}
+}
+
+// RefundErrorCleared returns if the "refund_error" field was cleared in this mutation.
+func (m *AsyncVideoTaskMutation) RefundErrorCleared() bool {
+	_, ok := m.clearedFields[asyncvideotask.FieldRefundError]
+	return ok
+}
+
+// ResetRefundError resets all changes to the "refund_error" field.
+func (m *AsyncVideoTaskMutation) ResetRefundError() {
+	m.refund_error = nil
+	delete(m.clearedFields, asyncvideotask.FieldRefundError)
+}
+
 // SetFailDeadlineAt sets the "fail_deadline_at" field.
 func (m *AsyncVideoTaskMutation) SetFailDeadlineAt(t time.Time) {
 	m.fail_deadline_at = &t
@@ -12840,7 +13093,7 @@ func (m *AsyncVideoTaskMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AsyncVideoTaskMutation) Fields() []string {
-	fields := make([]string, 0, 38)
+	fields := make([]string, 0, 43)
 	if m.created_at != nil {
 		fields = append(fields, asyncvideotask.FieldCreatedAt)
 	}
@@ -12907,6 +13160,9 @@ func (m *AsyncVideoTaskMutation) Fields() []string {
 	if m.status != nil {
 		fields = append(fields, asyncvideotask.FieldStatus)
 	}
+	if m.billing_type != nil {
+		fields = append(fields, asyncvideotask.FieldBillingType)
+	}
 	if m.held_cost != nil {
 		fields = append(fields, asyncvideotask.FieldHeldCost)
 	}
@@ -12936,6 +13192,18 @@ func (m *AsyncVideoTaskMutation) Fields() []string {
 	}
 	if m.error_reason != nil {
 		fields = append(fields, asyncvideotask.FieldErrorReason)
+	}
+	if m.refund_status != nil {
+		fields = append(fields, asyncvideotask.FieldRefundStatus)
+	}
+	if m.refund_attempts != nil {
+		fields = append(fields, asyncvideotask.FieldRefundAttempts)
+	}
+	if m.refund_next_retry_at != nil {
+		fields = append(fields, asyncvideotask.FieldRefundNextRetryAt)
+	}
+	if m.refund_error != nil {
+		fields = append(fields, asyncvideotask.FieldRefundError)
 	}
 	if m.fail_deadline_at != nil {
 		fields = append(fields, asyncvideotask.FieldFailDeadlineAt)
@@ -13007,6 +13275,8 @@ func (m *AsyncVideoTaskMutation) Field(name string) (ent.Value, bool) {
 		return m.AspectRatio()
 	case asyncvideotask.FieldStatus:
 		return m.Status()
+	case asyncvideotask.FieldBillingType:
+		return m.BillingType()
 	case asyncvideotask.FieldHeldCost:
 		return m.HeldCost()
 	case asyncvideotask.FieldFinalCost:
@@ -13027,6 +13297,14 @@ func (m *AsyncVideoTaskMutation) Field(name string) (ent.Value, bool) {
 		return m.CosUrls()
 	case asyncvideotask.FieldErrorReason:
 		return m.ErrorReason()
+	case asyncvideotask.FieldRefundStatus:
+		return m.RefundStatus()
+	case asyncvideotask.FieldRefundAttempts:
+		return m.RefundAttempts()
+	case asyncvideotask.FieldRefundNextRetryAt:
+		return m.RefundNextRetryAt()
+	case asyncvideotask.FieldRefundError:
+		return m.RefundError()
 	case asyncvideotask.FieldFailDeadlineAt:
 		return m.FailDeadlineAt()
 	case asyncvideotask.FieldFinishedAt:
@@ -13092,6 +13370,8 @@ func (m *AsyncVideoTaskMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldAspectRatio(ctx)
 	case asyncvideotask.FieldStatus:
 		return m.OldStatus(ctx)
+	case asyncvideotask.FieldBillingType:
+		return m.OldBillingType(ctx)
 	case asyncvideotask.FieldHeldCost:
 		return m.OldHeldCost(ctx)
 	case asyncvideotask.FieldFinalCost:
@@ -13112,6 +13392,14 @@ func (m *AsyncVideoTaskMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldCosUrls(ctx)
 	case asyncvideotask.FieldErrorReason:
 		return m.OldErrorReason(ctx)
+	case asyncvideotask.FieldRefundStatus:
+		return m.OldRefundStatus(ctx)
+	case asyncvideotask.FieldRefundAttempts:
+		return m.OldRefundAttempts(ctx)
+	case asyncvideotask.FieldRefundNextRetryAt:
+		return m.OldRefundNextRetryAt(ctx)
+	case asyncvideotask.FieldRefundError:
+		return m.OldRefundError(ctx)
 	case asyncvideotask.FieldFailDeadlineAt:
 		return m.OldFailDeadlineAt(ctx)
 	case asyncvideotask.FieldFinishedAt:
@@ -13287,6 +13575,13 @@ func (m *AsyncVideoTaskMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetStatus(v)
 		return nil
+	case asyncvideotask.FieldBillingType:
+		v, ok := value.(int8)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBillingType(v)
+		return nil
 	case asyncvideotask.FieldHeldCost:
 		v, ok := value.(float64)
 		if !ok {
@@ -13356,6 +13651,34 @@ func (m *AsyncVideoTaskMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetErrorReason(v)
+		return nil
+	case asyncvideotask.FieldRefundStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRefundStatus(v)
+		return nil
+	case asyncvideotask.FieldRefundAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRefundAttempts(v)
+		return nil
+	case asyncvideotask.FieldRefundNextRetryAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRefundNextRetryAt(v)
+		return nil
+	case asyncvideotask.FieldRefundError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRefundError(v)
 		return nil
 	case asyncvideotask.FieldFailDeadlineAt:
 		v, ok := value.(time.Time)
@@ -13434,6 +13757,9 @@ func (m *AsyncVideoTaskMutation) AddedFields() []string {
 	if m.addduration_seconds != nil {
 		fields = append(fields, asyncvideotask.FieldDurationSeconds)
 	}
+	if m.addbilling_type != nil {
+		fields = append(fields, asyncvideotask.FieldBillingType)
+	}
 	if m.addheld_cost != nil {
 		fields = append(fields, asyncvideotask.FieldHeldCost)
 	}
@@ -13448,6 +13774,9 @@ func (m *AsyncVideoTaskMutation) AddedFields() []string {
 	}
 	if m.addupstream_cost != nil {
 		fields = append(fields, asyncvideotask.FieldUpstreamCost)
+	}
+	if m.addrefund_attempts != nil {
+		fields = append(fields, asyncvideotask.FieldRefundAttempts)
 	}
 	return fields
 }
@@ -13475,6 +13804,8 @@ func (m *AsyncVideoTaskMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedChannelID()
 	case asyncvideotask.FieldDurationSeconds:
 		return m.AddedDurationSeconds()
+	case asyncvideotask.FieldBillingType:
+		return m.AddedBillingType()
 	case asyncvideotask.FieldHeldCost:
 		return m.AddedHeldCost()
 	case asyncvideotask.FieldFinalCost:
@@ -13485,6 +13816,8 @@ func (m *AsyncVideoTaskMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedUnitPriceSnapshot()
 	case asyncvideotask.FieldUpstreamCost:
 		return m.AddedUpstreamCost()
+	case asyncvideotask.FieldRefundAttempts:
+		return m.AddedRefundAttempts()
 	}
 	return nil, false
 }
@@ -13557,6 +13890,13 @@ func (m *AsyncVideoTaskMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddDurationSeconds(v)
 		return nil
+	case asyncvideotask.FieldBillingType:
+		v, ok := value.(int8)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBillingType(v)
+		return nil
 	case asyncvideotask.FieldHeldCost:
 		v, ok := value.(float64)
 		if !ok {
@@ -13591,6 +13931,13 @@ func (m *AsyncVideoTaskMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddUpstreamCost(v)
+		return nil
+	case asyncvideotask.FieldRefundAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRefundAttempts(v)
 		return nil
 	}
 	return fmt.Errorf("unknown AsyncVideoTask numeric field %s", name)
@@ -13653,6 +14000,12 @@ func (m *AsyncVideoTaskMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(asyncvideotask.FieldErrorReason) {
 		fields = append(fields, asyncvideotask.FieldErrorReason)
+	}
+	if m.FieldCleared(asyncvideotask.FieldRefundNextRetryAt) {
+		fields = append(fields, asyncvideotask.FieldRefundNextRetryAt)
+	}
+	if m.FieldCleared(asyncvideotask.FieldRefundError) {
+		fields = append(fields, asyncvideotask.FieldRefundError)
 	}
 	if m.FieldCleared(asyncvideotask.FieldFailDeadlineAt) {
 		fields = append(fields, asyncvideotask.FieldFailDeadlineAt)
@@ -13739,6 +14092,12 @@ func (m *AsyncVideoTaskMutation) ClearField(name string) error {
 		return nil
 	case asyncvideotask.FieldErrorReason:
 		m.ClearErrorReason()
+		return nil
+	case asyncvideotask.FieldRefundNextRetryAt:
+		m.ClearRefundNextRetryAt()
+		return nil
+	case asyncvideotask.FieldRefundError:
+		m.ClearRefundError()
 		return nil
 	case asyncvideotask.FieldFailDeadlineAt:
 		m.ClearFailDeadlineAt()
@@ -13832,6 +14191,9 @@ func (m *AsyncVideoTaskMutation) ResetField(name string) error {
 	case asyncvideotask.FieldStatus:
 		m.ResetStatus()
 		return nil
+	case asyncvideotask.FieldBillingType:
+		m.ResetBillingType()
+		return nil
 	case asyncvideotask.FieldHeldCost:
 		m.ResetHeldCost()
 		return nil
@@ -13861,6 +14223,18 @@ func (m *AsyncVideoTaskMutation) ResetField(name string) error {
 		return nil
 	case asyncvideotask.FieldErrorReason:
 		m.ResetErrorReason()
+		return nil
+	case asyncvideotask.FieldRefundStatus:
+		m.ResetRefundStatus()
+		return nil
+	case asyncvideotask.FieldRefundAttempts:
+		m.ResetRefundAttempts()
+		return nil
+	case asyncvideotask.FieldRefundNextRetryAt:
+		m.ResetRefundNextRetryAt()
+		return nil
+	case asyncvideotask.FieldRefundError:
+		m.ResetRefundError()
 		return nil
 	case asyncvideotask.FieldFailDeadlineAt:
 		m.ResetFailDeadlineAt()
@@ -32629,8 +33003,8 @@ type GroupMutation struct {
 	audio_stt_price_per_hour                *float64
 	addaudio_stt_price_per_hour             *float64
 	long_context_pricing_enabled            *bool
-	model_pricing                           *json.RawMessage
-	appendmodel_pricing                     json.RawMessage
+	model_pricing                           *jsontext.Value
+	appendmodel_pricing                     jsontext.Value
 	claude_code_only                        *bool
 	fallback_group_id                       *int64
 	addfallback_group_id                    *int64
@@ -35163,13 +35537,13 @@ func (m *GroupMutation) ResetLongContextPricingEnabled() {
 }
 
 // SetModelPricing sets the "model_pricing" field.
-func (m *GroupMutation) SetModelPricing(jm json.RawMessage) {
-	m.model_pricing = &jm
+func (m *GroupMutation) SetModelPricing(j jsontext.Value) {
+	m.model_pricing = &j
 	m.appendmodel_pricing = nil
 }
 
 // ModelPricing returns the value of the "model_pricing" field in the mutation.
-func (m *GroupMutation) ModelPricing() (r json.RawMessage, exists bool) {
+func (m *GroupMutation) ModelPricing() (r jsontext.Value, exists bool) {
 	v := m.model_pricing
 	if v == nil {
 		return
@@ -35180,7 +35554,7 @@ func (m *GroupMutation) ModelPricing() (r json.RawMessage, exists bool) {
 // OldModelPricing returns the old "model_pricing" field's value of the Group entity.
 // If the Group object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldModelPricing(ctx context.Context) (v json.RawMessage, err error) {
+func (m *GroupMutation) OldModelPricing(ctx context.Context) (v jsontext.Value, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldModelPricing is only allowed on UpdateOne operations")
 	}
@@ -35194,13 +35568,13 @@ func (m *GroupMutation) OldModelPricing(ctx context.Context) (v json.RawMessage,
 	return oldValue.ModelPricing, nil
 }
 
-// AppendModelPricing adds jm to the "model_pricing" field.
-func (m *GroupMutation) AppendModelPricing(jm json.RawMessage) {
-	m.appendmodel_pricing = append(m.appendmodel_pricing, jm...)
+// AppendModelPricing adds j to the "model_pricing" field.
+func (m *GroupMutation) AppendModelPricing(j jsontext.Value) {
+	m.appendmodel_pricing = append(m.appendmodel_pricing, j...)
 }
 
 // AppendedModelPricing returns the list of values that were appended to the "model_pricing" field in this mutation.
-func (m *GroupMutation) AppendedModelPricing() (json.RawMessage, bool) {
+func (m *GroupMutation) AppendedModelPricing() (jsontext.Value, bool) {
 	if len(m.appendmodel_pricing) == 0 {
 		return nil, false
 	}
@@ -37627,7 +38001,7 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		m.SetLongContextPricingEnabled(v)
 		return nil
 	case group.FieldModelPricing:
-		v, ok := value.(json.RawMessage)
+		v, ok := value.(jsontext.Value)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -77545,8 +77919,8 @@ type UsageCleanupTaskMutation struct {
 	created_at      *time.Time
 	updated_at      *time.Time
 	status          *string
-	filters         *json.RawMessage
-	appendfilters   json.RawMessage
+	filters         *jsontext.Value
+	appendfilters   jsontext.Value
 	created_by      *int64
 	addcreated_by   *int64
 	deleted_rows    *int64
@@ -77770,13 +78144,13 @@ func (m *UsageCleanupTaskMutation) ResetStatus() {
 }
 
 // SetFilters sets the "filters" field.
-func (m *UsageCleanupTaskMutation) SetFilters(jm json.RawMessage) {
-	m.filters = &jm
+func (m *UsageCleanupTaskMutation) SetFilters(j jsontext.Value) {
+	m.filters = &j
 	m.appendfilters = nil
 }
 
 // Filters returns the value of the "filters" field in the mutation.
-func (m *UsageCleanupTaskMutation) Filters() (r json.RawMessage, exists bool) {
+func (m *UsageCleanupTaskMutation) Filters() (r jsontext.Value, exists bool) {
 	v := m.filters
 	if v == nil {
 		return
@@ -77787,7 +78161,7 @@ func (m *UsageCleanupTaskMutation) Filters() (r json.RawMessage, exists bool) {
 // OldFilters returns the old "filters" field's value of the UsageCleanupTask entity.
 // If the UsageCleanupTask object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UsageCleanupTaskMutation) OldFilters(ctx context.Context) (v json.RawMessage, err error) {
+func (m *UsageCleanupTaskMutation) OldFilters(ctx context.Context) (v jsontext.Value, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldFilters is only allowed on UpdateOne operations")
 	}
@@ -77801,13 +78175,13 @@ func (m *UsageCleanupTaskMutation) OldFilters(ctx context.Context) (v json.RawMe
 	return oldValue.Filters, nil
 }
 
-// AppendFilters adds jm to the "filters" field.
-func (m *UsageCleanupTaskMutation) AppendFilters(jm json.RawMessage) {
-	m.appendfilters = append(m.appendfilters, jm...)
+// AppendFilters adds j to the "filters" field.
+func (m *UsageCleanupTaskMutation) AppendFilters(j jsontext.Value) {
+	m.appendfilters = append(m.appendfilters, j...)
 }
 
 // AppendedFilters returns the list of values that were appended to the "filters" field in this mutation.
-func (m *UsageCleanupTaskMutation) AppendedFilters() (json.RawMessage, bool) {
+func (m *UsageCleanupTaskMutation) AppendedFilters() (jsontext.Value, bool) {
 	if len(m.appendfilters) == 0 {
 		return nil, false
 	}
@@ -78358,7 +78732,7 @@ func (m *UsageCleanupTaskMutation) SetField(name string, value ent.Value) error 
 		m.SetStatus(v)
 		return nil
 	case usagecleanuptask.FieldFilters:
-		v, ok := value.(json.RawMessage)
+		v, ok := value.(jsontext.Value)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}

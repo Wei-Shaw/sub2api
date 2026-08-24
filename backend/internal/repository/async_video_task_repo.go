@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -14,11 +15,12 @@ import (
 
 type asyncVideoTaskRepository struct {
 	sql sqlExecutor
+	db  *sql.DB
 }
 
 // NewAsyncVideoTaskRepository 创建视频异步任务仓储。
 func NewAsyncVideoTaskRepository(_ *dbent.Client, sqlDB *sql.DB) service.AsyncVideoTaskRepository {
-	return &asyncVideoTaskRepository{sql: sqlDB}
+	return &asyncVideoTaskRepository{sql: sqlDB, db: sqlDB}
 }
 
 const asyncVideoTaskColumns = `
@@ -26,9 +28,9 @@ const asyncVideoTaskColumns = `
 	account_id, api_key_id, user_id, organization_id, payer_user_id, balance_source, authz_generation, group_id, channel_id,
 	facade, requested_model, upstream_model,
 	resolution, duration_seconds, aspect_ratio,
-	status, held_cost, final_cost, rate_multiplier, unit_price_snapshot, upstream_cost,
+	status, billing_type, held_cost, final_cost, rate_multiplier, unit_price_snapshot, upstream_cost,
 	request_payload, result_payload, video_urls, cos_urls,
-	error_reason, fail_deadline_at, finished_at,
+	error_reason, refund_status, refund_attempts, refund_next_retry_at, refund_error, fail_deadline_at, finished_at,
 	client_ip, user_agent, inbound_endpoint, upstream_endpoint,
 	created_at, updated_at`
 
@@ -68,7 +70,7 @@ func (r *asyncVideoTaskRepository) Create(ctx context.Context, task *service.Asy
 			account_id, api_key_id, user_id, organization_id, payer_user_id, balance_source, authz_generation, group_id, channel_id,
 			facade, requested_model, upstream_model,
 			resolution, duration_seconds, aspect_ratio,
-			status, held_cost, final_cost, rate_multiplier, unit_price_snapshot, upstream_cost,
+			status, billing_type, held_cost, final_cost, rate_multiplier, unit_price_snapshot, upstream_cost,
 			request_payload, result_payload, video_urls, cos_urls,
 			error_reason, fail_deadline_at, finished_at,
 			client_ip, user_agent, inbound_endpoint, upstream_endpoint
@@ -77,10 +79,10 @@ func (r *asyncVideoTaskRepository) Create(ctx context.Context, task *service.Asy
 			$5, $6, $7, $8, $9, $10, $11, $12, $13,
 			$14, $15, $16,
 			$17, $18, $19,
-			$20, $21, $22, $23, $24, $25,
-			$26, $27, $28, $29,
-			$30, $31, $32,
-			$33, $34, $35, $36
+			$20, $21, $22, $23, $24, $25, $26,
+			$27, $28, $29, $30,
+			$31, $32, $33,
+			$34, $35, $36, $37
 		) RETURNING id, created_at, updated_at`
 
 	return scanSingleRow(ctx, r.sql, query, []any{
@@ -88,7 +90,7 @@ func (r *asyncVideoTaskRepository) Create(ctx context.Context, task *service.Asy
 		task.AccountID, task.APIKeyID, task.UserID, task.OrganizationID, task.PayerUserID, task.BalanceSource, task.AuthzGeneration, task.GroupID, task.ChannelID,
 		task.Facade, task.RequestedModel, task.UpstreamModel,
 		task.Resolution, task.DurationSeconds, task.AspectRatio,
-		task.Status, task.HeldCost, task.FinalCost, task.RateMultiplier, task.UnitPriceSnapshot, task.UpstreamCost,
+		task.Status, task.BillingType, task.HeldCost, task.FinalCost, task.RateMultiplier, task.UnitPriceSnapshot, task.UpstreamCost,
 		requestJSON, resultJSON, videoURLsJSON, cosURLsJSON,
 		task.ErrorReason, task.FailDeadlineAt, task.FinishedAt,
 		task.ClientIP, task.UserAgent, task.InboundEndpoint, task.UpstreamEndpoint,
@@ -140,6 +142,66 @@ func (r *asyncVideoTaskRepository) MarkSucceeded(ctx context.Context, id int64, 
 	if err != nil {
 		return false, fmt.Errorf("marshal result_payload: %w", err)
 	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var (
+		heldCost       float64
+		billingType    int8
+		userID         int64
+		payerUserID    sql.NullInt64
+		organizationID sql.NullInt64
+		balanceSource  sql.NullString
+		status         string
+	)
+	if err := tx.QueryRowContext(ctx, `
+		SELECT held_cost, billing_type, user_id, payer_user_id, organization_id, balance_source, status
+		FROM async_video_tasks WHERE id = $1 FOR UPDATE`, id).
+		Scan(&heldCost, &billingType, &userID, &payerUserID, &organizationID, &balanceSource, &status); err != nil {
+		return false, err
+	}
+	if isAsyncVideoTerminalStatus(status) {
+		return false, nil
+	}
+
+	delta := finalCost - heldCost
+	if billingType == service.BillingTypeBalance && delta != 0 {
+		if balanceSource.String == service.BalanceSourceCompany {
+			if !organizationID.Valid || organizationID.Int64 <= 0 {
+				return false, service.ErrCompanyNotFound
+			}
+			res, updateErr := tx.ExecContext(ctx, `UPDATE organizations SET balance = balance - $1, updated_at = NOW() WHERE id = $2`, delta, organizationID.Int64)
+			if updateErr != nil {
+				return false, updateErr
+			}
+			if affected, rowsErr := res.RowsAffected(); rowsErr != nil || affected != 1 {
+				if rowsErr != nil {
+					return false, rowsErr
+				}
+				return false, service.ErrCompanyNotFound
+			}
+		} else {
+			payerID := payerUserID.Int64
+			if payerID <= 0 {
+				payerID = userID
+			}
+			res, updateErr := tx.ExecContext(ctx, `
+				UPDATE users SET balance = balance - $1, updated_at = NOW()
+				WHERE id = $2 AND deleted_at IS NULL AND ($1::numeric <= 0 OR balance >= $1)`, delta, payerID)
+			if updateErr != nil {
+				return false, updateErr
+			}
+			if affected, rowsErr := res.RowsAffected(); rowsErr != nil || affected != 1 {
+				if rowsErr != nil {
+					return false, rowsErr
+				}
+				return false, service.ErrInsufficientBalance
+			}
+		}
+	}
 	// duration_seconds<=0 时保留原库值（例如上游没返回时长），否则以实际值覆盖。
 	// upstream_cost<=0 时保留原库值（例如 fal/atlascloud 未回传真实成本），
 	// 只有 apiz 这类回传 price 的平台才会 >0 覆盖。
@@ -153,11 +215,14 @@ func (r *asyncVideoTaskRepository) MarkSucceeded(ctx context.Context, id int64, 
 			duration_seconds = CASE WHEN $10::int > 0 THEN $10 ELSE duration_seconds END,
 			upstream_cost = CASE WHEN $11::numeric > 0 THEN $11 ELSE upstream_cost END,
 			error_reason = NULL,
+			refund_status = $12,
+			refund_next_retry_at = NULL,
+			refund_error = NULL,
 			finished_at = NOW(),
 			updated_at = NOW()
 		WHERE id = $1
-			AND status NOT IN ($7, $8, $9)`
-	res, err := r.sql.ExecContext(ctx, query,
+			AND status NOT IN ($7, $8, $9, $13, $14)`
+	res, err := tx.ExecContext(ctx, query,
 		id,
 		service.AsyncVideoStatusSucceeded,
 		videoURLsJSON,
@@ -169,6 +234,189 @@ func (r *asyncVideoTaskRepository) MarkSucceeded(ctx context.Context, id int64, 
 		service.AsyncVideoStatusExpired,
 		durationSeconds,
 		upstreamCost,
+		service.AsyncVideoRefundStatusNone,
+		service.AsyncVideoStatusFailed,
+		service.AsyncVideoStatusRefundFailed,
+	)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
+		return false, nil
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func isAsyncVideoTerminalStatus(status string) bool {
+	switch status {
+	case service.AsyncVideoStatusSucceeded, service.AsyncVideoStatusRefunded, service.AsyncVideoStatusExpired,
+		service.AsyncVideoStatusFailed, service.AsyncVideoStatusRefundFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+func (r *asyncVideoTaskRepository) MarkBillingFailed(ctx context.Context, id int64, videoURLs, cosURLs []string, resultPayload map[string]any, upstreamCost float64, durationSeconds int, reason string) (bool, error) {
+	videoURLsJSON, err := marshalStringSlice(videoURLs)
+	if err != nil {
+		return false, fmt.Errorf("marshal video_urls: %w", err)
+	}
+	cosURLsJSON, err := marshalStringSlice(cosURLs)
+	if err != nil {
+		return false, fmt.Errorf("marshal cos_urls: %w", err)
+	}
+	resultJSON, err := marshalAnyMap(resultPayload)
+	if err != nil {
+		return false, fmt.Errorf("marshal result_payload: %w", err)
+	}
+	res, err := r.sql.ExecContext(ctx, `
+		UPDATE async_video_tasks
+		SET status = $2,
+			video_urls = $3,
+			cos_urls = $4,
+			result_payload = $5,
+			final_cost = 0,
+			duration_seconds = CASE WHEN $13::int > 0 THEN $13 ELSE duration_seconds END,
+			upstream_cost = CASE WHEN $6::numeric > 0 THEN $6 ELSE upstream_cost END,
+			error_reason = $7,
+			refund_status = $8,
+			refund_next_retry_at = NULL,
+			refund_error = NULL,
+			finished_at = NOW(),
+			updated_at = NOW()
+		WHERE id = $1
+			AND status NOT IN ($2, $9, $10, $11, $12)`,
+		id, service.AsyncVideoStatusSucceeded, videoURLsJSON, cosURLsJSON, resultJSON,
+		upstreamCost, nullIfEmpty(reason), service.AsyncVideoRefundStatusNone,
+		service.AsyncVideoStatusRefunded, service.AsyncVideoStatusExpired,
+		service.AsyncVideoStatusFailed, service.AsyncVideoStatusRefundFailed,
+		durationSeconds,
+	)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	return affected > 0, err
+}
+
+// CompleteManualBilling atomically reconciles the existing hold and updates
+// both the task and its billing_failed usage row. Administrators may deliberately
+// take a balance negative when resolving a completed video that could not be
+// settled automatically.
+func (r *asyncVideoTaskRepository) CompleteManualBilling(ctx context.Context, id int64, finalCost float64) (bool, error) {
+	if finalCost <= 0 {
+		return false, errors.New("manual video cost must be greater than zero")
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var (
+		heldCost       float64
+		billingType    int8
+		userID         int64
+		payerUserID    sql.NullInt64
+		organizationID sql.NullInt64
+		balanceSource  sql.NullString
+		usageID        int64
+		billingStatus  string
+	)
+	if err := tx.QueryRowContext(ctx, `
+		SELECT held_cost, billing_type, user_id, payer_user_id, organization_id, balance_source
+		FROM async_video_tasks WHERE id = $1 FOR UPDATE`, id).
+		Scan(&heldCost, &billingType, &userID, &payerUserID, &organizationID, &balanceSource); err != nil {
+		return false, err
+	}
+	if err := tx.QueryRowContext(ctx, `
+		SELECT id, COALESCE(billing_status, '')
+		FROM usage_logs WHERE task_id = $1 ORDER BY id DESC LIMIT 1 FOR UPDATE`, id).
+		Scan(&usageID, &billingStatus); err != nil {
+		return false, err
+	}
+	if billingStatus != service.BillingStatusFailed {
+		return false, service.ErrAsyncVideoBillingNotPending
+	}
+
+	delta := finalCost - heldCost
+	if billingType == service.BillingTypeBalance && delta != 0 {
+		if balanceSource.String == service.BalanceSourceCompany {
+			if !organizationID.Valid || organizationID.Int64 <= 0 {
+				return false, service.ErrCompanyNotFound
+			}
+			res, updateErr := tx.ExecContext(ctx, `UPDATE organizations SET balance = balance - $1, updated_at = NOW() WHERE id = $2`, delta, organizationID.Int64)
+			if updateErr != nil {
+				return false, updateErr
+			}
+			if affected, rowsErr := res.RowsAffected(); rowsErr != nil || affected != 1 {
+				if rowsErr != nil {
+					return false, rowsErr
+				}
+				return false, service.ErrCompanyNotFound
+			}
+		} else {
+			payerID := payerUserID.Int64
+			if payerID <= 0 {
+				payerID = userID
+			}
+			res, updateErr := tx.ExecContext(ctx, `UPDATE users SET balance = balance - $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL`, delta, payerID)
+			if updateErr != nil {
+				return false, updateErr
+			}
+			if affected, rowsErr := res.RowsAffected(); rowsErr != nil || affected != 1 {
+				if rowsErr != nil {
+					return false, rowsErr
+				}
+				return false, service.ErrUserNotFound
+			}
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, `UPDATE async_video_tasks SET final_cost = $2, error_reason = NULL, updated_at = NOW() WHERE id = $1`, id, finalCost); err != nil {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE usage_logs SET total_cost = $2, actual_cost = $2, billing_status = $3 WHERE id = $1`, usageID, finalCost, service.BillingStatusCharged); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *asyncVideoTaskRepository) MarkFailed(ctx context.Context, id int64, status, errorReason string, firstRetryAt time.Time) (bool, error) {
+	if status == "" {
+		status = service.AsyncVideoStatusFailed
+	}
+	query := `
+		UPDATE async_video_tasks
+		SET status = $2,
+			error_reason = $3,
+			refund_status = $4,
+			refund_attempts = 0,
+			refund_next_retry_at = $5,
+			refund_error = NULL,
+			finished_at = NOW(),
+			updated_at = NOW()
+		WHERE id = $1
+			AND status IN ($6, $7)`
+	res, err := r.sql.ExecContext(ctx, query,
+		id,
+		status,
+		nullIfEmpty(errorReason),
+		service.AsyncVideoRefundStatusPending,
+		firstRetryAt,
+		service.AsyncVideoStatusPending,
+		service.AsyncVideoStatusRunning,
 	)
 	if err != nil {
 		return false, err
@@ -180,35 +428,158 @@ func (r *asyncVideoTaskRepository) MarkSucceeded(ctx context.Context, id int64, 
 	return affected > 0, nil
 }
 
-func (r *asyncVideoTaskRepository) MarkRefunded(ctx context.Context, id int64, status, errorReason string) (bool, error) {
+// CompleteRefund atomically credits the snapshotted payer and marks the task refunded.
+// Holding the task row lock makes retries and multi-instance reconcilers idempotent.
+func (r *asyncVideoTaskRepository) CompleteRefund(ctx context.Context, id int64, status string) (_ bool, _ int64, err error) {
+	if r == nil || r.db == nil {
+		return false, 0, errors.New("async video refund database is unavailable")
+	}
 	if status == "" {
 		status = service.AsyncVideoStatusRefunded
 	}
-	query := `
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var (
+		heldCost       float64
+		billingType    int8
+		userID         int64
+		payerUserID    sql.NullInt64
+		organizationID sql.NullInt64
+		balanceSource  sql.NullString
+		refundStatus   string
+	)
+	err = tx.QueryRowContext(ctx, `
+		SELECT held_cost, billing_type, user_id, payer_user_id, organization_id,
+		       balance_source, refund_status
+		FROM async_video_tasks
+		WHERE id = $1
+		FOR UPDATE`, id).
+		Scan(&heldCost, &billingType, &userID, &payerUserID, &organizationID, &balanceSource, &refundStatus)
+	if err != nil {
+		return false, 0, err
+	}
+	if refundStatus == service.AsyncVideoRefundStatusSucceeded {
+		return false, payerUserID.Int64, nil
+	}
+	if refundStatus != service.AsyncVideoRefundStatusProcessing && refundStatus != service.AsyncVideoRefundStatusPending {
+		return false, payerUserID.Int64, fmt.Errorf("async video refund is not claimed: status=%s", refundStatus)
+	}
+
+	payerID := payerUserID.Int64
+	if payerID <= 0 {
+		payerID = userID
+	}
+	if billingType == service.BillingTypeBalance && heldCost > 0 {
+		if balanceSource.String == service.BalanceSourceCompany {
+			if !organizationID.Valid || organizationID.Int64 <= 0 {
+				return false, payerID, service.ErrCompanyNotFound
+			}
+			res, updateErr := tx.ExecContext(ctx, `
+				UPDATE organizations
+				SET balance = balance + $1, updated_at = NOW()
+				WHERE id = $2`, heldCost, organizationID.Int64)
+			if updateErr != nil {
+				return false, payerID, updateErr
+			}
+			if affected, rowsErr := res.RowsAffected(); rowsErr != nil || affected != 1 {
+				if rowsErr != nil {
+					return false, payerID, rowsErr
+				}
+				return false, payerID, service.ErrCompanyNotFound
+			}
+		} else {
+			res, updateErr := tx.ExecContext(ctx, `
+				UPDATE users
+				SET balance = balance + $1, updated_at = NOW()
+				WHERE id = $2 AND deleted_at IS NULL`, heldCost, payerID)
+			if updateErr != nil {
+				return false, payerID, updateErr
+			}
+			if affected, rowsErr := res.RowsAffected(); rowsErr != nil || affected != 1 {
+				if rowsErr != nil {
+					return false, payerID, rowsErr
+				}
+				return false, payerID, service.ErrUserNotFound
+			}
+		}
+	}
+
+	if _, err = tx.ExecContext(ctx, `
 		UPDATE async_video_tasks
 		SET status = $2,
 			final_cost = 0,
-			error_reason = $3,
+			refund_status = $3,
+			refund_next_retry_at = NULL,
+			refund_error = NULL,
 			finished_at = NOW(),
 			updated_at = NOW()
-		WHERE id = $1
-			AND status NOT IN ($4, $5, $6)`
-	res, err := r.sql.ExecContext(ctx, query,
-		id,
-		status,
-		nullIfEmpty(errorReason),
-		service.AsyncVideoStatusSucceeded,
-		service.AsyncVideoStatusRefunded,
-		service.AsyncVideoStatusExpired,
-	)
+		WHERE id = $1`, id, status, service.AsyncVideoRefundStatusSucceeded); err != nil {
+		return false, payerID, err
+	}
+	if err = tx.Commit(); err != nil {
+		return false, payerID, err
+	}
+	return true, payerID, nil
+}
+
+func (r *asyncVideoTaskRepository) ScheduleRefundRetry(ctx context.Context, id int64, attempts int, nextRetryAt time.Time, refundError string) (bool, error) {
+	res, err := r.sql.ExecContext(ctx, `
+		UPDATE async_video_tasks
+		SET refund_status = $2,
+			refund_attempts = $3,
+			refund_next_retry_at = $4,
+			refund_error = $5,
+			updated_at = NOW()
+		WHERE id = $1 AND refund_status IN ($6, $7)`,
+		id, service.AsyncVideoRefundStatusPending, attempts, nextRetryAt, nullIfEmpty(refundError),
+		service.AsyncVideoRefundStatusProcessing, service.AsyncVideoRefundStatusPending)
 	if err != nil {
 		return false, err
 	}
 	affected, err := res.RowsAffected()
+	return affected > 0, err
+}
+
+func (r *asyncVideoTaskRepository) ClaimRefundRetry(ctx context.Context, id int64, expectedAttempts int) (bool, error) {
+	res, err := r.sql.ExecContext(ctx, `
+		UPDATE async_video_tasks
+		SET refund_status = $2,
+			refund_attempts = refund_attempts + 1,
+			refund_next_retry_at = NOW() + INTERVAL '1 minute',
+			updated_at = NOW()
+		WHERE id = $1
+			AND refund_status = $3
+			AND refund_attempts = $4
+			AND refund_next_retry_at <= NOW()`,
+		id, service.AsyncVideoRefundStatusProcessing, service.AsyncVideoRefundStatusPending, expectedAttempts)
 	if err != nil {
 		return false, err
 	}
-	return affected > 0, nil
+	affected, err := res.RowsAffected()
+	return affected > 0, err
+}
+
+func (r *asyncVideoTaskRepository) MarkRefundFailed(ctx context.Context, id int64, attempts int, refundError string) (bool, error) {
+	res, err := r.sql.ExecContext(ctx, `
+		UPDATE async_video_tasks
+		SET status = $2,
+			refund_status = $3,
+			refund_attempts = $4,
+			refund_next_retry_at = NULL,
+			refund_error = $5,
+			finished_at = NOW(),
+			updated_at = NOW()
+		WHERE id = $1 AND refund_status = $6`,
+		id, service.AsyncVideoStatusRefundFailed, service.AsyncVideoRefundStatusFailed, attempts, nullIfEmpty(refundError), service.AsyncVideoRefundStatusProcessing)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	return affected > 0, err
 }
 
 func (r *asyncVideoTaskRepository) ListUnfinished(ctx context.Context, limit int) ([]*service.AsyncVideoTask, error) {
@@ -242,6 +613,31 @@ func (r *asyncVideoTaskRepository) ListUnfinished(ctx context.Context, limit int
 		return nil, err
 	}
 	return result, nil
+}
+
+func (r *asyncVideoTaskRepository) ListPendingRefunds(ctx context.Context, limit int) ([]*service.AsyncVideoTask, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := r.sql.QueryContext(ctx, `SELECT `+asyncVideoTaskColumns+`
+		FROM async_video_tasks
+		WHERE refund_status IN ($1, $2)
+			AND refund_next_retry_at <= NOW()
+		ORDER BY refund_next_retry_at ASC, id ASC
+		LIMIT $3`, service.AsyncVideoRefundStatusPending, service.AsyncVideoRefundStatusProcessing, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var result []*service.AsyncVideoTask
+	for rows.Next() {
+		task, scanErr := scanAsyncVideoTask(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		result = append(result, task)
+	}
+	return result, rows.Err()
 }
 
 // ListByUserAndSlug 分页列出某用户在指定模型 slug 下的历史任务。
@@ -435,9 +831,9 @@ func scanAsyncVideoTask(rows *sql.Rows) (*service.AsyncVideoTask, error) {
 		&task.AccountID, &task.APIKeyID, &task.UserID, &task.OrganizationID, &task.PayerUserID, &task.BalanceSource, &task.AuthzGeneration, &task.GroupID, &task.ChannelID,
 		&task.Facade, &task.RequestedModel, &task.UpstreamModel,
 		&task.Resolution, &task.DurationSeconds, &task.AspectRatio,
-		&task.Status, &task.HeldCost, &task.FinalCost, &task.RateMultiplier, &task.UnitPriceSnapshot, &task.UpstreamCost,
+		&task.Status, &task.BillingType, &task.HeldCost, &task.FinalCost, &task.RateMultiplier, &task.UnitPriceSnapshot, &task.UpstreamCost,
 		&requestJSON, &resultJSON, &videoURLsJSON, &cosURLsJSON,
-		&task.ErrorReason, &task.FailDeadlineAt, &task.FinishedAt,
+		&task.ErrorReason, &task.RefundStatus, &task.RefundAttempts, &task.RefundNextRetryAt, &task.RefundError, &task.FailDeadlineAt, &task.FinishedAt,
 		&task.ClientIP, &task.UserAgent, &task.InboundEndpoint, &task.UpstreamEndpoint,
 		&task.CreatedAt, &task.UpdatedAt,
 	); err != nil {

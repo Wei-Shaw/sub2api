@@ -139,7 +139,7 @@ func TestAdaptSubmitParamsExistingConversions(t *testing.T) {
 			"aspect_ratio": "AUTO", // 大小写不敏感
 		}).(map[string]any)
 		require.True(t, ok)
-		require.Equal(t, apizAutoDurationFallback, m["duration"])
+		require.Equal(t, AutoDurationFallbackSeconds, m["duration"])
 		require.Equal(t, apizAutoAspectRatioFallback, m["aspect_ratio"])
 	})
 

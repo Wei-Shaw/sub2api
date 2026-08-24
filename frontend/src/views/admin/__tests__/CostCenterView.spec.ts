@@ -41,6 +41,8 @@ vi.mock('vue-i18n', async () => {
         'admin.costCenter.category': 'Category',
         'admin.costCenter.occurredAt': 'Occurred at',
         'admin.costCenter.costAppended': 'Cost appended',
+        'admin.costCenter.rebateAmount': 'Rebate amount',
+        'admin.costCenter.rebateAmountHelp': 'Included in operating expenses',
         'common.confirm': 'Confirm',
         'common.cancel': 'Cancel',
         'common.loading': 'Loading',
@@ -75,6 +77,39 @@ describe('CostCenterView account cost entry', () => {
       page_size: 1,
       pages: 2,
     }))
+  })
+
+  it('shows the rebate amount in the summary cards', async () => {
+    apiMocks.getSummary.mockResolvedValue({
+      data: {
+        cash_income: 100,
+        realized_income: 80,
+        settled_expenses: 30,
+        rebate_amount: 12.34,
+        cash_profit: 70,
+        operating_profit: 50,
+        deferred_subscription_usd: 20,
+        expired_entitlement_usd: 3,
+      },
+    })
+
+    const wrapper = mount(CostCenterView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          BaseDialog: true,
+          DateRangePicker: true,
+          DataTable: true,
+          Icon: true,
+          Select: SelectStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Rebate amount')
+    expect(wrapper.text()).toContain('$12.34')
+    expect(wrapper.text()).toContain('Included in operating expenses')
   })
 
   it('selects an account and submits an audited settled expense', async () => {

@@ -274,6 +274,17 @@
             <div v-if="showAccountBilling && (row.account || row.account_id)" class="mt-0.5 text-[11px] text-orange-500 dark:text-orange-400">
               A ${{ accountBilled(row).toFixed(6) }}
             </div>
+            <button
+              v-if="row.billing_status === 'billing_failed' && isVideoUsage(row) && row.task_id"
+              type="button"
+              data-testid="manual-video-billing-button"
+              class="mt-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-inset ring-amber-300 hover:bg-amber-50 dark:text-amber-300 dark:ring-amber-700 dark:hover:bg-amber-900/20"
+              :title="t('admin.usage.manualVideoBilling')"
+              @click="emit('manualVideoBilling', row)"
+            >
+              <Icon name="edit" size="xs" />
+              {{ t('admin.usage.billingPendingManual') }}
+            </button>
           </div>
         </template>
 
@@ -713,6 +724,7 @@ const emit = defineEmits<{
   sort: [key: string, order: 'asc' | 'desc']
   ipGeoBatchFailed: []
   videoDetail: [taskId: number]
+  manualVideoBilling: [row: AdminUsageLog]
 }>()
 const { t } = useI18n()
 const { copyToClipboard } = useClipboard()

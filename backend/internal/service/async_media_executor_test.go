@@ -57,6 +57,18 @@ type fakeBalanceInvalidator struct {
 	userIDs []int64
 }
 
+type asyncMediaPricingGroupRepo struct {
+	GroupRepository
+	group *Group
+}
+
+func (r *asyncMediaPricingGroupRepo) GetByID(_ context.Context, id int64) (*Group, error) {
+	if r.group != nil && r.group.ID == id {
+		return r.group, nil
+	}
+	return nil, nil
+}
+
 func (f *fakeBalanceInvalidator) InvalidateUserBalance(_ context.Context, userID int64) error {
 	f.userIDs = append(f.userIDs, userID)
 	return nil
@@ -505,6 +517,44 @@ func TestAsyncMedia_SubmitAndSucceed_RefundsDelta(t *testing.T) {
 	require.InDelta(t, 0.5, *usage.AccountRateMultiplier, 1e-9)
 	require.Equal(t, "1024x1024", usage.ImageInputSize)
 	require.Equal(t, "1536x1024", usage.ImageOutputSize)
+}
+
+func TestAsyncMediaEstimateCostUsesGroupModelPricingForRequestedAndUpstreamModels(t *testing.T) {
+	const (
+		requestedModel = "openai/gpt-image-2"
+		upstreamModel  = "gpt-image-2"
+	)
+	groupID := int64(29)
+	legacyPrice := 0.03
+	billing := newTestBillingService()
+
+	for _, configuredModel := range []string{requestedModel, upstreamModel} {
+		t.Run(configuredModel, func(t *testing.T) {
+			groupPrice := 0.42
+			group := &Group{
+				ID: groupID,
+				ModelPricing: []ChannelModelPricing{{
+					Models:          []string{configuredModel},
+					BillingMode:     BillingModeImage,
+					PerRequestPrice: &groupPrice,
+				}},
+				ImagePrice1K:      &legacyPrice,
+				ImageResolution1K: "1024x1024",
+				ImageResolution2K: "2048x2048",
+				ImageResolution4K: "4096x4096",
+			}
+			repo := &asyncMediaPricingGroupRepo{group: group}
+			svc := NewAsyncMediaService(nil, nil, repo, billing, NewModelPricingResolver(nil, billing), nil)
+
+			total, actual, err := svc.estimateCost(
+				context.Background(), requestedModel, upstreamModel, &groupID,
+				"1024x1024", ImageBillingSize1K, "high", 1, 1,
+			)
+			require.NoError(t, err)
+			require.InDelta(t, groupPrice, total, 1e-9)
+			require.InDelta(t, groupPrice, actual, 1e-9)
+		})
+	}
 }
 
 func TestAsyncMediaDetectsOutputSizeWhenFalMetadataMissing(t *testing.T) {

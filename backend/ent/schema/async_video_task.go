@@ -103,7 +103,10 @@ func (AsyncVideoTask) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(16).
 			Default("pending").
-			Comment("任务状态：pending/running/succeeded/failed/refunded/expired"),
+			Comment("任务状态：pending/running/succeeded/failed/refunded/expired/refund_failed"),
+		field.Int8("billing_type").
+			Default(0).
+			Comment("计费类型快照：0=余额，1=订阅"),
 		field.Float("held_cost").
 			Default(0).
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}).
@@ -149,6 +152,23 @@ func (AsyncVideoTask) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("失败/退费原因"),
+		field.String("refund_status").
+			MaxLen(16).
+			Default("none").
+			Comment("退款状态：none/processing/pending/succeeded/failed"),
+		field.Int("refund_attempts").
+			Default(0).
+			Comment("后台退款重试次数，不含首次即时退款"),
+		field.Time("refund_next_retry_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}).
+			Comment("下次退款重试时间"),
+		field.String("refund_error").
+			MaxLen(512).
+			Optional().
+			Nillable().
+			Comment("最近一次退款失败原因"),
 		field.Time("fail_deadline_at").
 			Optional().
 			Nillable().
@@ -178,6 +198,7 @@ func (AsyncVideoTask) Indexes() []ent.Index {
 		index.Fields("account_id"),
 		index.Fields("status"),
 		index.Fields("status", "fail_deadline_at"),
+		index.Fields("refund_status", "refund_next_retry_at"),
 		index.Fields("created_at"),
 	}
 }

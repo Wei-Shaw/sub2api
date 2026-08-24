@@ -57,6 +57,8 @@ const (
 	FieldAspectRatio = "aspect_ratio"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldBillingType holds the string denoting the billing_type field in the database.
+	FieldBillingType = "billing_type"
 	// FieldHeldCost holds the string denoting the held_cost field in the database.
 	FieldHeldCost = "held_cost"
 	// FieldFinalCost holds the string denoting the final_cost field in the database.
@@ -77,6 +79,14 @@ const (
 	FieldCosUrls = "cos_urls"
 	// FieldErrorReason holds the string denoting the error_reason field in the database.
 	FieldErrorReason = "error_reason"
+	// FieldRefundStatus holds the string denoting the refund_status field in the database.
+	FieldRefundStatus = "refund_status"
+	// FieldRefundAttempts holds the string denoting the refund_attempts field in the database.
+	FieldRefundAttempts = "refund_attempts"
+	// FieldRefundNextRetryAt holds the string denoting the refund_next_retry_at field in the database.
+	FieldRefundNextRetryAt = "refund_next_retry_at"
+	// FieldRefundError holds the string denoting the refund_error field in the database.
+	FieldRefundError = "refund_error"
 	// FieldFailDeadlineAt holds the string denoting the fail_deadline_at field in the database.
 	FieldFailDeadlineAt = "fail_deadline_at"
 	// FieldFinishedAt holds the string denoting the finished_at field in the database.
@@ -118,6 +128,7 @@ var Columns = []string{
 	FieldDurationSeconds,
 	FieldAspectRatio,
 	FieldStatus,
+	FieldBillingType,
 	FieldHeldCost,
 	FieldFinalCost,
 	FieldRateMultiplier,
@@ -128,6 +139,10 @@ var Columns = []string{
 	FieldVideoUrls,
 	FieldCosUrls,
 	FieldErrorReason,
+	FieldRefundStatus,
+	FieldRefundAttempts,
+	FieldRefundNextRetryAt,
+	FieldRefundError,
 	FieldFailDeadlineAt,
 	FieldFinishedAt,
 	FieldClientIP,
@@ -181,6 +196,8 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultBillingType holds the default value on creation for the "billing_type" field.
+	DefaultBillingType int8
 	// DefaultHeldCost holds the default value on creation for the "held_cost" field.
 	DefaultHeldCost float64
 	// DefaultFinalCost holds the default value on creation for the "final_cost" field.
@@ -193,6 +210,14 @@ var (
 	DefaultUpstreamCost float64
 	// ErrorReasonValidator is a validator for the "error_reason" field. It is called by the builders before save.
 	ErrorReasonValidator func(string) error
+	// DefaultRefundStatus holds the default value on creation for the "refund_status" field.
+	DefaultRefundStatus string
+	// RefundStatusValidator is a validator for the "refund_status" field. It is called by the builders before save.
+	RefundStatusValidator func(string) error
+	// DefaultRefundAttempts holds the default value on creation for the "refund_attempts" field.
+	DefaultRefundAttempts int
+	// RefundErrorValidator is a validator for the "refund_error" field. It is called by the builders before save.
+	RefundErrorValidator func(string) error
 	// ClientIPValidator is a validator for the "client_ip" field. It is called by the builders before save.
 	ClientIPValidator func(string) error
 	// UserAgentValidator is a validator for the "user_agent" field. It is called by the builders before save.
@@ -321,6 +346,11 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
 }
 
+// ByBillingType orders the results by the billing_type field.
+func ByBillingType(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBillingType, opts...).ToFunc()
+}
+
 // ByHeldCost orders the results by the held_cost field.
 func ByHeldCost(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldHeldCost, opts...).ToFunc()
@@ -349,6 +379,26 @@ func ByUpstreamCost(opts ...sql.OrderTermOption) OrderOption {
 // ByErrorReason orders the results by the error_reason field.
 func ByErrorReason(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldErrorReason, opts...).ToFunc()
+}
+
+// ByRefundStatus orders the results by the refund_status field.
+func ByRefundStatus(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRefundStatus, opts...).ToFunc()
+}
+
+// ByRefundAttempts orders the results by the refund_attempts field.
+func ByRefundAttempts(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRefundAttempts, opts...).ToFunc()
+}
+
+// ByRefundNextRetryAt orders the results by the refund_next_retry_at field.
+func ByRefundNextRetryAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRefundNextRetryAt, opts...).ToFunc()
+}
+
+// ByRefundError orders the results by the refund_error field.
+func ByRefundError(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRefundError, opts...).ToFunc()
 }
 
 // ByFailDeadlineAt orders the results by the fail_deadline_at field.

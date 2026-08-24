@@ -20,7 +20,7 @@
     1. 不再是遮罩弹窗；作为 AppLayout 下的常规页面挂载。
     2. API Key / mode 切换 tab 里的原生 <select> / <button> 换成
        通用 Select 组件，与项目其它下拉视觉一致。
-    3. 结果放到右侧列；提交/取消/重置按钮固定在参数栏底部。
+    3. 结果放到右侧列；提交/重置按钮固定在参数栏底部。
     4. 顶部提供"返回视频模型"按钮，走 router.push('/video-models')。
 -->
 <template>
@@ -78,7 +78,7 @@
         </div>
         <div class="flex items-center gap-2 self-start sm:self-auto">
           <button
-            v-if="model && model.pricing && model.pricing.length > 0"
+            v-if="model"
             type="button"
             class="btn btn-secondary"
             @click="showPricingDialog = true"
@@ -148,6 +148,9 @@
             </table>
           </div>
         </div>
+        <p v-else class="text-sm text-gray-500 dark:text-gray-400">
+          {{ t('videoModels.noPricing') }}
+        </p>
       </BaseDialog>
 
       <!-- 模型未找到的兜底提示 -->
@@ -548,13 +551,6 @@
             </div>
             <div class="flex items-center gap-2">
               <button
-                v-if="playground.isBusy.value"
-                @click="onCancel"
-                class="btn btn-secondary"
-              >
-                {{ t('videoModels.playground.btnCancel') }}
-              </button>
-              <button
                 v-if="playground.isTerminal.value"
                 @click="playground.reset"
                 class="btn btn-secondary"
@@ -564,9 +560,11 @@
               <button
                 @click="onSubmit"
                 :disabled="!canSubmit"
-                class="btn btn-primary"
+                class="btn btn-primary whitespace-nowrap font-semibold"
+                :aria-label="playground.isBusy.value ? t('common.loading') : submitButtonLabel"
               >
-                {{ t('videoModels.playground.btnSubmit') }}
+                <Icon v-if="playground.isBusy.value" name="refresh" size="sm" class="animate-spin" />
+                <span v-else>{{ submitButtonLabel }}</span>
               </button>
             </div>
           </div>
@@ -633,24 +631,18 @@
           <!-- 主结果预览：始终展示在右上角
                取值优先级：payload > default_params。
                resultType 决定用 <video> 还是 <img>；无 URL 时不渲染，避免空占位。
-               需求变更：去掉左上角文案标题；只保留右上角来源角标：
-                 - 任务已完成（payload 已到）→ "请求结果"
-                 - 尚未提交/进行中，仅用默认参数占位 → "示例（来自默认参数）"
+               任务已完成时显示“请求结果”角标，默认参数预览不显示来源文案。
                追加：进行中阶段（isBusy=true）时不渲染，让位给上方的 loading 卡片。
           -->
           <div v-if="primaryPreview && !playground.isBusy.value" class="space-y-2">
-            <div class="flex items-center justify-end gap-2">
+            <div
+              v-if="primaryPreview.source === 'payload'"
+              class="flex items-center justify-end gap-2"
+            >
               <span
-                v-if="primaryPreview.source === 'payload'"
                 class="rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-950 dark:text-green-300"
               >
                 {{ t('videoModels.playground.previewFromResult') }}
-              </span>
-              <span
-                v-else
-                class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400"
-              >
-                {{ t('videoModels.playground.previewFromDefault') }}
               </span>
             </div>
             <div v-if="resultType === 'video'" class="mx-auto w-fit max-w-full">
@@ -665,15 +657,16 @@
               v-if="resultType === 'video' && primaryPreview.source === 'payload' && playground.phase.value === 'completed'"
               class="flex flex-wrap justify-start gap-2"
             >
-              <button
-                type="button"
-                class="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
-                :disabled="downloadingVideoURLs.has(primaryPreview.url)"
-                @click="downloadVideo(primaryPreview.url)"
+              <a
+                :href="primaryPreview.url"
+                :download="videoDownloadFileName(primaryPreview.url)"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
               >
                 <Icon name="download" size="xs" />
-                {{ downloadingVideoURLs.has(primaryPreview.url) ? t('videoModels.playground.downloadingVideo') : t('videoModels.playground.downloadVideo') }}
-              </button>
+                {{ t('videoModels.playground.downloadVideo') }}
+              </a>
               <button
                 type="button"
                 class="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600"
@@ -684,9 +677,9 @@
               </button>
             </div>
             <img
-              v-else
+              v-if="resultType !== 'video'"
               :src="primaryPreview.url"
-              :alt="primaryPreview.source === 'payload' ? t('videoModels.playground.previewFromResult') : t('videoModels.playground.previewFromDefault')"
+              alt=""
               loading="lazy"
               class="w-full max-h-[520px] rounded border border-gray-200 object-contain dark:border-gray-700"
             />
@@ -925,7 +918,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
@@ -962,7 +955,6 @@ const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 const playground = useVideoPlayground()
-const downloadingVideoURLs = reactive(new Set<string>())
 const savingMaterialURLs = reactive(new Set<string>())
 const savedMaterialURLs = reactive(new Set<string>())
 
@@ -975,29 +967,6 @@ function videoDownloadFileName(url: string): string {
     // Use the stable fallback below for malformed or non-standard URLs.
   }
   return `video-${Date.now()}.mp4`
-}
-
-async function downloadVideo(url: string) {
-  const normalized = url.trim()
-  if (!normalized || downloadingVideoURLs.has(normalized)) return
-  downloadingVideoURLs.add(normalized)
-  try {
-    const response = await fetch(normalized)
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const blobURL = URL.createObjectURL(await response.blob())
-    const link = document.createElement('a')
-    link.href = blobURL
-    link.download = videoDownloadFileName(normalized)
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(blobURL)
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error)
-    appStore.showError(t('videoModels.playground.downloadVideoFailed', { msg: message }))
-  } finally {
-    downloadingVideoURLs.delete(normalized)
-  }
 }
 
 async function saveVideoToMaterials(url: string) {
@@ -1406,6 +1375,13 @@ const canSubmit = computed(() => {
   return true
 })
 
+const submitButtonLabel = computed(() => {
+  if (!estimateBreakdown.value) return t('videoModels.playground.btnSubmitArrow')
+  return t('videoModels.playground.btnSubmitWithEstimate', {
+    cost: `$${estimateBreakdown.value.total.toFixed(4)}`,
+  })
+})
+
 function validateFormRequired(): string | null {
   for (const f of fieldSpecs.value) {
     // array：先做与类型无关的元素个数上限校验（maxItems 由管理员在编辑页声明）。
@@ -1470,14 +1446,6 @@ async function onSubmit() {
   if (!body) return
   if (!selectedKey.value) return
   await playground.start(slug.value, body, selectedKey.value.key)
-}
-
-async function onCancel() {
-  if (!selectedKey.value) {
-    playground.reset()
-    return
-  }
-  await playground.cancel(slug.value, selectedKey.value.key)
 }
 
 // ============ 主结果预览（右上角） ============
@@ -1959,13 +1927,13 @@ const payloadForOutputTab = computed(() => {
 // 说明：
 //   - 这里是"上游 fal 计费"级的估算，不含用户所在渠道的 rate_multiplier；
 //     所以文案上会明确标注"以实际扣费为主"。
-//   - duration 为 "auto" / 缺失 → 使用 AUTO_DURATION_FALLBACK_SECONDS=10 兜底，
+//   - duration 为 "auto" / 缺失 → 使用 AUTO_DURATION_FALLBACK_SECONDS=30 兜底，
 //     与后端 defaultAutoDurationSeconds 常量保持一致（后端预扣按这个值冻结）。
-const AUTO_DURATION_FALLBACK_SECONDS = 10
+const AUTO_DURATION_FALLBACK_SECONDS = 30
 
 // EstimateBreakdown：预估费用的结构化描述。
 // isAutoDuration：body 里 duration 是 "auto" / 缺失时置 true，UI 会在时长旁标出
-//   "auto 按 10s 预估"以避免用户误以为是精确值。
+//   "auto 按 30s 预估"以避免用户误以为是精确值。
 interface EstimateBreakdown {
   resolution: string
   unitPricePerSecond: number
@@ -2239,35 +2207,8 @@ function outputValueSourceFor(spec: OutputFieldSpec): 'payload' | 'example' | 'n
 
 // ============ 生命周期 ============
 function goBack() {
-  // 若任务还在运行，提示用户确认；确认后取消任务再返回。
-  if (playground.isBusy.value) {
-    const ok = window.confirm(t('videoModels.playground.confirmClose'))
-    if (!ok) return
-    if (selectedKey.value) {
-      void playground.cancel(slug.value, selectedKey.value.key)
-    } else {
-      playground.reset()
-    }
-  }
   router.push({ name: 'VideoModels' })
 }
-
-// 路由离开前拦截：与 goBack 语义一致，防止用户直接按浏览器返回导致轮询残留。
-onBeforeRouteLeave((_to, _from, next) => {
-  if (playground.isBusy.value) {
-    const ok = window.confirm(t('videoModels.playground.confirmClose'))
-    if (!ok) {
-      next(false)
-      return
-    }
-    if (selectedKey.value) {
-      void playground.cancel(slug.value, selectedKey.value.key)
-    } else {
-      playground.reset()
-    }
-  }
-  next()
-})
 
 onMounted(async () => {
   await loadModel()

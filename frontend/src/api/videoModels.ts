@@ -67,7 +67,7 @@ export interface VideoTaskItem {
   internal_request_id: string
   upstream_request_id: string
   requested_model: string
-  status: string // pending / running / succeeded / failed / refunded / expired
+  status: string // pending / running / succeeded / failed / refunded / expired / refund_failed
   resolution: string
   duration_seconds: number
   aspect_ratio: string
@@ -131,6 +131,11 @@ const videoModelsAPI = {
    */
   getTaskByIdAdmin(id: number) {
     return apiClient.get<VideoTaskItem>(`/admin/video-tasks/by-id/${id}`)
+  },
+  completeManualBillingAdmin(id: number, finalCost: number) {
+    return apiClient.patch<VideoTaskItem>(`/admin/video-tasks/by-id/${id}/billing`, {
+      final_cost: finalCost,
+    })
   },
 }
 

@@ -70,8 +70,8 @@ func (s *AsyncMediaService) SetBillingContextResolver(resolver *BillingContextRe
 
 // NewAsyncMediaService 创建异步媒体执行内核。
 //
-// groupRepo 用于 estimateCost 在渠道无定价时回查分组二维价格矩阵；可为 nil，
-// 此时仅依赖 resolver 解析的渠道定价（与历史行为一致）。
+// groupRepo 用于 estimateCost 回查分组逐模型定价和二维价格矩阵；可为 nil，
+// 此时仅依赖 resolver 解析的渠道定价。
 func NewAsyncMediaService(
 	taskRepo AsyncMediaTaskRepository,
 	userRepo UserRepository,
@@ -173,7 +173,7 @@ func (s *AsyncMediaService) SubmitAsync(ctx context.Context, in *AsyncMediaSubmi
 	}
 
 	// 预估并预扣费用（按 num_images 的满额预扣）。
-	_, heldCost, err := s.estimateCost(ctx, upstreamModel, in.GroupID, rawSize, sizeTier, quality, numImages, in.RateMultiplier)
+	_, heldCost, err := s.estimateCost(ctx, in.RequestedModel, upstreamModel, in.GroupID, rawSize, sizeTier, quality, numImages, in.RateMultiplier)
 	if err != nil {
 		return nil, fmt.Errorf("async media: estimate cost: %w", err)
 	}
@@ -442,7 +442,7 @@ func (s *AsyncMediaService) markSucceeded(ctx context.Context, task *AsyncMediaT
 	rawSize := amDerefStr(task.ImageSize)
 	sizeTier := amDerefStr(task.SizeTier)
 	quality := amDerefStr(task.Quality)
-	finalTotalCost, finalCost, err := s.estimateCost(ctx, upstreamModel, task.GroupID, rawSize, sizeTier, quality, len(imageURLs), task.RateMultiplier)
+	finalTotalCost, finalCost, err := s.estimateCost(ctx, task.RequestedModel, upstreamModel, task.GroupID, rawSize, sizeTier, quality, len(imageURLs), task.RateMultiplier)
 	if err != nil {
 		// 结算失败时按预扣额结算，避免误退。
 		finalCost = task.HeldCost
@@ -683,8 +683,8 @@ func asyncMediaBaseCost(actualCost, rateMultiplier float64) float64 {
 // estimateCost 通过统一计费入口估算 (size × quality × count) 的实际费用。
 //
 // 计费优先级（与 OpenAI 网关 calculateOpenAIImageCost 保持一致）：
-//  1. 渠道定价（resolved.Source == PricingSourceChannel）且模式为 PerRequest/Image
-//     → 走 CalculateCostUnified（按 size_tier 命中渠道分层价或默认按次价）。
+//  1. 分组/渠道逐模型定价且模式为 PerRequest/Image
+//     → 走 CalculateCostUnified（按 size_tier 命中分层价或默认按次价）。
 //  2. 否则回退分组二维价格矩阵（image_pricing_matrix），按原始分辨率 + quality
 //     命中后调用 CalculateImageCostWithQuality；旧三档（Price1K/2K/4K）作为兼容兜底。
 //
@@ -692,7 +692,7 @@ func asyncMediaBaseCost(actualCost, rateMultiplier float64) float64 {
 // 调用方据此拒绝提交任务，避免账户被「0 费用刷图」。
 func (s *AsyncMediaService) estimateCost(
 	ctx context.Context,
-	model string, groupID *int64,
+	requestedModel, upstreamModel string, groupID *int64,
 	rawSize, sizeTier, quality string, count int, rateMultiplier float64,
 ) (float64, float64, error) {
 	if s.billing == nil {
@@ -705,65 +705,62 @@ func (s *AsyncMediaService) estimateCost(
 		count = 1
 	}
 
-	resolved := s.resolver.Resolve(ctx, PricingInput{
-		Model:   model,
-		GroupID: groupID,
-	})
+	group, groupErr := s.loadPricingGroup(ctx, groupID)
+	pricingModel, resolved := s.resolveConfiguredImagePricing(
+		ctx, requestedModel, upstreamModel, groupID, group,
+	)
 
-	// 路径 1：渠道定价且模式为 PerRequest / Image，走统一计费。
-	if resolved != nil && resolved.Source == PricingSourceChannel &&
-		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage) {
-		if len(resolved.RequestTiers) > 0 || resolved.DefaultPerRequestPrice > 0 {
-			breakdown, err := s.billing.CalculateCostUnified(CostInput{
-				Ctx:            ctx,
-				Model:          model,
-				GroupID:        groupID,
-				RequestCount:   count,
-				SizeTier:       imageBillingSizeOrTier(rawSize),
-				Quality:        quality,
-				RateMultiplier: rateMultiplier,
-				Resolver:       s.resolver,
-				Resolved:       resolved,
-			})
-			if err != nil && !errors.Is(err, ErrModelPricingUnavailable) {
-				return 0, 0, err
-			}
-			if err == nil && breakdown != nil && (rateMultiplier <= 0 || breakdown.ActualCost > 0) {
-				return breakdown.TotalCost, breakdown.ActualCost, nil
-			}
-			// 渠道定价计算未拿到正向费用：继续走分组兜底（沉默回退，与 openai 路径一致）。
+	// 路径 1：分组/渠道逐模型定价，公开请求模型优先，上游映射模型兼容兜底。
+	if resolved != nil {
+		breakdown, err := s.billing.CalculateCostUnified(CostInput{
+			Ctx:            ctx,
+			Model:          pricingModel,
+			GroupID:        groupID,
+			Group:          group,
+			RequestCount:   count,
+			SizeTier:       imageBillingSizeOrTier(rawSize),
+			Quality:        quality,
+			RateMultiplier: rateMultiplier,
+			Resolver:       s.resolver,
+			Resolved:       resolved,
+		})
+		if err != nil && !errors.Is(err, ErrModelPricingUnavailable) {
+			return 0, 0, err
 		}
+		if err == nil && breakdown != nil && (rateMultiplier <= 0 || breakdown.ActualCost > 0) {
+			return breakdown.TotalCost, breakdown.ActualCost, nil
+		}
+		// 逐模型定价计算未拿到正向费用：继续走分组兜底（与 OpenAI 图片路径一致）。
 	}
 
 	// 路径 2：分组二维价格矩阵兜底。
-	groupCfg, err := s.buildGroupImagePriceConfig(ctx, groupID, rawSize, quality)
-	if err != nil {
-		return 0, 0, err
+	if groupErr != nil {
+		return 0, 0, groupErr
+	}
+	groupCfg := buildAsyncMediaGroupImagePriceConfig(group, rawSize, quality)
+	fallbackModel := strings.TrimSpace(upstreamModel)
+	if fallbackModel == "" {
+		fallbackModel = strings.TrimSpace(requestedModel)
 	}
 	if groupCfg == nil {
 		return 0, 0, fmt.Errorf("%w: model=%s group=%v no channel pricing and group not loadable",
-			ErrAsyncMediaPricingMissing, model, groupID)
+			ErrAsyncMediaPricingMissing, fallbackModel, groupID)
 	}
-	breakdown, err := s.billing.CalculateImageCostWithQualityValidated(model, imageBillingSizeOrTier(rawSize), quality, count, groupCfg, rateMultiplier)
+	breakdown, err := s.billing.CalculateImageCostWithQualityValidated(fallbackModel, imageBillingSizeOrTier(rawSize), quality, count, groupCfg, rateMultiplier)
 	if err != nil {
 		return 0, 0, err
 	}
 	if breakdown == nil {
-		return 0, 0, fmt.Errorf("%w: model=%s empty group breakdown", ErrAsyncMediaPricingMissing, model)
+		return 0, 0, fmt.Errorf("%w: model=%s empty group breakdown", ErrAsyncMediaPricingMissing, fallbackModel)
 	}
 	if rateMultiplier > 0 && breakdown.ActualCost <= 0 {
 		return 0, 0, fmt.Errorf("%w: model=%s size=%s quality=%s group fallback zero cost",
-			ErrAsyncMediaPricingMissing, model, sizeTier, quality)
+			ErrAsyncMediaPricingMissing, fallbackModel, sizeTier, quality)
 	}
 	return breakdown.TotalCost, breakdown.ActualCost, nil
 }
 
-// buildGroupImagePriceConfig 拉取分组并构造带原始分辨率/quality 的 ImagePriceConfig，
-// 用于命中分组的二维价格矩阵 (tier_key × quality_key)。
-//
-// 当 groupRepo 未注入或 groupID 为空、加载失败时返回 (nil, error)；分组本身缺失
-// image_pricing_matrix 等字段不视为错误，仍返回 cfg 由上层 CalculateImageCost 兜底。
-func (s *AsyncMediaService) buildGroupImagePriceConfig(ctx context.Context, groupID *int64, rawSize, quality string) (*ImagePriceConfig, error) {
+func (s *AsyncMediaService) loadPricingGroup(ctx context.Context, groupID *int64) (*Group, error) {
 	if s.groupRepo == nil || groupID == nil || *groupID == 0 {
 		return nil, nil
 	}
@@ -771,11 +768,44 @@ func (s *AsyncMediaService) buildGroupImagePriceConfig(ctx context.Context, grou
 	if err != nil {
 		return nil, fmt.Errorf("%w: load group %d: %v", ErrAsyncMediaPricingMissing, *groupID, err)
 	}
+	return group, nil
+}
+
+func (s *AsyncMediaService) resolveConfiguredImagePricing(
+	ctx context.Context,
+	requestedModel, upstreamModel string,
+	groupID *int64,
+	group *Group,
+) (string, *ResolvedPricing) {
+	type candidate struct {
+		model    string
+		resolved *ResolvedPricing
+	}
+	var channelCandidate *candidate
+	for _, model := range imagePricingModelCandidates(requestedModel, upstreamModel) {
+		resolved := s.resolver.Resolve(ctx, PricingInput{Model: model, GroupID: groupID, Group: group})
+		if !isConfiguredImagePricing(resolved) {
+			continue
+		}
+		if resolved.Source == PricingSourceGroup {
+			return model, resolved
+		}
+		if channelCandidate == nil && resolved.Source == PricingSourceChannel {
+			channelCandidate = &candidate{model: model, resolved: resolved}
+		}
+	}
+	if channelCandidate != nil {
+		return channelCandidate.model, channelCandidate.resolved
+	}
+	return "", nil
+}
+
+func buildAsyncMediaGroupImagePriceConfig(group *Group, rawSize, quality string) *ImagePriceConfig {
 	if group == nil {
-		return nil, nil
+		return nil
 	}
 	rawW, rawH, _ := parseImageBillingDimensions(rawSize)
-	return group.BuildImagePriceConfig(rawW, rawH, quality), nil
+	return group.BuildImagePriceConfig(rawW, rawH, quality)
 }
 
 // charge 预扣费用（仅 BillingTypeBalance 走余额账本）。

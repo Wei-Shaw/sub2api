@@ -477,6 +477,7 @@ var (
 		{Name: "duration_seconds", Type: field.TypeInt, Default: 0},
 		{Name: "aspect_ratio", Type: field.TypeString, Nullable: true, Size: 16},
 		{Name: "status", Type: field.TypeString, Size: 16, Default: "pending"},
+		{Name: "billing_type", Type: field.TypeInt8, Default: 0},
 		{Name: "held_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
 		{Name: "final_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
 		{Name: "rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
@@ -487,6 +488,10 @@ var (
 		{Name: "video_urls", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "cos_urls", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "error_reason", Type: field.TypeString, Nullable: true, Size: 512},
+		{Name: "refund_status", Type: field.TypeString, Size: 16, Default: "none"},
+		{Name: "refund_attempts", Type: field.TypeInt, Default: 0},
+		{Name: "refund_next_retry_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "refund_error", Type: field.TypeString, Nullable: true, Size: 512},
 		{Name: "fail_deadline_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "finished_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "client_ip", Type: field.TypeString, Nullable: true, Size: 45},
@@ -538,7 +543,12 @@ var (
 			{
 				Name:    "asyncvideotask_status_fail_deadline_at",
 				Unique:  false,
-				Columns: []*schema.Column{AsyncVideoTasksColumns[22], AsyncVideoTasksColumns[33]},
+				Columns: []*schema.Column{AsyncVideoTasksColumns[22], AsyncVideoTasksColumns[38]},
+			},
+			{
+				Name:    "asyncvideotask_refund_status_refund_next_retry_at",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncVideoTasksColumns[34], AsyncVideoTasksColumns[36]},
 			},
 			{
 				Name:    "asyncvideotask_created_at",

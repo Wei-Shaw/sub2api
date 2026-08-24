@@ -174,6 +174,10 @@ const apizModels = [
   'clawsea/seedance2.0'
 ]
 
+// Higgsfield applications are account-specific; administrators enter the
+// application slug and upstream model in model_mapping manually.
+const higgsfieldModels: string[] = []
+
 // xAI Grok
 const xaiModels = [
   'grok-4.6',
@@ -197,8 +201,8 @@ const xaiModels = [
   'grok-imagine',
   'grok-imagine-image-quality',
   'grok-imagine-image',
+  'grok-imagine-image-2.0',
   'grok-imagine-video',
-  'grok-imagine-video-1.5-preview',
   'grok-imagine-video-1.5'
 ]
 
@@ -286,6 +290,7 @@ const allModelsList: string[] = [
   ...xaiModels,
   ...atlascloudModels,
   ...apizModels,
+  ...higgsfieldModels,
   ...cohereModels,
   ...yiModels,
   ...moonshotModels,
@@ -501,6 +506,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'leonardo': return leonardoModels
     case 'atlascloud': return atlascloudModels
     case 'apiz': return apizModels
+    case 'higgsfield': return higgsfieldModels
     case 'kiro': return kiroModels
     case 'zhipu': return zhipuModels
     case 'qwen': return qwenModels
@@ -535,7 +541,7 @@ export function getPresetMappingsByPlatform(platform: string) {
   // apiz 是视频类平台，模型映射需要用户根据自身账号里配置的真实上游 model
   // 手动填写（例如 fal-ai/bytedance/... -> bytedance-seedance-1-0-pro-t2v），
   // 没有通用可默认预置的映射，故不展示预设按钮，避免误点导致映射错误。
-  if (platform === 'apiz') return []
+  if (platform === 'apiz' || platform === 'higgsfield') return []
   return anthropicPresetMappings
 }
 

@@ -133,6 +133,7 @@
             @userClick="handleUserClick"
             @ipGeoBatchFailed="handleIpGeoBatchFailed"
             @videoDetail="openVideoDetail"
+            @manualVideoBilling="openManualVideoBilling"
           />
           <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
         </div>
@@ -195,6 +196,27 @@
     :task-id="videoDetailTaskId"
     admin
   />
+  <BaseDialog
+    :show="manualVideoBillingRow !== null"
+    :title="t('admin.usage.manualVideoBilling')"
+    width="narrow"
+    @close="closeManualVideoBilling"
+  >
+    <form class="space-y-4" @submit.prevent="submitManualVideoBilling">
+      <div class="rounded-md bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+        {{ t('admin.usage.manualVideoBillingHint', { held: manualVideoHeldCost.toFixed(6) }) }}
+      </div>
+      <div>
+        <label class="input-label" for="manual-video-final-cost">{{ t('admin.usage.finalVideoCost') }}</label>
+        <input id="manual-video-final-cost" v-model.trim="manualVideoFinalCost" class="input w-full" type="number" min="0.000001" step="0.000001" required>
+      </div>
+      <p v-if="manualVideoBillingError" class="text-sm text-red-600 dark:text-red-400">{{ manualVideoBillingError }}</p>
+      <div class="flex justify-end gap-2">
+        <button type="button" class="btn btn-secondary" :disabled="manualVideoBillingSubmitting" @click="closeManualVideoBilling">{{ t('common.cancel') }}</button>
+        <button type="submit" class="btn btn-primary" :disabled="manualVideoBillingSubmitting || !(Number(manualVideoFinalCost) > 0)">{{ t('common.confirm') }}</button>
+      </div>
+    </form>
+  </BaseDialog>
 </template>
 
 <script setup lang="ts">
@@ -214,6 +236,8 @@ import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import VideoTaskDetailModal from '@/components/user/VideoTaskDetailModal.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
+import videoModelsAPI from '@/api/videoModels'
 import OpsErrorLogTable from '@/views/admin/ops/components/OpsErrorLogTable.vue'
 import OpsErrorDetailModal from '@/views/admin/ops/components/OpsErrorDetailModal.vue'
 import { clearErrorLogs, listErrorLogs } from '@/api/admin/ops'
@@ -263,6 +287,50 @@ const videoDetailTaskId = ref<number | null>(null)
 const openVideoDetail = (taskId: number) => {
   videoDetailTaskId.value = taskId
   videoDetailVisible.value = true
+}
+
+const manualVideoBillingRow = ref<AdminUsageLog | null>(null)
+const manualVideoFinalCost = ref('')
+const manualVideoHeldCost = ref(0)
+const manualVideoBillingSubmitting = ref(false)
+const manualVideoBillingError = ref('')
+
+const openManualVideoBilling = async (row: AdminUsageLog) => {
+  if (!row.task_id) return
+  manualVideoBillingRow.value = row
+  manualVideoFinalCost.value = ''
+  manualVideoHeldCost.value = 0
+  manualVideoBillingError.value = ''
+  try {
+    const { data } = await videoModelsAPI.getTaskByIdAdmin(row.task_id)
+    manualVideoHeldCost.value = data.held_cost || 0
+    manualVideoFinalCost.value = (data.held_cost || 0).toFixed(6)
+  } catch (error) {
+    manualVideoBillingError.value = error instanceof Error ? error.message : t('common.error')
+  }
+}
+
+const closeManualVideoBilling = () => {
+  if (manualVideoBillingSubmitting.value) return
+  manualVideoBillingRow.value = null
+}
+
+const submitManualVideoBilling = async () => {
+  const taskId = manualVideoBillingRow.value?.task_id
+  const finalCost = Number(manualVideoFinalCost.value)
+  if (!taskId || !Number.isFinite(finalCost) || finalCost <= 0) return
+  manualVideoBillingSubmitting.value = true
+  manualVideoBillingError.value = ''
+  try {
+    await videoModelsAPI.completeManualBillingAdmin(taskId, finalCost)
+    manualVideoBillingRow.value = null
+    appStore.showSuccess(t('admin.usage.manualVideoBillingSuccess'))
+    refreshData()
+  } catch (error) {
+    manualVideoBillingError.value = error instanceof Error ? error.message : t('admin.usage.manualVideoBillingFailed')
+  } finally {
+    manualVideoBillingSubmitting.value = false
+  }
 }
 
 const breakdownFilters = computed(() => {

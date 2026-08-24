@@ -14,6 +14,7 @@ import zhOrganization from '@/i18n/locales/zh/organization'
 
 const api = vi.hoisted(() => ({
   getContext: vi.fn(), listMembers: vi.fn(), listPolicies: vi.fn(), getUsage: vi.fn(),
+	getUsageVideoTask: vi.fn(),
   getUsageStats: vi.fn(), getUsageCharts: vi.fn(), getDashboard: vi.fn(),
   getDashboardSpendingRanking: vi.fn(), getDashboardUserBreakdown: vi.fn(),
   getDashboardUsersTrend: vi.fn(),
@@ -366,12 +367,20 @@ describe('organization views', () => {
       items: [{
         id: 1, member_user_id: 42, member_login: 'reader', api_key_name: 'member-key', model: 'gpt-5',
         input_tokens: 10, output_tokens: 5, actual_cost: '1.25', total_cost: '1', rate_multiplier: 1.25,
+        input_cost: 0.5, output_cost: 0.75, cache_creation_cost: 0, cache_read_cost: 0,
+        image_input_tokens: 0, image_input_cost: 0, image_output_tokens: 0, image_output_cost: 0,
         endpoint: '/v1/responses', status: 'charged', balance_source: 'subscription',
         group_id: 7, group_name: 'Enterprise', request_type: 'stream', billing_type: 1, billing_mode: 'token',
         image_count: 0, image_urls: [], cos_urls: [], ip_address: '203.0.113.10', user_agent: 'test-agent',
         duration_ms: 120, created_at: '2026-07-26T00:00:00Z', upstream_account: 'SECRET-UPSTREAM',
         internal_cost: 'SECRET-COST', raw_error: 'SECRET-ERROR',
       }], total: 1, page: 1, page_size: 20, pages: 1,
+    })
+    api.getUsageCharts.mockResolvedValue({
+      trend: [],
+      models: [{ model: 'gpt-5', requests: 1, input_tokens: 10, output_tokens: 5, total_tokens: 15, actual_cost: 1.25 }],
+      groups: [{ group_id: 7, group_name: 'Enterprise', requests: 1, total_tokens: 15, actual_cost: 1.25 }],
+      endpoints: [],
     })
 
     const wrapper = mount(OrganizationConsoleView, mountOptions)
@@ -390,6 +399,14 @@ describe('organization views', () => {
     vm.usageFilters.billingType = '1'
     vm.usageFilters.billingMode = 'token'
     expect(wrapper.get('[data-testid="organization-usage-details"]').classes()).toContain('card')
+    expect(wrapper.get('[data-testid="organization-usage-filters"]').classes()).toContain('flex')
+    expect(wrapper.get('[data-testid="organization-usage-model-filter"]').classes()).toContain('sm:min-w-[220px]')
+    const modelFilter = wrapper.get('[data-testid="organization-usage-model-filter"]').findComponent(Select)
+    expect(modelFilter.props('searchable')).toBe(true)
+    expect(modelFilter.props('options')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: '', label: 'admin.usage.allModels' }),
+      expect.objectContaining({ value: 'gpt-5', label: 'gpt-5' }),
+    ]))
     expect(wrapper.find('input[placeholder="organization.usage.searchApiKeyPlaceholder"]').exists()).toBe(true)
     expect(wrapper.findAll('button').some(button => button.text() === 'common.search')).toBe(false)
     await vm.searchUsage()
@@ -405,10 +422,73 @@ describe('organization views', () => {
     expect(wrapper.text()).toContain('Enterprise')
     expect(wrapper.text()).toContain('203.0.113.10')
     expect(wrapper.text()).toContain('test-agent')
+    expect(wrapper.get('span[title="test-agent"]').classes()).toEqual(expect.arrayContaining(['text-sm', 'text-gray-600', 'max-w-[320px]', 'truncate']))
+    const tokenCostDetail = wrapper.get('[data-testid="organization-usage-cost-detail-1"]')
+    await tokenCostDetail.trigger('mouseenter')
+    await wrapper.vm.$nextTick()
+    expect(document.body.textContent).toContain('usage.inputTokenPrice')
+    expect(document.body.textContent).toContain('usage.outputTokenPrice')
+    await tokenCostDetail.trigger('mouseleave')
     const usageTable = wrapper.findAll('table').find(table => table.classes().includes('min-w-[1900px]'))
     expect(usageTable).toBeDefined()
     expect(usageTable!.element.parentElement?.classList.contains('overflow-x-auto')).toBe(true)
   })
+
+	it('renders organization video results without a detail action and keeps numbered pagination', async () => {
+		api.getContext.mockResolvedValue({
+			organization: { organization_id: 1, account_id: '1719905235756637', company_name: 'Example', organization_status: 'active', membership_status: 'active', role: 'owner', actions: [] },
+			finance: { balance_source: 'self', available: '100', frozen: '0', total: '100' },
+		})
+		api.getUsage.mockResolvedValue({
+			items: [{
+				id: 88, member_user_id: 42, member_login: 'reader', member_username: '', api_key_name: 'video-key',
+				model: 'bytedance/seedance-2.5/text-to-video', input_tokens: 0, output_tokens: 0,
+				cache_creation_tokens: 0, cache_read_tokens: 0, cache_creation_5m_tokens: 0, cache_creation_1h_tokens: 0,
+				actual_cost: '1.25', total_cost: '1.25', rate_multiplier: 1, endpoint: '/api/v1/model/video',
+				group_name: 'Enterprise', request_type: 'sync', billing_type: 0, billing_mode: 'video', image_count: 0,
+				video_count: 1, video_resolution: '1080p', video_duration_seconds: 17,
+				image_urls: ['https://cdn.example.test/video.mp4'], cos_urls: [], ip_address: '', user_agent: '', status: 'charged',
+				created_at: '2026-08-23T13:16:31Z', task_id: 17,
+			}, {
+				id: 89, member_user_id: 42, member_login: 'reader', member_username: '', api_key_name: 'image-key',
+				model: 'gpt-image-2', input_tokens: 0, output_tokens: 0,
+				cache_creation_tokens: 0, cache_read_tokens: 0, cache_creation_5m_tokens: 0, cache_creation_1h_tokens: 0,
+				actual_cost: '0.40', total_cost: '0.40', rate_multiplier: 1, endpoint: '/v1/images/generations',
+				group_name: 'Enterprise', request_type: 'sync', billing_type: 0, billing_mode: 'image', image_count: 2,
+				image_size: '2K', image_size_source: 'output', image_urls: [], cos_urls: [], ip_address: '', user_agent: '', status: 'charged',
+				created_at: '2026-08-23T13:15:31Z',
+			}],
+			total: 45, page: 1, page_size: 20, pages: 3,
+		})
+		await router.replace('/organization?tab=usage')
+
+		const wrapper = mount(OrganizationConsoleView, mountOptions)
+		await flushPromises()
+		;(wrapper.vm as unknown as { activeTab: string }).activeTab = 'usage'
+		await wrapper.vm.$nextTick()
+		const videoResult = wrapper.get('[data-testid="organization-video-result-88-0"]')
+		expect(videoResult.attributes('href')).toBe('https://cdn.example.test/video.mp4')
+		expect(videoResult.get('video').attributes('src')).toBe('https://cdn.example.test/video.mp4')
+		expect(wrapper.find('img[src="https://cdn.example.test/video.mp4"]').exists()).toBe(false)
+		expect(wrapper.find('[data-testid="organization-video-detail-88"]').exists()).toBe(false)
+		expect(api.getUsageVideoTask).not.toHaveBeenCalled()
+		const videoCostDetail = wrapper.get('[data-testid="organization-usage-cost-detail-88"]')
+		const imageCostDetail = wrapper.get('[data-testid="organization-usage-cost-detail-89"]')
+		await videoCostDetail.trigger('mouseenter')
+		await wrapper.vm.$nextTick()
+		expect(document.body.textContent).toContain('1080p')
+		expect(document.body.textContent).toContain('17s')
+		await videoCostDetail.trigger('mouseleave')
+		await imageCostDetail.trigger('mouseenter')
+		await wrapper.vm.$nextTick()
+		expect(document.body.textContent).toContain('2K')
+		expect(wrapper.text()).toContain('$1.250000')
+		expect(wrapper.text()).toContain('21:16:31')
+		expect(wrapper.text()).not.toMatch(/\b(?:AM|PM)\b/i)
+		expect(wrapper.text()).toContain('2')
+		expect(wrapper.text()).toContain('3')
+		wrapper.unmount()
+	})
 
   it('shows total tokens with input, output, and cache details like admin usage', async () => {
     api.getContext.mockResolvedValue({

@@ -23,8 +23,9 @@ const (
 
 // 计费状态常量（写入 usage_logs.billing_status）。
 const (
-	BillingStatusCharged  = "charged"  // 已扣费
-	BillingStatusRefunded = "refunded" // 已退费
+	BillingStatusCharged  = "charged"        // 已扣费
+	BillingStatusRefunded = "refunded"       // 已退费
+	BillingStatusFailed   = "billing_failed" // 结算失败，保留预扣等待管理员处理
 )
 
 // AsyncMediaTask 异步媒体任务领域模型，承载任务的完整生命周期。

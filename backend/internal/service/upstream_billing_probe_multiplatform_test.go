@@ -29,12 +29,12 @@ func TestUpstreamBillingProbeIdentityCoversAllAPIKeyPlatforms(t *testing.T) {
 	require.False(t, isUpstreamBillingProbeAccount(nil))
 }
 
-// 媒体平台（fal / atlascloud / apiz）虽是 apikey 类型账号，但上游是真实的第三方
+// 媒体平台（fal / atlascloud / apiz / higgsfield）虽是 apikey 类型账号，但上游是真实的第三方
 // 媒体供应商而非 sub2api 中转，不会应答 /v1/sub2api/billing，因此一律不具备探测资格。
 // 前端 utils/upstreamBillingProbe.ts 的白名单需与本判定保持一致，
 // 否则会出现"UI 允许开启但后端以 UPSTREAM_BILLING_PROBE_ACCOUNT_INVALID 拒绝"的错位。
 func TestUpstreamBillingProbeIdentityExcludesMediaPlatforms(t *testing.T) {
-	for _, platform := range []string{PlatformFal, PlatformAtlasCloud, PlatformApiz} {
+	for _, platform := range []string{PlatformFal, PlatformAtlasCloud, PlatformApiz, PlatformHiggsfield} {
 		require.False(t, IsUpstreamBillingProbeIdentity(platform, AccountTypeAPIKey), platform)
 		require.False(t, isUpstreamBillingProbeAccount(&Account{Platform: platform, Type: AccountTypeAPIKey}), platform)
 	}

@@ -60,8 +60,10 @@ type AsyncVideoTask struct {
 	DurationSeconds int `json:"duration_seconds,omitempty"`
 	// 视频宽高比（16:9/9:16 等，仅记录）
 	AspectRatio *string `json:"aspect_ratio,omitempty"`
-	// 任务状态：pending/running/succeeded/failed/refunded/expired
+	// 任务状态：pending/running/succeeded/failed/refunded/expired/refund_failed
 	Status string `json:"status,omitempty"`
+	// 计费类型快照：0=余额，1=订阅
+	BillingType int8 `json:"billing_type,omitempty"`
 	// 预扣费金额
 	HeldCost float64 `json:"held_cost,omitempty"`
 	// 结算费用（成功后写入；退费置 0）
@@ -82,6 +84,14 @@ type AsyncVideoTask struct {
 	CosUrls []string `json:"cos_urls,omitempty"`
 	// 失败/退费原因
 	ErrorReason *string `json:"error_reason,omitempty"`
+	// 退款状态：none/processing/pending/succeeded/failed
+	RefundStatus string `json:"refund_status,omitempty"`
+	// 后台退款重试次数，不含首次即时退款
+	RefundAttempts int `json:"refund_attempts,omitempty"`
+	// 下次退款重试时间
+	RefundNextRetryAt *time.Time `json:"refund_next_retry_at,omitempty"`
+	// 最近一次退款失败原因
+	RefundError *string `json:"refund_error,omitempty"`
 	// 失败兜底截止时间
 	FailDeadlineAt *time.Time `json:"fail_deadline_at,omitempty"`
 	// 任务终结时间
@@ -106,11 +116,11 @@ func (*AsyncVideoTask) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case asyncvideotask.FieldHeldCost, asyncvideotask.FieldFinalCost, asyncvideotask.FieldRateMultiplier, asyncvideotask.FieldUnitPriceSnapshot, asyncvideotask.FieldUpstreamCost:
 			values[i] = new(sql.NullFloat64)
-		case asyncvideotask.FieldID, asyncvideotask.FieldAccountID, asyncvideotask.FieldAPIKeyID, asyncvideotask.FieldUserID, asyncvideotask.FieldOrganizationID, asyncvideotask.FieldPayerUserID, asyncvideotask.FieldAuthzGeneration, asyncvideotask.FieldGroupID, asyncvideotask.FieldChannelID, asyncvideotask.FieldDurationSeconds:
+		case asyncvideotask.FieldID, asyncvideotask.FieldAccountID, asyncvideotask.FieldAPIKeyID, asyncvideotask.FieldUserID, asyncvideotask.FieldOrganizationID, asyncvideotask.FieldPayerUserID, asyncvideotask.FieldAuthzGeneration, asyncvideotask.FieldGroupID, asyncvideotask.FieldChannelID, asyncvideotask.FieldDurationSeconds, asyncvideotask.FieldBillingType, asyncvideotask.FieldRefundAttempts:
 			values[i] = new(sql.NullInt64)
-		case asyncvideotask.FieldInternalRequestID, asyncvideotask.FieldUpstreamRequestID, asyncvideotask.FieldStatusURL, asyncvideotask.FieldResponseURL, asyncvideotask.FieldBalanceSource, asyncvideotask.FieldFacade, asyncvideotask.FieldRequestedModel, asyncvideotask.FieldUpstreamModel, asyncvideotask.FieldResolution, asyncvideotask.FieldAspectRatio, asyncvideotask.FieldStatus, asyncvideotask.FieldErrorReason, asyncvideotask.FieldClientIP, asyncvideotask.FieldUserAgent, asyncvideotask.FieldInboundEndpoint, asyncvideotask.FieldUpstreamEndpoint:
+		case asyncvideotask.FieldInternalRequestID, asyncvideotask.FieldUpstreamRequestID, asyncvideotask.FieldStatusURL, asyncvideotask.FieldResponseURL, asyncvideotask.FieldBalanceSource, asyncvideotask.FieldFacade, asyncvideotask.FieldRequestedModel, asyncvideotask.FieldUpstreamModel, asyncvideotask.FieldResolution, asyncvideotask.FieldAspectRatio, asyncvideotask.FieldStatus, asyncvideotask.FieldErrorReason, asyncvideotask.FieldRefundStatus, asyncvideotask.FieldRefundError, asyncvideotask.FieldClientIP, asyncvideotask.FieldUserAgent, asyncvideotask.FieldInboundEndpoint, asyncvideotask.FieldUpstreamEndpoint:
 			values[i] = new(sql.NullString)
-		case asyncvideotask.FieldCreatedAt, asyncvideotask.FieldUpdatedAt, asyncvideotask.FieldFailDeadlineAt, asyncvideotask.FieldFinishedAt:
+		case asyncvideotask.FieldCreatedAt, asyncvideotask.FieldUpdatedAt, asyncvideotask.FieldRefundNextRetryAt, asyncvideotask.FieldFailDeadlineAt, asyncvideotask.FieldFinishedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -278,6 +288,12 @@ func (_m *AsyncVideoTask) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Status = value.String
 			}
+		case asyncvideotask.FieldBillingType:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field billing_type", values[i])
+			} else if value.Valid {
+				_m.BillingType = int8(value.Int64)
+			}
 		case asyncvideotask.FieldHeldCost:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
 				return fmt.Errorf("unexpected type %T for field held_cost", values[i])
@@ -346,6 +362,32 @@ func (_m *AsyncVideoTask) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ErrorReason = new(string)
 				*_m.ErrorReason = value.String
+			}
+		case asyncvideotask.FieldRefundStatus:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field refund_status", values[i])
+			} else if value.Valid {
+				_m.RefundStatus = value.String
+			}
+		case asyncvideotask.FieldRefundAttempts:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field refund_attempts", values[i])
+			} else if value.Valid {
+				_m.RefundAttempts = int(value.Int64)
+			}
+		case asyncvideotask.FieldRefundNextRetryAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field refund_next_retry_at", values[i])
+			} else if value.Valid {
+				_m.RefundNextRetryAt = new(time.Time)
+				*_m.RefundNextRetryAt = value.Time
+			}
+		case asyncvideotask.FieldRefundError:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field refund_error", values[i])
+			} else if value.Valid {
+				_m.RefundError = new(string)
+				*_m.RefundError = value.String
 			}
 		case asyncvideotask.FieldFailDeadlineAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -517,6 +559,9 @@ func (_m *AsyncVideoTask) String() string {
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
 	builder.WriteString(", ")
+	builder.WriteString("billing_type=")
+	builder.WriteString(fmt.Sprintf("%v", _m.BillingType))
+	builder.WriteString(", ")
 	builder.WriteString("held_cost=")
 	builder.WriteString(fmt.Sprintf("%v", _m.HeldCost))
 	builder.WriteString(", ")
@@ -546,6 +591,22 @@ func (_m *AsyncVideoTask) String() string {
 	builder.WriteString(", ")
 	if v := _m.ErrorReason; v != nil {
 		builder.WriteString("error_reason=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	builder.WriteString("refund_status=")
+	builder.WriteString(_m.RefundStatus)
+	builder.WriteString(", ")
+	builder.WriteString("refund_attempts=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RefundAttempts))
+	builder.WriteString(", ")
+	if v := _m.RefundNextRetryAt; v != nil {
+		builder.WriteString("refund_next_retry_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.RefundError; v != nil {
+		builder.WriteString("refund_error=")
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")

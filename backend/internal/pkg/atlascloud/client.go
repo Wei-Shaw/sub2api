@@ -34,6 +34,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/fal"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
@@ -45,6 +46,7 @@ const (
 	proxyTLSHandshakeTimeout       = 10 * time.Second
 	defaultClientTimeout           = 120 * time.Second
 	bodyLimit                int64 = 32 << 20
+	promptLogLimitBytes            = 1024
 
 	// pathGenerateVideo/pathGenerateImage/pathPrediction 为上游相对路径。
 	pathGenerateVideo = "/api/v1/model/generateVideo"
@@ -173,7 +175,7 @@ func (c *Client) Status(ctx context.Context, statusURL string) (*fal.StatusRespo
 	}
 	resp, err := c.doPrediction(ctx, http.MethodGet, statusURL, nil)
 	if err != nil {
-		return nil, err
+		return nil, predictionStatusError(err)
 	}
 	out := &fal.StatusResponse{
 		RequestID:   resp.ID,
@@ -182,6 +184,9 @@ func (c *Client) Status(ctx context.Context, statusURL string) (*fal.StatusRespo
 	switch strings.ToLower(strings.TrimSpace(resp.Status)) {
 	case statusCompleted:
 		out.Status = fal.StatusCompleted
+		if resp.Outputs != nil {
+			out.Result = normalizeVideoResult(resp.Outputs)
+		}
 	case statusFailed, statusTimeout:
 		// 终态失败：用 4xx 让上层 pollOnce 走 markFailedAndRefund 分支。
 		reason := firstNonEmpty(resp.Error, resp.Message, resp.Status)
@@ -193,6 +198,31 @@ func (c *Client) Status(ctx context.Context, statusURL string) (*fal.StatusRespo
 		out.Status = fal.StatusInProgress
 	}
 	return out, nil
+}
+
+// predictionStatusError prevents a failed status response from leaking the
+// complete provider payload into task history. AtlasCloud returns the useful
+// user-facing reason in data.error, while the rest of data contains internal
+// task metadata that is neither useful nor appropriate for error_reason.
+func predictionStatusError(err error) error {
+	var apiErr *fal.APIError
+	if !errors.As(err, &apiErr) {
+		return err
+	}
+
+	reason := "upstream request failed"
+	var response predictionResponse
+	if json.Unmarshal([]byte(apiErr.Body), &response) == nil {
+		response.applyDataFallback()
+		if parsed := strings.TrimSpace(response.Error); parsed != "" {
+			reason = parsed
+		}
+	}
+	return &fal.APIError{
+		StatusCode: apiErr.StatusCode,
+		Body:       reason,
+		RequestID:  apiErr.RequestID,
+	}
 }
 
 // ResultRaw 拉取任务最终结果的原始 payload。
@@ -208,29 +238,33 @@ func (c *Client) ResultRaw(ctx context.Context, responseURL string) (map[string]
 	if err != nil {
 		return nil, err
 	}
+	return normalizeVideoResult(resp.Outputs), nil
+}
+
+func normalizeVideoResult(outputs []string) map[string]any {
 	out := make(map[string]any, 2)
-	if len(resp.Outputs) > 0 {
-		videos := make([]any, 0, len(resp.Outputs))
-		for _, u := range resp.Outputs {
-			u = strings.TrimSpace(u)
-			if u == "" {
-				continue
-			}
-			video := map[string]any{"url": u}
-			if fileName := atlasCloudVideoFileNameFromURL(u); fileName != "" {
-				video["file_name"] = fileName
-			}
-			videos = append(videos, video)
+	videos := make([]any, 0, len(outputs))
+	for _, u := range outputs {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			continue
 		}
-		if len(videos) > 0 {
-			// 第一个作为主 video 对象，全部放入 videos 数组。
-			if first, ok := videos[0].(map[string]any); ok {
-				out["video"] = first
-			}
-			out["videos"] = videos
+		video := map[string]any{"url": u}
+		if fileName := atlasCloudVideoFileNameFromURL(u); fileName != "" {
+			video["file_name"] = fileName
 		}
+		videos = append(videos, video)
 	}
-	return out, nil
+	if len(videos) == 0 {
+		return out
+	}
+
+	// 第一个作为主 video 对象，全部放入 videos 数组。
+	if first, ok := videos[0].(map[string]any); ok {
+		out["video"] = first
+	}
+	out["videos"] = videos
+	return out
 }
 
 func atlasCloudVideoFileNameFromURL(raw string) string {
@@ -358,6 +392,9 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, reqBody an
 			"request_id", requestID,
 			"method", method,
 			"endpoint", endpoint,
+			"url", req.URL.String(),
+			"headers", headersForLog(req.Header),
+			"body", requestBodyForLog(rawBody),
 			"body_bytes", len(rawBody),
 		)
 	}
@@ -388,6 +425,72 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, reqBody an
 		return nil, &fal.APIError{StatusCode: resp.StatusCode, Body: string(raw), RequestID: requestID}
 	}
 	return raw, nil
+}
+
+func headersForLog(headers http.Header) http.Header {
+	logged := headers.Clone()
+	for name := range logged {
+		if strings.EqualFold(name, "Authorization") {
+			logged.Set(name, "[REDACTED]")
+		}
+	}
+	return logged
+}
+
+// requestBodyForLog retains the request shape while limiting prompt values.
+// It only changes the copy used by logs; the outbound body remains untouched.
+func requestBodyForLog(raw []byte) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return string(raw)
+	}
+	truncatePromptValues(value)
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return string(raw)
+	}
+	return string(encoded)
+}
+
+func truncatePromptValues(value any) {
+	switch current := value.(type) {
+	case map[string]any:
+		for key, child := range current {
+			if strings.EqualFold(key, "prompt") {
+				if prompt, ok := child.(string); ok {
+					current[key] = truncateUTF8Bytes(prompt, promptLogLimitBytes)
+				}
+				continue
+			}
+			truncatePromptValues(child)
+		}
+	case []any:
+		for _, child := range current {
+			truncatePromptValues(child)
+		}
+	}
+}
+
+func truncateUTF8Bytes(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	if len(value) <= limit {
+		return value
+	}
+
+	const marker = "...(truncated)"
+	if limit <= len(marker) {
+		return marker[:limit]
+	}
+	cutoff := limit - len(marker)
+	for cutoff > 0 && !utf8.ValidString(value[:cutoff]) {
+		cutoff--
+	}
+	return value[:cutoff] + marker
 }
 
 // newRequestID 生成本次调用的日志追踪 id。

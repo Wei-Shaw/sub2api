@@ -81,7 +81,7 @@ type COSImageTransferService struct {
 	settingRepo  SettingRepository
 	encryptor    SecretEncryptor
 	storeFactory BackupObjectStoreFactory
-	// httpClient 用于"可信来源"下载：URL 来自上游 API 的响应（fal/atlascloud/apiz
+	// httpClient 用于"可信来源"下载：URL 来自上游 API 的响应（fal/atlascloud/apiz/higgsfield
 	// 返回的临时图片/视频地址），管理员自己配置的上游地址亦属此列。
 	httpClient *http.Client
 	// untrustedClient 用于"用户可控 URL"下载（素材库 import-url）。
@@ -197,22 +197,31 @@ func (s *COSImageTransferService) IsEnabled(ctx context.Context) bool {
 //   - 下载体积上限使用 cosVideoDownloadMaxBytes（512 MiB）
 //   - key 后缀走视频扩展名推断（.mp4/.mov/.webm/.m4v）
 func (s *COSImageTransferService) TransferVideos(ctx context.Context, urls []string) ([]string, bool) {
+	out, _, allOK := s.TransferVideosWithDurations(ctx, urls)
+	return out, allOK
+}
+
+// TransferVideosWithDurations transfers videos and extracts duration from the
+// bytes already downloaded for upload. Duration parsing is best effort and does
+// not turn an otherwise successful COS transfer into a failure.
+func (s *COSImageTransferService) TransferVideosWithDurations(ctx context.Context, urls []string) ([]string, []int, bool) {
 	out := make([]string, len(urls))
+	durations := make([]int, len(urls))
 	if len(urls) == 0 {
-		return out, true
+		return out, durations, true
 	}
 
 	cfg, err := s.loadConfig(ctx)
 	if err != nil || cfg == nil || !cfg.Enabled || !cfg.IsConfigured() {
 		logger.LegacyPrintf("service.cos_transfer", "[COS] video transfer disabled or not configured: enabled=%v, configured=%v, err=%v", cfg != nil && cfg.Enabled, cfg != nil && cfg.IsConfigured(), err)
-		return out, false
+		return out, durations, false
 	}
 	logger.LegacyPrintf("service.cos_transfer", "[COS] video transfer enabled, processing %d videos", len(urls))
 
 	store, err := s.getOrCreateStore(ctx, cfg)
 	if err != nil {
 		logger.LegacyPrintf("service.cos_transfer", "[COS] video get store failed: %v", err)
-		return out, false
+		return out, durations, false
 	}
 
 	allOK := true
@@ -222,7 +231,7 @@ func (s *COSImageTransferService) TransferVideos(ctx context.Context, urls []str
 			allOK = false
 			continue
 		}
-		cosURL, transferErr := s.transferOneVideo(ctx, store, cfg, rawURL)
+		cosURL, duration, transferErr := s.transferOneVideo(ctx, store, cfg, rawURL)
 		if transferErr != nil {
 			logger.LegacyPrintf("service.cos_transfer", "[COS] video transfer failed after retries url=%s err=%v", rawURL, transferErr)
 			out[i] = "" // 回退：留空，调用方使用原始 url
@@ -231,20 +240,21 @@ func (s *COSImageTransferService) TransferVideos(ctx context.Context, urls []str
 		}
 		logger.LegacyPrintf("service.cos_transfer", "[COS] video transfer succeeded: %s -> %s", rawURL, cosURL)
 		out[i] = cosURL
+		durations[i] = duration
 	}
 
 	logger.LegacyPrintf("service.cos_transfer", "[COS] video transfer completed: %d/%d succeeded", len(urls)-countEmpty(out), len(urls))
-	return out, allOK
+	return out, durations, allOK
 }
 
 // transferOneVideo 下载单个视频并上传到 COS，最多重试 cosTransferMaxAttempts 次。
 // 与 transferOne 的差异：使用视频下载体积上限、视频 key 前缀、视频扩展名推断。
-func (s *COSImageTransferService) transferOneVideo(ctx context.Context, store BackupObjectStore, cfg *COSImageConfig, srcURL string) (string, error) {
+func (s *COSImageTransferService) transferOneVideo(ctx context.Context, store BackupObjectStore, cfg *COSImageConfig, srcURL string) (string, int, error) {
 	var lastErr error
 	for attempt := 1; attempt <= cosTransferMaxAttempts; attempt++ {
 		if ctx.Err() != nil {
 			logger.LegacyPrintf("service.cos_transfer", "[COS] video transfer cancelled: %v", ctx.Err())
-			return "", ctx.Err()
+			return "", 0, ctx.Err()
 		}
 		logger.LegacyPrintf("service.cos_transfer", "[COS] downloading video (attempt %d/%d): %s", attempt, cosTransferMaxAttempts, srcURL)
 		data, contentType, err := s.downloadWithLimit(ctx, srcURL, cosVideoDownloadMaxBytes)
@@ -254,6 +264,10 @@ func (s *COSImageTransferService) transferOneVideo(ctx context.Context, store Ba
 			continue
 		}
 		logger.LegacyPrintf("service.cos_transfer", "[COS] video download succeeded: size=%d bytes, content-type=%s", len(data), contentType)
+		duration, durationErr := parseVideoDurationSeconds(data)
+		if durationErr != nil {
+			logger.LegacyPrintf("service.cos_transfer", "[COS] video duration parse failed: url=%s err=%v", srcURL, durationErr)
+		}
 
 		key := s.buildVideoKey(cfg, srcURL, contentType)
 		logger.LegacyPrintf("service.cos_transfer", "[COS] uploading video (attempt %d): key=%s", attempt, key)
@@ -264,13 +278,26 @@ func (s *COSImageTransferService) transferOneVideo(ctx context.Context, store Ba
 		}
 		cosURL := s.buildPublicURL(cfg, key)
 		logger.LegacyPrintf("service.cos_transfer", "[COS] video upload succeeded: %s", cosURL)
-		return cosURL, nil
+		return cosURL, duration, nil
 	}
 	if lastErr == nil {
 		lastErr = fmt.Errorf("video transfer failed")
 	}
 	logger.LegacyPrintf("service.cos_transfer", "[COS] all video transfer attempts failed: %v", lastErr)
-	return "", lastErr
+	return "", 0, lastErr
+}
+
+// ProbeVideoDuration downloads a trusted upstream result and reads its MP4
+// movie header. It is used only when the provider response omitted duration.
+func (s *COSImageTransferService) ProbeVideoDuration(ctx context.Context, srcURL string) (int, error) {
+	if s == nil {
+		return 0, errors.New("video duration probe is unavailable")
+	}
+	data, _, err := s.downloadWithLimit(ctx, srcURL, cosVideoDownloadMaxBytes)
+	if err != nil {
+		return 0, err
+	}
+	return parseVideoDurationSeconds(data)
 }
 
 // TransferImages 将一批 fal 图片 url 转存到 COS。

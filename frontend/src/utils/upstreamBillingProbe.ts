@@ -8,7 +8,7 @@
  *   - 平台必须在 UPSTREAM_BILLING_PROBE_PLATFORMS 内；
  *   - 账号类型必须是 apikey（OAuth / Bedrock 无静态 Key 可出示）。
  *
- * 媒体类平台（fal / atlascloud / apiz）是真实的第三方供应商而非 sub2api 中转，
+ * 媒体类平台（fal / atlascloud / apiz / higgsfield）是真实的第三方供应商而非 sub2api 中转，
  * 不会实现该端点，探测只会把账号密钥发到一个必然 404 的路径，故一律不合格。
  *
  * 权威来源是后端 service.IsUpstreamBillingProbeIdentity，

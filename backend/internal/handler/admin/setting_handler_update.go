@@ -175,6 +175,7 @@ type UpdateSettingsRequest struct {
 	ContactInfo                 string                `json:"contact_info"`
 	DocURL                      string                `json:"doc_url"`
 	HomeContent                 string                `json:"home_content"`
+	HomeProductMenuItems        *[]dto.CustomMenuItem `json:"home_product_menu_items"`
 	CompactHomeEnabled          bool                  `json:"compact_home_enabled"`
 	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
@@ -362,6 +363,9 @@ type UpdateSettingsRequest struct {
 	ModelPlazaEnabled     *bool   `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth *bool   `json:"model_plaza_require_auth"`
 	ModelPlazaDescription *string `json:"model_plaza_description"`
+
+	// Plugin management menu visibility switch; plugin runtime is unaffected.
+	PluginManagementEnabled *bool `json:"plugin_management_enabled"`
 
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
@@ -1465,6 +1469,81 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		customMenuJSON = string(menuBytes)
 	}
 
+	homeProductMenuJSON := previousSettings.HomeProductMenuItems
+	if req.HomeProductMenuItems != nil {
+		items := *req.HomeProductMenuItems
+		if len(items) > maxCustomMenuItems {
+			response.BadRequest(c, "Too many home product menu items (max 20)")
+			return
+		}
+		for i, item := range items {
+			if strings.TrimSpace(item.Label) == "" {
+				response.BadRequest(c, "Home product menu item label is required")
+				return
+			}
+			if len(item.Label) > maxMenuItemLabelLen {
+				response.BadRequest(c, "Home product menu item label is too long (max 50 characters)")
+				return
+			}
+			urlTrimmed := strings.TrimSpace(item.URL)
+			if urlTrimmed == "" {
+				response.BadRequest(c, "Home product menu item URL is required")
+				return
+			}
+			if len(item.URL) > maxMenuItemURLLen {
+				response.BadRequest(c, "Home product menu item URL is too long (max 2048 characters)")
+				return
+			}
+			if err := config.ValidateAbsoluteHTTPURL(urlTrimmed); err != nil {
+				response.BadRequest(c, "Home product menu item URL must be an absolute http(s) URL")
+				return
+			}
+			action := strings.TrimSpace(item.Action)
+			if action == "" {
+				action = "same_tab"
+			}
+			if action != "same_tab" && action != "new_tab" {
+				response.BadRequest(c, "Home product menu item action must be 'same_tab' or 'new_tab'")
+				return
+			}
+			items[i].Action = action
+			items[i].Visibility = "user"
+			items[i].SortOrder = i
+			if len(item.IconSVG) > maxMenuItemIconSVGLen {
+				response.BadRequest(c, "Home product menu item icon SVG is too large (max 10KB)")
+				return
+			}
+			if strings.TrimSpace(item.ID) == "" {
+				id, err := generateMenuItemID()
+				if err != nil {
+					response.Error(c, http.StatusInternalServerError, "Failed to generate home product menu item ID")
+					return
+				}
+				items[i].ID = id
+			} else if len(item.ID) > maxMenuItemIDLen {
+				response.BadRequest(c, "Home product menu item ID is too long (max 32 characters)")
+				return
+			} else if !menuItemIDPattern.MatchString(item.ID) {
+				response.BadRequest(c, "Home product menu item ID contains invalid characters (only a-z, A-Z, 0-9, - and _ are allowed)")
+				return
+			}
+		}
+		seen := make(map[string]struct{}, len(items))
+		for _, item := range items {
+			if _, exists := seen[item.ID]; exists {
+				response.BadRequest(c, "Duplicate home product menu item ID: "+item.ID)
+				return
+			}
+			seen[item.ID] = struct{}{}
+		}
+		menuBytes, err := json.Marshal(items)
+		if err != nil {
+			response.BadRequest(c, "Failed to serialize home product menu items")
+			return
+		}
+		homeProductMenuJSON = string(menuBytes)
+	}
+
 	// 自定义端点验证
 	const (
 		maxCustomEndpoints        = 10
@@ -1778,6 +1857,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ContactInfo:                            req.ContactInfo,
 		DocURL:                                 req.DocURL,
 		HomeContent:                            req.HomeContent,
+		HomeProductMenuItems:                   homeProductMenuJSON,
 		CompactHomeEnabled:                     req.CompactHomeEnabled,
 		HideCcsImportButton:                    req.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:            purchaseEnabled,
@@ -2105,6 +2185,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.ModelPlazaDescription
 			}
 			return previousSettings.ModelPlazaDescription
+		}(),
+		PluginManagementEnabled: func() bool {
+			if req.PluginManagementEnabled != nil {
+				return *req.PluginManagementEnabled
+			}
+			return previousSettings.PluginManagementEnabled
 		}(),
 		AffiliateEnabled: func() bool {
 			if req.AffiliateEnabled != nil {
@@ -2618,6 +2704,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ContactInfo:                                            updatedSettings.ContactInfo,
 		DocURL:                                                 updatedSettings.DocURL,
 		HomeContent:                                            updatedSettings.HomeContent,
+		HomeProductMenuItems:                                   dto.ParseCustomMenuItems(updatedSettings.HomeProductMenuItems),
 		CompactHomeEnabled:                                     updatedSettings.CompactHomeEnabled,
 		HideCcsImportButton:                                    updatedSettings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:                            updatedSettings.PurchaseSubscriptionEnabled,
@@ -2744,9 +2831,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 		VideoFeatureEnabled:      updatedSettings.VideoFeatureEnabled,
 
-		ModelPlazaEnabled:     updatedSettings.ModelPlazaEnabled,
-		ModelPlazaRequireAuth: updatedSettings.ModelPlazaRequireAuth,
-		ModelPlazaDescription: updatedSettings.ModelPlazaDescription,
+		ModelPlazaEnabled:       updatedSettings.ModelPlazaEnabled,
+		ModelPlazaRequireAuth:   updatedSettings.ModelPlazaRequireAuth,
+		ModelPlazaDescription:   updatedSettings.ModelPlazaDescription,
+		PluginManagementEnabled: updatedSettings.PluginManagementEnabled,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 

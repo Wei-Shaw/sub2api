@@ -2188,6 +2188,9 @@ func (r *organizationRepository) organizationUsageScope(ctx context.Context, use
 	if !filter.End.IsZero() {
 		add("l.created_at < $%d", filter.End)
 	}
+	if filter.UsageID != nil {
+		add("l.id = $%d", *filter.UsageID)
+	}
 	if filter.MemberID != nil {
 		add("l.user_id = $%d AND EXISTS(SELECT 1 FROM organization_memberships mx WHERE mx.organization_id=l.organization_id AND mx.user_id=l.user_id)", *filter.MemberID)
 	}
@@ -2228,12 +2231,15 @@ func (r *organizationRepository) ListUsage(ctx context.Context, userID int64, fi
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT l.id,l.user_id,COALESCE(u.login_name,u.email,''),COALESCE(u.username,''),COALESCE(k.name,''),
-		       COALESCE(l.requested_model,l.model),l.input_tokens,l.output_tokens,l.cache_creation_tokens,l.cache_read_tokens,l.cache_creation_5m_tokens,l.cache_creation_1h_tokens,l.actual_cost::text,
+		       COALESCE(l.requested_model,l.model),l.input_tokens,l.output_tokens,l.cache_creation_tokens,l.cache_read_tokens,l.cache_creation_5m_tokens,l.cache_creation_1h_tokens,
+		       l.input_cost,l.output_cost,l.cache_creation_cost,l.cache_read_cost,l.actual_cost::text,
 		       l.total_cost::text,COALESCE(l.rate_multiplier,1)::float8,
 		       COALESCE(l.inbound_endpoint,''),l.group_id,COALESCE(g.name,''),
 		       CASE COALESCE(l.request_type,CASE WHEN l.stream THEN 2 ELSE 1 END) WHEN 1 THEN 'sync' WHEN 2 THEN 'stream' WHEN 3 THEN 'ws_v2' WHEN 4 THEN 'cyber' ELSE 'unknown' END,
 		       l.billing_type,COALESCE(l.billing_mode,CASE WHEN l.image_count>0 THEN 'image' ELSE 'token' END),
-		       l.image_count,COALESCE(l.image_urls,'[]'::jsonb),COALESCE(l.cos_url,'[]'::jsonb),COALESCE(l.ip_address,''),COALESCE(l.user_agent,''),
+		       l.image_count,l.image_input_tokens,l.image_input_cost,l.image_output_tokens,l.image_output_cost,l.image_size,l.image_input_size,l.image_output_size,l.image_size_source,COALESCE(l.image_size_breakdown,'{}'::jsonb),
+		       l.video_count,l.video_resolution,l.video_duration_seconds,
+		       COALESCE(l.image_urls,'[]'::jsonb),COALESCE(l.cos_url,'[]'::jsonb),COALESCE(l.ip_address,''),COALESCE(l.user_agent,''),
 		       COALESCE(l.billing_status,'charged'),l.first_token_ms,l.duration_ms,l.created_at,
 		       CASE WHEN l.balance_source='subscription' OR (l.billing_type=1 AND k.organization_subscription_id IS NOT NULL)
 		            THEN 'subscription' ELSE COALESCE(l.balance_source,'self') END,
@@ -2247,13 +2253,14 @@ func (r *organizationRepository) ListUsage(ctx context.Context, userID int64, fi
 	out := make([]service.OrganizationUsageRow, 0)
 	for rows.Next() {
 		var item service.OrganizationUsageRow
-		var imageURLs, cosURLs []byte
+		var imageURLs, cosURLs, imageSizeBreakdown []byte
 		var taskID sql.NullInt64
-		if err := rows.Scan(&item.ID, &item.MemberUserID, &item.MemberLogin, &item.MemberUsername, &item.APIKeyName, &item.Model, &item.InputTokens, &item.OutputTokens, &item.CacheCreationTokens, &item.CacheReadTokens, &item.CacheCreation5mTokens, &item.CacheCreation1hTokens, &item.ActualCost, &item.TotalCost, &item.RateMultiplier, &item.Endpoint, &item.GroupID, &item.GroupName, &item.RequestType, &item.BillingType, &item.BillingMode, &item.ImageCount, &imageURLs, &cosURLs, &item.IPAddress, &item.UserAgent, &item.Status, &item.FirstTokenMS, &item.DurationMS, &item.CreatedAt, &item.BalanceSource, &taskID); err != nil {
+		if err := rows.Scan(&item.ID, &item.MemberUserID, &item.MemberLogin, &item.MemberUsername, &item.APIKeyName, &item.Model, &item.InputTokens, &item.OutputTokens, &item.CacheCreationTokens, &item.CacheReadTokens, &item.CacheCreation5mTokens, &item.CacheCreation1hTokens, &item.InputCost, &item.OutputCost, &item.CacheCreationCost, &item.CacheReadCost, &item.ActualCost, &item.TotalCost, &item.RateMultiplier, &item.Endpoint, &item.GroupID, &item.GroupName, &item.RequestType, &item.BillingType, &item.BillingMode, &item.ImageCount, &item.ImageInputTokens, &item.ImageInputCost, &item.ImageOutputTokens, &item.ImageOutputCost, &item.ImageSize, &item.ImageInputSize, &item.ImageOutputSize, &item.ImageSizeSource, &imageSizeBreakdown, &item.VideoCount, &item.VideoResolution, &item.VideoDurationSeconds, &imageURLs, &cosURLs, &item.IPAddress, &item.UserAgent, &item.Status, &item.FirstTokenMS, &item.DurationMS, &item.CreatedAt, &item.BalanceSource, &taskID); err != nil {
 			return nil, 0, err
 		}
 		_ = json.Unmarshal(imageURLs, &item.ImageURLs)
 		_ = json.Unmarshal(cosURLs, &item.CosURLs)
+		_ = json.Unmarshal(imageSizeBreakdown, &item.ImageSizeBreakdown)
 		if taskID.Valid {
 			v := taskID.Int64
 			item.TaskID = &v

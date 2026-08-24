@@ -3,6 +3,7 @@
 package handler
 
 import (
+	"context"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -19,6 +20,7 @@ func TestVideoModelSlugsForAccountUsesPlatformMappingDirection(t *testing.T) {
 		{platform: domain.PlatformFal, mapping: map[string]any{"alias": publicModel}},
 		{platform: domain.PlatformAtlasCloud, mapping: map[string]any{publicModel: "atlas-internal-model"}},
 		{platform: domain.PlatformApiz, mapping: map[string]any{publicModel: "apiz-internal-model"}},
+		{platform: domain.PlatformHiggsfield, mapping: map[string]any{publicModel: "higgsfield/application"}},
 	} {
 		t.Run(testCase.platform, func(t *testing.T) {
 			account := &service.Account{
@@ -28,4 +30,40 @@ func TestVideoModelSlugsForAccountUsesPlatformMappingDirection(t *testing.T) {
 			require.Equal(t, []string{publicModel}, videoModelSlugsForAccount(account))
 		})
 	}
+}
+
+func TestResolveVideoPricingUsesConfiguredGroupAndSkipsEmptyGroup(t *testing.T) {
+	const model = "bytedance/seedance-2.5/text-to-video"
+	price := 0.12
+	handler := &VideoModelHandler{
+		pricingResolver: service.NewModelPricingResolver(nil, &service.BillingService{}),
+	}
+	groups := []service.Group{
+		{
+			ID: 1,
+			ModelPricing: []service.ChannelModelPricing{{
+				Models:      []string{model},
+				BillingMode: service.BillingModeVideo,
+			}},
+		},
+		{
+			ID: 2,
+			ModelPricing: []service.ChannelModelPricing{{
+				Models:      []string{model},
+				BillingMode: service.BillingModeVideo,
+				Intervals: []service.PricingInterval{{
+					TierLabel:       "720p",
+					PerRequestPrice: &price,
+				}},
+			}},
+		},
+	}
+
+	got := handler.resolveVideoPricing(context.Background(), model, groups)
+	require.Equal(t, []videoModelPricingItem{{
+		Resolution:     "720p",
+		PricePerSecond: price,
+		Currency:       "USD",
+		Enabled:        true,
+	}}, got)
 }

@@ -129,6 +129,14 @@ func (h *ModelAPIGatewayHandler) nativeSubmit(c *gin.Context, model string) {
 		h.jsonError(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 	}
+	// Explicit video operation slugs must bypass the image-account probe. Besides
+	// producing misleading images-basic diagnostics, probing image accounts first
+	// can advance request-scoped fallback routing past the group that owns the
+	// matching AtlasCloud/APIZ account.
+	if !knownImageModel && modelAPIIsExplicitVideoModel(model) {
+		h.nativeVideoSubmitAfterFeatureGate(c, apiKey, subject, reqLog, model, payload)
+		return
+	}
 	falAPI := modelAPIImageAPI(model)
 	imageAccount, imageErr := h.gatewayService.SelectAsyncImageAccountInGroup(c.Request.Context(), apiKey.GroupID, "", model, nil, falAPI)
 	if imageErr == nil && imageAccount != nil {
@@ -149,6 +157,17 @@ func (h *ModelAPIGatewayHandler) nativeSubmit(c *gin.Context, model string) {
 		h.jsonError(c, http.StatusNotFound, "not_found_error", "Unsupported model")
 		return
 	}
+	h.nativeVideoSubmitAfterFeatureGate(c, apiKey, subject, reqLog, model, payload)
+}
+
+func (h *ModelAPIGatewayHandler) nativeVideoSubmitAfterFeatureGate(
+	c *gin.Context,
+	apiKey *service.APIKey,
+	subject middleware2.AuthSubject,
+	reqLog *zap.Logger,
+	model string,
+	payload map[string]any,
+) {
 	if h.settingService == nil || !h.settingService.IsVideoFeatureEnabled(c.Request.Context()) {
 		h.jsonError(c, http.StatusForbidden, "feature_disabled", "Video feature is disabled")
 		return
@@ -263,7 +282,7 @@ func (h *ModelAPIGatewayHandler) nativeVideoSubmit(
 	}
 
 	// 选号：视频链路统一走 /api/v1/model 门面，在当前混合分组内按“该模型属于哪个平台”
-	// 选出对应平台账号（fal / atlascloud / apiz），再转发到该账号。
+	// 选出对应平台账号（fal / atlascloud / apiz / higgsfield），再转发到该账号。
 	// slug 自带 api 段（如 .../text-to-video），api 传空串。
 	account, err := h.gatewayService.SelectFalAccountInGroup(c.Request.Context(), apiKey.GroupID, "", model, nil, "")
 	if err != nil || account == nil {
@@ -549,6 +568,21 @@ func modelAPIIsKnownImageModel(model string) bool {
 	return false
 }
 
+func modelAPIIsExplicitVideoModel(model string) bool {
+	normalized := strings.ToLower(strings.Trim(strings.TrimSpace(model), "/"))
+	for _, operation := range []string{
+		"text-to-video",
+		"image-to-video",
+		"reference-to-video",
+		"video-to-video",
+	} {
+		if strings.HasSuffix(normalized, "/"+operation) {
+			return true
+		}
+	}
+	return false
+}
+
 func imageStatusFromTask(task *service.AsyncMediaTask) string {
 	switch task.Status {
 	case service.AsyncMediaStatusSucceeded:
@@ -566,6 +600,8 @@ func videoFalStatusFromTask(task *service.AsyncVideoTask) string {
 	switch task.Status {
 	case service.AsyncVideoStatusSucceeded:
 		return fal.StatusCompleted
+	case service.AsyncVideoStatusFailed, service.AsyncVideoStatusRefunded, service.AsyncVideoStatusExpired, service.AsyncVideoStatusRefundFailed:
+		return fal.StatusFailed
 	case service.AsyncVideoStatusPending:
 		return fal.StatusInQueue
 	default:

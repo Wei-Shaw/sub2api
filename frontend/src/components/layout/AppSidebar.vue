@@ -370,6 +370,7 @@ import { countInboxTicketUnread } from '@/components/common/announcementBellInbo
 import { useAffiliateRechargeDot } from '@/composables/useAffiliateRechargeDot'
 import VersionBadge from '@/components/common/VersionBadge.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
+import Icon from '@/components/icons/Icon.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
@@ -710,6 +711,10 @@ const ServerIcon = {
     )
 }
 
+const PluginIcon = {
+  render: () => h(Icon, { name: 'cube' })
+}
+
 const BellIcon = {
   render: () =>
     h(
@@ -947,6 +952,7 @@ const flagFileManager = makeFileManagerSidebarFlag()
 const flagSupportTicket = makeSidebarFlag(FeatureFlags.supportTicket)
 // 客服对话记录：跟随客服浮窗总开关 support_chat_enabled（opt-in）。
 const flagSupportChat = makeSidebarFlag(FeatureFlags.supportChat)
+const flagPluginManagement = makeSidebarFlag(FeatureFlags.pluginManagement)
 const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
 const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 const flagBatchImageAccess = () => canUseBatchImage.value
@@ -1114,6 +1120,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
     { path: '/admin/cost-center', label: t('admin.costCenter.title'), icon: ChartIcon, hideInSimpleMode: true },
+    { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, featureFlag: flagPluginManagement },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
     {

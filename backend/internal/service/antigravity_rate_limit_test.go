@@ -1009,9 +1009,7 @@ func TestIsAntigravityAccountSwitchError(t *testing.T) {
 	}
 }
 
-func TestResolveAntigravityForwardBaseURL_DefaultDaily(t *testing.T) {
-	t.Setenv(antigravityForwardBaseURLEnv, "")
-
+func TestResolveAntigravityForwardBaseURL(t *testing.T) {
 	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
 	defer func() {
 		antigravity.BaseURLs = oldBaseURLs
@@ -1019,10 +1017,46 @@ func TestResolveAntigravityForwardBaseURL_DefaultDaily(t *testing.T) {
 
 	prodURL := "https://prod.test"
 	dailyURL := "https://daily.test"
-	antigravity.BaseURLs = []string{dailyURL, prodURL}
+	antigravity.BaseURLs = []string{prodURL, dailyURL}
 
-	resolved := resolveAntigravityForwardBaseURL()
-	require.Equal(t, dailyURL, resolved)
+	tests := []struct {
+		name    string
+		env     string
+		account *Account
+		want    string
+	}{
+		{
+			name: "pro defaults to daily", account: &Account{Credentials: map[string]any{"plan_type": " Pro "}},
+			want: dailyURL,
+		},
+		{
+			name: "ultra defaults to daily", account: &Account{Credentials: map[string]any{"plan_type": "ULTRA"}},
+			want: dailyURL,
+		},
+		{name: "free defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": "free"}}, want: prodURL},
+		{name: "abnormal defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": "Abnormal"}}, want: prodURL},
+		{name: "unknown defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": "enterprise"}}, want: prodURL},
+		{name: "malformed defaults to prod", account: &Account{Credentials: map[string]any{"plan_type": map[string]any{"name": "pro"}}}, want: prodURL},
+		{name: "missing defaults to prod", account: &Account{Credentials: map[string]any{}}, want: prodURL},
+		{name: "nil account defaults to prod", account: nil, want: prodURL},
+		{
+			name: "daily override wins for free tier", env: " daily ",
+			account: &Account{Credentials: map[string]any{"plan_type": "free"}},
+			want:    dailyURL,
+		},
+		{
+			name: "prod override wins for paid tier", env: " PROD ",
+			account: &Account{Credentials: map[string]any{"plan_type": "pro"}},
+			want:    prodURL,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(antigravityForwardBaseURLEnv, tt.env)
+			require.Equal(t, tt.want, resolveAntigravityForwardBaseURL(tt.account))
+		})
+	}
 }
 
 func TestAntigravityAccountSwitchError_Error(t *testing.T) {

@@ -164,6 +164,11 @@ func Status(v string) predicate.AsyncVideoTask {
 	return predicate.AsyncVideoTask(sql.FieldEQ(FieldStatus, v))
 }
 
+// BillingType applies equality check predicate on the "billing_type" field. It's identical to BillingTypeEQ.
+func BillingType(v int8) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldEQ(FieldBillingType, v))
+}
+
 // HeldCost applies equality check predicate on the "held_cost" field. It's identical to HeldCostEQ.
 func HeldCost(v float64) predicate.AsyncVideoTask {
 	return predicate.AsyncVideoTask(sql.FieldEQ(FieldHeldCost, v))
@@ -192,6 +197,26 @@ func UpstreamCost(v float64) predicate.AsyncVideoTask {
 // ErrorReason applies equality check predicate on the "error_reason" field. It's identical to ErrorReasonEQ.
 func ErrorReason(v string) predicate.AsyncVideoTask {
 	return predicate.AsyncVideoTask(sql.FieldEQ(FieldErrorReason, v))
+}
+
+// RefundStatus applies equality check predicate on the "refund_status" field. It's identical to RefundStatusEQ.
+func RefundStatus(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldEQ(FieldRefundStatus, v))
+}
+
+// RefundAttempts applies equality check predicate on the "refund_attempts" field. It's identical to RefundAttemptsEQ.
+func RefundAttempts(v int) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldEQ(FieldRefundAttempts, v))
+}
+
+// RefundNextRetryAt applies equality check predicate on the "refund_next_retry_at" field. It's identical to RefundNextRetryAtEQ.
+func RefundNextRetryAt(v time.Time) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldEQ(FieldRefundNextRetryAt, v))
+}
+
+// RefundError applies equality check predicate on the "refund_error" field. It's identical to RefundErrorEQ.
+func RefundError(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldEQ(FieldRefundError, v))
 }
 
 // FailDeadlineAt applies equality check predicate on the "fail_deadline_at" field. It's identical to FailDeadlineAtEQ.
@@ -1509,6 +1534,46 @@ func StatusContainsFold(v string) predicate.AsyncVideoTask {
 	return predicate.AsyncVideoTask(sql.FieldContainsFold(FieldStatus, v))
 }
 
+// BillingTypeEQ applies the EQ predicate on the "billing_type" field.
+func BillingTypeEQ(v int8) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldEQ(FieldBillingType, v))
+}
+
+// BillingTypeNEQ applies the NEQ predicate on the "billing_type" field.
+func BillingTypeNEQ(v int8) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldNEQ(FieldBillingType, v))
+}
+
+// BillingTypeIn applies the In predicate on the "billing_type" field.
+func BillingTypeIn(vs ...int8) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldIn(FieldBillingType, vs...))
+}
+
+// BillingTypeNotIn applies the NotIn predicate on the "billing_type" field.
+func BillingTypeNotIn(vs ...int8) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldNotIn(FieldBillingType, vs...))
+}
+
+// BillingTypeGT applies the GT predicate on the "billing_type" field.
+func BillingTypeGT(v int8) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldGT(FieldBillingType, v))
+}
+
+// BillingTypeGTE applies the GTE predicate on the "billing_type" field.
+func BillingTypeGTE(v int8) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldGTE(FieldBillingType, v))
+}
+
+// BillingTypeLT applies the LT predicate on the "billing_type" field.
+func BillingTypeLT(v int8) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldLT(FieldBillingType, v))
+}
+
+// BillingTypeLTE applies the LTE predicate on the "billing_type" field.
+func BillingTypeLTE(v int8) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldLTE(FieldBillingType, v))
+}
+
 // HeldCostEQ applies the EQ predicate on the "held_cost" field.
 func HeldCostEQ(v float64) predicate.AsyncVideoTask {
 	return predicate.AsyncVideoTask(sql.FieldEQ(FieldHeldCost, v))
@@ -1822,6 +1887,236 @@ func ErrorReasonEqualFold(v string) predicate.AsyncVideoTask {
 // ErrorReasonContainsFold applies the ContainsFold predicate on the "error_reason" field.
 func ErrorReasonContainsFold(v string) predicate.AsyncVideoTask {
 	return predicate.AsyncVideoTask(sql.FieldContainsFold(FieldErrorReason, v))
+}
+
+// RefundStatusEQ applies the EQ predicate on the "refund_status" field.
+func RefundStatusEQ(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldEQ(FieldRefundStatus, v))
+}
+
+// RefundStatusNEQ applies the NEQ predicate on the "refund_status" field.
+func RefundStatusNEQ(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldNEQ(FieldRefundStatus, v))
+}
+
+// RefundStatusIn applies the In predicate on the "refund_status" field.
+func RefundStatusIn(vs ...string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldIn(FieldRefundStatus, vs...))
+}
+
+// RefundStatusNotIn applies the NotIn predicate on the "refund_status" field.
+func RefundStatusNotIn(vs ...string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldNotIn(FieldRefundStatus, vs...))
+}
+
+// RefundStatusGT applies the GT predicate on the "refund_status" field.
+func RefundStatusGT(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldGT(FieldRefundStatus, v))
+}
+
+// RefundStatusGTE applies the GTE predicate on the "refund_status" field.
+func RefundStatusGTE(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldGTE(FieldRefundStatus, v))
+}
+
+// RefundStatusLT applies the LT predicate on the "refund_status" field.
+func RefundStatusLT(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldLT(FieldRefundStatus, v))
+}
+
+// RefundStatusLTE applies the LTE predicate on the "refund_status" field.
+func RefundStatusLTE(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldLTE(FieldRefundStatus, v))
+}
+
+// RefundStatusContains applies the Contains predicate on the "refund_status" field.
+func RefundStatusContains(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldContains(FieldRefundStatus, v))
+}
+
+// RefundStatusHasPrefix applies the HasPrefix predicate on the "refund_status" field.
+func RefundStatusHasPrefix(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldHasPrefix(FieldRefundStatus, v))
+}
+
+// RefundStatusHasSuffix applies the HasSuffix predicate on the "refund_status" field.
+func RefundStatusHasSuffix(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldHasSuffix(FieldRefundStatus, v))
+}
+
+// RefundStatusEqualFold applies the EqualFold predicate on the "refund_status" field.
+func RefundStatusEqualFold(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldEqualFold(FieldRefundStatus, v))
+}
+
+// RefundStatusContainsFold applies the ContainsFold predicate on the "refund_status" field.
+func RefundStatusContainsFold(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldContainsFold(FieldRefundStatus, v))
+}
+
+// RefundAttemptsEQ applies the EQ predicate on the "refund_attempts" field.
+func RefundAttemptsEQ(v int) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldEQ(FieldRefundAttempts, v))
+}
+
+// RefundAttemptsNEQ applies the NEQ predicate on the "refund_attempts" field.
+func RefundAttemptsNEQ(v int) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldNEQ(FieldRefundAttempts, v))
+}
+
+// RefundAttemptsIn applies the In predicate on the "refund_attempts" field.
+func RefundAttemptsIn(vs ...int) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldIn(FieldRefundAttempts, vs...))
+}
+
+// RefundAttemptsNotIn applies the NotIn predicate on the "refund_attempts" field.
+func RefundAttemptsNotIn(vs ...int) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldNotIn(FieldRefundAttempts, vs...))
+}
+
+// RefundAttemptsGT applies the GT predicate on the "refund_attempts" field.
+func RefundAttemptsGT(v int) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldGT(FieldRefundAttempts, v))
+}
+
+// RefundAttemptsGTE applies the GTE predicate on the "refund_attempts" field.
+func RefundAttemptsGTE(v int) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldGTE(FieldRefundAttempts, v))
+}
+
+// RefundAttemptsLT applies the LT predicate on the "refund_attempts" field.
+func RefundAttemptsLT(v int) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldLT(FieldRefundAttempts, v))
+}
+
+// RefundAttemptsLTE applies the LTE predicate on the "refund_attempts" field.
+func RefundAttemptsLTE(v int) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldLTE(FieldRefundAttempts, v))
+}
+
+// RefundNextRetryAtEQ applies the EQ predicate on the "refund_next_retry_at" field.
+func RefundNextRetryAtEQ(v time.Time) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldEQ(FieldRefundNextRetryAt, v))
+}
+
+// RefundNextRetryAtNEQ applies the NEQ predicate on the "refund_next_retry_at" field.
+func RefundNextRetryAtNEQ(v time.Time) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldNEQ(FieldRefundNextRetryAt, v))
+}
+
+// RefundNextRetryAtIn applies the In predicate on the "refund_next_retry_at" field.
+func RefundNextRetryAtIn(vs ...time.Time) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldIn(FieldRefundNextRetryAt, vs...))
+}
+
+// RefundNextRetryAtNotIn applies the NotIn predicate on the "refund_next_retry_at" field.
+func RefundNextRetryAtNotIn(vs ...time.Time) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldNotIn(FieldRefundNextRetryAt, vs...))
+}
+
+// RefundNextRetryAtGT applies the GT predicate on the "refund_next_retry_at" field.
+func RefundNextRetryAtGT(v time.Time) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldGT(FieldRefundNextRetryAt, v))
+}
+
+// RefundNextRetryAtGTE applies the GTE predicate on the "refund_next_retry_at" field.
+func RefundNextRetryAtGTE(v time.Time) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldGTE(FieldRefundNextRetryAt, v))
+}
+
+// RefundNextRetryAtLT applies the LT predicate on the "refund_next_retry_at" field.
+func RefundNextRetryAtLT(v time.Time) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldLT(FieldRefundNextRetryAt, v))
+}
+
+// RefundNextRetryAtLTE applies the LTE predicate on the "refund_next_retry_at" field.
+func RefundNextRetryAtLTE(v time.Time) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldLTE(FieldRefundNextRetryAt, v))
+}
+
+// RefundNextRetryAtIsNil applies the IsNil predicate on the "refund_next_retry_at" field.
+func RefundNextRetryAtIsNil() predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldIsNull(FieldRefundNextRetryAt))
+}
+
+// RefundNextRetryAtNotNil applies the NotNil predicate on the "refund_next_retry_at" field.
+func RefundNextRetryAtNotNil() predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldNotNull(FieldRefundNextRetryAt))
+}
+
+// RefundErrorEQ applies the EQ predicate on the "refund_error" field.
+func RefundErrorEQ(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldEQ(FieldRefundError, v))
+}
+
+// RefundErrorNEQ applies the NEQ predicate on the "refund_error" field.
+func RefundErrorNEQ(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldNEQ(FieldRefundError, v))
+}
+
+// RefundErrorIn applies the In predicate on the "refund_error" field.
+func RefundErrorIn(vs ...string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldIn(FieldRefundError, vs...))
+}
+
+// RefundErrorNotIn applies the NotIn predicate on the "refund_error" field.
+func RefundErrorNotIn(vs ...string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldNotIn(FieldRefundError, vs...))
+}
+
+// RefundErrorGT applies the GT predicate on the "refund_error" field.
+func RefundErrorGT(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldGT(FieldRefundError, v))
+}
+
+// RefundErrorGTE applies the GTE predicate on the "refund_error" field.
+func RefundErrorGTE(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldGTE(FieldRefundError, v))
+}
+
+// RefundErrorLT applies the LT predicate on the "refund_error" field.
+func RefundErrorLT(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldLT(FieldRefundError, v))
+}
+
+// RefundErrorLTE applies the LTE predicate on the "refund_error" field.
+func RefundErrorLTE(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldLTE(FieldRefundError, v))
+}
+
+// RefundErrorContains applies the Contains predicate on the "refund_error" field.
+func RefundErrorContains(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldContains(FieldRefundError, v))
+}
+
+// RefundErrorHasPrefix applies the HasPrefix predicate on the "refund_error" field.
+func RefundErrorHasPrefix(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldHasPrefix(FieldRefundError, v))
+}
+
+// RefundErrorHasSuffix applies the HasSuffix predicate on the "refund_error" field.
+func RefundErrorHasSuffix(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldHasSuffix(FieldRefundError, v))
+}
+
+// RefundErrorIsNil applies the IsNil predicate on the "refund_error" field.
+func RefundErrorIsNil() predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldIsNull(FieldRefundError))
+}
+
+// RefundErrorNotNil applies the NotNil predicate on the "refund_error" field.
+func RefundErrorNotNil() predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldNotNull(FieldRefundError))
+}
+
+// RefundErrorEqualFold applies the EqualFold predicate on the "refund_error" field.
+func RefundErrorEqualFold(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldEqualFold(FieldRefundError, v))
+}
+
+// RefundErrorContainsFold applies the ContainsFold predicate on the "refund_error" field.
+func RefundErrorContainsFold(v string) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldContainsFold(FieldRefundError, v))
 }
 
 // FailDeadlineAtEQ applies the EQ predicate on the "fail_deadline_at" field.

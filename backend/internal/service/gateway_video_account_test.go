@@ -11,7 +11,7 @@ import (
 
 func TestVideoAccountSupportsRequestRejectsAccountWhenVideoDisabled(t *testing.T) {
 	service := &GatewayService{}
-	for _, platform := range []string{PlatformFal, PlatformAtlasCloud, PlatformApiz} {
+	for _, platform := range []string{PlatformFal, PlatformAtlasCloud, PlatformApiz, PlatformHiggsfield} {
 		t.Run(platform, func(t *testing.T) {
 			account := &Account{
 				Platform: platform,
@@ -55,6 +55,8 @@ func TestVideoAccountSupportsRequestUsesMappingKeysAndPlatformModelWhitelist(t *
 		{name: "fal endpoint whitelist value", platform: PlatformFal, requested: atlasModel, want: true},
 		{name: "atlascloud unknown model", platform: PlatformAtlasCloud, requested: "vendor/unknown/video", want: false},
 		{name: "apiz unknown model", platform: PlatformApiz, requested: "vendor/unknown/video", want: false},
+		{name: "higgsfield public mapping key", platform: PlatformHiggsfield, requested: publicModel, want: true},
+		{name: "higgsfield unknown model", platform: PlatformHiggsfield, requested: "vendor/unknown/video", want: false},
 		{name: "fal unknown model", platform: PlatformFal, requested: "vendor/unknown/video", want: false},
 	}
 
@@ -95,6 +97,23 @@ func TestVideoAccountSupportsRequestUsesAtlasWhitelistWhenMappingDoesNotMatch(t 
 	require.True(t, service.videoAccountSupportsRequest(
 		context.Background(), account, "bytedance/seedance-2.5/image-to-video", "",
 	))
+}
+
+func TestVideoAccountSupportsRequestUsesExactAtlasMappingForSeedanceTextToVideo(t *testing.T) {
+	service := &GatewayService{}
+	const model = "bytedance/seedance-2.5/text-to-video"
+	account := &Account{
+		Platform: PlatformAtlasCloud,
+		Extra:    map[string]any{"video_models_enabled": true},
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{model: model},
+		},
+	}
+
+	mappingSupported, whitelistSupported := videoMappingSupportsRequest(account, model)
+	require.True(t, mappingSupported)
+	require.False(t, whitelistSupported)
+	require.True(t, service.videoAccountSupportsRequest(context.Background(), account, model, ""))
 }
 
 func TestVideoAccountSupportsRequestRejectsUnknownModelWithoutMappingOrWhitelist(t *testing.T) {
@@ -197,10 +216,48 @@ func TestPrepareVideoRequestPayloadPreservesExplicitRatioForAtlasCloudSeedance25
 	require.NotContains(t, prepared, "aspect_ratio")
 }
 
+func TestPrepareVideoRequestPayloadAdaptsAtlasCloudSeedance25ReferenceToVideo(t *testing.T) {
+	original := map[string]any{
+		"image_urls":               []any{"https://example.com/image.png"},
+		"audio_urls":               []any{"https://example.com/audio.mp3"},
+		"video_urls":               []any{"https://example.com/video.mp4"},
+		"omni_reference_task_type": "manual",
+	}
+	prepared := prepareVideoRequestPayload(
+		&Account{Platform: PlatformAtlasCloud},
+		"bytedance/seedance-2.5/reference-to-video",
+		original,
+	)
+
+	require.Equal(t, original["image_urls"], prepared["reference_images"])
+	require.Equal(t, original["audio_urls"], prepared["reference_audios"])
+	require.Equal(t, original["video_urls"], prepared["reference_videos"])
+	require.Equal(t, "auto", prepared["omni_reference_task_type"])
+	require.NotContains(t, prepared, "image_urls")
+	require.NotContains(t, prepared, "audio_urls")
+	require.NotContains(t, prepared, "video_urls")
+
+	// Keep the persisted client payload in the universal API shape.
+	require.Contains(t, original, "image_urls")
+	require.Contains(t, original, "audio_urls")
+	require.Contains(t, original, "video_urls")
+	require.Equal(t, "manual", original["omni_reference_task_type"])
+}
+
 func TestPrepareVideoRequestPayloadPreservesNonAutoAtlasCloudParams(t *testing.T) {
-	for _, duration := range []any{12, "12", nil} {
+	tests := []struct {
+		input any
+		want  any
+	}{
+		{input: 12, want: 12},
+		{input: "12", want: 12},
+		{input: " 12.5 ", want: 12.5},
+		{input: "not-a-number", want: "not-a-number"},
+		{input: nil, want: nil},
+	}
+	for _, test := range tests {
 		original := map[string]any{
-			"duration":       duration,
+			"duration":       test.input,
 			"resolution":     "720p",
 			"aspect_ratio":   "auto",
 			"generate_audio": true,
@@ -211,7 +268,8 @@ func TestPrepareVideoRequestPayloadPreservesNonAutoAtlasCloudParams(t *testing.T
 			original,
 		)
 
-		require.Equal(t, duration, prepared["duration"])
+		require.Equal(t, test.want, prepared["duration"])
+		require.Equal(t, test.input, original["duration"])
 		require.Equal(t, "720p", prepared["resolution"])
 		require.Equal(t, "auto", prepared["aspect_ratio"])
 		require.Equal(t, true, prepared["generate_audio"])

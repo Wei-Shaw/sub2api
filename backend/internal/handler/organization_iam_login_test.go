@@ -73,7 +73,7 @@ func newIAMLoginHandlerForCaptchaTest(t *testing.T) (*OrganizationHandler, *iamL
 	)
 	organizationRepo := &iamLoginOrganizationRepositoryStub{}
 	organizationService := service.NewOrganizationService(organizationRepo, nil, cfg)
-	return NewOrganizationHandler(organizationService, authService, nil, nil, nil), verifier, organizationRepo
+	return NewOrganizationHandler(organizationService, authService, nil, nil, nil, nil), verifier, organizationRepo
 }
 
 func performIAMLogin(handler *OrganizationHandler, body string) *httptest.ResponseRecorder {

@@ -216,7 +216,7 @@ func adaptSubmitParams(body any) any {
 	}
 	if v, exists := out["duration"]; exists {
 		if s, isStr := v.(string); isStr && strings.EqualFold(strings.TrimSpace(s), "auto") {
-			out["duration"] = apizAutoDurationFallback
+			out["duration"] = AutoDurationFallbackSeconds
 		}
 	}
 	if v, exists := out["aspect_ratio"]; exists {
@@ -259,10 +259,10 @@ func renameKeyIfAbsent(m map[string]any, from, to string) {
 	delete(m, from)
 }
 
-// apizAutoDurationFallback 是当客户端传 duration="auto" 时，转发给 apiz 上游
+// AutoDurationFallbackSeconds 是当客户端传 duration="auto" 时，转发给 apiz 上游
 // 的兜底秒数。apiz 不接受 "auto"，收到会返回 422。选 8s 与后端异步视频服务
-// 里 defaultAutoDurationSeconds 的口径保持一致，方便预扣费与实际计费对账。
-const apizAutoDurationFallback = 8
+// 的 apiz 预扣口径保持一致，方便预扣费与实际计费对账。
+const AutoDurationFallbackSeconds = 8
 
 // apizAutoAspectRatioFallback 是当客户端传 aspect_ratio="auto" 时，转发给
 // apiz 上游的兜底比例。apiz 不接受 "auto"，选 16:9（视频业务最常用的横屏

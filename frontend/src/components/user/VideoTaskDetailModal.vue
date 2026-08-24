@@ -145,12 +145,14 @@ import { computed, ref, watch } from 'vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import videoModelsAPI, { type VideoTaskItem } from '@/api/videoModels'
+import { organizationAPI } from '@/api'
 import { formatDateTime } from '@/utils/format'
 import { useClipboard } from '@/composables/useClipboard'
 
 const props = defineProps<{
   show: boolean
   taskId: number | null
+	organizationUsageId?: number | null
   /**
    * admin 模式：true 时调用 /admin/video-tasks/by-id/:id 接口（不校验归属）；
    * 未传或 false 时调用 /user/video-models/tasks/by-id/:id（强制归属校验）。
@@ -178,10 +180,10 @@ const videoURLs = computed<string[]>(() => {
 })
 
 watch(
-  () => [props.show, props.taskId] as const,
-  ([show, id]) => {
+  () => [props.show, props.taskId, props.organizationUsageId] as const,
+  ([show, id, usageId]) => {
     if (show && id != null && id > 0) {
-      void fetchDetail(id)
+			void fetchDetail(id, usageId)
     } else if (!show) {
       detail.value = null
       loadError.value = false
@@ -189,15 +191,19 @@ watch(
   }
 )
 
-async function fetchDetail(id: number) {
+async function fetchDetail(id: number, organizationUsageId?: number | null) {
   loading.value = true
   loadError.value = false
   detail.value = null
   try {
-    const resp = props.admin
-      ? await videoModelsAPI.getTaskByIdAdmin(id)
-      : await videoModelsAPI.getTaskById(id)
-    detail.value = resp.data
+    if (organizationUsageId != null && organizationUsageId > 0) {
+			detail.value = await organizationAPI.getUsageVideoTask(organizationUsageId)
+		} else {
+			const resp = props.admin
+				? await videoModelsAPI.getTaskByIdAdmin(id)
+				: await videoModelsAPI.getTaskById(id)
+			detail.value = resp.data
+		}
   } catch (e) {
     console.error('[VideoTaskDetailModal] Failed to load task detail:', e)
     loadError.value = true

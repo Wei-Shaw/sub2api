@@ -84,6 +84,7 @@ type CostCenterSummary struct {
 	RealizedIncome          float64 `json:"realized_income"`
 	PromotionalConsumption  float64 `json:"promotional_consumption"`
 	SettledExpenses         float64 `json:"settled_expenses"`
+	RebateAmount            float64 `json:"rebate_amount"`
 	PendingForecast         float64 `json:"pending_forecast"`
 	CashProfit              float64 `json:"cash_profit"`
 	OperatingProfit         float64 `json:"operating_profit"`
