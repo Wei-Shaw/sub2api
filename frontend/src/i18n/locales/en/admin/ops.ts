@@ -307,6 +307,7 @@ export default {
         title: 'Error Detail',
         titleWithId: 'Error #{idREDACTED',
         noErrorSelected: 'No error selected.',
+        backToList: 'Back to List',
         resolution: 'Resolved:',
         failedToUpdateResolvedStatus: 'Failed to update resolved status',
         classificationKeys: {
