@@ -14,7 +14,12 @@ import (
 )
 
 // 非法 service_tier 必须在两个 OpenAI 端点（/v1/responses、/v1/chat/completions）
-// 上以 OpenAI 兼容错误结构返回 HTTP 400；合法值（fast/priority）不被拒绝。
+// 上以 OpenAI 兼容错误结构返回 HTTP 400。这些用例在 handler 的 service_tier
+// 校验处短路，不会进入账号选择/重试。
+//
+// 合法值（fast/priority/flex/auto/default/scale）与省略/null 的接受语义由
+// service 层纯校验函数 TestValidateOpenAIServiceTierField 覆盖，避免 handler
+// 测试走入真实账号选择/重试路径。
 
 func newServiceTierHandlerTest(t *testing.T) *OpenAIGatewayHandler {
 REDACTED
@@ -72,25 +77,6 @@ REDACTED {
 REDACTED
 REDACTED
 
-func TestOpenAIGatewayHandlerResponses_ValidServiceTierNotRejected(t *testing.T) {
-	for _, tier := range []string{"fast", "priority", "flex"REDACTED {
-		body := `{"model":"gpt-5.5","input":"hi","service_tier":"` + tier + `"REDACTED`
-		rec := runOpenAIHandlerServiceTierTest(t, "/v1/responses", body, func(h *OpenAIGatewayHandler, c *gin.Context) {
-			h.Responses(c)
-	REDACTED)
-		require.NotEqual(t, http.StatusBadRequest, rec.Code, "tier=%s must not be rejected as invalid", tier)
-		require.NotContains(t, rec.Body.String(), "invalid service_tier", "tier=%s", tier)
-REDACTED
-REDACTED
-
-func TestOpenAIGatewayHandlerResponses_ServiceTierOmittedKeepsCurrentBehavior(t *testing.T) {
-	body := `{"model":"gpt-5.5","input":"hi"REDACTED`
-	rec := runOpenAIHandlerServiceTierTest(t, "/v1/responses", body, func(h *OpenAIGatewayHandler, c *gin.Context) {
-		h.Responses(c)
-REDACTED)
-	require.NotContains(t, rec.Body.String(), "invalid service_tier")
-REDACTED
-
 func TestOpenAIGatewayHandlerChatCompletions_InvalidServiceTierRejected400(t *testing.T) {
 	for _, body := range []string{
 		`{"model":"gpt-5.5","messages":[{"role":"user","content":"hi"REDACTED],"service_tier":"turbo"REDACTED`,
@@ -105,23 +91,4 @@ REDACTED {
 		require.Contains(t, rec.Body.String(), "invalid_request_error", "body=%s", body)
 		require.Contains(t, rec.Body.String(), "invalid service_tier", "body=%s", body)
 REDACTED
-REDACTED
-
-func TestOpenAIGatewayHandlerChatCompletions_ValidServiceTierNotRejected(t *testing.T) {
-	for _, tier := range []string{"fast", "priority", "auto", "default", "scale", "flex"REDACTED {
-		body := `{"model":"gpt-5.5","messages":[{"role":"user","content":"hi"REDACTED],"service_tier":"` + tier + `"REDACTED`
-		rec := runOpenAIHandlerServiceTierTest(t, "/v1/chat/completions", body, func(h *OpenAIGatewayHandler, c *gin.Context) {
-			h.ChatCompletions(c)
-	REDACTED)
-		require.NotEqual(t, http.StatusBadRequest, rec.Code, "tier=%q must not be rejected as invalid", tier)
-		require.NotContains(t, rec.Body.String(), "invalid service_tier", "tier=%q", tier)
-REDACTED
-REDACTED
-
-func TestOpenAIGatewayHandlerChatCompletions_ServiceTierOmittedKeepsCurrentBehavior(t *testing.T) {
-	body := `{"model":"gpt-5.5","messages":[{"role":"user","content":"hi"REDACTED]REDACTED`
-	rec := runOpenAIHandlerServiceTierTest(t, "/v1/chat/completions", body, func(h *OpenAIGatewayHandler, c *gin.Context) {
-		h.ChatCompletions(c)
-REDACTED)
-	require.NotContains(t, rec.Body.String(), "invalid service_tier")
 REDACTED
