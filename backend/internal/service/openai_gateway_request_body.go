@@ -1045,11 +1045,11 @@ func normalizeOpenAIResponsesWebSocketCompatibilityBody(body []byte, account *Ac
 	}
 	if openAIRequestBodyImageGenerationToolNeedsNormalization(normalized) {
 		var reqBody map[string]any
-		if err := json.Unmarshal(normalized, &reqBody); err != nil {
+		if err := decodeOpenAIJSONUseNumber(normalized, &reqBody); err != nil {
 			return body, false, fmt.Errorf("normalize websocket image tool body: %w", err)
 		}
 		if normalizeOpenAIResponsesImageGenerationTools(reqBody) {
-			next, err := json.Marshal(reqBody)
+			next, err := marshalOpenAIUpstreamJSON(reqBody)
 			if err != nil {
 				return body, false, fmt.Errorf("serialize normalized websocket image tool body: %w", err)
 			}
