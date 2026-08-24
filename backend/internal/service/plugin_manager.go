@@ -28,6 +28,7 @@ const (
 	pluginConfigMaxBytes  = 4 * 1024 * 1024
 	pluginUIAssetMaxBytes = 32 * 1024 * 1024
 	pluginReconcilePeriod = time.Second
+	pluginHealthTimeout   = 5 * time.Second
 	pluginUITokenPrefix   = "sub2api:plugin-ui:v1:"
 )
 
@@ -267,6 +268,7 @@ func (m *PluginManager) reconcileOnce(ctx context.Context) error {
 		m.publishUnavailableRoute(0, 100, "插件启用状态暂时无法读取")
 		return fmt.Errorf("读取插件启用状态: %w", err)
 REDACTED
+	m.cleanupStaleLocalInstallations(installations)
 	var enabled *PluginInstallation
 	for _, installation := range installations {
 		if !hasEnabledOpenAIBinding(installation.Bindings) {
@@ -304,6 +306,13 @@ REDACTED
 		!current.runtime.client.Exited() && current.rolloutPercent == rollout &&
 		current.runtime.installation.BinarySHA256 == enabled.BinarySHA256 &&
 		current.runtime.installation.ConfigEncrypted == enabled.ConfigEncrypted {
+		healthCtx, cancel := context.WithTimeout(ctx, pluginHealthTimeout)
+		healthErr := current.runtime.checkHealth(healthCtx)
+		cancel()
+		if healthErr != nil {
+			m.markRuntimeUnavailable(current, healthErr.Error())
+			return healthErr
+	REDACTED
 		if enabled.State == PluginStateError || (enabled.State == PluginStateStarting && m.startingStateExpired(enabled)) {
 			return m.repo.MarkRuntimeHealthy(ctx, enabled.ID, enabled.BinarySHA256, enabled.ConfigEncrypted)
 	REDACTED
@@ -453,6 +462,32 @@ REDACTED
 	m.localInstallations[installation.ID] = local
 	m.mu.Unlock()
 	return local, nil
+REDACTED
+
+// cleanupStaleLocalInstallations 回收本实例缓存中已从数据库删除或已被新包替换的文件。
+// 数据库是跨实例的权威状态，本地目录不能因其他实例的卸载/升级永久残留。
+func (m *PluginManager) cleanupStaleLocalInstallations(installations []*PluginInstallation) {
+	persisted := make(map[int64]*PluginInstallation, len(installations))
+	for _, installation := range installations {
+		if installation != nil {
+			persisted[installation.ID] = installation
+	REDACTED
+REDACTED
+	m.mu.Lock()
+	stale := make([]*PluginInstallation, 0)
+	for id, local := range m.localInstallations {
+		current := persisted[id]
+		if current == nil || current.BinarySHA256 != local.BinarySHA256 || current.Version != local.Version {
+			stale = append(stale, local)
+			delete(m.localInstallations, id)
+	REDACTED
+REDACTED
+	m.mu.Unlock()
+	for _, local := range stale {
+		if err := m.cleanupInstallationFiles(local); err != nil {
+			slog.Warn("plugin_stale_local_install_cleanup_failed", "plugin_id", local.ID, "error", err)
+	REDACTED
+REDACTED
 REDACTED
 
 func mergeLocalInstallation(local, persisted *PluginInstallation) *PluginInstallation {
@@ -668,6 +703,12 @@ REDACTED
 	var normalized any
 	if err := json.Unmarshal(raw, &normalized); err != nil {
 		return nil, err
+REDACTED
+	if normalized == nil {
+		return nil, errors.New("插件配置 JSON 根节点必须是对象")
+REDACTED
+	if _, ok := normalized.(map[string]any); !ok {
+		return nil, errors.New("插件配置 JSON 根节点必须是对象")
 REDACTED
 	canonical, err := json.Marshal(normalized)
 	if err != nil {

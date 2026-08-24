@@ -322,7 +322,7 @@
             :title="
               t('admin.plugins.configTitle', { name: configPlugin?.name || '' REDACTED)
             "
-            @load="uiLoading = false"
+            @load="handlePluginFrameLoad"
           />
         </div>
       </BaseDialog>
@@ -378,6 +378,7 @@ const pluginFrame = ref<HTMLIFrameElement | null>(null);
 const uiLoading = ref(false);
 const uiError = ref("");
 const iframeHeight = ref(640);
+const pendingBridgeRequests = new Map<string, number>();
 
 function errorMessage(error: unknown): string {
   if (typeof error === "object" && error !== null && "message" in error) {
@@ -535,10 +536,30 @@ async function openConfiguration(plugin: PluginInstallation): Promise<void> {
 REDACTED
 
 function closeConfiguration(): void {
+  clearPendingBridgeRequests();
   configPlugin.value = null;
   uiSession.value = null;
   uiLoading.value = false;
   uiError.value = "";
+REDACTED
+
+function clearPendingBridgeRequests(): void {
+  for (const timeout of pendingBridgeRequests.values()) window.clearTimeout(timeout);
+  pendingBridgeRequests.clear();
+REDACTED
+
+function handlePluginFrameLoad(): void {
+  // A load can also be caused by a plugin navigating its iframe. Drop all
+  // outstanding responses so a late config response is never sent to the new document.
+  clearPendingBridgeRequests();
+  uiLoading.value = false;
+REDACTED
+
+function registerBridgeRequest(requestID: string): void {
+  const timeout = window.setTimeout(() => {
+    pendingBridgeRequests.delete(requestID);
+  REDACTED, 30_000);
+  pendingBridgeRequests.set(requestID, timeout);
 REDACTED
 
 function postBridgeResult(
@@ -546,14 +567,21 @@ function postBridgeResult(
   payload: Record<string, unknown>,
 ): void {
   if (!pluginFrame.value?.contentWindow || !uiSession.value) return;
+  const requestID = typeof request.request_id === "string" ? request.request_id.trim() : "";
+  const timeout = pendingBridgeRequests.get(requestID);
+  if (!requestID || timeout === undefined) return;
+  window.clearTimeout(timeout);
+  pendingBridgeRequests.delete(requestID);
   pluginFrame.value.contentWindow.postMessage(
     {
       source: "sub2api-plugin-host",
       bridge_token: uiSession.value.bridge_token,
       type: `${request.typeREDACTED.result`,
-      request_id: request.request_id,
+      request_id: requestID,
       ...payload,
     REDACTED,
+    // The sandboxed iframe has an opaque origin, so no fixed target origin exists.
+    // Pending request tracking plus load invalidation prevents cross-navigation leaks.
     "*",
   );
 REDACTED
@@ -562,7 +590,8 @@ async function handleBridgeMessage(event: MessageEvent): Promise<void> {
   if (
     !uiSession.value ||
     !configPlugin.value ||
-    event.source !== pluginFrame.value?.contentWindow
+    event.source !== pluginFrame.value?.contentWindow ||
+    event.origin !== "null"
   )
     return;
   const message = event.data as PluginBridgeMessage;
@@ -572,6 +601,16 @@ async function handleBridgeMessage(event: MessageEvent): Promise<void> {
     message.bridge_token !== uiSession.value.bridge_token
   )
     return;
+
+  const requestID = typeof message.request_id === "string" ? message.request_id.trim() : "";
+  const expectsResponse =
+    message.type === "config.load" ||
+    message.type === "config.save" ||
+    message.type === "config.test";
+  if (expectsResponse) {
+    if (!requestID || pendingBridgeRequests.has(requestID)) return;
+    registerBridgeRequest(requestID);
+  REDACTED
 
   try {
     switch (message.type) {
@@ -667,5 +706,6 @@ REDACTED);
 
 onBeforeUnmount(() => {
   window.removeEventListener("message", handleBridgeMessage);
+  clearPendingBridgeRequests();
 REDACTED);
 </script>
