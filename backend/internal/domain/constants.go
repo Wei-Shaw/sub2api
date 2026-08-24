@@ -27,6 +27,9 @@ const (
 	PlatformKimi      = "kimi"     // Kimi (月之暗面 / Moonshot)
 	PlatformZhipu     = "zhipu"    // 智谱 GLM (bigmodel)
 	PlatformDeepseek  = "deepseek" // DeepSeek
+	PlatformQwen      = "qwen"     // 通义千问 (阿里云百炼 / DashScope 兼容模式)
+	PlatformMinimax   = "minimax"  // MiniMax
+	PlatformXFSpark   = "xfspark"  // 讯飞星火 (iFLYTEK Spark)
 	PlatformComposite = "composite"
 )
 

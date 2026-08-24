@@ -11,9 +11,12 @@ import (
 )
 
 func TestCNProviderRegistry_BuiltinProvidersRegistered(t *testing.T) {
-	require.ElementsMatch(t, []string{PlatformKimi, PlatformZhipu, PlatformDeepseek}, CNProviderCodes())
+	require.ElementsMatch(t, []string{
+		PlatformKimi, PlatformZhipu, PlatformDeepseek,
+		PlatformQwen, PlatformMinimax, PlatformXFSpark,
+	}, CNProviderCodes())
 
-	for _, code := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+	for _, code := range CNProviderCodes() {
 		spec, ok := GetCNProviderSpec(code)
 		require.True(t, ok, "builtin provider %q must be registered", code)
 		require.Equal(t, code, spec.Code)
@@ -22,7 +25,7 @@ func TestCNProviderRegistry_BuiltinProvidersRegistered(t *testing.T) {
 }
 
 func TestIsCNProvider_DerivedFromRegistry(t *testing.T) {
-	for _, p := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+	for _, p := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformQwen, PlatformMinimax, PlatformXFSpark} {
 		require.True(t, IsCNProvider(p), p)
 	}
 	for _, p := range []string{PlatformOpenAI, PlatformAnthropic, PlatformGemini, PlatformAntigravity, PlatformGrok, PlatformComposite, "kiro", ""} {
@@ -35,6 +38,7 @@ func TestAllowedQuotaPlatforms_DerivedOrder(t *testing.T) {
 	require.Equal(t, []string{
 		PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok,
 		PlatformKimi, PlatformZhipu, PlatformDeepseek,
+		PlatformMinimax, PlatformQwen, PlatformXFSpark,
 	}, AllowedQuotaPlatforms)
 }
 
@@ -50,6 +54,7 @@ func TestConcretePlatforms_DerivedOrder(t *testing.T) {
 	require.Equal(t, []string{
 		PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok,
 		PlatformKimi, PlatformZhipu, PlatformDeepseek,
+		PlatformMinimax, PlatformQwen, PlatformXFSpark,
 	}, ConcretePlatforms())
 }
 
@@ -92,6 +97,21 @@ func TestCNProviderSpec_ProbeCapabilities(t *testing.T) {
 	require.NotNil(t, deepseek.BalanceProbe)
 	require.Nil(t, deepseek.QuotaProbe) // 无 Coding Plan 窗口端点
 	require.True(t, deepseek.SupportsNativeResponses)
+
+	// qwen/minimax/xfspark：无轻量公开余额/额度端点，纯响应式（与 zhipu 同型）。
+	for _, code := range []string{PlatformQwen, PlatformMinimax, PlatformXFSpark} {
+		spec, ok := GetCNProviderSpec(code)
+		require.True(t, ok, code)
+		require.Nil(t, spec.BalanceProbe, code)
+		require.Nil(t, spec.QuotaProbe, code)
+		require.False(t, spec.SupportsNativeResponses, code)
+	}
+
+	// minimax 提供 Anthropic 兼容端点；qwen/xfspark 无。
+	minimax, _ := GetCNProviderSpec(PlatformMinimax)
+	require.Equal(t, DefaultMinimaxAnthropicBaseURL, minimax.DefaultBaseURL(APIProtocolAnthropic, AccountModePayG))
+	qwen, _ := GetCNProviderSpec(PlatformQwen)
+	require.Equal(t, "", qwen.DefaultBaseURL(APIProtocolAnthropic, AccountModePayG))
 
 	require.True(t, cnSupportsNativeResponses(PlatformDeepseek))
 	require.False(t, cnSupportsNativeResponses(PlatformKimi))
@@ -146,8 +166,15 @@ func TestDetectModelPlatform_ViaRegistry(t *testing.T) {
 		"bigmodel/glm-4.6":         PlatformZhipu,
 		"deepseek-chat":            PlatformDeepseek,
 		"deepseek/deepseek-chat":   PlatformDeepseek,
+		"qwen-max":                 PlatformQwen,
+		"dashscope/qwen-max":       PlatformQwen,
+		"minimax-m2":               PlatformMinimax,
+		"minimax/minimax-m2":       PlatformMinimax,
+		"spark-x1":                 PlatformXFSpark,
+		"xfspark/spark-x1":         PlatformXFSpark,
 		"claude-sonnet-4":          PlatformAnthropic,
 		"gpt-5":                    PlatformOpenAI,
+		"gpt-5.3-codex-spark":      PlatformOpenAI, // OpenAI Codex Spark 不落入 xfspark 的 spark- 前缀
 		"grok-4":                   PlatformGrok,
 		"gemini-2.5-pro":           PlatformGemini,
 		"totally-unknown-model-42": "",

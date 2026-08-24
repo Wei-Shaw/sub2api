@@ -434,7 +434,10 @@ export default {
       antigravity: 'Antigravity',
       kimi: 'Kimi',
       zhipu: 'Zhipu GLM',
-      deepseek: 'DeepSeek'
+      deepseek: 'DeepSeek',
+      qwen: 'Qwen',
+      minimax: 'MiniMax',
+      xfspark: 'iFLYTEK Spark'
     },
     // Check modes (how a monitor performs its checks)
     checkMode: {

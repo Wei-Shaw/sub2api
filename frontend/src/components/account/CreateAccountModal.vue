@@ -161,46 +161,22 @@
             Grok
           </button>
         </div>
-        <!-- CN providers row: Kimi / Zhipu GLM / DeepSeek -->
+        <!-- CN providers row: 注册即生效（数据源见 cnPlatformOptions） -->
         <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
           <button
+            v-for="opt in cnPlatformOptions"
+            :key="opt.value"
             type="button"
-            @click="selectCNPlatform('kimi')"
+            @click="selectCNPlatform(opt.value)"
             :class="[
               'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
-              form.platform === 'kimi'
-                ? 'bg-white text-pink-600 shadow-sm dark:bg-dark-600 dark:text-pink-400'
+              form.platform === opt.value
+                ? opt.activeClass
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
             ]"
           >
-            <PlatformIcon platform="kimi" size="sm" />
-            Kimi
-          </button>
-          <button
-            type="button"
-            @click="selectCNPlatform('zhipu')"
-            :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
-              form.platform === 'zhipu'
-                ? 'bg-white text-indigo-600 shadow-sm dark:bg-dark-600 dark:text-indigo-400'
-                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
-            ]"
-          >
-            <PlatformIcon platform="zhipu" size="sm" />
-            Zhipu GLM
-          </button>
-          <button
-            type="button"
-            @click="selectCNPlatform('deepseek')"
-            :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
-              form.platform === 'deepseek'
-                ? 'bg-white text-teal-600 shadow-sm dark:bg-dark-600 dark:text-teal-400'
-                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
-            ]"
-          >
-            <PlatformIcon platform="deepseek" size="sm" />
-            DeepSeek
+            <PlatformIcon :platform="opt.value" size="sm" />
+            {{ opt.label }}
           </button>
         </div>
       </div>
@@ -483,9 +459,9 @@
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cnProviders.accountMode.paygDesc') }}</span>
             </div>
           </button>
-          <!-- Coding Plan (kimi / zhipu only — DeepSeek has no coding plan) -->
+          <!-- Coding Plan（仅有 coding 形态预设的平台可选） -->
           <button
-            v-if="form.platform !== 'deepseek'"
+            v-if="cnHasCodingPlan"
             type="button"
             @click="accountMode = 'coding'"
             :class="[
@@ -3765,6 +3741,9 @@ import {
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
+  cnPlatformHasCodingPlan,
+  cnPlatformHasNativeResponses,
+  isCNProviderPlatform,
   defaultCNAdaptiveBaseUrls,
   defaultCNBaseUrl,
   isHeaderOverrideCapable,
@@ -3959,17 +3938,48 @@ const adaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   anthropic: '',
   responses: ''
 })
-const isCNPlatform = computed(
-  () => form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek'
-)
-// CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
-// `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
-const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek'>(() => {
-  if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek') {
-    return form.platform
+// 国产供应商平台选择卡片数据源（选中态文本色与 platformColors 取色一致；
+// Tailwind 类名必须完整写出，不能动态拼接，否则被 purge）。
+const cnPlatformOptions = [
+  {
+    value: 'kimi',
+    label: 'Kimi',
+    activeClass: 'bg-white text-pink-600 shadow-sm dark:bg-dark-600 dark:text-pink-400'
+  },
+  {
+    value: 'zhipu',
+    label: 'Zhipu GLM',
+    activeClass: 'bg-white text-indigo-600 shadow-sm dark:bg-dark-600 dark:text-indigo-400'
+  },
+  {
+    value: 'deepseek',
+    label: 'DeepSeek',
+    activeClass: 'bg-white text-teal-600 shadow-sm dark:bg-dark-600 dark:text-teal-400'
+  },
+  {
+    value: 'qwen',
+    label: 'Qwen',
+    activeClass: 'bg-white text-violet-600 shadow-sm dark:bg-dark-600 dark:text-violet-400'
+  },
+  {
+    value: 'minimax',
+    label: 'MiniMax',
+    activeClass: 'bg-white text-rose-600 shadow-sm dark:bg-dark-600 dark:text-rose-400'
+  },
+  {
+    value: 'xfspark',
+    label: 'iFLYTEK Spark',
+    activeClass: 'bg-white text-sky-600 shadow-sm dark:bg-dark-600 dark:text-sky-400'
   }
-  return 'kimi'
+] as const
+const isCNPlatform = computed(() => isCNProviderPlatform(form.platform))
+// CnBaseUrlPresets 的 platform prop 经此 computed 传递（非 CN 平台时回落占位值）。
+const cnPresetPlatform = computed<string>(() => {
+  return isCNPlatform.value ? form.platform : 'kimi'
 })
+// 当前平台是否有 Coding Plan 形态 / 原生 Responses 端点（由预设派生）。
+const cnHasCodingPlan = computed(() => cnPlatformHasCodingPlan(form.platform))
+const cnHasNativeResponses = computed(() => cnPlatformHasNativeResponses(form.platform))
 // 当前平台可选的协议档（responses 仅 deepseek）。
 const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: string }>>(() => {
   const opts: Array<{ value: CnApiProtocol; labelKey: string }> = [
@@ -3977,7 +3987,7 @@ const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: strin
     { value: 'chat_completions', labelKey: 'chatCompletions' },
     { value: 'anthropic', labelKey: 'anthropic' }
   ]
-  if (form.platform === 'deepseek') {
+  if (cnHasNativeResponses.value) {
     opts.push({ value: 'responses', labelKey: 'responses' })
   }
   return opts
@@ -3987,11 +3997,11 @@ const cnAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol; l
     { value: 'chat_completions', labelKey: 'chatCompletions' },
     { value: 'anthropic', labelKey: 'anthropic' }
   ]
-  if (form.platform === 'deepseek') opts.push({ value: 'responses', labelKey: 'responses' })
+  if (cnHasNativeResponses.value) opts.push({ value: 'responses', labelKey: 'responses' })
   return opts
 })
 
-function resetAdaptiveBaseUrls(platform: 'kimi' | 'zhipu' | 'deepseek', mode: CnAccountMode) {
+function resetAdaptiveBaseUrls(platform: string, mode: CnAccountMode) {
   adaptiveBaseUrls.value = defaultCNAdaptiveBaseUrls(platform, mode)
 }
 // 当前选中平台的品牌色（选中卡片描边 / 图标底色），与 platformColors 取色一致。
@@ -4003,6 +4013,12 @@ const cnAccentActiveClass = computed(() => {
       return 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
     case 'deepseek':
       return 'border-teal-500 bg-teal-50 dark:bg-teal-900/20'
+    case 'qwen':
+      return 'border-violet-500 bg-violet-50 dark:bg-violet-900/20'
+    case 'minimax':
+      return 'border-rose-500 bg-rose-50 dark:bg-rose-900/20'
+    case 'xfspark':
+      return 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
     default:
       return 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
   }
@@ -4015,18 +4031,24 @@ const cnAccentIconClass = computed(() => {
       return 'bg-indigo-500 text-white'
     case 'deepseek':
       return 'bg-teal-500 text-white'
+    case 'qwen':
+      return 'bg-violet-500 text-white'
+    case 'minimax':
+      return 'bg-rose-500 text-white'
+    case 'xfspark':
+      return 'bg-sky-500 text-white'
     default:
       return 'bg-primary-500 text-white'
   }
 })
-// 切换国产供应商平台：强制 apikey 类型，deepseek 无 coding 套餐故锁定 payg，
+// 切换国产供应商平台：强制 apikey 类型，无 Coding Plan 形态的平台锁定 payg，
 // 协议回落 adaptive，并把 base url 重置为该平台默认端点。
-function selectCNPlatform(platform: 'kimi' | 'zhipu' | 'deepseek') {
+function selectCNPlatform(platform: AccountPlatform) {
   form.platform = platform
   form.type = 'apikey'
   accountCategory.value = 'apikey'
   apiProtocol.value = 'adaptive'
-  if (platform === 'deepseek') {
+  if (!cnPlatformHasCodingPlan(platform)) {
     accountMode.value = 'payg'
   }
   apiKeyBaseUrl.value = defaultCNBaseUrl(platform, accountMode.value, apiProtocol.value)

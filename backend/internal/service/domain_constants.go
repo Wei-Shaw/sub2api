@@ -47,6 +47,9 @@ const (
 	PlatformKimi      = domain.PlatformKimi
 	PlatformZhipu     = domain.PlatformZhipu
 	PlatformDeepseek  = domain.PlatformDeepseek
+	PlatformQwen      = domain.PlatformQwen
+	PlatformMinimax   = domain.PlatformMinimax
+	PlatformXFSpark   = domain.PlatformXFSpark
 	PlatformComposite = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
@@ -75,6 +78,9 @@ const (
 	DefaultZhipuPayGBaseURL   = "https://open.bigmodel.cn/api/paas/v4"
 	DefaultZhipuCodingBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
 	DefaultDeepseekBaseURL    = "https://api.deepseek.com"
+	DefaultQwenBaseURL        = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+	DefaultMinimaxBaseURL     = "https://api.minimaxi.com/v1"
+	DefaultXFSparkBaseURL     = "https://spark-api-open.xf-yun.com/v1"
 )
 
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
@@ -84,6 +90,7 @@ const (
 	DefaultKimiCodingAnthropicBaseURL = "https://api.kimi.com/coding"
 	DefaultZhipuAnthropicBaseURL      = "https://open.bigmodel.cn/api/anthropic"
 	DefaultDeepseekAnthropicBaseURL   = "https://api.deepseek.com/anthropic"
+	DefaultMinimaxAnthropicBaseURL    = "https://api.minimaxi.com/anthropic"
 )
 
 // IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商。
