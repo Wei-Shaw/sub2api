@@ -131,8 +131,8 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	responsesReq.Stream = true
 	isStream := true
 
-	// 3b. Handle BetaFastMode → service_tier: "priority"
-	if containsBetaToken(c.GetHeader("anthropic-beta"), claude.BetaFastMode) {
+	// 3b. Handle BetaFastMode → service_tier: "priority" only for OpenAI upstreams.
+	if openAIFastPolicyAppliesToAccount(account) && containsBetaToken(c.GetHeader("anthropic-beta"), claude.BetaFastMode) {
 		responsesReq.ServiceTier = "priority"
 	}
 
@@ -287,6 +287,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		return nil, policyErr
 	}
 	responsesBody = updatedBody
+	responsesReq.ServiceTier = normalizedOpenAIServiceTierValue(gjson.GetBytes(responsesBody, "service_tier").String())
 	grokCacheIdentity := ""
 	if account.Platform == PlatformGrok {
 		grokIntentBody := responsesBody

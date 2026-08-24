@@ -103,6 +103,53 @@ func TestOpenAIRequestView_HasPatches(t *testing.T) {
 	require.False(t, view.HasPatches())
 }
 
+func TestOpenAIGatewayService_Forward_NonOpenAIPlatformsBypassFastPolicy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+		t.Run(platform, func(t *testing.T) {
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusBadRequest,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"stop after request capture"}}`)),
+			}}
+			cfg := &config.Config{}
+			cfg.Security.URLAllowlist.Enabled = false
+			svc := newOpenAIGatewayServiceWithSettings(t, &OpenAIFastPolicySettings{
+				Rules: []OpenAIFastPolicyRule{{
+					ServiceTier: OpenAIFastTierAny,
+					Action:      OpenAIFastPolicyActionForcePriority,
+					Scope:       BetaPolicyScopeAll,
+				}},
+			})
+			svc.cfg = cfg
+			svc.httpUpstream = upstream
+			account := &Account{
+				ID:          1,
+				Name:        platform + "-responses",
+				Platform:    platform,
+				Type:        AccountTypeAPIKey,
+				Concurrency: 1,
+				Credentials: map[string]any{
+					"api_key":      "sk-test",
+					"base_url":     "https://example.com",
+					"api_protocol": APIProtocolResponses,
+				},
+			}
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+			SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+
+			result, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"provider-model","stream":false,"input":"hello"}`))
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.NotNil(t, upstream.lastReq)
+			require.False(t, gjson.GetBytes(upstream.lastBody, "service_tier").Exists())
+		})
+	}
+}
+
 func TestOpenAIGatewayService_Forward_HTTPPatchPathKeepsLargeInputRaw(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := &httpUpstreamRecorder{

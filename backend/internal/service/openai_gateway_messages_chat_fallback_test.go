@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -163,6 +164,122 @@ func TestForwardAsAnthropic_ForceChatCompletionsNonStreaming(t *testing.T) {
 	require.Equal(t, 2, result.Usage.OutputTokens)
 	require.Equal(t, 1, result.Usage.CacheReadInputTokens)
 	require.False(t, result.Stream)
+}
+
+func TestForwardAsAnthropic_ForceChatCompletionsAppliesForcePriorityPolicy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.4","max_tokens":32,"messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"chatcmpl_fast","object":"chat.completion","model":"gpt-5.4","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`,
+		)),
+	}}
+	svc := newOpenAIGatewayServiceWithSettings(t, &OpenAIFastPolicySettings{
+		Rules: []OpenAIFastPolicyRule{{
+			ServiceTier: OpenAIFastTierPriority,
+			Action:      OpenAIFastPolicyActionForcePriority,
+			Scope:       BetaPolicyScopeAll,
+		}},
+	})
+	svc.cfg = rawChatCompletionsTestConfig()
+	svc.httpUpstream = upstream
+
+	result, err := svc.ForwardAsAnthropic(context.Background(), c, forceChatMessagesFallbackAccount(), body, "", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, OpenAIFastTierPriority, gjson.GetBytes(upstream.lastBody, "service_tier").String())
+	require.NotNil(t, result.ServiceTier)
+	require.Equal(t, OpenAIFastTierPriority, *result.ServiceTier)
+}
+
+func TestForwardAsAnthropic_NonOpenAIResponsesBypassFastPolicy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, platform := range []string{PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+		t.Run(platform, func(t *testing.T) {
+			body := []byte(`{"model":"provider-model","max_tokens":32,"messages":[{"role":"user","content":"hello"}],"stream":false}`)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			c.Request.Header.Set("anthropic-beta", claude.BetaFastMode)
+
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusBadRequest,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"stop after request capture"}}`)),
+			}}
+			svc := newOpenAIGatewayServiceWithSettings(t, &OpenAIFastPolicySettings{
+				Rules: []OpenAIFastPolicyRule{{
+					ServiceTier: OpenAIFastTierAny,
+					Action:      OpenAIFastPolicyActionForcePriority,
+					Scope:       BetaPolicyScopeAll,
+				}},
+			})
+			svc.cfg = rawChatCompletionsTestConfig()
+			svc.httpUpstream = upstream
+			account := rawChatCompletionsTestAccount()
+			account.Platform = platform
+			account.Credentials["api_protocol"] = APIProtocolResponses
+			account.Extra = map[string]any{
+				openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceResponses),
+			}
+
+			result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "")
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.NotNil(t, upstream.lastReq)
+			require.False(t, gjson.GetBytes(upstream.lastBody, "service_tier").Exists())
+		})
+	}
+}
+
+func TestForwardAnthropicViaRawChatCompletions_NonOpenAIBypassesFastPolicy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+		t.Run(platform, func(t *testing.T) {
+			body := []byte(`{"model":"provider-model","max_tokens":32,"messages":[{"role":"user","content":"hello"}],"stream":false}`)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			c.Request.Header.Set("anthropic-beta", claude.BetaFastMode)
+
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body: io.NopCloser(strings.NewReader(
+					`{"id":"chatcmpl_non_openai","object":"chat.completion","model":"provider-model","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`,
+				)),
+			}}
+			svc := newOpenAIGatewayServiceWithSettings(t, &OpenAIFastPolicySettings{
+				Rules: []OpenAIFastPolicyRule{{
+					ServiceTier: OpenAIFastTierAny,
+					Action:      OpenAIFastPolicyActionForcePriority,
+					Scope:       BetaPolicyScopeAll,
+				}},
+			})
+			svc.cfg = rawChatCompletionsTestConfig()
+			svc.httpUpstream = upstream
+			account := forceChatMessagesFallbackAccount()
+			account.Platform = platform
+
+			result, err := svc.forwardAnthropicViaRawChatCompletions(context.Background(), c, account, body, "")
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.False(t, gjson.GetBytes(upstream.lastBody, "service_tier").Exists())
+			require.Nil(t, result.ServiceTier)
+		})
+	}
 }
 
 // Covers the fully-new streaming composition: text block is still open when
