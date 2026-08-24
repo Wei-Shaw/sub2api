@@ -573,7 +573,6 @@
                 <div class="flex items-center gap-1.5">
                   <span class="font-medium text-green-600 dark:text-green-400">${{ formatUsageCost(row.actual_cost) }}</span>
                   <div
-                    v-if="isImageUsage(row) || isVideoUsage(row)"
                     :data-testid="`organization-usage-cost-detail-${row.id}`"
                     class="group relative"
                     @mouseenter="showUsageCostTooltip($event, row)"
@@ -884,7 +883,7 @@
               <div class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.videoResolution') }}</span><span class="font-medium">{{ usageCostTooltipRow.video_resolution || '-' }}</span></div>
               <div class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.videoDuration') }}</span><span class="font-medium">{{ usageCostTooltipRow.video_duration_seconds ? `${usageCostTooltipRow.video_duration_seconds}s` : '-' }}</span></div>
             </template>
-            <template v-else>
+            <template v-else-if="isImageUsage(usageCostTooltipRow)">
               <div class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.imageCount') }}</span><span class="font-medium">{{ usageCostTooltipRow.image_count }}{{ t('usage.imageUnit') }}</span></div>
               <div class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.imageBillingSize') }}</span><span class="font-medium">{{ formatImageBillingSize(usageCostTooltipRow, t) }}</span></div>
               <div class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.imageSizeSource') }}</span><span class="font-medium">{{ formatImageSizeSource(usageCostTooltipRow, t) }}</span></div>
@@ -894,6 +893,18 @@
               <div class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.imageUnitPrice') }}</span><span class="font-medium text-sky-300">${{ organizationImageUnitPrice(usageCostTooltipRow) }}</span></div>
               <div class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.imageTotalPrice') }}</span><span class="font-medium">${{ formatUsageCost(usageCostTooltipRow.total_cost) }}</span></div>
             </template>
+            <template v-else-if="usageCostTooltipRow.billing_mode === BILLING_MODE_TOKEN || !usageCostTooltipRow.billing_mode">
+              <div v-if="usageCostTooltipRow.input_cost && usageCostTooltipRow.input_cost > 0" class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('admin.usage.inputCost') }}</span><span class="font-medium">${{ formatUsageCost(usageCostTooltipRow.input_cost) }}</span></div>
+              <div v-if="hasImageInputCost(usageCostTooltipRow)" class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.imageInputCost') }}</span><span class="font-medium text-fuchsia-300">${{ formatUsageCost(usageCostTooltipRow.image_input_cost) }}</span></div>
+              <div v-if="usageCostTooltipRow.output_cost && usageCostTooltipRow.output_cost > 0" class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('admin.usage.outputCost') }}</span><span class="font-medium">${{ formatUsageCost(usageCostTooltipRow.output_cost) }}</span></div>
+              <div v-if="hasImageOutputCost(usageCostTooltipRow)" class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.imageOutputCost') }}</span><span class="font-medium text-pink-300">${{ formatUsageCost(usageCostTooltipRow.image_output_cost) }}</span></div>
+              <div v-if="textInputTokens(usageCostTooltipRow) > 0" class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.inputTokenPrice') }}</span><span class="font-medium text-sky-300">{{ formatTokenPricePerMillion(usageCostTooltipRow.input_cost, textInputTokens(usageCostTooltipRow)) }} {{ t('usage.perMillionTokens') }}</span></div>
+              <div v-if="hasImageInputTokens(usageCostTooltipRow)" class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.imageInputTokenPrice') }}</span><span class="font-medium text-fuchsia-300">{{ formatTokenPricePerMillion(usageCostTooltipRow.image_input_cost, usageCostTooltipRow.image_input_tokens) }} {{ t('usage.perMillionTokens') }}</span></div>
+              <div v-if="textOutputTokens(usageCostTooltipRow) > 0" class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.outputTokenPrice') }}</span><span class="font-medium text-violet-300">{{ formatTokenPricePerMillion(usageCostTooltipRow.output_cost, textOutputTokens(usageCostTooltipRow)) }} {{ t('usage.perMillionTokens') }}</span></div>
+              <div v-if="hasImageOutputTokens(usageCostTooltipRow)" class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.imageOutputTokenPrice') }}</span><span class="font-medium text-pink-300">{{ formatTokenPricePerMillion(usageCostTooltipRow.image_output_cost, usageCostTooltipRow.image_output_tokens) }} {{ t('usage.perMillionTokens') }}</span></div>
+            </template>
+            <div v-if="usageCostTooltipRow.cache_creation_cost && usageCostTooltipRow.cache_creation_cost > 0" class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('admin.usage.cacheCreationCost') }}</span><span class="font-medium">${{ formatUsageCost(usageCostTooltipRow.cache_creation_cost) }}</span></div>
+            <div v-if="usageCostTooltipRow.cache_read_cost && usageCostTooltipRow.cache_read_cost > 0" class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('admin.usage.cacheReadCost') }}</span><span class="font-medium">${{ formatUsageCost(usageCostTooltipRow.cache_read_cost) }}</span></div>
           </div>
           <div class="flex items-center justify-between gap-6"><span class="text-gray-400">{{ t('usage.rate') }}</span><span class="font-semibold text-blue-400">{{ usageCostTooltipRow.rate_multiplier || 1 }}x</span></div>
           <div class="flex items-center justify-between gap-6"><span class="text-gray-400">{{ t('usage.original') }}</span><span class="font-medium">${{ formatUsageCost(usageCostTooltipRow.total_cost) }}</span></div>
@@ -944,9 +955,10 @@ import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UsageTokenSummaryCard from '@/components/usage/UsageTokenSummaryCard.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { getLocale } from '@/i18n'
-import { getBillingModeBadgeClass, getBillingModeLabel, isImageUsage, isVideoUsage } from '@/utils/billingMode'
-import { formatImageBillingSize, formatImageInputSize, formatImageOutputSize, formatImageSizeBreakdown, formatImageSizeSource } from '@/utils/imageUsage'
+import { BILLING_MODE_TOKEN, getBillingModeBadgeClass, getBillingModeLabel, isImageUsage, isVideoUsage } from '@/utils/billingMode'
+import { formatImageBillingSize, formatImageInputSize, formatImageOutputSize, formatImageSizeBreakdown, formatImageSizeSource, hasImageInputCost, hasImageInputTokens, hasImageOutputCost, hasImageOutputTokens, textInputTokens, textOutputTokens } from '@/utils/imageUsage'
 import { formatDateTime } from '@/utils/format'
+import { formatTokenPricePerMillion } from '@/utils/usagePricing'
 import type { DashboardStats, EndpointStat, FinanceSummary, GroupStat, IAMMember, ManagedPolicy, ModelStat, OrganizationContext, OrganizationSpendLimitRule, OrganizationSpendUsage, OrganizationSubscription, OrganizationUsageParams, OrganizationUsageRow, OrganizationUsageStats, OrganizationUsageTrendPoint, PaginatedOrganizationUsage, UserBreakdownItem, UserErrorRequest, UserSpendingRankingItem, UserUsageTrendPoint } from '@/types'
 import type { PlazaPlanCard } from '@/api/plaza'
 import { useAuthStore } from '@/stores'

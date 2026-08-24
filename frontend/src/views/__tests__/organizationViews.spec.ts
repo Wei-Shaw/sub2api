@@ -367,6 +367,8 @@ describe('organization views', () => {
       items: [{
         id: 1, member_user_id: 42, member_login: 'reader', api_key_name: 'member-key', model: 'gpt-5',
         input_tokens: 10, output_tokens: 5, actual_cost: '1.25', total_cost: '1', rate_multiplier: 1.25,
+        input_cost: 0.5, output_cost: 0.75, cache_creation_cost: 0, cache_read_cost: 0,
+        image_input_tokens: 0, image_input_cost: 0, image_output_tokens: 0, image_output_cost: 0,
         endpoint: '/v1/responses', status: 'charged', balance_source: 'subscription',
         group_id: 7, group_name: 'Enterprise', request_type: 'stream', billing_type: 1, billing_mode: 'token',
         image_count: 0, image_urls: [], cos_urls: [], ip_address: '203.0.113.10', user_agent: 'test-agent',
@@ -421,6 +423,12 @@ describe('organization views', () => {
     expect(wrapper.text()).toContain('203.0.113.10')
     expect(wrapper.text()).toContain('test-agent')
     expect(wrapper.get('span[title="test-agent"]').classes()).toEqual(expect.arrayContaining(['text-sm', 'text-gray-600', 'max-w-[320px]', 'truncate']))
+    const tokenCostDetail = wrapper.get('[data-testid="organization-usage-cost-detail-1"]')
+    await tokenCostDetail.trigger('mouseenter')
+    await wrapper.vm.$nextTick()
+    expect(document.body.textContent).toContain('usage.inputTokenPrice')
+    expect(document.body.textContent).toContain('usage.outputTokenPrice')
+    await tokenCostDetail.trigger('mouseleave')
     const usageTable = wrapper.findAll('table').find(table => table.classes().includes('min-w-[1900px]'))
     expect(usageTable).toBeDefined()
     expect(usageTable!.element.parentElement?.classList.contains('overflow-x-auto')).toBe(true)

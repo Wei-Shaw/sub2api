@@ -57,6 +57,8 @@ export default {
       jsonEmpty: '请求体为空。',
       jsonMustBeObject: '请求体必须是 JSON 对象。',
       btnSubmit: '提交',
+      btnSubmitWithEstimate: '≈ {cost} →',
+      btnSubmitArrow: '→',
       btnReset: '重置',
       pollingHint: '每 3 秒自动轮询任务状态。',
       queuePosition: '队列位置：{pos}',

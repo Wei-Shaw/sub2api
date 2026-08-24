@@ -204,7 +204,7 @@
                   class="border-t border-gray-100 text-gray-700 dark:border-dark-700 dark:text-gray-300"
                 >
                   <td class="py-1 font-medium">{{ p.resolution }}</td>
-                  <td class="py-1">{{ formatPrice(p.price_per_second, p.currency) }}</td>
+                  <td class="py-1">{{ formatPrice(p.price_per_second) }}</td>
                   <td class="py-1">
                     <span :class="p.enabled ? 'text-green-600 dark:text-green-400' : 'text-gray-400'">
                       {{ p.enabled ? t('videoModels.enabled') : t('videoModels.disabled') }}
@@ -371,10 +371,9 @@ function sortedPricing(list: VideoModelPricingItem[]): VideoModelPricingItem[] {
   })
 }
 
-function formatPrice(price: number, currency: string): string {
-  const cur = currency || 'USD'
+function formatPrice(price: number): string {
   if (!Number.isFinite(price) || price <= 0) return '-'
-  return `${cur} $${price.toFixed(4)}/s`
+  return `$${price.toFixed(4)}/s`
 }
 
 async function copy(text: string) {

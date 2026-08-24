@@ -193,6 +193,10 @@ export interface OrganizationUsageRow {
   cache_read_tokens: number
   cache_creation_5m_tokens: number
   cache_creation_1h_tokens: number
+  input_cost: number
+  output_cost: number
+  cache_creation_cost: number
+  cache_read_cost: number
   actual_cost: string
   total_cost: string
   rate_multiplier: number
@@ -203,6 +207,10 @@ export interface OrganizationUsageRow {
   billing_type: number
   billing_mode: string
   image_count: number
+  image_input_tokens: number
+  image_input_cost: number
+  image_output_tokens: number
+  image_output_cost: number
   image_size?: string | null
   image_input_size?: string | null
   image_output_size?: string | null

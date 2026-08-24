@@ -560,9 +560,11 @@
               <button
                 @click="onSubmit"
                 :disabled="!canSubmit"
-                class="btn btn-primary"
+                class="btn btn-primary whitespace-nowrap font-semibold"
+                :aria-label="playground.isBusy.value ? t('common.loading') : submitButtonLabel"
               >
-                {{ t('videoModels.playground.btnSubmit') }}
+                <Icon v-if="playground.isBusy.value" name="refresh" size="sm" class="animate-spin" />
+                <span v-else>{{ submitButtonLabel }}</span>
               </button>
             </div>
           </div>
@@ -1371,6 +1373,13 @@ const canSubmit = computed(() => {
   if (playground.isBusy.value) return false
   if (!selectedKey.value) return false
   return true
+})
+
+const submitButtonLabel = computed(() => {
+  if (!estimateBreakdown.value) return t('videoModels.playground.btnSubmitArrow')
+  return t('videoModels.playground.btnSubmitWithEstimate', {
+    cost: `$${estimateBreakdown.value.total.toFixed(4)}`,
+  })
 })
 
 function validateFormRequired(): string | null {

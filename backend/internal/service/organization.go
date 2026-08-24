@@ -517,6 +517,10 @@ type OrganizationUsageRow struct {
 	CacheReadTokens       int            `json:"cache_read_tokens"`
 	CacheCreation5mTokens int            `json:"cache_creation_5m_tokens"`
 	CacheCreation1hTokens int            `json:"cache_creation_1h_tokens"`
+	InputCost             float64        `json:"input_cost"`
+	OutputCost            float64        `json:"output_cost"`
+	CacheCreationCost     float64        `json:"cache_creation_cost"`
+	CacheReadCost         float64        `json:"cache_read_cost"`
 	ActualCost            string         `json:"actual_cost"`
 	TotalCost             string         `json:"total_cost"`
 	RateMultiplier        float64        `json:"rate_multiplier"`
@@ -527,6 +531,10 @@ type OrganizationUsageRow struct {
 	BillingType           int8           `json:"billing_type"`
 	BillingMode           string         `json:"billing_mode"`
 	ImageCount            int            `json:"image_count"`
+	ImageInputTokens      int            `json:"image_input_tokens"`
+	ImageInputCost        float64        `json:"image_input_cost"`
+	ImageOutputTokens     int            `json:"image_output_tokens"`
+	ImageOutputCost       float64        `json:"image_output_cost"`
 	ImageSize             *string        `json:"image_size,omitempty"`
 	ImageInputSize        *string        `json:"image_input_size,omitempty"`
 	ImageOutputSize       *string        `json:"image_output_size,omitempty"`

@@ -57,6 +57,8 @@ export default {
       jsonEmpty: 'Request body is empty.',
       jsonMustBeObject: 'Request body must be a JSON object.',
       btnSubmit: 'Submit',
+      btnSubmitWithEstimate: '≈ {cost} →',
+      btnSubmitArrow: '→',
       btnReset: 'Reset',
       pollingHint: 'Status is polled every 3 seconds.',
       queuePosition: 'Queue position: {pos}',
