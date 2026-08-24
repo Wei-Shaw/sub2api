@@ -149,6 +149,45 @@ func TestDashboardAggregationRepositorySyncGroupUsageRollupsSplitsRebuildIntoDai
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestDashboardAggregationRepositorySyncGroupUsageRollupsCompletesBacklogInOuterTransaction(t *testing.T) {
+	setGroupUsageRollupTestTimezone(t)
+	db, mock := newSQLMock(t)
+	todayStart := time.Date(2026, 8, 13, 16, 0, 0, 0, time.UTC)
+	retainedFrom := time.Date(2026, 8, 10, 3, 0, 0, 0, time.UTC)
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(context.Background(), nil)
+	require.NoError(t, err)
+	repo := newDashboardAggregationRepositoryWithSQL(tx)
+
+	for _, day := range []struct {
+		closedBefore string
+		nextClosed   string
+		rebuildStart time.Time
+		last         bool
+	}{
+		{closedBefore: "2026-08-11", nextClosed: "2026-08-12", rebuildStart: time.Date(2026, 8, 10, 16, 0, 0, 0, time.UTC)},
+		{closedBefore: "2026-08-12", nextClosed: "2026-08-13", rebuildStart: time.Date(2026, 8, 11, 16, 0, 0, 0, time.UTC)},
+		{closedBefore: "2026-08-13", nextClosed: "2026-08-14", rebuildStart: time.Date(2026, 8, 12, 16, 0, 0, 0, time.UTC), last: true},
+	} {
+		mock.ExpectQuery(`SELECT closed_before::text, retained_from.*FOR UPDATE`).
+			WillReturnRows(sqlmock.NewRows([]string{"closed_before", "retained_from", "timezone_name"}).
+				AddRow(day.closedBefore, retainedFrom, "Asia/Shanghai"))
+		expectDailyRollupRebuild(mock, day.closedBefore, day.nextClosed, day.rebuildStart, day.rebuildStart.Add(24*time.Hour), "Asia/Shanghai")
+		if day.last {
+			expectRollupWatermarkTrim(mock, "2026-08-14")
+		}
+		mock.ExpectExec(`UPDATE usage_group_rollup_state`).
+			WithArgs(day.nextClosed, "Asia/Shanghai").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+	}
+	mock.ExpectRollback()
+
+	require.NoError(t, repo.SyncGroupUsageRollups(context.Background(), todayStart))
+	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestDashboardAggregationRepositorySyncGroupUsageRollupsRejectsFutureWatermark(t *testing.T) {
 	setGroupUsageRollupTestTimezone(t)
 	db, mock := newSQLMock(t)

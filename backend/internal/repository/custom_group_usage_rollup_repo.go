@@ -135,8 +135,15 @@ func (r *dashboardAggregationRepository) SyncGroupUsageRollups(ctx context.Conte
 	db, ok := r.sql.(*sql.DB)
 	if !ok {
 		// 退化路径（已在外层事务中）：无法分块提交，只能一次性完成。
-		_, err := r.syncGroupUsageRollupDayInTx(ctx, todayStart)
-		return err
+		for {
+			done, err := r.syncGroupUsageRollupDayInTx(ctx, todayStart)
+			if err != nil {
+				return err
+			}
+			if done {
+				return nil
+			}
+		}
 	}
 
 	for range groupUsageSyncMaxDaysPerRun {
