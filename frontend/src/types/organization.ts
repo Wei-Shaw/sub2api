@@ -203,6 +203,14 @@ export interface OrganizationUsageRow {
   billing_type: number
   billing_mode: string
   image_count: number
+  image_size?: string | null
+  image_input_size?: string | null
+  image_output_size?: string | null
+  image_size_source?: 'output' | 'input' | 'default' | 'legacy' | null
+  image_size_breakdown?: Record<string, number> | null
+  video_count?: number | null
+  video_resolution?: string | null
+  video_duration_seconds?: number | null
   image_urls: string[]
   cos_urls: string[]
   ip_address: string

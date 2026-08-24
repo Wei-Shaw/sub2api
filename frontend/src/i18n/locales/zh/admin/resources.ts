@@ -550,6 +550,12 @@ export default {
       clickToViewBalance: '点击查看充值记录',
       failedToLoadUser: '加载用户信息失败',
       userDeletedBadge: '已删除',
+      manualVideoBilling: '手动完成视频扣费',
+      billingPendingManual: '待人工扣费',
+      manualVideoBillingHint: '系统未能自动完成结算，预扣金额为 ${held}。请输入本次视频最终应扣费用，系统将按预扣金额多退少补。',
+      finalVideoCost: '最终扣费（美元）',
+      manualVideoBillingSuccess: '视频扣费已完成',
+      manualVideoBillingFailed: '视频扣费失败',
       tokenRanking: {
         subtitle: '按当前筛选与时间范围统计每个用户的 Token 用量',
         rowHint: '点击查看该用户的用量明细',

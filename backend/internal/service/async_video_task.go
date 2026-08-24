@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -21,6 +22,8 @@ const (
 	AsyncVideoRefundStatusSucceeded  = "succeeded"
 	AsyncVideoRefundStatusFailed     = "failed"
 )
+
+var ErrAsyncVideoBillingNotPending = errors.New("async video billing is not awaiting manual settlement")
 
 // 异步视频任务对外门面常量。
 const (
@@ -161,6 +164,8 @@ type AsyncVideoTaskRepository interface {
 	GetByUpstreamRequestID(ctx context.Context, upstreamRequestID string) (*AsyncVideoTask, error)
 	UpdateUpstreamRef(ctx context.Context, id int64, upstreamRequestID, statusURL, responseURL string) error
 	MarkSucceeded(ctx context.Context, id int64, videoURLs, cosURLs []string, resultPayload map[string]any, finalCost float64, durationSeconds int, upstreamCost float64) (bool, error)
+	MarkBillingFailed(ctx context.Context, id int64, videoURLs, cosURLs []string, resultPayload map[string]any, upstreamCost float64, durationSeconds int, reason string) (bool, error)
+	CompleteManualBilling(ctx context.Context, id int64, finalCost float64) (bool, error)
 	MarkFailed(ctx context.Context, id int64, status, errorReason string, firstRetryAt time.Time) (bool, error)
 	CompleteRefund(ctx context.Context, id int64, status string) (bool, int64, error)
 	ScheduleRefundRetry(ctx context.Context, id int64, attempts int, nextRetryAt time.Time, refundError string) (bool, error)

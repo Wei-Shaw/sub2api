@@ -569,7 +569,23 @@
                   <span v-if="!usageResultURLs(row).length">-</span>
                 </div>
               </td>
-              <td v-if="isUsageColumnVisible('cost')" class="p-3 font-mono"><div class="font-medium text-green-600 dark:text-green-400">${{ formatUsageCost(row.actual_cost) }}</div><div class="text-[11px] text-gray-400" :title="`${t('usage.rate')}: ${row.rate_multiplier || 1}x`">${{ formatUsageCost(row.total_cost) }}</div></td>
+              <td v-if="isUsageColumnVisible('cost')" class="p-3 font-mono">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-medium text-green-600 dark:text-green-400">${{ formatUsageCost(row.actual_cost) }}</span>
+                  <div
+                    v-if="isImageUsage(row) || isVideoUsage(row)"
+                    :data-testid="`organization-usage-cost-detail-${row.id}`"
+                    class="group relative"
+                    @mouseenter="showUsageCostTooltip($event, row)"
+                    @mouseleave="hideUsageCostTooltip"
+                  >
+                    <span class="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-100 transition-colors group-hover:bg-blue-100 dark:bg-gray-700 dark:group-hover:bg-blue-900/50">
+                      <Icon name="infoCircle" size="xs" class="text-gray-400 group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400" />
+                    </span>
+                  </div>
+                </div>
+                <div class="text-[11px] text-gray-400" :title="`${t('usage.rate')}: ${row.rate_multiplier || 1}x`">${{ formatUsageCost(row.total_cost) }}</div>
+              </td>
               <td v-if="isUsageColumnVisible('balance_source')" class="p-3 whitespace-nowrap">{{ t(`organization.balanceSource.${row.balance_source || 'self'}`) }}</td>
               <td v-if="isUsageColumnVisible('latency')" class="p-3"><UsageLatencyCell :first-token-ms="row.first_token_ms" :duration-ms="row.duration_ms" /></td>
               <td v-if="isUsageColumnVisible('ip_address')" class="p-3"><span v-if="row.ip_address" class="font-mono text-sm text-gray-600 dark:text-gray-400">{{ row.ip_address }}</span><span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span></td>
@@ -854,6 +870,39 @@
       </div>
     </div>
 
+    <Teleport to="body">
+      <div
+        v-if="usageCostTooltipRow"
+        class="pointer-events-none fixed z-[9999] -translate-y-1/2"
+        :style="{ left: `${usageCostTooltipPosition.x}px`, top: `${usageCostTooltipPosition.y}px` }"
+      >
+        <div class="whitespace-nowrap rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 text-xs text-white shadow-xl dark:border-gray-600 dark:bg-gray-800">
+          <div class="mb-2 border-b border-gray-700 pb-1.5">
+            <div class="mb-1 text-xs font-semibold text-gray-300">{{ t('usage.costDetails') }}</div>
+            <template v-if="isVideoUsage(usageCostTooltipRow)">
+              <div class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.videoCount') }}</span><span class="font-medium">{{ usageCostTooltipRow.video_count || 1 }}{{ t('usage.videoUnit') }}</span></div>
+              <div class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.videoResolution') }}</span><span class="font-medium">{{ usageCostTooltipRow.video_resolution || '-' }}</span></div>
+              <div class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.videoDuration') }}</span><span class="font-medium">{{ usageCostTooltipRow.video_duration_seconds ? `${usageCostTooltipRow.video_duration_seconds}s` : '-' }}</span></div>
+            </template>
+            <template v-else>
+              <div class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.imageCount') }}</span><span class="font-medium">{{ usageCostTooltipRow.image_count }}{{ t('usage.imageUnit') }}</span></div>
+              <div class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.imageBillingSize') }}</span><span class="font-medium">{{ formatImageBillingSize(usageCostTooltipRow, t) }}</span></div>
+              <div class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.imageSizeSource') }}</span><span class="font-medium">{{ formatImageSizeSource(usageCostTooltipRow, t) }}</span></div>
+              <div class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.imageInputSize') }}</span><span class="font-medium">{{ formatImageInputSize(usageCostTooltipRow, t) }}</span></div>
+              <div class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.imageOutputSize') }}</span><span class="font-medium">{{ formatImageOutputSize(usageCostTooltipRow, t) }}</span></div>
+              <div v-if="formatImageSizeBreakdown(usageCostTooltipRow)" class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.imageSizeBreakdown') }}</span><span class="font-medium">{{ formatImageSizeBreakdown(usageCostTooltipRow) }}</span></div>
+              <div class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.imageUnitPrice') }}</span><span class="font-medium text-sky-300">${{ organizationImageUnitPrice(usageCostTooltipRow) }}</span></div>
+              <div class="flex items-center justify-between gap-4"><span class="text-gray-400">{{ t('usage.imageTotalPrice') }}</span><span class="font-medium">${{ formatUsageCost(usageCostTooltipRow.total_cost) }}</span></div>
+            </template>
+          </div>
+          <div class="flex items-center justify-between gap-6"><span class="text-gray-400">{{ t('usage.rate') }}</span><span class="font-semibold text-blue-400">{{ usageCostTooltipRow.rate_multiplier || 1 }}x</span></div>
+          <div class="flex items-center justify-between gap-6"><span class="text-gray-400">{{ t('usage.original') }}</span><span class="font-medium">${{ formatUsageCost(usageCostTooltipRow.total_cost) }}</span></div>
+          <div class="flex items-center justify-between gap-6"><span class="text-gray-400">{{ t('usage.userBilled') }}</span><span class="font-semibold text-green-400">${{ formatUsageCost(usageCostTooltipRow.actual_cost) }}</span></div>
+          <div class="absolute right-full top-1/2 h-0 w-0 -translate-y-1/2 border-b-[6px] border-r-[6px] border-t-[6px] border-b-transparent border-r-gray-900 border-t-transparent dark:border-r-gray-800"></div>
+        </div>
+      </div>
+    </Teleport>
+
     <div v-if="showRename" class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
       <form class="w-full max-w-md space-y-4 rounded-md bg-white p-5 shadow-xl dark:bg-dark-800" @submit.prevent="requestNameChange">
         <h3 class="font-semibold">{{ t('organization.nameChange.title') }}</h3>
@@ -895,7 +944,8 @@ import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UsageTokenSummaryCard from '@/components/usage/UsageTokenSummaryCard.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { getLocale } from '@/i18n'
-import { getBillingModeBadgeClass, getBillingModeLabel, isVideoUsage } from '@/utils/billingMode'
+import { getBillingModeBadgeClass, getBillingModeLabel, isImageUsage, isVideoUsage } from '@/utils/billingMode'
+import { formatImageBillingSize, formatImageInputSize, formatImageOutputSize, formatImageSizeBreakdown, formatImageSizeSource } from '@/utils/imageUsage'
 import { formatDateTime } from '@/utils/format'
 import type { DashboardStats, EndpointStat, FinanceSummary, GroupStat, IAMMember, ManagedPolicy, ModelStat, OrganizationContext, OrganizationSpendLimitRule, OrganizationSpendUsage, OrganizationSubscription, OrganizationUsageParams, OrganizationUsageRow, OrganizationUsageStats, OrganizationUsageTrendPoint, PaginatedOrganizationUsage, UserBreakdownItem, UserErrorRequest, UserSpendingRankingItem, UserUsageTrendPoint } from '@/types'
 import type { PlazaPlanCard } from '@/api/plaza'
@@ -906,6 +956,8 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const { copyToClipboard } = useClipboard()
+const usageCostTooltipRow = ref<OrganizationUsageRow | null>(null)
+const usageCostTooltipPosition = ref({ x: 0, y: 0 })
 type Tab = 'finance' | 'limits' | 'dashboard' | 'subscriptions' | 'usage' | 'audit' | 'settings'
 
 // Tab 与新增独立子路由的映射。旧的 /organization?tab=xxx 仍兼容，
@@ -1339,6 +1391,21 @@ async function deleteSpendLimit(rule: OrganizationSpendLimitRule) {
 function formatUsageCost(value: string | number | null | undefined): string {
   const amount = Number(value ?? 0)
   return (Number.isFinite(amount) ? amount : 0).toFixed(6)
+}
+
+function organizationImageUnitPrice(row: OrganizationUsageRow): string {
+  if (row.image_count <= 0) return '0.000000'
+  return (Number(row.total_cost || 0) / row.image_count).toFixed(6)
+}
+
+function showUsageCostTooltip(event: MouseEvent, row: OrganizationUsageRow) {
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  usageCostTooltipRow.value = row
+  usageCostTooltipPosition.value = { x: rect.right + 8, y: rect.top + rect.height / 2 }
+}
+
+function hideUsageCostTooltip() {
+  usageCostTooltipRow.value = null
 }
 
 function usageRequestTypeLabel(type: OrganizationUsageRow['request_type']): string {

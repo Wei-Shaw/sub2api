@@ -137,10 +137,11 @@ func TestAsyncVideoTransferRetriesAtMostThreeTimesPerTask(t *testing.T) {
 
 	for range 2 {
 		result := map[string]any{"video": map[string]any{"url": originalURL}}
-		urls, gotResult := videoService.transferVideosToCOS(
+		urls, gotResult, duration := videoService.transferVideosToCOS(
 			context.Background(), task, []string{originalURL}, result,
 		)
 		require.Equal(t, []string{originalURL}, urls)
+		require.Zero(t, duration)
 		video, ok := gotResult["video"].(map[string]any)
 		require.True(t, ok)
 		require.Equal(t, originalURL, video["url"])

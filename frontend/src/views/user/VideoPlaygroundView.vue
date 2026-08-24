@@ -1918,13 +1918,13 @@ const payloadForOutputTab = computed(() => {
 // 说明：
 //   - 这里是"上游 fal 计费"级的估算，不含用户所在渠道的 rate_multiplier；
 //     所以文案上会明确标注"以实际扣费为主"。
-//   - duration 为 "auto" / 缺失 → 使用 AUTO_DURATION_FALLBACK_SECONDS=10 兜底，
+//   - duration 为 "auto" / 缺失 → 使用 AUTO_DURATION_FALLBACK_SECONDS=30 兜底，
 //     与后端 defaultAutoDurationSeconds 常量保持一致（后端预扣按这个值冻结）。
-const AUTO_DURATION_FALLBACK_SECONDS = 10
+const AUTO_DURATION_FALLBACK_SECONDS = 30
 
 // EstimateBreakdown：预估费用的结构化描述。
 // isAutoDuration：body 里 duration 是 "auto" / 缺失时置 true，UI 会在时长旁标出
-//   "auto 按 10s 预估"以避免用户误以为是精确值。
+//   "auto 按 30s 预估"以避免用户误以为是精确值。
 interface EstimateBreakdown {
   resolution: string
   unitPricePerSecond: number

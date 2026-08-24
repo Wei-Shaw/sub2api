@@ -142,6 +142,66 @@ func (r *asyncVideoTaskRepository) MarkSucceeded(ctx context.Context, id int64, 
 	if err != nil {
 		return false, fmt.Errorf("marshal result_payload: %w", err)
 	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var (
+		heldCost       float64
+		billingType    int8
+		userID         int64
+		payerUserID    sql.NullInt64
+		organizationID sql.NullInt64
+		balanceSource  sql.NullString
+		status         string
+	)
+	if err := tx.QueryRowContext(ctx, `
+		SELECT held_cost, billing_type, user_id, payer_user_id, organization_id, balance_source, status
+		FROM async_video_tasks WHERE id = $1 FOR UPDATE`, id).
+		Scan(&heldCost, &billingType, &userID, &payerUserID, &organizationID, &balanceSource, &status); err != nil {
+		return false, err
+	}
+	if isAsyncVideoTerminalStatus(status) {
+		return false, nil
+	}
+
+	delta := finalCost - heldCost
+	if billingType == service.BillingTypeBalance && delta != 0 {
+		if balanceSource.String == service.BalanceSourceCompany {
+			if !organizationID.Valid || organizationID.Int64 <= 0 {
+				return false, service.ErrCompanyNotFound
+			}
+			res, updateErr := tx.ExecContext(ctx, `UPDATE organizations SET balance = balance - $1, updated_at = NOW() WHERE id = $2`, delta, organizationID.Int64)
+			if updateErr != nil {
+				return false, updateErr
+			}
+			if affected, rowsErr := res.RowsAffected(); rowsErr != nil || affected != 1 {
+				if rowsErr != nil {
+					return false, rowsErr
+				}
+				return false, service.ErrCompanyNotFound
+			}
+		} else {
+			payerID := payerUserID.Int64
+			if payerID <= 0 {
+				payerID = userID
+			}
+			res, updateErr := tx.ExecContext(ctx, `
+				UPDATE users SET balance = balance - $1, updated_at = NOW()
+				WHERE id = $2 AND deleted_at IS NULL AND ($1::numeric <= 0 OR balance >= $1)`, delta, payerID)
+			if updateErr != nil {
+				return false, updateErr
+			}
+			if affected, rowsErr := res.RowsAffected(); rowsErr != nil || affected != 1 {
+				if rowsErr != nil {
+					return false, rowsErr
+				}
+				return false, service.ErrInsufficientBalance
+			}
+		}
+	}
 	// duration_seconds<=0 时保留原库值（例如上游没返回时长），否则以实际值覆盖。
 	// upstream_cost<=0 时保留原库值（例如 fal/atlascloud 未回传真实成本），
 	// 只有 apiz 这类回传 price 的平台才会 >0 覆盖。
@@ -162,7 +222,7 @@ func (r *asyncVideoTaskRepository) MarkSucceeded(ctx context.Context, id int64, 
 			updated_at = NOW()
 		WHERE id = $1
 			AND status NOT IN ($7, $8, $9, $13, $14)`
-	res, err := r.sql.ExecContext(ctx, query,
+	res, err := tx.ExecContext(ctx, query,
 		id,
 		service.AsyncVideoStatusSucceeded,
 		videoURLsJSON,
@@ -185,7 +245,152 @@ func (r *asyncVideoTaskRepository) MarkSucceeded(ctx context.Context, id int64, 
 	if err != nil {
 		return false, err
 	}
-	return affected > 0, nil
+	if affected == 0 {
+		return false, nil
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func isAsyncVideoTerminalStatus(status string) bool {
+	switch status {
+	case service.AsyncVideoStatusSucceeded, service.AsyncVideoStatusRefunded, service.AsyncVideoStatusExpired,
+		service.AsyncVideoStatusFailed, service.AsyncVideoStatusRefundFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+func (r *asyncVideoTaskRepository) MarkBillingFailed(ctx context.Context, id int64, videoURLs, cosURLs []string, resultPayload map[string]any, upstreamCost float64, durationSeconds int, reason string) (bool, error) {
+	videoURLsJSON, err := marshalStringSlice(videoURLs)
+	if err != nil {
+		return false, fmt.Errorf("marshal video_urls: %w", err)
+	}
+	cosURLsJSON, err := marshalStringSlice(cosURLs)
+	if err != nil {
+		return false, fmt.Errorf("marshal cos_urls: %w", err)
+	}
+	resultJSON, err := marshalAnyMap(resultPayload)
+	if err != nil {
+		return false, fmt.Errorf("marshal result_payload: %w", err)
+	}
+	res, err := r.sql.ExecContext(ctx, `
+		UPDATE async_video_tasks
+		SET status = $2,
+			video_urls = $3,
+			cos_urls = $4,
+			result_payload = $5,
+			final_cost = 0,
+			duration_seconds = CASE WHEN $13::int > 0 THEN $13 ELSE duration_seconds END,
+			upstream_cost = CASE WHEN $6::numeric > 0 THEN $6 ELSE upstream_cost END,
+			error_reason = $7,
+			refund_status = $8,
+			refund_next_retry_at = NULL,
+			refund_error = NULL,
+			finished_at = NOW(),
+			updated_at = NOW()
+		WHERE id = $1
+			AND status NOT IN ($2, $9, $10, $11, $12)`,
+		id, service.AsyncVideoStatusSucceeded, videoURLsJSON, cosURLsJSON, resultJSON,
+		upstreamCost, nullIfEmpty(reason), service.AsyncVideoRefundStatusNone,
+		service.AsyncVideoStatusRefunded, service.AsyncVideoStatusExpired,
+		service.AsyncVideoStatusFailed, service.AsyncVideoStatusRefundFailed,
+		durationSeconds,
+	)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	return affected > 0, err
+}
+
+// CompleteManualBilling atomically reconciles the existing hold and updates
+// both the task and its billing_failed usage row. Administrators may deliberately
+// take a balance negative when resolving a completed video that could not be
+// settled automatically.
+func (r *asyncVideoTaskRepository) CompleteManualBilling(ctx context.Context, id int64, finalCost float64) (bool, error) {
+	if finalCost <= 0 {
+		return false, errors.New("manual video cost must be greater than zero")
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var (
+		heldCost       float64
+		billingType    int8
+		userID         int64
+		payerUserID    sql.NullInt64
+		organizationID sql.NullInt64
+		balanceSource  sql.NullString
+		usageID        int64
+		billingStatus  string
+	)
+	if err := tx.QueryRowContext(ctx, `
+		SELECT held_cost, billing_type, user_id, payer_user_id, organization_id, balance_source
+		FROM async_video_tasks WHERE id = $1 FOR UPDATE`, id).
+		Scan(&heldCost, &billingType, &userID, &payerUserID, &organizationID, &balanceSource); err != nil {
+		return false, err
+	}
+	if err := tx.QueryRowContext(ctx, `
+		SELECT id, COALESCE(billing_status, '')
+		FROM usage_logs WHERE task_id = $1 ORDER BY id DESC LIMIT 1 FOR UPDATE`, id).
+		Scan(&usageID, &billingStatus); err != nil {
+		return false, err
+	}
+	if billingStatus != service.BillingStatusFailed {
+		return false, service.ErrAsyncVideoBillingNotPending
+	}
+
+	delta := finalCost - heldCost
+	if billingType == service.BillingTypeBalance && delta != 0 {
+		if balanceSource.String == service.BalanceSourceCompany {
+			if !organizationID.Valid || organizationID.Int64 <= 0 {
+				return false, service.ErrCompanyNotFound
+			}
+			res, updateErr := tx.ExecContext(ctx, `UPDATE organizations SET balance = balance - $1, updated_at = NOW() WHERE id = $2`, delta, organizationID.Int64)
+			if updateErr != nil {
+				return false, updateErr
+			}
+			if affected, rowsErr := res.RowsAffected(); rowsErr != nil || affected != 1 {
+				if rowsErr != nil {
+					return false, rowsErr
+				}
+				return false, service.ErrCompanyNotFound
+			}
+		} else {
+			payerID := payerUserID.Int64
+			if payerID <= 0 {
+				payerID = userID
+			}
+			res, updateErr := tx.ExecContext(ctx, `UPDATE users SET balance = balance - $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL`, delta, payerID)
+			if updateErr != nil {
+				return false, updateErr
+			}
+			if affected, rowsErr := res.RowsAffected(); rowsErr != nil || affected != 1 {
+				if rowsErr != nil {
+					return false, rowsErr
+				}
+				return false, service.ErrUserNotFound
+			}
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, `UPDATE async_video_tasks SET final_cost = $2, error_reason = NULL, updated_at = NOW() WHERE id = $1`, id, finalCost); err != nil {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE usage_logs SET total_cost = $2, actual_cost = $2, billing_status = $3 WHERE id = $1`, usageID, finalCost, service.BillingStatusCharged); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (r *asyncVideoTaskRepository) MarkFailed(ctx context.Context, id int64, status, errorReason string, firstRetryAt time.Time) (bool, error) {

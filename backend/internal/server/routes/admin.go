@@ -879,6 +879,7 @@ func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	// 不做归属校验，管理员可查看任意用户的任务；上游 AdminAuthMiddleware 已保证权限。
 	if h.VideoModel != nil {
 		admin.GET("/video-tasks/by-id/:id", h.VideoModel.GetTaskByIDAdmin)
+		admin.PATCH("/video-tasks/by-id/:id/billing", h.VideoModel.CompleteManualBillingAdmin)
 	}
 }
 

@@ -47,10 +47,13 @@ export const hasImageInputCost = (row: ImageInputCostRow | null | undefined): bo
 const knownImageSizeSources = new Set(['output', 'input', 'default', 'legacy'])
 const knownImageBillingSizes = new Set(['1K', '2K', '4K', 'mixed'])
 
-type ImageUsageRow = Pick<
-  UsageLog,
-  'image_size' | 'image_input_size' | 'image_output_size' | 'image_size_source' | 'image_size_breakdown'
->
+type ImageUsageRow = {
+  image_size?: string | null
+  image_input_size?: string | null
+  image_output_size?: string | null
+  image_size_source?: string | null
+  image_size_breakdown?: Record<string, number> | null
+}
 
 const trimmed = (value: string | null | undefined): string => value?.trim() ?? ''
 
@@ -99,7 +102,10 @@ export const formatImageSizeBreakdown = (row: ImageUsageRow | null | undefined):
 
 // --- Video size / billing helpers ---
 
-type VideoUsageRow = Pick<UsageLog, 'video_resolution' | 'video_duration_seconds'>
+type VideoUsageRow = {
+  video_resolution?: string | null
+  video_duration_seconds?: number | null
+}
 
 /**
  * formatVideoBillingSize：把视频计费维度格式化为 "720p · 10s" 这样的一行。

@@ -78,6 +78,12 @@ const messages: Record<string, string> = {
   'admin.usage.billingModeToken': 'Token',
   'admin.usage.billingModePerRequest': 'Per request',
   'admin.usage.billingModeImage': 'Image',
+	'admin.usage.manualVideoBilling': 'Complete video billing manually',
+	'admin.usage.billingPendingManual': 'Manual billing required',
+	'usage.videoCount': 'Video count',
+	'usage.videoUnit': ' videos',
+	'usage.videoResolution': 'Resolution',
+	'usage.videoDuration': 'Duration',
 	'admin.usage.requestIdCopied': 'Request ID copied',
 	'keys.copied': 'Copied',
 	'keys.copyToClipboard': 'Copy to clipboard',
@@ -168,6 +174,34 @@ describe('admin UsageTable tooltip', () => {
       toJSON: () => ({}),
     } as DOMRect)
   })
+
+	it('shows video billing dimensions and emits manual billing for failed settlement', async () => {
+		const row = {
+			...baseImageRow,
+			request_id: 'req-video-billing-failed',
+			billing_mode: 'video',
+			billing_status: 'billing_failed',
+			image_count: 0,
+			video_count: 1,
+			video_resolution: '1080p',
+			video_duration_seconds: 17,
+			task_id: 42,
+		}
+		const wrapper = mount(UsageTable, {
+			props: { data: [row], loading: false, columns: [] },
+			global: {
+				stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true },
+			},
+		})
+
+		await wrapper.get('.group.relative').trigger('mouseenter')
+		await nextTick()
+		expect(wrapper.text()).toContain('1080p')
+		expect(wrapper.text()).toContain('17s')
+
+		await wrapper.get('[data-testid="manual-video-billing-button"]').trigger('click')
+		expect(wrapper.emitted('manualVideoBilling')).toEqual([[row]])
+	})
 
   it('marks only usage rows that actually applied long-context billing', () => {
     const wrapper = mount(UsageTable, {

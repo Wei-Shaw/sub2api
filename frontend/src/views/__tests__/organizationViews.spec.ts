@@ -438,8 +438,17 @@ describe('organization views', () => {
 				cache_creation_tokens: 0, cache_read_tokens: 0, cache_creation_5m_tokens: 0, cache_creation_1h_tokens: 0,
 				actual_cost: '1.25', total_cost: '1.25', rate_multiplier: 1, endpoint: '/api/v1/model/video',
 				group_name: 'Enterprise', request_type: 'sync', billing_type: 0, billing_mode: 'video', image_count: 0,
+				video_count: 1, video_resolution: '1080p', video_duration_seconds: 17,
 				image_urls: ['https://cdn.example.test/video.mp4'], cos_urls: [], ip_address: '', user_agent: '', status: 'charged',
 				created_at: '2026-08-23T13:16:31Z', task_id: 17,
+			}, {
+				id: 89, member_user_id: 42, member_login: 'reader', member_username: '', api_key_name: 'image-key',
+				model: 'gpt-image-2', input_tokens: 0, output_tokens: 0,
+				cache_creation_tokens: 0, cache_read_tokens: 0, cache_creation_5m_tokens: 0, cache_creation_1h_tokens: 0,
+				actual_cost: '0.40', total_cost: '0.40', rate_multiplier: 1, endpoint: '/v1/images/generations',
+				group_name: 'Enterprise', request_type: 'sync', billing_type: 0, billing_mode: 'image', image_count: 2,
+				image_size: '2K', image_size_source: 'output', image_urls: [], cos_urls: [], ip_address: '', user_agent: '', status: 'charged',
+				created_at: '2026-08-23T13:15:31Z',
 			}],
 			total: 45, page: 1, page_size: 20, pages: 3,
 		})
@@ -455,6 +464,16 @@ describe('organization views', () => {
 		expect(wrapper.find('img[src="https://cdn.example.test/video.mp4"]').exists()).toBe(false)
 		expect(wrapper.find('[data-testid="organization-video-detail-88"]').exists()).toBe(false)
 		expect(api.getUsageVideoTask).not.toHaveBeenCalled()
+		const videoCostDetail = wrapper.get('[data-testid="organization-usage-cost-detail-88"]')
+		const imageCostDetail = wrapper.get('[data-testid="organization-usage-cost-detail-89"]')
+		await videoCostDetail.trigger('mouseenter')
+		await wrapper.vm.$nextTick()
+		expect(document.body.textContent).toContain('1080p')
+		expect(document.body.textContent).toContain('17s')
+		await videoCostDetail.trigger('mouseleave')
+		await imageCostDetail.trigger('mouseenter')
+		await wrapper.vm.$nextTick()
+		expect(document.body.textContent).toContain('2K')
 		expect(wrapper.text()).toContain('$1.250000')
 		expect(wrapper.text()).toContain('21:16:31')
 		expect(wrapper.text()).not.toMatch(/\b(?:AM|PM)\b/i)

@@ -553,6 +553,12 @@ export default {
       clickToViewBalance: 'Click to view balance history',
       failedToLoadUser: 'Failed to load user info',
       userDeletedBadge: 'Deleted',
+      manualVideoBilling: 'Complete video billing manually',
+      billingPendingManual: 'Manual billing required',
+      manualVideoBillingHint: 'Automatic settlement failed. The held amount is ${held}. Enter the final video charge to refund or collect the difference.',
+      finalVideoCost: 'Final charge (USD)',
+      manualVideoBillingSuccess: 'Video billing completed',
+      manualVideoBillingFailed: 'Failed to complete video billing',
       tokenRanking: {
         subtitle: 'Per-user token usage for the current filters and time range',
         rowHint: "Click to view this user's usage details",

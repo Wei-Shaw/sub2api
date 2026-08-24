@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sort"
 	"strconv"
@@ -556,6 +557,40 @@ func (h *VideoModelHandler) GetTaskByIDAdmin(c *gin.Context) {
 	}
 	if task == nil {
 		response.Error(c, http.StatusNotFound, "task not found")
+		return
+	}
+	response.Success(c, toVideoTaskItem(task))
+}
+
+type manualVideoBillingRequest struct {
+	FinalCost float64 `json:"final_cost" binding:"required,gt=0"`
+}
+
+// CompleteManualBillingAdmin resolves a billing_failed video usage record.
+// The entered amount is the final user charge in USD; the service reconciles it
+// against the amount already held when the task was submitted.
+func (h *VideoModelHandler) CompleteManualBillingAdmin(c *gin.Context) {
+	if h.videoService == nil {
+		response.Error(c, http.StatusInternalServerError, "video service unavailable")
+		return
+	}
+	id, parseErr := strconv.ParseInt(strings.TrimSpace(c.Param("id")), 10, 64)
+	if parseErr != nil || id <= 0 {
+		response.Error(c, http.StatusBadRequest, "invalid 'id'")
+		return
+	}
+	var req manualVideoBillingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "final_cost must be greater than zero")
+		return
+	}
+	task, err := h.videoService.CompleteManualBilling(c.Request.Context(), id, req.FinalCost)
+	if err != nil {
+		if errors.Is(err, service.ErrAsyncVideoBillingNotPending) {
+			response.Error(c, http.StatusConflict, err.Error())
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "complete manual video billing: "+err.Error())
 		return
 	}
 	response.Success(c, toVideoTaskItem(task))

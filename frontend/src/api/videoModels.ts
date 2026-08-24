@@ -132,6 +132,11 @@ const videoModelsAPI = {
   getTaskByIdAdmin(id: number) {
     return apiClient.get<VideoTaskItem>(`/admin/video-tasks/by-id/${id}`)
   },
+  completeManualBillingAdmin(id: number, finalCost: number) {
+    return apiClient.patch<VideoTaskItem>(`/admin/video-tasks/by-id/${id}/billing`, {
+      final_cost: finalCost,
+    })
+  },
 }
 
 export default videoModelsAPI

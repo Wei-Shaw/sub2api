@@ -19,6 +19,7 @@ type asyncVideoReconcilerTaskRepo struct {
 	AsyncVideoTaskRepository
 	listCalled           chan struct{}
 	markSucceeded        bool
+	markBillingFailed    bool
 	markFailed           bool
 	failedReason         string
 	completeRefundErrors []error
@@ -58,6 +59,11 @@ func (r *asyncVideoReconcilerTaskRepo) MarkSucceeded(
 	float64,
 ) (bool, error) {
 	r.markSucceeded = true
+	return true, nil
+}
+
+func (r *asyncVideoReconcilerTaskRepo) MarkBillingFailed(context.Context, int64, []string, []string, map[string]any, float64, int, string) (bool, error) {
+	r.markBillingFailed = true
 	return true, nil
 }
 
@@ -144,7 +150,8 @@ func TestAsyncVideoReconcileChecksUpstreamBeforeExpiredDeadline(t *testing.T) {
 	}
 
 	require.NoError(t, exec.ReconcileTask(context.Background(), task, account))
-	require.True(t, repo.markSucceeded)
+	require.True(t, repo.markBillingFailed)
+	require.False(t, repo.markFailed, "completed upstream output must not be treated as generation failure")
 	require.Equal(t, AsyncVideoStatusSucceeded, task.Status)
 }
 

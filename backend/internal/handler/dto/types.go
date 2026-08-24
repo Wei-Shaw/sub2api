@@ -560,18 +560,21 @@ type UsageLog struct {
 	FirstTokenMs *int   `json:"first_token_ms"`
 
 	// 图片生成字段
-	ImageCount         int            `json:"image_count"`
-	ImageSize          *string        `json:"image_size"`
-	ImageInputSize     *string        `json:"image_input_size"`
-	ImageQuality       *string        `json:"image_quality"`
-	ImageOutputSize    *string        `json:"image_output_size"`
-	ImageInputTokens   int            `json:"image_input_tokens"`
-	ImageInputCost     float64        `json:"image_input_cost"`
-	ImageOutputTokens  int            `json:"image_output_tokens"`
-	ImageOutputCost    float64        `json:"image_output_cost"`
-	ImageSizeSource    *string        `json:"image_size_source"`
-	ImageSizeBreakdown map[string]int `json:"image_size_breakdown"`
-	MediaType          *string        `json:"media_type"`
+	ImageCount           int            `json:"image_count"`
+	ImageSize            *string        `json:"image_size"`
+	ImageInputSize       *string        `json:"image_input_size"`
+	ImageQuality         *string        `json:"image_quality"`
+	ImageOutputSize      *string        `json:"image_output_size"`
+	ImageInputTokens     int            `json:"image_input_tokens"`
+	ImageInputCost       float64        `json:"image_input_cost"`
+	ImageOutputTokens    int            `json:"image_output_tokens"`
+	ImageOutputCost      float64        `json:"image_output_cost"`
+	ImageSizeSource      *string        `json:"image_size_source"`
+	ImageSizeBreakdown   map[string]int `json:"image_size_breakdown"`
+	MediaType            *string        `json:"media_type"`
+	VideoCount           int            `json:"video_count,omitempty"`
+	VideoResolution      *string        `json:"video_resolution,omitempty"`
+	VideoDurationSeconds *int           `json:"video_duration_seconds,omitempty"`
 
 	// 异步媒体任务结果（fal 等异步出图）。
 	// TaskID 关联异步任务；ImageURLs/CosURLs 为出图结果地址（供下载，包含失败/退费记录仍可展示已产出图片）；
