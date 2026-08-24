@@ -453,3 +453,60 @@ func TestOpenAIGatewayServiceForward_NormalizesResponsesLiteToolsForOAuth(t *tes
 		})
 	}
 }
+
+// The Lite header is forwarded upstream for every OpenAI account type, so the
+// Lite constraints must be applied for every account type that forwards it.
+// An API key account used to send the header without the constraint, and the
+// upstream answered "X-OpenAI-Internal-Codex-Responses-Lite requires
+// parallel_tool_calls to be false".
+func TestForwardAppliesResponsesLiteConstraintsToAPIKeyAccount(t *testing.T) {
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_lite","model":"gpt-5.4","usage":{"input_tokens":1,"output_tokens":1}}`)),
+		},
+	}
+	svc := newOpenAIImageGenerationControlTestService(upstream)
+	c, _ := newOpenAIImageGenerationControlTestContext(true, "codex_cli_rs/0.98.0")
+	c.Request.Header.Set(responsesLiteHeader, "true")
+
+	account := newOpenAIImageGenerationControlTestAccount()
+	require.Equal(t, AccountTypeAPIKey, account.Type, "the regression is specific to API key accounts")
+	require.False(t, account.IsOpenAIOAuthLike(), "the old gate skipped exactly this account shape")
+
+	body := []byte(`{"model":"gpt-5.4","input":"write code","stream":false,"parallel_tool_calls":true,` +
+		`"tools":[{"type":"function","name":"lookup","description":"d","parameters":{"type":"object","properties":{}}}]}`)
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, upstream.lastReq)
+
+	require.Equal(t, "true", upstream.lastReq.Header.Get(responsesLiteHeader),
+		"the header still reaches the upstream")
+	require.False(t, gjson.GetBytes(upstream.lastBody, "parallel_tool_calls").Bool(),
+		"declaring Lite upstream requires serialising tool calls")
+}
+
+// A request without tools carries no Lite tool constraint, so the gateway must
+// not invent parallel_tool_calls for it.
+func TestForwardLeavesParallelToolCallsAloneWithoutTools(t *testing.T) {
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_lite","model":"gpt-5.4","usage":{"input_tokens":1,"output_tokens":1}}`)),
+		},
+	}
+	svc := newOpenAIImageGenerationControlTestService(upstream)
+	c, _ := newOpenAIImageGenerationControlTestContext(true, "codex_cli_rs/0.98.0")
+	c.Request.Header.Set(responsesLiteHeader, "true")
+
+	_, err := svc.Forward(context.Background(), c,
+		newOpenAIImageGenerationControlTestAccount(),
+		[]byte(`{"model":"gpt-5.4","input":"write code","stream":false}`))
+	require.NoError(t, err)
+	require.NotNil(t, upstream.lastReq)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "parallel_tool_calls").Exists())
+}

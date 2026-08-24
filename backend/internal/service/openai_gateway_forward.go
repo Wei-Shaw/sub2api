@@ -76,7 +76,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			body = reasoningBody
 		}
 	}
-	if account.IsOpenAIOAuthLike() && isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader)) {
+	// The Lite header sits in openaiPassthroughAllowedHeaders, so it reaches the
+	// upstream for every OpenAI account type, not just OAuth-like ones. Anything
+	// whose header is forwarded must also have the Lite constraints applied, or
+	// the upstream rejects the request with "requires parallel_tool_calls to be
+	// false" for a rule this gateway declared but never enforced.
+	if account.IsOpenAI() && (account.IsOpenAIApiKey() || account.IsOpenAIOAuthLike()) &&
+		isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader)) {
 		liteBody, changed, liteErr := normalizeOpenAIResponsesLiteToolsPayload(body)
 		if liteErr != nil {
 			param := "tools"
