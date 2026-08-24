@@ -69,9 +69,6 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 REDACTED
 	clientStream := gjson.GetBytes(body, "stream").Bool()
 
-	// 1b. Extract service tier from the raw body before any transformation.
-	serviceTier := extractOpenAIServiceTierFromBody(body)
-
 	// 2. Resolve model mapping (same as ForwardAsChatCompletions)
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
@@ -106,6 +103,9 @@ REDACTED
 		return nil, policyErr
 REDACTED
 	upstreamBody = updatedBody
+	// 计费兜底 tier = 最终出站 body（policy filter/force 后）里的 tier；
+	// 最终值由 resolvedOpenAIUpstreamServiceTier 决定（上游回显优先）。
+	serviceTier := extractOpenAIServiceTierFromBody(upstreamBody)
 	if account.Platform == PlatformGrok {
 		strippedBody, stripErr := stripRedundantGrokChatViewImageTool(upstreamBody)
 		if stripErr != nil {
@@ -390,7 +390,7 @@ REDACTED
 		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
 		UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
 		ReasoningEffort:               reasoningEffort,
-		ServiceTier:                   serviceTier,
+		ServiceTier:                   resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 		Stream:                        true,
 		Duration:                      time.Since(startTime),
 		FirstTokenMs:                  firstTokenMs,
@@ -492,7 +492,7 @@ REDACTED
 		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
 		UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
 		ReasoningEffort:               reasoningEffort,
-		ServiceTier:                   serviceTier,
+		ServiceTier:                   resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 		Stream:                        false,
 		Duration:                      time.Since(startTime),
 REDACTED, nil
