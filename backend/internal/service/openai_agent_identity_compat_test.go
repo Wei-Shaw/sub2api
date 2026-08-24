@@ -133,8 +133,8 @@ REDACTED
 	require.Equal(t, "account-agent-passthrough", req.Header.Get("chatgpt-account-id"))
 	require.NotEqual(t, "client-session", req.Header.Get("session_id"))
 	require.NotEqual(t, "client-conversation", req.Header.Get("conversation_id"))
-	require.Equal(t, isolateOpenAISessionID(0, "client-session"), req.Header.Get("session_id"))
-	require.Equal(t, isolateOpenAISessionID(0, "client-conversation"), req.Header.Get("conversation_id"))
+	require.Equal(t, isolateOpenAIUpstreamSessionID(0, account, "client-session"), req.Header.Get("session_id"))
+	require.Equal(t, isolateOpenAIUpstreamSessionID(0, account, "client-conversation"), req.Header.Get("conversation_id"))
 	requestBody, err := io.ReadAll(req.Body)
 REDACTED
 	require.Contains(t, string(requestBody), `"prompt_cache_key":"cache-agent"`)
@@ -147,7 +147,7 @@ REDACTED
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
 REDACTED
-			"chatgpt_account_id": "account-oauth-passthrough",
+			"chatgpt_account_id": "account-agent-passthrough",
 	REDACTED,
 REDACTED
 	oauthRecorder := httptest.NewRecorder()

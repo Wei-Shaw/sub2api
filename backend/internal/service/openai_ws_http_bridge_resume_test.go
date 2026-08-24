@@ -150,11 +150,13 @@ REDACTED
 	account := &Account{
 		ID: 129, Name: "limited", Platform: PlatformOpenAI, Type: AccountTypeOAuth,
 		Status: StatusActive, Schedulable: true, Concurrency: 1,
-		Extra: map[string]any{"openai_oauth_responses_websockets_v2_mode": OpenAIWSIngressModeHTTPBridgeREDACTED,
+		Extra:       map[string]any{"openai_oauth_responses_websockets_v2_mode": OpenAIWSIngressModeHTTPBridgeREDACTED,
+REDACTED"chatgpt_account_id": "account-a", "chatgpt_user_id": "user-a"REDACTED,
 REDACTED
 	nextAccount := *account
 	nextAccount.ID = 130
 	nextAccount.Name = "replacement"
+	nextAccount.Credentials = map[string]any{"chatgpt_account_id": "account-b", "chatgpt_user_id": "user-b"REDACTED
 
 	serverErrCh := make(chan error, 1)
 	failoverCh := make(chan []byte, 1)
@@ -212,7 +214,7 @@ REDACTED
 	require.Equal(t, "response.completed", gjson.GetBytes(completed, "type").String())
 
 	writeCtx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
-	err = clientConn.Write(writeCtx, websocket.MessageText, []byte(`{"type":"response.create","model":"gpt-5.6-sol","previous_response_id":"resp_first","input":[{"type":"function_call_output","call_id":"call_1","output":"second"REDACTED]REDACTED`))
+	err = clientConn.Write(writeCtx, websocket.MessageText, []byte(`{"type":"response.create","model":"gpt-5.6-sol","previous_response_id":"resp_first","prompt_cache_key":"client-session","client_metadata":{"session_id":"client-session","thread_id":"client-thread"REDACTED,"input":[{"type":"function_call_output","call_id":"call_1","output":"second"REDACTED]REDACTED`))
 	cancel()
 REDACTED
 
@@ -237,6 +239,8 @@ REDACTED
 		require.Contains(t, input.Raw, "second")
 		require.Equal(t, 1, strings.Count(input.Raw, `"id":"fc_1"`))
 		require.Equal(t, 2, strings.Count(input.Raw, `"call_id":"call_1"`))
+		require.Equal(t, "client-session", gjson.GetBytes(retryPayload, "client_metadata.session_id").String())
+		require.Equal(t, "client-thread", gjson.GetBytes(retryPayload, "client_metadata.thread_id").String())
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for current-turn failover")
 REDACTED
@@ -249,7 +253,11 @@ REDACTED
 REDACTED
 	require.Len(t, upstream.bodies, 3)
 	require.Contains(t, string(upstream.bodies[0]), "first")
+	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, "session", "client-session"), gjson.GetBytes(upstream.bodies[1], "client_metadata.session_id").String())
+	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, "thread", "client-thread"), gjson.GetBytes(upstream.bodies[1], "client_metadata.thread_id").String())
 	require.NotContains(t, string(upstream.bodies[2]), "previous_response_id")
 	require.Contains(t, string(upstream.bodies[2]), "second")
+	require.Equal(t, scopeCodexAccountIdentityValue(&nextAccount, 0, "session", "client-session"), gjson.GetBytes(upstream.bodies[2], "client_metadata.session_id").String())
+	require.Equal(t, scopeCodexAccountIdentityValue(&nextAccount, 0, "thread", "client-thread"), gjson.GetBytes(upstream.bodies[2], "client_metadata.thread_id").String())
 	require.Empty(t, upstream.requests[2].Header.Get(openAIWSTurnStateHeader))
 REDACTED
