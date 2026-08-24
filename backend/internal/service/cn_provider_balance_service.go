@@ -255,5 +255,5 @@ func (s *CNProviderBalanceService) resolveProxyURL(ctx context.Context, account 
 	return ""
 }
 
-// cnBalanceURL 已迁移至各平台的 CNBalanceProbe.BalanceURL 钩子
+// 余额端点构造逻辑在各平台的 CNBalanceProbe.BalanceURL 钩子
 // （cn_provider_kimi.go / cn_provider_deepseek.go）。

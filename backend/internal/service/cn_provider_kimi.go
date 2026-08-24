@@ -52,12 +52,17 @@ type kimiQuotaProbe struct{}
 
 // QuotaURL 根据 base_url 解析 Kimi For Coding 额度端点。
 // cc-switch query_kimi 固定探测 https://api.kimi.com/coding/v1/usages
+// kimiQuotaURL 返回 Kimi For Coding 的固定额度端点
 // （实测 /coding/usages 无 /v1 → 404）。coding/v1（CC 协议默认）与
 // coding（Anthropic 协议默认）两种 base 统一剥掉尾部后拼回 /v1/usages，
 // 协议切换不影响额度探测端点。
-func (kimiQuotaProbe) QuotaURL(account *Account) string {
-	base := strings.TrimSuffix(strings.TrimRight(account.GetOpenAIBaseURL(), "/"), "/v1")
+func kimiQuotaURL(baseURL string) string {
+	base := strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1")
 	return base + "/v1/usages"
+}
+
+func (kimiQuotaProbe) QuotaURL(account *Account) string {
+	return kimiQuotaURL(account.GetOpenAIBaseURL())
 }
 
 func (kimiQuotaProbe) QuotaAuthHeader(apiKey string) string {

@@ -39,7 +39,12 @@ var zhipuProviderSpec = CNProviderSpec{
 type zhipuQuotaProbe struct{}
 
 func (zhipuQuotaProbe) QuotaURL(account *Account) string {
-	return zhipuQuotaHost(account.GetOpenAIBaseURL()) + "/api/monitor/usage/quota/limit"
+	return zhipuQuotaURL(account.GetOpenAIBaseURL())
+}
+
+// zhipuQuotaURL 拼接智谱额度端点（按域名路由主机）。
+func zhipuQuotaURL(baseURL string) string {
+	return zhipuQuotaHost(baseURL) + "/api/monitor/usage/quota/limit"
 }
 
 // QuotaAuthHeader 智谱额度端点鉴权不加 Bearer 前缀。
