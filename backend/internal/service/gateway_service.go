@@ -31,11 +31,11 @@ import (
 )
 
 const (
-	claudeAPIURL            = "https://api.anthropic.com/v1/messages?beta=true"
-	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
-	stickySessionTTL        = time.Hour // 粘性会话TTL
+	claudeAPIURL               = "https://api.anthropic.com/v1/messages?beta=true"
+	claudeAPICountTokensURL    = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
+	stickySessionTTL           = time.Hour // 粘性会话TTL
 	defaultKiroStreamKeepalive = 25 * time.Second
-	defaultMaxLineSize      = 500 * 1024 * 1024
+	defaultMaxLineSize         = 500 * 1024 * 1024
 	// Canonical Claude Code banner. Keep it EXACT (no trailing whitespace/newlines)
 	// to match real Claude CLI traffic as closely as possible. When we need a visual
 	// separator between system blocks, we add "\n\n" at concatenation time.
@@ -763,8 +763,8 @@ type GatewayService struct {
 	deferredService       *DeferredService
 	concurrencyService    *ConcurrencyService
 	claudeTokenProvider   *ClaudeTokenProvider
-	kiroTokenProvider    *KiroTokenProvider
-	kiroCooldownStore  KiroCooldownStore
+	kiroTokenProvider     *KiroTokenProvider
+	kiroCooldownStore     KiroCooldownStore
 	sessionLimitCache     SessionLimitCache // 会话数量限制缓存（仅 Anthropic OAuth/SetupToken）
 	rpmCache              RPMCache          // RPM 计数缓存（仅 Anthropic OAuth/SetupToken）
 	userGroupRateResolver *userGroupRateResolver
@@ -841,8 +841,8 @@ func NewGatewayService(
 		httpUpstream:          httpUpstream,
 		deferredService:       deferredService,
 		claudeTokenProvider:   claudeTokenProvider,
-		kiroTokenProvider:   kiroTokenProvider,
-		kiroCooldownStore:   kiroCooldownStore,
+		kiroTokenProvider:     kiroTokenProvider,
+		kiroCooldownStore:     kiroCooldownStore,
 		sessionLimitCache:     sessionLimitCache,
 		rpmCache:              rpmCache,
 		userGroupRateCache:    gocache.New(userGroupRateTTL, time.Minute),

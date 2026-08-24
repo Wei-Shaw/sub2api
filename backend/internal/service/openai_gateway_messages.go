@@ -775,11 +775,11 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 									event.Response.Usage = event.Usage
 								}
 							}
-						if event.Response.Usage != nil {
-							usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
-						}
-						mergeOpenAIUsageKiroCreditsFromJSON(&usage, []byte(payload))
-						return event.Response, usage, acc, nil
+							if event.Response.Usage != nil {
+								usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
+							}
+							mergeOpenAIUsageKiroCreditsFromJSON(&usage, []byte(payload))
+							return event.Response, usage, acc, nil
 						}
 					}
 				}
