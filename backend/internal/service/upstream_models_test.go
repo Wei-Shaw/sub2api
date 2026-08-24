@@ -394,6 +394,31 @@ REDACTED
 	require.Equal(t, "Bearer openai-key", upstream.lastReq.Header.Get("Authorization"))
 REDACTED
 
+func TestFetchUpstreamSupportedModelsUsesConfiguredBodyLimit(t *testing.T) {
+	t.Parallel()
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"gpt-5"REDACTED]REDACTED`)),
+REDACTEDREDACTED
+	cfg := upstreamModelSyncTestConfig()
+	cfg.Gateway.ModelsListReadMaxBytes = 8
+	svc := &AccountTestService{httpUpstream: upstream, cfg: cfgREDACTED
+
+	_, err := svc.FetchUpstreamSupportedModels(context.Background(), &Account{
+		ID:       7,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+REDACTED
+			"api_key":  "openai-key",
+			"base_url": "https://openai.example.com/v1",
+	REDACTED,
+REDACTED)
+REDACTED
+	require.Contains(t, err.Error(), "response exceeds 8 bytes")
+REDACTED
+
 func TestFetchUpstreamSupportedModelsParsesGrokAPIKeyResponse(t *testing.T) {
 	t.Parallel()
 

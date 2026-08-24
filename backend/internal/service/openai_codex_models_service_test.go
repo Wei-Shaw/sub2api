@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -621,6 +622,51 @@ REDACTED
 		REDACTED
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestFetchCodexModelsManifestUsesConfiguredBodyLimit(t *testing.T) {
+	upstream := &codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"models":[{"slug":"gpt-5.6"REDACTED]REDACTED`)),
+	REDACTED, nil
+REDACTEDREDACTED
+
+	s := newCodexModelsAPIKeyTestService(upstream)
+	s.cfg.Gateway.ModelsListReadMaxBytes = 8
+	_, err := s.FetchCodexModelsManifest(
+		context.Background(),
+		newCodexModelsAPIKeyTestAccount("https://upstream.example"),
+		"0.144.0",
+		"",
+	)
+REDACTED
+	require.Equal(t, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", infraerrors.Reason(err))
+	require.Contains(t, err.Error(), "response exceeds 8 bytes")
+	require.True(t, IsRetryableCodexModelsManifestError(err))
+REDACTED
+
+func TestFetchCodexModelsManifestAcceptsConfiguredLimitAboveLegacyBoundary(t *testing.T) {
+	manifestBody := `{"models":[{"slug":"gpt-5.6","display_name":"` + strings.Repeat("x", (8<<20)+1024) + `"REDACTED]REDACTED`
+	require.Greater(t, len(manifestBody), 8<<20)
+	require.Less(t, len(manifestBody), 16<<20)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, manifestBody)
+REDACTED))
+	defer server.Close()
+
+	original := chatgptCodexModelsURL
+	chatgptCodexModelsURL = server.URL
+	defer func() { chatgptCodexModelsURL = original REDACTED()
+
+	s := &OpenAIGatewayService{cfg: &config.Config{REDACTEDREDACTED
+	s.cfg.Gateway.ModelsListReadMaxBytes = 16 << 20
+	manifest, err := s.FetchCodexModelsManifest(context.Background(), newCodexModelsTestAccount(), "0.144.0", "")
+REDACTED
+	require.True(t, bytes.Equal([]byte(manifestBody), manifest.Body), "manifest body must be returned intact")
 REDACTED
 
 func TestFetchCodexModelsManifestRejectsInvalidEnvelope(t *testing.T) {
