@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
 
@@ -240,6 +241,10 @@ func buildOpenAIWSHTTPBridgeErrorEvent(statusCode int, message string) []byte {
 }
 
 func buildOpenAIWSHTTPBridgeFailedEvent(responseID, model string, source []byte, fallbackMessage string) []byte {
+	responseID = strings.TrimSpace(responseID)
+	if responseID == "" {
+		responseID = "resp_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	}
 	errorType := strings.TrimSpace(gjson.GetBytes(source, "error.type").String())
 	if errorType == "" {
 		errorType = strings.TrimSpace(gjson.GetBytes(source, "response.error.type").String())
@@ -271,7 +276,7 @@ func buildOpenAIWSHTTPBridgeFailedEvent(responseID, model string, source []byte,
 	}
 	body, err := json.Marshal(map[string]any{"type": "response.failed", "response": response})
 	if err != nil {
-		return []byte(fmt.Sprintf(`{"type":"response.failed","response":{"created_at":%d,"status":"failed","output":[],"error":{"code":"upstream_error","message":"Upstream response failed"}}}`, time.Now().Unix()))
+		return buildOpenAIResponseFailedFallbackPayload(responseID)
 	}
 	return body
 }
@@ -723,6 +728,15 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				clientMessage = rewritten
 			}
 		}
+		normalizedCreatedAt, normalizedOK := normalizeOpenAIResponsesEventCreatedAt(clientMessage, eventType)
+		if !normalizedOK {
+			return nil, wrapOpenAIWSIngressTurnError(
+				"normalize_created_at",
+				fmt.Errorf("normalize OpenAI WS HTTP bridge created_at for %s", eventType),
+				wroteDownstream,
+			)
+		}
+		clientMessage = normalizedCreatedAt
 		if !clientDisconnected && !suppressClientMessage {
 			stageBeforeSemanticOutput := turn == 1 && account.Platform == PlatformOpenAI && !wroteDownstream
 			commitStagedMessages := !stageBeforeSemanticOutput ||

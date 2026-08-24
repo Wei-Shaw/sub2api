@@ -1960,6 +1960,15 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				trimmedData = strings.TrimSpace(string(sanitizedData))
 				line = "data: " + string(sanitizedData)
 			}
+			normalizedCreatedAt, normalizedOK := normalizeOpenAIResponsesEventCreatedAt(dataBytes, eventType)
+			if !normalizedOK {
+				return resultWithUsage(), fmt.Errorf("normalize OpenAI passthrough SSE created_at for %s", eventType)
+			}
+			if !bytes.Equal(normalizedCreatedAt, dataBytes) {
+				dataBytes = normalizedCreatedAt
+				trimmedData = strings.TrimSpace(string(normalizedCreatedAt))
+				line = "data: " + string(normalizedCreatedAt)
+			}
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
 			if lineStartsClientOutput && trimmedData != "[DONE]" && !openAIStreamEventTypeIsTerminal(eventType) {
 				semanticOutputSeen = true
@@ -2136,6 +2145,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	if err != nil {
 		return nil, fmt.Errorf("restore OpenAI Responses client tools: %w", err)
 	}
+	body, normalizedOK := normalizeOpenAIResponsesCreatedAt(body, "created_at")
+	if !normalizedOK {
+		return nil, errors.New("normalize OpenAI passthrough non-streaming created_at")
+	}
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
@@ -2194,6 +2207,11 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		}
 		restoredBody = restoreCodexToolNamesFromContext(c, restoredBody)
 		body = restoredBody
+		var normalizedOK bool
+		body, normalizedOK = normalizeOpenAIResponsesCreatedAt(body, "created_at")
+		if !normalizedOK {
+			return nil, errors.New("normalize OpenAI passthrough SSE-to-JSON created_at")
+		}
 	} else {
 		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
 			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)

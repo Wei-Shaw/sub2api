@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+var injectedResponsesCreatedAtPattern = regexp.MustCompile(`,"created_at":[1-9][0-9]*`)
+
+func requirePassthroughSSEOnlyInjectsCreatedAt(t *testing.T, got, want string, count int) {
+	t.Helper()
+	require.Len(t, injectedResponsesCreatedAtPattern.FindAllString(got, -1), count)
+	require.Equal(t, want, injectedResponsesCreatedAtPattern.ReplaceAllString(got, ""))
+}
 
 type passthroughFlushTestWriter struct {
 	gin.ResponseWriter
@@ -117,11 +126,12 @@ func TestOpenAIStreamingPassthroughFlushesAtCompleteEventBoundaries(t *testing.T
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, upstream, recorder.Body.String())
+	body := recorder.Body.String()
+	requirePassthroughSSEOnlyInjectsCreatedAt(t, body, upstream, 1)
 	require.Equal(t, []int{
 		len(firstEvent),
 		len(firstEvent) + len(heartbeat),
-		len(upstream),
+		len(body),
 	}, writer.flushBodyLengths)
 	require.Equal(t, 3, result.usage.InputTokens)
 	require.Equal(t, 2, result.usage.OutputTokens)
@@ -138,10 +148,14 @@ func TestOpenAIStreamingPassthroughKeepsPreamblePendingUntilFirstOutputBoundary(
 	_, recorder, writer, err := runPassthroughFlushTest(t, io.NopCloser(strings.NewReader(upstream)), -1)
 
 	require.NoError(t, err)
-	require.Equal(t, upstream, recorder.Body.String())
+	body := recorder.Body.String()
+	requirePassthroughSSEOnlyInjectsCreatedAt(t, body, upstream, 2)
+	firstOutputBoundary := strings.Index(body, firstOutput)
+	require.NotEqual(t, -1, firstOutputBoundary)
+	firstOutputBoundary += len(firstOutput)
 	require.Equal(t, []int{
-		len(preamble) + len(firstOutput),
-		len(upstream),
+		firstOutputBoundary,
+		len(body),
 	}, writer.flushBodyLengths)
 }
 
@@ -154,8 +168,9 @@ func TestOpenAIStreamingPassthroughFlushesTerminalEventAtEOFWithoutBlankLine(t *
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, wantBody, recorder.Body.String())
-	require.Equal(t, []int{len(wantBody)}, writer.flushBodyLengths)
+	body := recorder.Body.String()
+	requirePassthroughSSEOnlyInjectsCreatedAt(t, body, wantBody, 1)
+	require.Equal(t, []int{len(body)}, writer.flushBodyLengths)
 	require.Equal(t, 5, result.usage.InputTokens)
 	require.Equal(t, 2, result.usage.OutputTokens)
 }

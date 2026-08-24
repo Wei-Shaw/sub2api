@@ -164,13 +164,10 @@ func buildOpenAICompactSSEPayload(finalResponse []byte) ([]byte, bool) {
 		}
 		response = next
 	}
-	createdAt := gjson.GetBytes(response, "created_at")
-	if !createdAt.Exists() || createdAt.Type != gjson.Number || createdAt.Float() <= 0 {
-		next, err := sjson.SetBytes(response, "created_at", time.Now().Unix())
-		if err != nil {
-			return nil, false
-		}
-		response = next
+	var normalized bool
+	response, normalized = normalizeOpenAIResponsesCreatedAt(response, "created_at")
+	if !normalized {
+		return nil, false
 	}
 	if usage := gjson.GetBytes(response, "usage"); usage.Exists() && !openAICompactUsageParsableByCodex(usage) {
 		next, err := sjson.DeleteBytes(response, "usage")

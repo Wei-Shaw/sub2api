@@ -655,6 +655,16 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				data = string(sanitizedData)
 				line = "data: " + data
 			}
+			normalizedCreatedAt, normalizedOK := normalizeOpenAIResponsesEventCreatedAt(dataBytes, eventType)
+			if !normalizedOK {
+				streamEarlyErr = fmt.Errorf("normalize OpenAI Responses SSE created_at for %s", eventType)
+				return
+			}
+			if !bytes.Equal(normalizedCreatedAt, dataBytes) {
+				dataBytes = normalizedCreatedAt
+				data = string(normalizedCreatedAt)
+				line = "data: " + data
+			}
 			// Replace model in response if needed.
 			// Fast path: most events do not contain model field values.
 			if needModelReplace && mappedModel != "" && strings.Contains(line, mappedModel) {
@@ -1626,6 +1636,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		return nil, fmt.Errorf("restore OpenAI namespace response: %w", err)
 	}
 	body = restoreCodexToolNamesFromContext(c, body)
+	body, normalizedOK := normalizeOpenAIResponsesCreatedAt(body, "created_at")
+	if !normalizedOK {
+		return nil, errors.New("normalize OpenAI Responses non-streaming created_at")
+	}
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	// Codex 协议要求 /responses/compact JSON 响应携带 x-codex-turn-state
 	// （codex-api/src/endpoint/compact.rs 从响应头捕获），显式回传。
@@ -1724,6 +1738,11 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		}
 		restoredBody = restoreCodexToolNamesFromContext(c, restoredBody)
 		body = restoredBody
+		var normalizedOK bool
+		body, normalizedOK = normalizeOpenAIResponsesCreatedAt(body, "created_at")
+		if !normalizedOK {
+			return nil, errors.New("normalize OpenAI Responses SSE-to-JSON created_at")
+		}
 	} else {
 		if originalModel != mappedModel {
 			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
@@ -1827,8 +1846,7 @@ func buildOpenAIResponseFailedSSE(responseID, model string, source []byte, fallb
 		"response": response,
 	})
 	if err != nil {
-		// All values above are JSON primitives, so this is only a defensive fallback.
-		payload = []byte(fmt.Sprintf(`{"type":"response.failed","response":{"created_at":%d,"status":"failed","output":[],"error":{"code":"upstream_error","message":"Upstream response failed"}}}`, time.Now().Unix()))
+		payload = buildOpenAIResponseFailedFallbackPayload(responseID)
 	}
 	return "event: response.failed\ndata: " + string(payload) + "\n\n"
 }
