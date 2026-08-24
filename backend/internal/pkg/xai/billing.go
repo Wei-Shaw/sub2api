@@ -19,7 +19,7 @@ const (
 	// repository and service layers build their own client identity from it, so
 	// one bump here covers OAuth traffic and billing probes together.
 	// Keep in sync with https://x.ai/cli/stable.
-	CLIClientVersion = "0.2.114"
+	CLIClientVersion = "0.2.120"
 	// billingCLIUserAgent is the legacy pager/shell UA used by billing probes.
 	// Distinct from CLIUserAgent() in cli_identity.go (workspace-style UA).
 	billingCLIUserAgent = "grok-pager/" + CLIClientVersion + " grok-shell/" + CLIClientVersion + " (macos; aarch64)"
