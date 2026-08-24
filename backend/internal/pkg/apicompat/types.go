@@ -360,6 +360,7 @@ func (t *ResponsesTool) UnmarshalJSON(data []byte) error {
 type ResponsesResponse struct {
 	ID          string            `json:"id"`
 	Object      string            `json:"object"` // "response"
+	CreatedAt   int64             `json:"created_at"`
 	Model       string            `json:"model"`
 	Status      string            `json:"status"` // "completed" | "incomplete" | "failed"
 	Output      []ResponsesOutput `json:"output"`

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -115,10 +116,11 @@ func writeOpenAICompactSSEFailureMessage(c *gin.Context, statusCode int, errType
 	payload, err := json.Marshal(map[string]any{
 		"type": "response.failed",
 		"response": map[string]any{
-			"id":     "resp_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
-			"object": "response",
-			"status": "failed",
-			"output": []any{},
+			"id":         "resp_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
+			"object":     "response",
+			"created_at": time.Now().Unix(),
+			"status":     "failed",
+			"output":     []any{},
 			"error": map[string]any{
 				"code":    errType,
 				"message": message,
@@ -157,6 +159,14 @@ func buildOpenAICompactSSEPayload(finalResponse []byte) ([]byte, bool) {
 	root := gjson.ParseBytes(response)
 	if strings.TrimSpace(root.Get("id").String()) == "" {
 		next, err := sjson.SetBytes(response, "id", "resp_"+strings.ReplaceAll(uuid.NewString(), "-", ""))
+		if err != nil {
+			return nil, false
+		}
+		response = next
+	}
+	createdAt := gjson.GetBytes(response, "created_at")
+	if !createdAt.Exists() || createdAt.Type != gjson.Number || createdAt.Float() <= 0 {
+		next, err := sjson.SetBytes(response, "created_at", time.Now().Unix())
 		if err != nil {
 			return nil, false
 		}

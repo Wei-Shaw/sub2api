@@ -263,7 +263,7 @@ func buildOpenAIWSHTTPBridgeFailedEvent(responseID, model string, source []byte,
 		errorBody["type"] = errorType
 	}
 	response := map[string]any{
-		"id": responseID, "object": "response", "status": "failed",
+		"id": responseID, "object": "response", "created_at": time.Now().Unix(), "status": "failed",
 		"output": []any{}, "error": errorBody,
 	}
 	if model = strings.TrimSpace(model); model != "" {
@@ -271,7 +271,7 @@ func buildOpenAIWSHTTPBridgeFailedEvent(responseID, model string, source []byte,
 	}
 	body, err := json.Marshal(map[string]any{"type": "response.failed", "response": response})
 	if err != nil {
-		return []byte(`{"type":"response.failed","response":{"status":"failed","output":[],"error":{"code":"upstream_error","message":"Upstream response failed"}}}`)
+		return []byte(fmt.Sprintf(`{"type":"response.failed","response":{"created_at":%d,"status":"failed","output":[],"error":{"code":"upstream_error","message":"Upstream response failed"}}}`, time.Now().Unix()))
 	}
 	return body
 }

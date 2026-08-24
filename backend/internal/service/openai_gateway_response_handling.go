@@ -1812,11 +1812,12 @@ func buildOpenAIResponseFailedSSE(responseID, model string, source []byte, fallb
 		errorBody["type"] = errorType
 	}
 	response := gin.H{
-		"id":     responseID,
-		"object": "response",
-		"status": "failed",
-		"output": []any{},
-		"error":  errorBody,
+		"id":         responseID,
+		"object":     "response",
+		"created_at": time.Now().Unix(),
+		"status":     "failed",
+		"output":     []any{},
+		"error":      errorBody,
 	}
 	if model = strings.TrimSpace(model); model != "" {
 		response["model"] = model
@@ -1827,7 +1828,7 @@ func buildOpenAIResponseFailedSSE(responseID, model string, source []byte, fallb
 	})
 	if err != nil {
 		// All values above are JSON primitives, so this is only a defensive fallback.
-		payload = []byte(`{"type":"response.failed","response":{"status":"failed","output":[],"error":{"code":"upstream_error","message":"Upstream response failed"}}}`)
+		payload = []byte(fmt.Sprintf(`{"type":"response.failed","response":{"created_at":%d,"status":"failed","output":[],"error":{"code":"upstream_error","message":"Upstream response failed"}}}`, time.Now().Unix()))
 	}
 	return "event: response.failed\ndata: " + string(payload) + "\n\n"
 }
