@@ -333,6 +333,9 @@ func TestCleanupUsageLogsKeepsPartialCutoffDay(t *testing.T) {
 		INSERT INTO usage_logs (id, user_id, api_key_id, actual_cost, created_at) VALUES
 			(1, 1, 100, 1, TIMESTAMPTZ '2026-07-31 23:59:59+08'),
 			(2, 1, 100, 2, TIMESTAMPTZ '2026-08-01 07:00:00+08');
+		UPDATE usage_group_rollup_state
+		SET closed_before = DATE '2026-08-02'
+		WHERE id = 1;
 	`)
 	require.NoError(t, err)
 
@@ -348,6 +351,54 @@ func TestCleanupUsageLogsKeepsPartialCutoffDay(t *testing.T) {
 	require.NoError(t, rows.Err())
 	require.NoError(t, rows.Close())
 	require.Equal(t, []int64{2}, ids, "cutoff 当天必须整日保留，避免重建残缺日桶")
+}
+
+func TestCleanupUsageLogsDoesNotPassUnpublishedDays(t *testing.T) {
+	ctx := context.Background()
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
+
+	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
+	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	defer func() { _ = tx.Rollback() }()
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO users (id) VALUES (1);
+		INSERT INTO usage_logs (id, user_id, api_key_id, actual_cost, created_at) VALUES
+			(1, 1, 100, 1, TIMESTAMPTZ '2026-08-10 12:00:00+08'),
+			(2, 1, 100, 2, TIMESTAMPTZ '2026-08-11 12:00:00+08');
+		INSERT INTO usage_apikey_daily_rollups
+			(bucket_date, api_key_id, actual_cost, request_count, computed_at)
+		VALUES (DATE '2026-08-10', 100, 1, 1, NOW());
+		UPDATE usage_group_rollup_state
+		SET closed_before = DATE '2026-08-11',
+			retained_from = TIMESTAMPTZ '2026-08-10 00:00:00+08'
+		WHERE id = 1;
+	`)
+	require.NoError(t, err)
+
+	repo := newDashboardAggregationRepositoryWithSQL(tx)
+	require.NoError(t, repo.CleanupUsageLogs(ctx, time.Date(2026, 8, 13, 0, 0, 0, 0, appTimezone.Location())))
+
+	var ids []int64
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM usage_logs ORDER BY id`)
+	require.NoError(t, err)
+	for rows.Next() {
+		var id int64
+		require.NoError(t, rows.Scan(&id))
+		ids = append(ids, id)
+	}
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+	require.Equal(t, []int64{2}, ids, "尚未发布的 08-11 明细必须保留")
+
+	var closedBefore string
+	var retainedFrom time.Time
+	require.NoError(t, tx.QueryRowContext(ctx, `
+		SELECT closed_before::text, retained_from
+		FROM usage_group_rollup_state
+		WHERE id = 1
+	`).Scan(&closedBefore, &retainedFrom))
+	require.Equal(t, "2026-08-11", closedBefore)
+	require.True(t, retainedFrom.Equal(time.Date(2026, 8, 10, 16, 0, 0, 0, time.UTC)))
 }
 
 // 多天回填必须按天分块提交：每块结束就释放 usage_group_rollup_state 的行锁，
@@ -837,14 +888,20 @@ func TestGroupUsageRollupSyncRebuildsAfterTimezoneChange(t *testing.T) {
 		SET LOCAL TIME ZONE 'UTC';
 		INSERT INTO groups (id) VALUES (10);
 		INSERT INTO users (id) VALUES (1);
-		INSERT INTO usage_logs (id, user_id, group_id, actual_cost, created_at) VALUES
-			(1, 1, 10, 3, TIMESTAMPTZ '2026-03-08 05:30:00+00'),
-			(2, 1, 10, 5, TIMESTAMPTZ '2026-03-09 04:30:00+00');
-		INSERT INTO usage_group_daily_rollups (bucket_date, group_id, actual_cost, computed_at)
-		VALUES (DATE '2026-03-08', 10, 99, NOW());
+		INSERT INTO usage_logs (id, user_id, group_id, api_key_id, actual_cost, created_at) VALUES
+			(1, 1, 10, 100, 3, TIMESTAMPTZ '2026-03-08 20:00:00+00'),
+			(2, 1, 10, 100, 5, TIMESTAMPTZ '2026-03-09 04:30:00+00');
+		INSERT INTO usage_group_daily_rollups (bucket_date, group_id, actual_cost, computed_at) VALUES
+			(DATE '2026-03-08', 10, 10, NOW()),
+			(DATE '2026-03-09', 10, 99, NOW());
+		INSERT INTO usage_apikey_daily_rollups
+			(bucket_date, api_key_id, actual_cost, request_count, computed_at)
+		VALUES
+			(DATE '2026-03-08', 100, 10, 1, NOW()),
+			(DATE '2026-03-09', 100, 99, 9, NOW());
 		UPDATE usage_group_rollup_state
 		SET closed_before = DATE '2026-03-09',
-			retained_from = TIMESTAMPTZ '2026-03-08 05:30:00+00',
+			retained_from = TIMESTAMPTZ '2026-03-08 16:00:00+00',
 			timezone_name = 'Asia/Shanghai'
 		WHERE id = 1;
 	`)
@@ -869,15 +926,33 @@ func TestGroupUsageRollupSyncRebuildsAfterTimezoneChange(t *testing.T) {
 		FROM usage_group_daily_rollups
 		WHERE bucket_date = DATE '2026-03-08' AND group_id = 10
 	`).Scan(&rollupCost))
-	require.InDelta(t, 3, rollupCost, 0.0000001)
+	require.InDelta(t, 13, rollupCost, 0.0000001)
+
+	var apiKeyCost float64
+	var requestCount int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+		SELECT actual_cost, request_count
+		FROM usage_apikey_daily_rollups
+		WHERE bucket_date = DATE '2026-03-08' AND api_key_id = 100
+	`).Scan(&apiKeyCost, &requestCount))
+	require.InDelta(t, 13, apiKeyCost, 0.0000001)
+	require.Equal(t, int64(2), requestCount)
+
+	var staleBuckets int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM usage_group_daily_rollups
+		WHERE bucket_date >= DATE '2026-03-09'
+	`).Scan(&staleBuckets))
+	require.Equal(t, 0, staleBuckets)
 
 	usageRepo := newUsageLogRepositoryWithSQL(nil, tx)
 	result, err := usageRepo.GetAllGroupUsageSummary(ctx, todayStart)
 	require.NoError(t, err)
 	require.Len(t, result, 1)
-	require.InDelta(t, 8, result[0].TotalCost, 0.0000001)
+	require.InDelta(t, 18, result[0].TotalCost, 0.0000001)
 	require.InDelta(t, 5, result[0].TodayCost, 0.0000001)
-	require.InDelta(t, 3, result[0].YesterdayCost, 0.0000001)
+	require.InDelta(t, 13, result[0].YesterdayCost, 0.0000001)
 }
 
 func TestGroupUsageSummaryUsesConfiguredDSTBoundaries(t *testing.T) {

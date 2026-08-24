@@ -57,6 +57,37 @@ func TestDashboardAggregationRepositorySyncGroupUsageRollupsRebuildsWhenTimezone
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestDashboardAggregationRepositorySyncGroupUsageRollupsPreservesArchivedBoundaryOnTimezoneChange(t *testing.T) {
+	useGroupUsageRepositoryTestTimezone(t, "America/New_York")
+
+	db, mock := newSQLMock(t)
+	repo := newDashboardAggregationRepositoryWithSQL(db)
+	todayStart := time.Date(2026, 3, 9, 4, 0, 0, 0, time.UTC)
+	retainedFrom := time.Date(2026, 3, 8, 16, 0, 0, 0, time.UTC)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(`SELECT closed_before::text, retained_from.*FOR UPDATE`).
+		WillReturnRows(sqlmock.NewRows([]string{"closed_before", "retained_from", "timezone_name"}).
+			AddRow("2026-03-09", retainedFrom, "Asia/Shanghai"))
+	mock.ExpectExec(`DELETE FROM usage_group_daily_rollups.*bucket_date >=`).
+		WithArgs("2026-03-09").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`DELETE FROM usage_apikey_daily_rollups.*bucket_date >=`).
+		WithArgs("2026-03-09").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`(?s)WITH agg.*INSERT INTO usage_apikey_daily_rollups`).
+		WithArgs(retainedFrom, todayStart, "America/New_York", true).
+		WillReturnResult(sqlmock.NewResult(0, 2))
+	expectRollupWatermarkTrim(mock, "2026-03-09")
+	mock.ExpectExec(`UPDATE usage_group_rollup_state`).
+		WithArgs("2026-03-09", "America/New_York").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	require.NoError(t, repo.SyncGroupUsageRollups(context.Background(), todayStart))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestDashboardAggregationRepositorySyncGroupUsageRollupsPublishesWatermarkLast(t *testing.T) {
 	setGroupUsageRollupTestTimezone(t)
 	db, mock := newSQLMock(t)
@@ -228,8 +259,7 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsNonPartitionedAdvancesRet
 	mock.ExpectQuery(`SELECT EXISTS`).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 	mock.ExpectBegin()
-	mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	expectPublishedRollupBoundary(mock, "2026-08-14", "Asia/Shanghai")
 	mock.ExpectExec(`(?s)UPDATE usage_group_rollup_state.*retained_from = GREATEST`).
 		WithArgs(archiveBoundary).
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -268,8 +298,7 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsPartitionedSortsAndAdvanc
 		{name: "usage_logs_202606", retainedFrom: timezone.StartOfDay(julyStart).AddDate(0, 0, 1).UTC()},
 	} {
 		mock.ExpectBegin()
-		mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
-			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+		expectPublishedRollupBoundary(mock, "2026-08-14", "Asia/Shanghai")
 		mock.ExpectExec(`(?s)UPDATE usage_group_rollup_state.*retained_from = GREATEST`).
 			WithArgs(partition.retainedFrom).
 			WillReturnResult(sqlmock.NewResult(0, 1))
@@ -292,8 +321,7 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsNonPartitionedFailureRoll
 	mock.ExpectQuery(`SELECT EXISTS`).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 	mock.ExpectBegin()
-	mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	expectPublishedRollupBoundary(mock, "2026-08-14", "Asia/Shanghai")
 	mock.ExpectExec(`(?s)UPDATE usage_group_rollup_state.*retained_from = GREATEST`).
 		WithArgs(archiveBoundary).
 		WillReturnError(sql.ErrConnDone)
@@ -320,8 +348,7 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsPartitionFailureRollsBack
 			AddRow("usage_logs_202606").
 			AddRow("usage_logs_202604"))
 	mock.ExpectBegin()
-	mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	expectPublishedRollupBoundary(mock, "2026-08-14", "Asia/Shanghai")
 	mock.ExpectExec(`(?s)UPDATE usage_group_rollup_state.*retained_from = GREATEST`).
 		WithArgs(mayArchiveBoundary).
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -331,6 +358,44 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsPartitionFailureRollsBack
 
 	err := repo.CleanupUsageLogs(context.Background(), cutoff)
 	require.ErrorIs(t, err, dropErr)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDashboardAggregationRepositoryCleanupUsageLogsCapsDeletionAtPublishedBoundary(t *testing.T) {
+	setGroupUsageRollupTestTimezone(t)
+	db, mock := newSQLMock(t)
+	repo := newDashboardAggregationRepositoryWithSQL(db)
+	cutoff := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
+	publishedBoundary := time.Date(2026, 8, 9, 16, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery(`SELECT EXISTS`).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	mock.ExpectBegin()
+	expectPublishedRollupBoundary(mock, "2026-08-10", "Asia/Shanghai")
+	mock.ExpectExec(`(?s)UPDATE usage_group_rollup_state.*retained_from = GREATEST`).
+		WithArgs(publishedBoundary).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`(?s)DELETE FROM usage_logs`).
+		WithArgs(publishedBoundary, usageLogsCleanupBatchSize).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	require.NoError(t, repo.CleanupUsageLogs(context.Background(), cutoff))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDashboardAggregationRepositoryCleanupUsageLogsWaitsForTimezoneTransition(t *testing.T) {
+	setGroupUsageRollupTestTimezone(t)
+	db, mock := newSQLMock(t)
+	repo := newDashboardAggregationRepositoryWithSQL(db)
+
+	mock.ExpectQuery(`SELECT EXISTS`).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	mock.ExpectBegin()
+	expectPublishedRollupBoundary(mock, "2026-08-10", "America/New_York")
+	mock.ExpectCommit()
+
+	require.NoError(t, repo.CleanupUsageLogs(context.Background(), time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)))
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -350,8 +415,14 @@ func expectDailyRollupRebuild(mock sqlmock.Sqlmock, fromDate, toDate string, reb
 		WithArgs(fromDate, toDate).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(`(?s)WITH agg.*INSERT INTO usage_apikey_daily_rollups`).
-		WithArgs(rebuildStart, rebuildEnd, tz).
+		WithArgs(rebuildStart, rebuildEnd, tz, false).
 		WillReturnResult(sqlmock.NewResult(0, 2))
+}
+
+func expectPublishedRollupBoundary(mock sqlmock.Sqlmock, closedBefore, timezoneName string) {
+	mock.ExpectQuery(`SELECT closed_before::text, timezone_name.*FOR UPDATE`).
+		WillReturnRows(sqlmock.NewRows([]string{"closed_before", "timezone_name"}).
+			AddRow(closedBefore, timezoneName))
 }
 
 // expectRollupWatermarkTrim 断言追平当日时对两张表的残桶清理。

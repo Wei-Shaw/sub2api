@@ -224,6 +224,22 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupDayInTx(ctx context
 	if err != nil {
 		return false, err
 	}
+	if timezoneChanged && previousRetainedFrom.After(time.Unix(0, 0).UTC()) {
+		logger.LegacyPrintf(
+			"repository.group_usage_rollup",
+			"[GroupUsageRollup] 时区切换为 %s，%s 以前的归档日桶保持冻结，边界日仅合并仍保留的原始日志",
+			timezoneName,
+			archiveDate,
+		)
+		return r.syncGroupUsageRollupTimezoneTransition(
+			ctx,
+			todayDate,
+			todayDateTime,
+			previousRetainedFrom,
+			stateTimezoneName,
+			timezoneName,
+		)
+	}
 
 	// retained_from 只表示显式归档屏障，不能跟随当前 MIN(created_at) 前移。
 	// 否则删除最早一个保留日的全部明细后，同步会跳过该空日并留下陈旧日桶。
@@ -266,14 +282,6 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupDayInTx(ctx context
 		rebuildStartDate = bootstrapStartDate
 	}
 
-	if timezoneChanged && previousRetainedFrom.After(time.Unix(0, 0).UTC()) {
-		logger.LegacyPrintf(
-			"repository.group_usage_rollup",
-			"[GroupUsageRollup] 时区切换为 %s，%s 以前的日桶因原始日志已归档无法重建，保留旧时区口径",
-			timezoneName,
-			archiveDate,
-		)
-	}
 	if !rebuildStart.Before(todayDateTime) {
 		// 归档屏障已越过今日：没有可发布的历史日，仅把状态对齐到今日。
 		return true, r.publishGroupUsageWatermark(ctx, todayDate, todayDate, timezoneName)
@@ -293,6 +301,62 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupDayInTx(ctx context
 	done := nextClosedDate == todayDate
 	// 追平今日时顺带清掉今日及以后的残桶：当天用量走原始日志尾段，
 	// 留着这些桶会与尾段重复计入。
+	trimFrom := ""
+	if done {
+		trimFrom = todayDate
+	}
+	if err := r.publishGroupUsageWatermark(ctx, nextClosedDate, trimFrom, timezoneName); err != nil {
+		return false, err
+	}
+	return done, nil
+}
+
+// syncGroupUsageRollupTimezoneTransition 切换时区后的第一块只处理新时区里跨过
+// retained_from 的边界日。旧时区中 retained_from 以前的日桶已经没有明细可重建，
+// 因此保留；边界日仍存在的明细以增量方式合入可能同名的冻结桶。
+func (r *dashboardAggregationRepository) syncGroupUsageRollupTimezoneTransition(
+	ctx context.Context,
+	todayDate string,
+	todayDateTime time.Time,
+	retainedFrom time.Time,
+	stateTimezoneName string,
+	timezoneName string,
+) (bool, error) {
+	stateLocation, err := time.LoadLocation(stateTimezoneName)
+	if err != nil {
+		return false, fmt.Errorf("加载分组用量旧时区 %q: %w", stateTimezoneName, err)
+	}
+	oldArchiveDate := retainedFrom.In(stateLocation).Format("2006-01-02")
+	newArchiveDate := service.GroupUsageDate(retainedFrom)
+	newArchiveStart, err := service.ParseGroupUsageDate(newArchiveDate)
+	if err != nil {
+		return false, err
+	}
+
+	nextClosed := newArchiveStart.AddDate(0, 0, 1)
+	if nextClosed.After(todayDateTime) {
+		nextClosed = todayDateTime
+	}
+	nextClosedDate := service.GroupUsageDate(nextClosed)
+
+	// 旧时区下从归档屏障所在日期起的桶都有原始日志，可以安全丢弃后按新时区重建。
+	// 更早的桶被冻结保留；当新边界日期更早时，同名桶必须做加法合并而非替换。
+	if err := r.resetMutableUsageDailyRollups(ctx, oldArchiveDate); err != nil {
+		return false, err
+	}
+	if retainedFrom.Before(nextClosed) {
+		if err := r.aggregateUsageDailyRollups(
+			ctx,
+			retainedFrom,
+			nextClosed,
+			timezoneName,
+			newArchiveDate < oldArchiveDate,
+		); err != nil {
+			return false, err
+		}
+	}
+
+	done := nextClosedDate == todayDate
 	trimFrom := ""
 	if done {
 		trimFrom = todayDate
@@ -328,7 +392,16 @@ func (r *dashboardAggregationRepository) rebuildUsageDailyRollupsForDay(
 	`, rebuildStartDate, nextClosedDate); err != nil {
 		return fmt.Errorf("清理 API Key 用量日桶: %w", err)
 	}
+	return r.aggregateUsageDailyRollups(ctx, rebuildStart, nextClosed, timezoneName, false)
+}
 
+func (r *dashboardAggregationRepository) aggregateUsageDailyRollups(
+	ctx context.Context,
+	rebuildStart time.Time,
+	nextClosed time.Time,
+	timezoneName string,
+	additive bool,
+) error {
 	// 一次扫描出两个维度：GROUPING SETS 的两组分别落到两张表。
 	if _, err := r.sql.ExecContext(ctx, `
 		WITH agg AS (
@@ -357,7 +430,10 @@ func (r *dashboardAggregationRepository) rebuildUsageDailyRollupsForDay(
 			WHERE group_rolled_up = 0 AND group_id IS NOT NULL
 			ON CONFLICT (bucket_date, group_id)
 			DO UPDATE SET
-				actual_cost = EXCLUDED.actual_cost,
+				actual_cost = CASE
+					WHEN $4::boolean THEN usage_group_daily_rollups.actual_cost + EXCLUDED.actual_cost
+					ELSE EXCLUDED.actual_cost
+				END,
 				computed_at = EXCLUDED.computed_at
 			RETURNING 1
 		)
@@ -367,13 +443,35 @@ func (r *dashboardAggregationRepository) rebuildUsageDailyRollupsForDay(
 		WHERE apikey_rolled_up = 0 AND api_key_id IS NOT NULL
 		ON CONFLICT (bucket_date, api_key_id)
 		DO UPDATE SET
-			actual_cost = EXCLUDED.actual_cost,
-			request_count = EXCLUDED.request_count,
+			actual_cost = CASE
+				WHEN $4::boolean THEN usage_apikey_daily_rollups.actual_cost + EXCLUDED.actual_cost
+				ELSE EXCLUDED.actual_cost
+			END,
+			request_count = CASE
+				WHEN $4::boolean THEN usage_apikey_daily_rollups.request_count + EXCLUDED.request_count
+				ELSE EXCLUDED.request_count
+			END,
 			computed_at = EXCLUDED.computed_at
-	`, rebuildStart.UTC(), nextClosed.UTC(), timezoneName); err != nil {
+	`, rebuildStart.UTC(), nextClosed.UTC(), timezoneName, additive); err != nil {
 		return fmt.Errorf("重建用量日桶: %w", err)
 	}
 
+	return nil
+}
+
+func (r *dashboardAggregationRepository) resetMutableUsageDailyRollups(ctx context.Context, fromDate string) error {
+	if _, err := r.sql.ExecContext(ctx, `
+		DELETE FROM usage_group_daily_rollups
+		WHERE bucket_date >= $1::date
+	`, fromDate); err != nil {
+		return fmt.Errorf("清理旧时区分组用量日桶: %w", err)
+	}
+	if _, err := r.sql.ExecContext(ctx, `
+		DELETE FROM usage_apikey_daily_rollups
+		WHERE bucket_date >= $1::date
+	`, fromDate); err != nil {
+		return fmt.Errorf("清理旧时区 API Key 用量日桶: %w", err)
+	}
 	return nil
 }
 
@@ -448,13 +546,7 @@ func invalidateGroupUsageRollupsAt(ctx context.Context, tx *sql.Tx, affectedAt t
 // 归档删除必须先调用它再删数据（能用事务时放进同一事务），失效触发器据此跳过水位回退，
 // 从而让已发布的历史日桶保持不变、不被重算。屏障单调递增，可重复调用。
 func advanceGroupUsageRetention(ctx context.Context, exec sqlExecutor, cutoff time.Time) error {
-	// 月分区按 UTC 边界切分，该边界可能落在配置时区的一天中间。屏障必须
-	// 上取整到下一个本地日边界，冻结包含已删除行的整个日桶。
-	localDayStart := timezone.StartOfDay(cutoff)
-	archiveBoundary := localDayStart
-	if !cutoff.Equal(localDayStart) {
-		archiveBoundary = localDayStart.AddDate(0, 0, 1)
-	}
+	archiveBoundary := groupUsageArchiveBoundary(cutoff)
 	if _, err := exec.ExecContext(ctx, `
 		UPDATE usage_group_rollup_state
 		SET retained_from = GREATEST(retained_from, $1::timestamptz),
@@ -464,4 +556,38 @@ func advanceGroupUsageRetention(ctx context.Context, exec sqlExecutor, cutoff ti
 		return fmt.Errorf("推进分组用量归档屏障: %w", err)
 	}
 	return nil
+}
+
+func groupUsageArchiveBoundary(cutoff time.Time) time.Time {
+	// 月分区按 UTC 边界切分，该边界可能落在配置时区的一天中间。屏障必须
+	// 上取整到下一个本地日边界，冻结包含已删除行的整个日桶。
+	localDayStart := timezone.StartOfDay(cutoff)
+	archiveBoundary := localDayStart
+	if !cutoff.Equal(localDayStart) {
+		archiveBoundary = localDayStart.AddDate(0, 0, 1)
+	}
+	return archiveBoundary.UTC()
+}
+
+// lockGroupUsagePublishedBoundary 返回当前时区下已经完整发布的原始日志排他上界。
+// 时区状态尚未追平时暂停归档，避免在边界桶转换完成前删除唯一可重建的明细。
+func lockGroupUsagePublishedBoundary(ctx context.Context, exec sqlExecutor) (time.Time, bool, error) {
+	var closedBefore string
+	var stateTimezoneName string
+	if err := scanSingleRow(ctx, exec, `
+		SELECT closed_before::text, timezone_name
+		FROM usage_group_rollup_state
+		WHERE id = 1
+		FOR UPDATE
+	`, nil, &closedBefore, &stateTimezoneName); err != nil {
+		return time.Time{}, false, fmt.Errorf("读取分组用量发布边界: %w", err)
+	}
+	if stateTimezoneName != service.GroupUsageTimezoneName() {
+		return time.Time{}, false, nil
+	}
+	publishedBoundary, err := service.ParseGroupUsageDate(closedBefore)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("解析分组用量发布边界 %q: %w", closedBefore, err)
+	}
+	return publishedBoundary.UTC(), true, nil
 }
