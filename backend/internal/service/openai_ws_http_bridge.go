@@ -609,7 +609,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		if normalized, changed := normalizeCompletedImageGenerationStatus(upstreamMessage); changed {
 			upstreamMessage = normalized
 		}
-		if normalized, changed := strictWireNormalizer.normalize(upstreamMessage); changed {
+		if normalized, changed, err := strictWireNormalizer.normalize(upstreamMessage); err != nil {
+			logOpenAIWSModeInfo("strict_wire_normalize_failed path=http_bridge err=%v", err)
+		} else if changed {
 			upstreamMessage = normalized
 		}
 		eventType, eventResponseID, _ := parseOpenAIWSEventEnvelope(upstreamMessage)

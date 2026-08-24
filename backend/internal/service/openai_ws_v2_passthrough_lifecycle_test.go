@@ -589,3 +589,49 @@ func TestPassthroughLifecycle_SecondTurnTimeoutIsNotFailoverSafe(t *testing.T) {
 		t.Fatal("second turn first semantic output was left unbounded")
 	}
 }
+
+// A passthrough connection reuses one normalizer for every turn, so the relay
+// must clear it once a turn's terminal frame has reached the client. Otherwise
+// turn N+1 inherits turn N's item ids whenever the upstream reuses an
+// output_index and item type.
+func TestOpenAIWSPassthroughMarkTurnCompletedResetsStrictWire(t *testing.T) {
+	clientFrameConn := &openAIWSClientFrameConn{
+		interTurnStarted: make(chan struct{}, 1),
+		strictWire:       newOpenAIWSStrictWireNormalizer(),
+	}
+
+	added, _, err := clientFrameConn.strictWire.normalize([]byte(`{
+		"type":"response.output_item.added",
+		"output_index":0,
+		"item":{"type":"message","role":"assistant","phase":"final_answer","content":[]}
+	}`))
+	require.NoError(t, err)
+	turnOneID := gjson.GetBytes(added, "item.id").String()
+	require.True(t, strings.HasPrefix(turnOneID, "msg_"))
+	require.NotEmpty(t, clientFrameConn.strictWire.items)
+
+	clientFrameConn.markTurnCompleted()
+	require.Empty(t, clientFrameConn.strictWire.items,
+		"the terminal frame has been written, so this turn's items must be forgotten")
+	require.Empty(t, clientFrameConn.strictWire.indexIDs)
+
+	// Turn 2 reuses output_index 0 with the same item type and again omits the
+	// id, which is exactly the upstream shape this normalizer repairs.
+	completed, _, err := clientFrameConn.strictWire.normalize([]byte(`{
+		"type":"response.completed",
+		"response":{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"turn two"}]}]}
+	}`))
+	require.NoError(t, err)
+	terminal := gjson.GetBytes(completed, "response.output.0")
+	require.NotEqual(t, turnOneID, terminal.Get("id").String(),
+		"turn 2 must mint its own item id instead of reusing turn 1's")
+	require.False(t, terminal.Get("phase").Exists(),
+		"turn 1's phase must not carry into turn 2")
+}
+
+// markTurnCompleted must stay safe on a connection that never received a
+// normalizer, which is how several lifecycle tests construct it.
+func TestOpenAIWSPassthroughMarkTurnCompletedHandlesNilStrictWire(t *testing.T) {
+	clientFrameConn := &openAIWSClientFrameConn{interTurnStarted: make(chan struct{}, 1)}
+	require.NotPanics(t, clientFrameConn.markTurnCompleted)
+}

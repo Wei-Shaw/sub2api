@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -11,29 +12,54 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+// openAIWSStrictItemMemory is the lifecycle form of a single output item, kept
+// so a reduced terminal item can be repaired from it.
+type openAIWSStrictItemMemory struct {
+	itemType string
+	callID   string
+	snapshot json.RawMessage
+}
+
 // openAIWSStrictWireNormalizer keeps output-item fields stable across the
 // lifecycle events emitted by Responses-compatible upstreams. Some upstreams
 // send a complete output_item.done item but a reduced response.completed item.
 // Strict clients deserialize both forms and require the fields to agree.
+//
+// Memory is keyed by item id rather than by array position: a terminal rebuild
+// may drop, reorder, or collapse items, so the index of an item in
+// response.output proves nothing about which lifecycle item it came from.
+//
+// The normalizer describes exactly one turn. Callers that reuse a connection
+// across turns must call reset before the next turn is accepted.
 type openAIWSStrictWireNormalizer struct {
-	itemIDs   map[int]string
-	itemTypes map[int]string
-	snapshots map[int]json.RawMessage
+	items    map[string]*openAIWSStrictItemMemory
+	indexIDs map[int]string
 }
 
 func newOpenAIWSStrictWireNormalizer() *openAIWSStrictWireNormalizer {
-	return &openAIWSStrictWireNormalizer{
-		itemIDs:   make(map[int]string),
-		itemTypes: make(map[int]string),
-		snapshots: make(map[int]json.RawMessage),
+	n := &openAIWSStrictWireNormalizer{}
+	n.reset()
+	return n
+}
+
+// reset drops every item remembered for the current turn. A connection that
+// serves several turns must call this between them, otherwise the next turn
+// inherits ids and content from the previous one.
+func (n *openAIWSStrictWireNormalizer) reset() {
+	if n == nil {
+		return
 	}
+	n.items = make(map[string]*openAIWSStrictItemMemory)
+	n.indexIDs = make(map[int]string)
 }
 
 // normalize repairs only known Responses output item shapes. Existing values
 // and unknown fields remain untouched, so this is safe for vendor extensions.
-func (n *openAIWSStrictWireNormalizer) normalize(data []byte) ([]byte, bool) {
+// It returns an error only when a repair could not be completed safely; the
+// returned payload is then the untouched input.
+func (n *openAIWSStrictWireNormalizer) normalize(data []byte) ([]byte, bool, error) {
 	if n == nil || len(data) == 0 || !gjson.ValidBytes(data) {
-		return data, false
+		return data, false, nil
 	}
 
 	eventType := strings.TrimSpace(gjson.GetBytes(data, "type").String())
@@ -44,14 +70,13 @@ func (n *openAIWSStrictWireNormalizer) normalize(data []byte) ([]byte, bool) {
 			status = "completed"
 		}
 		index := int(gjson.GetBytes(data, "output_index").Int())
-		updated, changed := n.normalizeItem(data, "item", status, index, eventType)
-		if item := gjson.GetBytes(updated, "item"); item.IsObject() {
-			n.rememberSnapshot(index, item.Raw)
-		}
-		return updated, changed
+		// Live lifecycle events address items by position, so the index is a
+		// reliable identity here, and a single item is never ambiguous.
+		return n.normalizeItem(data, "item", status, index, eventType, true, nil, nil)
 
 	case "response.content_part.added", "response.content_part.done":
-		return normalizeOpenAIWSOutputTextPart(data, "part")
+		updated, changed := normalizeOpenAIWSOutputTextPart(data, "part")
+		return updated, changed, nil
 
 	case "response.created", "response.in_progress", "response.completed", "response.done",
 		"response.failed", "response.incomplete", "response.cancelled", "response.canceled":
@@ -70,26 +95,69 @@ func (n *openAIWSStrictWireNormalizer) normalize(data []byte) ([]byte, bool) {
 			}
 			return n.normalizeOutputList(data, "output", status, "response")
 		}
-		return data, false
+		return data, false, nil
 	}
 }
 
-func (n *openAIWSStrictWireNormalizer) normalizeOutputList(data []byte, path, status, eventType string) ([]byte, bool) {
+func (n *openAIWSStrictWireNormalizer) normalizeOutputList(
+	data []byte,
+	path string,
+	status string,
+	eventType string,
+) ([]byte, bool, error) {
 	output := gjson.GetBytes(data, path)
 	if !output.IsArray() {
-		return data, false
+		return data, false, nil
 	}
+	// Walk the list once before repairing anything, so the outcome does not
+	// depend on the order the items happen to appear in.
+	//
+	// reserved holds every memory an item names outright, by id or by call_id.
+	// Those memories belong to that item, and the type fallback below must not
+	// hand one to an anonymous item as well; doing so would mint a duplicate id
+	// whenever the anonymous item was listed first.
+	//
+	// fallbackCandidates counts the items that carry neither, which can only be
+	// matched by type. If a type names more than one such item none of them can
+	// be proven to be the remembered one, so none may inherit.
+	reserved := make(map[string]bool)
+	fallbackCandidates := make(map[string]int)
+	for _, item := range output.Array() {
+		if id := strings.TrimSpace(item.Get("id").String()); id != "" {
+			if _, ok := n.items[id]; ok {
+				reserved[id] = true
+			}
+			continue
+		}
+		if callID := strings.TrimSpace(item.Get("call_id").String()); callID != "" {
+			for id, memory := range n.items {
+				if memory.callID == callID {
+					reserved[id] = true
+				}
+			}
+			continue
+		}
+		if itemType := strings.TrimSpace(item.Get("type").String()); itemType != "" {
+			fallbackCandidates[itemType]++
+		}
+	}
+
 	updated := data
 	changed := false
 	for index := range output.Array() {
 		itemPath := path + "." + strconv.Itoa(index)
-		next, itemChanged := n.normalizeItem(updated, itemPath, status, index, eventType)
+		// A rebuilt output list may have dropped or reordered items, so the
+		// position must not be used to identify them.
+		next, itemChanged, err := n.normalizeItem(updated, itemPath, status, index, eventType, false, reserved, fallbackCandidates)
+		if err != nil {
+			return data, false, err
+		}
 		if itemChanged {
 			updated = next
 			changed = true
 		}
 	}
-	return updated, changed
+	return updated, changed, nil
 }
 
 func (n *openAIWSStrictWireNormalizer) normalizeItem(
@@ -98,50 +166,53 @@ func (n *openAIWSStrictWireNormalizer) normalizeItem(
 	defaultStatus string,
 	outputIndex int,
 	eventType string,
-) ([]byte, bool) {
+	indexTrusted bool,
+	reserved map[string]bool,
+	fallbackCandidates map[string]int,
+) ([]byte, bool, error) {
 	item := gjson.GetBytes(data, path)
 	if !item.IsObject() {
-		return data, false
+		return data, false, nil
 	}
 
 	updated := data
 	changed := false
 	itemType := strings.TrimSpace(item.Get("type").String())
-	// A terminal rebuild may drop or reorder items, so the same array position
-	// can hold a different item than it did during the lifecycle events. Only
-	// inherit remembered state when the type still agrees, otherwise fields
-	// from one item type leak onto another (a reasoning summary landing on a
-	// message, for example).
-	inheritsRememberedState := n.rememberedTypeMatches(outputIndex, itemType)
-	if snapshot := n.snapshots[outputIndex]; inheritsRememberedState && len(snapshot) > 0 {
-		var snapshotObject map[string]json.RawMessage
-		if json.Unmarshal(snapshot, &snapshotObject) == nil {
-			updated, changed = mergeOpenAIWSItemSnapshot(updated, path, snapshotObject)
-			item = gjson.GetBytes(updated, path)
+
+	// Only inherit remembered state when this item can be proven to be the same
+	// item that produced the snapshot. When identity cannot be established the
+	// current fields are kept as they are and a fresh id is generated below.
+	// output_item.added/done state which phase of the lifecycle the item is in,
+	// so their own status wins. Only a rebuilt terminal item, whose status was
+	// dropped, may take the status back from the snapshot.
+	lifecycleEvent := eventType == "response.output_item.added" || eventType == "response.output_item.done"
+	if memoryID := n.resolveMemoryID(item, itemType, outputIndex, indexTrusted, reserved, fallbackCandidates); memoryID != "" {
+		if memory := n.items[memoryID]; memory != nil && len(memory.snapshot) > 0 {
+			var snapshotObject map[string]json.RawMessage
+			if json.Unmarshal(memory.snapshot, &snapshotObject) == nil {
+				updated, changed = mergeOpenAIWSItemSnapshot(updated, path, snapshotObject, !lifecycleEvent)
+				item = gjson.GetBytes(updated, path)
+			}
 		}
 	}
 
 	prefix, strict := openAIWSStrictItemIDPrefix(itemType)
 	if !strict {
-		return updated, changed
+		return updated, changed, nil
 	}
 
 	itemID := strings.TrimSpace(item.Get("id").String())
 	if itemID == "" {
-		if inheritsRememberedState {
-			itemID = n.itemIDs[outputIndex]
+		generated, err := generateOpenAIWSStrictItemID(prefix)
+		if err != nil {
+			return data, false, err
 		}
-		if itemID == "" {
-			itemID = generateOpenAIWSStrictItemID(prefix)
-		}
-		next, err := sjson.SetBytes(updated, path+".id", itemID)
-		if err == nil {
+		itemID = generated
+		next, setErr := sjson.SetBytes(updated, path+".id", itemID)
+		if setErr == nil {
 			updated = next
 			changed = true
 		}
-	} else {
-		n.itemIDs[outputIndex] = itemID
-		n.itemTypes[outputIndex] = itemType
 	}
 
 	item = gjson.GetBytes(updated, path)
@@ -179,16 +250,111 @@ func (n *openAIWSStrictWireNormalizer) normalizeItem(
 
 	if eventType == "response.output_item.added" || eventType == "response.output_item.done" {
 		if item := gjson.GetBytes(updated, path); item.IsObject() {
-			n.rememberSnapshot(outputIndex, item.Raw)
+			n.remember(outputIndex, itemID, itemType, item)
 		}
 	}
-	return updated, changed
+	return updated, changed, nil
+}
+
+// resolveMemoryID returns the id of the remembered item this item provably is,
+// or an empty string when identity cannot be established. Inheriting on a weak
+// match would copy one item's id, tool arguments, or reasoning payload onto a
+// different item, so every branch here fails closed.
+func (n *openAIWSStrictWireNormalizer) resolveMemoryID(
+	item gjson.Result,
+	itemType string,
+	outputIndex int,
+	indexTrusted bool,
+	reserved map[string]bool,
+	fallbackCandidates map[string]int,
+) string {
+	if n == nil || itemType == "" {
+		return ""
+	}
+
+	// The item's own id is the strongest identity available. When it names an
+	// item we never saw, nothing remembered describes it.
+	if id := strings.TrimSpace(item.Get("id").String()); id != "" {
+		if memory := n.items[id]; memory != nil && memory.itemType == itemType {
+			return id
+		}
+		return ""
+	}
+
+	// Tool calls carry call_id, which survives a terminal rebuild even when the
+	// item id does not.
+	if callID := strings.TrimSpace(item.Get("call_id").String()); callID != "" {
+		for id, memory := range n.items {
+			if memory.callID == callID && memory.itemType == itemType {
+				return id
+			}
+		}
+		// A live lifecycle event may report call_id for the first time on done,
+		// after added already minted an id without one. Falling through to the
+		// trusted index keeps that item's id stable; a rebuilt terminal item has
+		// no such fallback and stops here.
+		if !indexTrusted {
+			return ""
+		}
+	}
+
+	// Live lifecycle events are addressed by output_index, so the position is
+	// authoritative there.
+	if indexTrusted {
+		if id := n.indexIDs[outputIndex]; id != "" {
+			if memory := n.items[id]; memory != nil && memory.itemType == itemType {
+				return id
+			}
+		}
+		return ""
+	}
+
+	// In a rebuilt list the position proves nothing. Inheriting by type alone is
+	// only safe when it can name exactly one item on both sides: one remembered
+	// item of this type, and one terminal item that needs it. Anything else
+	// leaves two items competing for the same memory.
+	if fallbackCandidates[itemType] != 1 {
+		return ""
+	}
+	matchID := ""
+	for id, memory := range n.items {
+		if memory.itemType != itemType {
+			continue
+		}
+		if matchID != "" {
+			return ""
+		}
+		matchID = id
+	}
+	if matchID == "" || reserved[matchID] {
+		return ""
+	}
+	return matchID
+}
+
+// remember records the lifecycle form of an item. An item observed again at the
+// same output_index supersedes the previous recording rather than adding a
+// second entry, so the per-type uniqueness check stays accurate.
+func (n *openAIWSStrictWireNormalizer) remember(outputIndex int, itemID string, itemType string, item gjson.Result) {
+	if n == nil || itemID == "" || item.Raw == "" {
+		return
+	}
+	if previousID := n.indexIDs[outputIndex]; previousID != "" && previousID != itemID {
+		delete(n.items, previousID)
+	}
+	n.indexIDs[outputIndex] = itemID
+	n.items[itemID] = &openAIWSStrictItemMemory{
+		itemType: itemType,
+		callID:   strings.TrimSpace(item.Get("call_id").String()),
+		snapshot: json.RawMessage(append([]byte(nil), item.Raw...)),
+	}
 }
 
 func mergeOpenAIWSItemSnapshot(
 	data []byte,
 	path string,
 	snapshot map[string]json.RawMessage,
+	restoreStatus bool,
 ) ([]byte, bool) {
 	updated := data
 	changed := false
@@ -210,16 +376,23 @@ func mergeOpenAIWSItemSnapshot(
 			changed = true
 		}
 	}
-	// The status reported by output_item.added/done outranks anything derived
-	// from the response-level status: an item that already reached a terminal
-	// state keeps it even when the response as a whole later fails.
-	if raw, ok := snapshot["status"]; ok && len(raw) > 0 {
-		current := gjson.GetBytes(updated, path+".status")
-		if !current.Exists() || current.Type == gjson.Null {
-			next, err := sjson.SetRawBytes(updated, path+".status", raw)
-			if err == nil {
-				updated = next
-				changed = true
+	// For a rebuilt terminal item a status the item itself already settled on
+	// outranks anything derived from the response-level status, so an item that
+	// already completed is not downgraded when the response later fails. Only a
+	// settled status counts: the in_progress minted for output_item.added is
+	// provisional, and an item that never reached done must follow the response
+	// into completed or incomplete instead of staying in flight. A lifecycle
+	// event states its own phase and never takes a status back from the
+	// snapshot at all.
+	if restoreStatus {
+		if raw, ok := snapshot["status"]; ok && len(raw) > 0 && openAIWSStrictSnapshotStatusIsTerminal(raw) {
+			current := gjson.GetBytes(updated, path+".status")
+			if !current.Exists() || current.Type == gjson.Null {
+				next, err := sjson.SetRawBytes(updated, path+".status", raw)
+				if err == nil {
+					updated = next
+					changed = true
+				}
 			}
 		}
 	}
@@ -311,27 +484,6 @@ func normalizeOpenAIWSOutputTextPart(data []byte, path string) ([]byte, bool) {
 	return updated, changed
 }
 
-func (n *openAIWSStrictWireNormalizer) rememberSnapshot(index int, raw string) {
-	if n == nil || raw == "" {
-		return
-	}
-	n.snapshots[index] = json.RawMessage(append([]byte(nil), raw...))
-	if itemType := strings.TrimSpace(gjson.Get(raw, "type").String()); itemType != "" {
-		n.itemTypes[index] = itemType
-	}
-}
-
-// rememberedTypeMatches reports whether the state remembered for outputIndex
-// describes an item of the same type. An unknown or disagreeing type means the
-// remembered state belongs to a different item and must not be applied.
-func (n *openAIWSStrictWireNormalizer) rememberedTypeMatches(outputIndex int, itemType string) bool {
-	if n == nil || itemType == "" {
-		return false
-	}
-	remembered := strings.TrimSpace(n.itemTypes[outputIndex])
-	return remembered != "" && remembered == itemType
-}
-
 // openAIWSStrictItemStatusForResponseStatus maps a response-level status onto
 // a status the Responses protocol allows on an output item. Response terminal
 // states such as failed or cancelled have no item-level counterpart, so items
@@ -348,6 +500,22 @@ func openAIWSStrictItemStatusForResponseStatus(responseStatus string) string {
 		return "incomplete"
 	default:
 		return ""
+	}
+}
+
+// openAIWSStrictSnapshotStatusIsTerminal reports whether a remembered status is
+// one the item settled on, as opposed to the provisional in_progress that
+// output_item.added mints before the item has finished.
+func openAIWSStrictSnapshotStatusIsTerminal(raw json.RawMessage) bool {
+	var status string
+	if json.Unmarshal(raw, &status) != nil {
+		return false
+	}
+	switch strings.TrimSpace(status) {
+	case "completed", "incomplete":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -368,8 +536,18 @@ func openAIWSStrictItemIDPrefix(itemType string) (string, bool) {
 	}
 }
 
-func generateOpenAIWSStrictItemID(prefix string) string {
+// generateOpenAIWSStrictItemID mints an item id. A failing entropy source must
+// not silently yield an all-zero, repeatable id, so the error is returned and
+// the caller leaves the payload untouched rather than emitting a colliding id.
+//
+// On the current toolchain this error is unreachable: crypto/rand.Read is
+// documented never to return an error and crashes the process instead. The
+// error is still surfaced rather than discarded, so the guarantee lives in one
+// place if that contract or the package's Reader ever changes.
+func generateOpenAIWSStrictItemID(prefix string) (string, error) {
 	buf := make([]byte, 12)
-	_, _ = rand.Read(buf)
-	return prefix + "_" + hex.EncodeToString(buf)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate strict responses item id: %w", err)
+	}
+	return prefix + "_" + hex.EncodeToString(buf), nil
 }

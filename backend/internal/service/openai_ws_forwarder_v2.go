@@ -522,7 +522,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		if normalized, changed := normalizeCompletedImageGenerationStatus(message); changed {
 			message = normalized
 		}
-		if normalized, changed := strictWireNormalizer.normalize(message); changed {
+		if normalized, changed, err := strictWireNormalizer.normalize(message); err != nil {
+			logOpenAIWSModeInfo("strict_wire_normalize_failed path=ws_v2 err=%v", err)
+		} else if changed {
 			message = normalized
 		}
 
