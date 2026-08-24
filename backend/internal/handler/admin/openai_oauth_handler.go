@@ -41,14 +41,6 @@ REDACTED
 // it — spending a second credit.
 const openAIQuotaResetPostProcessTimeout = 8 * time.Second
 
-// 保留 handler 包内的告警码名称，避免共享工作流下沉到 service 后破坏既有测试和包内调用。
-// 实际值统一引用 service 常量，防止手动重置与自动重置的响应码发生漂移。
-const (
-	openAIQuotaResetWarningCacheRefreshFailed    = service.OpenAIQuotaResetWarningCacheRefreshFailed
-	openAIQuotaResetWarningAccountRecoveryFailed = service.OpenAIQuotaResetWarningAccountRecoveryFailed
-	openAIQuotaResetWarningAccountRefreshFailed  = service.OpenAIQuotaResetWarningAccountRefreshFailed
-)
-
 type openAIQuotaResetResponse struct {
 	service.OpenAIQuotaResetResult
 	Quota                 *service.OpenAIQuotaUsage `json:"quota,omitempty"`
