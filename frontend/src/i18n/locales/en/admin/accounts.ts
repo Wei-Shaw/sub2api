@@ -132,7 +132,9 @@ export default {
         balance: 'Balance --',
         window5h: '5-hour window',
         windowWeekly: 'Weekly window',
+        probe: 'Query',
         probeTooltip: 'Query the provider quota endpoint for 5-hour / weekly rolling window usage',
+        balanceProbeTooltip: 'Query the provider balance endpoint for the account balance',
         balanceLow: 'Insufficient balance',
         noBalanceEndpoint: 'This platform has no balance query endpoint',
         resetSoon: 'reset soon',
@@ -852,6 +854,14 @@ export default {
 	  autoPause5hDisabled: 'Disable 5h auto-pause',
 	  autoPause7dDisabled: 'Disable 7d auto-pause',
 	  autoPauseDisabledHint: 'When enabled, this account is never auto-paused (even if a global default threshold is configured).',
+	  autoResetCredit: {
+	    title: 'Automatically use reset credits',
+	    hint: 'Uses the earliest-expiring available credit only when actual usage reaches a threshold. Off by default; the account remains paused if no credit is available or reset fails.',
+	    threshold5h: '5h auto-reset threshold (%)',
+	    threshold7d: '7d auto-reset threshold (%)',
+	    thresholdHint: 'Each window is evaluated independently. Enter 0.1–100; both default to 100.',
+	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.'
+	  },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: 'Quota Control',
@@ -1547,6 +1557,14 @@ export default {
         resetAccountRecoveryFailed: 'The window was reset, but account state recovery failed. Recover the account state manually.',
         resetAccountRefreshFailed: 'The window, account state, and reset-credit cache were updated, but the latest account display could not be loaded.',
         refreshCachePersistFailed: 'Showing the live count, but its expiration details were unavailable, so the cached details were kept.',
+        autoStatus: {
+          checking: 'Checking',
+          available: 'Credit available',
+          resetting: 'Auto-resetting',
+          success: 'Auto-reset succeeded',
+          noCredit: 'No credit',
+          failed: 'Auto-reset failed'
+        },
         confirmTitle: 'Confirm Weekly Limit Reset',
         confirmMessage: 'This will consume 1 reset credit to immediately restore the current window ({count} remaining). This action cannot be undone. Continue?'
       },

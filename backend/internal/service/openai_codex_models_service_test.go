@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -621,6 +622,51 @@ func TestConvertOpenAIModelListToCodexManifest(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFetchCodexModelsManifestUsesConfiguredBodyLimit(t *testing.T) {
+	upstream := &codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"models":[{"slug":"gpt-5.6"}]}`)),
+		}, nil
+	}}
+
+	s := newCodexModelsAPIKeyTestService(upstream)
+	s.cfg.Gateway.ModelsListReadMaxBytes = 8
+	_, err := s.FetchCodexModelsManifest(
+		context.Background(),
+		newCodexModelsAPIKeyTestAccount("https://upstream.example"),
+		"0.144.0",
+		"",
+	)
+	require.Error(t, err)
+	require.Equal(t, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", infraerrors.Reason(err))
+	require.Contains(t, err.Error(), "response exceeds 8 bytes")
+	require.True(t, IsRetryableCodexModelsManifestError(err))
+}
+
+func TestFetchCodexModelsManifestAcceptsConfiguredLimitAboveLegacyBoundary(t *testing.T) {
+	manifestBody := `{"models":[{"slug":"gpt-5.6","display_name":"` + strings.Repeat("x", (8<<20)+1024) + `"}]}`
+	require.Greater(t, len(manifestBody), 8<<20)
+	require.Less(t, len(manifestBody), 16<<20)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, manifestBody)
+	}))
+	defer server.Close()
+
+	original := chatgptCodexModelsURL
+	chatgptCodexModelsURL = server.URL
+	defer func() { chatgptCodexModelsURL = original }()
+
+	s := &OpenAIGatewayService{cfg: &config.Config{}}
+	s.cfg.Gateway.ModelsListReadMaxBytes = 16 << 20
+	manifest, err := s.FetchCodexModelsManifest(context.Background(), newCodexModelsTestAccount(), "0.144.0", "")
+	require.NoError(t, err)
+	require.True(t, bytes.Equal([]byte(manifestBody), manifest.Body), "manifest body must be returned intact")
 }
 
 func TestFetchCodexModelsManifestRejectsInvalidEnvelope(t *testing.T) {

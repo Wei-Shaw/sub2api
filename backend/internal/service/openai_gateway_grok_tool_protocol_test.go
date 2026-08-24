@@ -106,7 +106,7 @@ func TestPatchGrokResponsesBodyWithClientToolsLowersDiscoveredToolsOutput(t *tes
 			{"type":"function","name":"multi_agent_v1__wait_agent","parameters":{"type":"object","properties":{"timeout_ms":{"type":"integer"}},"additionalProperties":false}}
 		],
 		"input":[
-			{"type":"function_call","call_id":"call_fixture","name":"tool_search","arguments":"{\"query\":\"subagent\"}","status":"completed"},
+			{"type":"function_call","call_id":"call_fixture","name":"tool_search","arguments":"{\"query\":\"subagent\"}"},
 			{"type":"function_call_output","call_id":"call_fixture","output":`+string(mustMarshalJSONForTest(t, output))+`}
 		]
 	}`, string(patched))

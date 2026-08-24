@@ -181,7 +181,7 @@ security:
     # 默认 CSP 策略（如果静态资源托管在其他域名，请自行覆盖）
     # Note: __CSP_NONCE__ will be replaced with 'nonce-xxx' at request time for inline script security
     # 注意：__CSP_NONCE__ 会在请求时被替换为 'nonce-xxx'，用于内联脚本安全
-    policy: "default-src 'self'; worker-src 'self' blob:; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://*.alicdn.com https://static.cloudflareinsights.com https://turing.captcha.qcloud.com https://turing.captcha.gtimg.com https://ca.turing.captcha.qcloud.com https://global.turing.captcha.gtimg.com https://www.tycaptcha.com https://cloudcache.tencentcs.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://*.captcha.gtimg.com https://fonts.googleapis.com https://*.alicdn.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://turing.captcha.qcloud.com https://www.tycaptcha.com https://rce.tencentrio.com https:; frame-src https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://ca.turing.captcha.qcloud.com https://www.tycaptcha.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    policy: "default-src 'self'; worker-src 'self' blob:; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://*.alicdn.com https://static.cloudflareinsights.com https://turing.captcha.qcloud.com https://turing.captcha.gtimg.com https://ca.turing.captcha.qcloud.com https://global.turing.captcha.gtimg.com https://www.tycaptcha.com https://cloudcache.tencentcs.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://*.captcha.gtimg.com https://fonts.googleapis.com https://*.alicdn.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://turing.captcha.qcloud.com https://www.tycaptcha.com https://rce.tencentrio.com https:; frame-src 'self' https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://ca.turing.captcha.qcloud.com https://www.tycaptcha.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
   proxy_probe:
     # Allow skipping TLS verification for proxy probe (debug only)
     # 允许代理探测时跳过 TLS 证书验证（仅用于调试）
@@ -214,6 +214,9 @@ gateway:
   # OpenAI/Codex upstream response header timeout (seconds, 0=disabled)
   # OpenAI/Codex 等待上游响应头超时时间（秒，0=禁用本地响应头超时）
   openai_response_header_timeout: 0
+  # Grok text Responses first-byte timeout (seconds, 0=disabled; default 120)
+  # Grok 文本 Responses 首字节超时时间（秒，0=禁用；默认 120）
+  grok_response_header_timeout: 120
   # Native OpenAI HTTP Responses first semantic output timeout (seconds, 0=disabled)
   # Includes response-header wait; does not apply to passthrough or WebSocket transports.
   # A timed-out request may already have incurred upstream usage; account failover can therefore duplicate upstream billing.
@@ -232,6 +235,9 @@ gateway:
   # Max bytes to read for non-stream upstream responses (default: 8MB)
   # 非流式上游响应体读取上限（默认 8MB）
   upstream_response_read_max_bytes: 8388608
+  # Max bytes to read for upstream model-list responses (default: 8MB)
+  # 上游模型列表响应体读取上限（默认 8MB）
+  models_list_read_max_bytes: 8388608
   # Max bytes to read for proxy probe responses (default: 1MB)
   # 代理探测响应体读取上限（默认 1MB）
   proxy_probe_response_read_max_bytes: 1048576
@@ -326,7 +332,8 @@ gateway:
     # 按账号类型细分开关
     oauth_enabled: true
     apikey_enabled: true
-    # 全局强制 HTTP（紧急回滚开关）
+    # 全局强制 OpenAI Responses 上游使用 HTTP/SSE，不使用 WebSocket（紧急回滚开关）。
+    # 此开关不强制 HTTP/1.1；HTTP/2 由 gateway.openai_http2 单独控制。
     force_http: false
     # 允许在 WSv2 下按策略恢复 store=true（默认 false）
     allow_store_recovery: false
@@ -1021,6 +1028,26 @@ rate_limit:
   # Cooldown time (in minutes) when upstream returns 529 (overloaded)
   # 上游返回 529（过载）时的冷却时间（分钟）
   overload_cooldown_minutes: 10
+
+# =============================================================================
+# Local OAuth Transport Plugins (Optional)
+# 本地 OAuth 出站传输插件（可选）
+# =============================================================================
+plugins:
+  # Empty means {{DATA_DIR}}/plugins, or ./data/plugins when DATA_DIR is unset.
+  # 留空时使用 {{DATA_DIR}}/plugins；未设置 DATA_DIR 时使用 ./data/plugins。
+  data_dir: ""
+  # Keep false in production. Enable only for local development packages you built yourself.
+  # 生产环境应保持 false；仅调试自己构建的本地插件时临时开启。
+  allow_unsigned: false
+  # Additional Ed25519 public keys indexed by signature.json key_id.
+  # OpenAI Transport's public key is built in; this map only adds third-party publishers.
+  # 以 signature.json 中 key_id 为索引的额外 Ed25519 公钥。
+  # OpenAI Transport 公钥已内置，此处只需添加第三方发布者。
+  trusted_publishers: {}
+  max_upload_bytes: 134217728
+  max_uncompressed_bytes: 268435456
+  start_timeout_seconds: 15
 
 # =============================================================================
 # Pricing Data Source (Optional)
