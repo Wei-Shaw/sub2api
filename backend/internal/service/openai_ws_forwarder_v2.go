@@ -734,6 +734,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			finalResponse = s.replaceModelInResponseBody(finalResponse, mappedModel, originalModel)
 		}
 		finalResponse = s.correctToolCallsInResponseBody(finalResponse)
+		finalResponse = restoreCodexToolNamesFromContext(c, finalResponse)
 		if normalized, ok := normalizeOpenAIResponsesCreatedAt(finalResponse, "created_at"); ok {
 			finalResponse = normalized
 		}

@@ -114,3 +114,72 @@ func TestForwardOpenAIWSV2_UpstreamDefaultServiceTierWinsOverRequest(t *testing.
 		})
 	}
 }
+
+func TestForwardOpenAIWSV2_NonStreamingRestoresCodexToolNames(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", codexCLIUserAgent)
+	c.Request.Header.Set("Originator", "codex_cli_rs")
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
+	cfg.Gateway.OpenAIWS.QueueLimitPerConn = 8
+	cfg.Gateway.OpenAIWS.DialTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 5
+	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
+
+	captureConn := &openAIWSCaptureConn{
+		events: [][]byte{
+			[]byte(`{"type":"response.completed","response":{"id":"resp_tool_name_v2","model":"gpt-5.5","created_at":1e3,"vendor_sequence":` + responsesCreatedAtLargeVendorInteger + `,"status":"completed","output":[{"id":"fc_python","type":"function_call","call_id":"call_python","name":"python__sub2api","arguments":"{}"}],"usage":{"input_tokens":1,"output_tokens":1}}}`),
+		},
+	}
+	captureDialer := &openAIWSCaptureDialer{conn: captureConn}
+	pool := newOpenAIWSConnPool(cfg)
+	pool.setClientDialerForTest(captureDialer)
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     &httpUpstreamRecorder{},
+		cache:            &stubGatewayCache{},
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+		openaiWSPool:     pool,
+	}
+	account := &Account{
+		ID:          5883,
+		Name:        "openai-ws-v2-tool-name",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "oauth-test"},
+		Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+	}
+
+	body := []byte(`{"model":"gpt-5.5","stream":false,"input":[{"type":"input_text","text":"hi"}],"tools":[{"type":"function","name":"python","description":"run python","parameters":{"type":"object","properties":{}}}]}`)
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.OpenAIWSMode)
+	require.False(t, result.Stream)
+
+	tools, ok := captureConn.lastWrite["tools"].([]any)
+	require.True(t, ok)
+	require.NotEmpty(t, tools)
+	tool, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, codexPythonToolAlias, tool["name"], "reserved tool name must be aliased upstream")
+	require.Equal(t, codexReservedPythonToolName, gjson.GetBytes(rec.Body.Bytes(), "output.0.name").String())
+	requireStrictPositiveIntegerJSONPath(t, rec.Body.Bytes(), "created_at")
+	require.Equal(t, responsesCreatedAtLargeVendorInteger, gjson.GetBytes(rec.Body.Bytes(), "vendor_sequence").Raw)
+}
