@@ -1,11 +1,19 @@
 <script setup lang="ts">
+defineOptions({ name: 'OpsTokenStatsCard' })
+
 import { computed, ref, watch } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import Select from '@/components/common/Select.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import { opsAPI, type OpsOpenAITokenStatsResponse, type OpsOpenAITokenStatsTimeRange } from '@/api/admin/ops'
+import {
+  opsAPI,
+  type OpsTokenStatsParams,
+  type OpsTokenStatsResponse,
+  type OpsTokenStatsTimeRange
+} from '@/api/admin/ops'
 import { formatNumber } from '@/utils/format'
+import { platformLabel } from '@/utils/platformColors'
 
 interface Props {
   platformFilter?: string
@@ -27,9 +35,9 @@ const isDesktopViewport = useMediaQuery('(min-width: 768px)')
 
 const loading = ref(false)
 const errorMessage = ref('')
-const response = ref<OpsOpenAITokenStatsResponse | null>(null)
+const response = ref<OpsTokenStatsResponse | null>(null)
 
-const timeRange = ref<OpsOpenAITokenStatsTimeRange>('30d')
+const timeRange = ref<OpsTokenStatsTimeRange>('30d')
 const viewMode = ref<ViewMode>('topn')
 const topN = ref<number>(20)
 const page = ref<number>(1)
@@ -52,8 +60,8 @@ const timeRangeOptions = computed(() => [
 ])
 
 const viewModeOptions = computed(() => [
-  { value: 'topn', label: t('admin.ops.openaiTokenStats.viewModeTopN') },
-  { value: 'pagination', label: t('admin.ops.openaiTokenStats.viewModePagination') }
+  { value: 'topn', label: t('admin.ops.tokenStats.viewModeTopN') },
+  { value: 'pagination', label: t('admin.ops.tokenStats.viewModePagination') }
 ])
 
 const topNOptions = computed(() => [
@@ -80,12 +88,13 @@ function formatInt(v?: number | null): string {
   return formatNumber(Math.round(v))
 }
 
-function buildParams() {
-  const params: Record<string, any> = {
-    time_range: timeRange.value,
-    platform: props.platformFilter || undefined,
-    group_id: typeof props.groupIdFilter === 'number' && props.groupIdFilter > 0 ? props.groupIdFilter : undefined
+function buildParams(): OpsTokenStatsParams {
+  const params: OpsTokenStatsParams = {
+    time_range: timeRange.value
   }
+
+  if (props.platformFilter) params.platform = props.platformFilter
+  if (typeof props.groupIdFilter === 'number' && props.groupIdFilter > 0) params.group_id = props.groupIdFilter
 
   if (viewMode.value === 'topn') {
     params.top_n = topN.value
@@ -100,16 +109,16 @@ async function loadData() {
   loading.value = true
   errorMessage.value = ''
   try {
-    response.value = await opsAPI.getOpenAITokenStats(buildParams())
+    response.value = await opsAPI.getTokenStats(buildParams())
     // 防御：若 total 变化导致当前页超出最大页，则回退到末页并重新拉取一次。
     if (viewMode.value === 'pagination' && page.value > totalPages.value) {
       page.value = totalPages.value
-      response.value = await opsAPI.getOpenAITokenStats(buildParams())
+      response.value = await opsAPI.getTokenStats(buildParams())
     }
   } catch (err: any) {
-    console.error('[OpsOpenAITokenStatsCard] Failed to load data', err)
+    console.error('[OpsTokenStatsCard] Failed to load data', err)
     response.value = null
-    errorMessage.value = err?.message || t('admin.ops.openaiTokenStats.failedToLoad')
+    errorMessage.value = err?.message || t('admin.ops.tokenStats.failedToLoad')
   } finally {
     loading.value = false
   }
@@ -158,10 +167,10 @@ function onNextPage() {
 </script>
 
 <template>
-  <section class="card p-4 md:p-5">
+  <section class="card p-4 md:p-5" data-testid="ops-token-stats-card">
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
       <h3 class="text-sm font-bold text-gray-900 dark:text-white">
-        {{ t('admin.ops.openaiTokenStats.title') }}
+        {{ t('admin.ops.tokenStats.title') }}
       </h3>
       <div class="flex flex-wrap items-center gap-2">
         <div class="w-36">
@@ -182,17 +191,17 @@ function onNextPage() {
             :disabled="loading || page <= 1"
             @click="onPrevPage"
           >
-            {{ t('admin.ops.openaiTokenStats.prevPage') }}
+            {{ t('admin.ops.tokenStats.prevPage') }}
           </button>
           <button
             class="btn btn-secondary btn-sm"
             :disabled="loading || page >= totalPages"
             @click="onNextPage"
           >
-            {{ t('admin.ops.openaiTokenStats.nextPage') }}
+            {{ t('admin.ops.tokenStats.nextPage') }}
           </button>
           <span class="text-xs text-gray-500 dark:text-gray-400">
-            {{ t('admin.ops.openaiTokenStats.pageInfo', { page, total: totalPages }) }}
+            {{ t('admin.ops.tokenStats.pageInfo', { page, total: totalPages }) }}
           </span>
         </template>
       </div>
@@ -209,38 +218,42 @@ function onNextPage() {
     <EmptyState
       v-else-if="items.length === 0"
       :title="t('common.noData')"
-      :description="t('admin.ops.openaiTokenStats.empty')"
+      :description="t('admin.ops.tokenStats.empty')"
     />
 
     <div v-else class="space-y-3">
       <div class="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">
         <div class="max-h-[420px] overflow-auto">
           <div v-if="!isDesktopViewport" class="divide-y divide-gray-100 dark:divide-dark-800">
-            <div v-for="row in items" :key="row.model" class="space-y-2 p-3">
+            <div v-for="row in items" :key="`${row.platform}:${row.model}`" class="space-y-2 p-3">
               <div class="break-all text-xs font-medium text-gray-900 dark:text-gray-100">{{ row.model }}</div>
               <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                 <div class="flex items-baseline justify-between gap-2">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.openaiTokenStats.table.requestCount') }}</span>
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.tokenStats.table.platform') }}</span>
+                  <span class="text-gray-700 dark:text-gray-200">{{ platformLabel(row.platform) }}</span>
+                </div>
+                <div class="flex items-baseline justify-between gap-2">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.tokenStats.table.requestCount') }}</span>
                   <span class="text-gray-700 dark:text-gray-200">{{ formatInt(row.request_count) }}</span>
                 </div>
                 <div class="flex items-baseline justify-between gap-2">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.openaiTokenStats.table.avgTokensPerSec') }}</span>
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.tokenStats.table.avgTokensPerSec') }}</span>
                   <span class="text-gray-700 dark:text-gray-200">{{ formatRate(row.avg_tokens_per_sec) }}</span>
                 </div>
                 <div class="flex items-baseline justify-between gap-2">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.openaiTokenStats.table.avgFirstTokenMs') }}</span>
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.tokenStats.table.avgFirstTokenMs') }}</span>
                   <span class="text-gray-700 dark:text-gray-200">{{ formatRate(row.avg_first_token_ms) }}</span>
                 </div>
                 <div class="flex items-baseline justify-between gap-2">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.openaiTokenStats.table.totalOutputTokens') }}</span>
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.tokenStats.table.totalOutputTokens') }}</span>
                   <span class="text-gray-700 dark:text-gray-200">{{ formatInt(row.total_output_tokens) }}</span>
                 </div>
                 <div class="flex items-baseline justify-between gap-2">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.openaiTokenStats.table.avgDurationMs') }}</span>
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.tokenStats.table.avgDurationMs') }}</span>
                   <span class="text-gray-700 dark:text-gray-200">{{ formatInt(row.avg_duration_ms) }}</span>
                 </div>
                 <div class="flex items-baseline justify-between gap-2">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.openaiTokenStats.table.requestsWithFirstToken') }}</span>
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('admin.ops.tokenStats.table.requestsWithFirstToken') }}</span>
                   <span class="text-gray-700 dark:text-gray-200">{{ formatInt(row.requests_with_first_token) }}</span>
                 </div>
               </div>
@@ -249,21 +262,23 @@ function onNextPage() {
           <table v-else class="min-w-full text-left text-xs md:text-sm">
             <thead class="sticky top-0 z-10 bg-white dark:bg-dark-800">
               <tr class="border-b border-gray-200 text-gray-500 dark:border-dark-700 dark:text-gray-400">
-                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.model') }}</th>
-                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.requestCount') }}</th>
-                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.avgTokensPerSec') }}</th>
-                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.avgFirstTokenMs') }}</th>
-                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.totalOutputTokens') }}</th>
-                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.avgDurationMs') }}</th>
-                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.requestsWithFirstToken') }}</th>
+                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.tokenStats.table.platform') }}</th>
+                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.tokenStats.table.model') }}</th>
+                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.tokenStats.table.requestCount') }}</th>
+                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.tokenStats.table.avgTokensPerSec') }}</th>
+                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.tokenStats.table.avgFirstTokenMs') }}</th>
+                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.tokenStats.table.totalOutputTokens') }}</th>
+                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.tokenStats.table.avgDurationMs') }}</th>
+                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.tokenStats.table.requestsWithFirstToken') }}</th>
               </tr>
             </thead>
             <tbody>
               <tr
                 v-for="row in items"
-                :key="row.model"
+                :key="`${row.platform}:${row.model}`"
                 class="border-b border-gray-100 text-gray-700 last:border-b-0 dark:border-dark-800 dark:text-gray-200"
               >
+                <td class="px-2 py-2 font-medium">{{ platformLabel(row.platform) }}</td>
                 <td class="px-2 py-2 font-medium">{{ row.model }}</td>
                 <td class="px-2 py-2">{{ formatInt(row.request_count) }}</td>
                 <td class="px-2 py-2">{{ formatRate(row.avg_tokens_per_sec) }}</td>
@@ -277,7 +292,7 @@ function onNextPage() {
         </div>
       </div>
       <div v-if="viewMode === 'topn'" class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-        {{ t('admin.ops.openaiTokenStats.totalModels', { total }) }}
+        {{ t('admin.ops.tokenStats.totalRows', { total }) }}
       </div>
     </div>
   </section>

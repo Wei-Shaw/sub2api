@@ -2,7 +2,7 @@ package service
 
 import "time"
 
-type OpsOpenAITokenStatsFilter struct {
+type OpsTokenStatsFilter struct {
 	TimeRange string
 	StartTime time.Time
 	EndTime   time.Time
@@ -18,11 +18,12 @@ type OpsOpenAITokenStatsFilter struct {
 	TopN int
 }
 
-func (f *OpsOpenAITokenStatsFilter) IsTopNMode() bool {
+func (f *OpsTokenStatsFilter) IsTopNMode() bool {
 	return f != nil && f.TopN > 0
 }
 
-type OpsOpenAITokenStatsItem struct {
+type OpsTokenStatsItem struct {
+	Platform               string   `json:"platform"`
 	Model                  string   `json:"model"`
 	RequestCount           int64    `json:"request_count"`
 	AvgTokensPerSec        *float64 `json:"avg_tokens_per_sec"`
@@ -32,7 +33,7 @@ type OpsOpenAITokenStatsItem struct {
 	RequestsWithFirstToken int64    `json:"requests_with_first_token"`
 }
 
-type OpsOpenAITokenStatsResponse struct {
+type OpsTokenStatsResponse struct {
 	TimeRange string    `json:"time_range"`
 	StartTime time.Time `json:"start_time"`
 	EndTime   time.Time `json:"end_time"`
@@ -40,9 +41,9 @@ type OpsOpenAITokenStatsResponse struct {
 	Platform string `json:"platform,omitempty"`
 	GroupID  *int64 `json:"group_id,omitempty"`
 
-	Items []*OpsOpenAITokenStatsItem `json:"items"`
+	Items []*OpsTokenStatsItem `json:"items"`
 
-	// Total model rows before pagination/topN trimming.
+	// Total platform/model rows before pagination/topN trimming.
 	Total int64 `json:"total"`
 
 	// Pagination mode metadata.

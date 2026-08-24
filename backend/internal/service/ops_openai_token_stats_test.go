@@ -9,14 +9,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type openAITokenStatsRepoStub struct {
+type tokenStatsRepoStub struct {
 	OpsRepository
-	resp     *OpsOpenAITokenStatsResponse
+	resp     *OpsTokenStatsResponse
 	err      error
-	captured *OpsOpenAITokenStatsFilter
+	captured *OpsTokenStatsFilter
 }
 
-func (s *openAITokenStatsRepoStub) GetOpenAITokenStats(ctx context.Context, filter *OpsOpenAITokenStatsFilter) (*OpsOpenAITokenStatsResponse, error) {
+func (s *tokenStatsRepoStub) GetTokenStats(ctx context.Context, filter *OpsTokenStatsFilter) (*OpsTokenStatsResponse, error) {
 	s.captured = filter
 	if s.err != nil {
 		return nil, s.err
@@ -24,15 +24,15 @@ func (s *openAITokenStatsRepoStub) GetOpenAITokenStats(ctx context.Context, filt
 	if s.resp != nil {
 		return s.resp, nil
 	}
-	return &OpsOpenAITokenStatsResponse{}, nil
+	return &OpsTokenStatsResponse{}, nil
 }
 
-func TestOpsServiceGetOpenAITokenStats_Validation(t *testing.T) {
+func TestOpsServiceGetTokenStats_Validation(t *testing.T) {
 	now := time.Now().UTC()
 
 	tests := []struct {
 		name       string
-		filter     *OpsOpenAITokenStatsFilter
+		filter     *OpsTokenStatsFilter
 		wantCode   int
 		wantReason string
 	}{
@@ -44,7 +44,7 @@ func TestOpsServiceGetOpenAITokenStats_Validation(t *testing.T) {
 		},
 		{
 			name: "start_time/end_time 必填",
-			filter: &OpsOpenAITokenStatsFilter{
+			filter: &OpsTokenStatsFilter{
 				StartTime: time.Time{},
 				EndTime:   now,
 			},
@@ -53,7 +53,7 @@ func TestOpsServiceGetOpenAITokenStats_Validation(t *testing.T) {
 		},
 		{
 			name: "start_time 不能晚于 end_time",
-			filter: &OpsOpenAITokenStatsFilter{
+			filter: &OpsTokenStatsFilter{
 				StartTime: now,
 				EndTime:   now.Add(-1 * time.Minute),
 			},
@@ -62,7 +62,7 @@ func TestOpsServiceGetOpenAITokenStats_Validation(t *testing.T) {
 		},
 		{
 			name: "group_id 必须大于 0",
-			filter: &OpsOpenAITokenStatsFilter{
+			filter: &OpsTokenStatsFilter{
 				StartTime: now.Add(-time.Hour),
 				EndTime:   now,
 				GroupID:   int64Ptr(0),
@@ -71,8 +71,18 @@ func TestOpsServiceGetOpenAITokenStats_Validation(t *testing.T) {
 			wantReason: "OPS_GROUP_ID_INVALID",
 		},
 		{
+			name: "platform 必须是具体平台",
+			filter: &OpsTokenStatsFilter{
+				StartTime: now.Add(-time.Hour),
+				EndTime:   now,
+				Platform:  PlatformComposite,
+			},
+			wantCode:   400,
+			wantReason: "OPS_TOKEN_STATS_PLATFORM_INVALID",
+		},
+		{
 			name: "top_n 与分页参数互斥",
-			filter: &OpsOpenAITokenStatsFilter{
+			filter: &OpsTokenStatsFilter{
 				StartTime: now.Add(-time.Hour),
 				EndTime:   now,
 				TopN:      10,
@@ -83,7 +93,7 @@ func TestOpsServiceGetOpenAITokenStats_Validation(t *testing.T) {
 		},
 		{
 			name: "top_n 参数越界",
-			filter: &OpsOpenAITokenStatsFilter{
+			filter: &OpsTokenStatsFilter{
 				StartTime: now.Add(-time.Hour),
 				EndTime:   now,
 				TopN:      101,
@@ -93,7 +103,7 @@ func TestOpsServiceGetOpenAITokenStats_Validation(t *testing.T) {
 		},
 		{
 			name: "page_size 参数越界",
-			filter: &OpsOpenAITokenStatsFilter{
+			filter: &OpsTokenStatsFilter{
 				StartTime: now.Add(-time.Hour),
 				EndTime:   now,
 				Page:      1,
@@ -107,10 +117,10 @@ func TestOpsServiceGetOpenAITokenStats_Validation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := &OpsService{
-				opsRepo: &openAITokenStatsRepoStub{},
+				opsRepo: &tokenStatsRepoStub{},
 			}
 
-			_, err := svc.GetOpenAITokenStats(context.Background(), tt.filter)
+			_, err := svc.GetTokenStats(context.Background(), tt.filter)
 			require.Error(t, err)
 			require.Equal(t, tt.wantCode, infraerrors.Code(err))
 			require.Equal(t, tt.wantReason, infraerrors.Reason(err))
@@ -118,11 +128,11 @@ func TestOpsServiceGetOpenAITokenStats_Validation(t *testing.T) {
 	}
 }
 
-func TestOpsServiceGetOpenAITokenStats_DefaultPagination(t *testing.T) {
+func TestOpsServiceGetTokenStats_DefaultPagination(t *testing.T) {
 	now := time.Now().UTC()
-	repo := &openAITokenStatsRepoStub{
-		resp: &OpsOpenAITokenStatsResponse{
-			Items: []*OpsOpenAITokenStatsItem{
+	repo := &tokenStatsRepoStub{
+		resp: &OpsTokenStatsResponse{
+			Items: []*OpsTokenStatsItem{
 				{Model: "gpt-4o-mini", RequestCount: 10},
 			},
 			Total: 1,
@@ -130,25 +140,42 @@ func TestOpsServiceGetOpenAITokenStats_DefaultPagination(t *testing.T) {
 	}
 	svc := &OpsService{opsRepo: repo}
 
-	filter := &OpsOpenAITokenStatsFilter{
+	filter := &OpsTokenStatsFilter{
 		TimeRange: "30d",
 		StartTime: now.Add(-30 * 24 * time.Hour),
 		EndTime:   now,
 	}
-	resp, err := svc.GetOpenAITokenStats(context.Background(), filter)
+	resp, err := svc.GetTokenStats(context.Background(), filter)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotNil(t, repo.captured)
 	require.Equal(t, 1, repo.captured.Page)
 	require.Equal(t, 20, repo.captured.PageSize)
 	require.Equal(t, 0, repo.captured.TopN)
+	require.Equal(t, "", repo.captured.Platform)
 }
 
-func TestOpsServiceGetOpenAITokenStats_RepoUnavailable(t *testing.T) {
+func TestOpsServiceGetTokenStats_NormalizesConcretePlatform(t *testing.T) {
+	now := time.Now().UTC()
+	repo := &tokenStatsRepoStub{}
+	svc := &OpsService{opsRepo: repo}
+
+	_, err := svc.GetTokenStats(context.Background(), &OpsTokenStatsFilter{
+		StartTime: now.Add(-time.Hour),
+		EndTime:   now,
+		Platform:  " DeepSeek ",
+		TopN:      10,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, repo.captured)
+	require.Equal(t, PlatformDeepseek, repo.captured.Platform)
+}
+
+func TestOpsServiceGetTokenStats_RepoUnavailable(t *testing.T) {
 	now := time.Now().UTC()
 	svc := &OpsService{}
 
-	_, err := svc.GetOpenAITokenStats(context.Background(), &OpsOpenAITokenStatsFilter{
+	_, err := svc.GetTokenStats(context.Background(), &OpsTokenStatsFilter{
 		TimeRange: "1h",
 		StartTime: now.Add(-time.Hour),
 		EndTime:   now,
