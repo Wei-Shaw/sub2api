@@ -1050,9 +1050,35 @@ func buildCodexUsageExtraUpdates(snapshot *OpenAICodexUsageSnapshot, fallbackNow
 	return updates
 }
 
+func codexUsageSnapshotOwnerID(account *Account) int64 {
+	if account == nil || account.IsSparkShadow() {
+		return 0
+	}
+	if account.IsLinkedAccount() && account.ParentAccountID != nil {
+		return *account.ParentAccountID
+	}
+	return account.ID
+}
+
+func (s *OpenAIGatewayService) updateCodexUsageSnapshotFromHeadersForAccount(ctx context.Context, account *Account, headers http.Header) {
+	if account == nil || headers == nil {
+		return
+	}
+	accountID := codexUsageSnapshotOwnerID(account)
+	if accountID <= 0 {
+		if account.IsSparkShadow() && account.ParentAccountID != nil {
+			notifyOpenAIAutoReset(*account.ParentAccountID)
+		}
+		return
+	}
+	if snapshot := ParseCodexRateLimitHeaders(headers); snapshot != nil {
+		s.updateCodexUsageSnapshot(ctx, accountID, snapshot)
+	}
+}
+
 // updateCodexUsageSnapshot saves the Codex usage snapshot to account's Extra field
 // updateCodexUsageSnapshot 把 /responses 的 x-codex-* 全局头快照写入账号 codex_* Extra。
-// ⚠️ 调用方必须排除 spark 影子账号(account.IsShadow()):影子的 codex_* 仅由 QueryUsage
+// ⚠️ 调用方必须排除 spark 影子账号(account.IsSparkShadow()):影子的 codex_* 仅由 QueryUsage
 // (/wham/usage bengalfox 道)更新,不能被全局头口径污染(外审第7轮 P1)。本函数仅持 accountID,
 // 无法在此自检影子,故守卫前置到各调用点。
 func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, accountID int64, snapshot *OpenAICodexUsageSnapshot) {

@@ -259,16 +259,25 @@ func TestDuplicateOpenAIOAuthCreatesLinkedRouteWithoutTokens(t *testing.T) {
 	require.Equal(t, source.GroupIDs, duplicate.GroupIDs)
 }
 
-func TestDuplicateAccountRejectsRotatingOrUnknownCredentialTypes(t *testing.T) {
-	for _, accountType := range []string{AccountTypeOAuth, AccountTypeSetupToken, "legacy-cookie"} {
-		t.Run(accountType, func(t *testing.T) {
+func TestDuplicateAccountRejectsUnsupportedCredentialTypes(t *testing.T) {
+	tests := []struct {
+		name        string
+		platform    string
+		accountType string
+	}{
+		{name: "non_openai_oauth", platform: PlatformAnthropic, accountType: AccountTypeOAuth},
+		{name: "setup_token", platform: PlatformOpenAI, accountType: AccountTypeSetupToken},
+		{name: "unknown", platform: PlatformOpenAI, accountType: "legacy-cookie"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			repo := newDuplicateAccountRepoStub()
 			svc := &adminServiceImpl{accountRepo: repo, accountDuplicateRepo: repo}
 			source := &Account{
 				Name:        "rotating-credential-account",
-				Platform:    PlatformOpenAI,
-				Type:        accountType,
+				Platform:    tt.platform,
+				Type:        tt.accountType,
 				Credentials: map[string]any{"refresh_token": "shared-token"},
 			}
 			require.NoError(t, repo.Create(ctx, source))
