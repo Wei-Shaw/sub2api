@@ -69,8 +69,8 @@ func (h *OpenAIGatewayHandler) OpenAIVideo(c *gin.Context) {
 	if isCreate && model == "" {
 		model = "sora-2"
 	}
-	if isCreate && !service.GroupAllowsImageGeneration(apiKey.Group) {
-		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
+	if isCreate && !service.GroupAllowsVideoGeneration(apiKey.Group) {
+		h.errorResponse(c, http.StatusForbidden, "permission_error", "Video generation is not enabled for this group")
 		return
 	}
 
