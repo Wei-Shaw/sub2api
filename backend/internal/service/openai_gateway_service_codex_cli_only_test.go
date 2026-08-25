@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type stubCodexRestrictionDetector struct {
@@ -289,6 +290,24 @@ func TestIsOpenAITransientProcessingError(t *testing.T) {
 	require.True(t, isOpenAITransientProcessingError(
 		http.StatusBadRequest,
 		"",
+		[]byte(`{"error":{"message":"Our servers are currently overloaded. Please try again later."}}`),
+	))
+
+	require.True(t, isOpenAITransientProcessingError(
+		http.StatusServiceUnavailable,
+		"Server is overloaded. Please try again later.",
+		nil,
+	))
+
+	require.True(t, isOpenAITransientProcessingError(
+		http.StatusBadGateway,
+		"",
+		[]byte(`{"error":{"message":"Our servers are currently overloaded. Please try again later."}}`),
+	))
+
+	require.True(t, isOpenAITransientProcessingError(
+		http.StatusBadRequest,
+		"",
 		[]byte(`{"error":{"message":"An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID req_123 in your message."}}`),
 	))
 
@@ -308,10 +327,29 @@ func TestIsOpenAIContextWindowError(t *testing.T) {
 		"maximum context length exceeded",
 		nil,
 	))
+	require.True(t, isOpenAIContextWindowError(
+		"",
+		[]byte(`maximum context length exceeded`),
+	))
 	require.False(t, isOpenAIContextWindowError(
 		"context canceled",
 		nil,
 	))
+	require.False(t, isOpenAIContextWindowError(
+		"upstream unavailable",
+		[]byte(`{"error":{"message":"upstream unavailable","code":"upstream_error"},"echo":"context_length_exceeded maximum context length"}`),
+	))
+}
+
+func TestOpenAITransientAndCapacityClassificationIgnoresEchoedJSON(t *testing.T) {
+	body := []byte(`{"error":{"message":"upstream unavailable","code":"upstream_error"},"echo":"server is overloaded; selected model is at capacity"}`)
+
+	require.False(t, isOpenAITransientProcessingError(http.StatusBadRequest, "upstream unavailable", body))
+	require.False(t, isOpenAIRequestScopedCapacityShed("upstream unavailable", body))
+
+	plainText := []byte(`server is overloaded; please retry later`)
+	require.True(t, isOpenAITransientProcessingError(http.StatusServiceUnavailable, "", plainText))
+	require.True(t, isOpenAIRequestScopedCapacityShed("", plainText))
 }
 
 func TestShouldFailoverOpenAIUpstreamResponseContextWindow502(t *testing.T) {
@@ -320,6 +358,11 @@ func TestShouldFailoverOpenAIUpstreamResponseContextWindow502(t *testing.T) {
 
 	require.False(t, svc.shouldFailoverOpenAIUpstreamResponse(http.StatusBadGateway, "", body))
 	require.True(t, svc.shouldFailoverOpenAIUpstreamResponse(http.StatusBadGateway, "temporary upstream outage", []byte(`{"error":{"message":"temporary upstream outage"}}`)))
+	require.True(t, svc.shouldFailoverOpenAIUpstreamResponse(
+		http.StatusBadGateway,
+		"temporary upstream outage",
+		[]byte(`{"error":{"message":"temporary upstream outage"},"echo":"context_length_exceeded"}`),
+	))
 }
 
 func TestOpenAIGatewayService_Forward_LogsInstructionsRequiredDetails(t *testing.T) {
@@ -365,7 +408,12 @@ func TestOpenAIGatewayService_Forward_LogsInstructionsRequiredDetails(t *testing
 
 	_, err := svc.Forward(context.Background(), c, account, body)
 	require.Error(t, err)
-	require.Equal(t, http.StatusBadGateway, rec.Code)
+	// missing_required_parameter 是确定性的请求错误：换账号、重试都不会变。按真实的
+	// 400 回写并保留 param/code，客户端才知道该补哪个字段（而不是收到可重试的 502）。
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Equal(t, "invalid_request_error", gjson.Get(rec.Body.String(), "error.type").String())
+	require.Equal(t, "missing_required_parameter", gjson.Get(rec.Body.String(), "error.code").String())
+	require.Equal(t, "instructions", gjson.Get(rec.Body.String(), "error.param").String())
 	require.Contains(t, err.Error(), "upstream error: 400")
 
 	require.True(t, logSink.ContainsMessageAtLevel("OpenAI 上游返回 Instructions are required，已记录请求详情用于排查", "warn"))

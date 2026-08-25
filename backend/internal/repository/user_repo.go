@@ -43,39 +43,57 @@ func newUserRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *userRepos
 }
 
 func (r *userRepository) Create(ctx context.Context, userIn *service.User) error {
-	return r.create(ctx, userIn, false)
+	return r.create(ctx, userIn, false, "")
 }
 
 // CreateWithEmailAliasGuard 见 service.UserRepository：在邮箱唯一性锁内复查收件箱身份，
 // 供注册路径使用。
 func (r *userRepository) CreateWithEmailAliasGuard(ctx context.Context, userIn *service.User) error {
-	return r.create(ctx, userIn, true)
+	return r.create(ctx, userIn, true, "")
 }
 
-func (r *userRepository) create(ctx context.Context, userIn *service.User, guardEmailAlias bool) error {
+// CountUsersByEmailDomain 统计指定可注册主域名及其子域名下的未删除用户。
+func (r *userRepository) CountUsersByEmailDomain(ctx context.Context, domain string) (int, error) {
+	return countUsersByEmailDomainWithClient(ctx, clientFromContext(ctx, r.client), domain)
+}
+
+// CreateWithEmailAliasGuardAndDomainLimit 串行化非白名单域名的注册请求，
+// 并在用户写入的同一事务内复查域名额度。
+func (r *userRepository) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, userIn *service.User, domain string) error {
+	return r.create(ctx, userIn, true, normalizeEmailDomain(domain))
+}
+
+func (r *userRepository) create(ctx context.Context, userIn *service.User, guardEmailAlias bool, domainLimit string) error {
 	if userIn == nil {
 		return nil
 	}
 
 	// 统一使用 ent 的事务：保证用户与允许分组的更新原子化，
 	// 并避免基于 *sql.Tx 手动构造 ent client 导致的 ExecQuerier 断言错误。
-	tx, err := r.client.Tx(ctx)
-	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
-		return err
-	}
-
+	//
+	// 注意：ent 的 Client.Tx 不感知上下文中的事务（只检查 driver 类型），
+	// 因此必须显式检查 TxFromContext：当调用方已开启外部事务（如注册时的
+	// “建用户 + 占用邀请码”原子事务），直接复用其 client，由调用方统一提交/回滚，
+	// 否则用户写入会落入独立事务并自行提交，导致外层事务无法回滚（孤儿用户）。
 	var txClient *dbent.Client
 	txCtx := ctx
-	if err == nil {
-		defer func() { _ = tx.Rollback() }()
-		txClient = tx.Client()
-		txCtx = dbent.NewTxContext(ctx, tx)
+	var ownedTx *dbent.Tx
+	if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
+		txClient = existingTx.Client()
 	} else {
-		// 已处于外部事务中（ErrTxStarted），复用当前事务 client 并由调用方负责提交/回滚。
-		if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
-			txClient = existingTx.Client()
-		} else {
+		tx, err := r.client.Tx(ctx)
+		switch {
+		case errors.Is(err, dbent.ErrTxStarted):
+			// r.client 本身已是事务绑定 client（client 注入式事务，如集成测试
+			// 夹具 tx.Client()）：直接复用，提交/回滚由 client 的持有方负责。
 			txClient = r.client
+		case err != nil:
+			return err
+		default:
+			ownedTx = tx
+			defer func() { _ = ownedTx.Rollback() }()
+			txClient = tx.Client()
+			txCtx = dbent.NewTxContext(ctx, tx)
 		}
 	}
 
@@ -83,6 +101,9 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 	if guardEmailAlias {
 		// 别名变体的字面量不同，唯一索引无法兜底；用收件箱身份锁把同一收件箱的并发注册串行化。
 		lockKeys = append(lockKeys, emailAliasUniquenessLockKey(userIn.Email))
+	}
+	if domainLimit != "" {
+		lockKeys = append(lockKeys, registrationEmailDomainLockKey(domainLimit))
 	}
 	releaseEmailLock, err := lockRepositoryScopedKeys(
 		txCtx,
@@ -94,6 +115,16 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 		return err
 	}
 	defer releaseEmailLock()
+
+	if domainLimit != "" {
+		count, err := countUsersByEmailDomainWithClient(txCtx, txClient, domainLimit)
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			return service.ErrEmailDomainRegistrationLimit
+		}
+	}
 
 	if err := ensureNormalizedEmailAvailableWithClient(txCtx, txClient, 0, userIn.Email); err != nil {
 		return err
@@ -134,8 +165,8 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 		return err
 	}
 
-	if tx != nil {
-		if err := tx.Commit(); err != nil {
+	if ownedTx != nil {
+		if err := ownedTx.Commit(); err != nil {
 			return err
 		}
 	}
@@ -859,6 +890,49 @@ func (r *userRepository) DeductBalance(ctx context.Context, id int64, amount flo
 	return nil
 }
 
+// DeductAvailableBalance atomically deducts min(amount, max(balance, 0)).
+// Unlike DeductBalance, this refund-specific operation never increases an
+// existing deficit or permits a concurrent deduction to cause an overdraft.
+func (r *userRepository) DeductAvailableBalance(ctx context.Context, id int64, amount float64) (deducted float64, err error) {
+	if amount < 0 {
+		return 0, fmt.Errorf("deduction amount must be nonnegative")
+	}
+	const updateSQL = `
+		WITH target AS (
+			SELECT id, balance
+			FROM users
+			WHERE id = $2 AND deleted_at IS NULL
+			FOR UPDATE
+		), updated AS (
+			UPDATE users AS u
+			SET balance = target.balance - LEAST($1, GREATEST(target.balance, 0)), updated_at = NOW()
+			FROM target
+			WHERE u.id = target.id AND u.deleted_at IS NULL
+			RETURNING target.balance - u.balance AS deducted
+		)
+		SELECT deducted FROM updated
+	`
+	rows, err := clientFromContext(ctx, r.client).QueryContext(ctx, updateSQL, amount, id)
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
+	if !rows.Next() {
+		if rowsErr := rows.Err(); rowsErr != nil {
+			return 0, rowsErr
+		}
+		return 0, service.ErrUserNotFound
+	}
+	if err := rows.Scan(&deducted); err != nil {
+		return 0, err
+	}
+	return deducted, rows.Err()
+}
+
 // AdjustBalance 原子地把 delta 累加到余额上，结果为负时整条语句不生效。
 // 相比"读余额 → 算新值 → 整行写回"，这里把读与写压进同一条 UPDATE，
 // 并发的计费扣款不会被旧快照覆盖。
@@ -1187,6 +1261,48 @@ func normalizedEmailUniquenessLockKey(email string) string {
 		return ""
 	}
 	return "users:normalized-email:" + normalized
+}
+
+func registrationEmailDomainLockKey(domain string) string {
+	domain = normalizeEmailDomain(domain)
+	if domain == "" {
+		return ""
+	}
+	return "users:registration-email-domain:" + domain
+}
+
+func normalizeEmailDomain(domain string) string {
+	return service.NormalizeRegistrationEmailDomain(domain)
+}
+
+func countUsersByEmailDomainWithClient(ctx context.Context, client *dbent.Client, domain string) (int, error) {
+	client = clientFromContext(ctx, client)
+	domain = normalizeEmailDomain(domain)
+	if client == nil || domain == "" {
+		return 0, nil
+	}
+	return client.User.Query().Where(userEmailDomainPredicate(domain)).Count(ctx)
+}
+
+func userEmailDomainPredicate(domain string) predicate.User {
+	domain = normalizeEmailDomain(domain)
+	escapedDomain := escapeLikeWildcards(domain)
+	exactPattern := "%@" + escapedDomain
+	subdomainPattern := "%@%." + escapedDomain
+	return predicate.User(func(s *entsql.Selector) {
+		s.Where(entsql.P(func(b *entsql.Builder) {
+			b.WriteString("(RTRIM(LOWER(TRIM(").
+				Ident(s.C(dbuser.FieldEmail)).
+				WriteString(")), '.') LIKE ").
+				Arg(exactPattern).
+				WriteString(` ESCAPE '\' OR RTRIM(LOWER(TRIM(`).
+				Ident(s.C(dbuser.FieldEmail)).
+				WriteString(")), '.') LIKE ").
+				Arg(subdomainPattern).
+				WriteString(` ESCAPE '\'`).
+				WriteString(")")
+		}))
+	})
 }
 
 // emailAliasUniquenessLockKey 按收件箱身份（而非邮箱字面量）加锁，使同一收件箱的不同

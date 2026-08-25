@@ -345,6 +345,85 @@ func TestGatewayServiceRecordUsage_PeakRateAffectsTokenModeImageOutputTokens(t *
 	require.InDelta(t, expectedActual, userRepo.lastAmount, 1e-12)
 }
 
+func TestGatewayServiceRecordUsage_TimePricingUsesPricingAt(t *testing.T) {
+	groupID := int64(904)
+	requestStart := time.Date(2024, time.January, 2, 2, 0, 0, 0, time.UTC) // 上海 10:00
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
+	svc.resolver = newOpenAITokenImageChannelPricingResolverWithTimeForTest(t, groupID, "gpt-5.1", &ChannelTimePricing{
+		Timezone: "Asia/Shanghai",
+		Periods:  []ChannelTimePricingPeriod{{StartTime: "09:00", EndTime: "12:00", Multiplier: 2}},
+	})
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_time_pricing_request_start",
+			Model:     "gpt-5.1",
+			Usage:     ClaudeUsage{InputTokens: 1000, OutputTokens: 500},
+		},
+		APIKey: &APIKey{ID: 804, GroupID: i64p(groupID), Group: &Group{
+			ID: groupID, RateMultiplier: 0.8, SubscriptionType: SubscriptionTypeSubscription,
+		}},
+		User:      &User{ID: 604},
+		Account:   &Account{ID: 704},
+		PricingAt: requestStart,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	baseCost := 1000*3e-6 + 500*15e-6
+	require.InDelta(t, baseCost*2, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, baseCost*2*0.8, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 0.8, usageRepo.lastLog.RateMultiplier, 1e-12)
+}
+func TestGatewayServiceRecordUsage_UsesExplicitPricingAtForPeakRate(t *testing.T) {
+	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformGrok, PlatformAntigravity} {
+		t.Run(platform, func(t *testing.T) {
+			groupID := int64(903)
+			usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+			userRepo := &openAIRecordUsageUserRepoStub{}
+			svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
+			svc.resolver = newOpenAITokenImageChannelPricingResolverForTest(t, groupID, "gemini-image")
+
+			pricingAt := time.Date(2026, time.January, 1, 0, 30, 0, 0, time.UTC)
+			err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+				Result: &ForwardResult{
+					RequestID:  "gateway_explicit_pricing_at_" + platform,
+					Model:      "gemini-image",
+					ImageCount: 1,
+					Usage: ClaudeUsage{
+						InputTokens:       1000,
+						OutputTokens:      600,
+						ImageOutputTokens: 100,
+					},
+				},
+				APIKey: &APIKey{
+					ID:      803,
+					GroupID: i64p(groupID),
+					Group: &Group{
+						ID:                 groupID,
+						Platform:           platform,
+						RateMultiplier:     1.0,
+						SubscriptionType:   SubscriptionTypeSubscription,
+						PeakRateEnabled:    true,
+						PeakStart:          "00:00",
+						PeakEnd:            "01:00",
+						PeakRateMultiplier: 3.0,
+					},
+				},
+				User:      &User{ID: 603},
+				Account:   &Account{ID: 703, Platform: platform},
+				PricingAt: pricingAt,
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, usageRepo.lastLog)
+			require.Equal(t, 3.0, usageRepo.lastLog.RateMultiplier)
+		})
+	}
+}
+
 func TestGatewayServiceRecordUsage_UsageLogWriteErrorDoesNotSkipBilling(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: false, err: MarkUsageLogCreateNotPersisted(context.Canceled)}
 	userRepo := &openAIRecordUsageUserRepoStub{}
@@ -530,9 +609,10 @@ func TestGatewayServiceRecordUsage_DroppedUsageLogFallsBackToSyncCreate(t *testi
 	require.NoError(t, usageRepo.lastCtxErr)
 }
 
-func TestGatewayServiceRecordUsage_BillingErrorSkipsUsageLogWrite(t *testing.T) {
+func TestGatewayServiceRecordUsage_BillingErrorWritesUnsettledUsageLog(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{}
-	billingRepo := &openAIRecordUsageBillingRepoStub{err: context.DeadlineExceeded}
+	billingErr := errors.New("billing tx failed")
+	billingRepo := &openAIRecordUsageBillingRepoStub{err: billingErr}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	subRepo := &openAIRecordUsageSubRepoStub{}
 	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo)
@@ -552,9 +632,16 @@ func TestGatewayServiceRecordUsage_BillingErrorSkipsUsageLogWrite(t *testing.T) 
 		Account: &Account{ID: 705},
 	})
 
-	require.Error(t, err)
+	require.ErrorIs(t, err, billingErr)
 	require.Equal(t, 1, billingRepo.calls)
-	require.Equal(t, 0, usageRepo.calls)
+	require.Equal(t, 1, usageRepo.calls)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 10, usageRepo.lastLog.InputTokens)
+	require.Equal(t, 6, usageRepo.lastLog.OutputTokens)
+	require.Greater(t, usageRepo.lastLog.InputCost, 0.0)
+	require.Greater(t, usageRepo.lastLog.OutputCost, 0.0)
+	require.Greater(t, usageRepo.lastLog.TotalCost, 0.0)
+	require.Zero(t, usageRepo.lastLog.ActualCost)
 }
 
 func TestGatewayServiceRecordUsage_ReasoningEffortPersisted(t *testing.T) {
@@ -606,4 +693,75 @@ func TestGatewayServiceRecordUsage_ReasoningEffortNil(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, usageRepo.lastLog)
 	require.Nil(t, usageRepo.lastLog.ReasoningEffort)
+}
+
+// newGatewayRecordUsageServiceWithResolverForTest mirrors production wiring for
+// token billing: a pricing resolver plus a grouped API key select the unified
+// billing path, which is the only one that honours the service tier.
+func newGatewayRecordUsageServiceWithResolverForTest(usageRepo UsageLogRepository) (*GatewayService, *APIKey) {
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+	svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+	groupID := int64(7)
+	return svc, &APIKey{ID: 1, GroupID: &groupID, Group: &Group{ID: groupID, RateMultiplier: 1.0}}
+}
+
+func TestGatewayServiceRecordUsage_FastSpeedDowngradedByUpstreamResponse(t *testing.T) {
+	usageRepo := &openAIRecordUsageBestEffortLogRepoStub{}
+	svc, apiKey := newGatewayRecordUsageServiceWithResolverForTest(usageRepo)
+
+	tier := "fast"
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:                   "fast_downgraded_test",
+			Usage:                       ClaudeUsage{InputTokens: 100, OutputTokens: 50},
+			Model:                       "claude-opus-5",
+			Duration:                    time.Second,
+			ServiceTier:                 &tier,
+			UpstreamResponseServiceTier: "standard",
+		},
+		APIKey:  apiKey,
+		User:    &User{ID: 1},
+		Account: &Account{ID: 1, Platform: PlatformAnthropic},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.ServiceTier)
+	require.Equal(t, "standard", *usageRepo.lastLog.ServiceTier)
+
+	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50}
+	standardCost, err := svc.billingService.CalculateCost("claude-opus-5", tokens, 1.0)
+	require.NoError(t, err)
+	fastCost, err := svc.billingService.CalculateCostWithServiceTier("claude-opus-5", tokens, 1.0, "fast")
+	require.NoError(t, err)
+	require.Greater(t, fastCost.TotalCost, standardCost.TotalCost, "fast mode must carry a premium for the test to be meaningful")
+	require.InDelta(t, standardCost.TotalCost, usageRepo.lastLog.TotalCost, 1e-10)
+}
+
+func TestGatewayServiceRecordUsage_FastSpeedHonouredKeepsPremium(t *testing.T) {
+	usageRepo := &openAIRecordUsageBestEffortLogRepoStub{}
+	svc, apiKey := newGatewayRecordUsageServiceWithResolverForTest(usageRepo)
+
+	tier := "fast"
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:                   "fast_honoured_test",
+			Usage:                       ClaudeUsage{InputTokens: 100, OutputTokens: 50},
+			Model:                       "claude-opus-5",
+			Duration:                    time.Second,
+			ServiceTier:                 &tier,
+			UpstreamResponseServiceTier: "fast",
+		},
+		APIKey:  apiKey,
+		User:    &User{ID: 1},
+		Account: &Account{ID: 1, Platform: PlatformAnthropic},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "fast", *usageRepo.lastLog.ServiceTier)
+
+	fastCost, err := svc.billingService.CalculateCostWithServiceTier("claude-opus-5", UsageTokens{InputTokens: 100, OutputTokens: 50}, 1.0, "fast")
+	require.NoError(t, err)
+	require.InDelta(t, fastCost.TotalCost, usageRepo.lastLog.TotalCost, 1e-10)
 }

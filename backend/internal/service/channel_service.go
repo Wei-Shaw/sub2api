@@ -108,7 +108,7 @@ type ChannelMappingResult struct {
 	MappedModel        string // 映射后的模型名（无映射时等于原始模型名）
 	ChannelID          int64  // 渠道 ID（0 = 无渠道关联）
 	Mapped             bool   // 是否发生了映射
-	BillingModelSource string // 计费模型来源（"requested" / "upstream" / "channel_mapped"）
+	BillingModelSource string // 计费模型来源（"requested" / "upstream" / "channel_mapped" / "response_model"）
 }
 
 // BuildModelMappingChain 根据映射结果和上游实际模型构建映射链描述。
@@ -357,7 +357,7 @@ func isPlatformPricingMatch(groupPlatform, pricingPlatform string) bool {
 // fallback used before a request target has been resolved.
 func matchingPlatforms(groupPlatform string) []string {
 	if groupPlatform == PlatformComposite {
-		return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok}
+		return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek}
 	}
 	return []string{groupPlatform}
 }
@@ -375,6 +375,13 @@ func channelLookupPlatform(ctx context.Context, groupPlatform string) string {
 	}
 	return groupPlatform
 }
+
+// InvalidateCache 失效并重建渠道缓存。
+// 供渠道以外、但会影响渠道缓存内容的变更调用（如分组平台变更）。
+func (s *ChannelService) InvalidateCache() {
+	s.invalidateCache()
+}
+
 func (s *ChannelService) invalidateCache() {
 	s.cache.Store((*channelCache)(nil))
 	s.cacheSF.Forget("channel_cache")
@@ -639,7 +646,47 @@ func validatePricingEntries(pricing []ChannelModelPricing) error {
 	if err := validatePricingIntervals(pricing); err != nil {
 		return err
 	}
-	return validatePricingBillingMode(pricing)
+	if err := validatePricingBillingMode(pricing); err != nil {
+		return err
+	}
+	return validatePricingTimePricing(pricing)
+}
+
+func validatePricingTimePricing(pricing []ChannelModelPricing) error {
+	for i := range pricing {
+		config := pricing[i].TimePricing
+		if config == nil {
+			continue
+		}
+		if len(config.Periods) == 0 {
+			pricing[i].TimePricing = nil
+			continue
+		}
+		mode := pricing[i].BillingMode
+		if mode != "" && mode != BillingModeToken {
+			return infraerrors.BadRequest("TIME_PRICING_UNSUPPORTED_MODE", "time pricing only supports token billing mode")
+		}
+		if err := validateChannelTimePricing(config); err != nil {
+			return infraerrors.BadRequest("INVALID_TIME_PRICING", fmt.Sprintf(
+				"invalid time pricing for platform '%s' models %v: %v", pricing[i].Platform, pricing[i].Models, err))
+		}
+	}
+	return nil
+}
+
+func validateAccountStatsPricingRules(rules []AccountStatsPricingRule) error {
+	for i := range rules {
+		for _, pricing := range rules[i].Pricing {
+			if pricing.TimePricing != nil && len(pricing.TimePricing.Periods) > 0 {
+				return fmt.Errorf("account stats pricing rule #%d: %w", i+1,
+					infraerrors.BadRequest("ACCOUNT_STATS_TIME_PRICING_UNSUPPORTED", "account stats pricing does not support time pricing"))
+			}
+		}
+		if err := validatePricingEntries(rules[i].Pricing); err != nil {
+			return fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
+		}
+	}
+	return nil
 }
 
 // validatePricingBillingMode 校验计费模式配置：按次/图片模式必须配价格或区间，所有价格字段不能为负，区间至少有一个价格字段。
@@ -659,7 +706,7 @@ func validatePricingBillingMode(pricing []ChannelModelPricing) error {
 }
 
 func checkBillingModeRequirements(p ChannelModelPricing) error {
-	if p.BillingMode == BillingModePerRequest || p.BillingMode == BillingModeImage {
+	if p.BillingMode == BillingModePerRequest || p.BillingMode == BillingModeImage || p.BillingMode == BillingModeVideo {
 		if p.PerRequestPrice == nil && len(p.Intervals) == 0 {
 			return infraerrors.BadRequest(
 				"BILLING_MODE_MISSING_PRICE",
@@ -688,6 +735,17 @@ func checkPricesNotNegative(p ChannelModelPricing) error {
 			return infraerrors.BadRequest("NEGATIVE_PRICE", fmt.Sprintf("%s must be >= 0", c.field))
 		}
 	}
+	for _, c := range []struct {
+		field string
+		val   *float64
+	}{
+		{"fast_multiplier", p.FastMultiplier},
+		{"flex_multiplier", p.FlexMultiplier},
+	} {
+		if c.val != nil && *c.val <= 0 {
+			return infraerrors.BadRequest("INVALID_MULTIPLIER", fmt.Sprintf("%s must be > 0", c.field))
+		}
+	}
 	return nil
 }
 
@@ -695,7 +753,9 @@ func checkIntervalsHavePrices(p ChannelModelPricing) error {
 	for _, iv := range p.Intervals {
 		if iv.InputPrice == nil && iv.OutputPrice == nil &&
 			iv.CacheWritePrice == nil && iv.CacheReadPrice == nil &&
-			iv.PerRequestPrice == nil {
+			iv.PerRequestPrice == nil && iv.InputMultiplier == nil &&
+			iv.OutputMultiplier == nil && iv.CacheWriteMultiplier == nil &&
+			iv.CacheReadMultiplier == nil {
 			return infraerrors.BadRequest(
 				"INTERVAL_MISSING_PRICE",
 				fmt.Sprintf("interval [%d, %s] has no price fields set for model %v",
@@ -748,10 +808,8 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
 		return nil, err
 	}
-	for i, rule := range channel.AccountStatsPricingRules {
-		if err := validatePricingEntries(rule.Pricing); err != nil {
-			return nil, fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
-		}
+	if err := validateAccountStatsPricingRules(channel.AccountStatsPricingRules); err != nil {
+		return nil, err
 	}
 
 	if err := s.repo.Create(ctx, channel); err != nil {
@@ -792,10 +850,8 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
 		return nil, err
 	}
-	for i, rule := range channel.AccountStatsPricingRules {
-		if err := validatePricingEntries(rule.Pricing); err != nil {
-			return nil, fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
-		}
+	if err := validateAccountStatsPricingRules(channel.AccountStatsPricingRules); err != nil {
+		return nil, err
 	}
 
 	oldGroupIDs := s.getOldGroupIDs(ctx, id)
@@ -962,10 +1018,26 @@ func conflictsBetween(a, b modelEntry) bool {
 	}
 }
 
-// toModelEntry 将模型名转换为 modelEntry
+// toModelEntry 将模型名转换为 modelEntry（用于模型映射的冲突检测）。
+// 归一化必须与 expandMappingToCache 写缓存键的方式一致：映射缓存只做 strings.ToLower。
 func toModelEntry(pattern string) modelEntry {
 	prefix, isWild := splitWildcardSuffix(strings.ToLower(pattern))
 	return modelEntry{pattern: pattern, prefix: prefix, wildcard: isWild}
+}
+
+// toPricingModelEntry 将模型名转换为 modelEntry（用于模型定价的冲突检测）。
+//
+// 与 toModelEntry 的区别：定价缓存的键走 normalizeChannelPricingModelName
+// （额外做 TrimSpace，并把 claude-* 的 "." 换成 "-"），冲突检测必须用同一套归一化，
+// 否则两个校验时看着不同、写进缓存后键相同的定价会互相静默覆盖。
+func toPricingModelEntry(pattern string) modelEntry {
+	// 先剥通配符再归一化，与 expandPricingToCache 的处理顺序保持一致
+	prefix, isWild := splitWildcardSuffix(pattern)
+	return modelEntry{
+		pattern:  pattern,
+		prefix:   normalizeChannelPricingModelName(prefix),
+		wildcard: isWild,
+	}
 }
 
 // validateNoConflictingModels 检查定价列表中是否有冲突模型模式（同一平台下）。
@@ -974,7 +1046,7 @@ func validateNoConflictingModels(pricingList []ChannelModelPricing) error {
 	byPlatform := make(map[string][]modelEntry)
 	for _, p := range pricingList {
 		for _, model := range p.Models {
-			byPlatform[p.Platform] = append(byPlatform[p.Platform], toModelEntry(model))
+			byPlatform[p.Platform] = append(byPlatform[p.Platform], toPricingModelEntry(model))
 		}
 	}
 	for platform, entries := range byPlatform {

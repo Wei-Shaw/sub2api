@@ -144,6 +144,9 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 	}
 
 	excluded := make(map[int64]struct{})
+	// Live 按通话时长计费，不属于 token 利润门的语义范围：显式豁免，避免
+	// 防御性装门按文本 D 过滤 Live 账号池且门与计费时刻不同源。
+	ctx = WithOpenAIProfitControlSuppressed(ctx)
 	var lastErr error
 	for attempt := 0; attempt <= 3; attempt++ {
 		selection, _, selectErr := s.SelectAccountWithSchedulerForCapability(
@@ -301,7 +304,7 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 	upstreamReq.Header.Set(liveAttestationHeader, attestation)
 	applyLiveUpstreamIdentityHeaders(upstreamReq.Header)
 
-	resp, err := s.httpUpstream.Do(upstreamReq, resolveAccountProxyURL(account), account.ID, account.Concurrency)
+	resp, err := s.doOpenAIUpstream(upstreamReq, resolveAccountProxyURL(account), account)
 	if err != nil {
 		logLiveCreateStageFailure(ctx, account.ID, "upstream_transport", err)
 		return nil, err

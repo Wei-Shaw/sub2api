@@ -372,6 +372,7 @@ export default {
     announcements: {
       title: '公告管理',
       description: '创建公告并按条件投放',
+      createFirstAnnouncement: '还没有公告，创建您的第一条公告。',
       createAnnouncement: '创建公告',
       editAnnouncement: '编辑公告',
       deleteAnnouncement: '删除公告',
@@ -541,6 +542,10 @@ export default {
       billingModeImage: '按次(图片)',
       billingModeVideo: '按次(视频)',
       allBillingModes: '全部计费模式',
+	  upstreamModelAudit: '上游模型审计',
+	  allUpstreamModelAudit: '全部响应模型状态',
+	  upstreamModelMismatchOnly: '仅不一致',
+	  upstreamModelMatchedOnly: '仅一致',
       ipAddress: 'IP',
       clickToViewBalance: '点击查看充值记录',
       failedToLoadUser: '加载用户信息失败',

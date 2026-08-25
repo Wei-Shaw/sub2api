@@ -155,12 +155,26 @@ func AnthropicStopReasonString(p *string) string {
 	return *p
 }
 
+// AnthropicPromptTokensDetails holds OpenAI-compatible prompt token details
+// occasionally included by Anthropic-compatible providers.
+type AnthropicPromptTokensDetails struct {
+	CachedTokens int `json:"cached_tokens,omitempty"`
+}
+
 // AnthropicUsage holds token counts in Anthropic format.
 type AnthropicUsage struct {
 	InputTokens              int `json:"input_tokens"`
 	OutputTokens             int `json:"output_tokens"`
 	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	// Anthropic-compatible providers can also expose their native OpenAI-style
+	// total/cache fields. Preserve them so callers can normalize provider totals
+	// into Anthropic's mutually-exclusive billing buckets.
+	PromptTokens          int                           `json:"prompt_tokens,omitempty"`
+	CachedTokens          int                           `json:"cached_tokens,omitempty"`
+	PromptTokensDetails   *AnthropicPromptTokensDetails `json:"prompt_tokens_details,omitempty"`
+	PromptCacheHitTokens  *int                          `json:"prompt_cache_hit_tokens,omitempty"`
+	PromptCacheMissTokens *int                          `json:"prompt_cache_miss_tokens,omitempty"`
 }
 
 // ---------------------------------------------------------------------------
@@ -295,14 +309,19 @@ func (i *ResponsesInputItem) UnmarshalJSON(data []byte) error {
 
 // ResponsesContentPart is a typed content part in a Responses message.
 type ResponsesContentPart struct {
-	Type     string `json:"type"` // "input_text" | "output_text" | "input_image"
+	Type     string `json:"type"` // "input_text" | "output_text" | "input_image" | "input_file"
 	Text     string `json:"text,omitempty"`
 	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
+
+	// input_file fields.
+	Filename string `json:"filename,omitempty"`
+	FileData string `json:"file_data,omitempty"` // data URI
+	FileID   string `json:"file_id,omitempty"`
 }
 
 // ResponsesTool describes a tool in the Responses API.
 type ResponsesTool struct {
-	Type        string          `json:"type"` // "function" | "custom" | "web_search" | "local_shell" etc.
+	Type        string          `json:"type"` // "function" | "custom" | "web_search" | "x_search" | "local_shell" etc.
 	Name        string          `json:"name,omitempty"`
 	Description string          `json:"description,omitempty"`
 	Parameters  json.RawMessage `json:"parameters,omitempty"`
@@ -311,6 +330,14 @@ type ResponsesTool struct {
 	// type=namespace 的子工具列表（tools 与 children 二选一，语义相同）。
 	Tools    []ResponsesTool `json:"tools,omitempty"`
 	Children []ResponsesTool `json:"children,omitempty"`
+
+	// type=x_search
+	AllowedXHandles          []string `json:"allowed_x_handles,omitempty"`
+	ExcludedXHandles         []string `json:"excluded_x_handles,omitempty"`
+	FromDate                 string   `json:"from_date,omitempty"`
+	ToDate                   string   `json:"to_date,omitempty"`
+	EnableImageUnderstanding *bool    `json:"enable_image_understanding,omitempty"`
+	EnableVideoUnderstanding *bool    `json:"enable_video_understanding,omitempty"`
 }
 
 // UnmarshalJSON 容忍字符串形式的工具声明：codex 会以 "name" 简写声明 custom 工具，
@@ -331,12 +358,13 @@ func (t *ResponsesTool) UnmarshalJSON(data []byte) error {
 
 // ResponsesResponse is the non-streaming response from POST /v1/responses.
 type ResponsesResponse struct {
-	ID     string            `json:"id"`
-	Object string            `json:"object"` // "response"
-	Model  string            `json:"model"`
-	Status string            `json:"status"` // "completed" | "incomplete" | "failed"
-	Output []ResponsesOutput `json:"output"`
-	Usage  *ResponsesUsage   `json:"usage,omitempty"`
+	ID          string            `json:"id"`
+	Object      string            `json:"object"` // "response"
+	Model       string            `json:"model"`
+	Status      string            `json:"status"` // "completed" | "incomplete" | "failed"
+	Output      []ResponsesOutput `json:"output"`
+	Usage       *ResponsesUsage   `json:"usage,omitempty"`
+	ServiceTier string            `json:"service_tier,omitempty"` // upstream tier, echoed back verbatim
 
 	// incomplete_details is present when status="incomplete"
 	IncompleteDetails *ResponsesIncompleteDetails `json:"incomplete_details,omitempty"`
@@ -651,6 +679,7 @@ type ChatMessage struct {
 	Role             string          `json:"role"` // "system" | "user" | "assistant" | "tool" | "function"
 	Content          json.RawMessage `json:"content,omitempty"`
 	ReasoningContent string          `json:"reasoning_content,omitempty"`
+	Reasoning        string          `json:"reasoning,omitempty"`
 	Name             string          `json:"name,omitempty"`
 	ToolCalls        []ChatToolCall  `json:"tool_calls,omitempty"`
 	ToolCallID       string          `json:"tool_call_id,omitempty"`
@@ -661,9 +690,10 @@ type ChatMessage struct {
 
 // ChatContentPart is a typed content part in a multi-modal message.
 type ChatContentPart struct {
-	Type     string        `json:"type"` // "text" | "image_url"
+	Type     string        `json:"type"` // "text" | "image_url" | "file"
 	Text     string        `json:"text,omitempty"`
 	ImageURL *ChatImageURL `json:"image_url,omitempty"`
+	File     *ChatFile     `json:"file,omitempty"`
 }
 
 // ChatImageURL contains the URL for an image content part.
@@ -672,10 +702,25 @@ type ChatImageURL struct {
 	Detail string `json:"detail,omitempty"` // "auto" | "low" | "high"
 }
 
+// ChatFile contains the payload of a "file" content part (e.g. PDF input).
+type ChatFile struct {
+	Filename string `json:"filename,omitempty"`
+	FileData string `json:"file_data,omitempty"` // data URI
+	FileID   string `json:"file_id,omitempty"`
+}
+
 // ChatTool describes a tool available to the model.
 type ChatTool struct {
-	Type     string        `json:"type"` // "function"
+	Type     string        `json:"type"` // "function" | "x_search"
 	Function *ChatFunction `json:"function,omitempty"`
+
+	// type=x_search
+	AllowedXHandles          []string `json:"allowed_x_handles,omitempty"`
+	ExcludedXHandles         []string `json:"excluded_x_handles,omitempty"`
+	FromDate                 string   `json:"from_date,omitempty"`
+	ToDate                   string   `json:"to_date,omitempty"`
+	EnableImageUnderstanding *bool    `json:"enable_image_understanding,omitempty"`
+	EnableVideoUnderstanding *bool    `json:"enable_video_understanding,omitempty"`
 }
 
 // ChatFunction describes a function tool definition.
@@ -697,7 +742,9 @@ type ChatToolCall struct {
 
 // ChatFunctionCall contains the function name and arguments.
 type ChatFunctionCall struct {
-	Name      string `json:"name"`
+	// Empty name is omitted so streamed arguments-only deltas never overwrite
+	// the tool name a client accumulated from the first delta.
+	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments"`
 }
 
@@ -771,7 +818,22 @@ type ChatDelta struct {
 	Role             string         `json:"role,omitempty"`
 	Content          *string        `json:"content,omitempty"` // pointer: omit when not present, null vs "" matters
 	ReasoningContent *string        `json:"reasoning_content,omitempty"`
+	Reasoning        *string        `json:"reasoning,omitempty"`
 	ToolCalls        []ChatToolCall `json:"tool_calls,omitempty"`
+}
+
+func (m ChatMessage) reasoningText() string {
+	if m.ReasoningContent != "" {
+		return m.ReasoningContent
+	}
+	return m.Reasoning
+}
+
+func (d ChatDelta) reasoningText() *string {
+	if d.ReasoningContent != nil {
+		return d.ReasoningContent
+	}
+	return d.Reasoning
 }
 
 // ---------------------------------------------------------------------------

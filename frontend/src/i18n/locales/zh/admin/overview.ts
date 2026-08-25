@@ -144,6 +144,7 @@ export default {
         status: '状态',
         fileName: '文件名',
         size: '大小',
+        parts: '分卷数',
         expiresAt: '过期时间',
         triggeredBy: '触发方式',
         startedAt: '开始时间',
@@ -168,6 +169,10 @@ export default {
       empty: '暂无备份记录',
       actions: {
         download: '下载',
+        downloadParts: '下载分卷',
+        downloadPartsHint: '请按顺序下载全部分卷后拼接 gzip 字节流：Linux/macOS 使用 cat payload.part-* > backup.sql.gz；Windows 使用 copy /b payload.part-000001+payload.part-000002 backup.sql.gz。',
+        partLabel: '第 {index} 卷',
+        downloadFailed: '下载地址为空',
         restore: '恢复',
         restoreConfirm: '确定要从此备份恢复吗？这将覆盖当前数据库！',
         restorePasswordPrompt: '请输入管理员密码以确认恢复操作',
@@ -573,6 +578,8 @@ export default {
         statusLabel: '状态',
         selectStatus: '选择状态',
         rpmLimit: '每分钟请求数 (RPM)',
+        concurrencyPlaceholder: '0 表示不限制',
+        concurrencyHint: '该用户的最大并发请求数，0 = 不限制',
         rpmLimitPlaceholder: '0 表示不限制',
         rpmLimitHint: '该用户每分钟最大请求数，0 = 不限制；仅在所用分组未设置 rpm_limit 时作为兜底生效'
       },
@@ -593,9 +600,7 @@ export default {
       failedToSave: '保存用户失败',
       failedToAdjust: '调整失败',
       emailRequired: '请输入邮箱',
-      concurrencyMin: '并发数不能小于1',
-      soraStorageQuota: 'Sora 存储配额',
-      soraStorageQuotaHint: '单位 GB，0 表示使用分组或系统默认配额',
+      concurrencyNonNegative: '并发数不能为负数，0 表示不限制',
       amountRequired: '请输入有效金额',
       insufficientBalance: '余额不足',
       setAllowedGroups: '设置允许分组',
@@ -809,6 +814,7 @@ export default {
         userStatus: '状态'
       },
       usageToday: '今日',
+      usageYesterday: '昨日',
       usageTotal: '累计',
       accountsAvailable: '可用:',
       accountsRateLimited: '限流:',
@@ -832,7 +838,7 @@ export default {
         rpmLimitHint: '每用户在本分组每分钟最大请求数，0 = 不限制；一旦设置即接管该用户的限流（覆盖用户级 rpm_limit）',
         maxReasoningEffort: '推理强度上限',
         maxReasoningEffortUnlimited: '不限制（跟随请求）',
-        maxReasoningEffortHint: '仅限制客户端主动请求的 OpenAI reasoning effort；超过上限时自动降档，不会为缺省请求主动开启推理。上限优先级高于推理强度映射。',
+        maxReasoningEffortHint: '仅限制客户端主动请求的 OpenAI reasoning effort；Composite 分组仅对解析到 OpenAI 的请求生效。超过上限时自动降档，不会为缺省请求主动开启推理。上限优先级高于推理强度映射。',
         reasoningEffortMappings: '推理强度映射',
         addReasoningEffortMapping: '添加映射',
         removeReasoningEffortMapping: '删除映射',
@@ -877,6 +883,9 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         grok: 'Grok',
+        kimi: 'Kimi',
+        zhipu: 'Zhipu GLM',
+        deepseek: 'DeepSeek',
         composite: 'Composite',
       },
       saving: '保存中...',
@@ -982,12 +991,35 @@ export default {
         title: '视频生成计费',
         description:
           '配置 Grok 视频生成的每秒单价（USD/秒），留空则使用默认每秒价（grok-imagine-video：480p $0.05/s、720p $0.07/s；video-1.5：480p $0.08/s、720p $0.14/s、1080p $0.25/s）',
+        modelOverridesTitle: '按模型覆盖视频价格',
+        modelOverridesDescription: '已填写的单元格会覆盖该模型族的平面分辨率价格。video-1.5 的 preview 与 legacy 别名共用同一模型族；留空则回退到平面分辨率价格。',
         independentMultiplier: '视频倍率独立',
         videoMultiplier: '视频独立倍率',
         modeHint:
           '视频按秒计费：费用 = 每秒价格 × 时长（1-15 秒，未指定默认 8 秒）。默认叠加当前分组有效倍率；开启独立倍率后改用视频独立倍率。',
         finalPricePreview: '最终每秒价格预览',
         notConfigured: '未配置'
+      },
+      explicitPricing: {
+        title: 'Grok 搜索与 Voice 定价',
+        description: '分组级 web_search（每千次）与 Voice realtime / TTS / STT 单价（USD）。留空表示未配置。',
+        searchPricePer1k: '搜索每千次价格（USD）',
+        pricePlaceholder: '可选'
+      },
+      modelPricing: {
+        title: '分组逐模型定价',
+        description: '匹配模型后覆盖渠道和内置价格。长上下文阶梯沿用官方/预设价卡，无需再手填区间。音频可用按次层级配置 realtime、tts、stt。',
+        longContext: '启用长上下文阶梯定价',
+        longContextHint: '勾选后按渠道区间或官方预设阶梯计费；关闭后默认按第一档，账号显式开启时除外。',
+        add: '添加模型价格'
+      },
+      voicePricing: {
+        title: 'Grok Voice 定价',
+        description: '分组级 Voice realtime / TTS / STT 单价（USD）。留空表示未配置。',
+        audioRealtimePerMin: 'Realtime 每分钟价格（USD）',
+        audioTtsPerMillionChars: 'TTS 每百万字符价格（USD）',
+        audioSttPerHour: 'STT 每小时价格（USD）',
+        pricePlaceholder: '可选'
       },
       webSearchPricing: {
         title: 'Codex 网页搜索计费',
@@ -1002,6 +1034,18 @@ export default {
         peakEnd: '高峰结束',
         peakMultiplier: '高峰倍率',
         multiplierHint: '作用于 token 计费倍率；token 计费的图片 token 同样适用，0 表示高峰 token 请求按 0 倍计费'
+      },
+      profitControl: {
+        enable: '启用利润控制',
+        enabledHint: '调度时仅允许"账号倍率 ≤ 请求实际下游倍率 ×（1 − 最低毛利率 − 安全缓冲）"的账号进入候选池；账号倍率可手工维护或由探测同步，既有排序、粘性与熔断在合格账号间照常工作。图片/视频调度暂不参与。',
+        disabledHint: '关闭后调度不做利润过滤，账号倍率高于下游倍率的账号也会被选中，可能产生亏损请求。',
+        minMargin: '最低毛利率（%）',
+        minMarginHint: '百分比输入，如 30 表示 30%；后端按小数存储',
+        safetyBuffer: '安全缓冲（%）',
+        safetyBufferHint: '与最低毛利率相加后从下游倍率中扣除，默认 0',
+        marginRangeError: '最低毛利率应在 0 到 99.99 之间',
+        bufferRangeError: '安全缓冲应在 0 到 99.99 之间',
+        sumTooHigh: '最低毛利率与安全缓冲之和必须小于 100%，否则将排除全部账号'
       },
       modelsList: {
         title: '自定义 /v1/models 模型列表',

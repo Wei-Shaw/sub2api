@@ -27,12 +27,11 @@ import (
 var chatgptCodexModelsURL = "https://chatgpt.com/backend-api/codex/models"
 
 const (
-	codexModelsManifestBodyLimit       int64 = 8 << 20
-	codexModelsManifestCacheBodyLimit        = 1 << 20
-	codexModelsManifestCacheMaxEntries       = 64
-	codexModelsManifestCacheTTL              = 30 * time.Second
-	codexModelsManifestCacheStaleTTL         = 5 * time.Minute
-	codexModelsManifestRequestTimeout        = 15 * time.Second
+	codexModelsManifestCacheBodyLimit  = 1 << 20
+	codexModelsManifestCacheMaxEntries = 64
+	codexModelsManifestCacheTTL        = 30 * time.Second
+	codexModelsManifestCacheStaleTTL   = 5 * time.Minute
+	codexModelsManifestRequestTimeout  = 15 * time.Second
 )
 
 // CodexModelsManifest carries the client representation plus caching metadata.
@@ -242,7 +241,7 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 
 	clientVersion = strings.TrimSpace(clientVersion)
 	if clientVersion == "" {
-		clientVersion = openAICodexProbeVersion
+		clientVersion = CodexCanonicalClientVersion()
 	}
 
 	requestEndpoint := chatgptCodexModelsURL
@@ -304,9 +303,22 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 		setOpenAIChatGPTAccountHeaders(headers, credAccount)
 	}
 	headers.Set("Accept", "application/json")
-	headers.Set("Originator", "codex_cli_rs")
-	headers.Set("Version", clientVersion)
-	headers.Set("User-Agent", codexCLIUserAgent)
+	overrideUA := ""
+	if !useAPIKeyUpstream {
+		overrideUA = credAccount.GetOpenAIUserAgent()
+	}
+	identity := resolveCodexOutboundIdentity(overrideUA)
+	headers.Set("Originator", identity.originator)
+	headers.Set("User-Agent", identity.userAgent)
+	// Version 头优先与 client_version 查询参数同源：客户端自报版本合法且不低于上游
+	// 门槛时原样使用；否则回退规范版本，避免陈旧 version 触发上游 404（issue #3901）。
+	// client_version 查询参数本身始终按客户端原值透传（内容协商语义，契约见
+	// TestFetchCodexModelsManifestPassthrough）。
+	headerVersion := NormalizeCodexClientVersion(clientVersion)
+	if headerVersion == "" || CompareVersions(headerVersion, codexUpstreamMinVersion) < 0 {
+		headerVersion = identity.version
+	}
+	headers.Set("Version", headerVersion)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -457,15 +469,21 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 		req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
 		resp, err = s.httpUpstream.Do(req, request.proxyURL, request.accountID, request.accountConcurrency)
 	} else {
-		client, clientErr := httpclient.GetClient(httpclient.Options{
-			ProxyURL:              request.proxyURL,
-			Timeout:               codexModelsManifestRequestTimeout,
-			ResponseHeaderTimeout: 10 * time.Second,
-		})
-		if clientErr != nil {
-			return nil, infraerrors.Newf(http.StatusInternalServerError, "OPENAI_CODEX_MODELS_PROXY_INVALID", "invalid proxy configuration: %v", clientErr)
+		handled := false
+		if s.pluginManager != nil {
+			resp, handled, err = s.pluginManager.RoundTripOpenAIOAuth(reqCtx, req, request.proxyURL, request.credentialAccount)
 		}
-		resp, err = client.Do(req)
+		if !handled {
+			client, clientErr := httpclient.GetClient(httpclient.Options{
+				ProxyURL:              request.proxyURL,
+				Timeout:               codexModelsManifestRequestTimeout,
+				ResponseHeaderTimeout: 10 * time.Second,
+			})
+			if clientErr != nil {
+				return nil, infraerrors.Newf(http.StatusInternalServerError, "OPENAI_CODEX_MODELS_PROXY_INVALID", "invalid proxy configuration: %v", clientErr)
+			}
+			resp, err = client.Do(req)
+		}
 	}
 	if err != nil {
 		return nil, &codexModelsManifestUpstreamError{
@@ -496,11 +514,18 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 		}
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, codexModelsManifestBodyLimit))
+	bodyLimit := resolveModelsListReadLimit(s.cfg)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, bodyLimit+1))
 	if err != nil {
 		return nil, &codexModelsManifestUpstreamError{
 			err:       infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "read codex models manifest response: %v", err),
 			retryable: isRetryableCodexModelsManifestTransportError(err),
+		}
+	}
+	if int64(len(body)) > bodyLimit {
+		return nil, &codexModelsManifestUpstreamError{
+			err:       infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", "codex models manifest response exceeds %d bytes", bodyLimit),
+			retryable: true,
 		}
 	}
 	upstreamBody := body

@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -77,6 +78,14 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	}
 	if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(chatBody, upstreamModel); normalized {
 		chatBody = normalizedBody
+	}
+	if account.Platform == PlatformOpenAI {
+		if policyBody, changed := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, chatBody); changed {
+			chatBody = policyBody
+			if effectiveEffort := strings.TrimSpace(gjson.GetBytes(chatBody, "reasoning_effort").String()); effectiveEffort != "" {
+				reasoningEffort = &effectiveEffort
+			}
+		}
 	}
 	// Unlike forwardResponsesViaRawChatCompletions, applyOpenAIFastPolicyToBody
 	// is intentionally skipped: Anthropic Messages bodies carry no service_tier,
@@ -149,7 +158,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
 		BillingModel:    billingModel,
 		UpstreamModel:   upstreamModel,
 		ReasoningEffort: reasoningEffort,
-		ServiceTier:     serviceTier,
+		ServiceTier:     resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 		Stream:          false,
 		Duration:        time.Since(startTime),
 	}, nil
@@ -195,7 +204,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 		}
 	}
 
-	scan := s.scanCCStream(resp, "openai messages chat fallback", requestID, startTime, emitChunk)
+	scan := s.scanCCStream(c, resp, "openai messages chat fallback", requestID, startTime, emitChunk)
 	usage := scan.Usage
 
 	if scan.Err != nil {
@@ -209,7 +218,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 			BillingModel:     billingModel,
 			UpstreamModel:    upstreamModel,
 			ReasoningEffort:  reasoningEffort,
-			ServiceTier:      serviceTier,
+			ServiceTier:      resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 			Stream:           true,
 			Duration:         time.Since(startTime),
 			FirstTokenMs:     scan.FirstTokenMs,
@@ -244,7 +253,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 		BillingModel:     billingModel,
 		UpstreamModel:    upstreamModel,
 		ReasoningEffort:  reasoningEffort,
-		ServiceTier:      serviceTier,
+		ServiceTier:      resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 		Stream:           true,
 		Duration:         time.Since(startTime),
 		FirstTokenMs:     scan.FirstTokenMs,

@@ -158,17 +158,19 @@ func TestGetModelPricing_FallbackWarnPerModelNotGlobal(t *testing.T) {
 	require.Equal(t, 0, strings.Count(out, "model: GLM-5.2"), out) // 大写经 ToLower 归一,不应单独成行
 }
 
-// 回归:glm-5.2 仍解析到 glm-5 兜底价(计费金额不变,防止日志改动掩盖未来计费回归)。
-func TestGetModelPricing_GLM52FallsBackToGLM5Price(t *testing.T) {
+// 回归:glm-5.2 必须命中自己的兜底价,不能被 strings.Contains("glm-5") 抢成 glm-5 价。
+// 历史 bug:兜底表缺 glm-5.2 条目,使用记录按 $1.00/$3.20 计费,比官方 $1.40/$4.40 少收约 27%。
+func TestGetModelPricing_GLM52UsesOwnPrice(t *testing.T) {
 	svc := newTestBillingService()
 
 	got, err := svc.GetModelPricing("glm-5.2")
 	require.NoError(t, err)
 	require.NotNil(t, got)
 
-	// glm-5 base：Input 1e-6 / Output 3.2e-6(见 TestGetFallbackPricing_FamilyMatching)。
-	require.InDelta(t, 1e-6, got.InputPricePerToken, 1e-12)
-	require.InDelta(t, 3.2e-6, got.OutputPricePerToken, 1e-12)
+	// 官方 z.ai 口径:与 glm-5.1 同价(见 TestGetFallbackPricing_FamilyMatching)。
+	require.InDelta(t, 1.4e-6, got.InputPricePerToken, 1e-12)
+	require.InDelta(t, 4.4e-6, got.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 0.26e-6, got.CacheReadPricePerToken, 1e-12)
 }
 
 func TestGetModelPricing_UnknownClaudeModelFallsBackToSonnet(t *testing.T) {
@@ -213,7 +215,7 @@ func TestGetModelPricing_OpenAICompactAliasesFallback(t *testing.T) {
 		cacheRead   float64
 		longContext int
 	}{
-		{model: "gpt5.5", inputPrice: 2.5e-6, outputPrice: 15e-6, cacheRead: 0.25e-6, longContext: 272000},
+		{model: "gpt5.5", inputPrice: 5e-6, outputPrice: 30e-6, cacheRead: 0.5e-6, longContext: 272000},
 		{model: "openai/gpt5.4", inputPrice: 2.5e-6, outputPrice: 15e-6, cacheRead: 0.25e-6, longContext: 272000},
 		{model: "gpt5.4-mini", inputPrice: 7.5e-7, outputPrice: 4.5e-6, cacheRead: 7.5e-8, longContext: 0},
 		{model: "gpt5.3codexspark", inputPrice: 1.5e-6, outputPrice: 12e-6, cacheRead: 0.15e-6, longContext: 0},
@@ -291,12 +293,38 @@ func TestCalculateCost_OpenAIGPT55ProUsesGPT55PricingPolicy(t *testing.T) {
 	cost, err := svc.CalculateCost("gpt-5.5-pro", tokens, 1.0)
 	require.NoError(t, err)
 
-	expectedInput := float64(tokens.InputTokens) * 2.5e-6 * 2.0
-	expectedOutput := float64(tokens.OutputTokens) * 15e-6 * 1.5
+	expectedInput := float64(tokens.InputTokens) * 30e-6 * 2.0
+	expectedOutput := float64(tokens.OutputTokens) * 180e-6 * 1.5
 	require.InDelta(t, expectedInput, cost.InputCost, 1e-10)
 	require.InDelta(t, expectedOutput, cost.OutputCost, 1e-10)
 	require.InDelta(t, expectedInput+expectedOutput, cost.TotalCost, 1e-10)
 	require.InDelta(t, expectedInput+expectedOutput, cost.ActualCost, 1e-10)
+}
+
+func TestFallbackPricing_OpenAIGPT55UsesOfficialPrices(t *testing.T) {
+	svc := newTestBillingService()
+
+	pricing, err := svc.GetModelPricing("gpt-5.5")
+	require.NoError(t, err)
+	require.InDelta(t, 5e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 30e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 0.5e-6, pricing.CacheReadPricePerToken, 1e-12)
+	require.InDelta(t, 5e-6, pricing.CacheCreationPricePerToken, 1e-12)
+	require.InDelta(t, 12.5e-6, pricing.InputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 75e-6, pricing.OutputPricePerTokenPriority, 1e-12)
+}
+
+func TestFallbackPricing_OpenAIGPT55ProUsesOfficialPrices(t *testing.T) {
+	svc := newTestBillingService()
+
+	pricing, err := svc.GetModelPricing("gpt-5.5-pro")
+	require.NoError(t, err)
+	require.InDelta(t, 30e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 180e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 30e-6, pricing.CacheReadPricePerToken, 1e-12)
+	require.InDelta(t, 30e-6, pricing.CacheCreationPricePerToken, 1e-12)
+	require.Zero(t, pricing.InputPricePerTokenPriority)
+	require.Zero(t, pricing.OutputPricePerTokenPriority)
 }
 
 // 回归测试 #2293：长上下文计费触发时，cache_read_tokens 也应应用 LongContextInputMultiplier。
@@ -490,6 +518,13 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 
 		// ---- 智谱 GLM（z.ai USD 口径）----
 		{
+			name:              "glm 5.2 flagship",
+			model:             "glm-5.2",
+			expectedInput:     1.4e-6,
+			expectedOutput:    floatPtr(4.4e-6),
+			expectedCacheRead: floatPtr(0.26e-6),
+		},
+		{
 			name:              "glm 5.1 flagship",
 			model:             "glm-5.1",
 			expectedInput:     1.4e-6,
@@ -572,11 +607,18 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 			expectedInput:  0.1e-6,
 			expectedOutput: floatPtr(0.1e-6),
 		},
-		// 关键：5.1 必须先于 5 匹配（避免被 glm-5 抢走）
+		// 关键：5.1 / 5.2 必须先于 5 匹配（避免被 glm-5 抢走）
 		{
 			name:              "glm 5.1 vs glm 5 ordering (verbatim 5.1)",
 			model:             "glm-5.1",
 			expectedInput:     1.4e-6, // = glm-5.1 价格
+			expectedOutput:    floatPtr(4.4e-6),
+			expectedCacheRead: floatPtr(0.26e-6),
+		},
+		{
+			name:              "glm 5.2 vs glm 5 ordering (verbatim 5.2)",
+			model:             "glm-5.2",
+			expectedInput:     1.4e-6, // = glm-5.2 价格（不是 glm-5 的 1e-6）
 			expectedOutput:    floatPtr(4.4e-6),
 			expectedCacheRead: floatPtr(0.26e-6),
 		},
@@ -855,8 +897,8 @@ func TestComputeTokenBreakdown_GptImage2ImageEditIssue4386(t *testing.T) {
 
 	cost := svc.computeTokenBreakdown(pricing, tokens, 1.0, "", false)
 
-	wantTextInput := float64(19) * 5e-6    // 0.000095
-	wantImageInput := float64(352) * 8e-6  // 0.002816
+	wantTextInput := float64(19) * 5e-6     // 0.000095
+	wantImageInput := float64(352) * 8e-6   // 0.002816
 	wantImageOutput := float64(439) * 30e-6 // 0.013170
 	require.InDelta(t, wantTextInput, cost.InputCost, 1e-15, "InputCost 仅含文本输入")
 	require.InDelta(t, wantImageInput, cost.ImageInputCost, 1e-15, "图片输入按 $8/1M 独立计费")
@@ -1137,7 +1179,34 @@ func TestCalculateCostWithLongContext_PropagatesError(t *testing.T) {
 func TestGetModelPricing_Grok45OfficialFallback(t *testing.T) {
 	svc := newTestBillingService()
 
-	for _, model := range []string{"grok", "grok-latest", "grok-4.5", "grok-4.5-latest", "grok-build-latest"} {
+	for _, model := range []string{"grok-4.5", "grok-4.5-latest"} {
+		model := model
+		t.Run(model, func(t *testing.T) {
+			pricing, err := svc.GetModelPricing(model)
+			require.NoError(t, err)
+			require.InDelta(t, 2e-6, pricing.InputPricePerToken, 1e-12)
+			require.InDelta(t, 6e-6, pricing.OutputPricePerToken, 1e-12)
+			require.InDelta(t, 0.3e-6, pricing.CacheReadPricePerToken, 1e-12)
+			require.False(t, pricing.SupportsCacheBreakdown)
+		})
+	}
+}
+
+func TestGetModelPricing_GrokBareAliasesUseGrok46(t *testing.T) {
+	svc := newTestBillingService()
+	for _, model := range []string{"grok", "grok-latest"} {
+		pricing, err := svc.GetModelPricing(model)
+		require.NoError(t, err)
+		require.InDelta(t, 2e-6, pricing.InputPricePerToken, 1e-12)
+		require.InDelta(t, 0.5e-6, pricing.CacheReadPricePerToken, 1e-12)
+		require.InDelta(t, 6e-6, pricing.OutputPricePerToken, 1e-12)
+	}
+}
+
+func TestGetModelPricing_Grok46OfficialFallback(t *testing.T) {
+	svc := newTestBillingService()
+
+	for _, model := range []string{"grok-4.6", "grok-4.6-latest"} {
 		model := model
 		t.Run(model, func(t *testing.T) {
 			pricing, err := svc.GetModelPricing(model)
@@ -1145,9 +1214,94 @@ func TestGetModelPricing_Grok45OfficialFallback(t *testing.T) {
 			require.InDelta(t, 2e-6, pricing.InputPricePerToken, 1e-12)
 			require.InDelta(t, 6e-6, pricing.OutputPricePerToken, 1e-12)
 			require.InDelta(t, 0.5e-6, pricing.CacheReadPricePerToken, 1e-12)
+			require.Equal(t, 200000, pricing.LongContextInputThreshold)
+			require.InDelta(t, 2.0, pricing.LongContextInputMultiplier, 1e-12)
+			require.InDelta(t, 2.0, pricing.LongContextOutputMultiplier, 1e-12)
 			require.False(t, pricing.SupportsCacheBreakdown)
 		})
 	}
+}
+
+func TestGetModelPricing_GrokOfficialFamilyCards(t *testing.T) {
+	svc := newTestBillingService()
+	for _, tc := range []struct {
+		model                 string
+		input, cached, output float64
+	}{
+		{"grok-4.3", 1.25e-6, 0.2e-6, 2.5e-6},
+		{"grok-4.20-0309-reasoning", 1.25e-6, 0.2e-6, 2.5e-6},
+		{"grok-build-0.1", 1e-6, 0.2e-6, 2e-6},
+	} {
+		p, err := svc.GetModelPricing(tc.model)
+		require.NoError(t, err, tc.model)
+		require.InDelta(t, tc.input, p.InputPricePerToken, 1e-12)
+		require.InDelta(t, tc.cached, p.CacheReadPricePerToken, 1e-12)
+		require.InDelta(t, tc.output, p.OutputPricePerToken, 1e-12)
+		require.Equal(t, 200000, p.LongContextInputThreshold)
+	}
+}
+
+func TestCalculateCostUnified_GroupLongContextToggleUsesPresetLadder(t *testing.T) {
+	svc := newTestBillingService()
+	resolver := NewModelPricingResolver(nil, svc)
+	tokens := UsageTokens{InputTokens: 250000, OutputTokens: 1000}
+
+	off := &Group{LongContextPricingEnabled: false}
+	disabled, err := svc.CalculateCostUnified(CostInput{
+		Model: "grok-4.5", Group: off, Tokens: tokens, RateMultiplier: 1, Resolver: resolver,
+	})
+	require.NoError(t, err)
+
+	on := &Group{LongContextPricingEnabled: true}
+	enabled, err := svc.CalculateCostUnified(CostInput{
+		Model: "grok-4.5", Group: on, Tokens: tokens, RateMultiplier: 1, Resolver: resolver,
+	})
+	require.NoError(t, err)
+
+	require.False(t, disabled.LongContextBillingApplied)
+	require.True(t, enabled.LongContextBillingApplied)
+	require.InDelta(t, disabled.InputCost*2, enabled.InputCost, 1e-12)
+	require.InDelta(t, disabled.OutputCost*2, enabled.OutputCost, 1e-12)
+}
+
+func TestGetModelPricing_UnknownGrokTextFallsBackToGrok46(t *testing.T) {
+	svc := newTestBillingService()
+	baseline, err := svc.GetModelPricing("grok-4.6")
+	require.NoError(t, err)
+
+	for _, model := range []string{"grok-5", "grok-5-latest", "x-ai/grok-7", "grok-4.7-beta"} {
+		pricing, err := svc.GetModelPricing(model)
+		require.NoError(t, err, "model %s", model)
+		require.InDelta(t, baseline.InputPricePerToken, pricing.InputPricePerToken, 1e-12, model)
+		require.InDelta(t, baseline.OutputPricePerToken, pricing.OutputPricePerToken, 1e-12, model)
+		require.InDelta(t, baseline.CacheReadPricePerToken, pricing.CacheReadPricePerToken, 1e-12, model)
+	}
+
+	// Per-unit media ids must not inherit the text card just because they carry
+	// a version number; they are billed by the image/video/audio paths instead.
+	for _, model := range []string{"grok-2-image-1212", "grok-2-audio", "grok-5-video", "x-ai/grok-6-image"} {
+		require.False(t, isGrokUnknownTextFamilyModel(model), "model %s", model)
+	}
+	// Multimodal chat models stay token billed.
+	require.True(t, isGrokUnknownTextFamilyModel("grok-2-vision-1212"))
+
+	for _, model := range []string{
+		"grok-imagine-image-3.0",
+		"grok-imagine-video-2",
+		"grok-voice-latest",
+		"grok-web-search",
+		"grok-x-search",
+		"grok-speech-1",
+	} {
+		_, err := svc.GetModelPricing(model)
+		require.Error(t, err, "non-text grok family %s must not inherit grok-4.5 token rates", model)
+		require.ErrorIs(t, err, ErrModelPricingUnavailable)
+	}
+
+	// Known cards stay on their own rate, not the 4.5 family floor.
+	build, err := svc.GetModelPricing("grok-build-0.1")
+	require.NoError(t, err)
+	require.InDelta(t, 1e-6, build.InputPricePerToken, 1e-12)
 }
 
 func TestGetModelPricing_GrokCatalogFallbacks(t *testing.T) {
@@ -1496,9 +1650,10 @@ func TestGetModelPricingWithChannel_OverrideInputPriceOnly(t *testing.T) {
 	pricing, err := svc.GetModelPricingWithChannel("claude-sonnet-4", chPricing)
 	require.NoError(t, err)
 
-	// InputPrice overridden (both normal and priority)
+	// InputPrice overridden. claude-sonnet-4 has no catalog priority price, so
+	// the priority slot is zeroed and serviceTierCostMultiplier owns the surcharge.
 	require.InDelta(t, 99e-6, pricing.InputPricePerToken, 1e-12)
-	require.InDelta(t, 99e-6, pricing.InputPricePerTokenPriority, 1e-12)
+	require.Zero(t, pricing.InputPricePerTokenPriority)
 
 	// OutputPrice unchanged (claude-sonnet-4 fallback = 15e-6)
 	require.InDelta(t, 15e-6, pricing.OutputPricePerToken, 1e-12)
@@ -1513,9 +1668,9 @@ func TestGetModelPricingWithChannel_OverrideOutputPriceOnly(t *testing.T) {
 	pricing, err := svc.GetModelPricingWithChannel("claude-sonnet-4", chPricing)
 	require.NoError(t, err)
 
-	// OutputPrice overridden
+	// OutputPrice overridden; no catalog priority price to scale, so the slot is zeroed.
 	require.InDelta(t, 88e-6, pricing.OutputPricePerToken, 1e-12)
-	require.InDelta(t, 88e-6, pricing.OutputPricePerTokenPriority, 1e-12)
+	require.Zero(t, pricing.OutputPricePerTokenPriority)
 
 	// InputPrice unchanged (claude-sonnet-4 fallback = 3e-6)
 	require.InDelta(t, 3e-6, pricing.InputPricePerToken, 1e-12)
@@ -1535,15 +1690,18 @@ func TestGetModelPricingWithChannel_OverrideAllFields(t *testing.T) {
 	require.NoError(t, err)
 
 	require.InDelta(t, 10e-6, pricing.InputPricePerToken, 1e-12)
-	require.InDelta(t, 10e-6, pricing.InputPricePerTokenPriority, 1e-12)
 	require.InDelta(t, 20e-6, pricing.OutputPricePerToken, 1e-12)
-	require.InDelta(t, 20e-6, pricing.OutputPricePerTokenPriority, 1e-12)
 	require.InDelta(t, 5e-6, pricing.CacheCreationPricePerToken, 1e-12)
 	require.InDelta(t, 5e-6, pricing.CacheCreation5mPrice, 1e-12)
 	require.InDelta(t, 5e-6, pricing.CacheCreation1hPrice, 1e-12)
 	require.InDelta(t, 1e-6, pricing.CacheReadPricePerToken, 1e-12)
-	require.InDelta(t, 1e-6, pricing.CacheReadPricePerTokenPriority, 1e-12)
 	require.InDelta(t, 50e-6, pricing.ImageOutputPricePerToken, 1e-12)
+
+	// claude-sonnet-4 carries no catalog Fast/Priority tier, so every priority
+	// slot stays zero and computeTokenBreakdown falls back to the 2x default.
+	require.Zero(t, pricing.InputPricePerTokenPriority)
+	require.Zero(t, pricing.OutputPricePerTokenPriority)
+	require.Zero(t, pricing.CacheReadPricePerTokenPriority)
 }
 
 func TestGetModelPricingWithChannel_CacheWritePriceAffects5mAnd1h(t *testing.T) {
@@ -1570,9 +1728,27 @@ func TestGetModelPricingWithChannel_CacheReadPriceAffectsPriority(t *testing.T) 
 	pricing, err := svc.GetModelPricingWithChannel("claude-sonnet-4", chPricing)
 	require.NoError(t, err)
 
-	// CacheReadPrice should set both normal and priority
+	// CacheReadPrice sets the standard slot; the priority slot is zeroed because
+	// claude-sonnet-4 has no catalog tier ratio to preserve.
 	require.InDelta(t, 2e-6, pricing.CacheReadPricePerToken, 1e-12)
-	require.InDelta(t, 2e-6, pricing.CacheReadPricePerTokenPriority, 1e-12)
+	require.Zero(t, pricing.CacheReadPricePerTokenPriority)
+}
+
+// 目录带 tier 价时，渠道覆盖必须按目录比例换算 priority 价，而不是归零。
+func TestGetModelPricingWithChannel_PreservesCatalogPriorityRatio(t *testing.T) {
+	svc := newTestBillingService()
+
+	// gpt-5.4 目录价：input 2.5/5（2x），output 15/30（2x）。
+	pricing, err := svc.GetModelPricingWithChannel("gpt-5.4", &ChannelModelPricing{
+		InputPrice:  testPtrFloat64(4e-6),
+		OutputPrice: testPtrFloat64(30e-6),
+	})
+	require.NoError(t, err)
+
+	require.InDelta(t, 4e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 8e-6, pricing.InputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 30e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 60e-6, pricing.OutputPricePerTokenPriority, 1e-12)
 }
 
 func TestGetModelPricingWithChannel_UnknownModelReturnsError(t *testing.T) {

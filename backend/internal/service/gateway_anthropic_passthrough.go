@@ -269,6 +269,11 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	if input.RequestStream {
 		streamResult, err := s.handleStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account, input.StartTime, input.RequestModel)
 		if err != nil {
+			// 流中断时保留已观测到的 usage 与错误一起返回，避免上游已计量的请求
+			// 完全漏记漏计费（issue #5148）。
+			if partial := partialStreamUsageResult(c, resp, streamResult, input.OriginalModel, input.RequestModel, input.StartTime, err); partial != nil {
+				return partial, err
+			}
 			return nil, err
 		}
 		usage = streamResult.usage
@@ -285,14 +290,17 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	}
 
 	return &ForwardResult{
-		RequestID:        resp.Header.Get("x-request-id"),
-		Usage:            *usage,
-		Model:            input.OriginalModel,
-		UpstreamModel:    input.RequestModel,
-		Stream:           input.RequestStream,
-		Duration:         time.Since(input.StartTime),
-		FirstTokenMs:     firstTokenMs,
-		ClientDisconnect: clientDisconnect,
+		RequestID:                     resp.Header.Get("x-request-id"),
+		Usage:                         *usage,
+		Model:                         input.OriginalModel,
+		UpstreamModel:                 input.RequestModel,
+		UpstreamResponseModel:         observedUpstreamResponseModel(c),
+		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+		UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
+		Stream:                        input.RequestStream,
+		Duration:                      time.Since(input.StartTime),
+		FirstTokenMs:                  firstTokenMs,
+		ClientDisconnect:              clientDisconnect,
 	}, nil
 }
 
@@ -303,6 +311,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	body []byte,
 	token string,
 ) (*http.Request, []byte, error) {
+	body = stripDeferredToolCacheControl(body)
 	targetURL := claudeAPIURL
 	baseURL := account.GetBaseURL()
 	if baseURL != "" {
@@ -374,6 +383,10 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	startTime time.Time,
 	model string,
 ) (*streamingResult, error) {
+	observer := upstreamResponseModelObserverFromContext(c)
+	if observer == nil {
+		observer = beginUpstreamResponseModelObservation(c)
+	}
 	if s.rateLimitService != nil {
 		s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 	}
@@ -527,6 +540,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 			line := ev.line
 			if data, ok := extractAnthropicSSEDataLine(line); ok {
 				trimmed := strings.TrimSpace(data)
+				observer.ObserveAnthropic([]byte(trimmed))
 				if anthropicStreamEventIsTerminal("", trimmed) {
 					sawTerminalEvent = true
 				}
@@ -534,7 +548,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					ms := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &ms
 				}
-				s.parseSSEUsagePassthrough(data, usage)
+				parseSSEUsagePassthrough(data, usage)
 			} else {
 				trimmed := strings.TrimSpace(line)
 				if strings.HasPrefix(trimmed, "event:") && anthropicStreamEventIsTerminal(strings.TrimSpace(strings.TrimPrefix(trimmed, "event:")), "") {
@@ -613,7 +627,9 @@ func extractAnthropicSSEDataLine(line string) (string, bool) {
 	return line[start:], true
 }
 
-func (s *GatewayService) parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
+// parseSSEUsagePassthrough 从 Anthropic SSE data 行提取 usage（包级函数：
+// Anthropic 平台 passthrough 与国产供应商原生 Anthropic 直通共用）。
+func parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 	if usage == nil || data == "" || data == "[DONE]" {
 		return
 	}
@@ -682,6 +698,72 @@ func (s *GatewayService) parseSSEUsagePassthrough(data string, usage *ClaudeUsag
 			usage.CacheCreationInputTokens = int(total)
 		}
 	}
+
+	// Kimi's Anthropic-compatible stream uses input_tokens with two meanings:
+	// message_start reports total prompt input, while message_delta reports only
+	// uncached input. prompt_tokens remains the total in both events. Normalize
+	// to ClaudeUsage's mutually-exclusive buckets so downstream billing does not
+	// subtract cache tokens from an already-uncached value.
+	usageNode := parsed.Get("usage")
+	if parsed.Get("type").String() == "message_start" {
+		usageNode = parsed.Get("message.usage")
+	}
+	normalizeAnthropicCompatiblePromptUsage(usageNode, usage)
+}
+
+// normalizeAnthropicCompatiblePromptUsage converts provider-native OpenAI-style
+// prompt/cache fields into Claude's mutually-exclusive usage buckets. Native
+// Anthropic responses do not expose these aliases and are left alone.
+func normalizeAnthropicCompatiblePromptUsage(usageNode gjson.Result, usage *ClaudeUsage) bool {
+	if usage == nil || !usageNode.Exists() {
+		return false
+	}
+	promptTokens := usageNode.Get("prompt_tokens")
+	promptCacheHitTokens := usageNode.Get("prompt_cache_hit_tokens")
+	promptCacheMissTokens := usageNode.Get("prompt_cache_miss_tokens")
+	if (!promptTokens.Exists() || promptTokens.Int() <= 0) &&
+		!promptCacheHitTokens.Exists() && !promptCacheMissTokens.Exists() {
+		return false
+	}
+
+	cacheReadTokens := usage.CacheReadInputTokens
+	if v := usageNode.Get("cache_read_input_tokens"); v.Exists() {
+		cacheReadTokens = int(v.Int())
+	}
+	if cacheReadTokens == 0 {
+		if v := usageNode.Get("cached_tokens"); v.Exists() {
+			cacheReadTokens = int(v.Int())
+		}
+	}
+	if cacheReadTokens == 0 {
+		if v := usageNode.Get("prompt_tokens_details.cached_tokens"); v.Exists() {
+			cacheReadTokens = int(v.Int())
+		}
+	}
+	if cacheReadTokens == 0 && promptCacheHitTokens.Exists() {
+		cacheReadTokens = max(int(promptCacheHitTokens.Int()), 0)
+	}
+
+	cacheCreationTokens := usage.CacheCreationInputTokens
+	if v := usageNode.Get("cache_creation_input_tokens"); v.Exists() {
+		cacheCreationTokens = int(v.Int())
+	}
+	if cacheCreationTokens == 0 {
+		cc5m := usageNode.Get("cache_creation.ephemeral_5m_input_tokens").Int()
+		cc1h := usageNode.Get("cache_creation.ephemeral_1h_input_tokens").Int()
+		if cc5m > 0 || cc1h > 0 {
+			cacheCreationTokens = int(cc5m + cc1h)
+		}
+	}
+
+	if promptCacheMissTokens.Exists() {
+		usage.InputTokens = max(int(promptCacheMissTokens.Int()), 0)
+	} else {
+		usage.InputTokens = max(int(promptTokens.Int())-cacheReadTokens-cacheCreationTokens, 0)
+	}
+	usage.CacheReadInputTokens = cacheReadTokens
+	usage.CacheCreationInputTokens = cacheCreationTokens
+	return true
 }
 
 func parseClaudeUsageFromResponseBody(body []byte) *ClaudeUsage {
@@ -715,11 +797,16 @@ func parseClaudeUsageFromResponseBody(body []byte) *ClaudeUsage {
 			usage.CacheReadInputTokens = int(cached)
 		}
 	}
+	normalizeAnthropicCompatiblePromptUsage(usageNode, usage)
 	return usage
 }
 
-func (s *GatewayService) invalidNonStreamingJSONFailoverError(
+// invalidNonStreamingJSONFailoverError 把"上游 2xx 返回非 JSON body"归一为
+// failover 错误（包级函数：Anthropic 平台 passthrough 与国产供应商原生
+// Anthropic 直通共用）。
+func invalidNonStreamingJSONFailoverError(
 	ctx context.Context,
+	rateLimitService *RateLimitService,
 	resp *http.Response,
 	account *Account,
 	body []byte,
@@ -747,11 +834,11 @@ func (s *GatewayService) invalidNonStreamingJSONFailoverError(
 		parseErr,
 	)
 
-	if s.rateLimitService != nil && account != nil {
+	if rateLimitService != nil && account != nil {
 		if len(requestedModel) > 0 {
-			s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, resp.Header, body, requestedModel[0])
+			rateLimitService.HandleUpstreamError(ctx, account, statusCode, resp.Header, body, requestedModel[0])
 		} else {
-			s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, resp.Header, body)
+			rateLimitService.HandleUpstreamError(ctx, account, statusCode, resp.Header, body)
 		}
 	}
 
@@ -777,11 +864,16 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 	if err != nil {
 		return nil, err
 	}
+	observer := upstreamResponseModelObserverFromContext(c)
+	if observer == nil {
+		observer = beginUpstreamResponseModelObservation(c)
+	}
+	observer.ObserveAnthropic(body)
 
 	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 		var raw json.RawMessage
 		if err := json.Unmarshal(body, &raw); err != nil {
-			return nil, s.invalidNonStreamingJSONFailoverError(ctx, resp, account, body, err)
+			return nil, invalidNonStreamingJSONFailoverError(ctx, s.rateLimitService, resp, account, body, err)
 		}
 	}
 

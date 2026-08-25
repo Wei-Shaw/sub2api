@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -120,6 +121,127 @@ func TestForwardAsRawChatCompletions_ForcesStreamUsageUpstreamAndPassesUsageDown
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream_options.include_usage").Bool())
 	require.Contains(t, rec.Body.String(), `"usage"`)
 	require.Contains(t, rec.Body.String(), "data: [DONE]")
+}
+
+func TestForwardAsChatCompletions_OpenAICompatibleGrokRawMissingUsageFailsBeforeWrite(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"grok-4.5","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type": []string{"application/json"},
+			"X-Request-Id": []string{"rid-openai-compat-grok-no-usage"},
+		},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"resp_missing_usage","object":"chat.completion","model":"grok-4.5","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}]}`,
+		)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+	account := rawChatCompletionsTestAccount()
+	account.Name = "openai-compatible-grok"
+	account.Extra = map[string]any{openai_compat.ExtraKeyResponsesSupported: false}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.False(t, c.Writer.Written(), "unbilled Grok content must not be returned by an OpenAI-compatible account")
+	require.Empty(t, recorder.Body.String())
+}
+
+func TestForwardAsChatCompletions_OpenAICompatibleRawUsageGuard(t *testing.T) {
+	tests := []struct {
+		name             string
+		model            string
+		upstreamResponse string
+		modelMapping     map[string]any
+		wantGuarded      bool
+	}{
+		{
+			name:             "Grok response without usage",
+			model:            "grok-4.5",
+			upstreamResponse: `{"id":"resp_missing","object":"chat.completion","model":"grok-4.5","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}]}`,
+			wantGuarded:      true,
+		},
+		{
+			name:             "namespaced Grok response without usage",
+			model:            "x-ai/grok-4.5",
+			upstreamResponse: `{"id":"resp_namespaced","object":"chat.completion","model":"x-ai/grok-4.5","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}]}`,
+			wantGuarded:      true,
+		},
+		{
+			name:             "Grok response with aggregate usage passes",
+			model:            "grok-4.5",
+			upstreamResponse: `{"id":"resp_usage","object":"chat.completion","model":"grok-4.5","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}],"usage":{"prompt_tokens":9,"completion_tokens":3,"total_tokens":12}}`,
+			wantGuarded:      false,
+		},
+		{
+			name:             "Grok alias mapped to non-Grok remains unchanged",
+			model:            "grok-alias",
+			upstreamResponse: `{"id":"resp_mapped","object":"chat.completion","model":"gpt-5.4","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}]}`,
+			modelMapping:     map[string]any{"grok-alias": "gpt-5.4"},
+			wantGuarded:      false,
+		},
+		{
+			name:             "Grok response with detail-only usage",
+			model:            "grok-4.5",
+			upstreamResponse: `{"id":"resp_detail_only","object":"chat.completion","model":"grok-4.5","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}],"usage":{"input_tokens_details":{"text_tokens":9,"image_tokens":2},"output_tokens_details":{"image_tokens":1}}}`,
+			wantGuarded:      true,
+		},
+		{
+			name:             "non-Grok response without usage remains unchanged",
+			model:            "gpt-5.4",
+			upstreamResponse: `{"id":"resp_openai","object":"chat.completion","model":"gpt-5.4","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}]}`,
+			wantGuarded:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			body := []byte(`{"model":"` + tt.model + `","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}, "X-Request-Id": []string{"rid-openai-compatible"}},
+				Body:       io.NopCloser(strings.NewReader(tt.upstreamResponse)),
+			}}
+			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+			account := rawChatCompletionsTestAccount()
+			account.Name = "openai-compatible"
+			account.Extra = map[string]any{openai_compat.ExtraKeyResponsesSupported: false}
+			if tt.modelMapping != nil {
+				account.Credentials["model_mapping"] = tt.modelMapping
+			}
+
+			result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+
+			if !tt.wantGuarded {
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.True(t, c.Writer.Written())
+				return
+			}
+			require.Nil(t, result)
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+			require.Equal(t, "grok_missing_usage", gjson.GetBytes(failoverErr.ResponseBody, "error.code").String())
+			require.False(t, c.Writer.Written(), "unbilled Grok content must not be returned")
+		})
+	}
 }
 
 func TestForwardAsRawChatCompletions_PreservesMappedGPT56MaxEffort(t *testing.T) {
@@ -485,6 +607,86 @@ func TestForwardAsRawChatCompletions_SilentRefusalNormalContentExempt(t *testing
 	require.Contains(t, rec.Body.String(), "data: [DONE]")
 }
 
+// TestForwardAsRawChatCompletions_StripsEmptyToolCallIdentity 端到端验证 raw
+// CC 流式直转路径剔除 DashScope/DeepSeek 后续参数 delta 的空 id/name：
+// 下游仍保留首包合法 id/name 与 arguments 碎片，但后续 delta 不再带
+// `"id":""` / `"name":""`，避免 dsh 等客户端用 `!== undefined` 合并时把
+// 首包合法值覆盖掉（ToolNotFoundError: unknown tool ""）。
+func TestForwardAsRawChatCompletions_StripsEmptyToolCallIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"deepseek-v4-flash","messages":[{"role":"user","content":"weather"}],"stream":true}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_tool","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_example","type":"function","function":{"name":"web_search","arguments":""}}]}}]}`,
+		"",
+		`data: {"id":"chatcmpl_tool","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"","type":"function","function":{"name":"","arguments":"{\"query\":"}}]}}]}`,
+		"",
+		`data: {"id":"chatcmpl_tool","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"","type":"function","function":{"name":"","arguments":"\"example\"}"}}]}}]}`,
+		"",
+		`data: {"id":"chatcmpl_tool","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_tool_identity"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+	account := rawChatCompletionsTestAccount()
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	downstream := rec.Body.String()
+	require.Contains(t, downstream, `"id":"call_example"`)
+	require.Contains(t, downstream, `"name":"web_search"`)
+	require.Contains(t, downstream, `{\"query\":`)
+	require.Contains(t, downstream, `\"example\"}`)
+	require.Contains(t, downstream, "data: [DONE]")
+	require.NotContains(t, downstream, `"id":""`)
+	require.NotContains(t, downstream, `"name":""`)
+
+	// 逐条扫下游 data payload：后续参数 delta 的 tool_calls.0.id /
+	// function.name 必须已剔除（Exists() == false），首包合法值保留。
+	followUpSeen := false
+	for _, line := range strings.Split(downstream, "\n") {
+		payload, ok := extractOpenAISSEDataLine(line)
+		if !ok {
+			continue
+		}
+		trimmed := strings.TrimSpace(payload)
+		if trimmed == "" || trimmed == "[DONE]" {
+			continue
+		}
+		delta := gjson.Get(payload, "choices.0.delta")
+		if !delta.Exists() || !delta.Get("tool_calls").Exists() {
+			continue
+		}
+		id := delta.Get("tool_calls.0.id")
+		if id.String() == "call_example" {
+			require.Equal(t, "web_search", delta.Get("tool_calls.0.function.name").String())
+			continue
+		}
+		require.False(t, id.Exists(), "empty id must be stripped: %s", payload)
+		require.False(t, delta.Get("tool_calls.0.function.name").Exists(), "empty name must be stripped: %s", payload)
+		require.NotEmpty(t, delta.Get("tool_calls.0.function.arguments").String())
+		followUpSeen = true
+	}
+	require.True(t, followUpSeen)
+}
+
 func TestForwardAsRawChatCompletions_ClientDisconnectDrainsUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -638,7 +840,7 @@ func TestBufferRawChatCompletions_RejectsOversizedResponse(t *testing.T) {
 	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig()}
 	svc.cfg.Gateway.UpstreamResponseReadMaxBytes = 3
 
-	result, err := svc.bufferRawChatCompletions(c, resp, "gpt-5.4", "gpt-5.4", "gpt-5.4", nil, nil, time.Now())
+	result, err := svc.bufferRawChatCompletions(c, resp, rawChatCompletionsTestAccount(), "gpt-5.4", "gpt-5.4", "gpt-5.4", nil, nil, time.Now())
 	require.ErrorIs(t, err, ErrUpstreamResponseBodyTooLarge)
 	require.Nil(t, result)
 	require.Equal(t, http.StatusBadGateway, rec.Code)

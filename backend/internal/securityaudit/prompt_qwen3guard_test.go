@@ -22,7 +22,7 @@ func TestParseQwen3GuardStrictAndPolicy(t *testing.T) {
 		{"unsafe", "Safety: Unsafe\nCategories: Jailbreak", AllScannerIDs, EventCritical, ActionBlock, false},
 		{"unknown unsafe", "Safety: Unsafe\nCategories: Future Risk", AllScannerIDs, EventCritical, ActionBlock, false},
 		{"disabled unsafe warns", "Safety: Unsafe\nCategories: Violent", []string{"PII"}, EventFlag, ActionWarn, false},
-		{"extra explanation", "Safety: Safe\nCategories: None\nThis is safe", AllScannerIDs, "", "", true},
+		{"extra explanation", "Safety: Safe\nCategories: None\nThis is safe", AllScannerIDs, EventPass, ActionAllow, false},
 		{"duplicate", "Safety: Safe\nSafety: Safe", AllScannerIDs, "", "", true},
 		{"duplicate categories", "Safety: Safe\nCategories: None\nCategories: PII", AllScannerIDs, "", "", true},
 		{"missing categories", "Safety: Safe\n", AllScannerIDs, "", "", true},
@@ -40,6 +40,18 @@ func TestParseQwen3GuardStrictAndPolicy(t *testing.T) {
 			require.Equal(t, tt.action, result.Action)
 		})
 	}
+}
+
+func TestParseQwen3GuardIgnoresAuxiliaryResponseFields(t *testing.T) {
+	result, err := ParseQwen3Guard("Safety: Unsafe\nCategories: Jailbreak\nRefusal: No", AllScannerIDs)
+	require.NoError(t, err)
+	require.Equal(t, "Unsafe", result.Safety)
+	require.Equal(t, []string{"jailbreak"}, result.Categories)
+
+	serialized, err := json.Marshal(result)
+	require.NoError(t, err)
+	require.NotContains(t, string(serialized), "Refusal")
+	require.NotContains(t, string(serialized), "No")
 }
 
 func TestQwen3GuardOfficialCategoriesAliasesAndUnknownAreStable(t *testing.T) {

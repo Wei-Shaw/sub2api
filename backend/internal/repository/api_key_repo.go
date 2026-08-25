@@ -3,8 +3,10 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -190,7 +192,14 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldVideoPrice480p,
 				group.FieldVideoPrice720p,
 				group.FieldVideoPrice1080p,
+				group.FieldVideoModelPrices,
 				group.FieldWebSearchPricePerCall,
+				group.FieldSearchPricePer1k,
+				group.FieldAudioRealtimePricePerMin,
+				group.FieldAudioTtsPricePerMillionChars,
+				group.FieldAudioSttPricePerHour,
+				group.FieldLongContextPricingEnabled,
+				group.FieldModelPricing,
 				group.FieldClaudeCodeOnly,
 				group.FieldFallbackGroupID,
 				group.FieldFallbackGroupIDOnInvalidRequest,
@@ -210,6 +219,12 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldPeakStart,
 				group.FieldPeakEnd,
 				group.FieldPeakRateMultiplier,
+				// 分组利润控制：认证快照是调度门 enable 判定的直接来源，
+				// 漏选会让门静默失效；新增快照分组字段时必须同步本投影，
+				// 集成测试对账兜底。
+				group.FieldProfitControlEnabled,
+				group.FieldProfitMinMargin,
+				group.FieldProfitSafetyBuffer,
 			)
 		}).
 		Only(ctx)
@@ -935,6 +950,14 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 	if g == nil {
 		return nil
 	}
+	var modelPricing []service.ChannelModelPricing
+	if len(g.ModelPricing) > 0 {
+		if err := json.Unmarshal(g.ModelPricing, &modelPricing); err != nil {
+			slog.Warn("group model_pricing unmarshal failed; falling back to channel/builtin pricing",
+				"group_id", g.ID, "error", err)
+			modelPricing = nil
+		}
+	}
 	return &service.Group{
 		ID:                              g.ID,
 		Name:                            g.Name,
@@ -963,7 +986,14 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		VideoPrice480P:                  g.VideoPrice480p,
 		VideoPrice720P:                  g.VideoPrice720p,
 		VideoPrice1080P:                 g.VideoPrice1080p,
+		VideoModelPrices:                service.NormalizeVideoModelPrices(g.VideoModelPrices),
 		WebSearchPricePerCall:           g.WebSearchPricePerCall,
+		SearchPricePer1k:                g.SearchPricePer1k,
+		AudioRealtimePricePerMin:        g.AudioRealtimePricePerMin,
+		AudioTTSPricePerMillionChars:    g.AudioTtsPricePerMillionChars,
+		AudioSTTPricePerHour:            g.AudioSttPricePerHour,
+		LongContextPricingEnabled:       g.LongContextPricingEnabled,
+		ModelPricing:                    modelPricing,
 		DefaultValidityDays:             g.DefaultValidityDays,
 		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
 		FallbackGroupID:                 g.FallbackGroupID,
@@ -987,6 +1017,9 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		PeakStart:                       g.PeakStart,
 		PeakEnd:                         g.PeakEnd,
 		PeakRateMultiplier:              g.PeakRateMultiplier,
+		ProfitControlEnabled:            g.ProfitControlEnabled,
+		ProfitMinMargin:                 g.ProfitMinMargin,
+		ProfitSafetyBuffer:              g.ProfitSafetyBuffer,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}

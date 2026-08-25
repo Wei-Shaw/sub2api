@@ -40,7 +40,7 @@ func TestAccountTestServiceOpenAICompactAgentIdentityUsesFreshAssertion(t *testi
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{"id":"compact-agent","status":"completed"}`)),
+		Body:       io.NopCloser(strings.NewReader(`{"id":"compact-agent","status":"completed","output":[{"type":"compaction","id":"cmp_agent_fresh","encrypted_content":"blob"}]}`)),
 	}}
 	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream}
 
@@ -87,7 +87,7 @@ func TestAccountTestServiceOpenAICompactAgentIdentityRecoversInvalidTaskOnce(t *
 
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{
 		{StatusCode: http.StatusUnauthorized, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"invalid_task_id"}}`))},
-		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"compact-agent","status":"completed"}`))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"compact-agent","status":"completed","output":[{"type":"compaction","id":"cmp_agent","encrypted_content":"blob"}]}`))},
 	}}
 	invalidator := &agentIdentityWSInvalidationRecorder{}
 	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, agentIdentityWS: invalidator}
@@ -133,8 +133,8 @@ func TestOpenAIAgentIdentityPassthroughKeepsSessionAndPromptCacheHeaders(t *test
 	require.Equal(t, "account-agent-passthrough", req.Header.Get("chatgpt-account-id"))
 	require.NotEqual(t, "client-session", req.Header.Get("session_id"))
 	require.NotEqual(t, "client-conversation", req.Header.Get("conversation_id"))
-	require.Equal(t, isolateOpenAISessionID(0, "client-session"), req.Header.Get("session_id"))
-	require.Equal(t, isolateOpenAISessionID(0, "client-conversation"), req.Header.Get("conversation_id"))
+	require.Equal(t, isolateOpenAIUpstreamSessionID(0, account, "client-session"), req.Header.Get("session_id"))
+	require.Equal(t, isolateOpenAIUpstreamSessionID(0, account, "client-conversation"), req.Header.Get("conversation_id"))
 	requestBody, err := io.ReadAll(req.Body)
 	require.NoError(t, err)
 	require.Contains(t, string(requestBody), `"prompt_cache_key":"cache-agent"`)
@@ -147,7 +147,7 @@ func TestOpenAIAgentIdentityPassthroughKeepsSessionAndPromptCacheHeaders(t *test
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
 		Credentials: map[string]any{
-			"chatgpt_account_id": "account-oauth-passthrough",
+			"chatgpt_account_id": "account-agent-passthrough",
 		},
 	}
 	oauthRecorder := httptest.NewRecorder()

@@ -23,7 +23,28 @@ const (
 	PlatformGemini      = "gemini"
 	PlatformAntigravity = "antigravity"
 	PlatformGrok        = "grok"
-	PlatformComposite   = "composite"
+	// 国产 OpenAI 兼容供应商（经 OpenAI 网关转发，按 Chat Completions 协议）。
+	PlatformKimi      = "kimi"     // Kimi (月之暗面 / Moonshot)
+	PlatformZhipu     = "zhipu"    // 智谱 GLM (bigmodel)
+	PlatformDeepseek  = "deepseek" // DeepSeek
+	PlatformComposite = "composite"
+)
+
+// Account mode constants 区分国产供应商的「按量付费（余额）」与「Coding Plan」两种接入方式。
+// 存储于 credentials["account_mode"]，决定 base_url 预设与额度监控方式。
+const (
+	AccountModePayG   = "payg"   // 按量付费：消耗余额，做余额检测冷却
+	AccountModeCoding = "coding" // Coding Plan：滚动用量窗口冷却（5h / weekly）
+)
+
+// API protocol constants 国产供应商的上游 API 协议维度。存储于
+// credentials["api_protocol"]，与 account_mode 正交：协议决定转发端点与格式，
+// 模式决定额度监控方式。同协议请求零转换直通；跨协议组合才走转换链。
+const (
+	APIProtocolChatCompletions = "chat_completions" // OpenAI Chat Completions（默认）
+	APIProtocolAnthropic       = "anthropic"        // 原生 Anthropic /v1/messages（适配 Claude Code）
+	APIProtocolResponses       = "responses"        // OpenAI Responses（仅 deepseek，适配 Codex）
+	APIProtocolAdaptive        = "adaptive"         // 按入站协议优先选择供应商原生端点
 )
 
 // Account type constants
@@ -117,6 +138,12 @@ var DefaultAntigravityModelMapping = map[string]string{
 	"gemini-3.1-flash-image": "gemini-3.1-flash-image",
 	// Gemini 3.1 image preview 映射
 	"gemini-3.1-flash-image-preview": "gemini-3.1-flash-image",
+	// Gemini 3.6 Flash tiered models
+	"gemini-3.6-flash":        "gemini-3.6-flash",
+	"gemini-3.6-flash-high":   "gemini-3.6-flash-high",
+	"gemini-3.6-flash-low":    "gemini-3.6-flash-low",
+	"gemini-3.6-flash-medium": "gemini-3.6-flash-medium",
+	"gemini-3.6-flash-tiered": "gemini-3.6-flash-tiered",
 	// Gemini 3 image 兼容映射（向 3.1 image 迁移）
 	"gemini-3-pro-image":         "gemini-3.1-flash-image",
 	"gemini-3-pro-image-preview": "gemini-3.1-flash-image",

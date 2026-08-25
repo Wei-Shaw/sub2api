@@ -96,6 +96,42 @@ type openAIWSIngressTurnError struct {
 	wroteDownstream bool
 }
 
+type openAIWSCurrentTurnFailoverError struct {
+	cause        error
+	retryPayload []byte
+}
+
+func (e *openAIWSCurrentTurnFailoverError) Error() string {
+	if e == nil || e.cause == nil {
+		return "openai websocket current-turn failover"
+	}
+	return e.cause.Error()
+}
+
+func (e *openAIWSCurrentTurnFailoverError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.cause
+}
+
+func newOpenAIWSCurrentTurnFailoverError(cause error, retryPayload []byte) error {
+	return &openAIWSCurrentTurnFailoverError{
+		cause:        cause,
+		retryPayload: append([]byte(nil), retryPayload...),
+	}
+}
+
+// OpenAIWSCurrentTurnRetryPayload returns an isolated copy of the payload that
+// may be retried on a replacement account without replaying the first turn.
+func OpenAIWSCurrentTurnRetryPayload(err error) ([]byte, bool) {
+	var retryErr *openAIWSCurrentTurnFailoverError
+	if !errors.As(err, &retryErr) || retryErr == nil {
+		return nil, false
+	}
+	return append([]byte(nil), retryErr.retryPayload...), true
+}
+
 func (e *openAIWSIngressTurnError) Error() string {
 	if e == nil {
 		return ""
@@ -207,14 +243,21 @@ func (e *OpenAIWSClientCloseError) Reason() string {
 
 // OpenAIWSIngressHooks 定义入站 WS 每个 turn 的生命周期回调。
 type OpenAIWSIngressHooks struct {
+	// ClientLifecycleContext is the request context before an ingress lease
+	// adds its independent cancellation signal. Downstream writes bind to it
+	// so shutdown and disconnect cancellation remain direct during lease loss.
+	ClientLifecycleContext context.Context
 	// InitialRequestModel is the client-facing model from the first frame,
 	// before channel or account mapping. Ingress modes preserve it for usage
 	// attribution while MapRequestModel determines the upstream model.
 	InitialRequestModel string
+	// InitialTurnStartedAt freezes when the first response.create was accepted.
+	InitialTurnStartedAt time.Time
 	// MaxReasoningEffort limits explicit reasoning effort values for this WS session.
 	MaxReasoningEffort string
 	// ReasoningEffortMappings rewrites explicit effort values for this WS session.
 	ReasoningEffortMappings []ReasoningEffortMapping
+	TurnStarted             func(turn int, startedAt time.Time)
 	BeforeTurn              func(turn int) error
 	BeforeRequest           func(turn int, payload []byte, originalModel string) error
 	// MapRequestModel resolves the current turn's client model to the model

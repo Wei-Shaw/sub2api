@@ -10,6 +10,7 @@ const {
   getModelsListCandidates,
   getUsageSummary,
   getCapacitySummary,
+  getLiveCapability,
   listAccounts,
   showError,
   showSuccess,
@@ -21,6 +22,7 @@ const {
   getModelsListCandidates: vi.fn(),
   getUsageSummary: vi.fn(),
   getCapacitySummary: vi.fn(),
+  getLiveCapability: vi.fn(),
   listAccounts: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
@@ -41,6 +43,9 @@ const messages: Record<string, string> = {
   'admin.groups.columns.usage': 'Usage',
   'admin.groups.columns.status': 'Status',
   'admin.groups.columns.actions': 'Actions',
+  'admin.groups.usageToday': 'Today',
+  'admin.groups.usageYesterday': 'Yesterday',
+  'admin.groups.usageTotal': 'Total',
 }
 
 vi.mock('@/api/admin', () => ({
@@ -51,6 +56,7 @@ vi.mock('@/api/admin', () => ({
       getModelsListCandidates,
       getUsageSummary,
       getCapacitySummary,
+      getLiveCapability,
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
@@ -148,6 +154,9 @@ const DataTableStub = {
     <div>
       <div data-test="columns">{{ columns.map((col) => col.key).join(',') }}</div>
       <div data-test="rows">{{ data.map((row) => row.name).join(',') }}</div>
+      <div v-if="data.length" data-test="usage-cell">
+        <slot name="cell-usage" :row="data[0]" />
+      </div>
     </div>
   `,
 }
@@ -244,6 +253,7 @@ describe('admin GroupsView column settings', () => {
     getModelsListCandidates.mockResolvedValue([])
     getUsageSummary.mockResolvedValue([])
     getCapacitySummary.mockResolvedValue([])
+    getLiveCapability.mockResolvedValue({ supported: false })
     listAccounts.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
     isCurrentStep.mockReturnValue(false)
   })
@@ -374,10 +384,26 @@ describe('admin GroupsView column settings', () => {
     await openColumnSettings(wrapper)
     await clickColumnToggle(wrapper, 'Usage')
     expect(getUsageSummary).toHaveBeenCalledTimes(1)
+    expect(getUsageSummary).toHaveBeenCalledWith()
     expect(getCapacitySummary).not.toHaveBeenCalled()
 
     await clickColumnToggle(wrapper, 'Capacity')
     expect(getUsageSummary).toHaveBeenCalledTimes(1)
     expect(getCapacitySummary).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders yesterday usage between today and total', async () => {
+    getUsageSummary.mockResolvedValue([
+      { group_id: 1, today_cost: 1.25, yesterday_cost: 2.5, total_cost: 9.75 },
+    ])
+
+    const wrapper = await mountView()
+    const text = wrapper.get('[data-test="usage-cell"]').text()
+
+    expect(text).toContain('Today$1.25')
+    expect(text).toContain('Yesterday$2.50')
+    expect(text).toContain('Total$9.75')
+    expect(text.indexOf('Today')).toBeLessThan(text.indexOf('Yesterday'))
+    expect(text.indexOf('Yesterday')).toBeLessThan(text.indexOf('Total'))
   })
 })
