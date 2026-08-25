@@ -3,6 +3,7 @@ package apicompat
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -57,24 +58,30 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 		out.OutputConfig = &AnthropicOutputConfig{Effort: effort}
 		// Enable thinking for non-low efforts
 		if effort != "low" {
-			budget := defaultThinkingBudget(effort)
-			// Anthropic rejects requests where max_tokens <= thinking.budget_tokens
-			// (max_tokens must be greater than thinking.budget_tokens). Codex
-			// clients commonly send a smaller max_output_tokens (or rely on the
-			// default) while requesting high/max reasoning, so reconcile the two:
-			// an explicit client max_output_tokens is authoritative and caps the
-			// thinking budget below it; otherwise raise the default max_tokens so
-			// the requested budget still leaves room for the final answer.
-			if req.MaxOutputTokens != nil && *req.MaxOutputTokens > 0 {
-				if budget >= out.MaxTokens {
-					budget = out.MaxTokens - 1
+			if anthropicModelUsesAdaptiveThinking(out.Model) {
+				// Claude 5 家族只接受 thinking.type=adaptive（思考预算交给
+				// output_config.effort 控制）；enabled+budget_tokens 会被上游 400。
+				out.Thinking = &AnthropicThinking{Type: "adaptive"}
+			} else {
+				budget := defaultThinkingBudget(effort)
+				// Anthropic rejects requests where max_tokens <= thinking.budget_tokens
+				// (max_tokens must be greater than thinking.budget_tokens). Codex
+				// clients commonly send a smaller max_output_tokens (or rely on the
+				// default) while requesting high/max reasoning, so reconcile the two:
+				// an explicit client max_output_tokens is authoritative and caps the
+				// thinking budget below it; otherwise raise the default max_tokens so
+				// the requested budget still leaves room for the final answer.
+				if req.MaxOutputTokens != nil && *req.MaxOutputTokens > 0 {
+					if budget >= out.MaxTokens {
+						budget = out.MaxTokens - 1
+					}
+				} else if budget >= out.MaxTokens {
+					out.MaxTokens = budget + 1024
 				}
-			} else if budget >= out.MaxTokens {
-				out.MaxTokens = budget + 1024
-			}
-			out.Thinking = &AnthropicThinking{
-				Type:         "enabled",
-				BudgetTokens: budget,
+				out.Thinking = &AnthropicThinking{
+					Type:         "enabled",
+					BudgetTokens: budget,
+				}
 			}
 		}
 	}
@@ -110,6 +117,18 @@ func mapResponsesEffortToAnthropic(effort string) string {
 		return "max"
 	}
 	return effort // low→low, medium→medium, high→high, unknown→passthrough
+}
+
+// anthropicAdaptiveThinkingModelRe matches the Claude 5 model family. These
+// models reject thinking.type=enabled+budget_tokens and only accept
+// thinking.type=adaptive combined with output_config.effort.
+var anthropicAdaptiveThinkingModelRe = regexp.MustCompile(`(^|[^a-z0-9])claude-(opus|sonnet|fable|haiku)-5($|[^a-z0-9])`)
+
+// anthropicModelUsesAdaptiveThinking reports whether the model belongs to the
+// Claude 5 family and therefore must use adaptive thinking rather than an
+// explicit enabled+budget_tokens block.
+func anthropicModelUsesAdaptiveThinking(model string) bool {
+	return anthropicAdaptiveThinkingModelRe.MatchString(strings.ToLower(strings.TrimSpace(model)))
 }
 
 // convertResponsesInputToAnthropic extracts system prompt and messages from
