@@ -2074,6 +2074,83 @@ func TestForwardGrokResponsesRetriesInvalidEncryptedContentOnce(t *testing.T) {
 	require.False(t, hasTerminalStatus)
 }
 
+func TestForwardGrokResponsesToolContinuationServerAndDecodeRetriesStayBounded(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	newServerError := func(attempt int) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusInternalServerError,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(fmt.Sprintf(`{"error":{"type":"server_error","message":"attempt %d"}}`, attempt))),
+		}
+	}
+	newDecodeError := func() *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"code":"invalid-argument","error":"Could not decrypt the provided encrypted_content. Ensure the value is unmodified."}`)),
+		}
+	}
+	newSuccess := func(id string) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(fmt.Sprintf(`{"id":%q,"object":"response","model":"grok-4.5","status":"completed","output":[],"usage":{"input_tokens":2,"output_tokens":1}}`, id))),
+		}
+	}
+
+	for _, tc := range []struct {
+		name      string
+		responses []*http.Response
+	}{
+		{
+			name:      "server retries then decode retry",
+			responses: []*http.Response{newServerError(1), newServerError(2), newDecodeError(), newSuccess("resp_server_then_decode")},
+		},
+		{
+			name:      "decode retry then server retries",
+			responses: []*http.Response{newDecodeError(), newServerError(1), newServerError(2), newSuccess("resp_decode_then_server")},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte(`{
+				"model":"grok","stream":false,
+				"input":[
+					{"type":"reasoning","summary":[{"type":"summary_text","text":"keep"}],"encrypted_content":"cipher"},
+					{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"{}"},
+					{"type":"function_call_output","call_id":"call_1","output":"ok"}
+				]
+			}`)
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+			account := &Account{
+				ID: 4540, Name: "grok-api-key", Platform: PlatformGrok, Type: AccountTypeAPIKey,
+				Status: StatusActive, Schedulable: true, Concurrency: 1,
+				Credentials: map[string]any{"api_key": "same-token", "base_url": "https://api.x.ai/v1"},
+			}
+			upstream := &httpUpstreamRecorder{responses: tc.responses}
+			svc := &OpenAIGatewayService{httpUpstream: upstream}
+
+			result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", false, time.Now())
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Len(t, upstream.bodies, 4)
+			require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+			if tc.name == "server retries then decode retry" {
+				require.Equal(t, upstream.bodies[0], upstream.bodies[1])
+				require.Equal(t, upstream.bodies[1], upstream.bodies[2])
+				require.False(t, gjson.GetBytes(upstream.bodies[3], "input.0.encrypted_content").Exists())
+			} else {
+				require.False(t, gjson.GetBytes(upstream.bodies[1], "input.0.encrypted_content").Exists())
+				require.Equal(t, upstream.bodies[1], upstream.bodies[2])
+				require.Equal(t, upstream.bodies[2], upstream.bodies[3])
+			}
+			require.Equal(t, "function_call_output", gjson.GetBytes(upstream.bodies[3], "input.2.type").String())
+		})
+	}
+}
+
 func TestForwardGrokResponsesInvalidEncryptedContentRecoveryDoesNotOvermatch(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

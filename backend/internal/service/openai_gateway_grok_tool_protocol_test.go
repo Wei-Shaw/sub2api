@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -619,21 +618,11 @@ func TestForwardGrokResponsesClientToolContinuationSurvivesRepeated500Recovery(t
 		return recorder, result, err
 	}
 
-	for attempt := 1; attempt <= 2; attempt++ {
-		recorder, result, err := forward(continuationBody)
-		require.Error(t, err, "transient attempt %d must remain an upstream failure", attempt)
-		require.Nil(t, result)
-		var failoverErr *UpstreamFailoverError
-		require.True(t, errors.As(err, &failoverErr), "transient attempt %d must reach the upstream failover boundary", attempt)
-		require.Equal(t, http.StatusInternalServerError, failoverErr.StatusCode)
-		require.Contains(t, string(failoverErr.ResponseBody), fmt.Sprintf("fixture transient 500 attempt %d", attempt))
-		require.Empty(t, recorder.Body.Bytes(), "transient attempt %d must not write a client response before failover", attempt)
-	}
-
 	recoveryRecorder, recoveryResult, err := forward(continuationBody)
 	require.NoError(t, err)
 	require.NotNil(t, recoveryResult)
 	require.Equal(t, "resp_recovery_tool", recoveryResult.ResponseID)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
 	require.Len(t, upstream.bodies, 3)
 	for index, body := range upstream.bodies {
 		assertGrokProtocolRequestLowered(t, body)
@@ -678,6 +667,117 @@ func TestForwardGrokResponsesClientToolContinuationSurvivesRepeated500Recovery(t
 	require.NotContains(t, strings.ToLower(string(finalUpstreamBody)), "[tool call")
 	require.NotContains(t, strings.ToLower(string(finalUpstreamBody)), "[tool result")
 	require.Equal(t, "fixture-recovery-ok", gjson.Get(finalRecorder.Body.String(), "output.0.content.0.text").String())
+}
+
+func TestForwardGrokResponsesStreamingToolContinuationRetriesServer500BeforeCooldown(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := grokClientToolProtocolRequest(true)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"attempt 1"}}`))},
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"attempt 2"}}`))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(grokProtocolUpstreamSSE()))},
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	account := grokProtocolAPIKeyAccount(7107)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+
+	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", true, time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.Stream)
+	require.Len(t, upstream.bodies, 3)
+	require.Equal(t, upstream.bodies[0], upstream.bodies[1])
+	require.Equal(t, upstream.bodies[1], upstream.bodies[2])
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Contains(t, recorder.Body.String(), "response.completed")
+	require.Contains(t, recorder.Body.String(), "custom_tool_call")
+}
+
+func TestForwardGrokResponsesInitialToolDeclarationServer500DoesNotRetry(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for index, stream := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stream_%t", stream), func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"model":"grok","stream":%t,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}],"tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}],"tool_choice":"auto"}`, stream))
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{
+				{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"initial failure"}}`))},
+				{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"must_not_be_reached","object":"response","model":"grok-4.5","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`))},
+			}}
+			svc := &OpenAIGatewayService{httpUpstream: upstream}
+			account := grokProtocolAPIKeyAccount(int64(7108 + index))
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+
+			result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", stream, time.Now())
+			require.Error(t, err)
+			require.Nil(t, result)
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.Equal(t, http.StatusInternalServerError, failoverErr.StatusCode)
+			require.Len(t, upstream.bodies, 1)
+			require.Empty(t, recorder.Body.Bytes())
+			require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+		})
+	}
+}
+
+func TestForwardGrokResponsesToolContinuationRetryHonorsCanceledContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := grokClientToolProtocolRequest(false)
+	failedBody := &passthroughCloseTrackingReadCloser{
+		Reader: strings.NewReader(`{"error":{"type":"server_error","message":"temporary"}}`),
+	}
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: failedBody},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"must_not_be_reached","object":"response","model":"grok-4.5","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`))},
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	account := grokProtocolAPIKeyAccount(7110)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result, err := svc.forwardGrokResponses(ctx, c, account, body, "grok", false, time.Now())
+	require.Nil(t, result)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Len(t, upstream.bodies, 1)
+	require.True(t, failedBody.closed)
+	require.Empty(t, recorder.Body.Bytes())
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+}
+
+func TestForwardGrokResponsesClientToolContinuationServerRetryIsBounded(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := grokClientToolProtocolRequest(false)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"attempt 1"}}`))},
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"attempt 2"}}`))},
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"attempt 3"}}`))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"must_not_be_reached","object":"response","model":"grok-4.5","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`))},
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	account := grokProtocolAPIKeyAccount(7106)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+
+	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", false, time.Now())
+	require.Error(t, err)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusInternalServerError, failoverErr.StatusCode)
+	require.Contains(t, string(failoverErr.ResponseBody), "attempt 3")
+	require.Len(t, upstream.bodies, 3)
+	require.Empty(t, recorder.Body.Bytes())
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
 }
 
 func TestForwardGrokResponsesAPIKeyRestoresClientToolsStreaming(t *testing.T) {

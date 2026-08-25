@@ -125,6 +125,24 @@ func TestGrokSameAccountRetryMetadata_CapacityDeadline(t *testing.T) {
 	require.Zero(t, retryMax)
 }
 
+func TestGrokToolContinuationServerRetryScopeAndBound(t *testing.T) {
+	serverBody := []byte(`{"error":{"type":"server_error","message":"temporary"}}`)
+	require.True(t, hasGrokResponsesToolContinuation([]byte(`{"input":[{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"{}"},{"type":"function_call_output","call_id":"call_1","output":"ok"}]}`)))
+	require.False(t, hasGrokResponsesToolContinuation([]byte(`{"input":[{"type":"function_call_output","call_id":"call_1","output":"ok"}]}`)))
+	require.False(t, hasGrokResponsesToolContinuation([]byte(`{"input":[{"type":"message","role":"user","content":"hello"}]}`)))
+	require.False(t, hasGrokResponsesToolContinuation([]byte(`{"input":[{"type":"message","role":"user","content":"hello"}],"tools":[{"type":"function","name":"lookup"}],"tool_choice":"auto"}`)))
+	require.True(t, hasGrokChatToolContinuation([]byte(`{"messages":[{"role":"tool","tool_call_id":"call_1","content":"ok"}]}`)))
+	require.False(t, hasGrokChatToolContinuation([]byte(`{"messages":[{"role":"user","content":"hello"}]}`)))
+
+	for _, retryCount := range []int{0, 1} {
+		require.True(t, grokToolContinuationServerRetryAllowed(true, http.StatusInternalServerError, serverBody, retryCount))
+	}
+	require.False(t, grokToolContinuationServerRetryAllowed(true, http.StatusInternalServerError, serverBody, 2))
+	require.False(t, grokToolContinuationServerRetryAllowed(false, http.StatusInternalServerError, serverBody, 0))
+	require.False(t, grokToolContinuationServerRetryAllowed(true, http.StatusBadGateway, serverBody, 0))
+	require.False(t, grokToolContinuationServerRetryAllowed(true, http.StatusInternalServerError, []byte(`{"error":{"message":"free usage exhausted"}}`), 0))
+}
+
 func TestClassifyGrokUpstreamFailure_ValidationNoCool(t *testing.T) {
 	d := classifyGrokUpstreamFailure(http.StatusBadRequest, []byte(`{"error":{"message":"invalid tool schema"}}`), "")
 	require.Equal(t, GrokFailureNone, d.Class)
