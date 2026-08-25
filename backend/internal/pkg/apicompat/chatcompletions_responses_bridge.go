@@ -247,13 +247,6 @@ func customToolCallName(name string, customTools, functionTools map[string]bool,
 	return match, match != ""
 }
 
-func customNameForStreamTool(state *ChatCompletionsToResponsesStreamState, name string) string {
-	if customName, ok := resolveCustomToolCallName(name, state.CustomTools, state.FunctionTools, state.NamespaceTools); ok {
-		return customName
-	}
-	return name
-}
-
 // HasToolSearchTool 判断 Responses 请求是否声明了 tool_search 服务端工具。chat 桥
 // 回程时需据此把模型对代理工具的调用还原为 tool_search_call 项：codex 只在该项类型
 // 且 execution=client 时执行 tool search，同名 function_call 会因 payload 不匹配
