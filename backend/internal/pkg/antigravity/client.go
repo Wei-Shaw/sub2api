@@ -255,6 +255,8 @@ const (
 	proxyTLSHandshakeTimeout = 5 * time.Second
 	// clientTimeout 整体请求超时（含连接、发送、等待响应、读取 body）
 	clientTimeout = 10 * time.Second
+	// defaultQuotaSummaryBodyLimit limits quota-summary responses to avoid unbounded memory use.
+	defaultQuotaSummaryBodyLimit int64 = 8 << 20
 )
 
 func NewClient(proxyURL string) (*Client, error) {
@@ -652,6 +654,87 @@ type FetchAvailableModelsResponse struct {
 	DeprecatedModelIDs map[string]DeprecatedModelInfo `json:"deprecatedModelIds,omitempty"`
 }
 
+// RetrieveUserQuotaSummaryRequest retrieveUserQuotaSummary 请求。
+type RetrieveUserQuotaSummaryRequest struct {
+	Project string `json:"project,omitempty"`
+}
+
+// QuotaSummaryRemaining 兼容部分上游将剩余额度包在 remaining 对象中的响应。
+type QuotaSummaryRemaining struct {
+	RemainingFraction *float64 `json:"remainingFraction,omitempty"`
+	ResetTime         string   `json:"resetTime,omitempty"`
+}
+
+// QuotaSummaryBucket 表示一个独立额度窗口，例如 gemini-weekly 或 gemini-5h。
+type QuotaSummaryBucket struct {
+	BucketID          string                 `json:"bucketId,omitempty"`
+	DisplayName       string                 `json:"displayName,omitempty"`
+	Window            string                 `json:"window,omitempty"`
+	RemainingFraction *float64               `json:"remainingFraction,omitempty"`
+	ResetTime         string                 `json:"resetTime,omitempty"`
+	Description       string                 `json:"description,omitempty"`
+	Remaining         *QuotaSummaryRemaining `json:"remaining,omitempty"`
+}
+
+// GetRemainingFraction 返回兼容新旧响应形态的剩余额度比例。
+func (b *QuotaSummaryBucket) GetRemainingFraction() (float64, bool) {
+	if b == nil {
+		return 0, false
+	}
+	if b.RemainingFraction != nil {
+		return *b.RemainingFraction, true
+	}
+	if b.Remaining != nil && b.Remaining.RemainingFraction != nil {
+		return *b.Remaining.RemainingFraction, true
+	}
+	return 0, false
+}
+
+// GetResetTime 返回兼容新旧响应形态的重置时间。
+func (b *QuotaSummaryBucket) GetResetTime() string {
+	if b == nil {
+		return ""
+	}
+	if b.ResetTime != "" {
+		return b.ResetTime
+	}
+	if b.Remaining != nil {
+		return b.Remaining.ResetTime
+	}
+	return ""
+}
+
+// QuotaSummaryGroup 表示同一模型族的 5h/weekly 额度组。
+type QuotaSummaryGroup struct {
+	DisplayName string               `json:"displayName,omitempty"`
+	Description string               `json:"description,omitempty"`
+	Buckets     []QuotaSummaryBucket `json:"buckets"`
+}
+
+type quotaSummaryEnvelope struct {
+	Groups []QuotaSummaryGroup `json:"groups"`
+}
+
+// RetrieveUserQuotaSummaryResponse 同时兼容远端直接 groups 与本地服务 response.groups 两种形态。
+type RetrieveUserQuotaSummaryResponse struct {
+	Groups   []QuotaSummaryGroup   `json:"groups"`
+	Response *quotaSummaryEnvelope `json:"response,omitempty"`
+}
+
+// GetGroups 返回实际额度组。
+func (r *RetrieveUserQuotaSummaryResponse) GetGroups() []QuotaSummaryGroup {
+	if r == nil {
+		return nil
+	}
+	if len(r.Groups) > 0 {
+		return r.Groups
+	}
+	if r.Response != nil {
+		return r.Response.Groups
+	}
+	return nil
+}
+
 // FetchAvailableModels 获取可用模型和配额信息，返回解析后的结构体和原始 JSON
 // 支持 URL fallback：sandbox → daily → prod
 func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectID string, bodyLimit int64) (*FetchAvailableModelsResponse, map[string]any, error) {
@@ -732,6 +815,87 @@ func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectI
 		// 标记成功的 URL，下次优先使用
 		DefaultURLAvailability.MarkSuccess(baseURL)
 		return &modelsResp, rawResp, nil
+	}
+
+	return nil, nil, lastErr
+}
+
+// RetrieveUserQuotaSummary 获取按模型族分组的 5h 与 weekly 额度。
+// 该接口为辅助信息源；调用方应在失败时保留 fetchAvailableModels 的结果。
+func (c *Client) RetrieveUserQuotaSummary(ctx context.Context, accessToken, projectID string, bodyLimit int64) (*RetrieveUserQuotaSummaryResponse, map[string]any, error) {
+	if c == nil || c.httpClient == nil {
+		return nil, nil, errors.New("antigravity client is not configured")
+	}
+	if bodyLimit <= 0 {
+		bodyLimit = defaultQuotaSummaryBodyLimit
+	}
+
+	bodyBytes, err := json.Marshal(RetrieveUserQuotaSummaryRequest{Project: projectID})
+	if err != nil {
+		return nil, nil, fmt.Errorf("序列化请求失败: %w", err)
+	}
+
+	// quota summary 在 daily sandbox 端点通常比 prod 端点提供更完整的
+	// 5h/weekly 分组；沿用转发端点的 daily 优先顺序，prod 作为备用。
+	availableURLs := ForwardBaseURLs()
+	if len(availableURLs) == 0 {
+		availableURLs = BaseURLs
+	}
+
+	fetchClient := c.fetchAvailableModelsHTTPClient()
+	var lastErr error
+	for urlIdx, baseURL := range availableURLs {
+		apiURL := baseURL + "/v1internal:retrieveUserQuotaSummary"
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(bodyBytes))
+		if err != nil {
+			lastErr = fmt.Errorf("创建请求失败: %w", err)
+			continue
+		}
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", GetUserAgentForContext(ctx))
+
+		resp, err := fetchClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("retrieveUserQuotaSummary 请求失败: %w", err)
+			if shouldFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
+				log.Printf("[antigravity] retrieveUserQuotaSummary URL fallback: %s -> %s", baseURL, availableURLs[urlIdx+1])
+				continue
+			}
+			return nil, nil, lastErr
+		}
+
+		respBodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, bodyLimit+1))
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, nil, fmt.Errorf("读取响应失败: %w", err)
+		}
+		if int64(len(respBodyBytes)) > bodyLimit {
+			return nil, nil, fmt.Errorf("响应超过 %d 字节", bodyLimit)
+		}
+
+		if shouldFallbackToNextURL(nil, resp.StatusCode) && urlIdx < len(availableURLs)-1 {
+			log.Printf("[antigravity] retrieveUserQuotaSummary URL fallback (HTTP %d): %s -> %s", resp.StatusCode, baseURL, availableURLs[urlIdx+1])
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, nil, fmt.Errorf("retrieveUserQuotaSummary 失败 (HTTP %d): %s", resp.StatusCode, string(respBodyBytes))
+		}
+
+		var summaryResp RetrieveUserQuotaSummaryResponse
+		if err := json.Unmarshal(respBodyBytes, &summaryResp); err != nil {
+			return nil, nil, fmt.Errorf("响应解析失败: %w", err)
+		}
+		// 某些 prod 响应可能是 200 但不包含分组；继续尝试 daily，避免
+		// 把“成功但没有周额度”的响应误当成完整结果。
+		if len(summaryResp.GetGroups()) == 0 && urlIdx < len(availableURLs)-1 {
+			log.Printf("[antigravity] retrieveUserQuotaSummary empty groups: %s -> %s", baseURL, availableURLs[urlIdx+1])
+			continue
+		}
+		var rawResp map[string]any
+		_ = json.Unmarshal(respBodyBytes, &rawResp)
+		DefaultURLAvailability.MarkSuccess(baseURL)
+		return &summaryResp, rawResp, nil
 	}
 
 	return nil, nil, lastErr

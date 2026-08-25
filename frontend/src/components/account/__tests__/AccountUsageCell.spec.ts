@@ -197,6 +197,55 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('25')
   })
 
+  it('Antigravity 优先显示 Gemini 与第三方模型的 5h/weekly 聚合额度', async () => {
+    getUsage.mockResolvedValue({
+      antigravity_quota_summary: {
+        'gemini-5h': {
+          remaining_fraction: 0.9661,
+          utilization: 3.39,
+          resets_at: '2026-08-24T20:03:40Z'
+        },
+        'gemini-weekly': {
+          remaining_fraction: 0.7887,
+          utilization: 21.13,
+          resets_at: '2026-08-29T14:25:41Z'
+        },
+        '3p-5h': {
+          remaining_fraction: 1,
+          utilization: 0,
+          resets_at: '2026-08-24T20:32:50Z'
+        },
+        '3p-weekly': {
+          remaining_fraction: 1,
+          utilization: 0,
+          resets_at: '2026-08-31T15:32:50Z'
+        }
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 1010, extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'color'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ resetsAt }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.antigravityGemini5h|3.39|2026-08-24T20:03:40Z')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.antigravityGeminiWeekly|21.13|2026-08-29T14:25:41Z')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.antigravityThirdParty5h|0|2026-08-24T20:32:50Z')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.antigravityThirdPartyWeekly|0|2026-08-31T15:32:50Z')
+  })
+
 
   it('OpenAI OAuth 快照已过期时首屏会重新请求 usage', async () => {
     getUsage.mockResolvedValue({

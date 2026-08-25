@@ -1283,6 +1283,17 @@ export interface AntigravityModelQuota {
   reset_time: string  // 重置时间 ISO8601
 }
 
+// Antigravity 按模型族聚合的 5h / weekly 额度窗口。
+export interface AntigravityQuotaSummaryWindow {
+  group_name?: string
+  display_name?: string
+  window?: '5h' | 'weekly' | string
+  remaining_fraction: number
+  utilization: number
+  resets_at?: string | null
+  description?: string
+}
+
 export interface GrokQuotaWindow {
   limit?: number | null
   remaining?: number | null
@@ -1341,6 +1352,7 @@ export interface AccountUsageInfo {
   gemini_pro_minute?: UsageProgress | null
   gemini_flash_minute?: UsageProgress | null
   antigravity_quota?: Record<string, AntigravityModelQuota> | null
+  antigravity_quota_summary?: Record<string, AntigravityQuotaSummaryWindow> | null
   grok_request_quota?: GrokQuotaWindow | null
   grok_token_quota?: GrokQuotaWindow | null
   grok_retry_after_seconds?: number | null

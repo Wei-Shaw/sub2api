@@ -289,41 +289,68 @@
 
       <!-- Usage data from API -->
       <div v-else-if="hasAntigravityQuotaFromAPI" class="space-y-1">
-        <!-- Gemini 3 Pro -->
-        <UsageProgressBar
-          v-if="antigravity3ProUsageFromAPI !== null"
-          :label="t('admin.accounts.usageWindow.gemini3Pro')"
-          :utilization="antigravity3ProUsageFromAPI.utilization"
-          :resets-at="antigravity3ProUsageFromAPI.resetTime"
-          color="indigo"
-        />
+        <template v-if="hasAntigravityQuotaSummary">
+          <UsageProgressBar
+            v-if="antigravityGeminiFiveHour"
+            :label="t('admin.accounts.usageWindow.antigravityGemini5h')"
+            :utilization="antigravityGeminiFiveHour.utilization"
+            :resets-at="antigravityGeminiFiveHour.resets_at"
+            color="emerald"
+          />
+          <UsageProgressBar
+            v-if="antigravityGeminiWeekly"
+            :label="t('admin.accounts.usageWindow.antigravityGeminiWeekly')"
+            :utilization="antigravityGeminiWeekly.utilization"
+            :resets-at="antigravityGeminiWeekly.resets_at"
+            color="indigo"
+          />
+          <UsageProgressBar
+            v-if="antigravityThirdPartyFiveHour"
+            :label="t('admin.accounts.usageWindow.antigravityThirdParty5h')"
+            :utilization="antigravityThirdPartyFiveHour.utilization"
+            :resets-at="antigravityThirdPartyFiveHour.resets_at"
+            color="amber"
+          />
+          <UsageProgressBar
+            v-if="antigravityThirdPartyWeekly"
+            :label="t('admin.accounts.usageWindow.antigravityThirdPartyWeekly')"
+            :utilization="antigravityThirdPartyWeekly.utilization"
+            :resets-at="antigravityThirdPartyWeekly.resets_at"
+            color="purple"
+          />
+        </template>
 
-        <!-- Gemini 3 Flash -->
-        <UsageProgressBar
-          v-if="antigravity3FlashUsageFromAPI !== null"
-          :label="t('admin.accounts.usageWindow.gemini3Flash')"
-          :utilization="antigravity3FlashUsageFromAPI.utilization"
-          :resets-at="antigravity3FlashUsageFromAPI.resetTime"
-          color="emerald"
-        />
-
-        <!-- Gemini 3 Image -->
-        <UsageProgressBar
-          v-if="antigravity3ImageUsageFromAPI !== null"
-          :label="t('admin.accounts.usageWindow.gemini3Image')"
-          :utilization="antigravity3ImageUsageFromAPI.utilization"
-          :resets-at="antigravity3ImageUsageFromAPI.resetTime"
-          color="purple"
-        />
-
-        <!-- Claude -->
-        <UsageProgressBar
-          v-if="antigravityClaudeUsageFromAPI !== null"
-          :label="t('admin.accounts.usageWindow.claude')"
-          :utilization="antigravityClaudeUsageFromAPI.utilization"
-          :resets-at="antigravityClaudeUsageFromAPI.resetTime"
-          color="amber"
-        />
+        <!-- 旧后端降级：仍显示模型级 5h 额度。 -->
+        <template v-else>
+          <UsageProgressBar
+            v-if="antigravity3ProUsageFromAPI !== null"
+            :label="t('admin.accounts.usageWindow.gemini3Pro')"
+            :utilization="antigravity3ProUsageFromAPI.utilization"
+            :resets-at="antigravity3ProUsageFromAPI.resetTime"
+            color="indigo"
+          />
+          <UsageProgressBar
+            v-if="antigravity3FlashUsageFromAPI !== null"
+            :label="t('admin.accounts.usageWindow.gemini3Flash')"
+            :utilization="antigravity3FlashUsageFromAPI.utilization"
+            :resets-at="antigravity3FlashUsageFromAPI.resetTime"
+            color="emerald"
+          />
+          <UsageProgressBar
+            v-if="antigravity3ImageUsageFromAPI !== null"
+            :label="t('admin.accounts.usageWindow.gemini3Image')"
+            :utilization="antigravity3ImageUsageFromAPI.utilization"
+            :resets-at="antigravity3ImageUsageFromAPI.resetTime"
+            color="purple"
+          />
+          <UsageProgressBar
+            v-if="antigravityClaudeUsageFromAPI !== null"
+            :label="t('admin.accounts.usageWindow.claude')"
+            :utilization="antigravityClaudeUsageFromAPI.utilization"
+            :resets-at="antigravityClaudeUsageFromAPI.resetTime"
+            color="amber"
+          />
+        </template>
 
         <div v-if="aiCreditsDisplay" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
           💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
@@ -798,8 +825,28 @@ interface AntigravityUsageResult {
 
 // 检查是否有从 API 获取的配额数据
 const hasAntigravityQuotaFromAPI = computed(() => {
-  return usageInfo.value?.antigravity_quota && Object.keys(usageInfo.value.antigravity_quota).length > 0
+  return hasAntigravityQuotaSummary.value || (
+    usageInfo.value?.antigravity_quota && Object.keys(usageInfo.value.antigravity_quota).length > 0
+  )
 })
+
+const hasAntigravityQuotaSummary = computed(() => {
+  const summary = usageInfo.value?.antigravity_quota_summary
+  return !!summary && Object.keys(summary).length > 0
+})
+
+const antigravityGeminiFiveHour = computed(() =>
+  usageInfo.value?.antigravity_quota_summary?.['gemini-5h'] ?? null
+)
+const antigravityGeminiWeekly = computed(() =>
+  usageInfo.value?.antigravity_quota_summary?.['gemini-weekly'] ?? null
+)
+const antigravityThirdPartyFiveHour = computed(() =>
+  usageInfo.value?.antigravity_quota_summary?.['3p-5h'] ?? null
+)
+const antigravityThirdPartyWeekly = computed(() =>
+  usageInfo.value?.antigravity_quota_summary?.['3p-weekly'] ?? null
+)
 
 // 从 API 配额数据中获取使用率（多模型取最高使用率）
 const getAntigravityUsageFromAPI = (
