@@ -337,8 +337,9 @@ func (repo *gitRepository) readBlob(commit, path string) ([]byte, error) {
 }
 
 func (repo *gitRepository) git(args ...string) ([]byte, error) {
-	cmdArgs := append([]string{"-C", repo.root}, args...)
-	cmd := exec.Command("git", cmdArgs...)
+	cmd := exec.Command("git")
+	cmd.Dir = repo.root
+	cmd.Args = append(cmd.Args, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
