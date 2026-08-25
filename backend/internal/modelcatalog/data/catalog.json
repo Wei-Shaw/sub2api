@@ -31,7 +31,12 @@
       "kind": "chat",
       "billing_mode": "token",
       "display_name": "Claude Opus 4.6",
-      "price_ref": "claude-opus-4.5",
+      "price": {
+        "input_per_mtok": 5,
+        "output_per_mtok": 25,
+        "cache_write_per_mtok": 6.25,
+        "cache_read_per_mtok": 0.5
+      },
       "aliases": [
         {
           "id": "claude-opus-4-6"
@@ -58,7 +63,12 @@
       "kind": "chat",
       "billing_mode": "token",
       "display_name": "Claude Opus 4.7",
-      "price_ref": "claude-opus-4.6",
+      "price": {
+        "input_per_mtok": 5,
+        "output_per_mtok": 25,
+        "cache_write_per_mtok": 6.25,
+        "cache_read_per_mtok": 0.5
+      },
       "aliases": [
         {
           "id": "claude-opus-4-7"
@@ -74,7 +84,16 @@
       "kind": "chat",
       "billing_mode": "token",
       "display_name": "Claude Opus 4.8",
-      "price_ref": "claude-opus-4.7",
+      "price": {
+        "input_per_mtok": 5,
+        "output_per_mtok": 25,
+        "cache_write_per_mtok": 6.25,
+        "cache_read_per_mtok": 0.5,
+        "input_priority_per_mtok": 10,
+        "output_priority_per_mtok": 50,
+        "cache_write_priority_per_mtok": 12.5,
+        "cache_read_priority_per_mtok": 1
+      },
       "aliases": [
         {
           "id": "claude-opus-4-8"
@@ -90,7 +109,16 @@
       "kind": "chat",
       "billing_mode": "token",
       "display_name": "Claude Opus 5",
-      "price_ref": "claude-opus-4.8"
+      "price": {
+        "input_per_mtok": 5,
+        "output_per_mtok": 25,
+        "cache_write_per_mtok": 6.25,
+        "cache_read_per_mtok": 0.5,
+        "input_priority_per_mtok": 10,
+        "output_priority_per_mtok": 50,
+        "cache_write_priority_per_mtok": 12.5,
+        "cache_read_priority_per_mtok": 1
+      }
     },
     {
       "id": "claude-sonnet-4",
@@ -191,7 +219,12 @@
       "kind": "chat",
       "billing_mode": "token",
       "display_name": "Claude Fable 5",
-      "price_ref": "claude-sonnet-4"
+      "price": {
+        "input_per_mtok": 10,
+        "output_per_mtok": 50,
+        "cache_write_per_mtok": 12.5,
+        "cache_read_per_mtok": 1
+      }
     },
     {
       "id": "gemini-3.1-pro",
