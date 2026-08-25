@@ -1277,6 +1277,27 @@ export interface UsageProgress {
   limit_requests?: number
 }
 
+export interface CodexQuotaOverdraftProbeState {
+  status: 'pending' | 'passed' | 'failed' | 'inconclusive' | 'recovered'
+  quota_window: '5h' | '7d' | 'multiple'
+  cycle_key: string
+  attempts: number
+  limit: number
+  model?: string
+  reason_code?: string
+  started_at: string
+  tested_at?: string | null
+  retry_at?: string | null
+  retry_count?: number
+  recover_at?: string | null
+  five_hour_recover_at?: string | null
+  seven_day_recover_at?: string | null
+  overdraft_started_at?: string | null
+  five_hour_overdraft_started_at?: string | null
+  seven_day_overdraft_started_at?: string | null
+  observed_rate_limit_reset_at?: string | null
+}
+
 // Antigravity 单个模型的配额信息
 export interface AntigravityModelQuota {
   utilization: number // 使用率 0-100

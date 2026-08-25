@@ -112,6 +112,10 @@ func (c *githubReleaseClientError) FetchRecentReleases(ctx context.Context, repo
 	return nil, c.err
 }
 
+func (c *githubReleaseClientError) FetchRepositoryFile(ctx context.Context, repo, ref, filePath string) ([]byte, error) {
+	return nil, c.err
+}
+
 func (c *githubReleaseClientError) DownloadFile(ctx context.Context, url, dest string, maxSize int64) error {
 	return c.err
 }
@@ -176,6 +180,24 @@ func (c *githubReleaseClient) FetchRecentReleases(ctx context.Context, repo stri
 	}
 
 	return releases, nil
+}
+
+func (c *githubReleaseClient) FetchRepositoryFile(ctx context.Context, repo, ref, filePath string) ([]byte, error) {
+	url := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", repo, ref, strings.TrimPrefix(filePath, "/"))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Sub2API-Updater")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub raw file returned %d", resp.StatusCode)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 }
 
 func (c *githubReleaseClient) DownloadFile(ctx context.Context, url, dest string, maxSize int64) error {

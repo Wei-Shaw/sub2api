@@ -222,7 +222,12 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 			return fmt.Errorf("check migration %s: %w", name, rowErr)
 		}
 
-		nonTx, err := validateMigrationExecutionMode(name, content)
+		executableContent, err := migrationExecutableContent(content)
+		if err != nil {
+			return fmt.Errorf("parse migration %s: %w", name, err)
+		}
+
+		nonTx, err := validateMigrationExecutionMode(name, executableContent)
 		if err != nil {
 			return fmt.Errorf("validate migration %s: %w", name, err)
 		}
@@ -234,7 +239,7 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 
 			// *_notx.sql：用于 CREATE/DROP INDEX CONCURRENTLY 场景，必须非事务执行。
 			// 逐条语句执行，避免将多条 CONCURRENTLY 语句放入同一个隐式事务块。
-			statements := splitSQLStatements(content)
+			statements := splitSQLStatements(executableContent)
 			for i, stmt := range statements {
 				trimmed := strings.TrimSpace(stmt)
 				if trimmed == "" {
@@ -260,7 +265,7 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 		}
 
 		// 执行迁移 SQL
-		if _, err := tx.ExecContext(ctx, content); err != nil {
+		if _, err := tx.ExecContext(ctx, executableContent); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("apply migration %s: %w", name, err)
 		}
@@ -279,6 +284,65 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 	}
 
 	return nil
+}
+
+// migrationExecutableContent keeps compatibility with the three historical
+// migrations that were authored with Goose markers before this runner became
+// forward-only. Checksums are still calculated from the original file; only
+// the SQL sent to PostgreSQL is restricted to the Up section.
+func migrationExecutableContent(content string) (string, error) {
+	const (
+		gooseUp             = "-- +goose Up"
+		gooseDown           = "-- +goose Down"
+		gooseStatementBegin = "-- +goose StatementBegin"
+		gooseStatementEnd   = "-- +goose StatementEnd"
+	)
+
+	lines := strings.Split(content, "\n")
+	hasGooseMarker := false
+	inUp := false
+	seenUp := false
+	seenDown := false
+	executable := make([]string, 0, len(lines))
+
+	for _, line := range lines {
+		switch strings.TrimSpace(line) {
+		case gooseUp:
+			hasGooseMarker = true
+			if seenUp || seenDown {
+				return "", errors.New("invalid Goose markers: duplicate or out-of-order Up section")
+			}
+			seenUp = true
+			inUp = true
+		case gooseDown:
+			hasGooseMarker = true
+			if !seenUp || seenDown {
+				return "", errors.New("invalid Goose markers: Down section must follow one Up section")
+			}
+			seenDown = true
+			inUp = false
+		case gooseStatementBegin, gooseStatementEnd:
+			hasGooseMarker = true
+			// The custom runner sends the complete Up section in one transaction,
+			// so Goose statement boundary directives are metadata only.
+		default:
+			if inUp {
+				executable = append(executable, line)
+			}
+		}
+	}
+
+	if !hasGooseMarker {
+		return content, nil
+	}
+	if !seenUp {
+		return "", errors.New("invalid Goose markers: missing Up section")
+	}
+	result := strings.TrimSpace(strings.Join(executable, "\n"))
+	if result == "" {
+		return "", errors.New("Goose Up section is empty")
+	}
+	return result, nil
 }
 
 type migrationConnection interface {

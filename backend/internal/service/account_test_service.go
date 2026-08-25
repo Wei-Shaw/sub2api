@@ -146,6 +146,7 @@ type AccountTestService struct {
 	cfg                       *config.Config
 	settingService            *SettingService
 	tlsFPProfileService       *TLSFingerprintProfileService
+	codexQuotaOverdraft       codexQuotaOverdraftAccountTestCoordinator
 	pluginManager             *PluginManager
 	agentIdentityTaskMu       sync.Mutex
 	agentIdentityWS           agentIdentityWSConnectionInvalidator

@@ -1,0 +1,18 @@
+# sub2api-overdraft source-build overlay.
+# Use together with docker-compose.local.yml from this directory:
+#   docker compose -f docker-compose.local.yml -f docker-compose.overdraft.yml up -d --build
+
+services:
+  sub2api:
+    image: sub2api-overdraft:local
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        # Keep this empty so source builds always read the tracked FORK_VERSION.
+        # This avoids unrelated host BUILD_VERSION values overriding the Fork version.
+        VERSION: ""
+        COMMIT: ${BUILD_COMMIT:-local}
+        BUILD_TYPE: source
+    environment:
+      - GATEWAY_CODEX_QUOTA_OVERDRAFT_ENABLED=${GATEWAY_CODEX_QUOTA_OVERDRAFT_ENABLED:-true}

@@ -21,7 +21,7 @@
           <span>{{ t('usage.out') }}: {{ formatTokens(stats?.total_output_tokens || 0) }}</span>
           <span>/</span>
           <span class="group relative inline-flex cursor-help items-center gap-0.5" tabindex="0">
-            <span>{{ cacheLabel() }}: {{ formatTokens(stats?.total_cache_tokens || 0) }}</span>
+            <span>{{ cacheLabel() }}: {{ formatTokens(stats?.total_cache_tokens || 0) }} ({{ t('usage.cacheRate') }}: {{ formatPercent(cacheRate) }})</span>
             <svg
               class="h-3.5 w-3.5 text-gray-400"
               fill="none"
@@ -125,4 +125,11 @@ const formatTokens = (value: number) => {
 
 const cacheLabel = () => t('usage.cacheTotal')
 const cacheDetailLabel = () => t('usage.cacheBreakdown')
+const cacheRate = computed(() => {
+  const input = props.stats?.total_input_tokens || 0
+  const read = props.stats?.total_cache_read_tokens || 0
+  const denominator = input + read
+  return denominator > 0 ? (read / denominator) * 100 : 0
+})
+const formatPercent = (value: number) => `${value.toFixed(1)}%`
 </script>
