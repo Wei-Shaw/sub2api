@@ -230,6 +230,7 @@ func ProvideAccountUsageService(
 	tlsFPProfileService *TLSFingerprintProfileService,
 	openAIGatewayService *OpenAIGatewayService,
 	kiroTokenProvider *KiroTokenProvider,
+	kiroCooldownStore KiroCooldownStore,
 ) *AccountUsageService {
 	service := NewAccountUsageService(
 		accountRepo,
@@ -245,7 +246,7 @@ func ProvideAccountUsageService(
 		tlsFPProfileService,
 	)
 	service.agentIdentityWS = openAIGatewayService
-	return service.SetKiroTokenProvider(kiroTokenProvider)
+	return service.SetKiroTokenProvider(kiroTokenProvider).SetKiroCooldownStore(kiroCooldownStore)
 }
 
 func ProvideAccountTestService(

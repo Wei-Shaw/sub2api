@@ -428,7 +428,7 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 	}
 
 	if isKiroDirectModeAccount(account) {
-		return s.getKiroUsage(ctx, account, "active", false)
+		return s.getKiroUsage(ctx, account, "active", forceProbe)
 	}
 
 	// Antigravity 平台：使用 AntigravityQuotaFetcher 获取额度

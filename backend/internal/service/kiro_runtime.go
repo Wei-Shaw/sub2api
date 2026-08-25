@@ -240,8 +240,8 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 		return nil, s.handleKiroHTTPError(ctx, resp, c, account, mappedModel, body)
 	}
 
-	cacheUsage := s.buildKiroCacheEmulationUsage(ctx, account, parsed.Group, body, mappedModel, inputTokens)
-	requestCtx.CacheEmulationUsage = cacheUsage.toKiroUsage()
+	cachePlan := s.prepareKiroCacheEmulationUsage(ctx, account, parsed.Group, body, mappedModel, inputTokens)
+	requestCtx.CacheEmulationUsage = cachePlan.result().toKiroUsage()
 	requestCtx.EstimatedInputTokens = inputTokens
 	parseResult, err := kiropkg.ParseNonStreamingEventStreamWithContext(resp.Body, originalModel, requestCtx)
 	if err != nil {
@@ -254,6 +254,9 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 		})
 		return nil, err
 	}
+
+	// 响应解析成功后才提交缓存前缀；解析失败不污染下一次请求的缓存估算。
+	cachePlan.commit()
 
 	c.Header("Content-Type", "application/json")
 	requestID := buildKiroRequestID(resp)
@@ -329,8 +332,6 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 	if plan == nil {
 		plan = s.prepareKiroCacheEmulationUsage(ctx, account, group, anthropicBody, mappedModel, inputTokens)
 	}
-	// 请求已确认成功(2xx)，此时提交缓存前缀落盘才是安全的。
-	plan.commit()
 	requestCtx.CacheEmulationUsage = plan.result().toKiroUsage()
 
 	pr, pw := io.Pipe()
@@ -348,6 +349,8 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 			_ = pw.CloseWithError(streamErr)
 			return
 		}
+		// 流完整读完后才提交缓存前缀；断流/malformed stream 时不污染下一次估算。
+		plan.commit()
 		_ = pw.Close()
 	}()
 
