@@ -6,6 +6,7 @@ package service
 
 import (
 	"bufio"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func newNativeAnthropicHangTestService(intervalSec int) *OpenAIGatewayService {
@@ -241,4 +244,112 @@ func TestCCBufferedFromNativeAnthropic_HappyPathStillConverts(t *testing.T) {
 	if res.Usage.InputTokens != 10 || res.Usage.OutputTokens != 5 {
 		t.Fatalf("expected usage 10/5, got %+v", res.Usage)
 	}
+}
+
+func TestResponsesStreamingFromNativeAnthropic_PreservesHostedWebSearchLifecycle(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newNativeAnthropicHangTestService(5)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	searchStream := strings.Join([]string{
+		`event: message_start`,
+		`data: {"type":"message_start","message":{"id":"msg_search","type":"message","role":"assistant","content":[],"model":"claude-sonnet-5","usage":{"input_tokens":10}}}`,
+		``,
+		`event: content_block_start`,
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"server_tool_use","id":"srv_1","name":"web_search","input":{}}}`,
+		``,
+		`event: content_block_delta`,
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"query\":\"OpenCode Go pricing\"}"}}`,
+		``,
+		`event: content_block_stop`,
+		`data: {"type":"content_block_stop","index":0}`,
+		``,
+		`event: content_block_start`,
+		`data: {"type":"content_block_start","index":1,"content_block":{"type":"web_search_tool_result","tool_use_id":"srv_1","content":[]}}`,
+		``,
+		`event: content_block_stop`,
+		`data: {"type":"content_block_stop","index":1}`,
+		``,
+		`event: content_block_start`,
+		`data: {"type":"content_block_start","index":2,"content_block":{"type":"text","text":"The current price is $10/month."}}`,
+		``,
+		`event: content_block_delta`,
+		`data: {"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"The current price is $10/month."}}`,
+		``,
+		`event: content_block_stop`,
+		`data: {"type":"content_block_stop","index":2}`,
+		``,
+		`event: message_delta`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}`,
+		``,
+		`event: message_stop`,
+		`data: {"type":"message_stop"}`,
+		``,
+	}, "\n")
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"x-request-id": []string{"search-test"}}, Body: io.NopCloser(strings.NewReader(searchStream))}
+
+	result, err := svc.handleResponsesStreamingFromNativeAnthropic(resp, c, "claude-sonnet-5", "claude-sonnet-5", "claude-sonnet-5", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	body := rec.Body.String()
+	require.Contains(t, body, `"type":"web_search_call"`)
+	require.Contains(t, body, `"query":"OpenCode Go pricing"`)
+	require.Contains(t, body, `"type":"message"`)
+	require.Contains(t, body, `"The current price is $10/month."`)
+	require.NotContains(t, body, `response.function_call_arguments.delta`)
+}
+
+func anthropicExecToolSSE(t *testing.T, toolInput string) string {
+	t.Helper()
+	inputJSON, err := json.Marshal(map[string]string{"input": toolInput})
+	require.NoError(t, err)
+	partialJSON, err := json.Marshal(string(inputJSON))
+	require.NoError(t, err)
+	return strings.Join([]string{
+		`event: message_start`,
+		`data: {"type":"message_start","message":{"id":"msg_tool","type":"message","role":"assistant","content":[],"model":"claude-sonnet-5","usage":{"input_tokens":10}}}`,
+		``,
+		`event: content_block_start`,
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"exec","input":{}}}`,
+		``,
+		`event: content_block_delta`,
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":` + string(partialJSON) + `}}`,
+		``,
+		`event: content_block_stop`,
+		`data: {"type":"content_block_stop","index":0}`,
+		``,
+		`event: message_delta`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":5}}`,
+		``,
+		`event: message_stop`,
+		`data: {"type":"message_stop"}`,
+		``,
+	}, "\n")
+}
+
+func TestResponsesBufferedFromNativeAnthropic_ReplacesEmptyToolInputPlaceholder(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newNativeAnthropicHangTestService(5)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	const toolInput = `console.log(process.cwd());`
+	const wantInput = "const result = await tools.exec_command({cmd: \"pwd\"});\ntext(result.output);"
+	stream := anthropicExecToolSSE(t, toolInput)
+	resp := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(stream))}
+	mapping := apicompat.ResponsesClientToolMapping{CustomTools: map[string]bool{"exec": true}}
+
+	result, err := svc.handleResponsesBufferedFromNativeAnthropic(
+		resp, c, "claude-sonnet-5", "claude-sonnet-5", "claude-sonnet-5", nil, time.Now(), mapping,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "custom_tool_call", gjson.Get(rec.Body.String(), "output.0.type").String())
+	require.Equal(t, wantInput, gjson.Get(rec.Body.String(), "output.0.input").String())
 }

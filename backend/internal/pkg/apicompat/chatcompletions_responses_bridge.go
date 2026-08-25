@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -177,6 +178,10 @@ func FunctionToolNames(tools []ResponsesTool) map[string]bool {
 type NamespacedToolName struct {
 	Namespace string
 	Name      string
+	// Custom marks a namespace child declared as type=custom (for example
+	// functions/exec in Codex code mode). The flag lets the reverse bridge
+	// restore custom_tool_call items instead of plain function_call items.
+	Custom bool
 }
 
 // NamespaceToolNames 收集 Responses 请求中 namespace 子工具的摊平名 →（namespace,
@@ -196,7 +201,7 @@ func NamespaceToolNames(tools []ResponsesTool) map[string]NamespacedToolName {
 			children = tool.Children
 		}
 		for _, child := range children {
-			if child.Type != "function" || child.Name == "" {
+			if (child.Type != "function" && child.Type != "custom") || child.Name == "" {
 				continue
 			}
 			if out == nil {
@@ -205,6 +210,7 @@ func NamespaceToolNames(tools []ResponsesTool) map[string]NamespacedToolName {
 			out[flattenNamespaceToolName(tool.Name, child.Name)] = NamespacedToolName{
 				Namespace: tool.Name,
 				Name:      child.Name,
+				Custom:    child.Type == "custom",
 			}
 		}
 	}
@@ -239,13 +245,6 @@ func customToolCallName(name string, customTools, functionTools map[string]bool,
 		}
 	}
 	return match, match != ""
-}
-
-func customNameForStreamTool(state *ChatCompletionsToResponsesStreamState, name string) string {
-	if customName, ok := customToolCallName(name, state.CustomTools, state.FunctionTools, state.NamespaceTools); ok {
-		return customName
-	}
-	return name
 }
 
 // HasToolSearchTool 判断 Responses 请求是否声明了 tool_search 服务端工具。chat 桥
@@ -362,6 +361,20 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 		role := chatCompletionsBridgeRole(rawString(item["role"]))
 		itemType := rawString(item["type"])
 		switch itemType {
+		case "agent_message":
+			// Multi-agent v2 sends a child task as an agent_message. For tool-
+			// initiated communication Codex intentionally stores the task text in
+			// an encrypted_content part while leaving the ordinary content prefix
+			// readable. The value is the original local tool argument, not provider
+			// reasoning ciphertext; Chat-only upstreams need both parts joined into
+			// a user instruction or spawned agents receive an empty task.
+			if text := extractAgentMessageText(item["content"]); text != "" {
+				content, _ := json.Marshal(text)
+				messages = append(messages, ChatMessage{Role: "user", Content: content})
+			}
+			pendingReasoning = ""
+			lastTurnReasoning = ""
+			continue
 		case "reasoning":
 			if txt := extractResponsesReasoningText(item); txt != "" {
 				pendingReasoning = txt
@@ -474,7 +487,10 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 					mediaByCallID[callID] = media
 				}
 			} else {
-				outputText = rawString(outputRaw)
+				outputText = extractToolOutputText(outputRaw)
+				if outputText == "" {
+					outputText = rawString(outputRaw)
+				}
 				if outputText == "" && len(outputRaw) > 0 && string(outputRaw) != "null" && string(outputRaw) != `""` {
 					// 对象/数组形式的输出（如 tool_search 的结果列表）整体字符串化。
 					outputText = string(outputRaw)
@@ -545,6 +561,103 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 	}
 
 	return messages, mediaByCallID, nil
+}
+
+// extractAgentMessageText joins the readable and encrypted task payload parts
+// of a Codex agent_message into one user instruction.
+func extractAgentMessageText(raw json.RawMessage) string {
+	raw = bytesTrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return strings.TrimSpace(text)
+	}
+	var parts []map[string]json.RawMessage
+	if json.Unmarshal(raw, &parts) != nil {
+		return ""
+	}
+	var out strings.Builder
+	for _, part := range parts {
+		var value string
+		switch rawString(part["type"]) {
+		case "input_text", "output_text", "text":
+			value = rawString(part["text"])
+		case "encrypted_content":
+			value = rawString(part["encrypted_content"])
+		}
+		if value == "" {
+			continue
+		}
+		if out.Len() > 0 && !strings.HasSuffix(out.String(), "\n") {
+			_ = out.WriteByte('\n')
+		}
+		_, _ = out.WriteString(value)
+	}
+	return strings.TrimSpace(out.String())
+}
+
+// extractToolOutputText preserves the text-bearing content-item form used by
+// Codex custom tool outputs. Chat providers only need the readable text; when
+// no text-bearing parts are present the caller keeps the original JSON value.
+func extractToolOutputText(raw json.RawMessage) string {
+	raw = bytesTrimSpace(raw)
+	if len(raw) == 0 {
+		return ""
+	}
+	if raw[0] == '{' {
+		var object map[string]json.RawMessage
+		if json.Unmarshal(raw, &object) == nil {
+			if content, ok := object["content"]; ok {
+				content = bytesTrimSpace(content)
+				var text string
+				if json.Unmarshal(content, &text) == nil {
+					return text
+				}
+				if extracted := extractToolOutputText(content); extracted != "" {
+					return extracted
+				}
+			}
+		}
+		return ""
+	}
+	if raw[0] == '"' {
+		var nested string
+		if json.Unmarshal(raw, &nested) == nil {
+			return extractToolOutputText(json.RawMessage(nested))
+		}
+	}
+	if raw[0] != '[' {
+		return ""
+	}
+	var parts []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &parts); err != nil {
+		return ""
+	}
+	var out strings.Builder
+	textPartCount := 0
+	for _, part := range parts {
+		if typ := rawString(part["type"]); typ != "input_text" && typ != "output_text" && typ != "text" {
+			return ""
+		}
+		textPartCount++
+		value := rawString(part["text"])
+		if value == "" {
+			return ""
+		}
+		if extracted := extractToolOutputText(json.RawMessage(value)); extracted != "" {
+			value = extracted
+		}
+		if out.Len() > 0 && !strings.HasSuffix(out.String(), "\n") && !strings.HasPrefix(value, "\n") {
+			_ = out.WriteByte('\n')
+		}
+		_, _ = out.WriteString(value)
+	}
+	if textPartCount == 0 {
+		return ""
+	}
+	return strings.TrimSpace(out.String())
 }
 
 // extractToolOutputMedia rewrites only recognized image nodes. Media-free
@@ -1067,11 +1180,15 @@ func namespaceChildrenToChatTools(tool ResponsesTool, topLevel map[string]bool, 
 	}
 	var out []ChatTool
 	for _, child := range children {
-		if child.Type != "function" || child.Name == "" {
+		if (child.Type != "function" && child.Type != "custom") || child.Name == "" {
 			continue
 		}
 		flat := flattenNamespaceToolName(tool.Name, child.Name)
-		entry := NamespacedToolName{Namespace: tool.Name, Name: child.Name}
+		entry := NamespacedToolName{
+			Namespace: tool.Name,
+			Name:      child.Name,
+			Custom:    child.Type == "custom",
+		}
 		if topLevel[flat] {
 			return nil, fmt.Errorf("namespace tool %q/%q flattens to %q which conflicts with a top-level tool of the same name; this upstream cannot disambiguate them, rename one of the tools", tool.Name, child.Name, flat)
 		}
@@ -1082,12 +1199,16 @@ func namespaceChildrenToChatTools(tool ResponsesTool, topLevel map[string]bool, 
 			return nil, fmt.Errorf("namespace tools %q/%q and %q/%q both flatten to %q; this upstream cannot disambiguate them, rename one of the tools", prev.Namespace, prev.Name, tool.Name, child.Name, flat)
 		}
 		flatOwner[flat] = entry
+		parameters := child.Parameters
+		if child.Type == "custom" {
+			parameters = json.RawMessage(customToolInputSchema)
+		}
 		out = append(out, ChatTool{
 			Type: "function",
 			Function: &ChatFunction{
 				Name:        flat,
 				Description: child.Description,
-				Parameters:  child.Parameters,
+				Parameters:  parameters,
 				Strict:      child.Strict,
 			},
 		})
@@ -1100,6 +1221,122 @@ const chatToolNameMaxLen = 64
 
 // flattenNamespaceToolName 生成 namespace 子工具的摊平名；超长时截断并追加
 // sha256 短哈希保证唯一性。
+// resolveNamespaceToolCallName resolves an upstream-returned tool name back to
+// the canonical flattened namespace name registered for the request. Exact
+// flattened names win; otherwise a single unambiguous "namespace.name" or bare
+// child name backed by exactly one declaration is accepted.
+// resolveCustomToolCallName restores the constrained alias some function-only
+// upstreams synthesize after seeing Codex's flattened "functions" namespace.
+// The reverse lookup is type-aware: an exact ordinary function or namespace
+// mapping wins over a custom alias, and ambiguous candidates are left as the
+// original function call instead of being reclassified.
+func resolveCustomToolCallName(rawName string, customTools, functionTools map[string]bool, namespaceTools map[string]NamespacedToolName) (string, bool) {
+	name := strings.TrimSpace(rawName)
+	if name == "" {
+		return "", false
+	}
+	// Exact non-custom mappings are authoritative. This keeps the resolver safe
+	// even for inherited/manual mappings that bypass declaration-time checks.
+	if namespace, exists := namespaceTools[name]; exists {
+		if namespace.Custom {
+			return namespace.Name, true
+		}
+		return "", false
+	}
+	if functionTools[name] {
+		return "", false
+	}
+	// A dotted alias that resolves to a declared namespace child is likewise
+	// authoritative; it must not be reclassified as a custom tool with the same
+	// suffix (for example functions.exec).
+	if flat, exists := resolveNamespaceToolCallName(name, namespaceTools); exists {
+		if namespaceTools[flat].Custom {
+			return namespaceTools[flat].Name, true
+		}
+		return "", false
+	}
+
+	// Collect every possible custom source for this upstream name. A direct
+	// custom name and a flattened alias can collide, so returning the first map
+	// iteration result would make the reverse mapping non-deterministic.
+	candidates := make([]string, 0, 2)
+	if customTools[name] {
+		candidates = append(candidates, name)
+	}
+	functionsAlias := strings.HasPrefix(name, "functions__") || strings.HasPrefix(name, "functions.")
+	if !functionsAlias {
+		// Chat providers commonly discard the flattened `functions__` prefix and
+		// return the bare child name (for example `exec`). Resolve that alias only
+		// when exactly one custom child in the reserved functions namespace owns it.
+		for _, namespaced := range namespaceTools {
+			if namespaced.Custom && strings.TrimSpace(namespaced.Namespace) == "functions" && namespaced.Name == name {
+				if !containsString(candidates, namespaced.Name) {
+					candidates = append(candidates, namespaced.Name)
+				}
+			}
+		}
+		if len(candidates) == 1 {
+			return candidates[0], true
+		}
+		return "", false
+	}
+
+	hasFunctionsNamespace := false
+	for _, namespaced := range namespaceTools {
+		if strings.TrimSpace(namespaced.Namespace) == "functions" {
+			hasFunctionsNamespace = true
+			break
+		}
+	}
+	if !hasFunctionsNamespace {
+		if len(candidates) == 1 {
+			return candidates[0], true
+		}
+		return "", false
+	}
+	for customName := range customTools {
+		if name == flattenNamespaceToolName("functions", customName) || name == "functions."+customName {
+			if !containsString(candidates, customName) {
+				candidates = append(candidates, customName)
+			}
+		}
+	}
+	if len(candidates) != 1 {
+		return "", false
+	}
+	return candidates[0], true
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+func resolveNamespaceToolCallName(rawName string, namespaceTools map[string]NamespacedToolName) (string, bool) {
+	name := strings.TrimSpace(rawName)
+	if name == "" || len(namespaceTools) == 0 {
+		return "", false
+	}
+	if _, ok := namespaceTools[name]; ok {
+		return name, true
+	}
+	var canonical string
+	for flat, namespaced := range namespaceTools {
+		if name != namespaced.Namespace+"."+namespaced.Name && name != namespaced.Name {
+			continue
+		}
+		if canonical != "" && canonical != flat {
+			// Names such as a.b.c can be produced by more than one namespace/name
+			// pair. Refuse to choose based on map iteration order.
+			return "", false
+		}
+		canonical = flat
+	}
+	return canonical, canonical != ""
+}
 func flattenNamespaceToolName(namespace, name string) string {
 	full := namespace + "__" + name
 	if len(full) <= chatToolNameMaxLen {
@@ -1202,6 +1439,98 @@ func extractCustomToolCallInput(arguments string) string {
 // toolSearch 表示客户端声明了 tool_search 工具（见 HasToolSearchTool），代理工具
 // 的调用会还原为 tool_search_call 项；namespaceTools 是 namespace 子工具的摊平名
 // 映射（见 NamespaceToolNames），命中的调用还原为带 namespace 字段的 function_call 项。
+func hasResponsesClientToolDeclarations(mapping ResponsesClientToolMapping) bool {
+	return len(mapping.CustomTools) > 0 || len(mapping.FunctionTools) > 0 || mapping.ToolSearch || len(mapping.NamespaceTools) > 0
+}
+
+func isKnownResponsesClientToolCallName(rawName string, mapping ResponsesClientToolMapping) bool {
+	name := strings.TrimSpace(rawName)
+	if name == "" {
+		return false
+	}
+	if !hasResponsesClientToolDeclarations(mapping) {
+		return true
+	}
+	if mapping.FunctionTools[name] {
+		return true
+	}
+	if _, ok := resolveNamespaceToolCallName(name, mapping.NamespaceTools); ok {
+		return true
+	}
+	if _, isCustom := resolveCustomToolCallName(name, mapping.CustomTools, mapping.FunctionTools, mapping.NamespaceTools); isCustom {
+		return true
+	}
+	return mapping.ToolSearch && name == toolSearchProxyName
+}
+
+// UnknownChatCompletionsToolCallNames returns deterministic, unique tool names
+// that the upstream emitted without a matching request-scoped declaration.
+// When the client declared no tools, legacy permissive behavior is preserved.
+func UnknownChatCompletionsToolCallNames(resp *ChatCompletionsResponse, mapping ResponsesClientToolMapping) []string {
+	if resp == nil || !hasResponsesClientToolDeclarations(mapping) {
+		return nil
+	}
+	unknown := make(map[string]struct{})
+	for _, choice := range resp.Choices {
+		for _, toolCall := range choice.Message.ToolCalls {
+			name := strings.TrimSpace(toolCall.Function.Name)
+			if name != "" && !isKnownResponsesClientToolCallName(name, mapping) {
+				unknown[name] = struct{}{}
+			}
+		}
+	}
+	names := make([]string, 0, len(unknown))
+	for name := range unknown {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// ChatCompletionsResponseToResponsesWithToolMapping converts a non-streaming
+// Chat response using the complete request-scoped client tool mapping. It also
+// normalizes non-resp_* upstream ids into valid Responses continuation anchors.
+func ChatCompletionsResponseToResponsesWithToolMapping(resp *ChatCompletionsResponse, model string, mapping ResponsesClientToolMapping) *ResponsesResponse {
+	id := ""
+	if resp != nil {
+		id = resp.ID
+	}
+	if !strings.HasPrefix(strings.TrimSpace(id), "resp_") {
+		id = generateResponsesID()
+	}
+
+	out := &ResponsesResponse{
+		ID:          id,
+		Object:      "response",
+		Model:       model,
+		Status:      "completed",
+		ServiceTier: chatServiceTier(resp),
+	}
+	if resp == nil {
+		out.Output = []ResponsesOutput{emptyResponsesMessageOutput()}
+		return out
+	}
+	if out.Model == "" {
+		out.Model = resp.Model
+	}
+
+	if len(resp.Choices) > 0 {
+		choice := resp.Choices[0]
+		out.Output = chatMessageToResponsesOutputWithMapping(choice.Message, mapping)
+		if choice.FinishReason == "length" {
+			out.Status = "incomplete"
+			out.IncompleteDetails = &ResponsesIncompleteDetails{Reason: "max_output_tokens"}
+		}
+	}
+	if len(out.Output) == 0 {
+		out.Output = []ResponsesOutput{emptyResponsesMessageOutput()}
+	}
+	if resp.Usage != nil {
+		out.Usage = ChatUsageToResponsesUsage(resp.Usage)
+	}
+	return out
+}
+
 func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model string, customTools, functionTools map[string]bool, toolSearch bool, namespaceTools map[string]NamespacedToolName) *ResponsesResponse {
 	id := ""
 	if resp != nil {
@@ -1315,6 +1644,112 @@ func chatMessageToResponsesOutput(message ChatMessage, customTools, functionTool
 			continue
 		}
 		if ns, ok := namespaceTools[toolCall.Function.Name]; ok {
+			outputs = append(outputs, ResponsesOutput{
+				Type:      "function_call",
+				ID:        generateItemID(),
+				CallID:    toolCall.ID,
+				Name:      ns.Name,
+				Namespace: ns.Namespace,
+				Arguments: arguments,
+				Status:    "completed",
+			})
+			continue
+		}
+		outputs = append(outputs, ResponsesOutput{
+			Type:      "function_call",
+			ID:        generateItemID(),
+			CallID:    toolCall.ID,
+			Name:      toolCall.Function.Name,
+			Arguments: arguments,
+			Status:    "completed",
+		})
+	}
+
+	return outputs
+}
+
+func chatMessageToResponsesOutputWithMapping(message ChatMessage, mapping ResponsesClientToolMapping) []ResponsesOutput {
+	var outputs []ResponsesOutput
+	reasoning := message.reasoningText()
+	if reasoning != "" {
+		outputs = append(outputs, ResponsesOutput{
+			Type: "reasoning",
+			ID:   generateItemID(),
+			Summary: []ResponsesSummary{{
+				Type: "summary_text",
+				Text: reasoning,
+			}},
+		})
+	}
+
+	text := chatMessageContentText(message.Content)
+	if text == "" && strings.TrimSpace(reasoning) != "" && len(message.ToolCalls) == 0 {
+		text = reasoning
+	}
+	if text != "" || len(message.ToolCalls) == 0 {
+		outputs = append(outputs, ResponsesOutput{
+			Type: "message",
+			ID:   generateItemID(),
+			Role: "assistant",
+			Content: []ResponsesContentPart{{
+				Type: "output_text",
+				Text: text,
+			}},
+			Status: "completed",
+		})
+	}
+
+	for _, toolCall := range message.ToolCalls {
+		arguments := toolCall.Function.Arguments
+		if strings.TrimSpace(arguments) == "" {
+			arguments = "{}"
+		}
+		sourceName := toolCall.Function.Name
+		toolName := sourceName
+		if canonical, ok := resolveNamespaceToolCallName(toolName, mapping.NamespaceTools); ok {
+			toolName = canonical
+		}
+		if namespace, isNamespace := mapping.NamespaceTools[toolName]; isNamespace && namespace.Custom {
+			outputs = append(outputs, ResponsesOutput{
+				Type:      "custom_tool_call",
+				ID:        generateItemID(),
+				CallID:    toolCall.ID,
+				Name:      namespace.Name,
+				Namespace: namespace.Namespace,
+				Input:     normalizeRestoredCustomToolInput(sourceName, extractCustomToolCallInput(arguments), &mapping),
+				Status:    "completed",
+			})
+			continue
+		}
+		if customName, isCustom := resolveCustomToolCallName(toolName, mapping.CustomTools, mapping.FunctionTools, mapping.NamespaceTools); isCustom {
+			outputs = append(outputs, ResponsesOutput{
+				Type:   "custom_tool_call",
+				ID:     generateItemID(),
+				CallID: toolCall.ID,
+				Name:   customName,
+				Input:  normalizeRestoredCustomToolInput(sourceName, extractCustomToolCallInput(arguments), &mapping),
+				Status: "completed",
+			})
+			continue
+		}
+		if mapping.ToolSearch && toolName == toolSearchProxyName {
+			outputs = append(outputs, ResponsesOutput{
+				Type:      "tool_search_call",
+				ID:        generateItemID(),
+				CallID:    toolCall.ID,
+				Arguments: arguments,
+				Status:    "completed",
+			})
+			continue
+		}
+		// Ordinary Responses function_call arguments must contain valid JSON.
+		// Do not mark a truncated non-streaming Chat tool call as completed;
+		// Codex would persist it and poison the next request in the same way as
+		// the streaming variant guarded by ValidateToolCallArguments.
+		if !json.Valid([]byte(arguments)) {
+			continue
+		}
+		if ns, ok := mapping.NamespaceTools[toolName]; ok {
 			outputs = append(outputs, ResponsesOutput{
 				Type:      "function_call",
 				ID:        generateItemID(),
@@ -1462,6 +1897,11 @@ type ChatCompletionsToResponsesStreamState struct {
 	// FunctionTools is the set of explicitly declared top-level function tools.
 	FunctionTools map[string]bool
 
+	// CodeModeExecTools identifies upstream custom-tool names whose obvious
+	// shell/PowerShell dialect must be wrapped into Codex code-mode JavaScript.
+	// Providers opt into this narrowly; ordinary custom tools remain byte-for-byte.
+	CodeModeExecTools map[string]bool
+
 	// ToolSearchDeclared 表示客户端请求声明了 tool_search 工具（见
 	// HasToolSearchTool）。命中的代理调用按 tool_search_call 项还原，codex 只按
 	// 该项类型（且 execution=client）执行 tool search。
@@ -1485,6 +1925,11 @@ type ChatCompletionsToResponsesStreamState struct {
 	// toolAnnounced 记录 output_item.added 是否已发出。存在 custom 工具且名字
 	// 尚未到达时延迟宣告，待名字可判定类型后再补发（见 announceChatToolItem）。
 	toolAnnounced map[int]bool
+
+	// HoldToolCallsForValidation keeps every tool item unannounced until stream
+	// finalization. The Responses->Chat fallback enables this while it validates
+	// all names and may replace an invalid attempt on the same client stream.
+	HoldToolCallsForValidation bool
 
 	FinishReason string
 	Usage        *ResponsesUsage
@@ -1533,6 +1978,90 @@ func (state *ChatCompletionsToResponsesStreamState) ValidateToolCallArguments() 
 	return nil
 }
 
+func (state *ChatCompletionsToResponsesStreamState) clientToolMapping() ResponsesClientToolMapping {
+	if state == nil {
+		return ResponsesClientToolMapping{}
+	}
+	return ResponsesClientToolMapping{
+		CustomTools:       state.CustomTools,
+		FunctionTools:     state.FunctionTools,
+		CodeModeExecTools: state.CodeModeExecTools,
+		ToolSearch:        state.ToolSearchDeclared,
+		NamespaceTools:    state.NamespaceTools,
+	}
+}
+
+// UnknownToolCallNames reports streamed tool calls that cannot be routed to a
+// tool declared by the Responses client. Unknown calls remain unannounced so a
+// service-level repair attempt can replace them before Codex sees the item.
+func (state *ChatCompletionsToResponsesStreamState) UnknownToolCallNames() []string {
+	if state == nil {
+		return nil
+	}
+	mapping := state.clientToolMapping()
+	if !hasResponsesClientToolDeclarations(mapping) {
+		return nil
+	}
+	unknown := make(map[string]struct{})
+	for _, toolCall := range state.ToolCalls {
+		if toolCall == nil {
+			continue
+		}
+		name := strings.TrimSpace(toolCall.Function.Name)
+		if name != "" && !isKnownResponsesClientToolCallName(name, mapping) {
+			unknown[name] = struct{}{}
+		}
+	}
+	names := make([]string, 0, len(unknown))
+	for name := range unknown {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// CanRetryUnannouncedToolCalls reports whether an invalid tool-only attempt can
+// be replaced without mixing already-visible assistant content into the same
+// client stream. response.created is harmless, but text and reasoning cannot be
+// retracted once emitted.
+func (state *ChatCompletionsToResponsesStreamState) CanRetryUnannouncedToolCalls() bool {
+	if state == nil {
+		return false
+	}
+	return state.MessageItemID == "" &&
+		state.Text.Len() == 0 &&
+		!state.ReasoningOpen &&
+		!state.ReasoningDone &&
+		state.Reasoning.Len() == 0
+}
+
+// DropUnannouncedToolCalls clears a rejected upstream attempt before a repair
+// attempt reuses the same Responses stream state. Announced calls are retained
+// defensively; the fallback validation mode never announces before validation.
+func (state *ChatCompletionsToResponsesStreamState) DropUnannouncedToolCalls() {
+	if state == nil {
+		return
+	}
+	for idx := range state.ToolCalls {
+		if state.toolAnnounced[idx] {
+			continue
+		}
+		delete(state.ToolCalls, idx)
+		delete(state.ToolItemIDs, idx)
+		delete(state.ToolOutputIndex, idx)
+		delete(state.toolIsCustom, idx)
+		delete(state.toolIsToolSearch, idx)
+		delete(state.toolNamespace, idx)
+		delete(state.toolAnnounced, idx)
+	}
+	state.FinishReason = ""
+	if state.CanRetryUnannouncedToolCalls() {
+		state.nextOutputIndex = 0
+		state.ServiceTier = ""
+		state.Usage = nil
+	}
+}
+
 func (state *ChatCompletionsToResponsesStreamState) allocOutputIndex() int {
 	idx := state.nextOutputIndex
 	state.nextOutputIndex++
@@ -1548,7 +2077,7 @@ func ChatCompletionsChunkToResponsesEvents(
 	if chunk == nil || state == nil {
 		return nil
 	}
-	if chunk.ID != "" {
+	if strings.HasPrefix(strings.TrimSpace(chunk.ID), "resp_") && !state.CreatedSent {
 		state.ResponseID = chunk.ID
 	}
 	if state.Model == "" && chunk.Model != "" {
@@ -1599,6 +2128,9 @@ func ChatCompletionsChunkToResponsesEvents(
 			if toolCall.Index != nil {
 				idx = *toolCall.Index
 			}
+			if canonical, ok := resolveNamespaceToolCallName(toolCall.Function.Name, state.NamespaceTools); ok {
+				toolCall.Function.Name = canonical
+			}
 			stored, ok := state.ToolCalls[idx]
 			if !ok {
 				// A tool call closes any open reasoning item first.
@@ -1624,7 +2156,11 @@ func ChatCompletionsChunkToResponsesEvents(
 					stored.ID = toolCall.ID
 				}
 				if toolCall.Function.Name != "" {
-					stored.Function.Name = toolCall.Function.Name
+					if customName, isCustom := resolveCustomToolCallName(toolCall.Function.Name, state.CustomTools, state.FunctionTools, state.NamespaceTools); isCustom {
+						stored.Function.Name = customName
+					} else {
+						stored.Function.Name = toolCall.Function.Name
+					}
 				}
 			}
 			events = append(events, announceChatToolItem(state, idx, stored, false)...)
@@ -1717,6 +2253,57 @@ func FinalizeChatCompletionsResponsesStream(state *ChatCompletionsToResponsesStr
 			Output:            state.chatOutput(),
 			Usage:             state.Usage,
 			IncompleteDetails: incompleteDetails,
+		},
+	}))
+	return events
+}
+
+// FinalizeChatCompletionsResponsesStreamFailure closes any visible text and
+// emits one response.failed terminal without materializing unannounced tools.
+func FinalizeChatCompletionsResponsesStreamFailure(state *ChatCompletionsToResponsesStreamState, code, message string) []ResponsesStreamEvent {
+	if state == nil || state.CompletedSent {
+		return nil
+	}
+	var events []ResponsesStreamEvent
+	events = append(events, ensureChatToResponsesCreated(state)...)
+	events = append(events, closeChatReasoningItem(state)...)
+	events = append(events, synthesizeChatReasoningFallbackMessage(state)...)
+	if state.MessageItemID != "" {
+		if state.TextPartOpen {
+			events = append(events, chatToResponsesEvent(state, "response.output_text.done", &ResponsesStreamEvent{
+				OutputIndex:  state.MessageIndex,
+				ContentIndex: 0,
+				Text:         state.Text.String(),
+				ItemID:       state.MessageItemID,
+			}))
+			events = append(events, chatToResponsesEvent(state, "response.content_part.done", &ResponsesStreamEvent{
+				OutputIndex:  state.MessageIndex,
+				ContentIndex: 0,
+				ItemID:       state.MessageItemID,
+				Part:         &ResponsesContentPart{Type: "output_text", Text: state.Text.String()},
+			}))
+		}
+		events = append(events, chatToResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
+			OutputIndex: state.MessageIndex,
+			Item: &ResponsesOutput{
+				Type:    "message",
+				ID:      state.MessageItemID,
+				Role:    "assistant",
+				Content: []ResponsesContentPart{{Type: "output_text", Text: state.Text.String()}},
+				Status:  "completed",
+			},
+		}))
+	}
+	state.CompletedSent = true
+	events = append(events, chatToResponsesEvent(state, "response.failed", &ResponsesStreamEvent{
+		Response: &ResponsesResponse{
+			ID:     state.ResponseID,
+			Object: "response",
+			Model:  state.Model,
+			Status: "failed",
+			Output: state.chatOutput(),
+			Usage:  state.Usage,
+			Error:  &ResponsesError{Code: code, Message: message},
 		},
 	}))
 	return events
@@ -1867,11 +2454,29 @@ func announceChatToolItem(
 	if state.toolAnnounced[idx] {
 		return nil
 	}
+	if canonical, ok := resolveNamespaceToolCallName(stored.Function.Name, state.NamespaceTools); ok {
+		stored.Function.Name = canonical
+	}
 	if !force && stored.Function.Name == "" && (len(state.CustomTools) > 0 || len(state.FunctionTools) > 0 || state.ToolSearchDeclared || len(state.NamespaceTools) > 0) {
 		return nil
 	}
+	if state.HoldToolCallsForValidation {
+		if !force {
+			return nil
+		}
+		if hasResponsesClientToolDeclarations(state.clientToolMapping()) && !isKnownResponsesClientToolCallName(stored.Function.Name, state.clientToolMapping()) {
+			return nil
+		}
+	}
+	if _, ok := state.ToolItemIDs[idx]; !ok {
+		state.ToolItemIDs[idx] = generateItemID()
+		state.ToolOutputIndex[idx] = state.allocOutputIndex()
+	}
 	state.toolAnnounced[idx] = true
-	customName, isCustom := customToolCallName(stored.Function.Name, state.CustomTools, state.FunctionTools, state.NamespaceTools)
+	customName, isCustom := resolveCustomToolCallName(stored.Function.Name, state.CustomTools, state.FunctionTools, state.NamespaceTools)
+	if isCustom {
+		stored.Function.Name = customName
+	}
 	isToolSearch := !isCustom && state.ToolSearchDeclared && stored.Function.Name == toolSearchProxyName
 	state.toolIsCustom[idx] = isCustom
 	state.toolIsToolSearch[idx] = isToolSearch
@@ -1885,12 +2490,11 @@ func announceChatToolItem(
 	// namespace 子工具的调用仍按 function_call 生命周期下发，但 added/done 项要
 	// 还原为裸子工具名 + namespace 字段（codex 按 namespace+name 路由）。
 	itemName, itemNamespace := stored.Function.Name, ""
-	if isCustom {
-		itemName = customName
-	}
-	if ns, ok := state.NamespaceTools[stored.Function.Name]; ok && !isCustom && !isToolSearch {
+	if ns, ok := state.NamespaceTools[stored.Function.Name]; ok {
 		state.toolNamespace[idx] = ns
-		itemName, itemNamespace = ns.Name, ns.Namespace
+		if !isCustom && !isToolSearch {
+			itemName, itemNamespace = ns.Name, ns.Namespace
+		}
 	}
 	events := []ResponsesStreamEvent{chatToResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
 		OutputIndex: state.ToolOutputIndex[idx],
@@ -1925,17 +2529,15 @@ func closeChatToolItems(state *ChatCompletionsToResponsesStreamState) []Response
 		return nil
 	}
 	var events []ResponsesStreamEvent
-	for i := 0; i < len(state.ToolCalls); i++ {
-		toolCall, ok := state.ToolCalls[i]
-		if !ok || toolCall == nil {
-			continue
-		}
-		itemID, opened := state.ToolItemIDs[i]
-		if !opened {
-			continue
-		}
+	mapping := state.clientToolMapping()
+	for _, i := range sortedChatToolCallIndexes(state.ToolCalls) {
+		toolCall := state.ToolCalls[i]
 		// 名字始终未到导致尚未宣告的调用，收尾前按最终名字兜底宣告。
 		events = append(events, announceChatToolItem(state, i, toolCall, true)...)
+		if !state.toolAnnounced[i] {
+			continue
+		}
+		itemID := state.ToolItemIDs[i]
 		arguments := toolCall.Function.Arguments
 		if strings.TrimSpace(arguments) == "" {
 			arguments = "{}"
@@ -1944,7 +2546,11 @@ func closeChatToolItems(state *ChatCompletionsToResponsesStreamState) []Response
 		if state.toolIsCustom[i] {
 			// custom 调用按 custom_tool_call 生命周期收尾：input 在此处一次性下发
 			// （流中不产出增量，见 ChatCompletionsChunkToResponsesEvents）。
-			input := extractCustomToolCallInput(arguments)
+			input := normalizeRestoredCustomToolInput(toolCall.Function.Name, extractCustomToolCallInput(arguments), &mapping)
+			name, namespace := toolCall.Function.Name, ""
+			if ns, ok := state.toolNamespace[i]; ok {
+				name, namespace = ns.Name, ns.Namespace
+			}
 			if input != "" {
 				events = append(events, chatToResponsesEvent(state, "response.custom_tool_call_input.delta", &ResponsesStreamEvent{
 					OutputIndex: outputIndex,
@@ -1957,18 +2563,19 @@ func closeChatToolItems(state *ChatCompletionsToResponsesStreamState) []Response
 					OutputIndex: outputIndex,
 					ItemID:      itemID,
 					CallID:      toolCall.ID,
-					Name:        customNameForStreamTool(state, toolCall.Function.Name),
+					Name:        name,
 					Input:       input,
 				}),
 				chatToResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
 					OutputIndex: outputIndex,
 					Item: &ResponsesOutput{
-						Type:   "custom_tool_call",
-						ID:     itemID,
-						CallID: toolCall.ID,
-						Name:   customNameForStreamTool(state, toolCall.Function.Name),
-						Input:  input,
-						Status: "completed",
+						Type:      "custom_tool_call",
+						ID:        itemID,
+						CallID:    toolCall.ID,
+						Name:      name,
+						Namespace: namespace,
+						Input:     input,
+						Status:    "completed",
 					},
 				}),
 			)
@@ -2019,8 +2626,23 @@ func closeChatToolItems(state *ChatCompletionsToResponsesStreamState) []Response
 	return events
 }
 
+// sortedChatToolCallIndexes preserves upstream tool-call order without
+// assuming indexes are contiguous. Providers may omit a parallel sibling or
+// start indexing at a non-zero value.
+func sortedChatToolCallIndexes(toolCalls map[int]*ChatToolCall) []int {
+	indexes := make([]int, 0, len(toolCalls))
+	for idx, toolCall := range toolCalls {
+		if toolCall != nil {
+			indexes = append(indexes, idx)
+		}
+	}
+	sort.Ints(indexes)
+	return indexes
+}
+
 func (state *ChatCompletionsToResponsesStreamState) chatOutput() []ResponsesOutput {
 	var outputs []ResponsesOutput
+	mapping := state.clientToolMapping()
 	if state.Reasoning.Len() > 0 {
 		outputs = append(outputs, ResponsesOutput{
 			Type: "reasoning",
@@ -2043,23 +2665,25 @@ func (state *ChatCompletionsToResponsesStreamState) chatOutput() []ResponsesOutp
 			Status: "completed",
 		})
 	}
-	for i := 0; i < len(state.ToolCalls); i++ {
-		toolCall, ok := state.ToolCalls[i]
-		if !ok || toolCall == nil {
-			continue
-		}
+	for _, i := range sortedChatToolCallIndexes(state.ToolCalls) {
+		toolCall := state.ToolCalls[i]
 		arguments := toolCall.Function.Arguments
 		if strings.TrimSpace(arguments) == "" {
 			arguments = "{}"
 		}
 		if state.toolIsCustom[i] {
+			name, namespace := toolCall.Function.Name, ""
+			if ns, ok := state.toolNamespace[i]; ok {
+				name, namespace = ns.Name, ns.Namespace
+			}
 			outputs = append(outputs, ResponsesOutput{
-				Type:   "custom_tool_call",
-				ID:     generateItemID(),
-				CallID: toolCall.ID,
-				Name:   customNameForStreamTool(state, toolCall.Function.Name),
-				Input:  extractCustomToolCallInput(arguments),
-				Status: "completed",
+				Type:      "custom_tool_call",
+				ID:        generateItemID(),
+				CallID:    toolCall.ID,
+				Name:      name,
+				Namespace: namespace,
+				Input:     normalizeRestoredCustomToolInput(toolCall.Function.Name, extractCustomToolCallInput(arguments), &mapping),
+				Status:    "completed",
 			})
 			continue
 		}

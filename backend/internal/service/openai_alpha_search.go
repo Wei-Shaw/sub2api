@@ -545,6 +545,11 @@ func shouldApplyOpenAIAlphaSearchAccountErrorSideEffects(statusCode int) bool {
 		// 404/405：端点不存在只说明该上游不支持独立搜索，账号本身健康。
 		// 两类都只换号，不写账号错误状态。
 		return false
+	case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout, 520, 521, 522, 523, 524:
+		// Standalone search is an optional side endpoint. A transient failure
+		// there must not cool down the account/model used by ordinary Responses
+		// calls; the handler already performs endpoint-local failover.
+		return false
 	default:
 		return true
 	}

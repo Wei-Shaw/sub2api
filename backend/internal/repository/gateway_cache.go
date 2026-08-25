@@ -228,6 +228,7 @@ var _ service.CyberSessionBlockStore = (*gatewayCache)(nil)
 var _ service.LiveCallStore = (*gatewayCache)(nil)
 
 const reasoningContentPrefix = "reasoning_content:"
+const responsesChatFallbackToolsPrefix = "responses_chat_fallback_tools:"
 
 // reasoningContentDefaultTTL 是 reasoning 缓存的默认过期时间。Codex 会话可能
 // 跨多天恢复，取 7 天；调用方传入非正 TTL 时兜底。
@@ -267,6 +268,48 @@ func (c *gatewayCache) GetReasoningContent(ctx context.Context, itemID string) (
 		return "", err
 	}
 	return val, nil
+}
+
+func responsesChatFallbackToolsKey(groupID int64, responseID string) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%d:%s", groupID, strings.TrimSpace(responseID))))
+	return responsesChatFallbackToolsPrefix + hex.EncodeToString(sum[:])
+}
+
+func (c *gatewayCache) SetResponsesChatFallbackTools(
+	ctx context.Context,
+	groupID int64,
+	responseID string,
+	payload []byte,
+	ttl time.Duration,
+) error {
+	if c == nil || c.rdb == nil {
+		return errors.New("gateway cache unavailable")
+	}
+	if strings.TrimSpace(responseID) == "" || len(payload) == 0 {
+		return errors.New("invalid Responses chat fallback tools payload")
+	}
+	if ttl <= 0 {
+		ttl = 24 * time.Hour
+	}
+	return c.rdb.Set(ctx, responsesChatFallbackToolsKey(groupID, responseID), payload, ttl).Err()
+}
+
+func (c *gatewayCache) GetResponsesChatFallbackTools(
+	ctx context.Context,
+	groupID int64,
+	responseID string,
+) ([]byte, error) {
+	if c == nil || c.rdb == nil {
+		return nil, errors.New("gateway cache unavailable")
+	}
+	if strings.TrimSpace(responseID) == "" {
+		return nil, nil
+	}
+	payload, err := c.rdb.Get(ctx, responsesChatFallbackToolsKey(groupID, responseID)).Bytes()
+	if errors.Is(err, redis.Nil) {
+		return nil, nil
+	}
+	return payload, err
 }
 
 const (

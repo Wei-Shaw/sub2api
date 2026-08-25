@@ -39,3 +39,26 @@ func TestGatewayCacheReasoningContent(t *testing.T) {
 	_, err = cache.GetReasoningContent(ctx, "item_empty")
 	require.ErrorIs(t, err, service.ErrReasoningContentNotFound)
 }
+
+func TestGatewayCacheResponsesChatFallbackTools(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	cache := &gatewayCache{rdb: client}
+	ctx := context.Background()
+
+	missing, err := cache.GetResponsesChatFallbackTools(ctx, 17, "resp_missing")
+	require.NoError(t, err)
+	require.Nil(t, missing)
+
+	payload := []byte(`[{"type":"custom","name":"exec"}]`)
+	require.NoError(t, cache.SetResponsesChatFallbackTools(ctx, 17, "resp_tools", payload, time.Minute))
+
+	got, err := cache.GetResponsesChatFallbackTools(ctx, 17, "resp_tools")
+	require.NoError(t, err)
+	require.Equal(t, payload, got)
+	require.Equal(t, time.Minute, mr.TTL(responsesChatFallbackToolsKey(17, "resp_tools")))
+
+	otherGroup, err := cache.GetResponsesChatFallbackTools(ctx, 18, "resp_tools")
+	require.NoError(t, err)
+	require.Nil(t, otherGroup)
+}
