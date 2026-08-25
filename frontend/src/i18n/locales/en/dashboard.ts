@@ -434,7 +434,8 @@ export default {
       antigravity: 'Antigravity',
       kimi: 'Kimi',
       zhipu: 'Zhipu GLM',
-      deepseek: 'DeepSeek'
+      deepseek: 'DeepSeek',
+      orcarouter: 'OrcaRouter'
     },
     // Check modes (how a monitor performs its checks)
     checkMode: {

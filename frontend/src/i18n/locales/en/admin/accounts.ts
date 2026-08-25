@@ -107,6 +107,7 @@ export default {
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
+        orcarouter: 'OrcaRouter',
       },
       cnProviders: {
         accountMode: {

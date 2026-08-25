@@ -14,4 +14,4 @@ ALTER TABLE user_platform_quotas
 ALTER TABLE user_platform_quotas
     ADD CONSTRAINT user_platform_quotas_platform_check
     CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok',
-                        'kimi', 'zhipu', 'deepseek'));
+                        'kimi', 'zhipu', 'deepseek', 'orcarouter'));
