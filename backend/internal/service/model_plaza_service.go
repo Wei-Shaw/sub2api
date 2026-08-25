@@ -177,11 +177,12 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 				} else if m.Platform != pg.Platform {
 					continue
 				}
+				pricing := plazaGroupDisplayPricing(groupEnt[gid], m.Name, m.Platform, m.Pricing)
 				key := modelKey{platform: m.Platform, name: m.Name}
 				if at, seen := idx[key]; seen {
 					// 先见者胜；仅当已存条目无定价而新条目有定价时升级。
-					if pg.Models[at].Pricing == nil && m.Pricing != nil {
-						pg.Models[at].Pricing = m.Pricing
+					if pg.Models[at].Pricing == nil && pricing != nil {
+						pg.Models[at].Pricing = pricing
 					}
 					continue
 				}
@@ -189,8 +190,23 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 				pg.Models = append(pg.Models, PlazaModel{
 					Name:     m.Name,
 					Platform: m.Platform,
-					Pricing:  m.Pricing,
+					Pricing:  pricing,
 				})
+			}
+
+			// Group.ModelPricing is the billing-visible source of truth for models
+			// explicitly configured at group level. Publish exact names even when
+			// the channel did not duplicate them in its own model list.
+			for _, configured := range plazaConfiguredGroupModels(groupEnt[gid]) {
+				key := modelKey{platform: configured.Platform, name: configured.Name}
+				if at, seen := idx[key]; seen {
+					if pg.Models[at].Pricing == nil && configured.Pricing != nil {
+						pg.Models[at].Pricing = configured.Pricing
+					}
+					continue
+				}
+				idx[key] = len(pg.Models)
+				pg.Models = append(pg.Models, configured)
 			}
 		}
 	}
@@ -223,6 +239,82 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 		return out[i].Name < out[j].Name
 	})
 	return out, nil
+}
+
+// plazaGroupDisplayPricing applies the same group-level pricing precedence as
+// billing to the Model Plaza payload. The platform guard matters for composite
+// groups: the same model name may have different prices on different providers.
+func plazaGroupDisplayPricing(group *Group, model, platform string, channelPricing *ChannelModelPricing) *ChannelModelPricing {
+	if override := matchPlazaGroupModelPricing(group, model, platform); override != nil {
+		return override
+	}
+	return channelPricing
+}
+
+func matchPlazaGroupModelPricing(group *Group, model, platform string) *ChannelModelPricing {
+	if group == nil {
+		return nil
+	}
+
+	model = normalizeChannelPricingModelName(model)
+	var wildcard *ChannelModelPricing
+	for i := range group.ModelPricing {
+		entry := &group.ModelPricing[i]
+		if entry.Platform != "" && entry.Platform != platform {
+			continue
+		}
+		for _, pattern := range entry.Models {
+			normalized := normalizeChannelPricingModelName(pattern)
+			if normalized == model {
+				clone := entry.Clone()
+				return &clone
+			}
+			if wildcard == nil && strings.HasSuffix(normalized, "*") &&
+				strings.HasPrefix(model, strings.TrimSuffix(normalized, "*")) {
+				clone := entry.Clone()
+				wildcard = &clone
+			}
+		}
+	}
+	return wildcard
+}
+
+func plazaConfiguredGroupModels(group *Group) []PlazaModel {
+	if group == nil {
+		return nil
+	}
+
+	var models []PlazaModel
+	for i := range group.ModelPricing {
+		entry := &group.ModelPricing[i]
+		platform := entry.Platform
+		if platform == "" {
+			platform = group.Platform
+		}
+		if group.Platform == PlatformComposite {
+			if !isConcreteRequestPlatform(platform) {
+				continue
+			}
+		} else if platform != group.Platform {
+			continue
+		}
+
+		for _, configuredName := range entry.Models {
+			name := strings.TrimSpace(configuredName)
+			// Wildcards override discovered models but are not concrete entries.
+			if name == "" || strings.HasSuffix(normalizeChannelPricingModelName(name), "*") {
+				continue
+			}
+			pricing := entry.Clone()
+			pricing.Platform = platform
+			models = append(models, PlazaModel{
+				Name:     name,
+				Platform: platform,
+				Pricing:  &pricing,
+			})
+		}
+	}
+	return models
 }
 
 // fillDisplayPricing 把模型的展示定价换成实收口径：

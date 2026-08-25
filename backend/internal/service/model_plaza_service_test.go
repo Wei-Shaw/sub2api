@@ -116,6 +116,104 @@ func TestListPlazaGroups_PlatformIsolation(t *testing.T) {
 	require.Equal(t, "gpt-5", byName["g-gpt"][0].Name)
 }
 
+func TestListPlazaGroups_PublishesGroupConfiguredProviderModelsAndPrices(t *testing.T) {
+	// ModelPricing 是实际计费的分组级覆盖配置。即使渠道没有把这些模型
+	// 重复写入自己的 ModelPricing，Model Plaza 也必须展示它们及其分组价格。
+	providerModels := []struct {
+		platform string
+		model    string
+		input    float64
+	}{
+		{platform: "grok", model: "grok-4", input: 0.000004},
+		{platform: "kimi", model: "kimi-k2", input: 0.000005},
+		{platform: "zhipu", model: "glm-4.5", input: 0.000006},
+		{platform: "deepseek", model: "deepseek-chat", input: 0.000007},
+	}
+
+	channels := make([]Channel, 0, len(providerModels))
+	groups := make([]Group, 0, len(providerModels))
+	for i, provider := range providerModels {
+		groupID := int64(i + 1)
+		channels = append(channels, Channel{
+			ID:       groupID,
+			Name:     provider.platform + "-channel",
+			Status:   StatusActive,
+			GroupIDs: []int64{groupID},
+			ModelPricing: []ChannelModelPricing{{
+				Platform:    provider.platform,
+				Models:      []string{"channel-default-" + provider.platform},
+				InputPrice:  testPtrFloat64(0.000001),
+				OutputPrice: testPtrFloat64(0.000002),
+			}},
+		})
+		groups = append(groups, Group{
+			ID:             groupID,
+			Name:           provider.platform + "-group",
+			Platform:       provider.platform,
+			RateMultiplier: 1,
+			ModelPricing: []ChannelModelPricing{{
+				Platform:    provider.platform,
+				Models:      []string{provider.model},
+				InputPrice:  testPtrFloat64(provider.input),
+				OutputPrice: testPtrFloat64(provider.input * 3),
+			}},
+		})
+	}
+
+	out, err := newPlazaService(channels, groups, nil).ListGroups(context.Background())
+	require.NoError(t, err)
+	require.Len(t, out, len(providerModels))
+
+	for _, provider := range providerModels {
+		var group PlazaGroup
+		for _, candidate := range out {
+			if candidate.Platform == provider.platform {
+				group = candidate
+				break
+			}
+		}
+		require.NotEmpty(t, group.Models, provider.platform)
+		var model *PlazaModel
+		for i := range group.Models {
+			if group.Models[i].Name == provider.model {
+				model = &group.Models[i]
+				break
+			}
+		}
+		require.NotNil(t, model, provider.model)
+		require.NotNil(t, model.Pricing, provider.model)
+		require.InDelta(t, provider.input, *model.Pricing.InputPrice, 1e-12, provider.model)
+	}
+}
+
+func TestListPlazaGroups_GroupPricingOverridesChannelPricing(t *testing.T) {
+	channelPrice := 0.000001
+	groupPrice := 0.000009
+	channels := []Channel{{
+		ID: 1, Name: "grok-channel", Status: StatusActive, GroupIDs: []int64{10},
+		ModelPricing: []ChannelModelPricing{{
+			Platform:   "grok",
+			Models:     []string{"grok-4"},
+			InputPrice: &channelPrice,
+		}},
+	}}
+	groups := []Group{{
+		ID: 10, Name: "grok-group", Platform: "grok", RateMultiplier: 1,
+		ModelPricing: []ChannelModelPricing{{
+			Platform:   "grok",
+			Models:     []string{"grok-4"},
+			InputPrice: &groupPrice,
+		}},
+	}}
+
+	out, err := newPlazaService(channels, groups, nil).ListGroups(context.Background())
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Len(t, out[0].Models, 1)
+	require.NotNil(t, out[0].Models[0].Pricing)
+	require.InDelta(t, groupPrice, *out[0].Models[0].Pricing.InputPrice, 1e-12)
+}
+
 func TestListPlazaGroups_CompositeIncludesConfiguredConcretePlatforms(t *testing.T) {
 	anthropicPrice := 3e-6
 	openAIPrice := 2e-6
