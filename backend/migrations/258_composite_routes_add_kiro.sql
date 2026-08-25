@@ -15,10 +15,12 @@
 -- 因为 kiro 的模型名是 claude-* / gpt-*，与 anthropic/openai 前缀冲突。
 --
 -- DROP ... IF EXISTS 保证可重入；新约束是旧约束的超集，存量行瞬时校验通过。
-ALTER TABLE composite_model_routes
+-- sub2api-managed-update: reviewed-compatible
+ALTER TABLE ONLY composite_model_routes
     DROP CONSTRAINT IF EXISTS composite_model_routes_target_platform_check;
 
-ALTER TABLE composite_model_routes
+-- sub2api-managed-update: reviewed-compatible
+ALTER TABLE ONLY composite_model_routes
     ADD CONSTRAINT composite_model_routes_target_platform_check
     CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro',
                                'grok', 'kimi', 'zhipu', 'deepseek'));

@@ -42,13 +42,5 @@ CREATE TABLE IF NOT EXISTS sub2api_plugin_bindings (
     CONSTRAINT sub2api_plugin_bindings_scope_unique UNIQUE (plugin_id, capability, platform, account_type)
 );
 
-CREATE INDEX IF NOT EXISTS idx_sub2api_plugin_bindings_plugin_id
-    ON sub2api_plugin_bindings(plugin_id);
-
-CREATE INDEX IF NOT EXISTS idx_sub2api_plugin_bindings_enabled_scope
-    ON sub2api_plugin_bindings(platform, account_type, capability)
-    WHERE enabled = TRUE;
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_sub2api_plugin_bindings_one_enabled_scope
-    ON sub2api_plugin_bindings(capability, platform, account_type)
-    WHERE enabled = TRUE;
+-- Indexes for this table are created concurrently in the follow-up _notx migration
+-- so a large existing deployment cannot be blocked by a transactional index build.

@@ -14,19 +14,20 @@ func TestEvaluateStatementAllowlist(t *testing.T) {
 		sql  string
 		path string
 	}{
-		"create table":          {sql: `CREATE TABLE new_table (id bigint PRIMARY KEY);`},
-		"generated column":      {sql: `CREATE TABLE new_table (id bigint, doubled bigint GENERATED ALWAYS AS (id * 2) STORED);`},
-		"create type":           {sql: `CREATE TYPE status AS ENUM ('new', 'done');`},
-		"concurrent index":      {sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_email ON users (email);`, path: "002_users_email_notx.sql"},
-		"plain index new table": {sql: `CREATE INDEX idx_new_table_id ON new_table (id);`},
-		"unique on new table":   {sql: `CREATE UNIQUE INDEX uq_new ON new_table (id);`},
-		"nullable column":       {sql: `ALTER TABLE users ADD COLUMN IF NOT EXISTS note timestamp with time zone;`},
-		"nullable array":        {sql: `ALTER TABLE users ADD COLUMN tags varchar(32)[];`},
-		"plain insert":          {sql: `INSERT INTO settings (key, value) VALUES ('k', 'v');`},
-		"literal rows":          {sql: `INSERT INTO settings (key, value) VALUES ('k1', NULL), ('k2', TRUE), ('k3', -1.25e+3);`},
-		"conflict nothing":      {sql: `INSERT INTO settings (key) VALUES ('k') ON CONFLICT (key) DO NOTHING;`},
-		"conflict constraint":   {sql: `INSERT INTO settings (key) VALUES ('k') ON CONFLICT ON CONSTRAINT settings_pkey DO NOTHING;`},
-		"quoted column names":   {sql: `INSERT INTO settings ("key", "value") VALUES ('k', 'v');`},
+		"create table":                     {sql: `CREATE TABLE new_table (id bigint PRIMARY KEY);`},
+		"generated column":                 {sql: `CREATE TABLE new_table (id bigint, doubled bigint GENERATED ALWAYS AS (id * 2) STORED);`},
+		"create type":                      {sql: `CREATE TYPE status AS ENUM ('new', 'done');`},
+		"concurrent index":                 {sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_email ON users (email);`, path: "002_users_email_notx.sql"},
+		"reviewed concurrent unique index": {sql: "-- sub2api-managed-update: reviewed-compatible\nCREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS uq_users_email ON users (email);", path: "002_users_email_notx.sql"},
+		"plain index new table":            {sql: `CREATE INDEX idx_new_table_id ON new_table (id);`},
+		"unique on new table":              {sql: `CREATE UNIQUE INDEX uq_new ON new_table (id);`},
+		"nullable column":                  {sql: `ALTER TABLE users ADD COLUMN IF NOT EXISTS note timestamp with time zone;`},
+		"nullable array":                   {sql: `ALTER TABLE users ADD COLUMN tags varchar(32)[];`},
+		"plain insert":                     {sql: `INSERT INTO settings (key, value) VALUES ('k', 'v');`},
+		"literal rows":                     {sql: `INSERT INTO settings (key, value) VALUES ('k1', NULL), ('k2', TRUE), ('k3', -1.25e+3);`},
+		"conflict nothing":                 {sql: `INSERT INTO settings (key) VALUES ('k') ON CONFLICT (key) DO NOTHING;`},
+		"conflict constraint":              {sql: `INSERT INTO settings (key) VALUES ('k') ON CONFLICT ON CONSTRAINT settings_pkey DO NOTHING;`},
+		"quoted column names":              {sql: `INSERT INTO settings ("key", "value") VALUES ('k', 'v');`},
 	}
 	for name, test := range tests {
 		name, test := name, test
@@ -181,6 +182,44 @@ CHECK (request_type >= 0 AND request_type <= 5) NOT VALID;
 ALTER TABLE users ADD CONSTRAINT users_email_key UNIQUE (email);
 `)
 	require.False(t, evaluateStatement(reviewedUniqueConstraint, nil, "002_test.sql").allowed)
+
+	reviewedDefault := mustOneStatement(t, `
+-- sub2api-managed-update: reviewed-compatible
+ALTER TABLE groups ALTER COLUMN kiro_endpoint_mode SET DEFAULT 'q';
+`)
+	require.True(t, evaluateStatement(reviewedDefault, nil, "002_test.sql").allowed)
+
+	reviewedNotNull := mustOneStatement(t, `
+-- sub2api-managed-update: reviewed-compatible
+ALTER TABLE groups ALTER COLUMN kiro_endpoint_mode SET NOT NULL;
+`)
+	require.True(t, evaluateStatement(reviewedNotNull, nil, "002_test.sql").allowed)
+
+	unreviewedDefault := mustOneStatement(t, `
+ALTER TABLE groups ALTER COLUMN kiro_endpoint_mode SET DEFAULT 'q';
+`)
+	require.False(t, evaluateStatement(unreviewedDefault, nil, "002_test.sql").allowed)
+
+	reviewedForeignKey := mustOneStatement(t, `
+-- sub2api-managed-update: reviewed-compatible
+ALTER TABLE channel_monitors
+ADD CONSTRAINT channel_monitors_group_id_fkey
+FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE SET NULL;
+`)
+	require.True(t, evaluateStatement(reviewedForeignKey, nil, "002_test.sql").allowed)
+
+	unreviewedForeignKey := mustOneStatement(t, `
+ALTER TABLE channel_monitors
+ADD CONSTRAINT channel_monitors_group_id_fkey
+FOREIGN KEY (group_id) REFERENCES groups(id);
+`)
+	require.False(t, evaluateStatement(unreviewedForeignKey, nil, "002_test.sql").allowed)
+
+	reviewedComment := mustOneStatement(t, `
+-- sub2api-managed-update: reviewed-compatible
+COMMENT ON COLUMN channel_monitors.group_id IS 'group';
+`)
+	require.True(t, evaluateStatement(reviewedComment, nil, "002_test.sql").allowed)
 }
 
 func TestReviewedCompatibleUpdateRequiresExplicitAnnotation(t *testing.T) {
