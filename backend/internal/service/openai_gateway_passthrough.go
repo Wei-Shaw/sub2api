@@ -1849,10 +1849,12 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				// The event-line type is probe-only unless supplementation changes the payload.
 				collectorPayload := []byte(openAICompatPayloadWithEventType(string(dataBytes), rawEventType))
 				streamDoneItems.Observe(collectorPayload)
-				if normalizedData, normalized := normalizeResponsesStreamingTerminalOutput(collectorPayload, nil, streamDoneItems, nil); normalized {
-					dataBytes = normalizedData
-					trimmedData = strings.TrimSpace(string(normalizedData))
-					line = "data: " + string(normalizedData)
+				if streamDoneItems.HasItems() {
+					if normalizedData, normalized := normalizeResponsesStreamingTerminalOutput(collectorPayload, nil, streamDoneItems, nil); normalized {
+						dataBytes = normalizedData
+						trimmedData = strings.TrimSpace(string(normalizedData))
+						line = "data: " + string(normalizedData)
+					}
 				}
 			}
 			if trimmedData != "[DONE]" {
