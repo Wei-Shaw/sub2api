@@ -1,8 +1,14 @@
 package service
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 func TestParseOpenAIVideoResult(t *testing.T) {
@@ -21,5 +27,25 @@ func TestStableVideoTaskBillingRequestID(t *testing.T) {
 	}
 	if got := StableVideoTaskBillingRequestID(PlatformGrok, "video_123"); got != "grok-video:video_123" {
 		t.Fatalf("unexpected grok billing id: %q", got)
+	}
+}
+
+func TestForwardOpenAIVideoBodyErrorDoesNotWriteDuplicateResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	resp := &http.Response{
+		StatusCode: http.StatusBadGateway,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader("")),
+	}
+	body := []byte(`{"error":{"message":"upstream database error"}}`)
+
+	_, err := (&OpenAIGatewayService{}).forwardOpenAIVideoBodyError(c, resp, body, "req_1")
+	if err == nil {
+		t.Fatal("expected upstream failover error")
+	}
+	if recorder.Body.Len() != 0 {
+		t.Fatalf("upstream error helper wrote a response body: %s", recorder.Body.String())
 	}
 }

@@ -121,11 +121,9 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoJSONError(c *gin.Context, resp 
 
 func (s *OpenAIGatewayService) forwardOpenAIVideoBodyError(c *gin.Context, resp *http.Response, body []byte, requestID string) (*OpenAIForwardResult, error) {
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
-	if contentType == "" {
-		contentType = "application/json"
-	}
-	c.Data(resp.StatusCode, contentType, body)
+	// Do not write the body here. The handler owns the response lifecycle and
+	// maps UpstreamFailoverError to one client-facing JSON response. Writing the
+	// upstream body here would make the handler append a second JSON object.
 	return nil, &UpstreamFailoverError{
 		StatusCode:      resp.StatusCode,
 		ResponseBody:    body,
