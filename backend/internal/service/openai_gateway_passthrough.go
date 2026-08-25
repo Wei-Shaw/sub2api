@@ -1746,6 +1746,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	var bareErrorPayload []byte
 	bareErrorAccountSideEffectsPending := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
+	streamDoneItems := newResponsesStreamOutputItems()
 	// pendingLines 在首个可见输出前保留前导事件，确保无输出失败仍可安全 failover。
 	pendingLines := make([]string, 0, 8)
 	// flushPending 表示已写入但未到 SSE 空行边界的脏状态；defer 兜底函数退出前的残留，断连后不再 Flush。
@@ -1842,6 +1843,17 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				dataBytes = normalizedData
 				trimmedData = strings.TrimSpace(string(normalizedData))
 				line = "data: " + string(normalizedData)
+			}
+			if trimmedData != "[DONE]" {
+				// Keep done items and terminal output in the same upstream dialect.
+				// The event-line type is probe-only unless supplementation changes the payload.
+				collectorPayload := []byte(openAICompatPayloadWithEventType(string(dataBytes), rawEventType))
+				streamDoneItems.Observe(collectorPayload)
+				if normalizedData, normalized := normalizeResponsesStreamingTerminalOutput(collectorPayload, nil, streamDoneItems, nil); normalized {
+					dataBytes = normalizedData
+					trimmedData = strings.TrimSpace(string(normalizedData))
+					line = "data: " + string(normalizedData)
+				}
 			}
 			if trimmedData != "[DONE]" {
 				restoredData, restoreErr := restoreOpenAIResponsesNamespacePayload(c, dataBytes)

@@ -174,7 +174,7 @@ func transformOpenAIResponsesWebSearchActionCompatStream(source io.ReadCloser, d
 			return flush()
 		}
 
-		payload, validSingleData := openAIWebSearchActionCompatSingleData(raw)
+		payload, frameEventType, validSingleData := openAIWebSearchActionCompatSingleData(raw)
 		if !validSingleData {
 			if len(queued) == 0 {
 				if err := write(raw); err != nil {
@@ -206,7 +206,7 @@ func transformOpenAIResponsesWebSearchActionCompatStream(source io.ReadCloser, d
 			return queue(&openAIWebSearchActionCompatFrame{raw: raw})
 		}
 
-		eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
+		eventType := effectiveOpenAISSEEventType(payload, frameEventType)
 		if openAIWebSearchActionCompatTerminal(eventType) {
 			if len(queued) == 0 {
 				if err := write(raw); err != nil {
@@ -383,22 +383,27 @@ func openAIWebSearchActionCompatBlankLine(line []byte) bool {
 
 // openAIWebSearchActionCompatSingleData accepts only one ordinary data line.
 // Comment-only, multi-data, malformed and non-data frames are all transparent.
-func openAIWebSearchActionCompatSingleData(raw []byte) ([]byte, bool) {
+func openAIWebSearchActionCompatSingleData(raw []byte) ([]byte, string, bool) {
 	lines := bytes.SplitAfter(raw, []byte("\n"))
 	var payload []byte
+	eventType := ""
 	dataCount := 0
 	for _, line := range lines {
 		line = bytes.TrimSuffix(line, []byte("\n"))
 		line = bytes.TrimSuffix(line, []byte("\r"))
+		if bytes.HasPrefix(line, []byte("event:")) {
+			eventType = strings.TrimSpace(string(line[len("event:"):]))
+			continue
+		}
 		if bytes.HasPrefix(line, []byte("data:")) {
 			dataCount++
 			if dataCount > 1 {
-				return nil, false
+				return nil, "", false
 			}
 			payload = bytes.TrimSpace(line[len("data:"):])
 		}
 	}
-	return payload, dataCount == 1
+	return payload, eventType, dataCount == 1
 }
 
 func openAIWebSearchActionCompatTerminal(eventType string) bool {
@@ -476,7 +481,7 @@ func openAIWebSearchActionCompatUsableActionRaw(actionRaw string) bool {
 }
 
 func openAIWebSearchActionCompatInsertRawAction(rawFrame []byte, actionPath, actionRaw string) ([]byte, error) {
-	payload, ok := openAIWebSearchActionCompatSingleData(rawFrame)
+	payload, _, ok := openAIWebSearchActionCompatSingleData(rawFrame)
 	if !ok || !gjson.ValidBytes(payload) || !openAIWebSearchActionCompatUsableActionRaw(actionRaw) {
 		return nil, fmt.Errorf("invalid web search completed frame")
 	}
