@@ -3,7 +3,9 @@ package apicompat
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestFlattenResponsesNamespaces_RewritesDeclarationHistoryAndChoice(t *testing.T) {
@@ -59,6 +61,25 @@ func TestFlattenResponsesNamespaces_RewritesDeclarationHistoryAndChoice(t *testi
 	require.Equal(t, "spawn_agent", message["name"])
 	require.Equal(t, "collaboration", message["namespace"])
 	require.Equal(t, "gpt-5.5", req["model"])
+}
+
+func TestFlattenResponsesNamespaces_PreservesNestedCustomIdentity(t *testing.T) {
+	req := map[string]any{
+		"tools": []any{map[string]any{
+			"type": "namespace", "name": "functions", "tools": []any{
+				map[string]any{"type": "custom", "name": "exec", "format": map[string]any{"type": "text"}},
+			},
+		}},
+		"input": []any{},
+	}
+	names, changed, err := FlattenResponsesNamespaces(req)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.True(t, names["functions__exec"].Custom)
+	tools := req["tools"].([]any)
+	tool := tools[0].(map[string]any)
+	assert.Equal(t, "custom", tool["type"])
+	assert.Equal(t, "functions__exec", tool["name"])
 }
 
 func TestFlattenResponsesNamespaces_RejectsFlatNameCollision(t *testing.T) {
@@ -147,6 +168,19 @@ func TestRestoreResponsesNamespaceCalls_RewritesOnlyFunctionCalls(t *testing.T) 
 	require.JSONEq(t, `{"type":"response.completed","response":{"output":[{"type":"function_call","name":"spawn_agent","namespace":"collaboration","call_id":"call_1","arguments":"{}","extra":"keep"},{"type":"function_call","name":"plain","arguments":"{}"},{"type":"message","name":"collaboration__spawn_agent","content":"<tag>&value</tag>"}]}}`, string(got))
 	require.Contains(t, string(got), "<tag>&value</tag>")
 	require.NotContains(t, string(got), `\u003c`)
+}
+
+func TestRestoreResponsesNamespaceCalls_RewritesDottedProviderAlias(t *testing.T) {
+	payload := []byte(`{"output":[{"type":"function_call","name":"functions.read_file","arguments":"{}"}]}`)
+	names := map[string]ResponsesNamespaceName{
+		"functions__read_file": {Namespace: "functions", Name: "read_file"},
+	}
+
+	got, changed, err := RestoreResponsesNamespaceCalls(payload, names)
+	require.NoError(t, err)
+	require.True(t, changed)
+	assert.Equal(t, "read_file", gjson.GetBytes(got, "output.0.name").String())
+	assert.Equal(t, "functions", gjson.GetBytes(got, "output.0.namespace").String())
 }
 
 func TestRestoreResponsesNamespaceCalls_RewritesLifecycleItems(t *testing.T) {
