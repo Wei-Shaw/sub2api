@@ -1029,7 +1029,7 @@
           </p>
         </div>
 
-        <!-- 视频生成计费配置（仅 Grok 平台） -->
+        <!-- 视频生成计费配置 -->
         <div
           v-if="supportsVideoPricingPlatform(createForm.platform)"
           class="border-t pt-4"
@@ -1105,11 +1105,20 @@
           </div>
           <div
             class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700"
-            data-testid="create-grok-video-model-prices"
+            data-testid="create-video-model-prices"
           >
-            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {{ t("admin.groups.videoPricing.modelOverridesTitle") }}
-            </p>
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t("admin.groups.videoPricing.modelOverridesTitle") }}
+              </p>
+              <button
+                type="button"
+                class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                @click="addVideoModelPriceRow(createForm.video_model_prices)"
+              >
+                + {{ t("admin.groups.videoPricing.addModel") }}
+              </button>
+            </div>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t("admin.groups.videoPricing.modelOverridesDescription") }}
             </p>
@@ -1117,17 +1126,24 @@
               <div
                 v-for="family in videoModelPriceFamilyRows(createForm.video_model_prices)"
                 :key="family.key"
-                class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,7rem))] sm:items-end"
+                class="flex items-start gap-2 rounded border border-gray-200 bg-white p-2 dark:border-dark-500 dark:bg-dark-700"
               >
-                <div class="min-w-0 pb-1 font-mono text-xs text-gray-700 dark:text-gray-300">
-                  {{ family.label }}
-                </div>
+                <label class="w-20 shrink-0 sm:w-24">
+                  <span class="block text-xs text-gray-400">Model</span>
+                  <input
+                    :value="family.label"
+                    type="text"
+                    class="input mt-0.5 text-xs font-mono"
+                    placeholder="model id"
+                    @change="renameVideoModelPriceRow(createForm.video_model_prices, family.key, $event)"
+                  />
+                </label>
                 <label
-                  v-for="resolution in grokVideoPriceResolutions"
+                v-for="resolution in videoPriceResolutions"
                   :key="resolution.key"
-                  class="block"
+                  class="w-20 shrink-0 sm:w-24"
                 >
-                  <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                  <span class="block text-xs text-gray-400">
                     {{ resolution.label }} ($/s)
                   </span>
                   <input
@@ -1135,10 +1151,18 @@
                     type="number"
                     step="0.001"
                     min="0"
-                    class="input"
-                    :data-testid="`create-grok-video-price-${family.key}-${resolution.key}`"
+                    class="input mt-0.5 text-xs"
+                    :data-testid="`create-video-price-${family.key}-${resolution.key}`"
                   />
                 </label>
+                <button
+                  type="button"
+                  class="mt-4 rounded p-0.5 text-gray-400 hover:text-red-500"
+                  :title="t('admin.groups.videoPricing.removeModel')"
+                  @click="removeVideoModelPriceRow(createForm.video_model_prices, family.key)"
+                >
+                  <Icon name="x" size="sm" />
+                </button>
               </div>
             </div>
           </div>
@@ -2761,7 +2785,7 @@
           </p>
         </div>
 
-        <!-- 视频生成计费配置（仅 Grok 平台） -->
+        <!-- 视频生成计费配置 -->
         <div
           v-if="supportsVideoPricingPlatform(editForm.platform)"
           class="border-t pt-4"
@@ -2837,11 +2861,20 @@
           </div>
           <div
             class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700"
-            data-testid="edit-grok-video-model-prices"
+            data-testid="edit-video-model-prices"
           >
-            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {{ t("admin.groups.videoPricing.modelOverridesTitle") }}
-            </p>
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t("admin.groups.videoPricing.modelOverridesTitle") }}
+              </p>
+              <button
+                type="button"
+                class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                @click="addVideoModelPriceRow(editForm.video_model_prices)"
+              >
+                + {{ t("admin.groups.videoPricing.addModel") }}
+              </button>
+            </div>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t("admin.groups.videoPricing.modelOverridesDescription") }}
             </p>
@@ -2849,17 +2882,24 @@
               <div
                 v-for="family in videoModelPriceFamilyRows(editForm.video_model_prices)"
                 :key="family.key"
-                class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,7rem))] sm:items-end"
+                class="flex items-start gap-2 rounded border border-gray-200 bg-white p-2 dark:border-dark-500 dark:bg-dark-700"
               >
-                <div class="min-w-0 pb-1 font-mono text-xs text-gray-700 dark:text-gray-300">
-                  {{ family.label }}
-                </div>
+                <label class="w-20 shrink-0 sm:w-24">
+                  <span class="block text-xs text-gray-400">Model</span>
+                  <input
+                    :value="family.label"
+                    type="text"
+                    class="input mt-0.5 text-xs font-mono"
+                    placeholder="model id"
+                    @change="renameVideoModelPriceRow(editForm.video_model_prices, family.key, $event)"
+                  />
+                </label>
                 <label
-                  v-for="resolution in grokVideoPriceResolutions"
+                v-for="resolution in videoPriceResolutions"
                   :key="resolution.key"
-                  class="block"
+                  class="w-20 shrink-0 sm:w-24"
                 >
-                  <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                  <span class="block text-xs text-gray-400">
                     {{ resolution.label }} ($/s)
                   </span>
                   <input
@@ -2867,10 +2907,18 @@
                     type="number"
                     step="0.001"
                     min="0"
-                    class="input"
-                    :data-testid="`edit-grok-video-price-${family.key}-${resolution.key}`"
+                    class="input mt-0.5 text-xs"
+                    :data-testid="`edit-video-price-${family.key}-${resolution.key}`"
                   />
                 </label>
+                <button
+                  type="button"
+                  class="mt-4 rounded p-0.5 text-gray-400 hover:text-red-500"
+                  :title="t('admin.groups.videoPricing.removeModel')"
+                  @click="removeVideoModelPriceRow(editForm.video_model_prices, family.key)"
+                >
+                  <Icon name="x" size="sm" />
+                </button>
               </div>
             </div>
           </div>
@@ -4511,11 +4559,42 @@ import {
   videoPricingI18nKey,
 } from "./groupsImagePricing";
 import {
+  createEmptyVideoPriceTiers,
   createVideoModelPricesForm,
-  grokVideoPriceResolutions,
   serializeVideoModelPrices,
+  temporaryVideoModelKeyPrefix,
+  isTemporaryVideoModelKey,
+  videoPriceResolutions,
   videoModelPriceFamilyRows,
+  type VideoModelPricesForm,
 } from "./groupsVideoModelPricing";
+
+function addVideoModelPriceRow(form: VideoModelPricesForm): void {
+  const base = temporaryVideoModelKeyPrefix
+  let index = 1
+  let key = `${base}${index}`
+  while (form[key]) key = `${base}${++index}`
+  form[key] = createEmptyVideoPriceTiers()
+}
+
+function removeVideoModelPriceRow(form: VideoModelPricesForm, key: string): void {
+  delete form[key]
+}
+
+function renameVideoModelPriceRow(form: VideoModelPricesForm, oldKey: string, event: Event): void {
+  const target = event.target as HTMLInputElement | null
+  const newKey = target?.value.trim().toLowerCase() ?? ""
+  if (!newKey || newKey === oldKey) {
+    if (target) target.value = isTemporaryVideoModelKey(oldKey) ? "" : oldKey
+    return
+  }
+  if (form[newKey]) {
+    if (target) target.value = oldKey
+    return
+  }
+  form[newKey] = form[oldKey]
+  delete form[oldKey]
+}
 
 const supportsLivePlatform = (platform: string): boolean =>
   platform === "openai" || platform === "composite";
@@ -5058,7 +5137,7 @@ const createForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
-  // 视频生成计费配置（仅 Grok 平台）
+  // 视频生成计费配置
   video_rate_independent: false,
   video_rate_multiplier: 1,
   video_price_480p: null as number | null,
@@ -5419,7 +5498,7 @@ const editForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
-  // 视频生成计费配置（仅 Grok 平台）
+  // 视频生成计费配置
   video_rate_independent: false,
   video_rate_multiplier: 1,
   video_price_480p: null as number | null,
