@@ -66,7 +66,7 @@ func ConfigureFromEnv() error {
 	}
 
 	state := StateStandby
-	if data, err := os.ReadFile(statePath); err == nil && strings.TrimSpace(string(data)) == slot {
+	if data, err := os.ReadFile(statePath); err == nil && strings.TrimSpace(string(data)) == slot { //nolint:gosec // G703: statePath 仅来自启动环境变量 DEPLOYMENT_STATE_FILE（部署器配置，已校验绝对路径），非请求输入
 		state = StateActive
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("read deployment state: %w", err)
