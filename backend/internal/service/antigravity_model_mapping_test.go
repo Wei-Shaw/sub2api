@@ -77,10 +77,10 @@ func TestAntigravityGatewayService_GetMappedModel(t *testing.T) {
 
 		// 3. 默认映射中的透传（映射到自己）
 		{
-			name:           "已下架原样透传 - claude-fable-5 返回空",
+			name:           "默认映射透传 - claude-fable-5",
 			requestedModel: "claude-fable-5",
 			accountMapping: nil,
-			expected:       "",
+			expected:       "claude-fable-5",
 		},
 		{
 			name:           "默认映射透传 - claude-sonnet-4-6",
@@ -95,16 +95,16 @@ func TestAntigravityGatewayService_GetMappedModel(t *testing.T) {
 			expected:       "claude-sonnet-4-5",
 		},
 		{
-			name:           "已下架原样透传 - claude-opus-4-8 返回空",
+			name:           "默认映射透传 - claude-opus-4-8",
 			requestedModel: "claude-opus-4-8",
 			accountMapping: nil,
-			expected:       "",
+			expected:       "claude-opus-4-8",
 		},
 		{
-			name:           "已下架原样透传 - claude-opus-4-7 返回空",
+			name:           "默认映射透传 - claude-opus-4-7",
 			requestedModel: "claude-opus-4-7",
 			accountMapping: nil,
-			expected:       "",
+			expected:       "claude-opus-4-7",
 		},
 		{
 			name:           "默认映射透传 - claude-opus-4-6-thinking",

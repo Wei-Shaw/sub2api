@@ -43,12 +43,7 @@ func TestDefaultModels_ContainsNewAndLegacyImageModels(t *testing.T) {
 		"gemini-3.7-flash-tiered",
 	}
 
-	retiredIDs := []string{"claude-fable-5", "claude-opus-4-7", "claude-opus-4-8"}
-	for _, id := range retiredIDs {
-		if _, ok := byID[id]; ok {
-			t.Fatalf("retired model %q must not appear in DefaultModels", id)
-		}
-	}
+	requiredIDs = append(requiredIDs, "claude-fable-5", "claude-opus-4-7", "claude-opus-4-8")
 
 	for _, id := range requiredIDs {
 		if _, ok := byID[id]; !ok {

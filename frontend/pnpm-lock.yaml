@@ -8,6 +8,7 @@ overrides:
   js-cookie: 3.0.7
   form-data@<4.0.6: '>=4.0.6'
   postcss@<8.5.18: '>=8.5.18'
+  nanoid: 3.3.18
   dompurify@<3.4.14: '>=3.4.14'
 
 importers:
@@ -30,7 +31,7 @@ importers:
         specifier: ^10.7.0
         version: 10.11.1(vue@3.5.26(typescript@5.6.3))
       axios:
-        specifier: ^1.18.0
+        specifier: ^1.18.1
         version: 1.18.1
       chart.js:
         specifier: ^4.4.1

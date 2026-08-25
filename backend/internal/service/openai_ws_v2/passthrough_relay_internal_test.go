@@ -787,7 +787,7 @@ func TestObserveUpstreamMessage_ResponseServiceTierOnlyFromTerminalEvents(t *tes
 	require.Equal(t, "default", completed.responseServiceTier, "the echoed priority tier must lose to the terminal declaration")
 
 	var turn RelayTurnResult
-	emitTurnComplete(func(result RelayTurnResult) { turn = result }, state, completed)
+	emitTurnComplete(func(result RelayTurnResult) { turn = result }, state, completed, false)
 	require.Equal(t, "default", turn.ResponseServiceTier)
 
 	var result RelayResult

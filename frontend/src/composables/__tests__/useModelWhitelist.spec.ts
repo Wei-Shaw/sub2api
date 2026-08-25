@@ -45,8 +45,8 @@ describe('useModelWhitelist', () => {
     expect(getModelsByPlatform('antigravity')).toContain('gemini-3.7-flash-high')
     expect(getModelsByPlatform('antigravity')).toContain('gemini-3.7-flash-medium')
     expect(getModelsByPlatform('antigravity')).toContain('gemini-3.7-flash-low')
-    expect(getModelsByPlatform('antigravity')).not.toContain('claude-fable-5')
-    expect(getModelsByPlatform('antigravity')).not.toContain('claude-opus-4-8')
+    expect(getModelsByPlatform('antigravity')).toContain('claude-fable-5')
+    expect(getModelsByPlatform('antigravity')).toContain('claude-opus-4-8')
   })
 
   it('xAI 模型列表包含 Grok 4.5 官方模型和别名', () => {

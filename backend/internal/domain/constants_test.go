@@ -25,12 +25,21 @@ func TestDefaultAntigravityModelMapping_ImageCompatibilityAliases(t *testing.T) 
 	}
 }
 
-func TestDefaultAntigravityModelMapping_DropsRetiredIdentityPassthroughs(t *testing.T) {
+func TestDefaultAntigravityModelMapping_ContainsNewClaudeModels(t *testing.T) {
 	t.Parallel()
 
-	for _, retired := range []string{"claude-fable-5", "claude-opus-4-7", "claude-opus-4-8"} {
-		if _, ok := DefaultAntigravityModelMapping[retired]; ok {
-			t.Fatalf("retired Antigravity model %q should not remain in the default mapping", retired)
+	cases := map[string]string{
+		"claude-fable-5":  "claude-fable-5",
+		"claude-opus-4-7": "claude-opus-4-7",
+		"claude-opus-4-8": "claude-opus-4-8",
+	}
+	for from, want := range cases {
+		got, ok := DefaultAntigravityModelMapping[from]
+		if !ok {
+			t.Fatalf("expected mapping for %q to exist", from)
+		}
+		if got != want {
+			t.Fatalf("unexpected mapping for %q: got %q want %q", from, got, want)
 		}
 	}
 }
@@ -42,8 +51,8 @@ func TestDefaultAntigravityModelMapping_ClaudeAliasesPointAtLiveModels(t *testin
 		"claude-opus-4-6":            "claude-opus-4-6-thinking",
 		"claude-sonnet-4-6":          "claude-sonnet-4-6",
 		"claude-sonnet-4-5":          "claude-sonnet-4-5",
-		"claude-sonnet-4-5-thinking": "claude-sonnet-4-5-thinking",
-		"claude-sonnet-4-5-20250929": "claude-sonnet-4-5",
+		"claude-sonnet-4-5-thinking": "claude-sonnet-4-6",
+		"claude-sonnet-4-5-20250929": "claude-sonnet-4-6",
 	}
 	for from, want := range cases {
 		got, ok := DefaultAntigravityModelMapping[from]
