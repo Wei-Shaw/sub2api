@@ -279,7 +279,7 @@ func (r *asyncMediaTaskRepository) ListUnfinished(ctx context.Context, limit int
 	return result, nil
 }
 
-// InsertTerminalUsageLog 终态追加写一条 usage_log。
+// InsertTerminalUsageLog 成功终态追加写一条 usage_log。
 // 仅写入异步图片任务所需的核心计费列与新增异步列（task_id/image_urls/cos_url/billing_status），
 // 其余列依赖 usage_logs 的默认值。该 INSERT 与高并发批处理写入路径完全隔离。
 func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, in *service.TerminalUsageLogInput) (bool, error) {

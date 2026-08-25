@@ -353,7 +353,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	adminFileService := service.NewAdminFileService(cosImageTransferService)
 	fileHandler := admin.NewFileHandler(adminFileService)
 	asyncMediaTaskRepository := repository.NewAsyncMediaTaskRepository(client, db)
-	asyncMediaService := service.ProvideAsyncMediaService(asyncMediaTaskRepository, userRepository, groupRepository, billingService, modelPricingResolver, cosImageTransferService, deferredService, billingContextResolver, billingCacheService, configConfig)
+	asyncMediaService := service.ProvideAsyncMediaService(asyncMediaTaskRepository, userRepository, groupRepository, billingService, modelPricingResolver, cosImageTransferService, deferredService, billingContextResolver, billingCacheService, opsService, configConfig)
 	asyncMediaReconciler := service.ProvideAsyncMediaReconciler(asyncMediaTaskRepository, asyncMediaService, accountRepository, configConfig)
 	asyncMediaConfigService := service.ProvideAsyncMediaConfigService(settingRepository, asyncMediaService, asyncMediaReconciler)
 	asyncMediaConfigHandler := admin.NewAsyncMediaConfigHandler(asyncMediaConfigService)

@@ -113,7 +113,7 @@ func (t *AsyncMediaTask) ResultURLs() []string {
 }
 
 // TerminalUsageLogInput 终态 usage_log 追加写入参数。
-// 异步媒体任务在终态（成功结算 / 退费）时追加写一条 usage_log，
+// 异步媒体任务仅在成功结算时追加写一条 usage_log；失败终态写入错误记录，
 // 通过独立、隔离的 INSERT 实现，避免触碰高并发批处理写入路径。
 type TerminalUsageLogInput struct {
 	UserID          int64
@@ -187,7 +187,7 @@ type AsyncMediaTaskRepository interface {
 	MarkRefunded(ctx context.Context, id int64, status, errorReason string) (bool, error)
 	// ListUnfinished 扫描未终结（pending/running）的任务，供 reconciler 兜底处理。
 	ListUnfinished(ctx context.Context, limit int) ([]*AsyncMediaTask, error)
-	// InsertTerminalUsageLog 在任务终态追加写一条 usage_log（charged/refunded）。
+	// InsertTerminalUsageLog 在任务成功终态追加写一条 charged usage_log。
 	// 成功终态可覆盖同 request/API key 的 0 费用占位/超时记录；返回是否实际写入或更新。
 	InsertTerminalUsageLog(ctx context.Context, in *TerminalUsageLogInput) (bool, error)
 }

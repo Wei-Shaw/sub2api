@@ -107,8 +107,7 @@ func TestAsyncMediaFailedRefundUsesSnapshottedPayer(t *testing.T) {
 	svc.markFailedAndRefund(context.Background(), task, BillingTypeBalance, "failed")
 
 	require.Equal(t, []int64{payerID}, userRepo.refundUserIDs)
-	require.Equal(t, BillingStatusRefunded, taskRepo.lastUsageLog().BillingStatus)
-	require.Equal(t, &payerID, taskRepo.lastUsageLog().PayerUserID)
+	require.Empty(t, taskRepo.usageLog)
 	require.Equal(t, []int64{payerID}, cache.userIDs)
 }
 
@@ -150,7 +149,7 @@ func TestAsyncMediaCompanyBalanceChargeAndRefundSkipsOwnerWallet(t *testing.T) {
 	require.Empty(t, userRepo.refundUserIDs)
 	require.Equal(t, []float64{0.10}, organizationRepo.organizationBalanceDebits)
 	require.Equal(t, []float64{0.10}, organizationRepo.organizationBalanceCredits)
-	require.Equal(t, BalanceSourceCompany, *taskRepo.lastUsageLog().BalanceSource)
+	require.Empty(t, taskRepo.usageLog)
 }
 
 func (r *fakeUserRepo) totalRefunded() float64 {
@@ -643,8 +642,8 @@ func TestAsyncMedia_UpstreamFailure_RefundsFull(t *testing.T) {
 	require.Equal(t, AsyncMediaStatusRefunded, final.Status)
 	// 全额退还预扣 0.10 → 余额恢复 100
 	require.InDelta(t, 100.0, userRepo.balance, 1e-9)
-	// 终态写一条 refunded usage_log
-	require.Equal(t, BillingStatusRefunded, taskRepo.lastUsageLog().BillingStatus)
+	// 失败任务不进入正常 usage_logs，由终态错误记录负责展示。
+	require.Equal(t, 0, taskRepo.usageLogCount())
 }
 
 func TestAsyncMedia_PseudoSyncTimeout_NoRefundNoTerminal(t *testing.T) {
@@ -739,7 +738,7 @@ func TestAsyncMedia_DeadlineExceeded_Reconciler_Refunds(t *testing.T) {
 	require.NoError(t, svc.ReconcileTask(context.Background(), stored, acc))
 	require.Equal(t, AsyncMediaStatusExpired, stored.Status)
 	require.InDelta(t, 100.0, userRepo.balance, 1e-9) // 全额退还
-	require.Equal(t, BillingStatusRefunded, taskRepo.lastUsageLog().BillingStatus)
+	require.Equal(t, 0, taskRepo.usageLogCount())
 }
 
 // TestAsyncMedia_PricingMissing_RejectsSubmit 验证：

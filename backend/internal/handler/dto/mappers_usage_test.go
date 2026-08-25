@@ -140,6 +140,31 @@ func TestUsageLogFromService_UsesRequestedModelAndKeepsUpstreamAdminOnly(t *test
 	require.Contains(t, string(adminJSON), `"upstream_model_mismatch":true`)
 }
 
+func TestUsageLogFromService_OnlyAdminDTOIncludesRequestParameters(t *testing.T) {
+	t.Parallel()
+
+	log := &service.UsageLog{
+		RequestID: "req_prompt_visibility",
+		Model:     "gpt-5.4",
+		RequestParameters: map[string]any{
+			"prompt": "private user prompt",
+			"n":      2,
+		},
+	}
+
+	userDTO := UsageLogFromService(log)
+	adminDTO := UsageLogFromServiceAdmin(log)
+
+	userJSON, err := json.Marshal(userDTO)
+	require.NoError(t, err)
+	require.NotContains(t, string(userJSON), "private user prompt")
+	require.Contains(t, string(userJSON), `"request_parameters":{"n":2}`)
+
+	adminJSON, err := json.Marshal(adminDTO)
+	require.NoError(t, err)
+	require.Contains(t, string(adminJSON), `"request_parameters":{"n":2,"prompt":"private user prompt"}`)
+}
+
 func TestUsageLogFromService_KeepsUserBillingAndIPWithoutAdminCostFields(t *testing.T) {
 	t.Parallel()
 

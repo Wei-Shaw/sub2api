@@ -3,6 +3,7 @@ package dto
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -671,7 +672,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		AccountID:                 l.AccountID,
 		RequestID:                 l.RequestID,
 		Model:                     requestedModel,
-		RequestParameters:         l.RequestParameters,
+		RequestParameters:         requestParametersWithoutPrompt(l.RequestParameters),
 		ServiceTier:               l.ServiceTier,
 		ReasoningEffort:           l.ReasoningEffort,
 		InboundEndpoint:           l.InboundEndpoint,
@@ -729,6 +730,23 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 	}
 }
 
+func requestParametersWithoutPrompt(params map[string]any) map[string]any {
+	if len(params) == 0 {
+		return nil
+	}
+	filtered := make(map[string]any, len(params))
+	for key, value := range params {
+		if strings.EqualFold(strings.TrimSpace(key), "prompt") {
+			continue
+		}
+		filtered[key] = value
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	return filtered
+}
+
 // UsageLogFromService converts a service UsageLog to DTO for regular users.
 // It excludes admin-only account/upstream internals while keeping user billing and request metadata.
 func UsageLogFromService(l *service.UsageLog) *UsageLog {
@@ -746,6 +764,9 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 		return nil
 	}
 	usageLog := usageLogFromServiceUser(l)
+	// Restore the complete request parameters only for the administrator usage
+	// menu. The shared user DTO removes prompt before this point.
+	usageLog.RequestParameters = l.RequestParameters
 	usageLog.UpstreamEndpoint = l.UpstreamEndpoint
 	return &AdminUsageLog{
 		UsageLog:              usageLog,

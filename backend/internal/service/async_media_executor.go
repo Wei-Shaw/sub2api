@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -29,7 +30,7 @@ const (
 //   - 提交任务（构建 fal 请求 → 预扣费 → 落库 pending → submit → running）
 //   - 轮询/取结果（running → succeeded，取 images）
 //   - 失败判定（status 明确失败 或 到达 fail_deadline_at）与退费（幂等）
-//   - 成功转存 COS 并在终态追加写 usage_log（charged/refunded）
+//   - 成功转存 COS 并在成功终态追加写 usage_log；失败终态写入 ops 错误记录
 //
 // 计费采用「预扣 + 结算退差」模型：
 //   - 提交时按 (size_tier × quality × num_images) 预扣 heldCost
@@ -46,6 +47,7 @@ type AsyncMediaService struct {
 	cos                    *COSImageTransferService
 	deferred               *DeferredService
 	billingContextResolver *BillingContextResolver
+	opsService             *OpsService
 	balanceCache           interface {
 		InvalidateUserBalance(ctx context.Context, userID int64) error
 	}
@@ -65,6 +67,14 @@ func (s *AsyncMediaService) SetBalanceCache(cache interface {
 func (s *AsyncMediaService) SetBillingContextResolver(resolver *BillingContextResolver) {
 	if s != nil {
 		s.billingContextResolver = resolver
+	}
+}
+
+// SetOpsService 注入异步任务终态错误记录服务。图片任务已离开 HTTP
+// 中间件生命周期，失败必须在终态显式写入 ops_error_logs。
+func (s *AsyncMediaService) SetOpsService(ops *OpsService) {
+	if s != nil {
+		s.opsService = ops
 	}
 }
 
@@ -507,7 +517,7 @@ func (s *AsyncMediaService) markSucceeded(ctx context.Context, task *AsyncMediaT
 	s.writeTerminalUsageLog(ctx, task, billingType, finalTotalCost, finalCost, amFloat64Ptr(accountRateMultiplier), BillingStatusCharged, imageURLs, cosURLs, imageOutputSizes)
 }
 
-// markFailedAndRefund 失败终态：退还全部预扣、置 refunded/expired、终态写 usage_log（refunded）。
+// markFailedAndRefund 失败终态：退还全部预扣、置 refunded/expired，并写入错误记录。
 func (s *AsyncMediaService) markFailedAndRefund(ctx context.Context, task *AsyncMediaTask, billingType int8, reason string) {
 	status := AsyncMediaStatusRefunded
 	if task.FailDeadlineAt != nil && time.Now().After(*task.FailDeadlineAt) {
@@ -527,7 +537,44 @@ func (s *AsyncMediaService) markFailedAndRefund(ctx context.Context, task *Async
 	if task.HeldCost > 0 {
 		s.refund(ctx, billingType, asyncMediaBillingContext(task), task.HeldCost)
 	}
-	s.writeTerminalUsageLog(ctx, task, billingType, 0, 0, nil, BillingStatusRefunded, nil, nil, nil)
+	s.recordTerminalMediaError(ctx, task, reason)
+}
+
+func (s *AsyncMediaService) recordTerminalMediaError(ctx context.Context, task *AsyncMediaTask, reason string) {
+	if s == nil || s.opsService == nil || task == nil || strings.EqualFold(strings.TrimSpace(reason), "cancelled by client") {
+		return
+	}
+	statusCode := upstreamStatusCodeFromMessage(reason)
+	if statusCode == 0 {
+		statusCode = http.StatusBadGateway
+	}
+	userID, apiKeyID := task.UserID, task.APIKeyID
+	entry := &OpsInsertErrorLogInput{
+		RequestID: task.InternalRequestID, ClientRequestID: task.InternalRequestID,
+		UserID: &userID, APIKeyID: &apiKeyID, GroupID: task.GroupID,
+		Platform: task.Facade, Model: task.RequestedModel,
+		RequestedModel: task.RequestedModel, UpstreamModel: amDerefStr(task.UpstreamModel),
+		InboundEndpoint: amDerefStr(task.InboundEndpoint), UpstreamEndpoint: amDerefStr(task.UpstreamEndpoint),
+		UserAgent: amDerefStr(task.UserAgent), ErrorPhase: "upstream", ErrorType: "upstream_error",
+		Severity: "error", StatusCode: statusCode, ErrorMessage: reason, ErrorBody: reason,
+		ErrorSource: "upstream", ErrorOwner: "provider", CreatedAt: time.Now(),
+	}
+	if task.AccountID != nil {
+		accountID := *task.AccountID
+		entry.AccountID = &accountID
+	}
+	if task.ClientIP != nil {
+		clientIP := *task.ClientIP
+		entry.ClientIP = &clientIP
+	}
+	if statusCode > 0 {
+		entry.UpstreamStatusCode = &statusCode
+	}
+	upstreamMessage := reason
+	entry.UpstreamErrorMessage = &upstreamMessage
+	if err := s.opsService.RecordError(ctx, entry); err != nil && !errors.Is(err, ErrOpsDisabled) {
+		logger.L().Warn("async_media.error_log_failed", zap.Int64("task_id", task.ID), zap.Error(err))
+	}
 }
 
 // writeTerminalUsageLog 终态追加写一条 usage_log。
