@@ -14,6 +14,68 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestOpenAIAccountSchedulerColdStartProbeQuota(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIScheduler.Strategy = "high_availability"
+	cfg.Gateway.OpenAIScheduler.ColdStartProbeEnabled = true
+	cfg.Gateway.OpenAIScheduler.ColdStartProbeQuotaPerMinute = 2
+	scheduler := &defaultOpenAIAccountScheduler{service: &OpenAIGatewayService{cfg: cfg}}
+	require.True(t, scheduler.allowColdStartSample())
+	require.True(t, scheduler.allowColdStartSample())
+	require.False(t, scheduler.allowColdStartSample())
+}
+
+func TestOpenAIAccountRuntimeStatsBlendsScheduledProbeAtLowWeight(t *testing.T) {
+	stats := newOpenAIAccountRuntimeStats()
+	now := time.Now()
+	stats.reportWithCategory(101, false, nil, openAIAccountFailureServer)
+	stats.reportProbe(101, true, now)
+
+	errorRate, _, _ := stats.healthSnapshotAt(101, now)
+	require.InDelta(t, 0.16, errorRate, 1e-9)
+	require.True(t, stats.hasSampleAt(101, now))
+}
+
+func TestOpenAIAccountRuntimeStatsUsesFreshProbeWhenRealTrafficIsStale(t *testing.T) {
+	stats := newOpenAIAccountRuntimeStats()
+	now := time.Now()
+	stats.reportWithCategory(102, true, nil, "")
+	stat := stats.loadOrCreate(102)
+	stat.lastSampleUnixNano.Store(now.Add(-openAIRealHealthSampleTTL - time.Second).UnixNano())
+	stats.reportProbe(102, false, now)
+
+	errorRate, _, _ := stats.healthSnapshotAt(102, now)
+	require.InDelta(t, 0.05, errorRate, 1e-9)
+	require.True(t, stats.hasSampleAt(102, now))
+}
+
+func TestOpenAIAccountRuntimeStatsLegacySnapshotIgnoresProbeAndTTL(t *testing.T) {
+	stats := newOpenAIAccountRuntimeStats()
+	now := time.Now()
+	stats.reportWithCategory(104, false, nil, openAIAccountFailureServer)
+	stat := stats.loadOrCreate(104)
+	stat.lastSampleUnixNano.Store(now.Add(-openAIRealHealthSampleTTL - time.Hour).UnixNano())
+	stats.reportProbe(104, true, now)
+
+	errorRate, _, _ := stats.snapshot(104)
+	require.InDelta(t, 0.2, errorRate, 1e-9)
+}
+
+func TestOpenAIAccountSchedulerProbeDoesNotChangeCircuit(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIScheduler.Strategy = "high_availability"
+	cfg.Gateway.OpenAIScheduler.HealthCircuitEnabled = true
+	scheduler := &defaultOpenAIAccountScheduler{
+		service: &OpenAIGatewayService{cfg: cfg},
+		stats:   newOpenAIAccountRuntimeStats(),
+	}
+
+	scheduler.ReportProbeResult(103, false)
+	require.False(t, scheduler.stats.circuitOpen(103, time.Now()))
+	scheduler.ReportProbeResult(103, true)
+	require.False(t, scheduler.stats.circuitOpen(103, time.Now()))
+}
+
 type openAISnapshotCacheStub struct {
 	SchedulerCache
 	snapshotAccounts []*Account
@@ -2854,6 +2916,46 @@ func TestDefaultOpenAIAccountScheduler_ShouldEscapeStickyAccount_ThresholdBounda
 	require.InDelta(t, 15000, observedTTFT, 1e-9)
 }
 
+func TestOpenAIStickyBindingModeHealthEscapeDefaultsToKeepOriginal(t *testing.T) {
+	legacy := &OpenAIGatewayService{cfg: &config.Config{}}
+	require.True(t, legacy.preserveStickyBindingAfterHealthEscape())
+
+	ha := &config.Config{}
+	ha.Gateway.OpenAIScheduler.Strategy = "high_availability"
+	ha.Gateway.OpenAIScheduler.StickyBindingMode = "rebind_on_failover"
+	service := &OpenAIGatewayService{cfg: ha}
+	require.True(t, service.preserveStickyBindingAfterHealthEscape())
+
+	ha.Gateway.OpenAIScheduler.FailoverOnHealthEscape = true
+	require.False(t, service.preserveStickyBindingAfterHealthEscape())
+}
+
+func TestRebindStickySessionAfterFailoverIsExplicitAndStrategyGated(t *testing.T) {
+	cache := &schedulerTestGatewayCache{}
+	groupID := int64(42)
+
+	legacy := &OpenAIGatewayService{cfg: &config.Config{}, cache: cache}
+	require.NoError(t, legacy.RebindStickySessionAfterFailover(context.Background(), &groupID, "session", 2))
+	require.Empty(t, cache.sessionBindings)
+
+	haKeep := &config.Config{}
+	haKeep.Gateway.OpenAIScheduler.Strategy = "high_availability"
+	haKeep.Gateway.OpenAIScheduler.StickyBindingMode = "keep_original"
+	keep := &OpenAIGatewayService{cfg: haKeep, cache: cache}
+	require.NoError(t, keep.RebindStickySessionAfterFailover(context.Background(), &groupID, "session", 3))
+	require.Empty(t, cache.sessionBindings)
+
+	haRebind := &config.Config{}
+	haRebind.Gateway.OpenAIScheduler.Strategy = "high_availability"
+	haRebind.Gateway.OpenAIScheduler.StickyBindingMode = "rebind_on_failover"
+	rebind := &OpenAIGatewayService{cfg: haRebind, cache: cache}
+	require.NoError(t, rebind.RebindStickySessionAfterFailover(context.Background(), &groupID, "session", 4))
+	require.Len(t, cache.sessionBindings, 1)
+	for _, accountID := range cache.sessionBindings {
+		require.Equal(t, int64(4), accountID)
+	}
+}
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionSticky_ForceHTTP(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(1010)
@@ -3298,6 +3400,82 @@ func TestOpenAIAccountRuntimeStats_ReportAndSnapshot(t *testing.T) {
 	require.InDelta(t, 0.36, errorRate, 1e-9)
 	require.InDelta(t, 120.0, ttft, 1e-9)
 	require.Equal(t, 1, stats.size())
+}
+
+func TestClassifyOpenAIAccountFailureAndExcludeRequestScopedHealth(t *testing.T) {
+	rateLimit := &UpstreamFailoverError{StatusCode: 429, Scope: GatewayFailureScopeAccount}
+	require.Equal(t, openAIAccountFailureRateLimit, classifyOpenAIAccountFailure(rateLimit))
+	require.Equal(t, openAIAccountFailureAuth, classifyOpenAIAccountFailure(&UpstreamFailoverError{Stage: GatewayFailureStageAccountAuth, Scope: GatewayFailureScopeAccount}))
+	require.Equal(t, openAIAccountFailureServer, classifyOpenAIAccountFailure(&UpstreamFailoverError{StatusCode: 503, Scope: GatewayFailureScopeAccount}))
+	require.Equal(t, openAIAccountFailureRequestScope, classifyOpenAIAccountFailure(&UpstreamFailoverError{StatusCode: 503, Scope: GatewayFailureScopeRequest}))
+	require.Equal(t, openAIAccountFailureRequestScope, classifyOpenAIAccountFailure(&UpstreamFailoverError{StatusCode: 429, Scope: GatewayFailureScopeProvider}))
+
+	stats := newOpenAIAccountRuntimeStats()
+	stats.reportWithCategory(1002, false, nil, openAIAccountFailureRateLimit)
+	stats.reportWithCategory(1002, false, nil, openAIAccountFailureRequestScope)
+	errorRate, _, _ := stats.snapshot(1002)
+	require.InDelta(t, 0.2, errorRate, 1e-9)
+	counts := stats.failureCounts(1002)
+	require.Equal(t, int64(1), counts[openAIAccountFailureRateLimit])
+	require.Equal(t, int64(1), counts[openAIAccountFailureRequestScope])
+}
+
+func TestOpenAIHealthCircuitTripsOnlyForAccountFailuresAndRecoversOnSuccess(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIScheduler.Strategy = "high_availability"
+	cfg.Gateway.OpenAIScheduler.HealthCircuitEnabled = true
+	cfg.Gateway.OpenAIScheduler.HealthCircuitFailureThreshold = 2
+	cfg.Gateway.OpenAIScheduler.HealthCircuitWindowSeconds = 60
+	cfg.Gateway.OpenAIScheduler.HealthCircuitCooldownSeconds = 30
+	scheduler := &defaultOpenAIAccountScheduler{service: &OpenAIGatewayService{cfg: cfg}, stats: newOpenAIAccountRuntimeStats()}
+	failure := &UpstreamFailoverError{StatusCode: 429, Scope: GatewayFailureScopeAccount}
+	scheduler.ReportResultWithError(1003, false, nil, failure)
+	require.False(t, scheduler.stats.circuitOpen(1003, time.Now()))
+	scheduler.ReportResultWithError(1003, false, nil, failure)
+	require.True(t, scheduler.stats.circuitOpen(1003, time.Now()))
+
+	requestFailure := &UpstreamFailoverError{StatusCode: 400, Scope: GatewayFailureScopeRequest}
+	scheduler.ReportResultWithError(1004, false, nil, requestFailure)
+	scheduler.ReportResultWithError(1004, false, nil, requestFailure)
+	require.False(t, scheduler.stats.circuitOpen(1004, time.Now()))
+
+	scheduler.ReportResultWithError(1003, true, nil, nil)
+	require.False(t, scheduler.stats.circuitOpen(1003, time.Now()))
+}
+
+type schedulerDistributedHealthCacheStub struct {
+	until       time.Time
+	recordCalls int
+	clearCalls  int
+}
+
+func (c *schedulerDistributedHealthCacheStub) RecordOpenAIAccountFailure(context.Context, int64, time.Duration, time.Duration, int) (int64, time.Time, bool, error) {
+	c.recordCalls++
+	c.until = time.Now().Add(time.Minute)
+	return 1, c.until, true, nil
+}
+func (c *schedulerDistributedHealthCacheStub) ClearOpenAIAccountFailure(context.Context, int64) error {
+	c.clearCalls++
+	c.until = time.Time{}
+	return nil
+}
+func (c *schedulerDistributedHealthCacheStub) GetOpenAIAccountCircuit(context.Context, int64) (time.Time, error) {
+	return c.until, nil
+}
+
+func TestOpenAIHealthCircuitUsesOptionalDistributedCache(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIScheduler.Strategy = "high_availability"
+	cfg.Gateway.OpenAIScheduler.HealthCircuitEnabled = true
+	cfg.Gateway.OpenAIScheduler.HealthCircuitFailureThreshold = 1
+	cache := &schedulerDistributedHealthCacheStub{}
+	scheduler := &defaultOpenAIAccountScheduler{service: &OpenAIGatewayService{cfg: cfg}, stats: newOpenAIAccountRuntimeStats(), healthCache: cache}
+	failure := &UpstreamFailoverError{StatusCode: 503, Scope: GatewayFailureScopeAccount}
+	scheduler.ReportResultWithError(1005, false, nil, failure)
+	require.Equal(t, 1, cache.recordCalls)
+	require.True(t, scheduler.distributedCircuitOpen(context.Background(), 1005))
+	scheduler.ReportResultWithError(1005, true, nil, nil)
+	require.Equal(t, 1, cache.clearCalls)
 }
 
 func TestOpenAIAccountRuntimeStats_ReportConcurrent(t *testing.T) {

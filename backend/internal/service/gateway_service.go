@@ -457,6 +457,15 @@ var ErrStickySessionNotFound = errors.New("sticky session not found")
 // when no cached reasoning content exists for the reasoning item ID.
 var ErrReasoningContentNotFound = errors.New("reasoning content not found")
 
+// OpenAIAccountHealthCache is an optional Redis-backed extension used by the
+// high-availability scheduler. It is deliberately separate from sticky-session
+// methods so existing cache implementations remain source-compatible.
+type OpenAIAccountHealthCache interface {
+	RecordOpenAIAccountFailure(ctx context.Context, accountID int64, window, cooldown time.Duration, threshold int) (count int64, until time.Time, tripped bool, err error)
+	ClearOpenAIAccountFailure(ctx context.Context, accountID int64) error
+	GetOpenAIAccountCircuit(ctx context.Context, accountID int64) (until time.Time, err error)
+}
+
 // GatewayCache 定义网关服务的缓存操作接口。
 // 提供粘性会话（Sticky Session）的存储、查询、刷新和删除功能。
 //

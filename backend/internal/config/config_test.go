@@ -470,6 +470,30 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if cfg.Gateway.OpenAIScheduler.StickyEscapeErrorRate != 0.5 {
 		t.Fatalf("Gateway.OpenAIScheduler.StickyEscapeErrorRate = %v, want 0.5", cfg.Gateway.OpenAIScheduler.StickyEscapeErrorRate)
 	}
+	if cfg.Gateway.OpenAIScheduler.Strategy != "legacy" {
+		t.Fatalf("Gateway.OpenAIScheduler.Strategy = %q, want legacy", cfg.Gateway.OpenAIScheduler.Strategy)
+	}
+	if cfg.Gateway.OpenAIScheduler.StickyBindingMode != "keep_original" {
+		t.Fatalf("Gateway.OpenAIScheduler.StickyBindingMode = %q, want keep_original", cfg.Gateway.OpenAIScheduler.StickyBindingMode)
+	}
+	if cfg.Gateway.OpenAIScheduler.FailoverOnHealthEscape {
+		t.Fatalf("Gateway.OpenAIScheduler.FailoverOnHealthEscape = true, want false")
+	}
+	if cfg.Gateway.OpenAIScheduler.HighAvailabilityErrorRateWeight != 1.5 {
+		t.Fatalf("Gateway.OpenAIScheduler.HighAvailabilityErrorRateWeight = %v, want 1.5", cfg.Gateway.OpenAIScheduler.HighAvailabilityErrorRateWeight)
+	}
+	if cfg.Gateway.OpenAIScheduler.HighAvailabilityTTFTWeight != 1.5 {
+		t.Fatalf("Gateway.OpenAIScheduler.HighAvailabilityTTFTWeight = %v, want 1.5", cfg.Gateway.OpenAIScheduler.HighAvailabilityTTFTWeight)
+	}
+	if !cfg.Gateway.OpenAIScheduler.HealthCircuitEnabled {
+		t.Fatalf("Gateway.OpenAIScheduler.HealthCircuitEnabled = false, want true")
+	}
+	if cfg.Gateway.OpenAIScheduler.HealthCircuitFailureThreshold != 3 || cfg.Gateway.OpenAIScheduler.HealthCircuitWindowSeconds != 60 || cfg.Gateway.OpenAIScheduler.HealthCircuitCooldownSeconds != 30 {
+		t.Fatalf("unexpected health circuit defaults: threshold=%d window=%d cooldown=%d", cfg.Gateway.OpenAIScheduler.HealthCircuitFailureThreshold, cfg.Gateway.OpenAIScheduler.HealthCircuitWindowSeconds, cfg.Gateway.OpenAIScheduler.HealthCircuitCooldownSeconds)
+	}
+	if !cfg.Gateway.OpenAIScheduler.ColdStartProbeEnabled || cfg.Gateway.OpenAIScheduler.ColdStartProbeQuotaPerMinute != 8 {
+		t.Fatalf("unexpected cold-start probe defaults: enabled=%v quota=%d", cfg.Gateway.OpenAIScheduler.ColdStartProbeEnabled, cfg.Gateway.OpenAIScheduler.ColdStartProbeQuotaPerMinute)
+	}
 	if !cfg.Gateway.OpenAIWS.SessionHashReadOldFallback {
 		t.Fatalf("Gateway.OpenAIWS.SessionHashReadOldFallback = false, want true")
 	}
@@ -2375,6 +2399,46 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 			name:    "sticky_escape_error_rate 不能大于 1",
 			mutate:  func(c *Config) { c.Gateway.OpenAIScheduler.StickyEscapeErrorRate = 1.1 },
 			wantErr: "gateway.openai_scheduler.sticky_escape_error_rate",
+		},
+		{
+			name:    "scheduler strategy 非法",
+			mutate:  func(c *Config) { c.Gateway.OpenAIScheduler.Strategy = "unknown" },
+			wantErr: "gateway.openai_scheduler.strategy",
+		},
+		{
+			name:    "sticky binding mode 非法",
+			mutate:  func(c *Config) { c.Gateway.OpenAIScheduler.StickyBindingMode = "migrate" },
+			wantErr: "gateway.openai_scheduler.sticky_binding_mode",
+		},
+		{
+			name:    "high availability error weight 不能为负数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIScheduler.HighAvailabilityErrorRateWeight = -0.1 },
+			wantErr: "gateway.openai_scheduler.high_availability_error_rate_weight",
+		},
+		{
+			name:    "high availability ttft weight 不能为 NaN",
+			mutate:  func(c *Config) { c.Gateway.OpenAIScheduler.HighAvailabilityTTFTWeight = math.NaN() },
+			wantErr: "gateway.openai_scheduler.high_availability_ttft_weight",
+		},
+		{
+			name:    "health circuit threshold 必须为正数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIScheduler.HealthCircuitFailureThreshold = 0 },
+			wantErr: "gateway.openai_scheduler.health_circuit_failure_threshold",
+		},
+		{
+			name:    "health circuit window 必须为正数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIScheduler.HealthCircuitWindowSeconds = 0 },
+			wantErr: "gateway.openai_scheduler.health_circuit_window_seconds",
+		},
+		{
+			name:    "health circuit cooldown 必须为正数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIScheduler.HealthCircuitCooldownSeconds = 0 },
+			wantErr: "gateway.openai_scheduler.health_circuit_cooldown_seconds",
+		},
+		{
+			name:    "cold start probe quota 必须为正数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIScheduler.ColdStartProbeQuotaPerMinute = 0 },
+			wantErr: "gateway.openai_scheduler.cold_start_probe_quota_per_minute",
 		},
 	}
 

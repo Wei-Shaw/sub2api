@@ -20,20 +20,22 @@ func NewScheduledTestHandler(scheduledTestSvc *service.ScheduledTestService) *Sc
 }
 
 type createScheduledTestPlanRequest struct {
-	AccountID      int64  `json:"account_id" binding:"required"`
-	ModelID        string `json:"model_id"`
-	CronExpression string `json:"cron_expression" binding:"required"`
-	Enabled        *bool  `json:"enabled"`
-	MaxResults     int    `json:"max_results"`
-	AutoRecover    *bool  `json:"auto_recover"`
+	AccountID              int64  `json:"account_id" binding:"required"`
+	ModelID                string `json:"model_id"`
+	CronExpression         string `json:"cron_expression" binding:"required"`
+	Enabled                *bool  `json:"enabled"`
+	MaxResults             int    `json:"max_results"`
+	AutoRecover            *bool  `json:"auto_recover"`
+	IncludeInHealthSamples *bool  `json:"include_in_health_samples"`
 }
 
 type updateScheduledTestPlanRequest struct {
-	ModelID        string `json:"model_id"`
-	CronExpression string `json:"cron_expression"`
-	Enabled        *bool  `json:"enabled"`
-	MaxResults     int    `json:"max_results"`
-	AutoRecover    *bool  `json:"auto_recover"`
+	ModelID                string `json:"model_id"`
+	CronExpression         string `json:"cron_expression"`
+	Enabled                *bool  `json:"enabled"`
+	MaxResults             int    `json:"max_results"`
+	AutoRecover            *bool  `json:"auto_recover"`
+	IncludeInHealthSamples *bool  `json:"include_in_health_samples"`
 }
 
 // ListByAccount GET /admin/accounts/:id/scheduled-test-plans
@@ -72,6 +74,9 @@ func (h *ScheduledTestHandler) Create(c *gin.Context) {
 	}
 	if req.AutoRecover != nil {
 		plan.AutoRecover = *req.AutoRecover
+	}
+	if req.IncludeInHealthSamples != nil {
+		plan.IncludeInHealthSamples = *req.IncludeInHealthSamples
 	}
 
 	created, err := h.scheduledTestSvc.CreatePlan(c.Request.Context(), plan)
@@ -116,6 +121,9 @@ func (h *ScheduledTestHandler) Update(c *gin.Context) {
 	}
 	if req.AutoRecover != nil {
 		existing.AutoRecover = *req.AutoRecover
+	}
+	if req.IncludeInHealthSamples != nil {
+		existing.IncludeInHealthSamples = *req.IncludeInHealthSamples
 	}
 
 	updated, err := h.scheduledTestSvc.UpdatePlan(c.Request.Context(), existing)

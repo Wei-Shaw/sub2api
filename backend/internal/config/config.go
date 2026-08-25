@@ -1365,6 +1365,34 @@ func (w GatewayOpenAIWSSchedulerScoreWeights) IsValid() bool {
 
 // GatewayOpenAISchedulerConfig OpenAI 高级调度器配置。
 type GatewayOpenAISchedulerConfig struct {
+	// Strategy selects the account scheduling policy. legacy preserves the
+	// existing behavior; high_availability gives runtime health signals more
+	// influence after normal eligibility filtering.
+	Strategy string `mapstructure:"strategy"`
+	// StickyBindingMode controls whether a session returns to its original
+	// account after a temporary health escape.
+	StickyBindingMode string `mapstructure:"sticky_binding_mode"`
+	// FailoverOnHealthEscape allows a health-score escape to migrate the sticky
+	// binding when sticky_binding_mode is rebind_on_failover.
+	FailoverOnHealthEscape bool `mapstructure:"failover_on_health_escape"`
+	// HighAvailabilityErrorRateWeight and HighAvailabilityTTFTWeight override
+	// the corresponding scheduler weights only in high_availability mode.
+	// Zero keeps the configured OpenAI WS weight, which is useful for manually
+	// constructed configs and preserves compatibility with older callers.
+	HighAvailabilityErrorRateWeight float64 `mapstructure:"high_availability_error_rate_weight"`
+	HighAvailabilityTTFTWeight      float64 `mapstructure:"high_availability_ttft_weight"`
+	// HealthCircuitEnabled enables a short account-level health circuit only in
+	// high_availability mode.
+	HealthCircuitEnabled bool `mapstructure:"health_circuit_enabled"`
+	// HealthCircuitFailureThreshold is the consecutive account failure count
+	// required to temporarily remove an account from scheduling.
+	HealthCircuitFailureThreshold int `mapstructure:"health_circuit_failure_threshold"`
+	HealthCircuitWindowSeconds    int `mapstructure:"health_circuit_window_seconds"`
+	HealthCircuitCooldownSeconds  int `mapstructure:"health_circuit_cooldown_seconds"`
+	// ColdStartProbeEnabled allows a bounded amount of real traffic to sample
+	// accounts without runtime history.
+	ColdStartProbeEnabled        bool `mapstructure:"cold_start_probe_enabled"`
+	ColdStartProbeQuotaPerMinute int  `mapstructure:"cold_start_probe_quota_per_minute"`
 	// StickyEscapeEnabled: 是否允许 session_hash sticky 在账号健康度劣化时临时逃逸
 	StickyEscapeEnabled bool `mapstructure:"sticky_escape_enabled"`
 	// StickyEscapeTTFTMs: TTFT EWMA 超过该阈值时跳过 sticky
@@ -1828,6 +1856,8 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	if cfg.Gateway.OpenAIScheduler.StickyEscapeErrorRate == 0 {
 		cfg.Gateway.OpenAIScheduler.StickyEscapeErrorRate = 0.5
 	}
+	cfg.Gateway.OpenAIScheduler.Strategy = normalizeOpenAISchedulerStrategy(cfg.Gateway.OpenAIScheduler.Strategy)
+	cfg.Gateway.OpenAIScheduler.StickyBindingMode = normalizeStickyBindingMode(cfg.Gateway.OpenAIScheduler.StickyBindingMode)
 	// Kept as a backstop: setEnvReachableDefaults now registers this key with its
 	// effective default (true), so IsSet always reports true and this branch no
 	// longer fires. It still guards the default if that registration is dropped.
@@ -1968,6 +1998,22 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+func normalizeOpenAISchedulerStrategy(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return "legacy"
+	}
+	return value
+}
+
+func normalizeStickyBindingMode(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return "keep_original"
+	}
+	return value
 }
 
 func configureConfigSource(setConfigFile, addConfigPath func(string)) {
@@ -2574,11 +2620,11 @@ func setDefaults() {
 // then silently dropped. Deployments driven purely by env — which is what
 // deploy/docker-compose.yml does — got the zero value with no warning.
 //
-// The values below are deliberately zero rather than the documented example
+// Most values below are deliberately zero rather than the documented example
 // values: an absent key already unmarshalled to the zero value, so registering
 // zero keeps behavior identical while making the key addressable from the
-// environment. Any subsystem that wants a richer default still applies it after
-// unmarshal, exactly as before.
+// environment. Strategy keys are explicit effective defaults because their
+// zero values are normalized to the compatibility policy during Load.
 func setEnvReachableDefaults() {
 	viper.SetDefault("gateway.forced_codex_instructions_template_file", "")
 	viper.SetDefault("gateway.session_idle_timeout_minutes", 0)
@@ -2593,6 +2639,17 @@ func setEnvReachableDefaults() {
 	viper.SetDefault("gateway.openai_scheduler.sticky_escape_enabled", true)
 	viper.SetDefault("gateway.openai_scheduler.sticky_escape_error_rate", 0.0)
 	viper.SetDefault("gateway.openai_scheduler.sticky_escape_ttft_ms", 0)
+	viper.SetDefault("gateway.openai_scheduler.strategy", "legacy")
+	viper.SetDefault("gateway.openai_scheduler.sticky_binding_mode", "keep_original")
+	viper.SetDefault("gateway.openai_scheduler.failover_on_health_escape", false)
+	viper.SetDefault("gateway.openai_scheduler.high_availability_error_rate_weight", 1.5)
+	viper.SetDefault("gateway.openai_scheduler.high_availability_ttft_weight", 1.5)
+	viper.SetDefault("gateway.openai_scheduler.health_circuit_enabled", true)
+	viper.SetDefault("gateway.openai_scheduler.health_circuit_failure_threshold", 3)
+	viper.SetDefault("gateway.openai_scheduler.health_circuit_window_seconds", 60)
+	viper.SetDefault("gateway.openai_scheduler.health_circuit_cooldown_seconds", 30)
+	viper.SetDefault("gateway.openai_scheduler.cold_start_probe_enabled", true)
+	viper.SetDefault("gateway.openai_scheduler.cold_start_probe_quota_per_minute", 8)
 
 	// server.trusted_proxies and security.forwarded_client_ip_headers are the
 	// other exception: load() distinguishes explicit configuration from absence
@@ -3543,6 +3600,34 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.OpenAIScheduler.StickyEscapeErrorRate < 0 || c.Gateway.OpenAIScheduler.StickyEscapeErrorRate > 1 {
 		return fmt.Errorf("gateway.openai_scheduler.sticky_escape_error_rate must be between 0 and 1")
+	}
+	strategy := normalizeOpenAISchedulerStrategy(c.Gateway.OpenAIScheduler.Strategy)
+	if strategy != "legacy" && strategy != "high_availability" {
+		return fmt.Errorf("gateway.openai_scheduler.strategy must be legacy or high_availability")
+	}
+	bindingMode := normalizeStickyBindingMode(c.Gateway.OpenAIScheduler.StickyBindingMode)
+	if bindingMode != "keep_original" && bindingMode != "rebind_on_failover" {
+		return fmt.Errorf("gateway.openai_scheduler.sticky_binding_mode must be keep_original or rebind_on_failover")
+	}
+	for name, weight := range map[string]float64{
+		"high_availability_error_rate_weight": c.Gateway.OpenAIScheduler.HighAvailabilityErrorRateWeight,
+		"high_availability_ttft_weight":       c.Gateway.OpenAIScheduler.HighAvailabilityTTFTWeight,
+	} {
+		if weight < 0 || math.IsNaN(weight) || math.IsInf(weight, 0) {
+			return fmt.Errorf("gateway.openai_scheduler.%s must be non-negative and finite", name)
+		}
+	}
+	if c.Gateway.OpenAIScheduler.HealthCircuitFailureThreshold <= 0 {
+		return fmt.Errorf("gateway.openai_scheduler.health_circuit_failure_threshold must be positive")
+	}
+	if c.Gateway.OpenAIScheduler.HealthCircuitWindowSeconds <= 0 {
+		return fmt.Errorf("gateway.openai_scheduler.health_circuit_window_seconds must be positive")
+	}
+	if c.Gateway.OpenAIScheduler.HealthCircuitCooldownSeconds <= 0 {
+		return fmt.Errorf("gateway.openai_scheduler.health_circuit_cooldown_seconds must be positive")
+	}
+	if c.Gateway.OpenAIScheduler.ColdStartProbeEnabled && c.Gateway.OpenAIScheduler.ColdStartProbeQuotaPerMinute <= 0 {
+		return fmt.Errorf("gateway.openai_scheduler.cold_start_probe_quota_per_minute must be positive")
 	}
 	if c.Gateway.MaxLineSize < 0 {
 		return fmt.Errorf("gateway.max_line_size must be non-negative")

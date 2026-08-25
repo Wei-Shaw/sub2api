@@ -408,6 +408,22 @@ gateway:
       upstream_cost: 0.0
   # OpenAI 高级调度器补充配置
   openai_scheduler:
+    # legacy 保持现有调度；high_availability 提高运行时成功率和 TTFT 指标的排序权重
+    strategy: legacy
+    # keep_original: 健康逃逸后恢复原账号；rebind_on_failover: failover 成功后迁移会话绑定
+    sticky_binding_mode: keep_original
+    # 仅当上面为 rebind_on_failover 时，是否允许健康评分逃逸也迁移绑定
+    failover_on_health_escape: false
+    high_availability_error_rate_weight: 1.5
+    high_availability_ttft_weight: 1.5
+    # 高可用账号级短路：连续账号级错误达到阈值后临时摘除，成功请求立即恢复
+    health_circuit_enabled: true
+    health_circuit_failure_threshold: 3
+    health_circuit_window_seconds: 60
+    health_circuit_cooldown_seconds: 30
+    # 无历史样本账号的有限探索额度；只消耗真实请求，不额外生成上游探测请求
+    cold_start_probe_enabled: true
+    cold_start_probe_quota_per_minute: 8
     # 是否允许 session_hash sticky 在账号健康度恶化时临时逃逸；false 可一键回退旧行为
     sticky_escape_enabled: true
     # TTFT EWMA 超过该阈值（毫秒）时跳过 sticky，默认 15s，避免轻微抖动就逃逸

@@ -6,6 +6,7 @@
 data/
 postgres_data/
 redis_data/
+ha-test/
 
 # Environment configuration (contains sensitive information)
 .env
