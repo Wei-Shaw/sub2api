@@ -1105,3 +1105,96 @@ func TestChatCompletionsChunkToResponsesEvents_FunctionToolStreamUnaffected(t *t
 	}
 	assert.True(t, sawArgsDelta, "function 工具应保持原有参数增量事件")
 }
+
+func TestResponsesInputToChatMessages_AgentMessageUsesEncryptedTaskPayload(t *testing.T) {
+	input := json.RawMessage(`[
+		{
+			"type":"agent_message",
+			"author":"/root",
+			"recipient":"/root/worker",
+			"content":[
+				{"type":"input_text","text":"Message Type: NEW_TASK\nTask name: /root/worker\nSender: /root\nPayload:\n"},
+				{"type":"encrypted_content","encrypted_content":"Run PowerShell Get-Location and return the raw output."}
+			]
+		}
+	]`)
+
+	messages, err := responsesInputToChatMessages("", input)
+	require.NoError(t, err)
+	require.Len(t, messages, 1)
+	assert.Equal(t, "user", messages[0].Role)
+	var text string
+	require.NoError(t, json.Unmarshal(messages[0].Content, &text))
+	assert.Contains(t, text, "Message Type: NEW_TASK")
+	assert.Contains(t, text, "Run PowerShell Get-Location")
+}
+
+func TestResponsesInputToChatMessages_CustomToolCallOutputContentItemsBecomePlainText(t *testing.T) {
+	input := json.RawMessage(`[
+		{"type":"custom_tool_call","call_id":"call_1","name":"exec","input":"Get-Location"},
+		{"type":"custom_tool_call_output","call_id":"call_1","output":[
+			{"type":"input_text","text":"C:\\Users\\Administrator\\Documents"},
+			{"type":"input_text","text":"\nExit code: 0"}
+		]}
+	]`)
+
+	messages, err := responsesInputToChatMessages("", input)
+	require.NoError(t, err)
+	require.Len(t, messages, 2)
+	require.Equal(t, "tool", messages[1].Role)
+	require.Equal(t, "call_1", messages[1].ToolCallID)
+	assert.JSONEq(t, `"C:\\Users\\Administrator\\Documents\nExit code: 0"`, string(messages[1].Content))
+}
+
+func TestResponsesInputToChatMessages_CustomToolCallOutputJSONStringContentItemsBecomePlainText(t *testing.T) {
+	input := json.RawMessage(`[
+		{"type":"custom_tool_call","call_id":"call_2","name":"exec","input":"Get-Location"},
+		{"type":"custom_tool_call_output","call_id":"call_2","output":"[{\"type\":\"input_text\",\"text\":\"C:\\\\repo\"}]"}
+	]`)
+
+	messages, err := responsesInputToChatMessages("", input)
+	require.NoError(t, err)
+	require.Len(t, messages, 2)
+	assert.JSONEq(t, `"C:\\repo"`, string(messages[1].Content))
+}
+
+func TestResponsesInputToChatMessages_CustomToolCallOutputObjectContentBecomesPlainText(t *testing.T) {
+	input := json.RawMessage(`[
+		{"type":"custom_tool_call","call_id":"call_3","name":"exec","input":"Write-Output codex-tool-ok"},
+		{"type":"custom_tool_call_output","call_id":"call_3","output":{"content":"codex-tool-ok\n","success":true}}
+	]`)
+
+	messages, err := responsesInputToChatMessages("", input)
+	require.NoError(t, err)
+	require.Len(t, messages, 2)
+	assert.JSONEq(t, `"codex-tool-ok\n"`, string(messages[1].Content))
+}
+
+func TestResponsesInputToChatMessages_CustomToolCallOutputObjectContentItemsBecomePlainText(t *testing.T) {
+	input := json.RawMessage(`[
+		{"type":"custom_tool_call","call_id":"call_4","name":"exec","input":"Get-Location"},
+		{"type":"custom_tool_call_output","call_id":"call_4","output":{"content":[
+			{"type":"input_text","text":"C:\\repo"},
+			{"type":"input_text","text":"\nExit code: 0"}
+		],"success":true}}
+	]`)
+
+	messages, err := responsesInputToChatMessages("", input)
+	require.NoError(t, err)
+	require.Len(t, messages, 2)
+	assert.JSONEq(t, `"C:\\repo\nExit code: 0"`, string(messages[1].Content))
+}
+
+func TestResponsesInputToChatMessages_CustomToolCallOutputNestedObjectTextBecomesPlainText(t *testing.T) {
+	input := json.RawMessage(`[
+		{"type":"custom_tool_call","call_id":"call_5","name":"exec","input":"Write-Output codex-tool-ok"},
+		{"type":"custom_tool_call_output","call_id":"call_5","output":[
+			{"type":"input_text","text":"{\"content\":\"codex-tool-ok\\n\",\"success\":true}"}
+		]}
+	]`)
+
+	messages, err := responsesInputToChatMessages("", input)
+	require.NoError(t, err)
+	require.Len(t, messages, 2)
+	assert.JSONEq(t, `"codex-tool-ok"`, string(messages[1].Content))
+}
