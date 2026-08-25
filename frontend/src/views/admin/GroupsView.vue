@@ -6660,10 +6660,16 @@ const handleUpdateGroup = async () => {
     payload.peak_rate_multiplier = normalizeRateMultiplier(
       editForm.peak_rate_multiplier,
     );
-    await adminAPI.groups.update(editingGroup.value.id, payload);
+    const updatedGroup = await adminAPI.groups.update(editingGroup.value.id, payload);
+    // Update the in-memory row immediately. The list refresh is asynchronous,
+    // so reopening the modal before it completes must not read stale scheduler data.
+    const updatedIndex = groups.value.findIndex((group) => group.id === updatedGroup.id);
+    if (updatedIndex >= 0) {
+      groups.value[updatedIndex] = updatedGroup;
+    }
     appStore.showSuccess(t("admin.groups.groupUpdated"));
     closeEditModal();
-    loadGroups();
+    await loadGroups();
   } catch (error: any) {
     appStore.showError(
       extractApiErrorMessage(error, t("admin.groups.failedToUpdate")),

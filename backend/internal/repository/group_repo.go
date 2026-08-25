@@ -32,6 +32,7 @@ type groupRepository struct {
 func groupSchedulerConfigMap(cfg service.GroupSchedulerConfig) map[string]interface{} {
 	return map[string]interface{}{
 		"strategy":                    cfg.Strategy,
+		"selection_mode":              cfg.SelectionMode,
 		"first_byte_failover":         cfg.FirstByteFailover,
 		"sticky_binding_mode":         cfg.StickyBindingMode,
 		"probe_bypass_sticky":         cfg.ProbeBypassSticky,
