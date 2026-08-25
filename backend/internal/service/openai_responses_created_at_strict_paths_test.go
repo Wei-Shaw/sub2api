@@ -293,6 +293,51 @@ func TestResponsesTerminalOutputCompatibility_SSEToJSONThinTerminalPaths(t *test
 	}
 }
 
+func TestResponsesWebSearchActionCompatibility_SSEToJSONThinTerminalPaths(t *testing.T) {
+	account := &Account{ID: 1, Name: "account", Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	action := `{"type":"search","query":"weather","sources":[{"url":"https://example.test","vendor_rank":` + responsesCreatedAtLargeVendorInteger + `}],"vendor_extension":{"trace":"keep"}}`
+	body := []byte(strings.Join([]string{
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call","id":"ws_1","status":"completed","action":` + action + `}}`,
+		"",
+		`data: {"type":"response.completed","response":{"id":"resp_search","object":"response","created_at":1e3,"model":"mapped-model","status":"completed","output":[{"type":"web_search_call","id":"ws_1","status":"completed"}],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}}`,
+		"",
+	}, "\n"))
+
+	for _, tc := range []struct {
+		name string
+		run  func(*OpenAIGatewayService, *http.Response, *gin.Context) error
+	}{
+		{
+			name: "main",
+			run: func(svc *OpenAIGatewayService, resp *http.Response, c *gin.Context) error {
+				_, err := svc.handleSSEToJSON(resp, c, account, body, "client-model", "mapped-model")
+				return err
+			},
+		},
+		{
+			name: "passthrough",
+			run: func(svc *OpenAIGatewayService, resp *http.Response, c *gin.Context) error {
+				_, err := svc.handlePassthroughSSEToJSON(resp, c, account, body, "client-model", "mapped-model")
+				return err
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}}
+
+			require.NoError(t, tc.run(newResponsesCreatedAtStrictService(), resp, c))
+			output := recorder.Body.Bytes()
+			require.Equal(t, "search", gjson.GetBytes(output, "output.0.action.type").String())
+			require.Equal(t, "weather", gjson.GetBytes(output, "output.0.action.query").String())
+			require.Equal(t, "keep", gjson.GetBytes(output, "output.0.action.vendor_extension.trace").String())
+			require.Equal(t, responsesCreatedAtLargeVendorInteger, gjson.GetBytes(output, "output.0.action.sources.0.vendor_rank").Raw)
+		})
+	}
+}
+
 func TestResponsesCreatedAtCompatibility_WSHTTPBridgePath(t *testing.T) {
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,

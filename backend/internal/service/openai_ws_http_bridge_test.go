@@ -264,6 +264,70 @@ func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyRepairsThinTerminalClientToolItem(t *t
 	requireStrictPositiveIntegerJSONPath(t, completed, "response.created_at")
 }
 
+func TestProxyOpenAIWSHTTPBridgeTurnRestoresHostedWebSearchActions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	action := `{"type":"search","query":"weather","sources":[{"url":"https://example.test","vendor_rank":900719925474099312345}],"vendor_extension":{"trace":"keep"}}`
+	sse := strings.Join([]string{
+		`data: {"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"type":"web_search_call","id":"ws_1","status":"in_progress"}}`,
+		``,
+		`data: {"type":"response.web_search_call.completed","sequence_number":1,"output_index":0,"item_id":"ws_1"}`,
+		``,
+		`data: {"type":"response.output_item.done","sequence_number":2,"output_index":0,"item":{"type":"web_search_call","id":"ws_1","status":"completed","action":` + action + `}}`,
+		``,
+		`data: {"type":"response.completed","sequence_number":3,"response":{"id":"resp_search","created_at":1e3,"status":"completed","output":[{"type":"web_search_call","id":"ws_1","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+		``,
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(sse)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+		httpUpstream: upstream,
+	}
+	account := &Account{ID: 5661, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1}
+	payload := []byte(`{"type":"response.create","model":"gpt-5","stream":true,"tools":[{"type":"web_search"}],"input":"weather"}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	var events [][]byte
+
+	result, err := svc.proxyOpenAIWSHTTPBridgeTurn(
+		context.Background(), c, account, "test-token", payload, len(payload),
+		"gpt-5", "", "", "", "", 2,
+		func(message []byte) error {
+			events = append(events, append([]byte(nil), message...))
+			return nil
+		},
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, events, 4)
+	require.Equal(t, "response.output_item.added", gjson.GetBytes(events[0], "type").String())
+	require.Equal(t, "response.web_search_call.completed", gjson.GetBytes(events[1], "type").String())
+	require.Equal(t, "response.output_item.done", gjson.GetBytes(events[2], "type").String())
+	require.Equal(t, "response.completed", gjson.GetBytes(events[3], "type").String())
+
+	for _, assertion := range []struct {
+		payload []byte
+		path    string
+	}{
+		{events[0], "item.action"},
+		{events[1], "action"},
+		{events[2], "item.action"},
+		{events[3], "response.output.0.action"},
+	} {
+		require.Equal(t, "search", gjson.GetBytes(assertion.payload, assertion.path+".type").String())
+		require.Equal(t, "weather", gjson.GetBytes(assertion.payload, assertion.path+".query").String())
+		require.Equal(t, "keep", gjson.GetBytes(assertion.payload, assertion.path+".vendor_extension.trace").String())
+		require.Equal(t, "900719925474099312345", gjson.GetBytes(assertion.payload, assertion.path+".sources.0.vendor_rank").Raw)
+	}
+	requireStrictPositiveIntegerJSONPath(t, events[3], "response.created_at")
+}
+
 func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyRestoresClientToolsInResponseDone(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
