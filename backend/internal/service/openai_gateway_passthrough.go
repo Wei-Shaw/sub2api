@@ -180,6 +180,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 		reqStream = gjson.GetBytes(body, "stream").Bool()
 
+		clientPromptCacheKey := strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
 		accountScopedBody, accountScoped, scopeErr := applyCodexAccountIdentityClientMetadataRaw(body, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 		if scopeErr != nil {
 			return nil, scopeErr
@@ -201,6 +202,24 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			fpIDs := resolveCodexFingerprintIDsFromRequest(account, clientHeaders)
 			if fpIDs != nil {
 				fpBody, fpChanged, fpErr := applyCodexFingerprintClientMetadataRaw(body, fpIDs)
+				if fpErr != nil {
+					return nil, fpErr
+				}
+				if fpChanged {
+					body = fpBody
+				}
+			}
+			if fpIDs == nil || fpIDs.mode == codexFingerprintDevice {
+				isolatedSeed := clientPromptCacheKey
+				if isolatedSeed == "" {
+					isolatedSeed = extractClientSessionID(clientHeaders)
+				}
+				if isolatedSeed == "" && clientHeaders != nil {
+					isolatedSeed = strings.TrimSpace(clientHeaders.Get("conversation_id"))
+				}
+				isolated := isolateOpenAIUpstreamSessionID(getAPIKeyIDFromContext(c), codexAccountIdentitySource(c, account), isolatedSeed)
+				stageIsolatedOpenAISessionID(c, isolated)
+				fpBody, fpChanged, fpErr := applyIsolatedOpenAISessionBodyRaw(body, isolated)
 				if fpErr != nil {
 					return nil, fpErr
 				}
@@ -671,17 +690,45 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 			req.Header.Set("originator", resolveCodexOutboundIdentity("").originator)
 		}
 		// 用隔离后的 session 标识符覆盖客户端透传值，防止跨用户会话碰撞。
-		if clientSessionID == "" {
-			clientSessionID = promptCacheKey
+		identitySource := codexAccountIdentitySource(c, account)
+		isolated := stagedIsolatedOpenAISessionID(c)
+		if isolated == "" {
+			isolated = isolateOpenAIUpstreamSessionID(apiKeyID, identitySource, clientSessionID)
 		}
-		if clientConversationID == "" {
-			clientConversationID = promptCacheKey
+		if isolated == "" {
+			isolated = isolateOpenAIUpstreamSessionID(apiKeyID, identitySource, clientConversationID)
 		}
-		if clientSessionID != "" {
-			req.Header.Set("session_id", isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), clientSessionID))
+		// HTTP bridge 只走本构造器，body 已按账号 namespace 改写。不能再对
+		// prompt_cache_key 做 isolate，否则会把账号 UUID 压成 hex。
+		isolatedFromClientHeaders := isolated != "" && stagedIsolatedOpenAISessionID(c) == ""
+		if isolated == "" {
+			isolated = promptCacheKey
 		}
-		if clientConversationID != "" {
-			req.Header.Set("conversation_id", isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), clientConversationID))
+		if isolatedFromClientHeaders && account.GetCodexFingerprintMode() != codexFingerprintSession && account.GetCodexFingerprintMode() != codexFingerprintFull && !isOpenAIResponsesCompactPath(c) {
+			rewritten, changed, rewriteErr := applyIsolatedOpenAISessionBodyRaw(body, isolated)
+			if rewriteErr != nil {
+				return nil, rewriteErr
+			}
+			if changed {
+				body = rewritten
+				if req.Body != nil {
+					_ = req.Body.Close()
+				}
+				req.Body = io.NopCloser(bytes.NewReader(body))
+				req.ContentLength = int64(len(body))
+				req.GetBody = func() (io.ReadCloser, error) {
+					return io.NopCloser(bytes.NewReader(body)), nil
+				}
+			}
+		}
+		if isolated != "" {
+			if clientSessionID != "" || promptCacheKey != "" {
+				req.Header.Set("session_id", isolated)
+			}
+			if clientConversationID != "" || promptCacheKey != "" {
+				req.Header.Set("conversation_id", isolated)
+			}
+			applyIsolatedOpenAISessionHeaders(req.Header, isolated)
 		}
 	} else if isOpenAIResponsesCompactPath(c) {
 		// 透传白名单会放行客户端的 Accept: text/event-stream；compact 上游是

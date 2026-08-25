@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 const testCodexFingerprintSeed = "11111111-1111-4111-8111-111111111111"
@@ -224,6 +225,7 @@ func TestApplyCodexFingerprintHeaders_SessionMode(t *testing.T) {
 	h.Set("x-codex-window-id", "user-thread:0")
 	h.Set("x-codex-turn-metadata", turnMetadata)
 	h.Set("x-client-request-id", "user-thread")
+	h.Set("conversation_id", "hex-or-client-conversation")
 
 	ids := resolveCodexFingerprintIDsFromRequest(account, clientHeaders)
 	applyCodexFingerprintHeaders(h, ids)
@@ -239,6 +241,8 @@ func TestApplyCodexFingerprintHeaders_SessionMode(t *testing.T) {
 	assert.Equal(t, convergedSession, h.Get("session_id"), "下划线形式也应被改写")
 	assert.Equal(t, convergedThread, h.Get("thread-id"))
 	assert.Equal(t, convergedThread, h.Get("x-client-request-id"))
+	assert.Equal(t, convergedSession, h.Get("conversation_id"))
+	assert.NotEqual(t, convergedSession, convergedThread, "session 模式 thread 仍按客户端原始 session 派生")
 	assert.Equal(t, convergedThread+":0", h.Get("x-codex-window-id"))
 
 	var meta map[string]any
@@ -297,6 +301,7 @@ func TestApplyCodexFingerprintHeaders_FullMode(t *testing.T) {
 	idsA := resolveCodexFingerprintIDsFromRequest(account, clientA)
 	hA := http.Header{}
 	hA.Set("x-codex-turn-metadata", `{"installation_id":"x","session_id":"x","thread_id":"x","turn_id":"x","window_id":"x:0"}`)
+	hA.Set("conversation_id", "client-conversation")
 	applyCodexFingerprintHeaders(hA, idsA)
 
 	clientB := http.Header{}
@@ -308,7 +313,51 @@ func TestApplyCodexFingerprintHeaders_FullMode(t *testing.T) {
 
 	assert.Equal(t, hA.Get("thread-id"), hB.Get("thread-id"), "full 模式 thread_id 应相同")
 	assert.Equal(t, convergedSession, hA.Get("thread-id"), "full 模式 thread_id 应等于 session_id")
+	assert.Equal(t, convergedSession, hA.Get("conversation_id"), "full 模式已有 conversation_id 应改成 session UUID")
 	assert.Equal(t, hA.Get("x-codex-window-id"), hB.Get("x-codex-window-id"), "full 模式 window_id 应相同")
+}
+
+func TestApplyIsolatedOpenAISession_ExistingFieldsOnly(t *testing.T) {
+	isolated := isolateOpenAISessionID(7, "01a03238-04c3-7151-bfbe-5d249cb362dd")
+	require.NotEmpty(t, isolated)
+
+	h := http.Header{}
+	h.Set("session_id", "raw-session")
+	h.Set("conversation_id", "raw-conversation")
+	h.Set("x-codex-window-id", "raw-window:0")
+	h.Set("x-codex-turn-metadata", `{"session_id":"raw-session","thread_id":"raw-thread","window_id":"raw-window:0","sandbox":"seatbelt"}`)
+	applyIsolatedOpenAISessionHeaders(h, isolated)
+
+	assert.Equal(t, isolated, h.Get("session_id"))
+	assert.Equal(t, isolated, h.Get("conversation_id"))
+	assert.Equal(t, isolated+":0", h.Get("x-codex-window-id"))
+	assert.Empty(t, h.Get("session-id"), "off/device 不新注入 session-id")
+	assert.Empty(t, h.Get("thread-id"), "off/device 不新注入 thread-id")
+	assert.Empty(t, h.Get("x-client-request-id"), "off/device 不新注入 x-client-request-id")
+	assert.Equal(t, isolated, gjson.Get(h.Get("x-codex-turn-metadata"), "session_id").String())
+	assert.Equal(t, isolated, gjson.Get(h.Get("x-codex-turn-metadata"), "thread_id").String())
+	assert.Equal(t, isolated+":0", gjson.Get(h.Get("x-codex-turn-metadata"), "window_id").String())
+	assert.Equal(t, "seatbelt", gjson.Get(h.Get("x-codex-turn-metadata"), "sandbox").String())
+
+	reqBody := map[string]any{
+		"prompt_cache_key": "01a03238-04c3-7151-bfbe-5d249cb362dd",
+		"client_metadata": map[string]any{
+			"session_id":            "01a03238-04c3-7151-bfbe-5d249cb362dd",
+			"thread_id":             "01a03238-04c3-7151-bfbe-5d249cb362dd",
+			"x-codex-window-id":     "01a03238-04c3-7151-bfbe-5d249cb362dd:0",
+			"x-codex-turn-metadata": `{"session_id":"01a03238-04c3-7151-bfbe-5d249cb362dd","thread_id":"01a03238-04c3-7151-bfbe-5d249cb362dd","window_id":"01a03238-04c3-7151-bfbe-5d249cb362dd:0","sandbox":"seatbelt"}`,
+		},
+	}
+	require.True(t, applyIsolatedOpenAISessionBody(reqBody, isolated))
+	assert.Equal(t, isolated, reqBody["prompt_cache_key"])
+	metadata, ok := reqBody["client_metadata"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, isolated, metadata["session_id"])
+	assert.Equal(t, isolated, metadata["thread_id"])
+	assert.Equal(t, isolated+":0", metadata["x-codex-window-id"])
+	turnMetadata, ok := metadata["x-codex-turn-metadata"].(string)
+	require.True(t, ok)
+	assert.Equal(t, isolated, gjson.Get(turnMetadata, "session_id").String())
 }
 
 // --- H1 修复验证：头和体的 turn_id 一致性 ---

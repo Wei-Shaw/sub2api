@@ -20,7 +20,10 @@ import (
 // 由 Forward（非透传）或 forwardOpenAIPassthrough（透传）解析后写入，请求
 // 构造器读取用于出站头改写——请求体与出站头必须共享同一份 IDs，保证
 // turn_id 等随机字段一致。
-const codexFingerprintIDsContextKey = "codex_fingerprint_ids"
+const (
+	codexFingerprintIDsContextKey     = "codex_fingerprint_ids"
+	isolatedOpenAISessionIDContextKey = "isolated_openai_session_id"
+)
 
 // stageCodexFingerprintIDs 将本 attempt 解析出的收敛 ID 暂存到 gin context。
 // 必须无条件覆写（含 nil）：failover 从收敛账号切到 off 账号时，上一账号的
@@ -29,6 +32,25 @@ func stageCodexFingerprintIDs(c *gin.Context, ids *codexFingerprintIDs) {
 	if c != nil {
 		c.Set(codexFingerprintIDsContextKey, ids)
 	}
+}
+
+func stageIsolatedOpenAISessionID(c *gin.Context, isolated string) {
+	if c == nil {
+		return
+	}
+	c.Set(isolatedOpenAISessionIDContextKey, isolated)
+}
+
+func stagedIsolatedOpenAISessionID(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	value, ok := c.Get(isolatedOpenAISessionIDContextKey)
+	if !ok {
+		return ""
+	}
+	isolated, _ := value.(string)
+	return strings.TrimSpace(isolated)
 }
 
 func stagedCodexFingerprintIDs(c *gin.Context, account *Account) *codexFingerprintIDs {
@@ -376,6 +398,9 @@ func applyCodexFingerprintHeaders(h http.Header, ids *codexFingerprintIDs) {
 	h.Set("session-id", ids.sessionID)
 	h.Set("session_id", ids.sessionID)
 	h.Set("thread-id", ids.threadID)
+	if strings.TrimSpace(h.Get("conversation_id")) != "" {
+		h.Set("conversation_id", ids.sessionID)
+	}
 
 	rewriteCodexTurnMetadataFields(h, map[string]any{
 		"installation_id":         ids.installationID,
@@ -598,4 +623,154 @@ func rewriteClientMetadataEmbeddedTurnMetadata(clientMetadata map[string]any, fi
 	if rebuilt, err := json.Marshal(metadata); err == nil {
 		clientMetadata["x-codex-turn-metadata"] = string(rebuilt)
 	}
+}
+
+var isolatedOpenAISessionHeaderNames = [...]string{
+	"session-id",
+	"thread-id",
+	"x-client-request-id",
+}
+
+func rewriteExistingHeaderValue(h http.Header, name, value string) {
+	if h == nil || value == "" || strings.TrimSpace(h.Get(name)) == "" {
+		return
+	}
+	h.Set(name, value)
+}
+
+func isolatedOpenAISessionWindowID(sessionID string) string {
+	if sessionID == "" {
+		return ""
+	}
+	return sessionID + ":0"
+}
+
+func applyIsolatedOpenAISessionHeaders(h http.Header, isolated string) {
+	if h == nil || isolated == "" {
+		return
+	}
+	rewriteExistingHeaderValue(h, "session_id", isolated)
+	rewriteExistingHeaderValue(h, "conversation_id", isolated)
+	for _, name := range isolatedOpenAISessionHeaderNames {
+		rewriteExistingHeaderValue(h, name, isolated)
+	}
+	rewriteExistingHeaderValue(h, "x-codex-window-id", isolatedOpenAISessionWindowID(isolated))
+	if fields := isolatedOpenAISessionTurnMetadataFields(h.Get("x-codex-turn-metadata"), isolated); len(fields) > 0 {
+		rewriteCodexTurnMetadataFields(h, fields)
+	}
+}
+
+func isolatedOpenAISessionTurnMetadataFields(raw, isolated string) map[string]any {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || isolated == "" {
+		return nil
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal([]byte(raw), &metadata); err != nil || metadata == nil {
+		return nil
+	}
+	fields := map[string]any{}
+	if _, ok := metadata["session_id"]; ok {
+		fields["session_id"] = isolated
+	}
+	if _, ok := metadata["thread_id"]; ok {
+		fields["thread_id"] = isolated
+	}
+	if _, ok := metadata["window_id"]; ok {
+		fields["window_id"] = isolatedOpenAISessionWindowID(isolated)
+	}
+	return fields
+}
+
+func applyIsolatedOpenAISessionClientMetadata(existing map[string]any, isolated string) bool {
+	if existing == nil || isolated == "" {
+		return false
+	}
+	modified := false
+	if raw, ok := existing["session_id"].(string); ok && strings.TrimSpace(raw) != "" {
+		existing["session_id"] = isolated
+		modified = true
+	}
+	if raw, ok := existing["thread_id"].(string); ok && strings.TrimSpace(raw) != "" {
+		existing["thread_id"] = isolated
+		modified = true
+	}
+	if raw, ok := existing["x-codex-window-id"].(string); ok && strings.TrimSpace(raw) != "" {
+		existing["x-codex-window-id"] = isolatedOpenAISessionWindowID(isolated)
+		modified = true
+	}
+	embedded := isolatedOpenAISessionEmbeddedTurnFields(existing, isolated)
+	if len(embedded) > 0 {
+		rewriteClientMetadataEmbeddedTurnMetadata(existing, embedded)
+		modified = true
+	}
+	return modified
+}
+
+func isolatedOpenAISessionEmbeddedTurnFields(clientMetadata map[string]any, isolated string) map[string]any {
+	raw, ok := clientMetadata["x-codex-turn-metadata"].(string)
+	if !ok {
+		return nil
+	}
+	return isolatedOpenAISessionTurnMetadataFields(raw, isolated)
+}
+
+func applyIsolatedOpenAISessionBody(reqBody map[string]any, isolated string) bool {
+	if reqBody == nil || isolated == "" {
+		return false
+	}
+	modified := false
+	if raw, ok := reqBody["prompt_cache_key"].(string); ok && strings.TrimSpace(raw) != "" {
+		reqBody["prompt_cache_key"] = isolated
+		modified = true
+	}
+	existing, _ := reqBody["client_metadata"].(map[string]any)
+	if existing == nil {
+		return modified
+	}
+	if applyIsolatedOpenAISessionClientMetadata(existing, isolated) {
+		reqBody["client_metadata"] = existing
+		modified = true
+	}
+	return modified
+}
+
+func applyIsolatedOpenAISessionBodyRaw(body []byte, isolated string) ([]byte, bool, error) {
+	if len(body) == 0 || isolated == "" {
+		return body, false, nil
+	}
+	root := gjson.ParseBytes(body)
+	if !root.IsObject() {
+		return body, false, nil
+	}
+	next := body
+	modified := false
+	if pck := gjson.GetBytes(body, "prompt_cache_key"); pck.Exists() && pck.Type == gjson.String && strings.TrimSpace(pck.String()) != "" {
+		rewritten, err := sjson.SetBytes(next, "prompt_cache_key", isolated)
+		if err != nil {
+			return body, false, fmt.Errorf("splice isolated prompt_cache_key: %w", err)
+		}
+		next = rewritten
+		modified = true
+	}
+	cm := gjson.GetBytes(next, "client_metadata")
+	if !cm.IsObject() {
+		return next, modified, nil
+	}
+	existing := map[string]any{}
+	if err := json.Unmarshal([]byte(cm.Raw), &existing); err != nil {
+		return body, false, fmt.Errorf("decode client_metadata for session isolation: %w", err)
+	}
+	if !applyIsolatedOpenAISessionClientMetadata(existing, isolated) {
+		return next, modified, nil
+	}
+	raw, err := json.Marshal(existing)
+	if err != nil {
+		return body, false, fmt.Errorf("encode isolated client_metadata: %w", err)
+	}
+	spliced, err := sjson.SetRawBytes(next, "client_metadata", raw)
+	if err != nil {
+		return body, false, fmt.Errorf("splice isolated client_metadata: %w", err)
+	}
+	return spliced, true, nil
 }

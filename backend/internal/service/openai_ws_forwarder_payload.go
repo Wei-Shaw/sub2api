@@ -120,11 +120,22 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	// OAuth 账号：将 apiKeyID 混入 session 标识符，防止跨用户会话碰撞。
 	if account != nil && account.UsesOpenAICodexProtocol() {
 		apiKeyID := getAPIKeyIDFromContext(c)
-		if sessionResolution.SessionID != "" {
-			headers.Set("session_id", isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), sessionResolution.SessionID))
+		identitySource := codexAccountIdentitySource(c, account)
+		isolated := stagedIsolatedOpenAISessionID(c)
+		if isolated == "" {
+			isolated = isolateOpenAIUpstreamSessionID(apiKeyID, identitySource, sessionResolution.SessionID)
 		}
-		if sessionResolution.ConversationID != "" {
-			headers.Set("conversation_id", isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), sessionResolution.ConversationID))
+		if isolated == "" {
+			isolated = isolateOpenAIUpstreamSessionID(apiKeyID, identitySource, sessionResolution.ConversationID)
+		}
+		if isolated != "" {
+			if sessionResolution.SessionID != "" {
+				headers.Set("session_id", isolated)
+			}
+			if sessionResolution.ConversationID != "" {
+				headers.Set("conversation_id", isolated)
+			}
+			applyIsolatedOpenAISessionHeaders(headers, isolated)
 		}
 	} else {
 		if sessionResolution.SessionID != "" {

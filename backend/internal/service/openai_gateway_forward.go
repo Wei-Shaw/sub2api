@@ -494,6 +494,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		stageCodexFingerprintIDs(c, nil)
 		// 指纹收敛：一次性解析收敛 ID，请求体和出站头共享同一份 IDs（保证 turn_id 等随机字段一致）。
 		// fingerprintIDs 在此处解析，后续 buildUpstreamRequest 中使用同一份。
+		isolatedSessionBody := false
 		if !isCompactRequest {
 			var clientHeaders http.Header
 			if c != nil && c.Request != nil {
@@ -505,6 +506,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					markDecodedModified()
 				}
 			}
+			if fpIDs == nil || fpIDs.mode == codexFingerprintDevice {
+				isolatedSeed := strings.TrimSpace(clientPromptCacheKey)
+				if isolatedSeed == "" {
+					isolatedSeed = extractClientSessionID(clientHeaders)
+				}
+				isolated := isolateOpenAIUpstreamSessionID(getAPIKeyIDFromContext(c), codexAccountIdentitySource(c, account), isolatedSeed)
+				stageIsolatedOpenAISessionID(c, isolated)
+				if applyIsolatedOpenAISessionBody(decoded, isolated) {
+					markDecodedModified()
+					isolatedSessionBody = true
+				}
+			}
 			// 将 fpIDs 存入 gin context，供 buildUpstreamRequest 中头改写使用。
 			// 无条件覆写（含 nil）：failover 从收敛账号切到 off 账号时，上一
 			// 账号的 IDs 不得残留（stageCodexFingerprintIDs 注释）。
@@ -514,14 +527,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			upstreamModel = codexResult.NormalizedModel
 		}
 		if strings.TrimSpace(clientPromptCacheKey) != "" {
-			// The body now carries an account-scoped value. Keep the original here
-			// so the header builder derives the same namespace exactly once.
+			// The body now carries an account-scoped or isolated value. Keep the
+			// original here so the header builder derives the same namespace exactly once.
 			promptCacheKey = clientPromptCacheKey
-		} else if currentPromptCacheKey, ok := decoded["prompt_cache_key"].(string); ok && currentPromptCacheKey != "" {
+		} else if currentPromptCacheKey, ok := decoded["prompt_cache_key"].(string); ok && currentPromptCacheKey != "" && !isolatedSessionBody {
 			// Fingerprint convergence may inject a default key when the client did
 			// not provide one; preserve that existing fallback.
 			promptCacheKey = currentPromptCacheKey
-		} else if codexResult.PromptCacheKey != "" {
+		} else if !isolatedSessionBody && codexResult.PromptCacheKey != "" {
 			promptCacheKey = codexResult.PromptCacheKey
 		}
 	}
@@ -1346,11 +1359,15 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 			req.Header.Set("accept", "text/event-stream")
 		}
 		if promptCacheKey != "" {
-			isolated := isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), promptCacheKey)
+			isolated := stagedIsolatedOpenAISessionID(c)
+			if isolated == "" {
+				isolated = isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), promptCacheKey)
+			}
 			req.Header.Set("session_id", isolated)
 			if !compatMessagesBridge || clientConversationID != "" {
 				req.Header.Set("conversation_id", isolated)
 			}
+			applyIsolatedOpenAISessionHeaders(req.Header, isolated)
 		}
 	} else if isOpenAIResponsesCompactPath(c) {
 		// compact 上游是 unary JSON 协议：API-key 账号也显式声明 Accept，
