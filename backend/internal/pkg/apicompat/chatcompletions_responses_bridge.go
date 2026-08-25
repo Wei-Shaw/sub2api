@@ -362,6 +362,20 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 		role := chatCompletionsBridgeRole(rawString(item["role"]))
 		itemType := rawString(item["type"])
 		switch itemType {
+		case "agent_message":
+			// Multi-agent v2 sends a child task as an agent_message. For tool-
+			// initiated communication Codex intentionally stores the task text in
+			// an encrypted_content part while leaving the ordinary content prefix
+			// readable. The value is the original local tool argument, not provider
+			// reasoning ciphertext; Chat-only upstreams need both parts joined into
+			// a user instruction or spawned agents receive an empty task.
+			if text := extractAgentMessageText(item["content"]); text != "" {
+				content, _ := json.Marshal(text)
+				messages = append(messages, ChatMessage{Role: "user", Content: content})
+			}
+			pendingReasoning = ""
+			lastTurnReasoning = ""
+			continue
 		case "reasoning":
 			if txt := extractResponsesReasoningText(item); txt != "" {
 				pendingReasoning = txt
@@ -474,7 +488,10 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 					mediaByCallID[callID] = media
 				}
 			} else {
-				outputText = rawString(outputRaw)
+				outputText = extractToolOutputText(outputRaw)
+				if outputText == "" {
+					outputText = rawString(outputRaw)
+				}
 				if outputText == "" && len(outputRaw) > 0 && string(outputRaw) != "null" && string(outputRaw) != `""` {
 					// 对象/数组形式的输出（如 tool_search 的结果列表）整体字符串化。
 					outputText = string(outputRaw)
@@ -545,6 +562,103 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 	}
 
 	return messages, mediaByCallID, nil
+}
+
+// extractAgentMessageText joins the readable and encrypted task payload parts
+// of a Codex agent_message into one user instruction.
+func extractAgentMessageText(raw json.RawMessage) string {
+	raw = bytesTrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return strings.TrimSpace(text)
+	}
+	var parts []map[string]json.RawMessage
+	if json.Unmarshal(raw, &parts) != nil {
+		return ""
+	}
+	var out strings.Builder
+	for _, part := range parts {
+		var value string
+		switch rawString(part["type"]) {
+		case "input_text", "output_text", "text":
+			value = rawString(part["text"])
+		case "encrypted_content":
+			value = rawString(part["encrypted_content"])
+		}
+		if value == "" {
+			continue
+		}
+		if out.Len() > 0 && !strings.HasSuffix(out.String(), "\n") {
+			_ = out.WriteByte('\n')
+		}
+		_, _ = out.WriteString(value)
+	}
+	return strings.TrimSpace(out.String())
+}
+
+// extractToolOutputText preserves the text-bearing content-item form used by
+// Codex custom tool outputs. Chat providers only need the readable text; when
+// no text-bearing parts are present the caller keeps the original JSON value.
+func extractToolOutputText(raw json.RawMessage) string {
+	raw = bytesTrimSpace(raw)
+	if len(raw) == 0 {
+		return ""
+	}
+	if raw[0] == '{' {
+		var object map[string]json.RawMessage
+		if json.Unmarshal(raw, &object) == nil {
+			if content, ok := object["content"]; ok {
+				content = bytesTrimSpace(content)
+				var text string
+				if json.Unmarshal(content, &text) == nil {
+					return text
+				}
+				if extracted := extractToolOutputText(content); extracted != "" {
+					return extracted
+				}
+			}
+		}
+		return ""
+	}
+	if raw[0] == '"' {
+		var nested string
+		if json.Unmarshal(raw, &nested) == nil {
+			return extractToolOutputText(json.RawMessage(nested))
+		}
+	}
+	if raw[0] != '[' {
+		return ""
+	}
+	var parts []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &parts); err != nil {
+		return ""
+	}
+	var out strings.Builder
+	textPartCount := 0
+	for _, part := range parts {
+		if typ := rawString(part["type"]); typ != "input_text" && typ != "output_text" && typ != "text" {
+			return ""
+		}
+		textPartCount++
+		value := rawString(part["text"])
+		if value == "" {
+			return ""
+		}
+		if extracted := extractToolOutputText(json.RawMessage(value)); extracted != "" {
+			value = extracted
+		}
+		if out.Len() > 0 && !strings.HasSuffix(out.String(), "\n") && !strings.HasPrefix(value, "\n") {
+			_ = out.WriteByte('\n')
+		}
+		_, _ = out.WriteString(value)
+	}
+	if textPartCount == 0 {
+		return ""
+	}
+	return strings.TrimSpace(out.String())
 }
 
 // extractToolOutputMedia rewrites only recognized image nodes. Media-free
