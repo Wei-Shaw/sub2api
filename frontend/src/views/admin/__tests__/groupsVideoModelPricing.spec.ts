@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   createVideoModelPricesForm,
   serializeVideoModelPrices,
+  temporaryVideoModelKeyPrefix,
   videoModelPriceFamilyRows
 } from '../groupsVideoModelPricing'
 
@@ -11,6 +12,17 @@ describe('video model pricing form', () => {
     const form = createVideoModelPricesForm()
 
     expect(videoModelPriceFamilyRows(form)).toEqual([])
+  })
+
+  it('keeps newly added model rows visually blank and skips unnamed rows', () => {
+    const form = {
+      [`${temporaryVideoModelKeyPrefix}1`]: { '480p': 0.2 }
+    }
+
+    expect(videoModelPriceFamilyRows(form)).toEqual([
+      { key: `${temporaryVideoModelKeyPrefix}1`, label: '' }
+    ])
+    expect(serializeVideoModelPrices(form)).toEqual({})
   })
 
   it('serializes only finite non-negative prices and preserves future families', () => {

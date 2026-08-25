@@ -1111,8 +1111,12 @@
               <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
                 {{ t("admin.groups.videoPricing.modelOverridesTitle") }}
               </p>
-              <button type="button" class="btn-secondary text-xs" @click="addVideoModelPriceRow(createForm.video_model_prices)">
-                {{ t("admin.groups.videoPricing.addModel") }}
+              <button
+                type="button"
+                class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                @click="addVideoModelPriceRow(createForm.video_model_prices)"
+              >
+                + {{ t("admin.groups.videoPricing.addModel") }}
               </button>
             </div>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -1122,21 +1126,24 @@
               <div
                 v-for="family in videoModelPriceFamilyRows(createForm.video_model_prices)"
                 :key="family.key"
-                class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,7rem))] sm:items-end"
+                class="flex items-start gap-2 rounded border border-gray-200 bg-white p-2 dark:border-dark-500 dark:bg-dark-700"
               >
-                <input
-                  :value="family.label"
-                  type="text"
-                  class="input font-mono text-xs"
-                  placeholder="model id"
-                  @change="renameVideoModelPriceRow(createForm.video_model_prices, family.key, $event)"
-                />
+                <label class="w-20 shrink-0 sm:w-24">
+                  <span class="block text-xs text-gray-400">Model</span>
+                  <input
+                    :value="family.label"
+                    type="text"
+                    class="input mt-0.5 text-xs font-mono"
+                    placeholder="model id"
+                    @change="renameVideoModelPriceRow(createForm.video_model_prices, family.key, $event)"
+                  />
+                </label>
                 <label
                 v-for="resolution in videoPriceResolutions"
                   :key="resolution.key"
-                  class="block"
+                  class="w-20 shrink-0 sm:w-24"
                 >
-                  <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                  <span class="block text-xs text-gray-400">
                     {{ resolution.label }} ($/s)
                   </span>
                   <input
@@ -1144,12 +1151,17 @@
                     type="number"
                     step="0.001"
                     min="0"
-                    class="input"
+                    class="input mt-0.5 text-xs"
                     :data-testid="`create-video-price-${family.key}-${resolution.key}`"
                   />
                 </label>
-                <button type="button" class="btn-secondary text-xs sm:col-span-4 sm:justify-self-end" @click="removeVideoModelPriceRow(createForm.video_model_prices, family.key)">
-                  {{ t("admin.groups.videoPricing.removeModel") }}
+                <button
+                  type="button"
+                  class="mt-4 rounded p-0.5 text-gray-400 hover:text-red-500"
+                  :title="t('admin.groups.videoPricing.removeModel')"
+                  @click="removeVideoModelPriceRow(createForm.video_model_prices, family.key)"
+                >
+                  <Icon name="x" size="sm" />
                 </button>
               </div>
             </div>
@@ -2855,8 +2867,12 @@
               <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
                 {{ t("admin.groups.videoPricing.modelOverridesTitle") }}
               </p>
-              <button type="button" class="btn-secondary text-xs" @click="addVideoModelPriceRow(editForm.video_model_prices)">
-                {{ t("admin.groups.videoPricing.addModel") }}
+              <button
+                type="button"
+                class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                @click="addVideoModelPriceRow(editForm.video_model_prices)"
+              >
+                + {{ t("admin.groups.videoPricing.addModel") }}
               </button>
             </div>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -2866,21 +2882,24 @@
               <div
                 v-for="family in videoModelPriceFamilyRows(editForm.video_model_prices)"
                 :key="family.key"
-                class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,7rem))] sm:items-end"
+                class="flex items-start gap-2 rounded border border-gray-200 bg-white p-2 dark:border-dark-500 dark:bg-dark-700"
               >
-                <input
-                  :value="family.label"
-                  type="text"
-                  class="input font-mono text-xs"
-                  placeholder="model id"
-                  @change="renameVideoModelPriceRow(editForm.video_model_prices, family.key, $event)"
-                />
+                <label class="w-20 shrink-0 sm:w-24">
+                  <span class="block text-xs text-gray-400">Model</span>
+                  <input
+                    :value="family.label"
+                    type="text"
+                    class="input mt-0.5 text-xs font-mono"
+                    placeholder="model id"
+                    @change="renameVideoModelPriceRow(editForm.video_model_prices, family.key, $event)"
+                  />
+                </label>
                 <label
                 v-for="resolution in videoPriceResolutions"
                   :key="resolution.key"
-                  class="block"
+                  class="w-20 shrink-0 sm:w-24"
                 >
-                  <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                  <span class="block text-xs text-gray-400">
                     {{ resolution.label }} ($/s)
                   </span>
                   <input
@@ -2888,12 +2907,17 @@
                     type="number"
                     step="0.001"
                     min="0"
-                    class="input"
+                    class="input mt-0.5 text-xs"
                     :data-testid="`edit-video-price-${family.key}-${resolution.key}`"
                   />
                 </label>
-                <button type="button" class="btn-secondary text-xs sm:col-span-4 sm:justify-self-end" @click="removeVideoModelPriceRow(editForm.video_model_prices, family.key)">
-                  {{ t("admin.groups.videoPricing.removeModel") }}
+                <button
+                  type="button"
+                  class="mt-4 rounded p-0.5 text-gray-400 hover:text-red-500"
+                  :title="t('admin.groups.videoPricing.removeModel')"
+                  @click="removeVideoModelPriceRow(editForm.video_model_prices, family.key)"
+                >
+                  <Icon name="x" size="sm" />
                 </button>
               </div>
             </div>
@@ -4538,16 +4562,18 @@ import {
   createEmptyVideoPriceTiers,
   createVideoModelPricesForm,
   serializeVideoModelPrices,
+  temporaryVideoModelKeyPrefix,
+  isTemporaryVideoModelKey,
   videoPriceResolutions,
   videoModelPriceFamilyRows,
   type VideoModelPricesForm,
 } from "./groupsVideoModelPricing";
 
 function addVideoModelPriceRow(form: VideoModelPricesForm): void {
-  const base = "model"
+  const base = temporaryVideoModelKeyPrefix
   let index = 1
-  let key = base
-  while (form[key]) key = `${base}-${index++}`
+  let key = `${base}${index}`
+  while (form[key]) key = `${base}${++index}`
   form[key] = createEmptyVideoPriceTiers()
 }
 
@@ -4559,7 +4585,7 @@ function renameVideoModelPriceRow(form: VideoModelPricesForm, oldKey: string, ev
   const target = event.target as HTMLInputElement | null
   const newKey = target?.value.trim().toLowerCase() ?? ""
   if (!newKey || newKey === oldKey) {
-    if (target) target.value = oldKey
+    if (target) target.value = isTemporaryVideoModelKey(oldKey) ? "" : oldKey
     return
   }
   if (form[newKey]) {

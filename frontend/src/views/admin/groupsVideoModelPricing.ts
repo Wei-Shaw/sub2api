@@ -7,6 +7,12 @@ export const videoPriceResolutions = [
 export type VideoModelPrices = Record<string, Record<string, number>>
 export type VideoModelPricesForm = Record<string, Record<string, number | string | null>>
 
+export const temporaryVideoModelKeyPrefix = '__new_video_model__'
+
+export function isTemporaryVideoModelKey(key: string): boolean {
+  return key.startsWith(temporaryVideoModelKeyPrefix)
+}
+
 function normalizeFamily(value: string): string {
   return value.trim().toLowerCase()
 }
@@ -44,7 +50,7 @@ export function serializeVideoModelPrices(form: VideoModelPricesForm): VideoMode
   const result: VideoModelPrices = {}
   for (const [rawFamily, tiers] of Object.entries(form)) {
     const family = normalizeFamily(rawFamily)
-    if (!family || !tiers || typeof tiers !== 'object') continue
+    if (!family || isTemporaryVideoModelKey(family) || !tiers || typeof tiers !== 'object') continue
 
     const normalizedTiers: Record<string, number> = {}
     for (const [rawResolution, rawPrice] of Object.entries(tiers)) {
@@ -62,5 +68,5 @@ export function videoModelPriceFamilyRows(form: VideoModelPricesForm) {
     .map(normalizeFamily)
     .filter(Boolean)
     .sort()
-    .map((key) => ({ key, label: key }))
+    .map((key) => ({ key, label: isTemporaryVideoModelKey(key) ? '' : key }))
 }
