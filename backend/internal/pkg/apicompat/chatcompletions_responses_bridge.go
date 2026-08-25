@@ -244,14 +244,8 @@ func customToolCallName(name string, customTools, functionTools map[string]bool,
 			match = customName
 		}
 	}
-	return match, match != ""
-}
 
-func customNameForStreamTool(state *ChatCompletionsToResponsesStreamState, name string) string {
-	if customName, ok := resolveCustomToolCallName(name, state.CustomTools, state.FunctionTools, state.NamespaceTools); ok {
-		return customName
-	}
-	return name
+	return match, match != ""
 }
 
 // HasToolSearchTool 判断 Responses 请求是否声明了 tool_search 服务端工具。chat 桥
