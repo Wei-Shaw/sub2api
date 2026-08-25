@@ -990,9 +990,11 @@ export default {
       videoPricing: {
         title: '视频生成计费',
         description:
-          '配置 Grok 视频生成的每秒单价（USD/秒），留空则使用默认每秒价（grok-imagine-video：480p $0.05/s、720p $0.07/s；video-1.5：480p $0.08/s、720p $0.14/s、1080p $0.25/s）',
-        modelOverridesTitle: '按模型覆盖视频价格',
-        modelOverridesDescription: '已填写的单元格会覆盖该模型族的平面分辨率价格。video-1.5 的 preview 与 legacy 别名共用同一模型族；留空则回退到平面分辨率价格。',
+          '配置视频生成的每秒单价（USD/秒），留空则使用系统默认价格。可按需添加模型代号，并为不同分辨率设置覆盖价格。',
+        modelOverridesTitle: '按模型覆盖视频价格（可选）',
+        modelOverridesDescription: '自行添加模型代号后，已填写的分辨率价格会覆盖该模型的通用分辨率价格；未填写的分辨率回退到通用价格。',
+        addModel: '添加模型覆盖',
+        removeModel: '移除模型',
         independentMultiplier: '视频倍率独立',
         videoMultiplier: '视频独立倍率',
         modeHint:
