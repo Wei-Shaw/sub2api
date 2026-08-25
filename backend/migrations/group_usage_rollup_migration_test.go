@@ -51,8 +51,8 @@ func TestMigration223TracksConfiguredTimezone(t *testing.T) {
 	require.Contains(t, sql, "CREATE OR REPLACE FUNCTION invalidate_group_usage_rollup_state_after_insert")
 }
 
-func TestMigration227AddsRetentionBarrier(t *testing.T) {
-	content, err := FS.ReadFile("227_group_usage_rollup_archival.sql")
+func TestMigration231AddsRetentionBarrier(t *testing.T) {
+	content, err := FS.ReadFile("231_group_usage_rollup_archival.sql")
 	require.NoError(t, err)
 
 	sql := string(content)
@@ -75,8 +75,8 @@ func TestMigration227AddsRetentionBarrier(t *testing.T) {
 	require.Contains(t, sql, "OLD.api_key_id IS DISTINCT FROM NEW.api_key_id")
 }
 
-func TestMigration229CreatesAPIKeyRollupsAndRewindsForBackfill(t *testing.T) {
-	content, err := FS.ReadFile("229_usage_apikey_daily_rollups.sql")
+func TestMigration232CreatesAPIKeyRollupsAndRewindsForBackfill(t *testing.T) {
+	content, err := FS.ReadFile("232_usage_apikey_daily_rollups.sql")
 	require.NoError(t, err)
 
 	sql := string(content)

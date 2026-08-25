@@ -1193,7 +1193,7 @@ func TestAPIKeyRollupMigrationRewindsExistingWatermarkForBackfill(t *testing.T) 
 	`, today, retainedFrom)
 	require.NoError(t, err)
 
-	migrationSQL, err := migrations.FS.ReadFile("229_usage_apikey_daily_rollups.sql")
+	migrationSQL, err := migrations.FS.ReadFile("232_usage_apikey_daily_rollups.sql")
 	require.NoError(t, err)
 	_, err = tx.ExecContext(ctx, string(migrationSQL))
 	require.NoError(t, err)
@@ -1287,8 +1287,8 @@ func createGroupUsageRollupTriggerTestSchema(t *testing.T, ctx context.Context, 
 	for _, migrationName := range []string{
 		"222_group_usage_daily_rollups.sql",
 		"223_group_usage_rollup_timezone.sql",
-		"227_group_usage_rollup_archival.sql",
-		"229_usage_apikey_daily_rollups.sql",
+		"231_group_usage_rollup_archival.sql",
+		"232_usage_apikey_daily_rollups.sql",
 	} {
 		migrationSQL, readErr := migrations.FS.ReadFile(migrationName)
 		require.NoError(t, readErr)
