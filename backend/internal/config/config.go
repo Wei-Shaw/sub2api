@@ -1159,6 +1159,11 @@ type GatewayOpenAIHTTP2Config struct {
 	FallbackWindowSeconds int `mapstructure:"fallback_window_seconds"`
 	// FallbackTTLSeconds: 触发后回退 HTTP/1.1 的持续时间（秒）
 	FallbackTTLSeconds int `mapstructure:"fallback_ttl_seconds"`
+	// ReadIdleTimeoutSeconds: HTTP/2 连接空闲多久（无任何帧）后发送健康 PING。
+	// 长思考上游可能长时间静默，默认调大避免误判死连接。
+	ReadIdleTimeoutSeconds int `mapstructure:"read_idle_timeout_seconds"`
+	// PingTimeoutSeconds: 健康 PING 发出后多久未收到 ACK 判定为死连接并关闭。
+	PingTimeoutSeconds int `mapstructure:"ping_timeout_seconds"`
 }
 
 // GatewayOpenAIProxyStreamCircuitConfig controls the bounded, in-process
@@ -2435,6 +2440,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_http2.fallback_error_threshold", 2)
 	viper.SetDefault("gateway.openai_http2.fallback_window_seconds", 60)
 	viper.SetDefault("gateway.openai_http2.fallback_ttl_seconds", 600)
+	viper.SetDefault("gateway.openai_http2.read_idle_timeout_seconds", 60)
+	viper.SetDefault("gateway.openai_http2.ping_timeout_seconds", 30)
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.disabled", false)
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.failure_threshold", 2)
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.window_seconds", 60)
@@ -3505,6 +3512,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.OpenAIHTTP2.FallbackTTLSeconds < 0 {
 		return fmt.Errorf("gateway.openai_http2.fallback_ttl_seconds must be non-negative")
+	}
+	if c.Gateway.OpenAIHTTP2.ReadIdleTimeoutSeconds < 0 {
+		return fmt.Errorf("gateway.openai_http2.read_idle_timeout_seconds must be non-negative")
+	}
+	if c.Gateway.OpenAIHTTP2.PingTimeoutSeconds < 0 {
+		return fmt.Errorf("gateway.openai_http2.ping_timeout_seconds must be non-negative")
 	}
 	if c.Gateway.OpenAIProxyStreamCircuit.FailureThreshold < 0 {
 		return fmt.Errorf("gateway.openai_proxy_stream_circuit.failure_threshold must be non-negative")

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -40,7 +41,7 @@ func requireHTTP2Configured(t *testing.T, tr *http.Transport, msg string) {
 func TestEnableOpenAIHTTP2KeepAlive_EnablesPingHealthCheck(t *testing.T) {
 	tr := &http.Transport{}
 
-	h2, err := enableOpenAIHTTP2KeepAlive(tr)
+	h2, err := enableOpenAIHTTP2KeepAlive(tr, openAIHTTP2ReadIdleTimeout, openAIHTTP2PingTimeout)
 	require.NoError(t, err)
 	require.NotNil(t, h2, "必须返回已配置的 *http2.Transport")
 
@@ -105,4 +106,39 @@ func TestBuildUpstreamTransport_OpenAIH2_WithHTTPProxy_EnablesKeepAlive(t *testi
 	require.True(t, tr.ForceAttemptHTTP2)
 	requireHTTP2Configured(t, tr, "经代理的 openai_h2 也必须启用 http2 keepalive")
 	require.NotNil(t, tr.Proxy, "HTTP 代理仍须通过 Transport.Proxy 生效")
+}
+
+// 生产可调大：ReadIdleTimeout/PingTimeout 必须从参数真正落到 http2.Transport，
+// 供 DeepSeek 等长思考上游避免空闲误杀。
+func TestEnableOpenAIHTTP2KeepAlive_AppliesConfiguredTimeouts(t *testing.T) {
+	tr := &http.Transport{}
+
+	h2, err := enableOpenAIHTTP2KeepAlive(tr, 90*time.Second, 45*time.Second)
+	require.NoError(t, err)
+	require.NotNil(t, h2)
+	require.Equal(t, 90*time.Second, h2.ReadIdleTimeout)
+	require.Equal(t, 45*time.Second, h2.PingTimeout)
+	requireHTTP2Configured(t, tr, "自定义超时同样必须挂到 http2")
+}
+
+// 0 表示未显式配置，必须回退到包级默认值，避免健康探测被意外关闭。
+func TestEnableOpenAIHTTP2KeepAlive_ZeroFallsBackToDefaults(t *testing.T) {
+	tr := &http.Transport{}
+
+	h2, err := enableOpenAIHTTP2KeepAlive(tr, 0, 0)
+	require.NoError(t, err)
+	require.NotNil(t, h2)
+	require.Equal(t, openAIHTTP2ReadIdleTimeout, h2.ReadIdleTimeout)
+	require.Equal(t, openAIHTTP2PingTimeout, h2.PingTimeout)
+}
+
+// 连接池配置必须把 openai_http2 的秒级配置映射为 transport 超时。
+func TestDefaultPoolSettings_MapsHTTP2KeepAliveConfig(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIHTTP2.ReadIdleTimeoutSeconds = 120
+	cfg.Gateway.OpenAIHTTP2.PingTimeoutSeconds = 30
+
+	settings := defaultPoolSettings(cfg)
+	require.Equal(t, 120*time.Second, settings.openAIHTTP2ReadIdleTimeout)
+	require.Equal(t, 30*time.Second, settings.openAIHTTP2PingTimeout)
 }
