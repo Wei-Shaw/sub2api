@@ -29,6 +29,8 @@ const (
 	AntigravityCredentialRejectedReason GatewayFailureReason = "antigravity_oauth_credential_rejected"
 )
 
+const antigravityCompatMaxTokens = 64000
+
 type antigravityCompatRequest struct {
 	protocol        antigravityCompatProtocol
 	originalBody    []byte
@@ -158,7 +160,7 @@ func preserveChatCompletionTokenLimit(request *apicompat.ChatCompletionsRequest,
 		limit = request.MaxCompletionTokens
 	}
 	if limit != nil && *limit > 0 {
-		claudeRequest.MaxTokens = *limit
+		claudeRequest.MaxTokens = min(*limit, antigravityCompatMaxTokens)
 	}
 }
 
