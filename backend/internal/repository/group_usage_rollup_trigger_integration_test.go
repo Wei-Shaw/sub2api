@@ -136,6 +136,7 @@ func TestGroupUsageRollupTriggerInvalidatesRetainedRowsInMixedArchivalInsert(t *
 	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
 	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
 	defer func() { _ = tx.Rollback() }()
+	require.NoError(t, setGroupUsageRollupTriggerTimeZone(ctx, tx, "Asia/Shanghai"))
 
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO groups (id) VALUES (10);
@@ -163,6 +164,7 @@ func TestGroupUsageRollupTriggerInvalidatesRetainedSideOfCrossBarrierUpdate(t *t
 	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
 	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
 	defer func() { _ = tx.Rollback() }()
+	require.NoError(t, setGroupUsageRollupTriggerTimeZone(ctx, tx, "Asia/Shanghai"))
 
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO groups (id) VALUES (10);
@@ -360,6 +362,7 @@ func TestCleanupUsageLogsDoesNotPassUnpublishedDays(t *testing.T) {
 	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
 	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
 	defer func() { _ = tx.Rollback() }()
+	require.NoError(t, setGroupUsageRollupTriggerTimeZone(ctx, tx, "Asia/Shanghai"))
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO users (id) VALUES (1);
 		INSERT INTO usage_logs (id, user_id, api_key_id, actual_cost, created_at) VALUES
