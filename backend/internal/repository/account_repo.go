@@ -3803,13 +3803,12 @@ func (r *accountRepository) RevertProxyFallback(ctx context.Context, accountID i
 	return nil
 }
 
-// ListShadowsByParent 返回指定父账号的影子账号；当前实现仅查 quota_dimension='spark'（唯一预设）。
-// 同时过滤 parent_account_id 和 quota_dimension='spark'，防止未来其它 linked 维度被误伤。
-// ⚠️ 新增影子维度时：须更新此函数（或新增维度专用列举），并检查所有调用点（级联删除/一母一影校验/type 守卫），否则会静默漏掉新维度。
+// ListShadowsByParent returns every linked child. Dimension-specific callers
+// filter the result in service code.
 // 软删除行由 SoftDeleteMixin 拦截器自动排除，无需手写 deleted_at IS NULL。
 func (r *accountRepository) ListShadowsByParent(ctx context.Context, parentID int64) ([]*service.Account, error) {
 	rows, err := r.client.Account.Query().
-		Where(dbaccount.ParentAccountIDEQ(parentID), dbaccount.QuotaDimensionEQ(dbaccount.QuotaDimensionSpark)).
+		Where(dbaccount.ParentAccountIDEQ(parentID)).
 		All(ctx)
 	if err != nil {
 		return nil, err

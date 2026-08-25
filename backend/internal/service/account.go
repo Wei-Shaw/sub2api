@@ -3171,11 +3171,21 @@ func parseExtraInt(value any) int {
 	return 0
 }
 
-// IsShadow 报告账号是否为影子账号（parent_account_id 非空；当前唯一预设是 spark 维度）。
+// IsShadow reports whether the account links to a credential-owning parent.
 func (a *Account) IsShadow() bool { return a != nil && a.ParentAccountID != nil }
 
 // IsCredentialShadow 语义别名，供「凭据消费者跳过影子」处使用（管理/后台 OAuth 路径）。
 func (a *Account) IsCredentialShadow() bool { return a.IsShadow() }
+
+// IsSparkShadow reports whether this linked account uses the independent Spark quota bucket.
+func (a *Account) IsSparkShadow() bool {
+	return a != nil && a.IsShadow() && a.QuotaDimensionOrDefault() == QuotaDimensionSpark
+}
+
+// IsLinkedAccount reports whether this is a normal Codex route linked to its parent's global quota.
+func (a *Account) IsLinkedAccount() bool {
+	return a != nil && a.IsShadow() && a.QuotaDimensionOrDefault() == QuotaDimensionLinked
+}
 
 // QuotaDimensionOrDefault 返回账号的用量维度，未设置时回退 "global"。
 func (a *Account) QuotaDimensionOrDefault() string {

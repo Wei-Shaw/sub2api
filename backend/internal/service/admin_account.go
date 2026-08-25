@@ -168,6 +168,10 @@ func canDuplicateAccountType(accountType string) bool {
 	}
 }
 
+func canCreateLinkedDuplicate(source *Account) bool {
+	return source != nil && !source.IsShadow() && source.IsOpenAIOAuth()
+}
+
 func duplicateAccountGroups(source *Account) ([]AccountGroup, []int64) {
 	if len(source.AccountGroups) > 0 {
 		groups := make([]AccountGroup, 0, len(source.AccountGroups))
@@ -255,7 +259,8 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 			"linked credential shadow accounts cannot be duplicated; duplicate the parent account instead",
 		)
 	}
-	if !canDuplicateAccountType(source.Type) {
+	linkedDuplicate := canCreateLinkedDuplicate(source)
+	if !linkedDuplicate && !canDuplicateAccountType(source.Type) {
 		return nil, infraerrors.BadRequest(
 			"ACCOUNT_DUPLICATE_CREDENTIAL_TYPE_UNSUPPORTED",
 			"accounts with rotating or unsupported credential types cannot be duplicated",
@@ -265,6 +270,9 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 	credentials, err := cloneAccountJSONMap(source.Credentials)
 	if err != nil {
 		return nil, fmt.Errorf("clone account credentials: %w", err)
+	}
+	if linkedDuplicate {
+		credentials = sanitizeLinkedAccountCredentials(credentials)
 	}
 	extra, err := duplicateAccountExtra(source.Extra)
 	if err != nil {
@@ -320,6 +328,10 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 	}
 	// A copied credential must be reviewed before it can share live traffic with its source.
 	duplicate.Schedulable = false
+	if linkedDuplicate {
+		duplicate.ParentAccountID = &source.ID
+		duplicate.QuotaDimension = QuotaDimensionLinked
+	}
 	if s.accountDuplicateRepo == nil {
 		return nil, errors.New("account duplicate repository is not configured")
 	}
@@ -578,15 +590,19 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	// 必须在此守住,否则仅在创建时的保证可被这些路径绕过。
 	if account.IsCredentialShadow() {
 		// 影子绝不持有凭据(凭据只在母账号)——外审 F5。
-		if !isAllowedSparkShadowCredentialsUpdate(input.Credentials) {
-			return nil, infraerrors.Newf(http.StatusBadRequest, "SPARK_SHADOW_NO_CREDENTIALS",
-				"spark shadow accounts do not hold auth credentials; only model mapping can be configured on the shadow account")
+		credentialsAllowed := isAllowedLinkedAccountCredentialsUpdate(input.Credentials)
+		if account.IsSparkShadow() {
+			credentialsAllowed = isAllowedSparkShadowCredentialsUpdate(input.Credentials)
+		}
+		if !credentialsAllowed {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "LINKED_ACCOUNT_NO_CREDENTIALS",
+				"linked accounts do not hold auth credentials; only model mapping can be configured on the linked account")
 		}
 		// 影子 type 不可变——很多上游逻辑按 account.Type 分支(OAuth transform / ChatGPT
 		// header 注入 / WS OAuth 决策),改成 apikey 会让 spark 影子被选中后按错误协议转发(外审 G7)。
 		if input.Type != "" && input.Type != account.Type {
-			return nil, infraerrors.Newf(http.StatusBadRequest, "SPARK_SHADOW_IMMUTABLE_TYPE",
-				"spark shadow account type cannot be changed; it must remain an OpenAI OAuth shadow")
+			return nil, infraerrors.Newf(http.StatusBadRequest, "LINKED_ACCOUNT_IMMUTABLE_TYPE",
+				"linked account type cannot be changed; it must remain an OpenAI OAuth account")
 		}
 	} else if input.Type != "" && input.Type != account.Type && input.Type != AccountTypeOAuth {
 		// 母账号守卫(外审 D/P1):有 spark 影子的账号不能把 type 改出 OpenAI OAuth——影子读透母
@@ -597,8 +613,8 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			return nil, serr
 		}
 		if len(shadows) > 0 {
-			return nil, infraerrors.New(http.StatusBadRequest, "SPARK_SHADOW_PARENT_IMMUTABLE_TYPE",
-				"cannot change account type while it has a spark shadow; delete the shadow first")
+			return nil, infraerrors.New(http.StatusBadRequest, "LINKED_ACCOUNT_PARENT_IMMUTABLE_TYPE",
+				"cannot change account type while it has linked accounts; delete them first")
 		}
 	}
 	wasOveragesEnabled := account.IsOveragesEnabled()
@@ -613,7 +629,11 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		account.Notes = normalizeAccountNotes(input.Notes)
 	}
 	if account.IsCredentialShadow() && input.Credentials != nil {
-		account.Credentials = sanitizeSparkShadowCredentials(input.Credentials)
+		if account.IsSparkShadow() {
+			account.Credentials = sanitizeSparkShadowCredentials(input.Credentials)
+		} else {
+			account.Credentials = sanitizeLinkedAccountCredentials(input.Credentials)
+		}
 	} else if len(input.Credentials) > 0 {
 		// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
 		// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
@@ -1219,14 +1239,14 @@ func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filte
 }
 
 func (s *adminServiceImpl) DeleteAccount(ctx context.Context, id int64) error {
-	// 级联删除 spark 影子账号（先删影子，再删母账号）
+	// Delete linked routes before their credential-owning parent.
 	shadows, err := s.accountRepo.ListShadowsByParent(ctx, id)
 	if err != nil {
-		return fmt.Errorf("list spark shadows for cascade delete: %w", err)
+		return fmt.Errorf("list linked accounts for cascade delete: %w", err)
 	}
 	for _, shadow := range shadows {
 		if err := s.accountRepo.Delete(ctx, shadow.ID); err != nil {
-			return fmt.Errorf("cascade delete spark shadow %d: %w", shadow.ID, err)
+			return fmt.Errorf("cascade delete linked account %d: %w", shadow.ID, err)
 		}
 	}
 	if err := s.accountRepo.Delete(ctx, id); err != nil {
@@ -1317,9 +1337,11 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 	if err != nil {
 		return nil, fmt.Errorf("check existing spark shadows: %w", err)
 	}
-	if len(shadows) > 0 {
-		return nil, infraerrors.New(http.StatusConflict, "SPARK_SHADOW_ALREADY_EXISTS",
-			"parent account already has a spark shadow account")
+	for _, existing := range shadows {
+		if existing != nil && existing.IsSparkShadow() {
+			return nil, infraerrors.New(http.StatusConflict, "SPARK_SHADOW_ALREADY_EXISTS",
+				"parent account already has a spark shadow account")
+		}
 	}
 
 	// 3. 解析分组。未指定 GroupIDs 时:优先**继承母账号当前分组**(影子与母同路由域,母在自定义
@@ -1390,9 +1412,13 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 	// 5. 持久化（Create 填充 shadow.ID）。并发竞态:预查(步骤2)放行后另一请求抢先建成,本次会撞
 	// 一母一影唯一索引。复查确认确为"已存在"竞态时返回结构化 409 而非裸 500——外审 A/P1。
 	if err := s.accountRepo.Create(ctx, shadow); err != nil {
-		if existing, qerr := s.accountRepo.ListShadowsByParent(ctx, parentID); qerr == nil && len(existing) > 0 {
-			return nil, infraerrors.New(http.StatusConflict, "SPARK_SHADOW_ALREADY_EXISTS",
-				"parent account already has a spark shadow account")
+		if existing, qerr := s.accountRepo.ListShadowsByParent(ctx, parentID); qerr == nil {
+			for _, candidate := range existing {
+				if candidate != nil && candidate.IsSparkShadow() {
+					return nil, infraerrors.New(http.StatusConflict, "SPARK_SHADOW_ALREADY_EXISTS",
+						"parent account already has a spark shadow account")
+				}
+			}
 		}
 		return nil, fmt.Errorf("create spark shadow: %w", err)
 	}

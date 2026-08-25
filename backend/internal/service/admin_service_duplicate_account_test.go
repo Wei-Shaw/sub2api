@@ -222,6 +222,43 @@ func TestDuplicateAccountRejectsCredentialShadow(t *testing.T) {
 	require.Len(t, repo.accounts, 1)
 }
 
+func TestDuplicateOpenAIOAuthCreatesLinkedRouteWithoutTokens(t *testing.T) {
+	ctx := context.Background()
+	repo := newDuplicateAccountRepoStub()
+	svc := &adminServiceImpl{accountRepo: repo, accountDuplicateRepo: repo}
+	source := &Account{
+		Name:        "codex-parent",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 4,
+		Credentials: map[string]any{
+			"access_token":          "access-secret",
+			"refresh_token":         "refresh-secret",
+			"chatgpt_account_id":    "workspace-1",
+			"model_mapping":         map[string]any{"gpt-5.6-sol": "gpt-5.6-sol"},
+			"compact_model_mapping": map[string]any{"gpt-5.6-sol": "gpt-5.6-sol"},
+		},
+		GroupIDs:      []int64{7},
+		AccountGroups: []AccountGroup{{GroupID: 7, Priority: 25}},
+	}
+	require.NoError(t, repo.Create(ctx, source))
+
+	duplicate, err := svc.DuplicateAccount(ctx, source.ID, "admin:1", "")
+
+	require.NoError(t, err)
+	require.NotNil(t, duplicate.ParentAccountID)
+	require.Equal(t, source.ID, *duplicate.ParentAccountID)
+	require.Equal(t, QuotaDimensionLinked, duplicate.QuotaDimension)
+	require.Equal(t, AccountTypeOAuth, duplicate.Type)
+	require.False(t, duplicate.Schedulable)
+	require.NotContains(t, duplicate.Credentials, "access_token")
+	require.NotContains(t, duplicate.Credentials, "refresh_token")
+	require.NotContains(t, duplicate.Credentials, "chatgpt_account_id")
+	require.Equal(t, source.Credentials["model_mapping"], duplicate.Credentials["model_mapping"])
+	require.Equal(t, source.Credentials["compact_model_mapping"], duplicate.Credentials["compact_model_mapping"])
+	require.Equal(t, source.GroupIDs, duplicate.GroupIDs)
+}
+
 func TestDuplicateAccountRejectsRotatingOrUnknownCredentialTypes(t *testing.T) {
 	for _, accountType := range []string{AccountTypeOAuth, AccountTypeSetupToken, "legacy-cookie"} {
 		t.Run(accountType, func(t *testing.T) {

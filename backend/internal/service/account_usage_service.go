@@ -719,7 +719,7 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 	applyExtraToUsage(usage, account.Extra, now)
 
 	if (force || shouldRefreshOpenAICodexSnapshot(account, usage, now)) && s.shouldProbeOpenAICodexSnapshot(account.ID, now, force) {
-		if account.IsShadow() {
+		if account.IsSparkShadow() {
 			// Spark shadow accounts fetch usage from /wham/usage (bengalfox channel)
 			// via the shared OpenAIQuotaService, which resolves credentials from the
 			// parent account.  The result is written to the shadow row's own codex_*
@@ -740,7 +740,14 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 				}
 			}
 		} else {
-			if updates, err := s.probeOpenAICodexSnapshot(ctx, account); err == nil && len(updates) > 0 {
+			probeAccount := account
+			if account.IsLinkedAccount() {
+				if parent, resolveErr := resolveCredentialAccount(ctx, s.accountRepo, account); resolveErr == nil && parent != nil {
+					probeAccount = parent
+					applyExtraToUsage(usage, parent.Extra, now)
+				}
+			}
+			if updates, err := s.probeOpenAICodexSnapshot(ctx, probeAccount); err == nil && len(updates) > 0 {
 				mergeAccountExtra(account, updates)
 				if usage.UpdatedAt == nil {
 					usage.UpdatedAt = &now

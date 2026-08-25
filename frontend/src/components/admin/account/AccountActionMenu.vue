@@ -72,6 +72,7 @@ const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'duplicate', 're
 const { t } = useI18n()
 const canDuplicate = computed(() => {
   if (!props.account || props.account.parent_account_id != null) return false
+  if (props.account.platform === 'openai' && props.account.type === 'oauth') return true
   return ['apikey', 'upstream', 'bedrock', 'service_account'].includes(props.account.type)
 })
 const isRateLimited = computed(() => {

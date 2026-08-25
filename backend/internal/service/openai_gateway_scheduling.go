@@ -1498,7 +1498,30 @@ func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accoun
 	if s.concurrencyService == nil {
 		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
 	}
+	if s.schedulerSnapshot != nil && s.accountRepo != nil {
+		if account, err := s.schedulerSnapshot.GetAccount(ctx, accountID); err == nil && account != nil && account.IsLinkedAccount() {
+			if parent, parentErr := s.schedulerSnapshot.GetAccount(ctx, *account.ParentAccountID); parentErr == nil && parent != nil {
+				accountID = parent.ID
+				maxConcurrency = parent.Concurrency
+			}
+		}
+	}
 	return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+}
+
+// OpenAIConcurrencyOwner returns the shared slot owner for a selected route.
+// Normal linked routes consume the parent's global concurrency; Spark keeps an
+// independent slot because it represents a separate quota dimension.
+func (s *OpenAIGatewayService) OpenAIConcurrencyOwner(ctx context.Context, account *Account) (int64, int) {
+	if account == nil {
+		return 0, 0
+	}
+	if account.IsLinkedAccount() && s.accountRepo != nil {
+		if parent, err := resolveCredentialAccount(ctx, s.accountRepo, account); err == nil && parent != nil {
+			return parent.ID, parent.Concurrency
+		}
+	}
+	return account.ID, account.Concurrency
 }
 
 func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) *Account {

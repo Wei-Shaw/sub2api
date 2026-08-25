@@ -693,10 +693,12 @@ func SettingKeyAuthSourcePlatformQuotas(source string) string {
 	return fmt.Sprintf("auth_source_default_%s_platform_quotas", source)
 }
 
-// QuotaDimension constants for spark shadow accounts.
+// QuotaDimension constants for linked OpenAI OAuth accounts.
 const (
 	QuotaDimensionGlobal = "global"
 	QuotaDimensionSpark  = "spark"
+	// QuotaDimensionLinked shares the parent's global Codex quota and credentials.
+	QuotaDimensionLinked = "linked"
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).
