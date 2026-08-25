@@ -177,6 +177,10 @@ func FunctionToolNames(tools []ResponsesTool) map[string]bool {
 type NamespacedToolName struct {
 	Namespace string
 	Name      string
+	// Custom marks a namespace child declared as type=custom (for example
+	// functions/exec in Codex code mode). The flag lets the reverse bridge
+	// restore custom_tool_call items instead of plain function_call items.
+	Custom bool
 }
 
 // NamespaceToolNames 收集 Responses 请求中 namespace 子工具的摊平名 →（namespace,
@@ -1214,6 +1218,122 @@ const chatToolNameMaxLen = 64
 
 // flattenNamespaceToolName 生成 namespace 子工具的摊平名；超长时截断并追加
 // sha256 短哈希保证唯一性。
+// resolveNamespaceToolCallName resolves an upstream-returned tool name back to
+// the canonical flattened namespace name registered for the request. Exact
+// flattened names win; otherwise a single unambiguous "namespace.name" or bare
+// child name backed by exactly one declaration is accepted.
+// resolveCustomToolCallName restores the constrained alias some function-only
+// upstreams synthesize after seeing Codex's flattened "functions" namespace.
+// The reverse lookup is type-aware: an exact ordinary function or namespace
+// mapping wins over a custom alias, and ambiguous candidates are left as the
+// original function call instead of being reclassified.
+func resolveCustomToolCallName(rawName string, customTools, functionTools map[string]bool, namespaceTools map[string]NamespacedToolName) (string, bool) {
+	name := strings.TrimSpace(rawName)
+	if name == "" {
+		return "", false
+	}
+	// Exact non-custom mappings are authoritative. This keeps the resolver safe
+	// even for inherited/manual mappings that bypass declaration-time checks.
+	if namespace, exists := namespaceTools[name]; exists {
+		if namespace.Custom {
+			return namespace.Name, true
+		}
+		return "", false
+	}
+	if functionTools[name] {
+		return "", false
+	}
+	// A dotted alias that resolves to a declared namespace child is likewise
+	// authoritative; it must not be reclassified as a custom tool with the same
+	// suffix (for example functions.exec).
+	if flat, exists := resolveNamespaceToolCallName(name, namespaceTools); exists {
+		if namespaceTools[flat].Custom {
+			return namespaceTools[flat].Name, true
+		}
+		return "", false
+	}
+
+	// Collect every possible custom source for this upstream name. A direct
+	// custom name and a flattened alias can collide, so returning the first map
+	// iteration result would make the reverse mapping non-deterministic.
+	candidates := make([]string, 0, 2)
+	if customTools[name] {
+		candidates = append(candidates, name)
+	}
+	functionsAlias := strings.HasPrefix(name, "functions__") || strings.HasPrefix(name, "functions.")
+	if !functionsAlias {
+		// Chat providers commonly discard the flattened `functions__` prefix and
+		// return the bare child name (for example `exec`). Resolve that alias only
+		// when exactly one custom child in the reserved functions namespace owns it.
+		for _, namespaced := range namespaceTools {
+			if namespaced.Custom && strings.TrimSpace(namespaced.Namespace) == "functions" && namespaced.Name == name {
+				if !containsString(candidates, namespaced.Name) {
+					candidates = append(candidates, namespaced.Name)
+				}
+			}
+		}
+		if len(candidates) == 1 {
+			return candidates[0], true
+		}
+		return "", false
+	}
+
+	hasFunctionsNamespace := false
+	for _, namespaced := range namespaceTools {
+		if strings.TrimSpace(namespaced.Namespace) == "functions" {
+			hasFunctionsNamespace = true
+			break
+		}
+	}
+	if !hasFunctionsNamespace {
+		if len(candidates) == 1 {
+			return candidates[0], true
+		}
+		return "", false
+	}
+	for customName := range customTools {
+		if name == flattenNamespaceToolName("functions", customName) || name == "functions."+customName {
+			if !containsString(candidates, customName) {
+				candidates = append(candidates, customName)
+			}
+		}
+	}
+	if len(candidates) != 1 {
+		return "", false
+	}
+	return candidates[0], true
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+func resolveNamespaceToolCallName(rawName string, namespaceTools map[string]NamespacedToolName) (string, bool) {
+	name := strings.TrimSpace(rawName)
+	if name == "" || len(namespaceTools) == 0 {
+		return "", false
+	}
+	if _, ok := namespaceTools[name]; ok {
+		return name, true
+	}
+	var canonical string
+	for flat, namespaced := range namespaceTools {
+		if name != namespaced.Namespace+"."+namespaced.Name && name != namespaced.Name {
+			continue
+		}
+		if canonical != "" && canonical != flat {
+			// Names such as a.b.c can be produced by more than one namespace/name
+			// pair. Refuse to choose based on map iteration order.
+			return "", false
+		}
+		canonical = flat
+	}
+	return canonical, canonical != ""
+}
 func flattenNamespaceToolName(namespace, name string) string {
 	full := namespace + "__" + name
 	if len(full) <= chatToolNameMaxLen {
