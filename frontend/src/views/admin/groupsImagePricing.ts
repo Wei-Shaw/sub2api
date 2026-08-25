@@ -10,7 +10,7 @@ export const supportsImagePricingPlatform = (platform: string): boolean =>
   imagePricingPlatforms.has(platform);
 
 export const supportsVideoPricingPlatform = (platform: string): boolean =>
-  platform === "grok";
+  platform === "grok" || platform === "openai";
 
 export const imagePricingI18nKey = (_platform: string, key: string): string =>
   `admin.groups.imagePricing.${key}`;
@@ -40,8 +40,7 @@ const defaultImagePricePlaceholders: Record<
   },
 };
 
-// 视频价为每秒单价（USD/s）。480p/720p 取 grok-imagine-video（文生视频实际走该模型）的
-// 官方每秒价；1080p 仅 grok-imagine-video-1.5 图生视频支持，取 1.5 的每秒价。
+// 视频价为每秒单价（USD/s）。OpenAI 与 Grok 的默认值仅用于表单提示，实际计费以分组配置为准。
 const defaultVideoPricePlaceholders: Record<
   string,
   Record<VideoPricingTierKey, string>
@@ -50,6 +49,11 @@ const defaultVideoPricePlaceholders: Record<
     video_price_480p: "0.05",
     video_price_720p: "0.07",
     video_price_1080p: "0.25",
+  },
+  openai: {
+    video_price_480p: "0.10",
+    video_price_720p: "0.10",
+    video_price_1080p: "0.30",
   },
 };
 

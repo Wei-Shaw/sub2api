@@ -36,6 +36,13 @@ func GroupAllowsImageGeneration(group *Group) bool {
 	return group == nil || group.AllowImageGeneration
 }
 
+// GroupAllowsVideoGeneration keeps OpenAI Videos independent from the image
+// generation toggle. OpenAI groups have their own video pricing configuration;
+// legacy Grok media continues to use the existing image/media permission flag.
+func GroupAllowsVideoGeneration(group *Group) bool {
+	return group == nil || strings.EqualFold(strings.TrimSpace(group.Platform), PlatformOpenAI) || group.AllowImageGeneration
+}
+
 // IsImageGenerationIntent classifies requests that can produce generated images.
 func IsImageGenerationIntent(endpoint string, requestedModel string, body []byte) bool {
 	if IsImageGenerationEndpoint(endpoint) {
