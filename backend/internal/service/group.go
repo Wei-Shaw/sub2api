@@ -16,11 +16,63 @@ type GroupModelsListConfig = domain.GroupModelsListConfig
 type GroupCodexModelsManifestConfig = domain.GroupCodexModelsManifestConfig
 type ReasoningEffortMapping = domain.ReasoningEffortMapping
 
+// GroupSchedulerConfig controls account routing behavior for one group.
+// Zero values intentionally preserve legacy behavior for existing data.
+type GroupSchedulerConfig struct {
+	Strategy                 string `json:"strategy"`
+	FirstByteFailover        bool   `json:"first_byte_failover"`
+	StickyBindingMode        string `json:"sticky_binding_mode"`
+	ProbeBypassSticky        bool   `json:"probe_bypass_sticky"`
+	MaxAccountSwitches       int    `json:"max_account_switches"`
+	SameAccountRetryAttempts int    `json:"same_account_retry_attempts"`
+}
+
+func NormalizeGroupSchedulerConfig(cfg GroupSchedulerConfig) GroupSchedulerConfig {
+	if strings.TrimSpace(cfg.Strategy) == "" {
+		cfg.Strategy = "legacy"
+	} else {
+		cfg.Strategy = strings.ToLower(strings.TrimSpace(cfg.Strategy))
+	}
+	if strings.TrimSpace(cfg.StickyBindingMode) == "" {
+		cfg.StickyBindingMode = "keep_original"
+	} else {
+		cfg.StickyBindingMode = strings.ToLower(strings.TrimSpace(cfg.StickyBindingMode))
+	}
+	if cfg.MaxAccountSwitches < 0 {
+		cfg.MaxAccountSwitches = 0
+	}
+	if cfg.SameAccountRetryAttempts < 0 {
+		cfg.SameAccountRetryAttempts = 0
+	}
+	return cfg
+}
+
+func ValidateGroupSchedulerConfig(cfg GroupSchedulerConfig) error {
+	cfg = NormalizeGroupSchedulerConfig(cfg)
+	if cfg.Strategy != "legacy" && cfg.Strategy != "high_availability" {
+		return fmt.Errorf("scheduler.strategy must be legacy or high_availability")
+	}
+	if cfg.StickyBindingMode != "keep_original" && cfg.StickyBindingMode != "rebind_on_failover" {
+		return fmt.Errorf("scheduler.sticky_binding_mode must be keep_original or rebind_on_failover")
+	}
+	return nil
+}
+
+// ResolveGroupMaxAccountSwitches applies the optional per-group override while
+// preserving the handler's existing global default when the field is unset.
+func ResolveGroupMaxAccountSwitches(group *Group, fallback int) int {
+	if group != nil && group.Scheduler.MaxAccountSwitches > 0 {
+		return group.Scheduler.MaxAccountSwitches
+	}
+	return fallback
+}
+
 type Group struct {
 	ID             int64
 	Name           string
 	Description    string
 	Platform       string
+	Scheduler      GroupSchedulerConfig `json:"scheduler"`
 	RateMultiplier float64
 	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
 	// token 计费倍率额外乘以 PeakRateMultiplier。详见 PeakMultiplierAt。

@@ -121,6 +121,26 @@ func effectiveSameAccountRetryLimit(failoverErr *service.UpstreamFailoverError, 
 	return limit
 }
 
+// effectiveSameAccountRetryLimitForContext applies a group-level HA override
+// while retaining the account-level pool retry setting for legacy groups.
+func effectiveSameAccountRetryLimitForContext(c *gin.Context, failoverErr *service.UpstreamFailoverError, account *service.Account) int {
+	if c != nil {
+		if raw, ok := c.Get("sub2api.scheduler_config"); ok {
+			if scheduler, ok := raw.(service.GroupSchedulerConfig); ok && scheduler.Strategy == "high_availability" {
+				limit := scheduler.SameAccountRetryAttempts
+				if limit < 0 {
+					limit = 0
+				}
+				if failoverErr != nil && failoverErr.SameAccountRetryMax > 0 && failoverErr.SameAccountRetryMax < limit {
+					return failoverErr.SameAccountRetryMax
+				}
+				return limit
+			}
+		}
+	}
+	return effectiveSameAccountRetryLimit(failoverErr, account)
+}
+
 // FailoverState 跨循环迭代共享的 failover 状态
 type FailoverState struct {
 	SwitchCount           int

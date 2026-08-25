@@ -136,7 +136,7 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 
 	if plan.IncludeInHealthSamples {
 		if success, eligible := scheduledTestHealthSampleOutcome(ctx, result); eligible && s.openAIGatewaySvc != nil {
-			s.openAIGatewaySvc.ReportOpenAIAccountScheduledProbeResult(ctx, plan.AccountID, success)
+			s.openAIGatewaySvc.ReportOpenAIAccountScheduledProbeResultWithLatency(ctx, plan.AccountID, success, result.LatencyMs)
 		}
 	}
 

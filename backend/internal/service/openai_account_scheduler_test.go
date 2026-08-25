@@ -36,6 +36,23 @@ func TestOpenAIAccountRuntimeStatsBlendsScheduledProbeAtLowWeight(t *testing.T) 
 	require.True(t, stats.hasSampleAt(101, now))
 }
 
+func TestOpenAIAccountRuntimeStatsBlendsScheduledProbeLatencyWithoutChangingRealTTFT(t *testing.T) {
+	stats := newOpenAIAccountRuntimeStats()
+	now := time.Now()
+	realTTFTMs := 100
+	stats.reportWithCategory(105, true, &realTTFTMs, "")
+	stats.reportProbeWithLatency(105, true, 500, now)
+
+	_, ttft, hasTTFT := stats.healthSnapshotAt(105, now)
+	require.True(t, hasTTFT)
+	// Probe latency is blended at the same low weight as probe health and does
+	// not overwrite the real-traffic TTFT sample.
+	require.InDelta(t, (100+openAIScheduledProbeWeight*500)/(1+openAIScheduledProbeWeight), ttft, 1e-9)
+	_, realTTFT, realHasTTFT := stats.snapshot(105)
+	require.True(t, realHasTTFT)
+	require.InDelta(t, 100, realTTFT, 1e-9)
+}
+
 func TestOpenAIAccountRuntimeStatsUsesFreshProbeWhenRealTrafficIsStale(t *testing.T) {
 	stats := newOpenAIAccountRuntimeStats()
 	now := time.Now()
@@ -74,6 +91,21 @@ func TestOpenAIAccountSchedulerProbeDoesNotChangeCircuit(t *testing.T) {
 	require.False(t, scheduler.stats.circuitOpen(103, time.Now()))
 	scheduler.ReportProbeResult(103, true)
 	require.False(t, scheduler.stats.circuitOpen(103, time.Now()))
+}
+
+func TestOpenAIAccountSchedulerProbeCanBeCollectedBeforeHASelection(t *testing.T) {
+	scheduler := &defaultOpenAIAccountScheduler{
+		stats: newOpenAIAccountRuntimeStats(),
+	}
+	scheduler.ReportProbeResultWithLatency(106, true, 240)
+
+	stat := scheduler.stats.loadOrCreate(106)
+	if stat.probeSamples.Load() != 1 {
+		t.Fatalf("probe sample count = %d, want 1", stat.probeSamples.Load())
+	}
+	if got := math.Float64frombits(stat.probeTTFTEWMABits.Load()); got != 240 {
+		t.Fatalf("probe latency = %v, want 240", got)
+	}
 }
 
 type openAISnapshotCacheStub struct {

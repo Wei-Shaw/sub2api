@@ -209,6 +209,7 @@ type openAIAccountRuntimeStat struct {
 	probeSamples               atomic.Int64
 	errorRateEWMABits          atomic.Uint64
 	probeErrorRateEWMABits     atomic.Uint64
+	probeTTFTEWMABits          atomic.Uint64
 	ttftEWMABits               atomic.Uint64
 	lastSampleUnixNano         atomic.Int64
 	lastProbeSampleUnixNano    atomic.Int64
@@ -251,6 +252,7 @@ func (s *openAIAccountRuntimeStats) loadOrCreate(accountID int64) *openAIAccount
 	}
 
 	stat := &openAIAccountRuntimeStat{}
+	stat.probeTTFTEWMABits.Store(math.Float64bits(math.NaN()))
 	stat.ttftEWMABits.Store(math.Float64bits(math.NaN()))
 	actual, loaded := s.accounts.LoadOrStore(accountID, stat)
 	if !loaded {
@@ -341,6 +343,13 @@ func (s *openAIAccountRuntimeStats) reportWithCategory(accountID int64, success 
 }
 
 func (s *openAIAccountRuntimeStats) reportProbe(accountID int64, success bool, now time.Time) {
+	s.reportProbeWithLatency(accountID, success, 0, now)
+}
+
+// reportProbeWithLatency records a scheduled-test result separately from real
+// traffic. Probe latency is intentionally kept out of the real TTFT EWMA and
+// blended only as a low-weight health signal during HA selection.
+func (s *openAIAccountRuntimeStats) reportProbeWithLatency(accountID int64, success bool, latencyMs int64, now time.Time) {
 	if s == nil || accountID <= 0 {
 		return
 	}
@@ -355,6 +364,23 @@ func (s *openAIAccountRuntimeStats) reportProbe(accountID int64, success bool, n
 	stat.probeSamples.Add(1)
 	stat.lastProbeSampleUnixNano.Store(now.UnixNano())
 	updateEWMAAtomic(&stat.probeErrorRateEWMABits, sample, 0.2)
+	if latencyMs > 0 {
+		latency := float64(latencyMs)
+		for {
+			oldBits := stat.probeTTFTEWMABits.Load()
+			oldValue := math.Float64frombits(oldBits)
+			if math.IsNaN(oldValue) {
+				if stat.probeTTFTEWMABits.CompareAndSwap(oldBits, math.Float64bits(latency)) {
+					break
+				}
+				continue
+			}
+			newValue := 0.2*latency + 0.8*oldValue
+			if stat.probeTTFTEWMABits.CompareAndSwap(oldBits, math.Float64bits(newValue)) {
+				break
+			}
+		}
+	}
 }
 
 func (s *openAIAccountRuntimeStats) failureCounts(accountID int64) map[openAIAccountFailureCategory]int64 {
@@ -538,11 +564,20 @@ func (s *openAIAccountRuntimeStats) healthSnapshotAt(accountID int64, now time.T
 	default:
 		errorRate = 0
 	}
-	ttftValue := math.Float64frombits(stat.ttftEWMABits.Load())
-	if math.IsNaN(ttftValue) || !realFresh {
+	realTTFT := math.Float64frombits(stat.ttftEWMABits.Load())
+	probeTTFT := math.Float64frombits(stat.probeTTFTEWMABits.Load())
+	hasRealTTFT := !math.IsNaN(realTTFT) && realFresh
+	hasProbeTTFT := !math.IsNaN(probeTTFT) && probeFresh
+	switch {
+	case hasRealTTFT && hasProbeTTFT:
+		return errorRate, (realTTFT + openAIScheduledProbeWeight*probeTTFT) / (1 + openAIScheduledProbeWeight), true
+	case hasRealTTFT:
+		return errorRate, realTTFT, true
+	case hasProbeTTFT:
+		return errorRate, probeTTFT, true
+	default:
 		return errorRate, 0, false
 	}
-	return errorRate, ttftValue, true
 }
 
 func (s *openAIAccountRuntimeStats) hasSample(accountID int64) bool {
@@ -2235,10 +2270,14 @@ func (s *defaultOpenAIAccountScheduler) reportResultWithErrorContext(ctx context
 }
 
 func (s *defaultOpenAIAccountScheduler) ReportProbeResult(accountID int64, success bool) {
-	if s == nil || s.stats == nil || s.service == nil || !s.service.openAIHighAvailabilityEnabled() {
+	s.ReportProbeResultWithLatency(accountID, success, 0)
+}
+
+func (s *defaultOpenAIAccountScheduler) ReportProbeResultWithLatency(accountID int64, success bool, latencyMs int64) {
+	if s == nil || s.stats == nil {
 		return
 	}
-	s.stats.reportProbe(accountID, success, time.Now())
+	s.stats.reportProbeWithLatency(accountID, success, latencyMs, time.Now())
 	s.observability.recordProbe(success)
 }
 
@@ -2927,15 +2966,44 @@ func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResultWithContext(ctx 
 // test as a low-weight HA signal. It never changes account persistence, TTFT,
 // or circuit state.
 func (s *OpenAIGatewayService) ReportOpenAIAccountScheduledProbeResult(ctx context.Context, accountID int64, success bool) {
-	if s == nil || accountID <= 0 || !s.openAIHighAvailabilityEnabled() || s.accountRepo == nil {
+	s.ReportOpenAIAccountScheduledProbeResultWithLatency(ctx, accountID, success, 0)
+}
+
+// ReportOpenAIAccountScheduledProbeResultWithLatency adds an explicitly
+// enabled scheduled test as a low-weight HA signal. Latency is optional for
+// callers that only have a boolean result. Probe data never changes account
+// persistence, real-traffic TTFT, or circuit state.
+func (s *OpenAIGatewayService) ReportOpenAIAccountScheduledProbeResultWithLatency(ctx context.Context, accountID int64, success bool, latencyMs int64) {
+	if s == nil || accountID <= 0 || s.accountRepo == nil {
 		return
 	}
 	account, err := s.accountRepo.GetByID(ctx, accountID)
-	if err != nil || account == nil || !account.IsOpenAICompatible() {
+	if err != nil || account == nil {
 		return
 	}
-	scheduler := s.getOpenAIAccountScheduler(context.Background())
+	// Feed the shared cross-platform signal first. Platform-specific OpenAI
+	// scheduler stats remain separate for compatibility with existing metrics.
+	reportSharedAccountProbe(accountID, success, latencyMs)
+	if !account.IsOpenAICompatible() {
+		return
+	}
+	// Probe samples are collected independently of the legacy/global scheduler
+	// switch. This keeps group-level HA configurations from losing samples while
+	// leaving legacy request selection unchanged until HA is actually selected.
+	s.openaiSchedulerOnce.Do(func() {
+		if s.openaiAccountStats == nil {
+			s.openaiAccountStats = newOpenAIAccountRuntimeStats()
+		}
+		if s.openaiScheduler == nil {
+			s.openaiScheduler = newDefaultOpenAIAccountScheduler(s, s.openaiAccountStats)
+		}
+	})
+	scheduler := s.openaiScheduler
 	if reporter, ok := scheduler.(interface {
+		ReportProbeResultWithLatency(int64, bool, int64)
+	}); ok {
+		reporter.ReportProbeResultWithLatency(accountID, success, latencyMs)
+	} else if reporter, ok := scheduler.(interface {
 		ReportProbeResult(int64, bool)
 	}); ok {
 		reporter.ReportProbeResult(accountID, success)

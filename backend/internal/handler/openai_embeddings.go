@@ -113,6 +113,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	var lastFailoverErr *service.UpstreamFailoverError
 	switchCount := 0
 	maxAccountSwitches := h.maxAccountSwitches
+	maxAccountSwitches = service.ResolveGroupMaxAccountSwitches(apiKey.Group, maxAccountSwitches)
 	if maxAccountSwitches <= 0 {
 		maxAccountSwitches = 3
 	}

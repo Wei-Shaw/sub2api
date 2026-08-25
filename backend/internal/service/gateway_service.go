@@ -795,6 +795,9 @@ type GatewayService struct {
 	userGroupRateSF       singleflight.Group
 	modelsListCache       *gocache.Cache
 	modelsListCacheTTL    time.Duration
+	// groupSchedulerCache is deliberately short-lived: group edits are picked
+	// up within seconds without putting a repository read on every retry.
+	groupSchedulerCache   *gocache.Cache
 	settingService        *SettingService
 	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
 	debugModelRouting     atomic.Bool
@@ -868,6 +871,7 @@ func NewGatewayService(
 		settingService:        settingService,
 		modelsListCache:       gocache.New(modelsListTTL, time.Minute),
 		modelsListCacheTTL:    modelsListTTL,
+		groupSchedulerCache:   gocache.New(5*time.Second, 30*time.Second),
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		tlsFPProfileService:   tlsFPProfileService,
 		channelService:        channelService,

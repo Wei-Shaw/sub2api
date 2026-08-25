@@ -193,6 +193,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		videoCreateStartedAt = service.GrokVideoPendingCreatedAtNow()
 	}
 	maxAccountSwitches := h.maxAccountSwitches
+	maxAccountSwitches = service.ResolveGroupMaxAccountSwitches(apiKey.Group, maxAccountSwitches)
 	if maxAccountSwitches <= 0 {
 		maxAccountSwitches = 3
 	}
@@ -361,7 +362,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					return
 				}
 				if failoverErr.RetryableOnSameAccount {
-					retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
+					retryLimit := effectiveSameAccountRetryLimitForContext(c, failoverErr, account)
 					if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
 						sameAccountRetryCount[account.ID]++
 						retryDelay := sameAccountRetryDelayFor(failoverErr, sameAccountRetryCount[account.ID])
