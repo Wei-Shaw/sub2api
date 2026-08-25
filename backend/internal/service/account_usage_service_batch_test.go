@@ -189,3 +189,69 @@ func TestAccountUsageService_GetUsageBatch_BestEffortByAccount(t *testing.T) {
 		t.Fatalf("expected API key account error to be preserved, got %q", errorsByAccount[7003])
 	}
 }
+
+func TestAccountUsageService_GetUsageBatch_LinkedUsesParentCodexWindows(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	parentID := int64(7101)
+	childID := int64(7102)
+	parentResetAt := now.Add(2 * time.Hour).Truncate(time.Second)
+	childResetAt := now.Add(4 * time.Hour).Truncate(time.Second)
+
+	repo := &stubOpenAIAccountRepo{
+		accounts: []Account{
+			{
+				ID:       parentID,
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+				Extra: map[string]any{
+					"codex_usage_updated_at": now.Format(time.RFC3339),
+					"codex_5h_used_percent":  12.0,
+					"codex_5h_reset_at":      parentResetAt.Format(time.RFC3339),
+					"codex_7d_used_percent":  34.0,
+					"codex_7d_reset_at":      parentResetAt.Add(24 * time.Hour).Format(time.RFC3339),
+				},
+			},
+			{
+				ID:              childID,
+				Platform:        PlatformOpenAI,
+				Type:            AccountTypeOAuth,
+				ParentAccountID: &parentID,
+				QuotaDimension:  QuotaDimensionLinked,
+				Extra: map[string]any{
+					"codex_usage_updated_at": now.Format(time.RFC3339),
+					"codex_5h_used_percent":  91.0,
+					"codex_5h_reset_at":      childResetAt.Format(time.RFC3339),
+					"codex_7d_used_percent":  92.0,
+					"codex_7d_reset_at":      childResetAt.Add(24 * time.Hour).Format(time.RFC3339),
+				},
+			},
+		},
+	}
+	svc := &AccountUsageService{
+		accountRepo:  repo,
+		usageLogRepo: &usageBatchLogRepoStub{},
+		cache:        NewUsageCache(),
+	}
+
+	usageByAccount, errorsByAccount, err := svc.GetUsageBatch(context.Background(), []int64{childID}, false)
+	if err != nil {
+		t.Fatalf("GetUsageBatch() error = %v", err)
+	}
+	if errorsByAccount[childID] != "" {
+		t.Fatalf("unexpected linked account usage error: %q", errorsByAccount[childID])
+	}
+
+	usage := usageByAccount[childID]
+	if usage == nil || usage.FiveHour == nil || usage.SevenDay == nil {
+		t.Fatalf("expected linked account Codex windows, got %#v", usage)
+	}
+	if usage.FiveHour.Utilization != 12.0 || usage.SevenDay.Utilization != 34.0 {
+		t.Fatalf(
+			"expected parent Codex windows 12/34, got %.1f/%.1f",
+			usage.FiveHour.Utilization,
+			usage.SevenDay.Utilization,
+		)
+	}
+}

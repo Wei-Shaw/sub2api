@@ -716,9 +716,22 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 		return usage, nil
 	}
 
-	applyExtraToUsage(usage, account.Extra, now)
+	// Normal linked routes share the credential-owning parent's global Codex
+	// quota. Resolve that owner before reading cached windows, not only when a
+	// probe is needed: a linked row may still contain a complete legacy
+	// snapshot, which would otherwise make shouldRefreshOpenAICodexSnapshot
+	// return false and permanently mask the parent's 5h/7d windows.
+	snapshotAccount := account
+	if account.IsLinkedAccount() {
+		if parent, resolveErr := resolveCredentialAccount(ctx, s.accountRepo, account); resolveErr == nil && parent != nil {
+			snapshotAccount = parent
+		}
+	}
 
-	if (force || shouldRefreshOpenAICodexSnapshot(account, usage, now)) && s.shouldProbeOpenAICodexSnapshot(account.ID, now, force) {
+	applyExtraToUsage(usage, snapshotAccount.Extra, now)
+
+	if (force || shouldRefreshOpenAICodexSnapshot(snapshotAccount, usage, now)) &&
+		s.shouldProbeOpenAICodexSnapshot(snapshotAccount.ID, now, force) {
 		if account.IsSparkShadow() {
 			// Spark shadow accounts fetch usage from /wham/usage (bengalfox channel)
 			// via the shared OpenAIQuotaService, which resolves credentials from the
@@ -740,19 +753,12 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 				}
 			}
 		} else {
-			probeAccount := account
-			if account.IsLinkedAccount() {
-				if parent, resolveErr := resolveCredentialAccount(ctx, s.accountRepo, account); resolveErr == nil && parent != nil {
-					probeAccount = parent
-					applyExtraToUsage(usage, parent.Extra, now)
-				}
-			}
-			if updates, err := s.probeOpenAICodexSnapshot(ctx, probeAccount); err == nil && len(updates) > 0 {
-				mergeAccountExtra(account, updates)
+			if updates, err := s.probeOpenAICodexSnapshot(ctx, snapshotAccount); err == nil && len(updates) > 0 {
+				mergeAccountExtra(snapshotAccount, updates)
 				if usage.UpdatedAt == nil {
 					usage.UpdatedAt = &now
 				}
-				applyExtraToUsage(usage, account.Extra, now)
+				applyExtraToUsage(usage, snapshotAccount.Extra, now)
 			}
 		}
 	}
