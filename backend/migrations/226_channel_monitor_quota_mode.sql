@@ -28,7 +28,7 @@ BEGIN
         ALTER TABLE channel_monitors
             ADD CONSTRAINT channel_monitors_provider_check
             CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok',
-                                'antigravity', 'kimi', 'zhipu', 'deepseek'));
+                                'antigravity', 'kimi', 'zhipu', 'deepseek', 'orcarouter'));
     END IF;
 
     SELECT pg_get_constraintdef(c.oid)
@@ -44,7 +44,7 @@ BEGIN
         ALTER TABLE channel_monitor_request_templates
             ADD CONSTRAINT channel_monitor_request_templates_provider_check
             CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok',
-                                'antigravity', 'kimi', 'zhipu', 'deepseek'));
+                                'antigravity', 'kimi', 'zhipu', 'deepseek', 'orcarouter'));
     END IF;
 END $$;
 

@@ -16,7 +16,7 @@ func TestChannelMonitorQuotaModeMigration(t *testing.T) {
 	// provider CHECK 两张表扩到 8 平台，且带幂等守卫（仿 176 grok 迁移）。
 	require.Contains(t, sql, "channel_monitors_provider_check")
 	require.Contains(t, sql, "channel_monitor_request_templates_provider_check")
-	require.Contains(t, sql, "CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'antigravity', 'kimi', 'zhipu', 'deepseek'))")
+	require.Contains(t, sql, "CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'antigravity', 'kimi', 'zhipu', 'deepseek', 'orcarouter'))")
 	require.Contains(t, sql, "position('kimi' IN monitor_constraint_def) = 0")
 	require.Contains(t, sql, "position('kimi' IN template_constraint_def) = 0")
 

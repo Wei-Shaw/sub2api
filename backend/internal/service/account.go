@@ -291,11 +291,12 @@ func (a *Account) IsCNProvider() bool {
 }
 
 // IsOpenAICompatible 报告账号是否走 OpenAI 网关（OpenAI 协议族）。
-// openai/grok 原生走 OpenAI 网关；kimi/zhipu/deepseek 同为 OpenAI Chat Completions
-// 兼容上游，也经 OpenAI 网关转发。
+// openai/grok 原生走 OpenAI 网关；kimi/zhipu/deepseek/orcarouter 同为
+// OpenAI Chat Completions 兼容上游，也经 OpenAI 网关转发。
 func (a *Account) IsOpenAICompatible() bool {
 	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok ||
-		a.Platform == PlatformKimi || a.Platform == PlatformZhipu || a.Platform == PlatformDeepseek)
+		a.Platform == PlatformKimi || a.Platform == PlatformZhipu ||
+		a.Platform == PlatformDeepseek || a.Platform == PlatformOrcaRouter)
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -1333,7 +1334,7 @@ func (a *Account) IsOpenAIApiKey() bool {
 // 适用 openai 与国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）；grok 走 GetGrokBaseURL，
 // 此处对 grok 返回 "" 以保持原有行为。
 func (a *Account) GetOpenAIBaseURL() string {
-	if !a.IsOpenAI() && !a.IsCNProvider() {
+	if !a.IsOpenAI() && !a.IsCNProvider() && a.Platform != PlatformOrcaRouter {
 		return ""
 	}
 	if a.IsCNProvider() && a.IsAdaptiveAPIProtocol() {
@@ -1362,6 +1363,8 @@ func (a *Account) GetOpenAIBaseURL() string {
 		return DefaultZhipuPayGBaseURL
 	case PlatformDeepseek:
 		return DefaultDeepseekBaseURL
+	case PlatformOrcaRouter:
+		return DefaultOrcaRouterBaseURL
 	default:
 		return "https://api.openai.com"
 	}
@@ -1670,13 +1673,14 @@ func (a *Account) GetOpenAIApiKey() string {
 
 // GetOpenAIProtocolAPIKey 返回 OpenAI 协议族 APIKey 账号的密钥。
 // 覆盖 openai 原生账号与国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）账号，
-// 供转发鉴权、模型列表同步等协议族共用路径使用。注意 IsOpenAIApiKey 语义上
-// 仅指 openai 平台账号，调度倍率/WS 能力门控继续以其为准，不受本方法影响。
+// 以及 orcarouter 等 OpenAI 兼容网关账号，供转发鉴权、模型列表同步等协议族共用
+// 路径使用。注意 IsOpenAIApiKey 语义上仅指 openai 平台账号，调度倍率/WS 能力
+// 门控继续以其为准，不受本方法影响。
 func (a *Account) GetOpenAIProtocolAPIKey() string {
 	if a == nil {
 		return ""
 	}
-	if a.IsCNProvider() {
+	if a.IsCNProvider() || a.Platform == PlatformOrcaRouter {
 		if a.Type != AccountTypeAPIKey {
 			return ""
 		}

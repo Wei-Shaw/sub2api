@@ -269,6 +269,7 @@ import {
   PROVIDER_KIMI,
   PROVIDER_ZHIPU,
   PROVIDER_DEEPSEEK,
+  PROVIDER_ORCAROUTER,
   API_MODE_CHAT_COMPLETIONS,
   API_MODE_RESPONSES,
   CHECK_MODE_PROBE,
@@ -279,6 +280,7 @@ import {
   DEFAULT_KIMI_ENDPOINT,
   DEFAULT_ZHIPU_ENDPOINT,
   DEFAULT_DEEPSEEK_ENDPOINT,
+  DEFAULT_ORCAROUTER_ENDPOINT,
   DEFAULT_INTERVAL_SECONDS,
 } from '@/constants/channelMonitor'
 
@@ -473,6 +475,7 @@ const providerOptions = computed<ProviderOption[]>(() => [
   { value: PROVIDER_KIMI, label: t('monitorCommon.providers.kimi') },
   { value: PROVIDER_ZHIPU, label: t('monitorCommon.providers.zhipu') },
   { value: PROVIDER_DEEPSEEK, label: t('monitorCommon.providers.deepseek') },
+  { value: PROVIDER_ORCAROUTER, label: t('monitorCommon.providers.orcarouter') },
 ])
 
 // 国产 provider 预填的官方 endpoint（仅探活侧；配额模式 endpoint 可留空）。
@@ -480,6 +483,7 @@ const PROVIDER_DEFAULT_ENDPOINTS: Partial<Record<Provider, string>> = {
   [PROVIDER_KIMI]: DEFAULT_KIMI_ENDPOINT,
   [PROVIDER_ZHIPU]: DEFAULT_ZHIPU_ENDPOINT,
   [PROVIDER_DEEPSEEK]: DEFAULT_DEEPSEEK_ENDPOINT,
+  [PROVIDER_ORCAROUTER]: DEFAULT_ORCAROUTER_ENDPOINT,
 }
 
 interface CheckModeOption {

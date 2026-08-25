@@ -47,6 +47,7 @@ const (
 	PlatformKimi      = domain.PlatformKimi
 	PlatformZhipu     = domain.PlatformZhipu
 	PlatformDeepseek  = domain.PlatformDeepseek
+	PlatformOrcaRouter = domain.PlatformOrcaRouter
 	PlatformComposite = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
@@ -75,6 +76,10 @@ const (
 	DefaultZhipuPayGBaseURL   = "https://open.bigmodel.cn/api/paas/v4"
 	DefaultZhipuCodingBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
 	DefaultDeepseekBaseURL    = "https://api.deepseek.com"
+	// DefaultOrcaRouterBaseURL 是 OrcaRouter 平台的默认 base_url。OrcaRouter 是
+	// OpenAI 兼容的 AI 网关，与 openrouter 一样在单一端点上暴露多模型命名空间，
+	// 其公开模型 id 形如 orcarouter/*，也透传 openai/anthropic/... 前缀模型。
+	DefaultOrcaRouterBaseURL = "https://api.orcarouter.ai/v1"
 )
 
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
@@ -108,6 +113,7 @@ var AllowedQuotaPlatforms = []string{
 	PlatformKimi,
 	PlatformZhipu,
 	PlatformDeepseek,
+	PlatformOrcaRouter,
 }
 
 // AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。

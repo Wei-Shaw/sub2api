@@ -202,6 +202,19 @@
             <PlatformIcon platform="deepseek" size="sm" />
             DeepSeek
           </button>
+          <button
+            type="button"
+            @click="selectOrcaRouterPlatform"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'orcarouter'
+                ? 'bg-white text-indigo-600 shadow-sm dark:bg-dark-600 dark:text-indigo-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="orcarouter" size="sm" />
+            OrcaRouter
+          </button>
         </div>
       </div>
 
@@ -3842,6 +3855,8 @@ const apiKeyBaseUrlPlaceholder = computed(() => {
       return 'https://generativelanguage.googleapis.com'
     case 'grok':
       return 'https://api.x.ai/v1'
+    case 'orcarouter':
+      return 'https://api.orcarouter.ai/v1'
     default:
       return 'https://api.anthropic.com'
   }
@@ -3861,6 +3876,8 @@ const apiKeyValuePlaceholder = computed(() => {
       return '<api-key>.<secret>'
     case 'deepseek':
       return 'sk-...'
+    case 'orcarouter':
+      return 'sk-orca-...'
     default:
       return 'sk-ant-...'
   }
@@ -4031,6 +4048,14 @@ function selectCNPlatform(platform: 'kimi' | 'zhipu' | 'deepseek') {
   }
   apiKeyBaseUrl.value = defaultCNBaseUrl(platform, accountMode.value, apiProtocol.value)
   resetAdaptiveBaseUrls(platform, accountMode.value)
+}
+// 切换 OrcaRouter：OpenAI 兼容 AI 网关，API Key 账号，默认端点 https://api.orcarouter.ai/v1。
+// 与 openai 一样走 OpenAI 网关协议族，模型 id 形如 orcarouter/* 或 openai/.../anthropic/...。
+function selectOrcaRouterPlatform() {
+  form.platform = 'orcarouter'
+  form.type = 'apikey'
+  accountCategory.value = 'apikey'
+  apiKeyBaseUrl.value = 'https://api.orcarouter.ai/v1'
 }
 // 账号类型 / 协议变更时同步默认 base url。
 watch(accountMode, (mode, previousMode) => {
@@ -4567,6 +4592,8 @@ watch(
     // Reset base URL based on platform
     if (newPlatform === 'kimi' || newPlatform === 'zhipu' || newPlatform === 'deepseek') {
       apiKeyBaseUrl.value = defaultCNBaseUrl(newPlatform, accountMode.value, apiProtocol.value)
+    } else if (newPlatform === 'orcarouter') {
+      apiKeyBaseUrl.value = 'https://api.orcarouter.ai/v1'
     } else {
       apiKeyBaseUrl.value =
         (newPlatform === 'openai')
@@ -5471,7 +5498,9 @@ const handleSubmit = async () => {
         ? 'https://generativelanguage.googleapis.com'
         : form.platform === 'grok'
           ? 'https://api.x.ai/v1'
-          : 'https://api.anthropic.com'
+          : form.platform === 'orcarouter'
+            ? 'https://api.orcarouter.ai/v1'
+            : 'https://api.anthropic.com'
 
   // Build credentials with optional model mapping
   const credentials: Record<string, unknown> = {
