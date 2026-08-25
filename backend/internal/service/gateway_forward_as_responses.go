@@ -641,10 +641,9 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 func appendRawJSON(existing json.RawMessage, fragment string) json.RawMessage {
 	// Anthropic initializes tool_use.input to {} in content_block_start, then
 	// streams the actual input through input_json_delta events. Treat that empty
-	// object as a placeholder instead of prefixing it to the streamed JSON.
-	var existingObject map[string]json.RawMessage
-	isEmptyObject := json.Unmarshal(existing, &existingObject) == nil && existingObject != nil && len(existingObject) == 0
-	if len(existing) == 0 || isEmptyObject {
+	// object (or null) as a placeholder instead of prefixing it to the streamed JSON.
+	trimmed := bytes.TrimSpace(existing)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("{}")) || bytes.Equal(trimmed, []byte("null")) {
 		return json.RawMessage(fragment)
 	}
 	return json.RawMessage(string(existing) + fragment)
