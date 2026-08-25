@@ -1324,11 +1324,12 @@ type GatewayOpenAIWSConfig struct {
 
 // GatewayOpenAIWSSchedulerScoreWeights 账号调度打分权重。
 type GatewayOpenAIWSSchedulerScoreWeights struct {
-	Priority  float64 `mapstructure:"priority"`
-	Load      float64 `mapstructure:"load"`
-	Queue     float64 `mapstructure:"queue"`
-	ErrorRate float64 `mapstructure:"error_rate"`
-	TTFT      float64 `mapstructure:"ttft"`
+	Priority     float64 `mapstructure:"priority"`
+	Load         float64 `mapstructure:"load"`
+	Queue        float64 `mapstructure:"queue"`
+	ErrorRate    float64 `mapstructure:"error_rate"`
+	TTFT         float64 `mapstructure:"ttft"`
+	TotalLatency float64 `mapstructure:"total_latency"`
 	// Reset 倾向「会话窗口最早重置」的账号（use-it-or-lose-it）。
 	// >0 时，剩余重置时间越短的账号得分越高，从而被优先用尽。默认 0（关闭，不改变原有行为）。
 	Reset float64 `mapstructure:"reset"`
@@ -1342,7 +1343,7 @@ type GatewayOpenAIWSSchedulerScoreWeights struct {
 }
 
 func (w GatewayOpenAIWSSchedulerScoreWeights) BaseWeightSum() float64 {
-	return w.Priority + w.Load + w.Queue + w.ErrorRate + w.TTFT + w.Reset + w.QuotaHeadroom + w.UpstreamCost
+	return w.Priority + w.Load + w.Queue + w.ErrorRate + w.TTFT + w.TotalLatency + w.Reset + w.QuotaHeadroom + w.UpstreamCost
 }
 
 func (w GatewayOpenAIWSSchedulerScoreWeights) TotalWeightSum() float64 {
@@ -1351,7 +1352,7 @@ func (w GatewayOpenAIWSSchedulerScoreWeights) TotalWeightSum() float64 {
 
 func (w GatewayOpenAIWSSchedulerScoreWeights) IsValid() bool {
 	for _, weight := range []float64{
-		w.Priority, w.Load, w.Queue, w.ErrorRate, w.TTFT, w.Reset,
+		w.Priority, w.Load, w.Queue, w.ErrorRate, w.TTFT, w.TotalLatency, w.Reset,
 		w.QuotaHeadroom, w.UpstreamCost, w.PreviousResponse, w.SessionSticky,
 	} {
 		if weight < 0 || math.IsNaN(weight) || math.IsInf(weight, 0) {
@@ -1375,12 +1376,13 @@ type GatewayOpenAISchedulerConfig struct {
 	// FailoverOnHealthEscape allows a health-score escape to migrate the sticky
 	// binding when sticky_binding_mode is rebind_on_failover.
 	FailoverOnHealthEscape bool `mapstructure:"failover_on_health_escape"`
-	// HighAvailabilityErrorRateWeight and HighAvailabilityTTFTWeight override
-	// the corresponding scheduler weights only in high_availability mode.
+	// HighAvailability*Weight fields override the corresponding scheduler
+	// weights only in high_availability mode.
 	// Zero keeps the configured OpenAI WS weight, which is useful for manually
 	// constructed configs and preserves compatibility with older callers.
-	HighAvailabilityErrorRateWeight float64 `mapstructure:"high_availability_error_rate_weight"`
-	HighAvailabilityTTFTWeight      float64 `mapstructure:"high_availability_ttft_weight"`
+	HighAvailabilityErrorRateWeight    float64 `mapstructure:"high_availability_error_rate_weight"`
+	HighAvailabilityTTFTWeight         float64 `mapstructure:"high_availability_ttft_weight"`
+	HighAvailabilityTotalLatencyWeight float64 `mapstructure:"high_availability_total_latency_weight"`
 	// HealthCircuitEnabled enables a short account-level health circuit only in
 	// high_availability mode.
 	HealthCircuitEnabled bool `mapstructure:"health_circuit_enabled"`
@@ -2473,6 +2475,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.queue", 0.7)
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.error_rate", 0.8)
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.ttft", 0.5)
+	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.total_latency", 0.0)
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.reset", 0.0)
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.quota_headroom", 0.0)
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.upstream_cost", 0.0)
@@ -2644,6 +2647,7 @@ func setEnvReachableDefaults() {
 	viper.SetDefault("gateway.openai_scheduler.failover_on_health_escape", false)
 	viper.SetDefault("gateway.openai_scheduler.high_availability_error_rate_weight", 1.5)
 	viper.SetDefault("gateway.openai_scheduler.high_availability_ttft_weight", 1.5)
+	viper.SetDefault("gateway.openai_scheduler.high_availability_total_latency_weight", 0.25)
 	viper.SetDefault("gateway.openai_scheduler.health_circuit_enabled", true)
 	viper.SetDefault("gateway.openai_scheduler.health_circuit_failure_threshold", 3)
 	viper.SetDefault("gateway.openai_scheduler.health_circuit_window_seconds", 60)
@@ -3578,7 +3582,7 @@ func (c *Config) Validate() error {
 	weights := c.Gateway.OpenAIWS.SchedulerScoreWeights
 	for _, weight := range []float64{
 		weights.Priority, weights.Load, weights.Queue, weights.ErrorRate, weights.TTFT,
-		weights.Reset, weights.QuotaHeadroom, weights.UpstreamCost,
+		weights.TotalLatency, weights.Reset, weights.QuotaHeadroom, weights.UpstreamCost,
 		weights.PreviousResponse, weights.SessionSticky,
 	} {
 		if weight < 0 || math.IsNaN(weight) || math.IsInf(weight, 0) {
@@ -3610,8 +3614,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("gateway.openai_scheduler.sticky_binding_mode must be keep_original or rebind_on_failover")
 	}
 	for name, weight := range map[string]float64{
-		"high_availability_error_rate_weight": c.Gateway.OpenAIScheduler.HighAvailabilityErrorRateWeight,
-		"high_availability_ttft_weight":       c.Gateway.OpenAIScheduler.HighAvailabilityTTFTWeight,
+		"high_availability_error_rate_weight":    c.Gateway.OpenAIScheduler.HighAvailabilityErrorRateWeight,
+		"high_availability_ttft_weight":          c.Gateway.OpenAIScheduler.HighAvailabilityTTFTWeight,
+		"high_availability_total_latency_weight": c.Gateway.OpenAIScheduler.HighAvailabilityTotalLatencyWeight,
 	} {
 		if weight < 0 || math.IsNaN(weight) || math.IsInf(weight, 0) {
 			return fmt.Errorf("gateway.openai_scheduler.%s must be non-negative and finite", name)

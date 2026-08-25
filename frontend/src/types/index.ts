@@ -618,6 +618,7 @@ export interface Group {
 
 export interface GroupSchedulerConfig {
   strategy?: 'legacy' | 'high_availability'
+  selection_mode?: 'weighted' | 'strict_health'
   first_byte_failover?: boolean
   sticky_binding_mode?: 'keep_original' | 'rebind_on_failover'
   probe_bypass_sticky?: boolean

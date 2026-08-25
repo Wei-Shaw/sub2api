@@ -518,6 +518,16 @@
             <span class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition" :class="createForm.scheduler.strategy === 'high_availability' ? 'translate-x-6' : 'translate-x-1'" />
           </button>
         </div>
+        <div v-if="createForm.scheduler.strategy === 'high_availability'" class="flex items-center justify-between gap-4">
+          <div>
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">账号选择模式</label>
+            <p class="text-xs text-gray-500 dark:text-gray-400">严格健康优先按综合评分确定性选择最高分账号</p>
+          </div>
+          <select v-model="createForm.scheduler.selection_mode" class="input w-auto min-w-44">
+            <option value="weighted">加权探索</option>
+            <option value="strict_health">严格健康优先</option>
+          </select>
+        </div>
         <!-- 从分组复制账号 -->
         <div v-if="copyAccountsGroupOptions.length > 0">
           <div class="mb-1.5 flex items-center gap-1">
@@ -2324,6 +2334,16 @@
           <button type="button" @click="editForm.scheduler.strategy = editForm.scheduler.strategy === 'high_availability' ? 'legacy' : 'high_availability'" class="relative inline-flex h-6 w-12 rounded-full border-2 border-transparent transition-colors" :class="editForm.scheduler.strategy === 'high_availability' ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'" :aria-pressed="editForm.scheduler.strategy === 'high_availability'">
             <span class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition" :class="editForm.scheduler.strategy === 'high_availability' ? 'translate-x-6' : 'translate-x-1'" />
           </button>
+        </div>
+        <div v-if="editForm.scheduler.strategy === 'high_availability'" class="flex items-center justify-between gap-4">
+          <div>
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">账号选择模式</label>
+            <p class="text-xs text-gray-500 dark:text-gray-400">严格健康优先按综合评分确定性选择最高分账号</p>
+          </div>
+          <select v-model="editForm.scheduler.selection_mode" class="input w-auto min-w-44">
+            <option value="weighted">加权探索</option>
+            <option value="strict_health">严格健康优先</option>
+          </select>
         </div>
         <!-- 从分组复制账号（编辑时） -->
         <div v-if="copyAccountsGroupOptionsForEdit.length > 0">
@@ -5232,6 +5252,7 @@ const editModelsListSelectedCount = computed(
 const createForm = reactive({
   scheduler: {
     strategy: "legacy",
+    selection_mode: "weighted",
     first_byte_failover: true,
   } as GroupSchedulerConfig,
   name: "",
@@ -5599,6 +5620,7 @@ const convertApiFormatToRoutingRules = async (
 const editForm = reactive({
   scheduler: {
     strategy: "legacy",
+    selection_mode: "weighted",
     first_byte_failover: true,
   } as GroupSchedulerConfig,
   name: "",
@@ -6067,7 +6089,7 @@ const closeCreateModal = () => {
   createForm.name = "";
   createForm.description = "";
   createForm.platform = "anthropic";
-  createForm.scheduler = { strategy: "legacy", first_byte_failover: true };
+  createForm.scheduler = { strategy: "legacy", selection_mode: "weighted", first_byte_failover: true };
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
@@ -6324,6 +6346,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.platform = group.platform;
   editForm.scheduler = {
     strategy: group.scheduler?.strategy || "legacy",
+    selection_mode: group.scheduler?.selection_mode || "weighted",
     first_byte_failover: group.scheduler?.first_byte_failover ?? true,
   };
   editForm.rate_multiplier = group.rate_multiplier;

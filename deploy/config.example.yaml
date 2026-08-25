@@ -399,6 +399,9 @@ gateway:
       queue: 0.7
       error_rate: 0.8
       ttft: 0.5
+      # 同步请求总耗时低权重信号；按输出 token 的平方根归一化。
+      # high_availability 模式默认使用补充权重 0.25（见下方配置）。
+      total_latency: 0.0
       # use-it-or-lose-it：倾向「会话窗口最早重置」的账号，剩余重置时间越短得分越高。
       # 0 表示关闭（默认，不改变原有行为）；调大可让即将重置的账号被优先用尽。
       reset: 0.0
@@ -416,6 +419,7 @@ gateway:
     failover_on_health_escape: false
     high_availability_error_rate_weight: 1.5
     high_availability_ttft_weight: 1.5
+    high_availability_total_latency_weight: 0.25
     # 高可用账号级短路：连续账号级错误达到阈值后临时摘除，成功请求立即恢复
     health_circuit_enabled: true
     health_circuit_failure_threshold: 3

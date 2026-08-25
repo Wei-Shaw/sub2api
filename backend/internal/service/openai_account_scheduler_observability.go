@@ -39,6 +39,8 @@ type openAIHACandidateObservation struct {
 	Score              float64 `json:"score"`
 	ErrorRate          float64 `json:"error_rate"`
 	TTFTMs             float64 `json:"ttft_ms,omitempty"`
+	TotalLatencyMs     float64 `json:"total_latency_ms,omitempty"`
+	HasTotalLatency    bool    `json:"has_total_latency,omitempty"`
 	HealthSampleSource string  `json:"health_sample_source"`
 	Priority           int     `json:"priority"`
 	LoadRate           int     `json:"load_rate"`
@@ -133,6 +135,7 @@ func (s *defaultOpenAIAccountScheduler) observeSelection(ctx context.Context, re
 	}
 	fields := []zap.Field{
 		zap.String("strategy", "high_availability"),
+		zap.String("selection_mode", normalizeGroupSelectionMode(req.SelectionMode)),
 		zap.String("outcome", outcome),
 		zap.String("platform", NormalizeOpenAICompatiblePlatform(req.Platform)),
 		zap.String("model", req.RequestedModel),
@@ -194,6 +197,8 @@ func (s *defaultOpenAIAccountScheduler) observeCandidatePlan(ctx context.Context
 			Score:              candidate.score,
 			ErrorRate:          candidate.errorRate,
 			TTFTMs:             candidate.ttft,
+			TotalLatencyMs:     candidate.totalLatencyMs,
+			HasTotalLatency:    candidate.hasTotalLatency,
 			HealthSampleSource: s.stats.healthSampleSourceAt(candidate.account.ID, now),
 			Priority:           candidate.priority,
 			LoadRate:           candidate.loadInfo.LoadRate,
@@ -202,6 +207,7 @@ func (s *defaultOpenAIAccountScheduler) observeCandidatePlan(ctx context.Context
 	}
 	fields := []zap.Field{
 		zap.String("strategy", "high_availability"),
+		zap.String("selection_mode", normalizeGroupSelectionMode(req.SelectionMode)),
 		zap.String("platform", NormalizeOpenAICompatiblePlatform(req.Platform)),
 		zap.String("model", req.RequestedModel),
 		zap.Int("candidate_count", plan.candidateCount),

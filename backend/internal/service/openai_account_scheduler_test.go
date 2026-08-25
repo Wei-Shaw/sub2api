@@ -36,6 +36,15 @@ func TestOpenAIAccountRuntimeStatsBlendsScheduledProbeAtLowWeight(t *testing.T) 
 	require.True(t, stats.hasSampleAt(101, now))
 }
 
+func TestOpenAIAccountRuntimeStatsNormalizesSuccessfulSyncLatencyByOutputTokens(t *testing.T) {
+	stats := newOpenAIAccountRuntimeStats()
+	now := time.Now()
+	stats.reportWithCategoryAndMetrics(106, true, nil, 900, 9, "")
+	latency, ok := stats.totalLatencySnapshotAt(106, now)
+	require.True(t, ok)
+	require.InDelta(t, 300, latency, 1e-9)
+}
+
 func TestOpenAIAccountRuntimeStatsBlendsScheduledProbeLatencyWithoutChangingRealTTFT(t *testing.T) {
 	stats := newOpenAIAccountRuntimeStats()
 	now := time.Now()
@@ -3612,6 +3621,23 @@ func TestBuildOpenAIWeightedSelectionOrder_DeterministicBySessionSeed(t *testing
 	for i := range first {
 		require.Equal(t, first[i].account.ID, second[i].account.ID)
 	}
+}
+
+func TestBuildOpenAISelectionOrder_StrictHealthUsesHighestScoreFirst(t *testing.T) {
+	candidates := []openAIAccountCandidateScore{
+		{account: &Account{ID: 201}, loadInfo: &AccountLoadInfo{}, score: 4.2},
+		{account: &Account{ID: 202}, loadInfo: &AccountLoadInfo{}, score: 8.8},
+		{account: &Account{ID: 203}, loadInfo: &AccountLoadInfo{}, score: 6.1},
+	}
+	scheduler := &defaultOpenAIAccountScheduler{}
+	order := scheduler.buildOpenAISelectionOrder(OpenAIAccountScheduleRequest{SelectionMode: "strict_health"}, openAIAccountLoadPlan{
+		candidates: candidates,
+		topK:       1,
+	})
+	require.Len(t, order, len(candidates))
+	require.Equal(t, int64(202), order[0].account.ID)
+	require.Equal(t, int64(203), order[1].account.ID)
+	require.Equal(t, int64(201), order[2].account.ID)
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceDistributesAcrossSessions(t *testing.T) {

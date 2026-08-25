@@ -20,6 +20,7 @@ type ReasoningEffortMapping = domain.ReasoningEffortMapping
 // Zero values intentionally preserve legacy behavior for existing data.
 type GroupSchedulerConfig struct {
 	Strategy                 string `json:"strategy"`
+	SelectionMode            string `json:"selection_mode"`
 	FirstByteFailover        bool   `json:"first_byte_failover"`
 	StickyBindingMode        string `json:"sticky_binding_mode"`
 	ProbeBypassSticky        bool   `json:"probe_bypass_sticky"`
@@ -32,6 +33,11 @@ func NormalizeGroupSchedulerConfig(cfg GroupSchedulerConfig) GroupSchedulerConfi
 		cfg.Strategy = "legacy"
 	} else {
 		cfg.Strategy = strings.ToLower(strings.TrimSpace(cfg.Strategy))
+	}
+	if strings.TrimSpace(cfg.SelectionMode) == "" {
+		cfg.SelectionMode = "weighted"
+	} else {
+		cfg.SelectionMode = strings.ToLower(strings.TrimSpace(cfg.SelectionMode))
 	}
 	if strings.TrimSpace(cfg.StickyBindingMode) == "" {
 		cfg.StickyBindingMode = "keep_original"
@@ -47,10 +53,21 @@ func NormalizeGroupSchedulerConfig(cfg GroupSchedulerConfig) GroupSchedulerConfi
 	return cfg
 }
 
+func normalizeGroupSelectionMode(mode string) string {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "strict_health" {
+		return mode
+	}
+	return "weighted"
+}
+
 func ValidateGroupSchedulerConfig(cfg GroupSchedulerConfig) error {
 	cfg = NormalizeGroupSchedulerConfig(cfg)
 	if cfg.Strategy != "legacy" && cfg.Strategy != "high_availability" {
 		return fmt.Errorf("scheduler.strategy must be legacy or high_availability")
+	}
+	if cfg.SelectionMode != "weighted" && cfg.SelectionMode != "strict_health" {
+		return fmt.Errorf("scheduler.selection_mode must be weighted or strict_health")
 	}
 	if cfg.StickyBindingMode != "keep_original" && cfg.StickyBindingMode != "rebind_on_failover" {
 		return fmt.Errorf("scheduler.sticky_binding_mode must be keep_original or rebind_on_failover")
