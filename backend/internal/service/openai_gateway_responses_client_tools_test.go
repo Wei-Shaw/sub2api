@@ -60,6 +60,28 @@ func TestAdaptOpenAIResponsesClientToolsLeavesNamespaceOnlyBodyUnchanged(t *test
 	require.False(t, mapping.ToolSearch)
 }
 
+func TestAdaptOpenAIResponsesClientToolsPromotesAdditionalTools(t *testing.T) {
+	body := []byte(`{
+		"model":"deepseek-reasoner",
+		"input":[
+			{"type":"additional_tools","role":"developer","tools":[
+				{"type":"custom","name":"exec"},
+				{"type":"namespace","name":"functions","tools":[{"type":"function","name":"read_file"}]}
+			]},
+			{"type":"message","role":"user","content":"inspect"}
+		]
+	}`)
+
+	adapted, mapping, err := adaptOpenAIResponsesClientTools(body)
+	require.NoError(t, err)
+	require.True(t, mapping.CustomTools["exec"])
+	require.Equal(t, apicompat.ResponsesNamespaceName{Namespace: "functions", Name: "read_file"}, mapping.NamespaceTools["functions__read_file"])
+	require.False(t, gjson.GetBytes(adapted, `input.#(type=="additional_tools")`).Exists())
+	require.Equal(t, "function", gjson.GetBytes(adapted, "tools.0.type").String())
+	require.Equal(t, "exec", gjson.GetBytes(adapted, "tools.0.name").String())
+	require.Equal(t, "functions__read_file", gjson.GetBytes(adapted, "tools.1.name").String())
+}
+
 func TestAdaptOpenAIResponsesClientToolsRejectsTrailingData(t *testing.T) {
 	tests := map[string][]byte{
 		"trailing garbage":     append(openAIClientToolsRequest(false), []byte(` garbage`)...),
@@ -191,6 +213,47 @@ func TestDeepSeekAdaptiveResponsesForwardRestoresClientToolsNonStreaming(t *test
 	require.Equal(t, "*** Begin Patch", gjson.Get(recorder.Body.String(), "output.1.input").String())
 }
 
+func TestDeepSeekResponsesForwardPromotesAdditionalToolsAndRestoresCall(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{
+		"model":"deepseek-reasoner",
+		"stream":false,
+		"input":[
+			{"type":"additional_tools","role":"developer","tools":[{"type":"custom","name":"exec"}]},
+			{"type":"message","role":"user","content":"run it"}
+		]
+	}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_ds_additional","status":"completed","output":[{"type":"function_call","id":"i1","call_id":"c1","name":"exec","arguments":"{\"input\":\"pwd\"}"}],"usage":{"input_tokens":1,"output_tokens":1}}`)),
+	}}
+	svc := openAIClientToolsTestService(upstream)
+	account := &Account{
+		ID:       5664,
+		Platform: PlatformDeepseek,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":      "test-key",
+			"api_protocol": APIProtocolResponses,
+			"base_url":     "https://relay.example",
+		},
+	}
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, gjson.GetBytes(upstream.lastBody, `input.#(type=="additional_tools")`).Exists())
+	require.Equal(t, "function", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
+	require.Equal(t, "exec", gjson.GetBytes(upstream.lastBody, "tools.0.name").String())
+	require.Equal(t, "custom_tool_call", gjson.Get(recorder.Body.String(), "output.0.type").String())
+	require.Equal(t, "pwd", gjson.Get(recorder.Body.String(), "output.0.input").String())
+}
+
 func TestDeepSeekResponsesCompactSkipsClientToolAdaptation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := openAIClientToolsRequest(false)
@@ -261,7 +324,10 @@ func TestOpenAIPassthroughAPIKeyRestoresClientToolsStreaming(t *testing.T) {
 		`data: {"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"type":"function_call","id":"i1","call_id":"c1","name":"apply_patch","status":"in_progress"}}`,
 		`data: {"type":"response.function_call_arguments.done","sequence_number":1,"item_id":"i1","call_id":"c1","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}"}`,
 		`data: {"type":"response.output_item.done","sequence_number":2,"output_index":0,"item":{"type":"function_call","id":"i1","call_id":"c1","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}","status":"completed"}}`,
-		`data: {"type":"response.completed","sequence_number":3,"response":{"id":"resp_stream_tools","status":"completed","output":[{"type":"function_call","id":"i1","call_id":"c1","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}"}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+		`data: {"type":"response.output_item.added","sequence_number":3,"output_index":1,"item":{"type":"function_call","id":"i2","call_id":"c2","name":"exec","status":"in_progress"}}`,
+		`data: {"type":"response.function_call_arguments.done","sequence_number":4,"item_id":"i2","call_id":"c2","name":"exec","arguments":"{\"input\":\"pwd\"}"}`,
+		`data: {"type":"response.output_item.done","sequence_number":5,"output_index":1,"item":{"type":"function_call","id":"i2","call_id":"c2","name":"exec","arguments":"{\"input\":\"pwd\"}","status":"completed"}}`,
+		`data: {"type":"response.completed","sequence_number":6,"response":{"id":"resp_stream_tools","status":"completed","output":[{"type":"function_call","id":"i1","call_id":"c1","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}"},{"type":"function_call","id":"i2","call_id":"c2","name":"exec","arguments":"{\"input\":\"pwd\"}"}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
 	}, "\n\n") + "\n\n"
 	upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(sse))}}
 	svc := openAIClientToolsTestService(upstream)
@@ -276,5 +342,7 @@ func TestOpenAIPassthroughAPIKeyRestoresClientToolsStreaming(t *testing.T) {
 	require.Contains(t, output, `"type":"custom_tool_call"`)
 	require.Contains(t, output, `"type":"response.custom_tool_call_input.done"`)
 	require.Contains(t, output, `"input":"*** Begin Patch"`)
+	require.Contains(t, output, `"input":"pwd"`)
+	require.NotContains(t, output, `tools.exec_command`)
 	require.NotContains(t, output, `"input":{`)
 }
