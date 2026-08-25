@@ -32,7 +32,7 @@ func TestMatchImagePricingTierRules(t *testing.T) {
 	_, err = MatchImagePricingTier(ImageDimensions{Width: 4096, Height: 6145}, testImageTiers())
 	require.ErrorContains(t, err, "long side")
 
-	_, err = MatchImagePricingTier(ImageDimensions{Width: 3000, Height: 3841}, testImageTiers())
+	_, err = MatchImagePricingTier(ImageDimensions{Width: 7000, Height: 2400}, testImageTiers())
 	require.ErrorContains(t, err, "long side")
 
 	_, err = MatchImagePricingTier(ImageDimensions{Width: 800, Height: 800}, []ImagePricingTier{
@@ -55,12 +55,16 @@ func TestMatchImagePricingTierRules(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "2K", tier.Label)
 
-	// 超过最高档的短边/总像素仍按最高档价格计费。
-	tier, err = MatchImagePricingTier(ImageDimensions{Width: 3000, Height: 3000}, userTiers)
+	// 短边超过最高档但总像素仍在最高档上限内时，按最高档价格计费。
+	tier, err = MatchImagePricingTier(ImageDimensions{Width: 3000, Height: 2500}, userTiers)
 	require.NoError(t, err)
 	require.Equal(t, "4K", tier.Label)
 
-	// 长边超过全局上限仍然拒绝，即使可以回退到最高档。
+	// 总像素超过最高档仍然拒绝。
+	_, err = MatchImagePricingTier(ImageDimensions{Width: 3000, Height: 3000}, userTiers)
+	require.ErrorContains(t, err, "total pixels")
+
+	// 长边超过最高 Tier 仍然拒绝，即使可以回退到最高档。
 	_, err = MatchImagePricingTier(ImageDimensions{Width: 2000, Height: 3841}, userTiers)
 	require.ErrorContains(t, err, "long side")
 }
