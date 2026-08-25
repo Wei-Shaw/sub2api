@@ -349,7 +349,7 @@ func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {
 		}
 		normalized = next
 	}
-	if next, removed, err := normalizeOpenAIParallelToolCallsWithoutTools(normalized); err != nil {
+	if next, removed, err := normalizeOpenAIParallelToolCallsWithoutTools(normalized, false); err != nil {
 		return body, false, err
 	} else if removed {
 		normalized = next
@@ -361,7 +361,10 @@ func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {
 	return normalized, true, nil
 }
 
-func normalizeOpenAIParallelToolCallsWithoutTools(body []byte) ([]byte, bool, error) {
+func normalizeOpenAIParallelToolCallsWithoutTools(body []byte, responsesLite bool) ([]byte, bool, error) {
+	if responsesLite {
+		return body, false, nil
+	}
 	parallel := gjson.GetBytes(body, "parallel_tool_calls")
 	if !parallel.Exists() {
 		return body, false, nil
@@ -376,16 +379,7 @@ func normalizeOpenAIParallelToolCallsWithoutTools(body []byte) ([]byte, bool, er
 	return normalized, true, nil
 }
 
-// openAIRequestBodyHasTools is the []byte counterpart of openAIResponsesLiteHasTools:
-// besides the top-level "tools" array it also recognizes the Responses Lite carrier.
-// normalizeOpenAIResponsesLiteTools moves namespace tools into an input item of type
-// "additional_tools" and drops the top-level "tools" key; the request still carries
-// tools at that point. Looking only at the top level therefore misreads such a body as
-// "no tools" and deletes the parallel_tool_calls:false that
-// ensureOpenAIResponsesLiteParallelToolCalls had just pinned, and OpenAI falls back to
-// its default of true and rejects the request with
-// 400 unsupported_value: "X-OpenAI-Internal-Codex-Responses-Lite requires
-// `parallel_tool_calls` to be false."
+// openAIRequestBodyHasTools 同时识别顶层 tools 和 input[].additional_tools。
 func openAIRequestBodyHasTools(body []byte) bool {
 	if tools := gjson.GetBytes(body, "tools"); tools.IsArray() && len(tools.Array()) > 0 {
 		return true
@@ -948,7 +942,7 @@ func normalizeOpenAIResponseFormatSchemasBody(body []byte) ([]byte, bool, error)
 	return normalized, true, nil
 }
 
-func normalizeOpenAIResponsesWebSocketCompatibilityBody(body []byte, account *Account) ([]byte, bool, error) {
+func normalizeOpenAIResponsesWebSocketCompatibilityBody(body []byte, account *Account, responsesLite bool) ([]byte, bool, error) {
 	if account == nil || !account.IsOpenAI() {
 		return body, false, nil
 	}
@@ -962,7 +956,7 @@ func normalizeOpenAIResponsesWebSocketCompatibilityBody(body []byte, account *Ac
 		}
 	}
 	if account.IsOpenAIApiKey() {
-		if next, normalizedParallel, err := normalizeOpenAIParallelToolCallsWithoutTools(normalized); err != nil {
+		if next, normalizedParallel, err := normalizeOpenAIParallelToolCallsWithoutTools(normalized, responsesLite); err != nil {
 			return body, false, err
 		} else if normalizedParallel {
 			normalized = next
