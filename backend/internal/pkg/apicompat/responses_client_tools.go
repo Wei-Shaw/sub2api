@@ -494,7 +494,9 @@ func restoreClientToolValue(value any, adapter *ResponsesClientToolMapping) bool
 			if adapter.CustomTools[name] {
 				typed["type"] = "custom_tool_call"
 				retypeResponsesToolCallItemID(typed, "custom_tool_call")
-				typed["input"] = extractCustomToolCallInput(rawObjectString(typed["arguments"]))
+				if arguments, exists := typed["arguments"]; exists {
+					typed["input"] = extractCustomToolCallInput(rawObjectString(arguments))
+				}
 				delete(typed, "arguments")
 				delete(typed, "namespace")
 				changed = true

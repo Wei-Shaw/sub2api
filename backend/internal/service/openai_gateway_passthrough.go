@@ -2200,6 +2200,8 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 					finalResponse = patched
 				}
 			}
+		} else {
+			finalResponse = supplementNonEmptyResponseOutputFromSSE(finalResponse, bodyText)
 		}
 		finalResponse = supplementCompactionItemFromSSE(c, finalResponse, bodyText)
 		body = finalResponse

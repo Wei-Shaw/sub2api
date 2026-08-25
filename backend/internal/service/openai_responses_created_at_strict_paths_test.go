@@ -244,6 +244,55 @@ func TestResponsesCreatedAtCompatibility_SSEToJSONPaths(t *testing.T) {
 	})
 }
 
+func TestResponsesTerminalOutputCompatibility_SSEToJSONThinTerminalPaths(t *testing.T) {
+	account := &Account{ID: 1, Name: "account", Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	body := []byte(strings.Join([]string{
+		"event: response.output_item.done",
+		`data: {"output_index":0,"item":{"type":"function_call","id":"fc_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"echo hi\"}","status":"completed","vendor_counter":` + responsesCreatedAtLargeVendorInteger + `,"vendor_extension":{"trace":"keep"}}}`,
+		"",
+		"event: response.completed",
+		`data: {"response":{"id":"resp_thin","object":"response","created_at":1e3,"model":"mapped-model","status":"completed","output":[{"type":"function_call","id":"fc_exec","call_id":"call_exec","name":"exec"}],"vendor_sequence":` + responsesCreatedAtLargeVendorInteger + `,"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}}`,
+		"",
+	}, "\n"))
+
+	for _, tc := range []struct {
+		name string
+		run  func(*OpenAIGatewayService, *http.Response, *gin.Context) error
+	}{
+		{
+			name: "main",
+			run: func(svc *OpenAIGatewayService, resp *http.Response, c *gin.Context) error {
+				_, err := svc.handleSSEToJSON(resp, c, account, body, "client-model", "mapped-model")
+				return err
+			},
+		},
+		{
+			name: "passthrough",
+			run: func(svc *OpenAIGatewayService, resp *http.Response, c *gin.Context) error {
+				_, err := svc.handlePassthroughSSEToJSON(resp, c, account, body, "client-model", "mapped-model")
+				return err
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}}
+
+			require.NoError(t, tc.run(newResponsesCreatedAtStrictService(), resp, c))
+			output := recorder.Body.Bytes()
+			require.Equal(t, "client-model", gjson.GetBytes(output, "model").String())
+			requireStrictPositiveIntegerJSONPath(t, output, "created_at")
+			require.Equal(t, `{"input":"echo hi"}`, gjson.GetBytes(output, "output.0.arguments").String())
+			require.Equal(t, "completed", gjson.GetBytes(output, "output.0.status").String())
+			require.Equal(t, "keep", gjson.GetBytes(output, "output.0.vendor_extension.trace").String())
+			require.Equal(t, responsesCreatedAtLargeVendorInteger, gjson.GetBytes(output, "output.0.vendor_counter").Raw)
+			require.Equal(t, responsesCreatedAtLargeVendorInteger, gjson.GetBytes(output, "vendor_sequence").Raw)
+		})
+	}
+}
+
 func TestResponsesCreatedAtCompatibility_WSHTTPBridgePath(t *testing.T) {
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,

@@ -200,6 +200,70 @@ func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyAdaptsClientTools(t *testing.T) {
 	require.Equal(t, "pwd", gjson.GetBytes(result.wsReplayInput[0], "input").String())
 }
 
+func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyRepairsThinTerminalClientToolItem(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	sse := strings.Join([]string{
+		`data: {"type":"response.output_item.done","sequence_number":0,"output_index":0,"vendor_sequence":900719925474099312345,"item":{"type":"function_call","id":"fc_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"echo hi\"}","status":"completed","vendor_counter":900719925474099312345,"vendor_extension":{"trace":"keep"}}}`,
+		``,
+		`data: {"type":"response.completed","sequence_number":1,"response":{"id":"resp_tools","created_at":1e3,"status":"completed","output":[{"type":"function_call","id":"fc_exec","call_id":"call_exec","name":"exec"}],"vendor_sequence":900719925474099312345,"usage":{"input_tokens":1,"output_tokens":1}}}`,
+		``,
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(sse)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+		httpUpstream: upstream,
+	}
+	account := &Account{ID: 5660, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 1}
+	payload := []byte(`{"type":"response.create","model":"gpt-5","stream":true,"tools":[{"type":"custom","name":"exec","description":"Run a command"}],"input":"run echo hi"}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	var events [][]byte
+
+	result, err := svc.proxyOpenAIWSHTTPBridgeTurn(
+		context.Background(), c, account, "test-token", payload, len(payload),
+		"gpt-5", "", "", "", "", 2,
+		func(message []byte) error {
+			events = append(events, append([]byte(nil), message...))
+			return nil
+		},
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	var outputDone, completed []byte
+	for _, event := range events {
+		switch gjson.GetBytes(event, "type").String() {
+		case "response.output_item.done":
+			outputDone = event
+		case "response.completed":
+			completed = event
+		}
+	}
+	require.NotEmpty(t, outputDone)
+	require.Equal(t, "custom_tool_call", gjson.GetBytes(outputDone, "item.type").String())
+	require.Equal(t, "ctc_exec", gjson.GetBytes(outputDone, "item.id").String())
+	require.Equal(t, "echo hi", gjson.GetBytes(outputDone, "item.input").String())
+	require.Equal(t, "completed", gjson.GetBytes(outputDone, "item.status").String())
+	require.Equal(t, "keep", gjson.GetBytes(outputDone, "item.vendor_extension.trace").String())
+	require.Equal(t, "900719925474099312345", gjson.GetBytes(outputDone, "item.vendor_counter").Raw)
+	require.Equal(t, "900719925474099312345", gjson.GetBytes(outputDone, "vendor_sequence").Raw)
+	require.NotEmpty(t, completed)
+	require.Equal(t, "custom_tool_call", gjson.GetBytes(completed, "response.output.0.type").String())
+	require.Equal(t, "ctc_exec", gjson.GetBytes(completed, "response.output.0.id").String())
+	require.Equal(t, "echo hi", gjson.GetBytes(completed, "response.output.0.input").String())
+	require.Equal(t, "completed", gjson.GetBytes(completed, "response.output.0.status").String())
+	require.Equal(t, "keep", gjson.GetBytes(completed, "response.output.0.vendor_extension.trace").String())
+	require.Equal(t, "900719925474099312345", gjson.GetBytes(completed, "response.output.0.vendor_counter").Raw)
+	require.Equal(t, "900719925474099312345", gjson.GetBytes(completed, "response.vendor_sequence").Raw)
+	requireStrictPositiveIntegerJSONPath(t, completed, "response.created_at")
+}
+
 func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyRestoresClientToolsInResponseDone(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

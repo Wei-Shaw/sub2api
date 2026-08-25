@@ -1717,6 +1717,8 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 					finalResponse = patched
 				}
 			}
+		} else {
+			finalResponse = supplementNonEmptyResponseOutputFromSSE(finalResponse, bodyText)
 		}
 		finalResponse = supplementCompactionItemFromSSE(c, finalResponse, bodyText)
 		body = finalResponse
@@ -1957,6 +1959,43 @@ func extractCodexFinalResponse(body string) ([]byte, bool) {
 		return finalResponse, true
 	}
 	return nil, false
+}
+
+// supplementNonEmptyResponseOutputFromSSE fills fields omitted from a thin
+// terminal response.output using authoritative output_item.done items from the
+// same SSE body. Empty output keeps the existing reconstruction path because it
+// also handles delta-only, image, and compaction compatibility cases.
+func supplementNonEmptyResponseOutputFromSSE(finalResponse []byte, bodyText string) []byte {
+	output := gjson.GetBytes(finalResponse, "output")
+	if !output.IsArray() || len(output.Array()) == 0 {
+		return finalResponse
+	}
+
+	doneItems := newResponsesStreamOutputItems()
+	forEachOpenAISSEFrame(bodyText, func(eventType string, data []byte) {
+		data = []byte(openAICompatPayloadWithEventType(string(data), eventType))
+		if normalized, changed := normalizeCompletedImageGenerationStatus(data); changed {
+			data = normalized
+		}
+		doneItems.Observe(data)
+	})
+	if !doneItems.HasItems() {
+		return finalResponse
+	}
+
+	envelope := make([]byte, 0, len(finalResponse)+48)
+	envelope = append(envelope, `{"type":"response.completed","response":`...)
+	envelope = append(envelope, finalResponse...)
+	envelope = append(envelope, '}')
+	normalized, changed := normalizeResponsesStreamingTerminalOutput(envelope, nil, doneItems, nil)
+	if !changed {
+		return finalResponse
+	}
+	response := gjson.GetBytes(normalized, "response")
+	if !response.IsObject() || response.Raw == "" {
+		return finalResponse
+	}
+	return []byte(response.Raw)
 }
 
 func normalizeCompletedImageGenerationStatus(data []byte) ([]byte, bool) {

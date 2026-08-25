@@ -556,6 +556,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	if hasResponsesClientToolMapping(clientToolMapping) {
 		resp.Body = newResponsesClientToolStreamBody(resp.Body, clientToolMapping, maxLineSize)
 	}
+	streamDoneItems := newResponsesStreamOutputItems()
 	scanner := bufio.NewScanner(resp.Body)
 	scanBuf := getSSEScannerBuf64K()
 	scanner.Buffer(scanBuf[:0], maxLineSize)
@@ -651,6 +652,10 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			if corrected, changed := s.toolCorrector.CorrectToolCallsInSSEBytes(upstreamMessage); changed {
 				upstreamMessage = corrected
 			}
+		}
+		streamDoneItems.Observe(upstreamMessage)
+		if normalized, changed := normalizeResponsesStreamingTerminalOutput(upstreamMessage, nil, streamDoneItems, nil); changed {
+			upstreamMessage = normalized
 		}
 		replayCollector.AddEvent(eventType, upstreamMessage)
 
