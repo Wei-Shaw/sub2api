@@ -678,7 +678,7 @@ func recordGrokMediaUsage(
 	videoTaskID := ""
 	if result != nil && result.VideoCount > 0 {
 		videoTaskID = strings.TrimSpace(firstNonEmptyString(requestID, result.ResponseID))
-		if stable := service.StableGrokVideoBillingRequestID(firstNonEmptyString(result.ResponseID, requestID)); stable != "" {
+		if stable := service.StableVideoTaskBillingRequestID(account.Platform, firstNonEmptyString(result.ResponseID, requestID)); stable != "" {
 			result.RequestID = stable
 		}
 		// Prefer task id hash for payload fingerprint stability across status/content.
@@ -704,7 +704,8 @@ func recordGrokMediaUsage(
 			ChannelUsageFields: channelUsageFields,
 		}); err != nil {
 			if videoTaskID != "" {
-				if releaseErr := h.gatewayService.ReleaseGrokVideoBilling(ctx, videoTaskID, subject.UserID, apiKey.ID); releaseErr != nil {
+				releaseErr := h.gatewayService.ReleaseVideoTaskBilling(ctx, account.Platform, videoTaskID, subject.UserID, apiKey.ID)
+				if releaseErr != nil {
 					reqLog.Warn("grok_media.video_billing_claim_release_failed",
 						zap.String("request_id", videoTaskID),
 						zap.Error(releaseErr),
