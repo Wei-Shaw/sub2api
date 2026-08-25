@@ -53,6 +53,9 @@ var requiredCSPDirectiveValues = []struct {
 	directive string
 	value     string
 }{
+	// 插件配置 UI 使用同源 iframe；目标响应仍必须显式放开 X-Frame-Options，
+	// 因此这里只允许 'self' 不会使其他默认 DENY 的管理/API 页面可被嵌入。
+	{"frame-src", "'self'"},
 	{"script-src", CloudflareInsightsDomain},
 	{"script-src", TencentCaptchaDomain},
 	{"frame-src", TencentCaptchaDomain},
@@ -196,35 +199,41 @@ func directiveHasValue(policy, directive, value string) bool {
 // addToDirective adds a value to a specific CSP directive.
 // If the directive doesn't exist, it will be added after default-src.
 func addToDirective(policy, directive, value string) string {
-	// Find the directive in the policy
-	directivePrefix := directive + " "
-	idx := strings.Index(policy, directivePrefix)
+	if end, ok := cspDirectiveEnd(policy, directive); ok {
+		return policy[:end] + " " + value + policy[end:]
+	}
+	trimmed := strings.TrimSpace(policy)
+	if trimmed == "" {
+		return newCSPDirective(directive, value)
+	}
+	if !strings.HasSuffix(trimmed, ";") {
+		trimmed += ";"
+	}
+	return trimmed + " " + newCSPDirective(directive, value)
+}
 
-	if idx == -1 {
-		// Directive not found, add it after default-src or at the beginning
-		defaultSrcIdx := strings.Index(policy, "default-src ")
-		if defaultSrcIdx != -1 {
-			// Find the end of default-src directive (next semicolon)
-			endIdx := strings.Index(policy[defaultSrcIdx:], ";")
-			if endIdx != -1 {
-				insertPos := defaultSrcIdx + endIdx + 1
-				// Insert new directive after default-src
-				return policy[:insertPos] + " " + directive + " 'self' " + value + ";" + policy[insertPos:]
-			}
+func cspDirectiveEnd(policy, directive string) (int, bool) {
+	start := 0
+	for start <= len(policy) {
+		end := len(policy)
+		if relativeEnd := strings.IndexByte(policy[start:], ';'); relativeEnd >= 0 {
+			end = start + relativeEnd
 		}
-		// Fallback: prepend the directive
-		return directive + " 'self' " + value + "; " + policy
+		fields := strings.Fields(policy[start:end])
+		if len(fields) > 0 && fields[0] == directive {
+			return end, true
+		}
+		if end == len(policy) {
+			break
+		}
+		start = end + 1
 	}
+	return 0, false
+}
 
-	// Find the end of this directive (next semicolon or end of string)
-	endIdx := strings.Index(policy[idx:], ";")
-
-	if endIdx == -1 {
-		// No semicolon found, directive goes to end of string
-		return policy + " " + value
+func newCSPDirective(directive, value string) string {
+	if value == "'self'" {
+		return directive + " 'self';"
 	}
-
-	// Insert value before the semicolon
-	insertPos := idx + endIdx
-	return policy[:insertPos] + " " + value + policy[insertPos:]
+	return directive + " 'self' " + value + ";"
 }

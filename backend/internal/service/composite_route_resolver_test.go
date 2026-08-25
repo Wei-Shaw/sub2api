@@ -191,6 +191,22 @@ func TestCompositeRouteResolverIgnoresDisabledRoutesAndFallsBackToDetector(t *te
 	require.Nil(t, decision.Route)
 }
 
+func TestCompositeRouteResolverDetectsKimiCodeBareModels(t *testing.T) {
+	resolver := NewCompositeRouteResolver(nil)
+
+	for _, model := range []string{"k3", "k3-256k", "kimi-code/k3"} {
+		t.Run(model, func(t *testing.T) {
+			decision, err := resolver.Resolve(context.Background(), 7, model, CompositeRouteEndpointMessages)
+
+			require.NoError(t, err)
+			require.True(t, decision.Matched)
+			require.Equal(t, CompositeRouteSourceDetector, decision.Source)
+			require.Equal(t, PlatformKimi, decision.TargetPlatform)
+			require.Equal(t, model, decision.UpstreamModel)
+		})
+	}
+}
+
 func TestCompositeRouteResolverExplicitRoutesCoverBucketTwoProviders(t *testing.T) {
 	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{
 		routes: []CompositeModelRoute{

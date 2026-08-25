@@ -8,10 +8,10 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"image"
-	"image/color"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -56,10 +56,10 @@ func TestEstimateImageTokensUsesDimensionsNotEncodedLength(t *testing.T) {
 	require.NoError(t, png.Encode(&flatPNG, flat))
 
 	noisy := image.NewRGBA(image.Rect(0, 0, 512, 512))
-	for y := 0; y < 512; y++ {
-		for x := 0; x < 512; x++ {
-			noisy.SetRGBA(x, y, color.RGBA{R: uint8(x), G: uint8(y), B: uint8(x ^ y), A: 255})
-		}
+	// 伪随机噪声不可压缩，编码体积显著大于纯色图；该大小关系跨 Go 版本稳定
+	rng := rand.New(rand.NewSource(42))
+	for i := 0; i+4 <= len(noisy.Pix); i += 4 {
+		binary.BigEndian.PutUint32(noisy.Pix[i:], rng.Uint32())
 	}
 	var noisyPNG bytes.Buffer
 	require.NoError(t, png.Encode(&noisyPNG, noisy))

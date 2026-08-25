@@ -528,7 +528,8 @@ func TestPricingRequestToService_TimePricing(t *testing.T) {
 		Models:      []string{"gpt-5"},
 		BillingMode: "token",
 		TimePricing: &channelTimePricingRequest{
-			Timezone: "Asia/Shanghai",
+			Timezone:     "Asia/Shanghai",
+			WeekdaysOnly: true,
 			Periods: []channelTimePricingPeriodRequest{{
 				StartTime: "09:00", EndTime: "12:00", Multiplier: 2,
 			}},
@@ -537,6 +538,7 @@ func TestPricingRequestToService_TimePricing(t *testing.T) {
 
 	got := pricingRequestToService([]channelModelPricingRequest{req}, true)
 	require.Equal(t, "Asia/Shanghai", got[0].TimePricing.Timezone)
+	require.True(t, got[0].TimePricing.WeekdaysOnly)
 	require.Equal(t, 2.0, got[0].TimePricing.Periods[0].Multiplier)
 }
 
@@ -585,7 +587,8 @@ func TestPricingToResponse_TimePricing(t *testing.T) {
 	got := pricingToResponse(&service.ChannelModelPricing{
 		BillingMode: service.BillingModeToken,
 		TimePricing: &service.ChannelTimePricing{
-			Timezone: "Asia/Shanghai",
+			Timezone:     "Asia/Shanghai",
+			WeekdaysOnly: true,
 			Periods: []service.ChannelTimePricingPeriod{{
 				StartTime: "14:00", EndTime: "18:00", Multiplier: 1.25,
 			}},
@@ -594,6 +597,7 @@ func TestPricingToResponse_TimePricing(t *testing.T) {
 
 	require.NotNil(t, got.TimePricing)
 	require.Equal(t, "Asia/Shanghai", got.TimePricing.Timezone)
+	require.True(t, got.TimePricing.WeekdaysOnly)
 	require.Equal(t, 1.25, got.TimePricing.Periods[0].Multiplier)
 }
 
