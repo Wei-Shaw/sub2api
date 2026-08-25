@@ -499,7 +499,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			if c != nil && c.Request != nil {
 				clientHeaders = c.Request.Header
 			}
-			fpIDs := s.resolveGatewayCodexFingerprintIDs(account, clientHeaders)
+			fpIDs, fpErr := s.resolveGatewayCodexFingerprintIDsForRequest(ctx, c, account, clientHeaders)
+			if fpErr != nil {
+				return nil, fpErr
+			}
 			if fpIDs != nil {
 				if applyCodexFingerprintClientMetadata(decoded, fpIDs) {
 					markDecodedModified()

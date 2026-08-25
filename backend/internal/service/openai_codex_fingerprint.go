@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
@@ -22,6 +23,29 @@ import (
 // turn_id 等随机字段一致。
 const codexFingerprintIDsContextKey = "codex_fingerprint_ids"
 
+// codexPrivacyAccountContextKey stores the credential account that owns the
+// OAuth token for the current attempt. Shadow rows remain the scheduling and
+// billing identity, while fingerprint material is derived from the parent.
+const codexPrivacyAccountContextKey = "codex_privacy_account"
+
+func stageCodexPrivacyAccount(c *gin.Context, account *Account) {
+	if c != nil {
+		c.Set(codexPrivacyAccountContextKey, account)
+	}
+}
+
+func stagedCodexPrivacyAccount(c *gin.Context, fallback *Account) *Account {
+	if c == nil {
+		return fallback
+	}
+	if value, ok := c.Get(codexPrivacyAccountContextKey); ok {
+		if account, ok := value.(*Account); ok && account != nil {
+			return account
+		}
+	}
+	return fallback
+}
+
 // stageCodexFingerprintIDs 将本 attempt 解析出的收敛 ID 暂存到 gin context。
 // 必须无条件覆写（含 nil）：failover 从收敛账号切到 off 账号时，上一账号的
 // IDs 不得残留并被误应用到新账号的出站头（typed-nil 由应用侧 nil 守卫吸收）。
@@ -32,7 +56,7 @@ func stageCodexFingerprintIDs(c *gin.Context, ids *codexFingerprintIDs) {
 }
 
 func stagedCodexFingerprintIDs(c *gin.Context, account *Account) *codexFingerprintIDs {
-	if c == nil || account == nil || !account.UsesOpenAICodexProtocol() {
+	if c == nil || account == nil || account.Type != AccountTypeOAuth {
 		return nil
 	}
 	value, ok := c.Get(codexFingerprintIDsContextKey)
@@ -140,7 +164,7 @@ func codexFingerprintSeed(extra map[string]any) (string, bool) {
 
 func prepareCodexFingerprintExtraForCreate(platform, accountType string, extra map[string]any) map[string]any {
 	prepared := stripCodexFingerprintSeed(extra)
-	if platform != PlatformOpenAI || (accountType != AccountTypeOAuth && accountType != AccountTypeSetupToken) {
+	if platform != PlatformOpenAI || accountType != AccountTypeOAuth {
 		return prepared
 	}
 	mode := codexFingerprintModeFromExtra(prepared)
@@ -157,7 +181,7 @@ func prepareCodexFingerprintExtraForCreate(platform, accountType string, extra m
 
 func prepareCodexFingerprintExtraForUpdate(account *Account, extra map[string]any) map[string]any {
 	prepared := stripCodexFingerprintSeed(extra)
-	if account == nil || !account.IsOpenAIOAuthLike() {
+	if account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
 		return prepared
 	}
 	if seed, ok := codexFingerprintSeed(account.Extra); ok {
@@ -204,7 +228,7 @@ func ShouldEnsureCodexFingerprintSeedForExtraUpdates(updates map[string]any) boo
 // session / full 保持原义。新账号会持久化当前有效模式，避免以后
 // 调整默认值时静默改变账号策略。
 func (a *Account) GetCodexFingerprintMode() codexFingerprintMode {
-	if a == nil || !a.IsOpenAIOAuthLike() {
+	if a == nil || !a.IsOpenAIOAuth() {
 		return codexFingerprintOff
 	}
 	return codexFingerprintModeFromExtra(a.Extra)
@@ -357,6 +381,29 @@ func resolveCodexFingerprintIDsFromRequest(account *Account, clientHeaders http.
 // production requests remain stable across restarts and gateway replicas.
 func (s *OpenAIGatewayService) resolveGatewayCodexFingerprintIDs(account *Account, clientHeaders http.Header) *codexFingerprintIDs {
 	return resolveCodexFingerprintIDsFromRequest(account, clientHeaders)
+}
+
+// resolveGatewayCodexFingerprintIDsForRequest derives fingerprint material
+// from the parent OAuth credential for shadow accounts, but keeps the selected
+// shadow ID in the snapshot so failover/header matching remains account-local.
+func (s *OpenAIGatewayService) resolveGatewayCodexFingerprintIDsForRequest(ctx context.Context, c *gin.Context, account *Account, clientHeaders http.Header) (*codexFingerprintIDs, error) {
+	privacyAccount := account
+	if account != nil && account.IsShadow() {
+		if s == nil || s.accountRepo == nil {
+			return nil, fmt.Errorf("resolve shadow privacy account: account repository is unavailable")
+		}
+		resolved, err := resolveCredentialAccount(ctx, s.accountRepo, account)
+		if err != nil {
+			return nil, err
+		}
+		privacyAccount = resolved
+	}
+	stageCodexPrivacyAccount(c, privacyAccount)
+	ids := s.resolveGatewayCodexFingerprintIDs(privacyAccount, clientHeaders)
+	if ids != nil && privacyAccount != account {
+		ids.accountID = account.ID
+	}
+	return ids, nil
 }
 
 // applyCodexFingerprintHeaders 按预计算的收敛 ID 改写出站 HTTP 头中的设备指纹。
