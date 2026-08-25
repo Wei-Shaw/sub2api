@@ -136,6 +136,22 @@ func TestNormalizeResponsesStreamingTerminalOutputCompletesThinSameCountItem(t *
 	require.Equal(t, "keep", gjson.GetBytes(normalized, "response.output.0.provider_extension.trace").String())
 }
 
+func TestNormalizeResponsesStreamingTerminalOutputTreatsNullToolSearchArgumentsAsMissing(t *testing.T) {
+	doneItems := newResponsesStreamOutputItems()
+	doneItems.Observe([]byte(`{
+		"type":"response.output_item.done","output_index":0,
+		"item":{"id":"tsc_search","type":"tool_search_call","call_id":"call_search","execution":"client","status":"completed","arguments":{"query":"fixture","limit":3},"provider_extension":{"trace":"keep"}}
+	}`))
+
+	raw := []byte(`{"type":"response.completed","response":{"status":"completed","output":[{"id":"tsc_search","type":"tool_search_call","call_id":"call_search","execution":"client","status":"completed","arguments":null,"provider_extension":{"trace":"keep"}}]}}`)
+	normalized, changed := normalizeResponsesStreamingTerminalOutput(raw, nil, doneItems, nil)
+
+	require.True(t, changed)
+	require.Equal(t, "fixture", gjson.GetBytes(normalized, "response.output.0.arguments.query").String())
+	require.Equal(t, int64(3), gjson.GetBytes(normalized, "response.output.0.arguments.limit").Int())
+	require.Equal(t, "keep", gjson.GetBytes(normalized, "response.output.0.provider_extension.trace").String())
+}
+
 func TestNormalizeResponsesStreamingTerminalOutputLeavesScalarConflictsAlone(t *testing.T) {
 	doneItems := newResponsesStreamOutputItems()
 	doneItems.Observe([]byte(`{"type":"response.output_item.done","output_index":0,"item":{"id":"msg_same","type":"message","content":[{"type":"output_text","text":"done","annotations":[]}]}}`))

@@ -2242,6 +2242,13 @@ func supplementResponsesStreamingTerminalOutput(data []byte, output gjson.Result
 		if terminalErr != nil || doneErr != nil {
 			continue
 		}
+		if terminalObject["type"] == "tool_search_call" && doneObject["type"] == "tool_search_call" {
+			if terminalArguments, exists := terminalObject["arguments"]; exists && terminalArguments == nil {
+				if doneArguments, found := doneObject["arguments"]; found && doneArguments != nil {
+					delete(terminalObject, "arguments")
+				}
+			}
+		}
 		merged, itemChanged, conflict := mergeMissingResponseJSON(terminalObject, doneObject)
 		if conflict || !itemChanged {
 			continue

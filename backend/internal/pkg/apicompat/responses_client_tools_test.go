@@ -670,6 +670,21 @@ func TestRestoreResponsesClientToolPayload_DoesNotInventEmptyInputWithoutArgumen
 	require.False(t, gjson.GetBytes(restored, "response.output.0.input").Exists())
 }
 
+func TestRestoreResponsesClientToolPayload_DoesNotInventNullToolSearchArguments(t *testing.T) {
+	mapping := ResponsesClientToolMapping{ToolSearch: true}
+	for _, arguments := range []string{"", `,"arguments":null`} {
+		payload := []byte(`{"type":"response.completed","response":{"output":[{"type":"function_call","id":"fc_search","call_id":"call_search","name":"` + toolSearchProxyName + `"` + arguments + `}]}}`)
+
+		restored, changed, err := RestoreResponsesClientToolPayload(payload, mapping)
+
+		require.NoError(t, err)
+		require.True(t, changed)
+		require.Equal(t, "tool_search_call", gjson.GetBytes(restored, "response.output.0.type").String())
+		require.Equal(t, "tsc_search", gjson.GetBytes(restored, "response.output.0.id").String())
+		require.False(t, gjson.GetBytes(restored, "response.output.0.arguments").Exists())
+	}
+}
+
 func TestResponsesClientToolStreamRestorer_PreservesOpaqueDoneItemFields(t *testing.T) {
 	restorer := NewResponsesClientToolStreamRestorer(ResponsesClientToolMapping{CustomTools: map[string]bool{"exec": true}})
 	payload := []byte(`{"type":"response.output_item.done","sequence_number":3,"output_index":0,"vendor_sequence":900719925474099312345,"item":{"type":"function_call","id":"fc_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"echo hi\"}","status":"completed","vendor_counter":900719925474099312345,"vendor_extension":{"trace":"keep"}}}`)

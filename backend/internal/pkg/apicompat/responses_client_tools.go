@@ -504,7 +504,16 @@ func restoreClientToolValue(value any, adapter *ResponsesClientToolMapping) bool
 				typed["type"] = "tool_search_call"
 				retypeResponsesToolCallItemID(typed, "tool_search_call")
 				typed["execution"] = "client"
-				typed["arguments"] = json.RawMessage(toolSearchCallArgumentsJSON(rawObjectString(typed["arguments"])))
+				if arguments, exists := typed["arguments"]; exists && arguments != nil {
+					restored := toolSearchCallArgumentsJSON(rawObjectString(arguments))
+					if string(restored) != "null" {
+						typed["arguments"] = json.RawMessage(restored)
+					} else {
+						delete(typed, "arguments")
+					}
+				} else {
+					delete(typed, "arguments")
+				}
 				delete(typed, "name")
 				delete(typed, "namespace")
 				changed = true
