@@ -16,10 +16,12 @@
 -- 修复：把约束与代码平台列表对齐（service.AllowedQuotaPlatforms 9 项，
 -- 与 ent/schema/user_platform_quota.go 的 Validate 一致）。
 -- DROP ... IF EXISTS 保证可重入；新约束是旧约束的超集，存量行瞬时校验通过。
-ALTER TABLE user_platform_quotas
+-- sub2api-managed-update: reviewed-compatible
+ALTER TABLE ONLY user_platform_quotas
     DROP CONSTRAINT IF EXISTS user_platform_quotas_platform_check;
 
-ALTER TABLE user_platform_quotas
+-- sub2api-managed-update: reviewed-compatible
+ALTER TABLE ONLY user_platform_quotas
     ADD CONSTRAINT user_platform_quotas_platform_check
     CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro',
                         'grok', 'kimi', 'zhipu', 'deepseek'));

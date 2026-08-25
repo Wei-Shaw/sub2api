@@ -46,11 +46,10 @@ func TestChannelMonitorKiroProviderMigration(t *testing.T) {
 	require.Contains(t, sql,
 		"CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'antigravity', 'kiro', 'kimi', 'zhipu', 'deepseek'))")
 
-	// 幂等守卫按 kiro 探测，不能复用 kimi（226 已写入）。
-	require.Contains(t, sql, "position('kiro' IN monitor_constraint_def) = 0")
-	require.Contains(t, sql, "position('kiro' IN template_constraint_def) = 0")
-	require.NotContains(t, sql, "position('kimi' IN monitor_constraint_def) = 0")
-	require.NotContains(t, sql, "position('kimi' IN template_constraint_def) = 0")
+	// 约束变更必须显式标记为经过兼容性审查，避免把 DROP/重建误当成普通可回滚 DDL。
+	require.Equal(t, 4, strings.Count(sql, "sub2api-managed-update: reviewed-compatible"))
+	require.Contains(t, sql, "ALTER TABLE ONLY channel_monitors DROP CONSTRAINT IF EXISTS channel_monitors_provider_check")
+	require.Contains(t, sql, "ALTER TABLE ONLY channel_monitor_request_templates DROP CONSTRAINT IF EXISTS channel_monitor_request_templates_provider_check")
 }
 
 // TestChannelMonitorProviderCheckFinalStateCoversAllProviders 是防回归护栏：

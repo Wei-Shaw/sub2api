@@ -16,12 +16,16 @@ func TestPluginsMigrationKeepsAccountSchemaUnchanged(t *testing.T) {
 	require.Contains(t, sql, "CREATE TABLE IF NOT EXISTS sub2api_plugin_bindings")
 	require.Contains(t, sql, "config_encrypted TEXT NOT NULL DEFAULT ''")
 	require.Contains(t, sql, "REFERENCES sub2api_plugin_installations(id)")
-	require.Contains(t, sql, "CREATE UNIQUE INDEX IF NOT EXISTS idx_sub2api_plugin_bindings_one_enabled_scope")
-	require.Contains(t, sql, "WHERE enabled = TRUE")
 	require.NotContains(t, sql, "CREATE TABLE IF NOT EXISTS plugin_installations")
 	require.NotContains(t, sql, "CREATE TABLE IF NOT EXISTS plugin_bindings")
 	require.NotContains(t, strings.ToUpper(sql), "ALTER TABLE ACCOUNTS")
 	require.NotContains(t, sql, "account_id")
+
+	indexContent, err := FS.ReadFile("260_plugin_and_monitor_indexes_notx.sql")
+	require.NoError(t, err)
+	indexSQL := strings.Join(strings.Fields(string(indexContent)), " ")
+	require.Contains(t, indexSQL, "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_sub2api_plugin_bindings_one_enabled_scope")
+	require.Contains(t, indexSQL, "WHERE enabled = TRUE")
 }
 
 func TestPluginArtifactMigrationSupportsExistingInstallations(t *testing.T) {

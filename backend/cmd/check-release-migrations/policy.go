@@ -84,6 +84,18 @@ func evaluateStatement(statement sqlStatement, newlyCreatedTables map[relationNa
 		}
 		return decision
 
+	case "COMMENT":
+		decision := policyDecision{
+			reviewEligible: true,
+			description:    "COMMENT statement",
+			reason:         fmt.Sprintf("COMMENT ON COLUMN requires a leading %q annotation after explicit compatibility review", reviewedCompatibleAnnotation),
+		}
+		if keywordsAt(tokens, 0, "COMMENT", "ON", "COLUMN") && statement.reviewedCompatible {
+			decision.allowed = true
+			decision.reason = ""
+		}
+		return decision
+
 	case "DROP", "TRUNCATE", "DELETE", "MERGE", "COPY":
 		return policyDecision{
 			description: "destructive or data-rewrite statement",
@@ -170,6 +182,7 @@ func evaluateIndex(tokens []sqlToken, indexPos int, unique bool) policyDecision 
 	}
 	return policyDecision{
 		allowed:         true,
+		reviewEligible:  unique && concurrent,
 		index:           true,
 		concurrentIndex: concurrent,
 		idempotentIndex: idempotent,
@@ -228,6 +241,32 @@ func evaluateAlter(tokens []sqlToken) policyDecision {
 			reason:         fmt.Sprintf("constraint validation requires a leading %q annotation after explicit compatibility review", reviewedCompatibleAnnotation),
 		}
 	}
+	if keywordAt(tokens, i) == "ALTER" {
+		i++
+		if keywordAt(tokens, i) == "COLUMN" {
+			i++
+		}
+		if _, next, ok := parseIdentifier(tokens, i); !ok {
+			return rejected("ALTER TABLE ALTER COLUMN", "could not determine the altered column")
+		} else {
+			i = next
+		}
+		if keywordsAt(tokens, i, "SET", "DEFAULT") && i+3 == len(tokens) {
+			return policyDecision{
+				reviewEligible: true,
+				description:    "ALTER TABLE ALTER COLUMN SET DEFAULT",
+				reason:         fmt.Sprintf("column default changes require a leading %q annotation after explicit compatibility review", reviewedCompatibleAnnotation),
+			}
+		}
+		if keywordsAt(tokens, i, "SET", "NOT", "NULL") && i+3 == len(tokens) {
+			return policyDecision{
+				reviewEligible: true,
+				description:    "ALTER TABLE ALTER COLUMN SET NOT NULL",
+				reason:         fmt.Sprintf("NOT NULL changes require a leading %q annotation after explicit compatibility review", reviewedCompatibleAnnotation),
+			}
+		}
+		return rejected("ALTER TABLE ALTER COLUMN", "only SET DEFAULT and SET NOT NULL can be explicitly reviewed")
+	}
 	if keywordAt(tokens, i) != "ADD" {
 		return rejected("ALTER TABLE", "only plain nullable ADD COLUMN is allowed")
 	}
@@ -240,7 +279,29 @@ func evaluateAlter(tokens []sqlToken) policyDecision {
 	}
 	if keywordAt(tokens, i) == "CONSTRAINT" {
 		i++
-		if _, next, ok := parseIdentifier(tokens, i); !ok || keywordAt(tokens, next) != "CHECK" {
+		_, next, ok := parseIdentifier(tokens, i)
+		if !ok {
+			return rejected("ALTER TABLE ADD CONSTRAINT", "constraint name is required")
+		}
+		if keywordAt(tokens, next) == "FOREIGN" && keywordAt(tokens, next+1) == "KEY" {
+			columnsEnd, balanced := skipBalancedParentheses(tokens, next+2)
+			if !balanced || keywordAt(tokens, columnsEnd) != "REFERENCES" {
+				return rejected("ALTER TABLE ADD CONSTRAINT FOREIGN KEY", "expected FOREIGN KEY (...) REFERENCES ...")
+			}
+			_, afterRelation, relationOK := parseRelation(tokens, columnsEnd+1)
+			if !relationOK || afterRelation >= len(tokens) || !symbolAt(tokens, afterRelation, "(") {
+				return rejected("ALTER TABLE ADD CONSTRAINT FOREIGN KEY", "referenced table and columns are required")
+			}
+			if _, balanced := skipBalancedParentheses(tokens, afterRelation); !balanced {
+				return rejected("ALTER TABLE ADD CONSTRAINT FOREIGN KEY", "referenced columns must be parenthesized")
+			}
+			return policyDecision{
+				reviewEligible: true,
+				description:    "ALTER TABLE ADD CONSTRAINT FOREIGN KEY",
+				reason:         fmt.Sprintf("foreign-key changes require a leading %q annotation after explicit compatibility review", reviewedCompatibleAnnotation),
+			}
+		}
+		if keywordAt(tokens, next) != "CHECK" {
 			return rejected("ALTER TABLE ADD CONSTRAINT", "only CHECK constraints can be explicitly reviewed")
 		} else {
 			afterCheck, balanced := skipBalancedParentheses(tokens, next+1)
