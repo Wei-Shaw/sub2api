@@ -105,6 +105,64 @@ func writeAnthropicMessageStart(w io.Writer, msgID, model string, inputTokens in
 	return err
 }
 
+// sumKiroUsage 逐字段累加多轮 Kiro 上游响应的 usage（含 credits）。
+func sumKiroUsage(total, add kiropkg.Usage) kiropkg.Usage {
+	total.InputTokens += add.InputTokens
+	total.OutputTokens += add.OutputTokens
+	total.TotalTokens += add.TotalTokens
+	total.CacheReadInputTokens += add.CacheReadInputTokens
+	total.CacheCreationInputTokens += add.CacheCreationInputTokens
+	total.CacheCreation5mInputTokens += add.CacheCreation5mInputTokens
+	total.CacheCreation1hInputTokens += add.CacheCreation1hInputTokens
+	total.KiroCredits += add.KiroCredits
+	return total
+}
+
+// kiroWebSearchFinalUsageMap 生成与 kiro translator 输出同构的 usage 字段，
+// 供 web search 合成 message_delta 使用（计费链路依赖其字段名）。
+func kiroWebSearchFinalUsageMap(usage kiropkg.Usage) map[string]any {
+	m := map[string]any{
+		"input_tokens":                usage.InputTokens,
+		"output_tokens":               usage.OutputTokens,
+		"cache_read_input_tokens":     usage.CacheReadInputTokens,
+		"cache_creation_input_tokens": usage.CacheCreationInputTokens,
+	}
+	if usage.KiroCredits > 0 {
+		m["_sub2api_kiro_credits"] = usage.KiroCredits
+	}
+	if usage.CacheCreation5mInputTokens > 0 || usage.CacheCreation1hInputTokens > 0 {
+		m["cache_creation"] = map[string]any{
+			"ephemeral_5m_input_tokens": usage.CacheCreation5mInputTokens,
+			"ephemeral_1h_input_tokens": usage.CacheCreation1hInputTokens,
+		}
+	}
+	return m
+}
+
+// writeKiroWebSearchTerminalEvents 在 web search 多轮流末尾补发 message_delta
+// (携带全轮累计 usage 与最终 stop_reason) 与 message_stop。
+func writeKiroWebSearchTerminalEvents(w io.Writer, usage kiropkg.Usage, stopReason string) error {
+	if strings.TrimSpace(stopReason) == "" {
+		stopReason = "end_turn"
+	}
+	payload, err := json.Marshal(map[string]any{
+		"type": "message_delta",
+		"delta": map[string]any{
+			"stop_reason":   stopReason,
+			"stop_sequence": nil,
+		},
+		"usage": kiroWebSearchFinalUsageMap(usage),
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := io.WriteString(w, "event: message_delta\ndata: "+string(payload)+"\n\n"); err != nil {
+		return err
+	}
+	_, err = io.WriteString(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+	return err
+}
+
 func (s *GatewayService) streamKiroWebSearchAsAnthropic(
 	ctx context.Context, account *Account, anthropicBody []byte, mappedModel, requestModel, token string, inputTokens int, headers http.Header, w io.Writer, plan *kiroCacheEmulationPlan,
 ) error {
@@ -119,6 +177,8 @@ func (s *GatewayService) streamKiroWebSearchAsAnthropic(
 	}
 	currentToolUseID := "srvtoolu_" + kiropkg.GenerateToolUseID()
 	nextContentBlockIndex := 0
+	var totalUsage kiropkg.Usage
+	finalStopReason := "end_turn"
 
 	if err := writeAnthropicMessageStart(w, "", requestModel, inputTokens, plan.result()); err != nil {
 		return err
@@ -152,17 +212,21 @@ func (s *GatewayService) streamKiroWebSearchAsAnthropic(
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			return &kiroWebSearchHTTPError{Response: resp}
 		}
-		if iteration == 0 {
-			// 首轮请求已确认成功，此时提交缓存前缀落盘才是安全的。
-			plan.commit()
-		}
 
-		chunks, _, streamErr := func() ([][]byte, *kiropkg.StreamResult, error) {
+		chunks, streamResult, streamErr := func() ([][]byte, *kiropkg.StreamResult, error) {
 			defer func() { _ = resp.Body.Close() }()
 			return bufferKiroAnthropicStream(ctx, resp.Body, requestModel, inputTokens)
 		}()
 		if streamErr != nil {
 			return streamErr
+		}
+		// 多轮 web search 每轮都真实消耗上游：累加每轮 usage 与 credits，
+		// 避免最终只按最后一轮计费。
+		if streamResult != nil {
+			totalUsage = sumKiroUsage(totalUsage, streamResult.Usage)
+			if strings.TrimSpace(streamResult.StopReason) != "" {
+				finalStopReason = streamResult.StopReason
+			}
 		}
 
 		analysis := kiropkg.AnalyzeBufferedStream(chunks)
@@ -192,6 +256,16 @@ func (s *GatewayService) streamKiroWebSearchAsAnthropic(
 				return err
 			}
 		}
+
+		// 上游流的 message_start/message_delta/message_stop 已被 AdjustSSEChunk
+		// 抑制（message_start 已在函数开头合成发送）；此处补发携带全轮累计
+		// usage 的终止事件，保证客户端拿到完整 Anthropic 流、通用流处理器
+		// 看到终止事件，且多轮用量不漏计费。
+		if err := writeKiroWebSearchTerminalEvents(w, totalUsage, finalStopReason); err != nil {
+			return err
+		}
+		// 整个多轮流完整写出后才提交缓存前缀；中途失败不污染下一次估算。
+		plan.commit()
 		return nil
 	}
 
@@ -215,6 +289,7 @@ func (s *GatewayService) executeKiroWebSearch(ctx context.Context, account *Acco
 	requestID := ""
 	var cacheUsage *kiroCacheEmulationUsage
 	cacheUsageResolved := false
+	var totalUsage kiropkg.Usage
 
 	for iteration := 0; iteration < kiroMaxWebSearchIterations; iteration++ {
 		s.prefetchKiroWebSearchDescription(ctx, account, token)
@@ -248,8 +323,18 @@ func (s *GatewayService) executeKiroWebSearch(ctx context.Context, account *Acco
 		parseResult, parseErr := func() (*kiropkg.ParseResult, error) {
 			defer func() { _ = resp.Body.Close() }()
 			if !cacheUsageResolved {
-				cacheUsage = s.buildKiroCacheEmulationUsage(ctx, account, group, anthropicBody, mappedModel, inputTokens)
+				cachePlan := s.prepareKiroCacheEmulationUsage(ctx, account, group, anthropicBody, mappedModel, inputTokens)
+				cacheUsage = cachePlan.result()
 				cacheUsageResolved = true
+				parse, err := kiropkg.ParseNonStreamingEventStreamWithContext(resp.Body, requestModel, kiropkg.KiroRequestContext{
+					CacheEmulationUsage:  cacheUsage.toKiroUsage(),
+					EstimatedInputTokens: inputTokens,
+				})
+				// 首轮解析成功后才提交缓存前缀；解析失败不污染下一次估算。
+				if err == nil {
+					cachePlan.commit()
+				}
+				return parse, err
 			}
 			return kiropkg.ParseNonStreamingEventStreamWithContext(resp.Body, requestModel, kiropkg.KiroRequestContext{
 				CacheEmulationUsage:  cacheUsage.toKiroUsage(),
@@ -259,6 +344,8 @@ func (s *GatewayService) executeKiroWebSearch(ctx context.Context, account *Acco
 		if parseErr != nil {
 			return nil, parseErr
 		}
+		// 多轮 web search 每轮都真实消耗上游：累加每轮 usage 与 credits，避免少计费。
+		totalUsage = sumKiroUsage(totalUsage, parseResult.Usage)
 		if requestID == "" {
 			requestID = buildKiroRequestID(resp)
 		}
@@ -271,7 +358,7 @@ func (s *GatewayService) executeKiroWebSearch(ctx context.Context, account *Acco
 			}
 			return &kiroWebSearchExecution{
 				ResponseBody: parseResult.ResponseBody,
-				Usage:        kiroUsageToClaude(parseResult.Usage, inputTokens),
+				Usage:        kiroUsageToClaude(totalUsage, inputTokens),
 				RequestID:    requestID,
 			}, nil
 		}
