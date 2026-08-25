@@ -6,7 +6,7 @@
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
           {{ t('auth.welcomeBack') }}
         </h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+        <p class="mt-2 inline-block rounded-full border border-gray-200 px-6 py-2 text-sm font-medium text-gray-500 shadow-sm dark:border-dark-700 dark:text-dark-300">
           {{ t('auth.signInToAccount') }}
         </p>
       </div>
@@ -66,12 +66,19 @@
               <Icon v-else name="eye" size="md" />
             </button>
           </div>
-          <div class="mt-1 flex items-center justify-between">
-            <span></span>
+          <div class="mt-3 flex items-center justify-between">
+            <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-dark-300">
+              <input
+                v-model="rememberMe"
+                type="checkbox"
+                class="h-4 w-4 rounded border-gray-300 accent-black text-black focus:ring-black dark:border-dark-600 dark:bg-dark-800"
+              />
+              {{ t('auth.rememberMe') }}
+            </label>
             <router-link
               v-if="passwordResetEnabled && !backendModeEnabled"
               to="/forgot-password"
-              class="text-sm font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+              class="text-sm font-medium text-black transition-colors hover:text-gray-700 dark:text-gray-300 dark:hover:text-white"
             >
               {{ t('auth.forgotPassword') }}
             </router-link>
@@ -101,7 +108,7 @@
         <button
           type="submit"
           :disabled="authActionDisabled || (turnstileEnabled && !turnstileToken)"
-          class="btn btn-primary w-full"
+          class="btn w-full bg-black text-white shadow-md shadow-black/20 hover:bg-gray-800 hover:shadow-lg hover:shadow-black/30 dark:bg-white dark:text-black dark:hover:bg-gray-200"
         >
           <svg
             v-if="isLoading"
@@ -202,7 +209,7 @@
         {{ t('auth.dontHaveAccount') }}
         <router-link
           to="/register"
-          class="font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+          class="font-medium text-black transition-colors hover:text-gray-700 dark:text-gray-300 dark:hover:text-white"
         >
           {{ t('auth.signUp') }}
         </router-link>
@@ -328,6 +335,7 @@ const formData = reactive({
   email: '',
   password: ''
 })
+const rememberMe = ref<boolean>(false)
 
 const errors = reactive({
   email: '',
@@ -584,7 +592,7 @@ async function handleLogin(): Promise<void> {
       tencent_captcha_randstr: tencentCaptchaEnabled.value
         ? tencentCaptchaRandstr.value
         : undefined
-    })
+    }, rememberMe.value ? 'persistent' : 'session')
 
     // Check if 2FA is required
     if (isTotp2FARequired(response)) {
@@ -703,7 +711,11 @@ async function handle2FAVerify(code: string): Promise<void> {
   }
 
   try {
-    await authStore.login2FA(totpTempToken.value, code)
+    await authStore.login2FA(
+      totpTempToken.value,
+      code,
+      rememberMe.value ? 'persistent' : 'session'
+    )
 
     // Close modal and show success
     show2FAModal.value = false
