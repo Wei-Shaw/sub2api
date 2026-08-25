@@ -1191,7 +1191,11 @@ func namespaceChildrenToChatTools(tool ResponsesTool, topLevel map[string]bool, 
 			continue
 		}
 		flat := flattenNamespaceToolName(tool.Name, child.Name)
-		entry := NamespacedToolName{Namespace: tool.Name, Name: child.Name}
+		entry := NamespacedToolName{
+			Namespace: tool.Name,
+			Name:      child.Name,
+			Custom:    child.Type == "custom",
+		}
 		if topLevel[flat] {
 			return nil, fmt.Errorf("namespace tool %q/%q flattens to %q which conflicts with a top-level tool of the same name; this upstream cannot disambiguate them, rename one of the tools", tool.Name, child.Name, flat)
 		}
@@ -2023,6 +2027,21 @@ func (state *ChatCompletionsToResponsesStreamState) UnknownToolCallNames() []str
 	return names
 }
 
+// CanRetryUnannouncedToolCalls reports whether an invalid tool-only attempt can
+// be replaced without mixing already-visible assistant content into the same
+// client stream. response.created is harmless, but text and reasoning cannot be
+// retracted once emitted.
+func (state *ChatCompletionsToResponsesStreamState) CanRetryUnannouncedToolCalls() bool {
+	if state == nil {
+		return false
+	}
+	return state.MessageItemID == "" &&
+		state.Text.Len() == 0 &&
+		!state.ReasoningOpen &&
+		!state.ReasoningDone &&
+		state.Reasoning.Len() == 0
+}
+
 // DropUnannouncedToolCalls clears a rejected upstream attempt before a repair
 // attempt reuses the same Responses stream state. Announced calls are retained
 // defensively; the fallback validation mode never announces before validation.
@@ -2043,6 +2062,11 @@ func (state *ChatCompletionsToResponsesStreamState) DropUnannouncedToolCalls() {
 		delete(state.toolAnnounced, idx)
 	}
 	state.FinishReason = ""
+	if state.CanRetryUnannouncedToolCalls() {
+		state.nextOutputIndex = 0
+		state.ServiceTier = ""
+		state.Usage = nil
+	}
 }
 
 func (state *ChatCompletionsToResponsesStreamState) allocOutputIndex() int {

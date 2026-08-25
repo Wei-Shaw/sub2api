@@ -84,7 +84,7 @@ func AdaptResponsesClientTools(req map[string]any) (ResponsesClientToolMapping, 
 	// namespace as an ordinary `web_search` function call even when the request
 	// declared `web.run`. Preserve that provider alias only when the request did
 	// not declare a conflicting ordinary function with the same name.
-	if !functionNames["web_search"] {
+	if !functionNames["web_search"] && !customNames["web_search"] {
 		for flat, entry := range names {
 			if entry.Namespace == "web" && entry.Name == "run" {
 				if names["web_search"], flattened = entry, true; flat != "web_search" {

@@ -18,11 +18,14 @@ import (
 	"go.uber.org/zap"
 )
 
-const responsesChatFallbackSessionTTL = 24 * time.Hour
-
 type responsesChatFallbackSession struct {
 	Tools    []apicompat.ResponsesTool
 	StoredAt time.Time
+}
+
+type responsesChatFallbackToolsCache interface {
+	SetResponsesChatFallbackTools(ctx context.Context, groupID int64, responseID string, payload []byte, ttl time.Duration) error
+	GetResponsesChatFallbackTools(ctx context.Context, groupID int64, responseID string) ([]byte, error)
 }
 
 func cloneResponsesTools(tools []apicompat.ResponsesTool) []apicompat.ResponsesTool {
@@ -32,27 +35,68 @@ func cloneResponsesTools(tools []apicompat.ResponsesTool) []apicompat.ResponsesT
 	return append([]apicompat.ResponsesTool(nil), tools...)
 }
 
-func (s *OpenAIGatewayService) loadResponsesChatFallbackTools(responseID string) []apicompat.ResponsesTool {
+func (s *OpenAIGatewayService) loadResponsesChatFallbackTools(
+	ctx context.Context,
+	groupID int64,
+	responseID string,
+) []apicompat.ResponsesTool {
 	if s == nil || strings.TrimSpace(responseID) == "" {
 		return nil
 	}
-	raw, ok := s.responsesChatFallbackSessions.Load(strings.TrimSpace(responseID))
+	responseID = strings.TrimSpace(responseID)
+	if cache, ok := s.cache.(responsesChatFallbackToolsCache); ok {
+		cacheCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		payload, err := cache.GetResponsesChatFallbackTools(cacheCtx, groupID, responseID)
+		cancel()
+		if err == nil && len(payload) > 0 {
+			var tools []apicompat.ResponsesTool
+			if json.Unmarshal(payload, &tools) == nil && len(tools) > 0 {
+				return tools
+			}
+		}
+	}
+	raw, ok := s.responsesChatFallbackSessions.Load(responseID)
 	if !ok {
 		return nil
 	}
 	session, ok := raw.(responsesChatFallbackSession)
-	if !ok || time.Since(session.StoredAt) > responsesChatFallbackSessionTTL {
-		s.responsesChatFallbackSessions.Delete(strings.TrimSpace(responseID))
+	if !ok || time.Since(session.StoredAt) > s.openAIWSResponseStickyTTL() {
+		s.responsesChatFallbackSessions.Delete(responseID)
 		return nil
 	}
 	return cloneResponsesTools(session.Tools)
 }
 
-func (s *OpenAIGatewayService) storeResponsesChatFallbackTools(responseID string, tools []apicompat.ResponsesTool) {
+func (s *OpenAIGatewayService) storeResponsesChatFallbackTools(
+	groupID int64,
+	responseID string,
+	tools []apicompat.ResponsesTool,
+) {
 	if s == nil || strings.TrimSpace(responseID) == "" || len(tools) == 0 {
 		return
 	}
-	s.responsesChatFallbackSessions.Store(strings.TrimSpace(responseID), responsesChatFallbackSession{
+	responseID = strings.TrimSpace(responseID)
+	if cache, ok := s.cache.(responsesChatFallbackToolsCache); ok {
+		if payload, err := json.Marshal(tools); err == nil {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			cacheErr := cache.SetResponsesChatFallbackTools(
+				cacheCtx,
+				groupID,
+				responseID,
+				payload,
+				s.openAIWSResponseStickyTTL(),
+			)
+			cancel()
+			if cacheErr == nil {
+				return
+			}
+			logger.L().Warn("openai responses chat fallback: cache tool declarations failed",
+				zap.String("response_id", truncateOpenAIWSLogValue(responseID, openAIWSIDValueMaxLen)),
+				zap.Error(cacheErr),
+			)
+		}
+	}
+	s.responsesChatFallbackSessions.Store(responseID, responsesChatFallbackSession{
 		Tools:    cloneResponsesTools(tools),
 		StoredAt: time.Now(),
 	})
@@ -95,18 +139,24 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	// before converting the follow-up.
 	toolsFieldPresent := gjson.GetBytes(body, "tools").Exists()
 	if !toolsFieldPresent && len(effectiveTools) == 0 && responsesReq.PreviousResponseID != "" {
-		if inherited := s.loadResponsesChatFallbackTools(responsesReq.PreviousResponseID); len(inherited) > 0 {
+		if inherited := s.loadResponsesChatFallbackTools(
+			ctx,
+			getOpenAIGroupIDFromContext(c),
+			responsesReq.PreviousResponseID,
+		); len(inherited) > 0 {
 			effectiveTools = inherited
 			responsesReq.Tools = inherited
 		}
 	}
-	applyClaudeCodeModeInstructionsHint(&responsesReq)
 	clientToolMapping := apicompat.ResponsesClientToolMapping{
 		CustomTools:    apicompat.CustomToolNames(effectiveTools),
 		FunctionTools:  apicompat.FunctionToolNames(effectiveTools),
 		ToolSearch:     apicompat.HasToolSearchTool(effectiveTools),
 		NamespaceTools: apicompat.NamespaceToolNames(effectiveTools),
 	}
+	billingModel := resolveOpenAIForwardModel(account, originalModel, "")
+	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
+	applyClaudeCodeModeInstructionsHint(&responsesReq, upstreamModel, clientToolMapping)
 
 	// 自愈回写：历史里带明文 summary 的 reasoning item 刷新进缓存，覆盖 Redis
 	// 被 flush / 跨实例漂移后同 id 的 encrypted-only 副本无法再取明文的情况。
@@ -120,14 +170,12 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 		return nil, fmt.Errorf("convert responses to chat completions: %w", err)
 	}
 
-	billingModel := resolveOpenAIForwardModel(account, originalModel, "")
-	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	clientToolMapping = enableChatFallbackCodeModeExecNormalization(clientToolMapping, upstreamModel)
 	reasoningEffort := extractOpenAIReasoningEffortFromBody(body, upstreamModel, billingModel, originalModel)
 	// 国产模型默认 effort 补充：需要 mappedModel 判定，推迟到 billingModel 算出之后。
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, billingModel)
 	chatReq.Model = upstreamModel
-	applyClaudeCodeModeToolOutputHint(chatReq)
+	applyClaudeCodeModeToolOutputHint(chatReq, clientToolMapping)
 	if clientStream {
 		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: true}
 	}
@@ -209,8 +257,14 @@ func enableChatFallbackCodeModeExecNormalization(mapping apicompat.ResponsesClie
 
 const claudeCodeModeInstructionsHint = "Provider compatibility note: when using the code-mode exec tool, call notify(result.output) to return nested command output to the model; text(result.output) alone may omit stdout on this provider."
 
-func applyClaudeCodeModeInstructionsHint(req *apicompat.ResponsesRequest) {
-	if req == nil || !strings.Contains(strings.ToLower(strings.TrimSpace(req.Model)), "claude") {
+func applyClaudeCodeModeInstructionsHint(
+	req *apicompat.ResponsesRequest,
+	upstreamModel string,
+	mapping apicompat.ResponsesClientToolMapping,
+) {
+	if req == nil ||
+		!strings.Contains(strings.ToLower(strings.TrimSpace(upstreamModel)), "claude") ||
+		!hasCodeModeExecTool(mapping) {
 		return
 	}
 	if strings.Contains(req.Instructions, "notify(result.output)") {
@@ -225,17 +279,21 @@ func applyClaudeCodeModeInstructionsHint(req *apicompat.ResponsesRequest) {
 
 const claudeCodeModeToolOutputHint = "For the code-mode exec tool, use notify(result.output) to return command output to the model; do not rely on text(result.output) alone."
 
-func applyClaudeCodeModeToolOutputHint(req *apicompat.ChatCompletionsRequest) {
+func applyClaudeCodeModeToolOutputHint(
+	req *apicompat.ChatCompletionsRequest,
+	mapping apicompat.ResponsesClientToolMapping,
+) {
 	if req == nil || !strings.Contains(strings.ToLower(strings.TrimSpace(req.Model)), "claude") {
 		return
 	}
+	codeModeNames := enableCodeModeExecNormalization(mapping).CodeModeExecTools
 	for i := range req.Tools {
 		tool := &req.Tools[i]
 		if tool.Function == nil {
 			continue
 		}
 		name := strings.TrimSpace(tool.Function.Name)
-		if name != "exec" && !strings.HasSuffix(name, "__exec") {
+		if !codeModeNames[name] {
 			continue
 		}
 		if strings.Contains(tool.Function.Description, "notify(result.output)") {
@@ -247,6 +305,10 @@ func applyClaudeCodeModeToolOutputHint(req *apicompat.ChatCompletionsRequest) {
 			tool.Function.Description += " " + claudeCodeModeToolOutputHint
 		}
 	}
+}
+
+func hasCodeModeExecTool(mapping apicompat.ResponsesClientToolMapping) bool {
+	return len(enableCodeModeExecNormalization(mapping).CodeModeExecTools) > 0
 }
 
 func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
@@ -275,7 +337,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 			BillingModel:    billingModel,
 			UpstreamModel:   upstreamModel,
 			ReasoningEffort: reasoningEffort,
-			ServiceTier:     serviceTier,
+			ServiceTier:     resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 			Stream:          false,
 			Duration:        time.Since(startTime),
 		}
@@ -303,7 +365,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 		if len(unknownNames) == 0 {
 			responsesResp := apicompat.ChatCompletionsResponseToResponsesWithToolMapping(ccResp, originalModel, clientToolMapping)
 			responseID = responsesResp.ID
-			s.storeResponsesChatFallbackTools(responsesResp.ID, effectiveTools)
+			s.storeResponsesChatFallbackTools(getOpenAIGroupIDFromContext(c), responsesResp.ID, effectiveTools)
 			s.cacheReasoningItemsFromOutput(responsesResp.Output)
 			if s.responseHeaderFilter != nil {
 				responseheaders.WriteFilteredHeaders(c.Writer.Header(), currentResp.Header, s.responseHeaderFilter)
@@ -443,15 +505,15 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		})
 		_ = currentResp.Body.Close()
 		addOpenAIUsage(&totalUsage, scan.Usage)
-		if firstTokenMs == nil && scan.FirstTokenMs != nil {
-			firstTokenMs = scan.FirstTokenMs
-		}
 		sawDone = scan.SawDone
 		if scan.Err != nil {
 			return result(), fmt.Errorf("stream usage incomplete: %w", scan.Err)
 		}
 		unknownNames := state.UnknownToolCallNames()
 		if len(unknownNames) == 0 {
+			if firstTokenMs == nil && scan.FirstTokenMs != nil {
+				firstTokenMs = scan.FirstTokenMs
+			}
 			if err := state.ValidateToolCallArguments(); err != nil {
 				return result(), fmt.Errorf("invalid tool call arguments from upstream: %w", err)
 			}
@@ -463,10 +525,15 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 			zap.Strings("unknown_tool_names", unknownNames),
 			zap.Int("effective_tool_count", len(effectiveTools)),
 		)
-		state.DropUnannouncedToolCalls()
-		if attempt >= responsesChatToolRepairMaxAttempts || repairSender == nil {
+		if attempt >= responsesChatToolRepairMaxAttempts ||
+			repairSender == nil ||
+			!state.CanRetryUnannouncedToolCalls() {
+			if firstTokenMs == nil && scan.FirstTokenMs != nil {
+				firstTokenMs = scan.FirstTokenMs
+			}
 			return failStream(fmt.Errorf("chat fallback upstream returned an undeclared tool after repair"))
 		}
+		state.DropUnannouncedToolCalls()
 		var err error
 		currentResp, err = repairSender(unknownNames)
 		if err != nil {
@@ -474,11 +541,12 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		}
 	}
 
+	state.Usage = responsesUsageFromOpenAIUsage(totalUsage)
 	finalEvents := apicompat.FinalizeChatCompletionsResponsesStream(state)
 	if len(finalEvents) > 0 {
 		for _, event := range finalEvents {
 			if event.Response != nil && event.Response.ID != "" {
-				s.storeResponsesChatFallbackTools(event.Response.ID, effectiveTools)
+				s.storeResponsesChatFallbackTools(getOpenAIGroupIDFromContext(c), event.Response.ID, effectiveTools)
 				break
 			}
 		}
@@ -491,6 +559,28 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	}
 
 	return result(), nil
+}
+
+func responsesUsageFromOpenAIUsage(usage OpenAIUsage) *apicompat.ResponsesUsage {
+	if usage.InputTokens == 0 &&
+		usage.OutputTokens == 0 &&
+		usage.CacheCreationInputTokens == 0 &&
+		usage.CacheReadInputTokens == 0 {
+		return nil
+	}
+	result := &apicompat.ResponsesUsage{
+		InputTokens:              usage.InputTokens,
+		OutputTokens:             usage.OutputTokens,
+		TotalTokens:              usage.InputTokens + usage.OutputTokens,
+		CacheCreationInputTokens: usage.CacheCreationInputTokens,
+	}
+	if usage.CacheCreationInputTokens > 0 || usage.CacheReadInputTokens > 0 {
+		result.InputTokensDetails = &apicompat.ResponsesInputTokensDetails{
+			CachedTokens:        usage.CacheReadInputTokens,
+			CacheCreationTokens: usage.CacheCreationInputTokens,
+		}
+	}
+	return result
 }
 
 func chatChunkStartsResponsesOutput(chunk *apicompat.ChatCompletionsChunk) bool {

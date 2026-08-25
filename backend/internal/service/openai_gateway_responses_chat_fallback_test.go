@@ -5,6 +5,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -185,6 +186,127 @@ func TestForwardResponses_ChatFallbackRejectsInvalidToolArgumentsAtOutputLimit(t
 	require.NotContains(t, rec.Body.String(), "data: [DONE]")
 }
 
+func TestForwardResponses_ChatFallbackStreamingRepairDoesNotMixRejectedAttemptText(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{
+		"model":"deepseek-v4-flash",
+		"input":"run the command",
+		"stream":true,
+		"tools":[{"type":"custom","name":"exec"}]
+	}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	rejectedAttempt := strings.Join([]string{
+		`data: {"id":"chatcmpl_bad","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"content":"must not leak"},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_bad","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_bad","type":"function","function":{"name":"functions.read_file","arguments":"{\"path\":\"secret\"}"}}]},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_bad","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	repairedAttempt := strings.Join([]string{
+		`data: {"id":"chatcmpl_good","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_good","type":"function","function":{"name":"exec","arguments":"{\"input\":\"pwd\"}"}}]},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_good","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":4,"completion_tokens":1,"total_tokens":5}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_bad"}},
+			Body:       io.NopCloser(strings.NewReader(rejectedAttempt)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_good"}},
+			Body:       io.NopCloser(strings.NewReader(repairedAttempt)),
+		},
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+
+	result, err := svc.Forward(context.Background(), c, forceChatResponsesFallbackAccount(), body)
+	require.Error(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 1, "a visible rejected attempt must not be retried into the same client stream")
+	require.Contains(t, rec.Body.String(), "response.failed")
+	require.Contains(t, rec.Body.String(), "must not leak")
+	require.NotContains(t, rec.Body.String(), `"name":"exec"`)
+}
+
+func TestForwardResponses_ChatFallbackStreamingRepairReplacesToolOnlyAttempt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{
+		"model":"deepseek-v4-flash",
+		"input":"run the command",
+		"stream":true,
+		"tools":[{"type":"custom","name":"exec"}]
+	}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	rejectedAttempt := strings.Join([]string{
+		`data: {"id":"chatcmpl_bad","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_bad","type":"function","function":{"name":"functions.read_file","arguments":"{\"path\":\"secret\"}"}}]},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_bad","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	repairedAttempt := strings.Join([]string{
+		`data: {"id":"chatcmpl_good","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_good","type":"function","function":{"name":"exec","arguments":"{\"input\":\"pwd\"}"}}]},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_good","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":4,"completion_tokens":1,"total_tokens":5}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_bad"}},
+			Body:       io.NopCloser(strings.NewReader(rejectedAttempt)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_good"}},
+			Body:       io.NopCloser(strings.NewReader(repairedAttempt)),
+		},
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+
+	result, err := svc.Forward(context.Background(), c, forceChatResponsesFallbackAccount(), body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 2)
+	require.Equal(t, 7, result.Usage.InputTokens)
+	require.Equal(t, 3, result.Usage.OutputTokens)
+
+	output := rec.Body.String()
+	require.NotContains(t, output, "functions.read_file")
+	require.Contains(t, output, `"type":"custom_tool_call"`)
+	require.Contains(t, output, `"name":"exec"`)
+	require.Contains(t, output, `"output_index":0`)
+	require.Contains(t, output, `"input_tokens":7`)
+	require.Contains(t, output, `"output_tokens":3`)
+}
+
 func TestForwardResponses_DeepSeekReasoningOnlyStreamProducesVisibleText(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -273,6 +395,111 @@ type reasoningRecordingCache struct {
 	mu      sync.Mutex
 	sets    map[string]string
 	getResp map[string]string
+}
+
+type sharedResponsesChatFallbackToolsCache struct {
+	stubGatewayCache
+	mu       sync.Mutex
+	payloads map[string][]byte
+}
+
+func (c *sharedResponsesChatFallbackToolsCache) SetResponsesChatFallbackTools(
+	_ context.Context,
+	groupID int64,
+	responseID string,
+	payload []byte,
+	_ time.Duration,
+) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.payloads == nil {
+		c.payloads = make(map[string][]byte)
+	}
+	c.payloads[fmt.Sprintf("%d:%s", groupID, responseID)] = append([]byte(nil), payload...)
+	return nil
+}
+
+func (c *sharedResponsesChatFallbackToolsCache) GetResponsesChatFallbackTools(
+	_ context.Context,
+	groupID int64,
+	responseID string,
+) ([]byte, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]byte(nil), c.payloads[fmt.Sprintf("%d:%s", groupID, responseID)]...), nil
+}
+
+func TestForwardResponses_ChatFallbackToolInheritanceSurvivesServiceInstanceChange(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	sharedCache := &sharedResponsesChatFallbackToolsCache{}
+	firstBody := []byte(`{
+		"model":"deepseek-v4-flash",
+		"input":"run the command",
+		"stream":false,
+		"tools":[{"type":"custom","name":"exec"}]
+	}`)
+	firstRecorder := httptest.NewRecorder()
+	firstContext, _ := gin.CreateTestContext(firstRecorder)
+	firstContext.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(firstBody))
+	firstContext.Request.Header.Set("Content-Type", "application/json")
+	firstUpstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"chatcmpl_first","object":"chat.completion","model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":"ready"},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}}`,
+		)),
+	}}
+	firstService := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: firstUpstream,
+		cache:        sharedCache,
+	}
+
+	firstResult, err := firstService.Forward(
+		context.Background(),
+		firstContext,
+		forceChatResponsesFallbackAccount(),
+		firstBody,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, firstResult)
+	require.NotEmpty(t, firstResult.ResponseID)
+
+	followBody := []byte(fmt.Sprintf(`{
+		"model":"deepseek-v4-flash",
+		"previous_response_id":%q,
+		"input":"continue",
+		"stream":false
+	}`, firstResult.ResponseID))
+	followRecorder := httptest.NewRecorder()
+	followContext, _ := gin.CreateTestContext(followRecorder)
+	followContext.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(followBody))
+	followContext.Request.Header.Set("Content-Type", "application/json")
+	followUpstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"chatcmpl_follow","object":"chat.completion","model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","tool_calls":[{"id":"call_exec","type":"function","function":{"name":"exec","arguments":"{\"input\":\"pwd\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4}}`,
+		)),
+	}}
+	followService := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: followUpstream,
+		cache:        sharedCache,
+	}
+
+	followResult, err := followService.Forward(
+		context.Background(),
+		followContext,
+		forceChatResponsesFallbackAccount(),
+		followBody,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, followResult)
+	require.Equal(t, "exec", gjson.GetBytes(followUpstream.lastBody, "tools.0.function.name").String())
+	require.Equal(t, "custom_tool_call", gjson.Get(followRecorder.Body.String(), "output.0.type").String())
+	require.Equal(t, "pwd", gjson.Get(followRecorder.Body.String(), "output.0.input").String())
 }
 
 func (c *reasoningRecordingCache) SetReasoningContent(_ context.Context, itemID string, content string, _ time.Duration) error {

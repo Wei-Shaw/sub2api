@@ -73,6 +73,33 @@ func TestAdaptResponsesClientTools_RegistersClaudeWebSearchAlias(t *testing.T) {
 	require.Equal(t, ResponsesNamespaceName{Namespace: "web", Name: "run"}, mapping.NamespaceTools["web_search"])
 }
 
+func TestAdaptResponsesClientTools_DoesNotAliasDeclaredCustomWebSearch(t *testing.T) {
+	req := map[string]any{
+		"tools": []any{
+			map[string]any{"type": "custom", "name": "web_search"},
+			map[string]any{
+				"type": "namespace", "name": "web",
+				"tools": []any{map[string]any{"type": "function", "name": "run"}},
+			},
+		},
+	}
+
+	mapping, changed, err := AdaptResponsesClientTools(req)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.True(t, mapping.CustomTools["web_search"])
+	require.NotContains(t, mapping.NamespaceTools, "web_search")
+
+	payload := []byte(`{"output":[{"type":"function_call","name":"web_search","call_id":"call_web","arguments":"{\"input\":\"query\"}"}]}`)
+	restored, restoredChanged, err := RestoreResponsesClientToolPayload(payload, mapping)
+	require.NoError(t, err)
+	require.True(t, restoredChanged)
+	require.Equal(t, "custom_tool_call", gjson.GetBytes(restored, "output.0.type").String())
+	require.Equal(t, "web_search", gjson.GetBytes(restored, "output.0.name").String())
+	require.Equal(t, "query", gjson.GetBytes(restored, "output.0.input").String())
+	require.False(t, gjson.GetBytes(restored, "output.0.namespace").Exists())
+}
+
 func TestAdaptResponsesClientTools_LowersDeclarationsHistoryChoiceAndNamespaces(t *testing.T) {
 	req := map[string]any{
 		"tools": []any{

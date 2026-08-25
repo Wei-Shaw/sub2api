@@ -159,6 +159,36 @@ func TestEffectiveResponsesTools_RejectsMalformedAdditionalTools(t *testing.T) {
 	assert.Empty(t, tools)
 }
 
+func TestResponsesToChatCompletionsRequestRejectsNamespaceChildTypeConflict(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-test",
+		Input: json.RawMessage(`[{
+			"type":"message",
+			"role":"user",
+			"content":"run it"
+		}]`),
+		Tools: []ResponsesTool{
+			{
+				Type: "namespace",
+				Name: "functions",
+				Tools: []ResponsesTool{
+					{Type: "function", Name: "exec", Parameters: json.RawMessage(`{"type":"object"}`)},
+				},
+			},
+			{
+				Type: "namespace",
+				Name: "functions",
+				Tools: []ResponsesTool{
+					{Type: "custom", Name: "exec"},
+				},
+			},
+		},
+	}
+
+	_, err := ResponsesToChatCompletionsRequest(req)
+	require.ErrorContains(t, err, "both flatten")
+}
+
 func TestResponsesToChatCompletionsRequest_DropsToolChoiceWhenNoConvertibleTools(t *testing.T) {
 	req := &ResponsesRequest{
 		Model: "glm-5.2",

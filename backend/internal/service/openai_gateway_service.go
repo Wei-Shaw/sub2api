@@ -469,9 +469,10 @@ type OpenAIGatewayService struct {
 	codexModelsManifestCache            codexModelsManifestCache
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map
-	// responsesChatFallbackSessions stores request-scoped tool declarations for
-	// API-key accounts that emulate Responses through Chat Completions. Codex
-	// commonly omits tools on follow-up requests and sends only previous_response_id.
+	// responsesChatFallbackSessions is the in-process fallback for request-scoped
+	// tool declarations when GatewayCache does not expose the distributed cache
+	// extension. Production cache implementations persist the same data so
+	// previous_response_id continuations survive Pod changes and restarts.
 	responsesChatFallbackSessions sync.Map
 	// openaiCodexTurnStateOrigins: 下游会话 seed → openAICodexTurnStateOrigin，
 	// 记录最近一次向该会话下发 x-codex-turn-state 的铸造账号，供出站守卫
