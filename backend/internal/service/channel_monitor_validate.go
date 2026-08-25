@@ -218,18 +218,23 @@ func normalizeMonitorPrimaryModel(provider, checkMode, model string) string {
 //   - openai：OAuth（API-Key 型无 usage 通道）
 //   - gemini/grok/antigravity：本地统计/值通道降级，不会永久 error，放行
 func monitorAccountQuotaCapability(account *Account) error {
-	switch account.Platform {
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+	if IsCNProvider(account.Platform) {
 		if account.IsCodingPlan() {
-			if p := account.GetCodingPlanProvider(); p != PlatformKimi && p != PlatformZhipu {
+			// coding 账号需能路由到注册了额度端点（QuotaProbe）的平台。
+			spec, ok := GetCNProviderSpec(account.GetCodingPlanProvider())
+			if !ok || spec.QuotaProbe == nil {
 				return ErrChannelMonitorAccountNotSupportable
 			}
 			return nil
 		}
-		if account.Platform == PlatformZhipu {
+		// payg：仅有公开余额端点（BalanceProbe）的平台可监控。
+		spec, _ := GetCNProviderSpec(account.Platform)
+		if spec == nil || spec.BalanceProbe == nil {
 			return ErrChannelMonitorAccountNotSupportable
 		}
 		return nil
+	}
+	switch account.Platform {
 	case PlatformAnthropic:
 		if account.Type == AccountTypeOAuth || account.Type == AccountTypeSetupToken {
 			return nil

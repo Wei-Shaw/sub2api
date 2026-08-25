@@ -1,8 +1,6 @@
 package schema
 
 import (
-	"fmt"
-
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
@@ -37,17 +35,10 @@ func (UserPlatformQuota) Fields() []ent.Field {
 		field.String("platform").
 			MaxLen(32).
 			NotEmpty().
-			Validate(func(s string) error {
-				// 注意：平台列表的单一权威源为 service.AllowedQuotaPlatforms；
-				// 此处为 ent 构建期约束，需与 service.AllowedQuotaPlatforms 保持同步。
-				switch s {
-				case "anthropic", "openai", "gemini", "antigravity", "grok",
-					"kimi", "zhipu", "deepseek":
-					return nil
-				default:
-					return fmt.Errorf("platform %q is not allowed", s)
-				}
-			}),
+			// 平台合法性由应用层保证（service.IsAllowedQuotaPlatform，权威源为
+			// CN 注册表派生的 service.AllowedQuotaPlatforms）；ent 层不再重复枚举，
+			// 避免新增供应商时 schema/约束/代码三处脱节（见 migration 229 头注释）。
+			Comment("平台标识（anthropic/openai/gemini/antigravity/grok/国产供应商等）"),
 
 		// 日 / 周 / 月 USD 上限：
 		//   nil / not set → 无限额（完全放行）

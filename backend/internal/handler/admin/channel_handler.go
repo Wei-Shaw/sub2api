@@ -611,15 +611,23 @@ func (h *ChannelHandler) GetModelDefaultPricing(c *gin.Context) {
 
 // platformToLiteLLMProvider maps a channel platform name to the corresponding
 // LiteLLM provider string used as the key in the pricing catalog.
-var platformToLiteLLMProvider = map[string]string{
-	service.PlatformAnthropic:   "anthropic",
-	service.PlatformOpenAI:      "openai",
-	service.PlatformGemini:      "gemini",
-	service.PlatformAntigravity: "anthropic",
-	service.PlatformGrok:        "xai",
-	service.PlatformKimi:        "moonshot",
-	service.PlatformZhipu:       "zhipu",
-	service.PlatformDeepseek:    "deepseek",
+// CN 平台条目由注册表（CNProviderSpec.LiteLLMProvider）派生，新增供应商自动纳入。
+var platformToLiteLLMProvider = buildPlatformToLiteLLMProvider()
+
+func buildPlatformToLiteLLMProvider() map[string]string {
+	out := map[string]string{
+		service.PlatformAnthropic:   "anthropic",
+		service.PlatformOpenAI:      "openai",
+		service.PlatformGemini:      "gemini",
+		service.PlatformAntigravity: "anthropic",
+		service.PlatformGrok:        "xai",
+	}
+	for _, code := range service.CNProviderCodes() {
+		if spec, ok := service.GetCNProviderSpec(code); ok && spec.LiteLLMProvider != "" {
+			out[code] = spec.LiteLLMProvider
+		}
+	}
+	return out
 }
 
 // SyncPricingModels 返回 LiteLLM 定价目录中指定平台的最新模型列表

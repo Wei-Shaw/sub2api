@@ -58,12 +58,14 @@ func EvaluateAccountSchedulingThreshold(account *Account, thresholds map[string]
 		winner = pickLatestResetSchedulingCandidate(anthropicThresholdCandidates(account), threshold, now)
 	case PlatformGrok:
 		winner = pickLatestResetSchedulingCandidate(grokThresholdCandidates(account), threshold, now)
-	case PlatformKimi:
-		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, PlatformKimi), threshold, now)
-	case PlatformZhipu:
-		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, PlatformZhipu), threshold, now)
 	default:
-		return decision
+		// CN 平台：仅有滚动窗口端点（QuotaProbe）的平台参与阈值评估，
+		// 与 AllowedSchedulingThresholdPlatforms 的派生口径一致。
+		spec, ok := GetCNProviderSpec(decision.Platform)
+		if !ok || spec.QuotaProbe == nil {
+			return decision
+		}
+		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, decision.Platform), threshold, now)
 	}
 
 	if winner == nil {

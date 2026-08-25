@@ -7,14 +7,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/tidwall/gjson"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -129,8 +127,9 @@ func (s *CNProviderQuotaService) QueryUsageForAccount(ctx context.Context, accou
 
 func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, account *Account) (*CNProviderQuotaProbeResult, error) {
 	provider := account.GetCodingPlanProvider()
-	if provider != PlatformKimi && provider != PlatformZhipu {
-		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a kimi/zhipu coding plan account")
+	spec, ok := GetCNProviderSpec(provider)
+	if !ok || spec.QuotaProbe == nil {
+		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a coding plan account with quota endpoint")
 	}
 
 	apiKey := strings.TrimSpace(account.GetCNAPIKey())
@@ -138,19 +137,8 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NO_APIKEY", "account api_key is empty")
 	}
 
-	baseURL := account.GetOpenAIBaseURL()
-	var (
-		targetURL  string
-		authHeader string
-	)
-	switch provider {
-	case PlatformKimi:
-		targetURL = kimiQuotaURL(baseURL)
-		authHeader = "Bearer " + apiKey
-	case PlatformZhipu:
-		targetURL = zhipuQuotaURL(baseURL)
-		authHeader = apiKey // 智谱额度端点鉴权不加 Bearer 前缀
-	}
+	targetURL := spec.QuotaProbe.QuotaURL(account)
+	authHeader := spec.QuotaProbe.QuotaAuthHeader(apiKey)
 
 	// 探测发起前过出站 URL 安全策略（与网关转发/Grok 探测同一套校验）：
 	// 端点多由账号 base_url 衍生，不得把 API key 发往策略外主机。
@@ -169,10 +157,7 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	}
 	req.Header.Set("Authorization", authHeader)
 	req.Header.Set("Accept", "application/json")
-	if provider == PlatformZhipu {
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept-Language", "en-US,en")
-	}
+	spec.QuotaProbe.SetQuotaHeaders(req)
 	// 探测与真实转发保持同一套账号级请求头覆写，避免探测通过但转发失败。
 	account.ApplyHeaderOverrides(req.Header)
 
@@ -201,27 +186,14 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 		return result, nil
 	}
 
-	// 智谱业务级错误（HTTP 2xx 但 success=false）。
-	if provider == PlatformZhipu {
-		if success := gjson.GetBytes(bodyBytes, "success"); success.Exists() && !success.Bool() {
-			msg := strings.TrimSpace(gjson.GetBytes(bodyBytes, "msg").String())
-			if msg == "" {
-				msg = "unknown zhipu quota error"
-			}
-			result.Error = "API error: " + msg
-			return result, nil
-		}
-	}
-
-	var tiers []CNQuotaTier
-	switch provider {
-	case PlatformKimi:
-		tiers = parseKimiUsageTiers(bodyBytes)
-	case PlatformZhipu:
-		tiers = parseZhipuTokenTiers(gjson.GetBytes(bodyBytes, "data"))
-		result.PlanLevel = strings.TrimSpace(gjson.GetBytes(bodyBytes, "data.level").String())
+	// 平台钩子负责业务级错误判定（HTTP 2xx 但 success=false 之类）与窗口解析。
+	tiers, planLevel, bizErrMsg := spec.QuotaProbe.ParseQuota(bodyBytes)
+	if bizErrMsg != "" {
+		result.Error = bizErrMsg
+		return result, nil
 	}
 	result.Tiers = tiers
+	result.PlanLevel = planLevel
 	result.Success = true
 	result.CredentialValid = true
 
@@ -274,224 +246,6 @@ func (s *CNProviderQuotaService) resolveProxyURL(ctx context.Context, account *A
 		}
 	}
 	return ""
-}
-
-// zhipuQuotaURL 根据 base_url 解析智谱额度端点（与数据面推理域名同主机）。
-func zhipuQuotaURL(baseURL string) string {
-	return zhipuQuotaHost(baseURL) + "/api/monitor/usage/quota/limit"
-}
-
-// kimiQuotaURL 根据 base_url 解析 Kimi For Coding 额度端点。
-// cc-switch query_kimi 固定探测 https://api.kimi.com/coding/v1/usages
-// （实测 /coding/usages 无 /v1 → 404）。coding/v1（CC 协议默认）与
-// coding（Anthropic 协议默认）两种 base 统一剥掉尾部后拼回 /v1/usages，
-// 协议切换不影响额度探测端点。
-func kimiQuotaURL(baseURL string) string {
-	base := strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1")
-	return base + "/v1/usages"
-}
-
-func zhipuQuotaHost(baseURL string) string {
-	switch u := strings.ToLower(baseURL); {
-	case strings.Contains(u, "bigmodel.cn"):
-		return "https://open.bigmodel.cn"
-	case strings.Contains(u, "z.ai"):
-		return "https://api.z.ai"
-	default:
-		// 国产优先：未知域名回落国内站（与前端 zhipu 预设一致）。
-		return "https://open.bigmodel.cn"
-	}
-}
-
-// parseKimiUsageTiers 解析 Kimi For Coding 的 /usages 响应。
-//
-//   - limits[].detail.{limit,remaining,resetTime} → 5h 窗口（取首个 detail）
-//   - usage.{limit,remaining,resetTime} → 周窗口
-//
-// utilization = (limit-remaining)/limit*100。
-func parseKimiUsageTiers(body []byte) []CNQuotaTier {
-	var tiers []CNQuotaTier
-
-	if limits := gjson.GetBytes(body, "limits"); limits.IsArray() {
-		limits.ForEach(func(_, item gjson.Result) bool {
-			detail := item.Get("detail")
-			if !detail.Exists() {
-				return true
-			}
-			limit, _ := cnParseF64(detail.Get("limit").Value())
-			remaining, _ := cnParseF64(detail.Get("remaining").Value())
-			used := limit - remaining
-			if used < 0 {
-				used = 0
-			}
-			var util float64
-			if limit > 0 {
-				util = used / limit * 100
-			}
-			tiers = append(tiers, CNQuotaTier{
-				Window:      "5h",
-				UsedPercent: util,
-				ResetAt:     cnNormalizeResetTime(detail.Get("resetTime").Value()),
-			})
-			return false // 取首个 detail 作为 5h 窗口
-		})
-	}
-
-	if usage := gjson.GetBytes(body, "usage"); usage.Exists() {
-		limit, _ := cnParseF64(usage.Get("limit").Value())
-		remaining, _ := cnParseF64(usage.Get("remaining").Value())
-		used := limit - remaining
-		if used < 0 {
-			used = 0
-		}
-		var util float64
-		if limit > 0 {
-			util = used / limit * 100
-		}
-		tiers = append(tiers, CNQuotaTier{
-			Window:      "weekly",
-			UsedPercent: util,
-			ResetAt:     cnNormalizeResetTime(usage.Get("resetTime").Value()),
-		})
-	}
-
-	return tiers
-}
-
-// cnZhipuWindow 标识智谱 TOKENS_LIMIT 条目所属窗口。
-type cnZhipuWindow int
-
-const (
-	cnZhipuWindowUnknown cnZhipuWindow = iota
-	cnZhipuWindow5h
-	cnZhipuWindowWeekly
-)
-
-// classifyZhipuWindowUnit 按 unit 字段判定窗口类型（3=5h，6=weekly）。
-// unit 缺失或未识别时返回 Unknown，由调用方走 reset 时间启发式兜底。
-func classifyZhipuWindowUnit(unit int64) cnZhipuWindow {
-	switch unit {
-	case 3:
-		return cnZhipuWindow5h
-	case 6:
-		return cnZhipuWindowWeekly
-	default:
-		return cnZhipuWindowUnknown
-	}
-}
-
-// parseZhipuTokenTiers 解析智谱额度响应 data.limits 为 5h + weekly 两档。
-//
-// 分类优先级（对齐 cc-switch parse_zhipu_token_tiers，issue #3036）：
-//  1. 显式 unit 字段（3=5h / 6=weekly）——不能用 reset 排序代替，周期末尾
-//     周窗口会比 5h 更早重置，时间排序必然标反。
-//  2. unit 缺失/未识别：无 nextResetTime 的条目优先归 5h（0% 状态下 5h 桶可能
-//     没有 reset），其余按 reset 升序依次填入仍空缺的槽位。
-//
-// CREDIT_LIMIT（信用额度）与 TOKENS_LIMIT（token 窗口）度量不同：两者同时返回时
-// 只让 TOKENS_LIMIT 参与 5h/weekly 槽位竞争，避免信用额度百分比污染阈值停调
-// 快照；仅当无任何 TOKENS_LIMIT 条目时才降级用 CREDIT_LIMIT 展示。
-// 老套餐只回 1 条 TOKENS_LIMIT，自然降级为仅 5h；新套餐回 2 条。
-func parseZhipuTokenTiers(data gjson.Result) []CNQuotaTier {
-	type entry struct {
-		resetMs    int64
-		hasReset   bool
-		percentage float64
-		resetISO   string
-	}
-	var (
-		fiveHour     entry
-		fiveHourSet  bool
-		weekly       entry
-		weeklySet    bool
-		unclassified []entry
-	)
-
-	classify := func(item gjson.Result, e entry) {
-		switch classifyZhipuWindowUnit(item.Get("unit").Int()) {
-		case cnZhipuWindow5h:
-			if !fiveHourSet {
-				fiveHour, fiveHourSet = e, true
-			} else {
-				unclassified = append(unclassified, e)
-			}
-		case cnZhipuWindowWeekly:
-			if !weeklySet {
-				weekly, weeklySet = e, true
-			} else {
-				unclassified = append(unclassified, e)
-			}
-		default:
-			unclassified = append(unclassified, e)
-		}
-	}
-	var creditFallback []entry
-	hasTokensLimit := false
-
-	data.Get("limits").ForEach(func(_, item gjson.Result) bool {
-		limitType := strings.ToUpper(strings.TrimSpace(item.Get("type").String()))
-		if limitType != "TOKENS_LIMIT" && limitType != "CREDIT_LIMIT" {
-			return true
-		}
-		percentage := 0.0
-		if p, ok := cnParseF64(item.Get("percentage").Value()); ok {
-			percentage = p
-		}
-		var (
-			resetMs  int64
-			hasReset bool
-			resetISO string
-		)
-		if nr := item.Get("nextResetTime"); nr.Exists() {
-			switch nr.Type {
-			case gjson.Number:
-				resetMs = nr.Int()
-				hasReset = resetMs > 0
-				resetISO = cnMillisToRFC3339(resetMs)
-			case gjson.String:
-				resetISO = cnNormalizeResetTime(nr.String())
-				hasReset = resetISO != ""
-			}
-		}
-		e := entry{resetMs: resetMs, hasReset: hasReset, percentage: percentage, resetISO: resetISO}
-		if limitType == "TOKENS_LIMIT" {
-			hasTokensLimit = true
-			classify(item, e)
-		} else {
-			creditFallback = append(creditFallback, e)
-		}
-		return true
-	})
-
-	// 无任何 TOKENS_LIMIT 条目（部分套餐只报信用额度）：降级用 CREDIT_LIMIT 展示。
-	if !hasTokensLimit {
-		unclassified = append(unclassified, creditFallback...)
-	}
-
-	// 无 reset 的条目排前，再按 reset 升序，依次填入仍空缺的槽位。
-	sort.SliceStable(unclassified, func(i, j int) bool {
-		if unclassified[i].hasReset != unclassified[j].hasReset {
-			return !unclassified[i].hasReset
-		}
-		return unclassified[i].resetMs < unclassified[j].resetMs
-	})
-	for _, e := range unclassified {
-		switch {
-		case !fiveHourSet:
-			fiveHour, fiveHourSet = e, true
-		case !weeklySet:
-			weekly, weeklySet = e, true
-		}
-	}
-
-	var tiers []CNQuotaTier
-	if fiveHourSet {
-		tiers = append(tiers, CNQuotaTier{Window: "5h", UsedPercent: fiveHour.percentage, ResetAt: fiveHour.resetISO})
-	}
-	if weeklySet {
-		tiers = append(tiers, CNQuotaTier{Window: "weekly", UsedPercent: weekly.percentage, ResetAt: weekly.resetISO})
-	}
-	return tiers
 }
 
 // cnQuotaExtraUpdates 根据 tier 列表构造 provider 维度的 Extra 快照更新。
