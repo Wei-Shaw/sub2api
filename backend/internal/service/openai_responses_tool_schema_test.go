@@ -80,6 +80,40 @@ func TestSanitizeOpenAIResponsesToolParameterTypes_ObjectOnlyRootUnion(t *testin
 	require.Equal(t, "string", gjson.GetBytes(sanitized, "tools.0.parameters.oneOf.0.properties.id.type").String())
 }
 
+// issue #5820 的实际形状有四个根 oneOf 分支，其中两个分支继续用无显式
+// type 的 oneOf 表达对象变体。只补齐参数根 type，不能改写 union 及其约束。
+func TestSanitizeOpenAIResponsesToolParameterTypes_Issue5820NestedObjectUnion(t *testing.T) {
+	parameters := `{"$schema":"https://json-schema.org/draft/2020-12/schema","oneOf":[{"type":"object","properties":{"mode":{"type":"string","const":"view"}},"required":["mode"],"additionalProperties":false},{"oneOf":[{"type":"object","properties":{"mode":{"const":"create"},"schedule":{"$ref":"#/$defs/schedule"}},"required":["mode","schedule"],"additionalProperties":false},{"type":"object","properties":{"mode":{"const":"create"},"prompt":{"type":"string"}},"required":["mode","prompt"],"additionalProperties":false}]},{"oneOf":[{"type":"object","properties":{"mode":{"const":"update"},"schedule":{"$ref":"#/$defs/schedule"}},"required":["mode","schedule"],"additionalProperties":false},{"type":"object","properties":{"mode":{"const":"update"},"enabled":{"type":"boolean"}},"required":["mode","enabled"],"additionalProperties":false}]},{"type":"object","properties":{"mode":{"type":"string","const":"delete"}},"required":["mode"],"additionalProperties":false}],"$defs":{"schedule":{"type":"object","properties":{"rrule":{"type":"string"}},"required":["rrule"],"additionalProperties":false}},"required":["mode"]}`
+	wantParameters := `{"type":"object",` + parameters[1:]
+	body := []byte(`{"tools":[{"type":"function","name":"automation_update","strict":true,"parameters":` + parameters + `}],"input":[{"type":"additional_tools","tools":[{"type":"namespace","name":"codex_app","tools":[{"type":"function","name":"automation_update","strict":true,"parameters":` + parameters + `}]}]}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolParameterTypes(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.True(t, json.Valid(sanitized))
+	for _, path := range []string{"tools.0", "input.0.tools.0.tools.0"} {
+		tool := gjson.GetBytes(sanitized, path)
+		require.Equal(t, "true", tool.Get("strict").Raw)
+		require.JSONEq(t, wantParameters, tool.Get("parameters").Raw)
+		require.Len(t, tool.Get("parameters.oneOf").Array(), 4)
+		require.True(t, tool.Get("parameters.oneOf.1.oneOf").IsArray())
+		require.True(t, tool.Get("parameters.oneOf.2.oneOf").IsArray())
+		require.True(t, tool.Get("parameters.$defs.schedule").IsObject())
+		require.Equal(t, "mode", tool.Get("parameters.required.0").String())
+	}
+}
+
+func TestSanitizeOpenAIResponsesToolParameterTypes_Issue5820PreservationBoundaries(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","name":"automation_update","strict":true,"parameters":{"oneOf":[{"type":"object"},{"type":"string"}],"properties":{"keep":{"type":"string"}},"required":["keep"],"$defs":{"keep":{"type":"string"}}}},{"type":"function","name":"automation_update","strict":true,"parameters":{"type":"object","oneOf":[{"type":"object"}],"properties":{"keep":{"type":"string"}},"required":["keep"]}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolParameterTypes(body)
+
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, body, sanitized)
+}
+
 func TestSanitizeOpenAIResponsesToolParameterTypes_EscapedUnionKeyword(t *testing.T) {
 	body := []byte(`{"tools":[{"type":"function","name":"other","parameters":{"one\u004ff":[{"type":"object"}]}}]}`)
 
