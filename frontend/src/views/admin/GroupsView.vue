@@ -4597,6 +4597,7 @@ import type {
   CompositeRouteEndpoint,
   CompositeRouteMatchType,
   GroupPlatform,
+  GroupSchedulerConfig,
   SubscriptionType,
 } from "@/types";
 import {
@@ -5229,7 +5230,10 @@ const editModelsListSelectedCount = computed(
 );
 
 const createForm = reactive({
-	 scheduler: { strategy: "legacy", first_byte_failover: true },
+  scheduler: {
+    strategy: "legacy",
+    first_byte_failover: true,
+  } as GroupSchedulerConfig,
   name: "",
   description: "",
   platform: "anthropic" as GroupPlatform,
@@ -5593,7 +5597,10 @@ const convertApiFormatToRoutingRules = async (
 };
 
 const editForm = reactive({
-	 scheduler: { strategy: "legacy", first_byte_failover: true },
+  scheduler: {
+    strategy: "legacy",
+    first_byte_failover: true,
+  } as GroupSchedulerConfig,
   name: "",
   description: "",
   platform: "anthropic" as GroupPlatform,
