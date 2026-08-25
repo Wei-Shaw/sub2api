@@ -953,6 +953,9 @@ export default {
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
+        qwen: 'Qwen',
+        minimax: 'MiniMax',
+        xfspark: 'iFLYTEK Spark',
         composite: 'Composite',
       },
       deleteConfirm:

@@ -62,10 +62,8 @@ func TestCompositeGroupSchedulerHasAllCanonicalPlatformBuckets(t *testing.T) {
 	for platform := range seen {
 		platforms = append(platforms, platform)
 	}
-	require.ElementsMatch(t,
-		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek},
-		platforms,
-	)
+	// 期望集合 = 注册表派生的全部具体平台（国际 5 个 + 国产 N 个，注册即入桶，无需改测试）。
+	require.ElementsMatch(t, ConcretePlatforms(), platforms)
 }
 
 func TestCompositeConcretePlatformsIncludeCNProviders(t *testing.T) {

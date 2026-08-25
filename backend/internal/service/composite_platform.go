@@ -106,12 +106,14 @@ func DetectModelPlatform(model string) (string, bool) {
 			return PlatformGemini, true
 		case "xai", "x-ai", "grok":
 			return PlatformGrok, true
-		case "kimi", "moonshot":
-			return PlatformKimi, true
-		case "zhipu", "glm", "bigmodel":
-			return PlatformZhipu, true
-		case "deepseek":
-			return PlatformDeepseek, true
+		}
+		// CN 平台别名由注册表定义（如 kimi/moonshot、zhipu/glm/bigmodel）。
+		for _, spec := range cnProviderSpecs() {
+			for _, alias := range spec.ModelDetectAliases {
+				if provider == alias {
+					return spec.Code, true
+				}
+			}
 		}
 		if rest != "" {
 			normalized = strings.TrimPrefix(rest, "models/")
@@ -139,16 +141,16 @@ func DetectModelPlatform(model string) (string, bool) {
 		return PlatformGemini, true
 	case normalized == "grok" || strings.HasPrefix(normalized, "grok-"):
 		return PlatformGrok, true
-	case strings.HasPrefix(normalized, "kimi-"),
-		strings.HasPrefix(normalized, "moonshot-"):
-		return PlatformKimi, true
-	case strings.HasPrefix(normalized, "glm-"):
-		return PlatformZhipu, true
-	case strings.HasPrefix(normalized, "deepseek-"):
-		return PlatformDeepseek, true
-	default:
-		return "", false
 	}
+	// CN 平台模型前缀由注册表定义（如 kimi-/moonshot-、glm-、deepseek-）。
+	for _, spec := range cnProviderSpecs() {
+		for _, prefix := range spec.ModelDetectPrefixes {
+			if strings.HasPrefix(normalized, prefix) {
+				return spec.Code, true
+			}
+		}
+	}
+	return "", false
 }
 
 func hasOpenAISeriesPrefix(model string) bool {
@@ -192,10 +194,9 @@ func (s *GatewayService) resolveCompositeRouteDecision(ctx context.Context, grou
 
 func isConcreteRequestPlatform(platform string) bool {
 	switch platform {
-	case PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok,
-		PlatformKimi, PlatformZhipu, PlatformDeepseek:
+	case PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok:
 		return true
 	default:
-		return false
+		return IsCNProvider(platform)
 	}
 }

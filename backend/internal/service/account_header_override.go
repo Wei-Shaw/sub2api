@@ -78,12 +78,13 @@ func (a *Account) IsHeaderOverrideEligible() bool {
 		return false
 	}
 	switch a.Platform {
-	case PlatformAnthropic, PlatformOpenAI, PlatformKimi, PlatformZhipu, PlatformDeepseek:
+	case PlatformAnthropic, PlatformOpenAI:
 		return a.Type == AccountTypeAPIKey
 	case PlatformGrok:
 		return a.Type == AccountTypeAPIKey || a.Type == AccountTypeOAuth
 	default:
-		return false
+		// 国产 OpenAI 兼容供应商（注册表派生）：API Key 型可覆写请求头。
+		return IsCNProvider(a.Platform) && a.Type == AccountTypeAPIKey
 	}
 }
 

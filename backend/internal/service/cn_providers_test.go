@@ -230,16 +230,23 @@ func TestKimiQuotaURL(t *testing.T) {
 }
 
 // TestCNBalanceURL Kimi 固定端点；DeepSeek 基于 base_url 拼接。
+// 端点构造由各平台注册的 CNBalanceProbe.BalanceURL 钩子承担。
 func TestCNBalanceURL(t *testing.T) {
 	t.Parallel()
+	kimiSpec, ok := GetCNProviderSpec(PlatformKimi)
+	require.True(t, ok)
+	require.NotNil(t, kimiSpec.BalanceProbe)
 	kimi := &Account{Platform: PlatformKimi}
-	require.Equal(t, "https://api.moonshot.cn/v1/users/me/balance", cnBalanceURL(kimi))
+	require.Equal(t, "https://api.moonshot.cn/v1/users/me/balance", kimiSpec.BalanceProbe.BalanceURL(kimi))
 
+	deepseekSpec, ok := GetCNProviderSpec(PlatformDeepseek)
+	require.True(t, ok)
+	require.NotNil(t, deepseekSpec.BalanceProbe)
 	deepseek := &Account{
 		Platform:    PlatformDeepseek,
 		Credentials: map[string]any{"base_url": "https://api.deepseek.com"},
 	}
-	require.Equal(t, "https://api.deepseek.com/user/balance", cnBalanceURL(deepseek))
+	require.Equal(t, "https://api.deepseek.com/user/balance", deepseekSpec.BalanceProbe.BalanceURL(deepseek))
 }
 
 // TestCNProviderThresholdCandidates 从 Extra 快照读取 5h / weekly 候选。

@@ -46,20 +46,21 @@ func RegisterGatewayRoutes(
 	requireGroupGoogle := middleware.RequireGroupAssignment(settingService, middleware.GoogleErrorWriter)
 
 	isOpenAIResponsesCompatibleGatewayPlatform := func(c *gin.Context) bool {
-		switch getGroupPlatform(c) {
-		case service.PlatformOpenAI, service.PlatformGrok,
-			service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek:
-			// 国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）与 openai/grok 一样经 OpenAI 网关转发。
+		platform := getGroupPlatform(c)
+		// 国产 OpenAI 兼容供应商（注册表派生）与 openai/grok 一样经 OpenAI 网关转发。
+		switch platform {
+		case service.PlatformOpenAI, service.PlatformGrok:
 			return true
 		default:
-			return false
+			return service.IsCNProvider(platform)
 		}
 	}
 	countTokensHandler := func(c *gin.Context) {
-		switch getGroupPlatform(c) {
-		case service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek:
+		platform := getGroupPlatform(c)
+		switch {
+		case platform == service.PlatformOpenAI || service.IsCNProvider(platform):
 			h.OpenAIGateway.CountTokens(c)
-		case service.PlatformGrok:
+		case platform == service.PlatformGrok:
 			h.OpenAIGateway.GrokCountTokens(c)
 		default:
 			h.Gateway.CountTokens(c)
