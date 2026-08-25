@@ -12,7 +12,6 @@ import (
 //
 // 挂 OptionalJWT：匿名可访问（开关与 require_auth 由 handler fail-closed 判定），
 // 带 token 则识别用户以展示专属分组与个人倍率。
-// BackendModeUserGuard 保证 backend 模式下广场不对非管理员开放（匿名无 role → 403）。
 func RegisterModelPlazaRoutes(
 	v1 *gin.RouterGroup,
 	h *handler.Handlers,
@@ -23,7 +22,6 @@ func RegisterModelPlazaRoutes(
 	plaza := v1.Group("/model-plaza")
 	plaza.Use(panelRateLimiter.PublicIP())
 	plaza.Use(gin.HandlerFunc(optionalJWT))
-	plaza.Use(middleware.BackendModeUserGuard(settingService))
 	{
 		plaza.GET("", h.ModelPlaza.Get)
 	}
