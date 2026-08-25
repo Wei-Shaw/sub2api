@@ -349,7 +349,7 @@ func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {
 		}
 		normalized = next
 	}
-	if next, removed, err := normalizeOpenAIParallelToolCallsWithoutTools(normalized); err != nil {
+	if next, removed, err := normalizeOpenAIParallelToolCallsWithoutTools(normalized, false); err != nil {
 		return body, false, err
 	} else if removed {
 		normalized = next
@@ -361,13 +361,15 @@ func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {
 	return normalized, true, nil
 }
 
-func normalizeOpenAIParallelToolCallsWithoutTools(body []byte) ([]byte, bool, error) {
+func normalizeOpenAIParallelToolCallsWithoutTools(body []byte, responsesLite bool) ([]byte, bool, error) {
+	if responsesLite {
+		return body, false, nil
+	}
 	parallel := gjson.GetBytes(body, "parallel_tool_calls")
 	if !parallel.Exists() {
 		return body, false, nil
 	}
-	tools := gjson.GetBytes(body, "tools")
-	if tools.IsArray() && len(tools.Array()) > 0 {
+	if openAIRequestBodyHasTools(body) {
 		return body, false, nil
 	}
 	normalized, err := sjson.DeleteBytes(body, "parallel_tool_calls")
@@ -375,6 +377,22 @@ func normalizeOpenAIParallelToolCallsWithoutTools(body []byte) ([]byte, bool, er
 		return body, false, fmt.Errorf("normalize parallel_tool_calls without tools: %w", err)
 	}
 	return normalized, true, nil
+}
+
+// openAIRequestBodyHasTools 同时识别顶层 tools 和 input[].additional_tools。
+func openAIRequestBodyHasTools(body []byte) bool {
+	if tools := gjson.GetBytes(body, "tools"); tools.IsArray() && len(tools.Array()) > 0 {
+		return true
+	}
+	for _, item := range gjson.GetBytes(body, "input").Array() {
+		if strings.TrimSpace(item.Get("type").String()) != "additional_tools" {
+			continue
+		}
+		if tools := item.Get("tools"); tools.IsArray() && len(tools.Array()) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body []byte, knownStoreFalse bool) ([]byte, bool, error) {
@@ -934,7 +952,7 @@ func normalizeOpenAIResponseFormatSchemasBody(body []byte) ([]byte, bool, error)
 	return normalized, true, nil
 }
 
-func normalizeOpenAIResponsesWebSocketCompatibilityBody(body []byte, account *Account) ([]byte, bool, error) {
+func normalizeOpenAIResponsesWebSocketCompatibilityBody(body []byte, account *Account, responsesLite bool) ([]byte, bool, error) {
 	if account == nil || !account.IsOpenAI() {
 		return body, false, nil
 	}
@@ -948,7 +966,7 @@ func normalizeOpenAIResponsesWebSocketCompatibilityBody(body []byte, account *Ac
 		}
 	}
 	if account.IsOpenAIApiKey() {
-		if next, normalizedParallel, err := normalizeOpenAIParallelToolCallsWithoutTools(normalized); err != nil {
+		if next, normalizedParallel, err := normalizeOpenAIParallelToolCallsWithoutTools(normalized, responsesLite); err != nil {
 			return body, false, err
 		} else if normalizedParallel {
 			normalized = next
@@ -1248,6 +1266,57 @@ func normalizeOpenAIServiceTier(raw string) *string {
 	default:
 		return nil
 	}
+}
+
+// ErrInvalidOpenAIServiceTier indicates a request carried a service_tier value
+// that is not a known OpenAI tier. HTTP handlers translate it into a 400
+// invalid_request_error so malformed values are rejected up front instead of
+// being silently stripped (which would mask the user's intent to use fast
+// mode).
+type ErrInvalidOpenAIServiceTier struct {
+	Value string
+}
+
+func (e *ErrInvalidOpenAIServiceTier) Error() string {
+	return fmt.Sprintf("invalid service_tier %q: must be one of auto, default, fast, flex, priority, scale", e.Value)
+}
+
+const invalidOpenAIServiceTierValueMaxLen = 64
+
+func boundInvalidOpenAIServiceTierValue(raw string) string {
+	if len(raw) <= invalidOpenAIServiceTierValueMaxLen {
+		return raw
+	}
+	return raw[:invalidOpenAIServiceTierValueMaxLen] + "..."
+}
+
+// ValidateOpenAIServiceTierField validates the service_tier field of a raw
+// OpenAI-compatible request body (/v1/responses and /v1/chat/completions).
+//
+//   - absent / null → valid, returns "" (field omitted keeps current behavior)
+//   - "fast" → normalized to "priority" (the two are equivalent; the canonical
+//     value is what reaches the OpenAI upstream)
+//   - "priority" / "flex" / "auto" / "default" / "scale" → valid, returned as-is
+//   - an explicitly present non-string value, an empty string, or any other
+//     unknown value → *ErrInvalidOpenAIServiceTier (handler maps to HTTP 400),
+//     matching OpenAI's enum validation semantics
+func ValidateOpenAIServiceTierField(body []byte) (string, error) {
+	tierResult := gjson.GetBytes(body, "service_tier")
+	if !tierResult.Exists() || tierResult.Type == gjson.Null {
+		return "", nil
+	}
+	if tierResult.Type != gjson.String {
+		return "", &ErrInvalidOpenAIServiceTier{Value: "<non-string>"}
+	}
+	raw := strings.TrimSpace(tierResult.String())
+	if raw == "" {
+		return "", &ErrInvalidOpenAIServiceTier{Value: raw}
+	}
+	norm := normalizedOpenAIServiceTierValue(raw)
+	if norm == "" {
+		return "", &ErrInvalidOpenAIServiceTier{Value: boundInvalidOpenAIServiceTierValue(raw)}
+	}
+	return norm, nil
 }
 
 // OpenAIFastBlockedError indicates a request was rejected by the OpenAI fast

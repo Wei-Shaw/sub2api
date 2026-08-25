@@ -1147,6 +1147,17 @@ export interface Account {
       available_count?: number
       credits?: { expires_at?: string }[]
     }
+    auto_reset_credit_enabled?: boolean
+    auto_reset_credit_5h_threshold?: number
+    auto_reset_credit_7d_threshold?: number
+    codex_auto_reset_credit_state?: {
+      status?: 'checking' | 'available' | 'resetting' | 'success' | 'no_credit' | 'failed'
+      trigger_window?: string
+      available_count?: number
+      checked_at?: string
+      last_result_at?: string
+      error_code?: string
+    }
   } & Record<string, unknown>)
   proxy_id: number | null
   proxy_fallback_origin_id?: number | null

@@ -22,6 +22,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	c *gin.Context,
 	account *Account,
 	reqBody map[string]any,
+	clientPromptCacheKey string,
 	token string,
 	decision OpenAIWSProtocolDecision,
 	isCodexCLI bool,
@@ -72,7 +73,12 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	applyStagedCodexFingerprintClientMetadata(c, account, payload)
 	previousResponseID := openAIWSPayloadString(payload, "previous_response_id")
 	previousResponseIDKind := ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
-	promptCacheKey := openAIWSPayloadString(payload, "prompt_cache_key")
+	promptCacheKey := strings.TrimSpace(clientPromptCacheKey)
+	if promptCacheKey == "" {
+		// Fingerprint convergence may inject a default key when the client did
+		// not send one; retain that fallback without replacing an explicit raw key.
+		promptCacheKey = openAIWSPayloadString(payload, "prompt_cache_key")
+	}
 	_, hasTools := payload["tools"]
 	debugEnabled := isOpenAIWSModeDebugEnabled()
 	payloadBytes := -1
@@ -776,7 +782,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		UpstreamResponseServiceTier:   responseModelObserver.ServiceTier(),
 		ImageCount:                    imageCounter.Count(),
 		ImageOutputSizes:              imageCounter.Sizes(),
-		ServiceTier:                   extractOpenAIServiceTier(reqBody),
+		ServiceTier:                   resolvedOpenAIUpstreamServiceTierFromObserver(responseModelObserver, extractOpenAIServiceTier(reqBody)),
 		ReasoningEffort:               extractOpenAIReasoningEffort(reqBody, mappedModel, originalModel),
 		Stream:                        reqStream,
 		OpenAIWSMode:                  true,

@@ -79,6 +79,10 @@ const (
 
 var openAIImageTryAgainPattern = regexp.MustCompile(`(?i)try again in\s+([0-9]+(?:\.[0-9]+)?)\s*(ms|s|sec|secs|second|seconds|m|min|mins|minute|minutes)`)
 
+var openCodeGoUsageLimitResetPattern = regexp.MustCompile(`(?i)\bresets\s+in\s+`)
+
+var openCodeGoUsageLimitDurationPartPattern = regexp.MustCompile(`(?i)^([0-9]+(?:\.[0-9]+)?)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|week|weeks)\b`)
+
 const (
 	openAI403CooldownMinutesDefault = 10
 	openAI403DisableThreshold       = 3
@@ -1092,6 +1096,9 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	// 单影子场景直接变成无可用账号(外审第8轮 P1)。整段跳过;影子的 codex_* 仅由 account_usage 的
 	// QueryUsage→persistOpenAICodexProbeSnapshot 维护,枯竭由调度守卫处理。
 	if account.IsShadow() {
+		if account.ParentAccountID != nil {
+			notifyOpenAIAutoReset(*account.ParentAccountID)
+		}
 		return
 	}
 	// 国产供应商（kimi/zhipu/deepseek）的 429 走专用可恢复路径：余额不足 → 临时停调，
@@ -1105,6 +1112,7 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	if account.Platform == PlatformOpenAI {
 		persistOpenAI429PlanType(ctx, s.accountRepo, account, responseBody)
 		s.persistOpenAICodexSnapshot(ctx, account, headers)
+		notifyOpenAIAutoReset(account.ID)
 		if resetAt := s.calculateOpenAI429ResetTime(headers); resetAt != nil {
 			s.notifyAccountSchedulingBlocked(account, *resetAt, "429")
 			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
@@ -1620,10 +1628,12 @@ func (s *RateLimitService) persistOpenAICodexSnapshot(ctx context.Context, accou
 	}
 	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
 		slog.Warn("openai_codex_snapshot_persist_failed", "account_id", account.ID, "error", err)
+		return
 	}
+	notifyOpenAIAutoReset(account.ID)
 }
 
-// parseOpenAIRateLimitResetTime 解析 OpenAI 格式的 429 响应，返回重置时间的 Unix 时间戳
+// parseOpenAIRateLimitResetTime 解析 OpenAI 兼容格式的 429 响应，返回重置时间的 Unix 时间戳
 // OpenAI 的 usage_limit_reached 错误格式：
 //
 //	{
@@ -1645,9 +1655,9 @@ func parseOpenAIRateLimitResetTime(body []byte) *int64 {
 		return nil
 	}
 
-	// 检查是否为 usage_limit_reached 或 rate_limit_exceeded 类型
+	// 检查是否为已知的账号用量限制类型。
 	errType, _ := errObj["type"].(string)
-	if errType != "usage_limit_reached" && errType != "rate_limit_exceeded" {
+	if errType != "usage_limit_reached" && errType != "rate_limit_exceeded" && errType != "GoUsageLimitError" {
 		return nil
 	}
 
@@ -1674,7 +1684,74 @@ func parseOpenAIRateLimitResetTime(body []byte) *int64 {
 		}
 	}
 
+	// OpenCode Go subscriptions expose the reset only in a human-readable message,
+	// for example: "Weekly usage limit reached. Resets in 2 days."
+	if errType == "GoUsageLimitError" {
+		message, _ := errObj["message"].(string)
+		if resetAfter := parseOpenCodeGoUsageLimitResetDuration(message); resetAfter > 0 {
+			ts := time.Now().Add(resetAfter).Unix()
+			return &ts
+		}
+	}
+
 	return nil
+}
+
+func parseOpenCodeGoUsageLimitResetDuration(message string) time.Duration {
+	resetPrefix := openCodeGoUsageLimitResetPattern.FindStringIndex(message)
+	if resetPrefix == nil {
+		return 0
+	}
+
+	remainder := message[resetPrefix[1]:]
+	var total time.Duration
+	for {
+		remainder = strings.TrimSpace(remainder)
+		matches := openCodeGoUsageLimitDurationPartPattern.FindStringSubmatchIndex(remainder)
+		if matches == nil {
+			break
+		}
+
+		value, err := strconv.ParseFloat(remainder[matches[2]:matches[3]], 64)
+		if err != nil || value <= 0 {
+			return 0
+		}
+
+		unit := openCodeGoUsageLimitDurationUnit(remainder[matches[4]:matches[5]])
+		if unit <= 0 {
+			return 0
+		}
+
+		const maxDuration = time.Duration(1<<63 - 1)
+		if value >= float64(maxDuration)/float64(unit) {
+			return 0
+		}
+		part := time.Duration(value * float64(unit))
+		if part <= 0 || total > maxDuration-part {
+			return 0
+		}
+		total += part
+		remainder = remainder[matches[1]:]
+	}
+
+	return total
+}
+
+func openCodeGoUsageLimitDurationUnit(raw string) time.Duration {
+	switch strings.ToLower(raw) {
+	case "s", "sec", "secs", "second", "seconds":
+		return time.Second
+	case "m", "min", "mins", "minute", "minutes":
+		return time.Minute
+	case "h", "hr", "hrs", "hour", "hours":
+		return time.Hour
+	case "d", "day", "days":
+		return 24 * time.Hour
+	case "w", "week", "weeks":
+		return 7 * 24 * time.Hour
+	default:
+		return 0
+	}
 }
 
 func parseOpenAIRateLimitPlanType(body []byte) string {

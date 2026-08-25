@@ -497,7 +497,7 @@ func TestOpenAIResponsesToolSchemaPlatformGate_APIKeyAndOAuth(t *testing.T) {
 			normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
 				Platform: PlatformOpenAI,
 				Type:     accountType,
-			})
+			}, false)
 			require.NoError(t, err)
 			require.True(t, changed)
 			require.Equal(t, "object", gjson.GetBytes(normalized, "tools.0.parameters.type").String())
@@ -508,7 +508,7 @@ func TestOpenAIResponsesToolSchemaPlatformGate_APIKeyAndOAuth(t *testing.T) {
 	normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
 		Platform: PlatformGrok,
 		Type:     AccountTypeAPIKey,
-	})
+	}, false)
 	require.NoError(t, err)
 	require.False(t, changed)
 	require.Equal(t, string(body), string(normalized))
@@ -587,7 +587,9 @@ func TestSanitizeOpenAIResponsesToolParameterTypes_RewriteCountIndependentOfHits
 	})
 
 	// 命中切片扩容是对数级，留出充裕余量；线性写法在这里会是 2000 量级。
-	require.Less(t, largeAllocs, smallAllocs+40,
+	// 干净环境实测 large 约 17 allocs，200 是 10 倍余量，同时容忍 CI 慢 pod 上
+	// 包内后台 goroutine（日志/ticker）对进程级 Mallocs 的噪声污染。
+	require.Less(t, largeAllocs, 200.0,
 		"分配次数随命中数线性增长，说明退回了逐路径全量重写 (small=%v large=%v)", smallAllocs, largeAllocs)
 
 	// 同时确认大 body 的结果确实全部修好了。

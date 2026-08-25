@@ -249,6 +249,7 @@ type ccStreamScanState struct {
 // emit 回调做各自的协议转换与写出。读错误按既有约定过滤 context 取消类噪声后
 // 记入 Warn 日志。
 func (s *OpenAIGatewayService) scanCCStream(
+	c *gin.Context,
 	resp *http.Response,
 	logPrefix string,
 	requestID string,
@@ -271,6 +272,12 @@ func (s *OpenAIGatewayService) scanCCStream(
 		if payload == "[DONE]" {
 			st.SawDone = true
 			break
+		}
+		// 观察上游 CC chunk 回显的 model / service_tier（计费以回显为准）。
+		// CC chunk 无 type 字段，按 untyped payload 观察（上游约束：只有终止
+		// 事件与无类型 body 报告实际处理档位）。
+		if observer := upstreamResponseModelObserverFromContext(c); observer != nil {
+			observer.ObserveOpenAI([]byte(payload), "")
 		}
 
 		if u := extractCCStreamUsage(payload); u != nil {
@@ -330,6 +337,11 @@ func (s *OpenAIGatewayService) readCCUpstreamJSONResponse(
 	if err := json.Unmarshal(respBody, &ccResp); err != nil {
 		writeError(c, http.StatusBadGateway, "api_error", "Failed to parse upstream response")
 		return nil, OpenAIUsage{}, fmt.Errorf("parse chat completions response: %w", err)
+	}
+	// 观察上游 CC JSON 回显的 model / service_tier（计费以回显为准）。
+	// CC JSON 无 type 字段，按 untyped payload 观察（上游约束）。
+	if observer := upstreamResponseModelObserverFromContext(c); observer != nil {
+		observer.ObserveOpenAI(respBody, "")
 	}
 
 	usage := OpenAIUsage{}

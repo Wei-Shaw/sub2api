@@ -22,14 +22,13 @@ import (
 const (
 	grokComposerImageBridgeVisionModel     = "grok-build-0.1"
 	grokComposerImageBridgeMaxOutputTokens = 512
-	// grokUpstreamUserAgent lives in grok_upstream_headers.go (shared with TLS header helpers).
-	grokCLIVersion                   = xai.CLIClientVersion
-	grokDefaultResponsesModel        = "grok-4.5"
-	grokRateLimitFallbackCooldown    = 2 * time.Minute
-	grokRateLimitRepeatCooldown      = 10 * time.Minute
-	grokRateLimitSustainedCooldown   = 30 * time.Minute
-	grokRateLimitMaxAdaptiveCooldown = time.Hour
-	grokRateLimitBackoffQuietPeriod  = time.Hour
+	grokCLIVersion                         = xai.CLIClientVersion
+	grokDefaultResponsesModel              = "grok-4.5"
+	grokRateLimitFallbackCooldown          = 2 * time.Minute
+	grokRateLimitRepeatCooldown            = 10 * time.Minute
+	grokRateLimitSustainedCooldown         = 30 * time.Minute
+	grokRateLimitMaxAdaptiveCooldown       = time.Hour
+	grokRateLimitBackoffQuietPeriod        = time.Hour
 )
 
 func (s *OpenAIGatewayService) forwardGrokResponses(

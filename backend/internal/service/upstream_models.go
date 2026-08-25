@@ -14,8 +14,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 )
 
-const upstreamModelsBodyLimit int64 = 8 << 20
-
 // UpstreamModelSyncErrorKind classifies model sync failures for safe HTTP mapping.
 type UpstreamModelSyncErrorKind string
 
@@ -101,12 +99,13 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, upstreamModelsBodyLimit+1))
+	bodyLimit := resolveModelsListReadLimit(s.cfg)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, bodyLimit+1))
 	if err != nil {
 		return nil, newUpstreamModelSyncUpstreamError("Failed to read upstream model list", err)
 	}
-	if int64(len(body)) > upstreamModelsBodyLimit {
-		return nil, newUpstreamModelSyncUpstreamError("Upstream model list response is too large", fmt.Errorf("response exceeds %d bytes", upstreamModelsBodyLimit))
+	if int64(len(body)) > bodyLimit {
+		return nil, newUpstreamModelSyncUpstreamError("Upstream model list response is too large", fmt.Errorf("response exceeds %d bytes", bodyLimit))
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
@@ -506,7 +505,12 @@ func (s *AccountTestService) fetchAntigravityOAuthUpstreamModels(ctx context.Con
 	if err != nil {
 		return nil, newUpstreamModelSyncConfigError("Failed to configure Antigravity client", err)
 	}
-	modelsResp, _, err := client.FetchAvailableModels(ctx, accessToken, strings.TrimSpace(account.GetCredential("project_id")))
+	modelsResp, _, err := client.FetchAvailableModels(
+		ctx,
+		accessToken,
+		strings.TrimSpace(account.GetCredential("project_id")),
+		resolveModelsListReadLimit(s.cfg),
+	)
 	if err != nil {
 		return nil, newUpstreamModelSyncUpstreamError("Failed to fetch Antigravity available models", err)
 	}

@@ -155,12 +155,26 @@ func AnthropicStopReasonString(p *string) string {
 	return *p
 }
 
+// AnthropicPromptTokensDetails holds OpenAI-compatible prompt token details
+// occasionally included by Anthropic-compatible providers.
+type AnthropicPromptTokensDetails struct {
+	CachedTokens int `json:"cached_tokens,omitempty"`
+}
+
 // AnthropicUsage holds token counts in Anthropic format.
 type AnthropicUsage struct {
 	InputTokens              int `json:"input_tokens"`
 	OutputTokens             int `json:"output_tokens"`
 	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	// Anthropic-compatible providers can also expose their native OpenAI-style
+	// total/cache fields. Preserve them so callers can normalize provider totals
+	// into Anthropic's mutually-exclusive billing buckets.
+	PromptTokens          int                           `json:"prompt_tokens,omitempty"`
+	CachedTokens          int                           `json:"cached_tokens,omitempty"`
+	PromptTokensDetails   *AnthropicPromptTokensDetails `json:"prompt_tokens_details,omitempty"`
+	PromptCacheHitTokens  *int                          `json:"prompt_cache_hit_tokens,omitempty"`
+	PromptCacheMissTokens *int                          `json:"prompt_cache_miss_tokens,omitempty"`
 }
 
 // ---------------------------------------------------------------------------
@@ -344,12 +358,13 @@ func (t *ResponsesTool) UnmarshalJSON(data []byte) error {
 
 // ResponsesResponse is the non-streaming response from POST /v1/responses.
 type ResponsesResponse struct {
-	ID     string            `json:"id"`
-	Object string            `json:"object"` // "response"
-	Model  string            `json:"model"`
-	Status string            `json:"status"` // "completed" | "incomplete" | "failed"
-	Output []ResponsesOutput `json:"output"`
-	Usage  *ResponsesUsage   `json:"usage,omitempty"`
+	ID          string            `json:"id"`
+	Object      string            `json:"object"` // "response"
+	Model       string            `json:"model"`
+	Status      string            `json:"status"` // "completed" | "incomplete" | "failed"
+	Output      []ResponsesOutput `json:"output"`
+	Usage       *ResponsesUsage   `json:"usage,omitempty"`
+	ServiceTier string            `json:"service_tier,omitempty"` // upstream tier, echoed back verbatim
 
 	// incomplete_details is present when status="incomplete"
 	IncompleteDetails *ResponsesIncompleteDetails `json:"incomplete_details,omitempty"`
