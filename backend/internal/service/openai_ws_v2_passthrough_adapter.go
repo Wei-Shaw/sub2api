@@ -740,6 +740,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	} else if compatibilityChanged {
 		firstClientMessage = normalized
 	}
+	if account.IsOpenAIOAuthLike() && isOpenAIResponsesLiteWebSocketPayload(firstClientMessage) {
+		liteBody, _, liteErr := normalizeOpenAIResponsesLiteToolsPayload(firstClientMessage)
+		if liteErr != nil {
+			return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, liteErr.Error(), liteErr)
+		}
+		firstClientMessage = liteBody
+	}
 	if account.IsOpenAIOAuthLike() {
 		aliasedBody, reverse, aliased, aliasErr := aliasOpenAIOAuthReservedToolNamesBody(firstClientMessage)
 		if aliasErr != nil {

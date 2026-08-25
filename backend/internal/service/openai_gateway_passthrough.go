@@ -233,6 +233,16 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			}
 		}
 	}
+	// Keep Responses Lite's serial-tool contract after passthrough-specific
+	// compatibility rewrites. The ingress path already normalizes this field,
+	// but passthrough may rebuild the body before dialing the upstream.
+	if account != nil && account.IsOpenAIOAuthLike() && isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader)) {
+		liteBody, _, liteErr := normalizeOpenAIResponsesLiteToolsPayload(body)
+		if liteErr != nil {
+			return nil, liteErr
+		}
+		body = liteBody
+	}
 
 	if account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey &&
 		!isOpenAIResponsesCompactPath(c) && needsOpenAIResponsesClientToolAdaptation(body) {

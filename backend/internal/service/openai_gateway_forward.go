@@ -671,6 +671,19 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		requestView = newOpenAIRequestView(body)
 		reqBody = nil
 	}
+	// Lite's serial-tool requirement must be the final body invariant. Several
+	// OAuth compatibility passes above rebuild the request map after the ingress
+	// normalization; re-apply the idempotent Lite normalizer so those rebuilds
+	// cannot drop parallel_tool_calls=false before the upstream request is sent.
+	if account.IsOpenAIOAuthLike() && isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader)) {
+		liteBody, _, liteErr := normalizeOpenAIResponsesLiteToolsPayload(body)
+		if liteErr != nil {
+			return nil, liteErr
+		}
+		body = liteBody
+		requestView = newOpenAIRequestView(body)
+		reqBody = nil
+	}
 	imageBillingModel := ""
 	imageSizeTier := ""
 	imageInputSize := ""
