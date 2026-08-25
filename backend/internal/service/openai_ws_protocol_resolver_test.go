@@ -87,6 +87,15 @@ func TestOpenAIWSProtocolResolver_Resolve(t *testing.T) {
 		require.Equal(t, "account_force_http", decision.Reason)
 	})
 
+	t.Run("全局强制HTTP无需启用mode router", func(t *testing.T) {
+		cfg := *baseCfg
+		cfg.Gateway.OpenAIWS.ForceHTTP = true
+
+		decision := NewOpenAIWSProtocolResolver(&cfg).Resolve(openAIOAuthEnabled)
+		require.Equal(t, OpenAIUpstreamTransportHTTPSSE, decision.Transport)
+		require.Equal(t, "global_force_http", decision.Reason)
+	})
+
 	t.Run("全局关闭保持HTTP", func(t *testing.T) {
 		cfg := *baseCfg
 		cfg.Gateway.OpenAIWS.Enabled = false

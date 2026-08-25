@@ -37,6 +37,7 @@ import riskControlAPI from "./riskControl";
 import adminComplianceAPI from "./compliance";
 import auditAPI from "./audit";
 import warpAPI from "./warp";
+import pluginsAPI from "./plugins";
 
 /**
  * Unified admin API object for convenient access
@@ -76,6 +77,7 @@ export const adminAPI = {
 	compliance: adminComplianceAPI,
 	audit: auditAPI,
 	warp: warpAPI,
+	plugins: pluginsAPI,
 };
 
 export {
@@ -113,6 +115,7 @@ export {
 	adminComplianceAPI,
 	auditAPI,
 	warpAPI,
+	pluginsAPI,
 };
 
 export default adminAPI;
@@ -136,3 +139,9 @@ export type {
 	ContentModerationLog,
 	ModerationMode,
 } from "./riskControl";
+export type {
+	PluginInstallation,
+	PluginCompatibility,
+	PluginUISession,
+	PluginTestResult,
+} from "./plugins";

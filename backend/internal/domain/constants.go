@@ -99,19 +99,23 @@ const AntigravityGemini31ProAgentModel = "gemini-pro-agent"
 // 当账号未配置 model_mapping 时使用此默认值
 // 与前端 useModelWhitelist.ts 中的 antigravityDefaultMappings 保持一致
 var DefaultAntigravityModelMapping = map[string]string{
-	// Claude 现网模型（fetchAvailableModels 2026-08-17 daily）
-	"claude-opus-4-6-thinking": "claude-opus-4-6-thinking",
-	"claude-sonnet-4-6":        "claude-sonnet-4-6",
-	// Claude 客户端旧名 → 现网（不保留已下架的原样透传：opus-4-7/4-8、fable）
-	"claude-opus-4-6":            "claude-opus-4-6-thinking",
-	"claude-opus-4-5-thinking":   "claude-opus-4-6-thinking",
-	"claude-opus-4-5-20251101":   "claude-opus-4-6-thinking",
-	"claude-sonnet-4-5":          "claude-sonnet-4-5",
-	"claude-sonnet-4-5-thinking": "claude-sonnet-4-5-thinking",
-	"claude-sonnet-4-5-20250929": "claude-sonnet-4-5",
-	"claude-haiku-4-5":           "claude-sonnet-4-6",
-	"claude-haiku-4-5-20251001":  "claude-sonnet-4-6",
-	// Gemini 2.5
+	// Claude 白名单（上游 v0.1.181 现网目录）
+	"claude-fable-5":             "claude-fable-5",           // 官方模型
+	"claude-opus-4-8":            "claude-opus-4-8",          // 官方模型
+	"claude-opus-4-7":            "claude-opus-4-7",          // 官方模型
+	"claude-opus-4-6-thinking":   "claude-opus-4-6-thinking", // 官方模型
+	"claude-opus-4-6":            "claude-opus-4-6-thinking", // 简称映射
+	"claude-opus-4-5-thinking":   "claude-opus-4-6-thinking", // 迁移旧模型
+	"claude-sonnet-4-6":          "claude-sonnet-4-6",
+	"claude-sonnet-4-5":          "claude-sonnet-4-5", // 显式 canonical 选择透传
+	"claude-sonnet-4-5-thinking": "claude-sonnet-4-6", // 迁移旧兼容别名
+	// Claude 详细版本 ID 映射
+	"claude-opus-4-5-20251101":   "claude-opus-4-6-thinking", // 迁移旧模型
+	"claude-sonnet-4-5-20250929": "claude-sonnet-4-6",        // 迁移旧模型
+	// Claude Haiku → Sonnet（无 Haiku 支持）
+	"claude-haiku-4-5":          "claude-sonnet-4-6",
+	"claude-haiku-4-5-20251001": "claude-sonnet-4-6",
+	// Gemini 2.5 白名单
 	"gemini-2.5-flash":               "gemini-2.5-flash",
 	"gemini-2.5-flash-image":         "gemini-2.5-flash-image",
 	"gemini-2.5-flash-image-preview": "gemini-2.5-flash-image",

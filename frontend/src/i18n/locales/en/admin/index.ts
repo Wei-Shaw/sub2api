@@ -9,6 +9,7 @@ import promptAudit from './promptAudit'
 import connectionRisk from './connectionRisk'
 import warp from './warp'
 import proxyHealth from './proxyHealth'
+import plugins from './plugins'
 
 export default {
   ...overview,
@@ -22,4 +23,5 @@ export default {
   ...connectionRisk,
   ...warp,
   ...proxyHealth,
+  ...plugins,
 }

@@ -307,6 +307,7 @@ export default {
         title: '错误详情',
         titleWithId: '错误 #{id}',
         noErrorSelected: '未选择错误。',
+        backToList: '返回列表',
         resolution: '已解决：',
         failedToUpdateResolvedStatus: '更新解决状态失败',
         classificationKeys: {

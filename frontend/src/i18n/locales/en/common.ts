@@ -190,6 +190,7 @@ export default {
     modelPlaza: 'Model Plaza',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
+    plugins: 'Plugins',
     proxies: 'Proxies',
     proxiesList: 'Proxy List',
     proxyGroups: 'Proxy Pools',
