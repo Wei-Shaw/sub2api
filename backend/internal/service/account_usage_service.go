@@ -345,10 +345,37 @@ func batchUsageErrorMessage(err error) string {
 	return err.Error()
 }
 
-func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *Account, forceProbe bool) (*UsageInfo, error) {
+// resolveUsageOwnerAccount returns the account whose quota and usage state own
+// the requested account's core usage data. Normal linked accounts always share
+// their parent's usage state, regardless of platform. Spark shadows keep their
+// own independent quota dimension and therefore resolve to themselves.
+func (s *AccountUsageService) resolveUsageOwnerAccount(ctx context.Context, account *Account) (*Account, error) {
 	if account == nil {
 		return nil, fmt.Errorf("account is required")
 	}
+	if !account.IsLinkedAccount() {
+		return account, nil
+	}
+
+	parent, err := s.accountRepo.GetByID(ctx, *account.ParentAccountID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve linked account parent %d: %w", *account.ParentAccountID, err)
+	}
+	if parent == nil {
+		return nil, fmt.Errorf("linked account parent %d not found", *account.ParentAccountID)
+	}
+	if parent.IsShadow() {
+		return nil, fmt.Errorf("linked account parent %d is itself a shadow account", parent.ID)
+	}
+	return parent, nil
+}
+
+func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *Account, forceProbe bool) (*UsageInfo, error) {
+	usageAccount, err := s.resolveUsageOwnerAccount(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+	account = usageAccount
 	accountID := account.ID
 
 	// Dedicated UI load-test accounts must remain fully interactive without ever
@@ -561,10 +588,13 @@ func (s *AccountUsageService) GetUsageBatch(ctx context.Context, accountIDs []in
 		g.Go(func() error {
 			var usage *UsageInfo
 			var usageErr error
-			if supportsAnthropicPassiveUsage(account) {
-				usage, usageErr = s.getPassiveUsageForAccount(gctx, account)
+			usageAccount, resolveErr := s.resolveUsageOwnerAccount(gctx, account)
+			if resolveErr != nil {
+				usageErr = resolveErr
+			} else if supportsAnthropicPassiveUsage(usageAccount) {
+				usage, usageErr = s.getPassiveUsageForAccount(gctx, usageAccount)
 			} else {
-				usage, usageErr = s.getUsageForAccount(gctx, account, force)
+				usage, usageErr = s.getUsageForAccount(gctx, usageAccount, force)
 			}
 
 			mu.Lock()
@@ -593,7 +623,11 @@ func (s *AccountUsageService) GetPassiveUsage(ctx context.Context, accountID int
 		return nil, fmt.Errorf("get account failed: %w", err)
 	}
 
-	return s.getPassiveUsageForAccount(ctx, account)
+	usageAccount, err := s.resolveUsageOwnerAccount(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+	return s.getPassiveUsageForAccount(ctx, usageAccount)
 }
 
 func (s *AccountUsageService) getPassiveUsageForAccount(ctx context.Context, account *Account) (*UsageInfo, error) {
@@ -716,22 +750,10 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 		return usage, nil
 	}
 
-	// Normal linked routes share the credential-owning parent's global Codex
-	// quota. Resolve that owner before reading cached windows, not only when a
-	// probe is needed: a linked row may still contain a complete legacy
-	// snapshot, which would otherwise make shouldRefreshOpenAICodexSnapshot
-	// return false and permanently mask the parent's 5h/7d windows.
-	snapshotAccount := account
-	if account.IsLinkedAccount() {
-		if parent, resolveErr := resolveCredentialAccount(ctx, s.accountRepo, account); resolveErr == nil && parent != nil {
-			snapshotAccount = parent
-		}
-	}
+	applyExtraToUsage(usage, account.Extra, now)
 
-	applyExtraToUsage(usage, snapshotAccount.Extra, now)
-
-	if (force || shouldRefreshOpenAICodexSnapshot(snapshotAccount, usage, now)) &&
-		s.shouldProbeOpenAICodexSnapshot(snapshotAccount.ID, now, force) {
+	if (force || shouldRefreshOpenAICodexSnapshot(account, usage, now)) &&
+		s.shouldProbeOpenAICodexSnapshot(account.ID, now, force) {
 		if account.IsSparkShadow() {
 			// Spark shadow accounts fetch usage from /wham/usage (bengalfox channel)
 			// via the shared OpenAIQuotaService, which resolves credentials from the
@@ -753,12 +775,12 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 				}
 			}
 		} else {
-			if updates, err := s.probeOpenAICodexSnapshot(ctx, snapshotAccount); err == nil && len(updates) > 0 {
-				mergeAccountExtra(snapshotAccount, updates)
+			if updates, err := s.probeOpenAICodexSnapshot(ctx, account); err == nil && len(updates) > 0 {
+				mergeAccountExtra(account, updates)
 				if usage.UpdatedAt == nil {
 					usage.UpdatedAt = &now
 				}
-				applyExtraToUsage(usage, snapshotAccount.Extra, now)
+				applyExtraToUsage(usage, account.Extra, now)
 			}
 		}
 	}

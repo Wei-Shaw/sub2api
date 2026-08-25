@@ -59,7 +59,7 @@ type Account struct {
 	SessionWindowStatus string
 
 	ParentAccountID *int64 // non-nil → 影子账号（不持凭据，透传母账号凭据）
-	QuotaDimension  string // 用量维度："" / "global" / "spark"
+	QuotaDimension  string // 用量维度："" / "global" / "linked" / "spark"
 
 	Proxy         *Proxy
 	AccountGroups []AccountGroup
@@ -3182,7 +3182,7 @@ func (a *Account) IsSparkShadow() bool {
 	return a != nil && a.IsShadow() && a.QuotaDimensionOrDefault() == QuotaDimensionSpark
 }
 
-// IsLinkedAccount reports whether this is a normal Codex route linked to its parent's global quota.
+// IsLinkedAccount reports whether this account shares its parent's core usage state.
 func (a *Account) IsLinkedAccount() bool {
 	return a != nil && a.IsShadow() && a.QuotaDimensionOrDefault() == QuotaDimensionLinked
 }

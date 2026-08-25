@@ -693,11 +693,11 @@ func SettingKeyAuthSourcePlatformQuotas(source string) string {
 	return fmt.Sprintf("auth_source_default_%s_platform_quotas", source)
 }
 
-// QuotaDimension constants for linked OpenAI OAuth accounts.
+// QuotaDimension constants for accounts that share credentials with a parent.
 const (
 	QuotaDimensionGlobal = "global"
 	QuotaDimensionSpark  = "spark"
-	// QuotaDimensionLinked shares the parent's global Codex quota and credentials.
+	// QuotaDimensionLinked shares the parent's core usage state and credentials.
 	QuotaDimensionLinked = "linked"
 )
 

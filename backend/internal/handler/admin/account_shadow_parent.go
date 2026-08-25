@@ -17,12 +17,17 @@ var linkedAccountUsageExtraKeys = [...]string{
 	"codex_7d_reset_at",
 	"codex_7d_reset_after_seconds",
 	"codex_7d_window_minutes",
+	"session_window_utilization",
+	"passive_usage_7d_utilization",
+	"passive_usage_7d_reset",
+	"passive_usage_7d_oi_utilization",
+	"passive_usage_7d_oi_reset",
+	"passive_usage_sampled_at",
 }
 
-// inheritLinkedAccountUsageSnapshot makes the account-list row reflect the
-// credential-owning parent's shared Codex quota. AccountUsageCell watches these
-// fields and refreshes /usage when they change. Spark shadows keep their own
-// quota snapshot and must not inherit this state.
+// inheritLinkedAccountUsageSnapshot makes every normal linked account-list row
+// reflect the parent's core usage-window state, regardless of platform. Spark
+// shadows keep their own quota snapshot and must not inherit this state.
 func inheritLinkedAccountUsageSnapshot(account *dto.Account, parent *service.Account) {
 	if account == nil || parent == nil || account.QuotaDimension != service.QuotaDimensionLinked {
 		return
@@ -38,6 +43,9 @@ func inheritLinkedAccountUsageSnapshot(account *dto.Account, parent *service.Acc
 		}
 		account.Extra[key] = value
 	}
+	account.SessionWindowStart = parent.SessionWindowStart
+	account.SessionWindowEnd = parent.SessionWindowEnd
+	account.SessionWindowStatus = parent.SessionWindowStatus
 }
 
 // enrichShadowParentInfo 把母账号的展示信息回填到影子行的 parent_* 字段。

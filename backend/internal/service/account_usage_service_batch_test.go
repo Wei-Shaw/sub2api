@@ -255,3 +255,77 @@ func TestAccountUsageService_GetUsageBatch_LinkedUsesParentCodexWindows(t *testi
 		)
 	}
 }
+
+func TestAccountUsageService_LinkedAnthropicUsesParentPassiveWindows(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	parentID := int64(7201)
+	childID := int64(7202)
+	parentResetAt := now.Add(2 * time.Hour).Truncate(time.Second)
+	childResetAt := now.Add(4 * time.Hour).Truncate(time.Second)
+
+	repo := &stubOpenAIAccountRepo{
+		accounts: []Account{
+			{
+				ID:               parentID,
+				Platform:         PlatformAnthropic,
+				Type:             AccountTypeSetupToken,
+				SessionWindowEnd: &parentResetAt,
+				Extra: map[string]any{
+					"session_window_utilization":   0.23,
+					"passive_usage_7d_utilization": 0.45,
+					"passive_usage_7d_reset":       parentResetAt.Add(24 * time.Hour).Unix(),
+				},
+			},
+			{
+				ID:               childID,
+				Platform:         PlatformAnthropic,
+				Type:             AccountTypeSetupToken,
+				ParentAccountID:  &parentID,
+				QuotaDimension:   QuotaDimensionLinked,
+				SessionWindowEnd: &childResetAt,
+				Extra: map[string]any{
+					"session_window_utilization":   0.91,
+					"passive_usage_7d_utilization": 0.92,
+					"passive_usage_7d_reset":       childResetAt.Add(24 * time.Hour).Unix(),
+				},
+			},
+		},
+	}
+	svc := &AccountUsageService{
+		accountRepo:  repo,
+		usageLogRepo: &usageBatchLogRepoStub{},
+		cache:        NewUsageCache(),
+	}
+
+	usageByAccount, errorsByAccount, err := svc.GetUsageBatch(context.Background(), []int64{childID}, false)
+	if err != nil {
+		t.Fatalf("GetUsageBatch() error = %v", err)
+	}
+	if errorsByAccount[childID] != "" {
+		t.Fatalf("unexpected linked account usage error: %q", errorsByAccount[childID])
+	}
+	assertParentAnthropicUsage(t, usageByAccount[childID])
+
+	passiveUsage, err := svc.GetPassiveUsage(context.Background(), childID)
+	if err != nil {
+		t.Fatalf("GetPassiveUsage() error = %v", err)
+	}
+	assertParentAnthropicUsage(t, passiveUsage)
+}
+
+func assertParentAnthropicUsage(t *testing.T, usage *UsageInfo) {
+	t.Helper()
+
+	if usage == nil || usage.FiveHour == nil || usage.SevenDay == nil {
+		t.Fatalf("expected linked account Anthropic windows, got %#v", usage)
+	}
+	if usage.FiveHour.Utilization != 23.0 || usage.SevenDay.Utilization != 45.0 {
+		t.Fatalf(
+			"expected parent Anthropic windows 23/45, got %.1f/%.1f",
+			usage.FiveHour.Utilization,
+			usage.SevenDay.Utilization,
+		)
+	}
+}
