@@ -158,11 +158,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			body = normalized
 			originalBody = normalized
 		}
-		if normalized, changed, normalizeErr := normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body, isOpenAIResponsesCompactPath(c)); normalizeErr != nil {
-			return nil, normalizeErr
-		} else if changed {
-			body = normalized
-			originalBody = normalized
+		// Chat fallback converts Responses history itself and uses the reasoning
+		// item id to restore encrypted-only thinking from the gateway cache. The
+		// native Responses store=false sanitizer removes rs_* ids for upstreams
+		// that understand encrypted reasoning, which makes the fallback cache
+		// lookup impossible and causes DeepSeek to reject the next turn.
+		if !shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
+			if normalized, changed, normalizeErr := normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body, isOpenAIResponsesCompactPath(c)); normalizeErr != nil {
+				return nil, normalizeErr
+			} else if changed {
+				body = normalized
+				originalBody = normalized
+			}
 		}
 		requestView = newOpenAIRequestView(body)
 		reqModel, reqStream, promptCacheKey = requestView.Model, requestView.Stream, requestView.PromptCacheKey
