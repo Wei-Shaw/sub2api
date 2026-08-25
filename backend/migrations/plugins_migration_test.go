@@ -8,7 +8,7 @@ import (
 )
 
 func TestPluginsMigrationKeepsAccountSchemaUnchanged(t *testing.T) {
-	content, err := FS.ReadFile("229_plugins.sql")
+	content, err := FS.ReadFile("261_plugins.sql")
 	require.NoError(t, err)
 
 	sql := strings.Join(strings.Fields(string(content)), " ")
@@ -21,7 +21,7 @@ func TestPluginsMigrationKeepsAccountSchemaUnchanged(t *testing.T) {
 	require.NotContains(t, strings.ToUpper(sql), "ALTER TABLE ACCOUNTS")
 	require.NotContains(t, sql, "account_id")
 
-	indexContent, err := FS.ReadFile("260_plugin_and_monitor_indexes_notx.sql")
+	indexContent, err := FS.ReadFile("263_plugin_and_monitor_indexes_notx.sql")
 	require.NoError(t, err)
 	indexSQL := strings.Join(strings.Fields(string(indexContent)), " ")
 	require.Contains(t, indexSQL, "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_sub2api_plugin_bindings_one_enabled_scope")
@@ -29,7 +29,7 @@ func TestPluginsMigrationKeepsAccountSchemaUnchanged(t *testing.T) {
 }
 
 func TestPluginArtifactMigrationSupportsExistingInstallations(t *testing.T) {
-	content, err := FS.ReadFile("230_plugin_artifacts.sql")
+	content, err := FS.ReadFile("262_plugin_artifacts.sql")
 	require.NoError(t, err)
 
 	sql := strings.Join(strings.Fields(string(content)), " ")
