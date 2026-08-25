@@ -61,6 +61,21 @@ func TestClassifyNoAccountError_NilDiagnoser_Falls503(t *testing.T) {
 	require.False(t, cls.ModelNotFound)
 }
 
+func TestClassifySelectionFailureError_RateLimitedPool(t *testing.T) {
+	fallback := noAccountErrorClassification{Status: http.StatusServiceUnavailable, ErrType: "api_error", Message: "Service temporarily unavailable"}
+
+	got := classifySelectionFailureError(
+		fmt.Errorf("no available accounts supporting model: gpt-5.6-sol (total=3 eligible=0 model_rate_limited=3)"),
+		fallback,
+	)
+
+	require.Equal(t, http.StatusTooManyRequests, got.Status)
+	require.Equal(t, "rate_limit_error", got.ErrType)
+	require.Contains(t, got.Message, "rate-limited")
+	require.Equal(t, fallback, classifySelectionFailureError(fmt.Errorf("model_rate_limited=0"), fallback))
+	require.Equal(t, fallback, classifySelectionFailureError(fmt.Errorf("no available accounts"), fallback))
+}
+
 func TestClassifyNoAccountError_NilAPIKey_Falls503(t *testing.T) {
 	c := newTestGinContextWithRequest()
 	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: false}}

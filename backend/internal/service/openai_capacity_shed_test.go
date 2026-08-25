@@ -195,6 +195,8 @@ func TestOpenAIStreamMetadataPreambleAndMessageOnlyOverloadFailOver(t *testing.T
 			require.ErrorAs(t, err, &failoverErr)
 			require.True(t, failoverErr.RetryableOnSameAccount)
 			require.True(t, failoverErr.RequestScopedTransient)
+			require.Equal(t, http.StatusServiceUnavailable, failoverErr.ClientStatusCode)
+			require.Contains(t, failoverErr.ClientMessage, "servers are currently overloaded")
 			require.False(t, c.Writer.Written())
 			require.Empty(t, rec.Body.String())
 		})
@@ -244,8 +246,8 @@ func TestOpenAIStreamCapacityShedErrorFramePrecedingFailedStillFailsOver(t *test
 }
 
 // 流中途（已有真实输出）降载时无法再 failover，此时必须把降载码改写为客户端
-// 可重试的 server_error 再转发——Codex 对 server_is_overloaded/slow_down 判致命
-// 并终止会话，对其余错误码执行内置退避重试。消息原样保留。
+// 可重试的 server_error 再通过唯一 response.failed 终态转发——Codex 对
+// server_is_overloaded/slow_down 判致命并终止会话，对其余错误码执行内置退避重试。
 func TestOpenAIStreamCapacityShedAfterOutputRewritesCodeForClient(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	logSink, restore := captureStructuredLog(t)
@@ -285,7 +287,9 @@ func TestOpenAIStreamCapacityShedAfterOutputRewritesCodeForClient(t *testing.T) 
 
 	body := rec.Body.String()
 	require.Contains(t, body, "partial")
-	require.Contains(t, body, "event: response.failed")
+	require.NotContains(t, body, "event: error")
+	require.Equal(t, 1, strings.Count(body, "event: response.failed"))
+	require.Equal(t, 1, strings.Count(body, `"code":"server_error"`))
 	require.Contains(t, body, `"code":"server_error"`)
 	require.NotContains(t, body, "server_is_overloaded")
 	require.Contains(t, body, "Our servers are currently overloaded")

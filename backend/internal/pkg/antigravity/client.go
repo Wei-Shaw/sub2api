@@ -255,8 +255,6 @@ const (
 	proxyTLSHandshakeTimeout = 5 * time.Second
 	// clientTimeout 整体请求超时（含连接、发送、等待响应、读取 body）
 	clientTimeout = 10 * time.Second
-	// fetchAvailableModelsBodyLimit limits model-list responses to avoid unbounded memory use.
-	fetchAvailableModelsBodyLimit int64 = 8 << 20
 )
 
 func NewClient(proxyURL string) (*Client, error) {
@@ -656,24 +654,27 @@ type FetchAvailableModelsResponse struct {
 
 // FetchAvailableModels 获取可用模型和配额信息，返回解析后的结构体和原始 JSON
 // 支持 URL fallback：sandbox → daily → prod
-func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectID string) (*FetchAvailableModelsResponse, map[string]any, error) {
-	return c.fetchAvailableModelsFromURLs(ctx, accessToken, projectID, BaseURLs)
+func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectID string, bodyLimit int64) (*FetchAvailableModelsResponse, map[string]any, error) {
+	return c.fetchAvailableModelsFromURLs(ctx, accessToken, projectID, BaseURLs, bodyLimit)
 }
 
 // FetchAvailableModelsAtURL fetches the model list from the exact endpoint used
 // for an account's request traffic. Capability snapshots must reflect that
 // endpoint rather than a different successful fallback endpoint.
-func (c *Client) FetchAvailableModelsAtURL(ctx context.Context, accessToken, projectID, baseURL string) (*FetchAvailableModelsResponse, map[string]any, error) {
+func (c *Client) FetchAvailableModelsAtURL(ctx context.Context, accessToken, projectID, baseURL string, bodyLimit int64) (*FetchAvailableModelsResponse, map[string]any, error) {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if baseURL == "" {
 		return nil, nil, errors.New("antigravity model-list base URL is empty")
 	}
-	return c.fetchAvailableModelsFromURLs(ctx, accessToken, projectID, []string{baseURL})
+	return c.fetchAvailableModelsFromURLs(ctx, accessToken, projectID, []string{baseURL}, bodyLimit)
 }
 
-func (c *Client) fetchAvailableModelsFromURLs(ctx context.Context, accessToken, projectID string, availableURLs []string) (*FetchAvailableModelsResponse, map[string]any, error) {
+func (c *Client) fetchAvailableModelsFromURLs(ctx context.Context, accessToken, projectID string, availableURLs []string, bodyLimit int64) (*FetchAvailableModelsResponse, map[string]any, error) {
 	if c == nil || c.httpClient == nil {
 		return nil, nil, errors.New("antigravity client is not configured")
+	}
+	if bodyLimit <= 0 {
+		return nil, nil, errors.New("fetchAvailableModels body limit must be positive")
 	}
 
 	reqBody := FetchAvailableModelsRequest{Project: projectID}
@@ -709,13 +710,13 @@ func (c *Client) fetchAvailableModelsFromURLs(ctx context.Context, accessToken, 
 			return nil, nil, lastErr
 		}
 
-		respBodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, fetchAvailableModelsBodyLimit+1))
+		respBodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, bodyLimit+1))
 		_ = resp.Body.Close() // 立即关闭，避免循环内 defer 导致的资源泄漏
 		if err != nil {
 			return nil, nil, fmt.Errorf("读取响应失败: %w", err)
 		}
-		if int64(len(respBodyBytes)) > fetchAvailableModelsBodyLimit {
-			return nil, nil, fmt.Errorf("响应超过 %d 字节", fetchAvailableModelsBodyLimit)
+		if int64(len(respBodyBytes)) > bodyLimit {
+			return nil, nil, fmt.Errorf("响应超过 %d 字节", bodyLimit)
 		}
 
 		// 检查是否需要 URL 降级

@@ -31,6 +31,7 @@ func TestOpenAICompatibleTextTargetAllowsCompositeProviders(t *testing.T) {
 	}{
 		{model: "grok-4.3", platform: service.PlatformGrok},
 		{model: "kimi-k2-thinking", platform: service.PlatformKimi},
+		{model: "k3", platform: service.PlatformKimi},
 		{model: "glm-5.2", platform: service.PlatformZhipu},
 		{model: "deepseek-v3.2", platform: service.PlatformDeepseek},
 	}

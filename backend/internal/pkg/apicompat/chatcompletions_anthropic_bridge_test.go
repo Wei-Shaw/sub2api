@@ -674,7 +674,7 @@ func TestDirectBridge_NonStreamingMatchesDoubleConversion(t *testing.T) {
 	direct := ChatCompletionsResponseToAnthropic(resp, "claude-sonnet-4-20250514")
 
 	// Double-conversion bridge
-	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, false, nil)
+	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, nil, false, nil)
 	double := ResponsesToAnthropic(responsesResp, "claude-sonnet-4-20250514")
 
 	// Compare key fields
@@ -988,7 +988,7 @@ func TestDirectBridge_NonStreamingMatchesDoubleConversion_CacheWriteTokens(t *te
 
 	direct := ChatCompletionsResponseToAnthropic(resp, "claude-sonnet-4-20250514")
 
-	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, false, nil)
+	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, nil, false, nil)
 	double := ResponsesToAnthropic(responsesResp, "claude-sonnet-4-20250514")
 
 	require.Equal(t, double.Usage.InputTokens, direct.Usage.InputTokens)
@@ -1058,7 +1058,7 @@ func TestDirectBridge_NonStreamingMatchesDoubleConversion_EmptyChoices(t *testin
 
 	direct := ChatCompletionsResponseToAnthropic(resp, "claude-sonnet-4-20250514")
 
-	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, false, nil)
+	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, nil, false, nil)
 	double := ResponsesToAnthropic(responsesResp, "claude-sonnet-4-20250514")
 
 	require.Equal(t, AnthropicStopReasonString(double.StopReason), AnthropicStopReasonString(direct.StopReason))

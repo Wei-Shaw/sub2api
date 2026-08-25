@@ -48,8 +48,8 @@ type antigravityRetryLoopResult struct {
 
 // resolveAntigravityForwardBaseURL 解析转发用 base URL。
 //
-// 显式环境变量优先。未配置时，Google AI Pro/Ultra 账号默认走 daily 端点，
-// 其他账号继续使用生产端点。
+// 显式环境变量优先。未配置时，LoadCodeAssist 返回 paidTier 的付费账号使用
+// daily 端点，其他账号继续使用生产端点，避免免费账号的 OAuth token 出现 401。
 //
 // 历史上这里改用 ForwardBaseURLs()（把 daily/sandbox 排到首位）并默认取首个地址，
 // 导致网关把带生产 OAuth token 的请求发到 daily-cloudcode-pa.sandbox.googleapis.com，

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sub2api.local/schemas/plugin-manifest-v1.json",
+  "title": "Sub2API Plugin Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "name", "version", "requires", "capabilities", "runtimes", "ui", "files"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "type": "string", "maxLength": 160, "pattern": "^[a-z0-9]+([._-][a-z0-9]+)+$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "version": { "type": "string", "pattern": "^v?(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$" },
+    "description": { "type": "string" },
+    "author": { "type": "string", "maxLength": 160 },
+    "requires": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sub2api", "plugin_protocol", "transport_api", "ui_bridge"],
+      "properties": {
+        "sub2api": { "type": "string", "minLength": 1 },
+        "recommended_sub2api_version": { "type": "string" },
+        "tested_sub2api_versions": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "plugin_protocol": { "const": 1 },
+        "transport_api": { "const": 1 },
+        "ui_bridge": { "const": 1 }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "platform", "account_type"],
+        "properties": {
+          "id": { "const": "openai.oauth.outbound_transport.v1" },
+          "platform": { "const": "openai" },
+          "account_type": { "const": "oauth" }
+        }
+      }
+    },
+    "runtimes": {
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z0-9]+-[a-z0-9]+$": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path"],
+          "properties": { "path": { "$ref": "#/$defs/safePath" } }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entrypoint"],
+      "properties": { "entrypoint": { "type": "string", "pattern": "^ui/.+" } }
+    },
+    "files": {
+      "type": "object",
+      "minProperties": 2,
+      "propertyNames": { "$ref": "#/$defs/safePath" },
+      "additionalProperties": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+    }
+  },
+  "$defs": {
+    "safePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+    }
+  }
+}
