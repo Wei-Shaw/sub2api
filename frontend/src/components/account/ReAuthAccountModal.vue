@@ -132,6 +132,7 @@
         :show-project-id="isGemini && geminiOAuthType === 'code_assist'"
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
+        @import-setup-token="handleSetupTokenImport"
       />
 
     </div>
@@ -270,6 +271,7 @@ const currentError = computed(() => {
 
 // Computed
 const isManualInputMethod = computed(() => {
+  if (isAnthropic.value && addMethod.value === 'setup-token') return false
   // OpenAI/Gemini/Antigravity always use manual input (no cookie auth option)
   return isOpenAILike.value || isGemini.value || isAntigravity.value || oauthFlowRef.value?.inputMethod === 'manual'
 })
@@ -455,6 +457,7 @@ const handleExchangeCode = async () => {
     }
   } else {
     // Claude OAuth flow
+    if (addMethod.value !== 'oauth') return
     const sessionId = claudeOAuth.sessionId.value
     if (!sessionId) return
 
@@ -463,12 +466,7 @@ const handleExchangeCode = async () => {
 
     try {
       const proxyConfig = props.account.proxy_id ? { proxy_id: props.account.proxy_id } : {}
-      const endpoint =
-        addMethod.value === 'oauth'
-          ? '/admin/accounts/exchange-code'
-          : '/admin/accounts/exchange-setup-token-code'
-
-      const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
+      const tokenInfo = await adminAPI.accounts.exchangeCode('/admin/accounts/exchange-code', {
         session_id: sessionId,
         code: authCode.trim(),
         ...proxyConfig
@@ -476,15 +474,11 @@ const handleExchangeCode = async () => {
 
       const extra = claudeOAuth.buildExtraInfo(tokenInfo)
 
-      // Update account with new credentials and type
-      await adminAPI.accounts.update(props.account.id, {
-        type: addMethod.value, // Update type based on selected method
-        credentials: tokenInfo,
+      await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+        type: 'oauth',
+        credentials: tokenInfo as Record<string, unknown>,
         extra
       })
-
-      // Clear error status after successful re-authorization
-      await adminAPI.accounts.clearError(props.account.id)
 
       appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
       emit('reauthorized')
@@ -499,19 +493,14 @@ const handleExchangeCode = async () => {
 }
 
 const handleCookieAuth = async (sessionKey: string) => {
-  if (!props.account || isOpenAILike.value) return
+  if (!props.account || isOpenAILike.value || addMethod.value !== 'oauth') return
 
   claudeOAuth.loading.value = true
   claudeOAuth.error.value = ''
 
   try {
     const proxyConfig = props.account.proxy_id ? { proxy_id: props.account.proxy_id } : {}
-    const endpoint =
-      addMethod.value === 'oauth'
-        ? '/admin/accounts/cookie-auth'
-        : '/admin/accounts/setup-token-cookie-auth'
-
-    const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
+    const tokenInfo = await adminAPI.accounts.exchangeCode('/admin/accounts/cookie-auth', {
       session_id: '',
       code: sessionKey.trim(),
       ...proxyConfig
@@ -519,15 +508,11 @@ const handleCookieAuth = async (sessionKey: string) => {
 
     const extra = claudeOAuth.buildExtraInfo(tokenInfo)
 
-    // Update account with new credentials and type
-    await adminAPI.accounts.update(props.account.id, {
-      type: addMethod.value, // Update type based on selected method
-      credentials: tokenInfo,
+    await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+      type: 'oauth',
+      credentials: tokenInfo as Record<string, unknown>,
       extra
     })
-
-    // Clear error status after successful re-authorization
-    await adminAPI.accounts.clearError(props.account.id)
 
     appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
     emit('reauthorized')
@@ -535,6 +520,38 @@ const handleCookieAuth = async (sessionKey: string) => {
   } catch (error: any) {
     claudeOAuth.error.value =
       error.response?.data?.detail || t('admin.accounts.oauth.cookieAuthFailed')
+  } finally {
+    claudeOAuth.loading.value = false
+  }
+}
+
+const handleSetupTokenImport = async (setupTokenInput: string) => {
+  if (!props.account || !isAnthropic.value) return
+
+  claudeOAuth.loading.value = true
+  claudeOAuth.error.value = ''
+
+  try {
+    const setupTokens = claudeOAuth.parseSessionKeys(setupTokenInput)
+    if (setupTokens.length !== 1) {
+      claudeOAuth.error.value = t('admin.accounts.oauth.pleaseEnterSetupToken')
+      return
+    }
+
+    const credentials = claudeOAuth.buildClaudeSetupTokenCredentials(setupTokens[0])
+    await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+      type: 'setup-token',
+      credentials: credentials as Record<string, unknown>
+    })
+
+    appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
+    emit('reauthorized')
+    handleClose()
+  } catch (error: any) {
+    claudeOAuth.error.value = error?.message === 'Invalid Claude setup token'
+      ? t('admin.accounts.oauth.invalidSetupToken')
+      : error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+    appStore.showError(claudeOAuth.error.value)
   } finally {
     claudeOAuth.loading.value = false
   }

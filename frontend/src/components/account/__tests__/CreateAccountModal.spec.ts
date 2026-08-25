@@ -74,6 +74,8 @@ const BaseDialogStub = defineComponent({
 const OAuthAuthorizationFlowStub = defineComponent({
   name: 'OAuthAuthorizationFlow',
   props: {
+    addMethod: String,
+    platform: String,
     showManualOption: Boolean,
     showCodexSessionImportOption: Boolean,
     showAgentIdentityOption: Boolean,
@@ -81,11 +83,12 @@ const OAuthAuthorizationFlowStub = defineComponent({
     initialInputMethod: String,
   },
   data: () => ({ inputMethod: 'manual' }),
-  emits: ['import-codex-session', 'import-codex-pat'],
+  emits: ['import-codex-session', 'import-codex-pat', 'import-setup-token'],
   template: `
     <div>
       <button data-testid="import-codex-session" @click="$emit('import-codex-session', 'session-json')">session</button>
       <button data-testid="import-codex-pat" @click="$emit('import-codex-pat', 'pat-token')">pat</button>
+      <button data-testid="import-setup-token" @click="$emit('import-setup-token', 'sk-ant-oat01-test-token')">setup-token</button>
     </div>
   `,
 })
@@ -332,6 +335,34 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(flow.props('showAgentIdentityOption')).toBe(true)
     expect(flow.props('showCodexPatOption')).toBe(true)
     expect(flow.props('initialInputMethod')).toBe('manual')
+  })
+
+  it('creates Anthropic setup-token accounts directly from claude setup-token output', async () => {
+    const wrapper = mountModal()
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Claude setup')
+    await wrapper.get('input[value="setup-token"]').setValue(true)
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+
+    const flow = wrapper.getComponent(OAuthAuthorizationFlowStub)
+    expect(flow.props('addMethod')).toBe('setup-token')
+    expect(flow.props('platform')).toBe('anthropic')
+
+    await flow.get('[data-testid="import-setup-token"]').trigger('click')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      name: 'Claude setup',
+      platform: 'anthropic',
+      type: 'setup-token',
+      credentials: {
+        access_token: 'sk-ant-oat01-test-token',
+        token_type: 'Bearer',
+        scope: 'user:inference'
+      }
+    })
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials).not.toHaveProperty('expires_at')
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials).not.toHaveProperty('refresh_token')
   })
 
   it.each([

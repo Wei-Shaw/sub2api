@@ -39,8 +39,8 @@ func (r *ClaudeTokenRefresher) CacheKey(account *Account) string {
 
 // CanRefresh 检查是否能处理此账号
 // 处理 anthropic 平台的 oauth 与 setup-token 类型账号。
-// 两者的 access_token 均为短期令牌（expires_in=28800，即 8h），到期都需刷新；
-// setup-token 之前被排除会导致其 access_token 过期后请求 401。
+// 旧 OAuth 兑换流程生成的 setup-token 可能带 expires_at/refresh_token，仍需刷新；
+// `claude setup-token` 直接生成的长期 Token 不带这两个字段，NeedsRefresh 会返回 false。
 // 此处与手动刷新入口（account.IsOAuth()）保持一致，实际是否刷新由 NeedsRefresh
 // 基于 expires_at 门控，并在分布式锁保护下执行，不会造成过度刷新。
 func (r *ClaudeTokenRefresher) CanRefresh(account *Account) bool {

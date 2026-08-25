@@ -279,7 +279,8 @@ func TestAccountRepository_ListOAuthRefreshCandidatePage_SQLFilter(t *testing.T)
 	require.Contains(t, normalized, "schedulable = TRUE",
 		"permanently unschedulable accounts must not remain OAuth refresh candidates")
 	require.Contains(t, normalized, "status = 'active'")
-	// setup-token 的 access_token 同为 8h 短期令牌，必须与 oauth 一起纳入后台刷新候选
+	// 兼容旧 OAuth 兑换流程生成且带 refresh_token 的 setup-token；
+	// `claude setup-token` 直接生成的长期 Token 没有 refresh_token，不会被本查询选中。
 	require.Contains(t, normalized, "type IN ('oauth', 'setup-token')")
 	require.Contains(t, normalized, "platform = ANY($1)")
 	require.NotContains(t, normalized, "platform IN ('anthropic'",

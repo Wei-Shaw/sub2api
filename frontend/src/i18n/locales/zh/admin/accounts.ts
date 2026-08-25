@@ -1056,6 +1056,17 @@ export default {
         manualAuth: '手动授权',
         cookieAutoAuth: 'Cookie 自动授权',
         cookieAutoAuthDesc: '使用 claude.ai sessionKey 自动完成 OAuth 授权，无需手动打开浏览器。',
+        setupTokenDirectDesc:
+          '请先在已安装 Claude Code 的终端运行 claude setup-token，完成授权后将生成的长期 OAuth Token 粘贴到下方。',
+        setupTokenLabel: 'Claude Setup Token',
+        setupTokenPlaceholder:
+          '每行一个 Setup Token，例如：\nsk-ant-oat01-xxxxx...\nsk-ant-oat01-yyyyy...',
+        setupTokenPlaceholderSingle: 'sk-ant-oat01-xxxxx...',
+        setupTokenCommandHint: '生成命令：',
+        saveSetupToken: '保存 Setup Token',
+        savingSetupToken: '保存中...',
+        pleaseEnterSetupToken: '请输入一个有效的 Claude Setup Token',
+        invalidSetupToken: 'Setup Token 格式无效，应为 claude setup-token 生成的 sk-ant-oat01-... Token',
         sessionKey: 'sessionKey',
         keysCount: '{count} 个密钥',
         batchCreateAccounts: '将批量创建 {count} 个账号',

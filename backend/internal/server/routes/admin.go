@@ -419,6 +419,8 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 
 		// Claude OAuth routes
 		accounts.POST("/generate-auth-url", h.Admin.OAuth.GenerateAuthURL)
+		// Legacy setup-token OAuth/sessionKey endpoints are kept for API compatibility;
+		// the admin UI imports `claude setup-token` output directly.
 		accounts.POST("/generate-setup-token-url", h.Admin.OAuth.GenerateSetupTokenURL)
 		accounts.POST("/exchange-code", h.Admin.OAuth.ExchangeCode)
 		accounts.POST("/exchange-setup-token-code", h.Admin.OAuth.ExchangeSetupTokenCode)

@@ -2191,7 +2191,8 @@ func (h *OAuthHandler) GenerateAuthURL(c *gin.Context) {
 	response.Success(c, result)
 }
 
-// GenerateSetupTokenURL generates OAuth authorization URL for setup token (inference only)
+// GenerateSetupTokenURL is the legacy browser-based setup-token flow.
+// The admin UI now imports the output of `claude setup-token` directly.
 // POST /api/v1/admin/accounts/generate-setup-token-url
 func (h *OAuthHandler) GenerateSetupTokenURL(c *gin.Context) {
 	var req GenerateAuthURLRequest
@@ -2238,7 +2239,7 @@ func (h *OAuthHandler) ExchangeCode(c *gin.Context) {
 	response.Success(c, tokenInfo)
 }
 
-// ExchangeSetupTokenCode exchanges authorization code for setup token
+// ExchangeSetupTokenCode is retained for legacy API clients.
 // POST /api/v1/admin/accounts/exchange-setup-token-code
 func (h *OAuthHandler) ExchangeSetupTokenCode(c *gin.Context) {
 	var req ExchangeCodeRequest
@@ -2288,7 +2289,8 @@ func (h *OAuthHandler) CookieAuth(c *gin.Context) {
 	response.Success(c, tokenInfo)
 }
 
-// SetupTokenCookieAuth performs OAuth using sessionKey for setup token (inference only)
+// SetupTokenCookieAuth is retained for legacy API clients. The admin UI no longer
+// accepts claude.ai sessionKey for Setup Token accounts.
 // POST /api/v1/admin/accounts/setup-token-cookie-auth
 func (h *OAuthHandler) SetupTokenCookieAuth(c *gin.Context) {
 	var req CookieAuthRequest

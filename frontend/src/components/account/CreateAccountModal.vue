@@ -3386,6 +3386,7 @@
         :show-project-id="geminiOAuthType === 'code_assist'"
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
+        @import-setup-token="handleSetupTokenImport"
         @validate-refresh-token="handleValidateRefreshToken"
         @validate-mobile-refresh-token="handleOpenAIValidateMobileRT"
         @validate-session-token="handleValidateSessionToken"
@@ -6569,6 +6570,7 @@ const handleGrokExchange = async (authCode: string) => {
 
 // Anthropic OAuth 授权码兑换
 const handleAnthropicExchange = async (authCode: string) => {
+  if (addMethod.value !== 'oauth') return
   if (!authCode.trim() || !oauth.sessionId.value) return
 
   oauth.loading.value = true
@@ -6576,12 +6578,7 @@ const handleAnthropicExchange = async (authCode: string) => {
 
   try {
     const proxyConfig = form.proxy_id ? { proxy_id: form.proxy_id } : {}
-    const endpoint =
-      addMethod.value === 'oauth'
-        ? '/admin/accounts/exchange-code'
-        : '/admin/accounts/exchange-setup-token-code'
-
-    const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
+    const tokenInfo = await adminAPI.accounts.exchangeCode('/admin/accounts/exchange-code', {
       session_id: oauth.sessionId.value,
       code: authCode.trim(),
       ...proxyConfig
@@ -6675,6 +6672,8 @@ const handleExchangeCode = async () => {
 }
 
 const handleCookieAuth = async (sessionKey: string) => {
+  if (addMethod.value !== 'oauth') return
+
   oauth.loading.value = true
   oauth.error.value = ''
 
@@ -6695,18 +6694,13 @@ const handleCookieAuth = async (sessionKey: string) => {
       return
     }
 
-    const endpoint =
-      addMethod.value === 'oauth'
-        ? '/admin/accounts/cookie-auth'
-        : '/admin/accounts/setup-token-cookie-auth'
-
     let successCount = 0
     let failedCount = 0
     const errors: string[] = []
 
     for (let i = 0; i < keys.length; i++) {
       try {
-        const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
+        const tokenInfo = await adminAPI.accounts.exchangeCode('/admin/accounts/cookie-auth', {
           session_id: '',
           code: keys[i],
           ...proxyConfig
@@ -6823,6 +6817,122 @@ const handleCookieAuth = async (sessionKey: string) => {
     }
   } catch (error: any) {
     oauth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.cookieAuthFailed')
+  } finally {
+    oauth.loading.value = false
+  }
+}
+
+const handleSetupTokenImport = async (setupTokenInput: string) => {
+  oauth.loading.value = true
+  oauth.error.value = ''
+
+  try {
+    const setupTokens = oauth.parseSessionKeys(setupTokenInput)
+    if (setupTokens.length === 0) {
+      oauth.error.value = t('admin.accounts.oauth.pleaseEnterSetupToken')
+      return
+    }
+
+    const tempUnschedPayload = tempUnschedEnabled.value
+      ? buildTempUnschedRules(tempUnschedRules.value)
+      : []
+    if (tempUnschedEnabled.value && tempUnschedPayload.length === 0) {
+      appStore.showError(t('admin.accounts.tempUnschedulable.rulesInvalid'))
+      return
+    }
+
+    let successCount = 0
+    let failedCount = 0
+    const errors: string[] = []
+
+    for (let i = 0; i < setupTokens.length; i++) {
+      try {
+        const tokenInfo = oauth.buildClaudeSetupTokenCredentials(setupTokens[i])
+        const extra: Record<string, unknown> = {}
+
+        if (windowCostEnabled.value && windowCostLimit.value != null && windowCostLimit.value > 0) {
+          extra.window_cost_limit = windowCostLimit.value
+          extra.window_cost_sticky_reserve = windowCostStickyReserve.value ?? 10
+        }
+        if (sessionLimitEnabled.value && maxSessions.value != null && maxSessions.value > 0) {
+          extra.max_sessions = maxSessions.value
+          extra.session_idle_timeout_minutes = sessionIdleTimeout.value ?? 5
+        }
+        if (rpmLimitEnabled.value) {
+          const DEFAULT_BASE_RPM = 15
+          extra.base_rpm = (baseRpm.value != null && baseRpm.value > 0)
+            ? baseRpm.value
+            : DEFAULT_BASE_RPM
+          extra.rpm_strategy = rpmStrategy.value
+          if (rpmStickyBuffer.value != null && rpmStickyBuffer.value > 0) {
+            extra.rpm_sticky_buffer = rpmStickyBuffer.value
+          }
+        }
+        if (userMsgQueueMode.value) {
+          extra.user_msg_queue_mode = userMsgQueueMode.value
+        }
+        if (tlsFingerprintEnabled.value) {
+          extra.enable_tls_fingerprint = true
+          if (tlsFingerprintProfileId.value) {
+            extra.tls_fingerprint_profile_id = tlsFingerprintProfileId.value
+          }
+        }
+        if (sessionIdMaskingEnabled.value) {
+          extra.session_id_masking_enabled = true
+        }
+        if (cacheTTLOverrideEnabled.value) {
+          extra.cache_ttl_override_enabled = true
+          extra.cache_ttl_override_target = cacheTTLOverrideTarget.value
+        }
+        if (customBaseUrlEnabled.value && customBaseUrl.value.trim()) {
+          extra.custom_base_url_enabled = true
+          extra.custom_base_url = customBaseUrl.value.trim()
+        }
+
+        const accountName = setupTokens.length > 1 ? `${form.name} #${i + 1}` : form.name
+        const credentials: Record<string, unknown> = { ...tokenInfo }
+        applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
+        if (tempUnschedEnabled.value) {
+          credentials.temp_unschedulable_enabled = true
+          credentials.temp_unschedulable_rules = tempUnschedPayload
+        }
+
+        await adminAPI.accounts.create({
+          name: accountName,
+          notes: form.notes,
+          platform: 'anthropic',
+          type: 'setup-token',
+          credentials,
+          extra,
+          proxy_id: form.proxy_id,
+          concurrency: form.concurrency,
+          load_factor: form.load_factor ?? undefined,
+          priority: form.priority,
+          rate_multiplier: form.rate_multiplier,
+          group_ids: form.group_ids,
+          expires_at: form.expires_at,
+          auto_pause_on_expired: autoPauseOnExpired.value
+        })
+        successCount++
+      } catch (error: any) {
+        failedCount++
+        const detail = error?.message === 'Invalid Claude setup token'
+          ? t('admin.accounts.oauth.invalidSetupToken')
+          : error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+        errors.push(t('admin.accounts.oauth.keyAuthFailed', { index: i + 1, error: detail }))
+      }
+    }
+
+    if (successCount > 0) {
+      appStore.showSuccess(t('admin.accounts.oauth.successCreated', { count: successCount }))
+      emit('created')
+      if (failedCount === 0) {
+        handleClose()
+      }
+    }
+    if (failedCount > 0) {
+      oauth.error.value = errors.join('\n')
+    }
   } finally {
     oauth.loading.value = false
   }
