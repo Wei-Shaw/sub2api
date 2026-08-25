@@ -939,6 +939,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	agentTaskRecoveryTried := false
 	rejectedFieldRetryState := openAIResponsesRejectedFieldRetryStateForRequest(c, body)
 	for {
+		// Apply the Responses Lite contract at the final HTTP boundary as well.
+		// Later request-body patches can move namespace tools into input and must
+		// not accidentally drop the required serial-tool flag.
+		if account.IsOpenAIOAuthLike() && isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader)) {
+			liteBody, _, liteErr := normalizeOpenAIResponsesLiteToolsPayload(body)
+			if liteErr != nil {
+				return nil, liteErr
+			}
+			body = liteBody
+		}
 		// Build upstream request
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 		var headerGuard *openAIFirstOutputHeaderGuard
