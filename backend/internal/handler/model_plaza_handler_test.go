@@ -85,6 +85,18 @@ func TestModelPlazaHandler_NilSettingServiceFailsClosed404(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, w.Code)
 }
 
+func TestModelPlazaResponseDoesNotExposePerUserModelPolicy(t *testing.T) {
+	raw, err := json.Marshal(modelPlazaResponse{
+		Description: "published by admin",
+		Groups:      []modelPlazaGroup{},
+	})
+	require.NoError(t, err)
+
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+	require.NotContains(t, decoded, "blocked_models")
+}
+
 func TestToModelPlazaGroupDTO_UserRateAndFieldWhitelist(t *testing.T) {
 	g := service.PlazaGroup{
 		ID: 2, Name: "vip", Description: "d", Platform: "anthropic",

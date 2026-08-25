@@ -659,19 +659,45 @@ export default {
     empty: '暂无可展示的分组',
     loadFailed: '加载模型广场失败',
     noSearchResult: '没有匹配的模型',
+    retry: '重试',
+    resultCount: '{count} 个结果',
+    offerCount: '{count} 个报价',
+    offerDetails: '查看报价详情',
+    offerRate: '倍率 ×{rate}',
     anonymousHint: '登录后可查看你的专属分组与专属倍率',
+    view: {
+      label: '模型广场视图',
+      discover: '探索',
+      pricing: '价格'
+    },
     filters: {
-      platformLabel: '平台',
+      label: '筛选',
+      clear: '清除筛选',
+      clearSearch: '清除模型搜索',
       groupLabel: '分组',
       rateLabel: '倍率',
       modelLabel: '模型',
+      platformLabel: '平台',
       searchPlaceholder: '搜索模型名称',
+      sortLabel: '排序',
       all: '全部'
+    },
+    sort: {
+      default: '推荐顺序',
+      name: '模型名称',
+      platform: '平台',
+      offers: '最多渠道'
     },
     badges: {
       exclusive: '专属分组',
       subscription: '订阅'
     },
+    copy: {
+      id: '复制模型 ID',
+      copied: '已复制',
+      failed: '无法复制模型 ID'
+    },
+
     detail: {
       noModels: '该分组暂未配置模型',
       noPricing: '未配置定价',
