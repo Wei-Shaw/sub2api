@@ -457,8 +457,15 @@ interface Props {
   clickableRows?: boolean
   /** Estimated row height in px for the virtualizer (default 56) */
   estimateRowHeight?: number
+  /**
+   * Fixed row height for virtualized tables. When set, rows are not measured
+   * after render, preventing scroll-position compensation while dragging.
+   */
+  fixedRowHeight?: number
   /** Number of rows to render beyond the visible area (default 5) */
   overscan?: number
+  /** Disable windowing when row content has intentionally variable height. */
+  virtualize?: boolean
   /**
    * Only virtualize when the row count exceeds this threshold (default 100).
    * Smaller lists render in full, avoiding the scroll-compensation jank caused by
@@ -481,7 +488,8 @@ const props = withDefaults(defineProps<Props>(), {
   defaultSortOrder: 'asc',
   serverSideSort: false,
   selectable: false,
-  selectedKeys: () => []
+  selectedKeys: () => [],
+  virtualize: true
 })
 
 const sortKey = ref<string>('')
@@ -754,7 +762,9 @@ const toggleAllVisible = (checked: boolean) => {
 // 是否启用虚拟化:仅桌面端且行数超过阈值时开启。小列表全量渲染,彻底绕开虚拟器的
 // 估算/测量/滚动补偿链路,消除可变行高导致的滚动抖动。
 const shouldVirtualize = computed(() =>
-  isDesktopViewport.value && (sortedData.value?.length ?? 0) > (props.virtualizeThreshold ?? 100)
+  props.virtualize !== false
+  && isDesktopViewport.value
+  && (sortedData.value?.length ?? 0) > (props.virtualizeThreshold ?? 100)
 )
 
 const rowVirtualizer = useVirtualizer(computed(() => ({
@@ -766,7 +776,7 @@ const rowVirtualizer = useVirtualizer(computed(() => ({
     const row = sortedData.value?.[index]
     return row != null ? resolveRowKey(row, index) : index
   },
-  estimateSize: () => props.estimateRowHeight ?? 56,
+  estimateSize: () => props.fixedRowHeight ?? props.estimateRowHeight ?? 56,
   overscan: props.overscan ?? 5,
   // 兜底高度:首个有效高度读数到来前,先按一屏渲染,避免空白帧
   initialRect: { width: 0, height: estimatedViewportHeight() },
@@ -826,6 +836,10 @@ watch(
   (current, previous) => {
     if (hasSameRowIdentitySet(current, previous)) return
 
+    // Fixed-height tables do not keep per-row measurements, so replacing a
+    // page must not trigger a measurement pass that can compensate scroll.
+    if (props.fixedRowHeight !== undefined) return
+
     // The virtualizer owns caches across option updates. A new page/filter result
     // must release detached rows and sizes, while pure reordering keeps them.
     rowVirtualizer.value.measureElement(null)
@@ -839,7 +853,11 @@ watch(
 const renderRows = computed<Array<{ index: number; row: any; measure: boolean }>>(() => {
   const data = sortedData.value ?? []
   if (shouldVirtualize.value) {
-    return virtualItems.value.map(vr => ({ index: vr.index, row: data[vr.index], measure: true }))
+    return virtualItems.value.map(vr => ({
+      index: vr.index,
+      row: data[vr.index],
+      measure: props.fixedRowHeight === undefined
+    }))
   }
   return data.map((row, index) => ({ index, row, measure: false }))
 })

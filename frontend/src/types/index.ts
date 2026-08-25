@@ -1275,6 +1275,10 @@ export interface UsageProgress {
   window_stats?: WindowStats | null // 窗口期统计（从窗口开始到当前的使用量）
   used_requests?: number
   limit_requests?: number
+  overdraft_active?: boolean
+  overdraft_stats?: WindowStats | null
+  overdraft_started_at?: string | null
+  overdraft_recover_at?: string | null
 }
 
 export interface CodexQuotaOverdraftProbeState {
@@ -1350,6 +1354,7 @@ export interface GrokBillingSummary {
 export interface AccountUsageInfo {
   source?: 'passive' | 'active'
   updated_at: string | null
+  codex_quota_overdraft?: CodexQuotaOverdraftProbeState | null
   five_hour: UsageProgress | null
   seven_day: UsageProgress | null
   seven_day_sonnet: UsageProgress | null
