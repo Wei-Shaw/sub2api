@@ -497,7 +497,7 @@ func TestOpenAIResponsesToolSchemaPlatformGate_APIKeyAndOAuth(t *testing.T) {
 			normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
 				Platform: PlatformOpenAI,
 				Type:     accountType,
-			})
+			}, false)
 			require.NoError(t, err)
 			require.True(t, changed)
 			require.Equal(t, "object", gjson.GetBytes(normalized, "tools.0.parameters.type").String())
@@ -508,7 +508,7 @@ func TestOpenAIResponsesToolSchemaPlatformGate_APIKeyAndOAuth(t *testing.T) {
 	normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
 		Platform: PlatformGrok,
 		Type:     AccountTypeAPIKey,
-	})
+	}, false)
 	require.NoError(t, err)
 	require.False(t, changed)
 	require.Equal(t, string(body), string(normalized))
