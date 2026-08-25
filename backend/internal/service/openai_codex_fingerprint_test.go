@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -33,14 +32,13 @@ func newTestOAuthAccount(id int64, extra map[string]any) *Account {
 	}
 }
 
-func TestResolveGatewayCodexFingerprintIDsUsesStableDeploymentSecret(t *testing.T) {
+func TestResolveGatewayCodexFingerprintIDsUsesStableAccountSeed(t *testing.T) {
 	account := newTestOAuthAccount(9101, map[string]any{codexFingerprintModeExtraKey: "session"})
 	clientHeaders := http.Header{"session-id": []string{"client-session"}}
-	secret := "01234567890123456789012345678901"
-	svc := &OpenAIGatewayService{cfg: &config.Config{JWT: config.JWTConfig{Secret: secret}}}
+	svc := &OpenAIGatewayService{}
 
 	first := svc.resolveGatewayCodexFingerprintIDs(account, clientHeaders)
-	second := (&OpenAIGatewayService{cfg: &config.Config{JWT: config.JWTConfig{Secret: secret}}}).resolveGatewayCodexFingerprintIDs(account, clientHeaders)
+	second := (&OpenAIGatewayService{}).resolveGatewayCodexFingerprintIDs(account, clientHeaders)
 	require.NotNil(t, first)
 	require.NotNil(t, second)
 	require.Equal(t, first.installationID, second.installationID)

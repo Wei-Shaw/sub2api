@@ -65,7 +65,6 @@ type codexFingerprintMode string
 
 const (
 	// codexFingerprintOff 不做任何收敛，原样透传客户端标识。
-	// 这是默认值：收敛是显式 opt-in 的（见 GetCodexFingerprintMode）。
 	codexFingerprintOff codexFingerprintMode = "off"
 	// codexFingerprintDevice 仅收敛 installation_id 为账号级恒定值。
 	// 上游看到 1 台设备 + 多会话（每用户各自的 session）。
@@ -112,14 +111,14 @@ func stripCodexFingerprintSeed(extra map[string]any) map[string]any {
 
 func codexFingerprintModeFromExtra(extra map[string]any) codexFingerprintMode {
 	if extra == nil {
-		return codexFingerprintOff
+		return codexFingerprintSession
 	}
 	raw, _ := extra[codexFingerprintModeExtraKey].(string)
 	switch codexFingerprintMode(strings.TrimSpace(raw)) {
 	case codexFingerprintOff, codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull:
 		return codexFingerprintMode(strings.TrimSpace(raw))
 	default:
-		return codexFingerprintOff
+		return codexFingerprintSession
 	}
 }
 
@@ -141,11 +140,16 @@ func codexFingerprintSeed(extra map[string]any) (string, bool) {
 
 func prepareCodexFingerprintExtraForCreate(platform, accountType string, extra map[string]any) map[string]any {
 	prepared := stripCodexFingerprintSeed(extra)
-	if platform != PlatformOpenAI || (accountType != AccountTypeOAuth && accountType != AccountTypeSetupToken) || !codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(prepared)) {
+	if platform != PlatformOpenAI || (accountType != AccountTypeOAuth && accountType != AccountTypeSetupToken) {
 		return prepared
 	}
+	mode := codexFingerprintModeFromExtra(prepared)
 	if prepared == nil {
-		prepared = make(map[string]any, 1)
+		prepared = make(map[string]any, 2)
+	}
+	prepared[codexFingerprintModeExtraKey] = string(mode)
+	if !codexFingerprintModeRequiresSeed(mode) {
+		return prepared
 	}
 	prepared[codexFingerprintSeedExtraKey] = newCodexFingerprintSeed()
 	return prepared
@@ -188,20 +192,17 @@ func ShouldEnsureCodexFingerprintSeedForExtraUpdates(updates map[string]any) boo
 	if updates == nil {
 		return false
 	}
+	if _, ok := updates[codexFingerprintModeExtraKey]; !ok {
+		return false
+	}
 	return codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(updates))
 }
 
 // GetCodexFingerprintMode 从账号 extra JSON 读取指纹收敛模式。
 //
-// **收敛是显式 opt-in**：未设置、空值或非法值一律按 off 处理，只有管理员
-// 明确配置 device / session / full 才收敛。
-//
-// 历史：v0.1.175（#5553）把缺省值当作 session，导致升级后存量 OAuth 账号
-// （普遍没有这个 extra 键）的每个非透传请求都被静默改写 installation /
-// session / thread / turn / window 五类标识；#5555、#5556、#5582 报告的额度
-// 缩水都卡在该版本边界，并有"回退 v0.1.173 即恢复"与"新账号开收敛后降额"
-// 的 A/B 实测。上游的配额判定策略不可观测，因此这里取兼容安全的一侧：
-// 不显式 opt-in 就保持 v0.1.175 之前的客户端身份（#5610）。
+// 旧定制以 session 为缺省模式；显式配置的 off / device /
+// session / full 保持原义。新账号会持久化当前有效模式，避免以后
+// 调整默认值时静默改变账号策略。
 func (a *Account) GetCodexFingerprintMode() codexFingerprintMode {
 	if a == nil || !a.IsOpenAIOAuthLike() {
 		return codexFingerprintOff
@@ -352,19 +353,9 @@ func resolveCodexFingerprintIDsFromRequest(account *Account, clientHeaders http.
 	return resolveCodexFingerprintIDs(account, clientSessionID, mode)
 }
 
-// resolveGatewayCodexFingerprintIDs uses the deployment JWT secret as the
-// HMAC namespace for production requests. This keeps the account pseudonyms
-// stable across process restarts and consistent across gateway replicas.
-// Unit/test services without a configured JWT secret retain the process-local
-// fallback used by the low-level helpers.
+// resolveGatewayCodexFingerprintIDs uses the persisted per-account seed so
+// production requests remain stable across restarts and gateway replicas.
 func (s *OpenAIGatewayService) resolveGatewayCodexFingerprintIDs(account *Account, clientHeaders http.Header) *codexFingerprintIDs {
-	secret := ""
-	if s != nil && s.cfg != nil {
-		secret = strings.TrimSpace(s.cfg.JWT.Secret)
-	}
-	if codexFingerprintSecretUsable(secret) {
-		return resolveCodexFingerprintIDsFromRequest(account, clientHeaders, secret)
-	}
 	return resolveCodexFingerprintIDsFromRequest(account, clientHeaders)
 }
 

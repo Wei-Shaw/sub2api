@@ -88,6 +88,30 @@ const (
 	openAI403CounterWindowMinutes   = 180
 )
 
+var openAI403BillingMarkers = []string{
+	"insufficient balance",
+	"insufficient_balance",
+	"insufficient quota",
+	"insufficient_quota",
+	"credit balance",
+	"credit_balance",
+	"out of credit",
+	"no credit",
+	"billing issue",
+	"billing limit",
+	"payment required",
+}
+
+func containsOpenAI403BillingMarker(text string) bool {
+	text = strings.ToLower(text)
+	for _, marker := range openAI403BillingMarkers {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 // NewRateLimitService 创建RateLimitService实例
 func NewRateLimitService(accountRepo AccountRepository, usageRepo UsageLogRepository, cfg *config.Config, geminiQuotaService *GeminiQuotaService, tempUnschedCache TempUnschedCache) *RateLimitService {
 	return &RateLimitService{

@@ -130,7 +130,7 @@ func TestExportDataIncludesSecrets(t *testing.T) {
 	require.Len(t, resp.Data.Proxies, 1)
 	require.Equal(t, "pass", resp.Data.Proxies[0].Password)
 	require.Len(t, resp.Data.Accounts, 1)
-		require.Equal(t, "secret", resp.Data.Accounts[0].Credentials["token"])
+	require.Equal(t, "secret", resp.Data.Accounts[0].Credentials["token"])
 	require.NotNil(t, resp.Data.Accounts[0].LoadFactor)
 	require.Equal(t, 520, *resp.Data.Accounts[0].LoadFactor)
 }
