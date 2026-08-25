@@ -57,9 +57,24 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 		out.OutputConfig = &AnthropicOutputConfig{Effort: effort}
 		// Enable thinking for non-low efforts
 		if effort != "low" {
+			budget := defaultThinkingBudget(effort)
+			// Anthropic rejects requests where max_tokens <= thinking.budget_tokens
+			// (max_tokens must be greater than thinking.budget_tokens). Codex
+			// clients commonly send a smaller max_output_tokens (or rely on the
+			// default) while requesting high/max reasoning, so reconcile the two:
+			// an explicit client max_output_tokens is authoritative and caps the
+			// thinking budget below it; otherwise raise the default max_tokens so
+			// the requested budget still leaves room for the final answer.
+			if req.MaxOutputTokens != nil && *req.MaxOutputTokens > 0 {
+				if budget >= out.MaxTokens {
+					budget = out.MaxTokens - 1
+				}
+			} else if budget >= out.MaxTokens {
+				out.MaxTokens = budget + 1024
+			}
 			out.Thinking = &AnthropicThinking{
 				Type:         "enabled",
-				BudgetTokens: defaultThinkingBudget(effort),
+				BudgetTokens: budget,
 			}
 		}
 	}
