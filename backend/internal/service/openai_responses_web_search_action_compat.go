@@ -12,10 +12,18 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-// defaultOpenAIResponsesWebSearchActionCompatBufferedBytes bounds the amount of
-// an upstream Responses stream that may wait for a later output_item.done.
-// Crossing the bound fails open for the remainder of that stream.
-const defaultOpenAIResponsesWebSearchActionCompatBufferedBytes = 512 * 1024
+const (
+	// defaultOpenAIResponsesWebSearchActionCompatBufferedBytes bounds the
+	// queued frames and remembered action JSON held by this transformer.
+	// Crossing the shared bound fails open for the remainder of that stream.
+	defaultOpenAIResponsesWebSearchActionCompatBufferedBytes = 512 * 1024
+	// One hosted-search action may occupy both the item-ID and output-index
+	// maps. This cap therefore permits at most 1024 fully dual-indexed actions.
+	openAIResponsesWebSearchActionCompatMaxActionEntries = 2048
+	// This is conservative accounting for map/string slot overhead, not an
+	// exact Go heap measurement. Failing open slightly early is safe here.
+	openAIResponsesWebSearchActionCompatActionEntryOverheadBytes = 32
+)
 
 type openAIResponsesWebSearchActionCompatBody struct {
 	*io.PipeReader
@@ -55,6 +63,98 @@ type openAIWebSearchActionCompatPending struct {
 	resolved    bool
 }
 
+type openAIWebSearchActionCompatCache struct {
+	byItemID      map[string]string
+	byOutputIndex map[string]string
+	bytes         int
+	entries       int
+}
+
+func newOpenAIWebSearchActionCompatCache() *openAIWebSearchActionCompatCache {
+	return &openAIWebSearchActionCompatCache{
+		byItemID:      make(map[string]string),
+		byOutputIndex: make(map[string]string),
+	}
+}
+
+func (c *openAIWebSearchActionCompatCache) reset() {
+	if c == nil {
+		return
+	}
+	c.byItemID = nil
+	c.byOutputIndex = nil
+	c.bytes = 0
+	c.entries = 0
+}
+
+func openAIWebSearchActionCompatCacheEntryBytes(key, actionRaw string) int {
+	return len(key) + len(actionRaw) + openAIResponsesWebSearchActionCompatActionEntryOverheadBytes
+}
+
+func openAIWebSearchActionCompatCacheReplacementDelta(values map[string]string, key, actionRaw string) (bytesDelta, entriesDelta int) {
+	if key == "" {
+		return 0, 0
+	}
+	newBytes := openAIWebSearchActionCompatCacheEntryBytes(key, actionRaw)
+	if existing, ok := values[key]; ok {
+		return newBytes - openAIWebSearchActionCompatCacheEntryBytes(key, existing), 0
+	}
+	return newBytes, 1
+}
+
+func (c *openAIWebSearchActionCompatCache) remember(itemID, outputIndex, actionRaw string, maxBytes int) bool {
+	if c == nil || actionRaw == "" {
+		return true
+	}
+	itemBytes, itemEntries := openAIWebSearchActionCompatCacheReplacementDelta(c.byItemID, itemID, actionRaw)
+	indexBytes, indexEntries := openAIWebSearchActionCompatCacheReplacementDelta(c.byOutputIndex, outputIndex, actionRaw)
+	nextBytes := c.bytes + itemBytes + indexBytes
+	nextEntries := c.entries + itemEntries + indexEntries
+	if maxBytes < 0 || nextBytes > maxBytes || nextEntries > openAIResponsesWebSearchActionCompatMaxActionEntries {
+		return false
+	}
+	if itemID != "" {
+		c.byItemID[itemID] = actionRaw
+	}
+	if outputIndex != "" {
+		c.byOutputIndex[outputIndex] = actionRaw
+	}
+	c.bytes = nextBytes
+	c.entries = nextEntries
+	return true
+}
+
+func (c *openAIWebSearchActionCompatCache) known(itemID, outputIndex string) string {
+	if c == nil {
+		return ""
+	}
+	if itemID != "" {
+		return c.byItemID[itemID]
+	}
+	return c.byOutputIndex[outputIndex]
+}
+
+func (c *openAIWebSearchActionCompatCache) forgetEntry(values map[string]string, key string) {
+	if c == nil || key == "" {
+		return
+	}
+	actionRaw, ok := values[key]
+	if !ok {
+		return
+	}
+	delete(values, key)
+	c.bytes -= openAIWebSearchActionCompatCacheEntryBytes(key, actionRaw)
+	c.entries--
+}
+
+func (c *openAIWebSearchActionCompatCache) forget(itemID, outputIndex string) {
+	if c == nil {
+		return
+	}
+	c.forgetEntry(c.byItemID, itemID)
+	c.forgetEntry(c.byOutputIndex, outputIndex)
+}
+
 func transformOpenAIResponsesWebSearchActionCompatStream(source io.ReadCloser, destination *io.PipeWriter, maxLineSize, maxBufferedBytes int) {
 	defer func() { _ = source.Close() }()
 	if maxLineSize <= 0 {
@@ -73,31 +173,12 @@ func transformOpenAIResponsesWebSearchActionCompatStream(source io.ReadCloser, d
 
 	var queued []*openAIWebSearchActionCompatFrame
 	var pending []*openAIWebSearchActionCompatPending
-	actionsByItemID := make(map[string]string)
-	actionsByOutputIndex := make(map[string]string)
+	actions := newOpenAIWebSearchActionCompatCache()
 	bufferedBytes := 0
 	disabled := false
-	rememberAction := func(itemID, outputIndex, actionRaw string) {
-		if itemID != "" {
-			actionsByItemID[itemID] = actionRaw
-		}
-		if outputIndex != "" {
-			actionsByOutputIndex[outputIndex] = actionRaw
-		}
-	}
-	knownAction := func(itemID, outputIndex string) string {
-		if itemID != "" {
-			return actionsByItemID[itemID]
-		}
-		return actionsByOutputIndex[outputIndex]
-	}
-	forgetAction := func(itemID, outputIndex string) {
-		if itemID != "" {
-			delete(actionsByItemID, itemID)
-		}
-		if outputIndex != "" {
-			delete(actionsByOutputIndex, outputIndex)
-		}
+	disable := func() {
+		disabled = true
+		actions.reset()
 	}
 
 	removePending := func(target *openAIWebSearchActionCompatPending) {
@@ -142,14 +223,14 @@ func transformOpenAIResponsesWebSearchActionCompatStream(source io.ReadCloser, d
 	queue := func(frame *openAIWebSearchActionCompatFrame) error {
 		queued = append(queued, frame)
 		bufferedBytes += len(frame.raw)
-		if bufferedBytes > maxBufferedBytes {
-			disabled = true
+		if actions.bytes > maxBufferedBytes || bufferedBytes > maxBufferedBytes-actions.bytes {
+			disable()
 			return flushQueued()
 		}
 		return nil
 	}
 	failOpenRaw := func(parts ...[]byte) error {
-		disabled = true
+		disable()
 		if len(queued) > 0 {
 			if err := flushQueued(); err != nil {
 				return err
@@ -222,19 +303,26 @@ func transformOpenAIResponsesWebSearchActionCompatStream(source io.ReadCloser, d
 
 		if eventType == "response.output_item.added" && strings.TrimSpace(gjson.GetBytes(payload, "item.type").String()) == "web_search_call" {
 			if actionRaw := openAIWebSearchActionCompatActionRaw(gjson.GetBytes(payload, "item.action")); actionRaw != "" {
-				rememberAction(strings.TrimSpace(gjson.GetBytes(payload, "item.id").String()), openAIWebSearchActionCompatIndex(payload), actionRaw)
+				if !actions.remember(
+					strings.TrimSpace(gjson.GetBytes(payload, "item.id").String()),
+					openAIWebSearchActionCompatIndex(payload),
+					actionRaw,
+					maxBufferedBytes-bufferedBytes,
+				) {
+					return failOpenRaw(raw)
+				}
 			}
 		}
 
 		if itemID, outputIndex, actionPath, missingAction := openAIWebSearchActionCompatMissingActionTarget(eventType, payload); missingAction {
 			frame := &openAIWebSearchActionCompatFrame{raw: raw}
-			if actionRaw := knownAction(itemID, outputIndex); actionRaw != "" {
+			if actionRaw := actions.known(itemID, outputIndex); actionRaw != "" {
 				if patched, err := openAIWebSearchActionCompatInsertRawAction(frame.raw, actionPath, actionRaw); err == nil {
 					frame.raw = patched
 				}
 			}
 			if eventType == "response.web_search_call.completed" {
-				forgetAction(itemID, outputIndex)
+				actions.forget(itemID, outputIndex)
 			}
 			if !bytes.Equal(frame.raw, raw) {
 				if len(queued) == 0 {
@@ -259,7 +347,7 @@ func transformOpenAIResponsesWebSearchActionCompatStream(source io.ReadCloser, d
 			return queue(frame)
 		}
 		if eventType == "response.web_search_call.completed" {
-			forgetAction(strings.TrimSpace(gjson.GetBytes(payload, "item_id").String()), openAIWebSearchActionCompatIndex(payload))
+			actions.forget(strings.TrimSpace(gjson.GetBytes(payload, "item_id").String()), openAIWebSearchActionCompatIndex(payload))
 		}
 
 		frame := &openAIWebSearchActionCompatFrame{raw: raw}
@@ -278,7 +366,7 @@ func transformOpenAIResponsesWebSearchActionCompatStream(source io.ReadCloser, d
 				// frame instead of stalling the rest of the response.
 				target.resolved = true
 			}
-			forgetAction(itemID, outputIndex)
+			actions.forget(itemID, outputIndex)
 		}
 
 		if len(queued) == 0 {

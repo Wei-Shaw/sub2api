@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"io"
 	"strconv"
 	"strings"
@@ -44,6 +45,11 @@ func webSearchDone(id string, index int, action string) string {
 func webSearchAdded(id string, index int) string {
 	return `event: response.output_item.added` + "\n" +
 		`data: {"type":"response.output_item.added","sequence_number":1,"output_index":` + strconv.Itoa(index) + `,"item":{"type":"web_search_call","id":"` + id + `","status":"in_progress"}}` + "\n\n"
+}
+
+func webSearchAddedWithAction(id string, index int, query string) string {
+	return `event: response.output_item.added` + "\n" +
+		`data: {"type":"response.output_item.added","sequence_number":1,"output_index":` + strconv.Itoa(index) + `,"item":{"type":"web_search_call","id":"` + id + `","status":"in_progress","action":{"type":"search","query":"` + query + `"}}}` + "\n\n"
 }
 
 func TestOpenAIResponsesWebSearchActionCompatEnrichesCompletedWithoutReencodingAction(t *testing.T) {
@@ -183,6 +189,162 @@ func TestOpenAIResponsesWebSearchActionCompatFailsOpenForTerminalAndLimit(t *tes
 	require.Equal(t, pending, runWebSearchActionCompat(t, pending, 1<<20))
 	require.Equal(t, pending+`data: [DONE]`+"\n\n", runWebSearchActionCompat(t, pending+`data: [DONE]`+"\n\n", 1<<20))
 	require.Equal(t, pending+webSearchDone("ws_1", 0, `,"action":{"type":"search","query":"late"}`), runWebSearchActionCompat(t, pending+webSearchDone("ws_1", 0, `,"action":{"type":"search","query":"late"}`), 1))
+}
+
+func TestOpenAIResponsesWebSearchActionCompatFailsOpenWhenActionCacheEntryBudgetExceeded(t *testing.T) {
+	const actionCount = 1025
+	var input strings.Builder
+	for index := 0; index < actionCount; index++ {
+		id := "ws_" + strconv.Itoa(index)
+		input.WriteString(webSearchAddedWithAction(id, index, "q"))
+	}
+	input.WriteString(webSearchCompleted("ws_1024", 1024, false))
+	input.WriteString(`event: response.completed` + "\n" + `data: {"type":"response.completed","sequence_number":10}` + "\n\n")
+	input.WriteString("data: [DONE]\n\n")
+
+	want := input.String()
+	got := runWebSearchActionCompat(t, want, 4<<20)
+	require.Equal(t, len(want), len(got))
+	require.True(t, bytes.Equal([]byte(want), []byte(got)), "action-entry budget exhaustion must preserve every upstream byte")
+	require.Equal(t, 1, strings.Count(got, `"type":"response.completed"`))
+	require.Equal(t, 1, strings.Count(got, "data: [DONE]"))
+}
+
+func TestOpenAIResponsesWebSearchActionCompatFailsOpenWhenActionCacheByteBudgetExceeded(t *testing.T) {
+	const maxBufferedBytes = 512
+	var input strings.Builder
+	for index := 0; index < 8; index++ {
+		id := "ws_" + strconv.Itoa(index)
+		input.WriteString(webSearchAddedWithAction(id, index, strings.Repeat("x", 80)))
+	}
+	input.WriteString(webSearchCompleted("ws_7", 7, false))
+	input.WriteString(`event: response.completed` + "\n" + `data: {"type":"response.completed","sequence_number":10}` + "\n\n")
+	input.WriteString("data: [DONE]\n\n")
+	want := input.String()
+
+	sourceReader, sourceWriter := io.Pipe()
+	body := newOpenAIResponsesWebSearchActionCompatStreamBody(sourceReader, 64*1024, maxBufferedBytes)
+	t.Cleanup(func() {
+		_ = sourceWriter.Close()
+		_ = body.Close()
+	})
+	type readResult struct {
+		output string
+		err    error
+	}
+	readDone := make(chan readResult, 1)
+	go func() {
+		buf := make([]byte, len(want))
+		_, err := io.ReadFull(body, buf)
+		readDone <- readResult{output: string(buf), err: err}
+	}()
+
+	_, err := io.WriteString(sourceWriter, want)
+	require.NoError(t, err)
+	select {
+	case result := <-readDone:
+		require.NoError(t, result.err)
+		require.Equal(t, want, result.output)
+		require.Equal(t, 1, strings.Count(result.output, `"type":"response.completed"`))
+		require.Equal(t, 1, strings.Count(result.output, "data: [DONE]"))
+	case <-time.After(time.Second):
+		t.Fatal("action cache budget exhaustion kept the stream buffered")
+	}
+}
+
+func TestOpenAIResponsesWebSearchActionCompatFailsOpenWhenCacheAndQueuedFramesExceedSharedBudget(t *testing.T) {
+	const maxBufferedBytes = 512
+	input := webSearchAddedWithAction("ws_cached", 0, strings.Repeat("a", 80)) +
+		webSearchCompleted("ws_wait", 1, false) +
+		`data: {"type":"response.output_text.delta","delta":"` + strings.Repeat("x", 100) + `"}` + "\n\n" +
+		webSearchDone("ws_wait", 1, `,"action":{"type":"search","query":"late"}`) +
+		`event: response.completed` + "\n" + `data: {"type":"response.completed","sequence_number":10}` + "\n\n" +
+		"data: [DONE]\n\n"
+
+	sourceReader, sourceWriter := io.Pipe()
+	body := newOpenAIResponsesWebSearchActionCompatStreamBody(sourceReader, 64*1024, maxBufferedBytes)
+	t.Cleanup(func() {
+		_ = sourceWriter.Close()
+		_ = body.Close()
+	})
+	type readResult struct {
+		output string
+		err    error
+	}
+	readDone := make(chan readResult, 1)
+	go func() {
+		buf := make([]byte, len(input))
+		_, err := io.ReadFull(body, buf)
+		readDone <- readResult{output: string(buf), err: err}
+	}()
+
+	_, err := io.WriteString(sourceWriter, input)
+	require.NoError(t, err)
+	select {
+	case result := <-readDone:
+		require.NoError(t, result.err)
+		require.Equal(t, input, result.output)
+		require.Equal(t, 1, strings.Count(result.output, `"type":"response.completed"`))
+		require.Equal(t, 1, strings.Count(result.output, "data: [DONE]"))
+	case <-time.After(time.Second):
+		t.Fatal("shared action-cache and queued-frame budget exhaustion kept the stream buffered")
+	}
+}
+
+func TestOpenAIResponsesWebSearchActionCompatCachesActionWithinSharedBudget(t *testing.T) {
+	input := webSearchAddedWithAction("ws_1", 0, "within-budget") + webSearchCompleted("ws_1", 0, false)
+	out := runWebSearchActionCompat(t, input, 1024)
+	require.Contains(t, out, `"item_id":"ws_1","action":{"type":"search","query":"within-budget"}`)
+	require.Less(t, strings.Index(out, "response.output_item.added"), strings.Index(out, "response.web_search_call.completed"))
+}
+
+func TestOpenAIResponsesWebSearchActionCompatReusesBudgetAfterReplacementAndForget(t *testing.T) {
+	firstLatest := strings.Repeat("b", 80)
+	second := strings.Repeat("c", 80)
+	input := webSearchAddedWithAction("ws_1", 0, strings.Repeat("a", 80)) +
+		webSearchAddedWithAction("ws_1", 0, firstLatest) +
+		webSearchCompleted("ws_1", 0, false) +
+		webSearchAddedWithAction("ws_2", 1, second) +
+		webSearchCompleted("ws_2", 1, false)
+
+	out := runWebSearchActionCompat(t, input, 512)
+	require.Contains(t, out, `"item_id":"ws_1","action":{"type":"search","query":"`+firstLatest+`"}`)
+	require.Contains(t, out, `"item_id":"ws_2","action":{"type":"search","query":"`+second+`"}`)
+	require.Equal(t, 5, strings.Count(out, `"action":{"type":"search"`))
+}
+
+func TestOpenAIWebSearchActionCompatCacheReplacementAndForgetAccounting(t *testing.T) {
+	cache := newOpenAIWebSearchActionCompatCache()
+	actionA := `{"type":"search","query":"a"}`
+	actionB := `{"type":"search","query":"replacement"}`
+	maxBytes := 1 << 20
+
+	require.True(t, cache.remember("ws_1", "0", actionA, maxBytes))
+	require.Equal(t, 2, cache.entries)
+	require.Equal(t,
+		openAIWebSearchActionCompatCacheEntryBytes("ws_1", actionA)+openAIWebSearchActionCompatCacheEntryBytes("0", actionA),
+		cache.bytes,
+	)
+	require.Len(t, cache.byItemID, 1)
+	require.Len(t, cache.byOutputIndex, 1)
+
+	require.True(t, cache.remember("ws_1", "0", actionB, maxBytes))
+	require.Equal(t, 2, cache.entries)
+	require.Equal(t,
+		openAIWebSearchActionCompatCacheEntryBytes("ws_1", actionB)+openAIWebSearchActionCompatCacheEntryBytes("0", actionB),
+		cache.bytes,
+	)
+	require.Equal(t, actionB, cache.known("ws_1", "0"))
+
+	cache.forget("ws_1", "0")
+	require.Zero(t, cache.entries)
+	require.Zero(t, cache.bytes)
+	require.Empty(t, cache.byItemID)
+	require.Empty(t, cache.byOutputIndex)
+
+	cache.forget("ws_1", "0")
+	require.Zero(t, cache.entries)
+	require.Zero(t, cache.bytes)
 }
 
 func TestOpenAIResponsesWebSearchActionCompatFailsOpenForOversizedLineWithoutLosingBytes(t *testing.T) {
