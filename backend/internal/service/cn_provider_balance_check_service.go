@@ -119,9 +119,10 @@ func (s *CNProviderBalanceCheckService) runOnce() {
 				quotaTargets = append(quotaTargets, quotaTarget{id: account.ID, platform: account.Platform})
 				continue
 			}
-			// payg 余额探测仅 kimi/deepseek（智谱无公开余额端点，payg 账号
-			// 依赖响应式 402/429 处理）。
-			if platform != PlatformZhipu && account.Schedulable {
+			// payg 余额探测仅有余额端点（BalanceProbe）的平台（无公开余额端点的
+			// 平台，payg 账号依赖响应式 402/429 处理）。
+			spec, specOK := GetCNProviderSpec(platform)
+			if specOK && spec.BalanceProbe != nil && account.Schedulable {
 				paygTargets = append(paygTargets, account)
 			}
 		}
@@ -134,13 +135,15 @@ func (s *CNProviderBalanceCheckService) runOnce() {
 		}
 		collect(platform, accounts)
 	}
-	// 智谱无余额端点，仅进额度探测。
+	// 无余额端点但有额度端点的平台（如智谱）：仅进额度探测。
 	if s.quotaService != nil {
-		accounts, err := s.accountRepo.ListByPlatform(context.Background(), PlatformZhipu)
-		if err != nil {
-			log.Printf("[CNBalance] list %s accounts failed: %v", PlatformZhipu, err)
-		} else {
-			collect(PlatformZhipu, accounts)
+		for _, platform := range cnQuotaOnlyPlatforms() {
+			accounts, err := s.accountRepo.ListByPlatform(context.Background(), platform)
+			if err != nil {
+				log.Printf("[CNBalance] list %s accounts failed: %v", platform, err)
+				continue
+			}
+			collect(platform, accounts)
 		}
 	}
 
@@ -245,8 +248,28 @@ func (s *CNProviderBalanceCheckService) checkOne(ctx context.Context, account *A
 	return cnBalanceNoChange
 }
 
+// platforms 返回进入主循环的平台：有公开余额端点（BalanceProbe）的平台
+// 同时承担 payg 余额探测与 coding 额度探测。
 func (s *CNProviderBalanceCheckService) platforms() []string {
-	return []string{PlatformKimi, PlatformDeepseek}
+	var out []string
+	for _, spec := range cnProviderSpecs() {
+		if spec.BalanceProbe != nil {
+			out = append(out, spec.Code)
+		}
+	}
+	return out
+}
+
+// cnQuotaOnlyPlatforms 返回无余额端点但有额度端点的平台（如智谱），
+// 仅进额度探测补充循环。
+func cnQuotaOnlyPlatforms() []string {
+	var out []string
+	for _, spec := range cnProviderSpecs() {
+		if spec.BalanceProbe == nil && spec.QuotaProbe != nil {
+			out = append(out, spec.Code)
+		}
+	}
+	return out
 }
 
 // allCNBalancesBelowThreshold 判断全部币种余额是否均低于阈值。

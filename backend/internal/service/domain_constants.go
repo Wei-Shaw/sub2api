@@ -86,40 +86,25 @@ const (
 	DefaultDeepseekAnthropicBaseURL   = "https://api.deepseek.com/anthropic"
 )
 
-// IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）。
+// IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商。
+// 平台集合由注册表（cn_provider_registry.go）派生：内建 kimi/zhipu/deepseek，
+// 新增供应商经 RegisterCNProvider 注册后自动纳入。
 func IsCNProvider(platform string) bool {
-	switch platform {
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
-		return true
-	default:
-		return false
-	}
+	_, ok := GetCNProviderSpec(platform)
+	return ok
 }
 
-// AllowedQuotaPlatforms 是允许设置 user × platform quota 的平台列表（单一权威来源）。
+// AllowedQuotaPlatforms 是允许设置 user × platform quota 的平台列表。
+// 由 CN 注册表派生重建（RegisterCNProvider 时刷新，运行期只读）；
 // ent/schema/user_platform_quota.go 的 Validate 函数独立维护（构建期约束），
 // 若新增平台需同步修改该 schema。
-var AllowedQuotaPlatforms = []string{
-	PlatformAnthropic,
-	PlatformOpenAI,
-	PlatformGemini,
-	PlatformAntigravity,
-	PlatformGrok,
-	PlatformKimi,
-	PlatformZhipu,
-	PlatformDeepseek,
-}
+var AllowedQuotaPlatforms []string
 
 // AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。
-// openai/anthropic/grok 有原生用量窗口；kimi/zhipu 的 Coding Plan 同样暴露 5h/weekly
-// 滚动窗口，纳入阈值评估。deepseek 为余额型，走余额检测而非阈值。
-var AllowedSchedulingThresholdPlatforms = []string{
-	PlatformOpenAI,
-	PlatformAnthropic,
-	PlatformGrok,
-	PlatformKimi,
-	PlatformZhipu,
-}
+// openai/anthropic/grok 有原生用量窗口；有 QuotaProbe 的 CN 平台（Coding Plan
+// 滚动窗口）纳入阈值评估；余额型平台（无 QuotaProbe）走余额检测而非阈值。
+// 由 CN 注册表派生重建（RegisterCNProvider 时刷新，运行期只读）。
+var AllowedSchedulingThresholdPlatforms []string
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。
 func IsAllowedQuotaPlatform(s string) bool {
