@@ -205,7 +205,7 @@ docker compose --env-file deploy/ha-test/.env \
 
 定时测试计划新增 `include_in_health_samples` 开关，数据库和管理界面默认均为关闭，现有计划升级后保持原行为。显式开启且策略为 `high_availability` 时，最近 5 分钟的定时测试结果作为权重 `0.25` 的独立探测信号；最近 15 分钟存在真实请求样本时真实流量占主导。探测延迟现在单独维护 EWMA，并按相同低权重参与健康排序，不写入真实请求 TTFT；探测样本采集不再依赖旧的全局 OpenAI HA 开关，避免分组策略丢样本，但 legacy 请求排序仍不会消费这些样本。通用网关真实请求结果和显式探测现在共用进程内跨平台健康样本；高可用分组在原有优先级、资格过滤、负载和槽位流程之后优先选择近期成功率/延迟更好的账号。探测结果不触发或清除 circuit，确定性 400/404/422、模型不支持、内容策略错误和 Runner 取消不会惩罚账号。
 
-该开关通过新增迁移 `229_scheduled_test_health_samples.sql` 以 `ADD COLUMN IF NOT EXISTS ... DEFAULT false` 落地，只增加定时测试计划字段，不重写已有计划或结果数据。若合并官方更新时上游已占用迁移号 `229`，合并前仅重命名本迁移为当时最新编号，不修改已经发布过的迁移内容。
+该开关通过新增迁移 `231_scheduled_test_health_samples.sql` 以 `ADD COLUMN IF NOT EXISTS ... DEFAULT false` 落地，只增加定时测试计划字段，不重写已有计划或结果数据。分组策略通过 `232_group_scheduler_config.sql` 增加 JSONB 配置列。官方更新已占用迁移号 `229` 和 `230`，因此本分支尚未发布的两个迁移顺延为 `231`、`232`，不修改已经发布过的迁移内容。
 
 ### 阶段 D：失败切换和观测
 
