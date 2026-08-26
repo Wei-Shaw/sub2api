@@ -1225,7 +1225,6 @@ func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model str
 	if out.Model == "" {
 		out.Model = resp.Model
 	}
-	out.ServiceTier = resp.ServiceTier
 
 	if len(resp.Choices) > 0 {
 		choice := resp.Choices[0]

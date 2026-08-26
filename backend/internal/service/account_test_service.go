@@ -625,8 +625,10 @@ func formatKiroTestError(statusCode int, body []byte, requestedModel string, acc
 func (s *AccountTestService) executeKiroTestUpstream(ctx context.Context, account *Account, anthropicBody []byte, mappedModel, token string) (*http.Response, error) {
 	modelID := kiropkg.MapModel(mappedModel)
 	currentToken := token
-	// 测试连接走 Q endpoint，Q endpoint 不需要 profileArn（凭据中的占位符 ARN 会导致 403）
-	profileArn := ""
+	// generateAssistantResponse 现在强制要求 profileArn（缺失 → 403 "User is not
+	// authorized to make this call."）。按账号类型解析：API Key → 空；
+	// 其余 凭据真实 ARN > Social ARN > Builder ID 占位符。
+	profileArn := kiroResolveRequestProfileArn(account)
 	preparedBody := prepareKiroPayloadBodyForRequestModel(anthropicBody, mappedModel)
 	buildResult, err := kiropkg.BuildKiroPayloadWithContext(preparedBody, modelID, profileArn, "AI_EDITOR", nil)
 	if err != nil {
@@ -672,6 +674,7 @@ func (s *AccountTestService) executeKiroTestUpstream(ctx context.Context, accoun
 					if refreshErr == nil && strings.TrimSpace(refreshedToken) != "" {
 						currentToken = refreshedToken
 						accountKey = buildKiroAccountKey(account)
+						profileArn = kiroResolveRequestProfileArn(account)
 						buildResult, err = kiropkg.BuildKiroPayloadWithContext(preparedBody, modelID, profileArn, "AI_EDITOR", nil)
 						if err != nil {
 							return nil, err

@@ -37,9 +37,15 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 		out.MaxTokens = 8192
 	}
 
-	// Convert tools
-	if len(req.Tools) > 0 {
-		out.Tools = convertResponsesToAnthropicTools(req.Tools)
+	// Convert tools. Newer Codex clients can declare runtime tools in
+	// input[].additional_tools instead of the top-level tools field, so use the
+	// shared effective tool collector here as the chat fallback path does.
+	effectiveTools, err := EffectiveResponsesTools(req)
+	if err != nil {
+		return nil, err
+	}
+	if len(effectiveTools) > 0 {
+		out.Tools = convertResponsesToAnthropicTools(effectiveTools)
 	}
 
 	// Convert tool_choice (reverse of convertAnthropicToolChoiceToResponses)
@@ -132,10 +138,13 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 				systemParts = append(systemParts, text)
 			}
 
-		case item.Type == "function_call":
-			// function_call → assistant message with tool_use block
+		case item.Type == "function_call" || item.Type == "custom_tool_call":
+			// function_call/custom_tool_call → assistant message with tool_use block
 			input := json.RawMessage("{}")
-			if item.Arguments != "" {
+			if item.Type == "custom_tool_call" {
+				customInput, _ := json.Marshal(map[string]string{"input": item.Input})
+				input = customInput
+			} else if item.Arguments != "" {
 				input = json.RawMessage(item.Arguments)
 			}
 			block := AnthropicContentBlock{
@@ -150,18 +159,50 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 				Content: blockJSON,
 			})
 
-		case item.Type == "function_call_output":
-			// function_call_output → user message with tool_result block
-			contentJSON := responsesFunctionOutputToAnthropicContent(item)
+		case item.Type == "function_call_output" || item.Type == "custom_tool_call_output":
+			// *_call_output → user message with tool_result block
 			block := AnthropicContentBlock{
 				Type:      "tool_result",
 				ToolUseID: fromResponsesCallIDToAnthropic(item.CallID),
-				Content:   contentJSON,
+				Content:   responsesFunctionOutputToAnthropicContent(item),
 			}
 			blockJSON, _ := json.Marshal([]AnthropicContentBlock{block})
 			messages = append(messages, AnthropicMessage{
 				Role:    "user",
 				Content: blockJSON,
+			})
+
+		case IsCompactionItemType(item.Type):
+			// Codex remote compaction v2 回放：上一轮的压缩结果被原样放回 input，
+			// 代表被丢弃的全部前文。必须还原成 user message——若落到 default 分支
+			// 会因 Content==nil 被丢弃，压缩"成功"后前文就全没了。
+			// 注意不能转成 reasoning：本网关合成的 encrypted_content 是自造信封，
+			// Anthropic 摄入不了（理由同下方 reasoning 分支）。
+			summary := CompactionSummaryFromItem(&item)
+			if summary == "" {
+				continue
+			}
+			text, err := json.Marshal(WrapCompactionSummaryForReplay(summary))
+			if err != nil {
+				return nil, nil, fmt.Errorf("marshal compaction summary: %w", err)
+			}
+			messages = append(messages, AnthropicMessage{
+				Role:    "user",
+				Content: text,
+			})
+
+		case strings.TrimSpace(item.Type) == CompactionTriggerType:
+			// 压缩触发器：Anthropic 协议族没有原生 compact 端点，只能把它降级成
+			// 一次普通轮次 + 摘要指令。同样必须显式处理，否则被 default 分支静默
+			// 丢弃，上游会当成普通对话继续干活（Codex 随后报 "expected exactly one
+			// compaction output item"）。
+			prompt, err := json.Marshal(CompactionSummaryPrompt)
+			if err != nil {
+				return nil, nil, fmt.Errorf("marshal compaction prompt: %w", err)
+			}
+			messages = append(messages, AnthropicMessage{
+				Role:    "user",
+				Content: prompt,
 			})
 
 		case item.Type == "reasoning":
@@ -243,8 +284,8 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 
 func responsesFunctionOutputToAnthropicContent(item ResponsesInputItem) json.RawMessage {
 	if len(item.outputRaw) == 0 {
-		output := item.Output
-		if output == "" {
+		output := strings.TrimSpace(item.Output)
+		if output == "" || output == "null" || output == `""` {
 			output = "(empty)"
 		}
 		content, _ := json.Marshal(output)
@@ -627,10 +668,14 @@ func convertResponsesToAnthropicTools(tools []ResponsesTool) []AnthropicTool {
 				InputSchema: normalizeAnthropicInputSchema(t.Parameters),
 			})
 		case "custom":
+			schema := t.Parameters
+			if len(strings.TrimSpace(string(schema))) == 0 {
+				schema = json.RawMessage(customToolInputSchema)
+			}
 			out = append(out, AnthropicTool{
 				Name:        t.Name,
 				Description: t.Description,
-				InputSchema: normalizeAnthropicInputSchema(t.Parameters),
+				InputSchema: normalizeAnthropicInputSchema(schema),
 			})
 		default:
 			// Pass through unknown tool types
@@ -687,6 +732,7 @@ func normalizeAnthropicInputSchema(schema json.RawMessage) json.RawMessage {
 //	"required"                                 → {"type":"any"}
 //	"none"                                     → {"type":"none"}
 //	{"type":"function","name":"X"}                 → {"type":"tool","name":"X"}
+//	{"type":"custom","name":"X"}                   → {"type":"tool","name":"X"}
 //	{"type":"function","function":{"name":"X"}}     → {"type":"tool","name":"X"} // legacy
 func convertResponsesToAnthropicToolChoice(raw json.RawMessage) (json.RawMessage, error) {
 	// Try as string first
@@ -704,7 +750,7 @@ func convertResponsesToAnthropicToolChoice(raw json.RawMessage) (json.RawMessage
 		}
 	}
 
-	// Try as object with type=function
+	// Try as object with type=function/custom
 	var tc struct {
 		Type     string `json:"type"`
 		Name     string `json:"name"`
@@ -712,7 +758,7 @@ func convertResponsesToAnthropicToolChoice(raw json.RawMessage) (json.RawMessage
 			Name string `json:"name"`
 		} `json:"function"`
 	}
-	if err := json.Unmarshal(raw, &tc); err == nil && tc.Type == "function" {
+	if err := json.Unmarshal(raw, &tc); err == nil && (tc.Type == "function" || tc.Type == "custom") {
 		name := strings.TrimSpace(tc.Name)
 		if name == "" {
 			name = strings.TrimSpace(tc.Function.Name)

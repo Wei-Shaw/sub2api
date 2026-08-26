@@ -423,7 +423,7 @@ func TestAccountUsageService_GetUsage_KiroActiveUsesCachedSnapshotWithinTTL(t *t
 	require.Empty(t, usage.ErrorCode)
 }
 
-func TestAccountUsageService_GetUsage_KiroBuilderIDWithoutProfileArnOmitsProfileArn(t *testing.T) {
+func TestAccountUsageService_GetUsage_KiroBuilderIDWithoutProfileArnUsesDefaultBuilderIDProfileArn(t *testing.T) {
 	account := Account{
 		ID:       703,
 		Platform: PlatformKiro,
@@ -440,7 +440,7 @@ func TestAccountUsageService_GetUsage_KiroBuilderIDWithoutProfileArnOmitsProfile
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/getUsageLimits", r.URL.Path)
-		require.Empty(t, r.URL.Query().Get("profileArn"))
+		require.Equal(t, kiroBuilderIDProfileARN, r.URL.Query().Get("profileArn"))
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
 			"subscriptionInfo": {"subscriptionTitle":"KIRO PRO+"},
@@ -560,7 +560,7 @@ func TestAccountUsageService_GetUsage_KiroUsesAPIRegionForUsageRequest(t *testin
 	require.Equal(t, []string{"eu-west-1"}, gotRegions)
 }
 
-func TestAccountUsageService_GetUsage_KiroOmitsProfileArnAndUsesDefaultRegionWithoutAPIRegionOrProfileArn(t *testing.T) {
+func TestAccountUsageService_GetUsage_KiroUsesDefaultBuilderIDProfileArnAndDefaultRegionWithoutAPIRegionOrProfileArn(t *testing.T) {
 	account := Account{
 		ID:       710,
 		Platform: PlatformKiro,
@@ -579,7 +579,7 @@ func TestAccountUsageService_GetUsage_KiroOmitsProfileArnAndUsesDefaultRegionWit
 	gotRegions := make([]string, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/getUsageLimits", r.URL.Path)
-		require.Empty(t, r.URL.Query().Get("profileArn"))
+		require.Equal(t, kiroBuilderIDProfileARN, r.URL.Query().Get("profileArn"))
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
 			"subscriptionInfo": {"subscriptionTitle":"KIRO PRO+"},

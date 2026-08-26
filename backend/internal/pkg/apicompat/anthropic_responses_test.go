@@ -1819,6 +1819,187 @@ func TestAnthropicEventToResponses_CacheTokensFromMessageDelta(t *testing.T) {
 	assert.Equal(t, 11, completed.Response.Usage.InputTokensDetails.CachedTokens)
 }
 
+// collectAnthToResEvents drives the Anthropic→Responses streaming converter over
+// a sequence of Anthropic SSE events and returns every emitted Responses event.
+func collectAnthToResEvents(events []AnthropicStreamEvent) []ResponsesStreamEvent {
+	return collectAnthToResEventsWithState(events, NewAnthropicEventToResponsesState())
+}
+
+func collectAnthToResEventsWithState(events []AnthropicStreamEvent, state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
+	var out []ResponsesStreamEvent
+	for i := range events {
+		out = append(out, AnthropicEventToResponsesEvents(&events[i], state)...)
+	}
+	return out
+}
+
+// TestAnthropicToResponses_ToolCallLifecycleCarriesArguments guards that a
+// tool_use streamed from an Anthropic upstream (e.g. Kiro) is converted into a
+// fully-formed Responses function_call: both function_call_arguments.done and
+// output_item.done must carry the complete arguments/name/call_id, which Codex
+// needs to execute the call. Missing them is why Kiro GPT "only chats".
+func TestAnthropicToResponses_ToolCallLifecycleCarriesArguments(t *testing.T) {
+	events := collectAnthToResEvents([]AnthropicStreamEvent{
+		{Type: "message_start", Message: &AnthropicResponse{ID: "msg_1", Model: "gpt-5.6-sol", Role: "assistant"}},
+		{Type: "content_block_start", Index: intPtr(0), ContentBlock: &AnthropicContentBlock{Type: "tool_use", ID: "toolu_abc", Name: "get_weather"}},
+		{Type: "content_block_delta", Index: intPtr(0), Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `{"city":`}},
+		{Type: "content_block_delta", Index: intPtr(0), Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `"NYC"}`}},
+		{Type: "content_block_stop", Index: intPtr(0)},
+		{Type: "message_delta", Delta: &AnthropicDelta{StopReason: "tool_use"}},
+		{Type: "message_stop"},
+	})
+
+	var argsDelta string
+	var sawAdded, sawArgsDone, sawItemDone bool
+	for i := range events {
+		e := events[i]
+		switch e.Type {
+		case "response.output_item.added":
+			if e.Item != nil && e.Item.Type == "function_call" {
+				sawAdded = true
+				assert.Equal(t, "get_weather", e.Item.Name)
+				assert.NotEmpty(t, e.Item.CallID)
+			}
+		case "response.function_call_arguments.delta":
+			argsDelta += e.Delta
+		case "response.function_call_arguments.done":
+			sawArgsDone = true
+			assert.Equal(t, `{"city":"NYC"}`, e.Arguments)
+		case "response.output_item.done":
+			if e.Item != nil && e.Item.Type == "function_call" {
+				sawItemDone = true
+				assert.Equal(t, `{"city":"NYC"}`, e.Item.Arguments)
+				assert.Equal(t, "get_weather", e.Item.Name)
+				assert.NotEmpty(t, e.Item.CallID)
+			}
+		}
+	}
+	require.True(t, sawAdded, "function_call output_item.added missing")
+	require.True(t, sawArgsDone, "function_call_arguments.done missing")
+	require.True(t, sawItemDone, "function_call output_item.done missing")
+	// Accumulated deltas must equal the final arguments exactly (no duplication).
+	assert.Equal(t, `{"city":"NYC"}`, argsDelta)
+}
+
+// TestAnthropicToResponses_EmptyToolArgsDefaultToObject guards that a tool_use
+// with no input deltas still emits "{}" (not "") so strict clients can
+// deserialize the call.
+func TestAnthropicToResponses_EmptyToolArgsDefaultToObject(t *testing.T) {
+	events := collectAnthToResEvents([]AnthropicStreamEvent{
+		{Type: "message_start", Message: &AnthropicResponse{ID: "msg_2", Model: "gpt-5.6-sol", Role: "assistant"}},
+		{Type: "content_block_start", Index: intPtr(0), ContentBlock: &AnthropicContentBlock{Type: "tool_use", ID: "toolu_noargs", Name: "ping"}},
+		{Type: "content_block_stop", Index: intPtr(0)},
+		{Type: "message_stop"},
+	})
+
+	for i := range events {
+		e := events[i]
+		if e.Type == "response.function_call_arguments.done" {
+			assert.Equal(t, "{}", e.Arguments)
+		}
+		if e.Type == "response.output_item.done" && e.Item != nil && e.Item.Type == "function_call" {
+			assert.Equal(t, "{}", e.Item.Arguments)
+			assert.Equal(t, "ping", e.Item.Name)
+		}
+	}
+}
+
+// TestAnthropicToResponses_MultipleToolCallsDoNotBleedArgs guards that back-to-back
+// tool_use blocks each carry only their own arguments (CurrentArgs is reset per
+// tool), so parallel/sequential tool calls stay independent.
+func TestAnthropicToResponses_MultipleToolCallsDoNotBleedArgs(t *testing.T) {
+	events := collectAnthToResEvents([]AnthropicStreamEvent{
+		{Type: "message_start", Message: &AnthropicResponse{ID: "msg_3", Model: "gpt-5.6-sol", Role: "assistant"}},
+		{Type: "content_block_start", Index: intPtr(0), ContentBlock: &AnthropicContentBlock{Type: "tool_use", ID: "toolu_1", Name: "first"}},
+		{Type: "content_block_delta", Index: intPtr(0), Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `{"a":1}`}},
+		{Type: "content_block_stop", Index: intPtr(0)},
+		{Type: "content_block_start", Index: intPtr(1), ContentBlock: &AnthropicContentBlock{Type: "tool_use", ID: "toolu_2", Name: "second"}},
+		{Type: "content_block_delta", Index: intPtr(1), Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `{"b":2}`}},
+		{Type: "content_block_stop", Index: intPtr(1)},
+		{Type: "message_delta", Delta: &AnthropicDelta{StopReason: "tool_use"}},
+		{Type: "message_stop"},
+	})
+
+	got := map[string]string{}
+	for i := range events {
+		e := events[i]
+		if e.Type == "response.output_item.done" && e.Item != nil && e.Item.Type == "function_call" {
+			got[e.Item.Name] = e.Item.Arguments
+		}
+	}
+	assert.Equal(t, `{"a":1}`, got["first"])
+	assert.Equal(t, `{"b":2}`, got["second"])
+}
+
+func TestAnthropicToResponses_CustomToolCallStream(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+	state.CustomTools = map[string]bool{"exec": true}
+
+	events := collectAnthToResEventsWithState([]AnthropicStreamEvent{
+		{Type: "message_start", Message: &AnthropicResponse{ID: "msg_custom", Model: "gpt-5.6-sol", Role: "assistant"}},
+		{Type: "content_block_start", Index: intPtr(0), ContentBlock: &AnthropicContentBlock{Type: "tool_use", ID: "toolu_exec", Name: "exec"}},
+		{Type: "content_block_delta", Index: intPtr(0), Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `{"input":`}},
+		{Type: "content_block_delta", Index: intPtr(0), Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `"touch main.go"}`}},
+		{Type: "content_block_stop", Index: intPtr(0)},
+		{Type: "message_delta", Delta: &AnthropicDelta{StopReason: "tool_use"}},
+		{Type: "message_stop"},
+	}, state)
+
+	var added, inputDone, itemDone *ResponsesStreamEvent
+	for i := range events {
+		e := &events[i]
+		switch e.Type {
+		case "response.output_item.added":
+			if e.Item != nil && e.Item.Type == "custom_tool_call" {
+				added = e
+			}
+		case "response.custom_tool_call_input.done":
+			inputDone = e
+		case "response.output_item.done":
+			if e.Item != nil && e.Item.Type == "custom_tool_call" {
+				itemDone = e
+			}
+		case "response.function_call_arguments.delta", "response.function_call_arguments.done":
+			t.Fatalf("custom 工具调用不应产出 function_call 参数事件: %s", e.Type)
+		}
+	}
+
+	require.NotNil(t, added, "缺少 custom_tool_call output_item.added")
+	assert.Equal(t, "exec", added.Item.Name)
+	assert.Equal(t, "toolu_exec", added.Item.CallID)
+
+	require.NotNil(t, inputDone, "缺少 custom_tool_call_input.done")
+	assert.Equal(t, "touch main.go", inputDone.Input)
+	assert.Equal(t, "toolu_exec", inputDone.CallID)
+
+	require.NotNil(t, itemDone, "缺少 custom_tool_call output_item.done")
+	assert.Equal(t, "exec", itemDone.Item.Name)
+	assert.Equal(t, "touch main.go", itemDone.Item.Input)
+	assert.Empty(t, itemDone.Item.Arguments)
+}
+
+func TestAnthropicToResponses_NonStreamingCustomToolCall(t *testing.T) {
+	resp := &AnthropicResponse{
+		ID:    "msg_custom_sync",
+		Model: "gpt-5.6-sol",
+		Role:  "assistant",
+		Content: []AnthropicContentBlock{{
+			Type:  "tool_use",
+			ID:    "toolu_exec",
+			Name:  "exec",
+			Input: json.RawMessage(`{"input":"touch main.go"}`),
+		}},
+	}
+
+	out := AnthropicToResponsesResponseWithCustomTools(resp, map[string]bool{"exec": true})
+	require.Len(t, out.Output, 1)
+	assert.Equal(t, "custom_tool_call", out.Output[0].Type)
+	assert.Equal(t, "toolu_exec", out.Output[0].CallID)
+	assert.Equal(t, "exec", out.Output[0].Name)
+	assert.Equal(t, "touch main.go", out.Output[0].Input)
+	assert.Empty(t, out.Output[0].Arguments)
+}
+
 func TestMessageStartSSE_StopReasonIsJSONNull(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()
 	state.Model = "grok-4.5"

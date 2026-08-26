@@ -17,7 +17,6 @@ import (
 
 type RuntimeFingerprint struct {
 	OIDCSDKVersion      string
-	RuntimeSDKVersion   string
 	StreamingSDKVersion string
 	OSType              string
 	OSVersion           string
@@ -36,7 +35,6 @@ var (
 	globalRuntimeFingerprintManagerOnce sync.Once
 
 	oidcSDKVersions      = []string{"3.980.0", "3.975.0", "3.972.0", "3.808.0", "3.738.0", "3.737.0", "3.736.0", "3.735.0"}
-	runtimeSDKVersions   = []string{"1.0.0"}
 	streamingSDKVersions = []string{"1.0.34"}
 	osTypes              = []string{"darwin", "win32"}
 	osVersions           = map[string][]string{
@@ -44,9 +42,7 @@ var (
 		"win32":  {"10.0.22631"},
 	}
 	nodeVersions = []string{"22.22.0"}
-	kiroVersions = []string{
-		"0.11.132", "0.11.131", "0.11.130",
-	}
+	kiroVersions = []string{"0.12.301"}
 )
 
 func globalRuntimeFingerprints() *runtimeFingerprintManager {
@@ -95,7 +91,6 @@ func generateRuntimeFingerprint(accountKey, machineID string) *RuntimeFingerprin
 
 	return &RuntimeFingerprint{
 		OIDCSDKVersion:      oidcSDKVersions[rng.Intn(len(oidcSDKVersions))],
-		RuntimeSDKVersion:   runtimeSDKVersions[rng.Intn(len(runtimeSDKVersions))],
 		StreamingSDKVersion: streamingSDKVersions[rng.Intn(len(streamingSDKVersions))],
 		OSType:              osType,
 		OSVersion:           osVersionPool[rng.Intn(len(osVersionPool))],

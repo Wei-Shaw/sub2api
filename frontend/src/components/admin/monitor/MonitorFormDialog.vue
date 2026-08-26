@@ -51,30 +51,68 @@
         </div>
       </div>
 
-      <!-- 配额模式数据源：关联账号（复用账号侧用量/余额服务） -->
+      <!-- 配额模式数据源：单账号 or 分组聚合（复用账号侧用量/余额服务） -->
       <div v-if="usesQuotaMode">
         <label class="input-label">
-          {{ t('admin.channelMonitor.form.linkedAccount') }} <span class="text-red-500">*</span>
+          {{ t('admin.channelMonitor.form.quotaSource') }} <span class="text-red-500">*</span>
         </label>
-        <div data-testid="monitor-linked-account">
-          <Select
-            v-model="accountSelectValue"
-            :options="accountOptions"
-            :placeholder="t('admin.channelMonitor.form.linkedAccountPlaceholder')"
-            remote
-            :loading="accountsLoading"
-            @search="onAccountSearch"
-          />
+        <div class="mb-2 grid gap-3 sm:grid-cols-2" data-testid="monitor-quota-source">
+          <button
+            v-for="opt in quotaSourceOptions"
+            :key="opt.value"
+            type="button"
+            :data-testid="`monitor-quota-source-${opt.value}`"
+            :aria-pressed="quotaSource === opt.value"
+            class="rounded-lg border-2 px-3 py-2 text-sm font-medium transition-colors"
+            :class="quotaSourceButtonClass(opt.value)"
+            @click="selectQuotaSource(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
         </div>
-        <p class="mt-1 text-xs text-gray-400">{{ t('admin.channelMonitor.form.linkedAccountHint') }}</p>
+
+        <template v-if="usesGroupSource">
+          <div data-testid="monitor-linked-group">
+            <Select
+              v-model="groupSelectValue"
+              :options="groupOptions"
+              :placeholder="t('admin.channelMonitor.form.linkedGroupPlaceholder')"
+              remote
+              :loading="groupsLoading"
+              @search="onGroupSearch"
+            />
+          </div>
+          <p class="mt-1 text-xs text-gray-400">{{ t('admin.channelMonitor.form.linkedGroupHint') }}</p>
+          <p v-if="groupHydrationFailed" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+            {{ t('admin.channelMonitor.form.linkedGroupMissing') }}
+          </p>
+          <p v-if="groupOptions.length === 0 && !groupsLoading && !groupSearchQuery" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+            {{ t('admin.channelMonitor.form.linkedGroupEmpty') }}
+          </p>
+        </template>
+
+        <template v-else>
+          <div data-testid="monitor-linked-account">
+            <Select
+              v-model="accountSelectValue"
+              :options="accountOptions"
+              :placeholder="t('admin.channelMonitor.form.linkedAccountPlaceholder')"
+              remote
+              :loading="accountsLoading"
+              @search="onAccountSearch"
+            />
+          </div>
+          <p class="mt-1 text-xs text-gray-400">{{ t('admin.channelMonitor.form.linkedAccountHint') }}</p>
+          <p v-if="accountHydrationFailed" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+            {{ t('admin.channelMonitor.form.linkedAccountMissing') }}
+          </p>
+          <p v-if="accountOptions.length === 0 && !accountsLoading && !accountSearchQuery" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+            {{ t('admin.channelMonitor.form.linkedAccountEmpty') }}
+          </p>
+        </template>
+
         <p v-if="form.provider === PROVIDER_OPENAI" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
           {{ t('admin.channelMonitor.form.openAIQuotaProbeHint') }}
-        </p>
-        <p v-if="accountHydrationFailed" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
-          {{ t('admin.channelMonitor.form.linkedAccountMissing') }}
-        </p>
-        <p v-if="accountOptions.length === 0 && !accountsLoading && !accountSearchQuery" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
-          {{ t('admin.channelMonitor.form.linkedAccountEmpty') }}
         </p>
       </div>
 
@@ -258,7 +296,6 @@ import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import { composeMonitorEndpoint, splitMonitorEndpoint } from '@/utils/channelMonitorRoute'
 import { adminAPI } from '@/api/admin'
 import { keysAPI } from '@/api/keys'
 import { userGroupsAPI } from '@/api/groups'
@@ -305,6 +342,7 @@ import {
   DEFAULT_DEEPSEEK_ENDPOINT,
   DEFAULT_INTERVAL_SECONDS,
 } from '@/constants/channelMonitor'
+import { composeMonitorEndpoint, splitMonitorEndpoint } from '@/utils/channelMonitorRoute'
 
 const props = defineProps<{
   show: boolean
@@ -337,8 +375,6 @@ const showKeyPicker = ref(false)
 const myKeysLoading = ref(false)
 const myActiveKeys = ref<ApiKey[]>([])
 const userGroupRates = ref<Record<number, number>>({})
-const useAntigravityRoute = ref(false)
-const providerChangedSinceLoad = ref(false)
 
 interface MonitorForm {
   name: string
@@ -346,6 +382,7 @@ interface MonitorForm {
   api_mode: APIMode
   check_mode: CheckMode
   account_id: number | null
+  group_id: number | null
   endpoint: string
   api_key: string
   primary_model: string
@@ -367,6 +404,7 @@ const form = reactive<MonitorForm>({
   api_mode: API_MODE_CHAT_COMPLETIONS,
   check_mode: CHECK_MODE_PROBE,
   account_id: null,
+  group_id: null,
   endpoint: '',
   api_key: '',
   primary_model: '',
@@ -381,12 +419,46 @@ const form = reactive<MonitorForm>({
   body_override: null,
 })
 
-// quota / quota_probe 需要关联账号；probe / quota_probe 需要探活字段。
+// quota / quota_probe 需要关联数据源；probe / quota_probe 需要探活字段。
 const usesQuotaMode = computed(() => form.check_mode !== CHECK_MODE_PROBE)
 const usesProbePart = computed(() => form.check_mode !== CHECK_MODE_QUOTA)
+
+const useAntigravityRoute = ref(false)
+const providerChangedSinceLoad = ref(false)
 const apiKeyRequired = computed<boolean>(() =>
   !editing.value || providerChangedSinceLoad.value || !editing.value.api_key_masked,
 )
+
+// 配额数据源二选一：单账号看一个号的余量，分组聚合组内全部 active 账号
+// （一个号耗尽不代表渠道不可用，账号多的分组需要聚合口径）。后端 account_id
+// 与 group_id 互斥，这里用一个显式开关避免用户同时选中两个。
+type QuotaSource = 'account' | 'group'
+const quotaSource = ref<QuotaSource>('account')
+const usesGroupSource = computed(() => usesQuotaMode.value && quotaSource.value === 'group')
+
+const quotaSourceOptions = computed(() => [
+  { value: 'account' as QuotaSource, label: t('admin.channelMonitor.form.quotaSourceAccount') },
+  { value: 'group' as QuotaSource, label: t('admin.channelMonitor.form.quotaSourceGroup') },
+])
+
+function selectQuotaSource(source: QuotaSource) {
+  if (quotaSource.value === source) return
+  quotaSource.value = source
+  // 切换数据源即清掉另一侧的绑定，保证提交时只有一个非空。
+  form.account_id = null
+  form.group_id = null
+  pinnedAccount.value = null
+  pinnedGroup.value = null
+  accountHydrationFailed.value = false
+  groupHydrationFailed.value = false
+}
+
+function quotaSourceButtonClass(source: QuotaSource): string {
+  if (quotaSource.value === source) {
+    return 'border-primary-500 bg-white text-primary-700 shadow-sm dark:border-primary-400 dark:bg-primary-500/15 dark:text-primary-300'
+  }
+  return 'border-blue-100 bg-white/70 text-gray-600 hover:border-primary-300 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400'
+}
 
 // jitter 上限与后端校验一致：interval - jitter 不得低于最小检测间隔 15 秒。
 const maxJitterSeconds = computed<number>(() => Math.max(0, (form.interval_seconds || 0) - 15))
@@ -558,7 +630,10 @@ function checkModeButtonClass(mode: CheckMode): string {
 function selectCheckMode(mode: CheckMode) {
   if (checkModeOptions.value.find((opt) => opt.value === mode)?.disabled) return
   form.check_mode = mode
-  if (!usesQuotaMode.value) form.account_id = null
+  if (!usesQuotaMode.value) {
+    form.account_id = null
+    form.group_id = null
+  }
 }
 
 // --- 关联账号选择器 ---
@@ -672,6 +747,110 @@ function onAccountSearch(query: string) {
   void loadLinkedAccounts(query)
 }
 
+// --- 关联分组选择器（组级聚合数据源） ---
+//
+// 与账号选择器同构：seq + abort 防乱序覆盖，pinned 保证已绑定项在搜索后仍可见，
+// getById 回填分页外的存量绑定。分组列表只取 active，停用分组不该充当数据源。
+
+interface LinkedGroup {
+  id: number
+  name: string
+}
+
+const linkedGroups = ref<LinkedGroup[]>([])
+const groupsLoading = ref(false)
+const groupSearchQuery = ref('')
+const groupHydrationFailed = ref(false)
+const pinnedGroup = ref<LinkedGroup | null>(null)
+let groupSearchSeq = 0
+let groupSearchAbort: AbortController | null = null
+const groupHydrationAttempted = new Set<number>()
+
+const groupOptions = computed(() => {
+  const opts = linkedGroups.value.map((g) => ({
+    value: String(g.id),
+    label: `${g.name} (#${g.id})`,
+  }))
+  const pinned = pinnedGroup.value
+  if (pinned && !linkedGroups.value.some((g) => g.id === pinned.id)) {
+    opts.unshift({ value: String(pinned.id), label: `${pinned.name} (#${pinned.id})` })
+  }
+  return opts
+})
+
+const groupSelectValue = computed<string>({
+  get: () => (form.group_id == null ? '' : String(form.group_id)),
+  set: (raw: string) => {
+    if (raw === '') {
+      form.group_id = null
+      pinnedGroup.value = null
+      groupHydrationFailed.value = false
+      return
+    }
+    const id = Number(raw)
+    if (Number.isFinite(id)) {
+      form.group_id = id
+      pinnedGroup.value = linkedGroups.value.find((g) => g.id === id) ?? pinnedGroup.value
+    }
+  },
+})
+
+async function loadLinkedGroups(search = '') {
+  if (!usesGroupSource.value || !props.show) return
+  groupSearchQuery.value = search
+  const seq = ++groupSearchSeq
+  groupSearchAbort?.abort()
+  const controller = new AbortController()
+  groupSearchAbort = controller
+  groupsLoading.value = true
+  try {
+    const res = await adminAPI.groups.list(
+      1,
+      50,
+      { platform: form.provider, status: 'active', ...(search ? { search } : {}) },
+      { signal: controller.signal },
+    )
+    if (seq !== groupSearchSeq) return
+    linkedGroups.value = (res.items || []).map((g) => ({ id: g.id, name: g.name }))
+    await ensureSelectedGroupHydrated()
+  } catch (err: unknown) {
+    if (controller.signal.aborted) return
+    console.warn('load linked groups failed', err)
+    if (!search) linkedGroups.value = []
+  } finally {
+    if (seq === groupSearchSeq) groupsLoading.value = false
+  }
+}
+
+async function ensureSelectedGroupHydrated() {
+  const id = form.group_id
+  if (id == null || !usesGroupSource.value) return
+  if (linkedGroups.value.some((g) => g.id === id) || pinnedGroup.value?.id === id) return
+  if (groupHydrationAttempted.has(id)) return
+  groupHydrationAttempted.add(id)
+  try {
+    const group = await adminAPI.groups.getById(id)
+    if (form.group_id !== id) return
+    if (String(group.platform) !== form.provider) {
+      form.group_id = null
+      pinnedGroup.value = null
+      groupHydrationFailed.value = true
+      return
+    }
+    pinnedGroup.value = { id: group.id, name: group.name }
+  } catch {
+    if (form.group_id === id) {
+      form.group_id = null
+      pinnedGroup.value = null
+      groupHydrationFailed.value = true
+    }
+  }
+}
+
+function onGroupSearch(query: string) {
+  void loadLinkedGroups(query)
+}
+
 watch(
   () => [props.show, form.provider, form.check_mode] as const,
   ([show, provider], prev) => {
@@ -692,6 +871,25 @@ watch(
   { immediate: true },
 )
 
+// 分组列表：额外跟随 quotaSource，切到分组数据源时才首次拉取。
+watch(
+  () => [props.show, form.provider, form.check_mode, quotaSource.value] as const,
+  ([show, provider], prev) => {
+    const [prevShow, prevProvider] = prev ?? []
+    if (!show) {
+      groupSearchAbort?.abort()
+      return
+    }
+    if (show !== prevShow || provider !== prevProvider) {
+      groupHydrationAttempted.clear()
+      groupHydrationFailed.value = false
+      pinnedGroup.value = null
+    }
+    void loadLinkedGroups()
+  },
+  { immediate: true },
+)
+
 function selectProvider(provider: Provider) {
   if (form.provider === provider) return
   const previousProvider = form.provider
@@ -706,19 +904,21 @@ function selectProvider(provider: Provider) {
   // Provider changes clear the selected key, so route provenance must be cleared too.
   // Picking an Antigravity key for the new protocol will enable it again.
   useAntigravityRoute.value = false
-  // 关联账号与平台绑定：切换 provider 时显式清空（这是唯一主动清空的入口）。
+  // 关联账号/分组都与平台绑定：切换 provider 时显式清空（这是唯一主动清空的入口）。
   form.account_id = null
+  form.group_id = null
   pinnedAccount.value = null
+  pinnedGroup.value = null
   accountHydrationFailed.value = false
-  // 仅配额模式的 provider（antigravity/kiro）：切到它时强制 quota（checkModeOptions 同步禁用其余项）。
-  if (isQuotaOnlyProvider(provider) && form.check_mode !== CHECK_MODE_QUOTA) {
+  groupHydrationFailed.value = false
+  // 仅配额模式的 provider：切到它时强制 quota（checkModeOptions 同步禁用其余项）。
+  if (isQuotaOnlyProvider(provider)) {
     form.check_mode = CHECK_MODE_QUOTA
-  }
-  // 对称还原：切走时撤掉强制 quota，否则编辑存量 antigravity/kiro
-  // 监控换平台后仍停留在 quota（目标平台未必支持），update 会携带残留配置。
-  // 同步清掉 quota 占位模型（loadFromMonitor 回填的 'quota'），否则切回
-  // probe 后拿 'quota' 当探活模型（与离开 grok 清 DEFAULT_GROK_MODEL 同理）。
-  if (isQuotaOnlyProvider(previousProvider) && form.check_mode === CHECK_MODE_QUOTA) {
+  } else if (isQuotaOnlyProvider(previousProvider) && form.check_mode === CHECK_MODE_QUOTA) {
+    // 对称还原：切走时撤掉强制 quota，否则编辑存量 antigravity/kiro
+    // 监控换平台后仍停留在 quota（目标平台未必支持），update 会携带残留配置。
+    // 同步清掉 quota 占位模型（loadFromMonitor 回填的 'quota'），否则切回
+    // probe 后拿 'quota' 当探活模型（与离开 grok 清 DEFAULT_GROK_MODEL 同理）。
     form.check_mode = CHECK_MODE_PROBE
     if (form.primary_model.trim() === 'quota') form.primary_model = ''
   }
@@ -761,8 +961,12 @@ function resetForm() {
   form.api_mode = API_MODE_CHAT_COMPLETIONS
   form.check_mode = CHECK_MODE_PROBE
   form.account_id = null
+  form.group_id = null
+  quotaSource.value = 'account'
   pinnedAccount.value = null
+  pinnedGroup.value = null
   accountHydrationFailed.value = false
+  groupHydrationFailed.value = false
   form.endpoint = ''
   useAntigravityRoute.value = false
   providerChangedSinceLoad.value = false
@@ -787,6 +991,9 @@ function loadFromMonitor(m: ChannelMonitor) {
   form.api_mode = normalizeAPIMode(m.api_mode)
   form.check_mode = m.check_mode || CHECK_MODE_PROBE
   form.account_id = m.account_id ?? null
+  form.group_id = m.group_id ?? null
+  // 数据源开关由存量绑定反推：只有 group_id 落库的监控才是组级聚合。
+  quotaSource.value = form.group_id != null ? 'group' : 'account'
   const endpoint = splitMonitorEndpoint(m.endpoint)
   form.endpoint = endpoint.origin
   useAntigravityRoute.value =
@@ -867,7 +1074,10 @@ function buildPayload(): CreateParams {
     provider: form.provider,
     api_mode: form.provider === PROVIDER_OPENAI ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
     check_mode: form.check_mode,
-    account_id: usesQuotaMode.value ? form.account_id : null,
+    // 数据源二选一：只发选中那一侧，另一侧留 null（update 的解绑由 handleSubmit
+    // 显式发 0，create 绝不发 0 以免落 &0 触发 FK 违约）。
+    account_id: usesQuotaMode.value && !usesGroupSource.value ? form.account_id : null,
+    group_id: usesGroupSource.value ? form.group_id : null,
     endpoint: usesProbePart.value ? composeMonitorEndpoint(form.endpoint, useAntigravityRoute.value) : '',
     api_key: usesProbePart.value ? form.api_key.trim() : '',
     primary_model: usesProbePart.value ? form.primary_model.trim() : 'quota',
@@ -889,7 +1099,11 @@ async function handleSubmit() {
     appStore.showError(t('admin.channelMonitor.nameRequired'))
     return
   }
-  if (usesQuotaMode.value && form.account_id == null) {
+  if (usesQuotaMode.value && usesGroupSource.value && form.group_id == null) {
+    appStore.showError(t('admin.channelMonitor.linkedGroupRequired'))
+    return
+  }
+  if (usesQuotaMode.value && !usesGroupSource.value && form.account_id == null) {
     appStore.showError(t('admin.channelMonitor.linkedAccountRequired'))
     return
   }
@@ -897,6 +1111,7 @@ async function handleSubmit() {
     appStore.showError(t('admin.channelMonitor.primaryModelRequired'))
     return
   }
+
   if (usesProbePart.value && apiKeyRequired.value && !form.api_key.trim()) {
     appStore.showError(t('admin.channelMonitor.form.apiKeyProviderChangeRequired'))
     return
@@ -915,9 +1130,18 @@ async function handleSubmit() {
         req.clear_template = true
         delete req.template_id
       }
-      // account_id 同理：probe 模式不带账号，update 发 0 显式解绑存量关联
-      // （后端 0=清空、null=不动）。仅 update——create 发 0 会落 &0 触发 FK 违约。
-      if (!usesQuotaMode.value) req.account_id = 0
+      // account_id / group_id 同理：update 发 0 显式解绑存量关联（后端 0=清空、
+      // null=不动）。仅 update——create 发 0 会落 &0 触发 FK 违约。
+      // 退回 probe 时两侧都解绑；quota 模式下解绑未选中的那一侧，
+      // 否则从「单账号」改成「分组」的存量监控会留着旧 account_id。
+      if (!usesQuotaMode.value) {
+        req.account_id = 0
+        req.group_id = 0
+      } else if (usesGroupSource.value) {
+        req.account_id = 0
+      } else {
+        req.group_id = 0
+      }
       await adminAPI.channelMonitor.update(target.id, req)
       appStore.showSuccess(t('admin.channelMonitor.updateSuccess'))
     } else {
