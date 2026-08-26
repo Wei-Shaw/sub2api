@@ -21,6 +21,11 @@ import "embed"
 //   - 推荐使用 IF NOT EXISTS / IF EXISTS 语法
 //   - 一旦应用，不应修改已有的迁移文件（通过 checksum 校验）
 //
+// 本地扩展迁移：
+//   - local/ 子目录包含下游/fork 添加的迁移，避免与上游新增迁移冲突
+//   - 上游迁移直接位于根目录，本地迁移位于 local/ 子目录
+//   - 迁移运行器会读取两个目录，按 SQL 文件 basename 排序，并以完整路径作为同编号文件的稳定 tie-breaker
+//
 // 示例迁移文件：
 //
 //	-- 001_init.sql
@@ -30,5 +35,5 @@ import "embed"
 //	    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 //	);
 //
-//go:embed *.sql
+//go:embed *.sql local/*.sql
 var FS embed.FS

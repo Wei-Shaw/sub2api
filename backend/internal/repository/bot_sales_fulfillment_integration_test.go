@@ -24,7 +24,7 @@ func TestBotSalesFulfillmentIsIdempotent(t *testing.T) {
 
 	users := NewUserRepository(integrationEntClient, integrationDB)
 	devices := NewUserDeviceRepository(integrationEntClient)
-	fulfillment := service.NewBotSalesFulfillmentService(integrationEntClient, users, devices, nil)
+	fulfillment := service.NewBotSalesFulfillmentService(integrationEntClient, users, devices, nil, nil)
 	input := service.BotSalesFulfillmentRequest{
 		IdempotencyKey:      "bot-sales-idempotency-test",
 		ExternalOrderCode:   "BS-IDEMPOTENCY-TEST",

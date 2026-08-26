@@ -10,6 +10,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestListMigrationFiles_MergesRootAndLocalByBasename(t *testing.T) {
+	fsys := fstest.MapFS{
+		"229_plugins.sql":                      &fstest.MapFile{},
+		"230_plugin_artifacts.sql":             &fstest.MapFile{},
+		"local/229_user_devices.sql":           &fstest.MapFile{},
+		"local/230_bot_sales_fulfillments.sql": &fstest.MapFile{},
+		"local/232_payment_link.sql":           &fstest.MapFile{},
+	}
+
+	files, err := listMigrationFiles(fsys)
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"229_plugins.sql",
+		"local/229_user_devices.sql",
+		"local/230_bot_sales_fulfillments.sql",
+		"230_plugin_artifacts.sql",
+		"local/232_payment_link.sql",
+	}, files)
+}
+
 func TestValidateMigrationExecutionMode(t *testing.T) {
 	t.Run("事务迁移包含CONCURRENTLY会被拒绝", func(t *testing.T) {
 		nonTx, err := validateMigrationExecutionMode("001_add_idx.sql", "CREATE INDEX CONCURRENTLY idx_a ON t(a);")
