@@ -756,6 +756,9 @@ export default {
       poolModeRetryCount: 'Same-Account Retries',
       poolModeRetryCountHint:
         'Only applies in pool mode. Use 0 to disable in-place retry. Default {default}, maximum {max}.',
+      poolModeRetryDelay: 'Same-Account Retry Delay (ms)',
+      poolModeRetryDelayHint:
+        'Only applies in pool mode. Default {default}ms, maximum {max}ms. Overrides the default interval when set.',
       poolModeRetryStatusCodes: 'Retry Status Codes',
       poolModeRetryStatusCodesHint:
         'Comma-separated HTTP status codes (100-599) that trigger same-account retry in pool mode. Leave blank to use defaults ({default}).',

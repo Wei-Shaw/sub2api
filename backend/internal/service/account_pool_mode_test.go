@@ -5,6 +5,7 @@ package service
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -112,6 +113,54 @@ func TestGetPoolModeRetryCount(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.expected, tt.account.GetPoolModeRetryCount())
+		})
+	}
+}
+
+func TestGetPoolModeRetryDelay(t *testing.T) {
+	tests := []struct {
+		name     string
+		account  *Account
+		expected time.Duration
+	}{
+		{
+			name:     "default_when_not_pool_mode",
+			account:  &Account{Type: AccountTypeAPIKey, Platform: PlatformOpenAI, Credentials: map[string]any{}},
+			expected: defaultPoolModeRetryDelay,
+		},
+		{
+			name: "configured_delay_in_milliseconds",
+			account: &Account{Type: AccountTypeAPIKey, Platform: PlatformOpenAI, Credentials: map[string]any{
+				"pool_mode": true, "pool_mode_retry_delay_ms": 1500,
+			}},
+			expected: 1500 * time.Millisecond,
+		},
+		{
+			name: "zero_disables_delay",
+			account: &Account{Type: AccountTypeAPIKey, Platform: PlatformOpenAI, Credentials: map[string]any{
+				"pool_mode": true, "pool_mode_retry_delay_ms": 0,
+			}},
+			expected: 0,
+		},
+		{
+			name: "oversized_delay_is_clamped",
+			account: &Account{Type: AccountTypeAPIKey, Platform: PlatformOpenAI, Credentials: map[string]any{
+				"pool_mode": true, "pool_mode_retry_delay_ms": 120000,
+			}},
+			expected: maxPoolModeRetryDelay,
+		},
+		{
+			name: "invalid_or_negative_delay_uses_default",
+			account: &Account{Type: AccountTypeAPIKey, Platform: PlatformOpenAI, Credentials: map[string]any{
+				"pool_mode": true, "pool_mode_retry_delay_ms": "oops",
+			}},
+			expected: defaultPoolModeRetryDelay,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.account.GetPoolModeRetryDelay())
 		})
 	}
 }

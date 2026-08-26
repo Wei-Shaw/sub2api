@@ -55,18 +55,22 @@ const (
 // 语义上等同于「无可用账号」：候选账号都不满足分组的利润约束。
 const profitVetoExhaustedMessage = "No available accounts: all candidates rejected by group profit control"
 
-func sameAccountRetryDelayFor(failoverErr *service.UpstreamFailoverError, retryCount int) time.Duration {
+func sameAccountRetryDelayFor(failoverErr *service.UpstreamFailoverError, retryCount int, configuredDelay ...time.Duration) time.Duration {
 	if failoverErr == nil {
 		return sameAccountRetryDelay
 	}
 	if failoverErr.SameAccountRetryDelay > 0 {
 		return failoverErr.SameAccountRetryDelay
 	}
+	delayBase := sameAccountRetryDelay
+	if len(configuredDelay) > 0 && configuredDelay[0] >= 0 {
+		delayBase = configuredDelay[0]
+	}
 	if !failoverErr.RequestScopedTransient || retryCount <= 1 {
-		return sameAccountRetryDelay
+		return delayBase
 	}
 
-	delay := sameAccountRetryDelay
+	delay := delayBase
 	for i := 1; i < retryCount; i++ {
 		if delay >= maxRequestScopedRetryDelay/2 {
 			return maxRequestScopedRetryDelay
@@ -197,6 +201,7 @@ func (s *FailoverState) HandleFailoverError(
 	platform string,
 	retryLimit int,
 	failoverErr *service.UpstreamFailoverError,
+	configuredDelay ...time.Duration,
 ) FailoverAction {
 	// 客户端已断开：failover 只会用已取消的 context 重新选号并必然失败，
 	// 不应再被当成账号耗尽处理（误报 502）。
@@ -219,7 +224,7 @@ func (s *FailoverState) HandleFailoverError(
 	// 重试次数上限 retryLimit 由调用方传入（账号级 pool_mode_retry_count 配置）。
 	if sameAccountRetry {
 		s.SameAccountRetryCount[accountID]++
-		retryDelay := sameAccountRetryDelayFor(failoverErr, s.SameAccountRetryCount[accountID])
+		retryDelay := sameAccountRetryDelayFor(failoverErr, s.SameAccountRetryCount[accountID], configuredDelay...)
 		logger.FromContext(ctx).Warn("gateway.failover_same_account_retry",
 			zap.Int64("account_id", accountID),
 			zap.Int("upstream_status", failoverErr.StatusCode),

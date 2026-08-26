@@ -63,6 +63,20 @@ func TestSameAccountRetryDelayFor(t *testing.T) {
 		err := &service.UpstreamFailoverError{SameAccountRetryDelay: 3 * time.Second}
 		require.Equal(t, 3*time.Second, sameAccountRetryDelayFor(err, 1))
 	})
+
+	t.Run("configured delay replaces default backoff base", func(t *testing.T) {
+		err := &service.UpstreamFailoverError{RequestScopedTransient: true}
+		require.Equal(t, 2*time.Second, sameAccountRetryDelayFor(err, 1, 2*time.Second))
+		require.Equal(t, 4*time.Second, sameAccountRetryDelayFor(err, 2, 2*time.Second))
+	})
+
+	t.Run("explicit upstream delay still wins over configured delay", func(t *testing.T) {
+		err := &service.UpstreamFailoverError{
+			SameAccountRetryDelay:  3 * time.Second,
+			RequestScopedTransient: true,
+		}
+		require.Equal(t, 3*time.Second, sameAccountRetryDelayFor(err, 1, 2*time.Second))
+	})
 }
 
 func TestSameAccountRetryAllowedUsesDeadlineInsteadOfPoolCount(t *testing.T) {

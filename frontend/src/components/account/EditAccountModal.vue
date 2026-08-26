@@ -380,6 +380,13 @@
             </p>
           </div>
           <div v-if="poolModeEnabled" class="mt-3">
+            <label class="input-label">{{ t('admin.accounts.poolModeRetryDelay') }}</label>
+            <input v-model.number="poolModeRetryDelayMs" type="number" min="0" max="60000" step="50" class="input" />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.poolModeRetryDelayHint', { default: DEFAULT_POOL_MODE_RETRY_DELAY_MS, max: MAX_POOL_MODE_RETRY_DELAY_MS }) }}
+            </p>
+          </div>
+          <div v-if="poolModeEnabled" class="mt-3">
             <label class="input-label">{{ t('admin.accounts.poolModeRetryStatusCodes') }}</label>
             <input
               v-model="poolModeRetryStatusCodesInput"
@@ -1159,6 +1166,13 @@
                   max: MAX_POOL_MODE_RETRY_COUNT
                 })
               }}
+            </p>
+          </div>
+          <div v-if="poolModeEnabled" class="mt-3">
+            <label class="input-label">{{ t('admin.accounts.poolModeRetryDelay') }}</label>
+            <input v-model.number="poolModeRetryDelayMs" type="number" min="0" max="60000" step="50" class="input" />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.poolModeRetryDelayHint', { default: DEFAULT_POOL_MODE_RETRY_DELAY_MS, max: MAX_POOL_MODE_RETRY_DELAY_MS }) }}
             </p>
           </div>
           <div v-if="poolModeEnabled" class="mt-3">
@@ -3098,10 +3112,13 @@ const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
+const DEFAULT_POOL_MODE_RETRY_DELAY_MS = 500
+const MAX_POOL_MODE_RETRY_DELAY_MS = 60000
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
 const GROK_CLIENT_TOOL_CACHE_EXTRA_KEY = 'grok_client_tool_cache_enabled'
 const poolModeEnabled = ref(false)
 const poolModeRetryCount = ref(DEFAULT_POOL_MODE_RETRY_COUNT)
+const poolModeRetryDelayMs = ref(DEFAULT_POOL_MODE_RETRY_DELAY_MS)
 const poolModeRetryStatusCodesInput = ref('')
 
 function parsePoolModeRetryStatusCodes(input: string): number[] {
@@ -3603,6 +3620,17 @@ const normalizePoolModeRetryCount = (value: number) => {
   return normalized
 }
 
+const normalizePoolModeRetryDelayMs = (value: number) => {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_POOL_MODE_RETRY_DELAY_MS
+  }
+  const normalized = Math.trunc(value)
+  if (normalized < 0) {
+    return DEFAULT_POOL_MODE_RETRY_DELAY_MS
+  }
+  return Math.min(normalized, MAX_POOL_MODE_RETRY_DELAY_MS)
+}
+
 const loadModelRestrictionFromMapping = (rawMapping?: Record<string, unknown>) => {
   const parsed = splitModelMappingObject(rawMapping)
   allowedModels.value = parsed.allowedModels
@@ -3964,6 +3992,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     poolModeRetryCount.value = normalizePoolModeRetryCount(
       Number(credentials.pool_mode_retry_count ?? DEFAULT_POOL_MODE_RETRY_COUNT)
     )
+    poolModeRetryDelayMs.value = normalizePoolModeRetryDelayMs(
+      Number(credentials.pool_mode_retry_delay_ms ?? DEFAULT_POOL_MODE_RETRY_DELAY_MS)
+    )
     poolModeRetryStatusCodesInput.value = formatPoolModeRetryStatusCodes(credentials.pool_mode_retry_status_codes)
 
     // Load custom error codes
@@ -3993,6 +4024,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     poolModeEnabled.value = bedrockCreds.pool_mode === true
     const retryCount = bedrockCreds.pool_mode_retry_count
     poolModeRetryCount.value = (typeof retryCount === 'number' && retryCount >= 0) ? retryCount : DEFAULT_POOL_MODE_RETRY_COUNT
+    poolModeRetryDelayMs.value = normalizePoolModeRetryDelayMs(
+      Number(bedrockCreds.pool_mode_retry_delay_ms ?? DEFAULT_POOL_MODE_RETRY_DELAY_MS)
+    )
     poolModeRetryStatusCodesInput.value = formatPoolModeRetryStatusCodes(bedrockCreds.pool_mode_retry_status_codes)
 
     // Load quota limits for bedrock
@@ -4038,6 +4072,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     }
     poolModeEnabled.value = false
     poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
+    poolModeRetryDelayMs.value = DEFAULT_POOL_MODE_RETRY_DELAY_MS
     poolModeRetryStatusCodesInput.value = ''
     customErrorCodesEnabled.value = false
     selectedErrorCodes.value = []
@@ -4685,6 +4720,7 @@ const handleSubmit = async () => {
       if (poolModeEnabled.value) {
         newCredentials.pool_mode = true
         newCredentials.pool_mode_retry_count = normalizePoolModeRetryCount(poolModeRetryCount.value)
+        newCredentials.pool_mode_retry_delay_ms = normalizePoolModeRetryDelayMs(poolModeRetryDelayMs.value)
         const parsedRetryStatusCodes = parsePoolModeRetryStatusCodes(poolModeRetryStatusCodesInput.value)
         if (parsedRetryStatusCodes.length > 0) {
           newCredentials.pool_mode_retry_status_codes = parsedRetryStatusCodes
@@ -4694,6 +4730,7 @@ const handleSubmit = async () => {
       } else {
         delete newCredentials.pool_mode
         delete newCredentials.pool_mode_retry_count
+        delete newCredentials.pool_mode_retry_delay_ms
         delete newCredentials.pool_mode_retry_status_codes
       }
 
@@ -4825,6 +4862,7 @@ const handleSubmit = async () => {
       if (poolModeEnabled.value) {
         newCredentials.pool_mode = true
         newCredentials.pool_mode_retry_count = normalizePoolModeRetryCount(poolModeRetryCount.value)
+        newCredentials.pool_mode_retry_delay_ms = normalizePoolModeRetryDelayMs(poolModeRetryDelayMs.value)
         const parsedRetryStatusCodes = parsePoolModeRetryStatusCodes(poolModeRetryStatusCodesInput.value)
         if (parsedRetryStatusCodes.length > 0) {
           newCredentials.pool_mode_retry_status_codes = parsedRetryStatusCodes
@@ -4834,6 +4872,7 @@ const handleSubmit = async () => {
       } else {
         delete newCredentials.pool_mode
         delete newCredentials.pool_mode_retry_count
+        delete newCredentials.pool_mode_retry_delay_ms
         delete newCredentials.pool_mode_retry_status_codes
       }
 

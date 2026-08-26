@@ -1083,6 +1083,8 @@ func (a *Account) IsPoolMode() bool {
 const (
 	defaultPoolModeRetryCount = 3
 	maxPoolModeRetryCount     = 10
+	defaultPoolModeRetryDelay = 500 * time.Millisecond
+	maxPoolModeRetryDelay     = 60 * time.Second
 )
 
 // GetPoolModeRetryCount 返回池模式同账号重试次数。
@@ -1123,6 +1125,49 @@ func parsePoolModeRetryCount(value any) int {
 		}
 	}
 	return defaultPoolModeRetryCount
+}
+
+// GetPoolModeRetryDelay 返回池模式同账号重试间隔。
+// 未配置或配置非法时回退为默认值 500ms；合法值按毫秒解释，最大限制为 60s。
+func (a *Account) GetPoolModeRetryDelay() time.Duration {
+	if a == nil || !a.IsPoolMode() || a.Credentials == nil {
+		return defaultPoolModeRetryDelay
+	}
+	raw, ok := a.Credentials["pool_mode_retry_delay_ms"]
+	if !ok || raw == nil {
+		return defaultPoolModeRetryDelay
+	}
+	value := parsePoolModeRetryDelayMs(raw)
+	if value < 0 {
+		return defaultPoolModeRetryDelay
+	}
+	delay := time.Duration(value) * time.Millisecond
+	if delay > maxPoolModeRetryDelay {
+		return maxPoolModeRetryDelay
+	}
+	return delay
+}
+
+func parsePoolModeRetryDelayMs(value any) int64 {
+	switch v := value.(type) {
+	case int:
+		return int64(v)
+	case int64:
+		return v
+	case float64:
+		return int64(v)
+	case json.Number:
+		i, err := v.Int64()
+		if err == nil {
+			return i
+		}
+	case string:
+		i, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+		if err == nil {
+			return i
+		}
+	}
+	return -1
 }
 
 // defaultPoolModeRetryableStatusCodes 池模式下默认触发同账号重试的状态码。
