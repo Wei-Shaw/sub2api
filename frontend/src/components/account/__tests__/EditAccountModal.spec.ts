@@ -1365,7 +1365,7 @@ describe('EditAccountModal', () => {
     )
   })
 
-  it('shows Antigravity upstream capabilities without changing model mappings', async () => {
+  it('shows Antigravity upstream capabilities and registers synced models as identity mappings', async () => {
     const account = buildAntigravityAccount()
     account.extra = {
       upstream_model_snapshot: {
@@ -1393,7 +1393,9 @@ describe('EditAccountModal', () => {
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
-      'gemini-2.5-flash': 'gemini-2.5-flash'
+      'gemini-2.5-flash': 'gemini-2.5-flash',
+      'gemini-3.7-flash': 'gemini-3.7-flash',
+      'gemini-future-9.9': 'gemini-future-9.9'
     })
   })
 })
