@@ -527,7 +527,9 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 				if input != "" {
 					emit(ResponsesStreamEvent{Type: "response.custom_tool_call_input.delta", OutputIndex: call.outputIdx, ItemID: call.itemID, Delta: input})
 				}
-				emit(ResponsesStreamEvent{Type: "response.custom_tool_call_input.done", OutputIndex: call.outputIdx, ItemID: call.itemID, CallID: call.callID, Name: call.name, Input: input})
+				// 这两个事件是本地合成的，不走 switch 出口的 restoreNamespaceEvent；
+				// .done 携带 call.name（摊平名），必须显式还原成 namespace 子工具名。
+				emit(r.restoreNamespaceEvent(ResponsesStreamEvent{Type: "response.custom_tool_call_input.done", OutputIndex: call.outputIdx, ItemID: call.itemID, CallID: call.callID, Name: call.name, Input: input}))
 			}
 			return out
 		}
@@ -638,11 +640,22 @@ func (r *ResponsesClientToolStreamRestorer) clientToolEventPayload(payload []byt
 		return false
 	}
 	if raw.Item != nil {
-		if raw.Item.Type != "function_call" {
+		switch raw.Item.Type {
+		case "function_call":
+			_, namespaceTool := r.adapter.NamespaceTools[raw.Item.Name]
+			return r.adapter.CustomTools[raw.Item.Name] || (r.adapter.ToolSearch && raw.Item.Name == toolSearchProxyName) || namespaceTool || r.calls[raw.Item.ID] != nil || r.calls[raw.Item.CallID] != nil
+		case "custom_tool_call":
+			// Anthropic 桥路径的状态机（AnthropicEventToResponsesEvents +
+			// state.CustomTools）已经把 custom 工具的 item 直接产出为
+			// custom_tool_call，不再需要本还原器做 function_call → custom_tool_call
+			// 的降级还原。但 namespace 身份仍是扁平名，必须放行才能还原；否则
+			// namespace 内的 custom 子工具（如 Codex 的 exec）会以
+			// functions__exec 这种扁平名回到客户端，被判为 unsupported call。
+			_, namespaceTool := r.adapter.NamespaceTools[raw.Item.Name]
+			return namespaceTool
+		default:
 			return false
 		}
-		_, namespaceTool := r.adapter.NamespaceTools[raw.Item.Name]
-		return r.adapter.CustomTools[raw.Item.Name] || (r.adapter.ToolSearch && raw.Item.Name == toolSearchProxyName) || namespaceTool || r.calls[raw.Item.ID] != nil || r.calls[raw.Item.CallID] != nil
 	}
 	if _, namespaceTool := r.adapter.NamespaceTools[raw.Name]; namespaceTool {
 		return true
@@ -653,9 +666,16 @@ func (r *ResponsesClientToolStreamRestorer) clientToolEventPayload(payload []byt
 	return false
 }
 
+// clientToolLifecycleEvent 指示某个 SSE 事件类型是否需要进入还原器。
+//
+// custom_tool_call_input.* 也在内：Anthropic 桥路径的状态机会直接产出这两个事件
+// （带摊平名），它们不需要降级还原，但需要还原 namespace 身份。漏掉会让
+// custom_tool_call_input.done 携带 functions__exec 这类扁平名回到客户端。
 func clientToolLifecycleEvent(typ string) bool {
 	switch typ {
-	case "response.output_item.added", "response.output_item.done", "response.function_call_arguments.delta", "response.function_call_arguments.done":
+	case "response.output_item.added", "response.output_item.done",
+		"response.function_call_arguments.delta", "response.function_call_arguments.done",
+		"response.custom_tool_call_input.delta", "response.custom_tool_call_input.done":
 		return true
 	default:
 		return false
@@ -737,12 +757,16 @@ func (r *ResponsesClientToolStreamRestorer) restoreNamespaceEvent(event Response
 	if len(r.adapter.NamespaceTools) == 0 {
 		return event
 	}
-	if event.Item != nil && event.Item.Type == "function_call" {
+	// custom_tool_call 与 function_call 同样按 namespace 路由（见
+	// restoreResponsesOutputClientTools 的同一处理）。
+	if event.Item != nil && (event.Item.Type == "function_call" || event.Item.Type == "custom_tool_call") {
 		if name, ok := r.adapter.NamespaceTools[event.Item.Name]; ok {
 			event.Item.Name, event.Item.Namespace = name.Name, name.Namespace
 		}
 	}
-	if event.Type == "response.function_call_arguments.delta" || event.Type == "response.function_call_arguments.done" {
+	switch event.Type {
+	case "response.function_call_arguments.delta", "response.function_call_arguments.done",
+		"response.custom_tool_call_input.delta", "response.custom_tool_call_input.done":
 		if name, ok := r.adapter.NamespaceTools[event.Name]; ok {
 			event.Name = name.Name
 		}
@@ -766,8 +790,14 @@ func restoreResponsesOutputClientTools(outputs []ResponsesOutput, adapter *Respo
 			output.Name = ""
 			output.Namespace = ""
 		}
-		if name, ok := adapter.NamespaceTools[output.Name]; ok && output.Type == "function_call" {
-			output.Name, output.Namespace = name.Name, name.Namespace
+		// custom_tool_call 同样需要还原 namespace 身份：namespace 内的 custom 子工具
+		// （如 Codex 的 exec）摊平后以扁平名上行，回程若只还原 function_call，客户端
+		// 会收到 namespace 缺失的扁平名并判为 unsupported call。tool_search_call 已
+		// 清空 name，不参与。
+		if output.Type == "function_call" || output.Type == "custom_tool_call" {
+			if name, ok := adapter.NamespaceTools[output.Name]; ok {
+				output.Name, output.Namespace = name.Name, name.Namespace
+			}
 		}
 	}
 }

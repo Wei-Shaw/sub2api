@@ -13,7 +13,8 @@ import (
 type ResponsesNamespaceName = NamespacedToolName
 
 // FlattenResponsesNamespaces converts Codex private namespace declarations into
-// public Responses function tools and rewrites namespace-qualified request calls.
+// public Responses tools and rewrites namespace-qualified request calls.
+// function 与 custom 子工具都会被摊平（见 isFlattenableNamespaceChild）。
 func FlattenResponsesNamespaces(req map[string]any) (map[string]ResponsesNamespaceName, bool, error) {
 	return FlattenResponsesNamespacesExcept(req, nil)
 }
@@ -43,6 +44,8 @@ func FlattenResponsesNamespacesExcept(req map[string]any, preserved map[string]b
 	}
 
 	names := make(map[string]ResponsesNamespaceName)
+	bareNames := make(map[string]string)
+	ambiguousBareNames := make(map[string]bool)
 	for _, raw := range tools {
 		tool, ok := raw.(map[string]any)
 		if !ok || strings.TrimSpace(stringValue(tool["type"])) != "namespace" {
@@ -54,7 +57,7 @@ func FlattenResponsesNamespacesExcept(req map[string]any, preserved map[string]b
 		}
 		for _, rawChild := range namespaceChildren(tool) {
 			child, ok := rawChild.(map[string]any)
-			if !ok || strings.TrimSpace(stringValue(child["type"])) != "function" {
+			if !ok || !isFlattenableNamespaceChild(child) {
 				continue
 			}
 			name := strings.TrimSpace(stringValue(child["name"]))
@@ -70,6 +73,19 @@ func FlattenResponsesNamespacesExcept(req map[string]any, preserved map[string]b
 				return nil, false, fmt.Errorf("namespace tools %q/%q and %q/%q both flatten to %q; this upstream cannot disambiguate them, rename one of the tools", prev.Namespace, prev.Name, namespace, name, flat)
 			}
 			names[flat] = entry
+			// Older Codex turns can replay namespace calls without a namespace.
+			// Only infer the flat identity when the bare child name is unique
+			// and cannot refer to a top-level function/custom tool.
+			if topLevel[name] || ambiguousBareNames[name] {
+				delete(bareNames, name)
+				continue
+			}
+			if previous, exists := bareNames[name]; exists && previous != flat {
+				delete(bareNames, name)
+				ambiguousBareNames[name] = true
+				continue
+			}
+			bareNames[name] = flat
 		}
 	}
 	if len(names) == 0 {
@@ -91,7 +107,7 @@ func FlattenResponsesNamespacesExcept(req map[string]any, preserved map[string]b
 		}
 		for _, rawChild := range namespaceChildren(tool) {
 			child, ok := rawChild.(map[string]any)
-			if !ok || strings.TrimSpace(stringValue(child["type"])) != "function" {
+			if !ok || !isFlattenableNamespaceChild(child) {
 				continue
 			}
 			name := strings.TrimSpace(stringValue(child["name"]))
@@ -109,20 +125,21 @@ func FlattenResponsesNamespacesExcept(req map[string]any, preserved map[string]b
 		}
 	}
 	req["tools"] = flattened
-	rewriteNamespaceQualifiedCalls(req["input"], names)
+	rewriteNamespaceCalls(req["input"], names, bareNames)
 	if choice, ok := req["tool_choice"].(map[string]any); ok {
 		choiceNamespace := strings.TrimSpace(stringValue(choice["name"]))
 		if strings.TrimSpace(stringValue(choice["type"])) == "namespace" && !preserved[choiceNamespace] {
 			req["tool_choice"] = "auto"
 		} else {
-			rewriteNamespaceQualifiedCall(choice, names)
+			rewriteNamespaceCall(choice, names, bareNames)
 		}
 	}
 	return names, true, nil
 }
 
-// RestoreResponsesNamespaceCalls restores flattened function calls in a JSON
+// RestoreResponsesNamespaceCalls restores flattened tool calls in a JSON
 // Responses payload to the namespace/name identity expected by Codex.
+// function_call 与 custom_tool_call 都参与还原（见 isNamespaceQualifiedCallType）。
 func RestoreResponsesNamespaceCalls(payload []byte, names map[string]ResponsesNamespaceName) ([]byte, bool, error) {
 	if len(payload) == 0 || len(names) == 0 {
 		return payload, false, nil
@@ -152,27 +169,72 @@ func namespaceChildren(tool map[string]any) []any {
 	return children
 }
 
+// isFlattenableNamespaceChild 判断 namespace 子工具是否参与摊平。
+//
+// function 与 custom 都必须摊平：Codex CLI 0.147+ 把 exec（唯一能跑命令/读文件的
+// 编排工具，输入是自由文本 JavaScript）声明为 namespace 内的 custom 子工具。只放行
+// function 会把它静默丢弃，模型于是收到一组碰不到文件系统的工具，表现为"没有提供
+// 文件读取或终端执行工具"式的拒绝。
+//
+// 摊平时保留子工具原本的 type：custom 的降级（type→function + 自由文本 schema）
+// 由 AdaptResponsesClientTools 的降级循环统一处理，它跑在摊平之后，会按摊平名把
+// 工具登记进 CustomTools，回程才能还原成 custom_tool_call。此处提前降级会让那份
+// 登记落空。
+func isFlattenableNamespaceChild(child map[string]any) bool {
+	switch strings.TrimSpace(stringValue(child["type"])) {
+	case "function", "custom":
+		return true
+	default:
+		return false
+	}
+}
+
 func rewriteNamespaceQualifiedCalls(value any, names map[string]ResponsesNamespaceName) {
+	rewriteNamespaceCalls(value, names, nil)
+}
+
+func rewriteNamespaceCalls(value any, names map[string]ResponsesNamespaceName, bareNames map[string]string) {
 	switch typed := value.(type) {
 	case []any:
 		for _, item := range typed {
-			rewriteNamespaceQualifiedCalls(item, names)
+			rewriteNamespaceCalls(item, names, bareNames)
 		}
 	case map[string]any:
-		if strings.TrimSpace(stringValue(typed["type"])) == "function_call" {
-			rewriteNamespaceQualifiedCall(typed, names)
+		if isNamespaceQualifiedCallType(stringValue(typed["type"])) {
+			rewriteNamespaceCall(typed, names, bareNames)
 		}
 		for _, child := range typed {
-			rewriteNamespaceQualifiedCalls(child, names)
+			rewriteNamespaceCalls(child, names, bareNames)
 		}
 	}
 }
 
-func rewriteNamespaceQualifiedCall(item map[string]any, names map[string]ResponsesNamespaceName) bool {
+// isNamespaceQualifiedCallType 指示某个历史项类型是否带 namespace+name 身份。
+// custom_tool_call 与 function_call 同样按 namespace 路由（namespace 内的 custom
+// 子工具，如 Codex 的 exec），漏掉它会让历史里的 exec 调用保持 namespace 限定名，
+// 与摊平后的工具声明对不上，上游按未声明工具处理。
+func isNamespaceQualifiedCallType(typ string) bool {
+	switch strings.TrimSpace(typ) {
+	case "function_call", "custom_tool_call":
+		return true
+	default:
+		return false
+	}
+}
+
+func rewriteNamespaceCall(item map[string]any, names map[string]ResponsesNamespaceName, bareNames map[string]string) bool {
 	namespace := strings.TrimSpace(stringValue(item["namespace"]))
 	name := strings.TrimSpace(stringValue(item["name"]))
-	if namespace == "" || name == "" {
+	if name == "" {
 		return false
+	}
+	if namespace == "" {
+		flat, ok := bareNames[name]
+		if !ok {
+			return false
+		}
+		item["name"] = flat
+		return true
 	}
 	flat := flattenNamespaceToolName(namespace, name)
 	entry, ok := names[flat]
@@ -192,7 +254,7 @@ func restoreResponsesNamespaceValue(value any, names map[string]ResponsesNamespa
 			changed = restoreResponsesNamespaceValue(item, names) || changed
 		}
 	case map[string]any:
-		if strings.TrimSpace(stringValue(typed["type"])) == "function_call" {
+		if isNamespaceQualifiedCallType(stringValue(typed["type"])) {
 			if entry, ok := names[strings.TrimSpace(stringValue(typed["name"]))]; ok {
 				typed["name"] = entry.Name
 				typed["namespace"] = entry.Namespace
