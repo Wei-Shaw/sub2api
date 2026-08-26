@@ -390,7 +390,9 @@ func classifyZhipuWindowUnit(unit int64) cnZhipuWindow {
 //
 // CREDIT_LIMIT（信用额度）与 TOKENS_LIMIT（token 窗口）度量不同：两者同时返回时
 // 只让 TOKENS_LIMIT 参与 5h/weekly 槽位竞争，避免信用额度百分比污染阈值停调
-// 快照；仅当无任何 TOKENS_LIMIT 条目时才降级用 CREDIT_LIMIT 展示。
+// 快照；仅当无任何 TOKENS_LIMIT 条目时才降级用 CREDIT_LIMIT 展示——降级条目
+// 同样先按 unit 分类，unit 缺失/未识别才落 reset 启发式（新版积分制套餐
+// GLM Token Plan 只回 CREDIT_LIMIT，条目带同样的 unit 枚举，cc-switch #6520）。
 // 老套餐只回 1 条 TOKENS_LIMIT，自然降级为仅 5h；新套餐回 2 条。
 func parseZhipuTokenTiers(data gjson.Result) []CNQuotaTier {
 	type entry struct {
@@ -425,7 +427,12 @@ func parseZhipuTokenTiers(data gjson.Result) []CNQuotaTier {
 			unclassified = append(unclassified, e)
 		}
 	}
-	var creditFallback []entry
+	// CREDIT 降级候选需保留原始 item，降级时复用同一套 unit 分类。
+	type creditCandidate struct {
+		item gjson.Result
+		e    entry
+	}
+	var creditFallback []creditCandidate
 	hasTokensLimit := false
 
 	data.Get("limits").ForEach(func(_, item gjson.Result) bool {
@@ -458,14 +465,19 @@ func parseZhipuTokenTiers(data gjson.Result) []CNQuotaTier {
 			hasTokensLimit = true
 			classify(item, e)
 		} else {
-			creditFallback = append(creditFallback, e)
+			creditFallback = append(creditFallback, creditCandidate{item: item, e: e})
 		}
 		return true
 	})
 
-	// 无任何 TOKENS_LIMIT 条目（部分套餐只报信用额度）：降级用 CREDIT_LIMIT 展示。
+	// 无任何 TOKENS_LIMIT 条目（新版积分制套餐只报信用额度）：降级用
+	// CREDIT_LIMIT 展示。降级条目同样先走 unit 分类（3=5h / 6=weekly），
+	// 仅 unit 缺失/未识别才落 reset 排序启发式——周期末尾周窗口会比 5h
+	// 更早重置，纯时间排序必然把两桶标反（cc-switch issue #3036 / #6520）。
 	if !hasTokensLimit {
-		unclassified = append(unclassified, creditFallback...)
+		for _, c := range creditFallback {
+			classify(c.item, c.e)
+		}
 	}
 
 	// 无 reset 的条目排前，再按 reset 升序，依次填入仍空缺的槽位。

@@ -154,6 +154,64 @@ func TestParseZhipuTokenTiers_FallbackHeuristic(t *testing.T) {
 	require.InDelta(t, 50.0, tiers[1].UsedPercent, 1e-9)
 }
 
+// TestParseZhipuTokenTiers_CreditOnlyUnitClassification 新版积分制套餐（GLM Token
+// Plan，2026 改版）只回 CREDIT_LIMIT 条目：降级路径同样必须按 unit 分类
+// （3=5h / 6=weekly），不能落 reset 时间排序——周期末尾周窗口更早重置，
+// 纯时间排序必然把两桶标反（对齐 cc-switch，issue #3036 / #6520）。
+func TestParseZhipuTokenTiers_CreditOnlyUnitClassification(t *testing.T) {
+	t.Parallel()
+	// weekly 的 nextResetTime 早于 5h（模拟周期末尾），但 unit 必须胜出。
+	data := gjson.Parse(`{
+		"limits": [
+			{"type":"CREDIT_LIMIT","unit":6,"percentage":42,"nextResetTime":1700000000000},
+			{"type":"CREDIT_LIMIT","unit":3,"percentage":1,"nextResetTime":1700018000000}
+		]
+	}`)
+	tiers := parseZhipuTokenTiers(data)
+	require.Len(t, tiers, 2)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 1.0, tiers[0].UsedPercent, 1e-9)
+	require.Equal(t, "weekly", tiers[1].Window)
+	require.InDelta(t, 42.0, tiers[1].UsedPercent, 1e-9)
+}
+
+// TestParseZhipuTokenTiers_CreditOnlyWithoutUnitKeepsHeuristic CREDIT 降级条目
+// 缺 unit 时仍走 reset 排序启发式（无 reset 优先归 5h）。
+func TestParseZhipuTokenTiers_CreditOnlyWithoutUnitKeepsHeuristic(t *testing.T) {
+	t.Parallel()
+	data := gjson.Parse(`{
+		"limits": [
+			{"type":"CREDIT_LIMIT","percentage":50,"nextResetTime":1700000000000},
+			{"type":"CREDIT_LIMIT","percentage":10}
+		]
+	}`)
+	tiers := parseZhipuTokenTiers(data)
+	require.Len(t, tiers, 2)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 10.0, tiers[0].UsedPercent, 1e-9) // 无 reset 优先 5h
+	require.Equal(t, "weekly", tiers[1].Window)
+	require.InDelta(t, 50.0, tiers[1].UsedPercent, 1e-9)
+}
+
+// TestParseZhipuTokenTiers_TokensWinsOverCredit TOKENS 与 CREDIT 同时返回时，
+// 仅 TOKENS 参与槽位竞争，CREDIT 不污染展示（既有保护不回归）。
+func TestParseZhipuTokenTiers_TokensWinsOverCredit(t *testing.T) {
+	t.Parallel()
+	data := gjson.Parse(`{
+		"limits": [
+			{"type":"TOKENS_LIMIT","unit":3,"percentage":20,"nextResetTime":1700018000000},
+			{"type":"TOKENS_LIMIT","unit":6,"percentage":70,"nextResetTime":1700000000000},
+			{"type":"CREDIT_LIMIT","unit":3,"percentage":99,"nextResetTime":1700018000000}
+		]
+	}`)
+	tiers := parseZhipuTokenTiers(data)
+	require.Len(t, tiers, 2)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 20.0, tiers[0].UsedPercent, 1e-9)
+	require.Equal(t, "weekly", tiers[1].Window)
+	require.InDelta(t, 70.0, tiers[1].UsedPercent, 1e-9)
+}
+
 // TestParseZhipuTokenTiers_IgnoresNonTokenEntries 非 TOKENS_LIMIT/CREDIT_LIMIT 条目跳过。
 func TestParseZhipuTokenTiers_IgnoresNonTokenEntries(t *testing.T) {
 	t.Parallel()
