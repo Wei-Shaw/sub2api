@@ -23,8 +23,9 @@
           >
             {{ providerLabel(item.provider) }}
           </span>
+          <!-- 纯配额模式主模型是占位符 "quota"，展示层替换为本地化「配额」标签 -->
           <span class="font-mono text-xs truncate text-gray-500 dark:text-gray-400">
-            {{ item.primary_model }}
+            {{ formatMonitorModel(item.primary_model) }}
           </span>
           <span
             v-if="item.group_name"
@@ -54,6 +55,9 @@
       secondary-unit="ms"
     />
 
+    <!-- 配额模式：最新用量/余额快照（服务端已按系统开关剥离，此处 flag 为纵深防御） -->
+    <MonitorQuotaView v-if="quotaVisible" :snapshot="item.latest_quota" class="mt-2" />
+
     <!-- Divider -->
     <div class="mt-4 border-t border-gray-100 dark:border-dark-700/60"></div>
 
@@ -80,16 +84,23 @@ import {
   useChannelMonitorFormat,
   providerGradient,
 } from '@/composables/useChannelMonitorFormat'
+import { isChannelMonitorQuotaVisible } from '@/utils/featureFlags'
 import ProviderIcon from './ProviderIcon.vue'
 import MonitorMetricPair from './MonitorMetricPair.vue'
 import MonitorAvailabilityRow from './MonitorAvailabilityRow.vue'
 import MonitorTimeline from './MonitorTimeline.vue'
+import MonitorQuotaView from '@/components/common/MonitorQuotaView.vue'
 
+// 图标配色与 utils/platformColors.ts 的平台色对齐（新 4 家）。
 const PROVIDER_TINT: Record<string, string> = {
   openai: 'text-emerald-600 dark:text-emerald-300',
   anthropic: 'text-orange-600 dark:text-orange-300',
   gemini: 'text-sky-600 dark:text-sky-300',
   grok: 'text-zinc-700 dark:text-zinc-200',
+  antigravity: 'text-purple-600 dark:text-purple-300',
+  kimi: 'text-pink-600 dark:text-pink-300',
+  zhipu: 'text-indigo-600 dark:text-indigo-300',
+  deepseek: 'text-teal-600 dark:text-teal-300',
 }
 
 const props = defineProps<{
@@ -110,10 +121,15 @@ const {
   providerLabel,
   providerBadgeClass,
   formatLatency,
+  formatMonitorModel,
 } = useChannelMonitorFormat()
 
 const providerTintClass = computed(() =>
   PROVIDER_TINT[props.item.provider] ?? 'text-gray-500 dark:text-gray-300'
+)
+
+const quotaVisible = computed(
+  () => isChannelMonitorQuotaVisible() && !!props.item.latest_quota
 )
 
 const availabilityLabel = computed(() => {

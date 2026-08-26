@@ -247,18 +247,28 @@ WITH dedup AS (
     FROM ops_error_logs
     WHERE created_at >= $1 AND created_at < $2 AND NULLIF(request_id, '') IS NOT NULL
   )
-  SELECT DISTINCT ON (COALESCE(NULLIF(request_id, ''), 'error:' || id::text))
-    date_trunc('minute', created_at) AS bucket_start,
-    lower(COALESCE(NULLIF(TRIM(platform), ''), 'unknown')) AS platform,
-    COALESCE(group_id, 0) AS group_id,
-    COALESCE(NULLIF(TRIM(requested_model), ''), NULLIF(TRIM(model), ''), 'unknown') AS model,
-    user_id, error_type, error_owner, COALESCE(status_code, 0) AS status_code,
-    COALESCE(upstream_status_code, 0) AS upstream_status_code,
-    lower(CONCAT_WS(' ', error_type, error_source, error_message, upstream_error_message, upstream_error_detail, error_body)) AS text,
-    (CASE WHEN jsonb_typeof(upstream_errors) = 'array' THEN jsonb_array_length(upstream_errors) > 0 ELSE FALSE END
-      OR error_owner = 'provider' OR upstream_status_code IS NOT NULL) AS upstream_affected,
-    CASE WHEN jsonb_typeof(upstream_errors) = 'array' THEN jsonb_array_length(upstream_errors) ELSE 0 END AS upstream_attempts
+  SELECT DISTINCT ON (COALESCE(NULLIF(current_error.request_id, ''), 'error:' || current_error.id::text))
+    date_trunc('minute', current_error.created_at) AS bucket_start,
+    -- Composite groups are a routing layer: resolve the concrete account
+    -- platform (mirrors usageLogEffectivePlatformExpr on the usage side) so
+    -- error facts share the usage facts' platform key. Without this, composite
+    -- group errors aggregate under platform 'composite', which is never an
+    -- enabled config platform, and are filtered out of every monitor v2 query.
+    lower(CASE
+      WHEN g.platform = 'composite' THEN COALESCE(NULLIF(TRIM(a.platform), ''), NULLIF(NULLIF(lower(TRIM(current_error.platform)), ''), 'composite'), 'unknown')
+      ELSE COALESCE(NULLIF(TRIM(current_error.platform), ''), 'unknown')
+    END) AS platform,
+    COALESCE(current_error.group_id, 0) AS group_id,
+    COALESCE(NULLIF(TRIM(current_error.requested_model), ''), NULLIF(TRIM(current_error.model), ''), 'unknown') AS model,
+    current_error.user_id, current_error.error_type, current_error.error_owner, COALESCE(current_error.status_code, 0) AS status_code,
+    COALESCE(current_error.upstream_status_code, 0) AS upstream_status_code,
+    lower(CONCAT_WS(' ', current_error.error_type, current_error.error_source, current_error.error_message, current_error.upstream_error_message, current_error.upstream_error_detail, current_error.error_body)) AS text,
+    (CASE WHEN jsonb_typeof(current_error.upstream_errors) = 'array' THEN jsonb_array_length(current_error.upstream_errors) > 0 ELSE FALSE END
+      OR current_error.error_owner = 'provider' OR current_error.upstream_status_code IS NOT NULL) AS upstream_affected,
+    CASE WHEN jsonb_typeof(current_error.upstream_errors) = 'array' THEN jsonb_array_length(current_error.upstream_errors) ELSE 0 END AS upstream_attempts
   FROM ops_error_logs current_error
+  LEFT JOIN groups g ON g.id = current_error.group_id
+  LEFT JOIN accounts a ON a.id = current_error.account_id
   WHERE (
       (NULLIF(current_error.request_id, '') IS NULL AND current_error.created_at >= $1 AND current_error.created_at < $2)
       OR (
@@ -269,7 +279,7 @@ WITH dedup AS (
     )
     AND NOT current_error.is_count_tokens
     AND (COALESCE(current_error.status_code, 0) >= 400 OR current_error.error_type = 'cyber_policy')
-  ORDER BY COALESCE(NULLIF(request_id, ''), 'error:' || id::text), created_at DESC, id DESC
+  ORDER BY COALESCE(NULLIF(current_error.request_id, ''), 'error:' || current_error.id::text), current_error.created_at DESC, current_error.id DESC
 ), classified AS (
   SELECT *, CASE
     -- Keep in lockstep with service.ClassifyChannelMonitorV2Error needles.

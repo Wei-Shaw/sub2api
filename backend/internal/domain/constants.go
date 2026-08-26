@@ -23,7 +23,28 @@ const (
 	PlatformGemini      = "gemini"
 	PlatformAntigravity = "antigravity"
 	PlatformGrok        = "grok"
-	PlatformComposite   = "composite"
+	// 国产 OpenAI 兼容供应商（经 OpenAI 网关转发，按 Chat Completions 协议）。
+	PlatformKimi      = "kimi"     // Kimi (月之暗面 / Moonshot)
+	PlatformZhipu     = "zhipu"    // 智谱 GLM (bigmodel)
+	PlatformDeepseek  = "deepseek" // DeepSeek
+	PlatformComposite = "composite"
+)
+
+// Account mode constants 区分国产供应商的「按量付费（余额）」与「Coding Plan」两种接入方式。
+// 存储于 credentials["account_mode"]，决定 base_url 预设与额度监控方式。
+const (
+	AccountModePayG   = "payg"   // 按量付费：消耗余额，做余额检测冷却
+	AccountModeCoding = "coding" // Coding Plan：滚动用量窗口冷却（5h / weekly）
+)
+
+// API protocol constants 国产供应商的上游 API 协议维度。存储于
+// credentials["api_protocol"]，与 account_mode 正交：协议决定转发端点与格式，
+// 模式决定额度监控方式。同协议请求零转换直通；跨协议组合才走转换链。
+const (
+	APIProtocolChatCompletions = "chat_completions" // OpenAI Chat Completions（默认）
+	APIProtocolAnthropic       = "anthropic"        // 原生 Anthropic /v1/messages（适配 Claude Code）
+	APIProtocolResponses       = "responses"        // OpenAI Responses（仅 deepseek，适配 Codex）
+	APIProtocolAdaptive        = "adaptive"         // 按入站协议优先选择供应商原生端点
 )
 
 // Account type constants
@@ -84,11 +105,11 @@ var DefaultAntigravityModelMapping = map[string]string{
 	"claude-opus-4-6":            "claude-opus-4-6-thinking", // 简称映射
 	"claude-opus-4-5-thinking":   "claude-opus-4-6-thinking", // 迁移旧模型
 	"claude-sonnet-4-6":          "claude-sonnet-4-6",
-	"claude-sonnet-4-5":          "claude-sonnet-4-5",
-	"claude-sonnet-4-5-thinking": "claude-sonnet-4-5-thinking",
+	"claude-sonnet-4-5":          "claude-sonnet-4-5", // 显式 canonical 选择透传
+	"claude-sonnet-4-5-thinking": "claude-sonnet-4-6", // 迁移旧兼容别名
 	// Claude 详细版本 ID 映射
 	"claude-opus-4-5-20251101":   "claude-opus-4-6-thinking", // 迁移旧模型
-	"claude-sonnet-4-5-20250929": "claude-sonnet-4-5",
+	"claude-sonnet-4-5-20250929": "claude-sonnet-4-6",        // 迁移旧模型
 	// Claude Haiku → Sonnet（无 Haiku 支持）
 	"claude-haiku-4-5":          "claude-sonnet-4-6",
 	"claude-haiku-4-5-20251001": "claude-sonnet-4-6",

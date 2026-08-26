@@ -32,7 +32,16 @@ func grokStreamIdleFailoverError(account *Account, idle time.Duration) *Upstream
 		StatusCode:               502,
 		ResponseBody:             []byte(`{"error":{"code":"empty_upstream","message":"` + strings.ReplaceAll(msg, `"`, `'`) + `"}}`),
 		SafeToFailoverAfterWrite: true,
-		// Allow pool-mode retries; normal OAuth switches account via handler.
-		RetryableOnSameAccount: account != nil && account.IsPoolMode(),
+		// An idle upstream stream is transient and should get the configured
+		// same-account retry budget before switching credentials. This applies
+		// to both pooled and dedicated Grok accounts; the handler still enforces
+		// the request's retry limit.
+		RetryableOnSameAccount: account != nil && account.Platform == PlatformGrok,
+		RequestScopedTransient: true,
+		SameAccountRetryMax:    1,
+		// Permit at most one same-account replay after the idle failure. The
+		// deadline is anchored at failure time, so a hung stream cannot consume
+		// the normal three-attempt budget before failover.
+		SameAccountRetryDeadline: time.Now().Add(idle),
 	}
 }
