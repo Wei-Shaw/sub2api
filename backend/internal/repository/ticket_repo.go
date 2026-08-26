@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -96,34 +98,51 @@ func (r *ticketRepository) GetByID(ctx context.Context, id int64) (*service.Tick
 	return t, rows.Err()
 }
 
-func (r *ticketRepository) ListByUser(ctx context.Context, userID int64) ([]service.Ticket, error) {
-	return r.list(ctx, `WHERE t.user_id=$1`, userID)
+func (r *ticketRepository) ListByUser(ctx context.Context, userID int64, params pagination.PaginationParams) ([]service.Ticket, int64, error) {
+	return r.list(ctx, `WHERE t.user_id=$1`, userID, params)
 }
-func (r *ticketRepository) List(ctx context.Context) ([]service.Ticket, error) {
-	return r.list(ctx, ``, nil)
+func (r *ticketRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.Ticket, int64, error) {
+	return r.list(ctx, ``, nil, params)
 }
-func (r *ticketRepository) list(ctx context.Context, where string, arg any) ([]service.Ticket, error) {
-	query := `SELECT ` + ticketColumns + ` FROM tickets t JOIN users u ON u.id=t.user_id ` + where + ` ORDER BY t.updated_at DESC, t.id DESC`
-	var rows *sql.Rows
+func (r *ticketRepository) list(ctx context.Context, where string, arg any, params pagination.PaginationParams) ([]service.Ticket, int64, error) {
+	countQuery := `SELECT COUNT(*) FROM tickets t JOIN users u ON u.id=t.user_id ` + where
+	var total int64
 	var err error
 	if arg == nil {
-		rows, err = r.db.QueryContext(ctx, query)
+		err = r.db.QueryRowContext(ctx, countQuery).Scan(&total)
 	} else {
-		rows, err = r.db.QueryContext(ctx, query, arg)
+		err = r.db.QueryRowContext(ctx, countQuery, arg).Scan(&total)
 	}
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+	query := `SELECT ` + ticketColumns + ` FROM tickets t JOIN users u ON u.id=t.user_id ` + where + ` ORDER BY t.updated_at DESC, t.id DESC LIMIT $` + strconv.Itoa(1+boolToInt(arg != nil)) + ` OFFSET $` + strconv.Itoa(2+boolToInt(arg != nil))
+	var rows *sql.Rows
+	if arg == nil {
+		rows, err = r.db.QueryContext(ctx, query, params.Limit(), params.Offset())
+	} else {
+		rows, err = r.db.QueryContext(ctx, query, arg, params.Limit(), params.Offset())
+	}
+	if err != nil {
+		return nil, 0, err
 	}
 	defer func() { _ = rows.Close() }()
 	out := []service.Ticket{}
 	for rows.Next() {
 		t, err := scanTicket(rows)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		out = append(out, *t)
 	}
-	return out, rows.Err()
+	return out, total, rows.Err()
+}
+
+func boolToInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }
 
 func (r *ticketRepository) AddMessage(ctx context.Context, input service.AddTicketMessageInput) (*service.TicketMessage, error) {
@@ -172,6 +191,29 @@ func (r *ticketRepository) Close(ctx context.Context, ticketID, actorID int64) e
 		}
 	}
 	return nil
+}
+
+func (r *ticketRepository) Delete(ctx context.Context, ticketID int64) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err = tx.ExecContext(ctx, `DELETE FROM ticket_messages WHERE ticket_id=$1`, ticketID); err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM tickets WHERE id=$1 AND status='closed'`, ticketID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return service.ErrTicketNotFound
+	}
+	return tx.Commit()
 }
 
 func (r *ticketRepository) LastMessageBySender(ctx context.Context, ticketID int64, senderType string) (*service.TicketMessage, error) {

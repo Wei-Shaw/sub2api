@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
 const (
@@ -26,6 +28,7 @@ var (
 	ErrTicketInvalidTitle   = errors.New("ticket title is required and must be at most 200 characters")
 	ErrTicketInvalidContent = errors.New("ticket content is required")
 	ErrTicketInvalidImages  = errors.New("ticket images are invalid")
+	ErrTicketNotClosed      = errors.New("ticket must be closed before deletion")
 )
 
 type Ticket struct {
@@ -53,6 +56,13 @@ type TicketMessage struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
+type TicketListResult struct {
+	Items    []Ticket
+	Total    int64
+	Page     int
+	PageSize int
+}
+
 type CreateTicketInput struct {
 	UserID      int64
 	Title       string
@@ -71,10 +81,11 @@ type AddTicketMessageInput struct {
 type TicketRepository interface {
 	Create(ctx context.Context, input CreateTicketInput) (*Ticket, *TicketMessage, error)
 	GetByID(ctx context.Context, id int64) (*Ticket, error)
-	ListByUser(ctx context.Context, userID int64) ([]Ticket, error)
-	List(ctx context.Context) ([]Ticket, error)
+	ListByUser(ctx context.Context, userID int64, params pagination.PaginationParams) ([]Ticket, int64, error)
+	List(ctx context.Context, params pagination.PaginationParams) ([]Ticket, int64, error)
 	AddMessage(ctx context.Context, input AddTicketMessageInput) (*TicketMessage, error)
 	Close(ctx context.Context, ticketID, actorID int64) error
+	Delete(ctx context.Context, ticketID int64) error
 	LastMessageBySender(ctx context.Context, ticketID int64, senderType string) (*TicketMessage, error)
 }
 
@@ -104,6 +115,10 @@ func validateTicketInput(title, content string, images []string) error {
 	if strings.TrimSpace(content) == "" {
 		return ErrTicketInvalidContent
 	}
+	return validateTicketImages(images)
+}
+
+func validateTicketImages(images []string) error {
 	if len(images) > 9 {
 		return ErrTicketInvalidImages
 	}
@@ -147,14 +162,28 @@ func (s *TicketService) Get(ctx context.Context, id int64, userID int64, admin b
 	return ticket, nil
 }
 
-func (s *TicketService) List(ctx context.Context, userID int64, admin bool) ([]Ticket, error) {
+func (s *TicketService) List(ctx context.Context, userID int64, admin bool, params pagination.PaginationParams) (*TicketListResult, error) {
 	if !admin && !s.enabled(ctx) {
 		return nil, ErrTicketSystemDisabled
 	}
-	if admin {
-		return s.repo.List(ctx)
+	if params.Page < 1 {
+		params.Page = 1
 	}
-	return s.repo.ListByUser(ctx, userID)
+	if params.PageSize < 1 {
+		params.PageSize = 20
+	}
+	var items []Ticket
+	var total int64
+	var err error
+	if admin {
+		items, total, err = s.repo.List(ctx, params)
+	} else {
+		items, total, err = s.repo.ListByUser(ctx, userID, params)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &TicketListResult{Items: items, Total: total, Page: params.Page, PageSize: params.PageSize}, nil
 }
 
 func (s *TicketService) AddMessage(ctx context.Context, input AddTicketMessageInput, userID int64, admin bool) (*TicketMessage, error) {
@@ -187,7 +216,10 @@ func (s *TicketService) AddMessage(ctx context.Context, input AddTicketMessageIn
 			return nil, fmt.Errorf("get previous admin message: %w", err)
 		}
 	}
-	if err := validateTicketInput("ok", input.Content, input.Images); err != nil && !errors.Is(err, ErrTicketInvalidTitle) {
+	if strings.TrimSpace(input.Content) == "" && len(input.Images) == 0 {
+		return nil, ErrTicketInvalidContent
+	}
+	if err := validateTicketImages(input.Images); err != nil {
 		return nil, err
 	}
 	message, err := s.repo.AddMessage(ctx, input)
@@ -216,6 +248,20 @@ func (s *TicketService) Close(ctx context.Context, id, actorID int64, admin bool
 		return nil
 	}
 	return s.repo.Close(ctx, ticket.ID, actorID)
+}
+
+func (s *TicketService) Delete(ctx context.Context, id int64, admin bool) error {
+	if !admin {
+		return ErrTicketNotFound
+	}
+	ticket, err := s.Get(ctx, id, 0, true)
+	if err != nil {
+		return err
+	}
+	if ticket.Status != TicketStatusClosed {
+		return ErrTicketNotClosed
+	}
+	return s.repo.Delete(ctx, id)
 }
 
 func (s *TicketService) notifyAdmins(ctx context.Context, ticket *Ticket, message *TicketMessage) {

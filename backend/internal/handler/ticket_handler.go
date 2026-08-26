@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strconv"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -53,12 +54,13 @@ func (h *TicketHandler) List(c *gin.Context) {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
-	items, err := h.tickets.List(c.Request.Context(), subject.UserID, false)
+	page, pageSize := response.ParsePagination(c)
+	items, err := h.tickets.List(c.Request.Context(), subject.UserID, false, pagination.PaginationParams{Page: page, PageSize: pageSize})
 	if err != nil {
 		ticketError(c, err)
 		return
 	}
-	response.Success(c, items)
+	response.Paginated(c, items.Items, items.Total, items.Page, items.PageSize)
 }
 func (h *TicketHandler) Create(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)

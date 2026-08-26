@@ -14,11 +14,14 @@
     <div class="layout-section-scrollable">
       <div class="card table-scroll-container">
         <slot name="table" />
+        <div v-if="paginationInsideTable && $slots.pagination" class="layout-section-pagination">
+          <slot name="pagination" />
+        </div>
       </div>
     </div>
 
     <!-- 固定区域：分页器 -->
-    <div v-if="$slots.pagination" class="layout-section-fixed">
+    <div v-if="$slots.pagination && !paginationInsideTable" class="layout-section-fixed">
       <slot name="pagination" />
     </div>
   </div>
@@ -26,6 +29,10 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+
+withDefaults(defineProps<{ paginationInsideTable?: boolean }>(), {
+  paginationInsideTable: false
+})
 
 const isMobile = ref(false)
 
@@ -52,6 +59,10 @@ onUnmounted(() => {
 
 .layout-section-fixed {
   @apply flex-shrink-0;
+}
+
+.layout-section-pagination {
+  @apply flex-shrink-0 border-t border-gray-200 dark:border-dark-700;
 }
 
 .layout-section-scrollable {

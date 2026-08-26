@@ -3,6 +3,7 @@ package admin
 import (
 	"strconv"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -21,12 +22,13 @@ type adminTicketMessageRequest struct {
 }
 
 func (h *TicketHandler) List(c *gin.Context) {
-	items, err := h.tickets.List(c.Request.Context(), 0, true)
+	page, pageSize := response.ParsePagination(c)
+	items, err := h.tickets.List(c.Request.Context(), 0, true, pagination.PaginationParams{Page: page, PageSize: pageSize})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, items)
+	response.Paginated(c, items.Items, items.Total, items.Page, items.PageSize)
 }
 func (h *TicketHandler) Get(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -80,4 +82,17 @@ func (h *TicketHandler) Close(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"status": service.TicketStatusClosed})
+}
+
+func (h *TicketHandler) Delete(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid ticket ID")
+		return
+	}
+	if err := h.tickets.Delete(c.Request.Context(), id, true); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"status": "deleted"})
 }

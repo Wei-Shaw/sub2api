@@ -142,6 +142,7 @@ func registerTicketRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		tickets.GET("/:id", h.Admin.Ticket.Get)
 		tickets.POST("/:id/messages", h.Admin.Ticket.Message)
 		tickets.POST("/:id/close", h.Admin.Ticket.Close)
+		tickets.DELETE("/:id", h.Admin.Ticket.Delete)
 	}
 }
 

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"testing"
 	"time"
 )
@@ -20,18 +21,19 @@ func (r *ticketRepoStub) Create(_ context.Context, input CreateTicketInput) (*Ti
 	return r.created, r.message, nil
 }
 func (r *ticketRepoStub) GetByID(context.Context, int64) (*Ticket, error) { return r.created, nil }
-func (r *ticketRepoStub) ListByUser(context.Context, int64) ([]Ticket, error) {
+func (r *ticketRepoStub) ListByUser(context.Context, int64, pagination.PaginationParams) ([]Ticket, int64, error) {
 	r.listByUserCalls++
-	return nil, nil
+	return nil, 0, nil
 }
-func (r *ticketRepoStub) List(context.Context) ([]Ticket, error) {
+func (r *ticketRepoStub) List(context.Context, pagination.PaginationParams) ([]Ticket, int64, error) {
 	r.listCalls++
-	return []Ticket{{ID: 1, UserID: 7}, {ID: 2, UserID: 8}}, nil
+	return []Ticket{{ID: 1, UserID: 7}, {ID: 2, UserID: 8}}, 2, nil
 }
 func (r *ticketRepoStub) AddMessage(context.Context, AddTicketMessageInput) (*TicketMessage, error) {
 	return r.message, nil
 }
 func (r *ticketRepoStub) Close(context.Context, int64, int64) error { return nil }
+func (r *ticketRepoStub) Delete(context.Context, int64) error       { return nil }
 func (r *ticketRepoStub) LastMessageBySender(context.Context, int64, string) (*TicketMessage, error) {
 	return nil, nil
 }
@@ -80,11 +82,11 @@ func TestTicketServiceRejectsWhenDisabled(t *testing.T) {
 func TestTicketServiceAdminListReturnsTicketsFromAllUsers(t *testing.T) {
 	repo := &ticketRepoStub{}
 	svc := NewTicketService(repo, nil, &ticketSettingStub{values: map[string]string{SettingKeyTicketSystemEnabled: "true"}}, nil)
-	items, err := svc.List(context.Background(), 1, true)
+	items, err := svc.List(context.Background(), 1, true, pagination.PaginationParams{Page: 1, PageSize: 20})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	if len(items) != 2 || repo.listCalls != 1 || repo.listByUserCalls != 0 {
-		t.Fatalf("admin list used the wrong scope: items=%d list=%d listByUser=%d", len(items), repo.listCalls, repo.listByUserCalls)
+	if len(items.Items) != 2 || repo.listCalls != 1 || repo.listByUserCalls != 0 {
+		t.Fatalf("admin list used the wrong scope: items=%d list=%d listByUser=%d", len(items.Items), repo.listCalls, repo.listByUserCalls)
 	}
 }

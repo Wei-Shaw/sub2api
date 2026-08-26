@@ -22,8 +22,18 @@ export interface Ticket {
   messages?: TicketMessage[]
 }
 
+export interface TicketPage {
+  items: Ticket[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+}
+
+type TicketListParams = { page?: number; page_size?: number }
+
 export const ticketsAPI = {
-  async list() { const { data } = await apiClient.get<Ticket[]>('/tickets'); return data },
+  async list(params?: TicketListParams) { const { data } = await apiClient.get<TicketPage>('/tickets', { params }); return data },
   async create(payload: { title: string; description: string; images?: string[] }) { const { data } = await apiClient.post<Ticket>('/tickets', payload); return data },
   async get(id: number) { const { data } = await apiClient.get<Ticket>(`/tickets/${id}`); return data },
   async reply(id: number, payload: { content: string; images?: string[] }) { const { data } = await apiClient.post<TicketMessage>(`/tickets/${id}/messages`, payload); return data },
@@ -31,10 +41,11 @@ export const ticketsAPI = {
 }
 
 export const adminTicketsAPI = {
-  async list() { const { data } = await apiClient.get<Ticket[]>('/admin/tickets'); return data },
+  async list(params?: TicketListParams) { const { data } = await apiClient.get<TicketPage>('/admin/tickets', { params }); return data },
   async get(id: number) { const { data } = await apiClient.get<Ticket>(`/admin/tickets/${id}`); return data },
   async reply(id: number, payload: { content: string; images?: string[] }) { const { data } = await apiClient.post<TicketMessage>(`/admin/tickets/${id}/messages`, payload); return data },
   async close(id: number) { const { data } = await apiClient.post<{ status: string }>(`/admin/tickets/${id}/close`); return data },
+  async remove(id: number) { const { data } = await apiClient.delete<{ status: string }>(`/admin/tickets/${id}`); return data },
 }
 
 export default ticketsAPI

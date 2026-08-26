@@ -430,6 +430,7 @@ type PublicSettings struct {
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
+	TicketSystemEnabled        bool `json:"ticket_system_enabled"`
 }
 
 type LoginAgreementDocument struct {
