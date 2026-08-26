@@ -24,9 +24,9 @@
               :to="documentRoute(doc)"
               target="_blank"
               rel="noopener noreferrer"
-              class="font-medium text-primary-600 underline-offset-4 transition hover:text-primary-700 hover:underline dark:text-primary-300 dark:hover:text-primary-200"
+              class="font-medium text-blue-600 underline-offset-4 transition hover:text-blue-700 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
             >
-              {{ doc.title }}
+              {{ displayDocumentTitle(doc.title) }}
             </RouterLink>
             <span v-if="index < documents.length - 1">{{ t('legal.loginAgreementPrompt.documentSeparator') }}</span>
           </template>
@@ -109,7 +109,7 @@
                   <Icon :name="documentIcon(index, doc.title)" size="sm" />
                 </span>
                 <span class="min-w-0 flex-1">
-                  <span class="block truncate text-sm font-semibold text-gray-950 dark:text-white">{{ doc.title }}</span>
+                  <span class="block truncate text-sm font-semibold text-blue-600 dark:text-blue-400">{{ displayDocumentTitle(doc.title) }}</span>
                 </span>
                 <span class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-gray-400 transition group-hover:bg-primary-50 group-hover:text-primary-600 dark:group-hover:bg-primary-500/10 dark:group-hover:text-primary-300">
                   <Icon name="externalLink" size="sm" />
@@ -179,6 +179,10 @@ function documentRoute(doc: LoginAgreementDocument) {
       documentId: doc.id || doc.title,
     },
   }
+}
+
+function displayDocumentTitle(title: string): string {
+  return title.replace(/\*\*/g, '')
 }
 
 function handleCheckboxChange(event: Event): void {

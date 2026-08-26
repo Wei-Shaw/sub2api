@@ -49,14 +49,6 @@
             <Icon name="grid" size="md" />
             <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
           </router-link>
-          <button
-            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-dark-400 dark:hover:bg-dark-800"
-            :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
-            @click="toggleTheme"
-          >
-            <Icon v-if="isDark" name="sun" size="md" />
-            <Icon v-else name="moon" size="md" />
-          </button>
           <router-link
             :to="isAuthenticated ? dashboardPath : '/login'"
             class="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
@@ -104,7 +96,7 @@
           <div class="h-10 w-10 overflow-hidden rounded-xl shadow-md">
             <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
           </div>
-          <span class="text-2xl font-semibold text-black">AIFlow</span>
+          <span class="text-2xl font-semibold text-black">{{ siteName }}</span>
         </div>
 
         <!-- Nav Actions -->
@@ -137,16 +129,6 @@
             <Icon name="grid" size="md" />
             <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
           </router-link>
-
-          <!-- Theme Toggle -->
-          <button
-            @click="toggleTheme"
-            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
-            :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
-          >
-            <Icon v-if="isDark" name="sun" size="md" />
-            <Icon v-else name="moon" size="md" />
-          </button>
 
           <!-- Login / Dashboard Button -->
           <router-link
@@ -196,7 +178,7 @@
               <span class="rounded-full border-2 border-black px-6 py-2 text-2xl font-medium md:text-3xl">
                 AIFlow 中转
               </span>
-              <span class="text-5xl font-bold tracking-tight md:text-7xl">
+              <span class="hero-title-animated text-5xl font-bold tracking-tight md:text-7xl">
                 畅连多种 AI 模型
               </span>
               <p class="mt-4 w-full text-center text-base font-normal leading-relaxed text-gray-700 md:text-xl">
@@ -421,7 +403,7 @@
         class="mx-auto flex max-w-6xl flex-col items-center justify-center gap-4 text-center sm:flex-row sm:text-left"
       >
         <p class="text-sm text-gray-500 dark:text-dark-400">
-          &copy; {{ currentYear }} AIFlow. {{ t('home.footer.allRightsReserved') }}
+          &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
         </p>
         <div class="flex items-center gap-4">
           <a
@@ -440,7 +422,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
@@ -470,9 +452,6 @@ const isHomeContentUrl = computed(() => {
   return content.startsWith('http://') || content.startsWith('https://')
 })
 
-// Theme
-const isDark = ref(document.documentElement.classList.contains('dark'))
-
 // Auth state
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const modelPlazaRequiresAuth = computed(
@@ -492,13 +471,6 @@ const userInitial = computed(() => {
 // Current year for footer
 const currentYear = computed(() => new Date().getFullYear())
 
-// Toggle theme
-function toggleTheme() {
-  isDark.value = !isDark.value
-  document.documentElement.classList.toggle('dark', isDark.value)
-  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-}
-
 // Initialize theme
 function initTheme() {
   const savedTheme = localStorage.getItem('theme')
@@ -506,7 +478,6 @@ function initTheme() {
     savedTheme === 'dark' ||
     (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
   ) {
-    isDark.value = true
     document.documentElement.classList.add('dark')
   }
 }
@@ -523,3 +494,59 @@ onMounted(() => {
   }
 })
 </script>
+
+<style scoped>
+.hero-title-animated {
+  color: transparent;
+  background: linear-gradient(
+    100deg,
+    #111827 0%,
+    #111827 38%,
+    #4f8cff 50%,
+    #111827 62%,
+    #111827 100%
+  );
+  background-size: 240% 100%;
+  background-position: 120% 0;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: hero-title-highlight 8s ease-in-out infinite;
+}
+
+:global(.dark) .hero-title-animated {
+  background-image: linear-gradient(
+    100deg,
+    #f8fafc 0%,
+    #f8fafc 38%,
+    #70a7ff 50%,
+    #f8fafc 62%,
+    #f8fafc 100%
+  );
+}
+
+@keyframes hero-title-highlight {
+  from {
+    background-position: 120% 0;
+  }
+
+  62.5% {
+    background-position: -20% 0;
+  }
+
+  to {
+    background-position: -20% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-title-animated {
+    color: #111827;
+    background: none;
+    animation: none;
+  }
+
+  :global(.dark) .hero-title-animated {
+    color: #f8fafc;
+  }
+}
+</style>

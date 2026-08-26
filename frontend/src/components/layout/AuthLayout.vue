@@ -26,7 +26,10 @@
       </div>
 
       <!-- Card Container -->
-      <div class="rounded-2xl border border-gray-200 bg-white p-8 shadow-lg dark:border-dark-700 dark:bg-dark-800">
+      <div
+        class="rounded-2xl border border-gray-200 bg-white shadow-lg dark:border-dark-700 dark:bg-dark-800"
+        :class="compact ? 'p-5' : 'p-8'"
+      >
         <slot />
       </div>
 
@@ -48,9 +51,13 @@ import { computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores'
 import { sanitizeUrl } from '@/utils/url'
 
+withDefaults(defineProps<{ compact?: boolean }>(), {
+  compact: false
+})
+
 const appStore = useAppStore()
 
-const siteName = computed(() => 'AIFlow')
+const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
 const siteLogo = computed(() => sanitizeUrl(appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
 const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'Subscription to API Conversion Platform')
 const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
