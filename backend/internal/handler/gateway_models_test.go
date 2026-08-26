@@ -69,6 +69,49 @@ func TestDefaultModelIDsForCompositeIncludesAntigravityDefaults(t *testing.T) {
 	require.Contains(t, compositeIDs, antigravityIDs[0])
 }
 
+func TestDefaultModelIDsForCursor(t *testing.T) {
+	ids := defaultModelIDsForPlatform(service.PlatformCursor)
+	require.Contains(t, ids, "default")
+	require.Contains(t, ids, "composer-2.5")
+	require.Contains(t, ids, "claude-opus-5")
+	require.Contains(t, ids, "gpt-5.4-mini")
+	require.Contains(t, ids, "kimi-k2.7-code")
+	compositeIDs := defaultModelIDsForPlatform(service.PlatformComposite)
+	require.NotContains(t, compositeIDs, "composer-2.5")
+}
+
+func TestGatewayModels_CursorFallsBackToStaticCatalogWithoutToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(51)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{ID: 1, Platform: service.PlatformCursor, Type: service.AccountTypeOAuth},
+				},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformCursor},
+	})
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, "list", got.Object)
+	require.Contains(t, modelIDsForTest(got.Data), "default")
+	require.Contains(t, modelIDsForTest(got.Data), "composer-2.5")
+}
+
 func TestGatewayModels_GeminiGroupFallsBackToGeminiModels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

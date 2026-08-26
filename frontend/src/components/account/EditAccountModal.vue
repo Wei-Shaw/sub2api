@@ -26,6 +26,73 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
+      <!-- Cursor Pro credentials -->
+      <div v-if="account.platform === 'cursor'" class="space-y-4" data-testid="cursor-credentials">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cursor.hint') }}</p>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.cursor.accessToken') }}</label>
+          <input
+            v-model="cursorAccessToken"
+            data-testid="cursor-access-token"
+            type="password"
+            autocomplete="off"
+            class="input font-mono"
+            :placeholder="t('admin.accounts.cursor.accessTokenKeep')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.cursor.accessTokenHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.cursor.refreshToken') }}</label>
+          <input
+            v-model="cursorRefreshToken"
+            data-testid="cursor-refresh-token"
+            type="password"
+            autocomplete="off"
+            class="input font-mono"
+            :placeholder="t('admin.accounts.cursor.refreshTokenKeep')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.cursor.refreshTokenHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.cursor.machineId') }}</label>
+          <input
+            v-model="cursorMachineId"
+            data-testid="cursor-machine-id"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            class="input font-mono"
+            :placeholder="t('admin.accounts.cursor.machineIdPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.cursor.machineIdHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.cursor.macMachineId') }}</label>
+          <input
+            v-model="cursorMacMachineId"
+            data-testid="cursor-mac-machine-id"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            class="input font-mono"
+            :placeholder="t('admin.accounts.cursor.macMachineIdPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.cursor.macMachineIdHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.cursor.clientVersion') }}</label>
+          <input
+            v-model="cursorClientVersion"
+            data-testid="cursor-client-version"
+            type="text"
+            autocomplete="off"
+            class="input font-mono"
+            :placeholder="t('admin.accounts.cursor.clientVersionPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.cursor.clientVersionHint') }}</p>
+        </div>
+      </div>
+
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
         <div>
@@ -581,10 +648,11 @@
         </div>
       </div>
 
-      <!-- OpenAI/Grok OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
+      <!-- OpenAI / Grok / Cursor OAuth model restriction (OAuth types have no apikey container) -->
       <div
-        v-if="(account.platform === 'openai' || account.platform === 'grok') && account.type === 'oauth'"
+        v-if="(account.platform === 'openai' || account.platform === 'grok' || account.platform === 'cursor') && account.type === 'oauth'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="oauth-model-restriction"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
@@ -627,8 +695,13 @@
           </div>
 
           <!-- Whitelist Mode -->
-          <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+          <div v-show="modelRestrictionMode === 'whitelist'">
+            <ModelWhitelistSelector
+              v-model="allowedModels"
+              :platform="account?.platform || 'anthropic'"
+              :account-id="account?.id"
+              @catalog-loaded="onWhitelistCatalogLoaded"
+            />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -638,7 +711,7 @@
           </div>
 
           <!-- Mapping Mode -->
-          <div v-else>
+          <div v-show="modelRestrictionMode === 'mapping'">
             <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
               <p class="text-xs text-purple-700 dark:text-purple-400">
                 {{ t('admin.accounts.mapRequestModels') }}
@@ -674,6 +747,7 @@
                   v-model="mapping.to"
                   type="text"
                   class="input flex-1"
+                  list="edit-oauth-mapping-targets"
                   :placeholder="t('admin.accounts.actualModel')"
                 />
                 <button
@@ -692,6 +766,9 @@
                 </button>
               </div>
             </div>
+            <datalist id="edit-oauth-mapping-targets">
+              <option v-for="model in mappingTargetModels" :key="model" :value="model" />
+            </datalist>
 
             <button
               type="button"
@@ -2796,6 +2873,7 @@ import {
   applyHeaderOverride,
   applyInterceptWarmup,
   applyPlanType,
+  buildCursorCredentials,
   buildPlanTypeOptions,
   readPlanType,
   isCustomGrokBaseUrl,
@@ -2824,6 +2902,7 @@ import {
 } from '@/utils/openaiWsMode'
 import {
   getPresetMappingsByPlatform,
+  getModelsByPlatform,
   commonErrorCodes,
   buildModelMappingObject,
   splitModelMappingObject,
@@ -2884,6 +2963,11 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const cursorAccessToken = ref('')
+const cursorRefreshToken = ref('')
+const cursorMachineId = ref('')
+const cursorMacMachineId = ref('')
+const cursorClientVersion = ref('')
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
@@ -3364,6 +3448,14 @@ const openAICompactStatusKey = computed(() => {
 
 // Computed: current preset mappings based on platform
 const presetMappings = computed(() => getPresetMappingsByPlatform(props.account?.platform || 'anthropic'))
+const liveModelCatalog = ref<string[]>([])
+const mappingTargetModels = computed(() => {
+  if (liveModelCatalog.value.length > 0) return liveModelCatalog.value
+  return getModelsByPlatform(props.account?.platform || 'anthropic')
+})
+const onWhitelistCatalogLoaded = (models: string[]) => {
+  liveModelCatalog.value = models
+}
 const tempUnschedPresets = computed(() => [
   {
     label: t('admin.accounts.tempUnschedulable.presets.overloadLabel'),
@@ -3544,6 +3636,21 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
   interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
   autoPauseOnExpired.value = newAccount.auto_pause_on_expired === true
+  cursorAccessToken.value = ''
+  cursorRefreshToken.value = ''
+  cursorMachineId.value =
+    newAccount.platform === 'cursor' && typeof credentials?.machine_id === 'string'
+      ? credentials.machine_id
+      : ''
+  cursorMacMachineId.value =
+    newAccount.platform === 'cursor' && typeof credentials?.mac_machine_id === 'string'
+      ? credentials.mac_machine_id
+      : ''
+  cursorClientVersion.value =
+    newAccount.platform === 'cursor' && typeof credentials?.client_version === 'string'
+      ? credentials.client_version
+      : ''
+  liveModelCatalog.value = []
   editVertexProjectId.value = ''
   editVertexClientEmail.value = ''
   editVertexLocation.value = 'us-central1'
@@ -3859,8 +3966,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
             : 'https://api.anthropic.com'
     editBaseUrl.value = platformDefaultUrl
 
-    // Load model mappings for OpenAI/Grok OAuth accounts
-    if ((newAccount.platform === 'openai' || newAccount.platform === 'grok') && newAccount.credentials) {
+    // Load model mappings for OpenAI/Grok/Cursor OAuth accounts
+    if ((newAccount.platform === 'openai' || newAccount.platform === 'grok' || newAccount.platform === 'cursor') && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
       loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
     } else {
@@ -4680,8 +4787,8 @@ const handleSubmit = async () => {
       updatePayload.credentials = newCredentials
     }
 
-    // OpenAI/Grok OAuth: persist model mapping to credentials
-    if ((props.account.platform === 'openai' || props.account.platform === 'grok') && props.account.type === 'oauth') {
+    // OpenAI/Grok/Cursor OAuth: persist model mapping to credentials
+    if ((props.account.platform === 'openai' || props.account.platform === 'grok' || props.account.platform === 'cursor') && props.account.type === 'oauth') {
       const currentCredentials = isSparkShadow.value
         ? {}
         : (updatePayload.credentials as Record<string, unknown>) ||
@@ -4742,6 +4849,27 @@ const handleSubmit = async () => {
       // backend applies the default-enabled policy to missing values.
       newExtra[GROK_CLIENT_TOOL_CACHE_EXTRA_KEY] = grokClientToolCacheEnabled.value
       updatePayload.extra = newExtra
+    }
+
+    if (props.account.platform === 'cursor' && props.account.type === 'oauth') {
+      const currentCredentials =
+        (updatePayload.credentials as Record<string, unknown>) ||
+        ((props.account.credentials as Record<string, unknown>) || {})
+      const built = buildCursorCredentials(
+        {
+          accessToken: cursorAccessToken.value,
+          refreshToken: cursorRefreshToken.value,
+          machineId: cursorMachineId.value,
+          macMachineId: cursorMacMachineId.value,
+          clientVersion: cursorClientVersion.value
+        },
+        'edit'
+      )
+      if (!built.ok) {
+        appStore.showError(t(built.errorKey))
+        return
+      }
+      updatePayload.credentials = { ...currentCredentials, ...built.credentials }
     }
 
     // OpenAI: 手动覆盖订阅档位 plan_type（Plus/Pro/Free）。仅 OAuth 非影子账号：

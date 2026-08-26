@@ -145,7 +145,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { accountsAPI } from '@/api/admin/accounts'
@@ -166,12 +166,17 @@ const props = defineProps<{
     platform: string
     type: string
     base_url?: string
-    api_key: string
+    api_key?: string
+    access_token?: string
+    machine_id?: string
+    mac_machine_id?: string
+    client_version?: string
   }
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: string[]]
+  'catalog-loaded': [models: string[]]
 }>()
 
 const appStore = useAppStore()
@@ -182,6 +187,7 @@ const searchQuery = ref('')
 const customModel = ref('')
 const isComposing = ref(false)
 const isSyncingUpstream = ref(false)
+const liveCatalog = ref<string[]>([])
 const normalizedPlatforms = computed(() => {
   const rawPlatforms =
     props.platforms && props.platforms.length > 0
@@ -205,6 +211,7 @@ const upstreamSyncPlatforms = new Set([
   'gemini',
   'antigravity',
   'grok',
+  'cursor',
   'kimi',
   'zhipu',
   'deepseek'
@@ -220,9 +227,9 @@ const canSyncUpstream = computed(() => {
   return false
 })
 
-const availableOptions = computed(() => {
+const staticPlatformModels = computed(() => {
   if (normalizedPlatforms.value.length === 0) {
-    return allModels
+    return allModels.map(model => model.value)
   }
 
   const allowedModels = new Set<string>()
@@ -231,8 +238,23 @@ const availableOptions = computed(() => {
       allowedModels.add(model)
     }
   }
+  return Array.from(allowedModels)
+})
 
-  return allModels.filter(model => allowedModels.has(model.value))
+const availableOptions = computed(() => {
+  const seen = new Set<string>()
+  const options: { value: string; label: string }[] = []
+  const add = (model: string) => {
+    const id = model.trim()
+    if (!id || seen.has(id)) return
+    seen.add(id)
+    options.push({ value: id, label: id })
+  }
+
+  for (const model of liveCatalog.value) add(model)
+  for (const model of staticPlatformModels.value) add(model)
+  for (const model of props.modelValue) add(model)
+  return options
 })
 
 const filteredModels = computed(() => {
@@ -279,38 +301,95 @@ const handleEnter = () => {
   if (!isComposing.value) addCustom()
 }
 
-const fillRelated = () => {
-  const newModels = [...props.modelValue]
-  for (const platform of normalizedPlatforms.value) {
-    for (const model of getModelsByPlatform(platform)) {
-      if (!newModels.includes(model)) {
-        newModels.push(model)
+const fillRelated = async () => {
+  let sources = liveCatalog.value
+  let usedStaticFallback = false
+  if (sources.length === 0) {
+    if (canLoadCatalog()) {
+      try {
+        const result = await fetchUpstreamModels()
+        const upstreamModels = result?.models.map(model => model.trim()).filter(Boolean) ?? []
+        if (upstreamModels.length > 0) {
+          applyLiveCatalog(upstreamModels)
+          sources = upstreamModels
+        }
+      } catch {
+        // Live picker failed; fall through to the static catalog.
       }
+    }
+    if (sources.length === 0) {
+      sources = staticPlatformModels.value
+      usedStaticFallback = sources.length > 0
+    }
+  }
+
+  const newModels = [...props.modelValue]
+  for (const model of sources) {
+    if (!newModels.includes(model)) {
+      newModels.push(model)
     }
   }
   emit('update:modelValue', newModels)
+  if (usedStaticFallback && normalizedPlatforms.value.some(platform => platform.toLowerCase() === 'cursor')) {
+    appStore.showWarning(t('admin.accounts.cursorStaticFallbackUsed', { count: sources.length }))
+  }
+}
+
+const applyLiveCatalog = (models: string[]) => {
+  liveCatalog.value = models
+  emit('catalog-loaded', models)
+}
+
+const canLoadCatalog = () => {
+  if (!canSyncUpstream.value) return false
+  if (props.accountId) return true
+  const creds = props.syncCredentials
+  if (!creds) return false
+  if (creds.platform.toLowerCase() === 'cursor') {
+    return Boolean(creds.access_token?.trim())
+  }
+  return Boolean(creds.api_key?.trim())
+}
+
+const fetchUpstreamModels = async () => {
+  if (props.accountId) {
+    return accountsAPI.syncUpstreamModels(props.accountId)
+  }
+  if (props.syncCredentials) {
+    return accountsAPI.syncUpstreamModelsPreview(props.syncCredentials as SyncUpstreamPreviewParams)
+  }
+  return null
+}
+
+const loadLiveCatalog = async () => {
+  if (!canLoadCatalog()) return
+  try {
+    const result = await fetchUpstreamModels()
+    const upstreamModels = result?.models.map(model => model.trim()).filter(Boolean) ?? []
+    if (upstreamModels.length > 0) {
+      applyLiveCatalog(upstreamModels)
+    }
+  } catch {
+    // Auto-load keeps the static fallback when the live picker is unreachable.
+  }
 }
 
 const syncUpstreamModels = async () => {
   if (isSyncingUpstream.value) return
-  if (!props.accountId && !props.syncCredentials) return
+  if (!canLoadCatalog()) return
 
   isSyncingUpstream.value = true
   try {
-    let result
-    if (props.accountId) {
-      result = await accountsAPI.syncUpstreamModels(props.accountId)
-    } else if (props.syncCredentials) {
-      result = await accountsAPI.syncUpstreamModelsPreview(props.syncCredentials as SyncUpstreamPreviewParams)
-    } else {
-      return
-    }
+    const result = await fetchUpstreamModels()
+    if (!result) return
 
     const upstreamModels = result.models.map(model => model.trim()).filter(Boolean)
     if (upstreamModels.length === 0) {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsEmpty'))
       return
     }
+
+    applyLiveCatalog(upstreamModels)
 
     const newModels = [...props.modelValue]
     let addedCount = 0
@@ -339,4 +418,31 @@ const clearAll = () => {
   emit('update:modelValue', [])
 }
 
+let catalogTimer: ReturnType<typeof setTimeout> | undefined
+watch(
+  () => ({
+    accountId: props.accountId,
+    platform: props.platform,
+    platforms: props.platforms?.join(','),
+    accessToken: props.syncCredentials?.access_token,
+    apiKey: props.syncCredentials?.api_key
+  }),
+  () => {
+    if (catalogTimer) clearTimeout(catalogTimer)
+    if (props.accountId) {
+      void loadLiveCatalog()
+      return
+    }
+    catalogTimer = setTimeout(() => {
+      void loadLiveCatalog()
+    }, 400)
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  if (catalogTimer) clearTimeout(catalogTimer)
+})
+
 </script>
+

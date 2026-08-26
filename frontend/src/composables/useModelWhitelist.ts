@@ -162,6 +162,48 @@ const xaiModels = [
   'grok-imagine-video-1.5'
 ]
 
+// Cursor Pro picker (static fallback; live slugs come from AvailableModels)
+const cursorModels = [
+  'default',
+  'grok-4.6',
+  'composer-2.5',
+  'claude-opus-5',
+  'claude-opus-4-8',
+  'gpt-5.6-sol',
+  'gpt-5.5',
+  'claude-fable-5',
+  'grok-4.5',
+  'gemini-3.7-flash',
+  'gpt-5.6-terra',
+  'claude-sonnet-5',
+  'claude-sonnet-4-6',
+  'gpt-5.3-codex',
+  'claude-opus-4-7',
+  'gpt-5.4',
+  'claude-opus-4-6',
+  'claude-opus-4-5',
+  'gpt-5.2',
+  'gpt-5.6-luna',
+  'gemini-3.6-flash',
+  'gemini-3.1-pro',
+  'gpt-5.4-mini',
+  'gpt-5.4-nano',
+  'claude-haiku-4-5',
+  'claude-sonnet-4-5',
+  'gpt-5.1',
+  'gemini-3-flash',
+  'gemini-3.5-flash',
+  'claude-sonnet-4',
+  'gpt-5-mini',
+  'gemini-2.5-flash',
+  'kimi-k3',
+  'kimi-k2.7-code',
+  'glm-5.2',
+  'GLM-4.7',
+  'GLM-5.1',
+  'composer-1'
+]
+
 // Cohere
 const cohereModels = [
   'command-a-03-2025',
@@ -244,6 +286,7 @@ const allModelsList: string[] = [
   ...mistralModels,
   ...metaModels,
   ...xaiModels,
+  ...cursorModels,
   ...cohereModels,
   ...yiModels,
   ...moonshotModels,
@@ -321,6 +364,16 @@ const grokPresetMappings = [
   { label: 'Imagine Image', from: 'grok-imagine', to: 'grok-imagine-image-quality', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' },
   { label: 'Imagine Edit', from: 'grok-imagine-edit', to: 'grok-imagine-image-quality', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400' },
   { label: 'Imagine Video', from: 'grok-imagine-video-1.5', to: 'grok-imagine-video-1.5', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' }
+]
+
+const cursorPresetMappings = [
+  { label: 'Auto', from: 'auto', to: 'default', color: 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800/50 dark:text-slate-300' },
+  { label: 'Composer', from: 'composer', to: 'composer-2.5', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' },
+  { label: 'Opus', from: 'opus', to: 'claude-opus-5', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
+  { label: 'GPT-5.6', from: 'gpt-5.6', to: 'gpt-5.6-sol', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' },
+  { label: 'Codex', from: 'codex', to: 'gpt-5.3-codex', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' },
+  { label: 'Sonnet', from: 'sonnet', to: 'claude-sonnet-4-6', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
+  { label: 'Grok 4.6', from: 'grok-4.6', to: 'grok-4.6', color: 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800/50 dark:text-slate-300' }
 ]
 
 // Antigravity 预设映射（支持通配符）
@@ -428,6 +481,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'meta': return metaModels
     case 'xai':
     case 'grok': return xaiModels
+    case 'cursor': return cursorModels
     case 'cohere': return cohereModels
     case 'yi': return yiModels
     case 'moonshot':
@@ -447,6 +501,7 @@ export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'openai') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
   if (platform === 'grok' || platform === 'xai') return grokPresetMappings
+  if (platform === 'cursor') return cursorPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
   return anthropicPresetMappings

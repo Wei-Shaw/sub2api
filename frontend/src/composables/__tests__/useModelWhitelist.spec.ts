@@ -81,6 +81,19 @@ describe('useModelWhitelist', () => {
     expect(models).toContain('composer-2.5')
   })
 
+  it('cursor 模型列表包含 picker 回退 slug', () => {
+    const models = getModelsByPlatform('cursor')
+
+    expect(models).toContain('default')
+    expect(models).toContain('composer-2.5')
+    expect(models).toContain('claude-opus-5')
+    expect(models).toContain('gpt-5.6-sol')
+    expect(models).toContain('claude-sonnet-4-6')
+    expect(models).toContain('gpt-5.4-mini')
+    expect(models).toContain('kimi-k2.7-code')
+    expect(models).toContain('gemini-3.7-flash')
+  })
+
   it('gemini 模型列表包含原生生图模型', () => {
     const models = getModelsByPlatform('gemini')
 

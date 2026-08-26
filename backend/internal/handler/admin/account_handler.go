@@ -21,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cursor"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -2707,6 +2708,35 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+	if account.Platform == service.PlatformCursor {
+		mapping := account.GetModelMapping()
+		if len(mapping) > 0 {
+			requestedModels := make([]string, 0, len(mapping))
+			for requestedModel := range mapping {
+				requestedModels = append(requestedModels, requestedModel)
+			}
+			sort.Strings(requestedModels)
+			models := make([]cursor.Model, 0, len(requestedModels))
+			for _, requestedModel := range requestedModels {
+				models = append(models, cursor.Model{
+					ID:          requestedModel,
+					Object:      "model",
+					OwnedBy:     "cursor",
+					DisplayName: requestedModel,
+				})
+			}
+			response.Success(c, models)
+			return
+		}
+		live, err := service.FetchCursorPickerModels(c.Request.Context(), account)
+		if err == nil && len(live) > 0 {
+			response.Success(c, cursor.ModelsFromAvailable(live))
+			return
+		}
+		response.Success(c, cursor.DefaultModels)
+		return
+	}
+
 	// Handle Claude/Anthropic accounts
 	// For OAuth and Setup-Token accounts: return default models
 	if account.IsOAuth() {
@@ -2794,23 +2824,52 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 // POST /api/v1/admin/accounts/models/sync-upstream-preview
 func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 	var req struct {
-		Platform string `json:"platform" binding:"required"`
-		Type     string `json:"type" binding:"required"`
-		BaseURL  string `json:"base_url"`
-		APIKey   string `json:"api_key" binding:"required"`
+		Platform      string `json:"platform" binding:"required"`
+		Type          string `json:"type" binding:"required"`
+		BaseURL       string `json:"base_url"`
+		APIKey        string `json:"api_key"`
+		AccessToken   string `json:"access_token"`
+		MachineID     string `json:"machine_id"`
+		MacMachineID  string `json:"mac_machine_id"`
+		ClientVersion string `json:"client_version"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
 
+	platform := strings.TrimSpace(req.Platform)
+	if strings.EqualFold(platform, service.PlatformCursor) {
+		if strings.TrimSpace(req.AccessToken) == "" {
+			response.BadRequest(c, "Cursor access token is required")
+			return
+		}
+	} else if strings.TrimSpace(req.APIKey) == "" {
+		response.BadRequest(c, "API key is required")
+		return
+	}
+
+	credentials := map[string]any{
+		"api_key":  req.APIKey,
+		"base_url": req.BaseURL,
+	}
+	if token := strings.TrimSpace(req.AccessToken); token != "" {
+		credentials["access_token"] = token
+	}
+	if machineID := strings.TrimSpace(req.MachineID); machineID != "" {
+		credentials["machine_id"] = machineID
+	}
+	if macMachineID := strings.TrimSpace(req.MacMachineID); macMachineID != "" {
+		credentials["mac_machine_id"] = macMachineID
+	}
+	if clientVersion := strings.TrimSpace(req.ClientVersion); clientVersion != "" {
+		credentials["client_version"] = clientVersion
+	}
+
 	tempAccount := &service.Account{
-		Platform: req.Platform,
-		Type:     req.Type,
-		Credentials: map[string]any{
-			"api_key":  req.APIKey,
-			"base_url": req.BaseURL,
-		},
+		Platform:    req.Platform,
+		Type:        req.Type,
+		Credentials: credentials,
 	}
 
 	if h.accountTestService == nil {

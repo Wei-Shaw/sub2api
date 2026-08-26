@@ -429,3 +429,77 @@ export function applyPlanType(
   }
   return credentials
 }
+
+// ========== Cursor Pro (paste tokens from a local Cursor install) ==========
+
+export const CURSOR_DEFAULT_CLIENT_VERSION = '3.16.17'
+
+const CURSOR_TELEMETRY_ID_RE = /^[0-9a-fA-F]{64}$/
+
+export type CursorCredentialFields = {
+  accessToken: string
+  refreshToken: string
+  machineId: string
+  macMachineId: string
+  clientVersion: string
+}
+
+export function normalizeCursorAccessToken(raw: string): string {
+  const trimmed = raw.trim()
+  const sep = trimmed.indexOf('::')
+  if (sep >= 0 && sep < trimmed.length - 2) {
+    return trimmed.slice(sep + 2).trim()
+  }
+  return trimmed
+}
+
+export function isCursorTelemetryId(value: string): boolean {
+  return CURSOR_TELEMETRY_ID_RE.test(value.trim())
+}
+
+export function buildCursorCredentials(
+  fields: CursorCredentialFields,
+  mode: 'create' | 'edit'
+): { ok: true; credentials: Record<string, unknown> } | { ok: false; errorKey: string } {
+  const credentials: Record<string, unknown> = {}
+
+  const accessToken = normalizeCursorAccessToken(fields.accessToken)
+  if (accessToken) {
+    credentials.access_token = accessToken
+  } else if (mode === 'create') {
+    return { ok: false, errorKey: 'admin.accounts.cursor.accessTokenRequired' }
+  }
+
+  const refreshToken = fields.refreshToken.trim()
+  if (refreshToken) {
+    credentials.refresh_token = refreshToken
+  }
+
+  const machineId = fields.machineId.trim()
+  if (machineId) {
+    if (!isCursorTelemetryId(machineId)) {
+      return { ok: false, errorKey: 'admin.accounts.cursor.machineIdInvalid' }
+    }
+    credentials.machine_id = machineId
+  } else if (mode === 'create') {
+    return { ok: false, errorKey: 'admin.accounts.cursor.machineIdRequired' }
+  }
+
+  const macMachineId = fields.macMachineId.trim()
+  if (macMachineId) {
+    if (!isCursorTelemetryId(macMachineId)) {
+      return { ok: false, errorKey: 'admin.accounts.cursor.macMachineIdInvalid' }
+    }
+    credentials.mac_machine_id = macMachineId
+  } else if (mode === 'create') {
+    return { ok: false, errorKey: 'admin.accounts.cursor.macMachineIdRequired' }
+  }
+
+  const clientVersion =
+    fields.clientVersion.trim() || (mode === 'create' ? CURSOR_DEFAULT_CLIENT_VERSION : '')
+  if (clientVersion) {
+    credentials.client_version = clientVersion
+  }
+
+  return { ok: true, credentials }
+}
