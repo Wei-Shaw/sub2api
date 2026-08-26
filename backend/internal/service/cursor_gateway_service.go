@@ -390,24 +390,32 @@ func (s *CursorGatewayService) streamResponse(
 	}
 
 	var firstTokenMs *int
-	var totalText strings.Builder
+	var emitted bool
 	completionID := "chatcmpl-cursor-" + time.Now().Format("20060102150405")
 
 	usage, connectErr := cursor.ConsumeAssistantStream(body, func(ev cursor.StreamEvent) error {
-		if ev.Type != "text" {
+		switch ev.Type {
+		case "text", "thinking":
+		default:
 			return nil
 		}
 		if firstTokenMs == nil {
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
 		}
-		totalText.WriteString(ev.Text)
-		fmt.Fprintf(c.Writer, "data: %s\n\n", buildCursorSSEChunk(completionID, model, ev.Text, ""))
+		content, reasoning := "", ""
+		if ev.Type == "thinking" {
+			reasoning = ev.Text
+		} else {
+			content = ev.Text
+		}
+		emitted = true
+		fmt.Fprintf(c.Writer, "data: %s\n\n", buildCursorSSEChunk(completionID, model, content, reasoning, ""))
 		c.Writer.Flush()
 		return nil
 	})
 
-	if connectErr != "" && totalText.Len() == 0 {
+	if connectErr != "" && !emitted {
 		_, errType, message := classifyCursorConnectError(connectErr)
 		errChunk, _ := json.Marshal(map[string]any{
 			"error": map[string]string{
@@ -418,7 +426,7 @@ func (s *CursorGatewayService) streamResponse(
 		fmt.Fprintf(c.Writer, "data: %s\n\n", errChunk)
 		c.Writer.Flush()
 	} else {
-		fmt.Fprintf(c.Writer, "data: %s\n\n", buildCursorSSEChunk(completionID, model, "", "stop"))
+		fmt.Fprintf(c.Writer, "data: %s\n\n", buildCursorSSEChunk(completionID, model, "", "", "stop"))
 		c.Writer.Flush()
 		if includeUsage {
 			if chatUsage := chatUsageFromCursor(usage); chatUsage != nil {
@@ -441,17 +449,28 @@ func (s *CursorGatewayService) nonStreamResponse(
 	warnings []map[string]string,
 	startTime time.Time,
 ) (*ForwardResult, error) {
-	var totalText strings.Builder
+	var totalText, thinking strings.Builder
 	usage, connectErr := cursor.ConsumeAssistantStream(body, func(ev cursor.StreamEvent) error {
-		if ev.Type == "text" {
+		switch ev.Type {
+		case "text":
 			totalText.WriteString(ev.Text)
+		case "thinking":
+			thinking.WriteString(ev.Text)
 		}
 		return nil
 	})
 
-	if connectErr != "" && totalText.Len() == 0 {
+	if connectErr != "" && totalText.Len() == 0 && thinking.Len() == 0 {
 		status, errType, message := classifyCursorConnectError(connectErr)
 		return nil, s.writeChatCompletionsError(c, status, errType, message)
+	}
+
+	message := map[string]any{
+		"role":    "assistant",
+		"content": totalText.String(),
+	}
+	if thinking.Len() > 0 {
+		message["reasoning_content"] = thinking.String()
 	}
 
 	completionID := "chatcmpl-cursor-" + time.Now().Format("20060102150405")
@@ -462,11 +481,8 @@ func (s *CursorGatewayService) nonStreamResponse(
 		"model":   model,
 		"choices": []map[string]any{
 			{
-				"index": 0,
-				"message": map[string]string{
-					"role":    "assistant",
-					"content": totalText.String(),
-				},
+				"index":         0,
+				"message":       message,
 				"finish_reason": "stop",
 			},
 		},
@@ -534,10 +550,13 @@ func chatUsageFromCursor(u cursor.TokenUsage) *apicompat.ChatUsage {
 	return usage
 }
 
-func buildCursorSSEChunk(id, model, content, finishReason string) string {
+func buildCursorSSEChunk(id, model, content, reasoning, finishReason string) string {
 	delta := map[string]any{}
 	if content != "" {
 		delta["content"] = content
+	}
+	if reasoning != "" {
+		delta["reasoning_content"] = reasoning
 	}
 	choice := map[string]any{
 		"index": 0,

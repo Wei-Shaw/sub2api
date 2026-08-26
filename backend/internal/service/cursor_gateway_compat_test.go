@@ -124,16 +124,74 @@ func TestCursorNonStreamResponseRecordsTurnEndedUsage(t *testing.T) {
 	require.Equal(t, 7, parsed.Usage.CompletionTokens)
 }
 
+func TestCursorNonStreamResponseIncludesReasoningContent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	frames := encodeCursorThinkingAndTextFrames(t, "plan first", "Hi", 3, 2)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	_, err := NewCursorGatewayService(nil, nil).nonStreamResponse(c, bytes.NewReader(frames), "claude-opus-5", nil, time.Now())
+	require.NoError(t, err)
+
+	var parsed struct {
+		Choices []struct {
+			Message struct {
+				Content          string `json:"content"`
+				ReasoningContent string `json:"reasoning_content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &parsed))
+	require.Equal(t, "Hi", parsed.Choices[0].Message.Content)
+	require.Equal(t, "plan first", parsed.Choices[0].Message.ReasoningContent)
+}
+
+func TestCursorStreamResponseForwardsThinking(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	frames := encodeCursorThinkingAndTextFrames(t, "plan first", "Hi", 3, 2)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	_, err := NewCursorGatewayService(nil, nil).streamResponse(c, bytes.NewReader(frames), "claude-opus-5", nil, time.Now(), false)
+	require.NoError(t, err)
+
+	body := rec.Body.String()
+	require.Contains(t, body, `"reasoning_content":"plan first"`)
+	require.Contains(t, body, `"content":"Hi"`)
+}
+
 func encodeCursorAssistantFrames(t *testing.T, text string, inputTokens, outputTokens int) []byte {
 	t.Helper()
-	var delta cursor.ProtobufWriter
-	delta.String(1, text)
-	var textUpdate cursor.ProtobufWriter
-	textUpdate.Bytes(1, delta.Result())
-	var textServer cursor.ProtobufWriter
-	textServer.Bytes(1, textUpdate.Result())
-	textFrame, err := cursor.EncodeFrame(textServer.Result(), false)
-	require.NoError(t, err)
+	return encodeCursorThinkingAndTextFrames(t, "", text, inputTokens, outputTokens)
+}
+
+func encodeCursorThinkingAndTextFrames(t *testing.T, thinking, text string, inputTokens, outputTokens int) []byte {
+	t.Helper()
+	var out []byte
+	if thinking != "" {
+		var delta cursor.ProtobufWriter
+		delta.String(1, thinking)
+		var update cursor.ProtobufWriter
+		update.Bytes(4, delta.Result())
+		var server cursor.ProtobufWriter
+		server.Bytes(1, update.Result())
+		frame, err := cursor.EncodeFrame(server.Result(), false)
+		require.NoError(t, err)
+		out = append(out, frame...)
+	}
+	if text != "" {
+		var delta cursor.ProtobufWriter
+		delta.String(1, text)
+		var textUpdate cursor.ProtobufWriter
+		textUpdate.Bytes(1, delta.Result())
+		var textServer cursor.ProtobufWriter
+		textServer.Bytes(1, textUpdate.Result())
+		textFrame, err := cursor.EncodeFrame(textServer.Result(), false)
+		require.NoError(t, err)
+		out = append(out, textFrame...)
+	}
 
 	var ended cursor.ProtobufWriter
 	ended.Varint(1, inputTokens)
@@ -144,5 +202,5 @@ func encodeCursorAssistantFrames(t *testing.T, text string, inputTokens, outputT
 	endServer.Bytes(1, endUpdate.Result())
 	endFrame, err := cursor.EncodeFrame(endServer.Result(), false)
 	require.NoError(t, err)
-	return append(textFrame, endFrame...)
+	return append(out, endFrame...)
 }
