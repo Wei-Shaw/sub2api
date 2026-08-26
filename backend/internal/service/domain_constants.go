@@ -225,6 +225,8 @@ const (
 	SettingKeySMTPFrom     = "smtp_from"      // 发件人地址
 	SettingKeySMTPFromName = "smtp_from_name" // 发件人名称
 	SettingKeySMTPUseTLS   = "smtp_use_tls"   // 是否使用TLS
+	SettingKeyTicketSystemEnabled    = "ticket_system_enabled"
+	SettingKeyTicketRecipientEmails  = "ticket_recipient_emails"
 
 	// Cloudflare Turnstile 设置
 	SettingKeyTurnstileEnabled   = "turnstile_enabled"    // 是否启用 Turnstile 验证

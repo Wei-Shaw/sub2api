@@ -172,6 +172,10 @@ type GeminiTierQuotaConfig struct {
 }
 
 type UpdateConfig struct {
+	// GitHubRepo 是用于检查 Release 和回滚版本的 GitHub 仓库，格式为 owner/repo。
+	GitHubRepo string `mapstructure:"github_repo"`
+	// DockerImage 是 Docker 部署回滚提示使用的镜像名，不含 tag。
+	DockerImage string `mapstructure:"docker_image"`
 	// ProxyURL 用于访问 GitHub 的代理地址
 	// 支持 http/https/socks5/socks5h 协议
 	// 例如: "http://127.0.0.1:7890", "socks5://127.0.0.1:1080"
@@ -2577,6 +2581,8 @@ func setDefaults() {
 // environment. Any subsystem that wants a richer default still applies it after
 // unmarshal, exactly as before.
 func setEnvReachableDefaults() {
+	viper.SetDefault("update.github_repo", "Wei-Shaw/sub2api")
+	viper.SetDefault("update.docker_image", "weishaw/sub2api")
 	viper.SetDefault("gateway.forced_codex_instructions_template_file", "")
 	viper.SetDefault("gateway.session_idle_timeout_minutes", 0)
 	viper.SetDefault("gateway.user_message_queue.mode", "")

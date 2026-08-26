@@ -340,7 +340,9 @@ type UpdateSettingsRequest struct {
 	GrokDefaultBaseURLMode         *string `json:"grok_default_base_url_mode"`
 
 	// Available Channels feature switch (user-facing)
-	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
+	AvailableChannelsEnabled *bool     `json:"available_channels_enabled"`
+	TicketSystemEnabled      *bool     `json:"ticket_system_enabled"`
+	TicketRecipientEmails    *[]string `json:"ticket_recipient_emails"`
 
 	// Model Plaza feature switches + description
 	ModelPlazaEnabled     *bool   `json:"model_plaza_enabled"`
@@ -1923,6 +1925,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AvailableChannelsEnabled
 		}(),
+		TicketSystemEnabled: func() bool {
+			if req.TicketSystemEnabled != nil {
+				return *req.TicketSystemEnabled
+			}
+			return previousSettings.TicketSystemEnabled
+		}(),
+		TicketRecipientEmails: func() []string {
+			if req.TicketRecipientEmails != nil {
+				return *req.TicketRecipientEmails
+			}
+			return previousSettings.TicketRecipientEmails
+		}(),
 		ModelPlazaEnabled: func() bool {
 			if req.ModelPlazaEnabled != nil {
 				return *req.ModelPlazaEnabled
@@ -2365,6 +2379,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		GrokDefaultBaseURLMode:         updatedSettings.GrokDefaultBaseURLMode,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
+		TicketSystemEnabled:      updatedSettings.TicketSystemEnabled,
+		TicketRecipientEmails:    updatedSettings.TicketRecipientEmails,
 
 		ModelPlazaEnabled:       updatedSettings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:   updatedSettings.ModelPlazaRequireAuth,

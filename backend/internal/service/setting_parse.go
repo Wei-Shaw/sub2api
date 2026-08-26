@@ -208,6 +208,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled:              "false",
+		SettingKeyTicketSystemEnabled:           "false",
+		SettingKeyTicketRecipientEmails:         "[]",
 		SettingKeyAffiliateAdminRechargeEnabled: strconv.FormatBool(AdminRechargeRebateEnabledDefault),
 
 		// 风控中心功能（默认关闭，显式启用）
@@ -281,6 +283,14 @@ func parseForwardedClientIPHeadersSetting(value string) ([]string, error) {
 	return normalized, nil
 }
 
+func parseTicketRecipientEmails(value string) []string {
+	var emails []string
+	if json.Unmarshal([]byte(value), &emails) != nil {
+		return []string{}
+	}
+	return emails
+}
+
 // parseSettings 解析设置到结构体
 func (s *SettingService) parseSettings(settings map[string]string) *SystemSettings {
 	emailVerifyEnabled := settings[SettingKeyEmailVerifyEnabled] == "true"
@@ -332,6 +342,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		SMTPFrom:                               settings[SettingKeySMTPFrom],
 		SMTPFromName:                           settings[SettingKeySMTPFromName],
 		SMTPUseTLS:                             settings[SettingKeySMTPUseTLS] == "true",
+		TicketSystemEnabled:                    settings[SettingKeyTicketSystemEnabled] == "true",
+		TicketRecipientEmails:                  parseTicketRecipientEmails(settings[SettingKeyTicketRecipientEmails]),
 		SMTPPasswordConfigured:                 settings[SettingKeySMTPPassword] != "",
 		TurnstileEnabled:                       settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:                       settings[SettingKeyTurnstileSiteKey],

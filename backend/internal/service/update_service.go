@@ -28,9 +28,9 @@ var (
 )
 
 const (
-	updateCacheKey = "update_check_cache"
-	updateCacheTTL = 1200 // 20 minutes
-	githubRepo     = "Wei-Shaw/sub2api"
+	updateCacheKey    = "update_check_cache"
+	updateCacheTTL    = 1200 // 20 minutes
+	defaultGitHubRepo = "Wei-Shaw/sub2api"
 
 	// Security: allowed download domains for updates
 	allowedDownloadHost = "github.com"
@@ -63,6 +63,8 @@ type GitHubReleaseClient interface {
 type UpdateService struct {
 	cache          UpdateCache
 	githubClient   GitHubReleaseClient
+	githubRepo     string
+	dockerImage    string
 	currentVersion string
 	buildType      string // "source" for manual builds, "release" for CI builds
 }
@@ -72,8 +74,21 @@ func NewUpdateService(cache UpdateCache, githubClient GitHubReleaseClient, versi
 	return &UpdateService{
 		cache:          cache,
 		githubClient:   githubClient,
+		githubRepo:     defaultGitHubRepo,
+		dockerImage:    "weishaw/sub2api",
 		currentVersion: version,
 		buildType:      buildType,
+	}
+}
+
+// ConfigureUpdateSource applies deployment-specific release and Docker image
+// sources. Invalid or empty values retain the safe upstream defaults.
+func (s *UpdateService) ConfigureUpdateSource(githubRepo, dockerImage string) {
+	if normalized := normalizeGitHubRepo(githubRepo); normalized != "" {
+		s.githubRepo = normalized
+	}
+	if strings.TrimSpace(dockerImage) != "" {
+		s.dockerImage = strings.TrimSpace(dockerImage)
 	}
 }
 
@@ -86,6 +101,8 @@ type UpdateInfo struct {
 	Cached         bool         `json:"cached"`
 	Warning        string       `json:"warning,omitempty"`
 	BuildType      string       `json:"build_type"` // "source" or "release"
+	Repository     string       `json:"repository"`
+	DockerImage    string       `json:"docker_image"`
 }
 
 // ReleaseInfo contains GitHub release details
@@ -152,6 +169,8 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 			HasUpdate:      false,
 			Warning:        err.Error(),
 			BuildType:      s.buildType,
+			Repository:     s.githubRepo,
+			DockerImage:    s.dockerImage,
 		}, nil
 	}
 
@@ -363,7 +382,7 @@ func (s *UpdateService) RollbackToVersion(ctx context.Context, version string) e
 // fetchRollbackCandidates fetches recent releases and keeps the newest
 // maxRollbackVersions entries strictly older than the current version.
 func (s *UpdateService) fetchRollbackCandidates(ctx context.Context) ([]*GitHubRelease, error) {
-	releases, err := s.githubClient.FetchRecentReleases(ctx, githubRepo, rollbackFetchPageSize)
+	releases, err := s.githubClient.FetchRecentReleases(ctx, s.githubRepo, rollbackFetchPageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +419,7 @@ func (s *UpdateService) fetchRollbackCandidates(ctx context.Context) ([]*GitHubR
 }
 
 func (s *UpdateService) fetchLatestRelease(ctx context.Context) (*UpdateInfo, error) {
-	release, err := s.githubClient.FetchLatestRelease(ctx, githubRepo)
+	release, err := s.githubClient.FetchLatestRelease(ctx, s.githubRepo)
 	if err != nil {
 		return nil, err
 	}
@@ -427,9 +446,27 @@ func (s *UpdateService) fetchLatestRelease(ctx context.Context) (*UpdateInfo, er
 			HTMLURL:     release.HTMLURL,
 			Assets:      assets,
 		},
-		Cached:    false,
-		BuildType: s.buildType,
+		Cached:      false,
+		BuildType:   s.buildType,
+		Repository:  s.githubRepo,
+		DockerImage: s.dockerImage,
 	}, nil
+}
+
+func normalizeGitHubRepo(repo string) string {
+	parts := strings.Split(strings.TrimSpace(repo), "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return ""
+	}
+	for _, part := range parts {
+		for _, r := range part {
+			if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') &&
+				(r < '0' || r > '9') && r != '-' && r != '_' && r != '.' {
+				return ""
+			}
+		}
+	}
+	return parts[0] + "/" + parts[1]
 }
 
 func (s *UpdateService) downloadFile(ctx context.Context, downloadURL, dest string) error {
@@ -619,6 +656,8 @@ func (s *UpdateService) getFromCache(ctx context.Context) (*UpdateInfo, error) {
 		ReleaseInfo:    cached.ReleaseInfo,
 		Cached:         true,
 		BuildType:      s.buildType,
+		Repository:     s.githubRepo,
+		DockerImage:    s.dockerImage,
 	}, nil
 }
 

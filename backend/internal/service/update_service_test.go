@@ -31,13 +31,17 @@ type updateServiceGitHubClientStub struct {
 	release        *GitHubRelease
 	recentReleases []*GitHubRelease
 	recentErr      error
+	latestRepo     string
+	recentRepo     string
 }
 
-func (s *updateServiceGitHubClientStub) FetchLatestRelease(context.Context, string) (*GitHubRelease, error) {
+func (s *updateServiceGitHubClientStub) FetchLatestRelease(_ context.Context, repo string) (*GitHubRelease, error) {
+	s.latestRepo = repo
 	return s.release, nil
 }
 
-func (s *updateServiceGitHubClientStub) FetchRecentReleases(context.Context, string, int) ([]*GitHubRelease, error) {
+func (s *updateServiceGitHubClientStub) FetchRecentReleases(_ context.Context, repo string, _ int) ([]*GitHubRelease, error) {
+	s.recentRepo = repo
 	return s.recentReleases, s.recentErr
 }
 
@@ -67,6 +71,32 @@ func TestUpdateServicePerformUpdateNoUpdateReturnsSentinel(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, ErrNoUpdateAvailable))
 	require.ErrorIs(t, err, ErrNoUpdateAvailable)
+}
+
+func TestUpdateServiceUsesConfiguredReleaseRepository(t *testing.T) {
+	client := &updateServiceGitHubClientStub{
+		release: &GitHubRelease{TagName: "v0.1.132"},
+	}
+	svc := NewUpdateService(&updateServiceCacheStub{}, client, "0.1.132", "release")
+	svc.ConfigureUpdateSource("a515642/sub2api", "ghcr.io/a515642/sub2api")
+
+	info, err := svc.CheckUpdate(context.Background(), true)
+
+	require.NoError(t, err)
+	require.Equal(t, "a515642/sub2api", client.latestRepo)
+	require.Equal(t, "a515642/sub2api", info.Repository)
+	require.Equal(t, "ghcr.io/a515642/sub2api", info.DockerImage)
+}
+
+func TestUpdateServiceRejectsInvalidReleaseRepository(t *testing.T) {
+	client := &updateServiceGitHubClientStub{release: &GitHubRelease{TagName: "v0.1.132"}}
+	svc := NewUpdateService(&updateServiceCacheStub{}, client, "0.1.132", "release")
+	svc.ConfigureUpdateSource("https://github.com/a515642/sub2api", "")
+
+	_, err := svc.CheckUpdate(context.Background(), true)
+
+	require.NoError(t, err)
+	require.Equal(t, defaultGitHubRepo, client.latestRepo)
 }
 
 func newRollbackTestService(current string, releases []*GitHubRelease) *UpdateService {

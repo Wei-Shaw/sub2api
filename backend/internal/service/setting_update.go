@@ -203,6 +203,12 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySMTPFrom] = settings.SMTPFrom
 	updates[SettingKeySMTPFromName] = settings.SMTPFromName
 	updates[SettingKeySMTPUseTLS] = strconv.FormatBool(settings.SMTPUseTLS)
+	updates[SettingKeyTicketSystemEnabled] = strconv.FormatBool(settings.TicketSystemEnabled)
+	ticketRecipientsJSON, err := json.Marshal(settings.TicketRecipientEmails)
+	if err != nil {
+		return nil, fmt.Errorf("marshal ticket recipient emails: %w", err)
+	}
+	updates[SettingKeyTicketRecipientEmails] = string(ticketRecipientsJSON)
 
 	// Cloudflare Turnstile 设置（只有非空才更新密钥）
 	updates[SettingKeyTurnstileEnabled] = strconv.FormatBool(settings.TurnstileEnabled)

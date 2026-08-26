@@ -33,6 +33,8 @@ const (
 	NotificationEmailEventCyberPolicyNotice           = "content_moderation.cyber_policy_notice"
 	NotificationEmailEventOpsAlert                    = "ops.alert"
 	NotificationEmailEventOpsScheduledReport          = "ops.scheduled_report"
+	NotificationEmailEventTicketAdmin                 = "ticket.admin_notification"
+	NotificationEmailEventTicketUser                  = "ticket.user_reply"
 
 	notificationEmailTemplateKeyPrefix    = "notification_email_template:"
 	notificationEmailPreferenceKeyPrefix  = "notification_email_preference:"
@@ -941,6 +943,15 @@ func notificationEmailSampleVariables(locale string) map[string]string {
 			"report_start_time":   "2026-07-18T01:00:26Z",
 			"report_end_time":     "2026-07-19T01:00:26Z",
 			"report_html":         "<h2>日报</h2><p>请求量：2,374</p>",
+			"ticket_id":           "42",
+			"ticket_title":        "无法调用视频接口",
+			"ticket_description":  "创建视频任务时返回错误",
+			"ticket_status":       "processing",
+			"message_content":     "请协助排查该问题。",
+			"message_images":      "[]",
+			"user_name":           "张三",
+			"user_email":          "user@example.com",
+			"created_at":          "2026-08-26T10:00:00Z",
 		}
 		addNotificationEmailOpsSummarySampleVariables(variables)
 		return variables
@@ -989,6 +1000,15 @@ func notificationEmailSampleVariables(locale string) map[string]string {
 		"report_start_time":   "2026-07-18T01:00:26Z",
 		"report_end_time":     "2026-07-19T01:00:26Z",
 		"report_html":         "<h2>Daily summary</h2><p>Requests: 2,374</p>",
+		"ticket_id":           "42",
+		"ticket_title":        "Video endpoint unavailable",
+		"ticket_description":  "The video task returned an error",
+		"ticket_status":       "processing",
+		"message_content":     "Please help investigate this issue.",
+		"message_images":      "[]",
+		"user_name":           "Alex",
+		"user_email":          "user@example.com",
+		"created_at":          "2026-08-26T10:00:00Z",
 	}
 	addNotificationEmailOpsSummarySampleVariables(variables)
 	return variables
@@ -1034,6 +1054,8 @@ var notificationEmailEventOrder = []string{
 	NotificationEmailEventCyberPolicyNotice,
 	NotificationEmailEventOpsAlert,
 	NotificationEmailEventOpsScheduledReport,
+	NotificationEmailEventTicketAdmin,
+	NotificationEmailEventTicketUser,
 }
 
 var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
@@ -1151,6 +1173,14 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 			),
 			append(append([]string{}, notificationEmailOpsSummaryPlaceholders...), "report_detail_display", "report_html")...,
 		),
+	},
+	NotificationEmailEventTicketAdmin: {
+		Event: NotificationEmailEventTicketAdmin, Label: "Ticket notification", Description: "Sent to configured ticket recipients when a ticket is created or a user replies.", Category: "ticket", Optional: false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...), "ticket_id", "ticket_title", "ticket_description", "ticket_status", "message_content", "message_images", "user_name", "user_email", "created_at"),
+	},
+	NotificationEmailEventTicketUser: {
+		Event: NotificationEmailEventTicketUser, Label: "Ticket administrator reply", Description: "Sent to users when an administrator replies to their ticket.", Category: "ticket", Optional: false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...), "ticket_id", "ticket_title", "ticket_description", "ticket_status", "message_content", "message_images", "user_name", "user_email", "created_at"),
 	},
 }
 
@@ -1435,6 +1465,14 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 			Subject: "[运维报表] {{report_name}}",
 			HTML:    notificationEmailOpsScheduledReportTemplate(notificationEmailLocaleChinese),
 		},
+	},
+	NotificationEmailEventTicketAdmin: {
+		notificationEmailDefaultLocale: {Subject: "[{{site_name}}] New ticket: {{ticket_title}}", HTML: notificationEmailCard("#2563eb", "New ticket update", `<p>A ticket requires attention.</p><p><strong>{{ticket_title}}</strong></p><p>{{message_content}}</p><p>User: {{user_name}} ({{user_email}})</p><p>Ticket ID: {{ticket_id}}</p>`)},
+		notificationEmailLocaleChinese: {Subject: "[{{site_name}}] 工单更新：{{ticket_title}}", HTML: notificationEmailCard("#2563eb", "工单更新", `<p>有新的工单需要处理。</p><p><strong>{{ticket_title}}</strong></p><p>{{message_content}}</p><p>用户：{{user_name}}（{{user_email}}）</p><p>工单 ID：{{ticket_id}}</p>`)},
+	},
+	NotificationEmailEventTicketUser: {
+		notificationEmailDefaultLocale: {Subject: "[{{site_name}}] Administrator replied to your ticket", HTML: notificationEmailCard("#16a34a", "Administrator reply", `<p>An administrator replied to your ticket <strong>{{ticket_title}}</strong>.</p><p>{{message_content}}</p><p>Ticket ID: {{ticket_id}}</p>`)},
+		notificationEmailLocaleChinese: {Subject: "[{{site_name}}] 管理员回复了您的工单", HTML: notificationEmailCard("#16a34a", "管理员回复", `<p>管理员回复了您的工单 <strong>{{ticket_title}}</strong>。</p><p>{{message_content}}</p><p>工单 ID：{{ticket_id}}</p>`)},
 	},
 }
 

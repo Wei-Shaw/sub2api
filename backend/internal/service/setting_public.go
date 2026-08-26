@@ -239,6 +239,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
 		SettingKeyAllowUserViewErrorRequests,
+		SettingKeyTicketSystemEnabled,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -370,6 +371,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
 
 		AllowUserViewErrorRequests: settings[SettingKeyAllowUserViewErrorRequests] == "true",
+		TicketSystemEnabled:        settings[SettingKeyTicketSystemEnabled] == "true",
 	}, nil
 }
 
@@ -626,6 +628,7 @@ type PublicSettingsInjectionPayload struct {
 	AffiliateEnabled           bool `json:"affiliate_enabled"`
 	RiskControlEnabled         bool `json:"risk_control_enabled"`
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
+	TicketSystemEnabled        bool `json:"ticket_system_enabled"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -707,6 +710,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,
+		TicketSystemEnabled:                  settings.TicketSystemEnabled,
 	}, nil
 }
 

@@ -42,6 +42,8 @@ export const useAppStore = defineStore('app', () => {
   const latestVersion = ref<string>('')
   const hasUpdate = ref<boolean>(false)
   const buildType = ref<string>('source')
+  const updateRepository = ref<string>('')
+  const updateDockerImage = ref<string>('')
   const releaseInfo = ref<ReleaseInfo | null>(null)
 
   // Auto-incrementing ID for toasts
@@ -248,6 +250,8 @@ export const useAppStore = defineStore('app', () => {
         latest_version: latestVersion.value,
         has_update: hasUpdate.value,
         build_type: buildType.value,
+        repository: updateRepository.value,
+        docker_image: updateDockerImage.value,
         release_info: releaseInfo.value || undefined,
         cached: true
       }
@@ -265,6 +269,8 @@ export const useAppStore = defineStore('app', () => {
       latestVersion.value = data.latest_version
       hasUpdate.value = data.has_update
       buildType.value = data.build_type || 'source'
+      updateRepository.value = data.repository || ''
+      updateDockerImage.value = data.docker_image || ''
       releaseInfo.value = data.release_info || null
       versionLoaded.value = true
       return data
@@ -377,7 +383,8 @@ export const useAppStore = defineStore('app', () => {
         risk_control_enabled: false,
         service_quota_enabled: false,
         affiliate_enabled: false,
-        allow_user_view_error_requests: false,
+      allow_user_view_error_requests: false,
+      ticket_system_enabled: false,
       })
     }
 
@@ -459,6 +466,8 @@ export const useAppStore = defineStore('app', () => {
     latestVersion,
     hasUpdate,
     buildType,
+    updateRepository,
+    updateDockerImage,
     releaseInfo,
 
     // Computed

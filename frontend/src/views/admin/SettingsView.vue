@@ -7107,6 +7107,20 @@
 
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">工单系统</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">控制用户工单入口，并配置工单通知收件人。</p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div><label class="text-sm font-medium text-gray-700 dark:text-gray-300">启用工单系统</label><p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">关闭后用户导航栏不显示工单入口。</p></div>
+              <Toggle v-model="form.ticket_system_enabled" />
+            </div>
+            <div><label class="input-label">工单收件人邮箱</label><textarea v-model="ticketRecipientText" class="input min-h-20 w-full" placeholder="每行一个邮箱" /><p class="mt-1 text-xs text-gray-500">SMTP 未配置或工单模板不存在时不会触发通知。</p></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('admin.settings.features.availableChannels.title') }}
             </h2>
@@ -8238,29 +8252,8 @@
         </div>
 
         <div v-show="activeTab === 'email'" class="space-y-6">
-          <!-- Email disabled hint - show when email_verify_enabled is off -->
-          <div v-if="!form.email_verify_enabled" class="card">
-            <div class="p-6">
-              <div class="flex items-start gap-3">
-                <Icon
-                  name="mail"
-                  size="md"
-                  class="mt-0.5 flex-shrink-0 text-gray-400 dark:text-gray-500"
-                />
-                <div>
-                  <h3 class="font-medium text-gray-900 dark:text-white">
-                    {{ t("admin.settings.emailTabDisabledTitle") }}
-                  </h3>
-                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.emailTabDisabledHint") }}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- SMTP Settings - Only show when email verification is enabled -->
-          <div v-if="form.email_verify_enabled" class="card">
+          <!-- SMTP Settings are independent from email verification. -->
+          <div class="card">
             <div
               class="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
@@ -9778,11 +9771,18 @@ const form = reactive<SettingsForm>({
   model_plaza_description: '',
   // Plugin management menu visibility; plugin runtime is unaffected.
   plugin_management_enabled: false,
+  ticket_system_enabled: false,
+  ticket_recipient_emails: [],
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: false,
   // Allow user view error requests
   allow_user_view_error_requests: false,
 });
+
+const ticketRecipientText = computed({
+  get: () => (form.ticket_recipient_emails || []).join('\n'),
+  set: (value: string) => { form.ticket_recipient_emails = value.split(/[\n,;]/).map((item) => item.trim()).filter(Boolean) },
+})
 
 // 人机验证 UI 状态：单卡片「总开关 + 服务商单选」，落库仍是三个独立
 // enabled 键（与上游一致），由下面的映射保证同一时间至多一家启用。
@@ -11435,6 +11435,8 @@ async function saveSettings() {
       model_plaza_require_auth: form.model_plaza_require_auth,
       model_plaza_description: form.model_plaza_description,
       plugin_management_enabled: form.plugin_management_enabled,
+      ticket_system_enabled: form.ticket_system_enabled,
+      ticket_recipient_emails: form.ticket_recipient_emails,
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
       allow_user_view_error_requests: form.allow_user_view_error_requests,
