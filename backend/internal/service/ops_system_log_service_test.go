@@ -35,6 +35,7 @@ func TestOpsServiceListSystemLogs_DefaultClampAndSuccess(t *testing.T) {
 	}
 	if gotFilter == nil {
 		t.Fatalf("expected repository to receive filter")
+		return
 	}
 	if gotFilter.Page != 1 || gotFilter.PageSize != 200 {
 		t.Fatalf("filter normalized unexpectedly: page=%d pageSize=%d", gotFilter.Page, gotFilter.PageSize)
@@ -54,6 +55,7 @@ func TestOpsServiceListSystemLogs_MonitoringDisabled(t *testing.T) {
 	_, err := svc.ListSystemLogs(context.Background(), &OpsSystemLogFilter{})
 	if err == nil {
 		t.Fatalf("expected disabled error")
+		return
 	}
 }
 
@@ -78,6 +80,7 @@ func TestOpsServiceListSystemLogs_RepoErrorMapped(t *testing.T) {
 	_, err := svc.ListSystemLogs(context.Background(), &OpsSystemLogFilter{})
 	if err == nil {
 		t.Fatalf("expected mapped internal error")
+		return
 	}
 	if !strings.Contains(err.Error(), "OPS_SYSTEM_LOG_LIST_FAILED") {
 		t.Fatalf("unexpected error: %v", err)
@@ -119,6 +122,7 @@ func TestOpsServiceCleanupSystemLogs_SuccessAndAudit(t *testing.T) {
 	}
 	if audit == nil {
 		t.Fatalf("expected cleanup audit")
+		return
 	}
 	if !strings.Contains(audit.Conditions, `"host":"api-node-1"`) {
 		t.Fatalf("audit conditions should include host: %s", audit.Conditions)
@@ -156,6 +160,7 @@ func TestOpsServiceCleanupSystemLogs_FilterRequired(t *testing.T) {
 	_, err := svc.CleanupSystemLogs(context.Background(), &OpsSystemLogCleanupFilter{}, 1)
 	if err == nil {
 		t.Fatalf("expected filter required error")
+		return
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "filter") {
 		t.Fatalf("unexpected error: %v", err)
@@ -173,6 +178,7 @@ func TestOpsServiceCleanupSystemLogs_InvalidRange(t *testing.T) {
 	}, 1)
 	if err == nil {
 		t.Fatalf("expected invalid range error")
+		return
 	}
 }
 

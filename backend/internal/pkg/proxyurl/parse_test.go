@@ -41,6 +41,7 @@ func TestParse_有效HTTP代理(t *testing.T) {
 	}
 	if parsed == nil {
 		t.Fatal("parsed 不应为 nil")
+		return
 	}
 	if parsed.Host != "proxy.example.com:8080" {
 		t.Errorf("Host 不匹配: got %q", parsed.Host)
@@ -75,6 +76,7 @@ func TestParse_无效URL(t *testing.T) {
 	_, _, err := Parse("://invalid")
 	if err == nil {
 		t.Fatal("无效 URL 应返回错误")
+		return
 	}
 	if !strings.Contains(err.Error(), "invalid proxy URL") {
 		t.Errorf("错误信息应包含 'invalid proxy URL': got %s", err.Error())
@@ -85,6 +87,7 @@ func TestParse_缺少Host(t *testing.T) {
 	_, _, err := Parse("http://")
 	if err == nil {
 		t.Fatal("缺少 host 应返回错误")
+		return
 	}
 	if !strings.Contains(err.Error(), "missing host") {
 		t.Errorf("错误信息应包含 'missing host': got %s", err.Error())
@@ -95,6 +98,7 @@ func TestParse_不支持的Scheme(t *testing.T) {
 	_, _, err := Parse("ftp://proxy.example.com:21")
 	if err == nil {
 		t.Fatal("不支持的 scheme 应返回错误")
+		return
 	}
 	if !strings.Contains(err.Error(), "unsupported proxy scheme") {
 		t.Errorf("错误信息应包含 'unsupported proxy scheme': got %s", err.Error())
@@ -124,6 +128,7 @@ func TestParse_含密码URL脱敏(t *testing.T) {
 	_, _, err = Parse("http://user:secret_password@:0/")
 	if err == nil {
 		t.Fatal("缺少 host 应返回错误")
+		return
 	}
 	if strings.Contains(err.Error(), "secret_password") {
 		t.Error("错误信息不应包含明文密码")
@@ -143,6 +148,7 @@ func TestParse_带空白的有效URL(t *testing.T) {
 	}
 	if parsed == nil {
 		t.Fatal("parsed 不应为 nil")
+		return
 	}
 }
 
@@ -211,5 +217,6 @@ func TestParse_无Scheme裸地址(t *testing.T) {
 	_, _, err := Parse("proxy.example.com:8080")
 	if err == nil {
 		t.Fatal("无 scheme 的裸地址应返回错误")
+		return
 	}
 }

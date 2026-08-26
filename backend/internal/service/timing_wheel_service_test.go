@@ -20,6 +20,7 @@ func TestNewTimingWheelService_InitFail_NoPanicAndReturnError(t *testing.T) {
 	svc, err := NewTimingWheelService()
 	if err == nil {
 		t.Fatalf("期望返回 error，但得到 nil")
+		return
 	}
 	if svc != nil {
 		t.Fatalf("期望返回 nil svc，但得到非空")
@@ -33,6 +34,7 @@ func TestNewTimingWheelService_Success(t *testing.T) {
 	}
 	if svc == nil {
 		t.Fatalf("期望 svc 非空，但得到 nil")
+		return
 	}
 	svc.Stop()
 }
@@ -53,6 +55,7 @@ func TestNewTimingWheelService_ExecuteCallbackRunsFunc(t *testing.T) {
 	}
 	if captured == nil {
 		t.Fatalf("期望 captured 非空，但得到 nil")
+		return
 	}
 
 	called := false

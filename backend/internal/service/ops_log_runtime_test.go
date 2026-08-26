@@ -141,6 +141,7 @@ func TestUpdateRuntimeLogConfig_InvalidConfigShouldNotApply(t *testing.T) {
 	}, 1)
 	if err == nil {
 		t.Fatalf("expected validation error")
+		return
 	}
 	if logger.CurrentLevel() != "info" {
 		t.Fatalf("logger level changed unexpectedly: %s", logger.CurrentLevel())
@@ -226,6 +227,7 @@ func TestResetRuntimeLogConfig_InvalidOperator(t *testing.T) {
 	_, err := svc.ResetRuntimeLogConfig(context.Background(), 0)
 	if err == nil {
 		t.Fatalf("expected invalid operator error")
+		return
 	}
 	if err.Error() != "invalid operator id" {
 		t.Fatalf("unexpected error: %v", err)
@@ -321,6 +323,7 @@ func TestUpdateRuntimeLogConfig_PersistFailureRollback(t *testing.T) {
 	}, 5)
 	if err == nil {
 		t.Fatalf("expected persist error")
+		return
 	}
 	// Persist failure should rollback runtime level back to old effective level.
 	if logger.CurrentLevel() != "info" {

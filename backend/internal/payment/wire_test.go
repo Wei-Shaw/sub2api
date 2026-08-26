@@ -58,5 +58,6 @@ func TestProvideEncryptionKeyRejectsConfiguredInvalidLength(t *testing.T) {
 	_, err := ProvideEncryptionKey(cfg)
 	if err == nil {
 		t.Fatal("expected error for invalid key length")
+		return
 	}
 }

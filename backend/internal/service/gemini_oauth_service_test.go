@@ -106,6 +106,7 @@ func TestGeminiOAuthService_GenerateAuthURL_RedirectURIStrategy(t *testing.T) {
 			if tt.wantErrSubstr != "" {
 				if err == nil {
 					t.Fatalf("expected error containing %q, got nil", tt.wantErrSubstr)
+					return
 				}
 				if !strings.Contains(err.Error(), tt.wantErrSubstr) {
 					t.Fatalf("expected error containing %q, got: %v", tt.wantErrSubstr, err)
@@ -882,6 +883,7 @@ func TestGeminiOAuthService_RefreshToken_NonRetryableError(t *testing.T) {
 	_, err := svc.RefreshToken(context.Background(), "code_assist", "revoked-token", "")
 	if err == nil {
 		t.Fatal("RefreshToken 应返回错误（不可重试的 invalid_grant）")
+		return
 	}
 	if !strings.Contains(err.Error(), "invalid_grant") {
 		t.Fatalf("错误应包含 invalid_grant: got=%q", err.Error())
@@ -938,6 +940,7 @@ func TestGeminiOAuthService_RefreshAccountToken_NotGeminiOAuth(t *testing.T) {
 	_, err := svc.RefreshAccountToken(context.Background(), account)
 	if err == nil {
 		t.Fatal("应返回错误（非 Gemini OAuth 账号）")
+		return
 	}
 	if !strings.Contains(err.Error(), "not a Gemini OAuth account") {
 		t.Fatalf("错误信息不匹配: got=%q", err.Error())
@@ -962,6 +965,7 @@ func TestGeminiOAuthService_RefreshAccountToken_NoRefreshToken(t *testing.T) {
 	_, err := svc.RefreshAccountToken(context.Background(), account)
 	if err == nil {
 		t.Fatal("应返回错误（无 refresh_token）")
+		return
 	}
 	if !strings.Contains(err.Error(), "no refresh token") {
 		t.Fatalf("错误信息不匹配: got=%q", err.Error())
@@ -1220,6 +1224,7 @@ func TestGeminiOAuthService_RefreshAccountToken_CodeAssist_NoProjectID_FailsEmpt
 	_, err := svc.RefreshAccountToken(context.Background(), account)
 	if err == nil {
 		t.Fatal("应返回错误（无法检测 project_id）")
+		return
 	}
 	if !strings.Contains(err.Error(), "project_id") {
 		t.Fatalf("错误信息应包含 project_id: got=%q", err.Error())
@@ -1381,6 +1386,7 @@ func TestGeminiOAuthService_RefreshAccountToken_UnauthorizedClient_NoFallback(t 
 	_, err := svc.RefreshAccountToken(context.Background(), account)
 	if err == nil {
 		t.Fatal("应返回错误（无 fallback）")
+		return
 	}
 	if !strings.Contains(err.Error(), "OAuth client mismatch") {
 		t.Fatalf("错误应包含 OAuth client mismatch: got=%q", err.Error())
@@ -1404,6 +1410,7 @@ func TestGeminiOAuthService_ExchangeCode_SessionNotFound(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("应返回错误（session 不存在）")
+		return
 	}
 	if !strings.Contains(err.Error(), "session not found") {
 		t.Fatalf("错误信息不匹配: got=%q", err.Error())
@@ -1431,6 +1438,7 @@ func TestGeminiOAuthService_ExchangeCode_InvalidState(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("应返回错误（state 不匹配）")
+		return
 	}
 	if !strings.Contains(err.Error(), "invalid state") {
 		t.Fatalf("错误信息不匹配: got=%q", err.Error())
@@ -1456,6 +1464,7 @@ func TestGeminiOAuthService_ExchangeCode_EmptyState(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("应返回错误（空 state）")
+		return
 	}
 }
 

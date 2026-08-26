@@ -65,6 +65,7 @@ func TestRegistryGetProviderNotFound(t *testing.T) {
 	_, err := r.GetProvider("nonexistent")
 	if err == nil {
 		t.Fatal("GetProvider for unregistered type should return error")
+		return
 	}
 }
 
@@ -95,6 +96,7 @@ func TestRegistryGetProviderByKeyNotFound(t *testing.T) {
 	_, err := r.GetProviderByKey("nonexistent")
 	if err == nil {
 		t.Fatal("GetProviderByKey for unknown key should return error")
+		return
 	}
 }
 

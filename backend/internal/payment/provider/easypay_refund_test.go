@@ -172,6 +172,7 @@ func TestEasyPayRefundResponseErrors(t *testing.T) {
 			})
 			if err == nil {
 				t.Fatal("Refund returned nil error")
+				return
 			}
 			if !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("Refund error = %q, want substring %q", err.Error(), tt.want)

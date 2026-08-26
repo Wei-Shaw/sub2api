@@ -19,6 +19,7 @@ func TestProvideTimingWheelService_ReturnsError(t *testing.T) {
 	svc, err := ProvideTimingWheelService()
 	if err == nil {
 		t.Fatalf("期望返回 error，但得到 nil")
+		return
 	}
 	if svc != nil {
 		t.Fatalf("期望返回 nil svc，但得到非空")
@@ -32,6 +33,7 @@ func TestProvideTimingWheelService_Success(t *testing.T) {
 	}
 	if svc == nil {
 		t.Fatalf("期望 svc 非空，但得到 nil")
+		return
 	}
 	svc.Stop()
 }

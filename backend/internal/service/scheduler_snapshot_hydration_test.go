@@ -152,6 +152,7 @@ func TestOpenAINewAcquiredSelectionResult_ReleasesSlotWhenHydrationFails(t *test
 
 	if err == nil {
 		t.Fatalf("expected hydration error")
+		return
 	}
 	if selection != nil {
 		t.Fatalf("expected nil selection on hydration error")

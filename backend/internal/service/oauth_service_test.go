@@ -123,6 +123,7 @@ func TestNewOAuthService(t *testing.T) {
 
 	if svc == nil {
 		t.Fatal("NewOAuthService 返回 nil")
+		return
 	}
 	if svc.proxyRepo != proxyRepo {
 		t.Fatal("proxyRepo 未正确设置")
@@ -150,6 +151,7 @@ func TestOAuthService_GenerateAuthURL(t *testing.T) {
 	}
 	if result == nil {
 		t.Fatal("GenerateAuthURL 返回 nil")
+		return
 	}
 	if result.AuthURL == "" {
 		t.Fatal("AuthURL 为空")
@@ -211,6 +213,7 @@ func TestOAuthService_GenerateSetupTokenURL(t *testing.T) {
 	}
 	if result == nil {
 		t.Fatal("GenerateSetupTokenURL 返回 nil")
+		return
 	}
 
 	// 验证 scope 是 inference
@@ -235,6 +238,7 @@ func TestOAuthService_ExchangeCode_SessionNotFound(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("ExchangeCode 应返回错误（session 不存在）")
+		return
 	}
 	if err.Error() != "session not found or expired" {
 		t.Fatalf("错误信息不匹配: got=%q", err.Error())
@@ -376,6 +380,7 @@ func TestOAuthService_ExchangeCode_ClientError(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("ExchangeCode 应返回错误")
+		return
 	}
 	if err.Error() != "upstream error: invalid code" {
 		t.Fatalf("错误信息不匹配: got=%q", err.Error())
@@ -439,6 +444,7 @@ func TestOAuthService_RefreshToken_Error(t *testing.T) {
 	_, err := svc.RefreshToken(context.Background(), "expired-token", "")
 	if err == nil {
 		t.Fatal("RefreshToken 应返回错误")
+		return
 	}
 }
 
@@ -460,6 +466,7 @@ func TestOAuthService_RefreshAccountToken_NoRefreshToken(t *testing.T) {
 	_, err := svc.RefreshAccountToken(context.Background(), account)
 	if err == nil {
 		t.Fatal("RefreshAccountToken 应返回错误（无 refresh_token）")
+		return
 	}
 	if err.Error() != "no refresh token available" {
 		t.Fatalf("错误信息不匹配: got=%q", err.Error())
@@ -484,6 +491,7 @@ func TestOAuthService_RefreshAccountToken_EmptyRefreshToken(t *testing.T) {
 	_, err := svc.RefreshAccountToken(context.Background(), account)
 	if err == nil {
 		t.Fatal("RefreshAccountToken 应返回错误（refresh_token 为空）")
+		return
 	}
 }
 

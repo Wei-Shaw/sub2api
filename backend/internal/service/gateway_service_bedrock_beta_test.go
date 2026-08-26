@@ -78,6 +78,7 @@ func TestResolveBedrockBetaTokensForRequest_BlocksOnOriginalAnthropicToken(t *te
 	)
 	if err == nil {
 		t.Fatal("expected raw advanced-tool-use token to be blocked before Bedrock transform")
+		return
 	}
 	if err.Error() != "advanced tool use is blocked" {
 		t.Fatalf("unexpected error: %v", err)
@@ -165,6 +166,7 @@ func TestResolveBedrockBetaTokensForRequest_BlocksBodyAutoInjectedComputerUse(t 
 	)
 	if err == nil {
 		t.Fatal("expected body-injected computer-use to be blocked")
+		return
 	}
 	if err.Error() != "computer use is blocked" {
 		t.Fatalf("unexpected error: %v", err)
@@ -210,6 +212,7 @@ func TestResolveBedrockBetaTokensForRequest_BlocksBodyAutoInjectedToolSearch(t *
 	)
 	if err == nil {
 		t.Fatal("expected body-injected tool-search-tool to be blocked")
+		return
 	}
 	if err.Error() != "tool search is blocked" {
 		t.Fatalf("unexpected error: %v", err)

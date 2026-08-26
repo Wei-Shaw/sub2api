@@ -98,5 +98,6 @@ func TestBuildFileCore_InvalidPathFallback(t *testing.T) {
 	_, _, err := buildFileCore(encoder, zap.NewAtomicLevel(), opts)
 	if err == nil {
 		t.Fatalf("buildFileCore() expected error for invalid path")
+		return
 	}
 }

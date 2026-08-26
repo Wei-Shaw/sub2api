@@ -52,6 +52,7 @@ func TestCodexResetAtRFC3339(t *testing.T) {
 		got := codexResetAtRFC3339(base, &sec)
 		if got == nil {
 			t.Fatal("expected non-nil")
+			return
 		}
 		if *got != "2026-02-16T10:01:30Z" {
 			t.Fatalf("got %s, want %s", *got, "2026-02-16T10:01:30Z")
@@ -63,6 +64,7 @@ func TestCodexResetAtRFC3339(t *testing.T) {
 		got := codexResetAtRFC3339(base, &sec)
 		if got == nil {
 			t.Fatal("expected non-nil")
+			return
 		}
 		if *got != "2026-02-16T10:00:00Z" {
 			t.Fatalf("got %s, want %s", *got, "2026-02-16T10:00:00Z")
@@ -91,6 +93,7 @@ func TestBuildCodexUsageExtraUpdates_UsesSnapshotUpdatedAt(t *testing.T) {
 	updates := buildCodexUsageExtraUpdates(snapshot, time.Date(2026, 2, 20, 8, 0, 0, 0, time.UTC))
 	if updates == nil {
 		t.Fatal("expected non-nil updates")
+		return
 	}
 
 	if got := updates["codex_usage_updated_at"]; got != "2026-02-16T10:00:00Z" {
@@ -127,6 +130,7 @@ func TestBuildCodexUsageExtraUpdates_FreshAccountUsedPercentNotInverted_Issue299
 	updates := buildCodexUsageExtraUpdates(snapshot, time.Date(2026, 2, 16, 10, 0, 0, 0, time.UTC))
 	if updates == nil {
 		t.Fatal("expected non-nil updates")
+		return
 	}
 
 	if got := updates["codex_5h_used_percent"]; got != 1.0 {
@@ -153,6 +157,7 @@ func TestBuildCodexUsageExtraUpdates_FallbackToNowWhenUpdatedAtInvalid(t *testin
 	updates := buildCodexUsageExtraUpdates(snapshot, fallbackNow)
 	if updates == nil {
 		t.Fatal("expected non-nil updates")
+		return
 	}
 
 	if got := updates["codex_usage_updated_at"]; got != "2026-02-20T08:30:00Z" {
@@ -184,6 +189,7 @@ func TestBuildCodexUsageExtraUpdates_ClampNegativeResetSeconds(t *testing.T) {
 	updates := buildCodexUsageExtraUpdates(snapshot, time.Time{})
 	if updates == nil {
 		t.Fatal("expected non-nil updates")
+		return
 	}
 
 	if got := updates["codex_5h_reset_after_seconds"]; got != -15 {
@@ -211,6 +217,7 @@ func TestBuildCodexUsageExtraUpdates_WithoutNormalizedWindowFields(t *testing.T)
 	updates := buildCodexUsageExtraUpdates(snapshot, fallbackNow)
 	if updates == nil {
 		t.Fatal("expected non-nil updates")
+		return
 	}
 
 	if got := updates["codex_usage_updated_at"]; got != "2026-02-20T09:15:00Z" {

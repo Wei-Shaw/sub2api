@@ -84,5 +84,6 @@ func TestApplyMonitorUpdate_SwitchToGrokRejectsResponsesMode(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("Grok responses mode should remain unsupported")
+		return
 	}
 }

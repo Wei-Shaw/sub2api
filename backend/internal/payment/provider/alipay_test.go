@@ -117,6 +117,7 @@ func TestNewAlipay(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
+					return
 				}
 				if tt.errSubstr != "" && !strings.Contains(err.Error(), tt.errSubstr) {
 					t.Errorf("error %q should contain %q", err.Error(), tt.errSubstr)
@@ -128,6 +129,7 @@ func TestNewAlipay(t *testing.T) {
 			}
 			if got == nil {
 				t.Fatal("expected non-nil Alipay instance")
+				return
 			}
 			if got.instanceID != "test-instance" {
 				t.Errorf("instanceID = %q, want %q", got.instanceID, "test-instance")

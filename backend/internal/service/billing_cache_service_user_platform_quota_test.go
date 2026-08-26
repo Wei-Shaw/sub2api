@@ -374,6 +374,7 @@ func TestCheckUserPlatformQuotaEligibility_WindowExpiredRefreshesCache(t *testin
 	refreshed := cache.getEntry()
 	if refreshed == nil {
 		t.Fatal("窗口过期后 cache entry 不应为 nil(应被 SetCache 覆盖,而非 Delete)")
+		return
 	}
 	if refreshed.DailyUsageUSD != 0 {
 		t.Errorf("刷新后 DailyUsageUSD = %v, want 0", refreshed.DailyUsageUSD)
@@ -687,6 +688,7 @@ func TestCheckUserPlatformQuotaEligibility_NoRow_WritesSentinel(t *testing.T) {
 	sentinel := cache.getEntry()
 	if sentinel == nil {
 		t.Fatal("expected sentinel entry backfilled")
+		return
 	}
 	if sentinel.DailyLimitUSD != nil || sentinel.WeeklyLimitUSD != nil || sentinel.MonthlyLimitUSD != nil {
 		t.Errorf("sentinel must have all-nil limits")

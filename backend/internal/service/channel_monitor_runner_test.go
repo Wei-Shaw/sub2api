@@ -111,12 +111,14 @@ func TestSchedule_ReplaceCancelsOldTask(t *testing.T) {
 	first := runnerTaskPtr(r, 7)
 	if first == nil {
 		t.Fatal("first schedule did not register task")
+		return
 	}
 
 	r.Schedule(m)
 	second := runnerTaskPtr(r, 7)
 	if second == nil {
 		t.Fatal("second schedule did not register task")
+		return
 	}
 	if first == second {
 		t.Fatal("re-Schedule should create a new scheduledMonitor instance")

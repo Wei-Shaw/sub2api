@@ -55,6 +55,7 @@ func TestBuildSelectedSet(t *testing.T) {
 			}
 			if got == nil {
 				t.Fatalf("buildSelectedSet(%v) = nil, want non-nil map", tt.ids)
+				return
 			}
 			if len(got) != tt.wantSize {
 				t.Errorf("buildSelectedSet(%v) has %d entries, want %d", tt.ids, len(got), tt.wantSize)

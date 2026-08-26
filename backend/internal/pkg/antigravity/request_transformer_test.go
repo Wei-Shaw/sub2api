@@ -354,6 +354,7 @@ func TestBuildGenerationConfig_ThinkingDynamicBudget(t *testing.T) {
 			cfg := buildGenerationConfig(req)
 			if cfg == nil {
 				t.Fatalf("expected non-nil generationConfig")
+				return
 			}
 
 			if tt.wantPresent {

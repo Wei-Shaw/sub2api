@@ -73,6 +73,7 @@ func TestDecryptWithWrongKeyFails(t *testing.T) {
 	_, err = Decrypt(encrypted, key2)
 	if err == nil {
 		t.Fatal("Decrypt with wrong key should fail, but got nil error")
+		return
 	}
 }
 
@@ -90,6 +91,7 @@ func TestEncryptRejectsInvalidKeyLength(t *testing.T) {
 		_, err := Encrypt("test", key)
 		if err == nil {
 			t.Fatalf("Encrypt should reject key of length %d", len(key))
+			return
 		}
 	}
 }
@@ -105,6 +107,7 @@ func TestDecryptRejectsInvalidKeyLength(t *testing.T) {
 		_, err := Decrypt("dummydata:dummydata:dummydata", key)
 		if err == nil {
 			t.Fatalf("Decrypt should reject key of length %d", len(key))
+			return
 		}
 	}
 }
@@ -158,6 +161,7 @@ func TestDecryptInvalidFormat(t *testing.T) {
 		_, err := Decrypt(input, key)
 		if err == nil {
 			t.Fatalf("Decrypt(%q) should fail but got nil error", input)
+			return
 		}
 	}
 }

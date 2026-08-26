@@ -226,6 +226,7 @@ func TestNormalizeCodexImportRejectsExpiredAccessToken(t *testing.T) {
 	_, err := normalizeCodexImportEntry(codexImportEntry{Index: 1, Value: expiredToken})
 	if err == nil {
 		t.Fatal("normalizeCodexImportEntry error = nil, want expired token error")
+		return
 	}
 	if !strings.Contains(err.Error(), "已过期") {
 		t.Fatalf("error = %v, want expired token message", err)
@@ -271,6 +272,7 @@ func TestResolveCodexImportExpiryForNoRefreshTokenRequiresExpiry(t *testing.T) {
 	_, _, _, _, err := resolveCodexImportExpiry(CodexSessionImportRequest{}, item)
 	if err == nil {
 		t.Fatal("resolveCodexImportExpiry error = nil, want missing expiry error")
+		return
 	}
 	if !strings.Contains(err.Error(), "无法解析 accessToken 过期时间") {
 		t.Fatalf("error = %v, want missing expiry message", err)
