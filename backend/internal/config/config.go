@@ -2581,7 +2581,7 @@ func setDefaults() {
 // environment. Any subsystem that wants a richer default still applies it after
 // unmarshal, exactly as before.
 func setEnvReachableDefaults() {
-	viper.SetDefault("update.github_repo", "Wei-Shaw/sub2api")
+	viper.SetDefault("update.github_repo", "a515642/sub2api")
 	viper.SetDefault("update.docker_image", "weishaw/sub2api")
 	viper.SetDefault("gateway.forced_codex_instructions_template_file", "")
 	viper.SetDefault("gateway.session_idle_timeout_minutes", 0)
