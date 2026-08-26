@@ -119,6 +119,11 @@ const (
 	openAIGPT54LongContextInputThreshold   = 272000
 	openAIGPT54LongContextInputMultiplier  = 2.0
 	openAIGPT54LongContextOutputMultiplier = 1.5
+	// xAI 官方长上下文价卡：整单输入（含 cache）达到 200K 即切换长上下文单价
+	// （输入/输出均 2x，阈值含边界，区别于 GPT 的严格 >272K）。
+	xaiGrokLongContextInputThreshold   = 200000
+	xaiGrokLongContextInputMultiplier  = 2.0
+	xaiGrokLongContextOutputMultiplier = 2.0
 )
 
 func normalizeBillingServiceTier(serviceTier string) string {
@@ -692,10 +697,10 @@ func (s *BillingService) initFallbackPricing() {
 		OutputPricePerToken:           6e-6,
 		CacheReadPricePerToken:        0.3e-6,
 		SupportsCacheBreakdown:        false,
-		LongContextInputThreshold:     200000,
+		LongContextInputThreshold:     xaiGrokLongContextInputThreshold,
 		LongContextThresholdInclusive: true,
-		LongContextInputMultiplier:    2,
-		LongContextOutputMultiplier:   2,
+		LongContextInputMultiplier:    xaiGrokLongContextInputMultiplier,
+		LongContextOutputMultiplier:   xaiGrokLongContextOutputMultiplier,
 	}
 
 	// xAI Grok 4.6: $2 input / $0.50 cached input / $6 output below 200k;
@@ -705,10 +710,10 @@ func (s *BillingService) initFallbackPricing() {
 		OutputPricePerToken:           6e-6,
 		CacheReadPricePerToken:        0.5e-6,
 		SupportsCacheBreakdown:        false,
-		LongContextInputThreshold:     200000,
+		LongContextInputThreshold:     xaiGrokLongContextInputThreshold,
 		LongContextThresholdInclusive: true,
-		LongContextInputMultiplier:    2,
-		LongContextOutputMultiplier:   2,
+		LongContextInputMultiplier:    xaiGrokLongContextInputMultiplier,
+		LongContextOutputMultiplier:   xaiGrokLongContextOutputMultiplier,
 	}
 
 	// xAI Grok 4.3: $1.25 input / $0.20 cached / $2.50 output below 200k;
@@ -718,10 +723,10 @@ func (s *BillingService) initFallbackPricing() {
 		OutputPricePerToken:           2.5e-6,
 		CacheReadPricePerToken:        0.2e-6,
 		SupportsCacheBreakdown:        false,
-		LongContextInputThreshold:     200000,
+		LongContextInputThreshold:     xaiGrokLongContextInputThreshold,
 		LongContextThresholdInclusive: true,
-		LongContextInputMultiplier:    2,
-		LongContextOutputMultiplier:   2,
+		LongContextInputMultiplier:    xaiGrokLongContextInputMultiplier,
+		LongContextOutputMultiplier:   xaiGrokLongContextOutputMultiplier,
 	}
 	// Grok 4.20 variants share the official $1.25 / $0.20 / $2.50 card
 	// (and $2.50 / $0.40 / $5 long-context rates) with Grok 4.3.
@@ -730,10 +735,10 @@ func (s *BillingService) initFallbackPricing() {
 		OutputPricePerToken:           2.5e-6,
 		CacheReadPricePerToken:        0.2e-6,
 		SupportsCacheBreakdown:        false,
-		LongContextInputThreshold:     200000,
+		LongContextInputThreshold:     xaiGrokLongContextInputThreshold,
 		LongContextThresholdInclusive: true,
-		LongContextInputMultiplier:    2,
-		LongContextOutputMultiplier:   2,
+		LongContextInputMultiplier:    xaiGrokLongContextInputMultiplier,
+		LongContextOutputMultiplier:   xaiGrokLongContextOutputMultiplier,
 	}
 
 	// Keep legacy Grok 3 Mini requests on their own historical xAI price card;
@@ -759,10 +764,10 @@ func (s *BillingService) initFallbackPricing() {
 		OutputPricePerToken:           2e-6,
 		CacheReadPricePerToken:        0.2e-6,
 		SupportsCacheBreakdown:        false,
-		LongContextInputThreshold:     200000,
+		LongContextInputThreshold:     xaiGrokLongContextInputThreshold,
 		LongContextThresholdInclusive: true,
-		LongContextInputMultiplier:    2,
-		LongContextOutputMultiplier:   2,
+		LongContextInputMultiplier:    xaiGrokLongContextInputMultiplier,
+		LongContextOutputMultiplier:   xaiGrokLongContextOutputMultiplier,
 	}
 }
 
@@ -1536,7 +1541,7 @@ func (s *BillingService) applyModelSpecificPricingPolicy(model string, pricing *
 	isGPT56 := isOpenAIGPT56Model(normalized)
 	usesLegacyLongContextPricing := usesOpenAILegacyLongContextPricing(normalized)
 	if !isGPT56 && !usesLegacyLongContextPricing {
-		return pricing
+		return s.applyGrokLongContextPolicy(model, pricing)
 	}
 	needsLongContextPolicy := (isGPT56 || usesLegacyLongContextPricing) &&
 		(pricing.LongContextInputThreshold <= 0 || pricing.LongContextInputMultiplier <= 0 || pricing.LongContextOutputMultiplier <= 0)
@@ -1570,6 +1575,70 @@ func (s *BillingService) applyModelSpecificPricingPolicy(model string, pricing *
 		enforceOpenAIFastPricingRatio(&cloned, fastRatio)
 	}
 	return &cloned
+}
+
+// applyGrokLongContextPolicy 为 Grok 文本模型回填 xAI 官方长上下文价卡。
+// 远程 LiteLLM 目录的 grok 条目不带长上下文字段，若不回填，
+// shouldApplySessionLongContextPricing 永远不触发，≥200K 请求会按基础单价少计。
+// 回填只补阈值/倍率、不动单价；对已带规则的条目（内置 catalog / 硬编码
+// fallback）是幂等的。只有回退价卡本身定义了长上下文档的型号才回填，
+// 保证回填规则与实际计价格卡一致（如 grok-3-mini 无长上下文档则不回填）。
+func (s *BillingService) applyGrokLongContextPolicy(model string, pricing *ModelPricing) *ModelPricing {
+	card := s.grokLongContextCard(model)
+	if card == nil {
+		return pricing
+	}
+	if pricing.LongContextInputThreshold > 0 && pricing.LongContextInputMultiplier > 1 &&
+		pricing.LongContextOutputMultiplier > 1 {
+		return pricing
+	}
+	cloned := *pricing
+	if cloned.LongContextInputThreshold <= 0 {
+		cloned.LongContextInputThreshold = card.LongContextInputThreshold
+	}
+	if cloned.LongContextInputMultiplier <= 1 {
+		cloned.LongContextInputMultiplier = card.LongContextInputMultiplier
+	}
+	if cloned.LongContextOutputMultiplier <= 1 {
+		cloned.LongContextOutputMultiplier = card.LongContextOutputMultiplier
+	}
+	// xAI 长上下文档为含边界（≥200K 即高档）；GPT 侧保持严格 > 的既有语义。
+	cloned.LongContextThresholdInclusive = card.LongContextThresholdInclusive
+	return &cloned
+}
+
+// grokLongContextCard 返回模型实际计费所用的 Grok 回退价卡（带长上下文档），
+// 无长上下文档或非 Grok 文本型号返回 nil。
+func (s *BillingService) grokLongContextCard(model string) *ModelPricing {
+	if s == nil {
+		return nil
+	}
+	modelLower := strings.ToLower(model)
+	if !isGrokLongContextTextModel(modelLower) {
+		return nil
+	}
+	card := s.getFallbackPricing(modelLower)
+	if card == nil || card.LongContextInputThreshold <= 0 {
+		return nil
+	}
+	return card
+}
+
+// isGrokLongContextTextModel 判断模型 ID 是否属于 Grok 文本（token 计费）族：
+// 已知长上下文价卡型号，加上未知文本回退族（按 grok-4.6 价卡计费）。
+// 媒体型号（image/video/audio 等按次计费）由 isGrokUnknownTextFamilyModel
+// 内部排除，不会走到 token 价卡。
+func isGrokLongContextTextModel(modelLower string) bool {
+	switch modelLower {
+	case "grok", "grok-latest", "grok-4.6", "grok-4.6-latest",
+		"grok-4.5", "grok-4.5-latest", "grok-4.3",
+		"grok-4.20-0309-reasoning", "grok-4.20-0309-non-reasoning",
+		"grok-4.20-multi-agent-0309", "grok-4.20-reasoning", "grok-4.20-non-reasoning",
+		"grok-build", "grok-build-latest", "grok-build-0.1",
+		"grok-composer", "grok-composer-2.5-fast", "composer-2.5":
+		return true
+	}
+	return isGrokUnknownTextFamilyModel(modelLower)
 }
 
 // openAIModelFastPricingRatio 返回业务口径下 OpenAI GPT-5.x 模型 Fast/priority
