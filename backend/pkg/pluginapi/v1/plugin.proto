@@ -1,0 +1,117 @@
+syntax = "proto3";
+
+package sub2api.plugin.v1;
+
+option go_package = "github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1;pluginv1";
+
+service TransportPlugin {
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc ValidateConfig(ValidateConfigRequest) returns (ValidateConfigResponse);
+  rpc ApplyConfig(ApplyConfigRequest) returns (ApplyConfigResponse);
+  rpc TestConfig(TestConfigRequest) returns (TestConfigResponse);
+  rpc Forward(stream ForwardRequest) returns (stream ForwardResponse);
+}
+
+message GetInfoRequest {}
+
+message GetInfoResponse {
+  string plugin_id = 1;
+  string plugin_version = 2;
+  uint32 protocol_version = 3;
+  uint32 transport_api_version = 4;
+  repeated string capabilities = 5;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool healthy = 1;
+  string message = 2;
+}
+
+message ValidateConfigRequest {
+  bytes config_json = 1;
+}
+
+message ValidateConfigResponse {
+  bool valid = 1;
+  string message = 2;
+  bytes normalized_config_json = 3;
+}
+
+message ApplyConfigRequest {
+  bytes config_json = 1;
+}
+
+message ApplyConfigResponse {
+  bool applied = 1;
+  string message = 2;
+}
+
+message TestConfigRequest {
+  bytes config_json = 1;
+}
+
+message TestConfigResponse {
+  bool success = 1;
+  string message = 2;
+  int64 latency_ms = 3;
+}
+
+message HeaderValues {
+  repeated string values = 1;
+}
+
+message ForwardRequestStart {
+  string request_id = 1;
+  string method = 2;
+  string url = 3;
+  string host = 4;
+  map<string, HeaderValues> headers = 5;
+  string proxy_url = 6;
+  int64 account_id = 7;
+  int32 account_concurrency = 8;
+  string platform = 9;
+  string account_type = 10;
+  int64 content_length = 11;
+  bool has_body = 12;
+}
+
+message ForwardRequest {
+  oneof frame {
+    ForwardRequestStart start = 1;
+    bytes body_chunk = 2;
+    bool body_end = 3;
+  }
+}
+
+message ForwardResponseStart {
+  int32 status_code = 1;
+  string status = 2;
+  string protocol = 3;
+  int32 protocol_major = 4;
+  int32 protocol_minor = 5;
+  map<string, HeaderValues> headers = 6;
+  int64 content_length = 7;
+}
+
+message ForwardResponseEnd {
+  int64 bytes_received = 1;
+  int64 duration_ms = 2;
+}
+
+message ForwardResponseError {
+  string code = 1;
+  string message = 2;
+  bool request_sent = 3;
+}
+
+message ForwardResponse {
+  oneof frame {
+    ForwardResponseStart start = 1;
+    bytes body_chunk = 2;
+    ForwardResponseEnd end = 3;
+    ForwardResponseError error = 4;
+  }
+}

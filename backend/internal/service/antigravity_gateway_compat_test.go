@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -222,6 +224,51 @@ func TestAntigravityCompatRejectsUnsupportedAccountType(t *testing.T) {
 	}
 }
 
+func TestBuildAntigravityCompatGeminiBody_ConfiguresMixedToolInvocations(t *testing.T) {
+	svc := &AntigravityGatewayService{}
+	tests := []struct {
+		name      string
+		tools     string
+		wantField bool
+	}{
+		{
+			name:      "mixed server and client tools",
+			tools:     `[{"name":"get_weather","input_schema":{"type":"object"}},{"type":"web_search_20250305","name":"web_search"}]`,
+			wantField: true,
+		},
+		{
+			name:  "client tools only",
+			tools: `[{"name":"get_weather","input_schema":{"type":"object"}}]`,
+		},
+		{
+			name:  "server tools only",
+			tools: `[{"type":"web_search_20250305","name":"web_search"}]`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			claudeBody := []byte(`{"messages":[{"role":"user","content":"hello"}],"tools":` + tt.tools + `}`)
+			claudeBody = bytes.ReplaceAll(claudeBody, []byte{92}, nil)
+			body, err := svc.buildAntigravityCompatGeminiBody(context.Background(), claudeBody, nil, "project-1", "gemini-2.5-flash")
+			require.NoError(t, err)
+
+			var wrapped map[string]any
+			require.NoError(t, json.Unmarshal(body, &wrapped))
+			request, ok := wrapped["request"].(map[string]any)
+			require.True(t, ok)
+			toolConfig, exists := request["toolConfig"].(map[string]any)
+			if !tt.wantField {
+				require.False(t, exists)
+				return
+			}
+			require.True(t, exists)
+			require.Equal(t, true, toolConfig["includeServerSideToolInvocations"])
+			require.NotContains(t, toolConfig, "include_server_side_tool_invocations")
+		})
+	}
+}
+
 func TestAntigravityCompatPreservesChatTokenLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tests := []struct {
@@ -238,6 +285,21 @@ func TestAntigravityCompatPreservesChatTokenLimit(t *testing.T) {
 			name: "max_completion_tokens takes precedence",
 			body: `{"model":"gemini-3.1-pro-high","messages":[{"role":"user","content":"ok"}],"max_tokens":8,"max_completion_tokens":13}`,
 			want: 13,
+		},
+		{
+			name: "max_tokens at safe ceiling is preserved",
+			body: `{"model":"gemini-3.1-pro-high","messages":[{"role":"user","content":"ok"}],"max_tokens":64000}`,
+			want: 64000,
+		},
+		{
+			name: "max_tokens above safe ceiling is clamped",
+			body: `{"model":"gemini-3.1-pro-high","messages":[{"role":"user","content":"ok"}],"max_tokens":64001}`,
+			want: 64000,
+		},
+		{
+			name: "precedence applies before clamping",
+			body: `{"model":"gemini-3.1-pro-high","messages":[{"role":"user","content":"ok"}],"max_tokens":8,"max_completion_tokens":64001}`,
+			want: 64000,
 		},
 	}
 
@@ -263,6 +325,27 @@ func TestAntigravityCompatPreservesChatTokenLimit(t *testing.T) {
 		})
 	}
 }
+
+func TestPreserveChatCompletionTokenLimitIgnoresAbsentAndNonPositiveValues(t *testing.T) {
+	tests := []struct {
+		name    string
+		request apicompat.ChatCompletionsRequest
+	}{
+		{name: "absent"},
+		{name: "zero max_tokens", request: apicompat.ChatCompletionsRequest{MaxTokens: antigravityCompatIntPtr(0)}},
+		{name: "negative max_completion_tokens takes precedence", request: apicompat.ChatCompletionsRequest{MaxTokens: antigravityCompatIntPtr(12), MaxCompletionTokens: antigravityCompatIntPtr(-1)}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			claudeRequest := &apicompat.AnthropicRequest{MaxTokens: 99}
+			preserveChatCompletionTokenLimit(&tt.request, claudeRequest)
+			require.Equal(t, 99, claudeRequest.MaxTokens)
+		})
+	}
+}
+
+func antigravityCompatIntPtr(v int) *int { return &v }
 
 func TestAntigravityCompatRoutesByMappedModelFamily(t *testing.T) {
 	gin.SetMode(gin.TestMode)

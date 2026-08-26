@@ -28,12 +28,8 @@ const (
 )
 
 func (h *GatewayHandler) WebSearch(c *gin.Context) {
-	type webSearchReq struct {
-		Query      string `json:"query" binding:"required"`
-		MaxResults int    `json:"max_results"`
-	}
-
-	var req webSearchReq
+	isXSearch := c.GetBool("grok_x_search_endpoint")
+	var req grokStandaloneSearchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
 			"type":    "invalid_request_error",
@@ -41,7 +37,28 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 		}})
 		return
 	}
-	req.MaxResults = normalizeGrokWebSearchMaxResults(req.MaxResults)
+	query := strings.TrimSpace(req.Query)
+	if query == "" {
+		query = strings.TrimSpace(req.Input)
+	}
+	if query == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+			"type":    "invalid_request_error",
+			"message": "query is required",
+		}})
+		return
+	}
+	req.Query = query
+	maxResults := 0
+	if req.MaxResults != nil {
+		maxResults = *req.MaxResults
+	}
+	maxResults = normalizeGrokWebSearchMaxResults(maxResults)
+	searchModel := resolveGrokStandaloneSearchModel()
+	searchLabel := "web_search"
+	if isXSearch {
+		searchLabel = "x_search"
+	}
 
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok || apiKey == nil {
@@ -55,7 +72,7 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 	if apiKey.Group == nil || apiKey.Group.Platform != "grok" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
 			"type":    "invalid_request_error",
-			"message": "web search is only supported for grok groups",
+			"message": searchLabel + " is only supported for grok groups",
 		}})
 		return
 	}
@@ -79,7 +96,7 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 			"role": "user", "content": req.Query,
 		}},
 	})
-	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIChat, xai.DefaultTextModel, auditBody); decision != nil && !decision.AllowNextStage {
+	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIChat, searchModel, auditBody); decision != nil && !decision.AllowNextStage {
 		status := decision.HTTPStatus
 		if status == 0 {
 			status = http.StatusForbidden
@@ -123,7 +140,7 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 	// First attempt + up to 3 failover accounts (max 4 total).
 	for attempt := 0; attempt < 4; attempt++ {
 		selected, selectErr := h.gatewayService.SelectAccountWithLoadAwareness(
-			c.Request.Context(), groupID, "", xai.DefaultTextModel, failedAccounts, "", 0,
+			c.Request.Context(), groupID, "", searchModel, failedAccounts, "", 0,
 		)
 		if selectErr != nil {
 			if attempt == 0 {
@@ -159,7 +176,11 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 		account = selected.Account
 		accountReleaseFunc = release
 
-		nativeResp, providerName, err = h.doGrokNativeWebSearch(c.Request.Context(), c, account, req.Query, req.MaxResults)
+		if isXSearch {
+			nativeResp, providerName, err = h.doGrokNativeXSearch(c.Request.Context(), c, account, req, searchModel, maxResults)
+		} else {
+			nativeResp, providerName, err = h.doGrokNativeWebSearch(c.Request.Context(), c, account, req.Query, maxResults, searchModel)
+		}
 		if err == nil {
 			break
 		}
@@ -198,7 +219,7 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 	quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 	// Request IDs are billing idempotency keys, so they must be unique per invocation.
 	// Query/IP/UA hashes would collapse repeated identical searches into one charge.
-	searchRequestID := "web_search:" + uuid.NewString()
+	searchRequestID := searchLabel + ":" + uuid.NewString()
 	if apiKey.Group != nil {
 		if p := apiKey.Group.GetSearchPricePer1k(); p != nil && *p == 0 {
 			logger.L().With(
@@ -211,7 +232,7 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 			Result: &service.ForwardResult{
 				RequestID:   searchRequestID,
-				Model:       "grok-web-search",
+				Model:       "grok-" + strings.ReplaceAll(searchLabel, "_", "-"),
 				SearchCount: 1,
 				Duration:    0,
 			},
@@ -240,7 +261,7 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 		"query":       req.Query,
 		"results":     nativeResp.Results,
 		"provider":    providerName,
-		"max_results": req.MaxResults,
+		"max_results": maxResults,
 	})
 }
 
@@ -299,13 +320,13 @@ func (h *GatewayHandler) acquireWebSearchAccountSlot(
 
 // doGrokNativeWebSearch executes web search using the Grok account's native capability
 // by calling the responses endpoint with web_search tool, then normalizes sources to unified format.
-func (h *GatewayHandler) doGrokNativeWebSearch(ctx context.Context, c *gin.Context, account *service.Account, query string, maxResults int) (*websearch.SearchResponse, string, error) {
+func (h *GatewayHandler) doGrokNativeWebSearch(ctx context.Context, c *gin.Context, account *service.Account, query string, maxResults int, model string) (*websearch.SearchResponse, string, error) {
 	maxResults = normalizeGrokWebSearchMaxResults(maxResults)
 
 	// Build a minimal responses request that triggers Grok web search tool.
 	// Ask for structured metadata because xAI action.sources commonly contains URLs only.
 	searchBody := map[string]any{
-		"model":   xai.DefaultTextModel,
+		"model":   xai.ResolveDefaultTextModel(model),
 		"input":   buildGrokWebSearchPrompt(query, maxResults),
 		"tools":   []map[string]any{{"type": "web_search"}},
 		"include": []string{"web_search_call.action.sources"},
@@ -326,6 +347,23 @@ func (h *GatewayHandler) doGrokNativeWebSearch(ctx context.Context, c *gin.Conte
 	return &websearch.SearchResponse{
 		Results: results,
 		Query:   query,
+	}, "grok-native", nil
+}
+
+func (h *GatewayHandler) doGrokNativeXSearch(ctx context.Context, c *gin.Context, account *service.Account, req grokStandaloneSearchRequest, model string, maxResults int) (*websearch.SearchResponse, string, error) {
+	maxResults = normalizeGrokWebSearchMaxResults(maxResults)
+	bodyBytes, err := buildGrokXSearchResponsesBody(req, model)
+	if err != nil {
+		return nil, "", err
+	}
+	respBytes, err := h.gatewayService.DoGrokNativeResponsesJSON(ctx, account, bodyBytes)
+	if err != nil {
+		return nil, "", err
+	}
+	results := extractGrokWebSearchSources(respBytes, maxResults)
+	return &websearch.SearchResponse{
+		Results: results,
+		Query:   req.Query,
 	}, "grok-native", nil
 }
 
@@ -377,7 +415,8 @@ func extractGrokWebSearchSources(body []byte, maxResults int) []websearch.Search
 
 	output := gjson.GetBytes(body, "output")
 	output.ForEach(func(_, item gjson.Result) bool {
-		if item.Get("type").String() == "web_search_call" {
+		callType := item.Get("type").String()
+		if callType == "web_search_call" || callType == "x_search_call" {
 			sources := item.Get("action.sources")
 			if sources.IsArray() {
 				sources.ForEach(func(_, src gjson.Result) bool {
