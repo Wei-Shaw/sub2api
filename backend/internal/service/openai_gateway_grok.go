@@ -103,7 +103,10 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 
 	upstreamStart := time.Now()
 	var resp *http.Response
-	for attempt := 0; ; attempt++ {
+	decodeRetryUsed := false
+	toolContinuation := hasGrokResponsesToolContinuation(body)
+	toolContinuationServerRetryCount := 0
+	for {
 		upstreamReq, buildErr := buildGrokResponsesRequest(upstreamCtx, c, account, patchedBody, token, cacheIdentity, s.cfg, s.settingService)
 		if buildErr != nil {
 			return nil, buildErr
@@ -115,10 +118,32 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 		}
 
+		if toolContinuation && resp.StatusCode == http.StatusInternalServerError && toolContinuationServerRetryCount < grokToolContinuationServerRetryMax {
+			respBody := s.readUpstreamErrorBody(resp)
+			if grokToolContinuationServerRetryAllowed(toolContinuation, resp.StatusCode, respBody, toolContinuationServerRetryCount) {
+				if resp.Body != nil {
+					_ = resp.Body.Close()
+				}
+				toolContinuationServerRetryCount++
+				slog.Warn("grok_tool_continuation_server_retry",
+					"account_id", account.ID,
+					"protocol", "responses",
+					"upstream_status", resp.StatusCode,
+					"retry_count", toolContinuationServerRetryCount,
+					"retry_max", grokToolContinuationServerRetryMax,
+				)
+				if retryErr := sleepWithContext(ctx, retryBackoffDelay(toolContinuationServerRetryCount)); retryErr != nil {
+					return nil, retryErr
+				}
+				continue
+			}
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+		}
+
 		// xAI can reject encrypted reasoning or a compaction blob copied from a
 		// different decoder/cache context. Retry once on the same account after
 		// preserving visible summaries and removing only opaque replay state.
-		if attempt > 0 || (resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusUnprocessableEntity) {
+		if decodeRetryUsed || (resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusUnprocessableEntity) {
 			break
 		}
 		respBody := s.readUpstreamErrorBody(resp)
@@ -148,6 +173,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		}
 
 		patchedBody = retryBody
+		decodeRetryUsed = true
 		slog.Info("grok_replay_decode_retry", "account_id", account.ID, "cache_identity_present", cacheIdentity != "")
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -214,6 +240,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		if hasGrokResponsesClientToolMapping(clientToolMapping) {
 			resp.Body = newGrokResponsesClientToolStreamBody(resp.Body, clientToolMapping, maxLineSize)
 		}
+		resp.Body = newOpenAIResponsesWebSearchActionCompatStreamBody(resp.Body, maxLineSize, defaultOpenAIResponsesWebSearchActionCompatBufferedBytes)
 		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
 		if err != nil {
 			return nil, err

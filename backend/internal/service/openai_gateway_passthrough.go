@@ -436,6 +436,13 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			}
 			resp.Body = newGrokResponsesClientToolStreamBody(resp.Body, mapping, maxLineSize)
 		}
+		if reqStream {
+			maxLineSize := defaultMaxLineSize
+			if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
+				maxLineSize = s.cfg.Gateway.MaxLineSize
+			}
+			resp.Body = newOpenAIResponsesWebSearchActionCompatStreamBody(resp.Body, maxLineSize, defaultOpenAIResponsesWebSearchActionCompatBufferedBytes)
+		}
 
 		// x-codex-turn-state 溯源：下游回传由 writeOpenAIPassthroughResponseHeaders
 		// 在各 handler 的写头点强制放行，铸造账号在此统一记录，供出站守卫剥离
@@ -1747,6 +1754,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	var bareErrorPayload []byte
 	bareErrorAccountSideEffectsPending := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
+	streamDoneItems := newResponsesStreamOutputItems()
 	// pendingLines 在首个可见输出前保留前导事件，确保无输出失败仍可安全 failover。
 	pendingLines := make([]string, 0, 8)
 	// flushPending 表示已写入但未到 SSE 空行边界的脏状态；defer 兜底函数退出前的残留，断连后不再 Flush。
@@ -1843,6 +1851,19 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				dataBytes = normalizedData
 				trimmedData = strings.TrimSpace(string(normalizedData))
 				line = "data: " + string(normalizedData)
+			}
+			if trimmedData != "[DONE]" {
+				// Keep done items and terminal output in the same upstream dialect.
+				// The event-line type is probe-only unless supplementation changes the payload.
+				collectorPayload := []byte(openAICompatPayloadWithEventType(string(dataBytes), rawEventType))
+				streamDoneItems.Observe(collectorPayload)
+				if streamDoneItems.HasItems() {
+					if normalizedData, normalized := normalizeResponsesStreamingTerminalOutput(collectorPayload, nil, streamDoneItems, nil); normalized {
+						dataBytes = normalizedData
+						trimmedData = strings.TrimSpace(string(normalizedData))
+						line = "data: " + string(normalizedData)
+					}
+				}
 			}
 			if trimmedData != "[DONE]" {
 				restoredData, restoreErr := restoreOpenAIResponsesNamespacePayload(c, dataBytes)
@@ -1967,6 +1988,15 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				dataBytes = sanitizedData
 				trimmedData = strings.TrimSpace(string(sanitizedData))
 				line = "data: " + string(sanitizedData)
+			}
+			normalizedCreatedAt, normalizedOK := normalizeOpenAIResponsesEventCreatedAt(dataBytes, eventType)
+			if !normalizedOK {
+				return resultWithUsage(), fmt.Errorf("normalize OpenAI passthrough SSE created_at for %s", eventType)
+			}
+			if !bytes.Equal(normalizedCreatedAt, dataBytes) {
+				dataBytes = normalizedCreatedAt
+				trimmedData = strings.TrimSpace(string(normalizedCreatedAt))
+				line = "data: " + string(normalizedCreatedAt)
 			}
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
 			if lineStartsClientOutput && trimmedData != "[DONE]" && !openAIStreamEventTypeIsTerminal(eventType) {
@@ -2144,6 +2174,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	if err != nil {
 		return nil, fmt.Errorf("restore OpenAI Responses client tools: %w", err)
 	}
+	body, normalizedOK := normalizeOpenAIResponsesCreatedAt(body, "created_at")
+	if !normalizedOK {
+		return nil, errors.New("normalize OpenAI passthrough non-streaming created_at")
+	}
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
@@ -2188,6 +2222,8 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 					finalResponse = patched
 				}
 			}
+		} else {
+			finalResponse = supplementNonEmptyResponseOutputFromSSE(finalResponse, bodyText)
 		}
 		finalResponse = supplementCompactionItemFromSSE(c, finalResponse, bodyText)
 		body = finalResponse
@@ -2202,6 +2238,11 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		}
 		restoredBody = restoreCodexToolNamesFromContext(c, restoredBody)
 		body = restoredBody
+		var normalizedOK bool
+		body, normalizedOK = normalizeOpenAIResponsesCreatedAt(body, "created_at")
+		if !normalizedOK {
+			return nil, errors.New("normalize OpenAI passthrough SSE-to-JSON created_at")
+		}
 	} else {
 		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
 			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)

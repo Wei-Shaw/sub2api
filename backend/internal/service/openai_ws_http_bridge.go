@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
 
@@ -240,6 +241,10 @@ func buildOpenAIWSHTTPBridgeErrorEvent(statusCode int, message string) []byte {
 }
 
 func buildOpenAIWSHTTPBridgeFailedEvent(responseID, model string, source []byte, fallbackMessage string) []byte {
+	responseID = strings.TrimSpace(responseID)
+	if responseID == "" {
+		responseID = "resp_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	}
 	errorType := strings.TrimSpace(gjson.GetBytes(source, "error.type").String())
 	if errorType == "" {
 		errorType = strings.TrimSpace(gjson.GetBytes(source, "response.error.type").String())
@@ -263,7 +268,7 @@ func buildOpenAIWSHTTPBridgeFailedEvent(responseID, model string, source []byte,
 		errorBody["type"] = errorType
 	}
 	response := map[string]any{
-		"id": responseID, "object": "response", "status": "failed",
+		"id": responseID, "object": "response", "created_at": time.Now().Unix(), "status": "failed",
 		"output": []any{}, "error": errorBody,
 	}
 	if model = strings.TrimSpace(model); model != "" {
@@ -271,7 +276,7 @@ func buildOpenAIWSHTTPBridgeFailedEvent(responseID, model string, source []byte,
 	}
 	body, err := json.Marshal(map[string]any{"type": "response.failed", "response": response})
 	if err != nil {
-		return []byte(`{"type":"response.failed","response":{"status":"failed","output":[],"error":{"code":"upstream_error","message":"Upstream response failed"}}}`)
+		return buildOpenAIResponseFailedFallbackPayload(responseID)
 	}
 	return body
 }
@@ -331,6 +336,12 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		)
 		if err != nil {
 			return nil, fmt.Errorf("adapt %s client tools: %w", openAIWSHTTPBridgeToolUpstreamName(account), err)
+		}
+		if account.Platform == PlatformGrok {
+			body, err = applyGrokCodexClientToolPolicies(body, clientToolMapping)
+			if err != nil {
+				return nil, fmt.Errorf("apply Grok WS HTTP bridge client-tool policy: %w", err)
+			}
 		}
 		if account.Platform == PlatformGrok && !grokExplicitToolsField && !grokExplicitToolIntent && len(inheritedLoweredTools) > 0 && hasGrokResponsesToolIntent(body) {
 			// This continuation omitted tools, so the pre-adapter source cannot
@@ -554,6 +565,8 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	if hasResponsesClientToolMapping(clientToolMapping) {
 		resp.Body = newResponsesClientToolStreamBody(resp.Body, clientToolMapping, maxLineSize)
 	}
+	resp.Body = newOpenAIResponsesWebSearchActionCompatStreamBody(resp.Body, maxLineSize, defaultOpenAIResponsesWebSearchActionCompatBufferedBytes)
+	streamDoneItems := newResponsesStreamOutputItems()
 	scanner := bufio.NewScanner(resp.Body)
 	scanBuf := getSSEScannerBuf64K()
 	scanner.Buffer(scanBuf[:0], maxLineSize)
@@ -650,6 +663,10 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				upstreamMessage = corrected
 			}
 		}
+		streamDoneItems.Observe(upstreamMessage)
+		if normalized, changed := normalizeResponsesStreamingTerminalOutput(upstreamMessage, nil, streamDoneItems, nil); changed {
+			upstreamMessage = normalized
+		}
 		replayCollector.AddEvent(eventType, upstreamMessage)
 
 		var upstreamEventErr error
@@ -726,6 +743,15 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				clientMessage = rewritten
 			}
 		}
+		normalizedCreatedAt, normalizedOK := normalizeOpenAIResponsesEventCreatedAt(clientMessage, eventType)
+		if !normalizedOK {
+			return nil, wrapOpenAIWSIngressTurnError(
+				"normalize_created_at",
+				fmt.Errorf("normalize OpenAI WS HTTP bridge created_at for %s", eventType),
+				wroteDownstream,
+			)
+		}
+		clientMessage = normalizedCreatedAt
 		if !clientDisconnected && !suppressClientMessage {
 			stageBeforeSemanticOutput := turn == 1 && account.Platform == PlatformOpenAI && !wroteDownstream
 			commitStagedMessages := !stageBeforeSemanticOutput ||

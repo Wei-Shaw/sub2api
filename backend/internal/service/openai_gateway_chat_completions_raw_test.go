@@ -805,6 +805,166 @@ func TestForwardAsChatCompletions_UnknownResponsesSupportFallbackUsesVersionedCh
 	require.Contains(t, rec.Body.String(), `"content":"ok"`)
 }
 
+func TestForwardAsRawChatCompletions_GrokToolContinuationRetriesServer500BeforeCooldown(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{
+		"model":"fixture-grok",
+		"messages":[
+			{"role":"assistant","content":null,"tool_calls":[{"id":"call_fixture_a","type":"function","function":{"name":"run_terminal_command","arguments":"{}"}}]},
+			{"role":"tool","tool_call_id":"call_fixture_a","content":"exit: 0\ngrok-tool-a\n"}
+		],
+		"stream":false
+	}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusInternalServerError,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"fixture transient 500 attempt 1"}}`)),
+		},
+		{
+			StatusCode: http.StatusInternalServerError,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"fixture transient 500 attempt 2"}}`)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid-grok-chat-recovery"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"id":"chatcmpl_recovery","object":"chat.completion","model":"fixture-grok","choices":[{"index":0,"message":{"role":"assistant","content":"fixture-recovery-ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4}}`,
+			)),
+		},
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+	account := rawChatCompletionsTestAccount()
+	account.ID = 7201
+	account.Name = "grok-chat-recovery"
+	account.Platform = PlatformGrok
+	account.Credentials["api_key"] = "xai-recovery-key"
+	account.Credentials["base_url"] = "https://api.x.ai/v1"
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Len(t, upstream.bodies, 3)
+	for index := 1; index < len(upstream.bodies); index++ {
+		require.Equal(t, upstream.bodies[0], upstream.bodies[index], "retry %d changed the lowered chat continuation body", index)
+	}
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "fixture-recovery-ok", gjson.Get(rec.Body.String(), "choices.0.message.content").String())
+}
+
+func TestForwardAsRawChatCompletions_GrokStreamingToolContinuationRetriesServer500BeforeCooldown(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"fixture-grok","messages":[{"role":"assistant","content":null,"tool_calls":[{"id":"call_fixture_a","type":"function","function":{"name":"run_terminal_command","arguments":"{}"}}]},{"role":"tool","tool_call_id":"call_fixture_a","content":"ok"}],"stream":true}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+
+	sse := strings.Join([]string{
+		`data: {"id":"chatcmpl_recovery","object":"chat.completion.chunk","model":"fixture-grok","choices":[{"index":0,"delta":{"content":"fixture-recovery-ok"},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_recovery","object":"chat.completion.chunk","model":"fixture-grok","choices":[],"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"attempt 1"}}`))},
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"attempt 2"}}`))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(sse))},
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	account := rawChatCompletionsTestAccount()
+	account.ID = 7203
+	account.Platform = PlatformGrok
+	account.Credentials["api_key"] = "xai-stream-key"
+	account.Credentials["base_url"] = "https://api.x.ai/v1"
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.Stream)
+	require.Len(t, upstream.bodies, 3)
+	require.Equal(t, upstream.bodies[0], upstream.bodies[1])
+	require.Equal(t, upstream.bodies[1], upstream.bodies[2])
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Contains(t, rec.Body.String(), "fixture-recovery-ok")
+	require.Contains(t, rec.Body.String(), "data: [DONE]")
+}
+
+func TestForwardAsRawChatCompletions_GrokToolContinuationRetryHonorsCanceledContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"fixture-grok","messages":[{"role":"assistant","content":null,"tool_calls":[{"id":"call_fixture_a","type":"function","function":{"name":"run_terminal_command","arguments":"{}"}}]},{"role":"tool","tool_call_id":"call_fixture_a","content":"ok"}],"stream":true}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	failedBody := &passthroughCloseTrackingReadCloser{
+		Reader: strings.NewReader(`{"error":{"type":"server_error","message":"temporary"}}`),
+	}
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: failedBody},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader("data: [DONE]\n\n"))},
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	account := rawChatCompletionsTestAccount()
+	account.ID = 7204
+	account.Platform = PlatformGrok
+	account.Credentials["api_key"] = "xai-cancel-key"
+	account.Credentials["base_url"] = "https://api.x.ai/v1"
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result, err := svc.forwardAsRawChatCompletions(ctx, c, account, body, "")
+	require.Nil(t, result)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Len(t, upstream.bodies, 1)
+	require.True(t, failedBody.closed)
+	require.Empty(t, rec.Body.Bytes())
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+}
+
+func TestForwardAsRawChatCompletions_GrokToolContinuationServerRetryIsBounded(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"fixture-grok","messages":[{"role":"assistant","content":null,"tool_calls":[{"id":"call_fixture_a","type":"function","function":{"name":"run_terminal_command","arguments":"{}"}}]},{"role":"tool","tool_call_id":"call_fixture_a","content":"ok"}],"stream":false}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"attempt 1"}}`))},
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"attempt 2"}}`))},
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"attempt 3"}}`))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"must_not_be_reached","choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))},
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	account := rawChatCompletionsTestAccount()
+	account.ID = 7202
+	account.Platform = PlatformGrok
+	account.Credentials["api_key"] = "xai-bounded-key"
+	account.Credentials["base_url"] = "https://api.x.ai/v1"
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+	require.Error(t, err)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusInternalServerError, failoverErr.StatusCode)
+	require.Contains(t, string(failoverErr.ResponseBody), "attempt 3")
+	require.Len(t, upstream.bodies, 3)
+	require.Empty(t, rec.Body.Bytes())
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+}
+
 func TestIsOpenAIChatUsageOnlyStreamChunk(t *testing.T) {
 	t.Parallel()
 

@@ -641,6 +641,10 @@ func (c *openAIWSClientFrameConn) WriteFrame(ctx context.Context, msgType coderw
 		if c.restoreToolNames != nil {
 			payload = c.restoreToolNames(payload)
 		}
+		eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
+		if normalized, ok := normalizeOpenAIResponsesEventCreatedAt(payload, eventType); ok {
+			payload = normalized
+		}
 	}
 	return c.conn.Write(ctx, msgType, payload)
 }

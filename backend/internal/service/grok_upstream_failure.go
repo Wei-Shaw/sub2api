@@ -30,6 +30,11 @@ const (
 	// incompatible with the selected account or upstream replay contract. It
 	// is account-independent: fail over, but never quarantine the pool.
 	GrokFailureCompatibility GrokUpstreamFailureClass = "compatibility_error"
+
+	// A self-contained tool continuation can be replayed before any model
+	// output reaches the client. Two bounded replays cover short repeated 500
+	// bursts without turning ordinary requests into an unbounded retry loop.
+	grokToolContinuationServerRetryMax = 2
 )
 
 // GrokUpstreamFailureDecision is a pure classification result. Callers map it
@@ -180,6 +185,37 @@ func classifyGrokUpstreamFailure(statusCode int, responseBody []byte, requestedM
 	}
 
 	return GrokUpstreamFailureDecision{Reason: text}
+}
+
+func hasGrokResponsesToolContinuation(body []byte) bool {
+	coverage := AnalyzeToolCallOutputContextCoverageBytes(body)
+	return coverage.HasFunctionCallOutput && coverage.ContextCoversAllCallIDs
+}
+
+func hasGrokChatToolContinuation(body []byte) bool {
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.IsArray() {
+		return false
+	}
+	for _, message := range messages.Array() {
+		if strings.TrimSpace(message.Get("role").String()) != "tool" {
+			continue
+		}
+		if strings.TrimSpace(message.Get("tool_call_id").String()) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func grokToolContinuationServerRetryAllowed(hasContinuation bool, statusCode int, responseBody []byte, retryCount int) bool {
+	if !hasContinuation || retryCount < 0 || retryCount >= grokToolContinuationServerRetryMax {
+		return false
+	}
+	if statusCode != http.StatusInternalServerError {
+		return false
+	}
+	return classifyGrokUpstreamFailure(statusCode, responseBody, "").Class == GrokFailureServer
 }
 
 func grokUpstreamErrorCorpus(statusCode int, responseBody []byte) (text, code, low string) {
