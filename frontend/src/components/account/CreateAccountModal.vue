@@ -1295,13 +1295,14 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKeyRequired') }}</label>
-          <input
+          <textarea
             v-model="apiKeyValue"
-            type="password"
+            rows="4"
             required
-            class="input font-mono"
+            class="input min-h-28 resize-y font-mono"
             :placeholder="apiKeyValuePlaceholder"
-          />
+          ></textarea>
+          <p v-if="form.platform === 'openai'" class="input-hint">每行输入一个 API Key，可批量创建 OpenAI 账号。</p>
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
         </div>
 
@@ -3949,6 +3950,8 @@ const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
 
+const parseApiKeyLines = (value: string) => value.split(/\r?\n/).map(key => key.trim()).filter(Boolean)
+
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
 const accountMode = ref<CnAccountMode>('payg')
 // API 协议决定转发端点与格式：cc=现有转换链，anthropic=原生直通（Claude Code），
@@ -4068,7 +4071,8 @@ function onCnPresetSelect(preset: { mode: CnAccountMode; protocol: CnApiProtocol
 }
 
 const syncPreviewCredentials = computed(() => {
-  if (!apiKeyValue.value) return undefined
+  const apiKey = parseApiKeyLines(apiKeyValue.value)[0]
+  if (!apiKey) return undefined
   const baseUrl = isCNPlatform.value && apiProtocol.value === 'adaptive'
     ? adaptiveBaseUrls.value.chat_completions.trim() || apiKeyBaseUrl.value.trim()
     : apiKeyBaseUrl.value.trim()
@@ -4076,7 +4080,7 @@ const syncPreviewCredentials = computed(() => {
     platform: form.platform,
     type: form.type,
     base_url: baseUrl || undefined,
-    api_key: apiKeyValue.value
+    api_key: apiKey
   }
 })
 
@@ -5237,6 +5241,58 @@ const doCreateAccount = async (payload: CreateAccountRequest) => {
   await submitCreateAccount(payload)
 }
 
+const doCreateOpenAIApiKeyBatch = async (
+  apiKeys: string[],
+  credentials: Record<string, unknown>,
+  extra?: Record<string, unknown>
+) => {
+  const payloads: CreateAccountRequest[] = apiKeys.map((apiKey, index) => ({
+    name: `${form.name}-${index + 1}`,
+    notes: form.notes,
+    platform: 'openai',
+    type: 'apikey',
+    credentials: { ...credentials, api_key: apiKey },
+    extra,
+    proxy_id: form.proxy_id,
+    concurrency: form.concurrency,
+    load_factor: form.load_factor ?? undefined,
+    priority: form.priority,
+    rate_multiplier: form.rate_multiplier,
+    group_ids: form.group_ids,
+    expires_at: form.expires_at,
+    upstream_billing_probe_enabled: upstreamBillingAutoProbeEnabled.value,
+    auto_pause_on_expired: autoPauseOnExpired.value
+  }))
+
+  submitting.value = true
+  try {
+    const result = await adminAPI.accounts.batchCreate(payloads)
+    const successfulAccounts = result.results
+      .filter(item => item.success && item.account)
+      .map(item => item.account!)
+    if (upstreamBillingAutoProbeEnabled.value) {
+      await Promise.allSettled(successfulAccounts.map(account => adminAPI.accounts.probeUpstreamBilling(account.id)))
+    }
+
+    if (result.failed === 0) {
+      appStore.showSuccess(t('admin.accounts.oauth.batchSuccess', { count: result.success }))
+      emit('created')
+      handleClose()
+    } else if (result.success > 0) {
+      appStore.showWarning(t('admin.accounts.oauth.batchPartialSuccess', { success: result.success, failed: result.failed }))
+      const errors = result.results.map((item, index) => item.success ? '' : `#${index + 1}: ${item.error || '创建失败'}`).filter(Boolean)
+      appStore.showError(errors.join('\n'))
+      emit('created')
+    } else {
+      appStore.showError(t('admin.accounts.oauth.batchFailed'))
+    }
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToCreate'))
+  } finally {
+    submitting.value = false
+  }
+}
+
 // Handle mixed channel warning confirmation
 const handleMixedChannelConfirm = async () => {
   const action = mixedChannelWarningAction.value
@@ -5553,9 +5609,14 @@ const handleSubmit = async () => {
     return
   }
 
-  form.credentials = credentials
   const extra = buildAnthropicExtra(buildOpenAIExtra())
+  const apiKeys = form.platform === 'openai' ? parseApiKeyLines(apiKeyValue.value) : [apiKeyValue.value.trim()]
+  if (form.platform === 'openai' && apiKeys.length > 1) {
+    await doCreateOpenAIApiKeyBatch(apiKeys, credentials, extra)
+    return
+  }
 
+  credentials.api_key = apiKeys[0]
   await doCreateAccount({
     ...form,
     group_ids: form.group_ids,
