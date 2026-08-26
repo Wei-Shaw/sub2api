@@ -24,7 +24,7 @@ services:
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: "${SUB2API_IMAGE:-weishaw/sub2api:latest}"
+    image: "${SUB2API_IMAGE:-ghcr.io/a515642/sub2api:latest}"
     container_name: sub2api
     restart: unless-stopped
     security_opt:
@@ -57,7 +57,7 @@ services:
       - RUN_MODE=${RUN_MODE:-standard}
       - UPDATE_GITHUB_TOKEN=${UPDATE_GITHUB_TOKEN:-}
       - UPDATE_GITHUB_REPO=${UPDATE_GITHUB_REPO:-a515642/sub2api}
-      - UPDATE_DOCKER_IMAGE=${UPDATE_DOCKER_IMAGE:-weishaw/sub2api}
+      - UPDATE_DOCKER_IMAGE=${UPDATE_DOCKER_IMAGE:-ghcr.io/a515642/sub2api}
 
       # =======================================================================
       # Database Configuration (PostgreSQL)

@@ -2582,7 +2582,7 @@ func setDefaults() {
 // unmarshal, exactly as before.
 func setEnvReachableDefaults() {
 	viper.SetDefault("update.github_repo", "a515642/sub2api")
-	viper.SetDefault("update.docker_image", "weishaw/sub2api")
+	viper.SetDefault("update.docker_image", "ghcr.io/a515642/sub2api")
 	viper.SetDefault("gateway.forced_codex_instructions_template_file", "")
 	viper.SetDefault("gateway.session_idle_timeout_minutes", 0)
 	viper.SetDefault("gateway.user_message_queue.mode", "")
