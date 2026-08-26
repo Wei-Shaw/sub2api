@@ -30,7 +30,7 @@ func TestBuildLoginHeadersUsesProvidedMachineID(t *testing.T) {
 
 	require.Equal(t, headers1["User-Agent"], headers2["User-Agent"])
 	require.NotEqual(t, headers1["User-Agent"], headers3["User-Agent"])
-	require.Contains(t, headers1["User-Agent"], "KiroIDE-0.11.")
+	require.Contains(t, headers1["User-Agent"], "KiroIDE-0.12.301")
 	require.Contains(t, headers1["User-Agent"], machineIDA)
 }
 

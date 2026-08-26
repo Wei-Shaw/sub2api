@@ -27,7 +27,7 @@ func TestBuildRuntimeUserAgentStable(t *testing.T) {
 	require.Equal(t, ua1, ua2)
 	require.Contains(t, ua1, "KiroIDE-")
 	require.Contains(t, amzUA, "KiroIDE-")
-	require.Contains(t, ua1, "KiroIDE-0.11.")
+	require.Contains(t, ua1, "KiroIDE-0.12.301")
 	require.Contains(t, ua1, "aws-sdk-js/1.0.34")
 	require.Contains(t, ua1, "md/nodejs#22.22.0")
 	require.Contains(t, ua1, machineID)
