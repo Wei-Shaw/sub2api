@@ -389,11 +389,10 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 	maxRetries := 2
 
 	for idx, endpoint := range endpoints {
-		// 按端点维度构建 payload：Q 端点 profileArn 为空，KRS 端点需要 profileArn
-		var profileArn string
-		if endpoint.Name == "KiroRuntime" {
-			profileArn = kiroResolveProfileArnForKRS(account)
-		}
+		// Q / KRS 端点现在都强制要求 profileArn：缺失时上游返回
+		// 403 "User is not authorized to make this call."。按账号类型解析
+		//（API Key → 空；其余 凭据真实 ARN > Social ARN > Builder ID 占位符）。
+		profileArn := kiroResolveRequestProfileArn(account)
 		buildResult, err := s.buildKiroPayloadForAccountWithArn(ctx, account, parsed, anthropicBody, modelID, currentToken, requestModel, headers, profileArn)
 		if err != nil {
 			return nil, requestCtx, err
@@ -493,12 +492,8 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 					if refreshErr == nil && strings.TrimSpace(refreshedToken) != "" {
 						currentToken = refreshedToken
 						accountKey = buildKiroAccountKey(account)
-						// 凭据可能已被 token 刷新更新，重新解析当前端点的 profileArn
-						if endpoint.Name == "KiroRuntime" {
-							profileArn = kiroResolveProfileArnForKRS(account)
-						} else {
-							profileArn = ""
-						}
+						// 凭据可能已被 token 刷新更新，重新解析 profileArn（所有端点都需要）
+						profileArn = kiroResolveRequestProfileArn(account)
 						buildResult, err = s.buildKiroPayloadForAccountWithArn(ctx, account, parsed, anthropicBody, modelID, currentToken, requestModel, headers, profileArn)
 						if err != nil {
 							return nil, requestCtx, err
