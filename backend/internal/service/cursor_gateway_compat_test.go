@@ -105,7 +105,7 @@ func TestCursorNonStreamResponseRecordsTurnEndedUsage(t *testing.T) {
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 
-	result, err := NewCursorGatewayService().nonStreamResponse(c, bytes.NewReader(frames), "grok-4.6", nil, time.Now())
+	result, err := NewCursorGatewayService(nil, nil).nonStreamResponse(c, bytes.NewReader(frames), "grok-4.6", nil, time.Now())
 	require.NoError(t, err)
 	require.Equal(t, 12, result.Usage.InputTokens)
 	require.Equal(t, 7, result.Usage.OutputTokens)

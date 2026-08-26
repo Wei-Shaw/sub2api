@@ -18,11 +18,20 @@ import (
 // CursorGatewayService translates OpenAI Chat Completions requests into
 // Cursor's Connect-RPC protobuf format, streams the response, and converts
 // it back into OpenAI SSE format.
-type CursorGatewayService struct{}
+type CursorGatewayService struct {
+	accountRepo AccountRepository
+	refreshAPI  *OAuthRefreshAPI
+	refresher   *CursorTokenRefresher
+	streamChat  func(ctx context.Context, creds cursor.Credentials, messages []cursor.ChatMessage, model string, thinkingLevel int) (*http.Response, error)
+}
 
 // NewCursorGatewayService creates a new CursorGatewayService.
-func NewCursorGatewayService() *CursorGatewayService {
-	return &CursorGatewayService{}
+func NewCursorGatewayService(accountRepo AccountRepository, refreshAPI *OAuthRefreshAPI) *CursorGatewayService {
+	return &CursorGatewayService{
+		accountRepo: accountRepo,
+		refreshAPI:  refreshAPI,
+		refresher:   NewCursorTokenRefresher(),
+	}
 }
 
 // ForwardAsChatCompletions receives an OpenAI Chat Completions request body,
@@ -128,8 +137,18 @@ func (s *CursorGatewayService) startCursorChat(
 		thinkingLevel = cursor.ThinkingLevelHigh
 	}
 
-	client := cursor.NewClient(s.buildCredentials(account))
-	resp, err := client.StreamChat(ctx, messages, upstreamModel, thinkingLevel)
+	if err := s.ensureCursorAccessToken(ctx, account); err != nil {
+		logger.LegacyPrintf("service.cursor", "[Cursor] token refresh account=%d: %v", accountID(account), err)
+	}
+
+	resp, err := s.doStreamChat(ctx, account, messages, upstreamModel, thinkingLevel)
+	if err != nil && isCursorAuthError(err) {
+		if refreshErr := s.refreshCursorAccount(ctx, account, true); refreshErr != nil {
+			logger.LegacyPrintf("service.cursor", "[Cursor] auth retry refresh account=%d: %v", accountID(account), refreshErr)
+		} else {
+			resp, err = s.doStreamChat(ctx, account, messages, upstreamModel, thinkingLevel)
+		}
+	}
 	if err != nil {
 		return nil, "", warnings, &UpstreamFailoverError{
 			StatusCode:   http.StatusBadGateway,
@@ -191,6 +210,27 @@ func cursorRunOpts(flatEffort *string, reasoning *struct {
 
 func (s *CursorGatewayService) buildCredentials(account *Account) cursor.Credentials {
 	return cursorCredentialsFromAccount(account)
+}
+
+func (s *CursorGatewayService) doStreamChat(
+	ctx context.Context,
+	account *Account,
+	messages []cursor.ChatMessage,
+	model string,
+	thinkingLevel int,
+) (*http.Response, error) {
+	creds := s.buildCredentials(account)
+	if s != nil && s.streamChat != nil {
+		return s.streamChat(ctx, creds, messages, model, thinkingLevel)
+	}
+	return cursor.NewClient(creds).StreamChat(ctx, messages, model, thinkingLevel)
+}
+
+func accountID(account *Account) int64 {
+	if account == nil {
+		return 0
+	}
+	return account.ID
 }
 
 func cursorCredentialsFromAccount(account *Account) cursor.Credentials {

@@ -37,7 +37,7 @@ func TestE2ECursorGatewayChatCompletions(t *testing.T) {
 	}
 
 	gin.SetMode(gin.TestMode)
-	svc := NewCursorGatewayService()
+	svc := NewCursorGatewayService(nil, nil)
 	body := []byte(`{"model":"default","stream":false,"messages":[{"role":"user","content":"Say exactly: Hello from Sub2API Cursor gateway"}]}`)
 
 	rec := httptest.NewRecorder()
@@ -91,7 +91,7 @@ func TestE2ECursorGatewayVariantModels(t *testing.T) {
 	}
 
 	gin.SetMode(gin.TestMode)
-	svc := NewCursorGatewayService()
+	svc := NewCursorGatewayService(nil, nil)
 
 	for _, model := range []string{"grok-4.6", "claude-opus-5", "gpt-5.6-sol"} {
 		t.Run(model, func(t *testing.T) {

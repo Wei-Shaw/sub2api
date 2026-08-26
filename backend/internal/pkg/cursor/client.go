@@ -350,8 +350,3 @@ func summarizeCursorError(prefix []byte) string {
 	}
 	return "blocked stream"
 }
-
-// RefreshToken exchanges a refresh token for a new access token.
-func RefreshToken(ctx context.Context, httpClient *http.Client, refreshToken string) (newAccessToken string, err error) {
-	return refreshTokenImpl(ctx, httpClient, refreshToken)
-}
