@@ -251,6 +251,30 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     )
   })
 
+  it('omits the default Codex instructions opt-out for new OpenAI accounts', async () => {
+    await submitApiKeyAccount('openai')
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra).not.toHaveProperty(
+      'openai_disable_default_codex_instructions'
+    )
+  })
+
+  it('submits the default Codex instructions opt-out when enabled', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('[data-testid="openai-disable-default-codex-instructions-toggle"]').trigger('click')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(
+      createAccountMock.mock.calls[0]?.[0]?.extra?.openai_disable_default_codex_instructions
+    ).toBe(true)
+  })
+
   it('enables upstream billing probes by default for new OpenAI API key accounts', async () => {
     await submitApiKeyAccount('openai')
 

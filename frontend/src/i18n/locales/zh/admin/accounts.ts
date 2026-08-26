@@ -639,6 +639,9 @@ export default {
         flattenNamespaces: '摊平 Codex namespace 工具（兼容）',
         flattenNamespacesDesc:
           '默认关闭：/responses 上的 namespace 工具声明原样转发，这正是 ChatGPT Codex 后端期望的形态。仅当该 OAuth 账号指向不认识 namespace 的兼容上游时才开启——摊平会把工具改名为 namespace__tool，使按 functions.<命名空间>.<工具> 寻址的模型（如 gpt-5.6 多智能体）无法调用。压缩（compact）请求不受该开关影响，始终摊平。',
+        disableDefaultCodexInstructions: '禁用默认 Codex Instructions 注入',
+        disableDefaultCodexInstructionsDesc:
+          '开启后，请求未提供 instructions 时不再注入 Sub2API 内置的 Codex Base Prompt；客户端自行提供的 instructions 和 system 指令不受影响。',
         longContextBilling: 'API 长上下文计费',
         longContextBillingDesc: '默认关闭。仅当该账号的上游会按模型阈值收取 OpenAI API 长上下文费率时开启。',
         responsesWebsocketsV2: 'Responses WebSocket v2',
