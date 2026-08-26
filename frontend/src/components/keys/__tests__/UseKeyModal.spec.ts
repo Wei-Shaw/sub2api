@@ -352,7 +352,7 @@ describe('UseKeyModal', () => {
 
     expect(apiKeyMode.attributes('aria-checked')).toBe('true')
     expect(configToml).toBeDefined()
-    expect(configToml).toContain('requires_openai_auth = false')
+    expect(configToml).toContain('requires_openai_auth = true')
     expect(configToml).toContain('http_headers = { "x-openai-actor-authorization" = "local-image-extension" }')
     expect(configToml).not.toContain('env_key')
     expect(configToml).not.toContain('image_generation')
@@ -455,13 +455,14 @@ describe('UseKeyModal', () => {
 
     expect(wrapper.get('[data-testid="codex-auth-mode-api-key"]').attributes('aria-checked')).toBe('true')
     expect(configToml).toBeDefined()
-    expect(configToml).toContain('requires_openai_auth = false')
+    expect(configToml).toContain('requires_openai_auth = true')
     expect(configToml).toContain('http_headers = { "x-openai-actor-authorization" = "local-image-extension" }')
     expect(configToml).not.toContain('env_key')
     expect(configToml).not.toContain('image_generation')
     expect(configToml).toContain('supports_websockets = true')
     expect(configToml).toContain('[features]\nresponses_websockets_v2 = true\ngoals = true')
     expect(codeBlocks).toContain('{\n  "OPENAI_API_KEY": "sk-test"\n}')
+    expect(wrapper.text()).toContain('auth.json')
   })
 
   it('resets Codex authentication mode when the modal reopens or platform changes', async () => {

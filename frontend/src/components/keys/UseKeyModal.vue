@@ -972,7 +972,7 @@ goals = true`
 
 function generateCodexProviderAuthConfig(): string {
   if (codexAuthMode.value === 'api-key') {
-    return `requires_openai_auth = false
+    return `requires_openai_auth = true
 http_headers = { "x-openai-actor-authorization" = "local-image-extension" }`
   }
 
