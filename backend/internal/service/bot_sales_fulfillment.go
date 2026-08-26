@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	stderrors "errors"
+	"fmt"
 	"math"
 	"regexp"
 	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -40,6 +42,7 @@ type BotSalesFulfillmentResponse struct {
 	BalanceAdded        float64 `json:"balance_added"`
 	Balance             float64 `json:"balance"`
 	DeviceLoginCode     string  `json:"device_login_code,omitempty"`
+	PaymentOrderID      int64   `json:"payment_order_id"`
 	Replayed            bool    `json:"replayed,omitempty"`
 }
 
@@ -106,14 +109,27 @@ type botSalesFulfillmentUserRepository interface {
 }
 
 type BotSalesFulfillmentService struct {
-	client       *dbent.Client
-	users        botSalesFulfillmentUserRepository
-	devices      UserDeviceRepository
-	claimService *VClawClaimService
+	client         *dbent.Client
+	users          botSalesFulfillmentUserRepository
+	devices        UserDeviceRepository
+	claimService   *VClawClaimService
+	paymentService *PaymentService
 }
 
-func NewBotSalesFulfillmentService(client *dbent.Client, users UserRepository, devices UserDeviceRepository, claimService *VClawClaimService) *BotSalesFulfillmentService {
-	return &BotSalesFulfillmentService{client: client, users: users, devices: devices, claimService: claimService}
+func NewBotSalesFulfillmentService(
+	client *dbent.Client,
+	users UserRepository,
+	devices UserDeviceRepository,
+	claimService *VClawClaimService,
+	paymentService *PaymentService,
+) *BotSalesFulfillmentService {
+	return &BotSalesFulfillmentService{
+		client:         client,
+		users:          users,
+		devices:        devices,
+		claimService:   claimService,
+		paymentService: paymentService,
+	}
 }
 
 // Fulfill is implemented below the HTTP handler so bot-sales and future admin
@@ -186,11 +202,18 @@ func (s *BotSalesFulfillmentService) fulfillInTransaction(ctx context.Context, i
 		rollback()
 		return nil, infraerrors.InternalServer("BOT_SALES_RESPONSE_ENCODE_FAILED", "failed to encode fulfillment response")
 	}
+
+	// payment_order_id uses NULL when no order was created (graceful degradation)
+	var paymentOrderID any
+	if response.PaymentOrderID > 0 {
+		paymentOrderID = response.PaymentOrderID
+	}
+
 	if _, err := tx.Client().ExecContext(txCtx, `
 		UPDATE bot_sales_fulfillments
-		SET status = 'succeeded', user_id = $1, response_json = $2, updated_at = NOW()
-		WHERE id = $3 AND status = 'processing'
-	`, response.UserID, string(responseBody), record.id); err != nil {
+		SET status = 'succeeded', user_id = $1, payment_order_id = $2, response_json = $3, updated_at = NOW()
+		WHERE id = $4 AND status = 'processing'
+	`, response.UserID, paymentOrderID, string(responseBody), record.id); err != nil {
 		rollback()
 		return nil, infraerrors.ServiceUnavailable("BOT_SALES_FULFILLMENT_RECORD_FAILED", "failed to finalize fulfillment record")
 	}
@@ -334,16 +357,31 @@ func (s *BotSalesFulfillmentService) applyBotSalesFulfillment(ctx context.Contex
 		deviceCode = code
 	}
 
+	// Create PaymentOrder for canonical order management integration
+	paymentOrder, err := s.createBotSalesPaymentOrder(ctx, user, input)
+	if err != nil {
+		return nil, err
+	}
+
+	// AdjustBalance via canonical accounting path
 	change, err := s.users.AdjustBalance(ctx, user.ID, input.BalanceAmount)
 	if err != nil {
 		return nil, err
 	}
+
+	// Update total_recharged for consistency
 	if _, err := s.clientFromContext(ctx).ExecContext(ctx, `
 		UPDATE users SET total_recharged = total_recharged + $1, updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL
 	`, input.BalanceAmount, user.ID); err != nil {
 		return nil, infraerrors.ServiceUnavailable("BOT_SALES_BALANCE_AUDIT_FAILED", "failed to update recharge total")
 	}
+
+	// Mark PaymentOrder as completed and write audit log
+	if err := s.markBotSalesPaymentOrderCompleted(ctx, paymentOrder, input, change); err != nil {
+		return nil, err
+	}
+
 	return &BotSalesFulfillmentResponse{
 		ExternalOrderCode:   input.ExternalOrderCode,
 		ExternalOrderItemID: input.ExternalOrderItemID,
@@ -352,7 +390,96 @@ func (s *BotSalesFulfillmentService) applyBotSalesFulfillment(ctx context.Contex
 		BalanceAdded:        input.BalanceAmount,
 		Balance:             change.New,
 		DeviceLoginCode:     deviceCode,
+		PaymentOrderID: func() int64 {
+			if paymentOrder != nil {
+				return paymentOrder.ID
+			}
+			return 0
+		}(),
 	}, nil
+}
+
+func (s *BotSalesFulfillmentService) createBotSalesPaymentOrder(ctx context.Context, user *User, input BotSalesFulfillmentRequest) (*dbent.PaymentOrder, error) {
+	if s.paymentService == nil {
+		// Graceful degradation: skip PaymentOrder creation when payment service unavailable
+		// This allows existing tests and minimal deployments to continue working
+		return nil, nil
+	}
+
+	client := s.clientFromContext(ctx)
+	now := time.Now()
+	expiresAt := now.Add(24 * time.Hour)
+
+	outTradeNo := fmt.Sprintf("BS-%s-%s", input.ExternalOrderCode, input.ExternalOrderItemID)
+	if len(outTradeNo) > 64 {
+		outTradeNo = outTradeNo[:64]
+	}
+
+	providerSnapshot := map[string]any{
+		"schema_version":         2,
+		"provider_key":           "bot-sales",
+		"external_order_code":    input.ExternalOrderCode,
+		"external_order_item_id": input.ExternalOrderItemID,
+		"currency":               payment.DefaultPaymentCurrency,
+	}
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetNillableUserNotes(psNilIfEmpty(user.Notes)).
+		SetAmount(input.BalanceAmount).
+		SetPayAmount(input.BalanceAmount).
+		SetFeeRate(0).
+		SetRechargeCode(fmt.Sprintf("BS-%d-%d", time.Now().UnixNano()%1000000, user.ID)).
+		SetOutTradeNo(outTradeNo).
+		SetPaymentType("bot-sales").
+		SetPaymentTradeNo(input.IdempotencyKey).
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusPaid).
+		SetProviderKey("bot-sales").
+		SetProviderSnapshot(providerSnapshot).
+		SetExpiresAt(expiresAt).
+		SetPaidAt(now).
+		SetClientIP("bot-sales").
+		SetSrcHost("bot-sales").
+		Save(ctx)
+
+	if err != nil {
+		return nil, infraerrors.ServiceUnavailable("BOT_SALES_ORDER_CREATE_FAILED", fmt.Sprintf("failed to create payment order: %v", err))
+	}
+
+	return order, nil
+}
+
+func (s *BotSalesFulfillmentService) markBotSalesPaymentOrderCompleted(ctx context.Context, order *dbent.PaymentOrder, input BotSalesFulfillmentRequest, change BalanceChange) error {
+	if s.paymentService == nil || order == nil {
+		// Graceful degradation: skip when payment service unavailable or order wasn't created
+		return nil
+	}
+
+	client := s.clientFromContext(ctx)
+	now := time.Now()
+
+	_, err := client.PaymentOrder.UpdateOneID(order.ID).
+		SetStatus(OrderStatusCompleted).
+		SetCompletedAt(now).
+		Save(ctx)
+	if err != nil {
+		return infraerrors.ServiceUnavailable("BOT_SALES_ORDER_COMPLETE_FAILED", "failed to mark payment order completed")
+	}
+
+	// Write audit log via PaymentService
+	s.paymentService.writeAuditLog(ctx, order.ID, "BOT_SALES_FULFILLMENT_SUCCESS", "bot-sales", map[string]any{
+		"external_order_code":    input.ExternalOrderCode,
+		"external_order_item_id": input.ExternalOrderItemID,
+		"balance_amount":         input.BalanceAmount,
+		"balance_before":         change.Old,
+		"balance_after":          change.New,
+		"idempotency_key":        input.IdempotencyKey,
+	})
+
+	return nil
 }
 
 func (s *BotSalesFulfillmentService) clientFromContext(ctx context.Context) *dbent.Client {

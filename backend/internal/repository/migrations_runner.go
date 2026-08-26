@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"path"
 	"sort"
 	"strings"
 	"time"
@@ -171,13 +172,13 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 		return err
 	}
 
-	// 获取所有 .sql 迁移文件并按文件名排序。
+	// 获取所有 .sql 迁移文件并按版本前缀排序。
 	// 命名规范：使用零填充数字前缀（如 001_init.sql, 002_add_users.sql）。
-	files, err := fs.Glob(fsys, "*.sql")
+	// 支持本地扩展迁移：local/ 子目录中的迁移会与根目录迁移合并。
+	files, err := listMigrationFiles(fsys)
 	if err != nil {
 		return fmt.Errorf("list migrations: %w", err)
 	}
-	sort.Strings(files) // 确保按文件名顺序执行迁移
 
 	for _, name := range files {
 		// 读取迁移文件内容
@@ -447,14 +448,13 @@ func tableExists(ctx context.Context, db migrationConnection, tableName string) 
 }
 
 func latestMigrationBaseline(fsys fs.FS) (string, string, string, error) {
-	files, err := fs.Glob(fsys, "*.sql")
+	files, err := listMigrationFiles(fsys)
 	if err != nil {
 		return "", "", "", err
 	}
 	if len(files) == 0 {
 		return "baseline", "baseline", "", nil
 	}
-	sort.Strings(files)
 	name := files[len(files)-1]
 	contentBytes, err := fs.ReadFile(fsys, name)
 	if err != nil {
@@ -465,6 +465,30 @@ func latestMigrationBaseline(fsys fs.FS) (string, string, string, error) {
 	hash := hex.EncodeToString(sum[:])
 	version := strings.TrimSuffix(name, ".sql")
 	return version, version, hash, nil
+}
+
+// listMigrationFiles returns upstream and local migrations in the same order
+// used by the runner. Sorting by basename keeps the numeric migration version
+// meaningful when files live in different directories; the full path is the
+// deterministic tie-breaker for a same-number upstream/local pair.
+func listMigrationFiles(fsys fs.FS) ([]string, error) {
+	files, err := fs.Glob(fsys, "*.sql")
+	if err != nil {
+		return nil, err
+	}
+	localFiles, err := fs.Glob(fsys, "local/*.sql")
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+	files = append(files, localFiles...)
+	sort.Slice(files, func(i, j int) bool {
+		leftBase, rightBase := path.Base(files[i]), path.Base(files[j])
+		if leftBase != rightBase {
+			return leftBase < rightBase
+		}
+		return files[i] < files[j]
+	})
+	return files, nil
 }
 
 func checksumSet(values ...string) map[string]struct{} {

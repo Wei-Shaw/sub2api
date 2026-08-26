@@ -178,11 +178,29 @@ func roundAmount(amount float64) float64 {
 // --- Audit Logs ---
 
 func (s *PaymentService) writeAuditLog(ctx context.Context, oid int64, action, op string, detail map[string]any) {
-	dj, _ := json.Marshal(detail)
-	_, err := s.entClient.PaymentAuditLog.Create().SetOrderID(strconv.FormatInt(oid, 10)).SetAction(action).SetDetail(string(dj)).SetOperator(op).Save(ctx)
-	if err != nil {
+	if err := s.writeAuditLogTx(ctx, oid, action, op, detail); err != nil {
 		slog.Error("audit log failed", "orderID", oid, "action", action, "error", err)
 	}
+}
+
+func (s *PaymentService) writeAuditLogTx(ctx context.Context, oid int64, action, op string, detail map[string]any) error {
+	dj, err := json.Marshal(detail)
+	if err != nil {
+		return err
+	}
+
+	client := s.entClient
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		client = tx.Client()
+	}
+
+	_, err = client.PaymentAuditLog.Create().
+		SetOrderID(strconv.FormatInt(oid, 10)).
+		SetAction(action).
+		SetDetail(string(dj)).
+		SetOperator(op).
+		Save(ctx)
+	return err
 }
 
 func (s *PaymentService) GetOrderAuditLogs(ctx context.Context, oid int64) ([]*dbent.PaymentAuditLog, error) {
