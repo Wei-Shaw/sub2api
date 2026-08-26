@@ -37,6 +37,12 @@ const (
 	openAIRealHealthSampleTTL        = 15 * time.Minute
 	openAIScheduledProbeSampleTTL    = 5 * time.Minute
 	openAIScheduledProbeWeight       = 0.25
+	// Strict health selection uses these gates before latency/load scoring.
+	// A single failed probe is tolerated; repeated probe failures indicate that
+	// the account is temporarily unusable even when its failure response is fast.
+	openAIStrictHealthDegradedErrorRate  = 0.20
+	openAIStrictHealthUnavailableRate    = 0.50
+	openAIStrictHealthProbeFailureStreak = 2
 )
 
 const (
@@ -209,6 +215,7 @@ type openAIAccountRuntimeStats struct {
 type openAIAccountRuntimeStat struct {
 	samples                    atomic.Int64
 	probeSamples               atomic.Int64
+	probeConsecutiveFailures   atomic.Int64
 	errorRateEWMABits          atomic.Uint64
 	probeErrorRateEWMABits     atomic.Uint64
 	probeTTFTEWMABits          atomic.Uint64
@@ -390,6 +397,11 @@ func (s *openAIAccountRuntimeStats) reportProbeWithLatency(accountID int64, succ
 		now = time.Now()
 	}
 	stat := s.loadOrCreate(accountID)
+	if success {
+		stat.probeConsecutiveFailures.Store(0)
+	} else {
+		stat.probeConsecutiveFailures.Add(1)
+	}
 	sample := 1.0
 	if success {
 		sample = 0
@@ -414,6 +426,21 @@ func (s *openAIAccountRuntimeStats) reportProbeWithLatency(accountID int64, succ
 			}
 		}
 	}
+}
+
+func (s *openAIAccountRuntimeStats) probeFailureStreak(accountID int64, now time.Time) int64 {
+	if s == nil || accountID <= 0 {
+		return 0
+	}
+	value, ok := s.accounts.Load(accountID)
+	if !ok {
+		return 0
+	}
+	stat, _ := value.(*openAIAccountRuntimeStat)
+	if stat == nil || stat.probeSamples.Load() == 0 || !sampleTimestampFresh(stat.lastProbeSampleUnixNano.Load(), now, openAIScheduledProbeSampleTTL) {
+		return 0
+	}
+	return stat.probeConsecutiveFailures.Load()
 }
 
 func (s *openAIAccountRuntimeStats) failureCounts(accountID int64) map[openAIAccountFailureCategory]int64 {
@@ -1055,7 +1082,11 @@ func (s *defaultOpenAIAccountScheduler) shouldEscapeStickyAccount(accountID int6
 	}
 	errorRate, ttft, hasTTFT := s.stats.snapshot(accountID)
 	if s.service != nil && s.service.openAIHighAvailabilityEnabled() {
-		errorRate, ttft, hasTTFT = s.stats.healthSnapshotAt(accountID, time.Now())
+		now := time.Now()
+		errorRate, ttft, hasTTFT = s.stats.healthSnapshotAt(accountID, now)
+		if streak := s.stats.probeFailureStreak(accountID, now); streak >= openAIStrictHealthProbeFailureStreak {
+			return fmt.Sprintf("probe_failure_streak_%d", streak), errorRate, ttft, true
+		}
 	}
 	if hasTTFT && ttft > cfg.ttftMs {
 		return "ttft", errorRate, ttft, true
@@ -1077,6 +1108,8 @@ type openAIAccountCandidateScore struct {
 	hasTTFT         bool
 	totalLatencyMs  float64
 	hasTotalLatency bool
+	healthTier      int
+	healthReason    string
 }
 
 type openAIAccountCandidateHeap []openAIAccountCandidateScore
@@ -1111,6 +1144,9 @@ func (h *openAIAccountCandidateHeap) Pop() any {
 }
 
 func isOpenAIAccountCandidateBetter(left openAIAccountCandidateScore, right openAIAccountCandidateScore) bool {
+	if left.healthTier != right.healthTier {
+		return left.healthTier < right.healthTier
+	}
 	if left.score != right.score {
 		return left.score > right.score
 	}
@@ -1444,6 +1480,9 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 
 	for i := range candidates {
 		item := &candidates[i]
+		if plan.selectionMode == "strict_health" {
+			item.healthTier, item.healthReason = s.strictHealthTier(item.errorRate, item.account.ID, now)
+		}
 		priorityFactor := 1.0
 		if maxPriority > minPriority {
 			priorityFactor = 1 - float64(item.priority-minPriority)/float64(maxPriority-minPriority)
@@ -1515,6 +1554,25 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 	return plan
 }
 
+// strictHealthTier creates an availability gate ahead of latency and load.
+// Tier 0 is eligible for normal selection, tier 1 is degraded, and tier 2 is
+// temporarily unavailable. Degraded/unavailable accounts remain in the plan
+// as fallbacks so a fully unhealthy group can still make a best-effort call.
+func (s *defaultOpenAIAccountScheduler) strictHealthTier(errorRate float64, accountID int64, now time.Time) (int, string) {
+	if s != nil && s.stats != nil {
+		if streak := s.stats.probeFailureStreak(accountID, now); streak >= openAIStrictHealthProbeFailureStreak {
+			return 2, fmt.Sprintf("probe_failure_streak_%d", streak)
+		}
+	}
+	if errorRate >= openAIStrictHealthUnavailableRate {
+		return 2, "error_rate_unavailable"
+	}
+	if errorRate >= openAIStrictHealthDegradedErrorRate {
+		return 1, "error_rate_degraded"
+	}
+	return 0, "healthy"
+}
+
 func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 	req OpenAIAccountScheduleRequest,
 	plan openAIAccountLoadPlan,
@@ -1552,7 +1610,8 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 					continue
 				}
 				for i, candidate := range ranked {
-					if candidate.account != nil && candidate.account.ID == stickyID {
+				if candidate.account != nil && candidate.account.ID == stickyID &&
+					(!strings.EqualFold(req.SelectionMode, "strict_health") || candidate.healthTier == 0) {
 						primary = append([]openAIAccountCandidateScore{candidate}, ranked[:i]...)
 						primary = append(primary, ranked[i+1:]...)
 						break

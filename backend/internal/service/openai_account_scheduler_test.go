@@ -3640,6 +3640,32 @@ func TestBuildOpenAISelectionOrder_StrictHealthUsesHighestScoreFirst(t *testing.
 	require.Equal(t, int64(201), order[2].account.ID)
 }
 
+func TestBuildOpenAISelectionOrder_StrictHealthPrefersHealthyTierOverLatency(t *testing.T) {
+	candidates := []openAIAccountCandidateScore{
+		{account: &Account{ID: 301}, loadInfo: &AccountLoadInfo{}, score: 9.9, healthTier: 2, healthReason: "probe_failure_streak_4"},
+		{account: &Account{ID: 302}, loadInfo: &AccountLoadInfo{}, score: 7.0, healthTier: 0, healthReason: "healthy"},
+		{account: &Account{ID: 303}, loadInfo: &AccountLoadInfo{}, score: 8.0, healthTier: 1, healthReason: "error_rate_degraded"},
+	}
+	scheduler := &defaultOpenAIAccountScheduler{}
+	order := scheduler.buildOpenAISelectionOrder(OpenAIAccountScheduleRequest{SelectionMode: "strict_health"}, openAIAccountLoadPlan{
+		candidates: candidates,
+		topK:       len(candidates),
+	})
+	require.Equal(t, int64(302), order[0].account.ID)
+	require.Equal(t, int64(303), order[1].account.ID)
+	require.Equal(t, int64(301), order[2].account.ID)
+}
+
+func TestOpenAIProbeFailureStreakResetsOnSuccess(t *testing.T) {
+	stats := newOpenAIAccountRuntimeStats()
+	now := time.Now()
+	stats.reportProbeWithLatency(304, false, 100, now)
+	stats.reportProbeWithLatency(304, false, 100, now.Add(time.Second))
+	require.Equal(t, int64(2), stats.probeFailureStreak(304, now.Add(time.Second)))
+	stats.reportProbeWithLatency(304, true, 100, now.Add(2*time.Second))
+	require.Equal(t, int64(0), stats.probeFailureStreak(304, now.Add(2*time.Second)))
+}
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceDistributesAcrossSessions(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(15)

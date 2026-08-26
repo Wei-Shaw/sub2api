@@ -45,6 +45,8 @@ type openAIHACandidateObservation struct {
 	Priority           int     `json:"priority"`
 	LoadRate           int     `json:"load_rate"`
 	WaitingCount       int     `json:"waiting_count"`
+	HealthTier         int     `json:"health_tier"`
+	HealthReason       string  `json:"health_reason,omitempty"`
 }
 
 func (m *openAIHAObservabilityMetrics) recordResult(success bool, category openAIAccountFailureCategory) {
@@ -203,6 +205,8 @@ func (s *defaultOpenAIAccountScheduler) observeCandidatePlan(ctx context.Context
 			Priority:           candidate.priority,
 			LoadRate:           candidate.loadInfo.LoadRate,
 			WaitingCount:       candidate.loadInfo.WaitingCount,
+			HealthTier:         candidate.healthTier,
+			HealthReason:       candidate.healthReason,
 		})
 	}
 	fields := []zap.Field{
