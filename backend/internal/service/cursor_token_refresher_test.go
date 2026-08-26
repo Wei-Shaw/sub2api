@@ -111,6 +111,9 @@ func TestCursorGatewayRefreshesExpiredTokenBeforeUpstream(t *testing.T) {
 	}
 	repo := &cursorCredRepo{account: account}
 	svc := NewCursorGatewayService(repo, nil)
+	svc.availableModels = func(context.Context, cursor.Credentials) ([]cursor.AvailableModel, error) {
+		return nil, fmt.Errorf("catalog unused")
+	}
 	svc.refresher.refresh = func(context.Context, string) (*cursor.TokenRefreshResult, error) {
 		return &cursor.TokenRefreshResult{AccessToken: "rotated", ExpiresIn: 3600}, nil
 	}
@@ -144,6 +147,9 @@ func TestCursorGatewayRetriesAfterUnauthorized(t *testing.T) {
 	}
 	repo := &cursorCredRepo{account: account}
 	svc := NewCursorGatewayService(repo, nil)
+	svc.availableModels = func(context.Context, cursor.Credentials) ([]cursor.AvailableModel, error) {
+		return nil, fmt.Errorf("catalog unused")
+	}
 	svc.refresher.refresh = func(context.Context, string) (*cursor.TokenRefreshResult, error) {
 		return &cursor.TokenRefreshResult{AccessToken: "after-401", ExpiresIn: 3600}, nil
 	}
@@ -170,6 +176,67 @@ func TestIsCursorAuthError(t *testing.T) {
 	require.True(t, isCursorAuthError(fmt.Errorf("Connect: unauthenticated")))
 	require.False(t, isCursorAuthError(fmt.Errorf("status 429: rate limited")))
 	require.False(t, isCursorAuthError(nil))
+}
+
+func TestCursorGatewayResolvesRunSlugFromLiveCatalog(t *testing.T) {
+	account := cursorAccountWithFreshToken(13)
+	svc := NewCursorGatewayService(nil, nil)
+	var fetches int
+	svc.availableModels = func(context.Context, cursor.Credentials) ([]cursor.AvailableModel, error) {
+		fetches++
+		return []cursor.AvailableModel{{
+			Name:        "grok-4.6",
+			LegacySlugs: []string{"cursor-grok-4.6-xhigh"},
+		}}, nil
+	}
+	var seen []string
+	svc.streamChat = func(_ context.Context, _ cursor.Credentials, _ []cursor.ChatMessage, model string, _ int) (*http.Response, error) {
+		seen = append(seen, model)
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(nil))}, nil
+	}
+
+	resp, upstream, _, err := svc.startCursorChat(context.Background(), newCursorGinContext(), account, nil, "grok-4.6", cursor.RunOpts{})
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, "cursor-grok-4.6-xhigh", upstream)
+	require.Equal(t, []string{"cursor-grok-4.6-xhigh"}, seen)
+
+	resp, _, _, err = svc.startCursorChat(context.Background(), newCursorGinContext(), account, nil, "grok-4.6", cursor.RunOpts{})
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, 1, fetches)
+}
+
+func TestCursorGatewayFallsBackToSnapshotWhenCatalogFails(t *testing.T) {
+	account := cursorAccountWithFreshToken(14)
+	svc := NewCursorGatewayService(nil, nil)
+	svc.availableModels = func(context.Context, cursor.Credentials) ([]cursor.AvailableModel, error) {
+		return nil, fmt.Errorf("catalog down")
+	}
+	var seen string
+	svc.streamChat = func(_ context.Context, _ cursor.Credentials, _ []cursor.ChatMessage, model string, _ int) (*http.Response, error) {
+		seen = model
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(nil))}, nil
+	}
+
+	resp, upstream, _, err := svc.startCursorChat(context.Background(), newCursorGinContext(), account, nil, "grok-4.6", cursor.RunOpts{})
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, "cursor-grok-4.6-medium", upstream)
+	require.Equal(t, "cursor-grok-4.6-medium", seen)
+}
+
+func cursorAccountWithFreshToken(id int64) *Account {
+	return &Account{
+		ID:       id,
+		Platform: PlatformCursor,
+		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
+		Credentials: map[string]any{
+			"access_token":  fakeCursorJWT(time.Now().Add(time.Hour)),
+			"refresh_token": "rt",
+		},
+	}
 }
 
 func newCursorGinContext() *gin.Context {

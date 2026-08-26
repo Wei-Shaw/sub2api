@@ -104,6 +104,16 @@ func TestResolveCursorChatModelWarnsOnAliasFallback(t *testing.T) {
 	require.Empty(t, warnings)
 }
 
+func TestResolveCursorRunModelUsesLiveCatalogSlugs(t *testing.T) {
+	catalog := []cursor.AvailableModel{{
+		Name:        "grok-4.6",
+		LegacySlugs: []string{"cursor-grok-4.6-xhigh"},
+	}}
+	upstream, warnings := resolveCursorRunModel("grok-4.6", cursor.RunOpts{}, catalog)
+	require.Equal(t, "cursor-grok-4.6-xhigh", upstream)
+	require.Equal(t, "model_variant", warnings[0]["code"])
+}
+
 type gatewayModelsRepo struct {
 	AccountRepository
 	byGroup map[int64][]Account

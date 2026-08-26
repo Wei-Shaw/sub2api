@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
@@ -19,11 +20,22 @@ import (
 // Cursor's Connect-RPC protobuf format, streams the response, and converts
 // it back into OpenAI SSE format.
 type CursorGatewayService struct {
-	accountRepo AccountRepository
-	refreshAPI  *OAuthRefreshAPI
-	refresher   *CursorTokenRefresher
-	streamChat  func(ctx context.Context, creds cursor.Credentials, messages []cursor.ChatMessage, model string, thinkingLevel int) (*http.Response, error)
+	accountRepo     AccountRepository
+	refreshAPI      *OAuthRefreshAPI
+	refresher       *CursorTokenRefresher
+	streamChat      func(ctx context.Context, creds cursor.Credentials, messages []cursor.ChatMessage, model string, thinkingLevel int) (*http.Response, error)
+	availableModels func(ctx context.Context, creds cursor.Credentials) ([]cursor.AvailableModel, error)
+
+	catalogMu        sync.Mutex
+	catalogByAccount map[int64]cursorCatalogEntry
 }
+
+type cursorCatalogEntry struct {
+	models []cursor.AvailableModel
+	expiry time.Time
+}
+
+const cursorCatalogTTL = 5 * time.Minute
 
 // NewCursorGatewayService creates a new CursorGatewayService.
 func NewCursorGatewayService(accountRepo AccountRepository, refreshAPI *OAuthRefreshAPI) *CursorGatewayService {
@@ -96,7 +108,11 @@ func (s *CursorGatewayService) ForwardAsChatCompletions(
 }
 
 func resolveCursorChatModel(requested string, opts cursor.RunOpts) (upstream string, warnings []map[string]string) {
-	resolved := cursor.ResolveRunModel(requested, opts, nil)
+	return resolveCursorRunModel(requested, opts, nil)
+}
+
+func resolveCursorRunModel(requested string, opts cursor.RunOpts, catalog []cursor.AvailableModel) (upstream string, warnings []map[string]string) {
+	resolved := cursor.ResolveRunModel(requested, opts, catalog)
 	if resolved.RunSlug == "" {
 		return requested, nil
 	}
@@ -123,7 +139,11 @@ func (s *CursorGatewayService) startCursorChat(
 	requestedModel string,
 	opts cursor.RunOpts,
 ) (*http.Response, string, []map[string]string, error) {
-	upstreamModel, warnings := resolveCursorChatModel(requestedModel, opts)
+	if err := s.ensureCursorAccessToken(ctx, account); err != nil {
+		logger.LegacyPrintf("service.cursor", "[Cursor] token refresh account=%d: %v", accountID(account), err)
+	}
+
+	upstreamModel, warnings := resolveCursorRunModel(requestedModel, opts, s.liveRunCatalog(ctx, account))
 	if requestedModel != "" && !strings.EqualFold(requestedModel, upstreamModel) {
 		c.Header("X-Sub2API-Model-Variant", requestedModel+" -> "+upstreamModel)
 	}
@@ -135,10 +155,6 @@ func (s *CursorGatewayService) startCursorChat(
 	thinkingLevel := cursor.ThinkingLevelUnspecified
 	if strings.Contains(strings.ToLower(upstreamModel), "thinking") || strings.Contains(strings.ToLower(upstreamModel), "think") {
 		thinkingLevel = cursor.ThinkingLevelHigh
-	}
-
-	if err := s.ensureCursorAccessToken(ctx, account); err != nil {
-		logger.LegacyPrintf("service.cursor", "[Cursor] token refresh account=%d: %v", accountID(account), err)
 	}
 
 	resp, err := s.doStreamChat(ctx, account, messages, upstreamModel, thinkingLevel)
@@ -260,6 +276,57 @@ func fetchCursorAvailableModels(ctx context.Context, creds cursor.Credentials) (
 		return nil, fmt.Errorf("cursor: missing access_token")
 	}
 	return cursor.NewClient(creds).AvailableModels(ctx)
+}
+
+func (s *CursorGatewayService) liveRunCatalog(ctx context.Context, account *Account) []cursor.AvailableModel {
+	if s == nil || account == nil {
+		return nil
+	}
+	if models := s.cachedCatalog(account.ID); models != nil {
+		return models
+	}
+	models, err := s.fetchRunCatalog(ctx, account)
+	if err != nil && isCursorAuthError(err) {
+		if refreshErr := s.refreshCursorAccount(ctx, account, true); refreshErr == nil {
+			models, err = s.fetchRunCatalog(ctx, account)
+		}
+	}
+	if err != nil {
+		logger.LegacyPrintf("service.cursor", "[Cursor] AvailableModels account=%d: %v", account.ID, err)
+		return nil
+	}
+	s.storeCatalog(account.ID, models)
+	return models
+}
+
+func (s *CursorGatewayService) fetchRunCatalog(ctx context.Context, account *Account) ([]cursor.AvailableModel, error) {
+	creds := cursorCredentialsFromAccount(account)
+	if s.availableModels != nil {
+		return s.availableModels(ctx, creds)
+	}
+	return fetchCursorAvailableModels(ctx, creds)
+}
+
+func (s *CursorGatewayService) cachedCatalog(accountID int64) []cursor.AvailableModel {
+	s.catalogMu.Lock()
+	defer s.catalogMu.Unlock()
+	entry, ok := s.catalogByAccount[accountID]
+	if !ok || time.Now().After(entry.expiry) {
+		return nil
+	}
+	return entry.models
+}
+
+func (s *CursorGatewayService) storeCatalog(accountID int64, models []cursor.AvailableModel) {
+	s.catalogMu.Lock()
+	defer s.catalogMu.Unlock()
+	if s.catalogByAccount == nil {
+		s.catalogByAccount = make(map[int64]cursorCatalogEntry)
+	}
+	s.catalogByAccount[accountID] = cursorCatalogEntry{
+		models: models,
+		expiry: time.Now().Add(cursorCatalogTTL),
+	}
 }
 
 // FetchCursorPickerModels loads the live Cursor picker catalog for an account.
