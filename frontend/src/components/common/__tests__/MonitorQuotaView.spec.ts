@@ -9,7 +9,12 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     // te() 恒真：已知 token 直接返回 i18n key，便于断言 window/label 映射。
-    useI18n: () => ({ t: (key: string) => key, te: () => true }),
+    // 带插值的调用把参数序列化附在 key 后，便于断言账号计数摘要的具体数字。
+    useI18n: () => ({
+      t: (key: string, params?: Record<string, unknown>) =>
+        params ? `${key}:${JSON.stringify(params)}` : key,
+      te: () => true,
+    }),
   }
 })
 
@@ -112,6 +117,90 @@ describe('MonitorQuotaView', () => {
     const error = wrapper.get('[data-testid="monitor-quota-error"]')
     expect(error.text()).toBe(`${'x'.repeat(48)}…`)
     expect(error.attributes('title')).toBe(longError)
+  })
+
+  // 组级聚合摘要：accounts_total > 0 才渲染，单账号快照不受影响。
+  it('omits the accounts summary for single-account snapshots', () => {
+    const wrapper = mount(MonitorQuotaView, {
+      props: { snapshot: makeSnapshot({ tiers: [{ window: '5h', used_percent: 10 }] }) },
+    })
+    expect(wrapper.find('[data-testid="monitor-quota-accounts"]').exists()).toBe(false)
+  })
+
+  it('summarises how many group accounts still have quota', () => {
+    const wrapper = mount(MonitorQuotaView, {
+      props: {
+        snapshot: makeSnapshot({
+          accounts_total: 5,
+          accounts_healthy: 2,
+          accounts_exhausted: 2,
+        }),
+      },
+    })
+
+    const summary = wrapper.get('[data-testid="monitor-quota-accounts"]')
+    expect(summary.text()).toContain('monitorCommon.quota.accountsHealthy:{"healthy":2,"total":5}')
+    expect(summary.text()).toContain('monitorCommon.quota.accountsExhausted:{"count":2}')
+    // 未知 = total - healthy - exhausted，与「耗尽」分开展示。
+    expect(summary.text()).toContain('monitorCommon.quota.accountsUnknown:{"count":1}')
+    // 部分可用 → 琥珀色
+    expect(summary.html()).toContain('text-amber-600')
+  })
+
+  it('colors the accounts summary red when no account has quota left', () => {
+    const wrapper = mount(MonitorQuotaView, {
+      props: {
+        snapshot: makeSnapshot({
+          accounts_total: 3,
+          accounts_healthy: 0,
+          accounts_exhausted: 3,
+        }),
+      },
+    })
+
+    const summary = wrapper.get('[data-testid="monitor-quota-accounts"]')
+    expect(summary.html()).toContain('text-red-600')
+    // 全部耗尽时不该再报「未知」。
+    expect(summary.text()).not.toContain('accountsUnknown')
+  })
+
+  it('colors the accounts summary green when every account has quota', () => {
+    const wrapper = mount(MonitorQuotaView, {
+      props: {
+        snapshot: makeSnapshot({
+          accounts_total: 4,
+          accounts_healthy: 4,
+          accounts_exhausted: 0,
+        }),
+      },
+    })
+
+    const summary = wrapper.get('[data-testid="monitor-quota-accounts"]')
+    expect(summary.html()).toContain('text-emerald-600')
+    expect(summary.text()).not.toContain('accountsExhausted')
+  })
+
+  it('accounts-only mode keeps the count line and hides tiers, plan, and errors', () => {
+    const wrapper = mount(MonitorQuotaView, {
+      props: {
+        accountsOnly: true,
+        snapshot: makeSnapshot({
+          success: false,
+          error: 'internal fetch failed',
+          plan_level: 'pro',
+          tiers: [{ window: '5h', used_percent: 88 }],
+          accounts_total: 8,
+          accounts_healthy: 2,
+          accounts_exhausted: 5,
+        }),
+      },
+    })
+
+    expect(wrapper.find('[data-testid="monitor-quota-accounts"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="monitor-quota-error"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('pro')
+    expect(wrapper.text()).not.toContain('88%')
+    expect(wrapper.text()).not.toContain('internal fetch failed')
   })
 
   it('keeps failed snapshots from rendering tier rows', () => {
