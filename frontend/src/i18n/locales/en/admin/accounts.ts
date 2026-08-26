@@ -770,6 +770,8 @@ export default {
       upstreamModelCapabilitiesAvailable: '{count} model(s) actually supported upstream.',
       upstreamModelCapabilitiesSyncedAt: 'Last synced: {time}',
       upstreamModelCapabilitiesEmpty: 'No upstream model list has been retrieved yet.',
+      syncUpstreamModelsMetadataIncomplete:
+        'Model IDs were synced, but capability metadata is incomplete and was not updated.',
       clearAllModels: 'Clear all models',
       customModelName: 'Custom model name',
       enterCustomModelName: 'Enter custom model name',

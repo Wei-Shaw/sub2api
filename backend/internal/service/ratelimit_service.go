@@ -936,6 +936,13 @@ func (s *RateLimitService) handle403(ctx context.Context, account *Account, upst
 	if account.Platform == PlatformAntigravity {
 		return s.handleAntigravity403(ctx, account, upstreamMsg, responseBody)
 	}
+	// Kimi reports its transient per-account concurrency/business limit as a 403.
+	// Keep the normal 403 failover signal (true), but never feed this exact message
+	// into the escalating 403 counter that can permanently mark the account error.
+	if isCNProviderConcurrencyLimit403(account, upstreamMsg) {
+		s.handleCNProviderConcurrencyLimit403(ctx, account)
+		return true
+	}
 	// 国产供应商与 openai 同口径:HTML 403(CDN/代理拦截页)不构成账号失效证据,
 	// 且 403 在 failover 状态集里会被逐账号重放——直接 SetError 会让一个坏请求/
 	// 一层坏代理连环永久禁用整组账号。走 HTML 豁免 + N 次累计 + 临时冷却。

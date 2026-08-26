@@ -850,6 +850,7 @@ export default {
       upstreamModelCapabilitiesAvailable: '上游实际支持 {count} 个模型。',
       upstreamModelCapabilitiesSyncedAt: '上次同步：{time}',
       upstreamModelCapabilitiesEmpty: '暂未获取到上游模型列表。',
+      syncUpstreamModelsMetadataIncomplete: '模型 ID 已同步，但能力元数据不完整，能力信息未更新。',
       clearAllModels: '清除所有模型',
       customModelName: '自定义模型名称',
       enterCustomModelName: '输入自定义模型名称',

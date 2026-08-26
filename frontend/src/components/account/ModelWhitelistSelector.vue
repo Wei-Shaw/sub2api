@@ -123,7 +123,7 @@
         :disabled="isSyncingUpstream"
         class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-gray-900/30"
       >
-        {{ isSyncingUpstream ? t('admin.accounts.syncUpstreamModelsLoading') : t('admin.accounts.refreshUpstreamModels') }}
+        {{ isSyncingUpstream ? t('admin.accounts.syncUpstreamModelsLoading') : t('admin.accounts.syncUpstreamModels') }}
       </button>
       <button
         type="button"
@@ -190,6 +190,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: string[]]
+  'upstream-synced': []
 }>()
 
 const appStore = useAppStore()
@@ -351,7 +352,30 @@ const syncUpstreamModels = async () => {
       models: upstreamModels,
       synced_at: result.synced_at ?? new Date().toISOString()
     }
-    appStore.showSuccess(t('admin.accounts.refreshUpstreamModelsSuccess', { count: upstreamModels.length }))
+
+    if (!props.accountId) {
+      emit('upstream-synced')
+    }
+
+    const newModels = [...props.modelValue]
+    let addedCount = 0
+    for (const model of upstreamModels) {
+      if (!newModels.includes(model)) {
+        newModels.push(model)
+        addedCount += 1
+      }
+    }
+
+    emit('update:modelValue', newModels)
+    if (result.warnings?.some(warning => warning.code === 'upstream_model_metadata_incomplete')) {
+      appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataIncomplete'))
+      return
+    }
+    if (addedCount > 0) {
+      appStore.showSuccess(t('admin.accounts.syncUpstreamModelsSuccess', { count: addedCount, total: upstreamModels.length }))
+    } else {
+      appStore.showInfo(t('admin.accounts.syncUpstreamModelsNoChanges', { count: upstreamModels.length }))
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : t('admin.accounts.syncUpstreamModelsFailed')
     appStore.showError(t('admin.accounts.syncUpstreamModelsError', { message }))
