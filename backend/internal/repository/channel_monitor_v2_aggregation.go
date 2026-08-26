@@ -255,7 +255,7 @@ WITH dedup AS (
     -- group errors aggregate under platform 'composite', which is never an
     -- enabled config platform, and are filtered out of every monitor v2 query.
     lower(CASE
-      WHEN g.platform = 'composite' THEN COALESCE(NULLIF(TRIM(a.platform)), NULLIF(NULLIF(lower(TRIM(current_error.platform)), ''), 'composite'), 'unknown')
+      WHEN g.platform = 'composite' THEN COALESCE(NULLIF(TRIM(a.platform), ''), NULLIF(NULLIF(lower(TRIM(current_error.platform)), ''), 'composite'), 'unknown')
       ELSE COALESCE(NULLIF(TRIM(current_error.platform), ''), 'unknown')
     END) AS platform,
     COALESCE(current_error.group_id, 0) AS group_id,
