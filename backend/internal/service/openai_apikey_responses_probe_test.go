@@ -56,12 +56,11 @@ func TestProbeOpenAIAPIKeyResponsesSupportCNProviders(t *testing.T) {
 		platform    string
 		protocol    string
 		wantSupport bool
-		wantMode    string
 	}{
-		{name: "deepseek adaptive supports responses", id: 201, platform: PlatformDeepseek, protocol: APIProtocolAdaptive, wantSupport: true, wantMode: string(openai_compat.ResponsesSupportModeForceResponses)},
-		{name: "deepseek chat clears forced responses", id: 202, platform: PlatformDeepseek, protocol: APIProtocolChatCompletions, wantSupport: false, wantMode: string(openai_compat.ResponsesSupportModeAuto)},
-		{name: "kimi adaptive falls back to chat", id: 203, platform: PlatformKimi, protocol: APIProtocolAdaptive, wantSupport: false, wantMode: string(openai_compat.ResponsesSupportModeAuto)},
-		{name: "zhipu adaptive falls back to chat", id: 204, platform: PlatformZhipu, protocol: APIProtocolAdaptive, wantSupport: false, wantMode: string(openai_compat.ResponsesSupportModeAuto)},
+		{name: "deepseek adaptive supports responses", id: 201, platform: PlatformDeepseek, protocol: APIProtocolAdaptive, wantSupport: true},
+		{name: "deepseek chat keeps explicit mode", id: 202, platform: PlatformDeepseek, protocol: APIProtocolChatCompletions, wantSupport: false},
+		{name: "kimi adaptive keeps explicit mode", id: 203, platform: PlatformKimi, protocol: APIProtocolAdaptive, wantSupport: false},
+		{name: "zhipu adaptive keeps explicit mode", id: 204, platform: PlatformZhipu, protocol: APIProtocolAdaptive, wantSupport: false},
 	}
 
 	for _, tc := range tests {
@@ -84,7 +83,8 @@ func TestProbeOpenAIAPIKeyResponsesSupportCNProviders(t *testing.T) {
 
 			updates := <-updateCalls
 			require.Equal(t, tc.wantSupport, updates[openai_compat.ExtraKeyResponsesSupported])
-			require.Equal(t, tc.wantMode, updates[openai_compat.ExtraKeyResponsesMode])
+			_, hasMode := updates[openai_compat.ExtraKeyResponsesMode]
+			require.False(t, hasMode)
 		})
 	}
 }

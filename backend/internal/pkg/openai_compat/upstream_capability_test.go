@@ -11,15 +11,15 @@ func TestResolveResponsesSupport(t *testing.T) {
 		{"nil extra", nil, ResponsesSupportUnknown},
 		{"empty extra", map[string]any{}, ResponsesSupportUnknown},
 		{"key missing", map[string]any{"other": "value"}, ResponsesSupportUnknown},
-		{"value true", map[string]any{ExtraKeyResponsesSupported: true}, ResponsesSupportYes},
-		{"value false", map[string]any{ExtraKeyResponsesSupported: false}, ResponsesSupportNo},
+		{"probe value true is ignored", map[string]any{ExtraKeyResponsesSupported: true}, ResponsesSupportUnknown},
+		{"probe value false is ignored", map[string]any{ExtraKeyResponsesSupported: false}, ResponsesSupportUnknown},
 		{"value wrong type string", map[string]any{ExtraKeyResponsesSupported: "true"}, ResponsesSupportUnknown},
 		{"value wrong type number", map[string]any{ExtraKeyResponsesSupported: 1}, ResponsesSupportUnknown},
 		{"value nil", map[string]any{ExtraKeyResponsesSupported: nil}, ResponsesSupportUnknown},
 		{"force responses", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceResponses)}, ResponsesSupportYes},
 		{"force chat completions", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceChatCompletions)}, ResponsesSupportNo},
-		{"auto follows probe", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeAuto), ExtraKeyResponsesSupported: false}, ResponsesSupportNo},
-		{"invalid mode follows probe", map[string]any{ExtraKeyResponsesMode: "bogus", ExtraKeyResponsesSupported: true}, ResponsesSupportYes},
+		{"auto is unknown", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeAuto), ExtraKeyResponsesSupported: false}, ResponsesSupportUnknown},
+		{"invalid mode is unknown", map[string]any{ExtraKeyResponsesMode: "bogus", ExtraKeyResponsesSupported: true}, ResponsesSupportUnknown},
 		{"force responses overrides probe false", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceResponses), ExtraKeyResponsesSupported: false}, ResponsesSupportYes},
 		{"force chat completions overrides probe true", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceChatCompletions), ExtraKeyResponsesSupported: true}, ResponsesSupportNo},
 	}
@@ -40,14 +40,9 @@ func TestShouldUseResponsesAPI(t *testing.T) {
 		extra map[string]any
 		want  bool
 	}{
-		// 关键不变量：未探测必须返回 true（保留旧行为）
-		{"unknown defaults to true (preserve old behavior)", nil, true},
-		{"unknown empty defaults to true", map[string]any{}, true},
-		{"unknown wrong type defaults to true", map[string]any{ExtraKeyResponsesSupported: "yes"}, true},
-
-		// 已探测：标记决定
-		{"explicitly supported", map[string]any{ExtraKeyResponsesSupported: true}, true},
-		{"explicitly unsupported", map[string]any{ExtraKeyResponsesSupported: false}, false},
+		{"unknown is disabled", nil, false},
+		{"unknown empty is disabled", map[string]any{}, false},
+		{"probe value is ignored", map[string]any{ExtraKeyResponsesSupported: true}, false},
 
 		// 手动覆盖：覆盖自动探测结果
 		{"force responses overrides unsupported probe", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceResponses), ExtraKeyResponsesSupported: false}, true},
@@ -70,11 +65,11 @@ func TestNormalizeResponsesSupportMode(t *testing.T) {
 		mode string
 		want ResponsesSupportMode
 	}{
-		{"empty", "", ResponsesSupportModeAuto},
-		{"auto", "auto", ResponsesSupportModeAuto},
+		{"empty", "", ""},
+		{"auto", "auto", ""},
 		{"force responses", "force_responses", ResponsesSupportModeForceResponses},
 		{"force chat completions", "force_chat_completions", ResponsesSupportModeForceChatCompletions},
-		{"invalid", "enabled", ResponsesSupportModeAuto},
+		{"invalid", "enabled", ""},
 	}
 
 	for _, tc := range tests {
@@ -84,5 +79,25 @@ func TestNormalizeResponsesSupportMode(t *testing.T) {
 				t.Errorf("NormalizeResponsesSupportMode(%q) = %q, want %q", tc.mode, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestValidateExplicitResponsesMode(t *testing.T) {
+	for _, mode := range []ResponsesSupportMode{ResponsesSupportModeForceResponses, ResponsesSupportModeForceChatCompletions} {
+		if err := ValidateExplicitResponsesMode(map[string]any{ExtraKeyResponsesMode: string(mode)}); err != nil {
+			t.Errorf("ValidateExplicitResponsesMode(%q) returned error: %v", mode, err)
+		}
+	}
+
+	for _, extra := range []map[string]any{
+		nil,
+		{},
+		{ExtraKeyResponsesMode: string(ResponsesSupportModeAuto)},
+		{ExtraKeyResponsesMode: "invalid"},
+		{ExtraKeyResponsesMode: true},
+	} {
+		if err := ValidateExplicitResponsesMode(extra); err == nil {
+			t.Errorf("ValidateExplicitResponsesMode(%v) expected error", extra)
+		}
 	}
 }

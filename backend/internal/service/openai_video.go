@@ -84,7 +84,7 @@ func (s *OpenAIGatewayService) ForwardOpenAIVideo(
 	if err != nil {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	responseID := firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("openai-request-id"))
 	if endpoint == OpenAIVideoContent {
 		if resp.StatusCode >= 400 {

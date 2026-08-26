@@ -1757,7 +1757,6 @@
             <Select
               v-model="openAIResponsesMode"
               :options="openAIResponsesModeOptions"
-              :disabled="!openAITextGenerationCapabilityEnabled"
               data-testid="openai-responses-mode-select"
             />
           </div>
@@ -3242,7 +3241,7 @@ const openAILongContextBillingEnabled = ref(false)
 // OpenAI 订阅档位（Plus/Pro/Free）手动覆盖值,存于 credentials.plan_type;'' 表示清空/自动识别
 const editPlanType = ref<string>('')
 const openAICompactMode = ref<OpenAICompactMode>('auto')
-const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
+const openAIResponsesMode = ref<OpenAIResponsesMode | ''>('')
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
@@ -3382,25 +3381,11 @@ const planTypeOptions = computed(() =>
   buildPlanTypeOptions(editPlanType.value, t('admin.accounts.openai.planTypeClear'))
 )
 const openAIResponsesModeOptions = computed(() => [
-  { value: 'auto', label: t('admin.accounts.openai.responsesModeAuto') },
   { value: 'force_responses', label: t('admin.accounts.openai.responsesModeForceResponses') },
   { value: 'force_chat_completions', label: t('admin.accounts.openai.responsesModeForceChatCompletions') }
 ])
 const openAITextEndpointCapabilityLabel = computed(() => {
-  if (openAIResponsesMode.value === 'force_responses') {
-    return t('admin.accounts.openai.capabilityResponses')
-  }
-  if (openAIResponsesMode.value === 'force_chat_completions') {
-    return t('admin.accounts.openai.capabilityChatCompletions')
-  }
-  const extra = props.account?.extra as Record<string, unknown> | undefined
-  if (extra?.openai_responses_supported === true) {
-    return t('admin.accounts.openai.capabilityResponsesAuto')
-  }
-  if (extra?.openai_responses_supported === false) {
-    return t('admin.accounts.openai.capabilityChatCompletionsAuto')
-  }
-  return t('admin.accounts.openai.capabilityTextAuto')
+  return t('admin.accounts.openai.capabilityTextGeneration')
 })
 const openAIEndpointCapabilityOptions = computed<{ value: OpenAIEndpointCapability; label: string }[]>(() => [
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
@@ -3446,9 +3431,6 @@ const toggleOpenAIEndpointCapability = (capability: OpenAIEndpointCapability, ev
     openAIEndpointCapabilities.value = openAIEndpointCapabilities.value.filter(
       (value) => value !== capability
     )
-    if (!openAITextGenerationCapabilityEnabled.value) {
-      openAIResponsesMode.value = 'auto'
-    }
     return
   }
   openAIEndpointCapabilities.value = normalizeOpenAIEndpointCapabilities([
@@ -3465,11 +3447,11 @@ const applyOpenAIEndpointCapabilities = (credentials: Record<string, unknown>) =
   }
   credentials.openai_capabilities = capabilities
 }
-const normalizeOpenAIResponsesMode = (mode: unknown): OpenAIResponsesMode => {
+const normalizeOpenAIResponsesMode = (mode: unknown): OpenAIResponsesMode | '' => {
   if (mode === 'force_responses' || mode === 'force_chat_completions') {
     return mode
   }
-  return 'auto'
+  return ''
 }
 const isOpenAIModelRestrictionDisabled = computed(() =>
   props.account?.platform === 'openai' && openaiPassthroughEnabled.value
@@ -3481,14 +3463,7 @@ const openAIResponsesStatusKey = computed(() => {
   if (openAIResponsesMode.value === 'force_chat_completions') {
     return 'admin.accounts.openai.responsesStatusForcedChatCompletions'
   }
-  const extra = props.account?.extra as Record<string, unknown> | undefined
-  if (extra?.openai_responses_supported === true) {
-    return 'admin.accounts.openai.responsesStatusAutoSupported'
-  }
-  if (extra?.openai_responses_supported === false) {
-    return 'admin.accounts.openai.responsesStatusAutoUnsupported'
-  }
-  return 'admin.accounts.openai.responsesStatusAutoUnknown'
+  return 'admin.accounts.openai.responsesStatusUnconfigured'
 })
 const openAICompactStatusKey = computed(() => {
   const extra = props.account?.extra as Record<string, unknown> | undefined
@@ -3732,7 +3707,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openAILongContextBillingEnabled.value = false
   editPlanType.value = ''
   openAICompactMode.value = 'auto'
-  openAIResponsesMode.value = 'auto'
+  openAIResponsesMode.value = ''
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
   openAICompactModelMappings.value = []
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -3760,9 +3735,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       openAIEndpointCapabilities.value = readOpenAIEndpointCapabilities(
         newAccount.credentials as Record<string, unknown> | undefined
       )
-      if (!openAITextGenerationCapabilityEnabled.value) {
-        openAIResponsesMode.value = 'auto'
-      }
     }
     const codexImageGenerationBridgeValue = typeof extra?.codex_image_generation_bridge === 'boolean'
       ? extra.codex_image_generation_bridge
@@ -5170,7 +5142,7 @@ const handleSubmit = async () => {
         newExtra.openai_compact_mode = openAICompactMode.value
       }
 		if (props.account.type === 'apikey') {
-        if (!openAITextGenerationCapabilityEnabled.value || openAIResponsesMode.value === 'auto') {
+        if (!openAIResponsesMode.value) {
           delete newExtra.openai_responses_mode
         } else {
           newExtra.openai_responses_mode = openAIResponsesMode.value

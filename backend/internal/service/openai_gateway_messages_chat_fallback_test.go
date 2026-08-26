@@ -458,7 +458,7 @@ func TestForwardAsAnthropic_ResponsesSupportedAccountStillUsesResponsesEndpoint(
 	}
 	account := rawChatCompletionsTestAccount()
 	account.Extra = map[string]any{
-		openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeAuto),
+		openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeForceResponses),
 		openai_compat.ExtraKeyResponsesSupported: true,
 	}
 

@@ -70,6 +70,23 @@ volumes:
 - `x.y` - Latest patch of minor version
 - `x` - Latest minor of major version
 
+## Upgrade and Automatic Migrations
+
+Database migrations run automatically when the application starts. The image applies pending embedded SQL migrations before serving requests, records them in `schema_migrations`, and serializes concurrent migration attempts with a PostgreSQL advisory lock. A migration failure is reported in the container logs and intentionally blocks startup.
+
+For a production upgrade, back up PostgreSQL first, then pull and recreate only the application container:
+
+```bash
+cd /path/to/sub2api-deploy
+docker compose exec -T postgres pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" > "backup-$(date +%Y%m%d-%H%M%S).sql"
+docker compose pull sub2api
+docker compose up -d sub2api
+docker compose ps
+docker compose logs --since=10m sub2api
+```
+
+Do not run `docker compose down -v` or delete database/data volumes during an upgrade. Migrations are forward-only; if a rollback is required after a schema migration has run, restore a compatible database backup before starting the older image.
+
 ## Links
 
 - [GitHub Repository](https://github.com/a515642/sub2api)

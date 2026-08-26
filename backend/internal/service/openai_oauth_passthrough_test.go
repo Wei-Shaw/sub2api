@@ -165,7 +165,7 @@ func TestOpenAIGatewayService_NativeResponsesBodyModificationPreservesHTMLChars(
 			"base_url": "http://upstream.example",
 		},
 		Extra: map[string]any{
-			openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeAuto),
+			openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeForceResponses),
 			openai_compat.ExtraKeyResponsesSupported: true,
 		},
 		Status:      StatusActive,
@@ -385,13 +385,15 @@ func TestOpenAIGatewayService_OAuthPassthrough_StreamKeepsToolNameAndBodyNormali
 	}
 
 	account := &Account{
-		ID:             123,
-		Name:           "acc",
-		Platform:       PlatformOpenAI,
-		Type:           AccountTypeOAuth,
-		Concurrency:    1,
-		Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
-		Extra:          map[string]any{"openai_passthrough": true},
+		ID:          123,
+		Name:        "acc",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+		Extra: map[string]any{
+			"openai_passthrough": true,
+		},
 		Status:         StatusActive,
 		Schedulable:    true,
 		RateMultiplier: f64p(1),
@@ -1215,7 +1217,10 @@ func TestOpenAIGatewayService_APIKeyPassthrough_RebuildsUpstreamErrors(t *testin
 					"api_key":  "sk-test",
 					"base_url": "https://secret-upstream.example",
 				},
-				Extra:       map[string]any{"openai_passthrough": true},
+				Extra: map[string]any{
+					"openai_passthrough":                true,
+					openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceResponses),
+				},
 				Status:      StatusActive,
 				Schedulable: true,
 			}
@@ -1835,13 +1840,15 @@ func TestOpenAIGatewayService_OAuthPassthrough_NonCodexUAFallbackToCodexUA(t *te
 	}
 
 	account := &Account{
-		ID:             123,
-		Name:           "acc",
-		Platform:       PlatformOpenAI,
-		Type:           AccountTypeOAuth,
-		Concurrency:    1,
-		Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
-		Extra:          map[string]any{"openai_passthrough": true},
+		ID:          123,
+		Name:        "acc",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+		Extra: map[string]any{
+			"openai_passthrough": true,
+		},
 		Status:         StatusActive,
 		Schedulable:    true,
 		RateMultiplier: f64p(1),
@@ -2393,7 +2400,10 @@ func TestOpenAIGatewayService_APIKeyPassthrough_PreservesBodyAndUsesResponsesEnd
 			"base_url":      "https://api.openai.com",
 			"model_mapping": map[string]any{"gpt-5.2": "gpt-5.2-account"},
 		},
-		Extra:          map[string]any{"openai_passthrough": true},
+		Extra: map[string]any{
+			"openai_passthrough":                true,
+			openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceResponses),
+		},
 		Status:         StatusActive,
 		Schedulable:    true,
 		RateMultiplier: f64p(1),

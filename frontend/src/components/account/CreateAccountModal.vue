@@ -3240,7 +3240,6 @@
             <Select
               v-model="openAIResponsesMode"
               :options="openAIResponsesModeOptions"
-              :disabled="!openAITextGenerationCapabilityEnabled"
               data-testid="openai-responses-mode-select"
             />
           </div>
@@ -4186,7 +4185,7 @@ const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
 const openAILongContextBillingTouched = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
-const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
+const openAIResponsesMode = ref<OpenAIResponsesMode | ''>('')
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
@@ -4263,18 +4262,11 @@ const openAICompactModeOptions = computed(() => [
   { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') }
 ])
 const openAIResponsesModeOptions = computed(() => [
-  { value: 'auto', label: t('admin.accounts.openai.responsesModeAuto') },
   { value: 'force_responses', label: t('admin.accounts.openai.responsesModeForceResponses') },
   { value: 'force_chat_completions', label: t('admin.accounts.openai.responsesModeForceChatCompletions') }
 ])
 const openAITextEndpointCapabilityLabel = computed(() => {
-  if (openAIResponsesMode.value === 'force_responses') {
-    return t('admin.accounts.openai.capabilityResponses')
-  }
-  if (openAIResponsesMode.value === 'force_chat_completions') {
-    return t('admin.accounts.openai.capabilityChatCompletions')
-  }
-  return t('admin.accounts.openai.capabilityTextAuto')
+  return t('admin.accounts.openai.capabilityTextGeneration')
 })
 const openAIEndpointCapabilityOptions = computed<{ value: OpenAIEndpointCapability; label: string }[]>(() => [
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
@@ -4300,9 +4292,6 @@ const toggleOpenAIEndpointCapability = (capability: OpenAIEndpointCapability, ev
     openAIEndpointCapabilities.value = openAIEndpointCapabilities.value.filter(
       (value) => value !== capability
     )
-    if (!openAITextGenerationCapabilityEnabled.value) {
-      openAIResponsesMode.value = 'auto'
-    }
     return
   }
   openAIEndpointCapabilities.value = normalizeOpenAIEndpointCapabilities([
@@ -5081,7 +5070,7 @@ const resetForm = () => {
   openAILongContextBillingEnabled.value = false
   openAILongContextBillingTouched.value = false
   openAICompactMode.value = 'auto'
-  openAIResponsesMode.value = 'auto'
+  openAIResponsesMode.value = ''
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -5199,11 +5188,7 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     delete extra.openai_compact_mode
   }
 
-  if (
-    accountCategory.value === 'apikey' &&
-    openAITextGenerationCapabilityEnabled.value &&
-    openAIResponsesMode.value !== 'auto'
-  ) {
+  if (accountCategory.value === 'apikey' && openAIResponsesMode.value) {
     extra.openai_responses_mode = openAIResponsesMode.value
   } else {
     delete extra.openai_responses_mode
@@ -5540,6 +5525,10 @@ const handleSubmit = async () => {
   }
 
   // For apikey type, create directly
+  if (form.platform === 'openai' && accountCategory.value === 'apikey' && !openAIResponsesMode.value) {
+    appStore.showError(t('admin.accounts.openai.responsesModeRequired'))
+    return
+  }
   if (!apiKeyValue.value.trim()) {
     appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
     return

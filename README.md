@@ -411,10 +411,15 @@ docker compose -f docker-compose.local.yml logs sub2api | grep "admin password"
 #### Upgrade
 
 ```bash
-# Pull latest image and recreate container
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
+# Back up PostgreSQL first, then pull and recreate only the application container
+docker compose -f docker-compose.local.yml exec -T postgres pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" > "backup-$(date +%Y%m%d-%H%M%S).sql"
+docker compose -f docker-compose.local.yml pull sub2api
+docker compose -f docker-compose.local.yml up -d sub2api
+# Pending database migrations run automatically during startup; inspect the logs
+docker compose -f docker-compose.local.yml logs --since=10m sub2api
 ```
+
+Migrations are forward-only. Keep the backup and do not delete persistent data volumes; if an image rollback is needed after a schema migration, restore a compatible database backup first.
 
 #### Easy Migration (Local Directory Version)
 

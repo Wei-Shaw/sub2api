@@ -1699,7 +1699,7 @@ const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>([
   'chat_completions',
   'embeddings'
 ])
-const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
+const openAIResponsesMode = ref<OpenAIResponsesMode | ''>('force_responses')
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const upstreamBillingAutoProbeMode = ref<'enabled' | 'disabled'>('enabled')
@@ -1765,7 +1765,6 @@ const openAICompactModeOptions = computed(() => [
   { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') }
 ])
 const openAIResponsesModeOptions = computed(() => [
-  { value: 'auto', label: t('admin.accounts.openai.responsesModeAuto') },
   { value: 'force_responses', label: t('admin.accounts.openai.responsesModeForceResponses') },
   {
     value: 'force_chat_completions',
@@ -1773,13 +1772,7 @@ const openAIResponsesModeOptions = computed(() => [
   }
 ])
 const openAITextEndpointCapabilityLabel = computed(() => {
-  if (openAIResponsesMode.value === 'force_responses') {
-    return t('admin.accounts.openai.capabilityResponses')
-  }
-  if (openAIResponsesMode.value === 'force_chat_completions') {
-    return t('admin.accounts.openai.capabilityChatCompletions')
-  }
-  return t('admin.accounts.openai.capabilityTextAuto')
+  return t('admin.accounts.openai.capabilityTextGeneration')
 })
 const openAIEndpointCapabilityOptions = computed<
   Array<{ value: OpenAIEndpointCapability; label: string }>
@@ -1813,9 +1806,6 @@ const toggleOpenAIEndpointCapability = (
     openAIEndpointCapabilities.value = openAIEndpointCapabilities.value.filter(
       (value) => value !== capability
     )
-    if (!openAITextGenerationCapabilityEnabled.value) {
-      openAIResponsesMode.value = 'auto'
-    }
     return
   }
   openAIEndpointCapabilities.value = normalizeOpenAIEndpointCapabilities([
@@ -2001,15 +1991,9 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     credentialsChanged = true
   }
 
-  if (
-    applyOpenAIResponsesMode ||
-    (applyOpenAIEndpointCapabilities && !openAITextGenerationCapabilityEnabled.value)
-  ) {
+  if (applyOpenAIResponsesMode) {
     const extra = ensureExtra()
-    extra.openai_responses_mode =
-      !openAIResponsesModeApplicable.value || openAIResponsesMode.value === 'auto'
-        ? null
-        : openAIResponsesMode.value
+    extra.openai_responses_mode = openAIResponsesMode.value || null
   }
 
   if (enableModelRestriction.value && !isOpenAIModelRestrictionDisabled.value) {
@@ -2373,7 +2357,7 @@ watch(
       openaiFlattenNamespacesEnabled.value = false
       openAILongContextBillingEnabled.value = false
       openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
-      openAIResponsesMode.value = 'auto'
+      openAIResponsesMode.value = 'force_responses'
       modelRestrictionMode.value = 'whitelist'
       allowedModels.value = []
       modelMappings.value = []

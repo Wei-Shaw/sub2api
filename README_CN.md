@@ -425,10 +425,15 @@ docker compose -f docker-compose.local.yml logs sub2api | grep "admin password"
 #### 升级
 
 ```bash
-# 拉取最新镜像并重建容器
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
+# 先备份 PostgreSQL，再只拉取并重建应用容器
+docker compose -f docker-compose.local.yml exec -T postgres pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" > "backup-$(date +%Y%m%d-%H%M%S).sql"
+docker compose -f docker-compose.local.yml pull sub2api
+docker compose -f docker-compose.local.yml up -d sub2api
+# 待执行的数据库迁移会在启动时自动执行；检查迁移日志
+docker compose -f docker-compose.local.yml logs --since=10m sub2api
 ```
+
+数据库迁移是只向前的。升级时不要执行 `docker compose down -v`，也不要删除持久化数据目录或数据卷；如果迁移已执行后需要回滚镜像，应先恢复兼容版本的数据库备份。
 
 #### 轻松迁移（本地目录版）
 

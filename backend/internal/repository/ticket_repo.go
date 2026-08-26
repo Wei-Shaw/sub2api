@@ -51,7 +51,7 @@ func (r *ticketRepository) Create(ctx context.Context, input service.CreateTicke
 	if err != nil {
 		return nil, nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var ticketID int64
 	if err = tx.QueryRowContext(ctx, `INSERT INTO tickets (user_id, title, description) VALUES ($1,$2,$3) RETURNING id`, input.UserID, input.Title, input.Description).Scan(&ticketID); err != nil {
 		return nil, nil, err
@@ -83,7 +83,7 @@ func (r *ticketRepository) GetByID(ctx context.Context, id int64) (*service.Tick
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var m service.TicketMessage
 		var raw string
@@ -114,7 +114,7 @@ func (r *ticketRepository) list(ctx context.Context, where string, arg any) ([]s
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []service.Ticket{}
 	for rows.Next() {
 		t, err := scanTicket(rows)
@@ -135,7 +135,7 @@ func (r *ticketRepository) AddMessage(ctx context.Context, input service.AddTick
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var id int64
 	var createdAt time.Time
 	if err = tx.QueryRowContext(ctx, `INSERT INTO ticket_messages (ticket_id,sender_type,sender_id,content,images) VALUES ($1,$2,$3,$4,$5) RETURNING id,created_at`, input.TicketID, input.SenderType, input.SenderID, input.Content, images).Scan(&id, &createdAt); err != nil {

@@ -148,9 +148,35 @@ When using Docker Compose with `AUTO_SETUP=true`:
 
 ### Database Migration Notes (PostgreSQL)
 
+- Database migrations run automatically during every normal application startup, before the server begins serving requests. This also applies after a Docker image update or an in-app binary update followed by a restart.
+- The migration files are embedded in the application binary/image, so the target image must contain the migration that belongs to the code being deployed.
 - Migrations are applied in lexicographic order (e.g. `001_...sql`, `002_...sql`).
 - `schema_migrations` tracks applied migrations (filename + checksum).
+- PostgreSQL advisory locking serializes migration execution when multiple application instances start at the same time.
+- Startup logs contain `database migration started`, `database migration completed`, or `database migration failed`. A migration failure intentionally prevents the application from starting; fix the database or deployment issue and restart it.
 - Migrations are forward-only; rollback requires a DB backup restore or a manual compensating SQL script.
+
+### Safe Docker Upgrade
+
+Before upgrading a production deployment, back up PostgreSQL and keep the deployment configuration. Do not use `docker compose down -v` and do not delete `data/`, `postgres_data/`, or `redis_data/`; these contain persistent application data.
+
+```bash
+cd /path/to/sub2api-deploy
+
+# Create a PostgreSQL backup before changing the image
+docker compose -f docker-compose.local.yml exec -T postgres \
+  pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" > "backup-$(date +%Y%m%d-%H%M%S).sql"
+
+# Pull the selected image and recreate only the application container
+docker compose -f docker-compose.local.yml pull sub2api
+docker compose -f docker-compose.local.yml up -d sub2api
+
+# Confirm migration and health status
+docker compose -f docker-compose.local.yml ps
+docker compose -f docker-compose.local.yml logs --since=10m sub2api
+```
+
+The new application container automatically applies pending migrations before becoming ready. If startup fails during migration, inspect the logs, keep the backup, and do not repeatedly delete or recreate the database volume. Image rollback alone may not undo an already-applied schema change; restore the compatible database backup first when a rollback requires it.
 
 **Verify `users.allowed_groups` → `user_allowed_groups` backfill**
 
@@ -195,9 +221,9 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 # Restart Sub2API only
 docker compose -f docker-compose.local.yml restart sub2api
 
-# Update to latest version
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
+# Update to latest version (see Safe Docker Upgrade for the backup step)
+docker compose -f docker-compose.local.yml pull sub2api
+docker compose -f docker-compose.local.yml up -d sub2api
 
 # Remove all data (caution!)
 docker compose -f docker-compose.local.yml down

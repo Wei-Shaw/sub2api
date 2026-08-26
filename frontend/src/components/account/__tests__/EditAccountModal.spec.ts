@@ -1090,7 +1090,7 @@ describe('EditAccountModal', () => {
       '[data-testid="openai-responses-mode-select"]'
     )
 
-    expect(responsesModeSelect.element.disabled).toBe(true)
+    expect(responsesModeSelect.element.disabled).toBe(false)
     expect(wrapper.find('[data-testid="openai-responses-mode-not-applicable"]').exists()).toBe(true)
 
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
@@ -1099,7 +1099,7 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_capabilities).toEqual([
       'embeddings'
     ])
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_responses_mode')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_mode).toBe('force_responses')
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_supported).toBe(true)
   })
 

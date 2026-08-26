@@ -59,6 +59,11 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	promptCacheKey string,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
+	if account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey {
+		if err := openai_compat.ValidateExplicitResponsesMode(account.Extra); err != nil {
+			return nil, fmt.Errorf("openai api key upstream protocol is not configured: %w", err)
+		}
+	}
 	beginUpstreamResponseModelObservation(c)
 	setCodexToolNameReverse(c, nil)
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {

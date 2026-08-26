@@ -16,8 +16,19 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
+
+func validateOpenAIAPIKeyUpstreamProtocol(platform, accountType string, extra map[string]any) error {
+	if platform != PlatformOpenAI || accountType != AccountTypeAPIKey {
+		return nil
+	}
+	if err := openai_compat.ValidateExplicitResponsesMode(extra); err != nil {
+		return infraerrors.BadRequest("OPENAI_UPSTREAM_PROTOCOL_REQUIRED", err.Error())
+	}
+	return nil
+}
 
 // Account management implementations
 func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error) {
@@ -474,6 +485,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err != nil {
 		return nil, err
 	}
+	if err := validateOpenAIAPIKeyUpstreamProtocol(input.Platform, input.Type, accountExtra); err != nil {
+		return nil, err
+	}
 
 	// 绑定分组
 	groupIDs := input.GroupIDs
@@ -689,6 +703,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	if input.Extra == nil {
 		account.Extra = prepareCodexFingerprintExtraForUpdate(account, account.Extra)
+	}
+	if err := validateOpenAIAPIKeyUpstreamProtocol(account.Platform, account.Type, account.Extra); err != nil {
+		return nil, err
 	}
 	if requestedRateSyncEnabledUpdate != nil && *requestedRateSyncEnabledUpdate {
 		if requestedProbeEnabledUpdate != nil && !*requestedProbeEnabledUpdate {

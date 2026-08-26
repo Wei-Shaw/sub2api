@@ -17,12 +17,19 @@
 //     pensieve/short-term/maxims/preserve-existing-runtime-behavior-when-replacing-logic-in-stateful-systems）
 package openai_compat
 
+import "fmt"
+
 // AccountResponsesSupport 描述账号上游对 OpenAI Responses API 的有效支持状态。
 //
 // 仅用于 platform=openai + type=apikey 的账号；其他账号类型不应调用本包判定。
 type AccountResponsesSupport int
 
 const (
+	// ResponsesSupportModeAuto is deprecated and is no longer valid for new
+	// accounts or runtime routing. It remains only so old diagnostic payloads
+	// can be decoded while they are being replaced.
+	ResponsesSupportModeAuto ResponsesSupportMode = "auto"
+
 	// ResponsesSupportUnknown 表示账号尚未完成能力探测（extra 字段缺失）。
 	// 上游路由层应按"现状即证据"原则默认走 Responses，保持与重构前一致。
 	ResponsesSupportUnknown AccountResponsesSupport = iota
@@ -39,9 +46,6 @@ const (
 type ResponsesSupportMode string
 
 const (
-	// ResponsesSupportModeAuto 表示跟随自动探测结果。
-	ResponsesSupportModeAuto ResponsesSupportMode = "auto"
-
 	// ResponsesSupportModeForceResponses 强制使用 /v1/responses。
 	ResponsesSupportModeForceResponses ResponsesSupportMode = "force_responses"
 
@@ -67,7 +71,7 @@ func NormalizeResponsesSupportMode(mode string) ResponsesSupportMode {
 	case ResponsesSupportModeForceChatCompletions:
 		return ResponsesSupportModeForceChatCompletions
 	default:
-		return ResponsesSupportModeAuto
+		return ""
 	}
 }
 
@@ -87,18 +91,7 @@ func ResolveResponsesSupport(extra map[string]any) AccountResponsesSupport {
 			return ResponsesSupportNo
 		}
 	}
-	v, ok := extra[ExtraKeyResponsesSupported]
-	if !ok {
-		return ResponsesSupportUnknown
-	}
-	supported, ok := v.(bool)
-	if !ok {
-		return ResponsesSupportUnknown
-	}
-	if supported {
-		return ResponsesSupportYes
-	}
-	return ResponsesSupportNo
+	return ResponsesSupportUnknown
 }
 
 // ShouldUseResponsesAPI 判断 OpenAI APIKey 账号的入站 /v1/chat/completions 请求
@@ -111,5 +104,18 @@ func ResolveResponsesSupport(extra map[string]any) AccountResponsesSupport {
 // 仅当账号已探测且确认不支持时返回 false，此时调用方应走 CC 直转路径
 // （详见 internal/service/openai_gateway_chat_completions_raw.go）。
 func ShouldUseResponsesAPI(extra map[string]any) bool {
-	return ResolveResponsesSupport(extra) != ResponsesSupportNo
+	return ResolveResponsesSupport(extra) == ResponsesSupportYes
+}
+
+// ValidateExplicitResponsesMode 要求 OpenAI API Key 账号显式选择上游协议。
+// openai_responses_supported 仅保留作诊断信息，不参与路由。
+func ValidateExplicitResponsesMode(extra map[string]any) error {
+	if extra == nil {
+		return fmt.Errorf("openai_responses_mode must be force_responses or force_chat_completions")
+	}
+	mode, ok := extra[ExtraKeyResponsesMode].(string)
+	if !ok || NormalizeResponsesSupportMode(mode) == "" {
+		return fmt.Errorf("openai_responses_mode must be force_responses or force_chat_completions")
+	}
+	return nil
 }

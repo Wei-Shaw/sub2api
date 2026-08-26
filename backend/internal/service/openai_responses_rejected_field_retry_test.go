@@ -651,7 +651,7 @@ func newOpenAIRejectedFieldTestAccount() *Account {
 			"base_url": "https://compat.example",
 		},
 		Extra: map[string]any{
-			openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeAuto),
+			openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeForceResponses),
 			openai_compat.ExtraKeyResponsesSupported: true,
 		},
 		Status:      StatusActive,

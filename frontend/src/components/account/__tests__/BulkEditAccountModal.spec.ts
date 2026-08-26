@@ -507,7 +507,7 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
-  it('Responses 路由独立启用，auto 提交 null，强制模式提交明确值', async () => {
+  it('Responses 路由独立启用时提交显式上游协议', async () => {
     const autoWrapper = mountModal({
       selectedPlatforms: ['openai'],
       selectedTypes: ['apikey']
@@ -516,7 +516,7 @@ describe('BulkEditAccountModal', () => {
     await autoWrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
     await flushPromises()
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenLastCalledWith([1, 2], {
-      extra: { openai_responses_mode: null }
+      extra: { openai_responses_mode: 'force_responses' }
     })
     autoWrapper.unmount()
 
@@ -534,7 +534,7 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
-  it('仅启用 Embeddings 时恢复 Responses 自动模式并精确提交联动字段', async () => {
+  it('仅启用 Embeddings 时仍保留显式上游协议并精确提交联动字段', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],
       selectedTypes: ['apikey']
@@ -546,14 +546,14 @@ describe('BulkEditAccountModal', () => {
     await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-chat_completions"]').setValue(false)
 
     expect((wrapper.get('[data-testid="bulk-edit-openai-responses-mode-select"]').element as HTMLSelectElement).value)
-      .toBe('auto')
+      .toBe('force_chat_completions')
     expect(wrapper.find('[data-testid="bulk-edit-openai-responses-mode-not-applicable"]').exists()).toBe(true)
 
     await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
     await flushPromises()
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
       credentials: { openai_capabilities: ['embeddings'] },
-      extra: { openai_responses_mode: null }
+      extra: { openai_responses_mode: 'force_chat_completions' }
     })
   })
 
@@ -629,7 +629,7 @@ describe('BulkEditAccountModal', () => {
     expect(wrapper.get('[data-testid="bulk-edit-openai-long-context-billing-toggle"]').attributes('aria-checked')).toBe('false')
     expect((wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').element as HTMLInputElement).checked).toBe(false)
     expect((wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-chat_completions"]').element as HTMLInputElement).checked).toBe(true)
-    expect((wrapper.get('[data-testid="bulk-edit-openai-responses-mode-select"]').element as HTMLSelectElement).value).toBe('auto')
+    expect((wrapper.get('[data-testid="bulk-edit-openai-responses-mode-select"]').element as HTMLSelectElement).value).toBe('force_responses')
   })
 
   it('筛选全量模式固定展示影子继承说明并按 filters 提交', async () => {

@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/ent"
@@ -69,10 +70,14 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 	// 这种方式比 Ent 的自动迁移更可控，支持复杂的迁移场景。
 	migrationCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
+	migrationStartedAt := time.Now()
+	slog.Info("database migration started", "component", "repository", "timeout", 10*time.Minute)
 	if err := applyMigrationsFS(migrationCtx, drv.DB(), migrations.FS); err != nil {
+		slog.Error("database migration failed", "component", "repository", "duration", time.Since(migrationStartedAt).Round(time.Millisecond), "error", err)
 		_ = drv.Close() // 迁移失败时关闭驱动，避免资源泄露
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("database migration failed: %w", err)
 	}
+	slog.Info("database migration completed", "component", "repository", "duration", time.Since(migrationStartedAt).Round(time.Millisecond))
 
 	// 创建 Ent 客户端，绑定到已配置的数据库驱动。
 	client := ent.NewClient(ent.Driver(drv))

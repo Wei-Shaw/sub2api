@@ -19,6 +19,11 @@ import (
 
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+	if account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey {
+		if err := openai_compat.ValidateExplicitResponsesMode(account.Extra); err != nil {
+			return nil, fmt.Errorf("openai api key upstream protocol is not configured: %w", err)
+		}
+	}
 	beginUpstreamResponseModelObservation(c)
 	clearGrokResponsesClientToolMapping(c)
 	clearOpenAIResponsesClientToolMapping(c)
@@ -1243,7 +1248,7 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 			return false
 		}
 	}
-	return !openai_compat.ShouldUseResponsesAPI(account.Extra)
+	return openai_compat.ResolveResponsesSupport(account.Extra) == openai_compat.ResponsesSupportNo
 }
 
 func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {

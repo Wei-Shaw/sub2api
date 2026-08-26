@@ -1406,7 +1406,7 @@ export interface CodexUsageSnapshot {
 }
 
 export type OpenAICompactMode = 'auto' | 'force_on' | 'force_off'
-export type OpenAIResponsesMode = 'auto' | 'force_responses' | 'force_chat_completions'
+export type OpenAIResponsesMode = 'force_responses' | 'force_chat_completions'
 export type OpenAIEndpointCapability = 'chat_completions' | 'embeddings'
 
 export interface OpenAICompactState {
