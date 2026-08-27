@@ -160,9 +160,10 @@ async function submitApiKeyAccount(
   await selectButtonByText(wrapper, platform === 'openai' ? 'OpenAI' : 'admin.accounts.claudeConsole')
   if (platform === 'openai') {
     await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('[data-testid="openai-responses-mode-select"]').setValue('force_responses')
   }
   await wrapper.get('form#create-account-form input[type="text"]').setValue(`${platform} account`)
-  await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+  await wrapper.get('form#create-account-form').findAll('textarea')[1].setValue('test-api-key')
   if (enableLongContextBilling) {
     await wrapper.get('[data-testid="openai-long-context-billing-toggle"]').trigger('click')
   }
@@ -234,6 +235,23 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(createAccountMock).toHaveBeenCalledTimes(1)
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
+  })
+
+  it('persists credentials for a single API key account', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'admin.accounts.claudeConsole')
+    const textInputs = wrapper.get('form#create-account-form').findAll('input[type="text"]')
+    await textInputs[0].setValue('OpenAI API key account')
+    await textInputs[1].setValue('https://relay.example.com/v1')
+    await wrapper.get('form#create-account-form').findAll('textarea')[1].setValue('test-api-key')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials).toMatchObject({
+      base_url: 'https://relay.example.com/v1',
+      api_key: 'test-api-key'
+    })
   })
 
   // namespace 摊平是仅 OAuth 的兼容开关：API Key 走 chat completions 回退桥时由桥自行摊平

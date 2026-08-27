@@ -5635,6 +5635,7 @@ const handleSubmit = async () => {
   credentials.api_key = apiKeys[0]
   await doCreateAccount({
     ...form,
+    credentials,
     group_ids: form.group_ids,
     extra,
     upstream_billing_probe_enabled: upstreamBillingAutoProbeEnabled.value,
