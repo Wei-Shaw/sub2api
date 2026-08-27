@@ -23,7 +23,8 @@ vi.mock('@/api/admin', () => ({
     users: {
       list: listUsers,
       toggleStatus: vi.fn(),
-      delete: vi.fn()
+      delete: vi.fn(),
+      batchBanUsers: vi.fn().mockResolvedValue({ affected: 0, skipped: 0 })
     },
     groups: {
       getAll: getAllGroups

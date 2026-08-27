@@ -55,6 +55,15 @@ export interface BatchUpdateUserLimitsResponse {
   affected: number
 }
 
+export interface BatchBanUsersRequest {
+  user_ids: number[]
+}
+
+export interface BatchBanUsersResponse {
+  affected: number
+  skipped: number
+}
+
 /**
  * List all users with pagination
  * @param page - Page number (default: 1)
@@ -201,6 +210,17 @@ export async function batchUpdateLimits(
 ): Promise<BatchUpdateUserLimitsResponse> {
   const { data } = await apiClient.post<BatchUpdateUserLimitsResponse>(
     '/admin/users/batch-limits',
+    request
+  )
+  return data
+}
+
+/** Disable multiple non-admin users in one admin operation. */
+export async function batchBanUsers(
+  request: BatchBanUsersRequest
+): Promise<BatchBanUsersResponse> {
+  const { data } = await apiClient.post<BatchBanUsersResponse>(
+    '/admin/users/batch-ban',
     request
   )
   return data
@@ -408,6 +428,7 @@ export const usersAPI = {
   updateBalance,
   updateConcurrency,
   batchUpdateLimits,
+  batchBanUsers,
   toggleStatus,
   getUserApiKeys,
   getUserUsageStats,

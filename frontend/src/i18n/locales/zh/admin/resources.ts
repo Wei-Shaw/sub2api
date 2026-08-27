@@ -550,6 +550,13 @@ export default {
       clickToViewBalance: '点击查看充值记录',
       failedToLoadUser: '加载用户信息失败',
       userDeletedBadge: '已删除',
+      bulkBan: {
+        action: '批量封禁 ({count})',
+        title: '批量封禁用户',
+        confirm: '确定封禁选中的 {count} 位用户吗？管理员账号不会被封禁。',
+        success: '已封禁 {affected} 位用户，跳过 {skipped} 项',
+        failed: '批量封禁用户失败'
+      },
       tokenRanking: {
         subtitle: '按当前筛选与时间范围统计每个用户的 Token 用量',
         rowHint: '点击查看该用户的用量明细',

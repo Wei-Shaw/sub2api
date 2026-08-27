@@ -676,6 +676,46 @@ func (h *UserHandler) BatchUpdateLimits(c *gin.Context) {
 	response.Success(c, gin.H{"affected": affected})
 }
 
+// BatchBanUsers disables multiple non-admin users.
+// POST /api/v1/admin/users/batch-ban
+type BatchBanUsersRequest struct {
+	UserIDs []int64 `json:"user_ids" binding:"required,min=1,max=500,dive,gt=0"`
+}
+
+func (h *UserHandler) BatchBanUsers(c *gin.Context) {
+	var req BatchBanUsersRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	seen := make(map[int64]struct{}, len(req.UserIDs))
+	affected := 0
+	skipped := 0
+	for _, userID := range req.UserIDs {
+		if _, ok := seen[userID]; ok {
+			skipped++
+			continue
+		}
+		seen[userID] = struct{}{}
+
+		_, err := h.adminService.UpdateUser(c.Request.Context(), userID, &service.UpdateUserInput{
+			Status:       service.StatusDisabled,
+			ActorAdminID: getAdminIDFromContext(c),
+		})
+		if err != nil {
+			skipped++
+			continue
+		}
+		affected++
+	}
+
+	response.Success(c, gin.H{
+		"affected": affected,
+		"skipped":  skipped,
+	})
+}
+
 // GetUserPlatformQuotas GET /admin/users/:id/platform-quotas
 // admin 视角：D14 lazy 归零 + 暴露 *_window_start 调试字段
 func (h *UserHandler) GetUserPlatformQuotas(c *gin.Context) {

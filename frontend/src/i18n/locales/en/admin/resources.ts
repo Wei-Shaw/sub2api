@@ -553,6 +553,13 @@ export default {
       clickToViewBalance: 'Click to view balance history',
       failedToLoadUser: 'Failed to load user info',
       userDeletedBadge: 'Deleted',
+      bulkBan: {
+        action: 'Ban selected ({count})',
+        title: 'Ban selected users',
+        confirm: 'Ban the selected {count} user(s)? Administrator accounts will not be banned.',
+        success: 'Banned {affected} user(s); skipped {skipped}',
+        failed: 'Failed to ban selected users'
+      },
       tokenRanking: {
         subtitle: 'Per-user token usage for the current filters and time range',
         rowHint: "Click to view this user's usage details",
