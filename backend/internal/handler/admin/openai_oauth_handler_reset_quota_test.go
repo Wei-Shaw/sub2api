@@ -215,7 +215,7 @@ func TestOpenAIResetQuota_RecoveryFailureStopsWorkflow(t *testing.T) {
 	status, envelope := performOpenAIQuotaResetRequest(t, handler)
 
 	require.Equal(t, http.StatusOK, status)
-	require.Equal(t, openAIQuotaResetWarningAccountRecoveryFailed, envelope.Data.WarningCode)
+	require.Equal(t, service.OpenAIQuotaResetWarningAccountRecoveryFailed, envelope.Data.WarningCode)
 	require.False(t, envelope.Data.AccountStateRecovered)
 	require.False(t, envelope.Data.CacheRefreshed)
 	require.Nil(t, envelope.Data.Quota)
@@ -237,7 +237,7 @@ func TestOpenAIResetQuota_MissingRecovererReportsRecoveryFailure(t *testing.T) {
 	status, envelope := performOpenAIQuotaResetRequest(t, handler)
 
 	require.Equal(t, http.StatusOK, status)
-	require.Equal(t, openAIQuotaResetWarningAccountRecoveryFailed, envelope.Data.WarningCode)
+	require.Equal(t, service.OpenAIQuotaResetWarningAccountRecoveryFailed, envelope.Data.WarningCode)
 	require.False(t, envelope.Data.AccountStateRecovered)
 	require.Zero(t, quota.queryCalls)
 	require.Zero(t, adminService.calls)
@@ -260,7 +260,7 @@ func TestOpenAIResetQuota_QueryFailureStillRecoversAndReturnsAccount(t *testing.
 	status, envelope := performOpenAIQuotaResetRequest(t, handler)
 
 	require.Equal(t, http.StatusOK, status)
-	require.Equal(t, openAIQuotaResetWarningCacheRefreshFailed, envelope.Data.WarningCode)
+	require.Equal(t, service.OpenAIQuotaResetWarningCacheRefreshFailed, envelope.Data.WarningCode)
 	require.True(t, envelope.Data.AccountStateRecovered)
 	require.False(t, envelope.Data.CacheRefreshed)
 	require.Nil(t, envelope.Data.Quota)
@@ -285,7 +285,7 @@ func TestOpenAIResetQuota_CacheFailureStillRecoversAndReturnsAccount(t *testing.
 	status, envelope := performOpenAIQuotaResetRequest(t, handler)
 
 	require.Equal(t, http.StatusOK, status)
-	require.Equal(t, openAIQuotaResetWarningCacheRefreshFailed, envelope.Data.WarningCode)
+	require.Equal(t, service.OpenAIQuotaResetWarningCacheRefreshFailed, envelope.Data.WarningCode)
 	require.True(t, envelope.Data.AccountStateRecovered)
 	require.False(t, envelope.Data.CacheRefreshed)
 	require.Nil(t, envelope.Data.Quota)
@@ -307,7 +307,7 @@ func TestOpenAIResetQuota_AccountRefreshFailureReportsRecoveredState(t *testing.
 	status, envelope := performOpenAIQuotaResetRequest(t, handler)
 
 	require.Equal(t, http.StatusOK, status)
-	require.Equal(t, openAIQuotaResetWarningAccountRefreshFailed, envelope.Data.WarningCode)
+	require.Equal(t, service.OpenAIQuotaResetWarningAccountRefreshFailed, envelope.Data.WarningCode)
 	require.True(t, envelope.Data.CacheRefreshed)
 	require.True(t, envelope.Data.AccountStateRecovered)
 	require.NotNil(t, envelope.Data.Quota)
@@ -331,7 +331,7 @@ func TestOpenAIResetQuota_CacheAndAccountFailureKeepsFirstWarning(t *testing.T) 
 	status, envelope := performOpenAIQuotaResetRequest(t, handler)
 
 	require.Equal(t, http.StatusOK, status)
-	require.Equal(t, openAIQuotaResetWarningCacheRefreshFailed, envelope.Data.WarningCode)
+	require.Equal(t, service.OpenAIQuotaResetWarningCacheRefreshFailed, envelope.Data.WarningCode)
 	require.True(t, envelope.Data.AccountStateRecovered)
 	require.Nil(t, envelope.Data.Account)
 }
@@ -435,7 +435,7 @@ func TestOpenAIQuotaEmptyUsageIsHandledWithoutPanic(t *testing.T) {
 		status, envelope := performOpenAIQuotaResetRequest(t, handler)
 
 		require.Equal(t, http.StatusOK, status)
-		require.Equal(t, openAIQuotaResetWarningCacheRefreshFailed, envelope.Data.WarningCode)
+		require.Equal(t, service.OpenAIQuotaResetWarningCacheRefreshFailed, envelope.Data.WarningCode)
 		require.True(t, envelope.Data.AccountStateRecovered)
 		require.NotNil(t, envelope.Data.Account)
 		require.Zero(t, quota.cacheCalls)

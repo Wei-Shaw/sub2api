@@ -694,3 +694,74 @@ func TestGatewayServiceRecordUsage_ReasoningEffortNil(t *testing.T) {
 	require.NotNil(t, usageRepo.lastLog)
 	require.Nil(t, usageRepo.lastLog.ReasoningEffort)
 }
+
+// newGatewayRecordUsageServiceWithResolverForTest mirrors production wiring for
+// token billing: a pricing resolver plus a grouped API key select the unified
+// billing path, which is the only one that honours the service tier.
+func newGatewayRecordUsageServiceWithResolverForTest(usageRepo UsageLogRepository) (*GatewayService, *APIKey) {
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+	svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+	groupID := int64(7)
+	return svc, &APIKey{ID: 1, GroupID: &groupID, Group: &Group{ID: groupID, RateMultiplier: 1.0}}
+}
+
+func TestGatewayServiceRecordUsage_FastSpeedDowngradedByUpstreamResponse(t *testing.T) {
+	usageRepo := &openAIRecordUsageBestEffortLogRepoStub{}
+	svc, apiKey := newGatewayRecordUsageServiceWithResolverForTest(usageRepo)
+
+	tier := "fast"
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:                   "fast_downgraded_test",
+			Usage:                       ClaudeUsage{InputTokens: 100, OutputTokens: 50},
+			Model:                       "claude-opus-5",
+			Duration:                    time.Second,
+			ServiceTier:                 &tier,
+			UpstreamResponseServiceTier: "standard",
+		},
+		APIKey:  apiKey,
+		User:    &User{ID: 1},
+		Account: &Account{ID: 1, Platform: PlatformAnthropic},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.ServiceTier)
+	require.Equal(t, "standard", *usageRepo.lastLog.ServiceTier)
+
+	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50}
+	standardCost, err := svc.billingService.CalculateCost("claude-opus-5", tokens, 1.0)
+	require.NoError(t, err)
+	fastCost, err := svc.billingService.CalculateCostWithServiceTier("claude-opus-5", tokens, 1.0, "fast")
+	require.NoError(t, err)
+	require.Greater(t, fastCost.TotalCost, standardCost.TotalCost, "fast mode must carry a premium for the test to be meaningful")
+	require.InDelta(t, standardCost.TotalCost, usageRepo.lastLog.TotalCost, 1e-10)
+}
+
+func TestGatewayServiceRecordUsage_FastSpeedHonouredKeepsPremium(t *testing.T) {
+	usageRepo := &openAIRecordUsageBestEffortLogRepoStub{}
+	svc, apiKey := newGatewayRecordUsageServiceWithResolverForTest(usageRepo)
+
+	tier := "fast"
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:                   "fast_honoured_test",
+			Usage:                       ClaudeUsage{InputTokens: 100, OutputTokens: 50},
+			Model:                       "claude-opus-5",
+			Duration:                    time.Second,
+			ServiceTier:                 &tier,
+			UpstreamResponseServiceTier: "fast",
+		},
+		APIKey:  apiKey,
+		User:    &User{ID: 1},
+		Account: &Account{ID: 1, Platform: PlatformAnthropic},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "fast", *usageRepo.lastLog.ServiceTier)
+
+	fastCost, err := svc.billingService.CalculateCostWithServiceTier("claude-opus-5", UsageTokens{InputTokens: 100, OutputTokens: 50}, 1.0, "fast")
+	require.NoError(t, err)
+	require.InDelta(t, fastCost.TotalCost, usageRepo.lastLog.TotalCost, 1e-10)
+}

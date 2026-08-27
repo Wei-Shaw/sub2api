@@ -37,6 +37,14 @@ func (s *GatewayService) ForwardAsResponses(
 ) (*ForwardResult, error) {
 	startTime := time.Now()
 
+	normalizedBody, normalized, err := normalizeOpenAIResponsesLegacyIngress(body)
+	if err != nil {
+		return nil, err
+	}
+	if normalized {
+		body = normalizedBody
+	}
+
 	// 1. Lower Codex client-side tools to function tools understood by Anthropic.
 	adaptedBody, clientToolMapping, err := adaptResponsesClientToolsForAnthropic(body)
 	if err != nil {
@@ -63,7 +71,6 @@ func (s *GatewayService) ForwardAsResponses(
 
 	// 4. Model mapping
 	mappedModel := originalModel
-	reasoningEffort := ExtractResponsesReasoningEffortFromBody(body)
 	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount {
 		mappedModel = account.GetMappedModel(originalModel)
 	}
@@ -78,6 +85,7 @@ func (s *GatewayService) ForwardAsResponses(
 			mappedModel = normalized
 		}
 	}
+	reasoningEffort := ExtractResponsesReasoningEffortFromBody(body, mappedModel, originalModel)
 	// 国产模型默认 effort 补充：需要 mappedModel 判定，推迟到 mapping 完成之后。
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, mappedModel)
 	anthropicReq.Model = mappedModel
@@ -170,12 +178,14 @@ func (s *GatewayService) ForwardAsResponses(
 				Kind:               "failover",
 				Message:            upstreamMsg,
 			})
+			shouldDisable := false
 			if s.rateLimitService != nil {
-				s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, mappedModel)
+				shouldDisable = s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, mappedModel)
 			}
 			return nil, &UpstreamFailoverError{
-				StatusCode:   resp.StatusCode,
-				ResponseBody: respBody,
+				StatusCode:             resp.StatusCode,
+				ResponseBody:           respBody,
+				RetryableOnSameAccount: !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 			}
 		}
 
@@ -255,12 +265,16 @@ func liftResponsesAdditionalTools(requestBody map[string]any) (bool, error) {
 
 // ExtractResponsesReasoningEffortFromBody reads Responses API reasoning.effort
 // and normalizes it for usage logging.
-func ExtractResponsesReasoningEffortFromBody(body []byte) *string {
+func ExtractResponsesReasoningEffortFromBody(body []byte, modelCandidates ...string) *string {
 	raw := strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String())
 	if raw == "" {
 		return nil
 	}
-	normalized := normalizeOpenAIReasoningEffort(raw)
+	model := firstNonEmpty(modelCandidates...)
+	if model == "" {
+		model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
+	}
+	normalized := normalizeOpenAIReasoningEffortForModel(raw, model)
 	if normalized == "" {
 		return nil
 	}
@@ -271,17 +285,45 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 	if dst == nil {
 		return
 	}
-	if src.InputTokens > 0 {
-		dst.InputTokens = src.InputTokens
+
+	// Some Anthropic-compatible providers retain OpenAI-style prompt/cache
+	// fields. Prefer those authoritative totals or hit/miss buckets over the
+	// overloaded input_tokens field. This covers Kimi's changing stream
+	// semantics as well as GLM/DeepSeek cache aliases.
+	if src.PromptTokens > 0 || src.PromptCacheHitTokens != nil || src.PromptCacheMissTokens != nil {
+		cacheReadTokens := src.CacheReadInputTokens
+		if cacheReadTokens == 0 && src.CachedTokens > 0 {
+			cacheReadTokens = src.CachedTokens
+		}
+		if cacheReadTokens == 0 && src.PromptTokensDetails != nil && src.PromptTokensDetails.CachedTokens > 0 {
+			cacheReadTokens = src.PromptTokensDetails.CachedTokens
+		}
+		if cacheReadTokens == 0 && src.PromptCacheHitTokens != nil {
+			cacheReadTokens = max(*src.PromptCacheHitTokens, 0)
+		}
+
+		if src.PromptCacheMissTokens != nil {
+			dst.InputTokens = max(*src.PromptCacheMissTokens, 0)
+		} else {
+			dst.InputTokens = max(src.PromptTokens-cacheReadTokens-src.CacheCreationInputTokens, 0)
+		}
+		dst.CacheReadInputTokens = cacheReadTokens
+		dst.CacheCreationInputTokens = src.CacheCreationInputTokens
+	} else {
+		if src.InputTokens > 0 {
+			dst.InputTokens = src.InputTokens
+		}
+		if src.CacheReadInputTokens > 0 {
+			dst.CacheReadInputTokens = src.CacheReadInputTokens
+		} else if src.CachedTokens > 0 {
+			dst.CacheReadInputTokens = src.CachedTokens
+		}
+		if src.CacheCreationInputTokens > 0 {
+			dst.CacheCreationInputTokens = src.CacheCreationInputTokens
+		}
 	}
 	if src.OutputTokens > 0 {
 		dst.OutputTokens = src.OutputTokens
-	}
-	if src.CacheReadInputTokens > 0 {
-		dst.CacheReadInputTokens = src.CacheReadInputTokens
-	}
-	if src.CacheCreationInputTokens > 0 {
-		dst.CacheCreationInputTokens = src.CacheCreationInputTokens
 	}
 }
 

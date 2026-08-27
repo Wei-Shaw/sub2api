@@ -27,6 +27,13 @@ func AdaptResponsesClientTools(req map[string]any) (ResponsesClientToolMapping, 
 	if !ok || len(tools) == 0 {
 		return ResponsesClientToolMapping{}, false, nil
 	}
+	discovered, err := promoteResponsesToolSearchDiscoveries(req)
+	if err != nil {
+		return ResponsesClientToolMapping{}, false, err
+	}
+	if discovered {
+		tools, _ = req["tools"].([]any)
+	}
 
 	adapter := ResponsesClientToolMapping{CustomTools: make(map[string]bool)}
 	functionNames := make(map[string]bool)
@@ -73,7 +80,7 @@ func AdaptResponsesClientTools(req map[string]any) (ResponsesClientToolMapping, 
 
 	tools, _ = req["tools"].([]any)
 	lowered := make([]any, 0, len(tools))
-	changed := flattened
+	changed := discovered || flattened
 	seenSearch := false
 	for _, raw := range tools {
 		tool, ok := raw.(map[string]any)
@@ -112,10 +119,17 @@ func AdaptResponsesClientTools(req map[string]any) (ResponsesClientToolMapping, 
 			lowered = append(lowered, raw)
 		}
 	}
+	if stripResponsesDeferredToolFlags(lowered) {
+		changed = true
+	}
 	if changed {
 		req["tools"] = lowered
 	}
-	if rewriteClientToolHistory(req["input"], &adapter) {
+	historyChanged, err := rewriteClientToolHistory(req["input"], &adapter)
+	if err != nil {
+		return ResponsesClientToolMapping{}, false, err
+	}
+	if historyChanged {
 		changed = true
 	}
 	if rewriteClientToolChoice(req, &adapter) {
@@ -130,6 +144,70 @@ func AdaptResponsesClientTools(req map[string]any) (ResponsesClientToolMapping, 
 	return adapter, changed, nil
 }
 
+// stripResponsesDeferredToolFlags removes defer_loading only when the final
+// declaration list no longer contains the built-in tool_search it requires.
+func stripResponsesDeferredToolFlags(tools []any) bool {
+	if hasResponsesToolSearchDeclaration(tools) {
+		return false
+	}
+	changed := false
+	for _, raw := range tools {
+		tool, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, exists := tool["defer_loading"]; exists {
+			delete(tool, "defer_loading")
+			changed = true
+		}
+	}
+	return changed
+}
+
+// AdaptResponsesClientToolsWithInheritedMapping lowers client-tool history on
+// a follow-up request that omits the session-level tools declaration. An
+// explicitly present tools field, including an empty or malformed value,
+// always replaces the inherited mapping and is handled by the ordinary
+// declaration-driven adapter.
+func AdaptResponsesClientToolsWithInheritedMapping(
+	req map[string]any,
+	inherited ResponsesClientToolMapping,
+	inheritedLoweredTools ...[]any,
+) (ResponsesClientToolMapping, bool, error) {
+	if req == nil {
+		return ResponsesClientToolMapping{}, false, nil
+	}
+	if _, toolsPresent := req["tools"]; toolsPresent {
+		return AdaptResponsesClientTools(req)
+	}
+	if len(inherited.CustomTools) == 0 && !inherited.ToolSearch && len(inherited.NamespaceTools) == 0 {
+		return ResponsesClientToolMapping{}, false, nil
+	}
+	if len(inheritedLoweredTools) > 0 && len(inheritedLoweredTools[0]) > 0 {
+		req["tools"] = restoreInheritedResponsesClientToolDeclarations(inheritedLoweredTools[0], inherited)
+		return AdaptResponsesClientTools(req)
+	}
+
+	changed, err := rewriteClientToolHistory(req["input"], &inherited)
+	if err != nil {
+		return ResponsesClientToolMapping{}, false, err
+	}
+	if len(inherited.NamespaceTools) > 0 {
+		before := changed
+		rewriteNamespaceQualifiedCalls(req["input"], inherited.NamespaceTools)
+		// Namespace rewriting does not currently report whether it changed a
+		// value. A retained namespace mapping is only used for follow-up
+		// history, so conservatively rebuild the request when input exists.
+		if _, inputPresent := req["input"]; inputPresent && !before {
+			changed = true
+		}
+	}
+	if rewriteClientToolChoice(req, &inherited) {
+		changed = true
+	}
+	return inherited, changed, nil
+}
+
 func copyClientTool(tool map[string]any) map[string]any {
 	copy := make(map[string]any, len(tool))
 	for key, value := range tool {
@@ -138,14 +216,16 @@ func copyClientTool(tool map[string]any) map[string]any {
 	return copy
 }
 
-func rewriteClientToolHistory(value any, adapter *ResponsesClientToolMapping) bool {
+func rewriteClientToolHistory(value any, adapter *ResponsesClientToolMapping) (bool, error) {
 	changed := false
-	var visit func(any)
-	visit = func(value any) {
+	var visit func(any) error
+	visit = func(value any) error {
 		switch typed := value.(type) {
 		case []any:
 			for _, item := range typed {
-				visit(item)
+				if err := visit(item); err != nil {
+					return err
+				}
 			}
 		case map[string]any:
 			typ := strings.TrimSpace(stringValue(typed["type"]))
@@ -155,10 +235,12 @@ func rewriteClientToolHistory(value any, adapter *ResponsesClientToolMapping) bo
 					typed["type"] = "function_call"
 					typed["arguments"] = customToolCallArguments(stringValue(typed["input"]))
 					delete(typed, "input")
+					normalizeLoweredFunctionItemID(typed)
 					changed = true
 				}
 			case "custom_tool_call_output":
 				typed["type"] = "function_call_output"
+				normalizeLoweredFunctionItemID(typed)
 				normalizeClientToolOutput(typed)
 				changed = true
 			case "tool_search_call":
@@ -167,22 +249,105 @@ func rewriteClientToolHistory(value any, adapter *ResponsesClientToolMapping) bo
 					typed["name"] = toolSearchProxyName
 					typed["arguments"] = rawObjectString(typed["arguments"])
 					delete(typed, "execution")
+					normalizeLoweredFunctionItemID(typed)
 					changed = true
 				}
 			case "tool_search_output":
 				if adapter.ToolSearch {
+					callID := strings.TrimSpace(stringValue(typed["call_id"]))
+					if callID == "" {
+						return fmt.Errorf("tool_search_output requires a non-empty string call_id before it can be lowered to function_call_output")
+					}
 					typed["type"] = "function_call_output"
-					normalizeClientToolOutput(typed)
+					normalizeLoweredFunctionItemID(typed)
+					if err := normalizeToolSearchOutput(typed); err != nil {
+						return err
+					}
 					changed = true
 				}
 			}
 			for _, child := range typed {
-				visit(child)
+				if err := visit(child); err != nil {
+					return err
+				}
 			}
 		}
+		return nil
 	}
-	visit(value)
-	return changed
+	if err := visit(value); err != nil {
+		return false, err
+	}
+	return changed, nil
+}
+
+// normalizeLoweredFunctionItemID reconciles Codex client-only item IDs such as
+// ctc_*, ctco_*, tsc_*, and tso_* after their item type is lowered to the
+// function protocol, which validates these IDs with the fc prefix. A ctc_/tsc_
+// call ID maps back to the fc_ ID it was raised from; the remaining IDs have no
+// function-protocol counterpart and are dropped. call_id, which is preserved
+// separately, stays the tool call/output pairing key either way.
+func normalizeLoweredFunctionItemID(item map[string]any) {
+	id := strings.TrimSpace(stringValue(item["id"]))
+	if id == "" || strings.HasPrefix(id, "fc") {
+		return
+	}
+	// A ctc_/tsc_ call ID on a lowered call item is the one we minted from the
+	// upstream's own fc_ ID when the item was raised, so map it back instead of
+	// dropping it. Anything else has no known function-protocol counterpart.
+	if recovered := retypedResponsesToolCallItemID(id, "function_call"); recovered != id {
+		item["id"] = recovered
+		return
+	}
+	delete(item, "id")
+}
+
+// responsesToolCallItemIDPrefixes lists the Responses item ID prefixes that are
+// tied to a specific tool-call item type.
+var responsesToolCallItemIDPrefixes = []string{"fc_", "ctc_", "tsc_"}
+
+// responsesToolCallItemIDPrefix reports the ID prefix the Responses API
+// validates for itemType, or "" when the type constrains no prefix.
+func responsesToolCallItemIDPrefix(itemType string) string {
+	switch itemType {
+	case "custom_tool_call":
+		return "ctc_"
+	case "tool_search_call":
+		return "tsc_"
+	case "function_call":
+		return "fc_"
+	default:
+		return ""
+	}
+}
+
+// retypedResponsesToolCallItemID re-prefixes an upstream item ID so it agrees
+// with the item type we raise it back to. A function-only upstream answers a
+// lowered custom tool with an fc_ item ID; emitting that ID on the restored
+// custom_tool_call poisons the client's history, because a later replay of the
+// same item to an upstream that validates IDs fails with
+// "Invalid 'input[N].id' ... Expected an ID that begins with 'ctc'".
+// The suffix is preserved so the ID stays stable and unique per upstream item.
+// IDs that carry no known tool-call prefix are left alone rather than guessed at.
+func retypedResponsesToolCallItemID(id, itemType string) string {
+	want := responsesToolCallItemIDPrefix(itemType)
+	if want == "" || id == "" || strings.HasPrefix(id, want) {
+		return id
+	}
+	for _, known := range responsesToolCallItemIDPrefixes {
+		if known != want && strings.HasPrefix(id, known) {
+			return want + strings.TrimPrefix(id, known)
+		}
+	}
+	return id
+}
+
+// retypeResponsesToolCallItemID applies retypedResponsesToolCallItemID to a
+// decoded item map.
+func retypeResponsesToolCallItemID(item map[string]any, itemType string) {
+	id := strings.TrimSpace(stringValue(item["id"]))
+	if retyped := retypedResponsesToolCallItemID(id, itemType); retyped != id {
+		item["id"] = retyped
+	}
 }
 
 func normalizeClientToolOutput(item map[string]any) {
@@ -203,6 +368,47 @@ func normalizeClientToolOutput(item map[string]any) {
 		return
 	}
 	item["output"] = string(encoded)
+}
+
+// normalizeToolSearchOutput converts both tool_search output wire shapes into
+// the string output required by function_call_output. Older clients send an
+// output field directly; newer Codex clients return discovered definitions in
+// a top-level tools field. Codex treats that field's value as the tool output,
+// so serialize the value directly rather than wrapping it in another object.
+func normalizeToolSearchOutput(item map[string]any) error {
+	if output, hasOutput := item["output"]; hasOutput {
+		switch typed := output.(type) {
+		case string:
+			item["output"] = typed
+		case nil:
+			item["output"] = ""
+		default:
+			encoded, err := json.Marshal(typed)
+			if err != nil {
+				return fmt.Errorf("tool_search_output output cannot be encoded as function_call_output output: %w", err)
+			}
+			item["output"] = string(encoded)
+		}
+		dropToolSearchOutputPrivateFields(item)
+		return nil
+	}
+	tools, hasTools := item["tools"]
+	if !hasTools {
+		return fmt.Errorf("tool_search_output requires output or tools before it can be lowered to function_call_output")
+	}
+	encoded, err := json.Marshal(tools)
+	if err != nil {
+		return fmt.Errorf("tool_search_output tools cannot be encoded as function_call_output output: %w", err)
+	}
+	item["output"] = string(encoded)
+	dropToolSearchOutputPrivateFields(item)
+	return nil
+}
+
+func dropToolSearchOutputPrivateFields(item map[string]any) {
+	delete(item, "tools")
+	delete(item, "status")
+	delete(item, "execution")
 }
 
 func rewriteClientToolChoice(req map[string]any, adapter *ResponsesClientToolMapping) bool {
@@ -285,12 +491,14 @@ func restoreClientToolValue(value any, adapter *ResponsesClientToolMapping) bool
 			name := strings.TrimSpace(stringValue(typed["name"]))
 			if adapter.CustomTools[name] {
 				typed["type"] = "custom_tool_call"
+				retypeResponsesToolCallItemID(typed, "custom_tool_call")
 				typed["input"] = extractCustomToolCallInput(rawObjectString(typed["arguments"]))
 				delete(typed, "arguments")
 				delete(typed, "namespace")
 				changed = true
 			} else if adapter.ToolSearch && name == toolSearchProxyName {
 				typed["type"] = "tool_search_call"
+				retypeResponsesToolCallItemID(typed, "tool_search_call")
 				typed["execution"] = "client"
 				typed["arguments"] = json.RawMessage(toolSearchCallArgumentsJSON(rawObjectString(typed["arguments"])))
 				delete(typed, "name")
@@ -317,12 +525,15 @@ type ResponsesClientToolStreamRestorer struct {
 }
 
 type responsesClientToolStreamCall struct {
-	kind      string
-	name      string
-	callID    string
-	itemID    string
-	outputIdx int
-	arguments strings.Builder
+	kind string
+	name string
+	// callID and itemID stay as the upstream sent them so later upstream
+	// events keep matching this call; clientItemID is what we emit.
+	callID       string
+	itemID       string
+	clientItemID string
+	outputIdx    int
+	arguments    strings.Builder
 }
 
 func NewResponsesClientToolStreamRestorer(mapping ResponsesClientToolMapping) *ResponsesClientToolStreamRestorer {
@@ -361,6 +572,9 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 				event.Item.Arguments = "{}"
 				event.Item.Namespace = ""
 			}
+			if call.clientItemID != "" {
+				event.Item.ID = call.clientItemID
+			}
 		}
 		emit(r.restoreNamespaceEvent(event))
 	case "response.function_call_arguments.delta":
@@ -378,9 +592,9 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 			if call.kind == "custom" {
 				input := extractCustomToolCallInput(call.arguments.String())
 				if input != "" {
-					emit(ResponsesStreamEvent{Type: "response.custom_tool_call_input.delta", OutputIndex: call.outputIdx, ItemID: call.itemID, Delta: input})
+					emit(ResponsesStreamEvent{Type: "response.custom_tool_call_input.delta", OutputIndex: call.outputIdx, ItemID: call.clientItemID, Delta: input})
 				}
-				emit(ResponsesStreamEvent{Type: "response.custom_tool_call_input.done", OutputIndex: call.outputIdx, ItemID: call.itemID, CallID: call.callID, Name: call.name, Input: input})
+				emit(ResponsesStreamEvent{Type: "response.custom_tool_call_input.done", OutputIndex: call.outputIdx, ItemID: call.clientItemID, CallID: call.callID, Name: call.name, Input: input})
 			}
 			return out
 		}
@@ -400,6 +614,9 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 					event.Item.Arguments = "{}"
 				}
 				event.Item.Namespace = ""
+			}
+			if call.clientItemID != "" {
+				event.Item.ID = call.clientItemID
 			}
 			delete(r.calls, call.itemID)
 			delete(r.calls, call.callID)
@@ -537,6 +754,15 @@ func (r *ResponsesClientToolStreamRestorer) resequenceRaw(payload []byte, sequen
 	return [][]byte{encoded}, true, nil
 }
 
+// responsesClientToolItemType maps a restorer call kind to the item type the
+// client sees.
+func responsesClientToolItemType(kind string) string {
+	if kind == "custom" {
+		return "custom_tool_call"
+	}
+	return "tool_search_call"
+}
+
 func (r *ResponsesClientToolStreamRestorer) recordItem(event ResponsesStreamEvent) *responsesClientToolStreamCall {
 	if event.Item == nil || event.Item.Type != "function_call" {
 		return nil
@@ -557,7 +783,14 @@ func (r *ResponsesClientToolStreamRestorer) recordItem(event ResponsesStreamEven
 	}
 	call := r.calls[key]
 	if call == nil {
-		call = &responsesClientToolStreamCall{kind: kind, name: name, callID: event.Item.CallID, itemID: event.Item.ID, outputIdx: event.OutputIndex}
+		call = &responsesClientToolStreamCall{
+			kind:         kind,
+			name:         name,
+			callID:       event.Item.CallID,
+			itemID:       event.Item.ID,
+			clientItemID: retypedResponsesToolCallItemID(event.Item.ID, responsesClientToolItemType(kind)),
+			outputIdx:    event.OutputIndex,
+		}
 		r.calls[key] = call
 		if call.callID != "" {
 			r.calls[call.callID] = call
@@ -611,11 +844,13 @@ func restoreResponsesOutputClientTools(outputs []ResponsesOutput, adapter *Respo
 		}
 		if adapter.CustomTools[output.Name] {
 			output.Type = "custom_tool_call"
+			output.ID = retypedResponsesToolCallItemID(output.ID, output.Type)
 			output.Input = extractCustomToolCallInput(output.Arguments)
 			output.Arguments = ""
 			output.Namespace = ""
 		} else if adapter.ToolSearch && output.Name == toolSearchProxyName {
 			output.Type = "tool_search_call"
+			output.ID = retypedResponsesToolCallItemID(output.ID, output.Type)
 			output.Name = ""
 			output.Namespace = ""
 		}
