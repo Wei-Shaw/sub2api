@@ -1195,7 +1195,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			}(),
 			Stream:           stream,
 			InboundEndpoint:  GetInboundEndpoint(c),
-			UpstreamEndpoint: GetUpstreamEndpoint(c, platform),
+			UpstreamEndpoint: resolveOpsUpstreamEndpoint(c, platform),
 			RequestedModel:   modelName,
 			UpstreamModel: func() string {
 				if v, ok := c.Get(opsUpstreamModelKey); ok {
@@ -1271,6 +1271,19 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 		enqueueOpsErrorLog(ops, entry)
 	}
+}
+
+// resolveOpsUpstreamEndpoint prefers the endpoint selected by the forwarding
+// attempt. The generic derivation is only a fallback because OpenAI-compatible
+// chat requests can be routed to either Chat Completions or Responses based on
+// the account's explicit upstream protocol.
+func resolveOpsUpstreamEndpoint(c *gin.Context, platform string) string {
+	if platform == service.PlatformOpenAI || platform == service.PlatformGrok {
+		if endpoint := service.GetActualOpenAIUpstreamEndpoint(c); endpoint != "" {
+			return endpoint
+		}
+	}
+	return GetUpstreamEndpoint(c, platform)
 }
 
 func logOpsRecoveredUpstream(c *gin.Context, ops *service.OpsService, finalStatus int) {
@@ -1491,7 +1504,7 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 		// 就地 SSE 错误只出现在流式请求上。
 		Stream:           true,
 		InboundEndpoint:  GetInboundEndpoint(c),
-		UpstreamEndpoint: GetUpstreamEndpoint(c, platform),
+		UpstreamEndpoint: resolveOpsUpstreamEndpoint(c, platform),
 		RequestedModel:   modelName,
 		UpstreamModel: func() string {
 			if v, ok := c.Get(opsUpstreamModelKey); ok {
