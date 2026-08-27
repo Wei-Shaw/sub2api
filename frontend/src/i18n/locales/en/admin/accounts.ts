@@ -606,6 +606,10 @@ export default {
         planTypeDesc:
           "Manually correct this account's ChatGPT plan tier (Plus / Pro / Free). Note: a token refresh near expiry or a 429 rate-limit response will auto-overwrite this with the real tier.",
         planTypeClear: 'Clear (auto-detect)',
+        customUserAgent: 'Custom User-Agent',
+        customUserAgentDesc:
+          "Manually set the full outbound Codex User-Agent for this account — it only contributes the client name / OS / architecture / terminal fingerprint. The version segment and originator are still rebuilt to the currently effective version, so an old version typed here won't get stuck. Leave blank to fall back to the fingerprint assigned automatically at creation, or the global default.",
+        customUserAgentPlaceholder: 'e.g. codex-tui/0.146.0 (macOS 15.1; arm64) iTerm.app',
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',

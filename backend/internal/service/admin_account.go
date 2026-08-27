@@ -512,6 +512,12 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
 	}
+	// 未手填 User-Agent 的 OpenAI OAuth 账号：按账号 ID（此时已由上面的 Create 分配）
+	// 从内置指纹候选池确定性分配一个 (OS;架构)+终端组合并落库，避免所有账号出站呈现
+	// 同一条固定 UA 常量。必须在 Create 之后才能做——账号 ID 是数据库自增主键，创建前不存在。
+	if err := s.assignCodexFingerprintPoolUserAgent(ctx, account); err != nil {
+		return nil, err
+	}
 
 	// 绑定分组
 	if len(groupIDs) > 0 {

@@ -2102,6 +2102,24 @@
         </div>
       </div>
 
+      <!-- 自定义出站 User-Agent（Codex 指纹），仅 OAuth 非影子账号 -->
+      <div
+        v-if="account?.platform === 'openai' && account?.type === 'oauth' && !isSparkShadow"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label mb-0">{{ t('admin.accounts.openai.customUserAgent') }}</label>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.openai.customUserAgentDesc') }}
+        </p>
+        <input
+          v-model="editUserAgent"
+          type="text"
+          class="input mt-2"
+          data-testid="edit-user-agent-input"
+          :placeholder="t('admin.accounts.openai.customUserAgentPlaceholder')"
+        />
+      </div>
+
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
@@ -2870,8 +2888,10 @@ import {
   applyHeaderOverride,
   applyInterceptWarmup,
   applyPlanType,
+  applyUserAgent,
   buildPlanTypeOptions,
   readPlanType,
+  readUserAgent,
   isCustomGrokBaseUrl,
   isHeaderOverrideCapable,
   splitHeaderOverridesObject,
@@ -3224,6 +3244,9 @@ const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
 // OpenAI 订阅档位（Plus/Pro/Free）手动覆盖值,存于 credentials.plan_type;'' 表示清空/自动识别
 const editPlanType = ref<string>('')
+// 账号级自定义出站 User-Agent，存于 credentials.user_agent；'' 表示清空，
+// 回退到指纹池自动分配结果或全局默认逻辑（不在此处重新触发分配）。
+const editUserAgent = ref<string>('')
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
@@ -3703,6 +3726,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiFlattenNamespacesEnabled.value = false
   openAILongContextBillingEnabled.value = false
   editPlanType.value = ''
+  editUserAgent.value = ''
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
@@ -3725,6 +3749,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     // plan_type 手动覆盖仅 OAuth 有实际调度语义(IsOpenAIChatGPTSubscription 要求 oauth),故只对 oauth 回填
     editPlanType.value = newAccount.type === 'oauth'
       ? readPlanType(newAccount.credentials as Record<string, unknown> | undefined)
+      : ''
+    // 自定义 User-Agent 同样只对出站身份走 Codex 协议的 OAuth 账号有意义
+    editUserAgent.value = newAccount.type === 'oauth'
+      ? readUserAgent(newAccount.credentials as Record<string, unknown> | undefined)
       : ''
     openAICompactMode.value = (extra?.openai_compact_mode as OpenAICompactMode) || 'auto'
     if (newAccount.type === 'apikey') {
@@ -4934,12 +4962,15 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     }
 
-    // OpenAI: 手动覆盖订阅档位 plan_type（Plus/Pro/Free）。仅 OAuth 非影子账号：
-    // 影子账号凭据由母账号管理(且后端会 sanitize),setup-token 无订阅调度语义。
+    // OpenAI: 手动覆盖订阅档位 plan_type（Plus/Pro/Free）+ 自定义出站 User-Agent。
+    // 仅 OAuth 非影子账号：影子账号凭据由母账号管理(且后端会 sanitize),setup-token 无订阅
+    // 调度语义、也不走 Codex 出站身份重建。清空 User-Agent 输入框只是删除该键，不会重新触发
+    // 指纹池分配（分配只发生在账号创建时）。
     if (props.account.platform === 'openai' && props.account.type === 'oauth' && !isSparkShadow.value) {
       const currentCredentials = (updatePayload.credentials as Record<string, unknown>) ||
         ((props.account.credentials as Record<string, unknown>) || {})
-      updatePayload.credentials = applyPlanType({ ...currentCredentials }, editPlanType.value)
+      const nextCredentials = applyPlanType({ ...currentCredentials }, editPlanType.value)
+      updatePayload.credentials = applyUserAgent(nextCredentials, editUserAgent.value)
     }
 
     // Antigravity: persist model mapping to credentials (applies to all antigravity types)
