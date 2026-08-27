@@ -4,12 +4,14 @@ package ent
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/group"
@@ -265,6 +267,51 @@ func (_u *AccountUpdate) SetNillableRateMultiplier(v *float64) *AccountUpdate {
 // AddRateMultiplier adds value to the "rate_multiplier" field.
 func (_u *AccountUpdate) AddRateMultiplier(v float64) *AccountUpdate {
 	_u.mutation.AddRateMultiplier(v)
+	return _u
+}
+
+// SetUserBillingRateMultiplier sets the "user_billing_rate_multiplier" field.
+func (_u *AccountUpdate) SetUserBillingRateMultiplier(v float64) *AccountUpdate {
+	_u.mutation.ResetUserBillingRateMultiplier()
+	_u.mutation.SetUserBillingRateMultiplier(v)
+	return _u
+}
+
+// SetNillableUserBillingRateMultiplier sets the "user_billing_rate_multiplier" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableUserBillingRateMultiplier(v *float64) *AccountUpdate {
+	if v != nil {
+		_u.SetUserBillingRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddUserBillingRateMultiplier adds value to the "user_billing_rate_multiplier" field.
+func (_u *AccountUpdate) AddUserBillingRateMultiplier(v float64) *AccountUpdate {
+	_u.mutation.AddUserBillingRateMultiplier(v)
+	return _u
+}
+
+// ClearUserBillingRateMultiplier clears the value of the "user_billing_rate_multiplier" field.
+func (_u *AccountUpdate) ClearUserBillingRateMultiplier() *AccountUpdate {
+	_u.mutation.ClearUserBillingRateMultiplier()
+	return _u
+}
+
+// SetUserBillingModelPricing sets the "user_billing_model_pricing" field.
+func (_u *AccountUpdate) SetUserBillingModelPricing(v jsontext.Value) *AccountUpdate {
+	_u.mutation.SetUserBillingModelPricing(v)
+	return _u
+}
+
+// AppendUserBillingModelPricing appends value to the "user_billing_model_pricing" field.
+func (_u *AccountUpdate) AppendUserBillingModelPricing(v jsontext.Value) *AccountUpdate {
+	_u.mutation.AppendUserBillingModelPricing(v)
+	return _u
+}
+
+// ClearUserBillingModelPricing clears the value of the "user_billing_model_pricing" field.
+func (_u *AccountUpdate) ClearUserBillingModelPricing() *AccountUpdate {
+	_u.mutation.ClearUserBillingModelPricing()
 	return _u
 }
 
@@ -868,6 +915,26 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(account.FieldRateMultiplier, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.UserBillingRateMultiplier(); ok {
+		_spec.SetField(account.FieldUserBillingRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedUserBillingRateMultiplier(); ok {
+		_spec.AddField(account.FieldUserBillingRateMultiplier, field.TypeFloat64, value)
+	}
+	if _u.mutation.UserBillingRateMultiplierCleared() {
+		_spec.ClearField(account.FieldUserBillingRateMultiplier, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.UserBillingModelPricing(); ok {
+		_spec.SetField(account.FieldUserBillingModelPricing, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedUserBillingModelPricing(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, account.FieldUserBillingModelPricing, value)
+		})
+	}
+	if _u.mutation.UserBillingModelPricingCleared() {
+		_spec.ClearField(account.FieldUserBillingModelPricing, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(account.FieldStatus, field.TypeString, value)
 	}
@@ -1405,6 +1472,51 @@ func (_u *AccountUpdateOne) SetNillableRateMultiplier(v *float64) *AccountUpdate
 // AddRateMultiplier adds value to the "rate_multiplier" field.
 func (_u *AccountUpdateOne) AddRateMultiplier(v float64) *AccountUpdateOne {
 	_u.mutation.AddRateMultiplier(v)
+	return _u
+}
+
+// SetUserBillingRateMultiplier sets the "user_billing_rate_multiplier" field.
+func (_u *AccountUpdateOne) SetUserBillingRateMultiplier(v float64) *AccountUpdateOne {
+	_u.mutation.ResetUserBillingRateMultiplier()
+	_u.mutation.SetUserBillingRateMultiplier(v)
+	return _u
+}
+
+// SetNillableUserBillingRateMultiplier sets the "user_billing_rate_multiplier" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableUserBillingRateMultiplier(v *float64) *AccountUpdateOne {
+	if v != nil {
+		_u.SetUserBillingRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddUserBillingRateMultiplier adds value to the "user_billing_rate_multiplier" field.
+func (_u *AccountUpdateOne) AddUserBillingRateMultiplier(v float64) *AccountUpdateOne {
+	_u.mutation.AddUserBillingRateMultiplier(v)
+	return _u
+}
+
+// ClearUserBillingRateMultiplier clears the value of the "user_billing_rate_multiplier" field.
+func (_u *AccountUpdateOne) ClearUserBillingRateMultiplier() *AccountUpdateOne {
+	_u.mutation.ClearUserBillingRateMultiplier()
+	return _u
+}
+
+// SetUserBillingModelPricing sets the "user_billing_model_pricing" field.
+func (_u *AccountUpdateOne) SetUserBillingModelPricing(v jsontext.Value) *AccountUpdateOne {
+	_u.mutation.SetUserBillingModelPricing(v)
+	return _u
+}
+
+// AppendUserBillingModelPricing appends value to the "user_billing_model_pricing" field.
+func (_u *AccountUpdateOne) AppendUserBillingModelPricing(v jsontext.Value) *AccountUpdateOne {
+	_u.mutation.AppendUserBillingModelPricing(v)
+	return _u
+}
+
+// ClearUserBillingModelPricing clears the value of the "user_billing_model_pricing" field.
+func (_u *AccountUpdateOne) ClearUserBillingModelPricing() *AccountUpdateOne {
+	_u.mutation.ClearUserBillingModelPricing()
 	return _u
 }
 
@@ -2037,6 +2149,26 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 	}
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(account.FieldRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.UserBillingRateMultiplier(); ok {
+		_spec.SetField(account.FieldUserBillingRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedUserBillingRateMultiplier(); ok {
+		_spec.AddField(account.FieldUserBillingRateMultiplier, field.TypeFloat64, value)
+	}
+	if _u.mutation.UserBillingRateMultiplierCleared() {
+		_spec.ClearField(account.FieldUserBillingRateMultiplier, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.UserBillingModelPricing(); ok {
+		_spec.SetField(account.FieldUserBillingModelPricing, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedUserBillingModelPricing(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, account.FieldUserBillingModelPricing, value)
+		})
+	}
+	if _u.mutation.UserBillingModelPricingCleared() {
+		_spec.ClearField(account.FieldUserBillingModelPricing, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(account.FieldStatus, field.TypeString, value)

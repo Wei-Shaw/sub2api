@@ -2,6 +2,8 @@
  * Core Type Definitions for Sub2API Frontend
  */
 
+import type { ChannelModelPricing } from '@/api/admin/channels'
+
 // ==================== Common Types ====================
 
 export interface SelectOption {
@@ -1162,6 +1164,8 @@ export interface Account {
   scheduler_scores?: AccountSchedulerGroupScore[] | null
   priority: number
   rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
+  user_billing_rate_multiplier?: number | null
+  user_billing_model_pricing?: ChannelModelPricing[]
   status: 'active' | 'inactive' | 'error'
   error_message: string | null
   last_used_at: string | null
@@ -1434,6 +1438,8 @@ export interface CreateAccountRequest {
   load_factor?: number | null
   priority?: number
   rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
+  user_billing_rate_multiplier?: number
+  user_billing_model_pricing?: ChannelModelPricing[]
   group_ids?: number[]
   expires_at?: number | null
   auto_pause_on_expired?: boolean
@@ -1452,6 +1458,9 @@ export interface UpdateAccountRequest {
   load_factor?: number | null
   priority?: number
   rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
+  /** <= 0 clears the optional account-level user billing multiplier. */
+  user_billing_rate_multiplier?: number
+  user_billing_model_pricing?: ChannelModelPricing[]
   schedulable?: boolean
   status?: 'active' | 'inactive' | 'error'
   group_ids?: number[]

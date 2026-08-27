@@ -35,15 +35,19 @@ type Account struct {
 	Priority                int
 	// RateMultiplier 账号计费倍率（>=0，允许 0 表示该账号计费为 0）。
 	// 使用指针用于兼容旧版本调度缓存（Redis）中缺字段的情况：nil 表示按 1.0 处理。
-	RateMultiplier     *float64
-	LoadFactor         *int // 调度负载因子；nil 表示使用 Concurrency
-	Status             string
-	ErrorMessage       string
-	LastUsedAt         *time.Time
-	ExpiresAt          *time.Time
-	AutoPauseOnExpired bool
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	RateMultiplier *float64
+	// UserBillingRateMultiplier 是账号级用户价格倍率；nil 表示未启用。
+	UserBillingRateMultiplier *float64
+	// UserBillingModelPricing 是按模型配置的账号级完整价格；只覆盖命中的模型。
+	UserBillingModelPricing []ChannelModelPricing
+	LoadFactor              *int // 调度负载因子；nil 表示使用 Concurrency
+	Status                  string
+	ErrorMessage            string
+	LastUsedAt              *time.Time
+	ExpiresAt               *time.Time
+	AutoPauseOnExpired      bool
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
 
 	Schedulable bool
 
@@ -163,6 +167,30 @@ func (a *Account) BillingRateMultiplier() float64 {
 		return 1.0
 	}
 	return *a.RateMultiplier
+}
+
+// UserBillingMultiplier 返回账号是否启用了用户价格倍率及其值。
+// 非正数视为非法/未启用，避免将用户扣费静默降为 0。
+func (a *Account) UserBillingMultiplier() (float64, bool) {
+	if !a.IsUserBillingPricingEligible() || a.UserBillingRateMultiplier == nil || *a.UserBillingRateMultiplier <= 0 {
+		return 0, false
+	}
+	return *a.UserBillingRateMultiplier, true
+}
+
+// IsUserBillingPricingEligible 将账号级用户定价严格限制为 OpenAI API Key 账号。
+func (a *Account) IsUserBillingPricingEligible() bool {
+	return a != nil && a.Platform == PlatformOpenAI && a.Type == AccountTypeAPIKey
+}
+
+func resolveAccountUserBillingMultiplier(account *Account, groupRate UserGroupRateResolution) float64 {
+	if groupRate.UserOverride {
+		return groupRate.Multiplier
+	}
+	if multiplier, enabled := account.UserBillingMultiplier(); enabled {
+		return multiplier
+	}
+	return groupRate.Multiplier
 }
 
 func (a *Account) EffectiveLoadFactor() int {

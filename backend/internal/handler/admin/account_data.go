@@ -58,18 +58,20 @@ type DataProxy struct {
 // 影子的独立调度配置(priority/并发/分组/status 管理员可单独调)亦不在本备份范围,属已知局限
 // (外审第6轮裁决:保持排除 + 前端警告,而非升级格式做完整往返)。
 type DataAccount struct {
-	Name               string         `json:"name"`
-	Notes              *string        `json:"notes,omitempty"`
-	Platform           string         `json:"platform"`
-	Type               string         `json:"type"`
-	Credentials        map[string]any `json:"credentials"`
-	Extra              map[string]any `json:"extra,omitempty"`
-	ProxyKey           *string        `json:"proxy_key,omitempty"`
-	Concurrency        int            `json:"concurrency"`
-	Priority           int            `json:"priority"`
-	RateMultiplier     *float64       `json:"rate_multiplier,omitempty"`
-	ExpiresAt          *int64         `json:"expires_at,omitempty"`
-	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired,omitempty"`
+	Name                      string                        `json:"name"`
+	Notes                     *string                       `json:"notes,omitempty"`
+	Platform                  string                        `json:"platform"`
+	Type                      string                        `json:"type"`
+	Credentials               map[string]any                `json:"credentials"`
+	Extra                     map[string]any                `json:"extra,omitempty"`
+	ProxyKey                  *string                       `json:"proxy_key,omitempty"`
+	Concurrency               int                           `json:"concurrency"`
+	Priority                  int                           `json:"priority"`
+	RateMultiplier            *float64                      `json:"rate_multiplier,omitempty"`
+	UserBillingRateMultiplier *float64                      `json:"user_billing_rate_multiplier,omitempty"`
+	UserBillingModelPricing   []service.ChannelModelPricing `json:"user_billing_model_pricing,omitempty"`
+	ExpiresAt                 *int64                        `json:"expires_at,omitempty"`
+	AutoPauseOnExpired        *bool                         `json:"auto_pause_on_expired,omitempty"`
 }
 
 type DataImportRequest struct {
@@ -200,18 +202,20 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			expiresAt = &v
 		}
 		dataAccounts = append(dataAccounts, DataAccount{
-			Name:               acc.Name,
-			Notes:              acc.Notes,
-			Platform:           acc.Platform,
-			Type:               acc.Type,
-			Credentials:        acc.Credentials,
-			Extra:              acc.Extra,
-			ProxyKey:           proxyKey,
-			Concurrency:        acc.Concurrency,
-			Priority:           acc.Priority,
-			RateMultiplier:     acc.RateMultiplier,
-			ExpiresAt:          expiresAt,
-			AutoPauseOnExpired: &acc.AutoPauseOnExpired,
+			Name:                      acc.Name,
+			Notes:                     acc.Notes,
+			Platform:                  acc.Platform,
+			Type:                      acc.Type,
+			Credentials:               acc.Credentials,
+			Extra:                     acc.Extra,
+			ProxyKey:                  proxyKey,
+			Concurrency:               acc.Concurrency,
+			Priority:                  acc.Priority,
+			RateMultiplier:            acc.RateMultiplier,
+			UserBillingRateMultiplier: acc.UserBillingRateMultiplier,
+			UserBillingModelPricing:   acc.UserBillingModelPricing,
+			ExpiresAt:                 expiresAt,
+			AutoPauseOnExpired:        &acc.AutoPauseOnExpired,
 		})
 	}
 
@@ -430,20 +434,22 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		enrichCredentialsFromIDToken(&item)
 
 		accountInput := &service.CreateAccountInput{
-			Name:                 item.Name,
-			Notes:                item.Notes,
-			Platform:             item.Platform,
-			Type:                 item.Type,
-			Credentials:          item.Credentials,
-			Extra:                item.Extra,
-			ProxyID:              proxyID,
-			Concurrency:          item.Concurrency,
-			Priority:             item.Priority,
-			RateMultiplier:       item.RateMultiplier,
-			GroupIDs:             nil,
-			ExpiresAt:            item.ExpiresAt,
-			AutoPauseOnExpired:   item.AutoPauseOnExpired,
-			SkipDefaultGroupBind: skipDefaultGroupBind,
+			Name:                      item.Name,
+			Notes:                     item.Notes,
+			Platform:                  item.Platform,
+			Type:                      item.Type,
+			Credentials:               item.Credentials,
+			Extra:                     item.Extra,
+			ProxyID:                   proxyID,
+			Concurrency:               item.Concurrency,
+			Priority:                  item.Priority,
+			RateMultiplier:            item.RateMultiplier,
+			UserBillingRateMultiplier: item.UserBillingRateMultiplier,
+			UserBillingModelPricing:   item.UserBillingModelPricing,
+			GroupIDs:                  nil,
+			ExpiresAt:                 item.ExpiresAt,
+			AutoPauseOnExpired:        item.AutoPauseOnExpired,
+			SkipDefaultGroupBind:      skipDefaultGroupBind,
 		}
 
 		created, err := h.adminService.CreateAccount(ctx, accountInput)

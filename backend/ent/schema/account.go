@@ -3,6 +3,8 @@
 package schema
 
 import (
+	"encoding/json"
+
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 
@@ -112,6 +114,19 @@ func (Account) Fields() []ent.Field {
 		field.Float("rate_multiplier").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0),
+
+		// user_billing_rate_multiplier: 账号参与用户扣费时使用的可选价格倍率。
+		// NULL 表示未启用，倍率优先级低于用户个人倍率、高于分组倍率。
+		field.Float("user_billing_rate_multiplier").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(12,6)"}),
+
+		// user_billing_model_pricing: 账号级逐模型完整价格。
+		// 仅命中的模型覆盖现有 Group → Channel → LiteLLM → Fallback 价格链。
+		field.JSON("user_billing_model_pricing", json.RawMessage{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
 		// status: 账户状态，如 "active", "error", "disabled"
 		field.String("status").

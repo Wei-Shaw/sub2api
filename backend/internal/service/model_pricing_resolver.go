@@ -8,6 +8,7 @@ import (
 
 // PricingSource 定价来源标识
 const (
+	PricingSourceAccount  = "account"
 	PricingSourceGroup    = "group"
 	PricingSourceChannel  = "channel"
 	PricingSourceLiteLLM  = "litellm"
@@ -32,7 +33,7 @@ type ResolvedPricing struct {
 	DefaultPerRequestPrice float64
 
 	// 来源标识
-	Source string // "channel", "litellm", "fallback"
+	Source string // "account", "group", "channel", "litellm", "fallback"
 
 	// 是否支持缓存细分
 	SupportsCacheBreakdown bool
@@ -44,7 +45,7 @@ type ResolvedPricing struct {
 }
 
 // ModelPricingResolver 统一模型定价解析器。
-// 解析链：Group → Channel → LiteLLM → Fallback。
+// 解析链：OpenAI API Key Account → Group → Channel → LiteLLM → Fallback。
 type ModelPricingResolver struct {
 	channelService *ChannelService
 	billingService *BillingService
@@ -63,13 +64,18 @@ type PricingInput struct {
 	Model   string
 	GroupID *int64 // nil 表示不检查渠道
 	Group   *Group
+	Account *Account
 }
 
 // Resolve 解析模型定价。
-// 1. 获取基础定价（LiteLLM → Fallback）
-// 2. 如果指定了 GroupID，查找渠道定价并覆盖
+// 账号级价格仅对 OpenAI API Key 账号生效，并且只做模型代号精确匹配。
 func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) *ResolvedPricing {
 	longContextPricingEnabled := input.Group == nil || input.Group.LongContextPricingEnabled
+	if accountPricing := matchAccountUserBillingModelPricing(input.Account, input.Model); accountPricing != nil {
+		resolved := r.resolveConfiguredPricing(accountPricing, input.Model, PricingSourceAccount)
+		resolved.longContextPricingEnabled = longContextPricingEnabled
+		return resolved
+	}
 	if groupPricing := matchGroupModelPricing(input.Group, input.Model); groupPricing != nil {
 		// Group token cards only override the first-tier / flat rates.
 		// Long-context ladders come from official presets, gated by the checkbox.
@@ -125,6 +131,23 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 	}
 
 	return resolved
+}
+
+func matchAccountUserBillingModelPricing(account *Account, model string) *ChannelModelPricing {
+	if account == nil || !account.IsUserBillingPricingEligible() {
+		return nil
+	}
+	model = normalizeChannelPricingModelName(model)
+	for i := range account.UserBillingModelPricing {
+		entry := &account.UserBillingModelPricing[i]
+		for _, configuredModel := range entry.Models {
+			if normalizeChannelPricingModelName(configuredModel) == model {
+				cp := entry.Clone()
+				return &cp
+			}
+		}
+	}
+	return nil
 }
 
 func (r *ModelPricingResolver) resolveConfiguredPricing(config *ChannelModelPricing, model, source string) *ResolvedPricing {

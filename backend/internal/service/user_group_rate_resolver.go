@@ -11,11 +11,17 @@ import (
 )
 
 type userGroupRateResolver struct {
-	repo         UserGroupRateRepository
-	cache        *gocache.Cache
-	cacheTTL     time.Duration
-	sf           *singleflight.Group
-	logComponent string
+	repo          UserGroupRateRepository
+	cache         *gocache.Cache
+	overrideCache *gocache.Cache
+	cacheTTL      time.Duration
+	sf            *singleflight.Group
+	logComponent  string
+}
+
+type UserGroupRateResolution struct {
+	Multiplier   float64
+	UserOverride bool
 }
 
 func newUserGroupRateResolver(repo UserGroupRateRepository, cache *gocache.Cache, cacheTTL time.Duration, sf *singleflight.Group, logComponent string) *userGroupRateResolver {
@@ -33,17 +39,22 @@ func newUserGroupRateResolver(repo UserGroupRateRepository, cache *gocache.Cache
 	}
 
 	return &userGroupRateResolver{
-		repo:         repo,
-		cache:        cache,
-		cacheTTL:     cacheTTL,
-		sf:           sf,
-		logComponent: logComponent,
+		repo:          repo,
+		cache:         cache,
+		overrideCache: gocache.New(cacheTTL, time.Minute),
+		cacheTTL:      cacheTTL,
+		sf:            sf,
+		logComponent:  logComponent,
 	}
 }
 
 func (r *userGroupRateResolver) Resolve(ctx context.Context, userID, groupID int64, groupDefaultMultiplier float64) float64 {
+	return r.ResolveWithSource(ctx, userID, groupID, groupDefaultMultiplier).Multiplier
+}
+
+func (r *userGroupRateResolver) ResolveWithSource(ctx context.Context, userID, groupID int64, groupDefaultMultiplier float64) UserGroupRateResolution {
 	if r == nil || userID <= 0 || groupID <= 0 {
-		return groupDefaultMultiplier
+		return UserGroupRateResolution{Multiplier: groupDefaultMultiplier}
 	}
 
 	key := fmt.Sprintf("%d:%d", userID, groupID)
@@ -51,12 +62,19 @@ func (r *userGroupRateResolver) Resolve(ctx context.Context, userID, groupID int
 		if cached, ok := r.cache.Get(key); ok {
 			if multiplier, castOK := cached.(float64); castOK {
 				userGroupRateCacheHitTotal.Add(1)
-				return multiplier
+				isOverride := false
+				if r.overrideCache != nil {
+					cachedOverride, exists := r.overrideCache.Get(key)
+					if exists {
+						isOverride, _ = cachedOverride.(bool)
+					}
+				}
+				return UserGroupRateResolution{Multiplier: multiplier, UserOverride: isOverride}
 			}
 		}
 	}
 	if r.repo == nil {
-		return groupDefaultMultiplier
+		return UserGroupRateResolution{Multiplier: groupDefaultMultiplier}
 	}
 	userGroupRateCacheMissTotal.Add(1)
 
@@ -65,7 +83,14 @@ func (r *userGroupRateResolver) Resolve(ctx context.Context, userID, groupID int
 			if cached, ok := r.cache.Get(key); ok {
 				if multiplier, castOK := cached.(float64); castOK {
 					userGroupRateCacheHitTotal.Add(1)
-					return multiplier, nil
+					isOverride := false
+					if r.overrideCache != nil {
+						cachedOverride, exists := r.overrideCache.Get(key)
+						if exists {
+							isOverride, _ = cachedOverride.(bool)
+						}
+					}
+					return UserGroupRateResolution{Multiplier: multiplier, UserOverride: isOverride}, nil
 				}
 			}
 		}
@@ -77,13 +102,17 @@ func (r *userGroupRateResolver) Resolve(ctx context.Context, userID, groupID int
 		}
 
 		multiplier := groupDefaultMultiplier
+		isOverride := userRate != nil
 		if userRate != nil {
 			multiplier = *userRate
 		}
 		if r.cache != nil {
 			r.cache.Set(key, multiplier, r.cacheTTL)
 		}
-		return multiplier, nil
+		if r.overrideCache != nil {
+			r.overrideCache.Set(key, isOverride, r.cacheTTL)
+		}
+		return UserGroupRateResolution{Multiplier: multiplier, UserOverride: isOverride}, nil
 	})
 	if shared {
 		userGroupRateCacheSFSharedTotal.Add(1)
@@ -91,13 +120,13 @@ func (r *userGroupRateResolver) Resolve(ctx context.Context, userID, groupID int
 	if err != nil {
 		userGroupRateCacheFallbackTotal.Add(1)
 		logger.LegacyPrintf(r.logComponent, "get user group rate failed, fallback to group default: user=%d group=%d err=%v", userID, groupID, err)
-		return groupDefaultMultiplier
+		return UserGroupRateResolution{Multiplier: groupDefaultMultiplier}
 	}
 
-	multiplier, ok := value.(float64)
+	resolution, ok := value.(UserGroupRateResolution)
 	if !ok {
 		userGroupRateCacheFallbackTotal.Add(1)
-		return groupDefaultMultiplier
+		return UserGroupRateResolution{Multiplier: groupDefaultMultiplier}
 	}
-	return multiplier
+	return resolution
 }
