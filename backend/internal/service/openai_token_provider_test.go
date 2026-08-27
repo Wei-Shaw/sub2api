@@ -384,7 +384,7 @@ func TestOpenAITokenProvider_WrongAccountType(t *testing.T) {
 	account := &Account{
 		ID:       105,
 		Platform: PlatformOpenAI,
-		Type:     AccountTypeAPIKey,
+		Type:     AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	token, err := provider.GetAccessToken(context.Background(), account)

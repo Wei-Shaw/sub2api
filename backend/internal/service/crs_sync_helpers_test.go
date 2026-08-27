@@ -136,7 +136,7 @@ func TestReconcileCRSUpstreamBillingProbeExtra(t *testing.T) {
 		Extra: map[string]any{
 			UpstreamBillingProbeEnabledExtraKey:    false,
 			UpstreamBillingRateSyncEnabledExtraKey: false,
-			UpstreamBillingProbeExtraKey:           map[string]any{"status": "local"},
+			UpstreamBillingProbeExtraKey:           map[string]any{"status": "local"}, "openai_responses_mode": "force_responses",
 		},
 	}
 

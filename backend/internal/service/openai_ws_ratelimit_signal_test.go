@@ -143,7 +143,7 @@ func TestOpenAIGatewayService_Forward_WSv2ErrorEventUsageLimitPersistsRateLimit(
 			"base_url": wsServer.URL,
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 	repo := &openAIWSRateLimitSignalRepo{stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}}}
@@ -213,7 +213,7 @@ func TestOpenAIGatewayService_Forward_WSv2Handshake429PersistsRateLimit(t *testi
 			"base_url": server.URL,
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 	repo := &openAIWSRateLimitSignalRepo{stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}}}
@@ -260,7 +260,7 @@ func TestOpenAIGatewayService_Forward_WSv2Handshake502RecordsModelTransient(t *t
 		Schedulable: true,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-test", "base_url": server.URL},
-		Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+		Extra:       map[string]any{"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses"},
 	}
 	svc := &OpenAIGatewayService{
 		cfg:              cfg,
@@ -322,7 +322,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ErrorEventUsageL
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 	repo := &openAIWSRateLimitSignalRepo{stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}}}
@@ -573,7 +573,7 @@ func TestOpenAIWSRateLimitFailoverError_OAuthKeepsSameAccountDeadline(t *testing
 	apiKeyErr := svc.newOpenAIWSRateLimitFailoverError(&Account{
 		ID:       905,
 		Platform: PlatformOpenAI,
-		Type:     AccountTypeAPIKey,
+		Type:     AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}, headers, body, "limited")
 	require.False(t, apiKeyErr.RetryableOnSameAccount)
 	require.True(t, apiKeyErr.SameAccountRetryDeadline.IsZero())

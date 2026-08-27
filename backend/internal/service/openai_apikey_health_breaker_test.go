@@ -65,7 +65,7 @@ func openAIHealthPoolAccount() *Account {
 		Type:     AccountTypeAPIKey,
 		Credentials: map[string]any{
 			"pool_mode": true,
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 }
 
@@ -134,7 +134,7 @@ func TestOpenAIAPIKeyHealthSuccessDoesNotTouchSettingsOrCache(t *testing.T) {
 	svc.SetOpenAIAPIKeyHealthCache(cache)
 
 	svc.ObserveOpenAIAPIKeyHealthSuccess(context.Background(), openAIHealthPoolAccount())
-	svc.ObserveOpenAIAPIKeyHealthSuccess(context.Background(), &Account{ID: 43, Platform: PlatformOpenAI, Type: AccountTypeAPIKey})
+	svc.ObserveOpenAIAPIKeyHealthSuccess(context.Background(), &Account{ID: 43, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}})
 	require.Zero(t, settingRepo.getCalls)
 	require.Zero(t, cache.recordCalls)
 }

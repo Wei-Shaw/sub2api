@@ -144,7 +144,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyUsesNativeR
 			// post-#5641：compact_model_mapping 仅作用于 legacy /responses/compact，
 			// 原生 v2 探测不应用它。
 			"compact_model_mapping": map[string]any{"gpt-5.4": "gpt-5.4-openai-compact"},
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	repo := &snapshotUpdateAccountRepo{
 		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
@@ -191,7 +191,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyDefaultBase
 		Concurrency: 1,
 		Credentials: map[string]any{
 			"api_key": "sk-test",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	repo := &snapshotUpdateAccountRepo{
 		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},

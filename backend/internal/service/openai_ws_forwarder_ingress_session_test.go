@@ -142,7 +142,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_KeepLeaseAcrossT
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -290,7 +290,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_LeaseLossSendsRe
 		Schedulable: true,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-test"},
-		Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+		Extra:       map[string]any{"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses"},
 	}
 
 	serverErrCh := make(chan error, 1)
@@ -416,7 +416,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_IdleTimeoutRelea
 		Schedulable: true,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-test"},
-		Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+		Extra:       map[string]any{"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses"},
 	}
 
 	serverErrCh := make(chan error, 1)
@@ -537,7 +537,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_FollowupCreateCa
 			},
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -897,7 +897,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_DedicatedModeDoe
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"openai_apikey_responses_websockets_v2_mode": OpenAIWSIngressModeDedicated,
+			"openai_apikey_responses_websockets_v2_mode": OpenAIWSIngressModeDedicated, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -1017,7 +1017,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"openai_apikey_responses_websockets_v2_mode": OpenAIWSIngressModePassthrough,
+			"openai_apikey_responses_websockets_v2_mode": OpenAIWSIngressModePassthrough, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -1303,7 +1303,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_HTTPBridgeModeRe
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"openai_apikey_responses_websockets_v2_mode": OpenAIWSIngressModeHTTPBridge,
+			"openai_apikey_responses_websockets_v2_mode": OpenAIWSIngressModeHTTPBridge, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -1445,7 +1445,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ModeOffReturnsPo
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"openai_apikey_responses_websockets_v2_mode": OpenAIWSIngressModeOff,
+			"openai_apikey_responses_websockets_v2_mode": OpenAIWSIngressModeOff, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -1558,7 +1558,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledPre
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -1705,7 +1705,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledPre
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -1846,7 +1846,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreEnabledSkip
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -1978,7 +1978,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledPre
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -2110,7 +2110,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledFun
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -2242,7 +2242,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledToo
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -2377,7 +2377,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledFun
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -2512,7 +2512,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledFun
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -2646,7 +2646,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledFun
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -2789,7 +2789,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PreflightPingFai
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -2931,7 +2931,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledStr
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -3083,7 +3083,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledPre
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -3238,7 +3238,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledPre
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -3384,7 +3384,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledPre
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -3525,7 +3525,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_WriteFailBeforeD
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 	var hooksMu sync.Mutex
@@ -3688,7 +3688,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PreviousResponse
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -3839,7 +3839,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledStr
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -3995,7 +3995,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PreviousResponse
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -4120,7 +4120,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_RejectsMessageID
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -4368,7 +4368,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ClientDisconnect
 			},
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 

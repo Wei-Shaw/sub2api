@@ -75,7 +75,7 @@ func TestCheckErrorPolicy(t *testing.T) {
 				Credentials: map[string]any{
 					"custom_error_codes_enabled": true,
 					"custom_error_codes":         []any{float64(429)},
-				},
+				}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			statusCode: 529,
 			body:       []byte(`{"error":{"message":"overloaded"}}`),
@@ -89,7 +89,7 @@ func TestCheckErrorPolicy(t *testing.T) {
 				Platform: PlatformOpenAI,
 				Credentials: map[string]any{
 					"pool_mode": true,
-				},
+				}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			statusCode: 529,
 			body:       []byte(`{"error":{"message":"overloaded"}}`),
@@ -100,7 +100,7 @@ func TestCheckErrorPolicy(t *testing.T) {
 			account: &Account{
 				ID:       35,
 				Type:     AccountTypeAPIKey,
-				Platform: PlatformOpenAI,
+				Platform: PlatformOpenAI, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			statusCode: 529,
 			body:       []byte(`{"error":{"message":"overloaded"}}`),
@@ -115,7 +115,7 @@ func TestCheckErrorPolicy(t *testing.T) {
 				Credentials: map[string]any{
 					"custom_error_codes_enabled": true,
 					"custom_error_codes":         []any{float64(529)},
-				},
+				}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			statusCode: 529,
 			body:       []byte(`{"error":{"message":"overloaded"}}`),
@@ -244,7 +244,7 @@ func TestCheckErrorPolicy(t *testing.T) {
 					"pool_mode":                  true,
 					"custom_error_codes_enabled": true,
 					"custom_error_codes":         []any{float64(401), float64(403)},
-				},
+				}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			statusCode: 401,
 			body:       []byte(`unauthorized`),
@@ -258,7 +258,7 @@ func TestCheckErrorPolicy(t *testing.T) {
 				Platform: PlatformOpenAI,
 				Credentials: map[string]any{
 					"pool_mode": true,
-				},
+				}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			statusCode: 401,
 			body:       []byte(`unauthorized`),
@@ -280,7 +280,7 @@ func TestCheckErrorPolicy(t *testing.T) {
 							"duration_minutes": float64(30),
 						},
 					},
-				},
+				}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			statusCode: http.StatusServiceUnavailable,
 			body:       []byte(`Service temporarily unavailable`),
@@ -302,7 +302,7 @@ func TestCheckErrorPolicy(t *testing.T) {
 							"duration_minutes": float64(30),
 						},
 					},
-				},
+				}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			statusCode: http.StatusServiceUnavailable,
 			body:       []byte(`Service temporarily unavailable`),
@@ -331,7 +331,7 @@ func TestHandleUpstreamError_PoolModePolicies(t *testing.T) {
 			Platform: PlatformOpenAI,
 			Credentials: map[string]any{
 				"pool_mode": true,
-			},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		}
 
 		shouldDisable := svc.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte("unauthorized"))
@@ -352,7 +352,7 @@ func TestHandleUpstreamError_PoolModePolicies(t *testing.T) {
 				"pool_mode":                  true,
 				"custom_error_codes_enabled": true,
 				"custom_error_codes":         []any{float64(401)},
-			},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		}
 
 		shouldDisable := svc.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte("unauthorized"))
@@ -379,7 +379,7 @@ func TestHandleUpstreamError_PoolModePolicies(t *testing.T) {
 						"duration_minutes": float64(30),
 					},
 				},
-			},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		}
 
 		shouldDisable := svc.HandleUpstreamError(
@@ -412,7 +412,7 @@ func TestHandleUpstreamError_PoolModePolicies(t *testing.T) {
 						"duration_minutes": float64(30),
 					},
 				},
-			},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		}
 
 		shouldDisable := svc.HandleUpstreamError(

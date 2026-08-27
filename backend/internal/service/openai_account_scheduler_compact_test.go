@@ -79,7 +79,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactRejectsExplicitl
 			Schedulable: true,
 			Concurrency: 1,
 			Priority:    0,
-			Extra:       map[string]any{"openai_compact_mode": OpenAICompactModeForceOff},
+			Extra:       map[string]any{"openai_compact_mode": OpenAICompactModeForceOff, "openai_responses_mode": "force_chat_completions"},
 		},
 		{
 			ID:          71011,
@@ -89,7 +89,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactRejectsExplicitl
 			Schedulable: true,
 			Concurrency: 1,
 			Priority:    0,
-			Extra:       map[string]any{"openai_compact_supported": false},
+			Extra:       map[string]any{"openai_compact_supported": false, "openai_responses_mode": "force_chat_completions"},
 		},
 	}
 	cfg := &config.Config{}
@@ -162,7 +162,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NativeCompactionIgnores
 				Concurrency: 1,
 				Extra: map[string]any{
 					"openai_compact_supported":   false,
-					"openai_responses_supported": true,
+					"openai_responses_supported": true, "openai_responses_mode": "force_responses",
 				},
 			}}, advanced)
 
@@ -187,7 +187,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NativeCompactionAllowsF
 				Concurrency: 1,
 				Extra: map[string]any{
 					"openai_compact_mode":        OpenAICompactModeForceOff,
-					"openai_responses_supported": true,
+					"openai_responses_supported": true, "openai_responses_mode": "force_responses",
 				},
 			}}, advanced)
 
@@ -213,6 +213,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NativeCompactionRequire
 				Extra: map[string]any{
 					"openai_compact_mode":        OpenAICompactModeForceOn,
 					"openai_responses_supported": false,
+					"openai_responses_mode":      "force_chat_completions",
 				},
 			}}, advanced)
 
@@ -239,7 +240,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_LegacyCompactionKeepsCo
 					Concurrency: 1,
 					Extra: map[string]any{
 						"openai_compact_supported":   false,
-						"openai_responses_supported": true,
+						"openai_responses_supported": true, "openai_responses_mode": "force_responses",
 					},
 				},
 				{
@@ -251,7 +252,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_LegacyCompactionKeepsCo
 					Concurrency: 1,
 					Extra: map[string]any{
 						"openai_compact_mode":        OpenAICompactModeForceOff,
-						"openai_responses_supported": true,
+						"openai_responses_supported": true, "openai_responses_mode": "force_responses",
 					},
 				},
 			}, advanced)
@@ -282,6 +283,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactRequiresResponse
 		Extra: map[string]any{
 			"openai_compact_supported":   true,
 			"openai_responses_supported": false,
+			"openai_responses_mode":      "force_chat_completions",
 		},
 	}}
 	cfg := &config.Config{}
@@ -328,6 +330,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactSkipsChatOnlyAcc
 			Extra: map[string]any{
 				"openai_compact_supported":   true,
 				"openai_responses_supported": false,
+				"openai_responses_mode":      "force_chat_completions",
 			},
 		},
 		{
@@ -340,7 +343,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactSkipsChatOnlyAcc
 			Priority:    0,
 			Extra: map[string]any{
 				"openai_compact_supported":   true,
-				"openai_responses_supported": true,
+				"openai_responses_supported": true, "openai_responses_mode": "force_responses",
 			},
 		},
 	}

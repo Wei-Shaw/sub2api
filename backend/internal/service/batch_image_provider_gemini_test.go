@@ -35,7 +35,7 @@ func TestGeminiProvider_SupportsOnlyGeminiAPIKeyWithSecret(t *testing.T) {
 	require.True(t, provider.SupportsAccount(geminiAPIKeyAccount("sk-gemini")))
 	require.False(t, provider.SupportsAccount(&Account{Platform: PlatformGemini, Type: AccountTypeAPIKey, Credentials: map[string]any{}}))
 	require.False(t, provider.SupportsAccount(&Account{Platform: PlatformGemini, Type: AccountTypeOAuth, Credentials: map[string]any{"api_key": "sk"}}))
-	require.False(t, provider.SupportsAccount(&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "sk"}}))
+	require.False(t, provider.SupportsAccount(&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "sk"}, Extra: map[string]any{"openai_responses_mode": "force_responses"}}))
 	require.False(t, provider.SupportsAccount(nil))
 }
 

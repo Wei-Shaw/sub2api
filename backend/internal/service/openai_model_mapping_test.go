@@ -272,7 +272,7 @@ func TestResolveOpenAIForwardMappedModels_CompactMappingPrecedence(t *testing.T)
 		{
 			name: "raw chat fallback never applies compact mapping",
 			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
-				Credentials: conflictingMappings, Extra: map[string]any{"openai_responses_supported": false}},
+				Credentials: conflictingMappings, Extra: map[string]any{"openai_responses_supported": false, "openai_responses_mode": "force_chat_completions"}},
 			requireCompact: true,
 			wantBilling:    "gpt-5.4",
 			wantUpstream:   "gpt-5.4",

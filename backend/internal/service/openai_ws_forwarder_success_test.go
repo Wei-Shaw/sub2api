@@ -139,7 +139,7 @@ func TestOpenAIGatewayService_Forward_WSv2_SuccessAndBindSticky(t *testing.T) {
 			"base_url": wsServer.URL,
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -244,7 +244,7 @@ func TestOpenAIGatewayService_Forward_WSv2_UsesPatchedBodyAfterValidationDecode(
 			"api_key":  "sk-test",
 			"base_url": wsServer.URL,
 		},
-		Extra: map[string]any{"responses_websockets_v2_enabled": true},
+		Extra: map[string]any{"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses"},
 	}
 
 	body := []byte(`{"model":"gpt-5.4","stream":false,"max_completion_tokens":12,"tools":[{"type":"image_generation"}],"input":[{"type":"input_text","text":"hello"}]}`)
@@ -362,7 +362,7 @@ func TestOpenAIGatewayService_Forward_WSv2_ImageGenerationCountsOutputs(t *testi
 			"base_url": wsServer.URL,
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -406,7 +406,7 @@ func TestOpenAIGatewayService_BuildOpenAIWSHeadersPreservesCodexIdentity(t *test
 	c.Request.Header.Set("X-Test", "blocked")
 
 	svc := &OpenAIGatewayService{}
-	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	headers, _, err := svc.buildOpenAIWSHeaders(
 		context.Background(),
 		c,
@@ -538,7 +538,7 @@ func TestOpenAIGatewayService_Forward_WSv2_RewriteModelAndToolCallsOnCompletedEv
 			},
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -589,7 +589,7 @@ func TestOpenAIGatewayService_Forward_WSv2_ResponseFailedIsNotSchedulingSuccess(
 		Schedulable: true,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-test"},
-		Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+		Extra:       map[string]any{"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses"},
 	}
 	svc.recordOpenAIAccountModelTransientFailure(account, "gpt-5.5", time.Now())
 
@@ -701,7 +701,7 @@ func TestOpenAIGatewayService_Forward_WSv2_PoolReuseNotOneToOne(t *testing.T) {
 			"base_url": wsServer.URL,
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -1168,7 +1168,7 @@ func TestOpenAIGatewayService_Forward_WSv2_ResponseDoneUsageParsed(t *testing.T)
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -1230,7 +1230,7 @@ func TestOpenAIGatewayService_Forward_WSv1_Unsupported(t *testing.T) {
 			"base_url": "https://api.openai.com/v1/responses",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -1322,7 +1322,7 @@ func TestOpenAIGatewayService_Forward_WSv2_TurnStateAndMetadataReplayOnReconnect
 			"base_url": wsServer.URL,
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -1414,7 +1414,7 @@ func TestOpenAIGatewayService_Forward_WSv2_GeneratePrewarm(t *testing.T) {
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -1448,7 +1448,7 @@ func TestOpenAIGatewayService_PrewarmReadHonorsParentContext(t *testing.T) {
 		Platform:    PlatformOpenAI,
 		Type:        AccountTypeAPIKey,
 		Status:      StatusActive,
-		Schedulable: true,
+		Schedulable: true, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	conn := newOpenAIWSConn("prewarm_ctx_conn", account.ID, &openAIWSBlockingConn{
 		readDelay: 200 * time.Millisecond,
@@ -1527,7 +1527,7 @@ func TestOpenAIGatewayService_Forward_WSv2_TurnMetadataInPayloadOnConnReuse(t *t
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -1639,7 +1639,7 @@ func TestOpenAIGatewayService_Forward_WSv2StoreFalseSessionConnIsolation(t *test
 			"base_url": wsServer.URL,
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -1746,7 +1746,7 @@ func TestOpenAIGatewayService_Forward_WSv2StoreFalseDisableForceNewConnAllowsReu
 			"base_url": wsServer.URL,
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -1837,7 +1837,7 @@ func TestOpenAIGatewayService_Forward_WSv2ReadTimeoutAppliesPerRead(t *testing.T
 			"api_key": "sk-test",
 		},
 		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
+			"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 

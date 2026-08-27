@@ -28,7 +28,7 @@ func ollamaCloudRawChatCompletionsTestAccount() *Account {
 			"base_url": "https://ollama.com",
 		},
 		Extra: map[string]any{
-			openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceChatCompletions),
+			openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceChatCompletions), "openai_responses_mode": "force_responses",
 		},
 	}
 }

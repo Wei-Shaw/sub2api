@@ -31,7 +31,7 @@ func TestOpenAI429FastPath_KeepsOAuthAccountSchedulableDuringRetryWindow(t *test
 	svc := &OpenAIGatewayService{rateLimitService: rateLimits}
 	rateLimits.SetAccountRuntimeBlocker(svc)
 	account := &Account{ID: 42, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
-	apiKeyAccount := &Account{ID: 43, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	apiKeyAccount := &Account{ID: 43, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	setupTokenAccount := &Account{ID: 44, Platform: PlatformOpenAI, Type: AccountTypeSetupToken}
 	grokOAuthAccount := &Account{ID: 45, Platform: PlatformGrok, Type: AccountTypeOAuth}
 
@@ -151,7 +151,7 @@ func TestOpenAI429FastPath_OpenCodeGoUsageLimitUsesMessageResetDuration(t *testi
 	rateLimitService := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
 	svc := &OpenAIGatewayService{rateLimitService: rateLimitService}
 	rateLimitService.SetAccountRuntimeBlocker(svc)
-	account := &Account{ID: 44, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: 44, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	body := []byte(`{"type":"error","error":{"type":"GoUsageLimitError","message":"5-hour usage limit reached. Resets in 4hr 59min. To continue using this model now, enable usage from your available balance: https://opencode.ai/workspace/wrk_test/go"},"metadata":{"workspace":"wrk_test","limitName":"5 hour"}}`)
 
 	before := time.Now()
@@ -201,7 +201,7 @@ func TestOpenAI429FastPath_SkipsSparkShadow(t *testing.T) {
 
 func TestOpenAIRuntimeBlock_AppliesToOpenAIAPIKeyWhenRateLimitServiceStopsScheduling(t *testing.T) {
 	svc := &OpenAIGatewayService{}
-	account := &Account{ID: 44, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: 44, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 
 	svc.BlockAccountScheduling(account, time.Time{}, "custom_error_code")
 
@@ -259,7 +259,7 @@ func TestOpenAIPoolModeTempRule_StopsSameAccountRetryAndIsolatesBlockToModel(t *
 					"duration_minutes": float64(30),
 				},
 			},
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	body := []byte(`{"error":{"message":"Service temporarily unavailable"}}`)
 	resp := &http.Response{
@@ -299,7 +299,7 @@ func TestOpenAIPoolModeRetryable5xx_DoesNotCreateModelTransientBlock(t *testing.
 		Credentials: map[string]any{
 			"pool_mode":                    true,
 			"pool_mode_retry_status_codes": []any{float64(524)},
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	for i := 0; i < 2; i++ {
@@ -328,7 +328,7 @@ func TestOpenAIPoolModeNonRetryable5xx_StillCreatesModelTransientBlock(t *testin
 		Credentials: map[string]any{
 			"pool_mode":                    true,
 			"pool_mode_retry_status_codes": []any{float64(http.StatusGatewayTimeout)},
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	for i := 0; i < 2; i++ {
@@ -353,7 +353,7 @@ func TestOpenAINonPoolAPIKey5xx_StillCreatesModelTransientBlock(t *testing.T) {
 	account := &Account{
 		ID:       49,
 		Platform: PlatformOpenAI,
-		Type:     AccountTypeAPIKey,
+		Type:     AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	for i := 0; i < 2; i++ {
@@ -548,7 +548,7 @@ func TestOpenAIRuntimeBlock_ClearAccountSchedulingBlock(t *testing.T) {
 func TestShouldStopOpenAIOAuth429Failover_AfterBoundedFullWindows(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	account := &Account{ID: 42, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
-	apiKeyAccount := &Account{ID: 43, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	apiKeyAccount := &Account{ID: 43, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	var state OpenAIOAuth429FailoverState
 
 	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 1, &state))

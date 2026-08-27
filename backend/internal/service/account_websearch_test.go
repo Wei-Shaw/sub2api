@@ -90,7 +90,7 @@ func TestGetWebSearchEmulationMode_NonAnthropicPlatform(t *testing.T) {
 	a := &Account{
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeAPIKey,
-		Extra:    map[string]any{featureKeyWebSearchEmulation: "enabled"},
+		Extra:    map[string]any{featureKeyWebSearchEmulation: "enabled", "openai_responses_mode": "force_responses"},
 	}
 	require.Equal(t, WebSearchModeDefault, a.GetWebSearchEmulationMode())
 }

@@ -75,7 +75,7 @@ func TestOpenAIHandleErrorResponse_NoRuleKeepsDefault(t *testing.T) {
 		Body:       io.NopCloser(bytes.NewReader(respBody)),
 		Header:     http.Header{},
 	}
-	account := &Account{ID: 12, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: 12, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 
 	_, err := svc.handleErrorResponse(context.Background(), resp, c, account, nil)
 	require.Error(t, err)
@@ -102,7 +102,7 @@ func TestOpenAIHandleErrorResponse_ContextWindow502KeepsMessageWithoutFailover(t
 		Body:       io.NopCloser(bytes.NewReader(respBody)),
 		Header:     http.Header{},
 	}
-	account := &Account{ID: 14, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: 14, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 
 	_, err := svc.handleErrorResponse(context.Background(), resp, c, account, nil)
 	require.Error(t, err)
@@ -185,7 +185,7 @@ func TestOpenAIHandleErrorResponse_AppliesRuleFor422(t *testing.T) {
 		Body:       io.NopCloser(bytes.NewReader(respBody)),
 		Header:     http.Header{},
 	}
-	account := &Account{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 
 	_, err := svc.handleErrorResponse(context.Background(), resp, c, account, nil)
 	require.Error(t, err)
@@ -344,7 +344,7 @@ func TestOpenAIHandleErrorResponse_SetsResponseCommitted(t *testing.T) {
 		Body:       io.NopCloser(bytes.NewReader([]byte(`{"error":{"message":"rate limit exceeded"}}`))),
 		Header:     http.Header{},
 	}
-	account := &Account{ID: 101, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: 101, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 
 	_, err := svc.handleErrorResponse(context.Background(), resp, c, account, nil)
 	require.Error(t, err)

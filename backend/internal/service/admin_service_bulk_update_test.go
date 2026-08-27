@@ -321,8 +321,8 @@ func TestAdminServiceBulkUpdateAccounts_ResolvesIDsFromFilters(t *testing.T) {
 
 func TestAdminServiceBulkUpdateAccounts_NormalizesOpenAISettings(t *testing.T) {
 	repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{
-		{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
-		{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+		{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
+		{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 	}}
 	svc := &adminServiceImpl{accountRepo: repo}
 
@@ -370,7 +370,7 @@ func TestAdminServiceBulkUpdateAccounts_AcceptsLongContextAccountTypes(t *testin
 
 func TestAdminServiceBulkUpdateAccounts_EmbeddingsOnlyResetsResponsesMode(t *testing.T) {
 	repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{
-		{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+		{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 	}}
 	svc := &adminServiceImpl{accountRepo: repo}
 
@@ -483,7 +483,7 @@ func TestAdminServiceBulkUpdateAccounts_ForcedResponsesRequiresChatCapability(t 
 		Type:     AccountTypeAPIKey,
 		Credentials: map[string]any{
 			openAIEndpointCapabilitiesCredentialKey: []any{"embeddings"},
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}}}
 	svc := &adminServiceImpl{accountRepo: repo}
 
@@ -504,7 +504,7 @@ func TestAdminServiceBulkUpdateAccounts_ForcedResponsesAcceptsChatCapabilityUpda
 		Type:     AccountTypeAPIKey,
 		Credentials: map[string]any{
 			openAIEndpointCapabilitiesCredentialKey: []any{"embeddings"},
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}}}
 	svc := &adminServiceImpl{accountRepo: repo}
 

@@ -198,7 +198,7 @@ func passthroughArgsFallbackAccount() *Account {
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
 			"base_url": "http://upstream.example",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 }
 

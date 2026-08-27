@@ -298,7 +298,7 @@ func TestOpenAIGatewayService_PreviousResponseHonorsGroupAndRequiredPrivacy(t *t
 				ID: 39041, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
 				Status: StatusActive, Schedulable: true, Concurrency: 1,
 				GroupIDs: []int64{groupID},
-				Extra:    map[string]any{"openai_apikey_responses_websockets_v2_enabled": true},
+				Extra:    map[string]any{"openai_apikey_responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses"},
 			},
 		},
 		{
@@ -307,7 +307,7 @@ func TestOpenAIGatewayService_PreviousResponseHonorsGroupAndRequiredPrivacy(t *t
 				ID: 39041, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
 				Status: StatusActive, Schedulable: true, Concurrency: 1,
 				GroupIDs: []int64{groupID},
-				Extra:    map[string]any{"openai_apikey_responses_websockets_v2_enabled": true},
+				Extra:    map[string]any{"openai_apikey_responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses"},
 			},
 			groupErr: errors.New("group repository unavailable"),
 		},
@@ -319,7 +319,7 @@ func TestOpenAIGatewayService_PreviousResponseHonorsGroupAndRequiredPrivacy(t *t
 				GroupIDs: []int64{groupID + 1},
 				Extra: map[string]any{
 					"openai_apikey_responses_websockets_v2_enabled": true,
-					"privacy_mode": PrivacyModeTrainingOff,
+					"privacy_mode": PrivacyModeTrainingOff, "openai_responses_mode": "force_responses",
 				},
 			},
 		},
@@ -333,7 +333,7 @@ func TestOpenAIGatewayService_PreviousResponseHonorsGroupAndRequiredPrivacy(t *t
 				GroupIDs: []int64{groupID},
 				Extra: map[string]any{
 					"openai_apikey_responses_websockets_v2_enabled": true,
-					"privacy_mode": PrivacyModeTrainingOff,
+					"privacy_mode": PrivacyModeTrainingOff, "openai_responses_mode": "force_responses",
 				},
 			}
 			accounts := []Account{tc.boundAccount, fallback}
@@ -395,13 +395,13 @@ func TestOpenAIGatewayService_PreviousResponseSimpleModeIgnoresGroupMembership(t
 		ID: 39051, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
 		Status: StatusActive, Schedulable: true, Concurrency: 1,
 		GroupIDs: []int64{groupID + 1},
-		Extra:    map[string]any{"openai_apikey_responses_websockets_v2_enabled": true},
+		Extra:    map[string]any{"openai_apikey_responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses"},
 	}
 	fallback := Account{
 		ID: 39052, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
 		Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 10,
 		GroupIDs: []int64{groupID},
-		Extra:    map[string]any{"openai_apikey_responses_websockets_v2_enabled": true},
+		Extra:    map[string]any{"openai_apikey_responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses"},
 	}
 	accounts := []Account{bound, fallback}
 	repo := &guardianAffinityAccountRepo{schedulerGroupAwareOpenAIAccountRepo: schedulerGroupAwareOpenAIAccountRepo{schedulerTestOpenAIAccountRepo{accounts: accounts}}}

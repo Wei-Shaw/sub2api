@@ -301,7 +301,7 @@ func TestHandleUpstreamError_529RespectsAccountPolicies(t *testing.T) {
 				ID:          101,
 				Platform:    PlatformOpenAI,
 				Type:        AccountTypeAPIKey,
-				Credentials: tt.credentials,
+				Credentials: tt.credentials, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			}
 
 			shouldDisable := svc.HandleUpstreamError(context.Background(), account, 529, nil, []byte(`{"error":{"message":"overloaded"}}`))
@@ -323,7 +323,7 @@ func TestHandleUpstreamError_529CustomCodeDisablesInsteadOfOverloadCooldown(t *t
 		Credentials: map[string]any{
 			"custom_error_codes_enabled": true,
 			"custom_error_codes":         []any{float64(529)},
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	shouldDisable := svc.HandleUpstreamError(context.Background(), account, 529, nil, []byte(`{"error":{"message":"overloaded"}}`))

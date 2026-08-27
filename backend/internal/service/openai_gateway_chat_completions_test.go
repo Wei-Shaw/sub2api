@@ -224,7 +224,7 @@ func TestForwardAsChatCompletions_APIKeyPropagatesPromptCacheKeyInResponsesBody(
 			"api_key": "sk-compatible",
 		},
 		Extra: map[string]any{
-			"openai_responses_supported": true,
+			"openai_responses_supported": true, "openai_responses_mode": "force_responses",
 		},
 	}
 

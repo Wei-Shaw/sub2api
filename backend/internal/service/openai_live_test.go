@@ -67,7 +67,7 @@ func (s *liveHTTPUpstreamStub) DoWithTLS(
 
 func TestLiveCapabilityOnlyAllowsOpenAIOAuth(t *testing.T) {
 	require.True(t, (&Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}).SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityLive))
-	require.False(t, (&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}).SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityLive))
+	require.False(t, (&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}).SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityLive))
 	require.False(t, (&Account{Platform: PlatformGrok, Type: AccountTypeOAuth}).SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityLive))
 	require.False(t, (&Account{
 		Platform: PlatformOpenAI,

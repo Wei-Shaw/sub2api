@@ -147,7 +147,7 @@ func TestOpenAIWSConnPool_EnsureTargetIdleAsync(t *testing.T) {
 	pool.setClientDialerForTest(&openAIWSFakeDialer{})
 
 	accountID := int64(77)
-	account := &Account{ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	ap := pool.getOrCreateAccountPool(accountID)
 	ap.mu.Lock()
 	ap.lastAcquire = &openAIWSAcquireRequest{
@@ -185,7 +185,7 @@ func TestOpenAIWSConnPool_EnsureTargetIdleAsyncCooldown(t *testing.T) {
 	pool.setClientDialerForTest(dialer)
 
 	accountID := int64(178)
-	account := &Account{ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	ap := pool.getOrCreateAccountPool(accountID)
 	ap.mu.Lock()
 	ap.lastAcquire = &openAIWSAcquireRequest{
@@ -242,7 +242,7 @@ func TestOpenAIWSConnPool_EnsureTargetIdleAsyncFailureSuppress(t *testing.T) {
 	pool.setClientDialerForTest(dialer)
 
 	accountID := int64(279)
-	account := &Account{ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	ap := pool.getOrCreateAccountPool(accountID)
 	ap.mu.Lock()
 	ap.lastAcquire = &openAIWSAcquireRequest{
@@ -288,7 +288,7 @@ func TestOpenAIWSConnPool_AcquireQueueWaitMetrics(t *testing.T) {
 
 	pool := newOpenAIWSConnPool(cfg)
 	accountID := int64(99)
-	account := &Account{ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	conn := newOpenAIWSConn("busy", accountID, &openAIWSFakeConn{}, nil)
 	require.True(t, conn.tryAcquire()) // 占用连接，触发后续排队
 
@@ -545,7 +545,7 @@ func TestOpenAIWSConnPool_ForceNewConnSkipsReuse(t *testing.T) {
 	dialer := &openAIWSCountingDialer{}
 	pool.setClientDialerForTest(dialer)
 
-	account := &Account{ID: 123, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: 123, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 
 	lease1, err := pool.Acquire(context.Background(), openAIWSAcquireRequest{
 		Account: account,
@@ -577,7 +577,7 @@ func TestOpenAIWSConnPool_AcquireReusesOnlyMatchingBetaFeatures(t *testing.T) {
 	dialer := &openAIWSCountingDialer{}
 	pool.setClientDialerForTest(dialer)
 
-	account := &Account{ID: 128, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: 128, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	baseReq := openAIWSAcquireRequest{
 		Account: account,
 		WSURL:   "wss://example.com/v1/responses",
@@ -833,7 +833,7 @@ func TestOpenAIWSConnPool_AcquireReplacesIdleConnWithDifferentBetaFeatures(t *te
 	dialer := &openAIWSCountingDialer{}
 	pool.setClientDialerForTest(dialer)
 
-	account := &Account{ID: 129, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: 129, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	plainLease, err := pool.Acquire(context.Background(), openAIWSAcquireRequest{
 		Account: account,
 		WSURL:   "wss://example.com/v1/responses",
@@ -864,7 +864,7 @@ func TestOpenAIWSConnPool_AcquireWaitsForBusyIncompatibleConnection(t *testing.T
 	pool := newOpenAIWSConnPool(cfg)
 	dialer := &openAIWSCountingDialer{}
 	pool.setClientDialerForTest(dialer)
-	account := &Account{ID: 130, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: 130, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	baseReq := openAIWSAcquireRequest{Account: account, WSURL: "wss://example.com/v1/responses"}
 
 	plainLease, err := pool.Acquire(context.Background(), baseReq)
@@ -908,7 +908,7 @@ func TestOpenAIWSConnPool_AcquireReplacesIncompatibleIdleWhenMatchingBusy(t *tes
 	pool := newOpenAIWSConnPool(cfg)
 	dialer := &openAIWSCountingDialer{}
 	pool.setClientDialerForTest(dialer)
-	account := &Account{ID: 131, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: 131, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	baseReq := openAIWSAcquireRequest{Account: account, WSURL: "wss://example.com/v1/responses"}
 
 	plainLease, err := pool.Acquire(context.Background(), baseReq)
@@ -939,7 +939,7 @@ func TestOpenAIWSConnPool_AcquireForcePreferredConnUnavailable(t *testing.T) {
 	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 2
 
 	pool := newOpenAIWSConnPool(cfg)
-	account := &Account{ID: 124, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: 124, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	ap := pool.getOrCreateAccountPool(account.ID)
 	otherConn := newOpenAIWSConn("other_conn", account.ID, &openAIWSFakeConn{}, nil)
 	ap.mu.Lock()
@@ -970,7 +970,7 @@ func TestOpenAIWSConnPool_AcquireForcePreferredConnQueuesOnPreferredOnly(t *test
 	cfg.Gateway.OpenAIWS.QueueLimitPerConn = 4
 
 	pool := newOpenAIWSConnPool(cfg)
-	account := &Account{ID: 125, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: 125, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	ap := pool.getOrCreateAccountPool(account.ID)
 	preferredConn := newOpenAIWSConn("preferred_conn", account.ID, &openAIWSFakeConn{}, nil)
 	otherConn := newOpenAIWSConn("other_conn_idle", account.ID, &openAIWSFakeConn{}, nil)
@@ -1011,7 +1011,7 @@ func TestOpenAIWSConnPool_AcquireForcePreferredConnDirectAndQueueFull(t *testing
 	cfg.Gateway.OpenAIWS.QueueLimitPerConn = 1
 
 	pool := newOpenAIWSConnPool(cfg)
-	account := &Account{ID: 127, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: 127, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	ap := pool.getOrCreateAccountPool(account.ID)
 	preferredConn := newOpenAIWSConn("preferred_conn_direct", account.ID, &openAIWSFakeConn{}, nil)
 	otherConn := newOpenAIWSConn("other_conn_direct", account.ID, &openAIWSFakeConn{}, nil)
@@ -1140,10 +1140,10 @@ func TestOpenAIWSConnPool_EffectiveMaxConnsByAccount(t *testing.T) {
 	oauthLow := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 3}
 	require.Equal(t, 3, pool.effectiveMaxConnsByAccount(oauthLow))
 
-	apiKeyHigh := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 10}
+	apiKeyHigh := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 10, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	require.Equal(t, 6, pool.effectiveMaxConnsByAccount(apiKeyHigh), "API Key 应按系数缩放")
 
-	apiKeyLow := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 1}
+	apiKeyLow := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 1, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	require.Equal(t, 1, pool.effectiveMaxConnsByAccount(apiKeyLow), "最小值应保持为 1")
 
 	unlimited := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 0}
@@ -1177,7 +1177,7 @@ func TestOpenAIWSConnPool_EffectiveMaxConnsByAccount_ModeRouterV2RespectsHardCap
 	high := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 20}
 	require.Equal(t, 8, pool.effectiveMaxConnsByAccount(high), "v2 路径也必须受连接池硬上限约束")
 
-	nonPositive := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 0}
+	nonPositive := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 0, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	require.Equal(t, 0, pool.effectiveMaxConnsByAccount(nonPositive), "并发数<=0 时应不可调度")
 }
 
@@ -1400,7 +1400,7 @@ func TestOpenAIWSConnPool_RunBackgroundCleanupSweep_SkipsInvalidAndUsesAccountCa
 			ID:          accountID,
 			Platform:    PlatformOpenAI,
 			Type:        AccountTypeAPIKey,
-			Concurrency: 1,
+			Concurrency: 1, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 	pool.accounts.Store(accountID, ap)
@@ -1955,7 +1955,7 @@ func TestOpenAIWSConnPool_TargetConnCountAndPrewarmBranches(t *testing.T) {
 
 	// prewarm: account pool 缺失时，拨号后的连接应被关闭并提前返回
 	req := openAIWSAcquireRequest{
-		Account: &Account{ID: 999, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+		Account: &Account{ID: 999, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 		WSURL:   "wss://example.com/v1/responses",
 	}
 	pool.prewarmConns(999, req, 1)
@@ -1993,7 +1993,7 @@ func TestOpenAIWSConnPool_Acquire_ErrorBranches(t *testing.T) {
 	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
 	cfg.Gateway.OpenAIWS.QueueLimitPerConn = 1
 	fullPool := newOpenAIWSConnPool(cfg)
-	account := &Account{ID: 2001, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: 2001, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	ap := fullPool.getOrCreateAccountPool(account.ID)
 	ap.mu.Lock()
 	ap.conns["nil"] = nil
@@ -2006,7 +2006,7 @@ func TestOpenAIWSConnPool_Acquire_ErrorBranches(t *testing.T) {
 	require.ErrorIs(t, err, errOpenAIWSConnClosed)
 
 	// queue full 分支：waiters 达上限
-	account2 := &Account{ID: 2002, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account2 := &Account{ID: 2002, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	ap2 := fullPool.getOrCreateAccountPool(account2.ID)
 	conn := newOpenAIWSConn("queue_full", account2.ID, &openAIWSFakeConn{}, nil)
 	require.True(t, conn.tryAcquire())
@@ -2339,7 +2339,7 @@ func TestOpenAIWSConnPool_DialConnNilConnection(t *testing.T) {
 
 	pool := newOpenAIWSConnPool(cfg)
 	pool.setClientDialerForTest(&openAIWSNilConnDialer{})
-	account := &Account{ID: 91, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: 91, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 
 	_, err := pool.Acquire(context.Background(), openAIWSAcquireRequest{
 		Account: account,

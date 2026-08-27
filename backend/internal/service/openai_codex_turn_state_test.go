@@ -298,7 +298,7 @@ func TestEnsureOpenAIRemoteCompactionV2BetaFeature(t *testing.T) {
 // 压缩回合出现（codex-rs build_model_client_beta_features_header）。
 func TestApplyOpenAICodexBetaFeatures(t *testing.T) {
 	oauthAccount := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
-	apiKeyAccount := &Account{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	apiKeyAccount := &Account{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 
 	t.Run("oauth_plain_request_gets_default_codex_shape", func(t *testing.T) {
 		c, _ := newTurnStateTestContext(t, 7, "sess-beta")
@@ -390,7 +390,7 @@ func TestBuildOpenAIWSHeaders_CarriesSessionBetaFeatures(t *testing.T) {
 	require.Equal(t, []string{"some_other_feature"}, declared.Values("x-codex-beta-features"),
 		"客户端已声明时原样保留")
 
-	apiKeyHeaders := build(t, &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, "")
+	apiKeyHeaders := build(t, &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}, "")
 	require.Empty(t, apiKeyHeaders.Get("x-codex-beta-features"),
 		"非 Codex 后端不注入")
 }

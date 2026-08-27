@@ -68,7 +68,7 @@ func TestOpenAIWSv2StreamingRepairsConcatenatedJSONDocumentsInSingleMessage(t *t
 		Schedulable: true,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-test"},
-		Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+		Extra:       map[string]any{"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses"},
 	}
 
 	recorder := httptest.NewRecorder()
@@ -140,7 +140,7 @@ func TestOpenAIWSv2RejectsMalformedEventAfterWritingDownstream(t *testing.T) {
 		Schedulable: true,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-test"},
-		Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+		Extra:       map[string]any{"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses"},
 	}
 
 	recorder := httptest.NewRecorder()
@@ -203,7 +203,7 @@ func testOpenAIWSv2RejectsMalformedEventBeforeWritingDownstream(t *testing.T, ma
 		Schedulable: true,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-test"},
-		Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+		Extra:       map[string]any{"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses"},
 	}
 
 	recorder := httptest.NewRecorder()
@@ -278,7 +278,7 @@ func TestOpenAIWSv2StreamingBreaksConnectionWhenTerminalHasTrailingDocument(t *t
 		Schedulable: true,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-test"},
-		Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+		Extra:       map[string]any{"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses"},
 	}
 
 	recorder := httptest.NewRecorder()

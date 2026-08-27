@@ -283,7 +283,7 @@ func TestUpstreamBillingProbeSuccessPersistsSanitizedSnapshot(t *testing.T) {
 		},
 		Extra: map[string]any{
 			UpstreamBillingProbeEnabledExtraKey:    true,
-			UpstreamBillingRateSyncEnabledExtraKey: true,
+			UpstreamBillingRateSyncEnabledExtraKey: true, "openai_responses_mode": "force_responses",
 		},
 		RateMultiplier: &initialRate,
 	}
@@ -506,7 +506,7 @@ func TestUpstreamBillingProbeKeepsRateWhenDeclarationOutOfSyncRange(t *testing.T
 				},
 				Extra: map[string]any{
 					UpstreamBillingProbeEnabledExtraKey:    true,
-					UpstreamBillingRateSyncEnabledExtraKey: true,
+					UpstreamBillingRateSyncEnabledExtraKey: true, "openai_responses_mode": "force_responses",
 				},
 			}
 			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
@@ -553,7 +553,7 @@ func TestUpstreamBillingProbeWithoutSyncIgnoresUnusableDeclaredRate(t *testing.T
 			"api_key":  "sk-sensitive",
 			"base_url": "https://upstream.example",
 		},
-		Extra: map[string]any{UpstreamBillingProbeEnabledExtraKey: true},
+		Extra: map[string]any{UpstreamBillingProbeEnabledExtraKey: true, "openai_responses_mode": "force_responses"},
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
@@ -605,7 +605,7 @@ func TestUpstreamBillingProbeDiscardsResultWhenIdentityChangesInFlight(t *testin
 		Status:      StatusActive,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-old", "base_url": "https://upstream.example"},
-		Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: true},
+		Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: true, "openai_responses_mode": "force_responses"},
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
 	upstream := &upstreamBillingProbeHTTPStub{beforeResponse: func() {
@@ -739,7 +739,7 @@ func TestUpstreamBillingProbeFailurePreservesLastSuccessAndRetryAfter(t *testing
 		Credentials:    map[string]any{"api_key": "sk-test", "base_url": "https://upstream.example"},
 		Extra: map[string]any{
 			UpstreamBillingProbeEnabledExtraKey: true,
-			UpstreamBillingProbeExtraKey:        previous,
+			UpstreamBillingProbeExtraKey:        previous, "openai_responses_mode": "force_responses",
 		},
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
@@ -842,7 +842,7 @@ func TestUpstreamBillingProbeEmptyResponseIsPersistedAsFailure(t *testing.T) {
 		Type:        AccountTypeAPIKey,
 		Status:      StatusActive,
 		Concurrency: 1,
-		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://upstream.example"},
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://upstream.example"}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
 	svc := newUpstreamBillingProbeTestService(repo, &httpUpstreamRecorder{}, &upstreamBillingProbeSettingRepo{})
@@ -870,7 +870,7 @@ func TestUpstreamBillingProbeUnsupportedAndAccountToggle(t *testing.T) {
 		Type:        AccountTypeAPIKey,
 		Status:      StatusActive,
 		Concurrency: 1,
-		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://upstream.example"},
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://upstream.example"}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
@@ -918,7 +918,7 @@ func TestUpstreamBillingProbeRunnerIsBoundedAndManualProbeIgnoresSwitches(t *tes
 			Status:      StatusActive,
 			Concurrency: 1,
 			Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://upstream.example"},
-			Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: true},
+			Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: true, "openai_responses_mode": "force_responses"},
 		}
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: accounts}
@@ -957,7 +957,7 @@ func TestUpstreamBillingProbeRunnerRechecksEnabledAfterDueSelection(t *testing.T
 		Status:      StatusActive,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://upstream.example"},
-		Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: false},
+		Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: false, "openai_responses_mode": "force_responses"},
 	}
 	staleDue := *account
 	staleDue.Extra = map[string]any{UpstreamBillingProbeEnabledExtraKey: true}
@@ -994,7 +994,7 @@ func TestUpstreamBillingProbeNeverDowngradesMissingConfiguredProxyToDirect(t *te
 				Concurrency: 1,
 				Credentials: map[string]any{"api_key": "sk-sensitive", "base_url": "https://upstream.example"},
 				ProxyID:     &proxyID,
-				Proxy:       tc.proxy,
+				Proxy:       tc.proxy, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			}
 			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
 			upstream := &upstreamBillingProbeHTTPStub{}
@@ -1025,7 +1025,7 @@ func TestUpstreamBillingProbeRunnerOnlyScansOnLeader(t *testing.T) {
 		Status:      StatusActive,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://upstream.example"},
-		Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: true},
+		Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: true, "openai_responses_mode": "force_responses"},
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
 	upstream := &upstreamBillingProbeHTTPStub{}
@@ -1086,7 +1086,7 @@ func TestUpstreamBillingProbeFiveInstancesRunOneConcurrentBatch(t *testing.T) {
 		Status:      StatusActive,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-test", "base_url": "http://127.0.0.1:8080"},
-		Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: true},
+		Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: true, "openai_responses_mode": "force_responses"},
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
 	settingsRepo := &upstreamBillingProbeSettingRepo{values: map[string]string{
@@ -1141,7 +1141,7 @@ func TestUpstreamBillingProbeManualBatchesShareConcurrencyLimit(t *testing.T) {
 			Type:        AccountTypeAPIKey,
 			Status:      StatusActive,
 			Concurrency: 1,
-			Credentials: map[string]any{"api_key": "sk-test", "base_url": "http://127.0.0.1:8080"},
+			Credentials: map[string]any{"api_key": "sk-test", "base_url": "http://127.0.0.1:8080"}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		}
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: accounts}
@@ -1202,7 +1202,7 @@ func TestUpstreamBillingProbeManualAndScheduledRequestsShareOneNetworkProbe(t *t
 		Status:      StatusActive,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://upstream.example"},
-		Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: true},
+		Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: true, "openai_responses_mode": "force_responses"},
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
 	started := make(chan struct{})
@@ -1246,7 +1246,7 @@ func TestUpstreamBillingProbeScheduledRechecksAfterWaitingForSlot(t *testing.T) 
 		Status:      StatusActive,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://upstream.example"},
-		Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: true},
+		Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: true, "openai_responses_mode": "force_responses"},
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
 	upstream := &upstreamBillingProbeHTTPStub{}
@@ -1278,7 +1278,7 @@ func TestUpstreamBillingProbeLeaderLockCoversStaggeredInstancesInCadenceWindow(t
 			Status:      StatusActive,
 			Concurrency: 1,
 			Credentials: map[string]any{"api_key": "sk-test", "base_url": "http://127.0.0.1:8080"},
-			Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: true},
+			Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: true, "openai_responses_mode": "force_responses"},
 		}
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{41: account(41)}}

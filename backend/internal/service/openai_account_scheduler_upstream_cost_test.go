@@ -101,7 +101,7 @@ func upstreamCostTestAccount(id int64, status string, rate float64, receivedAt t
 				"fresh_until":     receivedAt.Add(2 * interval).UTC().Format(time.RFC3339Nano),
 				"last_attempt_at": receivedAt.UTC().Format(time.RFC3339Nano),
 				"next_probe_at":   receivedAt.Add(interval).UTC().Format(time.RFC3339Nano),
-			},
+			}, "openai_responses_mode": "force_responses",
 		},
 	}
 }
@@ -148,7 +148,7 @@ func TestAdvancedCostSchedulerUsesTopKOverflowWhenPreferredAccountIsKnownFull(t 
 func TestAdvancedSchedulerCapsRejectedCostOverflowAcquires(t *testing.T) {
 	selectionOrder := make([]openAIAccountCandidateScore, 0, 15_000)
 	for id := int64(1); id <= 15_000; id++ {
-		account := &Account{ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1}
+		account := &Account{ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 		selectionOrder = append(selectionOrder, openAIAccountCandidateScore{
 			account: account, loadInfo: &AccountLoadInfo{AccountID: id}, loadKnown: false,
 		})
@@ -186,7 +186,7 @@ func TestOpenAICostOverflowExpandedOnlyWhenCostAddsCandidates(t *testing.T) {
 func TestAdvancedSchedulerKnownFullOverflowStillFindsAvailableAccount(t *testing.T) {
 	selectionOrder := make([]openAIAccountCandidateScore, 0, openAIAccountSelectionProbeLimit+2)
 	for id := int64(1); id <= openAIAccountSelectionProbeLimit+1; id++ {
-		account := &Account{ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1}
+		account := &Account{ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 		selectionOrder = append(selectionOrder, openAIAccountCandidateScore{
 			account:   account,
 			loadInfo:  &AccountLoadInfo{AccountID: id, CurrentConcurrency: 1, LoadRate: 100},
@@ -194,7 +194,7 @@ func TestAdvancedSchedulerKnownFullOverflowStillFindsAvailableAccount(t *testing
 		})
 	}
 	availableID := int64(openAIAccountSelectionProbeLimit + 2)
-	available := &Account{ID: availableID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1}
+	available := &Account{ID: availableID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	selectionOrder = append(selectionOrder, openAIAccountCandidateScore{
 		account: available, loadInfo: &AccountLoadInfo{AccountID: availableID}, loadKnown: true,
 	})
@@ -220,7 +220,7 @@ func TestAdvancedSchedulerSharesProbeBudgetWithFallbackDBRechecks(t *testing.T) 
 	snapshotAccounts := make(map[int64]*Account, size)
 	selectionOrder := make([]openAIAccountCandidateScore, 0, size)
 	for id := int64(1); id <= size; id++ {
-		stale := &Account{ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1}
+		stale := &Account{ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 		latest := *stale
 		latest.Status = StatusDisabled
 		snapshotAccounts[id] = stale
@@ -294,7 +294,7 @@ func TestAdvancedCostSchedulerKeepsCompactSupportedOverflowAheadOfUnknown(t *tes
 }
 
 func TestAdvancedSchedulerUnknownLoadFailsOpen(t *testing.T) {
-	account := &Account{ID: 21, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1}
+	account := &Account{ID: 21, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	cache := &upstreamCostTrackingConcurrencyCache{}
 	scheduler := &defaultOpenAIAccountScheduler{service: &OpenAIGatewayService{concurrencyService: NewConcurrencyService(cache)}}
 
@@ -308,8 +308,8 @@ func TestAdvancedSchedulerUnknownLoadFailsOpen(t *testing.T) {
 }
 
 func TestAdvancedSchedulerReleasesSlotWhenDBDisablesCandidate(t *testing.T) {
-	stale := &Account{ID: 31, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1}
-	backup := &Account{ID: 32, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1}
+	stale := &Account{ID: 31, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
+	backup := &Account{ID: 32, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	disabled := *stale
 	disabled.Status = StatusDisabled
 	repo := &upstreamCostCountingAccountRepo{accounts: map[int64]*Account{stale.ID: &disabled, backup.ID: backup}}
@@ -332,7 +332,7 @@ func TestAdvancedSchedulerReleasesSlotWhenDBDisablesCandidate(t *testing.T) {
 }
 
 func TestAdvancedSchedulerReacquiresOnceWhenDBConcurrencyChanges(t *testing.T) {
-	stale := &Account{ID: 41, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 10}
+	stale := &Account{ID: 41, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 10, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	latest := *stale
 	latest.Concurrency = 1
 	repo := &upstreamCostCountingAccountRepo{accounts: map[int64]*Account{stale.ID: &latest}}
@@ -360,7 +360,7 @@ func TestAdvancedSchedulerKnownFullPoolsDoNotRecheckDB(t *testing.T) {
 			accounts := make(map[int64]*Account, size)
 			selectionOrder := make([]openAIAccountCandidateScore, 0, size)
 			for i := 1; i <= size; i++ {
-				account := &Account{ID: int64(i), Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1}
+				account := &Account{ID: int64(i), Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 				accounts[account.ID] = account
 				selectionOrder = append(selectionOrder, openAIAccountCandidateScore{
 					account:   account,
@@ -425,7 +425,7 @@ func TestOpenAIUpstreamCostFactorsSparseProbeIsNeutral(t *testing.T) {
 					"status":          UpstreamBillingProbeStatusFailed,
 					"last_attempt_at": now.UTC().Format(time.RFC3339Nano),
 					"next_probe_at":   now.Add(time.Hour).UTC().Format(time.RFC3339Nano),
-				},
+				}, "openai_responses_mode": "force_responses",
 			},
 		})
 	}
@@ -443,7 +443,7 @@ func TestOpenAIUpstreamCostFactorsCoverageShrinksSparseSignal(t *testing.T) {
 		upstreamCostTestAccount(2, UpstreamBillingProbeStatusOK, 0.8, now.Add(-time.Minute), 30*time.Minute),
 	}
 	for id := int64(3); id <= 10; id++ {
-		accounts = append(accounts, &Account{ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey})
+		accounts = append(accounts, &Account{ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}})
 	}
 
 	factors := openAIUpstreamCostFactors(accounts, now, defaultOpenAIOAuthSchedulingRateMultiplier)
@@ -471,7 +471,7 @@ func TestOpenAILegacyUpstreamRateOrderRequiresComparableRates(t *testing.T) {
 	now := time.Now()
 	oneKnown := newOpenAILegacyUpstreamRateOrder([]*Account{
 		upstreamCostTestAccount(1, UpstreamBillingProbeStatusOK, 0.03, now.Add(-time.Minute), 30*time.Minute),
-		{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+		{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 	}, now, defaultOpenAIOAuthSchedulingRateMultiplier)
 	require.False(t, oneKnown.enabled)
 
@@ -484,7 +484,7 @@ func TestOpenAILegacyUpstreamRateOrderRequiresComparableRates(t *testing.T) {
 	distinct := newOpenAILegacyUpstreamRateOrder([]*Account{
 		upstreamCostTestAccount(1, UpstreamBillingProbeStatusOK, 0.03, now.Add(-time.Minute), 30*time.Minute),
 		upstreamCostTestAccount(2, UpstreamBillingProbeStatusOK, 0.8, now.Add(-time.Minute), 30*time.Minute),
-		{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+		{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 	}, now, defaultOpenAIOAuthSchedulingRateMultiplier)
 	require.True(t, distinct.enabled)
 	require.Negative(t, distinct.compare(&Account{ID: 1}, &Account{ID: 2}))
@@ -826,8 +826,8 @@ func TestBuildOpenAIAccountLoadPlanUsesCostOnlyForTokenScope(t *testing.T) {
 
 func TestBuildOpenAIAccountSchedulerScoreSnapshotUpstreamCostIsExactNoOpWithoutSignal(t *testing.T) {
 	accounts := []*Account{
-		{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
-		{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+		{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
+		{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 	}
 	loadMap := map[int64]*AccountLoadInfo{
 		1: {AccountID: 1, LoadRate: 20},

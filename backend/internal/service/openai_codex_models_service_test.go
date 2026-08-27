@@ -142,7 +142,7 @@ func newCodexModelsAPIKeyTestAccount(baseURL string) *Account {
 		Platform:    PlatformOpenAI,
 		Type:        AccountTypeAPIKey,
 		Credentials: credentials,
-		Concurrency: 3,
+		Concurrency: 3, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 }
 

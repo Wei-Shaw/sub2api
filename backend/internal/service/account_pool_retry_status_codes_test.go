@@ -24,7 +24,7 @@ func TestGetPoolModeRetryStatusCodes(t *testing.T) {
 			name: "nil_credentials_returns_nil",
 			account: &Account{
 				Type:     AccountTypeAPIKey,
-				Platform: PlatformOpenAI,
+				Platform: PlatformOpenAI, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			expected: nil,
 		},
@@ -33,7 +33,7 @@ func TestGetPoolModeRetryStatusCodes(t *testing.T) {
 			account: &Account{
 				Type:        AccountTypeAPIKey,
 				Platform:    PlatformOpenAI,
-				Credentials: map[string]any{"pool_mode": true},
+				Credentials: map[string]any{"pool_mode": true}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			expected: nil,
 		},

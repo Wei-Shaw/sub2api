@@ -161,7 +161,7 @@ func TestAccountUsageService_GetUsageBatch_BestEffortByAccount(t *testing.T) {
 			{
 				ID:       7003,
 				Platform: PlatformOpenAI,
-				Type:     AccountTypeAPIKey,
+				Type:     AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 		},
 	}

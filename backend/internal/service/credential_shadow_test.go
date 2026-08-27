@@ -40,7 +40,7 @@ func TestResolveCredentialAccount(t *testing.T) {
 	require.Equal(t, int64(100), got.ID)
 
 	// 影子账号 + 母账号非 OpenAI OAuth（API Key 类型）→ 返回 error
-	badRepo := newStubCredRepo(&Account{ID: 100, Platform: PlatformOpenAI, Type: AccountTypeAPIKey})
+	badRepo := newStubCredRepo(&Account{ID: 100, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}})
 	_, err = resolveCredentialAccount(ctx, badRepo, shadow)
 	require.Error(t, err)
 }
