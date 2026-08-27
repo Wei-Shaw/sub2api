@@ -511,6 +511,8 @@ export default {
         antigravityUserAgentVersion: 'Antigravity UA Version',
         antigravityUserAgentVersionPlaceholder: '1.23.2',
         antigravityUserAgentVersionHint: 'Leave empty to use ANTIGRAVITY_USER_AGENT_VERSION or the built-in default 1.23.2; when set, the admin setting takes precedence.',
+        openaiChromeUTLS: 'OpenAI OAuth Chrome TLS Fingerprint',
+        openaiChromeUTLSHint: 'Off by default. When enabled, OpenAI OAuth/Codex requests to chatgpt.com use a Chrome ClientHello over HTTP/2 while retaining the existing connection pool, PING health checks, and automatic fallback for incompatible HTTP proxies.',
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex-tui/0.146.1 (Ubuntu 22.4.0; x86_64) WindowsTerminal (codex-tui; 0.146.1)',
         openaiCodexUserAgentHint: 'The full Codex User-Agent used for all outbound requests, for customizing the OS / arch / terminal fingerprint. Leave empty to build the standard codex-tui identity from the version below (recommended). If set, both the leading and trailing version declarations are synchronized to the version below, so the UA never stays pinned to the release entered here — under capacity pressure the upstream sheds load by client identity and drops stale or non-official identities first with server_is_overloaded.',

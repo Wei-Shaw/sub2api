@@ -108,8 +108,12 @@ func (s *forwardedIPMigrationRepoStub) GetValue(_ context.Context, key string) (
 	return value, nil
 }
 
-func (s *forwardedIPMigrationRepoStub) Set(context.Context, string, string) error {
-	panic("unexpected Set call")
+func (s *forwardedIPMigrationRepoStub) Set(_ context.Context, key, value string) error {
+	if s.values == nil {
+		s.values = make(map[string]string)
+	}
+	s.values[key] = value
+	return nil
 }
 
 func (s *forwardedIPMigrationRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
@@ -236,6 +240,42 @@ func TestSettingService_UpdateSettings_PersistsCompactHomeEnabled(t *testing.T) 
 
 	require.NoError(t, err)
 	require.Equal(t, "true", repo.updates[SettingKeyCompactHomeEnabled])
+}
+
+func TestSettingService_OpenAIChromeUTLSRuntimeSetting(t *testing.T) {
+	t.Run("loads enabled value from storage", func(t *testing.T) {
+		cfg := &config.Config{}
+		repo := &forwardedIPMigrationRepoStub{values: map[string]string{
+			SettingKeyOpenAIChromeUTLSEnabled: "true",
+		}}
+		svc := NewSettingService(repo, cfg)
+
+		require.NoError(t, svc.LoadOpenAIChromeUTLSSetting(context.Background()))
+		require.True(t, cfg.OpenAIChromeUTLSEnabled())
+	})
+
+	t.Run("missing value fails closed", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.SetOpenAIChromeUTLSEnabled(true)
+		repo := &forwardedIPMigrationRepoStub{values: map[string]string{}}
+		svc := NewSettingService(repo, cfg)
+
+		require.NoError(t, svc.LoadOpenAIChromeUTLSSetting(context.Background()))
+		require.False(t, cfg.OpenAIChromeUTLSEnabled())
+		require.Equal(t, "false", repo.values[SettingKeyOpenAIChromeUTLSEnabled])
+	})
+
+	t.Run("update persists and applies immediately", func(t *testing.T) {
+		cfg := &config.Config{}
+		repo := &settingUpdateRepoStub{}
+		svc := NewSettingService(repo, cfg)
+
+		require.NoError(t, svc.UpdateSettings(context.Background(), &SystemSettings{
+			OpenAIChromeUTLSEnabled: true,
+		}))
+		require.Equal(t, "true", repo.updates[SettingKeyOpenAIChromeUTLSEnabled])
+		require.True(t, cfg.OpenAIChromeUTLSEnabled())
+	})
 }
 
 func TestSettingService_UpdateSettings_DefaultSubscriptions_ValidGroup(t *testing.T) {

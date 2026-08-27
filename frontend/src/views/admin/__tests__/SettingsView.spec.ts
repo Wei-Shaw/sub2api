@@ -500,6 +500,7 @@ const baseSettingsResponse = {
   payment_visible_method_wxpay_source: "invalid-source",
   payment_visible_method_alipay_enabled: true,
   payment_visible_method_wxpay_enabled: true,
+  openai_chrome_utls_enabled: false,
   openai_low_upstream_rate_priority_enabled: false,
   openai_oauth_scheduling_rate_multiplier: 1,
   openai_advanced_scheduler_enabled: false,
@@ -1448,6 +1449,26 @@ describe("admin SettingsView payment visible method controls", () => {
       weightedModeText.indexOf("调度权值覆盖"),
     );
     expect(weightedModeText).toContain("计费倍率");
+  });
+
+  it("loads and submits the OpenAI Chrome TLS fingerprint switch", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const toggle = wrapper.get('[data-testid="openai-chrome-utls-toggle"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+
+    await toggle.setValue(true);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openai_chrome_utls_enabled: true,
+      }),
+    );
   });
 
   it("passes translated upload and remove labels to the payment help image uploader", async () => {

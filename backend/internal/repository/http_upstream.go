@@ -206,8 +206,15 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 		profile = service.HTTPUpstreamProfileFromContext(req.Context())
 	}
 
-	// 获取或创建对应的客户端，并标记请求占用
-	entry, err := s.acquireClientWithProfile(proxyURL, accountID, accountConcurrency, profile)
+	// 获取或创建对应的客户端，并标记请求占用。ChatGPT Codex OAuth 可按
+	// 配置切换到独立的 Chrome uTLS + HTTP/2 连接池。
+	var entry *upstreamClientEntry
+	var err error
+	if s.shouldUseOpenAIChromeUTLS(req, proxyURL, profile) {
+		entry, err = s.acquireOpenAIChromeUTLSClient(proxyURL, accountID, accountConcurrency)
+	} else {
+		entry, err = s.acquireClientWithProfile(proxyURL, accountID, accountConcurrency, profile)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -236,6 +243,96 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	})
 
 	return resp, nil
+}
+
+func (s *httpUpstreamService) shouldUseOpenAIChromeUTLS(req *http.Request, proxyURL string, profile service.HTTPUpstreamProfile) bool {
+	if s == nil || s.cfg == nil || !s.cfg.OpenAIChromeUTLSEnabled() || !s.cfg.Gateway.OpenAIHTTP2.Enabled {
+		return false
+	}
+	if profile != service.HTTPUpstreamProfileOpenAI || req == nil || req.URL == nil ||
+		!strings.EqualFold(req.URL.Scheme, "https") || !strings.EqualFold(req.URL.Hostname(), "chatgpt.com") {
+		return false
+	}
+	proxyKey, _, err := normalizeProxyURL(proxyURL)
+	if err != nil {
+		return false
+	}
+	return !s.isOpenAIHTTP2FallbackActive(proxyKey)
+}
+
+func (s *httpUpstreamService) acquireOpenAIChromeUTLSClient(proxyURL string, accountID int64, accountConcurrency int) (*upstreamClientEntry, error) {
+	return s.getOpenAIChromeUTLSClientEntry(proxyURL, accountID, accountConcurrency, true, true)
+}
+
+func (s *httpUpstreamService) getOpenAIChromeUTLSClientEntry(proxyURL string, accountID int64, accountConcurrency int, markInFlight bool, enforceLimit bool) (*upstreamClientEntry, error) {
+	isolation := s.getIsolationMode()
+	proxyKey, parsedProxy, err := normalizeProxyURL(proxyURL)
+	if err != nil {
+		return nil, err
+	}
+	settings := s.resolvePoolSettings(isolation, accountConcurrency)
+	settings = s.applyProfilePoolSettings(settings, service.HTTPUpstreamProfileOpenAI)
+	cacheKey := "openai-chrome-utls:" + buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeOpenAIH2)
+	poolKey := buildPoolKey(settings, upstreamProtocolModeOpenAIH2) + "|chrome_utls:true"
+
+	now := time.Now()
+	nowUnix := now.UnixNano()
+	s.mu.RLock()
+	if entry, ok := s.clients[cacheKey]; ok && s.shouldReuseEntry(entry, isolation, proxyKey, poolKey) {
+		atomic.StoreInt64(&entry.lastUsed, nowUnix)
+		if markInFlight {
+			atomic.AddInt64(&entry.inFlight, 1)
+		}
+		s.mu.RUnlock()
+		return entry, nil
+	}
+	s.mu.RUnlock()
+
+	s.mu.Lock()
+	if entry, ok := s.clients[cacheKey]; ok {
+		if s.shouldReuseEntry(entry, isolation, proxyKey, poolKey) {
+			atomic.StoreInt64(&entry.lastUsed, nowUnix)
+			if markInFlight {
+				atomic.AddInt64(&entry.inFlight, 1)
+			}
+			s.mu.Unlock()
+			return entry, nil
+		}
+		s.removeClientLocked(cacheKey, entry)
+	}
+
+	if enforceLimit && s.maxUpstreamClients() > 0 {
+		s.evictIdleLocked(now)
+		if len(s.clients) >= s.maxUpstreamClients() && !s.evictOldestIdleLocked() {
+			s.mu.Unlock()
+			return nil, errUpstreamClientLimitReached
+		}
+	}
+
+	transport, err := buildOpenAIChromeUTLSTransport(settings, parsedProxy)
+	if err != nil {
+		s.mu.Unlock()
+		return nil, fmt.Errorf("build OpenAI Chrome uTLS transport: %w", err)
+	}
+	client := &http.Client{Transport: transport}
+	if s.shouldValidateResolvedIP() {
+		client.CheckRedirect = s.redirectChecker
+	}
+	entry := &upstreamClientEntry{
+		client:       client,
+		proxyKey:     proxyKey,
+		poolKey:      poolKey,
+		protocolMode: upstreamProtocolModeOpenAIH2,
+	}
+	atomic.StoreInt64(&entry.lastUsed, nowUnix)
+	if markInFlight {
+		atomic.StoreInt64(&entry.inFlight, 1)
+	}
+	s.clients[cacheKey] = entry
+	s.evictIdleLocked(now)
+	s.evictOverLimitLocked()
+	s.mu.Unlock()
+	return entry, nil
 }
 
 // DoWithTLS 执行带 TLS 指纹伪装的 HTTP 请求
@@ -1352,6 +1449,98 @@ func enableOpenAIHTTP2KeepAlive(transport *http.Transport) (*http2.Transport, er
 		h2.PingTimeout = openAIHTTP2PingTimeout
 	}
 	return h2, nil
+}
+
+func buildOpenAIChromeUTLSTransport(settings poolSettings, proxyURL *url.URL) (http.RoundTripper, error) {
+	dialer := tlsfingerprint.NewChromeDialer(proxyURL, newUpstreamDialer().DialContext, defaultUpstreamTLSHandshakeTimeout)
+	h2 := &http2.Transport{
+		DialTLSContext:             dialer.DialTLSContext,
+		IdleConnTimeout:            settings.idleConnTimeout,
+		ReadIdleTimeout:            openAIHTTP2ReadIdleTimeout,
+		PingTimeout:                openAIHTTP2PingTimeout,
+		StrictMaxConcurrentStreams: true,
+	}
+	if settings.responseHeaderTimeout <= 0 {
+		return h2, nil
+	}
+	return &responseHeaderTimeoutRoundTripper{
+		base:    h2,
+		timeout: settings.responseHeaderTimeout,
+	}, nil
+}
+
+type responseHeaderTimeoutRoundTripper struct {
+	base    http.RoundTripper
+	timeout time.Duration
+}
+
+type responseHeaderRoundTripResult struct {
+	resp *http.Response
+	err  error
+}
+
+func (t *responseHeaderTimeoutRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if t == nil || t.base == nil {
+		return nil, errors.New("response header timeout transport is not configured")
+	}
+	if t.timeout <= 0 {
+		return t.base.RoundTrip(req)
+	}
+	ctx, cancel := context.WithCancel(req.Context())
+	cloned := req.Clone(ctx)
+	resultCh := make(chan responseHeaderRoundTripResult, 1)
+	go func() {
+		resp, err := t.base.RoundTrip(cloned)
+		resultCh <- responseHeaderRoundTripResult{resp: resp, err: err}
+	}()
+
+	timer := time.NewTimer(t.timeout)
+	defer timer.Stop()
+	select {
+	case result := <-resultCh:
+		if result.err != nil || result.resp == nil || result.resp.Body == nil {
+			cancel()
+			return result.resp, result.err
+		}
+		result.resp.Body = &cancelContextReadCloser{ReadCloser: result.resp.Body, cancel: cancel}
+		return result.resp, nil
+	case <-timer.C:
+		cancel()
+		go closeLateRoundTripResponse(resultCh)
+		return nil, fmt.Errorf("net/http: timeout awaiting response headers: %w", context.DeadlineExceeded)
+	case <-req.Context().Done():
+		cancel()
+		go closeLateRoundTripResponse(resultCh)
+		return nil, req.Context().Err()
+	}
+}
+
+func (t *responseHeaderTimeoutRoundTripper) CloseIdleConnections() {
+	if t == nil || t.base == nil {
+		return
+	}
+	if closer, ok := t.base.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
+}
+
+func closeLateRoundTripResponse(resultCh <-chan responseHeaderRoundTripResult) {
+	result := <-resultCh
+	if result.resp != nil && result.resp.Body != nil {
+		_ = result.resp.Body.Close()
+	}
+}
+
+type cancelContextReadCloser struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+	once   sync.Once
+}
+
+func (r *cancelContextReadCloser) Close() error {
+	err := r.ReadCloser.Close()
+	r.once.Do(r.cancel)
+	return err
 }
 
 // buildUpstreamTransportWithTLSFingerprint 构建带 TLS 指纹伪装的 Transport

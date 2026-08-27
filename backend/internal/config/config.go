@@ -103,6 +103,7 @@ type Config struct {
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
+	openAIChromeUTLSEnabled int32                         `mapstructure:"-" json:"-" yaml:"-"`
 	Plugins                 PluginConfig                  `mapstructure:"plugins"`
 }
 
@@ -810,6 +811,25 @@ func (c *Config) SetTrustForwardedIPForAPIKeyACL(enabled bool) {
 		return
 	}
 	c.SetForwardedClientIPSettings(enabled, c.ForwardedClientIPSettings().Headers)
+}
+
+// OpenAIChromeUTLSEnabled reports the DB-backed runtime switch for the
+// ChatGPT Codex OAuth Chrome ClientHello transport.
+func (c *Config) OpenAIChromeUTLSEnabled() bool {
+	return c != nil && atomic.LoadInt32(&c.openAIChromeUTLSEnabled) != 0
+}
+
+// SetOpenAIChromeUTLSEnabled updates the runtime switch without racing with
+// concurrent upstream requests.
+func (c *Config) SetOpenAIChromeUTLSEnabled(enabled bool) {
+	if c == nil {
+		return
+	}
+	var value int32
+	if enabled {
+		value = 1
+	}
+	atomic.StoreInt32(&c.openAIChromeUTLSEnabled, value)
 }
 
 type URLAllowlistConfig struct {

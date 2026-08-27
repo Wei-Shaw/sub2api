@@ -78,6 +78,21 @@ func TestUpdateSettingsGrokDefaultBaseURLModeIsWritable(t *testing.T) {
 	require.Equal(t, service.GrokDefaultBaseURLModeEUWest1, repo.values[service.SettingKeyGrokDefaultBaseURLMode])
 }
 
+func TestUpdateSettingsOpenAIChromeUTLSSwitchIsWritableAndOmissionSafe(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyOpenAIChromeUTLSEnabled: "true",
+	})
+
+	preserved := doUpdateSettings(t, h, map[string]any{"registration_enabled": true}, nil)
+	require.Equal(t, http.StatusOK, preserved.Code)
+	require.Equal(t, "true", repo.values[service.SettingKeyOpenAIChromeUTLSEnabled])
+
+	disabled := doUpdateSettings(t, h, map[string]any{"openai_chrome_utls_enabled": false}, nil)
+	require.Equal(t, http.StatusOK, disabled.Code)
+	require.Equal(t, "false", repo.values[service.SettingKeyOpenAIChromeUTLSEnabled])
+	require.Contains(t, disabled.Body.String(), `"openai_chrome_utls_enabled":false`)
+}
+
 func TestUpdateSettingsRejectsTwoCaptchaProviders(t *testing.T) {
 	h, _ := newStepUpSwitchTestHandler(t, map[string]string{
 		service.SettingKeyTurnstileEnabled:   "true",
