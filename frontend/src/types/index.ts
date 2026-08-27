@@ -1406,8 +1406,8 @@ export interface CodexUsageSnapshot {
 }
 
 export type OpenAICompactMode = 'auto' | 'force_on' | 'force_off'
-export type OpenAIResponsesMode = 'force_responses' | 'force_chat_completions'
-export type OpenAIEndpointCapability = 'chat_completions' | 'embeddings'
+export type OpenAIResponsesMode = 'force_responses' | 'force_chat_completions' | 'media_only'
+export type OpenAIEndpointCapability = 'chat_completions' | 'embeddings' | 'video_generation'
 
 export interface OpenAICompactState {
   openai_compact_mode?: OpenAICompactMode
@@ -2092,8 +2092,9 @@ export interface UsageQueryParams {
   api_key_id?: number
   user_id?: number
   account_id?: number
-  group_id?: number
-  model?: string
+	group_id?: number
+	ip_address?: string
+	model?: string
   request_type?: UsageRequestType
   stream?: boolean
   billing_type?: number | null

@@ -51,11 +51,15 @@ const (
 
 	// ResponsesSupportModeForceChatCompletions 强制使用 /v1/chat/completions。
 	ResponsesSupportModeForceChatCompletions ResponsesSupportMode = "force_chat_completions"
+
+	// ResponsesSupportModeMediaOnly marks an OpenAI API Key as a media-only
+	// account. It must not be used for text endpoint routing.
+	ResponsesSupportModeMediaOnly ResponsesSupportMode = "media_only"
 )
 
 // ExtraKeyResponsesMode 是 accounts.extra JSON 中存储手动覆盖模式的键名。
-// 值类型为 string：auto=跟随探测，force_responses=强制 Responses，
-// force_chat_completions=强制 Chat Completions。
+// 值类型为 string：force_responses=强制 Responses，
+// force_chat_completions=强制 Chat Completions，media_only=仅媒体端点。
 const ExtraKeyResponsesMode = "openai_responses_mode"
 
 // ExtraKeyResponsesSupported 是 accounts.extra JSON 中存储自动探测结果的键名。
@@ -70,6 +74,8 @@ func NormalizeResponsesSupportMode(mode string) ResponsesSupportMode {
 		return ResponsesSupportModeForceResponses
 	case ResponsesSupportModeForceChatCompletions:
 		return ResponsesSupportModeForceChatCompletions
+	case ResponsesSupportModeMediaOnly:
+		return ResponsesSupportModeMediaOnly
 	default:
 		return ""
 	}
@@ -87,7 +93,7 @@ func ResolveResponsesSupport(extra map[string]any) AccountResponsesSupport {
 		switch NormalizeResponsesSupportMode(mode) {
 		case ResponsesSupportModeForceResponses:
 			return ResponsesSupportYes
-		case ResponsesSupportModeForceChatCompletions:
+		case ResponsesSupportModeForceChatCompletions, ResponsesSupportModeMediaOnly:
 			return ResponsesSupportNo
 		}
 	}
@@ -111,11 +117,11 @@ func ShouldUseResponsesAPI(extra map[string]any) bool {
 // openai_responses_supported 仅保留作诊断信息，不参与路由。
 func ValidateExplicitResponsesMode(extra map[string]any) error {
 	if extra == nil {
-		return fmt.Errorf("openai_responses_mode must be force_responses or force_chat_completions")
+		return fmt.Errorf("openai_responses_mode must be force_responses, force_chat_completions, or media_only")
 	}
 	mode, ok := extra[ExtraKeyResponsesMode].(string)
 	if !ok || NormalizeResponsesSupportMode(mode) == "" {
-		return fmt.Errorf("openai_responses_mode must be force_responses or force_chat_completions")
+		return fmt.Errorf("openai_responses_mode must be force_responses, force_chat_completions, or media_only")
 	}
 	return nil
 }

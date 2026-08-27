@@ -1050,9 +1050,13 @@ describe('EditAccountModal', () => {
     const embeddingsCheckbox = wrapper.get<HTMLInputElement>(
       '[data-testid="openai-endpoint-capability-embeddings"]'
     )
+    const videoCheckbox = wrapper.get<HTMLInputElement>(
+      '[data-testid="openai-endpoint-capability-video_generation"]'
+    )
 
     expect(chatCheckbox.element.checked).toBe(true)
     expect(embeddingsCheckbox.element.checked).toBe(true)
+    expect(videoCheckbox.element.checked).toBe(true)
 
     await embeddingsCheckbox.setValue(false)
 
@@ -1061,15 +1065,14 @@ describe('EditAccountModal', () => {
 
     await chatCheckbox.setValue(false)
 
-    expect(chatCheckbox.element.checked).toBe(true)
+    expect(chatCheckbox.element.checked).toBe(false)
     expect(embeddingsCheckbox.element.checked).toBe(false)
+    expect(videoCheckbox.element.checked).toBe(true)
 
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_capabilities).toEqual([
-      'chat_completions'
-    ])
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_capabilities).toEqual(['video_generation'])
   })
 
   it('disables text generation protocol when only embeddings requests are accepted', async () => {

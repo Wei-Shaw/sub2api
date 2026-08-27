@@ -20,6 +20,63 @@ type openAISnapshotCacheStub struct {
 	accountsByID     map[int64]*Account
 }
 
+func TestOpenAIAccountScheduler_VideoIgnoresTextModelMapping(t *testing.T) {
+	account := &Account{
+		ID:       1,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"model_mapping":       map[string]any{"gpt-5": "gpt-5"},
+			"openai_capabilities": []any{"chat_completions", "video_generation"},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
+	}
+	scheduler := &defaultOpenAIAccountScheduler{}
+
+	compatible, reason := scheduler.isAccountRequestCompatibleReason(context.Background(), account, OpenAIAccountScheduleRequest{
+		RequestedModel:     "sora-2",
+		RequiredCapability: OpenAIEndpointCapabilityVideoGeneration,
+	})
+	require.True(t, compatible)
+	require.Empty(t, reason)
+}
+
+func TestOpenAIAccountScheduler_TextStillHonorsTextModelMapping(t *testing.T) {
+	account := &Account{
+		ID:       1,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"model_mapping":       map[string]any{"gpt-5": "gpt-5"},
+			"openai_capabilities": []any{"chat_completions", "video_generation"},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
+	}
+	scheduler := &defaultOpenAIAccountScheduler{}
+
+	compatible, reason := scheduler.isAccountRequestCompatibleReason(context.Background(), account, OpenAIAccountScheduleRequest{
+		RequestedModel:     "sora-2",
+		RequiredCapability: OpenAIEndpointCapabilityChatCompletions,
+	})
+	require.False(t, compatible)
+	require.Equal(t, "model_not_supported", reason)
+}
+
+func TestOpenAIAccountScheduler_MediaOnlyAccountDoesNotSupportText(t *testing.T) {
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra: map[string]any{
+			"openai_responses_mode": "media_only",
+		},
+		Credentials: map[string]any{
+			"openai_capabilities": []any{"chat_completions", "embeddings", "video_generation"},
+		},
+	}
+
+	require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
+	require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityEmbeddings))
+	require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityVideoGeneration))
+}
+
 type schedulerTestOpenAIAccountRepo struct {
 	AccountRepository
 	accounts []Account
@@ -422,7 +479,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabledUsesLega
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 1,
-			Priority:    5,
+			Priority:    5, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 		{
 			ID:          36002,
@@ -431,7 +488,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabledUsesLega
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 1,
-			Priority:    0,
+			Priority:    0, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 	cfg := &config.Config{}
@@ -497,7 +554,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_LoadBat
 		Concurrency: 1,
 		Credentials: map[string]any{
 			"model_mapping": map[string]any{"gpt-4o": "gpt-4o"},
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	excluded := Account{
 		ID:          36005,
@@ -505,7 +562,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_LoadBat
 		Type:        AccountTypeAPIKey,
 		Status:      StatusActive,
 		Schedulable: true,
-		Concurrency: 1,
+		Concurrency: 1, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	cfg := &config.Config{}
 	cfg.Gateway.Scheduling.LoadBatchEnabled = true
@@ -548,7 +605,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_Require
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 1,
-			Priority:    0,
+			Priority:    0, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 		{
 			ID:          36012,
@@ -559,7 +616,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_Require
 			Concurrency: 1,
 			Priority:    5,
 			Extra: map[string]any{
-				"openai_apikey_responses_websockets_v2_enabled": true,
+				"openai_apikey_responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 			},
 		},
 	}
@@ -602,7 +659,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_Require
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 1,
-			Priority:    0,
+			Priority:    0, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 	cfg := newSchedulerTestOpenAIWSV2Config()
@@ -645,7 +702,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_Embeddi
 			Priority:    0,
 			Credentials: map[string]any{
 				"openai_capabilities": []any{"chat_completions"},
-			},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 		{
 			ID:          36032,
@@ -657,7 +714,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_Embeddi
 			Priority:    5,
 			Credentials: map[string]any{
 				"openai_capabilities": []any{"chat_completions", "embeddings"},
-			},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 	cfg := &config.Config{}
@@ -697,12 +754,12 @@ func TestOpenAIGatewayService_SelectAccountForTokenCount_DoesNotAcquireGeneratio
 		{
 			ID: 36501, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
 			Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0,
-			Credentials: map[string]any{"openai_capabilities": []any{"chat_completions"}},
+			Credentials: map[string]any{"openai_capabilities": []any{"chat_completions"}}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 		{
 			ID: 36502, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
 			Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5,
-			Credentials: map[string]any{"openai_capabilities": []any{"embeddings"}},
+			Credentials: map[string]any{"openai_capabilities": []any{"embeddings"}}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 		{
 			ID: 36503, Platform: PlatformGrok, Type: AccountTypeAPIKey,
@@ -715,7 +772,7 @@ func TestOpenAIGatewayService_SelectAccountForTokenCount_DoesNotAcquireGeneratio
 			Credentials: map[string]any{
 				"openai_capabilities": []any{"chat_completions"},
 				"model_mapping":       map[string]any{"gpt-4o": "gpt-4o"},
-			},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 	svc := &OpenAIGatewayService{
@@ -764,13 +821,16 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_ResponsesCapabilityExcl
 
 	supported := Account{
 		ID: 37001, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
-		Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0,
+		Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, Extra:
+
+		// 更高优先级但探测确认不支持 Responses——若门控失效会被优先选中。
+		map[string]any{"openai_responses_mode": "force_responses"},
 	}
-	// 更高优先级但探测确认不支持 Responses——若门控失效会被优先选中。
+
 	unsupported := Account{
 		ID: 37002, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
 		Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5,
-		Extra: map[string]any{"openai_responses_supported": false},
+		Extra: map[string]any{"openai_responses_supported": false, "openai_responses_mode": "force_chat_completions"},
 	}
 
 	t.Run("生图意图仅选中支持 responses 的账号", func(t *testing.T) {
@@ -827,7 +887,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_AlphaSearchAllowsAPIKey
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 1,
-			Priority:    0,
+			Priority:    0, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 	cfg := &config.Config{}
@@ -1074,7 +1134,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NoAvailableErrorAggrega
 		Concurrency: 1,
 		Credentials: map[string]any{
 			"model_mapping": map[string]any{"gpt-4o": "gpt-4o"},
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	excluded := Account{
 		ID:          38123,
@@ -1082,7 +1142,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NoAvailableErrorAggrega
 		Type:        AccountTypeAPIKey,
 		Status:      StatusActive,
 		Schedulable: true,
-		Concurrency: 1,
+		Concurrency: 1, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	svc := &OpenAIGatewayService{
 		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{quotaPaused, mappingMiss, excluded}},
@@ -1139,7 +1199,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_EnabledUsesAdvancedPrev
 			Concurrency: 1,
 			Priority:    5,
 			Extra: map[string]any{
-				"openai_apikey_responses_websockets_v2_enabled": true,
+				"openai_apikey_responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 			},
 		},
 		{
@@ -1149,7 +1209,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_EnabledUsesAdvancedPrev
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 1,
-			Priority:    0,
+			Priority:    0, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 	cfg := &config.Config{}
@@ -1203,7 +1263,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedSessionIn
 			Schedulable: true,
 			Concurrency: 1,
 			Priority:    100,
-			GroupIDs:    []int64{groupID},
+			GroupIDs:    []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 		{
 			ID:          37102,
@@ -1213,7 +1273,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedSessionIn
 			Schedulable: true,
 			Concurrency: 1,
 			Priority:    0,
-			GroupIDs:    []int64{groupID},
+			GroupIDs:    []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 	cfg := &config.Config{}
@@ -1273,7 +1333,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedPreviousR
 			Priority:    100,
 			GroupIDs:    []int64{groupID},
 			Extra: map[string]any{
-				"openai_apikey_responses_websockets_v2_enabled": true,
+				"openai_apikey_responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 			},
 		},
 		{
@@ -1286,7 +1346,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedPreviousR
 			Priority:    0,
 			GroupIDs:    []int64{groupID},
 			Extra: map[string]any{
-				"openai_apikey_responses_websockets_v2_enabled": true,
+				"openai_apikey_responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 			},
 		},
 	}
@@ -1373,7 +1433,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseCompact
 			GroupIDs:    []int64{groupID},
 			Extra: map[string]any{
 				"openai_apikey_responses_websockets_v2_enabled": true,
-				"openai_compact_mode":                           OpenAICompactModeForceOff,
+				"openai_compact_mode":                           OpenAICompactModeForceOff, "openai_responses_mode": "force_responses",
 			},
 		},
 		{
@@ -1387,7 +1447,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseCompact
 			GroupIDs:    []int64{groupID},
 			Extra: map[string]any{
 				"openai_apikey_responses_websockets_v2_enabled": true,
-				"openai_compact_mode":                           OpenAICompactModeForceOn,
+				"openai_compact_mode":                           OpenAICompactModeForceOn, "openai_responses_mode": "force_responses",
 			},
 		},
 	}
@@ -1449,7 +1509,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_Enabled_EmbeddingsSkips
 			Priority:    0,
 			Credentials: map[string]any{
 				"openai_capabilities": []any{"chat_completions"},
-			},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 		{
 			ID:          37012,
@@ -1461,7 +1521,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_Enabled_EmbeddingsSkips
 			Priority:    5,
 			Credentials: map[string]any{
 				"openai_capabilities": []any{"chat_completions", "embeddings"},
-			},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 	cfg := &config.Config{}
@@ -1513,7 +1573,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_Enabled_EmbeddingsSkips
 				"openai_capabilities": []any{"chat_completions"},
 			},
 			Extra: map[string]any{
-				"openai_apikey_responses_websockets_v2_enabled": true,
+				"openai_apikey_responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 			},
 		},
 		{
@@ -1528,7 +1588,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_Enabled_EmbeddingsSkips
 				"openai_capabilities": []any{"chat_completions", "embeddings"},
 			},
 			Extra: map[string]any{
-				"openai_apikey_responses_websockets_v2_enabled": true,
+				"openai_apikey_responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 			},
 		},
 	}
@@ -1696,10 +1756,10 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_AutoPauseBy5hT
 		Priority:    0,
 		Extra: map[string]any{
 			"codex_5h_used_percent":   95.0,
-			"auto_pause_5h_threshold": 0.95,
+			"auto_pause_5h_threshold": 0.95, "openai_responses_mode": "force_responses",
 		},
 	}
-	secondary := Account{ID: 35002, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	secondary := Account{ID: 35002, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
 
 	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
@@ -1720,10 +1780,10 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_AllowsBelow5hT
 		Priority:    0,
 		Extra: map[string]any{
 			"codex_5h_used_percent":   80.0,
-			"auto_pause_5h_threshold": 0.95,
+			"auto_pause_5h_threshold": 0.95, "openai_responses_mode": "force_responses",
 		},
 	}
-	secondary := Account{ID: 35102, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	secondary := Account{ID: 35102, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
 
 	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
@@ -1744,10 +1804,10 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_AutoPauseBy7dT
 		Priority:    0,
 		Extra: map[string]any{
 			"codex_7d_used_percent":   95.0,
-			"auto_pause_7d_threshold": 0.95,
+			"auto_pause_7d_threshold": 0.95, "openai_responses_mode": "force_responses",
 		},
 	}
-	secondary := Account{ID: 35202, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	secondary := Account{ID: 35202, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
 
 	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
@@ -1758,8 +1818,8 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_AutoPauseBy7dT
 
 func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_UnconfiguredThresholdKeepsLegacyBehavior(t *testing.T) {
 	ctx := context.Background()
-	primary := Account{ID: 35301, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, Extra: map[string]any{"codex_5h_used_percent": 99.0, "codex_7d_used_percent": 99.0}}
-	secondary := Account{ID: 35302, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	primary := Account{ID: 35301, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, Extra: map[string]any{"codex_5h_used_percent": 99.0, "codex_7d_used_percent": 99.0, "openai_responses_mode": "force_responses"}}
+	secondary := Account{ID: 35302, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
 
 	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
@@ -1779,10 +1839,10 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_UsesGlobalDefa
 		Concurrency: 1,
 		Priority:    0,
 		Extra: map[string]any{
-			"codex_5h_used_percent": 95.0,
+			"codex_5h_used_percent": 95.0, "openai_responses_mode": "force_responses",
 		},
 	}
-	secondary := Account{ID: 35402, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	secondary := Account{ID: 35402, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
 
 	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
@@ -1809,10 +1869,10 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_PerAccountDisa
 		Priority:    0,
 		Extra: map[string]any{
 			"codex_5h_used_percent":  99.0,
-			"auto_pause_5h_disabled": true,
+			"auto_pause_5h_disabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
-	secondary := Account{ID: 35702, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	secondary := Account{ID: 35702, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
 
 	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
@@ -1836,10 +1896,10 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_PerWindowDisab
 			"codex_5h_used_percent":   99.0,
 			"codex_7d_used_percent":   99.0,
 			"auto_pause_5h_disabled":  true,
-			"auto_pause_7d_threshold": 0.95,
+			"auto_pause_7d_threshold": 0.95, "openai_responses_mode": "force_responses",
 		},
 	}
-	secondary := Account{ID: 35802, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	secondary := Account{ID: 35802, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
 
 	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
@@ -1864,10 +1924,10 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_StaleUsageWind
 		Extra: map[string]any{
 			"codex_5h_used_percent":   99.0,
 			"auto_pause_5h_threshold": 0.95,
-			"codex_5h_reset_at":       time.Now().Add(-time.Minute).Format(time.RFC3339),
+			"codex_5h_reset_at":       time.Now().Add(-time.Minute).Format(time.RFC3339), "openai_responses_mode": "force_responses",
 		},
 	}
-	secondary := Account{ID: 35502, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	secondary := Account{ID: 35502, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
 
 	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
@@ -1890,10 +1950,10 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_FreshUsageWind
 		Extra: map[string]any{
 			"codex_5h_used_percent":   99.0,
 			"auto_pause_5h_threshold": 0.95,
-			"codex_5h_reset_at":       time.Now().Add(time.Hour).Format(time.RFC3339),
+			"codex_5h_reset_at":       time.Now().Add(time.Hour).Format(time.RFC3339), "openai_responses_mode": "force_responses",
 		},
 	}
-	secondary := Account{ID: 35602, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	secondary := Account{ID: 35602, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
 
 	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
@@ -1923,10 +1983,10 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_StaleUsageSnap
 			// Window has NOT reset yet, so the reset guard stays inactive.
 			"codex_5h_reset_at": time.Now().Add(time.Hour).Format(time.RFC3339),
 			// Snapshot is stale: older than openAICodexAutoPauseStaleAfter (2h).
-			"codex_usage_updated_at": time.Now().Add(-3 * time.Hour).Format(time.RFC3339),
+			"codex_usage_updated_at": time.Now().Add(-3 * time.Hour).Format(time.RFC3339), "openai_responses_mode": "force_responses",
 		},
 	}
-	secondary := Account{ID: 35702, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	secondary := Account{ID: 35702, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
 
 	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
@@ -1953,10 +2013,10 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_FreshExhausted
 			"auto_pause_5h_threshold": 0.95,
 			"codex_5h_reset_at":       time.Now().Add(time.Hour).Format(time.RFC3339),
 			// Snapshot refreshed 1 minute ago: not stale, so the account stays paused.
-			"codex_usage_updated_at": time.Now().Add(-time.Minute).Format(time.RFC3339),
+			"codex_usage_updated_at": time.Now().Add(-time.Minute).Format(time.RFC3339), "openai_responses_mode": "force_responses",
 		},
 	}
-	secondary := Account{ID: 35802, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	secondary := Account{ID: 35802, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
 
 	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
@@ -2004,7 +2064,7 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_ModelRateLimit
 				"gpt-5.4": map[string]any{
 					"rate_limit_reset_at": resetAt,
 				},
-			},
+			}, "openai_responses_mode": "force_responses",
 		},
 	}
 	secondary := Account{
@@ -2014,7 +2074,7 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_ModelRateLimit
 		Status:      StatusActive,
 		Schedulable: true,
 		Concurrency: 1,
-		Priority:    5,
+		Priority:    5, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	svc := &OpenAIGatewayService{
 		accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}},
@@ -2092,8 +2152,8 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_DBRuntimeReche
 func TestOpenAIGatewayService_SelectAccountWithScheduler_DBFreshGroupRecheckReleasesMovedAccount(t *testing.T) {
 	ctx := context.Background()
 	groupID, otherGroupID := int64(10105), int64(10106)
-	stalePrimary := &Account{ID: 34101, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, GroupIDs: []int64{groupID}}
-	staleBackup := &Account{ID: 34102, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 10, GroupIDs: []int64{groupID}}
+	stalePrimary := &Account{ID: 34101, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, GroupIDs: []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
+	staleBackup := &Account{ID: 34102, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 10, GroupIDs: []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	dbPrimary := *stalePrimary
 	dbPrimary.GroupIDs = []int64{otherGroupID}
 	dbBackup := *staleBackup
@@ -2130,8 +2190,8 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DBFreshGroupRecheckRele
 func TestOpenAIGatewayService_SelectAccountWithLoadAwareness_DBFreshGroupRecheckWaitsOnValidAccount(t *testing.T) {
 	ctx := context.Background()
 	groupID, otherGroupID := int64(10107), int64(10108)
-	stalePrimary := &Account{ID: 34201, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, GroupIDs: []int64{groupID}}
-	staleBackup := &Account{ID: 34202, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 10, GroupIDs: []int64{groupID}}
+	stalePrimary := &Account{ID: 34201, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, GroupIDs: []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
+	staleBackup := &Account{ID: 34202, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 10, GroupIDs: []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	dbPrimary := *stalePrimary
 	dbPrimary.GroupIDs = []int64{otherGroupID}
 	dbBackup := *staleBackup
@@ -2158,7 +2218,7 @@ func TestOpenAIGatewayService_SelectAccountWithLoadAwareness_DBFreshGroupRecheck
 }
 
 func TestOpenAIGatewayService_RecheckSelectedOpenAIAccountFromDB_SimpleModeUsesFullPool(t *testing.T) {
-	grouped := Account{ID: 34301, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, GroupIDs: []int64{99}}
+	grouped := Account{ID: 34301, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, GroupIDs: []int64{99}, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	svc := &OpenAIGatewayService{
 		accountRepo:       schedulerTestOpenAIAccountRepo{accounts: []Account{grouped}},
 		cfg:               &config.Config{RunMode: config.RunModeSimple},
@@ -2195,7 +2255,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseSticky(
 		Schedulable: true,
 		Concurrency: 2,
 		Extra: map[string]any{
-			"openai_apikey_responses_websockets_v2_enabled": true,
+			"openai_apikey_responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 	cache := &schedulerTestGatewayCache{}
@@ -2299,7 +2359,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyBusyKeepsS
 			Schedulable: true,
 			Concurrency: 1,
 			Priority:    0,
-			GroupIDs:    []int64{groupID},
+			GroupIDs:    []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 		{
 			ID:          21002,
@@ -2309,7 +2369,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyBusyKeepsS
 			Schedulable: true,
 			Concurrency: 1,
 			Priority:    9,
-			GroupIDs:    []int64{groupID},
+			GroupIDs:    []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 	cache := &schedulerTestGatewayCache{
@@ -2383,7 +2443,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyEscapeByTT
 			Schedulable: true,
 			Concurrency: 1,
 			Priority:    0,
-			GroupIDs:    []int64{groupID},
+			GroupIDs:    []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 		{
 			ID:          21102,
@@ -2393,7 +2453,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyEscapeByTT
 			Schedulable: true,
 			Concurrency: 1,
 			Priority:    1,
-			GroupIDs:    []int64{groupID},
+			GroupIDs:    []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:session_hash_sticky_ttft": 21101}}
@@ -2448,8 +2508,8 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyEscapeByEr
 	ctx := context.Background()
 	groupID := int64(10102)
 	accounts := []Account{
-		{ID: 21201, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, GroupIDs: []int64{groupID}},
-		{ID: 21202, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1, GroupIDs: []int64{groupID}},
+		{ID: 21201, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, GroupIDs: []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
+		{ID: 21202, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1, GroupIDs: []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 	}
 	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:session_hash_sticky_error_rate": 21201}}
 	cfg := &config.Config{}
@@ -2498,8 +2558,8 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyBusyEscape
 	ctx := context.Background()
 	groupID := int64(10103)
 	accounts := []Account{
-		{ID: 21301, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, GroupIDs: []int64{groupID}},
-		{ID: 21302, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1, GroupIDs: []int64{groupID}},
+		{ID: 21301, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, GroupIDs: []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
+		{ID: 21302, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1, GroupIDs: []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 	}
 	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:session_hash_sticky_busy_escape": 21301}}
 	cfg := &config.Config{}
@@ -2541,8 +2601,8 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyEscapeDisa
 	ctx := context.Background()
 	groupID := int64(10104)
 	accounts := []Account{
-		{ID: 21401, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, GroupIDs: []int64{groupID}},
-		{ID: 21402, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1, GroupIDs: []int64{groupID}},
+		{ID: 21401, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, GroupIDs: []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
+		{ID: 21402, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1, GroupIDs: []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 	}
 	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:session_hash_sticky_disabled": 21401}}
 	cfg := &config.Config{}
@@ -2655,7 +2715,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SubscriptionPriorityFal
 			Schedulable: true,
 			Concurrency: 1,
 			Priority:    9,
-			GroupIDs:    []int64{groupID},
+			GroupIDs:    []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 	concurrencyCache := schedulerTestConcurrencyCache{
@@ -2708,7 +2768,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SubscriptionPriorityDis
 			Schedulable: true,
 			Concurrency: 1,
 			Priority:    0,
-			GroupIDs:    []int64{groupID},
+			GroupIDs:    []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 	concurrencyCache := schedulerTestConcurrencyCache{
@@ -2752,7 +2812,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_UsesAccountPriorityWith
 			AccountGroups: []AccountGroup{
 				{AccountID: 21631, GroupID: groupID, Priority: 100},
 			},
-			GroupIDs: []int64{groupID},
+			GroupIDs: []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 		{
 			ID:          21632,
@@ -2765,7 +2825,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_UsesAccountPriorityWith
 			AccountGroups: []AccountGroup{
 				{AccountID: 21632, GroupID: groupID, Priority: 1},
 			},
-			GroupIDs: []int64{groupID},
+			GroupIDs: []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 	cfg := newSchedulerTestSubscriptionPriorityConfig()
@@ -2792,7 +2852,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_UsesAccountPriorityWith
 
 func TestOpenAIAccountScheduler_SkipsAccountBlockedForRequestedModel(t *testing.T) {
 	now := time.Now()
-	account := &Account{ID: 21633, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{ID: 21633, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	svc := &OpenAIGatewayService{openaiModelTransient: newOpenAIAccountModelTransientState(128)}
 	svc.openaiModelTransient.recordFailure(account.ID, "gpt-5.5", now)
 	svc.openaiModelTransient.recordFailure(account.ID, "gpt-5.5", now.Add(time.Millisecond))
@@ -2916,7 +2976,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_RequiredWSV2_SkipsStick
 			Schedulable: true,
 			Concurrency: 1,
 			Priority:    0,
-			GroupIDs:    []int64{groupID},
+			GroupIDs:    []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 		{
 			ID:          2202,
@@ -2928,7 +2988,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_RequiredWSV2_SkipsStick
 			Priority:    5,
 			GroupIDs:    []int64{groupID},
 			Extra: map[string]any{
-				"openai_apikey_responses_websockets_v2_enabled": true,
+				"openai_apikey_responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 			},
 		},
 	}
@@ -2988,7 +3048,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_ClearsStickyAccountOuts
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 1,
-			Priority:    0,
+			Priority:    0, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 		{
 			ID:          2402,
@@ -3000,7 +3060,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_ClearsStickyAccountOuts
 			Priority:    5,
 			AccountGroups: []AccountGroup{
 				{AccountID: 2402, GroupID: groupID},
-			},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 	cache := &schedulerTestGatewayCache{
@@ -3089,7 +3149,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceTopKFallback
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 1,
-			Priority:    0,
+			Priority:    0, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 		{
 			ID:          3002,
@@ -3098,7 +3158,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceTopKFallback
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 1,
-			Priority:    0,
+			Priority:    0, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 		{
 			ID:          3003,
@@ -3107,7 +3167,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceTopKFallback
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 1,
-			Priority:    0,
+			Priority:    0, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 
@@ -3180,7 +3240,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceTopKExcludes
 			Priority:    0,
 			Extra: map[string]any{
 				"codex_5h_used_percent":   96.0,
-				"auto_pause_5h_threshold": 0.95,
+				"auto_pause_5h_threshold": 0.95, "openai_responses_mode": "force_responses",
 			},
 		},
 		{
@@ -3190,7 +3250,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceTopKExcludes
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 1,
-			Priority:    5,
+			Priority:    5, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 
@@ -3251,7 +3311,7 @@ func TestOpenAIGatewayService_OpenAIAccountSchedulerMetrics(t *testing.T) {
 		Status:      StatusActive,
 		Schedulable: true,
 		Concurrency: 1,
-		GroupIDs:    []int64{groupID},
+		GroupIDs:    []int64{groupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	cache := &schedulerTestGatewayCache{
 		sessionBindings: map[string]int64{
@@ -3415,7 +3475,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceDistributesA
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 3,
-			Priority:    0,
+			Priority:    0, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 		{
 			ID:          5102,
@@ -3424,7 +3484,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceDistributesA
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 3,
-			Priority:    0,
+			Priority:    0, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 		{
 			ID:          5103,
@@ -3433,7 +3493,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceDistributesA
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 3,
-			Priority:    0,
+			Priority:    0, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 	cfg := &config.Config{}
@@ -3657,7 +3717,7 @@ func TestDefaultOpenAIAccountScheduler_IsAccountTransportCompatible_Branches(t *
 		Schedulable: true,
 		Concurrency: 1,
 		Extra: map[string]any{
-			"openai_apikey_responses_websockets_v2_enabled": true,
+			"openai_apikey_responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 		},
 	}
 	require.True(t, scheduler.isAccountTransportCompatible(account, OpenAIUpstreamTransportResponsesWebsocketV2))
@@ -3691,10 +3751,13 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedFallbackS
 			Schedulable: true,
 			Concurrency: 1,
 			Priority:    10,
-			GroupIDs:    []int64{groupID},
+			GroupIDs:    []int64{groupID}, Extra: map[string]any{
+
+				// 会话粘连绑定指向的账号已被移出请求分组（绑定 TTL 内账号改组的场景）。
+				"openai_responses_mode": "force_responses"},
 		},
 		{
-			// 会话粘连绑定指向的账号已被移出请求分组（绑定 TTL 内账号改组的场景）。
+
 			ID:          38002,
 			Platform:    PlatformOpenAI,
 			Type:        AccountTypeAPIKey,
@@ -3702,7 +3765,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedFallbackS
 			Schedulable: true,
 			Concurrency: 1,
 			Priority:    0,
-			GroupIDs:    []int64{otherGroupID},
+			GroupIDs:    []int64{otherGroupID}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}
 	cfg := &config.Config{}
@@ -3779,7 +3842,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SubscriptionPriorityWai
 			Concurrency: 1,
 			Priority:    9,
 			GroupIDs:    []int64{groupID},
-			Extra:       map[string]any{"openai_compact_supported": false},
+			Extra:       map[string]any{"openai_compact_supported": false, "openai_responses_mode": "force_responses"},
 		},
 	}
 	concurrencyCache := schedulerTestConcurrencyCache{

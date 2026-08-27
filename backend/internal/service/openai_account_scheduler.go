@@ -1797,7 +1797,8 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	}) {
 		return false, "shadow_parent_unhealthy"
 	}
-	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
+	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) &&
+		req.RequiredCapability != OpenAIEndpointCapabilityVideoGeneration {
 		return false, "model_not_supported"
 	}
 	if req.GroupID != nil && s != nil && s.service != nil &&
@@ -2135,6 +2136,19 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 		return s.selectAccountWithScheduler(ctx, groupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", OpenAIImagesCapabilityBasic, false, PlatformOpenAI, false, false)
 	}
 	return selection, decision, err
+}
+
+// SelectAccountWithSchedulerForVideo selects an OpenAI account for /v1/videos.
+// Video routing is intentionally independent from the account's upstream text
+// protocol and text model_mapping.
+func (s *OpenAIGatewayService) SelectAccountWithSchedulerForVideo(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	return s.selectAccountWithScheduler(ctx, groupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, OpenAIEndpointCapabilityVideoGeneration, "", false, PlatformOpenAI, false, false)
 }
 
 // selectAccountWithScheduler wraps selectAccountWithSchedulerOnce with a

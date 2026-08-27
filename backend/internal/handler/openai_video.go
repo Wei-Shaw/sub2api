@@ -67,7 +67,8 @@ func (h *OpenAIGatewayHandler) OpenAIVideo(c *gin.Context) {
 
 	model := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	if isCreate && model == "" {
-		model = "sora-2"
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "The model field is required.")
+		return
 	}
 	if isCreate && !service.GroupAllowsVideoGeneration(apiKey.Group) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", "Video generation is not enabled for this group")
@@ -85,10 +86,7 @@ func (h *OpenAIGatewayHandler) OpenAIVideo(c *gin.Context) {
 		sessionHash = service.VideoTaskSessionHash(service.VideoTaskPlatformOpenAI, requestID, subject.UserID, apiKey.ID)
 	}
 
-	selection, _, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
-		ctx, apiKey.GroupID, "", sessionHash, model, nil,
-		service.OpenAIUpstreamTransportHTTPSSE, "", false, false, false, service.PlatformOpenAI,
-	)
+	selection, _, err := h.gatewayService.SelectAccountWithSchedulerForVideo(ctx, apiKey.GroupID, sessionHash, model, nil)
 	if err != nil || selection == nil || selection.Account == nil {
 		if errors.Is(err, service.ErrNoAvailableAccounts) {
 			markOpsRoutingCapacityLimited(c)

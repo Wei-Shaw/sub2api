@@ -195,6 +195,7 @@ func TestOpenAIGatewayServiceForward_AccountPolicyStripsExplicitImageTool(t *tes
 	c, _ := newOpenAIImageGenerationControlTestContext(true, "codex_cli_rs/0.98.0")
 	account := newOpenAIImageGenerationControlTestAccount()
 	account.Extra = map[string]any{
+		"openai_responses_mode":                          "force_responses",
 		featureKeyCodexImageGenerationExplicitToolPolicy: codexImageGenerationExplicitToolPolicyStrip,
 	}
 	body := []byte(`{
@@ -245,6 +246,7 @@ func TestOpenAIGatewayServiceForward_AccountPolicyStripsImageNamespaceTools(t *t
 			SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
 			account := newOpenAIImageGenerationControlTestAccount()
 			account.Extra = map[string]any{
+				"openai_responses_mode":                          "force_responses",
 				featureKeyCodexImageGenerationExplicitToolPolicy: codexImageGenerationExplicitToolPolicyStrip,
 				"openai_passthrough":                             tt.passthrough,
 			}
@@ -748,6 +750,6 @@ func newOpenAIImageGenerationControlTestAccount() *Account {
 		Concurrency: 1,
 		Credentials: map[string]any{
 			"api_key": "sk-test",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 }

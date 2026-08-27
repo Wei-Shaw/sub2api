@@ -3382,21 +3382,23 @@ const planTypeOptions = computed(() =>
 )
 const openAIResponsesModeOptions = computed(() => [
   { value: 'force_responses', label: t('admin.accounts.openai.responsesModeForceResponses') },
-  { value: 'force_chat_completions', label: t('admin.accounts.openai.responsesModeForceChatCompletions') }
+  { value: 'force_chat_completions', label: t('admin.accounts.openai.responsesModeForceChatCompletions') },
+  { value: 'media_only', label: t('admin.accounts.openai.responsesModeMediaOnly') }
 ])
 const openAITextEndpointCapabilityLabel = computed(() => {
   return t('admin.accounts.openai.capabilityTextGeneration')
 })
 const openAIEndpointCapabilityOptions = computed<{ value: OpenAIEndpointCapability; label: string }[]>(() => [
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
-  { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') }
+  { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') },
+  { value: 'video_generation', label: t('admin.accounts.openai.capabilityVideoGeneration') }
 ])
 const openAITextGenerationCapabilityEnabled = computed(() =>
   openAIEndpointCapabilities.value.includes('chat_completions')
 )
 
 const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[]) => {
-  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings']
+  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'video_generation']
   const selected = allowed.filter((value) => values.includes(value))
   return selected.length > 0 ? selected : allowed
 }
@@ -3406,7 +3408,7 @@ const readOpenAIEndpointCapabilities = (credentials?: Record<string, unknown>): 
   if (Array.isArray(raw)) {
     return normalizeOpenAIEndpointCapabilities(
       raw.filter((value): value is OpenAIEndpointCapability =>
-        value === 'chat_completions' || value === 'embeddings'
+        value === 'chat_completions' || value === 'embeddings' || value === 'video_generation'
       )
     )
   }
@@ -3418,7 +3420,7 @@ const readOpenAIEndpointCapabilities = (credentials?: Record<string, unknown>): 
         .filter((value) => capabilityMap[value] === true)
     )
   }
-  return ['chat_completions', 'embeddings']
+  return ['chat_completions', 'embeddings', 'video_generation']
 }
 
 const toggleOpenAIEndpointCapability = (capability: OpenAIEndpointCapability, event?: Event) => {
@@ -3448,7 +3450,7 @@ const applyOpenAIEndpointCapabilities = (credentials: Record<string, unknown>) =
   credentials.openai_capabilities = capabilities
 }
 const normalizeOpenAIResponsesMode = (mode: unknown): OpenAIResponsesMode | '' => {
-  if (mode === 'force_responses' || mode === 'force_chat_completions') {
+  if (mode === 'force_responses' || mode === 'force_chat_completions' || mode === 'media_only') {
     return mode
   }
   return ''
@@ -3462,6 +3464,9 @@ const openAIResponsesStatusKey = computed(() => {
   }
   if (openAIResponsesMode.value === 'force_chat_completions') {
     return 'admin.accounts.openai.responsesStatusForcedChatCompletions'
+  }
+  if (openAIResponsesMode.value === 'media_only') {
+    return 'admin.accounts.openai.responsesStatusMediaOnly'
   }
   return 'admin.accounts.openai.responsesStatusUnconfigured'
 })
