@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
@@ -30,6 +31,14 @@ type Profile struct {
 	KeyShareGroups      []uint16 // Empty uses [X25519]
 	PSKModes            []uint16 // Empty uses [psk_dhe_ke]
 	Extensions          []uint16 // Extension type IDs in order; empty uses default Node.js 24.x order
+
+	// RandomizeExtensionOrder, when true, shuffles the constructed extension list once per
+	// TLS connection (in buildClientHelloSpecFromProfile) instead of using a fixed order.
+	// Real rustls clients reshuffle their ClientHello extension order on every connection as
+	// an anti-fingerprinting measure; a Profile with a permanently fixed order is itself a
+	// distinguishing signal for such clients. Defaults to false so existing Profiles (e.g.
+	// the Node.js/Claude Code default) keep their current fixed-order behavior unchanged.
+	RandomizeExtensionOrder bool
 }
 
 // Dialer creates TLS connections with custom fingerprints.
@@ -391,6 +400,9 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 	if profile != nil && len(profile.Extensions) > 0 {
 		extOrder = profile.Extensions
 	}
+	if profile != nil && profile.RandomizeExtensionOrder {
+		extOrder = shuffleExtensionOrder(extOrder)
+	}
 
 	// Build extensions list from the ordered IDs.
 	// Parametric extensions (curves, sigalgs, etc.) are populated with resolved profile values.
@@ -454,6 +466,24 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 		TLSVersMax:         utls.VersionTLS13,
 		TLSVersMin:         utls.VersionTLS10,
 	}
+}
+
+// shuffleExtensionOrder returns a new slice holding a random permutation of ids. It never
+// mutates ids: buildClientHelloSpecFromProfile may be called concurrently for many new TLS
+// connections sharing the same package-level Profile, and shuffling its Extensions slice in
+// place would both race and corrupt the base order seen by other concurrent callers.
+//
+// This does not need cryptographic randomness — it exists purely to keep the outbound
+// ClientHello's extension order from being identical on every connection, mirroring the
+// anti-fingerprinting behavior real rustls clients exhibit (see
+// specs/002-codex-tls-fingerprint/research.md).
+func shuffleExtensionOrder(ids []uint16) []uint16 {
+	shuffled := make([]uint16, len(ids))
+	copy(shuffled, ids)
+	rand.Shuffle(len(shuffled), func(i, j int) {
+		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+	})
+	return shuffled
 }
 
 // toUint8s converts []uint16 to []uint8 (for utls fields that require []uint8).

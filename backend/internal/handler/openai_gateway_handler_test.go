@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -1901,6 +1902,13 @@ func (u *openAIHTTPPassthroughFailoverUpstream) Do(_ *http.Request, _ string, ac
 	}, nil
 }
 
+// DoWithTLS forwards to Do: doOpenAIUpstream now always calls DoWithTLS (nil profile for
+// these API-key test accounts degrades to Do in the real httpUpstreamService, so the fake
+// must mirror that instead of falling through to the embedded nil service.HTTPUpstream).
+func (u *openAIHTTPPassthroughFailoverUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
 func (u *openAIHTTPPassthroughFailoverUpstream) calls() []int64 {
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -1930,6 +1938,11 @@ func (u *openAIHTTPPassthroughAuthFailoverUpstream) Do(_ *http.Request, _ string
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"upstream credential rejected"}}`)),
 	}, nil
+}
+
+// DoWithTLS forwards to Do; see openAIHTTPPassthroughFailoverUpstream.DoWithTLS for why.
+func (u *openAIHTTPPassthroughAuthFailoverUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
 func (u *openAIHTTPPassthroughAuthFailoverUpstream) calls() []int64 {
@@ -1964,6 +1977,11 @@ func (u *openAIHTTPPassthroughSSERateLimitUpstream) Do(_ *http.Request, _ string
 		},
 		Body: io.NopCloser(strings.NewReader(body)),
 	}, nil
+}
+
+// DoWithTLS forwards to Do; see openAIHTTPPassthroughFailoverUpstream.DoWithTLS for why.
+func (u *openAIHTTPPassthroughSSERateLimitUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
 func (u *openAIHTTPPassthroughSSERateLimitUpstream) calls() []int64 {
