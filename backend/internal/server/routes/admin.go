@@ -20,6 +20,9 @@ func RegisterAdminRoutes(
 	settingService *service.SettingService,
 	panelRateLimiter *middleware.PanelRateLimiter,
 ) {
+	// 插件 UI 使用短时能力 URL，仅提供经过安装校验的静态资源。
+	v1.GET("/plugin-ui/:token/*path", h.Admin.Plugin.ServeUIAsset)
+
 	admin := v1.Group("/admin")
 	admin.Use(gin.HandlerFunc(adminAuth))
 	// 面板全局按用户限流（默认管理员豁免，可在系统设置中关闭豁免）
@@ -99,6 +102,9 @@ func RegisterAdminRoutes(
 
 		// TLS 指纹模板管理
 		registerTLSFingerprintProfileRoutes(admin, h)
+
+		// 本地进程插件管理
+		registerPluginRoutes(admin, h, stepUpAuth)
 
 		// API Key 管理
 		registerAdminAPIKeyRoutes(admin, h)
@@ -733,6 +739,22 @@ func registerTLSFingerprintProfileRoutes(admin *gin.RouterGroup, h *handler.Hand
 		profiles.POST("", h.Admin.TLSFingerprintProfile.Create)
 		profiles.PUT("/:id", h.Admin.TLSFingerprintProfile.Update)
 		profiles.DELETE("/:id", h.Admin.TLSFingerprintProfile.Delete)
+	}
+}
+
+func registerPluginRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
+	plugins := admin.Group("/plugins")
+	{
+		plugins.GET("", h.Admin.Plugin.List)
+		plugins.GET("/:id", h.Admin.Plugin.Get)
+		plugins.POST("/upload", gin.HandlerFunc(stepUpAuth), h.Admin.Plugin.Upload)
+		plugins.POST("/:id/enable", gin.HandlerFunc(stepUpAuth), h.Admin.Plugin.Enable)
+		plugins.POST("/:id/disable", gin.HandlerFunc(stepUpAuth), h.Admin.Plugin.Disable)
+		plugins.DELETE("/:id", gin.HandlerFunc(stepUpAuth), h.Admin.Plugin.Delete)
+		plugins.GET("/:id/config", h.Admin.Plugin.GetConfig)
+		plugins.PUT("/:id/config", gin.HandlerFunc(stepUpAuth), h.Admin.Plugin.SaveConfig)
+		plugins.POST("/:id/test", gin.HandlerFunc(stepUpAuth), h.Admin.Plugin.Test)
+		plugins.POST("/:id/ui-session", h.Admin.Plugin.CreateUISession)
 	}
 }
 

@@ -767,7 +767,7 @@
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
               ]"
             >
-              <Icon :name="opt.value === 'anthropic' ? 'sparkles' : opt.value === 'responses' ? 'terminal' : 'chat'" size="sm" />
+              <Icon :name="opt.value === 'adaptive' ? 'swap' : opt.value === 'anthropic' ? 'sparkles' : opt.value === 'responses' ? 'terminal' : 'chat'" size="sm" />
             </div>
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t(`admin.accounts.cnProviders.apiProtocol.${opt.labelKey}`) }}</span>
@@ -1480,7 +1480,7 @@
 
       <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
       <div v-if="form.type === 'apikey' && form.platform !== 'antigravity'" class="space-y-4">
-        <div>
+        <div v-if="!isCNPlatform || apiProtocol !== 'adaptive'">
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
             v-model="apiKeyBaseUrl"
@@ -1503,6 +1503,25 @@
             :current-url="apiKeyBaseUrl"
             @select="onCnPresetSelect"
           />
+        </div>
+        <div v-else>
+          <label class="input-label">{{ t('admin.accounts.cnProviders.apiProtocol.endpoints') }}</label>
+          <div class="mt-2 space-y-3">
+            <div v-for="item in cnAdaptiveProtocolOptions" :key="item.value">
+              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                {{ t(`admin.accounts.cnProviders.apiProtocol.${item.labelKey}`) }}
+              </label>
+              <input
+                v-model="adaptiveBaseUrls[item.value]"
+                type="text"
+                class="input"
+                :data-testid="`cn-adaptive-base-url-${item.value}`"
+              />
+            </div>
+          </div>
+          <p v-if="form.platform !== 'deepseek'" class="input-hint">
+            {{ t('admin.accounts.cnProviders.apiProtocol.responsesFallbackDesc') }}
+          </p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKeyRequired') }}</label>
@@ -1613,7 +1632,12 @@
 
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
-              <ModelWhitelistSelector v-model="allowedModels" :platform="form.platform" :sync-credentials="syncPreviewCredentials" />
+              <ModelWhitelistSelector
+                v-model="allowedModels"
+                :platform="form.platform"
+                :sync-credentials="syncPreviewCredentials"
+                @upstream-synced="upstreamModelsPreviewed = true"
+              />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
                 <span v-if="allowedModels.length === 0">{{
@@ -1891,7 +1915,7 @@
           </div>
         </div>
 
-        <!-- Header Override Section (anthropic/openai apikey only) -->
+        <!-- Header Override Section (eligible API-key platforms) -->
         <div
           v-if="isHeaderOverrideCapable(form.platform, 'apikey')"
           class="border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -2095,7 +2119,12 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" platform="anthropic" :sync-credentials="syncPreviewCredentials" />
+            <ModelWhitelistSelector
+              v-model="allowedModels"
+              platform="anthropic"
+              :sync-credentials="syncPreviewCredentials"
+              @upstream-synced="upstreamModelsPreviewed = true"
+            />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
@@ -2382,6 +2411,147 @@
             @update:rows="headerOverrideRows = $event"
           />
         </div>
+      </div>
+
+      <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
+      <div
+        v-if="(form.platform === 'openai' || form.platform === 'grok') && isOAuthFlow"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
+
+        <div
+          v-if="isOpenAIModelRestrictionDisabled"
+          class="mb-3 rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20"
+        >
+          <p class="text-xs text-amber-700 dark:text-amber-400">
+            {{ t('admin.accounts.openai.modelRestrictionDisabledByPassthrough') }}
+          </p>
+        </div>
+
+        <template v-else>
+          <!-- Mode Toggle -->
+          <div class="mb-4 flex gap-2">
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'whitelist'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'whitelist'
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelWhitelist') }}
+            </button>
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'mapping'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'mapping'
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelMapping') }}
+            </button>
+          </div>
+
+          <!-- Whitelist Mode -->
+          <div v-if="modelRestrictionMode === 'whitelist'">
+            <ModelWhitelistSelector
+              v-model="allowedModels"
+              :platform="form.platform"
+              :sync-credentials="syncPreviewCredentials"
+              @upstream-synced="upstreamModelsPreviewed = true"
+            />
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
+              <span v-if="allowedModels.length === 0">{{
+                t('admin.accounts.supportsAllModels')
+              }}</span>
+            </p>
+          </div>
+
+          <!-- Mapping Mode -->
+          <div v-else>
+            <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
+              <p class="text-xs text-purple-700 dark:text-purple-400">
+                {{ t('admin.accounts.mapRequestModels') }}
+              </p>
+            </div>
+
+            <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
+              <div
+                v-for="(mapping, index) in modelMappings"
+                :key="'oauth-' + getModelMappingKey(mapping)"
+                class="flex items-center gap-2"
+              >
+                <input
+                  v-model="mapping.from"
+                  type="text"
+                  class="input flex-1"
+                  :placeholder="t('admin.accounts.requestModel')"
+                />
+                <svg
+                  class="h-4 w-4 flex-shrink-0 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M14 5l7 7m0 0l-7 7m7-7H3"
+                  />
+                </svg>
+                <input
+                  v-model="mapping.to"
+                  type="text"
+                  class="input flex-1"
+                  :placeholder="t('admin.accounts.actualModel')"
+                />
+                <button
+                  type="button"
+                  @click="removeModelMapping(index)"
+                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                >
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              @click="addModelMapping"
+              class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300"
+            >
+              + {{ t('admin.accounts.addMapping') }}
+            </button>
+
+            <!-- Quick Add Buttons -->
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="preset in presetMappings"
+                :key="'oauth-' + preset.label"
+                type="button"
+                @click="addPresetMapping(preset.from, preset.to)"
+                :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+              >
+                + {{ preset.label }}
+              </button>
+            </div>
+          </div>
+        </template>
       </div>
 
       <!-- Temp Unschedulable Rules -->
@@ -3052,6 +3222,7 @@
       <!-- OpenAI WS Mode 三态（off/ctx_pool/passthrough） -->
       <div
         v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
+        data-testid="create-openai-ws-mode"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between">
@@ -3138,9 +3309,9 @@
         </div>
       </div>
 
-      <!-- OpenAI OAuth Codex 官方客户端限制开关 -->
+      <!-- OpenAI API 长上下文计费开关 -->
       <div
-        v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
+        v-if="form.platform === 'openai' && !hideAccountLongContextBilling && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -3834,17 +4005,20 @@ import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
   buildCursorCredentials,
   CURSOR_DEFAULT_CLIENT_VERSION,
+  defaultCNAdaptiveBaseUrls,
   defaultCNBaseUrl,
   isHeaderOverrideCapable,
   validateHeaderOverrideRows,
   type CnAccountMode,
   type CnApiProtocol,
+  type CnNativeApiProtocol,
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
@@ -3953,6 +4127,10 @@ const emit = defineEmits<{
 
 const appStore = useAppStore()
 
+const hideAccountLongContextBilling = computed(() => {
+  return allSelectedGroupsEnableLongContextPricing(form.group_ids, props.groups)
+})
+
 // OAuth composables
 const oauth = useAccountOAuth() // For Anthropic OAuth
 const openaiOAuth = useOpenAIOAuth() // For OpenAI OAuth
@@ -4028,7 +4206,12 @@ const cursorClientVersion = ref(CURSOR_DEFAULT_CLIENT_VERSION)
 const accountMode = ref<CnAccountMode>('payg')
 // API 协议决定转发端点与格式：cc=现有转换链，anthropic=原生直通（Claude Code），
 // responses=deepseek 原生 Responses 端点（Codex）。与账号类型正交。
-const apiProtocol = ref<CnApiProtocol>('chat_completions')
+const apiProtocol = ref<CnApiProtocol>('adaptive')
+const adaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
+  chat_completions: '',
+  anthropic: '',
+  responses: ''
+})
 const isCNPlatform = computed(
   () => form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek'
 )
@@ -4043,6 +4226,7 @@ const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek'>(() => {
 // 当前平台可选的协议档（responses 仅 deepseek）。
 const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: string }>>(() => {
   const opts: Array<{ value: CnApiProtocol; labelKey: string }> = [
+    { value: 'adaptive', labelKey: 'adaptive' },
     { value: 'chat_completions', labelKey: 'chatCompletions' },
     { value: 'anthropic', labelKey: 'anthropic' }
   ]
@@ -4051,6 +4235,18 @@ const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: strin
   }
   return opts
 })
+const cnAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol; labelKey: string }>>(() => {
+  const opts: Array<{ value: CnNativeApiProtocol; labelKey: string }> = [
+    { value: 'chat_completions', labelKey: 'chatCompletions' },
+    { value: 'anthropic', labelKey: 'anthropic' }
+  ]
+  if (form.platform === 'deepseek') opts.push({ value: 'responses', labelKey: 'responses' })
+  return opts
+})
+
+function resetAdaptiveBaseUrls(platform: 'kimi' | 'zhipu' | 'deepseek', mode: CnAccountMode) {
+  adaptiveBaseUrls.value = defaultCNAdaptiveBaseUrls(platform, mode)
+}
 // 当前选中平台的品牌色（选中卡片描边 / 图标底色），与 platformColors 取色一致。
 const cnAccentActiveClass = computed(() => {
   switch (form.platform) {
@@ -4077,24 +4273,44 @@ const cnAccentIconClass = computed(() => {
   }
 })
 // 切换国产供应商平台：强制 apikey 类型，deepseek 无 coding 套餐故锁定 payg，
-// 协议回落 chat_completions，并把 base url 重置为该平台默认端点。
+// 协议回落 adaptive，并把 base url 重置为该平台默认端点。
 function selectCNPlatform(platform: 'kimi' | 'zhipu' | 'deepseek') {
   form.platform = platform
   form.type = 'apikey'
   accountCategory.value = 'apikey'
-  apiProtocol.value = 'chat_completions'
+  apiProtocol.value = 'adaptive'
   if (platform === 'deepseek') {
     accountMode.value = 'payg'
   }
   apiKeyBaseUrl.value = defaultCNBaseUrl(platform, accountMode.value, apiProtocol.value)
+  resetAdaptiveBaseUrls(platform, accountMode.value)
 }
 // 账号类型 / 协议变更时同步默认 base url。
-watch(accountMode, (mode) => {
+watch(accountMode, (mode, previousMode) => {
   if (!isCNPlatform.value) return
+  if (apiProtocol.value === 'adaptive') {
+    const previousDefaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, previousMode)
+    const nextDefaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, mode)
+    for (const item of cnAdaptiveProtocolOptions.value) {
+      if (!adaptiveBaseUrls.value[item.value] || adaptiveBaseUrls.value[item.value] === previousDefaults[item.value]) {
+        adaptiveBaseUrls.value[item.value] = nextDefaults[item.value]
+      }
+    }
+    apiKeyBaseUrl.value = adaptiveBaseUrls.value.chat_completions
+    return
+  }
   apiKeyBaseUrl.value = defaultCNBaseUrl(form.platform, mode, apiProtocol.value)
 })
 watch(apiProtocol, (protocol) => {
   if (!isCNPlatform.value) return
+  if (protocol === 'adaptive') {
+    const defaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, accountMode.value)
+    for (const item of cnAdaptiveProtocolOptions.value) {
+      if (!adaptiveBaseUrls.value[item.value]) adaptiveBaseUrls.value[item.value] = defaults[item.value]
+    }
+    apiKeyBaseUrl.value = adaptiveBaseUrls.value.chat_completions
+    return
+  }
   apiKeyBaseUrl.value = defaultCNBaseUrl(form.platform, accountMode.value, protocol)
 })
 // 点击预设端点：同时回填 base url、账号类型与协议。
@@ -4118,11 +4334,20 @@ const syncPreviewCredentials = computed(() => {
     }
   }
   if (!apiKeyValue.value) return undefined
+  const baseUrl = isCNPlatform.value && apiProtocol.value === 'adaptive'
+    ? adaptiveBaseUrls.value.chat_completions.trim() || apiKeyBaseUrl.value.trim()
+    : apiKeyBaseUrl.value.trim()
+  const modelMapping = buildModelMappingObject(
+    modelRestrictionMode.value,
+    allowedModels.value,
+    modelMappings.value
+  )
   return {
     platform: form.platform,
     type: form.type,
-    base_url: apiKeyBaseUrl.value || undefined,
-    api_key: apiKeyValue.value
+    base_url: baseUrl || undefined,
+    api_key: apiKeyValue.value,
+    ...(modelMapping ? { model_mapping: modelMapping } : {})
   }
 })
 
@@ -4148,6 +4373,7 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+const upstreamModelsPreviewed = ref(false)
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
@@ -4642,6 +4868,7 @@ watch(
     }
     // Clear model-related settings
     allowedModels.value = []
+    upstreamModelsPreviewed.value = false
     modelMappings.value = []
     liveModelCatalog.value = []
     // Antigravity: 默认使用映射模式并填充默认映射
@@ -5042,6 +5269,23 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
     const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    const modelMapping = payload.credentials.model_mapping
+    const hasConcreteMappedTarget = payload.type === 'apikey' &&
+      typeof modelMapping === 'object' &&
+      modelMapping !== null &&
+      Object.values(modelMapping).some((target) =>
+        typeof target === 'string' && target.trim() !== '' && !target.includes('*')
+      )
+    if (upstreamModelsPreviewed.value || hasConcreteMappedTarget) {
+      try {
+        const result = await adminAPI.accounts.syncUpstreamModels(account.id)
+        if (result.warnings?.some(warning => warning.code === 'upstream_model_metadata_incomplete')) {
+          appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataIncomplete'))
+        }
+      } catch {
+        appStore.showWarning(t('admin.accounts.syncUpstreamModelsFailed'))
+      }
+    }
     if (
       payload.type === 'apikey' &&
       payload.upstream_billing_probe_enabled === true
@@ -5090,7 +5334,8 @@ const resetForm = () => {
   accountCategory.value = 'oauth-based'
   addMethod.value = 'oauth'
   accountMode.value = 'payg'
-  apiProtocol.value = 'chat_completions'
+  apiProtocol.value = 'adaptive'
+  adaptiveBaseUrls.value = { chat_completions: '', anthropic: '', responses: '' }
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
   upstreamBillingAutoProbeEnabled.value = true
@@ -5187,6 +5432,7 @@ const resetForm = () => {
   grokOAuth.resetState()
   oauthFlowRef.value?.reset()
   antigravityMixedChannelConfirmed.value = false
+  upstreamModelsPreviewed.value = false
   clearMixedChannelDialog()
 }
 
@@ -5588,10 +5834,19 @@ const handleSubmit = async () => {
   if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek') {
     credentials.account_mode = accountMode.value
     credentials.api_protocol = apiProtocol.value
+    if (apiProtocol.value === 'adaptive') {
+      const defaults = defaultCNAdaptiveBaseUrls(form.platform, accountMode.value)
+      const protocolBaseUrls: Record<string, string> = {}
+      for (const item of cnAdaptiveProtocolOptions.value) {
+        protocolBaseUrls[item.value] = (adaptiveBaseUrls.value[item.value] || defaults[item.value]).trim()
+      }
+      credentials.api_base_urls = protocolBaseUrls
+      credentials.base_url = protocolBaseUrls.chat_completions
+    }
     const resolvedCNBase = (
       apiKeyBaseUrl.value.trim() || defaultCNBaseUrl(form.platform, accountMode.value, apiProtocol.value)
     ).trim()
-    if (resolvedCNBase) {
+    if (apiProtocol.value !== 'adaptive' && resolvedCNBase) {
       credentials.base_url = resolvedCNBase
     }
   }
@@ -5627,7 +5882,7 @@ const handleSubmit = async () => {
     credentials.custom_error_codes = [...selectedErrorCodes.value]
   }
 
-  // Add header override if enabled (anthropic/openai/grok apikey)
+  // Add header override if enabled for this API-key platform
   if (isHeaderOverrideCapable(form.platform, 'apikey')) {
     if (headerOverrideEnabled.value) {
       const headerError = validateHeaderOverrideRows(headerOverrideRows.value)

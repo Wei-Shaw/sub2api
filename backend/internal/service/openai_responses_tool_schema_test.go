@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -62,6 +63,59 @@ func TestSanitizeOpenAIResponsesToolParameterTypes_MissingTypeNotInvented(t *tes
 	require.False(t, gjson.GetBytes(sanitized, "tools.0.parameters.type").Exists())
 }
 
+func TestSanitizeOpenAIResponsesToolParameterTypes_ObjectOnlyRootUnion(t *testing.T) {
+	body := []byte(`{"tools":[
+		{"type":"function","name":"automation_update","parameters":{"oneOf":[{"type":"object","properties":{"id":{"type":"string"}}},{"anyOf":[{"type":"object"},{"type":"object","properties":{}}]}]}},
+		{"type":"function","name":"codex_app__automation_update","parameters":{"anyOf":[{"type":"object"}]}},
+		{"type":"function","name":"unrelated_tool","parameters":{"oneOf":[{"type":"object"}]}}
+	]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolParameterTypes(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	for i := 0; i < 3; i++ {
+		require.Equal(t, "object", gjson.GetBytes(sanitized, "tools."+strconv.Itoa(i)+".parameters.type").String())
+	}
+	require.Equal(t, "string", gjson.GetBytes(sanitized, "tools.0.parameters.oneOf.0.properties.id.type").String())
+}
+
+func TestSanitizeOpenAIResponsesToolParameterTypes_EscapedUnionKeyword(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","name":"other","parameters":{"one\u004ff":[{"type":"object"}]}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolParameterTypes(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "object", gjson.GetBytes(sanitized, "tools.0.parameters.type").String())
+}
+
+func TestSanitizeOpenAIResponsesToolParameterTypes_ObjectUnionMissingTypeSafetyBoundary(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "mixed union", body: `{"tools":[{"type":"function","name":"automation_update","parameters":{"oneOf":[{"type":"object"},{"type":"string"}]}}]}`},
+		{name: "unproven branch", body: `{"tools":[{"type":"function","name":"automation_update","parameters":{"oneOf":[{"properties":{}}]}}]}`},
+		{name: "empty union", body: `{"tools":[{"type":"function","name":"automation_update","parameters":{"oneOf":[]}}]}`},
+		{name: "existing null handled by existing repair", body: `{"tools":[{"type":"function","name":"automation_update","parameters":{"type":null,"oneOf":[{"type":"object"}]}}]}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sanitized, changed, err := sanitizeOpenAIResponsesToolParameterTypes([]byte(tt.body))
+			require.NoError(t, err)
+			if tt.name == "existing null handled by existing repair" {
+				require.True(t, changed)
+				require.Equal(t, "object", gjson.GetBytes(sanitized, "tools.0.parameters.type").String())
+				return
+			}
+			require.False(t, changed)
+			require.Equal(t, tt.body, string(sanitized))
+		})
+	}
+}
+
 // 多轮历史：工具定义沉进 input 后，upstream 报错路径形如
 // input[N].tools[i].tools[j].parameters，两层都要修。
 func TestSanitizeOpenAIResponsesToolParameterTypes_NestedHistoryTools(t *testing.T) {
@@ -71,6 +125,7 @@ func TestSanitizeOpenAIResponsesToolParameterTypes_NestedHistoryTools(t *testing
 			{
 				"type": "additional_tools",
 				"role": "developer",
+				"parameters": {"type": null},
 				"tools": [
 					{
 						"type": "namespace",
@@ -92,6 +147,7 @@ func TestSanitizeOpenAIResponsesToolParameterTypes_NestedHistoryTools(t *testing
 	require.True(t, changed)
 	require.Equal(t, "object", gjson.GetBytes(sanitized, "input.1.tools.0.tools.1.parameters.type").String())
 	require.Equal(t, "object", gjson.GetBytes(sanitized, "input.1.tools.1.parameters.type").String())
+	require.Equal(t, "null", gjson.GetBytes(sanitized, "input.1.parameters.type").Raw)
 	// 原本合法的兄弟条目保持不变。
 	require.Equal(t, "object", gjson.GetBytes(sanitized, "input.1.tools.0.tools.0.parameters.type").String())
 	require.Equal(t, "hi", gjson.GetBytes(sanitized, "input.0.content").String())
@@ -108,6 +164,134 @@ func TestSanitizeOpenAIResponsesToolParameterTypes_ChatCompletionsShape(t *testi
 	require.True(t, changed)
 	require.Equal(t, "object", gjson.GetBytes(sanitized, "tools.0.function.parameters.type").String())
 	require.Equal(t, "legacy", gjson.GetBytes(sanitized, "tools.0.function.name").String())
+}
+
+func TestSanitizeOpenAIResponsesToolParameterTypes_InputItemShapes(t *testing.T) {
+	body := []byte(`{"input":[{"parameters":{"type":null},"name":"direct","type":"function"},{"function":{"name":"wrapped","parameters":{"type":null}},"type":"function"}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolParameterTypes(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "object", gjson.GetBytes(sanitized, "input.0.parameters.type").String())
+	require.Equal(t, "object", gjson.GetBytes(sanitized, "input.1.function.parameters.type").String())
+}
+
+func TestSanitizeOpenAIResponsesToolParameterTypes_DoesNotTreatMessagesAsTools(t *testing.T) {
+	body := []byte(`{"input":[{"type":"message","role":"user","parameters":{"type":null},"function":{"parameters":{"type":null}},"metadata":{"parameters":{"type":null}}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolParameterTypes(body)
+
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, string(body), string(sanitized))
+}
+
+func TestSanitizeOpenAIResponsesToolParameterTypes_PreservesUntouchedBytes(t *testing.T) {
+	body := []byte("{\n  \"z\":1e+999, \"integer\":900719925474099312345, \"escaped\":\"\\u003chtml\\u003e\", \"tools\":[{\"parameters\":{\"properties\":{}, \"type\" : null},\"name\":\"x\"}], \"a\":-0.00\n}")
+	want := []byte("{\n  \"z\":1e+999, \"integer\":900719925474099312345, \"escaped\":\"\\u003chtml\\u003e\", \"tools\":[{\"parameters\":{\"properties\":{}, \"type\" : \"object\"},\"name\":\"x\"}], \"a\":-0.00\n}")
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolParameterTypes(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, string(want), string(sanitized))
+}
+
+func TestSanitizeOpenAIResponsesToolParameterTypes_EscapedKey(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","parameters":{"ty\u0070e":null}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolParameterTypes(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, `{"tools":[{"type":"function","parameters":{"ty\u0070e":"object"}}]}`, string(sanitized))
+}
+
+func TestSanitizeOpenAIResponsesToolParameterTypes_DuplicateTypeIsAmbiguousNoOp(t *testing.T) {
+	for _, body := range [][]byte{
+		[]byte(`{"tools":[{"type":"function","parameters":{"type":null,"type":"string"}}]}`),
+		[]byte(`{"tools":[{"type":"function","parameters":{"type":"string","ty\u0070e":null}}]}`),
+		[]byte(`{"tools":[{"type":"function","parameters":{"type":null,"type":null}}]}`),
+	} {
+		sanitized, changed, err := sanitizeOpenAIResponsesToolParameterTypes(body)
+		require.NoError(t, err)
+		require.False(t, changed)
+		require.Equal(t, string(body), string(sanitized))
+	}
+}
+
+func TestSanitizeOpenAIResponsesToolSchemas_InvalidAndTrailingJSON(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body []byte
+		call func([]byte) ([]byte, bool, error)
+	}{
+		{"null_type_trailing", []byte(`{"tools":[{"parameters":{"type":null}}]} trailing`), sanitizeOpenAIResponsesToolParameterTypes},
+		{"pattern_trailing", []byte(`{"tools":[{"parameters":{"pattern":"(?=x)"}}]} trailing`), sanitizeOpenAIResponsesToolSchemaPatterns},
+		{"invalid_utf8", append([]byte(`{"tools":[{"parameters":{"pattern":"(?=x)"}}],"bad":"`), 0xff, '"', '}'), sanitizeOpenAIResponsesToolSchemaPatterns},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, changed, err := tc.call(tc.body)
+			require.Error(t, err)
+			require.False(t, changed)
+		})
+	}
+}
+
+func TestOpenAIResponsesToolSchemaCapabilities_PlatformBoundary(t *testing.T) {
+	tests := []struct {
+		platform         string
+		repairNullType   bool
+		removeLookaround bool
+	}{
+		{PlatformOpenAI, true, true},
+		{PlatformAnthropic, true, false},
+		{PlatformKimi, true, false},
+		{PlatformZhipu, true, false},
+		{PlatformDeepseek, true, false},
+		{PlatformGrok, false, false},
+		{PlatformGemini, false, false},
+		{PlatformAntigravity, false, false},
+		{PlatformComposite, false, false},
+		{"", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.platform, func(t *testing.T) {
+			require.Equal(t, tt.repairNullType, shouldRepairOpenAIResponsesNullToolSchemaType(tt.platform))
+			require.Equal(t, tt.removeLookaround, shouldSanitizeOpenAIResponsesToolSchemaPatterns(tt.platform))
+		})
+	}
+}
+
+func TestSanitizeOpenAIResponsesToolSchemasForPlatform_ReplayBoundary(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","parameters":{"type":null,"properties":{"query":{"type":"string","pattern":"(?=keep)"}}}}]}`)
+
+	// A malformed tool definition may be replayed after account failover. Every
+	// compatible account must repair it, while non-OpenAI providers retain their
+	// supported regex semantics.
+	for _, platform := range []string{PlatformAnthropic, PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+		t.Run(platform, func(t *testing.T) {
+			for attempt := 0; attempt < 2; attempt++ {
+				normalized, changed, err := sanitizeOpenAIResponsesToolSchemasForPlatform(body, platform)
+				require.NoError(t, err)
+				require.True(t, changed)
+				require.Equal(t, "object", gjson.GetBytes(normalized, "tools.0.parameters.type").String())
+				require.Equal(t, "(?=keep)", gjson.GetBytes(normalized, "tools.0.parameters.properties.query.pattern").String())
+			}
+		})
+	}
+
+	openAI, changed, err := sanitizeOpenAIResponsesToolSchemasForPlatform(body, PlatformOpenAI)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "object", gjson.GetBytes(openAI, "tools.0.parameters.type").String())
+	require.False(t, gjson.GetBytes(openAI, "tools.0.parameters.properties.query.pattern").Exists())
+
+	unsupported, changed, err := sanitizeOpenAIResponsesToolSchemasForPlatform(body, PlatformGrok)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, string(body), string(unsupported))
 }
 
 // 索引映射：只有坏条目被改，前后兄弟条目按原下标保持不变。
@@ -201,6 +385,175 @@ func TestSanitizeOpenAIResponsesToolParameterTypes_DoesNotMutateInputBody(t *tes
 	require.NotEqual(t, string(original), string(sanitized))
 }
 
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_RemovesLookaroundOnly(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","name":"search","parameters":{"type":"object","properties":{"q":{"type":"string","pattern":"^(?=.*foo)[a-z]+$"},"id":{"type":"string","pattern":"^[a-z]+$"},"z":{"type":"string","pattern":"(?<!bad)ok"}}}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(sanitized, "tools.0.parameters.properties.q.pattern").Exists())
+	require.False(t, gjson.GetBytes(sanitized, "tools.0.parameters.properties.z.pattern").Exists())
+	require.Equal(t, "^[a-z]+$", gjson.GetBytes(sanitized, "tools.0.parameters.properties.id.pattern").String())
+}
+
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_PreservesRawDocumentRepresentation(t *testing.T) {
+	body := []byte("{\n \"number\":1e+999,\n \"tools\":[{\"parameters\":{\"pattern\":\"(?=drop)\", \"description\":\"\\u003ctag\\u003e\", \"type\":\"string\"}}],\n \"tail\":-0.00\n}")
+	want := []byte("{\n \"number\":1e+999,\n \"tools\":[{\"parameters\":{ \"description\":\"\\u003ctag\\u003e\", \"type\":\"string\"}}],\n \"tail\":-0.00\n}")
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, string(want), string(sanitized))
+}
+
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_AllMemberPositions(t *testing.T) {
+	body := []byte(`{"tools":[{"parameters":{"properties":{"first":{"pattern":"(?=a)","type":"string"},"middle":{"title":"x","pattern":"(?!b)","type":"string"},"last":{"type":"string","pattern":"(?<=c)"},"only":{"pattern":"(?<!d)"}}}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	for _, name := range []string{"first", "middle", "last", "only"} {
+		require.False(t, gjson.GetBytes(sanitized, "tools.0.parameters.properties."+name+".pattern").Exists(), name)
+		require.True(t, gjson.GetBytes(sanitized, "tools.0.parameters.properties."+name).IsObject(), name)
+	}
+}
+
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_TraversesConservativeSchemaKeywords(t *testing.T) {
+	body := []byte(`{"input":[{"type":"function","name":"direct","parameters":{"type":"object","properties":{"p":{"anyOf":[{"pattern":"(?=any)"}],"items":{"pattern":"(?!item)"}}},"$defs":{"d":{"pattern":"(?<=def)"}},"additionalProperties":{"pattern":"(?<!additional)"}}},{"type":"function","function":{"name":"wrapped","parameters":{"oneOf":[{"pattern":"(?=wrapped)"}]}}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	for _, path := range []string{
+		"input.0.parameters.properties.p.anyOf.0.pattern",
+		"input.0.parameters.properties.p.items.pattern",
+		"input.0.parameters.$defs.d.pattern",
+		"input.0.parameters.additionalProperties.pattern",
+		"input.1.function.parameters.oneOf.0.pattern",
+	} {
+		require.False(t, gjson.GetBytes(sanitized, path).Exists(), path)
+	}
+}
+
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_DoesNotTraverseMessageMetadata(t *testing.T) {
+	body := []byte(`{"input":[{"parameters":{"pattern":"(?=missing-type)"}},{"type":"message","parameters":{"pattern":"(?=parameters)"},"function":{"parameters":{"pattern":"(?=function)"}},"metadata":{"tools":[{"type":"function","parameters":{"pattern":"(?=metadata)"}}]}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, string(body), string(sanitized))
+}
+
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_DecodesEscapedLookaround(t *testing.T) {
+	for _, pattern := range []string{`\u0028?\u003dfoo`, `(\u003f\u003dfoo)`} {
+		body := []byte(`{"tools":[{"parameters":{"type":"string","pattern":"` + pattern + `"}}]}`)
+		sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+		require.NoError(t, err)
+		require.True(t, changed)
+		require.False(t, gjson.GetBytes(sanitized, "tools.0.parameters.pattern").Exists())
+	}
+}
+
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_EscapedKey(t *testing.T) {
+	body := []byte(`{"to\u006fls":[{"par\u0061meters":{"type":"string","pat\u0074ern":"(?=drop)"}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, `{"to\u006fls":[{"par\u0061meters":{"type":"string"}}]}`, string(sanitized))
+}
+
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_DuplicateKeysStayValid(t *testing.T) {
+	for _, tc := range []struct {
+		body string
+		want string
+	}{
+		{
+			`{"tools":[{"parameters":{"pattern":"(?=drop)","pattern":"^[a-z]+$","type":"string"}}]}`,
+			`{"tools":[{"parameters":{"pattern":"^[a-z]+$","type":"string"}}]}`,
+		},
+		{
+			`{"tools":[{"parameters":{"type":"string","pattern":"(?=first)","pattern":"(?!second)"}}]}`,
+			`{"tools":[{"parameters":{"type":"string"}}]}`,
+		},
+	} {
+		sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns([]byte(tc.body))
+		require.NoError(t, err)
+		require.True(t, changed)
+		require.True(t, json.Valid(sanitized))
+		require.Equal(t, tc.want, string(sanitized))
+	}
+}
+
+func TestOpenAIResponsesToolSchemaPlatformGate_APIKeyAndOAuth(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","parameters":{"type":null,"pattern":"(?=drop)"}}]}`)
+	for _, accountType := range []string{AccountTypeAPIKey, AccountTypeOAuth} {
+		t.Run(accountType, func(t *testing.T) {
+			normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
+				Platform: PlatformOpenAI,
+				Type:     accountType,
+			}, false)
+			require.NoError(t, err)
+			require.True(t, changed)
+			require.Equal(t, "object", gjson.GetBytes(normalized, "tools.0.parameters.type").String())
+			require.False(t, gjson.GetBytes(normalized, "tools.0.parameters.pattern").Exists())
+		})
+	}
+
+	normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeAPIKey,
+	}, false)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, string(body), string(normalized))
+}
+
+func TestSanitizeOpenAIResponsesToolSchemas_DepthLimitReturnsOriginal(t *testing.T) {
+	body := []byte(`{"tools":[{"parameters":`)
+	for i := 0; i < openAIResponsesToolSchemaMaxDepth+2; i++ {
+		body = append(body, []byte(`{"allOf":[`)...)
+	}
+	body = append(body, []byte(`{"pattern":"(?=too-deep)"}`)...)
+	for i := 0; i < openAIResponsesToolSchemaMaxDepth+2; i++ {
+		body = append(body, []byte(`]}`)...)
+	}
+	body = append(body, []byte(`}]}`)...)
+	require.True(t, json.Valid(body))
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, string(body), string(sanitized))
+}
+
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_DoesNotTouchUserInputPattern(t *testing.T) {
+	body := []byte(`{"input":{"pattern":"(?=keep)"},"metadata":{"pattern":"(?!keep)"}}`)
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, string(body), string(sanitized))
+}
+
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_DoesNotTraverseInstanceData(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","parameters":{"type":"object","properties":{"config":{"type":"object","pattern":"(?=remove)","default":{"pattern":"(?=keep-default)"},"examples":[{"pattern":"(?=keep-example)"}],"const":{"pattern":"(?=keep-const)"},"enum":[{"pattern":"(?=keep-enum)"}]}}}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(sanitized, "tools.0.parameters.properties.config.pattern").Exists())
+	require.Equal(t, "(?=keep-default)", gjson.GetBytes(sanitized, "tools.0.parameters.properties.config.default.pattern").String())
+	require.Equal(t, "(?=keep-example)", gjson.GetBytes(sanitized, "tools.0.parameters.properties.config.examples.0.pattern").String())
+	require.Equal(t, "(?=keep-const)", gjson.GetBytes(sanitized, "tools.0.parameters.properties.config.const.pattern").String())
+	require.Equal(t, "(?=keep-enum)", gjson.GetBytes(sanitized, "tools.0.parameters.properties.config.enum.0.pattern").String())
+}
+
 func buildToolSchemaNullTypeBody(t *testing.T, hits int) []byte {
 	t.Helper()
 	tools := make([]any, 0, hits)
@@ -234,7 +587,9 @@ func TestSanitizeOpenAIResponsesToolParameterTypes_RewriteCountIndependentOfHits
 	})
 
 	// 命中切片扩容是对数级，留出充裕余量；线性写法在这里会是 2000 量级。
-	require.Less(t, largeAllocs, smallAllocs+40,
+	// 干净环境实测 large 约 17 allocs，200 是 10 倍余量，同时容忍 CI 慢 pod 上
+	// 包内后台 goroutine（日志/ticker）对进程级 Mallocs 的噪声污染。
+	require.Less(t, largeAllocs, 200.0,
 		"分配次数随命中数线性增长，说明退回了逐路径全量重写 (small=%v large=%v)", smallAllocs, largeAllocs)
 
 	// 同时确认大 body 的结果确实全部修好了。
@@ -246,4 +601,43 @@ func TestSanitizeOpenAIResponsesToolParameterTypes_RewriteCountIndependentOfHits
 		require.Equal(t, "object", tool.Get("parameters.type").String())
 		return true
 	})
+}
+
+func BenchmarkSanitizeOpenAIResponsesToolSchemaPatterns_ByteSpanPatch(b *testing.B) {
+	var tools []any
+	for i := 0; i < 2000; i++ {
+		tools = append(tools, map[string]any{
+			"type": "function",
+			"name": "search",
+			"parameters": map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"query": map[string]any{"type": "string", "pattern": "(?=foo).*"}},
+			},
+		})
+	}
+	body, _ := json.Marshal(map[string]any{"model": "gpt-5.6", "tools": tools})
+	b.ReportAllocs()
+	b.SetBytes(int64(len(body)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, _ = sanitizeOpenAIResponsesToolSchemaPatterns(body)
+	}
+}
+
+func BenchmarkSanitizeOpenAIResponsesToolParameterTypes_ByteSpanPatch(b *testing.B) {
+	body := make([]byte, 0, 256*2000)
+	body = append(body, []byte(`{"tools":[`)...)
+	for i := 0; i < 2000; i++ {
+		if i > 0 {
+			body = append(body, ',')
+		}
+		body = append(body, []byte(`{"type":"function","name":"automation_update","parameters":{"properties":{},"type":null}}`)...)
+	}
+	body = append(body, []byte(`]}`)...)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(body)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, _ = sanitizeOpenAIResponsesToolParameterTypes(body)
+	}
 }

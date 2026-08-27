@@ -4,6 +4,7 @@ package ent
 
 import (
 	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"strings"
 	"time"
@@ -97,10 +98,10 @@ type Group struct {
 	AudioTtsPricePerMillionChars *float64 `json:"audio_tts_price_per_million_chars,omitempty"`
 	// STT 每小时价格（USD）
 	AudioSttPricePerHour *float64 `json:"audio_stt_price_per_hour,omitempty"`
-	// 是否按上下文长度应用模型阶梯价格
+	// 是否按上下文长度应用模型阶梯价格；默认开启以保持官方/渠道长上下文价
 	LongContextPricingEnabled bool `json:"long_context_pricing_enabled,omitempty"`
 	// 分组逐模型定价；优先级高于渠道和内置定价
-	ModelPricing json.RawMessage `json:"model_pricing,omitempty"`
+	ModelPricing jsontext.Value `json:"model_pricing,omitempty"`
 	// 是否仅允许 Claude Code 客户端
 	ClaudeCodeOnly bool `json:"claude_code_only,omitempty"`
 	// 非 Claude Code 请求降级使用的分组 ID

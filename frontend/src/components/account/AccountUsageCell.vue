@@ -365,6 +365,7 @@
             label="24h"
             :title="t('admin.accounts.usageWindow.grokFreeQuota24hHint', { limit: formatCompactNumber(grokFreeTokenBar.limit) })"
             :utilization="grokFreeTokenBar.utilization"
+            :window-stats="grokFreeQuotaUsage"
             :show-now-when-idle="true"
             color="emerald"
           />
@@ -378,6 +379,7 @@
             label="7d"
             :utilization="grokWeeklyBillingBar.utilization"
             :resets-at="grokWeeklyBillingBar.resetsAt"
+            :window-stats="grokWeeklyBillingBar.windowStats"
             :show-now-when-idle="true"
             color="indigo"
           />
@@ -386,6 +388,7 @@
             label="30d"
             :utilization="grokMonthlyBillingBar.utilization"
             :resets-at="grokMonthlyBillingBar.resetsAt"
+            :window-stats="grokMonthlyBillingBar.windowStats"
             :show-now-when-idle="true"
             color="indigo"
           />
@@ -394,12 +397,16 @@
             class="flex flex-wrap items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400"
           >
             <span
+              v-if="grokPrepaidMoneyLine.showPrepaid"
               class="rounded bg-emerald-50 px-1 py-0.5 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
               :title="t('admin.accounts.usageWindow.grokPrepaid')"
             >
               {{ t('admin.accounts.usageWindow.grokPrepaid') }} ${{ grokPrepaidMoneyLine.prepaid }}
             </span>
-            <span :title="t('admin.accounts.usageWindow.grokMonthlyLimit')">
+            <span
+              v-if="grokPrepaidMoneyLine.showUsedLimit"
+              :title="t('admin.accounts.usageWindow.grokMonthlyLimit')"
+            >
               {{ t('admin.accounts.usageWindow.grokUsed') }}
               {{ grokPrepaidMoneyLine.used }}/{{ grokPrepaidMoneyLine.limit }}
             </span>
@@ -1108,9 +1115,16 @@ const geminiUsageBars = computed(() => {
 interface GrokQuotaBarInfo {
   utilization: number
   resetsAt: string | null
+  windowStats?: WindowStats | null
 }
 
 const grokBilling = computed(() => usageInfo.value?.grok_billing || null)
+const grokLocalUsage7d = computed(() => (
+  usageInfo.value?.grok_local_usage_7d || usageInfo.value?.seven_day?.window_stats || null
+))
+const grokLocalUsageMonthly = computed(() => (
+  usageInfo.value?.grok_local_usage_monthly || usageInfo.value?.thirty_day?.window_stats || null
+))
 const grokWeeklyBillingBar = computed((): GrokQuotaBarInfo | null => {
   const billing = grokBilling.value
   if (billing?.period_type?.toLowerCase() !== 'weekly' || billing.usage_percent == null) {
@@ -1118,7 +1132,8 @@ const grokWeeklyBillingBar = computed((): GrokQuotaBarInfo | null => {
   }
   return {
     utilization: Math.min(100, Math.max(0, billing.usage_percent)),
-    resetsAt: billing.period_end || null
+    resetsAt: billing.period_end || null,
+    windowStats: grokLocalUsage7d.value
   }
 })
 // Monthly used/limit % from billing probe (used_percent or derived from cents).
@@ -1142,7 +1157,8 @@ const grokMonthlyBillingBar = computed((): GrokQuotaBarInfo | null => {
   }
   return {
     utilization: Math.min(100, Math.max(0, utilization)),
-    resetsAt: billing.billing_period_end || billing.period_end || null
+    resetsAt: billing.billing_period_end || billing.period_end || null,
+    windowStats: grokLocalUsageMonthly.value
   }
 })
 const formatGrokMoney = (value?: number | null) => {
@@ -1152,30 +1168,33 @@ const formatGrokMoney = (value?: number | null) => {
   if (value >= 10) return value.toFixed(1)
   return value.toFixed(2)
 }
-// Prepaid money line for paid Grok: show when prepaid_balance is present.
-// Monthly used/limit numbers are optional context; primary progress is the 30d bar.
+// Prepaid chip only when there is a positive prepaid balance.
+// Used/limit only when monthly limit is a positive number (0 means unlimited / unset).
 const grokPrepaidMoneyLine = computed(() => {
   const billing = grokBilling.value
   if (!billing) return null
   const prepaid = billing.prepaid_balance
-  // "只针对预付": only render when prepaid field exists (including $0.00).
-  if (prepaid == null || !Number.isFinite(prepaid)) return null
+  const showPrepaid = prepaid != null && Number.isFinite(prepaid) && prepaid > 0
+  const limitRaw =
+    billing.monthly_limit != null
+      ? billing.monthly_limit
+      : billing.monthly_limit_cents != null
+        ? billing.monthly_limit_cents / 100
+        : null
+  const showUsedLimit = limitRaw != null && Number.isFinite(limitRaw) && limitRaw > 0
+  if (!showPrepaid && !showUsedLimit) return null
   const used =
     billing.monthly_used != null
       ? billing.monthly_used
       : billing.used_cents != null
         ? billing.used_cents / 100
         : 0
-  const limit =
-    billing.monthly_limit != null
-      ? billing.monthly_limit
-      : billing.monthly_limit_cents != null
-        ? billing.monthly_limit_cents / 100
-        : 0
   return {
-    prepaid: formatGrokMoney(prepaid),
-    used: formatGrokMoney(used),
-    limit: formatGrokMoney(limit)
+    showPrepaid,
+    showUsedLimit,
+    prepaid: showPrepaid ? formatGrokMoney(prepaid) : null,
+    used: showUsedLimit ? formatGrokMoney(used) : null,
+    limit: showUsedLimit ? formatGrokMoney(limitRaw) : null
   }
 })
 const grokPlanLabelIsFree = (value: string) => value.includes('free') || value.includes('basic')

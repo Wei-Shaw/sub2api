@@ -44,7 +44,7 @@ func TestChatReasoningAlias_AnthropicStreaming(t *testing.T) {
 func TestChatReasoningAlias_ResponsesSharedPaths(t *testing.T) {
 	var response ChatCompletionsResponse
 	readIssue5302Fixture(t, "nonstream_reasoning.json", &response)
-	nonStream := ChatCompletionsResponseToResponses(&response, "reasoning-model", nil, false, nil)
+	nonStream := ChatCompletionsResponseToResponses(&response, "reasoning-model", nil, nil, false, nil)
 	require.Len(t, nonStream.Output, 2)
 	require.Equal(t, "reasoning", nonStream.Output[0].Type)
 	require.Equal(t, "fallback reasoning", nonStream.Output[0].Summary[0].Text)

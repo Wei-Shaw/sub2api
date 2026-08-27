@@ -298,7 +298,7 @@ func (s *CursorGatewayService) nonStreamCursorAsResponses(
 		return nil, fmt.Errorf("cursor responses: %s", message)
 	}
 	ccResp := cursorChatCompletion("chatcmpl-cursor-"+time.Now().Format("20060102150405"), model, text, thinking, usage)
-	c.JSON(http.StatusOK, apicompat.ChatCompletionsResponseToResponses(ccResp, model, nil, false, nil))
+	c.JSON(http.StatusOK, apicompat.ChatCompletionsResponseToResponses(ccResp, model, nil, nil, false, nil))
 	return cursorForwardResult(model, false, startTime, nil, usage), nil
 }
 

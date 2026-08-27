@@ -199,3 +199,157 @@ func TestTrimOpenAIEncryptedReasoningItems_ContentNullDropsBareSkeleton(t *testi
 	_, hasInput := reqBody["input"]
 	assert.False(t, hasInput, "bare reasoning skeleton should be dropped, emptying input")
 }
+
+func TestNormalizeOpenAIAPIKeyStoreFalseReasoningReplay(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5","store":false,"input":[` +
+		`{"type":"reasoning","id":"rs_encrypted","call_id":"remove","encrypted_content":"cipher","summary":null,"opaque":9007199254740993},` +
+		`{"type":"reasoning","id":"rs_server_only","summary":[{"type":"summary_text","text":"drop"}]},` +
+		`{"type":"item_reference","id":"rs_server_only"},` +
+		`{"type":"item_reference","id":"msg_keep"},` +
+		`{"type":"message","id":"msg_keep","role":"user","content":"continue"}` +
+		`]}`)
+
+	normalized, changed, err := normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body, false)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, int64(3), gjson.GetBytes(normalized, "input.#").Int())
+	require.Equal(t, "reasoning", gjson.GetBytes(normalized, "input.0.type").String())
+	require.False(t, gjson.GetBytes(normalized, "input.0.id").Exists())
+	require.False(t, gjson.GetBytes(normalized, "input.0.call_id").Exists())
+	require.Equal(t, "cipher", gjson.GetBytes(normalized, "input.0.encrypted_content").String())
+	require.True(t, gjson.GetBytes(normalized, "input.0.summary").IsArray())
+	require.Equal(t, "9007199254740993", gjson.GetBytes(normalized, "input.0.opaque").Raw)
+	require.Equal(t, "msg_keep", gjson.GetBytes(normalized, "input.1.id").String())
+	require.Equal(t, "message", gjson.GetBytes(normalized, "input.2.type").String())
+}
+
+func TestNormalizeOpenAIAPIKeyStoreFalseReasoningReplayRequiresExplicitStoreFalse(t *testing.T) {
+	for _, body := range []string{
+		`{"input":[{"type":"reasoning","id":"rs_keep"}]}`,
+		`{"store":true,"input":[{"type":"reasoning","id":"rs_keep"}]}`,
+	} {
+		normalized, changed, err := normalizeOpenAIAPIKeyStoreFalseReasoningReplay([]byte(body), false)
+		require.NoError(t, err)
+		require.False(t, changed)
+		require.Equal(t, body, string(normalized))
+	}
+}
+
+func TestNormalizeOpenAIAPIKeyStoreFalseReasoningReplayKnownCompactMode(t *testing.T) {
+	body := []byte(`{"input":[{"type":"reasoning","id":"rs_drop","summary":[]},{"type":"message","content":"continue"}]}`)
+
+	normalized, changed, err := normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body, true)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, int64(1), gjson.GetBytes(normalized, "input.#").Int())
+	require.Equal(t, "message", gjson.GetBytes(normalized, "input.0.type").String())
+}
+
+func TestNormalizeOpenAIAPIKeyStoreFalseReasoningReplayRejectsEmptyEncryptedContent(t *testing.T) {
+	for _, encrypted := range []string{"null", `""`, `"   "`, "123"} {
+		body := []byte(`{"store":false,"input":[{"type":"reasoning","id":"rs_drop","encrypted_content":` + encrypted + `},{"type":"message","content":"continue"}]}`)
+		normalized, changed, err := normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body, false)
+		require.NoError(t, err)
+		require.True(t, changed)
+		require.Equal(t, int64(1), gjson.GetBytes(normalized, "input.#").Int())
+		require.Equal(t, "message", gjson.GetBytes(normalized, "input.0.type").String())
+	}
+}
+
+func TestNormalizeOpenAIParallelToolCallsWithoutTools(t *testing.T) {
+	withTools := []byte(`{"tools":[{"type":"function","name":"lookup"}],"parallel_tool_calls":false}`)
+	normalized, changed, err := normalizeOpenAIParallelToolCallsWithoutTools(withTools, false)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, string(withTools), string(normalized))
+
+	withoutTools := []byte(`{"input":"hi","parallel_tool_calls":true}`)
+	normalized, changed, err = normalizeOpenAIParallelToolCallsWithoutTools(withoutTools, false)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(normalized, "parallel_tool_calls").Exists())
+}
+
+func TestFilterOpenAIResponsesNoneReasoningEffortForAccount(t *testing.T) {
+	tests := []struct {
+		name          string
+		account       *Account
+		body          string
+		wantNested    bool
+		wantFlat      bool
+		wantSummary   bool
+		wantReasoning bool
+	}{
+		{
+			name:          "custom compatible endpoint strips none placeholders",
+			account:       &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"base_url": "https://compat.example/v1"}},
+			body:          `{"reasoning":{"effort":"none"},"reasoning_effort":"NONE"}`,
+			wantReasoning: false,
+		},
+		{
+			name:          "third-party platform keeps other reasoning members",
+			account:       &Account{Platform: PlatformGrok, Type: AccountTypeAPIKey},
+			body:          `{"reasoning":{"effort":" none ","summary":"auto"}}`,
+			wantSummary:   true,
+			wantReasoning: true,
+		},
+		{
+			name:          "non-none effort is unchanged",
+			account:       &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"base_url": "https://compat.example/v1"}},
+			body:          `{"reasoning":{"effort":"high"},"reasoning_effort":"low"}`,
+			wantNested:    true,
+			wantFlat:      true,
+			wantReasoning: true,
+		},
+		{
+			name:          "official OpenAI API key preserves none",
+			account:       &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+			body:          `{"reasoning":{"effort":"none"},"reasoning_effort":"none"}`,
+			wantNested:    true,
+			wantFlat:      true,
+			wantReasoning: true,
+		},
+		{
+			name:          "OpenAI OAuth preserves none",
+			account:       &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+			body:          `{"reasoning":{"effort":"none"}}`,
+			wantNested:    true,
+			wantReasoning: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := filterOpenAIResponsesNoneReasoningEffortForAccount(tt.account, []byte(tt.body))
+			require.NoError(t, err)
+			require.Equal(t, tt.wantNested, gjson.GetBytes(got, "reasoning.effort").Exists())
+			require.Equal(t, tt.wantFlat, gjson.GetBytes(got, "reasoning_effort").Exists())
+			require.Equal(t, tt.wantSummary, gjson.GetBytes(got, "reasoning.summary").Exists())
+			require.Equal(t, tt.wantReasoning, gjson.GetBytes(got, "reasoning").Exists())
+		})
+	}
+}
+
+// Lite 工具迁移到 input[].additional_tools 后，仍应按有工具请求处理。
+func TestNormalizeOpenAIParallelToolCallsWithoutTools_KeepsResponsesLiteAdditionalTools(t *testing.T) {
+	liteBody := []byte(`{"input":[{"type":"message","role":"user","content":"hi"},{"type":"additional_tools","tools":[{"type":"function","name":"spawn_agent"}]}],"parallel_tool_calls":false}`)
+	normalized, changed, err := normalizeOpenAIParallelToolCallsWithoutTools(liteBody, false)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, gjson.False, gjson.GetBytes(normalized, "parallel_tool_calls").Type)
+
+	// 非 Lite 请求的空 additional_tools 不构成有效工具声明，字段仍需删除。
+	emptyLiteBody := []byte(`{"input":[{"type":"additional_tools","tools":[]}],"parallel_tool_calls":true}`)
+	normalized, changed, err = normalizeOpenAIParallelToolCallsWithoutTools(emptyLiteBody, false)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(normalized, "parallel_tool_calls").Exists())
+
+	// Lite 请求即使没有工具，也必须保留已经固定的 false。
+	toolLessLiteBody := []byte(`{"input":"hi","parallel_tool_calls":false}`)
+	normalized, changed, err = normalizeOpenAIParallelToolCallsWithoutTools(toolLessLiteBody, true)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, gjson.False, gjson.GetBytes(normalized, "parallel_tool_calls").Type)
+}

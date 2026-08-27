@@ -30,7 +30,7 @@ const props = defineProps<{
   /** 当前已选账号类型，用于过滤和高亮匹配的预设 */
   mode?: 'payg' | 'coding'
   /** 当前已选 API 协议，用于过滤和高亮匹配的预设 */
-  protocol?: 'chat_completions' | 'anthropic' | 'responses'
+  protocol?: 'adaptive' | 'chat_completions' | 'anthropic' | 'responses'
   /** 当前输入框中的 base url，用于高亮完全匹配项 */
   currentUrl?: string
 }>()

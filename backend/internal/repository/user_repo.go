@@ -70,23 +70,30 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 
 	// 统一使用 ent 的事务：保证用户与允许分组的更新原子化，
 	// 并避免基于 *sql.Tx 手动构造 ent client 导致的 ExecQuerier 断言错误。
-	tx, err := r.client.Tx(ctx)
-	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
-		return err
-	}
-
+	//
+	// 注意：ent 的 Client.Tx 不感知上下文中的事务（只检查 driver 类型），
+	// 因此必须显式检查 TxFromContext：当调用方已开启外部事务（如注册时的
+	// “建用户 + 占用邀请码”原子事务），直接复用其 client，由调用方统一提交/回滚，
+	// 否则用户写入会落入独立事务并自行提交，导致外层事务无法回滚（孤儿用户）。
 	var txClient *dbent.Client
 	txCtx := ctx
-	if err == nil {
-		defer func() { _ = tx.Rollback() }()
-		txClient = tx.Client()
-		txCtx = dbent.NewTxContext(ctx, tx)
+	var ownedTx *dbent.Tx
+	if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
+		txClient = existingTx.Client()
 	} else {
-		// 已处于外部事务中（ErrTxStarted），复用当前事务 client 并由调用方负责提交/回滚。
-		if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
-			txClient = existingTx.Client()
-		} else {
+		tx, err := r.client.Tx(ctx)
+		switch {
+		case errors.Is(err, dbent.ErrTxStarted):
+			// r.client 本身已是事务绑定 client（client 注入式事务，如集成测试
+			// 夹具 tx.Client()）：直接复用，提交/回滚由 client 的持有方负责。
 			txClient = r.client
+		case err != nil:
+			return err
+		default:
+			ownedTx = tx
+			defer func() { _ = ownedTx.Rollback() }()
+			txClient = tx.Client()
+			txCtx = dbent.NewTxContext(ctx, tx)
 		}
 	}
 
@@ -158,8 +165,8 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 		return err
 	}
 
-	if tx != nil {
-		if err := tx.Commit(); err != nil {
+	if ownedTx != nil {
+		if err := ownedTx.Commit(); err != nil {
 			return err
 		}
 	}
@@ -1138,12 +1145,17 @@ func (r *userRepository) ExistsByEmailAlias(ctx context.Context, email string) (
 }
 
 func existsByEmailAliasWithClient(ctx context.Context, client *dbent.Client, email string) (bool, error) {
+	_, exists, err := emailAliasOwnerIDWithClient(ctx, client, email, 0)
+	return exists, err
+}
+
+func emailAliasOwnerIDWithClient(ctx context.Context, client *dbent.Client, email string, currentUserID int64) (int64, bool, error) {
 	if client == nil {
-		return false, nil
+		return 0, false, nil
 	}
 	probes := service.EmailAliasDedupProbes(email)
 	if len(probes) == 0 {
-		return false, nil
+		return 0, false, nil
 	}
 
 	preds := make([]predicate.User, 0, 2*len(probes))
@@ -1157,20 +1169,82 @@ func existsByEmailAliasWithClient(ctx context.Context, client *dbent.Client, ema
 	candidates, err := client.User.Query().
 		Where(dbuser.Or(preds...)).
 		Limit(emailAliasCandidateLimit).
-		Select(dbuser.FieldEmail).
-		Strings(ctx)
+		Select(dbuser.FieldID, dbuser.FieldEmail).
+		All(ctx)
 	if err != nil {
-		return false, err
+		return 0, false, err
 	}
 
 	// 探针会有过度匹配（点号只在 Gmail 家族无意义），最终判定必须回到完整归一化规则。
+	// 返回“其他用户”优先于当前用户，避免历史重复数据让调用方误判为仅当前用户占用。
 	identity := service.NormalizeEmailForAliasDedup(email)
+	var selfID int64
+	selfExists := false
 	for _, candidate := range candidates {
-		if service.NormalizeEmailForAliasDedup(candidate) == identity {
-			return true, nil
+		if service.NormalizeEmailForAliasDedup(candidate.Email) != identity {
+			continue
+		}
+		if candidate.ID != 0 && candidate.ID != currentUserID {
+			return candidate.ID, true, nil
+		}
+		if candidate.ID == currentUserID {
+			selfID = candidate.ID
+			selfExists = true
 		}
 	}
-	return false, nil
+	return selfID, selfExists, nil
+}
+
+// UpdateEmailWithAliasGuard 在调用方事务内更新主邮箱与密码哈希。
+//
+// 邮箱换绑不能只依赖服务层前置查重：两个并发请求可能同时看到同一收件箱未被占用。
+// 这里先按“字面邮箱 + 收件箱身份”加锁，复查是否已被其他用户占用，再执行写入；
+// PostgreSQL 使用事务级 advisory lock 跨实例互斥，测试内存库则由进程内锁兜底。
+func (r *userRepository) UpdateEmailWithAliasGuard(
+	ctx context.Context,
+	userID int64,
+	email string,
+	passwordHash string,
+) error {
+	if userID <= 0 {
+		return service.ErrUserNotFound
+	}
+	if strings.TrimSpace(email) == "" || passwordHash == "" {
+		return fmt.Errorf("email identity update requires email and password hash")
+	}
+	tx := dbent.TxFromContext(ctx)
+	if tx == nil {
+		return fmt.Errorf("email identity update requires a transaction")
+	}
+	client := tx.Client()
+
+	releaseEmailLock, err := lockRepositoryScopedKeys(
+		ctx,
+		client,
+		txAwareSQLExecutor(ctx, r.sql, r.client),
+		normalizedEmailUniquenessLockKey(email),
+		emailAliasUniquenessLockKey(email),
+	)
+	if err != nil {
+		return err
+	}
+	defer releaseEmailLock()
+
+	ownerID, exists, err := emailAliasOwnerIDWithClient(ctx, client, email, userID)
+	if err != nil {
+		return err
+	}
+	if exists && ownerID != userID {
+		return service.ErrEmailExists
+	}
+
+	if _, err := client.User.UpdateOneID(userID).
+		SetEmail(email).
+		SetPasswordHash(passwordHash).
+		Save(ctx); err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, service.ErrEmailExists)
+	}
+	return nil
 }
 
 // dotStrippedEmailExpr 渲染下面的表达式：去掉存量邮箱的大小写、首尾空白（与

@@ -602,7 +602,7 @@
         </div>
       </div>
 
-      <!-- Header Override (anthropic/openai apikey only) -->
+      <!-- Header Override (eligible API-key platforms + grok OAuth) -->
       <div v-if="allHeaderOverrideCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="flex items-center justify-between">
           <div class="flex-1 pr-4">
@@ -1599,7 +1599,7 @@ const allBillingProbeCapable = computed(() => {
   )
 })
 
-// 是否全部为 anthropic/openai 平台的 apikey 账号（请求头覆写仅在此条件下显示）
+// 是否全部为支持请求头覆写的平台/账号类型
 // 所选平台 × 所选类型的全组合均需具备覆写资格（实际选中账号是该组合的子集，
 // 按交叉积判定偏保守但绝不放行不合资格的账号）
 const allHeaderOverrideCapable = computed(() => {

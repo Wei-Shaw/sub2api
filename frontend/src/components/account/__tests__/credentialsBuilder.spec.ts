@@ -110,6 +110,13 @@ describe('isHeaderOverrideCapable', () => {
     expect(isHeaderOverrideCapable('openai', 'oauth')).toBe(false)
   })
 
+  it('kimi/zhipu/deepseek only support apikey accounts', () => {
+    for (const platform of ['kimi', 'zhipu', 'deepseek']) {
+      expect(isHeaderOverrideCapable(platform, 'apikey')).toBe(true)
+      expect(isHeaderOverrideCapable(platform, 'oauth')).toBe(false)
+    }
+  })
+
   it('grok supports both apikey and oauth accounts', () => {
     expect(isHeaderOverrideCapable('grok', 'apikey')).toBe(true)
     expect(isHeaderOverrideCapable('grok', 'oauth')).toBe(true)
@@ -559,4 +566,3 @@ describe('Cursor credentials', () => {
     expect(invalid.ok).toBe(false)
   })
 })
-

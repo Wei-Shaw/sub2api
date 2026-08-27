@@ -117,6 +117,7 @@ func clearGatewayRequestDerivedState(parsed *ParsedRequest) {
 	parsed.HasSystem = false
 	parsed.ThinkingEnabled = false
 	parsed.OutputEffort = ""
+	parsed.Speed = ""
 	parsed.MaxTokens = 0
 	parsed.systemRange = missingJSONRange()
 	parsed.messagesRange = missingJSONRange()
@@ -224,6 +225,9 @@ func parseGatewayRequestCurrentBody(parsed *ParsedRequest, protocol string) erro
 	parsed.ThinkingEnabled = thinkingType == "enabled" || thinkingType == "adaptive"
 
 	parsed.OutputEffort = strings.TrimSpace(gjson.Get(jsonStr, "output_config.effort").String())
+	if protocol == domain.PlatformAnthropic {
+		parsed.Speed = strings.ToLower(strings.TrimSpace(gjson.Get(jsonStr, "speed").String()))
+	}
 
 	maxTokensResult := gjson.Get(jsonStr, "max_tokens")
 	if maxTokensResult.Exists() && maxTokensResult.Type == gjson.Number {
@@ -282,6 +286,7 @@ type ParsedRequest struct {
 	HasSystem       bool            // 是否包含 system 字段（包含 null 也视为显式传入）
 	ThinkingEnabled bool            // 是否开启 thinking（部分平台会影响最终模型名）
 	OutputEffort    string          // output_config.effort（Claude API 的推理强度控制）
+	Speed           string          // Anthropic speed（当前可计费值为 "fast"）
 	MaxTokens       int             // max_tokens 值（用于探测请求拦截）
 	SessionContext  *SessionContext // 可选：请求上下文区分因子（nil 时行为不变）
 

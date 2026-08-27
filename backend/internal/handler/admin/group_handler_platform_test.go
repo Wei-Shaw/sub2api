@@ -71,13 +71,16 @@ func TestGroupPlatformBinding_RejectsInvalidPlatforms(t *testing.T) {
 	}
 }
 
-// 守住 composite 路由目标不放行半实现平台:CN 与 cursor 均不可作为 composite 路由目标
-// （DetectModelPlatform 无对应分支,放行即打开半实现路径）。
-func TestCompositeRouteTargetPlatform_StillExcludesCNProviders(t *testing.T) {
-	for _, platform := range []string{"kimi", "zhipu", "deepseek", "cursor"} {
+func TestCompositeRouteTargetPlatform_AllowsCNProviders(t *testing.T) {
+	for _, platform := range []string{"kimi", "zhipu", "deepseek"} {
 		var req CompositeRouteRequest
 		body := fmt.Sprintf(`{"public_model":"m","target_platform":%q}`, platform)
-		require.Error(t, bindGroupPlatformJSON(t, &req, body),
-			"composite target_platform %q 应保持被拒", platform)
+		require.NoError(t, bindGroupPlatformJSON(t, &req, body))
+		require.Equal(t, platform, req.TargetPlatform)
 	}
+}
+
+func TestCompositeRouteTargetPlatform_StillExcludesCursor(t *testing.T) {
+	var req CompositeRouteRequest
+	require.Error(t, bindGroupPlatformJSON(t, &req, `{"public_model":"m","target_platform":"cursor"}`))
 }
