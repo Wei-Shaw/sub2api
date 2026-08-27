@@ -7,33 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCreateAccountAssignsFingerprintPoolUserAgentWhenUnset 覆盖 spec User Story 1：
-// 新建 OpenAI OAuth 账号且未手填 User-Agent 时，创建流程必须从内置指纹候选池按账号 ID
-// 分配一个值并落库，取代此前"完全不写这个键、请求时才回退全局常量"的行为。
-func TestCreateAccountAssignsFingerprintPoolUserAgentWhenUnset(t *testing.T) {
-	repo := &upstreamBillingProbeAccountRepo{}
-	svc := &adminServiceImpl{accountRepo: repo}
-
-	created, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
-		Name:                 "codex-oauth-no-ua",
-		Platform:             PlatformOpenAI,
-		Type:                 AccountTypeOAuth,
-		SkipDefaultGroupBind: true,
-	})
-	require.NoError(t, err)
-
-	ua := created.GetOpenAIUserAgent()
-	require.NotEmpty(t, ua, "未手填 UA 的 OpenAI OAuth 账号创建后应被指纹池分配一个值")
-
-	candidate, ok := selectCodexFingerprint(codexFingerprintPool, created.ID)
-	require.True(t, ok)
-	require.Equal(t, buildCodexFingerprintUserAgent(candidate), ua,
-		"分配结果应等于按该账号 ID 从候选池选出的候选项拼出的 UA，保证可复现、可稳定")
-}
-
-// TestCreateAccountPreservesAdminSuppliedUserAgent 覆盖 spec User Story 1 的验收标准：
-// 管理员手填的 user_agent 优先级高于指纹池自动分配，创建流程不得覆盖它。
-func TestCreateAccountPreservesAdminSuppliedUserAgent(t *testing.T) {
+// TestCreateAccountPreservesSuppliedUserAgent 覆盖账号创建流程不主动生成/篡改
+// user_agent：管理员显式提供的值原样落库，未提供则该键不存在（不写入任何默认值，
+// 出站阶段回退全局设置 openai_codex_user_agent 或内置常量）。
+func TestCreateAccountPreservesSuppliedUserAgent(t *testing.T) {
 	repo := &upstreamBillingProbeAccountRepo{}
 	svc := &adminServiceImpl{accountRepo: repo}
 
@@ -46,11 +23,20 @@ func TestCreateAccountPreservesAdminSuppliedUserAgent(t *testing.T) {
 		Credentials:          map[string]any{"user_agent": adminUA},
 	})
 	require.NoError(t, err)
-	require.Equal(t, adminUA, created.GetOpenAIUserAgent(),
-		"管理员手填的 user_agent 不应被指纹池分配结果覆盖")
+	require.Equal(t, adminUA, created.GetOpenAIUserAgent())
+
+	withoutUA, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
+		Name:                 "codex-oauth-no-ua",
+		Platform:             PlatformOpenAI,
+		Type:                 AccountTypeOAuth,
+		SkipDefaultGroupBind: true,
+	})
+	require.NoError(t, err)
+	require.Empty(t, withoutUA.GetOpenAIUserAgent(),
+		"未手填 user_agent 时创建流程不应生成任何默认值，出站阶段统一走全局设置")
 }
 
-// TestUpdateAccountUserAgentOverrideAndClear 覆盖 spec User Story 2 的验收标准：编辑账号时
+// TestUpdateAccountUserAgentOverrideAndClear 覆盖账号编辑界面的自定义 User-Agent 覆盖：
 // 提交 user_agent 会覆盖现有值；再次提交不含该键、但含其它非敏感字段的完整 credentials
 // 会让该键被移除（MergePreservingSensitiveCreds 对非敏感键"完全由 incoming 决定"的既有语义）。
 //
@@ -86,29 +72,4 @@ func TestUpdateAccountUserAgentOverrideAndClear(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, cleared.GetOpenAIUserAgent(),
 		"提交不含 user_agent 键、但含其它非敏感字段的完整 credentials 应让该键被移除，回退到未手填状态")
-}
-
-// TestUpdateAccountDoesNotBackfillFingerprintPoolForExistingAccount 覆盖分析报告 C2、
-// spec FR-007：编辑一个本功能上线前创建的存量账号（Credentials 里没有 user_agent），
-// 只改动无关字段时，不应被意外补上指纹池分配结果——指纹池分配只发生在 CreateAccount。
-func TestUpdateAccountDoesNotBackfillFingerprintPoolForExistingAccount(t *testing.T) {
-	accountID := int64(302)
-	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
-		accountID: {
-			ID:          accountID,
-			Name:        "legacy-codex-oauth",
-			Platform:    PlatformOpenAI,
-			Type:        AccountTypeOAuth,
-			Status:      StatusActive,
-			Credentials: map[string]any{},
-		},
-	}}
-	svc := &adminServiceImpl{accountRepo: repo}
-
-	updated, err := svc.UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
-		Name: "legacy-codex-oauth-renamed",
-	})
-	require.NoError(t, err)
-	require.Empty(t, updated.GetOpenAIUserAgent(),
-		"编辑存量账号的无关字段不应触发指纹池分配")
 }
