@@ -174,6 +174,22 @@ export default {
         auditRetention: 'Audit Log Retention (days)',
         auditRetentionHint: 'Audit logs older than this are cleaned up automatically. Set to 0 to keep them forever (manual clear only).'
       },
+      ipBan: {
+        title: 'IP Bans',
+        description: 'Manage the system IP ban list. Add or remove IP addresses.',
+        address: 'IP address',
+        addressPlaceholder: 'e.g. 192.0.2.10 or 2001:db8::10',
+        add: 'Add ban',
+        createdAt: 'Added at',
+        actions: 'Actions',
+        empty: 'No banned IP addresses',
+        added: 'IP address banned',
+        addFailed: 'Failed to add IP ban',
+        loadFailed: 'Failed to load IP bans',
+        deleteConfirm: 'Remove the ban for IP {ip}?',
+        deleted: 'IP ban removed',
+        deleteFailed: 'Failed to remove IP ban'
+      },
       panelRateLimit: {
         title: 'Panel API Rate Limiting',
         description: 'Throttle panel API requests to keep high-frequency polling (usage stats, dashboard queries) from overwhelming the database',

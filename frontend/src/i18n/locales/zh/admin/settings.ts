@@ -174,6 +174,22 @@ export default {
         auditRetention: '操作日志保留天数',
         auditRetentionHint: '超过该天数的操作日志将被自动清理；填 0 表示永久保留（仅支持手动清空）。'
       },
+      ipBan: {
+        title: 'IP 封禁',
+        description: '维护系统 IP 封禁列表，支持添加和删除 IP 地址。',
+        address: 'IP 地址',
+        addressPlaceholder: '例如 192.0.2.10 或 2001:db8::10',
+        add: '添加封禁',
+        createdAt: '添加时间',
+        actions: '操作',
+        empty: '暂无封禁 IP',
+        added: 'IP 已封禁',
+        addFailed: '添加 IP 封禁失败',
+        loadFailed: '加载封禁 IP 失败',
+        deleteConfirm: '确定删除对 IP {ip} 的封禁吗？',
+        deleted: 'IP 封禁已删除',
+        deleteFailed: '删除 IP 封禁失败'
+      },
       panelRateLimit: {
         title: '面板接口限流',
         description: '限制面板 API 的请求频率，防止高频刷接口（如用量统计、仪表盘查询）打爆数据库',

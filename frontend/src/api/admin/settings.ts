@@ -11,6 +11,20 @@ import type {
   NotifyEmailEntry,
 } from "@/types";
 
+export interface IPBan {
+  id: number;
+  ip_address: string;
+  created_at: string;
+}
+
+export interface IPBanListResponse {
+  items: IPBan[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
 export interface DefaultSubscriptionSetting {
   group_id: number;
   validity_days: number;
@@ -1066,6 +1080,24 @@ export async function updateSettings(
   return data;
 }
 
+export async function listIPBans(page = 1, pageSize = 20): Promise<IPBanListResponse> {
+  const { data } = await apiClient.get<IPBanListResponse>("/admin/settings/ip-bans", {
+    params: { page, page_size: pageSize },
+  });
+  return data;
+}
+
+export async function createIPBan(ipAddress: string): Promise<IPBan> {
+  const { data } = await apiClient.post<IPBan>("/admin/settings/ip-bans", {
+    ip_address: ipAddress,
+  });
+  return data;
+}
+
+export async function deleteIPBan(id: number): Promise<void> {
+  await apiClient.delete(`/admin/settings/ip-bans/${id}`);
+}
+
 /**
  * Test SMTP connection request
  */
@@ -1559,6 +1591,9 @@ export async function resetWebSearchUsage(payload: {
 export const settingsAPI = {
   getSettings,
   updateSettings,
+  listIPBans,
+  createIPBan,
+  deleteIPBan,
   testSmtpConnection,
   sendTestEmail,
   getEmailTemplates,
