@@ -514,6 +514,8 @@ export default {
       searchUserPlaceholder: 'Search user by email...',
       searchApiKeyPlaceholder: 'Search API key by name...',
       searchAccountPlaceholder: 'Search account by name...',
+      ipAddressFilter: 'IP address',
+      searchIpAddressPlaceholder: 'Filter by IP address...',
       selectedUser: 'Selected',
       user: 'User',
       account: 'Account',
