@@ -1533,6 +1533,24 @@ export default {
           noCredit: 'No credit',
           failed: 'Auto-reset failed'
         },
+        expiryTarget: {
+          scheduleTooltip: 'Schedule this reset credit',
+          dialogTitle: 'Schedule reset credit',
+          creditExpiresAt: 'Credit expires',
+          plannedExecution: 'Planned execution',
+          leadTime: 'Use before expiry (minutes)',
+          durationMinutes: '{count} minutes',
+          durationHours: '{count} hours',
+          executeImmediately: 'The planned time has passed. Saving will run the plan immediately.',
+          savePlan: 'Save plan',
+          cancelPlan: 'Cancel plan',
+          planSaved: 'Scheduled-use plan saved',
+          planCanceled: 'Scheduled-use plan canceled',
+          scheduledAt: 'Scheduled {time}',
+          summary: 'Scheduled for {execution}; credit expires {expiry}; lead time {lead}',
+          creditUnavailable: 'This reset credit cannot be scheduled',
+          leadTimeInvalid: 'Lead time must be an integer from 5 to 10080 minutes'
+        },
         confirmTitle: 'Confirm Weekly Limit Reset',
         confirmMessage: 'This will consume 1 reset credit to immediately restore the current window ({count} remaining). This action cannot be undone. Continue?'
       },

@@ -836,6 +836,7 @@ export interface OpenAIAdditionalRateLimit {
 }
 
 export interface OpenAIRateLimitResetCreditDetail {
+  id?: string
   expires_at?: string
 }
 
@@ -913,6 +914,29 @@ export async function resetOpenAIQuota(id: number): Promise<OpenAIQuotaResetResu
     `/admin/openai/accounts/${id}/reset-quota`,
     undefined,
     { timeout: 90_000 }
+  )
+  return data
+}
+
+export interface OpenAIResetCreditExpiryTargetPayload {
+  credit_id: string
+  lead_time_minutes: number
+}
+
+export async function setOpenAIResetCreditExpiryTarget(
+  id: number,
+  payload: OpenAIResetCreditExpiryTargetPayload
+): Promise<Account> {
+  const { data } = await apiClient.put<Account>(
+    `/admin/openai/accounts/${id}/reset-credit-expiry-target`,
+    payload
+  )
+  return data
+}
+
+export async function cancelOpenAIResetCreditExpiryTarget(id: number): Promise<Account> {
+  const { data } = await apiClient.delete<Account>(
+    `/admin/openai/accounts/${id}/reset-credit-expiry-target`
   )
   return data
 }
