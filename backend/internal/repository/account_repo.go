@@ -2629,6 +2629,50 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 	return nil
 }
 
+func (r *accountRepository) CompareAndSwapExtra(ctx context.Context, id int64, key string, expected any, updates map[string]any) (bool, error) {
+	updates = stripCodexFingerprintSeedFromExtraUpdate(updates)
+	if strings.TrimSpace(key) == "" || len(updates) == 0 {
+		return false, nil
+	}
+	payload, err := json.Marshal(updates)
+	if err != nil {
+		return false, err
+	}
+	expectedPayload, err := json.Marshal(expected)
+	if err != nil {
+		return false, err
+	}
+	result, err := r.sql.ExecContext(ctx, `
+		UPDATE accounts
+		SET extra = COALESCE(extra, '{}'::jsonb) || $1::jsonb,
+			updated_at = NOW()
+		WHERE id = $2
+			AND deleted_at IS NULL
+			AND COALESCE(extra -> $3::text, 'null'::jsonb) = $4::jsonb
+	`, string(payload), id, key, string(expectedPayload))
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
+		exists, err := r.ExistsByID(ctx, id)
+		if err != nil {
+			return false, err
+		}
+		if !exists {
+			return false, service.ErrAccountNotFound
+		}
+		return false, nil
+	}
+	if dbent.TxFromContext(ctx) == nil {
+		r.syncSchedulerAccountSnapshot(ctx, id)
+	}
+	return true, nil
+}
+
 // UpdateUpstreamBillingProbeSnapshot stores a probe result only while the
 // network identity used by that probe is still current.
 func (r *accountRepository) UpdateUpstreamBillingProbeSnapshot(

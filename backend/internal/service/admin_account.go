@@ -662,6 +662,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			OllamaCloudUsageAutoRefreshExtraKey,
 			OllamaCloudUsageSnapshotExtraKey,
 			OpenAIAutoResetCreditStateExtraKey,
+			OpenAIAutoResetCreditExpiryTargetExtraKey,
 		} {
 			if v, ok := account.Extra[key]; ok {
 				normalizedExtra[key] = v

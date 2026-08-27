@@ -11,10 +11,11 @@ import (
 )
 
 const (
-	OpenAIAutoResetCreditEnabledExtraKey     = "auto_reset_credit_enabled"
-	OpenAIAutoResetCredit5hThresholdExtraKey = "auto_reset_credit_5h_threshold"
-	OpenAIAutoResetCredit7dThresholdExtraKey = "auto_reset_credit_7d_threshold"
-	OpenAIAutoResetCreditStateExtraKey       = "codex_auto_reset_credit_state"
+	OpenAIAutoResetCreditEnabledExtraKey      = "auto_reset_credit_enabled"
+	OpenAIAutoResetCredit5hThresholdExtraKey  = "auto_reset_credit_5h_threshold"
+	OpenAIAutoResetCredit7dThresholdExtraKey  = "auto_reset_credit_7d_threshold"
+	OpenAIAutoResetCreditStateExtraKey        = "codex_auto_reset_credit_state"
+	OpenAIAutoResetCreditExpiryTargetExtraKey = "auto_reset_credit_expiry_target"
 
 	openAIAutoResetCreditDefaultThreshold = 1.0
 	openAIAutoResetCreditMinimumThreshold = 0.001
@@ -60,6 +61,7 @@ func normalizeOpenAIAutoResetCreditExtra(platform, accountType string, isShadow 
 	}
 	normalized := cloneOpenAIAutoResetExtra(extra)
 	delete(normalized, OpenAIAutoResetCreditStateExtraKey)
+	delete(normalized, OpenAIAutoResetCreditExpiryTargetExtraKey)
 
 	_, hasEnabled := normalized[OpenAIAutoResetCreditEnabledExtraKey]
 	_, has5h := normalized[OpenAIAutoResetCredit5hThresholdExtraKey]
@@ -103,6 +105,7 @@ func stripOpenAIAutoResetCreditManagedExtra(extra map[string]any, stripConfig bo
 		return nil
 	}
 	delete(extra, OpenAIAutoResetCreditStateExtraKey)
+	delete(extra, OpenAIAutoResetCreditExpiryTargetExtraKey)
 	if stripConfig {
 		delete(extra, OpenAIAutoResetCreditEnabledExtraKey)
 		delete(extra, OpenAIAutoResetCredit5hThresholdExtraKey)

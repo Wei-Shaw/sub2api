@@ -18,16 +18,22 @@ import (
 
 // OpenAIOAuthHandler handles OpenAI OAuth-related operations
 type OpenAIOAuthHandler struct {
-	openaiOAuthService *service.OpenAIOAuthService
-	adminService       service.AdminService
-	quotaService       openAIQuotaService
-	rateLimitService   openAIAccountStateRecoverer
+	openaiOAuthService  *service.OpenAIOAuthService
+	adminService        service.AdminService
+	quotaService        openAIQuotaService
+	expiryTargetService openAIResetCreditExpiryTargetService
+	rateLimitService    openAIAccountStateRecoverer
 }
 
 type openAIQuotaService interface {
 	QueryUsage(ctx context.Context, accountID int64) (*service.OpenAIQuotaUsage, error)
 	CacheResetCreditsSnapshot(ctx context.Context, accountID int64, credits *service.OpenAIRateLimitResetCredits) error
 	ResetCredit(ctx context.Context, accountID int64) (*service.OpenAIQuotaResetResult, error)
+}
+
+type openAIResetCreditExpiryTargetService interface {
+	SetResetCreditExpiryTarget(ctx context.Context, accountID int64, creditID string, leadTimeMinutes int) (*service.Account, error)
+	CancelResetCreditExpiryTarget(ctx context.Context, accountID int64) (*service.Account, error)
 }
 
 type openAIAccountStateRecoverer interface {
@@ -91,11 +97,64 @@ func NewOpenAIOAuthHandler(
 	// `== nil` capability guards below and panic instead of returning 400.
 	if quotaService != nil {
 		h.quotaService = quotaService
+		h.expiryTargetService = quotaService
 	}
 	if rateLimitService != nil {
 		h.rateLimitService = rateLimitService
 	}
 	return h
+}
+
+// SetResetCreditExpiryTarget creates or updates the single-card expiry plan.
+// PUT /api/v1/admin/openai/accounts/:id/reset-credit-expiry-target
+func (h *OpenAIOAuthHandler) SetResetCreditExpiryTarget(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h.expiryTargetService == nil {
+		response.BadRequest(c, "openai quota service is not enabled")
+		return
+	}
+	var req struct {
+		CreditID        string `json:"credit_id"`
+		LeadTimeMinutes *int   `json:"lead_time_minutes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	leadTimeMinutes := service.OpenAIResetCreditExpiryTargetDefaultLeadTimeMinutes
+	if req.LeadTimeMinutes != nil {
+		leadTimeMinutes = *req.LeadTimeMinutes
+	}
+	account, err := h.expiryTargetService.SetResetCreditExpiryTarget(c.Request.Context(), accountID, req.CreditID, leadTimeMinutes)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.AccountFromService(account))
+}
+
+// CancelResetCreditExpiryTarget cancels the current single-card expiry plan.
+// DELETE /api/v1/admin/openai/accounts/:id/reset-credit-expiry-target
+func (h *OpenAIOAuthHandler) CancelResetCreditExpiryTarget(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h.expiryTargetService == nil {
+		response.BadRequest(c, "openai quota service is not enabled")
+		return
+	}
+	account, err := h.expiryTargetService.CancelResetCreditExpiryTarget(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.AccountFromService(account))
 }
 
 // OpenAIGenerateAuthURLRequest represents the request for generating OpenAI auth URL
