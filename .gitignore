@@ -125,7 +125,7 @@ scripts
 !backend/scripts/
 !backend/scripts/resolve-version.sh
 .code-review-state
-#openspec/
+/openspec/
 code-reviews/
 AGENTS.md
 backend/cmd/server/server
@@ -140,7 +140,6 @@ docs/*
 !docs/BATCH_IMAGE_MVP.md
 !docs/COMPOSITE_GROUPS.md
 !docs/PLUGIN_DEVELOPMENT.md
-!docs/channel-monitor-v2-safe-defaults.md
 !docs/legal/
 !docs/legal/*.md
 !docs/screenshots/
