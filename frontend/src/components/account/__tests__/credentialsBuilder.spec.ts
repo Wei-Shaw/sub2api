@@ -3,6 +3,7 @@ import {
   ANTIGRAVITY_PROJECT_ID_CREDENTIAL_KEY,
   HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY,
   HEADER_OVERRIDES_CREDENTIAL_KEY,
+  applyAccountTemperaturePolicy,
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
@@ -14,11 +15,66 @@ import {
   GROK_BASE_URL_PRESETS,
   parseHeaderOverridesJson,
   planTypeDisplayLabel,
+  readAccountTemperaturePolicy,
   readPlanType,
   serializeHeaderOverrideRows,
   splitHeaderOverridesObject,
   validateHeaderOverrideRows
 } from '../credentialsBuilder'
+
+describe('account temperature policy helpers', () => {
+  it('defaults missing or invalid stored policy to inherit', () => {
+    expect(readAccountTemperaturePolicy()).toEqual({ mode: 'inherit', temperature: null })
+    expect(readAccountTemperaturePolicy({ temperature_mode: 'unknown', temperature: 0.8 })).toEqual({
+      mode: 'inherit',
+      temperature: null
+    })
+  })
+
+  it('reads override temperature including zero', () => {
+    expect(readAccountTemperaturePolicy({ temperature_mode: 'override', temperature: 0 })).toEqual({
+      mode: 'override',
+      temperature: 0
+    })
+  })
+
+  it('writes inherit and omit without retaining a stale temperature', () => {
+    const inheritCredentials: Record<string, unknown> = { api_key: 'sk', temperature: 0.7 }
+    expect(applyAccountTemperaturePolicy(inheritCredentials, 'inherit', null)).toBe(true)
+    expect(inheritCredentials).toEqual({ api_key: 'sk', temperature_mode: 'inherit' })
+
+    const omitCredentials: Record<string, unknown> = { api_key: 'sk', temperature: 0.7 }
+    expect(applyAccountTemperaturePolicy(omitCredentials, 'omit', null)).toBe(true)
+    expect(omitCredentials).toEqual({ api_key: 'sk', temperature_mode: 'omit' })
+  })
+
+  it('writes a finite override temperature including zero', () => {
+    const credentials: Record<string, unknown> = { api_key: 'sk' }
+    expect(applyAccountTemperaturePolicy(credentials, 'override', 0)).toBe(true)
+    expect(credentials).toEqual({
+      api_key: 'sk',
+      temperature_mode: 'override',
+      temperature: 0
+    })
+  })
+
+  it('rejects a missing or non-finite override without mutating credentials', () => {
+    for (const temperature of [null, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const credentials: Record<string, unknown> = { api_key: 'sk' }
+      expect(applyAccountTemperaturePolicy(credentials, 'override', temperature)).toBe(false)
+      expect(credentials).toEqual({ api_key: 'sk' })
+    }
+  })
+
+  it('leaves credentials untouched in bulk unchanged mode', () => {
+    const credentials: Record<string, unknown> = {
+      temperature_mode: 'override',
+      temperature: 0.4
+    }
+    expect(applyAccountTemperaturePolicy(credentials, 'unchanged', null)).toBe(true)
+    expect(credentials).toEqual({ temperature_mode: 'override', temperature: 0.4 })
+  })
+})
 
 describe('applyInterceptWarmup', () => {
   it('create + enabled=true: should set intercept_warmup_requests to true', () => {

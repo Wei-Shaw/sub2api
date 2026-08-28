@@ -324,6 +324,32 @@ function mountModal(account = buildAccount()) {
 }
 
 describe('EditAccountModal', () => {
+  it('loads and updates the stored account temperature policy', async () => {
+    const account = buildAccount()
+    account.credentials.temperature_mode = 'override'
+    account.credentials.temperature = 0.4
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    expect(wrapper.get<HTMLInputElement>('[data-testid="temperature-value"]').element.value).toBe(
+      '0.4'
+    )
+
+    await wrapper.get('[data-testid="temperature-mode-omit"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+    expect(credentials?.temperature_mode).toBe('omit')
+    expect(credentials).not.toHaveProperty('temperature')
+  })
+
+  it('does not expose temperature configuration on a Spark shadow account', () => {
+    const wrapper = mountModal(buildOpenAISparkShadowAccount())
+    expect(wrapper.find('[data-testid="temperature-mode-inherit"]').exists()).toBe(false)
+  })
+
   beforeEach(() => {
     authIsSimpleMode.value = true
   })

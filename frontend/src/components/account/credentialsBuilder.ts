@@ -1,3 +1,45 @@
+export type AccountTemperatureMode = 'inherit' | 'override' | 'omit'
+export type AccountTemperatureSelectionMode = AccountTemperatureMode | 'unchanged'
+
+export interface AccountTemperaturePolicy {
+  mode: AccountTemperatureMode
+  temperature: number | null
+}
+
+export function readAccountTemperaturePolicy(
+  credentials?: Record<string, unknown> | null
+): AccountTemperaturePolicy {
+  const mode = credentials?.temperature_mode
+  if (mode !== 'inherit' && mode !== 'override' && mode !== 'omit') {
+    return { mode: 'inherit', temperature: null }
+  }
+
+  const temperature = credentials?.temperature
+  if (mode === 'override' && typeof temperature === 'number' && Number.isFinite(temperature)) {
+    return { mode, temperature }
+  }
+  return { mode, temperature: null }
+}
+
+export function applyAccountTemperaturePolicy(
+  credentials: Record<string, unknown>,
+  mode: AccountTemperatureSelectionMode,
+  temperature: number | null
+): boolean {
+  if (mode === 'unchanged') return true
+  if (mode === 'override' && (temperature === null || !Number.isFinite(temperature))) {
+    return false
+  }
+
+  credentials.temperature_mode = mode
+  if (mode === 'override') {
+    credentials.temperature = temperature
+  } else {
+    delete credentials.temperature
+  }
+  return true
+}
+
 export function applyInterceptWarmup(
   credentials: Record<string, unknown>,
   enabled: boolean,

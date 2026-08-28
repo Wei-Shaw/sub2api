@@ -2,6 +2,17 @@ export default {
     accounts: {
       title: '账号管理',
       description: '管理 AI 平台账号和 Cookie',
+      temperature: {
+        label: '温度策略',
+        value: '固定温度',
+        invalid: '固定温度必须是有限数值',
+        modes: {
+          unchanged: '不修改',
+          inherit: '默认',
+          override: '固定值',
+          omit: '不发送'
+        }
+      },
       createAccount: '添加账号',
       autoRefresh: '自动刷新',
       enableAutoRefresh: '启用自动刷新',
