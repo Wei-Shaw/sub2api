@@ -137,6 +137,18 @@ func ClassifyOpsError(input OpsErrorClassificationInput) OpsErrorClassification 
 		return result
 	}
 
+	// A user concurrency limit is produced locally by the gateway user-slot
+	// waiter. A 429 preserved in the upstream status field must not turn the
+	// client's own over-concurrency into a provider SLA failure.
+	if strings.Contains(message, "concurrency limit exceeded for user") {
+		result.FinalOutcome = OpsFinalOutcomeBusinessLimited
+		result.Responsibility = OpsResponsibilityClient
+		result.ErrorCategory = OpsErrorCategoryUserConcurrency
+		result.AlertFamily = OpsAlertFamilyClientQuality
+		result.ClassificationReason = "user_concurrency_limit"
+		return result
+	}
+
 	// This exact diagnostic is produced locally after inspecting the configured
 	// account pool. Stale metadata from an earlier upstream attempt must not turn
 	// it into a provider SLA failure.
