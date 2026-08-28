@@ -2,13 +2,18 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -33,7 +38,14 @@ var zhipuMCPForwardedRequestHeaders = map[string]struct{}{
 // 客户端带 sub2api API key 访问 /api/mcp/zhipu/{slug}/mcp，本 handler 从 zhipu
 // 账号池选号、重写认证头后把 JSON-RPC 请求原样转发给上游，响应（JSON 或 SSE）原样回传。
 // 第一版仅支持 POST（JSON-RPC）与 DELETE（终止 session）；GET server-push 与
-// /sse fallback 不支持。计费与 usage 记录在 Phase 2B 接入。
+// /sse fallback 不支持。
+//
+// 计费（Phase 2B）：仅 POST + JSON-RPC method == "tools/call" 的请求计费
+// （batch 按其中 tools/call 个数 N 计），复用 ForwardResult.SearchCount 走
+// CalculateSearchCost —— zhipu 分组的 search_price_per_1k 在此语境下即
+// "MCP 每千次调用价格"（zhipu 组无 grok 搜索流量，无语义冲突）。usage 行以
+// 伪模型名 "zhipu-mcp-{slug}" 落库；initialize / tools/list / notifications、
+// DELETE 等管理性流量免费。
 func (h *GatewayHandler) ZhipuMCPPassthrough(c *gin.Context) {
 	if method := c.Request.Method; method != http.MethodPost && method != http.MethodDelete {
 		c.Header("Allow", "POST, DELETE")
@@ -70,7 +82,8 @@ func (h *GatewayHandler) ZhipuMCPPassthrough(c *gin.Context) {
 		return
 	}
 
-	targetURL, ok := service.ResolveZhipuMCPServerURL(c.Param("slug"))
+	slug := c.Param("slug")
+	targetURL, ok := service.ResolveZhipuMCPServerURL(slug)
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{
 			"type":    "not_found",
@@ -90,6 +103,26 @@ func (h *GatewayHandler) ZhipuMCPPassthrough(c *gin.Context) {
 	}
 
 	reqLog := requestLogger(c, "handler.gateway.zhipu_mcp")
+
+	// 计费口径：仅 POST + JSON-RPC tools/call 计费（batch 按个数 N 计）。
+	// 解析失败按 0 处理（宁可漏计不可误计），不阻断透传本身。
+	mcpStart := time.Now()
+	billableCalls := 0
+	if c.Request.Method == http.MethodPost {
+		billableCalls = service.CountZhipuMCPBillableCalls(body)
+	}
+
+	// 计费资格检查（照 WebSearch 先例，进调度前统一做余额/RPM/platform quota 预检）。
+	// 免费方法同样受检：它们与 tools/call 共用账号池与限流额度。
+	subscription, _ := middleware2.GetSubscriptionFromContext(c)
+	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		c.JSON(status, gin.H{"error": gin.H{"type": code, "message": message}})
+		return
+	}
 
 	// 粘性亲和：客户端回传 Mcp-Session-Id 时优先粘到绑定账号。
 	// 命中并校验通过后跳过调度直接使用该账号（MCP session 的上游服务端状态
@@ -259,8 +292,61 @@ func (h *GatewayHandler) ZhipuMCPPassthrough(c *gin.Context) {
 	}
 	defer func() { _ = upstreamResp.Body.Close() }()
 
-	// ── 响应透传：状态码 + 白名单响应头 + body（SSE 逐块 flush）──
 	contentType := upstreamResp.Header.Get("Content-Type")
+
+	// ── 计费入账（Phase 2B）：上游受理（HTTP < 400）即计费一次 ──
+	// 成功判定局限：MCP JSON-RPC 协议错误可能以 200 + error payload 返回
+	//（Streamable HTTP 常见形态），第一版不解析响应体、按 HTTP 状态码判定，
+	// 协议级错误同样计费。入账先于响应透传（WebSearch 同款先记账后回包）：
+	// 上游已执行调用，客户端中途断开不退账。
+	if billableCalls > 0 && upstreamResp.StatusCode < http.StatusBadRequest && account != nil {
+		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+		inboundEndpoint := GetInboundEndpoint(c)
+		// 上游端点不走 GetUpstreamEndpoint：它对 zhipu（CN provider）会先查
+		// OpenAI 运行时端点上下文，MCP 透传未设置，最终 fallback 把入站路径
+		// 误当上游端点；这里直接落 "zhipu-mcp:{slug}" 标识。
+		upstreamEndpoint := "zhipu-mcp:" + slug
+		requestPayloadHash := service.HashUsageRequestPayload(body)
+		userAgent := c.GetHeader("User-Agent")
+		clientIP := ip.GetClientIP(c)
+		// RequestID 是计费幂等键，必须每次调用唯一：query/IP/UA 之类的哈希
+		// 会把重复的相同调用折叠成一次扣费（WebSearch 先例同因）。
+		mcpRequestID := "zhipu_mcp:" + uuid.NewString()
+		h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
+				Result: &service.ForwardResult{
+					RequestID: mcpRequestID,
+					// 伪模型名：MCP JSON-RPC 没有模型概念，仅用于用量行展示与成本归类。
+					Model:       "zhipu-mcp-" + slug,
+					SearchCount: billableCalls,
+					Stream:      isZhipuMCPSSE(contentType),
+					Duration:    time.Since(mcpStart),
+				},
+				APIKey:             apiKey,
+				User:               apiKey.User,
+				Account:            account,
+				Subscription:       subscription,
+				InboundEndpoint:    inboundEndpoint,
+				UpstreamEndpoint:   upstreamEndpoint,
+				UserAgent:          userAgent,
+				IPAddress:          clientIP,
+				RequestPayloadHash: requestPayloadHash,
+				APIKeyService:      h.apiKeyService,
+				QuotaPlatform:      quotaPlatform,
+			}); err != nil {
+				reqLog.Error("gateway.zhipu_mcp.record_usage_failed",
+					zap.Int64("user_id", apiKey.User.ID),
+					zap.Int64("api_key_id", apiKey.ID),
+					zap.Int64("account_id", account.ID),
+					zap.String("slug", slug),
+					zap.Int("search_count", billableCalls),
+					zap.Error(err),
+				)
+			}
+		})
+	}
+
+	// ── 响应透传：状态码 + 白名单响应头 + body（SSE 逐块 flush）──
 	if contentType != "" {
 		c.Writer.Header().Set("Content-Type", contentType)
 	}
