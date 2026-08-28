@@ -252,6 +252,16 @@
               {{ t('admin.users.bulkLimits.action', { count: selectedCount }) }}
             </button>
 
+            <button
+              v-if="selectedCount > 0"
+              class="btn btn-danger flex-1 md:flex-initial"
+              data-test="bulk-ban-users"
+              @click="showBulkBanDialog = true"
+            >
+              <Icon name="ban" size="md" class="mr-2" />
+              {{ t('admin.users.bulkBan.action', { count: selectedCount }) }}
+            </button>
+
             <!-- Create User Button (full width on mobile, auto width on desktop) -->
             <button @click="showCreateModal = true" class="btn btn-primary flex-1 md:flex-initial">
               <Icon name="plus" size="md" class="mr-2" />
@@ -748,6 +758,7 @@
     </Teleport>
 
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.users.deleteUser')" :message="t('admin.users.deleteConfirm', { email: deletingUser?.email })" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
+    <ConfirmDialog :show="showBulkBanDialog" :title="t('admin.users.bulkBan.title')" :message="t('admin.users.bulkBan.confirm', { count: selectedCount })" :danger="true" @confirm="confirmBulkBan" @cancel="showBulkBanDialog = false" />
     <UserCreateModal :show="showCreateModal" @close="showCreateModal = false" @success="loadUsers" />
     <UserEditModal :show="showEditModal" :user="editingUser" @close="closeEditModal" @success="loadUsers" />
     <BulkEditUserModal
@@ -1323,6 +1334,7 @@ const pagination = reactive({
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showBulkEditModal = ref(false)
+const showBulkBanDialog = ref(false)
 const showDeleteDialog = ref(false)
 const showApiKeysModal = ref(false)
 const showAttributesModal = ref(false)
@@ -1732,6 +1744,23 @@ const handleToggleStatus = async (user: AdminUser) => {
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.users.failedToToggle'))
     console.error('Error toggling user status:', error)
+  }
+}
+
+const confirmBulkBan = async () => {
+  if (selectedIds.value.length === 0) return
+  try {
+    const result = await adminAPI.users.batchBanUsers({ user_ids: selectedIds.value })
+    showBulkBanDialog.value = false
+    clearSelection()
+    appStore.showSuccess(t('admin.users.bulkBan.success', {
+      affected: result.affected,
+      skipped: result.skipped
+    }))
+    loadUsers()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.users.bulkBan.failed'))
+    console.error('Error batch banning users:', error)
   }
 }
 
