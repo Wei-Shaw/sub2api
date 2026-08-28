@@ -62,6 +62,7 @@ type SettingHandler struct {
 	notificationEmailService *service.NotificationEmailService
 	totpService              *service.TotpService
 	userService              *service.UserService
+	ipBanHandler             *IPBanHandler
 }
 
 // NewSettingHandler 创建系统设置处理器
@@ -96,6 +97,23 @@ func (h *SettingHandler) SetAliyunCaptchaService(aliyunCaptchaService *service.A
 func (h *SettingHandler) SetStepUpDeps(totpService *service.TotpService, userService *service.UserService) {
 	h.totpService = totpService
 	h.userService = userService
+}
+
+// SetIPBanService attaches the persistent IP-ban management service.
+func (h *SettingHandler) SetIPBanService(ipBanService *service.IPBanService) {
+	h.ipBanHandler = NewIPBanHandler(ipBanService)
+}
+
+func (h *SettingHandler) ListIPBans(c *gin.Context) {
+	h.ipBanHandler.List(c)
+}
+
+func (h *SettingHandler) CreateIPBan(c *gin.Context) {
+	h.ipBanHandler.Create(c)
+}
+
+func (h *SettingHandler) DeleteIPBan(c *gin.Context) {
+	h.ipBanHandler.Delete(c)
 }
 
 // GetSettings 获取所有系统设置

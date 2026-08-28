@@ -32,7 +32,11 @@ func RegisterGatewayRoutes(
 	settingService *service.SettingService,
 	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
+	ipBanServices ...*service.IPBanService,
 ) {
+	if len(ipBanServices) > 0 && ipBanServices[0] != nil {
+		apiKeyAuth = middleware.IPBanGuard(apiKeyAuth, ipBanServices[0], cfg)
+	}
 	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize)
 	textBodyLimit := middleware.RequestBodyLimit(cfg.Gateway.TextMaxBodySize)
 	clientRequestID := middleware.ClientRequestID()

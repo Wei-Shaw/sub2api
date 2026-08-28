@@ -1841,6 +1841,9 @@
             </div>
           </div>
 
+          <!-- Global IP ban management -->
+          <IPBanCard />
+
           <!-- Panel API Rate Limit Settings -->
           <div class="card">
             <div
@@ -8768,6 +8771,7 @@ import type {
 import type { ProviderInstance } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
+import IPBanCard from "@/components/admin/settings/IPBanCard.vue";
 import Select from "@/components/common/Select.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import PaymentProviderList from "@/components/payment/PaymentProviderList.vue";
