@@ -7,7 +7,14 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/tidwall/gjson"
 )
+
+// zhipuMCPBillableMethod 唯一计费的 JSON-RPC 方法：tools/call 是唯一会触发
+// 上游真实工作（检索/抓取等）的 MCP 方法；initialize / tools/list / 其余
+// notifications/* 均为管理性或通知性流量，免费放行。
+const zhipuMCPBillableMethod = "tools/call"
 
 // DefaultZhipuMCPBaseURL 智谱远程 MCP Server 的默认基地址。
 // Coding Plan 订阅附带的 Streamable HTTP MCP 端点形如 {base}/{slug}/mcp。
@@ -41,6 +48,46 @@ func ResolveZhipuMCPServerURL(slug string) (string, bool) {
 		return "", false
 	}
 	return DefaultZhipuMCPBaseURL + "/" + slug + "/mcp", true
+}
+
+// CountZhipuMCPBillableCalls 统计一次 MCP 请求中的可计费 tools/call 数量
+// （Phase 2B 计费口径）：
+//   - body 为 JSON 对象：method == "tools/call" 且带非 null id（JSON-RPC Request）
+//     计 1；其余方法（initialize / tools/list 等）与缺 id 的通知（JSON-RPC
+//     Notification 语义，id 缺失即通知）计 0。
+//   - body 为 JSON 数组（JSON-RPC batch）：按同样规则逐元素计数。
+//   - 解析失败 / 非对象非数组（空 body、标量、null 等）一律返回 0：宁可漏计
+//     不可误计，畸形请求不应产生用户费用。
+//
+// 不校验 jsonrpc 版本字段：计费发生在上游已受理（HTTP < 400）之后，method + id
+// 判定足以区分"真实调用"与"管理/通知流量"。
+func CountZhipuMCPBillableCalls(body []byte) int {
+	parsed := gjson.ParseBytes(body)
+	if parsed.IsObject() {
+		return countZhipuMCPBillableCallResult(parsed)
+	}
+	if parsed.IsArray() {
+		count := 0
+		parsed.ForEach(func(_, item gjson.Result) bool {
+			count += countZhipuMCPBillableCallResult(item)
+			return true
+		})
+		return count
+	}
+	return 0
+}
+
+// countZhipuMCPBillableCallResult 按计费口径判定单个 JSON-RPC 消息：
+// 仅"带 id 的 tools/call 请求"计 1，其余（通知、其它方法、非对象元素）计 0。
+func countZhipuMCPBillableCallResult(item gjson.Result) int {
+	if !item.IsObject() || item.Get("method").String() != zhipuMCPBillableMethod {
+		return 0
+	}
+	// id 缺失或显式 null → JSON-RPC Notification 语义，不计费。
+	if id := item.Get("id"); !id.Exists() || id.Type == gjson.Null {
+		return 0
+	}
+	return 1
 }
 
 // ZhipuMCPSessionStore 智谱 MCP session 粘表存储（SETEX 语义）。
