@@ -612,7 +612,7 @@ export default {
         tableDefaultPageSizeHint: 'Must be an integer between 5 and 1000',
         tablePageSizeOptions: 'Rows Per Page Options',
         tablePageSizeOptionsPlaceholder: '10, 20, 50, 100, 500, 1000',
-        tablePageSizeOptionsHint: 'Use commas to separate integers between 5 and 1000; values are deduplicated and sorted on save. The default includes 100, 500, and 1000; existing custom configurations are preserved',
+        tablePageSizeOptionsHint: 'Use commas to separate integers between 5 and 1000; values are deduplicated and sorted on save',
         tableDefaultPageSizeRangeError: 'Default rows per page must be between {min} and {max}',
         tablePageSizeOptionsFormatError: 'Invalid options format. Enter comma-separated integers between {min} and {max}',
         customEndpoints: {
