@@ -244,6 +244,43 @@ func TestAdminService_BulkUpdateAccounts_NilGroupRepoReturnsError(t *testing.T) 
 	require.Contains(t, err.Error(), "group repository not configured")
 }
 
+func TestAdminService_BulkUpdateAccounts_ValidatesMergedTemperaturePolicy(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{
+		getByIDsAccounts: []*Account{
+			{ID: 1, Credentials: map[string]any{"temperature": 0.45}},
+			{ID: 2, Credentials: map[string]any{"temperature": 0.8}},
+		},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs:  []int64{1, 2},
+		Credentials: map[string]any{"temperature_mode": "override"},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Success)
+	require.Equal(t, 1, repo.bulkUpdateCalls)
+	require.Equal(t, "override", repo.lastBulkUpdate.Credentials["temperature_mode"])
+}
+
+func TestAdminService_BulkUpdateAccounts_RejectsInvalidTemperaturePolicyBeforeWrite(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{
+		getByIDsAccounts: []*Account{{ID: 1, Credentials: map[string]any{}}},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs:  []int64{1},
+		Credentials: map[string]any{"temperature_mode": "override"},
+	})
+
+	require.Nil(t, result)
+	require.Error(t, err)
+	require.True(t, infraerrors.IsBadRequest(err))
+	require.Zero(t, repo.bulkUpdateCalls)
+}
+
 // TestAdminService_BulkUpdateAccounts_MixedChannelPreCheckBlocksOnExistingConflict verifies
 // that the global pre-check detects a conflict with existing group members and returns an
 // error before any DB write is performed.

@@ -73,6 +73,12 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 ) (*OpenAIForwardResult, error) {
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
+	policyBody, policyErr := applyResolvedAccountTemperaturePolicy(ctx, s.accountRepo, account, body, temperaturePathTopLevel)
+	if policyErr != nil {
+		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", policyErr.Error())
+		return nil, policyErr
+	}
+	body = policyBody
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
 		SetActualOpenAIUpstreamEndpoint(c, "/v1/chat/completions")
 	}
@@ -213,6 +219,13 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 				responsesBody = stripped
 			}
 		}
+		if isOpenAICodexReasoningGPTModel(upstreamModel) {
+			for _, field := range []string{"temperature", "top_p"} {
+				if stripped, derr := sjson.DeleteBytes(responsesBody, field); derr == nil {
+					responsesBody = stripped
+				}
+			}
+		}
 		var normalizedServiceTier string
 		responsesBody, normalizedServiceTier, err = normalizeResponsesBodyServiceTier(responsesBody)
 		if err != nil {
@@ -235,6 +248,10 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 			return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 		}
 		responsesReq.Model = upstreamModel
+		if isOpenAICodexReasoningGPTModel(upstreamModel) {
+			responsesReq.Temperature = nil
+			responsesReq.TopP = nil
+		}
 		normalizeResponsesRequestServiceTier(responsesReq)
 		responsesBody, err = json.Marshal(responsesReq)
 		if err != nil {

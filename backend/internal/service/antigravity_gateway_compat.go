@@ -62,6 +62,11 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 	if err := s.validateAntigravityCompatAccount(c, account); err != nil {
 		return nil, err
 	}
+	policyBody, policyErr := applyAccountTemperaturePolicy(body, account, temperaturePathTopLevel)
+	if policyErr != nil {
+		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", policyErr.Error())
+	}
+	body = policyBody
 
 	var request apicompat.ChatCompletionsRequest
 	if json.Unmarshal(body, &request) != nil {
@@ -109,6 +114,11 @@ func (s *AntigravityGatewayService) ForwardAsResponses(
 	if err := s.validateAntigravityCompatAccount(c, account); err != nil {
 		return nil, err
 	}
+	policyBody, policyErr := applyAccountTemperaturePolicy(body, account, temperaturePathTopLevel)
+	if policyErr != nil {
+		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", policyErr.Error())
+	}
+	body = policyBody
 
 	var request apicompat.ResponsesRequest
 	if json.Unmarshal(body, &request) != nil {

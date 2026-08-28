@@ -33,6 +33,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	clearOpenAIResponsesClientToolMapping(c)
 	clearOpenAIResponsesNamespaceNames(c)
 	setCodexToolNameReverse(c, nil)
+	policyBody, policyErr := applyResolvedAccountTemperaturePolicy(ctx, s.accountRepo, account, body, temperaturePathTopLevel)
+	if policyErr != nil {
+		writeResponsesError(c, http.StatusBadRequest, "invalid_temperature", policyErr.Error())
+		return nil, policyErr
+	}
+	body = policyBody
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 		return nil, err
 	}
@@ -378,6 +384,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	reqModel = billingModel
 	if upstreamModel != requestedModel {
 		markPatchSet("model", upstreamModel)
+	}
+	if isOpenAICodexReasoningGPTModel(upstreamModel) && gjson.GetBytes(body, "temperature").Exists() {
+		markPatchDelete("temperature")
 	}
 	if upstreamModel != billingModel {
 		if isCompactRequest {

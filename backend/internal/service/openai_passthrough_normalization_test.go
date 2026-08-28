@@ -13,11 +13,22 @@ func TestNormalizeOpenAIPassthroughOAuthBody_RemovesUnsupportedUser(t *testing.T
 	normalized, changed, err := normalizeOpenAIPassthroughOAuthBody(body, false)
 	require.NoError(t, err)
 	require.True(t, changed)
-	for _, field := range openAIChatGPTInternalUnsupportedFields {
+	for _, field := range openAICodexOAuthUnsupportedFields {
 		require.False(t, gjson.GetBytes(normalized, field).Exists(), "%s should be stripped", field)
 	}
 	require.True(t, gjson.GetBytes(normalized, "stream").Bool())
 	require.False(t, gjson.GetBytes(normalized, "store").Bool())
+}
+
+func TestNormalizeOpenAIPassthroughOAuthBody_RemovesSamplingParameters(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","temperature":0.6,"top_p":0.8,"input":"hello"}`)
+
+	normalized, changed, err := normalizeOpenAIPassthroughOAuthBody(body, false)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(normalized, "temperature").Exists())
+	require.False(t, gjson.GetBytes(normalized, "top_p").Exists())
 }
 
 func TestNormalizeOpenAIPassthroughOAuthBody_NormalizesCompatibilityFields(t *testing.T) {

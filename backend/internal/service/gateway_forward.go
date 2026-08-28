@@ -104,6 +104,14 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 	}()
 	beginUpstreamResponseModelObservation(c)
+	policyBody, err := applyAccountTemperaturePolicy(parsed.Body.Bytes(), account, temperaturePathTopLevel)
+	if err != nil {
+		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return nil, err
+	}
+	if err := parsed.ReplaceBody(policyBody); err != nil {
+		return nil, fmt.Errorf("rewrite request body: %w", err)
+	}
 
 	// Web Search 模拟：纯 web_search 请求时，直接调用搜索 API 构造响应
 	if account != nil && s.shouldEmulateWebSearch(ctx, account, parsed.GroupID, parsed.Body.Bytes()) {

@@ -35,6 +35,12 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 ) (*OpenAIForwardResult, error) {
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
+	policyBody, policyErr := applyResolvedAccountTemperaturePolicy(ctx, s.accountRepo, account, body, temperaturePathTopLevel)
+	if policyErr != nil {
+		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", policyErr.Error())
+		return nil, policyErr
+	}
+	body = policyBody
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
 		SetActualOpenAIUpstreamEndpoint(c, "/v1/chat/completions")
 	}
@@ -141,6 +147,10 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 
 	responsesReq.Model = upstreamModel
+	if isOpenAICodexReasoningGPTModel(upstreamModel) {
+		responsesReq.Temperature = nil
+		responsesReq.TopP = nil
+	}
 	if responsesReq.Reasoning != nil {
 		responsesReq.Reasoning.Effort = openAICompatAnthropicReasoningEffort(&anthropicReq, upstreamModel, responsesReq.Reasoning.Effort)
 	}

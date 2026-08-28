@@ -584,6 +584,11 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 	beginUpstreamResponseModelObservation(c)
 	beginGeminiImageOutputObservation(c)
 	startTime := time.Now()
+	policyBody, policyErr := applyAccountTemperaturePolicy(body, account, temperaturePathTopLevel)
+	if policyErr != nil {
+		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", policyErr.Error())
+	}
+	body = policyBody
 
 	var req struct {
 		Model  string `json:"model"`
@@ -1150,6 +1155,13 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		// ok
 	default:
 		return nil, s.writeGoogleError(c, http.StatusNotFound, "Unsupported action: "+action)
+	}
+	if action != "countTokens" {
+		policyBody, policyErr := applyAccountTemperaturePolicy(body, account, temperaturePathGemini)
+		if policyErr != nil {
+			return nil, s.writeGoogleError(c, http.StatusBadRequest, policyErr.Error())
+		}
+		body = policyBody
 	}
 
 	// Some Gemini upstreams validate tool call parts strictly; ensure any `functionCall` part includes a

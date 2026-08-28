@@ -29,6 +29,11 @@ func (s *GeminiMessagesCompatService) ForwardAsChatCompletions(
 	body []byte,
 ) (*ForwardResult, error) {
 	startTime := time.Now()
+	policyBody, policyErr := applyAccountTemperaturePolicy(body, account, temperaturePathTopLevel)
+	if policyErr != nil {
+		return nil, s.writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", policyErr.Error())
+	}
+	body = policyBody
 
 	var ccReq apicompat.ChatCompletionsRequest
 	if err := json.Unmarshal(body, &ccReq); err != nil {

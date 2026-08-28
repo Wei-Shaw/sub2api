@@ -34,6 +34,12 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	parsed *ParsedRequest,
 ) (*ForwardResult, error) {
 	startTime := time.Now()
+	policyBody, policyErr := applyAccountTemperaturePolicy(body, account, temperaturePathTopLevel)
+	if policyErr != nil {
+		writeGatewayCCError(c, http.StatusBadRequest, "invalid_request_error", policyErr.Error())
+		return nil, policyErr
+	}
+	body = policyBody
 
 	// 1. Parse Chat Completions request
 	var ccReq apicompat.ChatCompletionsRequest

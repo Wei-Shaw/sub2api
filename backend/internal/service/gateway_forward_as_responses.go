@@ -36,6 +36,12 @@ func (s *GatewayService) ForwardAsResponses(
 	parsed *ParsedRequest,
 ) (*ForwardResult, error) {
 	startTime := time.Now()
+	policyBody, policyErr := applyAccountTemperaturePolicy(body, account, temperaturePathTopLevel)
+	if policyErr != nil {
+		writeResponsesError(c, http.StatusBadRequest, "invalid_temperature", policyErr.Error())
+		return nil, policyErr
+	}
+	body = policyBody
 
 	normalizedBody, normalized, err := normalizeOpenAIResponsesLegacyIngress(body)
 	if err != nil {

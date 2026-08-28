@@ -339,11 +339,14 @@ func TestAntigravityCompatPreservesChatTokenLimit(t *testing.T) {
 			svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
 			body := []byte(tt.body)
 			c, _ := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", body)
+			account := newAntigravityCompatAccount(AccountTypeOAuth)
+			account.Credentials["temperature_mode"] = "override"
+			account.Credentials["temperature"] = 0.3
 
 			result, err := svc.ForwardAsChatCompletions(
 				context.Background(),
 				c,
-				newAntigravityCompatAccount(AccountTypeOAuth),
+				account,
 				body,
 				nil,
 			)
@@ -352,6 +355,7 @@ func TestAntigravityCompatPreservesChatTokenLimit(t *testing.T) {
 			require.NotNil(t, result)
 			require.Len(t, upstream.requestBodies, 1)
 			require.Equal(t, tt.want, gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.maxOutputTokens").Int())
+			require.InDelta(t, 0.3, gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.temperature").Float(), 1e-9)
 		})
 	}
 }

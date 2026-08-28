@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 // antigravityFailingWriter 模拟客户端断开连接的 gin.ResponseWriter
@@ -401,7 +402,7 @@ func TestAntigravityGatewayService_ForwardGemini_ImageUsesDefaultMappingAndOAuth
 
 func TestAntigravityGatewayService_ForwardGemini_PreservesServerSideToolInvocationConfig(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"hello"}]}],"tools":[{"functionDeclarations":[{"name":"get_weather","parameters":{"type":"object","additionalProperties":false}}]},{"googleSearch":{}}],"toolConfig":{"includeServerSideToolInvocations":true}}`)
+	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"hello"}]}],"generationConfig":{"temperature":0.8},"tools":[{"functionDeclarations":[{"name":"get_weather","parameters":{"type":"object","additionalProperties":false}}]},{"googleSearch":{}}],"toolConfig":{"includeServerSideToolInvocations":true}}`)
 	writer := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(writer)
 	body = bytes.ReplaceAll(body, []byte{92}, nil)
@@ -419,7 +420,7 @@ func TestAntigravityGatewayService_ForwardGemini_PreservesServerSideToolInvocati
 	}
 	account := &Account{
 		ID: 103, Name: "native-gemini", Platform: PlatformAntigravity, Type: AccountTypeOAuth, Status: StatusActive, Concurrency: 1,
-		Credentials: map[string]any{"access_token": "token", "project_id": "project-103", "model_mapping": map[string]any{"gemini-2.5-flash": "gemini-2.5-flash"}},
+		Credentials: map[string]any{"access_token": "token", "project_id": "project-103", "model_mapping": map[string]any{"gemini-2.5-flash": "gemini-2.5-flash"}, "temperature_mode": "omit"},
 	}
 
 	result, err := svc.ForwardGemini(context.Background(), c, account, "gemini-2.5-flash", "generateContent", false, body, false)
@@ -435,6 +436,7 @@ func TestAntigravityGatewayService_ForwardGemini_PreservesServerSideToolInvocati
 	require.True(t, ok)
 	require.Equal(t, true, toolConfig["includeServerSideToolInvocations"])
 	require.NotContains(t, toolConfig, "include_server_side_tool_invocations")
+	require.False(t, gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.temperature").Exists())
 }
 
 func TestAntigravityGatewayService_ForwardGemini_MissingProjectReturnsLocalError(t *testing.T) {
