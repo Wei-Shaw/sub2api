@@ -73,7 +73,7 @@ function buildPublicSettings(overrides: Partial<WeChatPublicSettings> = {}): WeC
     hide_ccs_import_button: false,
     payment_enabled: false,
     table_default_page_size: 20,
-    table_page_size_options: [10, 20, 50, 100],
+    table_page_size_options: [10, 20, 50, 100, 500, 1000],
     custom_menu_items: [],
     custom_endpoints: [],
     linuxdo_oauth_enabled: false,

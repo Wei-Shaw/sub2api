@@ -164,7 +164,7 @@ const toItem = computed(() => {
 const pageSizeSelectOptions = computed(() => {
   const options = Array.from(
     new Set([
-      ...getConfiguredTablePageSizeOptions(),
+      ...(props.pageSizeOptions?.length ? props.pageSizeOptions : getConfiguredTablePageSizeOptions()),
       normalizeTablePageSize(props.pageSize)
     ])
   ).sort((a, b) => a - b)

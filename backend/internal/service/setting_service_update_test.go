@@ -397,6 +397,13 @@ func TestSettingService_UpdateSettings_TablePreferences(t *testing.T) {
 	require.Equal(t, "[20,100]", repo.updates[SettingKeyTablePageSizeOptions])
 }
 
+func TestNormalizeTablePreferences_UsesExpandedDefaultOptionsWhenEmpty(t *testing.T) {
+	defaultPageSize, options := normalizeTablePreferences(20, nil)
+
+	require.Equal(t, 20, defaultPageSize)
+	require.Equal(t, []int{10, 20, 50, 100, 500, 1000}, options)
+}
+
 func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 	defer resetOpenAIAdvancedSchedulerSettingCacheForTest()
