@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -41,6 +42,13 @@ func (u *openAIResponsesFailoverCancelUpstream) Do(_ *http.Request, _ string, ac
 		Header:     http.Header{"Content-Type": []string{"text/html"}},
 		Body:       io.NopCloser(bytes.NewBufferString("<html>520: unknown error</html>")),
 	}, nil
+}
+
+// DoWithTLS forwards to Do: doOpenAIUpstream now always calls DoWithTLS (nil profile for
+// these test accounts degrades to Do in the real httpUpstreamService, so the fake must
+// mirror that instead of falling through to the embedded nil service.HTTPUpstream).
+func (u *openAIResponsesFailoverCancelUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
 func (u *openAIResponsesFailoverCancelUpstream) calls() []int64 {
