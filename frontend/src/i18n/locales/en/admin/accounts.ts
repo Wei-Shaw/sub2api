@@ -199,6 +199,11 @@ export default {
           OPENCODE_GO_USAGE_REFRESH_RATE_LIMITED: 'Refresh is limited. Try again in {retry_after_seconds} seconds.'
         }
       },
+      zhipuMcp: {
+        title: 'MCP Passthrough',
+        hint: 'When enabled, MCP protocol requests are forwarded through this Zhipu account.',
+        paygDisabledHint: 'MCP passthrough is only available for Zhipu accounts on the Coding Plan subscription.',
+      },
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
