@@ -69,6 +69,7 @@ func TestNormalizeResponsesSupportMode(t *testing.T) {
 		{"auto", "auto", ""},
 		{"force responses", "force_responses", ResponsesSupportModeForceResponses},
 		{"force chat completions", "force_chat_completions", ResponsesSupportModeForceChatCompletions},
+		{"media only", "media_only", ResponsesSupportModeMediaOnly},
 		{"invalid", "enabled", ""},
 	}
 
@@ -83,7 +84,7 @@ func TestNormalizeResponsesSupportMode(t *testing.T) {
 }
 
 func TestValidateExplicitResponsesMode(t *testing.T) {
-	for _, mode := range []ResponsesSupportMode{ResponsesSupportModeForceResponses, ResponsesSupportModeForceChatCompletions} {
+	for _, mode := range []ResponsesSupportMode{ResponsesSupportModeForceResponses, ResponsesSupportModeForceChatCompletions, ResponsesSupportModeMediaOnly} {
 		if err := ValidateExplicitResponsesMode(map[string]any{ExtraKeyResponsesMode: string(mode)}); err != nil {
 			t.Errorf("ValidateExplicitResponsesMode(%q) returned error: %v", mode, err)
 		}

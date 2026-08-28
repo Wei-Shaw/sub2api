@@ -104,6 +104,9 @@ const (
 	// credentials["openai_capabilities"] 配置集。仅用于生图意图的 /v1/responses
 	// 调度，避免把请求调度到会在 forward 阶段被降级为 Chat Completions 的账号（#4417）。
 	OpenAIEndpointCapabilityResponses OpenAIEndpointCapability = "responses"
+	// OpenAIEndpointCapabilityVideoGeneration controls eligibility for /v1/videos.
+	// It is independent from the upstream text protocol and text model mapping.
+	OpenAIEndpointCapabilityVideoGeneration OpenAIEndpointCapability = "video_generation"
 )
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
@@ -1813,6 +1816,9 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 	}
 	switch capability {
 	case OpenAIEndpointCapabilityChatCompletions:
+		if isOpenAIMediaOnlyAccount(a) {
+			return false
+		}
 	case OpenAIEndpointCapabilityLive:
 		return a.Platform == PlatformOpenAI &&
 			a.Type == AccountTypeOAuth &&
@@ -1841,6 +1847,12 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		if a.Type != AccountTypeAPIKey {
 			return false
 		}
+		if isOpenAIMediaOnlyAccount(a) {
+			return false
+		}
+	case OpenAIEndpointCapabilityVideoGeneration:
+		// /v1/videos is an OpenAI-format endpoint and is independent from
+		// Responses/Chat Completions text routing.
 	default:
 		return false
 	}
@@ -1853,6 +1865,14 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		return true
 	}
 	return configured[string(capability)]
+}
+
+func isOpenAIMediaOnlyAccount(a *Account) bool {
+	if a == nil || a.Type != AccountTypeAPIKey || a.Extra == nil {
+		return false
+	}
+	mode, ok := a.Extra[openai_compat.ExtraKeyResponsesMode].(string)
+	return ok && openai_compat.NormalizeResponsesSupportMode(strings.TrimSpace(mode)) == openai_compat.ResponsesSupportModeMediaOnly
 }
 
 // GrokMediaGenerationEligibility reports whether a Grok account may receive

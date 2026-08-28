@@ -582,10 +582,11 @@ export default {
           'Automatic passthrough is currently enabled: it only affects HTTP passthrough and does not disable WS mode.',
         responsesMode: 'Upstream text protocol',
         responsesModeDesc:
-          'Select the fixed protocol used after request conversion: Responses or Chat Completions. This controls the upstream endpoint, not whether the account can receive text requests.',
-        responsesModeRequired: 'Please select an upstream protocol for this OpenAI API Key.',
+          'Select the fixed route used after request conversion: Responses, Chat Completions, or media endpoints only. Media-only is for accounts that provide video/image endpoints without a text protocol.',
+        responsesModeRequired: 'Please select an upstream text protocol or Media endpoints only for this OpenAI API Key.',
         responsesModeForceResponses: 'Force Responses',
         responsesModeForceChatCompletions: 'Force Chat Completions',
+        responsesModeMediaOnly: 'Media endpoints only (video/images)',
         responsesModeTextDisabledHint:
           'This setting only selects the upstream protocol. Whether the account receives text requests is controlled by Schedulable capabilities below.',
         endpointCapabilities: 'Schedulable capabilities',
@@ -593,9 +594,11 @@ export default {
           'Controls whether the account is eligible for the corresponding request type. Text generation only means the account can receive text-generation requests; it does not select the protocol. Embeddings controls eligibility for the /v1/embeddings text-vectorization endpoint.',
         capabilityTextGeneration: 'Text generation',
         capabilityEmbeddings: 'Embeddings',
+        capabilityVideoGeneration: 'Video generation (/v1/videos)',
         responsesStatusUnconfigured: 'Upstream protocol not configured',
         responsesStatusForcedResponses: 'Forced Responses',
         responsesStatusForcedChatCompletions: 'Forced Chat Completions',
+        responsesStatusMediaOnly: 'Media endpoints only',
         planType: 'Plan tier (manual override)',
         planTypeDesc:
           "Manually correct this account's ChatGPT plan tier (Plus / Pro / Free). Note: a token refresh near expiry or a 429 rate-limit response will auto-overwrite this with the real tier.",

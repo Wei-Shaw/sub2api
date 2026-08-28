@@ -20,6 +20,63 @@ type openAISnapshotCacheStub struct {
 	accountsByID     map[int64]*Account
 }
 
+func TestOpenAIAccountScheduler_VideoIgnoresTextModelMapping(t *testing.T) {
+	account := &Account{
+		ID:       1,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"model_mapping":       map[string]any{"gpt-5": "gpt-5"},
+			"openai_capabilities": []any{"chat_completions", "video_generation"},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
+	}
+	scheduler := &defaultOpenAIAccountScheduler{}
+
+	compatible, reason := scheduler.isAccountRequestCompatibleReason(context.Background(), account, OpenAIAccountScheduleRequest{
+		RequestedModel:     "sora-2",
+		RequiredCapability: OpenAIEndpointCapabilityVideoGeneration,
+	})
+	require.True(t, compatible)
+	require.Empty(t, reason)
+}
+
+func TestOpenAIAccountScheduler_TextStillHonorsTextModelMapping(t *testing.T) {
+	account := &Account{
+		ID:       1,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"model_mapping":       map[string]any{"gpt-5": "gpt-5"},
+			"openai_capabilities": []any{"chat_completions", "video_generation"},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
+	}
+	scheduler := &defaultOpenAIAccountScheduler{}
+
+	compatible, reason := scheduler.isAccountRequestCompatibleReason(context.Background(), account, OpenAIAccountScheduleRequest{
+		RequestedModel:     "sora-2",
+		RequiredCapability: OpenAIEndpointCapabilityChatCompletions,
+	})
+	require.False(t, compatible)
+	require.Equal(t, "model_not_supported", reason)
+}
+
+func TestOpenAIAccountScheduler_MediaOnlyAccountDoesNotSupportText(t *testing.T) {
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra: map[string]any{
+			"openai_responses_mode": "media_only",
+		},
+		Credentials: map[string]any{
+			"openai_capabilities": []any{"chat_completions", "embeddings", "video_generation"},
+		},
+	}
+
+	require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
+	require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityEmbeddings))
+	require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityVideoGeneration))
+}
+
 type schedulerTestOpenAIAccountRepo struct {
 	AccountRepository
 	accounts []Account
