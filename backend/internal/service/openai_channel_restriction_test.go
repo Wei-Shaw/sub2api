@@ -163,7 +163,7 @@ func TestIsUpstreamModelRestrictedByChannel_PassthroughMatchesForwardPath(t *tes
 				"gpt-5.4-channel": "gpt-5.4-compact",
 			},
 		},
-		Extra: map[string]any{"openai_passthrough": true},
+		Extra: map[string]any{"openai_passthrough": true, "openai_responses_mode": "force_responses"},
 	}
 	tests := []struct {
 		name                   string
@@ -231,7 +231,7 @@ func TestIsUpstreamModelRestrictedByChannel_PassthroughFlagWithRawChatFallbackMa
 		},
 		Extra: map[string]any{
 			"openai_passthrough":         true,
-			"openai_responses_supported": false,
+			"openai_responses_supported": false, "openai_responses_mode": "force_responses",
 		},
 	}
 
@@ -282,7 +282,7 @@ func TestIsUpstreamModelRestrictedByChannel_ForwardModelContextMatchesNormalForw
 		},
 		Extra: map[string]any{
 			"openai_passthrough":         true,
-			"openai_responses_supported": false,
+			"openai_responses_supported": false, "openai_responses_mode": "force_responses",
 		},
 	}
 	channelSvc := newTestChannelService(makeStandardRepo(Channel{

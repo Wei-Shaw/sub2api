@@ -315,7 +315,7 @@ func openAIModelNotFoundTempAccount() *Account {
 					"duration_minutes": float64(10),
 				},
 			},
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 }
 

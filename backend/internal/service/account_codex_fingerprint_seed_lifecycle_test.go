@@ -182,7 +182,7 @@ func TestDuplicateAccountDoesNotCopyCodexFingerprintSeed(t *testing.T) {
 		Type:     AccountTypeAPIKey,
 		Extra: map[string]any{
 			codexFingerprintModeExtraKey: "session",
-			codexFingerprintSeedExtraKey: testCodexFingerprintSeed,
+			codexFingerprintSeedExtraKey: testCodexFingerprintSeed, "openai_responses_mode": "force_responses",
 		},
 	}
 	require.NoError(t, repo.Create(ctx, source))

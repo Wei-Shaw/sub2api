@@ -225,7 +225,7 @@ func TestOpenAIGatewayServicePassthroughCompactImageIntentIsAttemptLocal(t *test
 			c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses/compact", nil)
 			SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
 			account := newOpenAIImageGenerationControlTestAccount()
-			account.Extra = map[string]any{"openai_passthrough": true}
+			account.Extra = map[string]any{"openai_passthrough": true, "openai_responses_mode": "force_responses"}
 			account.Credentials = map[string]any{
 				"api_key": "sk-test",
 				"compact_model_mapping": map[string]any{

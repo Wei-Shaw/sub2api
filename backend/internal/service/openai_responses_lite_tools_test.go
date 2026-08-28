@@ -592,7 +592,7 @@ func TestOpenAIGatewayServiceForward_DisablesParallelToolCallsForResponsesLiteAP
 				ID: 503, Name: "responses-lite-api-key", Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
 				Concurrency: 1, Status: StatusActive, Schedulable: true, RateMultiplier: f64p(1),
 				Credentials: map[string]any{"api_key": "sk-test"},
-				Extra:       map[string]any{"openai_passthrough": passthrough},
+				Extra:       map[string]any{"openai_passthrough": passthrough, "openai_responses_mode": "force_responses"},
 			}
 			body := []byte(`{
 				"model":"gpt-5.6-terra","stream":true,"instructions":"test",

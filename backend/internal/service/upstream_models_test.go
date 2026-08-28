@@ -256,7 +256,7 @@ func TestBuildUpstreamModelsRequestsForAPIKeyAccounts(t *testing.T) {
 		Credentials: map[string]any{
 			"api_key":  "openai-key",
 			"base_url": "https://openai.example.com",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	})
 	require.NoError(t, err)
 	require.Equal(t, "https://openai.example.com/v1/models", openAIReq.URL.String())
@@ -386,7 +386,7 @@ func TestFetchUpstreamSupportedModelsParsesOpenAIResponse(t *testing.T) {
 		Credentials: map[string]any{
 			"api_key":  "openai-key",
 			"base_url": "https://openai.example.com/v1",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	})
 	require.NoError(t, err)
 	require.Equal(t, []string{"gpt-5", "o3"}, models)
@@ -413,7 +413,7 @@ func TestFetchUpstreamSupportedModelsUsesConfiguredBodyLimit(t *testing.T) {
 		Credentials: map[string]any{
 			"api_key":  "openai-key",
 			"base_url": "https://openai.example.com/v1",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "response exceeds 8 bytes")
@@ -506,7 +506,7 @@ func TestFetchUpstreamSupportedModelsDoesNotExposeUpstreamBody(t *testing.T) {
 		Credentials: map[string]any{
 			"api_key":  "openai-key",
 			"base_url": "https://openai.example.com/v1",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	})
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), "SECRET_TOKEN")

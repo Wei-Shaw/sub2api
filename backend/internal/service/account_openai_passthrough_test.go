@@ -12,7 +12,7 @@ func TestAccount_IsOpenAIPassthroughEnabled(t *testing.T) {
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
 			Extra: map[string]any{
-				"openai_passthrough": true,
+				"openai_passthrough": true, "openai_responses_mode": "force_responses",
 			},
 		}
 		require.True(t, account.IsOpenAIPassthroughEnabled())
@@ -64,7 +64,7 @@ func TestAccount_IsOpenAIOAuthPassthroughEnabled(t *testing.T) {
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
 			Extra: map[string]any{
-				"openai_passthrough": true,
+				"openai_passthrough": true, "openai_responses_mode": "force_responses",
 			},
 		}
 		require.False(t, apiKeyAccount.IsOpenAIOAuthPassthroughEnabled())
@@ -119,7 +119,7 @@ func TestAccount_IsCodexCLIOnlyEnabled(t *testing.T) {
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
 			Extra: map[string]any{
-				"codex_cli_only": true,
+				"codex_cli_only": true, "openai_responses_mode": "force_responses",
 			},
 		}
 		require.False(t, apiKeyAccount.IsCodexCLIOnlyEnabled())
@@ -152,7 +152,7 @@ func TestAccount_IsOpenAIResponsesWebSocketV2Enabled(t *testing.T) {
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
 			Extra: map[string]any{
-				"openai_apikey_responses_websockets_v2_enabled": true,
+				"openai_apikey_responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 			},
 		}
 		require.True(t, account.IsOpenAIResponsesWebSocketV2Enabled())
@@ -187,7 +187,7 @@ func TestAccount_IsOpenAIResponsesWebSocketV2Enabled(t *testing.T) {
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
 			Extra: map[string]any{
-				"responses_websockets_v2_enabled": true,
+				"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 			},
 		}
 		require.True(t, account.IsOpenAIResponsesWebSocketV2Enabled())
@@ -245,7 +245,7 @@ func TestAccount_ResolveOpenAIResponsesWebSocketV2Mode(t *testing.T) {
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
 			Extra: map[string]any{
-				"responses_websockets_v2_enabled": true,
+				"responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 			},
 		}
 		require.Equal(t, OpenAIWSIngressModeCtxPool, account.ResolveOpenAIResponsesWebSocketV2Mode(OpenAIWSIngressModeOff))
@@ -278,7 +278,7 @@ func TestAccount_ResolveOpenAIResponsesWebSocketV2Mode(t *testing.T) {
 			Type:     AccountTypeAPIKey,
 			Extra: map[string]any{
 				"openai_apikey_responses_websockets_v2_enabled": false,
-				"responses_websockets_v2_enabled":               true,
+				"responses_websockets_v2_enabled":               true, "openai_responses_mode": "force_responses",
 			},
 		}
 		require.Equal(t, OpenAIWSIngressModeOff, account.ResolveOpenAIResponsesWebSocketV2Mode(OpenAIWSIngressModeCtxPool))

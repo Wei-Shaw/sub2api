@@ -2096,7 +2096,10 @@ func TestOpenAIResponses_APIKeyPassthroughPool5xxRetriesThenExhaustsMaxSwitches(
 				"pool_mode_retry_count":        float64(1),
 				"pool_mode_retry_status_codes": []any{float64(http.StatusBadGateway)},
 			},
-			Extra: map[string]any{"openai_passthrough": true},
+			Extra: map[string]any{
+				"openai_passthrough":    true,
+				"openai_responses_mode": "force_responses",
+			},
 		},
 		{
 			ID: 9911, Name: "fallback-api-key", Platform: service.PlatformOpenAI,
@@ -2105,7 +2108,10 @@ func TestOpenAIResponses_APIKeyPassthroughPool5xxRetriesThenExhaustsMaxSwitches(
 				"api_key":  "sk-fallback",
 				"base_url": "https://api.example.test",
 			},
-			Extra: map[string]any{"openai_passthrough": true},
+			Extra: map[string]any{
+				"openai_passthrough":    true,
+				"openai_responses_mode": "force_responses",
+			},
 		},
 	}
 	cfg := &config.Config{RunMode: config.RunModeSimple}
@@ -2196,7 +2202,10 @@ func TestOpenAIResponses_APIKeyPassthroughPoolAuthFailureRetriesThenSwitchesToHe
 						"pool_mode_retry_count":        float64(1),
 						"pool_mode_retry_status_codes": []any{float64(tt.statusCode)},
 					},
-					Extra: map[string]any{"openai_passthrough": true},
+					Extra: map[string]any{
+						"openai_passthrough":    true,
+						"openai_responses_mode": "force_responses",
+					},
 				},
 				{
 					ID: 9911, Name: "fallback-api-key", Platform: service.PlatformOpenAI,
@@ -2205,7 +2214,10 @@ func TestOpenAIResponses_APIKeyPassthroughPoolAuthFailureRetriesThenSwitchesToHe
 						"api_key":  "sk-fallback",
 						"base_url": "https://api.example.test",
 					},
-					Extra: map[string]any{"openai_passthrough": true},
+					Extra: map[string]any{
+						"openai_passthrough":    true,
+						"openai_responses_mode": "force_responses",
+					},
 				},
 			}
 			cfg := &config.Config{RunMode: config.RunModeSimple}
@@ -2288,7 +2300,10 @@ func TestOpenAIResponses_APIKeyPassthroughSSERateLimitUsesConfiguredPoolRetry(t 
 				"pool_mode_retry_count":        float64(1),
 				"pool_mode_retry_status_codes": []any{float64(http.StatusTooManyRequests)},
 			},
-			Extra: map[string]any{"openai_passthrough": true},
+			Extra: map[string]any{
+				"openai_passthrough":    true,
+				"openai_responses_mode": "force_responses",
+			},
 		},
 	}
 	cfg := &config.Config{RunMode: config.RunModeSimple}

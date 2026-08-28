@@ -106,10 +106,12 @@ func TestIsModelSupported_OpenAIAPIKeyEmptyMappingAllowsAll(t *testing.T) {
 	account := &Account{
 		ID:       2,
 		Platform: PlatformOpenAI,
-		Type:     AccountTypeAPIKey,
+		Type:     AccountTypeAPIKey, Extra: map[
+
+		// API Key 账号（第三方 OpenAI 兼容上游）可服务任意别名，语义不变。
+		string]any{"openai_responses_mode": "force_responses"},
 	}
 
-	// API Key 账号（第三方 OpenAI 兼容上游）可服务任意别名，语义不变。
 	require.True(t, account.IsModelSupported("deepseek-v4"))
 	require.True(t, account.IsModelSupported("gpt-5.4"))
 }

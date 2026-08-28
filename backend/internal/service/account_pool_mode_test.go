@@ -21,7 +21,7 @@ func TestGetPoolModeRetryCount(t *testing.T) {
 			account: &Account{
 				Type:        AccountTypeAPIKey,
 				Platform:    PlatformOpenAI,
-				Credentials: map[string]any{},
+				Credentials: map[string]any{}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			expected: defaultPoolModeRetryCount,
 		},
@@ -32,7 +32,7 @@ func TestGetPoolModeRetryCount(t *testing.T) {
 				Platform: PlatformOpenAI,
 				Credentials: map[string]any{
 					"pool_mode": true,
-				},
+				}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			expected: defaultPoolModeRetryCount,
 		},
@@ -44,7 +44,7 @@ func TestGetPoolModeRetryCount(t *testing.T) {
 				Credentials: map[string]any{
 					"pool_mode":             true,
 					"pool_mode_retry_count": float64(5),
-				},
+				}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			expected: 5,
 		},
@@ -56,7 +56,7 @@ func TestGetPoolModeRetryCount(t *testing.T) {
 				Credentials: map[string]any{
 					"pool_mode":             true,
 					"pool_mode_retry_count": json.Number("4"),
-				},
+				}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			expected: 4,
 		},
@@ -68,7 +68,7 @@ func TestGetPoolModeRetryCount(t *testing.T) {
 				Credentials: map[string]any{
 					"pool_mode":             true,
 					"pool_mode_retry_count": "2",
-				},
+				}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			expected: 2,
 		},
@@ -80,7 +80,7 @@ func TestGetPoolModeRetryCount(t *testing.T) {
 				Credentials: map[string]any{
 					"pool_mode":             true,
 					"pool_mode_retry_count": -1,
-				},
+				}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			expected: 0,
 		},
@@ -92,7 +92,7 @@ func TestGetPoolModeRetryCount(t *testing.T) {
 				Credentials: map[string]any{
 					"pool_mode":             true,
 					"pool_mode_retry_count": 99,
-				},
+				}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			expected: maxPoolModeRetryCount,
 		},
@@ -104,7 +104,7 @@ func TestGetPoolModeRetryCount(t *testing.T) {
 				Credentials: map[string]any{
 					"pool_mode":             true,
 					"pool_mode_retry_count": "oops",
-				},
+				}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 			expected: defaultPoolModeRetryCount,
 		},
@@ -125,35 +125,35 @@ func TestGetPoolModeRetryDelay(t *testing.T) {
 	}{
 		{
 			name:     "default_when_not_pool_mode",
-			account:  &Account{Type: AccountTypeAPIKey, Platform: PlatformOpenAI, Credentials: map[string]any{}},
+			account:  &Account{Type: AccountTypeAPIKey, Platform: PlatformOpenAI, Credentials: map[string]any{}, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 			expected: defaultPoolModeRetryDelay,
 		},
 		{
 			name: "configured_delay_in_milliseconds",
 			account: &Account{Type: AccountTypeAPIKey, Platform: PlatformOpenAI, Credentials: map[string]any{
 				"pool_mode": true, "pool_mode_retry_delay_ms": 1500,
-			}},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 			expected: 1500 * time.Millisecond,
 		},
 		{
 			name: "zero_disables_delay",
 			account: &Account{Type: AccountTypeAPIKey, Platform: PlatformOpenAI, Credentials: map[string]any{
 				"pool_mode": true, "pool_mode_retry_delay_ms": 0,
-			}},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 			expected: 0,
 		},
 		{
 			name: "oversized_delay_is_clamped",
 			account: &Account{Type: AccountTypeAPIKey, Platform: PlatformOpenAI, Credentials: map[string]any{
 				"pool_mode": true, "pool_mode_retry_delay_ms": 120000,
-			}},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 			expected: maxPoolModeRetryDelay,
 		},
 		{
 			name: "invalid_or_negative_delay_uses_default",
 			account: &Account{Type: AccountTypeAPIKey, Platform: PlatformOpenAI, Credentials: map[string]any{
 				"pool_mode": true, "pool_mode_retry_delay_ms": "oops",
-			}},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 			expected: defaultPoolModeRetryDelay,
 		},
 	}

@@ -90,7 +90,7 @@ func TestAPIKeyAuthForwardsUserScopedOpenAIFastPolicyToUpstream(t *testing.T) {
 			"api_key":  "sk-test",
 			"base_url": upstreamServer.URL,
 		},
-		Extra: map[string]any{"use_responses_api": true},
+		Extra: map[string]any{"use_responses_api": true, "openai_responses_mode": "force_responses"},
 	}
 
 	router := gin.New()

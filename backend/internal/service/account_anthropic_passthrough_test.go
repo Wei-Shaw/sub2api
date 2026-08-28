@@ -54,7 +54,7 @@ func TestAccount_IsAnthropicAPIKeyPassthroughEnabled(t *testing.T) {
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
 			Extra: map[string]any{
-				"anthropic_passthrough": true,
+				"anthropic_passthrough": true, "openai_responses_mode": "force_responses",
 			},
 		}
 		require.False(t, openai.IsAnthropicAPIKeyPassthroughEnabled())
@@ -103,7 +103,7 @@ func TestAccount_GetAnthropicAPIKeyAuthScheme(t *testing.T) {
 				Platform: PlatformOpenAI,
 				Type:     AccountTypeAPIKey,
 				Extra: map[string]any{
-					"anthropic_apikey_auth_scheme": AnthropicAPIKeyAuthSchemeAuthorizationBearer,
+					"anthropic_apikey_auth_scheme": AnthropicAPIKeyAuthSchemeAuthorizationBearer, "openai_responses_mode": "force_responses",
 				},
 			},
 			want: AnthropicAPIKeyAuthSchemeXAPIKey,

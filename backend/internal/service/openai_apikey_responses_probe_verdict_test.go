@@ -22,11 +22,13 @@ func newResponsesProbeAccount(id int64) Account {
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
 			"base_url": "https://compat-upstream.example/v1",
-		},
+		}, Extra: map[
+
+		// runResponsesProbe 跑一次探测，返回落库的 extra 更新；未落库时返回 nil。
+		string]any{"openai_responses_mode": "force_responses"},
 	}
 }
 
-// runResponsesProbe 跑一次探测，返回落库的 extra 更新；未落库时返回 nil。
 func runResponsesProbe(t *testing.T, status int, body string) map[string]any {
 	t.Helper()
 	account := newResponsesProbeAccount(4200)

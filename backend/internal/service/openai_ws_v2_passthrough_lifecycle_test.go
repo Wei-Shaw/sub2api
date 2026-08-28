@@ -142,7 +142,7 @@ func passthroughLifecycleAccount() *Account {
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-test"},
 		Extra: map[string]any{
-			"openai_apikey_responses_websockets_v2_mode": OpenAIWSIngressModePassthrough,
+			"openai_apikey_responses_websockets_v2_mode": OpenAIWSIngressModePassthrough, "openai_responses_mode": "force_responses",
 		},
 	}
 }

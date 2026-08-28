@@ -46,7 +46,7 @@ func newOpenAIImagesAPIKeyAccount() *Account {
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
 			"base_url": "https://api.openai.com/v1",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 }
 

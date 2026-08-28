@@ -296,7 +296,7 @@ func ollamaUsageAccount(id int64) *Account {
 	return &Account{
 		ID: id, Name: fmt.Sprintf("ollama-%d", id), Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
 		Credentials: map[string]any{"base_url": "https://ollama.com", "api_key": fmt.Sprintf("key-%d", id)},
-		Extra:       map[string]any{}, Status: StatusActive, Schedulable: true, Concurrency: 1,
+		Extra:       map[string]any{"openai_responses_mode": "force_responses"}, Status: StatusActive, Schedulable: true, Concurrency: 1,
 	}
 }
 

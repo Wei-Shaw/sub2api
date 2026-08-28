@@ -196,7 +196,7 @@ func TestForwardAsRawChatCompletions_TransportErrorFailsOver(t *testing.T) {
 		Name:        "oc-20053",
 		Platform:    PlatformOpenAI,
 		Type:        AccountTypeAPIKey,
-		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://opencode.ai/zen/v1"},
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://opencode.ai/zen/v1"}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	c, rec := newOpenAITransportErrTestContext()
 	body := []byte(`{"model":"deepseek-v4-flash-free","messages":[{"role":"user","content":"hello"}]}`)
@@ -219,11 +219,11 @@ func TestHandleOpenAIUpstreamTransportError_RecordsOllamaActivityOnly(t *testing
 	}
 	ollama := &Account{
 		ID: 501, Name: "ollama-cloud", Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
-		Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"},
+		Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	other := &Account{
 		ID: 502, Name: "openai-official", Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
-		Credentials: map[string]any{"api_key": "k-openai", "base_url": "https://api.openai.com"},
+		Credentials: map[string]any{"api_key": "k-openai", "base_url": "https://api.openai.com"}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	c, _ := newOpenAITransportErrTestContext()
 
@@ -244,7 +244,7 @@ func TestHandleOpenAIUpstreamTransportError_ContextCanceledSkipsOllamaActivity(t
 	}
 	ollama := &Account{
 		ID: 503, Name: "ollama-canceled", Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
-		Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"},
+		Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	c, _ := newOpenAITransportErrTestContext()
 
@@ -260,11 +260,11 @@ func TestHandleOpenAIAccountUpstreamError_RecordsOllamaActivityOnly(t *testing.T
 	svc := &OpenAIGatewayService{deferredService: deferred}
 	ollama := &Account{
 		ID: 504, Name: "ollama-429", Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
-		Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"},
+		Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	other := &Account{
 		ID: 505, Name: "openai-429", Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
-		Credentials: map[string]any{"api_key": "k-openai", "base_url": "https://api.openai.com"},
+		Credentials: map[string]any{"api_key": "k-openai", "base_url": "https://api.openai.com"}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	_ = svc.handleOpenAIAccountUpstreamError(context.Background(), ollama, http.StatusTooManyRequests, http.Header{}, []byte(`{"error":{"message":"rate"}}`), "gpt-test")

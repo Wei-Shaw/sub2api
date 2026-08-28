@@ -97,7 +97,7 @@ func TestOpenAISelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedul
 					"model_mapping": map[string]any{
 						"gpt-4": "gpt-4",
 					},
-				},
+				}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 		},
 		accounts: map[int64]*Account{
@@ -112,7 +112,7 @@ func TestOpenAISelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedul
 				Credentials: map[string]any{
 					"api_key":       "sk-live",
 					"model_mapping": map[string]any{"gpt-4": "gpt-4"},
-				},
+				}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 		},
 	}

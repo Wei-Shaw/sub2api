@@ -74,7 +74,7 @@ func TestNormalizeOpenAICodexCompactReasoningEffortForAccountScopesCompatibility
 		{
 			name:    "OpenAI API Key compact 保留",
 			path:    "/openai/v1/responses/compact",
-			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 			want:    "max",
 		},
 		{
@@ -122,7 +122,7 @@ func TestOpenAIGatewayServiceForwardPreservesGPT56MaxEffort(t *testing.T) {
 			"api_key":  "sk-test",
 			"base_url": "https://example.com",
 		},
-		Extra: map[string]any{"use_responses_api": true},
+		Extra: map[string]any{"use_responses_api": true, "openai_responses_mode": "force_responses"},
 	}
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -164,7 +164,7 @@ func TestOpenAIGatewayServiceForwardPreservesMappedGPT56MaxEffort(t *testing.T) 
 				"sol": "gpt-5.6-sol",
 			},
 		},
-		Extra: map[string]any{"use_responses_api": true},
+		Extra: map[string]any{"use_responses_api": true, "openai_responses_mode": "force_responses"},
 	}
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -310,7 +310,7 @@ func TestOpenAIGatewayServiceForwardAPIKeyRemoteCompactV2PreservesResponsesWire(
 				"gpt-5.6-sol": "gpt-5.6-sol-openai-compact",
 			},
 		},
-		Extra:       map[string]any{"use_responses_api": true},
+		Extra:       map[string]any{"use_responses_api": true, "openai_responses_mode": "force_responses"},
 		Status:      StatusActive,
 		Schedulable: true,
 	}

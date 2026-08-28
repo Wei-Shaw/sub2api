@@ -81,7 +81,7 @@ func TestForwardEmbeddings_APIKeyPassthroughRecordsUsageAndBatchInput(t *testing
 			"model_mapping": map[string]any{
 				"nowledge-embedding": "jina-embeddings-v5-text-small",
 			},
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	result, err := svc.ForwardEmbeddings(context.Background(), c, account, reqBody, "")
@@ -129,7 +129,7 @@ func TestForwardEmbeddings_AccessStateUsesTypedFailover(t *testing.T) {
 		Type:     AccountTypeAPIKey,
 		Credentials: map[string]any{
 			"api_key": "sk-test",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	result, err := svc.ForwardEmbeddings(context.Background(), c, account, reqBody, "")
@@ -169,7 +169,7 @@ func TestForwardEmbeddings_NonAccessFailoverKeepsLegacyShape(t *testing.T) {
 		Type:     AccountTypeAPIKey,
 		Credentials: map[string]any{
 			"api_key": "sk-test",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	result, err := svc.ForwardEmbeddings(context.Background(), c, account, reqBody, "")

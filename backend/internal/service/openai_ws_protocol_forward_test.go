@@ -110,6 +110,7 @@ func TestOpenAIGatewayService_Forward_PreservePreviousResponseIDWhenWSEnabled(t 
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -169,6 +170,7 @@ func TestOpenAIGatewayService_Forward_HTTPIngressStaysHTTPWhenWSEnabled(t *testi
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -244,6 +246,7 @@ func TestOpenAIGatewayService_Forward_HTTPIngressRetriesInvalidEncryptedContentO
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -333,6 +336,7 @@ func TestOpenAIGatewayService_Forward_HTTPIngressRetriesWrappedInvalidEncryptedC
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -402,6 +406,7 @@ func TestOpenAIGatewayService_Forward_APIKeyHTTPPreservesPreviousResponseIDWhenW
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -462,6 +467,7 @@ func TestOpenAIGatewayService_Forward_WSv2Dial426FallbackHTTP(t *testing.T) {
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -524,6 +530,7 @@ func TestOpenAIGatewayService_Forward_WSv2FallbackCoolingSkipWS(t *testing.T) {
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -583,6 +590,7 @@ func TestOpenAIGatewayService_Forward_ReturnErrorWhenOnlyWSv1Enabled(t *testing.
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -677,6 +685,7 @@ func TestOpenAIGatewayService_Forward_WSv2FallbackWhenResponseAlreadyWrittenRetu
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -770,6 +779,7 @@ func TestOpenAIGatewayService_Forward_WSv2StreamEarlyCloseFallbackHTTP(t *testin
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -852,6 +862,7 @@ func TestOpenAIGatewayService_Forward_WSv2RetryFiveTimesThenFallbackHTTP(t *test
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -933,6 +944,7 @@ func TestOpenAIGatewayService_Forward_WSv2PolicyViolationFastFallbackHTTP(t *tes
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -1017,6 +1029,7 @@ func TestOpenAIGatewayService_Forward_WSv2ConnectionLimitReachedRetryThenFallbac
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -1124,6 +1137,7 @@ func TestOpenAIGatewayService_Forward_WSv2PreviousResponseNotFoundRecoversByDrop
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -1224,6 +1238,7 @@ func TestOpenAIGatewayService_Forward_WSv2PreviousResponseNotFoundSkipsRecoveryF
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -1322,6 +1337,7 @@ func TestOpenAIGatewayService_Forward_WSv2PreviousResponseNotFoundSkipsRecoveryW
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -1419,6 +1435,7 @@ func TestOpenAIGatewayService_Forward_WSv2PreviousResponseNotFoundOnlyRecoversOn
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -1534,6 +1551,7 @@ func TestOpenAIGatewayService_Forward_WSv2InvalidEncryptedContentRecoversOnce(t 
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -1638,6 +1656,7 @@ func TestOpenAIGatewayService_Forward_WSv2InvalidEncryptedContentSkipsRecoveryWi
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -1754,6 +1773,7 @@ func TestOpenAIGatewayService_Forward_WSv2InvalidEncryptedContentRecoversSingleO
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 
@@ -1872,6 +1892,7 @@ func TestOpenAIGatewayService_Forward_WSv2InvalidEncryptedContentKeepsPreviousRe
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			"openai_responses_mode":           "force_responses",
 		},
 	}
 

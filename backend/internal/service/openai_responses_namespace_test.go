@@ -10,7 +10,7 @@ import (
 
 func TestShouldFlattenOpenAIResponsesNamespaces(t *testing.T) {
 	oauth := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
-	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	grokOAuth := &Account{Platform: PlatformGrok, Type: AccountTypeOAuth}
 	// 账号级兼容开关：为不认识 namespace 的兼容上游恢复旧的摊平行为。
 	flattenOAuth := &Account{
@@ -21,7 +21,7 @@ func TestShouldFlattenOpenAIResponsesNamespaces(t *testing.T) {
 	flattenAPIKey := &Account{
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeAPIKey,
-		Extra:    map[string]any{"openai_responses_flatten_namespaces": true},
+		Extra:    map[string]any{"openai_responses_flatten_namespaces": true, "openai_responses_mode": "force_responses"},
 	}
 
 	tests := []struct {
@@ -64,7 +64,7 @@ func TestShouldFlattenOpenAIResponsesNamespaces(t *testing.T) {
 
 func TestShouldKeepOpenAIResponsesToolCallNamespaces(t *testing.T) {
 	oauth := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
-	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	setupToken := &Account{Platform: PlatformOpenAI, Type: AccountTypeSetupToken}
 	flattenOAuth := &Account{
 		Platform: PlatformOpenAI,
@@ -108,7 +108,7 @@ func TestShouldKeepOpenAIResponsesToolCallNamespaces(t *testing.T) {
 
 func TestShouldStripOpenAIResponsesInputNamespaces(t *testing.T) {
 	oauth := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
-	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	setupToken := &Account{Platform: PlatformOpenAI, Type: AccountTypeSetupToken}
 	grokOAuth := &Account{Platform: PlatformGrok, Type: AccountTypeOAuth}
 

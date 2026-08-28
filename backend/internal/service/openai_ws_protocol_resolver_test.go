@@ -149,7 +149,7 @@ func TestOpenAIWSProtocolResolver_Resolve(t *testing.T) {
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
 			Extra: map[string]any{
-				"openai_apikey_responses_websockets_v2_enabled": true,
+				"openai_apikey_responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 			},
 		}
 		decision := NewOpenAIWSProtocolResolver(&cfg).Resolve(account)
@@ -215,7 +215,7 @@ func TestOpenAIWSProtocolResolver_Resolve_ModeRouterV2(t *testing.T) {
 			Type:        AccountTypeAPIKey,
 			Concurrency: 1,
 			Extra: map[string]any{
-				"openai_apikey_responses_websockets_v2_enabled": true,
+				"openai_apikey_responses_websockets_v2_enabled": true, "openai_responses_mode": "force_responses",
 			},
 		}
 		decision := NewOpenAIWSProtocolResolver(cfg).Resolve(legacyAccount)

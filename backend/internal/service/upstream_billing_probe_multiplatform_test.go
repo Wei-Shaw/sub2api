@@ -196,7 +196,7 @@ func TestUpstreamBillingProbeOpenAIDefaultBaseURLPreserved(t *testing.T) {
 		Platform:    PlatformOpenAI,
 		Type:        AccountTypeAPIKey,
 		Status:      StatusActive,
-		Credentials: map[string]any{"api_key": "sk-openai"},
+		Credentials: map[string]any{"api_key": "sk-openai"}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
 	upstream := &httpUpstreamRecorder{resp: &http.Response{

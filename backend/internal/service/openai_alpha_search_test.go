@@ -269,7 +269,7 @@ func TestForwardAlphaSearchAPIKeyMapsModelAndPassesThroughError(t *testing.T) {
 			"model_mapping": map[string]any{
 				"gpt-5.6-sol": "upstream-5.6",
 			},
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	result, err := service.ForwardAlphaSearch(context.Background(), c, account, body)
@@ -304,7 +304,7 @@ func TestForwardAlphaSearchReturnsFailoverBeforeWriting(t *testing.T) {
 		Type:     AccountTypeAPIKey,
 		Credentials: map[string]any{
 			"api_key": "sk-test",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	result, err := service.ForwardAlphaSearch(context.Background(), c, account, body)
@@ -571,7 +571,7 @@ func TestForwardAlphaSearchAPIKeyEndpointNotFoundFailsOver(t *testing.T) {
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
 			"base_url": "https://relay.example",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	result, err := service.ForwardAlphaSearch(context.Background(), c, account, body)
@@ -647,7 +647,7 @@ func TestSanitizeOpenAIAlphaSearchBody_RemovesResponsesOnlyFields(t *testing.T) 
 }
 
 func TestIsOpenAIAlphaSearchEndpointUnsupported(t *testing.T) {
-	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	oauth := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 
 	require.True(t, isOpenAIAlphaSearchEndpointUnsupported(apiKey, http.StatusNotFound))

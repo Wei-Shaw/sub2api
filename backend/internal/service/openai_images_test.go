@@ -497,7 +497,7 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 	t.Run("OpenAI APIKey 默认兼容 chat、embeddings 和 alpha search", func(t *testing.T) {
 		account := &Account{
 			Platform: PlatformOpenAI,
-			Type:     AccountTypeAPIKey,
+			Type:     AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		}
 
 		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
@@ -521,7 +521,7 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 		// 两类都能承接独立搜索（APIKey 被排除曾导致纯 APIKey 分组搜索失效的回归）。
 		apiKey := &Account{
 			Platform: PlatformOpenAI,
-			Type:     AccountTypeAPIKey,
+			Type:     AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		}
 		oauth := &Account{
 			Platform: PlatformOpenAI,
@@ -543,7 +543,7 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 			Type:     AccountTypeAPIKey,
 			Credentials: map[string]any{
 				"openai_capabilities": []any{"chat_completions", "embeddings"},
-			},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		}
 
 		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
@@ -556,7 +556,7 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 			Type:     AccountTypeAPIKey,
 			Credentials: map[string]any{
 				"openai_capabilities": []any{"chat_completions"},
-			},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		}
 
 		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
@@ -586,7 +586,7 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 					"chat_completions": false,
 					"embeddings":       true,
 				},
-			},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		}
 
 		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
@@ -657,7 +657,7 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 	t.Run("未知能力不应默认放行", func(t *testing.T) {
 		account := &Account{
 			Platform: PlatformOpenAI,
-			Type:     AccountTypeAPIKey,
+			Type:     AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		}
 
 		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapability("unknown")))
@@ -666,7 +666,7 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 	t.Run("responses 能力：未探测的 APIKey 默认放行", func(t *testing.T) {
 		account := &Account{
 			Platform: PlatformOpenAI,
-			Type:     AccountTypeAPIKey,
+			Type:     AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		}
 
 		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses))
@@ -676,7 +676,7 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 		account := &Account{
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
-			Extra:    map[string]any{"openai_responses_supported": false},
+			Extra:    map[string]any{"openai_responses_supported": false, "openai_responses_mode": "force_chat_completions"},
 		}
 
 		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses))
@@ -688,7 +688,7 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 		account := &Account{
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
-			Extra:    map[string]any{"openai_responses_supported": true},
+			Extra:    map[string]any{"openai_responses_supported": true, "openai_responses_mode": "force_responses"},
 		}
 
 		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses))
@@ -721,7 +721,7 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 			Type:     AccountTypeAPIKey,
 			Credentials: map[string]any{
 				"openai_capabilities": []any{"embeddings"},
-			},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		}
 
 		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses))
@@ -1371,7 +1371,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationUsesConfiguredV1BaseU
 		Credentials: map[string]any{
 			"api_key":  "test-api-key",
 			"base_url": "https://image-upstream.example/v1",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
@@ -1418,7 +1418,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyAccessStateUsesTypedFailover(t 
 		Type:     AccountTypeAPIKey,
 		Credentials: map[string]any{
 			"api_key": "sk-test",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
@@ -1472,7 +1472,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamJSONResponseBillsImage(t 
 		Credentials: map[string]any{
 			"api_key":  "test-api-key",
 			"base_url": "https://image-upstream.example/v1",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
@@ -1521,7 +1521,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamRawJSONEventStreamFallbac
 		Credentials: map[string]any{
 			"api_key":  "test-api-key",
 			"base_url": "https://image-upstream.example/v1",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
@@ -1573,7 +1573,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamMultilineSSEDataBillsImag
 		Type:     AccountTypeAPIKey,
 		Credentials: map[string]any{
 			"api_key": "test-api-key",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
@@ -1635,7 +1635,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyEditUsesConfiguredV1BaseURL(t *
 		Credentials: map[string]any{
 			"api_key":  "test-api-key",
 			"base_url": "https://image-upstream.example/v1/",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	result, err := svc.ForwardImages(context.Background(), c, account, body.Bytes(), parsed, "")
@@ -1773,7 +1773,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamingDrainsAfterClientDisco
 		Type:     AccountTypeAPIKey,
 		Credentials: map[string]any{
 			"api_key": "test-api-key",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")

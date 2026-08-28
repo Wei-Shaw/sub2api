@@ -206,7 +206,7 @@ func TestParentHealthyForShadow(t *testing.T) {
 			Platform:    PlatformOpenAI,
 			Type:        AccountTypeAPIKey,
 			Status:      StatusActive,
-			Schedulable: true,
+			Schedulable: true, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		}
 		lookup := func(id int64) *Account {
 			if id == apikeyParent.ID {

@@ -325,7 +325,7 @@ func rawGPT56ResponsesAPIKeyAccount(requestedModel, mappedModel string) *Account
 			"base_url":      "https://api.example.com/v1",
 			"model_mapping": map[string]any{requestedModel: mappedModel},
 		},
-		Extra: map[string]any{"use_responses_api": true},
+		Extra: map[string]any{"use_responses_api": true, "openai_responses_mode": "force_responses"},
 	}
 }
 
@@ -386,7 +386,7 @@ func TestForwardAsAnthropic_MappedClaudeModelAcceptsChatUsageShape(t *testing.T)
 			"model_mapping": map[string]any{
 				"gpt-5.5": "gpt-5.5",
 			},
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "gpt-5.5")
@@ -436,7 +436,7 @@ func TestForwardAsAnthropic_InjectsPromptCacheKeyForAPIKeyMessagesDispatch(t *te
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
 			"base_url": "https://api.openai.com/v1",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "stable-cache-key", "gpt-5.3-codex")
@@ -482,7 +482,7 @@ func TestForwardAsAnthropic_AutoDerivesPromptCacheKeyWhenMessagesDispatchHasNoSe
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
 			"base_url": "https://api.openai.com/v1",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "gpt-5.3-codex")
@@ -529,7 +529,7 @@ func TestForwardAsAnthropic_DoesNotAutoDerivePromptCacheKeyForNonCodexModel(t *t
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
 			"base_url": "https://api.openai.com/v1",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "gpt-4o")
@@ -582,7 +582,7 @@ func TestForwardAsAnthropic_TrimsFullReplayOnlyForCodexCompatModels(t *testing.T
 			Credentials: map[string]any{
 				"api_key":  "sk-test",
 				"base_url": "https://api.openai.com/v1",
-			},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 		}
 
 		result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", mappedModel)
@@ -664,7 +664,7 @@ func TestForwardAsAnthropic_AttachesPreviousResponseIDForCompatContinuation(t *t
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
 			"base_url": "https://api.openai.com/v1",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	firstBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[{"role":"user","content":"first"}],"stream":false}`)
@@ -716,7 +716,7 @@ func TestForwardAsAnthropic_PreviousResponseIDKeepsMultiToolCallContext(t *testi
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
 			"base_url": "https://api.openai.com/v1",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	firstBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[{"role":"user","content":"inspect files"}],"stream":false}`)
@@ -771,7 +771,7 @@ func TestForwardAsAnthropic_ReplaysWithoutContinuationWhenPreviousResponseMissin
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
 			"base_url": "https://api.openai.com/v1",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	svc.bindOpenAICompatSessionResponseID(context.Background(), nil, account, "stable-cache-key", "resp_missing")
@@ -822,7 +822,7 @@ func TestForwardAsAnthropic_DisablesAPIKeyContinuationWhenUpstreamRequiresWebSoc
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
 			"base_url": "https://api.openai.com/v1",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	svc.bindOpenAICompatSessionResponseID(context.Background(), nil, account, "stable-cache-key", "resp_http_unsupported")
@@ -893,7 +893,7 @@ func TestForwardAsAnthropic_APIKeyMetadataSessionSurvivesChangingCacheControlAnc
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
 			"base_url": "https://api.openai.com/v1",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	firstRec := httptest.NewRecorder()
@@ -1371,7 +1371,7 @@ func TestForwardAsAnthropic_StoresStreamingResponseIDWithoutUsage(t *testing.T) 
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
 			"base_url": "https://api.openai.com/v1",
-		},
+		}, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	firstBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[{"role":"user","content":"first"}],"stream":true}`)

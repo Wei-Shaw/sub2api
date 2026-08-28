@@ -70,7 +70,7 @@ func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_APIKeyUsesResponsesI
 			"base_url": "http://upstream.example",
 		},
 		Status:      StatusActive,
-		Schedulable: true,
+		Schedulable: true, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	}
 
 	err := svc.ForwardCountTokensAsAnthropic(context.Background(), c, account, body, "gpt-5.3-codex")
@@ -339,7 +339,7 @@ func TestEstimateOpenAIInputTokens_CompareWithOpenAIAPI(t *testing.T) {
 		},
 	}
 
-	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			prepared, err := prepareOpenAIInputTokensCountRequest(tc.anthropicBody, account, tc.defaultOpenAIModel)

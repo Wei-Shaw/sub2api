@@ -82,6 +82,7 @@ func TestUpdateAccountRoutesRateIntentThroughAtomicBillingUpdater(t *testing.T) 
 				Status:         StatusActive,
 				RateMultiplier: &initialRate,
 				Extra: map[string]any{
+					"openai_responses_mode":                "force_responses",
 					UpstreamBillingProbeEnabledExtraKey:    true,
 					UpstreamBillingRateSyncEnabledExtraKey: true,
 				},
@@ -123,6 +124,7 @@ func TestCreateAccountDropsManagedUpstreamBillingProbeState(t *testing.T) {
 		Credentials:          map[string]any{"api_key": "sk-test"},
 		SkipDefaultGroupBind: true,
 		Extra: map[string]any{
+			"openai_responses_mode":                "force_responses",
 			UpstreamBillingProbeEnabledExtraKey:    true,
 			UpstreamBillingRateSyncEnabledExtraKey: true,
 			UpstreamBillingProbeExtraKey:           map[string]any{"status": "ok"},
@@ -145,6 +147,7 @@ func TestCreateAccountAcceptsDedicatedUpstreamBillingProbeSetting(t *testing.T) 
 		Credentials:          map[string]any{"api_key": "sk-test"},
 		ProbeEnabled:         &enabled,
 		SkipDefaultGroupBind: true,
+		Extra:                map[string]any{"openai_responses_mode": "force_responses"},
 	})
 
 	require.NoError(t, err)
@@ -170,6 +173,7 @@ func TestUpdateAccountPreservesManagedUpstreamBillingProbeStateForUnrelatedEdit(
 			Type:     AccountTypeAPIKey,
 			Status:   StatusActive,
 			Extra: map[string]any{
+				"openai_responses_mode":                "force_responses",
 				UpstreamBillingProbeEnabledExtraKey:    true,
 				UpstreamBillingRateSyncEnabledExtraKey: true,
 				UpstreamBillingProbeExtraKey:           map[string]any{"status": "ok"},
@@ -179,7 +183,7 @@ func TestUpdateAccountPreservesManagedUpstreamBillingProbeStateForUnrelatedEdit(
 
 	svc := &adminServiceImpl{accountRepo: repo}
 	updated, err := svc.UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
-		Extra: map[string]any{"custom": "value"},
+		Extra: map[string]any{"custom": "value", "openai_responses_mode": "force_responses"},
 	})
 
 	require.NoError(t, err)
@@ -232,6 +236,7 @@ func TestUpdateAccountPreservesProbeSnapshotWhenIdentityValuesAreUnchanged(t *te
 				credKeyHeaderOverrides:       map[string]any{"x-route": "stable"},
 			},
 			Extra: map[string]any{
+				"openai_responses_mode":             "force_responses",
 				UpstreamBillingProbeEnabledExtraKey: true,
 				UpstreamBillingProbeExtraKey:        map[string]any{"status": "ok"},
 			},
@@ -244,6 +249,7 @@ func TestUpdateAccountPreservesProbeSnapshotWhenIdentityValuesAreUnchanged(t *te
 			credKeyHeaderOverrideEnabled: true,
 			credKeyHeaderOverrides:       map[string]any{"x-route": "stable"},
 		},
+		Extra: map[string]any{"openai_responses_mode": "force_responses"},
 	})
 
 	require.NoError(t, err)
@@ -258,12 +264,12 @@ func TestUpdateAccountInvalidatesProbeSnapshotWhenUpstreamIdentityChanges(t *tes
 	}{
 		{
 			name:        "api key",
-			input:       &UpdateAccountInput{Credentials: map[string]any{"api_key": "sk-new"}},
+			input:       &UpdateAccountInput{Credentials: map[string]any{"api_key": "sk-new"}, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 			wantEnabled: true,
 		},
 		{
 			name:        "base url",
-			input:       &UpdateAccountInput{Credentials: map[string]any{"base_url": "https://new.example"}},
+			input:       &UpdateAccountInput{Credentials: map[string]any{"base_url": "https://new.example"}, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 			wantEnabled: true,
 		},
 		{
@@ -271,7 +277,7 @@ func TestUpdateAccountInvalidatesProbeSnapshotWhenUpstreamIdentityChanges(t *tes
 			input: &UpdateAccountInput{Credentials: map[string]any{
 				credKeyHeaderOverrideEnabled: true,
 				credKeyHeaderOverrides:       map[string]any{"x-route": "new"},
-			}},
+			}, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 			wantEnabled: true,
 		},
 		{
@@ -297,7 +303,7 @@ func TestUpdateAccountInvalidatesProbeSnapshotWhenUpstreamIdentityChanges(t *tes
 					Extra: map[string]any{
 						UpstreamBillingProbeEnabledExtraKey:    true,
 						UpstreamBillingRateSyncEnabledExtraKey: true,
-						UpstreamBillingProbeExtraKey:           map[string]any{"status": "ok"},
+						UpstreamBillingProbeExtraKey:           map[string]any{"status": "ok"}, "openai_responses_mode": "force_responses",
 					},
 				},
 			}}
@@ -329,6 +335,7 @@ func TestUpdateAccountInvalidatesProbeSnapshotWhenProxyChanges(t *testing.T) {
 			Credentials: map[string]any{"api_key": "sk-test"},
 			ProxyID:     &oldProxyID,
 			Extra: map[string]any{
+				"openai_responses_mode":             "force_responses",
 				UpstreamBillingProbeEnabledExtraKey: true,
 				UpstreamBillingProbeExtraKey:        map[string]any{"status": "ok"},
 			},
@@ -360,7 +367,7 @@ func TestUpdateAccountPreservesProbeSnapshotWhenProxyIsUnchanged(t *testing.T) {
 			ProxyID:     &existingProxyID,
 			Extra: map[string]any{
 				UpstreamBillingProbeEnabledExtraKey: true,
-				UpstreamBillingProbeExtraKey:        map[string]any{"status": "ok"},
+				UpstreamBillingProbeExtraKey:        map[string]any{"status": "ok"}, "openai_responses_mode": "force_responses",
 			},
 		},
 	}}
@@ -368,7 +375,7 @@ func TestUpdateAccountPreservesProbeSnapshotWhenProxyIsUnchanged(t *testing.T) {
 	updated, err := (&adminServiceImpl{accountRepo: &upstreamBillingProbeAdminRepo{baseRepo}}).UpdateAccount(
 		context.Background(),
 		accountID,
-		&UpdateAccountInput{ProxyID: &unchangedProxyID},
+		&UpdateAccountInput{ProxyID: &unchangedProxyID, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 	)
 
 	require.NoError(t, err)
@@ -383,13 +390,14 @@ func TestUpdateAccountAcceptsProbeEnabledAndRejectsInjectedSnapshot(t *testing.T
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
 			Status:   StatusActive,
-			Extra:    map[string]any{},
+			Extra:    map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}}
 
 	svc := &adminServiceImpl{accountRepo: repo}
 	updated, err := svc.UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
 		Extra: map[string]any{
+			"openai_responses_mode":                "force_responses",
 			UpstreamBillingProbeEnabledExtraKey:    true,
 			UpstreamBillingRateSyncEnabledExtraKey: true,
 			UpstreamBillingProbeExtraKey:           map[string]any{"status": "ok"},
@@ -444,7 +452,7 @@ func TestUpdateAccountRejectsManualRateWhileRateSyncEnabled(t *testing.T) {
 				Type:           AccountTypeAPIKey,
 				Status:         StatusActive,
 				RateMultiplier: &initialRate,
-				Extra:          extra,
+				Extra:          mergeMap(map[string]any{"openai_responses_mode": "force_responses"}, extra),
 			},
 		}}
 	}
@@ -460,6 +468,7 @@ func TestUpdateAccountRejectsManualRateWhileRateSyncEnabled(t *testing.T) {
 
 		_, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
 			RateMultiplier: &manualRate,
+			Extra:          map[string]any{"openai_responses_mode": "force_responses"},
 		})
 
 		require.ErrorIs(t, err, ErrUpstreamBillingRateSyncConflict)
@@ -474,6 +483,7 @@ func TestUpdateAccountRejectsManualRateWhileRateSyncEnabled(t *testing.T) {
 		_, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
 			RateSyncEnabled: &enable,
 			RateMultiplier:  &manualRate,
+			Extra:           map[string]any{"openai_responses_mode": "force_responses"},
 		})
 
 		require.ErrorIs(t, err, ErrUpstreamBillingRateSyncConflict)
@@ -489,6 +499,7 @@ func TestUpdateAccountRejectsManualRateWhileRateSyncEnabled(t *testing.T) {
 		updated, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
 			RateSyncEnabled: &disable,
 			RateMultiplier:  &manualRate,
+			Extra:           map[string]any{"openai_responses_mode": "force_responses"},
 		})
 
 		require.NoError(t, err)
@@ -503,6 +514,7 @@ func TestUpdateAccountRejectsManualRateWhileRateSyncEnabled(t *testing.T) {
 
 		updated, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
 			RateMultiplier: &manualRate,
+			Extra:          map[string]any{"openai_responses_mode": "force_responses"},
 		})
 
 		require.NoError(t, err)
@@ -543,13 +555,13 @@ func TestUpdateAccountExplicitProbeDisableUsesDedicatedExtraUpdate(t *testing.T)
 			Status:   StatusActive,
 			Extra: map[string]any{
 				UpstreamBillingProbeEnabledExtraKey: true,
-				UpstreamBillingProbeExtraKey:        map[string]any{"status": "ok"},
+				UpstreamBillingProbeExtraKey:        map[string]any{"status": "ok"}, "openai_responses_mode": "force_responses",
 			},
 		},
 	}}
 
 	_, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
-		Extra: map[string]any{UpstreamBillingProbeEnabledExtraKey: false},
+		Extra: map[string]any{UpstreamBillingProbeEnabledExtraKey: false, "openai_responses_mode": "force_responses"},
 	})
 
 	require.NoError(t, err)
@@ -566,12 +578,12 @@ func TestUpdateAccountExplicitUnchangedProbeEnabledStillUsesDedicatedExtraUpdate
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
 			Status:   StatusActive,
-			Extra:    map[string]any{UpstreamBillingProbeEnabledExtraKey: true},
+			Extra:    map[string]any{UpstreamBillingProbeEnabledExtraKey: true, "openai_responses_mode": "force_responses"},
 		},
 	}}
 
 	_, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
-		Extra: map[string]any{UpstreamBillingProbeEnabledExtraKey: true},
+		Extra: map[string]any{UpstreamBillingProbeEnabledExtraKey: true, "openai_responses_mode": "force_responses"},
 	})
 
 	require.NoError(t, err)
@@ -587,7 +599,7 @@ func TestUpdateAccountRejectsInvalidProbeEnabled(t *testing.T) {
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
 			Status:   StatusActive,
-			Extra:    map[string]any{},
+			Extra:    map[string]any{"openai_responses_mode": "force_responses"},
 		},
 	}}
 
@@ -602,7 +614,7 @@ func TestUpdateAccountRejectsInvalidProbeEnabled(t *testing.T) {
 func TestUpdateAccountExtraDropsManagedBillingProbeFields(t *testing.T) {
 	accountID := int64(153)
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
-		accountID: {ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+		accountID: {ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 	}}
 
 	err := (&adminServiceImpl{accountRepo: repo}).UpdateAccountExtra(context.Background(), accountID, map[string]any{
@@ -647,8 +659,8 @@ func TestBulkUpdateAccountsAcceptsDedicatedUpstreamBillingProbeSetting(t *testin
 	for _, enabled := range []bool{true, false} {
 		t.Run(map[bool]string{true: "enable", false: "disable"}[enabled], func(t *testing.T) {
 			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
-				1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
-				2: {ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+				1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
+				2: {ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 			}}
 
 			result, err := (&adminServiceImpl{accountRepo: repo}).BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
@@ -673,7 +685,7 @@ func TestBulkUpdateAccountsRejectsProbeSettingForIneligibleTargetBeforeWrite(t *
 	for _, enabled := range []bool{true, false} {
 		t.Run(map[bool]string{true: "enable", false: "disable"}[enabled], func(t *testing.T) {
 			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
-				1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+				1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 				2: {ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
 			}}
 
@@ -691,7 +703,7 @@ func TestBulkUpdateAccountsRejectsProbeSettingForIneligibleTargetBeforeWrite(t *
 func TestBulkUpdateAccountsRejectsProbeSettingWhenTargetIsMissing(t *testing.T) {
 	enabled := true
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
-		1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+		1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"}},
 	}}
 
 	_, err := (&adminServiceImpl{accountRepo: repo}).BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{

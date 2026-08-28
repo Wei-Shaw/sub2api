@@ -165,7 +165,7 @@ func TestCompositeTokenCacheInvalidator_SkipNonOAuth(t *testing.T) {
 			account: &Account{
 				ID:       2,
 				Platform: PlatformOpenAI,
-				Type:     AccountTypeAPIKey,
+				Type:     AccountTypeAPIKey, Extra: map[string]any{"openai_responses_mode": "force_responses"},
 			},
 		},
 		{
