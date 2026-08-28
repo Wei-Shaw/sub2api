@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
 
@@ -327,6 +329,15 @@ func (l *openAIWSPassthroughTurnLifecycle) cancelResponseCreate() {
 	l.mu.Lock()
 	l.inFlight = false
 	l.mu.Unlock()
+}
+
+func (l *openAIWSPassthroughTurnLifecycle) hasInFlightTurn() bool {
+	if l == nil {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.inFlight
 }
 
 func (l *openAIWSPassthroughTurnLifecycle) beginTerminalWrite() {
@@ -940,6 +951,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 
 	completedTurns := atomic.Int32{}
+	var activeResponseID atomic.Value
+	var capturedSessionModelState atomic.Value
+	capturedSessionModelState.Store(capturedSessionModel)
+	loadCapturedSessionModel := func() string {
+		model, _ := capturedSessionModelState.Load().(string)
+		return model
+	}
 	turnLifecycle := newOpenAIWSPassthroughTurnLifecycle(true)
 	var acceptedTurnStartedAt atomic.Pointer[time.Time]
 	clientFrameConn := &openAIWSClientFrameConn{
@@ -961,10 +979,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 	policyClientConn := &openAIWSPolicyEnforcingFrameConn{
 		inner: clientFrameConn,
-		// 注意线程安全：filter 仅在 runClientToUpstream 这一条
-		// goroutine 中被调用（passthrough_relay.go: ReadFrame loop），
-		// capturedSessionModel 的读写都发生在该 goroutine 内，因此无需
-		// 加锁/原子化。
+		// filter and relay callbacks run in different goroutines, so the
+		// session-level model is shared through capturedSessionModelState.
 		filter: func(msgType coderws.MessageType, payload []byte) (out []byte, blocked *OpenAIFastBlockedError, filterErr error) {
 			if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
 				return payload, nil, nil
@@ -1034,7 +1050,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if isResponseCreate {
 				requestModelForThisFrame = usageMeta.requestModelForFrame(payload)
 				if requestModelForThisFrame == "" {
-					requestModelForThisFrame = capturedSessionModel
+					requestModelForThisFrame = loadCapturedSessionModel()
 				}
 				if hooks != nil && hooks.BeforeRequest != nil {
 					if err := hooks.BeforeRequest(turnNo, payload, requestModelForThisFrame); err != nil {
@@ -1059,7 +1075,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			// 绕过路径。这里只看 session.update 事件中的 session.model
 			// 字段，response.create 自己的 model 仍然由其本帧字段决定。
 			if updated := openAIWSPassthroughPolicyModelFromSessionFrame(account, payload); updated != "" {
-				capturedSessionModel = updated
+				capturedSessionModelState.Store(updated)
 			}
 			usageMeta.updateSessionRequestModel(payload)
 			if requestModelForThisFrame == "" {
@@ -1072,7 +1088,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			// any whitelist and silently fall back to pass.
 			model := openAIWSPassthroughPolicyModelForFrame(account, payload)
 			if model == "" {
-				model = capturedSessionModel
+				model = loadCapturedSessionModel()
 			}
 			if isResponseCreate && model != "" && model != strings.TrimSpace(gjson.GetBytes(payload, "model").String()) {
 				payload = s.ReplaceModelInBody(payload, model)
@@ -1227,6 +1243,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				}
 			},
 			BeforeClientWrite: func(msgType coderws.MessageType, payload []byte) {
+				if msgType == coderws.MessageText {
+					if responseID := openAIWSPassthroughResponseID(payload); responseID != "" {
+						activeResponseID.Store(responseID)
+					}
+				}
 				if msgType == coderws.MessageText && openAIWSPassthroughIsTerminalOutput(payload) {
 					turnLifecycle.beginTerminalWrite()
 				}
@@ -1238,6 +1259,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				}
 				if msgType == coderws.MessageText && openAIWSPassthroughIsTerminalOutput(payload) {
 					turnLifecycle.finishTerminalWrite(writeErr == nil, clientFrameConn.markTurnCompleted)
+					activeResponseID.Store("")
 				}
 			},
 			BeforeRelayCancel: func(exit openaiwsv2.RelayExit) {
@@ -1248,6 +1270,19 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if !ok {
 					return
 				}
+				// A raw upstream close while a turn is in flight used to make the
+				// client observe a close frame without a Responses terminal event.
+				// Codex treats that as a transport failure and repeatedly reconnects.
+				// Complete the protocol first, then retain the close frame as a
+				// transport-level signal for clients that need to open a new session.
+				if openAIWSPassthroughShouldEmitFailureEvent(exit) && turnLifecycle.hasInFlightTurn() {
+					responseID, _ := activeResponseID.Load().(string)
+					if eventBytes := buildOpenAIWSPassthroughFailureEvent(responseID, loadCapturedSessionModel()); eventBytes != nil {
+						writeCtx, cancelWrite := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
+						_ = clientConn.Write(writeCtx, coderws.MessageText, eventBytes)
+						cancelWrite()
+					}
+				}
 				_ = clientConn.Close(status, reason)
 				_ = clientConn.CloseNow()
 			},
@@ -1256,13 +1291,19 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					return nil
 				}
 				eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
+				if isOpenAIWSTerminalEvent(eventType) {
+					s.handleOpenAIWSTerminalTransientFailure(ctx, account, loadCapturedSessionModel(), handshakeHeaders, payload)
+				}
+				if eventType == "error" {
+					s.handleOpenAIWSErrorEventTransientFailure(ctx, account, loadCapturedSessionModel(), handshakeHeaders, payload)
+				}
 				if eventType == "response.created" {
 					failureAccountSideEffectsApplied = false
 				}
 				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(payload)
 				isPreOutputRateLimit := eventType == "error" && !wroteDownstream && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw)
 				if (eventType == "error" || eventType == "response.failed") && !failureAccountSideEffectsApplied && !isPreOutputRateLimit {
-					failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, capturedSessionModel, handshakeHeaders, payload)
+					failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, loadCapturedSessionModel(), handshakeHeaders, payload)
 				}
 				if eventType != "error" {
 					return nil
@@ -1447,6 +1488,49 @@ func openAIWSPassthroughRelayClientClose(exit openaiwsv2.RelayExit, completedTur
 		return coderws.StatusInternalError, "upstream websocket proxy failed", true
 	}
 	return 0, "", false
+}
+
+func openAIWSPassthroughShouldEmitFailureEvent(exit openaiwsv2.RelayExit) bool {
+	if exit.Graceful || exit.Stage != "read_upstream" {
+		return false
+	}
+	var closeErr *OpenAIWSClientCloseError
+	return !errors.As(exit.Err, &closeErr)
+}
+
+func openAIWSPassthroughResponseID(payload []byte) string {
+	if responseID := strings.TrimSpace(gjson.GetBytes(payload, "response.id").String()); responseID != "" {
+		return responseID
+	}
+	return strings.TrimSpace(gjson.GetBytes(payload, "response_id").String())
+}
+
+func buildOpenAIWSPassthroughFailureEvent(responseID, model string) []byte {
+	responseID = strings.TrimSpace(responseID)
+	if responseID == "" {
+		responseID = "resp_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	}
+	response := map[string]any{
+		"id":     responseID,
+		"object": "response",
+		"status": "failed",
+		"output": []any{},
+		"error": map[string]string{
+			"code":    "upstream_error",
+			"message": "upstream websocket disconnected before response.completed",
+		},
+	}
+	if model = strings.TrimSpace(model); model != "" {
+		response["model"] = model
+	}
+	payload, err := json.Marshal(map[string]any{
+		"type":     "response.failed",
+		"response": response,
+	})
+	if err != nil {
+		return nil
+	}
+	return payload
 }
 
 func (s *OpenAIGatewayService) mapOpenAIWSPassthroughDialError(
