@@ -38,6 +38,44 @@ func TestRedactText_GOCSPX(t *testing.T) {
 	}
 }
 
+func TestRedactText_ProxyCredentialsAndEmail(t *testing.T) {
+	in := "[Forward] Using account upstream@example.com Proxy=socks5://proxy-user:proxy-pass@192.0.2.10:443"
+	out := RedactText(in)
+
+	for _, secret := range []string{"upstream@example.com", "proxy-user", "proxy-pass"} {
+		if strings.Contains(out, secret) {
+			t.Fatalf("expected %q to be redacted from %q", secret, out)
+		}
+	}
+	if !strings.Contains(out, "Proxy=***") {
+		t.Fatalf("expected proxy value to be fully redacted, got %q", out)
+	}
+}
+
+func TestRedactMap_SensitiveKeysAndNestedText(t *testing.T) {
+	out := RedactMap(map[string]any{
+		"email": "upstream@example.com",
+		"nested": map[string]any{
+			"message": "contact upstream@example.com",
+			"proxy":   "socks5://user:pass@192.0.2.10:443",
+		},
+	})
+
+	if out["email"] != "***" {
+		t.Fatalf("expected email field to be redacted, got %#v", out["email"])
+	}
+	nested, ok := out["nested"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected nested map, got %T", out["nested"])
+	}
+	if nested["proxy"] != "***" {
+		t.Fatalf("expected proxy field to be redacted, got %#v", nested["proxy"])
+	}
+	if got, _ := nested["message"].(string); strings.Contains(got, "upstream@example.com") {
+		t.Fatalf("expected nested email to be redacted, got %q", got)
+	}
+}
+
 func TestRedactText_ExtraKeyCacheUsesNormalizedSortedKey(t *testing.T) {
 	clearExtraTextPatternCache()
 

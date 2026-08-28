@@ -243,6 +243,11 @@ docker compose down -v
 | `GEMINI_OAUTH_CLIENT_SECRET` | No | *(builtin)* | Google OAuth client secret (Gemini OAuth). Leave empty to use the built-in Gemini CLI client. |
 | `GEMINI_OAUTH_SCOPES` | No | *(default)* | OAuth scopes (Gemini OAuth) |
 | `GEMINI_QUOTA_POLICY` | No | *(empty)* | JSON overrides for Gemini local quota simulation (Code Assist only). |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | *(empty / disabled)* | Generic OTLP endpoint. Setting it enables asynchronous OpenTelemetry log export. |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | No | *(empty)* | Logs-specific OTLP endpoint; overrides the generic endpoint. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | No | `http/protobuf` | OTLP transport: `http/protobuf` or `grpc`. The logs-specific protocol variable takes precedence. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | No | *(empty)* | Comma-separated OTLP authentication headers. The logs-specific headers variable takes precedence. |
+| `OTEL_SERVICE_NAME` | No | `sub2api` | OpenTelemetry resource service name. |
 
 See `.env.example` for all available options.
 
