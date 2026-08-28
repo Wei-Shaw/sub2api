@@ -96,7 +96,7 @@ func TestWebSocketCompatibilityNormalizesTriggerAfterPairedOutputCleanup(t *test
 	body := []byte(`{"type":"response.create","model":"gpt-5.4","input":[{"type":"compaction_trigger"},{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"{}"},{"type":"function_call_output","call_id":"call_1","output":"ok"},{"type":"message","role":"user","content":"visible"}]}`)
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 
-	normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, account)
+	normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, account, false)
 	require.NoError(t, err)
 	require.True(t, changed)
 	items := gjson.GetBytes(normalized, "input").Array()

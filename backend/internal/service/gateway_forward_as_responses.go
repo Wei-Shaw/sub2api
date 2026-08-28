@@ -144,18 +144,9 @@ func (s *GatewayService) ForwardAsResponses(
 		if resp != nil && resp.Body != nil {
 			_ = resp.Body.Close()
 		}
-		safeErr := sanitizeUpstreamErrorMessage(err.Error())
-		setOpsUpstreamError(c, 0, safeErr, "")
-		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-			Platform:           account.Platform,
-			AccountID:          account.ID,
-			AccountName:        account.Name,
-			UpstreamStatusCode: 0,
-			Kind:               "request_error",
-			Message:            safeErr,
+		return nil, s.handleUpstreamTransportError(ctx, c, account, err, OpsUpstreamErrorEvent{
+			UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
 		})
-		writeResponsesError(c, http.StatusBadGateway, "server_error", "Upstream request failed")
-		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -285,17 +276,45 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 	if dst == nil {
 		return
 	}
-	if src.InputTokens > 0 {
-		dst.InputTokens = src.InputTokens
+
+	// Some Anthropic-compatible providers retain OpenAI-style prompt/cache
+	// fields. Prefer those authoritative totals or hit/miss buckets over the
+	// overloaded input_tokens field. This covers Kimi's changing stream
+	// semantics as well as GLM/DeepSeek cache aliases.
+	if src.PromptTokens > 0 || src.PromptCacheHitTokens != nil || src.PromptCacheMissTokens != nil {
+		cacheReadTokens := src.CacheReadInputTokens
+		if cacheReadTokens == 0 && src.CachedTokens > 0 {
+			cacheReadTokens = src.CachedTokens
+		}
+		if cacheReadTokens == 0 && src.PromptTokensDetails != nil && src.PromptTokensDetails.CachedTokens > 0 {
+			cacheReadTokens = src.PromptTokensDetails.CachedTokens
+		}
+		if cacheReadTokens == 0 && src.PromptCacheHitTokens != nil {
+			cacheReadTokens = max(*src.PromptCacheHitTokens, 0)
+		}
+
+		if src.PromptCacheMissTokens != nil {
+			dst.InputTokens = max(*src.PromptCacheMissTokens, 0)
+		} else {
+			dst.InputTokens = max(src.PromptTokens-cacheReadTokens-src.CacheCreationInputTokens, 0)
+		}
+		dst.CacheReadInputTokens = cacheReadTokens
+		dst.CacheCreationInputTokens = src.CacheCreationInputTokens
+	} else {
+		if src.InputTokens > 0 {
+			dst.InputTokens = src.InputTokens
+		}
+		if src.CacheReadInputTokens > 0 {
+			dst.CacheReadInputTokens = src.CacheReadInputTokens
+		} else if src.CachedTokens > 0 {
+			dst.CacheReadInputTokens = src.CachedTokens
+		}
+		if src.CacheCreationInputTokens > 0 {
+			dst.CacheCreationInputTokens = src.CacheCreationInputTokens
+		}
 	}
 	if src.OutputTokens > 0 {
 		dst.OutputTokens = src.OutputTokens
-	}
-	if src.CacheReadInputTokens > 0 {
-		dst.CacheReadInputTokens = src.CacheReadInputTokens
-	}
-	if src.CacheCreationInputTokens > 0 {
-		dst.CacheCreationInputTokens = src.CacheCreationInputTokens
 	}
 }
 

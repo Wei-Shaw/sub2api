@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
@@ -19,13 +20,16 @@ type responsesFailedError struct {
 
 // responsesFailedBody 对齐 apicompat.makeResponsesCompletedEvent 输出的 response 子对象字段集。
 // Output 用空 slice（不是 nil）确保 marshal 为 `[]` 而非 `null`。
+// CreatedAt 不带 omitempty：严格客户端把它当必填字段，缺失会以
+// `missing field 'created_at'` 反序列化失败——那正是本文件要避免的"客户端读不懂终止事件"。
 type responsesFailedBody struct {
-	ID     string               `json:"id"`
-	Object string               `json:"object"`
-	Model  string               `json:"model,omitempty"`
-	Status string               `json:"status"`
-	Output []any                `json:"output"`
-	Error  responsesFailedError `json:"error"`
+	ID        string               `json:"id"`
+	Object    string               `json:"object"`
+	CreatedAt int64                `json:"created_at"`
+	Model     string               `json:"model,omitempty"`
+	Status    string               `json:"status"`
+	Output    []any                `json:"output"`
+	Error     responsesFailedError `json:"error"`
 }
 
 // responsesFailedEvent 是写入 SSE data 行的顶层结构。
@@ -61,11 +65,12 @@ func writeResponsesFailedSSE(c *gin.Context, errType, message string) bool {
 	payload, err := json.Marshal(responsesFailedEvent{
 		Type: "response.failed",
 		Response: responsesFailedBody{
-			ID:     synthesizeResponseID(c),
-			Object: "response",
-			Model:  requestModel(c),
-			Status: "failed",
-			Output: []any{},
+			ID:        synthesizeResponseID(c),
+			Object:    "response",
+			CreatedAt: time.Now().Unix(),
+			Model:     requestModel(c),
+			Status:    "failed",
+			Output:    []any{},
 			Error: responsesFailedError{
 				Code:    mapResponsesErrorCode(errType),
 				Message: message,

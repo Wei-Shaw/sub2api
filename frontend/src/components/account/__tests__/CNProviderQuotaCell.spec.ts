@@ -73,4 +73,23 @@ describe('CNProviderQuotaCell', () => {
 
     expect(queryQuota).toHaveBeenCalledWith(account.id)
   })
+
+  it('labels the refresh control with an explicit action verb, not a data caption', async () => {
+    const wrapper = mount(CNProviderQuotaCell, { props: { account } })
+    await flushPromises()
+
+    // The snapshot is fresh (usage_updated_at = now): bars render without probing.
+    expect(queryQuota).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('27%')
+
+    // The control reads as an action ("query"), unlike the old noun label
+    // ("5-hour window/weekly window") which looked like a passive caption.
+    // The i18n mock returns the key itself.
+    const probeButton = wrapper.get('[data-test="cn-provider-quota-probe"]')
+    expect(probeButton.text()).toBe('admin.accounts.cnProviders.probe')
+
+    await probeButton.trigger('click')
+    await flushPromises()
+    expect(queryQuota).toHaveBeenCalledWith(account.id)
+  })
 })

@@ -250,7 +250,7 @@ func TestOpenAIResponsesToolSchemaCapabilities_PlatformBoundary(t *testing.T) {
 		{PlatformKimi, true, false},
 		{PlatformZhipu, true, false},
 		{PlatformDeepseek, true, false},
-		{PlatformGrok, false, false},
+		{PlatformGrok, true, false},
 		{PlatformGemini, false, false},
 		{PlatformAntigravity, false, false},
 		{PlatformComposite, false, false},
@@ -270,7 +270,7 @@ func TestSanitizeOpenAIResponsesToolSchemasForPlatform_ReplayBoundary(t *testing
 	// A malformed tool definition may be replayed after account failover. Every
 	// compatible account must repair it, while non-OpenAI providers retain their
 	// supported regex semantics.
-	for _, platform := range []string{PlatformAnthropic, PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+	for _, platform := range []string{PlatformAnthropic, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek} {
 		t.Run(platform, func(t *testing.T) {
 			for attempt := 0; attempt < 2; attempt++ {
 				normalized, changed, err := sanitizeOpenAIResponsesToolSchemasForPlatform(body, platform)
@@ -288,10 +288,21 @@ func TestSanitizeOpenAIResponsesToolSchemasForPlatform_ReplayBoundary(t *testing
 	require.Equal(t, "object", gjson.GetBytes(openAI, "tools.0.parameters.type").String())
 	require.False(t, gjson.GetBytes(openAI, "tools.0.parameters.properties.query.pattern").Exists())
 
-	unsupported, changed, err := sanitizeOpenAIResponsesToolSchemasForPlatform(body, PlatformGrok)
+	unsupported, changed, err := sanitizeOpenAIResponsesToolSchemasForPlatform(body, PlatformGemini)
 	require.NoError(t, err)
 	require.False(t, changed)
 	require.Equal(t, string(body), string(unsupported))
+}
+
+func TestSanitizeOpenAIResponsesToolSchemasForPlatform_GrokObjectOnlyRootUnion(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","name":"codex_app__automation_update","parameters":{"oneOf":[{"type":"object","properties":{"id":{"type":"string"}}},{"type":"object","properties":{}}]}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemasForPlatform(body, PlatformGrok)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "object", gjson.GetBytes(sanitized, "tools.0.parameters.type").String())
+	require.True(t, gjson.GetBytes(sanitized, "tools.0.parameters.oneOf").Exists())
 }
 
 // 索引映射：只有坏条目被改，前后兄弟条目按原下标保持不变。
@@ -497,7 +508,7 @@ func TestOpenAIResponsesToolSchemaPlatformGate_APIKeyAndOAuth(t *testing.T) {
 			normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
 				Platform: PlatformOpenAI,
 				Type:     accountType,
-			})
+			}, false)
 			require.NoError(t, err)
 			require.True(t, changed)
 			require.Equal(t, "object", gjson.GetBytes(normalized, "tools.0.parameters.type").String())
@@ -508,7 +519,7 @@ func TestOpenAIResponsesToolSchemaPlatformGate_APIKeyAndOAuth(t *testing.T) {
 	normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
 		Platform: PlatformGrok,
 		Type:     AccountTypeAPIKey,
-	})
+	}, false)
 	require.NoError(t, err)
 	require.False(t, changed)
 	require.Equal(t, string(body), string(normalized))
@@ -587,7 +598,9 @@ func TestSanitizeOpenAIResponsesToolParameterTypes_RewriteCountIndependentOfHits
 	})
 
 	// 命中切片扩容是对数级，留出充裕余量；线性写法在这里会是 2000 量级。
-	require.Less(t, largeAllocs, smallAllocs+40,
+	// 干净环境实测 large 约 17 allocs，200 是 10 倍余量，同时容忍 CI 慢 pod 上
+	// 包内后台 goroutine（日志/ticker）对进程级 Mallocs 的噪声污染。
+	require.Less(t, largeAllocs, 200.0,
 		"分配次数随命中数线性增长，说明退回了逐路径全量重写 (small=%v large=%v)", smallAllocs, largeAllocs)
 
 	// 同时确认大 body 的结果确实全部修好了。

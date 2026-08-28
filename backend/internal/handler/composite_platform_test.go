@@ -31,6 +31,7 @@ func TestOpenAICompatibleTextTargetAllowsCompositeProviders(t *testing.T) {
 	}{
 		{model: "grok-4.3", platform: service.PlatformGrok},
 		{model: "kimi-k2-thinking", platform: service.PlatformKimi},
+		{model: "k3", platform: service.PlatformKimi},
 		{model: "glm-5.2", platform: service.PlatformZhipu},
 		{model: "deepseek-v3.2", platform: service.PlatformDeepseek},
 	}
@@ -119,6 +120,9 @@ func TestOpenAIReasoningEffortPolicyForCompositeTarget(t *testing.T) {
 	got, changed := applyOpenAIReasoningEffortPolicyForRequest(openAICtx, apiKey, body)
 	require.True(t, changed)
 	require.JSONEq(t, `{"reasoning":{"effort":"medium"}}`, string(got))
+	requested := service.RequestedReasoningEffortFromContext(openAICtx.Request.Context())
+	require.NotNil(t, requested)
+	require.Equal(t, "max", *requested)
 
 	bindOpenAIReasoningEffortPolicyForMessagesRequest(openAICtx, apiKey, []byte(`{"output_config":{"effort":"max"}}`))
 	bound, changed := service.ApplyOpenAIReasoningEffortPolicyFromContext(openAICtx.Request.Context(), body)

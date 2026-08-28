@@ -519,7 +519,7 @@ describe('AccountUsageCell', () => {
 	expect(wrapper.text()).toContain('5h|0|200')
   })
 
-  it('OpenAI 重置响应更新账号行时不会额外拉取 usage', async () => {
+  it('OpenAI 重置响应更新账号行后重新拉取 usage', async () => {
     getUsage.mockResolvedValue({
       five_hour: {
         utilization: 0,
@@ -560,7 +560,7 @@ describe('AccountUsageCell', () => {
     await wrapper.setProps({ account: updatedAccount as Account })
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledTimes(1)
+    expect(getUsage).toHaveBeenCalledTimes(2)
   })
 
   it('OpenAI OAuth 已限额时显示 /usage API 返回的限额数据', async () => {
