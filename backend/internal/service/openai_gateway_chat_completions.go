@@ -134,6 +134,13 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	// ShouldUseResponsesAPI 分流：该类账号经 probe 落标
 	// openai_responses_supported=false，会先命中下方的 CC 直转分支。
 	if account.IsAnthropicProtocol() {
+		// DSML 泄漏防护·请求侧：deepseek 是显式的 anthropic 协议平台，历史里的
+		// 已泄漏 DSML 碎片同样会诱导复漏。清洗在 CC body（转换链之前）即可完成；
+		// 模型解析与 raw 直转 lane 同式。
+		// TODO(dsml-guard): anthropic lane response-side detection
+		scrubModel := normalizeOpenAIModelForUpstream(account,
+			resolveOpenAIForwardModel(account, gjson.GetBytes(body, "model").String(), defaultMappedModel))
+		body = s.applyDSMLHistoryScrub(c, account, scrubModel, body)
 		return s.forwardChatCompletionsViaNativeAnthropic(ctx, c, account, body, defaultMappedModel)
 	}
 

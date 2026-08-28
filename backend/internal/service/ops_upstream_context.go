@@ -376,7 +376,7 @@ type OpsUpstreamErrorEvent struct {
 	// Best-effort upstream response capture (sanitized+trimmed).
 	UpstreamResponseBody string `json:"upstream_response_body,omitempty"`
 
-	// Kind: http_error | request_error | retry_exhausted | failover
+	// Kind: http_error | request_error | retry_exhausted | failover | dsml_leak
 	Kind string `json:"kind,omitempty"`
 	// Stage/Scope/Reason distinguish credential acquisition from inference
 	// without overloading upstream_status_code with a synthetic HTTP status.

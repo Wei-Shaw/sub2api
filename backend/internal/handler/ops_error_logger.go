@@ -1070,6 +1070,8 @@ func (state *opsCaptureWriterState) shouldCapture() bool {
 }
 
 // OpsErrorLoggerMiddleware records error responses (status >= 400) into ops_error_logs.
+// Successful responses (<400) are also persisted when upstream error/retry events were
+// appended during the request, so retry-covered upstream instability stays observable.
 //
 // Notes:
 // - It buffers response bodies only for status >= 400 or terminal SSE frames.

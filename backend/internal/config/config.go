@@ -999,6 +999,15 @@ type GatewayConfig struct {
 	// OpenAIPassthroughAllowTimeoutHeaders: OpenAI 透传模式是否放行客户端超时头
 	// 关闭（默认）可避免 x-stainless-timeout 等头导致上游提前断流。
 	OpenAIPassthroughAllowTimeoutHeaders bool `mapstructure:"openai_passthrough_allow_timeout_headers"`
+	// DSMLGuardEnabled: deepseek-v4 DSML 泄漏防护总开关。拦截「工具调用漏成正文」的坏流并原地重试，
+	// 同时从请求历史的 assistant 消息中剥离已泄漏的 DSML 碎片（治级联）。
+	DSMLGuardEnabled bool `mapstructure:"dsml_guard_enabled"`
+	// DSMLGuardModels: 防护生效的上游模型前缀列表（对 upstreamModel 做前缀匹配）。
+	DSMLGuardModels []string `mapstructure:"dsml_guard_models"`
+	// DSMLGuardMaxRetries: 判定泄漏后对同账号的最大原地重试次数。
+	DSMLGuardMaxRetries int `mapstructure:"dsml_guard_max_retries"`
+	// DSMLGuardObserve: true 时只检测记录、不扣流不重试不清洗（灰度用）。
+	DSMLGuardObserve bool `mapstructure:"dsml_guard_observe"`
 	// OpenAICompactModel: /responses/compact 上游使用的模型。
 	// compact 端点支持模型滞后于普通 /responses 时，可用该配置降级规避上游错误。
 	OpenAICompactModel string `mapstructure:"openai_compact_model"`
@@ -2370,6 +2379,10 @@ func setDefaults() {
 	viper.SetDefault("gateway.disable_codex_originator_normalization", false)
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
+	viper.SetDefault("gateway.dsml_guard_enabled", true)
+	viper.SetDefault("gateway.dsml_guard_models", []string{"deepseek-v4"})
+	viper.SetDefault("gateway.dsml_guard_max_retries", 1)
+	viper.SetDefault("gateway.dsml_guard_observe", false)
 	viper.SetDefault("gateway.openai_compact_model", "gpt-5.4")
 	viper.SetDefault("gateway.live.max_session_duration_seconds", 3600)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
