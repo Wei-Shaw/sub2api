@@ -3,8 +3,10 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"image/color"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -64,6 +66,26 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_JSON(t *testing.T) {
 	require.Equal(t, "1K", parsed.SizeTier)
 	require.Equal(t, OpenAIImagesCapabilityNative, parsed.RequiredCapability)
 	require.False(t, parsed.Multipart)
+}
+
+func TestNormalizeOpenAIImageBase64PreservesValidPadding(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "single padding", raw: "aGk=", want: "aGk="},
+		{name: "double padding", raw: "aA==", want: "aA=="},
+		{name: "unpadded", raw: "aGk", want: "aGk="},
+		{name: "data URL", raw: "data:image/png;base64,aA==", want: "aA=="},
+		{name: "invalid", raw: "not base64!", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, normalizeOpenAIImageBase64(tt.raw))
+		})
+	}
 }
 
 func TestOpenAIGatewayServiceParseOpenAIImagesRequest_MultipartEdit(t *testing.T) {
@@ -1156,7 +1178,7 @@ func TestOpenAIImagesOAuthBodyReadTransportErrorFailover(t *testing.T) {
 	account := &Account{ID: 5400, Name: "openai-oauth", Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 	svc := &OpenAIGatewayService{}
 
-	_, _, _, readErr := svc.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, "b64_json", "gpt-image-2")
+	_, _, _, readErr := svc.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, "b64_json", "gpt-image-2", nil)
 	require.Error(t, readErr)
 	err := svc.handleOpenAIImagesOAuthResponseError(context.Background(), c, account, "gpt-image-2", "https://api.openai.com/v1/responses", resp, OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c), readErr)
 
@@ -1787,6 +1809,15 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamingDrainsAfterClientDisco
 
 func TestOpenAIGatewayServiceForwardImages_OAuthEditsMultipartUsesResponsesAPI(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	sourcePNG := openAIImageMaskTestSolidPNG(t, 2, 2, color.NRGBA{R: 220, G: 20, B: 30, A: 255})
+	maskPNG := openAIImageMaskTestPNG(t, 2, 2, func(x, y int) color.NRGBA {
+		if x == 1 && y == 1 {
+			return color.NRGBA{A: 0}
+		}
+		return color.NRGBA{A: 255}
+	})
+	generatedPNG := openAIImageMaskTestSolidPNG(t, 2, 2, color.NRGBA{R: 10, G: 40, B: 230, A: 255})
+	generatedB64 := base64.StdEncoding.EncodeToString(generatedPNG)
 
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -1801,7 +1832,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsMultipartUsesResponsesAPI(t
 	imageHeader.Set("Content-Type", "image/png")
 	imagePart, err := writer.CreatePart(imageHeader)
 	require.NoError(t, err)
-	_, err = imagePart.Write([]byte("png-image-content"))
+	_, err = imagePart.Write(sourcePNG)
 	require.NoError(t, err)
 
 	maskHeader := make(textproto.MIMEHeader)
@@ -1809,7 +1840,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsMultipartUsesResponsesAPI(t
 	maskHeader.Set("Content-Type", "image/png")
 	maskPart, err := writer.CreatePart(maskHeader)
 	require.NoError(t, err)
-	_, err = maskPart.Write([]byte("png-mask-content"))
+	_, err = maskPart.Write(maskPNG)
 	require.NoError(t, err)
 
 	require.NoError(t, writer.Close())
@@ -1833,7 +1864,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsMultipartUsesResponsesAPI(t
 				"X-Request-Id": []string{"req_img_edit_123"},
 			},
 			Body: io.NopCloser(strings.NewReader(
-				"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000002,\"usage\":{\"input_tokens\":13,\"output_tokens\":21,\"output_tokens_details\":{\"image_tokens\":8}},\"tool_usage\":{\"image_gen\":{\"images\":1}},\"output\":[{\"type\":\"image_generation_call\",\"result\":\"ZWRpdGVk\",\"revised_prompt\":\"replace background with aurora\",\"output_format\":\"webp\",\"quality\":\"high\"}]}}\n\n" +
+				fmt.Sprintf("data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000002,\"usage\":{\"input_tokens\":13,\"output_tokens\":21,\"output_tokens_details\":{\"image_tokens\":8}},\"tool_usage\":{\"image_gen\":{\"images\":1}},\"output\":[{\"type\":\"image_generation_call\",\"result\":%q,\"revised_prompt\":\"replace background with aurora\",\"output_format\":\"webp\",\"quality\":\"high\"}]}}\n\n", generatedB64) +
 					"data: [DONE]\n\n",
 			)),
 		},
@@ -1861,7 +1892,10 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsMultipartUsesResponsesAPI(t
 	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "input.0.content.1.image_url").String(), "data:image/png;base64,"))
 	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "tools.0.input_image_mask.image_url").String(), "data:image/png;base64,"))
 	require.Equal(t, "replace background with aurora", gjson.GetBytes(upstream.lastBody, "input.0.content.0.text").String())
-	require.Equal(t, "ZWRpdGVk", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	masked := openAIImageMaskTestDecodeResult(t, openAIResponsesImageResult{Result: gjson.Get(rec.Body.String(), "data.0.b64_json").String()})
+	require.Equal(t, color.NRGBA{R: 220, G: 20, B: 30, A: 255}, color.NRGBAModel.Convert(masked.At(0, 0)))
+	require.Equal(t, color.NRGBA{R: 10, G: 40, B: 230, A: 255}, color.NRGBAModel.Convert(masked.At(1, 1)))
+	require.Equal(t, "png", gjson.Get(rec.Body.String(), "output_format").String())
 	require.Equal(t, "replace background with aurora", gjson.Get(rec.Body.String(), "data.0.revised_prompt").String())
 }
 
