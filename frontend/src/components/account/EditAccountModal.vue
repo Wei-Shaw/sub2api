@@ -149,6 +149,21 @@
           </div>
           <p class="input-hint">{{ t(`admin.accounts.cnProviders.accountMode.${editAccountMode}Desc`) }}</p>
         </div>
+        <!-- Zhipu MCP passthrough (Coding Plan only) -->
+        <div v-if="isZhipuApiKeyAccount" data-testid="zhipu-mcp-section">
+          <div class="flex items-center justify-between gap-4">
+            <div class="min-w-0">
+              <label class="input-label mb-0">{{ t('admin.accounts.zhipuMcp.title') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ zhipuMcpHint }}</p>
+            </div>
+            <Toggle
+              v-model="zhipuMcpPassthroughEnabled"
+              :disabled="editAccountMode !== 'coding'"
+              data-testid="zhipu-mcp-toggle"
+              :aria-label="t('admin.accounts.zhipuMcp.title')"
+            />
+          </div>
+        </div>
         <!-- API Protocol Selection (CN providers / OpenCode) -->
         <div v-if="isCNApiKeyAccount">
           <label class="input-label">{{ t('admin.accounts.cnProviders.apiProtocol.title') }}</label>
@@ -3214,6 +3229,16 @@ function currentOpenCodeOrCNMode(): CnAccountMode | OpenCodeAccountMode {
 // 智谱团队版 Coding Plan：组织/项目 ID，写入 credentials 供额度探测切换团队端点
 const editZhipuOrganization = ref('')
 const editZhipuProject = ref('')
+// 智谱 MCP 转发：仅 Coding Plan 模式可开启，持久化在 extra.zhipu_mcp_enabled。
+const isZhipuApiKeyAccount = computed(
+  () => isCNApiKeyAccount.value && props.account?.platform === 'zhipu'
+)
+const zhipuMcpPassthroughEnabled = ref(false)
+const zhipuMcpHint = computed(() =>
+  editAccountMode.value === 'coding'
+    ? t('admin.accounts.zhipuMcp.hint')
+    : t('admin.accounts.zhipuMcp.paygDisabledHint')
+)
 const editAdaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   chat_completions: '',
   anthropic: '',
@@ -3278,6 +3303,10 @@ watch(editApiProtocol, (protocol, previousProtocol) => {
 watch(editAccountMode, (mode, previousMode) => {
   if (!isCNApiKeyAccount.value || syncingForm.value) return
   if (props.account?.platform === 'opencode_go') return
+  // 智谱 MCP 转发仅 Coding Plan 可开启：切回按量付费时重置，避免带开启状态提交。
+  if (props.account!.platform === 'zhipu' && mode !== 'coding') {
+    zhipuMcpPassthroughEnabled.value = false
+  }
   // deepseek 无 coding 套餐：防御性回退（UI 已隐藏该选项）。
   const effectiveMode = props.account!.platform === 'deepseek' && mode === 'coding' ? 'payg' : mode
   if (effectiveMode !== mode) {
@@ -4261,6 +4290,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
           parseOpenCodeGoProtocolRules(credentials.protocol_rules) ??
           cloneOpenCodeGoProtocolRules(defaultOpenCodeProtocolRules(editOpenCodeAccountMode.value))
       }
+      // 智谱 MCP 转发开关回显（存于 extra，默认不开启）
+      zhipuMcpPassthroughEnabled.value = extra?.zhipu_mcp_enabled === true
     }
     const platformDefaultUrl =
       newAccount.platform === 'openai'
@@ -5371,6 +5402,16 @@ const handleSubmit = async () => {
       } else {
         delete newExtra.allow_overages
       }
+      updatePayload.extra = newExtra
+    }
+
+    // 智谱：MCP 转发开关写入 extra。后端对 update 的 extra 做整体替换，
+    // 因此把现有未变更字段一并带上（与 antigravity 的处理一致）；
+    // 模式非 coding 时强制关闭，避免残留开启状态被后端拒绝。
+    if (props.account.platform === 'zhipu' && props.account.type === 'apikey') {
+      const currentExtra = (props.account.extra as Record<string, unknown>) || {}
+      const newExtra: Record<string, unknown> = { ...currentExtra }
+      newExtra.zhipu_mcp_enabled = zhipuMcpPassthroughEnabled.value && editAccountMode.value === 'coding'
       updatePayload.extra = newExtra
     }
 
