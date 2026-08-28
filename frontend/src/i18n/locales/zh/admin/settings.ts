@@ -603,8 +603,8 @@ export default {
         tableDefaultPageSize: '默认每页条数',
         tableDefaultPageSizeHint: '必须为 5-1000 之间的整数',
         tablePageSizeOptions: '可选每页条数列表',
-        tablePageSizeOptionsPlaceholder: '10, 20, 50, 100',
-        tablePageSizeOptionsHint: '使用英文逗号分隔，取值范围 5-1000，保存时会自动去重并排序',
+        tablePageSizeOptionsPlaceholder: '10, 20, 50, 100, 500, 1000',
+        tablePageSizeOptionsHint: '使用英文逗号分隔，取值范围 5-1000，保存时会自动去重并排序；默认包含 100、500、1000，已自定义的配置保持原样',
         tableDefaultPageSizeRangeError: '默认每页条数必须在 {min}-{max} 之间',
         tablePageSizeOptionsFormatError: '可选每页条数格式无效，请输入 {min}-{max} 之间的整数并用英文逗号分隔',
         customEndpoints: {

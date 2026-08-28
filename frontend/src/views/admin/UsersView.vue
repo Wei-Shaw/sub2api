@@ -36,7 +36,7 @@
             </div>
 
             <!-- Status Filter (visible when enabled) -->
-            <div v-if="visibleFilters.has('status')" class="w-full sm:w-32">
+            <div v-if="visibleFilters.has('status')" class="w-full sm:w-32" data-testid="user-status-filter">
               <Select
                 v-model="filters.status"
                 :options="[
@@ -1151,6 +1151,9 @@ const loadSavedFilters = () => {
     if (savedVisible) {
       const parsed = JSON.parse(savedVisible) as string[]
       parsed.forEach(key => visibleFilters.add(key))
+    } else {
+      // Status is a core user-management filter and is visible on first use.
+      visibleFilters.add('status')
     }
     // Load filter values
     const savedValues = localStorage.getItem(FILTER_VALUES_KEY)
@@ -1317,7 +1320,6 @@ const pagination = reactive({
   total: 0,
   pages: 0
 })
-
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showBulkEditModal = ref(false)

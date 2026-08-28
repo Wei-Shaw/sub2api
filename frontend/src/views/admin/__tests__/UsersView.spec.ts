@@ -105,7 +105,11 @@ const DataTableStub = {
 
 const PaginationStub = {
   emits: ['update:page'],
-  template: '<button data-test="next-page" @click="$emit(\'update:page\', 2)">next</button>'
+  template: `
+    <div>
+      <button data-test="next-page" @click="$emit('update:page', 2)">next</button>
+    </div>
+  `
 }
 
 const BulkEditUserModalStub = {
@@ -148,6 +152,9 @@ describe('admin UsersView', () => {
   })
 
   it('shows active, used, and created activity columns in order and requests last_used_at sort', async () => {
+    localStorage.setItem('user-visible-filters', JSON.stringify(['status']))
+    localStorage.setItem('user-filter-values', JSON.stringify({ status: 'disabled' }))
+
     const wrapper = mount(UsersView, {
       global: {
         stubs: {
@@ -179,6 +186,14 @@ describe('admin UsersView', () => {
     })
 
     await flushPromises()
+
+    expect(wrapper.find('[data-testid="user-status-filter"]').exists()).toBe(true)
+    expect(listUsers).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.objectContaining({ status: 'disabled' }),
+      expect.any(Object)
+    )
 
     const columns = wrapper.get('[data-test="columns"]').text()
     const visibleColumns = columns.split(',')
