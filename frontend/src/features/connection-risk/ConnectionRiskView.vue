@@ -310,18 +310,18 @@ async function doAction(kind: 'ack' | 'resolve' | 'suppress' | 'delete', id: num
 }
 
 async function whitelistFromEvidence() {
-  if (!selected.value?.api_key_id) return
-  if (!sampleIps.value.length) {
+  const event = selected.value
+  if (!event?.api_key_id) return
+  const ips = sampleIps.value.slice(0, 10)
+  if (!ips.length) {
     error.value = t('admin.connectionRisk.errors.noSampleIPs')
     return
   }
   loading.action = true
   error.value = ''
   try {
-    await api.whitelistIPs(selected.value.api_key_id, sampleIps.value.slice(0, 10))
-    if (selected.value.api_key_id) {
-      await api.exemptSubject('k', selected.value.api_key_id, 'whitelist-from-ui')
-    }
+    await api.whitelistIPs(event.api_key_id, ips)
+    await api.exemptSubject('k', event.api_key_id, 'whitelist-from-ui')
     message.value = t('admin.connectionRisk.messages.whitelisted')
     await loadEvents()
   } catch (e: any) {
@@ -726,7 +726,12 @@ onMounted(async () => {
                 </span>
               </div>
             </div>
-            <button type="button" class="btn btn-ghost btn-sm" @click="selected = null">
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm"
+              data-testid="connection-risk-detail-close"
+              @click="selected = null"
+            >
               <Icon name="x" size="sm" />
             </button>
           </div>
@@ -884,6 +889,7 @@ onMounted(async () => {
               <button
                 type="button"
                 class="btn btn-primary btn-sm"
+                data-testid="connection-risk-whitelist"
                 :disabled="loading.action || !selected.api_key_id || !sampleIps.length"
                 @click="whitelistFromEvidence"
               >

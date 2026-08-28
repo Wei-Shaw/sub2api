@@ -15,6 +15,7 @@ jobs:
       - name: Check deployment scripts
         run: |
           /bin/bash -n deploy/apple-container.sh
+          /bin/bash -n tools/warp-gateway/scripts/local-full-e2e.sh
           /bin/bash deploy/tests/apple-container-test.sh
           /bin/sh deploy/tests/docker-compose-security-test.sh
           /bin/sh deploy/tests/docker-compose-gateway-env-test.sh
@@ -40,6 +41,41 @@ jobs:
       - name: Integration tests
         working-directory: backend
         run: make test-integration
+      - name: Concurrent hot-path race tests
+        run: make test-backend-race
+
+  warp-gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: tools/warp-gateway/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: tools/warp-gateway/go.sum
+      - name: Tests and vet
+        run: make test-warp-gateway
+      - name: Lifecycle race tests
+        run: make test-warp-gateway-race
+
+  warp-gateway-e2e:
+    needs: warp-gateway
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: |
+            backend/go.sum
+            tools/warp-gateway/go.sum
+      - name: Local full E2E (mock WARP runtime)
+        env:
+          CLEANUP_ALL: '1'
+        run: tools/warp-gateway/scripts/local-full-e2e.sh
 
   frontend:
     runs-on: ubuntu-latest
@@ -58,7 +94,7 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
-      - name: Frontend typecheck and critical vitest
+      - name: Frontend lint, typecheck, and full vitest
         run: make test-frontend
 
   golangci-lint:

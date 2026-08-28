@@ -1,19 +1,4 @@
-.PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
-
-FRONTEND_CRITICAL_VITEST := \
-	src/api/__tests__/client.spec.ts \
-	src/api/__tests__/tokenRefresh.spec.ts \
-	src/api/__tests__/channelMonitorV2.spec.ts \
-	src/views/auth/__tests__/LinuxDoCallbackView.spec.ts \
-	src/views/auth/__tests__/WechatCallbackView.spec.ts \
-	src/views/user/__tests__/PaymentView.spec.ts \
-	src/views/user/__tests__/PaymentResultView.spec.ts \
-	src/views/user/__tests__/ChannelStatusView.mode.spec.ts \
-	src/components/user/profile/__tests__/ProfileInfoCard.spec.ts \
-	src/views/admin/__tests__/SettingsView.spec.ts \
-	src/features/channel-monitor-v2/__tests__/designSystem.structure.spec.ts \
-	src/features/channel-monitor-v2/__tests__/monitorFormat.spec.ts \
-	src/features/channel-monitor-v2/__tests__/monitorZoom.spec.ts
+.PHONY: build build-backend build-frontend test test-backend test-backend-race test-frontend test-frontend-critical test-warp-gateway test-warp-gateway-race
 
 # 一键编译前后端
 build: build-backend build-frontend
@@ -32,10 +17,21 @@ test: test-backend test-frontend
 test-backend:
 	@$(MAKE) -C backend test
 
+# Race only the worker/lifecycle tests that exercise newly concurrent hot paths.
+test-backend-race:
+	@cd backend && go test -race -tags=unit ./internal/service -run '^(TestProxyHealthWorkerApplyStartStop|TestProxyHealthService_RunOnceProcessSingleflight|TestWarpSync_ProcessSingleflightBusy)$$' -count=1
+
+test-warp-gateway:
+	@cd tools/warp-gateway && go test ./...
+	@cd tools/warp-gateway && go vet ./...
+
+test-warp-gateway-race:
+	@cd tools/warp-gateway && go test -race ./internal/service -run '^(TestLifecycleOperationsAreSerializedPerInstance|TestShutdownPreservesDesiredRunningAndReconcileRestarts|TestUnexpectedRuntimeExitIsRemovedAndRestarted|TestStopGracefullyStopsBeforeCancellingRunContext|TestHealthCheckUsesInstanceLifecycleLock)$$' -count=1
+
 test-frontend:
 	@pnpm --dir frontend run lint:check
 	@pnpm --dir frontend run typecheck
-	@$(MAKE) test-frontend-critical
+	@pnpm --dir frontend run test:run
 
-test-frontend-critical:
-	@pnpm --dir frontend exec vitest run $(FRONTEND_CRITICAL_VITEST)
+# Backward-compatible entry point; CI and local callers now use the full suite.
+test-frontend-critical: test-frontend

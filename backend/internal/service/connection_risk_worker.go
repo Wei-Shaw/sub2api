@@ -341,7 +341,21 @@ func (w *ConnectionRiskWorker) scoreKey(ctx context.Context, keyID, nowUnix int6
 	w.metrics.EventsCreated.Add(1)
 
 	if w.policy != nil && saved != nil {
-		w.policy.HandleNewEvent(ctx, saved, s)
+		w.applyRiskPolicy(ctx, saved, s)
+	}
+}
+
+func (w *ConnectionRiskWorker) applyRiskPolicy(ctx context.Context, event *ConnectionRiskEvent, settings ConnectionRiskSettings) {
+	if w == nil || w.policy == nil || w.events == nil || event == nil {
+		return
+	}
+	previousAction := event.ActionTaken
+	w.policy.HandleNewEvent(ctx, event, settings)
+	if event.ActionTaken == "" || event.ActionTaken == previousAction {
+		return
+	}
+	if err := w.events.UpdateActionTaken(ctx, event.ID, event.ActionTaken); err != nil {
+		slog.Warn("connection risk action persistence failed", "error", err, "event_id", event.ID, "action", event.ActionTaken)
 	}
 }
 

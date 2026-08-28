@@ -202,6 +202,21 @@ func NormalizeClientIPForSecurity(raw string) string {
 	return addr.String()
 }
 
+// SecurityEvidenceWhitelistRule converts a normalized connection-risk evidence
+// address into a valid whitelist rule. IPv6 evidence represents a /64 group, so
+// persisting it as a bare address would incorrectly whitelist only one address.
+func SecurityEvidenceWhitelistRule(raw string) (string, bool) {
+	addr, err := netip.ParseAddr(strings.TrimSpace(raw))
+	if err != nil {
+		return "", false
+	}
+	addr = addr.Unmap()
+	if addr.Is6() {
+		return netip.PrefixFrom(addr, 64).Masked().String(), true
+	}
+	return addr.String(), true
+}
+
 // normalizeValidIP 规范化并验证代理头中的候选值，避免把 unknown、主机名等非法值传给安全服务。
 func normalizeValidIP(value string) string {
 	normalized := normalizeIP(value)

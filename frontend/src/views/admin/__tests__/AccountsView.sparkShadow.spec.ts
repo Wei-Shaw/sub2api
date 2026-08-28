@@ -46,6 +46,7 @@ vi.mock('@/api/admin', () => ({
       toggleSchedulable: vi.fn()
     },
     proxies: { getAll: getAllProxies },
+    proxyGroups: { getAll: vi.fn().mockResolvedValue([]) },
     groups: { getAll: getAllGroups }
   }
 }))

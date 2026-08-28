@@ -49,6 +49,12 @@ func (r *proxyRepository) Create(ctx context.Context, proxyIn *service.Proxy) er
 	if proxyIn.Password != "" {
 		builder.SetPassword(proxyIn.Password)
 	}
+	if proxyIn.ManagedBy != "" {
+		builder.SetManagedBy(proxyIn.ManagedBy)
+	}
+	if proxyIn.ExternalID != "" {
+		builder.SetExternalID(proxyIn.ExternalID)
+	}
 	if proxyIn.ExpiresAt != nil {
 		builder.SetExpiresAt(*proxyIn.ExpiresAt)
 	}
@@ -92,6 +98,23 @@ func (r *proxyRepository) ListByIDs(ctx context.Context, ids []int64) ([]service
 	out := make([]service.Proxy, 0, len(proxies))
 	for i := range proxies {
 		out = append(out, *proxyEntityToService(proxies[i]))
+	}
+	return out, nil
+}
+
+// ListByManagedBy returns controller-owned rows, including inactive rows, so a
+// reconciler does not need to page and count the entire proxy table every tick.
+func (r *proxyRepository) ListByManagedBy(ctx context.Context, managedBy string) ([]service.Proxy, error) {
+	items, err := r.client.Proxy.Query().
+		Where(proxy.ManagedByEQ(strings.TrimSpace(managedBy))).
+		Order(dbent.Asc(proxy.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]service.Proxy, 0, len(items))
+	for _, item := range items {
+		out = append(out, *proxyEntityToService(item))
 	}
 	return out, nil
 }
@@ -169,6 +192,16 @@ func updateProxyAndInvalidateProbeSnapshots(ctx context.Context, client *dbent.C
 		builder.SetPassword(proxyIn.Password)
 	} else {
 		builder.ClearPassword()
+	}
+	if proxyIn.ManagedBy != "" {
+		builder.SetManagedBy(proxyIn.ManagedBy)
+	} else {
+		builder.ClearManagedBy()
+	}
+	if proxyIn.ExternalID != "" {
+		builder.SetExternalID(proxyIn.ExternalID)
+	} else {
+		builder.ClearExternalID()
 	}
 	if proxyIn.ExpiresAt != nil {
 		builder.SetExpiresAt(*proxyIn.ExpiresAt)
@@ -785,6 +818,96 @@ func (r *proxyRepository) ClearAccountProxyBindings(ctx context.Context, proxyID
 	return n, nil
 }
 
+// DeleteWithAccountBindings atomically clears every reference to a proxy and
+// soft-deletes the proxy row. Reconciliation must use this operation instead of
+// composing ClearAccountProxyBindings and Delete as separate transactions.
+func (r *proxyRepository) DeleteWithAccountBindings(ctx context.Context, proxyID int64) (int64, error) {
+	if r == nil || proxyID <= 0 {
+		return 0, service.ErrProxyNotFound
+	}
+	db, ok := r.sql.(*sql.DB)
+	if !ok || db == nil {
+		return 0, fmt.Errorf("atomic proxy delete requires database transaction support")
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rows, err := tx.QueryContext(ctx, `
+		UPDATE accounts
+		SET proxy_id = NULL, updated_at = NOW()
+		WHERE proxy_id = $1 AND deleted_at IS NULL
+		RETURNING id`, proxyID)
+	if err != nil {
+		return 0, err
+	}
+	unboundAccountIDs := make([]int64, 0)
+	for rows.Next() {
+		var accountID int64
+		if err := rows.Scan(&accountID); err != nil {
+			_ = rows.Close()
+			return 0, err
+		}
+		unboundAccountIDs = append(unboundAccountIDs, accountID)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return 0, err
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	invalidatedAccountIDs := append([]int64(nil), unboundAccountIDs...)
+	fallbackRows, err := tx.QueryContext(ctx, `
+		UPDATE accounts
+		SET proxy_fallback_origin_id = NULL, updated_at = NOW()
+		WHERE proxy_fallback_origin_id = $1 AND deleted_at IS NULL
+		RETURNING id`, proxyID)
+	if err != nil {
+		return 0, err
+	}
+	for fallbackRows.Next() {
+		var accountID int64
+		if err := fallbackRows.Scan(&accountID); err != nil {
+			_ = fallbackRows.Close()
+			return 0, err
+		}
+		invalidatedAccountIDs = append(invalidatedAccountIDs, accountID)
+	}
+	if err := fallbackRows.Err(); err != nil {
+		_ = fallbackRows.Close()
+		return 0, err
+	}
+	if err := fallbackRows.Close(); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE proxies
+		SET backup_proxy_id = NULL, updated_at = NOW()
+		WHERE backup_proxy_id = $1 AND deleted_at IS NULL`, proxyID); err != nil {
+		return 0, err
+	}
+	deleted, err := tx.ExecContext(ctx, `
+		UPDATE proxies
+		SET deleted_at = NOW(), updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL`, proxyID)
+	if err != nil {
+		return 0, err
+	}
+	if n, _ := deleted.RowsAffected(); n == 0 {
+		return 0, service.ErrProxyNotFound
+	}
+	if err := enqueueProxyProbeAccountChanges(ctx, tx, invalidatedAccountIDs); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return int64(len(unboundAccountIDs)), nil
+}
+
 func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]service.ProxyAccountSummary, error) {
 	rows, err := r.sql.QueryContext(ctx, `
 		SELECT id, name, platform, type, notes
@@ -910,6 +1033,12 @@ func proxyEntityToService(m *dbent.Proxy) *service.Proxy {
 	}
 	if m.Password != nil {
 		out.Password = *m.Password
+	}
+	if m.ManagedBy != nil {
+		out.ManagedBy = *m.ManagedBy
+	}
+	if m.ExternalID != nil {
+		out.ExternalID = *m.ExternalID
 	}
 	return out
 }

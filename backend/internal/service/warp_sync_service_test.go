@@ -225,7 +225,7 @@ func TestMergeNonWarpGroupMembers(t *testing.T) {
 	manual := &Proxy{Name: "office-proxy", Host: "10.0.0.1", Port: 1080, Status: StatusActive, GroupID: &gid}
 	_ = proxyRepo.Create(context.Background(), manual)
 	// Existing warp member (should not be double-kept via merge path alone).
-	warpOld := &Proxy{Name: "warp-warp-01", Host: "127.0.0.1", Port: 20001, Status: StatusActive, GroupID: &gid}
+	warpOld := &Proxy{Name: "warp-warp-01", Host: "127.0.0.1", Port: 20001, Status: StatusActive, GroupID: &gid, ManagedBy: warpProxyManagedBy, ExternalID: "old"}
 	_ = proxyRepo.Create(context.Background(), warpOld)
 
 	svc := &WarpSyncService{proxyRepo: proxyRepo}
@@ -397,7 +397,7 @@ func TestWarpSync_OrphanDeleteUnbindsAccounts(t *testing.T) {
 	client := NewWarpGatewayClient(WarpGatewayConfig{Enabled: true, BaseURL: srv.URL, Timeout: time.Second})
 	proxyRepo := newMemProxyRepo()
 	// Pre-seed an orphan warp proxy still referenced by accounts.
-	orphan := &Proxy{Name: "warp-old", Protocol: "socks5", Host: "127.0.0.1", Port: 41999, Status: StatusActive}
+	orphan := &Proxy{Name: "warp-old", Protocol: "socks5", Host: "127.0.0.1", Port: 41999, Status: StatusActive, ManagedBy: warpProxyManagedBy, ExternalID: "i-old"}
 	if err := proxyRepo.Create(context.Background(), orphan); err != nil {
 		t.Fatal(err)
 	}
@@ -434,6 +434,91 @@ func TestWarpSync_OrphanDeleteUnbindsAccounts(t *testing.T) {
 	}
 	if !foundAlert {
 		t.Fatalf("expected unbind alert, got %v", res.Alerts)
+	}
+}
+
+func TestWarpSync_DoesNotTakeOwnershipByNameOrEndpoint(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/pools/snapshot", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(WarpPoolSnapshot{
+			Instances: []WarpInstance{{
+				ID: "managed-1", Name: "managed", ListenHost: "127.0.0.1", ListenPort: 42101,
+				Status: "running", SocksAuthUser: "warp-user", SocksAuthPass: "warp-pass",
+			}},
+			HealthyCount: 1,
+			TotalCount:   1,
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	proxyRepo := newMemProxyRepo()
+	manual := &Proxy{Name: "warp-manual", Protocol: "socks5", Host: "127.0.0.1", Port: 42101, Status: StatusActive}
+	if err := proxyRepo.Create(context.Background(), manual); err != nil {
+		t.Fatal(err)
+	}
+	groupRepo := newMemGroupRepo()
+	groupSvc := NewProxyGroupService(groupRepo, proxyRepo, noopResolver{})
+	client := NewWarpGatewayClient(WarpGatewayConfig{Enabled: true, BaseURL: srv.URL, Timeout: time.Second})
+	svc := NewWarpSyncService(&config.Config{Warp: config.WarpConfig{
+		Enabled: true, DefaultGroupName: "warp-pool", Gateway: config.WarpGatewayConfig{BaseURL: srv.URL},
+	}}, client, proxyRepo, groupSvc, nil)
+
+	res, err := svc.SyncFromGateway(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.CreatedProxies) != 1 || len(res.UpdatedProxies) != 0 || len(res.DeletedProxies) != 0 {
+		t.Fatalf("unexpected reconciliation: created=%v updated=%v deleted=%v", res.CreatedProxies, res.UpdatedProxies, res.DeletedProxies)
+	}
+	manualAfter := proxyRepo.proxies[manual.ID]
+	if manualAfter == nil || manualAfter.ManagedBy != "" || manualAfter.Name != "warp-manual" {
+		t.Fatalf("manual proxy was taken over: %#v", manualAfter)
+	}
+	managed := res.CreatedProxies[0]
+	if managed.ManagedBy != warpProxyManagedBy || managed.ExternalID != "managed-1" ||
+		managed.Username != "warp-user" || managed.Password != "warp-pass" {
+		t.Fatalf("managed proxy metadata incomplete: %#v", managed)
+	}
+}
+
+func TestWarpSync_AdoptsMarkedLegacyProxyByExactEndpoint(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/pools/snapshot", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(WarpPoolSnapshot{
+			Instances: []WarpInstance{{
+				ID: "gateway-legacy-1", Name: "legacy", ListenHost: "127.0.0.1", ListenPort: 42111,
+				Status: "running", SocksAuthUser: "new-user", SocksAuthPass: "new-pass",
+			}},
+			HealthyCount: 1, TotalCount: 1,
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	proxyRepo := newMemProxyRepo()
+	legacy := &Proxy{
+		Name: "warp-legacy", Protocol: "socks5", Host: "127.0.0.1", Port: 42111,
+		Status: StatusActive, ManagedBy: warpProxyManagedBy,
+	}
+	if err := proxyRepo.Create(context.Background(), legacy); err != nil {
+		t.Fatal(err)
+	}
+	groupSvc := NewProxyGroupService(newMemGroupRepo(), proxyRepo, noopResolver{})
+	svc := NewWarpSyncService(&config.Config{Warp: config.WarpConfig{
+		Enabled: true, DefaultGroupName: "warp-pool", Gateway: config.WarpGatewayConfig{BaseURL: srv.URL},
+	}}, NewWarpGatewayClient(WarpGatewayConfig{Enabled: true, BaseURL: srv.URL, Timeout: time.Second}), proxyRepo, groupSvc, nil)
+
+	res, err := svc.SyncFromGateway(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.CreatedProxies) != 0 || len(res.UpdatedProxies) != 1 {
+		t.Fatalf("legacy adoption created=%v updated=%v", res.CreatedProxies, res.UpdatedProxies)
+	}
+	adopted := proxyRepo.proxies[legacy.ID]
+	if adopted == nil || adopted.ExternalID != "gateway-legacy-1" || adopted.Username != "new-user" || adopted.Password != "new-pass" {
+		t.Fatalf("legacy proxy not adopted in place: %#v", adopted)
 	}
 }
 
@@ -523,7 +608,7 @@ func TestWarpSync_EmptyGatewaySnapshotRefusesPrune(t *testing.T) {
 
 	client := NewWarpGatewayClient(WarpGatewayConfig{Enabled: true, BaseURL: srv.URL, Timeout: time.Second})
 	proxyRepo := newMemProxyRepo()
-	existing := &Proxy{Name: "warp-keep-me", Protocol: "socks5", Host: "127.0.0.1", Port: 43001, Status: StatusActive}
+	existing := &Proxy{Name: "warp-keep-me", Protocol: "socks5", Host: "127.0.0.1", Port: 43001, Status: StatusActive, ManagedBy: warpProxyManagedBy, ExternalID: "keep-me"}
 	if err := proxyRepo.Create(context.Background(), existing); err != nil {
 		t.Fatal(err)
 	}
@@ -679,11 +764,13 @@ func TestWarpSync_DrasticDropRefusesOrphanPrune(t *testing.T) {
 	seedIDs := make([]int64, 0, 6)
 	for i := 1; i <= 6; i++ {
 		p := &Proxy{
-			Name:     fmt.Sprintf("warp-local-%02d", i),
-			Protocol: "socks5",
-			Host:     "127.0.0.1",
-			Port:     44000 + i,
-			Status:   StatusActive,
+			Name:       fmt.Sprintf("warp-local-%02d", i),
+			Protocol:   "socks5",
+			Host:       "127.0.0.1",
+			Port:       44000 + i,
+			Status:     StatusActive,
+			ManagedBy:  warpProxyManagedBy,
+			ExternalID: fmt.Sprintf("local-%02d", i),
 		}
 		if err := proxyRepo.Create(context.Background(), p); err != nil {
 			t.Fatal(err)
@@ -762,12 +849,18 @@ func TestWarpSync_DrasticDropSmallPoolRefuses(t *testing.T) {
 	proxyRepo := newMemProxyRepo()
 	seedIDs := make([]int64, 0, 3)
 	for i := 1; i <= 3; i++ {
+		externalID := fmt.Sprintf("small-%02d", i)
+		if i == 1 {
+			externalID = "keep"
+		}
 		p := &Proxy{
-			Name:     fmt.Sprintf("warp-small-%02d", i),
-			Protocol: "socks5",
-			Host:     "127.0.0.1",
-			Port:     48000 + i,
-			Status:   StatusActive,
+			Name:       fmt.Sprintf("warp-small-%02d", i),
+			Protocol:   "socks5",
+			Host:       "127.0.0.1",
+			Port:       48000 + i,
+			Status:     StatusActive,
+			ManagedBy:  warpProxyManagedBy,
+			ExternalID: externalID,
 		}
 		if err := proxyRepo.Create(context.Background(), p); err != nil {
 			t.Fatal(err)
@@ -834,12 +927,18 @@ func TestWarpSync_DrasticDropConfirmedAllowsPrune(t *testing.T) {
 	proxyRepo := newMemProxyRepo()
 	seedIDs := make([]int64, 0, 6)
 	for i := 1; i <= 6; i++ {
+		externalID := fmt.Sprintf("conf-%02d", i)
+		if i == 1 {
+			externalID = "keep"
+		}
 		p := &Proxy{
-			Name:     fmt.Sprintf("warp-conf-%02d", i),
-			Protocol: "socks5",
-			Host:     "127.0.0.1",
-			Port:     49000 + i,
-			Status:   StatusActive,
+			Name:       fmt.Sprintf("warp-conf-%02d", i),
+			Protocol:   "socks5",
+			Host:       "127.0.0.1",
+			Port:       49000 + i,
+			Status:     StatusActive,
+			ManagedBy:  warpProxyManagedBy,
+			ExternalID: externalID,
 		}
 		if err := proxyRepo.Create(context.Background(), p); err != nil {
 			t.Fatal(err)
@@ -939,12 +1038,18 @@ func TestWarpSync_DrasticDropConfirmMismatchRefuses(t *testing.T) {
 	proxyRepo := newMemProxyRepo()
 	seedIDs := make([]int64, 0, 6)
 	for i := 1; i <= 6; i++ {
+		externalID := fmt.Sprintf("mm-%02d", i)
+		if i == 1 {
+			externalID = "keep"
+		}
 		p := &Proxy{
-			Name:     fmt.Sprintf("warp-mm-%02d", i),
-			Protocol: "socks5",
-			Host:     "127.0.0.1",
-			Port:     50000 + i,
-			Status:   StatusActive,
+			Name:       fmt.Sprintf("warp-mm-%02d", i),
+			Protocol:   "socks5",
+			Host:       "127.0.0.1",
+			Port:       50000 + i,
+			Status:     StatusActive,
+			ManagedBy:  warpProxyManagedBy,
+			ExternalID: externalID,
 		}
 		if err := proxyRepo.Create(context.Background(), p); err != nil {
 			t.Fatal(err)
@@ -1024,6 +1129,7 @@ func TestWarpSync_DrasticDropInconsistentTotalCountRefuses(t *testing.T) {
 		p := &Proxy{
 			Name: fmt.Sprintf("warp-tot-%02d", i), Protocol: "socks5",
 			Host: "127.0.0.1", Port: 47100 + i, Status: StatusActive,
+			ManagedBy: warpProxyManagedBy, ExternalID: fmt.Sprintf("tot-%02d", i),
 		}
 		if err := proxyRepo.Create(context.Background(), p); err != nil {
 			t.Fatal(err)
@@ -1080,7 +1186,7 @@ func TestWarpSync_InconsistentEmptyTotalCountRefusesPrune(t *testing.T) {
 
 	client := NewWarpGatewayClient(WarpGatewayConfig{Enabled: true, BaseURL: srv.URL, Timeout: time.Second})
 	proxyRepo := newMemProxyRepo()
-	existing := &Proxy{Name: "warp-keep-inconsistent", Protocol: "socks5", Host: "127.0.0.1", Port: 46001, Status: StatusActive}
+	existing := &Proxy{Name: "warp-keep-inconsistent", Protocol: "socks5", Host: "127.0.0.1", Port: 46001, Status: StatusActive, ManagedBy: warpProxyManagedBy, ExternalID: "keep-inconsistent"}
 	if err := proxyRepo.Create(context.Background(), existing); err != nil {
 		t.Fatal(err)
 	}

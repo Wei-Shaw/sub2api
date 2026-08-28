@@ -164,9 +164,9 @@ func (s *Store) load() error {
 	return nil
 }
 
-func (s *Store) persistLocked() error {
-	list := make([]Instance, 0, len(s.byID))
-	for _, inst := range s.byID {
+func (s *Store) persistLocked(byID map[string]*Instance) error {
+	list := make([]Instance, 0, len(byID))
+	for _, inst := range byID {
 		cp := *inst
 		if s.cipher != nil {
 			if cp.Profile.PrivateKey != "" {
@@ -259,19 +259,25 @@ func (s *Store) Create(inst *Instance) error {
 			return fmt.Errorf("%w: %q", ErrNameExists, inst.Name)
 		}
 	}
+	cp := cloneInstance(inst)
 	now := time.Now().UTC()
-	inst.CreatedAt = now
-	inst.UpdatedAt = now
-	if inst.Status == "" {
-		inst.Status = StatusRegistered
+	cp.CreatedAt = now
+	cp.UpdatedAt = now
+	if cp.Status == "" {
+		cp.Status = StatusRegistered
 	}
-	if inst.DesiredState == "" {
-		inst.DesiredState = DesiredRunning
+	if cp.DesiredState == "" {
+		cp.DesiredState = DesiredRunning
 	}
-	cp := *inst
-	s.byID[inst.ID] = &cp
+	candidate := cloneInstances(s.byID)
+	candidate[inst.ID] = &cp
+	if err := s.persistLocked(candidate); err != nil {
+		return err
+	}
+	s.byID = candidate
 	s.ports[inst.ListenPort] = inst.ID
-	return s.persistLocked()
+	*inst = cloneInstance(&cp)
+	return nil
 }
 
 func (s *Store) Update(id string, mut func(*Instance)) (*Instance, error) {
@@ -281,12 +287,16 @@ func (s *Store) Update(id string, mut func(*Instance)) (*Instance, error) {
 	if !ok {
 		return nil, ErrNotFound
 	}
-	mut(inst)
-	inst.UpdatedAt = time.Now().UTC()
-	if err := s.persistLocked(); err != nil {
+	cp := cloneInstance(inst)
+	mut(&cp)
+	cp.UpdatedAt = time.Now().UTC()
+	candidate := cloneInstances(s.byID)
+	candidate[id] = &cp
+	if err := s.persistLocked(candidate); err != nil {
 		return nil, err
 	}
-	out := *inst
+	s.byID = candidate
+	out := cloneInstance(&cp)
 	return &out, nil
 }
 
@@ -297,7 +307,7 @@ func (s *Store) Get(id string) (*Instance, error) {
 	if !ok {
 		return nil, ErrNotFound
 	}
-	out := *inst
+	out := cloneInstance(inst)
 	return &out, nil
 }
 
@@ -306,7 +316,7 @@ func (s *Store) List() []Instance {
 	defer s.mu.RUnlock()
 	out := make([]Instance, 0, len(s.byID))
 	for _, inst := range s.byID {
-		out = append(out, *inst)
+		out = append(out, cloneInstance(inst))
 	}
 	return out
 }
@@ -318,7 +328,45 @@ func (s *Store) Delete(id string) error {
 	if !ok {
 		return ErrNotFound
 	}
+	candidate := cloneInstances(s.byID)
+	delete(candidate, id)
+	if err := s.persistLocked(candidate); err != nil {
+		return err
+	}
+	s.byID = candidate
 	delete(s.ports, inst.ListenPort)
-	delete(s.byID, id)
-	return s.persistLocked()
+	return nil
+}
+
+func cloneInstances(src map[string]*Instance) map[string]*Instance {
+	dst := make(map[string]*Instance, len(src))
+	for id, inst := range src {
+		if inst == nil {
+			dst[id] = nil
+			continue
+		}
+		cp := cloneInstance(inst)
+		dst[id] = &cp
+	}
+	return dst
+}
+
+func cloneInstance(inst *Instance) Instance {
+	cp := *inst
+	cp.Profile.Address = append([]string(nil), inst.Profile.Address...)
+	cp.Profile.DNS = append([]string(nil), inst.Profile.DNS...)
+	cp.Profile.Peers = make([]PeerConfig, len(inst.Profile.Peers))
+	for i := range inst.Profile.Peers {
+		cp.Profile.Peers[i] = inst.Profile.Peers[i]
+		cp.Profile.Peers[i].AllowedIPs = append([]string(nil), inst.Profile.Peers[i].AllowedIPs...)
+	}
+	if inst.LatencyMs != nil {
+		value := *inst.LatencyMs
+		cp.LatencyMs = &value
+	}
+	if inst.LastHealthAt != nil {
+		value := *inst.LastHealthAt
+		cp.LastHealthAt = &value
+	}
+	return cp
 }

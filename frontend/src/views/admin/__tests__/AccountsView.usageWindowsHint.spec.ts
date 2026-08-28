@@ -32,6 +32,7 @@ vi.mock('@/api/admin', () => ({
     proxies: {
       getAll: getAllProxies
     },
+    proxyGroups: { getAll: vi.fn().mockResolvedValue([]) },
     groups: {
       getAll: getAllGroups
     }

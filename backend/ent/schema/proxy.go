@@ -67,6 +67,14 @@ func (Proxy) Fields() []ent.Field {
 		field.Int64("group_id").
 			Optional().Nillable().
 			Comment("Optional proxy group this proxy belongs to (one group per proxy)."),
+		field.String("managed_by").
+			MaxLen(64).
+			Optional().Nillable().
+			Comment("External controller that owns this proxy; NULL for user-managed rows."),
+		field.String("external_id").
+			MaxLen(255).
+			Optional().Nillable().
+			Comment("Controller-scoped stable resource identifier."),
 	}
 }
 
@@ -94,5 +102,6 @@ func (Proxy) Indexes() []ent.Index {
 		index.Fields("expires_at"),
 		index.Fields("backup_proxy_id"),
 		index.Fields("group_id"),
+		index.Fields("managed_by", "external_id"),
 	}
 }

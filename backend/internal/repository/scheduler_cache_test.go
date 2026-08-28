@@ -37,6 +37,24 @@ func TestSchedulerMetadataAccountKeepsOpenAISubscriptionIdentity(t *testing.T) {
 	require.Empty(t, metadata.GetCredential("access_token"))
 }
 
+func TestSchedulerMetadataAccountKeepsProxyGroupFailClosedState(t *testing.T) {
+	groupID := int64(73)
+	account := service.Account{
+		ID:                  25,
+		Platform:            service.PlatformAnthropic,
+		Status:              service.StatusActive,
+		Schedulable:         true,
+		ProxyGroupID:        &groupID,
+		ProxyGroupExhausted: true,
+	}
+
+	metadata := buildSchedulerMetadataAccount(account)
+
+	require.Equal(t, &groupID, metadata.ProxyGroupID)
+	require.True(t, metadata.ProxyGroupExhausted)
+	require.False(t, metadata.IsSchedulable(), "exhausted proxy group must remain fail-closed in scheduler metadata")
+}
+
 func TestSchedulerMetadataAccountProjectsUpstreamBillingProbe(t *testing.T) {
 	lastError := strings.Repeat("upstream diagnostic ", 512)
 	probe := map[string]any{

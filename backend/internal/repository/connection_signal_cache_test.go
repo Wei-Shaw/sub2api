@@ -68,6 +68,103 @@ func TestConnectionSignalCache_UASlidingWindow1h(t *testing.T) {
 	require.Equal(t, 1, m.UACount1h, "only UA seen within last 1h should count (not cumulative lifetime)")
 }
 
+func TestConnectionSignalCache_BucketedMetricsAdvanceWithTime(t *testing.T) {
+	cache, _ := newConnectionSignalTestCache(t)
+	ctx := context.Background()
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC).Unix()
+
+	emit := func(keyID int64, address string, now int64, seq uint64) {
+		_, err := cache.EmitAlwaysOn(ctx, service.ConnectionSignal{
+			UserID: 7, APIKeyID: keyID, IP: address, UAHash: "ua", NowUnix: now,
+		}, 50000, 9999, seq)
+		require.NoError(t, err)
+	}
+	emit(42, "198.51.100.1", base, 1)
+	emit(42, "198.51.100.2", base+1, 2)
+	emit(43, "198.51.100.3", base+2, 3)
+
+	m, err := cache.ReadKeyWindowMetrics(ctx, 42, 7, base+2)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, m.IPHll1h)
+	require.EqualValues(t, 2, m.UserKeys1h)
+	require.EqualValues(t, 3, m.UserIPHLL1h)
+
+	// Old buckets still exist in Redis, but are not part of the bounded 1h union.
+	twoHoursLater := base + 2*60*60
+	emit(42, "203.0.113.10", twoHoursLater, 4)
+	m, err = cache.ReadKeyWindowMetrics(ctx, 42, 7, twoHoursLater)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, m.IPHll1h)
+	require.EqualValues(t, 1, m.UserKeys1h)
+	require.EqualValues(t, 1, m.UserIPHLL1h)
+	require.EqualValues(t, 3, m.IPHll24h)
+
+	// At +25h, the original bucket is outside 24h while the +2h sample remains.
+	twentyFiveHoursLater := base + 25*60*60
+	emit(42, "203.0.113.11", twentyFiveHoursLater, 5)
+	m, err = cache.ReadKeyWindowMetrics(ctx, 42, 7, twentyFiveHoursLater)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, m.IPHll1h)
+	require.EqualValues(t, 2, m.IPHll24h)
+}
+
+func TestConnectionSignalCache_BucketedMetricsBoundaryCoverage(t *testing.T) {
+	cache, _ := newConnectionSignalTestCache(t)
+	ctx := context.Background()
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC).Unix()
+
+	_, err := cache.EmitAlwaysOn(ctx, service.ConnectionSignal{
+		UserID: 7, APIKeyID: 42, IP: "198.51.100.1", UAHash: "ua", NowUnix: base,
+	}, 50000, 9999, 1)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name    string
+		at      int64
+		want1h  int64
+		want24h int64
+	}{
+		{name: "just before one hour", at: base + int64(59*time.Minute+59*time.Second)/int64(time.Second), want1h: 1, want24h: 1},
+		{name: "just after one hour remains in overlap bucket", at: base + int64(60*time.Minute+time.Second)/int64(time.Second), want1h: 1, want24h: 1},
+		{name: "after one hour overlap expires", at: base + int64(65*time.Minute+time.Second)/int64(time.Second), want1h: 0, want24h: 1},
+		{name: "just before twenty four hours", at: base + int64(23*time.Hour+59*time.Minute)/int64(time.Second), want1h: 0, want24h: 1},
+		{name: "just after twenty four hours remains in overlap bucket", at: base + int64(24*time.Hour+time.Second)/int64(time.Second), want1h: 0, want24h: 1},
+		{name: "after twenty four hour overlap expires", at: base + int64(25*time.Hour+time.Second)/int64(time.Second), want1h: 0, want24h: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			metrics, err := cache.ReadKeyWindowMetrics(ctx, 42, 7, tt.at)
+			require.NoError(t, err)
+			require.EqualValues(t, tt.want1h, metrics.IPHll1h)
+			require.EqualValues(t, tt.want24h, metrics.IPHll24h)
+		})
+	}
+}
+
+func TestConnectionSignalCache_ReadMetricsReturnsRedisCommandError(t *testing.T) {
+	cache, mr := newConnectionSignalTestCache(t)
+	ctx := context.Background()
+	now := time.Now().Unix()
+
+	// A wrong Redis type on a pipeline metric must fail the snapshot instead of
+	// being silently interpreted as a zero count.
+	mr.Set(crKeyIPs1h(42, now/crOneHourBucket), "not-a-hyperloglog")
+	metrics, err := cache.ReadKeyWindowMetrics(ctx, 42, 7, now)
+	require.Error(t, err)
+	require.Nil(t, metrics)
+}
+
+func TestConnectionSignalCache_ReadMetricsAllowsMissingCounters(t *testing.T) {
+	cache, _ := newConnectionSignalTestCache(t)
+
+	metrics, err := cache.ReadKeyWindowMetrics(context.Background(), 42, 7, time.Now().Unix())
+	require.NoError(t, err)
+	require.NotNil(t, metrics)
+	require.Zero(t, metrics.ReqCount5m)
+	require.Zero(t, metrics.SBMismatch15m)
+}
+
 func TestConnectionSignalCache_SessionMismatchAndExempt(t *testing.T) {
 	cache, _ := newConnectionSignalTestCache(t)
 	ctx := context.Background()

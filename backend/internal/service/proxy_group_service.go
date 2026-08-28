@@ -15,6 +15,12 @@ type ProxyGroupService struct {
 	resolver  ProxyGroupResolver
 }
 
+type atomicProxyGroupRepository interface {
+	CreateWithMembers(ctx context.Context, group *ProxyGroup, proxyIDs []int64) error
+	UpdateWithMembers(ctx context.Context, group *ProxyGroup, proxyIDs *[]int64) error
+	DeleteIfUnused(ctx context.Context, groupID int64) error
+}
+
 // NewProxyGroupService 构造代理组服务。
 func NewProxyGroupService(
 	groupRepo ProxyGroupRepository,
@@ -72,12 +78,23 @@ func (s *ProxyGroupService) Create(ctx context.Context, input CreateProxyGroupIn
 		HealthFailThreshold:    normalizeHealthThresholdPtr(input.HealthFailThreshold),
 		HealthSuccessThreshold: normalizeHealthThresholdPtr(input.HealthSuccessThreshold),
 	}
-	if err := s.groupRepo.Create(ctx, group); err != nil {
-		return nil, err
-	}
-	if len(input.ProxyIDs) > 0 {
-		if err := s.replaceMembers(ctx, group.ID, input.ProxyIDs); err != nil {
+	oldGroupIDs := s.collectSourceGroupIDs(ctx, 0, input.ProxyIDs)
+	if atomicRepo, ok := s.groupRepo.(atomicProxyGroupRepository); ok {
+		if err := atomicRepo.CreateWithMembers(ctx, group, input.ProxyIDs); err != nil {
 			return nil, err
+		}
+		s.invalidate(group.ID)
+		for oldID := range oldGroupIDs {
+			s.invalidate(oldID)
+		}
+	} else {
+		if err := s.groupRepo.Create(ctx, group); err != nil {
+			return nil, err
+		}
+		if len(input.ProxyIDs) > 0 {
+			if err := s.replaceMembers(ctx, group.ID, input.ProxyIDs); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return s.GetByID(ctx, group.ID)
@@ -155,20 +172,41 @@ func (s *ProxyGroupService) Update(ctx context.Context, id int64, input UpdatePr
 	if input.HealthSuccessThreshold != nil {
 		group.HealthSuccessThreshold = normalizeHealthThresholdPtr(input.HealthSuccessThreshold)
 	}
-	if err := s.groupRepo.Update(ctx, group); err != nil {
-		return nil, err
-	}
-	if input.ProxyIDs != nil {
-		if err := s.replaceMembers(ctx, id, *input.ProxyIDs); err != nil {
+	if atomicRepo, ok := s.groupRepo.(atomicProxyGroupRepository); ok {
+		oldGroupIDs := map[int64]struct{}{}
+		if input.ProxyIDs != nil {
+			oldGroupIDs = s.collectSourceGroupIDs(ctx, id, *input.ProxyIDs)
+		}
+		if err := atomicRepo.UpdateWithMembers(ctx, group, input.ProxyIDs); err != nil {
 			return nil, err
 		}
-	} else {
 		s.invalidate(id)
+		for oldID := range oldGroupIDs {
+			s.invalidate(oldID)
+		}
+	} else {
+		if err := s.groupRepo.Update(ctx, group); err != nil {
+			return nil, err
+		}
+		if input.ProxyIDs != nil {
+			if err := s.replaceMembers(ctx, id, *input.ProxyIDs); err != nil {
+				return nil, err
+			}
+		} else {
+			s.invalidate(id)
+		}
 	}
 	return s.GetByID(ctx, id)
 }
 
 func (s *ProxyGroupService) Delete(ctx context.Context, id int64) error {
+	if atomicRepo, ok := s.groupRepo.(atomicProxyGroupRepository); ok {
+		if err := atomicRepo.DeleteIfUnused(ctx, id); err != nil {
+			return err
+		}
+		s.invalidate(id)
+		return nil
+	}
 	proxyCount, err := s.groupRepo.CountProxiesByGroupID(ctx, id)
 	if err != nil {
 		return err

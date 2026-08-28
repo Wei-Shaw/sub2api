@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	pkgip "github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 )
 
 // ConnectionRiskService is the admin-facing facade for risk events and config.
@@ -164,9 +165,32 @@ func (s *ConnectionRiskService) WhitelistIPs(ctx context.Context, keyID int64, i
 	}
 	if s.signals != nil {
 		_ = s.signals.ClearThrottle(ctx, keyID)
-		_ = s.signals.SetExempt(ctx, "k", keyID, "whitelist", 24*time.Hour)
+		if whitelistMatchesEvidence(key.IPWhitelist, ips) {
+			_ = s.signals.SetExempt(ctx, "k", keyID, "whitelist", 24*time.Hour)
+		}
 	}
 	return key, nil
+}
+
+func whitelistMatchesEvidence(whitelist, evidenceIPs []string) bool {
+	if len(whitelist) == 0 {
+		return false
+	}
+	compiled := pkgip.CompileIPRules(whitelist)
+	if len(compiled.CIDRs)+len(compiled.IPs) == 0 {
+		return false
+	}
+	for _, evidenceIP := range evidenceIPs {
+		normalized := pkgip.NormalizeClientIPForSecurity(evidenceIP)
+		if normalized == "" {
+			continue
+		}
+		allowed, _ := pkgip.CheckIPRestrictionWithCompiledRules(normalized, compiled, nil)
+		if allowed {
+			return true
+		}
+	}
+	return false
 }
 
 // RunRetention deletes events older than settings.RetentionDays.

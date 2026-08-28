@@ -27,6 +27,7 @@ type WarpSyncWorker struct {
 	wg         sync.WaitGroup
 	stop       chan struct{}
 	on         bool
+	cancel     context.CancelFunc
 }
 
 // ProvideWarpSyncWorker constructs and starts the worker when warp is enabled.
@@ -68,9 +69,11 @@ func (w *WarpSyncWorker) Start() {
 	if w.stop == nil {
 		w.stop = make(chan struct{})
 	}
+	runCtx, cancel := context.WithCancel(context.Background())
+	w.cancel = cancel
 	w.on = true
 	w.wg.Add(1)
-	go w.run()
+	go w.run(runCtx)
 	w.log.Info("warp sync worker started", "interval_sec", w.intervalSec())
 }
 
@@ -89,10 +92,13 @@ func (w *WarpSyncWorker) Stop() {
 	default:
 		close(w.stop)
 	}
+	cancel := w.cancel
+	w.cancel = nil
 	w.on = false
-	w.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 	w.wg.Wait()
-	w.mu.Lock()
 	w.stop = make(chan struct{})
 	w.mu.Unlock()
 	w.log.Info("warp sync worker stopped")
@@ -109,23 +115,25 @@ func (w *WarpSyncWorker) intervalSec() int {
 	return sec
 }
 
-func (w *WarpSyncWorker) run() {
+func (w *WarpSyncWorker) run(ctx context.Context) {
 	defer w.wg.Done()
 	// Boot delay to let gateway come up after process start.
 	timer := time.NewTimer(8 * time.Second)
 	defer timer.Stop()
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case <-w.stop:
 			return
 		case <-timer.C:
-			w.tick()
+			w.tick(ctx)
 			timer.Reset(time.Duration(w.intervalSec()) * time.Second)
 		}
 	}
 }
 
-func (w *WarpSyncWorker) tick() {
+func (w *WarpSyncWorker) tick(parent context.Context) {
 	// Align tick deadline with leadership lock TTL so HealthAll+Sync under lock
 	// is not canceled early (lock floor is 90s; was fixed 60s).
 	tickTimeout := 90 * time.Second
@@ -134,7 +142,7 @@ func (w *WarpSyncWorker) tick() {
 			tickTimeout = ttl
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), tickTimeout)
+	ctx, cancel := context.WithTimeout(parent, tickTimeout)
 	defer cancel()
 
 	// Leader lock + process singleflight live inside withSyncLeadership so admin

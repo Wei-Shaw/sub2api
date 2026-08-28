@@ -60,49 +60,6 @@ func (r *connectionRiskRepository) UpsertOpen(ctx context.Context, event *servic
 		metricsJSON = []byte("{}")
 	}
 
-	// Try update existing open row by dedupe_key first.
-	if event.DedupeKey != "" {
-		const upd = `
-UPDATE connection_risk_events
-SET last_seen_at = $1,
-    updated_at = $1,
-    score = GREATEST(score, $2),
-    severity = CASE
-      WHEN $3 = 'critical' THEN 'critical'
-      WHEN severity = 'critical' THEN severity
-      WHEN $3 = 'high' THEN 'high'
-      WHEN severity = 'high' THEN severity
-      WHEN $3 = 'medium' THEN 'medium'
-      ELSE severity
-    END,
-    rules_fired = $4,
-    evidence = $5,
-    metrics = $6,
-    summary = $7,
-    title = $8
-WHERE dedupe_key = $9 AND status = 'open'
-RETURNING` + connectionRiskSelectColumns
-		row := r.db.QueryRowContext(ctx, upd,
-			event.LastSeenAt.UTC(),
-			event.Score,
-			event.Severity,
-			rulesJSON,
-			evidenceJSON,
-			metricsJSON,
-			event.Summary,
-			event.Title,
-			event.DedupeKey,
-		)
-		existing, err := scanConnectionRiskEvent(row.Scan)
-		if err == nil {
-			return existing, nil
-		}
-		if err != sql.ErrNoRows {
-			return nil, err
-		}
-		// No open row for this dedupe_key — insert below.
-	}
-
 	const ins = `
 INSERT INTO connection_risk_events (
   subject_type, user_id, api_key_id, api_key_prefix,
@@ -112,6 +69,24 @@ INSERT INTO connection_risk_events (
 ) VALUES (
   $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$19
 )
+ON CONFLICT (dedupe_key) WHERE status = 'open' AND dedupe_key <> ''
+DO UPDATE SET
+  last_seen_at = EXCLUDED.last_seen_at,
+  updated_at = EXCLUDED.updated_at,
+  score = GREATEST(connection_risk_events.score, EXCLUDED.score),
+  severity = CASE
+    WHEN EXCLUDED.severity = 'critical' THEN 'critical'
+    WHEN connection_risk_events.severity = 'critical' THEN connection_risk_events.severity
+    WHEN EXCLUDED.severity = 'high' THEN 'high'
+    WHEN connection_risk_events.severity = 'high' THEN connection_risk_events.severity
+    WHEN EXCLUDED.severity = 'medium' THEN 'medium'
+    ELSE connection_risk_events.severity
+  END,
+  rules_fired = EXCLUDED.rules_fired,
+  evidence = EXCLUDED.evidence,
+  metrics = EXCLUDED.metrics,
+  summary = EXCLUDED.summary,
+  title = EXCLUDED.title
 RETURNING` + connectionRiskSelectColumns
 
 	row := r.db.QueryRowContext(ctx, ins,
@@ -136,6 +111,27 @@ RETURNING` + connectionRiskSelectColumns
 		now,
 	)
 	return scanConnectionRiskEvent(row.Scan)
+}
+
+func (r *connectionRiskRepository) UpdateActionTaken(ctx context.Context, id int64, action string) error {
+	if r == nil || r.db == nil {
+		return fmt.Errorf("nil connection risk repository")
+	}
+	res, err := r.db.ExecContext(ctx, `
+UPDATE connection_risk_events
+SET action_taken = $1, updated_at = $2
+WHERE id = $3`, truncateString(action, 64), time.Now().UTC(), id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (r *connectionRiskRepository) GetByID(ctx context.Context, id int64) (*service.ConnectionRiskEvent, error) {

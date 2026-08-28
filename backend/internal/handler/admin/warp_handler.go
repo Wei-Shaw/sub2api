@@ -1,6 +1,9 @@
 package admin
 
 import (
+	"encoding/json"
+	"errors"
+	"io"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -8,6 +11,29 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+var errMultipleJSONValues = errors.New("request body must contain a single JSON value")
+
+func bindOptionalJSON(c *gin.Context, dst any) error {
+	if c == nil || c.Request == nil || c.Request.Body == nil {
+		return nil
+	}
+	decoder := json.NewDecoder(c.Request.Body)
+	if err := decoder.Decode(dst); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return err
+	}
+	return errMultipleJSONValues
+}
 
 // WarpHandler admin REST for Cloudflare WARP gateway sync.
 type WarpHandler struct {
@@ -62,7 +88,10 @@ func (h *WarpHandler) Sync(c *gin.Context) {
 	var req struct {
 		GroupName string `json:"group_name"`
 	}
-	_ = c.ShouldBindJSON(&req)
+	if err := bindOptionalJSON(c, &req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
 	result, err := h.svc.SyncFromGateway(c.Request.Context(), strings.TrimSpace(req.GroupName))
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -144,7 +173,10 @@ func (h *WarpHandler) HealthSync(c *gin.Context) {
 	var req struct {
 		GroupName string `json:"group_name"`
 	}
-	_ = c.ShouldBindJSON(&req)
+	if err := bindOptionalJSON(c, &req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
 	result, err := h.svc.HealthAllAndSync(c.Request.Context(), strings.TrimSpace(req.GroupName))
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -167,7 +199,10 @@ func (h *WarpHandler) Rotate(c *gin.Context) {
 	var req struct {
 		GroupName string `json:"group_name"`
 	}
-	_ = c.ShouldBindJSON(&req)
+	if err := bindOptionalJSON(c, &req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
 	result, err := h.svc.RotateAndSync(c.Request.Context(), id, strings.TrimSpace(req.GroupName))
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -198,7 +233,10 @@ func (h *WarpHandler) DeleteInstance(c *gin.Context) {
 		DeregisterCloudflare *bool  `json:"deregister_cloudflare"`
 		GroupName            string `json:"group_name"`
 	}
-	_ = c.ShouldBindJSON(&body)
+	if err := bindOptionalJSON(c, &body); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
 	if body.DeregisterCloudflare != nil {
 		deregister = *body.DeregisterCloudflare
 	}

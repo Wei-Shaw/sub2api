@@ -29,6 +29,11 @@ type Proxy struct {
 	BackupProxyID  *int64
 	ExpiryWarnDays int
 	GroupID        *int64 // optional membership in a proxy group
+	// ManagedBy/ExternalID identify proxies owned by an external controller.
+	// User-created proxies leave both fields empty and must never be mutated by
+	// reconciliation jobs based only on a matching name or endpoint.
+	ManagedBy  string
+	ExternalID string
 	// Health audit (DB-backed, Phase 3)
 	HealthFailCount  int
 	LastHealthAt     *time.Time

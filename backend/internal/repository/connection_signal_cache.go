@@ -22,6 +22,10 @@ const (
 	crExemptTTL   = 24 * time.Hour
 
 	crUAWindowSeconds = int64(3600)
+	crOneHourBucket   = int64(5 * 60)
+	crTwenty4hBucket  = int64(60 * 60)
+	crOneHourBuckets  = 13
+	crTwenty4hBuckets = 25
 	crEvidenceIPCap   = 200
 	crEvidenceUACap   = 50
 )
@@ -52,18 +56,22 @@ func crKeyUAsWin(keyID, win int64) string {
 func crKeyCntWin(keyID, win int64) string {
 	return fmt.Sprintf("cr:k:%d:cnt:%d", keyID, win)
 }
-func crKeyIPs1h(keyID int64) string  { return fmt.Sprintf("cr:k:%d:ips:1h", keyID) }
-func crKeyIPs24h(keyID int64) string { return fmt.Sprintf("cr:k:%d:ips:24h", keyID) }
+func crKeyIPs1h(keyID, bucket int64) string {
+	return fmt.Sprintf("cr:k:%d:ips:1h:%d", keyID, bucket)
+}
+func crKeyIPs24h(keyID, bucket int64) string {
+	return fmt.Sprintf("cr:k:%d:ips:24h:%d", keyID, bucket)
+}
 func crKeyUAs1h(keyID int64) string  { return fmt.Sprintf("cr:k:%d:uas:1h", keyID) }
 func crKeyOwner(keyID int64) string  { return fmt.Sprintf("cr:k:%d:owner", keyID) }
 func crKeyPrefix(keyID int64) string { return fmt.Sprintf("cr:k:%d:prefix", keyID) }
 func crKeyIPSet(keyID int64) string  { return fmt.Sprintf("cr:k:%d:ipset", keyID) }
 func crKeyUASet(keyID int64) string  { return fmt.Sprintf("cr:k:%d:uaset", keyID) }
-func crUserKeys1h(userID int64) string {
-	return fmt.Sprintf("cr:u:%d:keys:1h", userID)
+func crUserKeys1h(userID, bucket int64) string {
+	return fmt.Sprintf("cr:u:%d:keys:1h:%d", userID, bucket)
 }
-func crUserIPs1h(userID int64) string {
-	return fmt.Sprintf("cr:u:%d:ips:1h", userID)
+func crUserIPs1h(userID, bucket int64) string {
+	return fmt.Sprintf("cr:u:%d:ips:1h:%d", userID, bucket)
 }
 func crUserMismatch(userID, win int64) string {
 	return fmt.Sprintf("cr:u:%d:sb_mismatch:%d", userID, win)
@@ -92,6 +100,8 @@ func (c *connectionSignalCache) EmitAlwaysOn(ctx context.Context, sig service.Co
 		now = t.Unix()
 	}
 	win := now / 60
+	oneHourBucket := now / crOneHourBucket
+	twenty4hBucket := now / crTwenty4hBucket
 	uaHash := sig.UAHash
 	if uaHash == "" {
 		uaHash = "empty"
@@ -121,10 +131,10 @@ func (c *connectionSignalCache) EmitAlwaysOn(ctx context.Context, sig service.Co
 	cmds += 6
 
 	// HLL 1h / 24h
-	pipe.PFAdd(ctx, crKeyIPs1h(sig.APIKeyID), sig.IP)
-	pipe.Expire(ctx, crKeyIPs1h(sig.APIKeyID), crOneHourTTL)
-	pipe.PFAdd(ctx, crKeyIPs24h(sig.APIKeyID), sig.IP)
-	pipe.Expire(ctx, crKeyIPs24h(sig.APIKeyID), crTwenty6hTTL)
+	pipe.PFAdd(ctx, crKeyIPs1h(sig.APIKeyID, oneHourBucket), sig.IP)
+	pipe.Expire(ctx, crKeyIPs1h(sig.APIKeyID, oneHourBucket), crOneHourTTL)
+	pipe.PFAdd(ctx, crKeyIPs24h(sig.APIKeyID, twenty4hBucket), sig.IP)
+	pipe.Expire(ctx, crKeyIPs24h(sig.APIKeyID, twenty4hBucket), crTwenty6hTTL)
 	cmds += 4
 
 	// R2 authority: sliding 1h ZSET
@@ -142,10 +152,10 @@ func (c *connectionSignalCache) EmitAlwaysOn(ctx context.Context, sig service.Co
 	}
 
 	// user always-on
-	pipe.SAdd(ctx, crUserKeys1h(sig.UserID), sig.APIKeyID)
-	pipe.Expire(ctx, crUserKeys1h(sig.UserID), crOneHourTTL)
-	pipe.PFAdd(ctx, crUserIPs1h(sig.UserID), sig.IP)
-	pipe.Expire(ctx, crUserIPs1h(sig.UserID), crOneHourTTL)
+	pipe.PFAdd(ctx, crUserKeys1h(sig.UserID, oneHourBucket), sig.APIKeyID)
+	pipe.Expire(ctx, crUserKeys1h(sig.UserID, oneHourBucket), crOneHourTTL)
+	pipe.PFAdd(ctx, crUserIPs1h(sig.UserID, oneHourBucket), sig.IP)
+	pipe.Expire(ctx, crUserIPs1h(sig.UserID, oneHourBucket), crOneHourTTL)
 	cmds += 4
 
 	// occasional active prune
@@ -281,15 +291,21 @@ func (c *connectionSignalCache) ReadKeyWindowMetrics(ctx context.Context, keyID,
 		}
 		nowUnix = t.Unix()
 	}
-	_ = c.TrimUAWindow(ctx, keyID, nowUnix)
+	if err := c.TrimUAWindow(ctx, keyID, nowUnix); err != nil {
+		return nil, fmt.Errorf("trim UA window: %w", err)
+	}
 
 	win := nowUnix / 60
+	oneHourBucket := nowUnix / crOneHourBucket
+	twenty4hBucket := nowUnix / crTwenty4hBucket
 	m := &service.ConnectionRiskSubjectMetrics{
 		APIKeyID: keyID,
 		UserID:   userID,
 		NowUnix:  nowUnix,
 	}
-	if prefix, err := c.GetKeyPrefix(ctx, keyID); err == nil {
+	if prefix, err := c.GetKeyPrefix(ctx, keyID); err != nil {
+		return nil, fmt.Errorf("get key prefix: %w", err)
+	} else {
 		m.APIKeyPrefix = prefix
 	}
 
@@ -310,10 +326,22 @@ func (c *connectionSignalCache) ReadKeyWindowMetrics(ctx context.Context, keyID,
 	}
 	curIP := pipe.SCard(ctx, crKeyIPsWin(keyID, win))
 	ua1h := pipe.ZCount(ctx, crKeyUAs1h(keyID), strconv.FormatInt(nowUnix-crUAWindowSeconds, 10), "+inf")
-	hll1h := pipe.PFCount(ctx, crKeyIPs1h(keyID))
-	hll24h := pipe.PFCount(ctx, crKeyIPs24h(keyID))
-	userKeys := pipe.SCard(ctx, crUserKeys1h(userID))
-	userHLL := pipe.PFCount(ctx, crUserIPs1h(userID))
+	hll1hKeys := rollingBucketKeys(oneHourBucket, crOneHourBuckets, func(bucket int64) string {
+		return crKeyIPs1h(keyID, bucket)
+	})
+	hll24hKeys := rollingBucketKeys(twenty4hBucket, crTwenty4hBuckets, func(bucket int64) string {
+		return crKeyIPs24h(keyID, bucket)
+	})
+	userKeyBuckets := rollingBucketKeys(oneHourBucket, crOneHourBuckets, func(bucket int64) string {
+		return crUserKeys1h(userID, bucket)
+	})
+	userIPBuckets := rollingBucketKeys(oneHourBucket, crOneHourBuckets, func(bucket int64) string {
+		return crUserIPs1h(userID, bucket)
+	})
+	hll1h := pipe.PFCount(ctx, hll1hKeys...)
+	hll24h := pipe.PFCount(ctx, hll24hKeys...)
+	userKeys := pipe.PFCount(ctx, userKeyBuckets...)
+	userHLL := pipe.PFCount(ctx, userIPBuckets...)
 	// R7: last 15 minute mismatch counters
 	mismatchCmds := make([]*redis.StringCmd, 15)
 	for i := int64(0); i < 15; i++ {
@@ -323,10 +351,15 @@ func (c *connectionSignalCache) ReadKeyWindowMetrics(ctx context.Context, keyID,
 	sampleIPs := pipe.ZRevRange(ctx, crKeyIPSet(keyID), 0, 19)
 	sampleUAs := pipe.ZRevRange(ctx, crKeyUASet(keyID), 0, 19)
 
-	// Pipeline may surface redis.Nil for missing GET keys; per-cmd Result() handles misses.
-	_, _ = pipe.Exec(ctx)
+	// Missing minute counters are expected. Any other pipeline failure makes the
+	// metric snapshot incomplete and must not be interpreted as zero risk.
+	if _, err := pipe.Exec(ctx); err != nil && err != redis.Nil {
+		return nil, fmt.Errorf("read connection risk metrics: %w", err)
+	}
 
-	if ips, err := sunion.Result(); err == nil {
+	if ips, err := sunion.Result(); err != nil {
+		return nil, fmt.Errorf("read distinct IPs: %w", err)
+	} else {
 		m.DistinctIP5m = len(ips)
 		if len(ips) > 20 {
 			m.SampleIPs = ips[:20]
@@ -336,52 +369,92 @@ func (c *connectionSignalCache) ReadKeyWindowMetrics(ctx context.Context, keyID,
 	}
 	req5 := 0
 	for _, cmd := range cntCmds {
-		if v, err := cmd.Int(); err == nil {
-			req5 += v
+		v, err := cmd.Int()
+		if err == redis.Nil {
+			continue
 		}
+		if err != nil {
+			return nil, fmt.Errorf("read request count: %w", err)
+		}
+		req5 += v
 	}
 	m.ReqCount5m = req5
 	if v, err := curIP.Result(); err == nil {
 		m.DistinctIPCurrentMin = int(v)
+	} else {
+		return nil, fmt.Errorf("read current minute IPs: %w", err)
 	}
 	if v, err := cntCmds[0].Int(); err == nil {
 		m.ReqCountCurrentMin = v
+	} else if err != redis.Nil {
+		return nil, fmt.Errorf("read current minute request count: %w", err)
 	}
 	if v, err := ua1h.Result(); err == nil {
 		m.UACount1h = int(v)
+	} else {
+		return nil, fmt.Errorf("read UA count: %w", err)
 	}
 	if v, err := hll1h.Result(); err == nil {
 		m.IPHll1h = v
+	} else {
+		return nil, fmt.Errorf("read 1h IP count: %w", err)
 	}
 	if v, err := hll24h.Result(); err == nil {
 		m.IPHll24h = v
+	} else {
+		return nil, fmt.Errorf("read 24h IP count: %w", err)
 	}
 	if v, err := userKeys.Result(); err == nil {
 		m.UserKeys1h = int(v)
+	} else {
+		return nil, fmt.Errorf("read user key count: %w", err)
 	}
 	if v, err := userHLL.Result(); err == nil {
 		m.UserIPHLL1h = v
+	} else {
+		return nil, fmt.Errorf("read user IP count: %w", err)
 	}
 	mismatch := 0
 	for _, cmd := range mismatchCmds {
-		if v, err := cmd.Int(); err == nil {
-			mismatch += v
+		v, err := cmd.Int()
+		if err == redis.Nil {
+			continue
 		}
+		if err != nil {
+			return nil, fmt.Errorf("read session mismatch count: %w", err)
+		}
+		mismatch += v
 	}
 	m.SBMismatch15m = mismatch
-	if ips, err := sampleIPs.Result(); err == nil && len(ips) > 0 {
+	if ips, err := sampleIPs.Result(); err != nil {
+		return nil, fmt.Errorf("read IP evidence: %w", err)
+	} else if len(ips) > 0 {
 		// Prefer evidence samples when available for UI, keep union samples as fallback
 		m.SampleIPs = ips
 	}
 	if uas, err := sampleUAs.Result(); err == nil {
 		m.SampleUAHashes = uas
+	} else {
+		return nil, fmt.Errorf("read UA evidence: %w", err)
 	}
 
 	// Worker-side evidence cap (non hot-path)
-	_ = c.rdb.ZRemRangeByRank(ctx, crKeyIPSet(keyID), 0, int64(-(crEvidenceIPCap + 1))).Err()
-	_ = c.rdb.ZRemRangeByRank(ctx, crKeyUASet(keyID), 0, int64(-(crEvidenceUACap + 1))).Err()
+	if err := c.rdb.ZRemRangeByRank(ctx, crKeyIPSet(keyID), 0, int64(-(crEvidenceIPCap + 1))).Err(); err != nil {
+		return nil, fmt.Errorf("trim IP evidence: %w", err)
+	}
+	if err := c.rdb.ZRemRangeByRank(ctx, crKeyUASet(keyID), 0, int64(-(crEvidenceUACap + 1))).Err(); err != nil {
+		return nil, fmt.Errorf("trim UA evidence: %w", err)
+	}
 
 	return m, nil
+}
+
+func rollingBucketKeys(current int64, count int, key func(int64) string) []string {
+	keys := make([]string, count)
+	for i := range keys {
+		keys[i] = key(current - int64(i))
+	}
+	return keys
 }
 
 func (c *connectionSignalCache) TryDedupe(ctx context.Context, dedupeKey string, ttl time.Duration) (bool, error) {

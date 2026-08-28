@@ -18,14 +18,17 @@ import (
 
 // Manager orchestrates instance lifecycle, health, rotate, and pooling helpers.
 type Manager struct {
-	cfg     config.Config
-	store   *store.Store
-	runtime runtime.Manager
-	log     *slog.Logger
+	cfg          config.Config
+	store        *store.Store
+	runtime      runtime.Manager
+	log          *slog.Logger
+	registerMany func(context.Context, int) ([]register.Result, error)
 
-	mu      sync.Mutex
-	handles map[string]runtime.Handle
-	cancels map[string]context.CancelFunc
+	mu          sync.Mutex
+	handles     map[string]runtime.Handle
+	cancels     map[string]context.CancelFunc
+	lifecycleMu sync.Mutex
+	lifecycle   map[string]*instanceLock
 }
 
 func NewManager(cfg config.Config, st *store.Store, rt runtime.Manager, log *slog.Logger) *Manager {
@@ -33,12 +36,40 @@ func NewManager(cfg config.Config, st *store.Store, rt runtime.Manager, log *slo
 		log = slog.Default()
 	}
 	return &Manager{
-		cfg:     cfg,
-		store:   st,
-		runtime: rt,
-		log:     log,
-		handles: make(map[string]runtime.Handle),
-		cancels: make(map[string]context.CancelFunc),
+		cfg:          cfg,
+		store:        st,
+		runtime:      rt,
+		log:          log,
+		registerMany: register.RegisterMany,
+		handles:      make(map[string]runtime.Handle),
+		cancels:      make(map[string]context.CancelFunc),
+		lifecycle:    make(map[string]*instanceLock),
+	}
+}
+
+type instanceLock struct {
+	mu   sync.Mutex
+	refs int
+}
+
+func (m *Manager) lockInstance(id string) func() {
+	m.lifecycleMu.Lock()
+	entry := m.lifecycle[id]
+	if entry == nil {
+		entry = &instanceLock{}
+		m.lifecycle[id] = entry
+	}
+	entry.refs++
+	m.lifecycleMu.Unlock()
+	entry.mu.Lock()
+	return func() {
+		entry.mu.Unlock()
+		m.lifecycleMu.Lock()
+		entry.refs--
+		if entry.refs == 0 && m.lifecycle[id] == entry {
+			delete(m.lifecycle, id)
+		}
+		m.lifecycleMu.Unlock()
 	}
 }
 
@@ -91,10 +122,13 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (*store.Instanc
 	}
 	if auto && desired == store.DesiredRunning {
 		if err := m.Start(ctx, inst.ID); err != nil {
-			_, _ = m.store.Update(inst.ID, func(i *store.Instance) {
+			_, updateErr := m.store.Update(inst.ID, func(i *store.Instance) {
 				i.Status = store.StatusError
 				i.LastError = err.Error()
 			})
+			if updateErr != nil {
+				return nil, fmt.Errorf("start instance: %w; persist error status: %v", err, updateErr)
+			}
 			got, _ := m.store.Get(inst.ID)
 			if got == nil {
 				return nil, err
@@ -139,18 +173,25 @@ func (m *Manager) CreatePool(ctx context.Context, req CreatePoolRequest) ([]stor
 	if !needRegister && m.runtime.Name() == "sing-box" && len(req.Profiles) < req.Count {
 		needRegister = true
 	}
+	registered := 0
+	originalProfileCount := len(req.Profiles)
+	var registeredProfiles []store.Profile
+	var registrationErr error
 	if needRegister && len(req.Profiles) < req.Count {
 		missing := req.Count - len(req.Profiles)
-		regs, err := register.RegisterMany(ctx, missing)
-		if err != nil {
-			return nil, fmt.Errorf("auto-register warp profiles: %w", err)
-		}
+		regs, err := m.registerMany(ctx, missing)
 		for _, r := range regs {
 			req.Profiles = append(req.Profiles, r.Profile)
+			registeredProfiles = append(registeredProfiles, r.Profile)
+		}
+		registered = len(regs)
+		if err != nil {
+			registrationErr = fmt.Errorf("auto-register warp profiles after %d successful registrations: %w", registered, err)
 		}
 	}
 	names, err := m.allocatePoolNames(prefix, req.Count)
 	if err != nil {
+		m.cleanupUnusedRegistrations(registeredProfiles)
 		return nil, err
 	}
 	out := make([]store.Instance, 0, req.Count)
@@ -159,7 +200,11 @@ func (m *Manager) CreatePool(ctx context.Context, req CreatePoolRequest) ([]stor
 		if i < len(req.Profiles) {
 			profile = req.Profiles[i]
 		} else if m.runtime.Name() == "sing-box" {
-			return out, fmt.Errorf("sing-box pool requires profiles or register=true (missing profile for member %d)", i+1)
+			cause := registrationErr
+			if cause == nil {
+				cause = fmt.Errorf("sing-box pool requires profiles or register=true (missing profile for member %d)", i+1)
+			}
+			return out, &PoolCreateError{Registered: registered, Created: len(out), Cause: cause}
 		} else {
 			// Distinct mock exit IPs for dedup testing.
 			profile = store.Profile{MockExitIP: fmt.Sprintf("203.0.113.%d", 10+i)}
@@ -175,15 +220,51 @@ func (m *Manager) CreatePool(ctx context.Context, req CreatePoolRequest) ([]stor
 			AutoStart:  req.AutoStart,
 		})
 		if err != nil {
-			return out, fmt.Errorf("create pool member %d (%s): %w", i+1, names[i], err)
+			firstUnused := i - originalProfileCount
+			if firstUnused < 0 {
+				firstUnused = 0
+			}
+			if firstUnused < len(registeredProfiles) {
+				m.cleanupUnusedRegistrations(registeredProfiles[firstUnused:])
+			}
+			return out, &PoolCreateError{Registered: registered, Created: len(out), Cause: fmt.Errorf("create pool member %d (%s): %w", i+1, names[i], err)}
 		}
 		// Stagger real WARP handshakes.
-		if m.runtime.Name() == "sing-box" && i+1 < req.Count {
+		if m.runtime.Name() == "sing-box" && i+1 < len(req.Profiles) {
 			time.Sleep(1500 * time.Millisecond)
 		}
 		out = append(out, RedactInstance(*inst))
 	}
+	if registrationErr != nil {
+		return out, &PoolCreateError{Registered: registered, Created: len(out), Cause: registrationErr}
+	}
 	return out, nil
+}
+
+// PoolCreateError reports recoverable resources retained after partial pool creation.
+type PoolCreateError struct {
+	Registered int
+	Created    int
+	Cause      error
+}
+
+func (e *PoolCreateError) Error() string {
+	return fmt.Sprintf("pool creation partially completed (registered=%d created=%d): %v", e.Registered, e.Created, e.Cause)
+}
+
+func (e *PoolCreateError) Unwrap() error { return e.Cause }
+
+func (m *Manager) cleanupUnusedRegistrations(profiles []store.Profile) {
+	if len(profiles) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	for _, profile := range profiles {
+		if err := m.unregisterCloudflare(ctx, profile); err != nil {
+			m.log.Warn("pool: cleanup unused cloudflare registration failed", "device_id", profile.DeviceID, "err", err)
+		}
+	}
 }
 
 // allocatePoolNames returns count unique names under prefix, skipping ones already
@@ -260,6 +341,12 @@ func RedactInstances(list []store.Instance) []store.Instance {
 }
 
 func (m *Manager) Start(ctx context.Context, id string) error {
+	unlock := m.lockInstance(id)
+	defer unlock()
+	return m.startLocked(ctx, id)
+}
+
+func (m *Manager) startLocked(ctx context.Context, id string) error {
 	inst, err := m.store.Get(id)
 	if err != nil {
 		return err
@@ -271,20 +358,25 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 	}
 	m.mu.Unlock()
 
-	_, _ = m.store.Update(id, func(i *store.Instance) {
+	if _, err := m.store.Update(id, func(i *store.Instance) {
 		i.Status = store.StatusStarting
 		i.DesiredState = store.DesiredRunning
 		i.LastError = ""
-	})
+	}); err != nil {
+		return err
+	}
 
 	runCtx, cancel := context.WithCancel(context.Background())
 	h, err := m.runtime.Start(runCtx, inst)
 	if err != nil {
 		cancel()
-		_, _ = m.store.Update(id, func(i *store.Instance) {
+		_, updateErr := m.store.Update(id, func(i *store.Instance) {
 			i.Status = store.StatusError
 			i.LastError = err.Error()
 		})
+		if updateErr != nil {
+			return fmt.Errorf("start runtime: %w; persist error status: %v", err, updateErr)
+		}
 		return err
 	}
 
@@ -293,60 +385,164 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 	m.cancels[id] = cancel
 	m.mu.Unlock()
 
-	_, _ = m.store.Update(id, func(i *store.Instance) {
+	if _, err := m.store.Update(id, func(i *store.Instance) {
 		i.Status = store.StatusRunning
 		i.LastError = ""
-	})
+	}); err != nil {
+		m.mu.Lock()
+		delete(m.handles, id)
+		delete(m.cancels, id)
+		m.mu.Unlock()
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer stopCancel()
+		_ = h.Stop(stopCtx)
+		cancel()
+		return fmt.Errorf("persist running state: %w", err)
+	}
+	go m.watchRuntimeExit(id, h, cancel)
 
 	// Immediate health
-	_ = m.HealthCheck(ctx, id)
+	_ = m.healthCheckLocked(ctx, id)
 	return nil
+}
+
+func (m *Manager) watchRuntimeExit(id string, h runtime.Handle, cancel context.CancelFunc) {
+	<-h.Done()
+	unlocked := m.lockInstance(id)
+	m.mu.Lock()
+	if m.handles[id] != h {
+		m.mu.Unlock()
+		unlocked()
+		return
+	}
+	delete(m.handles, id)
+	delete(m.cancels, id)
+	m.mu.Unlock()
+	cancel()
+
+	exitErr := h.Err()
+	message := "runtime exited unexpectedly"
+	if exitErr != nil {
+		message = fmt.Sprintf("runtime exited unexpectedly: %v", exitErr)
+	}
+	inst, err := m.store.Update(id, func(i *store.Instance) {
+		i.Status = store.StatusError
+		i.LastError = message
+	})
+	unlocked()
+	if err != nil {
+		if err != store.ErrNotFound {
+			m.log.Error("persist unexpected runtime exit failed", "id", id, "err", err)
+		}
+		return
+	}
+	m.log.Error("runtime exited unexpectedly", "id", id, "err", exitErr)
+	if inst.DesiredState == store.DesiredRunning {
+		go func() {
+			timer := time.NewTimer(250 * time.Millisecond)
+			defer timer.Stop()
+			<-timer.C
+			if err := m.restartUnexpectedExit(context.Background(), id); err != nil {
+				m.log.Error("restart after runtime exit failed", "id", id, "err", err)
+			}
+		}()
+	}
+}
+
+func (m *Manager) restartUnexpectedExit(ctx context.Context, id string) error {
+	unlock := m.lockInstance(id)
+	defer unlock()
+	inst, err := m.store.Get(id)
+	if err != nil || inst.DesiredState != store.DesiredRunning {
+		return err
+	}
+	return m.startLocked(ctx, id)
 }
 
 func (m *Manager) Stop(ctx context.Context, id string) error {
+	unlock := m.lockInstance(id)
+	defer unlock()
+	return m.stopLocked(ctx, id, true)
+}
+
+func (m *Manager) stopLocked(ctx context.Context, id string, updateDesired bool) error {
+	if _, err := m.store.Get(id); err != nil {
+		return err
+	}
+	if _, err := m.store.Update(id, func(i *store.Instance) {
+		i.Status = store.StatusStopping
+		if updateDesired {
+			i.DesiredState = store.DesiredStopped
+		}
+	}); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	h, ok := m.handles[id]
 	cancel := m.cancels[id]
-	if ok {
-		delete(m.handles, id)
-		delete(m.cancels, id)
-	}
 	m.mu.Unlock()
 
-	_, _ = m.store.Update(id, func(i *store.Instance) {
-		i.Status = store.StatusStopping
-		i.DesiredState = store.DesiredStopped
-	})
-
-	if cancel != nil {
-		cancel()
-	}
 	if h != nil {
 		stopCtx, c := context.WithTimeout(ctx, 5*time.Second)
-		defer c()
-		_ = h.Stop(stopCtx)
+		err := h.Stop(stopCtx)
+		c()
+		if cancel != nil {
+			cancel()
+		}
+		if err != nil {
+			_, persistErr := m.store.Update(id, func(i *store.Instance) {
+				i.Status = store.StatusError
+				i.LastError = err.Error()
+			})
+			if persistErr != nil {
+				return fmt.Errorf("stop runtime: %w; persist error state: %v", err, persistErr)
+			}
+			return err
+		}
+	} else if cancel != nil {
+		cancel()
 	}
-	_, _ = m.store.Update(id, func(i *store.Instance) {
+	if ok {
+		m.mu.Lock()
+		if m.handles[id] == h {
+			delete(m.handles, id)
+			delete(m.cancels, id)
+		}
+		m.mu.Unlock()
+	}
+	_, err := m.store.Update(id, func(i *store.Instance) {
 		i.Status = store.StatusStopped
+		i.LastError = ""
 	})
-	return nil
+	return err
 }
 
 func (m *Manager) Restart(ctx context.Context, id string) error {
-	_ = m.Stop(ctx, id)
+	unlock := m.lockInstance(id)
+	defer unlock()
+	return m.restartLocked(ctx, id)
+}
+
+func (m *Manager) restartLocked(ctx context.Context, id string) error {
+	if err := m.stopLocked(ctx, id, false); err != nil {
+		return err
+	}
 	// Allow OS to release SOCKS listen port before re-bind.
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-time.After(80 * time.Millisecond):
 	}
-	return m.Start(ctx, id)
+	return m.startLocked(ctx, id)
 }
 
 // Rotate restarts instance; optional new profile (Phase 3).
 // When newProfile is nil and runtime is sing-box, re-registers a free WARP profile
 // and best-effort unregisters the previous Cloudflare device.
 func (m *Manager) Rotate(ctx context.Context, id string, newProfile *store.Profile) (*store.Instance, error) {
+	unlock := m.lockInstance(id)
+	defer unlock()
+	var old *store.Instance
 	if newProfile != nil {
 		if _, err := m.store.Update(id, func(i *store.Instance) {
 			i.Profile = *newProfile
@@ -354,7 +550,7 @@ func (m *Manager) Rotate(ctx context.Context, id string, newProfile *store.Profi
 			return nil, err
 		}
 	} else if m.runtime.Name() == "sing-box" {
-		old, _ := m.store.Get(id)
+		old, _ = m.store.Get(id)
 		reg, err := register.RegisterFree(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("rotate re-register: %w", err)
@@ -364,15 +560,15 @@ func (m *Manager) Rotate(ctx context.Context, id string, newProfile *store.Profi
 		}); err != nil {
 			return nil, err
 		}
-		// Best-effort CF cleanup of previous device (do not fail rotate).
-		if old != nil {
-			if uerr := m.unregisterCloudflare(ctx, old.Profile); uerr != nil {
-				m.log.Warn("rotate: unregister old cloudflare device failed", "id", id, "err", uerr)
-			}
-		}
 	}
-	if err := m.Restart(ctx, id); err != nil {
+	if err := m.restartLocked(ctx, id); err != nil {
 		return nil, err
+	}
+	// Only retire the old device after the replacement runtime is live.
+	if old != nil {
+		if uerr := m.unregisterCloudflare(ctx, old.Profile); uerr != nil {
+			m.log.Warn("rotate: unregister old cloudflare device failed", "id", id, "err", uerr)
+		}
 	}
 	inst, err := m.store.Get(id)
 	if err != nil {
@@ -395,6 +591,8 @@ func (m *Manager) Delete(ctx context.Context, id string) error {
 
 // DeleteWithOptions stops instance, optionally unregisters CF device, removes store entry.
 func (m *Manager) DeleteWithOptions(ctx context.Context, id string, opts DeleteOptions) error {
+	unlock := m.lockInstance(id)
+	defer unlock()
 	inst, err := m.store.Get(id)
 	if err != nil {
 		return err
@@ -403,14 +601,19 @@ func (m *Manager) DeleteWithOptions(ctx context.Context, id string, opts DeleteO
 	if opts.DeregisterCloudflare != nil {
 		deregister = *opts.DeregisterCloudflare
 	}
+	if err := m.stopLocked(ctx, id, true); err != nil {
+		return err
+	}
+	if err := m.store.Delete(id); err != nil {
+		return err
+	}
 	if deregister {
 		if uerr := m.unregisterCloudflare(ctx, inst.Profile); uerr != nil {
-			// Log but still delete local state so ops can recover.
-			m.log.Warn("cloudflare unregister failed; continuing local delete", "id", id, "device_id", inst.Profile.DeviceID, "err", uerr)
+			// Local deletion is authoritative; surface remote cleanup as an alert.
+			m.log.Warn("cloudflare unregister failed after local delete", "id", id, "device_id", inst.Profile.DeviceID, "err", uerr)
 		}
 	}
-	_ = m.Stop(ctx, id)
-	return m.store.Delete(id)
+	return nil
 }
 
 func (m *Manager) unregisterCloudflare(ctx context.Context, p store.Profile) error {
@@ -434,6 +637,12 @@ func (m *Manager) List() []store.Instance { return RedactInstances(m.store.List(
 func (m *Manager) GetRaw(id string) (*store.Instance, error) { return m.store.Get(id) }
 
 func (m *Manager) HealthCheck(ctx context.Context, id string) error {
+	unlock := m.lockInstance(id)
+	defer unlock()
+	return m.healthCheckLocked(ctx, id)
+}
+
+func (m *Manager) healthCheckLocked(ctx context.Context, id string) error {
 	inst, err := m.store.Get(id)
 	if err != nil {
 		return err
@@ -548,6 +757,7 @@ func (m *Manager) RunBackground(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			m.Reconcile(ctx)
 			unhealthy, _ := m.HealthAll(ctx)
 			if len(unhealthy) > 0 {
 				m.log.Warn("unhealthy instances", "ids", unhealthy)
@@ -568,7 +778,9 @@ func (m *Manager) Shutdown(ctx context.Context) {
 	}
 	m.mu.Unlock()
 	for _, id := range ids {
-		_ = m.Stop(ctx, id)
+		unlock := m.lockInstance(id)
+		_ = m.stopLocked(ctx, id, false)
+		unlock()
 	}
 }
 
@@ -583,7 +795,12 @@ type PoolSnapshot struct {
 }
 
 func (m *Manager) PoolSnapshot() PoolSnapshot {
-	list := RedactInstances(m.store.List())
+	list := m.store.List()
+	for i := range list {
+		user, pass := list[i].SocksAuthUser, list[i].SocksAuthPass
+		list[i] = RedactInstance(list[i])
+		list[i].SocksAuthUser, list[i].SocksAuthPass = user, pass
+	}
 	snap := PoolSnapshot{
 		Instances:    list,
 		DuplicateIPs: m.ExitIPDuplicates(),

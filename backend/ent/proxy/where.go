@@ -130,6 +130,16 @@ func GroupID(v int64) predicate.Proxy {
 	return predicate.Proxy(sql.FieldEQ(FieldGroupID, v))
 }
 
+// ManagedBy applies equality check predicate on the "managed_by" field. It's identical to ManagedByEQ.
+func ManagedBy(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldManagedBy, v))
+}
+
+// ExternalID applies equality check predicate on the "external_id" field. It's identical to ExternalIDEQ.
+func ExternalID(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldExternalID, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Proxy {
 	return predicate.Proxy(sql.FieldEQ(FieldCreatedAt, v))
@@ -923,6 +933,156 @@ func GroupIDIsNil() predicate.Proxy {
 // GroupIDNotNil applies the NotNil predicate on the "group_id" field.
 func GroupIDNotNil() predicate.Proxy {
 	return predicate.Proxy(sql.FieldNotNull(FieldGroupID))
+}
+
+// ManagedByEQ applies the EQ predicate on the "managed_by" field.
+func ManagedByEQ(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldManagedBy, v))
+}
+
+// ManagedByNEQ applies the NEQ predicate on the "managed_by" field.
+func ManagedByNEQ(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNEQ(FieldManagedBy, v))
+}
+
+// ManagedByIn applies the In predicate on the "managed_by" field.
+func ManagedByIn(vs ...string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldIn(FieldManagedBy, vs...))
+}
+
+// ManagedByNotIn applies the NotIn predicate on the "managed_by" field.
+func ManagedByNotIn(vs ...string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotIn(FieldManagedBy, vs...))
+}
+
+// ManagedByGT applies the GT predicate on the "managed_by" field.
+func ManagedByGT(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGT(FieldManagedBy, v))
+}
+
+// ManagedByGTE applies the GTE predicate on the "managed_by" field.
+func ManagedByGTE(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGTE(FieldManagedBy, v))
+}
+
+// ManagedByLT applies the LT predicate on the "managed_by" field.
+func ManagedByLT(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLT(FieldManagedBy, v))
+}
+
+// ManagedByLTE applies the LTE predicate on the "managed_by" field.
+func ManagedByLTE(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLTE(FieldManagedBy, v))
+}
+
+// ManagedByContains applies the Contains predicate on the "managed_by" field.
+func ManagedByContains(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldContains(FieldManagedBy, v))
+}
+
+// ManagedByHasPrefix applies the HasPrefix predicate on the "managed_by" field.
+func ManagedByHasPrefix(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldHasPrefix(FieldManagedBy, v))
+}
+
+// ManagedByHasSuffix applies the HasSuffix predicate on the "managed_by" field.
+func ManagedByHasSuffix(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldHasSuffix(FieldManagedBy, v))
+}
+
+// ManagedByIsNil applies the IsNil predicate on the "managed_by" field.
+func ManagedByIsNil() predicate.Proxy {
+	return predicate.Proxy(sql.FieldIsNull(FieldManagedBy))
+}
+
+// ManagedByNotNil applies the NotNil predicate on the "managed_by" field.
+func ManagedByNotNil() predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotNull(FieldManagedBy))
+}
+
+// ManagedByEqualFold applies the EqualFold predicate on the "managed_by" field.
+func ManagedByEqualFold(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEqualFold(FieldManagedBy, v))
+}
+
+// ManagedByContainsFold applies the ContainsFold predicate on the "managed_by" field.
+func ManagedByContainsFold(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldContainsFold(FieldManagedBy, v))
+}
+
+// ExternalIDEQ applies the EQ predicate on the "external_id" field.
+func ExternalIDEQ(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldExternalID, v))
+}
+
+// ExternalIDNEQ applies the NEQ predicate on the "external_id" field.
+func ExternalIDNEQ(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNEQ(FieldExternalID, v))
+}
+
+// ExternalIDIn applies the In predicate on the "external_id" field.
+func ExternalIDIn(vs ...string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldIn(FieldExternalID, vs...))
+}
+
+// ExternalIDNotIn applies the NotIn predicate on the "external_id" field.
+func ExternalIDNotIn(vs ...string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotIn(FieldExternalID, vs...))
+}
+
+// ExternalIDGT applies the GT predicate on the "external_id" field.
+func ExternalIDGT(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGT(FieldExternalID, v))
+}
+
+// ExternalIDGTE applies the GTE predicate on the "external_id" field.
+func ExternalIDGTE(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGTE(FieldExternalID, v))
+}
+
+// ExternalIDLT applies the LT predicate on the "external_id" field.
+func ExternalIDLT(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLT(FieldExternalID, v))
+}
+
+// ExternalIDLTE applies the LTE predicate on the "external_id" field.
+func ExternalIDLTE(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLTE(FieldExternalID, v))
+}
+
+// ExternalIDContains applies the Contains predicate on the "external_id" field.
+func ExternalIDContains(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldContains(FieldExternalID, v))
+}
+
+// ExternalIDHasPrefix applies the HasPrefix predicate on the "external_id" field.
+func ExternalIDHasPrefix(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldHasPrefix(FieldExternalID, v))
+}
+
+// ExternalIDHasSuffix applies the HasSuffix predicate on the "external_id" field.
+func ExternalIDHasSuffix(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldHasSuffix(FieldExternalID, v))
+}
+
+// ExternalIDIsNil applies the IsNil predicate on the "external_id" field.
+func ExternalIDIsNil() predicate.Proxy {
+	return predicate.Proxy(sql.FieldIsNull(FieldExternalID))
+}
+
+// ExternalIDNotNil applies the NotNil predicate on the "external_id" field.
+func ExternalIDNotNil() predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotNull(FieldExternalID))
+}
+
+// ExternalIDEqualFold applies the EqualFold predicate on the "external_id" field.
+func ExternalIDEqualFold(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEqualFold(FieldExternalID, v))
+}
+
+// ExternalIDContainsFold applies the ContainsFold predicate on the "external_id" field.
+func ExternalIDContainsFold(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldContainsFold(FieldExternalID, v))
 }
 
 // HasAccounts applies the HasEdge predicate on the "accounts" edge.

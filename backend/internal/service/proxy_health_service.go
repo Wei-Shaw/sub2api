@@ -235,6 +235,7 @@ func (s *ProxyHealthService) RunOnce(ctx context.Context) (*ProxyHealthRunResult
 	if s == nil || s.proxyRepo == nil || s.prober == nil {
 		return &ProxyHealthRunResult{}, nil
 	}
+	s.refreshRuntimeSettings(ctx)
 
 	// Process-local singleflight: admin Scan + worker tick must not overlap.
 	s.runMu.Lock()

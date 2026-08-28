@@ -326,9 +326,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			if trimmedPayload != "[DONE]" {
 				observer.ObserveOpenAI([]byte(payload), strings.TrimSpace(gjson.Get(payload, "type").String()))
 				if normalized, message, isFailure := normalizeGrokRawChatFailurePayload(account, []byte(payload)); isFailure && !isGrokRawChatRequestScopedPolicyFailure(normalized, message) {
-					statusCode := openAIStreamFailedEventSemanticStatus(normalized, message)
-					switch statusCode {
-					case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound, http.StatusTooManyRequests:
+					if s.shouldFailoverOpenAIStreamFailedEvent(account, normalized, message) {
 						if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
 							return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, normalized, message)
 						}
@@ -470,9 +468,7 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	}
 	observer.ObserveOpenAI(respBody, strings.TrimSpace(gjson.GetBytes(respBody, "type").String()))
 	if normalized, message, isFailure := normalizeGrokRawChatFailurePayload(account, respBody); isFailure && !isGrokRawChatRequestScopedPolicyFailure(normalized, message) {
-		statusCode := openAIStreamFailedEventSemanticStatus(normalized, message)
-		switch statusCode {
-		case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound, http.StatusTooManyRequests:
+		if s.shouldFailoverOpenAIStreamFailedEvent(account, normalized, message) {
 			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, normalized, message)
 		}
 	}

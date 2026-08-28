@@ -14,6 +14,7 @@ ADMIN_PASSWORD="WarpE2ePass123!"
 JWT_SECRET="$(openssl rand -hex 32)"
 TOTP_KEY="$(openssl rand -hex 32)"
 WG_TOKEN="warp-e2e-token"
+WG_PROFILE_KEY="$(openssl rand -hex 32)"
 PG_PASS="warp_e2e_pg"
 CONTAINER_PG="sub2api-warp-e2e-pg"
 CONTAINER_REDIS="sub2api-warp-e2e-redis"
@@ -78,9 +79,10 @@ for i in $(seq 1 30); do
 done
 
 log "2) build warp-gateway"
-(cd "$WG_ROOT" && GOPROXY="${GOPROXY:-https://goproxy.cn,direct}" go build -o bin/warp-gateway ./cmd/warp-gateway)
+(cd "$WG_ROOT" && GOPROXY="${GOPROXY:-https://proxy.golang.org,direct}" go build -o bin/warp-gateway ./cmd/warp-gateway)
 
 log "3) start warp-gateway (mock)"
+export WARP_GATEWAY_PROFILE_KEY="$WG_PROFILE_KEY"
 "$WG_ROOT/bin/warp-gateway" \
   -listen "127.0.0.1:${WG_PORT}" \
   -data-dir "$WORKDIR/warp-gateway-data" \
@@ -88,8 +90,21 @@ log "3) start warp-gateway (mock)"
   -token "$WG_TOKEN" \
   >"$WORKDIR/logs/warp-gateway.log" 2>&1 &
 WG_PID=$!
-sleep 0.5
-curl -fsS "http://127.0.0.1:${WG_PORT}/healthz" | grep -q ok || die "warp-gateway healthz failed"
+for i in $(seq 1 30); do
+  if curl -fsS -m 2 "http://127.0.0.1:${WG_PORT}/healthz" 2>/dev/null | grep -q ok; then
+    break
+  fi
+  if ! kill -0 "$WG_PID" 2>/dev/null; then
+    echo "--- warp-gateway log ---"
+    cat "$WORKDIR/logs/warp-gateway.log" || true
+    die "warp-gateway process died"
+  fi
+  sleep 1
+  if [[ $i -eq 30 ]]; then
+    cat "$WORKDIR/logs/warp-gateway.log" || true
+    die "warp-gateway healthz timeout"
+  fi
+done
 
 log "4) write sub2api config"
 # Remove prior install marker for clean AUTO_SETUP if present
@@ -141,7 +156,7 @@ warp:
 EOF
 
 log "5) build sub2api binary"
-(cd "$ROOT/backend" && GOPROXY="${GOPROXY:-https://goproxy.cn,direct}" go build -o "$WORKDIR/sub2api" ./cmd/server)
+(cd "$ROOT/backend" && GOPROXY="${GOPROXY:-https://proxy.golang.org,direct}" go build -o "$WORKDIR/sub2api" ./cmd/server)
 
 log "6) start sub2api with AUTO_SETUP"
 export AUTO_SETUP=true
@@ -276,9 +291,11 @@ d=o.get("data") or o
 created=d.get("created_proxies") or []
 members=d.get("member_ids") or []
 group=d.get("group") or {}
-print(f"created={len(created)} members={len(members)} group={group.get('name')} id={group.get('id')}")
+group_name=group.get("name") or group.get("Name")
+group_id=group.get("id") or group.get("ID")
+print(f"created={len(created)} members={len(members)} group={group_name} id={group_id}")
 assert len(created) >= 1 or len(members) >= 1, d
-assert group.get("name") == "warp-pool" or group.get("id"), d
+assert group_name == "warp-pool" or group_id, d
 print("pool sync OK")
 PY
 
@@ -294,7 +311,7 @@ if isinstance(items, dict):
   items=items.get("items") or []
 print("proxy items sample:", len(items) if isinstance(items, list) else type(items))
 if isinstance(items, list):
-  names=[x.get("name","") for x in items]
+  names=[x.get("name") or x.get("Name") or "" for x in items]
   print("names:", names[:10])
   assert any("warp" in (n or "").lower() or "e2e" in (n or "").lower() for n in names), names
 print("proxies OK")

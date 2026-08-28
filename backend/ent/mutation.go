@@ -37289,6 +37289,8 @@ type ProxyMutation struct {
 	fallback_mode       *string
 	expiry_warn_days    *int
 	addexpiry_warn_days *int
+	managed_by          *string
+	external_id         *string
 	clearedFields       map[string]struct{}
 	accounts            map[int64]struct{}
 	removedaccounts     map[int64]struct{}
@@ -38058,6 +38060,104 @@ func (m *ProxyMutation) ResetGroupID() {
 	delete(m.clearedFields, proxy.FieldGroupID)
 }
 
+// SetManagedBy sets the "managed_by" field.
+func (m *ProxyMutation) SetManagedBy(s string) {
+	m.managed_by = &s
+}
+
+// ManagedBy returns the value of the "managed_by" field in the mutation.
+func (m *ProxyMutation) ManagedBy() (r string, exists bool) {
+	v := m.managed_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldManagedBy returns the old "managed_by" field's value of the Proxy entity.
+// If the Proxy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProxyMutation) OldManagedBy(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldManagedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldManagedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldManagedBy: %w", err)
+	}
+	return oldValue.ManagedBy, nil
+}
+
+// ClearManagedBy clears the value of the "managed_by" field.
+func (m *ProxyMutation) ClearManagedBy() {
+	m.managed_by = nil
+	m.clearedFields[proxy.FieldManagedBy] = struct{}{}
+}
+
+// ManagedByCleared returns if the "managed_by" field was cleared in this mutation.
+func (m *ProxyMutation) ManagedByCleared() bool {
+	_, ok := m.clearedFields[proxy.FieldManagedBy]
+	return ok
+}
+
+// ResetManagedBy resets all changes to the "managed_by" field.
+func (m *ProxyMutation) ResetManagedBy() {
+	m.managed_by = nil
+	delete(m.clearedFields, proxy.FieldManagedBy)
+}
+
+// SetExternalID sets the "external_id" field.
+func (m *ProxyMutation) SetExternalID(s string) {
+	m.external_id = &s
+}
+
+// ExternalID returns the value of the "external_id" field in the mutation.
+func (m *ProxyMutation) ExternalID() (r string, exists bool) {
+	v := m.external_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExternalID returns the old "external_id" field's value of the Proxy entity.
+// If the Proxy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProxyMutation) OldExternalID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExternalID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExternalID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExternalID: %w", err)
+	}
+	return oldValue.ExternalID, nil
+}
+
+// ClearExternalID clears the value of the "external_id" field.
+func (m *ProxyMutation) ClearExternalID() {
+	m.external_id = nil
+	m.clearedFields[proxy.FieldExternalID] = struct{}{}
+}
+
+// ExternalIDCleared returns if the "external_id" field was cleared in this mutation.
+func (m *ProxyMutation) ExternalIDCleared() bool {
+	_, ok := m.clearedFields[proxy.FieldExternalID]
+	return ok
+}
+
+// ResetExternalID resets all changes to the "external_id" field.
+func (m *ProxyMutation) ResetExternalID() {
+	m.external_id = nil
+	delete(m.clearedFields, proxy.FieldExternalID)
+}
+
 // AddAccountIDs adds the "accounts" edge to the Account entity by ids.
 func (m *ProxyMutation) AddAccountIDs(ids ...int64) {
 	if m.accounts == nil {
@@ -38200,7 +38300,7 @@ func (m *ProxyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ProxyMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 17)
 	if m.created_at != nil {
 		fields = append(fields, proxy.FieldCreatedAt)
 	}
@@ -38246,6 +38346,12 @@ func (m *ProxyMutation) Fields() []string {
 	if m.group != nil {
 		fields = append(fields, proxy.FieldGroupID)
 	}
+	if m.managed_by != nil {
+		fields = append(fields, proxy.FieldManagedBy)
+	}
+	if m.external_id != nil {
+		fields = append(fields, proxy.FieldExternalID)
+	}
 	return fields
 }
 
@@ -38284,6 +38390,10 @@ func (m *ProxyMutation) Field(name string) (ent.Value, bool) {
 		return m.ExpiryWarnDays()
 	case proxy.FieldGroupID:
 		return m.GroupID()
+	case proxy.FieldManagedBy:
+		return m.ManagedBy()
+	case proxy.FieldExternalID:
+		return m.ExternalID()
 	}
 	return nil, false
 }
@@ -38323,6 +38433,10 @@ func (m *ProxyMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldExpiryWarnDays(ctx)
 	case proxy.FieldGroupID:
 		return m.OldGroupID(ctx)
+	case proxy.FieldManagedBy:
+		return m.OldManagedBy(ctx)
+	case proxy.FieldExternalID:
+		return m.OldExternalID(ctx)
 	}
 	return nil, fmt.Errorf("unknown Proxy field %s", name)
 }
@@ -38437,6 +38551,20 @@ func (m *ProxyMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetGroupID(v)
 		return nil
+	case proxy.FieldManagedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetManagedBy(v)
+		return nil
+	case proxy.FieldExternalID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExternalID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Proxy field %s", name)
 }
@@ -38512,6 +38640,12 @@ func (m *ProxyMutation) ClearedFields() []string {
 	if m.FieldCleared(proxy.FieldGroupID) {
 		fields = append(fields, proxy.FieldGroupID)
 	}
+	if m.FieldCleared(proxy.FieldManagedBy) {
+		fields = append(fields, proxy.FieldManagedBy)
+	}
+	if m.FieldCleared(proxy.FieldExternalID) {
+		fields = append(fields, proxy.FieldExternalID)
+	}
 	return fields
 }
 
@@ -38543,6 +38677,12 @@ func (m *ProxyMutation) ClearField(name string) error {
 		return nil
 	case proxy.FieldGroupID:
 		m.ClearGroupID()
+		return nil
+	case proxy.FieldManagedBy:
+		m.ClearManagedBy()
+		return nil
+	case proxy.FieldExternalID:
+		m.ClearExternalID()
 		return nil
 	}
 	return fmt.Errorf("unknown Proxy nullable field %s", name)
@@ -38596,6 +38736,12 @@ func (m *ProxyMutation) ResetField(name string) error {
 		return nil
 	case proxy.FieldGroupID:
 		m.ResetGroupID()
+		return nil
+	case proxy.FieldManagedBy:
+		m.ResetManagedBy()
+		return nil
+	case proxy.FieldExternalID:
+		m.ResetExternalID()
 		return nil
 	}
 	return fmt.Errorf("unknown Proxy field %s", name)

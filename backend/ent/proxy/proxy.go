@@ -45,6 +45,10 @@ const (
 	FieldExpiryWarnDays = "expiry_warn_days"
 	// FieldGroupID holds the string denoting the group_id field in the database.
 	FieldGroupID = "group_id"
+	// FieldManagedBy holds the string denoting the managed_by field in the database.
+	FieldManagedBy = "managed_by"
+	// FieldExternalID holds the string denoting the external_id field in the database.
+	FieldExternalID = "external_id"
 	// EdgeAccounts holds the string denoting the accounts edge name in mutations.
 	EdgeAccounts = "accounts"
 	// EdgeBackupProxy holds the string denoting the backup_proxy edge name in mutations.
@@ -91,6 +95,8 @@ var Columns = []string{
 	FieldBackupProxyID,
 	FieldExpiryWarnDays,
 	FieldGroupID,
+	FieldManagedBy,
+	FieldExternalID,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -137,6 +143,10 @@ var (
 	FallbackModeValidator func(string) error
 	// DefaultExpiryWarnDays holds the default value on creation for the "expiry_warn_days" field.
 	DefaultExpiryWarnDays int
+	// ManagedByValidator is a validator for the "managed_by" field. It is called by the builders before save.
+	ManagedByValidator func(string) error
+	// ExternalIDValidator is a validator for the "external_id" field. It is called by the builders before save.
+	ExternalIDValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the Proxy queries.
@@ -220,6 +230,16 @@ func ByExpiryWarnDays(opts ...sql.OrderTermOption) OrderOption {
 // ByGroupID orders the results by the group_id field.
 func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldGroupID, opts...).ToFunc()
+}
+
+// ByManagedBy orders the results by the managed_by field.
+func ByManagedBy(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldManagedBy, opts...).ToFunc()
+}
+
+// ByExternalID orders the results by the external_id field.
+func ByExternalID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExternalID, opts...).ToFunc()
 }
 
 // ByAccountsCount orders the results by accounts count.

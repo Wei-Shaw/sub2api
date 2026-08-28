@@ -10,6 +10,10 @@ import (
 // Handle is a running instance process/listener.
 type Handle interface {
 	Stop(ctx context.Context) error
+	// Done closes when the runtime has fully exited, whether expected or not.
+	Done() <-chan struct{}
+	// Err returns the process/listener exit error after Done has closed.
+	Err() error
 	// LocalAddr returns host:port of SOCKS listener.
 	LocalAddr() string
 }

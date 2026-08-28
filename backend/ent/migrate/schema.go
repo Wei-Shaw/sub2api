@@ -1421,6 +1421,8 @@ var (
 		{Name: "expires_at", Type: field.TypeTime, Nullable: true},
 		{Name: "fallback_mode", Type: field.TypeString, Size: 20, Default: "none"},
 		{Name: "expiry_warn_days", Type: field.TypeInt, Default: 7},
+		{Name: "managed_by", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "external_id", Type: field.TypeString, Nullable: true, Size: 255},
 		{Name: "backup_proxy_id", Type: field.TypeInt64, Unique: true, Nullable: true},
 		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
 	}
@@ -1432,13 +1434,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "proxies_proxies_backup_proxy",
-				Columns:    []*schema.Column{ProxiesColumns[14]},
+				Columns:    []*schema.Column{ProxiesColumns[16]},
 				RefColumns: []*schema.Column{ProxiesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "proxies_proxy_groups_proxies",
-				Columns:    []*schema.Column{ProxiesColumns[15]},
+				Columns:    []*schema.Column{ProxiesColumns[17]},
 				RefColumns: []*schema.Column{ProxyGroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1462,12 +1464,17 @@ var (
 			{
 				Name:    "proxy_backup_proxy_id",
 				Unique:  false,
-				Columns: []*schema.Column{ProxiesColumns[14]},
+				Columns: []*schema.Column{ProxiesColumns[16]},
 			},
 			{
 				Name:    "proxy_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{ProxiesColumns[15]},
+				Columns: []*schema.Column{ProxiesColumns[17]},
+			},
+			{
+				Name:    "proxy_managed_by_external_id",
+				Unique:  false,
+				Columns: []*schema.Column{ProxiesColumns[14], ProxiesColumns[15]},
 			},
 		},
 	}

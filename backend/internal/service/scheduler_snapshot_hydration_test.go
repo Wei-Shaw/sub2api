@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -209,6 +210,85 @@ func TestGatewaySelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedu
 	}
 }
 
+func TestGatewaySelectAccountWithLoadAwareness_RejectsProxyGroupExhaustedAfterHydration(t *testing.T) {
+	groupID := int64(73)
+	cache := &snapshotHydrationCache{
+		// Simulate legacy scheduler metadata that predates the proxy-group fields.
+		snapshot: []*Account{
+			{
+				ID:          10,
+				Platform:    PlatformAnthropic,
+				Type:        AccountTypeAPIKey,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    1,
+			},
+		},
+		// The independently hydrated payload reflects the proxy group's latest
+		// health and must veto the stale candidate before forwarding.
+		accounts: map[int64]*Account{
+			10: {
+				ID:                  10,
+				Platform:            PlatformAnthropic,
+				Type:                AccountTypeAPIKey,
+				Status:              StatusActive,
+				Schedulable:         true,
+				Concurrency:         1,
+				Priority:            1,
+				ProxyGroupID:        &groupID,
+				ProxyGroupExhausted: true,
+			},
+		},
+	}
+	svc := &GatewayService{
+		schedulerSnapshot: NewSchedulerSnapshotService(cache, nil, nil, nil, nil),
+		cache:             &mockGatewayCacheForPlatform{},
+		cfg:               testConfig(),
+	}
+
+	result, err := svc.SelectAccountWithLoadAwareness(context.Background(), nil, "", "claude-3-5-sonnet-20241022", nil, "", 0)
+
+	if result != nil {
+		t.Fatalf("expected no selection, got account %d", result.Account.ID)
+	}
+	if !errors.Is(err, ErrNoAvailableAccounts) {
+		t.Fatalf("expected ErrNoAvailableAccounts, got %v", err)
+	}
+}
+
+func TestGatewayNewSelectionResult_ReleasesSlotWhenHydratedProxyGroupIsUnavailable(t *testing.T) {
+	groupID := int64(74)
+	cache := &snapshotHydrationCache{
+		accounts: map[int64]*Account{
+			11: {
+				ID:           11,
+				Platform:     PlatformAnthropic,
+				Status:       StatusActive,
+				Schedulable:  true,
+				ProxyGroupID: &groupID,
+				Proxy:        nil,
+			},
+		},
+	}
+	svc := &GatewayService{schedulerSnapshot: NewSchedulerSnapshotService(cache, nil, nil, nil, nil)}
+	releaseCalls := 0
+
+	result, err := svc.newSelectionResult(context.Background(), &Account{ID: 11}, true, func() {
+		releaseCalls++
+	}, nil)
+
+	if result != nil {
+		t.Fatal("expected no selection")
+	}
+	if !errors.Is(err, ErrNoAvailableAccounts) {
+		t.Fatalf("expected ErrNoAvailableAccounts, got %v", err)
+	}
+	if releaseCalls != 1 {
+		t.Fatalf("expected acquired slot to be released once, got %d", releaseCalls)
+	}
+}
+
 func TestGatewaySelectAccountWithLoadAwareness_SkipsAntigravityGeminiFamilyRateLimitedSnapshot(t *testing.T) {
 	resetAt := time.Now().Add(10 * time.Minute).Format(time.RFC3339)
 	cache := &snapshotHydrationCache{
@@ -252,8 +332,8 @@ func TestGatewaySelectAccountWithLoadAwareness_SkipsAntigravityGeminiFamilyRateL
 			},
 		},
 		accounts: map[int64]*Account{
-			1: {ID: 1, Platform: PlatformAntigravity, Type: AccountTypeOAuth},
-			2: {ID: 2, Platform: PlatformAntigravity, Type: AccountTypeOAuth},
+			1: {ID: 1, Platform: PlatformAntigravity, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true},
+			2: {ID: 2, Platform: PlatformAntigravity, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true},
 		},
 	}
 	groupID := int64(22)

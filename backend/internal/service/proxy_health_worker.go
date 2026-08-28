@@ -23,10 +23,11 @@ type ProxyHealthWorker struct {
 	instanceID string
 	log        *slog.Logger
 
-	mu   sync.Mutex
-	wg   sync.WaitGroup
-	stop chan struct{}
-	on   bool
+	mu     sync.Mutex
+	wg     sync.WaitGroup
+	stop   chan struct{}
+	on     bool
+	cancel context.CancelFunc
 }
 
 // ProvideProxyHealthWorker constructs and starts the worker when enabled.
@@ -68,17 +69,19 @@ func (w *ProxyHealthWorker) Start() {
 	if w.on {
 		return
 	}
-	if w.cfg == nil || !w.cfg.ProxyHealth.Enabled || w.svc == nil {
-		w.log.Info("proxy health worker not started (disabled or service nil)")
+	if w.cfg == nil || w.svc == nil {
+		w.log.Info("proxy health worker not started (config or service nil)")
 		return
 	}
 	if w.stop == nil {
 		w.stop = make(chan struct{})
 	}
+	runCtx, cancel := context.WithCancel(context.Background())
+	w.cancel = cancel
 	w.on = true
 	w.wg.Add(1)
-	go w.run()
-	w.log.Info("proxy health worker started", "interval_sec", w.intervalSec())
+	go w.run(runCtx)
+	w.log.Info("proxy health worker started", "interval_sec", w.intervalSec(), "enabled", w.svc.conf().Enabled)
 }
 
 // Stop ends the background loop and allows a later Start/Apply.
@@ -96,21 +99,25 @@ func (w *ProxyHealthWorker) Stop() {
 	default:
 		close(w.stop)
 	}
+	cancel := w.cancel
+	w.cancel = nil
 	w.on = false
-	w.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 	w.wg.Wait()
-	w.mu.Lock()
 	w.stop = make(chan struct{})
 	w.mu.Unlock()
 	w.log.Info("proxy health worker stopped")
 }
 
-// Apply re-reads cfg.ProxyHealth.Enabled and starts or stops the loop.
+// Apply restarts an enabled scanner so interval changes take effect. Disabled
+// scanners retain the lightweight observer loop so a remote DB enable is seen.
 func (w *ProxyHealthWorker) Apply() {
 	if w == nil {
 		return
 	}
-	enabled := w.cfg != nil && w.cfg.ProxyHealth.Enabled
+	enabled := w.svc != nil && w.svc.conf().Enabled
 	if enabled {
 		// Restart so interval changes take effect promptly.
 		if w.Running() {
@@ -130,8 +137,9 @@ func (w *ProxyHealthWorker) Running() bool {
 		return false
 	}
 	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.on
+	on := w.on
+	w.mu.Unlock()
+	return on && w.svc != nil && w.svc.conf().Enabled
 }
 
 // InstanceID returns the leader-lock owner token for this process.
@@ -144,8 +152,10 @@ func (w *ProxyHealthWorker) InstanceID() string {
 
 func (w *ProxyHealthWorker) intervalSec() int {
 	sec := 60
-	if w.cfg != nil && w.cfg.ProxyHealth.IntervalSec > 0 {
-		sec = w.cfg.ProxyHealth.IntervalSec
+	if w.svc != nil {
+		if configured := w.svc.conf().IntervalSec; configured > 0 {
+			sec = configured
+		}
 	}
 	if sec < 10 {
 		sec = 10
@@ -153,17 +163,19 @@ func (w *ProxyHealthWorker) intervalSec() int {
 	return sec
 }
 
-func (w *ProxyHealthWorker) run() {
+func (w *ProxyHealthWorker) run(ctx context.Context) {
 	defer w.wg.Done()
 	// Short boot delay so Redis/DB are ready.
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case <-w.stop:
 			return
 		case <-timer.C:
-			w.tick()
+			w.tick(ctx)
 			timer.Reset(time.Duration(w.intervalSec()) * time.Second)
 		}
 	}
@@ -203,15 +215,19 @@ func (w *ProxyHealthWorker) tickTimeout() time.Duration {
 	return timeout
 }
 
-func (w *ProxyHealthWorker) tick() {
+func (w *ProxyHealthWorker) tick(parent context.Context) {
 	if w.svc == nil {
 		return
 	}
 	// Bound whole tick: probes themselves use per-proxy timeout.
 	// Leader lock + process singleflight live inside RunOnce so admin RunScan
 	// shares the same gate (avoids double-acquire if we locked here too).
-	ctx, cancel := context.WithTimeout(context.Background(), w.tickTimeout())
+	ctx, cancel := context.WithTimeout(parent, w.tickTimeout())
 	defer cancel()
+	w.svc.refreshRuntimeSettings(ctx)
+	if !w.svc.conf().Enabled {
+		return
+	}
 
 	res, err := w.svc.RunOnce(ctx)
 	if err != nil {

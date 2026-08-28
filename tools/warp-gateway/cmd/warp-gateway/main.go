@@ -25,7 +25,7 @@ func main() {
 		listen   = flag.String("listen", "", "control API listen addr (default env/config)")
 		dataDir  = flag.String("data-dir", "", "state directory")
 		runtimeN = flag.String("runtime", "", "mock|sing-box")
-		token    = flag.String("token", "", "bearer token (empty = no auth)")
+		token    = flag.String("token", "", "bearer token (required unless mTLS is configured)")
 	)
 	flag.Parse()
 
@@ -53,18 +53,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	var cipher store.ProfileKeyCipher
-	if secret := cfg.ProfileSecret(); secret != "" {
-		c, err := profcrypto.NewProfileCipher(secret)
-		if err != nil {
-			log.Error("profile cipher", "err", err)
-			os.Exit(1)
-		}
-		cipher = c
-		log.Info("profile encryption enabled (AES-256-GCM at rest)")
-	} else {
-		log.Warn("profile encryption disabled: set WARP_GATEWAY_PROFILE_KEY or token to encrypt private keys at rest")
+	cipher, err := profcrypto.NewProfileCipher(cfg.ProfileSecret())
+	if err != nil {
+		log.Error("profile cipher", "err", err)
+		os.Exit(1)
 	}
+	log.Info("profile encryption enabled (AES-256-GCM at rest)")
 
 	st, err := store.NewWithCipher(cfg.DataDir, cfg.PortRangeStart, cfg.PortRangeEnd, cipher)
 	if err != nil {

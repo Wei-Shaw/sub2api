@@ -34,6 +34,7 @@ func TestAdminService_UpdateProxy_RejectsWarpHostChange(t *testing.T) {
 	p := &Proxy{
 		Name: "warp-node-1", Protocol: "socks5",
 		Host: "10.0.0.1", Port: 1080, Status: StatusActive, FallbackMode: FallbackModeNone,
+		ManagedBy: warpProxyManagedBy, ExternalID: "node-1",
 	}
 	if err := repo.Create(context.Background(), p); err != nil {
 		t.Fatal(err)
@@ -58,6 +59,7 @@ func TestAdminService_UpdateProxy_AllowsWarpStatusOnly(t *testing.T) {
 	p := &Proxy{
 		Name: "warp-node-1", Protocol: "socks5",
 		Host: "10.0.0.1", Port: 1080, Status: StatusActive, FallbackMode: FallbackModeNone,
+		ManagedBy: warpProxyManagedBy, ExternalID: "node-1",
 	}
 	if err := repo.Create(context.Background(), p); err != nil {
 		t.Fatal(err)
@@ -98,6 +100,7 @@ func TestAdminService_DeleteProxy_RejectsWarpManaged(t *testing.T) {
 	p := &Proxy{
 		Name: "warp-managed-x", Protocol: "socks5",
 		Host: "127.0.0.1", Port: 20001, Status: StatusActive,
+		ManagedBy: warpProxyManagedBy, ExternalID: "managed-x",
 	}
 	if err := repo.Create(context.Background(), p); err != nil {
 		t.Fatal(err)
@@ -118,7 +121,10 @@ func TestAdminService_DeleteProxy_RejectsWarpManaged(t *testing.T) {
 
 func TestAdminService_BatchDeleteProxies_SkipsWarpManaged(t *testing.T) {
 	repo := newMemProxyRepo()
-	warp := &Proxy{Name: "warp-a", Protocol: "socks5", Host: "h", Port: 1, Status: StatusActive}
+	warp := &Proxy{
+		Name: "warp-a", Protocol: "socks5", Host: "h", Port: 1, Status: StatusActive,
+		ManagedBy: warpProxyManagedBy, ExternalID: "warp-a",
+	}
 	manual := &Proxy{Name: "manual", Protocol: "http", Host: "h", Port: 2, Status: StatusActive}
 	if err := repo.Create(context.Background(), warp); err != nil {
 		t.Fatal(err)
@@ -147,6 +153,22 @@ func TestAdminService_BatchDeleteProxies_SkipsWarpManaged(t *testing.T) {
 	}
 	if _, ok := repo.proxies[manual.ID]; ok {
 		t.Fatal("manual proxy should be deleted")
+	}
+}
+
+func TestAdminService_DeleteProxy_AllowsUnmanagedWarpName(t *testing.T) {
+	repo := newMemProxyRepo()
+	p := &Proxy{Name: "warp-manual", Protocol: "socks5", Host: "h", Port: 1080, Status: StatusActive}
+	if err := repo.Create(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	svc := &adminServiceImpl{proxyRepo: repo}
+
+	if err := svc.DeleteProxy(context.Background(), p.ID); err != nil {
+		t.Fatalf("unmanaged proxy with warp-* name should remain user-manageable: %v", err)
+	}
+	if _, ok := repo.proxies[p.ID]; ok {
+		t.Fatal("unmanaged warp-* proxy should be deleted")
 	}
 }
 

@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -32,14 +34,16 @@ type WarpGatewayConfig struct {
 
 // WarpInstance is a subset of warp-gateway instance JSON.
 type WarpInstance struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	ListenHost string `json:"listen_host"`
-	ListenPort int    `json:"listen_port"`
-	Status     string `json:"status"`
-	ExitIP     string `json:"exit_ip"`
-	ExitColo   string `json:"exit_colo"`
-	LastError  string `json:"last_error"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	ListenHost    string `json:"listen_host"`
+	ListenPort    int    `json:"listen_port"`
+	Status        string `json:"status"`
+	ExitIP        string `json:"exit_ip"`
+	ExitColo      string `json:"exit_colo"`
+	SocksAuthUser string `json:"socks_auth_user,omitempty"`
+	SocksAuthPass string `json:"socks_auth_pass,omitempty"`
+	LastError     string `json:"last_error"`
 }
 
 func (i WarpInstance) SocksURL() string {
@@ -62,34 +66,53 @@ type WarpPoolSnapshot struct {
 
 // WarpGatewayClient talks to tools/warp-gateway control API.
 type WarpGatewayClient struct {
-	cfg    WarpGatewayConfig
-	client *http.Client
+	cfg     WarpGatewayConfig
+	client  *http.Client
+	initErr error
 }
 
 func NewWarpGatewayClient(cfg WarpGatewayConfig) *WarpGatewayClient {
+	client, err := newWarpGatewayClient(cfg)
+	if err != nil {
+		client.initErr = err
+	}
+	return client
+}
+
+func newWarpGatewayClient(cfg WarpGatewayConfig) (*WarpGatewayClient, error) {
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 5 * time.Second
+	}
+	if err := validateWarpGatewayConfig(cfg); err != nil {
+		return &WarpGatewayClient{cfg: cfg, client: &http.Client{Timeout: cfg.Timeout}}, err
 	}
 	base, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
 		base = &http.Transport{}
 	}
 	transport := base.Clone()
-	if cfg.TLSCAFile != "" || cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" || cfg.TLSInsecureSkipVerify {
+	if cfg.Enabled && strings.HasPrefix(strings.ToLower(strings.TrimSpace(cfg.BaseURL)), "https://") {
 		tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: cfg.TLSInsecureSkipVerify}
 		if cfg.TLSCAFile != "" {
 			pem, err := os.ReadFile(cfg.TLSCAFile)
-			if err == nil {
-				pool := x509.NewCertPool()
-				if pool.AppendCertsFromPEM(pem) {
-					tlsCfg.RootCAs = pool
-				}
+			if err != nil {
+				return &WarpGatewayClient{cfg: cfg, client: &http.Client{Timeout: cfg.Timeout}}, fmt.Errorf("read warp gateway CA file: %w", err)
 			}
+			pool, err := x509.SystemCertPool()
+			if err != nil || pool == nil {
+				pool = x509.NewCertPool()
+			}
+			if !pool.AppendCertsFromPEM(pem) {
+				return &WarpGatewayClient{cfg: cfg, client: &http.Client{Timeout: cfg.Timeout}}, fmt.Errorf("parse warp gateway CA file: no certificates found")
+			}
+			tlsCfg.RootCAs = pool
 		}
-		if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
-			if cert, err := tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile); err == nil {
-				tlsCfg.Certificates = []tls.Certificate{cert}
+		if cfg.TLSCertFile != "" {
+			cert, err := tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile)
+			if err != nil {
+				return &WarpGatewayClient{cfg: cfg, client: &http.Client{Timeout: cfg.Timeout}}, fmt.Errorf("load warp gateway client certificate: %w", err)
 			}
+			tlsCfg.Certificates = []tls.Certificate{cert}
 		}
 		transport.TLSClientConfig = tlsCfg
 	}
@@ -98,8 +121,51 @@ func NewWarpGatewayClient(cfg WarpGatewayConfig) *WarpGatewayClient {
 		client: &http.Client{
 			Timeout:   cfg.Timeout,
 			Transport: transport,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		},
+	}, nil
+}
+
+func validateWarpGatewayConfig(cfg WarpGatewayConfig) error {
+	if !cfg.Enabled {
+		return nil
 	}
+	baseURL := strings.TrimSpace(cfg.BaseURL)
+	if baseURL == "" {
+		return fmt.Errorf("warp gateway base URL is required when enabled")
+	}
+	parsed, err := url.Parse(baseURL)
+	if err != nil || parsed.Host == "" {
+		return fmt.Errorf("invalid warp gateway base URL %q", baseURL)
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("warp gateway base URL must not contain credentials, query, or fragment")
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("warp gateway base URL must use http or https")
+	}
+	if scheme == "http" && !isLoopbackWarpGatewayHost(parsed.Hostname()) {
+		return fmt.Errorf("warp gateway requires HTTPS for non-loopback hosts")
+	}
+	if (cfg.TLSCertFile == "") != (cfg.TLSKeyFile == "") {
+		return fmt.Errorf("warp gateway TLS client certificate and key must be configured together")
+	}
+	if scheme != "https" && (cfg.TLSCAFile != "" || cfg.TLSCertFile != "" || cfg.TLSInsecureSkipVerify) {
+		return fmt.Errorf("warp gateway TLS options require an HTTPS base URL")
+	}
+	return nil
+}
+
+func isLoopbackWarpGatewayHost(host string) bool {
+	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func (c *WarpGatewayClient) Enabled() bool {
@@ -111,6 +177,12 @@ func (c *WarpGatewayClient) do(ctx context.Context, method, path string, in any,
 }
 
 func (c *WarpGatewayClient) doClient(ctx context.Context, client *http.Client, method, path string, in any, out any) error {
+	if c == nil {
+		return fmt.Errorf("warp gateway client is nil")
+	}
+	if c.initErr != nil {
+		return c.initErr
+	}
 	if !c.Enabled() {
 		return fmt.Errorf("warp gateway disabled")
 	}
@@ -143,6 +215,12 @@ func (c *WarpGatewayClient) doClient(ctx context.Context, client *http.Client, m
 	defer func() { _ = resp.Body.Close() }()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode >= 300 {
+		// Mutation endpoints may return structured partial results on failure.
+		// Decode them before surfacing the HTTP error so callers can reconcile
+		// resources that were already committed by the gateway.
+		if out != nil && len(raw) > 0 {
+			_ = json.Unmarshal(raw, out)
+		}
 		return fmt.Errorf("warp gateway %s %s: HTTP %d: %s", method, path, resp.StatusCode, string(raw))
 	}
 	if out == nil {
@@ -169,6 +247,7 @@ func (c *WarpGatewayClient) CreatePool(ctx context.Context, namePrefix string, c
 func (c *WarpGatewayClient) CreatePoolEx(ctx context.Context, namePrefix string, count int, register bool) ([]WarpInstance, error) {
 	var resp struct {
 		Instances []WarpInstance `json:"instances"`
+		Created   []WarpInstance `json:"created"`
 	}
 	// Real WARP registration can take a while (count * handshake).
 	timeout := c.cfg.Timeout
@@ -180,6 +259,9 @@ func (c *WarpGatewayClient) CreatePoolEx(ctx context.Context, namePrefix string,
 		"count":       count,
 		"register":    register,
 	}, &resp, timeout)
+	if len(resp.Instances) == 0 && len(resp.Created) > 0 {
+		resp.Instances = resp.Created
+	}
 	return resp.Instances, err
 }
 
@@ -202,8 +284,9 @@ func (c *WarpGatewayClient) doWithTimeout(ctx context.Context, method, path stri
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cli := &http.Client{
-		Timeout:   timeout,
-		Transport: c.client.Transport,
+		Timeout:       timeout,
+		Transport:     c.client.Transport,
+		CheckRedirect: c.client.CheckRedirect,
 	}
 	return c.doClient(ctx, cli, method, path, in, out)
 }
@@ -265,6 +348,8 @@ type WarpProxySpec struct {
 	Protocol   string `json:"protocol"` // socks5h
 	Host       string `json:"host"`
 	Port       int    `json:"port"`
+	Username   string `json:"username,omitempty"`
+	Password   string `json:"password,omitempty"`
 	WarpID     string `json:"warp_id"`
 	ExitIP     string `json:"exit_ip"`
 	Status     string `json:"status"` // active | error
@@ -314,12 +399,10 @@ func BuildAttachPlan(snap *WarpPoolSnapshot, groupName string) WarpPoolAttachPla
 			name = fmt.Sprintf("%s-%s", name, short)
 		}
 		usedNames[name] = struct{}{}
-		if inst.Status == "unhealthy" || inst.Status == "error" {
+		_, unhealthyByID := unhealthy[inst.ID]
+		if !strings.EqualFold(strings.TrimSpace(inst.Status), "running") || unhealthyByID {
 			status = StatusError
 			plan.DetachProxyNames = append(plan.DetachProxyNames, name)
-		}
-		if _, bad := unhealthy[inst.ID]; bad {
-			status = StatusError
 		}
 		host := inst.ListenHost
 		if host == "" {
@@ -334,6 +417,8 @@ func BuildAttachPlan(snap *WarpPoolSnapshot, groupName string) WarpPoolAttachPla
 			ExitIP:     inst.ExitIP,
 			Status:     status,
 			ExternalID: inst.ID,
+			Username:   inst.SocksAuthUser,
+			Password:   inst.SocksAuthPass,
 		})
 	}
 	return plan

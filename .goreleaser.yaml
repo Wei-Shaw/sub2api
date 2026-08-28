@@ -31,6 +31,20 @@ builds:
       - -X main.Date={{.Date}}
       - -X main.BuildType=release
 
+  - id: warp-gateway
+    dir: tools/warp-gateway
+    main: ./cmd/warp-gateway
+    binary: warp-gateway
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
 archives:
   - id: default
     format: tar.gz
@@ -43,6 +57,7 @@ archives:
       - LICENSE*
       - README*
       - deploy/*
+      - tools/warp-gateway/deploy/warp-gateway.service
 
 checksum:
   name_template: 'checksums.txt'
@@ -56,6 +71,8 @@ changelog:
 dockers:
   # DockerHub images (skipped if DOCKERHUB_USERNAME is 'skip')
   - id: amd64
+    ids:
+      - sub2api
     goos: linux
     goarch: amd64
     skip_push: '{{ if eq .Env.DOCKERHUB_USERNAME "skip" }}true{{ else }}false{{ end }}'
@@ -72,6 +89,8 @@ dockers:
       - "--label=org.opencontainers.image.revision={{ .Commit }}"
 
   - id: arm64
+    ids:
+      - sub2api
     goos: linux
     goarch: arm64
     skip_push: '{{ if eq .Env.DOCKERHUB_USERNAME "skip" }}true{{ else }}false{{ end }}'
@@ -89,6 +108,8 @@ dockers:
 
   # GHCR images (owner must be lowercase)
   - id: ghcr-amd64
+    ids:
+      - sub2api
     goos: linux
     goarch: amd64
     image_templates:
@@ -105,6 +126,8 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/{{ .Env.GITHUB_REPO_OWNER }}/{{ .Env.GITHUB_REPO_NAME }}"
 
   - id: ghcr-arm64
+    ids:
+      - sub2api
     goos: linux
     goarch: arm64
     image_templates:
@@ -187,6 +210,7 @@ release:
 
     ## 📥 Installation
 
+    {{ if ne .Env.SKIP_DOCKER "true" -}}
     **Docker:**
     ```bash
     {{ if ne .Env.DOCKERHUB_USERNAME "skip" -}}
@@ -197,6 +221,7 @@ release:
     # GitHub Container Registry
     docker pull ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/sub2api:{{ .Version }}
     ```
+    {{ end -}}
 
     **One-line install (Linux):**
     ```bash

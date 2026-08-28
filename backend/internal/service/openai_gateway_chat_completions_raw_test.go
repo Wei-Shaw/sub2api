@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -156,6 +157,53 @@ func TestForwardAsChatCompletions_OpenAICompatibleGrokRawMissingUsageFailsBefore
 	require.ErrorAs(t, err, &failoverErr)
 	require.False(t, c.Writer.Written(), "unbilled Grok content must not be returned by an OpenAI-compatible account")
 	require.Empty(t, recorder.Body.String())
+}
+
+func TestForwardAsRawChatCompletions_GrokSemantic200ErrorsFailOver(t *testing.T) {
+	tests := []struct {
+		name        string
+		stream      bool
+		contentType string
+		upstream    string
+	}{
+		{
+			name:        "buffered overload",
+			contentType: "application/json",
+			upstream:    `{"error":{"code":"server_is_overloaded","message":"servers are overloaded"}}`,
+		},
+		{
+			name:        "stream unauthorized",
+			stream:      true,
+			contentType: "text/event-stream",
+			upstream:    "data: {\"type\":\"error\",\"error\":{\"code\":\"invalid_api_key\",\"status_code\":401,\"message\":\"unauthorized\"}}\n\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			body := []byte(fmt.Sprintf(`{"model":"grok-4.5","messages":[{"role":"user","content":"hello"}],"stream":%t}`, tt.stream))
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{tt.contentType}},
+				Body:       io.NopCloser(strings.NewReader(tt.upstream)),
+			}}
+			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+			account := rawChatCompletionsTestAccount()
+			account.Platform = PlatformGrok
+
+			result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+			require.Nil(t, result)
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.False(t, c.Writer.Written())
+			require.Empty(t, recorder.Body.String())
+		})
+	}
 }
 
 func TestForwardAsChatCompletions_OpenAICompatibleRawUsageGuard(t *testing.T) {

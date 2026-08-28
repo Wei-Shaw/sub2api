@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -22,12 +23,21 @@ func NewMockManager() *MockManager { return &MockManager{} }
 func (m *MockManager) Name() string { return "mock" }
 
 type mockHandle struct {
-	ln   net.Listener
-	addr string
-	once sync.Once
+	ln      net.Listener
+	addr    string
+	once    sync.Once
+	done    chan struct{}
+	errMu   sync.Mutex
+	exitErr error
 }
 
-func (h *mockHandle) LocalAddr() string { return h.addr }
+func (h *mockHandle) LocalAddr() string     { return h.addr }
+func (h *mockHandle) Done() <-chan struct{} { return h.done }
+func (h *mockHandle) Err() error {
+	h.errMu.Lock()
+	defer h.errMu.Unlock()
+	return h.exitErr
+}
 
 func (h *mockHandle) Stop(ctx context.Context) error {
 	var err error
@@ -71,11 +81,17 @@ func (m *MockManager) Start(ctx context.Context, inst *store.Instance) (Handle, 
 		return nil, err
 	}
 
-	h := &mockHandle{ln: ln, addr: ln.Addr().String()}
+	h := &mockHandle{ln: ln, addr: ln.Addr().String(), done: make(chan struct{})}
 	go func() {
+		defer close(h.done)
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
+				h.errMu.Lock()
+				if !errors.Is(err, net.ErrClosed) {
+					h.exitErr = err
+				}
+				h.errMu.Unlock()
 				return
 			}
 			go func(c net.Conn) {
@@ -93,4 +109,3 @@ func (m *MockManager) Start(ctx context.Context, inst *store.Instance) (Handle, 
 
 	return h, nil
 }
-

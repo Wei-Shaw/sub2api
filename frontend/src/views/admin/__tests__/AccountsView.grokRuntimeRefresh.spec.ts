@@ -10,6 +10,7 @@ const {
   getBatchTodayStats,
   getAccountById,
   getAllProxies,
+  getAllProxyGroups,
   getAllGroups
 } = vi.hoisted(() => ({
   listAccounts: vi.fn(),
@@ -17,6 +18,7 @@ const {
   getBatchTodayStats: vi.fn(),
   getAccountById: vi.fn(),
   getAllProxies: vi.fn(),
+  getAllProxyGroups: vi.fn(),
   getAllGroups: vi.fn()
 }))
 
@@ -35,6 +37,9 @@ vi.mock('@/api/admin', () => ({
     },
     proxies: {
       getAll: getAllProxies
+    },
+    proxyGroups: {
+      getAll: getAllProxyGroups
     },
     groups: {
       getAll: getAllGroups
@@ -189,6 +194,7 @@ describe('admin AccountsView Grok runtime state refresh', () => {
     getBatchTodayStats.mockReset().mockResolvedValue({ stats: {} })
     getAccountById.mockReset().mockResolvedValue({ ...pendingAccount })
     getAllProxies.mockReset().mockResolvedValue([])
+    getAllProxyGroups.mockReset().mockResolvedValue([])
     getAllGroups.mockReset().mockResolvedValue([])
   })
 

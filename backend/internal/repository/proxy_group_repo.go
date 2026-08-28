@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -101,6 +102,160 @@ func (r *proxyGroupRepository) Update(ctx context.Context, group *service.ProxyG
 		return err
 	}
 	return nil
+}
+
+// CreateWithMembers persists group metadata, health thresholds and membership
+// as one transaction. It is intentionally exposed as an optional repository
+// capability so lightweight service tests can continue using simple stubs.
+func (r *proxyGroupRepository) CreateWithMembers(ctx context.Context, group *service.ProxyGroup, proxyIDs []int64) error {
+	if r == nil || r.db == nil || group == nil {
+		return fmt.Errorf("atomic proxy group repository is unavailable")
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var description any
+	if group.Description != "" {
+		description = group.Description
+	}
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO proxy_groups (
+			name, description, strategy, sticky_by_account, status,
+			health_fail_threshold, health_success_threshold, created_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW())
+		RETURNING id, created_at, updated_at`,
+		group.Name, description, group.Strategy, group.StickyByAccount, group.Status,
+		nullableInt(group.HealthFailThreshold), nullableInt(group.HealthSuccessThreshold),
+	).Scan(&group.ID, &group.CreatedAt, &group.UpdatedAt)
+	if err != nil {
+		return err
+	}
+	if err := replaceProxyGroupMembersTx(ctx, tx, group.ID, proxyIDs); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// UpdateWithMembers updates metadata and, when proxyIDs is non-nil, replaces
+// membership in the same transaction.
+func (r *proxyGroupRepository) UpdateWithMembers(ctx context.Context, group *service.ProxyGroup, proxyIDs *[]int64) error {
+	if r == nil || r.db == nil || group == nil {
+		return fmt.Errorf("atomic proxy group repository is unavailable")
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var description any
+	if group.Description != "" {
+		description = group.Description
+	}
+	err = tx.QueryRowContext(ctx, `
+		UPDATE proxy_groups
+		SET name=$2, description=$3, strategy=$4, sticky_by_account=$5,
+			status=$6, health_fail_threshold=$7, health_success_threshold=$8,
+			updated_at=NOW()
+		WHERE id=$1 AND deleted_at IS NULL
+		RETURNING created_at, updated_at`,
+		group.ID, group.Name, description, group.Strategy, group.StickyByAccount,
+		group.Status, nullableInt(group.HealthFailThreshold), nullableInt(group.HealthSuccessThreshold),
+	).Scan(&group.CreatedAt, &group.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return service.ErrProxyGroupNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if proxyIDs != nil {
+		if err := replaceProxyGroupMembersTx(ctx, tx, group.ID, *proxyIDs); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// DeleteIfUnused serializes against account/proxy membership writes, rechecks
+// references and soft-deletes only when the group is still unused.
+func (r *proxyGroupRepository) DeleteIfUnused(ctx context.Context, groupID int64) error {
+	if r == nil || r.db == nil || groupID <= 0 {
+		return service.ErrProxyGroupNotFound
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	// Group deletion is rare. A short table lock closes the logical-FK race with
+	// concurrent account/group membership updates that cannot be expressed as a
+	// PostgreSQL partial foreign key against deleted_at.
+	if _, err := tx.ExecContext(ctx, `LOCK TABLE accounts, proxies IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+		return err
+	}
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM proxy_groups WHERE id=$1 AND deleted_at IS NULL
+	)`, groupID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return service.ErrProxyGroupNotFound
+	}
+	var inUse bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM proxies WHERE group_id=$1 AND deleted_at IS NULL
+		UNION ALL
+		SELECT 1 FROM accounts WHERE proxy_group_id=$1 AND deleted_at IS NULL
+	)`, groupID).Scan(&inUse); err != nil {
+		return err
+	}
+	if inUse {
+		return service.ErrProxyGroupInUse
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE proxy_groups SET deleted_at=NOW(), updated_at=NOW()
+		WHERE id=$1 AND deleted_at IS NULL`, groupID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func nullableInt(v *int) any {
+	if v == nil || *v <= 0 {
+		return nil
+	}
+	return *v
+}
+
+func replaceProxyGroupMembersTx(ctx context.Context, tx *sql.Tx, groupID int64, proxyIDs []int64) error {
+	uniq := make([]int64, 0, len(proxyIDs))
+	seen := make(map[int64]struct{}, len(proxyIDs))
+	for _, id := range proxyIDs {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniq = append(uniq, id)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE proxies SET group_id=NULL, updated_at=NOW()
+		WHERE group_id=$1 AND deleted_at IS NULL`, groupID); err != nil {
+		return err
+	}
+	if len(uniq) == 0 {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `
+		UPDATE proxies SET group_id=$1, updated_at=NOW()
+		WHERE id=ANY($2) AND deleted_at IS NULL`, groupID, pq.Array(uniq))
+	return err
 }
 
 func (r *proxyGroupRepository) Delete(ctx context.Context, id int64) error {

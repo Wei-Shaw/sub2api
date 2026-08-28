@@ -1493,12 +1493,24 @@ func (s *GatewayService) hydrateSelectedAccount(ctx context.Context, account *Ac
 	if hydrated == nil {
 		return nil, fmt.Errorf("selected gateway account %d not found during hydration", account.ID)
 	}
+	// Snapshot metadata and the full account payload are updated independently.
+	// Re-check the hydrated account so a proxy group that became exhausted after
+	// candidate selection cannot silently fall back to a direct connection. The
+	// explicit Proxy nil check also fails closed for legacy payloads written before
+	// ProxyGroupExhausted was persisted in the scheduler cache.
+	if !s.isAccountSchedulableForSelection(hydrated) ||
+		(hydrated.ProxyGroupID != nil && *hydrated.ProxyGroupID > 0 && hydrated.Proxy == nil) {
+		return nil, fmt.Errorf("%w: selected gateway account %d became unschedulable during hydration", ErrNoAvailableAccounts, account.ID)
+	}
 	return hydrated, nil
 }
 
 func (s *GatewayService) newSelectionResult(ctx context.Context, account *Account, acquired bool, release func(), waitPlan *AccountWaitPlan) (*AccountSelectionResult, error) {
 	hydrated, err := s.hydrateSelectedAccount(ctx, account)
 	if err != nil {
+		if acquired && release != nil {
+			release()
+		}
 		return nil, err
 	}
 	return attachSelectionProfitGate(ctx, &AccountSelectionResult{

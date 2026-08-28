@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -35,6 +38,119 @@ func TestBuildAttachPlan_Phase3(t *testing.T) {
 	}
 	if len(plan.DuplicateExitIPs["1.1.1.1"]) != 2 {
 		t.Fatalf("dups=%v", plan.DuplicateExitIPs)
+	}
+}
+
+func TestBuildAttachPlan_OnlyRunningInstancesAreActive(t *testing.T) {
+	statuses := []string{"starting", "registered", "stopped", "error", "unhealthy", ""}
+	instances := make([]WarpInstance, 0, len(statuses)+1)
+	instances = append(instances, WarpInstance{ID: "running", Name: "running", ListenPort: 41000, Status: "running"})
+	for i, status := range statuses {
+		instances = append(instances, WarpInstance{ID: status, Name: status, ListenPort: 41001 + i, Status: status})
+	}
+
+	plan := BuildAttachPlan(&WarpPoolSnapshot{Instances: instances}, "warp-pool")
+	if plan.ProxySpecs[0].Status != StatusActive {
+		t.Fatalf("running instance status=%q", plan.ProxySpecs[0].Status)
+	}
+	for _, spec := range plan.ProxySpecs[1:] {
+		if spec.Status != StatusError {
+			t.Fatalf("non-running instance %q status=%q", spec.WarpID, spec.Status)
+		}
+	}
+	if len(plan.DetachProxyNames) != len(statuses) {
+		t.Fatalf("detach=%v", plan.DetachProxyNames)
+	}
+}
+
+func TestWarpGatewayClientRejectsInsecureRemoteAndInvalidTLS(t *testing.T) {
+	t.Run("remote HTTP", func(t *testing.T) {
+		client := NewWarpGatewayClient(WarpGatewayConfig{Enabled: true, BaseURL: "http://warp.internal:8080", Token: "secret"})
+		_, err := client.ListInstances(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "requires HTTPS") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("missing client key", func(t *testing.T) {
+		client := NewWarpGatewayClient(WarpGatewayConfig{Enabled: true, BaseURL: "https://warp.internal", TLSCertFile: "client.pem"})
+		_, err := client.ListInstances(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "configured together") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("invalid CA", func(t *testing.T) {
+		dir := t.TempDir()
+		caFile := filepath.Join(dir, "ca.pem")
+		if err := os.WriteFile(caFile, []byte("not a certificate"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		client := NewWarpGatewayClient(WarpGatewayConfig{Enabled: true, BaseURL: "https://warp.internal", TLSCAFile: caFile})
+		_, err := client.ListInstances(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "no certificates found") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+}
+
+func TestWarpGatewayClientMutationDoesNotFollowRedirect(t *testing.T) {
+	targetCalled := false
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		targetCalled = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(target.Close)
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(redirect.Close)
+
+	client := NewWarpGatewayClient(WarpGatewayConfig{
+		Enabled: true,
+		BaseURL: redirect.URL,
+		Token:   "secret",
+		Timeout: time.Second,
+	})
+	_, err := client.CreatePoolEx(context.Background(), "warp", 1, true)
+	if err == nil || !strings.Contains(err.Error(), "HTTP 307") {
+		t.Fatalf("err=%v", err)
+	}
+	if targetCalled {
+		t.Fatal("mutation request followed redirect to another endpoint")
+	}
+}
+
+func TestBuildAttachPlan_PreservesSocksCredentials(t *testing.T) {
+	plan := BuildAttachPlan(&WarpPoolSnapshot{Instances: []WarpInstance{{
+		ID: "auth-1", Name: "auth", ListenHost: "127.0.0.1", ListenPort: 41009,
+		Status: "running", SocksAuthUser: "user", SocksAuthPass: "secret",
+	}}}, "warp-pool")
+	if len(plan.ProxySpecs) != 1 {
+		t.Fatalf("specs=%d", len(plan.ProxySpecs))
+	}
+	if plan.ProxySpecs[0].Username != "user" || plan.ProxySpecs[0].Password != "secret" {
+		t.Fatalf("credentials were dropped: %#v", plan.ProxySpecs[0])
+	}
+}
+
+func TestWarpGatewayClient_CreatePoolReturnsPartialCreated(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error":   "member 2 failed",
+			"created": []WarpInstance{{ID: "partial-1", Name: "warp-01", ListenPort: 41001}},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewWarpGatewayClient(WarpGatewayConfig{Enabled: true, BaseURL: srv.URL, Timeout: time.Second})
+	created, err := c.CreatePoolEx(context.Background(), "warp", 2, false)
+	if err == nil {
+		t.Fatal("expected partial creation error")
+	}
+	if len(created) != 1 || created[0].ID != "partial-1" {
+		t.Fatalf("partial result lost: %#v", created)
 	}
 }
 

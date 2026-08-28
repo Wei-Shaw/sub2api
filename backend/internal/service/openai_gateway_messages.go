@@ -805,15 +805,10 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 		}
 		message := extractOpenAISSEErrorMessage(payloadBytes)
 		s.reconcileGrokStreamFailedAccountState(c, account, payloadBytes, message)
-		if hit, _, _ := detectOpenAICyberPolicy(payloadBytes); hit {
-			return nil
-		}
-		switch openAIStreamFailedEventSemanticStatus(payloadBytes, message) {
-		case http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound, http.StatusTooManyRequests:
+		if s.shouldFailoverOpenAIStreamFailedEvent(account, payloadBytes, message) {
 			return s.newOpenAIStreamFailoverError(c, account, false, requestID, payloadBytes, message)
-		default:
-			return nil
 		}
+		return nil
 	}
 
 	var parser openAICompatSSEFrameParser

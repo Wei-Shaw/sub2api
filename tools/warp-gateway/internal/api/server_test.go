@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -88,7 +89,7 @@ func TestAPICreatePoolAndSnapshot(t *testing.T) {
 }
 
 func TestAPIRotateAndDelete(t *testing.T) {
-	h, _ := setupAPI(t)
+	h, mgr := setupAPI(t)
 	auth := func(r *http.Request) {
 		r.Header.Set("Authorization", "Bearer test-token")
 	}
@@ -122,10 +123,98 @@ func TestAPIRotateAndDelete(t *testing.T) {
 	}
 
 	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/v1/instances/"+inst.ID+"/rotate", nil)
+	auth(req)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("empty rotate status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	unchanged, err := mgr.GetRaw(inst.ID)
+	if err != nil || unchanged.Profile.MockExitIP != "198.51.100.7" {
+		t.Fatalf("empty rotate changed profile: instance=%#v err=%v", unchanged, err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{name: "malformed", body: `{"profile":`},
+		{name: "trailing JSON", body: `{}` + `{}`},
+	} {
+		t.Run("rotate rejects "+tc.name, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/v1/instances/"+inst.ID+"/rotate", strings.NewReader(tc.body))
+			auth(req)
+			h.ServeHTTP(rr, req)
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			got, err := mgr.GetRaw(inst.ID)
+			if err != nil || got.Profile.MockExitIP != "198.51.100.7" {
+				t.Fatalf("manager was invoked: instance=%#v err=%v", got, err)
+			}
+		})
+	}
+
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodDelete, "/v1/instances/"+inst.ID, strings.NewReader(`{} garbage`))
+	auth(req)
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("malformed delete status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if _, err := mgr.GetRaw(inst.ID); err != nil {
+		t.Fatalf("malformed delete invoked manager: %v", err)
+	}
+
+	rr = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodDelete, "/v1/instances/"+inst.ID, nil)
 	auth(req)
 	h.ServeHTTP(rr, req)
 	if rr.Code != 200 {
 		t.Fatalf("delete %d", rr.Code)
+	}
+}
+
+func TestPoolSnapshotReturnsSocksCredentialsButListDoesNot(t *testing.T) {
+	h, _ := setupAPI(t)
+	auth := func(r *http.Request) { r.Header.Set("Authorization", "Bearer test-token") }
+	body := []byte(`{"name":"credentials","auto_start":false,"socks_auth_user":"user","socks_auth_pass":"pass","profile":{"private_key":"private"}}`)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/instances", bytes.NewReader(body))
+	auth(req)
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/v1/pools/snapshot", nil)
+	auth(req)
+	h.ServeHTTP(rr, req)
+	var snapshot service.PoolSnapshot
+	if err := json.Unmarshal(rr.Body.Bytes(), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Instances) != 1 || snapshot.Instances[0].SocksAuthUser != "user" || snapshot.Instances[0].SocksAuthPass != "pass" {
+		t.Fatalf("snapshot did not preserve SOCKS credentials: %#v", snapshot.Instances)
+	}
+	if snapshot.Instances[0].Profile.PrivateKey != "***" {
+		t.Fatalf("snapshot leaked WARP private key: %#v", snapshot.Instances[0].Profile)
+	}
+
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/v1/instances", nil)
+	auth(req)
+	h.ServeHTTP(rr, req)
+	var listed struct {
+		Instances []store.Instance `json:"instances"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Instances) != 1 || listed.Instances[0].SocksAuthPass != "***" {
+		t.Fatalf("ordinary list exposed SOCKS password: %#v", listed.Instances)
 	}
 }

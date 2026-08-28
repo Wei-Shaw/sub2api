@@ -269,7 +269,14 @@ func (s *ProxyHealthService) RuntimeSnapshot(ctx context.Context) *ProxyHealthRu
 }
 
 func (s *ProxyHealthService) effectiveSettings(ctx context.Context) ProxyHealthSettings {
-	// Prefer in-memory runtime (already applied), then DB, then YAML.
+	// DB is authoritative across processes. Refresh the process-local runtime so
+	// a node that later acquires leadership cannot keep applying stale settings.
+	if loaded, ok := s.loadSettingsFromDB(ctx); ok {
+		s.applySettings(loaded)
+		return loaded
+	}
+	// Fall back to the last applied runtime when the settings store is
+	// temporarily unavailable; startup still seeds it from DB/YAML.
 	s.runtimeMu.RLock()
 	if s.runtime != nil {
 		cur := *s.runtime
@@ -278,10 +285,13 @@ func (s *ProxyHealthService) effectiveSettings(ctx context.Context) ProxyHealthS
 	}
 	s.runtimeMu.RUnlock()
 
-	if loaded, ok := s.loadSettingsFromDB(ctx); ok {
-		return loaded
-	}
 	return DefaultProxyHealthSettingsFromYAML(s.cfg)
+}
+
+func (s *ProxyHealthService) refreshRuntimeSettings(ctx context.Context) {
+	if loaded, ok := s.loadSettingsFromDB(ctx); ok {
+		s.applySettings(loaded)
+	}
 }
 
 func (s *ProxyHealthService) loadSettingsFromDB(ctx context.Context) (ProxyHealthSettings, bool) {
@@ -289,7 +299,11 @@ func (s *ProxyHealthService) loadSettingsFromDB(ctx context.Context) (ProxyHealt
 		return ProxyHealthSettings{}, false
 	}
 	raw, err := s.settingRepo.GetValue(ctx, SettingKeyProxyHealthSettings)
-	if err != nil || strings.TrimSpace(raw) == "" {
+	if err != nil {
+		s.log.Warn("load proxy_health_settings failed; retaining last applied settings", "error", err)
+		return ProxyHealthSettings{}, false
+	}
+	if strings.TrimSpace(raw) == "" {
 		return ProxyHealthSettings{}, false
 	}
 	var parsed ProxyHealthSettings
@@ -313,10 +327,6 @@ func (s *ProxyHealthService) applySettings(settings ProxyHealthSettings) {
 	cp := settings
 	s.runtime = &cp
 	s.runtimeMu.Unlock()
-	// Keep process config in sync so worker interval/lock reads stay correct.
-	if s.cfg != nil {
-		s.cfg.ProxyHealth = settings.toConfig()
-	}
 }
 
 func (s *ProxyHealthService) bootstrapRuntimeSettings() {

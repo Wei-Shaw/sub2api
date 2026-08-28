@@ -48,6 +48,10 @@ type Proxy struct {
 	ExpiryWarnDays int `json:"expiry_warn_days,omitempty"`
 	// Optional proxy group this proxy belongs to (one group per proxy).
 	GroupID *int64 `json:"group_id,omitempty"`
+	// External controller that owns this proxy; NULL for user-managed rows.
+	ManagedBy *string `json:"managed_by,omitempty"`
+	// Controller-scoped stable resource identifier.
+	ExternalID *string `json:"external_id,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the ProxyQuery when eager-loading is set.
 	Edges        ProxyEdges `json:"edges"`
@@ -105,7 +109,7 @@ func (*Proxy) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case proxy.FieldID, proxy.FieldPort, proxy.FieldBackupProxyID, proxy.FieldExpiryWarnDays, proxy.FieldGroupID:
 			values[i] = new(sql.NullInt64)
-		case proxy.FieldName, proxy.FieldProtocol, proxy.FieldHost, proxy.FieldUsername, proxy.FieldPassword, proxy.FieldStatus, proxy.FieldFallbackMode:
+		case proxy.FieldName, proxy.FieldProtocol, proxy.FieldHost, proxy.FieldUsername, proxy.FieldPassword, proxy.FieldStatus, proxy.FieldFallbackMode, proxy.FieldManagedBy, proxy.FieldExternalID:
 			values[i] = new(sql.NullString)
 		case proxy.FieldCreatedAt, proxy.FieldUpdatedAt, proxy.FieldDeletedAt, proxy.FieldExpiresAt:
 			values[i] = new(sql.NullTime)
@@ -226,6 +230,20 @@ func (_m *Proxy) assignValues(columns []string, values []any) error {
 				_m.GroupID = new(int64)
 				*_m.GroupID = value.Int64
 			}
+		case proxy.FieldManagedBy:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field managed_by", values[i])
+			} else if value.Valid {
+				_m.ManagedBy = new(string)
+				*_m.ManagedBy = value.String
+			}
+		case proxy.FieldExternalID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field external_id", values[i])
+			} else if value.Valid {
+				_m.ExternalID = new(string)
+				*_m.ExternalID = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -332,6 +350,16 @@ func (_m *Proxy) String() string {
 	if v := _m.GroupID; v != nil {
 		builder.WriteString("group_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.ManagedBy; v != nil {
+		builder.WriteString("managed_by=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ExternalID; v != nil {
+		builder.WriteString("external_id=")
+		builder.WriteString(*v)
 	}
 	builder.WriteByte(')')
 	return builder.String()

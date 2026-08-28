@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
+
+	pkgip "github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 )
 
 // RiskActionPolicy applies notify / soft-throttle / auto-disable for risk events.
@@ -113,15 +116,21 @@ func (p *RiskActionPolicy) ApplyWhitelistIPs(ctx context.Context, keyID int64, i
 	for _, ip := range merged {
 		seen[ip] = struct{}{}
 	}
-	for _, ip := range ips {
-		if ip == "" {
+	validEvidence := 0
+	for _, evidenceIP := range ips {
+		rule, valid := pkgip.SecurityEvidenceWhitelistRule(evidenceIP)
+		if !valid {
 			continue
 		}
-		if _, ok := seen[ip]; ok {
+		validEvidence++
+		if _, ok := seen[rule]; ok {
 			continue
 		}
-		merged = append(merged, ip)
-		seen[ip] = struct{}{}
+		merged = append(merged, rule)
+		seen[rule] = struct{}{}
+	}
+	if validEvidence == 0 {
+		return nil, fmt.Errorf("%w: no valid evidence IPs", ErrInvalidIPPattern)
 	}
 	return p.apiKeys.AdminUpdate(ctx, keyID, AdminUpdateAPIKeyRequest{IPWhitelist: &merged})
 }

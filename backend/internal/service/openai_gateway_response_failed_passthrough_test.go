@@ -582,13 +582,15 @@ func TestHandleSSEToJSONGrokRateLimitReturnsSemanticFailover(t *testing.T) {
 
 func TestReadOpenAICompatBufferedTerminalGrokBareAccountErrors(t *testing.T) {
 	tests := []struct {
-		name          string
-		statusCode    int
-		event         string
-		suffix        string
-		wantLimited   bool
-		wantSoftTemp  bool
-		wantPermanent bool
+		name           string
+		statusCode     int
+		event          string
+		suffix         string
+		wantLimited    bool
+		wantSoftTemp   bool
+		wantTempReason string
+		wantPermanent  bool
+		wantBlocked    bool
 	}{
 		{
 			name:        "rate limit",
@@ -596,13 +598,16 @@ func TestReadOpenAICompatBufferedTerminalGrokBareAccountErrors(t *testing.T) {
 			event:       `{"type":"error","error":{"code":"rate_limit_exceeded","message":"free usage exhausted"}}`,
 			suffix:      "\n\n",
 			wantLimited: true,
+			wantBlocked: true,
 		},
 		{
-			name:         "payment required soft billing",
-			statusCode:   http.StatusPaymentRequired,
-			event:        `{"type":"error","error":{"code":"payment_required","message":"payment required"}}`,
-			suffix:       "\n\n",
-			wantSoftTemp: true,
+			name:           "payment required soft billing",
+			statusCode:     http.StatusPaymentRequired,
+			event:          `{"type":"error","error":{"code":"payment_required","message":"payment required"}}`,
+			suffix:         "\n\n",
+			wantSoftTemp:   true,
+			wantTempReason: grokSoftEntitlementReason,
+			wantBlocked:    true,
 		},
 		{
 			name:          "forbidden hard permanent",
@@ -610,12 +615,28 @@ func TestReadOpenAICompatBufferedTerminalGrokBareAccountErrors(t *testing.T) {
 			event:         `{"type":"error","error":{"code":"entitlement_denied","message":"account suspended","status_code":403}}`,
 			suffix:        "\n\n",
 			wantPermanent: true,
+			wantBlocked:   true,
 		},
 		{
 			name:          "not found at eof",
 			statusCode:    http.StatusNotFound,
 			event:         `{"type":"error","error":{"code":"account_not_found","message":"account not found"}}`,
 			wantPermanent: true,
+			wantBlocked:   true,
+		},
+		{
+			name:           "unauthorized soft credential cooldown",
+			statusCode:     http.StatusUnauthorized,
+			event:          `{"type":"error","error":{"code":"invalid_api_key","message":"authentication failed"}}`,
+			suffix:         "\n\n",
+			wantSoftTemp:   true,
+			wantTempReason: "grok credentials unauthorized",
+			wantBlocked:    true,
+		},
+		{
+			name:       "overload fails over without account mutation",
+			statusCode: http.StatusServiceUnavailable,
+			event:      `{"type":"error","error":{"code":"server_is_overloaded","message":"servers are overloaded"}}`,
 		},
 	}
 
@@ -634,7 +655,7 @@ func TestReadOpenAICompatBufferedTerminalGrokBareAccountErrors(t *testing.T) {
 			var failoverErr *UpstreamFailoverError
 			require.ErrorAs(t, err, &failoverErr)
 			require.Equal(t, tt.statusCode, failoverErr.StatusCode)
-			require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+			require.Equal(t, tt.wantBlocked, svc.isOpenAIAccountRuntimeBlocked(account))
 			switch {
 			case tt.wantLimited:
 				require.Equal(t, 1, repo.rateLimitedCalls)
@@ -644,10 +665,14 @@ func TestReadOpenAICompatBufferedTerminalGrokBareAccountErrors(t *testing.T) {
 				require.Zero(t, repo.rateLimitedCalls)
 				require.Zero(t, repo.errorCalls)
 				require.Equal(t, 1, repo.tempUnschedCalls)
-				require.Equal(t, grokSoftEntitlementReason, repo.lastTempUnschedReason)
+				require.Equal(t, tt.wantTempReason, repo.lastTempUnschedReason)
 			case tt.wantPermanent:
 				require.Zero(t, repo.rateLimitedCalls)
 				require.Equal(t, 1, repo.errorCalls)
+				require.Zero(t, repo.tempUnschedCalls)
+			default:
+				require.Zero(t, repo.rateLimitedCalls)
+				require.Zero(t, repo.errorCalls)
 				require.Zero(t, repo.tempUnschedCalls)
 			}
 		})

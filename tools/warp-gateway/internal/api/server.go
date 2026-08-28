@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -71,6 +73,24 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+func decodeOptionalJSON(r *http.Request, dst any) error {
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(dst); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return err
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return fmt.Errorf("request body must contain a single JSON value")
+		}
+		return err
+	}
+	return nil
+}
+
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"status": "ok", "time": time.Now().UTC()})
 }
@@ -127,7 +147,12 @@ func (s *Server) handleCreatePool(w http.ResponseWriter, r *http.Request) {
 	}
 	list, err := s.mgr.CreatePool(r.Context(), req)
 	if err != nil {
-		writeJSON(w, 400, map[string]any{"error": err.Error(), "created": list})
+		body := map[string]any{"error": err.Error(), "created": list, "created_count": len(list)}
+		var partial *service.PoolCreateError
+		if errors.As(err, &partial) {
+			body["registered_count"] = partial.Registered
+		}
+		writeJSON(w, 400, body)
 		return
 	}
 	writeJSON(w, 201, map[string]any{"instances": list, "count": len(list)})
@@ -223,7 +248,10 @@ func (s *Server) handleRotate(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Profile *store.Profile `json:"profile"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	if err := decodeOptionalJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	inst, err := s.mgr.Rotate(r.Context(), id, body.Profile)
 	if err != nil {
 		writeJSON(w, 400, map[string]string{"error": err.Error()})
@@ -254,7 +282,10 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		DeregisterCloudflare *bool `json:"deregister_cloudflare"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	if err := decodeOptionalJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	if body.DeregisterCloudflare != nil {
 		opts.DeregisterCloudflare = body.DeregisterCloudflare
 	}

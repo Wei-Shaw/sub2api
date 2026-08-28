@@ -68,6 +68,7 @@ type ConnectionRiskEventList struct {
 // ConnectionRiskEventRepository persists risk events (raw SQL, audit-style).
 type ConnectionRiskEventRepository interface {
 	UpsertOpen(ctx context.Context, event *ConnectionRiskEvent) (*ConnectionRiskEvent, error)
+	UpdateActionTaken(ctx context.Context, id int64, action string) error
 	GetByID(ctx context.Context, id int64) (*ConnectionRiskEvent, error)
 	List(ctx context.Context, filter *ConnectionRiskEventFilter) (*ConnectionRiskEventList, error)
 	UpdateStatus(ctx context.Context, id int64, status string, resolverID *int64) error

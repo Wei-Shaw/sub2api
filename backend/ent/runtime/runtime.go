@@ -1700,6 +1700,14 @@ func init() {
 	proxyDescExpiryWarnDays := proxyFields[10].Descriptor()
 	// proxy.DefaultExpiryWarnDays holds the default value on creation for the expiry_warn_days field.
 	proxy.DefaultExpiryWarnDays = proxyDescExpiryWarnDays.Default.(int)
+	// proxyDescManagedBy is the schema descriptor for managed_by field.
+	proxyDescManagedBy := proxyFields[12].Descriptor()
+	// proxy.ManagedByValidator is a validator for the "managed_by" field. It is called by the builders before save.
+	proxy.ManagedByValidator = proxyDescManagedBy.Validators[0].(func(string) error)
+	// proxyDescExternalID is the schema descriptor for external_id field.
+	proxyDescExternalID := proxyFields[13].Descriptor()
+	// proxy.ExternalIDValidator is a validator for the "external_id" field. It is called by the builders before save.
+	proxy.ExternalIDValidator = proxyDescExternalID.Validators[0].(func(string) error)
 	proxygroupMixin := schema.ProxyGroup{}.Mixin()
 	proxygroupMixinHooks1 := proxygroupMixin[1].Hooks()
 	proxygroup.Hooks[0] = proxygroupMixinHooks1[0]

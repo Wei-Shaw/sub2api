@@ -8,7 +8,7 @@ Type=simple
 User=warp-gateway
 Group=warp-gateway
 WorkingDirectory=/opt/warp-gateway
-ExecStart=/opt/warp-gateway/warp-gateway -listen 127.0.0.1:19798 -data-dir /var/lib/warp-gateway -runtime mock
+ExecStart=/opt/warp-gateway/warp-gateway -listen 127.0.0.1:19798 -data-dir /var/lib/warp-gateway -runtime sing-box
 Restart=always
 RestartSec=3
 # For sing-box/WireGuard runtime, grant CAP_NET_ADMIN on a dedicated unit instead of sub2api.
@@ -17,8 +17,8 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadWritePaths=/var/lib/warp-gateway
-Environment=WARP_GATEWAY_TOKEN=
-Environment=WARP_GATEWAY_RUNTIME=mock
+EnvironmentFile=/etc/sub2api/warp-gateway.env
+Environment=WARP_GATEWAY_RUNTIME=sing-box
 
 [Install]
 WantedBy=multi-user.target

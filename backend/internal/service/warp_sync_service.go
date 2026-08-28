@@ -52,7 +52,10 @@ type WarpSyncService struct {
 
 // drasticPruneConfirmRounds is how many consecutive drastic-drop observations
 // are required before orphan prune is permitted (process-local counter).
-const drasticPruneConfirmRounds = 3
+const (
+	drasticPruneConfirmRounds = 3
+	warpProxyManagedBy        = "warp-gateway"
+)
 
 // isDrasticWarpDrop reports whether gateway returned far fewer specs than local
 // warp-* inventory. Protects small pools (e.g. 3→1 drop 2) as well as large ones:
@@ -99,15 +102,15 @@ func (s *WarpSyncService) SetLeaderLock(lock LeaderLockCache, instanceID string,
 }
 
 // ProvideWarpGatewayClient builds the HTTP client from app config.
-func ProvideWarpGatewayClient(cfg *config.Config) *WarpGatewayClient {
+func ProvideWarpGatewayClient(cfg *config.Config) (*WarpGatewayClient, error) {
 	if cfg == nil {
-		return NewWarpGatewayClient(WarpGatewayConfig{})
+		return newWarpGatewayClient(WarpGatewayConfig{})
 	}
 	timeout := time.Duration(cfg.Warp.Gateway.TimeoutMS) * time.Millisecond
 	if timeout <= 0 {
 		timeout = 3 * time.Second
 	}
-	return NewWarpGatewayClient(WarpGatewayConfig{
+	return newWarpGatewayClient(WarpGatewayConfig{
 		Enabled:               cfg.Warp.Enabled,
 		BaseURL:               cfg.Warp.Gateway.BaseURL,
 		Token:                 cfg.Warp.Gateway.Token,
@@ -177,11 +180,12 @@ func (s *WarpSyncService) CreatePoolAndSyncEx(ctx context.Context, namePrefix st
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("leadership lost before create: %w", ctx.Err())
 		}
-		if _, err := s.client.CreatePoolEx(ctx, namePrefix, count, register); err != nil {
+		created, createErr := s.client.CreatePoolEx(ctx, namePrefix, count, register)
+		if createErr != nil && len(created) == 0 {
 			if ctx.Err() != nil {
 				return nil, fmt.Errorf("gateway create may have completed but leadership lost/cancelled before sync: %w", ctx.Err())
 			}
-			return nil, err
+			return nil, createErr
 		}
 		// Create may have committed on gateway; if leadership/parent canceled before
 		// sync, surface partial success so callers do not assume full roll-forward.
@@ -192,6 +196,9 @@ func (s *WarpSyncService) CreatePoolAndSyncEx(ctx context.Context, namePrefix st
 		if err != nil {
 			// W3: create already committed on gateway — surface partial success clearly.
 			return nil, fmt.Errorf("gateway create succeeded but sync failed (instances may exist on gateway): %w", err)
+		}
+		if createErr != nil {
+			res.Alerts = append(res.Alerts, fmt.Sprintf("gateway pool creation partially succeeded (%d created): %v", len(created), createErr))
 		}
 		return res, nil
 	})
@@ -525,18 +532,15 @@ func (s *WarpSyncService) syncFromGatewayLocked(ctx context.Context, groupName s
 		}
 	}
 
-	// Index existing proxies by host:port and name.
-	byKey, byName, err := s.indexProxies(ctx)
+	// Names/endpoints are used only for collision avoidance. Reconciliation
+	// ownership is keyed exclusively by the persisted controller resource ID.
+	index, err := s.indexProxies(ctx)
 	if err != nil {
 		return nil, err
 	}
+	byKey, byName, byExternalID := index.byKey, index.byName, index.byExternalID
 
-	localWarpN := 0
-	for name := range byName {
-		if strings.HasPrefix(name, "warp-") {
-			localWarpN++
-		}
-	}
+	localWarpN := index.managedCount
 
 	// Circuit breaker: successful empty gateway snapshot must not wipe local
 	// warp-* inventory (transient gateway bug / empty body / wrong env).
@@ -677,26 +681,50 @@ func (s *WarpSyncService) syncFromGatewayLocked(ctx context.Context, groupName s
 
 	memberIDs := make([]int64, 0, len(plan.ProxySpecs))
 	seenMember := map[int64]struct{}{}
-	keepNames := map[string]struct{}{}
-	keepKeys := map[string]struct{}{}
+	keepExternalIDs := map[string]struct{}{}
 	for _, spec := range plan.ProxySpecs {
+		if strings.TrimSpace(spec.ExternalID) == "" {
+			return nil, fmt.Errorf("warp gateway instance %q is missing external id", spec.Name)
+		}
 		key := proxyHostPortKey(spec.Host, spec.Port)
+		existing, exists := byExternalID[spec.ExternalID]
+		if !exists {
+			// Migration 194 marks only rows from the legacy auto-managed group.
+			// Bind their stable external ID only on an exact endpoint match.
+			if legacy, ok := index.legacyByKey[key]; ok {
+				existing, exists = legacy, true
+			}
+		}
+		if exists {
+			oldKey := proxyHostPortKey(existing.Host, existing.Port)
+			if current, ok := byKey[oldKey]; ok && current.ID == existing.ID {
+				delete(byKey, oldKey)
+			}
+			if current, ok := byName[existing.Name]; ok && current.ID == existing.ID {
+				delete(byName, existing.Name)
+			}
+		}
 		// Ensure proxy name is unique among this sync pass + existing rows when
 		// the same gateway name is reused for a different host:port (legacy bug).
 		spec.Name = ensureUniqueWarpProxyName(spec.Name, key, byName, byKey)
-		keepNames[spec.Name] = struct{}{}
-		keepKeys[key] = struct{}{}
+		keepExternalIDs[spec.ExternalID] = struct{}{}
 		var p *Proxy
-		if existing, ok := byKey[key]; ok {
-			// Same SOCKS endpoint: update status/name in place.
-			needUpdate := existing.Name != spec.Name || existing.Protocol != spec.Protocol || existing.Status != spec.Status
+		if exists {
+			needUpdate := existing.Name != spec.Name || existing.Protocol != spec.Protocol ||
+				existing.Host != spec.Host || existing.Port != spec.Port ||
+				existing.Username != spec.Username || existing.Password != spec.Password ||
+				existing.Status != spec.Status || existing.ManagedBy != warpProxyManagedBy ||
+				existing.ExternalID != spec.ExternalID
 			if needUpdate {
-				if existing.Name != spec.Name {
-					delete(byName, existing.Name)
-				}
 				existing.Name = spec.Name
 				existing.Protocol = spec.Protocol
+				existing.Host = spec.Host
+				existing.Port = spec.Port
+				existing.Username = spec.Username
+				existing.Password = spec.Password
 				existing.Status = spec.Status
+				existing.ManagedBy = warpProxyManagedBy
+				existing.ExternalID = spec.ExternalID
 				if err := s.proxyRepo.Update(ctx, &existing); err != nil {
 					return nil, fmt.Errorf("update proxy %s: %w", spec.Name, err)
 				}
@@ -704,29 +732,20 @@ func (s *WarpSyncService) syncFromGatewayLocked(ctx context.Context, groupName s
 			}
 			p = &existing
 			byName[spec.Name] = existing
-		} else if existing, ok := byName[spec.Name]; ok &&
-			proxyHostPortKey(existing.Host, existing.Port) == key {
-			// Same name + same endpoint (defensive; byKey should have hit).
-			existing.Protocol = spec.Protocol
-			existing.Status = spec.Status
-			if err := s.proxyRepo.Update(ctx, &existing); err != nil {
-				return nil, fmt.Errorf("update proxy by name %s: %w", spec.Name, err)
-			}
-			result.UpdatedProxies = append(result.UpdatedProxies, existing)
-			p = &existing
-			byKey[key] = existing
 		} else {
-			// New endpoint. Never hijack an existing proxy that only shares the name
-			// (that was the multi-add bug: second batch overwrote first batch rows).
+			// A matching endpoint/name is not ownership proof. Always create a
+			// controller-owned row for a previously unseen gateway instance.
 			created, err := s.proxyRepoCreate(ctx, spec)
 			if err != nil {
 				return nil, err
 			}
 			result.CreatedProxies = append(result.CreatedProxies, *created)
 			p = created
-			byKey[key] = *created
-			byName[spec.Name] = *created
 		}
+		byKey[key] = *p
+		byName[p.Name] = *p
+		byExternalID[spec.ExternalID] = *p
+		delete(index.legacyByKey, key)
 
 		// Healthy/running members stay in group; unhealthy optionally excluded.
 		include := p.Status == StatusActive
@@ -743,24 +762,17 @@ func (s *WarpSyncService) syncFromGatewayLocked(ctx context.Context, groupName s
 		}
 	}
 
-	// Prune orphan warp-* proxies no longer present on gateway.
+	// Prune only rows carrying explicit WARP controller ownership.
 	// Soft-delete leaves accounts.proxy_id dangling unless we unbind first;
 	// also skip (with alert) when count fails rather than deleting blind.
 	// Drastic-drop rounds skip prune while still upserting present specs.
 	if allowOrphanPrune {
-		for name, p := range byName {
-			if !strings.HasPrefix(name, "warp-") {
-				continue
-			}
-			key := proxyHostPortKey(p.Host, p.Port)
-			if _, ok := keepNames[name]; ok {
-				continue
-			}
-			if _, ok := keepKeys[key]; ok {
+		for externalID, p := range byExternalID {
+			if _, ok := keepExternalIDs[externalID]; ok {
 				continue
 			}
 			if err := s.deleteOrphanWarpProxy(ctx, p, result); err != nil {
-				s.log.Warn("delete orphan warp proxy failed", "name", name, "id", p.ID, "err", err)
+				s.log.Warn("delete orphan warp proxy failed", "name", p.Name, "id", p.ID, "err", err)
 				continue
 			}
 		}
@@ -829,7 +841,7 @@ func (s *WarpSyncService) mergeNonWarpGroupMembers(ctx context.Context, groupID 
 	}
 	for i := range existing {
 		p := existing[i]
-		if strings.HasPrefix(p.Name, "warp-") {
+		if p.ManagedBy == warpProxyManagedBy {
 			continue
 		}
 		if _, ok := seen[p.ID]; ok {
@@ -846,6 +858,21 @@ func (s *WarpSyncService) mergeNonWarpGroupMembers(ctx context.Context, groupID 
 // than skipped so sticky accounts do not keep a dead SOCKS endpoint forever.
 func (s *WarpSyncService) deleteOrphanWarpProxy(ctx context.Context, p Proxy, result *WarpSyncResult) error {
 	if s.proxyRepo == nil || result == nil {
+		return nil
+	}
+	if atomicRepo, ok := s.proxyRepo.(interface {
+		DeleteWithAccountBindings(context.Context, int64) (int64, error)
+	}); ok {
+		unbound, err := atomicRepo.DeleteWithAccountBindings(ctx, p.ID)
+		if err != nil {
+			return err
+		}
+		if unbound > 0 {
+			msg := fmt.Sprintf("orphan warp proxy %s (id=%d): unbound %d account(s) before delete", p.Name, p.ID, unbound)
+			result.Alerts = append(result.Alerts, msg)
+			s.log.Warn(msg)
+		}
+		result.DeletedProxies = append(result.DeletedProxies, p)
 		return nil
 	}
 	count, err := s.proxyRepo.CountAccountsByProxyID(ctx, p.ID)
@@ -879,11 +906,15 @@ func (s *WarpSyncService) deleteOrphanWarpProxy(ctx context.Context, p Proxy, re
 
 func (s *WarpSyncService) proxyRepoCreate(ctx context.Context, spec WarpProxySpec) (*Proxy, error) {
 	p := &Proxy{
-		Name:     spec.Name,
-		Protocol: spec.Protocol,
-		Host:     spec.Host,
-		Port:     spec.Port,
-		Status:   spec.Status,
+		Name:       spec.Name,
+		Protocol:   spec.Protocol,
+		Host:       spec.Host,
+		Port:       spec.Port,
+		Username:   spec.Username,
+		Password:   spec.Password,
+		Status:     spec.Status,
+		ManagedBy:  warpProxyManagedBy,
+		ExternalID: spec.ExternalID,
 	}
 	if p.Status == "" {
 		p.Status = StatusActive
@@ -947,34 +978,89 @@ func (s *WarpSyncService) ensureGroup(ctx context.Context, name string) (*ProxyG
 	return &created.ProxyGroup, nil
 }
 
-func (s *WarpSyncService) indexProxies(ctx context.Context) (byKey map[string]Proxy, byName map[string]Proxy, err error) {
-	byKey = make(map[string]Proxy)
-	byName = make(map[string]Proxy)
+type warpProxyIndex struct {
+	byKey        map[string]Proxy
+	byName       map[string]Proxy
+	byExternalID map[string]Proxy
+	legacyByKey  map[string]Proxy
+	managedCount int
+}
 
-	// Page through all warp-* matches (PageSize hard-capped at 1000).
+type warpManagedProxyLister interface {
+	ListByManagedBy(context.Context, string) ([]Proxy, error)
+}
+
+func (s *WarpSyncService) indexProxies(ctx context.Context) (warpProxyIndex, error) {
+	index := warpProxyIndex{
+		byKey: make(map[string]Proxy), byName: make(map[string]Proxy),
+		byExternalID: make(map[string]Proxy), legacyByKey: make(map[string]Proxy),
+	}
+	seenManaged := make(map[int64]struct{})
+	add := func(p Proxy) {
+		index.byKey[proxyHostPortKey(p.Host, p.Port)] = p
+		index.byName[p.Name] = p
+		if p.ManagedBy != warpProxyManagedBy {
+			return
+		}
+		if _, seen := seenManaged[p.ID]; !seen {
+			seenManaged[p.ID] = struct{}{}
+			index.managedCount++
+		}
+		if p.ExternalID != "" {
+			index.byExternalID[p.ExternalID] = p
+			return
+		}
+		index.legacyByKey[proxyHostPortKey(p.Host, p.Port)] = p
+	}
+
+	// Production repositories expose an ownership query. One active scan remains
+	// for display-name/endpoint collision avoidance; inactive owned rows come from
+	// the targeted query instead of repeated full-table COUNT + pagination.
+	if lister, ok := s.proxyRepo.(warpManagedProxyLister); ok {
+		owned, err := lister.ListByManagedBy(ctx, warpProxyManagedBy)
+		if err != nil {
+			return warpProxyIndex{}, err
+		}
+		for _, p := range owned {
+			add(p)
+		}
+		active, err := s.proxyRepo.ListActive(ctx)
+		if err != nil {
+			return warpProxyIndex{}, err
+		}
+		for _, p := range active {
+			if p.ManagedBy == warpProxyManagedBy {
+				continue
+			}
+			index.byKey[proxyHostPortKey(p.Host, p.Port)] = p
+			index.byName[p.Name] = p
+		}
+		return index, nil
+	}
+
+	// Page through all rows so owned proxies remain discoverable even if an
+	// operator renamed or disabled one between reconciliation rounds.
 	const pageSize = 1000
 	for page := 1; page <= 100; page++ {
 		list, pageResult, listErr := s.proxyRepo.ListWithFilters(ctx, pagination.PaginationParams{
 			Page: page, PageSize: pageSize, SortBy: "id", SortOrder: "asc",
-		}, "", "", "warp-")
+		}, "", "", "")
 		if listErr != nil {
 			if page == 1 {
 				// fallback ListActive only on first-page failure
 				active, aerr := s.proxyRepo.ListActive(ctx)
 				if aerr != nil {
-					return nil, nil, aerr
+					return warpProxyIndex{}, aerr
 				}
 				for _, p := range active {
-					byKey[proxyHostPortKey(p.Host, p.Port)] = p
-					byName[p.Name] = p
+					add(p)
 				}
-				return byKey, byName, nil
+				return index, nil
 			}
-			return nil, nil, listErr
+			return warpProxyIndex{}, listErr
 		}
 		for _, p := range list {
-			byKey[proxyHostPortKey(p.Host, p.Port)] = p
-			byName[p.Name] = p
+			add(p)
 		}
 		if len(list) < pageSize {
 			break
@@ -983,15 +1069,7 @@ func (s *WarpSyncService) indexProxies(ctx context.Context) (byKey map[string]Pr
 			break
 		}
 	}
-	// Also index all active (catches non-warp and any filter misses).
-	active, aerr := s.proxyRepo.ListActive(ctx)
-	if aerr == nil {
-		for _, p := range active {
-			byKey[proxyHostPortKey(p.Host, p.Port)] = p
-			byName[p.Name] = p
-		}
-	}
-	return byKey, byName, nil
+	return index, nil
 }
 
 func proxyHostPortKey(host string, port int) string {

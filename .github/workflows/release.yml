@@ -117,21 +117,43 @@ jobs:
         with:
           go-version-file: backend/go.mod
           check-latest: false
-          cache-dependency-path: backend/go.sum
+          cache-dependency-path: |
+            backend/go.sum
+            tools/warp-gateway/go.sum
 
       - name: Verify Go version
         run: |
           go version | grep -q 'go1.27.0'
 
+      - name: Validate release mode
+        if: ${{ env.SIMPLE_RELEASE == 'true' && env.SKIP_DOCKER == 'true' }}
+        run: |
+          echo "simple_release and skip_docker are mutually exclusive" >&2
+          exit 1
+
+      - name: Check full GoReleaser configuration
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: '~> v2'
+          args: check --config=.goreleaser.yaml
+
+      - name: Check simple GoReleaser configuration
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: '~> v2'
+          args: check --config=.goreleaser.simple.yaml
+
       # Docker setup for GoReleaser
       - name: Set up QEMU
+        if: ${{ env.SKIP_DOCKER != 'true' }}
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
+        if: ${{ env.SKIP_DOCKER != 'true' }}
         uses: docker/setup-buildx-action@v3
 
       - name: Login to DockerHub
-        if: ${{ env.DOCKERHUB_USERNAME != '' }}
+        if: ${{ env.SKIP_DOCKER != 'true' && env.DOCKERHUB_USERNAME != '' }}
         uses: docker/login-action@v3
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -140,6 +162,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Login to GitHub Container Registry
+        if: ${{ env.SKIP_DOCKER != 'true' }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -175,6 +198,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Set lowercase owner for GHCR
+        if: ${{ env.SKIP_DOCKER != 'true' }}
         id: lowercase
         run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
@@ -192,13 +216,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_MESSAGE: ${{ steps.tag_message.outputs.message }}
           GITHUB_REPO_OWNER: ${{ github.repository_owner }}
-          GITHUB_REPO_OWNER_LOWER: ${{ steps.lowercase.outputs.owner }}
+          GITHUB_REPO_OWNER_LOWER: ${{ env.SKIP_DOCKER != 'true' && steps.lowercase.outputs.owner || 'skipped' }}
           GITHUB_REPO_NAME: ${{ github.event.repository.name }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME || 'skip' }}
+          SKIP_DOCKER: ${{ env.SKIP_DOCKER }}
 
       # Update DockerHub description
       - name: Update DockerHub description
-        if: ${{ env.SIMPLE_RELEASE != 'true' && env.DOCKERHUB_USERNAME != '' }}
+        if: ${{ env.SKIP_DOCKER != 'true' && env.SIMPLE_RELEASE != 'true' && env.DOCKERHUB_USERNAME != '' }}
         uses: peter-evans/dockerhub-description@v5
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -251,23 +276,28 @@ jobs:
             MESSAGE+="${TAG_MESSAGE}"$'\n'$'\n'
           fi
 
-          MESSAGE+="🐳 *Docker 部署:*"$'\n'
-          MESSAGE+="\`\`\`bash"$'\n'
-          # 根据是否配置 DockerHub 动态生成
-          if [ -n "$DOCKERHUB_USERNAME" ]; then
-            DOCKER_IMAGE="${DOCKERHUB_USERNAME}/sub2api"
-            MESSAGE+="# Docker Hub"$'\n'
-            MESSAGE+="docker pull ${DOCKER_IMAGE}:${VERSION}"$'\n'
-            MESSAGE+="# GitHub Container Registry"$'\n'
+          if [ "$SKIP_DOCKER" != "true" ]; then
+            MESSAGE+="🐳 *Docker 部署:*"$'\n'
+            MESSAGE+="\`\`\`bash"$'\n'
+            # 根据是否配置 DockerHub 动态生成
+            if [ -n "$DOCKERHUB_USERNAME" ]; then
+              DOCKER_IMAGE="${DOCKERHUB_USERNAME}/sub2api"
+              MESSAGE+="# Docker Hub"$'\n'
+              MESSAGE+="docker pull ${DOCKER_IMAGE}:${VERSION}"$'\n'
+              MESSAGE+="# GitHub Container Registry"$'\n'
+            fi
+            MESSAGE+="docker pull ${GHCR_IMAGE}:${VERSION}"$'\n'
+            MESSAGE+="\`\`\`"$'\n'$'\n'
           fi
-          MESSAGE+="docker pull ${GHCR_IMAGE}:${VERSION}"$'\n'
-          MESSAGE+="\`\`\`"$'\n'$'\n'
           MESSAGE+="🔗 *相关链接:*"$'\n'
           MESSAGE+="• [GitHub Release](https://github.com/${REPO}/releases/tag/${TAG_NAME})"$'\n'
-          if [ -n "$DOCKERHUB_USERNAME" ]; then
+          if [ "$SKIP_DOCKER" != "true" ] && [ -n "$DOCKERHUB_USERNAME" ]; then
             MESSAGE+="• [Docker Hub](https://hub.docker.com/r/${DOCKER_IMAGE})"$'\n'
           fi
-          MESSAGE+="• [GitHub Packages](https://github.com/${REPO}/pkgs/container/sub2api)"$'\n'$'\n'
+          if [ "$SKIP_DOCKER" != "true" ]; then
+            MESSAGE+="• [GitHub Packages](https://github.com/${REPO}/pkgs/container/sub2api)"$'\n'
+          fi
+          MESSAGE+=$'\n'
           MESSAGE+="#Sub2API #Release #${TAG_NAME//./_}"
 
           # 发送消息

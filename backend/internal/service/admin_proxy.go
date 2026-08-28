@@ -15,12 +15,16 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/util/httputil"
 )
 
-// warpManagedProxyNamePrefix marks proxies owned by warp-gateway sync.
-// Admin free create/mutate/delete of these rows races orphan prune and pool routing.
+// warpManagedProxyNamePrefix is reserved for WARP-created display names. Actual
+// ownership is persisted in Proxy.ManagedBy and must never be inferred by name.
 const warpManagedProxyNamePrefix = "warp-"
 
 func isWarpManagedProxyName(name string) bool {
 	return strings.HasPrefix(strings.TrimSpace(name), warpManagedProxyNamePrefix)
+}
+
+func isWarpManagedProxy(proxy *Proxy) bool {
+	return proxy != nil && proxy.ManagedBy == warpProxyManagedBy
 }
 
 // errProxyWarpManaged is returned when admin APIs try to freely mutate warp-* inventory.
@@ -134,7 +138,7 @@ func (s *adminServiceImpl) UpdateProxy(ctx context.Context, id int64, input *Upd
 	// W1: warp-* inventory identity is managed by WARP sync. Allow status/expiry
 	// (and soft operational fields) only; block name/host/port/protocol/auth changes
 	// and renames onto the warp-* prefix.
-	if isWarpManagedProxyName(proxy.Name) {
+	if isWarpManagedProxy(proxy) {
 		if input.Name != "" && input.Name != proxy.Name {
 			return nil, errProxyWarpManaged("rename")
 		}
@@ -255,7 +259,7 @@ func (s *adminServiceImpl) DeleteProxy(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	if isWarpManagedProxyName(existing.Name) {
+	if isWarpManagedProxy(existing) {
 		return errProxyWarpManaged("delete")
 	}
 	count, err := s.proxyRepo.CountAccountsByProxyID(ctx, id)
@@ -293,7 +297,7 @@ func (s *adminServiceImpl) BatchDeleteProxies(ctx context.Context, ids []int64) 
 			continue
 		}
 		// W1: warp-* rows are not freely batch-deletable.
-		if isWarpManagedProxyName(existing.Name) {
+		if isWarpManagedProxy(existing) {
 			result.Skipped = append(result.Skipped, ProxyBatchDeleteSkipped{
 				ID:     id,
 				Reason: errProxyWarpManaged("delete").Error(),

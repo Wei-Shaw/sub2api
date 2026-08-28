@@ -160,8 +160,12 @@ func TestProxyHealthUpdateConfigPersistsAndApplies(t *testing.T) {
 	if !out.Enabled || out.IntervalSec != 30 || out.ProbeScope != "all_active" {
 		t.Fatalf("unexpected out: %+v", out)
 	}
-	if !cfg.ProxyHealth.Enabled || cfg.ProxyHealth.IntervalSec != 30 {
-		t.Fatalf("cfg not applied: %+v", cfg.ProxyHealth)
+	if cfg.ProxyHealth.Enabled || cfg.ProxyHealth.IntervalSec != 60 {
+		t.Fatalf("YAML baseline must remain immutable: %+v", cfg.ProxyHealth)
+	}
+	applied := svc.conf()
+	if !applied.Enabled || applied.IntervalSec != 30 || applied.ProbeScope != "all_active" {
+		t.Fatalf("runtime settings not applied: %+v", applied)
 	}
 	raw, _ := repo.GetValue(context.Background(), SettingKeyProxyHealthSettings)
 	if raw == "" {
@@ -184,6 +188,29 @@ func TestProxyHealthUpdateConfigPersistsAndApplies(t *testing.T) {
 	}
 }
 
+func TestProxyHealthEffectiveSettingsRefreshesAcrossInstances(t *testing.T) {
+	repo := &memSettingRepo{values: map[string]string{}}
+	writerCfg := &config.Config{}
+	writerCfg.ProxyHealth = config.ProxyHealthConfig{Enabled: true, IntervalSec: 60, TimeoutMS: 8000, Concurrency: 4, ProbeScope: "all_active", ProbeMode: "connectivity"}
+	readerCfg := &config.Config{}
+	readerCfg.ProxyHealth = writerCfg.ProxyHealth
+	writer := NewProxyHealthService(writerCfg, nil, nil, nil, nil, nil, nil, nil, repo)
+	reader := NewProxyHealthService(readerCfg, nil, nil, nil, nil, nil, nil, nil, repo)
+
+	next := &ProxyHealthSettings{
+		Enabled: true, IntervalSec: 25, TimeoutMS: 5000, Concurrency: 2,
+		FailThreshold: 4, SuccessThreshold: 2, ProbeScope: "all_active",
+		AutoRecover: true, LeaderLockTTLSec: 40, BatchSize: 20, ProbeMode: "connectivity",
+	}
+	if _, err := writer.UpdateConfig(context.Background(), next); err != nil {
+		t.Fatal(err)
+	}
+	got := reader.effectiveSettings(context.Background())
+	if got.IntervalSec != 25 || reader.conf().IntervalSec != 25 {
+		t.Fatalf("reader retained stale process settings: effective=%+v runtime=%+v", got, reader.conf())
+	}
+}
+
 func TestProxyHealthWorkerApplyStartStop(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.ProxyHealth.Enabled = false
@@ -193,14 +220,30 @@ func TestProxyHealthWorkerApplyStartStop(t *testing.T) {
 	if w.Running() {
 		t.Fatal("should not run when disabled")
 	}
-	cfg.ProxyHealth.Enabled = true
+	w.mu.Lock()
+	observerRunning := w.on
+	w.mu.Unlock()
+	if !observerRunning {
+		t.Fatal("disabled worker must retain its settings observer loop")
+	}
+	next := DefaultProxyHealthSettingsFromYAML(cfg)
+	next.Enabled = true
+	svc.applySettings(next)
 	w.Apply()
 	if !w.Running() {
 		t.Fatal("should run after enable")
 	}
-	cfg.ProxyHealth.Enabled = false
+	next.Enabled = false
+	svc.applySettings(next)
 	w.Apply()
 	if w.Running() {
 		t.Fatal("should stop after disable")
 	}
+	w.mu.Lock()
+	observerRunning = w.on
+	w.mu.Unlock()
+	if !observerRunning {
+		t.Fatal("disabled worker must remain able to observe a remote enable")
+	}
+	w.Stop()
 }

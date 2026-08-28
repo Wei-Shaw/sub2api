@@ -202,6 +202,34 @@ func (_c *ProxyCreate) SetNillableGroupID(v *int64) *ProxyCreate {
 	return _c
 }
 
+// SetManagedBy sets the "managed_by" field.
+func (_c *ProxyCreate) SetManagedBy(v string) *ProxyCreate {
+	_c.mutation.SetManagedBy(v)
+	return _c
+}
+
+// SetNillableManagedBy sets the "managed_by" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillableManagedBy(v *string) *ProxyCreate {
+	if v != nil {
+		_c.SetManagedBy(*v)
+	}
+	return _c
+}
+
+// SetExternalID sets the "external_id" field.
+func (_c *ProxyCreate) SetExternalID(v string) *ProxyCreate {
+	_c.mutation.SetExternalID(v)
+	return _c
+}
+
+// SetNillableExternalID sets the "external_id" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillableExternalID(v *string) *ProxyCreate {
+	if v != nil {
+		_c.SetExternalID(*v)
+	}
+	return _c
+}
+
 // AddAccountIDs adds the "accounts" edge to the Account entity by IDs.
 func (_c *ProxyCreate) AddAccountIDs(ids ...int64) *ProxyCreate {
 	_c.mutation.AddAccountIDs(ids...)
@@ -357,6 +385,16 @@ func (_c *ProxyCreate) check() error {
 	if _, ok := _c.mutation.ExpiryWarnDays(); !ok {
 		return &ValidationError{Name: "expiry_warn_days", err: errors.New(`ent: missing required field "Proxy.expiry_warn_days"`)}
 	}
+	if v, ok := _c.mutation.ManagedBy(); ok {
+		if err := proxy.ManagedByValidator(v); err != nil {
+			return &ValidationError{Name: "managed_by", err: fmt.Errorf(`ent: validator failed for field "Proxy.managed_by": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.ExternalID(); ok {
+		if err := proxy.ExternalIDValidator(v); err != nil {
+			return &ValidationError{Name: "external_id", err: fmt.Errorf(`ent: validator failed for field "Proxy.external_id": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -435,6 +473,14 @@ func (_c *ProxyCreate) createSpec() (*Proxy, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ExpiryWarnDays(); ok {
 		_spec.SetField(proxy.FieldExpiryWarnDays, field.TypeInt, value)
 		_node.ExpiryWarnDays = value
+	}
+	if value, ok := _c.mutation.ManagedBy(); ok {
+		_spec.SetField(proxy.FieldManagedBy, field.TypeString, value)
+		_node.ManagedBy = &value
+	}
+	if value, ok := _c.mutation.ExternalID(); ok {
+		_spec.SetField(proxy.FieldExternalID, field.TypeString, value)
+		_node.ExternalID = &value
 	}
 	if nodes := _c.mutation.AccountsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -754,6 +800,42 @@ func (u *ProxyUpsert) ClearGroupID() *ProxyUpsert {
 	return u
 }
 
+// SetManagedBy sets the "managed_by" field.
+func (u *ProxyUpsert) SetManagedBy(v string) *ProxyUpsert {
+	u.Set(proxy.FieldManagedBy, v)
+	return u
+}
+
+// UpdateManagedBy sets the "managed_by" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdateManagedBy() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldManagedBy)
+	return u
+}
+
+// ClearManagedBy clears the value of the "managed_by" field.
+func (u *ProxyUpsert) ClearManagedBy() *ProxyUpsert {
+	u.SetNull(proxy.FieldManagedBy)
+	return u
+}
+
+// SetExternalID sets the "external_id" field.
+func (u *ProxyUpsert) SetExternalID(v string) *ProxyUpsert {
+	u.Set(proxy.FieldExternalID, v)
+	return u
+}
+
+// UpdateExternalID sets the "external_id" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdateExternalID() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldExternalID)
+	return u
+}
+
+// ClearExternalID clears the value of the "external_id" field.
+func (u *ProxyUpsert) ClearExternalID() *ProxyUpsert {
+	u.SetNull(proxy.FieldExternalID)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -1048,6 +1130,48 @@ func (u *ProxyUpsertOne) UpdateGroupID() *ProxyUpsertOne {
 func (u *ProxyUpsertOne) ClearGroupID() *ProxyUpsertOne {
 	return u.Update(func(s *ProxyUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetManagedBy sets the "managed_by" field.
+func (u *ProxyUpsertOne) SetManagedBy(v string) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetManagedBy(v)
+	})
+}
+
+// UpdateManagedBy sets the "managed_by" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdateManagedBy() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateManagedBy()
+	})
+}
+
+// ClearManagedBy clears the value of the "managed_by" field.
+func (u *ProxyUpsertOne) ClearManagedBy() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearManagedBy()
+	})
+}
+
+// SetExternalID sets the "external_id" field.
+func (u *ProxyUpsertOne) SetExternalID(v string) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetExternalID(v)
+	})
+}
+
+// UpdateExternalID sets the "external_id" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdateExternalID() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateExternalID()
+	})
+}
+
+// ClearExternalID clears the value of the "external_id" field.
+func (u *ProxyUpsertOne) ClearExternalID() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearExternalID()
 	})
 }
 
@@ -1511,6 +1635,48 @@ func (u *ProxyUpsertBulk) UpdateGroupID() *ProxyUpsertBulk {
 func (u *ProxyUpsertBulk) ClearGroupID() *ProxyUpsertBulk {
 	return u.Update(func(s *ProxyUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetManagedBy sets the "managed_by" field.
+func (u *ProxyUpsertBulk) SetManagedBy(v string) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetManagedBy(v)
+	})
+}
+
+// UpdateManagedBy sets the "managed_by" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdateManagedBy() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateManagedBy()
+	})
+}
+
+// ClearManagedBy clears the value of the "managed_by" field.
+func (u *ProxyUpsertBulk) ClearManagedBy() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearManagedBy()
+	})
+}
+
+// SetExternalID sets the "external_id" field.
+func (u *ProxyUpsertBulk) SetExternalID(v string) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetExternalID(v)
+	})
+}
+
+// UpdateExternalID sets the "external_id" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdateExternalID() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateExternalID()
+	})
+}
+
+// ClearExternalID clears the value of the "external_id" field.
+func (u *ProxyUpsertBulk) ClearExternalID() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearExternalID()
 	})
 }
 

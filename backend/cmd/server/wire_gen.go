@@ -297,7 +297,10 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	riskActionPolicy := service.ProvideRiskActionPolicy(connectionSignalCache, apiKeyService, userRepository)
 	connectionRiskService := service.NewConnectionRiskService(settingService, connectionRiskEventRepository, connectionSignalCache, connectionSignalEmitter, riskActionPolicy, configConfig)
 	connectionRiskHandler := admin.NewConnectionRiskHandler(connectionRiskService)
-	warpGatewayClient := service.ProvideWarpGatewayClient(configConfig)
+	warpGatewayClient, err := service.ProvideWarpGatewayClient(configConfig)
+	if err != nil {
+		return nil, err
+	}
 	warpSyncService := service.NewWarpSyncService(configConfig, warpGatewayClient, proxyRepository, proxyGroupService, accountRepository)
 	warpHandler := admin.NewWarpHandler(warpSyncService)
 	upstreamBillingProbeService := service.ProvideUpstreamBillingProbeService(accountRepository, accountTestService, settingService, leaderLockCache, db)
