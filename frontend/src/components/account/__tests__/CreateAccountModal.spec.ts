@@ -160,9 +160,10 @@ async function submitApiKeyAccount(
   await selectButtonByText(wrapper, platform === 'openai' ? 'OpenAI' : 'admin.accounts.claudeConsole')
   if (platform === 'openai') {
     await selectButtonByText(wrapper, 'API Key')
+    ;(wrapper.vm as any).openAIResponsesMode = 'force_responses'
   }
   await wrapper.get('form#create-account-form input[type="text"]').setValue(`${platform} account`)
-  await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+  await wrapper.get('form#create-account-form textarea[required]').setValue('test-api-key')
   if (enableLongContextBilling) {
     await wrapper.get('[data-testid="openai-long-context-billing-toggle"]').trigger('click')
   }
@@ -287,7 +288,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'Kimi')
     await wrapper.get('form#create-account-form input[type="text"]').setValue('Kimi adaptive')
-    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-kimi')
+    await wrapper.get('form#create-account-form textarea[required]').setValue('sk-kimi')
 
     await wrapper.get('form#create-account-form').trigger('submit.prevent')
     await flushPromises()
@@ -310,7 +311,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await wrapper
       .get('[data-testid="cn-adaptive-base-url-chat_completions"]')
       .setValue('https://relay.example.com/v1')
-    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-relay')
+    await wrapper.get('form#create-account-form textarea[required]').setValue('sk-relay')
 
     expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('syncCredentials')).toMatchObject({
       platform: 'kimi',
