@@ -69,6 +69,42 @@ func TestRateLimitService_HandleUpstreamError_ModelNotFoundUsesModelRateLimit(t 
 	require.WithinDuration(t, time.Now().Add(upstreamModelNotFoundCooldown), call.resetAt, 5*time.Second)
 }
 
+func TestRateLimitService_HandleUpstreamModelNotFound_OpenAI400UsesModelRateLimit(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{}
+	svc := &RateLimitService{accountRepo: repo}
+	account := openAIModelNotFoundTempAccount()
+
+	handled := svc.HandleUpstreamModelNotFound(
+		context.Background(),
+		account,
+		"gpt-5.6-luna",
+		http.StatusBadRequest,
+		[]byte(`{"error":{"code":"model_not_found","message":"Model gpt-5.6-luna not found"}}`),
+	)
+
+	require.True(t, handled)
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, upstreamModelNotFoundReason, repo.modelRateLimitCalls[0].reason)
+}
+
+func TestRateLimitService_HandleUpstreamModelNotFound_NonOpenAI400IsIgnored(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{}
+	svc := &RateLimitService{accountRepo: repo}
+	account := openAIModelNotFoundTempAccount()
+	account.Platform = PlatformAnthropic
+
+	handled := svc.HandleUpstreamModelNotFound(
+		context.Background(),
+		account,
+		"claude-opus-4-8",
+		http.StatusBadRequest,
+		[]byte(`{"error":{"code":"model_not_found","message":"Model claude-opus-4-8 not found"}}`),
+	)
+
+	require.False(t, handled)
+	require.Empty(t, repo.modelRateLimitCalls)
+}
+
 func TestRateLimitService_HandleUpstreamError_ModelNotFoundWriteFailureDoesNotTempUnschedule(t *testing.T) {
 	repo := &modelNotFoundAccountRepoStub{modelRateLimitErr: errors.New("write failed")}
 	svc := &RateLimitService{accountRepo: repo}

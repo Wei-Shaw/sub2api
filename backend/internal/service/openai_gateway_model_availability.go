@@ -53,7 +53,17 @@ func (s *OpenAIGatewayService) DiagnoseModelAvailabilityForPlatform(
 		return ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}
 	}
 
+	return diagnoseOpenAIModelAvailability(ctx, accounts, requestedModel)
+}
+
+func diagnoseOpenAIModelAvailability(
+	ctx context.Context,
+	accounts []Account,
+	requestedModel string,
+) ModelAvailabilityDiagnosis {
 	diag := ModelAvailabilityDiagnosis{}
+	supportingAccounts := 0
+	modelNotFoundLimitedAccounts := 0
 	for i := range accounts {
 		diag.HasAccountsInPool = true
 		// Mirrors the per-candidate filter used during account selection
@@ -62,8 +72,12 @@ func (s *OpenAIGatewayService) DiagnoseModelAvailabilityForPlatform(
 		// mapping must match.
 		if accounts[i].IsModelSupported(requestedModel) {
 			diag.HasModelSupport = true
-			return diag
+			supportingAccounts++
+			if accounts[i].isModelRateLimitedForReason(ctx, requestedModel, upstreamModelNotFoundReason) {
+				modelNotFoundLimitedAccounts++
+			}
 		}
 	}
+	diag.AllSupportingAccountsModelNotFoundLimited = supportingAccounts > 0 && supportingAccounts == modelNotFoundLimitedAccounts
 	return diag
 }
