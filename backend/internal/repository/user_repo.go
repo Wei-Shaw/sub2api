@@ -209,6 +209,17 @@ func (r *userRepository) GetByIDIncludeDeleted(ctx context.Context, id int64) (*
 	return out, nil
 }
 
+func (r *userRepository) ListUserIsolationCandidateIDs(ctx context.Context, afterID int64, limit int) ([]int64, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 1000
+	}
+	return r.client.User.Query().
+		Where(dbuser.IDGT(afterID)).
+		Order(dbent.Asc(dbuser.FieldID)).
+		Limit(limit).
+		IDs(ctx)
+}
+
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service.User, error) {
 	matches, err := r.client.User.Query().
 		Where(userEmailLookupPredicate(email)).

@@ -532,6 +532,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import { formatMultiplier } from '@/utils/formatters'
+import { getUserIsolationCapability } from '@/utils/userIsolation'
 import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
@@ -548,6 +549,8 @@ type AccountBulkEditTarget =
       accountIds: number[]
       selectedPlatforms: AccountPlatform[]
       selectedTypes: AccountType[]
+      userIsolationHasRisk?: boolean
+      userIsolationIsExperimental?: boolean
     }
   | {
       mode: 'filtered'
@@ -564,6 +567,8 @@ type AccountBulkEditTarget =
       previewCount: number
       selectedPlatforms: AccountPlatform[]
       selectedTypes: AccountType[]
+      userIsolationHasRisk?: boolean
+      userIsolationIsExperimental?: boolean
     }
 const selPlatforms = computed<AccountPlatform[]>(() => {
   const platforms = new Set(
@@ -2018,15 +2023,29 @@ const handleSelectAllResults = async () => {
 const collectSelectionMetadata = (rows: Account[]) => {
   const selectedPlatforms = Array.from(new Set(rows.map(account => account.platform)))
   const selectedTypes = Array.from(new Set(rows.map(account => account.type)))
-  return { selectedPlatforms, selectedTypes }
+  const capabilities = rows.map(account => {
+    const accountMode = typeof account.credentials?.account_mode === 'string'
+      ? account.credentials.account_mode
+      : undefined
+    const apiProtocol = typeof account.credentials?.api_protocol === 'string'
+      ? account.credentials.api_protocol
+      : undefined
+    return getUserIsolationCapability(account.platform, account.type, accountMode, apiProtocol)
+  })
+  return {
+    selectedPlatforms,
+    selectedTypes,
+    userIsolationHasRisk: capabilities.some(capability => capability.risk !== null),
+    userIsolationIsExperimental: capabilities.some(capability => capability.experimental)
+  }
 }
 
 const openBulkEditSelected = () => {
+  const metadata = collectSelectionMetadata(accounts.value.filter(account => isSelected(account.id)))
   bulkEditTarget.value = {
     mode: 'selected',
     accountIds: [...selIds.value],
-    selectedPlatforms: [...selPlatforms.value],
-    selectedTypes: [...selTypes.value]
+    ...metadata
   }
   showBulkEdit.value = true
 }
@@ -2034,13 +2053,12 @@ const openBulkEditSelected = () => {
 const openBulkEditFiltered = async () => {
   const filters = buildBulkEditFilterSnapshot()
   const preview = await adminAPI.accounts.list(1, 100, filters)
-  const { selectedPlatforms, selectedTypes } = collectSelectionMetadata(preview.items)
+  const metadata = collectSelectionMetadata(preview.items)
   bulkEditTarget.value = {
     mode: 'filtered',
     filters,
     previewCount: preview.total,
-    selectedPlatforms,
-    selectedTypes
+    ...metadata
   }
   showBulkEdit.value = true
 }

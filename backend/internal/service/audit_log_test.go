@@ -76,6 +76,18 @@ func TestRedactAuditBody_BareSessionKeyRedacted(t *testing.T) {
 	}
 }
 
+func TestRedactAuditBody_UserIsolationIDRedacted(t *testing.T) {
+	raw := []byte(`{"account_id":7,"isolation_id":"u1_audit-canary"}`)
+	out := RedactAuditBody(raw, "application/json")
+
+	if strings.Contains(out, "audit-canary") {
+		t.Fatalf("redacted body still contains the user isolation ID: %s", out)
+	}
+	if !strings.Contains(out, `"account_id":7`) {
+		t.Fatalf("account_id should be preserved for accountability: %s", out)
+	}
+}
+
 // TestRedactAuditBody_AuthoritativeTablesSynced 覆盖曾经漏网的凭证字段：
 // 账号 credentials 敏感子键、支付渠道无分隔符密钥、字符串值内嵌凭证的 proxy_key / custom_key，
 // 以及 camelCase 等命名变体（归一化比对）。

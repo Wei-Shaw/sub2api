@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
 const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
@@ -326,6 +326,51 @@ function mountModal(account = buildAccount()) {
 describe('EditAccountModal', () => {
   beforeEach(() => {
     authIsSimpleMode.value = true
+  })
+
+  it('updates user isolation without dropping existing extra fields', async () => {
+    const account = buildAccount()
+    account.extra = { quota_limit: 25 }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+
+    await wrapper.get('[data-testid="edit-user-isolation-toggle"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      quota_limit: 25,
+      user_isolation_enabled: true
+    })
+  })
+
+  it('opens OAuth user isolation with a risk warning', async () => {
+    const wrapper = mountModal(buildGrokOAuthAccount())
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="edit-user-isolation-toggle"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="edit-user-isolation-risk"]').text()).toContain(
+      'admin.accounts.userIsolation.riskWarning'
+    )
+    expect(wrapper.find('[data-testid="edit-user-isolation-experimental"]').exists()).toBe(false)
+  })
+
+  it('shows both warnings for a Coding Plan on an experimental protocol', async () => {
+    const account = buildAccount()
+    account.platform = 'kimi'
+    account.credentials = {
+      account_mode: 'coding',
+      api_protocol: 'anthropic',
+      api_base_urls: {}
+    }
+    const wrapper = mountModal(account)
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="edit-user-isolation-toggle"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="edit-user-isolation-risk"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="edit-user-isolation-experimental"]').exists()).toBe(true)
   })
 
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {

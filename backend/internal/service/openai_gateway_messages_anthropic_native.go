@@ -153,6 +153,11 @@ func (s *OpenAIGatewayService) buildNativeAnthropicUpstreamRequest(
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
 		body = sanitized
 	}
+	isolatedBody, isolationErr := applyManagedUserIsolation(ctx, s.cfg, account, userIsolationEndpointAnthropicMessages, body)
+	if isolationErr != nil {
+		return nil, nil, isolationErr
+	}
+	body = isolatedBody
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {

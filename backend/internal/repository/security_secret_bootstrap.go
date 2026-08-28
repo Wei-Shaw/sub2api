@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	securitySecretKeyJWT        = "jwt_secret"
-	securitySecretReadRetryMax  = 5
-	securitySecretReadRetryWait = 10 * time.Millisecond
+	securitySecretKeyJWT           = "jwt_secret"
+	securitySecretKeyUserIsolation = "user_isolation_hmac_v1"
+	securitySecretReadRetryMax     = 5
+	securitySecretReadRetryWait    = 10 * time.Millisecond
 )
 
 var readRandomBytes = rand.Read
@@ -42,17 +43,26 @@ func ensureBootstrapSecrets(ctx context.Context, client *ent.Client, cfg *config
 			log.Println("Warning: configured JWT secret mismatches persisted value; using persisted secret for cross-instance consistency.")
 		}
 		cfg.JWT.Secret = storedSecret
-		return nil
+	} else {
+		secret, created, err := getOrCreateGeneratedSecuritySecret(ctx, client, securitySecretKeyJWT, 32)
+		if err != nil {
+			return fmt.Errorf("ensure jwt secret: %w", err)
+		}
+		cfg.JWT.Secret = secret
+
+		if created {
+			log.Println("Warning: JWT secret auto-generated and persisted to database. Consider rotating to a managed secret for production.")
+		}
 	}
 
-	secret, created, err := getOrCreateGeneratedSecuritySecret(ctx, client, securitySecretKeyJWT, 32)
+	secret, created, err := getOrCreateGeneratedSecuritySecret(ctx, client, securitySecretKeyUserIsolation, 32)
 	if err != nil {
-		return fmt.Errorf("ensure jwt secret: %w", err)
+		return fmt.Errorf("ensure user isolation secret: %w", err)
 	}
-	cfg.JWT.Secret = secret
+	cfg.Security.UserIsolationSecret = secret
 
 	if created {
-		log.Println("Warning: JWT secret auto-generated and persisted to database. Consider rotating to a managed secret for production.")
+		log.Println("User isolation secret generated and persisted to database.")
 	}
 	return nil
 }

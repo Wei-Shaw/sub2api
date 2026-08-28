@@ -603,6 +603,13 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 
 	// DeepSeek 原生 Responses 端点为无状态实现（见 normalizeDeepSeekResponsesRequestBody）。
 	body = normalizeDeepSeekResponsesRequestBody(account, body)
+	if !isOpenAIResponsesCompactPath(c) {
+		isolatedBody, isolationErr := applyManagedUserIsolation(ctx, s.cfg, account, userIsolationEndpointResponses, body)
+		if isolationErr != nil {
+			return nil, isolationErr
+		}
+		body = isolatedBody
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {

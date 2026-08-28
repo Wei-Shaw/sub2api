@@ -116,6 +116,11 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, finalBetaHeader); changed {
 		body = sanitized
 	}
+	isolatedBody, isolationErr := applyManagedUserIsolation(ctx, s.cfg, account, userIsolationEndpointAnthropicMessages, body)
+	if isolationErr != nil {
+		return nil, nil, isolationErr
+	}
+	body = isolatedBody
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {

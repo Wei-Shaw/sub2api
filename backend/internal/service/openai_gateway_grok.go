@@ -1519,6 +1519,12 @@ func buildGrokResponsesRequest(ctx context.Context, c *gin.Context, account *Acc
 	if err != nil {
 		return nil, err
 	}
+	if !isOpenAIResponsesCompactPath(c) {
+		body, err = applyManagedUserIsolation(ctx, cfg, account, userIsolationEndpointResponses, body)
+		if err != nil {
+			return nil, err
+		}
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
