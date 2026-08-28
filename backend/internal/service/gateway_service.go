@@ -797,6 +797,10 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	// zhipuMCPSessions 智谱远程 MCP Server 的 session 粘表（可选，见 zhipu_mcp.go）。
+	// 经 WithZhipuMCPSessionStore 注入而非构造参数，避免 NewGatewayService 的
+	// 测试调用面跟着接线改动。
+	zhipuMCPSessions ZhipuMCPSessionStore
 }
 
 // NewGatewayService creates a new GatewayService
