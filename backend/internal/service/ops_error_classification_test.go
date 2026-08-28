@@ -58,6 +58,12 @@ func TestClassifyOpsError(t *testing.T) {
 			category: OpsErrorCategoryUserConcurrency, family: OpsAlertFamilyClientQuality,
 		},
 		{
+			name:    "stale upstream 429 does not hide user concurrency limit",
+			input:   OpsErrorClassificationInput{StatusCode: 429, UpstreamStatusCode: intPtr(429), ErrorPhase: "request", ErrorSource: "client_request", ErrorOwner: "client", ErrorType: "rate_limit_error", ErrorMessage: "Concurrency limit exceeded for user, please retry later"},
+			outcome: OpsFinalOutcomeBusinessLimited, responsibility: OpsResponsibilityClient,
+			category: OpsErrorCategoryUserConcurrency, family: OpsAlertFamilyClientQuality,
+		},
+		{
 			name:    "upstream invalid request exposed as 502 is compatibility",
 			input:   OpsErrorClassificationInput{StatusCode: 502, UpstreamStatusCode: intPtr(400), ErrorPhase: "upstream", ErrorType: "invalid_request_error"},
 			outcome: OpsFinalOutcomePlatformFailed, responsibility: OpsResponsibilityPlatform,
