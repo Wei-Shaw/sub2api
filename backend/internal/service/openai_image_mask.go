@@ -98,8 +98,14 @@ func (c *openAIImageMaskCompositor) applyResult(result *openAIResponsesImageResu
 	generatedBounds := generated.Bounds()
 	for y := 0; y < c.height; y++ {
 		for x := 0; x < c.width; x++ {
-			src := color.NRGBAModel.Convert(c.source.At(sourceBounds.Min.X+x, sourceBounds.Min.Y+y)).(color.NRGBA)
-			gen := color.NRGBAModel.Convert(generated.At(generatedBounds.Min.X+x, generatedBounds.Min.Y+y)).(color.NRGBA)
+			src, ok := color.NRGBAModel.Convert(c.source.At(sourceBounds.Min.X+x, sourceBounds.Min.Y+y)).(color.NRGBA)
+			if !ok {
+				return fmt.Errorf("convert source pixel to NRGBA")
+			}
+			gen, ok := color.NRGBAModel.Convert(generated.At(generatedBounds.Min.X+x, generatedBounds.Min.Y+y)).(color.NRGBA)
+			if !ok {
+				return fmt.Errorf("convert generated pixel to NRGBA")
+			}
 			_, _, _, alpha16 := c.mask.At(maskBounds.Min.X+x, maskBounds.Min.Y+y).RGBA()
 			keep := uint32(alpha16 >> 8)
 			edit := uint32(255) - keep
