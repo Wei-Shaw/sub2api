@@ -952,6 +952,48 @@ func TestOpsErrorLoggerMiddleware_LocalModelConfigurationFields(t *testing.T) {
 	require.Empty(t, job.entry.UpstreamEndpoint)
 }
 
+func TestResolveOpsUpstreamEndpointPrefersActualOpenAIEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	service.SetActualOpenAIUpstreamEndpoint(c, "/v1/chat/completions")
+
+	require.Equal(t, "/v1/chat/completions", resolveOpsUpstreamEndpoint(c, service.PlatformOpenAI))
+}
+
+func TestResolveOpsUpstreamEndpointFallsBackToDerivedEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	require.Equal(t, "/v1/responses", resolveOpsUpstreamEndpoint(c, service.PlatformOpenAI))
+}
+
+func TestOpsErrorLoggerMiddlewareRecordsActualOpenAIEndpoint(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 1)
+	gin.SetMode(gin.TestMode)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/chat/completions", func(c *gin.Context) {
+		c.Set(opsAccountIDKey, int64(217))
+		service.SetActualOpenAIUpstreamEndpoint(c, "/v1/chat/completions")
+		c.JSON(http.StatusGatewayTimeout, gin.H{"error": gin.H{
+			"type": "upstream_error", "message": "upstream timeout",
+		}})
+	})
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+
+	require.Equal(t, http.StatusGatewayTimeout, recorder.Code)
+	job := <-opsErrorLogQueue
+	require.Equal(t, int64(217), *job.entry.AccountID)
+	require.Equal(t, "/v1/chat/completions", job.entry.UpstreamEndpoint)
+}
+
 func TestClassifyOpsAuthClientErrorsExcludedFromSLA(t *testing.T) {
 	tests := []struct {
 		name    string
