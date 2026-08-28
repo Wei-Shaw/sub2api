@@ -479,14 +479,16 @@ func TestQueryUsageAgentIdentityRecoversInvalidTaskOnce(t *testing.T) {
 
 func TestParseOpenAIRateLimitResetCreditDetails_CompatibleContainers(t *testing.T) {
 	tests := []struct {
-		name string
-		body string
-		want []string
+		name   string
+		body   string
+		want   []string
+		wantID string
 	}{
 		{
-			name: "credits",
-			body: `{"credits":[{"id":"secret-id","expires_at":"2026-07-03T04:05:06Z"}]}`,
-			want: []string{"2026-07-03T04:05:06Z"},
+			name:   "credits",
+			body:   `{"credits":[{"id":"credit-id","expires_at":"2026-07-03T04:05:06Z"}]}`,
+			want:   []string{"2026-07-03T04:05:06Z"},
+			wantID: "credit-id",
 		},
 		{
 			name: "rate limit reset credits",
@@ -518,9 +520,7 @@ func TestParseOpenAIRateLimitResetCreditDetails_CompatibleContainers(t *testing.
 			for i := range tt.want {
 				require.Equal(t, tt.want[i], got.Credits[i].ExpiresAt)
 			}
-			encoded, err := json.Marshal(got.Credits)
-			require.NoError(t, err)
-			require.NotContains(t, string(encoded), "secret-id")
+			require.Equal(t, tt.wantID, got.Credits[0].ID)
 		})
 	}
 }
@@ -555,7 +555,7 @@ func TestQueryUsageIncludesResetCreditExpirations_EndToEnd(t *testing.T) {
 			detailCalls++
 			capturedBeta = r.Header.Get("OpenAI-Beta")
 			require.Equal(t, "org-parent123", r.Header.Get("ChatGPT-Account-ID"))
-			_, _ = w.Write([]byte(`{"credits":[{"id":"secret-credit-id","expires_at":"2026-07-03T04:05:06Z"},{"expiresAt":"2026-07-04T04:05:06Z"}]}`))
+			_, _ = w.Write([]byte(`{"credits":[{"id":"credit-one","expires_at":"2026-07-03T04:05:06Z"},{"credit_id":"credit-two","expiresAt":"2026-07-04T04:05:06Z"}]}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -571,21 +571,22 @@ func TestQueryUsageIncludesResetCreditExpirations_EndToEnd(t *testing.T) {
 	require.Equal(t, 1, detailCalls)
 	require.Equal(t, openaiQuotaCodexBeta, capturedBeta)
 	require.Equal(t, []OpenAIRateLimitResetCreditDetail{
-		{ExpiresAt: "2026-07-03T04:05:06Z"},
-		{ExpiresAt: "2026-07-04T04:05:06Z"},
+		{ID: "credit-one", ExpiresAt: "2026-07-03T04:05:06Z"},
+		{ID: "credit-two", ExpiresAt: "2026-07-04T04:05:06Z"},
 	}, usage.RateLimitResetCredits.Credits)
 	require.NoError(t, svc.CacheResetCreditsSnapshot(ctx, 100, usage.RateLimitResetCredits))
 	require.Equal(t, &OpenAIRateLimitResetCredits{
 		AvailableCount: 2,
 		Credits: []OpenAIRateLimitResetCreditDetail{
-			{ExpiresAt: "2026-07-03T04:05:06Z"},
-			{ExpiresAt: "2026-07-04T04:05:06Z"},
+			{ID: "credit-one", ExpiresAt: "2026-07-03T04:05:06Z"},
+			{ID: "credit-two", ExpiresAt: "2026-07-04T04:05:06Z"},
 		},
 	}, repo.extraUpdates[100][openaiQuotaResetCreditsKey])
 
 	encoded, err := json.Marshal(usage)
 	require.NoError(t, err)
-	require.NotContains(t, string(encoded), "secret-credit-id")
+	require.Contains(t, string(encoded), "credit-one")
+	require.Contains(t, string(encoded), "credit-two")
 }
 
 func TestQueryUsageResetCreditDetails401NonFatal(t *testing.T) {
@@ -641,6 +642,20 @@ func TestQueryUsageResetCreditDetails401NonFatal(t *testing.T) {
 func TestCacheResetCreditsSnapshot(t *testing.T) {
 	ctx := context.Background()
 
+	t.Run("complete cards are persisted with their ids", func(t *testing.T) {
+		repo := &stubQuotaAccountRepo{}
+		svc := &OpenAIQuotaService{accountRepo: repo}
+		credits := &OpenAIRateLimitResetCredits{
+			AvailableCount: 1,
+			Credits: []OpenAIRateLimitResetCreditDetail{
+				{ID: "credit-one", ExpiresAt: "2026-07-03T04:05:06Z"},
+			},
+		}
+
+		require.NoError(t, svc.CacheResetCreditsSnapshot(ctx, 100, credits))
+		require.Equal(t, credits, repo.extraUpdates[100][openaiQuotaResetCreditsKey])
+	})
+
 	t.Run("zero count allows an empty expiration list", func(t *testing.T) {
 		repo := &stubQuotaAccountRepo{}
 		svc := &OpenAIQuotaService{accountRepo: repo}
@@ -687,7 +702,7 @@ func TestCacheResetCreditsSnapshot(t *testing.T) {
 
 		err := svc.CacheResetCreditsSnapshot(ctx, 100, &OpenAIRateLimitResetCredits{
 			AvailableCount: 1,
-			Credits:        []OpenAIRateLimitResetCreditDetail{{ExpiresAt: "2026-07-03T04:05:06Z"}},
+			Credits:        []OpenAIRateLimitResetCreditDetail{{ID: "credit-one", ExpiresAt: "2026-07-03T04:05:06Z"}},
 		})
 
 		require.ErrorContains(t, err, "database unavailable")

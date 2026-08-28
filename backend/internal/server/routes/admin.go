@@ -451,6 +451,8 @@ func registerOpenAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		openai.GET("/accounts/:id/quota", h.Admin.OpenAIOAuth.QueryQuota)
 		openai.POST("/accounts/:id/quota/refresh", h.Admin.OpenAIOAuth.RefreshQuota)
 		openai.POST("/accounts/:id/reset-quota", h.Admin.OpenAIOAuth.ResetQuota)
+		openai.PUT("/accounts/:id/reset-credit-expiry-target", h.Admin.OpenAIOAuth.SetResetCreditExpiryTarget)
+		openai.DELETE("/accounts/:id/reset-credit-expiry-target", h.Admin.OpenAIOAuth.CancelResetCreditExpiryTarget)
 	}
 }
 

@@ -494,6 +494,24 @@ export default {
           noCredit: '无卡',
           failed: '自动重置失败'
         },
+        expiryTarget: {
+          scheduleTooltip: '为这张重置卡设置定时使用',
+          dialogTitle: '设置重置卡定时使用',
+          creditExpiresAt: '重置卡到期',
+          plannedExecution: '计划执行',
+          leadTime: '到期前使用（分钟）',
+          durationMinutes: '{count} 分钟',
+          durationHours: '{count} 小时',
+          executeImmediately: '计划执行时间已过，保存后将立即执行。',
+          savePlan: '保存计划',
+          cancelPlan: '取消计划',
+          planSaved: '定时使用计划已保存',
+          planCanceled: '定时使用计划已取消',
+          scheduledAt: '定时 {time}',
+          summary: '计划执行 {execution}；重置卡到期 {expiry}；提前 {lead}',
+          creditUnavailable: '这张重置卡无法设置计划',
+          leadTimeInvalid: '提前时间必须是 5 到 10080 之间的整数分钟'
+        },
         confirmTitle: '确认重置周限',
         confirmMessage: '将消耗 1 次重置次数立即恢复当前窗口，剩余 {count} 次。此操作不可撤销，确定继续吗？'
       },

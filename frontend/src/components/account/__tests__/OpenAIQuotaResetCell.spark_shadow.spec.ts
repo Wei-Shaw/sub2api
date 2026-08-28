@@ -1,13 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import OpenAIQuotaResetCell from '../OpenAIQuotaResetCell.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import type { Account } from '@/types'
-import { refreshOpenAIQuota, resetOpenAIQuota } from '@/api/admin/accounts'
+import {
+  cancelOpenAIResetCreditExpiryTarget,
+  refreshOpenAIQuota,
+  resetOpenAIQuota,
+  setOpenAIResetCreditExpiryTarget,
+  type OpenAIRateLimitResetCreditDetail,
+} from '@/api/admin/accounts'
 
 vi.mock('@/api/admin/accounts', () => ({
+  cancelOpenAIResetCreditExpiryTarget: vi.fn(),
   refreshOpenAIQuota: vi.fn(),
   resetOpenAIQuota: vi.fn(),
+  setOpenAIResetCreditExpiryTarget: vi.fn(),
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -60,8 +69,10 @@ const resetButton = (wrapper: ReturnType<typeof mount>) =>
   wrapper.findAll('button')[1]
 
 beforeEach(() => {
+  vi.mocked(cancelOpenAIResetCreditExpiryTarget).mockReset()
   vi.mocked(refreshOpenAIQuota).mockReset()
   vi.mocked(resetOpenAIQuota).mockReset()
+  vi.mocked(setOpenAIResetCreditExpiryTarget).mockReset()
 })
 
 describe('OpenAIQuotaResetCell — 外审 F6:影子禁用重置', () => {
@@ -384,5 +395,109 @@ describe('OpenAIQuotaResetCell 自动用卡运行态', () => {
     const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
     expect(wrapper.find('[data-testid="auto-reset-credit-state"]').exists()).toBe(false)
     wrapper.unmount()
+  })
+})
+
+describe('OpenAIQuotaResetCell 单卡定时使用', () => {
+  const CREDIT_ID = 'credit-one'
+  type ExpiryTarget = NonNullable<NonNullable<Account['extra']>['auto_reset_credit_expiry_target']>
+
+  const makeResetCreditAccount = (
+    credits: OpenAIRateLimitResetCreditDetail[],
+    target?: ExpiryTarget,
+  ) => makeAccount({
+    extra: {
+      codex_reset_credit_snapshot: { available_count: credits.length, credits },
+      ...(target ? { auto_reset_credit_expiry_target: target } : {}),
+    },
+  })
+
+  const visibleExpiryTargetDialog = (wrapper: ReturnType<typeof mount>) => {
+    const dialog = wrapper.findAllComponents(BaseDialog).find(item => item.props('show') === true)
+    expect(dialog).toBeDefined()
+    return dialog!
+  }
+
+  it('只为带 ID 的未过期卡显示时钟入口，旧缓存和影子账号只能展示', () => {
+    const account = makeResetCreditAccount([
+      { id: CREDIT_ID, expires_at: FUTURE_EXPIRY_EARLY },
+      { expires_at: FUTURE_EXPIRY_LATE },
+    ])
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
+
+    expect(wrapper.find(`[data-testid="reset-credit-expiry-target-${CREDIT_ID}"]`).exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid^="reset-credit-expiry-target-"]')).toHaveLength(1)
+
+    const shadow = mount(OpenAIQuotaResetCell, {
+      props: { account: { ...account, parent_account_id: 9 } },
+    })
+    expect(shadow.findAll('[data-testid^="reset-credit-expiry-target-"]')).toHaveLength(0)
+  })
+
+  it('保存具体卡的 credit_id 和提前分钟数', async () => {
+    const credits = [{ id: CREDIT_ID, expires_at: FUTURE_EXPIRY_EARLY }]
+    const account = makeResetCreditAccount(credits)
+    const updated = makeResetCreditAccount(credits, {
+      plan_id: '11111111-1111-4111-8111-111111111111',
+      credit_id: CREDIT_ID,
+      expires_at: FUTURE_EXPIRY_EARLY,
+      lead_time_minutes: 30,
+    })
+    vi.mocked(setOpenAIResetCreditExpiryTarget).mockResolvedValue(updated)
+    const wrapper = mount(OpenAIQuotaResetCell, {
+      props: { account },
+      global: { stubs: { teleport: true } },
+    })
+
+    await wrapper.get(`[data-testid="reset-credit-expiry-target-${CREDIT_ID}"]`).trigger('click')
+    const dialog = visibleExpiryTargetDialog(wrapper)
+    await dialog.get('[data-testid="reset-credit-expiry-lead-minutes"]').setValue('30')
+    expect(dialog.text()).toContain('admin.accounts.openaiQuotaReset.expiryTarget.plannedExecution')
+    await dialog.find('.btn-primary').trigger('click')
+    await flushPromises()
+
+    expect(setOpenAIResetCreditExpiryTarget).toHaveBeenCalledWith(1, {
+      credit_id: CREDIT_ID,
+      lead_time_minutes: 30,
+    })
+    expect(wrapper.text()).toContain('admin.accounts.openaiQuotaReset.expiryTarget.planSaved')
+    expect(wrapper.emitted('account-updated')).toEqual([[updated]])
+  })
+
+  it('取消当前计划并回传更新后的账号', async () => {
+    const credits = [{ id: CREDIT_ID, expires_at: FUTURE_EXPIRY_LATE }]
+    const account = makeResetCreditAccount(credits, {
+      plan_id: '22222222-2222-4222-8222-222222222222',
+      credit_id: CREDIT_ID,
+      expires_at: FUTURE_EXPIRY_LATE,
+      lead_time_minutes: 60,
+    })
+    const canceled = makeResetCreditAccount(credits)
+    vi.mocked(cancelOpenAIResetCreditExpiryTarget).mockResolvedValue(canceled)
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
+
+    expect(wrapper.get('[data-testid="reset-credit-expiry-target-state"]').text()).toContain(
+      'admin.accounts.openaiQuotaReset.expiryTarget.scheduledAt:',
+    )
+    await wrapper.get('[data-testid="reset-credit-expiry-target-cancel"]').trigger('click')
+    await flushPromises()
+
+    expect(cancelOpenAIResetCreditExpiryTarget).toHaveBeenCalledWith(1)
+    expect(wrapper.text()).toContain('admin.accounts.openaiQuotaReset.expiryTarget.planCanceled')
+    expect(wrapper.emitted('account-updated')).toEqual([[canceled]])
+  })
+
+  it('计划时间已过时提示保存后立即执行', async () => {
+    const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString()
+    const account = makeResetCreditAccount([{ id: CREDIT_ID, expires_at: expiresAt }])
+    const wrapper = mount(OpenAIQuotaResetCell, {
+      props: { account },
+      global: { stubs: { teleport: true } },
+    })
+
+    await wrapper.get(`[data-testid="reset-credit-expiry-target-${CREDIT_ID}"]`).trigger('click')
+    expect(visibleExpiryTargetDialog(wrapper).get('[data-testid="reset-credit-expiry-immediate-warning"]').text()).toContain(
+      'admin.accounts.openaiQuotaReset.expiryTarget.executeImmediately',
+    )
   })
 })

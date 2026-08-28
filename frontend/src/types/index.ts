@@ -1132,8 +1132,14 @@ export interface Account {
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
     codex_reset_credit_snapshot?: {
       available_count?: number
-      credits?: { expires_at?: string }[]
+      credits?: { id?: string; expires_at?: string }[]
     }
+    auto_reset_credit_expiry_target?: {
+      plan_id: string
+      credit_id: string
+      expires_at: string
+      lead_time_minutes: number
+    } | null
     auto_reset_credit_enabled?: boolean
     auto_reset_credit_5h_threshold?: number
     auto_reset_credit_7d_threshold?: number
@@ -1144,6 +1150,7 @@ export interface Account {
       checked_at?: string
       last_result_at?: string
       error_code?: string
+      trigger_reason?: 'usage_threshold' | 'expiry_target'
     }
   } & Record<string, unknown>)
   proxy_id: number | null
