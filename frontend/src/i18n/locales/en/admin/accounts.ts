@@ -154,6 +154,11 @@ export default {
         balanceLow: 'Insufficient balance',
         noBalanceEndpoint: 'This platform has no balance query endpoint',
       },
+      zhipuMcp: {
+        title: 'MCP Passthrough',
+        hint: 'When enabled, MCP protocol requests are forwarded through this Zhipu account.',
+        paygDisabledHint: 'MCP passthrough is only available for Zhipu accounts on the Coding Plan subscription.',
+      },
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
