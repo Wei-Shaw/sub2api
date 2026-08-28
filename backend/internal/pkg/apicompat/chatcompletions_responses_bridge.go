@@ -1214,6 +1214,7 @@ func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model str
 	out := &ResponsesResponse{
 		ID:          id,
 		Object:      "response",
+		CreatedAt:   time.Now().Unix(),
 		Model:       model,
 		Status:      "completed",
 		ServiceTier: chatServiceTier(resp),
@@ -1221,6 +1222,9 @@ func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model str
 	if resp == nil {
 		out.Output = []ResponsesOutput{emptyResponsesMessageOutput()}
 		return out
+	}
+	if resp.Created > 0 {
+		out.CreatedAt = resp.Created
 	}
 	if out.Model == "" {
 		out.Model = resp.Model
@@ -1711,6 +1715,7 @@ func FinalizeChatCompletionsResponsesStream(state *ChatCompletionsToResponsesStr
 		Response: &ResponsesResponse{
 			ID:                state.ResponseID,
 			Object:            "response",
+			CreatedAt:         state.Created,
 			Model:             state.Model,
 			Status:            status,
 			ServiceTier:       state.ServiceTier,
@@ -1731,6 +1736,7 @@ func ensureChatToResponsesCreated(state *ChatCompletionsToResponsesStreamState) 
 		Response: &ResponsesResponse{
 			ID:          state.ResponseID,
 			Object:      "response",
+			CreatedAt:   state.Created,
 			Model:       state.Model,
 			Status:      "in_progress",
 			ServiceTier: state.ServiceTier,

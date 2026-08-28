@@ -22,6 +22,11 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+const grokCodexExecDescriptionFixture = "Run JavaScript code to orchestrate/compose tool calls\n" +
+	"- Evaluates the provided JavaScript code in a fresh V8 isolate as an async module.\n" +
+	"- All nested tools are available on the global `tools` object, for example `await tools.exec_command(...)`.\n" +
+	"- `text(value: string | number | boolean | undefined | null)`: Appends a text item."
+
 func TestPatchGrokResponsesBodyWithClientToolsLowersCodexProtocol(t *testing.T) {
 	t.Parallel()
 
@@ -186,6 +191,214 @@ func TestPatchGrokResponsesBodyWithClientToolsRejectsTrailingJSONDocument(t *tes
 	require.Empty(t, mapping.CustomTools)
 }
 
+func TestGrokCodexPendingCellForcesWaitToolChoice(t *testing.T) {
+	t.Parallel()
+
+	tools := []any{
+		map[string]any{
+			"type": "custom", "name": "exec", "description": grokCodexExecDescriptionFixture,
+			"format": map[string]any{"type": "grammar"},
+		},
+		map[string]any{
+			"type": "function", "name": "wait", "description": "Wait for a yielded exec cell.",
+			"parameters": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"cell_id": map[string]any{"type": "string"},
+				},
+				"required": []any{"cell_id"},
+			},
+		},
+	}
+	tests := []struct {
+		name                 string
+		input                []any
+		nonStreaming         bool
+		wantForcedWait       bool
+		wantTerminalGuidance bool
+	}{
+		{
+			name: "plain exec output is pending",
+			input: []any{
+				map[string]any{"type": "custom_tool_call", "call_id": "call_exec", "name": "exec", "input": "await work"},
+				map[string]any{"type": "custom_tool_call_output", "call_id": "call_exec", "output": "Script running with cell ID 113"},
+			},
+			wantForcedWait: true,
+		},
+		{
+			name: "plain exec output is pending non streaming",
+			input: []any{
+				map[string]any{"type": "custom_tool_call", "call_id": "call_exec", "name": "exec", "input": "await work"},
+				map[string]any{"type": "custom_tool_call_output", "call_id": "call_exec", "output": "Script running with cell ID 113"},
+			},
+			nonStreaming:   true,
+			wantForcedWait: true,
+		},
+		{
+			name: "structured exec output is pending",
+			input: []any{
+				map[string]any{"type": "custom_tool_call", "call_id": "call_exec", "name": "exec", "input": "await work"},
+				map[string]any{"type": "custom_tool_call_output", "call_id": "call_exec", "output": []any{
+					map[string]any{"type": "input_text", "text": "Script running with cell ID 113"},
+				}},
+			},
+			wantForcedWait: true,
+		},
+		{
+			name: "nested output carrier is pending",
+			input: []any{
+				map[string]any{"type": "custom_tool_call", "call_id": "call_exec", "name": "exec", "input": "await work"},
+				map[string]any{"type": "custom_tool_call_output", "call_id": "call_exec", "output": map[string]any{
+					"output": map[string]any{"text": "Script running with cell_id 113"},
+				}},
+			},
+			wantForcedWait: true,
+		},
+		{
+			name: "wait output remains pending",
+			input: []any{
+				map[string]any{"type": "function_call", "call_id": "call_wait", "name": "wait", "arguments": `{"cell_id":"113"}`},
+				map[string]any{"type": "function_call_output", "call_id": "call_wait", "output": []any{
+					map[string]any{"type": "input_text", "text": "Script running with cell ID 113"},
+				}},
+			},
+			wantForcedWait: true,
+		},
+		{
+			name: "terminal wait output wins over older pending exec",
+			input: []any{
+				map[string]any{"type": "custom_tool_call", "call_id": "call_exec", "name": "exec", "input": "await work"},
+				map[string]any{"type": "custom_tool_call_output", "call_id": "call_exec", "output": "Script running with cell ID 113"},
+				map[string]any{"type": "function_call", "call_id": "call_wait", "name": "wait", "arguments": `{"cell_id":"113"}`},
+				map[string]any{"type": "function_call_output", "call_id": "call_wait", "output": "Process exited with code 0\nfixture-terminal-ok"},
+			},
+			wantTerminalGuidance: true,
+		},
+		{
+			name: "nested exec command session is not a top level cell",
+			input: []any{
+				map[string]any{"type": "custom_tool_call", "call_id": "call_exec", "name": "exec", "input": "await work"},
+				map[string]any{"type": "custom_tool_call_output", "call_id": "call_exec", "output": map[string]any{
+					"session_id": 42,
+					"output":     "",
+				}},
+			},
+			wantTerminalGuidance: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			body, err := json.Marshal(map[string]any{
+				"model": "grok-4.6", "stream": !tt.nonStreaming, "tools": tools,
+				"tool_choice": "auto", "input": tt.input,
+			})
+			require.NoError(t, err)
+
+			patched, mapping, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.6")
+			require.NoError(t, err)
+			require.True(t, mapping.CustomTools["exec"])
+			require.False(t, mapping.CustomTools["wait"])
+			require.Equal(t, "function", gjson.GetBytes(patched, "tools.0.type").String())
+			require.Equal(t, "exec", gjson.GetBytes(patched, "tools.0.name").String())
+			require.Equal(t, "function", gjson.GetBytes(patched, "tools.1.type").String())
+			require.Equal(t, "wait", gjson.GetBytes(patched, "tools.1.name").String())
+			execDescription := gjson.GetBytes(patched, "tools.0.description").String()
+			require.Contains(t, execDescription, "CRITICAL ASYNC COMPLETION RULE")
+			require.Contains(t, execDescription, "tools.write_stdin")
+			require.Contains(t, execDescription, "Do not call top-level `exec` again")
+			waitDescription := gjson.GetBytes(patched, "tools.1.description").String()
+			require.Contains(t, waitDescription, "CRITICAL WAIT CONTINUATION RULE")
+			require.Contains(t, waitDescription, "nested `tools.exec_command` `session_id`")
+
+			if tt.wantForcedWait {
+				require.Equal(t, "function", gjson.GetBytes(patched, "tool_choice.type").String())
+				require.Equal(t, "wait", gjson.GetBytes(patched, "tool_choice.name").String())
+				require.False(t, gjson.GetBytes(patched, "tool_choice.function").Exists())
+				require.NotContains(t, gjson.GetBytes(patched, "instructions").String(), "CRITICAL TOOL RESULT RULE")
+				return
+			}
+			require.Equal(t, "auto", gjson.GetBytes(patched, "tool_choice").String())
+			if tt.wantTerminalGuidance {
+				require.Contains(t, gjson.GetBytes(patched, "instructions").String(), "CRITICAL TOOL RESULT RULE")
+			}
+		})
+	}
+}
+
+func TestGrokCodexPendingCellPolicyRequiresNativeWait(t *testing.T) {
+	t.Parallel()
+
+	body, err := json.Marshal(map[string]any{
+		"model": "grok-4.6", "stream": true, "tool_choice": "auto",
+		"tools": []any{map[string]any{
+			"type": "custom", "name": "exec", "description": grokCodexExecDescriptionFixture,
+			"format": map[string]any{"type": "grammar"},
+		}},
+		"input": []any{
+			map[string]any{"type": "custom_tool_call", "call_id": "call_exec", "name": "exec", "input": "await work"},
+			map[string]any{"type": "custom_tool_call_output", "call_id": "call_exec", "output": "Script running with cell ID 113"},
+		},
+	})
+	require.NoError(t, err)
+
+	patched, mapping, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.6")
+	require.NoError(t, err)
+	require.True(t, mapping.CustomTools["exec"])
+	require.Equal(t, "auto", gjson.GetBytes(patched, "tool_choice").String())
+	require.NotContains(t, gjson.GetBytes(patched, "tools.0.description").String(), "CRITICAL ASYNC COMPLETION RULE")
+	require.NotContains(t, gjson.GetBytes(patched, "instructions").String(), "CRITICAL TOOL RESULT RULE")
+}
+
+func TestGrokCodexTerminalOutputGuidanceDoesNotRequireWait(t *testing.T) {
+	t.Parallel()
+
+	body, err := json.Marshal(map[string]any{
+		"model": "grok-4.6", "stream": true, "tool_choice": "auto",
+		"tools": []any{map[string]any{
+			"type": "custom", "name": "exec", "description": grokCodexExecDescriptionFixture,
+			"format": map[string]any{"type": "grammar"},
+		}},
+		"input": []any{
+			map[string]any{"type": "custom_tool_call", "call_id": "call_exec", "name": "exec", "input": "await work"},
+			map[string]any{"type": "custom_tool_call_output", "call_id": "call_exec", "output": "Process exited with code 0\nfixture-terminal-ok"},
+		},
+	})
+	require.NoError(t, err)
+
+	patched, mapping, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.6")
+	require.NoError(t, err)
+	require.True(t, mapping.CustomTools["exec"])
+	require.Equal(t, "auto", gjson.GetBytes(patched, "tool_choice").String())
+	require.NotContains(t, gjson.GetBytes(patched, "tools.0.description").String(), "CRITICAL ASYNC COMPLETION RULE")
+	require.Contains(t, gjson.GetBytes(patched, "instructions").String(), "CRITICAL TOOL RESULT RULE")
+}
+
+func TestGrokCodexPendingCellPolicyIgnoresUnrelatedExec(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model":"grok-4.6","stream":true,"tool_choice":"auto",
+		"tools":[
+			{"type":"custom","name":"exec","description":"Run a user-defined job.","format":{"type":"grammar"}},
+			{"type":"function","name":"wait","description":"Wait for the job.","parameters":{"type":"object"}}
+		],
+		"input":[
+			{"type":"custom_tool_call","call_id":"call_exec","name":"exec","input":"start"},
+			{"type":"custom_tool_call_output","call_id":"call_exec","output":"Script running with cell ID 113"}
+		]
+	}`)
+
+	patched, mapping, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.6")
+	require.NoError(t, err)
+	require.True(t, mapping.CustomTools["exec"])
+	require.Equal(t, "auto", gjson.GetBytes(patched, "tool_choice").String())
+	require.NotContains(t, gjson.GetBytes(patched, "tools.0.description").String(), "CRITICAL ASYNC COMPLETION RULE")
+	require.NotContains(t, gjson.GetBytes(patched, "tools.1.description").String(), "CRITICAL WAIT CONTINUATION RULE")
+	require.NotContains(t, gjson.GetBytes(patched, "instructions").String(), "CRITICAL TOOL RESULT RULE")
+}
+
 func TestClearGrokResponsesClientToolMappingRemovesStaleContextState(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -345,11 +558,226 @@ func TestForwardGrokResponsesAPIKeyRestoresClientToolsFromSSEForNonStreamingRequ
 	response := recorder.Body.Bytes()
 	require.True(t, json.Valid(response))
 	require.Equal(t, "custom_tool_call", gjson.GetBytes(response, "output.0.type").String())
+	require.Equal(t, "ctc_custom", gjson.GetBytes(response, "output.0.id").String())
 	require.Equal(t, "*** Begin Patch", gjson.GetBytes(response, "output.0.input").String())
 	require.Equal(t, "tool_search_call", gjson.GetBytes(response, "output.1.type").String())
+	require.Equal(t, "tsc_search", gjson.GetBytes(response, "output.1.id").String())
 	require.Equal(t, "client", gjson.GetBytes(response, "output.1.execution").String())
 	require.Equal(t, "collaboration", gjson.GetBytes(response, "output.2.namespace").String())
+	require.Equal(t, "fc_namespace", gjson.GetBytes(response, "output.2.id").String())
 	require.Equal(t, "send_message", gjson.GetBytes(response, "output.2.name").String())
+}
+
+func TestForwardGrokResponsesClientToolContinuationSurvivesRepeated500Recovery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	continuationBody := grokClientToolProtocolRequest(false)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusInternalServerError,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"fixture transient 500 attempt 1"}}`)),
+		},
+		{
+			StatusCode: http.StatusInternalServerError,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"fixture transient 500 attempt 2"}}`)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{
+				"id":"resp_recovery_tool","object":"response","model":"grok-4.5","status":"completed",
+				"output":[
+					{"type":"function_call","id":"fc_recovery_next","call_id":"call_custom_next","name":"apply_patch","arguments":"{\"input\":\"*** Recovery Patch\"}","status":"completed"}
+				],
+				"usage":{"input_tokens":3,"output_tokens":1,"total_tokens":4}
+			}`)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{
+				"id":"resp_recovery_final","object":"response","model":"grok-4.5","status":"completed",
+				"output":[
+					{"type":"message","id":"msg_recovery_final","role":"assistant","status":"completed","content":[{"type":"output_text","text":"fixture-recovery-ok"}]}
+				],
+				"usage":{"input_tokens":4,"output_tokens":1,"total_tokens":5}
+			}`)),
+		},
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	account := grokProtocolAPIKeyAccount(7105)
+
+	forward := func(body []byte) (*httptest.ResponseRecorder, *OpenAIForwardResult, error) {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", false, time.Now())
+		return recorder, result, err
+	}
+
+	recoveryRecorder, recoveryResult, err := forward(continuationBody)
+	require.NoError(t, err)
+	require.NotNil(t, recoveryResult)
+	require.Equal(t, "resp_recovery_tool", recoveryResult.ResponseID)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Len(t, upstream.bodies, 3)
+	for index, body := range upstream.bodies {
+		assertGrokProtocolRequestLowered(t, body)
+		require.NotContains(t, strings.ToLower(string(body)), "[tool call", "attempt %d flattened a tool call into text", index+1)
+		require.NotContains(t, strings.ToLower(string(body)), "[tool result", "attempt %d flattened a tool result into text", index+1)
+		if index > 0 {
+			require.Equal(t, upstream.bodies[0], body, "client retry body must remain byte-identical after gateway lowering")
+		}
+	}
+
+	recoveryResponse := recoveryRecorder.Body.Bytes()
+	require.True(t, json.Valid(recoveryResponse))
+	require.Equal(t, "custom_tool_call", gjson.GetBytes(recoveryResponse, "output.0.type").String())
+	require.Equal(t, "ctc_recovery_next", gjson.GetBytes(recoveryResponse, "output.0.id").String())
+	require.Equal(t, "call_custom_next", gjson.GetBytes(recoveryResponse, "output.0.call_id").String())
+	require.Equal(t, "apply_patch", gjson.GetBytes(recoveryResponse, "output.0.name").String())
+	require.Equal(t, "*** Recovery Patch", gjson.GetBytes(recoveryResponse, "output.0.input").String())
+	require.False(t, gjson.GetBytes(recoveryResponse, "output.0.arguments").Exists())
+
+	secondContinuation := []byte(`{
+		"model":"grok","stream":false,
+		"tools":[{"type":"custom","name":"apply_patch","description":"apply a patch","format":{"type":"grammar","syntax":"lark","definition":"start: /.+/"}}],
+		"input":[
+			{"type":"custom_tool_call","id":"ctc_recovery_next","call_id":"call_custom_next","name":"apply_patch","input":"*** Recovery Patch"},
+			{"type":"custom_tool_call_output","call_id":"call_custom_next","output":"Done recovery"}
+		]
+	}`)
+	finalRecorder, finalResult, err := forward(secondContinuation)
+	require.NoError(t, err)
+	require.NotNil(t, finalResult)
+	require.Equal(t, "resp_recovery_final", finalResult.ResponseID)
+	require.Len(t, upstream.bodies, 4)
+	finalUpstreamBody := upstream.bodies[3]
+	require.Equal(t, "function_call", gjson.GetBytes(finalUpstreamBody, "input.0.type").String())
+	require.False(t, gjson.GetBytes(finalUpstreamBody, "input.0.id").Exists(), "Grok ModelInput strips replay item IDs after client-tool lowering")
+	require.Equal(t, "call_custom_next", gjson.GetBytes(finalUpstreamBody, "input.0.call_id").String())
+	require.Equal(t, "apply_patch", gjson.GetBytes(finalUpstreamBody, "input.0.name").String())
+	require.JSONEq(t, `{"input":"*** Recovery Patch"}`, gjson.GetBytes(finalUpstreamBody, "input.0.arguments").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(finalUpstreamBody, "input.1.type").String())
+	require.Equal(t, "call_custom_next", gjson.GetBytes(finalUpstreamBody, "input.1.call_id").String())
+	require.Equal(t, "Done recovery", gjson.GetBytes(finalUpstreamBody, "input.1.output").String())
+	require.NotContains(t, strings.ToLower(string(finalUpstreamBody)), "[tool call")
+	require.NotContains(t, strings.ToLower(string(finalUpstreamBody)), "[tool result")
+	require.Equal(t, "fixture-recovery-ok", gjson.Get(finalRecorder.Body.String(), "output.0.content.0.text").String())
+}
+
+func TestForwardGrokResponsesStreamingToolContinuationRetriesServer500BeforeCooldown(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := grokClientToolProtocolRequest(true)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"attempt 1"}}`))},
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"attempt 2"}}`))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(grokProtocolUpstreamSSE()))},
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	account := grokProtocolAPIKeyAccount(7107)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+
+	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", true, time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.Stream)
+	require.Len(t, upstream.bodies, 3)
+	require.Equal(t, upstream.bodies[0], upstream.bodies[1])
+	require.Equal(t, upstream.bodies[1], upstream.bodies[2])
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Contains(t, recorder.Body.String(), "response.completed")
+	require.Contains(t, recorder.Body.String(), "custom_tool_call")
+}
+
+func TestForwardGrokResponsesInitialToolDeclarationServer500DoesNotRetry(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for index, stream := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stream_%t", stream), func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"model":"grok","stream":%t,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}],"tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}],"tool_choice":"auto"}`, stream))
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{
+				{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"initial failure"}}`))},
+				{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"must_not_be_reached","object":"response","model":"grok-4.5","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`))},
+			}}
+			svc := &OpenAIGatewayService{httpUpstream: upstream}
+			account := grokProtocolAPIKeyAccount(int64(7108 + index))
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+
+			result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", stream, time.Now())
+			require.Error(t, err)
+			require.Nil(t, result)
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.Equal(t, http.StatusInternalServerError, failoverErr.StatusCode)
+			require.Len(t, upstream.bodies, 1)
+			require.Empty(t, recorder.Body.Bytes())
+			require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+		})
+	}
+}
+
+func TestForwardGrokResponsesToolContinuationRetryHonorsCanceledContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := grokClientToolProtocolRequest(false)
+	failedBody := &passthroughCloseTrackingReadCloser{
+		Reader: strings.NewReader(`{"error":{"type":"server_error","message":"temporary"}}`),
+	}
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: failedBody},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"must_not_be_reached","object":"response","model":"grok-4.5","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`))},
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	account := grokProtocolAPIKeyAccount(7110)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result, err := svc.forwardGrokResponses(ctx, c, account, body, "grok", false, time.Now())
+	require.Nil(t, result)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Len(t, upstream.bodies, 1)
+	require.True(t, failedBody.closed)
+	require.Empty(t, recorder.Body.Bytes())
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+}
+
+func TestForwardGrokResponsesClientToolContinuationServerRetryIsBounded(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := grokClientToolProtocolRequest(false)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"attempt 1"}}`))},
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"attempt 2"}}`))},
+		{StatusCode: http.StatusInternalServerError, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"attempt 3"}}`))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"must_not_be_reached","object":"response","model":"grok-4.5","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`))},
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	account := grokProtocolAPIKeyAccount(7106)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+
+	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", false, time.Now())
+	require.Error(t, err)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusInternalServerError, failoverErr.StatusCode)
+	require.Contains(t, string(failoverErr.ResponseBody), "attempt 3")
+	require.Len(t, upstream.bodies, 3)
+	require.Empty(t, recorder.Body.Bytes())
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
 }
 
 func TestForwardGrokResponsesAPIKeyRestoresClientToolsStreaming(t *testing.T) {
@@ -392,12 +820,16 @@ func TestForwardGrokResponsesAPIKeyRestoresClientToolsStreaming(t *testing.T) {
 	created := requireGrokProtocolFrame(t, frames, "response.created", "", "")
 	require.True(t, gjson.GetBytes(created.data, "upstream_extension.preserved").Bool())
 	customAdded := requireGrokProtocolFrame(t, frames, "response.output_item.added", "item.type", "custom_tool_call")
+	require.Equal(t, "ctc_custom", gjson.GetBytes(customAdded.data, "item.id").String())
 	require.Equal(t, "apply_patch", gjson.GetBytes(customAdded.data, "item.name").String())
 	customInputDelta := requireGrokProtocolFrame(t, frames, "response.custom_tool_call_input.delta", "", "")
+	require.Equal(t, "ctc_custom", gjson.GetBytes(customInputDelta.data, "item_id").String())
 	require.Equal(t, "*** Begin Patch", gjson.GetBytes(customInputDelta.data, "delta").String())
 	customInputDone := requireGrokProtocolFrame(t, frames, "response.custom_tool_call_input.done", "", "")
+	require.Equal(t, "ctc_custom", gjson.GetBytes(customInputDone.data, "item_id").String())
 	require.Equal(t, "*** Begin Patch", gjson.GetBytes(customInputDone.data, "input").String())
 	customDone := requireGrokProtocolFrame(t, frames, "response.output_item.done", "item.type", "custom_tool_call")
+	require.Equal(t, "ctc_custom", gjson.GetBytes(customDone.data, "item.id").String())
 	require.Equal(t, "*** Begin Patch", gjson.GetBytes(customDone.data, "item.input").String())
 
 	namespaceAdded := requireGrokProtocolFrame(t, frames, "response.output_item.added", "item.namespace", "collaboration")
@@ -409,20 +841,25 @@ func TestForwardGrokResponsesAPIKeyRestoresClientToolsStreaming(t *testing.T) {
 	require.False(t, gjson.GetBytes(namespaceArgumentsDone.data, "namespace").Exists())
 
 	searchAdded := requireGrokProtocolFrame(t, frames, "response.output_item.added", "item.type", "tool_search_call")
+	require.Equal(t, "tsc_search", gjson.GetBytes(searchAdded.data, "item.id").String())
 	require.Equal(t, "client", gjson.GetBytes(searchAdded.data, "item.execution").String())
 	searchDone := requireGrokProtocolFrame(t, frames, "response.output_item.done", "item.type", "tool_search_call")
+	require.Equal(t, "tsc_search", gjson.GetBytes(searchDone.data, "item.id").String())
 	require.Equal(t, "github", gjson.GetBytes(searchDone.data, "item.arguments.query").String())
 
 	for _, frame := range frames {
 		itemID := gjson.GetBytes(frame.data, "item_id").String()
-		if itemID == "item_custom" || itemID == "item_search" {
+		if itemID == "ctc_custom" || itemID == "tsc_search" {
 			require.NotContains(t, frame.event, "function_call_arguments", "client-only proxy argument events must not leak")
 		}
 	}
 	completed := requireGrokProtocolFrame(t, frames, "response.completed", "", "")
 	require.Equal(t, "custom_tool_call", gjson.GetBytes(completed.data, "response.output.0.type").String())
+	require.Equal(t, "ctc_custom", gjson.GetBytes(completed.data, "response.output.0.id").String())
 	require.Equal(t, "tool_search_call", gjson.GetBytes(completed.data, "response.output.1.type").String())
+	require.Equal(t, "tsc_search", gjson.GetBytes(completed.data, "response.output.1.id").String())
 	require.Equal(t, "collaboration", gjson.GetBytes(completed.data, "response.output.2.namespace").String())
+	require.Equal(t, "fc_namespace", gjson.GetBytes(completed.data, "response.output.2.id").String())
 }
 
 func TestGrokResponsesClientToolStreamBodyFlushesFrameBeforeEOF(t *testing.T) {
@@ -539,19 +976,19 @@ func assertGrokProtocolRequestLowered(t *testing.T, body []byte) {
 func grokProtocolUpstreamSSE() string {
 	events := []string{
 		`{"type":"response.created","sequence_number":40,"response":{"id":"resp_protocol_stream","model":"grok-4.5"},"upstream_extension":{"preserved":true}}`,
-		`{"type":"response.output_item.added","sequence_number":41,"output_index":0,"item":{"type":"function_call","id":"item_custom","call_id":"call_custom","name":"apply_patch","arguments":"","status":"in_progress"}}`,
-		`{"type":"response.function_call_arguments.delta","sequence_number":42,"output_index":0,"item_id":"item_custom","delta":"{\"input\":\"*** Begin"}`,
-		`{"type":"response.function_call_arguments.delta","sequence_number":43,"output_index":0,"item_id":"item_custom","delta":" Patch\"}"}`,
-		`{"type":"response.function_call_arguments.done","sequence_number":44,"output_index":0,"item_id":"item_custom","call_id":"call_custom","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}"}`,
-		`{"type":"response.output_item.done","sequence_number":45,"output_index":0,"item":{"type":"function_call","id":"item_custom","call_id":"call_custom","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}","status":"completed"}}`,
-		`{"type":"response.output_item.added","sequence_number":46,"output_index":1,"item":{"type":"function_call","id":"item_namespace","call_id":"call_namespace","name":"collaboration__send_message","arguments":"","status":"in_progress"}}`,
-		`{"type":"response.function_call_arguments.done","sequence_number":47,"output_index":1,"item_id":"item_namespace","call_id":"call_namespace","name":"collaboration__send_message","arguments":"{\"target\":\"root\"}"}`,
-		`{"type":"response.output_item.done","sequence_number":48,"output_index":1,"item":{"type":"function_call","id":"item_namespace","call_id":"call_namespace","name":"collaboration__send_message","arguments":"{\"target\":\"root\"}","status":"completed"}}`,
-		`{"type":"response.output_item.added","sequence_number":49,"output_index":2,"item":{"type":"function_call","id":"item_search","call_id":"call_search","name":"tool_search","arguments":"","status":"in_progress"}}`,
-		`{"type":"response.function_call_arguments.delta","sequence_number":50,"output_index":2,"item_id":"item_search","delta":"{\"query\":\"github\"}"}`,
-		`{"type":"response.function_call_arguments.done","sequence_number":51,"output_index":2,"item_id":"item_search","call_id":"call_search","name":"tool_search","arguments":"{\"query\":\"github\"}"}`,
-		`{"type":"response.output_item.done","sequence_number":52,"output_index":2,"item":{"type":"function_call","id":"item_search","call_id":"call_search","name":"tool_search","arguments":"{\"query\":\"github\"}","status":"completed"}}`,
-		`{"type":"response.completed","sequence_number":53,"response":{"id":"resp_protocol_stream","object":"response","model":"grok-4.5","status":"completed","output":[{"type":"function_call","id":"item_custom","call_id":"call_custom","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}"},{"type":"function_call","id":"item_search","call_id":"call_search","name":"tool_search","arguments":"{\"query\":\"github\"}"},{"type":"function_call","id":"item_namespace","call_id":"call_namespace","name":"collaboration__send_message","arguments":"{\"target\":\"root\"}"}],"usage":{"input_tokens":11,"output_tokens":4,"total_tokens":15}}}`,
+		`{"type":"response.output_item.added","sequence_number":41,"output_index":0,"item":{"type":"function_call","id":"fc_custom","call_id":"call_custom","name":"apply_patch","arguments":"","status":"in_progress"}}`,
+		`{"type":"response.function_call_arguments.delta","sequence_number":42,"output_index":0,"item_id":"fc_custom","delta":"{\"input\":\"*** Begin"}`,
+		`{"type":"response.function_call_arguments.delta","sequence_number":43,"output_index":0,"item_id":"fc_custom","delta":" Patch\"}"}`,
+		`{"type":"response.function_call_arguments.done","sequence_number":44,"output_index":0,"item_id":"fc_custom","call_id":"call_custom","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}"}`,
+		`{"type":"response.output_item.done","sequence_number":45,"output_index":0,"item":{"type":"function_call","id":"fc_custom","call_id":"call_custom","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}","status":"completed"}}`,
+		`{"type":"response.output_item.added","sequence_number":46,"output_index":1,"item":{"type":"function_call","id":"fc_namespace","call_id":"call_namespace","name":"collaboration__send_message","arguments":"","status":"in_progress"}}`,
+		`{"type":"response.function_call_arguments.done","sequence_number":47,"output_index":1,"item_id":"fc_namespace","call_id":"call_namespace","name":"collaboration__send_message","arguments":"{\"target\":\"root\"}"}`,
+		`{"type":"response.output_item.done","sequence_number":48,"output_index":1,"item":{"type":"function_call","id":"fc_namespace","call_id":"call_namespace","name":"collaboration__send_message","arguments":"{\"target\":\"root\"}","status":"completed"}}`,
+		`{"type":"response.output_item.added","sequence_number":49,"output_index":2,"item":{"type":"function_call","id":"fc_search","call_id":"call_search","name":"tool_search","arguments":"","status":"in_progress"}}`,
+		`{"type":"response.function_call_arguments.delta","sequence_number":50,"output_index":2,"item_id":"fc_search","delta":"{\"query\":\"github\"}"}`,
+		`{"type":"response.function_call_arguments.done","sequence_number":51,"output_index":2,"item_id":"fc_search","call_id":"call_search","name":"tool_search","arguments":"{\"query\":\"github\"}"}`,
+		`{"type":"response.output_item.done","sequence_number":52,"output_index":2,"item":{"type":"function_call","id":"fc_search","call_id":"call_search","name":"tool_search","arguments":"{\"query\":\"github\"}","status":"completed"}}`,
+		`{"type":"response.completed","sequence_number":53,"response":{"id":"resp_protocol_stream","object":"response","model":"grok-4.5","status":"completed","output":[{"type":"function_call","id":"fc_custom","call_id":"call_custom","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}"},{"type":"function_call","id":"fc_search","call_id":"call_search","name":"tool_search","arguments":"{\"query\":\"github\"}"},{"type":"function_call","id":"fc_namespace","call_id":"call_namespace","name":"collaboration__send_message","arguments":"{\"target\":\"root\"}"}],"usage":{"input_tokens":11,"output_tokens":4,"total_tokens":15}}}`,
 	}
 	var out strings.Builder
 	for _, event := range events {

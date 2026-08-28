@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -604,7 +605,10 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				line = "data: " + data
 			}
 			imageCounter.AddSSEData(dataBytes)
-			searchCounter += countGrokNativeSearchCallsInSSEDataDedup(dataBytes, streamSearchSeen)
+			searchCounter += countGrokNativeSearchCallsInSSEDataDedup(
+				[]byte(openAICompatPayloadWithEventType(string(dataBytes), eventType)),
+				streamSearchSeen,
+			)
 
 			// Correct Codex tool calls if needed (apply_patch -> edit, etc.)
 			if correctedData, corrected := s.toolCorrector.CorrectToolCallsInSSEBytes(dataBytes); corrected {
@@ -613,17 +617,18 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				line = "data: " + data
 				eventType = effectiveOpenAISSEEventType(dataBytes, eventType)
 			}
-			if imageOutput, ok := extractImageGenerationOutputFromSSEData(dataBytes, streamSeenImages); ok {
+			collectorPayload := []byte(openAICompatPayloadWithEventType(string(dataBytes), eventType))
+			if imageOutput, ok := extractImageGenerationOutputFromSSEData(collectorPayload, streamSeenImages); ok {
 				streamImageOutputs = append(streamImageOutputs, imageOutput)
 			}
-			streamDoneItems.Observe(dataBytes)
+			streamDoneItems.Observe(collectorPayload)
 			if responsesStreamEventMayContributeToOutput(eventType) {
 				var streamEvent apicompat.ResponsesStreamEvent
-				if err := json.Unmarshal(dataBytes, &streamEvent); err == nil {
+				if err := json.Unmarshal(collectorPayload, &streamEvent); err == nil {
 					streamOutputAccumulator.ProcessEvent(&streamEvent)
 				}
 			}
-			if normalizedData, normalized := normalizeResponsesStreamingTerminalOutput(dataBytes, streamOutputAccumulator, streamDoneItems, streamImageOutputs); normalized {
+			if normalizedData, normalized := normalizeResponsesStreamingTerminalOutput(collectorPayload, streamOutputAccumulator, streamDoneItems, streamImageOutputs); normalized {
 				dataBytes = normalizedData
 				data = string(normalizedData)
 				line = "data: " + data
@@ -653,6 +658,16 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			); sanitized {
 				dataBytes = sanitizedData
 				data = string(sanitizedData)
+				line = "data: " + data
+			}
+			normalizedCreatedAt, normalizedOK := normalizeOpenAIResponsesEventCreatedAt(dataBytes, eventType)
+			if !normalizedOK {
+				streamEarlyErr = fmt.Errorf("normalize OpenAI Responses SSE created_at for %s", eventType)
+				return
+			}
+			if !bytes.Equal(normalizedCreatedAt, dataBytes) {
+				dataBytes = normalizedCreatedAt
+				data = string(normalizedCreatedAt)
 				line = "data: " + data
 			}
 			// Replace model in response if needed.
@@ -1626,6 +1641,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		return nil, fmt.Errorf("restore OpenAI namespace response: %w", err)
 	}
 	body = restoreCodexToolNamesFromContext(c, body)
+	body, normalizedOK := normalizeOpenAIResponsesCreatedAt(body, "created_at")
+	if !normalizedOK {
+		return nil, errors.New("normalize OpenAI Responses non-streaming created_at")
+	}
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	// Codex 协议要求 /responses/compact JSON 响应携带 x-codex-turn-state
 	// （codex-api/src/endpoint/compact.rs 从响应头捕获），显式回传。
@@ -1702,6 +1721,8 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 					finalResponse = patched
 				}
 			}
+		} else {
+			finalResponse = supplementNonEmptyResponseOutputFromSSE(finalResponse, bodyText)
 		}
 		finalResponse = supplementCompactionItemFromSSE(c, finalResponse, bodyText)
 		body = finalResponse
@@ -1724,6 +1745,11 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		}
 		restoredBody = restoreCodexToolNamesFromContext(c, restoredBody)
 		body = restoredBody
+		var normalizedOK bool
+		body, normalizedOK = normalizeOpenAIResponsesCreatedAt(body, "created_at")
+		if !normalizedOK {
+			return nil, errors.New("normalize OpenAI Responses SSE-to-JSON created_at")
+		}
 	} else {
 		if originalModel != mappedModel {
 			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
@@ -1812,11 +1838,12 @@ func buildOpenAIResponseFailedSSE(responseID, model string, source []byte, fallb
 		errorBody["type"] = errorType
 	}
 	response := gin.H{
-		"id":     responseID,
-		"object": "response",
-		"status": "failed",
-		"output": []any{},
-		"error":  errorBody,
+		"id":         responseID,
+		"object":     "response",
+		"created_at": time.Now().Unix(),
+		"status":     "failed",
+		"output":     []any{},
+		"error":      errorBody,
 	}
 	if model = strings.TrimSpace(model); model != "" {
 		response["model"] = model
@@ -1826,8 +1853,7 @@ func buildOpenAIResponseFailedSSE(responseID, model string, source []byte, fallb
 		"response": response,
 	})
 	if err != nil {
-		// All values above are JSON primitives, so this is only a defensive fallback.
-		payload = []byte(`{"type":"response.failed","response":{"status":"failed","output":[],"error":{"code":"upstream_error","message":"Upstream response failed"}}}`)
+		payload = buildOpenAIResponseFailedFallbackPayload(responseID)
 	}
 	return "event: response.failed\ndata: " + string(payload) + "\n\n"
 }
@@ -1939,6 +1965,43 @@ func extractCodexFinalResponse(body string) ([]byte, bool) {
 	return nil, false
 }
 
+// supplementNonEmptyResponseOutputFromSSE fills fields omitted from a thin
+// terminal response.output using authoritative output_item.done items from the
+// same SSE body. Empty output keeps the existing reconstruction path because it
+// also handles delta-only, image, and compaction compatibility cases.
+func supplementNonEmptyResponseOutputFromSSE(finalResponse []byte, bodyText string) []byte {
+	output := gjson.GetBytes(finalResponse, "output")
+	if !output.IsArray() || len(output.Array()) == 0 {
+		return finalResponse
+	}
+
+	doneItems := newResponsesStreamOutputItems()
+	forEachOpenAISSEFrame(bodyText, func(eventType string, data []byte) {
+		data = []byte(openAICompatPayloadWithEventType(string(data), eventType))
+		if normalized, changed := normalizeCompletedImageGenerationStatus(data); changed {
+			data = normalized
+		}
+		doneItems.Observe(data)
+	})
+	if !doneItems.HasItems() {
+		return finalResponse
+	}
+
+	envelope := make([]byte, 0, len(finalResponse)+48)
+	envelope = append(envelope, `{"type":"response.completed","response":`...)
+	envelope = append(envelope, finalResponse...)
+	envelope = append(envelope, '}')
+	normalized, changed := normalizeResponsesStreamingTerminalOutput(envelope, nil, doneItems, nil)
+	if !changed {
+		return finalResponse
+	}
+	response := gjson.GetBytes(normalized, "response")
+	if !response.IsObject() || response.Raw == "" {
+		return finalResponse
+	}
+	return []byte(response.Raw)
+}
+
 func normalizeCompletedImageGenerationStatus(data []byte) ([]byte, bool) {
 	if len(data) == 0 || !gjson.ValidBytes(data) {
 		return data, false
@@ -2002,8 +2065,15 @@ func normalizeCompletedImageGenerationStatus(data []byte) ([]byte, bool) {
 // item types it does not know about. The streaming path had no equivalent
 // because it never sees the whole body at once; this collector gives it one.
 type responsesStreamOutputItems struct {
-	items map[int]json.RawMessage
+	items    map[int]json.RawMessage
+	bytes    int
+	disabled bool
 }
+
+const (
+	responsesStreamOutputItemsMaxItems = 1024
+	responsesStreamOutputItemsMaxBytes = 8 << 20
+)
 
 func newResponsesStreamOutputItems() *responsesStreamOutputItems {
 	return &responsesStreamOutputItems{items: make(map[int]json.RawMessage)}
@@ -2013,7 +2083,7 @@ func newResponsesStreamOutputItems() *responsesStreamOutputItems {
 // raw JSON is kept byte for byte so vendor extensions and future fields survive
 // the rebuild.
 func (r *responsesStreamOutputItems) Observe(data []byte) {
-	if r == nil || len(data) == 0 || !gjson.ValidBytes(data) {
+	if r == nil || r.disabled || len(data) == 0 || !gjson.ValidBytes(data) {
 		return
 	}
 	if strings.TrimSpace(gjson.GetBytes(data, "type").String()) != "response.output_item.done" {
@@ -2021,19 +2091,62 @@ func (r *responsesStreamOutputItems) Observe(data []byte) {
 	}
 	item := gjson.GetBytes(data, "item")
 	if !item.Exists() || !item.IsObject() {
+		r.disable()
 		return
 	}
-	index := int(gjson.GetBytes(data, "output_index").Int())
+	index, ok := strictResponsesOutputIndex(gjson.GetBytes(data, "output_index"))
+	if !ok {
+		r.disable()
+		return
+	}
+	rawLen := len(item.Raw)
+	if existing, exists := r.items[index]; exists {
+		if len(existing) == rawLen && string(existing) == item.Raw {
+			return
+		}
+		r.disable()
+		return
+	}
+	if len(r.items) >= responsesStreamOutputItemsMaxItems || rawLen > responsesStreamOutputItemsMaxBytes-r.bytes {
+		r.disable()
+		return
+	}
 	r.items[index] = json.RawMessage(append([]byte(nil), item.Raw...))
+	r.bytes += rawLen
+}
+
+func (r *responsesStreamOutputItems) disable() {
+	if r == nil {
+		return
+	}
+	r.items = nil
+	r.bytes = 0
+	r.disabled = true
+}
+
+func strictResponsesOutputIndex(value gjson.Result) (int, bool) {
+	if !value.Exists() || value.Type != gjson.Number || value.Raw == "" {
+		return 0, false
+	}
+	for _, char := range value.Raw {
+		if char < '0' || char > '9' {
+			return 0, false
+		}
+	}
+	parsed, err := strconv.ParseInt(value.Raw, 10, 0)
+	if err != nil || parsed < 0 {
+		return 0, false
+	}
+	return int(parsed), true
 }
 
 func (r *responsesStreamOutputItems) HasItems() bool {
-	return r != nil && len(r.items) > 0
+	return r != nil && !r.disabled && len(r.items) > 0
 }
 
 // Count reports how many distinct output items the stream reported as done.
 func (r *responsesStreamOutputItems) Count() int {
-	if r == nil {
+	if r == nil || r.disabled {
 		return 0
 	}
 	return len(r.items)
@@ -2077,7 +2190,7 @@ func normalizeResponsesStreamingTerminalOutput(data []byte, acc *apicompat.Buffe
 		// dropped items the stream already reported as done, and those
 		// reported items are the authoritative record of the turn.
 		if terminalCount > 0 && terminalCount >= doneItems.Count() {
-			return data, false
+			return supplementResponsesStreamingTerminalOutput(data, output, doneItems)
 		}
 		if terminalCount == 0 && !hasAccumulatedOutput {
 			return data, false
@@ -2098,6 +2211,219 @@ func normalizeResponsesStreamingTerminalOutput(data []byte, acc *apicompat.Buffe
 		return data, false
 	}
 	return updated, true
+}
+
+// supplementResponsesStreamingTerminalOutput fills fields the terminal event
+// omitted from items the stream has already declared complete. It never
+// overwrites a terminal scalar or guesses between conflicting identities.
+func supplementResponsesStreamingTerminalOutput(data []byte, output gjson.Result, doneItems *responsesStreamOutputItems) ([]byte, bool) {
+	if !doneItems.HasItems() {
+		return data, false
+	}
+	done, ok := doneItems.BuildOutput()
+	if !ok {
+		return data, false
+	}
+	doneItemsJSON := gjson.ParseBytes(done).Array()
+	terminalItems := output.Array()
+	updated := make([]json.RawMessage, len(terminalItems))
+	changed := false
+	for ordinal, terminal := range terminalItems {
+		updated[ordinal] = json.RawMessage(append([]byte(nil), terminal.Raw...))
+		if !terminal.IsObject() {
+			continue
+		}
+		candidate, found := matchingResponsesDoneItem(terminal, ordinal, doneItemsJSON)
+		if !found {
+			continue
+		}
+		terminalObject, terminalErr := decodeResponsesJSONObject([]byte(terminal.Raw))
+		doneObject, doneErr := decodeResponsesJSONObject([]byte(candidate.Raw))
+		if terminalErr != nil || doneErr != nil {
+			continue
+		}
+		if terminalObject["type"] == "tool_search_call" && doneObject["type"] == "tool_search_call" {
+			if terminalArguments, exists := terminalObject["arguments"]; exists && terminalArguments == nil {
+				if doneArguments, found := doneObject["arguments"]; found && doneArguments != nil {
+					delete(terminalObject, "arguments")
+				}
+			}
+		}
+		merged, itemChanged, conflict := mergeMissingResponseJSON(terminalObject, doneObject)
+		if conflict || !itemChanged {
+			continue
+		}
+		encoded, err := json.Marshal(merged)
+		if err != nil {
+			continue
+		}
+		updated[ordinal] = encoded
+		changed = true
+	}
+	if !changed {
+		return data, false
+	}
+	encoded, err := json.Marshal(updated)
+	if err != nil {
+		return data, false
+	}
+	result, err := sjson.SetRawBytes(data, "response.output", encoded)
+	if err != nil {
+		return data, false
+	}
+	return result, true
+}
+
+func matchingResponsesDoneItem(terminal gjson.Result, ordinal int, done []gjson.Result) (gjson.Result, bool) {
+	id := responsesOutputItemIdentity(terminal, "id")
+	callID := responsesOutputItemIdentity(terminal, "call_id")
+	if id == "" && callID == "" {
+		if ordinal >= len(done) {
+			return gjson.Result{}, false
+		}
+		return done[ordinal], true
+	}
+	field, value := "id", id
+	if value == "" {
+		field, value = "call_id", callID
+	}
+	var match gjson.Result
+	for _, candidate := range done {
+		if responsesOutputItemIdentity(candidate, field) != value || conflictingResponsesOutputItemIdentity(terminal, candidate) {
+			continue
+		}
+		if match.Exists() {
+			return gjson.Result{}, false
+		}
+		match = candidate
+	}
+	return match, match.Exists()
+}
+
+func responsesOutputItemIdentity(item gjson.Result, field string) string {
+	value := item.Get(field)
+	if !value.Exists() || value.Type != gjson.String {
+		return ""
+	}
+	return strings.TrimSpace(value.String())
+}
+
+func conflictingResponsesOutputItemIdentity(terminal, done gjson.Result) bool {
+	for _, field := range []string{"id", "call_id"} {
+		terminalValue := responsesOutputItemIdentity(terminal, field)
+		doneValue := responsesOutputItemIdentity(done, field)
+		if terminalValue != "" && doneValue != "" && terminalValue != doneValue {
+			return true
+		}
+	}
+	return false
+}
+
+func decodeResponsesJSONObject(raw []byte) (map[string]any, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var object map[string]any
+	if err := decoder.Decode(&object); err != nil {
+		return nil, err
+	}
+	return object, nil
+}
+
+func mergeMissingResponseJSON(terminal, done any) (any, bool, bool) {
+	return mergeMissingResponseJSONAtPath(terminal, done, "")
+}
+
+func mergeMissingResponseJSONAtPath(terminal, done any, path string) (any, bool, bool) {
+	switch terminalValue := terminal.(type) {
+	case map[string]any:
+		doneValue, ok := done.(map[string]any)
+		if !ok {
+			return terminal, false, false
+		}
+		candidate := make(map[string]any, len(terminalValue)+len(doneValue))
+		for key, value := range terminalValue {
+			candidate[key] = value
+		}
+		changed := false
+		for key, doneField := range doneValue {
+			terminalField, exists := candidate[key]
+			if !exists {
+				candidate[key] = doneField
+				changed = true
+				continue
+			}
+			childPath := key
+			if path != "" {
+				childPath = path + "." + key
+			}
+			merged, fieldChanged, conflict := mergeMissingResponseJSONAtPath(terminalField, doneField, childPath)
+			if conflict {
+				return terminal, false, true
+			}
+			if fieldChanged {
+				candidate[key] = merged
+				changed = true
+			}
+		}
+		return candidate, changed, false
+	case []any:
+		doneValue, ok := done.([]any)
+		if !ok || reflect.DeepEqual(terminalValue, doneValue) {
+			return terminal, false, false
+		}
+		if path != "content" || len(terminalValue) != len(doneValue) {
+			return terminal, false, false
+		}
+		for index := range terminalValue {
+			if !matchingResponsesContentPart(terminalValue[index], doneValue[index]) {
+				return terminal, false, false
+			}
+		}
+		candidate := append([]any(nil), terminalValue...)
+		changed := false
+		for index := range candidate {
+			merged, elementChanged, conflict := mergeMissingResponseJSONAtPath(candidate[index], doneValue[index], path+"[]")
+			if conflict {
+				return terminal, false, true
+			}
+			if elementChanged {
+				candidate[index] = merged
+				changed = true
+			}
+		}
+		return candidate, changed, false
+	default:
+		if reflect.DeepEqual(terminal, done) {
+			return terminal, false, false
+		}
+		if responsesJSONScalar(terminal) && responsesJSONScalar(done) {
+			return terminal, false, true
+		}
+		return terminal, false, false
+	}
+}
+
+func matchingResponsesContentPart(terminal, done any) bool {
+	if reflect.DeepEqual(terminal, done) {
+		return true
+	}
+	terminalObject, terminalOK := terminal.(map[string]any)
+	doneObject, doneOK := done.(map[string]any)
+	if !terminalOK || !doneOK {
+		return false
+	}
+	terminalType, terminalOK := terminalObject["type"].(string)
+	doneType, doneOK := doneObject["type"].(string)
+	return terminalOK && doneOK && strings.TrimSpace(terminalType) != "" && terminalType == doneType
+}
+
+func responsesJSONScalar(value any) bool {
+	switch value.(type) {
+	case nil, bool, string, json.Number:
+		return true
+	default:
+		return false
+	}
 }
 
 func responsesStreamEventMayContributeToOutput(eventType string) bool {

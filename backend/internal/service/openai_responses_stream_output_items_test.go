@@ -115,3 +115,77 @@ func TestNormalizeResponsesStreamingTerminalOutputLeavesCompleteOutputAlone(t *t
 	require.False(t, changed)
 	require.Equal(t, string(raw), string(normalized))
 }
+
+// A same-count terminal output is not necessarily complete: output_item.done
+// is the authoritative complete record for that item and must backfill fields
+// the terminal event omitted without overwriting terminal values.
+func TestNormalizeResponsesStreamingTerminalOutputCompletesThinSameCountItem(t *testing.T) {
+	doneItems := newResponsesStreamOutputItems()
+	doneItems.Observe([]byte(`{
+		"type":"response.output_item.done","output_index":0,
+		"item":{"id":"msg_thin","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"answer","annotations":[{"type":"url_citation","url":"https://example.test"}],"logprobs":[]}],"provider_extension":{"trace":"keep"}}
+	}`))
+
+	raw := []byte(`{"type":"response.completed","response":{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"answer"}]}]}}`)
+	normalized, changed := normalizeResponsesStreamingTerminalOutput(raw, nil, doneItems, nil)
+	require.True(t, changed)
+	require.Equal(t, "msg_thin", gjson.GetBytes(normalized, "response.output.0.id").String())
+	require.Equal(t, "completed", gjson.GetBytes(normalized, "response.output.0.status").String())
+	require.Equal(t, "https://example.test", gjson.GetBytes(normalized, "response.output.0.content.0.annotations.0.url").String())
+	require.True(t, gjson.GetBytes(normalized, "response.output.0.content.0.logprobs").IsArray())
+	require.Equal(t, "keep", gjson.GetBytes(normalized, "response.output.0.provider_extension.trace").String())
+}
+
+func TestNormalizeResponsesStreamingTerminalOutputTreatsNullToolSearchArgumentsAsMissing(t *testing.T) {
+	doneItems := newResponsesStreamOutputItems()
+	doneItems.Observe([]byte(`{
+		"type":"response.output_item.done","output_index":0,
+		"item":{"id":"tsc_search","type":"tool_search_call","call_id":"call_search","execution":"client","status":"completed","arguments":{"query":"fixture","limit":3},"provider_extension":{"trace":"keep"}}
+	}`))
+
+	raw := []byte(`{"type":"response.completed","response":{"status":"completed","output":[{"id":"tsc_search","type":"tool_search_call","call_id":"call_search","execution":"client","status":"completed","arguments":null,"provider_extension":{"trace":"keep"}}]}}`)
+	normalized, changed := normalizeResponsesStreamingTerminalOutput(raw, nil, doneItems, nil)
+
+	require.True(t, changed)
+	require.Equal(t, "fixture", gjson.GetBytes(normalized, "response.output.0.arguments.query").String())
+	require.Equal(t, int64(3), gjson.GetBytes(normalized, "response.output.0.arguments.limit").Int())
+	require.Equal(t, "keep", gjson.GetBytes(normalized, "response.output.0.provider_extension.trace").String())
+}
+
+func TestNormalizeResponsesStreamingTerminalOutputLeavesScalarConflictsAlone(t *testing.T) {
+	doneItems := newResponsesStreamOutputItems()
+	doneItems.Observe([]byte(`{"type":"response.output_item.done","output_index":0,"item":{"id":"msg_same","type":"message","content":[{"type":"output_text","text":"done","annotations":[]}]}}`))
+	raw := []byte(`{"type":"response.completed","response":{"output":[{"id":"msg_same","type":"message","content":[{"type":"output_text","text":"terminal"}]}]}}`)
+	normalized, changed := normalizeResponsesStreamingTerminalOutput(raw, nil, doneItems, nil)
+	require.False(t, changed)
+	require.Equal(t, string(raw), string(normalized))
+}
+
+func TestResponsesStreamOutputItemsDisableRebuildOnUnsafeDoneEvents(t *testing.T) {
+	for _, event := range []string{
+		`{"type":"response.output_item.done","output_index":"0","item":{"id":"bad","type":"message"}}`,
+		`{"type":"response.output_item.done","output_index":0.5,"item":{"id":"bad","type":"message"}}`,
+		`{"type":"response.output_item.done","output_index":1e0,"item":{"id":"bad","type":"message"}}`,
+		`{"type":"response.output_item.done","output_index":-1,"item":{"id":"bad","type":"message"}}`,
+		`{"type":"response.output_item.done","output_index":0,"item":"bad"}`,
+	} {
+		t.Run(event, func(t *testing.T) {
+			doneItems := newResponsesStreamOutputItems()
+			doneItems.Observe([]byte(`{"type":"response.output_item.done","output_index":0,"item":{"id":"valid","type":"message"}}`))
+			doneItems.Observe([]byte(event))
+			require.False(t, doneItems.HasItems())
+
+			raw := []byte(`{"type":"response.completed","response":{"output":[]}}`)
+			normalized, changed := normalizeResponsesStreamingTerminalOutput(raw, nil, doneItems, nil)
+			require.False(t, changed)
+			require.Equal(t, string(raw), string(normalized))
+		})
+	}
+
+	t.Run("conflicting duplicate", func(t *testing.T) {
+		doneItems := newResponsesStreamOutputItems()
+		doneItems.Observe([]byte(`{"type":"response.output_item.done","output_index":0,"item":{"id":"first","type":"message"}}`))
+		doneItems.Observe([]byte(`{"type":"response.output_item.done","output_index":0,"item":{"id":"second","type":"message"}}`))
+		require.False(t, doneItems.HasItems())
+	})
+}

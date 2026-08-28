@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +19,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+const grokCodexBridgeExecDescriptionFixture = "Run JavaScript code to orchestrate/compose tool calls\n" +
+	"- Evaluates the provided JavaScript code in a fresh V8 isolate as an async module.\n" +
+	"- All nested tools are available on the global `tools` object, for example `await tools.exec_command(...)`.\n" +
+	"- `text(value: string | number | boolean | undefined | null)`: Appends a text item."
 
 func TestResolveOpenAIWSClientFirstMessageTimeout(t *testing.T) {
 	defaultTimeout := time.Duration(config.DefaultOpenAIWSClientFirstMessageTimeoutSeconds) * time.Second
@@ -140,13 +146,13 @@ func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyAdaptsClientTools(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	sse := strings.Join([]string{
-		`data: {"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"type":"function_call","id":"item_exec","call_id":"call_exec","name":"exec","status":"in_progress"}}`,
+		`data: {"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"type":"function_call","id":"fc_exec","call_id":"call_exec","name":"exec","status":"in_progress"}}`,
 		``,
-		`data: {"type":"response.function_call_arguments.done","sequence_number":1,"output_index":0,"item_id":"item_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}"}`,
+		`data: {"type":"response.function_call_arguments.done","sequence_number":1,"output_index":0,"item_id":"fc_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}"}`,
 		``,
-		`data: {"type":"response.output_item.done","sequence_number":2,"output_index":0,"item":{"type":"function_call","id":"item_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}","status":"completed"}}`,
+		`data: {"type":"response.output_item.done","sequence_number":2,"output_index":0,"item":{"type":"function_call","id":"fc_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}","status":"completed"}}`,
 		``,
-		`data: {"type":"response.completed","sequence_number":3,"response":{"id":"resp_tools","status":"completed","output":[{"type":"function_call","id":"item_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+		`data: {"type":"response.completed","sequence_number":3,"response":{"id":"resp_tools","status":"completed","output":[{"type":"function_call","id":"fc_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
 		``,
 	}, "\n")
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
@@ -163,7 +169,7 @@ func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyAdaptsClientTools(t *testing.T) {
 		"type":"response.create","model":"gpt-5","stream":true,
 		"tools":[{"type":"custom","name":"exec","description":"Run a command"}],
 		"input":[
-			{"type":"custom_tool_call","id":"previous_item","call_id":"previous_call","name":"exec","input":"echo ready"},
+			{"type":"custom_tool_call","id":"ctc_previous","call_id":"previous_call","name":"exec","input":"echo ready"},
 			{"type":"custom_tool_call_output","call_id":"previous_call","output":"ready"}
 		]
 	}`)
@@ -185,6 +191,7 @@ func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyAdaptsClientTools(t *testing.T) {
 	require.NotNil(t, result)
 	require.Equal(t, "function", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
 	require.Equal(t, "function_call", gjson.GetBytes(upstream.lastBody, "input.0.type").String())
+	require.Equal(t, "fc_previous", gjson.GetBytes(upstream.lastBody, "input.0.id").String())
 	require.JSONEq(t, `{"input":"echo ready"}`, gjson.GetBytes(upstream.lastBody, "input.0.arguments").String())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "input.0.input").Exists())
 	require.Equal(t, "function_call_output", gjson.GetBytes(upstream.lastBody, "input.1.type").String())
@@ -200,26 +207,157 @@ func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyAdaptsClientTools(t *testing.T) {
 	}
 	require.NotEmpty(t, outputDone)
 	require.Equal(t, "custom_tool_call", gjson.GetBytes(outputDone, "item.type").String())
+	require.Equal(t, "ctc_exec", gjson.GetBytes(outputDone, "item.id").String())
 	require.Equal(t, "pwd", gjson.GetBytes(outputDone, "item.input").String())
 	require.False(t, gjson.GetBytes(outputDone, "item.arguments").Exists())
 	require.NotEmpty(t, completed)
 	require.Equal(t, "custom_tool_call", gjson.GetBytes(completed, "response.output.0.type").String())
+	require.Equal(t, "ctc_exec", gjson.GetBytes(completed, "response.output.0.id").String())
 	require.Equal(t, "pwd", gjson.GetBytes(completed, "response.output.0.input").String())
 	require.True(t, result.wsReplayInputExists)
 	require.Len(t, result.wsReplayInput, 1)
 	require.Equal(t, "custom_tool_call", gjson.GetBytes(result.wsReplayInput[0], "type").String())
+	require.Equal(t, "ctc_exec", gjson.GetBytes(result.wsReplayInput[0], "id").String())
 	require.Equal(t, "pwd", gjson.GetBytes(result.wsReplayInput[0], "input").String())
+}
+
+func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyRepairsThinTerminalClientToolItem(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	sse := strings.Join([]string{
+		`data: {"type":"response.output_item.done","sequence_number":0,"output_index":0,"vendor_sequence":900719925474099312345,"item":{"type":"function_call","id":"fc_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"echo hi\"}","status":"completed","vendor_counter":900719925474099312345,"vendor_extension":{"trace":"keep"}}}`,
+		``,
+		`data: {"type":"response.completed","sequence_number":1,"response":{"id":"resp_tools","created_at":1e3,"status":"completed","output":[{"type":"function_call","id":"fc_exec","call_id":"call_exec","name":"exec"}],"vendor_sequence":900719925474099312345,"usage":{"input_tokens":1,"output_tokens":1}}}`,
+		``,
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(sse)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+		httpUpstream: upstream,
+	}
+	account := &Account{ID: 5660, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 1}
+	payload := []byte(`{"type":"response.create","model":"gpt-5","stream":true,"tools":[{"type":"custom","name":"exec","description":"Run a command"}],"input":"run echo hi"}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	var events [][]byte
+
+	result, err := svc.proxyOpenAIWSHTTPBridgeTurn(
+		context.Background(), c, account, "test-token", payload, len(payload),
+		"gpt-5", "", "", "", "", 2,
+		func(message []byte) error {
+			events = append(events, append([]byte(nil), message...))
+			return nil
+		},
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	var outputDone, completed []byte
+	for _, event := range events {
+		switch gjson.GetBytes(event, "type").String() {
+		case "response.output_item.done":
+			outputDone = event
+		case "response.completed":
+			completed = event
+		}
+	}
+	require.NotEmpty(t, outputDone)
+	require.Equal(t, "custom_tool_call", gjson.GetBytes(outputDone, "item.type").String())
+	require.Equal(t, "ctc_exec", gjson.GetBytes(outputDone, "item.id").String())
+	require.Equal(t, "echo hi", gjson.GetBytes(outputDone, "item.input").String())
+	require.Equal(t, "completed", gjson.GetBytes(outputDone, "item.status").String())
+	require.Equal(t, "keep", gjson.GetBytes(outputDone, "item.vendor_extension.trace").String())
+	require.Equal(t, "900719925474099312345", gjson.GetBytes(outputDone, "item.vendor_counter").Raw)
+	require.Equal(t, "900719925474099312345", gjson.GetBytes(outputDone, "vendor_sequence").Raw)
+	require.NotEmpty(t, completed)
+	require.Equal(t, "custom_tool_call", gjson.GetBytes(completed, "response.output.0.type").String())
+	require.Equal(t, "ctc_exec", gjson.GetBytes(completed, "response.output.0.id").String())
+	require.Equal(t, "echo hi", gjson.GetBytes(completed, "response.output.0.input").String())
+	require.Equal(t, "completed", gjson.GetBytes(completed, "response.output.0.status").String())
+	require.Equal(t, "keep", gjson.GetBytes(completed, "response.output.0.vendor_extension.trace").String())
+	require.Equal(t, "900719925474099312345", gjson.GetBytes(completed, "response.output.0.vendor_counter").Raw)
+	require.Equal(t, "900719925474099312345", gjson.GetBytes(completed, "response.vendor_sequence").Raw)
+	requireStrictPositiveIntegerJSONPath(t, completed, "response.created_at")
+}
+
+func TestProxyOpenAIWSHTTPBridgeTurnRestoresHostedWebSearchActions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	action := `{"type":"search","query":"weather","sources":[{"url":"https://example.test","vendor_rank":900719925474099312345}],"vendor_extension":{"trace":"keep"}}`
+	sse := strings.Join([]string{
+		`data: {"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"type":"web_search_call","id":"ws_1","status":"in_progress"}}`,
+		``,
+		`data: {"type":"response.web_search_call.completed","sequence_number":1,"output_index":0,"item_id":"ws_1"}`,
+		``,
+		`data: {"type":"response.output_item.done","sequence_number":2,"output_index":0,"item":{"type":"web_search_call","id":"ws_1","status":"completed","action":` + action + `}}`,
+		``,
+		`data: {"type":"response.completed","sequence_number":3,"response":{"id":"resp_search","created_at":1e3,"status":"completed","output":[{"type":"web_search_call","id":"ws_1","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+		``,
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(sse)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+		httpUpstream: upstream,
+	}
+	account := &Account{ID: 5661, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1}
+	payload := []byte(`{"type":"response.create","model":"gpt-5","stream":true,"tools":[{"type":"web_search"}],"input":"weather"}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	var events [][]byte
+
+	result, err := svc.proxyOpenAIWSHTTPBridgeTurn(
+		context.Background(), c, account, "test-token", payload, len(payload),
+		"gpt-5", "", "", "", "", 2,
+		func(message []byte) error {
+			events = append(events, append([]byte(nil), message...))
+			return nil
+		},
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, events, 4)
+	require.Equal(t, "response.output_item.added", gjson.GetBytes(events[0], "type").String())
+	require.Equal(t, "response.web_search_call.completed", gjson.GetBytes(events[1], "type").String())
+	require.Equal(t, "response.output_item.done", gjson.GetBytes(events[2], "type").String())
+	require.Equal(t, "response.completed", gjson.GetBytes(events[3], "type").String())
+
+	for _, assertion := range []struct {
+		payload []byte
+		path    string
+	}{
+		{events[0], "item.action"},
+		{events[1], "action"},
+		{events[2], "item.action"},
+		{events[3], "response.output.0.action"},
+	} {
+		require.Equal(t, "search", gjson.GetBytes(assertion.payload, assertion.path+".type").String())
+		require.Equal(t, "weather", gjson.GetBytes(assertion.payload, assertion.path+".query").String())
+		require.Equal(t, "keep", gjson.GetBytes(assertion.payload, assertion.path+".vendor_extension.trace").String())
+		require.Equal(t, "900719925474099312345", gjson.GetBytes(assertion.payload, assertion.path+".sources.0.vendor_rank").Raw)
+	}
+	requireStrictPositiveIntegerJSONPath(t, events[3], "response.created_at")
 }
 
 func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyRestoresClientToolsInResponseDone(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	sse := strings.Join([]string{
-		`data: {"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"type":"function_call","id":"item_exec","call_id":"call_exec","name":"exec","status":"in_progress"}}`,
+		`data: {"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"type":"function_call","id":"fc_exec_done","call_id":"call_exec","name":"exec","status":"in_progress"}}`,
 		``,
-		`data: {"type":"response.function_call_arguments.done","sequence_number":1,"output_index":0,"item_id":"item_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}"}`,
+		`data: {"type":"response.function_call_arguments.done","sequence_number":1,"output_index":0,"item_id":"fc_exec_done","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}"}`,
 		``,
-		`data: {"type":"response.done","sequence_number":2,"response":{"id":"resp_tools","status":"completed","output":[{"type":"function_call","id":"item_exec","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+		`data: {"type":"response.done","sequence_number":2,"response":{"id":"resp_tools","status":"completed","output":[{"type":"function_call","id":"fc_exec_done","call_id":"call_exec","name":"exec","arguments":"{\"input\":\"pwd\"}","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
 		``,
 	}, "\n")
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
@@ -258,11 +396,13 @@ func TestProxyOpenAIWSHTTPBridgeTurnAPIKeyRestoresClientToolsInResponseDone(t *t
 	require.Equal(t, "response.done", gjson.GetBytes(terminal, "type").String())
 	require.Equal(t, int64(3), gjson.GetBytes(terminal, "sequence_number").Int())
 	require.Equal(t, "custom_tool_call", gjson.GetBytes(terminal, "response.output.0.type").String())
+	require.Equal(t, "ctc_exec_done", gjson.GetBytes(terminal, "response.output.0.id").String())
 	require.Equal(t, "pwd", gjson.GetBytes(terminal, "response.output.0.input").String())
 	require.False(t, gjson.GetBytes(terminal, "response.output.0.arguments").Exists())
 	require.True(t, result.wsReplayInputExists)
 	require.Len(t, result.wsReplayInput, 1)
 	require.Equal(t, "custom_tool_call", gjson.GetBytes(result.wsReplayInput[0], "type").String())
+	require.Equal(t, "ctc_exec_done", gjson.GetBytes(result.wsReplayInput[0], "id").String())
 }
 
 func TestProxyOpenAIWSHTTPBridgeTurnGrokPromotesDiscoveryAndRestoresNamespaceSSE(t *testing.T) {
@@ -332,6 +472,109 @@ func TestProxyOpenAIWSHTTPBridgeTurnGrokPromotesDiscoveryAndRestoresNamespaceSSE
 	require.Equal(t, "multi_agent_v1", gjson.GetBytes(events[2], "item.namespace").String())
 	require.Equal(t, "spawn_agent", gjson.GetBytes(events[3], "response.output.0.name").String())
 	require.Equal(t, "multi_agent_v1", gjson.GetBytes(events[3], "response.output.0.namespace").String())
+}
+
+func TestProxyOpenAIWSHTTPBridgeTurnGrokForcesPendingWaitWithInheritedTools(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	completed := "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_done\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n"
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(completed))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(completed))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(completed))},
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID: 5767, Platform: PlatformGrok, Type: AccountTypeOAuth, Concurrency: 1,
+		Credentials: map[string]any{"base_url": xai.DefaultCLIBaseURL},
+	}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+
+	first, err := json.Marshal(map[string]any{
+		"type": "response.create", "model": "grok-4.6", "stream": true,
+		"tools": []any{
+			map[string]any{
+				"type": "custom", "name": "exec", "description": grokCodexBridgeExecDescriptionFixture,
+				"format": map[string]any{"type": "grammar"},
+			},
+			map[string]any{
+				"type": "function", "name": "wait", "description": "Wait for a yielded exec cell.",
+				"parameters": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"cell_id": map[string]any{"type": "string"},
+					},
+					"required": []any{"cell_id"},
+				},
+			},
+		},
+		"input": "start",
+	})
+	require.NoError(t, err)
+	_, err = svc.proxyOpenAIWSHTTPBridgeTurn(
+		context.Background(), c, account, "access-token", first, len(first),
+		"grok-4.6", "", "", "", "", 1, func([]byte) error { return nil },
+	)
+	require.NoError(t, err)
+
+	second := []byte(`{
+		"type":"response.create","model":"grok-4.6","stream":true,"tool_choice":"auto",
+		"input":[
+			{"type":"custom_tool_call","id":"ctc_exec_1","call_id":"call_exec_1","name":"exec","input":"await work"},
+			{"type":"custom_tool_call_output","id":"ctco_exec_1","call_id":"call_exec_1","output":[
+				{"type":"input_text","text":"Script running with cell ID 113"}
+			]}
+		]
+	}`)
+	_, err = svc.proxyOpenAIWSHTTPBridgeTurn(
+		context.Background(), c, account, "access-token", second, len(second),
+		"grok-4.6", "", "", "", "", 2, func([]byte) error { return nil },
+	)
+	require.NoError(t, err)
+
+	third := []byte(`{
+		"type":"response.create","model":"grok-4.6","stream":true,"tool_choice":"auto",
+		"input":[
+			{"type":"custom_tool_call","id":"ctc_exec_1","call_id":"call_exec_1","name":"exec","input":"await work"},
+			{"type":"custom_tool_call_output","id":"ctco_exec_1","call_id":"call_exec_1","output":"Script running with cell ID 113"},
+			{"type":"function_call","id":"fc_wait_1","call_id":"call_wait_1","name":"wait","arguments":"{\"cell_id\":\"113\"}"},
+			{"type":"function_call_output","id":"fco_wait_1","call_id":"call_wait_1","output":"Process exited with code 0\nfixture-terminal-ok"}
+		]
+	}`)
+	_, err = svc.proxyOpenAIWSHTTPBridgeTurn(
+		context.Background(), c, account, "access-token", third, len(third),
+		"grok-4.6", "", "", "", "", 3, func([]byte) error { return nil },
+	)
+	require.NoError(t, err)
+
+	require.Len(t, upstream.bodies, 3)
+	secondBody := upstream.bodies[1]
+	require.Equal(t, "function", gjson.GetBytes(secondBody, "tool_choice.type").String())
+	require.Equal(t, "wait", gjson.GetBytes(secondBody, "tool_choice.name").String())
+	require.False(t, gjson.GetBytes(secondBody, "tool_choice.function").Exists())
+	require.Equal(t, "function", gjson.GetBytes(secondBody, "tools.0.type").String())
+	require.Equal(t, "exec", gjson.GetBytes(secondBody, "tools.0.name").String())
+	require.Equal(t, 1, strings.Count(gjson.GetBytes(secondBody, "tools.0.description").String(), "CRITICAL ASYNC COMPLETION RULE"))
+	require.Equal(t, "function", gjson.GetBytes(secondBody, "tools.1.type").String())
+	require.Equal(t, "wait", gjson.GetBytes(secondBody, "tools.1.name").String())
+	require.Equal(t, 1, strings.Count(gjson.GetBytes(secondBody, "tools.1.description").String(), "CRITICAL WAIT CONTINUATION RULE"))
+	require.Equal(t, "function_call", gjson.GetBytes(secondBody, "input.0.type").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(secondBody, "input.1.type").String())
+	require.JSONEq(t, `[{"text":"Script running with cell ID 113","type":"input_text"}]`, gjson.GetBytes(secondBody, "input.1.output").String())
+	require.NotContains(t, gjson.GetBytes(secondBody, "instructions").String(), "CRITICAL TOOL RESULT RULE")
+
+	thirdBody := upstream.bodies[2]
+	require.Equal(t, "auto", gjson.GetBytes(thirdBody, "tool_choice").String())
+	require.Contains(t, gjson.GetBytes(thirdBody, "instructions").String(), "CRITICAL TOOL RESULT RULE")
+	require.Equal(t, "function_call", gjson.GetBytes(thirdBody, "input.2.type").String())
+	require.Equal(t, "wait", gjson.GetBytes(thirdBody, "input.2.name").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(thirdBody, "input.3.type").String())
+	require.Equal(t, "Process exited with code 0\nfixture-terminal-ok", gjson.GetBytes(thirdBody, "input.3.output").String())
 }
 
 func TestProxyOpenAIWSHTTPBridgeTurnGrokInheritsToolSearchAndPromotesFollowupDiscovery(t *testing.T) {

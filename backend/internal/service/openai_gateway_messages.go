@@ -721,8 +721,9 @@ func openAICompatTerminalResponse(event *apicompat.ResponsesStreamEvent, payload
 			message = "Upstream response failed"
 		}
 		return &apicompat.ResponsesResponse{
-			Status: "failed",
-			Error:  &apicompat.ResponsesError{Code: event.Code, Message: message},
+			CreatedAt: time.Now().Unix(),
+			Status:    "failed",
+			Error:     &apicompat.ResponsesError{Code: event.Code, Message: message},
 		}
 	default:
 		return nil

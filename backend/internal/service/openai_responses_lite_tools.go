@@ -26,11 +26,6 @@ func normalizeOpenAIResponsesLiteTools(reqBody map[string]any) (bool, error) {
 	if reqBody == nil {
 		return false, nil
 	}
-	if parallel, exists := reqBody["parallel_tool_calls"]; exists {
-		if _, ok := parallel.(bool); !ok {
-			return false, newOpenAIResponsesLiteValidationError("parallel_tool_calls", "responses Lite requires parallel_tool_calls to be a boolean")
-		}
-	}
 	if rawReasoning, exists := reqBody["reasoning"]; exists && rawReasoning != nil {
 		if _, ok := rawReasoning.(map[string]any); !ok {
 			return false, newOpenAIResponsesLiteValidationError("reasoning", "responses Lite requires reasoning to be an object")
@@ -106,7 +101,7 @@ func ensureOpenAIResponsesLiteParallelToolCalls(reqBody map[string]any, changed 
 			return false, newOpenAIResponsesLiteValidationError("parallel_tool_calls", "responses Lite requires parallel_tool_calls to be a boolean")
 		}
 	}
-	if parallel == false {
+	if exists && parallel == false {
 		return changed, nil
 	}
 	reqBody["parallel_tool_calls"] = false

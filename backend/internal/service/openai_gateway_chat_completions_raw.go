@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -177,9 +178,33 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	if customUA == "" && account.IsGrokOAuth() {
 		customUA = defaultGrokUpstreamUserAgent()
 	}
-	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, upstreamBody, clientStream, token, customUA, grokCacheIdentity)
-	if err != nil {
-		return nil, err
+	toolContinuation := account.Platform == PlatformGrok && hasGrokChatToolContinuation(upstreamBody)
+	toolContinuationServerRetryCount := 0
+	var resp *http.Response
+	for {
+		resp, err = s.sendCCUpstreamRequest(ctx, c, account, targetURL, upstreamBody, clientStream, token, customUA, grokCacheIdentity)
+		if err != nil {
+			return nil, err
+		}
+		if toolContinuation && resp.StatusCode == http.StatusInternalServerError && toolContinuationServerRetryCount < grokToolContinuationServerRetryMax {
+			respBody, _ := s.readOpenAIUpstreamError(resp)
+			if grokToolContinuationServerRetryAllowed(toolContinuation, resp.StatusCode, respBody, toolContinuationServerRetryCount) {
+				_ = resp.Body.Close()
+				toolContinuationServerRetryCount++
+				slog.Warn("grok_tool_continuation_server_retry",
+					"account_id", account.ID,
+					"protocol", "chat_completions",
+					"upstream_status", resp.StatusCode,
+					"retry_count", toolContinuationServerRetryCount,
+					"retry_max", grokToolContinuationServerRetryMax,
+				)
+				if retryErr := sleepWithContext(ctx, retryBackoffDelay(toolContinuationServerRetryCount)); retryErr != nil {
+					return nil, retryErr
+				}
+				continue
+			}
+		}
+		break
 	}
 	defer func() { _ = resp.Body.Close() }()
 

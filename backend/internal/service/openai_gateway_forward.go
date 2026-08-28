@@ -1106,6 +1106,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			resp.Body = newResponsesClientToolStreamBody(resp.Body, mapping, maxLineSize)
 		}
+		if reqStream {
+			maxLineSize := defaultMaxLineSize
+			if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
+				maxLineSize = s.cfg.Gateway.MaxLineSize
+			}
+			resp.Body = newOpenAIResponsesWebSearchActionCompatStreamBody(resp.Body, maxLineSize, defaultOpenAIResponsesWebSearchActionCompatBufferedBytes)
+		}
 
 		serviceTier := extractOpenAIServiceTierFromBody(body)
 		// 上游接受后只保留计费需要的标量，避免响应处理期间继续保活完整 input/tools map。
