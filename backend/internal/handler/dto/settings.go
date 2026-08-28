@@ -453,6 +453,14 @@ type OpenAIImagesOAuthUnavailableCooldownSettings struct {
 	CooldownMinutes int `json:"cooldown_minutes"`
 }
 
+// OpenAI403CooldownSettings OpenAI 403 临时冷却配置 DTO
+type OpenAI403CooldownSettings struct {
+	Enabled          bool `json:"enabled"`
+	CooldownMinutes  int  `json:"cooldown_minutes"`
+	DisableThreshold int  `json:"disable_threshold"`
+	WindowMinutes    int  `json:"window_minutes"`
+}
+
 // PanelRateLimitSettings 面板 API 限流配置 DTO
 type PanelRateLimitSettings struct {
 	Enabled     bool `json:"enabled"`

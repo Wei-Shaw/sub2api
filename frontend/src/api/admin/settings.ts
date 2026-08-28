@@ -1312,6 +1312,32 @@ export async function updateRateLimit429CooldownSettings(
   return data;
 }
 
+// ==================== OpenAI 403 Cooldown Settings ====================
+
+export interface OpenAI403CooldownSettings {
+  enabled: boolean;
+  cooldown_minutes: number;
+  disable_threshold: number;
+  window_minutes: number;
+}
+
+export async function getOpenAI403CooldownSettings(): Promise<OpenAI403CooldownSettings> {
+  const { data } = await apiClient.get<OpenAI403CooldownSettings>(
+    "/admin/settings/openai-403-cooldown",
+  );
+  return data;
+}
+
+export async function updateOpenAI403CooldownSettings(
+  settings: OpenAI403CooldownSettings,
+): Promise<OpenAI403CooldownSettings> {
+  const { data } = await apiClient.put<OpenAI403CooldownSettings>(
+    "/admin/settings/openai-403-cooldown",
+    settings,
+  );
+  return data;
+}
+
 // ==================== Panel Rate Limit Settings ====================
 
 /**
@@ -1571,6 +1597,8 @@ export const settingsAPI = {
   updateOverloadCooldownSettings,
   getRateLimit429CooldownSettings,
   updateRateLimit429CooldownSettings,
+  getOpenAI403CooldownSettings,
+  updateOpenAI403CooldownSettings,
   getPanelRateLimitSettings,
   updatePanelRateLimitSettings,
   getStreamTimeoutSettings,

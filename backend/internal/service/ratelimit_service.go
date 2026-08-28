@@ -89,6 +89,9 @@ const (
 	openAI403CooldownMinutesDefault = 10
 	openAI403DisableThreshold       = 3
 	openAI403CounterWindowMinutes   = 180
+	maxOpenAI403CooldownMinutes     = 1440
+	maxOpenAI403DisableThreshold    = 100
+	maxOpenAI403WindowMinutes       = 1440
 )
 
 // NewRateLimitService 创建RateLimitService实例
@@ -1023,6 +1026,12 @@ func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account
 		return false
 	}
 
+	settings := s.getOpenAI403CooldownSettings(ctx, account)
+	if !settings.Enabled {
+		slog.Info("openai_403_cooldown_disabled_skip_account_penalty", "account_id", account.ID)
+		return false
+	}
+
 	msg := buildForbiddenErrorMessage(
 		"Access forbidden (403):",
 		upstreamMsg,
@@ -1035,21 +1044,21 @@ func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account
 		return true
 	}
 
-	count, err := s.openAI403CounterCache.IncrementOpenAI403Count(ctx, account.ID, openAI403CounterWindowMinutes)
+	count, err := s.openAI403CounterCache.IncrementOpenAI403Count(ctx, account.ID, settings.WindowMinutes)
 	if err != nil {
 		slog.Warn("openai_403_increment_failed", "account_id", account.ID, "error", err)
 		s.handleAuthError(ctx, account, msg)
 		return true
 	}
 
-	if count >= openAI403DisableThreshold {
-		msg = fmt.Sprintf("%s | consecutive_403=%d/%d", msg, count, openAI403DisableThreshold)
+	if count >= int64(settings.DisableThreshold) {
+		msg = fmt.Sprintf("%s | consecutive_403=%d/%d", msg, count, settings.DisableThreshold)
 		s.handleAuthError(ctx, account, msg)
 		return true
 	}
 
-	until := time.Now().Add(time.Duration(openAI403CooldownMinutesDefault) * time.Minute)
-	reason := fmt.Sprintf("OpenAI 403 temporary cooldown (%d/%d): %s", count, openAI403DisableThreshold, msg)
+	until := time.Now().Add(time.Duration(settings.CooldownMinutes) * time.Minute)
+	reason := fmt.Sprintf("OpenAI 403 temporary cooldown (%d/%d): %s", count, settings.DisableThreshold, msg)
 	s.notifyAccountSchedulingBlocked(account, until, "openai_403_temp")
 	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); err != nil {
 		slog.Warn("openai_403_set_temp_unschedulable_failed", "account_id", account.ID, "error", err)
@@ -1062,9 +1071,21 @@ func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account
 		"account_id", account.ID,
 		"until", until,
 		"count", count,
-		"threshold", openAI403DisableThreshold,
+		"threshold", settings.DisableThreshold,
+		"cooldown_minutes", settings.CooldownMinutes,
 	)
 	return true
+}
+
+func (s *RateLimitService) getOpenAI403CooldownSettings(ctx context.Context, account *Account) *OpenAI403CooldownSettings {
+	if s.settingService != nil {
+		settings, err := s.settingService.GetOpenAI403CooldownSettings(ctx)
+		if err == nil && settings != nil {
+			return settings
+		}
+		slog.Warn("openai_403_cooldown_settings_read_failed", "account_id", account.ID, "error", err)
+	}
+	return DefaultOpenAI403CooldownSettings()
 }
 
 // handleAntigravity403 处理 Antigravity 平台的 403 错误
