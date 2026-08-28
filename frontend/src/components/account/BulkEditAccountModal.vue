@@ -978,6 +978,7 @@
         <div class="mb-3 flex items-center justify-between">
           <label class="input-label mb-0">{{ t('admin.accounts.openai.codexFingerprintMode') }}</label>
           <input
+            id="bulk-edit-codex-fingerprint-mode-enabled"
             v-model="enableCodexFingerprintMode"
             type="checkbox"
             class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
@@ -2089,12 +2090,8 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
 
   if (enableCodexFingerprintMode.value) {
     const extra = ensureExtra()
-    // off = 默认值，清键即可；device/session/full 是显式 opt-in，必须落键（#5610）。
-    if (codexFingerprintMode.value !== 'off') {
-      extra.codex_fingerprint_mode = codexFingerprintMode.value
-    } else {
-      delete extra.codex_fingerprint_mode
-    }
+    // 批量更新使用 JSONB merge 语义，off 也必须显式写入才能覆盖已有模式。
+    extra.codex_fingerprint_mode = codexFingerprintMode.value
   }
 
   if (enableOpenAICompactMode.value) {
