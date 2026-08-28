@@ -469,6 +469,7 @@ const clientTabs = computed((): TabConfig[] => {
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
       ]
     case 'deepseek':
+    case 'minimax':
     case 'composite':
       return [
         { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
@@ -753,8 +754,9 @@ const currentFiles = computed((): FileConfig[] => {
       }
       return generateGrokFiles(apiBase, apiKey)
     case 'deepseek':
+    case 'minimax':
       if (activeClientTab.value === 'codex') {
-        return generateRoutedCodexFiles(apiBase, apiKey, 'deepseek')
+        return generateRoutedCodexFiles(apiBase, apiKey, props.platform)
       }
       return generateAnthropicFiles(baseRoot, apiKey)
     case 'composite':
@@ -1215,6 +1217,7 @@ function generateRoutedCodexFiles(
     kimi: 'kimi-k2.5',
     zhipu: 'glm-4.7',
     deepseek: 'deepseek-v4-pro',
+    minimax: 'MiniMax-M3',
     composite: 'gpt-5.5'
   }
   const preferredModel = preferredModels[platform] || ''
@@ -1228,6 +1231,7 @@ function generateRoutedCodexFiles(
     kimi: 'Kimi',
     zhipu: 'Zhipu',
     deepseek: 'DeepSeek',
+    minimax: 'MiniMax',
     composite: 'Composite'
   }
   const label = labels[platform]
