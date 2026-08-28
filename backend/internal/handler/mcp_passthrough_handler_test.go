@@ -171,8 +171,63 @@ func (s *zhipuMCPSessionStoreFake) get(sessionID string) (int64, bool) {
 	return accountID, ok
 }
 
+// zhipuMCPBillingCacheStub service.BillingCache 最小桩：只实现余额读取，
+// 供 CheckBillingEligibility 的余额模式分支使用；其余方法未预期被调用。
+type zhipuMCPBillingCacheStub struct {
+	service.BillingCache
+
+	balance float64
+}
+
+func (s *zhipuMCPBillingCacheStub) GetUserBalance(_ context.Context, _ int64) (float64, error) {
+	return s.balance, nil
+}
+
+// zhipuMCPUsageLogRepoStub 捕获 RecordUsage 落库的用量行。
+type zhipuMCPUsageLogRepoStub struct {
+	service.UsageLogRepository
+
+	calls   int
+	lastLog *service.UsageLog
+}
+
+func (s *zhipuMCPUsageLogRepoStub) CreateBestEffort(_ context.Context, log *service.UsageLog) error {
+	s.calls++
+	s.lastLog = log
+	return nil
+}
+
+func (s *zhipuMCPUsageLogRepoStub) Create(_ context.Context, log *service.UsageLog) (bool, error) {
+	s.calls++
+	s.lastLog = log
+	return true, nil
+}
+
+// zhipuMCPUserRepoStub 捕获余额扣减。
+type zhipuMCPUserRepoStub struct {
+	service.UserRepository
+
+	deductCalls int
+	lastAmount  float64
+}
+
+func (s *zhipuMCPUserRepoStub) DeductBalance(_ context.Context, _ int64, amount float64) error {
+	s.deductCalls++
+	s.lastAmount = amount
+	return nil
+}
+
+// zhipuMCPBillingEnv 计费链路测试桩集合：余额资格 + usage_log 落库 + 余额扣减。
+type zhipuMCPBillingEnv struct {
+	cache   *zhipuMCPBillingCacheStub
+	logs    *zhipuMCPUsageLogRepoStub
+	users   *zhipuMCPUserRepoStub
+	billing *service.BillingCacheService
+}
+
 // newZhipuMCPTestEnv 组装 handler + fake 上游 + gin 路由。
 // accounts 同时进入 GetByID 与可调度列表；injectKey=false 用于未认证用例。
+// 计费链路默认可用（余额充足），计费用例可通过 billing 调整桩状态。
 func newZhipuMCPTestEnv(
 	t *testing.T,
 	accounts []service.Account,
@@ -180,7 +235,7 @@ func newZhipuMCPTestEnv(
 	store service.ZhipuMCPSessionStore,
 	injectKey bool,
 	respond func(attempt int, req *zhipuMCPCapturedRequest, w http.ResponseWriter),
-) (*gin.Engine, *zhipuMCPFakeUpstream) {
+) (*gin.Engine, *zhipuMCPFakeUpstream, *zhipuMCPBillingEnv) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
@@ -199,17 +254,24 @@ func newZhipuMCPTestEnv(
 	cfg := &config.Config{RunMode: config.RunModeStandard}
 	cfg.Gateway.Scheduling.LoadBatchEnabled = false
 
+	cacheStub := &zhipuMCPBillingCacheStub{balance: 10}
+	billingCacheSvc := service.NewBillingCacheService(cacheStub, nil, nil, nil, nil, nil, cfg, nil)
+	t.Cleanup(billingCacheSvc.Stop)
+
+	logRepo := &zhipuMCPUsageLogRepoStub{}
+	userRepo := &zhipuMCPUserRepoStub{}
+
 	gwSvc := service.NewGatewayService(
 		&zhipuMCPAccountRepoStub{accountsByID: accountsByID, schedulable: accounts},
 		&zhipuMCPGroupRepoStub{group: group},
-		nil, nil, nil, nil, nil, nil, // usageLog/usageBilling/user/userSub/userGroupRate/cache
+		logRepo, nil, userRepo, nil, nil, nil, // usageLog/usageBilling/user/userSub/userGroupRate/cache
 		cfg,
-		nil, nil, nil, nil, nil, nil, // schedulerSnapshot/concurrency/billing/rateLimit/billingCache/identity
+		nil, nil, service.NewBillingService(cfg, nil), nil, nil, nil, // schedulerSnapshot/concurrency/billing/rateLimit/billingCache/identity
 		&zhipuMCPUpstreamStub{target: target},
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, // deferred..userPlatformQuotaRepo
 	).WithZhipuMCPSessionStore(store)
 
-	h := &GatewayHandler{gatewayService: gwSvc, cfg: cfg}
+	h := &GatewayHandler{gatewayService: gwSvc, cfg: cfg, billingCacheService: billingCacheSvc}
 
 	r := gin.New()
 	if injectKey {
@@ -226,7 +288,7 @@ func newZhipuMCPTestEnv(
 	r.POST("/api/mcp/zhipu/:slug/mcp", h.ZhipuMCPPassthrough)
 	r.DELETE("/api/mcp/zhipu/:slug/mcp", h.ZhipuMCPPassthrough)
 	r.GET("/api/mcp/zhipu/:slug/mcp", h.ZhipuMCPPassthrough)
-	return r, upstream
+	return r, upstream, &zhipuMCPBillingEnv{cache: cacheStub, logs: logRepo, users: userRepo, billing: billingCacheSvc}
 }
 
 func zhipuMCPPostRequest(target string, body string, sessionID string) *http.Request {
@@ -251,7 +313,7 @@ func requireNoUserKeyLeak(t *testing.T, req *zhipuMCPCapturedRequest) {
 }
 
 func TestZhipuMCPPassthrough_Unauthorized(t *testing.T) {
-	r, upstream := newZhipuMCPTestEnv(t,
+	r, upstream, _ := newZhipuMCPTestEnv(t,
 		[]service.Account{zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true)},
 		&service.Group{ID: 7, Platform: service.PlatformZhipu},
 		&zhipuMCPSessionStoreFake{}, false, func(_ int, _ *zhipuMCPCapturedRequest, w http.ResponseWriter) {
@@ -266,7 +328,7 @@ func TestZhipuMCPPassthrough_Unauthorized(t *testing.T) {
 }
 
 func TestZhipuMCPPassthrough_UnknownSlug(t *testing.T) {
-	r, upstream := newZhipuMCPTestEnv(t,
+	r, upstream, _ := newZhipuMCPTestEnv(t,
 		[]service.Account{zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true)},
 		&service.Group{ID: 7, Platform: service.PlatformZhipu},
 		&zhipuMCPSessionStoreFake{}, true, func(_ int, _ *zhipuMCPCapturedRequest, w http.ResponseWriter) {
@@ -282,7 +344,7 @@ func TestZhipuMCPPassthrough_UnknownSlug(t *testing.T) {
 }
 
 func TestZhipuMCPPassthrough_NonZhipuGroup(t *testing.T) {
-	r, upstream := newZhipuMCPTestEnv(t,
+	r, upstream, _ := newZhipuMCPTestEnv(t,
 		[]service.Account{zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true)},
 		&service.Group{ID: 7, Platform: service.PlatformOpenAI},
 		&zhipuMCPSessionStoreFake{}, true, func(_ int, _ *zhipuMCPCapturedRequest, w http.ResponseWriter) {
@@ -298,7 +360,7 @@ func TestZhipuMCPPassthrough_NonZhipuGroup(t *testing.T) {
 }
 
 func TestZhipuMCPPassthrough_AuthHeaderRewriteAndBodyPassthrough(t *testing.T) {
-	r, upstream := newZhipuMCPTestEnv(t,
+	r, upstream, _ := newZhipuMCPTestEnv(t,
 		[]service.Account{zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true)},
 		&service.Group{ID: 7, Platform: service.PlatformZhipu},
 		&zhipuMCPSessionStoreFake{}, true,
@@ -330,7 +392,7 @@ func TestZhipuMCPPassthrough_AuthHeaderRewriteAndBodyPassthrough(t *testing.T) {
 
 func TestZhipuMCPPassthrough_SessionAffinity(t *testing.T) {
 	store := &zhipuMCPSessionStoreFake{}
-	r, upstream := newZhipuMCPTestEnv(t,
+	r, upstream, _ := newZhipuMCPTestEnv(t,
 		[]service.Account{
 			zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true),
 			zhipuMCPTestAccount(12, zhipuMCPTestZhipuKeyB, 2, true),
@@ -376,7 +438,7 @@ func TestZhipuMCPPassthrough_SessionAffinity(t *testing.T) {
 func TestZhipuMCPPassthrough_SSEStreamPassthrough(t *testing.T) {
 	chunk1 := "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"}\n\n"
 	chunk2 := "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{}}\n\n"
-	r, upstream := newZhipuMCPTestEnv(t,
+	r, upstream, _ := newZhipuMCPTestEnv(t,
 		[]service.Account{zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true)},
 		&service.Group{ID: 7, Platform: service.PlatformZhipu},
 		&zhipuMCPSessionStoreFake{}, true,
@@ -405,7 +467,7 @@ func TestZhipuMCPPassthrough_SSEStreamPassthrough(t *testing.T) {
 
 func TestZhipuMCPPassthrough_Upstream429FailsOverToNextAccount(t *testing.T) {
 	store := &zhipuMCPSessionStoreFake{}
-	r, upstream := newZhipuMCPTestEnv(t,
+	r, upstream, _ := newZhipuMCPTestEnv(t,
 		[]service.Account{
 			zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true),
 			zhipuMCPTestAccount(12, zhipuMCPTestZhipuKeyB, 2, true),
@@ -441,7 +503,7 @@ func TestZhipuMCPPassthrough_Upstream429FailsOverToNextAccount(t *testing.T) {
 }
 
 func TestZhipuMCPPassthrough_Upstream4xxPassthroughWithoutFailover(t *testing.T) {
-	r, upstream := newZhipuMCPTestEnv(t,
+	r, upstream, _ := newZhipuMCPTestEnv(t,
 		[]service.Account{
 			zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true),
 			zhipuMCPTestAccount(12, zhipuMCPTestZhipuKeyB, 2, true),
@@ -467,7 +529,7 @@ func TestZhipuMCPPassthrough_DeleteTerminatesSessionAndCleansBinding(t *testing.
 	store := &zhipuMCPSessionStoreFake{}
 	require.NoError(t, store.SetZhipuMCPSession(context.Background(), "sess-del-1", 11, time.Minute))
 
-	r, upstream := newZhipuMCPTestEnv(t,
+	r, upstream, _ := newZhipuMCPTestEnv(t,
 		[]service.Account{zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true)},
 		&service.Group{ID: 7, Platform: service.PlatformZhipu},
 		store, true, func(_ int, _ *zhipuMCPCapturedRequest, w http.ResponseWriter) {
@@ -494,7 +556,7 @@ func TestZhipuMCPPassthrough_DeleteTerminatesSessionAndCleansBinding(t *testing.
 }
 
 func TestZhipuMCPPassthrough_GetMethodNotAllowed(t *testing.T) {
-	r, upstream := newZhipuMCPTestEnv(t,
+	r, upstream, _ := newZhipuMCPTestEnv(t,
 		[]service.Account{zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true)},
 		&service.Group{ID: 7, Platform: service.PlatformZhipu},
 		&zhipuMCPSessionStoreFake{}, true, func(_ int, _ *zhipuMCPCapturedRequest, w http.ResponseWriter) {
@@ -519,7 +581,7 @@ func TestZhipuMCPPassthrough_StickyInvalidFallsBackToScheduling(t *testing.T) {
 	invalid := zhipuMCPTestAccount(13, "zp-key-account-c", 0, false)
 	invalid.Extra = map[string]any{service.ZhipuMCPCapabilityExtraKey: false}
 
-	r, upstream := newZhipuMCPTestEnv(t,
+	r, upstream, _ := newZhipuMCPTestEnv(t,
 		[]service.Account{
 			zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true),
 			invalid,
@@ -550,7 +612,7 @@ func TestZhipuMCPPassthrough_NonCapableAccountSkippedInScheduling(t *testing.T) 
 	notCapable := zhipuMCPTestAccount(13, "zp-key-account-c", 1, false)
 	notCapable.Extra = nil
 
-	r, upstream := newZhipuMCPTestEnv(t,
+	r, upstream, _ := newZhipuMCPTestEnv(t,
 		[]service.Account{
 			notCapable,
 			zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 2, true),
@@ -575,7 +637,7 @@ func TestZhipuMCPPassthrough_NonCapableAccountSkippedInScheduling(t *testing.T) 
 }
 
 func TestZhipuMCPPassthrough_RetriesExhaustedReturns502(t *testing.T) {
-	r, upstream := newZhipuMCPTestEnv(t,
+	r, upstream, _ := newZhipuMCPTestEnv(t,
 		[]service.Account{
 			zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true),
 			zhipuMCPTestAccount(12, zhipuMCPTestZhipuKeyB, 2, true),
@@ -591,4 +653,147 @@ func TestZhipuMCPPassthrough_RetriesExhaustedReturns502(t *testing.T) {
 	require.Equal(t, http.StatusBadGateway, w.Code)
 	require.Contains(t, w.Body.String(), "zhipu_mcp_error")
 	require.Len(t, upstream.captured(), 2)
+}
+
+// zhipuMCPBillingTestGroup 带显式 MCP 单价的 zhipu 分组：
+// search_price_per_1k 在 zhipu 组的语义即 "MCP tools/call 每千次价格"。
+func zhipuMCPBillingTestGroup() *service.Group {
+	price := 2.0
+	return &service.Group{
+		ID:               7,
+		Platform:         service.PlatformZhipu,
+		RateMultiplier:   1.1,
+		SearchPricePer1k: &price,
+	}
+}
+
+func TestZhipuMCPPassthrough_ToolCallRecordsUsageOnce(t *testing.T) {
+	r, _, billing := newZhipuMCPTestEnv(t,
+		[]service.Account{zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true)},
+		zhipuMCPBillingTestGroup(),
+		&zhipuMCPSessionStoreFake{}, true,
+		func(_ int, _ *zhipuMCPCapturedRequest, w http.ResponseWriter) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"ok"}]}}`))
+		})
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp",
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"web_search","arguments":{}}}`, ""))
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	// 单次 tools/call → 恰好一条 usage 行（handler 测试环境无 worker 池，
+	// submitMandatoryUsageRecordTask 同步兜底执行，返回时已落账）。
+	require.Equal(t, 1, billing.logs.calls)
+	log := billing.logs.lastLog
+	require.NotNil(t, log)
+	// 伪模型名 + RequestID 幂等键前缀。
+	require.Equal(t, "zhipu-mcp-web_search_prime", log.Model)
+	require.Equal(t, "zhipu-mcp-web_search_prime", log.RequestedModel)
+	require.True(t, strings.HasPrefix(log.RequestID, "zhipu_mcp:"), "RequestID 应为 zhipu_mcp: 前缀，实际 %q", log.RequestID)
+	require.NotEqual(t, "zhipu_mcp:", log.RequestID, "RequestID 必须带唯一后缀（计费幂等键）")
+	// 端点与归属。
+	require.NotNil(t, log.InboundEndpoint)
+	require.Equal(t, "/api/mcp/zhipu/web_search_prime/mcp", *log.InboundEndpoint)
+	require.NotNil(t, log.UpstreamEndpoint)
+	require.Equal(t, "zhipu-mcp:web_search_prime", *log.UpstreamEndpoint)
+	require.NotNil(t, log.GroupID)
+	require.Equal(t, int64(7), *log.GroupID)
+	require.Equal(t, int64(1), log.UserID)
+	require.Equal(t, int64(1), log.APIKeyID)
+	require.Equal(t, int64(11), log.AccountID)
+	require.False(t, log.Stream)
+	require.Nil(t, log.SubscriptionID)
+	// 成本走 SearchCount × search_price_per_1k 通道：1 次 × 2.0/1k = 0.002，倍率 1.1。
+	require.InDelta(t, 0.002, log.TotalCost, 1e-12)
+	require.InDelta(t, 0.0022, log.ActualCost, 1e-12)
+	// SearchCount 是叠加到 token 成本上的 surcharge（token 查无价时结构体
+	// BillingMode 为空，resolveBillingMode 回落 "token"）——既有通道行为，锁定不改语义。
+	require.NotNil(t, log.BillingMode)
+	require.Equal(t, "token", *log.BillingMode)
+	// 余额模式按 ActualCost 扣减用户余额。
+	require.Equal(t, 1, billing.users.deductCalls)
+	require.InDelta(t, 0.0022, billing.users.lastAmount, 1e-12)
+}
+
+func TestZhipuMCPPassthrough_BatchToolCallBillsPerCall(t *testing.T) {
+	r, upstream, billing := newZhipuMCPTestEnv(t,
+		[]service.Account{zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true)},
+		zhipuMCPBillingTestGroup(),
+		&zhipuMCPSessionStoreFake{}, true,
+		func(_ int, _ *zhipuMCPCapturedRequest, w http.ResponseWriter) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"jsonrpc":"2.0","id":1,"result":{}},{"jsonrpc":"2.0","id":2,"result":{}}]`))
+		})
+
+	body := `[
+		{"jsonrpc":"2.0","id":1,"method":"tools/call"},
+		{"jsonrpc":"2.0","id":2,"method":"tools/call"},
+		{"jsonrpc":"2.0","id":3,"method":"initialize"},
+		{"jsonrpc":"2.0","method":"notifications/message"}
+	]`
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp", body, ""))
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, upstream.captured(), 1)
+	// batch 只落一条 usage 行，SearchCount = 2 → 2 × 2.0/1k = 0.004（倍率 1.1 → 0.0044）。
+	require.Equal(t, 1, billing.logs.calls)
+	require.InDelta(t, 0.004, billing.logs.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.0044, billing.logs.lastLog.ActualCost, 1e-12)
+}
+
+func TestZhipuMCPPassthrough_InitializeAndDeleteDoNotRecordUsage(t *testing.T) {
+	r, upstream, billing := newZhipuMCPTestEnv(t,
+		[]service.Account{zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true)},
+		zhipuMCPBillingTestGroup(),
+		&zhipuMCPSessionStoreFake{}, true,
+		func(_ int, _ *zhipuMCPCapturedRequest, w http.ResponseWriter) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
+		})
+
+	// initialize：管理性方法免费。
+	w1 := httptest.NewRecorder()
+	r.ServeHTTP(w1, zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp",
+		`{"jsonrpc":"2.0","id":1,"method":"initialize"}`, ""))
+	require.Equal(t, http.StatusOK, w1.Code)
+
+	// DELETE：session 终止免费。
+	req := httptest.NewRequest(http.MethodDelete, "/api/mcp/zhipu/web_search_prime/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+zhipuMCPTestUserKey)
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req)
+	require.Equal(t, http.StatusOK, w2.Code)
+
+	require.Len(t, upstream.captured(), 2)
+	require.Equal(t, 0, billing.logs.calls, "initialize/DELETE 不产生 usage 记录")
+	require.Equal(t, 0, billing.users.deductCalls)
+}
+
+func TestZhipuMCPPassthrough_BillingIneligibleRejectsBeforeScheduling(t *testing.T) {
+	r, upstream, billing := newZhipuMCPTestEnv(t,
+		[]service.Account{zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true)},
+		zhipuMCPBillingTestGroup(),
+		&zhipuMCPSessionStoreFake{}, true,
+		func(_ int, _ *zhipuMCPCapturedRequest, w http.ResponseWriter) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+	billing.cache.balance = 0
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp",
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call"}`, ""))
+
+	// 余额不足在调度前被拒（billingErrorDetails 默认映射 403），不上游、不落账。
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Contains(t, w.Body.String(), "billing_error")
+	require.Empty(t, upstream.captured())
+	require.Equal(t, 0, billing.logs.calls)
+	require.Equal(t, 0, billing.users.deductCalls)
 }
