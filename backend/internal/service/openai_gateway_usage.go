@@ -384,6 +384,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	usageLog.CreatedAt = time.Now()
 	// 设置渠道信息
 	usageLog.ChannelID = optionalInt64Ptr(input.ChannelID)
+	usageLog.ProxyID = usedProxyID(account)
 	usageLog.ModelMappingChain = optionalTrimmedStringPtr(input.ModelMappingChain)
 	// 设置计费模式
 	if cost != nil && cost.BillingMode != "" {
