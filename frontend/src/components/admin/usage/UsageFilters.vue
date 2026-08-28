@@ -78,6 +78,19 @@
           </div>
         </div>
 
+        <!-- IP Address Filter -->
+        <div class="w-full sm:w-auto sm:min-w-[220px]">
+          <label class="input-label">{{ t('admin.usage.ipAddressFilter') }}</label>
+          <input
+            v-model="filters.ip_address"
+            type="text"
+            class="input"
+            :placeholder="t('admin.usage.searchIpAddressPlaceholder')"
+            @change="emitChange"
+            @keyup.enter="emitChange"
+          />
+        </div>
+
         <!-- Model Filter -->
         <div class="w-full sm:w-auto sm:min-w-[220px]">
           <label class="input-label">{{ t('usage.model') }}</label>

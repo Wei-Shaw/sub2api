@@ -14,6 +14,8 @@ const messages: Record<string, string> = {
   'admin.usage.allModels': 'All Models',
   'admin.usage.account': 'Account',
   'admin.usage.searchAccountPlaceholder': 'Search account...',
+  'admin.usage.ipAddressFilter': 'IP address',
+  'admin.usage.searchIpAddressPlaceholder': 'Filter by IP address...',
   'usage.type': 'Type',
   'admin.usage.allTypes': 'All Types',
   'usage.ws': 'WS',
@@ -228,6 +230,20 @@ describe('UsageFilters — user search dropdown', () => {
     pendingSearch.resolve([{ id: 3, email: 'stale@test.com', deleted: false }])
     await flushPromises()
     expect(wrapper.text()).not.toContain('stale@test.com')
+  })
+})
+
+describe('UsageFilters — IP address', () => {
+  it('renders an IP filter and emits change when submitted', async () => {
+    const wrapper = mountFilters()
+    const input = wrapper.find('input[placeholder="Filter by IP address..."]')
+
+    expect(input.exists()).toBe(true)
+    await input.setValue('192.0.2.10')
+    await input.trigger('keyup.enter')
+
+    expect(wrapper.emitted('change')).toBeTruthy()
+    expect((wrapper.props('modelValue') as any).ip_address).toBe('192.0.2.10')
   })
 })
 
