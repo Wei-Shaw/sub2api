@@ -412,7 +412,6 @@ type UpdateAccountInput struct {
 // BulkUpdateAccountsInput describes the payload for bulk updating accounts.
 type BulkUpdateAccountsInput struct {
 	AccountIDs     []int64
-	Filters        *BulkUpdateAccountFilters
 	Name           string
 	ProxyID        *int64
 	Concurrency    *int
@@ -428,15 +427,6 @@ type BulkUpdateAccountsInput struct {
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
 	// This should only be set when the caller has explicitly confirmed the risk.
 	SkipMixedChannelCheck bool
-}
-
-type BulkUpdateAccountFilters struct {
-	Platform    string
-	Type        string
-	Status      string
-	Group       string
-	Search      string
-	PrivacyMode string
 }
 
 // BulkUpdateAccountResult captures the result for a single account update.

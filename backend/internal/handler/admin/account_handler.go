@@ -154,30 +154,20 @@ type UpdateAccountRequest struct {
 
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
 type BulkUpdateAccountsRequest struct {
-	AccountIDs              []int64                   `json:"account_ids"`
-	Filters                 *BulkUpdateAccountFilters `json:"filters"`
-	Name                    string                    `json:"name"`
-	ProxyID                 *int64                    `json:"proxy_id"`
-	Concurrency             *int                      `json:"concurrency"`
-	Priority                *int                      `json:"priority"`
-	RateMultiplier          *float64                  `json:"rate_multiplier"`
-	LoadFactor              *int                      `json:"load_factor"`
-	Status                  string                    `json:"status" binding:"omitempty,oneof=active inactive error"`
-	Schedulable             *bool                     `json:"schedulable"`
-	GroupIDs                *[]int64                  `json:"group_ids"`
-	Credentials             map[string]any            `json:"credentials"`
-	Extra                   map[string]any            `json:"extra"`
-	ProbeEnabled            *bool                     `json:"upstream_billing_probe_enabled"`
-	ConfirmMixedChannelRisk *bool                     `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
-}
-
-type BulkUpdateAccountFilters struct {
-	Platform    string `json:"platform"`
-	Type        string `json:"type"`
-	Status      string `json:"status"`
-	Group       string `json:"group"`
-	Search      string `json:"search"`
-	PrivacyMode string `json:"privacy_mode"`
+	AccountIDs              []int64        `json:"account_ids"`
+	Name                    string         `json:"name"`
+	ProxyID                 *int64         `json:"proxy_id"`
+	Concurrency             *int           `json:"concurrency"`
+	Priority                *int           `json:"priority"`
+	RateMultiplier          *float64       `json:"rate_multiplier"`
+	LoadFactor              *int           `json:"load_factor"`
+	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive error"`
+	Schedulable             *bool          `json:"schedulable"`
+	GroupIDs                *[]int64       `json:"group_ids"`
+	Credentials             map[string]any `json:"credentials"`
+	Extra                   map[string]any `json:"extra"`
+	ProbeEnabled            *bool          `json:"upstream_billing_probe_enabled"`
+	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
 // CheckMixedChannelRequest represents check mixed channel risk request
@@ -2085,8 +2075,8 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		response.BadRequest(c, "rate_multiplier must be >= 0")
 		return
 	}
-	if len(req.AccountIDs) == 0 && req.Filters == nil {
-		response.BadRequest(c, "account_ids or filters is required")
+	if len(req.AccountIDs) == 0 {
+		response.BadRequest(c, "account_ids is required")
 		return
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
@@ -2115,7 +2105,6 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 
 	result, err := h.adminService.BulkUpdateAccounts(c.Request.Context(), &service.BulkUpdateAccountsInput{
 		AccountIDs:            req.AccountIDs,
-		Filters:               toServiceBulkUpdateAccountFilters(req.Filters),
 		Name:                  req.Name,
 		ProxyID:               req.ProxyID,
 		Concurrency:           req.Concurrency,
@@ -2150,20 +2139,6 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 	}
 
 	response.Success(c, result)
-}
-
-func toServiceBulkUpdateAccountFilters(filters *BulkUpdateAccountFilters) *service.BulkUpdateAccountFilters {
-	if filters == nil {
-		return nil
-	}
-	return &service.BulkUpdateAccountFilters{
-		Platform:    filters.Platform,
-		Type:        filters.Type,
-		Status:      filters.Status,
-		Group:       filters.Group,
-		Search:      filters.Search,
-		PrivacyMode: filters.PrivacyMode,
-	}
 }
 
 // ========== OAuth Handlers ==========

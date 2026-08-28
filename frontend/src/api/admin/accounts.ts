@@ -463,7 +463,7 @@ export async function batchUpdateCredentials(request: {
  * @returns Success confirmation
  */
 export async function bulkUpdate(
-  accountIdsOrPayload: number[] | Record<string, unknown>,
+  accountIds: number[],
   updates?: Record<string, unknown>
 ): Promise<{
   success: number
@@ -473,12 +473,10 @@ export async function bulkUpdate(
   long_context_inherited_count?: number
   results: Array<{ account_id: number; success: boolean; error?: string }>
   }> {
-  const payload = Array.isArray(accountIdsOrPayload)
-    ? {
-        account_ids: accountIdsOrPayload,
-        ...(updates ?? {})
-      }
-    : accountIdsOrPayload
+  const payload = {
+    account_ids: accountIds,
+    ...(updates ?? {})
+  }
   const { data } = await apiClient.post<{
     success: number
     failed: number

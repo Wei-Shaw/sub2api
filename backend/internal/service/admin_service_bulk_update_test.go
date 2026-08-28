@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"reflect"
 	"testing"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -275,7 +274,6 @@ func TestAdminService_BulkUpdateAccounts_MixedChannelPreCheckBlocksOnExistingCon
 	// No BindGroups should have been called since the check runs before any write.
 	require.Empty(t, repo.bindGroupsCalls)
 }
-
 func TestAdminServiceBulkUpdateAccounts_ResolvesIDsFromFilters(t *testing.T) {
 	repo := &accountRepoStubForBulkUpdate{
 		listData: []Account{

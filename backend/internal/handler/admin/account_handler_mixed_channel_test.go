@@ -219,18 +219,16 @@ func TestAccountHandlerBulkUpdateMixedChannelConfirmSkips(t *testing.T) {
 	require.Equal(t, float64(0), data["failed"])
 }
 
-func TestBulkUpdateAcceptsFilterTargetRequest(t *testing.T) {
+// 过滤器批改能力已移除：只带 filters（无 account_ids）的请求必须被拒绝。
+func TestBulkUpdateRejectsFiltersOnlyRequest(t *testing.T) {
 	adminSvc := newStubAdminService()
 	router := setupAccountMixedChannelRouter(adminSvc)
 
 	body, _ := json.Marshal(map[string]any{
 		"filters": map[string]any{
-			"platform":     "openai",
-			"type":         "oauth",
-			"status":       "active",
-			"group":        "12",
-			"privacy_mode": "blocked",
-			"search":       "bulk-target",
+			"platform": "openai",
+			"type":     "oauth",
+			"status":   "active",
 		},
 		"schedulable": true,
 	})
@@ -239,10 +237,8 @@ func TestBulkUpdateAcceptsFilterTargetRequest(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(rec, req)
 
-	require.Equal(t, http.StatusOK, rec.Code)
-	var resp map[string]any
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.Equal(t, float64(0), resp["code"])
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "account_ids is required")
 }
 
 func TestBulkUpdateAcceptsDedicatedUpstreamBillingProbeSetting(t *testing.T) {
