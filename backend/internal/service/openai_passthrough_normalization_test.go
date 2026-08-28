@@ -31,6 +31,16 @@ func TestNormalizeOpenAIPassthroughOAuthBody_RemovesSamplingParameters(t *testin
 	require.False(t, gjson.GetBytes(normalized, "top_p").Exists())
 }
 
+func TestNormalizeOpenAIPassthroughOAuthBody_PreservesGPT56SamplingParameters(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","temperature":0.35,"top_p":0.75,"input":"hello"}`)
+
+	normalized, _, err := normalizeOpenAIPassthroughOAuthBody(body, false)
+
+	require.NoError(t, err)
+	require.InDelta(t, 0.35, gjson.GetBytes(normalized, "temperature").Float(), 1e-9)
+	require.InDelta(t, 0.75, gjson.GetBytes(normalized, "top_p").Float(), 1e-9)
+}
+
 func TestNormalizeOpenAIPassthroughOAuthBody_NormalizesCompatibilityFields(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.5","prompt":"hello","commands":["unsupported"],"truncation":"auto","stop_sequences":["END"],"chat_template_kwargs":{"enable_thinking":true}}`)
 

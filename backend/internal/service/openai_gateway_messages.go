@@ -147,9 +147,12 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 
 	responsesReq.Model = upstreamModel
-	if isOpenAICodexReasoningGPTModel(upstreamModel) {
+	if isOpenAICodexSamplingUnsupportedModel(upstreamModel) {
 		responsesReq.Temperature = nil
 		responsesReq.TopP = nil
+	} else {
+		responsesReq.Temperature = anthropicReq.Temperature
+		responsesReq.TopP = anthropicReq.TopP
 	}
 	if responsesReq.Reasoning != nil {
 		responsesReq.Reasoning.Effort = openAICompatAnthropicReasoningEffort(&anthropicReq, upstreamModel, responsesReq.Reasoning.Effort)

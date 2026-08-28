@@ -1683,6 +1683,29 @@ func TestAnthropicToResponses_TemperatureStrippedForAllGpt5Variants(t *testing.T
 	}
 }
 
+func TestAnthropicToResponses_TemperaturePreservedForGPT56(t *testing.T) {
+	temp := 0.35
+	topP := 0.75
+	for _, model := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+		t.Run(model, func(t *testing.T) {
+			req := &AnthropicRequest{
+				Model:       model,
+				MaxTokens:   1024,
+				Messages:    []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+				Temperature: &temp,
+				TopP:        &topP,
+			}
+
+			resp, err := AnthropicToResponses(req)
+			require.NoError(t, err)
+			require.NotNil(t, resp.Temperature)
+			assert.InDelta(t, temp, *resp.Temperature, 1e-9)
+			require.NotNil(t, resp.TopP)
+			assert.InDelta(t, topP, *resp.TopP, 1e-9)
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // AnthropicToResponsesResponse: Anthropic input_tokens excludes cached tokens
 // while OpenAI Responses input_tokens is the total including cached tokens.

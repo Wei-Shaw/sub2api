@@ -706,6 +706,28 @@ func TestChatCompletionsToResponses_TemperaturePreservedForNonReasoningModel(t *
 	assert.InDelta(t, 0.7, *resp.TopP, 1e-9)
 }
 
+func TestChatCompletionsToResponses_TemperaturePreservedForGPT56(t *testing.T) {
+	temp := 0.35
+	topP := 0.75
+	for _, model := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+		t.Run(model, func(t *testing.T) {
+			req := &ChatCompletionsRequest{
+				Model:       model,
+				Messages:    []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+				Temperature: &temp,
+				TopP:        &topP,
+			}
+
+			resp, err := ChatCompletionsToResponses(req)
+			require.NoError(t, err)
+			require.NotNil(t, resp.Temperature)
+			assert.InDelta(t, temp, *resp.Temperature, 1e-9)
+			require.NotNil(t, resp.TopP)
+			assert.InDelta(t, topP, *resp.TopP, 1e-9)
+		})
+	}
+}
+
 func TestChatCompletionsToResponses_AssistantWithTextAndToolCalls(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o",

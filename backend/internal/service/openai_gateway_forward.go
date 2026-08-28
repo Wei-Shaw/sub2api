@@ -385,7 +385,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if upstreamModel != requestedModel {
 		markPatchSet("model", upstreamModel)
 	}
-	if isOpenAICodexReasoningGPTModel(upstreamModel) && gjson.GetBytes(body, "temperature").Exists() {
+	if isOpenAICodexSamplingUnsupportedModel(upstreamModel) && gjson.GetBytes(body, "temperature").Exists() {
 		markPatchDelete("temperature")
 	}
 	if upstreamModel != billingModel {

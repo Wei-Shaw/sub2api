@@ -1219,7 +1219,8 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 		changed = true
 	}
 
-	for _, field := range openAICodexOAuthUnsupportedFields {
+	model := strings.TrimSpace(gjson.GetBytes(normalized, "model").String())
+	for _, field := range openAICodexOAuthUnsupportedFieldsForModel(model) {
 		if value := gjson.GetBytes(normalized, field); !value.Exists() {
 			continue
 		}

@@ -101,6 +101,30 @@ func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyRejectsAmbiguousErrors(t 
 	}
 }
 
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyRemovesRejectedSamplingParameter(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-terra","temperature":0.35,"top_p":0.75,"input":[{"content":{"temperature":"keep","top_p":"keep"}}]}`)
+	tests := []struct {
+		param string
+		code  string
+	}{
+		{param: "temperature", code: "unsupported_parameter"},
+		{param: "top_p", code: "unknown_parameter"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.param, func(t *testing.T) {
+			responseBody := []byte(fmt.Sprintf(`{"error":{"code":%q,"message":"Unsupported parameter: %s","param":%q}}`, tt.code, tt.param, tt.param))
+			retryBody, reason, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, responseBody)
+
+			require.NoError(t, err)
+			require.True(t, changed)
+			require.Contains(t, reason, tt.param)
+			require.False(t, gjson.GetBytes(retryBody, tt.param).Exists())
+			require.Equal(t, "keep", gjson.GetBytes(retryBody, "input.0.content."+tt.param).String())
+		})
+	}
+}
+
 func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyRepairsAutomationMissingRootType(t *testing.T) {
 	body := []byte(`{"tools":[{"type":"function","name":"automation_update","parameters":{"oneOf":[{"type":"object"},{"type":"object","properties":{}}]}}]}`)
 	responseBody := []byte(`{"error":{"code":"invalid_function_parameters","message":"Invalid schema for function 'automation_update': got 'type: \"None\"'.","param":"tools[0].parameters"}}`)
@@ -621,6 +645,28 @@ func TestOpenAIGatewayService_RetriesExplicitMaxOutputTokensRejection(t *testing
 	require.Equal(t, int64(4096), gjson.GetBytes(upstream.bodies[0], "max_output_tokens").Int())
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "max_output_tokens").Exists())
 	require.Equal(t, "keep", gjson.GetBytes(upstream.bodies[1], "input.0.content.max_output_tokens").String())
+}
+
+func TestOpenAIGatewayService_RetriesExplicitTemperatureRejection(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-terra","stream":false,"temperature":0.35,"input":[{"type":"message","role":"user","content":{"temperature":"keep"}}]}`)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusBadRequest, `{"error":{"code":"unsupported_parameter","message":"Unsupported parameter: temperature","param":"temperature"}}`),
+		newOpenAIRejectedFieldTestResponse(http.StatusOK, `{"output":[],"usage":{"input_tokens":1,"output_tokens":1,"input_tokens_details":{"cached_tokens":0}}}`),
+	}}
+
+	result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+		context.Background(),
+		newOpenAIRejectedFieldTestContext(body),
+		newOpenAIRejectedFieldTestAccount(),
+		body,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 2)
+	require.InDelta(t, 0.35, gjson.GetBytes(upstream.bodies[0], "temperature").Float(), 1e-9)
+	require.False(t, gjson.GetBytes(upstream.bodies[1], "temperature").Exists())
+	require.Equal(t, "keep", gjson.GetBytes(upstream.bodies[1], "input.0.content.temperature").String())
 }
 
 func TestOpenAIGatewayService_ComposesProactiveNamespaceStripWithRejectedFieldRetry(t *testing.T) {

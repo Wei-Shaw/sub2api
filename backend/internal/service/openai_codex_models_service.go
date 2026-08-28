@@ -595,6 +595,15 @@ func isOpenAICodexReasoningGPTModel(modelID string) bool {
 	return strings.HasPrefix(normalized, "gpt-5")
 }
 
+func supportsOpenAICodexSamplingParameters(modelID string) bool {
+	normalized := canonicalizeOpenAIModelAliasSpelling(modelID)
+	return normalized == "gpt-5.6" || strings.HasPrefix(normalized, "gpt-5.6-")
+}
+
+func isOpenAICodexSamplingUnsupportedModel(modelID string) bool {
+	return isOpenAICodexReasoningGPTModel(modelID) && !supportsOpenAICodexSamplingParameters(modelID)
+}
+
 func isOpenAICodexImageInputModel(modelID string) bool {
 	normalized := canonicalizeOpenAIModelAliasSpelling(modelID)
 	return strings.HasPrefix(normalized, "gpt-5") ||

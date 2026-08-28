@@ -219,7 +219,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 				responsesBody = stripped
 			}
 		}
-		if isOpenAICodexReasoningGPTModel(upstreamModel) {
+		if isOpenAICodexSamplingUnsupportedModel(upstreamModel) {
 			for _, field := range []string{"temperature", "top_p"} {
 				if stripped, derr := sjson.DeleteBytes(responsesBody, field); derr == nil {
 					responsesBody = stripped
@@ -248,9 +248,12 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 			return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 		}
 		responsesReq.Model = upstreamModel
-		if isOpenAICodexReasoningGPTModel(upstreamModel) {
+		if isOpenAICodexSamplingUnsupportedModel(upstreamModel) {
 			responsesReq.Temperature = nil
 			responsesReq.TopP = nil
+		} else {
+			responsesReq.Temperature = chatReq.Temperature
+			responsesReq.TopP = chatReq.TopP
 		}
 		normalizeResponsesRequestServiceTier(responsesReq)
 		responsesBody, err = json.Marshal(responsesReq)

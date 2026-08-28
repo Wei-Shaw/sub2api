@@ -72,6 +72,8 @@ func TestOpenAIChatTemperaturePolicyRespectsResponsesModelCapabilities(t *testin
 		wantTemperature bool
 	}{
 		{name: "supported model keeps account override", requestModel: "gpt-4.1", upstreamModel: "gpt-4.1", wantTemperature: true},
+		{name: "gpt 5.6 keeps account override", requestModel: "gpt-5.6-terra", upstreamModel: "gpt-5.6-terra", wantTemperature: true},
+		{name: "legacy gpt model mapped to gpt 5.6 keeps account override", requestModel: "gpt-5.4", upstreamModel: "gpt-5.6-sol", wantTemperature: true},
 		{name: "reasoning model removes unsupported override", requestModel: "gpt-5.4", upstreamModel: "gpt-5.4"},
 		{name: "mapped reasoning model removes unsupported override", requestModel: "gpt-4.1", upstreamModel: "gpt-5.4"},
 	}
@@ -153,14 +155,87 @@ func TestOpenAIMessagesTemperaturePolicyUsesMappedModelCapabilities(t *testing.T
 	require.False(t, gjson.GetBytes(upstream.lastBody, "temperature").Exists())
 }
 
+func TestOpenAIMessagesTemperaturePolicyKeepsGPT56Override(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-5.4","max_tokens":1024,"messages":[{"role":"user","content":"hello"}]}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"stop after request capture"}}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          2,
+		Name:        "openai-api-key",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":          "sk-test",
+			"temperature_mode": "override",
+			"temperature":      0.2,
+		},
+		Extra: map[string]any{"openai_responses_supported": true},
+	}
+
+	result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "gpt-5.6-terra")
+
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.InDelta(t, 0.2, gjson.GetBytes(upstream.lastBody, "temperature").Float(), 1e-9)
+}
+
+func TestOpenAIChatResponsesShapeTemperaturePolicyUsesMappedGPT56(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-5.4","input":"hello","stream":false}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"stop after request capture"}}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          2,
+		Name:        "openai-api-key",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":          "sk-test",
+			"temperature_mode": "override",
+			"temperature":      0.2,
+		},
+		Extra: map[string]any{"openai_responses_supported": true},
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.6-sol")
+
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.InDelta(t, 0.2, gjson.GetBytes(upstream.lastBody, "temperature").Float(), 1e-9)
+}
+
 func TestOpenAIResponsesTemperaturePolicyRespectsModelCapabilities(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tests := []struct {
 		name            string
 		model           string
+		mappedModel     string
 		wantTemperature bool
 	}{
 		{name: "supported model keeps account override", model: "gpt-4.1", wantTemperature: true},
+		{name: "gpt 5.6 keeps account override", model: "gpt-5.6-luna", wantTemperature: true},
+		{name: "legacy gpt model mapped to gpt 5.6 keeps account override", model: "gpt-5.4", mappedModel: "gpt-5.6-terra", wantTemperature: true},
 		{name: "reasoning model removes unsupported override", model: "gpt-5.4"},
 	}
 
@@ -178,18 +253,22 @@ func TestOpenAIResponsesTemperaturePolicyRespectsModelCapabilities(t *testing.T)
 				Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"stop after request capture"}}`)),
 			}}
 			svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+			credentials := map[string]any{
+				"api_key":          "sk-test",
+				"temperature_mode": "override",
+				"temperature":      0.2,
+			}
+			if tt.mappedModel != "" {
+				credentials["model_mapping"] = map[string]any{tt.model: tt.mappedModel}
+			}
 			account := &Account{
 				ID:          2,
 				Name:        "openai-api-key",
 				Platform:    PlatformOpenAI,
 				Type:        AccountTypeAPIKey,
 				Concurrency: 1,
-				Credentials: map[string]any{
-					"api_key":          "sk-test",
-					"temperature_mode": "override",
-					"temperature":      0.2,
-				},
-				Extra: map[string]any{"openai_responses_supported": true},
+				Credentials: credentials,
+				Extra:       map[string]any{"openai_responses_supported": true},
 			}
 
 			result, err := svc.Forward(context.Background(), c, account, body)

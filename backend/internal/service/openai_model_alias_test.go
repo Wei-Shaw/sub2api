@@ -34,3 +34,23 @@ func TestUsageBillingModelCandidates_BareGPT56IncludesSol(t *testing.T) {
 		usageBillingModelCandidates("openai/gpt-5.6"),
 	)
 }
+
+func TestSupportsOpenAICodexSamplingParametersMatchesOnlyGPT56Family(t *testing.T) {
+	tests := map[string]bool{
+		"gpt-5.6":                true,
+		"gpt-5.6-sol":            true,
+		"openai/GPT_5.6_TERRA":   true,
+		"gpt-5.6-cyber":          true,
+		"gpt-5.6-2026-07-09":     true,
+		"gpt-5.5":                false,
+		"gpt-5.60":               false,
+		"gpt-4.1":                false,
+		"third-party/gpt-5.6ish": false,
+	}
+
+	for model, expected := range tests {
+		t.Run(model, func(t *testing.T) {
+			require.Equal(t, expected, supportsOpenAICodexSamplingParameters(model))
+		})
+	}
+}
