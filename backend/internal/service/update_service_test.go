@@ -41,6 +41,10 @@ func (s *updateServiceGitHubClientStub) FetchRecentReleases(context.Context, str
 	return s.recentReleases, s.recentErr
 }
 
+func (s *updateServiceGitHubClientStub) FetchRepositoryFile(context.Context, string, string, string) ([]byte, error) {
+	panic("FetchRepositoryFile should not be called in release update tests")
+}
+
 func (s *updateServiceGitHubClientStub) DownloadFile(context.Context, string, string, int64) error {
 	panic("DownloadFile should not be called when no update is available")
 }

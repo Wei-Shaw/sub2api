@@ -271,7 +271,7 @@ func TestNormalizeOpenAIResponsesWebSocketCompatibilityBodyPreservesOpaqueRefere
 			normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
 				Platform: PlatformOpenAI,
 				Type:     accountType,
-			})
+			}, false)
 
 			require.NoError(t, err)
 			require.True(t, changed)
@@ -285,7 +285,7 @@ func TestNormalizeOpenAIResponsesWebSocketCompatibilityBodyPreservesOpaqueRefere
 			second, changedAgain, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(normalized, &Account{
 				Platform: PlatformOpenAI,
 				Type:     accountType,
-			})
+			}, false)
 			require.NoError(t, err)
 			require.False(t, changedAgain)
 			require.JSONEq(t, string(normalized), string(second))
