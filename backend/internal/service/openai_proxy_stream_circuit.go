@@ -158,7 +158,11 @@ func (c *openAIProxyStreamCircuit) recordSuccess(proxyID int64) bool {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if _, ok := c.entries[proxyID]; !ok {
+	entry, ok := c.entries[proxyID]
+	if !ok || !entry.blockedUntil.IsZero() {
+		// A success can belong to a request that started before a concurrent
+		// failure tripped the circuit. Once quarantined, keep the proxy blocked
+		// for the configured TTL; fail-open selection still preserves capacity.
 		return false
 	}
 	delete(c.entries, proxyID)
