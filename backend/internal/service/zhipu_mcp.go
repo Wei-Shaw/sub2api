@@ -49,6 +49,22 @@ const ZhipuMCPSessionDeletedAccountID int64 = 0
 // 上游 -32603 "Tool not found: web_reader"；实际工具名是 "webReader"。
 // 本网关只透传不做任何工具名映射/改写，客户端必须以 tools/list 为准。
 //
+// 参数命名与工具名同样不统一（如 zread search_doc 用 query、web_search_prime
+// 用 search_query），参数名与结构以上游 tools/list 返回的 inputSchema 实时结果
+// 为准，勿从其他工具类推。以下参数快照为 2026-08-29 线上实测，上游 schema 可能
+// 演进，快照仅供排障参考、不是永久契约：
+//
+//	slug / 工具                                必填参数                    全部参数
+//	web_search_prime / web_search_prime        search_query                search_query, search_domain_filter, search_recency_filter, content_size, location
+//	zread / search_doc                         repo_name, query            repo_name, query, language
+//	zread / read_file                          repo_name, file_path        repo_name, file_path
+//	zread / get_repo_structure                 repo_name                   repo_name, dir_path
+//	web_reader / webReader                     url                         url, timeout, no_cache, return_format, retain_images, no_gfm, keep_img_data_url, with_images_summary, with_links_summary
+//
+// 参数踩坑案例：从 search_doc 的 query 类推，对 web_search_prime 传
+// {"query": "..."} → 上游 -400 "search_query cannot be empty"。
+// 网关不做任何参数名映射、别名兼容或默认值注入。
+//
 // 视觉理解 MCP 是 Local MCP Server（本地运行、直调 GLM-4.6V 推理端点，
 // 见 docs.bigmodel.cn/cn/coding-plan/mcp/vision-mcp-server），没有远程端点可透传，
 // 不在本表范围；其推理流量走 zhipu 平台既有的 OpenAI 协议模型转发。
