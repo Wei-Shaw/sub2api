@@ -455,6 +455,13 @@ export default {
         success: '已更新 {count} 个用户的限制',
         failed: '批量更新用户限制失败'
       },
+      bulkBan: {
+        action: '批量封禁（{count}）',
+        title: '批量封禁用户',
+        confirm: '确定封禁选中的 {count} 位用户吗？管理员账号不会被封禁。',
+        success: '已封禁 {affected} 位用户，跳过 {skipped} 项',
+        failed: '批量封禁用户失败'
+      },
       editUser: '编辑用户',
       deleteUser: '删除用户',
       deleteConfirmMessage: "确定要删除用户 '{email}' 吗？此操作无法撤销。",

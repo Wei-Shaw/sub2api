@@ -455,6 +455,13 @@ export default {
         success: 'Updated limits for {count} users',
         failed: 'Failed to update user limits'
       },
+      bulkBan: {
+        action: 'Ban selected ({count})',
+        title: 'Ban selected users',
+        confirm: 'Ban the selected {count} user(s)? Administrator accounts will not be banned.',
+        success: 'Banned {affected} user(s); skipped {skipped}',
+        failed: 'Failed to ban selected users'
+      },
       editUser: 'Edit User',
       deleteUser: 'Delete User',
       deleteConfirmMessage: "Are you sure you want to delete user '{email}'? This action cannot be undone.",
