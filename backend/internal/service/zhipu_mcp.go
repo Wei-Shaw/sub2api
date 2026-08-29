@@ -36,9 +36,18 @@ var ErrZhipuMCPSessionNotFound = errors.New("zhipu mcp session not found")
 // session，其服务端状态会随粘表 TTL 自然过期，网关侧不复活已终止的 session。
 const ZhipuMCPSessionDeletedAccountID int64 = 0
 
-// zhipuMCPServerSlugs 已实测可用的智谱远程（Remote）MCP Server slug 白名单：
-//   - web_search_prime / zread：上线时实测确认
-//   - web_reader：2026-08-29 实测确认（serverInfo=web-reader-server，工具 webReader）
+// zhipuMCPServerSlugs 已实测可用的智谱远程（Remote）MCP Server slug 白名单，
+// 并附 slug ↔ MCP 工具名对照（2026-08-29 线上 tools/list 实测，接入方勿按 slug
+// 推断工具名——上游命名风格不统一，工具名以上游 tools/list 实时返回为准）：
+//
+//	slug              tools/list 实际工具名                            命名风格
+//	web_search_prime  web_search_prime                                  与 slug 一致
+//	zread             search_doc / read_file / get_repo_structure      snake_case，与 slug 不同名
+//	web_reader        webReader                                         camelCase，与 slug 风格不一致
+//
+// 踩坑案例：对 web_reader slug 按路径推断调用工具名 "web_reader" →
+// 上游 -32603 "Tool not found: web_reader"；实际工具名是 "webReader"。
+// 本网关只透传不做任何工具名映射/改写，客户端必须以 tools/list 为准。
 //
 // 视觉理解 MCP 是 Local MCP Server（本地运行、直调 GLM-4.6V 推理端点，
 // 见 docs.bigmodel.cn/cn/coding-plan/mcp/vision-mcp-server），没有远程端点可透传，
