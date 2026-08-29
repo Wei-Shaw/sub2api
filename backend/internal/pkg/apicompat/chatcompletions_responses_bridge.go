@@ -1898,6 +1898,11 @@ type ChatCompletionsToResponsesStreamState struct {
 	ReasoningOpen   bool
 	ReasoningDone   bool
 
+	// pendingReasoning 缓冲上游碎片式 reasoning_content（GLM 会把一句话拆成
+	// 几十个小 delta），攒到 closeChatReasoningBuffer 字符再统一下发，避免
+	// Codex UI 被数千个小事件刷到卡死。思考段关闭或收尾时全部 flush。
+	pendingReasoning strings.Builder
+
 	// Message item + output_text content-part lifecycle.
 	MessageItemID string
 	MessageIndex  int
@@ -2127,12 +2132,11 @@ func ChatCompletionsChunkToResponsesEvents(
 		if reasoning != nil && *reasoning != "" {
 			events = append(events, ensureChatReasoningItem(state)...)
 			_, _ = state.Reasoning.WriteString(*reasoning)
-			events = append(events, chatToResponsesEvent(state, "response.reasoning_summary_text.delta", &ResponsesStreamEvent{
-				OutputIndex:  state.ReasoningIndex,
-				SummaryIndex: 0,
-				Delta:        *reasoning,
-				ItemID:       state.ReasoningItemID,
-			}))
+			state.pendingReasoning.WriteString(*reasoning)
+			if state.pendingReasoning.Len() < closeChatReasoningBuffer {
+				continue
+			}
+			events = append(events, flushChatReasoningBuffer(state)...)
 		}
 		if choice.Delta.Content != nil && *choice.Delta.Content != "" {
 			// First real content closes the reasoning item, then opens the
@@ -2216,6 +2220,26 @@ func ChatCompletionsChunkToResponsesEvents(
 	}
 
 	return events
+}
+
+// closeChatReasoningBuffer 是思考防洪的下发阈值：上游碎片 reasoning_content
+// 攒满这个字符数才合成一个 reasoning_summary_text.delta 事件。
+const closeChatReasoningBuffer = 256
+
+// flushChatReasoningBuffer 把缓冲的碎片思考一次性下发为一个大 delta 事件，
+// 避免数千个小事件刷爆 Codex UI。缓冲为空时不产生事件。
+func flushChatReasoningBuffer(state *ChatCompletionsToResponsesStreamState) []ResponsesStreamEvent {
+	if state == nil || state.pendingReasoning.Len() == 0 {
+		return nil
+	}
+	text := state.pendingReasoning.String()
+	state.pendingReasoning.Reset()
+	return []ResponsesStreamEvent{chatToResponsesEvent(state, "response.reasoning_summary_text.delta", &ResponsesStreamEvent{
+		OutputIndex:  state.ReasoningIndex,
+		SummaryIndex: 0,
+		Delta:        text,
+		ItemID:       state.ReasoningItemID,
+	})}
 }
 
 // FinalizeChatCompletionsResponsesStream emits terminal Responses events.
@@ -2396,8 +2420,10 @@ func closeChatReasoningItem(state *ChatCompletionsToResponsesStreamState) []Resp
 	}
 	state.ReasoningOpen = false
 	state.ReasoningDone = true
+	flushed := flushChatReasoningBuffer(state)
 	reasoning := state.Reasoning.String()
-	return []ResponsesStreamEvent{
+	events := append([]ResponsesStreamEvent{}, flushed...)
+	return append(events,
 		chatToResponsesEvent(state, "response.reasoning_summary_text.done", &ResponsesStreamEvent{
 			OutputIndex:  state.ReasoningIndex,
 			SummaryIndex: 0,
@@ -2419,7 +2445,7 @@ func closeChatReasoningItem(state *ChatCompletionsToResponsesStreamState) []Resp
 				Summary: []ResponsesSummary{{Type: "summary_text", Text: reasoning}},
 			},
 		}),
-	}
+	)
 }
 
 func synthesizeChatReasoningFallbackMessage(state *ChatCompletionsToResponsesStreamState) []ResponsesStreamEvent {

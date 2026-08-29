@@ -51,7 +51,10 @@ func TestChatReasoningAlias_ResponsesSharedPaths(t *testing.T) {
 
 	var chunk ChatCompletionsChunk
 	readIssue5302Fixture(t, "stream_reasoning.json", &chunk)
-	events := ChatCompletionsChunkToResponsesEvents(&chunk, NewChatCompletionsToResponsesStreamState("reasoning-model"))
+	state := NewChatCompletionsToResponsesStreamState("reasoning-model")
+	events := ChatCompletionsChunkToResponsesEvents(&chunk, state)
+	// 思考防洪后 delta 在思考段关闭时才下发，收集范围包含收尾事件。
+	events = append(events, FinalizeChatCompletionsResponsesStream(state)...)
 	var deltas []string
 	for _, event := range events {
 		if event.Type == "response.reasoning_summary_text.delta" {
@@ -65,7 +68,9 @@ func TestChatReasoningAlias_ReasoningContentTakesPrecedence(t *testing.T) {
 	var chunk ChatCompletionsChunk
 	readIssue5302Fixture(t, "reasoning_content_precedence.json", &chunk)
 
-	events := ChatCompletionsChunkToResponsesEvents(&chunk, NewChatCompletionsToResponsesStreamState("reasoning-model"))
+	state := NewChatCompletionsToResponsesStreamState("reasoning-model")
+	events := ChatCompletionsChunkToResponsesEvents(&chunk, state)
+	events = append(events, FinalizeChatCompletionsResponsesStream(state)...)
 	var deltas []string
 	for _, event := range events {
 		if event.Type == "response.reasoning_summary_text.delta" {
