@@ -210,9 +210,10 @@ export interface OpsDashboardSnapshotV2Response {
   error_trend: OpsErrorTrendResponse
 }
 
-export type OpsOpenAITokenStatsTimeRange = '30m' | '1h' | '1d' | '15d' | '30d'
+export type OpsTokenStatsTimeRange = '30m' | '1h' | '1d' | '15d' | '30d'
 
-export interface OpsOpenAITokenStatsItem {
+export interface OpsTokenStatsItem {
+  platform: string
   model: string
   request_count: number
   avg_tokens_per_sec?: number | null
@@ -222,21 +223,21 @@ export interface OpsOpenAITokenStatsItem {
   requests_with_first_token: number
 }
 
-export interface OpsOpenAITokenStatsResponse {
-  time_range: OpsOpenAITokenStatsTimeRange
+export interface OpsTokenStatsResponse {
+  time_range: OpsTokenStatsTimeRange
   start_time: string
   end_time: string
   platform?: string
   group_id?: number | null
-  items: OpsOpenAITokenStatsItem[]
+  items: OpsTokenStatsItem[]
   total: number
   page?: number
   page_size?: number
   top_n?: number | null
 }
 
-export interface OpsOpenAITokenStatsParams {
-  time_range?: OpsOpenAITokenStatsTimeRange
+export interface OpsTokenStatsParams {
+  time_range?: OpsTokenStatsTimeRange
   platform?: string
   group_id?: number | null
   page?: number
@@ -1068,11 +1069,11 @@ export async function getErrorDistribution(
   return data
 }
 
-export async function getOpenAITokenStats(
-  params: OpsOpenAITokenStatsParams,
+export async function getTokenStats(
+  params: OpsTokenStatsParams,
   options: OpsRequestOptions = {}
-): Promise<OpsOpenAITokenStatsResponse> {
-  const { data } = await apiClient.get<OpsOpenAITokenStatsResponse>('/admin/ops/dashboard/openai-token-stats', {
+): Promise<OpsTokenStatsResponse> {
+  const { data } = await apiClient.get<OpsTokenStatsResponse>('/admin/ops/dashboard/token-stats', {
     params,
     signal: options.signal
   })
@@ -1312,7 +1313,7 @@ export const opsAPI = {
   getLatencyHistogram,
   getErrorTrend,
   getErrorDistribution,
-  getOpenAITokenStats,
+  getTokenStats,
   getConcurrencyStats,
   getUserConcurrencyStats,
   getAccountAvailabilityStats,

@@ -153,17 +153,18 @@ export default {
         startTime: 'Start Time',
         endTime: 'End Time'
       },
-      openaiTokenStats: {
-        title: 'OpenAI Token Request Stats',
+      tokenStats: {
+        title: 'Token Request Stats',
         viewModeTopN: 'TopN',
         viewModePagination: 'Pagination',
         prevPage: 'Previous',
         nextPage: 'Next',
         pageInfo: 'Page {page}/{total}',
-        totalModels: 'Total models: {total}',
-        failedToLoad: 'Failed to load OpenAI token stats',
-        empty: 'No OpenAI token stats for the current filters',
+        totalRows: 'Total platform/model rows: {total}',
+        failedToLoad: 'Failed to load token stats',
+        empty: 'No token stats for the current filters',
         table: {
+          platform: 'Platform',
           model: 'Model',
           requestCount: 'Requests',
           avgTokensPerSec: 'Avg Tokens/sec',
@@ -733,8 +734,8 @@ export default {
         dashboardCards: 'Dashboard Cards',
         displayAlertEvents: 'Display alert events',
         displayAlertEventsHint: 'Show or hide the recent alert events card on the ops dashboard. Enabled by default.',
-        displayOpenAITokenStats: 'Display OpenAI token request stats',
-        displayOpenAITokenStatsHint: 'Show or hide the OpenAI token request stats card on the ops dashboard. Hidden by default.',
+        displayOpenAITokenStats: 'Display token request stats',
+        displayOpenAITokenStatsHint: 'Show or hide the token request stats card on the ops dashboard. Hidden by default.',
         autoRefreshCountdown: 'Auto refresh: {seconds}s',
         validation: {
           title: 'Please fix the following issues',

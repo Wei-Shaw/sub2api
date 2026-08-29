@@ -122,6 +122,50 @@ func TestWSResponseCreate_ForcePriorityRewritesKnownTier(t *testing.T) {
 	}
 }
 
+func TestWSResponseCreate_ForcePriorityInjectsMissingTier(t *testing.T) {
+	settings := &OpenAIFastPolicySettings{
+		Rules: []OpenAIFastPolicyRule{{
+			ServiceTier: OpenAIFastTierPriority,
+			Action:      OpenAIFastPolicyActionForcePriority,
+			Scope:       BetaPolicyScopeAll,
+		}},
+	}
+	svc := newOpenAIGatewayServiceWithSettings(t, settings)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	frame := []byte(`{"type":"response.create","model":"gpt-5.5","input":[]}`)
+
+	updated, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(context.Background(), account, "gpt-5.5", frame)
+	require.NoError(t, err)
+	require.Nil(t, blocked)
+	require.Equal(t, OpenAIFastTierPriority, gjson.GetBytes(updated, "service_tier").String())
+}
+
+func TestWSResponseCreate_NonOpenAIPlatformsBypassPolicy(t *testing.T) {
+	settings := &OpenAIFastPolicySettings{
+		Rules: []OpenAIFastPolicyRule{{
+			ServiceTier: OpenAIFastTierAny,
+			Action:      OpenAIFastPolicyActionForcePriority,
+			Scope:       BetaPolicyScopeAll,
+		}},
+	}
+	svc := newOpenAIGatewayServiceWithSettings(t, settings)
+
+	for _, platform := range []string{PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+		t.Run(platform, func(t *testing.T) {
+			account := &Account{Platform: platform, Type: AccountTypeAPIKey}
+			for _, frame := range [][]byte{
+				[]byte(`{"type":"response.create","model":"provider-model","input":[]}`),
+				[]byte(`{"type":"response.create","model":"provider-model","service_tier":"fast"}`),
+			} {
+				updated, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(context.Background(), account, "provider-model", frame)
+				require.NoError(t, err)
+				require.Nil(t, blocked)
+				require.Equal(t, string(frame), string(updated))
+			}
+		})
+	}
+}
+
 func TestWSResponseCreate_FlexPassThrough(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}

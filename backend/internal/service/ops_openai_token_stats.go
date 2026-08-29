@@ -2,11 +2,12 @@ package service
 
 import (
 	"context"
+	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-func (s *OpsService) GetOpenAITokenStats(ctx context.Context, filter *OpsOpenAITokenStatsFilter) (*OpsOpenAITokenStatsResponse, error) {
+func (s *OpsService) GetTokenStats(ctx context.Context, filter *OpsTokenStatsFilter) (*OpsTokenStatsResponse, error) {
 	if err := s.RequireMonitoringEnabled(ctx); err != nil {
 		return nil, err
 	}
@@ -22,6 +23,11 @@ func (s *OpsService) GetOpenAITokenStats(ctx context.Context, filter *OpsOpenAIT
 	if filter.StartTime.After(filter.EndTime) {
 		return nil, infraerrors.BadRequest("OPS_TIME_RANGE_INVALID", "start_time must be <= end_time")
 	}
+	platform := strings.ToLower(strings.TrimSpace(filter.Platform))
+	if platform != "" && !isConcreteRequestPlatform(platform) {
+		return nil, infraerrors.BadRequest("OPS_TOKEN_STATS_PLATFORM_INVALID", "platform is not supported")
+	}
+	filter.Platform = platform
 
 	if filter.GroupID != nil && *filter.GroupID <= 0 {
 		return nil, infraerrors.BadRequest("OPS_GROUP_ID_INVALID", "group_id must be > 0")
@@ -51,5 +57,5 @@ func (s *OpsService) GetOpenAITokenStats(ctx context.Context, filter *OpsOpenAIT
 		}
 	}
 
-	return s.opsRepo.GetOpenAITokenStats(ctx, filter)
+	return s.opsRepo.GetTokenStats(ctx, filter)
 }

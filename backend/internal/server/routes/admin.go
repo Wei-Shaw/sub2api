@@ -274,7 +274,7 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		ops.GET("/dashboard/latency-histogram", h.Admin.Ops.GetDashboardLatencyHistogram)
 		ops.GET("/dashboard/error-trend", h.Admin.Ops.GetDashboardErrorTrend)
 		ops.GET("/dashboard/error-distribution", h.Admin.Ops.GetDashboardErrorDistribution)
-		ops.GET("/dashboard/openai-token-stats", h.Admin.Ops.GetDashboardOpenAITokenStats)
+		ops.GET("/dashboard/token-stats", h.Admin.Ops.GetDashboardTokenStats)
 	}
 }
 

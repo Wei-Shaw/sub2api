@@ -132,6 +132,8 @@ type SettingService struct {
 	openAICodexVersionSF        singleflight.Group
 	codexRestrictionPolicyCache atomic.Value // *cachedCodexRestrictionPolicy
 	codexRestrictionPolicySF    singleflight.Group
+	openAIFastPolicyCache       atomic.Value // *cachedOpenAIFastPolicySettings
+	openAIFastPolicySF          singleflight.Group
 
 	cyberSessionBlockRuntimeCache atomic.Value // *cachedCyberSessionBlockRuntime
 	cyberSessionBlockRuntimeSF    singleflight.Group

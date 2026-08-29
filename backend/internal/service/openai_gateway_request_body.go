@@ -1506,15 +1506,21 @@ type OpenAIFastBlockedError struct {
 
 func (e *OpenAIFastBlockedError) Error() string { return e.Message }
 
+func openAIFastPolicyAppliesToAccount(account *Account) bool {
+	return account != nil && account.Platform == PlatformOpenAI
+}
+
 // evaluateOpenAIFastPolicy returns the action and error message that should be
 // applied for a request with the given account/model/service_tier. When the
-// policy service is unavailable or no rule matches, it returns
+// final upstream is not OpenAI, the policy service is unavailable, or no rule
+// matches, it returns
 // (BetaPolicyActionPass, "") so callers can short-circuit safely.
 //
 // Matching rules:
 //   - Scope filters by account type (all / oauth / apikey / bedrock)
 //   - UserIDs, when present, filters by the trusted Sub2API user that owns the API key
-//   - ServiceTier must be empty (= any), "all", or equal the normalized tier
+//   - Non-force actions require ServiceTier to be empty (= any), "all", or
+//     equal the normalized tier; force_priority ignores the incoming tier
 //   - ModelWhitelist narrows the rule to specific models; FallbackAction
 //     handles the non-matching case (default: pass)
 //   - User-specific rules take precedence over global rules; each group keeps
@@ -1529,20 +1535,13 @@ func (e *OpenAIFastBlockedError) Error() string { return e.Message }
 //     发生重叠，admin 可通过规则顺序明确意图。因此采用 first-match 而
 //     非 BetaPolicy 那样的"block 覆盖 filter 覆盖 pass"语义。
 func (s *OpenAIGatewayService) evaluateOpenAIFastPolicy(ctx context.Context, account *Account, model, serviceTier string) (action, errMsg string) {
-	if s == nil || s.settingService == nil {
+	if !openAIFastPolicyAppliesToAccount(account) || s == nil || s.settingService == nil {
 		return BetaPolicyActionPass, ""
 	}
 	tier := strings.ToLower(strings.TrimSpace(serviceTier))
-	if tier == "" {
-		return BetaPolicyActionPass, ""
-	}
 	settings := openAIFastPolicySettingsFromContext(ctx)
 	if settings == nil {
-		fetched, err := s.settingService.GetOpenAIFastPolicySettings(ctx)
-		if err != nil || fetched == nil {
-			return BetaPolicyActionPass, ""
-		}
-		settings = fetched
+		settings = s.settingService.GetOpenAIFastPolicySettingsCached(ctx)
 	}
 	return evaluateOpenAIFastPolicyWithSettings(settings, openAIFastPolicyUserID(ctx), account, model, tier)
 }
@@ -1568,10 +1567,6 @@ func evaluateOpenAIFastPolicyWithSettings(settings *OpenAIFastPolicySettings, us
 			if !betaPolicyScopeMatches(rule.Scope, isOAuth, isBedrock) {
 				continue
 			}
-			ruleTier := strings.ToLower(strings.TrimSpace(rule.ServiceTier))
-			if ruleTier != "" && ruleTier != OpenAIFastTierAny && ruleTier != tier {
-				continue
-			}
 			eff := BetaPolicyRule{
 				Action:               rule.Action,
 				ErrorMessage:         rule.ErrorMessage,
@@ -1579,7 +1574,14 @@ func evaluateOpenAIFastPolicyWithSettings(settings *OpenAIFastPolicySettings, us
 				FallbackAction:       rule.FallbackAction,
 				FallbackErrorMessage: rule.FallbackErrorMessage,
 			}
-			return resolveRuleAction(eff, model)
+			resolvedAction, resolvedMessage := resolveRuleAction(eff, model)
+			ruleTier := strings.ToLower(strings.TrimSpace(rule.ServiceTier))
+			tierIndependent := rule.Action == OpenAIFastPolicyActionForcePriority || resolvedAction == OpenAIFastPolicyActionForcePriority
+			if !tierIndependent &&
+				(tier == "" || (ruleTier != "" && ruleTier != OpenAIFastTierAny && ruleTier != tier)) {
+				continue
+			}
+			return resolvedAction, resolvedMessage
 		}
 	}
 	return BetaPolicyActionPass, ""
@@ -1642,7 +1644,7 @@ func openAIFastPolicySettingsFromContext(ctx context.Context) *OpenAIFastPolicyS
 // body. When action=filter it removes the service_tier field; when
 // action=block it returns (body, *OpenAIFastBlockedError). On pass it
 // normalizes the service_tier value (e.g. client alias "fast" → "priority").
-// action=force_priority rewrites any matched known tier to "priority".
+// action=force_priority writes "priority" even when the field is absent.
 //
 // Rationale for normalize-on-pass: chat-completions / messages 入口在调用本
 // 函数之前已经通过 normalizeResponsesBodyServiceTier 把 service_tier 归一化
@@ -1653,15 +1655,17 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 	if len(body) == 0 {
 		return body, nil
 	}
+	// service_tier 是 OpenAI 上游语义。统一按最终选中的账号平台收口，
+	// 避免 Composite 路由到 Grok/CN 等非 OpenAI 上游时注入 priority。
+	if !openAIFastPolicyAppliesToAccount(account) {
+		return body, nil
+	}
 	rawTier := gjson.GetBytes(body, "service_tier").String()
-	if rawTier == "" {
-		return body, nil
-	}
 	normTier := normalizedOpenAIServiceTierValue(rawTier)
-	if normTier == "" {
+	action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, model, normTier)
+	if normTier == "" && action != OpenAIFastPolicyActionForcePriority {
 		return body, nil
 	}
-	action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, model, normTier)
 	switch action {
 	case BetaPolicyActionBlock:
 		msg := errMsg
@@ -1724,7 +1728,7 @@ func writeOpenAIFastPolicyBlockedResponse(c *gin.Context, err *OpenAIFastBlocked
 //
 //   - pass: keeps service_tier, normalizing aliases such as "fast" to "priority"
 //   - filter: returns a copy with top-level service_tier removed
-//   - force_priority: keeps service_tier and rewrites it to "priority"
+//   - force_priority: writes service_tier="priority", including when absent
 //   - block: returns (frame, *OpenAIFastBlockedError)
 //
 // Only frames whose "type" field strictly equals "response.create" are
@@ -1751,6 +1755,9 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 	if len(frame) == 0 {
 		return frame, nil, nil
 	}
+	if !openAIFastPolicyAppliesToAccount(account) {
+		return frame, nil, nil
+	}
 	if !gjson.ValidBytes(frame) {
 		return frame, nil, nil
 	}
@@ -1765,14 +1772,11 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 		return frame, nil, nil
 	}
 	rawTier := gjson.GetBytes(frame, "service_tier").String()
-	if rawTier == "" {
-		return frame, nil, nil
-	}
 	normTier := normalizedOpenAIServiceTierValue(rawTier)
-	if normTier == "" {
+	action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, model, normTier)
+	if normTier == "" && action != OpenAIFastPolicyActionForcePriority {
 		return frame, nil, nil
 	}
-	action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, model, normTier)
 	switch action {
 	case BetaPolicyActionBlock:
 		msg := errMsg

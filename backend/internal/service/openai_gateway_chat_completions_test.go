@@ -238,6 +238,68 @@ func TestForwardAsChatCompletions_APIKeyPropagatesPromptCacheKeyInResponsesBody(
 	require.Equal(t, generateSessionUUID(isolateOpenAISessionID(99, "cache-key-123")), upstream.lastReq.Header.Get("session_id"))
 }
 
+func TestForwardAsChatCompletions_DeepSeekResponsesPathsBypassForcePriority(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name     string
+		protocol string
+		body     []byte
+	}{
+		{
+			name:     "fixed responses chat body",
+			protocol: APIProtocolResponses,
+			body:     []byte(`{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"hello"}],"stream":false}`),
+		},
+		{
+			name:     "adaptive responses-shaped body",
+			protocol: APIProtocolAdaptive,
+			body:     []byte(`{"model":"deepseek-v4-pro","input":"hello","stream":false}`),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(tt.body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusBadRequest,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"stop after request capture"}}`)),
+			}}
+			svc := newOpenAIGatewayServiceWithSettings(t, &OpenAIFastPolicySettings{
+				Rules: []OpenAIFastPolicyRule{{
+					ServiceTier: OpenAIFastTierAny,
+					Action:      OpenAIFastPolicyActionForcePriority,
+					Scope:       BetaPolicyScopeAll,
+				}},
+			})
+			svc.cfg = &config.Config{}
+			svc.httpUpstream = upstream
+			account := &Account{
+				ID:          101,
+				Name:        "deepseek-responses",
+				Platform:    PlatformDeepseek,
+				Type:        AccountTypeAPIKey,
+				Concurrency: 1,
+				Credentials: map[string]any{
+					"api_key":      "sk-test",
+					"api_protocol": tt.protocol,
+				},
+			}
+
+			result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, tt.body, "", "")
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.NotNil(t, upstream.lastReq)
+			require.False(t, gjson.GetBytes(upstream.lastBody, "service_tier").Exists())
+		})
+	}
+}
+
 func TestForwardAsChatCompletions_OAuthDoesNotInjectDefaultInstructions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

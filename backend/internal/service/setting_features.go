@@ -941,7 +941,19 @@ func (s *SettingService) SetBetaPolicySettings(ctx context.Context, settings *Be
 	return s.settingRepo.Set(ctx, SettingKeyBetaPolicySettings, string(data))
 }
 
-// GetOpenAIFastPolicySettings 获取 OpenAI fast 策略配置
+const (
+	openAIFastPolicyCacheTTL  = 60 * time.Second
+	openAIFastPolicyErrorTTL  = 5 * time.Second
+	openAIFastPolicyDBTimeout = 5 * time.Second
+)
+
+type cachedOpenAIFastPolicySettings struct {
+	settings  *OpenAIFastPolicySettings
+	expiresAt int64
+}
+
+// GetOpenAIFastPolicySettings 获取 OpenAI fast 策略配置。
+// 管理端读路径直读 DB；网关热路径使用 GetOpenAIFastPolicySettingsCached。
 func (s *SettingService) GetOpenAIFastPolicySettings(ctx context.Context) (*OpenAIFastPolicySettings, error) {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAIFastPolicySettings)
 	if err != nil {
@@ -964,8 +976,85 @@ func (s *SettingService) GetOpenAIFastPolicySettings(ctx context.Context) (*Open
 			"key", SettingKeyOpenAIFastPolicySettings)
 		return DefaultOpenAIFastPolicySettings(), nil
 	}
+	canonicalizeOpenAIFastPolicySettings(&settings)
 
 	return &settings, nil
+}
+
+// GetOpenAIFastPolicySettingsCached 返回供网关热路径使用的进程内策略快照。
+// 当前节点写入后立即生效；多节点部署通过 60s TTL 收敛。缓存过期时由
+// singleflight 合并并发查询，DB 异常则短暂沿用最近一次有效快照。
+func (s *SettingService) GetOpenAIFastPolicySettingsCached(ctx context.Context) *OpenAIFastPolicySettings {
+	if s == nil || s.settingRepo == nil {
+		return DefaultOpenAIFastPolicySettings()
+	}
+	if cached, ok := s.openAIFastPolicyCache.Load().(*cachedOpenAIFastPolicySettings); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.settings
+		}
+	}
+
+	result, _, _ := s.openAIFastPolicySF.Do("openai_fast_policy_settings", func() (any, error) {
+		if cached, ok := s.openAIFastPolicyCache.Load().(*cachedOpenAIFastPolicySettings); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.settings, nil
+			}
+		}
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), openAIFastPolicyDBTimeout)
+		defer cancel()
+
+		settings, err := s.GetOpenAIFastPolicySettings(dbCtx)
+		if err != nil {
+			slog.Warn("failed to get cached openai fast policy settings", "error", err)
+			fallback := DefaultOpenAIFastPolicySettings()
+			if prior, ok := s.openAIFastPolicyCache.Load().(*cachedOpenAIFastPolicySettings); ok && prior != nil {
+				fallback = prior.settings
+			}
+			return s.storeOpenAIFastPolicyCache(fallback, openAIFastPolicyErrorTTL), nil
+		}
+
+		return s.storeOpenAIFastPolicyCache(settings, openAIFastPolicyCacheTTL), nil
+	})
+	if settings, ok := result.(*OpenAIFastPolicySettings); ok && settings != nil {
+		return settings
+	}
+	return DefaultOpenAIFastPolicySettings()
+}
+
+func (s *SettingService) storeOpenAIFastPolicyCache(settings *OpenAIFastPolicySettings, ttl time.Duration) *OpenAIFastPolicySettings {
+	snapshot := cloneOpenAIFastPolicySettings(settings)
+	s.openAIFastPolicyCache.Store(&cachedOpenAIFastPolicySettings{
+		settings:  snapshot,
+		expiresAt: time.Now().Add(ttl).UnixNano(),
+	})
+	return snapshot
+}
+
+func cloneOpenAIFastPolicySettings(settings *OpenAIFastPolicySettings) *OpenAIFastPolicySettings {
+	if settings == nil {
+		return DefaultOpenAIFastPolicySettings()
+	}
+	out := &OpenAIFastPolicySettings{Rules: make([]OpenAIFastPolicyRule, len(settings.Rules))}
+	copy(out.Rules, settings.Rules)
+	for i := range out.Rules {
+		out.Rules[i].UserIDs = append([]int64(nil), settings.Rules[i].UserIDs...)
+		out.Rules[i].ModelWhitelist = append([]string(nil), settings.Rules[i].ModelWhitelist...)
+	}
+	return out
+}
+
+func canonicalizeOpenAIFastPolicySettings(settings *OpenAIFastPolicySettings) {
+	if settings == nil {
+		return
+	}
+	for i := range settings.Rules {
+		if settings.Rules[i].Action == OpenAIFastPolicyActionForcePriority {
+			settings.Rules[i].ServiceTier = OpenAIFastTierAny
+		}
+	}
 }
 
 // SetOpenAIFastPolicySettings 设置 OpenAI fast 策略配置
@@ -992,6 +1081,9 @@ func (s *SettingService) SetOpenAIFastPolicySettings(ctx context.Context, settin
 		}
 		if !validTiers[tier] {
 			return fmt.Errorf("rule[%d]: invalid service_tier %q", i, rule.ServiceTier)
+		}
+		if rule.Action == OpenAIFastPolicyActionForcePriority {
+			tier = OpenAIFastTierAny
 		}
 		settings.Rules[i].ServiceTier = tier
 		if !validActions[rule.Action] {
@@ -1027,7 +1119,11 @@ func (s *SettingService) SetOpenAIFastPolicySettings(ctx context.Context, settin
 		return fmt.Errorf("marshal openai fast policy settings: %w", err)
 	}
 
-	return s.settingRepo.Set(ctx, SettingKeyOpenAIFastPolicySettings, string(data))
+	if err := s.settingRepo.Set(ctx, SettingKeyOpenAIFastPolicySettings, string(data)); err != nil {
+		return err
+	}
+	s.storeOpenAIFastPolicyCache(settings, openAIFastPolicyCacheTTL)
+	return nil
 }
 
 // SetStreamTimeoutSettings 设置流超时处理配置

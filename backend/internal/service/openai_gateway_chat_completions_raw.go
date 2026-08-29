@@ -92,17 +92,19 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		upstreamBody = normalizedBody
 	}
 
-	// 4. Apply OpenAI fast policy on the CC body
-	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, upstreamBody)
-	if policyErr != nil {
-		var blocked *OpenAIFastBlockedError
-		if errors.As(policyErr, &blocked) {
-			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
-			writeChatCompletionsError(c, http.StatusForbidden, "permission_error", blocked.Message)
+	// 4. Apply the OpenAI fast policy only when the final upstream is OpenAI.
+	if openAIFastPolicyAppliesToAccount(account) {
+		updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, upstreamBody)
+		if policyErr != nil {
+			var blocked *OpenAIFastBlockedError
+			if errors.As(policyErr, &blocked) {
+				MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+				writeChatCompletionsError(c, http.StatusForbidden, "permission_error", blocked.Message)
+			}
+			return nil, policyErr
 		}
-		return nil, policyErr
+		upstreamBody = updatedBody
 	}
-	upstreamBody = updatedBody
 	// 计费兜底 tier = 最终出站 body（policy filter/force 后）里的 tier；
 	// 最终值由 resolvedOpenAIUpstreamServiceTier 决定（上游回显优先）。
 	serviceTier := extractOpenAIServiceTierFromBody(upstreamBody)

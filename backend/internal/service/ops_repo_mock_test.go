@@ -101,8 +101,8 @@ func (m *opsRepoMock) GetErrorDistribution(ctx context.Context, filter *OpsDashb
 	return &OpsErrorDistributionResponse{}, nil
 }
 
-func (m *opsRepoMock) GetOpenAITokenStats(ctx context.Context, filter *OpsOpenAITokenStatsFilter) (*OpsOpenAITokenStatsResponse, error) {
-	return &OpsOpenAITokenStatsResponse{}, nil
+func (m *opsRepoMock) GetTokenStats(ctx context.Context, filter *OpsTokenStatsFilter) (*OpsTokenStatsResponse, error) {
+	return &OpsTokenStatsResponse{}, nil
 }
 
 func (m *opsRepoMock) InsertSystemMetrics(ctx context.Context, input *OpsInsertSystemMetricsInput) error {

@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
-import OpsOpenAITokenStatsCard from '../OpsOpenAITokenStatsCard.vue'
+import OpsTokenStatsCard from '../OpsTokenStatsCard.vue'
 
-const mockGetOpenAITokenStats = vi.fn()
+const mockGetTokenStats = vi.fn()
 
 vi.mock('@/api/admin/ops', () => ({
   opsAPI: {
-    getOpenAITokenStats: (...args: any[]) => mockGetOpenAITokenStats(...args),
+    getTokenStats: (...args: any[]) => mockGetTokenStats(...args),
   },
 }))
 
@@ -17,7 +17,7 @@ vi.mock('vue-i18n', async (importOriginal) => {
     ...actual,
     useI18n: () => ({
       t: (key: string, params?: Record<string, any>) => {
-        if (key === 'admin.ops.openaiTokenStats.pageInfo' && params) {
+        if (key === 'admin.ops.tokenStats.pageInfo' && params) {
           return `第 ${params.page}/${params.total} 页`
         }
         return key
@@ -55,6 +55,7 @@ const sampleResponse = {
   group_id: 7,
   items: [
     {
+      platform: 'openai',
       model: 'gpt-4o-mini',
       request_count: 12,
       avg_tokens_per_sec: 22.5,
@@ -70,15 +71,15 @@ const sampleResponse = {
   top_n: null,
 }
 
-describe('OpsOpenAITokenStatsCard', () => {
+describe('OpsTokenStatsCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
   it('默认加载并透传 platform/group 过滤，支持时间窗口切换', async () => {
-    mockGetOpenAITokenStats.mockResolvedValue(sampleResponse)
+    mockGetTokenStats.mockResolvedValue(sampleResponse)
 
-    const wrapper = mount(OpsOpenAITokenStatsCard, {
+    const wrapper = mount(OpsTokenStatsCard, {
       props: {
         platformFilter: 'openai',
         groupIdFilter: 7,
@@ -93,7 +94,7 @@ describe('OpsOpenAITokenStatsCard', () => {
     })
 
     await flushPromises()
-    expect(mockGetOpenAITokenStats).toHaveBeenCalledWith(
+    expect(mockGetTokenStats).toHaveBeenCalledWith(
       expect.objectContaining({
         time_range: '30d',
         platform: 'openai',
@@ -106,17 +107,58 @@ describe('OpsOpenAITokenStatsCard', () => {
     await selects[0].vm.$emit('update:modelValue', '1h')
     await flushPromises()
 
-    expect(mockGetOpenAITokenStats).toHaveBeenCalledWith(
+    expect(mockGetTokenStats).toHaveBeenCalledWith(
       expect.objectContaining({
         time_range: '1h',
         platform: 'openai',
         group_id: 7,
       })
     )
+
+    await wrapper.setProps({ platformFilter: 'deepseek' })
+    await flushPromises()
+
+    expect(mockGetTokenStats).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        platform: 'deepseek',
+        group_id: 7,
+      })
+    )
+  })
+
+  it('全平台模式不发送 platform，并展示每行所属平台', async () => {
+    mockGetTokenStats.mockResolvedValue({
+      ...sampleResponse,
+      platform: undefined,
+      items: [
+        sampleResponse.items[0],
+        {
+          ...sampleResponse.items[0],
+          platform: 'deepseek',
+          model: 'deepseek-v4-pro',
+        },
+      ],
+    })
+
+    const wrapper = mount(OpsTokenStatsCard, {
+      props: { refreshToken: 0 },
+      global: {
+        stubs: {
+          Select: SelectStub,
+          EmptyState: EmptyStateStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(mockGetTokenStats.mock.calls[0][0]).not.toHaveProperty('platform')
+    expect(wrapper.text()).toContain('admin.ops.tokenStats.table.platform')
+    expect(wrapper.text()).toContain('OpenAI')
+    expect(wrapper.text()).toContain('DeepSeek')
   })
 
   it('支持分页与 TopN 模式切换并按参数请求', async () => {
-    mockGetOpenAITokenStats.mockImplementation(async (params: Record<string, any>) => ({
+    mockGetTokenStats.mockImplementation(async (params: Record<string, any>) => ({
       ...sampleResponse,
       time_range: params.time_range ?? '30d',
       page: params.page ?? 1,
@@ -125,7 +167,7 @@ describe('OpsOpenAITokenStatsCard', () => {
       total: 40,
     }))
 
-    const wrapper = mount(OpsOpenAITokenStatsCard, {
+    const wrapper = mount(OpsTokenStatsCard, {
       props: {
         refreshToken: 0,
       },
@@ -142,7 +184,7 @@ describe('OpsOpenAITokenStatsCard', () => {
     await selects[1].vm.$emit('update:modelValue', 'pagination')
     await flushPromises()
 
-    expect(mockGetOpenAITokenStats).toHaveBeenCalledWith(
+    expect(mockGetTokenStats).toHaveBeenCalledWith(
       expect.objectContaining({
         page: 1,
         page_size: 20,
@@ -154,7 +196,7 @@ describe('OpsOpenAITokenStatsCard', () => {
     await buttons[1].trigger('click')
     await flushPromises()
 
-    expect(mockGetOpenAITokenStats).toHaveBeenCalledWith(
+    expect(mockGetTokenStats).toHaveBeenCalledWith(
       expect.objectContaining({
         page: 2,
         page_size: 20,
@@ -168,7 +210,7 @@ describe('OpsOpenAITokenStatsCard', () => {
     await selects[2].vm.$emit('update:modelValue', 50)
     await flushPromises()
 
-    expect(mockGetOpenAITokenStats).toHaveBeenCalledWith(
+    expect(mockGetTokenStats).toHaveBeenCalledWith(
       expect.objectContaining({
         top_n: 50,
       })
@@ -176,13 +218,13 @@ describe('OpsOpenAITokenStatsCard', () => {
   })
 
   it('接口返回空数据时显示空态', async () => {
-    mockGetOpenAITokenStats.mockResolvedValue({
+    mockGetTokenStats.mockResolvedValue({
       ...sampleResponse,
       items: [],
       total: 0,
     })
 
-    const wrapper = mount(OpsOpenAITokenStatsCard, {
+    const wrapper = mount(OpsTokenStatsCard, {
       props: { refreshToken: 0 },
       global: {
         stubs: {
@@ -197,9 +239,9 @@ describe('OpsOpenAITokenStatsCard', () => {
   })
 
   it('数据表使用固定高度滚动容器，避免纵向无限增长', async () => {
-    mockGetOpenAITokenStats.mockResolvedValue(sampleResponse)
+    mockGetTokenStats.mockResolvedValue(sampleResponse)
 
-    const wrapper = mount(OpsOpenAITokenStatsCard, {
+    const wrapper = mount(OpsTokenStatsCard, {
       props: { refreshToken: 0 },
       global: {
         stubs: {
@@ -214,9 +256,9 @@ describe('OpsOpenAITokenStatsCard', () => {
   })
 
   it('接口异常时显示错误提示', async () => {
-    mockGetOpenAITokenStats.mockRejectedValue(new Error('加载失败'))
+    mockGetTokenStats.mockRejectedValue(new Error('加载失败'))
 
-    const wrapper = mount(OpsOpenAITokenStatsCard, {
+    const wrapper = mount(OpsTokenStatsCard, {
       props: { refreshToken: 0 },
       global: {
         stubs: {
