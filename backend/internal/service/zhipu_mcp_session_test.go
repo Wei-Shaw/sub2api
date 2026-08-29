@@ -83,6 +83,37 @@ func TestZhipuMCPSessionBinding_TTLAndLifecycle(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestZhipuMCPSessionBinding_TombstoneAfterDelete(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+
+	svc := zhipuMCPTestService(nil, repository.NewZhipuMCPCache(rdb))
+	ctx := context.Background()
+
+	// 正常绑定 → DELETE 终止语义 → tombstone（值 0，key 保留并带 TTL）。
+	require.NoError(t, svc.BindZhipuMCPSession(ctx, "sess-tomb-1", 42))
+	require.NoError(t, svc.MarkZhipuMCPSessionDeleted(ctx, "sess-tomb-1"))
+
+	accountID, ok := svc.LookupZhipuMCPSession(ctx, "sess-tomb-1")
+	require.True(t, ok, "tombstone 必须命中（区别于未绑定）")
+	require.Equal(t, service.ZhipuMCPSessionDeletedAccountID, accountID)
+	ttl := mr.TTL("zhipu_mcp:session:sess-tomb-1")
+	require.Greater(t, ttl, time.Duration(0), "tombstone 条目必须带 TTL")
+
+	// 重新 initialize 用同一 SID 覆盖 tombstone，恢复正常绑定。
+	require.NoError(t, svc.BindZhipuMCPSession(ctx, "sess-tomb-1", 43))
+	accountID, ok = svc.LookupZhipuMCPSession(ctx, "sess-tomb-1")
+	require.True(t, ok)
+	require.Equal(t, int64(43), accountID)
+
+	// tombstone 随 TTL 过期后回到未绑定状态（客户端早已重新 initialize）。
+	require.NoError(t, svc.MarkZhipuMCPSessionDeleted(ctx, "sess-tomb-1"))
+	mr.FastForward(service.ZhipuMCPSessionTTL + time.Minute)
+	_, ok = svc.LookupZhipuMCPSession(ctx, "sess-tomb-1")
+	require.False(t, ok)
+}
+
 func TestZhipuMCPSessionBinding_SanitizeRejectsUnsafeSessionID(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
