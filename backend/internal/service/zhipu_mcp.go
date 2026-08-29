@@ -30,6 +30,12 @@ const ZhipuMCPSessionTTL = 30 * time.Minute
 // 与 ErrStickySessionNotFound 同语义：让调用方区分"未绑定"与真实读取失败。
 var ErrZhipuMCPSessionNotFound = errors.New("zhipu mcp session not found")
 
+// ZhipuMCPSessionDeletedAccountID 粘表 tombstone 哨兵值。
+// 客户端 DELETE 终止 session 后写入（账号位填 0）：此后携带该 session id 的
+// 请求一律 404，直到客户端重新 initialize 建立新 session。上游若实际未终止
+// session，其服务端状态会随粘表 TTL 自然过期，网关侧不复活已终止的 session。
+const ZhipuMCPSessionDeletedAccountID int64 = 0
+
 // zhipuMCPServerSlugs 已实测可用的智谱远程（Remote）MCP Server slug 白名单：
 //   - web_search_prime / zread：上线时实测确认
 //   - web_reader：2026-08-29 实测确认（serverInfo=web-reader-server，工具 webReader）
@@ -148,8 +154,11 @@ func (s *GatewayService) BindZhipuMCPSession(ctx context.Context, sessionID stri
 	return s.zhipuMCPSessions.SetZhipuMCPSession(ctx, id, accountID, ZhipuMCPSessionTTL)
 }
 
-// LookupZhipuMCPSession 读取 MCP session 绑定的账号；未绑定或存储异常统一返回 false，
-// 调用方回退到正常调度（粘性是优化，不是正确性依赖）。
+// LookupZhipuMCPSession 读取 MCP session 绑定的账号。
+//   - (id>0, true)：粘到该账号；
+//   - (0, true)：tombstone——该 session 已被 DELETE 终止，调用方必须直接 404，
+//     不透传、不回退调度；
+//   - (_, false)：未绑定或存储异常，调用方回退正常调度（粘性是优化，不是正确性依赖）。
 func (s *GatewayService) LookupZhipuMCPSession(ctx context.Context, sessionID string) (int64, bool) {
 	if s == nil || s.zhipuMCPSessions == nil {
 		return 0, false
@@ -159,7 +168,13 @@ func (s *GatewayService) LookupZhipuMCPSession(ctx context.Context, sessionID st
 		return 0, false
 	}
 	accountID, err := s.zhipuMCPSessions.GetZhipuMCPSession(ctx, id)
-	if err != nil || accountID <= 0 {
+	if err != nil {
+		return 0, false
+	}
+	if accountID == ZhipuMCPSessionDeletedAccountID {
+		return ZhipuMCPSessionDeletedAccountID, true
+	}
+	if accountID <= 0 {
 		return 0, false
 	}
 	return accountID, true
@@ -176,6 +191,23 @@ func (s *GatewayService) UnbindZhipuMCPSession(ctx context.Context, sessionID st
 		return nil
 	}
 	return s.zhipuMCPSessions.DeleteZhipuMCPSession(ctx, id)
+}
+
+// MarkZhipuMCPSessionDeleted 在粘表写入 tombstone（账号位 0）。
+// fail-closed：客户端 DELETE 终止 session 后无条件调用（不依赖上游响应状态——
+// 实测上游 DELETE 可能 HTTP 200 但内部处理失败，session 实际未终止）。此后携带
+// 该 session id 的请求由网关直接 404（MCP StreamableHTTP 规范：DELETE 受理后
+// session 必须失效，客户端须重新 initialize）；上游侧若真有残留 session，
+// 随粘表 TTL 自然过期。新的 initialize 会用 SET 覆盖 tombstone，不受影响。
+func (s *GatewayService) MarkZhipuMCPSessionDeleted(ctx context.Context, sessionID string) error {
+	if s == nil || s.zhipuMCPSessions == nil {
+		return nil
+	}
+	id, ok := sanitizeZhipuMCPSessionID(sessionID)
+	if !ok {
+		return nil
+	}
+	return s.zhipuMCPSessions.SetZhipuMCPSession(ctx, id, ZhipuMCPSessionDeletedAccountID, ZhipuMCPSessionTTL)
 }
 
 // LoadZhipuMCPStickyAccount 加载并校验粘表指向的账号。
