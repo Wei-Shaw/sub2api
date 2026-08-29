@@ -192,3 +192,27 @@ func TestQuantizeUsageBillingAmountHandlesNegativeAmounts(t *testing.T) {
 	require.Equal(t, -QuantizeUsageBillingAmount(0.000078125), got,
 		"正负金额必须对称量化")
 }
+
+// 冻结金额与正式结算金额必须在进入 NUMERIC(20,8) 前使用同一刻度。
+// 典型浮点尾差 2.0100000000000002 会在冻结时落库为 2.01000000；
+// 若结算命令仍携带原值，frozen_balance >= hold_amount 将错误地返回 false。
+func TestBatchImageBalanceHoldCommandQuantizesVideoBillingAmounts(t *testing.T) {
+	const raw = 2.0100000000000002
+	cmd := &BatchImageBalanceHoldCommand{
+		RequestID:    "batch_image_capture:video_task:test",
+		APIKeyID:     1,
+		UserID:       1,
+		BatchID:      "video_task:test",
+		HoldAmount:   raw,
+		ActualAmount: raw,
+	}
+	expectedFingerprint := buildBatchImageBalanceHoldFingerprint(cmd)
+
+	cmd.Normalize()
+
+	require.Equal(t, 2.01, cmd.HoldAmount)
+	require.Equal(t, 2.01, cmd.ActualAmount)
+	require.LessOrEqual(t, decimalPlaces(cmd.HoldAmount), int32(UsageBillingMonetaryScale))
+	require.Equal(t, expectedFingerprint, cmd.RequestFingerprint,
+		"兼容已有幂等记录：指纹仍必须由量化前的原始金额生成")
+}

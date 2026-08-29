@@ -2,10 +2,20 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 )
+
+// VideoTaskBillingCache is the durable queue used by the async video billing
+// reconciler. The production implementation is Redis; keeping this optional
+// avoids widening GatewayCache and breaking lightweight gateway test doubles.
+type VideoTaskBillingCache interface {
+	SetVideoTaskBilling(ctx context.Context, key string, payload []byte, nextPoll time.Time, ttl time.Duration) error
+	ClaimDueVideoTask(ctx context.Context, now time.Time) (key string, payload []byte, err error)
+	DeleteVideoTaskBilling(ctx context.Context, key string) error
+}
 
 // VideoTaskPlatform identifies the upstream protocol that owns a video task.
 // Task IDs are only meaningful together with the platform and caller identity.
@@ -99,7 +109,25 @@ func (s *OpenAIGatewayService) StoreVideoTaskPendingBilling(
 	userID, apiKeyID int64,
 	pending GrokVideoPendingBilling,
 ) error {
-	return s.StoreGrokVideoPendingBilling(ctx, videoTaskStorageID(platform, requestID), userID, apiKeyID, pending)
+	pending.RequestID = strings.TrimSpace(requestID)
+	pending.UserID, pending.APIKeyID = userID, apiKeyID
+	if pending.Platform == "" {
+		pending.Platform = strings.ToLower(strings.TrimSpace(platform))
+	}
+	if err := s.StoreGrokVideoPendingBilling(ctx, videoTaskStorageID(platform, requestID), userID, apiKeyID, pending); err != nil {
+		return err
+	}
+	// StoreGrokVideoPendingBilling preserves the legacy Redis key namespace. For
+	// the worker payload, rewrite the task id to the actual upstream id (the
+	// OpenAI namespace key is intentionally prefixed, but the HTTP id is not).
+	if queue, ok := s.cache.(VideoTaskBillingCache); ok && pending.HoldID != "" {
+		payload, err := json.Marshal(pending)
+		if err != nil {
+			return err
+		}
+		return queue.SetVideoTaskBilling(ctx, grokVideoPendingBillingKey(requestID, userID, apiKeyID), payload, time.Now(), 30*24*time.Hour)
+	}
+	return nil
 }
 
 func (s *OpenAIGatewayService) LoadVideoTaskPendingBilling(

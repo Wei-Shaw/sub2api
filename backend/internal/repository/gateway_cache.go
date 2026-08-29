@@ -164,7 +164,77 @@ var _ service.OpenAIWSSessionPreemptionCache = (*gatewayCache)(nil)
 const (
 	grokVideoPendingBillingPrefix = "grok_video_pending:"
 	grokVideoBilledPrefix         = "grok_video_billed:"
+	videoTaskBillingQueueKey      = "video_task_billing:due"
 )
+
+func (c *gatewayCache) SetVideoTaskBilling(ctx context.Context, key string, payload []byte, nextPoll time.Time, ttl time.Duration) error {
+	if c == nil || c.rdb == nil {
+		return errors.New("gateway cache unavailable")
+	}
+	key = strings.TrimSpace(key)
+	if key == "" || len(payload) == 0 {
+		return errors.New("invalid video task billing payload")
+	}
+	if ttl <= 0 {
+		ttl = 7 * 24 * time.Hour
+	}
+	pipe := c.rdb.TxPipeline()
+	pipe.Set(ctx, grokVideoPendingBillingPrefix+key, payload, ttl)
+	pipe.ZAdd(ctx, videoTaskBillingQueueKey, redis.Z{Score: float64(nextPoll.UnixMilli()), Member: key})
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
+var claimDueVideoTaskScript = redis.NewScript(`
+local rows = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1], 'LIMIT', 0, 1)
+if #rows == 0 then return {} end
+if redis.call('ZREM', KEYS[1], rows[1]) == 1 then
+  return {rows[1], redis.call('GET', ARGV[2] .. rows[1])}
+end
+return {}
+`)
+
+func (c *gatewayCache) ClaimDueVideoTask(ctx context.Context, now time.Time) (string, []byte, error) {
+	if c == nil || c.rdb == nil {
+		return "", nil, errors.New("gateway cache unavailable")
+	}
+	values, err := claimDueVideoTaskScript.Run(ctx, c.rdb,
+		[]string{videoTaskBillingQueueKey}, now.UnixMilli(), grokVideoPendingBillingPrefix).Result()
+	if err != nil {
+		return "", nil, err
+	}
+	items, ok := values.([]interface{})
+	if !ok || len(items) < 2 || items[0] == nil || items[1] == nil {
+		return "", nil, nil
+	}
+	key, ok := items[0].(string)
+	if !ok {
+		return "", nil, errors.New("invalid video task queue key")
+	}
+	switch payload := items[1].(type) {
+	case string:
+		return key, []byte(payload), nil
+	case []byte:
+		return key, payload, nil
+	default:
+		return key, nil, errors.New("invalid video task queue payload")
+	}
+}
+
+func (c *gatewayCache) DeleteVideoTaskBilling(ctx context.Context, key string) error {
+	if c == nil || c.rdb == nil {
+		return errors.New("gateway cache unavailable")
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return errors.New("invalid video task billing key")
+	}
+	pipe := c.rdb.TxPipeline()
+	pipe.Del(ctx, grokVideoPendingBillingPrefix+key)
+	pipe.ZRem(ctx, videoTaskBillingQueueKey, key)
+	_, err := pipe.Exec(ctx)
+	return err
+}
 
 func (c *gatewayCache) SetGrokVideoPendingBilling(ctx context.Context, key string, payload []byte, ttl time.Duration) error {
 	if c == nil || c.rdb == nil {

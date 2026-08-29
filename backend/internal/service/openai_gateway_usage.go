@@ -37,6 +37,14 @@ type OpenAIRecordUsageInput struct {
 	// 按该时刻计算，保证同一请求从准入到扣费不中途变价。零值回退记录时刻
 	//（既有行为），供未装配的路径（图片/异步/cyber 等）沿用。
 	PricingAt time.Time
+	// BalanceAlreadyReserved means the async task's exact user balance was
+	// already frozen at creation. Keep usage-log and quota accounting, but do
+	// not deduct the balance a second time during reconciliation.
+	BalanceAlreadyReserved bool
+	// SettledBalanceCost is the authoritative completion-time customer charge
+	// for an asynchronously settled task. Usage and quota accounting must use
+	// the same amount captured from the create-time balance hold.
+	SettledBalanceCost *float64
 	// CyberBlocked 为 true 时把该用量行标记为 cyber（request_type=cyber），计费逻辑不变。
 	CyberBlocked bool
 	ChannelUsageFields
@@ -128,6 +136,13 @@ func openAIUsagePricingAt(input *OpenAIRecordUsageInput) time.Time {
 		return input.PricingAt
 	}
 	return timezone.Now()
+}
+
+func applySettledBalanceCost(cost *CostBreakdown, input *OpenAIRecordUsageInput) {
+	if cost == nil || input == nil || !input.BalanceAlreadyReserved || input.SettledBalanceCost == nil {
+		return
+	}
+	cost.ActualCost = QuantizeUsageBillingAmount(*input.SettledBalanceCost)
 }
 
 // RecordUsage records usage and deducts balance
@@ -280,6 +295,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			}
 		}
 	}
+	applySettledBalanceCost(cost, input)
 
 	// Determine billing type
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
@@ -449,16 +465,17 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	billingErr := func() error {
 		_, err := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
-			Cost:                  cost,
-			User:                  user,
-			APIKey:                apiKey,
-			Account:               account,
-			Subscription:          subscription,
-			RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
-			IsSubscriptionBill:    isSubscriptionBilling,
-			AccountRateMultiplier: accountRateMultiplier,
-			APIKeyService:         input.APIKeyService,
-			Platform:              quotaPlatform,
+			Cost:                   cost,
+			User:                   user,
+			APIKey:                 apiKey,
+			Account:                account,
+			Subscription:           subscription,
+			RequestPayloadHash:     resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
+			IsSubscriptionBill:     isSubscriptionBilling,
+			AccountRateMultiplier:  accountRateMultiplier,
+			APIKeyService:          input.APIKeyService,
+			Platform:               quotaPlatform,
+			BalanceAlreadyReserved: input.BalanceAlreadyReserved,
 		}, s.billingDeps(), s.usageBillingRepo)
 		return err
 	}()

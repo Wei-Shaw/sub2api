@@ -191,6 +191,11 @@ func (c *BatchImageBalanceHoldCommand) Normalize() {
 	if strings.TrimSpace(c.RequestFingerprint) == "" {
 		c.RequestFingerprint = buildBatchImageBalanceHoldFingerprint(c)
 	}
+	// 冻结、捕获和释放必须使用与 users.balance/frozen_balance 相同的
+	// NUMERIC(20,8) 刻度。量化放在指纹计算之后，以兼容升级前已经写入的
+	// 幂等记录；否则同一 request_id 重试可能产生 fingerprint conflict。
+	c.HoldAmount = QuantizeUsageBillingAmount(c.HoldAmount)
+	c.ActualAmount = QuantizeUsageBillingAmount(c.ActualAmount)
 }
 
 func buildBatchImageBalanceHoldFingerprint(c *BatchImageBalanceHoldCommand) string {

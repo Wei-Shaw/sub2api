@@ -1,11 +1,10 @@
 package handler
 
 import (
-	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
-	"time"
 
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -103,9 +102,32 @@ func (h *OpenAIGatewayHandler) OpenAIVideo(c *gin.Context) {
 		defer release()
 	}
 	setOpsSelectedAccount(c, account.ID, account.Platform)
+	var videoHold *service.GrokVideoPendingBilling
+	if isCreate {
+		resolution := openAIVideoRequestResolution(body)
+		duration := openAIVideoRequestDuration(body)
+		cost, pricingErr := h.gatewayService.CalculateVideoTaskCost(ctx, apiKey, account, model, resolution, duration)
+		if pricingErr != nil {
+			h.errorResponse(c, http.StatusBadRequest, "billing_error", "Unable to determine video task price")
+			return
+		}
+		holdID := service.NewVideoTaskHoldID()
+		if reserveErr := h.gatewayService.ReserveVideoTaskBalance(ctx, subject.UserID, apiKey.ID, holdID, cost, service.HashUsageRequestPayload(body)); reserveErr != nil {
+			status, code, message, retryAfter := billingErrorDetails(reserveErr)
+			if retryAfter > 0 {
+				c.Header("Retry-After", strconv.Itoa(retryAfter))
+			}
+			h.errorResponse(c, status, code, message)
+			return
+		}
+		videoHold = &service.GrokVideoPendingBilling{HoldID: holdID, HoldAmount: cost}
+	}
 
 	result, err := h.gatewayService.ForwardOpenAIVideo(ctx, c, account, endpoint, requestID, body, c.GetHeader("Content-Type"))
 	if err != nil {
+		if videoHold != nil {
+			_ = h.gatewayService.ReleaseVideoTaskBalance(ctx, videoHold, subject.UserID, apiKey.ID)
+		}
 		var failoverErr *service.UpstreamFailoverError
 		if errors.As(err, &failoverErr) {
 			h.handleFailoverExhausted(c, failoverErr, false)
@@ -121,52 +143,28 @@ func (h *OpenAIGatewayHandler) OpenAIVideo(c *gin.Context) {
 		if err := h.gatewayService.BindVideoTaskAccount(ctx, apiKey.GroupID, service.VideoTaskPlatformOpenAI, result.ResponseID, subject.UserID, apiKey.ID, account.ID); err != nil {
 			reqLog.Warn("openai_video.bind_task_account_failed", zap.Error(err))
 		}
-		pending := service.GrokVideoPendingBilling{Model: model, BillingModel: firstNonEmptyString(result.BillingModel, model), UpstreamModel: result.UpstreamModel, VideoResolution: result.VideoResolution, VideoDurationSeconds: result.VideoDurationSeconds, OriginalModel: clientRequestedModel(c, model), CreatedAt: service.GrokVideoPendingCreatedAtNow()}
+		pending := service.GrokVideoPendingBilling{UserID: subject.UserID, APIKeyID: apiKey.ID, AccountID: account.ID, Platform: service.VideoTaskPlatformOpenAI, Model: model, BillingModel: firstNonEmptyString(result.BillingModel, model), UpstreamModel: result.UpstreamModel, VideoResolution: firstNonEmptyString(result.VideoResolution, openAIVideoRequestResolution(body)), VideoDurationSeconds: result.VideoDurationSeconds, OriginalModel: clientRequestedModel(c, model), CreatedAt: service.GrokVideoPendingCreatedAtNow(), UpstreamCreatedAtUnix: result.VideoCreatedAtUnix}
+		if pending.VideoDurationSeconds <= 0 {
+			pending.VideoDurationSeconds = openAIVideoRequestDuration(body)
+		}
+		if videoHold != nil {
+			pending.HoldID, pending.HoldAmount = videoHold.HoldID, videoHold.HoldAmount
+		}
 		if err := h.gatewayService.StoreVideoTaskPendingBilling(ctx, service.VideoTaskPlatformOpenAI, result.ResponseID, subject.UserID, apiKey.ID, pending); err != nil {
 			reqLog.Warn("openai_video.store_pending_billing_failed", zap.Error(err))
 		}
 	}
 
-	if !isCreate && (endpoint == service.OpenAIVideoStatus || endpoint == service.OpenAIVideoContent) && result != nil {
-		// A successful content download is also proof that the asynchronous task
-		// completed; content responses are binary and carry no status JSON.
-		if endpoint == service.OpenAIVideoContent {
-			result.VideoCount = 1
-		}
-		if billResult := prepareOpenAIVideoCompletionBilling(ctx, h, reqLog, apiKey, subject.UserID, apiKey.ID, requestID, result); billResult != nil {
-			subscription, _ := middleware2.GetSubscriptionFromContext(c)
-			recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, billResult, billResult.Model, nil, requestID)
-		}
-	}
+	// Status/content requests are intentionally read-only. The background
+	// reconciler is the sole owner of asynchronous video settlement.
 }
 
-func prepareOpenAIVideoCompletionBilling(ctx context.Context, h *OpenAIGatewayHandler, reqLog *zap.Logger, apiKey *service.APIKey, userID, apiKeyID int64, requestID string, result *service.OpenAIForwardResult) *service.OpenAIForwardResult {
-	if result == nil || result.VideoCount <= 0 || strings.TrimSpace(requestID) == "" {
-		return nil
-	}
-	pending, err := h.gatewayService.LoadVideoTaskPendingBilling(ctx, service.VideoTaskPlatformOpenAI, requestID, userID, apiKeyID)
-	if err != nil || pending == nil {
-		reqLog.Warn("openai_video.pending_billing_missing", zap.Error(err))
-		return nil
-	}
-	claimed, err := h.gatewayService.ClaimVideoTaskBilling(ctx, service.VideoTaskPlatformOpenAI, requestID, userID, apiKeyID)
-	if err != nil || !claimed {
-		return nil
-	}
-	merged := *result
-	merged.Model = firstNonEmptyString(merged.Model, pending.BillingModel, pending.Model)
-	merged.BillingModel = firstNonEmptyString(merged.BillingModel, pending.BillingModel, pending.Model, merged.Model)
-	merged.UpstreamModel = firstNonEmptyString(merged.UpstreamModel, pending.UpstreamModel)
-	merged.VideoResolution = firstNonEmptyString(merged.VideoResolution, pending.VideoResolution)
-	if merged.VideoDurationSeconds <= 0 {
-		merged.VideoDurationSeconds = pending.VideoDurationSeconds
-	}
-	merged.VideoResolution = service.NormalizeVideoBillingResolutionOrDefault(merged.VideoResolution)
-	merged.VideoDurationSeconds = service.NormalizeVideoBillingDurationSecondsOrDefault(merged.VideoDurationSeconds)
-	merged.ResponseID = firstNonEmptyString(merged.ResponseID, requestID)
-	merged.RequestID = service.StableVideoTaskBillingRequestID(service.VideoTaskPlatformOpenAI, requestID)
-	if e2e := service.GrokVideoE2EDuration(pending.CreatedAt, time.Now()); e2e > 0 {
-		merged.Duration = e2e
-	}
-	return &merged
+func openAIVideoRequestResolution(body []byte) string {
+	return service.NormalizeVideoBillingResolutionOrDefault(gjson.GetBytes(body, "size").String())
+}
+
+func openAIVideoRequestDuration(body []byte) int {
+	seconds := strings.TrimSpace(gjson.GetBytes(body, "seconds").String())
+	value, _ := strconv.Atoi(seconds)
+	return service.NormalizeVideoBillingDurationSecondsOrDefault(value)
 }

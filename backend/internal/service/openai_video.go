@@ -133,22 +133,50 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoBodyError(c *gin.Context, resp 
 
 func parseOpenAIVideoResult(body []byte, requestID string, duration time.Duration) *OpenAIForwardResult {
 	result := &OpenAIForwardResult{
-		RequestID:    requestID,
-		ResponseID:   strings.TrimSpace(gjson.GetBytes(body, "id").String()),
-		Model:        strings.TrimSpace(gjson.GetBytes(body, "model").String()),
-		BillingModel: strings.TrimSpace(gjson.GetBytes(body, "model").String()),
-		Duration:     duration,
+		RequestID:            requestID,
+		ResponseID:           strings.TrimSpace(gjson.GetBytes(body, "id").String()),
+		Model:                strings.TrimSpace(gjson.GetBytes(body, "model").String()),
+		BillingModel:         strings.TrimSpace(gjson.GetBytes(body, "model").String()),
+		Duration:             duration,
+		VideoCreatedAtUnix:   gjson.GetBytes(body, "created_at").Int(),
+		VideoCompletedAtUnix: gjson.GetBytes(body, "completed_at").Int(),
 	}
 	result.VideoResolution = openAIVideoBillingResolution(gjson.GetBytes(body, "size").String())
-	seconds := strings.TrimSpace(gjson.GetBytes(body, "seconds").String())
-	if parsed, err := strconv.Atoi(seconds); err == nil {
-		result.VideoDurationSeconds = parsed
+	if result.VideoResolution == "" {
+		result.VideoResolution = openAIVideoMetadataBillingResolution(
+			int(gjson.GetBytes(body, "metadata.width").Int()),
+			int(gjson.GetBytes(body, "metadata.height").Int()),
+		)
+	}
+	for _, path := range []string{"seconds", "duration", "metadata.duration"} {
+		seconds := strings.TrimSpace(gjson.GetBytes(body, path).String())
+		if parsed, err := strconv.Atoi(seconds); err == nil && parsed > 0 {
+			result.VideoDurationSeconds = parsed
+			break
+		}
 	}
 	status := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "status").String()))
 	if status == "completed" {
 		result.VideoCount = 1
 	}
 	return result
+}
+
+func openAIVideoMetadataBillingResolution(width, height int) string {
+	longEdge, shortEdge := width, height
+	if longEdge < shortEdge {
+		longEdge, shortEdge = shortEdge, longEdge
+	}
+	if shortEdge >= 1000 || longEdge >= 1700 {
+		return VideoBillingResolution1080P
+	}
+	if shortEdge >= 700 || longEdge >= 1200 {
+		return VideoBillingResolution720P
+	}
+	if width > 0 && height > 0 {
+		return VideoBillingResolution480P
+	}
+	return ""
 }
 
 func openAIVideoBillingResolution(size string) string {

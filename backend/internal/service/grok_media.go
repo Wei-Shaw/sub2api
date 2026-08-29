@@ -332,10 +332,15 @@ func (s *OpenAIGatewayService) ResolveGrokMediaVideoRequestAccount(
 	return s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
 }
 
-// GrokVideoPendingBilling is the create-time snapshot used when status polling
-// first observes a completed video URL. Status may omit model/duration; we fall
-// back to this snapshot, then defaults.
+// GrokVideoPendingBilling is the durable create-time snapshot consumed by the
+// background video billing reconciler. The upstream status may omit
+// model/duration, so the worker falls back to this snapshot, then defaults.
 type GrokVideoPendingBilling struct {
+	RequestID            string `json:"request_id,omitempty"`
+	UserID               int64  `json:"user_id,omitempty"`
+	APIKeyID             int64  `json:"api_key_id,omitempty"`
+	AccountID            int64  `json:"account_id,omitempty"`
+	Platform             string `json:"platform,omitempty"`
 	Model                string `json:"model"`
 	BillingModel         string `json:"billing_model,omitempty"`
 	UpstreamModel        string `json:"upstream_model,omitempty"`
@@ -346,7 +351,10 @@ type GrokVideoPendingBilling struct {
 	// duration_ms for deferred billing is measured from this instant until the
 	// first official done+video.url observation (status poll or content download),
 	// not the latency of that single discovery request alone.
-	CreatedAt string `json:"created_at,omitempty"`
+	CreatedAt             string  `json:"created_at,omitempty"`
+	UpstreamCreatedAtUnix int64   `json:"upstream_created_at_unix,omitempty"`
+	HoldID                string  `json:"hold_id,omitempty"`
+	HoldAmount            float64 `json:"hold_amount,omitempty"`
 }
 
 // GrokVideoPendingCreatedAtNow formats a create-accept timestamp for pending billing.
@@ -424,6 +432,7 @@ func (s *OpenAIGatewayService) StoreGrokVideoPendingBilling(
 	if pending.VideoDurationSeconds > 0 {
 		pending.VideoDurationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(pending.VideoDurationSeconds)
 	}
+	pending.RequestID = strings.TrimSpace(requestID)
 	// Always stamp create-accept time when missing so deferred duration_ms is E2E.
 	if strings.TrimSpace(pending.CreatedAt) == "" {
 		pending.CreatedAt = GrokVideoPendingCreatedAtNow()
@@ -434,7 +443,10 @@ func (s *OpenAIGatewayService) StoreGrokVideoPendingBilling(
 	if err != nil {
 		return err
 	}
-	return s.cache.SetGrokVideoPendingBilling(ctx, key, payload, grokVideoPendingBillingTTL(s.cfg))
+	if err := s.cache.SetGrokVideoPendingBilling(ctx, key, payload, grokVideoPendingBillingTTL(s.cfg)); err != nil {
+		return err
+	}
+	return nil
 }
 
 // LoadGrokVideoPendingBilling returns the create-time snapshot (may be nil on miss).
@@ -601,6 +613,8 @@ func ExtractGrokVideoBillingFromStatusBody(statusBody []byte, pending *GrokVideo
 		VideoCount:           1,
 		VideoResolution:      resolution,
 		VideoDurationSeconds: durationSeconds,
+		VideoCreatedAtUnix:   gjson.GetBytes(statusBody, "created_at").Int(),
+		VideoCompletedAtUnix: gjson.GetBytes(statusBody, "completed_at").Int(),
 	}
 }
 
@@ -753,6 +767,8 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		VideoCount:           usage.VideoCount,
 		VideoResolution:      usage.VideoResolution,
 		VideoDurationSeconds: usage.VideoDurationSeconds,
+		VideoCreatedAtUnix:   usage.VideoCreatedAtUnix,
+		VideoCompletedAtUnix: usage.VideoCompletedAtUnix,
 	}, nil
 }
 
@@ -1164,6 +1180,8 @@ type grokMediaUsageMetadata struct {
 	VideoCount           int
 	VideoResolution      string
 	VideoDurationSeconds int
+	VideoCreatedAtUnix   int64
+	VideoCompletedAtUnix int64
 }
 
 func grokMediaUsageFromResponse(endpoint GrokMediaEndpoint, requestInfo GrokMediaRequestInfo, responseBody []byte) grokMediaUsageMetadata {
@@ -1181,6 +1199,7 @@ func grokMediaUsageFromResponse(endpoint GrokMediaEndpoint, requestInfo GrokMedi
 		meta.ResponseID = extractGrokMediaVideoRequestID(responseBody)
 		meta.VideoResolution = requestInfo.Resolution
 		meta.VideoDurationSeconds = requestInfo.DurationSeconds
+		meta.VideoCreatedAtUnix = gjson.GetBytes(responseBody, "created_at").Int()
 	case GrokMediaEndpointVideoStatus:
 		// Prefer status-body URL success + upstream duration/resolution when present.
 		if IsGrokVideoStatusBillable(responseBody) {
@@ -1192,6 +1211,8 @@ func grokMediaUsageFromResponse(endpoint GrokMediaEndpoint, requestInfo GrokMedi
 				meta.VideoCount = billed.VideoCount
 				meta.VideoResolution = billed.VideoResolution
 				meta.VideoDurationSeconds = billed.VideoDurationSeconds
+				meta.VideoCreatedAtUnix = billed.VideoCreatedAtUnix
+				meta.VideoCompletedAtUnix = billed.VideoCompletedAtUnix
 			}
 		}
 	}

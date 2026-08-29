@@ -12,12 +12,36 @@ import (
 )
 
 func TestParseOpenAIVideoResult(t *testing.T) {
-	result := parseOpenAIVideoResult([]byte(`{"id":"video_123","model":"sora-2-pro","status":"completed","seconds":"12","size":"1792x1024"}`), "req_1", time.Second)
+	result := parseOpenAIVideoResult([]byte(`{"id":"video_123","model":"sora-2-pro","status":"completed","seconds":"12","size":"1792x1024","created_at":1712697600,"completed_at":1712697725}`), "req_1", time.Second)
 	if result.ResponseID != "video_123" || result.Model != "sora-2-pro" {
 		t.Fatalf("unexpected identity: %+v", result)
 	}
 	if result.VideoCount != 1 || result.VideoDurationSeconds != 12 || result.VideoResolution != VideoBillingResolution1080P {
 		t.Fatalf("unexpected billing fields: %+v", result)
+	}
+	if result.VideoCreatedAtUnix != 1712697600 || result.VideoCompletedAtUnix != 1712697725 {
+		t.Fatalf("unexpected upstream timestamps: %+v", result)
+	}
+}
+
+func TestParseOpenAIVideoResultReadsCompatibleMetadata(t *testing.T) {
+	body := []byte(`{
+		"id":"task_n4aDlP3s2FEVuOkWR4LrFUS8QRxOnBkk",
+		"model":"minimax-h3-768p",
+		"status":"completed",
+		"metadata":{"duration":10,"height":768,"width":1376}
+	}`)
+
+	result := parseOpenAIVideoResult(body, "req_metadata", time.Second)
+
+	if result.VideoDurationSeconds != 10 {
+		t.Fatalf("expected metadata.duration=10, got %d", result.VideoDurationSeconds)
+	}
+	if result.VideoResolution != VideoBillingResolution720P {
+		t.Fatalf("expected 768p output to use 720p billing tier, got %q", result.VideoResolution)
+	}
+	if result.VideoCount != 1 {
+		t.Fatalf("expected completed video to be billable: %+v", result)
 	}
 }
 
