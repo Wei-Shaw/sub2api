@@ -81,8 +81,8 @@ const (
 	// （分钟级）。Go 的 http2.Transport 默认 ReadIdleTimeout=0（不发健康 PING），
 	// 无法检测。启用主动 PING 探测：连接空闲 ReadIdleTimeout 后发 PING，PingTimeout
 	// 内无响应即判定死连接并关闭，从源头避免请求挂在死连接上。
-	openAIHTTP2ReadIdleTimeout = 15 * time.Second
-	openAIHTTP2PingTimeout     = 15 * time.Second
+	openAIHTTP2ReadIdleTimeout = 60 * time.Second
+	openAIHTTP2PingTimeout     = 30 * time.Second
 
 	// The Grok CLI proxy rejects requests that do not identify a supported
 	// client version. Host/env/version pins live in package xai so service,
@@ -107,11 +107,13 @@ var errUpstreamClientLimitReached = errors.New("upstream client cache limit reac
 // poolSettings 连接池配置参数
 // 封装 Transport 所需的各项连接池参数
 type poolSettings struct {
-	maxIdleConns          int           // 最大空闲连接总数
-	maxIdleConnsPerHost   int           // 每主机最大空闲连接数
-	maxConnsPerHost       int           // 每主机最大连接数（含活跃）
-	idleConnTimeout       time.Duration // 空闲连接超时时间
-	responseHeaderTimeout time.Duration // 等待响应头超时时间
+	maxIdleConns               int           // 最大空闲连接总数
+	maxIdleConnsPerHost        int           // 每主机最大空闲连接数
+	maxConnsPerHost            int           // 每主机最大连接数（含活跃）
+	idleConnTimeout            time.Duration // 空闲连接超时时间
+	responseHeaderTimeout      time.Duration // 等待响应头超时时间
+	openAIHTTP2ReadIdleTimeout time.Duration // OpenAI HTTP/2 空闲后发健康 PING 的间隔
+	openAIHTTP2PingTimeout     time.Duration // OpenAI HTTP/2 PING 后未收到 ACK 的判定超时
 }
 
 type openAIHTTP2Settings struct {
@@ -1248,6 +1250,8 @@ func defaultPoolSettings(cfg *config.Config) poolSettings {
 	maxConnsPerHost := defaultMaxConnsPerHost
 	idleConnTimeout := defaultIdleConnTimeout
 	responseHeaderTimeout := defaultResponseHeaderTimeout
+	h2ReadIdleTimeout := openAIHTTP2ReadIdleTimeout
+	h2PingTimeout := openAIHTTP2PingTimeout
 
 	if cfg != nil {
 		if cfg.Gateway.MaxIdleConns > 0 {
@@ -1265,14 +1269,22 @@ func defaultPoolSettings(cfg *config.Config) poolSettings {
 		if cfg.Gateway.ResponseHeaderTimeout >= 0 {
 			responseHeaderTimeout = time.Duration(cfg.Gateway.ResponseHeaderTimeout) * time.Second
 		}
+		if cfg.Gateway.OpenAIHTTP2.ReadIdleTimeoutSeconds > 0 {
+			h2ReadIdleTimeout = time.Duration(cfg.Gateway.OpenAIHTTP2.ReadIdleTimeoutSeconds) * time.Second
+		}
+		if cfg.Gateway.OpenAIHTTP2.PingTimeoutSeconds > 0 {
+			h2PingTimeout = time.Duration(cfg.Gateway.OpenAIHTTP2.PingTimeoutSeconds) * time.Second
+		}
 	}
 
 	return poolSettings{
-		maxIdleConns:          maxIdleConns,
-		maxIdleConnsPerHost:   maxIdleConnsPerHost,
-		maxConnsPerHost:       maxConnsPerHost,
-		idleConnTimeout:       idleConnTimeout,
-		responseHeaderTimeout: responseHeaderTimeout,
+		maxIdleConns:               maxIdleConns,
+		maxIdleConnsPerHost:        maxIdleConnsPerHost,
+		maxConnsPerHost:            maxConnsPerHost,
+		idleConnTimeout:            idleConnTimeout,
+		responseHeaderTimeout:      responseHeaderTimeout,
+		openAIHTTP2ReadIdleTimeout: h2ReadIdleTimeout,
+		openAIHTTP2PingTimeout:     h2PingTimeout,
 	}
 }
 
@@ -1321,7 +1333,7 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 		transport.ForceAttemptHTTP2 = true
 		// 显式配置 http2 并启用 PING 健康探测，剔除代理/NAT 静默掐断的死连接，
 		// 避免请求挂在死连接上直到 TCP 重传超时（分钟级）。
-		if _, err := enableOpenAIHTTP2KeepAlive(transport); err != nil {
+		if _, err := enableOpenAIHTTP2KeepAlive(transport, settings.openAIHTTP2ReadIdleTimeout, settings.openAIHTTP2PingTimeout); err != nil {
 			return nil, err
 		}
 	case upstreamProtocolModeOpenAIH1:
@@ -1342,14 +1354,20 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 // Go 默认惰性配置 http2 且 ReadIdleTimeout=0（不发健康 PING），无法检测被代理/NAT
 // 静默掐断的死连接。此处主动设置 ReadIdleTimeout/PingTimeout，让死连接被提前 PING
 // 出并关闭，请求得以重建连接而非挂到 TCP 重传超时。返回底层 *http2.Transport 便于测试。
-func enableOpenAIHTTP2KeepAlive(transport *http.Transport) (*http2.Transport, error) {
+func enableOpenAIHTTP2KeepAlive(transport *http.Transport, readIdleTimeout, pingTimeout time.Duration) (*http2.Transport, error) {
 	h2, err := http2.ConfigureTransports(transport)
 	if err != nil {
 		return nil, err
 	}
 	if h2 != nil {
-		h2.ReadIdleTimeout = openAIHTTP2ReadIdleTimeout
-		h2.PingTimeout = openAIHTTP2PingTimeout
+		if readIdleTimeout <= 0 {
+			readIdleTimeout = openAIHTTP2ReadIdleTimeout
+		}
+		if pingTimeout <= 0 {
+			pingTimeout = openAIHTTP2PingTimeout
+		}
+		h2.ReadIdleTimeout = readIdleTimeout
+		h2.PingTimeout = pingTimeout
 	}
 	return h2, nil
 }

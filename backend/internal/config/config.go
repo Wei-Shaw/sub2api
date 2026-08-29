@@ -1139,6 +1139,11 @@ type GatewayCNProvidersConfig struct {
 	BalanceCheckEnabled         bool    `mapstructure:"balance_check_enabled"`
 	BalanceThreshold            float64 `mapstructure:"balance_threshold"`
 	BalanceCheckIntervalMinutes int     `mapstructure:"balance_check_interval_minutes"`
+	// ZhipuDefaultMaxTokens: 智谱上游在请求未携带 max_tokens 时
+	// 默认按 8192 截断，而 glm-5.3-flash 官方输出上限为 128K。Codex 走
+	// Responses→Chat Completions 桥接且未显式给出 max_output_tokens 时，按此值
+	// 注入 max_tokens，避免长思考在 8192 处被上游伪装成正常收尾。0 表示不注入。
+	ZhipuDefaultMaxTokens int `mapstructure:"zhipu_default_max_tokens"`
 }
 
 type GatewayLiveConfig struct {
@@ -1159,6 +1164,11 @@ type GatewayOpenAIHTTP2Config struct {
 	FallbackWindowSeconds int `mapstructure:"fallback_window_seconds"`
 	// FallbackTTLSeconds: 触发后回退 HTTP/1.1 的持续时间（秒）
 	FallbackTTLSeconds int `mapstructure:"fallback_ttl_seconds"`
+	// ReadIdleTimeoutSeconds: HTTP/2 连接空闲多久（无任何帧）后发送健康 PING。
+	// 长思考上游可能长时间静默，默认调大避免误判死连接。
+	ReadIdleTimeoutSeconds int `mapstructure:"read_idle_timeout_seconds"`
+	// PingTimeoutSeconds: 健康 PING 发出后多久未收到 ACK 判定为死连接并关闭。
+	PingTimeoutSeconds int `mapstructure:"ping_timeout_seconds"`
 }
 
 // GatewayOpenAIProxyStreamCircuitConfig controls the bounded, in-process
@@ -2435,6 +2445,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_http2.fallback_error_threshold", 2)
 	viper.SetDefault("gateway.openai_http2.fallback_window_seconds", 60)
 	viper.SetDefault("gateway.openai_http2.fallback_ttl_seconds", 600)
+	viper.SetDefault("gateway.openai_http2.read_idle_timeout_seconds", 60)
+	viper.SetDefault("gateway.openai_http2.ping_timeout_seconds", 30)
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.disabled", false)
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.failure_threshold", 2)
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.window_seconds", 60)
@@ -2452,6 +2464,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.cn_providers.balance_check_enabled", true)
 	viper.SetDefault("gateway.cn_providers.balance_threshold", 0.5)
 	viper.SetDefault("gateway.cn_providers.balance_check_interval_minutes", 10)
+	viper.SetDefault("gateway.cn_providers.zhipu_default_max_tokens", 32768)
 	viper.SetDefault("gateway.image_concurrency.enabled", false)
 	viper.SetDefault("gateway.image_concurrency.max_concurrent_requests", 0)
 	viper.SetDefault("gateway.image_concurrency.overflow_mode", ImageConcurrencyOverflowModeReject)
@@ -3505,6 +3518,15 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.OpenAIHTTP2.FallbackTTLSeconds < 0 {
 		return fmt.Errorf("gateway.openai_http2.fallback_ttl_seconds must be non-negative")
+	}
+	if c.Gateway.OpenAIHTTP2.ReadIdleTimeoutSeconds < 0 {
+		return fmt.Errorf("gateway.openai_http2.read_idle_timeout_seconds must be non-negative")
+	}
+	if c.Gateway.OpenAIHTTP2.PingTimeoutSeconds < 0 {
+		return fmt.Errorf("gateway.openai_http2.ping_timeout_seconds must be non-negative")
+	}
+	if c.Gateway.CNProviders.ZhipuDefaultMaxTokens < 0 {
+		return fmt.Errorf("gateway.cn_providers.zhipu_default_max_tokens must be non-negative")
 	}
 	if c.Gateway.OpenAIProxyStreamCircuit.FailureThreshold < 0 {
 		return fmt.Errorf("gateway.openai_proxy_stream_circuit.failure_threshold must be non-negative")

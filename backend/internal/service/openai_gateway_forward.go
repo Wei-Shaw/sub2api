@@ -167,11 +167,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			body = normalized
 			originalBody = normalized
 		}
-		if normalized, changed, normalizeErr := normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body, isOpenAIResponsesCompactPath(c)); normalizeErr != nil {
-			return nil, normalizeErr
-		} else if changed {
-			body = normalized
-			originalBody = normalized
+		// Chat fallback converts Responses history itself and uses the reasoning
+		// item id to restore encrypted-only thinking from the gateway cache. The
+		// native Responses store=false sanitizer removes rs_* ids for upstreams
+		// that understand encrypted reasoning, which makes the fallback cache
+		// lookup impossible and causes DeepSeek to reject the next turn.
+		if !shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
+			if normalized, changed, normalizeErr := normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body, isOpenAIResponsesCompactPath(c)); normalizeErr != nil {
+				return nil, normalizeErr
+			} else if changed {
+				body = normalized
+				originalBody = normalized
+			}
 		}
 		requestView = newOpenAIRequestView(body)
 		reqModel, reqStream, promptCacheKey = requestView.Model, requestView.Stream, requestView.PromptCacheKey
@@ -1268,8 +1275,9 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 		return false
 	}
 	if account.IsCNProvider() {
-		// CN 的显式协议配置优先于异步探针 Extra；adaptive 仅 DeepSeek 有原生
-		// Responses，Kimi/GLM 回退 Chat Completions。
+		// CN 的显式协议配置优先于异步探针 Extra；显式 responses 全平台尊重
+		// 面板选择（zhipu/kimi 透传上游 /responses）。adaptive 仅 DeepSeek 有
+		// 官方原生 Responses，Kimi/GLM 回退 Chat Completions。
 		switch account.GetAPIProtocol() {
 		case APIProtocolChatCompletions:
 			return true

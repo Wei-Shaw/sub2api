@@ -1386,9 +1386,11 @@ func (a *Account) IsCodingPlan() bool {
 }
 
 // GetAPIProtocol 返回国产供应商账号的上游 API 协议。存储于
-// credentials["api_protocol"]；缺失或与平台不匹配时回退 chat_completions
-// （与既有行为完全一致）。responses 协议仅 deepseek 支持（官方原生 /responses
-// 端点，适配 Codex）；kimi/zhipu 无此端点。
+// credentials["api_protocol"]；缺失或无法识别时回退 chat_completions。
+// 显式 responses 对全部国产平台开放：deepseek 使用官方原生 /responses 端点；
+// zhipu/kimi 则按面板配置透传上游 /responses（上游为 sub2api 等支持该端点
+// 的网关时即可直连）。adaptive 模式下 zhipu/kimi 仍按 CC 回退（无官方原生
+// Responses 端点证据），仅 deepseek 走原生。
 func (a *Account) GetAPIProtocol() string {
 	if a == nil || !a.IsCNProvider() {
 		return APIProtocolChatCompletions
@@ -1399,9 +1401,7 @@ func (a *Account) GetAPIProtocol() string {
 	case APIProtocolAnthropic:
 		return APIProtocolAnthropic
 	case APIProtocolResponses:
-		if a.Platform == PlatformDeepseek {
-			return APIProtocolResponses
-		}
+		return APIProtocolResponses
 	case APIProtocolChatCompletions:
 		return APIProtocolChatCompletions
 	}

@@ -370,6 +370,17 @@ func normalizeOpenAIResponsesRejectedNullContentAtIndex(body []byte, index int) 
 	}
 }
 
+// removeOpenAIResponsesRejectedReasoningContentAtIndex drops the reasoning
+// content array the upstream rejected, and the content array of every other
+// reasoning input item.
+//
+// The upstream names one offending index per response, but a replayed Codex
+// conversation carries one reasoning item per assistant turn and long sessions
+// accumulate hundreds of them. Clearing one index per round trip would need one
+// retry per item and exhaust the bounded retry budget long before the request
+// could succeed, which is why a long session kept failing until it was
+// restarted. Only reasoning items are touched: the rejection proves that this
+// type accepts no content, and message or tool-call content stays intact.
 func removeOpenAIResponsesRejectedReasoningContentAtIndex(body []byte, index int) ([]byte, string, bool, error) {
 	itemPath := fmt.Sprintf("input.%d", index)
 	item := gjson.GetBytes(body, itemPath)
@@ -377,9 +388,35 @@ func removeOpenAIResponsesRejectedReasoningContentAtIndex(body []byte, index int
 	if !item.IsObject() || strings.TrimSpace(item.Get("type").String()) != "reasoning" || !content.IsArray() || len(content.Array()) == 0 {
 		return nil, "", false, nil
 	}
-	retryBody, err := sjson.DeleteBytes(body, itemPath+".content")
-	if err != nil {
-		return nil, "", false, fmt.Errorf("delete rejected reasoning content at input[%d]: %w", index, err)
+
+	retryBody := body
+	cleared := 0
+	if input := gjson.GetBytes(body, "input"); input.IsArray() {
+		// Deleting a field never shifts array indexes, so positions read from
+		// the original body stay valid against the rewritten one.
+		for itemIndex, candidate := range input.Array() {
+			if !candidate.IsObject() || strings.TrimSpace(candidate.Get("type").String()) != "reasoning" {
+				continue
+			}
+			candidateContent := candidate.Get("content")
+			if !candidateContent.IsArray() || len(candidateContent.Array()) == 0 {
+				continue
+			}
+			contentPath := fmt.Sprintf("input.%d.content", itemIndex)
+			next, err := sjson.DeleteBytes(retryBody, contentPath)
+			if err != nil {
+				return nil, "", false, fmt.Errorf("delete rejected reasoning content at input[%d]: %w", itemIndex, err)
+			}
+			retryBody = next
+			cleared++
+		}
+	}
+	if cleared == 0 {
+		next, err := sjson.DeleteBytes(retryBody, itemPath+".content")
+		if err != nil {
+			return nil, "", false, fmt.Errorf("delete rejected reasoning content at input[%d]: %w", index, err)
+		}
+		retryBody = next
 	}
 	return retryBody, "indexed reasoning content maximum-length rejection", true, nil
 }
