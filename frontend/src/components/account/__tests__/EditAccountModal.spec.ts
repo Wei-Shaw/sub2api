@@ -498,6 +498,18 @@ describe('EditAccountModal', () => {
         anthropic: 'https://api.deepseek.com/anthropic',
         responses: 'https://relay.example.com/responses'
       }
+    },
+    {
+      name: 'MiniMax Responses',
+      platform: 'minimax',
+      protocol: 'responses',
+      baseUrl: 'https://relay.example.com/v1',
+      expectedBaseUrl: 'https://api.minimax.io/v1',
+      expectedProtocolUrls: {
+        chat_completions: 'https://api.minimax.io/v1',
+        anthropic: 'https://api.minimax.io/anthropic',
+        responses: 'https://relay.example.com/v1'
+      }
     }
   ])('keeps a fixed $name relay in its protocol slot when switching to Adaptive', async (testCase) => {
     const account = buildAccount()

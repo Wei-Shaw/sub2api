@@ -47,6 +47,7 @@ const (
 	PlatformKimi      = domain.PlatformKimi
 	PlatformZhipu     = domain.PlatformZhipu
 	PlatformDeepseek  = domain.PlatformDeepseek
+	PlatformMiniMax   = domain.PlatformMiniMax
 	PlatformComposite = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
@@ -75,6 +76,7 @@ const (
 	DefaultZhipuPayGBaseURL   = "https://open.bigmodel.cn/api/paas/v4"
 	DefaultZhipuCodingBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
 	DefaultDeepseekBaseURL    = "https://api.deepseek.com"
+	DefaultMiniMaxBaseURL     = "https://api.minimax.io/v1"
 )
 
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
@@ -84,12 +86,13 @@ const (
 	DefaultKimiCodingAnthropicBaseURL = "https://api.kimi.com/coding"
 	DefaultZhipuAnthropicBaseURL      = "https://open.bigmodel.cn/api/anthropic"
 	DefaultDeepseekAnthropicBaseURL   = "https://api.deepseek.com/anthropic"
+	DefaultMiniMaxAnthropicBaseURL    = "https://api.minimax.io/anthropic"
 )
 
-// IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）。
+// IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商。
 func IsCNProvider(platform string) bool {
 	switch platform {
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
 		return true
 	default:
 		return false
@@ -108,6 +111,7 @@ var AllowedQuotaPlatforms = []string{
 	PlatformKimi,
 	PlatformZhipu,
 	PlatformDeepseek,
+	PlatformMiniMax,
 }
 
 // AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。

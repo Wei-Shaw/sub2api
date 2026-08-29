@@ -36,4 +36,12 @@ describe('defaultCNAdaptiveBaseUrls', () => {
       responses: 'https://api.deepseek.com'
     })
   })
+
+  it('includes all three native MiniMax endpoints', () => {
+    expect(defaultCNAdaptiveBaseUrls('minimax', 'payg')).toEqual({
+      chat_completions: 'https://api.minimax.io/v1',
+      anthropic: 'https://api.minimax.io/anthropic',
+      responses: 'https://api.minimax.io/v1'
+    })
+  })
 })
