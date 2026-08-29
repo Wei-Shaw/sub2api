@@ -35,6 +35,11 @@ const (
 
 const startupHealthRetryInterval = 250 * time.Millisecond
 
+// autoStartMinInterval throttles repeated docker-start attempts for a stopped
+// active container so a crash-looping container is not restarted on every
+// startup-health tick.
+const autoStartMinInterval = 30 * time.Second
+
 const (
 	maxJobHistory = 32
 	jobHistoryTTL = 30 * 24 * time.Hour
@@ -300,6 +305,9 @@ func (m *Manager) ReconcileWithOptions(ctx context.Context, slotName string, all
 		return fmt.Errorf("selected container identity is not valid: %w", err)
 	} else if !found {
 		return errors.New("selected container identity is not valid: container is absent")
+	}
+	if err := m.autoStartStoppedActiveContainer(ctx, container, nil); err != nil {
+		return fmt.Errorf("start selected container: %w", err)
 	}
 	if err := m.containerHealthy(ctx, container, slot.Port); err != nil {
 		return fmt.Errorf("selected container is not healthy: %w", err)
@@ -686,12 +694,16 @@ func (m *Manager) waitForActiveDeploymentOnStartup(ctx context.Context) error {
 	m.mu.RUnlock()
 
 	var lastErr error
+	var lastAutoStart time.Time
 	for {
 		if err := m.validateManagedRoute(ctx, activePort); err != nil {
 			return fmt.Errorf("active Nginx route became unknown or changed: %w", err)
 		}
 		if err := m.containerHealthy(ctx, activeContainer, activePort); err != nil {
 			lastErr = fmt.Errorf("active container is not ready: %w", err)
+			if startErr := m.autoStartStoppedActiveContainer(ctx, activeContainer, &lastAutoStart); startErr != nil {
+				return fmt.Errorf("active container auto-start failed: %w", startErr)
+			}
 		} else {
 			health, err := m.fetchApplicationHealth(ctx, m.cfg.NginxProbeURL, m.cfg.NginxProbeHost)
 			if err != nil {
@@ -713,6 +725,31 @@ func (m *Manager) waitForActiveDeploymentOnStartup(ctx context.Context) error {
 		case <-time.After(startupHealthRetryInterval):
 		}
 	}
+}
+
+// autoStartStoppedActiveContainer starts the persisted active container when it is
+// stopped, for example after a host reboot where the Docker daemon skipped a
+// container whose manually-stopped marker had been set. It is a no-op while the
+// container is running; lookup failures are left to the health checks. A failing
+// docker start is returned so the caller can latch degraded with an actionable
+// reason.
+func (m *Manager) autoStartStoppedActiveContainer(ctx context.Context, container containerRef, lastAttempt *time.Time) error {
+	verified, running, err := m.inspectContainerRunning(ctx, container)
+	if err != nil || running {
+		return nil
+	}
+	now := m.nowTime()
+	if lastAttempt != nil && !lastAttempt.IsZero() && now.Sub(*lastAttempt) < autoStartMinInterval {
+		return nil
+	}
+	log.Printf("sub2api-deployer action=auto_start reason=active_container_stopped container=%q", container.Name)
+	if err := m.startContainer(ctx, verified); err != nil {
+		return err
+	}
+	if lastAttempt != nil {
+		*lastAttempt = now
+	}
+	return nil
 }
 
 func (m *Manager) recoverInterruptedJob() error {
@@ -2379,7 +2416,8 @@ func (m *Manager) ensureBackgroundActive(ctx context.Context, container containe
 	if state == "" || state == "active" {
 		return nil
 	}
-	if _, err := m.runner.Run(ctx, nil, m.cfg.DockerBinary, "kill", "--signal=USR1", verified.ID); err != nil {
+	// Signal the application's PID 1 through `docker exec` rather than `docker kill --signal=USR1": the daemon's kill path marks the container as manually stopped, which permanently suppresses unless-stopped auto-start after a daemon restart. Exec delivers the same signal without setting that flag.
+	if _, err := m.runner.Run(ctx, nil, m.cfg.DockerBinary, "exec", verified.ID, "kill", "-s", "USR1", "1"); err != nil {
 		return fmt.Errorf("signal background activation: %w", err)
 	}
 	deadline := time.Now().Add(m.cfg.HealthTimeout.Duration)

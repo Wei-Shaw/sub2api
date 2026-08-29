@@ -365,7 +365,7 @@ func (f *fakeRunner) Run(_ context.Context, _ map[string]string, name string, ar
 		}
 		return "candidate-id", nil
 	}
-	if strings.Contains(command, "kill --signal=USR1") && f.runtimeState != nil {
+	if strings.Contains(command, " kill -s USR1 1") && f.runtimeState != nil {
 		f.runtimeState.Store("active")
 		return "signaled", nil
 	}
@@ -373,6 +373,9 @@ func (f *fakeRunner) Run(_ context.Context, _ map[string]string, name string, ar
 		return "", fmt.Errorf("not found")
 	}
 	if strings.Contains(command, "inspect --format {{if .State.Health}}") {
+		if container := fakeContainerName(args[len(args)-1]); f.stopped[container] {
+			return "exited", nil
+		}
 		for container := range f.unhealthy {
 			if strings.HasSuffix(command, " "+container) || strings.HasSuffix(command, " "+fakeContainerID(container)) {
 				return "unhealthy", nil
@@ -625,7 +628,7 @@ func TestManagedDeploymentSucceedsAndPinsDigest(t *testing.T) {
 	baseRunner.mu.Unlock()
 	standbyIndex := strings.Index(commands, "-e DEPLOYMENT_STANDBY=true")
 	stopIndex := strings.Index(commands, "stop --time 1 "+fakeContainerID("sub2api"))
-	activateIndex := strings.Index(commands, "kill --signal=USR1 "+fakeContainerID("sub2api-green"))
+	activateIndex := strings.Index(commands, "docker exec "+fakeContainerID("sub2api-green")+" kill -s USR1 1")
 	if standbyIndex < 0 || stopIndex < 0 || activateIndex < 0 || stopIndex > activateIndex {
 		t.Fatalf("candidate was not started standby and activated after old stop:\n%s", commands)
 	}
@@ -720,7 +723,7 @@ func TestDrainTimeoutKeepsBothContainersAndReconcileCompletesLater(t *testing.T)
 	runner.mu.Lock()
 	commands := strings.Join(runner.commands, "\n")
 	runner.mu.Unlock()
-	if strings.Contains(commands, "stop --time 1 "+fakeContainerID("sub2api")) || strings.Contains(commands, "kill --signal=USR1 "+fakeContainerID("sub2api-green")) {
+	if strings.Contains(commands, "stop --time 1 "+fakeContainerID("sub2api")) || strings.Contains(commands, "docker exec "+fakeContainerID("sub2api-green")+" kill -s USR1 1") {
 		t.Fatalf("drain timeout stopped the old owner or activated candidate workers:\n%s", commands)
 	}
 	if port, err := readUpstreamPort(cfg.NginxUpstreamPath); err != nil || port != candidatePort {
@@ -1151,7 +1154,7 @@ func TestRestartRecoveryActivatesCandidateWhenPreviousContainerIsAlreadyStopped(
 			runner.mu.Lock()
 			commands := strings.Join(runner.commands, "\n")
 			runner.mu.Unlock()
-			if !strings.Contains(commands, "kill --signal=USR1 "+fakeContainerID("sub2api-green")) {
+			if !strings.Contains(commands, "docker exec "+fakeContainerID("sub2api-green")+" kill -s USR1 1") {
 				t.Fatalf("recovery did not activate candidate background services:\n%s", commands)
 			}
 			if strings.Contains(commands, "stop --time 1 "+fakeContainerID("sub2api")) {
@@ -1258,7 +1261,7 @@ func TestRestartRecoverySkipsDrainAfterJournalBoundOldContainerStopped(t *testin
 	if strings.Contains(commands, "stop --time 1 "+oldID) {
 		t.Fatalf("recovery tried to stop the already-stopped journal-bound container:\n%s", commands)
 	}
-	if !strings.Contains(commands, "kill --signal=USR1 "+candidateID) {
+	if !strings.Contains(commands, "docker exec "+candidateID+" kill -s USR1 1") {
 		t.Fatalf("recovery did not activate candidate background services:\n%s", commands)
 	}
 	healthProbe := "inspect --format {{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}} " + candidateID
@@ -1350,7 +1353,7 @@ func TestRestartRecoveryCompletesDurableHandoffBeforeOldContainerStop(t *testing
 	commands := strings.Join(runner.commands, "\n")
 	runner.mu.Unlock()
 	stopIndex := strings.Index(commands, "stop --time 1 "+oldID)
-	activateIndex := strings.Index(commands, "kill --signal=USR1 "+candidateID)
+	activateIndex := strings.Index(commands, "docker exec "+candidateID+" kill -s USR1 1")
 	if stopIndex < 0 || activateIndex < 0 || stopIndex > activateIndex {
 		t.Fatalf("recovery did not stop the journal-bound old container before activation:\n%s", commands)
 	}
@@ -1601,7 +1604,7 @@ func TestRestartRecoveryRejectsSameNameCandidateReplacement(t *testing.T) {
 		t.Fatalf("replacement did not fail closed during recovery: job=%+v health=%+v", job, manager.Health())
 	}
 	commands := strings.Join(runner.commands, "\n")
-	if strings.Contains(commands, "docker stop --time 1 "+replacementID) || strings.Contains(commands, "docker kill --signal=USR1 "+replacementID) {
+	if strings.Contains(commands, "docker stop --time 1 "+replacementID) || strings.Contains(commands, "docker exec "+replacementID+" kill -s USR1 1") {
 		t.Fatalf("replacement container received a destructive command:\n%s", commands)
 	}
 }
@@ -2499,7 +2502,7 @@ func TestForeignSameNameContainerNeverReceivesDestructiveCommand(t *testing.T) {
 				"docker start " + container,
 				"docker stop --time",
 				"docker rm -f " + container,
-				"docker kill --signal=USR1 " + container,
+				"docker exec " + container + " kill -s USR1 1",
 			} {
 				if strings.Contains(commands, forbidden) {
 					t.Fatalf("unowned container received destructive command %q:\n%s", forbidden, commands)
@@ -3325,4 +3328,181 @@ func newLivePortProxy(t *testing.T, livePort *atomic.Int64) *httptest.Server {
 	}))
 	t.Cleanup(server.Close)
 	return server
+}
+
+// --- Startup self-heal: active container stopped when the deployer starts ---
+
+func candidateHealthServer(t *testing.T, runtimeState *atomic.Value, slot string) int {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"status":"ok","deployment_runtime":{"state":%q,"slot":%q},"drain":{"supported":true,"active_requests":0,"hijacked_connections":0,"blockers":0}}`, atomicString(runtimeState), slot)
+	})}
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(func() { _ = server.Close() })
+	return listenerTCPPort(t, listener)
+}
+
+func writeUpstreamForPort(t *testing.T, cfg Config, port int) {
+	t.Helper()
+	content := fmt.Sprintf("upstream sub2api_managed {\n server 127.0.0.1:%d;\n}\n", port)
+	if err := os.WriteFile(cfg.NginxUpstreamPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func activeGreenState(port int) State {
+	return State{
+		ActiveSlot:        "sub2api-green",
+		ActiveContainer:   "sub2api-green",
+		ActiveContainerID: fakeContainerID("sub2api-green"),
+		ActivePort:        port,
+		ActiveVersion:     "0.1.2-ts.1",
+		ActiveImage:       "ghcr.io/ssharkkky/sub2api@sha256:" + strings.Repeat("a", 64),
+		UpdatedAt:         time.Now().UTC(),
+	}
+}
+
+func newTestManager(t *testing.T, cfg Config, runner CommandRunner, state State) *Manager {
+	t.Helper()
+	if err := saveState(cfg.StatePath, state); err != nil {
+		t.Fatal(err)
+	}
+	return &Manager{
+		cfg:        cfg,
+		runner:     runner,
+		httpClient: &http.Client{Timeout: 4 * time.Second},
+		now:        time.Now,
+		state:      state,
+	}
+}
+
+// TestBootstrapAutoStartsStoppedActiveContainer reproduces the reboot scenario
+// where the Docker daemon skipped the active container (manually-stopped
+// marker): the deployer must start it itself during bootstrap instead of
+// latching degraded and waiting for an operator.
+func TestBootstrapAutoStartsStoppedActiveContainer(t *testing.T) {
+	var runtimeState atomic.Value
+	runtimeState.Store("active")
+	candidatePort := candidateHealthServer(t, &runtimeState, "sub2api-green")
+	cfg := testConfig(t, candidatePort)
+	writeUpstreamForPort(t, cfg, candidatePort)
+	if err := saveState(cfg.StatePath, activeGreenState(candidatePort)); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeRunner{
+		candidate: true,
+		stopped:   map[string]bool{"sub2api-green": true},
+	}
+	manager, err := NewManager(cfg, runner)
+	if err != nil {
+		t.Fatalf("NewManager with stopped active container: %v", err)
+	}
+	runner.mu.Lock()
+	commands := strings.Join(runner.commands, "\n")
+	runner.mu.Unlock()
+	if got := strings.Count(commands, " start "+fakeContainerID("sub2api-green")); got != 1 {
+		t.Fatalf("docker start of active container called %d times, want 1:\n%s", got, commands)
+	}
+	if manager.state.Degraded {
+		t.Fatalf("bootstrap latched degraded after auto-start: %+v", manager.state.DegradedReason)
+	}
+}
+
+type failingStartRunner struct {
+	base *fakeRunner
+}
+
+func (r *failingStartRunner) Run(ctx context.Context, env map[string]string, name string, args ...string) (string, error) {
+	command := strings.Join(append([]string{name}, args...), " ")
+	if strings.Contains(command, " start ") {
+		return "", errors.New("injected start failure")
+	}
+	return r.base.Run(ctx, env, name, args...)
+}
+
+func TestStartupAutoStartSurfacesDockerStartFailure(t *testing.T) {
+	var runtimeState atomic.Value
+	runtimeState.Store("active")
+	candidatePort := candidateHealthServer(t, &runtimeState, "sub2api-green")
+	cfg := testConfig(t, candidatePort)
+	writeUpstreamForPort(t, cfg, candidatePort)
+	runner := &failingStartRunner{base: &fakeRunner{candidate: true, stopped: map[string]bool{"sub2api-green": true}}}
+	manager := newTestManager(t, cfg, runner, activeGreenState(candidatePort))
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	err := manager.waitForActiveDeploymentOnStartup(ctx)
+	if err == nil || !strings.Contains(err.Error(), "auto-start failed") {
+		t.Fatalf("waitForActiveDeploymentOnStartup err=%v, want auto-start failure", err)
+	}
+}
+
+type reExitingStartRunner struct {
+	base      *fakeRunner
+	container string
+}
+
+func (r *reExitingStartRunner) Run(ctx context.Context, env map[string]string, name string, args ...string) (string, error) {
+	command := strings.Join(append([]string{name}, args...), " ")
+	if strings.Contains(command, " start ") {
+		out, err := r.base.Run(ctx, env, name, args...)
+		r.base.mu.Lock()
+		if r.base.stopped == nil {
+			r.base.stopped = make(map[string]bool)
+		}
+		r.base.stopped[r.container] = true
+		r.base.mu.Unlock()
+		return out, err
+	}
+	return r.base.Run(ctx, env, name, args...)
+}
+
+func TestStartupAutoStartIsThrottledForReExitingContainer(t *testing.T) {
+	var runtimeState atomic.Value
+	runtimeState.Store("active")
+	candidatePort := candidateHealthServer(t, &runtimeState, "sub2api-green")
+	cfg := testConfig(t, candidatePort)
+	writeUpstreamForPort(t, cfg, candidatePort)
+	base := &fakeRunner{candidate: true, stopped: map[string]bool{"sub2api-green": true}}
+	manager := newTestManager(t, cfg, &reExitingStartRunner{base: base, container: "sub2api-green"}, activeGreenState(candidatePort))
+	// The fake clock advances 100ms per read, always under the 30s throttle.
+	var fakeTicks atomic.Int64
+	baseTime := time.Now()
+	manager.now = func() time.Time { return baseTime.Add(time.Duration(fakeTicks.Add(100)) * time.Millisecond) }
+	ctx, cancel := context.WithTimeout(context.Background(), 700*time.Millisecond)
+	defer cancel()
+	if err := manager.waitForActiveDeploymentOnStartup(ctx); err == nil {
+		t.Fatal("waitForActiveDeploymentOnStartup succeeded, want timeout for a re-exiting container")
+	}
+	base.mu.Lock()
+	commands := strings.Join(base.commands, "\n")
+	base.mu.Unlock()
+	if got := strings.Count(commands, " start "+fakeContainerID("sub2api-green")); got != 1 {
+		t.Fatalf("docker start called %d times, want 1 (throttled):\n%s", got, commands)
+	}
+}
+
+func TestStartupDoesNotStartHealthyActiveContainer(t *testing.T) {
+	var runtimeState atomic.Value
+	runtimeState.Store("active")
+	candidatePort := candidateHealthServer(t, &runtimeState, "sub2api-green")
+	cfg := testConfig(t, candidatePort)
+	writeUpstreamForPort(t, cfg, candidatePort)
+	runner := &fakeRunner{candidate: true}
+	manager := newTestManager(t, cfg, runner, activeGreenState(candidatePort))
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := manager.waitForActiveDeploymentOnStartup(ctx); err != nil {
+		t.Fatalf("waitForActiveDeploymentOnStartup: %v", err)
+	}
+	runner.mu.Lock()
+	commands := strings.Join(runner.commands, "\n")
+	runner.mu.Unlock()
+	if strings.Contains(commands, " start "+fakeContainerID("sub2api-green")) {
+		t.Fatalf("healthy active container was started unnecessarily:\n%s", commands)
+	}
 }
