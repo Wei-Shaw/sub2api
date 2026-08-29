@@ -394,6 +394,15 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		return nil, err
 	}
 
+	firstOutputTimeoutSeconds := intValueOrDefault(input.FirstOutputFailoverTimeoutSeconds, 6)
+	firstOutputMaxSwitches := intValueOrDefault(input.FirstOutputFailoverMaxSwitches, 3)
+	if firstOutputTimeoutSeconds < 1 || firstOutputTimeoutSeconds > 600 {
+		return nil, errors.New("first_output_failover_timeout_seconds must be between 1 and 600")
+	}
+	if firstOutputMaxSwitches < 1 || firstOutputMaxSwitches > 10 {
+		return nil, errors.New("first_output_failover_max_switches must be between 1 and 10")
+	}
+
 	// 校验降级分组
 	if input.FallbackGroupID != nil {
 		if err := s.validateFallbackGroup(ctx, 0, *input.FallbackGroupID); err != nil {
@@ -453,63 +462,69 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 
 	group := &Group{
-		Name:                            input.Name,
-		Description:                     input.Description,
-		Platform:                        platform,
-		RateMultiplier:                  input.RateMultiplier,
-		IsExclusive:                     input.IsExclusive,
-		Status:                          StatusActive,
-		SubscriptionType:                subscriptionType,
-		DailyLimitUSD:                   dailyLimit,
-		WeeklyLimitUSD:                  weeklyLimit,
-		MonthlyLimitUSD:                 monthlyLimit,
-		LongContextPricingEnabled:       input.LongContextPricingEnabled,
-		ModelPricing:                    modelPricing,
-		AllowImageGeneration:            allowImageGeneration,
-		AllowBatchImageGeneration:       allowBatchImageGeneration,
-		ImageRateIndependent:            input.ImageRateIndependent,
-		ImageRateMultiplier:             imageRateMultiplier,
-		BatchImageDiscountMultiplier:    batchImageDiscountMultiplier,
-		BatchImageHoldMultiplier:        batchImageHoldMultiplier,
-		VideoRateIndependent:            input.VideoRateIndependent,
-		VideoRateMultiplier:             videoRateMultiplier,
-		PeakRateEnabled:                 peakRateEnabled,
-		PeakStart:                       peakStart,
-		PeakEnd:                         peakEnd,
-		PeakRateMultiplier:              peakRateMultiplier,
-		ProfitControlEnabled:            profitControlEnabled,
-		ProfitMinMargin:                 profitMinMargin,
-		ProfitSafetyBuffer:              profitSafetyBuffer,
-		ImagePrice1K:                    imagePrice1K,
-		ImagePrice2K:                    imagePrice2K,
-		ImagePrice4K:                    imagePrice4K,
-		VideoPrice480P:                  videoPrice480P,
-		VideoPrice720P:                  videoPrice720P,
-		VideoPrice1080P:                 videoPrice1080P,
-		VideoModelPrices:                NormalizeVideoModelPrices(input.VideoModelPrices),
-		WebSearchPricePerCall:           webSearchPricePerCall,
-		SearchPricePer1k:                searchPricePer1k,
-		AudioRealtimePricePerMin:        audioRealtimePricePerMin,
-		AudioTTSPricePerMillionChars:    audioTTSPricePerMillionChars,
-		AudioSTTPricePerHour:            audioSTTPricePerHour,
-		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
-		FallbackGroupID:                 input.FallbackGroupID,
-		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
-		ModelRouting:                    input.ModelRouting,
-		MCPXMLInject:                    mcpXMLInject,
-		SupportedModelScopes:            input.SupportedModelScopes,
-		AllowMessagesDispatch:           input.AllowMessagesDispatch,
-		AllowLive:                       input.AllowLive,
-		RequireOAuthOnly:                input.RequireOAuthOnly,
-		RequirePrivacySet:               input.RequirePrivacySet,
-		DefaultMappedModel:              input.DefaultMappedModel,
-		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
-		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
-		RPMLimit:                        input.RPMLimit,
-		MaxReasoningEffort:              maxReasoningEffort,
-		ReasoningEffortMappings:         reasoningEffortMappings,
+		Name:                              input.Name,
+		Description:                       input.Description,
+		Platform:                          platform,
+		RateMultiplier:                    input.RateMultiplier,
+		IsExclusive:                       input.IsExclusive,
+		Status:                            StatusActive,
+		SubscriptionType:                  subscriptionType,
+		DailyLimitUSD:                     dailyLimit,
+		WeeklyLimitUSD:                    weeklyLimit,
+		MonthlyLimitUSD:                   monthlyLimit,
+		LongContextPricingEnabled:         input.LongContextPricingEnabled,
+		ModelPricing:                      modelPricing,
+		AllowImageGeneration:              allowImageGeneration,
+		AllowBatchImageGeneration:         allowBatchImageGeneration,
+		ImageRateIndependent:              input.ImageRateIndependent,
+		ImageRateMultiplier:               imageRateMultiplier,
+		BatchImageDiscountMultiplier:      batchImageDiscountMultiplier,
+		BatchImageHoldMultiplier:          batchImageHoldMultiplier,
+		VideoRateIndependent:              input.VideoRateIndependent,
+		VideoRateMultiplier:               videoRateMultiplier,
+		PeakRateEnabled:                   peakRateEnabled,
+		PeakStart:                         peakStart,
+		PeakEnd:                           peakEnd,
+		PeakRateMultiplier:                peakRateMultiplier,
+		ProfitControlEnabled:              profitControlEnabled,
+		ProfitMinMargin:                   profitMinMargin,
+		ProfitSafetyBuffer:                profitSafetyBuffer,
+		ImagePrice1K:                      imagePrice1K,
+		ImagePrice2K:                      imagePrice2K,
+		ImagePrice4K:                      imagePrice4K,
+		VideoPrice480P:                    videoPrice480P,
+		VideoPrice720P:                    videoPrice720P,
+		VideoPrice1080P:                   videoPrice1080P,
+		VideoModelPrices:                  NormalizeVideoModelPrices(input.VideoModelPrices),
+		WebSearchPricePerCall:             webSearchPricePerCall,
+		SearchPricePer1k:                  searchPricePer1k,
+		AudioRealtimePricePerMin:          audioRealtimePricePerMin,
+		AudioTTSPricePerMillionChars:      audioTTSPricePerMillionChars,
+		AudioSTTPricePerHour:              audioSTTPricePerHour,
+		ClaudeCodeOnly:                    input.ClaudeCodeOnly,
+		FallbackGroupID:                   input.FallbackGroupID,
+		FallbackGroupIDOnInvalidRequest:   fallbackOnInvalidRequest,
+		ModelRouting:                      input.ModelRouting,
+		MCPXMLInject:                      mcpXMLInject,
+		SupportedModelScopes:              input.SupportedModelScopes,
+		AllowMessagesDispatch:             input.AllowMessagesDispatch,
+		AllowLive:                         input.AllowLive,
+		RequireOAuthOnly:                  input.RequireOAuthOnly,
+		RequirePrivacySet:                 input.RequirePrivacySet,
+		DefaultMappedModel:                input.DefaultMappedModel,
+		MessagesDispatchModelConfig:       normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
+		ModelsListConfig:                  normalizeGroupModelsListConfig(input.ModelsListConfig),
+		RPMLimit:                          input.RPMLimit,
+		FirstOutputFailoverEnabled:        input.FirstOutputFailoverEnabled,
+		FirstOutputFailoverTimeoutSeconds: firstOutputTimeoutSeconds,
+		FirstOutputFailoverMaxSwitches:    firstOutputMaxSwitches,
+		MaxReasoningEffort:                maxReasoningEffort,
+		ReasoningEffortMappings:           reasoningEffortMappings,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
+	if group.Platform != PlatformOpenAI {
+		group.FirstOutputFailoverEnabled = false
+	}
 	if group.Platform != PlatformOpenAI && group.Platform != PlatformComposite {
 		group.AllowLive = false
 	}
@@ -556,6 +571,13 @@ func normalizeLimit(limit *float64) *float64 {
 		return nil
 	}
 	return limit
+}
+
+func intValueOrDefault(value *int, fallback int) int {
+	if value == nil {
+		return fallback
+	}
+	return *value
 }
 
 // normalizePrice 将负数转换为 nil（表示使用默认价格），0 保留（表示免费）
@@ -874,6 +896,24 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit
+	}
+	if input.FirstOutputFailoverEnabled != nil {
+		group.FirstOutputFailoverEnabled = *input.FirstOutputFailoverEnabled
+	}
+	if input.FirstOutputFailoverTimeoutSeconds != nil {
+		if *input.FirstOutputFailoverTimeoutSeconds < 1 || *input.FirstOutputFailoverTimeoutSeconds > 600 {
+			return nil, errors.New("first_output_failover_timeout_seconds must be between 1 and 600")
+		}
+		group.FirstOutputFailoverTimeoutSeconds = *input.FirstOutputFailoverTimeoutSeconds
+	}
+	if input.FirstOutputFailoverMaxSwitches != nil {
+		if *input.FirstOutputFailoverMaxSwitches < 1 || *input.FirstOutputFailoverMaxSwitches > 10 {
+			return nil, errors.New("first_output_failover_max_switches must be between 1 and 10")
+		}
+		group.FirstOutputFailoverMaxSwitches = *input.FirstOutputFailoverMaxSwitches
+	}
+	if group.Platform != PlatformOpenAI {
+		group.FirstOutputFailoverEnabled = false
 	}
 	if input.MaxReasoningEffort != nil {
 		maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(group.Platform, *input.MaxReasoningEffort)

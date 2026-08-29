@@ -265,6 +265,15 @@ func (Group) Fields() []ent.Field {
 		field.Int("rpm_limit").
 			Default(0).
 			Comment("分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流"),
+		field.Bool("first_output_failover_enabled").
+			Default(false).
+			Comment("是否启用 OpenAI API Key 号池首 Token 超时切换"),
+		field.Int("first_output_failover_timeout_seconds").
+			Default(6).
+			Comment("首 Token 超时切换阈值（秒）"),
+		field.Int("first_output_failover_max_switches").
+			Default(3).
+			Comment("单个请求首 Token 超时最多切换账号次数"),
 
 		// OpenAI/Codex 请求的推理强度上限（空字符串表示不限制）。
 		field.String("max_reasoning_effort").

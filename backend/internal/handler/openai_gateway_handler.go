@@ -1236,6 +1236,14 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		// 应用渠道模型映射到请求体
 		forwardBody := mappedBodyForMessages(channelMappingMsg.Mapped, channelMappingMsg.MappedModel)
 		writerSizeBeforeForward := c.Writer.Size()
+		logger.L().Info("openai.messages.forward_dispatch",
+			zap.Int64("account_id", account.ID),
+			zap.Any("group_id", apiKey.GroupID),
+			zap.String("model", reqModel),
+			zap.String("mapped_model", defaultMappedModel),
+			zap.Bool("stream", reqStream),
+			zap.String("protocol", "anthropic_messages"),
+		)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {

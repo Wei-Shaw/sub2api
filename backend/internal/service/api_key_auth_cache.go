@@ -132,6 +132,10 @@ type APIKeyAuthGroupSnapshot struct {
 	ProfitControlEnabled bool    `json:"profit_control_enabled"`
 	ProfitMinMargin      float64 `json:"profit_min_margin"`
 	ProfitSafetyBuffer   float64 `json:"profit_safety_buffer"`
+
+	FirstOutputFailoverEnabled        bool `json:"first_output_failover_enabled"`
+	FirstOutputFailoverTimeoutSeconds int  `json:"first_output_failover_timeout_seconds"`
+	FirstOutputFailoverMaxSwitches    int  `json:"first_output_failover_max_switches"`
 }
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存

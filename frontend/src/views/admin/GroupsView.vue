@@ -625,6 +625,18 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
+        <div v-if="createForm.platform === 'openai'">
+          <label class="input-label">{{ t("admin.groups.form.firstOutputFailover") }}</label>
+          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="createForm.first_output_failover_enabled" type="checkbox" />
+            {{ t("admin.groups.form.firstOutputFailoverEnabled") }}
+          </label>
+          <div v-if="createForm.first_output_failover_enabled" class="mt-2 grid grid-cols-2 gap-3">
+            <label class="text-xs text-gray-500">{{ t("admin.groups.form.firstOutputFailoverTimeoutLabel") }}<input v-model.number="createForm.first_output_failover_timeout_seconds" type="number" min="1" max="600" step="1" class="input mt-1" /></label>
+            <label class="text-xs text-gray-500">{{ t("admin.groups.form.firstOutputFailoverMaxSwitchesLabel") }}<input v-model.number="createForm.first_output_failover_max_switches" type="number" min="1" max="10" step="1" class="input mt-1" /></label>
+          </div>
+          <p class="input-hint">{{ t("admin.groups.form.firstOutputFailoverHint") }}</p>
+        </div>
         <ReasoningEffortPolicyFields
           v-if="supportsReasoningEffortPolicyPlatform(createForm.platform)"
           ref="createReasoningEffortPolicyRef"
@@ -2378,6 +2390,18 @@
             :placeholder="t('admin.groups.form.rpmLimitPlaceholder')"
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
+        </div>
+        <div v-if="editForm.platform === 'openai'">
+          <label class="input-label">{{ t("admin.groups.form.firstOutputFailover") }}</label>
+          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="editForm.first_output_failover_enabled" type="checkbox" />
+            {{ t("admin.groups.form.firstOutputFailoverEnabled") }}
+          </label>
+          <div v-if="editForm.first_output_failover_enabled" class="mt-2 grid grid-cols-2 gap-3">
+            <label class="text-xs text-gray-500">{{ t("admin.groups.form.firstOutputFailoverTimeoutLabel") }}<input v-model.number="editForm.first_output_failover_timeout_seconds" type="number" min="1" max="600" step="1" class="input mt-1" /></label>
+            <label class="text-xs text-gray-500">{{ t("admin.groups.form.firstOutputFailoverMaxSwitchesLabel") }}<input v-model.number="editForm.first_output_failover_max_switches" type="number" min="1" max="10" step="1" class="input mt-1" /></label>
+          </div>
+          <p class="input-hint">{{ t("admin.groups.form.firstOutputFailoverHint") }}</p>
         </div>
         <ReasoningEffortPolicyFields
           v-if="supportsReasoningEffortPolicyPlatform(editForm.platform)"
@@ -5183,6 +5207,9 @@ const createForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+  first_output_failover_enabled: false,
+  first_output_failover_timeout_seconds: 6,
+  first_output_failover_max_switches: 3,
   max_reasoning_effort: "",
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
 });
@@ -5545,6 +5572,9 @@ const editForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+  first_output_failover_enabled: false,
+  first_output_failover_timeout_seconds: 6,
+  first_output_failover_max_switches: 3,
   max_reasoning_effort: "",
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
 });
@@ -5985,6 +6015,9 @@ const closeCreateModal = () => {
   createForm.mcp_xml_inject = true;
   createForm.copy_accounts_from_group_ids = [];
   createForm.rpm_limit = 0;
+  createForm.first_output_failover_enabled = false;
+  createForm.first_output_failover_timeout_seconds = 6;
+  createForm.first_output_failover_max_switches = 3;
   createForm.max_reasoning_effort = "";
   createForm.reasoning_effort_mappings = [];
   createReasoningEffortPolicyRef.value?.resetValidation();
@@ -6252,6 +6285,9 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.mcp_xml_inject = group.mcp_xml_inject ?? true;
   editForm.copy_accounts_from_group_ids = []; // 复制账号字段每次编辑时重置为空
   editForm.rpm_limit = group.rpm_limit ?? 0;
+  editForm.first_output_failover_enabled = group.first_output_failover_enabled ?? false;
+  editForm.first_output_failover_timeout_seconds = group.first_output_failover_timeout_seconds ?? 6;
+  editForm.first_output_failover_max_switches = group.first_output_failover_max_switches ?? 3;
   editForm.max_reasoning_effort = normalizeReasoningEffortForPlatform(
     group.platform,
     group.max_reasoning_effort,

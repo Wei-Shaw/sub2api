@@ -148,6 +148,10 @@ type Group struct {
 
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
 	RPMLimit int `json:"rpm_limit"`
+	// OpenAI API Key 号池首 Token 超时切换配置。
+	FirstOutputFailoverEnabled        bool `json:"first_output_failover_enabled"`
+	FirstOutputFailoverTimeoutSeconds int  `json:"first_output_failover_timeout_seconds"`
+	FirstOutputFailoverMaxSwitches    int  `json:"first_output_failover_max_switches"`
 	// MaxReasoningEffort OpenAI/Codex 请求的推理强度上限，空字符串表示不限制。
 	MaxReasoningEffort string `json:"max_reasoning_effort"`
 	// ReasoningEffortMappings OpenAI/Codex 推理强度精确映射。

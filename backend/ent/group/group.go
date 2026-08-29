@@ -130,6 +130,12 @@ const (
 	FieldModelsListConfig = "models_list_config"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
+	// FieldFirstOutputFailoverEnabled holds the string denoting the first_output_failover_enabled field in the database.
+	FieldFirstOutputFailoverEnabled = "first_output_failover_enabled"
+	// FieldFirstOutputFailoverTimeoutSeconds holds the string denoting the first_output_failover_timeout_seconds field in the database.
+	FieldFirstOutputFailoverTimeoutSeconds = "first_output_failover_timeout_seconds"
+	// FieldFirstOutputFailoverMaxSwitches holds the string denoting the first_output_failover_max_switches field in the database.
+	FieldFirstOutputFailoverMaxSwitches = "first_output_failover_max_switches"
 	// FieldMaxReasoningEffort holds the string denoting the max_reasoning_effort field in the database.
 	FieldMaxReasoningEffort = "max_reasoning_effort"
 	// FieldReasoningEffortMappings holds the string denoting the reasoning_effort_mappings field in the database.
@@ -272,6 +278,9 @@ var Columns = []string{
 	FieldMessagesDispatchModelConfig,
 	FieldModelsListConfig,
 	FieldRpmLimit,
+	FieldFirstOutputFailoverEnabled,
+	FieldFirstOutputFailoverTimeoutSeconds,
+	FieldFirstOutputFailoverMaxSwitches,
 	FieldMaxReasoningEffort,
 	FieldReasoningEffortMappings,
 	FieldProfitControlEnabled,
@@ -400,6 +409,12 @@ var (
 	DefaultModelsListConfig domain.GroupModelsListConfig
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
+	// DefaultFirstOutputFailoverEnabled holds the default value on creation for the "first_output_failover_enabled" field.
+	DefaultFirstOutputFailoverEnabled bool
+	// DefaultFirstOutputFailoverTimeoutSeconds holds the default value on creation for the "first_output_failover_timeout_seconds" field.
+	DefaultFirstOutputFailoverTimeoutSeconds int
+	// DefaultFirstOutputFailoverMaxSwitches holds the default value on creation for the "first_output_failover_max_switches" field.
+	DefaultFirstOutputFailoverMaxSwitches int
 	// DefaultMaxReasoningEffort holds the default value on creation for the "max_reasoning_effort" field.
 	DefaultMaxReasoningEffort string
 	// MaxReasoningEffortValidator is a validator for the "max_reasoning_effort" field. It is called by the builders before save.
@@ -675,6 +690,21 @@ func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
 // ByRpmLimit orders the results by the rpm_limit field.
 func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRpmLimit, opts...).ToFunc()
+}
+
+// ByFirstOutputFailoverEnabled orders the results by the first_output_failover_enabled field.
+func ByFirstOutputFailoverEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFirstOutputFailoverEnabled, opts...).ToFunc()
+}
+
+// ByFirstOutputFailoverTimeoutSeconds orders the results by the first_output_failover_timeout_seconds field.
+func ByFirstOutputFailoverTimeoutSeconds(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFirstOutputFailoverTimeoutSeconds, opts...).ToFunc()
+}
+
+// ByFirstOutputFailoverMaxSwitches orders the results by the first_output_failover_max_switches field.
+func ByFirstOutputFailoverMaxSwitches(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFirstOutputFailoverMaxSwitches, opts...).ToFunc()
 }
 
 // ByMaxReasoningEffort orders the results by the max_reasoning_effort field.

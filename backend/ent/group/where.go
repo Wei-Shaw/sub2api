@@ -310,6 +310,21 @@ func RpmLimit(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
 }
 
+// FirstOutputFailoverEnabled applies equality check predicate on the "first_output_failover_enabled" field. It's identical to FirstOutputFailoverEnabledEQ.
+func FirstOutputFailoverEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldFirstOutputFailoverEnabled, v))
+}
+
+// FirstOutputFailoverTimeoutSeconds applies equality check predicate on the "first_output_failover_timeout_seconds" field. It's identical to FirstOutputFailoverTimeoutSecondsEQ.
+func FirstOutputFailoverTimeoutSeconds(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldFirstOutputFailoverTimeoutSeconds, v))
+}
+
+// FirstOutputFailoverMaxSwitches applies equality check predicate on the "first_output_failover_max_switches" field. It's identical to FirstOutputFailoverMaxSwitchesEQ.
+func FirstOutputFailoverMaxSwitches(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldFirstOutputFailoverMaxSwitches, v))
+}
+
 // MaxReasoningEffort applies equality check predicate on the "max_reasoning_effort" field. It's identical to MaxReasoningEffortEQ.
 func MaxReasoningEffort(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldMaxReasoningEffort, v))
@@ -2393,6 +2408,96 @@ func RpmLimitLT(v int) predicate.Group {
 // RpmLimitLTE applies the LTE predicate on the "rpm_limit" field.
 func RpmLimitLTE(v int) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldRpmLimit, v))
+}
+
+// FirstOutputFailoverEnabledEQ applies the EQ predicate on the "first_output_failover_enabled" field.
+func FirstOutputFailoverEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldFirstOutputFailoverEnabled, v))
+}
+
+// FirstOutputFailoverEnabledNEQ applies the NEQ predicate on the "first_output_failover_enabled" field.
+func FirstOutputFailoverEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldFirstOutputFailoverEnabled, v))
+}
+
+// FirstOutputFailoverTimeoutSecondsEQ applies the EQ predicate on the "first_output_failover_timeout_seconds" field.
+func FirstOutputFailoverTimeoutSecondsEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldFirstOutputFailoverTimeoutSeconds, v))
+}
+
+// FirstOutputFailoverTimeoutSecondsNEQ applies the NEQ predicate on the "first_output_failover_timeout_seconds" field.
+func FirstOutputFailoverTimeoutSecondsNEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldFirstOutputFailoverTimeoutSeconds, v))
+}
+
+// FirstOutputFailoverTimeoutSecondsIn applies the In predicate on the "first_output_failover_timeout_seconds" field.
+func FirstOutputFailoverTimeoutSecondsIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldFirstOutputFailoverTimeoutSeconds, vs...))
+}
+
+// FirstOutputFailoverTimeoutSecondsNotIn applies the NotIn predicate on the "first_output_failover_timeout_seconds" field.
+func FirstOutputFailoverTimeoutSecondsNotIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldFirstOutputFailoverTimeoutSeconds, vs...))
+}
+
+// FirstOutputFailoverTimeoutSecondsGT applies the GT predicate on the "first_output_failover_timeout_seconds" field.
+func FirstOutputFailoverTimeoutSecondsGT(v int) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldFirstOutputFailoverTimeoutSeconds, v))
+}
+
+// FirstOutputFailoverTimeoutSecondsGTE applies the GTE predicate on the "first_output_failover_timeout_seconds" field.
+func FirstOutputFailoverTimeoutSecondsGTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldFirstOutputFailoverTimeoutSeconds, v))
+}
+
+// FirstOutputFailoverTimeoutSecondsLT applies the LT predicate on the "first_output_failover_timeout_seconds" field.
+func FirstOutputFailoverTimeoutSecondsLT(v int) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldFirstOutputFailoverTimeoutSeconds, v))
+}
+
+// FirstOutputFailoverTimeoutSecondsLTE applies the LTE predicate on the "first_output_failover_timeout_seconds" field.
+func FirstOutputFailoverTimeoutSecondsLTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldFirstOutputFailoverTimeoutSeconds, v))
+}
+
+// FirstOutputFailoverMaxSwitchesEQ applies the EQ predicate on the "first_output_failover_max_switches" field.
+func FirstOutputFailoverMaxSwitchesEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldFirstOutputFailoverMaxSwitches, v))
+}
+
+// FirstOutputFailoverMaxSwitchesNEQ applies the NEQ predicate on the "first_output_failover_max_switches" field.
+func FirstOutputFailoverMaxSwitchesNEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldFirstOutputFailoverMaxSwitches, v))
+}
+
+// FirstOutputFailoverMaxSwitchesIn applies the In predicate on the "first_output_failover_max_switches" field.
+func FirstOutputFailoverMaxSwitchesIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldFirstOutputFailoverMaxSwitches, vs...))
+}
+
+// FirstOutputFailoverMaxSwitchesNotIn applies the NotIn predicate on the "first_output_failover_max_switches" field.
+func FirstOutputFailoverMaxSwitchesNotIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldFirstOutputFailoverMaxSwitches, vs...))
+}
+
+// FirstOutputFailoverMaxSwitchesGT applies the GT predicate on the "first_output_failover_max_switches" field.
+func FirstOutputFailoverMaxSwitchesGT(v int) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldFirstOutputFailoverMaxSwitches, v))
+}
+
+// FirstOutputFailoverMaxSwitchesGTE applies the GTE predicate on the "first_output_failover_max_switches" field.
+func FirstOutputFailoverMaxSwitchesGTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldFirstOutputFailoverMaxSwitches, v))
+}
+
+// FirstOutputFailoverMaxSwitchesLT applies the LT predicate on the "first_output_failover_max_switches" field.
+func FirstOutputFailoverMaxSwitchesLT(v int) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldFirstOutputFailoverMaxSwitches, v))
+}
+
+// FirstOutputFailoverMaxSwitchesLTE applies the LTE predicate on the "first_output_failover_max_switches" field.
+func FirstOutputFailoverMaxSwitchesLTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldFirstOutputFailoverMaxSwitches, v))
 }
 
 // MaxReasoningEffortEQ applies the EQ predicate on the "max_reasoning_effort" field.

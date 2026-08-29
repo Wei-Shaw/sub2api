@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -162,6 +163,43 @@ func TestOpenAIFirstOutputTimeoutForReasoningEffort(t *testing.T) {
 	require.Equal(t, 300*time.Second, svc.openAIFirstOutputTimeout("high"))
 	require.Equal(t, 300*time.Second, svc.openAIFirstOutputTimeout("xhigh"))
 	require.Equal(t, 300*time.Second, svc.openAIFirstOutputTimeout("max"))
+}
+
+func TestOpenAIFirstOutputTimeoutForRequestUsesGroupPolicy(t *testing.T) {
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{
+		OpenAIFirstOutputTimeoutSeconds: 120,
+	}}}
+	group := &Group{
+		ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true,
+		FirstOutputFailoverEnabled:        true,
+		FirstOutputFailoverTimeoutSeconds: 6,
+		FirstOutputFailoverMaxSwitches:    3,
+	}
+	ctx := context.WithValue(context.Background(), ctxkey.Group, group)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	require.Equal(t, 6*time.Second, svc.openAIFirstOutputTimeoutForRequest(ctx, account, "low"))
+	require.Equal(t, 0*time.Second, svc.openAIFirstOutputTimeoutForRequest(
+		WithAccountSwitchCount(ctx, 3, false),
+		account,
+		"low",
+	))
+}
+
+func TestOpenAIFirstOutputTimeoutForRequestKeepsGlobalPolicyForNonAPIKey(t *testing.T) {
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{
+		OpenAIFirstOutputTimeoutSeconds: 120,
+	}}}
+	group := &Group{
+		ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true,
+		FirstOutputFailoverEnabled:        true,
+		FirstOutputFailoverTimeoutSeconds: 6,
+		FirstOutputFailoverMaxSwitches:    3,
+	}
+	ctx := context.WithValue(context.Background(), ctxkey.Group, group)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+
+	require.Equal(t, 120*time.Second, svc.openAIFirstOutputTimeoutForRequest(ctx, account, "low"))
 }
 
 func TestOpenAIFirstOutputStageDefaultLimitIsIndependentFromScannerLimit(t *testing.T) {

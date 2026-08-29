@@ -15,8 +15,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 const (
@@ -28,8 +30,9 @@ const (
 )
 
 var (
-	errOpenAIFirstOutputStageLimit   = errors.New("openai first-output staging limit exceeded")
-	errOpenAIFirstOutputScannerLimit = errors.New("openai pre-output scanner token limit exceeded")
+	errOpenAIFirstOutputStageLimit    = errors.New("openai first-output staging limit exceeded")
+	errOpenAIFirstOutputScannerLimit  = errors.New("openai pre-output scanner token limit exceeded")
+	errOpenAICompatFirstOutputTimeout = errors.New("openai messages compatibility first-output timeout")
 )
 
 type openAIFirstOutputStage struct {
@@ -243,6 +246,71 @@ func (s *OpenAIGatewayService) openAIFirstOutputTimeout(reasoningEffort string) 
 	return time.Duration(seconds) * time.Second
 }
 
+// openAIFirstOutputTimeoutForRequest prefers the opt-in group policy for
+// OpenAI API Key accounts. The final attempt in a request intentionally has
+// no first-output deadline, so the request stops switching and waits normally.
+func (s *OpenAIGatewayService) openAIFirstOutputTimeoutForRequest(ctx context.Context, account *Account, reasoningEffort string) time.Duration {
+	groupID, groupPlatform, groupHydrated := int64(0), "", false
+	groupEnabled, groupTimeout, groupMaxSwitches := false, 0, 0
+	if ctx != nil {
+		if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && group != nil {
+			groupID, groupPlatform, groupHydrated = group.ID, group.Platform, group.Hydrated
+			groupEnabled = group.FirstOutputFailoverEnabled
+			groupTimeout = group.FirstOutputFailoverTimeoutSeconds
+			groupMaxSwitches = group.FirstOutputFailoverMaxSwitches
+		}
+	}
+	logger.L().Info("openai.first_output_failover_evaluation",
+		zap.Int64("account_id", accountIDForFirstOutputLog(account)),
+		zap.String("account_platform", accountStringField(account, true)),
+		zap.String("account_type", accountStringField(account, false)),
+		zap.Int64("group_id", groupID), zap.String("group_platform", groupPlatform),
+		zap.Bool("group_hydrated", groupHydrated), zap.Bool("group_enabled", groupEnabled),
+		zap.Int("group_timeout_seconds", groupTimeout), zap.Int("group_max_switches", groupMaxSwitches),
+	)
+	if account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey {
+		if ctx != nil {
+			if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(group) && group.Platform == PlatformOpenAI && group.FirstOutputFailoverEnabled {
+				if maxSwitches := group.FirstOutputFailoverMaxSwitches; maxSwitches > 0 {
+					if switchCount, ok := AccountSwitchCountFromContext(ctx); ok && switchCount >= maxSwitches {
+						logger.L().Info("openai.first_output_failover_final_attempt",
+							zap.Int64("account_id", account.ID), zap.Int64("group_id", group.ID),
+							zap.Int("switch_count", switchCount), zap.Int("max_switches", maxSwitches),
+						)
+						return 0
+					}
+				}
+				seconds := group.FirstOutputFailoverTimeoutSeconds
+				if seconds > 0 {
+					logger.L().Info("openai.first_output_failover_armed",
+						zap.Int64("account_id", account.ID), zap.Int64("group_id", group.ID),
+						zap.Int("timeout_seconds", seconds), zap.Int("max_switches", group.FirstOutputFailoverMaxSwitches),
+					)
+					return time.Duration(seconds) * time.Second
+				}
+			}
+		}
+	}
+	return s.openAIFirstOutputTimeout(reasoningEffort)
+}
+
+func accountIDForFirstOutputLog(account *Account) int64 {
+	if account == nil {
+		return 0
+	}
+	return account.ID
+}
+
+func accountStringField(account *Account, platform bool) string {
+	if account == nil {
+		return ""
+	}
+	if platform {
+		return account.Platform
+	}
+	return account.Type
+}
+
 func (s *OpenAIGatewayService) newOpenAIFirstOutputTimeoutError(
 	ctx context.Context,
 	c *gin.Context,
@@ -259,6 +327,16 @@ func (s *OpenAIGatewayService) newOpenAIFirstOutputTimeoutError(
 		"service.openai_gateway",
 		"OpenAI first output timeout: account=%d model=%s effort=%s phase=%s elapsed=%s limit=%s",
 		account.ID, originalModel, reasoningEffort, phase, elapsed, timeout,
+	)
+	groupIDForLog := int64(0)
+	if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && group != nil {
+		groupIDForLog = group.ID
+	}
+	logger.L().Warn("openai.first_output_failover_timeout",
+		zap.Int64("account_id", account.ID), zap.Int64("group_id", groupIDForLog),
+		zap.String("model", originalModel), zap.String("phase", phase),
+		zap.Duration("elapsed", elapsed), zap.Duration("timeout", timeout),
+		zap.String("upstream_request_id", strings.TrimSpace(responseHeaders.Get("x-request-id"))),
 	)
 	requestID := strings.TrimSpace(responseHeaders.Get("x-request-id"))
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
