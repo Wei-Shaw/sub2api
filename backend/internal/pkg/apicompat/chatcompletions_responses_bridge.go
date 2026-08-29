@@ -2093,7 +2093,7 @@ func normalizeChatCompletionsFinishReason(reason string) (canonical string, inte
 	default:
 		return reason, false
 	}
-	}
+}
 
 func ChatCompletionsChunkToResponsesEvents(
 	chunk *ChatCompletionsChunk,
