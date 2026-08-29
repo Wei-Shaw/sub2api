@@ -336,7 +336,7 @@ func TestZhipuMCPPassthrough_UnknownSlug(t *testing.T) {
 		})
 
 	w := httptest.NewRecorder()
-	// web_reader / vision 未实测，不在第一期白名单内。
+	// vision 是 Local MCP（无远程端点可透传），不在白名单内。
 	r.ServeHTTP(w, zhipuMCPPostRequest("/api/mcp/zhipu/vision/mcp", `{}`, ""))
 
 	require.Equal(t, http.StatusNotFound, w.Code)
