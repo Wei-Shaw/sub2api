@@ -240,6 +240,19 @@ func isAnthropicMessagesRequest(c *gin.Context) bool {
 }
 
 func writeAnthropicGatewayErrorResponse(c *gin.Context, status int, errType, message string) {
+	if AnthropicJSONKeepalivePresent(c) {
+		if StopAnthropicJSONKeepaliveCommitted(c) {
+			MarkOpsStreamError(c, errType, message, status)
+		}
+		c.JSON(status, gin.H{
+			"type": "error",
+			"error": gin.H{
+				"type":    errType,
+				"message": message,
+			},
+		})
+		return
+	}
 	if !StopAnthropicPreHeaderSSEKeepaliveCommitted(c) {
 		c.JSON(status, gin.H{
 			"type": "error",

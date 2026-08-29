@@ -171,6 +171,20 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	reqStream := parsedReq.Stream
 	if reqStream {
 		defer service.StopAnthropicPreHeaderSSEKeepaliveCommitted(c)
+	} else if h.cfg != nil && h.cfg.Gateway.AnthropicNonstreamKeepaliveInterval > 0 {
+		interval := time.Duration(h.cfg.Gateway.AnthropicNonstreamKeepaliveInterval) * time.Second
+		stopJSONKeepalive := service.StartAnthropicJSONKeepalive(c, interval)
+		defer func() {
+			committed := service.AnthropicJSONKeepaliveCommitted(c)
+			bytes := service.AnthropicJSONKeepaliveBytes(c)
+			stopJSONKeepalive()
+			if committed {
+				reqLog.Info("gateway.anthropic_nonstream_keepalive_committed",
+					zap.Int64("interval_seconds", int64(interval/time.Second)),
+					zap.Int("heartbeat_bytes", bytes),
+				)
+			}
+		}()
 	}
 	bindRequestedReasoningEffort(c, body, reqModel)
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
@@ -463,7 +477,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				requestCtx = service.WithAccountSwitchCount(requestCtx, fs.SwitchCount, h.metadataBridgeEnabled())
 			}
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
-			writerSizeBeforeForward := service.AnthropicPreHeaderKeepaliveAdjustedWrittenSize(c)
+			writerSizeBeforeForward := service.AnthropicDownstreamAdjustedWrittenSize(c)
 			if account.Platform == service.PlatformAntigravity {
 				result, err = h.antigravityGatewayService.ForwardGemini(
 					requestCtx,
@@ -486,7 +500,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
-					if service.AnthropicPreHeaderKeepaliveAdjustedWrittenSize(c) != writerSizeBeforeForward {
+					if service.AnthropicDownstreamAdjustedWrittenSize(c) != writerSizeBeforeForward {
 						h.handleFailoverExhausted(c, failoverErr, service.PlatformGemini, true)
 						return
 					}
@@ -858,7 +872,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				requestCtx = service.WithForceCacheBilling(requestCtx)
 			}
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
-			writerSizeBeforeForward := service.AnthropicPreHeaderKeepaliveAdjustedWrittenSize(c)
+			writerSizeBeforeForward := service.AnthropicDownstreamAdjustedWrittenSize(c)
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, attemptBody, hasBoundSession)
 			} else {
@@ -994,7 +1008,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
-					if service.AnthropicPreHeaderKeepaliveAdjustedWrittenSize(c) != writerSizeBeforeForward {
+					if service.AnthropicDownstreamAdjustedWrittenSize(c) != writerSizeBeforeForward {
 						h.handleFailoverExhausted(c, failoverErr, account.Platform, true)
 						return
 					}
@@ -1928,6 +1942,10 @@ func (h *GatewayHandler) mapUpstreamError(statusCode int) (int, string, string) 
 
 // handleStreamingAwareError handles errors that may occur after streaming has started
 func (h *GatewayHandler) handleStreamingAwareError(c *gin.Context, status int, errType, message string, streamStarted bool) {
+	if service.AnthropicJSONKeepalivePresent(c) {
+		h.errorResponse(c, status, errType, message)
+		return
+	}
 	if service.StopAnthropicPreHeaderSSEKeepaliveCommitted(c) {
 		streamStarted = true
 	}
@@ -1973,6 +1991,10 @@ func (h *GatewayHandler) ensureForwardErrorResponse(c *gin.Context, streamStarte
 	if service.IsResponseCommitted(c) {
 		return false
 	}
+	if service.AnthropicJSONKeepalivePresent(c) {
+		h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
+		return true
+	}
 	if c.Writer.Written() {
 		streamStarted = true
 	}
@@ -1994,7 +2016,7 @@ func gatewayForwardErrorAlreadyCommunicated(c *gin.Context, writerSizeBeforeForw
 	if err == nil || c == nil || c.Writer == nil {
 		return false
 	}
-	if service.AnthropicPreHeaderKeepaliveAdjustedWrittenSize(c) == writerSizeBeforeForward {
+	if service.AnthropicDownstreamAdjustedWrittenSize(c) == writerSizeBeforeForward {
 		return false
 	}
 
@@ -2051,6 +2073,9 @@ func (h *GatewayHandler) checkClaudeCodeVersion(c *gin.Context) bool {
 
 // errorResponse 返回Claude API格式的错误响应
 func (h *GatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
+	if service.StopAnthropicJSONKeepaliveCommitted(c) {
+		service.MarkOpsStreamError(c, errType, message, status)
+	}
 	c.JSON(status, gin.H{
 		"type": "error",
 		"error": gin.H{

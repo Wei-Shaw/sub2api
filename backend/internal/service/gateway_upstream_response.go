@@ -462,7 +462,13 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 
 	switch resp.StatusCode {
 	case 400:
-		if AnthropicPreHeaderSSEKeepaliveCommitted(c) {
+		if AnthropicJSONKeepalivePresent(c) {
+			message := upstreamMsg
+			if message == "" {
+				message = "Upstream rejected the request"
+			}
+			writeAnthropicGatewayErrorResponse(c, http.StatusBadRequest, "invalid_request_error", message)
+		} else if AnthropicPreHeaderSSEKeepaliveCommitted(c) {
 			message := upstreamMsg
 			if message == "" {
 				message = "Upstream rejected the request"
