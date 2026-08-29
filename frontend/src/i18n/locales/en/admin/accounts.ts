@@ -3,6 +3,11 @@ export default {
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',
+      fromModel: 'From model',
+      toModel: 'To model',
+      messages: {
+        accountCreated: 'Account created successfully'
+      },
       autoRefresh: 'Auto Refresh',
       enableAutoRefresh: 'Enable auto refresh',
       refreshInterval5s: '5 seconds',

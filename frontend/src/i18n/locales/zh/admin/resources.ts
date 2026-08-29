@@ -509,6 +509,8 @@ export default {
     usage: {
       title: '使用记录',
       description: '查看和管理所有用户的使用记录',
+      deviceCode: '设备码',
+      searchDeviceCodePlaceholder: '输入设备码',
       userFilter: '用户',
       searchUserPlaceholder: '按邮箱搜索用户...',
       searchApiKeyPlaceholder: '按名称搜索 API 密钥...',

@@ -438,6 +438,7 @@ export default {
         inviter: 'Inviter',
         invitee: 'Invitee',
         user: 'User',
+        deviceCode: 'Device Code',
         affCode: 'Invite Code',
         order: 'Order',
         totalRebate: 'Total Rebate',

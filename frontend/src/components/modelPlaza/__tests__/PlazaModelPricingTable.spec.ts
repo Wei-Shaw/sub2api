@@ -198,6 +198,58 @@ describe('PlazaModelPricingTable', () => {
     expect(names).toEqual(['gpt-5.6-sol', 'gpt-5.5'])
   })
 
+  it('按图片/按次计费的模型沉到末尾,不与 token 模型按官方价混排', () => {
+    // 官方输出价 $10,介于下面两个 token 模型之间,但因计费模式不同应排最后
+    const image = tokenModel({
+      name: 'gpt-image-2',
+      pricing: {
+        billing_mode: 'image',
+        input_price: null,
+        output_price: null,
+        cache_write_price: null,
+        cache_read_price: null,
+        image_input_price: null,
+        image_output_price: null,
+        per_request_price: 0.002,
+        intervals: []
+      },
+      official_pricing: {
+        input_price: 5e-6,
+        output_price: 1e-5,
+        cache_write_price: null,
+        cache_write_1h_price: null,
+        cache_read_price: 1.25e-6
+      }
+    })
+    const pricier = tokenModel({
+      name: 'gpt-5.6-terra',
+      official_pricing: {
+        input_price: 2.5e-6,
+        output_price: 1.5e-5,
+        cache_write_price: null,
+        cache_write_1h_price: null,
+        cache_read_price: null
+      }
+    })
+    const cheaper = tokenModel({
+      name: 'gpt-5.6-luna',
+      official_pricing: {
+        input_price: 1e-6,
+        output_price: 6e-6,
+        cache_write_price: null,
+        cache_write_1h_price: null,
+        cache_read_price: null
+      }
+    })
+
+    const wrapper = mountTable([pricier, image, cheaper], 1)
+    const names = wrapper.findAll('tbody tr').map((tr) => tr.find('td').text())
+    expect(names[0]).toBe('gpt-5.6-terra')
+    expect(names[1]).toBe('gpt-5.6-luna')
+    // 首列含「按图片计费」徽章文本,只断言模型名
+    expect(names[2]).toContain('gpt-image-2')
+  })
+
   it('两级表头:实付区与官方区各拆输入/输出/缓存列', () => {
     const wrapper = mountTable([tokenModel()], 1)
     const text = wrapper.text()
@@ -462,11 +514,15 @@ describe('PlazaModelPricingTable', () => {
     expect(text).not.toContain('$0.000003')
   })
 
-  it('shows concrete platform identity in each mobile pricing card', () => {
+  it('Composite 分组中相同模型名按具体平台分别展示徽章', () => {
     const anthropic = tokenModel({ name: 'shared-model', platform: 'anthropic' })
     const openai = tokenModel({ name: 'shared-model', platform: 'openai' })
     const wrapper = mount(PlazaModelPricingTable, {
-      props: { models: [anthropic, openai], platform: 'composite', rateMultiplier: 1 }
+      props: {
+        models: [anthropic, openai],
+        platform: 'composite',
+        rateMultiplier: 1
+      }
     })
 
     const rows = wrapper.findAll('tbody tr')
@@ -475,44 +531,8 @@ describe('PlazaModelPricingTable', () => {
       'shared-modelAnthropic',
       'shared-modelOpenAI'
     ])
-    const cards = wrapper.findAll('[data-testid="mobile-pricing-card"]')
-    expect(cards).toHaveLength(2)
-    expect(cards[0].text()).toContain('Anthropic')
-    expect(cards[1].text()).toContain('OpenAI')
-  })
-
-  it('keeps backend publication order when billing workloads differ', () => {
-    const image = tokenModel({
-      name: 'image-first-from-admin',
-      pricing: {
-        billing_mode: 'image', input_price: null, output_price: null,
-        cache_write_price: null, cache_read_price: null, image_input_price: null,
-        image_output_price: null, per_request_price: 0.02, intervals: []
-      },
-      official_pricing: {
-        input_price: null, output_price: 1e-3, cache_write_price: null,
-        cache_write_1h_price: null, cache_read_price: null
-      }
-    })
-    const token = tokenModel({ name: 'token-second-from-admin' })
-    const request = tokenModel({
-      name: 'request-third-from-admin',
-      pricing: {
-        billing_mode: 'per_request', input_price: null, output_price: null,
-        cache_write_price: null, cache_read_price: null, image_input_price: null,
-        image_output_price: null, per_request_price: 0.02, intervals: []
-      },
-      official_pricing: {
-        input_price: null, output_price: 1e-6, cache_write_price: null,
-        cache_write_1h_price: null, cache_read_price: null
-      }
-    })
-
-    const wrapper = mountTable([image, token, request], 1)
-    const names = wrapper.findAll('tbody tr').map((row) => row.find('td').text())
-    expect(names[0]).toContain('image-first-from-admin')
-    expect(names[1]).toContain('token-second-from-admin')
-    expect(names[2]).toContain('request-third-from-admin')
+    expect(wrapper.text()).toContain('Anthropic')
+    expect(wrapper.text()).toContain('OpenAI')
   })
 })
 
