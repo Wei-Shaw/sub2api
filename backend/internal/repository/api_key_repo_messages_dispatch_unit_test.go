@@ -50,6 +50,9 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 		SetSubscriptionType(service.SubscriptionTypeStandard).
 		SetRateMultiplier(1).
 		SetAllowMessagesDispatch(true).
+		SetFirstOutputFailoverEnabled(true).
+		SetFirstOutputFailoverTimeoutSeconds(6).
+		SetFirstOutputFailoverMaxSwitches(3).
 		SetDefaultMappedModel("gpt-5.4").
 		SetMessagesDispatchModelConfig(service.OpenAIMessagesDispatchModelConfig{
 			OpusMappedModel:   "gpt-5.4-nano",
@@ -76,4 +79,7 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 	require.Equal(t, key.Name, got.Name)
 	require.NotNil(t, got.Group)
 	require.Equal(t, group.MessagesDispatchModelConfig, got.Group.MessagesDispatchModelConfig)
+	require.True(t, got.Group.FirstOutputFailoverEnabled)
+	require.Equal(t, 6, got.Group.FirstOutputFailoverTimeoutSeconds)
+	require.Equal(t, 3, got.Group.FirstOutputFailoverMaxSwitches)
 }

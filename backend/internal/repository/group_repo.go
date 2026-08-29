@@ -109,6 +109,9 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetModelsListConfig(groupIn.ModelsListConfig).
 		SetRpmLimit(groupIn.RPMLimit).
+		SetFirstOutputFailoverEnabled(groupIn.FirstOutputFailoverEnabled).
+		SetFirstOutputFailoverTimeoutSeconds(groupIn.FirstOutputFailoverTimeoutSeconds).
+		SetFirstOutputFailoverMaxSwitches(groupIn.FirstOutputFailoverMaxSwitches).
 		SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
 		SetReasoningEffortMappings(groupIn.ReasoningEffortMappings).
 		SetPeakRateEnabled(groupIn.PeakRateEnabled).
@@ -285,6 +288,9 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetModelsListConfig(groupIn.ModelsListConfig).
 		SetRpmLimit(groupIn.RPMLimit).
+		SetFirstOutputFailoverEnabled(groupIn.FirstOutputFailoverEnabled).
+		SetFirstOutputFailoverTimeoutSeconds(groupIn.FirstOutputFailoverTimeoutSeconds).
+		SetFirstOutputFailoverMaxSwitches(groupIn.FirstOutputFailoverMaxSwitches).
 		SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
 		SetReasoningEffortMappings(groupIn.ReasoningEffortMappings).
 		SetPeakRateEnabled(groupIn.PeakRateEnabled).

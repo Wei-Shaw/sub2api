@@ -134,6 +134,12 @@ type Group struct {
 	ModelsListConfig domain.GroupModelsListConfig `json:"models_list_config,omitempty"`
 	// 分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流
 	RpmLimit int `json:"rpm_limit,omitempty"`
+	// 是否启用 OpenAI API Key 号池首 Token 超时切换
+	FirstOutputFailoverEnabled bool `json:"first_output_failover_enabled,omitempty"`
+	// 首 Token 超时切换阈值（秒）
+	FirstOutputFailoverTimeoutSeconds int `json:"first_output_failover_timeout_seconds,omitempty"`
+	// 单个请求首 Token 超时最多切换账号次数
+	FirstOutputFailoverMaxSwitches int `json:"first_output_failover_max_switches,omitempty"`
 	// OpenAI reasoning effort 上限；可选 minimal/low/medium/high/xhigh/max
 	MaxReasoningEffort string `json:"max_reasoning_effort,omitempty"`
 	// OpenAI reasoning effort 自定义精确映射；先映射再应用上限
@@ -252,11 +258,11 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
-		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
+		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldFirstOutputFailoverEnabled, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
 			values[i] = new(sql.NullFloat64)
-		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
+		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit, group.FieldFirstOutputFailoverTimeoutSeconds, group.FieldFirstOutputFailoverMaxSwitches:
 			values[i] = new(sql.NullInt64)
 		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel, group.FieldMaxReasoningEffort:
 			values[i] = new(sql.NullString)
@@ -656,6 +662,24 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.RpmLimit = int(value.Int64)
 			}
+		case group.FieldFirstOutputFailoverEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field first_output_failover_enabled", values[i])
+			} else if value.Valid {
+				_m.FirstOutputFailoverEnabled = value.Bool
+			}
+		case group.FieldFirstOutputFailoverTimeoutSeconds:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field first_output_failover_timeout_seconds", values[i])
+			} else if value.Valid {
+				_m.FirstOutputFailoverTimeoutSeconds = int(value.Int64)
+			}
+		case group.FieldFirstOutputFailoverMaxSwitches:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field first_output_failover_max_switches", values[i])
+			} else if value.Valid {
+				_m.FirstOutputFailoverMaxSwitches = int(value.Int64)
+			}
 		case group.FieldMaxReasoningEffort:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field max_reasoning_effort", values[i])
@@ -972,6 +996,15 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("rpm_limit=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RpmLimit))
+	builder.WriteString(", ")
+	builder.WriteString("first_output_failover_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.FirstOutputFailoverEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("first_output_failover_timeout_seconds=")
+	builder.WriteString(fmt.Sprintf("%v", _m.FirstOutputFailoverTimeoutSeconds))
+	builder.WriteString(", ")
+	builder.WriteString("first_output_failover_max_switches=")
+	builder.WriteString(fmt.Sprintf("%v", _m.FirstOutputFailoverMaxSwitches))
 	builder.WriteString(", ")
 	builder.WriteString("max_reasoning_effort=")
 	builder.WriteString(_m.MaxReasoningEffort)

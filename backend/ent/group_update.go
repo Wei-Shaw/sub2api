@@ -1080,6 +1080,62 @@ func (_u *GroupUpdate) AddRpmLimit(v int) *GroupUpdate {
 	return _u
 }
 
+// SetFirstOutputFailoverEnabled sets the "first_output_failover_enabled" field.
+func (_u *GroupUpdate) SetFirstOutputFailoverEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetFirstOutputFailoverEnabled(v)
+	return _u
+}
+
+// SetNillableFirstOutputFailoverEnabled sets the "first_output_failover_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableFirstOutputFailoverEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetFirstOutputFailoverEnabled(*v)
+	}
+	return _u
+}
+
+// SetFirstOutputFailoverTimeoutSeconds sets the "first_output_failover_timeout_seconds" field.
+func (_u *GroupUpdate) SetFirstOutputFailoverTimeoutSeconds(v int) *GroupUpdate {
+	_u.mutation.ResetFirstOutputFailoverTimeoutSeconds()
+	_u.mutation.SetFirstOutputFailoverTimeoutSeconds(v)
+	return _u
+}
+
+// SetNillableFirstOutputFailoverTimeoutSeconds sets the "first_output_failover_timeout_seconds" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableFirstOutputFailoverTimeoutSeconds(v *int) *GroupUpdate {
+	if v != nil {
+		_u.SetFirstOutputFailoverTimeoutSeconds(*v)
+	}
+	return _u
+}
+
+// AddFirstOutputFailoverTimeoutSeconds adds value to the "first_output_failover_timeout_seconds" field.
+func (_u *GroupUpdate) AddFirstOutputFailoverTimeoutSeconds(v int) *GroupUpdate {
+	_u.mutation.AddFirstOutputFailoverTimeoutSeconds(v)
+	return _u
+}
+
+// SetFirstOutputFailoverMaxSwitches sets the "first_output_failover_max_switches" field.
+func (_u *GroupUpdate) SetFirstOutputFailoverMaxSwitches(v int) *GroupUpdate {
+	_u.mutation.ResetFirstOutputFailoverMaxSwitches()
+	_u.mutation.SetFirstOutputFailoverMaxSwitches(v)
+	return _u
+}
+
+// SetNillableFirstOutputFailoverMaxSwitches sets the "first_output_failover_max_switches" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableFirstOutputFailoverMaxSwitches(v *int) *GroupUpdate {
+	if v != nil {
+		_u.SetFirstOutputFailoverMaxSwitches(*v)
+	}
+	return _u
+}
+
+// AddFirstOutputFailoverMaxSwitches adds value to the "first_output_failover_max_switches" field.
+func (_u *GroupUpdate) AddFirstOutputFailoverMaxSwitches(v int) *GroupUpdate {
+	_u.mutation.AddFirstOutputFailoverMaxSwitches(v)
+	return _u
+}
+
 // SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (_u *GroupUpdate) SetMaxReasoningEffort(v string) *GroupUpdate {
 	_u.mutation.SetMaxReasoningEffort(v)
@@ -1817,6 +1873,21 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.FirstOutputFailoverEnabled(); ok {
+		_spec.SetField(group.FieldFirstOutputFailoverEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.FirstOutputFailoverTimeoutSeconds(); ok {
+		_spec.SetField(group.FieldFirstOutputFailoverTimeoutSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedFirstOutputFailoverTimeoutSeconds(); ok {
+		_spec.AddField(group.FieldFirstOutputFailoverTimeoutSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.FirstOutputFailoverMaxSwitches(); ok {
+		_spec.SetField(group.FieldFirstOutputFailoverMaxSwitches, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedFirstOutputFailoverMaxSwitches(); ok {
+		_spec.AddField(group.FieldFirstOutputFailoverMaxSwitches, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.MaxReasoningEffort(); ok {
 		_spec.SetField(group.FieldMaxReasoningEffort, field.TypeString, value)
@@ -3201,6 +3272,62 @@ func (_u *GroupUpdateOne) AddRpmLimit(v int) *GroupUpdateOne {
 	return _u
 }
 
+// SetFirstOutputFailoverEnabled sets the "first_output_failover_enabled" field.
+func (_u *GroupUpdateOne) SetFirstOutputFailoverEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetFirstOutputFailoverEnabled(v)
+	return _u
+}
+
+// SetNillableFirstOutputFailoverEnabled sets the "first_output_failover_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableFirstOutputFailoverEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetFirstOutputFailoverEnabled(*v)
+	}
+	return _u
+}
+
+// SetFirstOutputFailoverTimeoutSeconds sets the "first_output_failover_timeout_seconds" field.
+func (_u *GroupUpdateOne) SetFirstOutputFailoverTimeoutSeconds(v int) *GroupUpdateOne {
+	_u.mutation.ResetFirstOutputFailoverTimeoutSeconds()
+	_u.mutation.SetFirstOutputFailoverTimeoutSeconds(v)
+	return _u
+}
+
+// SetNillableFirstOutputFailoverTimeoutSeconds sets the "first_output_failover_timeout_seconds" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableFirstOutputFailoverTimeoutSeconds(v *int) *GroupUpdateOne {
+	if v != nil {
+		_u.SetFirstOutputFailoverTimeoutSeconds(*v)
+	}
+	return _u
+}
+
+// AddFirstOutputFailoverTimeoutSeconds adds value to the "first_output_failover_timeout_seconds" field.
+func (_u *GroupUpdateOne) AddFirstOutputFailoverTimeoutSeconds(v int) *GroupUpdateOne {
+	_u.mutation.AddFirstOutputFailoverTimeoutSeconds(v)
+	return _u
+}
+
+// SetFirstOutputFailoverMaxSwitches sets the "first_output_failover_max_switches" field.
+func (_u *GroupUpdateOne) SetFirstOutputFailoverMaxSwitches(v int) *GroupUpdateOne {
+	_u.mutation.ResetFirstOutputFailoverMaxSwitches()
+	_u.mutation.SetFirstOutputFailoverMaxSwitches(v)
+	return _u
+}
+
+// SetNillableFirstOutputFailoverMaxSwitches sets the "first_output_failover_max_switches" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableFirstOutputFailoverMaxSwitches(v *int) *GroupUpdateOne {
+	if v != nil {
+		_u.SetFirstOutputFailoverMaxSwitches(*v)
+	}
+	return _u
+}
+
+// AddFirstOutputFailoverMaxSwitches adds value to the "first_output_failover_max_switches" field.
+func (_u *GroupUpdateOne) AddFirstOutputFailoverMaxSwitches(v int) *GroupUpdateOne {
+	_u.mutation.AddFirstOutputFailoverMaxSwitches(v)
+	return _u
+}
+
 // SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (_u *GroupUpdateOne) SetMaxReasoningEffort(v string) *GroupUpdateOne {
 	_u.mutation.SetMaxReasoningEffort(v)
@@ -3968,6 +4095,21 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.FirstOutputFailoverEnabled(); ok {
+		_spec.SetField(group.FieldFirstOutputFailoverEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.FirstOutputFailoverTimeoutSeconds(); ok {
+		_spec.SetField(group.FieldFirstOutputFailoverTimeoutSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedFirstOutputFailoverTimeoutSeconds(); ok {
+		_spec.AddField(group.FieldFirstOutputFailoverTimeoutSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.FirstOutputFailoverMaxSwitches(); ok {
+		_spec.SetField(group.FieldFirstOutputFailoverMaxSwitches, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedFirstOutputFailoverMaxSwitches(); ok {
+		_spec.AddField(group.FieldFirstOutputFailoverMaxSwitches, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.MaxReasoningEffort(); ok {
 		_spec.SetField(group.FieldMaxReasoningEffort, field.TypeString, value)

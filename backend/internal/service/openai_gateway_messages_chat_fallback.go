@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
@@ -71,6 +72,10 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	reasoningEffort := &convertedEffort
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, billingModel)
 	serviceTier := extractOpenAIServiceTierFromBody(body)
+	reasoningEffortValue := ""
+	if reasoningEffort != nil {
+		reasoningEffortValue = strings.TrimSpace(*reasoningEffort)
+	}
 
 	chatBody, err := json.Marshal(chatReq)
 	if err != nil {
@@ -105,9 +110,40 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, chatBody, clientStream, apiKey, account.GetOpenAIUserAgent(), "")
+	firstOutputTimeout := s.openAIFirstOutputTimeoutForRequest(ctx, account, reasoningEffortValue)
+	guardedCtx := ctx
+	cancel := func() {}
+	var firstOutputTimedOut atomic.Bool
+	var firstOutputSeen atomic.Bool
+	var firstOutputTimer *time.Timer
+	if firstOutputTimeout > 0 {
+		guardedCtx, cancel = context.WithCancel(ctx)
+		firstOutputTimer = time.AfterFunc(firstOutputTimeout, func() {
+			if !firstOutputSeen.Load() {
+				firstOutputTimedOut.Store(true)
+				cancel()
+			}
+		})
+		defer firstOutputTimer.Stop()
+	}
+	defer cancel()
+	markFirstOutput := func() {
+		if firstOutputSeen.CompareAndSwap(false, true) && firstOutputTimer != nil {
+			firstOutputTimer.Stop()
+		}
+	}
+	resp, err := s.sendCCUpstreamRequest(guardedCtx, c, account, targetURL, chatBody, clientStream, apiKey, account.GetOpenAIUserAgent(), "")
 	if err != nil {
+		if firstOutputTimedOut.Load() {
+			return nil, s.newOpenAIFirstOutputTimeoutError(ctx, c, account, startTime, originalModel, reasoningEffortValue, firstOutputTimeout, "response_headers", nil)
+		}
 		return nil, err
+	}
+	if firstOutputTimedOut.Load() {
+		if resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		return nil, s.newOpenAIFirstOutputTimeoutError(ctx, c, account, startTime, originalModel, reasoningEffortValue, firstOutputTimeout, "response_headers", resp.Header)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -124,9 +160,13 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 
 	// 5. Convert response
 	if clientStream {
-		return s.streamChatCompletionsAsAnthropic(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		return s.streamChatCompletionsAsAnthropic(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, firstOutputTimeout, &firstOutputTimedOut, markFirstOutput)
 	}
-	return s.bufferChatCompletionsAsAnthropic(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	result, err := s.bufferChatCompletionsAsAnthropic(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, firstOutputTimeout, &firstOutputTimedOut, markFirstOutput)
+	if firstOutputTimedOut.Load() {
+		return nil, s.newOpenAIFirstOutputTimeoutError(ctx, c, account, startTime, originalModel, reasoningEffortValue, firstOutputTimeout, "semantic_output", resp.Header)
+	}
+	return result, err
 }
 
 func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
@@ -138,11 +178,20 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
 	reasoningEffort *string,
 	serviceTier *string,
 	startTime time.Time,
+	firstOutputTimeout time.Duration,
+	firstOutputTimedOut *atomic.Bool,
+	markFirstOutput func(),
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 	ccResp, usage, err := s.readCCUpstreamJSONResponse(c, resp, writeAnthropicError)
 	if err != nil {
+		if firstOutputTimedOut != nil && firstOutputTimedOut.Load() {
+			return nil, errOpenAICompatFirstOutputTimeout
+		}
 		return nil, err
+	}
+	if markFirstOutput != nil {
+		markFirstOutput()
 	}
 	anthropicResp := apicompat.ChatCompletionsResponseToAnthropic(ccResp, originalModel)
 
@@ -167,12 +216,16 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
 func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 	c *gin.Context,
 	resp *http.Response,
+	account *Account,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
 	reasoningEffort *string,
 	serviceTier *string,
 	startTime time.Time,
+	firstOutputTimeout time.Duration,
+	firstOutputTimedOut *atomic.Bool,
+	markFirstOutput func(),
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
@@ -202,12 +255,18 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 		if !clientDisconnected && len(anthropicEvents) > 0 {
 			c.Writer.Flush()
 		}
+		if markFirstOutput != nil && chatChunkStartsResponsesOutput(chunk) {
+			markFirstOutput()
+		}
 	}
 
 	scan := s.scanCCStream(c, resp, "openai messages chat fallback", requestID, startTime, emitChunk)
 	usage := scan.Usage
 
 	if scan.Err != nil {
+		if firstOutputTimedOut != nil && firstOutputTimedOut.Load() {
+			return nil, s.newOpenAIFirstOutputTimeoutError(c.Request.Context(), c, account, startTime, originalModel, "", firstOutputTimeout, "semantic_output", resp.Header)
+		}
 		// Broken upstream read: skip finalization so no synthetic message_stop
 		// masks the truncation, and surface the error to flag usage incomplete
 		// (mirrors forwardResponsesViaRawChatCompletions).

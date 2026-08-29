@@ -22078,123 +22078,128 @@ func (m *ErrorPassthroughRuleMutation) ResetEdge(name string) error {
 // GroupMutation represents an operation that mutates the Group nodes in the graph.
 type GroupMutation struct {
 	config
-	op                                      Op
-	typ                                     string
-	id                                      *int64
-	created_at                              *time.Time
-	updated_at                              *time.Time
-	deleted_at                              *time.Time
-	name                                    *string
-	description                             *string
-	rate_multiplier                         *float64
-	addrate_multiplier                      *float64
-	peak_rate_enabled                       *bool
-	peak_start                              *string
-	peak_end                                *string
-	peak_rate_multiplier                    *float64
-	addpeak_rate_multiplier                 *float64
-	is_exclusive                            *bool
-	status                                  *string
-	duplicate_operation_id                  *string
-	platform                                *string
-	subscription_type                       *string
-	daily_limit_usd                         *float64
-	adddaily_limit_usd                      *float64
-	weekly_limit_usd                        *float64
-	addweekly_limit_usd                     *float64
-	monthly_limit_usd                       *float64
-	addmonthly_limit_usd                    *float64
-	default_validity_days                   *int
-	adddefault_validity_days                *int
-	allow_image_generation                  *bool
-	allow_batch_image_generation            *bool
-	image_rate_independent                  *bool
-	image_rate_multiplier                   *float64
-	addimage_rate_multiplier                *float64
-	image_price_1k                          *float64
-	addimage_price_1k                       *float64
-	image_price_2k                          *float64
-	addimage_price_2k                       *float64
-	image_price_4k                          *float64
-	addimage_price_4k                       *float64
-	batch_image_discount_multiplier         *float64
-	addbatch_image_discount_multiplier      *float64
-	batch_image_hold_multiplier             *float64
-	addbatch_image_hold_multiplier          *float64
-	video_rate_independent                  *bool
-	video_rate_multiplier                   *float64
-	addvideo_rate_multiplier                *float64
-	video_price_480p                        *float64
-	addvideo_price_480p                     *float64
-	video_price_720p                        *float64
-	addvideo_price_720p                     *float64
-	video_price_1080p                       *float64
-	addvideo_price_1080p                    *float64
-	video_model_prices                      *map[string]map[string]float64
-	web_search_price_per_call               *float64
-	addweb_search_price_per_call            *float64
-	search_price_per_1k                     *float64
-	addsearch_price_per_1k                  *float64
-	audio_realtime_price_per_min            *float64
-	addaudio_realtime_price_per_min         *float64
-	audio_tts_price_per_million_chars       *float64
-	addaudio_tts_price_per_million_chars    *float64
-	audio_stt_price_per_hour                *float64
-	addaudio_stt_price_per_hour             *float64
-	long_context_pricing_enabled            *bool
-	model_pricing                           *jsontext.Value
-	appendmodel_pricing                     jsontext.Value
-	claude_code_only                        *bool
-	fallback_group_id                       *int64
-	addfallback_group_id                    *int64
-	fallback_group_id_on_invalid_request    *int64
-	addfallback_group_id_on_invalid_request *int64
-	model_routing                           *map[string][]int64
-	model_routing_enabled                   *bool
-	mcp_xml_inject                          *bool
-	supported_model_scopes                  *[]string
-	appendsupported_model_scopes            []string
-	sort_order                              *int
-	addsort_order                           *int
-	allow_messages_dispatch                 *bool
-	allow_live                              *bool
-	require_oauth_only                      *bool
-	require_privacy_set                     *bool
-	default_mapped_model                    *string
-	messages_dispatch_model_config          *domain.OpenAIMessagesDispatchModelConfig
-	models_list_config                      *domain.GroupModelsListConfig
-	rpm_limit                               *int
-	addrpm_limit                            *int
-	max_reasoning_effort                    *string
-	reasoning_effort_mappings               *[]domain.ReasoningEffortMapping
-	appendreasoning_effort_mappings         []domain.ReasoningEffortMapping
-	profit_control_enabled                  *bool
-	profit_min_margin                       *float64
-	addprofit_min_margin                    *float64
-	profit_safety_buffer                    *float64
-	addprofit_safety_buffer                 *float64
-	clearedFields                           map[string]struct{}
-	api_keys                                map[int64]struct{}
-	removedapi_keys                         map[int64]struct{}
-	clearedapi_keys                         bool
-	redeem_codes                            map[int64]struct{}
-	removedredeem_codes                     map[int64]struct{}
-	clearedredeem_codes                     bool
-	subscriptions                           map[int64]struct{}
-	removedsubscriptions                    map[int64]struct{}
-	clearedsubscriptions                    bool
-	usage_logs                              map[int64]struct{}
-	removedusage_logs                       map[int64]struct{}
-	clearedusage_logs                       bool
-	accounts                                map[int64]struct{}
-	removedaccounts                         map[int64]struct{}
-	clearedaccounts                         bool
-	allowed_users                           map[int64]struct{}
-	removedallowed_users                    map[int64]struct{}
-	clearedallowed_users                    bool
-	done                                    bool
-	oldValue                                func(context.Context) (*Group, error)
-	predicates                              []predicate.Group
+	op                                       Op
+	typ                                      string
+	id                                       *int64
+	created_at                               *time.Time
+	updated_at                               *time.Time
+	deleted_at                               *time.Time
+	name                                     *string
+	description                              *string
+	rate_multiplier                          *float64
+	addrate_multiplier                       *float64
+	peak_rate_enabled                        *bool
+	peak_start                               *string
+	peak_end                                 *string
+	peak_rate_multiplier                     *float64
+	addpeak_rate_multiplier                  *float64
+	is_exclusive                             *bool
+	status                                   *string
+	duplicate_operation_id                   *string
+	platform                                 *string
+	subscription_type                        *string
+	daily_limit_usd                          *float64
+	adddaily_limit_usd                       *float64
+	weekly_limit_usd                         *float64
+	addweekly_limit_usd                      *float64
+	monthly_limit_usd                        *float64
+	addmonthly_limit_usd                     *float64
+	default_validity_days                    *int
+	adddefault_validity_days                 *int
+	allow_image_generation                   *bool
+	allow_batch_image_generation             *bool
+	image_rate_independent                   *bool
+	image_rate_multiplier                    *float64
+	addimage_rate_multiplier                 *float64
+	image_price_1k                           *float64
+	addimage_price_1k                        *float64
+	image_price_2k                           *float64
+	addimage_price_2k                        *float64
+	image_price_4k                           *float64
+	addimage_price_4k                        *float64
+	batch_image_discount_multiplier          *float64
+	addbatch_image_discount_multiplier       *float64
+	batch_image_hold_multiplier              *float64
+	addbatch_image_hold_multiplier           *float64
+	video_rate_independent                   *bool
+	video_rate_multiplier                    *float64
+	addvideo_rate_multiplier                 *float64
+	video_price_480p                         *float64
+	addvideo_price_480p                      *float64
+	video_price_720p                         *float64
+	addvideo_price_720p                      *float64
+	video_price_1080p                        *float64
+	addvideo_price_1080p                     *float64
+	video_model_prices                       *map[string]map[string]float64
+	web_search_price_per_call                *float64
+	addweb_search_price_per_call             *float64
+	search_price_per_1k                      *float64
+	addsearch_price_per_1k                   *float64
+	audio_realtime_price_per_min             *float64
+	addaudio_realtime_price_per_min          *float64
+	audio_tts_price_per_million_chars        *float64
+	addaudio_tts_price_per_million_chars     *float64
+	audio_stt_price_per_hour                 *float64
+	addaudio_stt_price_per_hour              *float64
+	long_context_pricing_enabled             *bool
+	model_pricing                            *jsontext.Value
+	appendmodel_pricing                      jsontext.Value
+	claude_code_only                         *bool
+	fallback_group_id                        *int64
+	addfallback_group_id                     *int64
+	fallback_group_id_on_invalid_request     *int64
+	addfallback_group_id_on_invalid_request  *int64
+	model_routing                            *map[string][]int64
+	model_routing_enabled                    *bool
+	mcp_xml_inject                           *bool
+	supported_model_scopes                   *[]string
+	appendsupported_model_scopes             []string
+	sort_order                               *int
+	addsort_order                            *int
+	allow_messages_dispatch                  *bool
+	allow_live                               *bool
+	require_oauth_only                       *bool
+	require_privacy_set                      *bool
+	default_mapped_model                     *string
+	messages_dispatch_model_config           *domain.OpenAIMessagesDispatchModelConfig
+	models_list_config                       *domain.GroupModelsListConfig
+	rpm_limit                                *int
+	addrpm_limit                             *int
+	first_output_failover_enabled            *bool
+	first_output_failover_timeout_seconds    *int
+	addfirst_output_failover_timeout_seconds *int
+	first_output_failover_max_switches       *int
+	addfirst_output_failover_max_switches    *int
+	max_reasoning_effort                     *string
+	reasoning_effort_mappings                *[]domain.ReasoningEffortMapping
+	appendreasoning_effort_mappings          []domain.ReasoningEffortMapping
+	profit_control_enabled                   *bool
+	profit_min_margin                        *float64
+	addprofit_min_margin                     *float64
+	profit_safety_buffer                     *float64
+	addprofit_safety_buffer                  *float64
+	clearedFields                            map[string]struct{}
+	api_keys                                 map[int64]struct{}
+	removedapi_keys                          map[int64]struct{}
+	clearedapi_keys                          bool
+	redeem_codes                             map[int64]struct{}
+	removedredeem_codes                      map[int64]struct{}
+	clearedredeem_codes                      bool
+	subscriptions                            map[int64]struct{}
+	removedsubscriptions                     map[int64]struct{}
+	clearedsubscriptions                     bool
+	usage_logs                               map[int64]struct{}
+	removedusage_logs                        map[int64]struct{}
+	clearedusage_logs                        bool
+	accounts                                 map[int64]struct{}
+	removedaccounts                          map[int64]struct{}
+	clearedaccounts                          bool
+	allowed_users                            map[int64]struct{}
+	removedallowed_users                     map[int64]struct{}
+	clearedallowed_users                     bool
+	done                                     bool
+	oldValue                                 func(context.Context) (*Group, error)
+	predicates                               []predicate.Group
 }
 
 var _ ent.Mutation = (*GroupMutation)(nil)
@@ -25180,6 +25185,154 @@ func (m *GroupMutation) ResetRpmLimit() {
 	m.addrpm_limit = nil
 }
 
+// SetFirstOutputFailoverEnabled sets the "first_output_failover_enabled" field.
+func (m *GroupMutation) SetFirstOutputFailoverEnabled(b bool) {
+	m.first_output_failover_enabled = &b
+}
+
+// FirstOutputFailoverEnabled returns the value of the "first_output_failover_enabled" field in the mutation.
+func (m *GroupMutation) FirstOutputFailoverEnabled() (r bool, exists bool) {
+	v := m.first_output_failover_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFirstOutputFailoverEnabled returns the old "first_output_failover_enabled" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldFirstOutputFailoverEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFirstOutputFailoverEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFirstOutputFailoverEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFirstOutputFailoverEnabled: %w", err)
+	}
+	return oldValue.FirstOutputFailoverEnabled, nil
+}
+
+// ResetFirstOutputFailoverEnabled resets all changes to the "first_output_failover_enabled" field.
+func (m *GroupMutation) ResetFirstOutputFailoverEnabled() {
+	m.first_output_failover_enabled = nil
+}
+
+// SetFirstOutputFailoverTimeoutSeconds sets the "first_output_failover_timeout_seconds" field.
+func (m *GroupMutation) SetFirstOutputFailoverTimeoutSeconds(i int) {
+	m.first_output_failover_timeout_seconds = &i
+	m.addfirst_output_failover_timeout_seconds = nil
+}
+
+// FirstOutputFailoverTimeoutSeconds returns the value of the "first_output_failover_timeout_seconds" field in the mutation.
+func (m *GroupMutation) FirstOutputFailoverTimeoutSeconds() (r int, exists bool) {
+	v := m.first_output_failover_timeout_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFirstOutputFailoverTimeoutSeconds returns the old "first_output_failover_timeout_seconds" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldFirstOutputFailoverTimeoutSeconds(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFirstOutputFailoverTimeoutSeconds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFirstOutputFailoverTimeoutSeconds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFirstOutputFailoverTimeoutSeconds: %w", err)
+	}
+	return oldValue.FirstOutputFailoverTimeoutSeconds, nil
+}
+
+// AddFirstOutputFailoverTimeoutSeconds adds i to the "first_output_failover_timeout_seconds" field.
+func (m *GroupMutation) AddFirstOutputFailoverTimeoutSeconds(i int) {
+	if m.addfirst_output_failover_timeout_seconds != nil {
+		*m.addfirst_output_failover_timeout_seconds += i
+	} else {
+		m.addfirst_output_failover_timeout_seconds = &i
+	}
+}
+
+// AddedFirstOutputFailoverTimeoutSeconds returns the value that was added to the "first_output_failover_timeout_seconds" field in this mutation.
+func (m *GroupMutation) AddedFirstOutputFailoverTimeoutSeconds() (r int, exists bool) {
+	v := m.addfirst_output_failover_timeout_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetFirstOutputFailoverTimeoutSeconds resets all changes to the "first_output_failover_timeout_seconds" field.
+func (m *GroupMutation) ResetFirstOutputFailoverTimeoutSeconds() {
+	m.first_output_failover_timeout_seconds = nil
+	m.addfirst_output_failover_timeout_seconds = nil
+}
+
+// SetFirstOutputFailoverMaxSwitches sets the "first_output_failover_max_switches" field.
+func (m *GroupMutation) SetFirstOutputFailoverMaxSwitches(i int) {
+	m.first_output_failover_max_switches = &i
+	m.addfirst_output_failover_max_switches = nil
+}
+
+// FirstOutputFailoverMaxSwitches returns the value of the "first_output_failover_max_switches" field in the mutation.
+func (m *GroupMutation) FirstOutputFailoverMaxSwitches() (r int, exists bool) {
+	v := m.first_output_failover_max_switches
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFirstOutputFailoverMaxSwitches returns the old "first_output_failover_max_switches" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldFirstOutputFailoverMaxSwitches(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFirstOutputFailoverMaxSwitches is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFirstOutputFailoverMaxSwitches requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFirstOutputFailoverMaxSwitches: %w", err)
+	}
+	return oldValue.FirstOutputFailoverMaxSwitches, nil
+}
+
+// AddFirstOutputFailoverMaxSwitches adds i to the "first_output_failover_max_switches" field.
+func (m *GroupMutation) AddFirstOutputFailoverMaxSwitches(i int) {
+	if m.addfirst_output_failover_max_switches != nil {
+		*m.addfirst_output_failover_max_switches += i
+	} else {
+		m.addfirst_output_failover_max_switches = &i
+	}
+}
+
+// AddedFirstOutputFailoverMaxSwitches returns the value that was added to the "first_output_failover_max_switches" field in this mutation.
+func (m *GroupMutation) AddedFirstOutputFailoverMaxSwitches() (r int, exists bool) {
+	v := m.addfirst_output_failover_max_switches
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetFirstOutputFailoverMaxSwitches resets all changes to the "first_output_failover_max_switches" field.
+func (m *GroupMutation) ResetFirstOutputFailoverMaxSwitches() {
+	m.first_output_failover_max_switches = nil
+	m.addfirst_output_failover_max_switches = nil
+}
+
 // SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (m *GroupMutation) SetMaxReasoningEffort(s string) {
 	m.max_reasoning_effort = &s
@@ -25773,7 +25926,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 62)
+	fields := make([]string, 0, 65)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -25945,6 +26098,15 @@ func (m *GroupMutation) Fields() []string {
 	if m.rpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
+	if m.first_output_failover_enabled != nil {
+		fields = append(fields, group.FieldFirstOutputFailoverEnabled)
+	}
+	if m.first_output_failover_timeout_seconds != nil {
+		fields = append(fields, group.FieldFirstOutputFailoverTimeoutSeconds)
+	}
+	if m.first_output_failover_max_switches != nil {
+		fields = append(fields, group.FieldFirstOutputFailoverMaxSwitches)
+	}
 	if m.max_reasoning_effort != nil {
 		fields = append(fields, group.FieldMaxReasoningEffort)
 	}
@@ -26082,6 +26244,12 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ModelsListConfig()
 	case group.FieldRpmLimit:
 		return m.RpmLimit()
+	case group.FieldFirstOutputFailoverEnabled:
+		return m.FirstOutputFailoverEnabled()
+	case group.FieldFirstOutputFailoverTimeoutSeconds:
+		return m.FirstOutputFailoverTimeoutSeconds()
+	case group.FieldFirstOutputFailoverMaxSwitches:
+		return m.FirstOutputFailoverMaxSwitches()
 	case group.FieldMaxReasoningEffort:
 		return m.MaxReasoningEffort()
 	case group.FieldReasoningEffortMappings:
@@ -26215,6 +26383,12 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldModelsListConfig(ctx)
 	case group.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
+	case group.FieldFirstOutputFailoverEnabled:
+		return m.OldFirstOutputFailoverEnabled(ctx)
+	case group.FieldFirstOutputFailoverTimeoutSeconds:
+		return m.OldFirstOutputFailoverTimeoutSeconds(ctx)
+	case group.FieldFirstOutputFailoverMaxSwitches:
+		return m.OldFirstOutputFailoverMaxSwitches(ctx)
 	case group.FieldMaxReasoningEffort:
 		return m.OldMaxReasoningEffort(ctx)
 	case group.FieldReasoningEffortMappings:
@@ -26633,6 +26807,27 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRpmLimit(v)
 		return nil
+	case group.FieldFirstOutputFailoverEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFirstOutputFailoverEnabled(v)
+		return nil
+	case group.FieldFirstOutputFailoverTimeoutSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFirstOutputFailoverTimeoutSeconds(v)
+		return nil
+	case group.FieldFirstOutputFailoverMaxSwitches:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFirstOutputFailoverMaxSwitches(v)
+		return nil
 	case group.FieldMaxReasoningEffort:
 		v, ok := value.(string)
 		if !ok {
@@ -26751,6 +26946,12 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addrpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
+	if m.addfirst_output_failover_timeout_seconds != nil {
+		fields = append(fields, group.FieldFirstOutputFailoverTimeoutSeconds)
+	}
+	if m.addfirst_output_failover_max_switches != nil {
+		fields = append(fields, group.FieldFirstOutputFailoverMaxSwitches)
+	}
 	if m.addprofit_min_margin != nil {
 		fields = append(fields, group.FieldProfitMinMargin)
 	}
@@ -26815,6 +27016,10 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedSortOrder()
 	case group.FieldRpmLimit:
 		return m.AddedRpmLimit()
+	case group.FieldFirstOutputFailoverTimeoutSeconds:
+		return m.AddedFirstOutputFailoverTimeoutSeconds()
+	case group.FieldFirstOutputFailoverMaxSwitches:
+		return m.AddedFirstOutputFailoverMaxSwitches()
 	case group.FieldProfitMinMargin:
 		return m.AddedProfitMinMargin()
 	case group.FieldProfitSafetyBuffer:
@@ -27002,6 +27207,20 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddRpmLimit(v)
+		return nil
+	case group.FieldFirstOutputFailoverTimeoutSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFirstOutputFailoverTimeoutSeconds(v)
+		return nil
+	case group.FieldFirstOutputFailoverMaxSwitches:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFirstOutputFailoverMaxSwitches(v)
 		return nil
 	case group.FieldProfitMinMargin:
 		v, ok := value.(float64)
@@ -27349,6 +27568,15 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldRpmLimit:
 		m.ResetRpmLimit()
+		return nil
+	case group.FieldFirstOutputFailoverEnabled:
+		m.ResetFirstOutputFailoverEnabled()
+		return nil
+	case group.FieldFirstOutputFailoverTimeoutSeconds:
+		m.ResetFirstOutputFailoverTimeoutSeconds()
+		return nil
+	case group.FieldFirstOutputFailoverMaxSwitches:
+		m.ResetFirstOutputFailoverMaxSwitches()
 		return nil
 	case group.FieldMaxReasoningEffort:
 		m.ResetMaxReasoningEffort()

@@ -110,6 +110,11 @@ type Group struct {
 	// 一旦设置即接管该分组用户的限流（覆盖用户级 rpm_limit），可被 user-group rpm_override 进一步覆盖。
 	RPMLimit int
 
+	// OpenAI API Key 号池首 Token 超时切换配置（默认关闭）。
+	FirstOutputFailoverEnabled        bool
+	FirstOutputFailoverTimeoutSeconds int
+	FirstOutputFailoverMaxSwitches    int
+
 	// MaxReasoningEffort limits the effective OpenAI/Codex reasoning effort.
 	// Empty means unlimited; supported values are minimal/low/medium/high/xhigh/max.
 	MaxReasoningEffort string
