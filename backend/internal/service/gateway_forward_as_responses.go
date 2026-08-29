@@ -661,7 +661,11 @@ func appendRawJSON(existing json.RawMessage, fragment string) json.RawMessage {
 	// streams the actual input through input_json_delta events. Treat that empty
 	// object (or null) as a placeholder instead of prefixing it to the streamed JSON.
 	trimmed := bytes.TrimSpace(existing)
-	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("{}")) || bytes.Equal(trimmed, []byte("null")) {
+	if len(trimmed) == 0 {
+		return json.RawMessage(fragment)
+	}
+	var existingObject map[string]json.RawMessage
+	if json.Unmarshal(trimmed, &existingObject) == nil && len(existingObject) == 0 {
 		return json.RawMessage(fragment)
 	}
 	return json.RawMessage(string(existing) + fragment)
