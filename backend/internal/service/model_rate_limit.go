@@ -187,3 +187,25 @@ func (a *Account) modelRateLimitResetAt(scope string) *time.Time {
 	}
 	return &resetAt
 }
+
+func setAccountModelRateLimitSnapshot(account *Account, scope string, resetAt time.Time, reason string, now time.Time) {
+	if account == nil || strings.TrimSpace(scope) == "" {
+		return
+	}
+	if account.Extra == nil {
+		account.Extra = make(map[string]any)
+	}
+	limits, ok := account.Extra[modelRateLimitsKey].(map[string]any)
+	if !ok {
+		limits = make(map[string]any)
+		account.Extra[modelRateLimitsKey] = limits
+	}
+	payload := map[string]any{
+		"rate_limited_at":     now.UTC().Format(time.RFC3339),
+		"rate_limit_reset_at": resetAt.UTC().Format(time.RFC3339),
+	}
+	if reason = strings.TrimSpace(reason); reason != "" {
+		payload["reason"] = reason
+	}
+	limits[scope] = payload
+}
