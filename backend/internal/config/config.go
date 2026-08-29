@@ -2464,7 +2464,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.cn_providers.balance_check_enabled", true)
 	viper.SetDefault("gateway.cn_providers.balance_threshold", 0.5)
 	viper.SetDefault("gateway.cn_providers.balance_check_interval_minutes", 10)
-	viper.SetDefault("gateway.cn_providers.zhipu_default_max_tokens", 32768)
+	viper.SetDefault("gateway.cn_providers.zhipu_default_max_tokens", 100000)
 	viper.SetDefault("gateway.image_concurrency.enabled", false)
 	viper.SetDefault("gateway.image_concurrency.max_concurrent_requests", 0)
 	viper.SetDefault("gateway.image_concurrency.overflow_mode", ImageConcurrencyOverflowModeReject)
