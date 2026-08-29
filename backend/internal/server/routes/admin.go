@@ -604,6 +604,10 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		adminSettings.PUT("/web-search-emulation", h.Admin.Setting.UpdateWebSearchEmulationConfig)
 		adminSettings.POST("/web-search-emulation/test", h.Admin.Setting.TestWebSearchEmulation)
 		adminSettings.POST("/web-search-emulation/reset-usage", h.Admin.Setting.ResetWebSearchUsage)
+		// 全局 IP 封禁管理
+		adminSettings.GET("/ip-bans", h.Admin.Setting.ListIPBans)
+		adminSettings.POST("/ip-bans", h.Admin.Setting.CreateIPBan)
+		adminSettings.DELETE("/ip-bans/:id", h.Admin.Setting.DeleteIPBan)
 	}
 }
 
