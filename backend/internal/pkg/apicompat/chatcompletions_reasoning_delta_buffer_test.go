@@ -28,14 +28,14 @@ func TestStream_BuffersFragmentedReasoningDeltas(t *testing.T) {
 		for _, e := range ChatCompletionsChunkToResponsesEvents(&chunk, state) {
 			if e.Type == "response.reasoning_summary_text.delta" {
 				deltaCount++
-				deltaBytes.WriteString(e.Delta)
+				_, _ = deltaBytes.WriteString(e.Delta)
 			}
 		}
 	}
 	for _, e := range FinalizeChatCompletionsResponsesStream(state) {
 		if e.Type == "response.reasoning_summary_text.delta" {
 			deltaCount++
-			deltaBytes.WriteString(e.Delta)
+			_, _ = deltaBytes.WriteString(e.Delta)
 		}
 	}
 

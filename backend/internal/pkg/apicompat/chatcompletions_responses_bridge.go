@@ -2132,7 +2132,7 @@ func ChatCompletionsChunkToResponsesEvents(
 		if reasoning != nil && *reasoning != "" {
 			events = append(events, ensureChatReasoningItem(state)...)
 			_, _ = state.Reasoning.WriteString(*reasoning)
-			state.pendingReasoning.WriteString(*reasoning)
+			_, _ = state.pendingReasoning.WriteString(*reasoning)
 			if state.pendingReasoning.Len() < closeChatReasoningBuffer {
 				continue
 			}
