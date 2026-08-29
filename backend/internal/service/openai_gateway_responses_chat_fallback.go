@@ -128,6 +128,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, billingModel)
 	chatReq.Model = upstreamModel
 	applyClaudeCodeModeToolOutputHint(chatReq)
+	s.applyChatCompletionsMaxOutputDefault(chatReq, account)
 	if clientStream {
 		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: true}
 	}
@@ -247,6 +248,29 @@ func applyClaudeCodeModeToolOutputHint(req *apicompat.ChatCompletionsRequest) {
 			tool.Function.Description += " " + claudeCodeModeToolOutputHint
 		}
 	}
+}
+
+// applyChatCompletionsMaxOutputDefault 为缺省输出上限的智谱 Chat Completions
+// 请求注入显式 max_tokens。智谱上游（含 Akile 通道）在请求未携带 max_tokens
+// 时默认按 8192 截断，而 glm-5.3-flash 官方输出上限为 128K：Codex 长思考会
+// 在 8192 处收到 finish_reason=length，客户端视为正常收尾且不重试。仅当账号
+// 为智谱、客户端未显式给出上限且配置了非零默认值时才注入。
+func (s *OpenAIGatewayService) applyChatCompletionsMaxOutputDefault(req *apicompat.ChatCompletionsRequest, account *Account) {
+	if req == nil || req.MaxCompletionTokens != nil || req.MaxTokens != nil {
+		return
+	}
+	if account == nil || !account.IsZhipu() {
+		return
+	}
+	if s == nil || s.cfg == nil {
+		return
+	}
+	def := s.cfg.Gateway.CNProviders.ZhipuDefaultMaxTokens
+	if def <= 0 {
+		return
+	}
+	v := def
+	req.MaxTokens = &v
 }
 
 func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(

@@ -120,6 +120,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 			if err != nil {
 				return nil, fmt.Errorf("convert responses-shaped chat completions request: %w", err)
 			}
+			s.applyChatCompletionsMaxOutputDefault(chatReq, account)
 			chatBody, err := json.Marshal(chatReq)
 			if err != nil {
 				return nil, fmt.Errorf("marshal converted chat completions request: %w", err)
