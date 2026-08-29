@@ -1514,9 +1514,16 @@ func ChatCompletionsResponseToResponsesWithToolMapping(resp *ChatCompletionsResp
 	if len(resp.Choices) > 0 {
 		choice := resp.Choices[0]
 		out.Output = chatMessageToResponsesOutputWithMapping(choice.Message, mapping)
-		if choice.FinishReason == "length" {
+		switch canonical, interrupted := normalizeChatCompletionsFinishReason(choice.FinishReason); {
+		case interrupted:
+			out.Status = "failed"
+			out.Error = &ResponsesError{Code: "upstream_error", Message: "Upstream inference was interrupted before completion"}
+		case canonical == "length":
 			out.Status = "incomplete"
 			out.IncompleteDetails = &ResponsesIncompleteDetails{Reason: "max_output_tokens"}
+		case canonical == "content_filter":
+			out.Status = "incomplete"
+			out.IncompleteDetails = &ResponsesIncompleteDetails{Reason: "content_filter"}
 		}
 	}
 	if len(out.Output) == 0 {
@@ -1566,9 +1573,16 @@ func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model str
 	if len(resp.Choices) > 0 {
 		choice := resp.Choices[0]
 		out.Output = chatMessageToResponsesOutput(choice.Message, customTools, functionTools, toolSearch, namespaceTools)
-		if choice.FinishReason == "length" {
+		switch canonical, interrupted := normalizeChatCompletionsFinishReason(choice.FinishReason); {
+		case interrupted:
+			out.Status = "failed"
+			out.Error = &ResponsesError{Code: "upstream_error", Message: "Upstream inference was interrupted before completion"}
+		case canonical == "length":
 			out.Status = "incomplete"
 			out.IncompleteDetails = &ResponsesIncompleteDetails{Reason: "max_output_tokens"}
+		case canonical == "content_filter":
+			out.Status = "incomplete"
+			out.IncompleteDetails = &ResponsesIncompleteDetails{Reason: "content_filter"}
 		}
 	}
 	if len(out.Output) == 0 {
@@ -1939,8 +1953,9 @@ type ChatCompletionsToResponsesStreamState struct {
 	// all names and may replace an invalid attempt on the same client stream.
 	HoldToolCallsForValidation bool
 
-	FinishReason string
-	Usage        *ResponsesUsage
+	FinishReason        string
+	UpstreamInterrupted bool
+	Usage               *ResponsesUsage
 }
 
 // NewChatCompletionsToResponsesStreamState returns an initialized stream state.
@@ -2058,6 +2073,28 @@ func (state *ChatCompletionsToResponsesStreamState) allocOutputIndex() int {
 
 // ChatCompletionsChunkToResponsesEvents converts one Chat Completions stream
 // chunk into zero or more Responses stream events.
+
+// normalizeChatCompletionsFinishReason maps provider-specific finish_reason
+// values to the canonical set the Responses bridge understands.
+//
+// Zhipu GLM reports interrupted inference with non-standard reasons:
+// network_error means the generation died mid-stream, model_context_window_exceeded
+// means the output hit the length limit, and sensitive means a content policy
+// refusal. The interrupted flag turns network_error into a stream failure so the
+// finalizer can never mask a truncated answer as a clean completed response.
+func normalizeChatCompletionsFinishReason(reason string) (canonical string, interrupted bool) {
+	switch strings.ToLower(strings.TrimSpace(reason)) {
+	case "network_error":
+		return reason, true
+	case "model_context_window_exceeded":
+		return "length", false
+	case "sensitive":
+		return "content_filter", false
+	default:
+		return reason, false
+	}
+	}
+
 func ChatCompletionsChunkToResponsesEvents(
 	chunk *ChatCompletionsChunk,
 	state *ChatCompletionsToResponsesStreamState,
@@ -2170,7 +2207,11 @@ func ChatCompletionsChunkToResponsesEvents(
 			}
 		}
 		if choice.FinishReason != nil && *choice.FinishReason != "" {
-			state.FinishReason = *choice.FinishReason
+			canonical, interrupted := normalizeChatCompletionsFinishReason(*choice.FinishReason)
+			state.FinishReason = canonical
+			if interrupted {
+				state.UpstreamInterrupted = true
+			}
 		}
 	}
 
@@ -2181,6 +2222,9 @@ func ChatCompletionsChunkToResponsesEvents(
 func FinalizeChatCompletionsResponsesStream(state *ChatCompletionsToResponsesStreamState) []ResponsesStreamEvent {
 	if state == nil || state.CompletedSent {
 		return nil
+	}
+	if state.UpstreamInterrupted {
+		return FinalizeChatCompletionsResponsesStreamFailure(state, "upstream_error", "Upstream stream was interrupted before completion")
 	}
 	var events []ResponsesStreamEvent
 	events = append(events, ensureChatToResponsesCreated(state)...)
@@ -2225,9 +2269,13 @@ func FinalizeChatCompletionsResponsesStream(state *ChatCompletionsToResponsesStr
 
 	status := "completed"
 	var incompleteDetails *ResponsesIncompleteDetails
-	if state.FinishReason == "length" {
+	switch state.FinishReason {
+	case "length":
 		status = "incomplete"
 		incompleteDetails = &ResponsesIncompleteDetails{Reason: "max_output_tokens"}
+	case "content_filter":
+		status = "incomplete"
+		incompleteDetails = &ResponsesIncompleteDetails{Reason: "content_filter"}
 	}
 
 	state.CompletedSent = true

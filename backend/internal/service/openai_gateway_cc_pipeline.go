@@ -242,6 +242,9 @@ type ccStreamScanState struct {
 	FirstTokenMs *int
 	// SawDone 表示上游发出了 [DONE] 哨兵。
 	SawDone bool
+	// Truncated 表示上游在发出任何终止信号（[DONE]/usage/finish_reason）之前
+	// 就结束。与 SawDone 不同，它覆盖 GLM 这类「干净 EOF 但没发完」的截断。
+	Truncated bool
 	// Err 为 scanner 读错误（客户端 context 取消不属于此类，会原样带出）。
 	// 非 nil 时调用方必须跳过 finalize 并返回 usage-incomplete 错误，避免
 	// 把上游截断伪装成正常收尾。
@@ -261,6 +264,7 @@ func (s *OpenAIGatewayService) scanCCStream(
 	emit func(*apicompat.ChatCompletionsChunk),
 ) ccStreamScanState {
 	var st ccStreamScanState
+	var terminal openAIRawStreamTerminalState
 
 	scanner := s.newUpstreamSSEScanner(resp.Body)
 	for scanner.Scan() {
@@ -273,6 +277,7 @@ func (s *OpenAIGatewayService) scanCCStream(
 		if payload == "" {
 			continue
 		}
+		terminal.ObserveDataLine(payload)
 		if payload == "[DONE]" {
 			st.SawDone = true
 			break
@@ -312,6 +317,7 @@ func (s *OpenAIGatewayService) scanCCStream(
 		}
 		st.Err = err
 	}
+	st.Truncated = !terminal.Terminated()
 	return st
 }
 

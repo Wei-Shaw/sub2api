@@ -185,7 +185,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	}
 
 	if clientStream {
-		result, forwardErr := s.streamChatCompletionsAsResponses(c, resp, originalModel, clientToolMapping, effectiveTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, repairSender)
+		result, forwardErr := s.streamChatCompletionsAsResponses(c, resp, originalModel, clientToolMapping, effectiveTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, repairSender, account)
 		if forwardErr == nil && result != nil {
 			s.bindHTTPResponseAccount(ctx, c, account, result.ResponseID)
 		}
@@ -345,6 +345,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	serviceTier *string,
 	startTime time.Time,
 	repairSender responsesChatToolRepairSender,
+	account *Account,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
@@ -357,6 +358,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	state.NamespaceTools = clientToolMapping.NamespaceTools
 	state.HoldToolCallsForValidation = true
 	clientDisconnected := false
+	clientOutputStarted := false
 	var totalUsage OpenAIUsage
 	var firstTokenMs *int
 
@@ -365,6 +367,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 			return
 		}
 		writeStreamHeaders()
+		clientOutputStarted = true
 		for _, event := range events {
 			sse, err := apicompat.ResponsesEventToSSE(event)
 			if err != nil {
@@ -427,6 +430,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 
 	currentResp := resp
 	var sawDone bool
+	var lastScan ccStreamScanState
 	for attempt := 0; ; attempt++ {
 		if currentResp == nil {
 			return failStream(fmt.Errorf("chat fallback tool repair returned nil response"))
@@ -441,6 +445,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 			s.cacheReasoningItemsFromEvents(events)
 			writeEvents(events)
 		})
+		lastScan = scan
 		_ = currentResp.Body.Close()
 		addOpenAIUsage(&totalUsage, scan.Usage)
 		if firstTokenMs == nil && scan.FirstTokenMs != nil {
@@ -474,6 +479,23 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		}
 	}
 
+	if lastScan.Truncated || state.UpstreamInterrupted {
+		if !clientOutputStarted && lastScan.Err == nil {
+			return nil, newOpenAICCStreamTruncatedFailoverError(c, account, requestID, ErrOpenAIUpstreamStreamTruncated)
+		}
+		state.DropUnannouncedToolCalls()
+		failureEvents := apicompat.FinalizeChatCompletionsResponsesStreamFailure(
+			state,
+			"upstream_error",
+			"Upstream stream was interrupted before completion",
+		)
+		s.cacheReasoningItemsFromEvents(failureEvents)
+		MarkResponseCommitted(c)
+		writeEvents(failureEvents)
+		writeDone()
+		return result(), fmt.Errorf("upstream response failed: stream interrupted before completion")
+	}
+
 	finalEvents := apicompat.FinalizeChatCompletionsResponsesStream(state)
 	if len(finalEvents) > 0 {
 		for _, event := range finalEvents {
@@ -491,6 +513,24 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	}
 
 	return result(), nil
+}
+
+// newOpenAICCStreamTruncatedFailoverError routes a truncated CC-fallback stream
+// through the existing failover engine with bounded same-account retries.
+// It is only safe before any response bytes have been committed to the client;
+// once output started the caller emits response.failed instead.
+func newOpenAICCStreamTruncatedFailoverError(c *gin.Context, account *Account, upstreamRequestID string, cause error) *UpstreamFailoverError {
+	recordOpenAIRawStreamTruncation(c, account, upstreamRequestID, cause, "failover")
+	headers := http.Header{}
+	if id := strings.TrimSpace(upstreamRequestID); id != "" {
+		headers.Set("x-request-id", id)
+	}
+	return &UpstreamFailoverError{
+		StatusCode:             http.StatusBadGateway,
+		ResponseBody:           openAIRawStreamTruncatedErrorBody(cause),
+		ResponseHeaders:        headers,
+		RetryableOnSameAccount: true,
+	}
 }
 
 func chatChunkStartsResponsesOutput(chunk *apicompat.ChatCompletionsChunk) bool {
