@@ -64,6 +64,15 @@ export interface BatchBanUsersResponse {
   skipped: number
 }
 
+export interface BatchDeleteUsersRequest {
+  user_ids: number[]
+}
+
+export interface BatchDeleteUsersResponse {
+  affected: number
+  skipped: number
+}
+
 /**
  * List all users with pagination
  * @param page - Page number (default: 1)
@@ -221,6 +230,17 @@ export async function batchBanUsers(
 ): Promise<BatchBanUsersResponse> {
   const { data } = await apiClient.post<BatchBanUsersResponse>(
     '/admin/users/batch-ban',
+    request
+  )
+  return data
+}
+
+/** Permanently delete multiple non-admin users in one admin operation. */
+export async function batchDeleteUsers(
+  request: BatchDeleteUsersRequest
+): Promise<BatchDeleteUsersResponse> {
+  const { data } = await apiClient.post<BatchDeleteUsersResponse>(
+    '/admin/users/batch-delete',
     request
   )
   return data
@@ -429,6 +449,7 @@ export const usersAPI = {
   updateConcurrency,
   batchUpdateLimits,
   batchBanUsers,
+  batchDeleteUsers,
   toggleStatus,
   getUserApiKeys,
   getUserUsageStats,

@@ -462,6 +462,13 @@ export default {
         success: '已封禁 {affected} 位用户，跳过 {skipped} 项',
         failed: '批量封禁用户失败'
       },
+      bulkDelete: {
+        action: '批量删除（{count}）',
+        title: '批量删除用户',
+        confirm: '确定永久删除选中的 {count} 位用户吗？用户的 API Key 及关联数据也会被删除。管理员账号会被跳过。此操作无法撤销。',
+        success: '已删除 {affected} 位用户，跳过 {skipped} 项',
+        failed: '批量删除用户失败'
+      },
       editUser: '编辑用户',
       deleteUser: '删除用户',
       deleteConfirmMessage: "确定要删除用户 '{email}' 吗？此操作无法撤销。",

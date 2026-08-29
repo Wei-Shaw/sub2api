@@ -462,6 +462,13 @@ export default {
         success: 'Banned {affected} user(s); skipped {skipped}',
         failed: 'Failed to ban selected users'
       },
+      bulkDelete: {
+        action: 'Delete selected ({count})',
+        title: 'Delete selected users',
+        confirm: 'Permanently delete the selected {count} user(s)? Their API keys and related data will also be deleted. Administrator accounts will be skipped. This action cannot be undone.',
+        success: 'Deleted {affected} user(s); skipped {skipped}',
+        failed: 'Failed to delete selected users'
+      },
       editUser: 'Edit User',
       deleteUser: 'Delete User',
       deleteConfirmMessage: "Are you sure you want to delete user '{email}'? This action cannot be undone.",

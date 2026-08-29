@@ -262,6 +262,16 @@
               {{ t('admin.users.bulkBan.action', { count: selectedCount }) }}
             </button>
 
+            <button
+              v-if="selectedCount > 0"
+              class="btn btn-danger flex-1 md:flex-initial"
+              data-test="bulk-delete-users"
+              @click="showBulkDeleteDialog = true"
+            >
+              <Icon name="trash" size="md" class="mr-2" />
+              {{ t('admin.users.bulkDelete.action', { count: selectedCount }) }}
+            </button>
+
             <!-- Create User Button (full width on mobile, auto width on desktop) -->
             <button @click="showCreateModal = true" class="btn btn-primary flex-1 md:flex-initial">
               <Icon name="plus" size="md" class="mr-2" />
@@ -759,6 +769,7 @@
 
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.users.deleteUser')" :message="t('admin.users.deleteConfirm', { email: deletingUser?.email })" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
     <ConfirmDialog :show="showBulkBanDialog" :title="t('admin.users.bulkBan.title')" :message="t('admin.users.bulkBan.confirm', { count: selectedCount })" :danger="true" @confirm="confirmBulkBan" @cancel="showBulkBanDialog = false" />
+    <ConfirmDialog :show="showBulkDeleteDialog" :title="t('admin.users.bulkDelete.title')" :message="t('admin.users.bulkDelete.confirm', { count: selectedCount })" :danger="true" @confirm="confirmBulkDelete" @cancel="showBulkDeleteDialog = false" />
     <UserCreateModal :show="showCreateModal" @close="showCreateModal = false" @success="loadUsers" />
     <UserEditModal :show="showEditModal" :user="editingUser" @close="closeEditModal" @success="loadUsers" />
     <BulkEditUserModal
@@ -1335,6 +1346,7 @@ const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showBulkEditModal = ref(false)
 const showBulkBanDialog = ref(false)
+const showBulkDeleteDialog = ref(false)
 const showDeleteDialog = ref(false)
 const showApiKeysModal = ref(false)
 const showAttributesModal = ref(false)
@@ -1761,6 +1773,23 @@ const confirmBulkBan = async () => {
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.users.bulkBan.failed'))
     console.error('Error batch banning users:', error)
+  }
+}
+
+const confirmBulkDelete = async () => {
+  if (selectedIds.value.length === 0) return
+  try {
+    const result = await adminAPI.users.batchDeleteUsers({ user_ids: selectedIds.value })
+    showBulkDeleteDialog.value = false
+    clearSelection()
+    appStore.showSuccess(t('admin.users.bulkDelete.success', {
+      affected: result.affected,
+      skipped: result.skipped
+    }))
+    loadUsers()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.users.bulkDelete.failed'))
+    console.error('Error batch deleting users:', error)
   }
 }
 
