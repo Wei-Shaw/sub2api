@@ -29,13 +29,20 @@
 |---|---|---|
 | 需求与范围 | PR 描述 | 必须说明包含与不包含的内容 |
 | 代码 | PR merge commit 或 squash commit | 禁止以本地未提交目录作为交付物 |
-| 测试 | GitHub Actions 对应 commit SHA | 本地结果是补充，不替代 CI |
+| 测试 | GitHub Actions 对应 commit SHA（或其机器可验的证据继承，见下方规则） | 本地结果是补充，不替代 CI |
 | 审计 | PR review/审计结论 | 必须关联具体 commit SHA |
 | 版本 | `backend/cmd/server/VERSION` | Release PR 修改 |
 | 发布说明 | `docs/releases/v<version>.md` | tag message 不是发布说明来源 |
 | 发布源码 | annotated tag 指向的 commit | 必须可从 `origin/main` 到达 |
 | 发布制品 | completion ledger 和 OCI digest | 版本标签只是便捷引用 |
 | 生产状态 | deployer state 与当前容器 digest | UI 显示版本不能单独作为证据 |
+
+**测试证据继承**（机器可验，可替代“该 SHA 上跑过完整套件”）：
+
+- 仅当目标 SHA 与其 first parent 的 diff 只触及 `backend/cmd/server/VERSION` 和 `docs/releases/v<version>.md`（两个精确文件），且 parent 的证据链成立（parent 有 job 级全绿的已执行 run，或其自身由已合并 PR 的 tree 相等继承）时成立。
+- 证据链必须终止于一次**真正执行过**且 job 级全绿的 Actions run（不接受 skipped）；审计链记录在 job summary，Promote 阶段独立复验。
+- 边界：其它任何路径变化退回完整测试套件，不接受继承。
+- VERSION 测试禁令：仓库不得包含断言版本字面值的单元测试；若未来引入，继承静默失效，必须回退到每次 release 重跑测试。
 
 ## 3. 工作类型与分支
 
@@ -51,8 +58,10 @@
 | 流程维护 | `codex/workflow-<name>` | Squash merge | SOP、CI、Release 自动化 |
 | 发布准备 | `codex/release-<version>` | Squash merge | VERSION、版本化 release notes |
 | 紧急修复 | `codex/hotfix-<name>` | Squash merge | 最小生产修复及回归测试 |
+| 文档 | `codex/docs-<name>` | Squash merge | 文档、注释、流程说明 |
+| 依赖升级 | `codex/deps-<name>` | Squash merge | Go/pnpm 依赖及 lock 文件同步 |
 
-禁止使用长期 `develop` 分支。功能分支短期存在，合并后删除。
+禁止使用长期 `develop` 分支。功能分支短期存在，合并后删除。分支前缀（如 `codex`）可为任意发起工具标识，但 `<type>-` 段必须保留：`sync-upstream` 是唯一使用 merge commit 的类型，§8 的合并方式判定依赖它。
 
 ## 4. 工作区准备
 
@@ -92,7 +101,7 @@ git diff --cached --stat
 5. API、配置或 schema 变化必须保持蓝绿期间新旧版本可共存。
 6. 生成代码必须由项目工具生成，并确认没有无关漂移。
 7. 提交使用 Conventional Commits：`feat`、`fix`、`test`、`docs`、`refactor`、`chore`。
-8. 审计修复可以保留为独立 commit，但最终普通 PR 使用 squash merge。
+8. 审计修复走独立 PR（squash 后独立 commit 在 `main` 上不可达，无法关联审计 SHA）；普通 PR 使用 squash merge。
 
 提交信息描述结果，不记录聊天过程。例如：
 
@@ -143,6 +152,10 @@ CI 失败后：
 3. flaky 连续出现两次，应修测试或隔离根因，不能无限 rerun。
 4. 修复后推新 commit，让所有 required checks 对新 SHA 重跑。
 
+### 证据继承与 CI 跳过
+
+`Backend CI` 的重型 job 可基于 §2 的证据继承判定跳过（由 `verify-sha-evidence` 判定，fail-closed：判定本身失败时必跑全量，不产生空壳 run）。跳过决策只对 push 上下文做，PR（包括 release PR）不做跳过判定；release PR 由轻量 `Release Check` workflow（diff 包含性、notes 校验、版本递增、tidy、branch protection、高风险路径机械判定）替代发布阶段的重复验证。证据新鲜度上限 7 天，超限自动回退真跑；`Release Check` 与 Promote 的判定各自独立，互不沿用。
+
 ### L3：高风险/发布验证
 
 满足任一条件时增加完整验证：
@@ -162,6 +175,8 @@ CI 失败后：
 ## 7. 审计 SOP
 
 以下变化必须独立审计：认证/授权、支付、迁移、生产部署、自动更新、密钥、邮件隐私、限流、告警和跨模块重构。
+
+发布阶段的机械门禁（`Release Check` 高风险路径判定）是上述清单的子集（auth/authz、payment、`migrations/`、`deploy/`、deployer、secrets、email、ratelimit）：命中则 PR 必须含审计结论链接；未命中则免审计并记录在 release notes。跨模块重构和告警变更不在机械清单内，维护者必须在 release notes 中自述审计依据。
 
 审计顺序：
 
@@ -193,7 +208,7 @@ PR 描述必须填写模板中的范围、风险、迁移、配置、测试、�
 
 ## 9. 上游同步 SOP
 
-上游同步始终单独进行：
+首次配置（新 worktree/新机器）：`git remote add upstream https://github.com/ssharkkky/sub2api`，随后 `git fetch upstream --prune`。上游同步始终单独进行：
 
 ```bash
 git switch main
@@ -242,20 +257,21 @@ Release PR 合并前：
 3. release notes 已人工审阅。
 4. `go mod tidy`、迁移历史和 release safety tests 无漂移。
 5. 不存在尚未决定是否纳入本版本的代码。
-6. Release PR 的精确 head SHA 必须通过 `Release Preflight` workflow；工作流必须显式检出该 SHA，其中 `make test-frontend-release` 包含 frontend lint、完整 Vitest 和 production build，同时验证迁移/tidy、发布契约和 deployer bundle 构建。
+6. Release PR 的 `Release Check` workflow（轻量，<60s：diff 包含性、notes 校验、版本递增、tidy、branch protection、高风险路径机械判定）全绿且对应 PR 最新 SHA；前端生产构建不在 PR 阶段执行（移至 release 合并后的 `build-candidate`）。
 
 Release PR 合并后、创建 tag 前：
 
-1. 等待合并后的精确 `origin/main` SHA 再次通过 `Backend CI` 和 `Release Preflight` 的 push run。
-2. 确认该 SHA 的完整前端发布预检已通过，不能沿用 PR 合并前的 head SHA 或合成 merge SHA 结果。
-3. 完成该 SHA 的最终审计并确认版本 tag、GitHub Release 和版本镜像均未被占用。
+1. 合并后的精确 `origin/main` SHA 的 `Backend CI` push run 真跑全量，或 `verify-sha-evidence` 判定证据链成立而跳过（fail-closed，审计链记录在 job summary）。
+2. `Release Preflight` 的 `build-candidate` 真实产出 candidate 工件（VERSION 为未发布 `-ts.N` 且 `TARGET_SHA == origin/main` tip）并通过全链路验证；窗口期 main 前进导致未产出时，回到 release PR 修正或窗口关闭后重新合并。
+3. 完成该 SHA 的审计处置（高风险路径命中则审计结论在 PR，未命中则免审计记录在 notes），并确认版本 tag、GitHub Release 和版本镜像均未被占用。
 4. 任一门禁失败都回到修复 PR；在新的 `main` SHA 全绿前禁止创建正式 tag。
+5. 从 release PR 合并到 Promote 完成期间冻结 main（不合并其它 PR），并在 7 天内完成（candidate 工件保留期）；超时作废该 revision 重走。
 
 ## 11. Tag 与 Release SOP
 
-Release PR 合并且上述 tag 前门禁全部通过后，禁止从本地人工创建或推送发布 tag。仓库使用两层 tag ruleset：不可变层禁止 `v*-ts.*` 更新和删除且无任何 bypass；创建层只禁止 creation，唯一 bypass actor 类型是 Deploy Key。仓库只允许保留一把可写 Deploy Key，名称为 `Sub2API release tag promoter`；私钥只保存在 `RELEASE_TAG_DEPLOY_KEY` Actions secret，普通 `GITHUB_TOKEN` 不具备创建发布 tag 的权限。GitHub ruleset API 会向 Actions 的低权限 `GITHUB_TOKEN` 隐藏 bypass actor；因此 workflow 运行时验证 active、tag 范围及 creation/update/deletion 结构，并拒绝任何可见的异常 actor，最终独立审计则必须使用管理员只读视图严格核对两层 ruleset 和 repository deploy key 列表。
+Release PR 合并且上述 tag 前门禁全部通过后，禁止从本地人工创建或推送发布 tag。仓库使用两层 tag ruleset：不可变层禁止 `v*-ts.*` 更新和删除且无任何 bypass；创建层只禁止 creation，唯一 bypass actor 类型是 Deploy Key。仓库只允许保留一把可写 Deploy Key，名称为 `Sub2API release tag promoter`；私钥只保存在 `RELEASE_TAG_DEPLOY_KEY` Actions secret，普通 `GITHUB_TOKEN` 不具备创建发布 tag 的权限。GitHub ruleset API 会向 Actions 的低权限 `GITHUB_TOKEN` 隐藏 bypass actor；因此 workflow 运行时验证 active、tag 范围及 creation/update/deletion 结构，并拒绝任何可见的异常 actor，最终独立审计则必须使用管理员只读视图严格核对两层 ruleset 和 repository deploy key 列表（核对频率：ruleset/deploy key 变更时，或每季度一次）。
 
-从 Actions 页面运行 `Promote Release`，输入已审计的版本号和完整 `origin/main` SHA。该工作流必须再次确认远端 `main` 没有移动、`VERSION` 一致、tag/Release 未占用，并核验同一 SHA 的 `Backend CI` 与 `Release Preflight` push run 均成功；之后才由工作流创建 annotated tag，并在同一执行链中调用 reusable `Release` workflow。`Release` 不提供独立的 tag push 或手动 dispatch 入口。
+从 Actions 页面运行 `Promote Release`，输入已审计的版本号和完整 `origin/main` SHA。该工作流必须再次确认远端 `main` 没有移动、`VERSION` 一致、tag/Release 未占用，并核验同一 SHA 的 `Backend CI` 证据链（`verify-sha-evidence`，job 级断言）与 `Release Preflight` push run（run ID）；之后才由工作流创建 annotated tag，并在同一执行链中调用 reusable `Release` workflow。`Release` 不提供独立的 tag push 或手动 dispatch 入口。
 
 Promote 在创建 tag 前再次读取远端 `main`。若 Actions 在 tag 创建后、进入 Release job 前发生暂时故障，重跑同一 Promote run 可以复用“同版本、同审计 SHA、annotated”的已有 tag；任何对象不一致都会停止，不能覆盖 tag。
 
@@ -275,8 +291,8 @@ Release workflow 必须：
 1. 验证 tag 格式、annotated tag object、main ancestry 和版本顺序。
 2. 验证 `VERSION` 与 tag 一致。
 3. 从 tag 中读取 `docs/releases/v<version>.md`，禁止依赖 tag body。
-4. 验证迁移可回滚、Go module 无漂移、unit tests 和 release assets tests。
-5. 构建前端、deployer 和多架构镜像。
+4. 复验 candidate 工件、digest 与 workflow blob pin。
+5. 将已构建并验证的 candidate 镜像 digest 提升到版本 tag（不构建、不重跑测试）。
 6. 校验 OCI manifest、digest、checksums 和 completion ledger。
 7. 所有制品确认后才公开 GitHub Release 并移动 `latest`。
 
@@ -287,6 +303,7 @@ Release workflow 完成前不得部署生产。
 | 失败阶段 | 是否可重跑同一 tag | 处理 |
 |---|---:|---|
 | Release PR/preflight，尚未创建 tag | 是 | 修代码或 notes，保持计划版本 |
+| `build-candidate` 未产出 candidate（窗口期 main 前进，`TARGET_SHA != tip`） | 是（尚未创建 tag） | 回到 release PR 修正或窗口关闭后重新合并，再 dispatch |
 | tag 已创建，gate 失败，代码无需修改且没有冲突制品 | 是 | 修复外部配置或偶发基础设施后 rerun |
 | tag 已创建，发现代码/迁移/notes 需要修改 | 否 | 新 commit、新 revision、新 tag |
 | draft Release 已创建但 workflow 未完成 | 仅无代码变化时 | 保留证据，按 workflow reconciliation 处理 |
@@ -397,6 +414,8 @@ git -C <worktree> status --short --branch
 - 在功能 PR 中同步 upstream 或准备 release。
 - 未检查状态就强制删除 dirty worktree。
 - 以 `latest` 作为生产回滚依据。
+- 改写已发布的 release notes（更正走追加 Errata 的普通 PR，不动已发布的 Release body）。
+- 在 release PR 合并到 Promote 完成的窗口内合并其它 PR（冻结 main，≤7 天完成）。
 
 ## 19. 完成定义
 
