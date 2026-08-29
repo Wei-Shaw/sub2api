@@ -525,7 +525,7 @@ func TestZhipuMCPPassthrough_Upstream4xxPassthroughWithoutFailover(t *testing.T)
 	require.Len(t, upstream.captured(), 1)
 }
 
-func TestZhipuMCPPassthrough_DeleteTerminatesSessionAndCleansBinding(t *testing.T) {
+func TestZhipuMCPPassthrough_DeleteTombstonesSessionAndRejectsReuse(t *testing.T) {
 	store := &zhipuMCPSessionStoreFake{}
 	require.NoError(t, store.SetZhipuMCPSession(context.Background(), "sess-del-1", 11, time.Minute))
 
@@ -533,12 +533,14 @@ func TestZhipuMCPPassthrough_DeleteTerminatesSessionAndCleansBinding(t *testing.
 		[]service.Account{zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true)},
 		&service.Group{ID: 7, Platform: service.PlatformZhipu},
 		store, true, func(_ int, _ *zhipuMCPCapturedRequest, w http.ResponseWriter) {
+			// 实测形态：上游 DELETE 处理内部出错但 HTTP 仍 200（error body 载体）。
 			w.WriteHeader(http.StatusOK)
 		})
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/mcp/zhipu/web_search_prime/mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+zhipuMCPTestUserKey)
 	req.Header.Set("Mcp-Session-Id", "sess-del-1")
+	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -549,10 +551,71 @@ func TestZhipuMCPPassthrough_DeleteTerminatesSessionAndCleansBinding(t *testing.
 	require.Equal(t, http.MethodDelete, caps[0].Method)
 	require.Equal(t, "sess-del-1", caps[0].Header.Get("Mcp-Session-Id"))
 	require.Equal(t, "Bearer "+zhipuMCPTestZhipuKeyA, caps[0].Header.Get("Authorization"))
+	// DELETE 透传不带 body 与 Content-Type（避免上游 transport 解析 body 出错）。
+	require.Empty(t, caps[0].Body)
+	require.Empty(t, caps[0].Header.Get("Content-Type"))
 
-	// 粘表已清理。
-	_, ok := store.get("sess-del-1")
-	require.False(t, ok)
+	// fail-closed：即使上游返回 200，粘表也写入 tombstone（值 0），而非删除 key。
+	got, ok := store.get("sess-del-1")
+	require.True(t, ok)
+	require.Equal(t, service.ZhipuMCPSessionDeletedAccountID, got)
+
+	// 同 session id 的后续 POST（任意 MCP 方法）必须 404，不透传上游。
+	post := zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp",
+		`{"jsonrpc":"2.0","id":9,"method":"tools/list","params":{}}`, "sess-del-1")
+	wp := httptest.NewRecorder()
+	r.ServeHTTP(wp, post)
+	require.Equal(t, http.StatusNotFound, wp.Code)
+	require.Len(t, upstream.captured(), 1, "tombstoned session 不应再透传上游")
+
+	// 幂等：对已终止 session 的再次 DELETE 也 404。
+	del2 := httptest.NewRequest(http.MethodDelete, "/api/mcp/zhipu/web_search_prime/mcp", nil)
+	del2.Header.Set("Authorization", "Bearer "+zhipuMCPTestUserKey)
+	del2.Header.Set("Mcp-Session-Id", "sess-del-1")
+	wd := httptest.NewRecorder()
+	r.ServeHTTP(wd, del2)
+	require.Equal(t, http.StatusNotFound, wd.Code)
+	require.Len(t, upstream.captured(), 1)
+}
+
+func TestZhipuMCPPassthrough_ReinitializeAfterDeleteSucceeds(t *testing.T) {
+	store := &zhipuMCPSessionStoreFake{}
+	require.NoError(t, store.SetZhipuMCPSession(context.Background(), "sess-old", 11, time.Minute))
+
+	r, upstream, _ := newZhipuMCPTestEnv(t,
+		[]service.Account{zhipuMCPTestAccount(11, zhipuMCPTestZhipuKeyA, 1, true)},
+		&service.Group{ID: 7, Platform: service.PlatformZhipu},
+		store, true, func(_ int, _ *zhipuMCPCapturedRequest, w http.ResponseWriter) {
+			w.Header().Set("Mcp-Session-Id", "sess-new")
+			w.WriteHeader(http.StatusOK)
+		})
+
+	// 终止旧 session。
+	del := httptest.NewRequest(http.MethodDelete, "/api/mcp/zhipu/web_search_prime/mcp", nil)
+	del.Header.Set("Authorization", "Bearer "+zhipuMCPTestUserKey)
+	del.Header.Set("Mcp-Session-Id", "sess-old")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, del)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	// 重新 initialize：新 session（不带旧 SID 或带新 SID）不受 tombstone 影响。
+	init := zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp",
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`, "")
+	wi := httptest.NewRecorder()
+	r.ServeHTTP(wi, init)
+	require.Equal(t, http.StatusOK, wi.Code)
+
+	// 新 SID 正常工作（粘表被新绑定覆盖）。
+	list := zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp",
+		`{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`, "sess-new")
+	wl := httptest.NewRecorder()
+	r.ServeHTTP(wl, list)
+	require.Equal(t, http.StatusOK, wl.Code)
+	require.Len(t, upstream.captured(), 3)
+
+	got, ok := store.get("sess-new")
+	require.True(t, ok)
+	require.Equal(t, int64(11), got)
 }
 
 func TestZhipuMCPPassthrough_GetMethodNotAllowed(t *testing.T) {

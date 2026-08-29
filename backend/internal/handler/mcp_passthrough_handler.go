@@ -133,6 +133,16 @@ func (h *GatewayHandler) ZhipuMCPPassthrough(c *gin.Context) {
 	scheduleCtx := c.Request.Context()
 	if incomingSessionID != "" {
 		if boundAccountID, bound := h.gatewayService.LookupZhipuMCPSession(scheduleCtx, incomingSessionID); bound {
+			if boundAccountID == service.ZhipuMCPSessionDeletedAccountID {
+				// tombstone：该 session 已被 DELETE 终止。MCP 规范要求此后任何
+				// 携带该 session id 的请求 404，客户端必须重新 initialize。
+				// fail-closed：不透传（上游可能实际未终止），也不回退调度。
+				c.JSON(http.StatusNotFound, gin.H{"error": gin.H{
+					"type":    "not_found",
+					"message": "MCP session not found (terminated); re-initialize required",
+				}})
+				return
+			}
 			loaded, loadErr := h.gatewayService.LoadZhipuMCPStickyAccount(scheduleCtx, boundAccountID)
 			if loadErr == nil {
 				stickyAccount = loaded
@@ -233,7 +243,14 @@ func (h *GatewayHandler) ZhipuMCPPassthrough(c *gin.Context) {
 			continue
 		}
 
-		upstreamReq, buildErr := http.NewRequestWithContext(scheduleCtx, c.Request.Method, targetURL, bytes.NewReader(body))
+		// DELETE 透传不带 body 与 Content-Type：客户端 DELETE 通常无 body，
+		// 带上 Content-Type 会让上游（WebFlux transport）尝试解析 body 并在
+		// session 终止处理中抛错（实测：HTTP 200 + error stackTrace 响应体）。
+		var reqBody io.Reader
+		if c.Request.Method == http.MethodPost {
+			reqBody = bytes.NewReader(body)
+		}
+		upstreamReq, buildErr := http.NewRequestWithContext(scheduleCtx, c.Request.Method, targetURL, reqBody)
 		if buildErr != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{
 				"type":    "zhipu_mcp_error",
@@ -242,6 +259,9 @@ func (h *GatewayHandler) ZhipuMCPPassthrough(c *gin.Context) {
 			return
 		}
 		upstreamReq.Header = buildZhipuMCPUpstreamHeaders(c)
+		if c.Request.Method != http.MethodPost {
+			upstreamReq.Header.Del("Content-Type")
+		}
 		upstreamReq.Header.Set("Authorization", "Bearer "+zhipuKey)
 
 		resp, doErr := h.gatewayService.DoZhipuMCPUpstream(account, upstreamReq)
@@ -371,10 +391,13 @@ func (h *GatewayHandler) ZhipuMCPPassthrough(c *gin.Context) {
 		}
 	}
 
-	// 客户端显式终止 session：上游受理后清理粘表。
-	if c.Request.Method == http.MethodDelete && upstreamResp.StatusCode < http.StatusBadRequest && incomingSessionID != "" {
-		if unbindErr := h.gatewayService.UnbindZhipuMCPSession(c.Request.Context(), incomingSessionID); unbindErr != nil {
-			reqLog.Warn("gateway.zhipu_mcp.unbind_session_failed", zap.Error(unbindErr))
+	// 客户端显式终止 session：fail-closed，无条件写 tombstone。
+	// 不看上游响应状态：实测上游 DELETE 可能 HTTP 200 但内部失败（session 实际
+	// 未终止）；即便如此，网关侧也必须让该 session 立即失效（MCP 规范），客户端
+	// 重新 initialize 建立新 session。上游残留由其自身 TTL 回收。
+	if c.Request.Method == http.MethodDelete && incomingSessionID != "" {
+		if markErr := h.gatewayService.MarkZhipuMCPSessionDeleted(c.Request.Context(), incomingSessionID); markErr != nil {
+			reqLog.Warn("gateway.zhipu_mcp.mark_session_deleted_failed", zap.Error(markErr))
 		}
 	}
 }
