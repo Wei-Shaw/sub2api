@@ -972,6 +972,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	compactModelFallbackRetried := false
 	agentTaskRecoveryTried := false
 	rejectedFieldRetryState := openAIResponsesRejectedFieldRetryStateForRequest(c, body)
+	if reqStream && GetOpenAIClientTransport(c) != OpenAIClientTransportWS && s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
+		EnsureOpenAIPreHeaderSSEKeepalive(c, time.Duration(s.cfg.Gateway.StreamKeepaliveInterval)*time.Second)
+	}
 	for {
 		// Build upstream request
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)

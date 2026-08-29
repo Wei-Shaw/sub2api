@@ -350,6 +350,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	if c != nil {
 		c.Set("openai_passthrough", true)
 	}
+	if reqStream && GetOpenAIClientTransport(c) != OpenAIClientTransportWS && s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
+		EnsureOpenAIPreHeaderSSEKeepalive(c, time.Duration(s.cfg.Gateway.StreamKeepaliveInterval)*time.Second)
+	}
 
 	agentTaskRecoveryTried := false
 	compactModelFallbackRetried := false

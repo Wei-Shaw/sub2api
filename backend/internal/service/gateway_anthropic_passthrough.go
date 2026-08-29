@@ -94,6 +94,9 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 
 	var resp *http.Response
 	retryStart := time.Now()
+	if input.RequestStream && isAnthropicMessagesRequest(c) && s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
+		EnsureAnthropicPreHeaderSSEKeepalive(c, time.Duration(s.cfg.Gateway.StreamKeepaliveInterval)*time.Second)
+	}
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, input.RequestStream)
 		upstreamReq, wireBody, err := s.buildUpstreamRequestAnthropicAPIKeyPassthrough(upstreamCtx, c, account, input.Body, token)
@@ -364,6 +367,8 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	startTime time.Time,
 	model string,
 ) (*streamingResult, error) {
+	// Upstream headers have arrived. Hand off to the existing post-header ping.
+	StopAnthropicPreHeaderSSEKeepaliveCommitted(c)
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)

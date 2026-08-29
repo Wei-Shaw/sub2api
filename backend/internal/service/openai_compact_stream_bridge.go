@@ -56,12 +56,19 @@ func openAICompactClientWantsStream(c *gin.Context) bool {
 // 必须接管一切写回：非 2xx 或不可合成的响应降级为 response.failed 终止事件，
 // 不能再返回 false（否则调用方的 JSON 写回会与已提交的 SSE 流交错）。
 func writeOpenAICompactSSEBridge(c *gin.Context, statusCode int, finalResponse []byte) bool {
-	if c == nil || !openAICompactClientWantsStream(c) {
+	if c == nil {
 		return false
 	}
 	// 先停心跳再写回，避免注释行与最终事件交错；停止后经互斥锁与心跳
 	// goroutine 建立 happens-before，可安全接管 ResponseWriter。
 	committed := StopOpenAICompactSSEKeepaliveCommitted(c)
+	if !openAICompactClientWantsStream(c) {
+		if committed && (statusCode < 200 || statusCode >= 300) {
+			writeOpenAICompactSSEFailure(c, statusCode, finalResponse)
+			return true
+		}
+		return false
+	}
 	if statusCode < 200 || statusCode >= 300 {
 		if committed {
 			writeOpenAICompactSSEFailure(c, statusCode, finalResponse)
@@ -88,6 +95,19 @@ func writeOpenAICompactSSEBridge(c *gin.Context, statusCode int, finalResponse [
 	_, _ = c.Writer.Write(payload)
 	c.Writer.Flush()
 	return true
+}
+
+func writeOpenAIResponsesGatewayError(c *gin.Context, statusCode int, errType, message string) {
+	if StopOpenAICompactSSEKeepaliveCommitted(c) {
+		writeOpenAICompactSSEFailureMessage(c, statusCode, errType, message)
+		return
+	}
+	c.JSON(statusCode, gin.H{
+		"error": gin.H{
+			"type":    errType,
+			"message": message,
+		},
+	})
 }
 
 // writeOpenAICompactSSEFailure 从上游错误 body 提取错误消息后，以
