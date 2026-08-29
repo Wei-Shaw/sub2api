@@ -512,6 +512,8 @@ export default {
     usage: {
       title: 'Usage Records',
       description: 'View and manage all user usage records',
+      deviceCode: 'Device Code',
+      searchDeviceCodePlaceholder: 'Enter device code',
       userFilter: 'User',
       searchUserPlaceholder: 'Search user by email...',
       searchApiKeyPlaceholder: 'Search API key by name...',
