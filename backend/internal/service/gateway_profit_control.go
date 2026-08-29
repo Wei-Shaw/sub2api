@@ -37,18 +37,23 @@ func (s *GatewayService) withGatewayProfitControlGate(ctx context.Context, group
 		}
 	}
 
-	downstream := billingGroup.RateMultiplier
+	groupRate := UserGroupRateResolution{Multiplier: billingGroup.RateMultiplier}
 	if userID, _ := ctx.Value(ctxkey.UserID).(int64); userID > 0 {
-		downstream = s.ResolveUserGroupRateMultiplier(ctx, userID, billingGroup.ID, billingGroup.RateMultiplier)
+		groupRate = s.getUserGroupRateResolution(ctx, userID, billingGroup.ID, billingGroup.RateMultiplier)
 	}
-	downstream *= billingGroup.PeakMultiplierAt(pricingAt)
-	threshold := clampProfitControlThreshold(downstream * (1 - group.ProfitMinMargin - group.ProfitSafetyBuffer))
+	peakMultiplier := billingGroup.PeakMultiplierAt(pricingAt)
+	marginFactor := 1 - group.ProfitMinMargin - group.ProfitSafetyBuffer
+	threshold := clampProfitControlThreshold(groupRate.Multiplier * peakMultiplier * marginFactor)
 
 	gate := &openAIProfitControlGate{
-		groupID:   group.ID,
-		platform:  group.Platform,
-		threshold: threshold,
-		pricingAt: pricingAt,
+		groupID:             group.ID,
+		platform:            group.Platform,
+		threshold:           threshold,
+		pricingAt:           pricingAt,
+		accountPricingAware: true,
+		groupRate:           groupRate,
+		peakMultiplier:      peakMultiplier,
+		marginFactor:        marginFactor,
 	}
 	openAIProfitControlObserverInstance.recordInstall(gate.groupID, gate.platform, gate.threshold)
 	return context.WithValue(ctx, openAIProfitControlGateCtxKey{}, gate)

@@ -328,6 +328,51 @@ describe('EditAccountModal', () => {
     authIsSimpleMode.value = true
   })
 
+  it('loads and submits account-level user pricing only for OpenAI API key accounts', async () => {
+    const account = buildAccount()
+    account.user_billing_rate_multiplier = 1.5
+    account.user_billing_model_pricing = [{
+      platform: 'openai',
+      models: ['gpt-priced'],
+      billing_mode: 'token',
+      input_price: 2e-6,
+      output_price: 8e-6,
+      intervals: []
+    }]
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    expect(wrapper.get<HTMLInputElement>('[data-testid="account-user-billing-rate-multiplier"]').element.value).toBe('1.5')
+    expect(wrapper.findComponent({ name: 'PricingEntryCard' }).exists()).toBe(true)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload.user_billing_rate_multiplier).toBe(1.5)
+    expect(payload.user_billing_model_pricing?.[0]).toMatchObject({
+      platform: 'openai',
+      models: ['gpt-priced'],
+      input_price: 2e-6,
+      output_price: 8e-6
+    })
+  })
+
+  it('hides account-level user pricing for OpenAI OAuth accounts', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="account-user-billing-rate-multiplier"]').exists()).toBe(false)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload).not.toHaveProperty('user_billing_rate_multiplier')
+    expect(payload).not.toHaveProperty('user_billing_model_pricing')
+  })
+
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()

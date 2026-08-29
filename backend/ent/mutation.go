@@ -2282,60 +2282,64 @@ func (m *APIKeyMutation) ResetEdge(name string) error {
 // AccountMutation represents an operation that mutates the Account nodes in the graph.
 type AccountMutation struct {
 	config
-	op                          Op
-	typ                         string
-	id                          *int64
-	created_at                  *time.Time
-	updated_at                  *time.Time
-	deleted_at                  *time.Time
-	name                        *string
-	notes                       *string
-	platform                    *string
-	_type                       *string
-	credentials                 *map[string]interface{}
-	extra                       *map[string]interface{}
-	proxy_fallback_origin_id    *int64
-	addproxy_fallback_origin_id *int64
-	concurrency                 *int
-	addconcurrency              *int
-	load_factor                 *int
-	addload_factor              *int
-	priority                    *int
-	addpriority                 *int
-	rate_multiplier             *float64
-	addrate_multiplier          *float64
-	status                      *string
-	error_message               *string
-	last_used_at                *time.Time
-	expires_at                  *time.Time
-	auto_pause_on_expired       *bool
-	schedulable                 *bool
-	rate_limited_at             *time.Time
-	rate_limit_reset_at         *time.Time
-	overload_until              *time.Time
-	temp_unschedulable_until    *time.Time
-	temp_unschedulable_reason   *string
-	session_window_start        *time.Time
-	session_window_end          *time.Time
-	session_window_status       *string
-	quota_dimension             *account.QuotaDimension
-	clearedFields               map[string]struct{}
-	groups                      map[int64]struct{}
-	removedgroups               map[int64]struct{}
-	clearedgroups               bool
-	proxy                       *int64
-	clearedproxy                bool
-	parent                      *int64
-	clearedparent               bool
-	children                    map[int64]struct{}
-	removedchildren             map[int64]struct{}
-	clearedchildren             bool
-	usage_logs                  map[int64]struct{}
-	removedusage_logs           map[int64]struct{}
-	clearedusage_logs           bool
-	done                        bool
-	oldValue                    func(context.Context) (*Account, error)
-	predicates                  []predicate.Account
+	op                               Op
+	typ                              string
+	id                               *int64
+	created_at                       *time.Time
+	updated_at                       *time.Time
+	deleted_at                       *time.Time
+	name                             *string
+	notes                            *string
+	platform                         *string
+	_type                            *string
+	credentials                      *map[string]interface{}
+	extra                            *map[string]interface{}
+	proxy_fallback_origin_id         *int64
+	addproxy_fallback_origin_id      *int64
+	concurrency                      *int
+	addconcurrency                   *int
+	load_factor                      *int
+	addload_factor                   *int
+	priority                         *int
+	addpriority                      *int
+	rate_multiplier                  *float64
+	addrate_multiplier               *float64
+	user_billing_rate_multiplier     *float64
+	adduser_billing_rate_multiplier  *float64
+	user_billing_model_pricing       *jsontext.Value
+	appenduser_billing_model_pricing jsontext.Value
+	status                           *string
+	error_message                    *string
+	last_used_at                     *time.Time
+	expires_at                       *time.Time
+	auto_pause_on_expired            *bool
+	schedulable                      *bool
+	rate_limited_at                  *time.Time
+	rate_limit_reset_at              *time.Time
+	overload_until                   *time.Time
+	temp_unschedulable_until         *time.Time
+	temp_unschedulable_reason        *string
+	session_window_start             *time.Time
+	session_window_end               *time.Time
+	session_window_status            *string
+	quota_dimension                  *account.QuotaDimension
+	clearedFields                    map[string]struct{}
+	groups                           map[int64]struct{}
+	removedgroups                    map[int64]struct{}
+	clearedgroups                    bool
+	proxy                            *int64
+	clearedproxy                     bool
+	parent                           *int64
+	clearedparent                    bool
+	children                         map[int64]struct{}
+	removedchildren                  map[int64]struct{}
+	clearedchildren                  bool
+	usage_logs                       map[int64]struct{}
+	removedusage_logs                map[int64]struct{}
+	clearedusage_logs                bool
+	done                             bool
+	oldValue                         func(context.Context) (*Account, error)
+	predicates                       []predicate.Account
 }
 
 var _ ent.Mutation = (*AccountMutation)(nil)
@@ -3141,6 +3145,141 @@ func (m *AccountMutation) AddedRateMultiplier() (r float64, exists bool) {
 func (m *AccountMutation) ResetRateMultiplier() {
 	m.rate_multiplier = nil
 	m.addrate_multiplier = nil
+}
+
+// SetUserBillingRateMultiplier sets the "user_billing_rate_multiplier" field.
+func (m *AccountMutation) SetUserBillingRateMultiplier(f float64) {
+	m.user_billing_rate_multiplier = &f
+	m.adduser_billing_rate_multiplier = nil
+}
+
+// UserBillingRateMultiplier returns the value of the "user_billing_rate_multiplier" field in the mutation.
+func (m *AccountMutation) UserBillingRateMultiplier() (r float64, exists bool) {
+	v := m.user_billing_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserBillingRateMultiplier returns the old "user_billing_rate_multiplier" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldUserBillingRateMultiplier(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserBillingRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserBillingRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserBillingRateMultiplier: %w", err)
+	}
+	return oldValue.UserBillingRateMultiplier, nil
+}
+
+// AddUserBillingRateMultiplier adds f to the "user_billing_rate_multiplier" field.
+func (m *AccountMutation) AddUserBillingRateMultiplier(f float64) {
+	if m.adduser_billing_rate_multiplier != nil {
+		*m.adduser_billing_rate_multiplier += f
+	} else {
+		m.adduser_billing_rate_multiplier = &f
+	}
+}
+
+// AddedUserBillingRateMultiplier returns the value that was added to the "user_billing_rate_multiplier" field in this mutation.
+func (m *AccountMutation) AddedUserBillingRateMultiplier() (r float64, exists bool) {
+	v := m.adduser_billing_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearUserBillingRateMultiplier clears the value of the "user_billing_rate_multiplier" field.
+func (m *AccountMutation) ClearUserBillingRateMultiplier() {
+	m.user_billing_rate_multiplier = nil
+	m.adduser_billing_rate_multiplier = nil
+	m.clearedFields[account.FieldUserBillingRateMultiplier] = struct{}{}
+}
+
+// UserBillingRateMultiplierCleared returns if the "user_billing_rate_multiplier" field was cleared in this mutation.
+func (m *AccountMutation) UserBillingRateMultiplierCleared() bool {
+	_, ok := m.clearedFields[account.FieldUserBillingRateMultiplier]
+	return ok
+}
+
+// ResetUserBillingRateMultiplier resets all changes to the "user_billing_rate_multiplier" field.
+func (m *AccountMutation) ResetUserBillingRateMultiplier() {
+	m.user_billing_rate_multiplier = nil
+	m.adduser_billing_rate_multiplier = nil
+	delete(m.clearedFields, account.FieldUserBillingRateMultiplier)
+}
+
+// SetUserBillingModelPricing sets the "user_billing_model_pricing" field.
+func (m *AccountMutation) SetUserBillingModelPricing(j jsontext.Value) {
+	m.user_billing_model_pricing = &j
+	m.appenduser_billing_model_pricing = nil
+}
+
+// UserBillingModelPricing returns the value of the "user_billing_model_pricing" field in the mutation.
+func (m *AccountMutation) UserBillingModelPricing() (r jsontext.Value, exists bool) {
+	v := m.user_billing_model_pricing
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserBillingModelPricing returns the old "user_billing_model_pricing" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldUserBillingModelPricing(ctx context.Context) (v jsontext.Value, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserBillingModelPricing is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserBillingModelPricing requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserBillingModelPricing: %w", err)
+	}
+	return oldValue.UserBillingModelPricing, nil
+}
+
+// AppendUserBillingModelPricing adds j to the "user_billing_model_pricing" field.
+func (m *AccountMutation) AppendUserBillingModelPricing(j jsontext.Value) {
+	m.appenduser_billing_model_pricing = append(m.appenduser_billing_model_pricing, j...)
+}
+
+// AppendedUserBillingModelPricing returns the list of values that were appended to the "user_billing_model_pricing" field in this mutation.
+func (m *AccountMutation) AppendedUserBillingModelPricing() (jsontext.Value, bool) {
+	if len(m.appenduser_billing_model_pricing) == 0 {
+		return nil, false
+	}
+	return m.appenduser_billing_model_pricing, true
+}
+
+// ClearUserBillingModelPricing clears the value of the "user_billing_model_pricing" field.
+func (m *AccountMutation) ClearUserBillingModelPricing() {
+	m.user_billing_model_pricing = nil
+	m.appenduser_billing_model_pricing = nil
+	m.clearedFields[account.FieldUserBillingModelPricing] = struct{}{}
+}
+
+// UserBillingModelPricingCleared returns if the "user_billing_model_pricing" field was cleared in this mutation.
+func (m *AccountMutation) UserBillingModelPricingCleared() bool {
+	_, ok := m.clearedFields[account.FieldUserBillingModelPricing]
+	return ok
+}
+
+// ResetUserBillingModelPricing resets all changes to the "user_billing_model_pricing" field.
+func (m *AccountMutation) ResetUserBillingModelPricing() {
+	m.user_billing_model_pricing = nil
+	m.appenduser_billing_model_pricing = nil
+	delete(m.clearedFields, account.FieldUserBillingModelPricing)
 }
 
 // SetStatus sets the "status" field.
@@ -4138,7 +4277,7 @@ func (m *AccountMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountMutation) Fields() []string {
-	fields := make([]string, 0, 31)
+	fields := make([]string, 0, 33)
 	if m.created_at != nil {
 		fields = append(fields, account.FieldCreatedAt)
 	}
@@ -4183,6 +4322,12 @@ func (m *AccountMutation) Fields() []string {
 	}
 	if m.rate_multiplier != nil {
 		fields = append(fields, account.FieldRateMultiplier)
+	}
+	if m.user_billing_rate_multiplier != nil {
+		fields = append(fields, account.FieldUserBillingRateMultiplier)
+	}
+	if m.user_billing_model_pricing != nil {
+		fields = append(fields, account.FieldUserBillingModelPricing)
 	}
 	if m.status != nil {
 		fields = append(fields, account.FieldStatus)
@@ -4270,6 +4415,10 @@ func (m *AccountMutation) Field(name string) (ent.Value, bool) {
 		return m.Priority()
 	case account.FieldRateMultiplier:
 		return m.RateMultiplier()
+	case account.FieldUserBillingRateMultiplier:
+		return m.UserBillingRateMultiplier()
+	case account.FieldUserBillingModelPricing:
+		return m.UserBillingModelPricing()
 	case account.FieldStatus:
 		return m.Status()
 	case account.FieldErrorMessage:
@@ -4341,6 +4490,10 @@ func (m *AccountMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldPriority(ctx)
 	case account.FieldRateMultiplier:
 		return m.OldRateMultiplier(ctx)
+	case account.FieldUserBillingRateMultiplier:
+		return m.OldUserBillingRateMultiplier(ctx)
+	case account.FieldUserBillingModelPricing:
+		return m.OldUserBillingModelPricing(ctx)
 	case account.FieldStatus:
 		return m.OldStatus(ctx)
 	case account.FieldErrorMessage:
@@ -4487,6 +4640,20 @@ func (m *AccountMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRateMultiplier(v)
 		return nil
+	case account.FieldUserBillingRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserBillingRateMultiplier(v)
+		return nil
+	case account.FieldUserBillingModelPricing:
+		v, ok := value.(jsontext.Value)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserBillingModelPricing(v)
+		return nil
 	case account.FieldStatus:
 		v, ok := value.(string)
 		if !ok {
@@ -4622,6 +4789,9 @@ func (m *AccountMutation) AddedFields() []string {
 	if m.addrate_multiplier != nil {
 		fields = append(fields, account.FieldRateMultiplier)
 	}
+	if m.adduser_billing_rate_multiplier != nil {
+		fields = append(fields, account.FieldUserBillingRateMultiplier)
+	}
 	return fields
 }
 
@@ -4640,6 +4810,8 @@ func (m *AccountMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedPriority()
 	case account.FieldRateMultiplier:
 		return m.AddedRateMultiplier()
+	case account.FieldUserBillingRateMultiplier:
+		return m.AddedUserBillingRateMultiplier()
 	}
 	return nil, false
 }
@@ -4684,6 +4856,13 @@ func (m *AccountMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddRateMultiplier(v)
 		return nil
+	case account.FieldUserBillingRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUserBillingRateMultiplier(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Account numeric field %s", name)
 }
@@ -4706,6 +4885,12 @@ func (m *AccountMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(account.FieldLoadFactor) {
 		fields = append(fields, account.FieldLoadFactor)
+	}
+	if m.FieldCleared(account.FieldUserBillingRateMultiplier) {
+		fields = append(fields, account.FieldUserBillingRateMultiplier)
+	}
+	if m.FieldCleared(account.FieldUserBillingModelPricing) {
+		fields = append(fields, account.FieldUserBillingModelPricing)
 	}
 	if m.FieldCleared(account.FieldErrorMessage) {
 		fields = append(fields, account.FieldErrorMessage)
@@ -4771,6 +4956,12 @@ func (m *AccountMutation) ClearField(name string) error {
 		return nil
 	case account.FieldLoadFactor:
 		m.ClearLoadFactor()
+		return nil
+	case account.FieldUserBillingRateMultiplier:
+		m.ClearUserBillingRateMultiplier()
+		return nil
+	case account.FieldUserBillingModelPricing:
+		m.ClearUserBillingModelPricing()
 		return nil
 	case account.FieldErrorMessage:
 		m.ClearErrorMessage()
@@ -4860,6 +5051,12 @@ func (m *AccountMutation) ResetField(name string) error {
 		return nil
 	case account.FieldRateMultiplier:
 		m.ResetRateMultiplier()
+		return nil
+	case account.FieldUserBillingRateMultiplier:
+		m.ResetUserBillingRateMultiplier()
+		return nil
+	case account.FieldUserBillingModelPricing:
+		m.ResetUserBillingModelPricing()
 		return nil
 	case account.FieldStatus:
 		m.ResetStatus()

@@ -124,6 +124,31 @@ const ModelWhitelistSelectorStub = defineComponent({
   template: '<div data-testid="model-whitelist-selector" />',
 })
 
+const SelectStub = defineComponent({
+  props: {
+    modelValue: {
+      type: [String, Number, Boolean, null],
+      default: '',
+    },
+    options: {
+      type: Array,
+      default: () => [],
+    },
+  },
+  emits: ['update:modelValue'],
+  template: `
+    <select
+      v-bind="$attrs"
+      :value="modelValue"
+      @change="$emit('update:modelValue', $event.target.value)"
+    >
+      <option v-for="option in options" :key="option.value" :value="option.value">
+        {{ option.label }}
+      </option>
+    </select>
+  `,
+})
+
 function mountModal(groups: any[] = []) {
   return mount(CreateAccountModal, {
     props: { show: true, proxies: [], groups },
@@ -132,7 +157,7 @@ function mountModal(groups: any[] = []) {
         BaseDialog: BaseDialogStub,
         OAuthAuthorizationFlow: OAuthAuthorizationFlowStub,
         ConfirmDialog: true,
-        Select: true,
+        Select: SelectStub,
         Icon: true,
         PlatformIcon: true,
         ProxySelector: true,
@@ -160,10 +185,10 @@ async function submitApiKeyAccount(
   await selectButtonByText(wrapper, platform === 'openai' ? 'OpenAI' : 'admin.accounts.claudeConsole')
   if (platform === 'openai') {
     await selectButtonByText(wrapper, 'API Key')
-    ;(wrapper.vm as any).openAIResponsesMode = 'force_responses'
+    await wrapper.get('[data-testid="openai-responses-mode-select"]').setValue('force_responses')
   }
   await wrapper.get('form#create-account-form input[type="text"]').setValue(`${platform} account`)
-  await wrapper.get('form#create-account-form textarea[required]').setValue('test-api-key')
+  await wrapper.get('form#create-account-form').findAll('textarea')[1].setValue('test-api-key')
   if (enableLongContextBilling) {
     await wrapper.get('[data-testid="openai-long-context-billing-toggle"]').trigger('click')
   }
@@ -202,6 +227,28 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     createOpenAICodexPATMock.mockReset().mockResolvedValue({})
   })
 
+  it('submits account-level multiplier only for a new OpenAI API key account', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('[data-testid="openai-responses-mode-select"]').setValue('force_responses')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('priced OpenAI account')
+    await wrapper.get('form#create-account-form').findAll('textarea')[1].setValue('test-api-key')
+    await wrapper.get('[data-testid="account-user-billing-rate-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="account-user-billing-rate-multiplier"]').setValue('1.25')
+
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'openai',
+      type: 'apikey',
+      user_billing_rate_multiplier: 1.25,
+      user_billing_model_pricing: []
+    })
+  })
+
   it('hides only the redundant account toggle when every selected group enables tier pricing', async () => {
     authIsSimpleMode.value = false
     const wrapper = mountModal([
@@ -235,6 +282,23 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(createAccountMock).toHaveBeenCalledTimes(1)
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
+  })
+
+  it('persists credentials for a single API key account', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'admin.accounts.claudeConsole')
+    const textInputs = wrapper.get('form#create-account-form').findAll('input[type="text"]')
+    await textInputs[0].setValue('OpenAI API key account')
+    await textInputs[1].setValue('https://relay.example.com/v1')
+    await wrapper.get('form#create-account-form').findAll('textarea')[1].setValue('test-api-key')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials).toMatchObject({
+      base_url: 'https://relay.example.com/v1',
+      api_key: 'test-api-key'
+    })
   })
 
   // namespace 摊平是仅 OAuth 的兼容开关：API Key 走 chat completions 回退桥时由桥自行摊平
@@ -288,7 +352,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'Kimi')
     await wrapper.get('form#create-account-form input[type="text"]').setValue('Kimi adaptive')
-    await wrapper.get('form#create-account-form textarea[required]').setValue('sk-kimi')
+    await wrapper.get('[data-testid="account-api-key-input"]').setValue('sk-kimi')
 
     await wrapper.get('form#create-account-form').trigger('submit.prevent')
     await flushPromises()
@@ -311,7 +375,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await wrapper
       .get('[data-testid="cn-adaptive-base-url-chat_completions"]')
       .setValue('https://relay.example.com/v1')
-    await wrapper.get('form#create-account-form textarea[required]').setValue('sk-relay')
+    await wrapper.get('[data-testid="account-api-key-input"]').setValue('sk-relay')
 
     expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('syncCredentials')).toMatchObject({
       platform: 'kimi',

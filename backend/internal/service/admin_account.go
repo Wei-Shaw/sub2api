@@ -242,6 +242,17 @@ func cloneAccountValuePointer[T any](value *T) *T {
 	return &cloned
 }
 
+func cloneAccountUserBillingModelPricing(pricing []ChannelModelPricing) []ChannelModelPricing {
+	if len(pricing) == 0 {
+		return nil
+	}
+	cloned := make([]ChannelModelPricing, len(pricing))
+	for i := range pricing {
+		cloned[i] = pricing[i].Clone()
+	}
+	return cloned
+}
+
 // DuplicateAccount creates a paused account from source configuration without carrying first-class
 // runtime state. Credentials and extra configuration are deep-copied so normalization of the new
 // account cannot mutate the in-memory source. Linked credential shadows are excluded because they
@@ -301,22 +312,24 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 		proxyID = source.ProxyFallbackOriginID
 	}
 	input := &CreateAccountInput{
-		Name:                  duplicateAccountName(source.Name),
-		Notes:                 cloneAccountValuePointer(source.Notes),
-		Platform:              source.Platform,
-		Type:                  source.Type,
-		Credentials:           credentials,
-		Extra:                 extra,
-		ProxyID:               cloneAccountValuePointer(proxyID),
-		Concurrency:           source.Concurrency,
-		Priority:              source.Priority,
-		RateMultiplier:        cloneAccountValuePointer(source.RateMultiplier),
-		LoadFactor:            cloneAccountValuePointer(source.LoadFactor),
-		GroupIDs:              groupIDs,
-		ExpiresAt:             expiresAt,
-		AutoPauseOnExpired:    &autoPauseOnExpired,
-		SkipDefaultGroupBind:  true,
-		SkipMixedChannelCheck: true,
+		Name:                      duplicateAccountName(source.Name),
+		Notes:                     cloneAccountValuePointer(source.Notes),
+		Platform:                  source.Platform,
+		Type:                      source.Type,
+		Credentials:               credentials,
+		Extra:                     extra,
+		ProxyID:                   cloneAccountValuePointer(proxyID),
+		Concurrency:               source.Concurrency,
+		Priority:                  source.Priority,
+		RateMultiplier:            cloneAccountValuePointer(source.RateMultiplier),
+		UserBillingRateMultiplier: cloneAccountValuePointer(source.UserBillingRateMultiplier),
+		UserBillingModelPricing:   cloneAccountUserBillingModelPricing(source.UserBillingModelPricing),
+		LoadFactor:                cloneAccountValuePointer(source.LoadFactor),
+		GroupIDs:                  groupIDs,
+		ExpiresAt:                 expiresAt,
+		AutoPauseOnExpired:        &autoPauseOnExpired,
+		SkipDefaultGroupBind:      true,
+		SkipMixedChannelCheck:     true,
 	}
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
@@ -419,17 +432,19 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OllamaCloudUsageSnapshotExtraKey)
 	accountExtra = prepareCodexFingerprintExtraForCreate(input.Platform, input.Type, accountExtra)
 	account := &Account{
-		Name:        input.Name,
-		Notes:       normalizeAccountNotes(input.Notes),
-		Platform:    input.Platform,
-		Type:        input.Type,
-		Credentials: input.Credentials,
-		Extra:       accountExtra,
-		ProxyID:     input.ProxyID,
-		Concurrency: normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
-		Priority:    input.Priority,
-		Status:      StatusActive,
-		Schedulable: true,
+		Name:                      input.Name,
+		Notes:                     normalizeAccountNotes(input.Notes),
+		Platform:                  input.Platform,
+		Type:                      input.Type,
+		Credentials:               input.Credentials,
+		Extra:                     accountExtra,
+		ProxyID:                   input.ProxyID,
+		Concurrency:               normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
+		Priority:                  input.Priority,
+		UserBillingRateMultiplier: input.UserBillingRateMultiplier,
+		UserBillingModelPricing:   input.UserBillingModelPricing,
+		Status:                    StatusActive,
+		Schedulable:               true,
 	}
 	if input.ProbeEnabled != nil && *input.ProbeEnabled {
 		if !isUpstreamBillingProbeAccount(account) {
@@ -472,7 +487,65 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	return account, nil
 }
 
+func normalizeAccountUserBillingModelPricing(platform, accountType string, pricing []ChannelModelPricing) ([]ChannelModelPricing, error) {
+	if len(pricing) == 0 {
+		return nil, nil
+	}
+	if platform != PlatformOpenAI || accountType != AccountTypeAPIKey {
+		return nil, infraerrors.BadRequest(
+			"ACCOUNT_USER_BILLING_PRICING_UNSUPPORTED",
+			"account-level user billing pricing is only supported for OpenAI API key accounts",
+		)
+	}
+	out := make([]ChannelModelPricing, len(pricing))
+	for i := range pricing {
+		out[i] = pricing[i].Clone()
+		out[i].ID = 0
+		out[i].ChannelID = 0
+		out[i].Platform = PlatformOpenAI
+		models := make([]string, 0, len(out[i].Models))
+		for _, model := range out[i].Models {
+			if trimmed := strings.TrimSpace(model); trimmed != "" {
+				models = append(models, trimmed)
+			}
+		}
+		out[i].Models = models
+		if len(models) == 0 {
+			return nil, infraerrors.BadRequest(
+				"ACCOUNT_USER_BILLING_MODELS_REQUIRED",
+				"account-level model pricing entry requires at least one model",
+			)
+		}
+	}
+	if err := validatePricingEntries(out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if input.UserBillingRateMultiplier != nil {
+		if input.Platform != PlatformOpenAI || input.Type != AccountTypeAPIKey {
+			return nil, infraerrors.BadRequest(
+				"ACCOUNT_USER_BILLING_PRICING_UNSUPPORTED",
+				"account-level user billing pricing is only supported for OpenAI API key accounts",
+			)
+		}
+		if *input.UserBillingRateMultiplier <= 0 {
+			return nil, infraerrors.BadRequest(
+				"INVALID_ACCOUNT_USER_BILLING_RATE_MULTIPLIER",
+				"user_billing_rate_multiplier must be greater than 0 when enabled",
+			)
+		}
+	}
+	normalizedUserBillingPricing, err := normalizeAccountUserBillingModelPricing(
+		input.Platform, input.Type, input.UserBillingModelPricing,
+	)
+	if err != nil {
+		return nil, err
+	}
+	input.UserBillingModelPricing = normalizedUserBillingPricing
+
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
 		return nil, err
@@ -567,6 +640,32 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	effectiveType := account.Type
+	if input.Type != "" {
+		effectiveType = input.Type
+	}
+	eligibleForUserBillingPricing := account.Platform == PlatformOpenAI && effectiveType == AccountTypeAPIKey
+	if input.UserBillingRateMultiplier != nil && *input.UserBillingRateMultiplier > 0 && !eligibleForUserBillingPricing {
+		return nil, infraerrors.BadRequest(
+			"ACCOUNT_USER_BILLING_PRICING_UNSUPPORTED",
+			"account-level user billing pricing is only supported for OpenAI API key accounts",
+		)
+	}
+	if input.UserBillingModelPricing != nil && len(*input.UserBillingModelPricing) > 0 && !eligibleForUserBillingPricing {
+		return nil, infraerrors.BadRequest(
+			"ACCOUNT_USER_BILLING_PRICING_UNSUPPORTED",
+			"account-level user billing pricing is only supported for OpenAI API key accounts",
+		)
+	}
+	if input.UserBillingModelPricing != nil {
+		normalizedPricing, normalizePricingErr := normalizeAccountUserBillingModelPricing(
+			account.Platform, effectiveType, *input.UserBillingModelPricing,
+		)
+		if normalizePricingErr != nil {
+			return nil, normalizePricingErr
+		}
+		input.UserBillingModelPricing = &normalizedPricing
+	}
 	var normalizedExtra map[string]any
 	if input.Extra != nil {
 		normalizedExtra, err = normalizeOpenAILongContextBillingUpdateExtra(account, input)
@@ -576,10 +675,6 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		normalizedExtra, err = normalizeGrokMediaEligibilityUpdateExtra(account, input, normalizedExtra)
 		if err != nil {
 			return nil, err
-		}
-		effectiveType := account.Type
-		if input.Type != "" {
-			effectiveType = input.Type
 		}
 		normalizedExtra, err = normalizeOpenAIAutoResetCreditExtra(account.Platform, effectiveType, account.IsShadow(), normalizedExtra)
 		if err != nil {
@@ -785,6 +880,21 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			return nil, ErrUpstreamBillingRateSyncConflict
 		}
 		account.RateMultiplier = input.RateMultiplier
+	}
+	if !eligibleForUserBillingPricing {
+		account.UserBillingRateMultiplier = nil
+		account.UserBillingModelPricing = nil
+	} else {
+		if input.UserBillingRateMultiplier != nil {
+			if *input.UserBillingRateMultiplier <= 0 {
+				account.UserBillingRateMultiplier = nil
+			} else {
+				account.UserBillingRateMultiplier = input.UserBillingRateMultiplier
+			}
+		}
+		if input.UserBillingModelPricing != nil {
+			account.UserBillingModelPricing = *input.UserBillingModelPricing
+		}
 	}
 	if input.LoadFactor != nil {
 		if *input.LoadFactor <= 0 {

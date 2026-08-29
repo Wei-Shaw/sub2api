@@ -64,7 +64,7 @@ func TestCalculateOpenAIRecordUsageCost_EmptyCandidatesIsPricingUnavailable(t *t
 	apiKey := &APIKey{Group: &Group{ID: 1, Platform: PlatformKimi}}
 
 	_, err := svc.calculateOpenAIRecordUsageCost(
-		context.Background(), nil, apiKey, nil,
+		context.Background(), nil, apiKey, nil, nil,
 		1.0, 1.0, 1.0, 1.0, UsageTokens{InputTokens: 100}, "", nil, time.Time{},
 	)
 	require.Error(t, err)

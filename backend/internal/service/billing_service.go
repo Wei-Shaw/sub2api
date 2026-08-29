@@ -1162,6 +1162,7 @@ type CostInput struct {
 	Model                     string
 	GroupID                   *int64 // 用于渠道定价查找
 	Group                     *Group
+	Account                   *Account
 	Tokens                    UsageTokens
 	RequestCount              int     // 按次计费时使用
 	UsageUnits                float64 // 音频等连续计量单位（分钟/小时/百万字符）
@@ -1200,6 +1201,7 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 			Model:   input.Model,
 			GroupID: input.GroupID,
 			Group:   input.Group,
+			Account: input.Account,
 		})
 	}
 

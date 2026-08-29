@@ -1593,6 +1593,12 @@
           </div>
         </div>
       </div>
+      <AccountUserBillingPricingCard
+        v-if="account?.platform === 'openai' && account?.type === 'apikey'"
+        v-model:rate-enabled="userBillingRateEnabled"
+        v-model:rate-multiplier="userBillingRateMultiplier"
+        v-model:model-pricing="userBillingModelPricing"
+      />
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
         <input v-model="expiresAtInput" type="datetime-local" class="input" />
@@ -2853,6 +2859,15 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import {
+  apiIntervalsToForm,
+  apiTimePricingToForm,
+  formIntervalsToAPI,
+  formTimePricingToAPI,
+  mTokToPerToken,
+  perTokenToMTok,
+  type PricingFormEntry
+} from '@/components/admin/channel/types'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type {
   Account,
@@ -2877,6 +2892,7 @@ import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import AccountUserBillingPricingCard from '@/components/account/AccountUserBillingPricingCard.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
 import {
   applyAntigravityProjectID,
@@ -3553,6 +3569,10 @@ const form = reactive({
   expires_at: null as number | null
 })
 
+const userBillingRateEnabled = ref(false)
+const userBillingRateMultiplier = ref<number | null>(null)
+const userBillingModelPricing = ref<PricingFormEntry[]>([])
+
 const handleUpstreamBillingRateSyncChange = (enabled: boolean) => {
   upstreamBillingRateSyncEnabled.value = enabled
   if (enabled) {
@@ -3667,6 +3687,23 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   form.load_factor = newAccount.load_factor ?? null
   form.priority = newAccount.priority
   form.rate_multiplier = newAccount.rate_multiplier ?? 1
+  userBillingRateEnabled.value = newAccount.user_billing_rate_multiplier != null
+  userBillingRateMultiplier.value = newAccount.user_billing_rate_multiplier ?? null
+  userBillingModelPricing.value = (newAccount.user_billing_model_pricing || []).map(entry => ({
+    models: [...entry.models],
+    billing_mode: entry.billing_mode,
+    input_price: perTokenToMTok(entry.input_price),
+    output_price: perTokenToMTok(entry.output_price),
+    cache_write_price: perTokenToMTok(entry.cache_write_price),
+    cache_read_price: perTokenToMTok(entry.cache_read_price),
+    fast_multiplier: entry.fast_multiplier ?? null,
+    flex_multiplier: entry.flex_multiplier ?? null,
+    image_input_price: perTokenToMTok(entry.image_input_price),
+    image_output_price: perTokenToMTok(entry.image_output_price),
+    per_request_price: entry.per_request_price,
+    intervals: apiIntervalsToForm(entry.intervals || []),
+    time_pricing: apiTimePricingToForm(entry.time_pricing)
+  }))
   form.status = (newAccount.status === 'active' || newAccount.status === 'inactive' || newAccount.status === 'error')
     ? newAccount.status
     : 'active'
@@ -4590,12 +4627,54 @@ const submitUpdateAccount = async (accountID: number, updatePayload: Record<stri
   }
 }
 
+const serializeUserBillingModelPricing = () => userBillingModelPricing.value.map(entry => ({
+  platform: 'openai',
+  models: entry.models.map(model => model.trim()).filter(Boolean),
+  billing_mode: entry.billing_mode,
+  input_price: mTokToPerToken(entry.input_price),
+  output_price: mTokToPerToken(entry.output_price),
+  cache_write_price: mTokToPerToken(entry.cache_write_price),
+  cache_read_price: mTokToPerToken(entry.cache_read_price),
+  fast_multiplier: entry.fast_multiplier == null || entry.fast_multiplier === ''
+    ? null
+    : Number(entry.fast_multiplier),
+  flex_multiplier: entry.flex_multiplier == null || entry.flex_multiplier === ''
+    ? null
+    : Number(entry.flex_multiplier),
+  image_input_price: mTokToPerToken(entry.image_input_price),
+  image_output_price: mTokToPerToken(entry.image_output_price),
+  per_request_price: entry.per_request_price == null || entry.per_request_price === ''
+    ? null
+    : Number(entry.per_request_price),
+  intervals: formIntervalsToAPI(entry.intervals),
+  time_pricing: formTimePricingToAPI(entry.time_pricing)
+}))
+
 const handleSubmit = async () => {
   if (!props.account) return
   const accountID = props.account.id
 
   if (form.status !== 'active' && form.status !== 'inactive' && form.status !== 'error') {
     appStore.showError(t('admin.accounts.pleaseSelectStatus'))
+    return
+  }
+  const userBillingPricingEligible =
+    props.account.platform === 'openai' && props.account.type === 'apikey'
+  if (
+    userBillingPricingEligible &&
+    userBillingRateEnabled.value &&
+    (userBillingRateMultiplier.value == null ||
+      !Number.isFinite(userBillingRateMultiplier.value) ||
+      userBillingRateMultiplier.value <= 0)
+  ) {
+    appStore.showError(t('admin.accounts.userBillingPricing.multiplierRequired'))
+    return
+  }
+  if (
+    userBillingPricingEligible &&
+    userBillingModelPricing.value.some(entry => entry.models.every(model => !model.trim()))
+  ) {
+    appStore.showError(t('admin.accounts.userBillingPricing.modelRequired'))
     return
   }
 	if (autoResetCreditEnabled.value) {
@@ -4607,6 +4686,13 @@ const handleSubmit = async () => {
 	}
 
   const updatePayload: Record<string, unknown> = { ...form }
+  if (userBillingPricingEligible) {
+    updatePayload.user_billing_rate_multiplier =
+      userBillingRateEnabled.value && userBillingRateMultiplier.value != null
+        ? userBillingRateMultiplier.value
+        : 0
+    updatePayload.user_billing_model_pricing = serializeUserBillingModelPricing()
+  }
   try {
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
     if (updatePayload.proxy_id === null) {

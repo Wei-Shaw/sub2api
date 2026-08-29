@@ -793,7 +793,7 @@ export default {
         name: '名称',
         id: 'ID',
         platform: '平台',
-        rateMultiplier: '费率倍数',
+        rateMultiplier: '用户价格倍率',
         rpmOverride: 'RPM 覆盖',
         rpmOverrideHint: '该用户在此分组的 RPM 上限；留空 = 使用分组默认；0 = 不限制',
         rateDefault: '默认',
@@ -831,8 +831,8 @@ export default {
         namePlaceholder: '请输入分组名称',
         descriptionLabel: '描述',
         descriptionPlaceholder: '请输入描述（可选）',
-        rateMultiplierLabel: '费率倍数',
-        rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
+        rateMultiplierLabel: '用户价格倍率',
+        rateMultiplierHint: '作用于模型基础价的用户扣费倍率；1.0 = 基础价，0.5 = 半价，2.0 = 两倍价格。它不是账号成本倍率。',
         rpmLimit: '每分钟请求数 (RPM)',
         rpmLimitPlaceholder: '0 表示不限制',
         rpmLimitHint: '每用户在本分组每分钟最大请求数，0 = 不限制；一旦设置即接管该用户的限流（覆盖用户级 rpm_limit）',
@@ -880,7 +880,7 @@ export default {
         exampleContent:
           '公开分组费率 0.8，您可以创建一个费率 0.7 的专属分组，手动分配给 VIP 用户，让他们享受更优惠的价格。'
       },
-      rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
+      rateMultiplierHint: '用户扣费倍率：基础模型费用 × 有效倍率。1.0 = 基础价，0.5 = 半价，2.0 = 两倍价格；账号成本倍率单独配置。',
       platforms: {
         all: '全部平台',
         anthropic: 'Anthropic',
@@ -908,9 +908,9 @@ export default {
       exclusiveFilter: '专属',
       nonExclusive: '公开',
       public: '公开',
-      rateAndAccounts: '{rate}x 费率 · {count} 个账号',
+      rateAndAccounts: '{rate}x 用户价格倍率 · {count} 个账号',
       accountsCount: '{count} 个账号',
-      rateLabel: '倍率',
+      rateLabel: '用户价格倍率',
       accountFilters: {
         title: '账号过滤控制',
         oauthOnly: '仅允许 OAuth 账号',
@@ -936,9 +936,9 @@ export default {
       failedToCreate: '创建分组失败',
       failedToUpdate: '更新分组失败',
       nameRequired: '请输入分组名称',
-      rateMultipliers: '专属倍率',
-      rateMultipliersTitle: '分组专属倍率管理',
-      addUserRate: '添加用户专属倍率',
+      rateMultipliers: '用户专属价格倍率',
+      rateMultipliersTitle: '用户专属价格倍率管理',
+      addUserRate: '添加用户专属价格倍率',
       rpmOverrides: '专属 RPM',
       rpmOverridesTitle: '分组专属 RPM 管理',
       addUserRpm: '添加用户专属 RPM',
@@ -1015,9 +1015,9 @@ export default {
       },
       modelPricing: {
         title: '分组逐模型定价',
-        description: '匹配模型后覆盖渠道和内置价格。长上下文阶梯沿用官方/预设价卡，无需再手填区间。音频可用按次层级配置 realtime、tts、stt。',
-        longContext: '启用长上下文阶梯定价',
-        longContextHint: '勾选后按渠道区间或官方预设阶梯计费；关闭后默认按第一档，账号显式开启时除外。',
+        description: '这里配置模型基础价覆盖；匹配后优先于渠道和默认价格表。最终用户扣费还会应用用户有效倍率及适用的服务等级/分时因素。长上下文区间由渠道或官方预设提供。',
+        longContext: '启用长上下文价格档',
+        longContextHint: '开启后按上下文数量选择渠道区间或官方预设价格档；关闭后通常按基础档。区间价格已包含该档差异，不会再额外重复乘长上下文倍率。',
         add: '添加模型价格'
       },
       voicePricing: {

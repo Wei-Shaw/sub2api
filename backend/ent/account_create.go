@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"time"
@@ -192,6 +193,26 @@ func (_c *AccountCreate) SetNillableRateMultiplier(v *float64) *AccountCreate {
 	if v != nil {
 		_c.SetRateMultiplier(*v)
 	}
+	return _c
+}
+
+// SetUserBillingRateMultiplier sets the "user_billing_rate_multiplier" field.
+func (_c *AccountCreate) SetUserBillingRateMultiplier(v float64) *AccountCreate {
+	_c.mutation.SetUserBillingRateMultiplier(v)
+	return _c
+}
+
+// SetNillableUserBillingRateMultiplier sets the "user_billing_rate_multiplier" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableUserBillingRateMultiplier(v *float64) *AccountCreate {
+	if v != nil {
+		_c.SetUserBillingRateMultiplier(*v)
+	}
+	return _c
+}
+
+// SetUserBillingModelPricing sets the "user_billing_model_pricing" field.
+func (_c *AccountCreate) SetUserBillingModelPricing(v jsontext.Value) *AccountCreate {
+	_c.mutation.SetUserBillingModelPricing(v)
 	return _c
 }
 
@@ -741,6 +762,14 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 		_spec.SetField(account.FieldRateMultiplier, field.TypeFloat64, value)
 		_node.RateMultiplier = value
 	}
+	if value, ok := _c.mutation.UserBillingRateMultiplier(); ok {
+		_spec.SetField(account.FieldUserBillingRateMultiplier, field.TypeFloat64, value)
+		_node.UserBillingRateMultiplier = &value
+	}
+	if value, ok := _c.mutation.UserBillingModelPricing(); ok {
+		_spec.SetField(account.FieldUserBillingModelPricing, field.TypeJSON, value)
+		_node.UserBillingModelPricing = value
+	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(account.FieldStatus, field.TypeString, value)
 		_node.Status = value
@@ -1164,6 +1193,48 @@ func (u *AccountUpsert) UpdateRateMultiplier() *AccountUpsert {
 // AddRateMultiplier adds v to the "rate_multiplier" field.
 func (u *AccountUpsert) AddRateMultiplier(v float64) *AccountUpsert {
 	u.Add(account.FieldRateMultiplier, v)
+	return u
+}
+
+// SetUserBillingRateMultiplier sets the "user_billing_rate_multiplier" field.
+func (u *AccountUpsert) SetUserBillingRateMultiplier(v float64) *AccountUpsert {
+	u.Set(account.FieldUserBillingRateMultiplier, v)
+	return u
+}
+
+// UpdateUserBillingRateMultiplier sets the "user_billing_rate_multiplier" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateUserBillingRateMultiplier() *AccountUpsert {
+	u.SetExcluded(account.FieldUserBillingRateMultiplier)
+	return u
+}
+
+// AddUserBillingRateMultiplier adds v to the "user_billing_rate_multiplier" field.
+func (u *AccountUpsert) AddUserBillingRateMultiplier(v float64) *AccountUpsert {
+	u.Add(account.FieldUserBillingRateMultiplier, v)
+	return u
+}
+
+// ClearUserBillingRateMultiplier clears the value of the "user_billing_rate_multiplier" field.
+func (u *AccountUpsert) ClearUserBillingRateMultiplier() *AccountUpsert {
+	u.SetNull(account.FieldUserBillingRateMultiplier)
+	return u
+}
+
+// SetUserBillingModelPricing sets the "user_billing_model_pricing" field.
+func (u *AccountUpsert) SetUserBillingModelPricing(v jsontext.Value) *AccountUpsert {
+	u.Set(account.FieldUserBillingModelPricing, v)
+	return u
+}
+
+// UpdateUserBillingModelPricing sets the "user_billing_model_pricing" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateUserBillingModelPricing() *AccountUpsert {
+	u.SetExcluded(account.FieldUserBillingModelPricing)
+	return u
+}
+
+// ClearUserBillingModelPricing clears the value of the "user_billing_model_pricing" field.
+func (u *AccountUpsert) ClearUserBillingModelPricing() *AccountUpsert {
+	u.SetNull(account.FieldUserBillingModelPricing)
 	return u
 }
 
@@ -1739,6 +1810,55 @@ func (u *AccountUpsertOne) AddRateMultiplier(v float64) *AccountUpsertOne {
 func (u *AccountUpsertOne) UpdateRateMultiplier() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetUserBillingRateMultiplier sets the "user_billing_rate_multiplier" field.
+func (u *AccountUpsertOne) SetUserBillingRateMultiplier(v float64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetUserBillingRateMultiplier(v)
+	})
+}
+
+// AddUserBillingRateMultiplier adds v to the "user_billing_rate_multiplier" field.
+func (u *AccountUpsertOne) AddUserBillingRateMultiplier(v float64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddUserBillingRateMultiplier(v)
+	})
+}
+
+// UpdateUserBillingRateMultiplier sets the "user_billing_rate_multiplier" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateUserBillingRateMultiplier() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateUserBillingRateMultiplier()
+	})
+}
+
+// ClearUserBillingRateMultiplier clears the value of the "user_billing_rate_multiplier" field.
+func (u *AccountUpsertOne) ClearUserBillingRateMultiplier() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearUserBillingRateMultiplier()
+	})
+}
+
+// SetUserBillingModelPricing sets the "user_billing_model_pricing" field.
+func (u *AccountUpsertOne) SetUserBillingModelPricing(v jsontext.Value) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetUserBillingModelPricing(v)
+	})
+}
+
+// UpdateUserBillingModelPricing sets the "user_billing_model_pricing" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateUserBillingModelPricing() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateUserBillingModelPricing()
+	})
+}
+
+// ClearUserBillingModelPricing clears the value of the "user_billing_model_pricing" field.
+func (u *AccountUpsertOne) ClearUserBillingModelPricing() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearUserBillingModelPricing()
 	})
 }
 
@@ -2524,6 +2644,55 @@ func (u *AccountUpsertBulk) AddRateMultiplier(v float64) *AccountUpsertBulk {
 func (u *AccountUpsertBulk) UpdateRateMultiplier() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetUserBillingRateMultiplier sets the "user_billing_rate_multiplier" field.
+func (u *AccountUpsertBulk) SetUserBillingRateMultiplier(v float64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetUserBillingRateMultiplier(v)
+	})
+}
+
+// AddUserBillingRateMultiplier adds v to the "user_billing_rate_multiplier" field.
+func (u *AccountUpsertBulk) AddUserBillingRateMultiplier(v float64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddUserBillingRateMultiplier(v)
+	})
+}
+
+// UpdateUserBillingRateMultiplier sets the "user_billing_rate_multiplier" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateUserBillingRateMultiplier() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateUserBillingRateMultiplier()
+	})
+}
+
+// ClearUserBillingRateMultiplier clears the value of the "user_billing_rate_multiplier" field.
+func (u *AccountUpsertBulk) ClearUserBillingRateMultiplier() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearUserBillingRateMultiplier()
+	})
+}
+
+// SetUserBillingModelPricing sets the "user_billing_model_pricing" field.
+func (u *AccountUpsertBulk) SetUserBillingModelPricing(v jsontext.Value) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetUserBillingModelPricing(v)
+	})
+}
+
+// UpdateUserBillingModelPricing sets the "user_billing_model_pricing" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateUserBillingModelPricing() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateUserBillingModelPricing()
+	})
+}
+
+// ClearUserBillingModelPricing clears the value of the "user_billing_model_pricing" field.
+func (u *AccountUpsertBulk) ClearUserBillingModelPricing() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearUserBillingModelPricing()
 	})
 }
 

@@ -125,6 +125,20 @@ type openAIProfitControlGate struct {
 	threshold float64
 	// pricingAt 是本请求的统一定价时刻（D 侧）。
 	pricingAt time.Time
+	// accountPricingAware 表示该门保存了账号级用户倍率所需的计算因子。
+	// 旧测试或旧调用方手工构造的 gate 保持 false，继续使用 threshold。
+	accountPricingAware bool
+	groupRate           UserGroupRateResolution
+	peakMultiplier      float64
+	marginFactor        float64
+}
+
+func (g *openAIProfitControlGate) thresholdForAccount(account *Account) float64 {
+	if g == nil || !g.accountPricingAware || account == nil || g.groupRate.UserOverride {
+		return g.threshold
+	}
+	downstream := resolveAccountUserBillingMultiplier(account, g.groupRate)
+	return clampProfitControlThreshold(downstream * g.peakMultiplier * g.marginFactor)
 }
 
 // WithOpenAIRequestPricingContext 在请求开始处装配请求级定价上下文：固定
@@ -253,19 +267,25 @@ func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Contex
 	if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) {
 		billingGroup = ctxGroup
 	}
-	downstream := billingGroup.RateMultiplier
+	groupRate := UserGroupRateResolution{Multiplier: billingGroup.RateMultiplier}
 	if userID, _ := ctx.Value(ctxkey.UserID).(int64); userID > 0 {
-		downstream = s.ResolveUserGroupRateMultiplier(ctx, userID, billingGroup.ID, billingGroup.RateMultiplier)
+		groupRate = s.resolveUserGroupRate(ctx, userID, billingGroup.ID, billingGroup.RateMultiplier)
 	}
-	downstream *= billingGroup.PeakMultiplierAt(pricingAt)
+	peakMultiplier := billingGroup.PeakMultiplierAt(pricingAt)
+	downstream := groupRate.Multiplier * peakMultiplier
 
 	deduction := group.ProfitMinMargin + group.ProfitSafetyBuffer
-	threshold := clampProfitControlThreshold(downstream * (1 - deduction))
+	marginFactor := 1 - deduction
+	threshold := clampProfitControlThreshold(downstream * marginFactor)
 	return &openAIProfitControlGate{
-		groupID:   *groupID,
-		platform:  group.Platform,
-		threshold: threshold,
-		pricingAt: pricingAt,
+		groupID:             *groupID,
+		platform:            group.Platform,
+		threshold:           threshold,
+		pricingAt:           pricingAt,
+		accountPricingAware: true,
+		groupRate:           groupRate,
+		peakMultiplier:      peakMultiplier,
+		marginFactor:        marginFactor,
 	}
 }
 
@@ -308,12 +328,14 @@ func openAIProfitControlVetoReason(ctx context.Context, account *Account) (bool,
 		math.IsNaN(*account.RateMultiplier) ||
 		math.IsInf(*account.RateMultiplier, 0) ||
 		*account.RateMultiplier < 0 {
-		openAIProfitControlObserverInstance.recordVeto(gate.groupID, gate.platform, gate.threshold, openAIProfitFilterReasonInvalidAccountRate)
+		threshold := gate.thresholdForAccount(account)
+		openAIProfitControlObserverInstance.recordVeto(gate.groupID, gate.platform, threshold, openAIProfitFilterReasonInvalidAccountRate)
 		return true, openAIProfitFilterReasonInvalidAccountRate
 	}
 	upstream := *account.RateMultiplier
-	if profitControlOverThreshold(upstream, gate.threshold) {
-		openAIProfitControlObserverInstance.recordVeto(gate.groupID, gate.platform, gate.threshold, openAIProfitFilterReasonThreshold)
+	threshold := gate.thresholdForAccount(account)
+	if profitControlOverThreshold(upstream, threshold) {
+		openAIProfitControlObserverInstance.recordVeto(gate.groupID, gate.platform, threshold, openAIProfitFilterReasonThreshold)
 		return true, openAIProfitFilterReasonThreshold
 	}
 	return false, ""

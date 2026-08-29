@@ -15,6 +15,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -137,6 +139,11 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 		return service.ErrAccountNilInput
 	}
 
+	userBillingModelPricing, err := json.Marshal(account.UserBillingModelPricing)
+	if err != nil {
+		return fmt.Errorf("marshal account user billing model pricing: %w", err)
+	}
+
 	builder := client.Account.Create().
 		SetName(account.Name).
 		SetNillableNotes(account.Notes).
@@ -153,6 +160,12 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 
 	if account.RateMultiplier != nil {
 		builder.SetRateMultiplier(*account.RateMultiplier)
+	}
+	if account.UserBillingRateMultiplier != nil {
+		builder.SetUserBillingRateMultiplier(*account.UserBillingRateMultiplier)
+	}
+	if len(account.UserBillingModelPricing) > 0 {
+		builder.SetUserBillingModelPricing(userBillingModelPricing)
 	}
 	if account.LoadFactor != nil {
 		builder.SetLoadFactor(*account.LoadFactor)
@@ -526,6 +539,11 @@ func (r *accountRepository) updateLockedAccount(
 		schedulable = false
 	}
 
+	userBillingModelPricing, err := json.Marshal(account.UserBillingModelPricing)
+	if err != nil {
+		return nil, fmt.Errorf("marshal account user billing model pricing: %w", err)
+	}
+
 	builder := client.Account.UpdateOneID(account.ID).
 		SetName(account.Name).
 		SetNillableNotes(account.Notes).
@@ -542,6 +560,16 @@ func (r *accountRepository) updateLockedAccount(
 
 	if explicitRateMultiplier != nil {
 		builder.SetRateMultiplier(*explicitRateMultiplier)
+	}
+	if account.UserBillingRateMultiplier != nil {
+		builder.SetUserBillingRateMultiplier(*account.UserBillingRateMultiplier)
+	} else {
+		builder.ClearUserBillingRateMultiplier()
+	}
+	if len(account.UserBillingModelPricing) > 0 {
+		builder.SetUserBillingModelPricing(userBillingModelPricing)
+	} else {
+		builder.ClearUserBillingModelPricing()
 	}
 	if account.LoadFactor != nil {
 		builder.SetLoadFactor(*account.LoadFactor)
@@ -3367,39 +3395,49 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 	}
 
 	rateMultiplier := m.RateMultiplier
+	var userBillingModelPricing []service.ChannelModelPricing
+	if len(m.UserBillingModelPricing) > 0 {
+		if err := json.Unmarshal(m.UserBillingModelPricing, &userBillingModelPricing); err != nil {
+			slog.Warn("account user_billing_model_pricing unmarshal failed; falling back to legacy pricing",
+				"account_id", m.ID, "error", err)
+			userBillingModelPricing = nil
+		}
+	}
 
 	return &service.Account{
-		ID:                      m.ID,
-		Name:                    m.Name,
-		Notes:                   m.Notes,
-		Platform:                m.Platform,
-		Type:                    m.Type,
-		Credentials:             copyJSONMap(m.Credentials),
-		Extra:                   copyJSONMap(m.Extra),
-		ProxyID:                 m.ProxyID,
-		ProxyFallbackOriginID:   m.ProxyFallbackOriginID,
-		Concurrency:             m.Concurrency,
-		Priority:                m.Priority,
-		RateMultiplier:          &rateMultiplier,
-		LoadFactor:              m.LoadFactor,
-		Status:                  m.Status,
-		ErrorMessage:            derefString(m.ErrorMessage),
-		LastUsedAt:              m.LastUsedAt,
-		ExpiresAt:               m.ExpiresAt,
-		AutoPauseOnExpired:      m.AutoPauseOnExpired,
-		CreatedAt:               m.CreatedAt,
-		UpdatedAt:               m.UpdatedAt,
-		Schedulable:             m.Schedulable,
-		RateLimitedAt:           m.RateLimitedAt,
-		RateLimitResetAt:        m.RateLimitResetAt,
-		OverloadUntil:           m.OverloadUntil,
-		TempUnschedulableUntil:  m.TempUnschedulableUntil,
-		TempUnschedulableReason: derefString(m.TempUnschedulableReason),
-		SessionWindowStart:      m.SessionWindowStart,
-		SessionWindowEnd:        m.SessionWindowEnd,
-		SessionWindowStatus:     derefString(m.SessionWindowStatus),
-		ParentAccountID:         m.ParentAccountID,
-		QuotaDimension:          string(m.QuotaDimension),
+		ID:                        m.ID,
+		Name:                      m.Name,
+		Notes:                     m.Notes,
+		Platform:                  m.Platform,
+		Type:                      m.Type,
+		Credentials:               copyJSONMap(m.Credentials),
+		Extra:                     copyJSONMap(m.Extra),
+		ProxyID:                   m.ProxyID,
+		ProxyFallbackOriginID:     m.ProxyFallbackOriginID,
+		Concurrency:               m.Concurrency,
+		Priority:                  m.Priority,
+		RateMultiplier:            &rateMultiplier,
+		UserBillingRateMultiplier: m.UserBillingRateMultiplier,
+		UserBillingModelPricing:   userBillingModelPricing,
+		LoadFactor:                m.LoadFactor,
+		Status:                    m.Status,
+		ErrorMessage:              derefString(m.ErrorMessage),
+		LastUsedAt:                m.LastUsedAt,
+		ExpiresAt:                 m.ExpiresAt,
+		AutoPauseOnExpired:        m.AutoPauseOnExpired,
+		CreatedAt:                 m.CreatedAt,
+		UpdatedAt:                 m.UpdatedAt,
+		Schedulable:               m.Schedulable,
+		RateLimitedAt:             m.RateLimitedAt,
+		RateLimitResetAt:          m.RateLimitResetAt,
+		OverloadUntil:             m.OverloadUntil,
+		TempUnschedulableUntil:    m.TempUnschedulableUntil,
+		TempUnschedulableReason:   derefString(m.TempUnschedulableReason),
+		SessionWindowStart:        m.SessionWindowStart,
+		SessionWindowEnd:          m.SessionWindowEnd,
+		SessionWindowStatus:       derefString(m.SessionWindowStatus),
+		ParentAccountID:           m.ParentAccountID,
+		QuotaDimension:            string(m.QuotaDimension),
 	}
 }
 

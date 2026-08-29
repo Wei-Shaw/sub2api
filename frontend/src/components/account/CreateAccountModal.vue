@@ -1300,6 +1300,7 @@
             rows="4"
             required
             class="input min-h-28 resize-y font-mono"
+            data-testid="account-api-key-input"
             :placeholder="apiKeyValuePlaceholder"
           ></textarea>
           <p v-if="form.platform === 'openai'" class="input-hint">每行输入一个 API Key，可批量创建 OpenAI 账号。</p>
@@ -2922,6 +2923,12 @@
           <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') }}</p>
         </div>
       </div>
+      <AccountUserBillingPricingCard
+        v-if="form.platform === 'openai' && accountCategory === 'apikey'"
+        v-model:rate-enabled="userBillingRateEnabled"
+        v-model:rate-multiplier="userBillingRateMultiplier"
+        v-model:model-pricing="userBillingModelPricing"
+      />
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
         <input v-model="expiresAtInput" type="datetime-local" class="input" />
@@ -3738,6 +3745,12 @@ import {
 } from '@/composables/useModelWhitelist'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import {
+  formIntervalsToAPI,
+  formTimePricingToAPI,
+  mTokToPerToken,
+  type PricingFormEntry
+} from '@/components/admin/channel/types'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
   useAccountOAuth,
@@ -3774,6 +3787,7 @@ import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import AccountUserBillingPricingCard from '@/components/account/AccountUserBillingPricingCard.vue'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import {
   applyAntigravityProjectID,
@@ -4475,6 +4489,10 @@ const form = reactive({
   expires_at: null as number | null
 })
 
+const userBillingRateEnabled = ref(false)
+const userBillingRateMultiplier = ref<number | null>(null)
+const userBillingModelPricing = ref<PricingFormEntry[]>([])
+
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
   // Antigravity upstream 类型不需要 OAuth 流程
@@ -4978,13 +4996,51 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
   }
 }
 
+const withAccountUserBillingPricing = (payload: CreateAccountRequest): CreateAccountRequest => {
+  if (payload.platform !== 'openai' || payload.type !== 'apikey') {
+    return payload
+  }
+  return {
+    ...payload,
+    user_billing_rate_multiplier:
+      userBillingRateEnabled.value && userBillingRateMultiplier.value != null
+        ? userBillingRateMultiplier.value
+        : undefined,
+    user_billing_model_pricing: serializeUserBillingModelPricing()
+  }
+}
+
+const serializeUserBillingModelPricing = () => userBillingModelPricing.value.map(entry => ({
+  platform: 'openai',
+  models: entry.models.map(model => model.trim()).filter(Boolean),
+  billing_mode: entry.billing_mode,
+  input_price: mTokToPerToken(entry.input_price),
+  output_price: mTokToPerToken(entry.output_price),
+  cache_write_price: mTokToPerToken(entry.cache_write_price),
+  cache_read_price: mTokToPerToken(entry.cache_read_price),
+  fast_multiplier: entry.fast_multiplier == null || entry.fast_multiplier === ''
+    ? null
+    : Number(entry.fast_multiplier),
+  flex_multiplier: entry.flex_multiplier == null || entry.flex_multiplier === ''
+    ? null
+    : Number(entry.flex_multiplier),
+  image_input_price: mTokToPerToken(entry.image_input_price),
+  image_output_price: mTokToPerToken(entry.image_output_price),
+  per_request_price: entry.per_request_price == null || entry.per_request_price === ''
+    ? null
+    : Number(entry.per_request_price),
+  intervals: formIntervalsToAPI(entry.intervals),
+  time_pricing: formTimePricingToAPI(entry.time_pricing)
+}))
+
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
+  const finalPayload = withAccountUserBillingPricing(payload)
   submitting.value = true
   try {
-    const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(finalPayload))
     if (
-      payload.type === 'apikey' &&
-      payload.upstream_billing_probe_enabled === true
+      finalPayload.type === 'apikey' &&
+      finalPayload.upstream_billing_probe_enabled === true
     ) {
       try {
         await adminAPI.accounts.probeUpstreamBilling(account.id)
@@ -5025,6 +5081,9 @@ const resetForm = () => {
   form.load_factor = null
   form.priority = 1
   form.rate_multiplier = 1
+  userBillingRateEnabled.value = false
+  userBillingRateMultiplier.value = null
+  userBillingModelPricing.value = []
   form.group_ids = []
   form.expires_at = null
   accountCategory.value = 'oauth-based'
@@ -5263,6 +5322,11 @@ const doCreateOpenAIApiKeyBatch = async (
     load_factor: form.load_factor ?? undefined,
     priority: form.priority,
     rate_multiplier: form.rate_multiplier,
+    user_billing_rate_multiplier:
+      userBillingRateEnabled.value && userBillingRateMultiplier.value != null
+        ? userBillingRateMultiplier.value
+        : undefined,
+    user_billing_model_pricing: serializeUserBillingModelPricing(),
     group_ids: form.group_ids,
     expires_at: form.expires_at,
     upstream_billing_probe_enabled: upstreamBillingAutoProbeEnabled.value,
@@ -5527,6 +5591,25 @@ const handleSubmit = async () => {
   }
 
   // For apikey type, create directly
+  if (
+    form.platform === 'openai' &&
+    accountCategory.value === 'apikey' &&
+    userBillingRateEnabled.value &&
+    (userBillingRateMultiplier.value == null ||
+      !Number.isFinite(userBillingRateMultiplier.value) ||
+      userBillingRateMultiplier.value <= 0)
+  ) {
+    appStore.showError(t('admin.accounts.userBillingPricing.multiplierRequired'))
+    return
+  }
+  if (
+    form.platform === 'openai' &&
+    accountCategory.value === 'apikey' &&
+    userBillingModelPricing.value.some(entry => entry.models.every(model => !model.trim()))
+  ) {
+    appStore.showError(t('admin.accounts.userBillingPricing.modelRequired'))
+    return
+  }
   if (form.platform === 'openai' && accountCategory.value === 'apikey' && !openAIResponsesMode.value) {
     appStore.showError(t('admin.accounts.openai.responsesModeRequired'))
     return
