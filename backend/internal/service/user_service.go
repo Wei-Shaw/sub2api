@@ -115,6 +115,8 @@ type UserUpdateFields struct {
 	AllowedGroups bool
 	// AllowedAccounts 为 true 时才同步 user_allowed_accounts 关联表。
 	AllowedAccounts bool
+	// RestrictPublicGroups 覆盖 restrict_public_groups 列。
+	RestrictPublicGroups bool
 }
 
 // BalanceChange 记录一次余额变更前后的值。

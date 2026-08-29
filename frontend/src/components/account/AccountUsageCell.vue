@@ -1565,8 +1565,6 @@ const quotaTotalBar = computed((): QuotaBarInfo | null => {
 const handleQuotaResetAccountUpdated = (account: Account) => {
   // The reset response already carries authoritative quota and account data.
   // Avoid turning the parent patch into a second automatic /usage request.
-  // The suppression is time-boxed so an unhandled emit (parent that ignores
-  // account-updated) cannot latch it and swallow a later, unrelated refresh.
   suppressOpenAIUsageRefreshUntil.value = Date.now() + SUPPRESS_USAGE_REFRESH_WINDOW_MS
   emit('account-updated', account)
 }

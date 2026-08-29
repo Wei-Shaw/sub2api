@@ -139,16 +139,17 @@ type AdminService interface {
 
 // CreateUserInput represents input for creating a new user via admin operations.
 type CreateUserInput struct {
-	Email           string
-	Password        string
-	Username        string
-	Notes           string
-	Role            string // 空字符串表示使用默认角色(user);合法值 admin/user/usage_viewer
-	Balance         *float64
-	Concurrency     int
-	RPMLimit        int
-	AllowedGroups   []int64
-	AllowedAccounts []int64
+	Email                string
+	Password             string
+	Username             string
+	Notes                string
+	Role                 string // 空字符串表示使用默认角色(user);合法值 admin/user/usage_viewer
+	Balance              *float64
+	Concurrency          int
+	RPMLimit             int
+	AllowedGroups        []int64
+	AllowedAccounts      []int64
+	RestrictPublicGroups bool
 	// ActorAdminID 执行本次操作的管理员ID(来自JWT)，仅用于权限敏感操作的审计日志。
 	ActorAdminID int64
 }
@@ -165,6 +166,8 @@ type UpdateUserInput struct {
 	Status          string
 	AllowedGroups   *[]int64 // 使用指针区分"未提供"和"设置为空数组"
 	AllowedAccounts *[]int64 // usage_viewer 可查看账号 ID，nil 表示未提供
+	// RestrictPublicGroups 指针区分"未提供"和"显式开关"。
+	RestrictPublicGroups *bool
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates map[int64]*float64
