@@ -140,6 +140,46 @@ func ParseInUserLocation(layout, value, userTZ string) (time.Time, error) {
 	return time.ParseInLocation(layout, value, loc)
 }
 
+// ParseDateOrDateTimeInUserLocation parses value as either an RFC3339 datetime
+// (hasTime=true, offset taken from the value itself) or a date "2006-01-02" in
+// the user's timezone (hasTime=false).
+func ParseDateOrDateTimeInUserLocation(value, userTZ string) (t time.Time, hasTime bool, err error) {
+	if t, err = time.Parse(time.RFC3339, value); err == nil {
+		return t, true, nil
+	}
+	t, err = ParseInUserLocation("2006-01-02", value, userTZ)
+	return t, false, err
+}
+
+// ParseRangeEndInUserLocation parses value as a range's exclusive upper bound:
+// an RFC3339 instant is used as-is; a date-only value covers its whole day,
+// yielding the next day's midnight (DST-safe).
+func ParseRangeEndInUserLocation(value, userTZ string) (t time.Time, hasTime bool, err error) {
+	t, hasTime, err = ParseDateOrDateTimeInUserLocation(value, userTZ)
+	if err == nil && !hasTime {
+		t = t.AddDate(0, 0, 1)
+	}
+	return t, hasTime, err
+}
+
+// FormatRangeStart echoes a range start boundary: RFC3339 for precise
+// instants, the original date for whole-day boundaries.
+func FormatRangeStart(t time.Time, hasTime bool) string {
+	if hasTime {
+		return t.Format(time.RFC3339)
+	}
+	return t.Format("2006-01-02")
+}
+
+// FormatRangeEnd echoes a range's exclusive upper bound: RFC3339 for precise
+// instants, the inclusive end date for whole-day boundaries.
+func FormatRangeEnd(t time.Time, hasTime bool) string {
+	if hasTime {
+		return t.Format(time.RFC3339)
+	}
+	return t.AddDate(0, 0, -1).Format("2006-01-02")
+}
+
 // NowInUserLocation returns the current time in the user's timezone.
 // If userTZ is empty or invalid, falls back to the configured server timezone.
 func NowInUserLocation(userTZ string) time.Time {

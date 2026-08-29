@@ -70,7 +70,7 @@ type dashboardSnapshotV2CacheKey struct {
 }
 
 func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
-	startTime, endTime := parseTimeRange(c)
+	timeRange := parseTimeRange(c)
 	granularity := strings.TrimSpace(c.DefaultQuery("granularity", "day"))
 	if granularity != "hour" {
 		granularity = "day"
@@ -95,8 +95,8 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 	}
 
 	keyRaw, _ := json.Marshal(dashboardSnapshotV2CacheKey{
-		StartTime:             startTime.UTC().Format(time.RFC3339),
-		EndTime:               endTime.UTC().Format(time.RFC3339),
+		StartTime:             timeRange.Start.UTC().Format(time.RFC3339),
+		EndTime:               timeRange.End.UTC().Format(time.RFC3339),
 		Granularity:           granularity,
 		UserID:                filters.UserID,
 		APIKeyID:              filters.APIKeyID,
@@ -119,8 +119,7 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 	cached, hit, err := dashboardSnapshotV2Cache.GetOrLoad(cacheKey, func() (any, error) {
 		return h.buildSnapshotV2Response(
 			c.Request.Context(),
-			startTime,
-			endTime,
+			timeRange,
 			granularity,
 			filters,
 			includeStats,
@@ -149,16 +148,17 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 
 func (h *DashboardHandler) buildSnapshotV2Response(
 	ctx context.Context,
-	startTime, endTime time.Time,
+	timeRange dashboardTimeRange,
 	granularity string,
 	filters *dashboardSnapshotV2Filters,
 	includeStats, includeTrend, includeModels, includeGroups, includeUsersTrend bool,
 	usersTrendLimit int,
 ) (*dashboardSnapshotV2Response, error) {
+	startTime, endTime := timeRange.Start, timeRange.End
 	resp := &dashboardSnapshotV2Response{
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
-		StartDate:   startTime.Format("2006-01-02"),
-		EndDate:     endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		StartDate:   timeRange.StartLabel(),
+		EndDate:     timeRange.EndLabel(),
 		Granularity: granularity,
 	}
 

@@ -64,15 +64,22 @@ func (c *snapshotCache) Set(key string, payload any) snapshotCacheEntry {
 	if c == nil {
 		return snapshotCacheEntry{}
 	}
+	now := time.Now()
 	entry := snapshotCacheEntry{
 		ETag:      buildETagFromAny(payload),
 		Payload:   payload,
-		ExpiresAt: time.Now().Add(c.ttl),
+		ExpiresAt: now.Add(c.ttl),
 	}
 	if key == "" {
 		return entry
 	}
 	c.mu.Lock()
+	// 过期条目未必会被同 key 的 Get 再次触达（key 可能一次性），在写入时统一清扫，避免 items 无界增长。
+	for k, e := range c.items {
+		if now.After(e.ExpiresAt) {
+			delete(c.items, k)
+		}
+	}
 	c.items[key] = entry
 	c.mu.Unlock()
 	return entry

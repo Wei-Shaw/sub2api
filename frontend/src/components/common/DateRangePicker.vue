@@ -42,8 +42,8 @@
             <label class="date-picker-label">{{ t('dates.startDate') }}</label>
             <input
               type="date"
-              v-model="localStartDate"
-              :max="localEndDate || tomorrow"
+              v-model="startDateInput"
+              :max="endDateInput || tomorrow"
               class="date-picker-input"
               @change="onDateChange"
             />
@@ -55,8 +55,8 @@
             <label class="date-picker-label">{{ t('dates.endDate') }}</label>
             <input
               type="date"
-              v-model="localEndDate"
-              :min="localStartDate"
+              v-model="endDateInput"
+              :min="startDateInput"
               :max="tomorrow"
               class="date-picker-input"
               @change="onDateChange"
@@ -76,14 +76,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import {
+  getLast24HourRange,
+  hasTimeComponent,
+  parseRangeBoundary,
+  toDateInputValue
+} from '@/utils/dateRange'
 
 interface DatePreset {
   labelKey: string
   value: string
   getRange: () => { start: string; end: string }
+  /** 自定义识别当前范围是否属于该预设;缺省时按 getRange() 的值精确比较 */
+  matches?: (start: string, end: string) => boolean
 }
 
 interface Props {
@@ -155,14 +163,9 @@ const presets: DatePreset[] = [
   {
     labelKey: 'dates.last24Hours',
     value: 'last24Hours',
-    getRange: () => {
-      const end = new Date()
-      const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
-      return {
-        start: formatDateToString(start),
-        end: formatDateToString(end)
-      }
-    }
+    getRange: getLast24HourRange,
+    // 滚动范围带时间部分;只有本预设会生成这样的边界
+    matches: (start, end) => hasTimeComponent(start) && hasTimeComponent(end)
   },
   {
     labelKey: 'dates.last7Days',
@@ -235,10 +238,23 @@ const displayValue = computed(() => {
 })
 
 const formatDate = (dateStr: string): string => {
-  const date = new Date(dateStr + 'T00:00:00')
+  const date = parseRangeBoundary(dateStr)
   const dateLocale = locale.value === 'zh' ? 'zh-CN' : 'en-US'
   return date.toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' })
 }
+
+// Native date inputs only understand YYYY-MM-DD; editing either input
+// normalizes a rolling (datetime) range back to whole days
+const dateInput = (own: Ref<string>, other: Ref<string>) =>
+  computed({
+    get: () => toDateInputValue(own.value),
+    set: (v: string) => {
+      own.value = v
+      other.value = toDateInputValue(other.value)
+    }
+  })
+const startDateInput = dateInput(localStartDate, localEndDate)
+const endDateInput = dateInput(localEndDate, localStartDate)
 
 const isPresetActive = (preset: DatePreset): boolean => {
   return activePreset.value === preset.value
@@ -251,16 +267,14 @@ const selectPreset = (preset: DatePreset) => {
   activePreset.value = preset.value
 }
 
+const matchesCurrentRange = (preset: DatePreset): boolean => {
+  if (preset.matches) return preset.matches(localStartDate.value, localEndDate.value)
+  const range = preset.getRange()
+  return range.start === localStartDate.value && range.end === localEndDate.value
+}
+
 const onDateChange = () => {
-  // Check if current dates match any preset
-  activePreset.value = null
-  for (const preset of presets) {
-    const range = preset.getRange()
-    if (range.start === localStartDate.value && range.end === localEndDate.value) {
-      activePreset.value = preset.value
-      break
-    }
-  }
+  activePreset.value = presets.find(matchesCurrentRange)?.value ?? null
 }
 
 const toggle = () => {
