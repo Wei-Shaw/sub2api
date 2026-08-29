@@ -30,10 +30,16 @@ const ZhipuMCPSessionTTL = 30 * time.Minute
 // 与 ErrStickySessionNotFound 同语义：让调用方区分"未绑定"与真实读取失败。
 var ErrZhipuMCPSessionNotFound = errors.New("zhipu mcp session not found")
 
-// zhipuMCPServerSlugs 已实测可用的智谱远程 MCP Server slug 白名单。
-// web_reader / vision 等其余 slug 未实测，暂不放进第一期表；实测确认后再补充。
+// zhipuMCPServerSlugs 已实测可用的智谱远程（Remote）MCP Server slug 白名单：
+//   - web_search_prime / zread：上线时实测确认
+//   - web_reader：2026-08-29 实测确认（serverInfo=web-reader-server，工具 webReader）
+//
+// 视觉理解 MCP 是 Local MCP Server（本地运行、直调 GLM-4.6V 推理端点，
+// 见 docs.bigmodel.cn/cn/coding-plan/mcp/vision-mcp-server），没有远程端点可透传，
+// 不在本表范围；其推理流量走 zhipu 平台既有的 OpenAI 协议模型转发。
 var zhipuMCPServerSlugs = map[string]struct{}{
 	"web_search_prime": {},
+	"web_reader":       {},
 	"zread":            {},
 }
 

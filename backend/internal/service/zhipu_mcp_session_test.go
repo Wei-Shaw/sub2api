@@ -140,8 +140,12 @@ func TestResolveZhipuMCPServerURL(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "https://open.bigmodel.cn/api/mcp/zread/mcp", url)
 
-	// 未实测 / 表外 slug 一律拒绝，由调用方映射 404。
-	for _, slug := range []string{"", "  ", "vision", "web_reader", "../etc", "WEB_SEARCH_PRIME"} {
+	url, ok = service.ResolveZhipuMCPServerURL("web_reader")
+	require.True(t, ok)
+	require.Equal(t, "https://open.bigmodel.cn/api/mcp/web_reader/mcp", url)
+
+	// 表外 slug 一律拒绝，由调用方映射 404。vision 是 Local MCP（无远程端点），天然表外。
+	for _, slug := range []string{"", "  ", "vision", "../etc", "WEB_SEARCH_PRIME"} {
 		_, ok = service.ResolveZhipuMCPServerURL(slug)
 		require.False(t, ok, "slug=%q 不应在白名单内", slug)
 	}
