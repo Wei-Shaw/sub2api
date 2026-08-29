@@ -112,8 +112,7 @@ func (s *OpenAIGatewayService) calculateVideoTaskCostAt(ctx context.Context, api
 	if apiKey.GroupID != nil && apiKey.Group != nil {
 		baseMultiplier = resolveAccountUserBillingMultiplier(account, s.resolveUserGroupRate(ctx, apiKey.User.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier))
 	}
-	_, videoMultiplier := computePeakAwareMultipliers(apiKey, baseMultiplier, pricingAt)
-	videoMultiplier = resolveVideoRateMultiplier(apiKey, baseMultiplier)
+	videoMultiplier := resolveVideoRateMultiplier(apiKey, baseMultiplier)
 	candidates := usageBillingModelCandidates(model, model, "", "", model, model)
 	candidates = s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, candidates)
 	cost, err := s.calculateOpenAIRecordUsageCost(ctx, result, apiKey, account, candidates, baseMultiplier, baseMultiplier, videoMultiplier, baseMultiplier, UsageTokens{}, "", openAILongContextBillingGate(account), pricingAt)
@@ -144,7 +143,12 @@ func (s *OpenAIGatewayService) StartVideoTaskBillingReconciler() {
 func (s *OpenAIGatewayService) runVideoTaskBillingReconciler() {
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		key, payload, err := s.cache.(VideoTaskBillingCache).ClaimDueVideoTask(ctx, time.Now())
+		queue, ok := s.cache.(VideoTaskBillingCache)
+		if !ok {
+			cancel()
+			return
+		}
+		key, payload, err := queue.ClaimDueVideoTask(ctx, time.Now())
 		if err == nil && key != "" && len(payload) > 0 {
 			s.reconcileVideoTask(ctx, key, payload)
 		}
@@ -160,7 +164,11 @@ func (s *OpenAIGatewayService) reconcileVideoTask(ctx context.Context, key strin
 		return
 	}
 	slog.Debug("video_billing.reconcile_started", "task_id", pending.RequestID, "platform", pending.Platform, "user_id", pending.UserID, "api_key_id", pending.APIKeyID, "amount", pending.HoldAmount)
-	queue := s.cache.(VideoTaskBillingCache)
+	queue, ok := s.cache.(VideoTaskBillingCache)
+	if !ok {
+		slog.Error("video_billing.cache_unavailable", "task_id", pending.RequestID)
+		return
+	}
 	account, err := s.accountRepo.GetByID(ctx, pending.AccountID)
 	if err != nil || account == nil {
 		slog.Warn("video_billing.account_unavailable", "task_id", pending.RequestID, "account_id", pending.AccountID, "error", err)
@@ -306,7 +314,9 @@ func (s *OpenAIGatewayService) pollVideoTaskStatus(ctx context.Context, account 
 	if err != nil {
 		return "", nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
 		return "", nil, err

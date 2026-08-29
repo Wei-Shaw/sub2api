@@ -25,6 +25,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type grokCredentialFailoverBillingRepo struct{}
+
+func (grokCredentialFailoverBillingRepo) Apply(context.Context, *service.UsageBillingCommand) (*service.UsageBillingApplyResult, error) {
+	return &service.UsageBillingApplyResult{Applied: true}, nil
+}
+
+func (grokCredentialFailoverBillingRepo) ReserveBatchImageBalance(context.Context, *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+	return &service.BatchImageBalanceHoldResult{Applied: true}, nil
+}
+
+func (grokCredentialFailoverBillingRepo) CaptureBatchImageBalance(context.Context, *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+	return &service.BatchImageBalanceHoldResult{Applied: true}, nil
+}
+
+func (grokCredentialFailoverBillingRepo) ReleaseBatchImageBalance(context.Context, *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
+	return &service.BatchImageBalanceHoldResult{Applied: true}, nil
+}
+
+var _ service.UsageBillingRepository = grokCredentialFailoverBillingRepo{}
+
 type grokCredentialHandlerRepo struct {
 	service.AccountRepository
 	mu             sync.Mutex
@@ -925,7 +945,7 @@ func newGrokCredentialFailoverHandler(t *testing.T, mode string) (*OpenAIGateway
 	cfg.Gateway.MaxAccountSwitches = 3
 	billingCache := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	gateway := service.NewOpenAIGatewayService(
-		repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
+		repo, nil, grokCredentialFailoverBillingRepo{}, nil, nil, nil, nil, cfg, nil, nil,
 		service.NewBillingService(cfg, nil), nil, billingCache, upstream,
 		&service.DeferredService{}, nil, provider, nil, nil, nil, nil, nil,
 	)

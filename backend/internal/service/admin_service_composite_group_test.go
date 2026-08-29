@@ -122,6 +122,7 @@ func TestAdminService_CreateAccountAllowsCompositeGroupAssignment(t *testing.T) 
 		Platform:              PlatformOpenAI,
 		Type:                  AccountTypeAPIKey,
 		Concurrency:           1,
+		Extra:                 map[string]any{"openai_responses_mode": "force_responses"},
 		GroupIDs:              []int64{99},
 		SkipDefaultGroupBind:  true,
 		SkipMixedChannelCheck: true,

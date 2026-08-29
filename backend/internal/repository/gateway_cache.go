@@ -203,7 +203,7 @@ func (c *gatewayCache) ClaimDueVideoTask(ctx context.Context, now time.Time) (st
 	if err != nil {
 		return "", nil, err
 	}
-	items, ok := values.([]interface{})
+	items, ok := values.([]any)
 	if !ok || len(items) < 2 || items[0] == nil || items[1] == nil {
 		return "", nil, nil
 	}
