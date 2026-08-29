@@ -251,7 +251,7 @@ func applyClaudeCodeModeToolOutputHint(req *apicompat.ChatCompletionsRequest) {
 }
 
 // applyChatCompletionsMaxOutputDefault 为缺省输出上限的智谱 Chat Completions
-// 请求注入显式 max_tokens。智谱上游（含 Akile 通道）在请求未携带 max_tokens
+// 请求注入显式 max_tokens。智谱上游在请求未携带 max_tokens
 // 时默认按 8192 截断，而 glm-5.3-flash 官方输出上限为 128K：Codex 长思考会
 // 在 8192 处收到 finish_reason=length，客户端视为正常收尾且不重试。仅当账号
 // 为智谱、客户端未显式给出上限且配置了非零默认值时才注入。

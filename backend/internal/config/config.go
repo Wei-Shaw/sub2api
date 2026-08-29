@@ -1139,7 +1139,7 @@ type GatewayCNProvidersConfig struct {
 	BalanceCheckEnabled         bool    `mapstructure:"balance_check_enabled"`
 	BalanceThreshold            float64 `mapstructure:"balance_threshold"`
 	BalanceCheckIntervalMinutes int     `mapstructure:"balance_check_interval_minutes"`
-	// ZhipuDefaultMaxTokens: 智谱上游（含 Akile 通道）在请求未携带 max_tokens 时
+	// ZhipuDefaultMaxTokens: 智谱上游在请求未携带 max_tokens 时
 	// 默认按 8192 截断，而 glm-5.3-flash 官方输出上限为 128K。Codex 走
 	// Responses→Chat Completions 桥接且未显式给出 max_output_tokens 时，按此值
 	// 注入 max_tokens，避免长思考在 8192 处被上游伪装成正常收尾。0 表示不注入。
