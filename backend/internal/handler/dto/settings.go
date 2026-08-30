@@ -241,6 +241,16 @@ type SystemSettings struct {
 	// OpenAI account scheduling
 	OpenAILowUpstreamRatePriorityEnabled                   bool     `json:"openai_low_upstream_rate_priority_enabled"`
 	OpenAIOAuthSchedulingRateMultiplier                    *float64 `json:"openai_oauth_scheduling_rate_multiplier"`
+	OpenAIAutoProvisionEnabled                             bool     `json:"openai_auto_provision_enabled"`
+	OpenAIAutoProvisionTarget                              int      `json:"openai_auto_provision_target"`
+	OpenAIAutoProvisionIntervalSeconds                     int      `json:"openai_auto_provision_interval_seconds"`
+	OpenAIAutoProvisionTurbURL                             string   `json:"openai_auto_provision_turb_url"`
+	OpenAIAutoProvisionTurbAuthCodeConfigured              bool     `json:"openai_auto_provision_turb_auth_code_configured"`
+	OpenAIAutoProvisionCallbackURL                         string   `json:"openai_auto_provision_callback_url"`
+	OpenAIAutoProvisionCallbackSecretConfigured            bool     `json:"openai_auto_provision_callback_secret_configured"`
+	OpenAIAutoProvisionEmailSource                         string   `json:"openai_auto_provision_email_source"`
+	OpenAIAutoProvisionWorkers                             int      `json:"openai_auto_provision_workers"`
+	OpenAIReauthorizationEnabled                           bool     `json:"openai_auto_reauthorization_enabled"`
 	OpenAIAdvancedSchedulerEnabled                         bool     `json:"openai_advanced_scheduler_enabled"`
 	OpenAIAdvancedSchedulerStickyWeightedEnabled           bool     `json:"openai_advanced_scheduler_sticky_weighted_enabled"`
 	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled     bool     `json:"openai_advanced_scheduler_subscription_priority_enabled"`

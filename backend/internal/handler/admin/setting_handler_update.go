@@ -277,6 +277,16 @@ type UpdateSettingsRequest struct {
 	// OpenAI account scheduling
 	OpenAILowUpstreamRatePriorityEnabled               *bool    `json:"openai_low_upstream_rate_priority_enabled"`
 	OpenAIOAuthSchedulingRateMultiplier                *float64 `json:"openai_oauth_scheduling_rate_multiplier"`
+	OpenAIAutoProvisionEnabled                         *bool    `json:"openai_auto_provision_enabled"`
+	OpenAIAutoProvisionTarget                          *int     `json:"openai_auto_provision_target"`
+	OpenAIAutoProvisionIntervalSeconds                 *int     `json:"openai_auto_provision_interval_seconds"`
+	OpenAIAutoProvisionTurbURL                         *string  `json:"openai_auto_provision_turb_url"`
+	OpenAIAutoProvisionTurbAuthCode                    *string  `json:"openai_auto_provision_turb_auth_code"`
+	OpenAIAutoProvisionCallbackURL                     *string  `json:"openai_auto_provision_callback_url"`
+	OpenAIAutoProvisionCallbackSecret                  *string  `json:"openai_auto_provision_callback_secret"`
+	OpenAIAutoProvisionEmailSource                     *string  `json:"openai_auto_provision_email_source"`
+	OpenAIAutoProvisionWorkers                         *int     `json:"openai_auto_provision_workers"`
+	OpenAIReauthorizationEnabled                       *bool    `json:"openai_auto_reauthorization_enabled"`
 	OpenAIAdvancedSchedulerEnabled                     *bool    `json:"openai_advanced_scheduler_enabled"`
 	OpenAIAdvancedSchedulerStickyWeightedEnabled       *bool    `json:"openai_advanced_scheduler_sticky_weighted_enabled"`
 	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled *bool    `json:"openai_advanced_scheduler_subscription_priority_enabled"`
@@ -1879,6 +1889,63 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAIOAuthSchedulingRateMultiplier
 		}(),
+		OpenAIAutoProvisionEnabled: func() bool {
+			if req.OpenAIAutoProvisionEnabled != nil {
+				return *req.OpenAIAutoProvisionEnabled
+			}
+			return previousSettings.OpenAIAutoProvisionEnabled
+		}(),
+		OpenAIAutoProvisionTarget: func() int {
+			if req.OpenAIAutoProvisionTarget != nil {
+				return *req.OpenAIAutoProvisionTarget
+			}
+			return previousSettings.OpenAIAutoProvisionTarget
+		}(),
+		OpenAIAutoProvisionIntervalSeconds: func() int {
+			if req.OpenAIAutoProvisionIntervalSeconds != nil {
+				return *req.OpenAIAutoProvisionIntervalSeconds
+			}
+			return previousSettings.OpenAIAutoProvisionIntervalSeconds
+		}(),
+		OpenAIAutoProvisionTurbURL:     stringSetting(req.OpenAIAutoProvisionTurbURL, previousSettings.OpenAIAutoProvisionTurbURL),
+		OpenAIAutoProvisionCallbackURL: stringSetting(req.OpenAIAutoProvisionCallbackURL, previousSettings.OpenAIAutoProvisionCallbackURL),
+		OpenAIAutoProvisionEmailSource: stringSetting(req.OpenAIAutoProvisionEmailSource, previousSettings.OpenAIAutoProvisionEmailSource),
+		OpenAIAutoProvisionTurbAuthCode: func() string {
+			if req.OpenAIAutoProvisionTurbAuthCode != nil && strings.TrimSpace(*req.OpenAIAutoProvisionTurbAuthCode) != "" {
+				return strings.TrimSpace(*req.OpenAIAutoProvisionTurbAuthCode)
+			}
+			return previousSettings.OpenAIAutoProvisionTurbAuthCode
+		}(),
+		OpenAIAutoProvisionTurbAuthCodeConfigured: func() bool {
+			if req.OpenAIAutoProvisionTurbAuthCode != nil && strings.TrimSpace(*req.OpenAIAutoProvisionTurbAuthCode) != "" {
+				return true
+			}
+			return previousSettings.OpenAIAutoProvisionTurbAuthCodeConfigured
+		}(),
+		OpenAIAutoProvisionCallbackSecret: func() string {
+			if req.OpenAIAutoProvisionCallbackSecret != nil && strings.TrimSpace(*req.OpenAIAutoProvisionCallbackSecret) != "" {
+				return strings.TrimSpace(*req.OpenAIAutoProvisionCallbackSecret)
+			}
+			return previousSettings.OpenAIAutoProvisionCallbackSecret
+		}(),
+		OpenAIAutoProvisionCallbackSecretConfigured: func() bool {
+			if req.OpenAIAutoProvisionCallbackSecret != nil && strings.TrimSpace(*req.OpenAIAutoProvisionCallbackSecret) != "" {
+				return true
+			}
+			return previousSettings.OpenAIAutoProvisionCallbackSecretConfigured
+		}(),
+		OpenAIAutoProvisionWorkers: func() int {
+			if req.OpenAIAutoProvisionWorkers != nil {
+				return *req.OpenAIAutoProvisionWorkers
+			}
+			return previousSettings.OpenAIAutoProvisionWorkers
+		}(),
+		OpenAIReauthorizationEnabled: func() bool {
+			if req.OpenAIReauthorizationEnabled != nil {
+				return *req.OpenAIReauthorizationEnabled
+			}
+			return previousSettings.OpenAIReauthorizationEnabled
+		}(),
 		OpenAIAdvancedSchedulerEnabled: func() bool {
 			if req.OpenAIAdvancedSchedulerEnabled != nil {
 				return *req.OpenAIAdvancedSchedulerEnabled
@@ -2476,6 +2543,16 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentVisibleMethodWxpayEnabled:                       updatedSettings.PaymentVisibleMethodWxpayEnabled,
 		OpenAILowUpstreamRatePriorityEnabled:                   updatedSettings.OpenAILowUpstreamRatePriorityEnabled,
 		OpenAIOAuthSchedulingRateMultiplier:                    updatedSettings.OpenAIOAuthSchedulingRateMultiplier,
+		OpenAIAutoProvisionEnabled:                             updatedSettings.OpenAIAutoProvisionEnabled,
+		OpenAIAutoProvisionTarget:                              updatedSettings.OpenAIAutoProvisionTarget,
+		OpenAIAutoProvisionIntervalSeconds:                     updatedSettings.OpenAIAutoProvisionIntervalSeconds,
+		OpenAIAutoProvisionTurbURL:                             updatedSettings.OpenAIAutoProvisionTurbURL,
+		OpenAIAutoProvisionTurbAuthCodeConfigured:              updatedSettings.OpenAIAutoProvisionTurbAuthCodeConfigured,
+		OpenAIAutoProvisionCallbackURL:                         updatedSettings.OpenAIAutoProvisionCallbackURL,
+		OpenAIAutoProvisionCallbackSecretConfigured:            updatedSettings.OpenAIAutoProvisionCallbackSecretConfigured,
+		OpenAIAutoProvisionEmailSource:                         updatedSettings.OpenAIAutoProvisionEmailSource,
+		OpenAIAutoProvisionWorkers:                             updatedSettings.OpenAIAutoProvisionWorkers,
+		OpenAIReauthorizationEnabled:                           updatedSettings.OpenAIReauthorizationEnabled,
 		OpenAIAdvancedSchedulerEnabled:                         updatedSettings.OpenAIAdvancedSchedulerEnabled,
 		OpenAIAdvancedSchedulerStickyWeightedEnabled:           updatedSettings.OpenAIAdvancedSchedulerStickyWeightedEnabled,
 		OpenAIAdvancedSchedulerSubscriptionPriorityEnabled:     updatedSettings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled,

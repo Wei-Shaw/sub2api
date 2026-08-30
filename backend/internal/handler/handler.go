@@ -71,6 +71,7 @@ type Handlers struct {
 	AsyncImage       *AsyncImageHandler
 	BatchImage       *BatchImageHandler
 	BotSales         *BotSalesHandler
+	OpenAIAutoProvision *OpenAIAutoProvisionHandler
 }
 
 // BuildInfo contains build-time information

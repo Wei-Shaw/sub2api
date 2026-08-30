@@ -126,6 +126,31 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if err := s.normalizeOpenAIAdvancedSchedulerOverrides(settings); err != nil {
 		return nil, err
 	}
+	if settings.OpenAIAutoProvisionTarget < 0 || settings.OpenAIAutoProvisionTarget > 100000 {
+		return nil, infraerrors.BadRequest("INVALID_OPENAI_AUTO_PROVISION_TARGET", "openai auto-provision target must be between 0 and 100000")
+	}
+	if settings.OpenAIAutoProvisionIntervalSeconds == 0 {
+		settings.OpenAIAutoProvisionIntervalSeconds = 60
+	}
+	if settings.OpenAIAutoProvisionIntervalSeconds < 15 || settings.OpenAIAutoProvisionIntervalSeconds > 86400 {
+		return nil, infraerrors.BadRequest("INVALID_OPENAI_AUTO_PROVISION_INTERVAL", "openai auto-provision interval must be between 15 and 86400 seconds")
+	}
+	if settings.OpenAIAutoProvisionWorkers == 0 {
+		settings.OpenAIAutoProvisionWorkers = 3
+	}
+	if settings.OpenAIAutoProvisionWorkers < 1 || settings.OpenAIAutoProvisionWorkers > 16 {
+		return nil, infraerrors.BadRequest("INVALID_OPENAI_AUTO_PROVISION_WORKERS", "openai auto-provision workers must be between 1 and 16")
+	}
+	if settings.OpenAIAutoProvisionTurbURL != "" {
+		if _, err := validatedAutomationBaseURL(settings.OpenAIAutoProvisionTurbURL); err != nil {
+			return nil, infraerrors.BadRequest("INVALID_OPENAI_AUTO_PROVISION_TURB_URL", err.Error())
+		}
+	}
+	if settings.OpenAIAutoProvisionCallbackURL != "" {
+		if _, err := validatedAutomationBaseURL(settings.OpenAIAutoProvisionCallbackURL); err != nil {
+			return nil, infraerrors.BadRequest("INVALID_OPENAI_AUTO_PROVISION_CALLBACK_URL", err.Error())
+		}
+	}
 	settings.PaymentVisibleMethodAlipaySource = alipaySource
 	settings.PaymentVisibleMethodWxpaySource = wxpaySource
 	settings.WeChatConnectAppID = strings.TrimSpace(settings.WeChatConnectAppID)
@@ -511,6 +536,20 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if rate := settings.OpenAIOAuthSchedulingRateMultiplier; rate != nil {
 		updates[SettingKeyOpenAIOAuthSchedulingRateMultiplier] = strconv.FormatFloat(*rate, 'f', -1, 64)
 	}
+	updates[SettingKeyOpenAIAutoProvisionEnabled] = strconv.FormatBool(settings.OpenAIAutoProvisionEnabled)
+	updates[SettingKeyOpenAIAutoProvisionTarget] = strconv.Itoa(settings.OpenAIAutoProvisionTarget)
+	updates[SettingKeyOpenAIAutoProvisionIntervalSeconds] = strconv.Itoa(settings.OpenAIAutoProvisionIntervalSeconds)
+	updates[SettingKeyOpenAIAutoProvisionTurbURL] = strings.TrimSpace(settings.OpenAIAutoProvisionTurbURL)
+	if settings.OpenAIAutoProvisionTurbAuthCode != "" {
+		updates[SettingKeyOpenAIAutoProvisionTurbAuthCode] = settings.OpenAIAutoProvisionTurbAuthCode
+	}
+	updates[SettingKeyOpenAIAutoProvisionCallbackURL] = strings.TrimSpace(settings.OpenAIAutoProvisionCallbackURL)
+	if settings.OpenAIAutoProvisionCallbackSecret != "" {
+		updates[SettingKeyOpenAIAutoProvisionCallbackSecret] = settings.OpenAIAutoProvisionCallbackSecret
+	}
+	updates[SettingKeyOpenAIAutoProvisionEmailSource] = strings.TrimSpace(settings.OpenAIAutoProvisionEmailSource)
+	updates[SettingKeyOpenAIAutoProvisionWorkers] = strconv.Itoa(settings.OpenAIAutoProvisionWorkers)
+	updates[SettingKeyOpenAIReauthorizationEnabled] = strconv.FormatBool(settings.OpenAIReauthorizationEnabled)
 	updates[openAIAdvancedSchedulerSettingKey] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerEnabled)
 	updates[SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerStickyWeightedEnabled)
 	updates[SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled)

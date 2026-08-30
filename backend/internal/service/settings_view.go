@@ -288,6 +288,18 @@ type SystemSettings struct {
 	// OpenAI 账号调度
 	OpenAILowUpstreamRatePriorityEnabled                   bool
 	OpenAIOAuthSchedulingRateMultiplier                    *float64
+	OpenAIAutoProvisionEnabled                             bool
+	OpenAIAutoProvisionTarget                              int
+	OpenAIAutoProvisionIntervalSeconds                     int
+	OpenAIAutoProvisionTurbURL                             string
+	OpenAIAutoProvisionTurbAuthCode                        string
+	OpenAIAutoProvisionTurbAuthCodeConfigured              bool
+	OpenAIAutoProvisionCallbackURL                         string
+	OpenAIAutoProvisionCallbackSecret                      string
+	OpenAIAutoProvisionCallbackSecretConfigured            bool
+	OpenAIAutoProvisionEmailSource                         string
+	OpenAIAutoProvisionWorkers                             int
+	OpenAIReauthorizationEnabled                           bool
 	OpenAIAdvancedSchedulerEnabled                         bool
 	OpenAIAdvancedSchedulerStickyWeightedEnabled           bool
 	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled     bool
