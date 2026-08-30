@@ -9,7 +9,7 @@
       allowfullscreen
     ></iframe>
     <!-- HTML mode - SECURITY: homeContent is admin-only setting, XSS risk is acceptable -->
-    <div v-else v-html="homeContent"></div>
+    <div v-else v-html="renderedHomeContent"></div>
   </div>
 
   <!-- Compact Home Page -->
@@ -501,6 +501,7 @@ import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
+import { renderHomeTemplate } from '@/utils/homeTemplate'
 
 const { t } = useI18n()
 
@@ -514,6 +515,9 @@ const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle
 const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || ''))
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 const hasHomeContent = computed(() => homeContent.value.trim().length > 0)
+const renderedHomeContent = computed(() =>
+  renderHomeTemplate(homeContent.value, appStore.cachedPublicSettings),
+)
 const compactHomeEnabled = computed(() => appStore.cachedPublicSettings?.compact_home_enabled === true)
 const modelPlazaEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.modelPlaza))
 
