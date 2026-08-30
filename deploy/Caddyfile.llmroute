@@ -1,10 +1,32 @@
 api.llmroute.cc {
-	encode zstd gzip
-
-	# Disable proxy response buffering so chat/image streams and SSE events are
-	# delivered to clients immediately.
 	reverse_proxy 127.0.0.1:8080 {
-		flush_interval -1
+		# The origin firewall only accepts Cloudflare egress ranges, so overwrite
+		# forwarded addresses with Cloudflare's authenticated client address.
+		header_up X-Real-IP {http.request.header.CF-Connecting-IP}
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+		header_up X-Forwarded-Proto https
+	}
+
+	# Keep SSE/API streams uncompressed. Caddy detects event streams and flushes
+	# them automatically when flush_interval is left unset.
+	encode {
+		zstd
+		gzip 6
+		minimum_length 256
+		match {
+			header Content-Type text/css*
+			header Content-Type text/csv*
+			header Content-Type text/html*
+			header Content-Type text/javascript*
+			header Content-Type text/markdown*
+			header Content-Type text/plain*
+			header Content-Type text/xml*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type application/xml*
+			header Content-Type application/rss+xml*
+			header Content-Type image/svg+xml*
+		}
 	}
 
 	header {

@@ -11,6 +11,10 @@ services:
       - "127.0.0.1:8080:8080"
     volumes: !override
       - "/opt/sub2api-deploy/data:/app/data"
+    environment:
+      # Caddy reaches the published loopback port through this Docker bridge
+      # gateway and overwrites X-Forwarded-For with Cloudflare's client IP.
+      SERVER_TRUSTED_PROXIES: "${SERVER_TRUSTED_PROXIES:-172.19.0.1/32}"
 
   postgres:
     volumes: !override
