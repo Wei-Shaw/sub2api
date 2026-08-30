@@ -1,0 +1,21 @@
+services:
+  sub2api:
+    image: local/sub2api:downstream-pricing
+    pull_policy: never
+    build:
+      context: /opt/sub2api-deploy/source
+      dockerfile: Dockerfile
+      args:
+        COMMIT: ${BUILD_COMMIT:-local-dirty}
+    ports: !override
+      - "127.0.0.1:8080:8080"
+    volumes: !override
+      - "/opt/sub2api-deploy/data:/app/data"
+
+  postgres:
+    volumes: !override
+      - "/opt/sub2api-deploy/postgres_data:/var/lib/postgresql/data"
+
+  redis:
+    volumes: !override
+      - "/opt/sub2api-deploy/redis_data:/data"
