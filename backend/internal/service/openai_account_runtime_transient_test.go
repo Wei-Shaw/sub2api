@@ -77,7 +77,10 @@ func (r *blockingTransientCircuitAccountRepo) GetByID(_ context.Context, _ int64
 func (r *blockingTransientCircuitAccountRepo) ClearModelRateLimitIfMatch(_ context.Context, _ int64, model string, observed json.RawMessage) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	limits := r.account.Extra[modelRateLimitsKey].(map[string]any)
+	limits, ok := r.account.Extra[modelRateLimitsKey].(map[string]any)
+	if !ok {
+		return false, nil
+	}
 	current, err := json.Marshal(limits[model])
 	if err != nil {
 		return false, err
