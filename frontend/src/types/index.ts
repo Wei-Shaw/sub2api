@@ -237,6 +237,7 @@ export interface PublicSettings {
   contact_info: string
   doc_url: string
   home_content: string
+  home_script: string
   compact_home_enabled: boolean
   hide_ccs_import_button: boolean
   payment_enabled: boolean
