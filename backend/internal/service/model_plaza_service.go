@@ -231,6 +231,14 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 // token 模型取计费阶梯表（单价与档位均由真实计费函数得出），
 // 图片/按次模型（或阶梯表不可用时）沿用渠道定价与分组图片档位价。
 func (s *ModelPlazaService) fillDisplayPricing(ctx context.Context, m *PlazaModel, g *Group) {
+	// Explicit non-token channel pricing must keep its billing mode. Feeding an
+	// image or per-request rule into the token schedule resolver rewrites it as
+	// BillingModeToken, which makes the presentation catalogue lose the matching
+	// image/per-request display-price row.
+	if m.Pricing != nil && (m.Pricing.BillingMode == BillingModeImage || m.Pricing.BillingMode == BillingModePerRequest) {
+		m.Pricing = plazaImageDisplayPricing(m.Pricing, g)
+		return
+	}
 	if s.billingService != nil && s.resolver != nil {
 		sched, err := s.billingService.ResolveContextPricingSchedule(ctx, s.resolver, ContextPricingScheduleInput{
 			Model:    m.Name,

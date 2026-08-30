@@ -481,6 +481,37 @@ func TestListGroups_ImageModelKeepsTierSynthesisWithBilling(t *testing.T) {
 	require.InDelta(t, 0.04, *m.Pricing.Intervals[1].PerRequestPrice, 1e-12)
 }
 
+func TestListGroups_PerRequestModelKeepsBillingModeWithBilling(t *testing.T) {
+	base := 0.006
+	mid := 0.009
+	high := 0.012
+	channels := []Channel{{
+		ID: 1, Name: "ch", Status: StatusActive, GroupIDs: []int64{10},
+		ModelPricing: []ChannelModelPricing{{
+			Platform: PlatformOpenAI, Models: []string{"Auto-Model"}, BillingMode: BillingModePerRequest,
+			PerRequestPrice: &base,
+			Intervals: []PricingInterval{
+				{MinTokens: 0, MaxTokens: testPtrInt(256000), PerRequestPrice: &base},
+				{MinTokens: 256000, MaxTokens: testPtrInt(512000), PerRequestPrice: &mid},
+				{MinTokens: 512000, PerRequestPrice: &high},
+			},
+		}},
+	}}
+	groups := []Group{{ID: 10, Name: "g", Platform: PlatformOpenAI, RateMultiplier: 1, LongContextPricingEnabled: true}}
+	svc := newPlazaServiceWithBilling(channels, groups, map[int64]string{10: PlatformOpenAI}, nil)
+
+	out, err := svc.ListGroups(context.Background())
+
+	require.NoError(t, err)
+	m := out[0].Models[0]
+	require.Equal(t, BillingModePerRequest, m.Pricing.BillingMode)
+	require.Empty(t, m.LongContextBasis)
+	require.NotNil(t, m.Pricing.PerRequestPrice)
+	require.InDelta(t, base, *m.Pricing.PerRequestPrice, 1e-12)
+	require.Len(t, m.Pricing.Intervals, 3)
+	require.InDelta(t, high, *m.Pricing.Intervals[2].PerRequestPrice, 1e-12)
+}
+
 func TestListGroups_CatalogMissingStillShowsChannelFlatPricing(t *testing.T) {
 	// 目录查不到的模型：计费按渠道平价（未配置项 $0），广场单档展示渠道平价，官方价为空。
 	channels := []Channel{plazaPricedChannel(1, "ch", []int64{10}, PlatformAnthropic, "unknown-model-xyz")}
