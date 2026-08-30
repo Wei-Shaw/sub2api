@@ -1,6 +1,10 @@
 package service
 
-import "time"
+import (
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+)
 
 // APIKeyAuthSnapshot API Key 认证缓存快照（仅包含认证所需字段）
 type APIKeyAuthSnapshot struct {
@@ -26,6 +30,10 @@ type APIKeyAuthSnapshot struct {
 	RateLimit5h float64 `json:"rate_limit_5h"`
 	RateLimit1d float64 `json:"rate_limit_1d"`
 	RateLimit7d float64 `json:"rate_limit_7d"`
+
+	// 智能路由：启用后不再绑定单一分组，请求时按模型自动选组。
+	SmartRoutingEnabled bool                   `json:"smart_routing_enabled"`
+	SmartRoutingConfig   *domain.SmartRoutingConfig `json:"smart_routing_config,omitempty"`
 }
 
 // APIKeyAuthUserSnapshot 用户快照

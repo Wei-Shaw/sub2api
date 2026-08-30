@@ -44,6 +44,15 @@ func (APIKey) Fields() []ent.Field {
 		field.Int64("group_id").
 			Optional().
 			Nillable(),
+		// 智能路由：启用后不再绑定单一分组，而是在每次请求时根据请求的模型
+		// （model）自动选择用户可用且能服务该模型的分组。smart_routing_config
+		// 保存排除分组、优先级与权重（见 domain.SmartRoutingConfig）。
+		field.Bool("smart_routing_enabled").
+			Default(false).
+			Comment("Whether smart routing is enabled (auto-select group by requested model)"),
+		field.JSON("smart_routing_config", domain.SmartRoutingConfig{}).
+			Optional().
+			Comment("Smart routing config: excluded group ids, priorities and weights"),
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),

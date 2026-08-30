@@ -81,4 +81,8 @@ const (
 
 	// ClaudeCodeVersion stores the extracted Claude Code version from User-Agent (e.g. "2.1.22")
 	ClaudeCodeVersion Key = "ctx_claude_code_version"
+
+	// SmartRoutingCandidates 智能路由解析出的候选分组序列（按优先级+权重排序），
+	// 由路由层的智能路由预解析中间件写入，供 handler 分组级 failover 使用。
+	SmartRoutingCandidates Key = "ctx_smart_routing_candidates"
 )

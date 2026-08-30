@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // APIKeyCreate is the builder for creating a APIKey entity.
@@ -95,6 +96,34 @@ func (_c *APIKeyCreate) SetGroupID(v int64) *APIKeyCreate {
 func (_c *APIKeyCreate) SetNillableGroupID(v *int64) *APIKeyCreate {
 	if v != nil {
 		_c.SetGroupID(*v)
+	}
+	return _c
+}
+
+// SetSmartRoutingEnabled sets the "smart_routing_enabled" field.
+func (_c *APIKeyCreate) SetSmartRoutingEnabled(v bool) *APIKeyCreate {
+	_c.mutation.SetSmartRoutingEnabled(v)
+	return _c
+}
+
+// SetNillableSmartRoutingEnabled sets the "smart_routing_enabled" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableSmartRoutingEnabled(v *bool) *APIKeyCreate {
+	if v != nil {
+		_c.SetSmartRoutingEnabled(*v)
+	}
+	return _c
+}
+
+// SetSmartRoutingConfig sets the "smart_routing_config" field.
+func (_c *APIKeyCreate) SetSmartRoutingConfig(v domain.SmartRoutingConfig) *APIKeyCreate {
+	_c.mutation.SetSmartRoutingConfig(v)
+	return _c
+}
+
+// SetNillableSmartRoutingConfig sets the "smart_routing_config" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableSmartRoutingConfig(v *domain.SmartRoutingConfig) *APIKeyCreate {
+	if v != nil {
+		_c.SetSmartRoutingConfig(*v)
 	}
 	return _c
 }
@@ -383,6 +412,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.SmartRoutingEnabled(); !ok {
+		v := apikey.DefaultSmartRoutingEnabled
+		_c.mutation.SetSmartRoutingEnabled(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := apikey.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -448,6 +481,9 @@ func (_c *APIKeyCreate) check() error {
 		if err := apikey.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "APIKey.name": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.SmartRoutingEnabled(); !ok {
+		return &ValidationError{Name: "smart_routing_enabled", err: errors.New(`ent: missing required field "APIKey.smart_routing_enabled"`)}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "APIKey.status"`)}
@@ -530,6 +566,14 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(apikey.FieldName, field.TypeString, value)
 		_node.Name = value
+	}
+	if value, ok := _c.mutation.SmartRoutingEnabled(); ok {
+		_spec.SetField(apikey.FieldSmartRoutingEnabled, field.TypeBool, value)
+		_node.SmartRoutingEnabled = value
+	}
+	if value, ok := _c.mutation.SmartRoutingConfig(); ok {
+		_spec.SetField(apikey.FieldSmartRoutingConfig, field.TypeJSON, value)
+		_node.SmartRoutingConfig = value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
@@ -778,6 +822,36 @@ func (u *APIKeyUpsert) UpdateGroupID() *APIKeyUpsert {
 // ClearGroupID clears the value of the "group_id" field.
 func (u *APIKeyUpsert) ClearGroupID() *APIKeyUpsert {
 	u.SetNull(apikey.FieldGroupID)
+	return u
+}
+
+// SetSmartRoutingEnabled sets the "smart_routing_enabled" field.
+func (u *APIKeyUpsert) SetSmartRoutingEnabled(v bool) *APIKeyUpsert {
+	u.Set(apikey.FieldSmartRoutingEnabled, v)
+	return u
+}
+
+// UpdateSmartRoutingEnabled sets the "smart_routing_enabled" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateSmartRoutingEnabled() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldSmartRoutingEnabled)
+	return u
+}
+
+// SetSmartRoutingConfig sets the "smart_routing_config" field.
+func (u *APIKeyUpsert) SetSmartRoutingConfig(v domain.SmartRoutingConfig) *APIKeyUpsert {
+	u.Set(apikey.FieldSmartRoutingConfig, v)
+	return u
+}
+
+// UpdateSmartRoutingConfig sets the "smart_routing_config" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateSmartRoutingConfig() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldSmartRoutingConfig)
+	return u
+}
+
+// ClearSmartRoutingConfig clears the value of the "smart_routing_config" field.
+func (u *APIKeyUpsert) ClearSmartRoutingConfig() *APIKeyUpsert {
+	u.SetNull(apikey.FieldSmartRoutingConfig)
 	return u
 }
 
@@ -1203,6 +1277,41 @@ func (u *APIKeyUpsertOne) UpdateGroupID() *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) ClearGroupID() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetSmartRoutingEnabled sets the "smart_routing_enabled" field.
+func (u *APIKeyUpsertOne) SetSmartRoutingEnabled(v bool) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetSmartRoutingEnabled(v)
+	})
+}
+
+// UpdateSmartRoutingEnabled sets the "smart_routing_enabled" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateSmartRoutingEnabled() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateSmartRoutingEnabled()
+	})
+}
+
+// SetSmartRoutingConfig sets the "smart_routing_config" field.
+func (u *APIKeyUpsertOne) SetSmartRoutingConfig(v domain.SmartRoutingConfig) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetSmartRoutingConfig(v)
+	})
+}
+
+// UpdateSmartRoutingConfig sets the "smart_routing_config" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateSmartRoutingConfig() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateSmartRoutingConfig()
+	})
+}
+
+// ClearSmartRoutingConfig clears the value of the "smart_routing_config" field.
+func (u *APIKeyUpsertOne) ClearSmartRoutingConfig() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearSmartRoutingConfig()
 	})
 }
 
@@ -1841,6 +1950,41 @@ func (u *APIKeyUpsertBulk) UpdateGroupID() *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) ClearGroupID() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetSmartRoutingEnabled sets the "smart_routing_enabled" field.
+func (u *APIKeyUpsertBulk) SetSmartRoutingEnabled(v bool) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetSmartRoutingEnabled(v)
+	})
+}
+
+// UpdateSmartRoutingEnabled sets the "smart_routing_enabled" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateSmartRoutingEnabled() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateSmartRoutingEnabled()
+	})
+}
+
+// SetSmartRoutingConfig sets the "smart_routing_config" field.
+func (u *APIKeyUpsertBulk) SetSmartRoutingConfig(v domain.SmartRoutingConfig) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetSmartRoutingConfig(v)
+	})
+}
+
+// UpdateSmartRoutingConfig sets the "smart_routing_config" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateSmartRoutingConfig() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateSmartRoutingConfig()
+	})
+}
+
+// ClearSmartRoutingConfig clears the value of the "smart_routing_config" field.
+func (u *APIKeyUpsertBulk) ClearSmartRoutingConfig() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearSmartRoutingConfig()
 	})
 }
 

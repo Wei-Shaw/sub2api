@@ -162,14 +162,6 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		zap.Any("group_id", apiKey.GroupID),
 	)
 
-	// 检查平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则要求 gemini 分组
-	if !middleware.HasForcePlatform(c) {
-		if effectiveAPIKeyPlatform(c, apiKey) != service.PlatformGemini {
-			googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
-			return
-		}
-	}
-
 	modelName, action, err := parseGeminiModelAction(strings.TrimPrefix(c.Param("modelAction"), "/"))
 	if err != nil {
 		googleError(c, http.StatusNotFound, err.Error())
@@ -183,6 +175,28 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	}
 	if resolvedModel, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context()); ok && strings.TrimSpace(resolvedModel) != "" {
 		modelName = strings.TrimSpace(resolvedModel)
+	}
+
+	// 智能路由：未绑定分组时按请求模型解析候选分组序列（需在平台检查前完成）
+	var smartRoutingCandidates []*service.Group
+	if apiKey.SmartRoutingEnabled {
+		candidates, err := h.resolveSmartRoutingCandidates(c, apiKey, modelName)
+		if err != nil {
+			googleError(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		smartRoutingCandidates = candidates
+	} else if _, err := h.resolveSmartRoutingGroup(c, apiKey, modelName); err != nil {
+		googleError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// 检查平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则要求 gemini 分组
+	if !middleware.HasForcePlatform(c) {
+		if effectiveAPIKeyPlatform(c, apiKey) != service.PlatformGemini {
+			googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
+			return
+		}
 	}
 
 	stream := action == "streamGenerateContent"
@@ -357,7 +371,29 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
 	cleanedForUnknownBinding := false
 
+	// 智能路由分组级 failover：当前候选分组在候选序列中的下标
 	fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
+	smartRoutingGroupIndex := 0
+	// 切换到下一个智能路由候选分组（分组级 failover）。返回 false 表示候选序列已耗尽。
+	smartRoutingSwitchGroup := func() bool {
+		if len(smartRoutingCandidates) == 0 {
+			return false
+		}
+		_, nextIndex, ok := applySmartRoutingGroup(c, apiKey, smartRoutingCandidates, smartRoutingGroupIndex)
+		if !ok {
+			return false
+		}
+		smartRoutingGroupIndex = nextIndex
+		reqLog.Warn("gateway.gemini.smart_routing_group_failover",
+			zap.Int("group_index", smartRoutingGroupIndex),
+			zap.Int64("group_id", *apiKey.GroupID),
+			zap.String("group_platform", apiKey.Group.Platform),
+		)
+		// 重置账号级 failover 状态，按新分组重算平台/会话键
+		fs = NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
+		channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, modelName)
+		return true
+	}
 
 	// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
 	// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
@@ -370,6 +406,10 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, modelName, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
 		if err != nil {
 			if len(fs.FailedAccountIDs) == 0 {
+				// 首个候选分组选号即失败：若智能路由还有下一个候选分组，直接降级重试。
+				if smartRoutingSwitchGroup() {
+					continue
+				}
 				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, modelName, modelName, service.PlatformGemini)
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
@@ -391,6 +431,9 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				failoverClientGone(c)
 				return
 			default: // FailoverExhausted
+				if smartRoutingSwitchGroup() {
+					continue
+				}
 				h.handleGeminiFailoverExhausted(c, fs.LastFailoverErr)
 				return
 			}
@@ -530,6 +573,10 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				case FailoverContinue:
 					continue
 				case FailoverExhausted:
+					// 账号级 failover 耗尽：若智能路由还有下一个候选分组，降级到下一分组重试
+					if smartRoutingSwitchGroup() {
+						continue
+					}
 					h.handleGeminiFailoverExhausted(c, fs.LastFailoverErr)
 					return
 				case FailoverCanceled:

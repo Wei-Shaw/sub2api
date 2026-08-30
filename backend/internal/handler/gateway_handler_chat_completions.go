@@ -76,6 +76,27 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 	reqModel := modelResult.String()
+	// 智能路由：未绑定分组时按请求模型解析候选分组序列（按优先级排序 + 同优先级权重乱序）
+	var smartRoutingCandidates []*service.Group
+	if apiKey.SmartRoutingEnabled {
+		candidates, err := h.resolveSmartRoutingCandidates(c, apiKey, reqModel)
+		if err != nil {
+			h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "model_routing_error", err.Error())
+			return
+		}
+		smartRoutingCandidates = candidates
+		groupIDs := make([]int64, 0, len(candidates))
+		for _, g := range candidates {
+			groupIDs = append(groupIDs, g.ID)
+		}
+		reqLog.Info("gateway.cc.smart_routing_candidates_resolved",
+			zap.Int("candidate_count", len(candidates)),
+			zap.Any("candidate_group_ids", groupIDs),
+		)
+	} else if _, err := h.resolveSmartRoutingGroup(c, apiKey, reqModel); err != nil {
+		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "model_routing_error", err.Error())
+		return
+	}
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	if !compositeTargetPlatformResolved(c, apiKey, reqModel) {
 		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by composite groups")
@@ -165,6 +186,47 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	if groupPlatform == service.PlatformGemini {
 		fs = NewFailoverState(h.maxAccountSwitchesGemini, false)
 	}
+	// 智能路由分组级 failover：当前候选分组在候选序列中的下标
+	smartRoutingGroupIndex := 0
+
+	// 切换到下一个智能路由候选分组（分组级 failover）。返回 false 表示候选序列已耗尽。
+	// 切换后需重置账号级 failover 状态、按新分组平台重算选号会话 hash。
+	smartRoutingSwitchGroup := func() bool {
+		if len(smartRoutingCandidates) == 0 {
+			reqLog.Warn("gateway.cc.smart_routing_group_failover_no_candidates",
+				zap.Int("candidate_count", len(smartRoutingCandidates)),
+				zap.Bool("smart_routing_enabled", apiKey.SmartRoutingEnabled),
+			)
+			return false
+		}
+		_, nextIndex, ok := applySmartRoutingGroup(c, apiKey, smartRoutingCandidates, smartRoutingGroupIndex)
+		if !ok {
+			reqLog.Warn("gateway.cc.smart_routing_group_failover_exhausted",
+				zap.Int("group_index", smartRoutingGroupIndex),
+				zap.Int("candidate_count", len(smartRoutingCandidates)),
+			)
+			return false
+		}
+		smartRoutingGroupIndex = nextIndex
+		reqLog.Warn("gateway.cc.smart_routing_group_failover",
+			zap.Int("group_index", smartRoutingGroupIndex),
+			zap.Int64("group_id", *apiKey.GroupID),
+			zap.String("group_platform", apiKey.Group.Platform),
+		)
+		// 重置账号级 failover 状态
+		fs = NewFailoverState(h.maxAccountSwitches, false)
+		groupPlatform = effectiveAPIKeyPlatform(c, apiKey)
+		if groupPlatform == service.PlatformGemini {
+			fs = NewFailoverState(h.maxAccountSwitchesGemini, false)
+		}
+		selectionSessionHash = sessionHash
+		if groupPlatform == service.PlatformGemini && selectionSessionHash != "" {
+			selectionSessionHash = "gemini:" + selectionSessionHash
+		}
+		// 按新分组重新解析渠道级模型映射
+		channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+		return true
+	}
 
 	for {
 		if c.Request.Context().Err() != nil {
@@ -173,6 +235,11 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, selectionSessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
 		if err != nil {
 			if len(fs.FailedAccountIDs) == 0 {
+				// 首个候选分组选号即失败（如该分组不支持模型/无可用账号）：
+				// 若智能路由还有下一个候选分组，直接降级重试。
+				if smartRoutingSwitchGroup() {
+					continue
+				}
 				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, groupPlatform)
 				cls = classifySelectionFailureError(err, cls)
 				if !cls.ModelNotFound {
@@ -193,6 +260,9 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				failoverClientGone(c)
 				return
 			default:
+				if smartRoutingSwitchGroup() {
+					continue
+				}
 				if fs.LastFailoverErr != nil {
 					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
 				} else {
@@ -305,6 +375,10 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				case FailoverContinue:
 					continue
 				case FailoverExhausted:
+					// 账号级 failover 耗尽：若智能路由还有下一个候选分组，降级到下一分组重试
+					if smartRoutingSwitchGroup() {
+						continue
+					}
 					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
 					return
 				case FailoverCanceled:

@@ -65,11 +65,16 @@ export async function create(
   ipBlacklist?: string[],
   quota?: number,
   expiresInDays?: number,
-  rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number }
+  rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number },
+  smartRouting?: { smart_routing_enabled?: boolean; smart_routing_config?: CreateApiKeyRequest['smart_routing_config'] }
 ): Promise<ApiKey> {
   const payload: CreateApiKeyRequest = { name }
   if (groupId !== undefined) {
     payload.group_id = groupId
+  }
+  if (smartRouting?.smart_routing_enabled) {
+    payload.smart_routing_enabled = true
+    payload.smart_routing_config = smartRouting.smart_routing_config
   }
   if (customKey) {
     payload.custom_key = customKey

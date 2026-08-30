@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 
@@ -55,7 +56,12 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetNillableExpiresAt(key.ExpiresAt).
 		SetRateLimit5h(key.RateLimit5h).
 		SetRateLimit1d(key.RateLimit1d).
-		SetRateLimit7d(key.RateLimit7d)
+		SetRateLimit7d(key.RateLimit7d).
+		SetSmartRoutingEnabled(key.SmartRoutingEnabled)
+
+	if key.SmartRoutingConfig != nil {
+		builder.SetSmartRoutingConfig(*key.SmartRoutingConfig)
+	}
 
 	if len(key.IPWhitelist) > 0 {
 		builder.SetIPWhitelist(key.IPWhitelist)
@@ -144,6 +150,8 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldRateLimit5h,
 			apikey.FieldRateLimit1d,
 			apikey.FieldRateLimit7d,
+			apikey.FieldSmartRoutingEnabled,
+			apikey.FieldSmartRoutingConfig,
 		).
 		WithUser(func(q *dbent.UserQuery) {
 			q.Select(
@@ -299,6 +307,14 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 			builder.SetGroupID(*key.GroupID)
 		} else {
 			builder.ClearGroupID()
+		}
+	}
+	if fields.SmartRouting {
+		builder.SetSmartRoutingEnabled(key.SmartRoutingEnabled)
+		if key.SmartRoutingConfig != nil {
+			builder.SetSmartRoutingConfig(*key.SmartRoutingConfig)
+		} else {
+			builder.ClearSmartRoutingConfig()
 		}
 	}
 
@@ -885,6 +901,8 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		RateLimit5h:   m.RateLimit5h,
 		RateLimit1d:   m.RateLimit1d,
 		RateLimit7d:   m.RateLimit7d,
+		SmartRoutingEnabled: m.SmartRoutingEnabled,
+		SmartRoutingConfig:  smartRoutingConfigPtr(m.SmartRoutingConfig),
 		Usage5h:       m.Usage5h,
 		Usage1d:       m.Usage1d,
 		Usage7d:       m.Usage7d,
@@ -1030,4 +1048,14 @@ func derefString(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// smartRoutingConfigPtr 把 ent 实体里的值类型 SmartRoutingConfig 转成 service 层的指针类型。
+// 空配置返回 nil，保持与"未配置"语义一致。
+func smartRoutingConfigPtr(cfg domain.SmartRoutingConfig) *domain.SmartRoutingConfig {
+	if cfg.IsEmpty() {
+		return nil
+	}
+	c := cfg
+	return &c
 }

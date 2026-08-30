@@ -169,6 +169,19 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	body = parsedReq.Body.Bytes()
 	reqModel := parsedReq.Model
 	reqStream := parsedReq.Stream
+	// 智能路由：未绑定分组时按请求模型解析候选分组序列（按优先级排序 + 同优先级权重乱序）
+	var smartRoutingCandidates []*service.Group
+	if apiKey.SmartRoutingEnabled {
+		candidates, err := h.resolveSmartRoutingCandidates(c, apiKey, reqModel)
+		if err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "model_routing_error", err.Error())
+			return
+		}
+		smartRoutingCandidates = candidates
+	} else if _, err := h.resolveSmartRoutingGroup(c, apiKey, reqModel); err != nil {
+		h.errorResponse(c, http.StatusBadRequest, "model_routing_error", err.Error())
+		return
+	}
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
@@ -305,6 +318,34 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	if platform == service.PlatformGemini {
 		fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
+		// 智能路由分组级 failover：当前候选分组在候选序列中的下标
+		smartRoutingGroupIndex := 0
+		// 切换到下一个智能路由候选分组（分组级 failover）。返回 false 表示候选序列已耗尽。
+		smartRoutingSwitchGroup := func() bool {
+			if len(smartRoutingCandidates) == 0 {
+				return false
+			}
+			_, nextIndex, ok := applySmartRoutingGroup(c, apiKey, smartRoutingCandidates, smartRoutingGroupIndex)
+			if !ok {
+				return false
+			}
+			smartRoutingGroupIndex = nextIndex
+			reqLog.Warn("gateway.messages_gemini.smart_routing_group_failover",
+				zap.Int("group_index", smartRoutingGroupIndex),
+				zap.Int64("group_id", *apiKey.GroupID),
+				zap.String("group_platform", apiKey.Group.Platform),
+			)
+			// 重置账号级 failover 状态，按新分组平台重算平台/会话键/渠道映射
+			fs = NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
+			platform = apiKey.Group.Platform
+			sessionKey = sessionHash
+			if platform == service.PlatformGemini && sessionKey != "" {
+				sessionKey = "gemini:" + sessionKey
+			}
+			channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+			parsedReq.GroupID = apiKey.GroupID
+			return true
+		}
 
 		// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
 		// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
@@ -317,6 +358,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
+					// 首个候选分组选号即失败：若智能路由还有下一个候选分组，直接降级重试。
+					if smartRoutingSwitchGroup() {
+						continue
+					}
 					cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, service.PlatformGemini)
 					if !cls.ModelNotFound {
 						markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
@@ -345,6 +390,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					failoverClientGone(c)
 					return
 				default: // FailoverExhausted
+					if smartRoutingSwitchGroup() {
+						continue
+					}
 					if fs.LastFailoverErr != nil {
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, service.PlatformGemini, streamStarted)
 					} else {
@@ -491,6 +539,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					case FailoverContinue:
 						continue
 					case FailoverExhausted:
+						if smartRoutingSwitchGroup() {
+							continue
+						}
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, service.PlatformGemini, streamStarted)
 						return
 					case FailoverCanceled:
@@ -608,10 +659,44 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		c.Request = c.Request.WithContext(ctx)
 	}
 
+	// 智能路由分组级 failover：当前候选分组在候选序列中的下标
+	smartRoutingGroupIndex := 0
+	// 切换到下一个智能路由候选分组（分组级 failover）。返回 false 表示候选序列已耗尽。
+	// 与 Gemini 分支不同，这里操作的是 currentAPIKey（克隆），切换成功后通过
+	// retryWithFallback 触发外层循环重启（重新初始化 fs）。
+	smartRoutingSwitchGroup := func() bool {
+		if len(smartRoutingCandidates) == 0 {
+			return false
+		}
+		_, nextIndex, ok := applySmartRoutingGroup(c, apiKey, smartRoutingCandidates, smartRoutingGroupIndex)
+		if !ok {
+			return false
+		}
+		smartRoutingGroupIndex = nextIndex
+		currentAPIKey = cloneAPIKeyWithGroup(apiKey, apiKey.Group)
+		currentSubscription = nil
+		fallbackUsed = false
+		reqLog.Warn("gateway.messages.smart_routing_group_failover",
+			zap.Int("group_index", smartRoutingGroupIndex),
+			zap.Int64("group_id", *currentAPIKey.GroupID),
+			zap.String("group_platform", currentAPIKey.Group.Platform),
+		)
+		// 按新分组重算平台/会话键/渠道映射
+		platform = effectiveAPIKeyPlatform(c, currentAPIKey)
+		sessionKey = sessionHash
+		if platform == service.PlatformGemini && sessionKey != "" {
+			sessionKey = "gemini:" + sessionKey
+		}
+		channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), currentAPIKey.GroupID, reqModel)
+		parsedReq.GroupID = currentAPIKey.GroupID
+		return true
+	}
+
 	for {
 		fs := NewFailoverState(h.maxAccountSwitches, hasBoundSession)
 		retryWithFallback := false
 
+	retryInnerLoop:
 		for {
 			attemptParsedReq, err := parsedReq.CloneForBody(body)
 			if err != nil {
@@ -629,6 +714,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
+					// 首个候选分组选号即失败：若智能路由还有下一个候选分组，直接降级重试。
+					if smartRoutingSwitchGroup() {
+						retryWithFallback = true
+						break retryInnerLoop
+					}
 					cls := classifyNoAccountErrorFromGin(c, h.gatewayService, currentAPIKey, reqModel, reqModel, platform)
 					if !cls.ModelNotFound {
 						markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
@@ -658,6 +748,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					failoverClientGone(c)
 					return
 				default: // FailoverExhausted
+					if smartRoutingSwitchGroup() {
+						retryWithFallback = true
+						break retryInnerLoop
+					}
 					if fs.LastFailoverErr != nil {
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, platform, streamStarted)
 					} else {
@@ -997,6 +1091,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					case FailoverContinue:
 						continue
 					case FailoverExhausted:
+						// 账号级 failover 耗尽：若智能路由还有下一个候选分组，降级到下一分组重试
+						if smartRoutingSwitchGroup() {
+							retryWithFallback = true
+							break retryInnerLoop
+						}
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, account.Platform, streamStarted)
 						return
 					case FailoverCanceled:
@@ -2026,6 +2125,19 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
 	}
+	// 智能路由：未绑定分组时按请求模型解析候选分组序列（按优先级排序 + 同优先级权重乱序）
+	var smartRoutingCandidates []*service.Group
+	if apiKey.SmartRoutingEnabled {
+		candidates, err := h.resolveSmartRoutingCandidates(c, apiKey, parsedReq.Model)
+		if err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "model_routing_error", err.Error())
+			return
+		}
+		smartRoutingCandidates = candidates
+	} else if _, err := h.resolveSmartRoutingGroup(c, apiKey, parsedReq.Model); err != nil {
+		h.errorResponse(c, http.StatusBadRequest, "model_routing_error", err.Error())
+		return
+	}
 	if !compositeTargetPlatformResolved(c, apiKey, parsedReq.Model) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by composite groups")
 		return
@@ -2056,24 +2168,39 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	}
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 
-	// 选择支持该模型的账号
-	account, err := h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, parsedReq.Model)
-	if err != nil {
-		reqLog.Warn("gateway.count_tokens_select_account_failed", zap.Error(err))
-		cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, parsedReq.Model, parsedReq.Model, service.PlatformAnthropic)
-		if !cls.ModelNotFound {
-			markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+	// 选择支持该模型的账号（智能路由下按候选序列依次降级重试）
+	smartRoutingGroupIndex := 0
+	for {
+		account, err := h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, parsedReq.Model)
+		if err != nil {
+			reqLog.Warn("gateway.count_tokens_select_account_failed", zap.Int64p("group_id", apiKey.GroupID), zap.Error(err))
+			if len(smartRoutingCandidates) > 0 {
+				_, nextIndex, ok := applySmartRoutingGroup(c, apiKey, smartRoutingCandidates, smartRoutingGroupIndex)
+				if ok {
+					smartRoutingGroupIndex = nextIndex
+					reqLog.Warn("gateway.count_tokens.smart_routing_group_failover",
+						zap.Int("group_index", smartRoutingGroupIndex),
+						zap.Int64("group_id", *apiKey.GroupID),
+					)
+					continue
+				}
+			}
+			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, parsedReq.Model, parsedReq.Model, service.PlatformAnthropic)
+			if !cls.ModelNotFound {
+				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+			}
+			h.errorResponse(c, cls.Status, cls.ErrType, cls.Message)
+			return
 		}
-		h.errorResponse(c, cls.Status, cls.ErrType, cls.Message)
-		return
-	}
-	setOpsSelectedAccount(c, account.ID, account.Platform)
+		setOpsSelectedAccount(c, account.ID, account.Platform)
 
-	// 转发请求（不记录使用量）
-	if err := h.gatewayService.ForwardCountTokens(c.Request.Context(), c, account, parsedReq); err != nil {
-		reqLog.Error("gateway.count_tokens_forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
-		// 错误响应已在 ForwardCountTokens 中处理
-		return
+		// 转发请求（不记录使用量）
+		if err := h.gatewayService.ForwardCountTokens(c.Request.Context(), c, account, parsedReq); err != nil {
+			reqLog.Error("gateway.count_tokens_forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			// 错误响应已在 ForwardCountTokens 中处理
+			return
+		}
+		break
 	}
 }
 

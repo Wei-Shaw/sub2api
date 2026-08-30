@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // APIKeyUpdate is the builder for updating APIKey entities.
@@ -117,6 +118,40 @@ func (_u *APIKeyUpdate) SetNillableGroupID(v *int64) *APIKeyUpdate {
 // ClearGroupID clears the value of the "group_id" field.
 func (_u *APIKeyUpdate) ClearGroupID() *APIKeyUpdate {
 	_u.mutation.ClearGroupID()
+	return _u
+}
+
+// SetSmartRoutingEnabled sets the "smart_routing_enabled" field.
+func (_u *APIKeyUpdate) SetSmartRoutingEnabled(v bool) *APIKeyUpdate {
+	_u.mutation.SetSmartRoutingEnabled(v)
+	return _u
+}
+
+// SetNillableSmartRoutingEnabled sets the "smart_routing_enabled" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableSmartRoutingEnabled(v *bool) *APIKeyUpdate {
+	if v != nil {
+		_u.SetSmartRoutingEnabled(*v)
+	}
+	return _u
+}
+
+// SetSmartRoutingConfig sets the "smart_routing_config" field.
+func (_u *APIKeyUpdate) SetSmartRoutingConfig(v domain.SmartRoutingConfig) *APIKeyUpdate {
+	_u.mutation.SetSmartRoutingConfig(v)
+	return _u
+}
+
+// SetNillableSmartRoutingConfig sets the "smart_routing_config" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableSmartRoutingConfig(v *domain.SmartRoutingConfig) *APIKeyUpdate {
+	if v != nil {
+		_u.SetSmartRoutingConfig(*v)
+	}
+	return _u
+}
+
+// ClearSmartRoutingConfig clears the value of the "smart_routing_config" field.
+func (_u *APIKeyUpdate) ClearSmartRoutingConfig() *APIKeyUpdate {
+	_u.mutation.ClearSmartRoutingConfig()
 	return _u
 }
 
@@ -593,6 +628,15 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(apikey.FieldName, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.SmartRoutingEnabled(); ok {
+		_spec.SetField(apikey.FieldSmartRoutingEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SmartRoutingConfig(); ok {
+		_spec.SetField(apikey.FieldSmartRoutingConfig, field.TypeJSON, value)
+	}
+	if _u.mutation.SmartRoutingConfigCleared() {
+		_spec.ClearField(apikey.FieldSmartRoutingConfig, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
 	}
@@ -904,6 +948,40 @@ func (_u *APIKeyUpdateOne) SetNillableGroupID(v *int64) *APIKeyUpdateOne {
 // ClearGroupID clears the value of the "group_id" field.
 func (_u *APIKeyUpdateOne) ClearGroupID() *APIKeyUpdateOne {
 	_u.mutation.ClearGroupID()
+	return _u
+}
+
+// SetSmartRoutingEnabled sets the "smart_routing_enabled" field.
+func (_u *APIKeyUpdateOne) SetSmartRoutingEnabled(v bool) *APIKeyUpdateOne {
+	_u.mutation.SetSmartRoutingEnabled(v)
+	return _u
+}
+
+// SetNillableSmartRoutingEnabled sets the "smart_routing_enabled" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableSmartRoutingEnabled(v *bool) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetSmartRoutingEnabled(*v)
+	}
+	return _u
+}
+
+// SetSmartRoutingConfig sets the "smart_routing_config" field.
+func (_u *APIKeyUpdateOne) SetSmartRoutingConfig(v domain.SmartRoutingConfig) *APIKeyUpdateOne {
+	_u.mutation.SetSmartRoutingConfig(v)
+	return _u
+}
+
+// SetNillableSmartRoutingConfig sets the "smart_routing_config" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableSmartRoutingConfig(v *domain.SmartRoutingConfig) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetSmartRoutingConfig(*v)
+	}
+	return _u
+}
+
+// ClearSmartRoutingConfig clears the value of the "smart_routing_config" field.
+func (_u *APIKeyUpdateOne) ClearSmartRoutingConfig() *APIKeyUpdateOne {
+	_u.mutation.ClearSmartRoutingConfig()
 	return _u
 }
 
@@ -1409,6 +1487,15 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(apikey.FieldName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SmartRoutingEnabled(); ok {
+		_spec.SetField(apikey.FieldSmartRoutingEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SmartRoutingConfig(); ok {
+		_spec.SetField(apikey.FieldSmartRoutingConfig, field.TypeJSON, value)
+	}
+	if _u.mutation.SmartRoutingConfigCleared() {
+		_spec.ClearField(apikey.FieldSmartRoutingConfig, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)

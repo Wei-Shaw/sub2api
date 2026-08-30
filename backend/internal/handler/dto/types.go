@@ -69,6 +69,10 @@ type APIKey struct {
 	// CurrentConcurrency is the real-time active request count for this API key.
 	CurrentConcurrency int `json:"current_concurrency"`
 
+	// 智能路由：启用后不再绑定单一分组，请求时按模型自动选组。
+	SmartRoutingEnabled bool                  `json:"smart_routing_enabled"`
+	SmartRoutingConfig   *domain.SmartRoutingConfig `json:"smart_routing_config,omitempty"`
+
 	// Rate limit fields
 	RateLimit5h   float64    `json:"rate_limit_5h"`
 	RateLimit1d   float64    `json:"rate_limit_1d"`

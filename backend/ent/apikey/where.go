@@ -90,6 +90,11 @@ func GroupID(v int64) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldGroupID, v))
 }
 
+// SmartRoutingEnabled applies equality check predicate on the "smart_routing_enabled" field. It's identical to SmartRoutingEnabledEQ.
+func SmartRoutingEnabled(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldSmartRoutingEnabled, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldStatus, v))
@@ -468,6 +473,26 @@ func GroupIDIsNil() predicate.APIKey {
 // GroupIDNotNil applies the NotNil predicate on the "group_id" field.
 func GroupIDNotNil() predicate.APIKey {
 	return predicate.APIKey(sql.FieldNotNull(FieldGroupID))
+}
+
+// SmartRoutingEnabledEQ applies the EQ predicate on the "smart_routing_enabled" field.
+func SmartRoutingEnabledEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldSmartRoutingEnabled, v))
+}
+
+// SmartRoutingEnabledNEQ applies the NEQ predicate on the "smart_routing_enabled" field.
+func SmartRoutingEnabledNEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldSmartRoutingEnabled, v))
+}
+
+// SmartRoutingConfigIsNil applies the IsNil predicate on the "smart_routing_config" field.
+func SmartRoutingConfigIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldSmartRoutingConfig))
+}
+
+// SmartRoutingConfigNotNil applies the NotNil predicate on the "smart_routing_config" field.
+func SmartRoutingConfigNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldSmartRoutingConfig))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.

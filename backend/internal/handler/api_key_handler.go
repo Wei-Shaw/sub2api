@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 
 	"github.com/gin-gonic/gin"
 )
@@ -44,6 +45,10 @@ type CreateAPIKeyRequest struct {
 	RateLimit5h *float64 `json:"rate_limit_5h"`
 	RateLimit1d *float64 `json:"rate_limit_1d"`
 	RateLimit7d *float64 `json:"rate_limit_7d"`
+
+	// 智能路由：启用后不再绑定单一分组，请求时按模型自动选组。
+	SmartRoutingEnabled bool                    `json:"smart_routing_enabled"`
+	SmartRoutingConfig   *domain.SmartRoutingConfig `json:"smart_routing_config,omitempty"`
 }
 
 // UpdateAPIKeyRequest represents the update API key request payload
@@ -62,6 +67,10 @@ type UpdateAPIKeyRequest struct {
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // 重置限速用量
+
+	// 智能路由：启用后不再绑定单一分组，请求时按模型自动选组。
+	SmartRoutingEnabled *bool                   `json:"smart_routing_enabled"`
+	SmartRoutingConfig   *domain.SmartRoutingConfig `json:"smart_routing_config,omitempty"`
 }
 
 func validAPIKeyLimit(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 }
@@ -203,6 +212,8 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 		IPWhitelist:   req.IPWhitelist,
 		IPBlacklist:   req.IPBlacklist,
 		ExpiresInDays: req.ExpiresInDays,
+		SmartRoutingEnabled: req.SmartRoutingEnabled,
+		SmartRoutingConfig:  req.SmartRoutingConfig,
 	}
 	if req.Quota != nil {
 		svcReq.Quota = *req.Quota
@@ -265,6 +276,8 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 		svcReq.Name = &req.Name
 	}
 	svcReq.GroupID = req.GroupID
+	svcReq.SmartRoutingEnabled = req.SmartRoutingEnabled
+	svcReq.SmartRoutingConfig = req.SmartRoutingConfig
 	if req.Status != "" {
 		svcReq.Status = &req.Status
 	}

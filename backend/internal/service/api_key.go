@@ -3,6 +3,7 @@ package service
 import (
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 )
 
@@ -34,6 +35,9 @@ type APIKey struct {
 	Name        string
 	GroupID     *int64
 	Status      string
+	// 智能路由：启用后不再绑定单一分组，请求时按模型自动选组（见 SmartRoutingConfig）。
+	SmartRoutingEnabled bool
+	SmartRoutingConfig   *domain.SmartRoutingConfig
 	IPWhitelist []string
 	IPBlacklist []string
 	// 预编译的 IP 规则，用于认证热路径避免重复 ParseIP/ParseCIDR。

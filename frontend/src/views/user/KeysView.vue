@@ -153,6 +153,12 @@
                   :peak-end="row.group.peak_end"
                   :peak-rate-multiplier="row.group.peak_rate_multiplier"
                 />
+                <span
+                  v-else-if="row.smart_routing_enabled"
+                  class="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                >
+                  {{ t('keys.smartRoutingBadge') }}
+                </span>
                 <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{
                   t('keys.noGroup')
                 }}</span>
@@ -464,9 +470,67 @@
           />
         </div>
 
-        <div>
-          <label class="input-label">{{ t('keys.groupLabel') }}</label>
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <label class="input-label mb-0">{{ t('keys.groupLabel') }}</label>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-gray-500 dark:text-dark-500">{{ t('keys.smartRoutingLabel') }}</span>
+              <button
+                type="button"
+                @click="toggleSmartRouting"
+                :class="[
+                  'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                  formData.smart_routing_enabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                ]"
+                data-tour="key-form-smart-routing"
+              >
+                <span
+                  :class="[
+                    'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                    formData.smart_routing_enabled ? 'translate-x-4' : 'translate-x-0'
+                  ]"
+                />
+              </button>
+            </div>
+          </div>
+
+          <template v-if="formData.smart_routing_enabled">
+            <p class="input-hint">{{ t('keys.smartRoutingHint') }}</p>
+            <div class="space-y-2 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+              <div
+                v-for="opt in groupOptions"
+                :key="String(opt.value)"
+                class="flex items-center gap-2"
+              >
+                <input
+                  type="checkbox"
+                  :checked="isSmartRoutingExcluded(opt.value)"
+                  @change="toggleSmartRoutingExclude(opt.value)"
+                  class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-700"
+                />
+                <span class="min-w-0 flex-1 truncate text-sm text-gray-900 dark:text-white">{{ opt.label }}</span>
+                <input
+                  type="number"
+                  min="0"
+                  :value="formData.smart_routing_priorities[String(opt.value)] ?? ''"
+                  @input="setSmartRoutingPriority(opt.value, ($event.target as HTMLInputElement).value)"
+                  class="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 dark:border-dark-600 dark:bg-dark-700 dark:text-white"
+                  :placeholder="t('keys.smartRoutingPriority')"
+                />
+                <input
+                  type="number"
+                  min="1"
+                  :value="formData.smart_routing_weights[String(opt.value)] ?? ''"
+                  @input="setSmartRoutingWeight(opt.value, ($event.target as HTMLInputElement).value)"
+                  class="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 dark:border-dark-600 dark:bg-dark-700 dark:text-white"
+                  :placeholder="t('keys.smartRoutingWeight')"
+                />
+              </div>
+            </div>
+          </template>
+
           <Select
+            v-else
             v-model="formData.group_id"
             :options="groupOptions"
             :placeholder="t('keys.selectGroup')"
@@ -1140,7 +1204,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform, UpdateApiKeyRequest } from '@/types'
+	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform, UpdateApiKeyRequest, SmartRoutingConfig } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
@@ -1330,6 +1394,10 @@ const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance 
 const formData = ref({
   name: '',
   group_id: null as number | null,
+  smart_routing_enabled: false,
+  smart_routing_exclude_group_ids: [] as number[],
+  smart_routing_priorities: {} as Record<string, number>,
+  smart_routing_weights: {} as Record<string, number>,
   status: 'active' as 'active' | 'inactive',
   use_custom_key: false,
   custom_key: '',
@@ -1564,6 +1632,10 @@ const editKey = (key: ApiKey) => {
   formData.value = {
     name: key.name,
     group_id: key.group_id,
+    smart_routing_enabled: key.smart_routing_enabled || false,
+    smart_routing_exclude_group_ids: key.smart_routing_config?.exclude_group_ids ?? [],
+    smart_routing_priorities: key.smart_routing_config?.priorities ?? {},
+    smart_routing_weights: key.smart_routing_config?.weights ?? {},
     status: key.status === 'quota_exhausted' || key.status === 'expired' ? 'inactive' : key.status,
     use_custom_key: false,
     custom_key: '',
@@ -1661,9 +1733,61 @@ const confirmDelete = (key: ApiKey) => {
   showDeleteDialog.value = true
 }
 
+// ---- 智能路由辅助 ----
+const toggleSmartRouting = () => {
+  formData.value.smart_routing_enabled = !formData.value.smart_routing_enabled
+  if (formData.value.smart_routing_enabled) {
+    // 启用智能路由时不再绑定固定分组
+    formData.value.group_id = null
+  } else {
+    formData.value.smart_routing_exclude_group_ids = []
+    formData.value.smart_routing_priorities = {}
+    formData.value.smart_routing_weights = {}
+  }
+}
+
+const isSmartRoutingExcluded = (groupId: number) =>
+  formData.value.smart_routing_exclude_group_ids.includes(groupId)
+
+const toggleSmartRoutingExclude = (groupId: number) => {
+  const idx = formData.value.smart_routing_exclude_group_ids.indexOf(groupId)
+  if (idx >= 0) {
+    formData.value.smart_routing_exclude_group_ids.splice(idx, 1)
+  } else {
+    formData.value.smart_routing_exclude_group_ids.push(groupId)
+  }
+}
+
+const setSmartRoutingPriority = (groupId: number, val: string) => {
+  const n = Number(val)
+  if (val === '' || Number.isNaN(n)) {
+    delete formData.value.smart_routing_priorities[String(groupId)]
+  } else {
+    formData.value.smart_routing_priorities[String(groupId)] = Math.max(0, Math.floor(n))
+  }
+}
+
+const setSmartRoutingWeight = (groupId: number, val: string) => {
+  const n = Number(val)
+  if (val === '' || Number.isNaN(n)) {
+    delete formData.value.smart_routing_weights[String(groupId)]
+  } else {
+    formData.value.smart_routing_weights[String(groupId)] = Math.max(1, Math.floor(n))
+  }
+}
+
+const buildSmartRoutingConfig = (): SmartRoutingConfig | undefined => {
+  if (!formData.value.smart_routing_enabled) return undefined
+  return {
+    exclude_group_ids: formData.value.smart_routing_exclude_group_ids,
+    priorities: formData.value.smart_routing_priorities,
+    weights: formData.value.smart_routing_weights
+  }
+}
+
 const handleSubmit = async () => {
-  // Validate group_id is required
-  if (formData.value.group_id === null) {
+  // Validate group_id is required (unless smart routing is enabled)
+  if (formData.value.group_id === null && !formData.value.smart_routing_enabled) {
     appStore.showError(t('keys.groupRequired'))
     return
   }
@@ -1721,6 +1845,8 @@ const handleSubmit = async () => {
       const updates: UpdateApiKeyRequest = {
         name: formData.value.name,
         group_id: formData.value.group_id,
+        smart_routing_enabled: formData.value.smart_routing_enabled,
+        smart_routing_config: buildSmartRoutingConfig(),
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: quota,
@@ -1736,15 +1862,19 @@ const handleSubmit = async () => {
       appStore.showSuccess(t('keys.keyUpdatedSuccess'))
     } else {
       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
+      const smartRoutingConfig = buildSmartRoutingConfig()
       await keysAPI.create(
         formData.value.name,
-        formData.value.group_id,
+        smartRoutingConfig ? undefined : formData.value.group_id,
         customKey,
         ipWhitelist,
         ipBlacklist,
         quota,
         expiresInDays,
-        rateLimitData
+        rateLimitData,
+        smartRoutingConfig
+          ? { smart_routing_enabled: true, smart_routing_config: smartRoutingConfig }
+          : undefined
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -1790,6 +1920,10 @@ const closeModals = () => {
   formData.value = {
     name: '',
     group_id: null,
+    smart_routing_enabled: false,
+    smart_routing_exclude_group_ids: [],
+    smart_routing_priorities: {},
+    smart_routing_weights: {},
     status: 'active',
     use_custom_key: false,
     custom_key: '',

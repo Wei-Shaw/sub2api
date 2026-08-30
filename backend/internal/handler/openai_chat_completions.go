@@ -157,6 +157,38 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	ccPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
 	c.Request = c.Request.WithContext(ccPricingCtx)
 
+	// 智能路由分组级 failover：候选分组序列由路由层 SmartRoutingMiddleware 解析并写入 context。
+	// 账号级 failover 耗尽后，按候选序列切换到下一分组重试（对应"优先级=降级顺序"）。
+	smartRoutingCandidates := middleware2.SmartRoutingCandidatesFromContext(c.Request.Context())
+	smartRoutingGroupIndex := 0
+	smartRoutingSwitchGroup := func() bool {
+		if apiKey == nil || len(smartRoutingCandidates) == 0 {
+			return false
+		}
+		nextIndex, ok := middleware2.ApplySmartRoutingGroupFromContext(c, apiKey, smartRoutingGroupIndex)
+		if !ok {
+			return false
+		}
+		smartRoutingGroupIndex = nextIndex
+		reqLog.Warn("openai_chat_completions.smart_routing_group_failover",
+			zap.Int("group_index", smartRoutingGroupIndex),
+			zap.Int64("group_id", *apiKey.GroupID),
+			zap.String("group_platform", apiKey.Group.Platform),
+		)
+		// 重置账号级 failover 状态
+		switchCount = 0
+		profitVetoCount = 0
+		failedAccountIDs = make(map[int64]struct{})
+		sameAccountRetryCount = make(map[int64]int)
+		lastFailoverErr = nil
+		// 计费装门按新分组重装
+		ccPricingCtx, pricingAt = h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+		c.Request = c.Request.WithContext(ccPricingCtx)
+		// 按新分组重新解析渠道级模型映射
+		channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+		return true
+	}
+
 	for {
 		if failoverClientGone(c) {
 			return
@@ -186,6 +218,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
+				// 首个候选分组选号即失败（如该分组不支持模型/无可用账号）：
+				// 智能路由若有下一候选分组，直接降级重试。
+				if smartRoutingSwitchGroup() {
+					continue
+				}
 				cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel)
 				cls = classifySelectionFailureError(err, cls)
 				if !cls.ModelNotFound {
@@ -194,6 +231,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
 				return
 			} else {
+				if smartRoutingSwitchGroup() {
+					continue
+				}
 				if lastFailoverErr != nil {
 					h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
 				} else {
@@ -203,6 +243,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			}
 		}
 		if selection == nil || selection.Account == nil {
+			if smartRoutingSwitchGroup() {
+				continue
+			}
 			cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
@@ -329,6 +372,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, reqModel, false, nil), false, nil, err)
 					}
 					if !failoverErr.ShouldRetryNextAccount() {
+						if smartRoutingSwitchGroup() {
+							continue
+						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -357,11 +403,17 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
+						if smartRoutingSwitchGroup() {
+							continue
+						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					switchCount++
 					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
+						if smartRoutingSwitchGroup() {
+							continue
+						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}

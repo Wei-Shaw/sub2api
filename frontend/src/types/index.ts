@@ -701,6 +701,13 @@ export interface CompositeRouteDecision {
   reason?: string
 }
 
+// 智能路由配置：启用后 API Key 不再绑定固定分组，网关按请求模型自动选组。
+export interface SmartRoutingConfig {
+  exclude_group_ids?: number[]
+  priorities?: Record<string, number>
+  weights?: Record<string, number>
+}
+
 export interface ApiKey {
   id: number
   user_id: number
@@ -719,6 +726,8 @@ export interface ApiKey {
   updated_at: string
   current_concurrency: number
   group?: Group
+  smart_routing_enabled: boolean
+  smart_routing_config?: SmartRoutingConfig | null
   rate_limit_5h: number
   rate_limit_1d: number
   rate_limit_7d: number
@@ -736,6 +745,8 @@ export interface ApiKey {
 export interface CreateApiKeyRequest {
   name: string
   group_id?: number | null
+  smart_routing_enabled?: boolean
+  smart_routing_config?: SmartRoutingConfig
   custom_key?: string // Optional custom API Key
   ip_whitelist?: string[]
   ip_blacklist?: string[]
@@ -749,6 +760,8 @@ export interface CreateApiKeyRequest {
 export interface UpdateApiKeyRequest {
   name?: string
   group_id?: number | null
+  smart_routing_enabled?: boolean
+  smart_routing_config?: SmartRoutingConfig
   status?: 'active' | 'inactive'
   ip_whitelist?: string[]
   ip_blacklist?: string[]

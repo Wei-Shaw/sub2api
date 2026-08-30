@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // APIKey is the model entity for the APIKey schema.
@@ -34,6 +35,10 @@ type APIKey struct {
 	Name string `json:"name,omitempty"`
 	// GroupID holds the value of the "group_id" field.
 	GroupID *int64 `json:"group_id,omitempty"`
+	// Whether smart routing is enabled (auto-select group by requested model)
+	SmartRoutingEnabled bool `json:"smart_routing_enabled,omitempty"`
+	// Smart routing config: excluded group ids, priorities and weights
+	SmartRoutingConfig domain.SmartRoutingConfig `json:"smart_routing_config,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// Last usage time of this API key
@@ -121,8 +126,10 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case apikey.FieldIPWhitelist, apikey.FieldIPBlacklist:
+		case apikey.FieldSmartRoutingConfig, apikey.FieldIPWhitelist, apikey.FieldIPBlacklist:
 			values[i] = new([]byte)
+		case apikey.FieldSmartRoutingEnabled:
+			values[i] = new(sql.NullBool)
 		case apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
 			values[i] = new(sql.NullFloat64)
 		case apikey.FieldID, apikey.FieldUserID, apikey.FieldGroupID:
@@ -195,6 +202,20 @@ func (_m *APIKey) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.GroupID = new(int64)
 				*_m.GroupID = value.Int64
+			}
+		case apikey.FieldSmartRoutingEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field smart_routing_enabled", values[i])
+			} else if value.Valid {
+				_m.SmartRoutingEnabled = value.Bool
+			}
+		case apikey.FieldSmartRoutingConfig:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field smart_routing_config", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.SmartRoutingConfig); err != nil {
+					return fmt.Errorf("unmarshal field smart_routing_config: %w", err)
+				}
 			}
 		case apikey.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -376,6 +397,12 @@ func (_m *APIKey) String() string {
 		builder.WriteString("group_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("smart_routing_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SmartRoutingEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("smart_routing_config=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SmartRoutingConfig))
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)

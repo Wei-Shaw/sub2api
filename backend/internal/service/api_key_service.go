@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -75,6 +76,8 @@ type APIKeyUpdateFields struct {
 	RateLimitUsage bool
 	// IPRules 覆盖 ip_whitelist 与 ip_blacklist。
 	IPRules bool
+	// SmartRouting 覆盖 smart_routing_enabled 与 smart_routing_config。
+	SmartRouting bool
 }
 
 // IsEmpty 报告该次 Update 是否不写任何列。
@@ -223,6 +226,10 @@ type CreateAPIKeyRequest struct {
 	RateLimit5h float64 `json:"rate_limit_5h"`
 	RateLimit1d float64 `json:"rate_limit_1d"`
 	RateLimit7d float64 `json:"rate_limit_7d"`
+
+	// 智能路由：启用后不再绑定单一分组，请求时按模型自动选组。
+	SmartRoutingEnabled bool                    `json:"smart_routing_enabled"`
+	SmartRoutingConfig   *domain.SmartRoutingConfig `json:"smart_routing_config,omitempty"`
 }
 
 // UpdateAPIKeyRequest 更新API Key请求
@@ -244,6 +251,10 @@ type UpdateAPIKeyRequest struct {
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // Reset all usage counters to 0
+
+	// 智能路由：启用后不再绑定单一分组，请求时按模型自动选组。
+	SmartRoutingEnabled *bool                   `json:"smart_routing_enabled"`
+	SmartRoutingConfig   *domain.SmartRoutingConfig `json:"smart_routing_config,omitempty"`
 }
 
 func validateAPIKeyLimit(v float64) error {
@@ -495,6 +506,29 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		}
 	}
 
+	// 智能路由：开启时不允许同时绑定固定分组，且配置里引用的分组必须是用户可用的。
+	if req.SmartRoutingEnabled {
+		req.GroupID = nil
+		if req.SmartRoutingConfig != nil {
+			referenced := append([]int64(nil), req.SmartRoutingConfig.ExcludeGroupIDs...)
+			for gid := range req.SmartRoutingConfig.Priorities {
+				referenced = append(referenced, gid)
+			}
+			for gid := range req.SmartRoutingConfig.Weights {
+				referenced = append(referenced, gid)
+			}
+			for _, gid := range referenced {
+				group, err := s.groupRepo.GetByID(ctx, gid)
+				if err != nil {
+					return nil, fmt.Errorf("smart routing config references invalid group %d: %w", gid, err)
+				}
+				if !s.canUserBindGroup(ctx, user, group) {
+					return nil, fmt.Errorf("%w: smart routing config references group %d", ErrGroupNotAllowed, gid)
+				}
+			}
+		}
+	}
+
 	var key string
 
 	// 判断是否使用自定义Key
@@ -538,6 +572,8 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		GroupID:     req.GroupID,
 		Status:      StatusActive,
 		IPWhitelist: req.IPWhitelist,
+		SmartRoutingEnabled: req.SmartRoutingEnabled,
+		SmartRoutingConfig:  req.SmartRoutingConfig,
 		IPBlacklist: req.IPBlacklist,
 		Quota:       req.Quota,
 		QuotaUsed:   0,
@@ -815,6 +851,29 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 
 		apiKey.GroupID = req.GroupID
 		fields.GroupID = true
+		// 显式绑定固定分组时关闭智能路由，避免二者冲突
+		apiKey.SmartRoutingEnabled = false
+		apiKey.SmartRoutingConfig = nil
+		fields.SmartRouting = true
+	}
+
+	// 智能路由：更新开关与配置
+	if req.SmartRoutingEnabled != nil {
+		apiKey.SmartRoutingEnabled = *req.SmartRoutingEnabled
+		fields.SmartRouting = true
+		// 开启智能路由时清空固定分组绑定，避免二者冲突
+		if *req.SmartRoutingEnabled {
+			apiKey.GroupID = nil
+			fields.GroupID = true
+		}
+	}
+	if req.SmartRoutingConfig != nil {
+		apiKey.SmartRoutingConfig = req.SmartRoutingConfig
+		fields.SmartRouting = true
+	}
+	if req.SmartRoutingEnabled != nil && !*req.SmartRoutingEnabled && req.SmartRoutingConfig == nil {
+		apiKey.SmartRoutingConfig = nil
+		fields.SmartRouting = true
 	}
 
 	if req.Status != nil {

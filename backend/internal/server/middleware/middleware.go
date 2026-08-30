@@ -124,7 +124,8 @@ func GoogleErrorWriter(c *gin.Context, status int, message string) {
 func RequireGroupAssignment(settingService *service.SettingService, writeError GatewayErrorWriter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		apiKey, ok := GetAPIKeyFromContext(c)
-		if !ok || apiKey.GroupID != nil {
+		if !ok || apiKey.GroupID != nil || apiKey.SmartRoutingEnabled {
+			// 智能路由 Key 不绑定固定分组，由网关按请求模型动态选组，放行。
 			c.Next()
 			return
 		}
