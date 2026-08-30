@@ -79,6 +79,22 @@ func TestGetClientKeysCacheByConvergedHTTP1Profile(t *testing.T) {
 		"profiles with identical effective HTTP/1.1 wire behavior must share one cache entry")
 }
 
+func TestGetClientSeparatesExtensionRandomizationProfiles(t *testing.T) {
+	sharedClients = sync.Map{}
+	fixed, err := GetClient(Options{TLSProfile: &tlsfingerprint.Profile{
+		Extensions: []uint16{0, 10, 16, 43},
+	}})
+	require.NoError(t, err)
+	randomized, err := GetClient(Options{TLSProfile: &tlsfingerprint.Profile{
+		Extensions:              []uint16{0, 10, 16, 43},
+		RandomizeExtensionOrder: true,
+	}})
+	require.NoError(t, err)
+
+	require.NotSame(t, fixed, randomized,
+		"fixed-order and per-connection-randomized profiles must not share a cached transport")
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {

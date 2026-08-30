@@ -35,8 +35,8 @@ type UtlsDialFunc func(ctx context.Context, network, addr string) (net.Conn, err
 // handshake.
 //
 // The negotiated protocol is decided once per RoundTripper instance. Cached
-// upstream clients are keyed per account/proxy/profile and effectively serve a
-// single upstream host, so a per-instance decision matches that usage.
+// upstream clients that use this type must therefore include destination origin
+// in their cache key so each instance serves exactly one upstream host.
 //
 // Known trade-off: on the h2 path the HTTP/2 frames (SETTINGS, window sizes,
 // header order) are Go's x/net/http2 defaults, which do not match the browser

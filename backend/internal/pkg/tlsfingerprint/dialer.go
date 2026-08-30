@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
@@ -18,12 +19,14 @@ import (
 	"golang.org/x/net/proxy"
 )
 
-// Profile contains TLS fingerprint configuration.
-// All slice fields use built-in defaults when empty.
 // defaultBaseDialTimeout bounds TCP dials made by fingerprint dialers when no
 // base dialer is supplied.
 const defaultBaseDialTimeout = 10 * time.Second
 
+const preSharedKeyExtensionID uint16 = 41
+
+// Profile contains TLS fingerprint configuration.
+// All slice fields use built-in defaults when empty.
 type Profile struct {
 	Preset              Preset // Optional built-in ClientHello template
 	Name                string // Profile name for identification
@@ -36,7 +39,19 @@ type Profile struct {
 	SupportedVersions   []uint16 // Empty uses [TLS1.3, TLS1.2]
 	KeyShareGroups      []uint16 // Empty uses [X25519]
 	PSKModes            []uint16 // Empty uses [psk_dhe_ke]
-	Extensions          []uint16 // Extension type IDs in order; empty uses default Node.js 24.x order
+	// Extensions lists extension type IDs in order; empty uses the default Node.js 24.x
+	// order. An explicit list suppresses the default GREASE bookends even when EnableGREASE
+	// is true. Unknown IDs serialize as empty GenericExtension values, which is valid only
+	// for extensions whose wire body is genuinely empty.
+	Extensions []uint16
+
+	// RandomizeExtensionOrder, when true, shuffles a copy of the constructed extension list
+	// once per new TLS connection instead of using a fixed order. HTTP connection reuse means
+	// this is per connection, not per request. Real rustls clients reshuffle their ClientHello
+	// extension order as an anti-fingerprinting measure; a permanently fixed order is itself
+	// a distinguishing signal for such clients. Defaults to false so existing Profiles (for
+	// example the Node.js/Claude Code default) keep their fixed-order behavior unchanged.
+	RandomizeExtensionOrder bool
 }
 
 // Preset identifies a built-in ClientHello template. User-defined profiles
@@ -484,6 +499,9 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 	if profile != nil && len(profile.Extensions) > 0 {
 		extOrder = profile.Extensions
 	}
+	if profile != nil && profile.RandomizeExtensionOrder {
+		extOrder = shuffleExtensionOrder(extOrder)
+	}
 
 	// Build extensions list from the ordered IDs.
 	// Parametric extensions (curves, sigalgs, etc.) are populated with resolved profile values.
@@ -571,6 +589,28 @@ func buildChrome120HTTP1Spec() (*utls.ClientHelloSpec, error) {
 	}
 	spec.Extensions = extensions
 	return &spec, nil
+}
+
+// shuffleExtensionOrder returns a new slice holding a random permutation of ids. It never
+// mutates ids: buildClientHelloSpecFromProfile can run concurrently for many new TLS
+// connections that share a Profile, and an in-place shuffle would race and corrupt the base
+// order. pre_shared_key (41), if present, is moved to the end after shuffling because TLS 1.3
+// requires real clients to send it last.
+//
+// Cryptographic randomness is unnecessary here: the shuffle only prevents every connection
+// from emitting an identical extension order.
+func shuffleExtensionOrder(ids []uint16) []uint16 {
+	shuffled := append([]uint16(nil), ids...)
+	rand.Shuffle(len(shuffled), func(i, j int) {
+		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+	})
+	for i, id := range shuffled {
+		if id == preSharedKeyExtensionID && i != len(shuffled)-1 {
+			shuffled[i], shuffled[len(shuffled)-1] = shuffled[len(shuffled)-1], shuffled[i]
+			break
+		}
+	}
+	return shuffled
 }
 
 // toUint8s converts []uint16 to []uint8 (for utls fields that require []uint8).

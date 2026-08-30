@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"math/rand/v2"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,6 +13,29 @@ import (
 )
 
 type openAIUpstreamTLSProfileContextKey struct{}
+
+type openAIOAuthTLSMode string
+
+const (
+	openAIOAuthTLSModeExtraKey                        = "openai_oauth_tls_mode"
+	openAIOAuthTLSModeLegacyChrome openAIOAuthTLSMode = "legacy_chrome"
+	openAIOAuthTLSModeCodexRustls  openAIOAuthTLSMode = "codex_rustls_fallback"
+)
+
+func openAIOAuthTLSModeFromExtra(extra map[string]any) openAIOAuthTLSMode {
+	if extra == nil {
+		return openAIOAuthTLSModeLegacyChrome
+	}
+	raw, _ := extra[openAIOAuthTLSModeExtraKey].(string)
+	switch openAIOAuthTLSMode(strings.TrimSpace(raw)) {
+	case openAIOAuthTLSModeCodexRustls:
+		return openAIOAuthTLSModeCodexRustls
+	case openAIOAuthTLSModeLegacyChrome:
+		return openAIOAuthTLSModeLegacyChrome
+	default:
+		return openAIOAuthTLSModeLegacyChrome
+	}
+}
 
 // WithOpenAIUpstreamTLSProfile carries an already-resolved account profile to
 // auth-domain helpers that intentionally do not depend on the profile service.
@@ -208,18 +232,27 @@ func (s *TLSFingerprintProfileService) getRandomProfile() *tlsfingerprint.Profil
 //
 // 逻辑：
 //  1. OpenAI OAuth/APIKey + 绑定了 profile_id → 使用绑定 profile
-//  2. OpenAI OAuth/APIKey + 未绑定或找不到 → 使用内置 Chrome 120 HTTP/1.1 profile
-//  3. 其他账号未启用 TLS 指纹 → 返回 nil（不伪装）
-//  4. 其他账号启用 + 绑定了 profile_id → 从缓存查找对应 profile
-//  5. 其他账号启用 + 未绑定或找不到 → 使用代码内置 Node.js 默认值
+//  2. OpenAI OAuth + opt-in codex_rustls_fallback → 使用 Codex rustls fallback profile
+//  3. OpenAI OAuth/APIKey + 未绑定或找不到 → 使用内置 Chrome 120 HTTP/1.1 profile
+//  4. 其他账号未启用 TLS 指纹 → 返回 nil（不伪装）
+//  5. 其他账号启用 + 绑定了 profile_id → 从缓存查找对应 profile
+//  6. 其他账号启用 + 未绑定或找不到 → 使用代码内置 Node.js 默认值
 func (s *TLSFingerprintProfileService) ResolveTLSProfile(account *Account) *tlsfingerprint.Profile {
 	if account == nil {
 		return nil
 	}
 
 	if account.Platform == PlatformOpenAI && (account.Type == AccountTypeOAuth || account.Type == AccountTypeAPIKey) {
-		if profile := s.resolveConfiguredTLSProfile(account); profile != nil {
-			return profile
+		if account.GetTLSFingerprintProfileID() != 0 {
+			if profile := s.resolveConfiguredTLSProfile(account); profile != nil {
+				return profile
+			}
+			// Preserve the legacy fallback when an operator explicitly selected a
+			// stale profile ID or an empty random pool; do not silently enable mode.
+			return tlsfingerprint.NewOpenAIChrome120Profile()
+		}
+		if account.Type == AccountTypeOAuth && openAIOAuthTLSModeFromExtra(account.Extra) == openAIOAuthTLSModeCodexRustls {
+			return tlsfingerprint.NewCodexRustlsFallbackProfile()
 		}
 		return tlsfingerprint.NewOpenAIChrome120Profile()
 	}

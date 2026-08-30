@@ -372,6 +372,7 @@ func TestProfileStableIDTracksClientHelloContentButNotDisplayName(t *testing.T) 
 		Extensions:          []uint16{0, 10, 16, 43},
 	}
 	baseID := base.StableID()
+	require.True(t, strings.HasPrefix(baseID, "v2:"), "StableID schema must be v2")
 
 	renamed := base
 	renamed.Name = "renamed only"
@@ -389,6 +390,9 @@ func TestProfileStableIDTracksClientHelloContentButNotDisplayName(t *testing.T) 
 		"key shares":           func(p *Profile) { p.KeyShareGroups = []uint16{23} },
 		"psk modes":            func(p *Profile) { p.PSKModes = []uint16{0} },
 		"extensions":           func(p *Profile) { p.Extensions = []uint16{0, 16, 43} },
+		"extension randomization": func(p *Profile) {
+			p.RandomizeExtensionOrder = true
+		},
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {

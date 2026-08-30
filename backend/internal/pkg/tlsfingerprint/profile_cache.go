@@ -7,7 +7,10 @@ import (
 	"hash"
 )
 
-const stableProfileIDVersion = "sub2api-tls-profile-v1"
+const (
+	stableProfileIDVersion = "sub2api-tls-profile-v2"
+	stableProfileIDPrefix  = "v2:"
+)
 
 // StableID returns a versioned content identity for every Profile field that
 // can change the emitted ClientHello. Name is intentionally excluded because
@@ -17,7 +20,7 @@ func (p *Profile) StableID() string {
 	writeStableString(digest, stableProfileIDVersion)
 	if p == nil {
 		_, _ = digest.Write([]byte{0})
-		return "v1:" + hex.EncodeToString(digest.Sum(nil))
+		return stableProfileIDPrefix + hex.EncodeToString(digest.Sum(nil))
 	}
 	_, _ = digest.Write([]byte{1})
 	writeStableString(digest, string(p.Preset))
@@ -35,7 +38,12 @@ func (p *Profile) StableID() string {
 	writeStableUint16s(digest, p.KeyShareGroups)
 	writeStableUint16s(digest, p.PSKModes)
 	writeStableUint16s(digest, p.Extensions)
-	return "v1:" + hex.EncodeToString(digest.Sum(nil))
+	if p.RandomizeExtensionOrder {
+		_, _ = digest.Write([]byte{1})
+	} else {
+		_, _ = digest.Write([]byte{0})
+	}
+	return stableProfileIDPrefix + hex.EncodeToString(digest.Sum(nil))
 }
 
 func writeStableString(digest hash.Hash, value string) {

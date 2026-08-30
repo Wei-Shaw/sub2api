@@ -272,7 +272,7 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 		return nil, err
 	}
 
-	entry, err := s.acquireClientWithTLS(proxyURL, accountID, accountConcurrency, profile, upstreamProfile)
+	entry, err := s.acquireClientWithTLS(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, tlsDestinationOrigin(req))
 	if err != nil {
 		slog.Debug("tls_fingerprint_acquire_client_failed", "account_id", accountID, "error", err)
 		return nil, err
@@ -485,13 +485,13 @@ func isSupportedGrokCLIVersion(version string) bool {
 }
 
 // acquireClientWithTLS 获取或创建带 TLS 指纹的客户端
-func (s *httpUpstreamService) acquireClientWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile) (*upstreamClientEntry, error) {
-	return s.getClientEntryWithTLS(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, true, true)
+func (s *httpUpstreamService) acquireClientWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile, origin string) (*upstreamClientEntry, error) {
+	return s.getClientEntryWithTLS(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, origin, true, true)
 }
 
 // getClientEntryWithTLS 获取或创建带 TLS 指纹的客户端条目
 // TLS 指纹客户端使用独立的缓存键，与普通客户端隔离
-func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile, markInFlight bool, enforceLimit bool) (*upstreamClientEntry, error) {
+func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile, origin string, markInFlight bool, enforceLimit bool) (*upstreamClientEntry, error) {
 	isolation := s.getIsolationMode()
 	proxyKey, parsedProxy, err := normalizeProxyURL(proxyURL)
 	if err != nil {
@@ -500,11 +500,13 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	settings := s.resolvePoolSettings(isolation, accountConcurrency)
 	settings = s.applyProfilePoolSettings(settings, upstreamProfile)
 	protocolMode := s.resolveProtocolMode(upstreamProfile, proxyKey, parsedProxy)
+	effectiveProfile := convergeTLSProfileForProtocolMode(profile, protocolMode)
 	// TLS 指纹客户端使用独立的缓存键；profile 内容标识防止配置更新后
 	// 复用旧 ClientHello transport。协议模式也必须进入 key：代理 H2 回退
-	// 激活后，H1 fallback 不能继续复用已缓存的 Chrome H2 transport。
-	cacheBaseKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID, protocolMode)
-	cacheKey := cacheBaseKey + "|profile:" + profile.StableID()
+	// 激活后，H1 fallback 不能继续复用已缓存的 Chrome H2 transport。目的 origin
+	// 则隔离 TLSRoundTripper 的一次性 ALPN 决策，防止一个目的地的协议污染另一个目的地。
+	cacheBaseKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID, protocolMode) + "|origin:" + origin
+	cacheKey := cacheBaseKey + "|profile:" + effectiveProfile.StableID()
 	poolKey := buildPoolKey(settings, protocolMode) + ":tls"
 
 	now := time.Now()
@@ -561,10 +563,10 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	// 使用显式 uTLS dialer。
 	slog.Debug("tls_fingerprint_creating_new_client", "account_id", accountID, "cache_key", cacheKey, "proxy", proxyKey)
 	var transport http.RoundTripper
-	if profile.Preset == tlsfingerprint.PresetChrome120HTTP1 && protocolMode == upstreamProtocolModeOpenAIH2 {
+	if effectiveProfile.Preset == tlsfingerprint.PresetChrome120HTTP1 && protocolMode == upstreamProtocolModeOpenAIH2 {
 		transport = buildOpenAIChromeHTTP2Transport(settings, parsedProxy)
 	} else {
-		transport, err = buildUpstreamTransportWithTLSFingerprint(settings, parsedProxy, profile)
+		transport, err = buildUpstreamTransportWithTLSFingerprint(settings, parsedProxy, effectiveProfile)
 		if err != nil {
 			s.mu.Unlock()
 			return nil, fmt.Errorf("build TLS fingerprint transport: %w", err)
@@ -572,9 +574,7 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	}
 
 	client := &http.Client{Transport: transport}
-	if s.shouldValidateResolvedIP() {
-		client.CheckRedirect = s.redirectChecker
-	}
+	client.CheckRedirect = s.tlsFingerprintRedirectChecker
 
 	entry := &upstreamClientEntry{
 		client:       client,
@@ -592,6 +592,30 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	s.evictOverLimitLocked()
 	s.mu.Unlock()
 	return entry, nil
+}
+
+func convergeTLSProfileForProtocolMode(profile *tlsfingerprint.Profile, protocolMode string) *tlsfingerprint.Profile {
+	switch protocolMode {
+	case upstreamProtocolModeOpenAIH1, upstreamProtocolModeOpenAIH1Fallback:
+		return tlsfingerprint.HTTP1OnlyProfile(profile)
+	default:
+		return profile
+	}
+}
+
+func tlsDestinationOrigin(req *http.Request) string {
+	if req == nil || req.URL == nil {
+		return ""
+	}
+	host := strings.ToLower(strings.TrimSpace(req.URL.Hostname()))
+	if host == "" {
+		return strings.ToLower(strings.TrimSpace(req.URL.Host))
+	}
+	port := req.URL.Port()
+	if port == "" {
+		port = "443"
+	}
+	return net.JoinHostPort(host, port)
 }
 
 // buildOpenAIChromeHTTP2Transport uses req's Chrome impersonation stack so the
@@ -618,7 +642,7 @@ func buildOpenAIChromeHTTP2Transport(settings poolSettings, proxyURL *url.URL) *
 }
 
 // removeSupersededTLSProfileClientsLocked removes transports for older
-// profile variants in the same isolation/proxy/account scope. http.Client's
+// profile variants in the same isolation/proxy/account/origin scope. http.Client's
 // CloseIdleConnections does not interrupt active requests; it closes current
 // idle connections and prevents their active connections from becoming a
 // reusable idle pool after they finish.
@@ -665,6 +689,19 @@ func (s *httpUpstreamService) validateRequestHost(req *http.Request) error {
 func (s *httpUpstreamService) redirectChecker(req *http.Request, via []*http.Request) error {
 	if len(via) >= 10 {
 		return errors.New("stopped after 10 redirects")
+	}
+	return s.validateRequestHost(req)
+}
+
+func (s *httpUpstreamService) tlsFingerprintRedirectChecker(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	if len(via) > 0 && tlsDestinationOrigin(req) != tlsDestinationOrigin(via[0]) {
+		// A cached TLSRoundTripper owns one origin's ALPN decision. Returning
+		// ErrUseLastResponse preserves the redirect response for the caller instead
+		// of silently reusing that decision for a different destination.
+		return http.ErrUseLastResponse
 	}
 	return s.validateRequestHost(req)
 }
