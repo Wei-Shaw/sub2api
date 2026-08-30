@@ -419,6 +419,20 @@ func (_c *AccountCreate) SetNillableQuotaDimension(v *account.QuotaDimension) *A
 	return _c
 }
 
+// SetOpenAiHealthRouteGeneration sets the "open_ai_health_route_generation" field.
+func (_c *AccountCreate) SetOpenAiHealthRouteGeneration(v int64) *AccountCreate {
+	_c.mutation.SetOpenAiHealthRouteGeneration(v)
+	return _c
+}
+
+// SetNillableOpenAiHealthRouteGeneration sets the "open_ai_health_route_generation" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableOpenAiHealthRouteGeneration(v *int64) *AccountCreate {
+	if v != nil {
+		_c.SetOpenAiHealthRouteGeneration(*v)
+	}
+	return _c
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by IDs.
 func (_c *AccountCreate) AddGroupIDs(ids ...int64) *AccountCreate {
 	_c.mutation.AddGroupIDs(ids...)
@@ -800,6 +814,10 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.QuotaDimension(); ok {
 		_spec.SetField(account.FieldQuotaDimension, field.TypeEnum, value)
 		_node.QuotaDimension = value
+	}
+	if value, ok := _c.mutation.OpenAiHealthRouteGeneration(); ok {
+		_spec.SetField(account.FieldOpenAiHealthRouteGeneration, field.TypeInt64, value)
+		_node.OpenAiHealthRouteGeneration = &value
 	}
 	if nodes := _c.mutation.GroupsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1431,6 +1449,30 @@ func (u *AccountUpsert) UpdateQuotaDimension() *AccountUpsert {
 	return u
 }
 
+// SetOpenAiHealthRouteGeneration sets the "open_ai_health_route_generation" field.
+func (u *AccountUpsert) SetOpenAiHealthRouteGeneration(v int64) *AccountUpsert {
+	u.Set(account.FieldOpenAiHealthRouteGeneration, v)
+	return u
+}
+
+// UpdateOpenAiHealthRouteGeneration sets the "open_ai_health_route_generation" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateOpenAiHealthRouteGeneration() *AccountUpsert {
+	u.SetExcluded(account.FieldOpenAiHealthRouteGeneration)
+	return u
+}
+
+// AddOpenAiHealthRouteGeneration adds v to the "open_ai_health_route_generation" field.
+func (u *AccountUpsert) AddOpenAiHealthRouteGeneration(v int64) *AccountUpsert {
+	u.Add(account.FieldOpenAiHealthRouteGeneration, v)
+	return u
+}
+
+// ClearOpenAiHealthRouteGeneration clears the value of the "open_ai_health_route_generation" field.
+func (u *AccountUpsert) ClearOpenAiHealthRouteGeneration() *AccountUpsert {
+	u.SetNull(account.FieldOpenAiHealthRouteGeneration)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2047,6 +2089,34 @@ func (u *AccountUpsertOne) SetQuotaDimension(v account.QuotaDimension) *AccountU
 func (u *AccountUpsertOne) UpdateQuotaDimension() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdateQuotaDimension()
+	})
+}
+
+// SetOpenAiHealthRouteGeneration sets the "open_ai_health_route_generation" field.
+func (u *AccountUpsertOne) SetOpenAiHealthRouteGeneration(v int64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetOpenAiHealthRouteGeneration(v)
+	})
+}
+
+// AddOpenAiHealthRouteGeneration adds v to the "open_ai_health_route_generation" field.
+func (u *AccountUpsertOne) AddOpenAiHealthRouteGeneration(v int64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddOpenAiHealthRouteGeneration(v)
+	})
+}
+
+// UpdateOpenAiHealthRouteGeneration sets the "open_ai_health_route_generation" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateOpenAiHealthRouteGeneration() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateOpenAiHealthRouteGeneration()
+	})
+}
+
+// ClearOpenAiHealthRouteGeneration clears the value of the "open_ai_health_route_generation" field.
+func (u *AccountUpsertOne) ClearOpenAiHealthRouteGeneration() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearOpenAiHealthRouteGeneration()
 	})
 }
 
@@ -2832,6 +2902,34 @@ func (u *AccountUpsertBulk) SetQuotaDimension(v account.QuotaDimension) *Account
 func (u *AccountUpsertBulk) UpdateQuotaDimension() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdateQuotaDimension()
+	})
+}
+
+// SetOpenAiHealthRouteGeneration sets the "open_ai_health_route_generation" field.
+func (u *AccountUpsertBulk) SetOpenAiHealthRouteGeneration(v int64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetOpenAiHealthRouteGeneration(v)
+	})
+}
+
+// AddOpenAiHealthRouteGeneration adds v to the "open_ai_health_route_generation" field.
+func (u *AccountUpsertBulk) AddOpenAiHealthRouteGeneration(v int64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddOpenAiHealthRouteGeneration(v)
+	})
+}
+
+// UpdateOpenAiHealthRouteGeneration sets the "open_ai_health_route_generation" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateOpenAiHealthRouteGeneration() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateOpenAiHealthRouteGeneration()
+	})
+}
+
+// ClearOpenAiHealthRouteGeneration clears the value of the "open_ai_health_route_generation" field.
+func (u *AccountUpsertBulk) ClearOpenAiHealthRouteGeneration() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearOpenAiHealthRouteGeneration()
 	})
 }
 

@@ -82,6 +82,38 @@ type Account struct {
 	headerOverrideCacheRawPtr         uintptr
 	headerOverrideCacheRawLen         int
 	headerOverrideCacheRawSig         uint64
+
+	// openAIHealthRouteGenerationCarrier is intentionally private so it is
+	// absent from JSON and scheduler-cache snapshots. A cache/deserialized
+	// account therefore remains unavailable until a database query hydrates it.
+	openAIHealthRouteGenerationCarrier *openAIHealthRouteGenerationCarrier
+}
+
+type openAIHealthRouteGenerationCarrier struct {
+	value int64
+}
+
+// SetOpenAIHealthRouteGenerationFromDurable installs only a positive value
+// read from the nullable durable account column. Invalid input clears the
+// carrier and must remain unavailable to any future consumer.
+func (a *Account) SetOpenAIHealthRouteGenerationFromDurable(value *int64) {
+	if a == nil {
+		return
+	}
+	a.openAIHealthRouteGenerationCarrier = nil
+	if value == nil || *value <= 0 {
+		return
+	}
+	a.openAIHealthRouteGenerationCarrier = &openAIHealthRouteGenerationCarrier{value: *value}
+}
+
+// OpenAIHealthRouteGeneration returns the private durable carrier, if a
+// positive generation was hydrated from the database.
+func (a *Account) OpenAIHealthRouteGeneration() (int64, bool) {
+	if a == nil || a.openAIHealthRouteGenerationCarrier == nil || a.openAIHealthRouteGenerationCarrier.value <= 0 {
+		return 0, false
+	}
+	return a.openAIHealthRouteGenerationCarrier.value, true
 }
 
 type OpenAIEndpointCapability string

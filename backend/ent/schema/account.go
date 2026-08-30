@@ -201,6 +201,11 @@ func (Account) Fields() []ent.Field {
 			Comment("Parent account id for a linked spark shadow (NULL = normal)."),
 		field.Enum("quota_dimension").Values("global", "spark").Default("global").
 			Comment("'global' (default) or 'spark' (shadow reads codex_bengalfox)."),
+
+		field.Int64("open_ai_health_route_generation").
+			Optional().
+			Nillable().
+			StorageKey("auv_openai_health_route_generation"),
 	}
 }
 

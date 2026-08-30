@@ -2282,60 +2282,62 @@ func (m *APIKeyMutation) ResetEdge(name string) error {
 // AccountMutation represents an operation that mutates the Account nodes in the graph.
 type AccountMutation struct {
 	config
-	op                          Op
-	typ                         string
-	id                          *int64
-	created_at                  *time.Time
-	updated_at                  *time.Time
-	deleted_at                  *time.Time
-	name                        *string
-	notes                       *string
-	platform                    *string
-	_type                       *string
-	credentials                 *map[string]interface{}
-	extra                       *map[string]interface{}
-	proxy_fallback_origin_id    *int64
-	addproxy_fallback_origin_id *int64
-	concurrency                 *int
-	addconcurrency              *int
-	load_factor                 *int
-	addload_factor              *int
-	priority                    *int
-	addpriority                 *int
-	rate_multiplier             *float64
-	addrate_multiplier          *float64
-	status                      *string
-	error_message               *string
-	last_used_at                *time.Time
-	expires_at                  *time.Time
-	auto_pause_on_expired       *bool
-	schedulable                 *bool
-	rate_limited_at             *time.Time
-	rate_limit_reset_at         *time.Time
-	overload_until              *time.Time
-	temp_unschedulable_until    *time.Time
-	temp_unschedulable_reason   *string
-	session_window_start        *time.Time
-	session_window_end          *time.Time
-	session_window_status       *string
-	quota_dimension             *account.QuotaDimension
-	clearedFields               map[string]struct{}
-	groups                      map[int64]struct{}
-	removedgroups               map[int64]struct{}
-	clearedgroups               bool
-	proxy                       *int64
-	clearedproxy                bool
-	parent                      *int64
-	clearedparent               bool
-	children                    map[int64]struct{}
-	removedchildren             map[int64]struct{}
-	clearedchildren             bool
-	usage_logs                  map[int64]struct{}
-	removedusage_logs           map[int64]struct{}
-	clearedusage_logs           bool
-	done                        bool
-	oldValue                    func(context.Context) (*Account, error)
-	predicates                  []predicate.Account
+	op                                 Op
+	typ                                string
+	id                                 *int64
+	created_at                         *time.Time
+	updated_at                         *time.Time
+	deleted_at                         *time.Time
+	name                               *string
+	notes                              *string
+	platform                           *string
+	_type                              *string
+	credentials                        *map[string]interface{}
+	extra                              *map[string]interface{}
+	proxy_fallback_origin_id           *int64
+	addproxy_fallback_origin_id        *int64
+	concurrency                        *int
+	addconcurrency                     *int
+	load_factor                        *int
+	addload_factor                     *int
+	priority                           *int
+	addpriority                        *int
+	rate_multiplier                    *float64
+	addrate_multiplier                 *float64
+	status                             *string
+	error_message                      *string
+	last_used_at                       *time.Time
+	expires_at                         *time.Time
+	auto_pause_on_expired              *bool
+	schedulable                        *bool
+	rate_limited_at                    *time.Time
+	rate_limit_reset_at                *time.Time
+	overload_until                     *time.Time
+	temp_unschedulable_until           *time.Time
+	temp_unschedulable_reason          *string
+	session_window_start               *time.Time
+	session_window_end                 *time.Time
+	session_window_status              *string
+	quota_dimension                    *account.QuotaDimension
+	open_ai_health_route_generation    *int64
+	addopen_ai_health_route_generation *int64
+	clearedFields                      map[string]struct{}
+	groups                             map[int64]struct{}
+	removedgroups                      map[int64]struct{}
+	clearedgroups                      bool
+	proxy                              *int64
+	clearedproxy                       bool
+	parent                             *int64
+	clearedparent                      bool
+	children                           map[int64]struct{}
+	removedchildren                    map[int64]struct{}
+	clearedchildren                    bool
+	usage_logs                         map[int64]struct{}
+	removedusage_logs                  map[int64]struct{}
+	clearedusage_logs                  bool
+	done                               bool
+	oldValue                           func(context.Context) (*Account, error)
+	predicates                         []predicate.Account
 }
 
 var _ ent.Mutation = (*AccountMutation)(nil)
@@ -3875,6 +3877,76 @@ func (m *AccountMutation) ResetQuotaDimension() {
 	m.quota_dimension = nil
 }
 
+// SetOpenAiHealthRouteGeneration sets the "open_ai_health_route_generation" field.
+func (m *AccountMutation) SetOpenAiHealthRouteGeneration(i int64) {
+	m.open_ai_health_route_generation = &i
+	m.addopen_ai_health_route_generation = nil
+}
+
+// OpenAiHealthRouteGeneration returns the value of the "open_ai_health_route_generation" field in the mutation.
+func (m *AccountMutation) OpenAiHealthRouteGeneration() (r int64, exists bool) {
+	v := m.open_ai_health_route_generation
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOpenAiHealthRouteGeneration returns the old "open_ai_health_route_generation" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldOpenAiHealthRouteGeneration(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOpenAiHealthRouteGeneration is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOpenAiHealthRouteGeneration requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOpenAiHealthRouteGeneration: %w", err)
+	}
+	return oldValue.OpenAiHealthRouteGeneration, nil
+}
+
+// AddOpenAiHealthRouteGeneration adds i to the "open_ai_health_route_generation" field.
+func (m *AccountMutation) AddOpenAiHealthRouteGeneration(i int64) {
+	if m.addopen_ai_health_route_generation != nil {
+		*m.addopen_ai_health_route_generation += i
+	} else {
+		m.addopen_ai_health_route_generation = &i
+	}
+}
+
+// AddedOpenAiHealthRouteGeneration returns the value that was added to the "open_ai_health_route_generation" field in this mutation.
+func (m *AccountMutation) AddedOpenAiHealthRouteGeneration() (r int64, exists bool) {
+	v := m.addopen_ai_health_route_generation
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearOpenAiHealthRouteGeneration clears the value of the "open_ai_health_route_generation" field.
+func (m *AccountMutation) ClearOpenAiHealthRouteGeneration() {
+	m.open_ai_health_route_generation = nil
+	m.addopen_ai_health_route_generation = nil
+	m.clearedFields[account.FieldOpenAiHealthRouteGeneration] = struct{}{}
+}
+
+// OpenAiHealthRouteGenerationCleared returns if the "open_ai_health_route_generation" field was cleared in this mutation.
+func (m *AccountMutation) OpenAiHealthRouteGenerationCleared() bool {
+	_, ok := m.clearedFields[account.FieldOpenAiHealthRouteGeneration]
+	return ok
+}
+
+// ResetOpenAiHealthRouteGeneration resets all changes to the "open_ai_health_route_generation" field.
+func (m *AccountMutation) ResetOpenAiHealthRouteGeneration() {
+	m.open_ai_health_route_generation = nil
+	m.addopen_ai_health_route_generation = nil
+	delete(m.clearedFields, account.FieldOpenAiHealthRouteGeneration)
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by ids.
 func (m *AccountMutation) AddGroupIDs(ids ...int64) {
 	if m.groups == nil {
@@ -4138,7 +4210,7 @@ func (m *AccountMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountMutation) Fields() []string {
-	fields := make([]string, 0, 31)
+	fields := make([]string, 0, 32)
 	if m.created_at != nil {
 		fields = append(fields, account.FieldCreatedAt)
 	}
@@ -4232,6 +4304,9 @@ func (m *AccountMutation) Fields() []string {
 	if m.quota_dimension != nil {
 		fields = append(fields, account.FieldQuotaDimension)
 	}
+	if m.open_ai_health_route_generation != nil {
+		fields = append(fields, account.FieldOpenAiHealthRouteGeneration)
+	}
 	return fields
 }
 
@@ -4302,6 +4377,8 @@ func (m *AccountMutation) Field(name string) (ent.Value, bool) {
 		return m.ParentAccountID()
 	case account.FieldQuotaDimension:
 		return m.QuotaDimension()
+	case account.FieldOpenAiHealthRouteGeneration:
+		return m.OpenAiHealthRouteGeneration()
 	}
 	return nil, false
 }
@@ -4373,6 +4450,8 @@ func (m *AccountMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldParentAccountID(ctx)
 	case account.FieldQuotaDimension:
 		return m.OldQuotaDimension(ctx)
+	case account.FieldOpenAiHealthRouteGeneration:
+		return m.OldOpenAiHealthRouteGeneration(ctx)
 	}
 	return nil, fmt.Errorf("unknown Account field %s", name)
 }
@@ -4599,6 +4678,13 @@ func (m *AccountMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetQuotaDimension(v)
 		return nil
+	case account.FieldOpenAiHealthRouteGeneration:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOpenAiHealthRouteGeneration(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Account field %s", name)
 }
@@ -4622,6 +4708,9 @@ func (m *AccountMutation) AddedFields() []string {
 	if m.addrate_multiplier != nil {
 		fields = append(fields, account.FieldRateMultiplier)
 	}
+	if m.addopen_ai_health_route_generation != nil {
+		fields = append(fields, account.FieldOpenAiHealthRouteGeneration)
+	}
 	return fields
 }
 
@@ -4640,6 +4729,8 @@ func (m *AccountMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedPriority()
 	case account.FieldRateMultiplier:
 		return m.AddedRateMultiplier()
+	case account.FieldOpenAiHealthRouteGeneration:
+		return m.AddedOpenAiHealthRouteGeneration()
 	}
 	return nil, false
 }
@@ -4683,6 +4774,13 @@ func (m *AccountMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddRateMultiplier(v)
+		return nil
+	case account.FieldOpenAiHealthRouteGeneration:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOpenAiHealthRouteGeneration(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Account numeric field %s", name)
@@ -4742,6 +4840,9 @@ func (m *AccountMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(account.FieldParentAccountID) {
 		fields = append(fields, account.FieldParentAccountID)
+	}
+	if m.FieldCleared(account.FieldOpenAiHealthRouteGeneration) {
+		fields = append(fields, account.FieldOpenAiHealthRouteGeneration)
 	}
 	return fields
 }
@@ -4807,6 +4908,9 @@ func (m *AccountMutation) ClearField(name string) error {
 		return nil
 	case account.FieldParentAccountID:
 		m.ClearParentAccountID()
+		return nil
+	case account.FieldOpenAiHealthRouteGeneration:
+		m.ClearOpenAiHealthRouteGeneration()
 		return nil
 	}
 	return fmt.Errorf("unknown Account nullable field %s", name)
@@ -4908,6 +5012,9 @@ func (m *AccountMutation) ResetField(name string) error {
 		return nil
 	case account.FieldQuotaDimension:
 		m.ResetQuotaDimension()
+		return nil
+	case account.FieldOpenAiHealthRouteGeneration:
+		m.ResetOpenAiHealthRouteGeneration()
 		return nil
 	}
 	return fmt.Errorf("unknown Account field %s", name)

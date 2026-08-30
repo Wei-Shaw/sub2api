@@ -3368,7 +3368,7 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 
 	rateMultiplier := m.RateMultiplier
 
-	return &service.Account{
+	out := &service.Account{
 		ID:                      m.ID,
 		Name:                    m.Name,
 		Notes:                   m.Notes,
@@ -3401,6 +3401,8 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		ParentAccountID:         m.ParentAccountID,
 		QuotaDimension:          string(m.QuotaDimension),
 	}
+	out.SetOpenAIHealthRouteGenerationFromDurable(m.OpenAiHealthRouteGeneration)
+	return out
 }
 
 func normalizeJSONMap(in map[string]any) map[string]any {

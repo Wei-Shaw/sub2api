@@ -564,6 +564,33 @@ func (_u *AccountUpdate) SetNillableQuotaDimension(v *account.QuotaDimension) *A
 	return _u
 }
 
+// SetOpenAiHealthRouteGeneration sets the "open_ai_health_route_generation" field.
+func (_u *AccountUpdate) SetOpenAiHealthRouteGeneration(v int64) *AccountUpdate {
+	_u.mutation.ResetOpenAiHealthRouteGeneration()
+	_u.mutation.SetOpenAiHealthRouteGeneration(v)
+	return _u
+}
+
+// SetNillableOpenAiHealthRouteGeneration sets the "open_ai_health_route_generation" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableOpenAiHealthRouteGeneration(v *int64) *AccountUpdate {
+	if v != nil {
+		_u.SetOpenAiHealthRouteGeneration(*v)
+	}
+	return _u
+}
+
+// AddOpenAiHealthRouteGeneration adds value to the "open_ai_health_route_generation" field.
+func (_u *AccountUpdate) AddOpenAiHealthRouteGeneration(v int64) *AccountUpdate {
+	_u.mutation.AddOpenAiHealthRouteGeneration(v)
+	return _u
+}
+
+// ClearOpenAiHealthRouteGeneration clears the value of the "open_ai_health_route_generation" field.
+func (_u *AccountUpdate) ClearOpenAiHealthRouteGeneration() *AccountUpdate {
+	_u.mutation.ClearOpenAiHealthRouteGeneration()
+	return _u
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by IDs.
 func (_u *AccountUpdate) AddGroupIDs(ids ...int64) *AccountUpdate {
 	_u.mutation.AddGroupIDs(ids...)
@@ -945,6 +972,15 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.QuotaDimension(); ok {
 		_spec.SetField(account.FieldQuotaDimension, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.OpenAiHealthRouteGeneration(); ok {
+		_spec.SetField(account.FieldOpenAiHealthRouteGeneration, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedOpenAiHealthRouteGeneration(); ok {
+		_spec.AddField(account.FieldOpenAiHealthRouteGeneration, field.TypeInt64, value)
+	}
+	if _u.mutation.OpenAiHealthRouteGenerationCleared() {
+		_spec.ClearField(account.FieldOpenAiHealthRouteGeneration, field.TypeInt64)
 	}
 	if _u.mutation.GroupsCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1704,6 +1740,33 @@ func (_u *AccountUpdateOne) SetNillableQuotaDimension(v *account.QuotaDimension)
 	return _u
 }
 
+// SetOpenAiHealthRouteGeneration sets the "open_ai_health_route_generation" field.
+func (_u *AccountUpdateOne) SetOpenAiHealthRouteGeneration(v int64) *AccountUpdateOne {
+	_u.mutation.ResetOpenAiHealthRouteGeneration()
+	_u.mutation.SetOpenAiHealthRouteGeneration(v)
+	return _u
+}
+
+// SetNillableOpenAiHealthRouteGeneration sets the "open_ai_health_route_generation" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableOpenAiHealthRouteGeneration(v *int64) *AccountUpdateOne {
+	if v != nil {
+		_u.SetOpenAiHealthRouteGeneration(*v)
+	}
+	return _u
+}
+
+// AddOpenAiHealthRouteGeneration adds value to the "open_ai_health_route_generation" field.
+func (_u *AccountUpdateOne) AddOpenAiHealthRouteGeneration(v int64) *AccountUpdateOne {
+	_u.mutation.AddOpenAiHealthRouteGeneration(v)
+	return _u
+}
+
+// ClearOpenAiHealthRouteGeneration clears the value of the "open_ai_health_route_generation" field.
+func (_u *AccountUpdateOne) ClearOpenAiHealthRouteGeneration() *AccountUpdateOne {
+	_u.mutation.ClearOpenAiHealthRouteGeneration()
+	return _u
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by IDs.
 func (_u *AccountUpdateOne) AddGroupIDs(ids ...int64) *AccountUpdateOne {
 	_u.mutation.AddGroupIDs(ids...)
@@ -2115,6 +2178,15 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 	}
 	if value, ok := _u.mutation.QuotaDimension(); ok {
 		_spec.SetField(account.FieldQuotaDimension, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.OpenAiHealthRouteGeneration(); ok {
+		_spec.SetField(account.FieldOpenAiHealthRouteGeneration, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedOpenAiHealthRouteGeneration(); ok {
+		_spec.AddField(account.FieldOpenAiHealthRouteGeneration, field.TypeInt64, value)
+	}
+	if _u.mutation.OpenAiHealthRouteGenerationCleared() {
+		_spec.ClearField(account.FieldOpenAiHealthRouteGeneration, field.TypeInt64)
 	}
 	if _u.mutation.GroupsCleared() {
 		edge := &sqlgraph.EdgeSpec{

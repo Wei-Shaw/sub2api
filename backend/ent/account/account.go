@@ -78,6 +78,8 @@ const (
 	FieldParentAccountID = "parent_account_id"
 	// FieldQuotaDimension holds the string denoting the quota_dimension field in the database.
 	FieldQuotaDimension = "quota_dimension"
+	// FieldOpenAiHealthRouteGeneration holds the string denoting the open_ai_health_route_generation field in the database.
+	FieldOpenAiHealthRouteGeneration = "auv_openai_health_route_generation"
 	// EdgeGroups holds the string denoting the groups edge name in mutations.
 	EdgeGroups = "groups"
 	// EdgeProxy holds the string denoting the proxy edge name in mutations.
@@ -162,6 +164,7 @@ var Columns = []string{
 	FieldSessionWindowStatus,
 	FieldParentAccountID,
 	FieldQuotaDimension,
+	FieldOpenAiHealthRouteGeneration,
 }
 
 var (
@@ -399,6 +402,11 @@ func ByParentAccountID(opts ...sql.OrderTermOption) OrderOption {
 // ByQuotaDimension orders the results by the quota_dimension field.
 func ByQuotaDimension(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldQuotaDimension, opts...).ToFunc()
+}
+
+// ByOpenAiHealthRouteGeneration orders the results by the open_ai_health_route_generation field.
+func ByOpenAiHealthRouteGeneration(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOpenAiHealthRouteGeneration, opts...).ToFunc()
 }
 
 // ByGroupsCount orders the results by groups count.

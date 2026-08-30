@@ -195,6 +195,11 @@ func ParentAccountID(v int64) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldParentAccountID, v))
 }
 
+// OpenAiHealthRouteGeneration applies equality check predicate on the "open_ai_health_route_generation" field. It's identical to OpenAiHealthRouteGenerationEQ.
+func OpenAiHealthRouteGeneration(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldOpenAiHealthRouteGeneration, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldCreatedAt, v))
@@ -1603,6 +1608,56 @@ func QuotaDimensionIn(vs ...QuotaDimension) predicate.Account {
 // QuotaDimensionNotIn applies the NotIn predicate on the "quota_dimension" field.
 func QuotaDimensionNotIn(vs ...QuotaDimension) predicate.Account {
 	return predicate.Account(sql.FieldNotIn(FieldQuotaDimension, vs...))
+}
+
+// OpenAiHealthRouteGenerationEQ applies the EQ predicate on the "open_ai_health_route_generation" field.
+func OpenAiHealthRouteGenerationEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldOpenAiHealthRouteGeneration, v))
+}
+
+// OpenAiHealthRouteGenerationNEQ applies the NEQ predicate on the "open_ai_health_route_generation" field.
+func OpenAiHealthRouteGenerationNEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldOpenAiHealthRouteGeneration, v))
+}
+
+// OpenAiHealthRouteGenerationIn applies the In predicate on the "open_ai_health_route_generation" field.
+func OpenAiHealthRouteGenerationIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldOpenAiHealthRouteGeneration, vs...))
+}
+
+// OpenAiHealthRouteGenerationNotIn applies the NotIn predicate on the "open_ai_health_route_generation" field.
+func OpenAiHealthRouteGenerationNotIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldOpenAiHealthRouteGeneration, vs...))
+}
+
+// OpenAiHealthRouteGenerationGT applies the GT predicate on the "open_ai_health_route_generation" field.
+func OpenAiHealthRouteGenerationGT(v int64) predicate.Account {
+	return predicate.Account(sql.FieldGT(FieldOpenAiHealthRouteGeneration, v))
+}
+
+// OpenAiHealthRouteGenerationGTE applies the GTE predicate on the "open_ai_health_route_generation" field.
+func OpenAiHealthRouteGenerationGTE(v int64) predicate.Account {
+	return predicate.Account(sql.FieldGTE(FieldOpenAiHealthRouteGeneration, v))
+}
+
+// OpenAiHealthRouteGenerationLT applies the LT predicate on the "open_ai_health_route_generation" field.
+func OpenAiHealthRouteGenerationLT(v int64) predicate.Account {
+	return predicate.Account(sql.FieldLT(FieldOpenAiHealthRouteGeneration, v))
+}
+
+// OpenAiHealthRouteGenerationLTE applies the LTE predicate on the "open_ai_health_route_generation" field.
+func OpenAiHealthRouteGenerationLTE(v int64) predicate.Account {
+	return predicate.Account(sql.FieldLTE(FieldOpenAiHealthRouteGeneration, v))
+}
+
+// OpenAiHealthRouteGenerationIsNil applies the IsNil predicate on the "open_ai_health_route_generation" field.
+func OpenAiHealthRouteGenerationIsNil() predicate.Account {
+	return predicate.Account(sql.FieldIsNull(FieldOpenAiHealthRouteGeneration))
+}
+
+// OpenAiHealthRouteGenerationNotNil applies the NotNil predicate on the "open_ai_health_route_generation" field.
+func OpenAiHealthRouteGenerationNotNil() predicate.Account {
+	return predicate.Account(sql.FieldNotNull(FieldOpenAiHealthRouteGeneration))
 }
 
 // HasGroups applies the HasEdge predicate on the "groups" edge.
