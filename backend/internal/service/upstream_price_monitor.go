@@ -85,10 +85,9 @@ type UpstreamPriceMonitorRepository interface {
 	ApplyRun(context.Context, int64, string, []int64, []int64, int, int, time.Time, int64) error
 	RollbackRun(context.Context, int64, string) error
 	MarkApplyFailure(context.Context, int64, string) error
-	ReconcileModelCatalog(context.Context, []domain.UpstreamPriceDiscoveredModel, int, bool) error
+	ReconcileModelCatalog(context.Context, []domain.UpstreamPriceDiscoveredModel, int, bool) (int64, error)
 	ListModelCatalog(context.Context) ([]domain.UpstreamPriceModelCatalogEntry, error)
 	SetModelCatalogStatus(context.Context, string, domain.UpstreamPriceModelStatus) (*domain.UpstreamPriceModelCatalogEntry, error)
-	GetModelCatalogRevision(context.Context) (int64, bool, error)
 }
 
 type upstreamPriceMonitorAccountReader interface {
@@ -281,7 +280,7 @@ func (s *UpstreamPriceMonitorService) DiscoverModelCatalog(ctx context.Context) 
 	if len(accounts) == 0 {
 		return nil, ErrUpstreamPriceMonitorInvalidConfig
 	}
-	if _, complete, err := s.refreshUpstreamPriceModelCatalog(ctx, accounts); err != nil {
+	if _, complete, _, err := s.refreshUpstreamPriceModelCatalog(ctx, accounts); err != nil {
 		return nil, err
 	} else if !complete {
 		return nil, ErrUpstreamPriceModelDiscoveryIncomplete
@@ -469,10 +468,10 @@ type upstreamPriceModelDiscoveryResult struct {
 func (s *UpstreamPriceMonitorService) refreshUpstreamPriceModelCatalog(
 	ctx context.Context,
 	accounts map[int64]*Account,
-) (map[int64]map[string]struct{}, bool, error) {
+) (map[int64]map[string]struct{}, bool, int64, error) {
 	availability := make(map[int64]map[string]struct{}, len(accounts))
 	if len(accounts) == 0 {
-		return availability, false, nil
+		return availability, false, 0, nil
 	}
 	results := make(chan upstreamPriceModelDiscoveryResult, len(accounts))
 	var wg sync.WaitGroup
@@ -526,10 +525,11 @@ func (s *UpstreamPriceMonitorService) refreshUpstreamPriceModelCatalog(
 			DomesticCandidate: isLikelyDomesticUpstreamModel(item.name),
 		})
 	}
-	if err := s.repo.ReconcileModelCatalog(ctx, discovered, len(accounts), complete); err != nil {
-		return availability, complete, err
+	revision, err := s.repo.ReconcileModelCatalog(ctx, discovered, len(accounts), complete)
+	if err != nil {
+		return availability, complete, 0, err
 	}
-	return availability, complete, nil
+	return availability, complete, revision, nil
 }
 
 func isLikelyDomesticUpstreamModel(model string) bool {
@@ -618,7 +618,7 @@ func (s *UpstreamPriceMonitorService) RunOnce(ctx context.Context, options Upstr
 	}
 
 	var runErrors []string
-	modelAvailability, _, discoveryErr := s.refreshUpstreamPriceModelCatalog(ctx, loadedAccounts)
+	modelAvailability, _, modelCatalogRevision, discoveryErr := s.refreshUpstreamPriceModelCatalog(ctx, loadedAccounts)
 	if discoveryErr != nil {
 		runErrors = append(runErrors, "refresh upstream model catalogue: "+discoveryErr.Error())
 	} else if refreshedConfig, refreshErr := s.repo.GetConfig(ctx); refreshErr != nil {
@@ -631,13 +631,8 @@ func (s *UpstreamPriceMonitorService) RunOnce(ctx context.Context, options Upstr
 		cfg.DomesticModels = refreshedConfig.DomesticModels
 		cfg.UpdatedAt = refreshedConfig.UpdatedAt
 	}
-	modelCatalogRevision, _, catalogRevisionErr := s.repo.GetModelCatalogRevision(ctx)
-	if catalogRevisionErr != nil || modelCatalogRevision <= 0 {
-		if catalogRevisionErr != nil {
-			runErrors = append(runErrors, "read model catalogue revision: "+catalogRevisionErr.Error())
-		} else {
-			runErrors = append(runErrors, "model catalogue has no completed revision")
-		}
+	if modelCatalogRevision <= 0 {
+		runErrors = append(runErrors, "model catalogue has no scan revision")
 	}
 	type accountRunResult struct {
 		matched, mismatched, probed int

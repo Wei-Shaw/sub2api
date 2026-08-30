@@ -84,17 +84,14 @@ func (r *activeProbeTestRepository) RollbackRun(context.Context, int64, string) 
 func (r *activeProbeTestRepository) MarkApplyFailure(context.Context, int64, string) error {
 	return nil
 }
-func (r *activeProbeTestRepository) ReconcileModelCatalog(context.Context, []domain.UpstreamPriceDiscoveredModel, int, bool) error {
-	return nil
+func (r *activeProbeTestRepository) ReconcileModelCatalog(context.Context, []domain.UpstreamPriceDiscoveredModel, int, bool) (int64, error) {
+	return 1, nil
 }
 func (r *activeProbeTestRepository) ListModelCatalog(context.Context) ([]domain.UpstreamPriceModelCatalogEntry, error) {
 	return nil, nil
 }
 func (r *activeProbeTestRepository) SetModelCatalogStatus(context.Context, string, domain.UpstreamPriceModelStatus) (*domain.UpstreamPriceModelCatalogEntry, error) {
 	return nil, nil
-}
-func (r *activeProbeTestRepository) GetModelCatalogRevision(context.Context) (int64, bool, error) {
-	return 1, true, nil
 }
 
 type activeProbeScript struct {

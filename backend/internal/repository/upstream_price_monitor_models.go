@@ -18,10 +18,10 @@ func (r *upstreamPriceMonitorRepository) ReconcileModelCatalog(
 	models []domain.UpstreamPriceDiscoveredModel,
 	expectedAccounts int,
 	complete bool,
-) error {
+) (int64, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	var scanRevision int64
@@ -29,7 +29,7 @@ func (r *upstreamPriceMonitorRepository) ReconcileModelCatalog(
 		revision=revision+1,discovery_complete=$1,last_scan_at=NOW(),
 		last_complete_scan_at=CASE WHEN $1 THEN NOW() ELSE last_complete_scan_at END
 		WHERE id=1 RETURNING revision`, complete).Scan(&scanRevision); err != nil {
-		return err
+		return 0, err
 	}
 	observedKeys := make([]string, 0, len(models))
 	for _, model := range models {
@@ -51,7 +51,7 @@ func (r *upstreamPriceMonitorRepository) ReconcileModelCatalog(
 			 status=CASE WHEN upstream_price_monitor_models.status='suspected_retired' THEN 'discovered'
 			             ELSE upstream_price_monitor_models.status END`,
 			key, name, model.DomesticCandidate, model.SeenAccountCount, expectedAccounts, complete, scanRevision); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if complete && expectedAccounts > 0 {
@@ -60,19 +60,22 @@ func (r *upstreamPriceMonitorRepository) ReconcileModelCatalog(
 			seen_account_count=0,expected_account_count=$2,
 			last_missing_at=NOW(),updated_at=NOW()
 			WHERE NOT (model_key=ANY($1::text[]))`, pq.Array(observedKeys), expectedAccounts); err != nil {
-			return err
+			return 0, err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE upstream_price_monitor_models SET
 			status='suspected_retired',updated_at=NOW()
 			WHERE status='managed' AND missing_runs>=3
 			  AND (last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '24 hours')`); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if err := syncUpstreamPriceManagedModels(ctx, tx); err != nil {
-		return err
+		return 0, err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return scanRevision, nil
 }
 
 func (r *upstreamPriceMonitorRepository) ListModelCatalog(ctx context.Context) ([]domain.UpstreamPriceModelCatalogEntry, error) {

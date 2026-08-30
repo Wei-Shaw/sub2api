@@ -50,6 +50,14 @@ func (r *upstreamPriceMonitorRepository) UpdateConfig(ctx context.Context, cfg *
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	var previousAccountIDs pq.Int64Array
+	accountScopeChanged := true
+	if err := tx.QueryRowContext(ctx, `SELECT account_ids FROM upstream_price_monitor_config
+		WHERE id=1 FOR UPDATE`).Scan(&previousAccountIDs); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	} else if err == nil {
+		accountScopeChanged = !sameInt64IDs([]int64(previousAccountIDs), cfg.AccountIDs)
+	}
 	modelRows, err := tx.QueryContext(ctx, `SELECT model_name FROM upstream_price_monitor_models
 		WHERE status='managed' ORDER BY LOWER(model_name)`)
 	if err != nil {
@@ -86,7 +94,26 @@ func (r *upstreamPriceMonitorRepository) UpdateConfig(ctx context.Context, cfg *
 		cfg.PassiveSampleMaxAgeMinutes, cfg.ActiveProbeEnabled).Scan(&cfg.UpdatedAt); err != nil {
 		return err
 	}
+	if accountScopeChanged {
+		if _, err := tx.ExecContext(ctx, `UPDATE upstream_price_monitor_model_scan_state SET
+			revision=revision+1,discovery_complete=FALSE,last_scan_at=NOW()
+			WHERE id=1`); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
+}
+
+func sameInt64IDs(a, b []int64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *upstreamPriceMonitorRepository) CreateRun(ctx context.Context, run *domain.UpstreamPriceMonitorRun) error {
