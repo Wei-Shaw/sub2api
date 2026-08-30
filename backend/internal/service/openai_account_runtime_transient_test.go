@@ -47,10 +47,11 @@ func (r *blockingTransientCircuitAccountRepo) SetModelRateLimit(_ context.Contex
 	r.writeCount++
 	writeSequence := r.writeCount
 	r.mu.Unlock()
-	if writeSequence == 1 {
+	switch writeSequence {
+	case 1:
 		close(r.firstWriteStarted)
 		<-r.releaseFirstWrite
-	} else if writeSequence == 2 {
+	case 2:
 		close(r.secondWriteStarted)
 	}
 	limit := map[string]any{
@@ -77,7 +78,10 @@ func (r *blockingTransientCircuitAccountRepo) ClearModelRateLimitIfMatch(_ conte
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	limits := r.account.Extra[modelRateLimitsKey].(map[string]any)
-	current, _ := json.Marshal(limits[model])
+	current, err := json.Marshal(limits[model])
+	if err != nil {
+		return false, err
+	}
 	if string(current) != string(observed) {
 		return false, nil
 	}
