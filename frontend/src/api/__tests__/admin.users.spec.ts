@@ -12,11 +12,13 @@ vi.mock('@/api/client', () => ({
 
 import {
   batchUpdateLimits,
+  batchDeleteUsers,
   bindUserAuthIdentity,
   type AdminBindAuthIdentityRequest,
   type AdminBoundAuthIdentity,
   type BatchUpdateUserLimitsRequest,
   type BatchUpdateUserLimitsResponse,
+  type BatchDeleteUsersResponse,
 } from '@/api/admin/users'
 
 type Assert<T extends true> = T
@@ -79,6 +81,9 @@ const batchRequestContractExact: Assert<
 > = true
 const batchResponseContractExact: Assert<
   IsExact<BatchUpdateUserLimitsResponse, { affected: number }>
+> = true
+const batchDeleteResponseContractExact: Assert<
+  IsExact<BatchDeleteUsersResponse, { affected: number; skipped: number }>
 > = true
 
 describe('admin users api auth identity binding', () => {
@@ -146,5 +151,16 @@ describe('admin users api auth identity binding', () => {
     expect(result).toEqual({ affected: 2 })
     expect(batchRequestContractExact).toBe(true)
     expect(batchResponseContractExact).toBe(true)
+  })
+
+  it('posts selected user ids to the batch delete endpoint', async () => {
+    const request = { user_ids: [4, 7] }
+    post.mockResolvedValue({ data: { affected: 2, skipped: 0 } satisfies BatchDeleteUsersResponse })
+
+    const result = await batchDeleteUsers(request)
+
+    expect(post).toHaveBeenCalledWith('/admin/users/batch-delete', request)
+    expect(result).toEqual({ affected: 2, skipped: 0 })
+    expect(batchDeleteResponseContractExact).toBe(true)
   })
 })
