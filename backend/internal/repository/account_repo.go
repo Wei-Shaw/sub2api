@@ -2457,6 +2457,32 @@ func (r *accountRepository) ClearModelRateLimits(ctx context.Context, id int64) 
 	return nil
 }
 
+func (r *accountRepository) ClearModelRateLimitIfMatch(ctx context.Context, id int64, modelID string, observed json.RawMessage) (bool, error) {
+	if modelID == "" || len(observed) == 0 {
+		return false, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(ctx, `
+		UPDATE accounts
+		SET extra = COALESCE(extra, '{}'::jsonb) #- ARRAY['model_rate_limits', $1]::text[], updated_at = NOW()
+		WHERE id = $2
+			AND deleted_at IS NULL
+			AND extra #> ARRAY['model_rate_limits', $1]::text[] = $3::jsonb
+	`, modelID, id, string(observed))
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected == 0 {
+		return false, err
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue conditional model recovery failed: account=%d model=%s err=%v", id, modelID, err)
+	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
+	return true, nil
+}
+
 func (r *accountRepository) UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error {
 	builder := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
