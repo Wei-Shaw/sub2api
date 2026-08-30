@@ -1,42 +1,43 @@
 <template>
   <div class="space-y-5">
     <section
-      class="relative overflow-hidden rounded-3xl border border-orange-200/70 bg-gradient-to-br from-[#fffaf2] via-white to-[#fff5e8] px-5 py-6 shadow-sm dark:border-orange-500/20 dark:from-dark-900 dark:via-dark-900 dark:to-orange-950/20 sm:px-7 sm:py-7"
+      data-testid="catalog-hero"
+      class="relative overflow-hidden rounded-xl border border-[#202b51] bg-[#121a35] px-5 py-6 text-white shadow-[0_20px_50px_rgba(20,29,70,0.18)] dark:border-[#31406f] dark:bg-[#0b1228] sm:px-7 sm:py-7"
     >
-      <div class="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-orange-200/35 blur-3xl dark:bg-orange-500/10"></div>
+      <div class="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-[#315bd6]/20 blur-3xl"></div>
       <div class="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div class="max-w-2xl">
-          <div class="mb-3 inline-flex items-center gap-2 rounded-full border border-orange-200 bg-white/80 px-3 py-1 text-xs font-semibold text-orange-700 shadow-sm dark:border-orange-500/25 dark:bg-dark-800/80 dark:text-orange-300">
-            <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500"></span>
+          <div class="mb-3 inline-flex items-center gap-2 rounded-full border border-white/[0.15] bg-white/10 px-3 py-1 text-xs font-semibold text-blue-100">
+            <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[#16a085]"></span>
             {{ t('modelPlaza.liveCatalog') }}
           </div>
-          <h1 class="text-2xl font-bold tracking-tight text-gray-950 dark:text-white sm:text-3xl">
+          <h1 class="text-2xl font-bold tracking-tight text-white sm:text-3xl">
             {{ t('modelPlaza.title') }}
           </h1>
-          <p class="mt-2 max-w-xl text-sm leading-6 text-gray-600 dark:text-dark-300">
+          <p class="mt-2 max-w-xl text-sm leading-6 text-slate-300">
             {{ t('modelPlaza.dynamicDescription') }}
           </p>
-          <p class="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+          <p class="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-amber-300">
             <Icon name="infoCircle" size="xs" />
             {{ t('modelPlaza.displayOnlyNotice') }}
           </p>
         </div>
 
         <div class="grid grid-cols-2 gap-2.5 sm:min-w-[300px]">
-          <div class="rounded-2xl border border-white/80 bg-white/80 px-4 py-3 shadow-sm backdrop-blur dark:border-dark-700 dark:bg-dark-800/80">
-            <p class="text-xs text-gray-400 dark:text-dark-500">{{ t('modelPlaza.stats.models') }}</p>
-            <p class="mt-1 text-xl font-bold text-gray-950 dark:text-white">{{ totalModelCount }}</p>
+          <div class="rounded-lg border border-white/10 bg-white/[0.06] px-4 py-3">
+            <p class="text-xs text-slate-400">{{ t('modelPlaza.stats.models') }}</p>
+            <p class="mt-1 text-xl font-bold text-white">{{ totalModelCount }}</p>
           </div>
-          <div class="rounded-2xl border border-white/80 bg-white/80 px-4 py-3 shadow-sm backdrop-blur dark:border-dark-700 dark:bg-dark-800/80">
-            <p class="text-xs text-gray-400 dark:text-dark-500">{{ t('modelPlaza.stats.providers') }}</p>
-            <p class="mt-1 text-xl font-bold text-gray-950 dark:text-white">{{ providerOptions.length }}</p>
+          <div class="rounded-lg border border-white/10 bg-white/[0.06] px-4 py-3">
+            <p class="text-xs text-slate-400">{{ t('modelPlaza.stats.providers') }}</p>
+            <p class="mt-1 text-xl font-bold text-white">{{ providerOptions.length }}</p>
           </div>
         </div>
       </div>
     </section>
 
     <div v-if="loading" class="flex min-h-[280px] items-center justify-center">
-      <div class="h-8 w-8 animate-spin rounded-full border-2 border-primary-600/25 border-t-primary-600 dark:border-primary-400/25 dark:border-t-primary-400"></div>
+      <div class="h-8 w-8 animate-spin rounded-full border-2 border-[#315bd6]/25 border-t-[#315bd6] dark:border-blue-400/25 dark:border-t-blue-400"></div>
     </div>
     <div
       v-else-if="error"
@@ -64,7 +65,7 @@
       />
 
       <div ref="resultsEl" class="min-w-0 scroll-mt-4">
-        <div v-if="filteredBillingRegions.length > 0" class="space-y-12">
+        <div v-if="filteredBillingRegions.length > 0" class="space-y-8">
           <section
             v-for="region in filteredBillingRegions"
             :key="region.billingMode"
@@ -72,27 +73,28 @@
             class="scroll-mt-4"
           >
             <header
-              class="mb-5 overflow-hidden rounded-2xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50/90 via-white to-blue-50/70 shadow-sm dark:border-indigo-500/25 dark:from-indigo-500/10 dark:via-dark-800 dark:to-blue-500/10"
+              data-testid="billing-region-header"
+              class="mb-4 overflow-hidden rounded-lg border border-[#dce3f7] bg-[#f7f9ff] shadow-none dark:border-dark-700 dark:bg-dark-900/50"
             >
-              <div class="border-l-4 border-indigo-500 px-5 py-4 sm:px-6">
-                <p class="text-xs font-semibold tracking-wide text-indigo-500 dark:text-indigo-300">
+              <div class="border-l-[3px] border-[#315bd6] px-5 py-4 sm:px-6">
+                <p class="text-xs font-semibold tracking-wide text-[#315bd6] dark:text-blue-300">
                   {{ region.eyebrow }}
                 </p>
                 <div class="mt-1 flex flex-wrap items-end justify-between gap-2">
                   <div>
-                    <h2 class="text-xl font-black text-gray-950 dark:text-white">{{ region.title }}</h2>
-                    <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-dark-400">
+                    <h2 class="text-xl font-black text-[#25315f] dark:text-white">{{ region.title }}</h2>
+                    <p class="mt-1 text-xs leading-5 text-[#71809f] dark:text-dark-400">
                       {{ region.description }}
                     </p>
                   </div>
-                  <span class="rounded-xl bg-white/80 px-3 py-1.5 text-xs font-semibold text-indigo-700 shadow-sm dark:bg-dark-800/80 dark:text-indigo-300">
+                  <span class="rounded-md border border-[#dce3f7] bg-white px-3 py-1.5 text-xs font-semibold text-[#315bd6] dark:border-dark-700 dark:bg-dark-800 dark:text-blue-300">
                     {{ t('modelPlaza.filters.modelCount', { count: region.modelCount }) }}
                   </span>
                 </div>
               </div>
             </header>
 
-            <div class="space-y-5">
+            <div class="space-y-4">
               <PlazaGroupSection
                 v-for="section in region.sections"
                 :key="sectionKey(section)"
@@ -271,7 +273,7 @@ const filteredSections = computed<PricingSection[]>(() => {
       sections.push({
         provider: provider.provider,
         providerName: provider.display_name || platformLabel(provider.provider),
-        providerNote: provider.provider_note || '',
+        providerNote: providerNoteForMode(provider, billingMode),
         logoKey: provider.logo_key || provider.provider,
         logoUrl: provider.logo_url || '',
         currency,
@@ -284,6 +286,16 @@ const filteredSections = computed<PricingSection[]>(() => {
     (a, b) => (billingOrder[a.billingMode] ?? 99) - (billingOrder[b.billingMode] ?? 99)
   )
 })
+
+function providerNoteForMode(
+  provider: ModelPricesResponse['providers'][number],
+  billingMode: BillingMode
+): string {
+  if (billingMode === BILLING_MODE_PER_REQUEST) return provider.per_request_note || ''
+  if (billingMode === BILLING_MODE_IMAGE) return provider.image_note || ''
+  if (billingMode === BILLING_MODE_TOKEN) return provider.provider_note || ''
+  return ''
+}
 
 function billingRegionCopy(mode: BillingMode): Pick<BillingRegion, 'eyebrow' | 'title' | 'description'> {
   if (mode === BILLING_MODE_TOKEN) {

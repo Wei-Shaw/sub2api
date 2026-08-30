@@ -37,6 +37,7 @@ import adminComplianceAPI from './compliance'
 import auditAPI from './audit'
 import pluginsAPI from './plugins'
 import displayPricingAPI from './displayPricing'
+import upstreamPriceMonitorAPI from './upstreamPriceMonitor'
 
 /**
  * Unified admin API object for convenient access
@@ -75,7 +76,8 @@ export const adminAPI = {
   compliance: adminComplianceAPI,
   audit: auditAPI,
   plugins: pluginsAPI,
-  displayPricing: displayPricingAPI
+  displayPricing: displayPricingAPI,
+  upstreamPriceMonitor: upstreamPriceMonitorAPI
 }
 
 export {
@@ -112,7 +114,8 @@ export {
   adminComplianceAPI,
   auditAPI,
   pluginsAPI,
-  displayPricingAPI
+  displayPricingAPI,
+  upstreamPriceMonitorAPI
 }
 
 export default adminAPI
@@ -138,5 +141,10 @@ export type {
   DeleteDisplayPricingProviderResult,
   DisplayPricingModel,
   DisplayPricingModelInput,
-  DiscoveredDisplayModel
+  DiscoveredDisplayModel,
+  DisplayOfficialPrices,
+  OfficialPriceSyncCandidate,
+  OfficialPriceSyncPreviewResponse,
+  ApplyOfficialPriceSyncRequest,
+  ApplyOfficialPriceSyncResponse
 } from './displayPricing'

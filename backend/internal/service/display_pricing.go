@@ -19,6 +19,7 @@ const (
 	DisplayBillingModeImage      = "image"
 	DisplayCurrencyCNY           = "CNY"
 	DisplayCurrencyUSD           = "USD"
+	DisplayOfficialPriceManual   = "manual"
 )
 
 var (
@@ -47,15 +48,17 @@ type DisplayPricingSettings struct {
 }
 
 type DisplayPricingProvider struct {
-	Provider     string    `json:"provider"`
-	DisplayName  string    `json:"display_name"`
-	ProviderNote string    `json:"provider_note"`
-	Currency     string    `json:"currency"`
-	Multiplier   *float64  `json:"multiplier"`
-	LogoKey      string    `json:"logo_key"`
-	LogoURL      string    `json:"logo_url"`
-	SortOrder    int       `json:"sort_order"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	Provider       string    `json:"provider"`
+	DisplayName    string    `json:"display_name"`
+	ProviderNote   string    `json:"provider_note"`
+	PerRequestNote string    `json:"per_request_note"`
+	ImageNote      string    `json:"image_note"`
+	Currency       string    `json:"currency"`
+	Multiplier     *float64  `json:"multiplier"`
+	LogoKey        string    `json:"logo_key"`
+	LogoURL        string    `json:"logo_url"`
+	SortOrder      int       `json:"sort_order"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type DisplayImagePrice struct {
@@ -80,6 +83,9 @@ type DisplayModelPrice struct {
 	OfficialOutputPerMillion     *float64
 	OfficialCacheWritePerMillion *float64
 	OfficialCacheReadPerMillion  *float64
+	OfficialPriceSource          string
+	OfficialPriceSourceURL       string
+	OfficialPriceSyncedAt        *time.Time
 	ModelMultiplier              *float64
 
 	PerRequestLTE256K          *float64
@@ -253,6 +259,8 @@ type DisplayCatalogProvider struct {
 	Provider             string                `json:"provider"`
 	DisplayName          string                `json:"display_name"`
 	ProviderNote         string                `json:"provider_note"`
+	PerRequestNote       string                `json:"per_request_note"`
+	ImageNote            string                `json:"image_note"`
 	Currency             string                `json:"currency"`
 	LogoKey              string                `json:"logo_key"`
 	LogoURL              string                `json:"logo_url"`
@@ -332,8 +340,10 @@ func (s *DisplayPricingService) BuildCatalog(ctx context.Context, groups []Plaza
 			}
 			bucket = &DisplayCatalogProvider{
 				Provider: providerKey, DisplayName: providerCfg.DisplayName, Currency: providerCfg.Currency,
-				ProviderNote: providerCfg.ProviderNote,
-				LogoKey:      providerCfg.LogoKey, LogoURL: providerCfg.LogoURL,
+				ProviderNote:   providerCfg.ProviderNote,
+				PerRequestNote: providerCfg.PerRequestNote,
+				ImageNote:      providerCfg.ImageNote,
+				LogoKey:        providerCfg.LogoKey, LogoURL: providerCfg.LogoURL,
 				ConfiguredMultiplier: providerCfg.Multiplier, EffectiveMultiplier: settings.GlobalMultiplier * override,
 				Models: []DisplayCatalogModel{}, SortOrder: providerCfg.SortOrder,
 			}
@@ -457,7 +467,15 @@ func normalizeAndValidateDisplayModelPrice(p *DisplayModelPrice) error {
 	p.BillingMode = strings.ToLower(strings.TrimSpace(p.BillingMode))
 	p.Currency = strings.ToUpper(strings.TrimSpace(p.Currency))
 	p.ModelNote = strings.TrimSpace(p.ModelNote)
+	p.OfficialPriceSource = strings.ToLower(strings.TrimSpace(p.OfficialPriceSource))
+	p.OfficialPriceSourceURL = strings.TrimSpace(p.OfficialPriceSourceURL)
+	if p.OfficialPriceSource == "" {
+		p.OfficialPriceSource = DisplayOfficialPriceManual
+	}
 	if p.Platform == "" || p.ModelName == "" || p.Provider == "" || !validDisplayBillingMode(p.BillingMode) || !validDisplayCurrency(p.Currency) {
+		return ErrDisplayPriceInvalid
+	}
+	if !displayProviderKeyPattern.MatchString(p.OfficialPriceSource) || !validDisplayOfficialSourceURL(p.OfficialPriceSourceURL) {
 		return ErrDisplayPriceInvalid
 	}
 	if len([]rune(p.ModelNote)) > maxDisplayModelNoteLength {
@@ -488,6 +506,9 @@ func normalizeAndValidateDisplayModelPrice(p *DisplayModelPrice) error {
 		}
 		p.OfficialInputPerMillion, p.OfficialOutputPerMillion, p.OfficialCacheWritePerMillion, p.OfficialCacheReadPerMillion = nil, nil, nil, nil
 		p.ModelMultiplier = nil
+		p.OfficialPriceSource = DisplayOfficialPriceManual
+		p.OfficialPriceSourceURL = ""
+		p.OfficialPriceSyncedAt = nil
 		p.ImagePrices = nil
 	case DisplayBillingModeImage:
 		if len(p.ImagePrices) == 0 {
@@ -495,18 +516,38 @@ func normalizeAndValidateDisplayModelPrice(p *DisplayModelPrice) error {
 		}
 		p.OfficialInputPerMillion, p.OfficialOutputPerMillion, p.OfficialCacheWritePerMillion, p.OfficialCacheReadPerMillion = nil, nil, nil, nil
 		p.PerRequestLTE256K, p.PerRequest256K512KOverride, p.PerRequestGT512KOverride = nil, nil, nil
+		p.OfficialPriceSource = DisplayOfficialPriceManual
+		p.OfficialPriceSourceURL = ""
+		p.OfficialPriceSyncedAt = nil
 	}
 	return nil
+}
+
+func validDisplayOfficialSourceURL(raw string) bool {
+	if raw == "" {
+		return true
+	}
+	if len(raw) > 2048 {
+		return false
+	}
+	parsed, err := url.Parse(raw)
+	return err == nil && parsed.Scheme == "https" && parsed.Host != "" && parsed.User == nil
 }
 
 func normalizeAndValidateDisplayProvider(p *DisplayPricingProvider) error {
 	p.Provider = normalizeDisplayProvider(p.Provider)
 	p.DisplayName = strings.TrimSpace(p.DisplayName)
 	p.ProviderNote = strings.TrimSpace(p.ProviderNote)
+	p.PerRequestNote = strings.TrimSpace(p.PerRequestNote)
+	p.ImageNote = strings.TrimSpace(p.ImageNote)
 	p.Currency = strings.ToUpper(strings.TrimSpace(p.Currency))
 	p.LogoKey = strings.ToLower(strings.TrimSpace(p.LogoKey))
 	p.LogoURL = strings.TrimSpace(p.LogoURL)
-	if !displayProviderKeyPattern.MatchString(p.Provider) || p.DisplayName == "" || len([]rune(p.ProviderNote)) > maxDisplayProviderNoteLength || !validDisplayCurrency(p.Currency) ||
+	if !displayProviderKeyPattern.MatchString(p.Provider) || p.DisplayName == "" ||
+		len([]rune(p.ProviderNote)) > maxDisplayProviderNoteLength ||
+		len([]rune(p.PerRequestNote)) > maxDisplayProviderNoteLength ||
+		len([]rune(p.ImageNote)) > maxDisplayProviderNoteLength ||
+		!validDisplayCurrency(p.Currency) ||
 		(p.Multiplier != nil && !validPositive(*p.Multiplier)) ||
 		(p.LogoKey != "" && !displayProviderKeyPattern.MatchString(p.LogoKey)) || !validDisplayLogoURL(p.LogoURL) {
 		return ErrDisplayProviderInvalid

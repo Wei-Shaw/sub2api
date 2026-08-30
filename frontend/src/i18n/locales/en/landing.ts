@@ -11,6 +11,7 @@ export default {
     switchToLight: 'Switch to Light Mode',
     switchToDark: 'Switch to Dark Mode',
     dashboard: 'Dashboard',
+    modelPrices: 'Model Prices',
     login: 'Login',
     getStarted: 'Get Started',
     goToDashboard: 'Go to Dashboard',

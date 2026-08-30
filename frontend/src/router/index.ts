@@ -186,6 +186,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/pricing',
+    name: 'PublicModelPrices',
+    component: () => import('@/views/ModelPlazaView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Model Prices',
+      titleKey: 'modelPlaza.title'
+    }
+  },
+  {
     path: '/model-plaza',
     redirect: '/model-prices'
   },
@@ -494,6 +504,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/channels/upstream-price-monitor',
+    name: 'AdminUpstreamPriceMonitor',
+    component: () => import('@/views/admin/UpstreamPriceMonitorView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Upstream Price Monitor',
+      titleKey: 'admin.upstreamPriceMonitor.title',
+      descriptionKey: 'admin.upstreamPriceMonitor.description'
+    }
+  },
+  {
     path: '/admin/channels/monitor',
     name: 'AdminChannelMonitor',
     component: () => import('@/views/admin/ChannelMonitorView.vue'),
@@ -766,7 +788,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/pricing', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',

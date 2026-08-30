@@ -93,8 +93,11 @@ func TestDisplayPricingBuildCatalogUsesPresentationPricesOnly(t *testing.T) {
 	input, output := 10.0, 20.0
 	base := 0.01
 	repo := &stubDisplayPricingRepo{
-		settings:  DisplayPricingSettings{GlobalMultiplier: 1.25, UpdatedAt: time.Unix(1, 0)},
-		providers: []DisplayPricingProvider{{Provider: "deepseek", DisplayName: "DeepSeek", ProviderNote: "  Peak price note  ", Currency: "CNY", Multiplier: &providerRate}},
+		settings: DisplayPricingSettings{GlobalMultiplier: 1.25, UpdatedAt: time.Unix(1, 0)},
+		providers: []DisplayPricingProvider{{
+			Provider: "deepseek", DisplayName: "DeepSeek", ProviderNote: "  Peak price note  ",
+			PerRequestNote: "Per-request note", ImageNote: "Image note", Currency: "CNY", Multiplier: &providerRate,
+		}},
 		models: []DisplayModelPrice{
 			{ID: 1, Platform: "openai", ModelName: "deepseek-token", ModelNote: "Model launch note", Provider: "deepseek", BillingMode: DisplayBillingModeToken, Currency: "CNY", Enabled: true, OfficialInputPerMillion: &input, OfficialOutputPerMillion: &output, ModelMultiplier: &modelRate},
 			{ID: 2, Platform: "openai", ModelName: "deepseek-once", Provider: "deepseek", BillingMode: DisplayBillingModePerRequest, Currency: "CNY", Enabled: true, PerRequestLTE256K: &base},
@@ -109,6 +112,8 @@ func TestDisplayPricingBuildCatalogUsesPresentationPricesOnly(t *testing.T) {
 	require.Len(t, catalog.Providers, 1)
 	require.Len(t, catalog.Providers[0].Models, 2)
 	require.Equal(t, "  Peak price note  ", catalog.Providers[0].ProviderNote)
+	require.Equal(t, "Per-request note", catalog.Providers[0].PerRequestNote)
+	require.Equal(t, "Image note", catalog.Providers[0].ImageNote)
 
 	var token, once DisplayCatalogModel
 	for _, m := range catalog.Providers[0].Models {
@@ -241,12 +246,15 @@ func TestDisplayPricingProviderCRUDAndLogoValidation(t *testing.T) {
 	rate := 0.125
 	created, err := svc.CreateProvider(context.Background(), DisplayPricingProvider{
 		Provider: "Custom_AI", DisplayName: "Custom AI", Currency: "cny", Multiplier: &rate,
-		ProviderNote: "  Customer note  ", LogoKey: "Custom-AI", LogoURL: "https://cdn.example.com/logo.svg", SortOrder: 9,
+		ProviderNote: "  Token note  ", PerRequestNote: "  Request note  ", ImageNote: "  Image note  ",
+		LogoKey: "Custom-AI", LogoURL: "https://cdn.example.com/logo.svg", SortOrder: 9,
 	})
 	require.NoError(t, err)
 	require.Equal(t, "custom_ai", created.Provider)
 	require.Equal(t, "custom-ai", created.LogoKey)
-	require.Equal(t, "Customer note", created.ProviderNote)
+	require.Equal(t, "Token note", created.ProviderNote)
+	require.Equal(t, "Request note", created.PerRequestNote)
+	require.Equal(t, "Image note", created.ImageNote)
 
 	created.DisplayName = "Custom AI 2"
 	created.LogoURL = "/assets/providers/custom.svg"
@@ -295,4 +303,12 @@ func TestDisplayPricingNotesAreTrimmedAndLengthLimited(t *testing.T) {
 		Provider: "long-note", DisplayName: "Long", ProviderNote: strings.Repeat("n", maxDisplayProviderNoteLength+1), Currency: "USD",
 	})
 	require.ErrorIs(t, err, ErrDisplayProviderInvalid)
+
+	for _, provider := range []DisplayPricingProvider{
+		{Provider: "long-request-note", DisplayName: "Long", PerRequestNote: strings.Repeat("n", maxDisplayProviderNoteLength+1), Currency: "USD"},
+		{Provider: "long-image-note", DisplayName: "Long", ImageNote: strings.Repeat("n", maxDisplayProviderNoteLength+1), Currency: "USD"},
+	} {
+		_, err = svc.CreateProvider(context.Background(), provider)
+		require.ErrorIs(t, err, ErrDisplayProviderInvalid)
+	}
 }

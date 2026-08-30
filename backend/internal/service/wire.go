@@ -817,6 +817,29 @@ func ProvideAPIKeyService(
 	return svc
 }
 
+func ProvideUpstreamPriceMonitorService(
+	repo UpstreamPriceMonitorRepository,
+	accounts AccountRepository,
+	remote UpstreamPriceRemoteFetcher,
+	activeProber UpstreamPriceActiveProber,
+	concurrency *ConcurrencyService,
+	pricePage UpstreamPricePageFetcher,
+	channels *ChannelService,
+) *UpstreamPriceMonitorService {
+	svc := NewUpstreamPriceMonitorService(repo, accounts, remote)
+	svc.SetActiveProber(activeProber)
+	svc.SetProbeConcurrencyService(concurrency)
+	svc.SetPricePageFetcher(pricePage)
+	svc.SetPricingCacheInvalidator(channels)
+	return svc
+}
+
+func ProvideUpstreamPriceMonitorRunner(monitor *UpstreamPriceMonitorService) *UpstreamPriceMonitorRunner {
+	runner := NewUpstreamPriceMonitorRunner(monitor)
+	runner.Start()
+	return runner
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -876,6 +899,11 @@ var ProviderSet = wire.NewSet(
 	ProvideAccountUsageService,
 	ProvideAccountTestService,
 	ProvideUpstreamBillingProbeService,
+	NewX5M5XUpstreamPriceRemoteFetcher,
+	NewX5M5XUpstreamPriceActiveProber,
+	NewX5M5XPricePageFetcher,
+	ProvideUpstreamPriceMonitorService,
+	ProvideUpstreamPriceMonitorRunner,
 	ProvideOllamaCloudUsageService,
 	ProvideSettingService,
 	NewDataManagementService,

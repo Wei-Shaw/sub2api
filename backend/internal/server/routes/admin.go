@@ -117,6 +117,7 @@ func RegisterAdminRoutes(
 
 		// 仅影响用户可见页面的展示定价，不影响真实渠道和扣费。
 		registerDisplayPricingRoutes(admin, h)
+		registerUpstreamPriceMonitorRoutes(admin, h)
 
 		// 渠道监控
 		registerChannelMonitorRoutes(admin, h, settingService)
@@ -136,6 +137,23 @@ func RegisterAdminRoutes(
 	}
 }
 
+func registerUpstreamPriceMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	monitor := admin.Group("/upstream-price-monitor")
+	{
+		monitor.GET("/config", h.Admin.UpstreamPriceMonitor.GetConfig)
+		monitor.PUT("/config", h.Admin.UpstreamPriceMonitor.UpdateConfig)
+		monitor.GET("/runtime", h.Admin.UpstreamPriceMonitor.GetRuntime)
+		monitor.GET("/evidence", h.Admin.UpstreamPriceMonitor.ListEvidence)
+		monitor.GET("/models", h.Admin.UpstreamPriceMonitor.ListModels)
+		monitor.POST("/models/discover", h.Admin.UpstreamPriceMonitor.DiscoverModels)
+		monitor.POST("/models/status", h.Admin.UpstreamPriceMonitor.UpdateModelStatus)
+		monitor.GET("/runs", h.Admin.UpstreamPriceMonitor.ListRuns)
+		monitor.POST("/runs", h.Admin.UpstreamPriceMonitor.CreateRun)
+		monitor.POST("/runs/:id/apply", h.Admin.UpstreamPriceMonitor.ApplyRun)
+		monitor.POST("/runs/:id/rollback", h.Admin.UpstreamPriceMonitor.RollbackRun)
+	}
+}
+
 func registerDisplayPricingRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	pricing := admin.Group("/display-pricing")
 	{
@@ -150,6 +168,8 @@ func registerDisplayPricingRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		pricing.PUT("/models/:id", h.Admin.DisplayPricing.UpdateModel)
 		pricing.DELETE("/models/:id", h.Admin.DisplayPricing.DeleteModel)
 		pricing.GET("/discovered-models", h.Admin.DisplayPricing.ListDiscoveredModels)
+		pricing.POST("/official-sync/preview", h.Admin.DisplayPricing.PreviewOfficialPrices)
+		pricing.POST("/official-sync/apply", h.Admin.DisplayPricing.ApplyOfficialPrices)
 	}
 }
 

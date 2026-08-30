@@ -56,7 +56,11 @@ function mountHome(settings: Record<string, unknown> = {}) {
 }
 
 function compactDestination(wrapper: ReturnType<typeof mountHome>) {
-  return wrapper.get('[data-testid="compact-home"]').findComponent(RouterLinkStub).props('to')
+  const destinations = wrapper
+    .get('[data-testid="compact-home"]')
+    .findAllComponents(RouterLinkStub)
+    .map((link) => String(link.props('to')))
+  return destinations.find((destination) => ['/login', '/dashboard', '/admin/dashboard'].includes(destination))
 }
 
 describe('HomeView compact mode', () => {
@@ -124,11 +128,30 @@ describe('HomeView compact mode', () => {
     expect(appStore.fetchPublicSettings).not.toHaveBeenCalled()
   })
 
-  it('keeps model prices out of the public home navigation', () => {
+  it('links visitors to the public model-pricing page when anonymous access is enabled', () => {
+    const wrapper = mountHome({
+      compact_home_enabled: true,
+      model_plaza_enabled: true,
+      model_plaza_require_auth: false
+    })
+
+    expect(wrapper.get('[data-testid="model-prices-link"]').findComponent(RouterLinkStub).props('to')).toBe('/pricing')
+  })
+
+  it('hides the visitor model-pricing link when sign-in is required', () => {
+    const wrapper = mountHome({
+      compact_home_enabled: true,
+      model_plaza_enabled: true,
+      model_plaza_require_auth: true
+    })
+
+    expect(wrapper.find('[data-testid="model-prices-link"]').exists()).toBe(false)
+  })
+
+  it('keeps authenticated users on the sidebar-backed model-pricing route', () => {
+    authStore.isAuthenticated = true
     const wrapper = mountHome({ compact_home_enabled: true, model_plaza_enabled: true })
 
-    expect(
-      wrapper.findAllComponents(RouterLinkStub).some((link) => link.props('to') === '/model-prices')
-    ).toBe(false)
+    expect(wrapper.get('[data-testid="model-prices-link"]').findComponent(RouterLinkStub).props('to')).toBe('/model-prices')
   })
 })

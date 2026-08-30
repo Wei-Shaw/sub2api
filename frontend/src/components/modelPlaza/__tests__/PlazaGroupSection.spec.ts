@@ -32,6 +32,7 @@ function model(name = 'gpt-test'): DisplayPriceModel {
     effective_multiplier: 1.2,
     display_prices: null,
     per_request: null,
+    image_base_prices: [],
     image_prices: []
   }
 }
@@ -66,6 +67,12 @@ describe('PlazaGroupSection', () => {
     expect(wrapper.text()).toContain('modelPlaza.detail.modelCount:2')
     expect(wrapper.attributes('id')).toBe('openai-token')
     expect(wrapper.get('[data-testid="provider-note"]').text()).toContain('高峰时段价格')
+    expect(wrapper.get('[data-testid="price-legend"]').text()).toContain('modelPlaza.table.officialPrice')
+    expect(wrapper.get('[data-testid="price-legend"]').text()).toContain('modelPlaza.table.sitePrice')
+    expect(wrapper.get('[data-testid="provider-card"]').classes()).toEqual(
+      expect.arrayContaining(['border-[#dce3f7]', 'shadow-none'])
+    )
+    expect(wrapper.get('[data-testid="price-legend"]').html()).toContain('text-[#315bd6]')
   })
 
   it('passes catalogue models and billing metadata to the shared pricing table', () => {

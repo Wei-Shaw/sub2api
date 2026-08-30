@@ -200,6 +200,7 @@ export default {
     paymentPlans: 'Plans',
     channelManagement: 'Channels',
     channelPricing: 'Channel Pricing',
+    upstreamPriceMonitor: 'Upstream Price Monitor',
     channelMonitor: 'Channel Monitor',
     channelStatus: 'Channel Status',
     riskControl: 'Risk Control',

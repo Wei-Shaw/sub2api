@@ -22,7 +22,12 @@ function model(overrides: Partial<DisplayPriceModel>): DisplayPriceModel {
     currency: 'USD',
     configured: true,
     enabled: true,
-    official_prices: null,
+    official_prices: {
+      input_per_million: 1,
+      output_per_million: 4,
+      cache_write_per_million: null,
+      cache_read_per_million: 0.1
+    },
     model_multiplier: null,
     effective_multiplier: 1.25,
     display_prices: {
@@ -32,13 +37,14 @@ function model(overrides: Partial<DisplayPriceModel>): DisplayPriceModel {
       cache_read_per_million: 0.125
     },
     per_request: null,
+    image_base_prices: [],
     image_prices: [],
     ...overrides
   }
 }
 
 describe('PlazaModelPricingTable', () => {
-  it('shows final token catalogue prices and the display multiplier', () => {
+  it('shows official and site token prices together with the display multiplier', () => {
     const wrapper = mount(PlazaModelPricingTable, {
       props: {
         models: [model({})],
@@ -49,12 +55,20 @@ describe('PlazaModelPricingTable', () => {
       global: { stubs: { PlatformIcon: true } }
     })
 
+    expect(wrapper.text()).toContain('$1')
     expect(wrapper.text()).toContain('$1.25')
+    expect(wrapper.text()).toContain('$4')
     expect(wrapper.text()).toContain('$5')
     expect(wrapper.text()).toContain('×1.25')
+    expect(wrapper.findAll('[data-testid="official-price"]')).toHaveLength(4)
+    expect(wrapper.findAll('[data-testid="site-price"]')).toHaveLength(4)
     expect(wrapper.text()).toContain('modelPlaza.table.displayMultiplier')
     expect(wrapper.get('table').classes()).toContain('table-fixed')
     expect(wrapper.get('[data-testid="token-columns"]').findAll('col')).toHaveLength(6)
+    expect(wrapper.get('[data-testid="multiplier-badge"]').classes()).toEqual(
+      expect.arrayContaining(['bg-[#effbf8]', 'text-[#07866f]'])
+    )
+    expect(wrapper.get('[data-testid="multiplier-badge"]').classes().join(' ')).not.toContain('orange')
   })
 
   it('renders a highlighted presentation-only model note below the model name', () => {
@@ -79,6 +93,7 @@ describe('PlazaModelPricingTable', () => {
             billing_mode: 'per_request',
             currency: 'CNY',
             effective_multiplier: null,
+            official_prices: null,
             display_prices: null,
             per_request: {
               lte_256k: 0.01,
@@ -110,7 +125,12 @@ describe('PlazaModelPricingTable', () => {
             billing_mode: 'image',
             currency: 'CNY',
             effective_multiplier: null,
+            official_prices: null,
             display_prices: null,
+            image_base_prices: [
+              { label: '1024×1024', price: 0.08 },
+              { label: '2048×2048', price: 0.2 }
+            ],
             image_prices: [
               { label: '1024×1024', price: 0.12 },
               { label: '2048×2048', price: 0.28 }
@@ -128,6 +148,10 @@ describe('PlazaModelPricingTable', () => {
     expect(wrapper.text()).toContain('2048×2048')
     expect(wrapper.text()).toContain('¥0.12')
     expect(wrapper.text()).toContain('¥0.28')
+    expect(wrapper.text()).toContain('¥0.08')
+    expect(wrapper.text()).toContain('¥0.2')
+    expect(wrapper.findAll('[data-testid="image-base-price"]')).toHaveLength(2)
+    expect(wrapper.findAll('[data-testid="image-site-price"]')).toHaveLength(2)
   })
 
   it('preserves the administrator-defined API model order', () => {

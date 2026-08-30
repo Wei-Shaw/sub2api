@@ -72,3 +72,32 @@ func TestDisplayPricingOpenAICompatiblePlatformMigrationIsPresentationOnly(t *te
 	require.NotContains(t, strings.ToLower(sql), "update channels")
 	require.NotContains(t, strings.ToLower(sql), "channel_model_pricing")
 }
+
+func TestDisplayPricingProviderModeNotesMigrationIsPresentationOnly(t *testing.T) {
+	content, err := FS.ReadFile("237_display_pricing_provider_mode_notes.sql")
+	require.NoError(t, err)
+	sql := string(content)
+	normalized := strings.Join(strings.Fields(sql), " ")
+
+	require.Contains(t, normalized, "ALTER TABLE display_pricing_providers")
+	require.Contains(t, normalized, "ADD COLUMN IF NOT EXISTS per_request_note VARCHAR(4000) NOT NULL DEFAULT ''")
+	require.Contains(t, normalized, "ADD COLUMN IF NOT EXISTS image_note VARCHAR(4000) NOT NULL DEFAULT ''")
+	require.NotContains(t, strings.ToLower(sql), "update groups")
+	require.NotContains(t, strings.ToLower(sql), "update channels")
+	require.NotContains(t, strings.ToLower(sql), "channel_model_pricing")
+}
+
+func TestDisplayOfficialPriceSourceMigrationIsPresentationOnly(t *testing.T) {
+	content, err := FS.ReadFile("238_display_official_price_source.sql")
+	require.NoError(t, err)
+	sql := string(content)
+	normalized := strings.Join(strings.Fields(sql), " ")
+
+	require.Contains(t, normalized, "ALTER TABLE display_model_prices")
+	require.Contains(t, normalized, "official_price_source VARCHAR(64) NOT NULL DEFAULT 'manual'")
+	require.Contains(t, normalized, "official_price_source_url TEXT NOT NULL DEFAULT ''")
+	require.Contains(t, normalized, "official_price_synced_at TIMESTAMPTZ")
+	require.NotContains(t, strings.ToLower(sql), "update groups")
+	require.NotContains(t, strings.ToLower(sql), "update channels")
+	require.NotContains(t, strings.ToLower(sql), "channel_model_pricing")
+}

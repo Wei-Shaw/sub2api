@@ -200,6 +200,7 @@ export default {
     paymentPlans: '订阅套餐',
     channelManagement: '渠道管理',
     channelPricing: '渠道定价',
+    upstreamPriceMonitor: '上游价格监控',
     channelMonitor: '渠道监控',
     channelStatus: '渠道状态',
     riskControl: '风控中心',

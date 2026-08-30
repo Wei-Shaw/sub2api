@@ -34,6 +34,8 @@ describe('display pricing APIs', () => {
     const payload = {
       display_name: 'Kimi',
       provider_note: '工作日高峰期价格说明',
+      per_request_note: '按次价格说明',
+      image_note: '生图价格说明',
       currency: 'CNY' as const,
       multiplier: 1.2,
       sort_order: 2,
@@ -54,6 +56,8 @@ describe('display pricing APIs', () => {
       provider: 'custom-ai',
       display_name: 'Custom AI',
       provider_note: '',
+      per_request_note: '',
+      image_note: '',
       currency: 'USD' as const,
       multiplier: null,
       sort_order: 50,

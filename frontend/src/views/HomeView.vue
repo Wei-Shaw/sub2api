@@ -29,6 +29,14 @@
           <span class="min-w-0 truncate text-base font-semibold">{{ siteName }}</span>
         </div>
         <div class="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
+          <router-link
+            v-if="showModelPricesLink"
+            :to="modelPricesPath"
+            data-testid="model-prices-link"
+            class="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:border-primary-200 hover:text-primary-600 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200 dark:hover:border-primary-500/30 dark:hover:text-primary-300"
+          >
+            {{ t('home.modelPrices') }}
+          </router-link>
           <LocaleSwitcher />
           <a
             v-if="docUrl"
@@ -117,6 +125,14 @@
 
         <!-- Nav Actions -->
         <div class="flex items-center gap-3">
+          <router-link
+            v-if="showModelPricesLink"
+            :to="modelPricesPath"
+            data-testid="model-prices-link"
+            class="rounded-full border border-gray-200 bg-white/70 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:border-primary-200 hover:text-primary-600 dark:border-dark-700 dark:bg-dark-900/70 dark:text-dark-200 dark:hover:border-primary-500/30 dark:hover:text-primary-300"
+          >
+            {{ t('home.modelPrices') }}
+          </router-link>
           <!-- Language Switcher -->
           <LocaleSwitcher />
 
@@ -511,6 +527,12 @@ const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isAdmin = computed(() => authStore.isAdmin)
 const dashboardPath = computed(() => isAdmin.value ? '/admin/dashboard' : '/dashboard')
+const modelPricesEnabled = computed(() => appStore.cachedPublicSettings?.model_plaza_enabled !== false)
+const modelPricesRequireAuth = computed(() => appStore.cachedPublicSettings?.model_plaza_require_auth !== false)
+const showModelPricesLink = computed(
+  () => modelPricesEnabled.value && (isAuthenticated.value || !modelPricesRequireAuth.value)
+)
+const modelPricesPath = computed(() => isAuthenticated.value ? '/model-prices' : '/pricing')
 const userInitial = computed(() => {
   const user = authStore.user
   if (!user || !user.email) return ''

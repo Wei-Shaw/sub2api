@@ -30,6 +30,7 @@ function model(name: string, billingMode: DisplayPriceModel['billing_mode']): Di
     effective_multiplier: billingMode === 'token' ? 1.2 : null,
     display_prices: null,
     per_request: null,
+    image_base_prices: [],
     image_prices: []
   }
 }
@@ -41,7 +42,9 @@ const response: ModelPricesResponse = {
     {
       provider: 'openai',
       display_name: 'OpenAI',
-      provider_note: '',
+      provider_note: '按量备注',
+      per_request_note: '按次备注',
+      image_note: '生图备注',
       currency: 'USD',
       logo_key: 'openai',
       logo_url: '',
@@ -74,6 +77,15 @@ describe('ModelPlazaContent billing sections', () => {
     expect(wrapper.text()).toContain('modelPlaza.sections.token.title')
     expect(wrapper.text()).toContain('modelPlaza.sections.perRequest.title')
     expect(wrapper.text()).toContain('modelPlaza.sections.image.title')
+    expect(wrapper.get('[data-testid="catalog-hero"]').classes()).toEqual(
+      expect.arrayContaining(['bg-[#121a35]', 'border-[#202b51]'])
+    )
+    expect(wrapper.findAll('[data-testid="billing-region-header"]')).toHaveLength(3)
+    expect(
+      wrapper.findAll('[data-testid="billing-region-header"]').every((header) =>
+        header.classes().includes('bg-[#f7f9ff]')
+      )
+    ).toBe(true)
   })
 
   it('splits a provider by model currency so the price symbol cannot be mislabeled', () => {
@@ -103,6 +115,26 @@ describe('ModelPlazaContent billing sections', () => {
     expect(wrapper.findAll('plaza-group-section-stub').map((node) => node.attributes('currency'))).toEqual([
       'USD',
       'CNY'
+    ])
+  })
+
+  it('uses independent provider notes for every billing mode', () => {
+    const wrapper = mount(ModelPlazaContent, {
+      props: { response, loading: false },
+      global: {
+        stubs: {
+          Icon: true,
+          PlazaFilterBar: true,
+          PlazaGroupSection: true
+        }
+      }
+    })
+
+    const sections = wrapper.findAllComponents({ name: 'PlazaGroupSection' })
+    expect(sections.map((section) => section.props('providerNote'))).toEqual([
+      '按量备注',
+      '按次备注',
+      '生图备注'
     ])
   })
 })

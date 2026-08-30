@@ -773,6 +773,7 @@ const adminNavItems = computed((): NavItem[] => {
       children: [
         { path: '/admin/channels/pricing', label: t('nav.channelPricing'), icon: PriceTagIcon },
         { path: '/admin/channels/display-pricing', label: t('nav.displayPricing'), icon: PriceTagIcon },
+        { path: '/admin/channels/upstream-price-monitor', label: t('nav.upstreamPriceMonitor'), icon: SignalIcon },
         { path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor },
       ],
     },

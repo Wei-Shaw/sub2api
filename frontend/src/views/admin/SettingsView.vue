@@ -7169,9 +7169,10 @@
                   {{ t('admin.settings.features.modelPlaza.requireAuthHint') }}
                 </p>
               </div>
-              <span class="inline-flex items-center rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-                {{ t('admin.settings.features.modelPlaza.authOnly') }}
-              </span>
+              <Toggle
+                v-model="form.model_plaza_require_auth"
+                data-testid="model-plaza-require-auth-toggle"
+              />
             </div>
 
             <div v-if="form.model_plaza_enabled" class="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-dark-700 dark:bg-dark-900/40">
@@ -11430,7 +11431,7 @@ async function saveSettings() {
       available_channels_enabled: form.available_channels_enabled,
       // Model Plaza feature switches + description
       model_plaza_enabled: form.model_plaza_enabled,
-      model_plaza_require_auth: true,
+      model_plaza_require_auth: form.model_plaza_require_auth,
       model_plaza_description: form.model_plaza_description,
       plugin_management_enabled: form.plugin_management_enabled,
       // Affiliate (邀请返利) feature switch

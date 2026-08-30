@@ -11,6 +11,7 @@ export default {
     switchToLight: '切换到浅色模式',
     switchToDark: '切换到深色模式',
     dashboard: '控制台',
+    modelPrices: '模型价格',
     login: '登录',
     getStarted: '立即开始',
     goToDashboard: '进入控制台',

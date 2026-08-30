@@ -14,18 +14,50 @@
               {{ t('admin.displayPricing.description') }}
             </p>
           </div>
-          <RouterLink to="/model-prices" class="btn btn-secondary">
-            <Icon name="eye" size="sm" />
-            {{ t('admin.displayPricing.preview') }}
-          </RouterLink>
+          <div class="flex flex-wrap gap-2">
+            <RouterLink to="/model-prices" class="btn btn-secondary">
+              <Icon name="eye" size="sm" />
+              {{ t('admin.displayPricing.preview') }}
+            </RouterLink>
+          </div>
         </div>
         <div class="mt-4 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
           <Icon name="infoCircle" size="sm" class="mt-0.5 shrink-0" />
           <strong>{{ t('admin.displayPricing.isolationNotice') }}</strong>
         </div>
+        <div class="mt-4 inline-flex rounded-xl bg-gray-100 p-1 dark:bg-dark-900" role="tablist" :aria-label="t('admin.displayPricing.tabs.label')">
+          <button
+            type="button"
+            role="tab"
+            class="rounded-lg px-4 py-2 text-sm font-semibold transition"
+            :class="activePanel === 'configuration'
+              ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-700 dark:text-primary-300'
+              : 'text-gray-500 hover:text-gray-800 dark:text-dark-400 dark:hover:text-dark-200'"
+            :aria-selected="activePanel === 'configuration'"
+            data-testid="display-pricing-tab"
+            @click="activePanel = 'configuration'"
+          >
+            {{ t('admin.displayPricing.tabs.configuration') }}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            class="rounded-lg px-4 py-2 text-sm font-semibold transition"
+            :class="activePanel === 'official'
+              ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-700 dark:text-primary-300'
+              : 'text-gray-500 hover:text-gray-800 dark:text-dark-400 dark:hover:text-dark-200'"
+            :aria-selected="activePanel === 'official'"
+            data-testid="official-pricing-tab"
+            @click="activePanel = 'official'"
+          >
+            {{ t('admin.displayPricing.tabs.official') }}
+          </button>
+        </div>
       </header>
 
-      <div v-if="loading" class="flex min-h-[320px] items-center justify-center">
+      <OfficialPricingView v-if="activePanel === 'official'" />
+
+      <div v-else-if="loading" class="flex min-h-[320px] items-center justify-center">
         <div class="h-8 w-8 animate-spin rounded-full border-2 border-primary-600/25 border-t-primary-600"></div>
       </div>
 
@@ -83,9 +115,17 @@
                 <div class="min-w-[140px] flex-1">
                   <p class="font-semibold text-gray-900 dark:text-white">{{ provider.display_name }}</p>
                   <p class="mt-0.5 font-mono text-xs text-gray-400">{{ provider.provider }}</p>
-                  <p v-if="provider.provider_note" class="mt-1 line-clamp-2 text-xs leading-5 text-gray-500 dark:text-dark-400">
-                    {{ provider.provider_note }}
-                  </p>
+                  <div v-if="provider.provider_note || provider.per_request_note || provider.image_note" class="mt-1 space-y-0.5 text-xs leading-5 text-gray-500 dark:text-dark-400">
+                    <p v-if="provider.provider_note" class="line-clamp-1">
+                      <span class="font-semibold">{{ t('modelPlaza.filters.token') }}：</span>{{ provider.provider_note }}
+                    </p>
+                    <p v-if="provider.per_request_note" class="line-clamp-1">
+                      <span class="font-semibold">{{ t('modelPlaza.filters.perRequest') }}：</span>{{ provider.per_request_note }}
+                    </p>
+                    <p v-if="provider.image_note" class="line-clamp-1">
+                      <span class="font-semibold">{{ t('modelPlaza.filters.image') }}：</span>{{ provider.image_note }}
+                    </p>
+                  </div>
                 </div>
                 <div class="flex flex-wrap items-center gap-2 text-xs">
                   <span class="provider-chip">{{ provider.currency }}</span>
@@ -104,7 +144,7 @@
           </div>
         </section>
 
-        <section class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-800">
+        <section class="scroll-mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-800">
           <div class="flex flex-col gap-4 border-b border-gray-100 px-5 py-4 dark:border-dark-700/70 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 class="font-bold text-gray-900 dark:text-white">{{ t('admin.displayPricing.models.title') }}</h2>
@@ -222,15 +262,37 @@
             <input v-model.trim="providerForm.display_name" required class="input mt-1.5" placeholder="OpenAI" />
           </label>
           <label class="form-field sm:col-span-2">
-            <span class="field-label">{{ t('admin.displayPricing.providers.note') }}</span>
+            <span class="field-label">{{ t('admin.displayPricing.providers.tokenNote') }}</span>
             <textarea
               v-model="providerForm.provider_note"
               :maxlength="4000"
               rows="3"
               class="input mt-1.5 min-h-[88px] resize-y"
-              :placeholder="t('admin.displayPricing.providers.notePlaceholder')"
+              :placeholder="t('admin.displayPricing.providers.tokenNotePlaceholder')"
             ></textarea>
             <span class="mt-1 block text-right text-[11px] text-gray-400">{{ providerForm.provider_note.length }}/4000</span>
+          </label>
+          <label class="form-field sm:col-span-2">
+            <span class="field-label">{{ t('admin.displayPricing.providers.perRequestNote') }}</span>
+            <textarea
+              v-model="providerForm.per_request_note"
+              :maxlength="4000"
+              rows="3"
+              class="input mt-1.5 min-h-[88px] resize-y"
+              :placeholder="t('admin.displayPricing.providers.perRequestNotePlaceholder')"
+            ></textarea>
+            <span class="mt-1 block text-right text-[11px] text-gray-400">{{ providerForm.per_request_note.length }}/4000</span>
+          </label>
+          <label class="form-field sm:col-span-2">
+            <span class="field-label">{{ t('admin.displayPricing.providers.imageNote') }}</span>
+            <textarea
+              v-model="providerForm.image_note"
+              :maxlength="4000"
+              rows="3"
+              class="input mt-1.5 min-h-[88px] resize-y"
+              :placeholder="t('admin.displayPricing.providers.imageNotePlaceholder')"
+            ></textarea>
+            <span class="mt-1 block text-right text-[11px] text-gray-400">{{ providerForm.image_note.length }}/4000</span>
           </label>
           <label class="form-field">
             <span class="field-label">{{ t('admin.displayPricing.providers.logoKey') }}</span>
@@ -446,11 +508,13 @@ import Icon from '@/components/icons/Icon.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import ProviderLogo from '@/components/modelPlaza/ProviderLogo.vue'
 import PriceInput from '@/components/admin/displayPricing/PriceInput.vue'
+import OfficialPricingView from '@/views/admin/OfficialPricingView.vue'
 import { platformLabel } from '@/utils/platformColors'
 import { notifyDisplayPricingUpdated } from '@/utils/displayPricingSync'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const activePanel = ref<'configuration' | 'official'>('configuration')
 const loading = ref(true)
 const globalMultiplier = ref(1)
 const savingGlobal = ref(false)
@@ -472,12 +536,13 @@ const showProviderEditor = ref(false)
 const showProviderDeleteConfirm = ref(false)
 const editingProviderKey = ref('')
 const deletingProvider = ref<DisplayPricingProvider | null>(null)
-
 function emptyProviderForm(): DisplayPricingProviderCreateInput {
   return {
     provider: '',
     display_name: '',
     provider_note: '',
+    per_request_note: '',
+    image_note: '',
     currency: 'USD',
     multiplier: null,
     sort_order: 0,
@@ -554,7 +619,9 @@ async function loadData(): Promise<void> {
       ...provider,
       logo_key: provider.logo_key || provider.provider,
       logo_url: provider.logo_url || '',
-      provider_note: provider.provider_note || ''
+      provider_note: provider.provider_note || '',
+      per_request_note: provider.per_request_note || '',
+      image_note: provider.image_note || ''
     })))
     models.value = configuredModels
     discoveredModels.value = discovered
@@ -592,6 +659,8 @@ function openProviderEdit(provider: DisplayPricingProvider): void {
     provider: provider.provider,
     display_name: provider.display_name,
     provider_note: provider.provider_note || '',
+    per_request_note: provider.per_request_note || '',
+    image_note: provider.image_note || '',
     currency: provider.currency,
     multiplier: provider.multiplier,
     sort_order: provider.sort_order,
@@ -612,6 +681,8 @@ async function saveProvider(): Promise<void> {
     const payload = {
       display_name: providerForm.display_name.trim(),
       provider_note: providerForm.provider_note.trim(),
+      per_request_note: providerForm.per_request_note.trim(),
+      image_note: providerForm.image_note.trim(),
       currency: providerForm.currency,
       multiplier: nullableNumber(providerForm.multiplier),
       sort_order: Number(providerForm.sort_order) || 0,

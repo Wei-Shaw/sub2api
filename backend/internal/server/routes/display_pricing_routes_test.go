@@ -22,6 +22,8 @@ func TestRegisterDisplayPricingRoutesIncludesProviderCRUD(t *testing.T) {
 		"POST /api/v1/admin/display-pricing/providers":             false,
 		"PUT /api/v1/admin/display-pricing/providers/:provider":    false,
 		"DELETE /api/v1/admin/display-pricing/providers/:provider": false,
+		"POST /api/v1/admin/display-pricing/official-sync/preview": false,
+		"POST /api/v1/admin/display-pricing/official-sync/apply":   false,
 	}
 	for _, route := range router.Routes() {
 		key := route.Method + " " + route.Path

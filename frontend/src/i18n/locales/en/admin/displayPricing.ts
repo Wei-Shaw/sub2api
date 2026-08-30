@@ -4,6 +4,11 @@ export default {
     description: 'Manage the official base prices, display multipliers, per-request tiers, and image prices shown on the Model Prices page.',
     preview: 'Preview Model Prices',
     isolationNotice: 'Changes here affect display prices only. They do not change channel costs, group pricing, account routing, or actual user charges.',
+    tabs: {
+      label: 'Display pricing management',
+      configuration: 'Display settings',
+      official: 'Official prices'
+    },
     loadFailed: 'Failed to load display pricing',
     saveFailed: 'Failed to save display pricing',
     saved: 'Display pricing saved',
@@ -23,8 +28,12 @@ export default {
       editTitle: 'Edit provider display settings',
       key: 'Provider key',
       name: 'Provider name',
-      note: 'Provider note',
-      notePlaceholder: 'Optional text shown below the provider heading, such as peak-hour or pricing information',
+      tokenNote: 'Usage-pricing note',
+      tokenNotePlaceholder: 'Optional note shown only below this provider\'s usage-based pricing section',
+      perRequestNote: 'Per-request note',
+      perRequestNotePlaceholder: 'Optional note shown only below this provider\'s per-request pricing section',
+      imageNote: 'Image-pricing note',
+      imageNotePlaceholder: 'Optional note shown only below this provider\'s image-pricing section',
       multiplier: 'Provider multiplier factor',
       multiplierValue: 'Factor ×{value}',
       logoKey: 'Built-in logo',
@@ -39,7 +48,7 @@ export default {
       empty: 'No provider settings'
     },
     models: {
-      title: 'Model display rules',
+      title: 'Model base prices and display rules',
       hint: 'Only enabled rules appear on the customer Model Prices page.',
       discover: 'Choose live model',
       add: 'Add display rule',
@@ -73,10 +82,10 @@ export default {
       tier3Override: '> 512K (optional override)',
       autoDerived: 'Auto-derived',
       imagePrices: 'Image specification prices',
-      imageHint: 'Enter the per-image customer display price for each specification.',
+      imageHint: 'Enter the base price for each specification. The customer page shows both the base price and the site price calculated with the effective multiplier.',
       addTier: 'Add tier',
       specLabel: 'Specification',
-      pricePerImage: 'Price per image'
+      pricePerImage: 'Base price per image'
     },
     discovered: {
       title: 'Choose a live model',

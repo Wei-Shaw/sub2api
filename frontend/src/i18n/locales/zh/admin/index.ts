@@ -8,6 +8,8 @@ import audit from './audit'
 import promptAudit from './promptAudit'
 import plugins from './plugins'
 import displayPricing from './displayPricing'
+import upstreamPriceMonitor from './upstreamPriceMonitor'
+import officialPricing from './officialPricing'
 
 export default {
   ...overview,
@@ -20,4 +22,6 @@ export default {
   ...promptAudit,
   ...plugins,
   ...displayPricing,
+  ...upstreamPriceMonitor,
+  ...officialPricing,
 }

@@ -4,6 +4,11 @@ export default {
     description: '管理用户“模型价格”页看到的官方基础价、展示倍率与按次/生图价格。',
     preview: '预览模型价格',
     isolationNotice: '此处仅修改展示价格，不会修改渠道成本、分组定价、账户调度或用户实际扣费。',
+    tabs: {
+      label: '展示定价管理',
+      configuration: '展示配置',
+      official: '官方价格'
+    },
     loadFailed: '加载展示定价失败',
     saveFailed: '保存展示定价失败',
     saved: '展示定价已保存',
@@ -23,8 +28,12 @@ export default {
       editTitle: '编辑厂商展示设置',
       key: '厂商标识',
       name: '厂商名称',
-      note: '厂商备注',
-      notePlaceholder: '可选，展示在该厂商标题下方，例如高峰时段或计价说明',
+      tokenNote: '按量备注',
+      tokenNotePlaceholder: '可选，仅展示在该厂商的按量报价下方',
+      perRequestNote: '按次备注',
+      perRequestNotePlaceholder: '可选，仅展示在该厂商的按次报价下方',
+      imageNote: '生图备注',
+      imageNotePlaceholder: '可选，仅展示在该厂商的生图报价下方',
       multiplier: '厂商倍率系数',
       multiplierValue: '系数 ×{value}',
       logoKey: '内置 Logo',
@@ -39,7 +48,7 @@ export default {
       empty: '暂无厂商设置'
     },
     models: {
-      title: '模型展示规则',
+      title: '模型基础价与展示规则',
       hint: '只有已启用的规则会出现在用户模型价格页。',
       discover: '从已上线模型选择',
       add: '添加展示规则',
@@ -73,10 +82,10 @@ export default {
       tier3Override: '> 512K（可选覆盖）',
       autoDerived: '自动计算',
       imagePrices: '生图规格价格',
-      imageHint: '每个规格单独填写用户看到的每张价格。',
+      imageHint: '每个规格单独填写基础价，用户页同时展示基础价与按生效倍率计算的本站售价。',
       addTier: '添加规格',
       specLabel: '规格名称',
-      pricePerImage: '每张价格'
+      pricePerImage: '每张基础价'
     },
     discovered: {
       title: '从已上线模型选择',

@@ -39,13 +39,21 @@ export interface DisplayPriceModel {
   display_prices: DisplayTokenPrices | null
   /** Final three-tier per-request prices; no multiplier is exposed. */
   per_request: DisplayPerRequestPrices | null
+  /** Administrator-managed base prices per image before the display multiplier. */
+  image_base_prices: DisplayImagePrice[]
+  /** Final customer-facing image prices after the display multiplier. */
   image_prices: DisplayImagePrice[]
 }
 
 export interface DisplayPriceProvider {
   provider: string
   display_name: string
+  /** Token-metered provider note. */
   provider_note: string
+  /** Per-request provider note, independent from token pricing. */
+  per_request_note: string
+  /** Image-pricing provider note, independent from token pricing. */
+  image_note: string
   currency: DisplayPriceCurrency
   logo_key: string
   logo_url: string
