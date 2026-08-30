@@ -1723,6 +1723,8 @@ export interface AdminUsageLog extends UsageLog {
   upstream_reasoning_effort?: string | null
   upstream_response_model?: string | null
   upstream_model_mismatch?: boolean | null
+  // 上游响应声明的请求标识（x-request-id 等响应头），仅管理员可见
+  upstream_request_id?: string | null
   model_mapping_chain?: string | null
 
   // 账号计费倍率（仅管理员可见）

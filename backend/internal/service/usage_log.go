@@ -120,6 +120,11 @@ type UsageLog struct {
 	// UpstreamModelMismatch is nil when no upstream model was observed. Otherwise
 	// it compares UpstreamResponseModel with the actual model sent upstream.
 	UpstreamModelMismatch *bool
+	// UpstreamRequestID is the request identifier declared by the upstream
+	// response (x-request-id / xai-request-id / x-goog-request-id headers),
+	// stored verbatim. Nil when the path has no upstream request id (WS turns,
+	// locally synthesized billing ids) or for historical rows.
+	UpstreamRequestID *string
 	// ChannelID 渠道 ID
 	ChannelID *int64
 	// ModelMappingChain 模型映射链，如 "a→b→c"

@@ -574,6 +574,9 @@ type AdminUsageLog struct {
 	UpstreamResponseModel *string `json:"upstream_response_model,omitempty"`
 	// UpstreamModelMismatch is nil when the upstream did not declare a model.
 	UpstreamModelMismatch *bool `json:"upstream_model_mismatch,omitempty"`
+	// UpstreamRequestID is the request identifier declared by the upstream
+	// response (e.g. x-request-id). Omitted when the path recorded none.
+	UpstreamRequestID *string `json:"upstream_request_id,omitempty"`
 
 	// ChannelID 渠道 ID
 	ChannelID *int64 `json:"channel_id,omitempty"`

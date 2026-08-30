@@ -233,6 +233,29 @@ func isForcedUsageBillingRequestID(requestID string) bool {
 		strings.HasPrefix(id, "grok_realtime:")
 }
 
+// maxUsageUpstreamRequestIDLen 与 usage_logs.upstream_request_id VARCHAR(128) 对齐；
+// 超长时截断而不是让整条用量行插入失败。
+const maxUsageUpstreamRequestIDLen = 128
+
+// usageUpstreamRequestIDPtr 提取可落库到 usage_logs.upstream_request_id 的上游请求标识。
+// 各转发路径的 result.RequestID 承载上游响应头的请求 ID（x-request-id / xai-request-id /
+// x-goog-request-id 等）；本地合成的计费去重 ID 一律是 label:uuid 形态（web_search: /
+// x_search: / grok_audio: 等），而真实上游标识不含冒号，据此排除。WS 轮次的 RequestID
+// 是上游 response id（resp_...），不是请求标识，由调用方经 wsMode 排除。
+func usageUpstreamRequestIDPtr(rawRequestID string, wsMode bool) *string {
+	if wsMode {
+		return nil
+	}
+	id := strings.TrimSpace(rawRequestID)
+	if id == "" || strings.ContainsRune(id, ':') {
+		return nil
+	}
+	if len(id) > maxUsageUpstreamRequestIDLen {
+		id = id[:maxUsageUpstreamRequestIDLen]
+	}
+	return &id
+}
+
 // StableGrokAudioBillingRequestID is the durable usage_logs / dedup key for one
 // voice HTTP call (TTS/STT). Prefer an upstream request id when present.
 func StableGrokAudioBillingRequestID(upstreamRequestID string) string {
@@ -1220,6 +1243,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		UpstreamModel:            optionalTrimmedStringPtr(result.UpstreamModel),
 		UpstreamResponseModel:    optionalTrimmedStringPtr(result.UpstreamResponseModel),
 		UpstreamModelMismatch:    upstreamModelMismatch(sentModel, result.UpstreamResponseModel),
+		UpstreamRequestID:        usageUpstreamRequestIDPtr(result.RequestID, false),
 		ServiceTier:              result.ServiceTier,
 		ReasoningEffort:          result.ReasoningEffort,
 		RequestedReasoningEffort: coalesceRequestedReasoningEffort(result.RequestedReasoningEffort, result.ReasoningEffort),

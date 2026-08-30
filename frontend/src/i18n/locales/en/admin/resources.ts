@@ -520,6 +520,7 @@ export default {
       group: 'Group',
       requestId: 'Request ID',
       requestIdCopied: 'Request ID copied',
+      upstreamRequestId: 'Upstream Request ID',
       allModels: 'All Models',
       allAccounts: 'All Accounts',
       allGroups: 'All Groups',

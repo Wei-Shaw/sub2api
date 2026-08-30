@@ -57,3 +57,30 @@ func TestResolveUsageBillingRequestID_ForcedGrokAudioBeatsClientID(t *testing.T)
 	got := resolveUsageBillingRequestID(ctx, StableGrokAudioBillingRequestID("up-9"))
 	require.Equal(t, "grok_audio:up-9", got)
 }
+
+func TestUsageUpstreamRequestIDPtr(t *testing.T) {
+	t.Parallel()
+
+	// 真实上游响应头 ID 原样落库（含首尾空白清理）。
+	got := usageUpstreamRequestIDPtr("  req_011CRJabc  ", false)
+	require.NotNil(t, got)
+	require.Equal(t, "req_011CRJabc", *got)
+
+	// 空值与本地合成的 label:uuid 形态一律不落。
+	require.Nil(t, usageUpstreamRequestIDPtr("", false))
+	require.Nil(t, usageUpstreamRequestIDPtr("   ", false))
+	require.Nil(t, usageUpstreamRequestIDPtr("web_search:uuid-1", false))
+	require.Nil(t, usageUpstreamRequestIDPtr("x_search:uuid-2", false))
+	require.Nil(t, usageUpstreamRequestIDPtr("grok_audio:up-1", false))
+	require.Nil(t, usageUpstreamRequestIDPtr("grok-video:task-1", false))
+	require.Nil(t, usageUpstreamRequestIDPtr("grok_realtime:sess-1", false))
+
+	// WS 轮次的 RequestID 是上游 response id，不是请求标识。
+	require.Nil(t, usageUpstreamRequestIDPtr("resp_abc", true))
+
+	// 超长防御性截断到列宽，避免整行插入失败。
+	long := strings.Repeat("a", maxUsageUpstreamRequestIDLen+10)
+	truncated := usageUpstreamRequestIDPtr(long, false)
+	require.NotNil(t, truncated)
+	require.Len(t, *truncated, maxUsageUpstreamRequestIDLen)
+}
