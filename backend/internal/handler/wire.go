@@ -156,6 +156,10 @@ func ProvideBatchImageHandler(
 	return h
 }
 
+func ProvideOpenAIAutoProvisionHandler(svc *service.OpenAIAutoProvisionService) *OpenAIAutoProvisionHandler {
+	return NewOpenAIAutoProvisionHandler(svc)
+}
+
 // ProvideSystemHandler creates admin.SystemHandler with UpdateService
 func ProvideSystemHandler(updateService *service.UpdateService, lockService *service.SystemOperationLockService) *admin.SystemHandler {
 	return admin.NewSystemHandler(updateService, lockService)
@@ -203,34 +207,36 @@ func ProvideHandlers(
 	modelPlazaHandler *ModelPlazaHandler,
 	asyncImageHandler *AsyncImageHandler,
 	batchImageHandler *BatchImageHandler,
+	autoProvisionHandler *OpenAIAutoProvisionHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 	_ *service.OpenAIQuotaAutoResetService,
 ) *Handlers {
 	return &Handlers{
-		Auth:             authHandler,
-		VClaw:            vclawHandler,
-		BotSales:         botSalesHandler,
-		User:             userHandler,
-		APIKey:           apiKeyHandler,
-		Usage:            usageHandler,
-		Redeem:           redeemHandler,
-		Subscription:     subscriptionHandler,
-		Announcement:     announcementHandler,
-		ChannelMonitor:   channelMonitorUserHandler,
-		ChannelMonitorV2: channelMonitorV2Handler,
-		Admin:            adminHandlers,
-		Gateway:          gatewayHandler,
-		OpenAIGateway:    openaiGatewayHandler,
-		Setting:          settingHandler,
-		Totp:             totpHandler,
-		Passkey:          passkeyHandler,
-		Payment:          paymentHandler,
-		PaymentWebhook:   paymentWebhookHandler,
-		AvailableChannel: availableChannelHandler,
-		ModelPlaza:       modelPlazaHandler,
-		AsyncImage:       asyncImageHandler,
-		BatchImage:       batchImageHandler,
+		Auth:                authHandler,
+		VClaw:               vclawHandler,
+		BotSales:            botSalesHandler,
+		User:                userHandler,
+		APIKey:              apiKeyHandler,
+		Usage:               usageHandler,
+		Redeem:              redeemHandler,
+		Subscription:        subscriptionHandler,
+		Announcement:        announcementHandler,
+		ChannelMonitor:      channelMonitorUserHandler,
+		ChannelMonitorV2:    channelMonitorV2Handler,
+		Admin:               adminHandlers,
+		Gateway:             gatewayHandler,
+		OpenAIGateway:       openaiGatewayHandler,
+		Setting:             settingHandler,
+		Totp:                totpHandler,
+		Passkey:             passkeyHandler,
+		Payment:             paymentHandler,
+		PaymentWebhook:      paymentWebhookHandler,
+		AvailableChannel:    availableChannelHandler,
+		ModelPlaza:          modelPlazaHandler,
+		AsyncImage:          asyncImageHandler,
+		BatchImage:          batchImageHandler,
+		OpenAIAutoProvision: autoProvisionHandler,
 	}
 }
 
@@ -259,6 +265,7 @@ var ProviderSet = wire.NewSet(
 	NewModelPlazaHandler,
 	NewAsyncImageHandler,
 	ProvideBatchImageHandler,
+	ProvideOpenAIAutoProvisionHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,

@@ -1326,6 +1326,22 @@ export default {
         notifyProxyExpired: 'Proxy Expiry Warnings',
         notifyProxyExpiredHint: 'Send a notification when a proxy is nearing expiry'
       },
+      openaiAutoProvision: {
+        title: 'OpenAI account replenishment',
+        description: 'Keeps a target number of healthy OpenAI OAuth accounts by asking turb-gpt-free-register to register and upload replacements.',
+        enabledTitle: 'Enable automatic replenishment',
+        targetLabel: 'Healthy OAuth account target',
+        intervalLabel: 'Check interval (seconds)',
+        workersLabel: 'Registration workers',
+        emailSourceLabel: 'Email source override',
+        emailSourcePlaceholder: 'Use turb default',
+        turbURLLabel: 'turb-gpt-free-register URL',
+        callbackURLLabel: 'Sub2API callback URL',
+        turbAuthCodeLabel: 'Turb WebUI auth code',
+        callbackSecretLabel: 'Callback secret',
+        reauthorizationTitle: 'Automatically reauthorize errored OAuth accounts',
+        reauthorizationDescription: 'Starts a fresh Codex OAuth flow and replaces the existing account tokens only after the identity matches.'
+      },
       usageRecords: {
         title: 'Usage Records',
         description: 'Settings for usage and failed-request records visible to end users.',

@@ -52,6 +52,12 @@ type GrokOAuthRefreshMutationRepository interface {
 	SetGrokOAuthRefreshTempUnschedulableIfCredentialsUnchanged(ctx context.Context, id int64, expectedCredentials map[string]any, expectedProxyID *int64, until time.Time, reason string) (bool, error)
 }
 
+// OpenAIReauthorizationDispatcher is owned by the automation coordinator but
+// invoked from the existing OAuth refresh cycle after account state is read.
+type OpenAIReauthorizationDispatcher interface {
+	ReauthorizeErroredOpenAIOAuthAccounts(context.Context) error
+}
+
 // TokenRefreshService OAuth token自动刷新服务
 // 定期检查并刷新即将过期的token
 type TokenRefreshService struct {
@@ -80,6 +86,8 @@ type TokenRefreshService struct {
 	providerMu    sync.Mutex
 	providerGates map[string]*tokenRefreshRateGate
 	providerPools map[string]*tokenRefreshConcurrencyGate
+	reauthMu      sync.RWMutex
+	reauth        OpenAIReauthorizationDispatcher
 
 	// Test-only duration seam; production uses TokenRefreshConfig seconds.
 	attemptTimeoutOverride time.Duration
@@ -182,6 +190,24 @@ func (s *TokenRefreshService) SetRefreshPolicy(policy BackgroundRefreshPolicy) {
 
 func (s *TokenRefreshService) SetAccountRuntimeBlocker(blocker AccountRuntimeBlocker) {
 	s.runtimeBlocker = blocker
+}
+
+func (s *TokenRefreshService) SetOpenAIReauthorizationDispatcher(dispatcher OpenAIReauthorizationDispatcher) {
+	if s == nil {
+		return
+	}
+	s.reauthMu.Lock()
+	s.reauth = dispatcher
+	s.reauthMu.Unlock()
+}
+
+func (s *TokenRefreshService) openAIReauthorizationDispatcher() OpenAIReauthorizationDispatcher {
+	if s == nil {
+		return nil
+	}
+	s.reauthMu.RLock()
+	defer s.reauthMu.RUnlock()
+	return s.reauth
 }
 
 func (s *TokenRefreshService) notifyAccountSchedulingBlocked(account *Account, until time.Time, reason string) {
@@ -574,6 +600,12 @@ func (s *TokenRefreshService) processRefreshContext(parent context.Context) {
 		if !page.HasMore {
 			s.setCandidateAfterID(0)
 			break
+		}
+	}
+
+	if dispatcher := s.openAIReauthorizationDispatcher(); dispatcher != nil {
+		if err := dispatcher.ReauthorizeErroredOpenAIOAuthAccounts(ctx); err != nil {
+			slog.Warn("token_refresh.openai_reauthorization_dispatch_failed", "error", logredact.RedactText(err.Error()))
 		}
 	}
 

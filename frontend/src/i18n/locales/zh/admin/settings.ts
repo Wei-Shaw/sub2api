@@ -1320,6 +1320,22 @@ export default {
         notifyProxyExpired: '代理即将过期',
         notifyProxyExpiredHint: '代理即将过期时发送通知'
       },
+      openaiAutoProvision: {
+        title: 'OpenAI 账号自动补充',
+        description: '当健康的 OpenAI OAuth 账号少于目标数量时，请求 turb-gpt-free-register 注册并上传补充账号。',
+        enabledTitle: '启用自动补充',
+        targetLabel: '健康 OAuth 账号目标数',
+        intervalLabel: '检查间隔（秒）',
+        workersLabel: '注册并发数',
+        emailSourceLabel: '邮箱来源覆盖',
+        emailSourcePlaceholder: '使用 turb 默认配置',
+        turbURLLabel: 'turb-gpt-free-register 地址',
+        callbackURLLabel: 'Sub2API 回调地址',
+        turbAuthCodeLabel: 'Turb WebUI 鉴权码',
+        callbackSecretLabel: '回调密钥',
+        reauthorizationTitle: '自动重新授权错误 OAuth 账号',
+        reauthorizationDescription: '启动全新的 Codex OAuth 流程，仅在身份匹配后替换现有账号 token。'
+      },
       usageRecords: {
         title: '使用记录',
         description: '与终端用户可见的用量及失败请求记录相关的设置。',

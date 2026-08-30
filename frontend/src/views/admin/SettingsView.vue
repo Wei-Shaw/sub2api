@@ -5234,6 +5234,62 @@
                 </div>
               </div>
 
+              <div class="border-t border-gray-100 pt-5 dark:border-dark-700">
+                <div class="flex items-center justify-between gap-4">
+                  <div class="min-w-0">
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.openaiAutoProvision.title") }}
+                    </label>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.openaiAutoProvision.description") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="form.openai_auto_provision_enabled" />
+                </div>
+
+                <div v-if="form.openai_auto_provision_enabled || form.openai_auto_reauthorization_enabled" class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <label class="block">
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t("admin.settings.openaiAutoProvision.targetLabel") }}</span>
+                    <input v-model.number="form.openai_auto_provision_target" class="input mt-1" min="1" max="100000" type="number" />
+                  </label>
+                  <label class="block">
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t("admin.settings.openaiAutoProvision.intervalLabel") }}</span>
+                    <input v-model.number="form.openai_auto_provision_interval_seconds" class="input mt-1" min="15" max="86400" type="number" />
+                  </label>
+                  <label class="block">
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t("admin.settings.openaiAutoProvision.workersLabel") }}</span>
+                    <input v-model.number="form.openai_auto_provision_workers" class="input mt-1" min="1" max="16" type="number" />
+                  </label>
+                  <label class="block">
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t("admin.settings.openaiAutoProvision.emailSourceLabel") }}</span>
+                    <input v-model="form.openai_auto_provision_email_source" class="input mt-1" :placeholder="t('admin.settings.openaiAutoProvision.emailSourcePlaceholder')" type="text" />
+                  </label>
+                  <label class="block md:col-span-2">
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t("admin.settings.openaiAutoProvision.turbURLLabel") }}</span>
+                    <input v-model="form.openai_auto_provision_turb_url" class="input mt-1" placeholder="http://127.0.0.1:5000" type="url" />
+                  </label>
+                  <label class="block md:col-span-2">
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t("admin.settings.openaiAutoProvision.callbackURLLabel") }}</span>
+                    <input v-model="form.openai_auto_provision_callback_url" class="input mt-1" placeholder="https://sub2.example.com/api/v1/integrations/openai/auto-provision/callback" type="url" />
+                  </label>
+                  <label class="block">
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t("admin.settings.openaiAutoProvision.turbAuthCodeLabel") }}</span>
+                    <input v-model="form.openai_auto_provision_turb_auth_code" class="input mt-1" :placeholder="form.openai_auto_provision_turb_auth_code_configured ? '********' : ''" type="password" />
+                  </label>
+                  <label class="block">
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t("admin.settings.openaiAutoProvision.callbackSecretLabel") }}</span>
+                    <input v-model="form.openai_auto_provision_callback_secret" class="input mt-1" :placeholder="form.openai_auto_provision_callback_secret_configured ? '********' : ''" type="password" />
+                  </label>
+                </div>
+                <div class="mt-4 flex items-center justify-between gap-4 border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <div>
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.openaiAutoProvision.reauthorizationTitle") }}</label>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.settings.openaiAutoProvision.reauthorizationDescription") }}</p>
+                  </div>
+                  <Toggle v-model="form.openai_auto_reauthorization_enabled" />
+                </div>
+              </div>
+
               <div
                 v-if="form.openai_advanced_scheduler_enabled"
                 class="border-t border-gray-100 pt-5 dark:border-dark-700"
@@ -9811,6 +9867,18 @@ type SettingsForm = Omit<
   telegram_bot_token: string;
   openai_low_upstream_rate_priority_enabled: boolean;
   openai_oauth_scheduling_rate_multiplier: number | "" | null;
+  openai_auto_provision_enabled: boolean;
+  openai_auto_provision_target: number;
+  openai_auto_provision_interval_seconds: number;
+  openai_auto_provision_turb_url: string;
+  openai_auto_provision_turb_auth_code: string;
+  openai_auto_provision_turb_auth_code_configured: boolean;
+  openai_auto_provision_callback_url: string;
+  openai_auto_provision_callback_secret: string;
+  openai_auto_provision_callback_secret_configured: boolean;
+  openai_auto_provision_email_source: string;
+  openai_auto_provision_workers: number;
+  openai_auto_reauthorization_enabled: boolean;
   openai_advanced_scheduler_enabled: boolean;
   openai_advanced_scheduler_sticky_weighted_enabled: boolean;
   openai_advanced_scheduler_subscription_priority_enabled: boolean;
@@ -10062,6 +10130,18 @@ const form = reactive<SettingsForm>({
   allow_ungrouped_key_scheduling: false,
   openai_low_upstream_rate_priority_enabled: false,
   openai_oauth_scheduling_rate_multiplier: 1,
+  openai_auto_provision_enabled: false,
+  openai_auto_provision_target: 0,
+  openai_auto_provision_interval_seconds: 60,
+  openai_auto_provision_turb_url: "",
+  openai_auto_provision_turb_auth_code: "",
+  openai_auto_provision_turb_auth_code_configured: false,
+  openai_auto_provision_callback_url: "",
+  openai_auto_provision_callback_secret: "",
+  openai_auto_provision_callback_secret_configured: false,
+  openai_auto_provision_email_source: "",
+  openai_auto_provision_workers: 3,
+  openai_auto_reauthorization_enabled: false,
   openai_advanced_scheduler_enabled: false,
   openai_advanced_scheduler_sticky_weighted_enabled: false,
   openai_advanced_scheduler_subscription_priority_enabled: false,
@@ -11253,6 +11333,8 @@ async function loadSettings() {
     form.dingtalk_connect_client_secret = "";
     form.github_oauth_client_secret = "";
     form.google_oauth_client_secret = "";
+    form.openai_auto_provision_turb_auth_code = "";
+    form.openai_auto_provision_callback_secret = "";
     form.wechat_connect_app_secret = "";
     form.wechat_connect_open_app_secret = "";
     form.wechat_connect_mp_app_secret = "";
@@ -11853,6 +11935,22 @@ async function saveSettings() {
         form.openai_low_upstream_rate_priority_enabled,
       openai_oauth_scheduling_rate_multiplier:
         oauthSchedulingRate === "" ? null : oauthSchedulingRate,
+      openai_auto_provision_enabled: form.openai_auto_provision_enabled,
+      openai_auto_provision_target: Number(form.openai_auto_provision_target),
+      openai_auto_provision_interval_seconds:
+        Number(form.openai_auto_provision_interval_seconds),
+      openai_auto_provision_turb_url: form.openai_auto_provision_turb_url.trim(),
+      openai_auto_provision_turb_auth_code:
+        form.openai_auto_provision_turb_auth_code.trim(),
+      openai_auto_provision_callback_url:
+        form.openai_auto_provision_callback_url.trim(),
+      openai_auto_provision_callback_secret:
+        form.openai_auto_provision_callback_secret.trim(),
+      openai_auto_provision_email_source:
+        form.openai_auto_provision_email_source.trim(),
+      openai_auto_provision_workers: Number(form.openai_auto_provision_workers),
+      openai_auto_reauthorization_enabled:
+        form.openai_auto_reauthorization_enabled,
       openai_advanced_scheduler_enabled: form.openai_advanced_scheduler_enabled,
       openai_advanced_scheduler_sticky_weighted_enabled:
         form.openai_advanced_scheduler_sticky_weighted_enabled,
