@@ -32,7 +32,7 @@ func TestOpenAIResponsesEmptyCompletedFailsOver(t *testing.T) {
 	svc := newOpenAIImageGenerationControlTestService(upstream)
 	c, recorder := newOpenAIImageGenerationControlTestContext(true, "codex_cli_rs/0.144.1")
 	account := newOpenAIImageGenerationControlTestAccount()
-	account.Extra = map[string]any{"openai_passthrough": true}
+	account.Extra = map[string]any{"openai_passthrough": true, "openai_responses_mode": "force_responses"}
 
 	body := []byte(`{
 		"model":"gpt-5.6-sol",
@@ -65,7 +65,7 @@ func TestOpenAIResponsesEmptyCompletedWithOutputSucceeds(t *testing.T) {
 	svc := newOpenAIImageGenerationControlTestService(upstream)
 	c, recorder := newOpenAIImageGenerationControlTestContext(true, "codex_cli_rs/0.144.1")
 	account := newOpenAIImageGenerationControlTestAccount()
-	account.Extra = map[string]any{"openai_passthrough": true}
+	account.Extra = map[string]any{"openai_passthrough": true, "openai_responses_mode": "force_responses"}
 
 	body := []byte(`{
 		"model":"gpt-5.6-sol",
@@ -98,7 +98,7 @@ func TestOpenAIResponsesEmptyCompletedWithUsageSucceeds(t *testing.T) {
 	svc := newOpenAIImageGenerationControlTestService(upstream)
 	c, _ := newOpenAIImageGenerationControlTestContext(true, "codex_cli_rs/0.144.1")
 	account := newOpenAIImageGenerationControlTestAccount()
-	account.Extra = map[string]any{"openai_passthrough": true}
+	account.Extra = map[string]any{"openai_passthrough": true, "openai_responses_mode": "force_responses"}
 
 	body := []byte(`{
 		"model":"gpt-5.6-sol",

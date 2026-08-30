@@ -231,7 +231,7 @@ func TestIsUpstreamModelRestrictedByChannel_PassthroughFlagWithRawChatFallbackMa
 		},
 		Extra: map[string]any{
 			"openai_passthrough":         true,
-			"openai_responses_supported": false, "openai_responses_mode": "force_responses",
+			"openai_responses_supported": false, "openai_responses_mode": "force_chat_completions",
 		},
 	}
 
@@ -282,7 +282,7 @@ func TestIsUpstreamModelRestrictedByChannel_ForwardModelContextMatchesNormalForw
 		},
 		Extra: map[string]any{
 			"openai_passthrough":         true,
-			"openai_responses_supported": false, "openai_responses_mode": "force_responses",
+			"openai_responses_supported": false, "openai_responses_mode": "force_chat_completions",
 		},
 	}
 	channelSvc := newTestChannelService(makeStandardRepo(Channel{

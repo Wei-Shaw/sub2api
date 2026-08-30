@@ -57,6 +57,7 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 	if groupIn == nil {
 		return errors.New("group is nil")
 	}
+	normalizeGroupFirstOutputFailoverDefaults(groupIn)
 	modelPricing, err := json.Marshal(groupIn.ModelPricing)
 	if err != nil {
 		return fmt.Errorf("marshal group model pricing: %w", err)
@@ -244,6 +245,7 @@ func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.G
 }
 
 func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
+	normalizeGroupFirstOutputFailoverDefaults(groupIn)
 	modelPricing, err := json.Marshal(groupIn.ModelPricing)
 	if err != nil {
 		return fmt.Errorf("marshal group model pricing: %w", err)
@@ -405,6 +407,15 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group update failed: group=%d err=%v", groupIn.ID, err)
 	}
 	return nil
+}
+
+func normalizeGroupFirstOutputFailoverDefaults(groupIn *service.Group) {
+	if groupIn.FirstOutputFailoverTimeoutSeconds == 0 {
+		groupIn.FirstOutputFailoverTimeoutSeconds = 6
+	}
+	if groupIn.FirstOutputFailoverMaxSwitches == 0 {
+		groupIn.FirstOutputFailoverMaxSwitches = 3
+	}
 }
 
 func (r *groupRepository) Delete(ctx context.Context, id int64) error {
