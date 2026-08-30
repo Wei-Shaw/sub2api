@@ -52,6 +52,13 @@ export default {
           priceDescription: '价格说明（Markdown）',
           priceDescriptionHint: '展示在模型广场页面顶部，可用于说明计费规则、汇率、优惠活动等。',
         },
+        customDomains: {
+          title: '自定义域名',
+          description: '允许已验证的主机名作为 API Base URL。默认关闭。',
+          configureLink: '前往 自定义域名 管理主机名',
+          enabled: '启用自定义域名',
+          enabledHint: '关闭后自定义域名路由会被拒绝，侧边栏入口隐藏。',
+        },
         pluginManagement: {
           title: '插件管理',
           description: '控制管理员侧边栏是否显示插件管理入口。此开关不控制插件运行状态。',

@@ -164,6 +164,7 @@ type SystemSettings struct {
 	TablePageSizeOptions        []int
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
+	CustomDomainsEnabled        bool
 
 	DefaultConcurrency           int
 	DefaultBalance               float64
@@ -355,6 +356,7 @@ type PublicSettings struct {
 	TablePageSizeOptions        []int
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
+	CustomDomainsEnabled        bool
 
 	LinuxDoOAuthEnabled      bool
 	DingTalkOAuthEnabled     bool

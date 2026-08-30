@@ -229,6 +229,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/custom-domains',
+    name: 'CustomDomains',
+    component: () => import('@/views/user/CustomDomainsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Custom Domains',
+      titleKey: 'customDomains.title',
+      descriptionKey: 'customDomains.description'
+    }
+  },
+  {
     path: '/usage',
     name: 'Usage',
     component: () => import('@/views/user/UsageView.vue'),
@@ -522,6 +534,18 @@ const routes: RouteRecordRaw[] = [
       title: 'Account Management',
       titleKey: 'admin.accounts.title',
       descriptionKey: 'admin.accounts.description'
+    }
+  },
+  {
+    path: '/admin/custom-domains',
+    name: 'AdminCustomDomains',
+    component: () => import('@/views/admin/CustomDomainsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Custom Domains',
+      titleKey: 'admin.customDomains.title',
+      descriptionKey: 'admin.customDomains.description'
     }
   },
   {

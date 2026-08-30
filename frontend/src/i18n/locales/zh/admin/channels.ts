@@ -763,5 +763,56 @@ export default {
       }
     },
 
+    customDomains: {
+      title: '自定义域名',
+      description: '管理已验证的入站 API 主机名',
+      globalFeature: '全局开关',
+      globalFeatureHint: '在这里启用用户自有 API 主机名，并将域名分配给对应用户。',
+      enabled: '已启用',
+      disabled: '已禁用',
+      enable: '启用',
+      disable: '禁用',
+      configSaved: '配置已更新',
+      filters: {
+        domain: '域名',
+        status: '状态',
+        access: '可访问用户',
+        owner: '所属用户',
+        userId: '用户 ID'
+      },
+      allStatuses: '全部状态',
+      allUsers: '全部用户',
+      anyAccess: '全部访问范围',
+      access: '访问范围',
+      accessUsers: '允许访问的用户',
+      accessAllUsers: '开放给全部用户',
+      accessUpdated: '访问范围已更新',
+      editAccess: '编辑访问',
+      saveAccess: '保存访问',
+      ownerAccessHint: '所属用户始终可用，即使未在列表中选择。',
+      selectOwner: '选择用户',
+      loadingUsers: '加载用户中...',
+      usersLoadFailed: '加载用户失败',
+      owner: '所属用户',
+      ownerId: '用户 #{id}',
+      actions: '操作',
+      listEmpty: '没有匹配当前筛选条件的自定义域名',
+      verified: '域名已验证',
+      disabledDomain: '域名已禁用',
+      enabledDomain: '域名已启用',
+      deletedDomain: '域名已删除',
+      domainConnectTitle: 'DomainConnect 接入路径',
+      domainConnectDescription: '对支持的 DNS 服务商使用 DomainConnect，用户授权后即可写入 TXT 和 CNAME，避免手动改 DNS 或强制 Cloudflare 记录切到 DNS only。',
+      domainConnectLink: 'DomainConnect',
+      domainConnectSteps: {
+        template: '模板',
+        templateHint: '发布包含 TXT 所有权记录和 CNAME 路由目标的签名模板。',
+        cloudflare: 'Cloudflare',
+        cloudflareHint: 'Cloudflare 在模板完成 onboarding 后支持同步流程，也可以设置记录的默认代理状态。',
+        fallback: '手动兜底',
+        fallbackHint: 'onboarding 完成前，TXT 所有权仍是验证门槛，CNAME 作为路由配置指引。'
+      }
+    },
+
     // Accounts Management
 }
