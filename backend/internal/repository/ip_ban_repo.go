@@ -49,7 +49,9 @@ func (r *ipBanRepository) List(ctx context.Context, params pagination.Pagination
 	if err != nil {
 		return nil, nil, fmt.Errorf("list IP bans: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	bans := make([]service.IPBan, 0)
 	for rows.Next() {

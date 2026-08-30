@@ -333,7 +333,7 @@ func TestAdminServiceBulkUpdateAccounts_NormalizesOpenAISettings(t *testing.T) {
 		},
 		Extra: map[string]any{
 			openAILongContextBillingEnabledKey: true,
-			"openai_responses_mode":            "auto",
+			"openai_responses_mode":            "force_responses",
 		},
 	})
 
@@ -345,7 +345,7 @@ func TestAdminServiceBulkUpdateAccounts_NormalizesOpenAISettings(t *testing.T) {
 	require.Nil(t, repo.lastBulkUpdate.Credentials[openAIEndpointCapabilitiesCredentialKey])
 	require.Equal(t, true, repo.lastBulkUpdate.Extra[openAILongContextBillingEnabledKey])
 	require.Contains(t, repo.lastBulkUpdate.Extra, "openai_responses_mode")
-	require.Nil(t, repo.lastBulkUpdate.Extra["openai_responses_mode"])
+	require.Equal(t, "force_responses", repo.lastBulkUpdate.Extra["openai_responses_mode"])
 }
 
 func TestAdminServiceBulkUpdateAccounts_AcceptsLongContextAccountTypes(t *testing.T) {

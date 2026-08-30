@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -546,6 +547,9 @@ func TestOpenAIGatewayServiceForward_PinsParallelToolCallsForToollessResponsesLi
 						Concurrency: 1, Status: StatusActive, Schedulable: true, RateMultiplier: f64p(1),
 						Credentials: accountCase.credentials,
 						Extra:       map[string]any{"openai_passthrough": passthrough},
+					}
+					if account.Type == AccountTypeAPIKey {
+						account.Extra[openai_compat.ExtraKeyResponsesMode] = string(openai_compat.ResponsesSupportModeForceResponses)
 					}
 					body := []byte(`{
 						"model":"gpt-5.6-terra","stream":true,"instructions":"test",

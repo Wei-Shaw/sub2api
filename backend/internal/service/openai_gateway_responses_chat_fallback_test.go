@@ -88,6 +88,7 @@ func TestForwardResponses_PassthroughFlagWithUnsupportedResponsesUsesAccountMapp
 			account.Extra = map[string]any{
 				"openai_passthrough":                     true,
 				openai_compat.ExtraKeyResponsesSupported: false,
+				openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeForceChatCompletions),
 			}
 
 			result, err := svc.Forward(context.Background(), c, account, body)

@@ -77,20 +77,26 @@
             }}</span></template
           >
           <template #cell-actions="{ row }"
-            ><div class="flex items-center gap-1">
+            ><div
+              class="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-gray-50/80 p-1 shadow-sm dark:border-dark-600 dark:bg-dark-800/80"
+            >
               <button
-                class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600"
+                type="button"
+                class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-all hover:bg-blue-100 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:text-gray-400 dark:hover:bg-blue-950/60 dark:hover:text-blue-300"
                 title="查看工单"
+                aria-label="查看工单"
                 @click.stop="openTicket(row)"
               >
-                <Icon name="eye" size="sm" /></button
+                <Icon name="eye" size="sm" :stroke-width="2" /></button
               ><button
-                class="flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                type="button"
+                class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-amber-600 transition-all hover:bg-amber-100 hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:text-gray-300 disabled:hover:bg-transparent dark:text-amber-400 dark:hover:bg-amber-950/60 dark:hover:text-amber-300 dark:disabled:text-dark-500"
                 title="关闭工单"
+                aria-label="关闭工单"
                 :disabled="row.status === 'closed' || busy"
                 @click.stop="closeTicket(row)"
               >
-                <Icon name="close" size="sm" />
+                <Icon name="archiveBox" size="sm" :stroke-width="2" />
               </button></div
           ></template>
           <template #empty

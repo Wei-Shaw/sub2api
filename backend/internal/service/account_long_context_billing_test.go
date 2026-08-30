@@ -125,6 +125,7 @@ func TestAdminServiceCreateAccountDefaultsOpenAILongContextBillingDisabled(t *te
 		Platform:             PlatformOpenAI,
 		Type:                 AccountTypeAPIKey,
 		Credentials:          map[string]any{"api_key": "test"},
+		Extra:                map[string]any{"openai_responses_mode": "force_responses"},
 		SkipDefaultGroupBind: true,
 	})
 
