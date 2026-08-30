@@ -35,7 +35,7 @@ func BenchmarkUpstreamResponseModelOpenAI(b *testing.B) {
 			b.Run("optimized", func(b *testing.B) {
 				b.ReportAllocs()
 				for b.Loop() {
-					upstreamResponseModelBenchmarkSink = firstValidTrimmedGJSONModel(tt.payload, "response.model", "model")
+					upstreamResponseModelBenchmarkSink = firstValidTrimmedGJSONString(tt.payload, "response.model", "model")
 				}
 			})
 		})
@@ -52,7 +52,7 @@ func BenchmarkUpstreamResponseModelAntigravityWrapper(b *testing.B) {
 	b.Run("optimized", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			upstreamResponseModelBenchmarkSink = firstValidTrimmedGJSONModel(
+			upstreamResponseModelBenchmarkSink = firstValidTrimmedGJSONString(
 				upstreamResponseModelBenchmarkWrapper,
 				"modelVersion",
 				"response.modelVersion",

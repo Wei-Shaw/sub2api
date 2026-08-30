@@ -131,6 +131,7 @@
             <div class="relative" ref="columnDropdownRef">
               <button
                 type="button"
+                data-testid="usage-column-settings"
                 @click="showColumnDropdown = !showColumnDropdown"
                 class="btn btn-secondary px-2 md:px-3"
                 :title="t('admin.users.columnSettings')"
@@ -146,6 +147,7 @@
                   v-for="col in currentToggleableColumns"
                   :key="col.key"
                   type="button"
+                  :data-testid="`usage-column-toggle-${col.key}`"
                   @click="toggleCurrentColumn(col.key)"
                   class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
                 >

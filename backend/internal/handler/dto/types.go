@@ -48,6 +48,9 @@ type AdminUser struct {
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]rateMultiplier
 	GroupRates map[int64]float64 `json:"group_rates,omitempty"`
+	// RestrictPublicGroups 为 true 时，该用户仅可使用 allowed_groups 中列出的
+	// 公开分组。这是管理侧的权限开关，不下发给用户自身的接口。
+	RestrictPublicGroups bool `json:"restrict_public_groups"`
 }
 
 type APIKey struct {
@@ -96,10 +99,11 @@ type Group struct {
 	IsExclusive    bool    `json:"is_exclusive"`
 	Status         string  `json:"status"`
 
-	SubscriptionType string   `json:"subscription_type"`
-	DailyLimitUSD    *float64 `json:"daily_limit_usd"`
-	WeeklyLimitUSD   *float64 `json:"weekly_limit_usd"`
-	MonthlyLimitUSD  *float64 `json:"monthly_limit_usd"`
+	SubscriptionType          string   `json:"subscription_type"`
+	DailyLimitUSD             *float64 `json:"daily_limit_usd"`
+	WeeklyLimitUSD            *float64 `json:"weekly_limit_usd"`
+	MonthlyLimitUSD           *float64 `json:"monthly_limit_usd"`
+	LongContextPricingEnabled bool     `json:"long_context_pricing_enabled"`
 
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration         bool    `json:"allow_image_generation"`
@@ -164,9 +168,10 @@ type AdminGroup struct {
 	// 分组利润控制（五个 token 平台分组可启用；margin/buffer 为小数存储）。
 	// 仅管理员可见：这三个字段与同响应中的 rate_multiplier 相乘即可反推出
 	// 运营方的上游成本上限，属于内部经营信息，不得下放到 dto.Group。
-	ProfitControlEnabled bool    `json:"profit_control_enabled"`
-	ProfitMinMargin      float64 `json:"profit_min_margin"`
-	ProfitSafetyBuffer   float64 `json:"profit_safety_buffer"`
+	ProfitControlEnabled bool                          `json:"profit_control_enabled"`
+	ProfitMinMargin      float64                       `json:"profit_min_margin"`
+	ProfitSafetyBuffer   float64                       `json:"profit_safety_buffer"`
+	ModelPricing         []service.ChannelModelPricing `json:"model_pricing"`
 
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
@@ -484,8 +489,9 @@ type UsageLog struct {
 	Model     string `json:"model"`
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
 	ServiceTier *string `json:"service_tier,omitempty"`
-	// ReasoningEffort is the request's reasoning effort level.
+	// ReasoningEffort is the client-requested effort (mapping-hidden, like Model).
 	// OpenAI: "low"/"medium"/"high"/"xhigh"; Claude: "low"/"medium"/"high"/"max".
+	// Historical rows without requested_reasoning_effort fall back to the stored effective value.
 	ReasoningEffort *string `json:"reasoning_effort,omitempty"`
 	// InboundEndpoint is the client-facing API endpoint path, e.g. /v1/chat/completions.
 	InboundEndpoint *string `json:"inbound_endpoint,omitempty"`
@@ -564,6 +570,9 @@ type AdminUsageLog struct {
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Omitted when no mapping was applied (requested model was used as-is).
 	UpstreamModel *string `json:"upstream_model,omitempty"`
+	// UpstreamReasoningEffort is the effort actually forwarded after group policy /
+	// model-family remapping. Omitted when it matches the client-requested value.
+	UpstreamReasoningEffort *string `json:"upstream_reasoning_effort,omitempty"`
 	// UpstreamResponseModel is the raw model declared by the upstream response.
 	UpstreamResponseModel *string `json:"upstream_response_model,omitempty"`
 	// UpstreamModelMismatch is nil when the upstream did not declare a model.

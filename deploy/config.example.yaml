@@ -181,11 +181,21 @@ security:
     # 默认 CSP 策略（如果静态资源托管在其他域名，请自行覆盖）
     # Note: __CSP_NONCE__ will be replaced with 'nonce-xxx' at request time for inline script security
     # 注意：__CSP_NONCE__ 会在请求时被替换为 'nonce-xxx'，用于内联脚本安全
-    policy: "default-src 'self'; worker-src 'self' blob:; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://*.alicdn.com https://static.cloudflareinsights.com https://turing.captcha.qcloud.com https://turing.captcha.gtimg.com https://ca.turing.captcha.qcloud.com https://global.turing.captcha.gtimg.com https://www.tycaptcha.com https://cloudcache.tencentcs.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://*.captcha.gtimg.com https://fonts.googleapis.com https://*.alicdn.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://turing.captcha.qcloud.com https://www.tycaptcha.com https://rce.tencentrio.com https:; frame-src https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://ca.turing.captcha.qcloud.com https://www.tycaptcha.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    policy: "default-src 'self'; worker-src 'self' blob:; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://*.alicdn.com https://static.cloudflareinsights.com https://turing.captcha.qcloud.com https://turing.captcha.gtimg.com https://ca.turing.captcha.qcloud.com https://global.turing.captcha.gtimg.com https://www.tycaptcha.com https://cloudcache.tencentcs.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://*.captcha.gtimg.com https://fonts.googleapis.com https://*.alicdn.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://turing.captcha.qcloud.com https://www.tycaptcha.com https://rce.tencentrio.com https:; frame-src 'self' https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://ca.turing.captcha.qcloud.com https://www.tycaptcha.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
   proxy_probe:
     # Allow skipping TLS verification for proxy probe (debug only)
     # 允许代理探测时跳过 TLS 证书验证（仅用于调试）
     insecure_skip_verify: false
+    # Optional ordered probe targets. Leave empty to use the built-in ip-api/ipify fallback.
+    # parser supports: ip-api, ipify, chatgpt-trace
+    # 可选的有序探测目标。留空时使用内置 ip-api/ipify 回退。
+    # parser 支持：ip-api、ipify、chatgpt-trace
+    urls: []
+    # urls:
+    #   - url: "https://chatgpt.com/cdn-cgi/trace"
+    #     parser: "chatgpt-trace"
+    #   - url: "https://api64.ipify.org?format=json"
+    #     parser: "ipify"
   proxy_fallback:
     # Allow auxiliary services (update check, pricing data) to fallback to direct
     # connection when proxy initialization fails. Does NOT affect AI gateway connections.
@@ -204,6 +214,9 @@ gateway:
   # OpenAI/Codex upstream response header timeout (seconds, 0=disabled)
   # OpenAI/Codex 等待上游响应头超时时间（秒，0=禁用本地响应头超时）
   openai_response_header_timeout: 0
+  # Grok text Responses first-byte timeout (seconds, 0=disabled; default 120)
+  # Grok 文本 Responses 首字节超时时间（秒，0=禁用；默认 120）
+  grok_response_header_timeout: 120
   # Native OpenAI HTTP Responses first semantic output timeout (seconds, 0=disabled)
   # Includes response-header wait; does not apply to passthrough or WebSocket transports.
   # A timed-out request may already have incurred upstream usage; account failover can therefore duplicate upstream billing.
@@ -222,39 +235,15 @@ gateway:
   # Max bytes to read for non-stream upstream responses (default: 8MB)
   # 非流式上游响应体读取上限（默认 8MB）
   upstream_response_read_max_bytes: 8388608
+  # Max bytes to read for upstream model-list responses (default: 8MB)
+  # 上游模型列表响应体读取上限（默认 8MB）
+  models_list_read_max_bytes: 8388608
   # Max bytes to read for proxy probe responses (default: 1MB)
   # 代理探测响应体读取上限（默认 1MB）
   proxy_probe_response_read_max_bytes: 1048576
   # Enable Gemini upstream response header debug logs (default: false)
   # 是否开启 Gemini 上游响应头调试日志（默认 false）
   gemini_debug_response_headers: false
-  # Sora max request body size in bytes (0=use max_body_size)
-  # Sora 请求体最大字节数（0=使用 max_body_size）
-  sora_max_body_size: 268435456
-  # Sora stream timeout (seconds, 0=disable)
-  # Sora 流式请求总超时（秒，0=禁用）
-  sora_stream_timeout_seconds: 900
-  # Sora non-stream timeout (seconds, 0=disable)
-  # Sora 非流式请求超时（秒，0=禁用）
-  sora_request_timeout_seconds: 180
-  # Sora stream enforcement mode: force/error
-  # Sora stream 强制策略：force/error
-  sora_stream_mode: "force"
-  # Sora model filters
-  # Sora 模型过滤配置
-  sora_model_filters:
-    # Hide prompt-enhance models by default
-    # 默认隐藏 prompt-enhance 模型
-    hide_prompt_enhance: true
-  # Require API key for /sora/media proxy (default: false)
-  # /sora/media 是否强制要求 API Key（默认 true）
-  sora_media_require_api_key: true
-  # Sora media temporary signing key (empty disables signed URL)
-  # Sora 媒体临时签名密钥（为空则禁用签名）
-  sora_media_signing_key: ""
-  # Signed URL TTL seconds (<=0 disables)
-  # 临时签名 URL 有效期（秒，<=0 表示禁用）
-  sora_media_signed_url_ttl_seconds: 900
   # Connection pool isolation strategy:
   # 连接池隔离策略：
   # - proxy: Isolate by proxy, same proxy shares connection pool (suitable for few proxies, many accounts)
@@ -343,7 +332,8 @@ gateway:
     # 按账号类型细分开关
     oauth_enabled: true
     apikey_enabled: true
-    # 全局强制 HTTP（紧急回滚开关）
+    # 全局强制 OpenAI Responses 上游使用 HTTP/SSE，不使用 WebSocket（紧急回滚开关）。
+    # 此开关不强制 HTTP/1.1；HTTP/2 由 gateway.openai_http2 单独控制。
     force_http: false
     # 允许在 WSv2 下按策略恢复 store=true（默认 false）
     allow_store_recovery: false
@@ -649,112 +639,9 @@ log:
     # 之后每 N 条保留 1 条
     thereafter: 100
 
-# =============================================================================
-# Sora Direct Client Configuration
-# Sora 直连配置
-# =============================================================================
-sora:
-  client:
-    # Sora backend base URL
-    # Sora 上游 Base URL
-    base_url: "https://sora.chatgpt.com/backend"
-    # Request timeout (seconds)
-    # 请求超时（秒）
-    timeout_seconds: 120
-    # Max retries for upstream requests
-    # 上游请求最大重试次数
-    max_retries: 3
-    # Account+proxy cooldown window after Cloudflare challenge (seconds, 0 to disable)
-    # Cloudflare challenge 后按账号+代理冷却窗口（秒，0 表示关闭）
-    cloudflare_challenge_cooldown_seconds: 900
-    # Poll interval (seconds)
-    # 轮询间隔（秒）
-    poll_interval_seconds: 2
-    # Max poll attempts
-    # 最大轮询次数
-    max_poll_attempts: 600
-    # Recent task query limit (image)
-    # 最近任务查询数量（图片轮询）
-    recent_task_limit: 50
-    # Recent task query max limit (fallback)
-    # 最近任务查询最大数量（回退）
-    recent_task_limit_max: 200
-    # Enable debug logs for Sora upstream requests
-    # 启用 Sora 直连调试日志
-    # 调试日志会输出上游请求尝试、重试、响应摘要；Authorization/openai-sentinel-token 等敏感头会自动脱敏
-    debug: false
-    # Allow Sora client to fetch token via OpenAI token provider
-    # 是否允许 Sora 客户端通过 OpenAI token provider 取 token（默认 false，避免误走 OpenAI 刷新链路）
-    use_openai_token_provider: false
-    # Optional custom headers (key-value)
-    # 额外请求头（键值对）
-    headers: {}
-    # Default User-Agent for Sora requests
-    # Sora 默认 User-Agent
-    user_agent: "Sora/1.2026.007 (Android 15; 24122RKC7C; build 2600700)"
-    # Disable TLS fingerprint for Sora upstream
-    # 关闭 Sora 上游 TLS 指纹伪装
-    disable_tls_fingerprint: false
-    # curl_cffi sidecar for Sora only (required)
-    # 仅 Sora 链路使用的 curl_cffi sidecar（必需）
-    curl_cffi_sidecar:
-      # Sora 强制通过 sidecar 请求，必须启用
-      # Sora is forced to use sidecar only; keep enabled=true
-      enabled: true
-      # Sidecar base URL (default endpoint: /request)
-      # sidecar 基础地址（默认请求端点：/request）
-      base_url: "http://sora-curl-cffi-sidecar:8080"
-      # curl_cffi impersonate profile, e.g. chrome131/chrome124/safari18_0
-      # curl_cffi 指纹伪装 profile，例如 chrome131/chrome124/safari18_0
-      impersonate: "chrome131"
-      # Sidecar request timeout (seconds)
-      # sidecar 请求超时（秒）
-      timeout_seconds: 60
-      # Reuse session key per account+proxy to let sidecar persist cookies/session
-      # 按账号+代理复用 session key，让 sidecar 持久化 cookies/session
-      session_reuse_enabled: true
-      # Session TTL in sidecar (seconds)
-      # sidecar 会话 TTL（秒）
-      session_ttl_seconds: 3600
-  storage:
-    # Storage type (local only for now)
-    # 存储类型（首发仅支持 local）
-    type: "local"
-    # Local base path; empty uses /app/data/sora
-    # 本地存储基础路径；为空使用 /app/data/sora
-    local_path: ""
-    # Fallback to upstream URL when download fails
-    # 下载失败时回退到上游 URL
-    fallback_to_upstream: true
-    # Max concurrent downloads
-    # 并发下载上限
-    max_concurrent_downloads: 4
-    # Download timeout (seconds)
-    # 下载超时（秒）
-    download_timeout_seconds: 120
-    # Max download bytes
-    # 最大下载字节数
-    max_download_bytes: 209715200
-    # Enable debug logs for media storage
-    # 启用媒体存储调试日志
-    debug: false
-    cleanup:
-      # Enable cleanup task
-      # 启用清理任务
-      enabled: true
-      # Retention days
-      # 保留天数
-      retention_days: 7
-      # Cron schedule
-      # Cron 调度表达式
-      schedule: "0 3 * * *"
-
 # Token refresh behavior
 # token 刷新行为控制
 token_refresh:
-  # Whether OpenAI refresh flow is allowed to sync linked Sora accounts
-  # 是否允许 OpenAI 刷新流程同步覆盖 linked_openai_account_id 关联的 Sora 账号 token
-  sync_linked_sora_accounts: false
   # Candidate accounts loaded per cursor page (maximum 1000)
   # 每个游标分页加载的候选账号数量（最大 1000）
   candidate_page_size: 200
@@ -1141,6 +1028,26 @@ rate_limit:
   # Cooldown time (in minutes) when upstream returns 529 (overloaded)
   # 上游返回 529（过载）时的冷却时间（分钟）
   overload_cooldown_minutes: 10
+
+# =============================================================================
+# Local OAuth Transport Plugins (Optional)
+# 本地 OAuth 出站传输插件（可选）
+# =============================================================================
+plugins:
+  # Empty means {{DATA_DIR}}/plugins, or ./data/plugins when DATA_DIR is unset.
+  # 留空时使用 {{DATA_DIR}}/plugins；未设置 DATA_DIR 时使用 ./data/plugins。
+  data_dir: ""
+  # Keep false in production. Enable only for local development packages you built yourself.
+  # 生产环境应保持 false；仅调试自己构建的本地插件时临时开启。
+  allow_unsigned: false
+  # Additional Ed25519 public keys indexed by signature.json key_id.
+  # OpenAI Transport's public key is built in; this map only adds third-party publishers.
+  # 以 signature.json 中 key_id 为索引的额外 Ed25519 公钥。
+  # OpenAI Transport 公钥已内置，此处只需添加第三方发布者。
+  trusted_publishers: {}
+  max_upload_bytes: 134217728
+  max_uncompressed_bytes: 268435456
+  start_timeout_seconds: 15
 
 # =============================================================================
 # Pricing Data Source (Optional)

@@ -211,11 +211,15 @@ export function parseDateTimeLocalInput(value: string): number | null {
  * @param effort 原始 effort（如 "low" / "medium" / "high" / "xhigh"）
  * @returns 格式化后的字符串（Low / Medium / High / Xhigh），无值返回 "-"
  */
+function normalizeReasoningEffortKey(effort: string | null | undefined): string {
+  return (effort ?? '').toString().trim().toLowerCase().replace(/[-_\s]/g, '')
+}
+
 export function formatReasoningEffort(effort: string | null | undefined): string {
   const raw = (effort ?? '').toString().trim()
   if (!raw) return '-'
 
-  const normalized = raw.toLowerCase().replace(/[-_\s]/g, '')
+  const normalized = normalizeReasoningEffortKey(raw)
   switch (normalized) {
     case 'low':
       return 'Low'
@@ -235,6 +239,31 @@ export function formatReasoningEffort(effort: string | null | undefined): string
       // best-effort: Title-case first letter
       return raw.length > 1 ? raw[0].toUpperCase() + raw.slice(1) : raw.toUpperCase()
   }
+}
+
+export function reasoningEffortValuesEqual(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): boolean {
+  const a = normalizeReasoningEffortKey(left)
+  const b = normalizeReasoningEffortKey(right)
+  if (!a && !b) return true
+  return a !== '' && a === b
+}
+
+/** Requested vs forwarded effort for usage export; one value when they match. */
+export function formatReasoningEffortMapping(
+  requested: string | null | undefined,
+  forwarded: string | null | undefined,
+): string {
+  const requestedLabel = formatReasoningEffort(requested)
+  const forwardedLabel = formatReasoningEffort(forwarded)
+  if (requestedLabel === '-' && forwardedLabel === '-') return '-'
+  if (requestedLabel === '-' || reasoningEffortValuesEqual(requested, forwarded)) {
+    return forwardedLabel === '-' ? requestedLabel : forwardedLabel
+  }
+  if (forwardedLabel === '-') return requestedLabel
+  return `${requestedLabel} → ${forwardedLabel}`
 }
 
 /**
