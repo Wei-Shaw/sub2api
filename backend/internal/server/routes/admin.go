@@ -115,6 +115,9 @@ func RegisterAdminRoutes(
 		// 渠道管理
 		registerChannelRoutes(admin, h)
 
+		// 仅影响用户可见页面的展示定价，不影响真实渠道和扣费。
+		registerDisplayPricingRoutes(admin, h)
+
 		// 渠道监控
 		registerChannelMonitorRoutes(admin, h, settingService)
 		registerChannelMonitorV2Routes(admin, h, settingService)
@@ -130,6 +133,23 @@ func RegisterAdminRoutes(
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+	}
+}
+
+func registerDisplayPricingRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	pricing := admin.Group("/display-pricing")
+	{
+		pricing.GET("/settings", h.Admin.DisplayPricing.GetSettings)
+		pricing.PUT("/settings", h.Admin.DisplayPricing.UpdateSettings)
+		pricing.GET("/providers", h.Admin.DisplayPricing.ListProviders)
+		pricing.POST("/providers", h.Admin.DisplayPricing.CreateProvider)
+		pricing.PUT("/providers/:provider", h.Admin.DisplayPricing.UpdateProvider)
+		pricing.DELETE("/providers/:provider", h.Admin.DisplayPricing.DeleteProvider)
+		pricing.GET("/models", h.Admin.DisplayPricing.ListModels)
+		pricing.POST("/models", h.Admin.DisplayPricing.UpsertModel)
+		pricing.PUT("/models/:id", h.Admin.DisplayPricing.UpdateModel)
+		pricing.DELETE("/models/:id", h.Admin.DisplayPricing.DeleteModel)
+		pricing.GET("/discovered-models", h.Admin.DisplayPricing.ListDiscoveredModels)
 	}
 }
 

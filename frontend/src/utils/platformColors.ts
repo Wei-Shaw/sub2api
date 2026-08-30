@@ -86,6 +86,44 @@ const ACCENT: Record<Platform, string> = {
 }
 const ACCENT_DEFAULT = '#14b8a6' // primary-500 (teal)
 
+// Customer-facing vendors that can share an OpenAI-compatible request platform.
+// These presentation-only colors do not change gateway routing semantics.
+const EXTRA_PROVIDER_ACCENT: Record<string, string> = {
+  moonshot: '#ec4899',
+  qwen: '#7c3aed',
+  minimax: '#f43f5e',
+  mimo: '#ff6900',
+  hunyuan: '#2563eb',
+  auto: '#64748b',
+}
+
+const EXTRA_PROVIDER_BADGE_LIGHT: Record<string, string> = {
+  moonshot: 'bg-pink-500/10 text-pink-600 dark:bg-pink-500/10 dark:text-pink-300',
+  qwen: 'bg-violet-500/10 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300',
+  minimax: 'bg-rose-500/10 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300',
+  mimo: 'bg-orange-500/10 text-orange-600 dark:bg-orange-500/10 dark:text-orange-300',
+  hunyuan: 'bg-blue-500/10 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300',
+  auto: 'bg-slate-500/10 text-slate-600 dark:bg-slate-500/10 dark:text-slate-300',
+}
+
+const EXTRA_PROVIDER_BORDER_STRONG: Record<string, string> = {
+  moonshot: 'border-pink-500/35 dark:border-pink-500/30',
+  qwen: 'border-violet-500/35 dark:border-violet-500/30',
+  minimax: 'border-rose-500/35 dark:border-rose-500/30',
+  mimo: 'border-orange-500/35 dark:border-orange-500/30',
+  hunyuan: 'border-blue-500/35 dark:border-blue-500/30',
+  auto: 'border-slate-500/35 dark:border-slate-500/30',
+}
+
+const EXTRA_PROVIDER_ICON: Record<string, string> = {
+  moonshot: 'text-pink-500 dark:text-pink-300',
+  qwen: 'text-violet-500 dark:text-violet-300',
+  minimax: 'text-rose-500 dark:text-rose-300',
+  mimo: 'text-orange-500 dark:text-orange-300',
+  hunyuan: 'text-blue-500 dark:text-blue-300',
+  auto: 'text-slate-500 dark:text-slate-300',
+}
+
 // ── Accent bar (gradient) ───────────────────────────────────────────
 const ACCENT_BAR: Record<Platform, string> = {
   anthropic: 'bg-gradient-to-r from-orange-400 to-orange-500',
@@ -218,7 +256,7 @@ export function platformBadgeClass(p: string): string {
 }
 
 export function platformBadgeLightClass(p: string): string {
-  return isPlatform(p) ? BADGE_LIGHT[p] : BADGE_DEFAULT
+  return isPlatform(p) ? BADGE_LIGHT[p] : (EXTRA_PROVIDER_BADGE_LIGHT[p] ?? BADGE_DEFAULT)
 }
 
 export function platformBorderClass(p: string): string {
@@ -226,11 +264,11 @@ export function platformBorderClass(p: string): string {
 }
 
 export function platformBorderStrongClass(p: string): string {
-  return isPlatform(p) ? BORDER_STRONG[p] : BORDER_STRONG_DEFAULT
+  return isPlatform(p) ? BORDER_STRONG[p] : (EXTRA_PROVIDER_BORDER_STRONG[p] ?? BORDER_STRONG_DEFAULT)
 }
 
 export function platformAccentColor(p: string): string {
-  return isPlatform(p) ? ACCENT[p] : ACCENT_DEFAULT
+  return isPlatform(p) ? ACCENT[p] : (EXTRA_PROVIDER_ACCENT[p] ?? ACCENT_DEFAULT)
 }
 
 export function platformAccentBarClass(p: string): string {
@@ -242,7 +280,7 @@ export function platformTextClass(p: string): string {
 }
 
 export function platformIconClass(p: string): string {
-  return isPlatform(p) ? ICON[p] : ICON_DEFAULT
+  return isPlatform(p) ? ICON[p] : (EXTRA_PROVIDER_ICON[p] ?? ICON_DEFAULT)
 }
 
 export function platformButtonClass(p: string): string {
@@ -273,8 +311,14 @@ export function platformLabel(p: string): string {
     case 'gemini': return 'Gemini'
     case 'grok': return 'Grok'
     case 'kimi': return 'Kimi'
+    case 'moonshot': return 'Kimi'
     case 'zhipu': return 'Zhipu GLM'
     case 'deepseek': return 'DeepSeek'
+    case 'minimax': return 'MiniMax'
+    case 'qwen': return 'Qwen'
+    case 'mimo': return 'MiMo'
+    case 'hunyuan': return '腾讯混元'
+    case 'auto': return 'Auto'
     case 'composite': return 'Composite'
     default: return p || 'API'
   }

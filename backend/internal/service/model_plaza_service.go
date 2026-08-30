@@ -158,6 +158,7 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 			if !ok {
 				continue
 			}
+			group := groupEnt[gid]
 			idx := modelIdx[gid]
 			if idx == nil {
 				idx = make(map[modelKey]int, len(supported))
@@ -165,6 +166,12 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 			}
 			for j := range supported {
 				m := supported[j]
+				// 图片模型只有在该分组真正允许图片生成时才对用户展示。
+				// 避免“渠道配了图片价，但用户所在分组实际不可调用”的假上架。
+				if m.Pricing != nil && m.Pricing.BillingMode == BillingModeImage &&
+					group != nil && !group.AllowImageGeneration {
+					continue
+				}
 				if pg.Platform == PlatformComposite {
 					if !isConcreteRequestPlatform(m.Platform) {
 						continue

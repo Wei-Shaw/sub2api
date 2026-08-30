@@ -10,13 +10,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ModelPlazaHandler 处理「模型广场」查询。
-//
-// 广场路由挂 OptionalJWT 中间件：匿名可访问（除非 require_auth 开启），带 token 则
-// 识别用户。可见性规则（橱窗语义，与「可用渠道」的可绑定语义不同）：
-//   - 匿名：仅非专属分组（订阅型照常展示）；
-//   - 登录：非专属分组 + user_allowed_groups 授权的专属分组（不检查订阅有效性）；
-//     若该用户开启了公开分组限制，则公开分组同样需要落在授权集合内。
+// ModelPlazaHandler 处理登录后「模型广场」查询。
+// 登录用户可见非专属分组 + user_allowed_groups 授权的专属分组；若该用户
+// 开启了公开分组限制，公开分组同样需要落在授权集合内。
 type ModelPlazaHandler struct {
 	plazaService   *service.ModelPlazaService
 	apiKeyService  *service.APIKeyService
@@ -117,7 +113,7 @@ func (h *ModelPlazaHandler) Get(c *gin.Context) {
 	}
 
 	subject, authed := middleware.GetAuthSubjectFromContext(c)
-	if rt.RequireAuth && !authed {
+	if !authed {
 		response.Unauthorized(c, "Authentication required")
 		return
 	}

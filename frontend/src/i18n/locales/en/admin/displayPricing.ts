@@ -1,0 +1,93 @@
+export default {
+  displayPricing: {
+    title: 'Display Pricing',
+    description: 'Manage the official base prices, display multipliers, per-request tiers, and image prices shown on the Model Prices page.',
+    preview: 'Preview Model Prices',
+    isolationNotice: 'Changes here affect display prices only. They do not change channel costs, group pricing, account routing, or actual user charges.',
+    loadFailed: 'Failed to load display pricing',
+    saveFailed: 'Failed to save display pricing',
+    saved: 'Display pricing saved',
+    currency: 'Display currency',
+    sortOrder: 'Order',
+    global: {
+      title: 'Global display multiplier',
+      hint: 'Used only for token-metered catalogue prices',
+      multiplier: 'Default multiplier',
+      priority: 'A fixed model multiplier is used as-is. When blank, the effective multiplier is global × provider factor. Per-request and image prices never use it.'
+    },
+    providers: {
+      title: 'Provider display settings',
+      hint: 'Create, edit, or delete provider names, logos, currencies, and token multiplier factors.',
+      add: 'Add provider',
+      createTitle: 'Add provider display settings',
+      editTitle: 'Edit provider display settings',
+      key: 'Provider key',
+      name: 'Provider name',
+      note: 'Provider note',
+      notePlaceholder: 'Optional text shown below the provider heading, such as peak-hour or pricing information',
+      multiplier: 'Provider multiplier factor',
+      multiplierValue: 'Factor ×{value}',
+      logoKey: 'Built-in logo',
+      logoAuto: 'Match provider key automatically',
+      logoUrl: 'Custom logo URL',
+      logoPreview: 'Logo preview',
+      logoHint: 'A custom URL takes priority. Only HTTPS or same-site relative paths are allowed; failures fall back to the built-in logo.',
+      deleteTitle: 'Delete provider display settings',
+      deleteMessage: 'Delete provider "{provider}"? All of its display-model settings will also be deleted, but real channels, routing, and billing will not be affected.',
+      deleted: 'Provider and its display-model settings deleted',
+      deleteFailed: 'Failed to delete provider display settings',
+      empty: 'No provider settings'
+    },
+    models: {
+      title: 'Model display rules',
+      hint: 'Only enabled rules appear on the customer Model Prices page.',
+      discover: 'Choose live model',
+      add: 'Add display rule',
+      search: 'Search model or provider',
+      allProviders: 'All providers',
+      allModes: 'All billing modes',
+      model: 'Model',
+      provider: 'Provider',
+      note: 'Model note',
+      notePlaceholder: 'Optional highlighted text shown below the model name, such as availability or launch information',
+      mode: 'Billing mode',
+      rule: 'Display rule',
+      empty: 'No matching display pricing rules',
+      inherited: 'inherited',
+      tokenSummary: 'Official price × {multiplier}',
+      tokenFixedSummary: 'Official price × fixed {multiplier}',
+      tokenInheritedSummary: 'Official price × global × provider factor',
+      perRequestSummary: 'Base {price}; next tiers default to ×1.5 / ×2',
+      imageSummary: '{count} image tiers'
+    },
+    editor: {
+      createTitle: 'Add Display Pricing',
+      editTitle: 'Edit Display Pricing',
+      officialPrices: 'Official base prices (per 1M tokens)',
+      tokenFormula: 'Customer display price = official base price × effective multiplier. A fixed model multiplier is not affected by global or provider changes.',
+      modelMultiplier: 'Fixed display multiplier',
+      inheritMultiplier: 'Leave blank to follow global × provider factor',
+      perRequestPrices: 'Three-tier per-request prices',
+      perRequestFormula: 'Enter the ≤256K base price. Blank higher tiers are derived at ×1.5 / ×2. No multiplier is shown for per-request pricing.',
+      tier2Override: '256K–512K (optional override)',
+      tier3Override: '> 512K (optional override)',
+      autoDerived: 'Auto-derived',
+      imagePrices: 'Image specification prices',
+      imageHint: 'Enter the per-image customer display price for each specification.',
+      addTier: 'Add tier',
+      specLabel: 'Specification',
+      pricePerImage: 'Price per image'
+    },
+    discovered: {
+      title: 'Choose a live model',
+      search: 'Search models discovered from current channels',
+      configured: 'Configured',
+      configure: 'Configure price'
+    },
+    delete: {
+      title: 'Delete Display Pricing',
+      message: 'Delete the display price for {model}? This will not affect real model access or billing.',
+      failed: 'Failed to delete display pricing'
+    }
+  }
+}

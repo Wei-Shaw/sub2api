@@ -101,6 +101,35 @@ func TestSettingService_GetPublicSettings_ExposesCompactHomeEnabled(t *testing.T
 	require.False(t, missingSettings.CompactHomeEnabled)
 }
 
+func TestSettingService_ModelPlazaDefaultsEnabledForOlderDatabases(t *testing.T) {
+	svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{})
+
+	public, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, public.ModelPlazaEnabled)
+	require.True(t, public.ModelPlazaRequireAuth)
+
+	runtime := svc.GetModelPlazaRuntime(context.Background())
+	require.True(t, runtime.Enabled)
+	require.True(t, runtime.RequireAuth)
+}
+
+func TestSettingService_ModelPlazaRespectsExplicitDisable(t *testing.T) {
+	svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+		SettingKeyModelPlazaEnabled:     "false",
+		SettingKeyModelPlazaRequireAuth: "false",
+	}}, &config.Config{})
+
+	public, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, public.ModelPlazaEnabled)
+	require.False(t, public.ModelPlazaRequireAuth)
+
+	runtime := svc.GetModelPlazaRuntime(context.Background())
+	require.False(t, runtime.Enabled)
+	require.False(t, runtime.RequireAuth)
+}
+
 func TestSettingService_ChannelMonitorHideThroughputDefaultsToPrivate(t *testing.T) {
 	missing := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{}).GetChannelMonitorRuntime(context.Background())
 	require.True(t, missing.HideThroughput)

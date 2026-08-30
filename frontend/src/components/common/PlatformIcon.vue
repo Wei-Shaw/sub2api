@@ -26,7 +26,7 @@
     />
   </svg>
   <!-- Kimi / Moonshot official logo mark (stylized K) -->
-  <svg v-else-if="platform === 'kimi'" :class="sizeClass" viewBox="0 0 24 24" fill="currentColor">
+  <svg v-else-if="platform === 'kimi' || platform === 'moonshot'" :class="sizeClass" viewBox="0 0 24 24" fill="currentColor">
     <path
       d="M21.765.351C22.998.351 24 1.353 24 2.586S22.998 4.82 21.765 4.82h-1.974c-.15 0-.26-.12-.26-.26V2.586A2.237 2.237 0 0 1 21.765.35M9.41 13.388l8.447-8.377c.16-.16.07-.471-.14-.471h-4.55s-.1.02-.14.06l-9.099 9.029c-.14.14-.35.02-.35-.21V4.81c0-.15-.1-.27-.221-.27H.22c-.12 0-.22.12-.22.27v18.57c0 .15.1.27.22.27h3.137c.12 0 .22-.12.22-.27v-3.79c0-.08.03-.16.08-.21l2.826-2.796c.07-.07.16-.08.241-.03l7.546 5.551a8.9 8.9 0 0 0 4.018 1.493c.12.01.23-.11.23-.27V19.76c0-.14-.08-.25-.19-.26a5.8 5.8 0 0 1-2.355-.942l-6.533-4.73c-.14-.09-.15-.32-.03-.441"
     />
@@ -43,6 +43,34 @@
     <path
       d="M23.748 4.651c-.254-.124-.364.113-.512.233-.051.04-.094.09-.137.137-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.155-.708-.311-.955-.65-.172-.24-.219-.509-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.094.172.187.129.323-.082.28-.18.553-.266.833-.055.179-.137.218-.328.14a5.5 5.5 0 0 1-1.737-1.179c-.857-.828-1.631-1.743-2.597-2.46a12 12 0 0 0-.689-.47c-.985-.957.13-1.743.387-1.836.27-.098.094-.433-.778-.428-.872.003-1.67.295-2.687.685a3 3 0 0 1-.465.136a9.6 9.6 0 0 0-2.883-.101c-1.885.21-3.39 1.1-4.497 2.622C.082 8.776-.231 10.854.152 13.02c.403 2.284 1.568 4.175 3.36 5.653 1.857 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.132-.284 4.994-1.86.47.234.962.328 1.78.398.629.058 1.235-.031 1.705-.129.735-.155.684-.836.418-.961-2.155-1.004-1.682-.595-2.112-.926 1.095-1.295 2.768-3.598 3.284-6.733.05-.346.115-.834.108-1.114-.004-.171.035-.238.23-.257a4.2 4.2 0 0 0 1.545-.475c1.397-.763 1.96-2.016 2.093-3.517.02-.23-.004-.467-.247-.588M11.58 18.168c-2.088-1.642-3.101-2.183-3.52-2.16-.39.024-.32.472-.234.763.09.288.207.487.371.74.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.168-1.361-.801-2.5-1.86-3.301-3.306-.775-1.393-1.225-2.888-1.299-4.482-.02-.385.094-.522.477-.592a4.7 4.7 0 0 1 1.53-.038c2.131.311 3.946 1.264 5.467 2.774.868.86 1.525 1.887 2.202 2.89.72 1.066 1.494 2.082 2.48 2.915.348.291.626.513.892.677-.802.09-2.14.109-3.055-.615zm1.001-6.44a.306.306 0 0 1 .415-.287a.3.3 0 0 1 .113.074a.3.3 0 0 1 .086.214c0 .17-.136.307-.308.307a.303.303 0 0 1-.306-.307m3.11 1.596c-.2.081-.4.151-.591.16a1.25 1.25 0 0 1-.798-.254c-.274-.23-.47-.358-.551-.758a1.7 1.7 0 0 1 .015-.588c.07-.327-.007-.537-.238-.727-.188-.156-.426-.199-.689-.199a.6.6 0 0 1-.254-.078a.253.253 0 0 1-.114-.358a1 1 0 0 1 .192-.21c.356-.202.767-.136 1.146.016.352.144.618.408 1.001.782.392.451.462.576.685.915.176.264.336.536.446.848.066.194-.02.353-.25.45"
     />
+  </svg>
+  <!-- Qwen vendor mark (interlocking hexagonal loop) -->
+  <svg v-else-if="platform === 'qwen'" :class="sizeClass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M8.1 4.25 12 2l3.9 2.25v4.5L12 11 8.1 8.75v-4.5Z" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="m15.9 8.75 3.9 2.25v4.5L15.9 17.75 12 15.5V11l3.9-2.25Z" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M8.1 8.75 12 11v4.5l-3.9 2.25L4.2 15.5V11l3.9-2.25Z" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="m8.1 17.75 3.9-2.25 3.9 2.25v2L12 22l-3.9-2.25v-2Z" />
+  </svg>
+  <!-- MiniMax vendor mark (three converging ribbons) -->
+  <svg v-else-if="platform === 'minimax'" :class="sizeClass" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M3 5.25h4.1L12 11.1l4.9-5.85H21l-9 10.7-9-10.7Z" />
+    <path d="M3 11.15h4.1L12 17l4.9-5.85H21l-9 10.7-9-10.7Z" opacity=".62" />
+  </svg>
+  <!-- Xiaomi MiMo vendor mark -->
+  <svg v-else-if="platform === 'mimo'" :class="sizeClass" viewBox="0 0 24 24" fill="none">
+    <rect x="2" y="2" width="20" height="20" rx="6" fill="currentColor" />
+    <path fill="white" d="M6 8.25h6.1c2.5 0 3.9 1.32 3.9 3.75v4.1h-2.45V12c0-1.05-.53-1.55-1.58-1.55H8.45v5.65H6V8.25Zm3.55 3.25H12v4.6H9.55v-4.6Zm7.15-3.25H19v7.85h-2.3V8.25Z" />
+  </svg>
+  <!-- Tencent Hunyuan vendor mark (interlocking rings) -->
+  <svg v-else-if="platform === 'hunyuan'" :class="sizeClass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path stroke-linecap="round" d="M14.9 5.2a6 6 0 1 0 0 13.6" />
+    <path stroke-linecap="round" d="M9.1 5.2a6 6 0 1 1 0 13.6" opacity=".62" />
+    <circle cx="12" cy="12" r="2.1" fill="currentColor" stroke="none" />
+  </svg>
+  <!-- Automatic routing mark -->
+  <svg v-else-if="platform === 'auto'" :class="sizeClass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+    <path stroke-linecap="round" stroke-linejoin="round" d="m12 2 1.45 5.55L19 9l-5.55 1.45L12 16l-1.45-5.55L5 9l5.55-1.45L12 2Z" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="m18.5 14 .7 2.8 2.8.7-2.8.7-.7 2.8-.7-2.8-2.8-.7 2.8-.7.7-2.8Z" />
   </svg>
   <!-- Composite group icon -->
   <svg v-else-if="platform === 'composite'" :class="sizeClass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -61,10 +89,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { GroupPlatform } from '@/types'
-
 interface Props {
-  platform?: GroupPlatform
+  platform?: string
   size?: 'xs' | 'sm' | 'md' | 'lg'
 }
 

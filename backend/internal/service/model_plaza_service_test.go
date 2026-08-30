@@ -255,8 +255,8 @@ func TestListPlazaGroups_GroupImagePriceOverridesChannelPricing(t *testing.T) {
 	}}
 	groups := []Group{
 		{ID: 10, Name: "g-media", Platform: "openai", RateMultiplier: 1,
-			ImagePrice1K: &imgPrice, ImageRateIndependent: true, ImageRateMultiplier: 1},
-		{ID: 20, Name: "g-plain", Platform: "openai", RateMultiplier: 0.1},
+			AllowImageGeneration: true, ImagePrice1K: &imgPrice, ImageRateIndependent: true, ImageRateMultiplier: 1},
+		{ID: 20, Name: "g-plain", Platform: "openai", RateMultiplier: 0.1, AllowImageGeneration: true},
 	}
 	svc := newPlazaService(channels, groups, nil)
 	out, err := svc.ListGroups(context.Background())
@@ -309,6 +309,32 @@ func TestListPlazaGroups_GroupImagePriceIgnoredForNonImageModes(t *testing.T) {
 	require.Empty(t, p.Intervals)
 	require.NotNil(t, p.InputPrice)
 	require.Nil(t, p.PerRequestPrice)
+}
+
+func TestListPlazaGroups_HidesImageModelsWhenGroupDisallowsImageGeneration(t *testing.T) {
+	channels := []Channel{{
+		ID: 1, Name: "mixed", Status: StatusActive, GroupIDs: []int64{10, 20},
+		ModelPricing: []ChannelModelPricing{
+			{Platform: PlatformOpenAI, Models: []string{"gpt-5"}, BillingMode: BillingModeToken},
+			{Platform: PlatformOpenAI, Models: []string{"gpt-image-2"}, BillingMode: BillingModeImage, PerRequestPrice: testPtrFloat64(0.04)},
+		},
+	}}
+	groups := []Group{
+		{ID: 10, Name: "text-only", Platform: PlatformOpenAI, RateMultiplier: 1},
+		{ID: 20, Name: "with-images", Platform: PlatformOpenAI, RateMultiplier: 1, AllowImageGeneration: true},
+	}
+
+	out, err := newPlazaService(channels, groups, nil).ListGroups(context.Background())
+	require.NoError(t, err)
+	require.Len(t, out, 2)
+
+	byName := map[string]PlazaGroup{}
+	for _, group := range out {
+		byName[group.Name] = group
+	}
+	require.Len(t, byName["text-only"].Models, 1)
+	require.Equal(t, "gpt-5", byName["text-only"].Models[0].Name)
+	require.Len(t, byName["with-images"].Models, 2)
 }
 
 func TestListPlazaGroups_RepoErrorsPropagate(t *testing.T) {
@@ -442,7 +468,7 @@ func TestListGroups_ImageModelKeepsTierSynthesisWithBilling(t *testing.T) {
 	}}
 	groups := []Group{{
 		ID: 10, Name: "g", Platform: PlatformOpenAI, RateMultiplier: 1, LongContextPricingEnabled: true,
-		ImagePrice1K: testPtrFloat64(0.02),
+		AllowImageGeneration: true, ImagePrice1K: testPtrFloat64(0.02),
 	}}
 	svc := newPlazaServiceWithBilling(channels, groups, map[int64]string{10: PlatformOpenAI}, nil)
 	out, err := svc.ListGroups(context.Background())

@@ -1,0 +1,93 @@
+export default {
+  displayPricing: {
+    title: '展示定价',
+    description: '管理用户“模型价格”页看到的官方基础价、展示倍率与按次/生图价格。',
+    preview: '预览模型价格',
+    isolationNotice: '此处仅修改展示价格，不会修改渠道成本、分组定价、账户调度或用户实际扣费。',
+    loadFailed: '加载展示定价失败',
+    saveFailed: '保存展示定价失败',
+    saved: '展示定价已保存',
+    currency: '展示币种',
+    sortOrder: '排序',
+    global: {
+      title: '全局展示倍率',
+      hint: '仅用于按量模型的展示价计算',
+      multiplier: '默认倍率',
+      priority: '模型设置固定倍率时直接使用；留空时使用“全局倍率 × 厂商系数”。按次和生图价格不使用该倍率。'
+    },
+    providers: {
+      title: '厂商展示设置',
+      hint: '新增、编辑或删除厂商的名称、Logo、币种和按量倍率系数。',
+      add: '新增厂商',
+      createTitle: '新增厂商展示设置',
+      editTitle: '编辑厂商展示设置',
+      key: '厂商标识',
+      name: '厂商名称',
+      note: '厂商备注',
+      notePlaceholder: '可选，展示在该厂商标题下方，例如高峰时段或计价说明',
+      multiplier: '厂商倍率系数',
+      multiplierValue: '系数 ×{value}',
+      logoKey: '内置 Logo',
+      logoAuto: '自动匹配厂商标识',
+      logoUrl: '自定义 Logo 地址',
+      logoPreview: 'Logo 预览',
+      logoHint: '自定义地址优先；仅支持 HTTPS 或站内相对路径，加载失败时自动回退到内置 Logo。',
+      deleteTitle: '删除厂商展示设置',
+      deleteMessage: '确定删除厂商“{provider}”吗？该厂商的所有展示模型配置也会同时删除，但不会影响真实渠道、调度和扣费。',
+      deleted: '厂商及其展示模型配置已删除',
+      deleteFailed: '删除厂商展示设置失败',
+      empty: '暂无厂商设置'
+    },
+    models: {
+      title: '模型展示规则',
+      hint: '只有已启用的规则会出现在用户模型价格页。',
+      discover: '从已上线模型选择',
+      add: '添加展示规则',
+      search: '搜索模型或厂商',
+      allProviders: '全部厂商',
+      allModes: '全部计费方式',
+      model: '模型',
+      provider: '厂商',
+      note: '模型备注',
+      notePlaceholder: '可选，展示在模型名下方，例如资源紧张、新模型上线等提示',
+      mode: '计费方式',
+      rule: '展示规则',
+      empty: '暂无匹配的展示定价规则',
+      inherited: '继承',
+      tokenSummary: '官方价 × {multiplier}',
+      tokenFixedSummary: '官方价 × 固定倍率 {multiplier}',
+      tokenInheritedSummary: '官方价 × 全局倍率 × 厂商系数',
+      perRequestSummary: '基础价 {price}，后两档默认 ×1.5 / ×2',
+      imageSummary: '{count} 个生图规格'
+    },
+    editor: {
+      createTitle: '添加展示定价',
+      editTitle: '编辑展示定价',
+      officialPrices: '官方基础价（每 100 万 Token）',
+      tokenFormula: '用户页展示价 = 官方基础价 × 生效倍率。固定倍率有值时不再受全局和厂商变化影响。',
+      modelMultiplier: '固定展示倍率',
+      inheritMultiplier: '留空跟随全局 × 厂商系数',
+      perRequestPrices: '按次三档展示价',
+      perRequestFormula: '只需填写 ≤256K 基础价；留空时后两档自动按 ×1.5 / ×2 生成。按次价格不展示倍率。',
+      tier2Override: '256K–512K（可选覆盖）',
+      tier3Override: '> 512K（可选覆盖）',
+      autoDerived: '自动计算',
+      imagePrices: '生图规格价格',
+      imageHint: '每个规格单独填写用户看到的每张价格。',
+      addTier: '添加规格',
+      specLabel: '规格名称',
+      pricePerImage: '每张价格'
+    },
+    discovered: {
+      title: '从已上线模型选择',
+      search: '搜索当前渠道已发现的模型',
+      configured: '已配置',
+      configure: '配置展示价'
+    },
+    delete: {
+      title: '删除展示定价',
+      message: '确定删除模型 {model} 的展示价格吗？不会影响该模型的实际调用和扣费。',
+      failed: '删除展示定价失败'
+    }
+  }
+}

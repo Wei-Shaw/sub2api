@@ -592,22 +592,69 @@ export default {
     }
   },
 
-  // Model Plaza (public group/model pricing showcase)
+  // Customer-facing display prices (isolated from real billing)
   modelPlaza: {
-    title: 'Model Plaza',
-    description: 'Browse available models and pricing by group',
+    title: 'Model Prices',
+    description: 'Browse customer-facing model prices',
+    dynamicDescription: 'Browse usage, per-request, and image model prices by provider. Admin price changes sync automatically.',
+    liveCatalog: 'Live display prices',
+    displayOnlyNotice: 'Prices on this page are display-only and fully independent from channel costs, account routing, and actual billing.',
+    sections: {
+      token: {
+        eyebrow: 'BY TOKEN USAGE',
+        title: 'Usage-based pricing',
+        description: 'Official base prices are shown per 1M tokens and calculated with the current display multiplier.'
+      },
+      perRequest: {
+        eyebrow: 'BY CONTEXT RANGE',
+        title: 'Per-request pricing',
+        description: 'Each request is shown in one of three context-length tiers. Display multipliers do not apply.'
+      },
+      image: {
+        eyebrow: 'BY IMAGE SPECIFICATION',
+        title: 'Image pricing',
+        description: 'Per-image prices are listed for every supported model specification.'
+      },
+      video: {
+        eyebrow: 'BY VIDEO SPECIFICATION',
+        title: 'Video pricing',
+        description: 'Prices are listed for the currently available video models and specifications.'
+      }
+    },
+    stats: {
+      models: 'Available models',
+      providers: 'Providers'
+    },
     loading: 'Loading...',
-    empty: 'No groups to display',
-    loadFailed: 'Failed to load model plaza',
+    empty: 'No model prices to display',
+    loadFailed: 'Failed to load model prices',
     noSearchResult: 'No matching models',
     anonymousHint: 'Sign in to see your exclusive groups and personal rates',
     filters: {
+      title: 'Filters',
+      reset: 'Reset',
+      billingMode: 'Billing mode',
       platformLabel: 'Platform',
       groupLabel: 'Group',
       rateLabel: 'Rate',
       modelLabel: 'Model',
       searchPlaceholder: 'Search models',
-      all: 'All'
+      all: 'All',
+      token: 'Usage',
+      perRequest: 'Per request',
+      image: 'Image',
+      video: 'Video',
+      modelCount: '{count} models',
+      providerNavigation: 'Provider navigation',
+      allProviders: 'All providers',
+      modelSearch: 'Model search',
+      results: 'Results',
+      currentStatus: 'Status',
+      operational: 'Operational',
+      updatedAt: 'Updated',
+      waitingForUpdate: 'Syncing',
+      refresh: 'Refresh now',
+      refreshing: 'Refreshing'
     },
     badges: {
       exclusive: 'Exclusive',
@@ -616,6 +663,10 @@ export default {
     detail: {
       noModels: 'No models configured for this group',
       noPricing: 'Pricing not configured',
+      modelCount: '{count} models',
+      effectiveRate: 'Effective rate',
+      imageRate: 'Image rate',
+      currencyUnit: 'Display currency {currency}',
       peakNote: 'Peak hours {window}: billing rate ×{multiplier}',
       longContextDisabledNote: 'Long-context tier pricing is disabled for this group: requests above the threshold are billed at the base tier; official tiers are for reference only'
     },
@@ -626,6 +677,9 @@ export default {
       cache: 'Cache',
       cacheWrite: 'Write',
       cacheRead: 'Read',
+        displayMultiplier: 'Display multiplier',
+        unavailable: 'No display price',
+      requestUnit: 'request',
       cacheWriteShort: 'W',
       cacheReadShort: 'R',
       tierHint: 'The whole request is billed at the tier matching its total context (input + cache write + cache read)',
@@ -644,12 +698,10 @@ export default {
       unitPerMillion: '$ / 1M tokens',
       perUnitRequest: '/ request',
       perUnitImage: '/ image',
+      perUnitVideo: '/ video',
       perRequest: 'Per request',
-      perImage: 'Per image'
-    },
-    nav: {
-      login: 'Sign In',
-      backToDashboard: 'Back to Console'
+      perImage: 'Per image',
+      perVideo: 'Per video'
     }
   },
 

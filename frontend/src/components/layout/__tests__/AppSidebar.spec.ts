@@ -53,3 +53,18 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
 })
+
+describe('AppSidebar model-prices navigation', () => {
+  it('includes the authenticated model-prices entry in the shared user navigation', () => {
+    expect(componentSource).toContain(
+      "{ path: '/model-prices', label: t('nav.modelPlaza'), icon: PriceTagIcon, featureFlag: flagModelPlaza }",
+    )
+  })
+
+  it('keeps model prices in the admin navigation when simple mode hides My Account', () => {
+    expect(componentSource).toContain("if (flagModelPlaza() !== false)")
+    expect(componentSource).toContain(
+      "filtered.push({ path: '/model-prices', label: t('nav.modelPlaza'), icon: PriceTagIcon })",
+    )
+  })
+})

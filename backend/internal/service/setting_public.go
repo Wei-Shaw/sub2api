@@ -361,8 +361,11 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
 
-		ModelPlazaEnabled:       settings[SettingKeyModelPlazaEnabled] == "true",
-		ModelPlazaRequireAuth:   settings[SettingKeyModelPlazaRequireAuth] == "true",
+		// Model prices are enabled/authenticated by default. Older databases may
+		// not have these rows yet, so an absent value must follow the current
+		// defaults instead of being interpreted as an explicit disable.
+		ModelPlazaEnabled:       !isFalseSettingValue(settings[SettingKeyModelPlazaEnabled]),
+		ModelPlazaRequireAuth:   !isFalseSettingValue(settings[SettingKeyModelPlazaRequireAuth]),
 		PluginManagementEnabled: settings[SettingKeyPluginManagementEnabled] == "true",
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
@@ -505,8 +508,9 @@ type ModelPlazaRuntime struct {
 }
 
 // GetModelPlazaRuntime reads the model-plaza feature switches directly from the
-// settings store. Fail-closed: on error returns Enabled=false, matching the
-// opt-in default (unknown ↔ disabled).
+// settings store. Missing rows follow the current enabled/authenticated
+// defaults so databases created before these settings were introduced keep
+// working. Repository errors still fail closed.
 func (s *SettingService) GetModelPlazaRuntime(ctx context.Context) ModelPlazaRuntime {
 	vals, err := s.settingRepo.GetMultiple(ctx, []string{
 		SettingKeyModelPlazaEnabled,
@@ -517,8 +521,8 @@ func (s *SettingService) GetModelPlazaRuntime(ctx context.Context) ModelPlazaRun
 		return ModelPlazaRuntime{Enabled: false}
 	}
 	return ModelPlazaRuntime{
-		Enabled:     vals[SettingKeyModelPlazaEnabled] == "true",
-		RequireAuth: vals[SettingKeyModelPlazaRequireAuth] == "true",
+		Enabled:     !isFalseSettingValue(vals[SettingKeyModelPlazaEnabled]),
+		RequireAuth: !isFalseSettingValue(vals[SettingKeyModelPlazaRequireAuth]),
 		Description: vals[SettingKeyModelPlazaDescription],
 	}
 }

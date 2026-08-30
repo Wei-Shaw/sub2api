@@ -597,22 +597,69 @@ export default {
     }
   },
 
-  // Model Plaza (public group/model pricing showcase)
+  // Customer-facing display prices (isolated from real billing)
   modelPlaza: {
-    title: '模型广场',
-    description: '按分组浏览可用模型与价格',
+    title: '模型价格',
+    description: '浏览当前展示的模型价格',
+    dynamicDescription: '按厂商查看按量、按次与生图模型的展示价格，后台调价后会自动同步。',
+    liveCatalog: '实时展示价格',
+    displayOnlyNotice: '本页价格仅供展示，与渠道成本、账户调度及实际扣费配置完全独立。',
+    sections: {
+      token: {
+        eyebrow: '按 Token 用量',
+        title: '按量报价',
+        description: '官方基础价按每 100 万 Token 展示，结合当前展示倍率计算。'
+      },
+      perRequest: {
+        eyebrow: '按上下文区间',
+        title: '按次报价',
+        description: '根据单次请求的上下文长度分三档展示，不使用展示倍率。'
+      },
+      image: {
+        eyebrow: '按图片规格',
+        title: '生图报价',
+        description: '按模型支持的图片规格展示每张价格。'
+      },
+      video: {
+        eyebrow: '按视频规格',
+        title: '视频报价',
+        description: '按当前可用视频模型和规格展示价格。'
+      }
+    },
+    stats: {
+      models: '当前模型',
+      providers: '模型厂商'
+    },
     loading: '加载中...',
-    empty: '暂无可展示的分组',
-    loadFailed: '加载模型广场失败',
+    empty: '暂无可展示的模型价格',
+    loadFailed: '加载模型价格失败',
     noSearchResult: '没有匹配的模型',
     anonymousHint: '登录后可查看你的专属分组与专属倍率',
     filters: {
+      title: '筛选',
+      reset: '重置',
+      billingMode: '计费方式',
       platformLabel: '平台',
       groupLabel: '分组',
       rateLabel: '倍率',
       modelLabel: '模型',
       searchPlaceholder: '搜索模型名称',
-      all: '全部'
+      all: '全部',
+      token: '按量',
+      perRequest: '按次',
+      image: '生图',
+      video: '视频',
+      modelCount: '{count} 个模型',
+      providerNavigation: '厂商导航',
+      allProviders: '全部厂商',
+      modelSearch: '模型搜索',
+      results: '筛选结果',
+      currentStatus: '当前状态',
+      operational: '正常运行',
+      updatedAt: '更新时间',
+      waitingForUpdate: '同步中',
+      refresh: '立即刷新',
+      refreshing: '正在刷新'
     },
     badges: {
       exclusive: '专属分组',
@@ -621,6 +668,10 @@ export default {
     detail: {
       noModels: '该分组暂未配置模型',
       noPricing: '未配置定价',
+      modelCount: '{count} 个模型',
+      effectiveRate: '生效倍率',
+      imageRate: '生图倍率',
+      currencyUnit: '展示币种 {currency}',
       peakNote: '高峰时段 {window} 计费倍率 ×{multiplier}',
       longContextDisabledNote: '该分组未启用长上下文阶梯计费，超阈值请求仍按基础档计费，官方阶梯仅供参考'
     },
@@ -631,6 +682,9 @@ export default {
       cache: '缓存',
       cacheWrite: '写入',
       cacheRead: '读取',
+        displayMultiplier: '展示倍率',
+        unavailable: '暂无展示价',
+      requestUnit: '次',
       cacheWriteShort: '写',
       cacheReadShort: '读',
       tierHint: '按单次请求的总上下文（输入 + 缓存写入 + 缓存读取）所在档位对整单计价',
@@ -648,12 +702,10 @@ export default {
       unitPerMillion: '$ / 1M token',
       perUnitRequest: '/ 次',
       perUnitImage: '/ 张',
+      perUnitVideo: '/ 个视频',
       perRequest: '按次计费',
-      perImage: '按图片计费'
-    },
-    nav: {
-      login: '登录',
-      backToDashboard: '回到后台'
+      perImage: '按图片计费',
+      perVideo: '按视频计费'
     }
   },
 
