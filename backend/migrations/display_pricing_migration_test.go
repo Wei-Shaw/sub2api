@@ -56,3 +56,19 @@ func TestDisplayPricingNotesMigrationIsPresentationOnly(t *testing.T) {
 	require.NotContains(t, strings.ToLower(sql), "update groups")
 	require.NotContains(t, strings.ToLower(sql), "update channels")
 }
+
+func TestDisplayPricingOpenAICompatiblePlatformMigrationIsPresentationOnly(t *testing.T) {
+	content, err := FS.ReadFile("234_display_pricing_openai_compatible_platform.sql")
+	require.NoError(t, err)
+	sql := string(content)
+	normalized := strings.Join(strings.Fields(sql), " ")
+
+	require.Contains(t, normalized, "UPDATE display_model_prices AS target")
+	require.Contains(t, normalized, "SET platform = 'openai'")
+	require.Contains(t, normalized, "target.provider IN ('anthropic', 'gemini', 'grok')")
+	require.Contains(t, normalized, "existing.model_name = target.model_name")
+	require.Contains(t, normalized, "existing.billing_mode = target.billing_mode")
+	require.NotContains(t, strings.ToLower(sql), "update groups")
+	require.NotContains(t, strings.ToLower(sql), "update channels")
+	require.NotContains(t, strings.ToLower(sql), "channel_model_pricing")
+}
