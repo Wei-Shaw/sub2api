@@ -62,6 +62,84 @@
                 </div>
               </div>
 
+              <!-- OpenAI provisioning runtime status -->
+              <div class="relative" ref="openAIProvisionStatusRef">
+                <button
+                  type="button"
+                  class="btn btn-secondary max-w-[220px] px-2 md:px-3"
+                  :class="openAIProvisionStatusButtonClass"
+                  :title="t('admin.accounts.openaiProvision.statusTitle')"
+                  :aria-expanded="showOpenAIProvisionStatus"
+                  data-testid="openai-auto-provision-status"
+                  @click="showOpenAIProvisionStatus = !showOpenAIProvisionStatus"
+                >
+                  <Icon name="bell" size="sm" :class="openAIProvisionStatusActive ? 'animate-pulse' : ''" />
+                  <span class="truncate hidden sm:inline">{{ openAIProvisionSummary }}</span>
+                </button>
+                <div
+                  v-if="showOpenAIProvisionStatus"
+                  class="absolute right-0 z-50 mt-2 w-[min(360px,calc(100vw-2rem))] rounded-lg border border-gray-200 bg-white p-3 text-left shadow-lg dark:border-dark-700 dark:bg-dark-800"
+                  data-testid="openai-auto-provision-status-panel"
+                >
+                  <div v-if="openAIProvisionStatus" class="flex items-start justify-between gap-3 border-b border-gray-100 pb-3 dark:border-dark-700">
+                    <div class="min-w-0">
+                      <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.accounts.openaiProvision.statusTitle') }}</p>
+                      <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ openAIProvisionPhaseLabel }}</p>
+                    </div>
+                    <Icon :name="openAIProvisionStatusActive ? 'refresh' : 'server'" size="sm" :class="openAIProvisionStatusActive ? 'animate-spin text-primary-500' : 'text-gray-400'" />
+                  </div>
+                  <dl v-if="openAIProvisionStatus" class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                    <div data-testid="openai-auto-provision-healthy">
+                      <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openaiProvision.healthy') }}</dt>
+                      <dd class="font-medium text-gray-900 dark:text-white">{{ openAIProvisionStatus.healthy_account_count }} / {{ openAIProvisionStatus.target }}</dd>
+                    </div>
+                    <div data-testid="openai-auto-provision-pending">
+                      <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openaiProvision.pending') }}</dt>
+                      <dd class="font-medium text-gray-900 dark:text-white">{{ openAIProvisionStatus.pending_provision_count }}</dd>
+                    </div>
+                    <div>
+                      <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openaiProvision.requested') }}</dt>
+                      <dd class="font-medium text-gray-900 dark:text-white">{{ openAIProvisionStatus.last_provision_requested_count }}</dd>
+                    </div>
+                    <div>
+                      <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openaiProvision.reauthorization') }}</dt>
+                      <dd class="font-medium text-gray-900 dark:text-white">{{ openAIProvisionStatus.pending_reauthorization_count }}</dd>
+                    </div>
+                  </dl>
+                  <div v-if="openAIProvisionStatus" class="mt-3 space-y-1.5 border-t border-gray-100 pt-3 text-xs dark:border-dark-700">
+                    <p data-testid="openai-auto-provision-last-callback">
+                      <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openaiProvision.lastCallback') }}:</span>
+                      <span class="ml-1 font-medium text-gray-900 dark:text-white">{{ lastOpenAIProvisionCallbackLabel }}</span>
+                    </p>
+                    <p data-testid="openai-auto-provision-next-check">
+                      <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openaiProvision.nextCheck') }}:</span>
+                      <span class="ml-1 font-medium text-gray-900 dark:text-white">{{ formatOpenAIProvisionTime(openAIProvisionStatus.next_check_at) }}</span>
+                    </p>
+                    <p>
+                      <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openaiProvision.lastCheck') }}:</span>
+                      <span class="ml-1 font-medium text-gray-900 dark:text-white">{{ formatOpenAIProvisionTime(openAIProvisionStatus.last_check_completed_at) }}</span>
+                    </p>
+                    <p v-if="openAIProvisionStatus.last_error" class="break-words text-red-600 dark:text-red-400">
+                      {{ openAIProvisionStatus.last_error }}
+                    </p>
+                    <button
+                      type="button"
+                      class="btn btn-secondary mt-2 inline-flex w-full items-center justify-center gap-1.5 px-2 py-1.5 text-xs"
+                      :disabled="!openAIProvisionStatusResettable || openAIProvisionStatusResetting"
+                      :aria-busy="openAIProvisionStatusResetting"
+                      data-testid="openai-auto-provision-reset"
+                      @click="resetOpenAIAutoProvisionStatus"
+                    >
+                      <Icon name="refresh" size="xs" :class="openAIProvisionStatusResetting ? 'animate-spin' : ''" />
+                      {{ openAIProvisionStatusResetting ? t('admin.accounts.openaiProvision.resetting') : t('admin.accounts.openaiProvision.reset') }}
+                    </button>
+                  </div>
+                  <p v-else-if="openAIProvisionStatusError" class="mt-3 text-xs text-red-600 dark:text-red-400">
+                    {{ t('admin.accounts.openaiProvision.notAvailable') }}
+                  </p>
+                </div>
+              </div>
+
               <!-- More Tools Dropdown -->
               <div class="relative" ref="accountToolsDropdownRef">
                 <button
@@ -537,6 +615,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import { formatMultiplier } from '@/utils/formatters'
+import type { OpenAIAutoProvisionRuntimeStatus } from '@/api/admin/settings'
 import type { Account, AccountListItem, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
@@ -702,6 +781,13 @@ const autoRefreshETag = ref<string | null>(null)
 const autoRefreshFetching = ref(false)
 const AUTO_REFRESH_SILENT_WINDOW_MS = 15000
 const autoRefreshSilentUntil = ref(0)
+const openAIProvisionStatus = ref<OpenAIAutoProvisionRuntimeStatus | null>(null)
+const openAIProvisionStatusLoading = ref(false)
+const openAIProvisionStatusError = ref(false)
+const openAIProvisionStatusResetting = ref(false)
+let openAIProvisionStatusRequestSeq = 0
+const showOpenAIProvisionStatus = ref(false)
+const openAIProvisionStatusRef = ref<HTMLElement | null>(null)
 const hasPendingListSync = ref(false)
 const todayStatsByAccountId = ref<Record<string, WindowStats>>({})
 const todayStatsLoading = ref(false)
@@ -918,6 +1004,101 @@ const autoRefreshIntervalLabel = (sec: number) => {
   if (sec === 15) return t('admin.accounts.refreshInterval15s')
   if (sec === 30) return t('admin.accounts.refreshInterval30s')
   return `${sec}s`
+}
+
+const openAIProvisionPhaseLabel = computed(() => {
+  const phase = openAIProvisionStatus.value?.phase || 'unknown'
+  return t(`admin.accounts.openaiProvision.phase.${phase}`)
+})
+
+const openAIProvisionStatusActive = computed(() => {
+  const phase = openAIProvisionStatus.value?.phase
+  return phase === 'checking' || phase === 'sending_provision_request' || phase === 'waiting_for_provision_callback' || phase === 'waiting_for_reauthorization_callback'
+})
+
+const openAIProvisionSummary = computed(() => {
+  const status = openAIProvisionStatus.value
+  if (!status || openAIProvisionStatusLoading.value) return t('admin.accounts.openaiProvision.loading')
+  if (status.phase === 'sending_provision_request' || status.phase === 'waiting_for_provision_callback') {
+    return t('admin.accounts.openaiProvision.provisioningSummary', { count: status.pending_provision_count || status.last_provision_requested_count })
+  }
+  if (status.phase === 'checking') return t('admin.accounts.openaiProvision.checkingSummary')
+  if (status.phase === 'waiting_for_reauthorization_callback') {
+    return t('admin.accounts.openaiProvision.reauthorizationSummary', { count: status.pending_reauthorization_count })
+  }
+  return t('admin.accounts.openaiProvision.healthySummary', {
+    healthy: status.healthy_account_count,
+    target: status.target,
+  })
+})
+
+const openAIProvisionStatusButtonClass = computed(() => {
+  if (openAIProvisionStatus.value?.phase === 'error') return 'text-red-600 dark:text-red-400'
+  if (openAIProvisionStatusActive.value) return 'text-primary-600 dark:text-primary-300'
+  return ''
+})
+
+const openAIProvisionStatusResettable = computed(() => {
+  const status = openAIProvisionStatus.value
+  return status?.provision_resettable === true
+})
+
+const formatOpenAIProvisionTime = (value?: string | null): string => {
+  return value ? formatDateTime(value) : t('admin.accounts.openaiProvision.notAvailable')
+}
+
+const lastOpenAIProvisionCallbackLabel = computed(() => {
+  const status = openAIProvisionStatus.value
+  if (!status?.last_callback_at) return t('admin.accounts.openaiProvision.noCallback')
+  const details = [status.last_callback_kind, status.last_callback_status].filter(Boolean).join(' / ')
+  const counts = status.last_callback_kind === 'registration'
+    ? ` (${status.last_callback_succeeded_count}/${status.last_callback_requested_count})`
+    : ''
+  return `${details || t('admin.accounts.openaiProvision.received')}${counts} - ${formatOpenAIProvisionTime(status.last_callback_at)}`
+})
+
+const loadOpenAIAutoProvisionStatus = async () => {
+  const getter = adminAPI.settings?.getOpenAIAutoProvisionStatus
+  if (typeof getter !== 'function' || openAIProvisionStatusResetting.value) return
+  openAIProvisionStatusLoading.value = true
+  openAIProvisionStatusError.value = false
+  const requestSeq = ++openAIProvisionStatusRequestSeq
+  try {
+    const status = await getter()
+    if (requestSeq === openAIProvisionStatusRequestSeq) {
+      openAIProvisionStatus.value = status
+    }
+  } catch (error) {
+    if (requestSeq === openAIProvisionStatusRequestSeq) {
+      openAIProvisionStatus.value = null
+      openAIProvisionStatusError.value = true
+    }
+    console.error('Failed to load OpenAI auto-provision status:', error)
+  } finally {
+    if (requestSeq === openAIProvisionStatusRequestSeq) {
+      openAIProvisionStatusLoading.value = false
+    }
+  }
+}
+
+const resetOpenAIAutoProvisionStatus = async () => {
+  const resetter = adminAPI.settings?.resetOpenAIAutoProvisionStatus
+  if (typeof resetter !== 'function' || !openAIProvisionStatusResettable.value) return
+  openAIProvisionStatusResetting.value = true
+  const requestSeq = ++openAIProvisionStatusRequestSeq
+  try {
+    const status = await resetter()
+    if (requestSeq === openAIProvisionStatusRequestSeq) {
+      openAIProvisionStatus.value = status
+    }
+    appStore.showSuccess(t('admin.accounts.openaiProvision.resetSuccess'))
+  } catch (error) {
+    console.error('Failed to reset OpenAI auto-provision status:', error)
+    appStore.showError(t('admin.accounts.openaiProvision.resetFailed'))
+  } finally {
+    openAIProvisionStatusResetting.value = false
+    openAIProvisionStatusLoading.value = false
+  }
 }
 
 const formatSchedulerScore = (value: unknown): string => {
@@ -1474,7 +1655,7 @@ const refreshAccountsIncrementally = async () => {
     }
     upstreamBillingNow.value = Date.now()
 
-    await refreshTodayStatsBatch()
+    await Promise.all([refreshTodayStatsBatch(), loadOpenAIAutoProvisionStatus()])
   } catch (error) {
     console.error('Auto refresh failed:', error)
   } finally {
@@ -1483,7 +1664,7 @@ const refreshAccountsIncrementally = async () => {
 }
 
 const handleManualRefresh = async () => {
-  await Promise.all([load(), loadUpstreamBillingProbeGlobalState()])
+  await Promise.all([load(), loadUpstreamBillingProbeGlobalState(), loadOpenAIAutoProvisionStatus()])
   // Force usage cells to refetch /usage on explicit user refresh.
   usageManualRefreshToken.value += 1
 }
@@ -2521,6 +2702,9 @@ const handleClickOutside = (event: MouseEvent) => {
   if (autoRefreshDropdownRef.value && !autoRefreshDropdownRef.value.contains(target)) {
     showAutoRefreshDropdown.value = false
   }
+  if (openAIProvisionStatusRef.value && !openAIProvisionStatusRef.value.contains(target)) {
+    showOpenAIProvisionStatus.value = false
+  }
 }
 
 onMounted(async () => {
@@ -2539,6 +2723,7 @@ onMounted(async () => {
 
   load()
   loadUpstreamBillingProbeGlobalState()
+  loadOpenAIAutoProvisionStatus()
   const [proxiesResult, groupsResult] = await Promise.allSettled([
     adminAPI.proxies.getAll(),
     adminAPI.groups.getAll()

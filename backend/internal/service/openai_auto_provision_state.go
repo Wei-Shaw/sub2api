@@ -7,21 +7,39 @@ import (
 )
 
 const (
-	autoProvisionStateVersion = 1
-	autoProvisionStateKey     = "openai_auto_provision_runtime_state"
-	autoProvisionRunLockKey   = "openai:auto-provision:run"
-	autoProvisionStateLockKey = "openai:auto-provision:state"
-	autoProvisionLockTTL      = 30 * time.Second
-	autoProvisionPendingTTL   = 2 * time.Hour
-	maxAutoProvisionBatch     = 100
-	maxAutoReauthorization    = 20
+	autoProvisionStateVersion     = 1
+	autoProvisionStateKey         = "openai_auto_provision_runtime_state"
+	autoProvisionRunLockKey       = "openai:auto-provision:run"
+	autoProvisionStateLockKey     = "openai:auto-provision:state"
+	autoProvisionLockTTL          = 30 * time.Second
+	autoProvisionPendingTTL       = 2 * time.Hour
+	autoProvisionDispatchStaleTTL = 10 * time.Minute
+	maxAutoProvisionBatch         = 100
+	maxAutoReauthorization        = 20
 )
 
 type autoProvisionState struct {
-	Version          int                                   `json:"version"`
-	Provision        *autoProvisionPending                 `json:"provision,omitempty"`
-	Reauthorizations map[string]autoReauthorizationPending `json:"reauthorizations,omitempty"`
-	ProcessedEvents  map[string]time.Time                  `json:"processed_events,omitempty"`
+	Version                     int                                   `json:"version"`
+	Provision                   *autoProvisionPending                 `json:"provision,omitempty"`
+	SupersededProvisions        map[string]autoProvisionPending       `json:"superseded_provisions,omitempty"`
+	Reauthorizations            map[string]autoReauthorizationPending `json:"reauthorizations,omitempty"`
+	ProcessedEvents             map[string]time.Time                  `json:"processed_events,omitempty"`
+	CheckInProgress             bool                                  `json:"check_in_progress,omitempty"`
+	ProvisionDispatchInProgress bool                                  `json:"provision_dispatch_in_progress,omitempty"`
+	ProvisionDispatchStartedAt  *time.Time                            `json:"provision_dispatch_started_at,omitempty"`
+	ProvisionRetryRequested     bool                                  `json:"provision_retry_requested,omitempty"`
+	LastCheckStartedAt          *time.Time                            `json:"last_check_started_at,omitempty"`
+	LastCheckCompletedAt        *time.Time                            `json:"last_check_completed_at,omitempty"`
+	LastCheckError              string                                `json:"last_check_error,omitempty"`
+	LastProvisionRequestedCount int                                   `json:"last_provision_requested_count,omitempty"`
+	LastProvisionRequestedAt    *time.Time                            `json:"last_provision_requested_at,omitempty"`
+	LastCallbackAt              *time.Time                            `json:"last_callback_at,omitempty"`
+	LastCallbackKind            string                                `json:"last_callback_kind,omitempty"`
+	LastCallbackStatus          string                                `json:"last_callback_status,omitempty"`
+	LastCallbackRequestedCount  int                                   `json:"last_callback_requested_count,omitempty"`
+	LastCallbackSucceededCount  int                                   `json:"last_callback_succeeded_count,omitempty"`
+	LastCallbackFailedCount     int                                   `json:"last_callback_failed_count,omitempty"`
+	LastCallbackPendingCount    int                                   `json:"last_callback_pending_count,omitempty"`
 }
 
 type autoProvisionPending struct {
@@ -67,9 +85,10 @@ type autoProvisionCallback = OpenAIAutoProvisionCallback
 
 func newAutoProvisionState() *autoProvisionState {
 	return &autoProvisionState{
-		Version:          autoProvisionStateVersion,
-		Reauthorizations: make(map[string]autoReauthorizationPending),
-		ProcessedEvents:  make(map[string]time.Time),
+		Version:              autoProvisionStateVersion,
+		SupersededProvisions: make(map[string]autoProvisionPending),
+		Reauthorizations:     make(map[string]autoReauthorizationPending),
+		ProcessedEvents:      make(map[string]time.Time),
 	}
 }
 
@@ -82,6 +101,9 @@ func normalizeAutoProvisionState(state *autoProvisionState) *autoProvisionState 
 	}
 	if state.Reauthorizations == nil {
 		state.Reauthorizations = make(map[string]autoReauthorizationPending)
+	}
+	if state.SupersededProvisions == nil {
+		state.SupersededProvisions = make(map[string]autoProvisionPending)
 	}
 	if state.ProcessedEvents == nil {
 		state.ProcessedEvents = make(map[string]time.Time)
@@ -108,10 +130,16 @@ func consumeAutoProvisionCallback(state *autoProvisionState, callback OpenAIAuto
 		if status != "completed" {
 			return false, false, fmt.Errorf("registration callback status must be completed")
 		}
-		if state.Provision == nil || state.Provision.RequestID != requestID {
+		if state.Provision != nil && state.Provision.RequestID == requestID {
+			state.Provision = nil
+			state.ProvisionDispatchInProgress = false
+			state.ProvisionDispatchStartedAt = nil
+			state.ProvisionRetryRequested = false
+		} else if _, ok := state.SupersededProvisions[requestID]; ok {
+			delete(state.SupersededProvisions, requestID)
+		} else {
 			return false, false, fmt.Errorf("registration request is not pending")
 		}
-		state.Provision = nil
 	} else {
 		if status != "succeeded" && status != "failed" {
 			return false, false, fmt.Errorf("reauthorization callback status is invalid")
@@ -125,7 +153,16 @@ func consumeAutoProvisionCallback(state *autoProvisionState, callback OpenAIAuto
 			return false, false, fmt.Errorf("reauthorization request is not pending")
 		}
 	}
-	state.ProcessedEvents[eventID] = time.Now().UTC()
+	now := time.Now().UTC()
+	state.LastCallbackAt = &now
+	state.LastCallbackKind = kind
+	state.LastCallbackStatus = status
+	state.LastCallbackRequestedCount = callback.RequestedCount
+	state.LastCallbackSucceededCount = callback.SucceededCount
+	state.LastCallbackFailedCount = callback.FailedCount
+	state.LastCallbackPendingCount = callback.PendingCount
+	state.LastCheckError = ""
+	state.ProcessedEvents[eventID] = now
 	return true, false, nil
 }
 
@@ -139,6 +176,11 @@ func pruneAutoProvisionState(state *autoProvisionState, now time.Time) {
 	state = normalizeAutoProvisionState(state)
 	if state.Provision != nil && now.Sub(state.Provision.CreatedAt) > autoProvisionPendingTTL {
 		state.Provision = nil
+	}
+	for requestID, pending := range state.SupersededProvisions {
+		if now.Sub(pending.CreatedAt) > autoProvisionPendingTTL {
+			delete(state.SupersededProvisions, requestID)
+		}
 	}
 	for requestID, pending := range state.Reauthorizations {
 		if now.Sub(pending.CreatedAt) > autoProvisionPendingTTL {

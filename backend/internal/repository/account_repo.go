@@ -2146,6 +2146,26 @@ func (r *accountRepository) ListSchedulableByPlatform(ctx context.Context, platf
 	return r.accountsToService(ctx, accounts)
 }
 
+// CountSchedulableOpenAIOAuthByPlatform is the lightweight account count used
+// by the admin automation status endpoint. It deliberately avoids hydrating
+// credentials, proxies, and groups for every account on each poll.
+func (r *accountRepository) CountSchedulableOpenAIOAuthByPlatform(ctx context.Context, platform string) (int, error) {
+	now := time.Now()
+	return r.client.Account.Query().
+		Where(
+			dbaccount.PlatformEQ(platform),
+			dbaccount.TypeEQ(service.AccountTypeOAuth),
+			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.SchedulableEQ(true),
+			dbaccount.ParentAccountIDIsNil(),
+			tempUnschedulablePredicate(),
+			notExpiredPredicate(now),
+			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
+			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
+		).
+		Count(ctx)
+}
+
 func (r *accountRepository) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]service.Account, error) {
 	// 单平台查询复用多平台逻辑，保持过滤条件与排序策略一致。
 	return r.queryAccountsByGroup(ctx, groupID, accountGroupQueryOptions{

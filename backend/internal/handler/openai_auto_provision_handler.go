@@ -26,6 +26,39 @@ func NewOpenAIAutoProvisionHandler(svc *service.OpenAIAutoProvisionService) *Ope
 	return &OpenAIAutoProvisionHandler{service: svc}
 }
 
+// RuntimeStatus returns the credential-free coordinator status for the admin UI.
+// The route is protected by the admin middleware, unlike machine callbacks below.
+func (h *OpenAIAutoProvisionHandler) RuntimeStatus(c *gin.Context) {
+	if h == nil || h.service == nil {
+		response.InternalError(c, "automation service unavailable")
+		return
+	}
+	status, err := h.service.GetRuntimeStatus(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, status)
+}
+
+// ResetRuntimeStatus retires a stale provisioning request for the admin UI.
+func (h *OpenAIAutoProvisionHandler) ResetRuntimeStatus(c *gin.Context) {
+	if h == nil || h.service == nil {
+		response.InternalError(c, "automation service unavailable")
+		return
+	}
+	if err := h.service.ResetProvisioningStatus(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	status, err := h.service.GetRuntimeStatus(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, status)
+}
+
 func (h *OpenAIAutoProvisionHandler) Callback(c *gin.Context) {
 	if !h.authenticate(c) {
 		return

@@ -121,6 +121,8 @@ var auditSensitiveReads = map[string]string{
 }
 
 // auditActionOverrides 变更类请求的动作名精确映射（未命中时自动推导）。
+const auditRouteOpenAIAutoProvisionStatusReset = "POST /api/v1/admin/settings/openai-auto-provision/status/reset"
+
 var auditActionOverrides = map[string]string{
 	"POST /api/v1/auth/login":                                 service.AuditActionLogin,
 	"POST /api/v1/auth/login/2fa":                             service.AuditActionLogin2FA,
@@ -136,6 +138,7 @@ var auditActionOverrides = map[string]string{
 	"PUT /api/v1/admin/backups/s3-config":                     "admin.backups.s3_config.update",
 	"POST /api/v1/admin/settings/admin-api-key/regenerate":    "admin.admin_api_key.regenerate",
 	"DELETE /api/v1/admin/settings/admin-api-key":             "admin.admin_api_key.delete",
+	auditRouteOpenAIAutoProvisionStatusReset:                  "admin.openai_auto_provision.status.reset",
 	"PUT /api/v1/admin/prompt-audit/config":                   "admin.prompt_audit.config.update",
 	"POST /api/v1/admin/prompt-audit/endpoints/probe":         "admin.prompt_audit.endpoint.probe",
 	"DELETE /api/v1/admin/prompt-audit/events/:id":            "admin.prompt_audit.event.delete",

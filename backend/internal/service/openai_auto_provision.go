@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -82,18 +83,36 @@ type openAIAutoProvisionConfig struct {
 }
 
 func (s *OpenAIAutoProvisionService) config(ctx context.Context) (openAIAutoProvisionConfig, error) {
-	if s == nil || s.settings == nil {
+	if s == nil || s.settings == nil || s.settingRepo == nil {
 		return openAIAutoProvisionConfig{}, errors.New("openai auto-provision settings are unavailable")
 	}
-	settings, err := s.settings.GetAllSettings(ctx)
+	settings, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyOpenAIAutoProvisionEnabled,
+		SettingKeyOpenAIAutoProvisionTarget,
+		SettingKeyOpenAIAutoProvisionIntervalSeconds,
+		SettingKeyOpenAIAutoProvisionTurbURL,
+		SettingKeyOpenAIAutoProvisionTurbAuthCode,
+		SettingKeyOpenAIAutoProvisionCallbackURL,
+		SettingKeyOpenAIAutoProvisionCallbackSecret,
+		SettingKeyOpenAIAutoProvisionEmailSource,
+		SettingKeyOpenAIAutoProvisionWorkers,
+		SettingKeyOpenAIReauthorizationEnabled,
+	})
 	if err != nil {
 		return openAIAutoProvisionConfig{}, fmt.Errorf("load openai auto-provision settings: %w", err)
 	}
-	interval := time.Duration(settings.OpenAIAutoProvisionIntervalSeconds) * time.Second
+	parseInt := func(key string, fallback int) int {
+		value, parseErr := strconv.Atoi(strings.TrimSpace(settings[key]))
+		if parseErr != nil {
+			return fallback
+		}
+		return value
+	}
+	interval := time.Duration(parseInt(SettingKeyOpenAIAutoProvisionIntervalSeconds, 60)) * time.Second
 	if interval < 15*time.Second {
 		interval = 15 * time.Second
 	}
-	workers := settings.OpenAIAutoProvisionWorkers
+	workers := parseInt(SettingKeyOpenAIAutoProvisionWorkers, 3)
 	if workers < 1 {
 		workers = 1
 	}
@@ -101,16 +120,16 @@ func (s *OpenAIAutoProvisionService) config(ctx context.Context) (openAIAutoProv
 		workers = 16
 	}
 	return openAIAutoProvisionConfig{
-		enabled:         settings.OpenAIAutoProvisionEnabled,
-		target:          settings.OpenAIAutoProvisionTarget,
+		enabled:         settings[SettingKeyOpenAIAutoProvisionEnabled] == "true",
+		target:          max(0, parseInt(SettingKeyOpenAIAutoProvisionTarget, 0)),
 		interval:        interval,
-		turbURL:         strings.TrimSpace(settings.OpenAIAutoProvisionTurbURL),
-		turbAuthCode:    strings.TrimSpace(settings.OpenAIAutoProvisionTurbAuthCode),
-		callbackURL:     strings.TrimSpace(settings.OpenAIAutoProvisionCallbackURL),
-		callbackSecret:  strings.TrimSpace(settings.OpenAIAutoProvisionCallbackSecret),
-		emailSource:     strings.TrimSpace(settings.OpenAIAutoProvisionEmailSource),
+		turbURL:         strings.TrimSpace(settings[SettingKeyOpenAIAutoProvisionTurbURL]),
+		turbAuthCode:    strings.TrimSpace(settings[SettingKeyOpenAIAutoProvisionTurbAuthCode]),
+		callbackURL:     strings.TrimSpace(settings[SettingKeyOpenAIAutoProvisionCallbackURL]),
+		callbackSecret:  strings.TrimSpace(settings[SettingKeyOpenAIAutoProvisionCallbackSecret]),
+		emailSource:     strings.TrimSpace(settings[SettingKeyOpenAIAutoProvisionEmailSource]),
 		workers:         workers,
-		reauthorization: settings.OpenAIReauthorizationEnabled,
+		reauthorization: settings[SettingKeyOpenAIReauthorizationEnabled] == "true",
 	}, nil
 }
 
@@ -172,12 +191,14 @@ func (s *OpenAIAutoProvisionService) Stop() {
 func (s *OpenAIAutoProvisionService) RunOnce(ctx context.Context) error {
 	cfg, err := s.config(ctx)
 	if err != nil {
+		s.recordAutoProvisionError(ctx, err)
 		return err
 	}
 	if !cfg.enabled || cfg.target <= 0 {
 		return nil
 	}
 	if err := validateAutomationDispatchConfig(cfg); err != nil {
+		s.recordAutoProvisionError(ctx, err)
 		return err
 	}
 	release, ok := tryAcquireSingletonLeaderLock(ctx, s.lockCache, s.db, autoProvisionRunLockKey, s.instanceID, 5*time.Minute)
@@ -185,16 +206,48 @@ func (s *OpenAIAutoProvisionService) RunOnce(ctx context.Context) error {
 		return nil
 	}
 	defer release()
+	checkStartedAt := time.Now().UTC()
+	if err := s.updateState(ctx, func(state *autoProvisionState) error {
+		state.CheckInProgress = true
+		state.LastCheckStartedAt = &checkStartedAt
+		state.LastCheckError = ""
+		return nil
+	}); err != nil && !errors.Is(err, errAutoProvisionStateBusy) {
+		return err
+	}
 
 	healthyAccounts, err := s.accounts.ListSchedulableByPlatform(ctx, PlatformOpenAI)
 	if err != nil {
+		checkCompletedAt := time.Now().UTC()
+		_ = s.updateState(ctx, func(state *autoProvisionState) error {
+			state.CheckInProgress = false
+			state.LastCheckCompletedAt = &checkCompletedAt
+			state.LastCheckError = err.Error()
+			return nil
+		})
 		return fmt.Errorf("list healthy OpenAI accounts: %w", err)
 	}
 
 	var provision *openAIProvisionCommand
 	err = s.updateState(ctx, func(state *autoProvisionState) error {
 		pruneAutoProvisionState(state, time.Now().UTC())
-		if cfg.enabled && state.Provision == nil {
+		state.CheckInProgress = false
+		shouldRetryPending := state.Provision != nil && (state.ProvisionRetryRequested || state.ProvisionDispatchInProgress)
+		state.ProvisionDispatchInProgress = false
+		state.ProvisionDispatchStartedAt = nil
+		checkCompletedAt := time.Now().UTC()
+		state.LastCheckCompletedAt = &checkCompletedAt
+		state.LastCheckError = ""
+		if cfg.enabled && state.Provision != nil && shouldRetryPending {
+			state.ProvisionRetryRequested = false
+			state.ProvisionDispatchInProgress = true
+			state.ProvisionDispatchStartedAt = &checkCompletedAt
+			pending := state.Provision
+			provision = &openAIProvisionCommand{
+				RequestID: pending.RequestID, Count: pending.RequestedCount, Workers: cfg.workers,
+				EmailSource: cfg.emailSource, CallbackURL: cfg.callbackURL,
+			}
+		} else if cfg.enabled && state.Provision == nil {
 			deficit := openAIProvisionDeficit(countHealthyOpenAIOAuthAccounts(healthyAccounts), cfg.target)
 			if deficit > 0 {
 				if deficit > maxAutoProvisionBatch {
@@ -206,6 +259,11 @@ func (s *OpenAIAutoProvisionService) RunOnce(ctx context.Context) error {
 					CreatedAt:      time.Now().UTC(),
 				}
 				state.Provision = pending
+				state.ProvisionDispatchInProgress = true
+				state.ProvisionDispatchStartedAt = &pending.CreatedAt
+				state.ProvisionRetryRequested = false
+				state.LastProvisionRequestedCount = deficit
+				state.LastProvisionRequestedAt = &pending.CreatedAt
 				provision = &openAIProvisionCommand{
 					RequestID: pending.RequestID, Count: deficit, Workers: cfg.workers,
 					EmailSource: cfg.emailSource, CallbackURL: cfg.callbackURL,
@@ -219,9 +277,21 @@ func (s *OpenAIAutoProvisionService) RunOnce(ctx context.Context) error {
 	}
 	if err == nil && provision != nil {
 		if dispatchErr := s.client.Provision(ctx, *provision, cfg.turbURL, cfg.turbAuthCode); dispatchErr != nil {
-			_ = s.removeProvision(ctx, provision.RequestID)
+			_ = s.updateState(ctx, func(state *autoProvisionState) error {
+				state.ProvisionDispatchInProgress = false
+				state.ProvisionDispatchStartedAt = nil
+				state.ProvisionRetryRequested = true
+				state.LastCheckError = dispatchErr.Error()
+				return nil
+			})
 			return fmt.Errorf("dispatch OpenAI provision request: %w", dispatchErr)
 		}
+		_ = s.updateState(ctx, func(state *autoProvisionState) error {
+			state.ProvisionDispatchInProgress = false
+			state.ProvisionDispatchStartedAt = nil
+			state.ProvisionRetryRequested = false
+			return nil
+		})
 	}
 	return nil
 }
@@ -242,12 +312,14 @@ func validateAutomationDispatchConfig(cfg openAIAutoProvisionConfig) error {
 func (s *OpenAIAutoProvisionService) ReauthorizeErroredOpenAIOAuthAccounts(ctx context.Context) error {
 	cfg, err := s.config(ctx)
 	if err != nil {
+		s.recordAutoProvisionError(ctx, err)
 		return err
 	}
 	if !cfg.reauthorization {
 		return nil
 	}
 	if err := validateAutomationDispatchConfig(cfg); err != nil {
+		s.recordAutoProvisionError(ctx, err)
 		return err
 	}
 	release, ok := tryAcquireSingletonLeaderLock(ctx, s.lockCache, s.db, autoProvisionRunLockKey, s.instanceID, 5*time.Minute)
@@ -258,6 +330,7 @@ func (s *OpenAIAutoProvisionService) ReauthorizeErroredOpenAIOAuthAccounts(ctx c
 
 	errorAccounts, err := s.accounts.ListAllWithFilters(ctx, PlatformOpenAI, AccountTypeOAuth, StatusError, "", 0, "")
 	if err != nil {
+		s.recordAutoProvisionError(ctx, err)
 		return fmt.Errorf("list errored OpenAI OAuth accounts: %w", err)
 	}
 
@@ -291,6 +364,7 @@ func (s *OpenAIAutoProvisionService) ReauthorizeErroredOpenAIOAuthAccounts(ctx c
 	for _, command := range reauthorizations {
 		if dispatchErr := s.client.Reauthorize(ctx, command, cfg.turbURL, cfg.turbAuthCode); dispatchErr != nil {
 			_ = s.removeReauthorization(ctx, command.RequestID)
+			s.recordAutoProvisionError(ctx, dispatchErr)
 			slog.Error("openai auto-reauthorization dispatch failed", "request_id", command.RequestID, "account_id", command.AccountID, "error", dispatchErr)
 		}
 	}

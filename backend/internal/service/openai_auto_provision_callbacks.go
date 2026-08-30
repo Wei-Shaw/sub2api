@@ -59,18 +59,20 @@ func (s *OpenAIAutoProvisionService) writeState(ctx context.Context, state *auto
 	return s.settingRepo.Set(ctx, autoProvisionStateKey, string(encoded))
 }
 
-func (s *OpenAIAutoProvisionService) removeProvision(ctx context.Context, requestID string) error {
+func (s *OpenAIAutoProvisionService) removeReauthorization(ctx context.Context, requestID string) error {
 	return s.updateState(ctx, func(state *autoProvisionState) error {
-		if state.Provision != nil && state.Provision.RequestID == requestID {
-			state.Provision = nil
-		}
+		delete(state.Reauthorizations, requestID)
 		return nil
 	})
 }
 
-func (s *OpenAIAutoProvisionService) removeReauthorization(ctx context.Context, requestID string) error {
-	return s.updateState(ctx, func(state *autoProvisionState) error {
-		delete(state.Reauthorizations, requestID)
+func (s *OpenAIAutoProvisionService) recordAutoProvisionError(ctx context.Context, runtimeErr error) {
+	if runtimeErr == nil {
+		return
+	}
+	_ = s.updateState(ctx, func(state *autoProvisionState) error {
+		state.CheckInProgress = false
+		state.LastCheckError = runtimeErr.Error()
 		return nil
 	})
 }
@@ -186,7 +188,12 @@ func (s *OpenAIAutoProvisionService) HandleReauthorizationCallback(ctx context.C
 
 	err = s.updateState(ctx, func(state *autoProvisionState) error {
 		delete(state.Reauthorizations, callback.RequestID)
-		state.ProcessedEvents[callback.EventID] = time.Now().UTC()
+		now := time.Now().UTC()
+		state.LastCallbackAt = &now
+		state.LastCallbackKind = "reauthorization"
+		state.LastCallbackStatus = "oauth_callback_received"
+		state.LastCheckError = ""
+		state.ProcessedEvents[callback.EventID] = now
 		return nil
 	})
 	return false, err

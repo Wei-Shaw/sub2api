@@ -781,6 +781,32 @@ export interface SystemSettings {
   allow_user_view_error_requests: boolean;
 }
 
+export interface OpenAIAutoProvisionRuntimeStatus {
+  phase: 'disabled' | 'idle' | 'checking' | 'sending_provision_request' | 'waiting_for_provision_callback' | 'waiting_for_reauthorization_callback' | 'error'
+  enabled: boolean
+  target: number
+  interval_seconds: number
+  healthy_account_count: number
+  pending_provision_count: number
+  pending_reauthorization_count: number
+  last_check_started_at?: string | null
+  last_check_completed_at?: string | null
+  next_check_at?: string | null
+  last_provision_requested_count: number
+  last_provision_requested_at?: string | null
+  last_callback_at?: string | null
+  last_callback_kind?: string
+  last_callback_status?: string
+  last_callback_requested_count: number
+  last_callback_succeeded_count: number
+  last_callback_failed_count: number
+  last_callback_pending_count: number
+  last_error?: string
+  provision_dispatch_stale: boolean
+  provision_resettable: boolean
+  provision_retry_requested: boolean
+}
+
 export interface UpdateSettingsRequest {
   registration_enabled?: boolean;
   email_verify_enabled?: boolean;
@@ -1123,6 +1149,20 @@ export interface UpdateSettingsRequest {
 export async function getSettings(): Promise<SystemSettings> {
   const { data } = await apiClient.get<SystemSettings>("/admin/settings");
   return data;
+}
+
+export async function getOpenAIAutoProvisionStatus(): Promise<OpenAIAutoProvisionRuntimeStatus> {
+  const { data } = await apiClient.get<OpenAIAutoProvisionRuntimeStatus>(
+    "/admin/settings/openai-auto-provision/status",
+  )
+  return data
+}
+
+export async function resetOpenAIAutoProvisionStatus(): Promise<OpenAIAutoProvisionRuntimeStatus> {
+  const { data } = await apiClient.post<OpenAIAutoProvisionRuntimeStatus>(
+    "/admin/settings/openai-auto-provision/status/reset",
+  )
+  return data
 }
 
 /**
@@ -1647,6 +1687,8 @@ export async function resetWebSearchUsage(payload: {
 
 export const settingsAPI = {
   getSettings,
+  getOpenAIAutoProvisionStatus,
+  resetOpenAIAutoProvisionStatus,
   updateSettings,
   testSmtpConnection,
   testTelegramConnection,
