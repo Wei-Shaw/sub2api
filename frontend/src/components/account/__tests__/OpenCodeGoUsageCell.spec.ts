@@ -1,8 +1,20 @@
-import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OpenCodeGoUsageCell from '../OpenCodeGoUsageCell.vue'
 import UsageProgressBar from '../UsageProgressBar.vue'
 import type { Account, OpenCodeGoUsageState } from '@/types'
+
+const { refreshOpenCodeGoUsage } = vi.hoisted(() => ({
+  refreshOpenCodeGoUsage: vi.fn()
+}))
+
+vi.mock('@/api/admin', () => ({
+  adminAPI: {
+    accounts: {
+      refreshOpenCodeGoUsage
+    }
+  }
+}))
 
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
@@ -12,8 +24,8 @@ vi.mock('vue-i18n', async () => {
       t: (key: string) => {
         const short: Record<string, string> = {
           'admin.accounts.opencodeGo.rollingShort': '5h',
-          'admin.accounts.opencodeGo.weeklyShort': 'W',
-          'admin.accounts.opencodeGo.monthlyShort': 'M',
+          'admin.accounts.opencodeGo.weeklyShort': '7d',
+          'admin.accounts.opencodeGo.monthlyShort': '1m',
           'admin.accounts.opencodeGo.unauthorized': 'unauthorized',
           'admin.accounts.opencodeGo.failed': 'failed',
           'admin.accounts.opencodeGo.ok': 'ok'
@@ -70,6 +82,10 @@ const account = (state = usageState()): Account => ({
 })
 
 describe('OpenCodeGoUsageCell', () => {
+  beforeEach(() => {
+    refreshOpenCodeGoUsage.mockReset()
+  })
+
   it('renders rolling, weekly and monthly windows in a shrinkable mobile-safe cell', () => {
     const wrapper = mount(OpenCodeGoUsageCell, { props: { account: account() } })
     const cell = wrapper.get('[data-testid="opencode-go-usage-cell"]')
@@ -85,20 +101,35 @@ describe('OpenCodeGoUsageCell', () => {
       color: 'indigo'
     })
     expect(bars[1].props()).toMatchObject({
-      label: 'W',
+      label: '7d',
       utilization: 14.2,
       resetsAt: '2026-07-29T00:00:00Z',
       color: 'emerald'
     })
     expect(bars[2].props()).toMatchObject({
-      label: 'M',
+      label: '1m',
       utilization: 33.3,
       resetsAt: '2026-08-01T00:00:00Z',
       color: 'amber'
     })
 
     expect(wrapper.find('[data-testid="opencode-go-status-badge"]').exists()).toBe(false)
-    expect(wrapper.findAll('button')).toHaveLength(0)
+    const query = wrapper.get('[data-testid="opencode-go-usage-query"]')
+    expect(query.text()).toContain('admin.accounts.usageWindow.activeQuery')
+  })
+
+  it('refreshes usage on demand and emits the new state', async () => {
+    const next = usageState()
+    next.snapshot!.data!.rolling!.percent = 42
+    refreshOpenCodeGoUsage.mockResolvedValueOnce(next)
+    const wrapper = mount(OpenCodeGoUsageCell, { props: { account: account() } })
+
+    await wrapper.get('[data-testid="opencode-go-usage-query"]').trigger('click')
+    await flushPromises()
+
+    expect(refreshOpenCodeGoUsage).toHaveBeenCalledWith(7)
+    expect(wrapper.findAllComponents(UsageProgressBar)[0].props('utilization')).toBe(42)
+    expect(wrapper.emitted<OpenCodeGoUsageState[]>('updated')?.[0]?.[0]).toEqual(next)
   })
 
   it('shows a status badge when the snapshot status is not ok', () => {
