@@ -1,0 +1,26 @@
+api.llmroute.cc {
+	encode zstd gzip
+
+	# Disable proxy response buffering so chat/image streams and SSE events are
+	# delivered to clients immediately.
+	reverse_proxy 127.0.0.1:8080 {
+		flush_interval -1
+	}
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+
+	log {
+		output file /var/log/caddy/llmroute-access.log {
+			roll_size 50MiB
+			roll_keep 5
+			roll_keep_for 168h
+		}
+		format json
+	}
+}
