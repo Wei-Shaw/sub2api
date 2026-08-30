@@ -1,4 +1,5 @@
 import http from 'node:http'
+import { createHash } from 'node:crypto'
 
 const host = '127.0.0.1'
 const port = Number(process.env.PREVIEW_API_PORT || 8081)
@@ -281,6 +282,7 @@ const deepSeekModels = [
       cache_read_per_million: 0.03
     },
     per_request: null,
+    image_base_prices: [],
     image_prices: []
   },
   {
@@ -308,6 +310,7 @@ const deepSeekModels = [
       cache_read_per_million: 0.06
     },
     per_request: null,
+    image_base_prices: [],
     image_prices: []
   },
   {
@@ -335,16 +338,212 @@ const deepSeekModels = [
       cache_read_per_million: 0.03
     },
     per_request: null,
+    image_base_prices: [],
+    image_prices: []
+  },
+  {
+    id: 4,
+    platform: 'openai',
+    model_name: 'deepseek-v4-flash-0731',
+    model_note: '按次线路按单次请求上下文区间计费，不参与按量倍率。',
+    billing_mode: 'per_request',
+    provider: 'deepseek',
+    currency: 'CNY',
+    configured: true,
+    enabled: true,
+    official_prices: null,
+    model_multiplier: null,
+    effective_multiplier: null,
+    display_prices: null,
+    per_request: {
+      lte_256k: 0.008,
+      from_256k_to_512k: 0.012,
+      gt_512k: 0.016
+    },
+    image_base_prices: [],
+    image_prices: []
+  },
+  {
+    id: 5,
+    platform: 'openai',
+    model_name: 'deepseek-v4-pro-0813',
+    model_note: '',
+    billing_mode: 'per_request',
+    provider: 'deepseek',
+    currency: 'CNY',
+    configured: true,
+    enabled: true,
+    official_prices: null,
+    model_multiplier: null,
+    effective_multiplier: null,
+    display_prices: null,
+    per_request: {
+      lte_256k: 0.01,
+      from_256k_to_512k: 0.015,
+      gt_512k: 0.02
+    },
+    image_base_prices: [],
     image_prices: []
   }
 ]
+
+const previewProviderMeta = {
+  auto: { display_name: 'Auto', currency: 'CNY', multiplier: null, logo_key: 'auto', sort_order: 10 },
+  deepseek: { display_name: 'DeepSeek', currency: 'CNY', multiplier: 0.1, logo_key: 'deepseek', sort_order: 20 },
+  zhipu: { display_name: 'GLM', currency: 'CNY', multiplier: 0.125, logo_key: 'zhipu', sort_order: 30 },
+  moonshot: { display_name: 'Kimi', currency: 'CNY', multiplier: 0.125, logo_key: 'kimi', sort_order: 40 },
+  minimax: { display_name: 'MiniMax', currency: 'CNY', multiplier: 0.125, logo_key: 'minimax', sort_order: 50 },
+  qwen: { display_name: 'Qwen', currency: 'CNY', multiplier: 0.125, logo_key: 'qwen', sort_order: 60 },
+  mimo: { display_name: 'MiMo', currency: 'CNY', multiplier: 0.125, logo_key: 'mimo', sort_order: 70 },
+  hunyuan: { display_name: 'Hunyuan', currency: 'CNY', multiplier: 0.125, logo_key: 'hunyuan', sort_order: 80 },
+  openai: { display_name: 'OpenAI', currency: 'USD', multiplier: 0.044, logo_key: 'openai', sort_order: 100 },
+  anthropic: { display_name: 'Anthropic', currency: 'USD', multiplier: 0.044, logo_key: 'anthropic', sort_order: 110 },
+  gemini: { display_name: 'Gemini', currency: 'USD', multiplier: 0.044, logo_key: 'gemini', sort_order: 120 },
+  grok: { display_name: 'Grok', currency: 'USD', multiplier: 0.044, logo_key: 'grok', sort_order: 130 }
+}
+
+function inferPreviewProvider(model) {
+  const lower = model.toLowerCase()
+  if (lower.startsWith('auto')) return 'auto'
+  if (lower.includes('deepseek')) return 'deepseek'
+  if (lower.includes('glm')) return 'zhipu'
+  if (lower.includes('kimi')) return 'moonshot'
+  if (lower.includes('minimax')) return 'minimax'
+  if (lower.includes('qwen')) return 'qwen'
+  if (lower.includes('mimo')) return 'mimo'
+  if (lower === 'hy3' || lower.includes('hunyuan')) return 'hunyuan'
+  if (lower.includes('claude')) return 'anthropic'
+  if (lower.includes('gemini')) return 'gemini'
+  if (lower.includes('grok')) return 'grok'
+  return 'openai'
+}
+
+function scaledPrice(value, multiplier) {
+  return Math.round(value * multiplier * 1e6) / 1e6
+}
+
+function genericTokenModel(model, index) {
+  const provider = inferPreviewProvider(model)
+  const meta = previewProviderMeta[provider]
+  const input = meta.currency === 'CNY' ? 1 + (index % 5) * 1.1 : 0.5 + (index % 5) * 0.75
+  const output = input * (3 + (index % 2))
+  const cacheRead = input * 0.1
+  const multiplier = meta.multiplier ?? 1
+  return {
+    id: 100 + index,
+    platform: 'openai',
+    model_name: model,
+    model_note: '',
+    billing_mode: 'token',
+    provider,
+    currency: meta.currency,
+    configured: true,
+    enabled: true,
+    official_prices: {
+      input_per_million: input,
+      output_per_million: output,
+      cache_write_per_million: null,
+      cache_read_per_million: cacheRead
+    },
+    model_multiplier: null,
+    effective_multiplier: multiplier,
+    display_prices: {
+      input_per_million: scaledPrice(input, multiplier),
+      output_per_million: scaledPrice(output, multiplier),
+      cache_write_per_million: null,
+      cache_read_per_million: scaledPrice(cacheRead, multiplier)
+    },
+    per_request: null,
+    image_base_prices: [],
+    image_prices: []
+  }
+}
+
+function genericPerRequestModel(model, index) {
+  const provider = inferPreviewProvider(model)
+  const meta = previewProviderMeta[provider]
+  const base = Math.round((0.005 + (index % 6) * 0.001) * 1e6) / 1e6
+  return {
+    id: 200 + index,
+    platform: 'openai',
+    model_name: model,
+    model_note: '',
+    billing_mode: 'per_request',
+    provider,
+    currency: meta.currency,
+    configured: true,
+    enabled: true,
+    official_prices: null,
+    model_multiplier: null,
+    effective_multiplier: null,
+    display_prices: null,
+    per_request: {
+      lte_256k: base,
+      from_256k_to_512k: base * 1.5,
+      gt_512k: base * 2
+    },
+    image_base_prices: [],
+    image_prices: []
+  }
+}
+
+const previewDisplayModels = [
+  ...deepSeekModels,
+  ...tokenModelNames.filter(model => !model.toLowerCase().includes('deepseek')).map(genericTokenModel),
+  ...perRequestModelNames.filter(model => !model.toLowerCase().includes('deepseek')).map(genericPerRequestModel),
+  {
+    id: 300,
+    platform: 'openai',
+    model_name: 'gpt-image-2',
+    model_note: '支持多种图片尺寸，本站价格按规格展示。',
+    billing_mode: 'image',
+    provider: 'openai',
+    currency: 'USD',
+    configured: true,
+    enabled: true,
+    official_prices: null,
+    model_multiplier: null,
+    effective_multiplier: 1.2,
+    display_prices: null,
+    per_request: null,
+    image_base_prices: [
+      { label: '1K', price: 0.04 },
+      { label: '2K', price: 0.07 }
+    ],
+    image_prices: [
+      { label: '1K', price: 0.048 },
+      { label: '2K', price: 0.084 }
+    ]
+  }
+]
+
+const previewCatalogProviders = Object.entries(previewProviderMeta)
+  .map(([provider, meta]) => ({
+    provider,
+    display_name: meta.display_name,
+    provider_note: provider === 'deepseek'
+      ? 'DeepSeek 按量展示平常价格；工作日北京时间 09:00–12:00、14:00–18:00 为高峰时段。'
+      : '',
+    per_request_note: provider === 'deepseek'
+      ? '按次价格按单次请求总上下文分三档，与按量高峰时段及展示倍率无关。'
+      : '',
+    image_note: provider === 'openai' ? '生图价格按图片规格独立展示。' : '',
+    currency: meta.currency,
+    logo_key: meta.logo_key,
+    logo_url: '',
+    configured_multiplier: meta.multiplier,
+    effective_multiplier: meta.multiplier ?? 1,
+    sort_order: meta.sort_order,
+    models: previewDisplayModels.filter(model => model.provider === provider)
+  }))
+  .filter(provider => provider.models.length > 0)
 
 const publicSettings = {
   site_name: 'Sub2API Local Preview',
   site_logo: '',
   site_version: 'local',
   model_plaza_enabled: true,
-  model_plaza_require_auth: true,
+  model_plaza_require_auth: false,
   backend_mode_enabled: false,
   channel_monitor_enabled: true,
   channel_monitor_mode: 'v1',
@@ -363,19 +562,134 @@ const publicSettings = {
 const catalog = {
   global_multiplier: 1,
   updated_at: now,
-  providers: [
-    {
-      provider: 'deepseek',
-      display_name: 'DeepSeek',
-      provider_note: 'DeepSeek 平常价格展示；高峰期为工作日北京时间 09:00–12:00、14:00–18:00，高峰价格按平常价格 ×2 计算。',
-      currency: 'CNY',
-      logo_key: 'deepseek',
-      logo_url: '',
-      configured_multiplier: 0.1,
-      effective_multiplier: 0.1,
-      models: deepSeekModels
+  providers: previewCatalogProviders
+}
+
+function recalculatePreviewPrices() {
+  for (const provider of catalog.providers) {
+    const inheritedMultiplier = catalog.global_multiplier * (provider.configured_multiplier ?? 1)
+    provider.effective_multiplier = inheritedMultiplier
+    for (const model of provider.models) {
+      if (model.billing_mode !== 'token' && model.billing_mode !== 'image') continue
+      const multiplier = model.model_multiplier ?? inheritedMultiplier
+      model.effective_multiplier = multiplier
+      if (model.billing_mode === 'token' && model.official_prices) {
+        model.display_prices = Object.fromEntries(
+          Object.entries(model.official_prices).map(([key, value]) => [
+            key,
+            value == null ? null : scaledPrice(Number(value), multiplier)
+          ])
+        )
+      }
+      if (model.billing_mode === 'image') {
+        model.image_prices = (model.image_base_prices ?? []).map(tier => ({
+          label: tier.label,
+          price: scaledPrice(tier.price, multiplier)
+        }))
+      }
     }
-  ]
+  }
+  catalog.updated_at = new Date().toISOString()
+}
+
+const officialReferenceUrls = {
+  deepseek: 'https://api-docs.deepseek.com/zh-cn/quick_start/pricing',
+  zhipu: 'https://open.bigmodel.cn/pricing',
+  moonshot: 'https://platform.kimi.com/docs/pricing/chat',
+  minimax: 'https://platform.minimaxi.com/docs/guides/pricing-paygo',
+  qwen: 'https://help.aliyun.com/zh/model-studio/model-pricing',
+  mimo: 'https://mimo.mi.com/docs/zh-CN/price/pay-as-you-go',
+  hunyuan: 'https://cloud.tencent.com/document/product/1729',
+  openai: 'https://developers.openai.com/api/docs/pricing',
+  anthropic: 'https://platform.claude.com/docs/en/about-claude/pricing',
+  gemini: 'https://ai.google.dev/gemini-api/docs/pricing',
+  grok: 'https://docs.x.ai/developers/pricing'
+}
+
+function officialValues(model) {
+  return {
+    input_per_million: model.official_prices?.input_per_million ?? null,
+    output_per_million: model.official_prices?.output_per_million ?? null,
+    cache_write_per_million: model.official_prices?.cache_write_per_million ?? null,
+    cache_read_per_million: model.official_prices?.cache_read_per_million ?? null
+  }
+}
+
+function candidateOfficialValue(component, fallback) {
+  const value = component?.official
+  if (value == null || value === '') return fallback
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
+}
+
+function officialProposalHash(modelId, proposed) {
+  return createHash('sha256').update(`${modelId}\0${JSON.stringify(proposed)}`).digest('hex')
+}
+
+async function buildOfficialSyncPreview() {
+  const fetchedAt = new Date().toISOString()
+  let remote
+  let warning = null
+  try {
+    const response = await fetch('https://sub2.herohao.top/pricing/api/pricing', {
+      headers: { Accept: 'application/json', 'User-Agent': 'sub2api-local-preview/1' },
+      signal: AbortSignal.timeout(10000)
+    })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    remote = await response.json()
+  } catch (error) {
+    warning = `聚合候选源暂时不可用：${error instanceof Error ? error.message : String(error)}`
+    remote = { token: { models: [] } }
+  }
+  const remoteModels = new Map((remote.token?.models ?? []).map(item => [String(item.model), item]))
+  const items = previewDisplayModels
+    .filter(model => model.billing_mode === 'token')
+    .map(model => {
+      const current = officialValues(model)
+      const source = remoteModels.get(model.model_name)
+      let proposed = null
+      let applicable = false
+      let reason = ''
+      if (model.currency !== 'CNY') reason = 'currency_mismatch'
+      else if (!source) reason = 'candidate_not_found'
+      else if (!source.enabled) reason = 'candidate_disabled'
+      else {
+        proposed = {
+          input_per_million: candidateOfficialValue(source.prices?.input, current.input_per_million),
+          output_per_million: candidateOfficialValue(source.prices?.output, current.output_per_million),
+          cache_write_per_million: candidateOfficialValue(source.prices?.cacheWrite, current.cache_write_per_million),
+          cache_read_per_million: candidateOfficialValue(source.prices?.cacheRead, current.cache_read_per_million)
+        }
+        applicable = true
+      }
+      const changed = applicable && JSON.stringify(current) !== JSON.stringify(proposed)
+      return {
+        model_id: model.id,
+        model_name: model.model_name,
+        provider: model.provider,
+        billing_mode: model.billing_mode,
+        currency: model.currency,
+        current,
+        proposed,
+        changed,
+        diff: {
+          input_per_million: current.input_per_million !== proposed?.input_per_million,
+          output_per_million: current.output_per_million !== proposed?.output_per_million,
+          cache_write_per_million: current.cache_write_per_million !== proposed?.cache_write_per_million,
+          cache_read_per_million: current.cache_read_per_million !== proposed?.cache_read_per_million,
+          has_changes: changed
+        },
+        applicable,
+        reason,
+        source: 'herohao_aggregate',
+        confidence: 'unverified',
+        source_updated_at: source?.updatedAt ?? remote.token?.databaseUpdatedAt ?? null,
+        official_reference_url: officialReferenceUrls[model.provider] ?? '',
+        expected_updated_at: model.updated_at ?? catalog.updated_at,
+        proposal_hash: proposed ? officialProposalHash(model.id, proposed) : ''
+      }
+    })
+  return { items, fetched_at: remote.fetchedAt ?? fetchedAt, warning: remote.warning ?? warning }
 }
 
 function send(res, data, status = 200) {
@@ -397,23 +711,24 @@ function readBody(req) {
   })
 }
 
-function adminProvider() {
-  const provider = catalog.providers[0]
+function adminProvider(provider) {
   return {
     provider: provider.provider,
     display_name: provider.display_name,
     provider_note: provider.provider_note,
+    per_request_note: provider.per_request_note,
+    image_note: provider.image_note,
     currency: provider.currency,
     multiplier: provider.configured_multiplier,
     logo_key: provider.logo_key,
     logo_url: provider.logo_url,
-    sort_order: 20,
+    sort_order: provider.sort_order,
     updated_at: catalog.updated_at
   }
 }
 
 function adminModels() {
-  return deepSeekModels.map((model, index) => ({
+  return previewDisplayModels.map((model, index) => ({
     id: model.id,
     platform: model.platform,
     model_name: model.model_name,
@@ -427,13 +742,16 @@ function adminModels() {
     official_output_per_million: model.official_prices?.output_per_million ?? null,
     official_cache_write_per_million: model.official_prices?.cache_write_per_million ?? null,
     official_cache_read_per_million: model.official_prices?.cache_read_per_million ?? null,
+    official_price_source: model.official_price_source ?? 'manual',
+    official_price_source_url: model.official_price_source_url ?? '',
+    official_price_synced_at: model.official_price_synced_at ?? null,
     model_multiplier: model.model_multiplier,
-    per_request_lte_256k: null,
-    per_request_256k_512k_override: null,
-    per_request_gt_512k_override: null,
-    image_prices: [],
+    per_request_lte_256k: model.per_request?.lte_256k ?? null,
+    per_request_256k_512k_override: model.per_request?.from_256k_to_512k ?? null,
+    per_request_gt_512k_override: model.per_request?.gt_512k ?? null,
+    image_prices: model.image_base_prices ?? [],
     created_at: now,
-    updated_at: catalog.updated_at
+    updated_at: model.updated_at ?? catalog.updated_at
   }))
 }
 
@@ -488,25 +806,66 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'PUT') {
       const raw = await readBody(req)
       try { catalog.global_multiplier = Number(JSON.parse(raw).global_multiplier || 1) } catch { /* preview only */ }
+      recalculatePreviewPrices()
     }
     send(res, { global_multiplier: catalog.global_multiplier, updated_at: catalog.updated_at })
     return
   }
   if (path === '/api/v1/admin/display-pricing/providers') {
-    send(res, { items: [adminProvider()] })
+    send(res, { items: catalog.providers.map(adminProvider) })
     return
   }
-  if (path === '/api/v1/admin/display-pricing/providers/deepseek' && req.method === 'PUT') {
+  if (path === '/api/v1/admin/display-pricing/official-sync/preview' && req.method === 'POST') {
+    send(res, await buildOfficialSyncPreview())
+    return
+  }
+  if (path === '/api/v1/admin/display-pricing/official-sync/apply' && req.method === 'POST') {
     const raw = await readBody(req)
-    try {
+    let selections = []
+    try { selections = JSON.parse(raw).models ?? [] } catch { selections = [] }
+    const preview = await buildOfficialSyncPreview()
+    const candidates = new Map(preview.items.map(item => [item.model_id, item]))
+    const selected = selections.map(selection => ({ selection, candidate: candidates.get(Number(selection.model_id)) }))
+    const valid = selected.length > 0 && selected.every(({ selection, candidate }) =>
+      candidate?.applicable &&
+      candidate.proposed &&
+      candidate.expected_updated_at === selection.expected_updated_at &&
+      candidate.proposal_hash === selection.proposal_hash
+    )
+    if (!valid) {
+      send(res, { error: 'official price candidate changed; preview again' }, 409)
+      return
+    }
+    const syncedAt = new Date().toISOString()
+    for (const { candidate } of selected) {
+      const model = previewDisplayModels.find(item => item.id === candidate.model_id)
+      if (!model) continue
+      model.official_prices = { ...candidate.proposed }
+      model.official_price_source = 'herohao_aggregate'
+      model.official_price_source_url = 'https://sub2.herohao.top/pricing/api/pricing'
+      model.official_price_synced_at = syncedAt
+      model.updated_at = syncedAt
+    }
+    recalculatePreviewPrices()
+    send(res, { applied_count: selected.length, synced_at: syncedAt })
+    return
+  }
+  if (path.startsWith('/api/v1/admin/display-pricing/providers/') && req.method === 'PUT') {
+    const providerKey = decodeURIComponent(path.split('/').at(-1) || '')
+    const provider = catalog.providers.find(item => item.provider === providerKey)
+    const raw = await readBody(req)
+    if (provider) try {
       const payload = JSON.parse(raw)
-      catalog.providers[0].display_name = String(payload.display_name || 'DeepSeek')
-      catalog.providers[0].provider_note = String(payload.provider_note || '')
-      catalog.providers[0].logo_key = String(payload.logo_key || 'deepseek')
-      catalog.providers[0].logo_url = String(payload.logo_url || '')
-      catalog.providers[0].configured_multiplier = payload.multiplier == null ? null : Number(payload.multiplier)
+      provider.display_name = String(payload.display_name || provider.display_name)
+      provider.provider_note = String(payload.provider_note || '')
+      provider.per_request_note = String(payload.per_request_note || '')
+      provider.image_note = String(payload.image_note || '')
+      provider.logo_key = String(payload.logo_key || provider.provider)
+      provider.logo_url = String(payload.logo_url || '')
+      provider.configured_multiplier = payload.multiplier == null ? null : Number(payload.multiplier)
+      recalculatePreviewPrices()
     } catch { /* preview only */ }
-    send(res, adminProvider())
+    send(res, provider ? adminProvider(provider) : null, provider ? 200 : 404)
     return
   }
   if (path === '/api/v1/admin/display-pricing/models') {
@@ -516,16 +875,46 @@ const server = http.createServer(async (req, res) => {
   if (path.startsWith('/api/v1/admin/display-pricing/models/') && req.method === 'PUT') {
     const id = Number(path.split('/').at(-1))
     const raw = await readBody(req)
-    const model = deepSeekModels.find(item => item.id === id)
+    const model = previewDisplayModels.find(item => item.id === id)
     if (model) {
-      try { model.model_note = String(JSON.parse(raw).model_note || '') } catch { /* preview only */ }
+      try {
+        const payload = JSON.parse(raw)
+        model.model_note = String(payload.model_note || '')
+        model.official_price_source = String(payload.official_price_source || 'manual')
+        model.official_price_source_url = String(payload.official_price_source_url || '')
+        model.official_price_synced_at = payload.official_price_synced_at || null
+        model.updated_at = new Date().toISOString()
+        model.model_multiplier = payload.model_multiplier == null ? null : Number(payload.model_multiplier)
+        if (model.billing_mode === 'token') {
+          model.official_prices = {
+            input_per_million: payload.official_input_per_million == null ? null : Number(payload.official_input_per_million),
+            output_per_million: payload.official_output_per_million == null ? null : Number(payload.official_output_per_million),
+            cache_write_per_million: payload.official_cache_write_per_million == null ? null : Number(payload.official_cache_write_per_million),
+            cache_read_per_million: payload.official_cache_read_per_million == null ? null : Number(payload.official_cache_read_per_million)
+          }
+        }
+        if (model.billing_mode === 'per_request') {
+          const base = Number(payload.per_request_lte_256k ?? 0)
+          model.per_request = {
+            lte_256k: base,
+            from_256k_to_512k: payload.per_request_256k_512k_override == null ? base * 1.5 : Number(payload.per_request_256k_512k_override),
+            gt_512k: payload.per_request_gt_512k_override == null ? base * 2 : Number(payload.per_request_gt_512k_override)
+          }
+        }
+        if (model.billing_mode === 'image') {
+          model.image_base_prices = Array.isArray(payload.image_prices)
+            ? payload.image_prices.map(tier => ({ label: String(tier.label), price: Number(tier.price) }))
+            : []
+        }
+        recalculatePreviewPrices()
+      } catch { /* preview only */ }
     }
     send(res, adminModels().find(item => item.id === id) || null)
     return
   }
   if (path === '/api/v1/admin/display-pricing/discovered-models') {
     send(res, {
-      items: deepSeekModels.map(model => ({
+      items: previewDisplayModels.map(model => ({
         platform: model.platform,
         model_name: model.model_name,
         billing_mode: model.billing_mode,
