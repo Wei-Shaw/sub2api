@@ -64,6 +64,11 @@
         </div>
         <div v-else>
           <label class="input-label">{{ t('admin.accounts.cnProviders.apiProtocol.endpoints') }}</label>
+          <MiMoTokenPlanRegionPicker
+            v-if="account.platform === 'mimo' && editAccountMode === 'coding'"
+            v-model="mimoTokenPlanRegion"
+            class="mt-2"
+          />
           <div class="mt-2 space-y-3">
             <div v-for="item in editAdaptiveProtocolOptions" :key="item.value">
               <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
@@ -72,7 +77,7 @@
               <input v-model="editAdaptiveBaseUrls[item.value]" type="text" class="input" />
             </div>
           </div>
-          <p v-if="account.platform !== 'deepseek'" class="input-hint">
+          <p v-if="!cnSupportsResponses" class="input-hint">
             {{ t('admin.accounts.cnProviders.apiProtocol.responsesFallbackDesc') }}
           </p>
         </div>
@@ -95,7 +100,14 @@
               {{ t(`admin.accounts.cnProviders.accountMode.${opt.labelKey}`) }}
             </button>
           </div>
-          <p class="input-hint">{{ t(`admin.accounts.cnProviders.accountMode.${editAccountMode}Desc`) }}</p>
+          <p class="input-hint">{{ t(`admin.accounts.cnProviders.accountMode.${cnAccountModeDescKey}`) }}</p>
+          <div
+            v-if="account.platform === 'mimo' && editAccountMode === 'coding'"
+            class="mt-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"
+            data-test="mimo-token-plan-warning"
+          >
+            {{ t('admin.accounts.cnProviders.accountMode.mimoUsageWarning') }}
+          </div>
         </div>
         <!-- API Protocol Selection (CN providers) -->
         <div v-if="isCNApiKeyAccount">
@@ -1867,7 +1879,7 @@
       </div>
 
       <div
-        v-if="account?.platform === 'anthropic' && account?.type === 'apikey'"
+        v-if="(account?.platform === 'anthropic' || account?.platform === 'minimax' || account?.platform === 'mimo') && account?.type === 'apikey'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -1877,7 +1889,7 @@
               {{ t('admin.accounts.anthropic.apiKeyAuthSchemeDesc') }}
             </p>
           </div>
-          <select v-model="anthropicAPIKeyAuthScheme" class="input w-52 text-sm">
+          <select v-model="anthropicAPIKeyAuthScheme" class="input w-52 text-sm" data-testid="anthropic-apikey-auth-scheme">
             <option value="x_api_key">{{ t('admin.accounts.anthropic.apiKeyAuthSchemeXApiKey') }}</option>
             <option value="authorization_bearer">{{ t('admin.accounts.anthropic.apiKeyAuthSchemeBearer') }}</option>
           </select>
@@ -2893,6 +2905,7 @@ import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
+import MiMoTokenPlanRegionPicker from '@/components/account/MiMoTokenPlanRegionPicker.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
 import {
@@ -2908,11 +2921,18 @@ import {
   validateHeaderOverrideRows,
   defaultCNAdaptiveBaseUrls,
   defaultCNBaseUrl,
+  cnProtocolSiblingBaseUrl,
+  cnProviderSupportsResponses,
+  mimoTokenPlanBaseUrls,
+  mimoTokenPlanRegionFromURL,
+  isCnProviderPlatform,
   HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY,
   HEADER_OVERRIDES_CREDENTIAL_KEY,
   type CnAccountMode,
   type CnApiProtocol,
   type CnNativeApiProtocol,
+  type CnProviderPlatform,
+  type MiMoTokenPlanRegion,
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
@@ -3002,15 +3022,14 @@ const editApiKey = ref('')
 const isCNApiKeyAccount = computed(
   () =>
     props.account?.type === 'apikey' &&
-    (props.account.platform === 'kimi' ||
-      props.account.platform === 'zhipu' ||
-      props.account.platform === 'deepseek')
+    isCnProviderPlatform(props.account.platform)
 )
+const cnSupportsResponses = computed(() => cnProviderSupportsResponses(props.account?.platform || ''))
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
-const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek'>(() => {
+const cnPresetPlatform = computed<CnProviderPlatform>(() => {
   const platform = props.account?.platform
-  if (platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek') {
+  if (platform && isCnProviderPlatform(platform)) {
     return platform
   }
   return 'kimi'
@@ -3025,6 +3044,7 @@ const editAdaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   anthropic: '',
   responses: ''
 })
+const mimoTokenPlanRegion = ref<MiMoTokenPlanRegion | null>('cn')
 // 回填窗口标志：syncFormFromAccount 会同步改写 editAccountMode / editApiProtocol，
 // 而 watcher（pre-flush）在同步代码执行完之后才触发——若不抑制，会把刚恢复的
 // 存储版 base_url（可能是用户自定义/中转地址）覆盖为官方预设并在下次保存时持久化。
@@ -3048,7 +3068,7 @@ const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: strin
     { value: 'chat_completions', labelKey: 'chatCompletions' },
     { value: 'anthropic', labelKey: 'anthropic' }
   ]
-  if (props.account?.platform === 'deepseek') {
+  if (cnProviderSupportsResponses(props.account?.platform || '')) {
     opts.push({ value: 'responses', labelKey: 'responses' })
   }
   return opts
@@ -3058,7 +3078,7 @@ const editAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol;
     { value: 'chat_completions', labelKey: 'chatCompletions' },
     { value: 'anthropic', labelKey: 'anthropic' }
   ]
-  if (props.account?.platform === 'deepseek') opts.push({ value: 'responses', labelKey: 'responses' })
+  if (cnProviderSupportsResponses(props.account?.platform || '')) opts.push({ value: 'responses', labelKey: 'responses' })
   return opts
 })
 watch(editApiProtocol, (protocol, previousProtocol) => {
@@ -3079,7 +3099,12 @@ watch(editApiProtocol, (protocol, previousProtocol) => {
       defaultCNBaseUrl(props.account!.platform, editAccountMode.value, protocol)
     return
   }
-  editBaseUrl.value = defaultCNBaseUrl(props.account!.platform, editAccountMode.value, protocol)
+  editBaseUrl.value = cnProtocolSiblingBaseUrl(
+    editBaseUrl.value,
+    props.account!.platform,
+    editAccountMode.value,
+    protocol
+  )
 })
 watch(editAccountMode, (mode, previousMode) => {
   if (!isCNApiKeyAccount.value || syncingForm.value) return
@@ -3090,8 +3115,20 @@ watch(editAccountMode, (mode, previousMode) => {
     return
   }
   if (editApiProtocol.value === 'adaptive') {
+    if (
+      props.account!.platform === 'mimo' &&
+      previousMode === 'coding' &&
+      mode === 'payg' &&
+      mimoTokenPlanRegionFromURL(editAdaptiveBaseUrls.value.chat_completions)
+    ) {
+      editAdaptiveBaseUrls.value = defaultCNAdaptiveBaseUrls('mimo', 'payg')
+      editBaseUrl.value = editAdaptiveBaseUrls.value.chat_completions
+      return
+    }
     const previousDefaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, previousMode)
-    const nextDefaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, mode)
+    const nextDefaults = props.account!.platform === 'mimo' && mode === 'coding' && mimoTokenPlanRegion.value
+      ? mimoTokenPlanBaseUrls(mimoTokenPlanRegion.value)
+      : defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, mode)
     for (const item of editAdaptiveProtocolOptions.value) {
       if (!editAdaptiveBaseUrls.value[item.value] || editAdaptiveBaseUrls.value[item.value] === previousDefaults[item.value]) {
         editAdaptiveBaseUrls.value[item.value] = nextDefaults[item.value]
@@ -3100,16 +3137,35 @@ watch(editAccountMode, (mode, previousMode) => {
     editBaseUrl.value = editAdaptiveBaseUrls.value.chat_completions
     return
   }
-  editBaseUrl.value = defaultCNBaseUrl(props.account!.platform, mode, editApiProtocol.value)
+  editBaseUrl.value = cnProtocolSiblingBaseUrl(
+    editBaseUrl.value,
+    props.account!.platform,
+    mode,
+    editApiProtocol.value as CnNativeApiProtocol
+  )
+})
+watch(mimoTokenPlanRegion, (region) => {
+  if (!region || props.account?.platform !== 'mimo' || editAccountMode.value !== 'coding' || syncingForm.value) return
+  const urls = mimoTokenPlanBaseUrls(region)
+  editAdaptiveBaseUrls.value = urls
+  editBaseUrl.value = editApiProtocol.value === 'anthropic' ? urls.anthropic : urls.chat_completions
 })
 const cnProtocolDescKey = computed(
   () => cnProtocolOptions.value.find(o => o.value === editApiProtocol.value)?.labelKey ?? 'chatCompletions'
+)
+const cnAccountModeDescKey = computed(() =>
+  editAccountMode.value === 'coding' && props.account?.platform === 'mimo'
+    ? 'codingMimoDesc'
+    : `${editAccountMode.value}Desc`
 )
 // 点击预设端点：回填 base url 与对应模式/协议。
 function onCnPresetSelect(preset: { mode: CnAccountMode; protocol: CnApiProtocol; url: string }) {
   editAccountMode.value = preset.mode
   editApiProtocol.value = preset.protocol
   editBaseUrl.value = preset.url
+  if (props.account?.platform === 'mimo' && preset.mode === 'coding') {
+    mimoTokenPlanRegion.value = mimoTokenPlanRegionFromURL(preset.url)
+  }
 }
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
@@ -3559,11 +3615,7 @@ const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'grok') return 'https://api.x.ai/v1'
   // CN 供应商：按当前模式/协议回落到官方预设（清空输入框提交时使用），
   // 不能落到 anthropic 默认值（会被当 CC base 拼出错误端点）。
-  if (
-    props.account?.platform === 'kimi' ||
-    props.account?.platform === 'zhipu' ||
-    props.account?.platform === 'deepseek'
-  ) {
+  if (props.account?.platform && isCnProviderPlatform(props.account.platform)) {
     return defaultCNBaseUrl(props.account.platform, editAccountMode.value, editApiProtocol.value)
   }
   return 'https://api.anthropic.com'
@@ -3809,9 +3861,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       openAICompactModelMappings.value = Object.entries(compactMappings).map(([from, to]) => ({ from, to }))
     }
   }
-  if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
-    anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
-    anthropicAPIKeyAuthScheme.value = extra?.anthropic_apikey_auth_scheme === 'authorization_bearer'
+  if ((newAccount.platform === 'anthropic' || newAccount.platform === 'minimax' || newAccount.platform === 'mimo') && newAccount.type === 'apikey') {
+    anthropicPassthroughEnabled.value = newAccount.platform === 'anthropic' && extra?.anthropic_passthrough === true
+    anthropicAPIKeyAuthScheme.value = extra?.anthropic_apikey_auth_scheme === 'authorization_bearer' ||
+      ((newAccount.platform === 'minimax' || newAccount.platform === 'mimo') && extra?.anthropic_apikey_auth_scheme == null)
       ? 'authorization_bearer'
       : 'x_api_key'
     // 三态：string "default"/"enabled"/"disabled"，向后兼容旧 bool
@@ -3928,7 +3981,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     const credentials = newAccount.credentials as Record<string, unknown>
     // 国产供应商：读取 account_mode 与 api_protocol 作为可编辑初始值
     // （编辑弹窗允许修正两者，用于修复早期存错默认值的账号）。
-    if (newAccount.platform === 'kimi' || newAccount.platform === 'zhipu' || newAccount.platform === 'deepseek') {
+    if (isCnProviderPlatform(newAccount.platform)) {
       editAccountMode.value = credentials.account_mode === 'coding' ? 'coding' : 'payg'
       const storedProtocol = credentials.api_protocol
       editApiProtocol.value =
@@ -3938,10 +3991,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         storedProtocol === 'responses'
           ? storedProtocol
           : 'chat_completions'
-      if (newAccount.platform !== 'deepseek' && editApiProtocol.value === 'responses') {
+      if (!cnProviderSupportsResponses(newAccount.platform) && editApiProtocol.value === 'responses') {
         editApiProtocol.value = 'chat_completions'
       }
-      const adaptiveDefaults = defaultCNAdaptiveBaseUrls(newAccount.platform, editAccountMode.value)
       const storedBaseUrls = (credentials.api_base_urls as Record<string, unknown> | undefined) || {}
       const legacyBaseUrl = typeof credentials.base_url === 'string' ? credentials.base_url.trim() : ''
       const storedChatBaseUrl = typeof storedBaseUrls.chat_completions === 'string'
@@ -3953,6 +4005,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       const storedResponsesBaseUrl = typeof storedBaseUrls.responses === 'string'
         ? storedBaseUrls.responses.trim()
         : ''
+      mimoTokenPlanRegion.value = newAccount.platform === 'mimo' && editAccountMode.value === 'coding'
+        ? mimoTokenPlanRegionFromURL(storedChatBaseUrl || storedAnthropicBaseUrl || legacyBaseUrl)
+        : 'cn'
+      const adaptiveDefaults = newAccount.platform === 'mimo' && editAccountMode.value === 'coding' && mimoTokenPlanRegion.value
+        ? mimoTokenPlanBaseUrls(mimoTokenPlanRegion.value)
+        : defaultCNAdaptiveBaseUrls(newAccount.platform, editAccountMode.value)
       const nextAdaptiveBaseUrls: Record<CnNativeApiProtocol, string> = {
         chat_completions: storedChatBaseUrl || adaptiveDefaults.chat_completions,
         anthropic: storedAnthropicBaseUrl || adaptiveDefaults.anthropic,
@@ -3985,9 +4043,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
           ? 'https://generativelanguage.googleapis.com'
           : newAccount.platform === 'grok'
             ? 'https://api.x.ai/v1'
-            : newAccount.platform === 'kimi' ||
-                newAccount.platform === 'zhipu' ||
-                newAccount.platform === 'deepseek'
+            : isCnProviderPlatform(newAccount.platform)
               ? defaultCNBaseUrl(newAccount.platform, editAccountMode.value, editApiProtocol.value)
               : 'https://api.anthropic.com'
     editBaseUrl.value = isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'
@@ -5128,23 +5184,27 @@ const handleSubmit = async () => {
     }
 
     // For Anthropic API Key accounts, handle passthrough mode + web search emulation in extra
-    if (props.account.platform === 'anthropic' && props.account.type === 'apikey') {
+    if ((props.account.platform === 'anthropic' || props.account.platform === 'minimax' || props.account.platform === 'mimo') && props.account.type === 'apikey') {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
-      if (anthropicPassthroughEnabled.value) {
+      if (props.account.platform === 'anthropic' && anthropicPassthroughEnabled.value) {
         newExtra.anthropic_passthrough = true
       } else {
         delete newExtra.anthropic_passthrough
       }
       if (anthropicAPIKeyAuthScheme.value === 'authorization_bearer') {
         newExtra.anthropic_apikey_auth_scheme = 'authorization_bearer'
+      } else if (props.account.platform === 'minimax' || props.account.platform === 'mimo') {
+        newExtra.anthropic_apikey_auth_scheme = 'x_api_key'
       } else {
         delete newExtra.anthropic_apikey_auth_scheme
       }
-      if (webSearchEmulationMode.value === 'default') {
-        delete newExtra.web_search_emulation
-      } else {
-        newExtra.web_search_emulation = webSearchEmulationMode.value
+      if (props.account.platform === 'anthropic') {
+        if (webSearchEmulationMode.value === 'default') {
+          delete newExtra.web_search_emulation
+        } else {
+          newExtra.web_search_emulation = webSearchEmulationMode.value
+        }
       }
       updatePayload.extra = newExtra
     }

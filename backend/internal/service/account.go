@@ -272,7 +272,7 @@ func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
 }
 
-// IsKimi / IsZhipu / IsDeepseek 标识国产 OpenAI 兼容供应商账号。
+// IsKimi / IsZhipu / IsDeepseek / IsMinimax / IsMiMo 标识国产 OpenAI 兼容供应商账号。
 func (a *Account) IsKimi() bool {
 	return a.Platform == PlatformKimi
 }
@@ -285,17 +285,23 @@ func (a *Account) IsDeepseek() bool {
 	return a.Platform == PlatformDeepseek
 }
 
-// IsCNProvider 报告是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）。
+func (a *Account) IsMinimax() bool {
+	return a.Platform == PlatformMinimax
+}
+
+func (a *Account) IsMiMo() bool {
+	return a.Platform == PlatformMiMo
+}
+
+// IsCNProvider 报告是否为国产 OpenAI 兼容供应商。
 func (a *Account) IsCNProvider() bool {
 	return a != nil && IsCNProvider(a.Platform)
 }
 
 // IsOpenAICompatible 报告账号是否走 OpenAI 网关（OpenAI 协议族）。
-// openai/grok 原生走 OpenAI 网关；kimi/zhipu/deepseek 同为 OpenAI Chat Completions
-// 兼容上游，也经 OpenAI 网关转发。
+// openai/grok 原生走 OpenAI 网关；国产兼容供应商也经 OpenAI 网关转发。
 func (a *Account) IsOpenAICompatible() bool {
-	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok ||
-		a.Platform == PlatformKimi || a.Platform == PlatformZhipu || a.Platform == PlatformDeepseek)
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || IsCNProvider(a.Platform))
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -1330,7 +1336,7 @@ func (a *Account) IsOpenAIApiKey() bool {
 }
 
 // GetOpenAIBaseURL 解析 OpenAI 协议族账号的上游 base_url。
-// 适用 openai 与国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）；grok 走 GetGrokBaseURL，
+// 适用 openai 与国产 OpenAI 兼容供应商；grok 走 GetGrokBaseURL，
 // 此处对 grok 返回 "" 以保持原有行为。
 func (a *Account) GetOpenAIBaseURL() string {
 	if !a.IsOpenAI() && !a.IsCNProvider() {
@@ -1362,6 +1368,13 @@ func (a *Account) GetOpenAIBaseURL() string {
 		return DefaultZhipuPayGBaseURL
 	case PlatformDeepseek:
 		return DefaultDeepseekBaseURL
+	case PlatformMinimax:
+		return DefaultMinimaxBaseURL
+	case PlatformMiMo:
+		if a.GetAccountMode() == AccountModeCoding {
+			return DefaultMiMoCodingBaseURL
+		}
+		return DefaultMiMoPayGBaseURL
 	default:
 		return "https://api.openai.com"
 	}
@@ -1385,10 +1398,14 @@ func (a *Account) IsCodingPlan() bool {
 	return a.GetAccountMode() == AccountModeCoding
 }
 
+func (a *Account) SupportsNativeResponses() bool {
+	return a != nil && SupportsNativeResponses(a.Platform)
+}
+
 // GetAPIProtocol 返回国产供应商账号的上游 API 协议。存储于
 // credentials["api_protocol"]；缺失或与平台不匹配时回退 chat_completions
-// （与既有行为完全一致）。responses 协议仅 deepseek 支持（官方原生 /responses
-// 端点，适配 Codex）；kimi/zhipu 无此端点。
+// （与既有行为完全一致）。仅对声明原生 Responses 能力的平台接受 responses；
+// kimi/zhipu 等无此端点的平台仍回退 Chat Completions。
 func (a *Account) GetAPIProtocol() string {
 	if a == nil || !a.IsCNProvider() {
 		return APIProtocolChatCompletions
@@ -1399,7 +1416,7 @@ func (a *Account) GetAPIProtocol() string {
 	case APIProtocolAnthropic:
 		return APIProtocolAnthropic
 	case APIProtocolResponses:
-		if a.Platform == PlatformDeepseek {
+		if a.SupportsNativeResponses() {
 			return APIProtocolResponses
 		}
 	case APIProtocolChatCompletions:
@@ -1448,6 +1465,13 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 			return DefaultZhipuAnthropicBaseURL
 		case PlatformDeepseek:
 			return DefaultDeepseekAnthropicBaseURL
+		case PlatformMinimax:
+			return DefaultMinimaxAnthropicBaseURL
+		case PlatformMiMo:
+			if a.GetAccountMode() == AccountModeCoding {
+				return DefaultMiMoCodingAnthropicBaseURL
+			}
+			return DefaultMiMoPayGAnthropicBaseURL
 		}
 	case APIProtocolChatCompletions, APIProtocolResponses:
 		switch a.Platform {
@@ -1463,6 +1487,13 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 			return DefaultZhipuPayGBaseURL
 		case PlatformDeepseek:
 			return DefaultDeepseekBaseURL
+		case PlatformMinimax:
+			return DefaultMinimaxBaseURL
+		case PlatformMiMo:
+			if a.GetAccountMode() == AccountModeCoding {
+				return DefaultMiMoCodingBaseURL
+			}
+			return DefaultMiMoPayGBaseURL
 		}
 	}
 	return ""
@@ -1499,6 +1530,13 @@ func (a *Account) GetAnthropicProtocolBaseURL() string {
 		return DefaultZhipuAnthropicBaseURL
 	case PlatformDeepseek:
 		return DefaultDeepseekAnthropicBaseURL
+	case PlatformMinimax:
+		return DefaultMinimaxAnthropicBaseURL
+	case PlatformMiMo:
+		if a.GetAccountMode() == AccountModeCoding {
+			return DefaultMiMoCodingAnthropicBaseURL
+		}
+		return DefaultMiMoPayGAnthropicBaseURL
 	default:
 		return ""
 	}
@@ -1513,6 +1551,11 @@ func (a *Account) GetOpenAIFormatBaseURL() string {
 	if a == nil || !a.IsAnthropicProtocol() {
 		return a.GetOpenAIBaseURL()
 	}
+	if a.Platform == PlatformMinimax || a.Platform == PlatformMiMo {
+		if baseURL := strings.TrimSpace(a.GetCredential("base_url")); baseURL != "" {
+			return openAIFormatSiblingBaseURL(baseURL)
+		}
+	}
 	switch a.Platform {
 	case PlatformKimi:
 		if a.GetAccountMode() == AccountModeCoding {
@@ -1526,12 +1569,34 @@ func (a *Account) GetOpenAIFormatBaseURL() string {
 		return DefaultZhipuPayGBaseURL
 	case PlatformDeepseek:
 		return DefaultDeepseekBaseURL
+	case PlatformMinimax:
+		return DefaultMinimaxBaseURL
+	case PlatformMiMo:
+		if a.GetAccountMode() == AccountModeCoding {
+			return DefaultMiMoCodingBaseURL
+		}
+		return DefaultMiMoPayGBaseURL
 	default:
 		return a.GetOpenAIBaseURL()
 	}
 }
 
-// GetCNAPIKey 返回国产 OpenAI 兼容供应商账号的 api_key 凭据（kimi/zhipu/deepseek）。
+// openAIFormatSiblingBaseURL derives the OpenAI-format sibling without
+// changing the configured origin. Unknown custom paths stay on the same host
+// rather than sending the account key to a provider default.
+func openAIFormatSiblingBaseURL(anthropicBaseURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(anthropicBaseURL))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return strings.TrimSpace(anthropicBaseURL)
+	}
+	path := strings.TrimRight(parsed.Path, "/")
+	if strings.HasSuffix(path, "/anthropic") {
+		parsed.Path = strings.TrimSuffix(path, "/anthropic") + "/v1"
+	}
+	return strings.TrimRight(parsed.String(), "/")
+}
+
+// GetCNAPIKey 返回国产 OpenAI 兼容供应商账号的 api_key 凭据。
 // 与 openai 的 GetOpenAIApiKey 区分：后者仅对 openai 平台返回。
 func (a *Account) GetCNAPIKey() string {
 	if a == nil || !a.IsCNProvider() {
@@ -1669,7 +1734,7 @@ func (a *Account) GetOpenAIApiKey() string {
 }
 
 // GetOpenAIProtocolAPIKey 返回 OpenAI 协议族 APIKey 账号的密钥。
-// 覆盖 openai 原生账号与国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）账号，
+// 覆盖 openai 原生账号与国产 OpenAI 兼容供应商账号，
 // 供转发鉴权、模型列表同步等协议族共用路径使用。注意 IsOpenAIApiKey 语义上
 // 仅指 openai 平台账号，调度倍率/WS 能力门控继续以其为准，不受本方法影响。
 func (a *Account) GetOpenAIProtocolAPIKey() string {

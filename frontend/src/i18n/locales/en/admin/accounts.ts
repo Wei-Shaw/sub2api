@@ -107,6 +107,8 @@ export default {
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
+        minimax: 'MiniMax',
+        mimo: 'MiMo',
       },
       cnProviders: {
         accountMode: {
@@ -115,6 +117,8 @@ export default {
           paygDesc: 'Consumes account balance, billed per token. Auto-cools down on low balance and recovers after top-up.',
           coding: 'Coding Plan',
           codingDesc: 'Subscription coding package, rate-limited by 5-hour / weekly rolling usage windows.',
+          codingMimoDesc: 'MiMo Token Plan subscription. Remaining credits are available in the official console.',
+          mimoUsageWarning: 'MiMo Token Plan keys are region-bound. Select the CN, SGP, or EU (AMS) region where the key was issued; PAYG keys use a separate endpoint.',
         },
         apiProtocol: {
           title: 'API Protocol',

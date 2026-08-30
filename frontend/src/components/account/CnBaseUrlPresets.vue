@@ -26,7 +26,7 @@ import { CN_BASE_URL_PRESETS, type CnBaseUrlPreset } from './credentialsBuilder'
 // 与 Grok 预设一致，仅作快速填充，输入框仍接受任意第三方转发地址。
 // 传入 protocol 时只显示该协议档的预设（协议 × 账号类型正交分档）。
 const props = defineProps<{
-  platform: 'kimi' | 'zhipu' | 'deepseek'
+  platform: 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'mimo'
   /** 当前已选账号类型，用于过滤和高亮匹配的预设 */
   mode?: 'payg' | 'coding'
   /** 当前已选 API 协议，用于过滤和高亮匹配的预设 */
@@ -47,7 +47,9 @@ const presets = computed(() => {
 })
 
 const isActive = (preset: CnBaseUrlPreset) =>
-  (props.mode != null && preset.mode === props.mode) || preset.url === props.currentUrl
+  preset.mode === props.mode &&
+  (props.protocol == null || preset.protocol === props.protocol) &&
+  preset.url === props.currentUrl
 
 const displayUrl = (url: string) => url.replace(/^https?:\/\//i, '')
 </script>

@@ -114,6 +114,34 @@ func TestAdaptiveProtocolRoutesResponsesShapedChatToNativeResponses(t *testing.T
 	require.False(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
 }
 
+func TestAdaptiveProtocolRoutesMinimaxMiMoResponsesShapedChatToNativeResponses(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		platform string
+		model    string
+	}{
+		{platform: PlatformMinimax, model: "MiniMax-M3"},
+		{platform: PlatformMiMo, model: "mimo-v2.5"},
+	} {
+		t.Run(tc.platform, func(t *testing.T) {
+			body := []byte(`{"model":"` + tc.model + `","input":"hello","max_output_tokens":32,"stream":false}`)
+			upstream := &httpUpstreamRecorder{err: errors.New("stop after capture")}
+			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+			account := adaptiveProtocolTestAccount(tc.platform, map[string]any{
+				APIProtocolChatCompletions: "http://chat.example",
+				APIProtocolAnthropic:       "http://anthropic.example",
+				APIProtocolResponses:       "http://responses.example/v1",
+			})
+
+			_, err := svc.ForwardAsChatCompletions(context.Background(), adaptiveProtocolTestContext("/v1/chat/completions", body), account, body, "", "")
+			require.Error(t, err)
+			require.Equal(t, "http://responses.example/v1/responses", upstream.lastReq.URL.String())
+			require.True(t, gjson.GetBytes(upstream.lastBody, "input").Exists())
+			require.False(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
+		})
+	}
+}
+
 func TestAdaptiveProtocolConvertsResponsesShapedChatForChatOnlyProvider(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"kimi-k2.5","input":"hello","max_output_tokens":32,"stream":false}`)

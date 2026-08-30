@@ -16,7 +16,7 @@ describe('admin platform filters', () => {
   it('uses the shared catalogs on the groups page', () => {
     const source = readSource('src/views/admin/GroupsView.vue')
     expect(source).toContain('...GROUP_PLATFORM_OPTIONS')
-    expect(source).toContain('...CONCRETE_PLATFORM_OPTIONS')
+    expect(source).toContain('...COMPOSITE_TARGET_PLATFORM_OPTIONS')
   })
 
   it('uses the concrete platform catalog wherever concrete platforms are selected', () => {

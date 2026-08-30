@@ -1136,6 +1136,10 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		writeGrokModelsList(c, xai.DefaultModelIDs())
 		return
 	}
+	if models := service.DefaultCNProviderModelIDs(platform); len(models) > 0 {
+		writeModelsList(c, platform, models)
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
@@ -1461,6 +1465,8 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return claude.DefaultModelIDs()
 	case service.PlatformGrok:
 		return xai.DefaultModelIDs()
+	case service.PlatformMinimax, service.PlatformMiMo:
+		return service.DefaultCNProviderModelIDs(platform)
 	case service.PlatformComposite:
 		ids := make([]string, 0)
 		seen := make(map[string]struct{})
