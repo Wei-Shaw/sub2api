@@ -494,7 +494,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
@@ -572,9 +572,9 @@ function loadCustomHomeScript() {
   const script = document.createElement('script')
   script.type = 'text/javascript'
   script.dataset.sub2apiCustomHome = 'true'
-  const nonce = document.querySelector('script[nonce]')?.getAttribute('nonce')
+  const nonce = window.__CSP_NONCE__ || document.querySelector('script[nonce]')?.getAttribute('nonce')
   if (nonce) script.setAttribute('nonce', nonce)
-  script.textContent = homeScript.value
+  script.textContent = renderHomeTemplate(homeScript.value, appStore.cachedPublicSettings)
   document.head.appendChild(script)
   customHomeScriptElement = script
 }
@@ -613,9 +613,12 @@ onMounted(() => {
 
   // Ensure public settings are loaded (will use cache if already loaded from injected config)
   if (!appStore.publicSettingsLoaded) {
-    void appStore.fetchPublicSettings().then(() => loadCustomHomeScript())
+    void appStore.fetchPublicSettings().then(async () => {
+      await nextTick()
+      loadCustomHomeScript()
+    })
   } else {
-    loadCustomHomeScript()
+    void nextTick(() => loadCustomHomeScript())
   }
 })
 
