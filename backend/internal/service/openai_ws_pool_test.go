@@ -44,6 +44,64 @@ func TestOpenAIWSConnPool_CleanupStaleAndTrimIdle(t *testing.T) {
 	require.NotNil(t, ap.conns["idle_new"], "newer idle should be kept")
 }
 
+func TestOpenAIWSConnPool_CleanupRetiresConnectionsWithoutTurnLifetimeBudget(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 5 * 60
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 4
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 4
+	pool := newOpenAIWSConnPool(cfg)
+
+	now := time.Now()
+	retireAge := pool.maxConnAge() - pool.turnLifetimeReserve()
+	require.Equal(t, 5*time.Minute+openAIWSConnExpirySafetyBuffer, pool.turnLifetimeReserve())
+	require.Greater(t, retireAge, time.Duration(0))
+
+	accountID := int64(11)
+	ap := pool.getOrCreateAccountPool(accountID)
+	young := newOpenAIWSConn("young", accountID, &openAIWSFakeConn{}, nil)
+	young.createdAtNano.Store(now.Add(-(retireAge - time.Second)).UnixNano())
+	expiring := newOpenAIWSConn("expiring", accountID, &openAIWSFakeConn{}, nil)
+	expiring.createdAtNano.Store(now.Add(-(retireAge + time.Second)).UnixNano())
+	ap.conns[young.id] = young
+	ap.conns[expiring.id] = expiring
+	ap.pinnedConns[expiring.id] = 1
+
+	evicted := pool.cleanupAccountLocked(ap, now, pool.maxConnsHardCap())
+	closeOpenAIWSConns(evicted)
+
+	require.NotNil(t, ap.conns[young.id], "connection with enough lifetime budget should remain reusable")
+	require.Nil(t, ap.conns[expiring.id], "near-expiry connection must be retired before reuse")
+	_, stillPinned := ap.pinnedConns[expiring.id]
+	require.False(t, stillPinned, "retired connection must not retain a stale pin")
+	require.Len(t, evicted, 1)
+}
+
+func TestOpenAIWSConnLease_HasTurnLifetimeBudget(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 5 * 60
+	pool := newOpenAIWSConnPool(cfg)
+	now := time.Now()
+	retireAge := pool.maxConnAge() - pool.turnLifetimeReserve()
+
+	conn := newOpenAIWSConn("lease_lifetime", 12, &openAIWSFakeConn{}, nil)
+	lease := &openAIWSConnLease{pool: pool, accountID: 12, conn: conn}
+	conn.createdAtNano.Store(now.Add(-(retireAge - time.Second)).UnixNano())
+	require.True(t, lease.HasTurnLifetimeBudget(now))
+	conn.createdAtNano.Store(now.Add(-(retireAge + time.Second)).UnixNano())
+	require.False(t, lease.HasTurnLifetimeBudget(now))
+	require.Less(t, lease.RemainingLifetime(now), pool.turnLifetimeReserve())
+}
+
+func TestOpenAIWSConnPool_DefaultTurnLifetimeReserveProtectsMinute59(t *testing.T) {
+	pool := newOpenAIWSConnPool(&config.Config{})
+	now := time.Now()
+	conn := newOpenAIWSConn("minute_59", 13, &openAIWSFakeConn{}, nil)
+	conn.createdAtNano.Store(now.Add(-59 * time.Minute).UnixNano())
+
+	require.Equal(t, openAIWSConnDefaultTurnTimeout+openAIWSConnExpirySafetyBuffer, pool.turnLifetimeReserve())
+	require.False(t, pool.connHasTurnLifetimeBudget(conn, now), "a minute-59 connection must not start another turn")
+}
+
 func TestOpenAIWSConnPool_NextConnIDFormat(t *testing.T) {
 	pool := newOpenAIWSConnPool(&config.Config{})
 	id1 := pool.nextConnID(42)
