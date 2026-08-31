@@ -89,8 +89,9 @@ func newAntigravityCompatAccount(accountType string) *Account {
 			"access_token": "stale-account-token",
 			"project_id":   "project-3757",
 			"model_mapping": map[string]any{
-				"gemini-3.1-pro-high": "gemini-3.1-pro-high",
-				"claude-sonnet-4-5":   "claude-sonnet-4-5",
+				"gemini-3.1-pro-high":      "gemini-3.1-pro-high",
+				"claude-sonnet-4-5":        "claude-sonnet-4-5",
+				"claude-opus-4-6-thinking": "claude-opus-4-6-thinking",
 			},
 		},
 	}
@@ -267,6 +268,35 @@ func TestBuildAntigravityCompatGeminiBody_ConfiguresMixedToolInvocations(t *test
 			require.NotContains(t, toolConfig, "include_server_side_tool_invocations")
 		})
 	}
+}
+
+func TestAntigravityCompatChatMixedBuiltInToolsEnableServerSideInvocations(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
+	svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+	body := []byte(`{
+		"model":"claude-opus-4-6-thinking",
+		"messages":[{"role":"user","content":"hello"}],
+		"stream":true,
+		"tools":[
+			{"type":"function","function":{"name":"read_file","parameters":{"type":"object","properties":{"path":{"type":"string"}}}}},
+			{"type":"function","function":{"name":"terminal","parameters":{"type":"object","properties":{"command":{"type":"string"}}}}},
+			{"type":"web_search"},
+			{"type":"code_execution"}
+		]
+	}`)
+	c, _ := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", body)
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, newAntigravityCompatAccount(AccountTypeOAuth), body, nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.requestBodies, 1)
+	requestBody := upstream.requestBodies[0]
+	require.True(t, gjson.GetBytes(requestBody, "request.toolConfig.includeServerSideToolInvocations").Bool())
+	require.Len(t, gjson.GetBytes(requestBody, "request.tools.0.functionDeclarations").Array(), 2)
+	require.True(t, gjson.GetBytes(requestBody, "request.tools.1.googleSearch").Exists())
+	require.True(t, gjson.GetBytes(requestBody, "request.tools.2.codeExecution").Exists())
 }
 
 func TestAntigravityCompatPreservesChatTokenLimit(t *testing.T) {

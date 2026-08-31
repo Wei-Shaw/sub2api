@@ -250,7 +250,7 @@ func TestOpenAIResponsesToolSchemaCapabilities_PlatformBoundary(t *testing.T) {
 		{PlatformKimi, true, false},
 		{PlatformZhipu, true, false},
 		{PlatformDeepseek, true, false},
-		{PlatformGrok, false, false},
+		{PlatformGrok, true, false},
 		{PlatformGemini, false, false},
 		{PlatformAntigravity, false, false},
 		{PlatformComposite, false, false},
@@ -270,7 +270,7 @@ func TestSanitizeOpenAIResponsesToolSchemasForPlatform_ReplayBoundary(t *testing
 	// A malformed tool definition may be replayed after account failover. Every
 	// compatible account must repair it, while non-OpenAI providers retain their
 	// supported regex semantics.
-	for _, platform := range []string{PlatformAnthropic, PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+	for _, platform := range []string{PlatformAnthropic, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek} {
 		t.Run(platform, func(t *testing.T) {
 			for attempt := 0; attempt < 2; attempt++ {
 				normalized, changed, err := sanitizeOpenAIResponsesToolSchemasForPlatform(body, platform)
@@ -288,10 +288,21 @@ func TestSanitizeOpenAIResponsesToolSchemasForPlatform_ReplayBoundary(t *testing
 	require.Equal(t, "object", gjson.GetBytes(openAI, "tools.0.parameters.type").String())
 	require.False(t, gjson.GetBytes(openAI, "tools.0.parameters.properties.query.pattern").Exists())
 
-	unsupported, changed, err := sanitizeOpenAIResponsesToolSchemasForPlatform(body, PlatformGrok)
+	unsupported, changed, err := sanitizeOpenAIResponsesToolSchemasForPlatform(body, PlatformGemini)
 	require.NoError(t, err)
 	require.False(t, changed)
 	require.Equal(t, string(body), string(unsupported))
+}
+
+func TestSanitizeOpenAIResponsesToolSchemasForPlatform_GrokObjectOnlyRootUnion(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","name":"codex_app__automation_update","parameters":{"oneOf":[{"type":"object","properties":{"id":{"type":"string"}}},{"type":"object","properties":{}}]}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemasForPlatform(body, PlatformGrok)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "object", gjson.GetBytes(sanitized, "tools.0.parameters.type").String())
+	require.True(t, gjson.GetBytes(sanitized, "tools.0.parameters.oneOf").Exists())
 }
 
 // 索引映射：只有坏条目被改，前后兄弟条目按原下标保持不变。

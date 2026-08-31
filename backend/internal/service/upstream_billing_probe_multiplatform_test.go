@@ -29,6 +29,45 @@ func TestUpstreamBillingProbeIdentityCoversAllAPIKeyPlatforms(t *testing.T) {
 	require.False(t, isUpstreamBillingProbeAccount(nil))
 }
 
+func TestBuildUpstreamBillingRateSnapshotItemsPreservesAllAPIKeyPlatforms(t *testing.T) {
+	makeAccount := func(id int64, platform, accountType string, snapshot any) Account {
+		return Account{
+			ID:       id,
+			Platform: platform,
+			Type:     accountType,
+			Extra:    map[string]any{UpstreamBillingProbeExtraKey: snapshot},
+		}
+	}
+
+	accounts := []Account{
+		makeAccount(1, PlatformOpenAI, AccountTypeAPIKey, map[string]any{
+			"status": "ok",
+			"data":   map[string]any{"effective_rate_multiplier": 0.045},
+		}),
+		makeAccount(2, PlatformAnthropic, AccountTypeAPIKey, map[string]any{
+			"status": "ok",
+			"data":   map[string]any{"effective_rate_multiplier": 0.047},
+		}),
+		makeAccount(3, PlatformGemini, AccountTypeAPIKey, map[string]any{
+			"status": "failed",
+		}),
+		makeAccount(4, PlatformOpenAI, AccountTypeOAuth, map[string]any{
+			"status": "ok",
+		}),
+	}
+
+	items := BuildUpstreamBillingRateSnapshotItems(accounts)
+	require.Len(t, items, len(accounts))
+	require.Equal(t, int64(1), items[0].AccountID)
+	require.NotNil(t, items[0].Snapshot)
+	require.NotNil(t, items[1].Snapshot)
+	require.NotNil(t, items[2].Snapshot)
+	require.Equal(t, 0.045, items[0].Snapshot.Data["effective_rate_multiplier"])
+	require.Equal(t, 0.047, items[1].Snapshot.Data["effective_rate_multiplier"])
+	require.Equal(t, UpstreamBillingProbeStatusFailed, items[2].Snapshot.Status)
+	require.Nil(t, items[3].Snapshot)
+}
+
 func upstreamBillingProbeValidBody() io.ReadCloser {
 	return io.NopCloser(strings.NewReader(`{
 		"object":"sub2api.key_billing",

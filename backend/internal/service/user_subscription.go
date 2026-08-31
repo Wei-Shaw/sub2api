@@ -138,6 +138,21 @@ func (s *UserSubscription) canAutomaticallyResetMonthlyAt(now time.Time) bool {
 	return ok
 }
 
+// windowResetAnchor 返回周/月窗口实际推进所依据的锚点。
+// 早期订阅把首个窗口初始化在开通日零点；只有这个初始值是无歧义的，之后出现的
+// 零点锚点可能来自手动重置，必须保持权威。
+// 自动推进（automaticWindowStartAt）与对外展示的重置时间（WeeklyResetTime/
+// MonthlyResetTime）必须共用这一修正，否则仪表盘显示的重置时间会早于窗口实际
+// 滚动的时间。
+// 日窗口按日历日对齐（automaticDailyWindowStartAt），不走这里。
+func (s *UserSubscription) windowResetAnchor(previous time.Time) time.Time {
+	legacyAnchor := startOfDay(s.StartsAt)
+	if legacyAnchor.Before(s.StartsAt) && previous.Equal(legacyAnchor) {
+		return s.StartsAt
+	}
+	return previous
+}
+
 // automaticWindowStartAt 计算周/月窗口（期限对齐滚动窗口）的当前窗口起点。
 // 窗口从锚点按整数个 period 步进，且不越过订阅到期时间，避免最后一个不完整
 // 周期重复发放额度（issue #5051）。日窗口不走此函数，见 automaticDailyWindowStartAt。
@@ -146,14 +161,7 @@ func (s *UserSubscription) automaticWindowStartAt(previous *time.Time, period ti
 		return time.Time{}, false
 	}
 
-	anchor := *previous
-	// Older subscriptions initialized their first windows at midnight on their
-	// start date. Only that initial value is unambiguous; later midnight anchors
-	// may be manual resets and must remain authoritative.
-	legacyAnchor := startOfDay(s.StartsAt)
-	if legacyAnchor.Before(s.StartsAt) && anchor.Equal(legacyAnchor) {
-		anchor = s.StartsAt
-	}
+	anchor := s.windowResetAnchor(*previous)
 	next := anchor.Add(period)
 	if now.Before(next) || !next.Before(s.ExpiresAt) {
 		return time.Time{}, false
@@ -184,7 +192,7 @@ func (s *UserSubscription) WeeklyResetTime() *time.Time {
 	if s.WeeklyWindowStart == nil {
 		return nil
 	}
-	t := s.WeeklyWindowStart.Add(7 * 24 * time.Hour)
+	t := s.windowResetAnchor(*s.WeeklyWindowStart).Add(7 * 24 * time.Hour)
 	return &t
 }
 
@@ -192,7 +200,7 @@ func (s *UserSubscription) MonthlyResetTime() *time.Time {
 	if s.MonthlyWindowStart == nil {
 		return nil
 	}
-	t := s.MonthlyWindowStart.Add(30 * 24 * time.Hour)
+	t := s.windowResetAnchor(*s.MonthlyWindowStart).Add(30 * 24 * time.Hour)
 	return &t
 }
 
