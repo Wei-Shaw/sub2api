@@ -621,7 +621,7 @@ func loadCodexIdentityTemplateProfiles(ctx context.Context, query codexIdentityT
 		return err
 	}
 	defer func() { _ = rows.Close() }()
-	template.Profiles = make([]service.CodexIdentityTemplateProfile, 0)
+	profiles := make([]service.CodexIdentityTemplateProfile, 0)
 	for rows.Next() {
 		profile := service.CodexIdentityTemplateProfile{}
 		var proxyID sql.NullInt64
@@ -635,12 +635,21 @@ func loadCodexIdentityTemplateProfiles(ctx context.Context, query codexIdentityT
 			id := proxyID.Int64
 			profile.ProxyID = &id
 		}
-		if err := loadCodexIdentityTemplateSlots(ctx, query, template.ID, &profile); err != nil {
+		profiles = append(profiles, profile)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for index := range profiles {
+		if err := loadCodexIdentityTemplateSlots(ctx, query, template.ID, &profiles[index]); err != nil {
 			return err
 		}
-		template.Profiles = append(template.Profiles, profile)
 	}
-	return rows.Err()
+	template.Profiles = profiles
+	return nil
 }
 
 func loadCodexIdentityTemplateSlots(
