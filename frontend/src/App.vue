@@ -8,6 +8,8 @@ import { resolveRouteDocumentTitle } from '@/router/title'
 import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
 import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore } from '@/stores'
 import { getSetupStatus } from '@/api/setup'
+import { getLocale } from '@/i18n'
+import { initializeNotificationEmailLocaleOnce } from '@/i18n/notificationEmailLocale'
 import { updateFavicon } from '@/utils/branding'
 
 const router = useRouter()
@@ -68,6 +70,13 @@ watch(
   () => authStore.isAuthenticated,
   (isAuthenticated, oldValue) => {
     if (isAuthenticated) {
+      const userID = authStore.user?.id
+      if (userID) {
+        initializeNotificationEmailLocaleOnce(userID, getLocale()).catch((error) => {
+          console.warn('Failed to initialize notification email locale:', error)
+        })
+      }
+
       if (authStore.isAdmin) {
         adminComplianceStore.fetchStatus().catch((error) => {
           console.error('Failed to fetch admin compliance status:', error)
