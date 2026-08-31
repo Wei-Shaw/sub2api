@@ -114,7 +114,7 @@ func (s *ShopService) ListProducts(ctx context.Context, includeDisabled bool) ([
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	products := make([]ShopProduct, 0)
 	for rows.Next() {
 		var p ShopProduct
@@ -165,7 +165,7 @@ func (s *ShopService) ListInventory(ctx context.Context, productID int64, status
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]ShopInventoryCode, 0)
 	for rows.Next() {
 		var item ShopInventoryCode
@@ -199,7 +199,7 @@ func (s *ShopService) ListAdminOrders(ctx context.Context, productID int64, sear
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]ShopAdminOrder, 0)
 	for rows.Next() {
 		var item ShopAdminOrder
@@ -211,14 +211,6 @@ func (s *ShopService) ListAdminOrders(ctx context.Context, productID int64, sear
 		items = append(items, item)
 	}
 	return items, total, rows.Err()
-}
-
-func maskShopCode(code string) string {
-	runes := []rune(code)
-	if len(runes) <= 4 {
-		return "••••"
-	}
-	return strings.Repeat("•", len(runes)-4) + string(runes[len(runes)-4:])
 }
 
 func (s *ShopService) CreateProduct(ctx context.Context, name, description string, price float64, limitPerUser *int) (*ShopProduct, error) {
@@ -258,7 +250,7 @@ func (s *ShopService) DeleteProduct(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx, `DELETE FROM shop_inventory_codes WHERE product_id=$1 AND status <> $2`, id, ShopInventorySold)
 	if err != nil {
 		return err
@@ -289,7 +281,7 @@ func (s *ShopService) AddCodes(ctx context.Context, productID int64, rawCodes []
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var exists bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM shop_products WHERE id=$1)`, productID).Scan(&exists); err != nil {
 		return 0, err
@@ -329,7 +321,7 @@ func (s *ShopService) Purchase(ctx context.Context, userID, productID int64, ide
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	idempotencyKey = strings.TrimSpace(idempotencyKey)
 	if len(idempotencyKey) > 128 {
 		return nil, errors.New("idempotency key is too long")
@@ -450,7 +442,7 @@ func (s *ShopService) ListOrders(ctx context.Context, userID int64) ([]ShopOrder
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	orders := make([]ShopOrder, 0)
 	for rows.Next() {
 		var o ShopOrder
