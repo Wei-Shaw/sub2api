@@ -11,6 +11,7 @@ const {
   getDashboardApiKeysUsage,
   getAvailableGroups,
   getUserGroupRates,
+  rotateKey,
   showError,
   showSuccess,
   copyToClipboard,
@@ -22,6 +23,7 @@ const {
   getDashboardApiKeysUsage: vi.fn(),
   getAvailableGroups: vi.fn(),
   getUserGroupRates: vi.fn(),
+  rotateKey: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
   copyToClipboard: vi.fn(),
@@ -47,6 +49,17 @@ const messages: Record<string, string> = {
   'keys.lastUsedAt': 'Last Used',
   'keys.lastUsedIP': 'Last Used IP',
   'keys.rateLimitColumn': 'Rate Limit',
+  'keys.rotate.action': 'Rotate',
+  'keys.rotate.acknowledge': 'I understand',
+  'keys.rotate.confirm': 'Rotate key',
+  'keys.rotate.description': 'Replace this credential.',
+  'keys.rotate.done': 'Done',
+  'keys.rotate.oldKeyInvalid': 'The old key is invalid.',
+  'keys.rotate.preserved': 'Settings are preserved.',
+  'keys.rotate.successMessage': 'The key was rotated.',
+  'keys.rotate.successTitle': 'New API key',
+  'keys.rotate.title': 'Rotate API key',
+  'keys.rotate.warning': 'Existing clients will stop working.',
   'keys.searchPlaceholder': 'Search name or key...',
   'keys.status.active': 'Active',
   'keys.status.expired': 'Expired',
@@ -62,6 +75,7 @@ vi.mock('@/api', () => ({
     update: vi.fn(),
     delete: vi.fn(),
     toggleStatus: vi.fn(),
+    rotate: rotateKey,
   },
   authAPI: {
     getPublicSettings,
@@ -170,9 +184,13 @@ const DataTableStub = {
           <slot name="cell-id" :value="row.id" :row="row" />
         </div>
         <slot name="cell-name" :value="row.name" :row="row" />
+        <div data-test="api-key-value">
+          <slot name="cell-key" :value="row.key" :row="row" />
+        </div>
         <div data-test="current-concurrency">
           <slot name="cell-current_concurrency" :value="row.current_concurrency" :row="row" />
         </div>
+        <slot name="cell-actions" :row="row" />
         <div
           v-if="columns.some((col) => col.key === 'last_used_ip')"
           data-test="last-used-ip"
@@ -215,6 +233,18 @@ const IconStub = {
   template: '<span data-test="icon">{{ name }}</span>',
 }
 
+const BaseDialogStub = {
+  name: 'BaseDialog',
+  props: ['show', 'title'],
+  template: `
+    <section v-if="show" data-test="base-dialog">
+      <h2>{{ title }}</h2>
+      <slot />
+      <slot name="footer" />
+    </section>
+  `,
+}
+
 const mountView = async () => {
   const wrapper = mount(KeysView, {
     global: {
@@ -223,7 +253,7 @@ const mountView = async () => {
         TablePageLayout: TablePageLayoutStub,
         DataTable: DataTableStub,
         Pagination: PaginationStub,
-        BaseDialog: true,
+        BaseDialog: BaseDialogStub,
         ConfirmDialog: true,
         EmptyState: true,
         Select: SelectStub,
@@ -265,6 +295,7 @@ describe('user KeysView column settings', () => {
     getDashboardApiKeysUsage.mockReset()
     getAvailableGroups.mockReset()
     getUserGroupRates.mockReset()
+    rotateKey.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
     copyToClipboard.mockReset()
@@ -283,6 +314,12 @@ describe('user KeysView column settings', () => {
     getAvailableGroups.mockResolvedValue([])
     getUserGroupRates.mockResolvedValue({})
     isCurrentStep.mockReturnValue(false)
+    rotateKey.mockResolvedValue({
+      ...createApiKey(),
+      key: 'sk-rotated-secret',
+      last_rotated_at: '2026-06-27T01:00:00Z',
+      updated_at: '2026-06-27T01:00:00Z',
+    })
   })
 
   it('uses the default API key columns with low-frequency columns hidden', async () => {
@@ -438,4 +475,29 @@ describe('user KeysView column settings', () => {
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
   })
+
+  it('requires acknowledgement and shows the rotated credential before reloading', async () => {
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-test="rotate-key-action"]').trigger('click')
+
+    const confirm = wrapper.get('[data-test="rotate-key-confirm"]')
+    expect(confirm.attributes('disabled')).toBeDefined()
+
+    await wrapper.get('[data-test="rotate-key-acknowledge"]').setValue(true)
+    expect(confirm.attributes('disabled')).toBeUndefined()
+
+    await confirm.trigger('click')
+    await flushPromises()
+
+    expect(rotateKey).toHaveBeenCalledOnce()
+    expect(rotateKey).toHaveBeenCalledWith(1)
+    expect(wrapper.get('[data-test="rotated-key-secret"]').text()).toBe('sk-rotated-secret')
+    expect(listKeys).toHaveBeenCalledOnce()
+
+    await wrapper.get('[data-test="rotate-key-done"]').trigger('click')
+    await flushPromises()
+    expect(listKeys).toHaveBeenCalledTimes(2)
+  })
+
 })

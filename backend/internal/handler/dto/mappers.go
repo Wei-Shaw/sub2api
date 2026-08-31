@@ -78,13 +78,27 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 }
 
 func APIKeyFromService(k *service.APIKey) *APIKey {
+	return apiKeyFromService(k, false)
+}
+
+// APIKeyWithSecretFromService is reserved for create/rotate responses where
+// the complete credential is intentionally delivered to the caller.
+func APIKeyWithSecretFromService(k *service.APIKey) *APIKey {
+	return apiKeyFromService(k, true)
+}
+
+func apiKeyFromService(k *service.APIKey, includeSecret bool) *APIKey {
 	if k == nil {
 		return nil
+	}
+	keyValue := k.Key
+	if k.LastRotatedAt != nil && !includeSecret {
+		keyValue = MaskAPIKey(k.Key)
 	}
 	out := &APIKey{
 		ID:                 k.ID,
 		UserID:             k.UserID,
-		Key:                k.Key,
+		Key:                keyValue,
 		Name:               k.Name,
 		GroupID:            k.GroupID,
 		Status:             k.Status,
@@ -92,6 +106,7 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		IPBlacklist:        k.IPBlacklist,
 		LastUsedAt:         k.LastUsedAt,
 		LastUsedIP:         k.LastUsedIP,
+		LastRotatedAt:      k.LastRotatedAt,
 		Quota:              k.Quota,
 		QuotaUsed:          k.QuotaUsed,
 		ExpiresAt:          k.ExpiresAt,
@@ -123,6 +138,18 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		out.Reset7dAt = &t
 	}
 	return out
+}
+
+// MaskAPIKey returns a stable display-only representation that cannot be used
+// for authentication.
+func MaskAPIKey(key string) string {
+	if len(key) <= 12 {
+		if len(key) <= 4 {
+			return "***"
+		}
+		return key[:4] + "***"
+	}
+	return key[:6] + "..." + key[len(key)-4:]
 }
 
 func GroupFromServiceShallow(g *service.Group) *Group {

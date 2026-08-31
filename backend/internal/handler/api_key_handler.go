@@ -222,7 +222,7 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 		if err != nil {
 			return nil, err
 		}
-		return dto.APIKeyFromService(key), nil
+		return dto.APIKeyWithSecretFromService(key), nil
 	})
 }
 
@@ -291,6 +291,32 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 	}
 
 	response.Success(c, dto.APIKeyFromService(key))
+}
+
+// Rotate handles replacing an API key credential while preserving its record.
+// POST /api/v1/keys/:id/rotate
+func (h *APIKeyHandler) Rotate(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid key ID")
+		return
+	}
+
+	middleware2.SetAuditExtra(c, map[string]any{"api_key_id": keyID})
+	key, err := h.apiKeyService.Rotate(c.Request.Context(), keyID, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
+	response.Success(c, dto.APIKeyWithSecretFromService(key))
 }
 
 // Delete handles deleting an API key

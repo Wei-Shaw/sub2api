@@ -756,6 +756,20 @@ func (s *stubAdminService) AdminResetAPIKeyRateLimitUsage(ctx context.Context, k
 	return nil, service.ErrAPIKeyNotFound
 }
 
+func (s *stubAdminService) AdminRotateAPIKey(ctx context.Context, keyID int64) (*service.APIKey, error) {
+	for i := range s.apiKeys {
+		if s.apiKeys[i].ID == keyID {
+			rotatedAt := time.Now().UTC()
+			s.apiKeys[i].Key = "sk-rotated-test-key"
+			s.apiKeys[i].LastRotatedAt = &rotatedAt
+			s.apiKeys[i].UpdatedAt = rotatedAt
+			key := s.apiKeys[i]
+			return &key, nil
+		}
+	}
+	return nil, service.ErrAPIKeyNotFound
+}
+
 func (s *stubAdminService) ResetAccountQuota(ctx context.Context, id int64) error {
 	return nil
 }

@@ -235,6 +235,7 @@ func TestAPIContracts(t *testing.T) {
 					"ip_blacklist": null,
 					"last_used_at": null,
 					"last_used_ip": null,
+					"last_rotated_at": null,
 					"current_concurrency": 0,
 					"quota": 0,
 					"quota_used": 0,
@@ -286,6 +287,7 @@ func TestAPIContracts(t *testing.T) {
 							"ip_blacklist": null,
 							"last_used_at": null,
 							"last_used_ip": null,
+							"last_rotated_at": null,
 							"current_concurrency": 0,
 							"quota": 0,
 							"quota_used": 0,
@@ -1473,7 +1475,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
-	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService, nil, nil)

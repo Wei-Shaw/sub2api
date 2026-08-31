@@ -388,6 +388,16 @@
                 <Icon name="upload" size="sm" />
                 <span class="text-xs">{{ t('keys.importToCcSwitch') }}</span>
               </button>
+              <!-- Rotate Button -->
+              <button
+                @click="openRotateDialog(row)"
+                data-test="rotate-key-action"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-primary-600 transition-colors hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
+                :title="t('keys.rotate.title')"
+              >
+                <Icon name="refresh" size="sm" />
+                <span class="text-xs">{{ t('keys.rotate.action') }}</span>
+              </button>
               <!-- Toggle Status Button -->
               <button
                 @click="toggleKeyStatus(row)"
@@ -964,6 +974,78 @@
       @cancel="showDeleteDialog = false"
     />
 
+    <BaseDialog
+      :show="showRotateConfirm"
+      :title="t('keys.rotate.title')"
+      width="narrow"
+      @close="closeRotateConfirm"
+    >
+      <div class="space-y-4">
+        <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
+          {{ t('keys.rotate.description') }}
+        </p>
+        <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 rounded-lg bg-gray-50 p-3 text-sm dark:bg-dark-700">
+          <dt class="text-gray-500 dark:text-gray-400">{{ t('keys.nameLabel') }}</dt>
+          <dd class="font-medium text-gray-900 dark:text-white">{{ selectedKey?.name }}</dd>
+          <dt class="text-gray-500 dark:text-gray-400">{{ t('keys.apiKey') }}</dt>
+          <dd class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ selectedKey ? maskApiKey(selectedKey.key) : '' }}</dd>
+        </dl>
+        <div class="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-5 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+          <Icon name="exclamationTriangle" size="sm" class="mt-0.5 shrink-0" />
+          <span>{{ t('keys.rotate.warning') }}</span>
+        </div>
+        <label class="flex cursor-pointer items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+          <input v-model="rotateAcknowledged" data-test="rotate-key-acknowledge" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+          <span>{{ t('keys.rotate.acknowledge') }}</span>
+        </label>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" :disabled="rotating" @click="closeRotateConfirm">
+            {{ t('common.cancel') }}
+          </button>
+          <button data-test="rotate-key-confirm" type="button" class="btn btn-danger" :disabled="!rotateAcknowledged || rotating" @click="rotateSelectedKey">
+            <Icon name="refresh" size="sm" class="mr-1.5" :class="{ 'animate-spin': rotating }" />
+            {{ rotating ? t('keys.rotate.rotating') : t('keys.rotate.confirm') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog
+      :show="showRotateSuccess"
+      :title="t('keys.rotate.successTitle')"
+      width="normal"
+      :close-on-escape="false"
+      :close-on-click-outside="false"
+      :show-close-button="false"
+    >
+      <div class="space-y-4">
+        <div class="flex items-start gap-3">
+          <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400">
+            <Icon name="check" size="md" />
+          </span>
+          <div>
+            <p class="font-medium text-gray-900 dark:text-white">{{ t('keys.rotate.successMessage') }}</p>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('keys.rotate.oldKeyInvalid') }}</p>
+          </div>
+        </div>
+        <div class="flex flex-col gap-2 sm:flex-row">
+          <code data-test="rotated-key-secret" class="min-w-0 flex-1 break-all rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 dark:border-dark-600 dark:bg-dark-700 dark:text-white">{{ rotatedSecret }}</code>
+          <button type="button" class="btn btn-primary shrink-0" @click="copyRotatedSecret">
+            <Icon :name="rotatedSecretCopied ? 'check' : 'clipboard'" size="sm" class="mr-1.5" />
+            {{ rotatedSecretCopied ? t('keys.copied') : t('common.copy') }}
+          </button>
+        </div>
+        <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('keys.rotate.preserved') }}</p>
+      </div>
+      <template #footer>
+        <div class="flex justify-end">
+          <button data-test="rotate-key-done" type="button" class="btn btn-primary" @click="finishRotate">{{ t('keys.rotate.done') }}</button>
+        </div>
+      </template>
+    </BaseDialog>
+
     <!-- Reset Quota Confirmation Dialog -->
     <ConfirmDialog
       :show="showResetQuotaDialog"
@@ -1299,12 +1381,18 @@ const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
 const showResetQuotaDialog = ref(false)
 const showResetRateLimitDialog = ref(false)
+const showRotateConfirm = ref(false)
+const showRotateSuccess = ref(false)
 const showUseKeyModal = ref(false)
 const showCcsClientSelect = ref(false)
 const showColumnDropdown = ref(false)
 const pendingCcsRow = ref<ApiKey | null>(null)
 const selectedKey = ref<ApiKey | null>(null)
 const copiedKeyId = ref<number | null>(null)
+const rotating = ref(false)
+const rotateAcknowledged = ref(false)
+const rotatedSecret = ref('')
+const rotatedSecretCopied = ref(false)
 const groupSelectorKeyId = ref<number | null>(null)
 const publicSettings = ref<PublicSettings | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
@@ -1659,6 +1747,60 @@ const closeGroupSelector = (event: MouseEvent) => {
 const confirmDelete = (key: ApiKey) => {
   selectedKey.value = key
   showDeleteDialog.value = true
+}
+
+const openRotateDialog = (key: ApiKey) => {
+  selectedKey.value = key
+  rotateAcknowledged.value = false
+  rotatedSecret.value = ''
+  rotatedSecretCopied.value = false
+  showRotateConfirm.value = true
+}
+
+const closeRotateConfirm = () => {
+  if (rotating.value) return
+  showRotateConfirm.value = false
+  rotateAcknowledged.value = false
+  selectedKey.value = null
+}
+
+const rotateSelectedKey = async () => {
+  if (!selectedKey.value || !rotateAcknowledged.value || rotating.value) return
+  rotating.value = true
+  try {
+    const current = selectedKey.value
+    const rotated = await keysAPI.rotate(current.id)
+    rotatedSecret.value = rotated.key
+    const index = apiKeys.value.findIndex((key) => key.id === current.id)
+    if (index !== -1) {
+      apiKeys.value[index] = { ...apiKeys.value[index], ...rotated }
+    }
+    selectedKey.value = index === -1 ? rotated : apiKeys.value[index]
+    showRotateConfirm.value = false
+    showRotateSuccess.value = true
+  } catch (error: any) {
+    appStore.showError(error?.message || t('keys.rotate.failed'))
+  } finally {
+    rotating.value = false
+  }
+}
+
+const copyRotatedSecret = async () => {
+  const success = await clipboardCopy(rotatedSecret.value, t('keys.rotate.copied'))
+  if (!success) return
+  rotatedSecretCopied.value = true
+  setTimeout(() => {
+    rotatedSecretCopied.value = false
+  }, 1200)
+}
+
+const finishRotate = () => {
+  showRotateSuccess.value = false
+  rotateAcknowledged.value = false
+  rotatedSecret.value = ''
+  rotatedSecretCopied.value = false
+  selectedKey.value = null
+  void loadApiKeys()
 }
 
 const handleSubmit = async () => {

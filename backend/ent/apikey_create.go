@@ -127,6 +127,20 @@ func (_c *APIKeyCreate) SetNillableLastUsedAt(v *time.Time) *APIKeyCreate {
 	return _c
 }
 
+// SetLastRotatedAt sets the "last_rotated_at" field.
+func (_c *APIKeyCreate) SetLastRotatedAt(v time.Time) *APIKeyCreate {
+	_c.mutation.SetLastRotatedAt(v)
+	return _c
+}
+
+// SetNillableLastRotatedAt sets the "last_rotated_at" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableLastRotatedAt(v *time.Time) *APIKeyCreate {
+	if v != nil {
+		_c.SetLastRotatedAt(*v)
+	}
+	return _c
+}
+
 // SetIPWhitelist sets the "ip_whitelist" field.
 func (_c *APIKeyCreate) SetIPWhitelist(v []string) *APIKeyCreate {
 	_c.mutation.SetIPWhitelist(v)
@@ -539,6 +553,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
 		_node.LastUsedAt = &value
 	}
+	if value, ok := _c.mutation.LastRotatedAt(); ok {
+		_spec.SetField(apikey.FieldLastRotatedAt, field.TypeTime, value)
+		_node.LastRotatedAt = &value
+	}
 	if value, ok := _c.mutation.IPWhitelist(); ok {
 		_spec.SetField(apikey.FieldIPWhitelist, field.TypeJSON, value)
 		_node.IPWhitelist = value
@@ -808,6 +826,24 @@ func (u *APIKeyUpsert) UpdateLastUsedAt() *APIKeyUpsert {
 // ClearLastUsedAt clears the value of the "last_used_at" field.
 func (u *APIKeyUpsert) ClearLastUsedAt() *APIKeyUpsert {
 	u.SetNull(apikey.FieldLastUsedAt)
+	return u
+}
+
+// SetLastRotatedAt sets the "last_rotated_at" field.
+func (u *APIKeyUpsert) SetLastRotatedAt(v time.Time) *APIKeyUpsert {
+	u.Set(apikey.FieldLastRotatedAt, v)
+	return u
+}
+
+// UpdateLastRotatedAt sets the "last_rotated_at" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateLastRotatedAt() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldLastRotatedAt)
+	return u
+}
+
+// ClearLastRotatedAt clears the value of the "last_rotated_at" field.
+func (u *APIKeyUpsert) ClearLastRotatedAt() *APIKeyUpsert {
+	u.SetNull(apikey.FieldLastRotatedAt)
 	return u
 }
 
@@ -1238,6 +1274,27 @@ func (u *APIKeyUpsertOne) UpdateLastUsedAt() *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) ClearLastUsedAt() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearLastUsedAt()
+	})
+}
+
+// SetLastRotatedAt sets the "last_rotated_at" field.
+func (u *APIKeyUpsertOne) SetLastRotatedAt(v time.Time) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetLastRotatedAt(v)
+	})
+}
+
+// UpdateLastRotatedAt sets the "last_rotated_at" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateLastRotatedAt() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateLastRotatedAt()
+	})
+}
+
+// ClearLastRotatedAt clears the value of the "last_rotated_at" field.
+func (u *APIKeyUpsertOne) ClearLastRotatedAt() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearLastRotatedAt()
 	})
 }
 
@@ -1876,6 +1933,27 @@ func (u *APIKeyUpsertBulk) UpdateLastUsedAt() *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) ClearLastUsedAt() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearLastUsedAt()
+	})
+}
+
+// SetLastRotatedAt sets the "last_rotated_at" field.
+func (u *APIKeyUpsertBulk) SetLastRotatedAt(v time.Time) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetLastRotatedAt(v)
+	})
+}
+
+// UpdateLastRotatedAt sets the "last_rotated_at" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateLastRotatedAt() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateLastRotatedAt()
+	})
+}
+
+// ClearLastRotatedAt clears the value of the "last_rotated_at" field.
+func (u *APIKeyUpsertBulk) ClearLastRotatedAt() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearLastRotatedAt()
 	})
 }
 

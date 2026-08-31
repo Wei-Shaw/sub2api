@@ -100,6 +100,11 @@ func LastUsedAt(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldLastUsedAt, v))
 }
 
+// LastRotatedAt applies equality check predicate on the "last_rotated_at" field. It's identical to LastRotatedAtEQ.
+func LastRotatedAt(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldLastRotatedAt, v))
+}
+
 // Quota applies equality check predicate on the "quota" field. It's identical to QuotaEQ.
 func Quota(v float64) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldQuota, v))
@@ -583,6 +588,56 @@ func LastUsedAtIsNil() predicate.APIKey {
 // LastUsedAtNotNil applies the NotNil predicate on the "last_used_at" field.
 func LastUsedAtNotNil() predicate.APIKey {
 	return predicate.APIKey(sql.FieldNotNull(FieldLastUsedAt))
+}
+
+// LastRotatedAtEQ applies the EQ predicate on the "last_rotated_at" field.
+func LastRotatedAtEQ(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldLastRotatedAt, v))
+}
+
+// LastRotatedAtNEQ applies the NEQ predicate on the "last_rotated_at" field.
+func LastRotatedAtNEQ(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldLastRotatedAt, v))
+}
+
+// LastRotatedAtIn applies the In predicate on the "last_rotated_at" field.
+func LastRotatedAtIn(vs ...time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldLastRotatedAt, vs...))
+}
+
+// LastRotatedAtNotIn applies the NotIn predicate on the "last_rotated_at" field.
+func LastRotatedAtNotIn(vs ...time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldLastRotatedAt, vs...))
+}
+
+// LastRotatedAtGT applies the GT predicate on the "last_rotated_at" field.
+func LastRotatedAtGT(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldLastRotatedAt, v))
+}
+
+// LastRotatedAtGTE applies the GTE predicate on the "last_rotated_at" field.
+func LastRotatedAtGTE(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldLastRotatedAt, v))
+}
+
+// LastRotatedAtLT applies the LT predicate on the "last_rotated_at" field.
+func LastRotatedAtLT(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldLastRotatedAt, v))
+}
+
+// LastRotatedAtLTE applies the LTE predicate on the "last_rotated_at" field.
+func LastRotatedAtLTE(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldLastRotatedAt, v))
+}
+
+// LastRotatedAtIsNil applies the IsNil predicate on the "last_rotated_at" field.
+func LastRotatedAtIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldLastRotatedAt))
+}
+
+// LastRotatedAtNotNil applies the NotNil predicate on the "last_rotated_at" field.
+func LastRotatedAtNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldLastRotatedAt))
 }
 
 // IPWhitelistIsNil applies the IsNil predicate on the "ip_whitelist" field.

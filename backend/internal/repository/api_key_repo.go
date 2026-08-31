@@ -50,6 +50,7 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetStatus(key.Status).
 		SetNillableGroupID(key.GroupID).
 		SetNillableLastUsedAt(key.LastUsedAt).
+		SetNillableLastRotatedAt(key.LastRotatedAt).
 		SetQuota(key.Quota).
 		SetQuotaUsed(key.QuotaUsed).
 		SetNillableExpiresAt(key.ExpiresAt).
@@ -338,6 +339,36 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 	// 使用同一时间戳回填，避免并发删除导致二次查询失败。
 	key.UpdatedAt = now
 	return nil
+}
+
+// RotateKey atomically replaces a credential only while the caller's snapshot
+// is still current. This prevents concurrent rotations from both reporting a
+// usable secret when only the last write would remain valid.
+func (r *apiKeyRepository) RotateKey(ctx context.Context, id int64, expectedKey, newKey string, rotatedAt time.Time) error {
+	client := clientFromContext(ctx, r.client)
+	affected, err := client.APIKey.Update().
+		Where(apikey.IDEQ(id), apikey.DeletedAtIsNil(), apikey.KeyEQ(expectedKey)).
+		SetKey(newKey).
+		SetLastRotatedAt(rotatedAt).
+		SetUpdatedAt(rotatedAt).
+		Save(ctx)
+	if err != nil {
+		return translatePersistenceError(err, nil, service.ErrAPIKeyExists)
+	}
+	if affected > 0 {
+		return nil
+	}
+
+	exists, err := client.APIKey.Query().
+		Where(apikey.IDEQ(id), apikey.DeletedAtIsNil()).
+		Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return service.ErrAPIKeyNotFound
+	}
+	return service.ErrAPIKeyRotateConflict
 }
 
 func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
@@ -877,6 +908,7 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		IPWhitelist:   m.IPWhitelist,
 		IPBlacklist:   m.IPBlacklist,
 		LastUsedAt:    m.LastUsedAt,
+		LastRotatedAt: m.LastRotatedAt,
 		CreatedAt:     m.CreatedAt,
 		UpdatedAt:     m.UpdatedAt,
 		GroupID:       m.GroupID,

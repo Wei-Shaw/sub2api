@@ -21,7 +21,35 @@ func setupAPIKeyHandler(adminSvc service.AdminService) *gin.Engine {
 	router := gin.New()
 	h := NewAdminAPIKeyHandler(adminSvc)
 	router.PUT("/api/v1/admin/api-keys/:id", h.UpdateGroup)
+	router.POST("/api/v1/admin/api-keys/:id/rotate", h.Rotate)
 	return router
+}
+
+func TestAdminAPIKeyHandler_Rotate(t *testing.T) {
+	router := setupAPIKeyHandler(newStubAdminService())
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/api-keys/10/rotate", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+	require.Equal(t, "no-cache", rec.Header().Get("Pragma"))
+	var resp struct {
+		Data struct {
+			ID            int64      `json:"id"`
+			UserID        int64      `json:"user_id"`
+			Key           string     `json:"key"`
+			Name          string     `json:"name"`
+			LastRotatedAt *time.Time `json:"last_rotated_at"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, int64(10), resp.Data.ID)
+	require.Equal(t, int64(1), resp.Data.UserID)
+	require.Equal(t, "sk-rotated-test-key", resp.Data.Key)
+	require.Equal(t, "test", resp.Data.Name)
+	require.NotNil(t, resp.Data.LastRotatedAt)
 }
 
 func TestAdminAPIKeyHandler_UpdateGroup_InvalidID(t *testing.T) {

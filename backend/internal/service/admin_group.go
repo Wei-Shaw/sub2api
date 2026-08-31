@@ -1252,6 +1252,15 @@ func (s *adminServiceImpl) AdminResetAPIKeyRateLimitUsage(ctx context.Context, k
 	return apiKey, nil
 }
 
+// AdminRotateAPIKey rotates a user's API key while preserving the record and
+// every configuration and accounting field attached to it.
+func (s *adminServiceImpl) AdminRotateAPIKey(ctx context.Context, keyID int64) (*APIKey, error) {
+	if s.apiKeyRotator == nil {
+		return nil, infraerrors.InternalServer("API_KEY_ROTATOR_UNAVAILABLE", "api key rotator is not configured")
+	}
+	return s.apiKeyRotator.RotateAny(ctx, keyID)
+}
+
 // ReplaceUserGroup 替换用户的专属分组
 func (s *adminServiceImpl) ReplaceUserGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (*ReplaceUserGroupResult, error) {
 	if oldGroupID == newGroupID {

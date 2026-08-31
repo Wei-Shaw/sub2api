@@ -16,6 +16,15 @@
               <div class="mb-1 flex items-center gap-2"><span class="font-medium text-gray-900 dark:text-white">{{ key.name }}</span><span :class="['badge text-xs', key.status === 'active' ? 'badge-success' : 'badge-danger']">{{ key.status }}</span></div>
               <p class="truncate font-mono text-sm text-gray-500">{{ key.key.substring(0, 20) }}...{{ key.key.substring(key.key.length - 8) }}</p>
             </div>
+            <button
+              type="button"
+              data-test="admin-rotate-key-action"
+              class="ml-3 inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-primary-600 transition-colors hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
+              @click="openRotateDialog(key)"
+            >
+              <Icon name="refresh" size="sm" />
+              {{ t('admin.users.rotateKey.action') }}
+            </button>
           </div>
           <div class="mt-3 flex flex-wrap gap-4 text-xs text-gray-500">
             <div class="flex items-center gap-1">
@@ -47,6 +56,74 @@
         </div>
       </div>
     </div>
+  </BaseDialog>
+
+  <BaseDialog
+    :show="showRotateConfirm"
+    :title="t('admin.users.rotateKey.title')"
+    width="narrow"
+    :z-index="100000030"
+    @close="closeRotateConfirm"
+  >
+    <div class="space-y-4">
+      <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
+        {{ t('admin.users.rotateKey.description', { name: rotationKey?.name, email: user?.email }) }}
+      </p>
+      <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 rounded-lg bg-gray-50 p-3 text-sm dark:bg-dark-700">
+        <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.users.email') }}</dt>
+        <dd class="truncate font-medium text-gray-900 dark:text-white">{{ user?.email }}</dd>
+        <dt class="text-gray-500 dark:text-gray-400">{{ t('admin.users.apiKeys') }}</dt>
+        <dd class="font-medium text-gray-900 dark:text-white">{{ rotationKey?.name }}</dd>
+      </dl>
+      <div class="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-5 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+        <Icon name="exclamationTriangle" size="sm" class="mt-0.5 shrink-0" />
+        <span>{{ t('admin.users.rotateKey.warning') }}</span>
+      </div>
+      <label class="flex cursor-pointer items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+        <input v-model="rotateAcknowledged" data-test="admin-rotate-key-acknowledge" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+        <span>{{ t('admin.users.rotateKey.acknowledge') }}</span>
+      </label>
+    </div>
+    <template #footer>
+      <div class="flex justify-end gap-3">
+        <button type="button" class="btn btn-secondary" :disabled="rotating" @click="closeRotateConfirm">{{ t('common.cancel') }}</button>
+        <button data-test="admin-rotate-key-confirm" type="button" class="btn btn-danger" :disabled="!rotateAcknowledged || rotating" @click="rotateSelectedKey">
+          <Icon name="refresh" size="sm" class="mr-1.5" :class="{ 'animate-spin': rotating }" />
+          {{ rotating ? t('admin.users.rotateKey.rotating') : t('admin.users.rotateKey.confirm') }}
+        </button>
+      </div>
+    </template>
+  </BaseDialog>
+
+  <BaseDialog
+    :show="showRotateSuccess"
+    :title="t('admin.users.rotateKey.successTitle')"
+    width="normal"
+    :close-on-escape="false"
+    :close-on-click-outside="false"
+    :show-close-button="false"
+    :z-index="100000030"
+  >
+    <div class="space-y-4">
+      <div class="flex items-start gap-3">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400"><Icon name="check" size="md" /></span>
+        <div>
+          <p class="font-medium text-gray-900 dark:text-white">{{ t('admin.users.rotateKey.successMessage') }}</p>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.users.rotateKey.oldKeyInvalid') }}</p>
+        </div>
+      </div>
+      <div class="flex flex-col gap-2 sm:flex-row">
+        <code data-test="admin-rotated-key-secret" class="min-w-0 flex-1 break-all rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 dark:border-dark-600 dark:bg-dark-700 dark:text-white">{{ rotatedSecret }}</code>
+        <button type="button" class="btn btn-primary shrink-0" @click="copyRotatedSecret">
+          <Icon :name="rotatedSecretCopied ? 'check' : 'clipboard'" size="sm" class="mr-1.5" />
+          {{ rotatedSecretCopied ? t('common.copied') : t('common.copy') }}
+        </button>
+      </div>
+      <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('admin.users.rotateKey.preserved') }}</p>
+    </div>
+    <template #footer>
+      <div class="flex justify-end"><button data-test="admin-rotate-key-done" type="button" class="btn btn-primary" @click="finishRotate">{{ t('admin.users.rotateKey.done') }}</button></div>
+    </template>
   </BaseDialog>
 
   <!-- Group Selector Dropdown -->
@@ -109,22 +186,32 @@
 import { ref, computed, watch, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { useClipboard } from '@/composables/useClipboard'
 import { adminAPI } from '@/api/admin'
 import { formatDateTime } from '@/utils/format'
 import type { AdminUser, AdminGroup, ApiKey } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
+import Icon from '@/components/icons/Icon.vue'
 
 const props = defineProps<{ show: boolean; user: AdminUser | null }>()
 const emit = defineEmits(['close'])
 const { t } = useI18n()
 const appStore = useAppStore()
+const { copyToClipboard } = useClipboard()
 
 const apiKeys = ref<ApiKey[]>([])
 const allGroups = ref<AdminGroup[]>([])
 const loading = ref(false)
 const updatingKeyIds = ref(new Set<number>())
+const showRotateConfirm = ref(false)
+const showRotateSuccess = ref(false)
+const rotateAcknowledged = ref(false)
+const rotating = ref(false)
+const rotationKey = ref<ApiKey | null>(null)
+const rotatedSecret = ref('')
+const rotatedSecretCopied = ref(false)
 const groupSelectorKeyId = ref<number | null>(null)
 const dropdownPosition = ref<{ top: number; left: number } | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
@@ -144,12 +231,24 @@ const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance 
   }
 }
 
+const resetRotationState = () => {
+  showRotateConfirm.value = false
+  showRotateSuccess.value = false
+  rotateAcknowledged.value = false
+  rotating.value = false
+  rotationKey.value = null
+  rotatedSecret.value = ''
+  rotatedSecretCopied.value = false
+}
+
 watch(() => props.show, (v) => {
   if (v && props.user) {
     load()
     loadGroups()
   } else {
     closeGroupSelector()
+    // Preserve a one-time credential until the administrator acknowledges it.
+    if (!rotating.value && !showRotateSuccess.value) resetRotationState()
   }
 })
 
@@ -226,6 +325,58 @@ const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
   }
 }
 
+const openRotateDialog = (key: ApiKey) => {
+  closeGroupSelector()
+  rotationKey.value = key
+  rotateAcknowledged.value = false
+  rotatedSecret.value = ''
+  rotatedSecretCopied.value = false
+  showRotateConfirm.value = true
+}
+
+const closeRotateConfirm = () => {
+  if (rotating.value) return
+  showRotateConfirm.value = false
+  rotateAcknowledged.value = false
+  rotationKey.value = null
+}
+
+const rotateSelectedKey = async () => {
+  if (!rotationKey.value || !rotateAcknowledged.value || rotating.value) return
+  rotating.value = true
+  try {
+    const current = rotationKey.value
+    const rotated = await adminAPI.apiKeys.rotate(current.id)
+    rotatedSecret.value = rotated.key
+    const index = apiKeys.value.findIndex((key) => key.id === current.id)
+    if (index !== -1) apiKeys.value[index] = { ...apiKeys.value[index], ...rotated }
+    rotationKey.value = index === -1 ? rotated : apiKeys.value[index]
+    showRotateConfirm.value = false
+    showRotateSuccess.value = true
+  } catch (error: any) {
+    appStore.showError(error?.message || t('admin.users.rotateKey.failed'))
+  } finally {
+    rotating.value = false
+    if (!props.show && !showRotateSuccess.value) resetRotationState()
+  }
+}
+
+const copyRotatedSecret = async () => {
+  const copied = await copyToClipboard(rotatedSecret.value, t('admin.users.rotateKey.copied'))
+  if (!copied) return
+  rotatedSecretCopied.value = true
+  setTimeout(() => { rotatedSecretCopied.value = false }, 1200)
+}
+
+const finishRotate = () => {
+  showRotateSuccess.value = false
+  rotateAcknowledged.value = false
+  rotationKey.value = null
+  rotatedSecret.value = ''
+  rotatedSecretCopied.value = false
+  if (props.show) void load()
+}
+
 const handleKeyDown = (event: KeyboardEvent) => {
   if (event.key === 'Escape' && groupSelectorKeyId.value !== null) {
     event.stopPropagation()
@@ -245,6 +396,7 @@ const handleClickOutside = (event: MouseEvent) => {
 }
 
 const handleClose = () => {
+  if (showRotateConfirm.value || showRotateSuccess.value) return
   closeGroupSelector()
   emit('close')
 }

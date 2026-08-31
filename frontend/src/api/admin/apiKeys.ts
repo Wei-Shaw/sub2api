@@ -26,8 +26,14 @@ export async function updateApiKeyGroup(id: number, groupId: number | null): Pro
   return data
 }
 
+export async function rotate(id: number): Promise<ApiKey> {
+  const { data } = await apiClient.post<ApiKey>(`/admin/api-keys/${id}/rotate`)
+  return data
+}
+
 export const apiKeysAPI = {
-  updateApiKeyGroup
+  updateApiKeyGroup,
+  rotate
 }
 
 export default apiKeysAPI

@@ -45,3 +45,18 @@ func TestAPIKeyFromService_MapsNilLastUsedAt(t *testing.T) {
 	require.Nil(t, out.LastUsedAt)
 	require.Nil(t, out.LastUsedIP)
 }
+
+func TestAPIKeyFromService_MasksRotatedCredentialUnlessExplicitlyRequested(t *testing.T) {
+	rotatedAt := time.Now().UTC()
+	src := &service.APIKey{
+		ID: 1, UserID: 2, Key: "sk-0123456789abcdef", Name: "Rotated",
+		Status: service.StatusActive, LastRotatedAt: &rotatedAt,
+	}
+
+	masked := APIKeyFromService(src)
+	require.Equal(t, "sk-012...cdef", masked.Key)
+	require.Equal(t, &rotatedAt, masked.LastRotatedAt)
+
+	withSecret := APIKeyWithSecretFromService(src)
+	require.Equal(t, src.Key, withSecret.Key)
+}

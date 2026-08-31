@@ -5,6 +5,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -20,6 +21,28 @@ func NewAdminAPIKeyHandler(adminService service.AdminService) *AdminAPIKeyHandle
 	return &AdminAPIKeyHandler{
 		adminService: adminService,
 	}
+}
+
+// Rotate replaces an API key credential while preserving the user's key
+// record, configuration, and accounting history.
+// POST /api/v1/admin/api-keys/:id/rotate
+func (h *AdminAPIKeyHandler) Rotate(c *gin.Context) {
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid API key ID")
+		return
+	}
+
+	middleware2.SetAuditExtra(c, map[string]any{"api_key_id": keyID})
+	key, err := h.adminService.AdminRotateAPIKey(c.Request.Context(), keyID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	middleware2.SetAuditExtra(c, map[string]any{"target_user_id": key.UserID})
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
+	response.Success(c, dto.APIKeyWithSecretFromService(key))
 }
 
 // AdminUpdateAPIKeyGroupRequest represents the request to update an API key.
