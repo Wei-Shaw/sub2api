@@ -469,6 +469,7 @@ const clientTabs = computed((): TabConfig[] => {
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
       ]
     case 'deepseek':
+    case 'minimax':
     case 'composite':
       return [
         { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
@@ -717,6 +718,10 @@ const currentFiles = computed((): FileConfig[] => {
         ]
       case 'grok':
         return [generateOpenCodeConfig('grok', apiBase, apiKey)]
+      case 'minimax':
+        return [generateOpenCodeConfig('minimax', apiBase, apiKey)]
+      case 'composite':
+        return [generateOpenCodeConfig('composite', apiBase, apiKey)]
       default:
         return [generateOpenCodeConfig('openai', apiBase, apiKey)]
     }
@@ -757,6 +762,11 @@ const currentFiles = computed((): FileConfig[] => {
         return generateRoutedCodexFiles(apiBase, apiKey, 'deepseek')
       }
       return generateAnthropicFiles(baseRoot, apiKey)
+    case 'minimax':
+      if (activeClientTab.value === 'codex') {
+        return generateRoutedCodexFiles(apiBase, apiKey, 'minimax')
+      }
+      return generateAnthropicFiles(baseRoot, apiKey, 'MiniMax-M3')
     case 'composite':
       if (activeClientTab.value === 'codex') {
         return generateRoutedCodexFiles(apiBase, apiKey, 'composite')
@@ -770,26 +780,52 @@ const currentFiles = computed((): FileConfig[] => {
   }
 })
 
-function generateAnthropicFiles(baseUrl: string, apiKey: string): FileConfig[] {
+function generateAnthropicFiles(baseUrl: string, apiKey: string, model?: string): FileConfig[] {
+  const environment: Record<string, string> = {
+    ANTHROPIC_BASE_URL: baseUrl,
+    ANTHROPIC_AUTH_TOKEN: apiKey
+  }
+  if (model) {
+    environment.ANTHROPIC_MODEL = model
+    environment.ANTHROPIC_DEFAULT_OPUS_MODEL = model
+    environment.ANTHROPIC_DEFAULT_SONNET_MODEL = model
+    environment.ANTHROPIC_DEFAULT_HAIKU_MODEL = model
+    environment.ANTHROPIC_DEFAULT_FABLE_MODEL = model
+    environment.CLAUDE_CODE_SUBAGENT_MODEL = model
+  }
+  environment.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
+
   let path: string
   let content: string
 
   switch (activeTab.value) {
     case 'unix':
       path = 'Terminal'
-      content = `export ANTHROPIC_BASE_URL="${baseUrl}"
+      content = model
+        ? Object.entries(environment)
+            .map(([name, value]) => `export ${name}="${value}"`)
+            .join('\n')
+        : `export ANTHROPIC_BASE_URL="${baseUrl}"
 export ANTHROPIC_AUTH_TOKEN="${apiKey}"
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
       break
     case 'cmd':
       path = 'Command Prompt'
-      content = `set ANTHROPIC_BASE_URL=${baseUrl}
+      content = model
+        ? Object.entries(environment)
+            .map(([name, value]) => `set ${name}=${value}`)
+            .join('\n')
+        : `set ANTHROPIC_BASE_URL=${baseUrl}
 set ANTHROPIC_AUTH_TOKEN=${apiKey}
 set CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
       break
     case 'powershell':
       path = 'PowerShell'
-      content = `$env:ANTHROPIC_BASE_URL="${baseUrl}"
+      content = model
+        ? Object.entries(environment)
+            .map(([name, value]) => `$env:${name}="${value}"`)
+            .join('\n')
+        : `$env:ANTHROPIC_BASE_URL="${baseUrl}"
 $env:ANTHROPIC_AUTH_TOKEN="${apiKey}"
 $env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
       break
@@ -802,14 +838,10 @@ $env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
     ? '~/.claude/settings.json'
     : '%USERPROFILE%\\.claude\\settings.json'
 
-  const vscodeContent = `{
-  "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "env": {
-    "ANTHROPIC_BASE_URL": "${baseUrl}",
-    "ANTHROPIC_AUTH_TOKEN": "${apiKey}",
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
-  }
-}`
+  const vscodeContent = JSON.stringify({
+    $schema: 'https://json.schemastore.org/claude-code-settings.json',
+    env: environment
+  }, null, 2)
 
   return [
     { path, content },
@@ -1219,6 +1251,7 @@ function generateRoutedCodexFiles(
     kimi: 'kimi-k2.5',
     zhipu: 'glm-4.7',
     deepseek: 'deepseek-v4-pro',
+    minimax: 'MiniMax-M3',
     composite: 'gpt-5.5'
   }
   const preferredModel = preferredModels[platform] || ''
@@ -1232,6 +1265,7 @@ function generateRoutedCodexFiles(
     kimi: 'Kimi',
     zhipu: 'Zhipu',
     deepseek: 'DeepSeek',
+    minimax: 'MiniMax',
     composite: 'Composite'
   }
   const label = labels[platform]
@@ -1783,6 +1817,16 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       limit: { context: 500000, output: 64000 }
     }
   }
+  const miniMaxModels = {
+    'MiniMax-M3': {
+      name: 'MiniMax M3',
+      limit: { context: 1000000, output: 128000 },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text']
+      }
+    }
+  }
 
   if (platform === 'gemini') {
     provider[platform].npm = '@ai-sdk/google'
@@ -1804,6 +1848,14 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     provider[platform].npm = '@ai-sdk/openai-compatible'
     provider[platform].name = 'Grok via Sub2API'
     provider[platform].models = grokModels
+  } else if (platform === 'minimax') {
+    provider[platform].npm = '@ai-sdk/openai-compatible'
+    provider[platform].name = 'MiniMax via Sub2API'
+    provider[platform].models = miniMaxModels
+  } else if (platform === 'composite') {
+    provider[platform].npm = '@ai-sdk/openai-compatible'
+    provider[platform].name = 'Composite via Sub2API'
+    provider[platform].models = { ...openaiModels, ...miniMaxModels }
   }
 
   const agent =

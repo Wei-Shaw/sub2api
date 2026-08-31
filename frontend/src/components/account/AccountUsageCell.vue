@@ -429,8 +429,8 @@
       </div>
     </template>
 
-    <!-- CN providers (Kimi / Zhipu / DeepSeek): coding-plan quota or payg balance -->
-    <template v-else-if="account.platform === 'kimi' || account.platform === 'zhipu' || account.platform === 'deepseek'">
+    <!-- CN providers: coding-plan quota, payg balance, or unsupported placeholder -->
+    <template v-else-if="account.platform === 'kimi' || account.platform === 'zhipu' || account.platform === 'deepseek' || account.platform === 'minimax'">
       <!-- 挂在 CN 平台下的 Ollama Cloud 账号（资格由后端下发 eligible）：用量由
            Ollama 用量窗口负责。这类账号不是国产厂商订阅，CN 的额度/余额探测端点由
            base_url 衍生，对 ollama.com 会被后端出站 URL 白名单拒绝，渲染出来只会
@@ -727,7 +727,8 @@ const showUsageWindows = computed(() => {
   if (
     props.account.platform === 'kimi' ||
     props.account.platform === 'zhipu' ||
-    props.account.platform === 'deepseek'
+    props.account.platform === 'deepseek' ||
+    props.account.platform === 'minimax'
   ) {
     return true
   }

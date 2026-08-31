@@ -253,6 +253,19 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 	require.True(t, deepSeek.SupportsParallelToolCalls)
 	require.Equal(t, []string{"text"}, deepSeek.InputModalities)
 
+	miniMaxM3 := newConfiguredCodexModelDescriptor("MiniMax-M3")
+	require.Equal(t, "MiniMax-M3", miniMaxM3.DisplayName)
+	require.Equal(t, int64(1_000_000), miniMaxM3.ContextWindow)
+	require.Equal(t, int64(1_000_000), miniMaxM3.MaxContextWindow)
+	require.Equal(t, "high", *miniMaxM3.DefaultReasoningLevel)
+	require.Equal(t, []string{"none", "high"}, effortsFromConfiguredCodexLevels(miniMaxM3.SupportedReasoningLevels))
+	require.True(t, miniMaxM3.SupportsParallelToolCalls)
+
+	miniMaxM27 := newConfiguredCodexModelDescriptor("minimax/MiniMax-M2.7")
+	require.Equal(t, "MiniMax-M2.7", miniMaxM27.DisplayName)
+	require.Equal(t, int64(204_800), miniMaxM27.ContextWindow)
+	require.Equal(t, int64(204_800), miniMaxM27.MaxContextWindow)
+
 	grok := newConfiguredCodexModelDescriptor("grok-4.6")
 	require.Equal(t, "Grok 4.6", grok.DisplayName)
 	require.Equal(t, int64(500_000), grok.ContextWindow)
@@ -490,6 +503,35 @@ func TestBuildCodexModelsManifestForGroupAdvertisesOfficialOpenAIResponsesImageI
 	models := decodeCodexManifestModels(t, body)
 	require.Len(t, models, 1)
 	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
+}
+
+func TestBuildCodexModelsManifestForGroupAdvertisesMiniMaxM3ImageInput(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 703
+	svc := &GatewayService{
+		accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+			groupID: {{
+				ID:       3,
+				Platform: PlatformMiniMax,
+				Type:     AccountTypeAPIKey,
+			}},
+		}},
+	}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		"",
+		[]string{"MiniMax-M3"},
+	)
+	require.NoError(t, err)
+
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
+	require.Equal(t, float64(1_000_000), models[0]["context_window"])
+	require.Equal(t, []string{"none", "high"}, effortsFromManifestModel(t, models[0]))
 }
 
 func TestBuildCodexModelsManifestForGroupUsesConservativeProviderImageCapabilities(t *testing.T) {

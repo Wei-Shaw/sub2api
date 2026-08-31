@@ -85,6 +85,69 @@ func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_APIKeyUsesResponsesI
 	require.False(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
 }
 
+func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_MiniMaxUsesNativeEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, protocol := range []string{APIProtocolAnthropic, APIProtocolAdaptive} {
+		t.Run(protocol, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			body := []byte(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":[{"type":"image","source":{"type":"url","url":"https://example.com/image.png"}}]}]}`)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			c.Request.Header.Set("anthropic-version", "2023-06-01")
+
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json; charset=utf-8"}},
+				Body:       io.NopCloser(strings.NewReader(`{"input_tokens":321,"extra":"preserved"}`)),
+			}}
+			svc := &OpenAIGatewayService{
+				cfg: &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{
+					Enabled:           false,
+					AllowInsecureHTTP: true,
+				}}},
+				httpUpstream: upstream,
+			}
+			credentials := map[string]any{
+				"api_key":      "sk-cp-test",
+				"account_mode": AccountModeCoding,
+				"api_protocol": protocol,
+			}
+			if protocol == APIProtocolAnthropic {
+				credentials["base_url"] = "http://minimax.example/anthropic"
+			} else {
+				credentials["api_base_urls"] = map[string]any{
+					APIProtocolAnthropic: "http://minimax.example/anthropic",
+				}
+			}
+			account := &Account{
+				ID:          102,
+				Name:        "minimax-coding",
+				Platform:    PlatformMiniMax,
+				Type:        AccountTypeAPIKey,
+				Concurrency: 1,
+				Credentials: credentials,
+				Status:      StatusActive,
+				Schedulable: true,
+			}
+
+			err := svc.ForwardCountTokensAsAnthropic(context.Background(), c, account, body, "MiniMax-M3")
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Equal(t, "application/json; charset=utf-8", rec.Header().Get("Content-Type"))
+			require.JSONEq(t, `{"input_tokens":321,"extra":"preserved"}`, rec.Body.String())
+			require.NotNil(t, upstream.lastReq)
+			require.Equal(t, "http://minimax.example/anthropic/v1/messages/count_tokens", upstream.lastReq.URL.String())
+			require.Empty(t, upstream.lastReq.Header.Get("x-api-key"))
+			require.Equal(t, "Bearer sk-cp-test", upstream.lastReq.Header.Get("authorization"))
+			require.Equal(t, "2023-06-01", getHeaderRaw(upstream.lastReq.Header, "anthropic-version"))
+			require.Equal(t, "MiniMax-M3", gjson.GetBytes(upstream.lastBody, "model").String())
+			require.True(t, gjson.GetBytes(upstream.lastBody, "messages.0.content.0.source.url").Exists())
+		})
+	}
+}
+
 func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_OAuthFallsBackWhenPlatformEndpointUnsupported(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

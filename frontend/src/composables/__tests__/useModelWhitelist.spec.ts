@@ -55,6 +55,14 @@ describe('useModelWhitelist', () => {
     expect(models).toContain('grok-imagine-video-1.5')
   })
 
+  it('MiniMax 模型列表使用当前 M 系列官方模型', () => {
+    expect(getModelsByPlatform('minimax')).toEqual([
+      'MiniMax-M3',
+      'MiniMax-M2.7',
+      'MiniMax-M2.7-highspeed'
+    ])
+  })
+
   it('combined 模式支持 Grok 4.5 官方别名映射', () => {
     const mapping = buildModelMappingObject(
       'combined',

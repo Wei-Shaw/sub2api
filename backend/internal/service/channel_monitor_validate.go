@@ -211,22 +211,21 @@ func normalizeMonitorPrimaryModel(provider, checkMode, model string) string {
 // monitorAccountQuotaCapability 校验关联账号能否充当配额数据源，与
 // fetchUncached 的路由一一对应（coding→CN 额度端点 / payg→CN 余额端点 /
 // 其余→AccountUsageService）。在创建/更新期拦截注定运行期永久 error 的组合：
-//   - kimi/zhipu/deepseek coding：GetCodingPlanProvider 须识别为 kimi/zhipu
-//     （deepseek coding、自定义域名 kimi coding 无法路由额度端点）
-//   - kimi/zhipu/deepseek payg：仅 kimi/deepseek 有公开余额端点（zhipu payg 无）
+//   - CN coding：GetCodingPlanProvider 须识别为 kimi/zhipu/minimax
+//   - CN payg：仅 kimi/deepseek 有公开余额端点（zhipu/minimax payg 无）
 //   - anthropic：OAuth / Setup Token（API-Key 型无 usage 通道，永久 error）
 //   - openai：OAuth（API-Key 型无 usage 通道）
 //   - gemini/grok/antigravity：本地统计/值通道降级，不会永久 error，放行
 func monitorAccountQuotaCapability(account *Account) error {
 	switch account.Platform {
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
 		if account.IsCodingPlan() {
-			if p := account.GetCodingPlanProvider(); p != PlatformKimi && p != PlatformZhipu {
+			if p := account.GetCodingPlanProvider(); p != PlatformKimi && p != PlatformZhipu && p != PlatformMiniMax {
 				return ErrChannelMonitorAccountNotSupportable
 			}
 			return nil
 		}
-		if account.Platform == PlatformZhipu {
+		if account.Platform == PlatformZhipu || account.Platform == PlatformMiniMax {
 			return ErrChannelMonitorAccountNotSupportable
 		}
 		return nil
