@@ -179,6 +179,7 @@ export default {
     plugins: 'Plugins',
     proxies: 'Proxies',
     redeemCodes: 'Redeem Codes',
+    shop: 'Card Shop',
     ops: 'Ops',
     promoCodes: 'Promo Codes',
     settings: 'Settings',

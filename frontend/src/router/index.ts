@@ -259,6 +259,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/shop',
+    name: 'Shop',
+    component: () => import('@/views/user/ShopView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Card Shop', titleKey: 'nav.shop' }
+  },
+  {
     path: '/affiliate',
     name: 'Affiliate',
     component: () => import('@/views/user/AffiliateView.vue'),
@@ -577,6 +583,12 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'admin.redeem.title',
       descriptionKey: 'admin.redeem.description'
     }
+  },
+  {
+    path: '/admin/shop',
+    name: 'AdminShop',
+    component: () => import('@/views/admin/ShopView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Card Shop', titleKey: 'nav.shop' }
   },
   {
     path: '/admin/promo-codes',

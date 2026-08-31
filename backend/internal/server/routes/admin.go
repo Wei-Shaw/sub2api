@@ -71,6 +71,8 @@ func RegisterAdminRoutes(
 
 		// 卡密管理
 		registerRedeemCodeRoutes(admin, h)
+		// 商城商品与兑换码库存管理
+		registerShopRoutes(admin, h)
 
 		// 优惠码管理
 		registerPromoCodeRoutes(admin, h)
@@ -132,6 +134,22 @@ func RegisterAdminRoutes(
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+	}
+}
+
+func registerShopRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	shop := admin.Group("/shop")
+	{
+		shop.GET("/overview", h.Admin.Shop.GetOverview)
+		shop.GET("/products", h.Admin.Shop.ListProducts)
+		shop.POST("/products", h.Admin.Shop.CreateProduct)
+		shop.PUT("/products/:id", h.Admin.Shop.UpdateProduct)
+		shop.DELETE("/products/:id", h.Admin.Shop.DeleteProduct)
+		shop.POST("/products/:id/codes", h.Admin.Shop.AddCodes)
+		shop.GET("/products/:id/inventory", h.Admin.Shop.ListInventory)
+		shop.GET("/products/:id/orders", h.Admin.Shop.ListOrders)
+		shop.PATCH("/products/:id/inventory/:inventoryID", h.Admin.Shop.UpdateInventoryStatus)
+		shop.DELETE("/products/:id/inventory", h.Admin.Shop.DeleteInventory)
 	}
 }
 

@@ -150,6 +150,25 @@ export function formatDateTime(
 }
 
 /**
+ * 使用固定的本地时间格式显示日期时间，避免受浏览器语言设置影响。
+ * 输出：YYYY-MM-DD HH:mm:ss
+ */
+export function formatDateTimeStandard(date: string | Date | null | undefined): string {
+  if (!date) return ''
+
+  const value = new Date(date)
+  if (isNaN(value.getTime())) return ''
+
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  const hour = String(value.getHours()).padStart(2, '0')
+  const minute = String(value.getMinutes()).padStart(2, '0')
+  const second = String(value.getSeconds()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}`
+}
+
+/**
  * 格式化日期时间（精确到分钟）
  */
 export function formatDateTimeToMinute(

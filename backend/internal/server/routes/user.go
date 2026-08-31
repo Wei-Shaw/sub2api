@@ -135,6 +135,14 @@ func RegisterUserRoutes(
 			redeem.GET("/history", h.Redeem.GetHistory)
 		}
 
+		// 商城：余额购买外部兑换码，购买后只负责标记售出。
+		shop := authenticated.Group("/shop")
+		{
+			shop.GET("/products", h.Shop.ListProducts)
+			shop.POST("/orders", h.Shop.Purchase)
+			shop.GET("/orders", h.Shop.ListOrders)
+		}
+
 		// 用户订阅
 		subscriptions := authenticated.Group("/subscriptions")
 		{
