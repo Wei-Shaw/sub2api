@@ -37,9 +37,29 @@ SET codex_identity_policy='{
       "unsupported_policy":"reject",
       "version":1
     }'::jsonb,
-    codex_identity_template_id=NULL,
-    codex_identity_template_applied_revision=NULL,
     updated_at=NOW();
+
+-- Migration files are committed independently. If 233 succeeded but 234
+-- failed, these columns do not exist yet; use dynamic SQL so the same
+-- downgrade also handles that valid intermediate state.
+DO $$
+BEGIN
+    IF (
+        SELECT COUNT(*) = 2 FROM information_schema.columns
+        WHERE table_schema='public'
+          AND table_name='accounts'
+          AND column_name IN (
+              'codex_identity_template_id',
+              'codex_identity_template_applied_revision'
+          )
+    ) THEN
+        EXECUTE $sql$
+            UPDATE accounts
+            SET codex_identity_template_id=NULL,
+                codex_identity_template_applied_revision=NULL
+        $sql$;
+    END IF;
+END $$;
 
 ALTER TABLE account_codex_identity_policies
     ALTER COLUMN binding_scope SET DEFAULT 'api_key_os';
@@ -49,6 +69,10 @@ ALTER TABLE account_codex_identity_policies
 
 ALTER TABLE account_codex_device_bindings
     DROP CONSTRAINT IF EXISTS account_codex_binding_profile_key;
+ALTER TABLE account_codex_device_bindings
+    DROP CONSTRAINT IF EXISTS account_codex_device_bindings_account_id_api_key_id_os_class_key;
+ALTER TABLE account_codex_device_bindings
+    DROP CONSTRAINT IF EXISTS account_codex_device_bindings_account_id_api_key_id_os_clas_key;
 ALTER TABLE account_codex_device_bindings
     DROP CONSTRAINT IF EXISTS account_codex_binding_surface_check;
 DROP INDEX IF EXISTS idx_account_codex_bindings_api_key;
@@ -62,6 +86,10 @@ CREATE INDEX idx_account_codex_bindings_api_key
 
 ALTER TABLE account_codex_profiles
     DROP CONSTRAINT IF EXISTS account_codex_profile_surface_epoch_key;
+ALTER TABLE account_codex_profiles
+    DROP CONSTRAINT IF EXISTS account_codex_profiles_account_id_os_class_epoch_key;
+ALTER TABLE account_codex_profiles
+    DROP CONSTRAINT IF EXISTS account_codex_profile_os_epoch_key;
 DROP INDEX IF EXISTS idx_account_codex_profiles_account;
 ALTER TABLE account_codex_profiles
     ADD CONSTRAINT account_codex_profiles_account_id_os_class_epoch_key
