@@ -125,8 +125,9 @@ export async function getStats(params: {
   model?: string
   request_type?: UsageRequestType
   stream?: boolean
-	upstream_model_mismatch?: boolean
-	ip_address?: string
+  native_compaction_v2?: boolean | null
+  upstream_model_mismatch?: boolean
+  ip_address?: string
   period?: string
   start_date?: string
   end_date?: string

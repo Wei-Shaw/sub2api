@@ -745,15 +745,15 @@
     "supports_web_search": true,
     "supports_xhigh_reasoning_effort": true
   },
-  "deepseek-chat": {
-    "cache_read_input_token_cost": 2.8e-08,
-    "input_cost_per_token": 2.8e-07,
+  "deepseek-v4-flash": {
+    "cache_read_input_token_cost": 7e-09,
+    "input_cost_per_token": 2.2e-07,
     "litellm_provider": "deepseek",
-    "max_input_tokens": 131072,
-    "max_output_tokens": 8192,
-    "max_tokens": 8192,
+    "max_input_tokens": 1048576,
+    "max_output_tokens": 393216,
+    "max_tokens": 393216,
     "mode": "chat",
-    "output_cost_per_token": 4.2e-07,
+    "output_cost_per_token": 6.6e-07,
     "source": "https://api-docs.deepseek.com/quick_start/pricing",
     "supported_endpoints": [
       "/v1/chat/completions"
@@ -762,44 +762,54 @@
     "supports_native_streaming": true,
     "supports_parallel_function_calling": true,
     "supports_prompt_caching": true,
+    "supports_reasoning": true,
     "supports_response_schema": true,
     "supports_system_messages": true,
     "supports_tool_choice": true
   },
-  "deepseek-reasoner": {
-    "cache_read_input_token_cost": 2.8e-08,
-    "input_cost_per_token": 2.8e-07,
+  "deepseek-v4-flash-vision-exp": {
+    "cache_read_input_token_cost": 7e-09,
+    "input_cost_per_token": 2.2e-07,
     "litellm_provider": "deepseek",
-    "max_input_tokens": 131072,
-    "max_output_tokens": 65536,
-    "max_tokens": 65536,
+    "max_input_tokens": 1048576,
+    "max_output_tokens": 393216,
+    "max_tokens": 393216,
     "mode": "chat",
-    "output_cost_per_token": 4.2e-07,
+    "output_cost_per_token": 6.6e-07,
     "source": "https://api-docs.deepseek.com/quick_start/pricing",
     "supported_endpoints": [
       "/v1/chat/completions"
     ],
-    "supports_function_calling": false,
+    "supports_function_calling": true,
     "supports_native_streaming": true,
-    "supports_parallel_function_calling": false,
+    "supports_parallel_function_calling": true,
     "supports_prompt_caching": true,
     "supports_reasoning": true,
     "supports_response_schema": true,
     "supports_system_messages": true,
-    "supports_tool_choice": false
+    "supports_tool_choice": true,
+    "supports_vision": true
   },
-  "deepseek-v3-2-251201": {
-    "input_cost_per_token": 0.0,
-    "litellm_provider": "volcengine",
-    "max_input_tokens": 98304,
-    "max_output_tokens": 32768,
-    "max_tokens": 32768,
+  "deepseek-v4-pro": {
+    "cache_read_input_token_cost": 2.2e-08,
+    "input_cost_per_token": 6.6e-07,
+    "litellm_provider": "deepseek",
+    "max_input_tokens": 1048576,
+    "max_output_tokens": 393216,
+    "max_tokens": 393216,
     "mode": "chat",
-    "output_cost_per_token": 0.0,
-    "supports_assistant_prefill": true,
+    "output_cost_per_token": 1.98e-06,
+    "source": "https://api-docs.deepseek.com/quick_start/pricing",
+    "supported_endpoints": [
+      "/v1/chat/completions"
+    ],
     "supports_function_calling": true,
+    "supports_native_streaming": true,
+    "supports_parallel_function_calling": true,
     "supports_prompt_caching": true,
     "supports_reasoning": true,
+    "supports_response_schema": true,
+    "supports_system_messages": true,
     "supports_tool_choice": true
   },
   "gemini-2.0-flash": {

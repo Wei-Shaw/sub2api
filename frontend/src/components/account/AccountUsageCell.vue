@@ -431,7 +431,16 @@
 
     <!-- CN providers (Kimi / Zhipu / DeepSeek): coding-plan quota or payg balance -->
     <template v-else-if="account.platform === 'kimi' || account.platform === 'zhipu' || account.platform === 'deepseek'">
-      <div class="space-y-1">
+      <!-- 挂在 CN 平台下的 Ollama Cloud 账号（资格由后端下发 eligible）：用量由
+           Ollama 用量窗口负责。这类账号不是国产厂商订阅，CN 的额度/余额探测端点由
+           base_url 衍生，对 ollama.com 会被后端出站 URL 白名单拒绝，渲染出来只会
+           给用户一行探测报错，因此不再渲染 CN 子单元格与占位符。 -->
+      <OllamaCloudUsageCell
+        v-if="account.ollama_cloud_usage?.eligible"
+        :account="account"
+        @updated="handleOllamaCloudUsageUpdated"
+      />
+      <div v-else class="space-y-1">
         <!-- 子单元格各自按 模式×平台 判定可见；两者都不可见时（智谱 payg 无公开
              余额端点、coding 探测也不适用）才回落到占位符。 -->
         <div
@@ -656,8 +665,6 @@ import { cnQuotaCellVisible as cnQuotaCellVisibleFn, cnBalanceCellVisible as cnB
 // Module-level cache shared across all AccountUsageCell instances
 const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
 const USAGE_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
-// How long a quota-reset response may suppress the row-patch usage refetch.
-const SUPPRESS_USAGE_REFRESH_WINDOW_MS = 5 * 1000
 
 const props = withDefaults(
   defineProps<{
@@ -699,7 +706,6 @@ const usageInfo = ref<AccountUsageInfo | null>(null)
 watch(usageInfo, (usage) => {
   if (usage) emit('usage-loaded', usage)
 })
-const suppressOpenAIUsageRefreshUntil = ref(0)
 const rootRef = ref<HTMLElement | null>(null)
 const isDesktopViewport = ref(
   typeof window === 'undefined' ? true : window.matchMedia(desktopViewportQuery).matches
@@ -1525,11 +1531,6 @@ const quotaTotalBar = computed((): QuotaBarInfo | null => {
 })
 
 const handleQuotaResetAccountUpdated = (account: Account) => {
-  // The reset response already carries authoritative quota and account data.
-  // Avoid turning the parent patch into a second automatic /usage request.
-  // The suppression is time-boxed so an unhandled emit (parent that ignores
-  // account-updated) cannot latch it and swallow a later, unrelated refresh.
-  suppressOpenAIUsageRefreshUntil.value = Date.now() + SUPPRESS_USAGE_REFRESH_WINDOW_MS
   emit('account-updated', account)
 }
 
@@ -1619,10 +1620,6 @@ watch(
 watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   if (!prevKey || nextKey === prevKey) return
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
-  if (Date.now() < suppressOpenAIUsageRefreshUntil.value) {
-    suppressOpenAIUsageRefreshUntil.value = 0
-    return
-  }
 
   if (isBatchManaged.value) {
     requestParentBatchUsage({ force: true })

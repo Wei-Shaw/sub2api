@@ -142,6 +142,7 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	var (
 		targetURL  string
 		authHeader string
+		zhipuOrg   string
 	)
 	switch provider {
 	case PlatformKimi:
@@ -150,6 +151,13 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	case PlatformZhipu:
 		targetURL = zhipuQuotaURL(baseURL)
 		authHeader = apiKey // 智谱额度端点鉴权不加 Bearer 前缀
+		// 团队版 GLM Coding Plan：额度端点需 ?type=2 + 组织/项目请求头，
+		// 否则官方 API 回「当前用户不存在coding plan」。组织 ID 存在即视为
+		// 团队版（个人版凭据不含该字段，走原个人版查询路径）。
+		zhipuOrg = strings.TrimSpace(account.GetCredential("zhipu_organization"))
+		if zhipuOrg != "" {
+			targetURL += "?type=2"
+		}
 	}
 
 	// 探测发起前过出站 URL 安全策略（与网关转发/Grok 探测同一套校验）：
@@ -172,6 +180,12 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	if provider == PlatformZhipu {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept-Language", "en-US,en")
+		if zhipuOrg != "" {
+			req.Header.Set("bigmodel-organization", zhipuOrg)
+			if project := strings.TrimSpace(account.GetCredential("zhipu_project")); project != "" {
+				req.Header.Set("bigmodel-project", project)
+			}
+		}
 	}
 	// 探测与真实转发保持同一套账号级请求头覆写，避免探测通过但转发失败。
 	account.ApplyHeaderOverrides(req.Header)

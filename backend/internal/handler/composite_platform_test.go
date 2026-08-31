@@ -120,6 +120,9 @@ func TestOpenAIReasoningEffortPolicyForCompositeTarget(t *testing.T) {
 	got, changed := applyOpenAIReasoningEffortPolicyForRequest(openAICtx, apiKey, body)
 	require.True(t, changed)
 	require.JSONEq(t, `{"reasoning":{"effort":"medium"}}`, string(got))
+	requested := service.RequestedReasoningEffortFromContext(openAICtx.Request.Context())
+	require.NotNil(t, requested)
+	require.Equal(t, "max", *requested)
 
 	bindOpenAIReasoningEffortPolicyForMessagesRequest(openAICtx, apiKey, []byte(`{"output_config":{"effort":"max"}}`))
 	bound, changed := service.ApplyOpenAIReasoningEffortPolicyFromContext(openAICtx.Request.Context(), body)
