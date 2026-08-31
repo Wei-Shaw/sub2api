@@ -151,7 +151,14 @@ func prepareNativeOpenAIInputTokensCountRequest(body []byte, account *Account) (
 }
 
 func shouldEstimateOpenAIInputTokensLocally(account *Account) bool {
-	if account == nil || account.IsGrok() || account.IsCNProvider() || account.Type == AccountTypeUpstream {
+	if account == nil || account.IsGrok() || account.Type == AccountTypeUpstream {
+		return true
+	}
+	if account.IsMiniMax() &&
+		(account.GetAPIProtocol() == APIProtocolResponses || account.IsAdaptiveAPIProtocol()) {
+		return false
+	}
+	if account.IsCNProvider() {
 		return true
 	}
 	if account.Type != AccountTypeAPIKey {
@@ -526,7 +533,11 @@ func (s *OpenAIGatewayService) buildInputTokensUpstreamRequest(
 ) (*http.Request, error) {
 	targetURL := openaiPlatformAPIInputTokensURL
 	if account.Type == AccountTypeAPIKey {
-		if baseURL := account.GetOpenAIBaseURL(); strings.TrimSpace(baseURL) != "" {
+		baseURL := account.GetOpenAIBaseURL()
+		if account.SupportsNativeResponses() && account.IsAdaptiveAPIProtocol() {
+			baseURL = account.GetCNProtocolBaseURL(APIProtocolResponses)
+		}
+		if strings.TrimSpace(baseURL) != "" {
 			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
 				return nil, err

@@ -292,8 +292,9 @@ describe('UseKeyModal', () => {
       'ANTHROPIC_DEFAULT_FABLE_MODEL',
       'CLAUDE_CODE_SUBAGENT_MODEL'
     ]) {
-      expect(claudeCode).toContain(`export ${name}="MiniMax-M3"`)
+      expect(claudeCode).toContain(`export ${name}="MiniMax-M3[1m]"`)
     }
+    expect(claudeCode).toContain('export CLAUDE_CODE_AUTO_COMPACT_WINDOW="1000000"')
 
     const codexTab = wrapper.findAll('button').find((button) =>
       button.text().includes('keys.useKeyModal.cliTabs.codexCli')

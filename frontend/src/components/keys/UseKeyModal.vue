@@ -562,18 +562,18 @@ const currentFiles = computed((): FileConfig[] => {
       if (activeClientTab.value === 'codex') {
         return generateRoutedCodexFiles(apiBase, apiKey, props.platform)
       }
-      return generateAnthropicFiles(baseRoot, apiKey, 'MiniMax-M3')
+      return generateAnthropicFiles(baseRoot, apiKey, 'MiniMax-M3[1m]', 1000000)
     case 'composite':
       if (activeClientTab.value === 'codex') {
         return generateRoutedCodexFiles(apiBase, apiKey, 'composite')
       }
-      return generateAnthropicFiles(baseRoot, apiKey, 'MiniMax-M3')
+      return generateAnthropicFiles(baseRoot, apiKey, 'MiniMax-M3[1m]', 1000000)
     default:
       return generateAnthropicFiles(baseUrl, apiKey)
   }
 })
 
-function generateAnthropicFiles(baseUrl: string, apiKey: string, model?: string): FileConfig[] {
+function generateAnthropicFiles(baseUrl: string, apiKey: string, model?: string, contextWindow?: number): FileConfig[] {
   const environment: Record<string, string> = {
     ANTHROPIC_BASE_URL: baseUrl,
     ANTHROPIC_AUTH_TOKEN: apiKey
@@ -585,6 +585,9 @@ function generateAnthropicFiles(baseUrl: string, apiKey: string, model?: string)
     environment.ANTHROPIC_DEFAULT_HAIKU_MODEL = model
     environment.ANTHROPIC_DEFAULT_FABLE_MODEL = model
     environment.CLAUDE_CODE_SUBAGENT_MODEL = model
+  }
+  if (contextWindow) {
+    environment.CLAUDE_CODE_AUTO_COMPACT_WINDOW = String(contextWindow)
   }
   environment.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
   environment.CLAUDE_CODE_ATTRIBUTION_HEADER = '0'
