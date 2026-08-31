@@ -10,9 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"entgo.io/ent/dialect"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
 var botSalesDeviceCodePattern = regexp.MustCompile(`^DLG-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$`)
@@ -23,27 +25,66 @@ type BotSalesBuyer struct {
 	TelegramID     string `json:"telegram_id,omitempty"`
 }
 
+type BotSalesDeliveryPolicy struct {
+	IssueAPIKey string `json:"issue_api_key,omitempty"`
+}
+
+// UnmarshalJSON accepts both the current policy string and the legacy boolean
+// form used by older bot-sales clients.
+func (p *BotSalesDeliveryPolicy) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		IssueAPIKey any `json:"issue_api_key"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	switch value := raw.IssueAPIKey.(type) {
+	case bool:
+		if value {
+			p.IssueAPIKey = "always"
+		} else {
+			p.IssueAPIKey = "never"
+		}
+	case string:
+		p.IssueAPIKey = strings.TrimSpace(value)
+	}
+	return nil
+}
+
 type BotSalesFulfillmentRequest struct {
-	IdempotencyKey      string        `json:"-"`
-	ExternalOrderCode   string        `json:"external_order_code" binding:"required"`
-	ExternalOrderItemID string        `json:"external_order_item_id" binding:"required"`
-	Buyer               BotSalesBuyer `json:"buyer"`
-	BalanceAmount       float64       `json:"balance_amount" binding:"required"`
-	IssueDeviceCode     bool          `json:"issue_device_code"`
-	DeviceCode          string        `json:"device_code,omitempty"`
+	IdempotencyKey      string                 `json:"-"`
+	ExternalOrderCode   string                 `json:"external_order_code" binding:"required"`
+	ExternalOrderItemID string                 `json:"external_order_item_id" binding:"required"`
+	Buyer               BotSalesBuyer          `json:"buyer"`
+	BalanceAmount       float64                `json:"balance_amount" binding:"required"`
+	BalancePackageCode  string                 `json:"balance_package_code,omitempty"`
+	GroupID             *int64                 `json:"group_id,omitempty"`
+	Quantity            int                    `json:"quantity,omitempty"`
+	DeliveryPolicy      BotSalesDeliveryPolicy `json:"delivery_policy,omitempty"`
+	IssueDeviceCode     bool                   `json:"issue_device_code"`
+	DeviceCode          string                 `json:"device_code,omitempty"`
 }
 
 type BotSalesFulfillmentResponse struct {
-	FulfillmentID       int64   `json:"fulfillment_id"`
-	ExternalOrderCode   string  `json:"external_order_code"`
-	ExternalOrderItemID string  `json:"external_order_item_id"`
-	UserID              int64   `json:"user_id"`
-	Email               string  `json:"email"`
-	BalanceAdded        float64 `json:"balance_added"`
-	Balance             float64 `json:"balance"`
-	DeviceLoginCode     string  `json:"device_login_code,omitempty"`
-	PaymentOrderID      int64   `json:"payment_order_id"`
-	Replayed            bool    `json:"replayed,omitempty"`
+	FulfillmentID       int64           `json:"fulfillment_id"`
+	ExternalOrderCode   string          `json:"external_order_code"`
+	ExternalOrderItemID string          `json:"external_order_item_id"`
+	UserID              int64           `json:"user_id"`
+	Email               string          `json:"email"`
+	BalanceAdded        float64         `json:"balance_added"`
+	Balance             float64         `json:"balance"`
+	BalancePackageCode  string          `json:"balance_package_code,omitempty"`
+	GroupID             int64           `json:"group_id,omitempty"`
+	APIKey              *BotSalesAPIKey `json:"api_key,omitempty"`
+	DeviceLoginCode     string          `json:"device_login_code,omitempty"`
+	PaymentOrderID      int64           `json:"payment_order_id"`
+	Replayed            bool            `json:"replayed,omitempty"`
+}
+
+type BotSalesAPIKey struct {
+	ID      int64  `json:"id,omitempty"`
+	Key     string `json:"key"`
+	GroupID *int64 `json:"group_id,omitempty"`
 }
 
 func normalizeBotSalesFulfillmentRequest(input BotSalesFulfillmentRequest) (BotSalesFulfillmentRequest, error) {
@@ -54,6 +95,18 @@ func normalizeBotSalesFulfillmentRequest(input BotSalesFulfillmentRequest) (BotS
 	input.Buyer.Email = strings.ToLower(strings.TrimSpace(input.Buyer.Email))
 	input.Buyer.TelegramID = strings.TrimSpace(input.Buyer.TelegramID)
 	input.DeviceCode = strings.ToUpper(strings.TrimSpace(input.DeviceCode))
+	input.BalancePackageCode = strings.TrimSpace(input.BalancePackageCode)
+	if input.GroupID != nil && *input.GroupID <= 0 {
+		return BotSalesFulfillmentRequest{}, infraerrors.BadRequest("BOT_SALES_GROUP_ID_INVALID", "group_id must be a positive integer")
+	}
+	policy := strings.ToLower(strings.TrimSpace(input.DeliveryPolicy.IssueAPIKey))
+	if policy == "" {
+		policy = "always"
+	}
+	if policy != "always" && policy != "if_missing" && policy != "never" {
+		return BotSalesFulfillmentRequest{}, infraerrors.BadRequest("BOT_SALES_API_KEY_POLICY_INVALID", "delivery_policy.issue_api_key must be always, if_missing, or never")
+	}
+	input.DeliveryPolicy.IssueAPIKey = policy
 
 	switch {
 	case input.ExternalOrderCode == "":
@@ -81,15 +134,23 @@ func botSalesFulfillmentFingerprint(input BotSalesFulfillmentRequest) (string, e
 		ExternalOrderItemID string        `json:"external_order_item_id"`
 		Buyer               BotSalesBuyer `json:"buyer"`
 		BalanceAmount       float64       `json:"balance_amount"`
+		BalancePackageCode  string        `json:"balance_package_code,omitempty"`
+		GroupID             *int64        `json:"group_id,omitempty"`
 		IssueDeviceCode     bool          `json:"issue_device_code"`
 		DeviceCode          string        `json:"device_code,omitempty"`
+		Quantity            int           `json:"quantity,omitempty"`
+		IssueAPIKey         string        `json:"issue_api_key"`
 	}{
 		ExternalOrderCode:   input.ExternalOrderCode,
 		ExternalOrderItemID: input.ExternalOrderItemID,
 		Buyer:               input.Buyer,
 		BalanceAmount:       input.BalanceAmount,
+		BalancePackageCode:  input.BalancePackageCode,
+		GroupID:             input.GroupID,
 		IssueDeviceCode:     input.IssueDeviceCode,
 		DeviceCode:          input.DeviceCode,
+		Quantity:            input.Quantity,
+		IssueAPIKey:         input.DeliveryPolicy.IssueAPIKey,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -114,6 +175,7 @@ type BotSalesFulfillmentService struct {
 	devices        UserDeviceRepository
 	claimService   *VClawClaimService
 	paymentService *PaymentService
+	apiKeyService  *APIKeyService
 }
 
 func NewBotSalesFulfillmentService(
@@ -122,6 +184,7 @@ func NewBotSalesFulfillmentService(
 	devices UserDeviceRepository,
 	claimService *VClawClaimService,
 	paymentService *PaymentService,
+	apiKeyService *APIKeyService,
 ) *BotSalesFulfillmentService {
 	return &BotSalesFulfillmentService{
 		client:         client,
@@ -129,6 +192,7 @@ func NewBotSalesFulfillmentService(
 		devices:        devices,
 		claimService:   claimService,
 		paymentService: paymentService,
+		apiKeyService:  apiKeyService,
 	}
 }
 
@@ -331,6 +395,11 @@ func (s *BotSalesFulfillmentService) applyBotSalesFulfillment(ctx context.Contex
 		return nil, infraerrors.ServiceUnavailable("BOT_SALES_USER_LOOKUP_FAILED", "buyer user is unavailable")
 	}
 
+	apiKey, err := s.ensureBotSalesAPIKey(ctx, user, input)
+	if err != nil {
+		return nil, err
+	}
+
 	if input.IssueDeviceCode && input.DeviceCode == "" && deviceCode == "" {
 		code, err := generateDeviceLoginCode()
 		if err != nil {
@@ -390,6 +459,9 @@ func (s *BotSalesFulfillmentService) applyBotSalesFulfillment(ctx context.Contex
 		BalanceAdded:        input.BalanceAmount,
 		Balance:             change.New,
 		DeviceLoginCode:     deviceCode,
+		BalancePackageCode:  input.BalancePackageCode,
+		GroupID:             botSalesValueOrZero(input.GroupID),
+		APIKey:              apiKey,
 		PaymentOrderID: func() int64 {
 			if paymentOrder != nil {
 				return paymentOrder.ID
@@ -397,6 +469,64 @@ func (s *BotSalesFulfillmentService) applyBotSalesFulfillment(ctx context.Contex
 			return 0
 		}(),
 	}, nil
+}
+
+func botSalesValueOrZero(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func (s *BotSalesFulfillmentService) ensureBotSalesAPIKey(ctx context.Context, user *User, input BotSalesFulfillmentRequest) (*BotSalesAPIKey, error) {
+	if input.DeliveryPolicy.IssueAPIKey == "never" {
+		return nil, nil
+	}
+	if input.GroupID == nil {
+		return nil, infraerrors.BadRequest("BOT_SALES_GROUP_ID_REQUIRED", "group_id is required when issuing an API key")
+	}
+	if s.apiKeyService == nil {
+		return nil, infraerrors.ServiceUnavailable("BOT_SALES_API_KEY_NOT_CONFIGURED", "API key service is not configured")
+	}
+
+	// The fulfillment transaction is already open. On PostgreSQL, serialize
+	// key provisioning for the same user/group pair so retries from separate
+	// orders cannot create duplicate keys. Repository operations below use the
+	// transaction client from context, so a failed fulfillment rolls the key
+	// creation back together with the balance mutation.
+	if s.client.Driver().Dialect() == dialect.Postgres {
+		lockName := fmt.Sprintf("bot-sales-api-key:%d:%d", user.ID, *input.GroupID)
+		if _, err := s.clientFromContext(ctx).ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, lockName); err != nil {
+			return nil, infraerrors.ServiceUnavailable("BOT_SALES_API_KEY_LOCK_FAILED", "failed to serialize API key provisioning")
+		}
+	}
+
+	keys, _, err := s.apiKeyService.List(ctx, user.ID, pagination.PaginationParams{Page: 1, PageSize: 1}, APIKeyListFilters{
+		Status:  StatusAPIKeyActive,
+		GroupID: input.GroupID,
+	})
+	if err != nil {
+		return nil, infraerrors.ServiceUnavailable("BOT_SALES_API_KEY_LOOKUP_FAILED", "failed to find an API key for the purchased group")
+	}
+	if len(keys) > 0 {
+		key := keys[0]
+		if key.GroupID == nil || *key.GroupID != *input.GroupID {
+			return nil, infraerrors.InternalServer("BOT_SALES_API_KEY_GROUP_MISMATCH", "existing API key is not associated with the purchased group")
+		}
+		return &BotSalesAPIKey{ID: key.ID, Key: key.Key, GroupID: key.GroupID}, nil
+	}
+
+	key, err := s.apiKeyService.Create(ctx, user.ID, CreateAPIKeyRequest{
+		Name:    fmt.Sprintf("Bot-sales group %d", *input.GroupID),
+		GroupID: input.GroupID,
+	})
+	if err != nil {
+		return nil, infraerrors.ServiceUnavailable("BOT_SALES_API_KEY_CREATE_FAILED", "failed to create an API key for the purchased group")
+	}
+	if key == nil || key.GroupID == nil || *key.GroupID != *input.GroupID || key.Key == "" {
+		return nil, infraerrors.InternalServer("BOT_SALES_API_KEY_GROUP_MISMATCH", "created API key is not associated with the purchased group")
+	}
+	return &BotSalesAPIKey{ID: key.ID, Key: key.Key, GroupID: key.GroupID}, nil
 }
 
 func (s *BotSalesFulfillmentService) createBotSalesPaymentOrder(ctx context.Context, user *User, input BotSalesFulfillmentRequest) (*dbent.PaymentOrder, error) {
