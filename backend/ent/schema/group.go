@@ -289,6 +289,14 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(0).
 			Comment("安全缓冲，小数；与 margin 相加后从下游倍率中扣除，默认 0"),
+
+		// 智能路由成员配置（migration 232）：仅 platform=smart_routing 分组使用。
+		// 成员按 priority 升序分优先级层（数值越小越先调度），同层按 weight
+		// 加权随机分流；高优先级失败后按优先级降序重试直至成功或耗尽。
+		field.JSON("smart_routing_members", []domain.SmartRoutingMember{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("智能路由成员分组配置：group_id/priority/weight"),
 	}
 }
 

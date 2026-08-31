@@ -22173,6 +22173,8 @@ type GroupMutation struct {
 	addprofit_min_margin                    *float64
 	profit_safety_buffer                    *float64
 	addprofit_safety_buffer                 *float64
+	smart_routing_members                   *[]domain.SmartRoutingMember
+	appendsmart_routing_members             []domain.SmartRoutingMember
 	clearedFields                           map[string]struct{}
 	api_keys                                map[int64]struct{}
 	removedapi_keys                         map[int64]struct{}
@@ -25415,6 +25417,71 @@ func (m *GroupMutation) ResetProfitSafetyBuffer() {
 	m.addprofit_safety_buffer = nil
 }
 
+// SetSmartRoutingMembers sets the "smart_routing_members" field.
+func (m *GroupMutation) SetSmartRoutingMembers(drm []domain.SmartRoutingMember) {
+	m.smart_routing_members = &drm
+	m.appendsmart_routing_members = nil
+}
+
+// SmartRoutingMembers returns the value of the "smart_routing_members" field in the mutation.
+func (m *GroupMutation) SmartRoutingMembers() (r []domain.SmartRoutingMember, exists bool) {
+	v := m.smart_routing_members
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSmartRoutingMembers returns the old "smart_routing_members" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldSmartRoutingMembers(ctx context.Context) (v []domain.SmartRoutingMember, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSmartRoutingMembers is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSmartRoutingMembers requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSmartRoutingMembers: %w", err)
+	}
+	return oldValue.SmartRoutingMembers, nil
+}
+
+// AppendSmartRoutingMembers adds drm to the "smart_routing_members" field.
+func (m *GroupMutation) AppendSmartRoutingMembers(drm []domain.SmartRoutingMember) {
+	m.appendsmart_routing_members = append(m.appendsmart_routing_members, drm...)
+}
+
+// AppendedSmartRoutingMembers returns the list of values that were appended to the "smart_routing_members" field in this mutation.
+func (m *GroupMutation) AppendedSmartRoutingMembers() ([]domain.SmartRoutingMember, bool) {
+	if len(m.appendsmart_routing_members) == 0 {
+		return nil, false
+	}
+	return m.appendsmart_routing_members, true
+}
+
+// ClearSmartRoutingMembers clears the value of the "smart_routing_members" field.
+func (m *GroupMutation) ClearSmartRoutingMembers() {
+	m.smart_routing_members = nil
+	m.appendsmart_routing_members = nil
+	m.clearedFields[group.FieldSmartRoutingMembers] = struct{}{}
+}
+
+// SmartRoutingMembersCleared returns if the "smart_routing_members" field was cleared in this mutation.
+func (m *GroupMutation) SmartRoutingMembersCleared() bool {
+	_, ok := m.clearedFields[group.FieldSmartRoutingMembers]
+	return ok
+}
+
+// ResetSmartRoutingMembers resets all changes to the "smart_routing_members" field.
+func (m *GroupMutation) ResetSmartRoutingMembers() {
+	m.smart_routing_members = nil
+	m.appendsmart_routing_members = nil
+	delete(m.clearedFields, group.FieldSmartRoutingMembers)
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -25773,7 +25840,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 62)
+	fields := make([]string, 0, 63)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -25960,6 +26027,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.profit_safety_buffer != nil {
 		fields = append(fields, group.FieldProfitSafetyBuffer)
 	}
+	if m.smart_routing_members != nil {
+		fields = append(fields, group.FieldSmartRoutingMembers)
+	}
 	return fields
 }
 
@@ -26092,6 +26162,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ProfitMinMargin()
 	case group.FieldProfitSafetyBuffer:
 		return m.ProfitSafetyBuffer()
+	case group.FieldSmartRoutingMembers:
+		return m.SmartRoutingMembers()
 	}
 	return nil, false
 }
@@ -26225,6 +26297,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldProfitMinMargin(ctx)
 	case group.FieldProfitSafetyBuffer:
 		return m.OldProfitSafetyBuffer(ctx)
+	case group.FieldSmartRoutingMembers:
+		return m.OldSmartRoutingMembers(ctx)
 	}
 	return nil, fmt.Errorf("unknown Group field %s", name)
 }
@@ -26668,6 +26742,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetProfitSafetyBuffer(v)
 		return nil
+	case group.FieldSmartRoutingMembers:
+		v, ok := value.([]domain.SmartRoutingMember)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSmartRoutingMembers(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
 }
@@ -27091,6 +27172,9 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldModelRouting) {
 		fields = append(fields, group.FieldModelRouting)
 	}
+	if m.FieldCleared(group.FieldSmartRoutingMembers) {
+		fields = append(fields, group.FieldSmartRoutingMembers)
+	}
 	return fields
 }
 
@@ -27170,6 +27254,9 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldModelRouting:
 		m.ClearModelRouting()
+		return nil
+	case group.FieldSmartRoutingMembers:
+		m.ClearSmartRoutingMembers()
 		return nil
 	}
 	return fmt.Errorf("unknown Group nullable field %s", name)
@@ -27364,6 +27451,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldProfitSafetyBuffer:
 		m.ResetProfitSafetyBuffer()
+		return nil
+	case group.FieldSmartRoutingMembers:
+		m.ResetSmartRoutingMembers()
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)

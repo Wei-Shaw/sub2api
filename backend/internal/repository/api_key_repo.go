@@ -226,6 +226,9 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldProfitControlEnabled,
 				group.FieldProfitMinMargin,
 				group.FieldProfitSafetyBuffer,
+				// 智能路由：认证快照漏选成员配置会让调度器拿到空计划，
+				// 智能分组请求静默退化，新增快照字段时必须同步本投影。
+				group.FieldSmartRoutingMembers,
 			)
 		}).
 		Only(ctx)
@@ -1022,6 +1025,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		ProfitControlEnabled:            g.ProfitControlEnabled,
 		ProfitMinMargin:                 g.ProfitMinMargin,
 		ProfitSafetyBuffer:              g.ProfitSafetyBuffer,
+		SmartRoutingMembers:             g.SmartRoutingMembers,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}

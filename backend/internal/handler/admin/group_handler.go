@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -98,7 +99,7 @@ func NewGroupHandler(adminService service.AdminService, dashboardService *servic
 type CreateGroupRequest struct {
 	Name                      string                        `json:"name" binding:"required"`
 	Description               string                        `json:"description"`
-	Platform                  string                        `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek composite"`
+	Platform                  string                        `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek composite smart_routing"`
 	RateMultiplier            float64                       `json:"rate_multiplier"`
 	IsExclusive               bool                          `json:"is_exclusive"`
 	SubscriptionType          string                        `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
@@ -158,6 +159,8 @@ type CreateGroupRequest struct {
 	MaxReasoningEffort string `json:"max_reasoning_effort"`
 	// OpenAI/Codex 推理强度精确映射。
 	ReasoningEffortMappings []service.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
+	// 智能路由成员配置（仅 platform=smart_routing）：成员分组 + 优先级 + 权重。
+	SmartRoutingMembers []domain.SmartRoutingMember `json:"smart_routing_members"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -166,7 +169,7 @@ type CreateGroupRequest struct {
 type UpdateGroupRequest struct {
 	Name                      string                         `json:"name"`
 	Description               *string                        `json:"description"`
-	Platform                  string                         `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek composite"`
+	Platform                  string                         `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek composite smart_routing"`
 	RateMultiplier            *float64                       `json:"rate_multiplier"`
 	IsExclusive               *bool                          `json:"is_exclusive"`
 	Status                    string                         `json:"status" binding:"omitempty,oneof=active inactive"`
@@ -227,6 +230,8 @@ type UpdateGroupRequest struct {
 	MaxReasoningEffort *string `json:"max_reasoning_effort"`
 	// nil 不修改，空数组清空，非空数组替换。
 	ReasoningEffortMappings *[]service.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
+	// 智能路由成员配置：nil 不修改；非 nil（含空数组）整体替换。
+	SmartRoutingMembers *[]domain.SmartRoutingMember `json:"smart_routing_members"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -558,6 +563,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		RPMLimit:                        req.RPMLimit,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
+		SmartRoutingMembers:             req.SmartRoutingMembers,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {
@@ -687,6 +693,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		RPMLimit:                        req.RPMLimit,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
+		SmartRoutingMembers:             req.SmartRoutingMembers,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {

@@ -1162,6 +1162,24 @@ func (_u *GroupUpdate) AddProfitSafetyBuffer(v float64) *GroupUpdate {
 	return _u
 }
 
+// SetSmartRoutingMembers sets the "smart_routing_members" field.
+func (_u *GroupUpdate) SetSmartRoutingMembers(v []domain.SmartRoutingMember) *GroupUpdate {
+	_u.mutation.SetSmartRoutingMembers(v)
+	return _u
+}
+
+// AppendSmartRoutingMembers appends value to the "smart_routing_members" field.
+func (_u *GroupUpdate) AppendSmartRoutingMembers(v []domain.SmartRoutingMember) *GroupUpdate {
+	_u.mutation.AppendSmartRoutingMembers(v)
+	return _u
+}
+
+// ClearSmartRoutingMembers clears the value of the "smart_routing_members" field.
+func (_u *GroupUpdate) ClearSmartRoutingMembers() *GroupUpdate {
+	_u.mutation.ClearSmartRoutingMembers()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1843,6 +1861,17 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedProfitSafetyBuffer(); ok {
 		_spec.AddField(group.FieldProfitSafetyBuffer, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.SmartRoutingMembers(); ok {
+		_spec.SetField(group.FieldSmartRoutingMembers, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedSmartRoutingMembers(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldSmartRoutingMembers, value)
+		})
+	}
+	if _u.mutation.SmartRoutingMembersCleared() {
+		_spec.ClearField(group.FieldSmartRoutingMembers, field.TypeJSON)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -3283,6 +3312,24 @@ func (_u *GroupUpdateOne) AddProfitSafetyBuffer(v float64) *GroupUpdateOne {
 	return _u
 }
 
+// SetSmartRoutingMembers sets the "smart_routing_members" field.
+func (_u *GroupUpdateOne) SetSmartRoutingMembers(v []domain.SmartRoutingMember) *GroupUpdateOne {
+	_u.mutation.SetSmartRoutingMembers(v)
+	return _u
+}
+
+// AppendSmartRoutingMembers appends value to the "smart_routing_members" field.
+func (_u *GroupUpdateOne) AppendSmartRoutingMembers(v []domain.SmartRoutingMember) *GroupUpdateOne {
+	_u.mutation.AppendSmartRoutingMembers(v)
+	return _u
+}
+
+// ClearSmartRoutingMembers clears the value of the "smart_routing_members" field.
+func (_u *GroupUpdateOne) ClearSmartRoutingMembers() *GroupUpdateOne {
+	_u.mutation.ClearSmartRoutingMembers()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -3994,6 +4041,17 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedProfitSafetyBuffer(); ok {
 		_spec.AddField(group.FieldProfitSafetyBuffer, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.SmartRoutingMembers(); ok {
+		_spec.SetField(group.FieldSmartRoutingMembers, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedSmartRoutingMembers(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldSmartRoutingMembers, value)
+		})
+	}
+	if _u.mutation.SmartRoutingMembersCleared() {
+		_spec.ClearField(group.FieldSmartRoutingMembers, field.TypeJSON)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

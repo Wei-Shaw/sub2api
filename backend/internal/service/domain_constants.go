@@ -48,6 +48,8 @@ const (
 	PlatformZhipu     = domain.PlatformZhipu
 	PlatformDeepseek  = domain.PlatformDeepseek
 	PlatformComposite = domain.PlatformComposite
+	// PlatformSmartRouting 智能路由分组：聚合成员分组并按优先级/权重调度。
+	PlatformSmartRouting = domain.PlatformSmartRouting
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
 	PlatformKiro = "kiro"

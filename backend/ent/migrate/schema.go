@@ -965,6 +965,7 @@ var (
 		{Name: "profit_control_enabled", Type: field.TypeBool, Default: false},
 		{Name: "profit_min_margin", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
 		{Name: "profit_safety_buffer", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
+		{Name: "smart_routing_members", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 	}
 	// GroupsTable holds the schema information for the "groups" table.
 	GroupsTable = &schema.Table{

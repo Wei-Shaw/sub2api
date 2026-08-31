@@ -509,6 +509,84 @@
           />
           <p class="input-hint">{{ t("admin.groups.platformHint") }}</p>
         </div>
+        <!-- 智能路由成员分组 -->
+        <div v-if="createForm.platform === 'smart_routing'">
+          <label class="input-label">{{
+            t("admin.groups.smartRouting.title")
+          }}</label>
+          <p class="input-hint mb-2">
+            {{ t("admin.groups.smartRouting.hint") }}
+          </p>
+          <div
+            v-if="createForm.smart_routing_members.length > 0"
+            class="mb-1 grid grid-cols-[minmax(0,1fr)_90px_90px_32px] gap-2 text-xs text-gray-500 dark:text-gray-400"
+          >
+            <span>{{ t("admin.groups.smartRouting.memberGroup") }}</span>
+            <span :title="t('admin.groups.smartRouting.priorityHint')">{{
+              t("admin.groups.smartRouting.priority")
+            }}</span>
+            <span :title="t('admin.groups.smartRouting.weightHint')">{{
+              t("admin.groups.smartRouting.weight")
+            }}</span>
+            <span></span>
+          </div>
+          <div
+            v-for="(member, idx) in createForm.smart_routing_members"
+            :key="idx"
+            class="mb-2 grid grid-cols-[minmax(0,1fr)_90px_90px_32px] items-center gap-2"
+          >
+            <select v-model.number="member.group_id" class="input">
+              <option :value="0" disabled>
+                {{ t("admin.groups.smartRouting.selectGroup") }}
+              </option>
+              <option
+                v-for="g in smartRoutingCandidateGroups()"
+                :key="g.id"
+                :value="g.id"
+                :disabled="
+                  createForm.smart_routing_members.some(
+                    (m, i) => i !== idx && m.group_id === g.id,
+                  )
+                "
+              >
+                {{ g.name }}
+              </option>
+            </select>
+            <input
+              v-model.number="member.priority"
+              type="number"
+              min="1"
+              step="1"
+              class="input"
+              :title="t('admin.groups.smartRouting.priorityHint')"
+            />
+            <input
+              v-model.number="member.weight"
+              type="number"
+              min="1"
+              step="1"
+              class="input"
+              :title="t('admin.groups.smartRouting.weightHint')"
+            />
+            <button
+              type="button"
+              class="flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
+              :aria-label="t('admin.groups.smartRouting.removeMember')"
+              @click="
+                removeSmartRoutingMember(createForm.smart_routing_members, idx)
+              "
+            >
+              <Icon name="x" size="sm" />
+            </button>
+          </div>
+          <button
+            type="button"
+            class="rounded-md border border-dashed border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-gray-600 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-400"
+            @click="addSmartRoutingMember(createForm.smart_routing_members)"
+          >
+            + {{ t("admin.groups.smartRouting.addMember") }}
+          </button>
+        </div>
         <!-- 从分组复制账号 -->
         <div v-if="copyAccountsGroupOptions.length > 0">
           <div class="mb-1.5 flex items-center gap-1">
@@ -2237,6 +2315,82 @@
             data-tour="group-form-platform"
           />
           <p class="input-hint">{{ t("admin.groups.platformNotEditable") }}</p>
+        </div>
+        <!-- 智能路由成员分组（编辑时） -->
+        <div v-if="editForm.platform === 'smart_routing'">
+          <label class="input-label">{{
+            t("admin.groups.smartRouting.title")
+          }}</label>
+          <p class="input-hint mb-2">
+            {{ t("admin.groups.smartRouting.hint") }}
+          </p>
+          <div
+            v-if="editForm.smart_routing_members.length > 0"
+            class="mb-1 grid grid-cols-[minmax(0,1fr)_90px_90px_32px] gap-2 text-xs text-gray-500 dark:text-gray-400"
+          >
+            <span>{{ t("admin.groups.smartRouting.memberGroup") }}</span>
+            <span :title="t('admin.groups.smartRouting.priorityHint')">{{
+              t("admin.groups.smartRouting.priority")
+            }}</span>
+            <span :title="t('admin.groups.smartRouting.weightHint')">{{
+              t("admin.groups.smartRouting.weight")
+            }}</span>
+            <span></span>
+          </div>
+          <div
+            v-for="(member, idx) in editForm.smart_routing_members"
+            :key="idx"
+            class="mb-2 grid grid-cols-[minmax(0,1fr)_90px_90px_32px] items-center gap-2"
+          >
+            <select v-model.number="member.group_id" class="input">
+              <option :value="0" disabled>
+                {{ t("admin.groups.smartRouting.selectGroup") }}
+              </option>
+              <option
+                v-for="g in smartRoutingCandidateGroups(editingGroup?.id)"
+                :key="g.id"
+                :value="g.id"
+                :disabled="
+                  editForm.smart_routing_members.some(
+                    (m, i) => i !== idx && m.group_id === g.id,
+                  )
+                "
+              >
+                {{ g.name }}
+              </option>
+            </select>
+            <input
+              v-model.number="member.priority"
+              type="number"
+              min="1"
+              step="1"
+              class="input"
+              :title="t('admin.groups.smartRouting.priorityHint')"
+            />
+            <input
+              v-model.number="member.weight"
+              type="number"
+              min="1"
+              step="1"
+              class="input"
+              :title="t('admin.groups.smartRouting.weightHint')"
+            />
+            <button
+              type="button"
+              class="flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
+              :aria-label="t('admin.groups.smartRouting.removeMember')"
+              @click="removeSmartRoutingMember(editForm.smart_routing_members, idx)"
+            >
+              <Icon name="x" size="sm" />
+            </button>
+          </div>
+          <button
+            type="button"
+            class="rounded-md border border-dashed border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-gray-600 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-400"
+            @click="addSmartRoutingMember(editForm.smart_routing_members)"
+          >
+            + {{ t("admin.groups.smartRouting.addMember") }}
+          </button>
         </div>
         <!-- 从分组复制账号（编辑时） -->
         <div v-if="copyAccountsGroupOptionsForEdit.length > 0">
@@ -4431,6 +4585,7 @@ import type {
   CompositeRouteEndpoint,
   CompositeRouteMatchType,
   GroupPlatform,
+  SmartRoutingMember,
   SubscriptionType,
 } from "@/types";
 import {
@@ -4883,7 +5038,9 @@ const invalidRequestFallbackOptionsForEdit = computed(() => {
 });
 
 const canCopyAccountsFromGroup = (targetPlatform: GroupPlatform, sourcePlatform: GroupPlatform) =>
-  targetPlatform === "composite" || sourcePlatform === targetPlatform;
+  // 智能路由分组不绑定账号（请求被调度到成员分组执行），禁止复制账号。
+  targetPlatform !== "smart_routing" &&
+  (targetPlatform === "composite" || sourcePlatform === targetPlatform);
 
 const copyAccountsGroupLabel = (g: AdminGroup) => {
   const count = g.account_count || 0;
@@ -5106,6 +5263,8 @@ const createForm = reactive({
   rpm_limit: 0 as number,
   max_reasoning_effort: "",
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
+  // 智能路由成员配置（仅 smart_routing 平台）
+  smart_routing_members: [] as SmartRoutingMember[],
 });
 
 // 简单账号类型（用于模型路由选择）
@@ -5468,6 +5627,8 @@ const editForm = reactive({
   rpm_limit: 0 as number,
   max_reasoning_effort: "",
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
+  // 智能路由成员配置（仅 smart_routing 平台）
+  smart_routing_members: [] as SmartRoutingMember[],
 });
 
 type ImagePricingFormState = {
@@ -5849,6 +6010,7 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 const openCreateModal = () => {
   showCreateModal.value = true;
   loadModelsListCandidates("create", 0, createForm.platform);
+  loadSmartRoutingMemberOptions();
 };
 
 const closeCreateModal = () => {
@@ -5908,6 +6070,7 @@ const closeCreateModal = () => {
   createForm.rpm_limit = 0;
   createForm.max_reasoning_effort = "";
   createForm.reasoning_effort_mappings = [];
+  createForm.smart_routing_members = [];
   createReasoningEffortPolicyRef.value?.resetValidation();
   resetModelsListState(createModelsListState);
   createModelRoutingRules.value = [];
@@ -5955,6 +6118,44 @@ const validateProfitControlForm = (form: ProfitControlFormState): boolean => {
   return true;
 };
 
+// 智能路由成员候选分组（成员不能是智能路由分组或订阅分组）。
+const smartRoutingMemberOptions = ref<AdminGroup[]>([]);
+const smartRoutingCandidateGroups = (excludeId?: number): AdminGroup[] =>
+  smartRoutingMemberOptions.value.filter(
+    (g) =>
+      g.platform !== "smart_routing" &&
+      (g.subscription_type || "standard") !== "subscription" &&
+      g.id !== excludeId,
+  );
+const loadSmartRoutingMemberOptions = async () => {
+  try {
+    smartRoutingMemberOptions.value = await adminAPI.groups.getAll();
+  } catch {
+    smartRoutingMemberOptions.value = [];
+  }
+};
+const addSmartRoutingMember = (members: SmartRoutingMember[]) => {
+  members.push({ group_id: 0, priority: 1, weight: 1 });
+};
+const removeSmartRoutingMember = (
+  members: SmartRoutingMember[],
+  index: number,
+) => {
+  members.splice(index, 1);
+};
+
+// 智能路由成员表单归一化：剔除未选择分组的行，强制优先级/权重下限。
+const normalizeSmartRoutingMembersForm = (
+  members: SmartRoutingMember[],
+): SmartRoutingMember[] =>
+  members
+    .filter((m) => m.group_id > 0)
+    .map((m) => ({
+      group_id: m.group_id,
+      priority: Math.max(1, Math.floor(Number(m.priority) || 1)),
+      weight: Math.max(1, Math.floor(Number(m.weight) || 1)),
+    }));
+
 const handleCreateGroup = async () => {
   if (!createForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
@@ -5969,6 +6170,15 @@ const handleCreateGroup = async () => {
   }
   if (!validateProfitControlForm(createForm)) {
     return;
+  }
+  if (createForm.platform === "smart_routing") {
+    const validMembers = createForm.smart_routing_members.filter(
+      (m) => m.group_id > 0,
+    );
+    if (validMembers.length === 0) {
+      appStore.showError(t("admin.groups.smartRouting.membersRequired"));
+      return;
+    }
   }
   submitting.value = true;
   try {
@@ -6027,6 +6237,11 @@ const handleCreateGroup = async () => {
       profit_safety_buffer: percentToDecimal(
         createForm.profit_safety_buffer_percent,
       ),
+      // 智能路由成员：仅 smart_routing 平台提交，其余平台不带该字段。
+      smart_routing_members:
+        createForm.platform === "smart_routing"
+          ? normalizeSmartRoutingMembersForm(createForm.smart_routing_members)
+          : undefined,
     };
     delete (requestData as Record<string, unknown>).profit_min_margin_percent;
     delete (requestData as Record<string, unknown>).profit_safety_buffer_percent;
@@ -6171,6 +6386,9 @@ const handleEdit = async (group: AdminGroup) => {
     "gemini_image",
   ];
   editForm.mcp_xml_inject = group.mcp_xml_inject ?? true;
+  editForm.smart_routing_members = (group.smart_routing_members || []).map(
+    (m) => ({ group_id: m.group_id, priority: m.priority, weight: m.weight }),
+  );
   editForm.copy_accounts_from_group_ids = []; // 复制账号字段每次编辑时重置为空
   editForm.rpm_limit = group.rpm_limit ?? 0;
   editForm.max_reasoning_effort = normalizeReasoningEffortForPlatform(
@@ -6187,6 +6405,7 @@ const handleEdit = async (group: AdminGroup) => {
     group.model_routing,
   );
   loadModelsListCandidates("edit", group.id, group.platform);
+  loadSmartRoutingMemberOptions();
   showEditModal.value = true;
 };
 
@@ -6242,6 +6461,15 @@ const handleUpdateGroup = async () => {
   }
   if (!validateProfitControlForm(editForm)) {
     return;
+  }
+  if (editForm.platform === "smart_routing") {
+    const validMembers = editForm.smart_routing_members.filter(
+      (m) => m.group_id > 0,
+    );
+    if (validMembers.length === 0) {
+      appStore.showError(t("admin.groups.smartRouting.membersRequired"));
+      return;
+    }
   }
 
   submitting.value = true;
@@ -6300,6 +6528,11 @@ const handleUpdateGroup = async () => {
       profit_safety_buffer: percentToDecimal(
         editForm.profit_safety_buffer_percent,
       ),
+      // 智能路由成员：仅 smart_routing 平台提交；其他平台省略（后端按不修改处理）。
+      smart_routing_members:
+        editForm.platform === "smart_routing"
+          ? normalizeSmartRoutingMembersForm(editForm.smart_routing_members)
+          : undefined,
     };
     delete (payload as Record<string, unknown>).profit_min_margin_percent;
     delete (payload as Record<string, unknown>).profit_safety_buffer_percent;

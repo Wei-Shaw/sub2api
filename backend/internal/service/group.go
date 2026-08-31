@@ -124,6 +124,11 @@ type Group struct {
 	ProfitMinMargin      float64 // 最低毛利率，小数存储（0.30=30%）
 	ProfitSafetyBuffer   float64 // 安全缓冲，小数，与 margin 相加后从 D 中扣除
 
+	// 智能路由成员配置（仅 Platform=smart_routing 时使用）：
+	// 成员分组按 Priority 升序分层调度（数值越小越先），同层按 Weight 加权
+	// 随机分流；高优先级失败后按优先级降序逐层重试直至成功或耗尽。
+	SmartRoutingMembers []domain.SmartRoutingMember
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
@@ -139,6 +144,24 @@ func (g *Group) IsActive() bool {
 
 func (g *Group) IsSubscriptionType() bool {
 	return g.SubscriptionType == SubscriptionTypeSubscription
+}
+
+// IsSmartRouting 判断分组是否为已配置成员的智能路由分组。
+// 智能路由分组自身不绑定账号，请求会被调度到成员分组执行。
+func (g *Group) IsSmartRouting() bool {
+	return g != nil && g.Platform == PlatformSmartRouting && len(g.SmartRoutingMembers) > 0
+}
+
+// SmartRoutingMemberIDs 返回成员分组 ID 列表（保持配置顺序）。
+func (g *Group) SmartRoutingMemberIDs() []int64 {
+	if g == nil || len(g.SmartRoutingMembers) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(g.SmartRoutingMembers))
+	for _, m := range g.SmartRoutingMembers {
+		ids = append(ids, m.GroupID)
+	}
+	return ids
 }
 
 func (g *Group) HasDailyLimit() bool {

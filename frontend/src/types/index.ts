@@ -531,7 +531,14 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'composite'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'composite' | 'smart_routing'
+
+// 智能路由分组成员配置：priority 数值越小优先级越高（1 最高）；同优先级按 weight 加权分流。
+export interface SmartRoutingMember {
+  group_id: number
+  priority: number
+  weight: number
+}
 
 export type VideoModelPrices = Record<string, Record<string, number>>
 
@@ -637,6 +644,9 @@ export interface AdminGroup extends Group {
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   models_list_config?: ModelsListConfig
+
+  // 智能路由成员配置（仅 smart_routing 平台使用）
+  smart_routing_members?: SmartRoutingMember[]
 
   // 分组排序
   sort_order: number
@@ -821,6 +831,8 @@ export interface CreateGroupRequest {
   reasoning_effort_mappings?: ReasoningEffortMapping[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+  // 智能路由成员配置（仅 platform=smart_routing）
+  smart_routing_members?: SmartRoutingMember[]
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
 }
@@ -883,6 +895,8 @@ export interface UpdateGroupRequest {
   reasoning_effort_mappings?: ReasoningEffortMapping[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+  // 智能路由成员配置：省略表示不修改；传数组（含空数组）表示整体替换。
+  smart_routing_members?: SmartRoutingMember[]
   copy_accounts_from_group_ids?: number[]
 }
 

@@ -850,6 +850,12 @@ func (_c *GroupCreate) SetNillableProfitSafetyBuffer(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetSmartRoutingMembers sets the "smart_routing_members" field.
+func (_c *GroupCreate) SetSmartRoutingMembers(v []domain.SmartRoutingMember) *GroupCreate {
+	_c.mutation.SetSmartRoutingMembers(v)
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -1603,6 +1609,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ProfitSafetyBuffer(); ok {
 		_spec.SetField(group.FieldProfitSafetyBuffer, field.TypeFloat64, value)
 		_node.ProfitSafetyBuffer = value
+	}
+	if value, ok := _c.mutation.SmartRoutingMembers(); ok {
+		_spec.SetField(group.FieldSmartRoutingMembers, field.TypeJSON, value)
+		_node.SmartRoutingMembers = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -2765,6 +2775,24 @@ func (u *GroupUpsert) UpdateProfitSafetyBuffer() *GroupUpsert {
 // AddProfitSafetyBuffer adds v to the "profit_safety_buffer" field.
 func (u *GroupUpsert) AddProfitSafetyBuffer(v float64) *GroupUpsert {
 	u.Add(group.FieldProfitSafetyBuffer, v)
+	return u
+}
+
+// SetSmartRoutingMembers sets the "smart_routing_members" field.
+func (u *GroupUpsert) SetSmartRoutingMembers(v []domain.SmartRoutingMember) *GroupUpsert {
+	u.Set(group.FieldSmartRoutingMembers, v)
+	return u
+}
+
+// UpdateSmartRoutingMembers sets the "smart_routing_members" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSmartRoutingMembers() *GroupUpsert {
+	u.SetExcluded(group.FieldSmartRoutingMembers)
+	return u
+}
+
+// ClearSmartRoutingMembers clears the value of the "smart_routing_members" field.
+func (u *GroupUpsert) ClearSmartRoutingMembers() *GroupUpsert {
+	u.SetNull(group.FieldSmartRoutingMembers)
 	return u
 }
 
@@ -3989,6 +4017,27 @@ func (u *GroupUpsertOne) AddProfitSafetyBuffer(v float64) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateProfitSafetyBuffer() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateProfitSafetyBuffer()
+	})
+}
+
+// SetSmartRoutingMembers sets the "smart_routing_members" field.
+func (u *GroupUpsertOne) SetSmartRoutingMembers(v []domain.SmartRoutingMember) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSmartRoutingMembers(v)
+	})
+}
+
+// UpdateSmartRoutingMembers sets the "smart_routing_members" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSmartRoutingMembers() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSmartRoutingMembers()
+	})
+}
+
+// ClearSmartRoutingMembers clears the value of the "smart_routing_members" field.
+func (u *GroupUpsertOne) ClearSmartRoutingMembers() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearSmartRoutingMembers()
 	})
 }
 
@@ -5379,6 +5428,27 @@ func (u *GroupUpsertBulk) AddProfitSafetyBuffer(v float64) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateProfitSafetyBuffer() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateProfitSafetyBuffer()
+	})
+}
+
+// SetSmartRoutingMembers sets the "smart_routing_members" field.
+func (u *GroupUpsertBulk) SetSmartRoutingMembers(v []domain.SmartRoutingMember) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSmartRoutingMembers(v)
+	})
+}
+
+// UpdateSmartRoutingMembers sets the "smart_routing_members" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSmartRoutingMembers() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSmartRoutingMembers()
+	})
+}
+
+// ClearSmartRoutingMembers clears the value of the "smart_routing_members" field.
+func (u *GroupUpsertBulk) ClearSmartRoutingMembers() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearSmartRoutingMembers()
 	})
 }
 

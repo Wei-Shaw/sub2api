@@ -192,6 +192,9 @@ type AdminGroup struct {
 	ActiveAccountCount      int64          `json:"active_account_count,omitempty"`
 	RateLimitedAccountCount int64          `json:"rate_limited_account_count,omitempty"`
 
+	// 智能路由成员配置（仅 platform=smart_routing）：成员分组 + 优先级 + 权重。
+	SmartRoutingMembers []domain.SmartRoutingMember `json:"smart_routing_members"`
+
 	// 分组排序
 	SortOrder int `json:"sort_order"`
 }

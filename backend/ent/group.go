@@ -144,6 +144,8 @@ type Group struct {
 	ProfitMinMargin float64 `json:"profit_min_margin,omitempty"`
 	// 安全缓冲，小数；与 margin 相加后从下游倍率中扣除，默认 0
 	ProfitSafetyBuffer float64 `json:"profit_safety_buffer,omitempty"`
+	// 智能路由成员分组配置：group_id/priority/weight
+	SmartRoutingMembers []domain.SmartRoutingMember `json:"smart_routing_members,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the GroupQuery when eager-loading is set.
 	Edges        GroupEdges `json:"edges"`
@@ -250,7 +252,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldReasoningEffortMappings:
+		case group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldReasoningEffortMappings, group.FieldSmartRoutingMembers:
 			values[i] = new([]byte)
 		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
@@ -688,6 +690,14 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ProfitSafetyBuffer = value.Float64
 			}
+		case group.FieldSmartRoutingMembers:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field smart_routing_members", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.SmartRoutingMembers); err != nil {
+					return fmt.Errorf("unmarshal field smart_routing_members: %w", err)
+				}
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -987,6 +997,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("profit_safety_buffer=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ProfitSafetyBuffer))
+	builder.WriteString(", ")
+	builder.WriteString("smart_routing_members=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SmartRoutingMembers))
 	builder.WriteByte(')')
 	return builder.String()
 }

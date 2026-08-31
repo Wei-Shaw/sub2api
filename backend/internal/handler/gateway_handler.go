@@ -1102,6 +1102,17 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 
+	// 智能路由分组：聚合所有成员分组的可用模型，让一个 Key 看到全部模型。
+	if platform == service.PlatformSmartRouting {
+		availableModels := h.smartRoutingAvailableModels(c.Request.Context(), apiKey.Group)
+		if len(availableModels) > 0 {
+			writeModelsList(c, service.PlatformSmartRouting, availableModels)
+			return
+		}
+		writeModelsList(c, service.PlatformSmartRouting, defaultModelIDsForPlatform(service.PlatformAnthropic))
+		return
+	}
+
 	// Get available models from account configurations for the selected group platform.
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
@@ -1201,6 +1212,19 @@ func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *servi
 		return fallbackModels
 	}
 
+	// 智能路由分组：聚合所有成员分组的可用模型。
+	if platform == service.PlatformSmartRouting {
+		availableModels := h.smartRoutingAvailableModels(ctx, group)
+		fallbackModels := defaultCodexModelIDsForPlatform(service.PlatformAnthropic)
+		if group.CustomModelsListEnabled() {
+			return filterModelsByCustomList(availableModels, fallbackModels, group.ModelsListConfig.Models)
+		}
+		if len(availableModels) > 0 {
+			return availableModels
+		}
+		return fallbackModels
+	}
+
 	availableModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
 	fallbackModels := defaultCodexModelIDsForPlatform(platform)
 	if group.CustomModelsListEnabled() {
@@ -1233,6 +1257,44 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 			}
 		}
 		for _, model := range platformModels {
+			model = strings.TrimSpace(model)
+			if model == "" {
+				continue
+			}
+			if _, ok := seen[model]; ok {
+				continue
+			}
+			seen[model] = struct{}{}
+			models = append(models, model)
+		}
+	}
+	return models
+}
+
+// smartRoutingAvailableModels 聚合智能路由分组所有成员分组的可用模型。
+// 对每个成员：优先取其账号映射出的模型；若成员未配置映射（GetAvailableModels
+// 返回空），则退回该成员平台的默认模型列表，保证成员平台能力不丢失。
+func (h *GatewayHandler) smartRoutingAvailableModels(ctx context.Context, smartGroup *service.Group) []string {
+	if h == nil || h.gatewayService == nil || smartGroup == nil {
+		return nil
+	}
+	plan, err := h.gatewayService.BuildSmartRoutingPlan(ctx, smartGroup, "")
+	if err != nil || len(plan) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	models := make([]string, 0)
+	for _, cand := range plan {
+		member := cand.Group
+		if member == nil {
+			continue
+		}
+		memberID := member.ID
+		memberModels := h.gatewayService.GetAvailableModels(ctx, &memberID, member.Platform)
+		if len(memberModels) == 0 {
+			memberModels = defaultModelIDsForPlatform(member.Platform)
+		}
+		for _, model := range memberModels {
 			model = strings.TrimSpace(model)
 			if model == "" {
 				continue
