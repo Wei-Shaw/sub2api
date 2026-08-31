@@ -81,8 +81,8 @@ func (f optionalLimitField) ToServiceInput() *float64 {
 	if f.value != nil {
 		return f.value
 	}
-	zero := 0.0
-	return &zero
+	unlimited := -1.0
+	return &unlimited
 }
 
 // NewGroupHandler creates a new admin group handler

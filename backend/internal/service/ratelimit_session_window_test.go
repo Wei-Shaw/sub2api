@@ -164,7 +164,9 @@ func (m *sessionWindowMockRepo) BulkUpdate(context.Context, []int64, AccountBulk
 func (m *sessionWindowMockRepo) IncrementQuotaUsed(context.Context, int64, float64) error {
 	panic("unexpected")
 }
-func (m *sessionWindowMockRepo) ResetQuotaUsed(context.Context, int64) error { panic("unexpected") }
+func (m *sessionWindowMockRepo) ResetQuotaUsedAndClearRateLimitCooldown(context.Context, int64) error {
+	panic("unexpected")
+}
 func (m *sessionWindowMockRepo) RevertProxyFallback(context.Context, int64) error {
 	panic("unexpected")
 }

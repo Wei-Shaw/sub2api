@@ -978,6 +978,7 @@
         <div class="mb-3 flex items-center justify-between">
           <label class="input-label mb-0">{{ t('admin.accounts.openai.codexFingerprintMode') }}</label>
           <input
+            id="bulk-edit-openai-codex-fingerprint-mode-enabled"
             v-model="enableCodexFingerprintMode"
             type="checkbox"
             class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
@@ -2089,12 +2090,23 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
 
   if (enableCodexFingerprintMode.value) {
     const extra = ensureExtra()
-    // off = 默认值，清键即可；device/session/full 是显式 opt-in，必须落键（#5610）。
-    if (codexFingerprintMode.value !== 'off') {
-      extra.codex_fingerprint_mode = codexFingerprintMode.value
-    } else {
-      delete extra.codex_fingerprint_mode
-    }
+    // off 必须显式落键，不能靠删本地键表达。批量更新走 JSONB 顶层合并
+    // （extra = COALESCE(extra,'{}') || payload），删掉 payload 里的键只表示
+    // "本次不更新该键"，清不掉账号上已有的 device/session/full；而且只删不写会让
+    // 整个 payload 退化成 {extra:{}}，被后端 len(req.Extra) > 0 判为空更新直接 400
+    // "No updates provided"（#6327）。
+    //
+    // Create/Edit 那两个表单可以删键，是因为它们提交完整 extra 对象、后端整体
+    // SetExtra 覆盖；批量接口只合并增量键，两种持久化语义不能共用同一套写法。
+    //
+    // 显式 off 与不设置在读取侧完全等价：codexFingerprintModeFromExtra 对空值/
+    // 非法值走 default 回落 off，对 "off" 命中同一分支，所以 #5610 定下的
+    // "不显式 opt-in 就保持旧客户端身份" 不受影响；ShouldEnsureCodexFingerprintSeed-
+    // ForExtraUpdates 同样只在 device/session/full 时要种子，off 不会触发。
+    //
+    // 与本函数里其它"关闭/清除"字段的写法一致：codex_cli_only 直接落 false，
+    // load_factor 落 0，proxy_id 落 0 —— 批量路径一律用显式哨兵值，不用省略。
+    extra.codex_fingerprint_mode = codexFingerprintMode.value
   }
 
   if (enableOpenAICompactMode.value) {

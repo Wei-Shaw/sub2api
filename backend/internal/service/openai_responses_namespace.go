@@ -77,23 +77,46 @@ func shouldStripOpenAIResponsesInputNamespaces(account *Account, transport OpenA
 //     故 OAuth 非 compact 请求必须保留。
 //   - compact 端点的 schema 不含该字段，携带即 400 `Unknown parameter:
 //     input[N].namespace`（issue #4761 正文），故 compact 一律清理。
-//   - API Key 出口是标准 Responses API（api.openai.com 或自定义 base_url），同样
-//     不认识该字段，维持全量清理；否则只能退化成
-//     openai_responses_rejected_field_retry 的逐项删除，6 次上限根本盖不住长历史。
+//   - API Key 出口默认按标准 Responses API 处理并清理该字段；但当请求本身声明
+//     namespace 工具时，上游显然使用了 namespace 扩展，此时必须保留调用项上的
+//     namespace，否则声明与历史调用会失配并触发 Missing namespace。
 //   - 摊平模式下调用项已被改写成平名，残留 namespace 指向的声明已不存在，一律清理。
 func shouldKeepOpenAIResponsesToolCallNamespaces(
 	account *Account,
 	transport OpenAIUpstreamTransport,
 	passthroughEnabled bool,
 	compactPath bool,
+	body []byte,
 ) bool {
-	if account == nil || !account.IsOpenAIOAuthLike() {
+	if account == nil {
 		return false
 	}
 	if compactPath {
 		return false
 	}
+	if account.IsOpenAIApiKey() {
+		return hasOpenAIResponsesNamespaceToolDeclaration(body)
+	}
+	if !account.IsOpenAIOAuthLike() {
+		return false
+	}
 	return !shouldFlattenOpenAIResponsesNamespaces(account, transport, passthroughEnabled, compactPath)
+}
+
+func hasOpenAIResponsesNamespaceToolDeclaration(body []byte) bool {
+	tools := gjson.GetBytes(body, "tools")
+	if !tools.IsArray() {
+		return false
+	}
+	found := false
+	tools.ForEach(func(_, tool gjson.Result) bool {
+		if strings.EqualFold(strings.TrimSpace(tool.Get("type").String()), "namespace") {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
 }
 
 // openAIResponsesToolCallItemTypes 是携带 namespace 的调用项类型集合。与

@@ -189,7 +189,7 @@ func (m *mockAccountRepoForGemini) IncrementQuotaUsed(ctx context.Context, id in
 	return nil
 }
 
-func (m *mockAccountRepoForGemini) ResetQuotaUsed(ctx context.Context, id int64) error {
+func (m *mockAccountRepoForGemini) ResetQuotaUsedAndClearRateLimitCooldown(ctx context.Context, id int64) error {
 	return nil
 }
 

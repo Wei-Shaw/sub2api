@@ -112,6 +112,61 @@ func TestSanitizeGrokResponsesModelInputMapsAllItemAliasesAndRejectsConflicts(t 
 	require.NotEqual(t, thirdCallID, ambiguousOutputID)
 }
 
+func TestSanitizeGrokResponsesModelInputPreservesGrokShellOutputImages(t *testing.T) {
+	body := []byte(`{"input":[
+		{"type":"function_call","call_id":"call_a","name":"read_file","arguments":"{}"},
+		{"type":"function_call","call_id":"call_b","name":"read_file","arguments":"{}"},
+		{"type":"function_call_output","call_id":"call_a","content":"Read image file: /tmp/a.png","images":[{"type":"image","url":"data:image/png;base64,QUE="}]},
+		{"type":"function_call_output","call_id":"call_b","content":"Read image file: /tmp/b.png","images":[{"type":"image","url":"data:image/jpeg;base64,QkI="}]}
+	]}`)
+
+	patched, err := sanitizeGrokResponsesModelInput(body)
+	require.NoError(t, err)
+	require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.2.type").String())
+	require.Equal(t, "Read image file: /tmp/a.png", gjson.GetBytes(patched, "input.2.output").String())
+	require.False(t, gjson.GetBytes(patched, "input.2.images").Exists())
+	require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.3.type").String())
+	require.Equal(t, "message", gjson.GetBytes(patched, "input.4.type").String())
+	require.Equal(t, "user", gjson.GetBytes(patched, "input.4.role").String())
+	require.Equal(t, "[Tool output media for call call_a]", gjson.GetBytes(patched, "input.4.content.0.text").String())
+	require.Equal(t, "input_image", gjson.GetBytes(patched, "input.4.content.1.type").String())
+	require.Equal(t, "data:image/png;base64,QUE=", gjson.GetBytes(patched, "input.4.content.1.image_url").String())
+	require.Equal(t, "[Tool output media for call call_b]", gjson.GetBytes(patched, "input.4.content.2.text").String())
+	require.Equal(t, "data:image/jpeg;base64,QkI=", gjson.GetBytes(patched, "input.4.content.3.image_url").String())
+}
+
+func TestSanitizeGrokResponsesModelInputPreservesGrok105StructuredOutputImages(t *testing.T) {
+	body := []byte(`{"input":[
+		{"type":"function_call","call_id":"call_read","name":"read_file","arguments":"{}"},
+		{"type":"function_call_output","call_id":"call_read","output":[
+			{"type":"input_text","text":"Read image file: /tmp/example.png"},
+			{"type":"input_image","detail":"auto","image_url":"data:image/png;base64,QUE="}
+		]}
+	]}`)
+
+	patched, err := sanitizeGrokResponsesModelInput(body)
+	require.NoError(t, err)
+	require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.1.type").String())
+	require.Equal(t, "Read image file: /tmp/example.png", gjson.GetBytes(patched, "input.1.output").String())
+	require.NotContains(t, gjson.GetBytes(patched, "input.1.output").String(), "base64")
+	require.Equal(t, "message", gjson.GetBytes(patched, "input.2.type").String())
+	require.Equal(t, "input_image", gjson.GetBytes(patched, "input.2.content.1.type").String())
+	require.Equal(t, "data:image/png;base64,QUE=", gjson.GetBytes(patched, "input.2.content.1.image_url").String())
+}
+
+func TestSanitizeGrokResponsesModelInputSkipsInvalidOutputImages(t *testing.T) {
+	body := []byte(`{"input":[
+		{"type":"function_call_output","call_id":"call_empty","output":"done","images":[{"type":"image","url":"data:image/png;base64,"},{}]},
+		{"role":"user","content":"continue"}
+	]}`)
+
+	patched, err := sanitizeGrokResponsesModelInput(body)
+	require.NoError(t, err)
+	require.Len(t, gjson.GetBytes(patched, "input").Array(), 2)
+	require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.0.type").String())
+	require.Equal(t, "message", gjson.GetBytes(patched, "input.1.type").String())
+}
+
 func TestPatchGrokResponsesBodyCombinesAdditionalToolsAndDropsOrphanControls(t *testing.T) {
 	body := []byte(`{
 		"input":[{"type":"additional_tools","tools":[{"type":"function","name":"lookup"}]},{"role":"user","content":"hi"}],

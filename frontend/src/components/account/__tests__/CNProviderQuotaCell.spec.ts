@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CNProviderQuotaCell from '../CNProviderQuotaCell.vue'
+import UsageProgressBar from '../UsageProgressBar.vue'
 import type { Account } from '@/types'
 
 const { queryQuota } = vi.hoisted(() => ({
@@ -13,11 +14,17 @@ vi.mock('@/api/admin', () => ({
   }
 }))
 
-vi.mock('vue-i18n', () => ({
-  useI18n: () => ({
-    t: (key: string) => key
-  })
-}))
+// 保留 vue-i18n 真实导出：UsageProgressBar 依赖 @/utils/format → @/i18n，
+// 其模块级 createI18n 需要真实 createI18n 存在。
+vi.mock('vue-i18n', async () => {
+  const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
+  return {
+    ...actual,
+    useI18n: () => ({
+      t: (key: string) => key
+    })
+  }
+})
 
 const account = {
   id: 7,
@@ -38,7 +45,7 @@ describe('CNProviderQuotaCell', () => {
     queryQuota.mockReset()
   })
 
-  it('keeps the compact quota stack readable inside the account table cell', async () => {
+  it('renders tier rows through the shared UsageProgressBar inside the account table cell', async () => {
     queryQuota.mockResolvedValue({
       success: true,
       tiers: [
@@ -51,27 +58,30 @@ describe('CNProviderQuotaCell', () => {
     const root = wrapper.get('[data-test="cn-provider-quota"]')
     expect(root.classes()).toContain('min-w-[220px]')
 
-    const probeButton = root.get('button')
-    expect(probeButton.classes()).toContain('whitespace-nowrap')
-    expect(probeButton.classes()).toContain('leading-4')
+    // 新鲜快照：挂载即渲染条形图，不触发探测
+    await flushPromises()
+    expect(queryQuota).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('27%')
+
+    // probe 按钮文案是动词 key（i18n mock 返回 key 本身），点击触发查询
+    const probeButton = root.get('[data-test="cn-provider-quota-probe"]')
+    expect(probeButton.text()).toBe('admin.accounts.cnProviders.probe')
     await probeButton.trigger('click')
     await flushPromises()
-
-    const tiers = root.findAll('[data-test="cn-provider-quota-tier"]')
-    expect(tiers).toHaveLength(2)
-    for (const tier of tiers) {
-      expect(tier.classes()).toContain('min-w-0')
-      expect(tier.classes()).toContain('leading-4')
-    }
-
-    const labels = root.findAll('[data-test="cn-provider-quota-label"]')
-    expect(labels).toHaveLength(2)
-    for (const label of labels) {
-      expect(label.classes()).toContain('w-14')
-      expect(label.classes()).toContain('whitespace-nowrap')
-    }
-
     expect(queryQuota).toHaveBeenCalledWith(account.id)
+
+    // tier 行由 UsageProgressBar 渲染：数量、label/color/utilization/reset 逐行对齐
+    expect(root.findAll('[data-test="cn-provider-quota-tier"]')).toHaveLength(2)
+    const bars = root.findAllComponents(UsageProgressBar)
+    expect(bars).toHaveLength(2)
+    expect(bars[0].props('label')).toBe('admin.accounts.cnProviders.window5h')
+    expect(bars[0].props('utilization')).toBe(0)
+    expect(bars[0].props('color')).toBe('indigo')
+    expect(bars[0].props('resetsAt')).toBe('2026-08-18T12:30:00+08:00')
+    expect(bars[1].props('label')).toBe('admin.accounts.cnProviders.windowWeekly')
+    expect(bars[1].props('utilization')).toBe(27)
+    expect(bars[1].props('color')).toBe('emerald')
+    expect(bars[1].props('resetsAt')).toBe('2026-08-22T00:00:00+08:00')
   })
 
   it('labels the refresh control with an explicit action verb, not a data caption', async () => {

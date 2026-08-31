@@ -58,6 +58,16 @@ func TestIsGrokModelID(t *testing.T) {
 	require.False(t, IsGrokModelID("claude-sonnet-4"))
 }
 
+func TestIsGrokImagineModel(t *testing.T) {
+	t.Parallel()
+	require.True(t, IsGrokImagineModel("grok-imagine-image"))
+	require.True(t, IsGrokImagineModel("grok-imagine-video-1.5-preview"))
+	require.True(t, IsGrokImagineModel("xai/grok-imagine-image-quality"))
+	require.True(t, IsGrokImagineModel("grok-video-1.5"))
+	require.False(t, IsGrokImagineModel("grok-4.6"))
+	require.False(t, IsGrokImagineModel("grok-build-0.1"))
+}
+
 func TestDefaultModelsIncludesGrok46(t *testing.T) {
 	t.Parallel()
 	ids := DefaultModelIDs()
