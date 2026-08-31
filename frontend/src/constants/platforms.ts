@@ -16,6 +16,7 @@ export const CONCRETE_PLATFORM_OPTIONS = [
   { value: 'gemini', label: 'Gemini' },
   { value: 'antigravity', label: 'Antigravity' },
   { value: 'grok', label: 'Grok' },
+  { value: 'cursor', label: 'Cursor' },
   { value: 'kimi', label: 'Kimi' },
   { value: 'zhipu', label: 'Zhipu GLM' },
   { value: 'deepseek', label: 'DeepSeek' }

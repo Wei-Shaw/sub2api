@@ -114,3 +114,31 @@ describe('PlatformTypeBadge OpenAI authentication modes', () => {
     expect(wrapper.text()).toContain('OAuth')
   })
 })
+
+describe('PlatformTypeBadge Cursor', () => {
+  it('labels Cursor oauth accounts as Cursor, not Gemini', () => {
+    const wrapper = mount(PlatformTypeBadge, {
+      props: {
+        platform: 'cursor',
+        type: 'oauth',
+      },
+    })
+
+    expect(wrapper.text()).toContain('Cursor')
+    expect(wrapper.text()).toContain('OAuth')
+    expect(wrapper.text()).not.toContain('Gemini')
+    expect(wrapper.html()).toContain('bg-amber-100')
+  })
+
+  it('still labels Gemini accounts as Gemini', () => {
+    const wrapper = mount(PlatformTypeBadge, {
+      props: {
+        platform: 'gemini',
+        type: 'oauth',
+      },
+    })
+
+    expect(wrapper.text()).toContain('Gemini')
+    expect(wrapper.text()).not.toContain('Cursor')
+  })
+})

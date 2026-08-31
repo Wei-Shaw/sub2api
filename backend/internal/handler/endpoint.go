@@ -33,6 +33,7 @@ const (
 )
 
 const EndpointAntigravityGenerateContent = "/v1internal:streamGenerateContent"
+const EndpointCursorAgentRun = "/agent.v1.AgentService/Run"
 
 // gin.Context keys used by the middleware and helpers below.
 const (
@@ -229,6 +230,9 @@ func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 			return EndpointGeminiModels
 		}
 		return EndpointMessages
+
+	case service.PlatformCursor:
+		return EndpointCursorAgentRun
 	}
 
 	// Unknown platform — fall back to inbound.

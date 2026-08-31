@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cursor"
 	"github.com/stretchr/testify/require"
 )
 
@@ -917,4 +918,58 @@ func TestFetchUpstreamSupportedModelsDoesNotExposeUpstreamBody(t *testing.T) {
 	require.Equal(t, UpstreamModelSyncErrorUpstream, syncErr.Kind)
 	require.NotContains(t, syncErr.SafeMessage(), "SECRET_TOKEN")
 	require.Contains(t, syncErr.SafeMessage(), "HTTP 502")
+}
+
+func TestFetchUpstreamSupportedModels_CursorUsesLivePicker(t *testing.T) {
+	t.Parallel()
+
+	var fetches int
+	svc := &AccountTestService{
+		cursorAvailableModels: func(ctx context.Context, creds cursor.Credentials) ([]cursor.AvailableModel, error) {
+			fetches++
+			require.Equal(t, "cursor-access", creds.AccessToken)
+			require.Equal(t, "machine-hex", creds.MachineID)
+			return []cursor.AvailableModel{
+				{Name: "default", DisplayName: "Auto"},
+				{Name: "claude-opus-5", DisplayName: "Claude Opus 5"},
+				{Name: "gpt-5.6-sol", DisplayName: "GPT-5.6 Sol"},
+			}, nil
+		},
+	}
+
+	models, err := svc.FetchUpstreamSupportedModels(context.Background(), &Account{
+		ID:       9,
+		Platform: PlatformCursor,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "cursor-access",
+			"machine_id":   "machine-hex",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"default", "claude-opus-5", "gpt-5.6-sol"}, models)
+	require.Equal(t, 1, fetches)
+}
+
+func TestFetchUpstreamSupportedModels_CursorRequiresAccessToken(t *testing.T) {
+	t.Parallel()
+
+	svc := &AccountTestService{
+		cursorAvailableModels: func(context.Context, cursor.Credentials) ([]cursor.AvailableModel, error) {
+			t.Fatal("live fetch should not run without an access token")
+			return nil, nil
+		},
+	}
+
+	_, err := svc.FetchUpstreamSupportedModels(context.Background(), &Account{
+		ID:       10,
+		Platform: PlatformCursor,
+		Type:     AccountTypeOAuth,
+	})
+	require.Error(t, err)
+
+	var syncErr *UpstreamModelSyncError
+	require.True(t, errors.As(err, &syncErr))
+	require.Equal(t, UpstreamModelSyncErrorConfiguration, syncErr.Kind)
+	require.Contains(t, syncErr.SafeMessage(), "access token")
 }

@@ -118,6 +118,44 @@ describe('ModelWhitelistSelector', () => {
     expect(copyToClipboard).not.toHaveBeenCalled()
   })
 
+  it('loads the live Cursor picker into dropdown options without selecting them', async () => {
+    syncUpstreamModels.mockResolvedValue({
+      models: ['default', 'claude-opus-5', 'gpt-5.6-sol']
+    })
+
+    const wrapper = mountSelector({
+      platform: 'cursor',
+      accountId: 51
+    })
+    await flushPromises()
+
+    expect(syncUpstreamModels).toHaveBeenCalledWith(51)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(wrapper.emitted('catalog-loaded')?.[0]).toEqual([['default', 'claude-opus-5', 'gpt-5.6-sol']])
+
+    await wrapper.get('div.cursor-pointer').trigger('click')
+    findModelRow(wrapper, 'claude-opus-5')
+    findModelRow(wrapper, 'gpt-5.6-sol')
+  })
+
+  it('warns when Sync latest supported models uses the static Cursor fallback', async () => {
+    const wrapper = mountSelector({
+      platform: 'cursor'
+    })
+
+    const buttons = wrapper.findAll('button')
+    const fillButton = buttons.find(button => button.text() === 'admin.accounts.fillRelatedModels')
+    expect(fillButton).toBeDefined()
+    await fillButton!.trigger('click')
+    await flushPromises()
+
+    const selected = wrapper.emitted('update:modelValue')?.[0]?.[0] as string[]
+    expect(selected).toContain('gpt-5.4-mini')
+    expect(selected).toContain('kimi-k2.7-code')
+    expect(selected.length).toBeGreaterThan(6)
+    expect(showWarning).toHaveBeenCalledWith('admin.accounts.cursorStaticFallbackUsed')
+  })
+
   it('warns when model IDs sync but capability metadata is incomplete', async () => {
     syncUpstreamModels.mockResolvedValue({
       models: ['x-preview-f-free'],
@@ -128,17 +166,9 @@ describe('ModelWhitelistSelector', () => {
         }
       ]
     })
-    const wrapper = mount(ModelWhitelistSelector, {
-      props: {
-        modelValue: [],
-        platform: 'openai',
-        accountId: 46
-      },
-      global: {
-        stubs: {
-          ModelIcon: true
-        }
-      }
+    const wrapper = mountSelector({
+      platform: 'openai',
+      accountId: 46
     })
 
     const syncButton = wrapper

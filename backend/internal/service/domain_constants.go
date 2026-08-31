@@ -48,6 +48,7 @@ const (
 	PlatformZhipu     = domain.PlatformZhipu
 	PlatformDeepseek  = domain.PlatformDeepseek
 	PlatformComposite = domain.PlatformComposite
+	PlatformCursor    = domain.PlatformCursor
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
 	PlatformKiro = "kiro"
