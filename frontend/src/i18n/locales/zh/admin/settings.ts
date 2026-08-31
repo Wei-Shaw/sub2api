@@ -652,9 +652,12 @@ export default {
         homeContentPlaceholder:
           '在此输入首页内容，支持 Markdown & HTML 代码。如果输入的是一个链接，则会使用该链接作为 iframe 的 src 属性。',
         homeContentHint:
-          '自定义首页内容，支持 Markdown/HTML。如果输入的是链接（以 http:// 或 https:// 开头），则会使用该链接作为 iframe 的 src 属性，这允许你设置任意网页作为首页。设置后首页的状态信息将不再显示。',
+          '自定义首页内容，支持 HTML。如果输入的是链接（以 http:// 或 https:// 开头），则会使用该链接作为 iframe 的 src 属性。HTML 模式可使用两个左大括号和两个右大括号包裹变量名；可用变量：site_name、site_logo、site_subtitle、api_base_url、contact_info、doc_url、version。设置后首页的状态信息将不再显示。',
         homeContentIframeWarning:
           '⚠️ iframe 模式提示：部分网站设置了 X-Frame-Options 或 CSP 安全策略，禁止被嵌入到 iframe 中。如果页面显示空白或报错，请确认目标网站允许被嵌入，或考虑使用 HTML 模式自行构建页面内容。',
+        homeScript: '自定义首页脚本',
+        homeScriptPlaceholder: '填写自定义首页 JavaScript 代码，例如：document.querySelector("[data-locale=zh]")?.addEventListener("click", () => window.Sub2API?.setLocale("zh"))',
+        homeScriptHint: '仅在 HTML 模式下加载，脚本会在自定义 HTML 渲染后执行。可使用 window.Sub2API.getLocale()、setLocale(locale) 和 getPublicSettings()。脚本拥有当前页面的前端权限，请仅填写可信代码。',
         compactHome: '简洁首页',
         compactHomeHint: '未设置自定义首页内容时，展示简洁的站点信息页面。',
         hideCcsImportButton: '隐藏 CCS 导入按钮',

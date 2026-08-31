@@ -9,7 +9,7 @@
       allowfullscreen
     ></iframe>
     <!-- HTML mode - SECURITY: homeContent is admin-only setting, XSS risk is acceptable -->
-    <div v-else v-html="homeContent"></div>
+    <div v-else v-html="renderedHomeContent"></div>
   </div>
 
   <!-- Compact Home Page -->
@@ -494,13 +494,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
+import { renderHomeTemplate } from '@/utils/homeTemplate'
+import { getLocale, setLocale } from '@/i18n'
 
 const { t } = useI18n()
 
@@ -514,6 +516,10 @@ const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle
 const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || ''))
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 const hasHomeContent = computed(() => homeContent.value.trim().length > 0)
+const renderedHomeContent = computed(() =>
+  renderHomeTemplate(homeContent.value, appStore.cachedPublicSettings),
+)
+const homeScript = computed(() => appStore.cachedPublicSettings?.home_script || '')
 const compactHomeEnabled = computed(() => appStore.cachedPublicSettings?.compact_home_enabled === true)
 const modelPlazaEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.modelPlaza))
 
@@ -548,6 +554,38 @@ const userInitial = computed(() => {
 // Current year for footer
 const currentYear = computed(() => new Date().getFullYear())
 
+let customHomeScriptElement: HTMLScriptElement | null = null
+
+function installCustomHomeBridge() {
+  window.Sub2API = {
+    getLocale,
+    setLocale,
+    getPublicSettings: () => appStore.cachedPublicSettings,
+  }
+}
+
+function loadCustomHomeScript() {
+  if (isHomeContentUrl.value || !hasHomeContent.value || !homeScript.value.trim()) return
+
+  installCustomHomeBridge()
+
+  const script = document.createElement('script')
+  script.type = 'text/javascript'
+  script.dataset.sub2apiCustomHome = 'true'
+  const nonce = window.__CSP_NONCE__ || document.querySelector('script[nonce]')?.getAttribute('nonce')
+  if (nonce) script.setAttribute('nonce', nonce)
+  script.textContent = renderHomeTemplate(homeScript.value, appStore.cachedPublicSettings)
+  document.head.appendChild(script)
+  customHomeScriptElement = script
+}
+
+function unloadCustomHomeScript() {
+  window.Sub2API?.destroy?.()
+  customHomeScriptElement?.remove()
+  customHomeScriptElement = null
+  delete window.Sub2API
+}
+
 // Toggle theme
 function toggleTheme() {
   isDark.value = !isDark.value
@@ -575,8 +613,17 @@ onMounted(() => {
 
   // Ensure public settings are loaded (will use cache if already loaded from injected config)
   if (!appStore.publicSettingsLoaded) {
-    appStore.fetchPublicSettings()
+    void appStore.fetchPublicSettings().then(async () => {
+      await nextTick()
+      loadCustomHomeScript()
+    })
+  } else {
+    void nextTick(() => loadCustomHomeScript())
   }
+})
+
+onBeforeUnmount(() => {
+  unloadCustomHomeScript()
 })
 </script>
 

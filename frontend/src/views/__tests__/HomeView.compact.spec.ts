@@ -87,6 +87,15 @@ describe('HomeView compact mode', () => {
     expect(wrapper.find('[data-testid="compact-home"]').exists()).toBe(false)
   })
 
+  it('renders site settings in custom HTML templates', () => {
+    const wrapper = mountHome({
+      home_content: '<h1>{{ site_name }}</h1><p>{{site_subtitle}}</p>',
+    })
+
+    expect(wrapper.get('h1').text()).toBe('Test site')
+    expect(wrapper.get('p').text()).toBe('Test subtitle')
+  })
+
   it('renders custom URL content ahead of compact mode', () => {
     const wrapper = mountHome({
       compact_home_enabled: true,

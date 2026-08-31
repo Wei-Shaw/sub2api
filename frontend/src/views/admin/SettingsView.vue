@@ -6562,6 +6562,25 @@
                 </p>
               </div>
 
+              <!-- Home Script -->
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.site.homeScript") }}
+                </label>
+                <textarea
+                  v-model="form.home_script"
+                  rows="10"
+                  spellcheck="false"
+                  class="input font-mono text-sm"
+                  :placeholder="t('admin.settings.site.homeScriptPlaceholder')"
+                ></textarea>
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.site.homeScriptHint") }}
+                </p>
+              </div>
+
               <!-- Compact Home Page -->
               <div class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
                 <div>
@@ -9536,6 +9555,7 @@ const form = reactive<SettingsForm>({
   contact_info: "",
   doc_url: "",
   home_content: "",
+  home_script: "",
   compact_home_enabled: false,
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
@@ -11174,6 +11194,7 @@ async function saveSettings() {
       contact_info: form.contact_info,
       doc_url: form.doc_url,
       home_content: form.home_content,
+      home_script: form.home_script,
       compact_home_enabled: form.compact_home_enabled,
       backend_mode_enabled: form.backend_mode_enabled,
       hide_ccs_import_button: form.hide_ccs_import_button,

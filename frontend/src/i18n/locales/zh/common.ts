@@ -179,6 +179,7 @@ export default {
     plugins: '插件管理',
     proxies: 'IP管理',
     redeemCodes: '兑换码',
+    shop: '发卡商城',
     ops: '运维监控',
     promoCodes: '优惠码',
     settings: '系统设置',
