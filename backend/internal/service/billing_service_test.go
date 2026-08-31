@@ -721,16 +721,16 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 		{
 			name:              "minimax m3",
 			model:             "minimax-m3",
-			expectedInput:     0.60e-6,
-			expectedOutput:    floatPtr(2.40e-6),
-			expectedCacheRead: floatPtr(0.12e-6),
+			expectedInput:     0.30e-6,
+			expectedOutput:    floatPtr(1.20e-6),
+			expectedCacheRead: floatPtr(0.06e-6),
 		},
 		{
-			name:              "minimax m3 long ctx boundary keep standard tier",
-			model:             "minimax-m3-long", // 仍按 standard tier (≤512K)
-			expectedInput:     0.60e-6,
-			expectedOutput:    floatPtr(2.40e-6),
-			expectedCacheRead: floatPtr(0.12e-6),
+			name:              "minimax m3 alias uses base pricing",
+			model:             "minimax-m3-long",
+			expectedInput:     0.30e-6,
+			expectedOutput:    floatPtr(1.20e-6),
+			expectedCacheRead: floatPtr(0.06e-6),
 		},
 		{
 			name:              "minimax m2.7",
@@ -751,6 +751,20 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 			model:             "minimax-m2.5",
 			expectedInput:     0.30e-6,
 			expectedOutput:    floatPtr(1.20e-6),
+			expectedCacheRead: floatPtr(0.03e-6),
+		},
+		{
+			name:              "minimax m2.5 highspeed",
+			model:             "minimax-m2.5-highspeed",
+			expectedInput:     0.60e-6,
+			expectedOutput:    floatPtr(2.40e-6),
+			expectedCacheRead: floatPtr(0.03e-6),
+		},
+		{
+			name:              "minimax m2.1 highspeed",
+			model:             "minimax-m2.1-highspeed",
+			expectedInput:     0.60e-6,
+			expectedOutput:    floatPtr(2.40e-6),
 			expectedCacheRead: floatPtr(0.03e-6),
 		},
 		{
@@ -820,6 +834,52 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 					"CacheReadPricePerToken mismatch for %s", tt.model)
 			}
 		})
+	}
+}
+
+func TestCalculateCost_MiniMaxM3OfficialTiers(t *testing.T) {
+	svc := newTestBillingService()
+	tokens := UsageTokens{InputTokens: 511000, OutputTokens: 1000, CacheReadTokens: 1000}
+
+	standard, err := svc.CalculateCostWithServiceTier("MiniMax-M3", tokens, 1, "standard")
+	require.NoError(t, err)
+	require.False(t, standard.LongContextBillingApplied)
+	require.InDelta(t, 511000*0.30e-6, standard.InputCost, 1e-12)
+	require.InDelta(t, 1000*1.20e-6, standard.OutputCost, 1e-12)
+	require.InDelta(t, 1000*0.06e-6, standard.CacheReadCost, 1e-12)
+
+	priority, err := svc.CalculateCostWithServiceTier("MiniMax-M3", tokens, 1, "priority")
+	require.NoError(t, err)
+	require.False(t, priority.LongContextBillingApplied)
+	require.InDelta(t, 511000*0.45e-6, priority.InputCost, 1e-12)
+	require.InDelta(t, 1000*1.80e-6, priority.OutputCost, 1e-12)
+	require.InDelta(t, 1000*0.09e-6, priority.CacheReadCost, 1e-12)
+
+	longContextTokens := UsageTokens{InputTokens: 511001, OutputTokens: 1000, CacheReadTokens: 1000}
+	longContext, err := svc.CalculateCostWithServiceTier("MiniMax-M3", longContextTokens, 1, "priority")
+	require.NoError(t, err)
+	require.True(t, longContext.LongContextBillingApplied)
+	require.InDelta(t, 511001*0.90e-6, longContext.InputCost, 1e-12)
+	require.InDelta(t, 1000*3.60e-6, longContext.OutputCost, 1e-12)
+	require.InDelta(t, 1000*0.18e-6, longContext.CacheReadCost, 1e-12)
+}
+
+func TestCalculateCost_MiniMaxM2CacheWrite(t *testing.T) {
+	svc := newTestBillingService()
+	tokens := UsageTokens{CacheCreationTokens: 1000}
+
+	for _, model := range []string{
+		"MiniMax-M2.7",
+		"MiniMax-M2.7-highspeed",
+		"MiniMax-M2.5",
+		"MiniMax-M2.5-highspeed",
+		"MiniMax-M2.1",
+		"MiniMax-M2.1-highspeed",
+		"MiniMax-M2",
+	} {
+		cost, err := svc.CalculateCost(model, tokens, 1)
+		require.NoError(t, err)
+		require.InDelta(t, 1000*0.375e-6, cost.CacheCreationCost, 1e-12, "model=%s", model)
 	}
 }
 

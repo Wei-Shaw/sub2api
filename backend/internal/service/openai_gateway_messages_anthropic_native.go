@@ -1,6 +1,6 @@
 package service
 
-// 国产供应商（kimi/zhipu/deepseek）原生 Anthropic 端点直通路径。
+// 国产供应商原生 Anthropic 端点直通路径。
 //
 // 当账号 credentials["api_protocol"] = "anthropic" 时，入站 /v1/messages 请求
 // 不再做 Anthropic→CC→Anthropic 双重转换，而是零转换直通供应商的官方

@@ -42,6 +42,16 @@ type CodexModelsManifest struct {
 	NotModified  bool
 }
 
+// HasSchedulableAccountForPlatform reports whether a group currently has at
+// least one persisted schedulable account for a concrete platform.
+func (s *OpenAIGatewayService) HasSchedulableAccountForPlatform(ctx context.Context, groupID *int64, platform string) bool {
+	if s == nil || s.accountRepo == nil || groupID == nil {
+		return false
+	}
+	accounts, err := s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, platform)
+	return err == nil && len(accounts) > 0
+}
+
 type codexModelsManifestUpstreamError struct {
 	err        error
 	retryable  bool

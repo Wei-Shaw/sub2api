@@ -7,11 +7,48 @@ package service
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
+
+type minimaxQuotaTestRepo struct {
+	AccountRepository
+	updates map[string]any
+}
+
+func (r *minimaxQuotaTestRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
+	r.updates = updates
+	return nil
+}
+
+type minimaxQuotaTestUpstream struct {
+	HTTPUpstream
+	req *http.Request
+}
+
+func (u *minimaxQuotaTestUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	u.req = req
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(`{
+			"model_remains":[{
+				"model_name":"general",
+				"current_interval_remaining_percent":98,
+				"current_weekly_remaining_percent":95,
+				"current_weekly_status":1,
+				"end_time":1780329600000,
+				"weekly_end_time":1780848000000
+			}],
+			"base_resp":{"status_code":0,"status_msg":"success"}
+		}`)),
+	}, nil
+}
 
 func codingAccount(platform string) *Account {
 	return &Account{
@@ -46,6 +83,7 @@ func TestValidateCodingPlanAccount_Matrix(t *testing.T) {
 		{name: "payg has no quota endpoint", account: paygAccount(PlatformKimi), wantReason: "CN_QUOTA_NOT_CODING_PLAN"},
 		{name: "kimi coding ok", account: codingAccount(PlatformKimi)},
 		{name: "zhipu coding ok", account: codingAccount(PlatformZhipu)},
+		{name: "minimax coding ok", account: codingAccount(PlatformMiniMax)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -96,6 +134,27 @@ func TestCNProviderQuotaService_QueryUsageForAccount_RejectsInvalidAccount(t *te
 	_, err = svc.QueryUsageForAccount(context.Background(), nil)
 	requireReason(t, err, "CN_QUOTA_ACCOUNT_NOT_FOUND")
 	require.Zero(t, upstream.calls)
+}
+
+func TestCNProviderQuotaService_QueryUsageForAccount_MiniMaxCodingPlan(t *testing.T) {
+	repo := &minimaxQuotaTestRepo{}
+	upstream := &minimaxQuotaTestUpstream{}
+	svc := NewCNProviderQuotaService(repo, nil, upstream, nil)
+	account := codingAccount(PlatformMiniMax)
+	account.Credentials["api_key"] = "sk-cp-test"
+
+	result, err := svc.QueryUsageForAccount(context.Background(), account)
+
+	require.NoError(t, err)
+	require.True(t, result.Success)
+	require.True(t, result.CredentialValid)
+	require.True(t, result.Persisted)
+	require.Len(t, result.Tiers, 2)
+	require.NotNil(t, upstream.req)
+	require.Equal(t, "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains", upstream.req.URL.String())
+	require.Equal(t, "Bearer sk-cp-test", upstream.req.Header.Get("Authorization"))
+	require.InDelta(t, 2.0, repo.updates["minimax_5h_used_percent"], 1e-9)
+	require.InDelta(t, 5.0, repo.updates["minimax_weekly_used_percent"], 1e-9)
 }
 
 func TestCNProviderBalanceService_QueryBalanceForAccount_RejectsInvalidAccount(t *testing.T) {

@@ -98,6 +98,28 @@ func TestAccount_GetAnthropicAPIKeyAuthScheme(t *testing.T) {
 			want: AnthropicAPIKeyAuthSchemeXAPIKey,
 		},
 		{
+			name: "MiniMax payg defaults to x-api-key",
+			account: &Account{
+				Platform: PlatformMiniMax,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"account_mode": AccountModePayG,
+				},
+			},
+			want: AnthropicAPIKeyAuthSchemeXAPIKey,
+		},
+		{
+			name: "MiniMax coding plan uses bearer",
+			account: &Account{
+				Platform: PlatformMiniMax,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"account_mode": AccountModeCoding,
+				},
+			},
+			want: AnthropicAPIKeyAuthSchemeAuthorizationBearer,
+		},
+		{
 			name: "non Anthropic API key defaults to x-api-key",
 			account: &Account{
 				Platform: PlatformOpenAI,

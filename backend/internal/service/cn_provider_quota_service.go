@@ -18,7 +18,7 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-// 国产供应商 Coding Plan 滚动窗口额度探测服务（Kimi For Coding / 智谱 GLM Coding Plan）。
+// 国产供应商 Coding Plan 滚动窗口额度探测服务（Kimi / 智谱 GLM / MiniMax Token Plan）。
 //
 // 与 grok_quota_service 不同：CN 供应商走数据面 API Key（无 OAuth token provider），
 // 额度端点为只读 GET，解析 5h + weekly 两档滚动窗口并落 account.Extra 快照，
@@ -62,7 +62,7 @@ type CNProviderQuotaProbeResult struct {
 	Error           string        `json:"error,omitempty"`
 }
 
-// CNProviderQuotaService 探测 Kimi / Zhipu Coding Plan 的滚动窗口用量。
+// CNProviderQuotaService 探测 Kimi / Zhipu / MiniMax Coding Plan 的滚动窗口用量。
 type CNProviderQuotaService struct {
 	accountRepo  AccountRepository
 	proxyRepo    ProxyRepository
@@ -129,8 +129,8 @@ func (s *CNProviderQuotaService) QueryUsageForAccount(ctx context.Context, accou
 
 func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, account *Account) (*CNProviderQuotaProbeResult, error) {
 	provider := account.GetCodingPlanProvider()
-	if provider != PlatformKimi && provider != PlatformZhipu {
-		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a kimi/zhipu coding plan account")
+	if provider != PlatformKimi && provider != PlatformZhipu && provider != PlatformMiniMax {
+		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a supported coding plan account")
 	}
 
 	apiKey := strings.TrimSpace(account.GetCNAPIKey())
@@ -150,6 +150,9 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	case PlatformZhipu:
 		targetURL = zhipuQuotaURL(baseURL)
 		authHeader = apiKey // 智谱额度端点鉴权不加 Bearer 前缀
+	case PlatformMiniMax:
+		targetURL = minimaxQuotaURL(baseURL)
+		authHeader = "Bearer " + apiKey
 	}
 
 	// 探测发起前过出站 URL 安全策略（与网关转发/Grok 探测同一套校验）：
@@ -212,6 +215,17 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 			return result, nil
 		}
 	}
+	if provider == PlatformMiniMax {
+		statusCode := gjson.GetBytes(bodyBytes, "base_resp.status_code")
+		if statusCode.Exists() && statusCode.Int() != 0 {
+			msg := strings.TrimSpace(gjson.GetBytes(bodyBytes, "base_resp.status_msg").String())
+			if msg == "" {
+				msg = "unknown minimax quota error"
+			}
+			result.Error = fmt.Sprintf("API error (code %d): %s", statusCode.Int(), msg)
+			return result, nil
+		}
+	}
 
 	var tiers []CNQuotaTier
 	switch provider {
@@ -220,6 +234,8 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	case PlatformZhipu:
 		tiers = parseZhipuTokenTiers(gjson.GetBytes(bodyBytes, "data"))
 		result.PlanLevel = strings.TrimSpace(gjson.GetBytes(bodyBytes, "data.level").String())
+	case PlatformMiniMax:
+		tiers = parseMiniMaxUsageTiers(bodyBytes)
 	}
 	result.Tiers = tiers
 	result.Success = true
@@ -291,6 +307,15 @@ func kimiQuotaURL(baseURL string) string {
 	return base + "/v1/usages"
 }
 
+// minimaxQuotaURL 按推理域名选择国内或国际 Token Plan 额度端点。
+// 订阅 Key 与按量 API Key 独立，但两者都使用 Bearer 鉴权。
+func minimaxQuotaURL(baseURL string) string {
+	if strings.Contains(strings.ToLower(baseURL), "api.minimax.io") {
+		return "https://api.minimax.io/v1/api/openplatform/coding_plan/remains"
+	}
+	return "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains"
+}
+
 func zhipuQuotaHost(baseURL string) string {
 	switch u := strings.ToLower(baseURL); {
 	case strings.Contains(u, "bigmodel.cn"):
@@ -355,6 +380,51 @@ func parseKimiUsageTiers(body []byte) []CNQuotaTier {
 		})
 	}
 
+	return tiers
+}
+
+// parseMiniMaxUsageTiers 解析 MiniMax Token Plan 的 general 配额桶。
+// current_*_remaining_percent 是剩余百分比，需要反转为已用百分比；周窗口
+// 仅在 current_weekly_status=1 时有效，其他状态表示当前套餐没有周限额。
+func parseMiniMaxUsageTiers(body []byte) []CNQuotaTier {
+	modelRemains := gjson.GetBytes(body, "model_remains")
+	if !modelRemains.IsArray() {
+		return nil
+	}
+
+	var general gjson.Result
+	modelRemains.ForEach(func(_, item gjson.Result) bool {
+		if item.Get("model_name").String() == "general" {
+			general = item
+			return false
+		}
+		return true
+	})
+	if !general.Exists() {
+		return nil
+	}
+
+	tiers := make([]CNQuotaTier, 0, 2)
+	if remaining := general.Get("current_interval_remaining_percent"); remaining.Exists() {
+		if value, ok := cnParseF64(remaining.Value()); ok {
+			tiers = append(tiers, CNQuotaTier{
+				Window:      "5h",
+				UsedPercent: 100 - value,
+				ResetAt:     cnNormalizeResetTime(general.Get("end_time").Value()),
+			})
+		}
+	}
+	if general.Get("current_weekly_status").Int() == 1 {
+		if remaining := general.Get("current_weekly_remaining_percent"); remaining.Exists() {
+			if value, ok := cnParseF64(remaining.Value()); ok {
+				tiers = append(tiers, CNQuotaTier{
+					Window:      "weekly",
+					UsedPercent: 100 - value,
+					ResetAt:     cnNormalizeResetTime(general.Get("weekly_end_time").Value()),
+				})
+			}
+		}
+	}
 	return tiers
 }
 

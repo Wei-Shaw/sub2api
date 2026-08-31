@@ -984,7 +984,7 @@ func IsUpstreamBillingProbeIdentity(platform, accountType string) bool {
 	}
 	switch platform {
 	case PlatformOpenAI, PlatformAnthropic, PlatformGemini, PlatformAntigravity, PlatformGrok,
-		PlatformKimi, PlatformZhipu, PlatformDeepseek:
+		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
 		return true
 	default:
 		return false
@@ -1008,7 +1008,7 @@ func isUpstreamBillingProbeAccount(account *Account) bool {
 // ollama.com is a first-class configuration here (Ollama Cloud accounts are
 // platform openai/anthropic with base_url https://ollama.com/v1), and it is
 // an official provider API just like the rest, so it belongs on this list.
-// CN provider domains (moonshot.cn / kimi.com / bigmodel.cn / deepseek.com)
+// CN provider domains
 // serve the same role: official APIs that can never host /v1/sub2api/billing,
 // so their accounts short-circuit to "unsupported" without a request.
 var upstreamBillingProbeOfficialAPIDomains = []string{
@@ -1022,6 +1022,8 @@ var upstreamBillingProbeOfficialAPIDomains = []string{
 	"kimi.com",
 	"bigmodel.cn",
 	"deepseek.com",
+	"minimax.io",
+	"minimaxi.com",
 }
 
 func upstreamBillingProbeTargetIsOfficialAPI(baseURL string) bool {

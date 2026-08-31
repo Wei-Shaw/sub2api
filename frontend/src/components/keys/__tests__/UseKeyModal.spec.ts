@@ -263,6 +263,70 @@ describe('UseKeyModal', () => {
     expect(codeBlocks.join('\n')).toContain('experimental_bearer_token = "sk-grok-codex-test"')
   })
 
+  it.each(['minimax', 'composite'] as const)('renders MiniMax-M3 tool setup for %s groups', async (platform) => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-minimax-test',
+        baseUrl: 'https://example.com/v1',
+        platform
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    const claudeCode = wrapper.findAll('pre code').map((code) => code.text()).join('\n')
+    for (const name of [
+      'ANTHROPIC_MODEL',
+      'ANTHROPIC_DEFAULT_OPUS_MODEL',
+      'ANTHROPIC_DEFAULT_SONNET_MODEL',
+      'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+      'ANTHROPIC_DEFAULT_FABLE_MODEL',
+      'CLAUDE_CODE_SUBAGENT_MODEL'
+    ]) {
+      expect(claudeCode).toContain(`export ${name}="MiniMax-M3"`)
+    }
+
+    const codexTab = wrapper.findAll('button').find((button) =>
+      button.text().includes('keys.useKeyModal.cliTabs.codexCli')
+    )
+    expect(codexTab).toBeDefined()
+    await codexTab!.trigger('click')
+    await nextTick()
+
+    const codeBlocks = wrapper.findAll('pre code').map((code) => code.text())
+    const configToml = codeBlocks.find((content) => content.includes('[model_providers.sub2api]'))
+    expect(configToml).toBeDefined()
+    expect(configToml).toContain('model = "MiniMax-M3"')
+    expect(configToml).toContain('review_model = "MiniMax-M3"')
+    expect(configToml).toContain('base_url = "https://example.com/v1"')
+    expect(configToml).toContain('wire_api = "responses"')
+    expect(configToml).toContain('env_key = "SUB2API_API_KEY"')
+    expect(configToml).toContain('requires_openai_auth = false')
+    expect(configToml).toContain('supports_websockets = false')
+    expect(codeBlocks.join('\n')).toContain('SUB2API_API_KEY="sk-minimax-test"')
+
+    const opencodeTab = wrapper.findAll('button').find((button) =>
+      button.text().includes('keys.useKeyModal.cliTabs.opencode')
+    )
+    expect(opencodeTab).toBeDefined()
+    await opencodeTab!.trigger('click')
+    await nextTick()
+
+    const openCodeConfig = JSON.parse(wrapper.find('pre code').text())
+    expect(openCodeConfig.provider.minimax.npm).toBe('@ai-sdk/openai-compatible')
+    expect(openCodeConfig.provider.minimax.models['MiniMax-M3'].limit.context).toBe(1000000)
+    expect(openCodeConfig.provider.minimax.models['MiniMax-M3'].modalities.input).toEqual(['text', 'image'])
+  })
+
   it('keeps legacy OpenAI Codex config as the default', () => {
     const wrapper = mount(UseKeyModal, {
       props: {

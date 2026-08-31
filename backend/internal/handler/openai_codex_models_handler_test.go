@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -41,6 +42,10 @@ func (r codexModelsFailoverAccountRepo) ListSchedulableByPlatform(_ context.Cont
 		}
 	}
 	return accounts, nil
+}
+
+func (r codexModelsFailoverAccountRepo) ListSchedulableByGroupIDAndPlatform(_ context.Context, _ int64, platform string) ([]service.Account, error) {
+	return r.ListSchedulableByPlatform(context.Background(), platform)
 }
 
 type codexModelsFailoverHTTPUpstream struct {
@@ -113,6 +118,71 @@ func TestCodexModelsCanceledRequestDoesNotWriteResponse(t *testing.T) {
 
 	if c.Writer.Written() {
 		t.Fatalf("canceled request wrote an HTTP response: status=%d body=%q", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestMiniMaxCodexModelsAdvertisesM3ImageInput(t *testing.T) {
+	gIn := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(gIn) })
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models?client_version=0.144.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: 7, Platform: service.PlatformMiniMax},
+	})
+
+	(&OpenAIGatewayHandler{}).CodexModels(c)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status: got %d, body=%s", recorder.Code, recorder.Body.String())
+	}
+	var manifest struct {
+		Models []struct {
+			Slug            string   `json:"slug"`
+			InputModalities []string `json:"input_modalities"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &manifest); err != nil {
+		t.Fatalf("decode manifest: %v", err)
+	}
+	if len(manifest.Models) != 1 || manifest.Models[0].Slug != "MiniMax-M3" {
+		t.Fatalf("unexpected models: %+v", manifest.Models)
+	}
+	if got := strings.Join(manifest.Models[0].InputModalities, ","); got != "text,image" {
+		t.Fatalf("input modalities: got %q, want text,image", got)
+	}
+}
+
+func TestCompositeCodexModelsWithOnlyMiniMaxUsesLocalManifest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(42)
+	upstream := &codexModelsFailoverHTTPUpstream{}
+	gatewayService := service.NewOpenAIGatewayService(
+		codexModelsFailoverAccountRepo{accounts: []service.Account{{
+			ID:          1,
+			Platform:    service.PlatformMiniMax,
+			Type:        service.AccountTypeAPIKey,
+			Status:      service.StatusActive,
+			Schedulable: true,
+		}}},
+		nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple}, nil, nil, nil, nil, nil,
+		upstream,
+		nil, nil, nil, nil, nil, nil, nil, nil,
+	)
+	handler := &OpenAIGatewayHandler{gatewayService: gatewayService}
+
+	recorder := performCodexModelsRequestForPlatform(t, handler, groupID, service.PlatformComposite)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status: got %d, body=%s", recorder.Code, recorder.Body.String())
+	}
+	if got := upstream.calls(); len(got) != 0 {
+		t.Fatalf("unexpected upstream calls: %v", got)
+	}
+	if !strings.Contains(recorder.Body.String(), `"input_modalities":["text","image"]`) {
+		t.Fatalf("MiniMax image capability missing: %s", recorder.Body.String())
 	}
 }
 

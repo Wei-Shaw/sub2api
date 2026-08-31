@@ -36,4 +36,17 @@ describe('defaultCNAdaptiveBaseUrls', () => {
       responses: 'https://api.deepseek.com'
     })
   })
+
+  it('includes all three native MiniMax endpoints', () => {
+    expect(defaultCNAdaptiveBaseUrls('minimax', 'payg')).toEqual({
+      chat_completions: 'https://api.minimaxi.com/v1',
+      anthropic: 'https://api.minimaxi.com/anthropic',
+      responses: 'https://api.minimaxi.com/v1'
+    })
+		expect(defaultCNAdaptiveBaseUrls('minimax', 'coding')).toEqual({
+			chat_completions: 'https://api.minimaxi.com/v1',
+			anthropic: 'https://api.minimaxi.com/anthropic',
+			responses: 'https://api.minimaxi.com/v1'
+		})
+  })
 })
