@@ -244,7 +244,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	registry := payment.ProvideRegistry()
 	defaultLoadBalancer := payment.ProvideDefaultLoadBalancer(client, encryptionKey)
 	paymentService := service.ProvidePaymentService(client, registry, defaultLoadBalancer, redeemService, subscriptionService, paymentConfigService, userRepository, groupRepository, affiliateService, notificationEmailService, telegramNotifyService)
-	botSalesFulfillmentService := service.NewBotSalesFulfillmentService(client, userRepository, userDeviceRepository, vClawClaimService, paymentService)
+	botSalesFulfillmentService := service.NewBotSalesFulfillmentService(client, userRepository, userDeviceRepository, vClawClaimService, paymentService, apiKeyService)
 	botSalesHandler := handler.NewBotSalesHandler(botSalesFulfillmentService)
 	settingHandler := handler.ProvideAdminSettingHandler(settingService, emailService, turnstileService, aliyunCaptchaService, opsService, paymentConfigService, paymentService, userAttributeService, notificationEmailService, telegramNotifyService, totpService, userService)
 	opsHandler := admin.NewOpsHandler(opsService, client)
