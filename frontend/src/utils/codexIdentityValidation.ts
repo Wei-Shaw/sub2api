@@ -3,6 +3,7 @@ import {
   CODEX_AFFINITY_TTL_MIN_SECONDS,
   CODEX_DEVICE_SLOT_MAX,
   CODEX_DEVICE_SLOT_MIN,
+  CODEX_OS_PROFILE_IDS,
   CODEX_SESSION_SLOT_MAX,
   CODEX_SESSION_SLOT_MIN,
   type CodexArchitecture,
@@ -79,16 +80,23 @@ export const availableCodexIdentityProxyIDs = (
     .map((proxy) => proxy.id),
 )
 
-export const createDefaultCodexOSProfile = (id: CodexOSProfileID): CodexOSProfilePolicy => {
+export const createDefaultCodexOSProfile = (
+  id: CodexOSProfileID,
+  surface?: CodexClientSurface,
+): CodexOSProfilePolicy => {
   const defaults: Record<CodexOSProfileID, Pick<CodexOSProfilePolicy, 'canonical_surface' | 'architecture'>> = {
     windows: { canonical_surface: 'desktop', architecture: 'x86_64' },
     macos: { canonical_surface: 'desktop', architecture: 'arm64' },
     linux: { canonical_surface: 'cli', architecture: 'x86_64' },
     generic: { canonical_surface: 'sdk', architecture: '' },
   }
+  const canonicalSurface = surface && PROFILE_SURFACES[id].includes(surface)
+    ? surface
+    : defaults[id].canonical_surface
   return {
     os_class: id,
     ...defaults[id],
+    canonical_surface: canonicalSurface,
     slot_count: 1,
     proxy_mode: 'inherit',
   }
@@ -96,7 +104,7 @@ export const createDefaultCodexOSProfile = (id: CodexOSProfileID): CodexOSProfil
 
 export const createDefaultCodexIdentityPolicy = (): CodexIdentityPolicy => ({
   mode: 'off',
-  binding_scope: 'api_key_os',
+  binding_scope: 'api_key_os_surface',
   profiles: [],
   session_policy: { mode: 'conversation_isolated' },
   affinity_ttl_seconds: 3600,
@@ -220,8 +228,8 @@ export const validateCodexIdentityPolicy = (
   const warnings: CodexIdentityValidationIssue[] = []
   const profiles = policy.profiles ?? []
 
-  if (policy.binding_scope !== 'api_key_os') {
-    addIssue(errors, 'BINDING_SCOPE_INVALID', 'binding_scope', 'Binding scope must be API key plus OS.')
+  if (policy.binding_scope !== 'api_key_os_surface' && policy.binding_scope !== 'api_key_os') {
+    addIssue(errors, 'BINDING_SCOPE_INVALID', 'binding_scope', 'Binding scope must be API key plus OS and client surface.')
   }
   if (policy.unsupported_policy !== 'reject') {
     addIssue(errors, 'UNSUPPORTED_POLICY_INVALID', 'unsupported_policy', 'Unsupported client profiles must be rejected.')
@@ -234,13 +242,19 @@ export const validateCodexIdentityPolicy = (
     addIssue(errors, 'PROFILE_REQUIRED', 'profiles', 'Enable at least one operating-system profile.')
   }
 
-  const seenProfiles = new Set<CodexOSProfileID>()
+  const seenProfiles = new Set<string>()
   profiles.forEach((profile, index) => {
-    if (seenProfiles.has(profile.os_class)) {
-      addIssue(errors, 'DUPLICATE_PROFILE', `profiles.${index}.os_class`, 'Each OS profile can appear only once.')
+    const profileKey = `${profile.os_class}:${profile.canonical_surface}`
+    if (seenProfiles.has(profileKey)) {
+      addIssue(
+        errors,
+        'DUPLICATE_PROFILE',
+        `profiles.${index}.canonical_surface`,
+        'Each operating-system and client-surface combination can appear only once.',
+      )
       return
     }
-    seenProfiles.add(profile.os_class)
+    seenProfiles.add(profileKey)
     validateProfile(profile, index, errors, options.availableProxyIDs)
   })
 
@@ -342,7 +356,7 @@ export const validateCodexIdentityPolicy = (
 export const normalizeCodexIdentityPolicy = (policy: CodexIdentityPolicy): CodexIdentityPolicy => {
   const normalized: CodexIdentityPolicy = {
     mode: policy.mode,
-    binding_scope: 'api_key_os',
+    binding_scope: 'api_key_os_surface',
     session_policy: policy.session_policy.mode === 'session_pool'
       ? {
           mode: 'session_pool',
@@ -386,6 +400,13 @@ export const normalizeCodexIdentityPolicy = (policy: CodexIdentityPolicy): Codex
           }
         }),
   }
+  normalized.profiles?.sort((left, right) => {
+    const osOrder = CODEX_OS_PROFILE_IDS.indexOf(left.os_class)
+      - CODEX_OS_PROFILE_IDS.indexOf(right.os_class)
+    if (osOrder !== 0) return osOrder
+    return PROFILE_SURFACES[left.os_class].indexOf(left.canonical_surface)
+      - PROFILE_SURFACES[right.os_class].indexOf(right.canonical_surface)
+  })
   return normalized
 }
 

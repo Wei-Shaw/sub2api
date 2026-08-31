@@ -163,7 +163,7 @@ func (s *ProxyExpirySuite) TestSweep_RotatesInheritedCodexProfileAndImmediatelyR
 		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
 		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
 	}))
-	oldBinding, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	oldBinding, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
 	past := time.Now().Add(-time.Hour)
 	_, err = s.tx.Proxy.UpdateOneID(main).SetExpiresAt(past).Save(s.ctx)
@@ -178,7 +178,7 @@ func (s *ProxyExpirySuite) TestSweep_RotatesInheritedCodexProfileAndImmediatelyR
 	s.Require().Equal(backup, *updated.ProxyID)
 	s.Require().EqualValues(2, updated.CodexIdentityPolicy.Version)
 	s.Require().EqualValues(2, updated.CodexIdentityPolicy.Profiles[0].Epoch)
-	rebound, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	rebound, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
 	s.Require().NotEqual(oldBinding.SlotID, rebound.SlotID)
 	s.Require().Equal("active", rebound.State)
@@ -195,7 +195,7 @@ func (s *ProxyExpirySuite) TestSweep_RotatesInheritedCodexProfileAndImmediatelyR
 	s.Require().Nil(reverted.ProxyFallbackOriginID)
 	s.Require().EqualValues(3, reverted.CodexIdentityPolicy.Version)
 	s.Require().EqualValues(3, reverted.CodexIdentityPolicy.Profiles[0].Epoch)
-	drainingBackup, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	drainingBackup, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
 	s.Require().Equal(rebound.SlotID, drainingBackup.SlotID)
 	s.Require().Equal("draining", drainingBackup.State)
@@ -203,7 +203,7 @@ func (s *ProxyExpirySuite) TestSweep_RotatesInheritedCodexProfileAndImmediatelyR
 	s.Require().Equal(backup, *drainingBackup.ProxyID)
 	_, err = s.tx.ExecContext(s.ctx, "UPDATE account_codex_device_bindings SET updated_at=NOW()-INTERVAL '2 hours' WHERE id=$1", drainingBackup.BindingID)
 	s.Require().NoError(err)
-	reboundOrigin, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	reboundOrigin, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
 	s.Require().NotEqual(drainingBackup.SlotID, reboundOrigin.SlotID)
 	s.Require().NotNil(reboundOrigin.ProxyID)
@@ -246,7 +246,7 @@ func (s *ProxyExpirySuite) runCodexOverrideExpiry(scope string) {
 		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
 		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
 	}))
-	oldBinding, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	oldBinding, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
 	past := time.Now().Add(-time.Hour)
 	_, err = s.tx.Proxy.UpdateOneID(main).SetExpiresAt(past).Save(s.ctx)
@@ -266,7 +266,7 @@ func (s *ProxyExpirySuite) runCodexOverrideExpiry(scope string) {
 		s.Require().NotNil(updated.CodexIdentityPolicy.Profiles[0].Slots[0].ProxyID)
 		s.Require().Equal(backup, *updated.CodexIdentityPolicy.Profiles[0].Slots[0].ProxyID)
 	}
-	rebound, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	rebound, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
 	s.Require().NotEqual(oldBinding.SlotID, rebound.SlotID)
 	s.Require().NotNil(rebound.ProxyID)
@@ -325,7 +325,7 @@ func (s *ProxyExpirySuite) runCodexDirectFallback(scope string) {
 		s.Require().Equal(service.CodexProxyDirect, updated.CodexIdentityPolicy.Profiles[0].Slots[0].ProxyMode)
 		s.Require().Nil(updated.CodexIdentityPolicy.Profiles[0].Slots[0].ProxyID)
 	}
-	resolved, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	resolved, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
 	s.Require().Nil(resolved.ProxyID, "profile direct fallback must not inherit the account proxy")
 }

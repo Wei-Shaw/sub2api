@@ -3,13 +3,14 @@
     <div class="flex items-start justify-between gap-4">
       <div class="min-w-0">
         <h3 :id="`${resolvedIdPrefix}-title`" class="text-sm font-semibold text-gray-900 dark:text-white">
-          {{ copy('admin.accounts.codexIdentity.title', 'Codex OS profile device pool') }}
+          {{ title || copy('admin.accounts.codexIdentity.title', 'Codex OS profile device pool') }}
         </h3>
         <p :id="`${resolvedIdPrefix}-description`" class="mt-1 text-xs leading-5 text-gray-500 dark:text-dark-400">
-          {{ copy('admin.accounts.codexIdentity.description', 'Keep a bounded, stable set of device identities per OAuth account. Connection and WebSocket state remain isolated by API key.') }}
+          {{ description || copy('admin.accounts.codexIdentity.description', 'Keep a bounded, stable set of device identities per OAuth account. Connection and WebSocket state remain isolated by API key.') }}
         </p>
       </div>
       <button
+        v-if="showModeToggle"
         type="button"
         role="switch"
         :aria-checked="enabled"
@@ -30,7 +31,7 @@
     </div>
 
     <div
-      v-if="!enabled"
+      v-if="showModeToggle && !enabled"
       class="border-y border-gray-100 py-3 text-sm text-gray-500 dark:border-dark-700 dark:text-dark-400"
       role="status"
       data-testid="codex-identity-policy-off"
@@ -38,7 +39,7 @@
       {{ copy('admin.accounts.codexIdentity.offState', 'Disabled. Existing Codex identity behavior is unchanged.') }}
     </div>
 
-    <template v-else>
+    <template v-if="enabled">
       <fieldset :disabled="disabled" class="space-y-3">
         <div>
           <legend class="text-sm font-semibold text-gray-900 dark:text-white">
@@ -54,15 +55,14 @@
             v-for="profileID in CODEX_OS_PROFILE_IDS"
             :key="profileID"
             :profile-id="profileID"
-            :model-value="profileFor(profileID)"
-            :enabled="profileEnabled(profileID)"
+            :model-value="profilesFor(profileID)"
             :proxies="proxies"
             :account-proxy-id="accountProxyId"
+            :template-context="templateContext"
             :disabled="disabled"
-            :issues="issuesForProfile(profileID)"
+            :issues-by-surface="issuesForOS(profileID)"
             :id-prefix="`${resolvedIdPrefix}-${profileID}`"
-            @update:model-value="setProfile(profileID, $event)"
-            @update:enabled="toggleProfile(profileID, $event)"
+            @update:profile="setSurfaceProfile(profileID, $event.surface, $event.profile)"
           />
         </ul>
       </fieldset>
@@ -123,10 +123,9 @@ import {
   type CodexSessionPolicy,
 } from '@/types/codexIdentity'
 import {
+  allowedCodexSurfaces,
   codexIdentityValidationMessageKey,
   availableCodexIdentityProxyIDs,
-  cloneCodexOSProfile,
-  createDefaultCodexOSProfile
 } from '@/utils/codexIdentityValidation'
 import OSProfileRow from './OSProfileRow.vue'
 import SessionPolicyEditor from './SessionPolicyEditor.vue'
@@ -136,13 +135,21 @@ const props = withDefaults(defineProps<{
   modelValue: CodexIdentityPolicy
   proxies?: readonly CodexIdentityProxyOption[]
   accountProxyId?: number | null
+  templateContext?: boolean
   disabled?: boolean
   idPrefix?: string
+  showModeToggle?: boolean
+  title?: string
+  description?: string
 }>(), {
   proxies: () => [],
   accountProxyId: null,
+  templateContext: false,
   disabled: false,
   idPrefix: '',
+  showModeToggle: true,
+  title: '',
+  description: '',
 })
 
 const emit = defineEmits<{
@@ -170,22 +177,32 @@ const toggleEnabled = () => {
   })
 }
 
-const profileEnabled = (profileID: CodexOSProfileID): boolean =>
-  (policy.value.profiles ?? []).some((profile) => profile.os_class === profileID)
+const profilesFor = (profileID: CodexOSProfileID): CodexOSProfilePolicy[] =>
+  (policy.value.profiles ?? []).filter((profile) => profile.os_class === profileID)
 
-const profileFor = (profileID: CodexOSProfileID): CodexOSProfilePolicy =>
-  cloneCodexOSProfile((policy.value.profiles ?? []).find((profile) => profile.os_class === profileID)
-    ?? createDefaultCodexOSProfile(profileID))
-
-const toggleProfile = (profileID: CodexOSProfileID, nextEnabled: boolean) => {
-  setProfile(profileID, nextEnabled ? profileFor(profileID) : null)
-}
-
-const issuesForProfile = (profileID: CodexOSProfileID): CodexIdentityValidationIssue[] => {
-  const index = (policy.value.profiles ?? []).findIndex((profile) => profile.os_class === profileID)
+const issuesForProfile = (
+  profileID: CodexOSProfileID,
+  surface: CodexOSProfilePolicy['canonical_surface'],
+): CodexIdentityValidationIssue[] => {
+  const index = (policy.value.profiles ?? []).findIndex(
+    (profile) => profile.os_class === profileID && profile.canonical_surface === surface,
+  )
   if (index < 0) return []
   return validation.value.errors.filter((issue) => issue.path.startsWith(`profiles.${index}.`))
 }
+
+const issuesForOS = (profileID: CodexOSProfileID) => Object.fromEntries(
+  allowedCodexSurfaces(profileID).map((surface) => [
+    surface,
+    issuesForProfile(profileID, surface),
+  ]),
+)
+
+const setSurfaceProfile = (
+  profileID: CodexOSProfileID,
+  surface: CodexOSProfilePolicy['canonical_surface'],
+  profile: CodexOSProfilePolicy | null,
+) => setProfile(profileID, surface, profile)
 
 const validationMessage = (issue: CodexIdentityValidationIssue): string => {
   const key = codexIdentityValidationMessageKey(issue.code)

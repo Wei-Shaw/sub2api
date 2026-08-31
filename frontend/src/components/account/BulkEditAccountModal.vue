@@ -889,25 +889,24 @@
         <div class="mb-3 flex items-start justify-between gap-4">
           <div>
             <label for="bulk-edit-codex-identity-enabled" class="input-label mb-0">
-              {{ t('admin.accounts.codexIdentity.bulkApply') }}
+              {{ t('admin.accounts.codexIdentity.bulkModify') }}
             </label>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.codexIdentity.bulkApplyDesc') }}
+              {{ t('admin.accounts.codexIdentity.bulkModifyDesc') }}
             </p>
           </div>
           <input
             id="bulk-edit-codex-identity-enabled"
-            v-model="enableCodexIdentityPolicy"
+            v-model="modifyCodexIdentityAssignment"
             type="checkbox"
             class="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
           />
         </div>
-        <div :class="!enableCodexIdentityPolicy && 'pointer-events-none opacity-50'">
-          <CodexIdentityPolicyEditor
-            v-model="codexIdentityPolicy"
-            :proxies="proxies"
-            :disabled="!enableCodexIdentityPolicy"
-            id-prefix="bulk-edit-codex-identity"
+        <div :class="!modifyCodexIdentityAssignment && 'pointer-events-none opacity-50'">
+          <CodexIdentityTemplateSelector
+            v-model="codexIdentityAssignment"
+            :disabled="!modifyCodexIdentityAssignment"
+            id-prefix="bulk-edit-codex-template"
           />
         </div>
       </div>
@@ -1001,7 +1000,7 @@
       </div>
 
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
-      <div v-if="allOpenAIOAuth && !enableCodexIdentityPolicy" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div v-if="allOpenAIOAuth && !modifyCodexIdentityAssignment" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <label class="input-label mb-0">{{ t('admin.accounts.openai.codexFingerprintMode') }}</label>
           <input
@@ -1503,6 +1502,7 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
 import type {
   Proxy as ProxyConfig,
@@ -1512,7 +1512,7 @@ import type {
   OpenAICompactMode,
   OpenAIEndpointCapability,
   OpenAIResponsesMode,
-  CodexIdentityPolicy
+  CodexIdentityAssignment
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -1521,14 +1521,7 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { CodexIdentityPolicyEditor } from './codex-identity'
-import {
-  createDefaultCodexIdentityPolicy,
-  availableCodexIdentityProxyIDs,
-  codexIdentityValidationMessageKey,
-  serializeCodexIdentityPolicy,
-  validateCodexIdentityPolicy
-} from '@/utils/codexIdentityValidation'
+import { CodexIdentityTemplateSelector } from './codex-identity'
 import {
   buildModelMappingObject as buildModelMappingPayload,
   getPresetMappingsByPlatform
@@ -1750,16 +1743,16 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const enableCodexFingerprintMode = ref(false)
-const enableCodexIdentityPolicy = ref(false)
+const modifyCodexIdentityAssignment = ref(false)
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
-const codexIdentityPolicy = ref<CodexIdentityPolicy>(createDefaultCodexIdentityPolicy())
-watch(enableCodexIdentityPolicy, (enabled) => {
+const codexIdentityAssignment = ref<CodexIdentityAssignment>({ enabled: false })
+watch(modifyCodexIdentityAssignment, (enabled) => {
   if (!enabled) return
   enableCodexFingerprintMode.value = false
   codexFingerprintMode.value = 'off'
 })
 watch(enableCodexFingerprintMode, (enabled) => {
-  if (enabled) enableCodexIdentityPolicy.value = false
+  if (enabled) modifyCodexIdentityAssignment.value = false
 })
 const codexFingerprintModeOptions = computed(() => [
   { value: 'off' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintOff') },
@@ -2161,8 +2154,8 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.codex_fingerprint_mode = codexFingerprintMode.value
   }
 
-  if (enableCodexIdentityPolicy.value && codexIdentityBulkEligible.value) {
-    updates.codex_identity_policy = serializeCodexIdentityPolicy(codexIdentityPolicy.value)
+  if (modifyCodexIdentityAssignment.value && codexIdentityBulkEligible.value) {
+    updates.codex_identity_assignment = { ...codexIdentityAssignment.value }
   }
 
   if (enableOpenAICompactMode.value) {
@@ -2279,7 +2272,7 @@ const handleSubmit = async () => {
     enableCodexCLIOnly.value ||
     enableCodexCLIOnlyAppServer.value ||
     enableCodexFingerprintMode.value ||
-    enableCodexIdentityPolicy.value ||
+    modifyCodexIdentityAssignment.value ||
     enableOpenAICompactMode.value ||
     enableOpenAICompactModelMapping.value ||
     enableRpmLimit.value ||
@@ -2290,16 +2283,13 @@ const handleSubmit = async () => {
     return
   }
 
-  if (enableCodexIdentityPolicy.value && codexIdentityBulkEligible.value) {
-    const identityValidation = validateCodexIdentityPolicy(codexIdentityPolicy.value, {
-      availableProxyIDs: availableCodexIdentityProxyIDs(props.proxies)
-    })
-    if (!identityValidation.valid) {
-      const issue = identityValidation.errors[0]
-      const key = issue ? codexIdentityValidationMessageKey(issue.code) : null
-      appStore.showError(key ? t(key) : issue?.message || t('admin.accounts.codexIdentity.fixErrors'))
+  if (modifyCodexIdentityAssignment.value &&
+    codexIdentityBulkEligible.value &&
+    codexIdentityAssignment.value.enabled &&
+    (!Number.isInteger(codexIdentityAssignment.value.template_id) ||
+      Number(codexIdentityAssignment.value.template_id) <= 0)) {
+      appStore.showError(t('admin.accounts.codexIdentity.templateRequired'))
       return
-    }
   }
 
   // base_url 现在也会作用于 Grok OAuth 订阅账号的转发端点；坏值会让请求期
@@ -2393,7 +2383,12 @@ const submitBulkUpdate = async (baseUpdates: Record<string, unknown>) => {
     } else if (error.reason === 'OPENAI_LONG_CONTEXT_PARENT_REQUIRED') {
       appStore.showError(t('admin.accounts.bulkEdit.longContextParentRequired'))
     } else {
-      appStore.showError(error.message || t('admin.accounts.bulkEdit.failed'))
+      appStore.showError(extractI18nErrorMessage(
+        error,
+        t,
+        'admin.accounts.codexIdentity.templateErrors',
+        error.message || t('admin.accounts.bulkEdit.failed'),
+      ))
       console.error('Error bulk updating accounts:', error)
     }
   } finally {
@@ -2443,9 +2438,9 @@ watch(
       enableCodexCLIOnly.value = false
       enableCodexCLIOnlyAppServer.value = false
       enableCodexFingerprintMode.value = false
-      enableCodexIdentityPolicy.value = false
+      modifyCodexIdentityAssignment.value = false
       codexFingerprintMode.value = 'off'
-      codexIdentityPolicy.value = createDefaultCodexIdentityPolicy()
+      codexIdentityAssignment.value = { enabled: false }
       enableOpenAICompactMode.value = false
       enableOpenAICompactModelMapping.value = false
       enableRpmLimit.value = false

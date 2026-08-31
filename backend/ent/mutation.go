@@ -2290,62 +2290,66 @@ func (m *APIKeyMutation) ResetEdge(name string) error {
 // AccountMutation represents an operation that mutates the Account nodes in the graph.
 type AccountMutation struct {
 	config
-	op                          Op
-	typ                         string
-	id                          *int64
-	created_at                  *time.Time
-	updated_at                  *time.Time
-	deleted_at                  *time.Time
-	name                        *string
-	notes                       *string
-	platform                    *string
-	_type                       *string
-	credentials                 *map[string]interface{}
-	extra                       *map[string]interface{}
-	proxy_fallback_origin_id    *int64
-	addproxy_fallback_origin_id *int64
-	concurrency                 *int
-	addconcurrency              *int
-	load_factor                 *int
-	addload_factor              *int
-	priority                    *int
-	addpriority                 *int
-	rate_multiplier             *float64
-	addrate_multiplier          *float64
-	status                      *string
-	provisioning_state          *string
-	codex_identity_policy       *map[string]interface{}
-	error_message               *string
-	last_used_at                *time.Time
-	expires_at                  *time.Time
-	auto_pause_on_expired       *bool
-	schedulable                 *bool
-	rate_limited_at             *time.Time
-	rate_limit_reset_at         *time.Time
-	overload_until              *time.Time
-	temp_unschedulable_until    *time.Time
-	temp_unschedulable_reason   *string
-	session_window_start        *time.Time
-	session_window_end          *time.Time
-	session_window_status       *string
-	quota_dimension             *account.QuotaDimension
-	clearedFields               map[string]struct{}
-	groups                      map[int64]struct{}
-	removedgroups               map[int64]struct{}
-	clearedgroups               bool
-	proxy                       *int64
-	clearedproxy                bool
-	parent                      *int64
-	clearedparent               bool
-	children                    map[int64]struct{}
-	removedchildren             map[int64]struct{}
-	clearedchildren             bool
-	usage_logs                  map[int64]struct{}
-	removedusage_logs           map[int64]struct{}
-	clearedusage_logs           bool
-	done                        bool
-	oldValue                    func(context.Context) (*Account, error)
-	predicates                  []predicate.Account
+	op                                          Op
+	typ                                         string
+	id                                          *int64
+	created_at                                  *time.Time
+	updated_at                                  *time.Time
+	deleted_at                                  *time.Time
+	name                                        *string
+	notes                                       *string
+	platform                                    *string
+	_type                                       *string
+	credentials                                 *map[string]interface{}
+	extra                                       *map[string]interface{}
+	proxy_fallback_origin_id                    *int64
+	addproxy_fallback_origin_id                 *int64
+	concurrency                                 *int
+	addconcurrency                              *int
+	load_factor                                 *int
+	addload_factor                              *int
+	priority                                    *int
+	addpriority                                 *int
+	rate_multiplier                             *float64
+	addrate_multiplier                          *float64
+	status                                      *string
+	provisioning_state                          *string
+	codex_identity_policy                       *map[string]interface{}
+	codex_identity_template_id                  *int64
+	addcodex_identity_template_id               *int64
+	codex_identity_template_applied_revision    *int64
+	addcodex_identity_template_applied_revision *int64
+	error_message                               *string
+	last_used_at                                *time.Time
+	expires_at                                  *time.Time
+	auto_pause_on_expired                       *bool
+	schedulable                                 *bool
+	rate_limited_at                             *time.Time
+	rate_limit_reset_at                         *time.Time
+	overload_until                              *time.Time
+	temp_unschedulable_until                    *time.Time
+	temp_unschedulable_reason                   *string
+	session_window_start                        *time.Time
+	session_window_end                          *time.Time
+	session_window_status                       *string
+	quota_dimension                             *account.QuotaDimension
+	clearedFields                               map[string]struct{}
+	groups                                      map[int64]struct{}
+	removedgroups                               map[int64]struct{}
+	clearedgroups                               bool
+	proxy                                       *int64
+	clearedproxy                                bool
+	parent                                      *int64
+	clearedparent                               bool
+	children                                    map[int64]struct{}
+	removedchildren                             map[int64]struct{}
+	clearedchildren                             bool
+	usage_logs                                  map[int64]struct{}
+	removedusage_logs                           map[int64]struct{}
+	clearedusage_logs                           bool
+	done                                        bool
+	oldValue                                    func(context.Context) (*Account, error)
+	predicates                                  []predicate.Account
 }
 
 var _ ent.Mutation = (*AccountMutation)(nil)
@@ -3259,6 +3263,146 @@ func (m *AccountMutation) OldCodexIdentityPolicy(ctx context.Context) (v map[str
 // ResetCodexIdentityPolicy resets all changes to the "codex_identity_policy" field.
 func (m *AccountMutation) ResetCodexIdentityPolicy() {
 	m.codex_identity_policy = nil
+}
+
+// SetCodexIdentityTemplateID sets the "codex_identity_template_id" field.
+func (m *AccountMutation) SetCodexIdentityTemplateID(i int64) {
+	m.codex_identity_template_id = &i
+	m.addcodex_identity_template_id = nil
+}
+
+// CodexIdentityTemplateID returns the value of the "codex_identity_template_id" field in the mutation.
+func (m *AccountMutation) CodexIdentityTemplateID() (r int64, exists bool) {
+	v := m.codex_identity_template_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCodexIdentityTemplateID returns the old "codex_identity_template_id" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldCodexIdentityTemplateID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCodexIdentityTemplateID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCodexIdentityTemplateID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCodexIdentityTemplateID: %w", err)
+	}
+	return oldValue.CodexIdentityTemplateID, nil
+}
+
+// AddCodexIdentityTemplateID adds i to the "codex_identity_template_id" field.
+func (m *AccountMutation) AddCodexIdentityTemplateID(i int64) {
+	if m.addcodex_identity_template_id != nil {
+		*m.addcodex_identity_template_id += i
+	} else {
+		m.addcodex_identity_template_id = &i
+	}
+}
+
+// AddedCodexIdentityTemplateID returns the value that was added to the "codex_identity_template_id" field in this mutation.
+func (m *AccountMutation) AddedCodexIdentityTemplateID() (r int64, exists bool) {
+	v := m.addcodex_identity_template_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearCodexIdentityTemplateID clears the value of the "codex_identity_template_id" field.
+func (m *AccountMutation) ClearCodexIdentityTemplateID() {
+	m.codex_identity_template_id = nil
+	m.addcodex_identity_template_id = nil
+	m.clearedFields[account.FieldCodexIdentityTemplateID] = struct{}{}
+}
+
+// CodexIdentityTemplateIDCleared returns if the "codex_identity_template_id" field was cleared in this mutation.
+func (m *AccountMutation) CodexIdentityTemplateIDCleared() bool {
+	_, ok := m.clearedFields[account.FieldCodexIdentityTemplateID]
+	return ok
+}
+
+// ResetCodexIdentityTemplateID resets all changes to the "codex_identity_template_id" field.
+func (m *AccountMutation) ResetCodexIdentityTemplateID() {
+	m.codex_identity_template_id = nil
+	m.addcodex_identity_template_id = nil
+	delete(m.clearedFields, account.FieldCodexIdentityTemplateID)
+}
+
+// SetCodexIdentityTemplateAppliedRevision sets the "codex_identity_template_applied_revision" field.
+func (m *AccountMutation) SetCodexIdentityTemplateAppliedRevision(i int64) {
+	m.codex_identity_template_applied_revision = &i
+	m.addcodex_identity_template_applied_revision = nil
+}
+
+// CodexIdentityTemplateAppliedRevision returns the value of the "codex_identity_template_applied_revision" field in the mutation.
+func (m *AccountMutation) CodexIdentityTemplateAppliedRevision() (r int64, exists bool) {
+	v := m.codex_identity_template_applied_revision
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCodexIdentityTemplateAppliedRevision returns the old "codex_identity_template_applied_revision" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldCodexIdentityTemplateAppliedRevision(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCodexIdentityTemplateAppliedRevision is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCodexIdentityTemplateAppliedRevision requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCodexIdentityTemplateAppliedRevision: %w", err)
+	}
+	return oldValue.CodexIdentityTemplateAppliedRevision, nil
+}
+
+// AddCodexIdentityTemplateAppliedRevision adds i to the "codex_identity_template_applied_revision" field.
+func (m *AccountMutation) AddCodexIdentityTemplateAppliedRevision(i int64) {
+	if m.addcodex_identity_template_applied_revision != nil {
+		*m.addcodex_identity_template_applied_revision += i
+	} else {
+		m.addcodex_identity_template_applied_revision = &i
+	}
+}
+
+// AddedCodexIdentityTemplateAppliedRevision returns the value that was added to the "codex_identity_template_applied_revision" field in this mutation.
+func (m *AccountMutation) AddedCodexIdentityTemplateAppliedRevision() (r int64, exists bool) {
+	v := m.addcodex_identity_template_applied_revision
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearCodexIdentityTemplateAppliedRevision clears the value of the "codex_identity_template_applied_revision" field.
+func (m *AccountMutation) ClearCodexIdentityTemplateAppliedRevision() {
+	m.codex_identity_template_applied_revision = nil
+	m.addcodex_identity_template_applied_revision = nil
+	m.clearedFields[account.FieldCodexIdentityTemplateAppliedRevision] = struct{}{}
+}
+
+// CodexIdentityTemplateAppliedRevisionCleared returns if the "codex_identity_template_applied_revision" field was cleared in this mutation.
+func (m *AccountMutation) CodexIdentityTemplateAppliedRevisionCleared() bool {
+	_, ok := m.clearedFields[account.FieldCodexIdentityTemplateAppliedRevision]
+	return ok
+}
+
+// ResetCodexIdentityTemplateAppliedRevision resets all changes to the "codex_identity_template_applied_revision" field.
+func (m *AccountMutation) ResetCodexIdentityTemplateAppliedRevision() {
+	m.codex_identity_template_applied_revision = nil
+	m.addcodex_identity_template_applied_revision = nil
+	delete(m.clearedFields, account.FieldCodexIdentityTemplateAppliedRevision)
 }
 
 // SetErrorMessage sets the "error_message" field.
@@ -4220,7 +4364,7 @@ func (m *AccountMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountMutation) Fields() []string {
-	fields := make([]string, 0, 33)
+	fields := make([]string, 0, 35)
 	if m.created_at != nil {
 		fields = append(fields, account.FieldCreatedAt)
 	}
@@ -4274,6 +4418,12 @@ func (m *AccountMutation) Fields() []string {
 	}
 	if m.codex_identity_policy != nil {
 		fields = append(fields, account.FieldCodexIdentityPolicy)
+	}
+	if m.codex_identity_template_id != nil {
+		fields = append(fields, account.FieldCodexIdentityTemplateID)
+	}
+	if m.codex_identity_template_applied_revision != nil {
+		fields = append(fields, account.FieldCodexIdentityTemplateAppliedRevision)
 	}
 	if m.error_message != nil {
 		fields = append(fields, account.FieldErrorMessage)
@@ -4364,6 +4514,10 @@ func (m *AccountMutation) Field(name string) (ent.Value, bool) {
 		return m.ProvisioningState()
 	case account.FieldCodexIdentityPolicy:
 		return m.CodexIdentityPolicy()
+	case account.FieldCodexIdentityTemplateID:
+		return m.CodexIdentityTemplateID()
+	case account.FieldCodexIdentityTemplateAppliedRevision:
+		return m.CodexIdentityTemplateAppliedRevision()
 	case account.FieldErrorMessage:
 		return m.ErrorMessage()
 	case account.FieldLastUsedAt:
@@ -4439,6 +4593,10 @@ func (m *AccountMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldProvisioningState(ctx)
 	case account.FieldCodexIdentityPolicy:
 		return m.OldCodexIdentityPolicy(ctx)
+	case account.FieldCodexIdentityTemplateID:
+		return m.OldCodexIdentityTemplateID(ctx)
+	case account.FieldCodexIdentityTemplateAppliedRevision:
+		return m.OldCodexIdentityTemplateAppliedRevision(ctx)
 	case account.FieldErrorMessage:
 		return m.OldErrorMessage(ctx)
 	case account.FieldLastUsedAt:
@@ -4604,6 +4762,20 @@ func (m *AccountMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetCodexIdentityPolicy(v)
 		return nil
+	case account.FieldCodexIdentityTemplateID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCodexIdentityTemplateID(v)
+		return nil
+	case account.FieldCodexIdentityTemplateAppliedRevision:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCodexIdentityTemplateAppliedRevision(v)
+		return nil
 	case account.FieldErrorMessage:
 		v, ok := value.(string)
 		if !ok {
@@ -4732,6 +4904,12 @@ func (m *AccountMutation) AddedFields() []string {
 	if m.addrate_multiplier != nil {
 		fields = append(fields, account.FieldRateMultiplier)
 	}
+	if m.addcodex_identity_template_id != nil {
+		fields = append(fields, account.FieldCodexIdentityTemplateID)
+	}
+	if m.addcodex_identity_template_applied_revision != nil {
+		fields = append(fields, account.FieldCodexIdentityTemplateAppliedRevision)
+	}
 	return fields
 }
 
@@ -4750,6 +4928,10 @@ func (m *AccountMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedPriority()
 	case account.FieldRateMultiplier:
 		return m.AddedRateMultiplier()
+	case account.FieldCodexIdentityTemplateID:
+		return m.AddedCodexIdentityTemplateID()
+	case account.FieldCodexIdentityTemplateAppliedRevision:
+		return m.AddedCodexIdentityTemplateAppliedRevision()
 	}
 	return nil, false
 }
@@ -4794,6 +4976,20 @@ func (m *AccountMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddRateMultiplier(v)
 		return nil
+	case account.FieldCodexIdentityTemplateID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCodexIdentityTemplateID(v)
+		return nil
+	case account.FieldCodexIdentityTemplateAppliedRevision:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCodexIdentityTemplateAppliedRevision(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Account numeric field %s", name)
 }
@@ -4816,6 +5012,12 @@ func (m *AccountMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(account.FieldLoadFactor) {
 		fields = append(fields, account.FieldLoadFactor)
+	}
+	if m.FieldCleared(account.FieldCodexIdentityTemplateID) {
+		fields = append(fields, account.FieldCodexIdentityTemplateID)
+	}
+	if m.FieldCleared(account.FieldCodexIdentityTemplateAppliedRevision) {
+		fields = append(fields, account.FieldCodexIdentityTemplateAppliedRevision)
 	}
 	if m.FieldCleared(account.FieldErrorMessage) {
 		fields = append(fields, account.FieldErrorMessage)
@@ -4881,6 +5083,12 @@ func (m *AccountMutation) ClearField(name string) error {
 		return nil
 	case account.FieldLoadFactor:
 		m.ClearLoadFactor()
+		return nil
+	case account.FieldCodexIdentityTemplateID:
+		m.ClearCodexIdentityTemplateID()
+		return nil
+	case account.FieldCodexIdentityTemplateAppliedRevision:
+		m.ClearCodexIdentityTemplateAppliedRevision()
 		return nil
 	case account.FieldErrorMessage:
 		m.ClearErrorMessage()
@@ -4979,6 +5187,12 @@ func (m *AccountMutation) ResetField(name string) error {
 		return nil
 	case account.FieldCodexIdentityPolicy:
 		m.ResetCodexIdentityPolicy()
+		return nil
+	case account.FieldCodexIdentityTemplateID:
+		m.ResetCodexIdentityTemplateID()
+		return nil
+	case account.FieldCodexIdentityTemplateAppliedRevision:
+		m.ResetCodexIdentityTemplateAppliedRevision()
 		return nil
 	case account.FieldErrorMessage:
 		m.ResetErrorMessage()

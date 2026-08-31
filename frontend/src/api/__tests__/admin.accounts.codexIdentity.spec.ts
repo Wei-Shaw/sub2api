@@ -4,16 +4,18 @@ import {
   createDefaultCodexOSProfile
 } from '@/utils/codexIdentityValidation'
 
-const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
+const { get, post, put } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn() }))
 
 vi.mock('@/api/client', () => ({
-  apiClient: { get, post }
+  apiClient: { get, post, put }
 }))
 
 import {
   finalizeCodexDrainingSlots,
+  create,
   importData,
-  listCodexDeviceSlots
+  listCodexDeviceSlots,
+  update,
 } from '@/api/admin/accounts'
 
 describe('admin account Codex identity API payloads', () => {
@@ -28,6 +30,7 @@ describe('admin account Codex identity API payloads', () => {
       }
     })
     get.mockReset()
+    put.mockReset()
   })
 
   it('sends policy overrides at the trusted data-import request boundary', async () => {
@@ -115,5 +118,27 @@ describe('admin account Codex identity API payloads', () => {
       params: { include_draining: true }
     })
     expect(post).toHaveBeenCalledWith('/admin/accounts/7/codex-device-slots/finalize-draining')
+  })
+
+  it('passes typed template assignments through create and update requests', async () => {
+    const account = { id: 9 }
+    post.mockResolvedValueOnce({ data: account })
+    put.mockResolvedValueOnce({ data: account })
+
+    await create({
+      name: 'OpenAI OAuth',
+      platform: 'openai',
+      type: 'oauth',
+      credentials: {},
+      codex_identity_assignment: { enabled: true, template_id: 7 },
+    })
+    await update(9, { codex_identity_assignment: { enabled: false } })
+
+    expect(post).toHaveBeenCalledWith('/admin/accounts', expect.objectContaining({
+      codex_identity_assignment: { enabled: true, template_id: 7 },
+    }))
+    expect(put).toHaveBeenCalledWith('/admin/accounts/9', {
+      codex_identity_assignment: { enabled: false },
+    })
   })
 })

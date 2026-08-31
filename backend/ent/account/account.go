@@ -52,6 +52,10 @@ const (
 	FieldProvisioningState = "provisioning_state"
 	// FieldCodexIdentityPolicy holds the string denoting the codex_identity_policy field in the database.
 	FieldCodexIdentityPolicy = "codex_identity_policy"
+	// FieldCodexIdentityTemplateID holds the string denoting the codex_identity_template_id field in the database.
+	FieldCodexIdentityTemplateID = "codex_identity_template_id"
+	// FieldCodexIdentityTemplateAppliedRevision holds the string denoting the codex_identity_template_applied_revision field in the database.
+	FieldCodexIdentityTemplateAppliedRevision = "codex_identity_template_applied_revision"
 	// FieldErrorMessage holds the string denoting the error_message field in the database.
 	FieldErrorMessage = "error_message"
 	// FieldLastUsedAt holds the string denoting the last_used_at field in the database.
@@ -153,6 +157,8 @@ var Columns = []string{
 	FieldStatus,
 	FieldProvisioningState,
 	FieldCodexIdentityPolicy,
+	FieldCodexIdentityTemplateID,
+	FieldCodexIdentityTemplateAppliedRevision,
 	FieldErrorMessage,
 	FieldLastUsedAt,
 	FieldExpiresAt,
@@ -341,6 +347,16 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByProvisioningState orders the results by the provisioning_state field.
 func ByProvisioningState(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProvisioningState, opts...).ToFunc()
+}
+
+// ByCodexIdentityTemplateID orders the results by the codex_identity_template_id field.
+func ByCodexIdentityTemplateID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCodexIdentityTemplateID, opts...).ToFunc()
+}
+
+// ByCodexIdentityTemplateAppliedRevision orders the results by the codex_identity_template_applied_revision field.
+func ByCodexIdentityTemplateAppliedRevision(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCodexIdentityTemplateAppliedRevision, opts...).ToFunc()
 }
 
 // ByErrorMessage orders the results by the error_message field.

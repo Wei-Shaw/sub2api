@@ -73,11 +73,13 @@ const props = withDefaults(defineProps<{
   modelValue: CodexOSProfilePolicy
   proxies?: readonly CodexIdentityProxyOption[]
   accountProxyId?: number | null
+  templateContext?: boolean
   disabled?: boolean
   idPrefix: string
 }>(), {
   proxies: () => [],
   accountProxyId: null,
+  templateContext: false,
   disabled: false,
 })
 
@@ -95,6 +97,9 @@ const proxyLabel = (proxy: CodexIdentityProxyOption) => {
 }
 
 const accountProxyHint = computed(() => {
+  if (props.templateContext) {
+    return copy('admin.accounts.codexIdentity.templateProxyInherit', 'Inherits each assigned account connection at runtime.')
+  }
   if (!props.accountProxyId) {
     return copy('admin.accounts.codexIdentity.accountProxyDirect', 'Inherit the account connection (currently direct).')
   }

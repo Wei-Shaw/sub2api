@@ -54,6 +54,9 @@ func (r *accountRepository) updateProvisionedAccount(
 		defer func() { _ = tx.Rollback() }()
 		txClient = tx.Client()
 	}
+	if err := verifyCodexIdentityTemplateAssignment(ctx, txClient, account); err != nil {
+		return err
+	}
 
 	previousGroupIDs, err := loadProvisionedAccountGroupIDs(ctx, txClient, account.ID)
 	if err != nil {
@@ -158,6 +161,9 @@ func (r *accountRepository) ProvisionAccount(ctx context.Context, spec *service.
 		defer func() { _ = tx.Rollback() }()
 		txClient = tx.Client()
 	}
+	if err := verifyCodexIdentityTemplateAssignment(ctx, txClient, account); err != nil {
+		return err
+	}
 	if err := validateProvisioningProxyReferences(ctx, txClient, account.ProxyID, policy, true); err != nil {
 		return err
 	}
@@ -211,6 +217,44 @@ func (r *accountRepository) ProvisionAccount(ctx context.Context, spec *service.
 	account.CodexIdentityPolicy = policy
 	account.GroupIDs = append([]int64(nil), normalized.GroupIDs...)
 	account.AccountGroups = groups
+	return nil
+}
+
+func verifyCodexIdentityTemplateAssignment(ctx context.Context, client sqlExecutor, account *service.Account) error {
+	if account == nil || account.CodexIdentityTemplateID == nil {
+		return nil
+	}
+	if account.CodexIdentityTemplateAppliedRevision == nil ||
+		*account.CodexIdentityTemplateID <= 0 ||
+		*account.CodexIdentityTemplateAppliedRevision <= 0 {
+		return infraerrors.BadRequest(
+			"INVALID_CODEX_IDENTITY_ASSIGNMENT",
+			"a template assignment requires a positive template id and applied revision",
+		)
+	}
+	rows, err := client.QueryContext(ctx, `
+		SELECT revision FROM codex_identity_templates WHERE id=$1 FOR SHARE
+	`, *account.CodexIdentityTemplateID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		return service.ErrCodexIdentityTemplateNotFound
+	}
+	var currentRevision int64
+	if err := rows.Scan(&currentRevision); err != nil {
+		return err
+	}
+	if currentRevision != *account.CodexIdentityTemplateAppliedRevision {
+		return service.ErrCodexIdentityTemplateRevisionConflict.WithMetadata(map[string]string{
+			"expected_revision": fmt.Sprintf("%d", *account.CodexIdentityTemplateAppliedRevision),
+			"current_revision":  fmt.Sprintf("%d", currentRevision),
+		})
+	}
 	return nil
 }
 
@@ -295,9 +339,9 @@ func rotateProfilesInheritingAccountProxy(
 	if next == nil || next.Mode != service.CodexIdentityPolicyOSProfileDevicePool {
 		return false
 	}
-	previousByOS := make(map[service.CodexOSClass]service.CodexOSProfilePolicy, len(previous.Profiles))
+	previousByProfile := make(map[string]service.CodexOSProfilePolicy, len(previous.Profiles))
 	for _, profile := range previous.Profiles {
-		previousByOS[profile.OSClass] = profile
+		previousByProfile[codexProvisionedProfileKey(profile)] = profile
 	}
 	rotated := false
 	for i := range next.Profiles {
@@ -305,7 +349,7 @@ func rotateProfilesInheritingAccountProxy(
 		if !codexProfileInheritsAccountProxy(*profile) {
 			continue
 		}
-		oldProfile, exists := previousByOS[profile.OSClass]
+		oldProfile, exists := previousByProfile[codexProvisionedProfileKey(*profile)]
 		if !exists {
 			continue
 		}
@@ -351,12 +395,12 @@ func snapshotRotatedInheritedAccountProxy(
 	next service.CodexIdentityPolicySpec,
 	previousAccountProxyID *int64,
 ) error {
-	nextByOS := make(map[service.CodexOSClass]service.CodexOSProfilePolicy, len(next.Profiles))
+	nextByProfile := make(map[string]service.CodexOSProfilePolicy, len(next.Profiles))
 	for _, profile := range next.Profiles {
-		nextByOS[profile.OSClass] = profile
+		nextByProfile[codexProvisionedProfileKey(profile)] = profile
 	}
 	for _, oldProfile := range previous.Profiles {
-		newProfile, exists := nextByOS[oldProfile.OSClass]
+		newProfile, exists := nextByProfile[codexProvisionedProfileKey(oldProfile)]
 		if !exists || newProfile.Epoch <= oldProfile.Epoch || !codexProfileInheritsAccountProxy(oldProfile) {
 			continue
 		}
@@ -381,9 +425,10 @@ func snapshotRotatedInheritedAccountProxy(
 				  AND slots.profile_id=profiles.id
 				  AND bindings.account_id=$1
 				  AND profiles.os_class=$2
-				  AND profiles.epoch=$3
-				  AND slots.slot_index=ANY($4)
-			`, accountID, oldProfile.OSClass, oldProfile.Epoch, pq.Array(inheritedIndices)); err != nil {
+				  AND profiles.canonical_surface=$3
+				  AND profiles.epoch=$4
+				  AND slots.slot_index=ANY($5)
+			`, accountID, oldProfile.OSClass, oldProfile.CanonicalSurface, oldProfile.Epoch, pq.Array(inheritedIndices)); err != nil {
 				return err
 			}
 			continue
@@ -395,10 +440,11 @@ func snapshotRotatedInheritedAccountProxy(
 			WHERE slots.profile_id=profiles.id
 			  AND slots.account_id=$2
 			  AND profiles.os_class=$3
-			  AND profiles.epoch=$4
-			  AND slots.slot_index=ANY($5)
+			  AND profiles.canonical_surface=$4
+			  AND profiles.epoch=$5
+			  AND slots.slot_index=ANY($6)
 			  AND slots.proxy_id IS NULL
-		`, *previousAccountProxyID, accountID, oldProfile.OSClass, oldProfile.Epoch, pq.Array(inheritedIndices)); err != nil {
+		`, *previousAccountProxyID, accountID, oldProfile.OSClass, oldProfile.CanonicalSurface, oldProfile.Epoch, pq.Array(inheritedIndices)); err != nil {
 			return err
 		}
 	}
@@ -407,25 +453,25 @@ func snapshotRotatedInheritedAccountProxy(
 
 func transitionProvisionedCodexIdentity(
 	ctx context.Context,
-	client *dbent.Client,
+	client sqlExecutor,
 	accountID int64,
 	previous service.CodexIdentityPolicySpec,
 	next service.CodexIdentityPolicySpec,
 ) error {
-	nextByOS := make(map[service.CodexOSClass]service.CodexOSProfilePolicy, len(next.Profiles))
+	nextByProfile := make(map[string]service.CodexOSProfilePolicy, len(next.Profiles))
 	for _, profile := range next.Profiles {
-		nextByOS[profile.OSClass] = profile
+		nextByProfile[codexProvisionedProfileKey(profile)] = profile
 	}
 	for _, oldProfile := range previous.Profiles {
-		newProfile, exists := nextByOS[oldProfile.OSClass]
+		newProfile, exists := nextByProfile[codexProvisionedProfileKey(oldProfile)]
 		if exists && newProfile.Epoch == oldProfile.Epoch {
 			continue
 		}
 		if !exists {
 			if _, err := client.ExecContext(ctx, `
 				DELETE FROM account_codex_device_bindings
-				WHERE account_id=$1 AND os_class=$2
-			`, accountID, oldProfile.OSClass); err != nil {
+				WHERE account_id=$1 AND os_class=$2 AND canonical_surface=$3
+			`, accountID, oldProfile.OSClass, oldProfile.CanonicalSurface); err != nil {
 				return err
 			}
 		}
@@ -436,9 +482,10 @@ func transitionProvisionedCodexIdentity(
 			WHERE slots.profile_id=profiles.id
 			  AND slots.account_id=$1
 			  AND profiles.os_class=$2
-			  AND profiles.epoch=$3
+			  AND profiles.canonical_surface=$3
+			  AND profiles.epoch=$4
 			  AND slots.state='active'
-		`, accountID, oldProfile.OSClass, oldProfile.Epoch); err != nil {
+		`, accountID, oldProfile.OSClass, oldProfile.CanonicalSurface, oldProfile.Epoch); err != nil {
 			return err
 		}
 	}
@@ -458,7 +505,7 @@ func transitionProvisionedCodexIdentity(
 
 func createProvisionedCodexIdentity(
 	ctx context.Context,
-	client *dbent.Client,
+	client sqlExecutor,
 	accountID int64,
 	policy service.CodexIdentityPolicySpec,
 ) error {
@@ -514,7 +561,7 @@ func createProvisionedCodexIdentity(
 
 func insertProvisionedCodexProfile(
 	ctx context.Context,
-	client *dbent.Client,
+	client sqlExecutor,
 	accountID int64,
 	profile service.CodexOSProfilePolicy,
 ) (int64, error) {
@@ -522,7 +569,7 @@ func insertProvisionedCodexProfile(
 		INSERT INTO account_codex_profiles
 			(account_id, os_class, canonical_surface, architecture, proxy_mode, proxy_id, slot_count, epoch, catalog_version)
 		VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, $9)
-		ON CONFLICT (account_id, os_class, epoch) DO UPDATE SET
+		ON CONFLICT (account_id, os_class, canonical_surface, epoch) DO UPDATE SET
 			canonical_surface=EXCLUDED.canonical_surface,
 			architecture=EXCLUDED.architecture,
 			proxy_mode=EXCLUDED.proxy_mode,
@@ -550,6 +597,10 @@ func insertProvisionedCodexProfile(
 		return 0, err
 	}
 	return profileID, nil
+}
+
+func codexProvisionedProfileKey(profile service.CodexOSProfilePolicy) string {
+	return string(profile.OSClass) + "/" + string(profile.CanonicalSurface)
 }
 
 func validateProvisioningProxyReferences(

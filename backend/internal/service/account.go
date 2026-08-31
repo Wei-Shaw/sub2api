@@ -41,14 +41,16 @@ type Account struct {
 	// ProvisioningState is independent from the operational status. Empty is
 	// accepted as active only for backward-compatible in-memory/Redis payloads
 	// created before the field existed; persisted rows are always explicit.
-	ProvisioningState   AccountProvisioningState
-	CodexIdentityPolicy CodexIdentityPolicySpec
-	ErrorMessage        string
-	LastUsedAt          *time.Time
-	ExpiresAt           *time.Time
-	AutoPauseOnExpired  bool
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	ProvisioningState                    AccountProvisioningState
+	CodexIdentityPolicy                  CodexIdentityPolicySpec
+	CodexIdentityTemplateID              *int64
+	CodexIdentityTemplateAppliedRevision *int64
+	ErrorMessage                         string
+	LastUsedAt                           *time.Time
+	ExpiresAt                            *time.Time
+	AutoPauseOnExpired                   bool
+	CreatedAt                            time.Time
+	UpdatedAt                            time.Time
 
 	Schedulable bool
 

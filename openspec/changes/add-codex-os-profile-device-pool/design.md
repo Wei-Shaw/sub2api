@@ -58,9 +58,10 @@ type AccountProvisioningSpec struct {
 ### 3. 使用关系表承载生命周期，不把新系统塞入 extra
 
 - `account_codex_identity_policies`: mode、binding scope、session policy、TTL、unsupported policy、版本。
-- `account_codex_profiles`: OS、canonical surface、arch、profile proxy、slot count、epoch。
+- `codex_identity_templates` 及 profile/slot 子表：设置页的命名权威模板与 revision。
+- `account_codex_profiles`: 账号运行投影；`OS + canonical surface`、arch、profile proxy、slot count、epoch。
 - `account_codex_device_slots`: profile、slot index、slot proxy、epoch、active/draining。
-- `account_codex_device_bindings`: account + api key + OS 到 slot 的稳定绑定。
+- `account_codex_device_bindings`: account + api key + OS + surface 到 slot 的稳定绑定。
 
 `accounts.extra` 继续承载旧模式。新模式与旧 `codex_fingerprint_mode != off` 互斥。
 
@@ -68,7 +69,7 @@ type AccountProvisioningSpec struct {
 
 OS: `windows|macos|linux|generic`。
 
-Surface: `desktop|cli|sdk|third_party`。Generic 只允许 SDK/Third-party；其他 OS 允许 Desktop/CLI。Arch 使用受约束枚举并由 Profile catalog 验证。Linux Desktop 同时支持 x86_64 和 arm64。
+Surface: `desktop|cli|sdk|third_party`。Profile 唯一键为 `(OS, surface)`；Generic 可同时启用 SDK/Third-party，其他 OS 可同时启用 Desktop/CLI。每个 surface 独立配置 Arch、槽位和代理。Arch 使用受约束枚举并由 Profile catalog 验证。Linux Desktop 同时支持 x86_64 和 arm64。
 
 每个 Profile 使用 version epoch；同 epoch 的 UA/originator/version/body 规则必须同源。管理员只选择枚举和 epoch，不填写任意 UA。
 

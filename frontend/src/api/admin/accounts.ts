@@ -26,6 +26,7 @@ import type {
   UpstreamBillingRatesResponse,
   OllamaCloudUsageSettings,
   OllamaCloudUsageState,
+  BulkUpdateAccountsRequest,
   CodexIdentityPolicy
 } from '@/types'
 
@@ -534,8 +535,8 @@ export async function batchUpdateCredentials(request: {
  * @returns Success confirmation
  */
 export async function bulkUpdate(
-  accountIdsOrPayload: number[] | Record<string, unknown>,
-  updates?: Record<string, unknown>
+  accountIdsOrPayload: number[] | BulkUpdateAccountsRequest,
+  updates?: BulkUpdateAccountsRequest
 ): Promise<{
   success: number
   failed: number

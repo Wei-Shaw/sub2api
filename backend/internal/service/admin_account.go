@@ -319,6 +319,8 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 		return nil, err
 	}
 	duplicate.CodexIdentityPolicy = source.CodexIdentityPolicy
+	duplicate.CodexIdentityTemplateID = cloneAccountValuePointer(source.CodexIdentityTemplateID)
+	duplicate.CodexIdentityTemplateAppliedRevision = cloneAccountValuePointer(source.CodexIdentityTemplateAppliedRevision)
 	// A copied credential must be reviewed before it can share live traffic with its source.
 	duplicate.Schedulable = false
 	if s.accountDuplicateRepo == nil {
@@ -518,9 +520,17 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err != nil {
 		return nil, err
 	}
+	if input.CodexIdentityPolicy != nil && input.CodexIdentityAssignment != nil {
+		return nil, infraerrors.BadRequest("CONFLICTING_CODEX_IDENTITY_CONFIGURATION", "codex_identity_policy and codex_identity_assignment cannot be provided together")
+	}
 	identityPolicy := DefaultCodexIdentityPolicySpec()
 	if input.CodexIdentityPolicy != nil {
 		identityPolicy = *input.CodexIdentityPolicy
+	} else if input.CodexIdentityAssignment != nil {
+		identityPolicy, account.CodexIdentityTemplateID, account.CodexIdentityTemplateAppliedRevision, err = s.materializeCodexIdentityAssignment(ctx, input.CodexIdentityAssignment)
+		if err != nil {
+			return nil, err
+		}
 	}
 	identityPolicy, err = identityPolicy.NormalizeAndValidate(account.Platform, account.Type)
 	if err != nil {
@@ -594,6 +604,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 }
 
 func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error) {
+	if input != nil && input.CodexIdentityPolicy != nil && input.CodexIdentityAssignment != nil {
+		return nil, infraerrors.BadRequest("CONFLICTING_CODEX_IDENTITY_CONFIGURATION", "codex_identity_policy and codex_identity_assignment cannot be provided together")
+	}
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -885,7 +898,32 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	existingIdentityMode := account.CodexIdentityPolicy.Mode
 	identityPolicy := account.CodexIdentityPolicy
 	if input.CodexIdentityPolicy != nil {
-		identityPolicy = *input.CodexIdentityPolicy
+		requested, normalizeErr := input.CodexIdentityPolicy.NormalizeAndValidate(account.Platform, account.Type)
+		if normalizeErr != nil {
+			return nil, normalizeErr
+		}
+		if account.CodexIdentityTemplateID != nil && requested.Mode != CodexIdentityPolicyOff {
+			current, currentErr := account.CodexIdentityPolicy.NormalizeAndValidate(account.Platform, account.Type)
+			if currentErr != nil {
+				return nil, currentErr
+			}
+			if !reflect.DeepEqual(codexPolicyMaterial(current), codexPolicyMaterial(requested)) {
+				return nil, infraerrors.Conflict(
+					"CODEX_IDENTITY_TEMPLATE_MANAGED",
+					"this account is managed by a Codex identity template; update the template or change the account assignment",
+				)
+			}
+			identityPolicy = current
+		} else {
+			identityPolicy = requested
+			account.CodexIdentityTemplateID = nil
+			account.CodexIdentityTemplateAppliedRevision = nil
+		}
+	} else if input.CodexIdentityAssignment != nil {
+		identityPolicy, account.CodexIdentityTemplateID, account.CodexIdentityTemplateAppliedRevision, err = s.materializeCodexIdentityAssignment(ctx, input.CodexIdentityAssignment)
+		if err != nil {
+			return nil, err
+		}
 	}
 	identityPolicy, err = identityPolicy.NormalizeAndValidate(account.Platform, account.Type)
 	if err != nil {
@@ -965,6 +1003,65 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	return updated, nil
 }
 
+func (s *adminServiceImpl) materializeCodexIdentityAssignment(
+	ctx context.Context,
+	assignment *CodexIdentityAssignment,
+) (CodexIdentityPolicySpec, *int64, *int64, error) {
+	if assignment == nil || !assignment.Enabled {
+		return DefaultCodexIdentityPolicySpec(), nil, nil, nil
+	}
+	if assignment.TemplateID <= 0 {
+		return CodexIdentityPolicySpec{}, nil, nil, infraerrors.BadRequest("INVALID_CODEX_IDENTITY_ASSIGNMENT", "enabled assignment requires a positive template_id")
+	}
+	reader, ok := s.accountRepo.(CodexIdentityTemplateReader)
+	if !ok {
+		return CodexIdentityPolicySpec{}, nil, nil, errors.New("Codex identity template reader is not configured")
+	}
+	template, err := reader.GetCodexIdentityTemplate(ctx, assignment.TemplateID)
+	if (err != nil || assignment.ExpectedTemplateName != "" &&
+		!strings.EqualFold(strings.TrimSpace(template.Name), strings.TrimSpace(assignment.ExpectedTemplateName))) &&
+		assignment.ExpectedTemplateName != "" {
+		template, err = reader.GetCodexIdentityTemplateByName(ctx, assignment.ExpectedTemplateName)
+	}
+	if err != nil {
+		return CodexIdentityPolicySpec{}, nil, nil, err
+	}
+	policy, err := MaterializeCodexIdentityTemplate(template)
+	if err != nil {
+		return CodexIdentityPolicySpec{}, nil, nil, err
+	}
+	if assignment.ExpectedRuntimeSHA256 != "" {
+		digest, digestErr := CodexIdentityPolicyRuntimeSHA256(policy)
+		if digestErr != nil {
+			return CodexIdentityPolicySpec{}, nil, nil, digestErr
+		}
+		if !strings.EqualFold(digest, strings.TrimSpace(assignment.ExpectedRuntimeSHA256)) {
+			return CodexIdentityPolicySpec{}, nil, nil, infraerrors.Conflict(
+				"CODEX_IDENTITY_TEMPLATE_RUNTIME_MISMATCH",
+				"the selected Codex identity template does not match the exported runtime policy",
+			)
+		}
+	} else if assignment.ExpectedRevision != nil && *assignment.ExpectedRevision != template.Revision {
+		return CodexIdentityPolicySpec{}, nil, nil, ErrCodexIdentityTemplateRevisionConflict.WithMetadata(map[string]string{
+			"expected_revision": fmt.Sprintf("%d", *assignment.ExpectedRevision),
+			"current_revision":  fmt.Sprintf("%d", template.Revision),
+		})
+	}
+	templateID, revision := template.ID, template.Revision
+	return policy, &templateID, &revision, nil
+}
+
+func (s *adminServiceImpl) GetCodexIdentityTemplateForExport(
+	ctx context.Context,
+	templateID int64,
+) (*CodexIdentityTemplate, error) {
+	reader, ok := s.accountRepo.(CodexIdentityTemplateReader)
+	if !ok {
+		return nil, errors.New("Codex identity template reader is not configured")
+	}
+	return reader.GetCodexIdentityTemplate(ctx, templateID)
+}
+
 func (s *adminServiceImpl) updateLegacyAccountWithoutProvisioning(
 	ctx context.Context,
 	account *Account,
@@ -1037,6 +1134,9 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // BulkUpdateAccounts updates multiple accounts in one request.
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
+	if input != nil && input.CodexIdentityPolicy != nil && input.CodexIdentityAssignment != nil {
+		return nil, infraerrors.BadRequest("CONFLICTING_CODEX_IDENTITY_CONFIGURATION", "codex_identity_policy and codex_identity_assignment cannot be provided together")
+	}
 	// Managed probe/session state may only enter through dedicated typed endpoints.
 	input.Extra = SanitizedCodexFingerprintExtraUpdates(input.Extra)
 	input.Extra = stripOpenAIAutoResetCreditManagedExtra(input.Extra, true)
@@ -1080,7 +1180,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	var cachedTargets []*Account
 	needsTargets := len(input.Credentials) > 0 || len(input.Extra) > 0 || input.ProxyID != nil ||
 		input.GroupIDs != nil || openAISettings.any() || input.ProbeEnabled != nil ||
-		input.RateMultiplier != nil || input.CodexIdentityPolicy != nil
+		input.RateMultiplier != nil || input.CodexIdentityPolicy != nil || input.CodexIdentityAssignment != nil
 	if needsTargets {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
@@ -1194,7 +1294,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		return nil, err
 	}
 
-	requiresProvisioning := input.CodexIdentityPolicy != nil
+	requiresProvisioning := input.CodexIdentityPolicy != nil || input.CodexIdentityAssignment != nil
 	if !requiresProvisioning {
 		for _, account := range cachedTargets {
 			if account != nil && account.CodexIdentityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool {
@@ -1323,20 +1423,24 @@ func (s *adminServiceImpl) bulkUpdateAccountsWithIdentityPolicy(
 		} else if input.CodexIdentityPolicy != nil &&
 			(account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth || account.IsCredentialShadow()) {
 			entry.Error = "Codex identity policy bulk update requires non-shadow OpenAI OAuth accounts"
+		} else if input.CodexIdentityAssignment != nil && input.CodexIdentityAssignment.Enabled &&
+			(account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth || account.IsCredentialShadow()) {
+			entry.Error = "Codex identity assignment bulk update requires non-shadow OpenAI OAuth accounts"
 		} else {
 			update := &UpdateAccountInput{
-				Name:                  input.Name,
-				ProxyID:               input.ProxyID,
-				Concurrency:           input.Concurrency,
-				Priority:              input.Priority,
-				RateMultiplier:        input.RateMultiplier,
-				LoadFactor:            input.LoadFactor,
-				Status:                input.Status,
-				Schedulable:           input.Schedulable,
-				GroupIDs:              input.GroupIDs,
-				ProbeEnabled:          input.ProbeEnabled,
-				CodexIdentityPolicy:   input.CodexIdentityPolicy,
-				SkipMixedChannelCheck: input.SkipMixedChannelCheck,
+				Name:                    input.Name,
+				ProxyID:                 input.ProxyID,
+				Concurrency:             input.Concurrency,
+				Priority:                input.Priority,
+				RateMultiplier:          input.RateMultiplier,
+				LoadFactor:              input.LoadFactor,
+				Status:                  input.Status,
+				Schedulable:             input.Schedulable,
+				GroupIDs:                input.GroupIDs,
+				ProbeEnabled:            input.ProbeEnabled,
+				CodexIdentityPolicy:     input.CodexIdentityPolicy,
+				CodexIdentityAssignment: input.CodexIdentityAssignment,
+				SkipMixedChannelCheck:   input.SkipMixedChannelCheck,
 			}
 			if len(input.Credentials) > 0 {
 				update.Credentials = mergeMap(account.Credentials, input.Credentials)

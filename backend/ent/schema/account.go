@@ -134,6 +134,8 @@ func (Account) Fields() []ent.Field {
 				}
 			}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+		field.Int64("codex_identity_template_id").Optional().Nillable(),
+		field.Int64("codex_identity_template_applied_revision").Optional().Nillable(),
 
 		// error_message: 错误信息，记录账户异常时的详细信息
 		field.String("error_message").

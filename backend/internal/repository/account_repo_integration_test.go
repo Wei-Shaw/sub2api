@@ -56,7 +56,7 @@ func TestCodexDeviceBindingConcurrentResolveIsStable(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			resolved, err := repo.ResolveCodexDeviceBinding(ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+			resolved, err := repo.ResolveCodexDeviceBinding(ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 			if err != nil {
 				errorsCh <- err
 				return
@@ -526,7 +526,7 @@ func (s *AccountRepoSuite) TestDelete_RemovesCodexIdentityGraphDespiteAccountSof
 		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
 		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
 	}))
-	_, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	_, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
 
 	s.Require().NoError(s.repo.Delete(s.ctx, account.ID))
@@ -1164,7 +1164,7 @@ func (s *AccountRepoSuite) TestAccountDefaultProxyChangeRotatesOnlyInheritedProf
 		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
 		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
 	}))
-	oldBinding, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	oldBinding, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
 	s.Require().NotNil(oldBinding.ProxyID)
 	s.Require().Equal(proxyOne.ID, *oldBinding.ProxyID)
@@ -1182,7 +1182,7 @@ func (s *AccountRepoSuite) TestAccountDefaultProxyChangeRotatesOnlyInheritedProf
 	s.Require().EqualValues(2, account.CodexIdentityPolicy.Version)
 	s.Require().EqualValues(2, profiles[service.CodexOSLinux].Epoch)
 	s.Require().EqualValues(1, profiles[service.CodexOSWindows].Epoch)
-	stillOld, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	stillOld, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
 	s.Require().Equal(oldBinding.SlotID, stillOld.SlotID)
 	s.Require().Equal("draining", stillOld.State)
@@ -1211,9 +1211,9 @@ func (s *AccountRepoSuite) TestCodexDeviceBindingDrainsAfterAffinitySilence() {
 		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
 	}))
 
-	first, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	first, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
-	again, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	again, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
 	s.Require().Equal(first.SlotID, again.SlotID)
 	s.Require().EqualValues(1, first.Epoch)
@@ -1226,7 +1226,7 @@ func (s *AccountRepoSuite) TestCodexDeviceBindingDrainsAfterAffinitySilence() {
 		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
 	}, nil, nil, account.RateMultiplier))
 
-	stillOld, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	stillOld, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
 	s.Require().Equal(first.SlotID, stillOld.SlotID)
 	s.Require().Equal("draining", stillOld.State)
@@ -1236,7 +1236,7 @@ func (s *AccountRepoSuite) TestCodexDeviceBindingDrainsAfterAffinitySilence() {
 		WHERE id=$1
 	`, first.BindingID)
 	s.Require().NoError(err)
-	migrated, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	migrated, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
 	s.Require().NotEqual(first.SlotID, migrated.SlotID)
 	s.Require().EqualValues(2, migrated.Epoch)
@@ -1292,7 +1292,7 @@ func (s *AccountRepoSuite) TestFinalizeRemovesAbandonedStaleDrainingBinding() {
 		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
 		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
 	}))
-	binding, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	binding, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
 	next := account.CodexIdentityPolicy
 	next.Profiles = append([]service.CodexOSProfilePolicy(nil), next.Profiles...)
@@ -1330,7 +1330,7 @@ func (s *AccountRepoSuite) TestSessionOnlyPolicyUpdateRefreshesBindingVersionWit
 		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
 		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
 	}))
-	binding, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	binding, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
 	next := account.CodexIdentityPolicy
 	next.SessionPolicy = service.CodexSessionPolicySpec{Mode: service.CodexSessionAPIKeyShared}
@@ -1338,7 +1338,7 @@ func (s *AccountRepoSuite) TestSessionOnlyPolicyUpdateRefreshesBindingVersionWit
 		Account: account, Identity: &next, FinalStatus: service.StatusActive,
 		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
 	}, nil, nil, account.RateMultiplier))
-	updatedBinding, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux)
+	updatedBinding, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
 	s.Require().Equal(binding.SlotID, updatedBinding.SlotID)
 	s.Require().EqualValues(1, updatedBinding.Epoch)

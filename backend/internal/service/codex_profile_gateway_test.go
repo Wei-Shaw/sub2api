@@ -134,26 +134,27 @@ func (r *codexProfileGatewayAccountRepo) GetByID(_ context.Context, id int64) (*
 	return r.accounts[id], nil
 }
 
-func (r *codexProfileGatewayAccountRepo) ResolveCodexDeviceBinding(_ context.Context, accountID, apiKeyID int64, osClass CodexOSClass) (*CodexResolvedDeviceSlot, error) {
+func (r *codexProfileGatewayAccountRepo) ResolveCodexDeviceBinding(_ context.Context, accountID, apiKeyID int64, osClass CodexOSClass, surface CodexClientSurface) (*CodexResolvedDeviceSlot, error) {
 	if slot := r.resolvedSlots[accountID]; slot != nil {
 		copySlot := *slot
 		copySlot.APIKeyID = apiKeyID
 		copySlot.OSClass = osClass
+		copySlot.CanonicalSurface = surface
 		return &copySlot, nil
 	}
 	return nil, fmt.Errorf("missing test binding for account %d: %w", accountID, ErrDeviceProfileUnsupported)
 }
 
-func (r *codexProfileGatewayAccountRepo) RebindCodexDeviceBinding(_ context.Context, oldAccountID, newAccountID, apiKeyID int64, osClass CodexOSClass) (*CodexResolvedDeviceSlot, error) {
+func (r *codexProfileGatewayAccountRepo) RebindCodexDeviceBinding(_ context.Context, oldAccountID, newAccountID, apiKeyID int64, osClass CodexOSClass, surface CodexClientSurface) (*CodexResolvedDeviceSlot, error) {
 	r.rebinds = append(r.rebinds, [2]int64{oldAccountID, newAccountID})
-	return r.ResolveCodexDeviceBinding(context.Background(), newAccountID, apiKeyID, osClass)
+	return r.ResolveCodexDeviceBinding(context.Background(), newAccountID, apiKeyID, osClass, surface)
 }
 
-func (r *codexProfileGatewayAccountRepo) DeleteCodexDeviceBinding(context.Context, int64, int64, CodexOSClass) error {
+func (r *codexProfileGatewayAccountRepo) DeleteCodexDeviceBinding(context.Context, int64, int64, CodexOSClass, CodexClientSurface) error {
 	return nil
 }
 
-func (r *codexProfileGatewayAccountRepo) ListCodexDeviceSlots(context.Context, int64, CodexOSClass, bool) ([]CodexResolvedDeviceSlot, error) {
+func (r *codexProfileGatewayAccountRepo) ListCodexDeviceSlots(context.Context, int64, CodexOSClass, CodexClientSurface, bool) ([]CodexResolvedDeviceSlot, error) {
 	return nil, nil
 }
 
@@ -218,6 +219,25 @@ func TestCodexProfileAffinityMissPreservesLegacyStickyForOffAccount(t *testing.T
 	accountID, err := svc.resolveCodexAwareStickyAccountID(ctx, nil, "session-a")
 	require.NoError(t, err)
 	require.Equal(t, int64(99), accountID)
+}
+
+func TestCodexProfileKeysSeparateSurfacesWithinOS(t *testing.T) {
+	base := codexProfileRequest{
+		Profile:     CodexClientProfile{OSClass: CodexOSWindows, Surface: CodexSurfaceDesktop},
+		APIKeyScope: "user:7|key:101",
+	}
+	desktopKey := codexProfileAffinityKey(base, "shared-session", 3, false)
+	base.Profile.Surface = CodexSurfaceCLI
+	cliKey := codexProfileAffinityKey(base, "shared-session", 3, false)
+	require.NotEqual(t, desktopKey, cliKey)
+
+	desktopCtx := withCodexProfileRequest(WithHTTPUpstreamIsolationScope(context.Background(), 7, 101), codexProfileRequest{
+		Profile: CodexClientProfile{OSClass: CodexOSWindows, Surface: CodexSurfaceDesktop}, APIKeyScope: "user:7|key:101",
+	})
+	cliCtx := withCodexProfileRequest(WithHTTPUpstreamIsolationScope(context.Background(), 7, 101), codexProfileRequest{
+		Profile: CodexClientProfile{OSClass: CodexOSWindows, Surface: CodexSurfaceCLI}, APIKeyScope: "user:7|key:101",
+	})
+	require.NotEqual(t, scopedOpenAIWSStateKey(desktopCtx, "shared-session"), scopedOpenAIWSStateKey(cliCtx, "shared-session"))
 }
 
 func TestCodexProfileAffinityMissRejectsLegacyStickyForNewModeAccount(t *testing.T) {
@@ -430,13 +450,13 @@ func TestOpenAIGatewayCodexProfileHTTPRoundTripPreservesModelText(t *testing.T) 
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			gin.SetMode(gin.TestMode)
-			account := codexProfileTestAccount(t, 91, CodexOSWindows, CodexSurfaceDesktop, CodexArchX8664, tt.passthrough)
+			account := codexProfileTestAccount(t, 91, CodexOSWindows, CodexSurfaceCLI, CodexArchX8664, tt.passthrough)
 			repo := &codexProfileGatewayAccountRepo{
 				accounts: map[int64]*Account{account.ID: account},
 				resolvedSlots: map[int64]*CodexResolvedDeviceSlot{
 					account.ID: {
 						AccountID: account.ID, SlotID: 501, ProfileID: 401,
-						OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceDesktop,
+						OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceCLI,
 						Architecture: CodexArchX8664, CatalogVersion: 1,
 						SlotIndex: 0, Epoch: 4, State: "active", PolicyVersion: 1,
 					},
@@ -471,8 +491,8 @@ func TestOpenAIGatewayCodexProfileHTTPRoundTripPreservesModelText(t *testing.T) 
 			require.NotNil(t, result)
 			require.Equal(t, "windows", gjson.GetBytes(upstream.requestBody, "client_metadata.os").String())
 			require.Equal(t, "x86_64", gjson.GetBytes(upstream.requestBody, "client_metadata.arch").String())
-			require.Equal(t, "desktop", gjson.GetBytes(upstream.requestBody, "client_metadata.surface").String())
-			require.Equal(t, "Codex Desktop", upstream.requestHeader.Get("originator"))
+			require.Equal(t, "cli", gjson.GetBytes(upstream.requestBody, "client_metadata.surface").String())
+			require.Equal(t, "codex_cli_rs", upstream.requestHeader.Get("originator"))
 			require.Equal(t, gjson.GetBytes(upstream.requestBody, "client_metadata.user_agent").String(), upstream.requestHeader.Get("user-agent"))
 			alias := gjson.GetBytes(upstream.requestBody, "client_metadata.session_id").String()
 			require.NotEmpty(t, alias)
@@ -492,6 +512,48 @@ func TestOpenAIGatewayCodexProfileHTTPRoundTripPreservesModelText(t *testing.T) 
 				require.False(t, gjson.Get(recorder.Body.String(), "client_metadata.user_agent").Exists())
 				require.Equal(t, alias, gjson.Get(recorder.Body.String(), "output.0.content.0.text").String(), "ordinary model text must not be restored")
 			}
+		})
+	}
+}
+
+func TestCodexProfileCompactKeepsLegacyBodyShape(t *testing.T) {
+	for _, passthrough := range []bool{false, true} {
+		t.Run(fmt.Sprintf("passthrough=%t", passthrough), func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			account := codexProfileTestAccount(t, 190, CodexOSWindows, CodexSurfaceCLI, CodexArchX8664, passthrough)
+			repo := &codexProfileGatewayAccountRepo{
+				accounts: map[int64]*Account{account.ID: account},
+				resolvedSlots: map[int64]*CodexResolvedDeviceSlot{account.ID: {
+					AccountID: account.ID, SlotID: 19001, ProfileID: 19000,
+					OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceCLI,
+					Architecture: CodexArchX8664, CatalogVersion: 1,
+					SlotIndex: 0, Epoch: 1, State: "active", PolicyVersion: 1,
+				}},
+			}
+			upstream := &codexProfileEchoUpstream{}
+			cfg := &config.Config{}
+			cfg.Security.URLAllowlist.Enabled = false
+			svc := &OpenAIGatewayService{
+				accountRepo: repo, cache: &codexProfileGatewayCache{values: map[string]int64{}},
+				cfg: cfg, httpUpstream: upstream, toolCorrector: NewCodexToolCorrector(),
+			}
+			body := []byte(`{"model":"gpt-5.6-sol","stream":false,"instructions":"compact","input":"hello"}`)
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			request := httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(body))
+			request.Header.Set("User-Agent", "codex_cli_rs/0.146.0 (Windows 11; arm64) WindowsTerminal")
+			request.Header.Set("session-id", "client-session")
+			request = request.WithContext(WithHTTPUpstreamIsolationScope(request.Context(), 7, 101))
+			c.Request = request
+			c.Set("api_key", &APIKey{ID: 101, User: &User{ID: 7}})
+			require.NotEmpty(t, svc.GenerateSessionHash(c, body))
+
+			_, err := svc.Forward(c.Request.Context(), c, account, body)
+			require.NoError(t, err)
+			require.False(t, gjson.GetBytes(upstream.requestBody, "client_metadata").Exists())
+			require.Equal(t, "compact", gjson.GetBytes(upstream.requestBody, "instructions").String())
+			require.Equal(t, "codex_cli_rs", upstream.requestHeader.Get("originator"))
+			require.NotEmpty(t, upstream.requestHeader.Get("session-id"))
 		})
 	}
 }
@@ -931,8 +993,8 @@ func newCodexProfileGatewayContext(t *testing.T, userID, apiKeyID int64, body []
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	request := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
-	request.Header.Set("User-Agent", "codex_cli_rs/0.146.0 (Windows 11; arm64) WindowsTerminal")
-	request.Header.Set("originator", "codex_cli_rs")
+	request.Header.Set("User-Agent", "Codex Desktop/0.146.0 (Windows 11; arm64) unknown (Codex Desktop; 26.616.71553)")
+	request.Header.Set("originator", "Codex Desktop")
 	request = request.WithContext(WithHTTPUpstreamIsolationScope(request.Context(), userID, apiKeyID))
 	c.Request = request
 	groupID := int64(3)

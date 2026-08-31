@@ -479,6 +479,7 @@ func updatedAccountRows(id int64, extra string) *sqlmock.Rows {
 		[]byte(`{"api_key":"sk-test"}`), []byte(extra), nil, nil, 1, nil, 1, 1.0,
 		service.StatusActive, string(service.AccountProvisioningActive),
 		[]byte(`{"mode":"off","binding_scope":"api_key_os","session_policy":{"mode":"conversation_isolated"},"affinity_ttl_seconds":3600,"unsupported_policy":"reject","version":1}`),
+		nil, nil,
 		nil, nil, nil, false, true, nil, nil, nil, nil, nil, nil,
 		nil, nil, nil, service.QuotaDimensionGlobal,
 	)

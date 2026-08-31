@@ -4,6 +4,7 @@
 
 import type {
   AccountProvisioningStatus,
+  CodexIdentityAssignment,
   CodexIdentityPolicy,
 } from './codexIdentity'
 
@@ -1197,6 +1198,9 @@ export interface Account {
   status: 'active' | 'inactive' | 'error'
   provisioning_state?: AccountProvisioningStatus
   codex_identity_policy?: CodexIdentityPolicy
+  codex_identity_assignment?: CodexIdentityAssignment
+  codex_identity_template_id?: number | null
+  codex_identity_template_applied_revision?: number | null
   error_message: string | null
   last_used_at: string | null
   expires_at: number | null
@@ -1474,6 +1478,7 @@ export interface CreateAccountRequest {
   upstream_billing_probe_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
   codex_identity_policy?: CodexIdentityPolicy
+  codex_identity_assignment?: CodexIdentityAssignment
 }
 
 export interface UpdateAccountRequest {
@@ -1496,6 +1501,13 @@ export interface UpdateAccountRequest {
   upstream_billing_rate_sync_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
   codex_identity_policy?: CodexIdentityPolicy
+  codex_identity_assignment?: CodexIdentityAssignment
+}
+
+export interface BulkUpdateAccountsRequest extends Record<string, unknown> {
+  account_ids?: number[]
+  filters?: Record<string, unknown>
+  codex_identity_assignment?: CodexIdentityAssignment
 }
 
 export interface CheckMixedChannelRequest {
@@ -1580,6 +1592,7 @@ export interface AdminDataAccount {
   expires_at?: number | null
   auto_pause_on_expired?: boolean
   codex_identity_policy?: CodexIdentityPolicy
+  codex_identity_assignment?: CodexIdentityAssignment
   codex_profile_proxies?: Record<string, AdminDataCodexProfileProxyRefs>
 }
 

@@ -55,6 +55,10 @@ type Account struct {
 	ProvisioningState string `json:"provisioning_state,omitempty"`
 	// CodexIdentityPolicy holds the value of the "codex_identity_policy" field.
 	CodexIdentityPolicy map[string]interface{} `json:"codex_identity_policy,omitempty"`
+	// CodexIdentityTemplateID holds the value of the "codex_identity_template_id" field.
+	CodexIdentityTemplateID *int64 `json:"codex_identity_template_id,omitempty"`
+	// CodexIdentityTemplateAppliedRevision holds the value of the "codex_identity_template_applied_revision" field.
+	CodexIdentityTemplateAppliedRevision *int64 `json:"codex_identity_template_applied_revision,omitempty"`
 	// ErrorMessage holds the value of the "error_message" field.
 	ErrorMessage *string `json:"error_message,omitempty"`
 	// LastUsedAt holds the value of the "last_used_at" field.
@@ -179,7 +183,7 @@ func (*Account) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case account.FieldRateMultiplier:
 			values[i] = new(sql.NullFloat64)
-		case account.FieldID, account.FieldProxyID, account.FieldProxyFallbackOriginID, account.FieldConcurrency, account.FieldLoadFactor, account.FieldPriority, account.FieldParentAccountID:
+		case account.FieldID, account.FieldProxyID, account.FieldProxyFallbackOriginID, account.FieldConcurrency, account.FieldLoadFactor, account.FieldPriority, account.FieldCodexIdentityTemplateID, account.FieldCodexIdentityTemplateAppliedRevision, account.FieldParentAccountID:
 			values[i] = new(sql.NullInt64)
 		case account.FieldName, account.FieldNotes, account.FieldPlatform, account.FieldType, account.FieldStatus, account.FieldProvisioningState, account.FieldErrorMessage, account.FieldTempUnschedulableReason, account.FieldSessionWindowStatus, account.FieldQuotaDimension:
 			values[i] = new(sql.NullString)
@@ -324,6 +328,20 @@ func (_m *Account) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.CodexIdentityPolicy); err != nil {
 					return fmt.Errorf("unmarshal field codex_identity_policy: %w", err)
 				}
+			}
+		case account.FieldCodexIdentityTemplateID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field codex_identity_template_id", values[i])
+			} else if value.Valid {
+				_m.CodexIdentityTemplateID = new(int64)
+				*_m.CodexIdentityTemplateID = value.Int64
+			}
+		case account.FieldCodexIdentityTemplateAppliedRevision:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field codex_identity_template_applied_revision", values[i])
+			} else if value.Valid {
+				_m.CodexIdentityTemplateAppliedRevision = new(int64)
+				*_m.CodexIdentityTemplateAppliedRevision = value.Int64
 			}
 		case account.FieldErrorMessage:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -556,6 +574,16 @@ func (_m *Account) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("codex_identity_policy=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CodexIdentityPolicy))
+	builder.WriteString(", ")
+	if v := _m.CodexIdentityTemplateID; v != nil {
+		builder.WriteString("codex_identity_template_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.CodexIdentityTemplateAppliedRevision; v != nil {
+		builder.WriteString("codex_identity_template_applied_revision=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	if v := _m.ErrorMessage; v != nil {
 		builder.WriteString("error_message=")

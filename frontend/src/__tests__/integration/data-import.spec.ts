@@ -318,7 +318,7 @@ describe('ImportDataModal', () => {
     const payload = vi.mocked(adminAPI.accounts.importData).mock.calls[0]?.[0]
     expect(payload?.codex_identity_policy_override).toEqual({
       mode: 'off',
-      binding_scope: 'api_key_os',
+      binding_scope: 'api_key_os_surface',
       session_policy: { mode: 'conversation_isolated' },
       affinity_ttl_seconds: 3600,
       unsupported_policy: 'reject',

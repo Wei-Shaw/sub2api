@@ -58,20 +58,21 @@ type DataProxy struct {
 // 影子的独立调度配置(priority/并发/分组/status 管理员可单独调)亦不在本备份范围,属已知局限
 // (外审第6轮裁决:保持排除 + 前端警告,而非升级格式做完整往返)。
 type DataAccount struct {
-	Name                string                               `json:"name"`
-	Notes               *string                              `json:"notes,omitempty"`
-	Platform            string                               `json:"platform"`
-	Type                string                               `json:"type"`
-	Credentials         map[string]any                       `json:"credentials"`
-	Extra               map[string]any                       `json:"extra,omitempty"`
-	ProxyKey            *string                              `json:"proxy_key,omitempty"`
-	Concurrency         int                                  `json:"concurrency"`
-	Priority            int                                  `json:"priority"`
-	RateMultiplier      *float64                             `json:"rate_multiplier,omitempty"`
-	ExpiresAt           *int64                               `json:"expires_at,omitempty"`
-	AutoPauseOnExpired  *bool                                `json:"auto_pause_on_expired,omitempty"`
-	CodexIdentityPolicy *service.CodexIdentityPolicySpec     `json:"codex_identity_policy,omitempty"`
-	CodexProfileProxies map[string]DataCodexProfileProxyRefs `json:"codex_profile_proxies,omitempty"`
+	Name                    string                               `json:"name"`
+	Notes                   *string                              `json:"notes,omitempty"`
+	Platform                string                               `json:"platform"`
+	Type                    string                               `json:"type"`
+	Credentials             map[string]any                       `json:"credentials"`
+	Extra                   map[string]any                       `json:"extra,omitempty"`
+	ProxyKey                *string                              `json:"proxy_key,omitempty"`
+	Concurrency             int                                  `json:"concurrency"`
+	Priority                int                                  `json:"priority"`
+	RateMultiplier          *float64                             `json:"rate_multiplier,omitempty"`
+	ExpiresAt               *int64                               `json:"expires_at,omitempty"`
+	AutoPauseOnExpired      *bool                                `json:"auto_pause_on_expired,omitempty"`
+	CodexIdentityPolicy     *service.CodexIdentityPolicySpec     `json:"codex_identity_policy,omitempty"`
+	CodexIdentityAssignment *service.CodexIdentityAssignment     `json:"codex_identity_assignment,omitempty"`
+	CodexProfileProxies     map[string]DataCodexProfileProxyRefs `json:"codex_profile_proxies,omitempty"`
 }
 
 type DataCodexProfileProxyRefs struct {
@@ -100,6 +101,10 @@ type DataImportError struct {
 	Name     string `json:"name,omitempty"`
 	ProxyKey string `json:"proxy_key,omitempty"`
 	Message  string `json:"message"`
+}
+
+type codexIdentityTemplateExportReader interface {
+	GetCodexIdentityTemplateForExport(ctx context.Context, templateID int64) (*service.CodexIdentityTemplate, error)
 }
 
 func buildProxyKey(protocol, host string, port int, username, password string) string {
@@ -209,21 +214,45 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			expiresAt = &v
 		}
 		identityPolicy, identityProxyRefs := exportDataCodexIdentityPolicy(acc.CodexIdentityPolicy, proxyKeyByID)
+		var identityAssignment *service.CodexIdentityAssignment
+		if acc.CodexIdentityTemplateID != nil && acc.CodexIdentityTemplateAppliedRevision != nil {
+			templateID, revision := *acc.CodexIdentityTemplateID, *acc.CodexIdentityTemplateAppliedRevision
+			reader, ok := h.adminService.(codexIdentityTemplateExportReader)
+			if !ok {
+				response.ErrorFrom(c, errors.New("Codex identity template export is unavailable"))
+				return
+			}
+			template, templateErr := reader.GetCodexIdentityTemplateForExport(ctx, templateID)
+			if templateErr != nil {
+				response.ErrorFrom(c, templateErr)
+				return
+			}
+			runtimeHash, hashErr := service.CodexIdentityPolicyRuntimeSHA256(acc.CodexIdentityPolicy)
+			if hashErr != nil {
+				response.ErrorFrom(c, hashErr)
+				return
+			}
+			identityAssignment = &service.CodexIdentityAssignment{
+				Enabled: true, TemplateID: templateID, ExpectedRevision: &revision,
+				ExpectedTemplateName: template.Name, ExpectedRuntimeSHA256: runtimeHash,
+			}
+		}
 		dataAccounts = append(dataAccounts, DataAccount{
-			Name:                acc.Name,
-			Notes:               acc.Notes,
-			Platform:            acc.Platform,
-			Type:                acc.Type,
-			Credentials:         acc.Credentials,
-			Extra:               service.StripCodexFingerprintSeed(acc.Extra),
-			ProxyKey:            proxyKey,
-			Concurrency:         acc.Concurrency,
-			Priority:            acc.Priority,
-			RateMultiplier:      acc.RateMultiplier,
-			ExpiresAt:           expiresAt,
-			AutoPauseOnExpired:  &acc.AutoPauseOnExpired,
-			CodexIdentityPolicy: identityPolicy,
-			CodexProfileProxies: identityProxyRefs,
+			Name:                    acc.Name,
+			Notes:                   acc.Notes,
+			Platform:                acc.Platform,
+			Type:                    acc.Type,
+			Credentials:             acc.Credentials,
+			Extra:                   service.StripCodexFingerprintSeed(acc.Extra),
+			ProxyKey:                proxyKey,
+			Concurrency:             acc.Concurrency,
+			Priority:                acc.Priority,
+			RateMultiplier:          acc.RateMultiplier,
+			ExpiresAt:               expiresAt,
+			AutoPauseOnExpired:      &acc.AutoPauseOnExpired,
+			CodexIdentityPolicy:     identityPolicy,
+			CodexIdentityAssignment: identityAssignment,
+			CodexProfileProxies:     identityProxyRefs,
 		})
 	}
 
@@ -447,22 +476,30 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			continue
 		}
 
+		var identityAssignment *service.CodexIdentityAssignment
+		if !req.OverrideImportedIdentityPolicies && req.CodexIdentityPolicyOverride == nil && item.CodexIdentityAssignment != nil {
+			assignment := *item.CodexIdentityAssignment
+			identityAssignment = &assignment
+			identityPolicy = nil
+		}
+
 		accountInput := &service.CreateAccountInput{
-			Name:                 item.Name,
-			Notes:                item.Notes,
-			Platform:             item.Platform,
-			Type:                 item.Type,
-			Credentials:          item.Credentials,
-			Extra:                item.Extra,
-			ProxyID:              proxyID,
-			Concurrency:          item.Concurrency,
-			Priority:             item.Priority,
-			RateMultiplier:       item.RateMultiplier,
-			GroupIDs:             nil,
-			ExpiresAt:            item.ExpiresAt,
-			AutoPauseOnExpired:   item.AutoPauseOnExpired,
-			CodexIdentityPolicy:  identityPolicy,
-			SkipDefaultGroupBind: skipDefaultGroupBind,
+			Name:                    item.Name,
+			Notes:                   item.Notes,
+			Platform:                item.Platform,
+			Type:                    item.Type,
+			Credentials:             item.Credentials,
+			Extra:                   item.Extra,
+			ProxyID:                 proxyID,
+			Concurrency:             item.Concurrency,
+			Priority:                item.Priority,
+			RateMultiplier:          item.RateMultiplier,
+			GroupIDs:                nil,
+			ExpiresAt:               item.ExpiresAt,
+			AutoPauseOnExpired:      item.AutoPauseOnExpired,
+			CodexIdentityPolicy:     identityPolicy,
+			CodexIdentityAssignment: identityAssignment,
+			SkipDefaultGroupBind:    skipDefaultGroupBind,
 		}
 
 		created, err := h.adminService.CreateAccount(ctx, accountInput)
@@ -640,7 +677,7 @@ func exportDataCodexIdentityPolicy(
 			slot.ProxyID = nil
 		}
 		if profileRefs.ProxyKey != nil || len(profileRefs.SlotProxyKeys) > 0 {
-			refs[string(profile.OSClass)] = profileRefs
+			refs[dataCodexProfileKey(*profile)] = profileRefs
 		}
 	}
 	if len(refs) == 0 {
@@ -658,6 +695,10 @@ func resolveImportedDataCodexIdentityPolicy(
 	}
 	policy := *item.CodexIdentityPolicy
 	policy.Profiles = append([]service.CodexOSProfilePolicy(nil), item.CodexIdentityPolicy.Profiles...)
+	profilesPerOS := make(map[service.CodexOSClass]int, len(policy.Profiles))
+	for _, profile := range policy.Profiles {
+		profilesPerOS[profile.OSClass]++
+	}
 	for i := range policy.Profiles {
 		profile := &policy.Profiles[i]
 		profile.Slots = append([]service.CodexDeviceSlotPolicy(nil), item.CodexIdentityPolicy.Profiles[i].Slots...)
@@ -669,7 +710,13 @@ func resolveImportedDataCodexIdentityPolicy(
 				return nil, fmt.Errorf("numeric slot proxy_id is not accepted during data import")
 			}
 		}
-		refs := item.CodexProfileProxies[string(profile.OSClass)]
+		refs, found := item.CodexProfileProxies[dataCodexProfileKey(*profile)]
+		if !found {
+			refs, found = item.CodexProfileProxies[string(profile.OSClass)]
+			if found && profilesPerOS[profile.OSClass] > 1 {
+				return nil, fmt.Errorf("profile %s has ambiguous legacy OS-only proxy references", profile.OSClass)
+			}
+		}
 		if refs.ProxyKey != nil {
 			proxyID, ok := proxyKeyToID[*refs.ProxyKey]
 			if !ok {
@@ -699,6 +746,10 @@ func resolveImportedDataCodexIdentityPolicy(
 		}
 	}
 	return &policy, nil
+}
+
+func dataCodexProfileKey(profile service.CodexOSProfilePolicy) string {
+	return string(profile.OSClass) + "/" + string(profile.CanonicalSurface)
 }
 
 func resolveDataImportCodexIdentityPolicy(

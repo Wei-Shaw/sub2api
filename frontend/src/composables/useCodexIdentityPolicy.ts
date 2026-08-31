@@ -1,5 +1,6 @@
 import { computed, type MaybeRefOrGetter, type WritableComputedRef, toValue } from 'vue'
 import type {
+  CodexClientSurface,
   CodexIdentityPolicy,
   CodexOSProfileID,
   CodexOSProfilePolicy,
@@ -31,9 +32,15 @@ export function useCodexIdentityPolicy(
     replace(draft)
   }
 
-  const setProfile = (profileID: CodexOSProfileID, profile: CodexOSProfilePolicy | null) => {
+  const setProfile = (
+    profileID: CodexOSProfileID,
+    surface: CodexClientSurface,
+    profile: CodexOSProfilePolicy | null,
+  ) => {
     update((draft) => {
-      const profiles = (draft.profiles ?? []).filter((item) => item.os_class !== profileID)
+      const profiles = (draft.profiles ?? []).filter(
+        (item) => item.os_class !== profileID || item.canonical_surface !== surface,
+      )
       if (profile) profiles.push(cloneCodexOSProfile(profile))
       draft.profiles = profiles
     })

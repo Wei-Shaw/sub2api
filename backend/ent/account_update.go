@@ -302,6 +302,60 @@ func (_u *AccountUpdate) SetCodexIdentityPolicy(v map[string]interface{}) *Accou
 	return _u
 }
 
+// SetCodexIdentityTemplateID sets the "codex_identity_template_id" field.
+func (_u *AccountUpdate) SetCodexIdentityTemplateID(v int64) *AccountUpdate {
+	_u.mutation.ResetCodexIdentityTemplateID()
+	_u.mutation.SetCodexIdentityTemplateID(v)
+	return _u
+}
+
+// SetNillableCodexIdentityTemplateID sets the "codex_identity_template_id" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableCodexIdentityTemplateID(v *int64) *AccountUpdate {
+	if v != nil {
+		_u.SetCodexIdentityTemplateID(*v)
+	}
+	return _u
+}
+
+// AddCodexIdentityTemplateID adds value to the "codex_identity_template_id" field.
+func (_u *AccountUpdate) AddCodexIdentityTemplateID(v int64) *AccountUpdate {
+	_u.mutation.AddCodexIdentityTemplateID(v)
+	return _u
+}
+
+// ClearCodexIdentityTemplateID clears the value of the "codex_identity_template_id" field.
+func (_u *AccountUpdate) ClearCodexIdentityTemplateID() *AccountUpdate {
+	_u.mutation.ClearCodexIdentityTemplateID()
+	return _u
+}
+
+// SetCodexIdentityTemplateAppliedRevision sets the "codex_identity_template_applied_revision" field.
+func (_u *AccountUpdate) SetCodexIdentityTemplateAppliedRevision(v int64) *AccountUpdate {
+	_u.mutation.ResetCodexIdentityTemplateAppliedRevision()
+	_u.mutation.SetCodexIdentityTemplateAppliedRevision(v)
+	return _u
+}
+
+// SetNillableCodexIdentityTemplateAppliedRevision sets the "codex_identity_template_applied_revision" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableCodexIdentityTemplateAppliedRevision(v *int64) *AccountUpdate {
+	if v != nil {
+		_u.SetCodexIdentityTemplateAppliedRevision(*v)
+	}
+	return _u
+}
+
+// AddCodexIdentityTemplateAppliedRevision adds value to the "codex_identity_template_applied_revision" field.
+func (_u *AccountUpdate) AddCodexIdentityTemplateAppliedRevision(v int64) *AccountUpdate {
+	_u.mutation.AddCodexIdentityTemplateAppliedRevision(v)
+	return _u
+}
+
+// ClearCodexIdentityTemplateAppliedRevision clears the value of the "codex_identity_template_applied_revision" field.
+func (_u *AccountUpdate) ClearCodexIdentityTemplateAppliedRevision() *AccountUpdate {
+	_u.mutation.ClearCodexIdentityTemplateAppliedRevision()
+	return _u
+}
+
 // SetErrorMessage sets the "error_message" field.
 func (_u *AccountUpdate) SetErrorMessage(v string) *AccountUpdate {
 	_u.mutation.SetErrorMessage(v)
@@ -902,6 +956,24 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.CodexIdentityPolicy(); ok {
 		_spec.SetField(account.FieldCodexIdentityPolicy, field.TypeJSON, value)
 	}
+	if value, ok := _u.mutation.CodexIdentityTemplateID(); ok {
+		_spec.SetField(account.FieldCodexIdentityTemplateID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedCodexIdentityTemplateID(); ok {
+		_spec.AddField(account.FieldCodexIdentityTemplateID, field.TypeInt64, value)
+	}
+	if _u.mutation.CodexIdentityTemplateIDCleared() {
+		_spec.ClearField(account.FieldCodexIdentityTemplateID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.CodexIdentityTemplateAppliedRevision(); ok {
+		_spec.SetField(account.FieldCodexIdentityTemplateAppliedRevision, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedCodexIdentityTemplateAppliedRevision(); ok {
+		_spec.AddField(account.FieldCodexIdentityTemplateAppliedRevision, field.TypeInt64, value)
+	}
+	if _u.mutation.CodexIdentityTemplateAppliedRevisionCleared() {
+		_spec.ClearField(account.FieldCodexIdentityTemplateAppliedRevision, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.ErrorMessage(); ok {
 		_spec.SetField(account.FieldErrorMessage, field.TypeString, value)
 	}
@@ -1470,6 +1542,60 @@ func (_u *AccountUpdateOne) SetNillableProvisioningState(v *string) *AccountUpda
 // SetCodexIdentityPolicy sets the "codex_identity_policy" field.
 func (_u *AccountUpdateOne) SetCodexIdentityPolicy(v map[string]interface{}) *AccountUpdateOne {
 	_u.mutation.SetCodexIdentityPolicy(v)
+	return _u
+}
+
+// SetCodexIdentityTemplateID sets the "codex_identity_template_id" field.
+func (_u *AccountUpdateOne) SetCodexIdentityTemplateID(v int64) *AccountUpdateOne {
+	_u.mutation.ResetCodexIdentityTemplateID()
+	_u.mutation.SetCodexIdentityTemplateID(v)
+	return _u
+}
+
+// SetNillableCodexIdentityTemplateID sets the "codex_identity_template_id" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableCodexIdentityTemplateID(v *int64) *AccountUpdateOne {
+	if v != nil {
+		_u.SetCodexIdentityTemplateID(*v)
+	}
+	return _u
+}
+
+// AddCodexIdentityTemplateID adds value to the "codex_identity_template_id" field.
+func (_u *AccountUpdateOne) AddCodexIdentityTemplateID(v int64) *AccountUpdateOne {
+	_u.mutation.AddCodexIdentityTemplateID(v)
+	return _u
+}
+
+// ClearCodexIdentityTemplateID clears the value of the "codex_identity_template_id" field.
+func (_u *AccountUpdateOne) ClearCodexIdentityTemplateID() *AccountUpdateOne {
+	_u.mutation.ClearCodexIdentityTemplateID()
+	return _u
+}
+
+// SetCodexIdentityTemplateAppliedRevision sets the "codex_identity_template_applied_revision" field.
+func (_u *AccountUpdateOne) SetCodexIdentityTemplateAppliedRevision(v int64) *AccountUpdateOne {
+	_u.mutation.ResetCodexIdentityTemplateAppliedRevision()
+	_u.mutation.SetCodexIdentityTemplateAppliedRevision(v)
+	return _u
+}
+
+// SetNillableCodexIdentityTemplateAppliedRevision sets the "codex_identity_template_applied_revision" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableCodexIdentityTemplateAppliedRevision(v *int64) *AccountUpdateOne {
+	if v != nil {
+		_u.SetCodexIdentityTemplateAppliedRevision(*v)
+	}
+	return _u
+}
+
+// AddCodexIdentityTemplateAppliedRevision adds value to the "codex_identity_template_applied_revision" field.
+func (_u *AccountUpdateOne) AddCodexIdentityTemplateAppliedRevision(v int64) *AccountUpdateOne {
+	_u.mutation.AddCodexIdentityTemplateAppliedRevision(v)
+	return _u
+}
+
+// ClearCodexIdentityTemplateAppliedRevision clears the value of the "codex_identity_template_applied_revision" field.
+func (_u *AccountUpdateOne) ClearCodexIdentityTemplateAppliedRevision() *AccountUpdateOne {
+	_u.mutation.ClearCodexIdentityTemplateAppliedRevision()
 	return _u
 }
 
@@ -2102,6 +2228,24 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 	}
 	if value, ok := _u.mutation.CodexIdentityPolicy(); ok {
 		_spec.SetField(account.FieldCodexIdentityPolicy, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.CodexIdentityTemplateID(); ok {
+		_spec.SetField(account.FieldCodexIdentityTemplateID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedCodexIdentityTemplateID(); ok {
+		_spec.AddField(account.FieldCodexIdentityTemplateID, field.TypeInt64, value)
+	}
+	if _u.mutation.CodexIdentityTemplateIDCleared() {
+		_spec.ClearField(account.FieldCodexIdentityTemplateID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.CodexIdentityTemplateAppliedRevision(); ok {
+		_spec.SetField(account.FieldCodexIdentityTemplateAppliedRevision, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedCodexIdentityTemplateAppliedRevision(); ok {
+		_spec.AddField(account.FieldCodexIdentityTemplateAppliedRevision, field.TypeInt64, value)
+	}
+	if _u.mutation.CodexIdentityTemplateAppliedRevisionCleared() {
+		_spec.ClearField(account.FieldCodexIdentityTemplateAppliedRevision, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.ErrorMessage(); ok {
 		_spec.SetField(account.FieldErrorMessage, field.TypeString, value)

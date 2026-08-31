@@ -16,6 +16,7 @@ func (r *accountRepository) ResolveCodexDeviceBinding(
 	accountID int64,
 	apiKeyID int64,
 	osClass service.CodexOSClass,
+	surface service.CodexClientSurface,
 ) (*service.CodexResolvedDeviceSlot, error) {
 	if accountID <= 0 || apiKeyID <= 0 {
 		return nil, service.ErrDeviceProfileUnsupported
@@ -23,7 +24,7 @@ func (r *accountRepository) ResolveCodexDeviceBinding(
 	if _, err := (service.CodexIdentityPolicySpec{
 		Mode: service.CodexIdentityPolicyOSProfileDevicePool,
 		Profiles: []service.CodexOSProfilePolicy{{
-			OSClass: osClass, CanonicalSurface: canonicalSurfaceForBindingValidation(osClass),
+			OSClass: osClass, CanonicalSurface: surface,
 			Architecture: architectureForBindingValidation(osClass), SlotCount: 1,
 		}},
 	}).NormalizeAndValidate(service.PlatformOpenAI, service.AccountTypeOAuth); err != nil {
@@ -39,7 +40,7 @@ func (r *accountRepository) ResolveCodexDeviceBinding(
 		defer func() { _ = tx.Rollback() }()
 		client = tx.Client()
 	}
-	resolved, err := resolveCodexDeviceBinding(ctx, client, accountID, apiKeyID, osClass)
+	resolved, err := resolveCodexDeviceBinding(ctx, client, accountID, apiKeyID, osClass, surface)
 	if err != nil {
 		return nil, err
 	}
@@ -57,6 +58,7 @@ func (r *accountRepository) RebindCodexDeviceBinding(
 	newAccountID int64,
 	apiKeyID int64,
 	osClass service.CodexOSClass,
+	surface service.CodexClientSurface,
 ) (*service.CodexResolvedDeviceSlot, error) {
 	if oldAccountID <= 0 || newAccountID <= 0 || apiKeyID <= 0 {
 		return nil, service.ErrDeviceProfileUnsupported
@@ -72,14 +74,14 @@ func (r *accountRepository) RebindCodexDeviceBinding(
 	}
 	if _, err := client.ExecContext(ctx, `
 		DELETE FROM account_codex_device_bindings
-		WHERE account_id=$1 AND api_key_id=$2 AND os_class=$3
-	`, oldAccountID, apiKeyID, osClass); err != nil {
+		WHERE account_id=$1 AND api_key_id=$2 AND os_class=$3 AND canonical_surface=$4
+	`, oldAccountID, apiKeyID, osClass, surface); err != nil {
 		return nil, err
 	}
 	if _, err := finalizeDrainedCodexDeviceSlots(ctx, client, oldAccountID); err != nil {
 		return nil, err
 	}
-	resolved, err := resolveCodexDeviceBinding(ctx, client, newAccountID, apiKeyID, osClass)
+	resolved, err := resolveCodexDeviceBinding(ctx, client, newAccountID, apiKeyID, osClass, surface)
 	if err != nil {
 		return nil, err
 	}
@@ -114,6 +116,7 @@ func (r *accountRepository) DeleteCodexDeviceBinding(
 	accountID int64,
 	apiKeyID int64,
 	osClass service.CodexOSClass,
+	surface service.CodexClientSurface,
 ) error {
 	tx, err := r.client.Tx(ctx)
 	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
@@ -126,8 +129,8 @@ func (r *accountRepository) DeleteCodexDeviceBinding(
 	}
 	if _, err := client.ExecContext(ctx, `
 		DELETE FROM account_codex_device_bindings
-		WHERE account_id=$1 AND api_key_id=$2 AND os_class=$3
-	`, accountID, apiKeyID, osClass); err != nil {
+		WHERE account_id=$1 AND api_key_id=$2 AND os_class=$3 AND canonical_surface=$4
+	`, accountID, apiKeyID, osClass, surface); err != nil {
 		return err
 	}
 	if _, err := finalizeDrainedCodexDeviceSlots(ctx, client, accountID); err != nil {
@@ -143,6 +146,7 @@ func (r *accountRepository) ListCodexDeviceSlots(
 	ctx context.Context,
 	accountID int64,
 	osClass service.CodexOSClass,
+	surface service.CodexClientSurface,
 	includeDraining bool,
 ) ([]service.CodexResolvedDeviceSlot, error) {
 	stateClause := "AND slots.state='active'"
@@ -154,6 +158,11 @@ func (r *accountRepository) ListCodexDeviceSlots(
 	if osClass != "" {
 		osClause = "AND profiles.os_class=$2"
 		args = append(args, osClass)
+	}
+	surfaceClause := ""
+	if surface != "" {
+		surfaceClause = fmt.Sprintf("AND profiles.canonical_surface=$%d", len(args)+1)
+		args = append(args, surface)
 	}
 	rows, err := r.client.QueryContext(ctx, `
 		SELECT profiles.id, slots.id, profiles.os_class, profiles.canonical_surface,
@@ -171,9 +180,9 @@ func (r *accountRepository) ListCodexDeviceSlots(
 		JOIN account_codex_profiles AS profiles ON profiles.id=slots.profile_id AND profiles.account_id=slots.account_id
 		JOIN account_codex_identity_policies AS policies ON policies.account_id=slots.account_id
 		JOIN accounts ON accounts.id=slots.account_id
-		WHERE slots.account_id=$1 `+osClause+`
+		WHERE slots.account_id=$1 `+osClause+` `+surfaceClause+`
 		  `+stateClause+`
-		ORDER BY profiles.epoch DESC, slots.slot_index ASC
+		ORDER BY profiles.os_class, profiles.canonical_surface, profiles.epoch DESC, slots.slot_index ASC
 	`, args...)
 	if err != nil {
 		return nil, err
@@ -220,7 +229,7 @@ func (r *accountRepository) FinalizeDrainedCodexDeviceSlots(ctx context.Context,
 	return deleted, nil
 }
 
-func finalizeDrainedCodexDeviceSlots(ctx context.Context, client *dbent.Client, accountID int64) (int64, error) {
+func finalizeDrainedCodexDeviceSlots(ctx context.Context, client sqlExecutor, accountID int64) (int64, error) {
 	if _, err := client.ExecContext(ctx, `
 		DELETE FROM account_codex_device_bindings AS bindings
 		USING account_codex_device_slots AS slots, account_codex_identity_policies AS policies
@@ -267,6 +276,7 @@ func resolveCodexDeviceBinding(
 	accountID int64,
 	apiKeyID int64,
 	osClass service.CodexOSClass,
+	surface service.CodexClientSurface,
 ) (*service.CodexResolvedDeviceSlot, error) {
 	eligibleRows, err := client.QueryContext(ctx, `
 		SELECT accounts.id
@@ -294,7 +304,7 @@ func resolveCodexDeviceBinding(
 		return nil, service.ErrDeviceProfileUnsupported
 	}
 
-	if existing, err := loadCodexDeviceBinding(ctx, client, accountID, apiKeyID, osClass); err != nil {
+	if existing, err := loadCodexDeviceBinding(ctx, client, accountID, apiKeyID, osClass, surface); err != nil {
 		return nil, err
 	} else if existing != nil {
 		now := time.Now()
@@ -326,6 +336,7 @@ func resolveCodexDeviceBinding(
 		JOIN accounts ON accounts.id=slots.account_id
 		WHERE slots.account_id=$1
 		  AND profiles.os_class=$2
+		  AND profiles.canonical_surface=$4
 		  AND slots.state='active'
 		  AND policies.mode='os_profile_device_pool'
 		  AND accounts.provisioning_state='active'
@@ -334,7 +345,7 @@ func resolveCodexDeviceBinding(
 		ORDER BY md5($1::text || ':' || $3::text || ':' || slots.id::text)
 		LIMIT 1
 		FOR SHARE OF slots
-	`, accountID, osClass, apiKeyID)
+	`, accountID, osClass, apiKeyID, surface)
 	if err != nil {
 		return nil, err
 	}
@@ -352,13 +363,13 @@ func resolveCodexDeviceBinding(
 	}
 	if _, err := client.ExecContext(ctx, `
 		INSERT INTO account_codex_device_bindings
-			(account_id, api_key_id, os_class, slot_id, policy_version)
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (account_id, api_key_id, os_class) DO NOTHING
-	`, accountID, apiKeyID, osClass, slotID, policyVersion); err != nil {
+			(account_id, api_key_id, os_class, canonical_surface, slot_id, policy_version)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (account_id, api_key_id, os_class, canonical_surface) DO NOTHING
+	`, accountID, apiKeyID, osClass, surface, slotID, policyVersion); err != nil {
 		return nil, err
 	}
-	resolved, err := loadCodexDeviceBinding(ctx, client, accountID, apiKeyID, osClass)
+	resolved, err := loadCodexDeviceBinding(ctx, client, accountID, apiKeyID, osClass, surface)
 	if err != nil {
 		return nil, err
 	}
@@ -374,6 +385,7 @@ func loadCodexDeviceBinding(
 	accountID int64,
 	apiKeyID int64,
 	osClass service.CodexOSClass,
+	surface service.CodexClientSurface,
 ) (*service.CodexResolvedDeviceSlot, error) {
 	rows, err := client.QueryContext(ctx, `
 		SELECT bindings.id, bindings.account_id, bindings.api_key_id,
@@ -393,9 +405,10 @@ func loadCodexDeviceBinding(
 		JOIN account_codex_identity_policies AS policies ON policies.account_id=bindings.account_id
 		JOIN accounts ON accounts.id=bindings.account_id
 		WHERE bindings.account_id=$1 AND bindings.api_key_id=$2 AND bindings.os_class=$3
+		  AND bindings.canonical_surface=$4
 		LIMIT 1
 		FOR UPDATE OF bindings
-	`, accountID, apiKeyID, osClass)
+	`, accountID, apiKeyID, osClass, surface)
 	if err != nil {
 		return nil, err
 	}
@@ -420,13 +433,6 @@ func loadCodexDeviceBinding(
 		resolved.ProxyID = &proxyID.Int64
 	}
 	return resolved, rows.Err()
-}
-
-func canonicalSurfaceForBindingValidation(osClass service.CodexOSClass) service.CodexClientSurface {
-	if osClass == service.CodexOSGeneric {
-		return service.CodexSurfaceSDK
-	}
-	return service.CodexSurfaceCLI
 }
 
 func architectureForBindingValidation(osClass service.CodexOSClass) service.CodexArchitecture {

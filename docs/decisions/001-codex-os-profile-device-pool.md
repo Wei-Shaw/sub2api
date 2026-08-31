@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted; control-plane ownership and Profile identity are amended by ADR-004
 
 ## Date
 

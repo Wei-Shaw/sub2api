@@ -267,7 +267,7 @@ func codexProfilePolicyForClient(account *Account, client CodexClientProfile) (C
 		return CodexOSProfilePolicy{}, CodexResolvedProfile{}, false
 	}
 	for _, policy := range account.CodexIdentityPolicy.Profiles {
-		if policy.OSClass != client.OSClass {
+		if policy.OSClass != client.OSClass || policy.CanonicalSurface != client.Surface {
 			continue
 		}
 		resolved, err := ResolveCodexRuntimeProfile(policy)
@@ -431,9 +431,10 @@ func (s *OpenAIGatewayService) prepareCodexProfileAttempt(
 				account.ID,
 				apiKeyID,
 				request.Profile.OSClass,
+				request.Profile.Surface,
 			)
 		} else {
-			resolvedBinding, err = bindingRepo.ResolveCodexDeviceBinding(ctx, account.ID, apiKeyID, request.Profile.OSClass)
+			resolvedBinding, err = bindingRepo.ResolveCodexDeviceBinding(ctx, account.ID, apiKeyID, request.Profile.OSClass, request.Profile.Surface)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("resolve Codex device binding: %w", err)
@@ -677,9 +678,10 @@ func restoreStagedCodexIdentitySSE(c *gin.Context, account *Account, payload []b
 
 func codexProfileAffinityKey(request codexProfileRequest, sessionHash string, policyVersion int64, index bool) string {
 	base := strings.Join([]string{
-		"codex-profile-affinity:v1",
+		"codex-profile-affinity:v2",
 		request.APIKeyScope,
 		string(request.Profile.OSClass),
+		string(request.Profile.Surface),
 		strings.TrimSpace(sessionHash),
 	}, "|")
 	sum := sha256.Sum256([]byte(base))

@@ -62,7 +62,10 @@ const (
 
 type CodexIdentityBindingScope string
 
-const CodexIdentityBindingAPIKeyOS CodexIdentityBindingScope = "api_key_os"
+const (
+	CodexIdentityBindingAPIKeyOS        CodexIdentityBindingScope = "api_key_os"
+	CodexIdentityBindingAPIKeyOSSurface CodexIdentityBindingScope = "api_key_os_surface"
+)
 
 type CodexUnsupportedProfilePolicy string
 
@@ -177,7 +180,7 @@ func DefaultAccountProvisioningSpec() AccountProvisioningSpec {
 func DefaultCodexIdentityPolicySpec() CodexIdentityPolicySpec {
 	return CodexIdentityPolicySpec{
 		Mode:               CodexIdentityPolicyOff,
-		BindingScope:       CodexIdentityBindingAPIKeyOS,
+		BindingScope:       CodexIdentityBindingAPIKeyOSSurface,
 		SessionPolicy:      CodexSessionPolicySpec{Mode: CodexSessionConversationIsolated},
 		AffinityTTLSeconds: defaultCodexAffinityTTLSeconds,
 		UnsupportedPolicy:  CodexUnsupportedProfileReject,
@@ -263,8 +266,8 @@ func (s CodexIdentityPolicySpec) NormalizeAndValidate(platform, accountType stri
 	if normalized.SessionPolicy.Mode == "" {
 		normalized.SessionPolicy.Mode = CodexSessionConversationIsolated
 	}
-	if normalized.BindingScope == "" {
-		normalized.BindingScope = CodexIdentityBindingAPIKeyOS
+	if normalized.BindingScope == "" || normalized.BindingScope == CodexIdentityBindingAPIKeyOS {
+		normalized.BindingScope = CodexIdentityBindingAPIKeyOSSurface
 	}
 	if normalized.UnsupportedPolicy == "" {
 		normalized.UnsupportedPolicy = CodexUnsupportedProfileReject
@@ -299,7 +302,7 @@ func (s CodexIdentityPolicySpec) NormalizeAndValidate(platform, accountType stri
 			maxCodexAffinityTTLSeconds,
 		)
 	}
-	if normalized.BindingScope != CodexIdentityBindingAPIKeyOS {
+	if normalized.BindingScope != CodexIdentityBindingAPIKeyOSSurface {
 		return CodexIdentityPolicySpec{}, invalidCodexIdentityPolicy("unsupported binding_scope %q", normalized.BindingScope)
 	}
 	if normalized.UnsupportedPolicy != CodexUnsupportedProfileReject {
@@ -312,20 +315,21 @@ func (s CodexIdentityPolicySpec) NormalizeAndValidate(platform, accountType stri
 		return CodexIdentityPolicySpec{}, err
 	}
 
-	seenProfiles := make(map[CodexOSClass]struct{}, len(normalized.Profiles))
+	seenProfiles := make(map[string]struct{}, len(normalized.Profiles))
 	for i := range normalized.Profiles {
 		profile, err := normalizeCodexOSProfile(normalized.Profiles[i])
 		if err != nil {
 			return CodexIdentityPolicySpec{}, fmt.Errorf("profile %d: %w", i, err)
 		}
-		if _, exists := seenProfiles[profile.OSClass]; exists {
-			return CodexIdentityPolicySpec{}, invalidCodexIdentityPolicy("duplicate OS profile %q", profile.OSClass)
+		profileKey := codexOSProfilePolicyKey(profile)
+		if _, exists := seenProfiles[profileKey]; exists {
+			return CodexIdentityPolicySpec{}, invalidCodexIdentityPolicy("duplicate OS profile %q", profileKey)
 		}
-		seenProfiles[profile.OSClass] = struct{}{}
+		seenProfiles[profileKey] = struct{}{}
 		normalized.Profiles[i] = profile
 	}
 	sort.Slice(normalized.Profiles, func(i, j int) bool {
-		return normalized.Profiles[i].OSClass < normalized.Profiles[j].OSClass
+		return codexOSProfilePolicyKey(normalized.Profiles[i]) < codexOSProfilePolicyKey(normalized.Profiles[j])
 	})
 	return normalized, nil
 }
@@ -502,12 +506,12 @@ func PrepareCodexIdentityPolicyForAccountTransition(
 		current.Version = 1
 	}
 	next.Version = current.Version + 1
-	currentProfiles := make(map[CodexOSClass]CodexOSProfilePolicy, len(current.Profiles))
+	currentProfiles := make(map[string]CodexOSProfilePolicy, len(current.Profiles))
 	for _, profile := range current.Profiles {
-		currentProfiles[profile.OSClass] = profile
+		currentProfiles[codexOSProfilePolicyKey(profile)] = profile
 	}
 	for i := range next.Profiles {
-		previous, exists := currentProfiles[next.Profiles[i].OSClass]
+		previous, exists := currentProfiles[codexOSProfilePolicyKey(next.Profiles[i])]
 		if !exists {
 			next.Profiles[i].Epoch = 1
 			continue
@@ -522,6 +526,10 @@ func PrepareCodexIdentityPolicyForAccountTransition(
 		next.Profiles[i].Epoch = previous.Epoch + 1
 	}
 	return next, true, nil
+}
+
+func codexOSProfilePolicyKey(profile CodexOSProfilePolicy) string {
+	return string(profile.OSClass) + "/" + string(profile.CanonicalSurface)
 }
 
 func codexPolicyMaterial(policy CodexIdentityPolicySpec) CodexIdentityPolicySpec {

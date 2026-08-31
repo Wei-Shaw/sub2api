@@ -10,7 +10,7 @@ func TestCodexIdentityPolicyNormalizeDefaultsOff(t *testing.T) {
 	got, err := (CodexIdentityPolicySpec{}).NormalizeAndValidate(PlatformOpenAI, AccountTypeOAuth)
 	require.NoError(t, err)
 	require.Equal(t, CodexIdentityPolicyOff, got.Mode)
-	require.Equal(t, CodexIdentityBindingAPIKeyOS, got.BindingScope)
+	require.Equal(t, CodexIdentityBindingAPIKeyOSSurface, got.BindingScope)
 	require.Equal(t, CodexSessionConversationIsolated, got.SessionPolicy.Mode)
 	require.Equal(t, defaultCodexAffinityTTLSeconds, got.AffinityTTLSeconds)
 	require.Equal(t, CodexUnsupportedProfileReject, got.UnsupportedPolicy)
@@ -64,12 +64,12 @@ func TestCodexIdentityPolicyRejectsInvalidShapes(t *testing.T) {
 			}}},
 		},
 		{
-			name:     "duplicate os",
+			name:     "duplicate profile surface",
 			platform: PlatformOpenAI,
 			typeName: AccountTypeOAuth,
 			policy: CodexIdentityPolicySpec{Mode: CodexIdentityPolicyOSProfileDevicePool, Profiles: []CodexOSProfilePolicy{
 				{OSClass: CodexOSLinux, CanonicalSurface: CodexSurfaceCLI, Architecture: CodexArchX8664, SlotCount: 1},
-				{OSClass: CodexOSLinux, CanonicalSurface: CodexSurfaceDesktop, Architecture: CodexArchARM64, SlotCount: 1},
+				{OSClass: CodexOSLinux, CanonicalSurface: CodexSurfaceCLI, Architecture: CodexArchARM64, SlotCount: 1},
 			}},
 		},
 		{
@@ -174,7 +174,7 @@ func TestCodexIdentityPolicyServerOwnsVersionAndProfileEpoch(t *testing.T) {
 	profileChange := updated
 	profileChange.Profiles = append([]CodexOSProfilePolicy(nil), updated.Profiles...)
 	profileChange.Profiles[0].Slots = append([]CodexDeviceSlotPolicy(nil), updated.Profiles[0].Slots...)
-	profileChange.Profiles[0].CanonicalSurface = CodexSurfaceDesktop
+	profileChange.Profiles[0].Architecture = CodexArchARM64
 	profileChange.Version = 500
 	profileChange.Profiles[0].Epoch = 500
 	updatedAgain, changed, err := PrepareCodexIdentityPolicyForUpdate(updated, profileChange, PlatformOpenAI, AccountTypeOAuth)
@@ -182,6 +182,27 @@ func TestCodexIdentityPolicyServerOwnsVersionAndProfileEpoch(t *testing.T) {
 	require.True(t, changed)
 	require.EqualValues(t, 3, updatedAgain.Version)
 	require.EqualValues(t, 2, updatedAgain.Profiles[0].Epoch)
+}
+
+func TestCodexIdentityPolicyAllowsIndependentSurfacesPerOS(t *testing.T) {
+	created, err := PrepareCodexIdentityPolicyForCreate(CodexIdentityPolicySpec{
+		Mode: CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []CodexOSProfilePolicy{
+			{OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceDesktop, Architecture: CodexArchX8664, SlotCount: 1},
+			{OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceCLI, Architecture: CodexArchX8664, SlotCount: 1},
+		},
+	}, PlatformOpenAI, AccountTypeOAuth)
+	require.NoError(t, err)
+	require.Len(t, created.Profiles, 2)
+
+	requested := created
+	requested.Profiles = append([]CodexOSProfilePolicy(nil), created.Profiles...)
+	requested.Profiles[0].Architecture = CodexArchARM64
+	updated, changed, err := PrepareCodexIdentityPolicyForUpdate(created, requested, PlatformOpenAI, AccountTypeOAuth)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.EqualValues(t, 2, updated.Profiles[0].Epoch)
+	require.EqualValues(t, 1, updated.Profiles[1].Epoch)
 }
 
 func TestCodexIdentityPolicyCanBeDisabledWhileAccountLeavesOAuth(t *testing.T) {

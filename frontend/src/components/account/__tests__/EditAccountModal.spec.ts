@@ -92,6 +92,13 @@ const ModelWhitelistSelectorStub = defineComponent({
   `
 })
 
+const CodexIdentityTemplateSelectorStub = defineComponent({
+  name: 'CodexIdentityTemplateSelector',
+  props: ['modelValue'],
+  emits: ['update:modelValue'],
+  template: '<div data-testid="edit-codex-template-selector" :data-enabled="String(modelValue.enabled)" :data-template-id="modelValue.template_id ?? \'\'" />',
+})
+
 const SelectStub = defineComponent({
   name: 'SelectStub',
   props: {
@@ -318,7 +325,8 @@ function mountModal(account = buildAccount()) {
         ProxySelector: true,
         GroupSelector: GroupSelectorStub,
         ModelWhitelistSelector: ModelWhitelistSelectorStub,
-        CodexDeviceSlotLifecycle: true
+        CodexDeviceSlotLifecycle: true,
+        CodexIdentityTemplateSelector: CodexIdentityTemplateSelectorStub
       }
     }
   })
@@ -1397,40 +1405,28 @@ describe('EditAccountModal', () => {
     )
   })
 
-  it('submits the typed identity policy while stripping server-managed version and epoch', async () => {
+  it('initializes and submits the account template assignment', async () => {
     const account = {
       ...buildAccount(),
       type: 'oauth',
-      codex_identity_policy: {
-        mode: 'os_profile_device_pool',
-        binding_scope: 'api_key_os',
-        session_policy: { mode: 'conversation_isolated' },
-        affinity_ttl_seconds: 3600,
-        unsupported_policy: 'reject',
-        version: 7,
-        profiles: [{
-          os_class: 'linux',
-          canonical_surface: 'desktop',
-          architecture: 'x86_64',
-          slot_count: 1,
-          epoch: 4
-        }]
-      }
+      codex_identity_template_id: 19,
+      codex_identity_template_applied_revision: 7,
     } as any
     updateAccountMock.mockReset().mockResolvedValue(account)
     const wrapper = mountModal(account)
 
+    const selector = wrapper.get('[data-testid="edit-codex-template-selector"]')
+    expect(selector.attributes('data-enabled')).toBe('true')
+    expect(selector.attributes('data-template-id')).toBe('19')
     expect(wrapper.find('[data-testid="edit-codex-fingerprint-mode-select"]').exists()).toBe(false)
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
-    const policy = updateAccountMock.mock.calls[0]?.[1]?.codex_identity_policy
-    expect(policy).not.toHaveProperty('version')
-    expect(policy?.profiles?.[0]).not.toHaveProperty('epoch')
-    expect(policy?.profiles?.[0]).toMatchObject({
-      os_class: 'linux',
-      canonical_surface: 'desktop',
-      slot_count: 1
+    expect(updateAccountMock.mock.calls[0]?.[1]?.codex_identity_assignment).toEqual({
+      enabled: true,
+      template_id: 19,
+      expected_revision: 7,
     })
+    expect(updateAccountMock.mock.calls[0]?.[1]).not.toHaveProperty('codex_identity_policy')
   })
 
   it('shows pending provisioning as not schedulable in the edit state area', () => {

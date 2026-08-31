@@ -168,6 +168,8 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 		SetStatus(account.Status).
 		SetProvisioningState(string(account.ProvisioningState)).
 		SetCodexIdentityPolicy(policyMap).
+		SetNillableCodexIdentityTemplateID(account.CodexIdentityTemplateID).
+		SetNillableCodexIdentityTemplateAppliedRevision(account.CodexIdentityTemplateAppliedRevision).
 		SetErrorMessage(account.ErrorMessage).
 		SetSchedulable(account.Schedulable).
 		SetAutoPauseOnExpired(account.AutoPauseOnExpired)
@@ -585,6 +587,16 @@ func (r *accountRepository) updateLockedAccount(
 		SetErrorMessage(account.ErrorMessage).
 		SetSchedulable(schedulable).
 		SetAutoPauseOnExpired(account.AutoPauseOnExpired)
+	if account.CodexIdentityTemplateID != nil {
+		builder.SetCodexIdentityTemplateID(*account.CodexIdentityTemplateID)
+	} else {
+		builder.ClearCodexIdentityTemplateID()
+	}
+	if account.CodexIdentityTemplateAppliedRevision != nil {
+		builder.SetCodexIdentityTemplateAppliedRevision(*account.CodexIdentityTemplateAppliedRevision)
+	} else {
+		builder.ClearCodexIdentityTemplateAppliedRevision()
+	}
 
 	if explicitRateMultiplier != nil {
 		builder.SetRateMultiplier(*explicitRateMultiplier)
@@ -992,6 +1004,12 @@ func (r *accountRepository) Delete(ctx context.Context, id int64) error {
 		}
 	}
 	if _, err := txClient.ExecContext(ctx, "DELETE FROM scheduled_test_plans WHERE account_id = $1", id); err != nil {
+		return err
+	}
+	if _, err := txClient.Account.UpdateOneID(id).
+		ClearCodexIdentityTemplateID().
+		ClearCodexIdentityTemplateAppliedRevision().
+		Save(ctx); err != nil {
 		return err
 	}
 	if _, err := txClient.Account.Delete().Where(dbaccount.IDEQ(id)).Exec(ctx); err != nil {
@@ -3496,39 +3514,41 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 	}
 
 	return &service.Account{
-		ID:                      m.ID,
-		Name:                    m.Name,
-		Notes:                   m.Notes,
-		Platform:                m.Platform,
-		Type:                    m.Type,
-		Credentials:             copyJSONMap(m.Credentials),
-		Extra:                   copyJSONMap(m.Extra),
-		ProxyID:                 m.ProxyID,
-		ProxyFallbackOriginID:   m.ProxyFallbackOriginID,
-		Concurrency:             m.Concurrency,
-		Priority:                m.Priority,
-		RateMultiplier:          &rateMultiplier,
-		LoadFactor:              m.LoadFactor,
-		Status:                  m.Status,
-		ProvisioningState:       provisioningState,
-		CodexIdentityPolicy:     policy,
-		ErrorMessage:            derefString(m.ErrorMessage),
-		LastUsedAt:              m.LastUsedAt,
-		ExpiresAt:               m.ExpiresAt,
-		AutoPauseOnExpired:      m.AutoPauseOnExpired,
-		CreatedAt:               m.CreatedAt,
-		UpdatedAt:               m.UpdatedAt,
-		Schedulable:             m.Schedulable,
-		RateLimitedAt:           m.RateLimitedAt,
-		RateLimitResetAt:        m.RateLimitResetAt,
-		OverloadUntil:           m.OverloadUntil,
-		TempUnschedulableUntil:  m.TempUnschedulableUntil,
-		TempUnschedulableReason: derefString(m.TempUnschedulableReason),
-		SessionWindowStart:      m.SessionWindowStart,
-		SessionWindowEnd:        m.SessionWindowEnd,
-		SessionWindowStatus:     derefString(m.SessionWindowStatus),
-		ParentAccountID:         m.ParentAccountID,
-		QuotaDimension:          string(m.QuotaDimension),
+		ID:                                   m.ID,
+		Name:                                 m.Name,
+		Notes:                                m.Notes,
+		Platform:                             m.Platform,
+		Type:                                 m.Type,
+		Credentials:                          copyJSONMap(m.Credentials),
+		Extra:                                copyJSONMap(m.Extra),
+		ProxyID:                              m.ProxyID,
+		ProxyFallbackOriginID:                m.ProxyFallbackOriginID,
+		Concurrency:                          m.Concurrency,
+		Priority:                             m.Priority,
+		RateMultiplier:                       &rateMultiplier,
+		LoadFactor:                           m.LoadFactor,
+		Status:                               m.Status,
+		ProvisioningState:                    provisioningState,
+		CodexIdentityPolicy:                  policy,
+		CodexIdentityTemplateID:              m.CodexIdentityTemplateID,
+		CodexIdentityTemplateAppliedRevision: m.CodexIdentityTemplateAppliedRevision,
+		ErrorMessage:                         derefString(m.ErrorMessage),
+		LastUsedAt:                           m.LastUsedAt,
+		ExpiresAt:                            m.ExpiresAt,
+		AutoPauseOnExpired:                   m.AutoPauseOnExpired,
+		CreatedAt:                            m.CreatedAt,
+		UpdatedAt:                            m.UpdatedAt,
+		Schedulable:                          m.Schedulable,
+		RateLimitedAt:                        m.RateLimitedAt,
+		RateLimitResetAt:                     m.RateLimitResetAt,
+		OverloadUntil:                        m.OverloadUntil,
+		TempUnschedulableUntil:               m.TempUnschedulableUntil,
+		TempUnschedulableReason:              derefString(m.TempUnschedulableReason),
+		SessionWindowStart:                   m.SessionWindowStart,
+		SessionWindowEnd:                     m.SessionWindowEnd,
+		SessionWindowStatus:                  derefString(m.SessionWindowStatus),
+		ParentAccountID:                      m.ParentAccountID,
+		QuotaDimension:                       string(m.QuotaDimension),
 	}
 }
 

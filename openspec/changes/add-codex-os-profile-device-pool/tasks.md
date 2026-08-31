@@ -44,6 +44,28 @@
 - [x] 7.1 运行 OpenSpec strict validation
 - [x] 7.2 运行聚焦 Go unit/integration/race 和迁移测试
 - [x] 7.3 运行 frontend lint/typecheck/Vitest/build
-- [ ] 7.4 运行完整 GitHub CI
-- [ ] 7.5 提交并推送独立分支，创建以 PR #2 分支为 base 的 Draft PR
-- [ ] 7.6 按目标逐项审计证据；不部署生产
+- [x] 7.4 运行插件 Go test/vet、Node checks、包 hash 校验和 unsigned 本地安装/进程集成测试
+- [x] 7.5 静态核对 `usage_logs` schema/insert path 与当前官方主线一致
+- [x] 7.6 在 Linux Go 1.27 环境运行 WS/Profile/plugin 聚焦 race；完整 service race 另暴露三个未改文件中的既有全局测试变量竞态
+- [ ] 7.7 运行完整 GitHub CI
+- [ ] 7.8 整理并提交基于当前官方主线的独立分支，创建 Draft PR
+- [x] 7.9 按最终目标逐项审计证据；本 change 不部署生产
+- [ ] 7.10 后续插件发布使用生产发布密钥生成签名包；不阻塞本核心 PR
+- [ ] 7.11 后续运行真实 A2 usage-relay 到 B2 durable receipt/replay 非生产验收；需要另行授权且不阻塞本核心 PR
+
+## 8. 插件前向兼容
+
+- [ ] 8.1 刷新官方远端并将核心提交重放到当前官方主线
+- [x] 8.2 定义 0.1.x 协议驱动兼容策略，区分 hard range、精确协议门和 tested 证据
+- [x] 8.3 将插件版本提升为 0.1.5，并增加未来补丁版、0.2.0 prerelease 和协议不匹配测试
+- [x] 8.4 重新构建插件并运行后端、前端、插件、OpenSpec 与账务不变量验收
+- [x] 8.5 完成独立审查和干净本地提交
+
+## 9. 模板控制面与多 Surface
+
+- [x] 9.1 新增设置页命名模板 CRUD、revision 乐观锁和被引用删除保护
+- [x] 9.2 账号创建、编辑和批量更新改为模板 assignment；模板更新经确认后事务传播
+- [x] 9.3 Profile、binding、affinity 与 WS state 从 OS-only 升级为 `(OS, surface)`
+- [x] 9.4 Windows/macOS/Linux Desktop 与 CLI 可同时启用并独立配置槽位/代理
+- [x] 9.5 增加 233/234 正向迁移、旧策略模板迁移和旧二进制数据降级脚本
+- [x] 9.6 运行真实 PostgreSQL 正向、幂等与降级演练

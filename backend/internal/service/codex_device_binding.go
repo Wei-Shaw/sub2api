@@ -39,10 +39,10 @@ type CodexDeviceSlotAdminService interface {
 }
 
 type CodexDeviceBindingRepository interface {
-	ResolveCodexDeviceBinding(ctx context.Context, accountID, apiKeyID int64, osClass CodexOSClass) (*CodexResolvedDeviceSlot, error)
-	RebindCodexDeviceBinding(ctx context.Context, oldAccountID, newAccountID, apiKeyID int64, osClass CodexOSClass) (*CodexResolvedDeviceSlot, error)
-	DeleteCodexDeviceBinding(ctx context.Context, accountID, apiKeyID int64, osClass CodexOSClass) error
-	ListCodexDeviceSlots(ctx context.Context, accountID int64, osClass CodexOSClass, includeDraining bool) ([]CodexResolvedDeviceSlot, error)
+	ResolveCodexDeviceBinding(ctx context.Context, accountID, apiKeyID int64, osClass CodexOSClass, surface CodexClientSurface) (*CodexResolvedDeviceSlot, error)
+	RebindCodexDeviceBinding(ctx context.Context, oldAccountID, newAccountID, apiKeyID int64, osClass CodexOSClass, surface CodexClientSurface) (*CodexResolvedDeviceSlot, error)
+	DeleteCodexDeviceBinding(ctx context.Context, accountID, apiKeyID int64, osClass CodexOSClass, surface CodexClientSurface) error
+	ListCodexDeviceSlots(ctx context.Context, accountID int64, osClass CodexOSClass, surface CodexClientSurface, includeDraining bool) ([]CodexResolvedDeviceSlot, error)
 	FinalizeDrainedCodexDeviceSlots(ctx context.Context, accountID int64) (int64, error)
 }
 
@@ -55,7 +55,7 @@ func (s *adminServiceImpl) ListAccountCodexDeviceSlots(
 	if !ok {
 		return nil, infraerrors.New(501, "CODEX_DEVICE_SLOT_ADMIN_UNAVAILABLE", "Codex device slot repository is unavailable")
 	}
-	return repo.ListCodexDeviceSlots(ctx, accountID, "", includeDraining)
+	return repo.ListCodexDeviceSlots(ctx, accountID, "", "", includeDraining)
 }
 
 func (s *adminServiceImpl) FinalizeAccountCodexDeviceSlots(ctx context.Context, accountID int64) (int64, error) {

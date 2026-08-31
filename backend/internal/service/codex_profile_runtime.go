@@ -76,9 +76,9 @@ func (p CodexResolvedProfile) Key() string {
 }
 
 func (p CodexResolvedProfile) Supports(client CodexClientProfile) bool {
-	// OS is the hard compatibility boundary. Surface and architecture are
-	// adapter inputs that converge to this account's canonical profile.
-	return p.OSClass == client.OSClass
+	// OS and surface are hard compatibility boundaries. Architecture remains
+	// an adapter input that converges to this profile's canonical architecture.
+	return p.OSClass == client.OSClass && p.Surface == client.Surface
 }
 
 type CodexResolvedSlot struct {
@@ -205,8 +205,10 @@ func ClassifyCodexClientProfile(signals CodexClientProfileSignals) CodexClientPr
 	explicitArch, archConflict := explicitCodexArchitecture(signals)
 	uaArch := classifyCodexArchitecture(ua)
 	explicitSurface, surfaceConflict := explicitCodexSurface(signals)
+	uaSurface := classifyCodexSurface(ua, originator, strings.TrimSpace(ua+" "+originator))
 	if osConflict || archConflict || surfaceConflict || (explicitOS != "" && uaOS != "" && explicitOS != uaOS) ||
-		(explicitArch != "" && uaArch != "" && explicitArch != uaArch) {
+		(explicitArch != "" && uaArch != "" && explicitArch != uaArch) ||
+		(explicitSurface != "" && uaSurface != "" && explicitSurface != uaSurface) {
 		return CodexClientProfile{
 			Surface: classifyCodexSurface(ua, originator, all), Confidence: CodexProfileConfidenceLow,
 			Ambiguous: true, Evidence: []string{"conflicting_strong_profile_signals"},

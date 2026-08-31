@@ -128,6 +128,7 @@ type CreateAccountRequest struct {
 	AutoPauseOnExpired      *bool                            `json:"auto_pause_on_expired"`
 	ProbeEnabled            *bool                            `json:"upstream_billing_probe_enabled"`
 	CodexIdentityPolicy     *service.CodexIdentityPolicySpec `json:"codex_identity_policy,omitempty"`
+	CodexIdentityAssignment *service.CodexIdentityAssignment `json:"codex_identity_assignment,omitempty"`
 	ConfirmMixedChannelRisk *bool                            `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
@@ -151,6 +152,7 @@ type UpdateAccountRequest struct {
 	ProbeEnabled            *bool                            `json:"upstream_billing_probe_enabled"`
 	RateSyncEnabled         *bool                            `json:"upstream_billing_rate_sync_enabled"`
 	CodexIdentityPolicy     *service.CodexIdentityPolicySpec `json:"codex_identity_policy,omitempty"`
+	CodexIdentityAssignment *service.CodexIdentityAssignment `json:"codex_identity_assignment,omitempty"`
 	ConfirmMixedChannelRisk *bool                            `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
@@ -171,6 +173,7 @@ type BulkUpdateAccountsRequest struct {
 	Extra                   map[string]any                   `json:"extra"`
 	ProbeEnabled            *bool                            `json:"upstream_billing_probe_enabled"`
 	CodexIdentityPolicy     *service.CodexIdentityPolicySpec `json:"codex_identity_policy,omitempty"`
+	CodexIdentityAssignment *service.CodexIdentityAssignment `json:"codex_identity_assignment,omitempty"`
 	ConfirmMixedChannelRisk *bool                            `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
@@ -918,23 +921,24 @@ func (h *AccountHandler) Create(c *gin.Context) {
 
 	result, err := executeAdminIdempotent(c, "admin.accounts.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		account, execErr := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
-			Name:                  req.Name,
-			Notes:                 req.Notes,
-			Platform:              req.Platform,
-			Type:                  req.Type,
-			Credentials:           req.Credentials,
-			Extra:                 req.Extra,
-			ProxyID:               req.ProxyID,
-			Concurrency:           req.Concurrency,
-			Priority:              req.Priority,
-			RateMultiplier:        req.RateMultiplier,
-			LoadFactor:            req.LoadFactor,
-			GroupIDs:              req.GroupIDs,
-			ExpiresAt:             req.ExpiresAt,
-			AutoPauseOnExpired:    req.AutoPauseOnExpired,
-			ProbeEnabled:          req.ProbeEnabled,
-			CodexIdentityPolicy:   req.CodexIdentityPolicy,
-			SkipMixedChannelCheck: skipCheck,
+			Name:                    req.Name,
+			Notes:                   req.Notes,
+			Platform:                req.Platform,
+			Type:                    req.Type,
+			Credentials:             req.Credentials,
+			Extra:                   req.Extra,
+			ProxyID:                 req.ProxyID,
+			Concurrency:             req.Concurrency,
+			Priority:                req.Priority,
+			RateMultiplier:          req.RateMultiplier,
+			LoadFactor:              req.LoadFactor,
+			GroupIDs:                req.GroupIDs,
+			ExpiresAt:               req.ExpiresAt,
+			AutoPauseOnExpired:      req.AutoPauseOnExpired,
+			ProbeEnabled:            req.ProbeEnabled,
+			CodexIdentityPolicy:     req.CodexIdentityPolicy,
+			CodexIdentityAssignment: req.CodexIdentityAssignment,
+			SkipMixedChannelCheck:   skipCheck,
 		})
 		if execErr != nil {
 			return nil, execErr
@@ -1047,24 +1051,25 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 
 	account, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
-		Name:                  req.Name,
-		Notes:                 req.Notes,
-		Type:                  req.Type,
-		Credentials:           req.Credentials,
-		Extra:                 req.Extra,
-		ProxyID:               req.ProxyID,
-		Concurrency:           req.Concurrency, // 指针类型，nil 表示未提供
-		Priority:              req.Priority,    // 指针类型，nil 表示未提供
-		RateMultiplier:        req.RateMultiplier,
-		LoadFactor:            req.LoadFactor,
-		Status:                req.Status,
-		GroupIDs:              req.GroupIDs,
-		ExpiresAt:             req.ExpiresAt,
-		AutoPauseOnExpired:    req.AutoPauseOnExpired,
-		ProbeEnabled:          req.ProbeEnabled,
-		RateSyncEnabled:       req.RateSyncEnabled,
-		CodexIdentityPolicy:   req.CodexIdentityPolicy,
-		SkipMixedChannelCheck: skipCheck,
+		Name:                    req.Name,
+		Notes:                   req.Notes,
+		Type:                    req.Type,
+		Credentials:             req.Credentials,
+		Extra:                   req.Extra,
+		ProxyID:                 req.ProxyID,
+		Concurrency:             req.Concurrency, // 指针类型，nil 表示未提供
+		Priority:                req.Priority,    // 指针类型，nil 表示未提供
+		RateMultiplier:          req.RateMultiplier,
+		LoadFactor:              req.LoadFactor,
+		Status:                  req.Status,
+		GroupIDs:                req.GroupIDs,
+		ExpiresAt:               req.ExpiresAt,
+		AutoPauseOnExpired:      req.AutoPauseOnExpired,
+		ProbeEnabled:            req.ProbeEnabled,
+		RateSyncEnabled:         req.RateSyncEnabled,
+		CodexIdentityPolicy:     req.CodexIdentityPolicy,
+		CodexIdentityAssignment: req.CodexIdentityAssignment,
+		SkipMixedChannelCheck:   skipCheck,
 	})
 	if err != nil {
 		// 检查是否为混合渠道错误
@@ -2185,7 +2190,8 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		len(req.Credentials) > 0 ||
 		len(req.Extra) > 0 ||
 		req.ProbeEnabled != nil ||
-		req.CodexIdentityPolicy != nil
+		req.CodexIdentityPolicy != nil ||
+		req.CodexIdentityAssignment != nil
 
 	if !hasUpdates {
 		response.BadRequest(c, "No updates provided")
@@ -2193,22 +2199,23 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 	}
 
 	result, err := h.adminService.BulkUpdateAccounts(c.Request.Context(), &service.BulkUpdateAccountsInput{
-		AccountIDs:            req.AccountIDs,
-		Filters:               toServiceBulkUpdateAccountFilters(req.Filters),
-		Name:                  req.Name,
-		ProxyID:               req.ProxyID,
-		Concurrency:           req.Concurrency,
-		Priority:              req.Priority,
-		RateMultiplier:        req.RateMultiplier,
-		LoadFactor:            req.LoadFactor,
-		Status:                req.Status,
-		Schedulable:           req.Schedulable,
-		GroupIDs:              req.GroupIDs,
-		Credentials:           req.Credentials,
-		Extra:                 req.Extra,
-		ProbeEnabled:          req.ProbeEnabled,
-		CodexIdentityPolicy:   req.CodexIdentityPolicy,
-		SkipMixedChannelCheck: skipCheck,
+		AccountIDs:              req.AccountIDs,
+		Filters:                 toServiceBulkUpdateAccountFilters(req.Filters),
+		Name:                    req.Name,
+		ProxyID:                 req.ProxyID,
+		Concurrency:             req.Concurrency,
+		Priority:                req.Priority,
+		RateMultiplier:          req.RateMultiplier,
+		LoadFactor:              req.LoadFactor,
+		Status:                  req.Status,
+		Schedulable:             req.Schedulable,
+		GroupIDs:                req.GroupIDs,
+		Credentials:             req.Credentials,
+		Extra:                   req.Extra,
+		ProbeEnabled:            req.ProbeEnabled,
+		CodexIdentityPolicy:     req.CodexIdentityPolicy,
+		CodexIdentityAssignment: req.CodexIdentityAssignment,
+		SkipMixedChannelCheck:   skipCheck,
 	})
 	if err != nil {
 		var mixedErr *service.MixedChannelError

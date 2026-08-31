@@ -167,6 +167,12 @@ func TestClassifyCodexClientProfileRejectsConflictingStrongSignals(t *testing.T)
 	})
 	require.False(t, profile.Ambiguous)
 	require.Equal(t, CodexOSLinux, profile.OSClass, "explicit OS must outrank weak workspace path evidence")
+
+	profile = ClassifyCodexClientProfile(CodexClientProfileSignals{
+		Headers: http.Header{"User-Agent": {"Codex Desktop/0.146.0 (Windows 11; x86_64)"}},
+		Body:    []byte(`{"client_metadata":{"os":"windows","arch":"x86_64","surface":"cli"}}`),
+	})
+	require.True(t, profile.Ambiguous, "a Desktop UA must not be routed through the CLI profile")
 }
 
 func TestResolveCodexRuntimeProfileCatalog(t *testing.T) {
@@ -207,7 +213,7 @@ func TestResolveCodexRuntimeProfileCatalog(t *testing.T) {
 		Architecture: CodexArchX8664, SlotCount: 1, Epoch: 1,
 	})
 	require.NoError(t, err)
-	require.True(t, linux.Supports(CodexClientProfile{OSClass: CodexOSLinux, Surface: CodexSurfaceDesktop, Architecture: CodexArchX8664}))
+	require.False(t, linux.Supports(CodexClientProfile{OSClass: CodexOSLinux, Surface: CodexSurfaceDesktop, Architecture: CodexArchX8664}))
 	require.False(t, linux.Supports(CodexClientProfile{OSClass: CodexOSWindows, Surface: CodexSurfaceCLI, Architecture: CodexArchX8664}))
 	require.True(t, linux.Supports(CodexClientProfile{OSClass: CodexOSLinux, Surface: CodexSurfaceCLI, Architecture: CodexArchARM64}), "Linux arm64 must converge to the account's canonical Linux x86_64 profile")
 
@@ -216,7 +222,7 @@ func TestResolveCodexRuntimeProfileCatalog(t *testing.T) {
 		Architecture: CodexArchX8664, SlotCount: 1, Epoch: 1,
 	})
 	require.NoError(t, err)
-	require.True(t, windows.Supports(CodexClientProfile{OSClass: CodexOSWindows, Surface: CodexSurfaceCLI, Architecture: CodexArchARM64}), "Windows arm64 must converge to the account's canonical Windows x86_64 profile")
+	require.False(t, windows.Supports(CodexClientProfile{OSClass: CodexOSWindows, Surface: CodexSurfaceCLI, Architecture: CodexArchARM64}), "Windows CLI must not converge to a Desktop profile")
 }
 
 func TestBuildCodexIdentityAttemptPlanDefaultOffIsHardGate(t *testing.T) {

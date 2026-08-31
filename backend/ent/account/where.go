@@ -130,6 +130,16 @@ func ProvisioningState(v string) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldProvisioningState, v))
 }
 
+// CodexIdentityTemplateID applies equality check predicate on the "codex_identity_template_id" field. It's identical to CodexIdentityTemplateIDEQ.
+func CodexIdentityTemplateID(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldCodexIdentityTemplateID, v))
+}
+
+// CodexIdentityTemplateAppliedRevision applies equality check predicate on the "codex_identity_template_applied_revision" field. It's identical to CodexIdentityTemplateAppliedRevisionEQ.
+func CodexIdentityTemplateAppliedRevision(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldCodexIdentityTemplateAppliedRevision, v))
+}
+
 // ErrorMessage applies equality check predicate on the "error_message" field. It's identical to ErrorMessageEQ.
 func ErrorMessage(v string) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldErrorMessage, v))
@@ -978,6 +988,106 @@ func ProvisioningStateEqualFold(v string) predicate.Account {
 // ProvisioningStateContainsFold applies the ContainsFold predicate on the "provisioning_state" field.
 func ProvisioningStateContainsFold(v string) predicate.Account {
 	return predicate.Account(sql.FieldContainsFold(FieldProvisioningState, v))
+}
+
+// CodexIdentityTemplateIDEQ applies the EQ predicate on the "codex_identity_template_id" field.
+func CodexIdentityTemplateIDEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldCodexIdentityTemplateID, v))
+}
+
+// CodexIdentityTemplateIDNEQ applies the NEQ predicate on the "codex_identity_template_id" field.
+func CodexIdentityTemplateIDNEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldCodexIdentityTemplateID, v))
+}
+
+// CodexIdentityTemplateIDIn applies the In predicate on the "codex_identity_template_id" field.
+func CodexIdentityTemplateIDIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldCodexIdentityTemplateID, vs...))
+}
+
+// CodexIdentityTemplateIDNotIn applies the NotIn predicate on the "codex_identity_template_id" field.
+func CodexIdentityTemplateIDNotIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldCodexIdentityTemplateID, vs...))
+}
+
+// CodexIdentityTemplateIDGT applies the GT predicate on the "codex_identity_template_id" field.
+func CodexIdentityTemplateIDGT(v int64) predicate.Account {
+	return predicate.Account(sql.FieldGT(FieldCodexIdentityTemplateID, v))
+}
+
+// CodexIdentityTemplateIDGTE applies the GTE predicate on the "codex_identity_template_id" field.
+func CodexIdentityTemplateIDGTE(v int64) predicate.Account {
+	return predicate.Account(sql.FieldGTE(FieldCodexIdentityTemplateID, v))
+}
+
+// CodexIdentityTemplateIDLT applies the LT predicate on the "codex_identity_template_id" field.
+func CodexIdentityTemplateIDLT(v int64) predicate.Account {
+	return predicate.Account(sql.FieldLT(FieldCodexIdentityTemplateID, v))
+}
+
+// CodexIdentityTemplateIDLTE applies the LTE predicate on the "codex_identity_template_id" field.
+func CodexIdentityTemplateIDLTE(v int64) predicate.Account {
+	return predicate.Account(sql.FieldLTE(FieldCodexIdentityTemplateID, v))
+}
+
+// CodexIdentityTemplateIDIsNil applies the IsNil predicate on the "codex_identity_template_id" field.
+func CodexIdentityTemplateIDIsNil() predicate.Account {
+	return predicate.Account(sql.FieldIsNull(FieldCodexIdentityTemplateID))
+}
+
+// CodexIdentityTemplateIDNotNil applies the NotNil predicate on the "codex_identity_template_id" field.
+func CodexIdentityTemplateIDNotNil() predicate.Account {
+	return predicate.Account(sql.FieldNotNull(FieldCodexIdentityTemplateID))
+}
+
+// CodexIdentityTemplateAppliedRevisionEQ applies the EQ predicate on the "codex_identity_template_applied_revision" field.
+func CodexIdentityTemplateAppliedRevisionEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldCodexIdentityTemplateAppliedRevision, v))
+}
+
+// CodexIdentityTemplateAppliedRevisionNEQ applies the NEQ predicate on the "codex_identity_template_applied_revision" field.
+func CodexIdentityTemplateAppliedRevisionNEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldCodexIdentityTemplateAppliedRevision, v))
+}
+
+// CodexIdentityTemplateAppliedRevisionIn applies the In predicate on the "codex_identity_template_applied_revision" field.
+func CodexIdentityTemplateAppliedRevisionIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldCodexIdentityTemplateAppliedRevision, vs...))
+}
+
+// CodexIdentityTemplateAppliedRevisionNotIn applies the NotIn predicate on the "codex_identity_template_applied_revision" field.
+func CodexIdentityTemplateAppliedRevisionNotIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldCodexIdentityTemplateAppliedRevision, vs...))
+}
+
+// CodexIdentityTemplateAppliedRevisionGT applies the GT predicate on the "codex_identity_template_applied_revision" field.
+func CodexIdentityTemplateAppliedRevisionGT(v int64) predicate.Account {
+	return predicate.Account(sql.FieldGT(FieldCodexIdentityTemplateAppliedRevision, v))
+}
+
+// CodexIdentityTemplateAppliedRevisionGTE applies the GTE predicate on the "codex_identity_template_applied_revision" field.
+func CodexIdentityTemplateAppliedRevisionGTE(v int64) predicate.Account {
+	return predicate.Account(sql.FieldGTE(FieldCodexIdentityTemplateAppliedRevision, v))
+}
+
+// CodexIdentityTemplateAppliedRevisionLT applies the LT predicate on the "codex_identity_template_applied_revision" field.
+func CodexIdentityTemplateAppliedRevisionLT(v int64) predicate.Account {
+	return predicate.Account(sql.FieldLT(FieldCodexIdentityTemplateAppliedRevision, v))
+}
+
+// CodexIdentityTemplateAppliedRevisionLTE applies the LTE predicate on the "codex_identity_template_applied_revision" field.
+func CodexIdentityTemplateAppliedRevisionLTE(v int64) predicate.Account {
+	return predicate.Account(sql.FieldLTE(FieldCodexIdentityTemplateAppliedRevision, v))
+}
+
+// CodexIdentityTemplateAppliedRevisionIsNil applies the IsNil predicate on the "codex_identity_template_applied_revision" field.
+func CodexIdentityTemplateAppliedRevisionIsNil() predicate.Account {
+	return predicate.Account(sql.FieldIsNull(FieldCodexIdentityTemplateAppliedRevision))
+}
+
+// CodexIdentityTemplateAppliedRevisionNotNil applies the NotNil predicate on the "codex_identity_template_applied_revision" field.
+func CodexIdentityTemplateAppliedRevisionNotNil() predicate.Account {
+	return predicate.Account(sql.FieldNotNull(FieldCodexIdentityTemplateAppliedRevision))
 }
 
 // ErrorMessageEQ applies the EQ predicate on the "error_message" field.

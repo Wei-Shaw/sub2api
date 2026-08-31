@@ -15,7 +15,7 @@ describe('Codex identity policy contract', () => {
 
     expect(policy).toEqual({
       mode: 'off',
-      binding_scope: 'api_key_os',
+      binding_scope: 'api_key_os_surface',
       session_policy: { mode: 'conversation_isolated' },
       affinity_ttl_seconds: 3600,
       unsupported_policy: 'reject',
@@ -25,14 +25,12 @@ describe('Codex identity policy contract', () => {
   })
 
   it('accepts Linux Desktop and Generic third-party profiles', () => {
-    const linux = createDefaultCodexOSProfile('linux')
-    linux.canonical_surface = 'desktop'
+    const linux = createDefaultCodexOSProfile('linux', 'desktop')
     linux.slot_count = 3
     linux.proxy_mode = 'proxy'
     linux.proxy_id = 7
     linux.slots = [{ index: 1, proxy_mode: 'proxy', proxy_id: 8 }]
-    const generic = createDefaultCodexOSProfile('generic')
-    generic.canonical_surface = 'third_party'
+    const generic = createDefaultCodexOSProfile('generic', 'third_party')
 
     const policy: CodexIdentityPolicy = {
       ...createDefaultCodexIdentityPolicy(),
@@ -43,6 +41,56 @@ describe('Codex identity policy contract', () => {
     expect(validateCodexIdentityPolicy(policy, {
       availableProxyIDs: new Set([7, 8]),
     })).toEqual({ valid: true, errors: [], warnings: [] })
+  })
+
+  it('accepts independent Desktop and CLI profiles for the same OS', () => {
+    const desktop = createDefaultCodexOSProfile('windows', 'desktop')
+    desktop.slot_count = 2
+    const cli = createDefaultCodexOSProfile('windows', 'cli')
+    cli.architecture = 'arm64'
+    cli.proxy_mode = 'direct'
+
+    const result = validateCodexIdentityPolicy({
+      ...createDefaultCodexIdentityPolicy(),
+      mode: 'os_profile_device_pool',
+      profiles: [desktop, cli],
+    })
+
+    expect(result).toEqual({ valid: true, errors: [], warnings: [] })
+  })
+
+  it('serializes composite profiles in stable OS and surface order', () => {
+    const serialized = serializeCodexIdentityPolicy({
+      ...createDefaultCodexIdentityPolicy(),
+      mode: 'os_profile_device_pool',
+      profiles: [
+        createDefaultCodexOSProfile('generic', 'third_party'),
+        createDefaultCodexOSProfile('windows', 'cli'),
+        createDefaultCodexOSProfile('windows', 'desktop'),
+        createDefaultCodexOSProfile('generic', 'sdk'),
+      ],
+    })
+
+    expect(serialized.profiles?.map((profile) => (
+      `${profile.os_class}:${profile.canonical_surface}`
+    ))).toEqual([
+      'windows:desktop',
+      'windows:cli',
+      'generic:sdk',
+      'generic:third_party',
+    ])
+  })
+
+  it('rejects only duplicate OS and surface combinations', () => {
+    const desktop = createDefaultCodexOSProfile('macos', 'desktop')
+    const duplicate = createDefaultCodexOSProfile('macos', 'desktop')
+    const result = validateCodexIdentityPolicy({
+      ...createDefaultCodexIdentityPolicy(),
+      mode: 'os_profile_device_pool',
+      profiles: [desktop, duplicate],
+    })
+
+    expect(result.errors.map((issue) => issue.code)).toContain('DUPLICATE_PROFILE')
   })
 
   it('matches the backend TTL lower bound of 60 seconds', () => {
@@ -129,17 +177,19 @@ describe('Codex identity policy contract', () => {
       profiles: [legacy, direct],
     })
 
-    expect(serialized.profiles?.[0]).toMatchObject({
+    const serializedLinux = serialized.profiles?.find((profile) => profile.os_class === 'linux')
+    const serializedWindows = serialized.profiles?.find((profile) => profile.os_class === 'windows')
+    expect(serializedLinux).toMatchObject({
       proxy_mode: 'proxy',
       proxy_id: 7,
       slots: [{ index: 1, proxy_mode: 'proxy', proxy_id: 8 }],
     })
-    expect(serialized.profiles?.[1]).toMatchObject({
+    expect(serializedWindows).toMatchObject({
       proxy_mode: 'direct',
       slots: [{ index: 0, proxy_mode: 'direct' }],
     })
-    expect(serialized.profiles?.[1]).not.toHaveProperty('proxy_id')
-    expect(serialized.profiles?.[1]?.slots?.[0]).not.toHaveProperty('proxy_id')
+    expect(serializedWindows).not.toHaveProperty('proxy_id')
+    expect(serializedWindows?.slots?.[0]).not.toHaveProperty('proxy_id')
   })
 
   it('rejects contradictory or unsupported proxy routes', () => {

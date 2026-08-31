@@ -229,6 +229,34 @@ func (_c *AccountCreate) SetCodexIdentityPolicy(v map[string]interface{}) *Accou
 	return _c
 }
 
+// SetCodexIdentityTemplateID sets the "codex_identity_template_id" field.
+func (_c *AccountCreate) SetCodexIdentityTemplateID(v int64) *AccountCreate {
+	_c.mutation.SetCodexIdentityTemplateID(v)
+	return _c
+}
+
+// SetNillableCodexIdentityTemplateID sets the "codex_identity_template_id" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableCodexIdentityTemplateID(v *int64) *AccountCreate {
+	if v != nil {
+		_c.SetCodexIdentityTemplateID(*v)
+	}
+	return _c
+}
+
+// SetCodexIdentityTemplateAppliedRevision sets the "codex_identity_template_applied_revision" field.
+func (_c *AccountCreate) SetCodexIdentityTemplateAppliedRevision(v int64) *AccountCreate {
+	_c.mutation.SetCodexIdentityTemplateAppliedRevision(v)
+	return _c
+}
+
+// SetNillableCodexIdentityTemplateAppliedRevision sets the "codex_identity_template_applied_revision" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableCodexIdentityTemplateAppliedRevision(v *int64) *AccountCreate {
+	if v != nil {
+		_c.SetCodexIdentityTemplateAppliedRevision(*v)
+	}
+	return _c
+}
+
 // SetErrorMessage sets the "error_message" field.
 func (_c *AccountCreate) SetErrorMessage(v string) *AccountCreate {
 	_c.mutation.SetErrorMessage(v)
@@ -795,6 +823,14 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 		_spec.SetField(account.FieldCodexIdentityPolicy, field.TypeJSON, value)
 		_node.CodexIdentityPolicy = value
 	}
+	if value, ok := _c.mutation.CodexIdentityTemplateID(); ok {
+		_spec.SetField(account.FieldCodexIdentityTemplateID, field.TypeInt64, value)
+		_node.CodexIdentityTemplateID = &value
+	}
+	if value, ok := _c.mutation.CodexIdentityTemplateAppliedRevision(); ok {
+		_spec.SetField(account.FieldCodexIdentityTemplateAppliedRevision, field.TypeInt64, value)
+		_node.CodexIdentityTemplateAppliedRevision = &value
+	}
 	if value, ok := _c.mutation.ErrorMessage(); ok {
 		_spec.SetField(account.FieldErrorMessage, field.TypeString, value)
 		_node.ErrorMessage = &value
@@ -1250,6 +1286,54 @@ func (u *AccountUpsert) SetCodexIdentityPolicy(v map[string]interface{}) *Accoun
 // UpdateCodexIdentityPolicy sets the "codex_identity_policy" field to the value that was provided on create.
 func (u *AccountUpsert) UpdateCodexIdentityPolicy() *AccountUpsert {
 	u.SetExcluded(account.FieldCodexIdentityPolicy)
+	return u
+}
+
+// SetCodexIdentityTemplateID sets the "codex_identity_template_id" field.
+func (u *AccountUpsert) SetCodexIdentityTemplateID(v int64) *AccountUpsert {
+	u.Set(account.FieldCodexIdentityTemplateID, v)
+	return u
+}
+
+// UpdateCodexIdentityTemplateID sets the "codex_identity_template_id" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateCodexIdentityTemplateID() *AccountUpsert {
+	u.SetExcluded(account.FieldCodexIdentityTemplateID)
+	return u
+}
+
+// AddCodexIdentityTemplateID adds v to the "codex_identity_template_id" field.
+func (u *AccountUpsert) AddCodexIdentityTemplateID(v int64) *AccountUpsert {
+	u.Add(account.FieldCodexIdentityTemplateID, v)
+	return u
+}
+
+// ClearCodexIdentityTemplateID clears the value of the "codex_identity_template_id" field.
+func (u *AccountUpsert) ClearCodexIdentityTemplateID() *AccountUpsert {
+	u.SetNull(account.FieldCodexIdentityTemplateID)
+	return u
+}
+
+// SetCodexIdentityTemplateAppliedRevision sets the "codex_identity_template_applied_revision" field.
+func (u *AccountUpsert) SetCodexIdentityTemplateAppliedRevision(v int64) *AccountUpsert {
+	u.Set(account.FieldCodexIdentityTemplateAppliedRevision, v)
+	return u
+}
+
+// UpdateCodexIdentityTemplateAppliedRevision sets the "codex_identity_template_applied_revision" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateCodexIdentityTemplateAppliedRevision() *AccountUpsert {
+	u.SetExcluded(account.FieldCodexIdentityTemplateAppliedRevision)
+	return u
+}
+
+// AddCodexIdentityTemplateAppliedRevision adds v to the "codex_identity_template_applied_revision" field.
+func (u *AccountUpsert) AddCodexIdentityTemplateAppliedRevision(v int64) *AccountUpsert {
+	u.Add(account.FieldCodexIdentityTemplateAppliedRevision, v)
+	return u
+}
+
+// ClearCodexIdentityTemplateAppliedRevision clears the value of the "codex_identity_template_applied_revision" field.
+func (u *AccountUpsert) ClearCodexIdentityTemplateAppliedRevision() *AccountUpsert {
+	u.SetNull(account.FieldCodexIdentityTemplateAppliedRevision)
 	return u
 }
 
@@ -1855,6 +1939,62 @@ func (u *AccountUpsertOne) SetCodexIdentityPolicy(v map[string]interface{}) *Acc
 func (u *AccountUpsertOne) UpdateCodexIdentityPolicy() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdateCodexIdentityPolicy()
+	})
+}
+
+// SetCodexIdentityTemplateID sets the "codex_identity_template_id" field.
+func (u *AccountUpsertOne) SetCodexIdentityTemplateID(v int64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetCodexIdentityTemplateID(v)
+	})
+}
+
+// AddCodexIdentityTemplateID adds v to the "codex_identity_template_id" field.
+func (u *AccountUpsertOne) AddCodexIdentityTemplateID(v int64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddCodexIdentityTemplateID(v)
+	})
+}
+
+// UpdateCodexIdentityTemplateID sets the "codex_identity_template_id" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateCodexIdentityTemplateID() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateCodexIdentityTemplateID()
+	})
+}
+
+// ClearCodexIdentityTemplateID clears the value of the "codex_identity_template_id" field.
+func (u *AccountUpsertOne) ClearCodexIdentityTemplateID() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearCodexIdentityTemplateID()
+	})
+}
+
+// SetCodexIdentityTemplateAppliedRevision sets the "codex_identity_template_applied_revision" field.
+func (u *AccountUpsertOne) SetCodexIdentityTemplateAppliedRevision(v int64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetCodexIdentityTemplateAppliedRevision(v)
+	})
+}
+
+// AddCodexIdentityTemplateAppliedRevision adds v to the "codex_identity_template_applied_revision" field.
+func (u *AccountUpsertOne) AddCodexIdentityTemplateAppliedRevision(v int64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddCodexIdentityTemplateAppliedRevision(v)
+	})
+}
+
+// UpdateCodexIdentityTemplateAppliedRevision sets the "codex_identity_template_applied_revision" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateCodexIdentityTemplateAppliedRevision() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateCodexIdentityTemplateAppliedRevision()
+	})
+}
+
+// ClearCodexIdentityTemplateAppliedRevision clears the value of the "codex_identity_template_applied_revision" field.
+func (u *AccountUpsertOne) ClearCodexIdentityTemplateAppliedRevision() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearCodexIdentityTemplateAppliedRevision()
 	})
 }
 
@@ -2668,6 +2808,62 @@ func (u *AccountUpsertBulk) SetCodexIdentityPolicy(v map[string]interface{}) *Ac
 func (u *AccountUpsertBulk) UpdateCodexIdentityPolicy() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdateCodexIdentityPolicy()
+	})
+}
+
+// SetCodexIdentityTemplateID sets the "codex_identity_template_id" field.
+func (u *AccountUpsertBulk) SetCodexIdentityTemplateID(v int64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetCodexIdentityTemplateID(v)
+	})
+}
+
+// AddCodexIdentityTemplateID adds v to the "codex_identity_template_id" field.
+func (u *AccountUpsertBulk) AddCodexIdentityTemplateID(v int64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddCodexIdentityTemplateID(v)
+	})
+}
+
+// UpdateCodexIdentityTemplateID sets the "codex_identity_template_id" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateCodexIdentityTemplateID() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateCodexIdentityTemplateID()
+	})
+}
+
+// ClearCodexIdentityTemplateID clears the value of the "codex_identity_template_id" field.
+func (u *AccountUpsertBulk) ClearCodexIdentityTemplateID() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearCodexIdentityTemplateID()
+	})
+}
+
+// SetCodexIdentityTemplateAppliedRevision sets the "codex_identity_template_applied_revision" field.
+func (u *AccountUpsertBulk) SetCodexIdentityTemplateAppliedRevision(v int64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetCodexIdentityTemplateAppliedRevision(v)
+	})
+}
+
+// AddCodexIdentityTemplateAppliedRevision adds v to the "codex_identity_template_applied_revision" field.
+func (u *AccountUpsertBulk) AddCodexIdentityTemplateAppliedRevision(v int64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddCodexIdentityTemplateAppliedRevision(v)
+	})
+}
+
+// UpdateCodexIdentityTemplateAppliedRevision sets the "codex_identity_template_applied_revision" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateCodexIdentityTemplateAppliedRevision() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateCodexIdentityTemplateAppliedRevision()
+	})
+}
+
+// ClearCodexIdentityTemplateAppliedRevision clears the value of the "codex_identity_template_applied_revision" field.
+func (u *AccountUpsertBulk) ClearCodexIdentityTemplateAppliedRevision() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearCodexIdentityTemplateAppliedRevision()
 	})
 }
 

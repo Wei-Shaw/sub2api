@@ -213,7 +213,7 @@ func (s *APIKeyRepoSuite) TestDelete_RemovesCodexDeviceBindingsDespiteAPIKeySoft
 		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
 		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
 	}))
-	binding, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, key.ID, service.CodexOSLinux)
+	binding, err := accountRepo.ResolveCodexDeviceBinding(s.ctx, account.ID, key.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
 	s.Require().NoError(err)
 	s.Require().NotZero(binding.BindingID)
 

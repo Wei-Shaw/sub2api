@@ -79,7 +79,7 @@ describe('SyncFromCrsModal Codex identity policy', () => {
       selected_account_ids: ['openai-1'],
       codex_identity_policy: {
         mode: 'off',
-        binding_scope: 'api_key_os',
+        binding_scope: 'api_key_os_surface',
         session_policy: { mode: 'conversation_isolated' },
         affinity_ttl_seconds: 3600,
         unsupported_policy: 'reject',

@@ -372,3 +372,49 @@ func TestDataImportIdentityPolicyRejectsNumericProxyIDsAndMapsStableKeys(t *test
 	require.NotNil(t, got.Profiles[0].ProxyID)
 	require.EqualValues(t, 12, *got.Profiles[0].ProxyID)
 }
+
+func TestDataImportIdentityPolicyRejectsAmbiguousLegacySurfaceProxyRefs(t *testing.T) {
+	key := "http|127.0.0.1|8080||"
+	item := DataAccount{
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+		CodexIdentityPolicy: &service.CodexIdentityPolicySpec{
+			Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+			Profiles: []service.CodexOSProfilePolicy{
+				{OSClass: service.CodexOSWindows, CanonicalSurface: service.CodexSurfaceDesktop, Architecture: service.CodexArchX8664, SlotCount: 1},
+				{OSClass: service.CodexOSWindows, CanonicalSurface: service.CodexSurfaceCLI, Architecture: service.CodexArchX8664, SlotCount: 1},
+			},
+		},
+		CodexProfileProxies: map[string]DataCodexProfileProxyRefs{
+			"windows": {ProxyKey: &key},
+		},
+	}
+	_, err := resolveImportedDataCodexIdentityPolicy(item, map[string]int64{key: 12})
+	require.ErrorContains(t, err, "ambiguous legacy OS-only proxy references")
+
+	item.CodexProfileProxies = map[string]DataCodexProfileProxyRefs{
+		"windows/desktop": {ProxyKey: &key},
+	}
+	got, err := resolveImportedDataCodexIdentityPolicy(item, map[string]int64{key: 12})
+	require.NoError(t, err)
+	require.EqualValues(t, 12, *got.Profiles[0].ProxyID)
+	require.Nil(t, got.Profiles[1].ProxyID)
+}
+
+func TestDataAccountTemplateAssignmentJSONRoundTrip(t *testing.T) {
+	revision := int64(6)
+	original := DataAccount{
+		Name: "template-managed", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		CodexIdentityAssignment: &service.CodexIdentityAssignment{
+			Enabled: true, TemplateID: 12, ExpectedRevision: &revision,
+		},
+	}
+	payload, err := json.Marshal(original)
+	require.NoError(t, err)
+	var decoded DataAccount
+	require.NoError(t, json.Unmarshal(payload, &decoded))
+	require.NotNil(t, decoded.CodexIdentityAssignment)
+	require.True(t, decoded.CodexIdentityAssignment.Enabled)
+	require.Equal(t, int64(12), decoded.CodexIdentityAssignment.TemplateID)
+	require.Equal(t, revision, *decoded.CodexIdentityAssignment.ExpectedRevision)
+}

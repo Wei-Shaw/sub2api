@@ -99,9 +99,21 @@ const OAuthAuthorizationFlowStub = defineComponent({
   template: `
     <div>
       <button data-testid="generate-openai-url" @click="$emit('generate-url')">generate</button>
-      <button data-testid="validate-openai-rt" @click="$emit('validate-refresh-token', 'refresh-token')">rt</button>
-      <button data-testid="import-codex-session" @click="$emit('import-codex-session', 'session-json')">session</button>
-      <button data-testid="import-codex-pat" @click="$emit('import-codex-pat', 'pat-token')">pat</button>
+      <button data-testid="validate-openai-rt" @click="inputMethod = 'refresh_token'; $emit('validate-refresh-token', 'refresh-token')">rt</button>
+      <button data-testid="import-codex-session" @click="inputMethod = 'codex_session'; $emit('import-codex-session', 'session-json')">session</button>
+      <button data-testid="import-codex-pat" @click="inputMethod = 'codex_pat'; $emit('import-codex-pat', 'pat-token')">pat</button>
+    </div>
+  `,
+})
+
+const CodexIdentityTemplateSelectorStub = defineComponent({
+  name: 'CodexIdentityTemplateSelector',
+  props: ['modelValue'],
+  emits: ['update:modelValue'],
+  template: `
+    <div data-testid="codex-template-selector-stub">
+      <button type="button" data-testid="assign-codex-template" @click="$emit('update:modelValue', { enabled: true, template_id: 7 })">assign</button>
+      <button type="button" data-testid="enable-codex-template-without-selection" @click="$emit('update:modelValue', { enabled: true })">invalid</button>
     </div>
   `,
 })
@@ -160,6 +172,7 @@ function mountModal(groups: any[] = []) {
         GroupSelector: GroupSelectorStub,
         ModelWhitelistSelector: ModelWhitelistSelectorStub,
         QuotaLimitCard: true,
+        CodexIdentityTemplateSelector: CodexIdentityTemplateSelectorStub,
       },
     },
   })
@@ -194,9 +207,12 @@ async function submitApiKeyAccount(
   return wrapper
 }
 
-async function openCodexImportStep(toggleClicks = 0) {
+async function openCodexImportStep(toggleClicks = 0, assignTemplate = false) {
   const wrapper = mountModal()
   await selectButtonByText(wrapper, 'OpenAI')
+  if (assignTemplate) {
+    await wrapper.get('[data-testid="assign-codex-template"]').trigger('click')
+  }
   for (let click = 0; click < toggleClicks; click += 1) {
     await wrapper.get('[data-testid="openai-long-context-billing-toggle"]').trigger('click')
   }
@@ -532,7 +548,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(importCodexSessionMock.mock.calls[0]?.[0]?.override_existing_codex_identity_policy).toBeUndefined()
     expect(importCodexSessionMock.mock.calls[0]?.[0]?.codex_identity_policy).toEqual({
       mode: 'off',
-      binding_scope: 'api_key_os',
+      binding_scope: 'api_key_os_surface',
       session_policy: { mode: 'conversation_isolated' },
       affinity_ttl_seconds: 3600,
       unsupported_policy: 'reject',
@@ -559,7 +575,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     }))
   })
 
-  it('passes the same identity policy through OAuth code exchange account creation', async () => {
+  it('passes the disabled template assignment through OAuth code exchange account creation', async () => {
     const wrapper = await openCodexImportStep()
     await wrapper.get('[data-testid="generate-openai-url"]').trigger('click')
     await flushPromises()
@@ -572,35 +588,28 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createAccountMock).toHaveBeenCalledWith(expect.objectContaining({
       platform: 'openai',
       type: 'oauth',
-      codex_identity_policy: expect.objectContaining({
-        mode: 'off',
-        binding_scope: 'api_key_os',
-        unsupported_policy: 'reject'
-      })
+      codex_identity_assignment: { enabled: false }
     }))
   })
 
-  it('passes one reviewed policy snapshot through refresh-token batch creation', async () => {
-    const wrapper = await openCodexImportStep()
+  it('passes one selected template assignment through refresh-token batch creation', async () => {
+    const wrapper = await openCodexImportStep(0, true)
     await wrapper.get('[data-testid="validate-openai-rt"]').trigger('click')
     await flushPromises()
 
     expect(createAccountMock).toHaveBeenCalledWith(expect.objectContaining({
       platform: 'openai',
       type: 'oauth',
-      codex_identity_policy: expect.objectContaining({
-        mode: 'off',
-        session_policy: { mode: 'conversation_isolated' }
-      })
+      codex_identity_assignment: { enabled: true, template_id: 7 }
     }))
   })
 
-  it('hides the legacy fingerprint mode and blocks OAuth entry while a device-pool policy is incomplete', async () => {
+  it('hides the legacy fingerprint mode and blocks OAuth entry while template selection is incomplete', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'OpenAI')
     expect(wrapper.find('[data-testid="create-codex-fingerprint-mode-select"]').exists()).toBe(true)
 
-    await wrapper.get('[data-testid="codex-identity-policy-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="enable-codex-template-without-selection"]').trigger('click')
     expect(wrapper.find('[data-testid="create-codex-fingerprint-mode-select"]').exists()).toBe(false)
     await wrapper.get('form#create-account-form input[type="text"]').setValue('Invalid device pool')
     await wrapper.get('form#create-account-form').trigger('submit.prevent')
@@ -618,7 +627,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBeUndefined()
     expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.codex_identity_policy).toMatchObject({
       mode: 'off',
-      binding_scope: 'api_key_os',
+      binding_scope: 'api_key_os_surface',
       unsupported_policy: 'reject'
     })
   })

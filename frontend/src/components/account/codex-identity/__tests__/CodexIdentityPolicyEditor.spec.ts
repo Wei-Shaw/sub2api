@@ -75,10 +75,9 @@ describe('CodexIdentityPolicyEditor', () => {
 
     expect(wrapper.get('[data-testid="codex-identity-errors"]').text()).toContain('Enable at least one')
 
-    const linux = wrapper.get('[data-testid="codex-profile-linux"]')
-    await linux.get('button[role="switch"]').trigger('click')
-    await linux.get('input[type="radio"][value="desktop"]').setValue(true)
-    await linux.get('button[aria-label="Increase device slots"]').trigger('click')
+    const linuxDesktop = wrapper.get('[data-testid="codex-profile-linux-desktop"]')
+    await linuxDesktop.get('button[role="switch"]').trigger('click')
+    await linuxDesktop.get('button[aria-label="Increase device slots - Desktop"]').trigger('click')
 
     const harness = wrapper.vm as unknown as { policy: CodexIdentityPolicy }
     expect(harness.policy.profiles).toEqual([
@@ -93,20 +92,51 @@ describe('CodexIdentityPolicyEditor', () => {
     expect(wrapper.get('[data-testid="codex-identity-valid"]').attributes('role')).toBe('status')
   })
 
-  it('offers Generic SDK and third-party without an architecture field', async () => {
+  it('enables Desktop and CLI independently for the same OS', async () => {
     const wrapper = mountEditor()
     await wrapper.get('[data-testid="codex-identity-policy-toggle"]').trigger('click')
-    const generic = wrapper.get('[data-testid="codex-profile-generic"]')
-    await generic.get('button[role="switch"]').trigger('click')
-    await generic.get('input[type="radio"][value="third_party"]').setValue(true)
+    const desktop = wrapper.get('[data-testid="codex-profile-windows-desktop"]')
+    const cli = wrapper.get('[data-testid="codex-profile-windows-cli"]')
+
+    await desktop.get('button[role="switch"]').trigger('click')
+    await cli.get('button[role="switch"]').trigger('click')
+    await desktop.get('button[aria-label="Increase device slots - Desktop"]').trigger('click')
+    await cli.get('select[aria-label="Architecture"]').setValue('arm64')
+    await cli.get('#test-policy-windows-cli-proxy-profile-proxy').setValue('direct')
 
     const harness = wrapper.vm as unknown as { policy: CodexIdentityPolicy }
-    expect(harness.policy.profiles?.[0]).toMatchObject({
-      os_class: 'generic',
-      canonical_surface: 'third_party',
-      architecture: '',
-    })
-    expect(generic.text()).toContain('Not applicable')
+    expect(harness.policy.profiles).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        os_class: 'windows',
+        canonical_surface: 'desktop',
+        architecture: 'x86_64',
+        slot_count: 2,
+      }),
+      expect.objectContaining({
+        os_class: 'windows',
+        canonical_surface: 'cli',
+        architecture: 'arm64',
+        slot_count: 1,
+        proxy_mode: 'direct',
+      }),
+    ]))
+  })
+
+  it('offers Generic SDK and third-party as independent profiles without architecture fields', async () => {
+    const wrapper = mountEditor()
+    await wrapper.get('[data-testid="codex-identity-policy-toggle"]').trigger('click')
+    const sdk = wrapper.get('[data-testid="codex-profile-generic-sdk"]')
+    const thirdParty = wrapper.get('[data-testid="codex-profile-generic-third_party"]')
+    await sdk.get('button[role="switch"]').trigger('click')
+    await thirdParty.get('button[role="switch"]').trigger('click')
+
+    const harness = wrapper.vm as unknown as { policy: CodexIdentityPolicy }
+    expect(harness.policy.profiles).toEqual(expect.arrayContaining([
+      expect.objectContaining({ os_class: 'generic', canonical_surface: 'sdk', architecture: '' }),
+      expect.objectContaining({ os_class: 'generic', canonical_surface: 'third_party', architecture: '' }),
+    ]))
+    expect(sdk.text()).toContain('Not applicable')
+    expect(thirdParty.text()).toContain('Not applicable')
   })
 
   it('configures a bounded session pool and emits a high-risk status for device sharing', async () => {
@@ -150,8 +180,8 @@ describe('CodexIdentityPolicyEditor', () => {
       }],
     })
 
-    expect(wrapper.get('[data-testid="codex-profile-windows"] .grid').classes()).toContain('grid-cols-1')
-    expect(wrapper.html()).toContain('md:grid-cols-3')
+    expect(wrapper.get('[data-testid="codex-profile-windows-desktop"] .grid').classes()).toContain('grid-cols-1')
+    expect(wrapper.html()).toContain('sm:grid-cols-2')
     expect(wrapper.html()).toContain('lg:grid-cols-2')
     expect(wrapper.findAll('fieldset').length).toBeGreaterThan(1)
     expect(wrapper.findAll('[aria-describedby]').length).toBeGreaterThan(0)
@@ -171,8 +201,8 @@ describe('CodexIdentityPolicyEditor', () => {
       }],
     })
 
-    const profileProxy = wrapper.get('#test-policy-windows-proxy-profile-proxy')
-    const slotProxy = wrapper.get('#test-policy-windows-proxy-slot-0-proxy')
+    const profileProxy = wrapper.get('#test-policy-windows-desktop-proxy-profile-proxy')
+    const slotProxy = wrapper.get('#test-policy-windows-desktop-proxy-slot-0-proxy')
     expect((profileProxy.element as HTMLSelectElement).value).toBe('direct')
     expect((slotProxy.element as HTMLSelectElement).value).toBe('direct')
 

@@ -9,6 +9,7 @@ export const CODEX_OS_PROFILE_IDS = ['windows', 'macos', 'linux', 'generic'] as 
 export type CodexOSProfileID = (typeof CODEX_OS_PROFILE_IDS)[number]
 
 export type CodexIdentityPolicyMode = 'off' | 'os_profile_device_pool'
+export type CodexIdentityBindingScope = 'api_key_os_surface' | 'api_key_os'
 export type CodexClientSurface = 'desktop' | 'cli' | 'sdk' | 'third_party'
 export type CodexArchitecture = 'x86_64' | 'arm64' | ''
 export type CodexProxyMode = 'inherit' | 'proxy' | 'direct'
@@ -19,6 +20,7 @@ export type CodexSessionPolicyMode =
   | 'device_shared'
 
 export interface CodexDeviceSlotPolicy {
+  id?: number
   index: number
   proxy_mode: CodexProxyMode
   /** Present only when proxy_mode is proxy. */
@@ -26,7 +28,9 @@ export interface CodexDeviceSlotPolicy {
 }
 
 export interface CodexOSProfilePolicy {
+  id?: number
   os_class: CodexOSProfileID
+  /** Profiles are uniquely identified by the os_class + canonical_surface pair. */
   canonical_surface: CodexClientSurface
   /** Generic profiles must serialize this as an empty string. */
   architecture: CodexArchitecture
@@ -35,6 +39,42 @@ export interface CodexOSProfilePolicy {
   /** Present only when proxy_mode is proxy. */
   proxy_id?: number
   slots?: CodexDeviceSlotPolicy[]
+}
+
+export interface CodexIdentityTemplate {
+  id: number
+  name: string
+  description: string
+  revision: number
+  session_policy: CodexSessionPolicy
+  affinity_ttl_seconds: number
+  unsupported_policy: 'reject'
+  profiles: Array<CodexOSProfilePolicy & { catalog_version: 1 }>
+  assigned_account_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface CodexIdentityTemplateWriteRequest {
+  name: string
+  description: string
+  session_policy: CodexSessionPolicy
+  affinity_ttl_seconds: number
+  unsupported_policy: 'reject'
+  profiles: Array<CodexOSProfilePolicy & { catalog_version: 1 }>
+}
+
+export interface CodexIdentityTemplateUpdateRequest extends CodexIdentityTemplateWriteRequest {
+  expected_revision: number
+  confirm_assigned_accounts: boolean
+}
+
+export interface CodexIdentityAssignment {
+  enabled: boolean
+  template_id?: number
+  expected_revision?: number
+  expected_template_name?: string
+  expected_runtime_sha256?: string
 }
 
 export type CodexSessionPolicy =
@@ -50,7 +90,7 @@ export type CodexSessionPolicy =
 /** Exact JSON shape consumed by backend AccountProvisioningSpec. */
 export interface CodexIdentityPolicy {
   mode: CodexIdentityPolicyMode
-  binding_scope: 'api_key_os'
+  binding_scope: CodexIdentityBindingScope
   session_policy: CodexSessionPolicy
   affinity_ttl_seconds: number
   unsupported_policy: 'reject'

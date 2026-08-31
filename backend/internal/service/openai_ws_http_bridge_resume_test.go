@@ -149,7 +149,7 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 		toolCorrector:    NewCodexToolCorrector(),
 	}
 	groupID := int64(4202)
-	account := codexProfileTestAccount(t, 129, CodexOSWindows, CodexSurfaceDesktop, CodexArchX8664, false)
+	account := codexProfileTestAccount(t, 129, CodexOSWindows, CodexSurfaceCLI, CodexArchX8664, false)
 	account.Name = "limited"
 	account.Concurrency = 1
 	account.CodexIdentityPolicy.SessionPolicy = CodexSessionPolicySpec{
@@ -158,7 +158,7 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 	account.Credentials["chatgpt_account_id"] = "account-a"
 	account.Credentials["chatgpt_user_id"] = "user-a"
 	account.Extra["openai_oauth_responses_websockets_v2_mode"] = OpenAIWSIngressModeHTTPBridge
-	nextAccount := codexProfileTestAccount(t, 130, CodexOSWindows, CodexSurfaceDesktop, CodexArchX8664, false)
+	nextAccount := codexProfileTestAccount(t, 130, CodexOSWindows, CodexSurfaceCLI, CodexArchX8664, false)
 	nextAccount.Name = "replacement"
 	nextAccount.Concurrency = 1
 	nextAccount.CodexIdentityPolicy.SessionPolicy = CodexSessionPolicySpec{
@@ -173,13 +173,13 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 		resolvedSlots: map[int64]*CodexResolvedDeviceSlot{
 			account.ID: {
 				AccountID: account.ID, SlotID: 12901, ProfileID: 12900,
-				OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceDesktop,
+				OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceCLI,
 				Architecture: CodexArchX8664, CatalogVersion: 1,
 				SlotIndex: 0, Epoch: 4, State: "active", PolicyVersion: 1,
 			},
 			nextAccount.ID: {
 				AccountID: nextAccount.ID, SlotID: 13001, ProfileID: 13000,
-				OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceDesktop,
+				OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceCLI,
 				Architecture: CodexArchX8664, CatalogVersion: 1,
 				SlotIndex: 0, Epoch: 4, State: "active", PolicyVersion: 1,
 			},

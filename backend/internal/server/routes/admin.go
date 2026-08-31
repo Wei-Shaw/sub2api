@@ -559,6 +559,14 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		adminSettings.GET("", h.Admin.Setting.GetSettings)
 		adminSettings.PUT("", h.Admin.Setting.UpdateSettings)
+		codexIdentityTemplates := adminSettings.Group("/codex-identity-templates")
+		{
+			codexIdentityTemplates.GET("", h.Admin.CodexIdentityTemplate.List)
+			codexIdentityTemplates.POST("", h.Admin.CodexIdentityTemplate.Create)
+			codexIdentityTemplates.GET("/:id", h.Admin.CodexIdentityTemplate.Get)
+			codexIdentityTemplates.PUT("/:id", h.Admin.CodexIdentityTemplate.Update)
+			codexIdentityTemplates.DELETE("/:id", h.Admin.CodexIdentityTemplate.Delete)
+		}
 		adminSettings.POST("/test-smtp", h.Admin.Setting.TestSMTPConnection)
 		adminSettings.POST("/send-test-email", h.Admin.Setting.SendTestEmail)
 		adminSettings.GET("/email-templates", h.Admin.Setting.ListEmailTemplates)

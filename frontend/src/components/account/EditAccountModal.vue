@@ -1682,11 +1682,9 @@
         v-if="account?.platform === 'openai' && account?.type === 'oauth' && !isSparkShadow"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
-        <CodexIdentityPolicyEditor
-          v-model="codexIdentityPolicy"
-          :proxies="proxies"
-          :account-proxy-id="form.proxy_id"
-          id-prefix="edit-codex-identity"
+        <CodexIdentityTemplateSelector
+          v-model="codexIdentityAssignment"
+          id-prefix="edit-codex-template"
         />
       </div>
 
@@ -2119,7 +2117,7 @@
 
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div
-        v-if="account?.platform === 'openai' && account?.type === 'oauth' && codexIdentityPolicy.mode === 'off'"
+        v-if="account?.platform === 'openai' && account?.type === 'oauth' && !codexIdentityAssignment.enabled"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -2898,6 +2896,7 @@
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
@@ -2910,7 +2909,7 @@ import type {
   OpenAIResponsesMode,
   OpenAIEndpointCapability,
   OllamaCloudUsageState,
-  CodexIdentityPolicy
+  CodexIdentityAssignment
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -2927,15 +2926,7 @@ import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
-import { CodexDeviceSlotLifecycle, CodexIdentityPolicyEditor } from './codex-identity'
-import {
-  createDefaultCodexIdentityPolicy,
-  availableCodexIdentityProxyIDs,
-  codexIdentityValidationMessageKey,
-  normalizeCodexIdentityPolicy,
-  serializeCodexIdentityPolicy,
-  validateCodexIdentityPolicy
-} from '@/utils/codexIdentityValidation'
+import { CodexDeviceSlotLifecycle, CodexIdentityTemplateSelector } from './codex-identity'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -3314,9 +3305,9 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
-const codexIdentityPolicy = ref<CodexIdentityPolicy>(createDefaultCodexIdentityPolicy())
-watch(() => codexIdentityPolicy.value.mode, (mode) => {
-  if (mode === 'os_profile_device_pool') codexFingerprintMode.value = 'off'
+const codexIdentityAssignment = ref<CodexIdentityAssignment>({ enabled: false })
+watch(() => codexIdentityAssignment.value.enabled, (enabled) => {
+  if (enabled) codexFingerprintMode.value = 'off'
 })
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
@@ -3797,10 +3788,18 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
-  codexIdentityPolicy.value =
-    newAccount.platform === 'openai' && newAccount.type === 'oauth' && newAccount.codex_identity_policy
-      ? normalizeCodexIdentityPolicy(newAccount.codex_identity_policy)
-      : createDefaultCodexIdentityPolicy()
+  codexIdentityAssignment.value = newAccount.platform === 'openai' &&
+    newAccount.type === 'oauth' &&
+    typeof newAccount.codex_identity_template_id === 'number' &&
+    newAccount.codex_identity_template_id > 0
+    ? {
+        enabled: true,
+        template_id: newAccount.codex_identity_template_id,
+        ...(typeof newAccount.codex_identity_template_applied_revision === 'number'
+          ? { expected_revision: newAccount.codex_identity_template_applied_revision }
+          : {}),
+      }
+    : { enabled: false }
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
@@ -4637,7 +4636,12 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
     })
     return false
   } catch (error: any) {
-    appStore.showError(error.message || t('admin.accounts.failedToUpdate'))
+    appStore.showError(extractI18nErrorMessage(
+      error,
+      t,
+      'admin.accounts.codexIdentity.templateErrors',
+      error.message || t('admin.accounts.failedToUpdate'),
+    ))
     return false
   }
 }
@@ -4670,7 +4674,12 @@ const submitUpdateAccount = async (accountID: number, updatePayload: Record<stri
       })
       return
     }
-    appStore.showError(error.message || t('admin.accounts.failedToUpdate'))
+    appStore.showError(extractI18nErrorMessage(
+      error,
+      t,
+      'admin.accounts.codexIdentity.templateErrors',
+      error.message || t('admin.accounts.failedToUpdate'),
+    ))
   } finally {
     submitting.value = false
   }
@@ -4681,13 +4690,10 @@ const handleSubmit = async () => {
   const accountID = props.account.id
 
   if (props.account.platform === 'openai' && props.account.type === 'oauth' && !isSparkShadow.value) {
-    const identityValidation = validateCodexIdentityPolicy(codexIdentityPolicy.value, {
-      availableProxyIDs: availableCodexIdentityProxyIDs(props.proxies)
-    })
-    if (!identityValidation.valid) {
-      const issue = identityValidation.errors[0]
-      const key = issue ? codexIdentityValidationMessageKey(issue.code) : null
-      appStore.showError(key ? t(key) : issue?.message || t('admin.accounts.codexIdentity.fixErrors'))
+    if (codexIdentityAssignment.value.enabled &&
+      (!Number.isInteger(codexIdentityAssignment.value.template_id) ||
+        Number(codexIdentityAssignment.value.template_id) <= 0)) {
+      appStore.showError(t('admin.accounts.codexIdentity.templateRequired'))
       return
     }
   }
@@ -4706,7 +4712,7 @@ const handleSubmit = async () => {
 
   const updatePayload: Record<string, unknown> = { ...form }
   if (props.account.platform === 'openai' && props.account.type === 'oauth' && !isSparkShadow.value) {
-    updatePayload.codex_identity_policy = serializeCodexIdentityPolicy(codexIdentityPolicy.value)
+    updatePayload.codex_identity_assignment = { ...codexIdentityAssignment.value }
   }
   try {
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
@@ -5328,7 +5334,7 @@ const handleSubmit = async () => {
       // 指纹收敛模式：默认 off（不写入）；device/session/full 是显式 opt-in，
       // 必须落键，否则管理员的选择会被后端当作"未设置"而回落到 off（#5610）。
       if (props.account.type === 'oauth') {
-        if (codexIdentityPolicy.value.mode === 'off' && codexFingerprintMode.value !== 'off') {
+        if (!codexIdentityAssignment.value.enabled && codexFingerprintMode.value !== 'off') {
           newExtra.codex_fingerprint_mode = codexFingerprintMode.value
         } else {
           delete newExtra.codex_fingerprint_mode
