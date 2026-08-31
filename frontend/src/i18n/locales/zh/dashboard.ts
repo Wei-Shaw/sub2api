@@ -432,7 +432,8 @@ export default {
       detailAccuracy: '定位精度',
       detailCoordinates: '坐标',
     },
-    tabs: { usage: '用量明细', errors: '错误请求', ranking: '用户排行' },
+    tabs: { usage: '用量明细', errors: '错误请求', ranking: '排行' },
+    rankingSubTabs: { users: '用户排行', apiKeys: 'API Key 排行' },
     errors: {
       time: '时间', model: '模型', endpoint: '端点', status: '状态码',
       category: '分类', platform: '平台', message: '错误信息',

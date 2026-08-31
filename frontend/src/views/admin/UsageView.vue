@@ -63,6 +63,22 @@
           />
           <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
         </div>
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <ApiKeyDistributionChart
+            ref="apiKeyDistRef"
+            :start-date="startDate"
+            :end-date="endDate"
+            :user-id="filters.user_id"
+            @key-click="(item) => handleKeySelect(item.api_key_id, item.key_name)"
+          />
+          <ApiKeyUsageTrendChart
+            ref="apiKeyTrendRef"
+            :start-date="startDate"
+            :end-date="endDate"
+            :granularity="granularity"
+            :user-id="filters.user_id"
+          />
+        </div>
       </div>
       <!-- 明细区：tab 栏 + 筛选 + 内容收进同一张卡片，消除割裂感 -->
       <div class="card">
@@ -153,14 +169,51 @@
         </div>
         <!-- 懒挂载：首次切到该 tab 才请求排行数据，之后随筛选自动刷新 -->
         <div v-if="rankingMounted" v-show="activeTab === 'ranking'" class="overflow-hidden rounded-b-2xl">
-          <UserTokenRanking
-            ref="rankingRef"
-            :start-date="startDate"
-            :end-date="endDate"
-            :filters="breakdownFilters"
-            :model="filters.model"
-            @select-user="handleRankingSelectUser"
-          />
+          <div class="flex items-center border-b border-gray-100 px-4 py-3 dark:border-dark-700/50 sm:px-6">
+            <div class="inline-flex rounded-lg bg-gray-100 p-1 dark:bg-dark-800">
+              <button
+                type="button"
+                data-testid="usage-ranking-subtab-users"
+                class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+                :class="rankingSubTab === 'users'
+                  ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+                @click="switchRankingSubTab('users')"
+              >
+                {{ t('usage.rankingSubTabs.users') }}
+              </button>
+              <button
+                type="button"
+                data-testid="usage-ranking-subtab-apikeys"
+                class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+                :class="rankingSubTab === 'apiKeys'
+                  ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+                @click="switchRankingSubTab('apiKeys')"
+              >
+                {{ t('usage.rankingSubTabs.apiKeys') }}
+              </button>
+            </div>
+          </div>
+          <div v-show="rankingSubTab === 'users'">
+            <UserTokenRanking
+              ref="rankingRef"
+              :start-date="startDate"
+              :end-date="endDate"
+              :filters="breakdownFilters"
+              :model="filters.model"
+              @select-user="handleRankingSelectUser"
+            />
+          </div>
+          <div v-if="keyRankingMounted" v-show="rankingSubTab === 'apiKeys'">
+            <ApiKeyTokenRanking
+              ref="keyRankingRef"
+              :start-date="startDate"
+              :end-date="endDate"
+              :user-id="filters.user_id"
+              @select-key="handleKeySelect"
+            />
+          </div>
         </div>
       </div>
       <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="'request'" />
@@ -196,6 +249,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination fro
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
 import UserTokenRanking from '@/components/admin/usage/UserTokenRanking.vue'
+import ApiKeyTokenRanking from '@/components/admin/usage/ApiKeyTokenRanking.vue'
 import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import OpsErrorLogTable from '@/views/admin/ops/components/OpsErrorLogTable.vue'
@@ -204,6 +258,8 @@ import { listErrorLogs } from '@/api/admin/ops'
 import type { OpsErrorLog } from '@/api/admin/ops'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'; import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'; import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
+import ApiKeyDistributionChart from '@/components/charts/ApiKeyDistributionChart.vue'
+import ApiKeyUsageTrendChart from '@/components/charts/ApiKeyUsageTrendChart.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { AdminUsageLog, TrendDataPoint, ModelStat, GroupStat, EndpointStat, AdminUser } from '@/types'; import type { AdminUsageStatsResponse, AdminUsageQueryParams } from '@/api/admin/usage'
 
@@ -274,6 +330,15 @@ const handleRankingSelectUser = (userId: number, email: string) => {
   applyFilters()
 }
 
+// Drill down from the per-key distribution chart / ranking: scope the whole
+// usage view to that API key and jump to the usage-detail tab.
+const handleKeySelect = (apiKeyId: number, keyName: string) => {
+  filters.value = { ...filters.value, api_key_id: apiKeyId }
+  usageFiltersRef.value?.setApiKeyKeyword?.(keyName || `#${apiKeyId}`)
+  activeTab.value = 'usage'
+  applyFilters()
+}
+
 const granularityOptions = computed(() => [{ value: 'day', label: t('admin.dashboard.day') }, { value: 'hour', label: t('admin.dashboard.hour') }])
 // Use local timezone to avoid UTC timezone issues
 const formatLD = (d: Date) => {
@@ -321,6 +386,7 @@ const applyRouteQueryFilters = () => {
   const queryStartDate = getSingleQueryValue(route.query.start_date)
   const queryEndDate = getSingleQueryValue(route.query.end_date)
   const queryUserId = getNumericQueryValue(route.query.user_id)
+  const queryApiKeyId = getNumericQueryValue(route.query.api_key_id)
 
   if (queryStartDate) {
     startDate.value = queryStartDate
@@ -332,8 +398,13 @@ const applyRouteQueryFilters = () => {
   filters.value = {
     ...filters.value,
     user_id: queryUserId,
+    api_key_id: queryApiKeyId,
     start_date: startDate.value,
     end_date: endDate.value
+  }
+  if (queryApiKeyId) {
+    const queryKeyName = getSingleQueryValue(route.query.key_name)
+    usageFiltersRef.value?.setApiKeyKeyword?.(queryKeyName || `#${queryApiKeyId}`)
   }
   granularity.value = getGranularityForRange(startDate.value, endDate.value)
 }
@@ -537,8 +608,11 @@ const refreshData = () => {
   loadStats(true)
   loadModelStats(modelDistributionSource.value, true)
   loadChartData()
+  apiKeyDistRef.value?.reload()
+  apiKeyTrendRef.value?.reload()
   if (activeTab.value === 'errors') loadAdminErrors()
   if (rankingMounted.value) rankingRef.value?.reload()
+  if (keyRankingMounted.value) keyRankingRef.value?.reload()
 }
 const resetFilters = () => {
   const range = getLast24HoursRangeDates()
@@ -786,11 +860,25 @@ const detailTabs = computed(() => [
 const usageFiltersRef = ref<InstanceType<typeof UsageFilters> | null>(null)
 const rankingMounted = ref(false)
 const rankingRef = ref<InstanceType<typeof UserTokenRanking> | null>(null)
+// 排行 tab 内的 用户/API Key 子切换；Key 排行同样懒挂载
+const rankingSubTab = ref<'users' | 'apiKeys'>('users')
+const keyRankingMounted = ref(false)
+const keyRankingRef = ref<InstanceType<typeof ApiKeyTokenRanking> | null>(null)
+const apiKeyDistRef = ref<InstanceType<typeof ApiKeyDistributionChart> | null>(null)
+const apiKeyTrendRef = ref<InstanceType<typeof ApiKeyUsageTrendChart> | null>(null)
 
 const switchTab = (tab: DetailTab) => {
   activeTab.value = tab
   if (tab === 'errors' && errRows.value.length === 0) loadAdminErrors()
-  if (tab === 'ranking') rankingMounted.value = true
+  if (tab === 'ranking') {
+    rankingMounted.value = true
+    if (rankingSubTab.value === 'apiKeys') keyRankingMounted.value = true
+  }
+}
+
+const switchRankingSubTab = (tab: 'users' | 'apiKeys') => {
+  rankingSubTab.value = tab
+  if (tab === 'apiKeys') keyRankingMounted.value = true
 }
 
 // Error tab state
