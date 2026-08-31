@@ -324,10 +324,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	smartRoutingMembers := domain.NormalizeSmartRoutingMembers(input.SmartRoutingMembers)
 	if platform == PlatformSmartRouting {
 		if subscriptionType != SubscriptionTypeStandard {
-			return nil, errors.New("smart routing group must use standard subscription type")
+			return nil, infraerrors.New(http.StatusBadRequest, "SMART_ROUTING_INVALID_SUBSCRIPTION", "smart routing group must use standard subscription type")
 		}
 		if len(input.CopyAccountsFromGroupIDs) > 0 {
-			return nil, errors.New("smart routing group cannot bind accounts")
+			return nil, infraerrors.New(http.StatusBadRequest, "SMART_ROUTING_BINDS_ACCOUNTS", "smart routing group cannot bind accounts")
 		}
 		validated, err := s.validateSmartRoutingConfig(ctx, 0, smartRoutingMembers)
 		if err != nil {
@@ -335,7 +335,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		}
 		smartRoutingMembers = validated
 	} else if len(smartRoutingMembers) > 0 {
-		return nil, errors.New("smart_routing_members is only valid for smart_routing platform groups")
+		return nil, infraerrors.New(http.StatusBadRequest, "SMART_ROUTING_MEMBERS_WRONG_PLATFORM", "smart_routing_members is only valid for smart_routing platform groups")
 	}
 
 	// 限额字段：nil/负数 表示"无限制"，0 表示"不允许用量"，正数表示具体限额
@@ -587,12 +587,12 @@ func normalizeLimit(limit *float64) *float64 {
 func (s *adminServiceImpl) validateSmartRoutingConfig(ctx context.Context, currentGroupID int64, members []domain.SmartRoutingMember) ([]domain.SmartRoutingMember, error) {
 	normalized := domain.NormalizeSmartRoutingMembers(members)
 	if len(normalized) == 0 {
-		return nil, errors.New("smart routing group requires at least one member group")
+		return nil, infraerrors.New(http.StatusBadRequest, "SMART_ROUTING_EMPTY_MEMBERS", "smart routing group requires at least one member group")
 	}
 	seen := make(map[int64]struct{}, len(normalized))
 	for _, m := range normalized {
 		if currentGroupID > 0 && m.GroupID == currentGroupID {
-			return nil, fmt.Errorf("smart routing group %d cannot be its own member", currentGroupID)
+			return nil, infraerrors.Newf(http.StatusBadRequest, "SMART_ROUTING_SELF_MEMBER", "smart routing group %d cannot be its own member", currentGroupID)
 		}
 		if _, dup := seen[m.GroupID]; dup {
 			continue
@@ -600,13 +600,14 @@ func (s *adminServiceImpl) validateSmartRoutingConfig(ctx context.Context, curre
 		seen[m.GroupID] = struct{}{}
 		member, err := s.groupRepo.GetByIDLite(ctx, m.GroupID)
 		if err != nil {
+			// 保留底层 ErrGroupNotFound 的 404 语义（%w 透传）。
 			return nil, fmt.Errorf("smart routing member group %d not found: %w", m.GroupID, err)
 		}
 		if member.Platform == PlatformSmartRouting {
-			return nil, fmt.Errorf("smart routing member group %d cannot itself be a smart routing group", m.GroupID)
+			return nil, infraerrors.Newf(http.StatusBadRequest, "SMART_ROUTING_NESTED_MEMBER", "smart routing member group %d cannot itself be a smart routing group", m.GroupID)
 		}
 		if member.IsSubscriptionType() {
-			return nil, fmt.Errorf("smart routing member group %d is a subscription group and cannot be aggregated", m.GroupID)
+			return nil, infraerrors.Newf(http.StatusBadRequest, "SMART_ROUTING_SUBSCRIPTION_MEMBER", "smart routing member group %d is a subscription group and cannot be aggregated", m.GroupID)
 		}
 	}
 	return normalized, nil
@@ -956,7 +957,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if group.Platform == PlatformSmartRouting {
 		if group.SubscriptionType != SubscriptionTypeStandard {
-			return nil, errors.New("smart routing group must use standard subscription type")
+			return nil, infraerrors.New(http.StatusBadRequest, "SMART_ROUTING_INVALID_SUBSCRIPTION", "smart routing group must use standard subscription type")
 		}
 		validated, err := s.validateSmartRoutingConfig(ctx, id, pendingSmartRouting)
 		if err != nil {
@@ -965,7 +966,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.SmartRoutingMembers = validated
 	} else {
 		if input.SmartRoutingMembers != nil && len(pendingSmartRouting) > 0 {
-			return nil, errors.New("smart_routing_members is only valid for smart_routing platform groups")
+			return nil, infraerrors.New(http.StatusBadRequest, "SMART_ROUTING_MEMBERS_WRONG_PLATFORM", "smart_routing_members is only valid for smart_routing platform groups")
 		}
 		// 转出智能路由平台时清空成员，避免残留配置。
 		group.SmartRoutingMembers = nil
