@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"github.com/tidwall/gjson"
 )
@@ -84,12 +85,19 @@ func extractFirstUserText(body []byte) string {
 // 此 block 不带 cache_control（与真实 CLI 一致；cache breakpoint 由后续的
 // Claude Code prompt block 承担）。
 func buildBillingAttributionText(body []byte, cliVersion string) (string, error) {
+	return buildBillingAttributionTextWithEntrypoint(body, cliVersion, "cli")
+}
+
+func buildBillingAttributionTextWithEntrypoint(body []byte, cliVersion, entrypoint string) (string, error) {
 	if cliVersion == "" {
 		return "", fmt.Errorf("cliVersion required")
 	}
+	if strings.TrimSpace(entrypoint) == "" {
+		entrypoint = "cli"
+	}
 	fp := computeClaudeCodeFingerprint(body, cliVersion)
 	return fmt.Sprintf(
-		"x-anthropic-billing-header: cc_version=%s.%s; cc_entrypoint=cli;",
-		cliVersion, fp,
+		"x-anthropic-billing-header: cc_version=%s.%s; cc_entrypoint=%s;",
+		cliVersion, fp, entrypoint,
 	), nil
 }

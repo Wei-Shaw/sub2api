@@ -48,6 +48,15 @@ func (r *defaultOpenAIWSProtocolResolver) Resolve(account *Account) OpenAIWSProt
 	if r == nil || r.cfg == nil {
 		return openAIWSHTTPDecision("config_missing")
 	}
+	if account.UsesOpenAICodexProtocol() {
+		profile := ResolveCodexTransportProfile(r.cfg.Gateway.CodexTransportProfile)
+		switch profile.ID {
+		case CodexTransportProfileCompatibility, CodexTransportProfileHTTP2:
+			// HTTP2 profile intentionally bypasses the WS selector; the shared
+			// HTTP upstream profile will apply the configured H2/fallback policy.
+			return openAIWSHTTPDecision("codex_transport_profile_" + profile.ID)
+		}
+	}
 
 	wsCfg := r.cfg.Gateway.OpenAIWS
 	if wsCfg.ForceHTTP {

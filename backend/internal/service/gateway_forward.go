@@ -205,7 +205,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		systemRaw, _ := parsed.SystemValue()
 		systemPromptInjectionEnabled, systemPrompt, systemPromptBlocks := s.claudeOAuthSystemPromptInjectionSettings(ctx)
 		if systemPromptInjectionEnabled {
-			if err := replaceBody(rewriteSystemForNonClaudeCodeWithPromptBlocks(body, systemRaw, systemPrompt, systemPromptBlocks)); err != nil {
+			profile := s.claudeCodeMimicProfile()
+			mode := s.claudeCodeMimicMode(ctx)
+			if err := replaceBody(rewriteSystemForNonClaudeCodeWithPromptBlocksMode(body, systemRaw, systemPrompt, systemPromptBlocks, profile, mode)); err != nil {
 				return nil, err
 			}
 			systemRewritten = true

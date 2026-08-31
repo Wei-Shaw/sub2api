@@ -78,11 +78,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		s.relayOpenAICodexTurnState(c, account, resp.Header)
 	}
 
-	// Set SSE response headers
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
+	// Set SSE response headers. The gateway owns the bytes and framing after
+	// parsing upstream events, so do not expose stale compression/length data.
+	responseheaders.NormalizeEventStreamHeaders(c.Writer.Header())
 
 	// Pass through other headers
 	if !stageFirstOutput && resp.Header.Get("x-request-id") != "" {
@@ -103,10 +101,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		s.noteStagedOpenAICodexTurnStateCommitted(c, account, attemptResponseHeaders)
 		// These headers describe this gateway's SSE stream and are stable across
 		// account attempts. Keep them authoritative over upstream values.
-		c.Header("Content-Type", "text/event-stream")
-		c.Header("Cache-Control", "no-cache")
-		c.Header("Connection", "keep-alive")
-		c.Header("X-Accel-Buffering", "no")
+		responseheaders.NormalizeEventStreamHeaders(c.Writer.Header())
 	}
 
 	w := c.Writer

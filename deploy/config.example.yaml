@@ -258,6 +258,19 @@ gateway:
   #
   # 注意：开启后会影响所有客户端的行为（不仅限于 VS Code / Codex CLI），请谨慎开启。
   force_codex_cli: false
+  # Claude Code OAuth mimic profile: claude-code-cli, claude-agent-sdk, claude-code-ide
+  # Claude Code OAuth 仿真身份版本档案。
+  claude_code_mimic_profile: "claude-code-cli"
+  # Body adaptation mode: compatibility preserves the legacy system-to-messages bridge;
+  # strict keeps original instructions in system blocks and emits no synthetic assistant turn.
+  # 请求体模式：compatibility 保留旧兼容桥接；strict 保持 system 形态且不合成 assistant 回执。
+  claude_code_mimic_mode: "compatibility"
+  # Codex transport intent: codex-cli (HTTP/2 + WS eligible), codex-cli-http2,
+  # codex-cli-websocket, or compatibility. TLS fingerprint remains opt-in per account.
+  # Codex 传输档案；不会把 Claude/Node TLS 指纹错误套到 codex-rs。
+  codex_transport_profile: "codex-cli"
+  # Gateway-generated error wording: proxy (legacy) or provider (OpenAI/Anthropic style)
+  provider_error_mode: "proxy"
   # Stop rewriting load-shed Codex originators to the official CLI identity.
   # 关闭「把落在上游降载桶的 Codex originator 改写为官方 CLI 身份（codex_cli_rs）」。
   #

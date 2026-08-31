@@ -1,0 +1,22 @@
+{
+  "source": "sanitized-source-derived",
+  "profile": "claude-agent-sdk",
+  "mode": "strict",
+  "input": {
+    "model": "claude-sonnet-4-6",
+    "system": "Project instructions",
+    "messages": [
+      {"role": "user", "content": "hello"}
+    ]
+  },
+  "expected": {
+    "system_block_count": 4,
+    "billing_prefix": "x-anthropic-billing-header: cc_version=",
+    "billing_entrypoint": "cc_entrypoint=sdk;",
+    "identity_prompt": "You are Claude Code, Anthropic's official CLI for Claude, running within the Claude Agent SDK.",
+    "expansion_contains": "interactive agent that helps users with software engineering tasks",
+    "cache_ttl": "1h",
+    "original_system": "Project instructions",
+    "message_count": 1
+  }
+}

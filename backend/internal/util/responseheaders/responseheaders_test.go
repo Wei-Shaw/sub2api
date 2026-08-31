@@ -88,3 +88,32 @@ func TestFilterHeadersEnabledUsesAllowlist(t *testing.T) {
 		t.Fatalf("expected X-Blocked removed, got %q", filtered.Get("X-Blocked"))
 	}
 }
+
+func TestNormalizeEventStreamHeaders(t *testing.T) {
+	header := http.Header{
+		"Content-Type":      []string{"text/event-stream; charset=utf-8"},
+		"Content-Encoding":  []string{"gzip"},
+		"Content-Length":    []string{"123"},
+		"Transfer-Encoding": []string{"chunked"},
+		"Vary":              []string{"Accept-Encoding"},
+		"Cache-Control":     []string{"public, max-age=60"},
+		"X-Accel-Buffering": []string{"yes"},
+	}
+
+	NormalizeEventStreamHeaders(header)
+
+	if got := header.Get("Content-Type"); got != "text/event-stream" {
+		t.Fatalf("Content-Type = %q, want text/event-stream", got)
+	}
+	if got := header.Get("Cache-Control"); got != "no-cache" {
+		t.Fatalf("Cache-Control = %q, want no-cache", got)
+	}
+	if got := header.Get("Connection"); got != "keep-alive" {
+		t.Fatalf("Connection = %q, want keep-alive", got)
+	}
+	for _, key := range []string{"Content-Encoding", "Content-Length", "Transfer-Encoding", "Vary"} {
+		if got := header.Get(key); got != "" {
+			t.Fatalf("%s = %q, want removed", key, got)
+		}
+	}
+}

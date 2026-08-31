@@ -449,6 +449,7 @@ func (s *OpenAIGatewayService) buildInputTokensUpstreamRequest(
 		return nil, err
 	}
 	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	req = s.withConfiguredCodexTransportProfile(req, account)
 	authHeaders, err := s.buildOpenAIAuthenticationHeaders(ctx, account, token)
 	if err != nil {
 		return nil, err

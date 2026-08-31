@@ -483,7 +483,11 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 
 	// 同步 billing header cc_version 与实际发送的 User-Agent 版本
 	if ctFingerprint != nil && ctEnableFP {
-		body = syncBillingHeaderVersion(body, ctFingerprint.UserAgent)
+		billingUA := ctFingerprint.UserAgent
+		if tokenType == "oauth" && mimicClaudeCode {
+			billingUA = s.claudeCodeMimicProfile().UserAgent
+		}
+		body = syncBillingHeaderVersion(body, billingUA)
 	}
 
 	// === 计算最终 anthropic-beta header（先于 body sanitize 与 CCH 签名）===
@@ -546,7 +550,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 
 	// OAuth + mimic Claude Code：强制注入 CLI 指纹 header
 	if tokenType == "oauth" && mimicClaudeCode {
-		applyClaudeCodeMimicHeaders(req, false)
+		applyClaudeCodeMimicHeaders(req, false, s.claudeCodeMimicProfile())
 	}
 
 	// 写入最终 anthropic-beta header（Del 一次避免白名单透传值残留）

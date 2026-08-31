@@ -502,6 +502,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		errType = "upstream_error"
 		errMsg = "Upstream request failed"
 	}
+	errType, errMsg = normalizeProviderError(resolveProviderErrorMode(s.cfg), "anthropic", resp.StatusCode, errType, errMsg)
 
 	// 返回自定义错误响应
 	c.JSON(statusCode, gin.H{
@@ -626,11 +627,12 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 	}
 
 	// 返回统一的重试耗尽错误响应
+	errType, errMsg := normalizeProviderError(resolveProviderErrorMode(s.cfg), "anthropic", http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
 	c.JSON(http.StatusBadGateway, gin.H{
 		"type": "error",
 		"error": gin.H{
-			"type":    "upstream_error",
-			"message": "Upstream request failed after retries",
+			"type":    errType,
+			"message": errMsg,
 		},
 	})
 
@@ -701,10 +703,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	}
 
 	// 设置SSE响应头
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
+	responseheaders.NormalizeEventStreamHeaders(c.Writer.Header())
 
 	// 透传其他响应头
 	if v := resp.Header.Get("x-request-id"); v != "" {
