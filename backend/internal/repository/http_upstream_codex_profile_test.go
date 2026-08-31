@@ -11,7 +11,10 @@ import (
 func TestResolveProtocolModeWithCodexCompatibilityForcesHTTP1(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIHTTP2.Enabled = true
-	svc := NewHTTPUpstream(cfg).(*httpUpstreamService)
+	svc, ok := NewHTTPUpstream(cfg).(*httpUpstreamService)
+	if !ok {
+		t.Fatal("NewHTTPUpstream returned an unexpected implementation")
+	}
 
 	got := svc.resolveProtocolModeWithCodexProfile(
 		service.HTTPUpstreamProfileOpenAI,
@@ -28,7 +31,10 @@ func TestResolveProtocolModeWithCodexCompatibilityForcesHTTP1(t *testing.T) {
 func TestResolveProtocolModeWithCodexHTTP2KeepsHTTP2Preference(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIHTTP2.Enabled = true
-	svc := NewHTTPUpstream(cfg).(*httpUpstreamService)
+	svc, ok := NewHTTPUpstream(cfg).(*httpUpstreamService)
+	if !ok {
+		t.Fatal("NewHTTPUpstream returned an unexpected implementation")
+	}
 	proxy, err := url.Parse("http://proxy.example:8080")
 	if err != nil {
 		t.Fatal(err)

@@ -779,10 +779,6 @@ func decodeClaudeOAuthSystemPromptCacheControlWithTTL(raw json.RawMessage, defau
 	return value, nil
 }
 
-func expandClaudeOAuthSystemPromptTextTemplate(body []byte, text string, expansionPrompt string) (string, error) {
-	return expandClaudeOAuthSystemPromptTextTemplateWithProfile(body, text, expansionPrompt, claude.ResolveProfile(claude.DefaultProfileID))
-}
-
 func expandClaudeOAuthSystemPromptTextTemplateWithProfile(body []byte, text string, expansionPrompt string, profile claude.Profile) (string, error) {
 	if text == "" {
 		return "", nil
@@ -805,10 +801,6 @@ func expandClaudeOAuthSystemPromptTextTemplateWithProfile(body []byte, text stri
 		"{claude_code_expansion_prompt}", expansionPrompt,
 	)
 	return replacer.Replace(text), nil
-}
-
-func defaultClaudeOAuthSystemPromptBlockConfig() []claudeOAuthSystemPromptBlockConfig {
-	return defaultClaudeOAuthSystemPromptBlockConfigForProfile(claude.ResolveProfile(claude.DefaultProfileID))
 }
 
 func defaultClaudeOAuthSystemPromptBlockConfigForProfile(profile claude.Profile) []claudeOAuthSystemPromptBlockConfig {
@@ -837,10 +829,6 @@ func defaultClaudeOAuthSystemPromptBlockConfigForProfile(profile claude.Profile)
 			),
 		},
 	}
-}
-
-func buildClaudeOAuthSystemPromptBlocksJSON(body []byte, expansionPrompt string, blocksConfig string) ([][]byte, error) {
-	return buildClaudeOAuthSystemPromptBlocksJSONWithProfile(body, expansionPrompt, blocksConfig, claude.ResolveProfile(claude.DefaultProfileID))
 }
 
 func buildClaudeOAuthSystemPromptBlocksJSONWithProfile(body []byte, expansionPrompt string, blocksConfig string, profile claude.Profile) ([][]byte, error) {
@@ -968,7 +956,7 @@ func rewriteSystemForNonClaudeCodeWithPromptBlocksMode(body []byte, system any, 
 	//
 	//    缺失 billing block 的系统 payload 是 Anthropic 判定第三方的关键信号之一
 	//    （真实 CLI 每个请求都带）。新版 CLI 已取消 cch=... 签名字段，故 block 不再注入
-	//    cch（见 buildBillingAttributionText）。
+	//    cch（见 buildBillingAttributionTextWithEntrypoint）。
 	systemBlocks, blockErr := buildClaudeOAuthSystemPromptBlocksJSONWithProfile(body, expansionPrompt, blocksConfig, profile)
 	if blockErr != nil {
 		logger.LegacyPrintf("service.gateway", "Warning: failed to build configured Claude OAuth system blocks: %v", blockErr)

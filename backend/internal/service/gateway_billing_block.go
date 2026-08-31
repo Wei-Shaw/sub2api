@@ -71,7 +71,7 @@ func extractFirstUserText(body []byte) string {
 	return first
 }
 
-// buildBillingAttributionText 构造 system 数组的 billing attribution 文本。
+// buildBillingAttributionTextWithEntrypoint 构造 system 数组的 billing attribution 文本。
 //
 // 形态对齐真实 Claude Code CLI：
 //
@@ -84,10 +84,6 @@ func extractFirstUserText(body []byte) string {
 //
 // 此 block 不带 cache_control（与真实 CLI 一致；cache breakpoint 由后续的
 // Claude Code prompt block 承担）。
-func buildBillingAttributionText(body []byte, cliVersion string) (string, error) {
-	return buildBillingAttributionTextWithEntrypoint(body, cliVersion, "cli")
-}
-
 func buildBillingAttributionTextWithEntrypoint(body []byte, cliVersion, entrypoint string) (string, error) {
 	if cliVersion == "" {
 		return "", fmt.Errorf("cliVersion required")
