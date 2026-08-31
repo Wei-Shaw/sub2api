@@ -349,15 +349,9 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
 		streamInterval = time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
 	}
-	var intervalTicker *time.Ticker
-	if streamInterval > 0 {
-		intervalTicker = time.NewTicker(streamInterval)
-		defer intervalTicker.Stop()
-	}
-	var intervalCh <-chan time.Time
-	if intervalTicker != nil {
-		intervalCh = intervalTicker.C
-	}
+	intervalTimer := newStreamIdleTimer(streamInterval)
+	defer intervalTimer.Stop()
+	intervalCh := intervalTimer.C()
 
 	keepaliveInterval := time.Duration(0)
 	if s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
@@ -460,7 +454,7 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 
 		case <-intervalCh:
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
-			if time.Since(lastRead) < streamInterval {
+			if !intervalTimer.ExpiredSince(lastRead) {
 				continue
 			}
 			if clientDisconnected {

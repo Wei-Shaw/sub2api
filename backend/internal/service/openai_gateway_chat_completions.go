@@ -664,15 +664,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
 		streamInterval = time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
 	}
-	var intervalTicker *time.Ticker
-	if streamInterval > 0 {
-		intervalTicker = time.NewTicker(streamInterval)
-		defer intervalTicker.Stop()
-	}
-	var intervalCh <-chan time.Time
-	if intervalTicker != nil {
-		intervalCh = intervalTicker.C
-	}
+	intervalTimer := newStreamIdleTimer(streamInterval)
+	defer intervalTimer.Stop()
+	intervalCh := intervalTimer.C()
 
 	resultWithUsage := func() *OpenAIForwardResult {
 		out := &OpenAIForwardResult{
@@ -1076,7 +1070,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 		case <-intervalCh:
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
-			if time.Since(lastRead) < streamInterval {
+			if !intervalTimer.ExpiredSince(lastRead) {
 				continue
 			}
 			if clientDisconnected {

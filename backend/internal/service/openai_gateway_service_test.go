@@ -1564,6 +1564,57 @@ func TestOpenAIStreamingTimeout(t *testing.T) {
 	}
 }
 
+func TestOpenAIStreamingTimeoutUsesDeadlineFromLastRead(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 1,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	pr, pw := io.Pipe()
+	defer pr.Close()
+	defer pw.Close()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       pr,
+		Header:     http.Header{},
+	}
+
+	resultCh := make(chan error, 1)
+	startedAt := time.Now()
+	go func() {
+		_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1}, startedAt, "model", "model")
+		resultCh <- err
+	}()
+
+	chunk := "data: {\"id\":\"chatcmpl-idle\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"x\"}}]}\n\n"
+	for _, offset := range []time.Duration{200 * time.Millisecond, 400 * time.Millisecond, 600 * time.Millisecond, 800 * time.Millisecond, 1100 * time.Millisecond} {
+		time.Sleep(time.Until(startedAt.Add(offset)))
+		_, err := io.WriteString(pw, chunk)
+		require.NoError(t, err)
+	}
+	lastReadCompletedAt := time.Now()
+
+	select {
+	case err := <-resultCh:
+		require.ErrorContains(t, err, "stream data interval timeout")
+		idleElapsed := time.Since(lastReadCompletedAt)
+		t.Logf("stream idle timeout fired %s after the last upstream read", idleElapsed)
+		require.GreaterOrEqual(t, idleElapsed, 800*time.Millisecond)
+		require.Less(t, idleElapsed, 1400*time.Millisecond, "idle timeout must follow the last upstream read, not the next fixed ticker phase")
+	case <-time.After(4 * time.Second):
+		t.Fatal("stream timeout did not fire")
+	}
+}
+
 func TestOpenAIStreamingContextCanceledReturnsIncompleteErrorWithoutInjectingErrorEvent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
