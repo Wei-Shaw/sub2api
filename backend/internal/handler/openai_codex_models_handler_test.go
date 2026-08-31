@@ -620,8 +620,8 @@ func requireCompleteCodexModelsHandlerResponse(t *testing.T, recorder *httptest.
 		t.Fatalf("truncation_policy must be populated: %v", model["truncation_policy"])
 	}
 	modalities, ok := model["input_modalities"].([]any)
-	if !ok || len(modalities) != 1 || modalities[0] != "text" {
-		t.Fatalf("custom OpenAI-compatible endpoint modalities: got %v, want [text]", model["input_modalities"])
+	if !ok || len(modalities) != 2 || modalities[0] != "text" || modalities[1] != "image" {
+		t.Fatalf("known GPT model modalities: got %v, want [text image]", model["input_modalities"])
 	}
 }
 

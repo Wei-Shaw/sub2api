@@ -492,7 +492,7 @@ func TestBuildCodexModelsManifestForGroupAdvertisesOfficialOpenAIResponsesImageI
 	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
 }
 
-func TestBuildCodexModelsManifestForGroupUsesConservativeProviderImageCapabilities(t *testing.T) {
+func TestBuildCodexModelsManifestForGroupUsesProviderImageCapabilities(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -602,6 +602,15 @@ func TestBuildCodexModelsManifestForGroupUsesConservativeProviderImageCapabiliti
 				ID: 18, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
 				Credentials: map[string]any{"base_url": "https://openai-compatible.example.test/v1"},
 			}},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name:  "custom OpenAI-compatible host with unknown model",
+			model: "company-coding-model",
+			accounts: []Account{{
+				ID: 29, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+				Credentials: map[string]any{"base_url": "https://openai-compatible.example.test/v1"},
+			}},
 			modalities: []any{"text"},
 		},
 	}
@@ -619,6 +628,67 @@ func TestBuildCodexModelsManifestForGroupUsesConservativeProviderImageCapabiliti
 				&Group{ID: groupID, Platform: PlatformComposite},
 				"",
 				[]string{tt.model},
+			)
+			require.NoError(t, err)
+			models := decodeCodexManifestModels(t, body)
+			require.Len(t, models, 1)
+			require.Equal(t, tt.modalities, models[0]["input_modalities"])
+		})
+	}
+}
+
+func TestBuildCodexModelsManifestForGroupPrefersSyncedOpenAIImageCapabilities(t *testing.T) {
+	t.Parallel()
+
+	newAccount := func(id int64, modalities []string) Account {
+		account := Account{
+			ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+			Credentials: map[string]any{"base_url": "https://openai-compatible.example.test/v1"},
+		}
+		if modalities != nil {
+			account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+				"gpt-5.6-sol": {ID: "gpt-5.6-sol", InputModalities: modalities},
+			}})
+		}
+		return account
+	}
+
+	tests := []struct {
+		name       string
+		accounts   []Account
+		modalities []any
+	}{
+		{
+			name: "explicit text-only snapshot narrows local fallback",
+			accounts: []Account{
+				newAccount(30, nil),
+				newAccount(31, []string{"text"}),
+			},
+			modalities: []any{"text"},
+		},
+		{
+			name: "explicit multimodal snapshot preserves local fallback",
+			accounts: []Account{
+				newAccount(32, nil),
+				newAccount(33, []string{"text", "image"}),
+			},
+			modalities: []any{"text", "image"},
+		},
+	}
+
+	for i, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			groupID := int64(760 + i)
+			svc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+				groupID: tt.accounts,
+			}}}
+			body, err := svc.BuildCodexModelsManifestForGroup(
+				context.Background(),
+				&Group{ID: groupID, Platform: PlatformOpenAI},
+				"",
+				[]string{"gpt-5.6-sol"},
 			)
 			require.NoError(t, err)
 			models := decodeCodexManifestModels(t, body)
@@ -1723,6 +1793,8 @@ func TestFetchCodexModelsManifestAPIKeyConvertsStandardOpenAIModelList(t *testin
 	require.Len(t, models, 2)
 	requireCompleteConfiguredCodexModel(t, models[0], "gpt-5.6")
 	requireCompleteConfiguredCodexModel(t, models[1], "gpt-5.6-codex")
+	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
+	require.Equal(t, []any{"text", "image"}, models[1]["input_modalities"])
 	require.Equal(t, codexModelsManifestBodyETag(manifest.Body), manifest.ETag)
 	require.Equal(t, `W/"openai-list"`, manifest.upstreamETag)
 }
@@ -1767,6 +1839,32 @@ func TestCompleteAPIKeyCodexModelsManifestForClientPreservesProviderMetadata(t *
 	var envelope map[string]any
 	require.NoError(t, json.Unmarshal(manifest.Body, &envelope))
 	require.Equal(t, map[string]any{"source": "upstream"}, envelope["metadata"])
+}
+
+func TestCompleteAPIKeyCodexModelsManifestForClientUsesKnownGPTImageFallback(t *testing.T) {
+	t.Parallel()
+
+	svc := &OpenAIGatewayService{}
+	manifest := &CodexModelsManifest{Body: []byte(`{"models":[
+		{"slug":"gpt-5.6-sol"},
+		{"slug":"company-coding-model"},
+		{"slug":"gpt-4o","input_modalities":["text"]}
+	]}`)}
+	account := newCodexModelsAPIKeyTestAccount("https://openai-compatible.example.test/v1")
+
+	require.NoError(t, svc.CompleteAPIKeyCodexModelsManifestForClient(manifest, account))
+	models := decodeCodexManifestModels(t, manifest.Body)
+	require.Len(t, models, 3)
+
+	bySlug := make(map[string]map[string]any, len(models))
+	for _, model := range models {
+		slug, ok := model["slug"].(string)
+		require.True(t, ok)
+		bySlug[slug] = model
+	}
+	require.Equal(t, []any{"text", "image"}, bySlug["gpt-5.6-sol"]["input_modalities"])
+	require.Equal(t, []any{"text"}, bySlug["company-coding-model"]["input_modalities"])
+	require.Equal(t, []any{"text"}, bySlug["gpt-4o"]["input_modalities"])
 }
 
 // Scenario: 标准 /models 型号列表优先使用已同步账号能力，再使用本地 descriptor 兜底。
