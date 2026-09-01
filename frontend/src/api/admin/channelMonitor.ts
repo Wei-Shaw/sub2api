@@ -134,7 +134,9 @@ export interface CreateParams {
   api_key: string
   /** 缺省 probe；antigravity 仅支持 quota */
   check_mode?: CheckMode
-  /** 配额模式必填：数据源账号（provider 需与账号平台一致） */
+  /** 配额模式必填：数据源账号（provider 需与账号平台一致）。
+   * update 语义：>0=换绑，0=解绑（切回 probe 模式时前端发 0 清空存量关联）；
+   * create 绝不发 0——后端会把 0 存成 &0 触发外键违约。 */
   account_id?: number | null
   primary_model: string
   extra_models?: string[]
@@ -148,7 +150,8 @@ export interface CreateParams {
   body_override?: Record<string, unknown> | null
 }
 
-// Update request: api_key 空串 = 不修改；clear_template=true 时把 template_id 置空
+// Update request: api_key 空串 = 不修改；clear_template=true 时把 template_id 置空；
+// account_id=0 显式解绑关联账号（null = 不动，见 CreateParams 注释）
 export type UpdateParams = Partial<CreateParams> & {
   clear_template?: boolean
 }

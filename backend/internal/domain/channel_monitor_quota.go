@@ -50,6 +50,10 @@ type MonitorQuotaSnapshot struct {
 	Balances  []MonitorBalance   `json:"balances,omitempty"`   // 多币种余额（如 DeepSeek CNY+USD）
 	Currency  string             `json:"currency,omitempty"`   // 主余额币种
 	PlanLevel string             `json:"plan_level,omitempty"` // 套餐等级（如智谱 level）
+	// BalanceLow 余额低于阈值或账号被上游标记不可用（仅 cn_balance 来源）。
+	// 抓取器按 Gateway.CNProviders.BalanceThreshold 判定，口径与账号停调
+	// （CNProviderBalanceCheckService.checkOne）一致：任一币种达标即健康。
+	BalanceLow bool `json:"balance_low,omitempty"`
 	// CredentialInvalid 上游 401/403 鉴权失败（区别于网络/解析错误），
 	// 检测状态据此推导 failed 而非 error。
 	CredentialInvalid bool      `json:"credential_invalid,omitempty"`

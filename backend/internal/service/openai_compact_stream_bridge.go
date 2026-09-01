@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -117,8 +118,11 @@ func writeOpenAICompactSSEFailureMessage(c *gin.Context, statusCode int, errType
 		"response": map[string]any{
 			"id":     "resp_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
 			"object": "response",
-			"status": "failed",
-			"output": []any{},
+			// 严格客户端把 created_at 当必填字段，缺失会反序列化失败，
+			// 终止事件就白发了（退化成盲重连）。与 writeResponsesFailedSSE 对齐。
+			"created_at": time.Now().Unix(),
+			"status":     "failed",
+			"output":     []any{},
 			"error": map[string]any{
 				"code":    errType,
 				"message": message,

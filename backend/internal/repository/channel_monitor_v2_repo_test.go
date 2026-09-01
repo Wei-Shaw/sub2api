@@ -1,11 +1,14 @@
 package repository
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
 
@@ -93,6 +96,171 @@ func TestChannelMonitorV2WhereRejectsGroupFilterOutsideConfiguredScope(t *testin
 	require.Len(t, args, 3)
 }
 
+func TestChannelMonitorV2WhereRestrictsOrdinaryViewerToAllowedConfiguredGroups(t *testing.T) {
+	filter := service.ChannelMonitorV2Filter{
+		Start: time.Unix(1, 0), End: time.Unix(2, 0),
+		GroupIDs: []int64{4, 9}, AllowedGroupIDs: []int64{3, 4}, RestrictGroups: true,
+	}
+	cfg := service.ChannelMonitorV2Config{
+		Platforms: []service.ChannelMonitorV2PlatformConfig{{Platform: "openai", Enabled: true}},
+		GroupIDs:  []int64{3, 4, 9},
+	}
+	where, args := channelMonitorV2Where(filter, cfg, "m")
+	require.Contains(t, where, "m.group_id = ANY($4)")
+	require.Equal(t, pq.Array([]int64{4}), args[3])
+}
+
+func TestChannelMonitorV2WhereRejectsOrdinaryViewerWithNoAllowedGroups(t *testing.T) {
+	filter := service.ChannelMonitorV2Filter{
+		Start: time.Unix(1, 0), End: time.Unix(2, 0),
+		GroupIDs: []int64{9}, RestrictGroups: true,
+	}
+	cfg := service.ChannelMonitorV2Config{
+		Platforms: []service.ChannelMonitorV2PlatformConfig{{Platform: "openai", Enabled: true}},
+		GroupIDs:  []int64{3, 9},
+	}
+	where, _ := channelMonitorV2Where(filter, cfg, "m")
+	require.Contains(t, where, "FALSE")
+	require.NotContains(t, where, "m.group_id = ANY")
+}
+
+func TestChannelMonitorV2CatalogKeepsViewerScopeWhileIgnoringPickerFilters(t *testing.T) {
+	filter := service.ChannelMonitorV2Filter{
+		Platforms: []string{"openai"}, GroupIDs: []int64{9}, Models: []string{"gpt-5"},
+		AllowedGroupIDs: []int64{3}, RestrictGroups: true,
+	}
+	catalog := channelMonitorV2CatalogFilter(filter)
+	require.Empty(t, catalog.Platforms)
+	require.Empty(t, catalog.GroupIDs)
+	require.Empty(t, catalog.Models)
+	require.True(t, catalog.RestrictGroups)
+	require.Equal(t, []int64{3}, catalog.AllowedGroupIDs)
+}
+
+func TestChannelMonitorV2AdminScopeRemainsGlobal(t *testing.T) {
+	filter := service.ChannelMonitorV2Filter{Start: time.Unix(1, 0), End: time.Unix(2, 0), GroupIDs: []int64{9}}
+	cfg := service.ChannelMonitorV2Config{
+		Platforms: []service.ChannelMonitorV2PlatformConfig{{Platform: "openai", Enabled: true}},
+		GroupIDs:  []int64{3, 9},
+	}
+	where, args := channelMonitorV2Where(filter, cfg, "m")
+	require.Contains(t, where, "m.group_id = ANY($4)")
+	require.Equal(t, pq.Array([]int64{9}), args[3])
+}
+
+func TestChannelMonitorV2MatrixDoesNotSeedGroupsForEmptyViewerScope(t *testing.T) {
+	filter := service.ChannelMonitorV2Filter{RestrictGroups: true}
+	cfg := service.ChannelMonitorV2Config{
+		Platforms: []service.ChannelMonitorV2PlatformConfig{{Platform: "openai", Enabled: true}},
+		GroupIDs:  []int64{3, 9},
+	}
+	accs := seedChannelMonitorV2MatrixAccumulators(filter, cfg, service.ChannelMonitorV2GroupByPlatformGroup, map[int64]channelMonitorV2GroupInfo{
+		3: {name: "private"}, 9: {name: "other-private"},
+	})
+	require.Empty(t, accs)
+}
+
+func TestChannelMonitorV2EmptyRestrictedScopeReturnsEmptyInventory(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	repo := &channelMonitorV2Repository{db: db}
+	filter := service.ChannelMonitorV2Filter{RestrictGroups: true}
+	cfg := service.ChannelMonitorV2Config{
+		Platforms: []service.ChannelMonitorV2PlatformConfig{{Platform: "openai", Enabled: true, Models: []string{"gpt-5"}}},
+		GroupIDs:  []int64{3, 9},
+	}
+
+	dimensions, err := repo.GetDimensions(context.Background(), filter, cfg)
+	require.NoError(t, err)
+	require.Empty(t, dimensions.Platforms)
+	require.Empty(t, dimensions.Groups)
+	require.Empty(t, dimensions.Models)
+	require.NotNil(t, dimensions.Platforms)
+	require.NotNil(t, dimensions.Groups)
+	require.NotNil(t, dimensions.Models)
+
+	models, err := repo.GetModels(context.Background(), filter, cfg, false)
+	require.NoError(t, err)
+	require.Empty(t, models.Items)
+	require.NotNil(t, models.Items)
+	require.Equal(t, service.ChannelMonitorV2Coverage{}, models.Coverage)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestChannelMonitorV2EmptyRestrictedScopeReturnsEmptySnapshotWithoutQueries(t *testing.T) {
+	tests := []struct {
+		name   string
+		filter service.ChannelMonitorV2Filter
+	}{
+		{
+			name:   "no allowed groups",
+			filter: service.ChannelMonitorV2Filter{RestrictGroups: true},
+		},
+		{
+			name: "requested groups exclude allowed configured scope",
+			filter: service.ChannelMonitorV2Filter{
+				GroupIDs: []int64{9}, AllowedGroupIDs: []int64{3}, RestrictGroups: true,
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
+			repo := &channelMonitorV2Repository{db: db}
+			cfg := service.ChannelMonitorV2Config{
+				Enabled: true,
+				Platforms: []service.ChannelMonitorV2PlatformConfig{{
+					Platform: "openai", Enabled: true, Models: []string{"gpt-5"},
+				}},
+				GroupIDs: []int64{3},
+			}
+
+			snapshot, err := repo.GetSnapshot(context.Background(), test.filter, cfg, false)
+			require.NoError(t, err)
+			require.Equal(t, service.ChannelMonitorV2Config{}, snapshot.Config)
+			require.Equal(t, service.ChannelMonitorV2Coverage{}, snapshot.Coverage)
+			require.Equal(t, service.ChannelMonitorV2Metric{}, snapshot.Metrics)
+			require.Equal(t, service.ChannelMonitorV2Health{}, snapshot.Health)
+			require.Empty(t, snapshot.Trend)
+			require.NotNil(t, snapshot.Trend)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestChannelMonitorV2EmptyRestrictedScopeReturnsEmptyMatrixForEveryGrouping(t *testing.T) {
+	groupings := []service.ChannelMonitorV2GroupBy{
+		service.ChannelMonitorV2GroupByPlatform,
+		service.ChannelMonitorV2GroupByPlatformModel,
+		service.ChannelMonitorV2GroupByPlatformGroup,
+		service.ChannelMonitorV2GroupByPlatformGroupModel,
+	}
+	for _, groupBy := range groupings {
+		t.Run(string(groupBy), func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
+			repo := &channelMonitorV2Repository{db: db}
+			filter := service.ChannelMonitorV2Filter{RestrictGroups: true}
+			cfg := service.ChannelMonitorV2Config{
+				Platforms: []service.ChannelMonitorV2PlatformConfig{{Platform: "openai", Enabled: true, Models: []string{"gpt-5"}}},
+				GroupIDs:  []int64{3, 9},
+			}
+
+			matrix, err := repo.GetMatrix(context.Background(), filter, cfg, groupBy, false)
+			require.NoError(t, err)
+			require.Equal(t, groupBy, matrix.GroupBy)
+			require.Empty(t, matrix.Items)
+			require.NotNil(t, matrix.Items)
+			require.Equal(t, service.ChannelMonitorV2Coverage{}, matrix.Coverage)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
 func TestChannelMonitorV2ErrorAggregationCountsFinalUserErrorsOnly(t *testing.T) {
 	query := strings.ToLower(channelMonitorV2ErrorAggregationSQL)
 	require.Contains(t, query, "not current_error.is_count_tokens")
@@ -101,10 +269,23 @@ func TestChannelMonitorV2ErrorAggregationCountsFinalUserErrorsOnly(t *testing.T)
 	require.Contains(t, query, "candidate_ids")
 	require.Contains(t, query, "where bucket_start >= $1 and bucket_start < $2")
 	require.Contains(t, query, "upstream_affected_requests")
-	require.Contains(t, query, "jsonb_array_length(upstream_errors) > 0")
+	require.Contains(t, query, "jsonb_array_length(current_error.upstream_errors) > 0")
 	// request_id dedup must be time-bounded (no full-history scan).
 	require.Contains(t, query, "interval '90 minutes'")
 	require.Contains(t, query, "current_error.created_at >= $1 - interval '90 minutes'")
+}
+
+func TestChannelMonitorV2ErrorAggregationResolvesCompositePlatform(t *testing.T) {
+	query := strings.ToLower(channelMonitorV2ErrorAggregationSQL)
+	// Composite groups are a routing layer: error facts must resolve the concrete
+	// account platform (joining groups/accounts) so they aggregate under the same
+	// platform key as usage facts instead of the never-enabled 'composite' platform.
+	require.Contains(t, query, "g.platform = 'composite'")
+	require.Contains(t, query, "left join groups g on g.id = current_error.group_id")
+	require.Contains(t, query, "left join accounts a on a.id = current_error.account_id")
+	require.Contains(t, query, "a.platform")
+	require.Contains(t, query, "nullif(trim(a.platform), '')")
+	require.NotContains(t, query, "nullif(trim(a.platform))")
 }
 
 func TestChannelMonitorV2UsageSuccessExcludesCyberBillingRows(t *testing.T) {

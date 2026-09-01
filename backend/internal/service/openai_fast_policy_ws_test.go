@@ -348,6 +348,23 @@ func TestPolicyEnforcingFrameConn_FollowupFrameWithoutModelUsesCapturedModel(t *
 	require.Equal(t, "response.create", gjson.GetBytes(payload, "type").String())
 }
 
+func TestOpenAIWSPassthroughPolicyModelDoesNotApplyAccountMapping(t *testing.T) {
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"public-model": "private-model"},
+		},
+		Extra: map[string]any{"openai_passthrough": true},
+	}
+
+	responseCreate := []byte(`{"type":"response.create","model":"public-model"}`)
+	require.Equal(t, "public-model", openAIWSPassthroughPolicyModelForFrame(account, responseCreate))
+
+	sessionUpdate := []byte(`{"type":"session.update","session":{"model":"public-model"}}`)
+	require.Equal(t, "public-model", openAIWSPassthroughPolicyModelFromSessionFrame(account, sessionUpdate))
+}
+
 // TestPolicyEnforcingFrameConn_WithoutCapturedFallbackPolicyMisses pins the
 // inverse: when the wrapper has NO capturedSessionModel fallback (model is
 // empty per-frame and no fallback is wired up), the policy fails to match
@@ -871,8 +888,8 @@ func TestApplyOpenAIFastPolicyToBody_PassNormalizesFastAlias(t *testing.T) {
 // TestPassthroughBilling_PostFilterServiceTier is the fix3 regression. The
 // passthrough adapter (openai_ws_v2_passthrough_adapter.go) now extracts
 // requestServiceTier from firstClientMessage AFTER applyOpenAIFastPolicy
-// has rewritten it, so a filter hit causes billing to report nil (default
-// tier) instead of the user-requested "priority". This test pins the
+// has rewritten it, so a filter hit preserves a nil outbound tier instead of
+// the user-requested "priority". This test pins the
 // contract those two helpers must uphold for the adapter's billing path.
 func TestPassthroughBilling_PostFilterServiceTier(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, openAIFastFilterPriorityPolicy())
@@ -895,10 +912,10 @@ func TestPassthroughBilling_PostFilterServiceTier(t *testing.T) {
 	require.NotContains(t, string(filtered), `"service_tier"`)
 
 	// Post-filter: extracting from the rewritten frame returns nil. This
-	// is the value the adapter now passes to OpenAIForwardResult.ServiceTier,
-	// so billing records "default" instead of "priority".
+	// is the value the adapter now passes to OpenAIForwardResult.ServiceTier;
+	// any observed response tier remains separate for usage-time resolution.
 	post := extractOpenAIServiceTierFromBody(filtered)
-	require.Nil(t, post, "fix3: post-filter extraction must return nil so passthrough billing reports default tier instead of the requested priority")
+	require.Nil(t, post, "fix3: post-filter extraction must preserve a nil outbound tier")
 
 	// And the byte-level invariant the adapter relies on: filtering an
 	// already-filtered frame is a no-op (idempotent), so re-running the
@@ -995,7 +1012,7 @@ func TestPassthroughBilling_MultiTurnServiceTierFollowsFilteredFrames(t *testing
 	}
 
 	// First-frame initialization mirrors the adapter: extract from the
-	// post-filter payload so a filter-on-first-frame zeroes billing too.
+	// post-filter payload so a filter-on-first-frame clears the outbound tier.
 	firstFrame := []byte(`{"type":"response.create","model":"gpt-5.5","service_tier":"priority"}`)
 	firstOut, firstBlocked, firstErr := svc.applyOpenAIFastPolicyToWSResponseCreate(context.Background(), account, "gpt-5.5", firstFrame)
 	require.NoError(t, firstErr)
@@ -1003,7 +1020,7 @@ func TestPassthroughBilling_MultiTurnServiceTierFollowsFilteredFrames(t *testing
 	requestServiceTierPtr.Store(extractOpenAIServiceTierFromBody(firstOut))
 	capturedSessionModel = openAIWSPassthroughPolicyModelForFrame(account, firstFrame)
 	require.Nil(t, requestServiceTierPtr.Load(),
-		"turn 1: filter strips service_tier=priority, billing must reflect upstream-actual nil tier")
+		"turn 1: filter strips service_tier=priority, leaving a nil outbound tier")
 
 	// Turn 2: client switches to flex, should pass and update billing.
 	turn2 := []byte(`{"type":"response.create","model":"gpt-5.5","service_tier":"flex"}`)

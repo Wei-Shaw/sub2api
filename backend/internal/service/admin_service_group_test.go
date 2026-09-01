@@ -603,6 +603,42 @@ func TestAdminService_UpdateGroup_PreservesImageGenerationControlsWhenOmitted(t 
 	require.InDelta(t, 0.5, repo.updated.ImageRateMultiplier, 1e-12)
 }
 
+func TestAdminService_UpdateGroup_LimitFieldsPartialUpdate(t *testing.T) {
+	daily, weekly, monthly := 10.0, 20.0, 30.0
+	existingGroup := &Group{
+		ID:              1,
+		Name:            "existing-group",
+		Platform:        PlatformOpenAI,
+		Status:          StatusActive,
+		DailyLimitUSD:   &daily,
+		WeeklyLimitUSD:  &weekly,
+		MonthlyLimitUSD: &monthly,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	t.Run("non-quota update preserves all limits", func(t *testing.T) {
+		description := "updated"
+		group, err := svc.UpdateGroup(context.Background(), existingGroup.ID, &UpdateGroupInput{Description: &description})
+		require.NoError(t, err)
+		require.Equal(t, 10.0, *group.DailyLimitUSD)
+		require.Equal(t, 20.0, *group.WeeklyLimitUSD)
+		require.Equal(t, 30.0, *group.MonthlyLimitUSD)
+	})
+
+	t.Run("explicit changes and unlimited clear only touched limits", func(t *testing.T) {
+		newDaily, unlimited := 15.0, -1.0
+		group, err := svc.UpdateGroup(context.Background(), existingGroup.ID, &UpdateGroupInput{
+			DailyLimitUSD:  &newDaily,
+			WeeklyLimitUSD: &unlimited,
+		})
+		require.NoError(t, err)
+		require.Equal(t, 15.0, *group.DailyLimitUSD)
+		require.Nil(t, group.WeeklyLimitUSD)
+		require.Equal(t, 30.0, *group.MonthlyLimitUSD)
+	})
+}
+
 func TestAdminService_UpdateGroup_DisablesBatchImageWhenImageGenerationDisabled(t *testing.T) {
 	existingGroup := &Group{
 		ID:                        1,
@@ -1027,6 +1063,44 @@ func TestAdminService_CreateGroup_ClearsMessagesDispatchFieldsForNonOpenAIPlatfo
 	require.False(t, repo.created.AllowLive)
 	require.Empty(t, repo.created.DefaultMappedModel)
 	require.Equal(t, OpenAIMessagesDispatchModelConfig{}, repo.created.MessagesDispatchModelConfig)
+}
+
+func TestAdminService_CreateCompositeGroupPreservesLive(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:           "composite-group",
+		Platform:       PlatformComposite,
+		RateMultiplier: 1.0,
+		AllowLive:      true,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.created)
+	require.True(t, repo.created.AllowLive)
+}
+
+func TestAdminService_UpdateCompositeGroupPreservesLive(t *testing.T) {
+	existingGroup := &Group{
+		ID:       1,
+		Name:     "composite-group",
+		Platform: PlatformComposite,
+		Status:   StatusActive,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+	allowLive := true
+
+	group, err := svc.UpdateGroup(context.Background(), existingGroup.ID, &UpdateGroupInput{
+		AllowLive: &allowLive,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.updated)
+	require.True(t, repo.updated.AllowLive)
 }
 
 func TestAdminService_UpdateGroup_ClearsMessagesDispatchFieldsWhenPlatformChangesAwayFromOpenAI(t *testing.T) {

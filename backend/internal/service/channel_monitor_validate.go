@@ -190,19 +190,59 @@ func normalizeModels(in []string) []string {
 	return out
 }
 
-// normalizeMonitorPrimaryModel applies provider/check_mode defaults while
-// preserving the existing required-model behavior:
-//   - Grok 探活默认轻量测活模型
-//   - quota 模式占位 "quota"（primary_model 列 NotEmpty；历史行/时间线机制无需特判）
+// normalizeMonitorPrimaryModel applies provider/check_mode defaults:
+//   - pure quota mode never sends requests: placeholder "quota" keeps
+//     primary_model NOT NULL (history rows / timeline need no special-casing)
+//   - quota_probe still sends a real probe request: empty model returns ""
+//     so validateCreateParams / applyMonitorUpdate report
+//     ErrChannelMonitorMissingPrimaryModel instead of probing model="quota"
+//   - Grok probing (probe/quota_probe) defaults to the lightweight check model
 func normalizeMonitorPrimaryModel(provider, checkMode, model string) string {
 	model = strings.TrimSpace(model)
+	if model == "" && defaultCheckMode(checkMode) == MonitorCheckModeQuota {
+		return MonitorDefaultQuotaModel
+	}
 	if model == "" && provider == MonitorProviderGrok {
 		return MonitorDefaultGrokModel
 	}
-	if model == "" && monitorCheckModeUsesQuota(defaultCheckMode(checkMode)) {
-		return MonitorDefaultQuotaModel
-	}
 	return model
+}
+
+// monitorAccountQuotaCapability 校验关联账号能否充当配额数据源，与
+// fetchUncached 的路由一一对应（coding→CN 额度端点 / payg→CN 余额端点 /
+// 其余→AccountUsageService）。在创建/更新期拦截注定运行期永久 error 的组合：
+//   - kimi/zhipu/deepseek coding：GetCodingPlanProvider 须识别为 kimi/zhipu
+//     （deepseek coding、自定义域名 kimi coding 无法路由额度端点）
+//   - kimi/zhipu/deepseek payg：仅 kimi/deepseek 有公开余额端点（zhipu payg 无）
+//   - anthropic：OAuth / Setup Token（API-Key 型无 usage 通道，永久 error）
+//   - openai：OAuth（API-Key 型无 usage 通道）
+//   - gemini/grok/antigravity：本地统计/值通道降级，不会永久 error，放行
+func monitorAccountQuotaCapability(account *Account) error {
+	switch account.Platform {
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+		if account.IsCodingPlan() {
+			if p := account.GetCodingPlanProvider(); p != PlatformKimi && p != PlatformZhipu {
+				return ErrChannelMonitorAccountNotSupportable
+			}
+			return nil
+		}
+		if account.Platform == PlatformZhipu {
+			return ErrChannelMonitorAccountNotSupportable
+		}
+		return nil
+	case PlatformAnthropic:
+		if account.Type == AccountTypeOAuth || account.Type == AccountTypeSetupToken {
+			return nil
+		}
+		return ErrChannelMonitorAccountNotSupportable
+	case PlatformOpenAI:
+		if account.Type == AccountTypeOAuth {
+			return nil
+		}
+		return ErrChannelMonitorAccountNotSupportable
+	default:
+		return nil
+	}
 }
 
 // defaultAPIMode 空串归一为 chat_completions，保证历史数据与旧客户端兼容。
