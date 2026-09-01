@@ -24,5 +24,6 @@ export const CONCRETE_PLATFORM_OPTIONS = [
 /** Platforms that can own a group. */
 export const GROUP_PLATFORM_OPTIONS = [
   ...CONCRETE_PLATFORM_OPTIONS,
-  { value: 'composite', label: 'Composite' }
+  { value: 'composite', label: 'Composite' },
+  { value: 'smart_routing', label: 'Smart Routing' }
 ] as const satisfies readonly PlatformOption<GroupPlatform>[]

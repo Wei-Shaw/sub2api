@@ -2550,6 +2550,16 @@ func ProfitSafetyBufferLTE(v float64) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldProfitSafetyBuffer, v))
 }
 
+// SmartRoutingMembersIsNil applies the IsNil predicate on the "smart_routing_members" field.
+func SmartRoutingMembersIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldSmartRoutingMembers))
+}
+
+// SmartRoutingMembersNotNil applies the NotNil predicate on the "smart_routing_members" field.
+func SmartRoutingMembersNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldSmartRoutingMembers))
+}
+
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.
 func HasAPIKeys() predicate.Group {
 	return predicate.Group(func(s *sql.Selector) {

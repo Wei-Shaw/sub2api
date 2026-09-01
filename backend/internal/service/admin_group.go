@@ -9,6 +9,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -319,6 +320,24 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		subscriptionType = SubscriptionTypeStandard
 	}
 
+	// 智能路由分组配置校验：仅 standard 订阅类型，且不允许同时复制账号。
+	smartRoutingMembers := domain.NormalizeSmartRoutingMembers(input.SmartRoutingMembers)
+	if platform == PlatformSmartRouting {
+		if subscriptionType != SubscriptionTypeStandard {
+			return nil, infraerrors.New(http.StatusBadRequest, "SMART_ROUTING_INVALID_SUBSCRIPTION", "smart routing group must use standard subscription type")
+		}
+		if len(input.CopyAccountsFromGroupIDs) > 0 {
+			return nil, infraerrors.New(http.StatusBadRequest, "SMART_ROUTING_BINDS_ACCOUNTS", "smart routing group cannot bind accounts")
+		}
+		validated, err := s.validateSmartRoutingConfig(ctx, 0, smartRoutingMembers)
+		if err != nil {
+			return nil, err
+		}
+		smartRoutingMembers = validated
+	} else if len(smartRoutingMembers) > 0 {
+		return nil, infraerrors.New(http.StatusBadRequest, "SMART_ROUTING_MEMBERS_WRONG_PLATFORM", "smart_routing_members is only valid for smart_routing platform groups")
+	}
+
 	// 限额字段：nil/负数 表示"无限制"，0 表示"不允许用量"，正数表示具体限额
 	dailyLimit := normalizeLimit(input.DailyLimitUSD)
 	weeklyLimit := normalizeLimit(input.WeeklyLimitUSD)
@@ -508,6 +527,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		RPMLimit:                        input.RPMLimit,
 		MaxReasoningEffort:              maxReasoningEffort,
 		ReasoningEffortMappings:         reasoningEffortMappings,
+		SmartRoutingMembers:             smartRoutingMembers,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	if group.Platform != PlatformOpenAI && group.Platform != PlatformComposite {
@@ -556,6 +576,41 @@ func normalizeLimit(limit *float64) *float64 {
 		return nil
 	}
 	return limit
+}
+
+// validateSmartRoutingConfig 校验智能路由分组成员配置。
+//
+//   - currentGroupID 用于更新场景，禁止把自身配置为成员（创建时传 0）。
+//   - 成员必须存在且未删除；禁止嵌套（成员自身不能再是智能路由分组）；
+//     成员必须是标准（非订阅）分组——订阅分组的计费与配额模型无法被透明聚合。
+//   - 返回归一化后的成员列表（去重、清洗优先级/权重下限、按优先级排序）。
+func (s *adminServiceImpl) validateSmartRoutingConfig(ctx context.Context, currentGroupID int64, members []domain.SmartRoutingMember) ([]domain.SmartRoutingMember, error) {
+	normalized := domain.NormalizeSmartRoutingMembers(members)
+	if len(normalized) == 0 {
+		return nil, infraerrors.New(http.StatusBadRequest, "SMART_ROUTING_EMPTY_MEMBERS", "smart routing group requires at least one member group")
+	}
+	seen := make(map[int64]struct{}, len(normalized))
+	for _, m := range normalized {
+		if currentGroupID > 0 && m.GroupID == currentGroupID {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "SMART_ROUTING_SELF_MEMBER", "smart routing group %d cannot be its own member", currentGroupID)
+		}
+		if _, dup := seen[m.GroupID]; dup {
+			continue
+		}
+		seen[m.GroupID] = struct{}{}
+		member, err := s.groupRepo.GetByIDLite(ctx, m.GroupID)
+		if err != nil {
+			// 保留底层 ErrGroupNotFound 的 404 语义（%w 透传）。
+			return nil, fmt.Errorf("smart routing member group %d not found: %w", m.GroupID, err)
+		}
+		if member.Platform == PlatformSmartRouting {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "SMART_ROUTING_NESTED_MEMBER", "smart routing member group %d cannot itself be a smart routing group", m.GroupID)
+		}
+		if member.IsSubscriptionType() {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "SMART_ROUTING_SUBSCRIPTION_MEMBER", "smart routing member group %d is a subscription group and cannot be aggregated", m.GroupID)
+		}
+	}
+	return normalized, nil
 }
 
 // normalizePrice 将负数转换为 nil（表示使用默认价格），0 保留（表示免费）
@@ -900,6 +955,28 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	sanitizeGroupReasoningEffortPolicy(group)
 
+	// 智能路由成员配置：非 nil（含空数组）表示整体替换。
+	pendingSmartRouting := group.SmartRoutingMembers
+	if input.SmartRoutingMembers != nil {
+		pendingSmartRouting = domain.NormalizeSmartRoutingMembers(*input.SmartRoutingMembers)
+	}
+	if group.Platform == PlatformSmartRouting {
+		if group.SubscriptionType != SubscriptionTypeStandard {
+			return nil, infraerrors.New(http.StatusBadRequest, "SMART_ROUTING_INVALID_SUBSCRIPTION", "smart routing group must use standard subscription type")
+		}
+		validated, err := s.validateSmartRoutingConfig(ctx, id, pendingSmartRouting)
+		if err != nil {
+			return nil, err
+		}
+		group.SmartRoutingMembers = validated
+	} else {
+		if input.SmartRoutingMembers != nil && len(pendingSmartRouting) > 0 {
+			return nil, infraerrors.New(http.StatusBadRequest, "SMART_ROUTING_MEMBERS_WRONG_PLATFORM", "smart_routing_members is only valid for smart_routing platform groups")
+		}
+		// 转出智能路由平台时清空成员，避免残留配置。
+		group.SmartRoutingMembers = nil
+	}
+
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err
 	}
@@ -917,6 +994,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 
 	// 如果指定了复制账号的源分组，同步绑定（替换当前分组的账号）
 	if len(input.CopyAccountsFromGroupIDs) > 0 {
+		if group.Platform == PlatformSmartRouting {
+			return nil, errors.New("smart routing group cannot bind accounts")
+		}
 		// 去重源分组 IDs
 		seen := make(map[int64]struct{})
 		uniqueSourceGroupIDs := make([]int64, 0, len(input.CopyAccountsFromGroupIDs))

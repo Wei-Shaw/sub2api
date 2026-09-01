@@ -28,6 +28,10 @@ const (
 	PlatformZhipu     = "zhipu"    // 智谱 GLM (bigmodel)
 	PlatformDeepseek  = "deepseek" // DeepSeek
 	PlatformComposite = "composite"
+	// PlatformSmartRouting 智能路由分组：自身不绑定账号，请求按成员分组的
+	// 优先级（数值越小越先调度，失败后按优先级降序重试）与权重（同优先级内
+	// 按权重加权随机分流）聚合调度成员分组，实现一个 Key 访问多分组模型。
+	PlatformSmartRouting = "smart_routing"
 )
 
 // Account mode constants 区分国产供应商的「按量付费（余额）」与「Coding Plan」两种接入方式。

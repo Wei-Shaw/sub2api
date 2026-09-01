@@ -6,6 +6,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -281,6 +282,8 @@ type CreateGroupInput struct {
 	ProfitControlEnabled bool
 	ProfitMinMargin      *float64
 	ProfitSafetyBuffer   *float64
+	// 智能路由成员配置（仅 platform=smart_routing 时使用）：成员分组 + 优先级 + 权重。
+	SmartRoutingMembers []domain.SmartRoutingMember
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -356,6 +359,8 @@ type UpdateGroupInput struct {
 	ProfitControlEnabled *bool
 	ProfitMinMargin      *float64
 	ProfitSafetyBuffer   *float64
+	// 智能路由成员配置：nil 表示不修改；非 nil（含空数组）表示整体替换。
+	SmartRoutingMembers *[]domain.SmartRoutingMember
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
 }

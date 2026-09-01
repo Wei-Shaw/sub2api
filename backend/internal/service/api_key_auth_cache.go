@@ -1,6 +1,10 @@
 package service
 
-import "time"
+import (
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+)
 
 // APIKeyAuthSnapshot API Key 认证缓存快照（仅包含认证所需字段）
 type APIKeyAuthSnapshot struct {
@@ -133,6 +137,10 @@ type APIKeyAuthGroupSnapshot struct {
 	ProfitControlEnabled bool    `json:"profit_control_enabled"`
 	ProfitMinMargin      float64 `json:"profit_min_margin"`
 	ProfitSafetyBuffer   float64 `json:"profit_safety_buffer"`
+
+	// 智能路由成员配置：调度器从认证快照物化的 Group 上读取成员列表，
+	// 漏掉该字段会让智能路由分组的调度计划恒为空。
+	SmartRoutingMembers []domain.SmartRoutingMember `json:"smart_routing_members,omitempty"`
 }
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存
