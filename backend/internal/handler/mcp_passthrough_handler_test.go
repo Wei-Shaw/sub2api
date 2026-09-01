@@ -285,9 +285,9 @@ func newZhipuMCPTestEnv(
 			c.Next()
 		})
 	}
-	r.POST("/api/mcp/zhipu/:slug/mcp", h.ZhipuMCPPassthrough)
-	r.DELETE("/api/mcp/zhipu/:slug/mcp", h.ZhipuMCPPassthrough)
-	r.GET("/api/mcp/zhipu/:slug/mcp", h.ZhipuMCPPassthrough)
+	r.POST("/api/zhipu/api/mcp/:slug/mcp", h.ZhipuMCPPassthrough)
+	r.DELETE("/api/zhipu/api/mcp/:slug/mcp", h.ZhipuMCPPassthrough)
+	r.GET("/api/zhipu/api/mcp/:slug/mcp", h.ZhipuMCPPassthrough)
 	return r, upstream, &zhipuMCPBillingEnv{cache: cacheStub, logs: logRepo, users: userRepo, billing: billingCacheSvc}
 }
 
@@ -321,7 +321,7 @@ func TestZhipuMCPPassthrough_Unauthorized(t *testing.T) {
 		})
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp", `{}`, ""))
+	r.ServeHTTP(w, zhipuMCPPostRequest("/api/zhipu/api/mcp/web_search_prime/mcp", `{}`, ""))
 
 	require.Equal(t, http.StatusUnauthorized, w.Code)
 	require.Empty(t, upstream.captured())
@@ -337,7 +337,7 @@ func TestZhipuMCPPassthrough_UnknownSlug(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	// vision 是 Local MCP（无远程端点可透传），不在白名单内。
-	r.ServeHTTP(w, zhipuMCPPostRequest("/api/mcp/zhipu/vision/mcp", `{}`, ""))
+	r.ServeHTTP(w, zhipuMCPPostRequest("/api/zhipu/api/mcp/vision/mcp", `{}`, ""))
 
 	require.Equal(t, http.StatusNotFound, w.Code)
 	require.Empty(t, upstream.captured())
@@ -352,7 +352,7 @@ func TestZhipuMCPPassthrough_NonZhipuGroup(t *testing.T) {
 		})
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp", `{}`, ""))
+	r.ServeHTTP(w, zhipuMCPPostRequest("/api/zhipu/api/mcp/web_search_prime/mcp", `{}`, ""))
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	require.Contains(t, w.Body.String(), "MCP passthrough is only supported for zhipu groups")
@@ -374,7 +374,7 @@ func TestZhipuMCPPassthrough_AuthHeaderRewriteAndBodyPassthrough(t *testing.T) {
 
 	reqBody := `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp", reqBody, ""))
+	r.ServeHTTP(w, zhipuMCPPostRequest("/api/zhipu/api/mcp/web_search_prime/mcp", reqBody, ""))
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.JSONEq(t, `{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}`, w.Body.String())
@@ -414,7 +414,7 @@ func TestZhipuMCPPassthrough_SessionAffinity(t *testing.T) {
 
 	// 第一次请求（initialize）调度到优先级最高的账号 A。
 	w1 := httptest.NewRecorder()
-	r.ServeHTTP(w1, zhipuMCPPostRequest("/api/mcp/zhipu/zread/mcp", `{"jsonrpc":"2.0","id":1,"method":"initialize"}`, ""))
+	r.ServeHTTP(w1, zhipuMCPPostRequest("/api/zhipu/api/mcp/zread/mcp", `{"jsonrpc":"2.0","id":1,"method":"initialize"}`, ""))
 	require.Equal(t, http.StatusOK, w1.Code)
 	require.Equal(t, "sess-affinity-1", w1.Header().Get("Mcp-Session-Id"))
 
@@ -425,7 +425,7 @@ func TestZhipuMCPPassthrough_SessionAffinity(t *testing.T) {
 
 	// 第二次请求带 Mcp-Session-Id，应粘到同一账号。
 	w2 := httptest.NewRecorder()
-	r.ServeHTTP(w2, zhipuMCPPostRequest("/api/mcp/zhipu/zread/mcp", `{"jsonrpc":"2.0","id":2,"method":"tools/call"}`, "sess-affinity-1"))
+	r.ServeHTTP(w2, zhipuMCPPostRequest("/api/zhipu/api/mcp/zread/mcp", `{"jsonrpc":"2.0","id":2,"method":"tools/call"}`, "sess-affinity-1"))
 	require.Equal(t, http.StatusOK, w2.Code)
 
 	caps := upstream.captured()
@@ -456,7 +456,7 @@ func TestZhipuMCPPassthrough_SSEStreamPassthrough(t *testing.T) {
 		})
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp", `{"jsonrpc":"2.0","id":3,"method":"tools/call"}`, ""))
+	r.ServeHTTP(w, zhipuMCPPostRequest("/api/zhipu/api/mcp/web_search_prime/mcp", `{"jsonrpc":"2.0","id":3,"method":"tools/call"}`, ""))
 
 	require.Equal(t, http.StatusOK, w.Code)
 	// 客户端收到等价字节流，Content-Type 透传。
@@ -487,7 +487,7 @@ func TestZhipuMCPPassthrough_Upstream429FailsOverToNextAccount(t *testing.T) {
 		})
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp", `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, ""))
+	r.ServeHTTP(w, zhipuMCPPostRequest("/api/zhipu/api/mcp/web_search_prime/mcp", `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, ""))
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.JSONEq(t, `{"jsonrpc":"2.0","id":1,"result":{}}`, w.Body.String())
@@ -518,7 +518,7 @@ func TestZhipuMCPPassthrough_Upstream4xxPassthroughWithoutFailover(t *testing.T)
 		})
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp", `{}`, "sess-stale"))
+	r.ServeHTTP(w, zhipuMCPPostRequest("/api/zhipu/api/mcp/web_search_prime/mcp", `{}`, "sess-stale"))
 
 	require.Equal(t, http.StatusNotFound, w.Code)
 	require.Contains(t, w.Body.String(), "session not found")
@@ -537,7 +537,7 @@ func TestZhipuMCPPassthrough_DeleteTombstonesSessionAndRejectsReuse(t *testing.T
 			w.WriteHeader(http.StatusOK)
 		})
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/mcp/zhipu/web_search_prime/mcp", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/zhipu/api/mcp/web_search_prime/mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+zhipuMCPTestUserKey)
 	req.Header.Set("Mcp-Session-Id", "sess-del-1")
 	req.Header.Set("Content-Type", "application/json")
@@ -561,7 +561,7 @@ func TestZhipuMCPPassthrough_DeleteTombstonesSessionAndRejectsReuse(t *testing.T
 	require.Equal(t, service.ZhipuMCPSessionDeletedAccountID, got)
 
 	// 同 session id 的后续 POST（任意 MCP 方法）必须 404，不透传上游。
-	post := zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp",
+	post := zhipuMCPPostRequest("/api/zhipu/api/mcp/web_search_prime/mcp",
 		`{"jsonrpc":"2.0","id":9,"method":"tools/list","params":{}}`, "sess-del-1")
 	wp := httptest.NewRecorder()
 	r.ServeHTTP(wp, post)
@@ -569,7 +569,7 @@ func TestZhipuMCPPassthrough_DeleteTombstonesSessionAndRejectsReuse(t *testing.T
 	require.Len(t, upstream.captured(), 1, "tombstoned session 不应再透传上游")
 
 	// 幂等：对已终止 session 的再次 DELETE 也 404。
-	del2 := httptest.NewRequest(http.MethodDelete, "/api/mcp/zhipu/web_search_prime/mcp", nil)
+	del2 := httptest.NewRequest(http.MethodDelete, "/api/zhipu/api/mcp/web_search_prime/mcp", nil)
 	del2.Header.Set("Authorization", "Bearer "+zhipuMCPTestUserKey)
 	del2.Header.Set("Mcp-Session-Id", "sess-del-1")
 	wd := httptest.NewRecorder()
@@ -591,7 +591,7 @@ func TestZhipuMCPPassthrough_ReinitializeAfterDeleteSucceeds(t *testing.T) {
 		})
 
 	// 终止旧 session。
-	del := httptest.NewRequest(http.MethodDelete, "/api/mcp/zhipu/web_search_prime/mcp", nil)
+	del := httptest.NewRequest(http.MethodDelete, "/api/zhipu/api/mcp/web_search_prime/mcp", nil)
 	del.Header.Set("Authorization", "Bearer "+zhipuMCPTestUserKey)
 	del.Header.Set("Mcp-Session-Id", "sess-old")
 	w := httptest.NewRecorder()
@@ -599,14 +599,14 @@ func TestZhipuMCPPassthrough_ReinitializeAfterDeleteSucceeds(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 
 	// 重新 initialize：新 session（不带旧 SID 或带新 SID）不受 tombstone 影响。
-	init := zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp",
+	init := zhipuMCPPostRequest("/api/zhipu/api/mcp/web_search_prime/mcp",
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`, "")
 	wi := httptest.NewRecorder()
 	r.ServeHTTP(wi, init)
 	require.Equal(t, http.StatusOK, wi.Code)
 
 	// 新 SID 正常工作（粘表被新绑定覆盖）。
-	list := zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp",
+	list := zhipuMCPPostRequest("/api/zhipu/api/mcp/web_search_prime/mcp",
 		`{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`, "sess-new")
 	wl := httptest.NewRecorder()
 	r.ServeHTTP(wl, list)
@@ -626,7 +626,7 @@ func TestZhipuMCPPassthrough_GetMethodNotAllowed(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/mcp/zhipu/web_search_prime/mcp", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/zhipu/api/mcp/web_search_prime/mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+zhipuMCPTestUserKey)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -657,7 +657,7 @@ func TestZhipuMCPPassthrough_StickyInvalidFallsBackToScheduling(t *testing.T) {
 		})
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp", `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, "sess-gone"))
+	r.ServeHTTP(w, zhipuMCPPostRequest("/api/zhipu/api/mcp/web_search_prime/mcp", `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, "sess-gone"))
 
 	require.Equal(t, http.StatusOK, w.Code)
 
@@ -689,7 +689,7 @@ func TestZhipuMCPPassthrough_NonCapableAccountSkippedInScheduling(t *testing.T) 
 		})
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp", `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, ""))
+	r.ServeHTTP(w, zhipuMCPPostRequest("/api/zhipu/api/mcp/web_search_prime/mcp", `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, ""))
 
 	require.Equal(t, http.StatusOK, w.Code)
 
@@ -711,7 +711,7 @@ func TestZhipuMCPPassthrough_RetriesExhaustedReturns502(t *testing.T) {
 		})
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp", `{}`, ""))
+	r.ServeHTTP(w, zhipuMCPPostRequest("/api/zhipu/api/mcp/web_search_prime/mcp", `{}`, ""))
 
 	require.Equal(t, http.StatusBadGateway, w.Code)
 	require.Contains(t, w.Body.String(), "zhipu_mcp_error")
@@ -742,7 +742,7 @@ func TestZhipuMCPPassthrough_ToolCallRecordsUsageOnce(t *testing.T) {
 		})
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp",
+	r.ServeHTTP(w, zhipuMCPPostRequest("/api/zhipu/api/mcp/web_search_prime/mcp",
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"web_search","arguments":{}}}`, ""))
 
 	require.Equal(t, http.StatusOK, w.Code)
@@ -759,7 +759,7 @@ func TestZhipuMCPPassthrough_ToolCallRecordsUsageOnce(t *testing.T) {
 	require.NotEqual(t, "zhipu_mcp:", log.RequestID, "RequestID 必须带唯一后缀（计费幂等键）")
 	// 端点与归属。
 	require.NotNil(t, log.InboundEndpoint)
-	require.Equal(t, "/api/mcp/zhipu/web_search_prime/mcp", *log.InboundEndpoint)
+	require.Equal(t, "/api/zhipu/api/mcp/web_search_prime/mcp", *log.InboundEndpoint)
 	require.NotNil(t, log.UpstreamEndpoint)
 	require.Equal(t, "zhipu-mcp:web_search_prime", *log.UpstreamEndpoint)
 	require.NotNil(t, log.GroupID)
@@ -799,7 +799,7 @@ func TestZhipuMCPPassthrough_BatchToolCallBillsPerCall(t *testing.T) {
 		{"jsonrpc":"2.0","method":"notifications/message"}
 	]`
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp", body, ""))
+	r.ServeHTTP(w, zhipuMCPPostRequest("/api/zhipu/api/mcp/web_search_prime/mcp", body, ""))
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Len(t, upstream.captured(), 1)
@@ -822,12 +822,12 @@ func TestZhipuMCPPassthrough_InitializeAndDeleteDoNotRecordUsage(t *testing.T) {
 
 	// initialize：管理性方法免费。
 	w1 := httptest.NewRecorder()
-	r.ServeHTTP(w1, zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp",
+	r.ServeHTTP(w1, zhipuMCPPostRequest("/api/zhipu/api/mcp/web_search_prime/mcp",
 		`{"jsonrpc":"2.0","id":1,"method":"initialize"}`, ""))
 	require.Equal(t, http.StatusOK, w1.Code)
 
 	// DELETE：session 终止免费。
-	req := httptest.NewRequest(http.MethodDelete, "/api/mcp/zhipu/web_search_prime/mcp", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/zhipu/api/mcp/web_search_prime/mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+zhipuMCPTestUserKey)
 	w2 := httptest.NewRecorder()
 	r.ServeHTTP(w2, req)
@@ -850,7 +850,7 @@ func TestZhipuMCPPassthrough_BillingIneligibleRejectsBeforeScheduling(t *testing
 	billing.cache.balance = 0
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, zhipuMCPPostRequest("/api/mcp/zhipu/web_search_prime/mcp",
+	r.ServeHTTP(w, zhipuMCPPostRequest("/api/zhipu/api/mcp/web_search_prime/mcp",
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call"}`, ""))
 
 	// 余额不足在调度前被拒（billingErrorDetails 默认映射 403），不上游、不落账。
