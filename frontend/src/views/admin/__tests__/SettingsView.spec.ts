@@ -474,6 +474,7 @@ const baseSettingsResponse = {
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
   enable_client_dateline_normalization: true,
+  cancel_kimi_upstream_on_client_disconnect: false,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
   payment_enabled: true,
@@ -1132,6 +1133,37 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         rewrite_message_cache_control: true,
+      }),
+    );
+  });
+
+  it("warns about billing and submits the Kimi client-disconnect setting", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const toggle = wrapper.get(
+      '[data-testid="cancel-kimi-upstream-on-client-disconnect-toggle"]',
+    );
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+    expect(
+      wrapper.find('[data-testid="cancel-kimi-upstream-billing-warning"]').exists(),
+    ).toBe(false);
+
+    await toggle.setValue(true);
+    await flushPromises();
+
+    expect(
+      wrapper.find('[data-testid="cancel-kimi-upstream-billing-warning"]').exists(),
+    ).toBe(true);
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cancel_kimi_upstream_on_client_disconnect: true,
       }),
     );
   });

@@ -461,7 +461,10 @@ export default {
       },
       gatewayForwarding: {
         title: 'Request Forwarding',
-        description: 'Control how requests are forwarded to upstream OAuth accounts',
+        description: 'Control how gateway requests are forwarded to upstream accounts',
+        cancelUpstreamOnClientDisconnect: 'Cancel Kimi upstream when the client disconnects',
+        cancelUpstreamOnClientDisconnectHint: 'Applies only to Kimi streaming requests and covers both Chat Completions and Anthropic account API protocols. Disabled by default; when disabled, the gateway keeps reading upstream until final usage is available.',
+        cancelUpstreamOnClientDisconnectWarning: 'Billing risk: immediate cancellation may prevent sub2api from receiving the final usage event, so recorded tokens and cost can be lower than the actual Kimi bill. Cancellation is best-effort; tokens already generated, or generated before Kimi stops, may still be charged.',
         grokDefaultTextModel: 'Default Grok text model',
         grokDefaultTextModelHint: 'Used for empty model values and, only when the switch is enabled, requests from other client model namespaces. Custom Grok model IDs are accepted.',
         grokCrossClientMap: 'Map other clients to Grok',

@@ -90,7 +90,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 		proxyURL = account.Proxy.URL()
 	}
 
-	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, clientStream)
+	upstreamCtx, releaseUpstreamCtx := s.kimiStreamUpstreamContext(ctx, account, clientStream)
 	upstreamReq, _, err := s.buildNativeAnthropicUpstreamRequest(upstreamCtx, c, account, body, apiKey, targetURL)
 	releaseUpstreamCtx()
 	if err != nil {
@@ -304,6 +304,7 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 	usage := &ClaudeUsage{}
 	var firstTokenMs *int
 	clientDisconnected := false
+	cancelUpstreamOnDisconnect := s.shouldCancelKimiUpstreamOnClientDisconnect(ctx, account, true)
 	sawTerminalEvent := false
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -443,9 +444,21 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 				restored := string(reverseToolNamesIfPresent(c, []byte(line)))
 				if _, err := io.WriteString(w, restored); err != nil {
 					clientDisconnected = true
+					if cancelUpstreamOnDisconnect {
+						logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] Client disconnected during streaming, cancel upstream immediately: account=%d", account.ID)
+						_ = resp.Body.Close()
+						return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime),
+							fmt.Errorf("client disconnected: upstream canceled")
+					}
 					logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 				} else if _, err := io.WriteString(w, "\n"); err != nil {
 					clientDisconnected = true
+					if cancelUpstreamOnDisconnect {
+						logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] Client disconnected during streaming, cancel upstream immediately: account=%d", account.ID)
+						_ = resp.Body.Close()
+						return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime),
+							fmt.Errorf("client disconnected: upstream canceled")
+					}
 					logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 				} else if line == "" {
 					// 按 SSE 事件边界刷出，减少每行 flush 带来的 syscall 开销。
@@ -488,6 +501,12 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 			}
 			if _, err := fmt.Fprint(w, "event: ping\ndata: {\"type\": \"ping\"}\n\n"); err != nil {
 				clientDisconnected = true
+				if cancelUpstreamOnDisconnect {
+					logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] Client disconnected during keepalive ping, cancel upstream immediately: account=%d", account.ID)
+					_ = resp.Body.Close()
+					return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime),
+						fmt.Errorf("client disconnected: upstream canceled")
+				}
 				logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] Client disconnected during keepalive ping, continue draining upstream for usage: account=%d", account.ID)
 				continue
 			}

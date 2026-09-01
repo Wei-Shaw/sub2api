@@ -454,7 +454,10 @@ export default {
       },
       gatewayForwarding: {
         title: '请求转发行为',
-        description: '控制请求转发到上游 OAuth 账号时的行为',
+        description: '控制网关请求转发到上游账号时的行为',
+        cancelUpstreamOnClientDisconnect: 'Client 断开后立即取消 Kimi 上游',
+        cancelUpstreamOnClientDisconnectHint: '仅作用于 Kimi 的流式请求，同时覆盖 Chat Completions 与 Anthropic 两种账号 API 协议。默认关闭；关闭时继续读取上游直到取得最终 usage。',
+        cancelUpstreamOnClientDisconnectWarning: '计费风险：立即取消后可能拿不到流末尾的完整 usage，导致 sub2api 记录的 token/费用低于 Kimi 实际账单。取消也是尽力而为，断开前已生成或 Kimi 未及时停止的 token 仍可能计费。',
         grokDefaultTextModel: '默认 Grok 文本模型',
         grokDefaultTextModelHint: '用于空模型值；仅在右侧开关开启时也用于其他客户端模型命名空间。允许填写自定义 Grok 模型 ID。',
         grokCrossClientMap: '映射其他客户端模型到 Grok',
