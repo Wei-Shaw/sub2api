@@ -620,6 +620,7 @@ var platformToLiteLLMProvider = map[string]string{
 	service.PlatformKimi:        "moonshot",
 	service.PlatformZhipu:       "zhipu",
 	service.PlatformDeepseek:    "deepseek",
+	service.PlatformMiniMax:     "minimax",
 }
 
 // SyncPricingModels 返回 LiteLLM 定价目录中指定平台的最新模型列表

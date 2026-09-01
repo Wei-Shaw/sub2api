@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"github.com/tiktoken-go/tokenizer"
 	"go.uber.org/zap"
 )
@@ -150,7 +151,14 @@ func prepareNativeOpenAIInputTokensCountRequest(body []byte, account *Account) (
 }
 
 func shouldEstimateOpenAIInputTokensLocally(account *Account) bool {
-	if account == nil || account.IsGrok() || account.IsCNProvider() || account.Type == AccountTypeUpstream {
+	if account == nil || account.IsGrok() || account.Type == AccountTypeUpstream {
+		return true
+	}
+	if account.IsMiniMax() &&
+		(account.GetAPIProtocol() == APIProtocolResponses || account.IsAdaptiveAPIProtocol()) {
+		return false
+	}
+	if account.IsCNProvider() {
 		return true
 	}
 	if account.Type != AccountTypeAPIKey {
@@ -263,8 +271,11 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 		writeAnthropicCountTokensError(c, http.StatusServiceUnavailable, "api_error", "No available OpenAI accounts")
 		return fmt.Errorf("count_tokens: missing account")
 	}
+	if account.IsMiniMax() && (account.IsAnthropicProtocol() || account.IsAdaptiveAPIProtocol()) {
+		return s.forwardMiniMaxCountTokensAnthropic(ctx, c, account, body, defaultMappedModel)
+	}
 
-	// 国产供应商（全部协议，含 anthropic）：一律本地估算，不发上游请求。
+	// 未提供原生 count_tokens 端点的国产供应商继续本地估算，不发上游请求。
 	// 依据（2026-08 核实）：三家的 Anthropic 兼容层均未提供
 	// /v1/messages/count_tokens——DeepSeek 官方 anthropic_api 文档无此端点
 	// （且注明 anthropic-version 头被忽略），聚合网关 OpenModel 明确标注
@@ -390,6 +401,93 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 	return nil
 }
 
+func (s *OpenAIGatewayService) forwardMiniMaxCountTokensAnthropic(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	defaultMappedModel string,
+) error {
+	originalModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+	if originalModel == "" {
+		writeAnthropicCountTokensError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+		return fmt.Errorf("count_tokens: model is required")
+	}
+
+	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
+	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
+	if upstreamModel != originalModel {
+		var err error
+		body, err = sjson.SetBytes(body, "model", upstreamModel)
+		if err != nil {
+			writeAnthropicCountTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
+			return fmt.Errorf("count_tokens: rewrite model: %w", err)
+		}
+	}
+
+	apiKey := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
+	if apiKey == "" {
+		writeAnthropicCountTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to get access token")
+		return fmt.Errorf("count_tokens: account %d missing api_key", account.ID)
+	}
+	baseURL := strings.TrimSpace(account.GetAnthropicProtocolBaseURL())
+	if baseURL == "" {
+		writeAnthropicCountTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
+		return fmt.Errorf("count_tokens: account %d has no anthropic protocol base url", account.ID)
+	}
+	validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		writeAnthropicCountTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
+		return fmt.Errorf("count_tokens: invalid base_url: %w", err)
+	}
+	targetURL := strings.TrimRight(validatedURL, "/") + "/v1/messages/count_tokens"
+	upstreamReq, _, err := s.buildNativeAnthropicUpstreamRequest(ctx, c, account, body, apiKey, targetURL)
+	if err != nil {
+		writeAnthropicCountTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
+		return fmt.Errorf("count_tokens: build minimax request: %w", err)
+	}
+
+	proxyURL := ""
+	if account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
+	if err != nil {
+		safeErr := sanitizeUpstreamErrorMessage(err.Error())
+		setOpsUpstreamError(c, 0, safeErr, "")
+		writeAnthropicCountTokensError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
+		return fmt.Errorf("count_tokens: minimax upstream request failed: %s", safeErr)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		writeAnthropicCountTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
+		return fmt.Errorf("count_tokens: read minimax response: %w", err)
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
+		setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, "")
+		contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+		if contentType == "" {
+			contentType = "application/json"
+		}
+		c.Data(resp.StatusCode, contentType, respBody)
+		return nil
+	}
+	if !gjson.GetBytes(respBody, "input_tokens").Exists() {
+		writeAnthropicCountTokensError(c, http.StatusBadGateway, "upstream_error", "Upstream response missing input_tokens")
+		return fmt.Errorf("count_tokens: minimax response missing input_tokens")
+	}
+
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if contentType == "" {
+		contentType = "application/json"
+	}
+	c.Data(resp.StatusCode, contentType, respBody)
+	return nil
+}
+
 func prepareOpenAIInputTokensCountRequest(
 	body []byte,
 	account *Account,
@@ -435,7 +533,11 @@ func (s *OpenAIGatewayService) buildInputTokensUpstreamRequest(
 ) (*http.Request, error) {
 	targetURL := openaiPlatformAPIInputTokensURL
 	if account.Type == AccountTypeAPIKey {
-		if baseURL := account.GetOpenAIBaseURL(); strings.TrimSpace(baseURL) != "" {
+		baseURL := account.GetOpenAIBaseURL()
+		if account.SupportsNativeResponses() && account.IsAdaptiveAPIProtocol() {
+			baseURL = account.GetCNProtocolBaseURL(APIProtocolResponses)
+		}
+		if strings.TrimSpace(baseURL) != "" {
 			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
 				return nil, err

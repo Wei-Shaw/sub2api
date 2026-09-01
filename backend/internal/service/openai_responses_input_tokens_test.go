@@ -66,6 +66,54 @@ func TestForwardResponsesInputTokensGrokOAuthUsesLocalEstimate(t *testing.T) {
 	require.Nil(t, upstream.lastReq)
 }
 
+func TestForwardResponsesInputTokensMiniMaxAdaptiveUsesNativeEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/input_tokens", nil)
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"object":"response.input_tokens","input_tokens":588}`)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{
+			Enabled:           false,
+			AllowInsecureHTTP: true,
+		}}},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:          161,
+		Platform:    PlatformMiniMax,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":      "minimax-token-plan-key",
+			"account_mode": AccountModeCoding,
+			"api_protocol": APIProtocolAdaptive,
+			"base_url":     "http://chat.example/v1",
+			"api_base_urls": map[string]any{
+				APIProtocolChatCompletions: "http://chat.example/v1",
+				APIProtocolAnthropic:       "http://anthropic.example",
+				APIProtocolResponses:       "http://responses.example/v1",
+			},
+		},
+	}
+	body := []byte(`{"model":"MiniMax-M3","input":"hello world"}`)
+
+	err := svc.ForwardResponsesInputTokens(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.JSONEq(t, `{"object":"response.input_tokens","input_tokens":588}`, recorder.Body.String())
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "http://responses.example/v1/responses/input_tokens", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer minimax-token-plan-key", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "MiniMax-M3", gjson.GetBytes(upstream.lastBody, "model").String())
+}
+
 func TestForwardResponsesInputTokensUpstream404FallsBackLocally(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

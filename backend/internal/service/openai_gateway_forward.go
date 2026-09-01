@@ -133,13 +133,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
-	nativeDeepSeekResponses := account.Platform == PlatformDeepseek &&
+	nativeCNResponses := account.SupportsNativeResponses() &&
 		(account.GetAPIProtocol() == APIProtocolResponses || account.IsAdaptiveAPIProtocol())
-	if nativeDeepSeekResponses && account.Type == AccountTypeAPIKey && !compactPath &&
+	if nativeCNResponses && account.Type == AccountTypeAPIKey && !compactPath &&
 		needsOpenAIResponsesClientToolAdaptation(body) {
 		adaptedBody, mapping, adaptErr := adaptOpenAIResponsesClientTools(body)
 		if adaptErr != nil {
-			return nil, fmt.Errorf("adapt DeepSeek Responses client tools: %w", adaptErr)
+			return nil, fmt.Errorf("adapt CN Responses client tools: %w", adaptErr)
 		}
 		body = adaptedBody
 		setOpenAIResponsesClientToolMapping(c, mapping)
@@ -360,7 +360,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	instructions := gjson.GetBytes(body, "instructions")
 	instructionsEmpty := !instructions.Exists() || instructions.Type != gjson.String || strings.TrimSpace(instructions.String()) == ""
-	if instructionsEmpty && account.UsesOpenAICodexProtocol() && !compatMessagesBridge && !nativeDeepSeekResponses {
+	if instructionsEmpty && account.UsesOpenAICodexProtocol() && !compatMessagesBridge && !nativeCNResponses {
 		markPatchSet("instructions", defaultCodexSynthInstructions(reqModel))
 	}
 
@@ -571,7 +571,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		maxOutputTokens := gjson.GetBytes(body, "max_output_tokens")
 		if maxOutputTokens.Exists() {
 			switch account.Platform {
-			case PlatformOpenAI, PlatformDeepseek:
+			case PlatformOpenAI, PlatformDeepseek, PlatformMiniMax:
 				// Preserve Responses-native output limits unless the selected upstream
 				// explicitly rejects the field in the bounded HTTP retry loop below.
 			case PlatformAnthropic:
@@ -1268,13 +1268,13 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 		return false
 	}
 	if account.IsCNProvider() {
-		// CN 的显式协议配置优先于异步探针 Extra；adaptive 仅 DeepSeek 有原生
-		// Responses，Kimi/GLM 回退 Chat Completions。
+		// CN 的显式协议配置优先于异步探针 Extra；adaptive 仅原生支持
+		// Responses 的平台直通，Kimi/GLM 回退 Chat Completions。
 		switch account.GetAPIProtocol() {
 		case APIProtocolChatCompletions:
 			return true
 		case APIProtocolAdaptive:
-			return account.Platform != PlatformDeepseek
+			return !account.SupportsNativeResponses()
 		default:
 			return false
 		}
@@ -1298,7 +1298,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	case AccountTypeAPIKey:
 		// API Key accounts use Platform API or custom base URL
 		baseURL := account.GetOpenAIBaseURL()
-		if account.Platform == PlatformDeepseek && account.IsAdaptiveAPIProtocol() {
+		if account.SupportsNativeResponses() && account.IsAdaptiveAPIProtocol() {
 			baseURL = account.GetCNProtocolBaseURL(APIProtocolResponses)
 		}
 		if baseURL == "" {

@@ -62,6 +62,7 @@ func TestProbeOpenAIAPIKeyResponsesSupportCNProviders(t *testing.T) {
 		{name: "deepseek chat clears forced responses", id: 202, platform: PlatformDeepseek, protocol: APIProtocolChatCompletions, wantSupport: false, wantMode: string(openai_compat.ResponsesSupportModeAuto)},
 		{name: "kimi adaptive falls back to chat", id: 203, platform: PlatformKimi, protocol: APIProtocolAdaptive, wantSupport: false, wantMode: string(openai_compat.ResponsesSupportModeAuto)},
 		{name: "zhipu adaptive falls back to chat", id: 204, platform: PlatformZhipu, protocol: APIProtocolAdaptive, wantSupport: false, wantMode: string(openai_compat.ResponsesSupportModeAuto)},
+		{name: "minimax adaptive supports responses", id: 205, platform: PlatformMiniMax, protocol: APIProtocolAdaptive, wantSupport: true, wantMode: string(openai_compat.ResponsesSupportModeForceResponses)},
 	}
 
 	for _, tc := range tests {

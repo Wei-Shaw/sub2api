@@ -308,6 +308,8 @@ const (
 	configuredCodexCustomDescription   = "Custom model routed through Sub2API."
 	configuredCodexFallbackContext     = 272_000
 	configuredCodexDeepSeekV4Context   = 1_000_000
+	configuredCodexMiniMaxM3Context    = 1_000_000
+	configuredCodexMiniMaxM2Context    = 204_800
 	configuredCodexGrokContext         = 500_000
 	configuredCodexGrokBuildContext    = 256_000
 	configuredCodexGPT56MaxContext     = 872_000
@@ -439,6 +441,20 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		descriptor.SupportsParallelToolCalls = true
 		descriptor.ContextWindow = configuredCodexDeepSeekV4Context
 		descriptor.MaxContextWindow = configuredCodexDeepSeekV4Context
+	}
+
+	if isMiniMaxCodexModel(modelID) {
+		defaultReasoningLevel := "high"
+		descriptor.DisplayName = miniMaxCodexDisplayName(modelID)
+		descriptor.Description = "MiniMax coding and reasoning model routed through Sub2API."
+		descriptor.DefaultReasoningLevel = &defaultReasoningLevel
+		descriptor.SupportedReasoningLevels = []configuredCodexReasoningLevel{
+			{Effort: "none", Description: configuredCodexReasoningLevelDescription("none")},
+			{Effort: "high", Description: "Greater reasoning depth for coding and agent tasks"},
+		}
+		descriptor.SupportsParallelToolCalls = true
+		descriptor.ContextWindow = miniMaxCodexContextWindow(modelID)
+		descriptor.MaxContextWindow = descriptor.ContextWindow
 	}
 
 	if isGrokCodexModel(modelID) {
@@ -653,6 +669,25 @@ func deepSeekCodexDisplayName(modelID string) string {
 
 func isDeepSeekCodexModel(modelID string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "deepseek-")
+}
+
+func isMiniMaxCodexModel(modelID string) bool {
+	return strings.HasPrefix(strings.ToLower(codexProviderQualifiedModelID(modelID)), "minimax-m")
+}
+
+func miniMaxCodexDisplayName(modelID string) string {
+	normalized := codexProviderQualifiedModelID(modelID)
+	if normalized == "" {
+		return modelID
+	}
+	return normalized
+}
+
+func miniMaxCodexContextWindow(modelID string) int64 {
+	if strings.EqualFold(codexProviderQualifiedModelID(modelID), "MiniMax-M3") {
+		return configuredCodexMiniMaxM3Context
+	}
+	return configuredCodexMiniMaxM2Context
 }
 
 func isGrokCodexModel(modelID string) bool {
@@ -986,6 +1021,9 @@ func groupCodexModelSupportsImageInput(
 		if !resolved {
 			return false
 		}
+	}
+	if platform == PlatformMiniMax {
+		return strings.EqualFold(codexProviderQualifiedModelID(upstreamModel), "MiniMax-M3")
 	}
 	if platform != PlatformOpenAI && platform != PlatformGrok {
 		return false

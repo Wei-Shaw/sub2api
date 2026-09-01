@@ -9,6 +9,8 @@ import {
   applyPlanType,
   buildHeaderOverridesObject,
   buildPlanTypeOptions,
+  cnBalanceCellVisible,
+  cnQuotaCellVisible,
   isCustomGrokBaseUrl,
   isHeaderOverrideCapable,
   GROK_BASE_URL_PRESETS,
@@ -19,6 +21,15 @@ import {
   splitHeaderOverridesObject,
   validateHeaderOverrideRows
 } from '../credentialsBuilder'
+
+describe('MiniMax usage cells', () => {
+  it('shows Token Plan quota only for coding accounts', () => {
+    expect(cnQuotaCellVisible('minimax', 'coding')).toBe(true)
+    expect(cnQuotaCellVisible('minimax', 'payg')).toBe(false)
+    expect(cnBalanceCellVisible('minimax', 'coding')).toBe(false)
+    expect(cnBalanceCellVisible('minimax', 'payg')).toBe(false)
+  })
+})
 
 describe('applyInterceptWarmup', () => {
   it('create + enabled=true: should set intercept_warmup_requests to true', () => {
@@ -106,8 +117,8 @@ describe('isHeaderOverrideCapable', () => {
     expect(isHeaderOverrideCapable('openai', 'oauth')).toBe(false)
   })
 
-  it('kimi/zhipu/deepseek only support apikey accounts', () => {
-    for (const platform of ['kimi', 'zhipu', 'deepseek']) {
+  it('CN providers only support apikey accounts', () => {
+    for (const platform of ['kimi', 'zhipu', 'deepseek', 'minimax']) {
       expect(isHeaderOverrideCapable(platform, 'apikey')).toBe(true)
       expect(isHeaderOverrideCapable(platform, 'oauth')).toBe(false)
     }

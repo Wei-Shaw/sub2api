@@ -645,44 +645,68 @@ func (s *BillingService) initFallbackPricing() {
 	}
 
 	// ---- MiniMax M 系列 ----
-	// Source: https://platform.minimax.io/docs/guides/pricing-paygo
-	// 注意：MiniMax M3 在 >512K context 时价格翻倍，本兜底采用 ≤512K 标准 tier（保守口径，对用户有利）。
-	// 如需支持长上下文 multiplier，可后续参考 GPT-5.4 模式扩展 LongContextXxx 字段。
+	// Source: https://platform.minimaxi.com/docs/guides/pricing-paygo
+	// MiniMax M3 在 >512K 输入时标准价和 Priority 价均翻倍；Priority 为标准价 1.5 倍。
 	s.fallbackPrices["minimax-m3"] = &ModelPricing{
-		InputPricePerToken:     0.60e-6, // $0.60 per MTok (≤512K standard tier, 含 50% 永久折扣前原价 $1.20)
-		OutputPricePerToken:    2.40e-6,
-		CacheReadPricePerToken: 0.12e-6,
-		SupportsCacheBreakdown: false,
+		InputPricePerToken:             0.30e-6,
+		InputPricePerTokenPriority:     0.45e-6,
+		OutputPricePerToken:            1.20e-6,
+		OutputPricePerTokenPriority:    1.80e-6,
+		CacheReadPricePerToken:         0.06e-6,
+		CacheReadPricePerTokenPriority: 0.09e-6,
+		SupportsCacheBreakdown:         false,
+		LongContextInputThreshold:      512000,
+		LongContextInputMultiplier:     2.0,
+		LongContextOutputMultiplier:    2.0,
 	}
 	s.fallbackPrices["minimax-m2.7"] = &ModelPricing{
-		InputPricePerToken:     0.30e-6, // $0.30 per MTok
-		OutputPricePerToken:    1.20e-6,
-		CacheReadPricePerToken: 0.06e-6,
-		SupportsCacheBreakdown: false,
+		InputPricePerToken:         0.30e-6,
+		OutputPricePerToken:        1.20e-6,
+		CacheCreationPricePerToken: 0.375e-6,
+		CacheReadPricePerToken:     0.06e-6,
+		SupportsCacheBreakdown:     false,
 	}
 	s.fallbackPrices["minimax-m2.7-highspeed"] = &ModelPricing{
-		InputPricePerToken:     0.60e-6,
-		OutputPricePerToken:    2.40e-6,
-		CacheReadPricePerToken: 0.06e-6,
-		SupportsCacheBreakdown: false,
+		InputPricePerToken:         0.60e-6,
+		OutputPricePerToken:        2.40e-6,
+		CacheCreationPricePerToken: 0.375e-6,
+		CacheReadPricePerToken:     0.06e-6,
+		SupportsCacheBreakdown:     false,
 	}
 	s.fallbackPrices["minimax-m2.5"] = &ModelPricing{
-		InputPricePerToken:     0.30e-6,
-		OutputPricePerToken:    1.20e-6,
-		CacheReadPricePerToken: 0.03e-6,
-		SupportsCacheBreakdown: false,
+		InputPricePerToken:         0.30e-6,
+		OutputPricePerToken:        1.20e-6,
+		CacheCreationPricePerToken: 0.375e-6,
+		CacheReadPricePerToken:     0.03e-6,
+		SupportsCacheBreakdown:     false,
+	}
+	s.fallbackPrices["minimax-m2.5-highspeed"] = &ModelPricing{
+		InputPricePerToken:         0.60e-6,
+		OutputPricePerToken:        2.40e-6,
+		CacheCreationPricePerToken: 0.375e-6,
+		CacheReadPricePerToken:     0.03e-6,
+		SupportsCacheBreakdown:     false,
 	}
 	s.fallbackPrices["minimax-m2.1"] = &ModelPricing{
-		InputPricePerToken:     0.30e-6,
-		OutputPricePerToken:    1.20e-6,
-		CacheReadPricePerToken: 0.03e-6,
-		SupportsCacheBreakdown: false,
+		InputPricePerToken:         0.30e-6,
+		OutputPricePerToken:        1.20e-6,
+		CacheCreationPricePerToken: 0.375e-6,
+		CacheReadPricePerToken:     0.03e-6,
+		SupportsCacheBreakdown:     false,
+	}
+	s.fallbackPrices["minimax-m2.1-highspeed"] = &ModelPricing{
+		InputPricePerToken:         0.60e-6,
+		OutputPricePerToken:        2.40e-6,
+		CacheCreationPricePerToken: 0.375e-6,
+		CacheReadPricePerToken:     0.03e-6,
+		SupportsCacheBreakdown:     false,
 	}
 	s.fallbackPrices["minimax-m2"] = &ModelPricing{
-		InputPricePerToken:     0.30e-6,
-		OutputPricePerToken:    1.20e-6,
-		CacheReadPricePerToken: 0.03e-6,
-		SupportsCacheBreakdown: false,
+		InputPricePerToken:         0.30e-6,
+		OutputPricePerToken:        1.20e-6,
+		CacheCreationPricePerToken: 0.375e-6,
+		CacheReadPricePerToken:     0.03e-6,
+		SupportsCacheBreakdown:     false,
 	}
 
 	// ---- 火山方舟 豆包 Embedding（多模态向量化）----
@@ -928,8 +952,14 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	if strings.Contains(modelLower, "minimax-m2.7") || strings.Contains(modelLower, "minimax-m2-7") {
 		return s.fallbackPrices["minimax-m2.7"]
 	}
+	if strings.Contains(modelLower, "minimax-m2.5-highspeed") || strings.Contains(modelLower, "minimax-m2-5-highspeed") {
+		return s.fallbackPrices["minimax-m2.5-highspeed"]
+	}
 	if strings.Contains(modelLower, "minimax-m2.5") || strings.Contains(modelLower, "minimax-m2-5") {
 		return s.fallbackPrices["minimax-m2.5"]
+	}
+	if strings.Contains(modelLower, "minimax-m2.1-highspeed") || strings.Contains(modelLower, "minimax-m2-1-highspeed") {
+		return s.fallbackPrices["minimax-m2.1-highspeed"]
 	}
 	if strings.Contains(modelLower, "minimax-m2.1") || strings.Contains(modelLower, "minimax-m2-1") {
 		return s.fallbackPrices["minimax-m2.1"]

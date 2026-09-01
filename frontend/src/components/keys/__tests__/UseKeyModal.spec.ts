@@ -341,6 +341,106 @@ describe('UseKeyModal', () => {
     expect(codeBlocks.join('\n')).toContain('experimental_bearer_token = "sk-grok-codex-test"')
   })
 
+  it('renders MiniMax-M3 tool setup for MiniMax groups', async () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-minimax-test',
+        baseUrl: 'https://example.com/v1',
+        platform: 'minimax'
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    const claudeCode = wrapper.findAll('pre code').map((code) => code.text()).join('\n')
+    for (const name of [
+      'ANTHROPIC_MODEL',
+      'ANTHROPIC_DEFAULT_OPUS_MODEL',
+      'ANTHROPIC_DEFAULT_SONNET_MODEL',
+      'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+      'ANTHROPIC_DEFAULT_FABLE_MODEL',
+      'CLAUDE_CODE_SUBAGENT_MODEL'
+    ]) {
+      expect(claudeCode).toContain(`export ${name}="MiniMax-M3[1m]"`)
+    }
+    expect(claudeCode).toContain('export CLAUDE_CODE_AUTO_COMPACT_WINDOW="1000000"')
+
+    const codexTab = wrapper.findAll('button').find((button) =>
+      button.text().includes('keys.useKeyModal.cliTabs.codexCli')
+    )
+    expect(codexTab).toBeDefined()
+    await codexTab!.trigger('click')
+    await nextTick()
+
+    const codeBlocks = wrapper.findAll('pre code').map((code) => code.text())
+    const configToml = codeBlocks.find((content) => content.includes('[model_providers.sub2api]'))
+    expect(configToml).toBeDefined()
+    expect(configToml).toContain('model = "MiniMax-M3"')
+    expect(configToml).toContain('review_model = "MiniMax-M3"')
+    expect(configToml).toContain('base_url = "https://example.com/v1"')
+    expect(configToml).toContain('wire_api = "responses"')
+    expect(configToml).toContain('env_key = "SUB2API_API_KEY"')
+    expect(configToml).toContain('requires_openai_auth = false')
+    expect(configToml).toContain('supports_websockets = false')
+    expect(codeBlocks.join('\n')).toContain('SUB2API_API_KEY="sk-minimax-test"')
+
+    const opencodeTab = wrapper.findAll('button').find((button) =>
+      button.text().includes('keys.useKeyModal.cliTabs.opencode')
+    )
+    expect(opencodeTab).toBeDefined()
+    await opencodeTab!.trigger('click')
+    await nextTick()
+
+    const openCodeConfig = JSON.parse(wrapper.find('pre code').text())
+    expect(openCodeConfig.provider.minimax.npm).toBe('@ai-sdk/openai-compatible')
+    expect(openCodeConfig.provider.minimax.models['MiniMax-M3'].limit.context).toBe(1000000)
+    expect(openCodeConfig.provider.minimax.models['MiniMax-M3'].modalities.input).toEqual(['text', 'image'])
+  })
+
+  it('includes MiniMax-M3 in Composite OpenCode setup without forcing the Claude model', async () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-composite-test',
+        baseUrl: 'https://example.com/v1',
+        platform: 'composite'
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    expect(wrapper.findAll('pre code').map((code) => code.text()).join('\n')).not.toContain('ANTHROPIC_MODEL')
+
+    const opencodeTab = wrapper.findAll('button').find((button) =>
+      button.text().includes('keys.useKeyModal.cliTabs.opencode')
+    )
+    expect(opencodeTab).toBeDefined()
+    await opencodeTab!.trigger('click')
+    await nextTick()
+
+    const openCodeConfig = JSON.parse(wrapper.find('pre code').text())
+    expect(openCodeConfig.provider.composite.npm).toBe('@ai-sdk/openai-compatible')
+    expect(openCodeConfig.provider.composite.models['MiniMax-M3'].modalities.input).toEqual(['text', 'image'])
+    expect(openCodeConfig.provider.composite.models['gpt-5.6']).toBeDefined()
+  })
+
   it('keeps legacy OpenAI Codex config as the default', () => {
     const wrapper = mount(UseKeyModal, {
       props: {

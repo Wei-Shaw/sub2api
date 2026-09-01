@@ -131,6 +131,13 @@ func TestGatewayCodexModels_NonOpenAIGroupsUseMappedModels(t *testing.T) {
 			modalities: []string{"text"},
 		},
 		{
+			name:       "MiniMax",
+			platform:   service.PlatformMiniMax,
+			model:      "MiniMax-M3",
+			efforts:    []string{"none", "high"},
+			modalities: []string{"text", "image"},
+		},
+		{
 			name:       "provider-qualified Claude",
 			platform:   service.PlatformAnthropic,
 			model:      "anthropic/claude-sonnet-4-6",
@@ -770,6 +777,7 @@ func TestGatewayModels_CompositeUnmappedCNAccountsContributeNoDefaults(t *testin
 					{ID: 2, Platform: service.PlatformKimi},
 					{ID: 3, Platform: service.PlatformZhipu},
 					{ID: 4, Platform: service.PlatformDeepseek},
+					{ID: 5, Platform: service.PlatformMiniMax},
 				},
 			},
 		},
@@ -791,6 +799,7 @@ func TestGatewayModels_CompositeUnmappedCNAccountsContributeNoDefaults(t *testin
 
 	ids := modelIDsForTest(got.Data)
 	require.Contains(t, ids, "gpt-5.5")
+	require.Contains(t, ids, "MiniMax-M3")
 	require.NotContains(t, ids, "claude-sonnet-4-6")
 }
 
@@ -887,6 +896,19 @@ func TestGatewayCodexModels_OmitsWildcardMappingKeys(t *testing.T) {
 		slugs = append(slugs, model.Slug)
 	}
 	require.Equal(t, []string{"deepseek-v4-pro"}, slugs)
+}
+
+func TestDefaultModelIDsForPlatform_MiniMaxUsesOfficialModels(t *testing.T) {
+	require.Equal(t, []string{
+		"MiniMax-M3",
+		"MiniMax-M2.7",
+		"MiniMax-M2.7-highspeed",
+		"MiniMax-M2.5",
+		"MiniMax-M2.5-highspeed",
+		"MiniMax-M2.1",
+		"MiniMax-M2.1-highspeed",
+		"MiniMax-M2",
+	}, defaultModelIDsForPlatform(service.PlatformMiniMax))
 }
 
 func TestGatewayModels_CustomModelsListKeepsConcreteModelAllowedByWildcardMapping(t *testing.T) {

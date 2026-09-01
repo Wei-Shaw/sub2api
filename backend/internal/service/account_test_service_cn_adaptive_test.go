@@ -115,28 +115,40 @@ func TestAccountTestService_AdaptiveChatOnlyProvidersTestChatAndAnthropicEndpoin
 	}
 }
 
-func TestAccountTestService_AdaptiveDeepSeekAlsoTestsResponsesEndpoint(t *testing.T) {
-	account := adaptiveCNAccountTestAccount(302, PlatformDeepseek)
-	svc, upstream := adaptiveCNAccountTestService(
-		account,
-		adaptiveCNChatTestResponse(),
-		adaptiveCNAnthropicTestResponse(),
-		adaptiveCNResponsesTestResponse(),
-	)
-	c, recorder := newTestContext()
+func TestAccountTestService_AdaptiveNativeResponsesProvidersTestAllEndpoints(t *testing.T) {
+	for index, testCase := range []struct {
+		name             string
+		platform         string
+		model            string
+		wantResponsesURL string
+	}{
+		{name: "DeepSeek", platform: PlatformDeepseek, model: "deepseek-chat", wantResponsesURL: "http://responses.example/responses"},
+		{name: "MiniMax", platform: PlatformMiniMax, model: "MiniMax-M3", wantResponsesURL: "http://responses.example/v1/responses"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			account := adaptiveCNAccountTestAccount(int64(302+index), testCase.platform)
+			svc, upstream := adaptiveCNAccountTestService(
+				account,
+				adaptiveCNChatTestResponse(),
+				adaptiveCNAnthropicTestResponse(),
+				adaptiveCNResponsesTestResponse(),
+			)
+			c, recorder := newTestContext()
 
-	err := svc.TestAccountConnection(c, account.ID, "deepseek-chat", "", AccountTestModeDefault)
+			err := svc.TestAccountConnection(c, account.ID, testCase.model, "", AccountTestModeDefault)
 
-	require.NoError(t, err)
-	require.Len(t, upstream.requests, 3)
-	require.Equal(t, "http://responses.example/responses", upstream.requests[2].URL.String())
-	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.requests[2].Context()))
-	require.Equal(t, "Bearer sk-adaptive-test", upstream.requests[2].Header.Get("Authorization"))
-	require.True(t, gjson.GetBytes(upstream.bodies[2], "stream").Bool())
-	require.False(t, gjson.GetBytes(upstream.bodies[2], "store").Bool())
-	require.False(t, gjson.GetBytes(upstream.bodies[2], "instructions").Exists())
-	require.Equal(t, 1, strings.Count(recorder.Body.String(), `"type":"test_complete"`))
-	require.Contains(t, recorder.Body.String(), "已通过原生 /responses 验证")
+			require.NoError(t, err)
+			require.Len(t, upstream.requests, 3)
+			require.Equal(t, testCase.wantResponsesURL, upstream.requests[2].URL.String())
+			require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.requests[2].Context()))
+			require.Equal(t, "Bearer sk-adaptive-test", upstream.requests[2].Header.Get("Authorization"))
+			require.True(t, gjson.GetBytes(upstream.bodies[2], "stream").Bool())
+			require.False(t, gjson.GetBytes(upstream.bodies[2], "store").Bool())
+			require.False(t, gjson.GetBytes(upstream.bodies[2], "instructions").Exists())
+			require.Equal(t, 1, strings.Count(recorder.Body.String(), `"type":"test_complete"`))
+			require.Contains(t, recorder.Body.String(), "已通过原生 /responses 验证")
+		})
+	}
 }
 
 func TestAccountTestService_AdaptiveStopsAndNamesFailingEndpoint(t *testing.T) {

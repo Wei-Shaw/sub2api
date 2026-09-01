@@ -47,6 +47,7 @@ const (
 	PlatformKimi      = domain.PlatformKimi
 	PlatformZhipu     = domain.PlatformZhipu
 	PlatformDeepseek  = domain.PlatformDeepseek
+	PlatformMiniMax   = domain.PlatformMiniMax
 	PlatformComposite = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
@@ -75,6 +76,7 @@ const (
 	DefaultZhipuPayGBaseURL   = "https://open.bigmodel.cn/api/paas/v4"
 	DefaultZhipuCodingBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
 	DefaultDeepseekBaseURL    = "https://api.deepseek.com"
+	DefaultMiniMaxBaseURL     = "https://api.minimaxi.com/v1"
 )
 
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
@@ -84,12 +86,13 @@ const (
 	DefaultKimiCodingAnthropicBaseURL = "https://api.kimi.com/coding"
 	DefaultZhipuAnthropicBaseURL      = "https://open.bigmodel.cn/api/anthropic"
 	DefaultDeepseekAnthropicBaseURL   = "https://api.deepseek.com/anthropic"
+	DefaultMiniMaxAnthropicBaseURL    = "https://api.minimaxi.com/anthropic"
 )
 
-// IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）。
+// IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商。
 func IsCNProvider(platform string) bool {
 	switch platform {
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
 		return true
 	default:
 		return false
@@ -108,17 +111,19 @@ var AllowedQuotaPlatforms = []string{
 	PlatformKimi,
 	PlatformZhipu,
 	PlatformDeepseek,
+	PlatformMiniMax,
 }
 
 // AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。
-// openai/anthropic/grok 有原生用量窗口；kimi/zhipu 的 Coding Plan 同样暴露 5h/weekly
-// 滚动窗口，纳入阈值评估。deepseek 为余额型，走余额检测而非阈值。
+// openai/anthropic/grok 有原生用量窗口；kimi/zhipu/minimax 的 Coding Plan 同样
+// 暴露 5h/weekly 滚动窗口，纳入阈值评估。deepseek 为余额型，走余额检测而非阈值。
 var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformOpenAI,
 	PlatformAnthropic,
 	PlatformGrok,
 	PlatformKimi,
 	PlatformZhipu,
+	PlatformMiniMax,
 }
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。
