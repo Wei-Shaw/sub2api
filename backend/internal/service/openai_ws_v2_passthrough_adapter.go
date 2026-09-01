@@ -696,6 +696,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		firstClientMessage = liteFirstMessage
 	}
 	originalFirstClientMessage := firstClientMessage
+	firstNativeCompactionV2 := IsOpenAIWSNativeCompactionV2Payload(originalFirstClientMessage)
 	if hooks != nil && (hooks.MaxReasoningEffort != "" || len(hooks.ReasoningEffortMappings) > 0) {
 		if capped, changed := ApplyOpenAIReasoningEffortPolicy(firstClientMessage, hooks.MaxReasoningEffort, hooks.ReasoningEffortMappings); changed {
 			firstClientMessage = capped
@@ -953,6 +954,34 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	completedTurns := atomic.Int32{}
 	turnLifecycle := newOpenAIWSPassthroughTurnLifecycle(true)
 	var acceptedTurnStartedAt atomic.Pointer[time.Time]
+	var nativeCompactionByTurnMu sync.Mutex
+	nativeCompactionByTurn := map[int]bool{1: firstNativeCompactionV2}
+	setNativeCompactionForTurn := func(turn int, native bool) {
+		if turn <= 0 {
+			return
+		}
+		nativeCompactionByTurnMu.Lock()
+		nativeCompactionByTurn[turn] = native
+		nativeCompactionByTurnMu.Unlock()
+	}
+	takeNativeCompactionForTurn := func(turn int) bool {
+		if turn <= 0 {
+			return false
+		}
+		nativeCompactionByTurnMu.Lock()
+		native := nativeCompactionByTurn[turn]
+		delete(nativeCompactionByTurn, turn)
+		nativeCompactionByTurnMu.Unlock()
+		return native
+	}
+	clearNativeCompactionMetadata := func() {
+		nativeCompactionByTurnMu.Lock()
+		for turn := range nativeCompactionByTurn {
+			delete(nativeCompactionByTurn, turn)
+		}
+		nativeCompactionByTurnMu.Unlock()
+	}
+	defer clearNativeCompactionMetadata()
 	clientFrameConn := &openAIWSClientFrameConn{
 		conn:                 clientConn,
 		controlCtx:           ctx,
@@ -983,6 +1012,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
 			isResponseCreate := eventType == "response.create"
 			responseCreateAt := time.Time{}
+			nativeCompactionV2 := isResponseCreate && IsOpenAIWSNativeCompactionV2Payload(payload)
 			acceptedTurn := false
 			if isResponseCreate {
 				responseCreateAt = time.Now()
@@ -1106,6 +1136,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			//     覆盖（Store(nil)），因为 OpenAI 上游对该帧实际不传
 			//     service_tier 时按 default 处理，billing 应如实反映。
 			if policyErr == nil && blocked == nil && isResponseCreate {
+				setNativeCompactionForTurn(turnNo, nativeCompactionV2)
 				usageMeta.updateFromResponseCreate(out, model, requestModelForThisFrame)
 				_, actualModel := usageMeta.turnModels(requestModelForThisFrame)
 				SetOpsUpstreamModel(c, actualModel)
@@ -1194,6 +1225,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			},
 			OnTurnComplete: func(turn openaiwsv2.RelayTurnResult) {
 				turnNo := int(completedTurns.Add(1))
+				nativeCompactionV2 := takeNativeCompactionForTurn(turnNo)
 				if hooks != nil && hooks.TurnStarted != nil && !turn.StartedAt.IsZero() {
 					hooks.TurnStarted(turnNo, turn.StartedAt)
 				}
@@ -1217,6 +1249,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					RequestedReasoningEffort:      usageMeta.requestedReasoningEffort.Load(),
 					Stream:                        true,
 					OpenAIWSMode:                  true,
+					NativeCompactionV2:            nativeCompactionV2,
 					UpstreamTerminalEvent:         normalizeOpenAIWSTerminalEvent(turn.TerminalEventType),
 					ResponseHeaders:               cloneHeader(handshakeHeaders),
 					Duration:                      turn.Duration,
@@ -1236,9 +1269,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					turnResult.Usage.OutputTokens,
 					turnResult.Usage.CacheReadInputTokens,
 				)
-				if hooks != nil && hooks.AfterTurn != nil {
-					hooks.AfterTurn(turnNo, turnResult, nil)
-				}
+				notifyOpenAIWSIngressAfterTurn(hooks, turnNo, turnResult, nil, nativeCompactionV2)
 			},
 			BeforeClientWrite: func(msgType coderws.MessageType, payload []byte) {
 				if msgType == coderws.MessageText && openAIWSPassthroughIsTerminalOutput(payload) {
@@ -1371,11 +1402,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			turnCount,
 		)
 		// 正常路径按 terminal 事件逐 turn 已回调；仅在零 turn 场景兜底回调一次。
-		if turnCount == 0 && hooks != nil && hooks.AfterTurn != nil {
+		if turnCount == 0 && hooks != nil && (hooks.AfterTurn != nil || hooks.AfterTurnWithMetadata != nil) {
+			nativeCompactionV2 := takeNativeCompactionForTurn(1)
+			result.NativeCompactionV2 = nativeCompactionV2
 			if hooks.TurnStarted != nil {
 				hooks.TurnStarted(1, time.Now().Add(-result.Duration))
 			}
-			hooks.AfterTurn(1, result, nil)
+			notifyOpenAIWSIngressAfterTurn(hooks, 1, result, nil, nativeCompactionV2)
 		}
 		return nil
 	}
@@ -1440,11 +1473,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		relayErr,
 		relayExit.WroteDownstream,
 	)
-	if hooks != nil && hooks.AfterTurn != nil {
+	if hooks != nil && (hooks.AfterTurn != nil || hooks.AfterTurnWithMetadata != nil) {
+		nativeCompactionV2 := takeNativeCompactionForTurn(turnCount + 1)
 		if hooks.TurnStarted != nil {
 			hooks.TurnStarted(turnCount+1, time.Now().Add(-result.Duration))
 		}
-		hooks.AfterTurn(turnCount+1, nil, turnErr)
+		notifyOpenAIWSIngressAfterTurn(hooks, turnCount+1, nil, turnErr, nativeCompactionV2)
 	}
 	return turnErr
 }

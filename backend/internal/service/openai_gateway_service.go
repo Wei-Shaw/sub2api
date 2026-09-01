@@ -266,6 +266,9 @@ type OpenAIForwardResult struct {
 	RequestedReasoningEffort *string
 	Stream                   bool
 	OpenAIWSMode             bool
+	// NativeCompactionV2 is the per-turn semantic marker captured from the
+	// client payload. It is orthogonal to transport/request type fields.
+	NativeCompactionV2 bool
 	// UpstreamTerminalEvent is the normalized terminal event observed on an
 	// upstream Responses WebSocket turn. Empty preserves legacy/non-WS success.
 	UpstreamTerminalEvent string

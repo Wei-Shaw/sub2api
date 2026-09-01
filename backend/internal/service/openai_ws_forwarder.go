@@ -264,6 +264,25 @@ type OpenAIWSIngressHooks struct {
 	// that must be written into the upstream response.create frame.
 	MapRequestModel func(turn int, originalModel string) (string, error)
 	AfterTurn       func(turn int, result *OpenAIForwardResult, turnErr error)
+	// AfterTurnWithMetadata is the extended callback for ingress paths that
+	// need to propagate per-turn semantic flags without changing the legacy
+	// callback contract. When set, it takes precedence over AfterTurn.
+	AfterTurnWithMetadata func(turn int, result *OpenAIForwardResult, turnErr error, nativeCompactionV2 bool)
+}
+
+// notifyOpenAIWSIngressAfterTurn dispatches the most expressive callback
+// available while keeping existing ingress hook users source-compatible.
+func notifyOpenAIWSIngressAfterTurn(hooks *OpenAIWSIngressHooks, turn int, result *OpenAIForwardResult, turnErr error, nativeCompactionV2 bool) {
+	if hooks == nil {
+		return
+	}
+	if hooks.AfterTurnWithMetadata != nil {
+		hooks.AfterTurnWithMetadata(turn, result, turnErr, nativeCompactionV2)
+		return
+	}
+	if hooks.AfterTurn != nil {
+		hooks.AfterTurn(turn, result, turnErr)
+	}
 }
 
 func (s *OpenAIGatewayService) getOpenAIWSConnPool() *openAIWSConnPool {
