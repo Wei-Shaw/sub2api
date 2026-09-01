@@ -11,6 +11,7 @@
       <nav class="mx-auto flex max-w-6xl items-center justify-between">
         <div class="flex items-center"><div class="h-10 w-10 overflow-hidden rounded-xl shadow-md"><img :src="context.siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" /></div></div>
         <div class="flex items-center gap-3">
+          <router-link v-if="context.showModelPlazaEntry" to="/model-plaza" class="text-sm font-medium text-gray-600 transition-colors hover:text-primary-600 dark:text-dark-300 dark:hover:text-primary-400">{{ t('common.nav.modelPlaza') }}</router-link>
           <LocaleSwitcher />
           <a v-if="context.docUrl" :href="context.docUrl" target="_blank" rel="noopener noreferrer" class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white" :title="t('home.viewDocs')"><Icon name="book" size="md" /></a>
           <button @click="context.toggleTheme" class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white" :title="context.isDark ? t('home.switchToLight') : t('home.switchToDark')"><Icon v-if="context.isDark" name="sun" size="md" /><Icon v-else name="moon" size="md" /></button>

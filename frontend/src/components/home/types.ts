@@ -8,6 +8,7 @@ export interface HomeStyleContext {
   siteLogo: string
   siteSubtitle: string
   docUrl: string
+  showModelPlazaEntry: boolean
   isAuthenticated: boolean
   dashboardPath: string
   userInitial: string

@@ -73,6 +73,12 @@ export default {
           priceDescription: 'Pricing notes (Markdown)',
           priceDescriptionHint: 'Rendered at the top of the plaza page. Use it for billing rules, exchange rates, promotions, etc.',
         },
+        pluginManagement: {
+          title: 'Plugin Management',
+          description: 'Controls whether the plugin management entry appears in the admin sidebar. This switch does not control plugin runtime state.',
+          enabled: 'Show Plugin Management',
+          enabledHint: 'Turning this off only hides the sidebar entry; loaded or running plugins are not stopped.',
+        },
         riskControl: {
           title: 'Risk Control',
           description: 'Enable the content moderation menu and gateway audit entry point. Disabled by default.',
@@ -488,6 +494,10 @@ export default {
         grokBaseURLModeUSEast1: 'Regional API (us-east-1)',
         grokBaseURLModeUSWest2: 'Regional API (us-west-2)',
         grokBaseURLModeEUWest1: 'Regional API (eu-west-1)',
+        openaiTTFTMode: 'OpenAI Responses first-token metric',
+        openaiTTFTModeSemantic: 'Legacy-compatible (semantic event)',
+        openaiTTFTModeVisible: 'Actual visible output',
+        openaiTTFTModeHint: 'The default records first_token_ms at the first non-preamble semantic event. Actual visible output records it only when non-empty text, tool arguments, or image content arrives.',
         fingerprintUnification: 'Fingerprint Unification',
         fingerprintUnificationHint: 'Unify X-Stainless-* headers across users sharing the same OAuth account. Disabling passes through each client\'s original headers.',
         metadataPassthrough: 'Metadata Passthrough',

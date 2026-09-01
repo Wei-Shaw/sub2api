@@ -325,6 +325,16 @@ func TestValidateCreateParams_CheckModeMatrix(t *testing.T) {
 			},
 			wantErr: ErrChannelMonitorInvalidCheckMode,
 		},
+		{
+			// quota_probe 仍要打真实探活请求：空模型必须报错，不再用 "quota" 占位。
+			name: "quota_probe requires primary model",
+			params: ChannelMonitorCreateParams{
+				Provider: MonitorProviderKimi, CheckMode: MonitorCheckModeQuotaProbe,
+				Endpoint: "https://api.kimi.com", APIKey: "sk",
+				IntervalSeconds: 60, AccountID: &accountID,
+			},
+			wantErr: ErrChannelMonitorMissingPrimaryModel,
+		},
 	}
 
 	for _, tc := range cases {
@@ -342,8 +352,15 @@ func TestValidateCreateParams_CheckModeMatrix(t *testing.T) {
 func TestNormalizeMonitorPrimaryModel_QuotaDefault(t *testing.T) {
 	require.Equal(t, "quota", normalizeMonitorPrimaryModel(MonitorProviderKimi, MonitorCheckModeQuota, ""))
 	require.Equal(t, "quota", normalizeMonitorPrimaryModel(MonitorProviderAntigravity, MonitorCheckModeQuota, "  "))
-	// 探活模式沿用原语义：grok 默认模型，其余必填（空串报错在 validateCreateParams）。
+	// quota_probe 仍要打真实探活请求：空模型返回 ""（由上层报 MissingPrimaryModel），
+	// 不再用 "quota" 占位打 model="quota" 的请求。
+	require.Equal(t, "", normalizeMonitorPrimaryModel(MonitorProviderKimi, MonitorCheckModeQuotaProbe, ""))
+	// grok 分支在纯 quota 占位之后：grok+quota 占位 "quota"，
+	// grok 探活（probe/quota_probe）默认轻量测活模型。
+	require.Equal(t, "quota", normalizeMonitorPrimaryModel(MonitorProviderGrok, MonitorCheckModeQuota, ""))
 	require.Equal(t, MonitorDefaultGrokModel, normalizeMonitorPrimaryModel(MonitorProviderGrok, MonitorCheckModeProbe, ""))
+	require.Equal(t, MonitorDefaultGrokModel, normalizeMonitorPrimaryModel(MonitorProviderGrok, MonitorCheckModeQuotaProbe, ""))
+	// 探活模式沿用原语义：其余必填（空串报错在 validateCreateParams）。
 	require.Equal(t, "kimi-k2", normalizeMonitorPrimaryModel(MonitorProviderKimi, MonitorCheckModeQuotaProbe, "kimi-k2"))
 }
 
@@ -412,6 +429,150 @@ func TestRevalidateLinkedAccount_PlatformMismatch(t *testing.T) {
 	probe := &ChannelMonitor{Provider: MonitorProviderKimi, CheckMode: MonitorCheckModeProbe, AccountID: int64Ptr(2)}
 	require.NoError(t, svc.revalidateLinkedAccount(context.Background(), probe))
 	require.Nil(t, probe.AccountID)
+}
+
+// 能力矩阵：与 fetchUncached 路由一一对应，创建期拦截注定运行期永久 error 的组合。
+func TestMonitorAccountQuotaCapability_Matrix(t *testing.T) {
+	cases := []struct {
+		name    string
+		account *Account
+		wantErr error
+	}{
+		{
+			name:    "deepseek coding has no quota endpoint",
+			account: &Account{ID: 1, Platform: domain.PlatformDeepseek, Credentials: map[string]any{"account_mode": AccountModeCoding}},
+			wantErr: ErrChannelMonitorAccountNotSupportable,
+		},
+		{
+			// 自定义域名 kimi coding：GetCodingPlanProvider 识别不到 → 无额度端点。
+			name: "custom-domain kimi coding unsupported",
+			account: &Account{ID: 2, Platform: domain.PlatformKimi, Type: AccountTypeAPIKey,
+				Credentials: map[string]any{"account_mode": AccountModeCoding, "base_url": "https://cw.example.com"}},
+			wantErr: ErrChannelMonitorAccountNotSupportable,
+		},
+		{
+			name:    "kimi coding default endpoint ok",
+			account: &Account{ID: 3, Platform: domain.PlatformKimi, Credentials: map[string]any{"account_mode": AccountModeCoding}},
+		},
+		{
+			name:    "zhipu coding default endpoint ok",
+			account: &Account{ID: 4, Platform: domain.PlatformZhipu, Credentials: map[string]any{"account_mode": AccountModeCoding}},
+		},
+		{
+			name:    "zhipu payg has no balance endpoint",
+			account: &Account{ID: 5, Platform: domain.PlatformZhipu},
+			wantErr: ErrChannelMonitorAccountNotSupportable,
+		},
+		{
+			name:    "kimi payg ok",
+			account: &Account{ID: 6, Platform: domain.PlatformKimi},
+		},
+		{
+			name:    "deepseek payg ok",
+			account: &Account{ID: 7, Platform: domain.PlatformDeepseek},
+		},
+		{
+			name:    "anthropic api key cannot query usage",
+			account: &Account{ID: 8, Platform: domain.PlatformAnthropic, Type: AccountTypeAPIKey},
+			wantErr: ErrChannelMonitorAccountNotSupportable,
+		},
+		{
+			name:    "anthropic oauth ok",
+			account: &Account{ID: 9, Platform: domain.PlatformAnthropic, Type: AccountTypeOAuth},
+		},
+		{
+			name:    "anthropic setup token ok (local estimation)",
+			account: &Account{ID: 10, Platform: domain.PlatformAnthropic, Type: AccountTypeSetupToken},
+		},
+		{
+			name:    "openai api key cannot query usage",
+			account: &Account{ID: 11, Platform: domain.PlatformOpenAI, Type: AccountTypeAPIKey},
+			wantErr: ErrChannelMonitorAccountNotSupportable,
+		},
+		{
+			name:    "openai oauth ok",
+			account: &Account{ID: 12, Platform: domain.PlatformOpenAI, Type: AccountTypeOAuth},
+		},
+		{
+			// 防过度拦截：gemini/grok/antigravity 走本地统计/值通道降级，不会永久 error。
+			name:    "gemini api key ok",
+			account: &Account{ID: 13, Platform: domain.PlatformGemini, Type: AccountTypeAPIKey},
+		},
+		{
+			name:    "grok ok",
+			account: &Account{ID: 14, Platform: domain.PlatformGrok},
+		},
+		{
+			name:    "antigravity ok",
+			account: &Account{ID: 15, Platform: domain.PlatformAntigravity},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := monitorAccountQuotaCapability(tc.account)
+			if tc.wantErr == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateLinkedAccount_CapabilityRejected(t *testing.T) {
+	svc := NewChannelMonitorService(nil, nil)
+	svc.SetQuotaFetcher(newQuotaModeFetcher(map[int64]*Account{
+		1: {ID: 1, Platform: domain.PlatformDeepseek, Credentials: map[string]any{"account_mode": AccountModeCoding}},
+	}, nil))
+
+	err := svc.validateLinkedAccount(context.Background(), MonitorProviderDeepseek, int64Ptr(1))
+	require.ErrorIs(t, err, ErrChannelMonitorAccountNotSupportable)
+}
+
+func TestRevalidateLinkedAccount_Capability(t *testing.T) {
+	svc := NewChannelMonitorService(nil, nil)
+	svc.SetQuotaFetcher(newQuotaModeFetcher(map[int64]*Account{
+		2: {ID: 2, Platform: domain.PlatformDeepseek, Credentials: map[string]any{"account_mode": AccountModeCoding}},
+	}, nil))
+
+	quota := &ChannelMonitor{Provider: MonitorProviderDeepseek, CheckMode: MonitorCheckModeQuota, AccountID: int64Ptr(2)}
+	require.ErrorIs(t, svc.revalidateLinkedAccount(context.Background(), quota), ErrChannelMonitorAccountNotSupportable)
+	require.NotNil(t, quota.AccountID, "quota mode keeps the binding for the admin to fix")
+
+	probe := &ChannelMonitor{Provider: MonitorProviderDeepseek, CheckMode: MonitorCheckModeProbe, AccountID: int64Ptr(2)}
+	require.NoError(t, svc.revalidateLinkedAccount(context.Background(), probe))
+	require.Nil(t, probe.AccountID, "probe mode should silently unbind unusable account")
+}
+
+// provider-only 更新不得绕过 provider × check_mode 组合校验。
+func TestApplyMonitorUpdate_ProviderOnlyRevalidatesCheckMode(t *testing.T) {
+	probeKimi := func() *ChannelMonitor {
+		return &ChannelMonitor{
+			Provider: MonitorProviderKimi, APIMode: MonitorAPIModeChatCompletions,
+			Endpoint: "https://api.kimi.com", PrimaryModel: "kimi-k2",
+			CheckMode: MonitorCheckModeProbe,
+		}
+	}
+
+	provider := MonitorProviderAntigravity
+	err := applyMonitorUpdate(probeKimi(), ChannelMonitorUpdateParams{Provider: &provider})
+	require.ErrorIs(t, err, ErrChannelMonitorInvalidCheckMode)
+
+	// 带上 check_mode/account_id 的完整切换合法。
+	accountID := int64(3)
+	err = applyMonitorUpdate(probeKimi(), ChannelMonitorUpdateParams{
+		Provider: &provider, CheckMode: strPtr(MonitorCheckModeQuota), AccountID: &accountID,
+	})
+	require.NoError(t, err)
+
+	// 存量非法行（antigravity+probe）仅改名/停用不被砖化。
+	legacy := &ChannelMonitor{
+		Provider: MonitorProviderAntigravity, APIMode: MonitorAPIModeChatCompletions,
+		Endpoint: "https://example.com", PrimaryModel: "gemini-3-pro",
+		CheckMode: MonitorCheckModeProbe,
+	}
+	newName := "renamed"
+	require.NoError(t, applyMonitorUpdate(legacy, ChannelMonitorUpdateParams{Name: &newName}))
 }
 
 // --- quota → probe 切换的 key 管控（validateProbeAPIKey） ---

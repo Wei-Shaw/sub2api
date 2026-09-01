@@ -308,4 +308,69 @@ describe('MonitorFormDialog linked account selector', () => {
     expect(accountTrigger(wrapper).text()).not.toContain('alpha')
     expect(accountTrigger(wrapper).text()).toContain('linkedAccountPlaceholder')
   })
+
+  // P2-7(b)：antigravity 强制的 quota 在切走时要对称还原，占位模型一并清掉。
+  it('restores probe mode and clears the quota placeholder when switching away from antigravity', async () => {
+    accountsGetById.mockRejectedValue(new Error('gone'))
+    const wrapper = mountDialog(makeMonitor({
+      provider: 'antigravity',
+      check_mode: 'quota',
+      account_id: 7,
+      endpoint: '',
+      primary_model: 'quota',
+    }))
+    await flushPromises()
+
+    await wrapper.get('[data-testid="monitor-provider-anthropic"]').trigger('click')
+    await flushPromises()
+
+    // 占位模型已被清空：probe 模式必填校验拦下提交，而不是拿 'quota' 探活。
+    await wrapper.get('#channel-monitor-form').trigger('submit')
+    await flushPromises()
+    expect(monitorUpdate).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-testid="monitor-primary-model"]').setValue('claude-sonnet-4-5')
+    await wrapper.get('#channel-monitor-form').trigger('submit')
+    await flushPromises()
+    expect(monitorUpdate).toHaveBeenCalledWith(42, expect.objectContaining({
+      check_mode: 'probe',
+      primary_model: 'claude-sonnet-4-5',
+    }))
+  })
+
+  // P2-7(c)：update 切回 probe 显式发 account_id=0 解绑存量关联（null=不动）。
+  it('unbinds the linked account with account_id=0 when a quota monitor switches back to probe', async () => {
+    accountsGetById.mockRejectedValue(new Error('gone'))
+    const wrapper = mountDialog(makeMonitor({
+      provider: 'anthropic',
+      check_mode: 'quota',
+      account_id: 999,
+      endpoint: '',
+      primary_model: 'quota',
+    }))
+    await flushPromises()
+
+    await wrapper.get('[data-testid="monitor-check-mode-probe"]').trigger('click')
+    await wrapper.get('[data-testid="monitor-primary-model"]').setValue('claude-sonnet-4-5')
+    await wrapper.get('#channel-monitor-form').trigger('submit')
+    await flushPromises()
+
+    expect(monitorUpdate).toHaveBeenCalledWith(42, expect.objectContaining({ account_id: 0 }))
+  })
+
+  // P2-7(c)：create 绝不发 0（后端会把 0 存成 &0 触发外键违约），保持 null。
+  it('keeps account_id null when creating a probe monitor', async () => {
+    const wrapper = mountDialog()
+    await flushPromises()
+
+    await wrapper.findAll('input[type="text"]')[0].setValue('my monitor')
+    await wrapper.get('[data-testid="monitor-primary-model"]').setValue('claude-sonnet-4-5')
+    await wrapper.get('#channel-monitor-form').trigger('submit')
+    await flushPromises()
+
+    expect(monitorCreate).toHaveBeenCalledWith(expect.objectContaining({
+      check_mode: 'probe',
+      account_id: null,
+    }))
+  })
 })

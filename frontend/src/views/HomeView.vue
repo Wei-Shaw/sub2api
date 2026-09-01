@@ -16,6 +16,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useAuthStore, useAppStore } from '@/stores'
 import { sanitizeUrl } from '@/utils/url'
+import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 import HomeClassic from '@/components/home/HomeClassic.vue'
 import HomeCompact from '@/components/home/HomeCompact.vue'
 import HomeStudio from '@/components/home/HomeStudio.vue'
@@ -43,6 +44,13 @@ const docUrl = computed(() => sanitizeUrl(String(publicSettings.value?.doc_url |
 const homeContent = computed(() => String(publicSettings.value?.home_content || ''))
 const hasHomeContent = computed(() => homeContent.value.trim().length > 0)
 const isHomeContentUrl = computed(() => /^https?:\/\//.test(homeContent.value.trim()))
+const modelPlazaEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.modelPlaza))
+const modelPlazaRequiresAuth = computed(
+  () => publicSettings.value?.model_plaza_require_auth === true,
+)
+const showModelPlazaEntry = computed(
+  () => modelPlazaEnabled.value && (authStore.isAuthenticated || !modelPlazaRequiresAuth.value),
+)
 
 const homeStyle = computed<HomeStyle>(() => {
   if (props.previewStyle) return props.previewStyle
@@ -80,6 +88,7 @@ const homeContext = computed<HomeStyleContext>(() => ({
   siteLogo: siteLogo.value,
   siteSubtitle: siteSubtitle.value,
   docUrl: docUrl.value,
+  showModelPlazaEntry: showModelPlazaEntry.value,
   isAuthenticated: authStore.isAuthenticated,
   dashboardPath: dashboardPath.value,
   userInitial: userInitial.value,

@@ -73,6 +73,12 @@ export default {
           priceDescription: '价格说明（Markdown）',
           priceDescriptionHint: '展示在模型广场页面顶部，可用于说明计费规则、汇率、优惠活动等。',
         },
+        pluginManagement: {
+          title: '插件管理',
+          description: '控制管理员侧边栏是否显示插件管理入口。此开关不控制插件运行状态。',
+          enabled: '显示插件管理菜单',
+          enabledHint: '关闭后仅隐藏侧边栏菜单；已加载或正在运行的插件不会因此停止。',
+        },
         riskControl: {
           title: '风控中心',
           description: '启用内容审计菜单和全端点请求审核入口。默认关闭。',
@@ -481,6 +487,10 @@ export default {
         grokBaseURLModeUSEast1: '区域 API（us-east-1）',
         grokBaseURLModeUSWest2: '区域 API（us-west-2）',
         grokBaseURLModeEUWest1: '区域 API（eu-west-1）',
+        openaiTTFTMode: 'OpenAI Responses 首 token 统计口径',
+        openaiTTFTModeSemantic: '历史兼容（语义事件）',
+        openaiTTFTModeVisible: '真实可见输出',
+        openaiTTFTModeHint: '默认使用历史兼容口径，首个非预置语义事件即记录 first_token_ms。选择真实可见输出后，仅在首个非空文本、工具参数或图片内容到达时记录。',
         fingerprintUnification: '指纹统一化',
         fingerprintUnificationHint: '统一共享同一 OAuth 账号的用户的 X-Stainless-* 请求头。关闭后透传客户端原始请求头。',
         metadataPassthrough: 'Metadata 透传',
