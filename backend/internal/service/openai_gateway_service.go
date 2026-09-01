@@ -579,7 +579,7 @@ func (s *OpenAIGatewayService) setUpstreamModelAvailabilityResolver(resolver ups
 // IsModelSupportedByAccount applies configured mappings plus any successfully
 // cached account-level upstream catalog used by model discovery.
 func (s *OpenAIGatewayService) IsModelSupportedByAccount(account *Account, requestedModel string) bool {
-	return s.isModelSupportedByAccountForRequest(nil, account, requestedModel)
+	return s.isModelSupportedByAccountForRequest(context.Background(), account, requestedModel)
 }
 
 func (s *OpenAIGatewayService) isModelSupportedByAccountForRequest(ctx context.Context, account *Account, requestedModel string) bool {

@@ -415,7 +415,7 @@ func (s *GeminiMessagesCompatService) isBetterGeminiAccount(candidate, current *
 
 // isModelSupportedByAccount 根据账户平台检查模型支持
 func (s *GeminiMessagesCompatService) isModelSupportedByAccount(account *Account, requestedModel string) bool {
-	return s.isModelSupportedByAccountForRequest(nil, account, requestedModel)
+	return s.isModelSupportedByAccountForRequest(context.Background(), account, requestedModel)
 }
 
 func (s *GeminiMessagesCompatService) isModelSupportedByAccountForRequest(ctx context.Context, account *Account, requestedModel string) bool {

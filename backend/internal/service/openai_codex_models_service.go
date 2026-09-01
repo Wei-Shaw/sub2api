@@ -1008,7 +1008,7 @@ func compositeRawOpenAIModelCandidates(
 		if account.Platform != PlatformOpenAI {
 			continue
 		}
-		targetModel := upstreamModel
+		var targetModel string
 		if explicitClaims {
 			if !codexExplicitModelMappingClaims(account, publicModel) {
 				continue

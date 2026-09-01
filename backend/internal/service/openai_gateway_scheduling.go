@@ -393,18 +393,14 @@ func (s *OpenAIGatewayService) openAICompatibleAccountEligibilityFailureReason(c
 	return ""
 }
 
+// isOpenAICompatibleAccountEligibleForRequestBeforeProfit applies every
+// ordinary scheduling gate. Legacy selection uses it before classifying the
+// profit veto so earlier failures retain their actual reason.
 func (s *OpenAIGatewayService) isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) bool {
 	if reason := openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx, account, platform, requestedModel, requireCompact, requiredCapability); reason != "" {
 		return false
 	}
 	return requestedModel == "" || s.isModelSupportedByAccountForRequest(ctx, account, requestedModel)
-}
-
-// isOpenAICompatibleAccountEligibleForRequestBeforeProfit applies every
-// ordinary scheduling gate. Legacy selection uses it before classifying the
-// profit veto so earlier failures retain their actual reason.
-func isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) bool {
-	return openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx, account, platform, requestedModel, requireCompact, requiredCapability) == ""
 }
 
 func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) string {
