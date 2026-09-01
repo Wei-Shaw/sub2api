@@ -87,6 +87,23 @@ guessing a provider.
   The channel `group_ids` payload is still flat; provider-specific model
   mapping and pricing remain keyed by concrete platform.
 
+### Simple Mode
+
+In Simple mode, **Composite Routing** is available from the admin navigation as
+a focused configuration surface:
+
+- The page lists and creates only `composite` groups.
+- An API key can bind to one Composite group, and the group's explicit routes
+  select the concrete provider and upstream model.
+- Provider accounts continue to use Simple mode's global account pool; a
+  Composite group does not isolate or copy provider accounts in this mode.
+- Subscription, quota, rate-multiplier, and other SaaS billing controls are not
+  exposed or enforced in Simple mode. Request usage logging remains available.
+- Unknown or ambiguous models still fail closed. Use route preview to verify an
+  alias before assigning the Composite group to a key.
+
+Standard mode keeps the full group-management workflow described below.
+
 ## Bucket 2 Setup: OpenAI + Claude + Gemini + Grok
 
 Use one composite subscription group when one customer-facing plan should expose
