@@ -4845,9 +4845,21 @@ const copyAccountsGroupLabel = (g: AdminGroup) => {
   return `${g.name} - ${platform} (${t("admin.groups.accountsCount", { count })})`;
 };
 
+// 复制账号的候选源分组：必须是全量分组，不能复用列表的当页数据（分页 / 筛选会漏掉分组）
+const copyAccountsSourceGroups = ref<AdminGroup[]>([]);
+
+const loadCopyAccountsSourceGroups = async () => {
+  try {
+    copyAccountsSourceGroups.value =
+      await adminAPI.groups.getAllIncludingInactive();
+  } catch (error) {
+    console.error("Error loading groups for copy accounts:", error);
+  }
+};
+
 // 复制账号的源分组选项（创建时）- 相同平台；composite 分组可汇总各平台账号
 const copyAccountsGroupOptions = computed(() => {
-  const eligibleGroups = groups.value.filter(
+  const eligibleGroups = copyAccountsSourceGroups.value.filter(
     (g) =>
       canCopyAccountsFromGroup(createForm.platform, g.platform) &&
       (g.account_count || 0) > 0,
@@ -4861,7 +4873,7 @@ const copyAccountsGroupOptions = computed(() => {
 // 复制账号的源分组选项（编辑时）- 相同平台；composite 分组可汇总各平台账号，排除自身
 const copyAccountsGroupOptionsForEdit = computed(() => {
   const currentId = editingGroup.value?.id;
-  const eligibleGroups = groups.value.filter(
+  const eligibleGroups = copyAccountsSourceGroups.value.filter(
     (g) =>
       canCopyAccountsFromGroup(editForm.platform, g.platform) &&
       (g.account_count || 0) > 0 &&
@@ -5803,6 +5815,7 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 const openCreateModal = () => {
   showCreateModal.value = true;
   loadModelsListCandidates("create", 0, createForm.platform);
+  void loadCopyAccountsSourceGroups();
 };
 
 const closeCreateModal = () => {
@@ -6141,6 +6154,7 @@ const handleEdit = async (group: AdminGroup) => {
     group.model_routing,
   );
   loadModelsListCandidates("edit", group.id, group.platform);
+  void loadCopyAccountsSourceGroups();
   showEditModal.value = true;
 };
 
@@ -6785,6 +6799,7 @@ const saveSortOrder = async () => {
 onMounted(() => {
   loadGroups();
   void loadLiveCapability();
+  void loadCopyAccountsSourceGroups();
   loadModelsListCandidates("create", 0, createForm.platform);
   document.addEventListener("click", handleClickOutside);
 });
