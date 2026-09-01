@@ -157,3 +157,27 @@ output/
 .vite/
 # 本地闭源插件开发目录及构建产物不进入 Sub2API 仓库
 /plugins/
+
+
+# Keep local Claude settings/transcripts out of git, but allow approved project skills and hooks.
+.claude/*
+!.claude/settings.json
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/hermes-release/
+!.claude/skills/hermes-release/SKILL.md
+!.claude/skills/bounded-code-review/
+!.claude/skills/bounded-code-review/SKILL.md
+!.claude/skills/claude-api-lite/
+!.claude/skills/claude-api-lite/SKILL.md
+!.claude/skills/claude-api-lite/references/
+!.claude/skills/claude-api-lite/references/*.md
+!.claude/hooks/
+.claude/hooks/*
+!.claude/hooks/auto-submit-pr.py
+!.claude/hooks/block-review-agents.py
+!.claude/hooks/development-workflow.py
+!.claude/hooks/require-development-worktree.py
+!.claude/hooks/run-python-hook.sh
+.playwright-cli/
+node_modules/
