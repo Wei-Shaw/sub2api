@@ -35,7 +35,8 @@ var zhipuMCPForwardedRequestHeaders = map[string]struct{}{
 }
 
 // ZhipuMCPPassthrough 智谱远程 MCP Server 透传（MCP Streamable HTTP）。
-// 客户端带 sub2api API key 访问 /api/mcp/zhipu/{slug}/mcp，本 handler 从 zhipu
+// 客户端带 sub2api API key 访问 /api/zhipu/api/mcp/{slug}/mcp（/api/zhipu 前缀
+// + 智谱官方 path 原样拼接），本 handler 从 zhipu
 // 账号池选号、重写认证头后把 JSON-RPC 请求原样转发给上游，响应（JSON 或 SSE）原样回传。
 // 第一版仅支持 POST（JSON-RPC）与 DELETE（终止 session）；GET server-push 与
 // /sse fallback 不支持。
