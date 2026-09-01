@@ -188,11 +188,26 @@ func newUpstreamModelSyncInternalError(message string, err error) error {
 	return &UpstreamModelSyncError{Kind: UpstreamModelSyncErrorInternal, Message: message, Err: err}
 }
 
-// FetchUpstreamSupportedModels fetches only live model IDs. The admin sync path
-// uses SyncUpstreamModelCatalog so capability metadata can also be persisted.
+func (s *AccountTestService) fetchUpstreamModelCatalog(ctx context.Context, account *Account) (*gatewayUpstreamModelCatalog, error) {
+	models, body, err := s.fetchUpstreamModelList(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+	return &gatewayUpstreamModelCatalog{
+		models:  dedupeAndSortModelIDs(models),
+		rawBody: append([]byte(nil), body...),
+	}, nil
+}
+
+// FetchUpstreamSupportedModels fetches only live model IDs. The gateway also
+// uses the shared internal catalog method above when it needs raw Codex model
+// descriptors for an OpenAI OAuth account.
 func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, account *Account) ([]string, error) {
-	models, _, err := s.fetchUpstreamModelList(ctx, account)
-	return models, err
+	catalog, err := s.fetchUpstreamModelCatalog(ctx, account)
+	if err != nil || catalog == nil {
+		return nil, err
+	}
+	return catalog.models, nil
 }
 
 // SyncUpstreamModelCatalog fetches the account's live model list, enriches

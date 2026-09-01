@@ -171,6 +171,101 @@ func TestFilterCodexModelIDsForGroupOmitsWildcardKeys(t *testing.T) {
 	require.Equal(t, []string{"deepseek-v4-pro", "gpt-5.5"}, got)
 }
 
+type rawOpenAIModelCatalogFetcherStub struct {
+	catalogs map[int64]*gatewayUpstreamModelCatalog
+}
+
+func (s *rawOpenAIModelCatalogFetcherStub) FetchUpstreamSupportedModels(_ context.Context, account *Account) ([]string, error) {
+	catalog := s.catalogs[account.ID]
+	if catalog == nil {
+		return nil, nil
+	}
+	return cloneStringSlice(catalog.models), nil
+}
+
+func (s *rawOpenAIModelCatalogFetcherStub) fetchUpstreamModelCatalog(_ context.Context, account *Account) (*gatewayUpstreamModelCatalog, error) {
+	return cloneGatewayUpstreamModelCatalog(s.catalogs[account.ID]), nil
+}
+
+func TestBuildCodexModelsManifestForCompositePreservesRawOpenAIModelFields(t *testing.T) {
+	const groupID int64 = 140
+	account := Account{
+		ID:          41,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{"access_token": "oauth-token"},
+	}
+	fetcher := &rawOpenAIModelCatalogFetcherStub{
+		catalogs: map[int64]*gatewayUpstreamModelCatalog{
+			account.ID: {
+				models:  []string{"gpt-5.6-sol"},
+				rawBody: []byte(`{"models":[{"slug":"gpt-5.6-sol","display_name":"Official GPT-5.6 Sol","description":"Official description","future_capability":{"enabled":true},"input_modalities":["text","image"]}]}`),
+			},
+		},
+	}
+	svc := &GatewayService{
+		accountRepo:          codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{groupID: {account}}},
+		upstreamModelFetcher: fetcher,
+	}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		"",
+		[]string{"gpt-5.6-sol"},
+	)
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, "Official GPT-5.6 Sol", models[0]["display_name"])
+	require.Equal(t, "Official description", models[0]["description"])
+	require.Equal(t, map[string]any{"enabled": true}, models[0]["future_capability"])
+	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
+	_, generatedFieldPresent := models[0]["shell_type"]
+	require.False(t, generatedFieldPresent, "raw upstream fields should not be replaced by the local descriptor")
+}
+
+func TestBuildCodexModelsManifestForCompositePreservesRawOpenAIFieldsForAlias(t *testing.T) {
+	const groupID int64 = 141
+	account := Account{
+		ID:       42,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
+		Credentials: map[string]any{
+			"access_token":  "oauth-token",
+			"model_mapping": map[string]any{"team-gpt": "gpt-5.6-sol"},
+		},
+	}
+	fetcher := &rawOpenAIModelCatalogFetcherStub{
+		catalogs: map[int64]*gatewayUpstreamModelCatalog{
+			account.ID: {
+				models:  []string{"gpt-5.6-sol"},
+				rawBody: []byte(`{"models":[{"slug":"gpt-5.6-sol","display_name":"Official GPT-5.6 Sol","future_capability":{"mode":"preserved"}}]}`),
+			},
+		},
+	}
+	svc := &GatewayService{
+		accountRepo:          codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{groupID: {account}}},
+		upstreamModelFetcher: fetcher,
+	}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		"",
+		[]string{"team-gpt"},
+	)
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, "team-gpt", models[0]["slug"])
+	require.Equal(t, "Official GPT-5.6 Sol", models[0]["display_name"])
+	require.Equal(t, map[string]any{"mode": "preserved"}, models[0]["future_capability"])
+}
+
 func decodeCodexManifestModels(t *testing.T, body []byte) []map[string]any {
 	t.Helper()
 

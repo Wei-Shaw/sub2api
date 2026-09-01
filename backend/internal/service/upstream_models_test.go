@@ -229,6 +229,31 @@ func TestFetchUpstreamSupportedModelsParsesOpenAIOAuthManifest(t *testing.T) {
 	require.Equal(t, "Bearer openai-oauth-token", upstream.lastReq.Header.Get("Authorization"))
 }
 
+func TestFetchUpstreamModelCatalogPreservesOpenAIOAuthManifestBody(t *testing.T) {
+	rawBody := `{"models":[{"slug":"gpt-5.6-sol","future_capability":{"enabled":true}}]}`
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(rawBody)),
+	}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          upstreamModelSyncTestConfig(),
+	}
+
+	catalog, err := svc.fetchUpstreamModelCatalog(context.Background(), &Account{
+		ID:       13,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "openai-oauth-token",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"gpt-5.6-sol"}, catalog.models)
+	require.Equal(t, []byte(rawBody), catalog.rawBody)
+}
+
 func TestExtractGrokUpstreamModelIDs(t *testing.T) {
 	t.Parallel()
 

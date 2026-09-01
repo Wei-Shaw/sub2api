@@ -117,6 +117,26 @@ type modelsListAccountRepoStub struct {
 	listAllCalls     atomic.Int64
 }
 
+type modelsListUpstreamFetcherStub struct {
+	models map[int64][]string
+	errors map[int64]error
+	calls  map[int64]int
+	mu     sync.Mutex
+}
+
+func (s *modelsListUpstreamFetcherStub) FetchUpstreamSupportedModels(_ context.Context, account *Account) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if account == nil {
+		return nil, errors.New("account is required")
+	}
+	s.calls[account.ID]++
+	if err := s.errors[account.ID]; err != nil {
+		return nil, err
+	}
+	return append([]string(nil), s.models[account.ID]...), nil
+}
+
 type stickyGatewayCacheHotpathStub struct {
 	GatewayCache
 
@@ -562,6 +582,51 @@ func TestGetAvailableModels_UsesShortCacheAndSupportsInvalidation(t *testing.T) 
 	require.Equal(t, int64(2), hit)
 	require.Equal(t, int64(2), miss)
 	require.Equal(t, int64(2), store)
+}
+
+func TestGetAvailableModelsDiscoversUnmappedAccountsFromUpstream(t *testing.T) {
+	groupID := int64(12)
+	repo := &modelsListAccountRepoStub{
+		byGroup: map[int64][]Account{
+			groupID: {
+				{
+					ID:       1,
+					Platform: PlatformOpenAI,
+					Credentials: map[string]any{
+						"model_mapping": map[string]any{
+							"configured-model": "configured-upstream",
+						},
+					},
+				},
+				{ID: 2, Platform: PlatformOpenAI},
+				{ID: 3, Platform: PlatformDeepseek},
+			},
+		},
+	}
+	fetcher := &modelsListUpstreamFetcherStub{
+		models: map[int64][]string{
+			2: {"gpt-5.6-terra", "gpt-5.6-sol"},
+			3: {"deepseek-chat"},
+		},
+		calls: make(map[int64]int),
+	}
+	svc := &GatewayService{
+		accountRepo:          repo,
+		modelsListCache:      gocache.New(time.Minute, time.Minute),
+		modelsListCacheTTL:   time.Minute,
+		upstreamModelFetcher: fetcher,
+	}
+
+	models := svc.GetAvailableModels(context.Background(), &groupID, "")
+	require.Equal(t, []string{"configured-model", "deepseek-chat", "gpt-5.6-sol", "gpt-5.6-terra"}, models)
+	require.Equal(t, 0, fetcher.calls[1], "configured accounts must not be discovered upstream")
+	require.Equal(t, 1, fetcher.calls[2])
+	require.Equal(t, 1, fetcher.calls[3])
+
+	models = svc.GetAvailableModels(context.Background(), &groupID, "")
+	require.Equal(t, []string{"configured-model", "deepseek-chat", "gpt-5.6-sol", "gpt-5.6-terra"}, models)
+	require.Equal(t, 1, fetcher.calls[2], "group cache should prevent repeated discovery")
+	require.Equal(t, 1, fetcher.calls[3], "group cache should prevent repeated discovery")
 }
 
 // Scenario: 账号模型变更会失效所属平台缓存

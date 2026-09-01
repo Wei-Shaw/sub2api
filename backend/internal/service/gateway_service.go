@@ -71,10 +71,25 @@ const (
 )
 
 const (
-	cacheTTLTarget5m                   = "5m"
-	cacheTTLTarget1h                   = "1h"
-	compositeModelOwnershipCachePrefix = "composite-owner|"
+	cacheTTLTarget5m                       = "5m"
+	cacheTTLTarget1h                       = "1h"
+	compositeModelOwnershipCachePrefix     = "composite-owner|"
+	gatewayUpstreamModelCatalogCachePrefix = "models-catalog|"
+	gatewayUpstreamModelsFetchTimeout      = 10 * time.Second
 )
+
+type gatewayUpstreamModelFetcher interface {
+	FetchUpstreamSupportedModels(ctx context.Context, account *Account) ([]string, error)
+}
+
+type gatewayUpstreamModelCatalog struct {
+	models  []string
+	rawBody []byte
+}
+
+type gatewayUpstreamModelCatalogFetcher interface {
+	fetchUpstreamModelCatalog(ctx context.Context, account *Account) (*gatewayUpstreamModelCatalog, error)
+}
 
 // ForceCacheBillingContextKey 强制缓存计费上下文键
 // 用于粘性会话切换时，将 input_tokens 转为 cache_read_input_tokens 计费
@@ -758,43 +773,46 @@ func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accou
 
 // GatewayService handles API gateway operations
 type GatewayService struct {
-	accountRepo           AccountRepository
-	groupRepo             GroupRepository
-	usageLogRepo          UsageLogRepository
-	usageBillingRepo      UsageBillingRepository
-	userRepo              UserRepository
-	userSubRepo           UserSubscriptionRepository
-	userGroupRateRepo     UserGroupRateRepository
-	cache                 GatewayCache
-	digestStore           *DigestSessionStore
-	cfg                   *config.Config
-	schedulerSnapshot     *SchedulerSnapshotService
-	billingService        *BillingService
-	rateLimitService      *RateLimitService
-	billingCacheService   *BillingCacheService
-	identityService       *IdentityService
-	httpUpstream          HTTPUpstream
-	deferredService       *DeferredService
-	concurrencyService    *ConcurrencyService
-	claudeTokenProvider   *ClaudeTokenProvider
-	sessionLimitCache     SessionLimitCache // 会话数量限制缓存（仅 Anthropic OAuth/SetupToken）
-	rpmCache              RPMCache          // RPM 计数缓存（仅 Anthropic OAuth/SetupToken）
-	userGroupRateResolver *userGroupRateResolver
-	userGroupRateCache    *gocache.Cache
-	userGroupRateSF       singleflight.Group
-	modelsListCache       *gocache.Cache
-	modelsListCacheTTL    time.Duration
-	settingService        *SettingService
-	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
-	debugModelRouting     atomic.Bool
-	debugClaudeMimic      atomic.Bool
-	channelService        *ChannelService
-	resolver              *ModelPricingResolver
-	compositeResolver     *CompositeRouteResolver
-	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
-	tlsFPProfileService   *TLSFingerprintProfileService
-	balanceNotifyService  *BalanceNotifyService
-	userPlatformQuotaRepo UserPlatformQuotaRepository
+	accountRepo               AccountRepository
+	groupRepo                 GroupRepository
+	usageLogRepo              UsageLogRepository
+	usageBillingRepo          UsageBillingRepository
+	userRepo                  UserRepository
+	userSubRepo               UserSubscriptionRepository
+	userGroupRateRepo         UserGroupRateRepository
+	cache                     GatewayCache
+	digestStore               *DigestSessionStore
+	cfg                       *config.Config
+	schedulerSnapshot         *SchedulerSnapshotService
+	billingService            *BillingService
+	rateLimitService          *RateLimitService
+	billingCacheService       *BillingCacheService
+	identityService           *IdentityService
+	httpUpstream              HTTPUpstream
+	deferredService           *DeferredService
+	concurrencyService        *ConcurrencyService
+	claudeTokenProvider       *ClaudeTokenProvider
+	sessionLimitCache         SessionLimitCache // 会话数量限制缓存（仅 Anthropic OAuth/SetupToken）
+	rpmCache                  RPMCache          // RPM 计数缓存（仅 Anthropic OAuth/SetupToken）
+	userGroupRateResolver     *userGroupRateResolver
+	userGroupRateCache        *gocache.Cache
+	userGroupRateSF           singleflight.Group
+	modelsListCache           *gocache.Cache
+	modelsListCacheTTL        time.Duration
+	modelsListFetchSF         singleflight.Group
+	upstreamModelCatalogCache *gocache.Cache
+	upstreamModelFetcher      gatewayUpstreamModelFetcher
+	settingService            *SettingService
+	responseHeaderFilter      *responseheaders.CompiledHeaderFilter
+	debugModelRouting         atomic.Bool
+	debugClaudeMimic          atomic.Bool
+	channelService            *ChannelService
+	resolver                  *ModelPricingResolver
+	compositeResolver         *CompositeRouteResolver
+	debugGatewayBodyFile      atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
+	tlsFPProfileService       *TLSFingerprintProfileService
+	balanceNotifyService      *BalanceNotifyService
+	userPlatformQuotaRepo     UserPlatformQuotaRepository
 }
 
 // NewGatewayService creates a new GatewayService
@@ -832,38 +850,39 @@ func NewGatewayService(
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
 
 	svc := &GatewayService{
-		accountRepo:           accountRepo,
-		groupRepo:             groupRepo,
-		usageLogRepo:          usageLogRepo,
-		usageBillingRepo:      usageBillingRepo,
-		userRepo:              userRepo,
-		userSubRepo:           userSubRepo,
-		userGroupRateRepo:     userGroupRateRepo,
-		cache:                 cache,
-		digestStore:           digestStore,
-		cfg:                   cfg,
-		schedulerSnapshot:     schedulerSnapshot,
-		concurrencyService:    concurrencyService,
-		billingService:        billingService,
-		rateLimitService:      rateLimitService,
-		billingCacheService:   billingCacheService,
-		identityService:       identityService,
-		httpUpstream:          httpUpstream,
-		deferredService:       deferredService,
-		claudeTokenProvider:   claudeTokenProvider,
-		sessionLimitCache:     sessionLimitCache,
-		rpmCache:              rpmCache,
-		userGroupRateCache:    gocache.New(userGroupRateTTL, time.Minute),
-		settingService:        settingService,
-		modelsListCache:       gocache.New(modelsListTTL, time.Minute),
-		modelsListCacheTTL:    modelsListTTL,
-		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
-		tlsFPProfileService:   tlsFPProfileService,
-		channelService:        channelService,
-		resolver:              resolver,
-		compositeResolver:     compositeResolver,
-		balanceNotifyService:  balanceNotifyService,
-		userPlatformQuotaRepo: userPlatformQuotaRepo,
+		accountRepo:               accountRepo,
+		groupRepo:                 groupRepo,
+		usageLogRepo:              usageLogRepo,
+		usageBillingRepo:          usageBillingRepo,
+		userRepo:                  userRepo,
+		userSubRepo:               userSubRepo,
+		userGroupRateRepo:         userGroupRateRepo,
+		cache:                     cache,
+		digestStore:               digestStore,
+		cfg:                       cfg,
+		schedulerSnapshot:         schedulerSnapshot,
+		concurrencyService:        concurrencyService,
+		billingService:            billingService,
+		rateLimitService:          rateLimitService,
+		billingCacheService:       billingCacheService,
+		identityService:           identityService,
+		httpUpstream:              httpUpstream,
+		deferredService:           deferredService,
+		claudeTokenProvider:       claudeTokenProvider,
+		sessionLimitCache:         sessionLimitCache,
+		rpmCache:                  rpmCache,
+		userGroupRateCache:        gocache.New(userGroupRateTTL, time.Minute),
+		settingService:            settingService,
+		modelsListCache:           gocache.New(modelsListTTL, time.Minute),
+		modelsListCacheTTL:        modelsListTTL,
+		upstreamModelCatalogCache: gocache.New(modelsListTTL, time.Minute),
+		responseHeaderFilter:      compileResponseHeaderFilter(cfg),
+		tlsFPProfileService:       tlsFPProfileService,
+		channelService:            channelService,
+		resolver:                  resolver,
+		compositeResolver:         compositeResolver,
+		balanceNotifyService:      balanceNotifyService,
+		userPlatformQuotaRepo:     userPlatformQuotaRepo,
 	}
 	if compositeResolver != nil {
 		compositeResolver.SetModelOwnershipResolver(svc.resolveCompositeModelOwnership)
@@ -881,6 +900,14 @@ func NewGatewayService(
 		svc.initDebugGatewayBodyFile(path)
 	}
 	return svc
+}
+
+// SetUpstreamModelFetcher wires the shared account-level upstream model
+// discovery used by GetAvailableModels when an account has no model_mapping.
+func (s *GatewayService) SetUpstreamModelFetcher(fetcher gatewayUpstreamModelFetcher) {
+	if s != nil {
+		s.upstreamModelFetcher = fetcher
+	}
 }
 
 // GenerateSessionHash 从预解析请求计算粘性会话 hash
@@ -1373,6 +1400,9 @@ func (s *GatewayService) DoGrokNativeResponsesJSON(ctx context.Context, account 
 	return respBytes, nil
 }
 
+// GetAvailableModels returns the list of models available for a group.
+// Explicit model_mapping entries remain authoritative; accounts without a
+// mapping are discovered from their upstream model catalog.
 func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64, platform string) []string {
 	cacheKey := modelsListCacheKey(groupID, platform)
 	if s.modelsListCache != nil {
@@ -1411,7 +1441,6 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 
 	// Collect unique models from all accounts
 	modelSet := make(map[string]struct{})
-	hasAnyMapping := false
 
 	for _, acc := range accounts {
 		// Passthrough routing accepts models independently of model_mapping. A stale
@@ -1427,15 +1456,20 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 
 		mapping := acc.GetModelMapping()
 		if len(mapping) > 0 {
-			hasAnyMapping = true
 			for model := range mapping {
 				modelSet[model] = struct{}{}
 			}
+			continue
+		}
+
+		for _, model := range s.fetchUpstreamModelsForAccount(ctx, acc) {
+			modelSet[model] = struct{}{}
 		}
 	}
 
-	// If no account has model_mapping, return nil (use default)
-	if !hasAnyMapping {
+	// If no account has a configured or discovered model, return nil so the
+	// handler can use its provider-specific default model set.
+	if len(modelSet) == 0 {
 		if s.modelsListCache != nil {
 			s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
 			modelsListCacheStoreTotal.Add(1)
@@ -1455,6 +1489,91 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		modelsListCacheStoreTotal.Add(1)
 	}
 	return cloneStringSlice(models)
+}
+
+func (s *GatewayService) fetchUpstreamModelsForAccount(ctx context.Context, account Account) []string {
+	catalog, err := s.fetchUpstreamModelCatalogForAccount(ctx, account)
+	if err != nil {
+		slog.Debug("upstream model discovery failed",
+			"account_id", account.ID,
+			"platform", account.Platform,
+			"error", err,
+		)
+		return nil
+	}
+	if catalog == nil {
+		return nil
+	}
+	return cloneStringSlice(catalog.models)
+}
+
+func (s *GatewayService) fetchUpstreamModelCatalogForAccount(ctx context.Context, account Account) (*gatewayUpstreamModelCatalog, error) {
+	if s == nil || s.upstreamModelFetcher == nil {
+		return nil, nil
+	}
+
+	cacheKey := ""
+	if account.ID > 0 {
+		cacheKey = gatewayUpstreamModelCatalogCachePrefix + strconv.FormatInt(account.ID, 10)
+		if s.upstreamModelCatalogCache != nil {
+			if cached, found := s.upstreamModelCatalogCache.Get(cacheKey); found {
+				if catalog, ok := cached.(*gatewayUpstreamModelCatalog); ok {
+					return cloneGatewayUpstreamModelCatalog(catalog), nil
+				}
+			}
+		}
+	}
+
+	fetch := func() (any, error) {
+		fetchCtx, cancel := context.WithTimeout(ctx, gatewayUpstreamModelsFetchTimeout)
+		defer cancel()
+
+		accountSnapshot := account
+		if fetcher, ok := s.upstreamModelFetcher.(gatewayUpstreamModelCatalogFetcher); ok {
+			catalog, fetchErr := fetcher.fetchUpstreamModelCatalog(fetchCtx, &accountSnapshot)
+			if fetchErr != nil {
+				return nil, fetchErr
+			}
+			return cloneGatewayUpstreamModelCatalog(catalog), nil
+		}
+		models, fetchErr := s.upstreamModelFetcher.FetchUpstreamSupportedModels(fetchCtx, &accountSnapshot)
+		if fetchErr != nil {
+			return nil, fetchErr
+		}
+		return &gatewayUpstreamModelCatalog{models: dedupeAndSortModelIDs(models)}, nil
+	}
+
+	var (
+		value any
+		err   error
+	)
+	if account.ID > 0 {
+		value, err, _ = s.modelsListFetchSF.Do(cacheKey, fetch)
+	} else {
+		value, err = fetch()
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	catalog, ok := value.(*gatewayUpstreamModelCatalog)
+	if !ok {
+		return nil, fmt.Errorf("invalid upstream model catalog result")
+	}
+	if cacheKey != "" && s.upstreamModelCatalogCache != nil {
+		s.upstreamModelCatalogCache.Set(cacheKey, cloneGatewayUpstreamModelCatalog(catalog), s.modelsListCacheTTL)
+	}
+	return cloneGatewayUpstreamModelCatalog(catalog), nil
+}
+
+func cloneGatewayUpstreamModelCatalog(catalog *gatewayUpstreamModelCatalog) *gatewayUpstreamModelCatalog {
+	if catalog == nil {
+		return nil
+	}
+	return &gatewayUpstreamModelCatalog{
+		models:  cloneStringSlice(catalog.models),
+		rawBody: append([]byte(nil), catalog.rawBody...),
+	}
 }
 
 func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, groupID int64, model string) (CompositeModelOwnership, error) {

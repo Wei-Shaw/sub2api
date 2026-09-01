@@ -738,9 +738,10 @@ func BuildCodexModelsManifest(modelIDs []string) ([]byte, error) {
 }
 
 // BuildCodexModelsManifestForGroup derives input capabilities from the
-// concrete Responses route and group accounts behind a group. Unknown or mixed
-// capabilities fail closed to the text-only descriptor used by the standalone
-// builder. Caller-supplied model IDs still decide which slugs appear; advertised
+// concrete Responses route and group accounts behind a group. Composite models
+// that safely match an OpenAI OAuth upstream entry retain that raw descriptor;
+// all other models use the generated descriptor and its conservative capability
+// rules. Caller-supplied model IDs still decide which slugs appear; generated
 // capabilities intersect all active group members that map the alias, including
 // accounts that are not currently schedulable.
 func (s *GatewayService) BuildCodexModelsManifestForGroup(
@@ -772,13 +773,148 @@ func (s *GatewayService) BuildCodexModelsManifestForGroup(
 			compositeRoutesAvailable = false
 		}
 	}
-	return buildCodexModelsManifestForAccounts(
+	rawOpenAIModels := s.fetchCompositeRawOpenAIModels(
+		ctx,
 		effectivePlatform,
 		modelIDs,
 		catalog,
 		compositeRoutes,
 		compositeRoutesAvailable,
 	)
+	return buildCodexModelsManifestForAccountsWithRaw(
+		effectivePlatform,
+		modelIDs,
+		catalog,
+		compositeRoutes,
+		compositeRoutesAvailable,
+		rawOpenAIModels,
+	)
+}
+
+func (s *GatewayService) fetchCompositeRawOpenAIModels(
+	ctx context.Context,
+	platform string,
+	modelIDs []string,
+	accounts []Account,
+	routes []CompositeModelRoute,
+	routesAvailable bool,
+) map[string]json.RawMessage {
+	if s == nil || platform != PlatformComposite || !routesAvailable || len(modelIDs) == 0 {
+		return nil
+	}
+
+	rawModels := make(map[string]json.RawMessage)
+	for i := range accounts {
+		account := accounts[i]
+		if account.Platform != PlatformOpenAI || !account.IsOpenAIOAuth() {
+			continue
+		}
+
+		catalog, err := s.fetchUpstreamModelCatalogForAccount(ctx, account)
+		if err != nil || catalog == nil || len(catalog.rawBody) == 0 {
+			continue
+		}
+		upstreamModels, err := extractCodexManifestModelEntries(catalog.rawBody)
+		if err != nil {
+			continue
+		}
+
+		for _, publicModel := range modelIDs {
+			targetModel, ok := compositeOpenAIModelSource(account, publicModel, routes, routesAvailable)
+			if !ok {
+				continue
+			}
+			rawModel, ok := upstreamModels[targetModel]
+			if !ok {
+				continue
+			}
+			if targetModel != publicModel {
+				rawModel, err = codexManifestModelWithSlug(rawModel, publicModel)
+				if err != nil {
+					continue
+				}
+			}
+			if _, exists := rawModels[publicModel]; !exists {
+				rawModels[publicModel] = append([]byte(nil), rawModel...)
+			}
+		}
+	}
+	return rawModels
+}
+
+func compositeOpenAIModelSource(
+	account Account,
+	publicModel string,
+	routes []CompositeModelRoute,
+	routesAvailable bool,
+) (string, bool) {
+	publicModel = strings.TrimSpace(publicModel)
+	if publicModel == "" || !routesAvailable {
+		return "", false
+	}
+
+	if route, matched := matchCompositeRoute(routes, publicModel, CompositeRouteEndpointResponses); matched {
+		if route.TargetPlatform != PlatformOpenAI {
+			return "", false
+		}
+		targetModel := strings.TrimSpace(route.UpstreamModel)
+		if targetModel == "" {
+			targetModel = publicModel
+		}
+		return targetModel, true
+	}
+	if codexCompositeRouteMatchesModel(routes, publicModel) {
+		return "", false
+	}
+
+	if mapping := account.GetModelMapping(); len(mapping) > 0 {
+		targetModel, matched := account.ResolveMappedModel(publicModel)
+		if !matched || strings.TrimSpace(targetModel) == "" {
+			return "", false
+		}
+		return strings.TrimSpace(targetModel), true
+	}
+	if detectedPlatform, detected := DetectModelPlatform(publicModel); detected && detectedPlatform != PlatformOpenAI {
+		return "", false
+	}
+	return publicModel, true
+}
+
+func extractCodexManifestModelEntries(body []byte) (map[string]json.RawMessage, error) {
+	var envelope struct {
+		Models []json.RawMessage `json:"models"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, err
+	}
+	models := make(map[string]json.RawMessage, len(envelope.Models))
+	for _, rawModel := range envelope.Models {
+		var descriptor struct {
+			Slug string `json:"slug"`
+		}
+		if err := json.Unmarshal(rawModel, &descriptor); err != nil {
+			continue
+		}
+		slug := strings.TrimSpace(descriptor.Slug)
+		if slug == "" {
+			continue
+		}
+		models[slug] = append([]byte(nil), rawModel...)
+	}
+	return models, nil
+}
+
+func codexManifestModelWithSlug(rawModel json.RawMessage, slug string) (json.RawMessage, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(rawModel, &fields); err != nil {
+		return nil, err
+	}
+	encodedSlug, err := json.Marshal(strings.TrimSpace(slug))
+	if err != nil {
+		return nil, err
+	}
+	fields["slug"] = encodedSlug
+	return json.Marshal(fields)
 }
 
 func buildCodexModelsManifestForAccounts(
@@ -787,6 +923,24 @@ func buildCodexModelsManifestForAccounts(
 	accounts []Account,
 	compositeRoutes []CompositeModelRoute,
 	compositeRoutesAvailable bool,
+) ([]byte, error) {
+	return buildCodexModelsManifestForAccountsWithRaw(
+		effectivePlatform,
+		modelIDs,
+		accounts,
+		compositeRoutes,
+		compositeRoutesAvailable,
+		nil,
+	)
+}
+
+func buildCodexModelsManifestForAccountsWithRaw(
+	effectivePlatform string,
+	modelIDs []string,
+	accounts []Account,
+	compositeRoutes []CompositeModelRoute,
+	compositeRoutesAvailable bool,
+	rawModels map[string]json.RawMessage,
 ) ([]byte, error) {
 	imageInputModels := make(map[string]bool, len(modelIDs))
 	metadataModels := codexCatalogMetadataModels(
@@ -818,7 +972,7 @@ func buildCodexModelsManifestForAccounts(
 			modelMetadata[modelID] = metadata
 		}
 	}
-	return buildCodexModelsManifest(modelIDs, imageInputModels, metadataModels, modelMetadata)
+	return buildCodexModelsManifestWithRaw(modelIDs, imageInputModels, metadataModels, modelMetadata, rawModels)
 }
 
 func buildCodexModelsManifest(
@@ -827,8 +981,18 @@ func buildCodexModelsManifest(
 	metadataModels map[string]string,
 	modelMetadata map[string]codexModelMetadataOverride,
 ) ([]byte, error) {
+	return buildCodexModelsManifestWithRaw(modelIDs, imageInputModels, metadataModels, modelMetadata, nil)
+}
+
+func buildCodexModelsManifestWithRaw(
+	modelIDs []string,
+	imageInputModels map[string]bool,
+	metadataModels map[string]string,
+	modelMetadata map[string]codexModelMetadataOverride,
+	rawModels map[string]json.RawMessage,
+) ([]byte, error) {
 	seen := make(map[string]struct{}, len(modelIDs))
-	models := make([]configuredCodexModelDescriptor, 0, len(modelIDs))
+	models := make([]json.RawMessage, 0, len(modelIDs))
 	for _, modelID := range modelIDs {
 		modelID = strings.TrimSpace(modelID)
 		if modelID == "" {
@@ -845,6 +1009,10 @@ func buildCodexModelsManifest(
 			continue
 		}
 		seen[modelID] = struct{}{}
+		if rawModel, ok := rawModels[modelID]; ok {
+			models = append(models, append([]byte(nil), rawModel...))
+			continue
+		}
 		descriptor := newConfiguredCodexModelDescriptor(metadataModelID)
 		descriptor.Slug = modelID
 		if imageInputModels[modelID] {
@@ -857,10 +1025,14 @@ func buildCodexModelsManifest(
 			descriptor.DisplayName = modelID
 			descriptor.Description = configuredCodexCustomDescription
 		}
-		models = append(models, descriptor)
+		rawDescriptor, err := json.Marshal(descriptor)
+		if err != nil {
+			return nil, err
+		}
+		models = append(models, rawDescriptor)
 	}
 	return json.Marshal(struct {
-		Models []configuredCodexModelDescriptor `json:"models"`
+		Models []json.RawMessage `json:"models"`
 	}{Models: models})
 }
 
