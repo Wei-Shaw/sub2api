@@ -48,6 +48,40 @@ func (c *gatewayCache) GetSessionAccountID(ctx context.Context, groupID int64, s
 	return accountID, nil
 }
 
+func (c *gatewayCache) GetSessionAccountIDBatch(ctx context.Context, groupID int64, sessionHashes []string) (map[string]int64, error) {
+	results := make(map[string]int64, len(sessionHashes))
+	if len(sessionHashes) == 0 {
+		return results, nil
+	}
+	keys := make([]string, len(sessionHashes))
+	for i, sessionHash := range sessionHashes {
+		keys[i] = buildSessionKey(groupID, sessionHash)
+	}
+	values, err := c.rdb.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil, err
+	}
+	for i, value := range values {
+		if value == nil {
+			continue
+		}
+		var accountID int64
+		switch v := value.(type) {
+		case string:
+			accountID, err = strconv.ParseInt(v, 10, 64)
+		case []byte:
+			accountID, err = strconv.ParseInt(string(v), 10, 64)
+		default:
+			err = fmt.Errorf("unexpected sticky session value %T", value)
+		}
+		if err != nil || accountID <= 0 {
+			continue
+		}
+		results[sessionHashes[i]] = accountID
+	}
+	return results, nil
+}
+
 func (c *gatewayCache) SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
 	key := buildSessionKey(groupID, sessionHash)
 	return c.rdb.Set(ctx, key, accountID, ttl).Err()

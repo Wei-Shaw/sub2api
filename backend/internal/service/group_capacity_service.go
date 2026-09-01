@@ -10,10 +10,16 @@ type GroupCapacitySummary struct {
 	GroupID         int64 `json:"group_id"`
 	ConcurrencyUsed int   `json:"concurrency_used"`
 	ConcurrencyMax  int   `json:"concurrency_max"`
-	SessionsUsed    int   `json:"sessions_used"`
-	SessionsMax     int   `json:"sessions_max"`
-	RPMUsed         int   `json:"rpm_used"`
-	RPMMax          int   `json:"rpm_max"`
+	// SessionsUsed/SessionsMax 是分组内账号池的账号级会话容量汇总，
+	// 共享账号会同时计入其所属的每个分组。它不是分组自身的上限。
+	SessionsUsed int `json:"sessions_used"`
+	SessionsMax  int `json:"sessions_max"`
+	// GroupSessionsUsed/GroupSessionsMax 是分组自身的会话软上限及其使用量，
+	// 使用量只统计 sticky 归属于本分组的活跃会话。
+	GroupSessionsUsed int `json:"group_sessions_used"`
+	GroupSessionsMax  int `json:"group_sessions_max"`
+	RPMUsed           int `json:"rpm_used"`
+	RPMMax            int `json:"rpm_max"`
 }
 
 // GroupAccountCapacityRow is the lightweight account projection needed for
@@ -36,12 +42,19 @@ type groupCapacityAccountLister interface {
 	ListSchedulableCapacityByGroupIDs(ctx context.Context, groupIDs []int64) ([]GroupAccountCapacityRow, error)
 }
 
+// groupCapacitySessionLimitLister 提供分组会话软上限配置，避免为了 max_sessions
+// 去加载完整分组（含账号计数）。
+type groupCapacitySessionLimitLister interface {
+	ListActiveGroupMaxSessions(ctx context.Context) (map[int64]int, error)
+}
+
 // GroupCapacityService aggregates per-group capacity from runtime data.
 type GroupCapacityService struct {
 	accountRepo        AccountRepository
 	groupRepo          GroupRepository
 	concurrencyService *ConcurrencyService
 	sessionLimitCache  SessionLimitCache
+	stickyCache        GatewayCache
 	rpmCache           RPMCache
 }
 
@@ -51,6 +64,7 @@ func NewGroupCapacityService(
 	groupRepo GroupRepository,
 	concurrencyService *ConcurrencyService,
 	sessionLimitCache SessionLimitCache,
+	stickyCache GatewayCache,
 	rpmCache RPMCache,
 ) *GroupCapacityService {
 	return &GroupCapacityService{
@@ -58,6 +72,7 @@ func NewGroupCapacityService(
 		groupRepo:          groupRepo,
 		concurrencyService: concurrencyService,
 		sessionLimitCache:  sessionLimitCache,
+		stickyCache:        stickyCache,
 		rpmCache:           rpmCache,
 	}
 }
@@ -214,7 +229,51 @@ func (s *GroupCapacityService) getGroupCapacitiesBatch(ctx context.Context, grou
 			results[idx].RPMUsed += rpmMap[ref.accountID]
 		}
 	}
+	s.fillGroupSessionUsage(ctx, results, groupIndex, refs, sessionTimeouts)
 	return results, nil
+}
+
+// fillGroupSessionUsage 填充分组自身的会话软上限及使用量。
+// 只有配置了 max_sessions 的分组才会触发 Redis 查询。
+func (s *GroupCapacityService) fillGroupSessionUsage(
+	ctx context.Context,
+	results []GroupCapacitySummary,
+	groupIndex map[int64]int,
+	refs []groupCapacityAccountRef,
+	sessionTimeouts map[int64]time.Duration,
+) {
+	lister, ok := s.groupRepo.(groupCapacitySessionLimitLister)
+	if !ok || s.sessionLimitCache == nil || s.stickyCache == nil {
+		return
+	}
+	maxSessionsByGroup, err := lister.ListActiveGroupMaxSessions(ctx)
+	if err != nil || len(maxSessionsByGroup) == 0 {
+		return
+	}
+
+	accountsByGroup := make(map[int64][]int64)
+	for _, ref := range refs {
+		if maxSessionsByGroup[ref.groupID] <= 0 {
+			continue
+		}
+		if sessionTimeouts[ref.accountID] <= 0 {
+			// 未配置账号级会话限制的账号不会注册会话，跳过以免无谓查询。
+			continue
+		}
+		accountsByGroup[ref.groupID] = append(accountsByGroup[ref.groupID], ref.accountID)
+	}
+
+	for groupID, maxSessions := range maxSessionsByGroup {
+		idx, ok := groupIndex[groupID]
+		if !ok || maxSessions <= 0 {
+			continue
+		}
+		results[idx].GroupSessionsMax = maxSessions
+		usage := computeGroupSessionUsage(ctx, s.sessionLimitCache, s.stickyCache, groupID, accountsByGroup[groupID], sessionTimeouts, "")
+		if usage.Computed {
+			results[idx].GroupSessionsUsed = usage.Used
+		}
+	}
 }
 
 func accountIDsForGroupsWithLimit(refs []groupCapacityAccountRef, groupIndex map[int64]int, summaries []GroupCapacitySummary, include func(GroupCapacitySummary) bool) []int64 {
@@ -292,12 +351,27 @@ func (s *GroupCapacityService) getGroupCapacity(ctx context.Context, groupID int
 		}
 	}
 
+	// 分组自身的会话软上限：使用量只统计 sticky 归属于本分组的活跃会话。
+	var groupSessionsUsed, groupSessionsMax int
+	if group, err := s.groupRepo.GetByIDLite(ctx, groupID); err == nil {
+		groupSessionsMax = group.GetMaxSessions()
+		if groupSessionsMax > 0 {
+			sessionAccountIDs, sessionIdleTimeouts := sessionLimitedAccounts(accounts)
+			usage := computeGroupSessionUsage(ctx, s.sessionLimitCache, s.stickyCache, groupID, sessionAccountIDs, sessionIdleTimeouts, "")
+			if usage.Computed {
+				groupSessionsUsed = usage.Used
+			}
+		}
+	}
+
 	return GroupCapacitySummary{
-		ConcurrencyUsed: concurrencyUsed,
-		ConcurrencyMax:  concurrencyMax,
-		SessionsUsed:    sessionsUsed,
-		SessionsMax:     sessionsMax,
-		RPMUsed:         rpmUsed,
-		RPMMax:          rpmMax,
+		ConcurrencyUsed:   concurrencyUsed,
+		ConcurrencyMax:    concurrencyMax,
+		SessionsUsed:      sessionsUsed,
+		SessionsMax:       sessionsMax,
+		GroupSessionsUsed: groupSessionsUsed,
+		GroupSessionsMax:  groupSessionsMax,
+		RPMUsed:           rpmUsed,
+		RPMMax:            rpmMax,
 	}, nil
 }

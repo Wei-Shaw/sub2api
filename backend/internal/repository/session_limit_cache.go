@@ -281,6 +281,59 @@ func (c *sessionLimitCache) GetActiveSessionCountBatch(ctx context.Context, acco
 	return results, nil
 }
 
+// GetActiveSessionsBatch 批量获取多个账号的活跃会话 hash 集合。
+func (c *sessionLimitCache) GetActiveSessionsBatch(ctx context.Context, accountIDs []int64, idleTimeouts map[int64]time.Duration) (map[int64]map[string]struct{}, error) {
+	if len(accountIDs) == 0 {
+		return make(map[int64]map[string]struct{}), nil
+	}
+
+	pipe := c.rdb.Pipeline()
+	type activeSessionCmds struct {
+		cleanup *redis.IntCmd
+		rangeBy *redis.StringSliceCmd
+	}
+	cmds := make(map[int64]activeSessionCmds, len(accountIDs))
+	now := time.Now().Unix()
+	for _, accountID := range accountIDs {
+		key := sessionLimitKey(accountID)
+		idleTimeout := c.defaultIdleTimeout
+		if idleTimeouts != nil {
+			if t, ok := idleTimeouts[accountID]; ok && t > 0 {
+				idleTimeout = t
+			}
+		}
+		expireBefore := now - int64(idleTimeout.Seconds())
+		cmds[accountID] = activeSessionCmds{
+			cleanup: pipe.ZRemRangeByScore(ctx, key, "-inf", strconv.FormatInt(expireBefore, 10)),
+			rangeBy: pipe.ZRangeByScore(ctx, key, &redis.ZRangeBy{
+				Min: strconv.FormatInt(expireBefore, 10),
+				Max: "+inf",
+			}),
+		}
+	}
+
+	_, _ = pipe.Exec(ctx)
+
+	results := make(map[int64]map[string]struct{}, len(accountIDs))
+	for accountID, cmd := range cmds {
+		if err := cmd.cleanup.Err(); err != nil && err != redis.Nil {
+			continue
+		}
+		members, err := cmd.rangeBy.Result()
+		if err != nil {
+			continue
+		}
+		set := make(map[string]struct{}, len(members))
+		for _, member := range members {
+			if member != "" {
+				set[member] = struct{}{}
+			}
+		}
+		results[accountID] = set
+	}
+	return results, nil
+}
+
 // IsSessionActive 检查会话是否活跃
 func (c *sessionLimitCache) IsSessionActive(ctx context.Context, accountID int64, sessionUUID string) (bool, error) {
 	if sessionUUID == "" {

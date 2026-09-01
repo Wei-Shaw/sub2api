@@ -42,6 +42,10 @@ type SessionLimitCache interface {
 	// 返回 map[accountID]count，查询失败的账号不在 map 中
 	GetActiveSessionCountBatch(ctx context.Context, accountIDs []int64, idleTimeouts map[int64]time.Duration) (map[int64]int, error)
 
+	// GetActiveSessionsBatch 批量获取多个账号的活跃会话 hash 集合。
+	// 返回 map[accountID]set(sessionHash)，查询失败的账号不在 map 中。
+	GetActiveSessionsBatch(ctx context.Context, accountIDs []int64, idleTimeouts map[int64]time.Duration) (map[int64]map[string]struct{}, error)
+
 	// IsSessionActive 检查特定会话是否活跃（未过期）
 	IsSessionActive(ctx context.Context, accountID int64, sessionUUID string) (bool, error)
 

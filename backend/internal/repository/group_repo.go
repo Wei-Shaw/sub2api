@@ -111,6 +111,7 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetModelsListConfig(groupIn.ModelsListConfig).
 		SetRpmLimit(groupIn.RPMLimit).
+		SetMaxSessions(groupIn.MaxSessions).
 		SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
 		SetMaxReasoningEffortOverLimit(groupIn.MaxReasoningEffortOverLimit).
 		SetReasoningEffortMappings(groupIn.ReasoningEffortMappings).
@@ -290,6 +291,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetModelsListConfig(groupIn.ModelsListConfig).
 		SetRpmLimit(groupIn.RPMLimit).
+		SetMaxSessions(groupIn.MaxSessions).
 		SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
 		SetMaxReasoningEffortOverLimit(groupIn.MaxReasoningEffortOverLimit).
 		SetReasoningEffortMappings(groupIn.ReasoningEffortMappings).
@@ -695,6 +697,23 @@ func (r *groupRepository) ListActiveIDs(ctx context.Context) ([]int64, error) {
 		ids = append(ids, groups[i].ID)
 	}
 	return ids, nil
+}
+
+// ListActiveGroupMaxSessions 返回启用了会话软上限的活跃分组：group_id -> max_sessions。
+// 只返回 max_sessions > 0 的分组，未配置的分组不出现在结果中。
+func (r *groupRepository) ListActiveGroupMaxSessions(ctx context.Context) (map[int64]int, error) {
+	groups, err := r.client.Group.Query().
+		Where(group.StatusEQ(service.StatusActive), group.MaxSessionsGT(0)).
+		Select(group.FieldID, group.FieldMaxSessions).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64]int, len(groups))
+	for i := range groups {
+		out[groups[i].ID] = groups[i].MaxSessions
+	}
+	return out, nil
 }
 
 func (r *groupRepository) ListActiveByPlatform(ctx context.Context, platform string) ([]service.Group, error) {

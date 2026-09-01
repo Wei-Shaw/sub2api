@@ -1108,6 +1108,27 @@ func (_u *GroupUpdate) AddRpmLimit(v int) *GroupUpdate {
 	return _u
 }
 
+// SetMaxSessions sets the "max_sessions" field.
+func (_u *GroupUpdate) SetMaxSessions(v int) *GroupUpdate {
+	_u.mutation.ResetMaxSessions()
+	_u.mutation.SetMaxSessions(v)
+	return _u
+}
+
+// SetNillableMaxSessions sets the "max_sessions" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableMaxSessions(v *int) *GroupUpdate {
+	if v != nil {
+		_u.SetMaxSessions(*v)
+	}
+	return _u
+}
+
+// AddMaxSessions adds value to the "max_sessions" field.
+func (_u *GroupUpdate) AddMaxSessions(v int) *GroupUpdate {
+	_u.mutation.AddMaxSessions(v)
+	return _u
+}
+
 // SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (_u *GroupUpdate) SetMaxReasoningEffort(v string) *GroupUpdate {
 	_u.mutation.SetMaxReasoningEffort(v)
@@ -1524,6 +1545,11 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.MaxSessions(); ok {
+		if err := group.MaxSessionsValidator(v); err != nil {
+			return &ValidationError{Name: "max_sessions", err: fmt.Errorf(`ent: validator failed for field "Group.max_sessions": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.MaxReasoningEffort(); ok {
 		if err := group.MaxReasoningEffortValidator(v); err != nil {
 			return &ValidationError{Name: "max_reasoning_effort", err: fmt.Errorf(`ent: validator failed for field "Group.max_reasoning_effort": %w`, err)}
@@ -1870,6 +1896,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.MaxSessions(); ok {
+		_spec.SetField(group.FieldMaxSessions, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedMaxSessions(); ok {
+		_spec.AddField(group.FieldMaxSessions, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.MaxReasoningEffort(); ok {
 		_spec.SetField(group.FieldMaxReasoningEffort, field.TypeString, value)
@@ -3285,6 +3317,27 @@ func (_u *GroupUpdateOne) AddRpmLimit(v int) *GroupUpdateOne {
 	return _u
 }
 
+// SetMaxSessions sets the "max_sessions" field.
+func (_u *GroupUpdateOne) SetMaxSessions(v int) *GroupUpdateOne {
+	_u.mutation.ResetMaxSessions()
+	_u.mutation.SetMaxSessions(v)
+	return _u
+}
+
+// SetNillableMaxSessions sets the "max_sessions" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableMaxSessions(v *int) *GroupUpdateOne {
+	if v != nil {
+		_u.SetMaxSessions(*v)
+	}
+	return _u
+}
+
+// AddMaxSessions adds value to the "max_sessions" field.
+func (_u *GroupUpdateOne) AddMaxSessions(v int) *GroupUpdateOne {
+	_u.mutation.AddMaxSessions(v)
+	return _u
+}
+
 // SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (_u *GroupUpdateOne) SetMaxReasoningEffort(v string) *GroupUpdateOne {
 	_u.mutation.SetMaxReasoningEffort(v)
@@ -3714,6 +3767,11 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.MaxSessions(); ok {
+		if err := group.MaxSessionsValidator(v); err != nil {
+			return &ValidationError{Name: "max_sessions", err: fmt.Errorf(`ent: validator failed for field "Group.max_sessions": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.MaxReasoningEffort(); ok {
 		if err := group.MaxReasoningEffortValidator(v); err != nil {
 			return &ValidationError{Name: "max_reasoning_effort", err: fmt.Errorf(`ent: validator failed for field "Group.max_reasoning_effort": %w`, err)}
@@ -4077,6 +4135,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.MaxSessions(); ok {
+		_spec.SetField(group.FieldMaxSessions, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedMaxSessions(); ok {
+		_spec.AddField(group.FieldMaxSessions, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.MaxReasoningEffort(); ok {
 		_spec.SetField(group.FieldMaxReasoningEffort, field.TypeString, value)

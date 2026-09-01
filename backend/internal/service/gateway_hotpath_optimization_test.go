@@ -132,6 +132,10 @@ func (s *stickyGatewayCacheHotpathStub) GetSessionAccountID(ctx context.Context,
 	return 0, errors.New("not found")
 }
 
+func (s *stickyGatewayCacheHotpathStub) GetSessionAccountIDBatch(_ context.Context, _ int64, _ []string) (map[string]int64, error) {
+	return nil, nil
+}
+
 func (s *stickyGatewayCacheHotpathStub) SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
 	return nil
 }

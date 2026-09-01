@@ -185,6 +185,10 @@ var _ CyberSessionBlockStore = (*comboCacheAndStore)(nil)
 func (c *comboCacheAndStore) GetSessionAccountID(_ context.Context, _ int64, _ string) (int64, error) {
 	return 0, errors.New("stub")
 }
+
+func (c *comboCacheAndStore) GetSessionAccountIDBatch(_ context.Context, _ int64, _ []string) (map[string]int64, error) {
+	return nil, nil
+}
 func (c *comboCacheAndStore) SetSessionAccountID(_ context.Context, _ int64, _ string, _ int64, _ time.Duration) error {
 	return nil
 }

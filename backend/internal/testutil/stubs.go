@@ -94,6 +94,10 @@ type StubGatewayCache struct{}
 func (c StubGatewayCache) GetSessionAccountID(_ context.Context, _ int64, _ string) (int64, error) {
 	return 0, nil
 }
+
+func (c StubGatewayCache) GetSessionAccountIDBatch(_ context.Context, _ int64, _ []string) (map[string]int64, error) {
+	return nil, nil
+}
 func (c StubGatewayCache) SetSessionAccountID(_ context.Context, _ int64, _ string, _ int64, _ time.Duration) error {
 	return nil
 }
@@ -143,6 +147,9 @@ func (c StubSessionLimitCache) GetActiveSessionCount(_ context.Context, _ int64)
 	return 0, nil
 }
 func (c StubSessionLimitCache) GetActiveSessionCountBatch(_ context.Context, _ []int64, _ map[int64]time.Duration) (map[int64]int, error) {
+	return nil, nil
+}
+func (c StubSessionLimitCache) GetActiveSessionsBatch(_ context.Context, _ []int64, _ map[int64]time.Duration) (map[int64]map[string]struct{}, error) {
 	return nil, nil
 }
 func (c StubSessionLimitCache) IsSessionActive(_ context.Context, _ int64, _ string) (bool, error) {

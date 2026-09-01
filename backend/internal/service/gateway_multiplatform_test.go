@@ -253,6 +253,10 @@ func (m *mockGatewayCacheForPlatform) GetSessionAccountID(ctx context.Context, g
 	return 0, errors.New("not found")
 }
 
+func (m *mockGatewayCacheForPlatform) GetSessionAccountIDBatch(_ context.Context, _ int64, _ []string) (map[string]int64, error) {
+	return nil, nil
+}
+
 func (m *mockGatewayCacheForPlatform) SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
 	if m.sessionBindings == nil {
 		m.sessionBindings = make(map[string]int64)

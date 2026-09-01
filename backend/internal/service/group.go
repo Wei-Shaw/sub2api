@@ -111,6 +111,9 @@ type Group struct {
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制）。
 	// 一旦设置即接管该分组用户的限流（覆盖用户级 rpm_limit），可被 user-group rpm_override 进一步覆盖。
 	RPMLimit int
+	// MaxSessions 是分组所属账号池中、由本分组 sticky binding 持有的活跃会话软上限。
+	// 0 表示不限制。会话是否活跃仍按各账号自己的 idle timeout 判断。
+	MaxSessions int
 
 	// MaxReasoningEffort limits the effective OpenAI/Codex reasoning effort.
 	// Empty means unlimited; supported values are minimal/low/medium/high/xhigh/max.
@@ -211,6 +214,14 @@ func (g *Group) VideoPriceConfig() *VideoPriceConfig {
 		Price1080P:  g.VideoPrice1080P,
 		ModelPrices: NormalizeVideoModelPrices(g.VideoModelPrices),
 	}
+}
+
+// GetMaxSessions 返回分组活跃会话软上限，0 或负数表示不限制。
+func (g *Group) GetMaxSessions() int {
+	if g == nil || g.MaxSessions <= 0 {
+		return 0
+	}
+	return g.MaxSessions
 }
 
 // IsGroupContextValid reports whether a group from context has the fields required for routing decisions.

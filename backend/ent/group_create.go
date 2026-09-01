@@ -816,6 +816,20 @@ func (_c *GroupCreate) SetNillableRpmLimit(v *int) *GroupCreate {
 	return _c
 }
 
+// SetMaxSessions sets the "max_sessions" field.
+func (_c *GroupCreate) SetMaxSessions(v int) *GroupCreate {
+	_c.mutation.SetMaxSessions(v)
+	return _c
+}
+
+// SetNillableMaxSessions sets the "max_sessions" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableMaxSessions(v *int) *GroupCreate {
+	if v != nil {
+		_c.SetMaxSessions(*v)
+	}
+	return _c
+}
+
 // SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (_c *GroupCreate) SetMaxReasoningEffort(v string) *GroupCreate {
 	_c.mutation.SetMaxReasoningEffort(v)
@@ -1169,6 +1183,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
 	}
+	if _, ok := _c.mutation.MaxSessions(); !ok {
+		v := group.DefaultMaxSessions
+		_c.mutation.SetMaxSessions(v)
+	}
 	if _, ok := _c.mutation.MaxReasoningEffort(); !ok {
 		v := group.DefaultMaxReasoningEffort
 		_c.mutation.SetMaxReasoningEffort(v)
@@ -1368,6 +1386,14 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
+	}
+	if _, ok := _c.mutation.MaxSessions(); !ok {
+		return &ValidationError{Name: "max_sessions", err: errors.New(`ent: missing required field "Group.max_sessions"`)}
+	}
+	if v, ok := _c.mutation.MaxSessions(); ok {
+		if err := group.MaxSessionsValidator(v); err != nil {
+			return &ValidationError{Name: "max_sessions", err: fmt.Errorf(`ent: validator failed for field "Group.max_sessions": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.MaxReasoningEffort(); !ok {
 		return &ValidationError{Name: "max_reasoning_effort", err: errors.New(`ent: missing required field "Group.max_reasoning_effort"`)}
@@ -1659,6 +1685,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
+	}
+	if value, ok := _c.mutation.MaxSessions(); ok {
+		_spec.SetField(group.FieldMaxSessions, field.TypeInt, value)
+		_node.MaxSessions = value
 	}
 	if value, ok := _c.mutation.MaxReasoningEffort(); ok {
 		_spec.SetField(group.FieldMaxReasoningEffort, field.TypeString, value)
@@ -2797,6 +2827,24 @@ func (u *GroupUpsert) UpdateRpmLimit() *GroupUpsert {
 // AddRpmLimit adds v to the "rpm_limit" field.
 func (u *GroupUpsert) AddRpmLimit(v int) *GroupUpsert {
 	u.Add(group.FieldRpmLimit, v)
+	return u
+}
+
+// SetMaxSessions sets the "max_sessions" field.
+func (u *GroupUpsert) SetMaxSessions(v int) *GroupUpsert {
+	u.Set(group.FieldMaxSessions, v)
+	return u
+}
+
+// UpdateMaxSessions sets the "max_sessions" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateMaxSessions() *GroupUpsert {
+	u.SetExcluded(group.FieldMaxSessions)
+	return u
+}
+
+// AddMaxSessions adds v to the "max_sessions" field.
+func (u *GroupUpsert) AddMaxSessions(v int) *GroupUpsert {
+	u.Add(group.FieldMaxSessions, v)
 	return u
 }
 
@@ -4049,6 +4097,27 @@ func (u *GroupUpsertOne) AddRpmLimit(v int) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRpmLimit() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetMaxSessions sets the "max_sessions" field.
+func (u *GroupUpsertOne) SetMaxSessions(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMaxSessions(v)
+	})
+}
+
+// AddMaxSessions adds v to the "max_sessions" field.
+func (u *GroupUpsertOne) AddMaxSessions(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddMaxSessions(v)
+	})
+}
+
+// UpdateMaxSessions sets the "max_sessions" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateMaxSessions() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMaxSessions()
 	})
 }
 
@@ -5481,6 +5550,27 @@ func (u *GroupUpsertBulk) AddRpmLimit(v int) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRpmLimit() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetMaxSessions sets the "max_sessions" field.
+func (u *GroupUpsertBulk) SetMaxSessions(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMaxSessions(v)
+	})
+}
+
+// AddMaxSessions adds v to the "max_sessions" field.
+func (u *GroupUpsertBulk) AddMaxSessions(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddMaxSessions(v)
+	})
+}
+
+// UpdateMaxSessions sets the "max_sessions" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateMaxSessions() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMaxSessions()
 	})
 }
 

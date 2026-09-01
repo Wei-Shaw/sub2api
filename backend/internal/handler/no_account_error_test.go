@@ -76,6 +76,31 @@ func TestClassifySelectionFailureError_RateLimitedPool(t *testing.T) {
 	require.Equal(t, fallback, classifySelectionFailureError(fmt.Errorf("no available accounts"), fallback))
 }
 
+func TestClassifySelectionFailureError_SessionCapacityExceeded(t *testing.T) {
+	fallback := noAccountErrorClassification{Status: http.StatusServiceUnavailable, ErrType: "api_error", Message: "Service temporarily unavailable"}
+
+	group := classifySelectionFailureError(
+		fmt.Errorf("select failed: %w", service.ErrGroupSessionCapacityExceeded),
+		fallback,
+	)
+	require.Equal(t, http.StatusTooManyRequests, group.Status, "分组会话软上限必须回 429，不能退化成 503")
+	require.Equal(t, "rate_limit_error", group.ErrType)
+	require.Contains(t, group.Message, "group has reached its active session limit")
+	require.True(t, group.PreserveMessage)
+
+	account := classifySelectionFailureError(
+		fmt.Errorf("select failed: %w", service.ErrAccountSessionCapacityExceeded),
+		fallback,
+	)
+	require.Equal(t, http.StatusTooManyRequests, account.Status)
+	require.Equal(t, "rate_limit_error", account.ErrType)
+	require.Contains(t, account.Message, "accounts have reached their active session limits")
+	require.True(t, account.PreserveMessage)
+
+	// 普通无可用账号仍保持既有 503 行为。
+	require.Equal(t, fallback, classifySelectionFailureError(service.ErrNoAvailableAccounts, fallback))
+}
+
 func TestClassifyNoAccountError_NilAPIKey_Falls503(t *testing.T) {
 	c := newTestGinContextWithRequest()
 	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: false}}

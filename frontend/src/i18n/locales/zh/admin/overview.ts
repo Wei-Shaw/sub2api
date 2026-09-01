@@ -816,6 +816,10 @@ export default {
         userNotes: '备注',
         userStatus: '状态'
       },
+      capacity: {
+        accountSessionsTooltip: '账号会话池：{used} / {max}（分组内账号的账号级会话容量汇总，共享账号会同时计入多个分组）',
+        groupSessionsTooltip: '组会话：{used} / {max}（仅统计归属本分组的活跃会话，软限制）'
+      },
       usageToday: '今日',
       usageYesterday: '昨日',
       usageTotal: '累计',
@@ -839,6 +843,9 @@ export default {
         rpmLimit: '每分钟请求数 (RPM)',
         rpmLimitPlaceholder: '0 表示不限制',
         rpmLimitHint: '每用户在本分组每分钟最大请求数，0 = 不限制；一旦设置即接管该用户的限流（覆盖用户级 rpm_limit）',
+        maxSessions: '最大活跃会话数',
+        maxSessionsPlaceholder: '0 表示不限制',
+        maxSessionsHint: '本分组可同时保持的活跃会话数，0 = 不限制。会话的释放时间沿用实际使用账号的「空闲超时」设置；这是软限制，超限请求会立即被拒绝而不是排队等待。',
         maxReasoningEffort: '推理强度上限',
         maxReasoningEffortUnlimited: '不限制（跟随请求）',
         maxReasoningEffortHint: '仅限制客户端主动请求的 OpenAI reasoning effort；Composite 分组仅对解析到 OpenAI 的请求生效。不会为缺省请求主动开启推理。上限优先级高于推理强度映射。',
