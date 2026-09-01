@@ -65,7 +65,10 @@ func resolveOpenAIWSSessionHeaders(c *gin.Context, promptCacheKey string) openAI
 		ConversationSource: "none",
 	}
 	if c != nil && c.Request != nil {
-		if sessionID := strings.TrimSpace(c.Request.Header.Get("session_id")); sessionID != "" {
+		if sessionID := strings.TrimSpace(c.Request.Header.Get("session-id")); sessionID != "" {
+			resolution.SessionID = sessionID
+			resolution.SessionSource = "header_session-id"
+		} else if sessionID := strings.TrimSpace(c.Request.Header.Get("session_id")); sessionID != "" {
 			resolution.SessionID = sessionID
 			resolution.SessionSource = "header_session_id"
 		}
@@ -161,12 +164,15 @@ func openAIWSEventMayContainToolCalls(eventType string) bool {
 }
 
 func openAIWSEventShouldParseUsage(eventType string) bool {
-	switch strings.TrimSpace(eventType) {
-	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
+	eventType = strings.TrimSpace(eventType)
+	if eventType == "error" || openAIStreamEventTypeIsTerminal(eventType) {
 		return true
-	default:
-		return false
 	}
+	return strings.HasPrefix(eventType, "response.") && !strings.HasSuffix(eventType, ".delta")
+}
+
+func openAIWSMessageShouldParseUsage(eventType string, message []byte) bool {
+	return openAIWSEventShouldParseUsage(eventType) && bytes.Contains(message, []byte(`"usage"`))
 }
 
 func parseOpenAIWSEventEnvelope(message []byte) (eventType string, responseID string, response gjson.Result) {
@@ -193,11 +199,18 @@ func openAIWSMessageLikelyContainsToolCalls(message []byte) bool {
 }
 
 func parseOpenAIWSResponseUsageFromCompletedEvent(message []byte, usage *OpenAIUsage) {
-	if usage == nil || len(message) == 0 {
+	if usage == nil || len(message) == 0 || !bytes.Contains(message, []byte(`"usage"`)) {
 		return
 	}
 	if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(message); ok {
-		*usage = parsedUsage
+		if openAIStreamEventTypeIsTerminal(effectiveOpenAISSEEventType(message, "")) {
+			if !openAIUsageHasTokens(&parsedUsage) && openAIUsageHasTokens(usage) {
+				return
+			}
+			*usage = parsedUsage
+		} else {
+			mergeOpenAIUsageNonZero(usage, parsedUsage)
+		}
 	}
 }
 

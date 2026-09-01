@@ -44,6 +44,7 @@ const (
 	APIProtocolChatCompletions = "chat_completions" // OpenAI Chat Completions（默认）
 	APIProtocolAnthropic       = "anthropic"        // 原生 Anthropic /v1/messages（适配 Claude Code）
 	APIProtocolResponses       = "responses"        // OpenAI Responses（仅 deepseek，适配 Codex）
+	APIProtocolAdaptive        = "adaptive"         // 按入站协议优先选择供应商原生端点
 )
 
 // Account type constants
@@ -104,11 +105,11 @@ var DefaultAntigravityModelMapping = map[string]string{
 	"claude-opus-4-6":            "claude-opus-4-6-thinking", // 简称映射
 	"claude-opus-4-5-thinking":   "claude-opus-4-6-thinking", // 迁移旧模型
 	"claude-sonnet-4-6":          "claude-sonnet-4-6",
-	"claude-sonnet-4-5":          "claude-sonnet-4-5",
-	"claude-sonnet-4-5-thinking": "claude-sonnet-4-5-thinking",
+	"claude-sonnet-4-5":          "claude-sonnet-4-5", // 显式 canonical 选择透传
+	"claude-sonnet-4-5-thinking": "claude-sonnet-4-6", // 迁移旧兼容别名
 	// Claude 详细版本 ID 映射
 	"claude-opus-4-5-20251101":   "claude-opus-4-6-thinking", // 迁移旧模型
-	"claude-sonnet-4-5-20250929": "claude-sonnet-4-5",
+	"claude-sonnet-4-5-20250929": "claude-sonnet-4-6",        // 迁移旧模型
 	// Claude Haiku → Sonnet（无 Haiku 支持）
 	"claude-haiku-4-5":          "claude-sonnet-4-6",
 	"claude-haiku-4-5-20251001": "claude-sonnet-4-6",

@@ -7,6 +7,7 @@
           <span class="min-w-0 truncate text-base font-semibold">{{ context.siteName }}</span>
         </div>
         <div class="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
+          <router-link v-if="context.showModelPlazaEntry" to="/model-plaza" class="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-primary-600 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-primary-400">{{ t('common.nav.modelPlaza') }}</router-link>
           <LocaleSwitcher />
           <a v-if="context.docUrl" :href="context.docUrl" target="_blank" rel="noopener noreferrer" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-dark-400 dark:hover:bg-dark-800" :title="t('home.viewDocs')"><Icon name="book" size="md" /></a>
           <button class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-dark-400 dark:hover:bg-dark-800" :title="context.isDark ? t('home.switchToLight') : t('home.switchToDark')" @click="context.toggleTheme">

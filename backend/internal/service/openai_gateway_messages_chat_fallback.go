@@ -152,15 +152,16 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
 	c.JSON(http.StatusOK, anthropicResp)
 
 	return &OpenAIForwardResult{
-		RequestID:       requestID,
-		Usage:           usage,
-		Model:           originalModel,
-		BillingModel:    billingModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		ServiceTier:     serviceTier,
-		Stream:          false,
-		Duration:        time.Since(startTime),
+		RequestID:                   requestID,
+		Usage:                       usage,
+		Model:                       originalModel,
+		BillingModel:                billingModel,
+		UpstreamModel:               upstreamModel,
+		ReasoningEffort:             reasoningEffort,
+		UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
+		ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
+		Stream:                      false,
+		Duration:                    time.Since(startTime),
 	}, nil
 }
 
@@ -204,7 +205,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 		}
 	}
 
-	scan := s.scanCCStream(resp, "openai messages chat fallback", requestID, startTime, emitChunk)
+	scan := s.scanCCStream(c, resp, "openai messages chat fallback", requestID, startTime, emitChunk)
 	usage := scan.Usage
 
 	if scan.Err != nil {
@@ -212,17 +213,18 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 		// masks the truncation, and surface the error to flag usage incomplete
 		// (mirrors forwardResponsesViaRawChatCompletions).
 		return &OpenAIForwardResult{
-			RequestID:        requestID,
-			Usage:            usage,
-			Model:            originalModel,
-			BillingModel:     billingModel,
-			UpstreamModel:    upstreamModel,
-			ReasoningEffort:  reasoningEffort,
-			ServiceTier:      serviceTier,
-			Stream:           true,
-			Duration:         time.Since(startTime),
-			FirstTokenMs:     scan.FirstTokenMs,
-			ClientDisconnect: clientDisconnected,
+			RequestID:                   requestID,
+			Usage:                       usage,
+			Model:                       originalModel,
+			BillingModel:                billingModel,
+			UpstreamModel:               upstreamModel,
+			ReasoningEffort:             reasoningEffort,
+			UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
+			ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
+			Stream:                      true,
+			Duration:                    time.Since(startTime),
+			FirstTokenMs:                scan.FirstTokenMs,
+			ClientDisconnect:            clientDisconnected,
 		}, fmt.Errorf("stream usage incomplete: %w", scan.Err)
 	}
 
@@ -247,16 +249,17 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 	}
 
 	return &OpenAIForwardResult{
-		RequestID:        requestID,
-		Usage:            usage,
-		Model:            originalModel,
-		BillingModel:     billingModel,
-		UpstreamModel:    upstreamModel,
-		ReasoningEffort:  reasoningEffort,
-		ServiceTier:      serviceTier,
-		Stream:           true,
-		Duration:         time.Since(startTime),
-		FirstTokenMs:     scan.FirstTokenMs,
-		ClientDisconnect: clientDisconnected,
+		RequestID:                   requestID,
+		Usage:                       usage,
+		Model:                       originalModel,
+		BillingModel:                billingModel,
+		UpstreamModel:               upstreamModel,
+		ReasoningEffort:             reasoningEffort,
+		UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
+		ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
+		Stream:                      true,
+		Duration:                    time.Since(startTime),
+		FirstTokenMs:                scan.FirstTokenMs,
+		ClientDisconnect:            clientDisconnected,
 	}, nil
 }

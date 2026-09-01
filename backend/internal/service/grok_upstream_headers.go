@@ -10,10 +10,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
-// grokUpstreamUserAgent is kept for compatibility with older Grok request
-// tests. Current requests use the pinned default UA from this package.
-const grokUpstreamUserAgent = "sub2api-grok/1.0"
-
 // Fixed CLI identity aliases — single source of truth is internal/pkg/xai.
 const (
 	grokClientVersionHeader    = xai.CLIStableVersion

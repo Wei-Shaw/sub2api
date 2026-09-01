@@ -6,6 +6,7 @@
         <span>{{ context.siteName }}<small>API</small></span>
       </router-link>
       <nav aria-label="Primary navigation">
+        <router-link v-if="context.showModelPlazaEntry" to="/model-plaza">{{ t('common.nav.modelPlaza') }}</router-link>
         <a href="#models">{{ t('home.styles.studio.modelsNav') }}</a>
         <a href="#features">{{ t('home.styles.studio.featuresNav') }}</a>
         <a v-if="context.docUrl" :href="context.docUrl" target="_blank" rel="noopener noreferrer">
