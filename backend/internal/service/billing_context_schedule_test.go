@@ -69,12 +69,25 @@ func requirePrice(t *testing.T, want, got *float64, field string) {
 	require.InDelta(t, *want, *got, 1e-15, field)
 }
 
+// mustCatalogFromJSON 走生产解析路径（含 above_XXXk 折算）构造目录 stub；场景表无 *testing.T，解析失败直接 panic。
+func mustCatalogFromJSON(body string) *PricingService {
+	s := &PricingService{}
+	data, err := s.parsePricingData([]byte(body))
+	if err != nil {
+		panic(err)
+	}
+	s.pricingData = data
+	return s
+}
+
+func openAILadderCatalog() *PricingService { return mustCatalogFromJSON(openAILadderCatalogJSON) }
+
 func scheduleScenarios() []scheduleScenario {
 	p := testPtrFloat64
 	return []scheduleScenario{
 		{
 			name: "官方阶梯 gpt-5.4 整单两档", model: "gpt-5.4", platform: PlatformOpenAI, groupPlatform: PlatformOpenAI,
-			group: enabledGroup(PlatformOpenAI), wantBasis: ContextPricingBasisWholeRequest,
+			group: enabledGroup(PlatformOpenAI), catalog: openAILadderCatalog(), wantBasis: ContextPricingBasisWholeRequest,
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 2)
 				requireTier(t, s.Tiers[0], 0, intPtr(272000), "≤272K", p(2.5e-6), p(15e-6), p(2.5e-6), p(0.25e-6))
@@ -92,7 +105,7 @@ func scheduleScenarios() []scheduleScenario {
 		},
 		{
 			name: "分组关闭阶梯只剩基础档", model: "gpt-5.4", platform: PlatformOpenAI, groupPlatform: PlatformOpenAI,
-			group: disabledGroup(PlatformOpenAI), wantBasis: ContextPricingBasisWholeRequest,
+			group: disabledGroup(PlatformOpenAI), catalog: openAILadderCatalog(), wantBasis: ContextPricingBasisWholeRequest,
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 1)
 				requireTier(t, s.Tiers[0], 0, nil, "", p(2.5e-6), p(15e-6), p(2.5e-6), p(0.25e-6))
@@ -100,7 +113,7 @@ func scheduleScenarios() []scheduleScenario {
 		},
 		{
 			name: "官方参考价（无分组）带目录阶梯", model: "gpt-5.4", platform: "", groupPlatform: PlatformOpenAI,
-			group: nil, wantBasis: ContextPricingBasisWholeRequest,
+			group: nil, catalog: openAILadderCatalog(), wantBasis: ContextPricingBasisWholeRequest,
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 2)
 				requireTier(t, s.Tiers[1], 272000, nil, ">272K", p(5e-6), p(22.5e-6), p(5e-6), p(0.5e-6))
@@ -210,6 +223,7 @@ func scheduleScenarios() []scheduleScenario {
 			group: &Group{ID: 100, Platform: PlatformOpenAI, LongContextPricingEnabled: true, ModelPricing: []ChannelModelPricing{{
 				Models: []string{"gpt-5.4"}, BillingMode: BillingModeToken, InputPrice: p(1e-6),
 			}}},
+			catalog:   openAILadderCatalog(),
 			wantBasis: ContextPricingBasisWholeRequest,
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 2)
@@ -219,38 +233,47 @@ func scheduleScenarios() []scheduleScenario {
 			},
 		},
 		{
-			name: "Gemini 旧规则按超出部分计价", model: "gemini-2.5-pro", platform: PlatformGemini, groupPlatform: PlatformGemini,
-			group: enabledGroup(PlatformGemini), catalog: geminiCatalogStub(), wantBasis: ContextPricingBasisMarginal,
+			name: "Gemini 目录阶梯整单换档", model: "gemini-2.5-pro", platform: PlatformGemini, groupPlatform: PlatformGemini,
+			group: enabledGroup(PlatformGemini), catalog: mustCatalogFromJSON(geminiLadderCatalogJSON), wantBasis: ContextPricingBasisWholeRequest,
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 2)
-				requireTier(t, s.Tiers[0], 0, intPtr(200000), "≤200K", p(1.25e-6), p(10e-6), nil, p(0.3125e-6))
-				requireTier(t, s.Tiers[1], 200000, nil, ">200K", p(2.5e-6), p(10e-6), nil, p(0.625e-6))
+				// 缓存写入按标准输入价，与 input 一同整单换档
+				requireTier(t, s.Tiers[0], 0, intPtr(200000), "≤200K", p(1.25e-6), p(10e-6), p(1.25e-6), p(0.125e-6))
+				requireTier(t, s.Tiers[1], 200000, nil, ">200K", p(2.5e-6), p(15e-6), p(2.5e-6), p(0.25e-6))
 			},
 		},
 		{
-			name: "Gemini 分组关闭时不用旧规则", model: "gemini-2.5-pro", platform: PlatformGemini, groupPlatform: PlatformGemini,
-			group: disabledGroup(PlatformGemini), catalog: geminiCatalogStub(), wantBasis: ContextPricingBasisWholeRequest,
+			name: "Gemini 分组关闭时无阶梯", model: "gemini-2.5-pro", platform: PlatformGemini, groupPlatform: PlatformGemini,
+			group: disabledGroup(PlatformGemini), catalog: mustCatalogFromJSON(geminiLadderCatalogJSON), wantBasis: ContextPricingBasisWholeRequest,
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 1)
 			},
 		},
 		{
-			name: "Gemini 有渠道定价时旧规则让位", model: "gemini-2.5-pro", platform: PlatformGemini, groupPlatform: PlatformGemini,
-			group: enabledGroup(PlatformGemini), catalog: geminiCatalogStub(),
+			name: "Gemini 渠道平价之上叠加目录阶梯", model: "gemini-2.5-pro", platform: PlatformGemini, groupPlatform: PlatformGemini,
+			group: enabledGroup(PlatformGemini), catalog: mustCatalogFromJSON(geminiLadderCatalogJSON),
 			channel: []ChannelModelPricing{{
 				Platform: PlatformGemini, Models: []string{"gemini-2.5-pro"}, BillingMode: BillingModeToken, InputPrice: p(3e-6),
 			}},
 			wantBasis: ContextPricingBasisWholeRequest,
 			check: func(t *testing.T, s *ContextPricingSchedule) {
-				require.Len(t, s.Tiers, 1)
+				require.Len(t, s.Tiers, 2)
 				requirePrice(t, p(3e-6), s.Tiers[0].Input, "input")
+				requirePrice(t, p(6e-6), s.Tiers[1].Input, "input")
 			},
 		},
 		{
-			name: "Gemini 官方参考不套用站内旧规则", model: "gemini-2.5-pro", platform: "", groupPlatform: PlatformGemini,
-			group: nil, catalog: geminiCatalogStub(), wantBasis: ContextPricingBasisWholeRequest,
+			name: "Gemini 目录无阶梯字段时开关开启也无阶梯", model: "gemini-2.5-pro", platform: PlatformGemini, groupPlatform: PlatformGemini,
+			group: enabledGroup(PlatformGemini), catalog: geminiCatalogStub(), wantBasis: ContextPricingBasisWholeRequest,
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 1)
+			},
+		},
+		{
+			name: "Gemini 官方参考价与目录数据同源", model: "gemini-2.5-pro", platform: "", groupPlatform: PlatformGemini,
+			group: nil, catalog: mustCatalogFromJSON(geminiLadderCatalogJSON), wantBasis: ContextPricingBasisWholeRequest,
+			check: func(t *testing.T, s *ContextPricingSchedule) {
+				require.Len(t, s.Tiers, 2)
 			},
 		},
 		{
@@ -259,6 +282,7 @@ func scheduleScenarios() []scheduleScenario {
 			channel: []ChannelModelPricing{{
 				Platform: PlatformOpenAI, Models: []string{"gpt-5.4"}, BillingMode: BillingModeToken, InputPrice: p(1e-6),
 			}},
+			catalog:   openAILadderCatalog(),
 			wantBasis: ContextPricingBasisWholeRequest,
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 2)
@@ -283,9 +307,11 @@ func scheduleScenarios() []scheduleScenario {
 		{
 			name: "gpt-5.6 缺 cache_write 时按策略补 1.25 倍并带阶梯", model: "gpt-5.6-sol", platform: PlatformOpenAI, groupPlatform: PlatformOpenAI,
 			group: enabledGroup(PlatformOpenAI),
-			catalog: newStubPricingServiceFromMap(map[string]*LiteLLMModelPricing{
-				"gpt-5.6-sol": {Mode: "chat", InputCostPerToken: 5e-6, OutputCostPerToken: 30e-6, CacheReadInputTokenCost: 0.5e-6},
-			}),
+			catalog: mustCatalogFromJSON(`{"gpt-5.6-sol": {"litellm_provider": "openai", "mode": "chat",
+				"input_cost_per_token": 5e-06, "output_cost_per_token": 3e-05, "cache_read_input_token_cost": 5e-07,
+				"input_cost_per_token_above_272k_tokens": 1e-05,
+				"output_cost_per_token_above_272k_tokens": 4.5e-05,
+				"cache_read_input_token_cost_above_272k_tokens": 1e-06}}`),
 			wantBasis: ContextPricingBasisWholeRequest,
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 2)
@@ -398,22 +424,8 @@ func tierAt(tiers []ContextPricingTier, contextTokens int) ContextPricingTier {
 }
 
 // expectedCostFromSchedule 按阶梯表推算 contextTokens 个某类 token 的费用：
-// 整单基准取所在档单价 × 全量；边际基准逐段累加。
+// 整单基准取所在档单价 × 全量。
 func expectedCostFromSchedule(s *ContextPricingSchedule, kind tokenKind, contextTokens int) float64 {
-	if s.Basis == ContextPricingBasisMarginal {
-		total := 0.0
-		for _, tier := range s.Tiers {
-			if contextTokens <= tier.MinTokens {
-				break
-			}
-			upper := contextTokens
-			if tier.MaxTokens != nil && *tier.MaxTokens < upper {
-				upper = *tier.MaxTokens
-			}
-			total += float64(upper-tier.MinTokens) * tierPrice(tier, kind)
-		}
-		return total
-	}
 	return float64(contextTokens) * tierPrice(tierAt(s.Tiers, contextTokens), kind)
 }
 
@@ -443,17 +455,10 @@ func TestResolveContextPricingSchedule_ParityWithBilling(t *testing.T) {
 				pricingInput.GroupID = &gid
 			}
 			resolved := resolver.Resolve(ctx, pricingInput)
-			var legacy *LegacyLongContextRule
-			if sc.group != nil {
-				legacy = bs.LegacyLongContextRule(sc.platform)
-			}
-			if !legacyLongContextApplies(resolved, sc.group, legacy) {
-				legacy = nil
-			}
 			cost := func(tokens UsageTokens) float64 {
 				bd, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
 					Ctx: ctx, Model: sc.model, Group: sc.group, Tokens: tokens, RateMultiplier: 1,
-					Resolver: resolver, Resolved: resolved, LegacyLongContext: legacy,
+					Resolver: resolver, Resolved: resolved,
 				})
 				require.NoError(t, err)
 				return bd.ActualCost

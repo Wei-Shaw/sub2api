@@ -208,11 +208,12 @@ func (s *OpenAIGatewayService) groupConfiguredCodexModelIDs(ctx context.Context,
 
 // loadCodexGroupCatalogAccounts separates picker membership from capability
 // intersection. visible accounts are currently schedulable and decide which
-// public aliases appear. catalog accounts are all non-deleted active group
-// members; their snapshots keep advertised capabilities from widening when a
-// mapped account is only temporarily unschedulable. If ListByGroup fails, the
-// catalog falls back to the schedulable set so a listing error does not fail
-// the client request.
+// public aliases appear. catalog accounts are persistently enabled group
+// members; the availability query ignores transient rate-limit, overload, and
+// temporary-unschedulable state so those conditions cannot widen advertised
+// capabilities. Persistently disabled accounts are excluded because routing
+// cannot select them. If the availability query fails, the catalog falls back
+// to the schedulable set so a listing error does not fail the client request.
 func loadCodexGroupCatalogAccounts(ctx context.Context, repo AccountRepository, groupID int64) (visible []Account, catalog []Account, err error) {
 	if repo == nil {
 		return nil, nil, nil
@@ -222,7 +223,21 @@ func loadCodexGroupCatalogAccounts(ctx context.Context, repo AccountRepository, 
 		return nil, nil, err
 	}
 	catalog = visible
-	groupAccounts, listErr := repo.ListByGroup(ctx, groupID)
+	groupAccounts, listErr := repo.ListModelAvailabilityCandidates(
+		ctx,
+		&groupID,
+		[]string{
+			PlatformAnthropic,
+			PlatformOpenAI,
+			PlatformGemini,
+			PlatformAntigravity,
+			PlatformGrok,
+			PlatformKimi,
+			PlatformZhipu,
+			PlatformDeepseek,
+		},
+		false,
+	)
 	if listErr != nil {
 		return visible, catalog, nil
 	}
@@ -309,6 +324,12 @@ type configuredCodexTruncationPolicy struct {
 	Limit int64  `json:"limit"`
 }
 
+type configuredCodexServiceTier struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
 type configuredCodexModelMessages struct {
 	InstructionsTemplate  string `json:"instructions_template"`
 	InstructionsVariables any    `json:"instructions_variables"`
@@ -336,7 +357,7 @@ type configuredCodexModelDescriptor struct {
 	SupportedInAPI                    bool                            `json:"supported_in_api"`
 	Priority                          int                             `json:"priority"`
 	AdditionalSpeedTiers              []string                        `json:"additional_speed_tiers"`
-	ServiceTiers                      []any                           `json:"service_tiers"`
+	ServiceTiers                      []configuredCodexServiceTier    `json:"service_tiers"`
 	DefaultServiceTier                any                             `json:"default_service_tier"`
 	AvailabilityNUX                   any                             `json:"availability_nux"`
 	Upgrade                           any                             `json:"upgrade"`
@@ -392,7 +413,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		SupportedInAPI:                    true,
 		Priority:                          configuredCodexModelPriority,
 		AdditionalSpeedTiers:              []string{},
-		ServiceTiers:                      []any{},
+		ServiceTiers:                      []configuredCodexServiceTier{},
 		ModelMessages:                     configuredCodexModelMessages{InstructionsTemplate: openai.CodexBaseInstructionsForModel(modelID)},
 		SupportsReasoningSummaryParameter: true,
 		DefaultReasoningSummary:           "auto",
@@ -448,6 +469,15 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		descriptor.DisplayName = openaiCodexDisplayName(modelID)
 		descriptor.Description = "OpenAI GPT coding model routed through Sub2API."
 		descriptor.SupportsParallelToolCalls = true
+		if configuredCodexSupportsPriorityServiceTier(modelID) {
+			descriptor.ServiceTiers = []configuredCodexServiceTier{
+				{
+					ID:          "priority",
+					Name:        "Fast",
+					Description: "Priority processing for lower latency.",
+				},
+			}
+		}
 		if isOpenAICodexReasoningGPTModel(modelID) {
 			defaultReasoningLevel := "medium"
 			if getNormalizedCodexModel(modelID) == "gpt-5.6-sol" {
@@ -469,6 +499,16 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 	}
 
 	return descriptor
+}
+
+func configuredCodexSupportsPriorityServiceTier(modelID string) bool {
+	normalized := canonicalizeOpenAIModelAliasSpelling(modelID)
+	for _, family := range []string{"gpt-5.4", "gpt-5.5", "gpt-5.6"} {
+		if normalized == family || strings.HasPrefix(normalized, family+"-") {
+			return true
+		}
+	}
+	return false
 }
 
 func configuredCodexGrokReasoningLevels(modelID string) []configuredCodexReasoningLevel {

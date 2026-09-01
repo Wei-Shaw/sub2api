@@ -1182,11 +1182,21 @@ func TestOpenAIGatewayServiceRecordUsage_Gpt54LongContextBillingDisabledWhenGrou
 	require.Equal(t, 1, userRepo.deductCalls)
 }
 
+// swapInOpenAILadderCatalog 给测试服务换上带 above_272k 阶梯字段的目录：
+// 静态兜底价已不带阶梯，长上下文相关测试需要目录数据。
+func swapInOpenAILadderCatalog(t *testing.T, svc *OpenAIGatewayService) {
+	t.Helper()
+	cfg := &config.Config{}
+	cfg.Default.RateMultiplier = 1.1
+	svc.billingService = NewBillingService(cfg, newStubPricingServiceFromJSON(t, openAILadderCatalogJSON))
+}
+
 func TestOpenAIGatewayServiceRecordUsage_Gpt54LongContextBillingEnabledPerAccount(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	subRepo := &openAIRecordUsageSubRepoStub{}
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+	swapInOpenAILadderCatalog(t, svc)
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
@@ -1227,6 +1237,7 @@ func TestOpenAIGatewayServiceRecordUsage_GroupOrAccountLongContextAllows(t *test
 	t.Run("group on account off", func(t *testing.T) {
 		usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 		svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+		swapInOpenAILadderCatalog(t, svc)
 		err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 			Result:  &OpenAIForwardResult{RequestID: "resp_and_off", Usage: tokens, Model: "gpt-5.4-2026-03-05", Duration: time.Second},
 			APIKey:  openAIRecordUsageAPIKeyWithGroup(svc, 1020, true),
@@ -1242,6 +1253,7 @@ func TestOpenAIGatewayServiceRecordUsage_GroupOrAccountLongContextAllows(t *test
 	t.Run("group off account on", func(t *testing.T) {
 		usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 		svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+		swapInOpenAILadderCatalog(t, svc)
 		err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 			Result: &OpenAIForwardResult{RequestID: "resp_and_group_off", Usage: tokens, Model: "gpt-5.4-2026-03-05", Duration: time.Second},
 			APIKey: openAIRecordUsageAPIKeyWithGroup(svc, 1021, false),
@@ -1260,6 +1272,7 @@ func TestOpenAIGatewayServiceRecordUsage_GroupOrAccountLongContextAllows(t *test
 	t.Run("group on account on", func(t *testing.T) {
 		usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 		svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+		swapInOpenAILadderCatalog(t, svc)
 		err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 			Result: &OpenAIForwardResult{RequestID: "resp_and_on", Usage: tokens, Model: "gpt-5.4-2026-03-05", Duration: time.Second},
 			APIKey: openAIRecordUsageAPIKeyWithGroup(svc, 1022, true),
@@ -1352,6 +1365,7 @@ func TestOpenAIGatewayServiceRecordUsage_SparkShadowUsesCurrentParentBillingSett
 				&openAIRecordUsageSubRepoStub{},
 				nil,
 			)
+			swapInOpenAILadderCatalog(t, svc)
 			svc.accountRepo = accountRepo
 			parentID := int64(4016)
 
@@ -2784,7 +2798,6 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesImageCoun
 		0.15,
 		1.0,
 		time.Time{},
-		nil,
 	)
 
 	require.NotNil(t, cost)
@@ -2824,7 +2837,6 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesSizeTier(
 		1.0,
 		1.0,
 		time.Time{},
-		nil,
 	)
 
 	require.NotNil(t, cost)
@@ -2857,7 +2869,6 @@ func TestGatewayServiceCalculateRecordUsageCost_GroupImagePriceOverridesChannelI
 		1.0,
 		1.0,
 		time.Time{},
-		nil,
 	)
 
 	require.NotNil(t, cost)
@@ -2947,7 +2958,6 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingNormalizesMis
 		1.0,
 		1.0,
 		time.Time{},
-		nil,
 	)
 
 	require.NotNil(t, cost)
