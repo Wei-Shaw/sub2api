@@ -103,9 +103,11 @@ type CodexModelsManifest struct {
 }
 
 // BuildGroupConfiguredCodexModelsManifest builds a Codex catalog exclusively
-// from the public model names configured on accounts in an OpenAI group. The
-// boolean result distinguishes "no explicit configuration" from a configured
-// catalog that becomes empty after group-level filtering.
+// from administrator-configured public model names in an OpenAI group. A
+// system-generated shadow mapping alone does not suppress upstream discovery
+// when the group also has an unmapped credential-bearing account. The boolean
+// result distinguishes "no explicit configuration" from a configured catalog
+// that becomes empty after group-level filtering.
 func (s *OpenAIGatewayService) BuildGroupConfiguredCodexModelsManifest(
 	ctx context.Context,
 	group *Group,
@@ -121,6 +123,12 @@ func (s *OpenAIGatewayService) BuildGroupConfiguredCodexModelsManifest(
 	}
 	configuredModels := openAIConfiguredCodexModelIDsForGroup(visible, group)
 	if len(configuredModels) == 0 {
+		return nil, false, nil
+	}
+	// Spark shadows carry a system-generated single-model mapping. When every
+	// credential-bearing OpenAI account is otherwise unmapped, that mapping must
+	// not suppress the live upstream catalog for the whole group.
+	if openAIGroupShouldFetchUpstreamCodexManifest(visible) {
 		return nil, false, nil
 	}
 
@@ -152,6 +160,53 @@ func (s *OpenAIGatewayService) BuildGroupConfiguredCodexModelsManifest(
 		manifest.NotModified = true
 	}
 	return manifest, true, nil
+}
+
+func openAIGroupShouldFetchUpstreamCodexManifest(accounts []Account) bool {
+	hasPrimaryAccount := false
+	for i := range accounts {
+		account := &accounts[i]
+		if account.Platform != PlatformOpenAI || account.IsShadow() {
+			continue
+		}
+		hasPrimaryAccount = true
+		if len(account.GetModelMapping()) > 0 {
+			return false
+		}
+	}
+	return hasPrimaryAccount
+}
+
+// SelectCodexModelsManifestAccountWithExclusions prefers a credential-bearing
+// account as the source of the group-wide manifest. A shadow remains a fallback
+// for groups that have no eligible primary account.
+func (s *OpenAIGatewayService) SelectCodexModelsManifestAccountWithExclusions(
+	ctx context.Context,
+	groupID *int64,
+	excludedIDs map[int64]struct{},
+) (*Account, error) {
+	candidateExclusions := make(map[int64]struct{}, len(excludedIDs)+1)
+	for accountID := range excludedIDs {
+		candidateExclusions[accountID] = struct{}{}
+	}
+
+	var shadowFallback *Account
+	for {
+		account, err := s.SelectAccountForModelWithExclusions(ctx, groupID, "", "", candidateExclusions)
+		if err != nil {
+			if shadowFallback != nil {
+				return shadowFallback, nil
+			}
+			return nil, err
+		}
+		if !account.IsShadow() || account.ID <= 0 {
+			return account, nil
+		}
+		if shadowFallback == nil {
+			shadowFallback = account
+		}
+		candidateExclusions[account.ID] = struct{}{}
+	}
 }
 
 // MergeGroupConfiguredCodexModels adds account model aliases that are visible

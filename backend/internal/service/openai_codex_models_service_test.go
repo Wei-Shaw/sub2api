@@ -1358,6 +1358,77 @@ func TestBuildGroupConfiguredCodexModelsManifestFallsThroughWithoutConfiguration
 	require.Nil(t, manifest)
 }
 
+func TestBuildGroupConfiguredCodexModelsManifestFallsThroughWhenOnlyShadowHasMapping(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 81
+	parentID := int64(51)
+	svc := &OpenAIGatewayService{accountRepo: codexModelsVisibilityAccountRepo{
+		byGroup: map[int64][]Account{
+			groupID: {
+				{
+					ID:       parentID,
+					Platform: PlatformOpenAI,
+					Type:     AccountTypeOAuth,
+				},
+				{
+					ID:              52,
+					Platform:        PlatformOpenAI,
+					Type:            AccountTypeOAuth,
+					ParentAccountID: &parentID,
+					QuotaDimension:  QuotaDimensionSpark,
+					Credentials: map[string]any{
+						"model_mapping": map[string]any{
+							"gpt-5.3-codex-spark": "gpt-5.3-codex-spark",
+						},
+					},
+				},
+			},
+		},
+	}}
+
+	manifest, configured, err := svc.BuildGroupConfiguredCodexModelsManifest(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformOpenAI},
+		"",
+	)
+	require.NoError(t, err)
+	require.False(t, configured)
+	require.Nil(t, manifest)
+}
+
+func TestBuildGroupConfiguredCodexModelsManifestKeepsShadowOnlyGroupConfigured(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 82
+	parentID := int64(61)
+	svc := &OpenAIGatewayService{accountRepo: codexModelsVisibilityAccountRepo{
+		byGroup: map[int64][]Account{
+			groupID: {{
+				ID:              62,
+				Platform:        PlatformOpenAI,
+				Type:            AccountTypeOAuth,
+				ParentAccountID: &parentID,
+				QuotaDimension:  QuotaDimensionSpark,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{
+						"gpt-5.3-codex-spark": "gpt-5.3-codex-spark",
+					},
+				},
+			}},
+		},
+	}}
+
+	manifest, configured, err := svc.BuildGroupConfiguredCodexModelsManifest(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformOpenAI},
+		"",
+	)
+	require.NoError(t, err)
+	require.True(t, configured)
+	require.Equal(t, []string{"gpt-5.3-codex-spark"}, codexManifestModelSlugs(t, manifest.Body))
+}
+
 func TestMergeGroupConfiguredCodexModelsFiltersAutoReviewByDefault(t *testing.T) {
 	t.Parallel()
 
