@@ -113,6 +113,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		}
 		upstreamBody = strippedBody
 	}
+	serviceTier := extractOpenAIServiceTierFromBody(upstreamBody)
 
 	// Grok Composer does not accept image_url parts directly, but Grok Build
 	// can describe the images first. Bridge only this exact failure mode.
