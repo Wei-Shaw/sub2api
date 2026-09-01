@@ -515,6 +515,11 @@ cp ../deploy/config.example.yaml ./config.yaml
 nano config.yaml
 ```
 
+`resolve-version.sh` は正確なリリース tag を優先し、GitHub のソースアーカイブ
+に含まれるバージョンメタデータも認識します。そのため、`.git` ディレクトリを
+含まないリリースソースからビルドしても正しいバージョンが保持されます。
+カスタムビルドでは `VERSION=...` を明示的に指定できます。
+
 > **注意:** `-tags embed` フラグはフロントエンドをバイナリに組み込みます。このフラグがない場合、バイナリはフロントエンド UI を提供しません。
 
 **`config.yaml` の主要設定:**

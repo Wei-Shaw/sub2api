@@ -519,6 +519,11 @@ cp ../deploy/config.example.yaml ./config.yaml
 nano config.yaml
 ```
 
+`resolve-version.sh` prefers the exact release tag and also understands the
+version metadata carried by GitHub source archives, so builds from a release
+source snapshot keep the release version even when the archive has no `.git`
+directory. Set `VERSION=...` explicitly when producing a custom build.
+
 > **Note:** The `-tags embed` flag embeds the frontend into the binary. Without this flag, the binary will not serve the frontend UI.
 
 **Key configuration in `config.yaml`:**
