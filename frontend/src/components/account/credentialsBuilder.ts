@@ -455,3 +455,28 @@ export function applyPlanType(
   }
   return credentials
 }
+
+/**
+ * 从凭据里读取自定义 User-Agent，仅接受字符串（脏数据一律视为空）。
+ */
+export function readUserAgent(credentials: Record<string, unknown> | undefined | null): string {
+  const v = credentials?.user_agent
+  return typeof v === 'string' ? v : ''
+}
+
+/**
+ * 把手动填写的自定义 User-Agent 写入凭据：非空则设置，空则删除该键（清空回退到指纹池
+ * 自动分配或全局默认逻辑）。直接修改传入对象并返回。
+ */
+export function applyUserAgent(
+  credentials: Record<string, unknown>,
+  userAgent: string
+): Record<string, unknown> {
+  const ua = (userAgent || '').trim()
+  if (ua) {
+    credentials.user_agent = ua
+  } else {
+    delete credentials.user_agent
+  }
+  return credentials
+}

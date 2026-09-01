@@ -701,6 +701,10 @@ export default {
         planType: '订阅档位（手动覆盖）',
         planTypeDesc: '手动纠正本账号的 ChatGPT 订阅档位（Plus / Pro / Free）。注意：令牌临期刷新或命中 429 限流时，会用真实档位自动覆盖此处设置。',
         planTypeClear: '清空（自动识别）',
+        customUserAgent: '自定义 User-Agent',
+        customUserAgentDesc:
+          '手动指定本账号出站请求的完整 Codex User-Agent，仅贡献客户端名 / OS / 架构 / 终端指纹；版本号与 originator 仍由系统按当前生效版本重建，不会被这里填的旧版本卡住。留空则回退到创建时按账号自动分配的指纹或全局默认逻辑。',
+        customUserAgentPlaceholder: '例如 codex-tui/0.146.0 (macOS 15.1; arm64) iTerm.app',
         codexCLIOnly: '仅允许 Codex 官方客户端',
         codexCLIOnlyDesc: '仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。',
         codexCLIOnlyAppServer: '允许 Codex app-server 客户端',

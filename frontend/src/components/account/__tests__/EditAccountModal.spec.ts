@@ -1455,4 +1455,54 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     expect(updateAccountMock).not.toHaveBeenCalled()
     wrapper.unmount()
   })
+
+  describe('自定义 User-Agent（Codex 出站指纹）', () => {
+    it('OpenAI OAuth 非影子账号渲染自定义 User-Agent 输入框', () => {
+      const wrapper = mountModal(buildOpenAIOAuthParentAccount())
+      expect(wrapper.find('[data-testid="edit-user-agent-input"]').exists()).toBe(true)
+      wrapper.unmount()
+    })
+
+    it('影子账号不渲染自定义 User-Agent 输入框', () => {
+      const wrapper = mountModal(buildOpenAISparkShadowAccount())
+      expect(wrapper.find('[data-testid="edit-user-agent-input"]').exists()).toBe(false)
+      wrapper.unmount()
+    })
+
+    it('填入自定义 User-Agent 后保存，提交体里 credentials.user_agent 等于填写值', async () => {
+      const account = buildOpenAIOAuthParentAccount()
+      updateAccountMock.mockReset().mockResolvedValue(account)
+      checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+      const wrapper = mountModal(account)
+      await wrapper
+        .get('[data-testid="edit-user-agent-input"]')
+        .setValue('codex-tui/0.2.0 (Windows 11; x86_64) conhost')
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+      expect(updateAccountMock).toHaveBeenCalledTimes(1)
+      expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+        user_agent: 'codex-tui/0.2.0 (Windows 11; x86_64) conhost'
+      })
+      wrapper.unmount()
+    })
+
+    it('清空输入框后保存，提交体的 credentials 里不包含 user_agent 键', async () => {
+      const account = buildOpenAIOAuthParentAccount()
+      account.credentials = { ...account.credentials, user_agent: 'codex-tui/0.1.0 (Old OS; x86_64) old-term' }
+      updateAccountMock.mockReset().mockResolvedValue(account)
+      checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+      const wrapper = mountModal(account)
+      expect(wrapper.get<HTMLInputElement>('[data-testid="edit-user-agent-input"]').element.value).toBe(
+        'codex-tui/0.1.0 (Old OS; x86_64) old-term'
+      )
+      await wrapper.get('[data-testid="edit-user-agent-input"]').setValue('')
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+      expect(updateAccountMock).toHaveBeenCalledTimes(1)
+      expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty('user_agent')
+      wrapper.unmount()
+    })
+  })
 })
