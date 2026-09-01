@@ -805,6 +805,13 @@ func resolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedMode
 		return normalizeOpenAIModelForUpstream(account, upstreamModel)
 	}
 
+	// Strict raw uses model_mapping only as a requested-model allowlist. Its
+	// Forward path preserves the original model even for compact requests, so
+	// scheduler cost/availability decisions must use that same model.
+	if account != nil && account.IsOpenAIStrictResponsesPassthroughEnabled() {
+		return strings.TrimSpace(requestedModel)
+	}
+
 	// Passthrough accounts only replace authentication. Their Forward path
 	// keeps the channel-mapped model in the request body and does not apply the
 	// account's normal model_mapping. Legacy /responses/compact is the one

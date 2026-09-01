@@ -396,6 +396,46 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 	return normalized, nil
 }
 
+func ValidateOpenAIResponsesForwardingAccount(account *Account) error {
+	if account == nil || account.Platform != PlatformOpenAI {
+		return nil
+	}
+	if raw, exists := account.Extra[OpenAIResponsesForwardModeExtraKey]; exists {
+		mode, ok := raw.(string)
+		if !ok {
+			return infraerrors.BadRequest("OPENAI_RESPONSES_FORWARD_MODE_INVALID", "openai_responses_forward_mode must be a string")
+		}
+		switch OpenAIResponsesForwardMode(strings.ToLower(strings.TrimSpace(mode))) {
+		case OpenAIResponsesForwardModeNormal, OpenAIResponsesForwardModePassthrough:
+		case OpenAIResponsesForwardModeStrictRaw:
+			if account.Type != AccountTypeAPIKey {
+				return infraerrors.BadRequest("OPENAI_STRICT_RESPONSES_ACCOUNT_TYPE_INVALID", "strict raw Responses forwarding requires an OpenAI API-key account")
+			}
+		default:
+			return infraerrors.BadRequest("OPENAI_RESPONSES_FORWARD_MODE_INVALID", "openai_responses_forward_mode must be normal, passthrough, or strict_raw")
+		}
+	}
+
+	authMode := ""
+	if raw, exists := account.Credentials[OpenAIUpstreamAuthModeCredentialKey]; exists {
+		value, ok := raw.(string)
+		if !ok {
+			return infraerrors.BadRequest("OPENAI_UPSTREAM_AUTH_MODE_INVALID", "openai_upstream_auth_mode must be bearer or none")
+		}
+		authMode = strings.ToLower(strings.TrimSpace(value))
+		if authMode != OpenAIUpstreamAuthModeBearer && authMode != OpenAIUpstreamAuthModeNone {
+			return infraerrors.BadRequest("OPENAI_UPSTREAM_AUTH_MODE_INVALID", "openai_upstream_auth_mode must be bearer or none")
+		}
+	}
+	if authMode == OpenAIUpstreamAuthModeNone && !account.IsOpenAIStrictResponsesPassthroughEnabled() {
+		return infraerrors.BadRequest("OPENAI_UPSTREAM_NO_AUTH_REQUIRES_STRICT", "no upstream auth is only allowed for strict raw Responses accounts")
+	}
+	if account.IsOpenAIStrictResponsesPassthroughEnabled() && !account.UsesNoOpenAIUpstreamAuth() && strings.TrimSpace(account.GetOpenAIProtocolAPIKey()) == "" {
+		return infraerrors.BadRequest("OPENAI_STRICT_RESPONSES_API_KEY_REQUIRED", "strict raw Responses bearer auth requires an API key")
+	}
+	return nil
+}
+
 // Grok media eligibility helpers live in account_grok_media_eligibility.go.
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
@@ -419,6 +459,9 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Priority:    input.Priority,
 		Status:      StatusActive,
 		Schedulable: true,
+	}
+	if err := ValidateOpenAIResponsesForwardingAccount(account); err != nil {
+		return nil, err
 	}
 	if input.ProbeEnabled != nil && *input.ProbeEnabled {
 		if !isUpstreamBillingProbeAccount(account) {
@@ -792,6 +835,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if input.AutoPauseOnExpired != nil {
 		account.AutoPauseOnExpired = *input.AutoPauseOnExpired
 	}
+	if err := ValidateOpenAIResponsesForwardingAccount(account); err != nil {
+		return nil, err
+	}
 
 	// 先验证分组是否存在（在任何写操作之前）
 	if input.GroupIDs != nil {
@@ -886,6 +932,23 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 			return err
 		}
 		if err := ValidateOpenAILongContextBillingExtra(account.Platform, updates); err != nil {
+			return err
+		}
+	}
+	if _, exists := updates[OpenAIResponsesForwardModeExtraKey]; exists {
+		account, err := s.accountRepo.GetByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		candidate := *account
+		candidate.Extra = maps.Clone(account.Extra)
+		if candidate.Extra == nil {
+			candidate.Extra = make(map[string]any)
+		}
+		for key, value := range updates {
+			candidate.Extra[key] = value
+		}
+		if err := ValidateOpenAIResponsesForwardingAccount(&candidate); err != nil {
 			return err
 		}
 	}

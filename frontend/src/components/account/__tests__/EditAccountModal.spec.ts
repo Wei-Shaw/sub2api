@@ -328,6 +328,58 @@ describe('EditAccountModal', () => {
     authIsSimpleMode.value = true
   })
 
+  it('rehydrates and persists strict raw private no-auth mode', async () => {
+    const account = buildAccount()
+    account.credentials = {
+      base_url: 'http://private-relay.internal/v1',
+      openai_upstream_auth_mode: 'none'
+    }
+    account.credentials_status = { has_api_key: false }
+    account.extra = {
+      openai_responses_forward_mode: 'strict_raw',
+      openai_apikey_responses_websockets_v2_mode: 'ctx_pool',
+      openai_apikey_responses_websockets_v2_enabled: true
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+
+    expect(
+      (wrapper.get('[data-testid="edit-openai-responses-forward-mode"]').element as HTMLSelectElement).value
+    ).toBe('strict_raw')
+    expect(
+      (wrapper.get('[data-testid="edit-openai-strict-no-auth"]').element as HTMLInputElement).checked
+    ).toBe(true)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload.extra?.openai_responses_forward_mode).toBe('strict_raw')
+    expect(payload.extra).not.toHaveProperty('openai_passthrough')
+    expect(payload.extra?.openai_apikey_responses_websockets_v2_mode).toBe('off')
+    expect(payload.extra?.openai_apikey_responses_websockets_v2_enabled).toBe(false)
+    expect(payload.credentials?.openai_upstream_auth_mode).toBe('none')
+    expect(payload.credentials).not.toHaveProperty('api_key')
+    expect(payload.upstream_billing_probe_enabled).toBe(false)
+    expect(payload.upstream_billing_rate_sync_enabled).toBe(false)
+  })
+
+  it('lets an explicit normal mode override stale legacy passthrough flags', () => {
+    const account = buildAccount()
+    account.extra = {
+      openai_responses_forward_mode: 'normal',
+      openai_passthrough: true
+    }
+
+    const wrapper = mountModal(account)
+
+    expect(
+      (wrapper.get('[data-testid="edit-openai-responses-forward-mode"]').element as HTMLSelectElement).value
+    ).toBe('normal')
+  })
+
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()

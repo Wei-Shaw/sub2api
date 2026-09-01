@@ -53,6 +53,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		})
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
 	}
+	// Strict raw mode must branch before every compatibility mutation below.
+	// Authentication, billing, concurrency, routing and client policy checks have
+	// already run; the selected account is now known, so transport can preserve
+	// the authenticated client's original body bytes.
+	if account.IsOpenAIStrictResponsesPassthroughEnabled() {
+		if c != nil {
+			c.Set("openai_strict_responses", true)
+		}
+		return s.forwardOpenAIStrictResponses(ctx, c, account, body, startTime)
+	}
 
 	normalizedBody, normalized, err := normalizeOpenAICodexCompactReasoningEffortForAccount(c, account, body)
 	if err != nil {

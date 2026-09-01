@@ -520,6 +520,32 @@ func (s *OpenAIGatewayService) ResolveAccountIDByPreviousResponseIDForScheduler(
 	return accountID
 }
 
+// IsOpenAIResponseBoundToAccount verifies the raw response-owner binding
+// without re-running scheduler eligibility filters. The caller must still
+// validate that the selected account is currently strict-capable and
+// schedulable; this only prevents a valid owner selection from being rejected
+// when scheduler decision metadata falls back to the ordinary selection lane.
+func (s *OpenAIGatewayService) IsOpenAIResponseBoundToAccount(
+	ctx context.Context,
+	groupID *int64,
+	previousResponseID string,
+	accountID int64,
+) bool {
+	if s == nil || accountID <= 0 {
+		return false
+	}
+	responseID := strings.TrimSpace(previousResponseID)
+	if responseID == "" {
+		return false
+	}
+	store := s.getOpenAIWSStateStore()
+	if store == nil {
+		return false
+	}
+	boundAccountID, err := store.GetResponseAccount(ctx, derefGroupID(groupID), responseID)
+	return err == nil && boundAccountID == accountID
+}
+
 func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 	ctx context.Context,
 	groupID *int64,
@@ -557,10 +583,11 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		return 0, nil, "", nil
 	}
 	// OAuth/SetupToken continuation state lives on the WSv2 session and cannot
-	// survive an HTTP fallback. Official API-key Responses HTTP requests are
-	// different: previous_response_id is supported by the provider and scoped to
-	// the selected key/project, so the response-id binding must retain that key.
-	if !account.IsOpenAIApiKey() && s.getOpenAIWSProtocolResolver().Resolve(account).Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
+	// survive an HTTP fallback. API-key HTTP Responses, including strict raw
+	// mode, retain the binding to the selected key/project.
+	if !account.IsOpenAIApiKey() &&
+		s.getOpenAIWSProtocolResolver().Resolve(account).Transport != OpenAIUpstreamTransportResponsesWebsocketV2 &&
+		!account.IsOpenAIStrictResponsesPassthroughEnabled() {
 		return 0, nil, "", nil
 	}
 	if shouldClearStickySession(account, requestedModel) || !account.IsOpenAI() || !account.IsSchedulable() {

@@ -49,6 +49,147 @@ func TestAccount_IsOpenAIPassthroughEnabled(t *testing.T) {
 	})
 }
 
+func TestAccount_OpenAIResponsesForwardMode(t *testing.T) {
+	tests := []struct {
+		name    string
+		account *Account
+		want    OpenAIResponsesForwardMode
+	}{
+		{
+			name:    "missing defaults to normal",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+			want:    OpenAIResponsesForwardModeNormal,
+		},
+		{
+			name: "legacy passthrough remains supported",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{
+				"openai_passthrough": true,
+			}},
+			want: OpenAIResponsesForwardModePassthrough,
+		},
+		{
+			name: "explicit normal overrides legacy boolean",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{
+				OpenAIResponsesForwardModeExtraKey: string(OpenAIResponsesForwardModeNormal),
+				"openai_passthrough":               true,
+			}},
+			want: OpenAIResponsesForwardModeNormal,
+		},
+		{
+			name: "strict raw is API key only",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{
+				OpenAIResponsesForwardModeExtraKey: string(OpenAIResponsesForwardModeStrictRaw),
+			}},
+			want: OpenAIResponsesForwardModeStrictRaw,
+		},
+		{
+			name: "strict raw is rejected for OAuth",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+				OpenAIResponsesForwardModeExtraKey: string(OpenAIResponsesForwardModeStrictRaw),
+			}},
+			want: OpenAIResponsesForwardModeNormal,
+		},
+		{
+			name: "unknown mode fails closed",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{
+				OpenAIResponsesForwardModeExtraKey: "raw-ish",
+			}},
+			want: OpenAIResponsesForwardModeNormal,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.account.OpenAIResponsesForwardMode())
+			require.Equal(t, tt.want == OpenAIResponsesForwardModeStrictRaw, tt.account.IsOpenAIStrictResponsesPassthroughEnabled())
+		})
+	}
+}
+
+func TestAccount_UsesNoOpenAIUpstreamAuth(t *testing.T) {
+	strict := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			OpenAIUpstreamAuthModeCredentialKey: OpenAIUpstreamAuthModeNone,
+		},
+		Extra: map[string]any{
+			OpenAIResponsesForwardModeExtraKey: string(OpenAIResponsesForwardModeStrictRaw),
+		},
+	}
+	require.True(t, strict.UsesNoOpenAIUpstreamAuth())
+
+	legacy := *strict
+	legacy.Extra = map[string]any{"openai_passthrough": true}
+	require.False(t, legacy.UsesNoOpenAIUpstreamAuth())
+
+	bearer := *strict
+	bearer.Credentials = map[string]any{OpenAIUpstreamAuthModeCredentialKey: OpenAIUpstreamAuthModeBearer}
+	require.False(t, bearer.UsesNoOpenAIUpstreamAuth())
+}
+
+func TestAccount_StrictResponsesUsesMappingAsModelAllowlist(t *testing.T) {
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"custom/model": "mapped-but-not-forwarded"},
+		},
+		Extra: map[string]any{
+			OpenAIResponsesForwardModeExtraKey: string(OpenAIResponsesForwardModeStrictRaw),
+		},
+	}
+	require.True(t, account.IsModelSupported("custom/model"))
+	require.False(t, account.IsModelSupported("other/model"))
+	require.Equal(t, "custom/model", resolveOpenAIAccountUpstreamModelForRequest(account, "custom/model", false))
+	require.Equal(t, "custom/model", resolveOpenAIAccountUpstreamModelForRequest(account, "custom/model", true))
+}
+
+func TestValidateOpenAIResponsesForwardingAccount(t *testing.T) {
+	strictExtra := map[string]any{
+		OpenAIResponsesForwardModeExtraKey: string(OpenAIResponsesForwardModeStrictRaw),
+	}
+	require.NoError(t, ValidateOpenAIResponsesForwardingAccount(&Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "sk-upstream",
+		},
+		Extra: strictExtra,
+	}))
+	require.NoError(t, ValidateOpenAIResponsesForwardingAccount(&Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			OpenAIUpstreamAuthModeCredentialKey: OpenAIUpstreamAuthModeNone,
+		},
+		Extra: strictExtra,
+	}))
+
+	err := ValidateOpenAIResponsesForwardingAccount(&Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra:    strictExtra,
+	})
+	require.ErrorContains(t, err, "requires an OpenAI API-key account")
+
+	err = ValidateOpenAIResponsesForwardingAccount(&Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			OpenAIUpstreamAuthModeCredentialKey: OpenAIUpstreamAuthModeNone,
+		},
+	})
+	require.ErrorContains(t, err, "only allowed for strict raw Responses accounts")
+
+	err = ValidateOpenAIResponsesForwardingAccount(&Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra:    strictExtra,
+	})
+	require.ErrorContains(t, err, "requires an API key")
+}
+
 func TestAccount_IsOpenAIOAuthPassthroughEnabled(t *testing.T) {
 	t.Run("仅OAuth类型允许返回开启", func(t *testing.T) {
 		oauthAccount := &Account{

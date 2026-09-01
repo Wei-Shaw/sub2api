@@ -381,7 +381,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// Read request body
-	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
+	body, strictForwardBody, err := readLenientJSONRequestBodyWithOriginal(c.Request, h.cfg)
 	if err != nil {
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
@@ -398,6 +398,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	setOpsRequestContext(c, "", false)
+	// Strict Responses accounts must receive exactly what the authenticated
+	// client sent, before compact promotion, reasoning caps, channel mapping or
+	// any other compatibility rewrite. Normal accounts continue using body.
+	strictInboundPath := c.Request.URL.Path
 	sessionHashBody := body
 	body, ok = h.normalizeOpenAIResponsesCompactRequest(c, reqLog, body)
 	if !ok {
@@ -435,8 +439,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
 		return
 	}
+	reasoningPolicyWouldRewrite := false
 	if cappedBody, changed := applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, body); changed {
 		body = cappedBody
+		reasoningPolicyWouldRewrite = true
 	}
 	if normalizedBody, changed := normalizeCodexAutomationBootstrap(body); changed {
 		body = normalizedBody
@@ -461,7 +467,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
-	previousResponseID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
+	previousResponseID := strings.TrimSpace(gjson.GetBytes(strictForwardBody, "previous_response_id").String())
 	if previousResponseID != "" {
 		previousResponseIDKind := service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
 		reqLog = reqLog.With(
@@ -474,6 +480,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.String("reason", "previous_response_id_looks_like_message_id"),
 			)
 			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id must be a response.id (resp_*), not a message id")
+			return
+		}
+		if previousResponseIDKind != service.OpenAIPreviousResponseIDKindResponseID {
+			reqLog.Warn("openai.request_validation_failed",
+				zap.String("reason", "previous_response_id_invalid"),
+			)
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id must be a response.id (resp_*)")
 			return
 		}
 		groupID := int64(0)
@@ -577,7 +590,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
-	// Generate session hash (header first; fallback to prompt_cache_key)
+	// Generate session hash (header first; fallback to prompt_cache_key). Keep
+	// whether the client supplied an explicit stable signal separate from the
+	// content fallback: only an explicit signal may recover a strict stateful
+	// continuation when the response-id binding is unavailable.
+	explicitSessionHash := h.gatewayService.GenerateExplicitSessionHash(c, sessionHashBody)
 	sessionHash := h.gatewayService.GenerateSessionHash(c, sessionHashBody)
 	if h.rejectIfCyberSessionBlocked(c, apiKey, sessionHashBody, reqModel, cyberBlockFormatResponses) {
 		return
@@ -604,6 +621,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 该判断已排除 Codex 被动 image_gen namespace，避免 CC-only 账号被误过滤（#4476）。
 	needsResponses := nativeV2 || legacyCompact
 	requiredCapability := openAIResponsesRequiredCapabilityForRequest(imageIntent, needsResponses, requestPlatform)
+	if previousResponseID != "" {
+		requiredCapability = service.OpenAIEndpointCapabilityStrictResponses
+	}
 
 	// 分组利润控制：请求级装配定价上下文——pricingAt 固定本请求的
 	// D 与计费高峰因子，选号、槽位终检与全部 failover 重入共用同一门与阈值。
@@ -644,6 +664,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
+			if previousResponseID != "" {
+				h.handleStreamingAwareError(c, http.StatusConflict, "invalid_request_error", "No available strict Responses account owns this continuation", streamStarted)
+				return
+			}
 			if len(failedAccountIDs) == 0 {
 				if legacyCompact && errors.Is(err, service.ErrNoAvailableCompactAccounts) {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
@@ -666,6 +690,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			return
 		}
 		if selection == nil || selection.Account == nil {
+			if previousResponseID != "" {
+				h.handleStreamingAwareError(c, http.StatusConflict, "invalid_request_error", "No available strict Responses account owns this continuation", streamStarted)
+				return
+			}
 			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, requestPlatform)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
@@ -709,6 +737,45 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			)
 			continue
 		}
+		if account.IsOpenAIStrictResponsesPassthroughEnabled() && (reasoningPolicyWouldRewrite || channelMapping.Mapped) {
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			reason := "channel model mapping"
+			if reasoningPolicyWouldRewrite {
+				reason = "reasoning effort policy"
+			}
+			h.handleStreamingAwareError(
+				c,
+				http.StatusBadRequest,
+				"invalid_request_error",
+				"Strict raw Responses cannot apply the configured "+reason+" without rewriting the request",
+				streamStarted,
+			)
+			return
+		}
+		if previousResponseID != "" && account.IsOpenAIStrictResponsesPassthroughEnabled() {
+			strictContinuationPinned := scheduleDecision.StickyPreviousHit ||
+				(explicitSessionHash != "" && scheduleDecision.StickySessionHit) ||
+				h.gatewayService.IsOpenAIResponseBoundToAccount(
+					c.Request.Context(),
+					apiKey.GroupID,
+					previousResponseID,
+					account.ID,
+				)
+			if !strictContinuationPinned {
+				if selection.ReleaseFunc != nil {
+					selection.ReleaseFunc()
+				}
+				reqLog.Warn("openai.strict_responses_continuation_unavailable",
+					zap.Int64("selected_account_id", account.ID),
+					zap.Bool("sticky_previous_hit", scheduleDecision.StickyPreviousHit),
+					zap.Bool("sticky_explicit_session_hit", explicitSessionHash != "" && scheduleDecision.StickySessionHit),
+				)
+				h.handleStreamingAwareError(c, http.StatusConflict, "invalid_request_error", "The strict Responses continuation owner is unavailable", streamStarted)
+				return
+			}
+		}
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		reqLog.Debug("openai.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
@@ -737,12 +804,23 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// 从不可变的 canonical forwardBody 派生本次尝试 body 并整块剔除上游私有的加密
 		// reasoning item（含耦合的 id/summary），避免非透传上游 400 拒绝 Kiro reasoning 形态。
 		attemptBody := h.deriveOpenAIForwardAttemptBody(reqLog, forwardBody, account, &passthroughFailoverState)
+		if account.IsOpenAIStrictResponsesPassthroughEnabled() {
+			attemptBody = strictForwardBody
+			// A transport retry may move a stateless first turn, but it must stay
+			// within the same strict protocol family.
+			requiredCapability = service.OpenAIEndpointCapabilityStrictResponses
+		}
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
 				}
 			}()
+			pathBeforeAttempt := c.Request.URL.Path
+			if account.IsOpenAIStrictResponsesPassthroughEnabled() {
+				c.Request.URL.Path = strictInboundPath
+			}
+			defer func() { c.Request.URL.Path = pathBeforeAttempt }()
 			return h.gatewayService.Forward(c.Request.Context(), c, account, attemptBody)
 		}()
 		var cyberBlockBodyHTTP []byte
@@ -821,6 +899,14 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 							zap.Int64("account_id", account.ID),
 							zap.Int("upstream_status", failoverErr.StatusCode),
 						)
+						return
+					}
+					if previousResponseID != "" && account.IsOpenAIStrictResponsesPassthroughEnabled() {
+						reqLog.Warn("openai.strict_responses_continuation_failover_blocked",
+							zap.Int64("account_id", account.ID),
+							zap.Int("upstream_status", failoverErr.StatusCode),
+						)
+						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					if !openAIForwardMayFailover(c, writerSizeBeforeForward, failoverErr) {

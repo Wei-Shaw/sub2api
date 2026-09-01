@@ -76,6 +76,21 @@ func TestOpenAIWSProtocolResolver_Resolve(t *testing.T) {
 		require.Equal(t, "ws_v2_enabled", decision.Reason)
 	})
 
+	t.Run("strict Responses is HTTP only", func(t *testing.T) {
+		account := &Account{
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Concurrency: 1,
+			Extra: map[string]any{
+				OpenAIResponsesForwardModeExtraKey:              string(OpenAIResponsesForwardModeStrictRaw),
+				"openai_apikey_responses_websockets_v2_enabled": true,
+			},
+		}
+		decision := NewOpenAIWSProtocolResolver(baseCfg).Resolve(account)
+		require.Equal(t, OpenAIUpstreamTransportHTTPSSE, decision.Transport)
+		require.Equal(t, "strict_responses_http_only", decision.Reason)
+	})
+
 	t.Run("账号级强制HTTP", func(t *testing.T) {
 		account := *openAIOAuthEnabled
 		account.Extra = map[string]any{

@@ -86,6 +86,21 @@ type Account struct {
 
 type OpenAIEndpointCapability string
 
+type OpenAIResponsesForwardMode string
+
+const (
+	OpenAIResponsesForwardModeNormal      OpenAIResponsesForwardMode = "normal"
+	OpenAIResponsesForwardModePassthrough OpenAIResponsesForwardMode = "passthrough"
+	OpenAIResponsesForwardModeStrictRaw   OpenAIResponsesForwardMode = "strict_raw"
+)
+
+const (
+	OpenAIResponsesForwardModeExtraKey  = "openai_responses_forward_mode"
+	OpenAIUpstreamAuthModeCredentialKey = "openai_upstream_auth_mode"
+	OpenAIUpstreamAuthModeBearer        = "bearer"
+	OpenAIUpstreamAuthModeNone          = "none"
+)
+
 const openAILongContextBillingEnabledKey = "openai_long_context_billing_enabled"
 
 const (
@@ -104,6 +119,11 @@ const (
 	// credentials["openai_capabilities"] 配置集。仅用于生图意图的 /v1/responses
 	// 调度，避免把请求调度到会在 forward 阶段被降级为 Chat Completions 的账号（#4417）。
 	OpenAIEndpointCapabilityResponses OpenAIEndpointCapability = "responses"
+	// OpenAIEndpointCapabilityStrictResponses limits scheduling to API-key
+	// accounts that explicitly opted into protocol-faithful HTTP Responses
+	// forwarding. It is used for stateful previous_response_id continuations so
+	// they can never fall through to a normal transforming account.
+	OpenAIEndpointCapabilityStrictResponses OpenAIEndpointCapability = "strict_responses"
 )
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
@@ -840,7 +860,7 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 	// 该短路必须在 model_mapping 判定之前：账号从"白名单模式"切换到透传后，
 	// credentials 里常残留旧的非空 model_mapping，若不在此放行，透传账号会被
 	// model_mapping 白名单错误排除出候选集，导致 no available accounts / 404（issue #4936）。
-	if a.IsOpenAIPassthroughEnabled() {
+	if a.OpenAIResponsesForwardMode() == OpenAIResponsesForwardModePassthrough {
 		return true
 	}
 	mapping := a.GetModelMapping()
@@ -1813,6 +1833,8 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		// 支持 Responses 的上游同样需具备 chat 能力：复用下方 chat_completions
 		// 配置集校验。
 		capability = OpenAIEndpointCapabilityChatCompletions
+	case OpenAIEndpointCapabilityStrictResponses:
+		return a.IsOpenAIStrictResponsesPassthroughEnabled()
 	case OpenAIEndpointCapabilityAlphaSearch:
 		// alpha/search 的转发按账号类型分流：OAuth/PAT 走
 		// chatgpt.com/backend-api/codex/alpha/search，API key 走
@@ -2024,22 +2046,59 @@ func (a *Account) IsOveragesEnabled() bool {
 	return false
 }
 
+// OpenAIResponsesForwardMode returns the account's Responses forwarding mode.
+// The string setting is authoritative when valid; existing boolean settings
+// remain fully backward-compatible.
+func (a *Account) OpenAIResponsesForwardMode() OpenAIResponsesForwardMode {
+	if a == nil || !a.IsOpenAI() {
+		return OpenAIResponsesForwardModeNormal
+	}
+	if a.Extra != nil {
+		if raw, ok := a.Extra[OpenAIResponsesForwardModeExtraKey].(string); ok {
+			switch OpenAIResponsesForwardMode(strings.ToLower(strings.TrimSpace(raw))) {
+			case OpenAIResponsesForwardModeNormal:
+				return OpenAIResponsesForwardModeNormal
+			case OpenAIResponsesForwardModePassthrough:
+				return OpenAIResponsesForwardModePassthrough
+			case OpenAIResponsesForwardModeStrictRaw:
+				if a.Type == AccountTypeAPIKey {
+					return OpenAIResponsesForwardModeStrictRaw
+				}
+				return OpenAIResponsesForwardModeNormal
+			}
+		}
+		if enabled, ok := a.Extra["openai_passthrough"].(bool); ok && enabled {
+			return OpenAIResponsesForwardModePassthrough
+		}
+		if enabled, ok := a.Extra["openai_oauth_passthrough"].(bool); ok && enabled {
+			return OpenAIResponsesForwardModePassthrough
+		}
+	}
+	return OpenAIResponsesForwardModeNormal
+}
+
+func (a *Account) IsOpenAIStrictResponsesPassthroughEnabled() bool {
+	return a != nil && a.OpenAIResponsesForwardMode() == OpenAIResponsesForwardModeStrictRaw
+}
+
+// UsesNoOpenAIUpstreamAuth allows an auth-less upstream only for strict raw
+// API-key accounts. Normal and legacy passthrough accounts always retain their
+// existing bearer-auth requirement.
+func (a *Account) UsesNoOpenAIUpstreamAuth() bool {
+	if a == nil || !a.IsOpenAIStrictResponsesPassthroughEnabled() || a.Credentials == nil {
+		return false
+	}
+	mode, _ := a.Credentials[OpenAIUpstreamAuthModeCredentialKey].(string)
+	return strings.EqualFold(strings.TrimSpace(mode), OpenAIUpstreamAuthModeNone)
+}
+
 // IsOpenAIPassthroughEnabled 返回 OpenAI 账号是否启用"自动透传（仅替换认证）"。
 //
 // 新字段：accounts.extra.openai_passthrough。
 // 兼容字段：accounts.extra.openai_oauth_passthrough（历史 OAuth 开关）。
 // 字段缺失或类型不正确时，按 false（关闭）处理。
 func (a *Account) IsOpenAIPassthroughEnabled() bool {
-	if a == nil || !a.IsOpenAI() || a.Extra == nil {
-		return false
-	}
-	if enabled, ok := a.Extra["openai_passthrough"].(bool); ok {
-		return enabled
-	}
-	if enabled, ok := a.Extra["openai_oauth_passthrough"].(bool); ok {
-		return enabled
-	}
-	return false
+	return a != nil && a.OpenAIResponsesForwardMode() == OpenAIResponsesForwardModePassthrough
 }
 
 // IsOpenAIResponsesWebSocketV2Enabled 返回 OpenAI 账号是否开启 Responses WebSocket v2。

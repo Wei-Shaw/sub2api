@@ -312,6 +312,27 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     )
   })
 
+  it('persists strict raw mode with explicit private no-auth and no dummy key', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Strict upstream')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('must-not-store')
+    await wrapper.get('[data-testid="create-openai-responses-forward-mode"]').setValue('strict_raw')
+    await wrapper.get('[data-testid="create-openai-strict-no-auth"]').setValue(true)
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    const payload = createAccountMock.mock.calls[0]?.[0]
+    expect(payload.extra?.openai_responses_forward_mode).toBe('strict_raw')
+    expect(payload.extra).not.toHaveProperty('openai_passthrough')
+    expect(payload.credentials?.openai_upstream_auth_mode).toBe('none')
+    expect(payload.credentials).not.toHaveProperty('api_key')
+    expect(payload.upstream_billing_probe_enabled).toBe(false)
+    expect(payload.extra?.openai_apikey_responses_websockets_v2_mode).toBe('off')
+  })
+
   // namespace 摊平是仅 OAuth 的兼容开关：API Key 走 chat completions 回退桥时由桥自行摊平
   it('shows the Codex namespace flatten toggle only for OpenAI OAuth accounts', async () => {
     const wrapper = mountModal()

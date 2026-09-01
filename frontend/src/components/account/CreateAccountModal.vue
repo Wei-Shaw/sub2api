@@ -2961,34 +2961,50 @@
         </p>
       </div>
 
-      <!-- OpenAI 自动透传开关（OAuth/API Key） -->
+      <!-- OpenAI Responses forwarding mode -->
       <div
         v-if="form.platform === 'openai'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
-        <div class="flex items-center justify-between">
-          <div>
-            <label class="input-label mb-0">{{ t('admin.accounts.openai.oauthPassthrough') }}</label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.openai.oauthPassthroughDesc') }}
-            </p>
-          </div>
-          <button
-            type="button"
-            @click="openaiPassthroughEnabled = !openaiPassthroughEnabled"
-            :class="[
-              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-              openaiPassthroughEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-            ]"
-          >
-            <span
-              :class="[
-                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                openaiPassthroughEnabled ? 'translate-x-5' : 'translate-x-0'
-              ]"
-            />
-          </button>
+        <label class="input-label" for="create-openai-responses-forward-mode">
+          {{ t('admin.accounts.openai.forwardMode') }}
+        </label>
+        <select
+          id="create-openai-responses-forward-mode"
+          v-model="openaiResponsesForwardMode"
+          data-testid="create-openai-responses-forward-mode"
+          class="input"
+        >
+          <option v-for="option in openAIResponsesForwardModeOptions" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
+        </select>
+        <p class="input-hint">{{ t('admin.accounts.openai.forwardModeDesc') }}</p>
+        <div
+          v-if="openaiResponsesForwardMode === 'strict_raw'"
+          class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+        >
+          {{ t('admin.accounts.openai.forwardModeStrictWarning') }}
         </div>
+        <label
+          v-if="openaiResponsesForwardMode === 'strict_raw' && accountCategory === 'apikey'"
+          class="mt-3 flex items-start gap-3"
+        >
+          <input
+            v-model="openaiStrictNoAuth"
+            data-testid="create-openai-strict-no-auth"
+            type="checkbox"
+            class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+          <span>
+            <span class="block text-sm font-medium text-gray-700 dark:text-gray-200">
+              {{ t('admin.accounts.openai.strictNoAuth') }}
+            </span>
+            <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.strictNoAuthDesc') }}
+            </span>
+          </span>
+        </label>
       </div>
 
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
@@ -4224,7 +4240,9 @@ const applyGrokOAuthUpstreamConfig = (credentials: Record<string, unknown>) => {
 }
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
-const openaiPassthroughEnabled = ref(false)
+type OpenAIResponsesForwardMode = 'normal' | 'passthrough' | 'strict_raw'
+const openaiResponsesForwardMode = ref<OpenAIResponsesForwardMode>('normal')
+const openaiStrictNoAuth = ref(false)
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
@@ -4311,6 +4329,16 @@ const openAIResponsesModeOptions = computed(() => [
   { value: 'force_responses', label: t('admin.accounts.openai.responsesModeForceResponses') },
   { value: 'force_chat_completions', label: t('admin.accounts.openai.responsesModeForceChatCompletions') }
 ])
+const openAIResponsesForwardModeOptions = computed(() => {
+  const options = [
+    { value: 'normal' as OpenAIResponsesForwardMode, label: t('admin.accounts.openai.forwardModeNormal') },
+    { value: 'passthrough' as OpenAIResponsesForwardMode, label: t('admin.accounts.openai.forwardModePassthrough') }
+  ]
+  if (accountCategory.value === 'apikey') {
+    options.push({ value: 'strict_raw', label: t('admin.accounts.openai.forwardModeStrictRaw') })
+  }
+  return options
+})
 const openAITextEndpointCapabilityLabel = computed(() => {
   if (openAIResponsesMode.value === 'force_responses') {
     return t('admin.accounts.openai.capabilityResponses')
@@ -4456,7 +4484,7 @@ const openAIWSModeConcurrencyHintKey = computed(() =>
 )
 
 const isOpenAIModelRestrictionDisabled = computed(() =>
-  form.platform === 'openai' && openaiPassthroughEnabled.value
+  form.platform === 'openai' && openaiResponsesForwardMode.value === 'passthrough'
 )
 
 const mixedChannelWarningMessageText = computed(() => {
@@ -4692,7 +4720,8 @@ watch(
       interceptWarmupRequests.value = false
     }
     if (newPlatform !== 'openai') {
-      openaiPassthroughEnabled.value = false
+      openaiResponsesForwardMode.value = 'normal'
+      openaiStrictNoAuth.value = false
       openaiFlattenNamespacesEnabled.value = false
       openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -4725,6 +4754,10 @@ watch(
 watch(
   [accountCategory, () => form.platform],
   ([category, platform]) => {
+    if (platform === 'openai' && category !== 'apikey' && openaiResponsesForwardMode.value === 'strict_raw') {
+      openaiResponsesForwardMode.value = 'normal'
+      openaiStrictNoAuth.value = false
+    }
     if (platform === 'openai' && category !== 'oauth-based') {
       codexCLIOnlyEnabled.value = false
       codexCLIOnlyAppServerEnabled.value = false
@@ -5137,7 +5170,8 @@ const resetForm = () => {
   grokOAuthBaseUrl.value = ''
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
-  openaiPassthroughEnabled.value = false
+  openaiResponsesForwardMode.value = 'normal'
+  openaiStrictNoAuth.value = false
   openaiFlattenNamespacesEnabled.value = false
   openAILongContextBillingEnabled.value = false
   openAILongContextBillingTouched.value = false
@@ -5213,13 +5247,21 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     extra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
     extra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
   } else if (accountCategory.value === 'apikey') {
-    extra.openai_apikey_responses_websockets_v2_mode = openaiAPIKeyResponsesWebSocketV2Mode.value
-    extra.openai_apikey_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiAPIKeyResponsesWebSocketV2Mode.value)
+    const apiKeyWSMode = openaiResponsesForwardMode.value === 'strict_raw'
+      ? OPENAI_WS_MODE_OFF
+      : openaiAPIKeyResponsesWebSocketV2Mode.value
+    extra.openai_apikey_responses_websockets_v2_mode = apiKeyWSMode
+    extra.openai_apikey_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(apiKeyWSMode)
   }
   // 清理兼容旧键，统一改用分类型开关。
   delete extra.responses_websockets_v2_enabled
   delete extra.openai_ws_enabled
-  if (openaiPassthroughEnabled.value) {
+  delete extra.openai_responses_forward_mode
+  if (openaiResponsesForwardMode.value === 'strict_raw' && accountCategory.value === 'apikey') {
+    extra.openai_responses_forward_mode = 'strict_raw'
+    delete extra.openai_passthrough
+    delete extra.openai_oauth_passthrough
+  } else if (openaiResponsesForwardMode.value === 'passthrough') {
     extra.openai_passthrough = true
   } else {
     delete extra.openai_passthrough
@@ -5541,8 +5583,14 @@ const handleSubmit = async () => {
     return
   }
 
-  // For apikey type, create directly
-  if (!apiKeyValue.value.trim()) {
+  // For apikey type, create directly. Strict raw may deliberately rely on a
+  // private authenticated transport instead of HTTP bearer auth.
+  const strictNoAuth =
+    form.platform === 'openai' &&
+    accountCategory.value === 'apikey' &&
+    openaiResponsesForwardMode.value === 'strict_raw' &&
+    openaiStrictNoAuth.value
+  if (!apiKeyValue.value.trim() && !strictNoAuth) {
     appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
     return
   }
@@ -5559,8 +5607,13 @@ const handleSubmit = async () => {
 
   // Build credentials with optional model mapping
   const credentials: Record<string, unknown> = {
-    base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl,
-    api_key: apiKeyValue.value.trim()
+    base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl
+  }
+  if (apiKeyValue.value.trim() && !strictNoAuth) {
+    credentials.api_key = apiKeyValue.value.trim()
+  }
+  if (form.platform === 'openai' && openaiResponsesForwardMode.value === 'strict_raw') {
+    credentials.openai_upstream_auth_mode = strictNoAuth ? 'none' : 'bearer'
   }
   if (form.platform === 'gemini') {
     credentials.tier_id = geminiTierAIStudio.value
@@ -5649,7 +5702,7 @@ const handleSubmit = async () => {
     ...form,
     group_ids: form.group_ids,
     extra,
-    upstream_billing_probe_enabled: upstreamBillingAutoProbeEnabled.value,
+    upstream_billing_probe_enabled: strictNoAuth ? false : upstreamBillingAutoProbeEnabled.value,
     auto_pause_on_expired: autoPauseOnExpired.value
   })
 }
