@@ -310,6 +310,8 @@ export default {
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
+        minimax: 'MiniMax',
+        mimo: 'MiMo',
       },
       cnProviders: {
         accountMode: {
@@ -318,6 +320,8 @@ export default {
           paygDesc: '消耗账户余额，按 Token 计费。余额不足自动冷却，充值后恢复。',
           coding: 'Coding Plan',
           codingDesc: '订阅制编程套餐，按 5 小时 / 每周滚动用量窗口限流。',
+          codingMimoDesc: 'MiMo Token Plan 订阅套餐，剩余额度请在官方控制台查看。',
+          mimoUsageWarning: 'MiMo Token Plan Key 与区域绑定，请选择签发时对应的 CN、SGP 或 EU (AMS)；按量 Key 使用另一套独立端点。',
         },
         apiProtocol: {
           title: 'API 协议',

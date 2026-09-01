@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { CONCRETE_PLATFORM_OPTIONS, GROUP_PLATFORM_OPTIONS } from '@/constants/platforms'
+import {
+  COMPOSITE_TARGET_PLATFORM_OPTIONS,
+  CONCRETE_PLATFORM_OPTIONS,
+  GROUP_PLATFORM_OPTIONS
+} from '@/constants/platforms'
 
 const concretePlatforms = [
   'anthropic',
@@ -9,7 +13,9 @@ const concretePlatforms = [
   'grok',
   'kimi',
   'zhipu',
-  'deepseek'
+  'deepseek',
+  'minimax',
+  'mimo'
 ]
 
 describe('platform option catalogs', () => {
@@ -22,5 +28,11 @@ describe('platform option catalogs', () => {
       ...concretePlatforms,
       'composite'
     ])
+  })
+
+  it('keeps new direct providers out of Composite targets until backend routing supports them', () => {
+    expect(COMPOSITE_TARGET_PLATFORM_OPTIONS.map(option => option.value)).not.toEqual(
+      expect.arrayContaining(['minimax', 'mimo'])
+    )
   })
 })

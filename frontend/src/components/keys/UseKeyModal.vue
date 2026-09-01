@@ -1219,6 +1219,8 @@ function generateRoutedCodexFiles(
     kimi: 'kimi-k2.5',
     zhipu: 'glm-4.7',
     deepseek: 'deepseek-v4-pro',
+    minimax: 'MiniMax-M3',
+    mimo: 'mimo-v2.5',
     composite: 'gpt-5.5'
   }
   const preferredModel = preferredModels[platform] || ''
@@ -1232,6 +1234,8 @@ function generateRoutedCodexFiles(
     kimi: 'Kimi',
     zhipu: 'Zhipu',
     deepseek: 'DeepSeek',
+    minimax: 'MiniMax',
+    mimo: 'MiMo',
     composite: 'Composite'
   }
   const label = labels[platform]

@@ -956,6 +956,8 @@ export default {
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
+        minimax: 'MiniMax',
+        mimo: 'MiMo',
         composite: 'Composite',
       },
       deleteConfirm:

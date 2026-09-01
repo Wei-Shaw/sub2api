@@ -709,6 +709,21 @@ func (s *BillingService) initFallbackPricing() {
 		SupportsCacheBreakdown: false,
 	}
 
+	// Xiaomi MiMo international PAYG pricing.
+	// Source: https://platform.xiaomimimo.com/docs/zh-CN/price/pay-as-you-go
+	s.fallbackPrices["mimo-v2.5"] = &ModelPricing{
+		InputPricePerToken:     0.14e-6,
+		OutputPricePerToken:    0.28e-6,
+		CacheReadPricePerToken: 0.0028e-6,
+		SupportsCacheBreakdown: false,
+	}
+	s.fallbackPrices["mimo-v2.5-pro"] = &ModelPricing{
+		InputPricePerToken:     0.435e-6,
+		OutputPricePerToken:    0.87e-6,
+		CacheReadPricePerToken: 0.0036e-6,
+		SupportsCacheBreakdown: false,
+	}
+
 	// ---- 火山方舟 豆包 Embedding（多模态向量化）----
 	// doubao-embedding-vision 图文向量化：上游 usage 回传 prompt_tokens_details.{text_tokens,image_tokens}，
 	// 按量付费官方价 文本 ¥0.7/MTok、图片 ¥1.8/MTok；汇率口径 ÷7.14（与本表其他国产模型一致，¥1≈$0.14）。
@@ -960,6 +975,14 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 	if strings.Contains(modelLower, "minimax-m2") || strings.Contains(modelLower, "minimax-m-2") {
 		return s.fallbackPrices["minimax-m2"]
+	}
+
+	// Match Pro first because its model ID contains the base model ID.
+	if strings.Contains(modelLower, "mimo-v2.5-pro") || strings.Contains(modelLower, "mimo-v2-5-pro") {
+		return s.fallbackPrices["mimo-v2.5-pro"]
+	}
+	if strings.Contains(modelLower, "mimo-v2.5") || strings.Contains(modelLower, "mimo-v2-5") {
+		return s.fallbackPrices["mimo-v2.5"]
 	}
 
 	// 火山方舟 豆包 Embedding（多模态向量化）。

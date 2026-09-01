@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
 const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
@@ -290,6 +290,43 @@ function buildOpenAISetupTokenAccount() {
   } as any
 }
 
+function buildMiMoCustomRelayAccount() {
+  return {
+    ...buildAccount(),
+    id: 8,
+    name: 'MiMo custom relay',
+    platform: 'mimo',
+    credentials: {
+      account_mode: 'coding',
+      api_protocol: 'chat_completions',
+      base_url: 'https://relay.example.com/vendor/mimo/v1'
+    },
+    credentials_status: { has_api_key: true },
+    extra: {}
+  } as any
+}
+
+function buildMiMoSGPAdaptiveAccount() {
+  return {
+    ...buildAccount(),
+    id: 9,
+    name: 'MiMo Token Plan SGP',
+    platform: 'mimo',
+    credentials: {
+      account_mode: 'coding',
+      api_protocol: 'adaptive',
+      base_url: 'https://token-plan-sgp.xiaomimimo.com/v1',
+      api_base_urls: {
+        chat_completions: 'https://token-plan-sgp.xiaomimimo.com/v1',
+        anthropic: 'https://token-plan-sgp.xiaomimimo.com/anthropic',
+        responses: 'https://token-plan-sgp.xiaomimimo.com/v1'
+      }
+    },
+    credentials_status: { has_api_key: true },
+    extra: {}
+  } as any
+}
+
 function buildOpenAIOAuthParentAccount() {
   return {
     ...buildAccount(),
@@ -382,6 +419,61 @@ describe('EditAccountModal', () => {
       api_base_urls: {
         chat_completions: 'https://open.bigmodel.cn/api/coding/paas/v4',
         anthropic: 'https://open.bigmodel.cn/api/anthropic'
+      }
+    })
+  })
+
+  it('preserves a custom MiMo relay when switching protocols', async () => {
+    const account = buildMiMoCustomRelayAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('[data-testid="anthropic-apikey-auth-scheme"]').exists()).toBe(true)
+    expect(wrapper.findAll('label').filter(label => label.text().includes('apiKeyPassthrough'))).toHaveLength(0)
+    expect(wrapper.find('[data-testid="mimo-token-plan-region-cn"]').exists()).toBe(false)
+
+    const anthropicButton = wrapper.findAll('button').find(button =>
+      button.text().includes('admin.accounts.cnProviders.apiProtocol.anthropic')
+    )
+    expect(anthropicButton).toBeDefined()
+    await anthropicButton?.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]).toMatchObject({
+      credentials: {
+        account_mode: 'coding',
+        api_protocol: 'anthropic',
+        base_url: 'https://relay.example.com/vendor/mimo/anthropic'
+      },
+      extra: { anthropic_apikey_auth_scheme: 'authorization_bearer' }
+    })
+  })
+
+  it('resets regional MiMo Token Plan endpoints when switching back to PAYG', async () => {
+    const account = buildMiMoSGPAdaptiveAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await wrapper.vm.$nextTick()
+
+    const paygButton = wrapper.findAll('button').find(button =>
+      button.text().includes('admin.accounts.cnProviders.accountMode.payg')
+    )
+    expect(paygButton).toBeDefined()
+    await paygButton?.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      account_mode: 'payg',
+      api_protocol: 'adaptive',
+      base_url: 'https://api.xiaomimimo.com/v1',
+      api_base_urls: {
+        chat_completions: 'https://api.xiaomimimo.com/v1',
+        anthropic: 'https://api.xiaomimimo.com/anthropic',
+        responses: 'https://api.xiaomimimo.com/v1'
       }
     })
   })

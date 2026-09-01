@@ -123,12 +123,11 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 		return
 	}
 	if account.IsCNProvider() {
-		// 国产 OpenAI 兼容上游（kimi/zhipu/deepseek）普遍仅支持 /v1/chat/completions，
-		// 不存在 /v1/responses 端点。直接落标 false 走 Chat Completions 直转，跳过网络探测。
-		// 例外：deepseek 的固定 responses 和 adaptive 账号使用官方原生 /responses
-		// 端点，落标 force_responses；其余协议显式重置为 auto，避免切换后残留强制模式。
+		// Explicit Responses and adaptive accounts on providers with native
+		// Responses support use the configured endpoint without a network probe.
+		// Chat-only providers remain on the existing conversion path.
 		if account.GetAPIProtocol() == APIProtocolResponses ||
-			(account.Platform == PlatformDeepseek && account.IsAdaptiveAPIProtocol()) {
+			(account.SupportsNativeResponses() && account.IsAdaptiveAPIProtocol()) {
 			_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
 				openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeForceResponses),
 				openai_compat.ExtraKeyResponsesSupported: true,

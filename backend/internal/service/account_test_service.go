@@ -297,6 +297,7 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 
 	// Route to platform-specific test method
 	if account.IsCNProvider() {
+		modelID = minimaxMiMoTestModel(account, modelID)
 		switch account.GetAPIProtocol() {
 		case APIProtocolAdaptive:
 			return s.testCNProviderAdaptiveConnection(c, account, modelID, prompt)
@@ -326,6 +327,23 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
+}
+
+func minimaxMiMoTestModel(account *Account, requested string) string {
+	if requested = strings.TrimSpace(requested); requested != "" {
+		return requested
+	}
+	if account == nil {
+		return ""
+	}
+	switch account.Platform {
+	case PlatformMinimax:
+		return "MiniMax-M3"
+	case PlatformMiMo:
+		return "mimo-v2.5"
+	default:
+		return ""
+	}
 }
 
 func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {

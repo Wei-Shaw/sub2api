@@ -889,6 +889,8 @@ export default {
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
+        minimax: 'MiniMax',
+        mimo: 'MiMo',
         composite: 'Composite',
       },
       saving: '保存中...',

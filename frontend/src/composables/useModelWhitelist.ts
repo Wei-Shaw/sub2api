@@ -199,9 +199,15 @@ const doubaoModels = [
 
 // MiniMax
 const minimaxModels = [
-  'abab6.5-chat', 'abab6.5s-chat', 'abab6.5s-chat-pro',
-  'abab6-chat',
-  'abab5.5-chat', 'abab5.5s-chat'
+  'MiniMax-M3',
+  'MiniMax-M2.7', 'MiniMax-M2.7-highspeed',
+  'MiniMax-M2.5', 'MiniMax-M2.5-highspeed',
+  'MiniMax-M2.1', 'MiniMax-M2.1-highspeed', 'MiniMax-M2'
+]
+
+// Xiaomi MiMo
+const mimoModels = [
+  'mimo-v2.5', 'mimo-v2.5-pro'
 ]
 
 // 百度 文心
@@ -250,6 +256,7 @@ const allModelsList: string[] = [
   ...moonshotModels,
   ...doubaoModels,
   ...minimaxModels,
+  ...mimoModels,
   ...baiduModels,
   ...sparkModels,
   ...hunyuanModels,
@@ -435,6 +442,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'kimi': return moonshotModels
     case 'doubao': return doubaoModels
     case 'minimax': return minimaxModels
+    case 'mimo': return mimoModels
     case 'baidu': return baiduModels
     case 'spark': return sparkModels
     case 'hunyuan': return hunyuanModels

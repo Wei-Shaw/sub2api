@@ -380,6 +380,83 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     })
   })
 
+  it('submits MiniMax adaptive endpoints with Bearer auth by default', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'MiniMax')
+
+    expect(wrapper.find('[data-testid="anthropic-apikey-auth-scheme"]').exists()).toBe(true)
+    expect(wrapper.findAll('label').filter(label => label.text().includes('apiKeyPassthrough'))).toHaveLength(0)
+
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('MiniMax account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-minimax')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'minimax',
+      credentials: {
+        account_mode: 'payg',
+        api_protocol: 'adaptive',
+        api_base_urls: {
+          chat_completions: 'https://api.minimaxi.com/v1',
+          anthropic: 'https://api.minimaxi.com/anthropic',
+          responses: 'https://api.minimaxi.com/v1'
+        }
+      },
+      extra: { anthropic_apikey_auth_scheme: 'authorization_bearer' }
+    })
+  })
+
+  it('submits a region-bound MiMo Token Plan and explicit x-api-key auth', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'MiMo')
+    await selectButtonByText(wrapper, 'admin.accounts.cnProviders.accountMode.coding')
+    await wrapper.get('[data-testid="mimo-token-plan-region-sgp"]').trigger('click')
+    await wrapper.get('[data-testid="anthropic-apikey-auth-scheme"]').setValue('x_api_key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('MiMo Token Plan')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('tp-test')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'mimo',
+      credentials: {
+        account_mode: 'coding',
+        api_protocol: 'adaptive',
+        base_url: 'https://token-plan-sgp.xiaomimimo.com/v1',
+        api_base_urls: {
+          chat_completions: 'https://token-plan-sgp.xiaomimimo.com/v1',
+          anthropic: 'https://token-plan-sgp.xiaomimimo.com/anthropic',
+          responses: 'https://token-plan-sgp.xiaomimimo.com/v1'
+        }
+      },
+      extra: { anthropic_apikey_auth_scheme: 'x_api_key' }
+    })
+  })
+
+  it('resets regional MiMo Token Plan endpoints when switching back to PAYG', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'MiMo')
+    await selectButtonByText(wrapper, 'admin.accounts.cnProviders.accountMode.coding')
+    await wrapper.get('[data-testid="mimo-token-plan-region-sgp"]').trigger('click')
+    await selectButtonByText(wrapper, 'admin.accounts.cnProviders.accountMode.payg')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('MiMo PAYG')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-test')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials).toMatchObject({
+      account_mode: 'payg',
+      api_protocol: 'adaptive',
+      base_url: 'https://api.xiaomimimo.com/v1',
+      api_base_urls: {
+        chat_completions: 'https://api.xiaomimimo.com/v1',
+        anthropic: 'https://api.xiaomimimo.com/anthropic',
+        responses: 'https://api.xiaomimimo.com/v1'
+      }
+    })
+  })
+
   it('uses the edited adaptive Chat endpoint when previewing upstream models', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'Kimi')

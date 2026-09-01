@@ -47,6 +47,8 @@ const (
 	PlatformKimi      = domain.PlatformKimi
 	PlatformZhipu     = domain.PlatformZhipu
 	PlatformDeepseek  = domain.PlatformDeepseek
+	PlatformMinimax   = domain.PlatformMinimax
+	PlatformMiMo      = domain.PlatformMiMo
 	PlatformComposite = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
@@ -75,6 +77,9 @@ const (
 	DefaultZhipuPayGBaseURL   = "https://open.bigmodel.cn/api/paas/v4"
 	DefaultZhipuCodingBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
 	DefaultDeepseekBaseURL    = "https://api.deepseek.com"
+	DefaultMinimaxBaseURL     = "https://api.minimaxi.com/v1"
+	DefaultMiMoPayGBaseURL    = "https://api.xiaomimimo.com/v1"
+	DefaultMiMoCodingBaseURL  = "https://token-plan-cn.xiaomimimo.com/v1"
 )
 
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
@@ -84,16 +89,48 @@ const (
 	DefaultKimiCodingAnthropicBaseURL = "https://api.kimi.com/coding"
 	DefaultZhipuAnthropicBaseURL      = "https://open.bigmodel.cn/api/anthropic"
 	DefaultDeepseekAnthropicBaseURL   = "https://api.deepseek.com/anthropic"
+	DefaultMinimaxAnthropicBaseURL    = "https://api.minimaxi.com/anthropic"
+	DefaultMiMoPayGAnthropicBaseURL   = "https://api.xiaomimimo.com/anthropic"
+	DefaultMiMoCodingAnthropicBaseURL = "https://token-plan-cn.xiaomimimo.com/anthropic"
 )
 
-// IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）。
+// IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商。
 func IsCNProvider(platform string) bool {
 	switch platform {
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMinimax, PlatformMiMo:
 		return true
 	default:
 		return false
 	}
+}
+
+// SupportsNativeResponses reports whether a CN provider exposes a native
+// OpenAI Responses endpoint for both explicit and adaptive protocol modes.
+func SupportsNativeResponses(platform string) bool {
+	switch platform {
+	case PlatformDeepseek, PlatformMinimax, PlatformMiMo:
+		return true
+	default:
+		return false
+	}
+}
+
+// DefaultCNProviderModelIDs returns a curated fallback catalog for providers
+// whose public model list is stable. Callers receive a copy.
+func DefaultCNProviderModelIDs(platform string) []string {
+	var models []string
+	switch platform {
+	case PlatformMinimax:
+		models = []string{
+			"MiniMax-M3",
+			"MiniMax-M2.7", "MiniMax-M2.7-highspeed",
+			"MiniMax-M2.5", "MiniMax-M2.5-highspeed",
+			"MiniMax-M2.1", "MiniMax-M2.1-highspeed", "MiniMax-M2",
+		}
+	case PlatformMiMo:
+		models = []string{"mimo-v2.5", "mimo-v2.5-pro"}
+	}
+	return append([]string(nil), models...)
 }
 
 // AllowedQuotaPlatforms 是允许设置 user × platform quota 的平台列表（单一权威来源）。

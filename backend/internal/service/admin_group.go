@@ -247,6 +247,8 @@ func defaultModelsListCandidateIDs(platform string) []string {
 		return ids
 	case PlatformGrok:
 		return xai.DefaultModelIDs()
+	case PlatformMinimax, PlatformMiMo:
+		return DefaultCNProviderModelIDs(platform)
 	case PlatformComposite:
 		return compositeDefaultModelsListCandidateIDs()
 	default:

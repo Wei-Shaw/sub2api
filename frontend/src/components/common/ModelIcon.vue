@@ -1,6 +1,13 @@
 <template>
+  <img
+    v-if="brandIcon"
+    :src="brandIcon"
+    :style="{ width: size, height: size }"
+    class="model-icon rounded-sm object-contain"
+    :alt="iconKey === 'minimax' ? 'MiniMax' : 'Xiaomi MiMo'"
+  />
   <svg
-    v-if="iconInfo"
+    v-else-if="iconInfo"
     :width="size"
     :height="size"
     viewBox="0 0 24 24"
@@ -18,6 +25,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import minimaxIcon from '@/assets/icons/minimax.png'
+import mimoIcon from '@/assets/icons/mimo.jpg'
 
 const props = withDefaults(defineProps<{
   model: string
@@ -216,6 +225,9 @@ const iconKey = computed(() => {
   // MiniMax
   if (modelLower.includes('abab') || modelLower.includes('minimax')) return 'minimax'
 
+  // Xiaomi MiMo
+  if (modelLower.includes('mimo')) return 'mimo'
+
   // Baidu Wenxin
   if (modelLower.includes('ernie') || modelLower.includes('wenxin')) return 'wenxin'
 
@@ -259,6 +271,11 @@ const iconKey = computed(() => {
 })
 
 const iconInfo = computed(() => iconKey.value ? iconData[iconKey.value] : null)
+const brandIcon = computed(() => {
+  if (iconKey.value === 'minimax') return minimaxIcon
+  if (iconKey.value === 'mimo') return mimoIcon
+  return ''
+})
 </script>
 
 <style scoped>
