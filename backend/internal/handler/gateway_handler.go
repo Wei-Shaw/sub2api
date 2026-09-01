@@ -175,6 +175,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	if channelMapping.Mapped && strings.TrimSpace(channelMapping.MappedModel) != "" {
+		ctx := service.WithUpstreamModelAvailabilityTarget(c.Request.Context(), channelMapping.MappedModel)
+		c.Request = c.Request.WithContext(ctx)
+	}
 
 	// 设置 max_tokens=1 + haiku 探测请求标识到 context 中
 	// 必须在 SetClaudeCodeClientContext 之前设置，因为 ClaudeCodeValidator 需要读取此标识进行绕过判断
@@ -1074,6 +1078,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 // Returns models based on account configurations (model_mapping whitelist)
 // Falls back to default models if no whitelist is configured
 func (h *GatewayHandler) Models(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), service.GatewayModelsCatalogTimeout)
+	defer cancel()
+
 	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
 
 	var groupID *int64
@@ -1088,7 +1095,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	}
 
 	if platform == service.PlatformComposite {
-		availableModels := h.compositeAvailableModels(c.Request.Context(), groupID)
+		availableModels := h.compositeAvailableModels(ctx, groupID)
 		if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
 			availableModels = filterModelsByCustomList(availableModels, defaultModelIDsForPlatform(service.PlatformComposite), apiKey.Group.ModelsListConfig.Models)
 			writeCustomModelsList(c, service.PlatformComposite, availableModels)
@@ -1103,7 +1110,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	}
 
 	// Get available models from account configurations for the selected group platform.
-	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
+	availableModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
 		fallbackModels := defaultModelIDsForPlatform(platform)
 		availableModels = filterModelsByCustomList(customModelsListSource(platform, availableModels, fallbackModels), fallbackModels, apiKey.Group.ModelsListConfig.Models)
@@ -1147,6 +1154,9 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 // expected by Codex custom providers. Official OpenAI groups continue to use
 // OpenAIGatewayHandler.CodexModels so their live upstream metadata is preserved.
 func (h *GatewayHandler) CodexModels(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), service.GatewayModelsCatalogTimeout)
+	defer cancel()
+
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok || apiKey == nil || apiKey.Group == nil {
 		h.errorResponse(c, http.StatusUnauthorized, "invalid_request_error", "API key group is required")
@@ -1157,10 +1167,10 @@ func (h *GatewayHandler) CodexModels(c *gin.Context) {
 	if value, exists := middleware2.GetForcePlatformFromContext(c); exists {
 		forcedPlatform = strings.TrimSpace(value)
 	}
-	modelIDs := h.codexModelIDsForGroup(c.Request.Context(), apiKey.Group, forcedPlatform)
+	modelIDs := h.codexModelIDsForGroup(ctx, apiKey.Group, forcedPlatform)
 	modelIDs = service.FilterCodexModelIDsForGroup(modelIDs, apiKey.Group)
 	body, err := h.gatewayService.BuildCodexModelsManifestForGroup(
-		c.Request.Context(),
+		ctx,
 		apiKey.Group,
 		forcedPlatform,
 		modelIDs,

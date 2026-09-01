@@ -830,6 +830,7 @@ func (s *GatewayService) BuildCodexModelsManifestForGroup(
 	}
 	rawOpenAIModels := s.fetchCompositeRawOpenAIModels(
 		ctx,
+		group,
 		effectivePlatform,
 		modelIDs,
 		catalog,
@@ -848,6 +849,7 @@ func (s *GatewayService) BuildCodexModelsManifestForGroup(
 
 func (s *GatewayService) fetchCompositeRawOpenAIModels(
 	ctx context.Context,
+	group *Group,
 	platform string,
 	modelIDs []string,
 	accounts []Account,
@@ -858,81 +860,200 @@ func (s *GatewayService) fetchCompositeRawOpenAIModels(
 		return nil
 	}
 
-	rawModels := make(map[string]json.RawMessage)
-	for i := range accounts {
-		account := accounts[i]
-		if account.Platform != PlatformOpenAI || !account.IsOpenAIOAuth() {
+	type rawModelPlan struct {
+		publicModel string
+		targetModel string
+		accountIDs  []int64
+	}
+
+	// Raw reuse is all-or-nothing for every account that can serve a public
+	// model. Any route, target, account-type, or descriptor disagreement falls
+	// back to the existing generated manifest and its capability intersection.
+	plans := make([]rawModelPlan, 0, len(modelIDs))
+	seenFetchAccountIDs := make(map[int64]struct{})
+	accountsToFetch := make([]Account, 0)
+	for _, modelID := range modelIDs {
+		publicModel := strings.TrimSpace(modelID)
+		candidates, ok := compositeRawOpenAIModelCandidates(publicModel, accounts, routes, routesAvailable)
+		if !ok {
 			continue
 		}
 
-		catalog, err := s.fetchUpstreamModelCatalogForAccount(ctx, account)
-		if err != nil || catalog == nil || len(catalog.rawBody) == 0 {
-			continue
+		plan := rawModelPlan{publicModel: publicModel}
+		valid := true
+		seenAccountIDs := make(map[int64]struct{}, len(candidates))
+		for _, candidate := range candidates {
+			account := candidate.account
+			if account.ID <= 0 || !account.IsOpenAIOAuth() || account.IsOpenAIPassthroughEnabled() {
+				valid = false
+				break
+			}
+			if plan.targetModel == "" {
+				plan.targetModel = candidate.targetModel
+			} else if plan.targetModel != candidate.targetModel {
+				valid = false
+				break
+			}
+			if _, exists := seenAccountIDs[account.ID]; exists {
+				continue
+			}
+			seenAccountIDs[account.ID] = struct{}{}
+			plan.accountIDs = append(plan.accountIDs, account.ID)
+			if _, exists := seenFetchAccountIDs[account.ID]; !exists {
+				seenFetchAccountIDs[account.ID] = struct{}{}
+				accountsToFetch = append(accountsToFetch, account)
+			}
 		}
-		upstreamModels, err := extractCodexManifestModelEntries(catalog.rawBody)
-		if err != nil {
-			continue
+		if valid && plan.publicModel != "" && plan.targetModel != "" && len(plan.accountIDs) > 0 {
+			plans = append(plans, plan)
 		}
+	}
+	if len(plans) == 0 {
+		return nil
+	}
 
-		for _, publicModel := range modelIDs {
-			targetModel, ok := compositeOpenAIModelSource(account, publicModel, routes, routesAvailable)
-			if !ok {
-				continue
+	entriesByAccountID := make(map[int64]map[string]json.RawMessage, len(accountsToFetch))
+	for i, catalog := range s.fetchUpstreamModelCatalogsForAccounts(ctx, accountsToFetch) {
+		if catalog == nil || len(catalog.rawBody) == 0 {
+			continue
+		}
+		entries, err := extractCodexManifestModelEntries(catalog.rawBody)
+		if err == nil {
+			entriesByAccountID[accountsToFetch[i].ID] = entries
+		}
+	}
+
+	rawModels := make(map[string]json.RawMessage, len(plans))
+	for _, plan := range plans {
+		var selected json.RawMessage
+		var canonicalSelected []byte
+		consistent := true
+		for _, accountID := range plan.accountIDs {
+			rawModel, found := entriesByAccountID[accountID][plan.targetModel]
+			if !found {
+				consistent = false
+				break
 			}
-			rawModel, ok := upstreamModels[targetModel]
-			if !ok {
-				continue
-			}
-			if targetModel != publicModel {
-				rawModel, err = codexManifestModelWithSlug(rawModel, publicModel)
+			var err error
+			if plan.targetModel != plan.publicModel {
+				rawModel, err = codexManifestModelWithSlug(rawModel, plan.publicModel)
 				if err != nil {
-					continue
+					consistent = false
+					break
 				}
 			}
-			if _, exists := rawModels[publicModel]; !exists {
-				rawModels[publicModel] = append([]byte(nil), rawModel...)
+			if codexAutoModelExplicitlyEnabled(group, plan.publicModel) {
+				rawModel, _, err = codexModelWithVisibility(rawModel, "list")
+				if err != nil {
+					consistent = false
+					break
+				}
 			}
+			canonicalModel, err := canonicalCodexManifestModel(rawModel)
+			if err != nil {
+				consistent = false
+				break
+			}
+			if selected == nil {
+				selected = append([]byte(nil), rawModel...)
+				canonicalSelected = canonicalModel
+				continue
+			}
+			if !bytes.Equal(canonicalSelected, canonicalModel) {
+				consistent = false
+				break
+			}
+		}
+		if consistent && selected != nil {
+			rawModels[plan.publicModel] = selected
 		}
 	}
 	return rawModels
 }
 
-func compositeOpenAIModelSource(
-	account Account,
+type compositeRawOpenAIModelCandidate struct {
+	account     Account
+	targetModel string
+}
+
+func compositeRawOpenAIModelCandidates(
 	publicModel string,
+	accounts []Account,
 	routes []CompositeModelRoute,
 	routesAvailable bool,
-) (string, bool) {
+) ([]compositeRawOpenAIModelCandidate, bool) {
 	publicModel = strings.TrimSpace(publicModel)
 	if publicModel == "" || !routesAvailable {
-		return "", false
+		return nil, false
 	}
 
-	if route, matched := matchCompositeRoute(routes, publicModel, CompositeRouteEndpointResponses); matched {
-		if route.TargetPlatform != PlatformOpenAI {
-			return "", false
-		}
-		targetModel := strings.TrimSpace(route.UpstreamModel)
-		if targetModel == "" {
-			targetModel = publicModel
-		}
-		return targetModel, true
-	}
-	if codexCompositeRouteMatchesModel(routes, publicModel) {
-		return "", false
+	targetPlatform, upstreamModel, resolved := resolveCodexCompositeModelTarget(publicModel, accounts, routes, routesAvailable)
+	if !resolved || targetPlatform != PlatformOpenAI {
+		return nil, false
 	}
 
-	if mapping := account.GetModelMapping(); len(mapping) > 0 {
-		targetModel, matched := account.ResolveMappedModel(publicModel)
-		if !matched || strings.TrimSpace(targetModel) == "" {
-			return "", false
+	_, hasExplicitRoute := matchCompositeRoute(routes, publicModel, CompositeRouteEndpointResponses)
+	explicitClaims := false
+	if !hasExplicitRoute && upstreamModel == publicModel {
+		for _, account := range accounts {
+			if account.Platform == PlatformOpenAI && codexExplicitModelMappingClaims(account, publicModel) {
+				explicitClaims = true
+				break
+			}
 		}
-		return strings.TrimSpace(targetModel), true
 	}
-	if detectedPlatform, detected := DetectModelPlatform(publicModel); detected && detectedPlatform != PlatformOpenAI {
-		return "", false
+
+	candidates := make([]compositeRawOpenAIModelCandidate, 0)
+	for _, account := range accounts {
+		if account.Platform != PlatformOpenAI {
+			continue
+		}
+		targetModel := upstreamModel
+		if explicitClaims {
+			if !codexExplicitModelMappingClaims(account, publicModel) {
+				continue
+			}
+			targetModel = account.GetMappedModel(publicModel)
+		} else {
+			if !account.IsModelSupported(upstreamModel) {
+				continue
+			}
+			targetModel = account.GetMappedModel(upstreamModel)
+		}
+		targetModel = strings.TrimSpace(targetModel)
+		if targetModel != "" {
+			candidates = append(candidates, compositeRawOpenAIModelCandidate{account: account, targetModel: targetModel})
+		}
 	}
-	return publicModel, true
+	return candidates, len(candidates) > 0
+}
+
+func codexAutoModelExplicitlyEnabled(group *Group, modelID string) bool {
+	if group == nil || !group.CustomModelsListEnabled() || !strings.HasPrefix(modelID, codexAutoModelPrefix) {
+		return false
+	}
+	for _, selectedModel := range group.ModelsListConfig.Models {
+		if strings.TrimSpace(selectedModel) == modelID {
+			return true
+		}
+	}
+	return false
+}
+
+func canonicalCodexManifestModel(rawModel json.RawMessage) ([]byte, error) {
+	decoder := json.NewDecoder(bytes.NewReader(rawModel))
+	decoder.UseNumber()
+	var model any
+	if err := decoder.Decode(&model); err != nil {
+		return nil, err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return nil, errors.New("multiple JSON values in Codex manifest model")
+		}
+		return nil, err
+	}
+	return json.Marshal(model)
 }
 
 func extractCodexManifestModelEntries(body []byte) (map[string]json.RawMessage, error) {

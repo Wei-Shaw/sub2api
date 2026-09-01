@@ -1797,8 +1797,14 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	}) {
 		return false, "shadow_parent_unhealthy"
 	}
-	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
-		return false, "model_not_supported"
+	if req.RequestedModel != "" {
+		modelSupported := account.IsModelSupported(req.RequestedModel)
+		if s != nil && s.service != nil {
+			modelSupported = s.service.isModelSupportedByAccountForRequest(ctx, account, req.RequestedModel)
+		}
+		if !modelSupported {
+			return false, "model_not_supported"
+		}
 	}
 	if req.GroupID != nil && s != nil && s.service != nil &&
 		s.service.needsUpstreamChannelRestrictionCheck(ctx, req.GroupID) &&

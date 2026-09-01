@@ -27,6 +27,7 @@ import (
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -75,7 +76,9 @@ const (
 	cacheTTLTarget1h                       = "1h"
 	compositeModelOwnershipCachePrefix     = "composite-owner|"
 	gatewayUpstreamModelCatalogCachePrefix = "models-catalog|"
-	gatewayUpstreamModelsFetchTimeout      = 10 * time.Second
+	gatewayUpstreamModelsFetchConcurrency  = 4
+	// GatewayModelsCatalogTimeout bounds one client-visible model catalog operation.
+	GatewayModelsCatalogTimeout = 10 * time.Second
 )
 
 type gatewayUpstreamModelFetcher interface {
@@ -89,6 +92,31 @@ type gatewayUpstreamModelCatalog struct {
 
 type gatewayUpstreamModelCatalogFetcher interface {
 	fetchUpstreamModelCatalog(ctx context.Context, account *Account) (*gatewayUpstreamModelCatalog, error)
+}
+
+type upstreamModelAvailabilityResolver interface {
+	supportsDiscoveredUpstreamModelForRequest(ctx context.Context, account *Account, requestedModel string) bool
+}
+
+type upstreamModelAvailabilityTargetContextKey struct{}
+
+// WithUpstreamModelAvailabilityTarget records the model that will be present in
+// the forwarded request after channel mapping. Account mappings still match the
+// public model; a discovered upstream catalog is checked against this target.
+func WithUpstreamModelAvailabilityTarget(ctx context.Context, model string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, upstreamModelAvailabilityTargetContextKey{}, strings.TrimSpace(model))
+}
+
+func upstreamModelAvailabilityTargetFromContext(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
+	}
+	model, ok := ctx.Value(upstreamModelAvailabilityTargetContextKey{}).(string)
+	model = strings.TrimSpace(model)
+	return model, ok && model != ""
 }
 
 // ForceCacheBillingContextKey 强制缓存计费上下文键
@@ -1442,6 +1470,7 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	// Collect unique models from all accounts
 	modelSet := make(map[string]struct{})
 
+	unmappedAccounts := make([]Account, 0, len(accounts))
 	for _, acc := range accounts {
 		// Passthrough routing accepts models independently of model_mapping. A stale
 		// mapping on any eligible passthrough account therefore cannot define the
@@ -1461,8 +1490,14 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 			}
 			continue
 		}
+		unmappedAccounts = append(unmappedAccounts, acc)
+	}
 
-		for _, model := range s.fetchUpstreamModelsForAccount(ctx, acc) {
+	for _, catalog := range s.fetchUpstreamModelCatalogsForAccounts(ctx, unmappedAccounts) {
+		if catalog == nil {
+			continue
+		}
+		for _, model := range catalog.models {
 			modelSet[model] = struct{}{}
 		}
 	}
@@ -1491,20 +1526,35 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	return cloneStringSlice(models)
 }
 
-func (s *GatewayService) fetchUpstreamModelsForAccount(ctx context.Context, account Account) []string {
-	catalog, err := s.fetchUpstreamModelCatalogForAccount(ctx, account)
-	if err != nil {
-		slog.Debug("upstream model discovery failed",
-			"account_id", account.ID,
-			"platform", account.Platform,
-			"error", err,
-		)
+func (s *GatewayService) fetchUpstreamModelCatalogsForAccounts(ctx context.Context, accounts []Account) []*gatewayUpstreamModelCatalog {
+	if s == nil || len(accounts) == 0 {
 		return nil
 	}
-	if catalog == nil {
-		return nil
+
+	fetchCtx, cancel := context.WithTimeout(ctx, GatewayModelsCatalogTimeout)
+	defer cancel()
+
+	catalogs := make([]*gatewayUpstreamModelCatalog, len(accounts))
+	group, groupCtx := errgroup.WithContext(fetchCtx)
+	group.SetLimit(gatewayUpstreamModelsFetchConcurrency)
+	for i := range accounts {
+		i := i
+		group.Go(func() error {
+			catalog, err := s.fetchUpstreamModelCatalogForAccount(groupCtx, accounts[i])
+			if err != nil {
+				slog.Debug("upstream model discovery failed",
+					"account_id", accounts[i].ID,
+					"platform", accounts[i].Platform,
+					"error", err,
+				)
+				return nil
+			}
+			catalogs[i] = catalog
+			return nil
+		})
 	}
-	return cloneStringSlice(catalog.models)
+	_ = group.Wait()
+	return catalogs
 }
 
 func (s *GatewayService) fetchUpstreamModelCatalogForAccount(ctx context.Context, account Account) (*gatewayUpstreamModelCatalog, error) {
@@ -1514,7 +1564,7 @@ func (s *GatewayService) fetchUpstreamModelCatalogForAccount(ctx context.Context
 
 	cacheKey := ""
 	if account.ID > 0 {
-		cacheKey = gatewayUpstreamModelCatalogCachePrefix + strconv.FormatInt(account.ID, 10)
+		cacheKey = gatewayUpstreamModelCatalogCacheKey(account.ID)
 		if s.upstreamModelCatalogCache != nil {
 			if cached, found := s.upstreamModelCatalogCache.Get(cacheKey); found {
 				if catalog, ok := cached.(*gatewayUpstreamModelCatalog); ok {
@@ -1525,7 +1575,7 @@ func (s *GatewayService) fetchUpstreamModelCatalogForAccount(ctx context.Context
 	}
 
 	fetch := func() (any, error) {
-		fetchCtx, cancel := context.WithTimeout(ctx, gatewayUpstreamModelsFetchTimeout)
+		fetchCtx, cancel := context.WithTimeout(ctx, GatewayModelsCatalogTimeout)
 		defer cancel()
 
 		accountSnapshot := account
@@ -1548,7 +1598,12 @@ func (s *GatewayService) fetchUpstreamModelCatalogForAccount(ctx context.Context
 		err   error
 	)
 	if account.ID > 0 {
-		value, err, _ = s.modelsListFetchSF.Do(cacheKey, fetch)
+		select {
+		case result := <-s.modelsListFetchSF.DoChan(cacheKey, fetch):
+			value, err = result.Val, result.Err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	} else {
 		value, err = fetch()
 	}
@@ -1564,6 +1619,51 @@ func (s *GatewayService) fetchUpstreamModelCatalogForAccount(ctx context.Context
 		s.upstreamModelCatalogCache.Set(cacheKey, cloneGatewayUpstreamModelCatalog(catalog), s.modelsListCacheTTL)
 	}
 	return cloneGatewayUpstreamModelCatalog(catalog), nil
+}
+
+func gatewayUpstreamModelCatalogCacheKey(accountID int64) string {
+	return gatewayUpstreamModelCatalogCachePrefix + strconv.FormatInt(accountID, 10)
+}
+
+// supportsDiscoveredUpstreamModel adds a strict account-level constraint only
+// after that account has a successfully cached upstream catalog. Unknown
+// catalogs keep the legacy allow behavior; explicit mappings and passthrough
+// remain authoritative.
+func (s *GatewayService) supportsDiscoveredUpstreamModel(account *Account, requestedModel string) bool {
+	requestedModel = strings.TrimPrefix(strings.TrimSpace(requestedModel), "models/")
+	if s == nil || account == nil || account.ID <= 0 || requestedModel == "" ||
+		len(account.GetModelMapping()) > 0 || account.IsOpenAIPassthroughEnabled() ||
+		s.upstreamModelCatalogCache == nil {
+		return true
+	}
+
+	cached, found := s.upstreamModelCatalogCache.Get(gatewayUpstreamModelCatalogCacheKey(account.ID))
+	if !found {
+		return true
+	}
+	catalog, ok := cached.(*gatewayUpstreamModelCatalog)
+	if !ok || catalog == nil {
+		return true
+	}
+	for _, model := range catalog.models {
+		if strings.TrimPrefix(strings.TrimSpace(model), "models/") == requestedModel {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *GatewayService) supportsDiscoveredUpstreamModelForRequest(ctx context.Context, account *Account, requestedModel string) bool {
+	if targetModel, ok := upstreamModelAvailabilityTargetFromContext(ctx); ok {
+		requestedModel = targetModel
+	} else if forwardModel, ok := openAIForwardModelFromContext(ctx); ok && strings.TrimSpace(forwardModel.model) != "" {
+		requestedModel = resolveOpenAIAccountUpstreamModelForRequest(
+			account,
+			forwardModel.model,
+			forwardModel.useCompactModelMapping,
+		)
+	}
+	return s.supportsDiscoveredUpstreamModel(account, requestedModel)
 }
 
 func cloneGatewayUpstreamModelCatalog(catalog *gatewayUpstreamModelCatalog) *gatewayUpstreamModelCatalog {

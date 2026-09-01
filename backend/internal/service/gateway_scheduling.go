@@ -2552,15 +2552,19 @@ func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Contex
 			if finalModel == mapped {
 				return true // thinking 后缀未改变模型名，映射已通过
 			}
-			return account.IsModelSupported(finalModel)
+			return account.IsModelSupported(finalModel) && s.supportsDiscoveredUpstreamModelForRequest(ctx, account, finalModel)
 		}
 		return true
 	}
-	return s.isModelSupportedByAccount(account, requestedModel)
+	return s.isModelSupportedByAccountForRequest(ctx, account, requestedModel)
 }
 
 // isModelSupportedByAccount 根据账户平台检查模型支持（无 context，用于非 Antigravity 平台）
 func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedModel string) bool {
+	return s.isModelSupportedByAccountForRequest(nil, account, requestedModel)
+}
+
+func (s *GatewayService) isModelSupportedByAccountForRequest(ctx context.Context, account *Account, requestedModel string) bool {
 	if account.Platform == PlatformAntigravity {
 		if strings.TrimSpace(requestedModel) == "" {
 			return true
@@ -2584,5 +2588,5 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 		}
 	}
 	// 其他平台使用账户的模型支持检查
-	return account.IsModelSupported(requestedModel)
+	return account.IsModelSupported(requestedModel) && s.supportsDiscoveredUpstreamModelForRequest(ctx, account, requestedModel)
 }

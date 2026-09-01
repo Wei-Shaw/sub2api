@@ -254,6 +254,7 @@ func ProvideAccountTestService(
 	tlsFPProfileService *TLSFingerprintProfileService,
 	openAIGatewayService *OpenAIGatewayService,
 	gatewayService *GatewayService,
+	geminiMessagesCompatService *GeminiMessagesCompatService,
 	settingService *SettingService,
 	pluginManager *PluginManager,
 ) *AccountTestService {
@@ -272,6 +273,12 @@ func ProvideAccountTestService(
 	service.SetPluginManager(pluginManager)
 	if gatewayService != nil {
 		gatewayService.SetUpstreamModelFetcher(service)
+		if openAIGatewayService != nil {
+			openAIGatewayService.setUpstreamModelAvailabilityResolver(gatewayService)
+		}
+		if geminiMessagesCompatService != nil {
+			geminiMessagesCompatService.setUpstreamModelAvailabilityResolver(gatewayService)
+		}
 	}
 	return service
 }

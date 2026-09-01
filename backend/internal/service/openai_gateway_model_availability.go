@@ -57,10 +57,10 @@ func (s *OpenAIGatewayService) DiagnoseModelAvailabilityForPlatform(
 	for i := range accounts {
 		diag.HasAccountsInPool = true
 		// Mirrors the per-candidate filter used during account selection
-		// (openai_account_scheduler.isAccountRequestCompatible): empty
-		// model_mapping accepts everything; otherwise the explicit / wildcard
-		// mapping must match.
-		if accounts[i].IsModelSupported(requestedModel) {
+		// (openai_account_scheduler.isAccountRequestCompatible): explicit mappings
+		// stay authoritative, while an empty mapping is narrowed only when a
+		// successful account-level upstream catalog is cached.
+		if s.isModelSupportedByAccountForRequest(ctx, &accounts[i], requestedModel) {
 			diag.HasModelSupport = true
 			return diag
 		}

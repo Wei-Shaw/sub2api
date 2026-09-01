@@ -2239,6 +2239,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	if channelMappingWS.Mapped && strings.TrimSpace(channelMappingWS.MappedModel) != "" {
 		wsForwardModel = strings.TrimSpace(channelMappingWS.MappedModel)
 	}
+	ctx = service.WithUpstreamModelAvailabilityTarget(ctx, wsForwardModel)
 
 	var currentUserRelease func()
 	var currentAccountRelease func()
@@ -2604,7 +2605,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if previous := turnChannelMapping.Load(); previous != nil && previous.turn < turn {
 					mappedModelUnchanged = strings.TrimSpace(previous.mapping.MappedModel) == strings.TrimSpace(mapping.MappedModel)
 				}
-				if turn > 1 && !mappedModelUnchanged && !account.IsModelSupported(model) && !account.IsModelSupported(mapping.MappedModel) {
+				if turn > 1 && !mappedModelUnchanged && !h.gatewayService.IsModelSupportedByAccount(account, model) && !h.gatewayService.IsModelSupportedByAccount(account, mapping.MappedModel) {
 					return "", newOpenAIWSUnsupportedModelSwitchError(mapping.MappedModel)
 				}
 				turnChannelMapping.Store(&openAIWSTurnChannelMappingSnapshot{turn: turn, mapping: mapping})

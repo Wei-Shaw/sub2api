@@ -55,6 +55,13 @@ type GeminiMessagesCompatService struct {
 	antigravityGatewayService *AntigravityGatewayService
 	cfg                       *config.Config
 	responseHeaderFilter      *responseheaders.CompiledHeaderFilter
+	upstreamModelResolver     upstreamModelAvailabilityResolver
+}
+
+func (s *GeminiMessagesCompatService) setUpstreamModelAvailabilityResolver(resolver upstreamModelAvailabilityResolver) {
+	if s != nil {
+		s.upstreamModelResolver = resolver
+	}
 }
 
 func (s *GeminiMessagesCompatService) readUpstreamErrorBody(resp *http.Response) []byte {
@@ -263,7 +270,7 @@ func (s *GeminiMessagesCompatService) isAccountUsableForRequestWithPrecheck(
 
 	// 检查模型支持
 	// Check model support
-	if requestedModel != "" && !s.isModelSupportedByAccount(account, requestedModel) {
+	if requestedModel != "" && !s.isModelSupportedByAccountForRequest(ctx, account, requestedModel) {
 		return false
 	}
 
@@ -408,13 +415,21 @@ func (s *GeminiMessagesCompatService) isBetterGeminiAccount(candidate, current *
 
 // isModelSupportedByAccount 根据账户平台检查模型支持
 func (s *GeminiMessagesCompatService) isModelSupportedByAccount(account *Account, requestedModel string) bool {
+	return s.isModelSupportedByAccountForRequest(nil, account, requestedModel)
+}
+
+func (s *GeminiMessagesCompatService) isModelSupportedByAccountForRequest(ctx context.Context, account *Account, requestedModel string) bool {
 	if account.Platform == PlatformAntigravity {
 		if strings.TrimSpace(requestedModel) == "" {
 			return true
 		}
 		return mapAntigravityModel(account, requestedModel) != ""
 	}
-	return account.IsModelSupported(requestedModel)
+	if !account.IsModelSupported(requestedModel) {
+		return false
+	}
+	return s.upstreamModelResolver == nil ||
+		s.upstreamModelResolver.supportsDiscoveredUpstreamModelForRequest(ctx, account, requestedModel)
 }
 
 // GetAntigravityGatewayService 返回 AntigravityGatewayService

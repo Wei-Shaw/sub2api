@@ -451,6 +451,7 @@ type OpenAIGatewayService struct {
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 	liveAttestation       liveattestation.Provider
 	liveAttestationCipher SecretEncryptor
+	upstreamModelResolver upstreamModelAvailabilityResolver
 
 	openaiWSPoolOnce               sync.Once
 	openaiWSStateStoreOnce         sync.Once
@@ -567,6 +568,26 @@ func NewOpenAIGatewayService(
 	}
 	svc.logOpenAIWSModeBootstrap()
 	return svc
+}
+
+func (s *OpenAIGatewayService) setUpstreamModelAvailabilityResolver(resolver upstreamModelAvailabilityResolver) {
+	if s != nil {
+		s.upstreamModelResolver = resolver
+	}
+}
+
+// IsModelSupportedByAccount applies configured mappings plus any successfully
+// cached account-level upstream catalog used by model discovery.
+func (s *OpenAIGatewayService) IsModelSupportedByAccount(account *Account, requestedModel string) bool {
+	return s.isModelSupportedByAccountForRequest(nil, account, requestedModel)
+}
+
+func (s *OpenAIGatewayService) isModelSupportedByAccountForRequest(ctx context.Context, account *Account, requestedModel string) bool {
+	if account == nil || !account.IsModelSupported(requestedModel) {
+		return false
+	}
+	return s == nil || s.upstreamModelResolver == nil ||
+		s.upstreamModelResolver.supportsDiscoveredUpstreamModelForRequest(ctx, account, requestedModel)
 }
 
 // ResolveChannelMapping 解析渠道级模型映射（代理到 ChannelService）

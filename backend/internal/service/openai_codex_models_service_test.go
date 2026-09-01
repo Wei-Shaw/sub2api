@@ -266,6 +266,187 @@ func TestBuildCodexModelsManifestForCompositePreservesRawOpenAIFieldsForAlias(t 
 	require.Equal(t, map[string]any{"mode": "preserved"}, models[0]["future_capability"])
 }
 
+func TestBuildCodexModelsManifestForCompositeAcceptsSemanticallyIdenticalRawDescriptors(t *testing.T) {
+	const groupID int64 = 145
+	newAccount := func(id int64) Account {
+		return Account{
+			ID:       id,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{"gpt-5.6-sol": "gpt-5.6-sol"},
+			},
+		}
+	}
+	first := newAccount(48)
+	second := newAccount(49)
+	fetcher := &rawOpenAIModelCatalogFetcherStub{catalogs: map[int64]*gatewayUpstreamModelCatalog{
+		first.ID: {
+			models:  []string{"gpt-5.6-sol"},
+			rawBody: []byte(`{"models":[{"slug":"gpt-5.6-sol","display_name":"Official GPT-5.6 Sol","future_capability":{"enabled":true,"limit":12345678901234567890},"raw_only_field":true}]}`),
+		},
+		second.ID: {
+			models:  []string{"gpt-5.6-sol"},
+			rawBody: []byte(`{"models":[{"raw_only_field":true,"future_capability":{"limit":12345678901234567890,"enabled":true},"display_name":"Official GPT-5.6 Sol","slug":"gpt-5.6-sol"}]}`),
+		},
+	}}
+	svc := &GatewayService{
+		accountRepo:          codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{groupID: {first, second}}},
+		upstreamModelFetcher: fetcher,
+	}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		"",
+		[]string{"gpt-5.6-sol"},
+	)
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, true, models[0]["raw_only_field"])
+	require.Contains(t, string(body), "12345678901234567890")
+}
+
+func TestBuildCodexModelsManifestForCompositeRejectsRawFieldsForCrossPlatformAlias(t *testing.T) {
+	const groupID int64 = 142
+	openAIAccount := Account{
+		ID:       43,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"shared-alias": "gpt-5.6-sol"},
+		},
+	}
+	grokAccount := Account{
+		ID:       44,
+		Platform: PlatformGrok,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"shared-alias": "grok-4.6"},
+		},
+	}
+	fetcher := &rawOpenAIModelCatalogFetcherStub{catalogs: map[int64]*gatewayUpstreamModelCatalog{
+		openAIAccount.ID: {
+			models:  []string{"gpt-5.6-sol"},
+			rawBody: []byte(`{"models":[{"slug":"gpt-5.6-sol","raw_only_field":true,"input_modalities":["text","image"]}]}`),
+		},
+	}}
+	svc := &GatewayService{
+		accountRepo:          codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{groupID: {openAIAccount, grokAccount}}},
+		upstreamModelFetcher: fetcher,
+	}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		"",
+		[]string{"shared-alias"},
+	)
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	_, rawFieldPresent := models[0]["raw_only_field"]
+	require.False(t, rawFieldPresent)
+	require.Equal(t, []any{"text"}, models[0]["input_modalities"])
+}
+
+func TestBuildCodexModelsManifestForCompositeFallsBackToIntersectedCapabilities(t *testing.T) {
+	const groupID int64 = 143
+	reasoning := true
+	newAccount := func(id int64, levels, modalities []string, contextWindow int64) Account {
+		account := Account{
+			ID:       id,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{"team-gpt": "gpt-5.6-sol"},
+			},
+		}
+		account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+			"gpt-5.6-sol": {
+				ID:                       "gpt-5.6-sol",
+				Reasoning:                &reasoning,
+				SupportedReasoningLevels: levels,
+				InputModalities:          modalities,
+				ContextWindow:            contextWindow,
+			},
+		}})
+		return account
+	}
+	first := newAccount(45, []string{"low", "high"}, []string{"text", "image"}, 256_000)
+	second := newAccount(46, []string{"high", "max"}, []string{"text"}, 128_000)
+	fetcher := &rawOpenAIModelCatalogFetcherStub{catalogs: map[int64]*gatewayUpstreamModelCatalog{
+		first.ID: {
+			models:  []string{"gpt-5.6-sol"},
+			rawBody: []byte(`{"models":[{"slug":"gpt-5.6-sol","raw_only_field":true,"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}],"input_modalities":["text","image"],"context_window":256000}]}`),
+		},
+		second.ID: {
+			models:  []string{"gpt-5.6-sol"},
+			rawBody: []byte(`{"models":[{"slug":"gpt-5.6-sol","raw_only_field":true,"supported_reasoning_levels":[{"effort":"high"},{"effort":"max"}],"input_modalities":["text"],"context_window":128000}]}`),
+		},
+	}}
+	svc := &GatewayService{
+		accountRepo:          codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{groupID: {first, second}}},
+		upstreamModelFetcher: fetcher,
+	}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		"",
+		[]string{"team-gpt"},
+	)
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	_, rawFieldPresent := models[0]["raw_only_field"]
+	require.False(t, rawFieldPresent)
+	require.Equal(t, []string{"high"}, effortsFromManifestModel(t, models[0]))
+	require.Equal(t, []any{"text"}, models[0]["input_modalities"])
+	require.EqualValues(t, 128_000, models[0]["context_window"])
+}
+
+func TestBuildCodexModelsManifestForCompositeMakesExplicitRawAutoModelVisible(t *testing.T) {
+	const groupID int64 = 144
+	account := Account{
+		ID:       47,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"codex-auto-review": "codex-auto-review"},
+		},
+	}
+	fetcher := &rawOpenAIModelCatalogFetcherStub{catalogs: map[int64]*gatewayUpstreamModelCatalog{
+		account.ID: {
+			models:  []string{"codex-auto-review"},
+			rawBody: []byte(`{"models":[{"slug":"codex-auto-review","visibility":"hide","raw_only_field":true}]}`),
+		},
+	}}
+	svc := &GatewayService{
+		accountRepo:          codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{groupID: {account}}},
+		upstreamModelFetcher: fetcher,
+	}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{
+			ID:       groupID,
+			Platform: PlatformComposite,
+			ModelsListConfig: GroupModelsListConfig{
+				Enabled: true,
+				Models:  []string{"codex-auto-review"},
+			},
+		},
+		"",
+		[]string{"codex-auto-review"},
+	)
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, "list", models[0]["visibility"])
+	require.Equal(t, true, models[0]["raw_only_field"])
+}
+
 func decodeCodexManifestModels(t *testing.T, body []byte) []map[string]any {
 	t.Helper()
 
