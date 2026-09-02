@@ -336,6 +336,11 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 	require.Equal(t, configuredCodexGPTReasoningLevels("gpt-5.6-sol"), gpt56.SupportedReasoningLevels)
 	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max", "ultra"}, effortsFromConfiguredCodexLevels(gpt56.SupportedReasoningLevels))
 	require.True(t, gpt56.SupportsParallelToolCalls)
+	require.NotNil(t, gpt56.ApplyPatchToolType)
+	require.Equal(t, "freeform", *gpt56.ApplyPatchToolType)
+	require.Equal(t, "3000", gpt56.CompHash)
+	require.True(t, gpt56.UseResponsesLite)
+	require.Equal(t, "code_mode_only", gpt56.ToolMode)
 	require.True(t, gpt56.SupportVerbosity)
 	require.Equal(t, []string{"text"}, gpt56.InputModalities)
 	require.Equal(t, int64(872_000), gpt56.MaxContextWindow)
@@ -1146,6 +1151,11 @@ func TestBuildGroupConfiguredCodexModelsManifestExpandsSelectedModelCoveredByWil
 	require.NoError(t, err)
 	require.True(t, configured)
 	require.Equal(t, []string{"gpt-5.6"}, codexManifestModelSlugs(t, manifest.Body))
+	models := decodeCodexManifestModels(t, manifest.Body)
+	require.Equal(t, "freeform", models[0]["apply_patch_tool_type"])
+	require.Equal(t, "3000", models[0]["comp_hash"])
+	require.Equal(t, true, models[0]["use_responses_lite"])
+	require.Equal(t, "code_mode_only", models[0]["tool_mode"])
 	require.NotContains(t, string(manifest.Body), "gpt-*")
 }
 

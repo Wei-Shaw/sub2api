@@ -469,6 +469,14 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		descriptor.DisplayName = openaiCodexDisplayName(modelID)
 		descriptor.Description = "OpenAI GPT coding model routed through Sub2API."
 		descriptor.SupportsParallelToolCalls = true
+		if isOpenAIGPT56Model(modelID) {
+			// GPT-5.6 依赖模型目录选择代码模式和专用补丁工具；缺省会静默降级为 shell 函数调用。
+			applyPatchToolType := "freeform"
+			descriptor.ApplyPatchToolType = &applyPatchToolType
+			descriptor.CompHash = "3000"
+			descriptor.UseResponsesLite = true
+			descriptor.ToolMode = "code_mode_only"
+		}
 		if configuredCodexSupportsPriorityServiceTier(modelID) {
 			descriptor.ServiceTiers = []configuredCodexServiceTier{
 				{
