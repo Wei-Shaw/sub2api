@@ -863,7 +863,11 @@ export default {
         rpmLimitHint: '每用户在本分组每分钟最大请求数，0 = 不限制；一旦设置即接管该用户的限流（覆盖用户级 rpm_limit）',
         maxReasoningEffort: '推理强度上限',
         maxReasoningEffortUnlimited: '不限制（跟随请求）',
-        maxReasoningEffortHint: '仅限制客户端主动请求的 OpenAI reasoning effort；Composite 分组仅对解析到 OpenAI 的请求生效。超过上限时自动降档，不会为缺省请求主动开启推理。上限优先级高于推理强度映射。',
+        maxReasoningEffortHint: '仅限制客户端主动请求的 OpenAI reasoning effort；Composite 分组仅对解析到 OpenAI 的请求生效。不会为缺省请求主动开启推理。上限优先级高于推理强度映射。',
+        maxReasoningEffortOverLimit: '超限访问控制',
+        maxReasoningEffortOverLimitDowngrade: '超过上限时自动降档',
+        maxReasoningEffortOverLimitDeny: '拒绝访问',
+        maxReasoningEffortOverLimitHint: '设置上限后生效。自动降档会将超过上限的请求改写为上限值后转发；拒绝访问则直接返回错误。',
         reasoningEffortMappings: '推理强度映射',
         addReasoningEffortMapping: '添加映射',
         removeReasoningEffortMapping: '删除映射',
@@ -1170,6 +1174,11 @@ export default {
         unsupportedTitle: '当前服务端不支持 Live',
         unsupportedMessage: '当前 Sub2API 服务端无法生成 Live 所需的设备证明，即使开启也不能使用。是否仍然开启？',
         enableAnyway: '仍然开启'
+      },
+      openaiFast: {
+        title: 'OpenAI Fast 模式',
+        force: '强制使用 Fast（priority）',
+        hint: '开启后，此分组的 OpenAI 请求会强制写入 service_tier=priority；全局 Fast/Flex 策略仍可过滤或拦截。保存后新请求立即生效，已建立的 WebSocket 会话需重连。'
       },
       invalidRequestFallback: {
         title: '无效请求兜底分组',

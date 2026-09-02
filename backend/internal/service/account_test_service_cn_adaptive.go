@@ -18,8 +18,8 @@ import (
 const accountTestSuppressCompletionContextKey = "account_test_suppress_completion"
 
 // testCNProviderAdaptiveConnection verifies every native endpoint used by an
-// adaptive CN-provider account. Kimi and Zhipu use Chat Completions plus
-// Anthropic; DeepSeek additionally uses its native Responses endpoint.
+// adaptive CN-provider account. Zhipu uses Chat Completions plus Anthropic;
+// DeepSeek and Kimi additionally use their native Responses endpoints.
 func (s *AccountTestService) testCNProviderAdaptiveConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
 	testModelID := strings.TrimSpace(modelID)
 	if testModelID == "" {
@@ -44,7 +44,7 @@ func (s *AccountTestService) testCNProviderAdaptiveConnection(c *gin.Context, ac
 		return err
 	}
 
-	if account.Platform == PlatformDeepseek {
+	if account.SupportsNativeCNResponses() {
 		if err := s.testCNProviderAdaptiveResponsesConnection(c, account, testModelID, authToken); err != nil {
 			return err
 		}
@@ -159,8 +159,8 @@ func (s *AccountTestService) testCNProviderAdaptiveResponsesConnection(c *gin.Co
 	apiURL := buildOpenAIResponsesURLForPlatform(account.Platform, baseURL)
 
 	payload := createOpenAITestPayload(testModelID, false)
-	// DeepSeek's native Responses endpoint is stateless and does not need the
-	// OpenAI probe's synthetic instructions.
+	// DeepSeek / Kimi native Responses endpoints are stateless and do not need
+	// the OpenAI probe's synthetic instructions.
 	delete(payload, "instructions")
 	payloadBytes, _ := json.Marshal(payload)
 	payloadBytes = normalizeDeepSeekResponsesRequestBody(account, payloadBytes)
