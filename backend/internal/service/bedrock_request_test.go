@@ -541,6 +541,20 @@ func TestResolveBedrockModelID(t *testing.T) {
 		assert.Equal(t, "anthropic.claude-fable-5", modelID)
 	})
 
+	t.Run("默认 Fable 5.1 映射使用官方 Bedrock 模型 ID", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformAnthropic,
+			Type:     AccountTypeBedrock,
+			Credentials: map[string]any{
+				"aws_region": "eu-west-1",
+			},
+		}
+
+		modelID, ok := ResolveBedrockModelID(account, "claude-fable-5-1")
+		require.True(t, ok)
+		assert.Equal(t, "anthropic.claude-fable-5-1", modelID)
+	})
+
 	t.Run("force global rewrites anthropic regional model id", func(t *testing.T) {
 		account := &Account{
 			Platform: PlatformAnthropic,
