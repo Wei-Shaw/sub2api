@@ -845,6 +845,7 @@ export default {
         name: 'Name',
         description: 'Description',
         platform: 'Platform',
+        routeScheme: 'Route Scheme',
         rateMultiplier: 'Rate Multiplier',
         status: 'Status',
         exclusive: 'Exclusive Group',
@@ -893,6 +894,8 @@ export default {
       enterGroupName: 'Enter group name',
       optionalDescription: 'Optional description',
       platformHint: 'Select the platform this group is associated with',
+      routeSchemeHint: 'Composite groups use the selected route scheme to forward model requests. Leave empty to use built-in detection only.',
+      manageRouteSchemes: 'Open route management',
       platformNotEditable: 'Platform cannot be changed after creation',
       saving: 'Saving...',
       noGroups: 'No groups yet',
@@ -1114,7 +1117,8 @@ export default {
         sources: {
           route: 'Route',
           detector: 'Detector'
-        }
+        },
+        noScheme: 'None (built-in detection only)'
       },
       claudeCode: {
         title: 'Claude Code Client Restriction',
@@ -1217,6 +1221,44 @@ export default {
         geminiImage: 'Gemini Image',
         hint: 'Select at least one model family'
       }
+    },
+
+    routeManagement: {
+      title: 'Route Management',
+      description: 'Manage Composite route schemes. Existing configurations can be copied as templates, and Composite groups pick one scheme to use.',
+      scheme: 'Route scheme',
+      selectScheme: 'Select a scheme',
+      selectSchemeHint: 'Select or create a route scheme first',
+      columns: {
+        name: 'Name',
+        actions: 'Actions'
+      },
+      searchSchemes: 'Search by name...',
+      empty: 'No route schemes yet',
+      emptyHint: 'Create a scheme, or copy an existing one, then configure its routes.',
+      backToList: 'Back to list',
+      create: 'New scheme',
+      duplicate: 'Duplicate',
+      rename: 'Rename',
+      schemeName: 'Scheme name',
+      schemeNamePlaceholder: 'e.g. Default routes, CN model pack',
+      schemeDescription: 'Description',
+      optionalDescription: 'Optional description',
+      copyFrom: 'Copy from existing scheme',
+      copyFromNone: 'Empty scheme',
+      copyFromHint: 'Pick an existing scheme as a template to copy all of its routes.',
+      nameRequired: 'Scheme name is required',
+      created: 'Route scheme created',
+      updated: 'Route scheme updated',
+      duplicated: 'Route scheme duplicated',
+      deleted: 'Route scheme deleted',
+      failedToLoad: 'Failed to load route schemes',
+      failedToSave: 'Failed to save route scheme',
+      failedToDelete: 'Failed to delete route scheme',
+      deleteConfirm: 'Delete scheme "{name}"?',
+      deleteInUse: 'This scheme is used by {count} group(s) and cannot be deleted',
+      routeCount: '{count} routes',
+      groupCount: 'Used by {count} groups'
     },
 
     // Available Channels (aggregated read-only view)

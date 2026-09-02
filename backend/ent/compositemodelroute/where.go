@@ -70,9 +70,9 @@ func DeletedAt(v time.Time) predicate.CompositeModelRoute {
 	return predicate.CompositeModelRoute(sql.FieldEQ(FieldDeletedAt, v))
 }
 
-// GroupID applies equality check predicate on the "group_id" field. It's identical to GroupIDEQ.
-func GroupID(v int64) predicate.CompositeModelRoute {
-	return predicate.CompositeModelRoute(sql.FieldEQ(FieldGroupID, v))
+// SchemeID applies equality check predicate on the "scheme_id" field. It's identical to SchemeIDEQ.
+func SchemeID(v int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldEQ(FieldSchemeID, v))
 }
 
 // PublicModel applies equality check predicate on the "public_model" field. It's identical to PublicModelEQ.
@@ -245,24 +245,24 @@ func DeletedAtNotNil() predicate.CompositeModelRoute {
 	return predicate.CompositeModelRoute(sql.FieldNotNull(FieldDeletedAt))
 }
 
-// GroupIDEQ applies the EQ predicate on the "group_id" field.
-func GroupIDEQ(v int64) predicate.CompositeModelRoute {
-	return predicate.CompositeModelRoute(sql.FieldEQ(FieldGroupID, v))
+// SchemeIDEQ applies the EQ predicate on the "scheme_id" field.
+func SchemeIDEQ(v int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldEQ(FieldSchemeID, v))
 }
 
-// GroupIDNEQ applies the NEQ predicate on the "group_id" field.
-func GroupIDNEQ(v int64) predicate.CompositeModelRoute {
-	return predicate.CompositeModelRoute(sql.FieldNEQ(FieldGroupID, v))
+// SchemeIDNEQ applies the NEQ predicate on the "scheme_id" field.
+func SchemeIDNEQ(v int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldNEQ(FieldSchemeID, v))
 }
 
-// GroupIDIn applies the In predicate on the "group_id" field.
-func GroupIDIn(vs ...int64) predicate.CompositeModelRoute {
-	return predicate.CompositeModelRoute(sql.FieldIn(FieldGroupID, vs...))
+// SchemeIDIn applies the In predicate on the "scheme_id" field.
+func SchemeIDIn(vs ...int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldIn(FieldSchemeID, vs...))
 }
 
-// GroupIDNotIn applies the NotIn predicate on the "group_id" field.
-func GroupIDNotIn(vs ...int64) predicate.CompositeModelRoute {
-	return predicate.CompositeModelRoute(sql.FieldNotIn(FieldGroupID, vs...))
+// SchemeIDNotIn applies the NotIn predicate on the "scheme_id" field.
+func SchemeIDNotIn(vs ...int64) predicate.CompositeModelRoute {
+	return predicate.CompositeModelRoute(sql.FieldNotIn(FieldSchemeID, vs...))
 }
 
 // PublicModelEQ applies the EQ predicate on the "public_model" field.
@@ -715,21 +715,21 @@ func NotesContainsFold(v string) predicate.CompositeModelRoute {
 	return predicate.CompositeModelRoute(sql.FieldContainsFold(FieldNotes, v))
 }
 
-// HasGroup applies the HasEdge predicate on the "group" edge.
-func HasGroup() predicate.CompositeModelRoute {
+// HasScheme applies the HasEdge predicate on the "scheme" edge.
+func HasScheme() predicate.CompositeModelRoute {
 	return predicate.CompositeModelRoute(func(s *sql.Selector) {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, GroupTable, GroupColumn),
+			sqlgraph.Edge(sqlgraph.M2O, true, SchemeTable, SchemeColumn),
 		)
 		sqlgraph.HasNeighbors(s, step)
 	})
 }
 
-// HasGroupWith applies the HasEdge predicate on the "group" edge with a given conditions (other predicates).
-func HasGroupWith(preds ...predicate.Group) predicate.CompositeModelRoute {
+// HasSchemeWith applies the HasEdge predicate on the "scheme" edge with a given conditions (other predicates).
+func HasSchemeWith(preds ...predicate.CompositeRouteScheme) predicate.CompositeModelRoute {
 	return predicate.CompositeModelRoute(func(s *sql.Selector) {
-		step := newGroupStep()
+		step := newSchemeStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

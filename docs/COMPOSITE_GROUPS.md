@@ -21,8 +21,30 @@ mapping/pricing lookup, and platform usage reporting.
 
 ## Route Registry
 
-Admins can configure routes on a composite group from the group list's
-`Routes` action or through the admin API:
+Composite model routes live in reusable **route schemes**, managed from
+**Group Management → Route Management**. A Composite group binds to one scheme
+instead of owning routes itself. Existing group-scoped route configs are
+migrated into named schemes and can be copied as templates.
+
+Admins configure schemes through the admin API:
+
+- `GET /api/v1/admin/composite-route-schemes`
+- `POST /api/v1/admin/composite-route-schemes`
+- `GET /api/v1/admin/composite-route-schemes/:id`
+- `PUT /api/v1/admin/composite-route-schemes/:id`
+- `DELETE /api/v1/admin/composite-route-schemes/:id`
+- `POST /api/v1/admin/composite-route-schemes/:id/duplicate`
+- `GET /api/v1/admin/composite-route-schemes/:id/routes`
+- `POST /api/v1/admin/composite-route-schemes/:id/routes`
+- `PUT /api/v1/admin/composite-route-schemes/:id/routes/:route_id`
+- `DELETE /api/v1/admin/composite-route-schemes/:id/routes/:route_id`
+- `POST /api/v1/admin/composite-route-schemes/:id/preview`
+
+Group create/update accepts `composite_route_scheme_id` to bind a Composite
+group to a scheme (`0` or `null` means built-in detection only).
+
+The legacy group-scoped route APIs still work: they operate on the bound
+scheme and auto-create one when a Composite group has no scheme yet.
 
 - `GET /api/v1/admin/groups/:id/composite-routes`
 - `POST /api/v1/admin/groups/:id/composite-routes`
@@ -30,7 +52,7 @@ Admins can configure routes on a composite group from the group list's
 - `DELETE /api/v1/admin/groups/:id/composite-routes/:route_id`
 - `POST /api/v1/admin/groups/:id/composite-routes/preview`
 
-Each route belongs to one composite group and contains:
+Each route belongs to one scheme and contains:
 
 - `public_model`: model identifier the client sends.
 - `match_type`: `exact` or `prefix`.
@@ -75,7 +97,10 @@ guessing a provider.
 ## Admin Workflows
 
 - Admins can create a group with platform `composite`.
-- Admins can add, edit, delete, and preview composite model routes.
+- Admins can create multiple named route schemes (optionally copied from an
+  existing scheme as a template) under Route Management.
+- Composite groups select a route scheme from the group create/edit form.
+- Admins can add, edit, delete, and preview composite model routes on a scheme.
 - Composite groups can copy accounts from concrete provider groups.
 - Concrete provider accounts can be assigned directly to composite groups from
   account create/edit and bulk account workflows.

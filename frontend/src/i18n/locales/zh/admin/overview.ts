@@ -827,6 +827,7 @@ export default {
         name: '名称',
         description: '描述',
         platform: '平台',
+        routeScheme: '路由方案',
         rateMultiplier: '费率倍数',
         status: '状态',
         exclusive: '专属分组',
@@ -924,6 +925,8 @@ export default {
       enterGroupName: '请输入分组名称',
       optionalDescription: '可选描述',
       platformHint: '选择此分组关联的平台',
+      routeSchemeHint: 'Composite 分组会使用选中的路由方案转发模型请求；留空则仅走内置识别。',
+      manageRouteSchemes: '前往路由管理',
       platformNotEditable: '创建后不可更改平台',
       noGroupsYet: '暂无分组',
       createFirstGroup: '创建您的第一个分组来组织 API 密钥。',
@@ -1111,7 +1114,8 @@ export default {
         sources: {
           route: '路由',
           detector: '内置识别'
-        }
+        },
+        noScheme: '不使用（仅内置识别）'
       },
       claudeCode: {
         title: 'Claude Code 客户端限制',
@@ -1216,6 +1220,44 @@ export default {
         geminiImage: 'Gemini Image',
         hint: '至少选择一个模型系列'
       }
+    },
+
+    routeManagement: {
+      title: '路由管理',
+      description: '管理 Composite 路由方案。现有配置可作为模板复制成多套方案，供 Composite 分组直接选用。',
+      scheme: '路由方案',
+      selectScheme: '选择方案',
+      selectSchemeHint: '请先选择或创建一个路由方案',
+      columns: {
+        name: '名称',
+        actions: '操作'
+      },
+      searchSchemes: '搜索方案名称...',
+      empty: '暂无路由方案',
+      emptyHint: '创建一个方案，或从现有方案复制后开始配置路由。',
+      backToList: '返回列表',
+      create: '新建方案',
+      duplicate: '复制',
+      rename: '重命名',
+      schemeName: '方案名称',
+      schemeNamePlaceholder: '例如：默认路由、国内模型方案',
+      schemeDescription: '方案说明',
+      optionalDescription: '可选说明',
+      copyFrom: '从现有方案复制',
+      copyFromNone: '空白方案',
+      copyFromHint: '选择一个现有方案作为模板，将复制其中的全部路由。',
+      nameRequired: '请输入方案名称',
+      created: '路由方案已创建',
+      updated: '路由方案已更新',
+      duplicated: '路由方案已复制',
+      deleted: '路由方案已删除',
+      failedToLoad: '加载路由方案失败',
+      failedToSave: '保存路由方案失败',
+      failedToDelete: '删除路由方案失败',
+      deleteConfirm: '确定删除方案「{name}」？',
+      deleteInUse: '该方案已被 {count} 个分组使用，无法删除',
+      routeCount: '{count} 条路由',
+      groupCount: '{count} 个分组使用'
     },
 
     // Available Channels (aggregated read-only view)

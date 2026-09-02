@@ -352,6 +352,50 @@ func (s *stubAdminService) PreviewCompositeRoute(ctx context.Context, groupID in
 	return &decision, nil
 }
 
+func (s *stubAdminService) ListCompositeRouteSchemes(ctx context.Context) ([]service.CompositeRouteScheme, error) {
+	return []service.CompositeRouteScheme{{ID: 1, Name: "default"}}, nil
+}
+
+func (s *stubAdminService) GetCompositeRouteScheme(ctx context.Context, id int64) (*service.CompositeRouteScheme, error) {
+	return &service.CompositeRouteScheme{ID: id, Name: "default"}, nil
+}
+
+func (s *stubAdminService) CreateCompositeRouteScheme(ctx context.Context, input service.CompositeRouteSchemeInput) (*service.CompositeRouteScheme, error) {
+	return &service.CompositeRouteScheme{ID: 1, Name: input.Name, Description: input.Description}, nil
+}
+
+func (s *stubAdminService) UpdateCompositeRouteScheme(ctx context.Context, id int64, input service.CompositeRouteSchemeInput) (*service.CompositeRouteScheme, error) {
+	return &service.CompositeRouteScheme{ID: id, Name: input.Name, Description: input.Description}, nil
+}
+
+func (s *stubAdminService) DeleteCompositeRouteScheme(ctx context.Context, id int64) error {
+	return nil
+}
+
+func (s *stubAdminService) DuplicateCompositeRouteScheme(ctx context.Context, id int64, name string) (*service.CompositeRouteScheme, error) {
+	return &service.CompositeRouteScheme{ID: id + 1, Name: name}, nil
+}
+
+func (s *stubAdminService) ListCompositeRouteSchemeRoutes(ctx context.Context, schemeID int64) ([]service.CompositeModelRoute, error) {
+	return s.ListCompositeRoutes(ctx, schemeID)
+}
+
+func (s *stubAdminService) CreateCompositeRouteSchemeRoute(ctx context.Context, schemeID int64, input service.CompositeRouteInput) (*service.CompositeModelRoute, error) {
+	return s.CreateCompositeRoute(ctx, schemeID, input)
+}
+
+func (s *stubAdminService) UpdateCompositeRouteSchemeRoute(ctx context.Context, schemeID, routeID int64, input service.CompositeRouteInput) (*service.CompositeModelRoute, error) {
+	return s.UpdateCompositeRoute(ctx, schemeID, routeID, input)
+}
+
+func (s *stubAdminService) DeleteCompositeRouteSchemeRoute(ctx context.Context, schemeID, routeID int64) error {
+	return s.DeleteCompositeRoute(ctx, schemeID, routeID)
+}
+
+func (s *stubAdminService) PreviewCompositeRouteScheme(ctx context.Context, schemeID int64, input service.CompositeRoutePreviewRequest) (*service.CompositeRouteDecision, error) {
+	return s.PreviewCompositeRoute(ctx, schemeID, input)
+}
+
 func (s *stubAdminService) CreateGroup(ctx context.Context, input *service.CreateGroupInput) (*service.Group, error) {
 	group := service.Group{ID: 200, Name: input.Name, Status: service.StatusActive}
 	return &group, nil

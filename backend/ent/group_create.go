@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/compositeroutescheme"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -892,6 +893,20 @@ func (_c *GroupCreate) SetNillableProfitSafetyBuffer(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetCompositeRouteSchemeID sets the "composite_route_scheme_id" field.
+func (_c *GroupCreate) SetCompositeRouteSchemeID(v int64) *GroupCreate {
+	_c.mutation.SetCompositeRouteSchemeID(v)
+	return _c
+}
+
+// SetNillableCompositeRouteSchemeID sets the "composite_route_scheme_id" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableCompositeRouteSchemeID(v *int64) *GroupCreate {
+	if v != nil {
+		_c.SetCompositeRouteSchemeID(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -980,6 +995,11 @@ func (_c *GroupCreate) AddAllowedUsers(v ...*User) *GroupCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddAllowedUserIDs(ids...)
+}
+
+// SetCompositeRouteScheme sets the "composite_route_scheme" edge to the CompositeRouteScheme entity.
+func (_c *GroupCreate) SetCompositeRouteScheme(v *CompositeRouteScheme) *GroupCreate {
+	return _c.SetCompositeRouteSchemeID(v.ID)
 }
 
 // Mutation returns the GroupMutation object of the builder.
@@ -1786,6 +1806,23 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.CompositeRouteSchemeIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   group.CompositeRouteSchemeTable,
+			Columns: []string{group.CompositeRouteSchemeColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(compositeroutescheme.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.CompositeRouteSchemeID = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
@@ -2881,6 +2918,24 @@ func (u *GroupUpsert) UpdateProfitSafetyBuffer() *GroupUpsert {
 // AddProfitSafetyBuffer adds v to the "profit_safety_buffer" field.
 func (u *GroupUpsert) AddProfitSafetyBuffer(v float64) *GroupUpsert {
 	u.Add(group.FieldProfitSafetyBuffer, v)
+	return u
+}
+
+// SetCompositeRouteSchemeID sets the "composite_route_scheme_id" field.
+func (u *GroupUpsert) SetCompositeRouteSchemeID(v int64) *GroupUpsert {
+	u.Set(group.FieldCompositeRouteSchemeID, v)
+	return u
+}
+
+// UpdateCompositeRouteSchemeID sets the "composite_route_scheme_id" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateCompositeRouteSchemeID() *GroupUpsert {
+	u.SetExcluded(group.FieldCompositeRouteSchemeID)
+	return u
+}
+
+// ClearCompositeRouteSchemeID clears the value of the "composite_route_scheme_id" field.
+func (u *GroupUpsert) ClearCompositeRouteSchemeID() *GroupUpsert {
+	u.SetNull(group.FieldCompositeRouteSchemeID)
 	return u
 }
 
@@ -4147,6 +4202,27 @@ func (u *GroupUpsertOne) AddProfitSafetyBuffer(v float64) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateProfitSafetyBuffer() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateProfitSafetyBuffer()
+	})
+}
+
+// SetCompositeRouteSchemeID sets the "composite_route_scheme_id" field.
+func (u *GroupUpsertOne) SetCompositeRouteSchemeID(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCompositeRouteSchemeID(v)
+	})
+}
+
+// UpdateCompositeRouteSchemeID sets the "composite_route_scheme_id" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateCompositeRouteSchemeID() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCompositeRouteSchemeID()
+	})
+}
+
+// ClearCompositeRouteSchemeID clears the value of the "composite_route_scheme_id" field.
+func (u *GroupUpsertOne) ClearCompositeRouteSchemeID() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearCompositeRouteSchemeID()
 	})
 }
 
@@ -5579,6 +5655,27 @@ func (u *GroupUpsertBulk) AddProfitSafetyBuffer(v float64) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateProfitSafetyBuffer() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateProfitSafetyBuffer()
+	})
+}
+
+// SetCompositeRouteSchemeID sets the "composite_route_scheme_id" field.
+func (u *GroupUpsertBulk) SetCompositeRouteSchemeID(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCompositeRouteSchemeID(v)
+	})
+}
+
+// UpdateCompositeRouteSchemeID sets the "composite_route_scheme_id" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateCompositeRouteSchemeID() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCompositeRouteSchemeID()
+	})
+}
+
+// ClearCompositeRouteSchemeID clears the value of the "composite_route_scheme_id" field.
+func (u *GroupUpsertBulk) ClearCompositeRouteSchemeID() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearCompositeRouteSchemeID()
 	})
 }
 

@@ -352,6 +352,21 @@ func registerGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		groups.DELETE("/:id/rpm-overrides", h.Admin.Group.ClearGroupRPMOverrides)
 		groups.GET("/:id/api-keys", h.Admin.Group.GetGroupAPIKeys)
 	}
+
+	schemes := admin.Group("/composite-route-schemes")
+	{
+		schemes.GET("", h.Admin.Group.ListCompositeRouteSchemes)
+		schemes.POST("", h.Admin.Group.CreateCompositeRouteScheme)
+		schemes.GET("/:id", h.Admin.Group.GetCompositeRouteScheme)
+		schemes.PUT("/:id", h.Admin.Group.UpdateCompositeRouteScheme)
+		schemes.DELETE("/:id", h.Admin.Group.DeleteCompositeRouteScheme)
+		schemes.POST("/:id/duplicate", h.Admin.Group.DuplicateCompositeRouteScheme)
+		schemes.GET("/:id/routes", h.Admin.Group.ListCompositeRouteSchemeRoutes)
+		schemes.POST("/:id/routes", h.Admin.Group.CreateCompositeRouteSchemeRoute)
+		schemes.PUT("/:id/routes/:route_id", h.Admin.Group.UpdateCompositeRouteSchemeRoute)
+		schemes.DELETE("/:id/routes/:route_id", h.Admin.Group.DeleteCompositeRouteSchemeRoute)
+		schemes.POST("/:id/preview", h.Admin.Group.PreviewCompositeRouteScheme)
+	}
 }
 
 func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {

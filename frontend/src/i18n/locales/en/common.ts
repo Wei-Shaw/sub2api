@@ -171,6 +171,8 @@ export default {
     profile: 'Profile',
     users: 'Users',
     groups: 'Groups',
+    groupList: 'Groups',
+    routeManagement: 'Routes',
     channels: 'Channels',
     availableChannels: 'Available Channels',
     modelPlaza: 'Model Plaza',

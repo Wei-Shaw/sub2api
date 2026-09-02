@@ -815,7 +815,7 @@ var (
 		{Name: "priority", Type: field.TypeInt, Default: 100},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "notes", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
-		{Name: "group_id", Type: field.TypeInt64},
+		{Name: "scheme_id", Type: field.TypeInt64},
 	}
 	// CompositeModelRoutesTable holds the schema information for the "composite_model_routes" table.
 	CompositeModelRoutesTable = &schema.Table{
@@ -824,30 +824,30 @@ var (
 		PrimaryKey: []*schema.Column{CompositeModelRoutesColumns[0]},
 		ForeignKeys: []*schema.ForeignKey{
 			{
-				Symbol:     "composite_model_routes_groups_group",
+				Symbol:     "composite_model_routes_composite_route_schemes_routes",
 				Columns:    []*schema.Column{CompositeModelRoutesColumns[12]},
-				RefColumns: []*schema.Column{GroupsColumns[0]},
+				RefColumns: []*schema.Column{CompositeRouteSchemesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 		},
 		Indexes: []*schema.Index{
 			{
-				Name:    "compositemodelroute_group_id",
+				Name:    "compositemodelroute_scheme_id",
 				Unique:  false,
 				Columns: []*schema.Column{CompositeModelRoutesColumns[12]},
 			},
 			{
-				Name:    "compositemodelroute_group_id_enabled",
+				Name:    "compositemodelroute_scheme_id_enabled",
 				Unique:  false,
 				Columns: []*schema.Column{CompositeModelRoutesColumns[12], CompositeModelRoutesColumns[10]},
 			},
 			{
-				Name:    "compositemodelroute_group_id_endpoint",
+				Name:    "compositemodelroute_scheme_id_endpoint",
 				Unique:  false,
 				Columns: []*schema.Column{CompositeModelRoutesColumns[12], CompositeModelRoutesColumns[8]},
 			},
 			{
-				Name:    "compositemodelroute_group_id_target_platform",
+				Name:    "compositemodelroute_scheme_id_target_platform",
 				Unique:  false,
 				Columns: []*schema.Column{CompositeModelRoutesColumns[12], CompositeModelRoutesColumns[6]},
 			},
@@ -860,6 +860,28 @@ var (
 				Name:    "compositemodelroute_priority",
 				Unique:  false,
 				Columns: []*schema.Column{CompositeModelRoutesColumns[9]},
+			},
+		},
+	}
+	// CompositeRouteSchemesColumns holds the columns for the "composite_route_schemes" table.
+	CompositeRouteSchemesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "description", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+	}
+	// CompositeRouteSchemesTable holds the schema information for the "composite_route_schemes" table.
+	CompositeRouteSchemesTable = &schema.Table{
+		Name:       "composite_route_schemes",
+		Columns:    CompositeRouteSchemesColumns,
+		PrimaryKey: []*schema.Column{CompositeRouteSchemesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "compositeroutescheme_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{CompositeRouteSchemesColumns[3]},
 			},
 		},
 	}
@@ -968,12 +990,21 @@ var (
 		{Name: "profit_control_enabled", Type: field.TypeBool, Default: false},
 		{Name: "profit_min_margin", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
 		{Name: "profit_safety_buffer", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
+		{Name: "composite_route_scheme_id", Type: field.TypeInt64, Nullable: true},
 	}
 	// GroupsTable holds the schema information for the "groups" table.
 	GroupsTable = &schema.Table{
 		Name:       "groups",
 		Columns:    GroupsColumns,
 		PrimaryKey: []*schema.Column{GroupsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "groups_composite_route_schemes_composite_route_scheme",
+				Columns:    []*schema.Column{GroupsColumns[66]},
+				RefColumns: []*schema.Column{CompositeRouteSchemesColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
 		Indexes: []*schema.Index{
 			{
 				Name:    "group_status",
@@ -1012,6 +1043,11 @@ var (
 				Annotation: &entsql.IndexAnnotation{
 					Where: "duplicate_operation_id IS NOT NULL AND deleted_at IS NULL",
 				},
+			},
+			{
+				Name:    "group_composite_route_scheme_id",
+				Unique:  false,
+				Columns: []*schema.Column{GroupsColumns[66]},
 			},
 		},
 	}
@@ -2102,6 +2138,7 @@ var (
 		ChannelMonitorHistoriesTable,
 		ChannelMonitorRequestTemplatesTable,
 		CompositeModelRoutesTable,
+		CompositeRouteSchemesTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
@@ -2185,13 +2222,17 @@ func init() {
 	ChannelMonitorRequestTemplatesTable.Annotation = &entsql.Annotation{
 		Table: "channel_monitor_request_templates",
 	}
-	CompositeModelRoutesTable.ForeignKeys[0].RefTable = GroupsTable
+	CompositeModelRoutesTable.ForeignKeys[0].RefTable = CompositeRouteSchemesTable
 	CompositeModelRoutesTable.Annotation = &entsql.Annotation{
 		Table: "composite_model_routes",
+	}
+	CompositeRouteSchemesTable.Annotation = &entsql.Annotation{
+		Table: "composite_route_schemes",
 	}
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",
 	}
+	GroupsTable.ForeignKeys[0].RefTable = CompositeRouteSchemesTable
 	GroupsTable.Annotation = &entsql.Annotation{
 		Table: "groups",
 	}

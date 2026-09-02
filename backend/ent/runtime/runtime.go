@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
+	"github.com/Wei-Shaw/sub2api/ent/compositeroutescheme"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -927,6 +928,43 @@ func init() {
 	compositemodelrouteDescEnabled := compositemodelrouteFields[7].Descriptor()
 	// compositemodelroute.DefaultEnabled holds the default value on creation for the enabled field.
 	compositemodelroute.DefaultEnabled = compositemodelrouteDescEnabled.Default.(bool)
+	compositerouteschemeMixin := schema.CompositeRouteScheme{}.Mixin()
+	compositerouteschemeMixinHooks1 := compositerouteschemeMixin[1].Hooks()
+	compositeroutescheme.Hooks[0] = compositerouteschemeMixinHooks1[0]
+	compositerouteschemeMixinInters1 := compositerouteschemeMixin[1].Interceptors()
+	compositeroutescheme.Interceptors[0] = compositerouteschemeMixinInters1[0]
+	compositerouteschemeMixinFields0 := compositerouteschemeMixin[0].Fields()
+	_ = compositerouteschemeMixinFields0
+	compositerouteschemeFields := schema.CompositeRouteScheme{}.Fields()
+	_ = compositerouteschemeFields
+	// compositerouteschemeDescCreatedAt is the schema descriptor for created_at field.
+	compositerouteschemeDescCreatedAt := compositerouteschemeMixinFields0[0].Descriptor()
+	// compositeroutescheme.DefaultCreatedAt holds the default value on creation for the created_at field.
+	compositeroutescheme.DefaultCreatedAt = compositerouteschemeDescCreatedAt.Default.(func() time.Time)
+	// compositerouteschemeDescUpdatedAt is the schema descriptor for updated_at field.
+	compositerouteschemeDescUpdatedAt := compositerouteschemeMixinFields0[1].Descriptor()
+	// compositeroutescheme.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	compositeroutescheme.DefaultUpdatedAt = compositerouteschemeDescUpdatedAt.Default.(func() time.Time)
+	// compositeroutescheme.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	compositeroutescheme.UpdateDefaultUpdatedAt = compositerouteschemeDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// compositerouteschemeDescName is the schema descriptor for name field.
+	compositerouteschemeDescName := compositerouteschemeFields[0].Descriptor()
+	// compositeroutescheme.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	compositeroutescheme.NameValidator = func() func(string) error {
+		validators := compositerouteschemeDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	errorpassthroughruleMixin := schema.ErrorPassthroughRule{}.Mixin()
 	errorpassthroughruleMixinFields0 := errorpassthroughruleMixin[0].Fields()
 	_ = errorpassthroughruleMixinFields0

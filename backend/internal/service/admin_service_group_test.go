@@ -52,6 +52,9 @@ func (s *groupRepoStubForAdmin) Create(_ context.Context, g *Group) error {
 
 func (s *groupRepoStubForAdmin) Update(_ context.Context, g *Group) error {
 	s.updated = g
+	if s.getByID != nil && g != nil && s.getByID.ID == g.ID {
+		s.getByID.CompositeRouteSchemeID = g.CompositeRouteSchemeID
+	}
 	return nil
 }
 
@@ -214,15 +217,17 @@ func TestNormalizeGroupModelPricing_NormalizesEmptyTimePricing(t *testing.T) {
 }
 
 type compositeRouteRepoStubForAdmin struct {
-	routes    []CompositeModelRoute
-	created   *CompositeModelRoute
-	updated   *CompositeModelRoute
-	deleted   []int64
-	nextID    int64
-	listErr   error
-	createErr error
-	updateErr error
-	deleteErr error
+	routes      []CompositeModelRoute
+	created     *CompositeModelRoute
+	updated     *CompositeModelRoute
+	deleted     []int64
+	nextID      int64
+	listErr     error
+	createErr   error
+	updateErr   error
+	deleteErr   error
+	countGroups int
+	schemes     []CompositeRouteScheme
 }
 
 func (s *compositeRouteRepoStubForAdmin) ListByGroup(_ context.Context, groupID int64, includeDisabled bool) ([]CompositeModelRoute, error) {
@@ -279,15 +284,87 @@ func (s *compositeRouteRepoStubForAdmin) Delete(_ context.Context, id int64) err
 	return nil
 }
 
-func (s *compositeRouteRepoStubForAdmin) DeleteByGroup(_ context.Context, groupID int64) error {
+func (s *compositeRouteRepoStubForAdmin) ListByScheme(_ context.Context, schemeID int64, includeDisabled bool) ([]CompositeModelRoute, error) {
+	if s.listErr != nil {
+		return nil, s.listErr
+	}
+	routes := make([]CompositeModelRoute, 0, len(s.routes))
+	for _, route := range s.routes {
+		if route.SchemeID != schemeID {
+			continue
+		}
+		if !includeDisabled && !route.Enabled {
+			continue
+		}
+		routes = append(routes, route)
+	}
+	return routes, nil
+}
+
+func (s *compositeRouteRepoStubForAdmin) GetByID(_ context.Context, id int64) (*CompositeModelRoute, error) {
+	for i := range s.routes {
+		if s.routes[i].ID == id {
+			cloned := s.routes[i]
+			return &cloned, nil
+		}
+	}
+	return nil, ErrCompositeRouteNotFound
+}
+
+func (s *compositeRouteRepoStubForAdmin) DeleteByScheme(_ context.Context, schemeID int64) error {
 	next := s.routes[:0]
 	for _, route := range s.routes {
-		if route.GroupID != groupID {
+		if route.SchemeID != schemeID {
 			next = append(next, route)
 		}
 	}
 	s.routes = next
 	return nil
+}
+
+func (s *compositeRouteRepoStubForAdmin) ListSchemes(context.Context) ([]CompositeRouteScheme, error) {
+	return nil, nil
+}
+
+func (s *compositeRouteRepoStubForAdmin) GetScheme(_ context.Context, id int64) (*CompositeRouteScheme, error) {
+	for i := range s.schemes {
+		if s.schemes[i].ID == id {
+			cloned := s.schemes[i]
+			return &cloned, nil
+		}
+	}
+	if id <= 0 {
+		return nil, ErrCompositeRouteSchemeNotFound
+	}
+	return &CompositeRouteScheme{ID: id, Name: "scheme"}, nil
+}
+
+func (s *compositeRouteRepoStubForAdmin) CreateScheme(_ context.Context, scheme *CompositeRouteScheme) error {
+	if scheme == nil {
+		return ErrCompositeRouteSchemeNotFound
+	}
+	if s.nextID > 0 {
+		scheme.ID = s.nextID
+	} else {
+		scheme.ID = 1
+	}
+	s.schemes = append(s.schemes, *scheme)
+	return nil
+}
+
+func (s *compositeRouteRepoStubForAdmin) UpdateScheme(_ context.Context, scheme *CompositeRouteScheme) error {
+	if scheme == nil {
+		return ErrCompositeRouteSchemeNotFound
+	}
+	return nil
+}
+
+func (s *compositeRouteRepoStubForAdmin) DeleteScheme(context.Context, int64) error {
+	return nil
+}
+
+func (s *compositeRouteRepoStubForAdmin) CountGroupsByScheme(context.Context, int64) (int, error) {
+	return s.countGroups, nil
 }
 
 func TestAdminService_ListGroups_PassesSortParams(t *testing.T) {

@@ -53,6 +53,17 @@ type AdminService interface {
 	UpdateCompositeRoute(ctx context.Context, groupID, routeID int64, input CompositeRouteInput) (*CompositeModelRoute, error)
 	DeleteCompositeRoute(ctx context.Context, groupID, routeID int64) error
 	PreviewCompositeRoute(ctx context.Context, groupID int64, input CompositeRoutePreviewRequest) (*CompositeRouteDecision, error)
+	ListCompositeRouteSchemes(ctx context.Context) ([]CompositeRouteScheme, error)
+	GetCompositeRouteScheme(ctx context.Context, id int64) (*CompositeRouteScheme, error)
+	CreateCompositeRouteScheme(ctx context.Context, input CompositeRouteSchemeInput) (*CompositeRouteScheme, error)
+	UpdateCompositeRouteScheme(ctx context.Context, id int64, input CompositeRouteSchemeInput) (*CompositeRouteScheme, error)
+	DeleteCompositeRouteScheme(ctx context.Context, id int64) error
+	DuplicateCompositeRouteScheme(ctx context.Context, id int64, name string) (*CompositeRouteScheme, error)
+	ListCompositeRouteSchemeRoutes(ctx context.Context, schemeID int64) ([]CompositeModelRoute, error)
+	CreateCompositeRouteSchemeRoute(ctx context.Context, schemeID int64, input CompositeRouteInput) (*CompositeModelRoute, error)
+	UpdateCompositeRouteSchemeRoute(ctx context.Context, schemeID, routeID int64, input CompositeRouteInput) (*CompositeModelRoute, error)
+	DeleteCompositeRouteSchemeRoute(ctx context.Context, schemeID, routeID int64) error
+	PreviewCompositeRouteScheme(ctx context.Context, schemeID int64, input CompositeRoutePreviewRequest) (*CompositeRouteDecision, error)
 	GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error)
 	GetGroupRateMultipliers(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error)
 	ClearGroupRateMultipliers(ctx context.Context, groupID int64) error
@@ -287,6 +298,8 @@ type CreateGroupInput struct {
 	ProfitSafetyBuffer   *float64
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
 	CopyAccountsFromGroupIDs []int64
+	// Composite 分组绑定的路由方案；nil/0 表示不绑定
+	CompositeRouteSchemeID *int64
 }
 
 type UpdateGroupInput struct {
@@ -366,6 +379,8 @@ type UpdateGroupInput struct {
 	ProfitSafetyBuffer   *float64
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
+	// Composite 分组绑定的路由方案；nil 表示不修改，0 表示清除
+	CompositeRouteSchemeID *int64
 }
 
 type CreateAccountInput struct {

@@ -46,8 +46,50 @@ func (s compositeRouteRepoStub) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (s compositeRouteRepoStub) DeleteByGroup(ctx context.Context, groupID int64) error {
+func (s compositeRouteRepoStub) ListByScheme(ctx context.Context, schemeID int64, includeDisabled bool) ([]service.CompositeModelRoute, error) {
+	routes := make([]service.CompositeModelRoute, 0, len(s.routes))
+	for _, route := range s.routes {
+		if route.SchemeID != schemeID {
+			continue
+		}
+		if !includeDisabled && !route.Enabled {
+			continue
+		}
+		routes = append(routes, route)
+	}
+	return routes, nil
+}
+
+func (s compositeRouteRepoStub) GetByID(ctx context.Context, id int64) (*service.CompositeModelRoute, error) {
+	return nil, service.ErrCompositeRouteNotFound
+}
+
+func (s compositeRouteRepoStub) DeleteByScheme(ctx context.Context, schemeID int64) error {
 	return nil
+}
+
+func (s compositeRouteRepoStub) ListSchemes(ctx context.Context) ([]service.CompositeRouteScheme, error) {
+	return nil, nil
+}
+
+func (s compositeRouteRepoStub) GetScheme(ctx context.Context, id int64) (*service.CompositeRouteScheme, error) {
+	return &service.CompositeRouteScheme{ID: id}, nil
+}
+
+func (s compositeRouteRepoStub) CreateScheme(ctx context.Context, scheme *service.CompositeRouteScheme) error {
+	return nil
+}
+
+func (s compositeRouteRepoStub) UpdateScheme(ctx context.Context, scheme *service.CompositeRouteScheme) error {
+	return nil
+}
+
+func (s compositeRouteRepoStub) DeleteScheme(ctx context.Context, id int64) error {
+	return nil
+}
+
+func (s compositeRouteRepoStub) CountGroupsByScheme(ctx context.Context, schemeID int64) (int, error) {
+	return 0, nil
 }
 
 func TestCompositeTargetPlatformMiddlewareResolvesModelAndRestoresBody(t *testing.T) {

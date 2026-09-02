@@ -299,6 +299,10 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(0).
 			Comment("安全缓冲，小数；与 margin 相加后从下游倍率中扣除，默认 0"),
+		field.Int64("composite_route_scheme_id").
+			Optional().
+			Nillable().
+			Comment("Composite 分组绑定的路由方案；空表示仅走内置识别"),
 	}
 }
 
@@ -314,6 +318,9 @@ func (Group) Edges() []ent.Edge {
 		edge.From("allowed_users", User.Type).
 			Ref("allowed_groups").
 			Through("user_allowed_groups", UserAllowedGroup.Type),
+		edge.To("composite_route_scheme", CompositeRouteScheme.Type).
+			Unique().
+			Field("composite_route_scheme_id"),
 		// 注意：fallback_group_id 直接作为字段使用，不定义 edge
 		// 这样允许多个分组指向同一个降级分组（M2O 关系）
 	}
@@ -332,5 +339,6 @@ func (Group) Indexes() []ent.Index {
 			Unique().
 			StorageKey("idx_groups_duplicate_operation_id_active").
 			Annotations(entsql.IndexWhere("duplicate_operation_id IS NOT NULL AND deleted_at IS NULL")),
+		index.Fields("composite_route_scheme_id"),
 	}
 }

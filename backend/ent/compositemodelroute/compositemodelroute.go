@@ -21,8 +21,8 @@ const (
 	FieldUpdatedAt = "updated_at"
 	// FieldDeletedAt holds the string denoting the deleted_at field in the database.
 	FieldDeletedAt = "deleted_at"
-	// FieldGroupID holds the string denoting the group_id field in the database.
-	FieldGroupID = "group_id"
+	// FieldSchemeID holds the string denoting the scheme_id field in the database.
+	FieldSchemeID = "scheme_id"
 	// FieldPublicModel holds the string denoting the public_model field in the database.
 	FieldPublicModel = "public_model"
 	// FieldMatchType holds the string denoting the match_type field in the database.
@@ -39,17 +39,17 @@ const (
 	FieldEnabled = "enabled"
 	// FieldNotes holds the string denoting the notes field in the database.
 	FieldNotes = "notes"
-	// EdgeGroup holds the string denoting the group edge name in mutations.
-	EdgeGroup = "group"
+	// EdgeScheme holds the string denoting the scheme edge name in mutations.
+	EdgeScheme = "scheme"
 	// Table holds the table name of the compositemodelroute in the database.
 	Table = "composite_model_routes"
-	// GroupTable is the table that holds the group relation/edge.
-	GroupTable = "composite_model_routes"
-	// GroupInverseTable is the table name for the Group entity.
-	// It exists in this package in order to avoid circular dependency with the "group" package.
-	GroupInverseTable = "groups"
-	// GroupColumn is the table column denoting the group relation/edge.
-	GroupColumn = "group_id"
+	// SchemeTable is the table that holds the scheme relation/edge.
+	SchemeTable = "composite_model_routes"
+	// SchemeInverseTable is the table name for the CompositeRouteScheme entity.
+	// It exists in this package in order to avoid circular dependency with the "compositeroutescheme" package.
+	SchemeInverseTable = "composite_route_schemes"
+	// SchemeColumn is the table column denoting the scheme relation/edge.
+	SchemeColumn = "scheme_id"
 )
 
 // Columns holds all SQL columns for compositemodelroute fields.
@@ -58,7 +58,7 @@ var Columns = []string{
 	FieldCreatedAt,
 	FieldUpdatedAt,
 	FieldDeletedAt,
-	FieldGroupID,
+	FieldSchemeID,
 	FieldPublicModel,
 	FieldMatchType,
 	FieldTargetPlatform,
@@ -140,9 +140,9 @@ func ByDeletedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDeletedAt, opts...).ToFunc()
 }
 
-// ByGroupID orders the results by the group_id field.
-func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldGroupID, opts...).ToFunc()
+// BySchemeID orders the results by the scheme_id field.
+func BySchemeID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSchemeID, opts...).ToFunc()
 }
 
 // ByPublicModel orders the results by the public_model field.
@@ -185,16 +185,16 @@ func ByNotes(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldNotes, opts...).ToFunc()
 }
 
-// ByGroupField orders the results by group field.
-func ByGroupField(field string, opts ...sql.OrderTermOption) OrderOption {
+// BySchemeField orders the results by scheme field.
+func BySchemeField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newGroupStep(), sql.OrderByField(field, opts...))
+		sqlgraph.OrderByNeighborTerms(s, newSchemeStep(), sql.OrderByField(field, opts...))
 	}
 }
-func newGroupStep() *sqlgraph.Step {
+func newSchemeStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(GroupInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.M2O, false, GroupTable, GroupColumn),
+		sqlgraph.To(SchemeInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, true, SchemeTable, SchemeColumn),
 	)
 }

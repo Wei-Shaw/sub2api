@@ -37,15 +37,36 @@ type CompositeModelOwnership struct {
 type CompositeModelOwnershipResolver func(context.Context, int64, string) (CompositeModelOwnership, error)
 
 var (
-	ErrCompositeRouteNotFound = infraerrors.NotFound("COMPOSITE_ROUTE_NOT_FOUND", "composite route not found")
-	ErrCompositeRouteExists   = infraerrors.Conflict("COMPOSITE_ROUTE_EXISTS", "composite route already exists")
+	ErrCompositeRouteNotFound       = infraerrors.NotFound("COMPOSITE_ROUTE_NOT_FOUND", "composite route not found")
+	ErrCompositeRouteExists         = infraerrors.Conflict("COMPOSITE_ROUTE_EXISTS", "composite route already exists")
+	ErrCompositeRouteSchemeNotFound = infraerrors.NotFound("COMPOSITE_ROUTE_SCHEME_NOT_FOUND", "composite route scheme not found")
+	ErrCompositeRouteSchemeExists   = infraerrors.Conflict("COMPOSITE_ROUTE_SCHEME_EXISTS", "composite route scheme already exists")
+	ErrCompositeRouteSchemeInUse    = infraerrors.Conflict("COMPOSITE_ROUTE_SCHEME_IN_USE", "composite route scheme is bound to groups")
 )
+
+// CompositeRouteScheme is a reusable named collection of composite model routes.
+type CompositeRouteScheme struct {
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	RouteCount  int       `json:"route_count"`
+	GroupCount  int       `json:"group_count"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type CompositeRouteSchemeInput struct {
+	Name             string
+	Description      string
+	CopyFromSchemeID int64
+}
 
 // CompositeModelRoute maps one public model identifier in a composite group to
 // the concrete provider/model that should handle the request.
 type CompositeModelRoute struct {
 	ID             int64     `json:"id"`
-	GroupID        int64     `json:"group_id"`
+	SchemeID       int64     `json:"scheme_id"`
+	GroupID        int64     `json:"group_id,omitempty"`
 	PublicModel    string    `json:"public_model"`
 	MatchType      string    `json:"match_type"`
 	TargetPlatform string    `json:"target_platform"`
@@ -88,10 +109,18 @@ type CompositeRouteInput struct {
 
 type CompositeModelRouteRepository interface {
 	ListByGroup(ctx context.Context, groupID int64, includeDisabled bool) ([]CompositeModelRoute, error)
+	ListByScheme(ctx context.Context, schemeID int64, includeDisabled bool) ([]CompositeModelRoute, error)
+	GetByID(ctx context.Context, id int64) (*CompositeModelRoute, error)
 	Create(ctx context.Context, route *CompositeModelRoute) error
 	Update(ctx context.Context, route *CompositeModelRoute) error
 	Delete(ctx context.Context, id int64) error
-	DeleteByGroup(ctx context.Context, groupID int64) error
+	DeleteByScheme(ctx context.Context, schemeID int64) error
+	ListSchemes(ctx context.Context) ([]CompositeRouteScheme, error)
+	GetScheme(ctx context.Context, id int64) (*CompositeRouteScheme, error)
+	CreateScheme(ctx context.Context, scheme *CompositeRouteScheme) error
+	UpdateScheme(ctx context.Context, scheme *CompositeRouteScheme) error
+	DeleteScheme(ctx context.Context, id int64) error
+	CountGroupsByScheme(ctx context.Context, schemeID int64) (int, error)
 }
 
 func normalizeCompositeRouteEndpoint(endpoint string) string {
