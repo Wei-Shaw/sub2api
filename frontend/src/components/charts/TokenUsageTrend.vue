@@ -1,7 +1,7 @@
 <template>
   <div class="card p-4">
     <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">
-      {{ t('admin.dashboard.tokenUsageTrend') }}
+      {{ metric === 'balance' ? t('dashboard.balanceUsageTrend') : t('dashboard.tokenUsageTrend') }}
     </h3>
     <div v-if="loading" class="flex h-48 items-center justify-center">
       <LoadingSpinner />
@@ -52,6 +52,7 @@ const { t } = useI18n()
 const props = defineProps<{
   trendData: TrendDataPoint[]
   loading?: boolean
+  metric?: 'tokens' | 'balance'
 }>()
 
 const isDarkMode = computed(() => {
@@ -65,11 +66,28 @@ const chartColors = computed(() => ({
   output: '#10b981',
   cacheCreation: '#f59e0b',
   cacheRead: '#06b6d4',
-  cacheHitRate: '#8b5cf6'
+  cacheHitRate: '#8b5cf6',
+  balance: '#22c55e'
 }))
 
 const chartData = computed(() => {
   if (!props.trendData?.length) return null
+
+  if (props.metric === 'balance') {
+    return {
+      labels: props.trendData.map((d) => d.date),
+      datasets: [
+        {
+          label: t('dashboard.balanceMode'),
+          data: props.trendData.map((d) => d.actual_cost),
+          borderColor: chartColors.value.balance,
+          backgroundColor: `${chartColors.value.balance}20`,
+          fill: true,
+          tension: 0.3
+        }
+      ]
+    }
+  }
 
   return {
     labels: props.trendData.map((d) => d.date),
@@ -123,46 +141,8 @@ const chartData = computed(() => {
   }
 })
 
-const lineOptions = computed(() => ({
-  responsive: true,
-  maintainAspectRatio: false,
-  interaction: {
-    intersect: false,
-    mode: 'index' as const
-  },
-  plugins: {
-    legend: {
-      position: 'top' as const,
-      labels: {
-        color: chartColors.value.text,
-        usePointStyle: true,
-        pointStyle: 'circle',
-        padding: 15,
-        font: {
-          size: 11
-        }
-      }
-    },
-    tooltip: {
-      callbacks: {
-        label: (context: any) => {
-          if (context.dataset.yAxisID === 'yPercent') {
-            return `${context.dataset.label}: ${context.raw.toFixed(1)}%`
-          }
-          return `${context.dataset.label}: ${formatTokens(context.raw)}`
-        },
-        footer: (tooltipItems: any) => {
-          const dataIndex = tooltipItems[0]?.dataIndex
-          if (dataIndex !== undefined && props.trendData[dataIndex]) {
-            const data = props.trendData[dataIndex]
-            return `Actual: $${formatCost(data.actual_cost)} | Standard: $${formatCost(data.cost)}`
-          }
-          return ''
-        }
-      }
-    }
-  },
-  scales: {
+const lineOptions = computed(() => {
+  const scales: any = {
     x: {
       grid: {
         color: chartColors.value.grid
@@ -183,10 +163,15 @@ const lineOptions = computed(() => ({
         font: {
           size: 10
         },
-        callback: (value: string | number) => formatTokens(Number(value))
+        callback: (value: string | number) => props.metric === 'balance'
+          ? `$${formatCost(Number(value))}`
+          : formatTokens(Number(value))
       }
-    },
-    yPercent: {
+    }
+  }
+
+  if (props.metric !== 'balance') {
+    scales.yPercent = {
       position: 'right' as const,
       min: 0,
       max: 100,
@@ -202,7 +187,54 @@ const lineOptions = computed(() => ({
       }
     }
   }
-}))
+
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      intersect: false,
+      mode: 'index' as const
+    },
+    plugins: {
+      legend: {
+        position: 'top' as const,
+        labels: {
+          color: chartColors.value.text,
+          usePointStyle: true,
+          pointStyle: 'circle',
+          padding: 15,
+          font: {
+            size: 11
+          }
+        }
+      },
+      tooltip: {
+        callbacks: {
+          label: (context: any) => {
+            if (props.metric === 'balance') {
+              return `${context.dataset.label}: $${formatCost(context.raw)}`
+            }
+            if (context.dataset.yAxisID === 'yPercent') {
+              return `${context.dataset.label}: ${context.raw.toFixed(1)}%`
+            }
+            return `${context.dataset.label}: ${formatTokens(context.raw)}`
+          },
+          footer: (tooltipItems: any) => {
+            const dataIndex = tooltipItems[0]?.dataIndex
+            if (dataIndex !== undefined && props.trendData[dataIndex]) {
+              const data = props.trendData[dataIndex]
+              return props.metric === 'balance'
+                ? `${t('dashboard.tokens')}: ${formatTokens(data.total_tokens)}`
+                : `Actual: $${formatCost(data.actual_cost)} | Standard: $${formatCost(data.cost)}`
+            }
+            return ''
+          }
+        }
+      }
+    },
+    scales
+  }
+})
 
 const formatTokens = (value: number): string => {
   if (value >= 1_000_000_000) {
