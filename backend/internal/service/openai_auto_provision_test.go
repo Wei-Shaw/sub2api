@@ -5,6 +5,98 @@ import (
 	"time"
 )
 
+func TestOpenAIProvisionPlanDoesNotProvisionWithoutRecentDemand(t *testing.T) {
+	plan := calculateOpenAIProvisionPlan(OpenAIProvisionDemand{}, 1, 0, 100, time.Now().UTC())
+	if plan.ShouldProvision {
+		t.Fatalf("idle pool should not provision: %#v", plan)
+	}
+	if plan.RequestedCount != 0 {
+		t.Fatalf("idle pool requested %d accounts, want 0", plan.RequestedCount)
+	}
+}
+
+func TestOpenAIProvisionPlanDoesNotFillForSequentialUsers(t *testing.T) {
+	demand := OpenAIProvisionDemand{ActiveUsers: 3, Requests: 30, Tokens: 900_000}
+	plan := calculateOpenAIProvisionPlan(demand, 1, 1, 100, time.Now().UTC())
+	if plan.ShouldProvision {
+		t.Fatalf("one account with quota headroom should serve sequential users: %#v", plan)
+	}
+}
+
+func TestOpenAIProvisionPlanRespondsToCapacityDeniedUsers(t *testing.T) {
+	demand := OpenAIProvisionDemand{Requests: 2, CapacityDeniedUsers: 3, CapacityDeniedRequests: 6}
+	plan := calculateOpenAIProvisionPlan(demand, 1, 1, 100, time.Now().UTC())
+	if plan.RequestedCount != 1 {
+		t.Fatalf("requested %d accounts, want one conservative step-up for blocked users", plan.RequestedCount)
+	}
+}
+
+func TestOpenAIProvisionPlanRespondsToNearExhaustedQuotaWithTraffic(t *testing.T) {
+	demand := OpenAIProvisionDemand{Requests: 4, Tokens: openAIProvisionMinimumPrewarmTokens}
+	plan := calculateOpenAIProvisionPlan(demand, 1, 0.15, 10, time.Now().UTC())
+	if plan.RequestedCount != 1 {
+		t.Fatalf("requested %d accounts, want one prewarmed replacement for near-exhausted capacity", plan.RequestedCount)
+	}
+}
+
+func TestOpenAIProvisionPlanIgnoresNegligibleNearExhaustedTraffic(t *testing.T) {
+	plan := calculateOpenAIProvisionPlan(
+		OpenAIProvisionDemand{Requests: 1, Tokens: openAIProvisionMinimumPrewarmTokens - 1},
+		1,
+		0.15,
+		10,
+		time.Now().UTC(),
+	)
+	if plan.ShouldProvision {
+		t.Fatalf("negligible near-exhausted traffic should not prewarm: %#v", plan)
+	}
+}
+
+func TestOpenAIProvisionPlanCapsBurstStepUp(t *testing.T) {
+	plan := calculateOpenAIProvisionPlan(
+		OpenAIProvisionDemand{Requests: 100, CapacityDeniedUsers: 100, CapacityDeniedRequests: 100},
+		1,
+		1,
+		100,
+		time.Now().UTC(),
+	)
+	if plan.RequestedCount != openAIProvisionMaxImmediateAccounts {
+		t.Fatalf("requested %d accounts, want capped step-up of %d", plan.RequestedCount, openAIProvisionMaxImmediateAccounts)
+	}
+}
+
+func TestOpenAIProvisionPlanDoesNotProvisionWithUsableQuotaHeadroom(t *testing.T) {
+	plan := calculateOpenAIProvisionPlan(
+		OpenAIProvisionDemand{ActiveUsers: 1, Requests: 1, Tokens: 100},
+		1,
+		0.80,
+		10,
+		time.Now().UTC(),
+	)
+	if plan.ShouldProvision {
+		t.Fatalf("usable quota headroom should not provision: %#v", plan)
+	}
+}
+
+func TestOpenAIPoolEffectiveCapacityUsesQuotaHeadroom(t *testing.T) {
+	now := time.Now().UTC()
+	baseExtra := map[string]any{
+		"codex_usage_updated_at": now.Format(time.RFC3339),
+		"codex_5h_reset_at":      now.Add(time.Hour).Format(time.RFC3339),
+		"codex_5h_used_percent":  90.0,
+	}
+	if got := openAIPoolEffectiveCapacity([]Account{{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: baseExtra}}, now); got != 0 {
+		t.Fatalf("near-exhausted account effective capacity = %v, want 0", got)
+	}
+	baseExtra["codex_5h_used_percent"] = 20.0
+	if got := openAIPoolEffectiveCapacity([]Account{{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: baseExtra}}, now); got != 1 {
+		t.Fatalf("healthy quota effective capacity = %v, want 1", got)
+	}
+	if got := openAIPoolEffectiveCapacity([]Account{{Platform: PlatformOpenAI, Type: AccountTypeOAuth}}, now); got != 1 {
+		t.Fatalf("unknown quota snapshot effective capacity = %v, want 1", got)
+	}
+}
+
 func TestCountHealthyOpenAIOAuthAccounts(t *testing.T) {
 	accounts := []Account{
 		{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true},
@@ -16,6 +108,21 @@ func TestCountHealthyOpenAIOAuthAccounts(t *testing.T) {
 
 	if got := countHealthyOpenAIOAuthAccounts(accounts); got != 1 {
 		t.Fatalf("countHealthyOpenAIOAuthAccounts() = %d, want 1", got)
+	}
+}
+
+func TestCountProvisionableOpenAIOAuthAccountsExcludesQuotaExhausted(t *testing.T) {
+	now := time.Now().UTC()
+	accounts := []Account{
+		{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Extra: map[string]any{
+			"codex_usage_updated_at": now.Format(time.RFC3339),
+			"codex_5h_reset_at":      now.Add(time.Hour).Format(time.RFC3339),
+			"codex_5h_used_percent":  100.0,
+		}},
+		{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true},
+	}
+	if got := countProvisionableOpenAIOAuthAccounts(accounts, now); got != 1 {
+		t.Fatalf("countProvisionableOpenAIOAuthAccounts() = %d, want 1", got)
 	}
 }
 

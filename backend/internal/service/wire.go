@@ -1131,8 +1131,10 @@ func ProvideOpenAIAutoProvisionService(
 	lockCache LeaderLockCache,
 	db *sql.DB,
 	tokenRefresh *TokenRefreshService,
+	demandService *OpenAIProvisionDemandService,
 ) *OpenAIAutoProvisionService {
 	svc := NewOpenAIAutoProvisionService(accountRepo, adminService, settingService, settingRepo, openaiOAuth, nil, lockCache, db)
+	svc.SetOpenAIProvisionDemandReader(demandService)
 	if tokenRefresh != nil {
 		tokenRefresh.SetOpenAIReauthorizationDispatcher(svc)
 		tokenRefresh.Start()

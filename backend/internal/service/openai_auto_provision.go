@@ -29,6 +29,7 @@ type openAIAutoProvisionAccountWriter interface {
 
 type OpenAIAutoProvisionService struct {
 	accounts    openAIAutoProvisionAccountReader
+	demand      OpenAIProvisionDemandReader
 	admin       openAIAutoProvisionAccountWriter
 	settings    *SettingService
 	settingRepo SettingRepository
@@ -41,6 +42,14 @@ type OpenAIAutoProvisionService struct {
 	lifecycleMu sync.Mutex
 	stop        context.CancelFunc
 	started     bool
+}
+
+// SetOpenAIProvisionDemandReader enables demand-aware replenishment.
+func (s *OpenAIAutoProvisionService) SetOpenAIProvisionDemandReader(reader OpenAIProvisionDemandReader) {
+	if s == nil {
+		return
+	}
+	s.demand = reader
 }
 
 func NewOpenAIAutoProvisionService(
@@ -228,6 +237,40 @@ func (s *OpenAIAutoProvisionService) RunOnce(ctx context.Context) error {
 		return fmt.Errorf("list healthy OpenAI accounts: %w", err)
 	}
 
+	now := time.Now().UTC()
+	stateBeforeDemand, stateErr := s.readState(ctx)
+	if stateErr != nil {
+		s.recordAutoProvisionError(ctx, stateErr)
+		return stateErr
+	}
+	requestedCount := 0
+	if stateBeforeDemand.Provision == nil {
+		if s.demand == nil {
+			err := errors.New("openai auto-provision demand reader is unavailable")
+			s.recordAutoProvisionError(ctx, err)
+			return err
+		}
+		demand, demandErr := s.demand.GetOpenAIProvisionDemand(ctx, now.Add(-openAIProvisionDemandWindow), now)
+		if demandErr != nil {
+			checkCompletedAt := time.Now().UTC()
+			_ = s.updateState(ctx, func(state *autoProvisionState) error {
+				state.CheckInProgress = false
+				state.LastCheckCompletedAt = &checkCompletedAt
+				state.LastCheckError = demandErr.Error()
+				return nil
+			})
+			return fmt.Errorf("load recent OpenAI demand: %w", demandErr)
+		}
+		plan := calculateOpenAIProvisionPlan(
+			demand,
+			countProvisionableOpenAIOAuthAccounts(healthyAccounts, now),
+			openAIPoolEffectiveCapacity(healthyAccounts, now),
+			cfg.target,
+			now,
+		)
+		requestedCount = plan.RequestedCount
+	}
+
 	var provision *openAIProvisionCommand
 	err = s.updateState(ctx, func(state *autoProvisionState) error {
 		pruneAutoProvisionState(state, time.Now().UTC())
@@ -248,24 +291,23 @@ func (s *OpenAIAutoProvisionService) RunOnce(ctx context.Context) error {
 				EmailSource: cfg.emailSource, CallbackURL: cfg.callbackURL,
 			}
 		} else if cfg.enabled && state.Provision == nil {
-			deficit := openAIProvisionDeficit(countHealthyOpenAIOAuthAccounts(healthyAccounts), cfg.target)
-			if deficit > 0 {
-				if deficit > maxAutoProvisionBatch {
-					deficit = maxAutoProvisionBatch
+			if requestedCount > 0 {
+				if requestedCount > maxAutoProvisionBatch {
+					requestedCount = maxAutoProvisionBatch
 				}
 				pending := &autoProvisionPending{
 					RequestID:      newAutoProvisionRequestID(),
-					RequestedCount: deficit,
+					RequestedCount: requestedCount,
 					CreatedAt:      time.Now().UTC(),
 				}
 				state.Provision = pending
 				state.ProvisionDispatchInProgress = true
 				state.ProvisionDispatchStartedAt = &pending.CreatedAt
 				state.ProvisionRetryRequested = false
-				state.LastProvisionRequestedCount = deficit
+				state.LastProvisionRequestedCount = requestedCount
 				state.LastProvisionRequestedAt = &pending.CreatedAt
 				provision = &openAIProvisionCommand{
-					RequestID: pending.RequestID, Count: deficit, Workers: cfg.workers,
+					RequestID: pending.RequestID, Count: requestedCount, Workers: cfg.workers,
 					EmailSource: cfg.emailSource, CallbackURL: cfg.callbackURL,
 				}
 			}

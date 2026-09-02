@@ -103,7 +103,7 @@ func TestOpsCaptureWriter_CompactKeepaliveRestoresOriginalWriter(t *testing.T) {
 		c.Next()
 		outerStatus = c.Writer.Status()
 	})
-	router.Use(OpsErrorLoggerMiddleware(nil))
+	router.Use(OpsErrorLoggerMiddleware(nil, nil))
 	router.GET("/compact", func(c *gin.Context) {
 		service.MarkOpenAICompactClientStream(c)
 		stop := service.StartOpenAICompactSSEKeepalive(c, time.Hour)

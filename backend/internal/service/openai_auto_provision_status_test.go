@@ -44,6 +44,9 @@ func TestOpenAIAutoProvisionRuntimeStatusTracksRequestAndCallback(t *testing.T) 
 		nil,
 		nil,
 	)
+	service.SetOpenAIProvisionDemandReader(openAIAutoProvisionFlowDemandReader{
+		demand: OpenAIProvisionDemand{ActiveUsers: 3, Requests: 30, Tokens: 900_000, CapacityDeniedUsers: 3, CapacityDeniedRequests: 3},
+	})
 	ctx := context.Background()
 
 	require.NoError(t, service.RunOnce(ctx))
@@ -52,15 +55,15 @@ func TestOpenAIAutoProvisionRuntimeStatusTracksRequestAndCallback(t *testing.T) 
 	require.Equal(t, "waiting_for_provision_callback", status.Phase)
 	require.Equal(t, 1, status.HealthyAccountCount)
 	require.Equal(t, 3, status.Target)
-	require.Equal(t, 2, status.PendingProvisionCount)
-	require.Equal(t, 2, status.LastProvisionRequestedCount)
+	require.Equal(t, 1, status.PendingProvisionCount)
+	require.Equal(t, 1, status.LastProvisionRequestedCount)
 	require.NotNil(t, status.LastCheckCompletedAt)
 	require.NotNil(t, status.LastProvisionRequestedAt)
 
 	stale := time.Now().UTC().Add(-autoProvisionDispatchStaleTTL - time.Second)
 	require.NoError(t, settingsRepo.Set(ctx, autoProvisionStateKey, mustMarshalAutoProvisionState(t, &autoProvisionState{
 		Version:   autoProvisionStateVersion,
-		Provision: &autoProvisionPending{RequestID: client.provision[0].RequestID, RequestedCount: 2, CreatedAt: stale},
+		Provision: &autoProvisionPending{RequestID: client.provision[0].RequestID, RequestedCount: 1, CreatedAt: stale},
 	})))
 	require.NoError(t, service.ResetProvisioningStatus(ctx))
 	status, err = service.GetRuntimeStatus(ctx)
@@ -81,21 +84,21 @@ func TestOpenAIAutoProvisionRuntimeStatusTracksRequestAndCallback(t *testing.T) 
 		EventID:        client.provision[0].RequestID + ":registration:completed",
 		Kind:           "registration",
 		Status:         "completed",
-		RequestedCount: 2,
+		RequestedCount: 1,
 		SucceededCount: 1,
 	})
 	require.NoError(t, lateErr)
 	require.False(t, lateReplay)
 	status, err = service.GetRuntimeStatus(ctx)
 	require.NoError(t, err)
-	require.Equal(t, 2, status.PendingProvisionCount)
+	require.Equal(t, 1, status.PendingProvisionCount)
 
 	replay, err := service.HandleProvisionCallback(ctx, OpenAIAutoProvisionCallback{
 		RequestID:      client.provision[1].RequestID,
 		EventID:        client.provision[1].RequestID + ":registration:completed",
 		Kind:           "registration",
 		Status:         "completed",
-		RequestedCount: 2,
+		RequestedCount: 1,
 		SucceededCount: 1,
 		FailedCount:    1,
 		PendingCount:   0,
@@ -177,7 +180,7 @@ func newOpenAIAutoProvisionStatusTestService(t *testing.T) (*OpenAIAutoProvision
 			Credentials: map[string]any{"email": "healthy@example.com"},
 		},
 	}}
-	return NewOpenAIAutoProvisionService(
+	service := NewOpenAIAutoProvisionService(
 		accounts,
 		accounts,
 		NewSettingService(settingsRepo, &config.Config{}),
@@ -186,7 +189,11 @@ func newOpenAIAutoProvisionStatusTestService(t *testing.T) (*OpenAIAutoProvision
 		&openAIAutoProvisionFlowClient{},
 		nil,
 		nil,
-	), settingsRepo
+	)
+	service.SetOpenAIProvisionDemandReader(openAIAutoProvisionFlowDemandReader{
+		demand: OpenAIProvisionDemand{ActiveUsers: 3, Requests: 30, Tokens: 900_000, CapacityDeniedUsers: 3, CapacityDeniedRequests: 3},
+	})
+	return service, settingsRepo
 }
 
 func mustMarshalAutoProvisionState(t *testing.T, state *autoProvisionState) string {
