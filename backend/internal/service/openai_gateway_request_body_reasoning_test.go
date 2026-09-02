@@ -353,3 +353,60 @@ func TestNormalizeOpenAIParallelToolCallsWithoutTools_KeepsResponsesLiteAddition
 	require.False(t, changed)
 	require.Equal(t, gjson.False, gjson.GetBytes(normalized, "parallel_tool_calls").Type)
 }
+
+func TestNormalizeOpenAIResponsesReasoningContentReplayStripsCrossProviderArray(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","input":[` +
+		`{"type":"message","role":"user","content":"one"},` +
+		`{"type":"message","role":"assistant","content":"two"},` +
+		`{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"{}"},` +
+		`{"type":"function_call_output","call_id":"call_1","output":"ok"},` +
+		`{"type":"message","role":"user","content":"five"},` +
+		`{"type":"reasoning","id":"rs_provider","summary":[{"type":"summary_text","text":"portable"}],"content":[{"type":"reasoning_text","text":"visible reasoning"}],"opaque":9007199254740993},` +
+		`{"type":"message","role":"assistant","content":[{"type":"output_text","text":"answer"}]}` +
+		`]}`)
+
+	normalized, changed, err := normalizeOpenAIResponsesReasoningContentReplay(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "reasoning", gjson.GetBytes(normalized, "input.5.type").String())
+	require.False(t, gjson.GetBytes(normalized, "input.5.content").Exists())
+	require.Equal(t, "portable", gjson.GetBytes(normalized, "input.5.summary.0.text").String())
+	require.Equal(t, "9007199254740993", gjson.GetBytes(normalized, "input.5.opaque").Raw)
+	require.Equal(t, "answer", gjson.GetBytes(normalized, "input.6.content.0.text").String())
+}
+
+func TestNormalizeOpenAIResponsesReasoningContentReplayKeepsPortableShapes(t *testing.T) {
+	for _, body := range []string{
+		`{"input":[{"type":"reasoning","summary":[]}]}`,
+		`{"input":[{"type":"reasoning","content":[],"summary":[]}]}`,
+		`{"input":[{"type":"message","content":[{"type":"input_text","text":"keep"}]}]}`,
+	} {
+		normalized, changed, err := normalizeOpenAIResponsesReasoningContentReplay([]byte(body))
+		require.NoError(t, err)
+		require.False(t, changed)
+		require.JSONEq(t, body, string(normalized))
+	}
+}
+
+func TestNormalizeOpenAIResponsesWebSocketCompatibilityBodyStripsReasoningContentOnlyForOpenAI(t *testing.T) {
+	body := []byte(`{"type":"response.create","model":"gpt-5.6-sol","store":true,"input":[{"type":"reasoning","summary":[{"type":"summary_text","text":"keep"}],"content":[{"type":"reasoning_text","text":"remove"}]}]}`)
+	for _, accountType := range []string{AccountTypeAPIKey, AccountTypeOAuth} {
+		normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
+			Platform: PlatformOpenAI,
+			Type:     accountType,
+		}, false)
+		require.NoError(t, err)
+		require.True(t, changed)
+		require.False(t, gjson.GetBytes(normalized, "input.0.content").Exists())
+		require.Equal(t, "keep", gjson.GetBytes(normalized, "input.0.summary.0.text").String())
+	}
+
+	normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
+		Platform: PlatformZhipu,
+		Type:     AccountTypeAPIKey,
+	}, false)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.JSONEq(t, string(body), string(normalized))
+}

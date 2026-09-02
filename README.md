@@ -172,6 +172,11 @@ Please read the following carefully before using this project:
 <td>Thanks to APIMart for sponsoring this project! <a href="https://go.apimart.ai/gh-sub2api">APIMart</a> is a low-cost API platform for AI image and video generation — GPT-Image-2 from $0.006 per image, with 160+ images per dollar. One async API covers both image and video: submit a task, get an ID, and retrieve results via polling or callback. Batch tens of thousands of images without timeouts, and switch models without changing code. Pay as you go with no monthly fee — <a href="https://go.apimart.ai/gh-sub2api">sign up here</a> to get started.</td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://www.axisnow.io/"><img src="assets/partners/logos/axisnow.jpg" alt="AxisNow" width="150"></a></td>
+<td>Thanks to AxisNow for sponsoring this project! <a href="https://www.axisnow.io/">AxisNow</a> protects and accelerates websites and APIs, delivering an optimal access experience across mainland China and globally, while extending acceleration and security capabilities to native/mobile apps through client SDKs — <strong>self-hosted private-deployment CDN</strong> | <strong>subscription-based DDoS-protected CDN</strong> | <strong>autonomous, flexibly composable CDN network</strong>.</td>
+</tr>
+
 </table>
 
 ## Overview

@@ -72,6 +72,13 @@ func (s *gatewayModelsAccountRepoStub) ListByGroup(ctx context.Context, groupID 
 	return s.ListSchedulableByGroupID(ctx, groupID)
 }
 
+func (s *gatewayModelsAccountRepoStub) ListModelAvailabilityCandidates(ctx context.Context, groupID *int64, _ []string, _ bool) ([]service.Account, error) {
+	if groupID == nil {
+		return nil, nil
+	}
+	return s.ListSchedulableByGroupID(ctx, *groupID)
+}
+
 func newGatewayModelsHandlerForTest(repo service.AccountRepository) *GatewayHandler {
 	return &GatewayHandler{
 		gatewayService: service.NewGatewayService(
@@ -364,9 +371,38 @@ func TestGatewayModels_GeminiGroupFallsBackToGeminiModels(t *testing.T) {
 }
 
 func TestGatewayModels_Grok45AdvertisesReasoningEffortForGrokBuild(t *testing.T) {
+	assertGrokGatewayReasoningEfforts(t, 4409, "grok-4.5", []gatewayReasoningEffortOptionForTest{
+		{Value: "low", Label: "Low"},
+		{Value: "medium", Label: "Medium"},
+		{Value: "high", Label: "High", Default: true},
+	})
+}
+
+func TestGatewayModels_Grok46AdvertisesXHighReasoningEffortForGrokBuild(t *testing.T) {
+	xhighEfforts := []gatewayReasoningEffortOptionForTest{
+		{Value: "low", Label: "Low"},
+		{Value: "medium", Label: "Medium"},
+		{Value: "high", Label: "High", Default: true},
+		{Value: "xhigh", Label: "xHigh"},
+	}
+	tests := []struct {
+		groupID int64
+		model   string
+	}{
+		{groupID: 4410, model: "grok-4.6"},
+		{groupID: 4411, model: "grok-4.6-latest"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			assertGrokGatewayReasoningEfforts(t, tt.groupID, tt.model, xhighEfforts)
+		})
+	}
+}
+
+func assertGrokGatewayReasoningEfforts(t *testing.T, groupID int64, modelID string, want []gatewayReasoningEffortOptionForTest) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	groupID := int64(4409)
 	h := newGatewayModelsHandlerForTest(
 		&gatewayModelsAccountRepoStub{
 			byGroup: map[int64][]service.Account{
@@ -375,7 +411,7 @@ func TestGatewayModels_Grok45AdvertisesReasoningEffortForGrokBuild(t *testing.T)
 						ID:       1,
 						Platform: service.PlatformGrok,
 						Credentials: map[string]any{
-							"model_mapping": map[string]any{"grok-4.5": "grok-4.5"},
+							"model_mapping": map[string]any{modelID: modelID},
 						},
 					},
 				},
@@ -397,14 +433,10 @@ func TestGatewayModels_Grok45AdvertisesReasoningEffortForGrokBuild(t *testing.T)
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	require.Len(t, got.Data, 1)
 	model := got.Data[0]
-	require.Equal(t, "grok-4.5", model.ID)
+	require.Equal(t, modelID, model.ID)
 	require.True(t, model.SupportsReasoningEffort)
 	require.Equal(t, "high", model.ReasoningEffort)
-	require.Equal(t, []gatewayReasoningEffortOptionForTest{
-		{Value: "low", Label: "Low"},
-		{Value: "medium", Label: "Medium"},
-		{Value: "high", Label: "High", Default: true},
-	}, model.ReasoningEfforts)
+	require.Equal(t, want, model.ReasoningEfforts)
 }
 
 func TestGatewayModels_GeminiGroupFiltersMappedModelsByPlatform(t *testing.T) {

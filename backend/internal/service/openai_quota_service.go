@@ -225,6 +225,23 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 // consume) credits that already expired. Callers must treat this rejection as a
 // partial success — the upstream read itself is still valid.
 func (s *OpenAIQuotaService) CacheResetCreditsSnapshot(ctx context.Context, accountID int64, credits *OpenAIRateLimitResetCredits) error {
+	return s.cacheResetCreditsSnapshot(ctx, accountID, credits, nil)
+}
+
+// CachePostResetSnapshot persists the credits and usage windows observed after a reset.
+func (s *OpenAIQuotaService) CachePostResetSnapshot(ctx context.Context, accountID int64, usage *OpenAIQuotaUsage) error {
+	if usage == nil {
+		return s.cacheResetCreditsSnapshot(ctx, accountID, nil, nil)
+	}
+	return s.cacheResetCreditsSnapshot(
+		ctx,
+		accountID,
+		usage.RateLimitResetCredits,
+		buildOpenAIAutoResetUsageUpdates(usage, time.Now()),
+	)
+}
+
+func (s *OpenAIQuotaService) cacheResetCreditsSnapshot(ctx context.Context, accountID int64, credits *OpenAIRateLimitResetCredits, updates map[string]any) error {
 	if credits == nil || (credits.AvailableCount > 0 && len(credits.Credits) == 0) {
 		return infraerrors.New(
 			http.StatusBadGateway,
@@ -232,9 +249,11 @@ func (s *OpenAIQuotaService) CacheResetCreditsSnapshot(ctx context.Context, acco
 			"failed to refresh reset-credit expiration details; cached data was preserved",
 		)
 	}
-	if err := s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{
-		openaiQuotaResetCreditsKey: credits,
-	}); err != nil {
+	if updates == nil {
+		updates = make(map[string]any, 1)
+	}
+	updates[openaiQuotaResetCreditsKey] = credits
+	if err := s.accountRepo.UpdateExtra(ctx, accountID, updates); err != nil {
 		return infraerrors.New(
 			http.StatusInternalServerError,
 			"OPENAI_QUOTA_CACHE_WRITE_FAILED",

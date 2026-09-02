@@ -549,10 +549,10 @@ func TestForwardStreaming_ServiceTierPropagatedToResult(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 上游回显优先：请求 fast 但上游真实返回 default → 计费按标准价
+// 转发阶段分别保留最终出站 tier 与上游回显 tier
 // ---------------------------------------------------------------------------
 
-func TestForward_ResponsesUpstreamEchoesDefault_OverridesRequestFast(t *testing.T) {
+func TestForward_ResponsesKeepsOutboundAndObservedServiceTiersSeparate(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -591,14 +591,14 @@ func TestForward_ResponsesUpstreamEchoesDefault_OverridesRequestFast(t *testing.
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, result.ServiceTier)
-	require.Equal(t, "default", *result.ServiceTier,
-		"upstream-echoed default must override the client-requested fast tier for billing")
+	require.Equal(t, "priority", *result.ServiceTier)
+	require.Equal(t, "default", result.UpstreamResponseServiceTier)
 	// 非流式响应原样透传：客户端同样看到 default。
 	require.Contains(t, rec.Body.String(), `"service_tier":"default"`)
 	require.NotContains(t, rec.Body.String(), `"service_tier":"priority"`)
 }
 
-func TestForwardStreaming_UpstreamEchoesDefault_OverridesRequestFast(t *testing.T) {
+func TestForwardStreaming_KeepsOutboundAndObservedServiceTiersSeparate(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -638,13 +638,13 @@ func TestForwardStreaming_UpstreamEchoesDefault_OverridesRequestFast(t *testing.
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, result.ServiceTier)
-	require.Equal(t, "default", *result.ServiceTier,
-		"terminal SSE event's upstream-echoed default must win for billing")
+	require.Equal(t, "priority", *result.ServiceTier)
+	require.Equal(t, "default", result.UpstreamResponseServiceTier)
 	// 流式原样透传：客户端在终止事件里看到 default。
 	require.Contains(t, rec.Body.String(), `"service_tier":"default"`)
 }
 
-func TestForwardAsChatCompletions_UpstreamEchoesDefault_BillsStandard(t *testing.T) {
+func TestForwardAsChatCompletions_KeepsOutboundAndObservedServiceTiersSeparate(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -685,8 +685,8 @@ func TestForwardAsChatCompletions_UpstreamEchoesDefault_BillsStandard(t *testing
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, result.ServiceTier)
-	require.Equal(t, "default", *result.ServiceTier,
-		"CC bridge must bill on the upstream-echoed default, not the requested fast")
+	require.Equal(t, "priority", *result.ServiceTier)
+	require.Equal(t, "default", result.UpstreamResponseServiceTier)
 	// 缓冲转回 Chat Completions：客户端响应里如实回显 default。
 	require.Contains(t, rec.Body.String(), `"service_tier":"default"`)
 	require.NotContains(t, rec.Body.String(), `"service_tier":"priority"`)
@@ -782,7 +782,7 @@ func TestResolvedOpenAIUpstreamServiceTier(t *testing.T) {
 
 	priority := func() *string { v := "priority"; return &v }()
 
-	t.Run("upstream echo wins over outbound tier", func(t *testing.T) {
+	t.Run("upstream echo stays separate from outbound tier", func(t *testing.T) {
 		gin.SetMode(gin.TestMode)
 		c, _ := gin.CreateTestContext(nil)
 		observer := beginUpstreamResponseModelObservation(c)
@@ -790,7 +790,8 @@ func TestResolvedOpenAIUpstreamServiceTier(t *testing.T) {
 
 		got := resolvedOpenAIUpstreamServiceTier(c, priority)
 		require.NotNil(t, got)
-		require.Equal(t, "default", *got)
+		require.Equal(t, "priority", *got)
+		require.Equal(t, "default", observedUpstreamResponseServiceTier(c))
 	})
 
 	t.Run("no upstream echo falls back to outbound tier", func(t *testing.T) {
@@ -803,15 +804,15 @@ func TestResolvedOpenAIUpstreamServiceTier(t *testing.T) {
 		require.Equal(t, "priority", *got)
 	})
 
-	t.Run("upstream alias fast normalizes to priority", func(t *testing.T) {
+	t.Run("observed tier never promotes an untiered request", func(t *testing.T) {
 		gin.SetMode(gin.TestMode)
 		c, _ := gin.CreateTestContext(nil)
 		observer := beginUpstreamResponseModelObservation(c)
 		observer.ObserveOpenAI([]byte(`{"type":"response.completed","response":{"model":"gpt-5.5","service_tier":"fast"}}`), "response.completed")
 
 		got := resolvedOpenAIUpstreamServiceTier(c, nil)
-		require.NotNil(t, got)
-		require.Equal(t, "priority", *got)
+		require.Nil(t, got)
+		require.Equal(t, "priority", observedUpstreamResponseServiceTier(c))
 	})
 
 	t.Run("no observer keeps outbound tier", func(t *testing.T) {
@@ -824,13 +825,13 @@ func TestResolvedOpenAIUpstreamServiceTier(t *testing.T) {
 		require.Nil(t, resolvedOpenAIUpstreamServiceTier(nil, nil))
 	})
 
-	t.Run("local observer wins without gin context", func(t *testing.T) {
+	t.Run("local observer stays separate from outbound tier", func(t *testing.T) {
 		observer := &upstreamResponseModelObserver{}
 		observer.ObserveOpenAI([]byte(`{"type":"response.completed","response":{"model":"gpt-5.5","service_tier":"default"}}`), "response.completed")
 
 		got := resolvedOpenAIUpstreamServiceTierFromObserver(observer, priority)
 		require.NotNil(t, got)
-		require.Equal(t, "default", *got)
+		require.Equal(t, "priority", *got)
 	})
 
 	t.Run("nil local observer falls back to outbound tier", func(t *testing.T) {

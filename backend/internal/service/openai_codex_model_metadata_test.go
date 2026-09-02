@@ -198,8 +198,9 @@ func TestBuildCodexModelsManifestForGroupIntersectsDifferentMappedTargetsWithout
 	}
 }
 
-// Scenario: temporarily unschedulable mapped accounts still participate in capability intersection.
-func TestBuildCodexModelsManifestForGroupIntersectsUnschedulableMappedAccounts(t *testing.T) {
+// Scenario: accounts that leave the current scheduling pool only because of
+// transient state still participate in capability intersection.
+func TestBuildCodexModelsManifestForGroupIntersectsTransientlyUnschedulableMappedAccounts(t *testing.T) {
 	t.Parallel()
 
 	const groupID int64 = 741
@@ -213,19 +214,19 @@ func TestBuildCodexModelsManifestForGroupIntersectsUnschedulableMappedAccounts(t
 		true,
 		nil,
 	)
-	unschedulable := newCodexCatalogMappedAccount(
+	transientlyUnschedulable := newCodexCatalogMappedAccount(
 		42,
 		"glm-5.3",
 		"GLM 5.3",
 		[]string{"low", "medium", "high"},
 		[]string{"text"},
 		272_000,
-		false,
+		true,
 		map[string]any{"exclusive-model": "exclusive-upstream"},
 	)
 	svc := &GatewayService{accountRepo: splitCodexModelsAccountRepo{
 		schedulable: map[int64][]Account{groupID: {schedulable}},
-		catalog:     map[int64][]Account{groupID: {schedulable, unschedulable}},
+		catalog:     map[int64][]Account{groupID: {schedulable, transientlyUnschedulable}},
 	}}
 
 	body, err := svc.BuildCodexModelsManifestForGroup(
@@ -241,8 +242,8 @@ func TestBuildCodexModelsManifestForGroupIntersectsUnschedulableMappedAccounts(t
 	require.EqualValues(t, 272_000, models[0]["context_window"])
 }
 
-// Scenario: deleting an account can widen the advertised contract.
-func TestBuildCodexModelsManifestForGroupWidensAfterUnschedulableAccountIsRemoved(t *testing.T) {
+// Scenario: a persistently disabled account cannot narrow the advertised contract.
+func TestBuildCodexModelsManifestForGroupIgnoresPersistentlyDisabledMappedAccounts(t *testing.T) {
 	t.Parallel()
 
 	const groupID int64 = 742
@@ -256,9 +257,20 @@ func TestBuildCodexModelsManifestForGroupWidensAfterUnschedulableAccountIsRemove
 		true,
 		nil,
 	)
+	disabled := newCodexCatalogMappedAccount(
+		42,
+		"glm-5.3",
+		"GLM 5.3",
+		[]string{"low", "medium", "high"},
+		[]string{"text"},
+		272_000,
+		false,
+		nil,
+	)
 	svc := &GatewayService{accountRepo: splitCodexModelsAccountRepo{
 		schedulable: map[int64][]Account{groupID: {remaining}},
 		catalog:     map[int64][]Account{groupID: {remaining}},
+		all:         map[int64][]Account{groupID: {remaining, disabled}},
 	}}
 
 	body, err := svc.BuildCodexModelsManifestForGroup(
@@ -271,7 +283,7 @@ func TestBuildCodexModelsManifestForGroupWidensAfterUnschedulableAccountIsRemove
 	require.EqualValues(t, 1_000_000, models[0]["context_window"])
 }
 
-func TestBuildCodexModelsManifestForGroupFallsBackToSchedulableWhenListByGroupFails(t *testing.T) {
+func TestBuildCodexModelsManifestForGroupFallsBackToSchedulableWhenAvailabilityLookupFails(t *testing.T) {
 	t.Parallel()
 
 	const groupID int64 = 743
@@ -286,7 +298,7 @@ func TestBuildCodexModelsManifestForGroupFallsBackToSchedulableWhenListByGroupFa
 			true,
 			nil,
 		)},
-		listByGroupErr: errors.New("group listing unavailable"),
+		availabilityErr: errors.New("group listing unavailable"),
 	}
 	svc := &GatewayService{accountRepo: repo}
 

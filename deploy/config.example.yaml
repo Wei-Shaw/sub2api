@@ -1054,8 +1054,8 @@ plugins:
 # 定价数据源（可选）
 # =============================================================================
 pricing:
-  # URL to fetch model pricing data (default: pinned model-price-repo commit)
-  # 获取模型定价数据的 URL（默认：固定 commit 的 model-price-repo）
+  # URL to fetch model pricing data (default: model-price-repo main branch)
+  # 获取模型定价数据的 URL（默认：model-price-repo main 分支）
   remote_url: "https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/refs/heads/main//model_prices_and_context_window.json"
   # Hash verification URL (optional)
   # 哈希校验 URL（可选）
@@ -1066,6 +1066,14 @@ pricing:
   # Fallback pricing file
   # 备用定价文件
   fallback_file: "./resources/model-pricing/model_prices_and_context_window.json"
+  # Override patch file (optional, highest priority): entries are shallow-merged
+  # field-by-field over catalog/fallback data; a null field value removes that field.
+  # Model names must match catalog keys exactly. Edits take effect on restart or
+  # the next catalog download.
+  # 覆盖补丁文件（可选，优先级最高）：条目按字段浅合并覆盖目录/回退数据，
+  # 字段值为 null 表示删除该字段。模型名须与目录键完全一致。
+  # 修改后重启或下次目录下载时生效。
+  # override_file: "./data/model_pricing_overrides.json"
   # Update interval in hours
   # 更新间隔（小时）
   update_interval_hours: 24

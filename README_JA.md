@@ -174,6 +174,11 @@
 <td>APIMart のご支援に感謝します！<a href="https://go.apimart.ai/gh-sub2api">APIMart</a> は AI 画像・動画生成に特化した低価格 API プラットフォームです。GPT-Image-2 は 1 枚 $0.006 から、1 ドルで 160 枚以上の画像を生成できます。画像と動画の両方に対応する非同期 API を 1 つで利用でき、タスクを送信して ID を取得し、ポーリングまたはコールバックで結果を取得できます。数万枚規模のバッチ処理でもタイムアウトせず、モデルを変更してもコードの変更は不要です。月額料金なしの従量課金制で、<a href="https://go.apimart.ai/gh-sub2api">こちらの登録リンク</a>からすぐに利用を開始できます。</td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://www.axisnow.io/"><img src="assets/partners/logos/axisnow.jpg" alt="AxisNow" width="150"></a></td>
+<td>AxisNow のご支援に感謝します！<a href="https://www.axisnow.io/">AxisNow</a> はウェブサイトと API を保護・高速化し、中国本土および世界中で快適なアクセス体験を実現します。クライアント SDK により、ネイティブ／モバイルアプリにも高速化・セキュリティ機能を拡張できます — <strong>自社構築・プライベートデプロイ CDN</strong>｜<strong>サブスクリプション型高防御 CDN</strong>｜<strong>自律制御で柔軟に組み合わせられる CDN ネットワーク</strong>。</td>
+</tr>
+
 </table>
 
 ## 概要

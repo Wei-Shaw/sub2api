@@ -358,8 +358,13 @@ func (t *ResponsesTool) UnmarshalJSON(data []byte) error {
 
 // ResponsesResponse is the non-streaming response from POST /v1/responses.
 type ResponsesResponse struct {
-	ID          string            `json:"id"`
-	Object      string            `json:"object"` // "response"
+	ID     string `json:"id"`
+	Object string `json:"object"` // "response"
+	// CreatedAt is the unix creation timestamp. Strict Responses clients declare
+	// it non-optional and abort with `missing field 'created_at'` when it is
+	// absent, so it is always emitted — no omitempty. Same rule as ID (see the
+	// "clients treat it as required" fallback in ChatCompletionsResponseToAnthropic).
+	CreatedAt   int64             `json:"created_at"`
 	Model       string            `json:"model"`
 	Status      string            `json:"status"` // "completed" | "incomplete" | "failed"
 	Output      []ResponsesOutput `json:"output"`
@@ -711,7 +716,7 @@ type ChatFile struct {
 
 // ChatTool describes a tool available to the model.
 type ChatTool struct {
-	Type     string        `json:"type"` // "function" | "x_search"
+	Type     string        `json:"type"` // "function" | "web_search" | "code_execution" | "x_search"
 	Function *ChatFunction `json:"function,omitempty"`
 
 	// type=x_search

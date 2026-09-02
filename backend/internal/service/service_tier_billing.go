@@ -58,14 +58,38 @@ func serviceTierCostRank(tier string) (rank int, known bool) {
 	}
 }
 
-// ApplyOpenAIServiceTierBillingResolution lowers result.ServiceTier to the tier
-// the upstream reports having used, so cost calculation and the usage log share
-// one billable tier. The returned resolution is meant for the audit log.
-func ApplyOpenAIServiceTierBillingResolution(result *OpenAIForwardResult) ServiceTierBillingResolution {
+// ResolveOpenAIServiceTierBilling applies the response-tier contract for the
+// selected credential. Public OpenAI API responses declare the actual tier and
+// may lower billing. The private ChatGPT Codex endpoint does not: it commonly
+// reports default for effective Fast turns, so OAuth-like credentials retain
+// the final outbound tier while still exposing the observed value.
+func ResolveOpenAIServiceTierBilling(account *Account, requested, observed string) ServiceTierBillingResolution {
+	if account != nil && account.IsOpenAIOAuthLike() && codexOAuthResponseTierIsNonAuthoritative(observed) {
+		return ServiceTierBillingResolution{
+			Requested: normalizeBillingServiceTier(requested),
+			Observed:  normalizeBillingServiceTier(observed),
+			Billing:   normalizeBillingServiceTier(requested),
+		}
+	}
+	return ResolveBillingServiceTier(requested, observed)
+}
+
+func codexOAuthResponseTierIsNonAuthoritative(observed string) bool {
+	switch normalizeBillingServiceTier(observed) {
+	case "default":
+		return true
+	default:
+		return false
+	}
+}
+
+// ApplyOpenAIServiceTierBillingResolution lowers result.ServiceTier only when
+// the selected credential's upstream response tier is authoritative.
+func ApplyOpenAIServiceTierBillingResolution(account *Account, result *OpenAIForwardResult) ServiceTierBillingResolution {
 	if result == nil {
 		return ServiceTierBillingResolution{}
 	}
-	resolution := ResolveBillingServiceTier(optionalStringValue(result.ServiceTier), result.UpstreamResponseServiceTier)
+	resolution := ResolveOpenAIServiceTierBilling(account, optionalStringValue(result.ServiceTier), result.UpstreamResponseServiceTier)
 	if resolution.Downgraded {
 		billing := resolution.Billing
 		result.ServiceTier = &billing

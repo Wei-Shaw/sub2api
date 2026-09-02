@@ -115,6 +115,13 @@ type channelMonitorV2Histogram struct {
 }
 
 func (r *channelMonitorV2Repository) GetDimensions(ctx context.Context, filter service.ChannelMonitorV2Filter, cfg service.ChannelMonitorV2Config) (*service.ChannelMonitorV2Dimensions, error) {
+	if channelMonitorV2RestrictedGroupScopeEmpty(filter, cfg) {
+		return &service.ChannelMonitorV2Dimensions{
+			Platforms: []service.ChannelMonitorV2Dimension{},
+			Groups:    []service.ChannelMonitorV2GroupDimension{},
+			Models:    []service.ChannelMonitorV2Dimension{},
+		}, nil
+	}
 	coverage, err := r.loadCoverage(ctx, filter)
 	if err != nil {
 		return nil, err
@@ -211,6 +218,9 @@ func (r *channelMonitorV2Repository) GetDimensions(ctx context.Context, filter s
 }
 
 func (r *channelMonitorV2Repository) GetSnapshot(ctx context.Context, filter service.ChannelMonitorV2Filter, cfg service.ChannelMonitorV2Config, admin bool) (*service.ChannelMonitorV2Snapshot, error) {
+	if channelMonitorV2RestrictedGroupScopeEmpty(filter, cfg) {
+		return &service.ChannelMonitorV2Snapshot{Trend: []service.ChannelMonitorV2TrendPoint{}}, nil
+	}
 	coverage, err := r.loadCoverage(ctx, filter)
 	if err != nil {
 		return nil, err
@@ -275,6 +285,9 @@ func (r *channelMonitorV2Repository) GetSnapshot(ctx context.Context, filter ser
 }
 
 func (r *channelMonitorV2Repository) GetModels(ctx context.Context, filter service.ChannelMonitorV2Filter, cfg service.ChannelMonitorV2Config, admin bool) (*service.ChannelMonitorV2List[service.ChannelMonitorV2ModelRow], error) {
+	if channelMonitorV2RestrictedGroupScopeEmpty(filter, cfg) {
+		return &service.ChannelMonitorV2List[service.ChannelMonitorV2ModelRow]{Items: []service.ChannelMonitorV2ModelRow{}}, nil
+	}
 	coverage, err := r.loadCoverage(ctx, filter)
 	if err != nil {
 		return nil, err
@@ -353,6 +366,9 @@ type channelMonitorV2MatrixAccumulator struct {
 }
 
 func (r *channelMonitorV2Repository) GetMatrix(ctx context.Context, filter service.ChannelMonitorV2Filter, cfg service.ChannelMonitorV2Config, groupBy service.ChannelMonitorV2GroupBy, admin bool) (*service.ChannelMonitorV2Matrix, error) {
+	if channelMonitorV2RestrictedGroupScopeEmpty(filter, cfg) {
+		return &service.ChannelMonitorV2Matrix{GroupBy: groupBy, Items: []service.ChannelMonitorV2MatrixRow{}}, nil
+	}
 	coverage, err := r.loadCoverage(ctx, filter)
 	if err != nil {
 		return nil, err
@@ -370,7 +386,7 @@ func (r *channelMonitorV2Repository) GetMatrix(ctx context.Context, filter servi
 	seedGroupIDs := configuredChannelMonitorV2GroupIDs(filter, cfg)
 	// Empty config group list means all groups — load active groups so matrix seed
 	// can materialize real platform/group rows (not bare platform placeholders).
-	if len(seedGroupIDs) == 0 &&
+	if len(seedGroupIDs) == 0 && !filter.RestrictGroups &&
 		(groupBy == service.ChannelMonitorV2GroupByPlatformGroup || groupBy == service.ChannelMonitorV2GroupByPlatformGroupModel) {
 		allIDs, loadErr := r.listActiveGroupIDs(ctx)
 		if loadErr != nil {
@@ -503,7 +519,7 @@ func seedChannelMonitorV2MatrixAccumulators(filter service.ChannelMonitorV2Filte
 	groupIDs := []int64{0}
 	if needsGroup {
 		groupIDs = configuredChannelMonitorV2GroupIDs(filter, cfg)
-		if len(groupIDs) == 0 {
+		if len(groupIDs) == 0 && !filter.RestrictGroups {
 			// Empty config group list means "all groups": use discovered active groups.
 			for id := range groupInfo {
 				groupIDs = append(groupIDs, id)
@@ -581,15 +597,44 @@ func channelMonitorV2CatalogFilter(filter service.ChannelMonitorV2Filter) servic
 }
 
 func configuredChannelMonitorV2GroupIDs(filter service.ChannelMonitorV2Filter, cfg service.ChannelMonitorV2Config) []int64 {
+	groups, empty := channelMonitorV2ScopedGroupIDs(filter, cfg)
+	if empty {
+		return []int64{}
+	}
+	return groups
+}
+
+func channelMonitorV2ScopedGroupIDs(filter service.ChannelMonitorV2Filter, cfg service.ChannelMonitorV2Config) ([]int64, bool) {
 	groups := append([]int64(nil), cfg.GroupIDs...)
+	if filter.RestrictGroups {
+		if len(groups) > 0 {
+			groups = intersectInt64(groups, filter.AllowedGroupIDs)
+		} else {
+			groups = append([]int64(nil), filter.AllowedGroupIDs...)
+		}
+		if len(groups) == 0 {
+			return nil, true
+		}
+	}
 	if len(filter.GroupIDs) > 0 {
 		if len(groups) > 0 {
 			groups = intersectInt64(groups, filter.GroupIDs)
 		} else {
 			groups = append([]int64(nil), filter.GroupIDs...)
 		}
+		if len(groups) == 0 {
+			return nil, true
+		}
 	}
-	return groups
+	return groups, false
+}
+
+func channelMonitorV2RestrictedGroupScopeEmpty(filter service.ChannelMonitorV2Filter, cfg service.ChannelMonitorV2Config) bool {
+	if !filter.RestrictGroups {
+		return false
+	}
+	_, empty := channelMonitorV2ScopedGroupIDs(filter, cfg)
+	return empty
 }
 
 type channelMonitorV2GroupInfo struct {
@@ -723,16 +768,7 @@ func (r *channelMonitorV2Repository) loadErrorDetails(ctx context.Context, filte
 	} else {
 		conditions = append(conditions, "FALSE")
 	}
-	groups := cfg.GroupIDs
-	groupScopeEmpty := false
-	if len(filter.GroupIDs) > 0 {
-		if len(groups) > 0 {
-			groups = intersectInt64(groups, filter.GroupIDs)
-			groupScopeEmpty = len(groups) == 0
-		} else {
-			groups = filter.GroupIDs
-		}
-	}
+	groups, groupScopeEmpty := channelMonitorV2ScopedGroupIDs(filter, cfg)
 	if groupScopeEmpty {
 		conditions = append(conditions, "FALSE")
 	} else if len(groups) > 0 {
@@ -1136,16 +1172,7 @@ func channelMonitorV2Where(filter service.ChannelMonitorV2Filter, cfg service.Ch
 	} else {
 		conditions = append(conditions, "FALSE")
 	}
-	groups := cfg.GroupIDs
-	groupScopeEmpty := false
-	if len(filter.GroupIDs) > 0 {
-		if len(groups) > 0 {
-			groups = intersectInt64(groups, filter.GroupIDs)
-			groupScopeEmpty = len(groups) == 0
-		} else {
-			groups = filter.GroupIDs
-		}
-	}
+	groups, groupScopeEmpty := channelMonitorV2ScopedGroupIDs(filter, cfg)
 	if groupScopeEmpty {
 		conditions = append(conditions, "FALSE")
 	} else if len(groups) > 0 {
