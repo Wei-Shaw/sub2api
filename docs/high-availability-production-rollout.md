@@ -54,6 +54,23 @@ services:
     image: sub2api:ha-scheduler
 ```
 
+每次构建新的不可变镜像后，都必须编辑这个文件，把 `image` 改成实际的新 tag。例如目标提交短哈希为 `a6305e4e7` 时，文件内容应为：
+
+```yaml
+services:
+  sub2api:
+    image: sub2api:ha-a6305e4e7
+```
+
+不能继续保留旧的 `sub2api:ha-scheduler`，也不能只构建新镜像而不更新该覆盖文件。修改后先用下面的命令确认最终 Compose 使用了新 tag，再执行启动：
+
+```bash
+cd /opt/sub2api
+docker compose --env-file .env -p sub2api \
+  -f docker-compose.local.yml -f docker-compose.ha-prod.yml config | \
+  grep -A3 '^  sub2api:'
+```
+
 正式启动只使用 `docker-compose.local.yml` 加这个覆盖文件。不要使用 `docker-compose.ha-test.yml`，它会替换容器名称、端口和持久化挂载目录。
 
 ## 4. 两种备份与切换方式
