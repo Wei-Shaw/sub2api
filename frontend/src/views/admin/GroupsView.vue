@@ -467,7 +467,7 @@
     <BaseDialog
       :show="showCreateModal"
       :title="t('admin.groups.createGroup')"
-      width="normal"
+      width="wide"
       @close="closeCreateModal"
     >
       <form
@@ -631,6 +631,7 @@
           id-prefix="create-group-reasoning"
           :platform="createForm.platform"
           v-model:max-effort="createForm.max_reasoning_effort"
+          v-model:over-limit="createForm.max_reasoning_effort_over_limit"
           v-model:mappings="createForm.reasoning_effort_mappings"
         />
         <div
@@ -1501,12 +1502,12 @@
 
 
         <div class="border-t border-gray-200 pt-4 mt-4 dark:border-dark-400">
-          <div class="flex items-start justify-between gap-4">
-            <div>
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
               <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelPricing.title") }}</h4>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.modelPricing.description") }}</p>
             </div>
-            <button type="button" class="btn btn-secondary" @click="addGroupPricing(createForm.model_pricing)">
+            <button type="button" class="btn btn-secondary shrink-0 whitespace-nowrap" @click="addGroupPricing(createForm.model_pricing)">
               <Icon name="plus" size="sm" class="mr-1" />{{ t("admin.groups.modelPricing.add") }}
             </button>
           </div>
@@ -1581,6 +1582,74 @@
             </div>
           </div>
         </div>
+        <!-- OpenAI Fast 开关（OpenAI 与 Composite 平台） -->
+        <div
+          v-if="supportsGroupOpenAIFast(createForm.platform)"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            {{ t("admin.groups.openaiFast.title") }}
+          </h4>
+          <div class="flex items-center justify-between gap-4">
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.openaiFast.force") }}
+            </label>
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="createForm.force_openai_fast"
+              :aria-label="t('admin.groups.openaiFast.force')"
+              data-testid="create-force-openai-fast"
+              @click="createForm.force_openai_fast = !createForm.force_openai_fast"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                createForm.force_openai_fast
+                  ? 'bg-primary-500'
+                  : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  createForm.force_openai_fast ? 'translate-x-6' : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.openaiFast.hint") }}
+          </p>
+          <div class="flex items-center justify-between gap-4 mt-4">
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.openaiFast.free") }}
+            </label>
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="createForm.free_openai_fast"
+              :aria-label="t('admin.groups.openaiFast.free')"
+              data-testid="create-free-openai-fast"
+              @click="createForm.free_openai_fast = !createForm.free_openai_fast"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                createForm.free_openai_fast
+                  ? 'bg-emerald-500'
+                  : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  createForm.free_openai_fast ? 'translate-x-6' : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.openaiFast.freeHint") }}
+          </p>
+        </div>
+
         <!-- Codex Live 开关（OpenAI 与 Composite 平台） -->
         <div
           v-if="supportsLivePlatform(createForm.platform)"
@@ -2197,7 +2266,7 @@
     <BaseDialog
       :show="showEditModal"
       :title="t('admin.groups.editGroup')"
-      width="normal"
+      width="wide"
       @close="closeEditModal"
     >
       <form
@@ -2361,6 +2430,7 @@
           id-prefix="edit-group-reasoning"
           :platform="editForm.platform"
           v-model:max-effort="editForm.max_reasoning_effort"
+          v-model:over-limit="editForm.max_reasoning_effort_over_limit"
           v-model:mappings="editForm.reasoning_effort_mappings"
         />
         <div v-if="editForm.subscription_type !== 'subscription'">
@@ -3229,12 +3299,12 @@
 
 
         <div class="border-t border-gray-200 pt-4 mt-4 dark:border-dark-400">
-          <div class="flex items-start justify-between gap-4">
-            <div>
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
               <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelPricing.title") }}</h4>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.modelPricing.description") }}</p>
             </div>
-            <button type="button" class="btn btn-secondary" @click="addGroupPricing(editForm.model_pricing)">
+            <button type="button" class="btn btn-secondary shrink-0 whitespace-nowrap" @click="addGroupPricing(editForm.model_pricing)">
               <Icon name="plus" size="sm" class="mr-1" />{{ t("admin.groups.modelPricing.add") }}
             </button>
           </div>
@@ -3309,6 +3379,74 @@
             </div>
           </div>
         </div>
+        <!-- OpenAI Fast 开关（OpenAI 与 Composite 平台） -->
+        <div
+          v-if="supportsGroupOpenAIFast(editForm.platform)"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            {{ t("admin.groups.openaiFast.title") }}
+          </h4>
+          <div class="flex items-center justify-between gap-4">
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.openaiFast.force") }}
+            </label>
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="editForm.force_openai_fast"
+              :aria-label="t('admin.groups.openaiFast.force')"
+              data-testid="edit-force-openai-fast"
+              @click="editForm.force_openai_fast = !editForm.force_openai_fast"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                editForm.force_openai_fast
+                  ? 'bg-primary-500'
+                  : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  editForm.force_openai_fast ? 'translate-x-6' : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.openaiFast.hint") }}
+          </p>
+          <div class="flex items-center justify-between gap-4 mt-4">
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.openaiFast.free") }}
+            </label>
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="editForm.free_openai_fast"
+              :aria-label="t('admin.groups.openaiFast.free')"
+              data-testid="edit-free-openai-fast"
+              @click="editForm.free_openai_fast = !editForm.free_openai_fast"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                editForm.free_openai_fast
+                  ? 'bg-emerald-500'
+                  : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  editForm.free_openai_fast ? 'translate-x-6' : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.openaiFast.freeHint") }}
+          </p>
+        </div>
+
         <!-- Codex Live 开关（OpenAI 与 Composite 平台） -->
         <div
           v-if="supportsLivePlatform(editForm.platform)"
@@ -4477,6 +4615,10 @@ import {
   type MessagesDispatchMappingRow,
 } from "./groupsMessagesDispatch";
 import {
+  normalizeGroupOpenAIFast,
+  supportsGroupOpenAIFast,
+} from "./groupsOpenAIFast";
+import {
   buildModelsListConfig,
   createModelsListState as createInitialModelsListState,
   invertModelsListSelection,
@@ -4495,8 +4637,10 @@ import {
 } from "./groupsProfitControl";
 import {
   normalizeReasoningEffortForPlatform,
+  normalizeReasoningEffortOverLimit,
   reasoningEffortMappingsToAPI,
   reasoningEffortMappingsToRows,
+  reasoningEffortOverLimitDowngrade,
   supportsReasoningEffortPolicyPlatform,
   type ReasoningEffortMappingRow,
 } from "./groupsReasoningEffort";
@@ -4526,6 +4670,7 @@ const emptyGroupPricing = (): PricingFormEntry => ({
   input_price: null,
   output_price: null,
   cache_write_price: null,
+  cache_write_1h_price: null,
   cache_read_price: null,
   image_input_price: null,
   image_output_price: null,
@@ -4546,6 +4691,7 @@ const groupPricingFromAPI = (
     input_price: perTokenToMTok(entry.input_price),
     output_price: perTokenToMTok(entry.output_price),
     cache_write_price: perTokenToMTok(entry.cache_write_price),
+    cache_write_1h_price: perTokenToMTok(entry.cache_write_1h_price),
     cache_read_price: perTokenToMTok(entry.cache_read_price),
     image_input_price: perTokenToMTok(entry.image_input_price),
     image_output_price: perTokenToMTok(entry.image_output_price),
@@ -4567,6 +4713,7 @@ const groupPricingToAPI = (
       input_price: mTokToPerToken(entry.input_price),
       output_price: mTokToPerToken(entry.output_price),
       cache_write_price: mTokToPerToken(entry.cache_write_price),
+      cache_write_1h_price: mTokToPerToken(entry.cache_write_1h_price),
       cache_read_price: mTokToPerToken(entry.cache_read_price),
       image_input_price: mTokToPerToken(entry.image_input_price),
       image_output_price: mTokToPerToken(entry.image_output_price),
@@ -5047,6 +5194,8 @@ const createForm = reactive({
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
   long_context_pricing_enabled: true,
+  force_openai_fast: false,
+  free_openai_fast: false,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
   allow_image_generation: false,
@@ -5105,6 +5254,7 @@ const createForm = reactive({
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
   max_reasoning_effort: "",
+  max_reasoning_effort_over_limit: reasoningEffortOverLimitDowngrade,
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
 });
 
@@ -5408,6 +5558,8 @@ const editForm = reactive({
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
   long_context_pricing_enabled: true,
+  force_openai_fast: false,
+  free_openai_fast: false,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
   allow_image_generation: false,
@@ -5467,6 +5619,7 @@ const editForm = reactive({
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
   max_reasoning_effort: "",
+  max_reasoning_effort_over_limit: reasoningEffortOverLimitDowngrade,
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
 });
 
@@ -5882,6 +6035,8 @@ const closeCreateModal = () => {
   createForm.video_price_1080p = null;
   createForm.video_model_prices = createVideoModelPricesForm();
   createForm.long_context_pricing_enabled = true;
+  createForm.force_openai_fast = false;
+  createForm.free_openai_fast = false;
   createForm.model_pricing = [];
   createForm.web_search_price_per_call = null;
   createForm.search_price_per_1k = null;
@@ -5907,6 +6062,7 @@ const closeCreateModal = () => {
   createForm.copy_accounts_from_group_ids = [];
   createForm.rpm_limit = 0;
   createForm.max_reasoning_effort = "";
+  createForm.max_reasoning_effort_over_limit = reasoningEffortOverLimitDowngrade;
   createForm.reasoning_effort_mappings = [];
   createReasoningEffortPolicyRef.value?.resetValidation();
   resetModelsListState(createModelsListState);
@@ -5982,6 +6138,14 @@ const handleCreateGroup = async () => {
     // 构建请求数据，包含模型路由配置
     const requestData = {
       ...createGroupForm,
+      force_openai_fast: normalizeGroupOpenAIFast(
+        createForm.platform,
+        createForm.force_openai_fast,
+      ),
+      free_openai_fast: normalizeGroupOpenAIFast(
+        createForm.platform,
+        createForm.free_openai_fast,
+      ),
       model_pricing: groupPricingToAPI(
         createForm.model_pricing,
         createForm.platform,
@@ -6110,6 +6274,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.monthly_limit_usd = group.monthly_limit_usd;
   editForm.long_context_pricing_enabled =
     group.long_context_pricing_enabled ?? true;
+  editForm.force_openai_fast = group.force_openai_fast ?? false;
+  editForm.free_openai_fast = group.free_openai_fast ?? false;
   editForm.model_pricing = groupPricingFromAPI(group.model_pricing);
   editForm.allow_image_generation = group.allow_image_generation ?? false;
   editForm.allow_batch_image_generation =
@@ -6177,6 +6343,9 @@ const handleEdit = async (group: AdminGroup) => {
     group.platform,
     group.max_reasoning_effort,
   );
+  editForm.max_reasoning_effort_over_limit = normalizeReasoningEffortOverLimit(
+    group.max_reasoning_effort_over_limit,
+  );
   editForm.reasoning_effort_mappings = reasoningEffortMappingsToRows(
     group.reasoning_effort_mappings,
     group.platform,
@@ -6198,6 +6367,7 @@ const closeEditModal = () => {
   showEditModal.value = false;
   editingGroup.value = null;
   editForm.max_reasoning_effort = "";
+  editForm.max_reasoning_effort_over_limit = reasoningEffortOverLimitDowngrade;
   editForm.reasoning_effort_mappings = [];
   editReasoningEffortPolicyRef.value?.resetValidation();
   editModelRoutingRules.value = [];
@@ -6216,6 +6386,8 @@ const closeEditModal = () => {
   editForm.video_price_1080p = null;
   editForm.video_model_prices = createVideoModelPricesForm();
   editForm.long_context_pricing_enabled = true;
+  editForm.force_openai_fast = false;
+  editForm.free_openai_fast = false;
   editForm.model_pricing = [];
   editForm.web_search_price_per_call = null;
   editForm.search_price_per_1k = null;
@@ -6249,6 +6421,14 @@ const handleUpdateGroup = async () => {
     // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
     const payload = {
       ...editForm,
+      force_openai_fast: normalizeGroupOpenAIFast(
+        editForm.platform,
+        editForm.force_openai_fast,
+      ),
+      free_openai_fast: normalizeGroupOpenAIFast(
+        editForm.platform,
+        editForm.free_openai_fast,
+      ),
       model_pricing: groupPricingToAPI(
         editForm.model_pricing,
         editForm.platform,
@@ -6673,6 +6853,13 @@ watch(
       newVal,
       createForm.max_reasoning_effort,
     );
+    createForm.max_reasoning_effort_over_limit = supportsReasoningEffortPolicyPlatform(
+      newVal,
+    )
+      ? normalizeReasoningEffortOverLimit(
+          createForm.max_reasoning_effort_over_limit,
+        )
+      : reasoningEffortOverLimitDowngrade;
     createForm.reasoning_effort_mappings = reasoningEffortMappingsToRows(
       reasoningEffortMappingsToAPI(createForm.reasoning_effort_mappings),
       newVal,
@@ -6723,6 +6910,13 @@ watch(
       newVal,
       editForm.max_reasoning_effort,
     );
+    editForm.max_reasoning_effort_over_limit = supportsReasoningEffortPolicyPlatform(
+      newVal,
+    )
+      ? normalizeReasoningEffortOverLimit(
+          editForm.max_reasoning_effort_over_limit,
+        )
+      : reasoningEffortOverLimitDowngrade;
     editForm.reasoning_effort_mappings = reasoningEffortMappingsToRows(
       reasoningEffortMappingsToAPI(editForm.reasoning_effort_mappings),
       newVal,

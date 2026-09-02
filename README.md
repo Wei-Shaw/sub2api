@@ -174,7 +174,7 @@ Please read the following carefully before using this project:
 
 <tr>
 <td width="180"><a href="https://www.axisnow.io/"><img src="assets/partners/logos/axisnow.jpg" alt="AxisNow" width="150"></a></td>
-<td>Thanks to AxisNow for sponsoring this project! <a href="https://www.axisnow.io/">AxisNow</a> is building a cloud-agnostic edge control layer. Use AxisNow to protect and accelerate your websites and APIs, delivering optimal access experiences for both mainland China and global users, while extending acceleration and security capabilities to native/mobile apps through client SDKs — all on your own controllable, composable edge network.</td>
+<td>Thanks to AxisNow for sponsoring this project! <a href="https://www.axisnow.io/">AxisNow</a> protects and accelerates websites and APIs, delivering an optimal access experience across mainland China and globally, while extending acceleration and security capabilities to native/mobile apps through client SDKs — <strong>self-hosted private-deployment CDN</strong> | <strong>subscription-based DDoS-protected CDN</strong> | <strong>autonomous, flexibly composable CDN network</strong>.</td>
 </tr>
 
 </table>
