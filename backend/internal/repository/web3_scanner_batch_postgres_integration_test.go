@@ -43,8 +43,9 @@ func TestWeb3ScannerBatchRepositoryRetriesIdempotentlyOnPostgres(t *testing.T) {
 	now := time.Now().UTC()
 	scannerKey := fmt.Sprintf("postgres-idempotency-%d", suffix)
 	leaseToken := fmt.Sprintf("lease-%d", suffix)
+	tokenContract := fmt.Sprintf("0x%040x", suffix+1)
 	cursorRepo := NewWeb3ScannerCursorRepository(integrationEntClient)
-	_, err = cursorRepo.Initialize(ctx, scannerKey, 1030, testWeb3ScannerContract, 100)
+	_, err = cursorRepo.Initialize(ctx, scannerKey, 1030, tokenContract, 100)
 	require.NoError(t, err)
 	acquired, err := cursorRepo.AcquireLease(ctx, scannerKey, "integration-test", leaseToken, now, time.Hour)
 	require.NoError(t, err)
@@ -70,7 +71,7 @@ func TestWeb3ScannerBatchRepositoryRetriesIdempotentlyOnPostgres(t *testing.T) {
 		Now:            now,
 		Config: web3deposit.ChainConfig{
 			ChainID:       1030,
-			TokenAddress:  common.HexToAddress(testWeb3ScannerContract),
+			TokenAddress:  common.HexToAddress(tokenContract),
 			TokenDecimals: web3deposit.USDT0Decimals,
 		},
 		Matches: []web3deposit.MatchedTransferEvent{{

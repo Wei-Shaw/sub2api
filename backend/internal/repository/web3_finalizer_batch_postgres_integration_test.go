@@ -40,8 +40,9 @@ func TestWeb3FinalizerBatchRepositorySetsReviewAndFailureReasonsOnPostgres(t *te
 	now := time.Now().UTC()
 	scannerKey := fmt.Sprintf("postgres-finalizer-%d", suffix)
 	leaseToken := fmt.Sprintf("lease-%d", suffix)
+	tokenContract := fmt.Sprintf("0x%040x", suffix+1)
 	cursorRepo := NewWeb3ScannerCursorRepository(integrationEntClient)
-	_, err = cursorRepo.Initialize(ctx, scannerKey, 1030, testWeb3ScannerContract, 100)
+	_, err = cursorRepo.Initialize(ctx, scannerKey, 1030, tokenContract, 100)
 	require.NoError(t, err)
 	acquired, err := cursorRepo.AcquireLease(ctx, scannerKey, "integration-test", leaseToken, now, time.Hour)
 	require.NoError(t, err)
@@ -54,7 +55,7 @@ func TestWeb3FinalizerBatchRepositorySetsReviewAndFailureReasonsOnPostgres(t *te
 		deposit := testWeb3DepositRecord(uint64(index + 1))
 		deposit.UserID = user.ID
 		deposit.DepositAddressID = address.ID
-		deposit.TokenContract = testWeb3ScannerContract
+		deposit.TokenContract = tokenContract
 		deposit.TxHash = fmt.Sprintf("0x%064x", suffix+int64(index))
 		deposit.BlockNumber = 105
 		deposit.ToAddress = addressValue
