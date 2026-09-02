@@ -63,6 +63,10 @@ func ProvideSchedulerCache(rdb *redis.Client, cfg *config.Config) service.Schedu
 	return newSchedulerCacheWithChunkSizes(rdb, mgetChunkSize, writeChunkSize)
 }
 
+func ProvideOpenAIProvisionDemandService(usage *usageLogRepository, store service.OpenAIProvisionCapacityDemandStore) *service.OpenAIProvisionDemandService {
+	return service.NewOpenAIProvisionDemandService(usage, store)
+}
+
 // ProviderSet is the Wire provider set for all repositories
 var ProviderSet = wire.NewSet(
 	NewUserRepository,
@@ -81,6 +85,8 @@ var ProviderSet = wire.NewSet(
 	NewAnnouncementRepository,
 	NewAnnouncementReadRepository,
 	NewUsageLogRepository,
+	NewOpenAIProvisionCapacityDemandStore,
+	ProvideOpenAIProvisionDemandService,
 	NewUsageBillingRepository,
 	NewBatchImageRepository,
 	NewIdempotencyRepository,

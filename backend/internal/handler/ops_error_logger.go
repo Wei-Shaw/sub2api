@@ -26,11 +26,12 @@ import (
 )
 
 const (
-	opsModelKey                  = "ops_model"
-	opsStreamKey                 = "ops_stream"
-	opsAccountIDKey              = "ops_account_id"
-	opsRoutingCapacityLimitedKey = "ops_routing_capacity_limited"
-	opsDedicatedErrorRecordedKey = "ops_dedicated_error_recorded"
+	opsModelKey                        = "ops_model"
+	opsStreamKey                       = "ops_stream"
+	opsAccountIDKey                    = "ops_account_id"
+	opsRoutingCapacityLimitedKey       = "ops_routing_capacity_limited"
+	opsRoutingProfitControlRejectedKey = "ops_routing_profit_control_rejected"
+	opsDedicatedErrorRecordedKey       = "ops_dedicated_error_recorded"
 
 	opsUpstreamModelKey = service.OpsUpstreamModelKey
 	opsRequestTypeKey   = "ops_request_type"
@@ -487,6 +488,22 @@ func markOpsRoutingCapacityLimited(c *gin.Context) {
 		return
 	}
 	c.Set(opsRoutingCapacityLimitedKey, true)
+}
+
+func markOpsRoutingProfitControlRejected(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	c.Set(opsRoutingProfitControlRejectedKey, true)
+}
+
+func isOpsRoutingProfitControlRejected(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	v, ok := c.Get(opsRoutingProfitControlRejectedKey)
+	marked, _ := v.(bool)
+	return ok && marked
 }
 
 func markOpsRoutingCapacityLimitedIfNoAvailable(c *gin.Context, err error) {
@@ -1074,7 +1091,7 @@ func (state *opsCaptureWriterState) shouldCapture() bool {
 // Notes:
 // - It buffers response bodies only for status >= 400 or terminal SSE frames.
 // - Streaming errors after the response has started (SSE) may still need explicit logging.
-func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
+func OpsErrorLoggerMiddleware(ops *service.OpsService, demandService *service.OpenAIProvisionDemandService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		originalWriter := c.Writer
 		w := acquireOpsCaptureWriter(originalWriter)
@@ -1094,6 +1111,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		if _, rejected := middleware2.GetIngressRejectReason(c); rejected {
 			return
 		}
+		recordOpenAIProvisionCapacityDemand(c, demandService)
 
 		if ops == nil {
 			return
@@ -1278,6 +1296,24 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 		enqueueOpsErrorLog(ops, entry)
 	}
+}
+
+func recordOpenAIProvisionCapacityDemand(c *gin.Context, demand *service.OpenAIProvisionDemandService) {
+	if c == nil || c.Request == nil || demand == nil || isCountTokensRequest(c) || !isOpsRoutingCapacityLimited(c) || isOpsRoutingProfitControlRejected(c) {
+		return
+	}
+	apiKey := getOpsAPIKey(c)
+	if apiKey == nil || apiKey.UserID <= 0 {
+		return
+	}
+	requestPath := ""
+	if c.Request != nil && c.Request.URL != nil {
+		requestPath = c.Request.URL.Path
+	}
+	if resolveOpsPlatform(c.Request.Context(), apiKey, guessPlatformFromPath(requestPath)) != service.PlatformOpenAI {
+		return
+	}
+	demand.RecordOpenAICapacityDenied(c.Request.Context(), apiKey.UserID)
 }
 
 func logOpsRecoveredUpstream(c *gin.Context, ops *service.OpsService, finalStatus int) {

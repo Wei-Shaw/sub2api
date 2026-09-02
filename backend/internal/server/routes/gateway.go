@@ -32,7 +32,11 @@ func RegisterGatewayRoutes(
 	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize)
 	textBodyLimit := middleware.RequestBodyLimit(cfg.Gateway.TextMaxBodySize)
 	clientRequestID := middleware.ClientRequestID()
-	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
+	var openAIProvisionDemand *service.OpenAIProvisionDemandService
+	if h.OpenAIGateway != nil {
+		openAIProvisionDemand = h.OpenAIGateway.OpenAIProvisionDemandService()
+	}
+	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService, openAIProvisionDemand)
 	endpointNorm := handler.InboundEndpointMiddleware()
 	compositeTarget := compositeTargetPlatformMiddleware(compositeResolver)
 	compositeGeminiTarget := compositeGeminiTargetPlatformMiddleware(compositeResolver)

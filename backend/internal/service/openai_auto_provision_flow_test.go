@@ -187,6 +187,14 @@ type openAIAutoProvisionFlowClient struct {
 	reauthorizations []openAIReauthorizeCommand
 }
 
+type openAIAutoProvisionFlowDemandReader struct {
+	demand OpenAIProvisionDemand
+}
+
+func (r openAIAutoProvisionFlowDemandReader) GetOpenAIProvisionDemand(context.Context, time.Time, time.Time) (OpenAIProvisionDemand, error) {
+	return r.demand, nil
+}
+
 func (c *openAIAutoProvisionFlowClient) Provision(_ context.Context, command openAIProvisionCommand, _, _ string) error {
 	c.provision = append(c.provision, command)
 	return nil
@@ -195,6 +203,34 @@ func (c *openAIAutoProvisionFlowClient) Provision(_ context.Context, command ope
 func (c *openAIAutoProvisionFlowClient) Reauthorize(_ context.Context, command openAIReauthorizeCommand, _, _ string) error {
 	c.reauthorizations = append(c.reauthorizations, command)
 	return nil
+}
+
+func TestOpenAIAutoProvisionDoesNotDispatchWhenIdle(t *testing.T) {
+	settingsRepo := &openAIAutoProvisionFlowSettingRepo{values: map[string]string{
+		SettingKeyOpenAIAutoProvisionEnabled:        "true",
+		SettingKeyOpenAIAutoProvisionTarget:         "10",
+		SettingKeyOpenAIAutoProvisionTurbURL:        "http://turb.test",
+		SettingKeyOpenAIAutoProvisionTurbAuthCode:   "fake-auth-code",
+		SettingKeyOpenAIAutoProvisionCallbackURL:    "http://sub2api.test/api/v1/integrations/openai/auto-provision/callback",
+		SettingKeyOpenAIAutoProvisionCallbackSecret: "fake-callback-secret",
+	}}
+	accounts := &openAIAutoProvisionFlowAccounts{accounts: map[int64]Account{
+		1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true},
+	}}
+	client := &openAIAutoProvisionFlowClient{}
+	service := NewOpenAIAutoProvisionService(
+		accounts,
+		accounts,
+		NewSettingService(settingsRepo, &config.Config{}),
+		settingsRepo,
+		NewOpenAIOAuthService(nil, nil),
+		client,
+		nil,
+		nil,
+	)
+	service.SetOpenAIProvisionDemandReader(openAIAutoProvisionFlowDemandReader{})
+	require.NoError(t, service.RunOnce(context.Background()))
+	require.Empty(t, client.provision)
 }
 
 type openAIAutoProvisionFlowOAuthClient struct {
@@ -288,12 +324,15 @@ func TestOpenAIAutoProvisionFullReplenishmentAndReauthorizationFlow(t *testing.T
 		nil,
 		nil,
 	)
+	service.SetOpenAIProvisionDemandReader(openAIAutoProvisionFlowDemandReader{
+		demand: OpenAIProvisionDemand{ActiveUsers: 3, Requests: 30, Tokens: 900_000, CapacityDeniedUsers: 3, CapacityDeniedRequests: 3},
+	})
 	ctx := context.Background()
 
-	// 1) One healthy account against target three dispatches two registrations.
+	// 1) One healthy account with recent capacity denials dispatches one conservative replacement.
 	require.NoError(t, service.RunOnce(ctx))
 	require.Len(t, client.provision, 1)
-	require.Equal(t, 2, client.provision[0].Count)
+	require.Equal(t, 1, client.provision[0].Count)
 	require.Empty(t, client.reauthorizations)
 
 	// Reauthorization is driven by the existing OAuth refresh service path,
@@ -309,17 +348,17 @@ func TestOpenAIAutoProvisionFullReplenishmentAndReauthorizationFlow(t *testing.T
 	require.Len(t, client.provision, 1)
 	require.Len(t, client.reauthorizations, 1)
 
-	// 3) Turb finishes two jobs but only uploads one account. The callback clears
-	// the old batch, so the next cycle computes and dispatches the remaining one.
+	// 3) Turb finishes the job without uploading an account. The callback clears
+	// the old batch, so the next cycle computes and dispatches one replacement.
 	accounts.addHealthy(2)
 	registrationCallback := OpenAIAutoProvisionCallback{
 		RequestID:      client.provision[0].RequestID,
 		EventID:        client.provision[0].RequestID + ":registration:completed",
 		Kind:           "registration",
 		Status:         "completed",
-		RequestedCount: 2,
+		RequestedCount: 1,
 		SucceededCount: 1,
-		FailedCount:    1,
+		FailedCount:    0,
 		PendingCount:   0,
 	}
 	replay, err := service.HandleProvisionCallback(ctx, registrationCallback)

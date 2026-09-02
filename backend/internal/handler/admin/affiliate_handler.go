@@ -275,15 +275,25 @@ func (h *AffiliateHandler) ListRebateRecords(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	// Enrich invitee device codes
+	// Enrich invitee device codes. Rebate rows keep a NULL invitee_id when the
+	// invited account was deleted, so skip those ids instead of dereferencing.
 	if h.entClient != nil && len(items) > 0 {
-		userIDs := make([]int64, len(items))
-		for i, r := range items {
-			userIDs[i] = r.InviteeID
+		userIDs := make([]int64, 0, len(items))
+		byUserID := make(map[int64][]service.AffiliateRebateRecord, len(items))
+		for _, r := range items {
+			if r.InviteeID == nil {
+				continue
+			}
+			userIDs = append(userIDs, *r.InviteeID)
+			byUserID[*r.InviteeID] = append(byUserID[*r.InviteeID], r)
 		}
-		dcMap := service.LookupDeviceCodesByUserIDs(c.Request.Context(), h.entClient, userIDs)
-		for i := range items {
-			items[i].InviteeDeviceCode = dcMap[items[i].InviteeID]
+		if len(userIDs) > 0 {
+			dcMap := service.LookupDeviceCodesByUserIDs(c.Request.Context(), h.entClient, userIDs)
+			for userID, records := range byUserID {
+				for _, r := range records {
+					r.InviteeDeviceCode = dcMap[userID]
+				}
+			}
 		}
 	}
 	response.Paginated(c, items, total, filter.Page, filter.PageSize)

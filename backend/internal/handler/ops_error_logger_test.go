@@ -6,7 +6,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -39,6 +41,71 @@ type ingressRejectOpsRepo struct {
 	service.OpsRepository
 	insertCalls int
 	entries     []*service.OpsInsertErrorLogInput
+}
+
+type openAIProvisionCapacityDemandStoreStub struct {
+	service.OpenAIProvisionCapacityDemandStore
+	userID atomic.Int64
+}
+
+func (s *openAIProvisionCapacityDemandStoreStub) RecordOpenAICapacityDenied(_ context.Context, userID int64) error {
+	s.userID.Store(userID)
+	return nil
+}
+
+func TestOpsErrorLoggerRecordsOpenAICapacityDemandWithoutOpsMonitoring(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store := &openAIProvisionCapacityDemandStoreStub{}
+	demand := service.NewOpenAIProvisionDemandService(nil, store)
+	router := gin.New()
+	router.GET("/v1/responses", OpsErrorLoggerMiddleware(nil, demand), func(c *gin.Context) {
+		c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+			UserID: 17,
+			Group:  &service.Group{Platform: service.PlatformOpenAI},
+		})
+		markOpsRoutingCapacityLimited(c)
+		c.Status(http.StatusServiceUnavailable)
+	})
+	router.GET("/v1/messages/count_tokens", OpsErrorLoggerMiddleware(nil, demand), func(c *gin.Context) {
+		c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+			UserID: 29,
+			Group:  &service.Group{Platform: service.PlatformOpenAI},
+		})
+		markOpsRoutingCapacityLimited(c)
+		c.Status(http.StatusServiceUnavailable)
+	})
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/v1/responses", nil))
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	require.Eventually(t, func() bool { return store.userID.Load() == 17 }, time.Second, time.Millisecond)
+
+	store.userID.Store(0)
+	recorder = httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/v1/messages/count_tokens", nil))
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	require.Zero(t, store.userID.Load())
+}
+
+func TestOpsErrorLoggerSkipsProfitControlRejectionForOpenAIDemand(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store := &openAIProvisionCapacityDemandStoreStub{}
+	demand := service.NewOpenAIProvisionDemandService(nil, store)
+	router := gin.New()
+	router.GET("/v1/responses", OpsErrorLoggerMiddleware(nil, demand), func(c *gin.Context) {
+		c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+			UserID: 17,
+			Group:  &service.Group{Platform: service.PlatformOpenAI},
+		})
+		markOpsRoutingCapacityLimited(c)
+		markOpsRoutingProfitControlRejected(c)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"message": profitVetoExhaustedMessage}})
+	})
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/v1/responses", nil))
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	require.Zero(t, store.userID.Load())
 }
 
 func (r *ingressRejectOpsRepo) InsertErrorLog(_ context.Context, entry *service.OpsInsertErrorLogInput) (int64, error) {
@@ -234,7 +301,7 @@ func TestOpsErrorLoggerMiddleware_DoesNotBreakOuterMiddlewares(t *testing.T) {
 	r.Use(middleware2.Recovery())
 	r.Use(middleware2.RequestLogger())
 	r.Use(middleware2.Logger())
-	r.GET("/v1/messages", OpsErrorLoggerMiddleware(nil), func(c *gin.Context) {
+	r.GET("/v1/messages", OpsErrorLoggerMiddleware(nil, nil), func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})
 
@@ -268,7 +335,7 @@ func TestOpsErrorLoggerMiddleware_HardSkipsIngressRejection(t *testing.T) {
 	settings.getValueCalls = 0
 
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.GET("/v1/messages", func(c *gin.Context) {
 		middleware2.MarkIngressRejected(c, middleware2.IngressRejectInvalidAPIKey)
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "INVALID_API_KEY", "message": "Invalid API key"})
@@ -292,7 +359,7 @@ func TestOpsErrorLoggerMiddleware_DedicatedCyberSessionBlockRecordsExactlyOnce(t
 	h := &OpenAIGatewayHandler{opsService: ops}
 	apiKey := &service.APIKey{ID: 41, Key: "sk-dedicated-test"}
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.POST("/v1/responses", func(c *gin.Context) {
 		h.enqueueCyberSessionBlockedOpsEntry(c, apiKey, "gpt-test", "session-block-hash")
 		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{
@@ -315,7 +382,7 @@ func TestOpsErrorLoggerMiddleware_OrdinaryPermissionStillRecords(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.POST("/v1/responses", func(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{
 			"type": "permission_error", "code": "permission_denied", "message": "denied",
@@ -338,7 +405,7 @@ func TestOpsErrorLoggerMiddleware_RecordsRecoveredUpstreamTelemetryOutsideFailur
 	repo := &ingressRejectOpsRepo{}
 	ops := service.NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.POST("/v1/responses", func(c *gin.Context) {
 		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
 			UpstreamStatusCode: http.StatusTooManyRequests,
@@ -381,7 +448,7 @@ func TestOpsErrorLoggerMiddleware_RecoveredTelemetryFiltersSkipMonitoringAttempt
 
 	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.POST("/v1/responses", func(c *gin.Context) {
 		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{
 			{UpstreamStatusCode: http.StatusTooManyRequests, Message: "visible retry"},
@@ -409,7 +476,7 @@ func TestOpsErrorLoggerMiddleware_RecoveredTelemetrySkipsAllHiddenAttempts(t *te
 
 	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.POST("/v1/responses", func(c *gin.Context) {
 		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
 			UpstreamStatusCode: http.StatusTooManyRequests,
@@ -430,7 +497,7 @@ func TestOpsErrorLoggerMiddleware_IntermediateSkipMonitoringDoesNotHideFinalVisi
 	gin.SetMode(gin.TestMode)
 	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.POST("/v1/responses", func(c *gin.Context) {
 		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{
 			{UpstreamStatusCode: http.StatusBadGateway, Message: "hidden retry", SkipMonitoring: true},
@@ -453,7 +520,7 @@ func TestOpsErrorLoggerMiddleware_CapturesSplitResponsesFailedSSE(t *testing.T) 
 
 	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.POST("/v1/responses", func(c *gin.Context) {
 		setOpsRequestContext(c, "gpt-5.5", true)
 		c.Status(http.StatusOK)
@@ -541,7 +608,7 @@ func TestOpsErrorLoggerMiddleware_StreamFailureUsesTerminalErrorOverAttemptConte
 
 	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.POST("/v1/responses", func(c *gin.Context) {
 		service.SetOpsUpstreamError(c, http.StatusBadGateway, "Upstream transport error", "earlier attempt failed")
 		c.Status(http.StatusOK)
@@ -571,7 +638,7 @@ func TestOpsErrorLoggerMiddleware_PrefersContextRequestID(t *testing.T) {
 
 	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.POST("/v1/responses", func(c *gin.Context) {
 		c.Header("X-Request-Id", "response-header-id")
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": "bad input"}})
@@ -909,7 +976,7 @@ func TestOpsErrorLoggerMiddleware_LocalModelConfigurationFields(t *testing.T) {
 
 	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.POST("/v1/chat/completions", func(c *gin.Context) {
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
 		c.Set(opsAccountIDKey, int64(99))
@@ -1789,7 +1856,7 @@ func TestOpsErrorLoggerMiddleware_LargeTerminalFrameUsesEventFallback(t *testing
 	gin.SetMode(gin.TestMode)
 	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.POST("/v1/responses", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 		_, _ = c.Writer.WriteString("event: response.failed\n")
@@ -1814,7 +1881,7 @@ func TestOpsErrorLoggerMiddleware_DetectsTerminalDataAtEOFWithoutBlankLine(t *te
 	gin.SetMode(gin.TestMode)
 	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.POST("/v1/responses", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 		_, _ = c.Writer.WriteString(`data: {"message":"denied","code":"permission_denied","type":"error"}`)

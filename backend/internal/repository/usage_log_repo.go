@@ -150,7 +150,7 @@ type usageLogRepository struct {
 	bestEffortRecent    *gocache.Cache
 }
 
-func NewUsageLogRepository(client *dbent.Client, sqlDB *sql.DB) service.UsageLogRepository {
+func NewUsageLogRepository(client *dbent.Client, sqlDB *sql.DB) *usageLogRepository {
 	return newUsageLogRepositoryWithSQL(client, sqlDB)
 }
 
