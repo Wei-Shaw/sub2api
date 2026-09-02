@@ -25,6 +25,9 @@ func (s *adminServiceImpl) ListUsers(ctx context.Context, page, pageSize int, fi
 	if err != nil {
 		return nil, 0, err
 	}
+	if err := hydrateTemporaryBalances(ctx, s.userRepo, users); err != nil {
+		return nil, 0, fmt.Errorf("load temporary balances: %w", err)
+	}
 	if len(users) > 0 {
 		userIDs := make([]int64, 0, len(users))
 		for i := range users {
@@ -82,6 +85,9 @@ func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error)
 	user, err := s.userRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if err := hydrateTemporaryBalance(ctx, s.userRepo, user); err != nil {
+		return nil, fmt.Errorf("load temporary balance: %w", err)
 	}
 	lastUsedAt, latestErr := s.userRepo.GetLatestUsedAtByUserID(ctx, id)
 	if latestErr != nil {

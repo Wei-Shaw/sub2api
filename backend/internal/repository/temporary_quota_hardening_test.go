@@ -22,11 +22,11 @@ func TestTemporaryBalanceAuditMigrationRetainsUserHistory(t *testing.T) {
 	require.NotContains(t, sql, "user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE")
 }
 
-func TestBatchImageReserveUsesActiveTemporaryBalance(t *testing.T) {
-	// The SQL contract must account for expiring balance and persist the
-	// temporary portion of the hold so settlement cannot resurrect expired funds.
-	require.Contains(t, activeTemporaryBalanceProbeQuery, "temporary_balance_expires_at > CURRENT_TIMESTAMP")
-	require.Contains(t, reserveBatchImageHoldQuery, "balance >= $1")
+func TestBatchImageReserveUsesPermanentBalanceContract(t *testing.T) {
+	// Batch-image holds remain backed by permanent balance because the current
+	// frozen-balance schema has no temporary-hold provenance for settlement.
+	// Keep this contract explicit until that separate hold design is introduced.
+	require.Contains(t, reserveBatchImageHoldSQL, "balance >= \\$1")
 }
 
 func TestBillingCacheTemporaryBalanceDataExpiresAtBoundary(t *testing.T) {
@@ -53,6 +53,22 @@ func TestBillingCacheStoresTemporaryExpiryAndInvalidatesIt(t *testing.T) {
 	require.ErrorIs(t, err, redis.Nil)
 }
 
+func TestBillingCacheLegacyBalanceWriteClearsTemporarySnapshot(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	cache := &billingCache{rdb: rdb}
+	expires := time.Now().UTC().Add(time.Hour)
+	require.NoError(t, cache.SetUserBalanceData(context.Background(), 45, service.UserBalanceCacheData{
+		Balance: 15, TemporaryBalance: 5, TemporaryBalanceExpiresAt: &expires,
+	}))
+	require.NoError(t, cache.SetUserBalance(context.Background(), 45, 11))
+	_, err := cache.GetUserBalanceData(context.Background(), 45)
+	require.ErrorIs(t, err, redis.Nil)
+	legacy, err := cache.GetUserBalance(context.Background(), 45)
+	require.NoError(t, err)
+	require.InDelta(t, 11, legacy, 0.000001)
+}
+
 func TestBillingCacheDoesNotPersistExpiredTemporaryAmount(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
@@ -62,6 +78,33 @@ func TestBillingCacheDoesNotPersistExpiredTemporaryAmount(t *testing.T) {
 		Balance: 15, TemporaryBalance: 5, TemporaryBalanceExpiresAt: &expires,
 	}))
 	got, err := cache.GetUserBalanceData(context.Background(), 43)
+	require.NoError(t, err)
+	require.InDelta(t, 10, got.Balance, 0.000001)
+	require.Zero(t, got.TemporaryBalance)
+}
+
+func TestBillingCacheDeductsTemporaryBalanceBeforeExpiry(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	cache := &billingCache{rdb: rdb}
+	expires := time.Now().UTC().Add(2 * time.Minute)
+	require.NoError(t, cache.SetUserBalanceData(context.Background(), 44, service.UserBalanceCacheData{
+		Balance: 15, TemporaryBalance: 5, TemporaryBalanceExpiresAt: &expires,
+	}))
+	require.NoError(t, cache.DeductUserBalance(context.Background(), 44, 3))
+	got, err := cache.GetUserBalanceData(context.Background(), 44)
+	require.NoError(t, err)
+	require.InDelta(t, 12, got.Balance, 0.000001)
+	require.InDelta(t, 2, got.TemporaryBalance, 0.000001)
+	// Once the temporary grant expires, only the remaining permanent balance
+	// must be visible; the cached temporary field cannot be charged again.
+	// miniredis FastForward does not advance the Go process clock used by the
+	// expiry-aware reader, so rewrite the same snapshot with a past boundary.
+	expired := time.Now().UTC().Add(-time.Minute)
+	require.NoError(t, cache.SetUserBalanceData(context.Background(), 44, service.UserBalanceCacheData{
+		Balance: 12, TemporaryBalance: 2, TemporaryBalanceExpiresAt: &expired,
+	}))
+	got, err = cache.GetUserBalanceData(context.Background(), 44)
 	require.NoError(t, err)
 	require.InDelta(t, 10, got.Balance, 0.000001)
 	require.Zero(t, got.TemporaryBalance)
