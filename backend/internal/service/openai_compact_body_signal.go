@@ -180,3 +180,29 @@ func HasCompactionTriggerInInput(body []byte) bool {
 	})
 	return found
 }
+
+// IsOpenAIWSNativeCompactionV2Payload reports whether a client WebSocket
+// response.create payload carries the native remote-compaction semantic signal.
+// WebSocket requests default stream to true, while an explicit stream:false
+// opts out. The detector intentionally observes the client payload before any
+// account/model/policy rewrite so replayed or adapted bodies cannot change the
+// usage classification.
+func IsOpenAIWSNativeCompactionV2Payload(body []byte) bool {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return false
+	}
+	eventType := strings.TrimSpace(gjson.GetBytes(body, "type").String())
+	if eventType != "" && eventType != "response.create" {
+		return false
+	}
+	stream := gjson.GetBytes(body, "stream")
+	if stream.Exists() {
+		if stream.Type != gjson.True && stream.Type != gjson.False {
+			return false
+		}
+		if !stream.Bool() {
+			return false
+		}
+	}
+	return HasCompactionTriggerInInput(body)
+}
