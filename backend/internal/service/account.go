@@ -91,8 +91,12 @@ const openAILongContextBillingEnabledKey = "openai_long_context_billing_enabled"
 const (
 	OpenAIEndpointCapabilityChatCompletions OpenAIEndpointCapability = "chat_completions"
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
-	OpenAIEndpointCapabilityAlphaSearch     OpenAIEndpointCapability = "alpha_search"
-	OpenAIEndpointCapabilityLive            OpenAIEndpointCapability = "live"
+	// OpenAIEndpointCapabilityTranscriptions is the multipart
+	// /v1/audio/transcriptions endpoint. It is intentionally separate from
+	// chat and embeddings so audio-capable providers can be scheduled safely.
+	OpenAIEndpointCapabilityTranscriptions OpenAIEndpointCapability = "transcriptions"
+	OpenAIEndpointCapabilityAlphaSearch    OpenAIEndpointCapability = "alpha_search"
+	OpenAIEndpointCapabilityLive           OpenAIEndpointCapability = "live"
 	// OpenAIEndpointCapabilityGrokMediaGeneration keeps image/video generation
 	// away from Grok accounts that are explicitly disabled or whose billing
 	// entitlement probe was forbidden. Video status lookups intentionally do not
@@ -1821,7 +1825,7 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		if a.Type != AccountTypeOAuth && a.Type != AccountTypeAPIKey {
 			return false
 		}
-	case OpenAIEndpointCapabilityEmbeddings:
+	case OpenAIEndpointCapabilityEmbeddings, OpenAIEndpointCapabilityTranscriptions:
 		if a.Type != AccountTypeAPIKey {
 			return false
 		}

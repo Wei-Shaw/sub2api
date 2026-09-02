@@ -65,3 +65,49 @@ func TestForwardTranscriptions_APIKeyRewritesModelAndPreservesLanguage(t *testin
 	require.Equal(t, "zh", parsed.Value["language"][0])
 	require.Equal(t, "sample.wav", parsed.File["file"][0].Filename)
 }
+
+func TestForwardTranscriptions_RetryableUpstreamErrorDoesNotCommitResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	require.NoError(t, writer.WriteField("model", "fun-asr-nano"))
+	part, err := writer.CreateFormFile("file", "sample.wav")
+	require.NoError(t, err)
+	_, err = part.Write([]byte("RIFFaudio"))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", bytes.NewReader(body.Bytes()))
+	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusServiceUnavailable,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewBufferString(`{"error":{"message":"try again"}}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"api_key": "sk-test", "base_url": "https://asr.example",
+	}}
+
+	_, err = svc.ForwardTranscriptions(context.Background(), c, account, body.Bytes(), writer.FormDataContentType(), "fun-asr-nano")
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.ShouldRetryNextAccount())
+	require.False(t, c.Writer.Written())
+}
+
+func TestAccountSupportsOpenAITranscriptionsCapability(t *testing.T) {
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"openai_capabilities": []any{"transcriptions"},
+	}}
+	require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityTranscriptions))
+	require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityEmbeddings))
+
+	configuredWithoutTranscriptions := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"openai_capabilities": []any{"chat_completions"},
+	}}
+	require.False(t, configuredWithoutTranscriptions.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityTranscriptions))
+
+}
