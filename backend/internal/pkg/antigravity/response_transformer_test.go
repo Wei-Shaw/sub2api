@@ -107,3 +107,10 @@ func BenchmarkGenerateRandomID(b *testing.B) {
 		_ = generateRandomID()
 	}
 }
+
+func TestStreamingProcessor_MalformedFunctionCall(t *testing.T) {
+	proc := NewStreamingProcessor("gemini-2.5-flash")
+	out := proc.ProcessLine(`data: {"response":{"candidates":[{"finishReason":"MALFORMED_FUNCTION_CALL"}]}}`)
+	require.Contains(t, string(out), `"type":"error"`)
+	require.Contains(t, string(out), "upstream Gemini returned MALFORMED_FUNCTION_CALL")
+}

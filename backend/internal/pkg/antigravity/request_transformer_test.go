@@ -621,3 +621,36 @@ func TestGeminiToolConfig_IncludeServerSideToolInvocations(t *testing.T) {
 		require.NotContains(t, raw, "includeServerSideToolInvocations")
 	})
 }
+
+func TestBuildParts_ToolResultWithUnmappedIDDegradesToText(t *testing.T) {
+	content := `[{"type":"tool_result","tool_use_id":"toolu_01ABCDEF","content":"file contents here"}]`
+	toolIDToName := make(map[string]string)
+
+	parts, _, err := buildParts(json.RawMessage(content), toolIDToName, true)
+	require.NoError(t, err)
+	require.Len(t, parts, 1)
+	require.Nil(t, parts[0].FunctionResponse,
+		"unmapped tool_result must not become FunctionResponse with a raw tool_use_id name")
+	require.True(t, strings.Contains(parts[0].Text, "toolu_01ABCDEF"),
+		"degraded text part must keep the tool_use_id, got %q", parts[0].Text)
+	require.True(t, strings.Contains(parts[0].Text, "file contents here"),
+		"degraded text part must keep the result content, got %q", parts[0].Text)
+}
+
+func TestBuildParts_ToolResultWithMappedIDKeepsFunctionResponse(t *testing.T) {
+	content := `[{"type":"tool_use","id":"toolu_9","name":"read_file","input":{}},{"type":"tool_result","tool_use_id":"toolu_9","content":"ok"}]`
+	toolIDToName := make(map[string]string)
+
+	parts, _, err := buildParts(json.RawMessage(content), toolIDToName, true)
+	require.NoError(t, err)
+
+	var funcResp *GeminiFunctionResponse
+	for _, part := range parts {
+		if part.FunctionResponse != nil {
+			funcResp = part.FunctionResponse
+		}
+	}
+	require.NotNil(t, funcResp, "mapped tool_result must stay a FunctionResponse")
+	require.Equal(t, "read_file", funcResp.Name)
+	require.Equal(t, "toolu_9", funcResp.ID)
+}

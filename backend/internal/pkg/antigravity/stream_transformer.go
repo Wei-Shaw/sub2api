@@ -138,6 +138,15 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 					log.Printf("[Antigravity] Malformed content: %s", string(b))
 				}
 			}
+			// Do not silently swallow: explicitly emit Anthropic error event
+			// so the client receives a retryable error instead of an "empty successful reply".
+			_, _ = result.Write(p.formatSSE("error", map[string]any{
+				"type": "error",
+				"error": map[string]any{
+					"type":    "api_error",
+					"message": "upstream Gemini returned MALFORMED_FUNCTION_CALL; the turn produced no valid tool call, please retry",
+				},
+			}))
 		}
 		if finishReason != "" {
 			_, _ = result.Write(p.emitFinish(finishReason))
