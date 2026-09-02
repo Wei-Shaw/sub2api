@@ -1302,7 +1302,15 @@ func (a *Account) IsOpenAIOAuthLike() bool {
 // UsesOpenAICodexProtocol preserves legacy OpenAI gateway OAuth routing for
 // accounts whose platform is implicit, while adding OpenAI SetupToken.
 func (a *Account) UsesOpenAICodexProtocol() bool {
-	return a != nil && (a.Type == AccountTypeOAuth || a.IsOpenAIOAuthLike())
+	if a == nil {
+		return false
+	}
+	// ChatGPT/Codex 协议只属于 OpenAI OAuth / setup-token。
+	// platform=kimi 且 Type=OAuth 的账号不能走 chatgpt.com。
+	if a.IsOpenAIOAuthLike() {
+		return true
+	}
+	return a.Type == AccountTypeOAuth && strings.TrimSpace(a.Platform) == ""
 }
 
 func (a *Account) IsOpenAIChatGPTSubscription() bool {
@@ -1426,7 +1434,7 @@ func (a *Account) SupportsNativeCNResponses() bool {
 // UsesNativeCNResponses 报告当前账号是否应按原生 Responses 协议转发
 // （显式 responses，或 adaptive 且平台具备原生端点）。
 func (a *Account) UsesNativeCNResponses() bool {
-	if a == nil || !a.SupportsNativeCNResponses() {
+	if a == nil || !a.SupportsNativeCNResponses() || a.Type == AccountTypeOAuth {
 		return false
 	}
 	switch a.GetAPIProtocol() {
