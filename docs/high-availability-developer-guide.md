@@ -181,3 +181,100 @@ docker compose ... logs --since=10m sub2api | rg 'openai\.ha_scheduler\.(candida
 5. 查看 `health_tier`/`health_reason`；连续探测失败至少两次应为 Tier 2。
 6. 查看 `openai.upstream_failover_switching` 的状态码、切号计数和是否已达到上限。
 7. 检查 `health_cache_fallback`、数据库/Redis 错误和容器重启时间；进程内健康样本在重启后会重新冷启动。
+
+## 7. 后续版本更新（线上）
+
+本节适用于已经按本指南部署、以后继续从 `origin/feature/ha-scheduler` 更新的服务器。线上目录、`.env`、数据库和 Redis 数据属于生产资产；更新代码前先确认它们的位置和备份状态。
+
+### 7.1 先检查，不要直接 `git pull`
+
+```bash
+cd /opt/sub2api-ha-src
+git status --short --branch
+git remote -v
+git branch -vv
+```
+
+工作区有已跟踪的本地修改时先停止更新，提交到临时分支或导出补丁；不要用更新操作覆盖它们。`docker_log.txt` 等未跟踪观测文件可以保留，但不能加入提交。
+
+记录当前版本和运行配置：
+
+```bash
+git rev-parse HEAD > backup-git-commit.txt
+docker compose config > backup-compose-rendered.yml
+docker compose images > backup-compose-images.txt
+cp -a .env backup.env
+sha256sum backup.env backup-compose-rendered.yml > backup-manifest.sha256
+```
+
+如果 `git pull` 报 `Need to specify how to reconcile divergent branches`，不要随意选择 merge 或 rebase。HA 分支的发布提交可能经过 rebase，正确做法是先获取远端，再按 7.2 节对齐经过测试的远端提交。
+
+### 7.2 对齐已验证的 HA 提交
+
+```bash
+cd /opt/sub2api-ha-src
+git fetch origin --prune
+git switch feature/ha-scheduler
+git status --short
+git branch "backup/pre-ha-update-$(date +%Y%m%d-%H%M%S)"
+git log --oneline HEAD..origin/feature/ha-scheduler
+```
+
+确认工作区没有需要保留的已跟踪修改后，对齐 Fork 上已测试的提交：
+
+```bash
+git reset --hard origin/feature/ha-scheduler
+git status --short --branch
+```
+
+这里的 `reset --hard` 只允许在已创建备份分支且工作区确认干净后执行。备份分支用于回看旧代码或回滚，不要删除。不要执行 `git reset --hard upstream/main`，那会丢失 HA 定制代码；也不要从面板点击“立即更新”或拉取 `weishaw/sub2api:latest`。
+
+如果远端没有改写历史、只是普通新增提交，仍应优先使用：
+
+```bash
+git pull --ff-only origin feature/ha-scheduler
+```
+
+### 7.3 检查 migration 再启动应用
+
+应用会按完整文件名和 checksum 记录迁移。不要重命名、删除或手工修改已经在数据库执行过的 migration，也不要手工删除 `schema_migrations` 记录。更新前查询：
+
+```bash
+docker compose exec -T postgres sh -lc \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
+  "SELECT filename, checksum FROM schema_migrations WHERE filename LIKE '\''229_%'\'' OR filename LIKE '\''230_%'\'' OR filename LIKE '\''231_%'\'' OR filename LIKE '\''232_%'\'' OR filename LIKE '\''233_%'\'' ORDER BY filename"'
+```
+
+本分支新增的 HA 文件是 `231_scheduled_test_health_samples.sql` 和 `232_group_scheduler_config.sql`。如果生产库已经记录过旧名称 `229_scheduled_test_health_samples.sql` 或 `230_group_scheduler_config.sql`，先停止更新并保留查询结果，不能把“改名后文件”当作已经验证过的同一个 migration；应由维护者准备兼容迁移或恢复原文件名后再部署。全新测试副本没有这些记录时，应用启动会自动执行新增迁移。
+
+### 7.4 备份、隔离验证和正式重启
+
+生产切换前至少保留 PostgreSQL、Redis、`.env`、渲染后的 Compose 配置和旧镜像。低峰期停止应用写入者并执行逻辑备份：
+
+```bash
+docker compose stop sub2api
+docker compose exec -T postgres sh -lc \
+  'pg_dumpall -U "$POSTGRES_USER"' > postgres-backup-$(date +%Y%m%d-%H%M%S).sql
+docker compose exec -T redis redis-cli --rdb /data/redis-backup.rdb
+```
+
+先使用生产数据副本和 `deploy/docker-compose.ha-test.yml` 启动独立 Compose project，完成登录、分组、账号凭据、模型映射、迁移、HA failover 和低并发检查；测试通过后才更新正式实例。测试 Compose 禁止使用 `down -v`。
+
+记录目标提交并构建新的不可变镜像 tag：
+
+```bash
+git rev-parse --short HEAD
+docker build -t sub2api:ha-$(git rev-parse --short HEAD) -f deploy/Dockerfile .
+```
+
+正式 Compose 应引用这个新 tag，不能覆盖旧 tag。启动前再次渲染配置，确认端口、数据目录、数据库和 Redis 仍指向生产实例；然后仅重建/启动应用容器：
+
+```bash
+docker compose config
+docker compose up -d sub2api
+docker compose ps
+docker compose logs --tail=200 sub2api
+curl -fsS http://127.0.0.1:${SERVER_PORT:-8080}/health
+```
+
+如果没有反向代理或负载均衡，应用容器重启会中断在途请求，应安排维护窗口。更新后观察迁移日志、健康检查、错误率、TTFT 和 failover 日志；异常时停止新实例，恢复旧镜像 tag 和备份配置，不回滚数据库数据。
