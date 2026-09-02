@@ -346,4 +346,4 @@ dmesg -T | grep -Ei 'out of memory|oom|killed process|javascript heap' || true
 docker build --progress=plain -t "sub2api:ha-$TARGET_COMMIT" -f deploy/Dockerfile . 2>&1 | tee "/tmp/sub2api-build-$TARGET_COMMIT.log"
 ```
 
-确认主机或 Docker Desktop 至少有约 4 GiB 可用内存，并保留适当 swap；日志出现 `FATAL ERROR: ... heap out of memory` 或 `Killed` 时，应先增加构建内存后重试。构建成功后再进入停机窗口，不能在正式容器停止后临时处理构建失败。
+当前 Dockerfile 默认给 Node 前端构建使用 `4096 MB` 堆上限；也可以按构建机内存通过 `--build-arg NODE_MAX_OLD_SPACE_SIZE=3072` 覆盖。确认主机或 Docker Desktop 至少有约 4 GiB 可用内存，并保留适当 swap；日志出现 `FATAL ERROR: ... heap out of memory` 或 `Killed` 时，应先增加构建内存后重试。构建成功后再进入停机窗口，不能在正式容器停止后临时处理构建失败。
