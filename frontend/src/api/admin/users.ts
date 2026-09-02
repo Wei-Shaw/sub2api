@@ -55,6 +55,57 @@ export interface BatchUpdateUserLimitsResponse {
   affected: number
 }
 
+/** Add or replace a user's promotional temporary balance grant. */
+export interface TemporaryBalanceRequest {
+  amount: number
+  expires_at: string
+  notes?: string
+}
+
+// Keep the idempotency key stable while a request is retried. The backend
+// requires this header for every temporary-balance mutation to prevent a
+// double grant when a client times out after the write has committed.
+const temporaryBalanceOperationKeys = new Map<string, string>()
+
+const temporaryBalanceOperationScope = (id: number, request: TemporaryBalanceRequest) =>
+  `${id}:${JSON.stringify(request)}`
+
+const getTemporaryBalanceOperationKey = (id: number, request: TemporaryBalanceRequest) => {
+  const scope = temporaryBalanceOperationScope(id, request)
+  const existing = temporaryBalanceOperationKeys.get(scope)
+  if (existing) return existing
+  const requestId = globalThis.crypto?.randomUUID?.()
+    ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const key = `temporary-balance-${id}-${requestId}`
+  temporaryBalanceOperationKeys.set(scope, key)
+  return key
+}
+
+export async function setTemporaryBalance(
+  id: number,
+  request: TemporaryBalanceRequest
+): Promise<AdminUser> {
+  const scope = temporaryBalanceOperationScope(id, request)
+  const idempotencyKey = getTemporaryBalanceOperationKey(id, request)
+  try {
+    const { data } = await apiClient.post<AdminUser>(
+      `/admin/users/${id}/temporary-balance`,
+      request,
+      { headers: { 'Idempotency-Key': idempotencyKey } }
+    )
+    temporaryBalanceOperationKeys.delete(scope)
+    return data
+  } catch (error: any) {
+    // Keep the key for an unknown network outcome so a retry cannot double
+    // grant. Deterministic HTTP failures did not commit the mutation and must
+    // release the key, allowing the administrator to correct the input.
+    if (typeof error?.status === 'number' && error.status >= 400 && error.status < 500) {
+      temporaryBalanceOperationKeys.delete(scope)
+    }
+    throw error
+  }
+}
+
 /**
  * List all users with pagination
  * @param page - Page number (default: 1)
@@ -408,6 +459,7 @@ export const usersAPI = {
   updateBalance,
   updateConcurrency,
   batchUpdateLimits,
+  setTemporaryBalance,
   toggleStatus,
   getUserApiKeys,
   getUserUsageStats,

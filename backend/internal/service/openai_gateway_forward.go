@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+	ctx = markOpenAIFastClientTierProvided(ctx, body)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
@@ -626,7 +628,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	rawTier := requestView.ServiceTier
-	if openAIGroupForcesFast(ctx, account) {
+	groupFastForced := openAIGroupForcesFast(ctx, account)
+	apiKeyFastForced := shouldForceAPIKeyDefaultFastModeForAccount(ctx, account, upstreamModel)
+	fastForced := groupFastForced || apiKeyFastForced
+	if fastForced {
 		rawTier = OpenAIFastTierPriority
 		if requestView.ServiceTier != OpenAIFastTierPriority {
 			markPatchSet("service_tier", OpenAIFastTierPriority)
@@ -645,13 +650,15 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				writeOpenAIFastPolicyBlockedResponse(c, blocked)
 				return nil, blocked
 			case BetaPolicyActionFilter:
-				markPatchDelete("service_tier")
+				if !fastForced {
+					markPatchDelete("service_tier")
+				}
 			case OpenAIFastPolicyActionForcePriority:
-				if rawTier != OpenAIFastTierPriority {
+				if requestView.ServiceTier != OpenAIFastTierPriority {
 					markPatchSet("service_tier", OpenAIFastTierPriority)
 				}
 			default:
-				if normTier != rawTier {
+				if normTier != requestView.ServiceTier {
 					markPatchSet("service_tier", normTier)
 				}
 			}
@@ -978,6 +985,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	httpInvalidEncryptedContentRetryTried := false
 	compactModelFallbackRetried := false
 	agentTaskRecoveryTried := false
+	fastServiceTierFallbackTried := false
 	rejectedFieldRetryState := openAIResponsesRejectedFieldRetryStateForRequest(c, body)
 	for {
 		// Build upstream request
@@ -1015,8 +1023,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			headerGuard.close()
 			return nil, s.newOpenAIFirstOutputTimeoutError(
-				ctx, c, account, opsUpstreamProxyID(account), opsUpstreamProxyName(account),
-				startTime, originalModel, reasoningEffortValue,
+				ctx, c, account, startTime, originalModel, reasoningEffortValue,
 				firstOutputTimeout, "response_headers", nil,
 			)
 		}
@@ -1055,6 +1062,31 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			respBody = s.redactAgentIdentitySensitiveBody(ctx, account, respBody)
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+			retrySourceBody := body
+			if upstreamReq.GetBody != nil {
+				if bodyReader, bodyErr := upstreamReq.GetBody(); bodyErr == nil {
+					if outboundBody, readErr := io.ReadAll(bodyReader); readErr == nil {
+						retrySourceBody = outboundBody
+					}
+					_ = bodyReader.Close()
+				}
+			}
+			if !fastServiceTierFallbackTried && canRetryOpenAIWithoutFastServiceTier(ctx, account, upstreamModel, retrySourceBody, resp.StatusCode, upstreamMsg, respBody) {
+				retryBody, changed, retryErr := stripOpenAIServiceTierForFastFallback(retrySourceBody)
+				if retryErr != nil {
+					return nil, retryErr
+				}
+				if changed {
+					body = retryBody
+					ctx = withOpenAIFastModeFallbackDisabled(ctx, account.ID)
+					requestView = newOpenAIRequestView(body)
+					reqBody = nil
+					bodyModified = false
+					fastServiceTierFallbackTried = true
+					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying request without API-key default Fast service_tier (account: %s)", account.Name)
+					continue
+				}
+			}
 			if !httpInvalidEncryptedContentRetryTried && resp.StatusCode == http.StatusBadRequest && upstreamCode == "invalid_encrypted_content" {
 				decoded, decodeErr := ensureReqBody()
 				if decodeErr != nil {
@@ -1109,8 +1141,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					upstreamDetail = truncateString(string(respBody), maxBytes)
 				}
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-					ProxyID:            opsUpstreamProxyID(account),
-					ProxyName:          opsUpstreamProxyName(account),
 					Platform:           account.Platform,
 					AccountID:          account.ID,
 					AccountName:        account.Name,
@@ -1155,9 +1185,29 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		imageCount := 0
 		searchCount := 0
 		var imageOutputSizes []string
+		var trainingResponseItems []json.RawMessage
+		setOpenAIFastServiceTierFallbackCandidate(c, ctx, account, upstreamModel, body)
 		if reqStream {
 			streamResult, err := s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue)
 			if err != nil {
+				var fastServiceTierFallbackErr *openAIFastServiceTierFallbackError
+				if errors.As(err, &fastServiceTierFallbackErr) && fastServiceTierFallbackErr != nil && !fastServiceTierFallbackTried {
+					retryBody, changed, retryErr := stripOpenAIServiceTierForFastFallback(body)
+					if retryErr != nil {
+						return nil, retryErr
+					}
+					if changed {
+						_ = resp.Body.Close()
+						body = retryBody
+						ctx = withOpenAIFastModeFallbackDisabled(ctx, account.ID)
+						requestView = newOpenAIRequestView(body)
+						reqBody = nil
+						bodyModified = false
+						fastServiceTierFallbackTried = true
+						logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying streaming request without API-key default Fast service_tier (account: %s)", account.Name)
+						continue
+					}
+				}
 				if signal, ok := asOpenAICompactFallbackSignal(err); ok {
 					if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
 						c, account, requestedModel, body, http.StatusBadRequest, signal.message, signal.payload, compactModelFallbackRetried,
@@ -1176,8 +1226,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					compactResp, compactBody := openAICompactFallbackErrorResponse(resp, signal)
 					if s.shouldFailoverOpenAIUpstreamResponse(compactResp.StatusCode, signal.message, compactBody) {
 						appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-							ProxyID:            opsUpstreamProxyID(account),
-							ProxyName:          opsUpstreamProxyName(account),
 							Platform:           account.Platform,
 							AccountID:          account.ID,
 							AccountName:        account.Name,
@@ -1202,14 +1250,32 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
 			searchCount = streamResult.searchCount
+			trainingResponseItems = streamResult.trainingResponseItems
 		} else {
 			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
 			if err != nil {
+				var fastServiceTierFallbackErr *openAIFastServiceTierFallbackError
+				if errors.As(err, &fastServiceTierFallbackErr) && fastServiceTierFallbackErr != nil && !fastServiceTierFallbackTried {
+					retryBody, changed, retryErr := stripOpenAIServiceTierForFastFallback(body)
+					if retryErr != nil {
+						return nil, retryErr
+					}
+					if changed {
+						_ = resp.Body.Close()
+						body = retryBody
+						ctx = withOpenAIFastModeFallbackDisabled(ctx, account.ID)
+						requestView = newOpenAIRequestView(body)
+						reqBody = nil
+						bodyModified = false
+						fastServiceTierFallbackTried = true
+						logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-streaming request without API-key default Fast service_tier (account: %s)", account.Name)
+						continue
+					}
+				}
 				if signal, ok := asOpenAICompactFallbackSignal(err); ok {
 					if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
 						c, account, requestedModel, body, http.StatusBadRequest, signal.message, signal.payload, compactModelFallbackRetried,
 					); retry {
-						s.appendOpenAICompactFallbackRetryOps(c, account, resp, signal.payload, signal.message, false)
 						body = retryBody
 						requestView = newOpenAIRequestView(body)
 						upstreamModel = fallbackModel
@@ -1225,6 +1291,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			imageCount = nonStreamResult.imageCount
 			imageOutputSizes = nonStreamResult.imageOutputSizes
 			searchCount = nonStreamResult.searchCount
+			trainingResponseItems = nonStreamResult.trainingResponseItems
 		}
 		s.bindHTTPResponseAccount(ctx, c, account, responseID)
 
@@ -1252,12 +1319,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			UpstreamResponseModel:         observedUpstreamResponseModel(c),
 			UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
 			UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
+			RequestedServiceTier:          serviceTier,
 			ServiceTier:                   resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 			ReasoningEffort:               reasoningEffort,
 			Stream:                        reqStream,
 			OpenAIWSMode:                  false,
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
+			TrainingResponseItems:         trainingResponseItems,
 		}
 		if imageCount > 0 {
 			forwardResult.ImageCount = imageCount

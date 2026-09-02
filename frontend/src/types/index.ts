@@ -86,6 +86,13 @@ export interface User {
   wechat_bound?: boolean
   role: 'admin' | 'user' // User role for authorization
   balance: number // User balance for API usage
+  /** Temporary promotional balance; only usable before the expiry timestamp. */
+  temporary_balance?: number
+  /** Active portion of the temporary balance as calculated by the backend. */
+  active_temporary_balance?: number
+  temporary_balance_expires_at?: string | null
+  /** Effective balance returned by profile endpoints (permanent + active grant). */
+  available_balance?: number
   frozen_balance?: number // Balance currently held by async batch jobs
   concurrency: number // Allowed concurrent requests
   rpm_limit?: number // User-level RPM cap (0 = unlimited); effective as fallback when group has no rpm_limit
@@ -559,6 +566,7 @@ export interface Group {
   description: string | null
   platform: GroupPlatform
   rate_multiplier: number
+  fast_multiplier?: number | null
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
   max_reasoning_effort?: string // OpenAI/Codex reasoning ceiling; empty means unlimited
   max_reasoning_effort_over_limit?: string // downgrade (default) or deny when over the ceiling
@@ -729,6 +737,8 @@ export interface ApiKey {
   updated_at: string
   current_concurrency: number
   group?: Group
+  /** Enable the group's OpenAI Fast policy for this key by default. */
+  openai_default_fast_mode?: boolean
   rate_limit_5h: number
   rate_limit_1d: number
   rate_limit_7d: number
@@ -769,6 +779,7 @@ export interface UpdateApiKeyRequest {
   rate_limit_1d?: number
   rate_limit_7d?: number
   reset_rate_limit_usage?: boolean
+  openai_default_fast_mode?: boolean
 }
 
 export interface CreateGroupRequest {

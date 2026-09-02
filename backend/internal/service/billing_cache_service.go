@@ -87,6 +87,7 @@ type cacheWriteTask struct {
 	groupID          int64
 	apiKeyID         int64
 	balance          float64
+	balanceData      *UserBalanceCacheData
 	amount           float64
 	subscriptionData *subscriptionCacheData
 }
@@ -94,6 +95,10 @@ type cacheWriteTask struct {
 // apiKeyRateLimitLoader defines the interface for loading rate limit data from DB.
 type apiKeyRateLimitLoader interface {
 	GetRateLimitData(ctx context.Context, keyID int64) (*APIKeyRateLimitData, error)
+}
+
+type userAvailableBalanceReader interface {
+	GetAvailableBalance(ctx context.Context, userID int64) (float64, error)
 }
 
 type subscriptionCacheInvalidationPubSub interface {
@@ -114,13 +119,14 @@ type BillingCacheService struct {
 	circuitBreaker        *billingCircuitBreaker
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 
-	cacheWriteChan     chan cacheWriteTask
-	cacheWriteWg       sync.WaitGroup
-	cacheWriteStopOnce sync.Once
-	cacheWriteMu       sync.RWMutex
-	stopped            atomic.Bool
-	balanceLoadSF      singleflight.Group
-	quotaLoadSF        singleflight.Group
+	cacheWriteChan      chan cacheWriteTask
+	cacheWriteWg        sync.WaitGroup
+	cacheWriteStartOnce sync.Once
+	cacheWriteStopOnce  sync.Once
+	cacheWriteMu        sync.RWMutex
+	stopped             atomic.Bool
+	balanceLoadSF       singleflight.Group
+	quotaLoadSF         singleflight.Group
 	// 丢弃日志节流计数器（减少高负载下日志噪音）
 	cacheWriteDropFullCount     uint64
 	cacheWriteDropFullLastLog   int64
@@ -150,7 +156,7 @@ func NewBillingCacheService(
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
 	}
 	svc.circuitBreaker = newBillingCircuitBreaker(cfg.Billing.CircuitBreaker)
-	svc.startCacheWriteWorkers()
+	StartBackgroundRuntime("billing_cache_write_workers", svc.startCacheWriteWorkers)
 	return svc
 }
 
@@ -180,12 +186,22 @@ func (s *BillingCacheService) Stop() {
 }
 
 func (s *BillingCacheService) startCacheWriteWorkers() {
-	ch := make(chan cacheWriteTask, cacheWriteBufferSize)
-	s.cacheWriteChan = ch
-	for i := 0; i < cacheWriteWorkerCount; i++ {
-		s.cacheWriteWg.Add(1)
-		go s.cacheWriteWorker(ch)
+	if s == nil || s.stopped.Load() {
+		return
 	}
+	s.cacheWriteStartOnce.Do(func() {
+		if s.stopped.Load() {
+			return
+		}
+		ch := make(chan cacheWriteTask, cacheWriteBufferSize)
+		s.cacheWriteMu.Lock()
+		s.cacheWriteChan = ch
+		s.cacheWriteMu.Unlock()
+		for i := 0; i < cacheWriteWorkerCount; i++ {
+			s.cacheWriteWg.Add(1)
+			go s.cacheWriteWorker(ch)
+		}
+	})
 }
 
 // enqueueCacheWrite 尝试将任务入队，队列满时返回 false（并记录告警）。
@@ -219,7 +235,11 @@ func (s *BillingCacheService) cacheWriteWorker(ch <-chan cacheWriteTask) {
 		ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
 		switch task.kind {
 		case cacheWriteSetBalance:
-			s.setBalanceCache(ctx, task.userID, task.balance)
+			if task.balanceData != nil {
+				s.setBalanceCacheData(ctx, task.userID, *task.balanceData)
+			} else {
+				s.setBalanceCache(ctx, task.userID, task.balance)
+			}
 		case cacheWriteSetSubscription:
 			s.setSubscriptionCache(ctx, task.userID, task.groupID, task.subscriptionData)
 		case cacheWriteUpdateSubscriptionUsage:
@@ -314,7 +334,38 @@ func (s *BillingCacheService) GetUserBalance(ctx context.Context, userID int64) 
 		return s.getUserBalanceFromDB(ctx, userID)
 	}
 
-	// 尝试从缓存读取
+	// Expiring-aware caches carry the temporary grant boundary. A hit whose
+	// grant expired is treated as stale and rebuilt from the database.
+	if expiring, ok := s.cache.(ExpiringUserBalanceCache); ok {
+		data, err := expiring.GetUserBalanceData(ctx, userID)
+		if err == nil {
+			if data.TemporaryBalanceExpiresAt != nil && !data.TemporaryBalanceExpiresAt.After(time.Now().UTC()) {
+				_ = s.cache.InvalidateUserBalance(ctx, userID)
+			} else {
+				return data.Balance, nil
+			}
+		}
+		value, loadErr, _ := s.balanceLoadSF.Do(strconv.FormatInt(userID, 10), func() (any, error) {
+			loadCtx, cancel := context.WithTimeout(context.Background(), balanceLoadTimeout)
+			defer cancel()
+			snapshot, err := s.getUserBalanceDataFromDB(loadCtx, userID)
+			if err != nil {
+				return nil, err
+			}
+			_ = s.enqueueCacheWrite(cacheWriteTask{kind: cacheWriteSetBalance, userID: userID, balance: snapshot.Balance, balanceData: &snapshot})
+			return snapshot.Balance, nil
+		})
+		if loadErr != nil {
+			return 0, loadErr
+		}
+		balance, ok := value.(float64)
+		if !ok {
+			return 0, fmt.Errorf("unexpected balance type: %T", value)
+		}
+		return balance, nil
+	}
+
+	// 尝试从缓存读取（legacy cache without expiry metadata）
 	balance, err := s.cache.GetUserBalance(ctx, userID)
 	if err == nil {
 		return balance, nil
@@ -350,11 +401,61 @@ func (s *BillingCacheService) GetUserBalance(ctx context.Context, userID int64) 
 
 // getUserBalanceFromDB 从数据库获取用户余额
 func (s *BillingCacheService) getUserBalanceFromDB(ctx context.Context, userID int64) (float64, error) {
+	if reader, ok := s.userRepo.(UserBalanceSnapshotReader); ok {
+		snapshot, err := reader.GetUserBalanceSnapshot(ctx, userID)
+		if err != nil {
+			return 0, fmt.Errorf("get user balance snapshot: %w", err)
+		}
+		return snapshot.AvailableBalance, nil
+	}
+	if reader, ok := s.userRepo.(userAvailableBalanceReader); ok {
+		balance, err := reader.GetAvailableBalance(ctx, userID)
+		if err != nil {
+			return 0, fmt.Errorf("get user available balance: %w", err)
+		}
+		return balance, nil
+	}
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return 0, fmt.Errorf("get user balance: %w", err)
 	}
 	return user.Balance, nil
+}
+
+func (s *BillingCacheService) getUserBalanceDataFromDB(ctx context.Context, userID int64) (UserBalanceCacheData, error) {
+	if reader, ok := s.userRepo.(UserBalanceSnapshotReader); ok {
+		snapshot, err := reader.GetUserBalanceSnapshot(ctx, userID)
+		if err != nil {
+			return UserBalanceCacheData{}, fmt.Errorf("get user balance snapshot: %w", err)
+		}
+		return UserBalanceCacheData{
+			Balance:                   snapshot.AvailableBalance,
+			TemporaryBalance:          snapshot.ActiveTemporaryBalance,
+			TemporaryBalanceExpiresAt: snapshot.TemporaryBalanceExpiresAt,
+		}, nil
+	}
+	balance, err := s.getUserBalanceFromDB(ctx, userID)
+	if err != nil {
+		return UserBalanceCacheData{}, err
+	}
+	data := UserBalanceCacheData{Balance: balance}
+	if reader, ok := s.userRepo.(TemporaryBalanceRepository); ok {
+		grant, grantErr := reader.GetTemporaryBalance(ctx, userID)
+		if grantErr == nil && grant != nil {
+			// Legacy repositories expose aggregate available balance and the
+			// temporary grant through separate reads. If the grant expired between
+			// those reads, remove its stored amount before seeding the cache so the
+			// stale aggregate cannot remain spendable. Production repositories use
+			// UserBalanceSnapshotReader above and do not have this race.
+			if grant.ActiveAmount <= 0 && grant.Amount > 0 {
+				balance -= grant.Amount
+			}
+			data.TemporaryBalance = grant.ActiveAmount
+			data.TemporaryBalanceExpiresAt = grant.ExpiresAt
+		}
+	}
+	data.Balance = balance
+	return data, nil
 }
 
 // setBalanceCache 设置余额缓存
@@ -365,6 +466,19 @@ func (s *BillingCacheService) setBalanceCache(ctx context.Context, userID int64,
 	if err := s.cache.SetUserBalance(ctx, userID, balance); err != nil {
 		logger.LegacyPrintf("service.billing_cache", "Warning: set balance cache failed for user %d: %v", userID, err)
 	}
+}
+
+func (s *BillingCacheService) setBalanceCacheData(ctx context.Context, userID int64, data UserBalanceCacheData) {
+	if s.cache == nil {
+		return
+	}
+	if expiring, ok := s.cache.(ExpiringUserBalanceCache); ok {
+		if err := expiring.SetUserBalanceData(ctx, userID, data); err != nil {
+			logger.LegacyPrintf("service.billing_cache", "Warning: set expiring balance cache failed for user %d: %v", userID, err)
+		}
+		return
+	}
+	s.setBalanceCache(ctx, userID, data.Balance)
 }
 
 // DeductBalanceCache 扣减余额缓存（同步调用）

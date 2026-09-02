@@ -19,6 +19,9 @@ func UserFromServiceShallow(u *service.User) *User {
 		Username:                   u.Username,
 		Role:                       u.Role,
 		Balance:                    u.Balance,
+		TemporaryBalance:           u.TemporaryBalance,
+		ActiveTemporaryBalance:     u.ActiveTemporaryBalance,
+		TemporaryBalanceExpiresAt:  u.TemporaryBalanceExpiresAt,
 		FrozenBalance:              u.FrozenBalance,
 		Concurrency:                u.Concurrency,
 		Status:                     u.Status,
@@ -177,7 +180,7 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 }
 
 func groupFromServiceBase(g *service.Group) Group {
-	return Group{
+	out := Group{
 		ID:                              g.ID,
 		Name:                            g.Name,
 		Description:                     g.Description,
@@ -228,6 +231,38 @@ func groupFromServiceBase(g *service.Group) Group {
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}
+	if len(g.ModelPricing) > 0 {
+		var multiplier *float64
+		hasTokenPricing := false
+		consistent := true
+		for _, pricing := range g.ModelPricing {
+			// FastMultiplier applies to token billing. Image/video/per-request
+			// entries must not make a text Fast price look uniform.
+			if pricing.BillingMode != "" && pricing.BillingMode != service.BillingModeToken {
+				continue
+			}
+			hasTokenPricing = true
+			// A nil token multiplier falls back to the model/channel catalog,
+			// so it cannot be represented by one group-wide scalar.
+			if pricing.FastMultiplier == nil {
+				consistent = false
+				continue
+			}
+			if multiplier == nil {
+				value := *pricing.FastMultiplier
+				multiplier = &value
+				continue
+			}
+			if *multiplier != *pricing.FastMultiplier {
+				consistent = false
+				break
+			}
+		}
+		if hasTokenPricing && consistent && multiplier != nil {
+			out.FastMultiplier = multiplier
+		}
+	}
+	return out
 }
 
 func AccountFromServiceShallow(a *service.Account) *Account {

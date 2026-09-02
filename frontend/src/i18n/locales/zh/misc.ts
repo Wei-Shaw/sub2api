@@ -1,5 +1,29 @@
 export default {
 
+  tutorial: {
+    common: {
+      copy: '复制',
+      copied: '已复制',
+      sectionNavigation: '教程章节',
+    },
+    ccSwitch: {
+      title: '使用 CC-Switch 导入 luchikey 配置',
+      description: '将 luchikey 网关配置导入支持的本地 AI 客户端。',
+    },
+    claudeCode: {
+      title: '配置 Claude Code 接入 luchikey',
+      description: '使用 API 密钥将 Claude Code 接入 luchikey 网关。',
+    },
+    codex: {
+      title: '配置 Codex 接入 luchikey',
+      description: '在保留官方会话的同时使用 luchikey 中转。',
+    },
+    codexImage: {
+      title: '配置 Codex 生图',
+      description: '安装并配置 Codex 的 LuchiKey Image 插件。',
+    },
+  },
+
   // Subscription Progress (Header component)
   subscriptionProgress: {
     title: '我的订阅',
