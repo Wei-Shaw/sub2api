@@ -1704,7 +1704,6 @@ const fastModeBillingLabel = (key: ApiKey) =>
 
 const fastModeBillingWarning = (key: ApiKey) =>
   t('keys.fastModeBillingWarning', { multiplier: fastModeMultiplierLabel(key) })
-
 const isKeyMutationPending = (keyId: number) => keyMutationPendingKeys.has(keyId)
 
 const runKeyMutation = async (keyId: number, mutation: () => Promise<void>) => {

@@ -199,6 +199,42 @@ func (s *GroupRepoSuite) TestUpdate() {
 	s.Require().Equal("updated", got.Name)
 }
 
+func (s *GroupRepoSuite) TestUpdate_NonOpenAI_ClearsAPIKeyFastMode() {
+	group := &service.Group{
+		Name:             "openai-to-gemini",
+		Platform:         service.PlatformOpenAI,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, group))
+
+	u, err := s.tx.User.Create().
+		SetEmail("group-fast-cleanup@test.com").
+		SetPasswordHash("test-password-hash").
+		SetStatus(service.StatusActive).
+		SetRole(service.RoleUser).
+		Save(s.ctx)
+	s.Require().NoError(err)
+	key, err := s.tx.APIKey.Create().
+		SetUserID(u.ID).
+		SetKey("sk-group-fast-cleanup").
+		SetName("Fast key").
+		SetStatus(service.StatusActive).
+		SetGroupID(group.ID).
+		SetOpenaiDefaultFastMode(true).
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	group.Platform = service.PlatformGemini
+	s.Require().NoError(s.repo.Update(s.ctx, group))
+
+	updatedKey, err := s.tx.APIKey.Get(s.ctx, key.ID)
+	s.Require().NoError(err)
+	s.Require().False(updatedKey.OpenaiDefaultFastMode)
+}
+
 func (s *GroupRepoSuite) TestGetByID_PreservesMessagesDispatchModelConfig() {
 	group := &service.Group{
 		Name:                  "openai-dispatch",

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -244,11 +245,78 @@ func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.G
 }
 
 func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
+	if strings.EqualFold(strings.TrimSpace(groupIn.Platform), service.PlatformOpenAI) {
+		if err := r.updateRecord(ctx, groupIn); err != nil {
+			return err
+		}
+		r.enqueueGroupChanged(ctx, groupIn.ID)
+		return nil
+	}
+
+	if r.hasActiveTransaction(ctx) {
+		if err := r.updateAndClearFastMode(ctx, groupIn); err != nil {
+			return err
+		}
+		r.enqueueGroupChanged(ctx, groupIn.ID)
+		return nil
+	}
+
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin group fast-mode cleanup transaction: %w", err)
+	}
+	opCtx := dbent.NewTxContext(ctx, tx)
+	if err := r.updateAndClearFastMode(opCtx, groupIn); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit group fast-mode cleanup transaction: %w", err)
+	}
+	r.enqueueGroupChanged(ctx, groupIn.ID)
+	return nil
+}
+
+func (r *groupRepository) hasActiveTransaction(ctx context.Context) bool {
+	if dbent.TxFromContext(ctx) != nil {
+		return true
+	}
+	_, ok := r.sql.(*dbent.Tx)
+	return ok
+}
+
+func (r *groupRepository) updateAndClearFastMode(ctx context.Context, groupIn *service.Group) error {
+	if err := r.updateRecord(ctx, groupIn); err != nil {
+		return err
+	}
+	client := clientFromContext(ctx, r.client)
+	_, err := client.APIKey.Update().
+		Where(
+			apikey.GroupIDEQ(groupIn.ID),
+			apikey.DeletedAtIsNil(),
+			apikey.OpenaiDefaultFastModeEQ(true),
+		).
+		SetOpenaiDefaultFastMode(false).
+		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("clear API key fast mode for group %d: %w", groupIn.ID, err)
+	}
+	return nil
+}
+
+func (r *groupRepository) enqueueGroupChanged(ctx context.Context, groupID int64) {
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupID, nil); err != nil {
+		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group update failed: group=%d err=%v", groupID, err)
+	}
+}
+
+func (r *groupRepository) updateRecord(ctx context.Context, groupIn *service.Group) error {
 	modelPricing, err := json.Marshal(groupIn.ModelPricing)
 	if err != nil {
 		return fmt.Errorf("marshal group model pricing: %w", err)
 	}
-	builder := r.client.Group.UpdateOneID(groupIn.ID).
+	client := clientFromContext(ctx, r.client)
+	builder := client.Group.UpdateOneID(groupIn.ID).
 		SetName(groupIn.Name).
 		SetDescription(groupIn.Description).
 		SetPlatform(groupIn.Platform).
@@ -401,9 +469,6 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		return translatePersistenceError(err, service.ErrGroupNotFound, service.ErrGroupExists)
 	}
 	groupIn.UpdatedAt = updated.UpdatedAt
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
-		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group update failed: group=%d err=%v", groupIn.ID, err)
-	}
 	return nil
 }
 

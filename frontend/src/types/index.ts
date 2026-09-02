@@ -728,6 +728,7 @@ export interface ApiKey {
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
   ip_whitelist: string[]
   ip_blacklist: string[]
+  openai_default_fast_mode: boolean
   last_used_at: string | null
   last_used_ip: string | null
   quota: number // Quota limit in USD (0 = unlimited)
@@ -772,6 +773,7 @@ export interface UpdateApiKeyRequest {
   status?: 'active' | 'inactive'
   ip_whitelist?: string[]
   ip_blacklist?: string[]
+  openai_default_fast_mode?: boolean
   quota?: number // Quota limit in USD (null = no change, 0 = unlimited)
   expires_at?: string | null // Expiration time (null = no change)
   reset_quota?: boolean // Reset quota_used to 0

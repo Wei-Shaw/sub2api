@@ -11,6 +11,7 @@ const {
   getDashboardApiKeysUsage,
   getAvailableGroups,
   getUserGroupRates,
+  updateKey,
   showError,
   showSuccess,
   copyToClipboard,
@@ -22,6 +23,7 @@ const {
   getDashboardApiKeysUsage: vi.fn(),
   getAvailableGroups: vi.fn(),
   getUserGroupRates: vi.fn(),
+  updateKey: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
   copyToClipboard: vi.fn(),
@@ -53,13 +55,23 @@ const messages: Record<string, string> = {
   'keys.status.inactive': 'Inactive',
   'keys.status.quota_exhausted': 'Quota exhausted',
   'keys.usage': 'Usage',
+  'keys.fastMode': 'Fast mode',
+  'keys.normalMode': 'Normal mode',
+  'keys.fastModeBillingWarning': 'Priority pricing applies',
+  'keys.fastModeBillingWarningShort': 'Priority billing',
+  'keys.fastModeConfirmTitle': 'Enable fast mode?',
+  'keys.fastModeConfirmMessage': 'Priority pricing applies to {name}',
+  'keys.fastModeConfirmAction': 'Enable fast mode',
+  'keys.fastModeEnabledSuccess': 'Fast mode enabled',
+  'keys.normalModeEnabledSuccess': 'Normal mode enabled',
+  'keys.fastModeStateAdjusted': 'Fast mode adjusted to {mode}',
 }
 
 vi.mock('@/api', () => ({
   keysAPI: {
     list: listKeys,
     create: vi.fn(),
-    update: vi.fn(),
+    update: updateKey,
     delete: vi.fn(),
     toggleStatus: vi.fn(),
   },
@@ -114,6 +126,7 @@ const createApiKey = (): ApiKey => ({
   status: 'active',
   ip_whitelist: [],
   ip_blacklist: [],
+  openai_default_fast_mode: false,
   last_used_at: null,
   last_used_ip: null,
   quota: 0,
@@ -170,6 +183,7 @@ const DataTableStub = {
           <slot name="cell-id" :value="row.id" :row="row" />
         </div>
         <slot name="cell-name" :value="row.name" :row="row" />
+        <slot name="cell-group" :value="row.group" :row="row" />
         <div data-test="current-concurrency">
           <slot name="cell-current_concurrency" :value="row.current_concurrency" :row="row" />
         </div>
@@ -215,6 +229,19 @@ const IconStub = {
   template: '<span data-test="icon">{{ name }}</span>',
 }
 
+const ConfirmDialogStub = {
+  name: 'ConfirmDialog',
+  props: ['show', 'message'],
+  emits: ['confirm', 'cancel'],
+  template: `
+    <div v-if="show" data-test="confirm-dialog">
+      <div data-test="confirm-message">{{ message }}</div>
+      <button data-test="confirm-fast-mode" @click="$emit('confirm')">Confirm</button>
+      <button data-test="cancel-fast-mode" @click="$emit('cancel')">Cancel</button>
+    </div>
+  `,
+}
+
 const mountView = async () => {
   const wrapper = mount(KeysView, {
     global: {
@@ -224,7 +251,7 @@ const mountView = async () => {
         DataTable: DataTableStub,
         Pagination: PaginationStub,
         BaseDialog: true,
-        ConfirmDialog: true,
+        ConfirmDialog: ConfirmDialogStub,
         EmptyState: true,
         Select: SelectStub,
         SearchInput: SearchInputStub,
@@ -256,6 +283,14 @@ const getButtonByText = (wrapper: VueWrapper, text: string) => {
   return button
 }
 
+const createOpenAIGroup = () => ({
+  id: 42,
+  name: 'OpenAI',
+  platform: 'openai',
+  rate_multiplier: 1,
+  subscription_type: 'standard',
+} as any)
+
 describe('user KeysView column settings', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -265,6 +300,7 @@ describe('user KeysView column settings', () => {
     getDashboardApiKeysUsage.mockReset()
     getAvailableGroups.mockReset()
     getUserGroupRates.mockReset()
+    updateKey.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
     copyToClipboard.mockReset()
@@ -437,5 +473,37 @@ describe('user KeysView column settings', () => {
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
+  })
+
+  it('shows the OpenAI API key fast-mode toggle and persists the confirmed state', async () => {
+    const group = createOpenAIGroup()
+    const key = { ...createApiKey(), group_id: group.id, group }
+    const enabledKey = { ...key, openai_default_fast_mode: true }
+    listKeys
+      .mockResolvedValueOnce({ items: [key], total: 1, page: 1, page_size: 20, pages: 1 })
+      .mockResolvedValueOnce({ items: [enabledKey], total: 1, page: 1, page_size: 20, pages: 1 })
+    updateKey.mockResolvedValue(enabledKey)
+
+    const wrapper = await mountView()
+    expect(wrapper.get('[data-test="fast-mode-toggle"]').attributes('aria-checked')).toBe('false')
+
+    await wrapper.get('[data-test="fast-mode-toggle"]').trigger('click')
+    expect(updateKey).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-test="confirm-message"]').text()).toContain('Priority')
+
+    await wrapper.get('[data-test="confirm-fast-mode"]').trigger('click')
+    await flushPromises()
+
+    expect(updateKey).toHaveBeenCalledWith(key.id, { openai_default_fast_mode: true })
+    expect(wrapper.get('[data-test="fast-mode-toggle"]').attributes('aria-checked')).toBe('true')
+  })
+
+  it('hides the API key fast-mode toggle for non-OpenAI groups', async () => {
+    const group = { ...createOpenAIGroup(), id: 43, name: 'Gemini', platform: 'gemini' }
+    const key = { ...createApiKey(), group_id: group.id, group }
+    listKeys.mockResolvedValueOnce({ items: [key], total: 1, page: 1, page_size: 20, pages: 1 })
+
+    const wrapper = await mountView()
+    expect(wrapper.find('[data-test="fast-mode-toggle"]').exists()).toBe(false)
   })
 })
