@@ -290,6 +290,11 @@ func AllowLive(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldAllowLive, v))
 }
 
+// AllowAudioTranscription applies equality check predicate on the "allow_audio_transcription" field. It's identical to AllowAudioTranscriptionEQ.
+func AllowAudioTranscription(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAllowAudioTranscription, v))
+}
+
 // ForceOpenaiFast applies equality check predicate on the "force_openai_fast" field. It's identical to ForceOpenaiFastEQ.
 func ForceOpenaiFast(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldForceOpenaiFast, v))
@@ -2283,6 +2288,16 @@ func AllowLiveEQ(v bool) predicate.Group {
 // AllowLiveNEQ applies the NEQ predicate on the "allow_live" field.
 func AllowLiveNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldAllowLive, v))
+}
+
+// AllowAudioTranscriptionEQ applies the EQ predicate on the "allow_audio_transcription" field.
+func AllowAudioTranscriptionEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAllowAudioTranscription, v))
+}
+
+// AllowAudioTranscriptionNEQ applies the NEQ predicate on the "allow_audio_transcription" field.
+func AllowAudioTranscriptionNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldAllowAudioTranscription, v))
 }
 
 // ForceOpenaiFastEQ applies the EQ predicate on the "force_openai_fast" field.

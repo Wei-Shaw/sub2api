@@ -989,6 +989,20 @@ func (_u *GroupUpdate) SetNillableAllowLive(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetAllowAudioTranscription sets the "allow_audio_transcription" field.
+func (_u *GroupUpdate) SetAllowAudioTranscription(v bool) *GroupUpdate {
+	_u.mutation.SetAllowAudioTranscription(v)
+	return _u
+}
+
+// SetNillableAllowAudioTranscription sets the "allow_audio_transcription" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableAllowAudioTranscription(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetAllowAudioTranscription(*v)
+	}
+	return _u
+}
+
 // SetForceOpenaiFast sets the "force_openai_fast" field.
 func (_u *GroupUpdate) SetForceOpenaiFast(v bool) *GroupUpdate {
 	_u.mutation.SetForceOpenaiFast(v)
@@ -1843,6 +1857,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AllowLive(); ok {
 		_spec.SetField(group.FieldAllowLive, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AllowAudioTranscription(); ok {
+		_spec.SetField(group.FieldAllowAudioTranscription, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ForceOpenaiFast(); ok {
 		_spec.SetField(group.FieldForceOpenaiFast, field.TypeBool, value)
@@ -3166,6 +3183,20 @@ func (_u *GroupUpdateOne) SetNillableAllowLive(v *bool) *GroupUpdateOne {
 	return _u
 }
 
+// SetAllowAudioTranscription sets the "allow_audio_transcription" field.
+func (_u *GroupUpdateOne) SetAllowAudioTranscription(v bool) *GroupUpdateOne {
+	_u.mutation.SetAllowAudioTranscription(v)
+	return _u
+}
+
+// SetNillableAllowAudioTranscription sets the "allow_audio_transcription" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableAllowAudioTranscription(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetAllowAudioTranscription(*v)
+	}
+	return _u
+}
+
 // SetForceOpenaiFast sets the "force_openai_fast" field.
 func (_u *GroupUpdateOne) SetForceOpenaiFast(v bool) *GroupUpdateOne {
 	_u.mutation.SetForceOpenaiFast(v)
@@ -4050,6 +4081,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AllowLive(); ok {
 		_spec.SetField(group.FieldAllowLive, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AllowAudioTranscription(); ok {
+		_spec.SetField(group.FieldAllowAudioTranscription, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ForceOpenaiFast(); ok {
 		_spec.SetField(group.FieldForceOpenaiFast, field.TypeBool, value)

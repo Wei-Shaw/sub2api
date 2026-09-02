@@ -22158,6 +22158,7 @@ type GroupMutation struct {
 	addsort_order                           *int
 	allow_messages_dispatch                 *bool
 	allow_live                              *bool
+	allow_audio_transcription               *bool
 	force_openai_fast                       *bool
 	free_openai_fast                        *bool
 	require_oauth_only                      *bool
@@ -24947,6 +24948,42 @@ func (m *GroupMutation) ResetAllowLive() {
 	m.allow_live = nil
 }
 
+// SetAllowAudioTranscription sets the "allow_audio_transcription" field.
+func (m *GroupMutation) SetAllowAudioTranscription(b bool) {
+	m.allow_audio_transcription = &b
+}
+
+// AllowAudioTranscription returns the value of the "allow_audio_transcription" field in the mutation.
+func (m *GroupMutation) AllowAudioTranscription() (r bool, exists bool) {
+	v := m.allow_audio_transcription
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowAudioTranscription returns the old "allow_audio_transcription" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAllowAudioTranscription(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowAudioTranscription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowAudioTranscription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowAudioTranscription: %w", err)
+	}
+	return oldValue.AllowAudioTranscription, nil
+}
+
+// ResetAllowAudioTranscription resets all changes to the "allow_audio_transcription" field.
+func (m *GroupMutation) ResetAllowAudioTranscription() {
+	m.allow_audio_transcription = nil
+}
+
 // SetForceOpenaiFast sets the "force_openai_fast" field.
 func (m *GroupMutation) SetForceOpenaiFast(b bool) {
 	m.force_openai_fast = &b
@@ -25884,7 +25921,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 65)
+	fields := make([]string, 0, 66)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26038,6 +26075,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.allow_live != nil {
 		fields = append(fields, group.FieldAllowLive)
 	}
+	if m.allow_audio_transcription != nil {
+		fields = append(fields, group.FieldAllowAudioTranscription)
+	}
 	if m.force_openai_fast != nil {
 		fields = append(fields, group.FieldForceOpenaiFast)
 	}
@@ -26190,6 +26230,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.AllowMessagesDispatch()
 	case group.FieldAllowLive:
 		return m.AllowLive()
+	case group.FieldAllowAudioTranscription:
+		return m.AllowAudioTranscription()
 	case group.FieldForceOpenaiFast:
 		return m.ForceOpenaiFast()
 	case group.FieldFreeOpenaiFast:
@@ -26329,6 +26371,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldAllowMessagesDispatch(ctx)
 	case group.FieldAllowLive:
 		return m.OldAllowLive(ctx)
+	case group.FieldAllowAudioTranscription:
+		return m.OldAllowAudioTranscription(ctx)
 	case group.FieldForceOpenaiFast:
 		return m.OldForceOpenaiFast(ctx)
 	case group.FieldFreeOpenaiFast:
@@ -26722,6 +26766,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAllowLive(v)
+		return nil
+	case group.FieldAllowAudioTranscription:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowAudioTranscription(v)
 		return nil
 	case group.FieldForceOpenaiFast:
 		v, ok := value.(bool)
@@ -27484,6 +27535,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldAllowLive:
 		m.ResetAllowLive()
+		return nil
+	case group.FieldAllowAudioTranscription:
+		m.ResetAllowAudioTranscription()
 		return nil
 	case group.FieldForceOpenaiFast:
 		m.ResetForceOpenaiFast()

@@ -122,6 +122,8 @@ type Group struct {
 	AllowMessagesDispatch bool `json:"allow_messages_dispatch,omitempty"`
 	// 是否允许此 OpenAI 分组访问 Live 接口
 	AllowLive bool `json:"allow_live,omitempty"`
+	// 是否允许此 OpenAI 分组访问 /v1/audio/transcriptions
+	AllowAudioTranscription bool `json:"allow_audio_transcription,omitempty"`
 	// 是否强制此 OpenAI/Composite 分组请求使用 service_tier=priority
 	ForceOpenaiFast bool `json:"force_openai_fast,omitempty"`
 	// 是否让此 OpenAI/Composite 分组的 Fast 请求按 Standard 价格计费
@@ -142,7 +144,7 @@ type Group struct {
 	MaxReasoningEffort string `json:"max_reasoning_effort,omitempty"`
 	// 超过推理强度上限时的访问控制：downgrade 自动降档，deny 拒绝访问
 	MaxReasoningEffortOverLimit string `json:"max_reasoning_effort_over_limit,omitempty"`
-	// OpenAI reasoning effort 自定义精确映射；先映射再应用上限
+	// OpenAI reasoning effort 自定义映射；可按模型精确名、前缀或后缀限定，先映射再应用上限
 	ReasoningEffortMappings []domain.ReasoningEffortMapping `json:"reasoning_effort_mappings,omitempty"`
 	// 是否启用利润控制：调度时仅允许账号计费倍率满足毛利率要求的账号进入候选池
 	ProfitControlEnabled bool `json:"profit_control_enabled,omitempty"`
@@ -258,7 +260,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
-		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
+		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldAllowAudioTranscription, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
 			values[i] = new(sql.NullFloat64)
@@ -622,6 +624,12 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.AllowLive = value.Bool
 			}
+		case group.FieldAllowAudioTranscription:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field allow_audio_transcription", values[i])
+			} else if value.Valid {
+				_m.AllowAudioTranscription = value.Bool
+			}
 		case group.FieldForceOpenaiFast:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field force_openai_fast", values[i])
@@ -978,6 +986,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("allow_live=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowLive))
+	builder.WriteString(", ")
+	builder.WriteString("allow_audio_transcription=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowAudioTranscription))
 	builder.WriteString(", ")
 	builder.WriteString("force_openai_fast=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ForceOpenaiFast))
