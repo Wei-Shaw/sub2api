@@ -33,6 +33,8 @@ type userRepository struct {
 }
 
 var _ service.RedeemUserAdjustmentRepository = (*userRepository)(nil)
+var _ service.TemporaryBalanceRepository = (*userRepository)(nil)
+var _ service.UserBalanceSnapshotReader = (*userRepository)(nil)
 
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
@@ -894,9 +896,339 @@ func (r *userRepository) DeductBalance(ctx context.Context, id int64, amount flo
 	return nil
 }
 
+// GetAvailableBalance returns permanent balance plus a positive, unexpired
+// temporary grant. The temporary columns are kept outside Ent so the official
+// user model and public API remain unchanged.
+func (r *userRepository) GetAvailableBalance(ctx context.Context, id int64) (float64, error) {
+	var balance float64
+	err := scanSingleRow(ctx, r.sql, `
+		SELECT balance + CASE
+			WHEN temporary_balance > 0
+				AND temporary_balance_expires_at IS NOT NULL
+				AND temporary_balance_expires_at > CURRENT_TIMESTAMP
+			THEN temporary_balance
+			ELSE 0
+		END
+		FROM users
+		WHERE id = $1 AND deleted_at IS NULL
+	`, []any{id}, &balance)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, service.ErrUserNotFound
+	}
+	if err != nil {
+		return 0, fmt.Errorf("get available balance: %w", err)
+	}
+	return balance, nil
+}
+
+// GetUserBalanceSnapshot reads permanent and temporary balance columns, their
+// effective expiry state, and the aggregate available value in one SQL
+// snapshot. Keeping these values in one statement prevents a grant expiring
+// between separate GetAvailableBalance/GetTemporaryBalance calls from being
+// cached as spendable.
+func (r *userRepository) GetUserBalanceSnapshot(ctx context.Context, id int64) (service.UserBalanceSnapshot, error) {
+	var snapshot service.UserBalanceSnapshot
+	var temporaryExpiry sql.NullTime
+	err := scanSingleRow(ctx, r.sql, `
+		SELECT balance,
+			temporary_balance,
+			temporary_balance_expires_at,
+			CASE
+				WHEN temporary_balance > 0
+					AND temporary_balance_expires_at IS NOT NULL
+					AND temporary_balance_expires_at > CURRENT_TIMESTAMP
+				THEN temporary_balance
+				ELSE 0
+			END AS active_temporary_balance,
+			balance + CASE
+				WHEN temporary_balance > 0
+					AND temporary_balance_expires_at IS NOT NULL
+					AND temporary_balance_expires_at > CURRENT_TIMESTAMP
+				THEN temporary_balance
+				ELSE 0
+			END AS available_balance
+		FROM users
+		WHERE id = $1 AND deleted_at IS NULL
+	`, []any{id}, &snapshot.Balance, &snapshot.TemporaryBalance, &temporaryExpiry, &snapshot.ActiveTemporaryBalance, &snapshot.AvailableBalance)
+	if errors.Is(err, sql.ErrNoRows) {
+		return service.UserBalanceSnapshot{}, service.ErrUserNotFound
+	}
+	if err != nil {
+		return service.UserBalanceSnapshot{}, fmt.Errorf("get user balance snapshot: %w", err)
+	}
+	if temporaryExpiry.Valid {
+		expiresAt := temporaryExpiry.Time.UTC()
+		snapshot.TemporaryBalanceExpiresAt = &expiresAt
+	}
+	return snapshot, nil
+}
+
+// GetTemporaryBalance returns the stored temporary grant and the spendable
+// portion. Expired values remain visible to administrators for audit/display,
+// but active amount is deliberately zero once the expiry has passed.
+func (r *userRepository) GetTemporaryBalance(ctx context.Context, userID int64) (*service.TemporaryBalanceGrant, error) {
+	grants, err := r.GetTemporaryBalances(ctx, []int64{userID})
+	if err != nil {
+		return nil, err
+	}
+	grant, ok := grants[userID]
+	if !ok {
+		return nil, service.ErrUserNotFound
+	}
+	return grant, nil
+}
+
+func (r *userRepository) GetTemporaryBalances(ctx context.Context, userIDs []int64) (map[int64]*service.TemporaryBalanceGrant, error) {
+	out := make(map[int64]*service.TemporaryBalanceGrant)
+	cleaned := make([]int64, 0, len(userIDs))
+	seen := make(map[int64]struct{}, len(userIDs))
+	for _, id := range userIDs {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		cleaned = append(cleaned, id)
+	}
+	if len(cleaned) == 0 {
+		return out, nil
+	}
+	if r.sql == nil {
+		return nil, service.ErrTemporaryBalanceUnavailable
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT id, temporary_balance, temporary_balance_expires_at,
+			CASE
+				WHEN temporary_balance > 0
+					AND temporary_balance_expires_at IS NOT NULL
+					AND temporary_balance_expires_at > CURRENT_TIMESTAMP
+				THEN temporary_balance
+				ELSE 0
+			END AS active_temporary_balance
+		FROM users
+		WHERE id = ANY($1) AND deleted_at IS NULL`, pq.Array(cleaned))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			amount, active float64
+			expiresAt      sql.NullTime
+			userID         int64
+		)
+		if err := rows.Scan(&userID, &amount, &expiresAt, &active); err != nil {
+			return nil, err
+		}
+		grant := &service.TemporaryBalanceGrant{UserID: userID, Amount: amount, ActiveAmount: active}
+		if expiresAt.Valid {
+			expires := expiresAt.Time.UTC()
+			grant.ExpiresAt = &expires
+		}
+		out[userID] = grant
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GrantTemporaryBalance atomically adds an administrator grant. If the
+// previous grant is expired it is replaced; otherwise amount is accumulated
+// and the later expiry is retained. The same statement appends an audit row so
+// a successful response can never be returned without durable history.
+func (r *userRepository) GrantTemporaryBalance(ctx context.Context, userID int64, amount float64, expiresAt time.Time, actorAdminID int64, notes string) (*service.TemporaryBalanceGrant, error) {
+	if r.sql == nil {
+		return nil, service.ErrTemporaryBalanceUnavailable
+	}
+	var actor any
+	if actorAdminID > 0 {
+		actor = actorAdminID
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+		WITH prior AS (
+			SELECT id, temporary_balance AS previous_balance,
+				temporary_balance_expires_at AS previous_expires_at
+			FROM users
+			WHERE id = $4 AND deleted_at IS NULL
+			FOR UPDATE
+		), changed AS (
+			UPDATE users AS u
+			SET temporary_balance = CASE
+					WHEN prior.previous_expires_at IS NULL OR prior.previous_expires_at <= CURRENT_TIMESTAMP
+					THEN $1
+					ELSE prior.previous_balance + $1
+				END,
+				temporary_balance_expires_at = CASE
+					WHEN prior.previous_expires_at IS NULL OR prior.previous_expires_at <= CURRENT_TIMESTAMP
+					THEN $2
+					ELSE GREATEST(prior.previous_expires_at, $2)
+				END,
+				updated_at = NOW()
+			FROM prior
+			WHERE u.id = prior.id
+			RETURNING u.id, u.temporary_balance, u.temporary_balance_expires_at,
+				prior.previous_balance, prior.previous_expires_at
+		), audited AS (
+			INSERT INTO temporary_balance_audits
+				(user_id, actor_admin_id, operation, amount, previous_balance,
+				 new_balance, previous_expires_at, expires_at, notes)
+			SELECT id, $3, 'grant', $1, previous_balance, temporary_balance,
+				previous_expires_at, temporary_balance_expires_at, $5
+			FROM changed
+		)
+		SELECT id, temporary_balance, temporary_balance_expires_at FROM changed`,
+		amount, expiresAt.UTC(), actor, userID, notes)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, service.ErrUserNotFound
+		}
+		return nil, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, service.ErrUserNotFound
+	}
+	var (
+		resultID      int64
+		resultAmount  float64
+		resultExpires sql.NullTime
+	)
+	if err := rows.Scan(&resultID, &resultAmount, &resultExpires); err != nil {
+		return nil, err
+	}
+	grant := &service.TemporaryBalanceGrant{UserID: resultID, Amount: resultAmount, ActiveAmount: resultAmount}
+	if resultExpires.Valid {
+		expires := resultExpires.Time.UTC()
+		grant.ExpiresAt = &expires
+	}
+	return grant, nil
+}
+
+// ClearExpiredTemporaryBalances clears a bounded batch and writes one audit
+// row per cleared grant. It is safe to call repeatedly and never touches a
+// grant that became active again due to a concurrent administrator update.
+func (r *userRepository) ClearExpiredTemporaryBalances(ctx context.Context, limit int) (int, error) {
+	if limit <= 0 {
+		limit = 1000
+	}
+	if r.sql == nil {
+		return 0, service.ErrTemporaryBalanceUnavailable
+	}
+	var cleared int
+	rows, err := r.sql.QueryContext(ctx, `
+		WITH expired AS (
+			SELECT id, temporary_balance AS previous_balance,
+				temporary_balance_expires_at AS previous_expires_at
+			FROM users
+			WHERE temporary_balance > 0
+			  AND temporary_balance_expires_at IS NOT NULL
+			  AND temporary_balance_expires_at <= CURRENT_TIMESTAMP
+			ORDER BY id
+			LIMIT $1
+			FOR UPDATE SKIP LOCKED
+		), changed AS (
+			UPDATE users AS u
+			SET temporary_balance = 0,
+				temporary_balance_expires_at = NULL,
+				updated_at = NOW()
+			FROM expired
+			WHERE u.id = expired.id
+			RETURNING u.id
+		), audited AS (
+			INSERT INTO temporary_balance_audits
+				(user_id, operation, amount, previous_balance, new_balance,
+				 previous_expires_at, expires_at, notes)
+			SELECT changed.id, 'expire', expired.previous_balance, expired.previous_balance, 0,
+				expired.previous_expires_at, CURRENT_TIMESTAMP, 'automatic expiry cleanup'
+			FROM changed JOIN expired ON expired.id = changed.id
+			RETURNING id
+		)
+		SELECT COUNT(*) FROM audited`, limit)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return 0, err
+		}
+		return 0, nil
+	}
+	if err := rows.Scan(&cleared); err != nil {
+		return 0, err
+	}
+	return cleared, nil
+}
+
+// ClearExpiredTemporaryBalanceUsers is the maintenance variant that returns
+// exact user ids for cache invalidation. It shares the same row-lock/audit
+// semantics as ClearExpiredTemporaryBalances but avoids broad cache scans.
+func (r *userRepository) ClearExpiredTemporaryBalanceUsers(ctx context.Context, limit int) ([]int64, error) {
+	if limit <= 0 {
+		limit = 1000
+	}
+	if r.sql == nil {
+		return nil, service.ErrTemporaryBalanceUnavailable
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+		WITH expired AS (
+			SELECT id, temporary_balance AS previous_balance,
+				temporary_balance_expires_at AS previous_expires_at
+			FROM users
+			WHERE temporary_balance > 0
+			  AND temporary_balance_expires_at IS NOT NULL
+			  AND temporary_balance_expires_at <= CURRENT_TIMESTAMP
+			ORDER BY id
+			LIMIT $1
+			FOR UPDATE SKIP LOCKED
+		), changed AS (
+			UPDATE users AS u
+			SET temporary_balance = 0,
+				temporary_balance_expires_at = NULL,
+				updated_at = NOW()
+			FROM expired
+			WHERE u.id = expired.id
+			RETURNING u.id, expired.previous_balance, expired.previous_expires_at
+		), audited AS (
+			INSERT INTO temporary_balance_audits
+				(user_id, operation, amount, previous_balance, new_balance,
+				 previous_expires_at, expires_at, notes)
+			SELECT id, 'expire', previous_balance, previous_balance, 0,
+				previous_expires_at, CURRENT_TIMESTAMP, 'automatic expiry cleanup'
+			FROM changed
+			RETURNING user_id
+		)
+		SELECT user_id FROM audited`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := make([]int64, 0)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 // DeductAvailableBalance atomically deducts min(amount, max(balance, 0)).
-// Unlike DeductBalance, this refund-specific operation never increases an
-// existing deficit or permits a concurrent deduction to cause an overdraft.
+// This refund-specific operation intentionally uses refundable permanent
+// balance only: temporary grants must never be clawed back and later restored
+// as permanent balance by a failed payment refund. Unlike DeductBalance, it
+// never increases an existing deficit or permits a concurrent deduction to
+// cause an overdraft.
 func (r *userRepository) DeductAvailableBalance(ctx context.Context, id int64, amount float64) (deducted float64, err error) {
 	if amount < 0 {
 		return 0, fmt.Errorf("deduction amount must be nonnegative")

@@ -36,6 +36,18 @@ type UserHandler struct {
 	settingService        *service.SettingService // step-up 功能开关
 }
 
+type temporaryBalanceAdminService interface {
+	GrantUserTemporaryBalance(ctx context.Context, userID int64, amount float64, expiresAt time.Time, actorAdminID int64, notes string) (*service.User, error)
+}
+
+func (h *UserHandler) grantTemporaryBalance(ctx context.Context, userID int64, amount float64, expiresAt time.Time, actorAdminID int64, notes string) (*service.User, error) {
+	svc, ok := h.adminService.(temporaryBalanceAdminService)
+	if !ok {
+		return nil, service.ErrTemporaryBalanceUnavailable
+	}
+	return svc.GrantUserTemporaryBalance(ctx, userID, amount, expiresAt, actorAdminID, notes)
+}
+
 // NewUserHandler creates a new admin user handler
 func NewUserHandler(
 	adminService service.AdminService,
@@ -92,9 +104,25 @@ type UpdateUserRequest struct {
 
 // UpdateBalanceRequest represents balance update request
 type UpdateBalanceRequest struct {
-	Balance   float64 `json:"balance" binding:"required,gt=0"`
-	Operation string  `json:"operation" binding:"required,oneof=set add subtract"`
-	Notes     string  `json:"notes"`
+	// Balance is retained for compatibility with existing admin clients.
+	Balance float64 `json:"balance"`
+	// Amount is the preferred field for both balance types in the new UI.
+	Amount        *float64   `json:"amount"`
+	BalanceType   string     `json:"balance_type" binding:"omitempty,oneof=balance temporary"`
+	Operation     string     `json:"operation" binding:"omitempty,oneof=set add subtract"`
+	ExpiresAt     *time.Time `json:"expires_at"`
+	ExpiresInDays *int       `json:"expires_in_days" binding:"omitempty,min=1,max=3650"`
+	Notes         string     `json:"notes"`
+}
+
+// GrantTemporaryBalanceRequest represents an administrator-granted expiring
+// balance. expires_in_days is a convenience for the admin UI; callers must set
+// exactly one of expires_at and expires_in_days.
+type GrantTemporaryBalanceRequest struct {
+	Amount        float64    `json:"amount" binding:"required,gt=0"`
+	ExpiresAt     *time.Time `json:"expires_at"`
+	ExpiresInDays *int       `json:"expires_in_days" binding:"omitempty,min=1,max=3650"`
+	Notes         string     `json:"notes"`
 }
 
 type BindUserAuthIdentityRequest struct {
@@ -399,6 +427,59 @@ func (h *UserHandler) UpdateBalance(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	if req.BalanceType == "" {
+		req.BalanceType = "balance"
+	}
+	if req.Amount != nil {
+		req.Balance = *req.Amount
+	}
+	if req.Balance <= 0 {
+		response.BadRequest(c, "amount must be greater than zero")
+		return
+	}
+	if req.BalanceType == "temporary" {
+		if req.Operation == "" {
+			req.Operation = "add"
+		}
+		if req.Operation != "add" {
+			response.BadRequest(c, "temporary balance only supports add operation")
+			return
+		}
+		if req.ExpiresAt == nil && req.ExpiresInDays == nil {
+			response.BadRequest(c, "expires_at or expires_in_days is required for temporary balance")
+			return
+		}
+		if req.ExpiresAt != nil && req.ExpiresInDays != nil {
+			response.BadRequest(c, "expires_at and expires_in_days cannot both be set")
+			return
+		}
+		var expiresAt time.Time
+		if req.ExpiresAt != nil {
+			expiresAt = req.ExpiresAt.UTC()
+		} else {
+			expiresAt = time.Now().UTC().AddDate(0, 0, *req.ExpiresInDays)
+		}
+		idempotencyPayload := struct {
+			UserID int64                `json:"user_id"`
+			Body   UpdateBalanceRequest `json:"body"`
+		}{UserID: userID, Body: req}
+		executeAdminIdempotentJSON(c, "admin.users.temporary_balance.grant", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+			user, execErr := h.grantTemporaryBalance(ctx, userID, req.Balance, expiresAt, getAdminIDFromContext(c), req.Notes)
+			if execErr != nil {
+				return nil, execErr
+			}
+			return dto.UserFromServiceAdmin(user), nil
+		})
+		return
+	}
+	if req.Operation == "" {
+		response.BadRequest(c, "operation is required for balance updates")
+		return
+	}
+	if req.ExpiresAt != nil || req.ExpiresInDays != nil {
+		response.BadRequest(c, "expiry fields are only valid for temporary balance")
+		return
+	}
 
 	idempotencyPayload := struct {
 		UserID int64                `json:"user_id"`
@@ -409,6 +490,47 @@ func (h *UserHandler) UpdateBalance(c *gin.Context) {
 	}
 	executeAdminIdempotentJSON(c, "admin.users.balance.update", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		user, execErr := h.adminService.UpdateUserBalance(ctx, userID, req.Balance, req.Operation, req.Notes)
+		if execErr != nil {
+			return nil, execErr
+		}
+		return dto.UserFromServiceAdmin(user), nil
+	})
+}
+
+// GrantTemporaryBalance adds a temporary balance grant for a user.
+// POST /api/v1/admin/users/:id/temporary-balance
+func (h *UserHandler) GrantTemporaryBalance(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	var req GrantTemporaryBalanceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if req.ExpiresAt == nil && req.ExpiresInDays == nil {
+		response.BadRequest(c, "expires_at or expires_in_days is required")
+		return
+	}
+	if req.ExpiresAt != nil && req.ExpiresInDays != nil {
+		response.BadRequest(c, "expires_at and expires_in_days cannot both be set")
+		return
+	}
+	var expiresAt time.Time
+	if req.ExpiresAt != nil {
+		expiresAt = req.ExpiresAt.UTC()
+	} else {
+		expiresAt = time.Now().UTC().AddDate(0, 0, *req.ExpiresInDays)
+	}
+
+	idempotencyPayload := struct {
+		UserID int64                        `json:"user_id"`
+		Body   GrantTemporaryBalanceRequest `json:"body"`
+	}{UserID: userID, Body: req}
+	executeAdminIdempotentJSON(c, "admin.users.temporary_balance.grant", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		user, execErr := h.grantTemporaryBalance(ctx, userID, req.Amount, expiresAt, getAdminIDFromContext(c), req.Notes)
 		if execErr != nil {
 			return nil, execErr
 		}

@@ -1,5 +1,29 @@
 export default {
 
+  tutorial: {
+    common: {
+      copy: 'Copy',
+      copied: 'Copied',
+      sectionNavigation: 'Tutorial sections',
+    },
+    ccSwitch: {
+      title: 'Import luchikey with CC-Switch',
+      description: 'Import your luchikey gateway settings into supported local AI clients.',
+    },
+    claudeCode: {
+      title: 'Configure Claude Code for luchikey',
+      description: 'Connect Claude Code to the luchikey gateway with your API key.',
+    },
+    codex: {
+      title: 'Configure Codex for luchikey',
+      description: 'Use luchikey with Codex while preserving your official sessions.',
+    },
+    codexImage: {
+      title: 'Configure Codex image generation',
+      description: 'Install and configure the LuchiKey Image plugin for Codex.',
+    },
+  },
+
   // Subscription Progress (Header component)
   subscriptionProgress: {
     title: 'My Subscriptions',

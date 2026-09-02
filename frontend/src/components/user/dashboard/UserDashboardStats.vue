@@ -11,11 +11,17 @@
         </div>
         <div>
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.balance') }}</p>
-          <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400">${{ formatBalance(balance) }}</p>
+          <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400">${{ formatBalance(effectiveBalance) }}</p>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('common.available') }}</p>
         </div>
       </div>
     </div>
+
+    <TemporaryBalanceCard
+      v-if="!isSimple && Number(stats?.active_temporary_balance || 0) > 0"
+      :amount="Number(stats?.active_temporary_balance || 0)"
+      :expires-at="stats?.temporary_balance_expires_at"
+    />
 
     <!-- API Keys -->
     <div class="card p-4">
@@ -226,6 +232,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import TemporaryBalanceCard from '@/components/user/TemporaryBalanceCard.vue'
 import type { UserDashboardStats as UserStatsType } from '@/api/usage'
 import type { PlatformQuotaItem } from '@/types'
 
@@ -246,6 +253,13 @@ const props = defineProps<{
   platformQuotas?: PlatformQuotaItem[] | null
 }>()
 const { t } = useI18n()
+
+// The API reports the spendable balance explicitly when available.  Keep a
+// backwards-compatible fallback for older deployments that only return the
+// permanent balance plus active temporary grant in the dashboard stats.
+const effectiveBalance = computed(() =>
+  Number(props.stats?.available_balance ?? (props.balance + Number(props.stats?.active_temporary_balance || 0)))
+)
 
 const PLATFORM_LABELS: Record<string, string> = {
   anthropic: 'Claude',

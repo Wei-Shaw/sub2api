@@ -457,6 +457,23 @@
             </button>
           </template>
 
+          <template #cell-temporary_balance="{ row }">
+            <div :data-testid="`temporary-balance-cell-${row.id}`" class="min-w-[130px]">
+              <template v-if="Number(row.temporary_balance || 0) > 0">
+                <div class="flex items-center gap-1.5">
+                  <span :class="getTemporaryBalanceStatus(row) === 'active' ? 'font-medium text-blue-600 dark:text-blue-400' : 'font-medium text-gray-400 dark:text-gray-500'">
+                    ${{ formatAmount(row.temporary_balance || 0) }}
+                  </span>
+                  <span v-if="getTemporaryBalanceStatus(row) === 'expired'" class="badge badge-danger text-[10px]">{{ t('admin.users.temporaryBalance.expired') }}</span>
+                </div>
+                <span v-if="row.temporary_balance_expires_at" class="block text-[11px] text-gray-500 dark:text-dark-400">
+                  {{ formatDateTime(row.temporary_balance_expires_at) }}
+                </span>
+              </template>
+              <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+            </div>
+          </template>
+
           <!-- 用量列自定义表头：列名 + 单个排序图标按钮，点击展开"今日/近30天"菜单。
                column.sortable=false，DataTable 内置点击逻辑不会触发；
                菜单项三态循环：desc → asc → off。 -->
@@ -778,6 +795,7 @@ import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { formatDateTime } from '@/utils/format'
+import { getTemporaryBalanceStatus as resolveTemporaryBalanceStatus, type TemporaryBalanceStatus } from '@/utils/temporaryBalance'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
@@ -871,6 +889,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'groups', label: t('admin.users.columns.groups'), sortable: false },
   { key: 'subscriptions', label: t('admin.users.columns.subscriptions'), sortable: false },
   { key: 'balance', label: t('admin.users.columns.balance'), sortable: true },
+  { key: 'temporary_balance', label: t('admin.users.columns.temporaryBalance'), sortable: false },
   { key: 'balance_platform_quota', label: t('admin.users.columns.balancePlatformQuota'), sortable: false },
   { key: 'usage', label: t('admin.users.columns.usage'), sortable: false },
   { key: 'usage_anthropic', label: t('admin.users.columns.usageAnthropic'), sortable: false },
@@ -1535,6 +1554,16 @@ const balanceOperation = ref<'add' | 'subtract'>('add')
 // Balance History modal state
 const showBalanceHistoryModal = ref(false)
 const balanceHistoryUser = ref<AdminUser | null>(null)
+
+const formatAmount = (value: number) => Number(value || 0).toFixed(2)
+const getTemporaryBalanceStatus = (user: AdminUser): TemporaryBalanceStatus =>
+  getTemporaryBalanceStatusForUser(user)
+
+const getTemporaryBalanceStatusForUser = (user: AdminUser): TemporaryBalanceStatus =>
+  resolveTemporaryBalanceStatus({
+    temporary_balance: user.temporary_balance,
+    temporary_balance_expires_at: user.temporary_balance_expires_at
+  })
 
 // 计算剩余天数
 const getDaysRemaining = (expiresAt: string): number => {
