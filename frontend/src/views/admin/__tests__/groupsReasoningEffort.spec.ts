@@ -3,9 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   createReasoningEffortMappingRow,
   normalizeReasoningEffortForPlatform,
+  normalizeReasoningEffortOverLimit,
   reasoningEffortMappingsToAPI,
   reasoningEffortMappingsToRows,
   reasoningEffortOptionsForPlatform,
+  reasoningEffortOverLimitDeny,
+  reasoningEffortOverLimitDowngrade,
   supportsReasoningEffortPolicyPlatform,
   validateReasoningEffortMappings,
 } from "../groupsReasoningEffort";
@@ -88,5 +91,23 @@ describe("groupsReasoningEffort", () => {
     expect(validateReasoningEffortMappings([row], "openai")).toEqual({
       [row.id]: { from: "unsupportedFrom" },
     });
+  });
+
+  it("normalizes over-limit access control to downgrade or deny", () => {
+    expect(normalizeReasoningEffortOverLimit(undefined)).toBe(
+      reasoningEffortOverLimitDowngrade,
+    );
+    expect(normalizeReasoningEffortOverLimit("")).toBe(
+      reasoningEffortOverLimitDowngrade,
+    );
+    expect(normalizeReasoningEffortOverLimit(" downgrade ")).toBe(
+      reasoningEffortOverLimitDowngrade,
+    );
+    expect(normalizeReasoningEffortOverLimit("DENY")).toBe(
+      reasoningEffortOverLimitDeny,
+    );
+    expect(normalizeReasoningEffortOverLimit("block")).toBe(
+      reasoningEffortOverLimitDowngrade,
+    );
   });
 });

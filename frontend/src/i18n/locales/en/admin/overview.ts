@@ -881,7 +881,11 @@ export default {
         rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).',
         maxReasoningEffort: 'Max reasoning effort',
         maxReasoningEffortUnlimited: 'Unlimited (follow request)',
-        maxReasoningEffortHint: 'Limits explicit OpenAI reasoning effort requests only. For Composite groups, it applies only to requests resolved to OpenAI. Higher values are capped; omitted effort stays omitted. The ceiling takes precedence over reasoning effort mappings.',
+        maxReasoningEffortHint: 'Limits explicit OpenAI reasoning effort requests only. For Composite groups, it applies only to requests resolved to OpenAI. Omitted effort stays omitted. The ceiling takes precedence over reasoning effort mappings.',
+        maxReasoningEffortOverLimit: 'Over-limit access control',
+        maxReasoningEffortOverLimitDowngrade: 'Automatically downgrade when over limit',
+        maxReasoningEffortOverLimitDeny: 'Deny access',
+        maxReasoningEffortOverLimitHint: 'Applies after a ceiling is set. Downgrade rewrites values above the ceiling to the ceiling. Deny rejects the request.',
         reasoningEffortMappings: 'Reasoning effort mappings',
         addReasoningEffortMapping: 'Add mapping',
         removeReasoningEffortMapping: 'Remove mapping',
@@ -1172,6 +1176,11 @@ export default {
         unsupportedTitle: 'Current server does not support Live',
         unsupportedMessage: 'This Sub2API server cannot generate the required Live attestation. Live will not work even if enabled. Continue anyway?',
         enableAnyway: 'Enable anyway'
+      },
+      openaiFast: {
+        title: 'OpenAI Fast mode',
+        force: 'Force Fast (priority)',
+        hint: 'Forces service_tier=priority on OpenAI requests in this group. The global Fast/Flex policy can still filter or block it. New requests update immediately after saving; existing WebSocket sessions must reconnect.'
       },
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',
