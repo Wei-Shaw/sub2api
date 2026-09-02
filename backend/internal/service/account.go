@@ -86,7 +86,12 @@ type Account struct {
 
 type OpenAIEndpointCapability string
 
-const openAILongContextBillingEnabledKey = "openai_long_context_billing_enabled"
+const (
+	openAILongContextBillingEnabledKey = "openai_long_context_billing_enabled"
+	// AnthropicFableSchedulingEnabledExtraKey stores the durable administrator
+	// override that controls whether a subscription account may serve Fable.
+	AnthropicFableSchedulingEnabledExtraKey = "anthropic_fable_scheduling_enabled"
+)
 
 const (
 	OpenAIEndpointCapabilityChatCompletions OpenAIEndpointCapability = "chat_completions"
@@ -836,6 +841,16 @@ func resolveRequestedModelInMapping(mapping map[string]string, requestedModel st
 // 请求卡死在该账号上、无法 failover 到真正支持该模型的 API Key 账号（#3662）。
 // 未知/自定义别名仍保持允许（兼容渠道级映射），见 isOpenAIOAuthServableModel。
 func (a *Account) IsModelSupported(requestedModel string) bool {
+	if a == nil {
+		return false
+	}
+	if a.IsAnthropicOAuthOrSetupToken() && !a.IsAnthropicFableSchedulingEnabled() {
+		mappedModel := a.GetMappedModel(requestedModel)
+		if isAnthropicFableModel(requestedModel) || isAnthropicFableModel(mappedModel) {
+			return false
+		}
+	}
+
 	// 透传模式仅替换认证、模型语义完全交由上游决定，因此放行所有模型。
 	// 该短路必须在 model_mapping 判定之前：账号从"白名单模式"切换到透传后，
 	// credentials 里常残留旧的非空 model_mapping，若不在此放行，透传账号会被
@@ -855,6 +870,17 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 	}
 	normalized := normalizeRequestedModelForLookup(a.Platform, requestedModel)
 	return normalized != requestedModel && mappingSupportsRequestedModel(mapping, normalized)
+}
+
+// IsAnthropicFableSchedulingEnabled reports whether an Anthropic subscription
+// account may participate in Fable scheduling. Missing or malformed values
+// preserve the historical behavior and allow scheduling.
+func (a *Account) IsAnthropicFableSchedulingEnabled() bool {
+	if a == nil || !a.IsAnthropicOAuthOrSetupToken() || a.Extra == nil {
+		return true
+	}
+	enabled, ok := a.Extra[AnthropicFableSchedulingEnabledExtraKey].(bool)
+	return !ok || enabled
 }
 
 // GetMappedModel 获取映射后的模型名（支持通配符，最长优先匹配）

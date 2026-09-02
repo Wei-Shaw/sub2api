@@ -552,6 +552,25 @@ func TestBuildSchedulerMetadataAccount_KeepsModelRateLimits(t *testing.T) {
 	require.Nil(t, got.Extra["unused_large_field"])
 }
 
+func TestBuildSchedulerMetadataAccount_KeepsAnthropicFableSchedulingFlag(t *testing.T) {
+	account := service.Account{
+		ID:       91,
+		Platform: service.PlatformAnthropic,
+		Type:     service.AccountTypeOAuth,
+		Extra: map[string]any{
+			service.AnthropicFableSchedulingEnabledExtraKey: false,
+			"unused_large_field":                            "drop-me",
+		},
+	}
+
+	got := buildSchedulerMetadataAccount(account)
+
+	require.Equal(t, false, got.Extra[service.AnthropicFableSchedulingEnabledExtraKey])
+	require.False(t, got.IsModelSupported("claude-fable-5"))
+	require.True(t, got.IsModelSupported("claude-sonnet-5"))
+	require.Nil(t, got.Extra["unused_large_field"])
+}
+
 func TestBuildSchedulerMetadataAccount_KeepsSparkShadowRoutingIdentity(t *testing.T) {
 	parentID := int64(100)
 	account := service.Account{

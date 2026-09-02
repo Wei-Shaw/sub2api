@@ -2370,6 +2370,35 @@
           </p>
         </div>
 
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.fableScheduling.label') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaControl.fableScheduling.hint') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              data-testid="anthropic-fable-scheduling-toggle"
+              role="switch"
+              :aria-checked="fableSchedulingEnabled"
+              @click="fableSchedulingEnabled = !fableSchedulingEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                fableSchedulingEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  fableSchedulingEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+        </div>
+
         <!-- Window Cost Limit -->
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
           <div class="mb-3 flex items-center justify-between">
@@ -3259,6 +3288,8 @@ const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
 const customBaseUrlEnabled = ref(false)
 const customBaseUrl = ref('')
+const ANTHROPIC_FABLE_SCHEDULING_ENABLED_EXTRA_KEY = 'anthropic_fable_scheduling_enabled'
+const fableSchedulingEnabled = ref(true)
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
@@ -4429,6 +4460,7 @@ function loadQuotaControlSettings(account: Account) {
   cacheTTLOverrideTarget.value = '5m'
   customBaseUrlEnabled.value = false
   customBaseUrl.value = ''
+  fableSchedulingEnabled.value = true
 
   // Remaining quota control settings only apply to Anthropic accounts
   if (account.platform !== 'anthropic') {
@@ -4439,6 +4471,8 @@ function loadQuotaControlSettings(account: Account) {
   if (account.type !== 'oauth' && account.type !== 'setup-token') {
     return
   }
+
+  fableSchedulingEnabled.value = account.extra?.[ANTHROPIC_FABLE_SCHEDULING_ENABLED_EXTRA_KEY] !== false
 
   // Load from extra field (via backend DTO fields)
   if (account.window_cost_limit != null && account.window_cost_limit > 0) {
@@ -5051,6 +5085,12 @@ const handleSubmit = async () => {
     if (props.account.platform === 'anthropic' && (props.account.type === 'oauth' || props.account.type === 'setup-token')) {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
+
+      if (fableSchedulingEnabled.value) {
+        delete newExtra[ANTHROPIC_FABLE_SCHEDULING_ENABLED_EXTRA_KEY]
+      } else {
+        newExtra[ANTHROPIC_FABLE_SCHEDULING_ENABLED_EXTRA_KEY] = false
+      }
 
       // Window cost limit settings
       if (windowCostEnabled.value && windowCostLimit.value != null && windowCostLimit.value > 0) {

@@ -850,6 +850,10 @@ export default {
       quotaControl: {
         title: 'Quota Control',
         hint: 'Configure cost window, session limits, client affinity and other scheduling controls.',
+        fableScheduling: {
+          label: 'Allow Fable Scheduling',
+          hint: 'When disabled, this account will not be selected for Fable requests. Other Claude models are unaffected. Disable this for Pro plans without usage credits.'
+        },
         windowCost: {
           label: '5h Window Cost Limit',
           hint: 'Limit account cost usage within the 5-hour window',

@@ -921,6 +921,10 @@ export default {
       quotaControl: {
         title: '配额控制',
         hint: '配置费用窗口、会话限制、客户端亲和等调度控制。',
+        fableScheduling: {
+          label: '允许调度 Fable',
+          hint: '关闭后，该账号不会参与 Fable 请求调度，其他 Claude 模型不受影响。Pro 套餐未启用 usage credits 时建议关闭。'
+        },
         windowCost: {
           label: '5h窗口费用控制',
           hint: '限制账号在5小时窗口内的费用使用',
