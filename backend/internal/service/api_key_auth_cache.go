@@ -41,6 +41,7 @@ type APIKeyAuthUserSnapshot struct {
 	Email                      string             `json:"email"`
 	Username                   string             `json:"username"`
 	BalanceNotifyEnabled       bool               `json:"balance_notify_enabled"`
+	RestrictPublicGroups       bool               `json:"restrict_public_groups"`
 	BalanceNotifyThresholdType string             `json:"balance_notify_threshold_type"`
 	BalanceNotifyThreshold     *float64           `json:"balance_notify_threshold,omitempty"`
 	BalanceNotifyExtraEmails   []NotifyEmailEntry `json:"balance_notify_extra_emails,omitempty"`
@@ -84,6 +85,8 @@ type APIKeyAuthGroupSnapshot struct {
 	AudioRealtimePricePerMin        *float64                      `json:"audio_realtime_price_per_min,omitempty"`
 	AudioTTSPricePerMillionChars    *float64                      `json:"audio_tts_price_per_million_chars,omitempty"`
 	AudioSTTPricePerHour            *float64                      `json:"audio_stt_price_per_hour,omitempty"`
+	LongContextPricingEnabled       bool                          `json:"long_context_pricing_enabled"`
+	ModelPricing                    []ChannelModelPricing         `json:"model_pricing,omitempty"`
 	ClaudeCodeOnly                  bool                          `json:"claude_code_only"`
 	FallbackGroupID                 *int64                        `json:"fallback_group_id,omitempty"`
 	FallbackGroupIDOnInvalidRequest *int64                        `json:"fallback_group_id_on_invalid_request,omitempty"`
@@ -100,6 +103,8 @@ type APIKeyAuthGroupSnapshot struct {
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       bool                              `json:"allow_messages_dispatch"`
 	AllowLive                   bool                              `json:"allow_live"`
+	ForceOpenAIFast             bool                              `json:"force_openai_fast"`
+	FreeOpenAIFast              bool                              `json:"free_openai_fast"`
 	DefaultMappedModel          string                            `json:"default_mapped_model,omitempty"`
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
 	ModelsListConfig            GroupModelsListConfig             `json:"models_list_config,omitempty"`
@@ -109,6 +114,8 @@ type APIKeyAuthGroupSnapshot struct {
 
 	// MaxReasoningEffort OpenAI/Codex 请求的推理强度上限，空字符串表示不限制。
 	MaxReasoningEffort string `json:"max_reasoning_effort,omitempty"`
+	// MaxReasoningEffortOverLimit 超过上限时的访问控制：downgrade（默认）或 deny。
+	MaxReasoningEffortOverLimit string `json:"max_reasoning_effort_over_limit,omitempty"`
 	// ReasoningEffortMappings rewrites explicit effort values before the ceiling.
 	ReasoningEffortMappings []ReasoningEffortMapping `json:"reasoning_effort_mappings"`
 

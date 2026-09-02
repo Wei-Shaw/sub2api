@@ -329,6 +329,8 @@ export default {
       customExpiry: 'Custom',
       customExpiryDays: 'Custom days',
       expiryDaysRequired: 'Please enter a valid expiry day count',
+      expiryDateRequired: 'Please enter a valid expiry date and time',
+      localTimeZoneHint: 'Custom time is interpreted in your browser time zone ({timezone}).',
       groupRequired: 'Please select a subscription group',
       days: ' days',
       status: {
@@ -375,6 +377,7 @@ export default {
     announcements: {
       title: 'Announcements',
       description: 'Create announcements and target by conditions',
+      createFirstAnnouncement: 'No announcements yet. Create your first one.',
       createAnnouncement: 'Create Announcement',
       editAnnouncement: 'Edit Announcement',
       deleteAnnouncement: 'Delete Announcement',
