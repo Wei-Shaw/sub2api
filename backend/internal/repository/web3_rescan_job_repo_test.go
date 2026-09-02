@@ -19,7 +19,7 @@ var rescanJobColumns = []string{
 func TestWeb3RescanJobRepositoryCreatesAuditablePendingJob(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 	now := time.Date(2026, time.August, 9, 12, 0, 0, 0, time.UTC)
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO web3_rescan_jobs")).
 		WithArgs("conflux", "usdt0", uint64(100), uint64(120), int64(77)).
@@ -42,7 +42,7 @@ func TestWeb3RescanJobRepositoryCreatesAuditablePendingJob(t *testing.T) {
 func TestWeb3RescanJobRepositoryReclaimsExpiredRunningJob(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 	now := time.Date(2026, time.August, 9, 12, 0, 0, 0, time.UTC)
 	lease := 10 * time.Minute
 	mock.ExpectQuery("status='pending' OR \\(status='running' AND lease_expires_at <= \\$1\\)").
@@ -64,7 +64,7 @@ func TestWeb3RescanJobRepositoryReclaimsExpiredRunningJob(t *testing.T) {
 func TestWeb3RescanJobRepositoryFencesStaleLeaseRenewal(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 	now := time.Date(2026, time.August, 9, 12, 0, 0, 0, time.UTC)
 	lease := 10 * time.Minute
 	mock.ExpectExec("attempt_count=\\$4").

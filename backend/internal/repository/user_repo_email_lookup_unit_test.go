@@ -32,6 +32,12 @@ func newUserEntRepo(t *testing.T) (*userRepository, *dbent.Client) {
 	drv := entsql.OpenDB(dialect.SQLite, db)
 	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
 	t.Cleanup(func() { _ = client.Close() })
+	_, err = db.Exec(`CREATE TABLE web3_identities (
+		user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		address TEXT NOT NULL UNIQUE,
+		deleted_at TIMESTAMP NULL
+	)`)
+	require.NoError(t, err)
 
 	return newUserRepositoryWithSQL(client, db), client
 }

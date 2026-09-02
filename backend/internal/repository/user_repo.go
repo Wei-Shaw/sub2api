@@ -520,7 +520,7 @@ func (r *userRepository) deleteUser(ctx context.Context, exec *dbent.Client, id 
 	}
 	if _, err := sqlExec.ExecContext(ctx, `
 		UPDATE web3_identities
-		SET deleted_at = NOW()
+		SET deleted_at = CURRENT_TIMESTAMP
 		WHERE user_id = $1 AND deleted_at IS NULL
 	`, id); err != nil {
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)

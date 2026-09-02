@@ -15,7 +15,7 @@ import (
 func TestWeb3AccountingCreditRollsBackWhenBalanceUpdateFails(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 	now := time.Date(2026, time.August, 8, 13, 0, 0, 0, time.UTC)
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT d.id, d.user_id").WithArgs(int64(7)).WillReturnRows(sqlmock.NewRows([]string{
@@ -36,7 +36,7 @@ func TestWeb3AccountingCreditRollsBackWhenBalanceUpdateFails(t *testing.T) {
 func TestWeb3AccountingTransferRejectsAnotherUsersIdempotencyKey(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT id,user_id,web3_balance_id").WithArgs("shared-key").WillReturnRows(sqlmock.NewRows([]string{
 		"id", "user_id", "web3_balance_id", "amount", "web3_balance_before", "web3_balance_after",
@@ -57,7 +57,7 @@ func TestWeb3AccountingTransferRejectsAnotherUsersIdempotencyKey(t *testing.T) {
 func TestWeb3AccountingTransferLocksUserBeforeWeb3Balance(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT id,user_id,web3_balance_id").WithArgs("request-key").WillReturnRows(sqlmock.NewRows([]string{
 		"id", "user_id", "web3_balance_id", "amount", "web3_balance_before", "web3_balance_after",
@@ -81,7 +81,7 @@ func TestWeb3AccountingTransferLocksUserBeforeWeb3Balance(t *testing.T) {
 func TestWeb3CreditJobRetryRejectsStaleClaim(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 	mock.ExpectExec("UPDATE web3_deposits").WillReturnResult(sqlmock.NewResult(0, 0))
 
 	err = NewWeb3CreditJobRepository(db).RetryCreditJob(context.Background(), web3deposit.CreditJob{DepositID: 7, ClaimVersion: 2}, time.Now(), errors.New("failed"))

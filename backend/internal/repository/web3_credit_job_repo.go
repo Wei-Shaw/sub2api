@@ -29,7 +29,7 @@ func (r *Web3CreditJobRepository) ClaimCreditJobs(ctx context.Context, now time.
 	if err != nil {
 		return nil, fmt.Errorf("claim web3 credit jobs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	jobs := make([]web3deposit.CreditJob, 0, limit)
 	for rows.Next() {
 		var job web3deposit.CreditJob

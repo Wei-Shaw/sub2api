@@ -13,7 +13,7 @@ import (
 
 const (
 	DefaultTransferLogMaxBlockRange  uint64 = 500
-	DefaultTransferLogShrinkAttempts        = 16
+	DefaultTransferLogShrinkAttempts int    = 16
 )
 
 var (

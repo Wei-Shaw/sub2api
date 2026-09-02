@@ -3,6 +3,7 @@ package web3deposit
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -214,15 +215,23 @@ func (s *canonicalRPCCallerStub) CallContext(_ context.Context, result any, meth
 	s.calls = append(s.calls, canonicalRPCCall{method: method, args: args})
 	switch method {
 	case "eth_getBlockByNumber":
+		target, ok := result.(**canonicalRPCBlock)
+		if !ok {
+			return fmt.Errorf("unexpected block result type %T", result)
+		}
 		number := hexutil.Uint64(100)
 		hash := common.HexToHash("0x64")
 		if args[0] == "finalized" {
 			number = hexutil.Uint64(150)
 			hash = common.HexToHash("0x96")
 		}
-		*(result.(**canonicalRPCBlock)) = &canonicalRPCBlock{Number: &number, Hash: hash}
+		*target = &canonicalRPCBlock{Number: &number, Hash: hash}
 	case "eth_getTransactionReceipt":
-		*(result.(**canonicalRPCReceipt)) = &canonicalRPCReceipt{
+		target, ok := result.(**canonicalRPCReceipt)
+		if !ok {
+			return fmt.Errorf("unexpected receipt result type %T", result)
+		}
+		*target = &canonicalRPCReceipt{
 			Status:    hexutil.Uint64(types.ReceiptStatusSuccessful),
 			BlockHash: common.HexToHash("0x64"),
 			Logs:      []types.Log{{Index: 17}},

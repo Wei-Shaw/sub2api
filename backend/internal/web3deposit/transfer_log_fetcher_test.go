@@ -33,7 +33,9 @@ func TestTransferLogFetcherUsesFixedFilterAndSortsLogs(t *testing.T) {
 			"fromBlock": "0xa",
 			"toBlock":   "0xb",
 		}, args[0])
-		*result.(*[]types.Log) = []types.Log{third, first, second}
+		logs, ok := result.(*[]types.Log)
+		require.True(t, ok)
+		*logs = []types.Log{third, first, second}
 		return nil
 	}}
 	fetcher := NewTransferLogFetcher(client, 1030, tokenAddress, TransferLogFetcherOptions{MaxBlockRange: 2})
@@ -51,14 +53,19 @@ func TestTransferLogFetcherUsesFixedFilterAndSortsLogs(t *testing.T) {
 func TestTransferLogFetcherShrinksOversizedRangesWithBoundedRetries(t *testing.T) {
 	var ranges []string
 	client := &transferLogRPCStub{call: func(_ context.Context, result any, _ string, args ...any) error {
-		filter := args[0].(map[string]any)
-		fromBlock := filter["fromBlock"].(string)
-		toBlock := filter["toBlock"].(string)
+		filter, ok := args[0].(map[string]any)
+		require.True(t, ok)
+		fromBlock, ok := filter["fromBlock"].(string)
+		require.True(t, ok)
+		toBlock, ok := filter["toBlock"].(string)
+		require.True(t, ok)
 		ranges = append(ranges, fromBlock+"-"+toBlock)
 		if fromBlock == "0x1" && (toBlock == "0x5" || toBlock == "0x3") {
 			return oversizedRangeError()
 		}
-		*result.(*[]types.Log) = nil
+		logs, ok := result.(*[]types.Log)
+		require.True(t, ok)
+		*logs = nil
 		return nil
 	}}
 	fetcher := NewTransferLogFetcher(client, 1030, common.Address{}, TransferLogFetcherOptions{
@@ -119,7 +126,9 @@ func TestTransferLogFetcherRejectsMalformedOrOutOfRangeLogs(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			client := &transferLogRPCStub{call: func(_ context.Context, result any, _ string, _ ...any) error {
-				*result.(*[]types.Log) = []types.Log{test.log}
+				logs, ok := result.(*[]types.Log)
+				require.True(t, ok)
+				*logs = []types.Log{test.log}
 				return nil
 			}}
 			fetcher := NewTransferLogFetcher(client, 1030, tokenAddress, TransferLogFetcherOptions{MaxBlockRange: 1})
@@ -155,7 +164,9 @@ func TestTransferLogFetcherReadsLatestBlock(t *testing.T) {
 	client := &transferLogRPCStub{call: func(_ context.Context, result any, method string, args ...any) error {
 		require.Equal(t, "eth_blockNumber", method)
 		require.Empty(t, args)
-		*result.(*hexutil.Uint64) = hexutil.Uint64(12345)
+		blockNumber, ok := result.(*hexutil.Uint64)
+		require.True(t, ok)
+		*blockNumber = hexutil.Uint64(12345)
 		return nil
 	}}
 	fetcher := NewTransferLogFetcher(client, 1030, common.Address{}, TransferLogFetcherOptions{})

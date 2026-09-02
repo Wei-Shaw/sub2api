@@ -97,7 +97,7 @@ func TestWeb3BrowserSessionCookieRoundTrip(t *testing.T) {
 				strings.NewReader("{}"),
 			)
 			require.NoError(t, err)
-			defer verifyResponse.Body.Close()
+			defer func() { _ = verifyResponse.Body.Close() }()
 			body, err := io.ReadAll(verifyResponse.Body)
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, verifyResponse.StatusCode)

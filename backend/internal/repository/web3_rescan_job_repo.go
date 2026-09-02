@@ -46,7 +46,7 @@ func (r *Web3RescanJobRepository) ClaimRescanJobs(ctx context.Context, now time.
 	if err != nil {
 		return nil, fmt.Errorf("claim web3 rescan jobs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	jobs := make([]web3deposit.RescanJob, 0, limit)
 	for rows.Next() {
 		job, err := scanRescanJob(rows)
@@ -98,7 +98,7 @@ func (r *Web3RescanJobRepository) ListRescanJobs(ctx context.Context, networkKey
 	if err != nil {
 		return nil, fmt.Errorf("list web3 rescan jobs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	jobs := make([]web3deposit.RescanJob, 0, limit)
 	for rows.Next() {
 		job, err := scanRescanJob(rows)
