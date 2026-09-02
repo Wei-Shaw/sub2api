@@ -330,8 +330,14 @@ func (s *GrokOAuthService) RefreshAccountToken(ctx context.Context, account *Acc
 	if err != nil {
 		return nil, err
 	}
-	tokenInfo.SubscriptionTier = account.GetCredential("subscription_tier")
-	tokenInfo.EntitlementStatus = account.GetCredential("entitlement_status")
+	// New access-token JWT is authoritative. Keep the stored value only when
+	// the refreshed token has no tier claim (opaque AT / missing field).
+	if strings.TrimSpace(tokenInfo.SubscriptionTier) == "" {
+		tokenInfo.SubscriptionTier = account.GetCredential("subscription_tier")
+	}
+	if strings.TrimSpace(tokenInfo.EntitlementStatus) == "" {
+		tokenInfo.EntitlementStatus = account.GetCredential("entitlement_status")
+	}
 	return tokenInfo, nil
 }
 
@@ -404,8 +410,8 @@ func (s *GrokOAuthService) tokenInfoFromResponse(tokenResp *xai.TokenResponse, c
 	if info.TokenType == "" {
 		info.TokenType = "Bearer"
 	}
-	applyGrokTokenClaims(info, tokenResp.IDToken)
-	applyGrokTokenClaims(info, tokenResp.AccessToken)
+	applyGrokTokenClaims(info, tokenResp.IDToken, false)
+	applyGrokTokenClaims(info, tokenResp.AccessToken, true)
 	if existing != nil {
 		if info.Email == "" {
 			if email, _ := existing["email"].(string); email != "" {
@@ -446,7 +452,7 @@ func (s *GrokOAuthService) proxyURL(ctx context.Context, proxyID *int64) (string
 	return proxy.URL(), nil
 }
 
-func applyGrokTokenClaims(info *GrokTokenInfo, token string) {
+func applyGrokTokenClaims(info *GrokTokenInfo, token string, includeTier bool) {
 	if info == nil || strings.TrimSpace(token) == "" {
 		return
 	}
@@ -462,5 +468,10 @@ func applyGrokTokenClaims(info *GrokTokenInfo, token string) {
 	}
 	if info.TeamID == "" {
 		info.TeamID = xai.JWTClaimString(claims, "team_id")
+	}
+	if includeTier {
+		if tier := xai.SubscriptionTierFromJWT(token); tier != "" {
+			info.SubscriptionTier = tier
+		}
 	}
 }

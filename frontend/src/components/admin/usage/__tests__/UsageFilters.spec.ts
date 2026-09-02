@@ -19,6 +19,9 @@ const messages: Record<string, string> = {
   'usage.ws': 'WS',
   'usage.stream': 'Stream',
   'usage.sync': 'Sync',
+  'usage.compactionFilter': 'Request Kind',
+  'usage.allCompactionTypes': 'All Requests',
+  'usage.compactionOnly': 'Compaction Only',
   'admin.usage.billingType': 'Billing Type',
   'admin.usage.allBillingTypes': 'All Billing Types',
   'admin.usage.billingTypeBalance': 'Balance',
@@ -77,6 +80,7 @@ const defaultFilters = () => ({
   account_id: undefined,
   model: null,
   request_type: null,
+  native_compaction_v2: null,
   billing_type: null,
   billing_mode: null,
 	upstream_model_mismatch: null,
@@ -257,5 +261,47 @@ describe('UsageFilters — model options come from prop (no dup request)', () =>
 
     const opts = (wrapper.vm as any).modelOptions as Array<{ value: string | null; label: string }>
     expect(opts.map((o) => o.value)).toEqual([null, 'claude-3', 'gpt-4o'])
+  })
+})
+
+describe('UsageFilters — native compaction filter', () => {
+  it('offers only All/Compaction and emits the independent boolean filter', async () => {
+    const SelectStub = {
+      name: 'Select',
+      props: ['modelValue', 'options'],
+      emits: ['update:modelValue', 'change'],
+      template: '<div />',
+    }
+    const filters = defaultFilters()
+    const wrapper = mount(UsageFilters, {
+      props: {
+        modelValue: filters,
+        exporting: false,
+        startDate: '2026-05-01',
+        endDate: '2026-05-28',
+        showActions: false,
+        modelOptions: [],
+      },
+      global: { stubs: { Select: SelectStub, Teleport: true } },
+    })
+
+    const compactionSelect = wrapper.findAllComponents(SelectStub).find((select: any) =>
+      (select.props('options') as Array<{ value: unknown }>).some((option) => option.value === true)
+    )
+    expect(compactionSelect).toBeDefined()
+    expect(compactionSelect!.props('options')).toEqual([
+      { value: null, label: 'All Requests' },
+      { value: true, label: 'Compaction Only' },
+    ])
+    expect(compactionSelect!.props('options')).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ value: false })])
+    )
+
+    compactionSelect!.vm.$emit('update:modelValue', true)
+    compactionSelect!.vm.$emit('change')
+    await wrapper.vm.$nextTick()
+
+    expect(filters.native_compaction_v2).toBe(true)
+    expect(wrapper.emitted('change')).toBeTruthy()
   })
 })
