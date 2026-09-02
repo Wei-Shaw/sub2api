@@ -335,6 +335,11 @@ func (s *APIKeyRepoSuite) TestClearGroupIDByGroupID() {
 	k1 := s.mustCreateApiKey(user.ID, "sk-clr-1", "K1", &group.ID)
 	k2 := s.mustCreateApiKey(user.ID, "sk-clr-2", "K2", &group.ID)
 	s.mustCreateApiKey(user.ID, "sk-clr-3", "K3", nil) // no group
+	// Seed an invalid legacy fast-mode flag so the bulk unbind test verifies
+	// that clearing a group also clears the persisted fast-mode state.
+	s.Require().NoError(s.client.APIKey.UpdateOneID(k1.ID).
+		SetOpenaiDefaultFastMode(true).
+		Exec(s.ctx))
 
 	affected, err := s.repo.ClearGroupIDByGroupID(s.ctx, group.ID)
 	s.Require().NoError(err, "ClearGroupIDByGroupID")
@@ -344,9 +349,41 @@ func (s *APIKeyRepoSuite) TestClearGroupIDByGroupID() {
 	got2, _ := s.repo.GetByID(s.ctx, k2.ID)
 	s.Require().Nil(got1.GroupID)
 	s.Require().Nil(got2.GroupID)
+	s.Require().False(got1.OpenAIDefaultFastMode)
+	s.Require().False(got2.OpenAIDefaultFastMode)
 
 	count, _ := s.repo.CountByGroupID(s.ctx, group.ID)
 	s.Require().Zero(count)
+}
+
+func (s *APIKeyRepoSuite) TestUpdateGroupIDByUserAndGroup_ClearsFastModeOnNonOpenAI() {
+	user := s.mustCreateUser("migrate-fast@test.com")
+	oldGroup, err := s.client.Group.Create().
+		SetName("g-migrate-openai").
+		SetPlatform(service.PlatformOpenAI).
+		SetStatus(service.StatusActive).
+		Save(s.ctx)
+	s.Require().NoError(err)
+	newGroup, err := s.client.Group.Create().
+		SetName("g-migrate-gemini").
+		SetPlatform(service.PlatformGemini).
+		SetStatus(service.StatusActive).
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	key := s.mustCreateApiKey(user.ID, "sk-migrate-fast", "Migrate", &oldGroup.ID)
+	s.Require().NoError(s.client.APIKey.UpdateOneID(key.ID).
+		SetOpenaiDefaultFastMode(true).
+		Exec(s.ctx))
+
+	affected, err := s.repo.UpdateGroupIDByUserAndGroup(s.ctx, user.ID, oldGroup.ID, newGroup.ID)
+	s.Require().NoError(err, "UpdateGroupIDByUserAndGroup")
+	s.Require().Equal(int64(1), affected)
+
+	got, err := s.repo.GetByID(s.ctx, key.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(newGroup.ID, *got.GroupID)
+	s.Require().False(got.OpenAIDefaultFastMode)
 }
 
 // --- Combined CRUD/Search/ClearGroupID (original test preserved as integration) ---

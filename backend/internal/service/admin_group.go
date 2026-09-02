@@ -1330,11 +1330,13 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 	}
 
 	result := &AdminUpdateAPIKeyGroupIDResult{}
+	clearFastMode := false
 
 	if *groupID == 0 {
 		// 0 表示解绑分组（不修改 user_allowed_groups，避免影响用户其他 Key）
 		apiKey.GroupID = nil
 		apiKey.Group = nil
+		clearFastMode = apiKey.OpenAIDefaultFastMode
 	} else {
 		// 验证目标分组存在且状态为 active
 		group, err := s.groupRepo.GetByID(ctx, *groupID)
@@ -1360,6 +1362,12 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 		gid := *groupID
 		apiKey.GroupID = &gid
 		apiKey.Group = group
+		// Moving an API key away from OpenAI must clear the persisted default
+		// fast-mode flag, including administrator-driven group changes.
+		if !group.SupportsOpenAIDefaultFastMode() {
+			clearFastMode = apiKey.OpenAIDefaultFastMode
+			apiKey.OpenAIDefaultFastMode = false
+		}
 
 		// 专属标准分组：使用事务保证「添加分组权限」与「更新 API Key」的原子性
 		if group.IsExclusive && !group.IsSubscriptionType() {
@@ -1380,7 +1388,7 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 			if addErr := s.userRepo.AddGroupToAllowedGroups(opCtx, apiKey.UserID, gid); addErr != nil {
 				return nil, fmt.Errorf("add group to user allowed groups: %w", addErr)
 			}
-			if err := s.apiKeyRepo.Update(opCtx, apiKey, APIKeyUpdateFields{GroupID: true}); err != nil {
+			if err := s.apiKeyRepo.Update(opCtx, apiKey, APIKeyUpdateFields{GroupID: true, OpenAIDefaultFastMode: clearFastMode}); err != nil {
 				return nil, fmt.Errorf("update api key: %w", err)
 			}
 			if tx != nil {
@@ -1404,7 +1412,7 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 	}
 
 	// 非专属分组 / 解绑：无需事务，单步更新即可
-	if err := s.apiKeyRepo.Update(ctx, apiKey, APIKeyUpdateFields{GroupID: true}); err != nil {
+	if err := s.apiKeyRepo.Update(ctx, apiKey, APIKeyUpdateFields{GroupID: true, OpenAIDefaultFastMode: clearFastMode}); err != nil {
 		return nil, fmt.Errorf("update api key: %w", err)
 	}
 
