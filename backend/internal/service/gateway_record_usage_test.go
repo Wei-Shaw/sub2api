@@ -726,3 +726,68 @@ func TestGatewayServiceRecordUsage_FastSpeedHonouredKeepsPremium(t *testing.T) {
 	require.NoError(t, err)
 	require.InDelta(t, fastCost.TotalCost, usageRepo.lastLog.TotalCost, 1e-10)
 }
+
+// TestGatewayServiceRecordUsage_UpstreamBillingModelHonorsBillingModelSource 验证 Anthropic 路径下
+// billing_model_source 各取值对计费模型的选取，尤其是 upstream：应使用实际发往上游的模型
+// （result.UpstreamModel，来自账号模型映射）计价，而不是用户请求的模型。修复前 upstream 无分支，
+// 会退化为按请求模型计价，与 OpenAI 路径行为不一致（见 openai_gateway_record_usage_test.go 同名用例）。
+func TestGatewayServiceRecordUsage_UpstreamBillingModelHonorsBillingModelSource(t *testing.T) {
+	usageRepo := &openAIRecordUsageBestEffortLogRepoStub{}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+
+	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50}
+	// 请求名与上游名价格不同（$3/$15 vs $5/$25），断言才能区分按谁计价。
+	const requestedModel = anthropicCheapFixtureModel // claude-sonnet-4
+	const upstreamModel = anthropicPriceyFixtureModel // claude-opus-4.8
+
+	requestedCost, err := svc.billingService.CalculateCost(requestedModel, tokens, 1.1)
+	require.NoError(t, err)
+	upstreamCost, err := svc.billingService.CalculateCost(upstreamModel, tokens, 1.1)
+	require.NoError(t, err)
+	require.NotEqual(t, requestedCost.TotalCost, upstreamCost.TotalCost, "fixture prices must differ")
+
+	tests := []struct {
+		name               string
+		billingModelSource string
+		wantCost           *CostBreakdown
+	}{
+		{
+			name:               "upstream bills by the model actually sent upstream",
+			billingModelSource: BillingModelSourceUpstream,
+			wantCost:           upstreamCost,
+		},
+		{
+			name:               "requested bills by the original requested model",
+			billingModelSource: BillingModelSourceRequested,
+			wantCost:           requestedCost,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+				Result: &ForwardResult{
+					RequestID:     "gateway_upstream_billing_model_source",
+					Usage:         ClaudeUsage{InputTokens: 100, OutputTokens: 50},
+					Model:         requestedModel,
+					UpstreamModel: upstreamModel,
+					Duration:      time.Second,
+				},
+				APIKey:  &APIKey{ID: 501, Quota: 100},
+				User:    &User{ID: 601},
+				Account: &Account{ID: 701},
+				ChannelUsageFields: ChannelUsageFields{
+					ChannelID:          9,
+					OriginalModel:      requestedModel,
+					ChannelMappedModel: requestedModel,
+					BillingModelSource: tt.billingModelSource,
+				},
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, usageRepo.lastLog)
+			require.InDelta(t, tt.wantCost.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
+			require.True(t, usageRepo.lastLog.ActualCost > 0, "cost must not be zero")
+		})
+	}
+}
