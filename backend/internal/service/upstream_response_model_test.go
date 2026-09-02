@@ -232,6 +232,12 @@ func TestUpstreamResponseModelObserverServiceTierUntypedPayloads(t *testing.T) {
 		require.Equal(t, "", auto.ServiceTier())
 	})
 
+	t.Run("non-stream body preserves ultrafast", func(t *testing.T) {
+		observer := &upstreamResponseModelObserver{}
+		observer.ObserveOpenAI([]byte(`{"id":"resp_3","object":"response","model":"gpt-5.6-sol","service_tier":"ultrafast"}`), "")
+		require.Equal(t, "ultrafast", observer.ServiceTier())
+	})
+
 	t.Run("model-free deltas never declare a tier", func(t *testing.T) {
 		observer := &upstreamResponseModelObserver{}
 		observer.ObserveOpenAI([]byte(`{"type":"response.output_text.delta","delta":"hi","service_tier":"default"}`), "response.output_text.delta")

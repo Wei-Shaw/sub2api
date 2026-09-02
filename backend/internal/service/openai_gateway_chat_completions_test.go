@@ -100,6 +100,10 @@ func TestNormalizeResponsesRequestServiceTier(t *testing.T) {
 	normalizeResponsesRequestServiceTier(req)
 	require.Equal(t, "flex", req.ServiceTier)
 
+	req.ServiceTier = "ultrafast"
+	normalizeResponsesRequestServiceTier(req)
+	require.Equal(t, "ultrafast", req.ServiceTier)
+
 	// OpenAI 官方合法 tier 应被透传保留。
 	req.ServiceTier = "auto"
 	normalizeResponsesRequestServiceTier(req)
@@ -131,6 +135,11 @@ func TestNormalizeResponsesBodyServiceTier(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "flex", tier)
 	require.Equal(t, "flex", gjson.GetBytes(body, "service_tier").String())
+
+	body, tier, err = normalizeResponsesBodyServiceTier([]byte(`{"model":"gpt-5.6-sol","service_tier":"ultrafast"}`))
+	require.NoError(t, err)
+	require.Equal(t, "ultrafast", tier)
+	require.Equal(t, "ultrafast", gjson.GetBytes(body, "service_tier").String())
 
 	// OpenAI 官方 tier 直接保留在 body 中（透传上游）。
 	body, tier, err = normalizeResponsesBodyServiceTier([]byte(`{"model":"gpt-5.1","service_tier":"auto"}`))

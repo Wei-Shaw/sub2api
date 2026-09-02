@@ -1425,11 +1425,11 @@ export async function updateRectifierSettings(
 // ==================== OpenAI Fast Policy Settings ====================
 
 /**
- * OpenAI fast/flex policy rule interface.
+ * OpenAI speed/flex policy rule interface.
  * Matches backend dto.OpenAIFastPolicyRule.
  */
 export interface OpenAIFastPolicyRule {
-  service_tier: "all" | "priority" | "flex";
+  service_tier: "all" | "priority" | "ultrafast" | "flex";
   action: "pass" | "filter" | "block" | "force_priority";
   scope: "all" | "oauth" | "apikey" | "bedrock";
   user_ids?: number[];
@@ -1440,7 +1440,7 @@ export interface OpenAIFastPolicyRule {
 }
 
 /**
- * OpenAI fast/flex policy settings interface.
+ * OpenAI speed/flex policy settings interface.
  */
 export interface OpenAIFastPolicySettings {
   rules: OpenAIFastPolicyRule[];

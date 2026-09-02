@@ -470,13 +470,18 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		descriptor.Description = "OpenAI GPT coding model routed through Sub2API."
 		descriptor.SupportsParallelToolCalls = true
 		if configuredCodexSupportsPriorityServiceTier(modelID) {
-			descriptor.ServiceTiers = []configuredCodexServiceTier{
-				{
-					ID:          "priority",
-					Name:        "Fast",
-					Description: "Priority processing for lower latency.",
-				},
-			}
+			descriptor.ServiceTiers = append(descriptor.ServiceTiers, configuredCodexServiceTier{
+				ID:          OpenAIFastTierPriority,
+				Name:        "Fast",
+				Description: "Priority processing for lower latency.",
+			})
+		}
+		if configuredCodexSupportsUltraFastServiceTier(modelID) {
+			descriptor.ServiceTiers = append(descriptor.ServiceTiers, configuredCodexServiceTier{
+				ID:          OpenAIFastTierUltraFast,
+				Name:        "Ultrafast",
+				Description: "Fastest processing for latency-sensitive workloads.",
+			})
 		}
 		if isOpenAICodexReasoningGPTModel(modelID) {
 			defaultReasoningLevel := "medium"
@@ -509,6 +514,10 @@ func configuredCodexSupportsPriorityServiceTier(modelID string) bool {
 		}
 	}
 	return false
+}
+
+func configuredCodexSupportsUltraFastServiceTier(modelID string) bool {
+	return normalizeKnownOpenAICodexModel(modelID) == "gpt-5.6-sol"
 }
 
 func configuredCodexGrokReasoningLevels(modelID string) []configuredCodexReasoningLevel {

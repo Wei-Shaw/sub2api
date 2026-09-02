@@ -1464,11 +1464,10 @@ func TestNormalizeOpenAIServiceTier(t *testing.T) {
 		require.Equal(t, "priority", *got)
 	})
 
-	t.Run("openai official tiers preserved", func(t *testing.T) {
-		// OpenAI 官方文档定义的合法 tier 值都应被透传保留，避免因白名单过窄
-		// 静默剥离客户端显式发送的合法字段。Codex 客户端只发 priority/flex，
-		// 所以扩大白名单对 Codex 流量零影响（见 codex-rs/core/src/client.rs）。
-		for _, tier := range []string{"priority", "flex", "auto", "default", "scale"} {
+	t.Run("openai and codex tiers preserved", func(t *testing.T) {
+		// OpenAI API 与 Codex 模型目录定义的合法 tier 值都应被透传保留，
+		// 避免因白名单过窄静默剥离客户端显式发送的合法字段。
+		for _, tier := range []string{"priority", "ultrafast", "flex", "auto", "default", "scale"} {
 			got := normalizeOpenAIServiceTier(tier)
 			require.NotNil(t, got, "tier %q should not be normalized to nil", tier)
 			require.Equal(t, tier, *got)
@@ -1483,6 +1482,7 @@ func TestNormalizeOpenAIServiceTier(t *testing.T) {
 
 func TestExtractOpenAIServiceTier(t *testing.T) {
 	require.Equal(t, "priority", *extractOpenAIServiceTier(map[string]any{"service_tier": "fast"}))
+	require.Equal(t, "ultrafast", *extractOpenAIServiceTier(map[string]any{"service_tier": "ultrafast"}))
 	require.Equal(t, "flex", *extractOpenAIServiceTier(map[string]any{"service_tier": "flex"}))
 	require.Equal(t, "auto", *extractOpenAIServiceTier(map[string]any{"service_tier": "auto"}))
 	require.Equal(t, "default", *extractOpenAIServiceTier(map[string]any{"service_tier": "default"}))
@@ -1493,6 +1493,7 @@ func TestExtractOpenAIServiceTier(t *testing.T) {
 
 func TestExtractOpenAIServiceTierFromBody(t *testing.T) {
 	require.Equal(t, "priority", *extractOpenAIServiceTierFromBody([]byte(`{"service_tier":"fast"}`)))
+	require.Equal(t, "ultrafast", *extractOpenAIServiceTierFromBody([]byte(`{"service_tier":"ultrafast"}`)))
 	require.Equal(t, "flex", *extractOpenAIServiceTierFromBody([]byte(`{"service_tier":"flex"}`)))
 	require.Equal(t, "auto", *extractOpenAIServiceTierFromBody([]byte(`{"service_tier":"auto"}`)))
 	require.Equal(t, "default", *extractOpenAIServiceTierFromBody([]byte(`{"service_tier":"default"}`)))
@@ -3144,6 +3145,11 @@ func TestGroupBillsOpenAIFastAtStandardRequiresOpenAIAccount(t *testing.T) {
 		apiKey,
 		&Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
 		"priority",
+	))
+	require.True(t, groupBillsOpenAIFastAtStandard(
+		apiKey,
+		&Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+		"ultrafast",
 	))
 	require.False(t, groupBillsOpenAIFastAtStandard(
 		apiKey,

@@ -100,6 +100,9 @@ func TestEvaluateOpenAIFastPolicy_DefaultPassesKnownTiers(t *testing.T) {
 	action, _ = svc.evaluateOpenAIFastPolicy(context.Background(), account, "gpt-5.5", OpenAIFastTierFlex)
 	require.Equal(t, BetaPolicyActionPass, action)
 
+	action, _ = svc.evaluateOpenAIFastPolicy(context.Background(), account, "gpt-5.6-sol", OpenAIFastTierUltraFast)
+	require.Equal(t, BetaPolicyActionPass, action)
+
 	// empty tier → pass
 	action, _ = svc.evaluateOpenAIFastPolicy(context.Background(), account, "gpt-5.5", "")
 	require.Equal(t, BetaPolicyActionPass, action)
@@ -176,7 +179,7 @@ func TestEvaluateOpenAIFastPolicy_UserScopedRuleOverridesGlobalRule(t *testing.T
 	require.Equal(t, BetaPolicyActionFilter, action)
 }
 
-func TestApplyOpenAIFastPolicyToBody_DefaultPassesPriorityAndFast(t *testing.T) {
+func TestApplyOpenAIFastPolicyToBody_DefaultPassesSpeedTiers(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 
@@ -189,6 +192,11 @@ func TestApplyOpenAIFastPolicyToBody_DefaultPassesPriorityAndFast(t *testing.T) 
 	updated, err = svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
 	require.NoError(t, err)
 	require.Equal(t, "priority", gjson.GetBytes(updated, "service_tier").String())
+
+	body = []byte(`{"model":"gpt-5.6-sol","service_tier":"ultrafast"}`)
+	updated, err = svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.6-sol", body)
+	require.NoError(t, err)
+	require.Equal(t, string(body), string(updated))
 
 	body = []byte(`{"model":"gpt-4","service_tier":"priority"}`)
 	updated, err = svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-4", body)
@@ -259,7 +267,7 @@ func TestApplyOpenAIFastPolicyToBody_ForcePriorityRewritesKnownTier(t *testing.T
 	svc := newOpenAIGatewayServiceWithSettings(t, settings)
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 
-	for _, tier := range []string{"flex", "auto", "default", "scale", "fast", "priority"} {
+	for _, tier := range []string{"ultrafast", "flex", "auto", "default", "scale", "fast", "priority"} {
 		body := []byte(`{"model":"gpt-5.5","service_tier":"` + tier + `"}`)
 		updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
 		require.NoError(t, err)
@@ -353,7 +361,7 @@ func TestApplyOpenAIFastPolicyToBody_OfficialTiersBypassDefaultRule(t *testing.T
 	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 
-	for _, tier := range []string{"auto", "default", "scale"} {
+	for _, tier := range []string{"ultrafast", "auto", "default", "scale"} {
 		body := []byte(`{"model":"gpt-5.5","service_tier":"` + tier + `"}`)
 		updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
 		require.NoError(t, err, "tier %q should pass without error", tier)
@@ -362,7 +370,7 @@ func TestApplyOpenAIFastPolicyToBody_OfficialTiersBypassDefaultRule(t *testing.T
 	}
 
 	// evaluate 层也应判定为 pass（默认配置没有内置规则）。
-	for _, tier := range []string{"auto", "default", "scale"} {
+	for _, tier := range []string{"ultrafast", "auto", "default", "scale"} {
 		action, _ := svc.evaluateOpenAIFastPolicy(context.Background(), account, "gpt-5.5", tier)
 		require.Equal(t, BetaPolicyActionPass, action, "tier %q should evaluate to pass", tier)
 	}
@@ -382,7 +390,7 @@ func TestApplyOpenAIFastPolicyToBody_AllRuleStripsOfficialTiers(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, settings)
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 
-	for _, tier := range []string{"auto", "default", "scale", "priority", "flex"} {
+	for _, tier := range []string{"ultrafast", "auto", "default", "scale", "priority", "flex"} {
 		body := []byte(`{"model":"gpt-5.5","service_tier":"` + tier + `"}`)
 		updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
 		require.NoError(t, err)
@@ -460,7 +468,7 @@ func TestSetOpenAIFastPolicySettings_Validation(t *testing.T) {
 	// Non-positive and duplicate user IDs are rejected.
 	err = svc.SetOpenAIFastPolicySettings(context.Background(), &OpenAIFastPolicySettings{
 		Rules: []OpenAIFastPolicyRule{{
-			ServiceTier: OpenAIFastTierPriority,
+			ServiceTier: OpenAIFastTierUltraFast,
 			Action:      BetaPolicyActionPass,
 			Scope:       BetaPolicyScopeAll,
 			UserIDs:     []int64{0},
@@ -481,7 +489,7 @@ func TestSetOpenAIFastPolicySettings_Validation(t *testing.T) {
 	// Valid settings persisted
 	err = svc.SetOpenAIFastPolicySettings(context.Background(), &OpenAIFastPolicySettings{
 		Rules: []OpenAIFastPolicyRule{{
-			ServiceTier: OpenAIFastTierPriority,
+			ServiceTier: OpenAIFastTierUltraFast,
 			Action:      OpenAIFastPolicyActionForcePriority,
 			Scope:       BetaPolicyScopeAll,
 			UserIDs:     []int64{42, 43},
@@ -492,7 +500,7 @@ func TestSetOpenAIFastPolicySettings_Validation(t *testing.T) {
 	got, err := svc.GetOpenAIFastPolicySettings(context.Background())
 	require.NoError(t, err)
 	require.Len(t, got.Rules, 1)
-	require.Equal(t, OpenAIFastTierPriority, got.Rules[0].ServiceTier)
+	require.Equal(t, OpenAIFastTierUltraFast, got.Rules[0].ServiceTier)
 	require.Equal(t, OpenAIFastPolicyActionForcePriority, got.Rules[0].Action)
 	require.Equal(t, []int64{42, 43}, got.Rules[0].UserIDs)
 }

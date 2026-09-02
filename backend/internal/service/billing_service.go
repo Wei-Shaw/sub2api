@@ -120,12 +120,12 @@ func normalizeBillingServiceTier(serviceTier string) string {
 	return strings.ToLower(strings.TrimSpace(serviceTier))
 }
 
-func usePriorityServiceTierPricing(serviceTier string, pricing *ModelPricing) bool {
+func useFastServiceTierPricing(serviceTier string, pricing *ModelPricing) bool {
 	if pricing == nil {
 		return false
 	}
 	tier := normalizeBillingServiceTier(serviceTier)
-	if tier != "priority" && tier != "fast" {
+	if tier != OpenAIFastTierPriority && tier != "fast" && tier != OpenAIFastTierUltraFast {
 		return false
 	}
 	if pricing.FastMultiplier != nil {
@@ -137,7 +137,8 @@ func usePriorityServiceTierPricing(serviceTier string, pricing *ModelPricing) bo
 
 func serviceTierCostMultiplier(serviceTier string) float64 {
 	switch normalizeBillingServiceTier(serviceTier) {
-	case "priority", "fast":
+	case OpenAIFastTierPriority, "fast", OpenAIFastTierUltraFast:
+		// 渠道定价目前只有一个 FastMultiplier，ultrafast 复用该速度档倍率。
 		return 2.0
 	case "flex":
 		return 0.5
@@ -149,7 +150,7 @@ func serviceTierCostMultiplier(serviceTier string) float64 {
 func configuredServiceTierMultiplier(serviceTier string, pricing *ModelPricing) float64 {
 	if pricing != nil {
 		switch normalizeBillingServiceTier(serviceTier) {
-		case "priority", "fast":
+		case OpenAIFastTierPriority, "fast", OpenAIFastTierUltraFast:
 			if pricing.FastMultiplier != nil {
 				return *pricing.FastMultiplier
 			}
@@ -1368,7 +1369,7 @@ func (s *BillingService) computeTokenBreakdown(
 	cacheCreationMultiplier := 1.0
 	tierMultiplier := 1.0
 
-	if usePriorityServiceTierPricing(serviceTier, pricing) {
+	if useFastServiceTierPricing(serviceTier, pricing) {
 		if pricing.InputPricePerTokenPriority > 0 {
 			inputPrice = pricing.InputPricePerTokenPriority
 		}

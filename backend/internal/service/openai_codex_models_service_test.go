@@ -427,8 +427,8 @@ func TestBuildCodexModelsManifestKeepsKnownReasoningChoices(t *testing.T) {
 	require.NotEqual(t, "none", firstLevel["effort"])
 }
 
-// Scenario: 支持 Fast 的 GPT 型号在目录中声明 priority service tier。
-func TestBuildCodexModelsManifestAdvertisesPriorityServiceTierForFastGPTModels(t *testing.T) {
+// Scenario: 支持速度档位的 GPT 型号在目录中声明可用的 service tiers。
+func TestBuildCodexModelsManifestAdvertisesServiceTiersForFastGPTModels(t *testing.T) {
 	t.Parallel()
 
 	body, err := BuildCodexModelsManifest([]string{
@@ -441,13 +441,21 @@ func TestBuildCodexModelsManifestAdvertisesPriorityServiceTierForFastGPTModels(t
 	require.Len(t, models, 3)
 
 	for _, model := range models {
-		require.Equal(t, []any{
+		want := []any{
 			map[string]any{
 				"id":          "priority",
 				"name":        "Fast",
 				"description": "Priority processing for lower latency.",
 			},
-		}, model["service_tiers"])
+		}
+		if model["slug"] == "gpt-5.6-sol" {
+			want = append(want, map[string]any{
+				"id":          "ultrafast",
+				"name":        "Ultrafast",
+				"description": "Fastest processing for latency-sensitive workloads.",
+			})
+		}
+		require.Equal(t, want, model["service_tiers"])
 		require.Nil(t, model["default_service_tier"])
 	}
 }

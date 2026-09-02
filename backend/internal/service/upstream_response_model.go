@@ -139,8 +139,10 @@ func (o *upstreamResponseModelObserver) ServiceTier() string {
 // unknown values are ignored rather than guessed at.
 func normalizeObservedOpenAIServiceTier(raw string) string {
 	switch value := strings.ToLower(strings.TrimSpace(raw)); value {
-	case "priority", "fast":
+	case OpenAIFastTierPriority, "fast":
 		return OpenAIFastTierPriority
+	case OpenAIFastTierUltraFast:
+		return value
 	case "default", "flex", "scale":
 		return value
 	default:

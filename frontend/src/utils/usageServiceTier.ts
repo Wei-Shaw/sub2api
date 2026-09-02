@@ -19,6 +19,7 @@ export function getUsageServiceTierLabel(
 ): string {
   const tier = formatUsageServiceTier(serviceTier)
   if (tier === 'priority') return translate('usage.serviceTierPriority')
+  if (tier === 'ultrafast') return translate('usage.serviceTierUltraFast')
   if (tier === 'flex') return translate('usage.serviceTierFlex')
   if (tier === 'standard') return translate('usage.serviceTierStandard')
   return tier
