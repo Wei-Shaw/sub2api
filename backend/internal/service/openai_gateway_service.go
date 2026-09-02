@@ -441,16 +441,18 @@ type OpenAIGatewayService struct {
 	pluginManager         *PluginManager
 	deferredService       *DeferredService
 	openAITokenProvider   *OpenAITokenProvider
-	grokTokenProvider     *GrokTokenProvider
-	toolCorrector         *CodexToolCorrector
-	openaiWSResolver      OpenAIWSProtocolResolver
-	resolver              *ModelPricingResolver
-	channelService        *ChannelService
-	balanceNotifyService  *BalanceNotifyService
-	settingService        *SettingService
-	userPlatformQuotaRepo UserPlatformQuotaRepository
-	liveAttestation       liveattestation.Provider
-	liveAttestationCipher SecretEncryptor
+	// chatGPTUploadClientFactory overrides the OAuth service factory in tests.
+	chatGPTUploadClientFactory ChatGPTUploadClientFactory
+	grokTokenProvider          *GrokTokenProvider
+	toolCorrector              *CodexToolCorrector
+	openaiWSResolver           OpenAIWSProtocolResolver
+	resolver                   *ModelPricingResolver
+	channelService             *ChannelService
+	balanceNotifyService       *BalanceNotifyService
+	settingService             *SettingService
+	userPlatformQuotaRepo      UserPlatformQuotaRepository
+	liveAttestation            liveattestation.Provider
+	liveAttestationCipher      SecretEncryptor
 
 	openaiWSPoolOnce               sync.Once
 	openaiWSStateStoreOnce         sync.Once

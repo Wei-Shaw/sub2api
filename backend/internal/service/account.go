@@ -89,10 +89,11 @@ type OpenAIEndpointCapability string
 const openAILongContextBillingEnabledKey = "openai_long_context_billing_enabled"
 
 const (
-	OpenAIEndpointCapabilityChatCompletions OpenAIEndpointCapability = "chat_completions"
-	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
-	OpenAIEndpointCapabilityAlphaSearch     OpenAIEndpointCapability = "alpha_search"
-	OpenAIEndpointCapabilityLive            OpenAIEndpointCapability = "live"
+	OpenAIEndpointCapabilityChatCompletions     OpenAIEndpointCapability = "chat_completions"
+	OpenAIEndpointCapabilityEmbeddings          OpenAIEndpointCapability = "embeddings"
+	OpenAIEndpointCapabilityAlphaSearch         OpenAIEndpointCapability = "alpha_search"
+	OpenAIEndpointCapabilityLive                OpenAIEndpointCapability = "live"
+	OpenAIEndpointCapabilityAudioTranscriptions OpenAIEndpointCapability = "audio_transcriptions"
 	// OpenAIEndpointCapabilityGrokMediaGeneration keeps image/video generation
 	// away from Grok accounts that are explicitly disabled or whose billing
 	// entitlement probe was forbidden. Video status lookups intentionally do not
@@ -1802,6 +1803,23 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 			a.Type == AccountTypeOAuth &&
 			!a.IsOpenAIPersonalAccessToken() &&
 			!a.IsOpenAIAgentIdentity()
+	case OpenAIEndpointCapabilityAudioTranscriptions:
+		// ChatGPT OAuth accounts transcribe through chatgpt.com/backend-api/transcribe,
+		// API key accounts through {base_url}/v1/audio/transcriptions. PAT and
+		// agent-identity credentials cannot reach the ChatGPT endpoint. Returning
+		// here keeps the credentials capability whitelist, which only enumerates
+		// chat/embeddings, from excluding every configured account.
+		if a.Platform != PlatformOpenAI {
+			return false
+		}
+		switch a.Type {
+		case AccountTypeOAuth:
+			return !a.IsOpenAIPersonalAccessToken() && !a.IsOpenAIAgentIdentity()
+		case AccountTypeAPIKey:
+			return true
+		default:
+			return false
+		}
 	case OpenAIEndpointCapabilityResponses:
 		// Responses 支持状态由 accounts.extra 的自动探测标记决定，而非
 		// credentials 能力集。已探测确认不支持 /v1/responses 的 APIKey 上游

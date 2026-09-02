@@ -104,7 +104,7 @@ func extractProtocolSegments(protocol string, document any) []promptSegment {
 			return extractInstructions(root["instructions"])
 		}
 		return append(extractInstructions(root["instructions"]), extractResponses(root["input"])...)
-	case "openai_images", "grok_media", "media", "images":
+	case "openai_images", "openai_audio_transcription", "grok_media", "media", "images":
 		return userPromptSegments(extractMediaPrompts(root))
 	default:
 		if segments := extractChatLikeSegments(root); len(segments) > 0 {
