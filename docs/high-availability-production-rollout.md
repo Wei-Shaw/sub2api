@@ -44,7 +44,7 @@ git reset --hard origin/feature/ha-scheduler
 docker build -t sub2api:ha-scheduler .
 ```
 
-后续更新已有代码目录时，重复 `git fetch`、`git reset` 和 `docker build`。确认镜像构建成功后再进入停机或复制步骤。
+后续更新已有代码目录时，按第 10 节执行带备份和迁移核对的更新流程；不要在未检查工作区的情况下直接 `git reset`。确认新镜像构建成功后再进入停机或复制步骤。
 
 创建 `/opt/sub2api/docker-compose.ha-prod.yml`：
 
@@ -248,3 +248,102 @@ docker compose --env-file .env -p sub2api \
 如果发生数据库迁移失败，停止服务后使用 `/opt/sub2api-backups/<时间戳>/` 中的备份恢复。数据库迁移是前向迁移，不能用 Git 回退代替数据库恢复。
 
 单容器重启无法保证正在执行的请求不中断，应选择低流量时段；需要真正无感切换时，应在反向代理后运行蓝绿实例并先排空旧实例。
+
+## 10. 后续版本更新
+
+本节适用于已经按本文部署、以后继续从 `origin/feature/ha-scheduler` 更新的服务器。HA 分支可能经过 rebase，服务器本地分支和 Fork 远端会出现历史分叉；不要用没有明确策略的 `git pull`，也不要从管理面板点击“立即更新”。
+
+### 10.1 更新前检查和备份
+
+代码目录与正式数据目录分离时，在代码目录执行：
+
+```bash
+cd /opt/sub2api-ha-src
+git status --short --branch
+git remote -v
+git branch -vv
+git rev-parse HEAD > /opt/sub2api/backup-git-commit.txt
+```
+
+工作区存在已跟踪修改时先停止，提交到临时分支或导出补丁。确认正式 Compose、配置和镜像信息，并在低峰停机前完成数据库备份：
+
+```bash
+cd /opt/sub2api
+STAMP=$(date +%Y%m%d-%H%M%S)
+mkdir -p "/opt/sub2api-backups/$STAMP"
+docker compose --env-file .env -p sub2api -f docker-compose.local.yml -f docker-compose.ha-prod.yml config > "backup-compose-rendered-$STAMP.yml"
+docker compose --env-file .env -p sub2api -f docker-compose.local.yml -f docker-compose.ha-prod.yml images > "backup-compose-images-$STAMP.txt"
+cp -a .env "/opt/sub2api-backups/$STAMP/backup.env"
+docker compose --env-file .env -p sub2api -f docker-compose.local.yml -f docker-compose.ha-prod.yml exec -T postgres sh -lc 'pg_dumpall -U "$POSTGRES_USER"' > "/opt/sub2api-backups/$STAMP/postgres.sql"
+docker compose --env-file .env -p sub2api -f docker-compose.local.yml -f docker-compose.ha-prod.yml exec -T redis redis-cli --rdb /data/redis-backup.rdb
+```
+
+禁止使用 `docker compose down -v`，不要覆盖正式 `data/`、`postgres_data/` 或 `redis_data/`。
+
+### 10.2 获取并对齐已验证提交
+
+```bash
+cd /opt/sub2api-ha-src
+git fetch origin --prune
+git switch feature/ha-scheduler
+git status --short
+git branch "backup/pre-ha-update-$(date +%Y%m%d-%H%M%S)"
+git log --oneline --left-right HEAD...origin/feature/ha-scheduler
+```
+
+确认工作区干净、没有服务器专用提交需要保留后，再对齐 Fork 上经过测试的提交：
+
+```bash
+git reset --hard origin/feature/ha-scheduler
+git status --short --branch
+git rev-parse HEAD
+```
+
+备份分支用于回看旧代码或恢复旧镜像，不能删除。若远端只是普通快进，可使用 `git pull --ff-only origin feature/ha-scheduler`；如果出现 `Need to specify how to reconcile divergent branches`，不要自动 merge/rebase，按本节流程处理。
+
+### 10.3 migration 核对
+
+当前 HA 分支新增的迁移文件是 `231_scheduled_test_health_samples.sql` 和 `232_group_scheduler_config.sql`。迁移执行器按完整文件名和 checksum 记录，不要重命名、删除或修改已经在生产执行过的迁移，也不要手工删除 `schema_migrations` 记录。
+
+```bash
+cd /opt/sub2api
+docker compose --env-file .env -p sub2api -f docker-compose.local.yml -f docker-compose.ha-prod.yml exec -T postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT filename, checksum FROM schema_migrations WHERE filename LIKE '\''229_%'\'' OR filename LIKE '\''230_%'\'' OR filename LIKE '\''231_%'\'' OR filename LIKE '\''232_%'\'' OR filename LIKE '\''233_%'\'' ORDER BY filename"'
+```
+
+官方也可能存在相同数字前缀但不同完整文件名的迁移；这不构成文件名冲突，但必须确认查询结果和启动日志符合预期。如果生产库记录的是旧名称 `229_scheduled_test_health_samples.sql` 或 `230_group_scheduler_config.sql`，先停止更新，不能把改名后的文件当作同一个已应用迁移；应先准备兼容迁移或恢复原文件名。
+
+### 10.4 构建、验证和正式切换
+
+在不停机阶段构建新镜像，使用提交短哈希作为不可变 tag，不覆盖正在运行的 tag：
+
+```bash
+cd /opt/sub2api-ha-src
+TARGET_COMMIT=$(git rev-parse --short HEAD)
+docker build -t "sub2api:ha-$TARGET_COMMIT" -f deploy/Dockerfile .
+```
+
+先用生产数据副本和 `deploy/docker-compose.ha-test.yml` 启动独立 Compose project，验证迁移、登录、账号凭据、分组、模型映射、HA failover 和低并发行为。测试通过后，将正式覆盖文件中的应用镜像改为 `sub2api:ha-$TARGET_COMMIT`，再次渲染配置确认三个正式数据目录未改变。
+
+低峰切换时只停止应用容器，不停止 PostgreSQL/Redis：
+
+```bash
+cd /opt/sub2api
+docker compose --env-file .env -p sub2api -f docker-compose.local.yml -f docker-compose.ha-prod.yml stop sub2api
+docker compose --env-file .env -p sub2api -f docker-compose.local.yml -f docker-compose.ha-prod.yml up -d sub2api
+docker compose --env-file .env -p sub2api -f docker-compose.local.yml -f docker-compose.ha-prod.yml ps
+docker compose --env-file .env -p sub2api -f docker-compose.local.yml -f docker-compose.ha-prod.yml logs --tail=200 sub2api
+curl -fsS "http://127.0.0.1:${SERVER_PORT:-8080}/health"
+```
+
+记录目标 Git commit、镜像 tag、官方基线 commit 和测试结果。出现异常时只恢复旧镜像和配置，不回滚数据库数据；没有反向代理时，应用重启会中断在途请求，必须安排维护窗口。
+
+如果构建在 `RUN pnpm run build` 处以 `exit code: 134` 结束，先按内存问题排查，不要删除 `pnpm-lock.yaml` 或改用未锁定依赖：
+
+```bash
+free -h
+docker info --format '{{.MemTotal}}'
+dmesg -T | grep -Ei 'out of memory|oom|killed process|javascript heap' || true
+docker build --progress=plain -t "sub2api:ha-$TARGET_COMMIT" -f deploy/Dockerfile . 2>&1 | tee "/tmp/sub2api-build-$TARGET_COMMIT.log"
+```
+
+确认主机或 Docker Desktop 至少有约 4 GiB 可用内存，并保留适当 swap；日志出现 `FATAL ERROR: ... heap out of memory` 或 `Killed` 时，应先增加构建内存后重试。构建成功后再进入停机窗口，不能在正式容器停止后临时处理构建失败。
