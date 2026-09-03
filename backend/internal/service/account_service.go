@@ -82,19 +82,6 @@ type AccountRepository interface {
 	SetSchedulable(ctx context.Context, id int64, schedulable bool) error
 	AutoPauseExpiredAccounts(ctx context.Context, now time.Time) (int64, error)
 	BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error
-	// AddGroups 幂等追加账号→组绑定（已存在则 no-op）；新建行 priority = max(existing)+1。
-	// 不删除其它绑定（与 BindGroups 全量替换相对）。outbox 含变更前+后相关 group IDs。
-	AddGroups(ctx context.Context, accountID int64, groupIDs []int64) error
-	// RemoveGroups 幂等移除账号→组绑定（不存在则 no-op）。不碰未列出的绑定。
-	RemoveGroups(ctx context.Context, accountID int64, groupIDs []int64) error
-	// ListOwnerAccountsBoundToGroup 返回绑定到 groupID 且 owner_user_id 非空的用户自建号（软删不计）。
-	ListOwnerAccountsBoundToGroup(ctx context.Context, groupID int64) ([]*Account, error)
-	// ListPublicOwnerAccountsByPlatformPlan 扫描 visibility=public 且 platform+upstream_plan 严格匹配的用户自建号。
-	ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*Account, error)
-	// CountActiveOwned 统计 owner_user_id=ownerUserID 且未软删的账号数。
-	CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error)
-	// ListByOwnerUserID 分页列出 owner 名下未软删账号（用户「我的账号」列表 / DeleteUser 级联）。
-	ListByOwnerUserID(ctx context.Context, ownerUserID int64, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error)
 
 	ListSchedulable(ctx context.Context) ([]Account, error)
 	ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]Account, error)
@@ -128,8 +115,9 @@ type AccountRepository interface {
 	BulkUpdate(ctx context.Context, ids []int64, updates AccountBulkUpdate) (int64, error)
 	// IncrementQuotaUsed 原子递增 API Key 账号的配额用量（总/日/周）
 	IncrementQuotaUsed(ctx context.Context, id int64, amount float64) error
-	// ResetQuotaUsed 重置 API Key 账号所有维度的配额用量为 0
-	ResetQuotaUsed(ctx context.Context, id int64) error
+	// ResetQuotaUsedAndClearRateLimitCooldown atomically resets API Key quota usage
+	// and clears only the account-level rate-limit cooldown.
+	ResetQuotaUsedAndClearRateLimitCooldown(ctx context.Context, id int64) error
 	// RevertProxyFallback 将账号的 proxy_id 切回 proxy_fallback_origin_id，并清空 origin 字段。
 	// 仅当 proxy_fallback_origin_id IS NOT NULL 时更新，否则视为账号不存在（返回 ErrAccountNotFound）。
 	RevertProxyFallback(ctx context.Context, accountID int64) error
@@ -179,8 +167,9 @@ type AccountBulkUpdate struct {
 	Credentials    map[string]any
 	Extra          map[string]any
 	ProbeEnabled   *bool
-	// UpstreamPlan nil=不修改；非 nil 空串=清空列；非空=写入规范化 code。
-	UpstreamPlan *string
+	// EnsureCodexFingerprintSeed asks the repository to atomically preserve an
+	// existing valid Codex fingerprint seed or create one for eligible rows.
+	EnsureCodexFingerprintSeed bool
 }
 
 // CreateAccountRequest 创建账号请求
@@ -247,8 +236,8 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		Notes:       normalizeAccountNotes(req.Notes),
 		Platform:    req.Platform,
 		Type:        req.Type,
-		Credentials: req.Credentials,
-		Extra:       req.Extra,
+		Credentials: SanitizeStoredCredentials(req.Platform, req.Credentials),
+		Extra:       prepareCodexFingerprintExtraForCreate(req.Platform, req.Type, req.Extra),
 		ProxyID:     req.ProxyID,
 		Concurrency: req.Concurrency,
 		Priority:    req.Priority,
@@ -340,7 +329,7 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 
 	if req.Credentials != nil {
-		account.Credentials = *req.Credentials
+		account.Credentials = SanitizeStoredCredentials(account.Platform, *req.Credentials)
 	}
 
 	if req.Extra != nil {
@@ -351,7 +340,9 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		delete(extra, OllamaCloudUsageSessionExtraKey)
 		delete(extra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(extra, OllamaCloudUsageSnapshotExtraKey)
-		account.Extra = extra
+		account.Extra = prepareCodexFingerprintExtraForUpdate(account, extra)
+	} else {
+		account.Extra = prepareCodexFingerprintExtraForUpdate(account, account.Extra)
 	}
 
 	if req.ProxyID != nil {
@@ -523,6 +514,9 @@ func (s *AccountService) TestCredentials(ctx context.Context, id int64) error {
 		return nil
 	case PlatformGrok:
 		// Grok OAuth credentials are validated via token exchange/refresh and request-path probes.
+		return nil
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+		// 国产 OpenAI 兼容供应商：凭证为 API Key，实际可用性经余额/额度探测与转发路径验证。
 		return nil
 	default:
 		return fmt.Errorf("unsupported platform: %s", account.Platform)

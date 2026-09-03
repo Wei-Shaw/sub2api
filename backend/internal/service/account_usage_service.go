@@ -105,15 +105,14 @@ type antigravityUsageCache struct {
 }
 
 const (
-	apiCacheTTL             = 3 * time.Minute
-	apiErrorCacheTTL        = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
-	antigravityErrorTTL     = 1 * time.Minute        // Antigravity 错误缓存 TTL（可恢复错误）
-	apiQueryMaxJitter       = 800 * time.Millisecond // 用量查询最大随机延迟
-	windowStatsCacheTTL     = 1 * time.Minute
-	openAIProbeCacheTTL     = 10 * time.Minute
-	grokProbeRetryTTL       = 1 * time.Minute
-	grokFreeQuotaWindow     = 24 * time.Hour
-	openAICodexProbeVersion = "0.144.1"
+	apiCacheTTL         = 3 * time.Minute
+	apiErrorCacheTTL    = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
+	antigravityErrorTTL = 1 * time.Minute        // Antigravity 错误缓存 TTL（可恢复错误）
+	apiQueryMaxJitter   = 800 * time.Millisecond // 用量查询最大随机延迟
+	windowStatsCacheTTL = 1 * time.Minute
+	openAIProbeCacheTTL = 10 * time.Minute
+	grokProbeRetryTTL   = 1 * time.Minute
+	grokFreeQuotaWindow = 24 * time.Hour
 )
 
 // UsageCache 封装账户使用量相关的缓存
@@ -199,20 +198,22 @@ type UsageInfo struct {
 	AntigravityQuota map[string]*AntigravityModelQuota `json:"antigravity_quota,omitempty"`
 
 	// Grok / xAI 被动额度快照
-	GrokRequestQuota       *xai.QuotaWindow    `json:"grok_request_quota,omitempty"`
-	GrokTokenQuota         *xai.QuotaWindow    `json:"grok_token_quota,omitempty"`
-	GrokRetryAfterSeconds  *int                `json:"grok_retry_after_seconds,omitempty"`
-	GrokEntitlementStatus  string              `json:"grok_entitlement_status,omitempty"`
-	GrokQuotaSnapshotState string              `json:"grok_quota_snapshot_state,omitempty"`
-	GrokLastQuotaProbeAt   string              `json:"grok_last_quota_probe_at,omitempty"`
-	GrokLastHeadersSeenAt  string              `json:"grok_last_headers_seen_at,omitempty"`
-	GrokLastStatusCode     int                 `json:"grok_last_status_code,omitempty"`
-	GrokFreeTokenLimit     int64               `json:"grok_free_token_limit,omitempty"`
-	GrokLocalUsage         *WindowStats        `json:"grok_local_usage,omitempty"`
-	GrokLocalUsage24h      *WindowStats        `json:"grok_local_usage_24h,omitempty"`
-	GrokLocalUsage7d       *WindowStats        `json:"grok_local_usage_7d,omitempty"`
-	GrokLocalUsageMonthly  *WindowStats        `json:"grok_local_usage_monthly,omitempty"`
-	GrokBilling            *xai.BillingSummary `json:"grok_billing,omitempty"`
+	GrokRequestQuota       *xai.QuotaWindow `json:"grok_request_quota,omitempty"`
+	GrokTokenQuota         *xai.QuotaWindow `json:"grok_token_quota,omitempty"`
+	GrokRetryAfterSeconds  *int             `json:"grok_retry_after_seconds,omitempty"`
+	GrokEntitlementStatus  string           `json:"grok_entitlement_status,omitempty"`
+	GrokQuotaSnapshotState string           `json:"grok_quota_snapshot_state,omitempty"`
+	GrokLastQuotaProbeAt   string           `json:"grok_last_quota_probe_at,omitempty"`
+	GrokLastHeadersSeenAt  string           `json:"grok_last_headers_seen_at,omitempty"`
+	GrokLastStatusCode     int              `json:"grok_last_status_code,omitempty"`
+	GrokFreeTokenLimit     int64            `json:"grok_free_token_limit,omitempty"`
+	GrokLocalUsage         *WindowStats     `json:"grok_local_usage,omitempty"`
+	GrokLocalUsage24h      *WindowStats     `json:"grok_local_usage_24h,omitempty"`
+	GrokLocalUsage7d       *WindowStats     `json:"grok_local_usage_7d,omitempty"`
+	GrokLocalUsageMonthly  *WindowStats     `json:"grok_local_usage_monthly,omitempty"`
+	// ThirtyDay is the official monthly billing window (used/monthlyLimit %).
+	ThirtyDay   *UsageProgress      `json:"thirty_day,omitempty"`
+	GrokBilling *xai.BillingSummary `json:"grok_billing,omitempty"`
 
 	// Antigravity 账号级信息
 	SubscriptionTier    string `json:"subscription_tier,omitempty"`     // 归一化订阅等级: FREE/PRO/ULTRA/UNKNOWN
@@ -333,23 +334,28 @@ func NewAccountUsageService(
 	}
 }
 
-// GetUsage 获取账号使用量
-// OAuth账号: 调用Anthropic API获取真实数据（需要profile scope），API响应缓存10分钟，窗口统计缓存1分钟
-// Setup Token账号: 根据session_window推算5h窗口，7d数据不可用（没有profile scope）
-// API Key账号: 不支持usage查询
-func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, force ...bool) (*UsageInfo, error) {
-	forceProbe := len(force) > 0 && force[0]
+func supportsAnthropicPassiveUsage(account *Account) bool {
+	return account != nil && account.IsAnthropicOAuthOrSetupToken()
+}
 
-	account, err := s.accountRepo.GetByID(ctx, accountID)
-	if err != nil {
-		return nil, fmt.Errorf("get account failed: %w", err)
+func batchUsageErrorMessage(err error) string {
+	if err == nil {
+		return ""
 	}
+	return err.Error()
+}
+
+func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *Account, forceProbe bool) (*UsageInfo, error) {
+	if account == nil {
+		return nil, fmt.Errorf("account is required")
+	}
+	accountID := account.ID
 
 	// Dedicated UI load-test accounts must remain fully interactive without ever
 	// contacting Anthropic with synthetic credentials. Reuse the same persisted
 	// passive snapshot that the account table loads on mount.
 	if account.IsSyntheticUITest() && account.IsAnthropicOAuthOrSetupToken() {
-		return s.GetPassiveUsage(ctx, accountID)
+		return s.getPassiveUsageForAccount(ctx, account)
 	}
 
 	if account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {
@@ -482,6 +488,103 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 	return nil, fmt.Errorf("account type %s does not support usage query", account.Type)
 }
 
+// GetUsage 获取账号使用量
+// OAuth账号: 调用Anthropic API获取真实数据（需要profile scope），API响应缓存10分钟，窗口统计缓存1分钟
+// Setup Token账号: 根据session_window推算5h窗口，7d数据不可用（没有profile scope）
+// API Key账号: 不支持usage查询
+func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, force ...bool) (*UsageInfo, error) {
+	forceProbe := len(force) > 0 && force[0]
+
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("get account failed: %w", err)
+	}
+
+	return s.getUsageForAccount(ctx, account, forceProbe)
+}
+
+// GetUsageForAccount 已加载账号的使用量直通入口（配额监控 fetcher 复用，
+// 避免缓存未命中时账号被加载两次——每次 GetByID 含 proxies/groups 联查）。
+func (s *AccountUsageService) GetUsageForAccount(ctx context.Context, account *Account, force ...bool) (*UsageInfo, error) {
+	forceProbe := len(force) > 0 && force[0]
+	return s.getUsageForAccount(ctx, account, forceProbe)
+}
+
+// GetUsageBatch 批量获取账号使用量。
+// Anthropic OAuth/SetupToken 统一走 passive 链路，其他账号复用现有主动查询逻辑。
+// 单个账号失败不会中断整批请求，错误会按账号返回。
+func (s *AccountUsageService) GetUsageBatch(ctx context.Context, accountIDs []int64, force bool) (map[int64]*UsageInfo, map[int64]string, error) {
+	uniqueIDs := make([]int64, 0, len(accountIDs))
+	seen := make(map[int64]struct{}, len(accountIDs))
+	for _, accountID := range accountIDs {
+		if accountID <= 0 {
+			continue
+		}
+		if _, ok := seen[accountID]; ok {
+			continue
+		}
+		seen[accountID] = struct{}{}
+		uniqueIDs = append(uniqueIDs, accountID)
+	}
+
+	usageByAccount := make(map[int64]*UsageInfo, len(uniqueIDs))
+	errorsByAccount := make(map[int64]string)
+	if len(uniqueIDs) == 0 {
+		return usageByAccount, errorsByAccount, nil
+	}
+
+	accounts, err := s.accountRepo.GetByIDs(ctx, uniqueIDs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get accounts failed: %w", err)
+	}
+
+	accountsByID := make(map[int64]*Account, len(accounts))
+	for _, account := range accounts {
+		if account == nil {
+			continue
+		}
+		accountsByID[account.ID] = account
+	}
+
+	var mu sync.Mutex
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(6)
+
+	for _, accountID := range uniqueIDs {
+		id := accountID
+		account := accountsByID[id]
+		if account == nil {
+			errorsByAccount[id] = ErrAccountNotFound.Error()
+			continue
+		}
+
+		g.Go(func() error {
+			var usage *UsageInfo
+			var usageErr error
+			if supportsAnthropicPassiveUsage(account) {
+				usage, usageErr = s.getPassiveUsageForAccount(gctx, account)
+			} else {
+				usage, usageErr = s.getUsageForAccount(gctx, account, force)
+			}
+
+			mu.Lock()
+			defer mu.Unlock()
+			if usageErr != nil {
+				errorsByAccount[id] = batchUsageErrorMessage(usageErr)
+				return nil
+			}
+			usageByAccount[id] = usage
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, nil, err
+	}
+
+	return usageByAccount, errorsByAccount, nil
+}
+
 // GetPassiveUsage 从 Account.Extra 中的被动采样数据构建 UsageInfo，不调用外部 API。
 // 仅适用于 Anthropic OAuth / SetupToken 账号。
 func (s *AccountUsageService) GetPassiveUsage(ctx context.Context, accountID int64) (*UsageInfo, error) {
@@ -490,7 +593,11 @@ func (s *AccountUsageService) GetPassiveUsage(ctx context.Context, accountID int
 		return nil, fmt.Errorf("get account failed: %w", err)
 	}
 
-	if !account.IsAnthropicOAuthOrSetupToken() {
+	return s.getPassiveUsageForAccount(ctx, account)
+}
+
+func (s *AccountUsageService) getPassiveUsageForAccount(ctx context.Context, account *Account) (*UsageInfo, error) {
+	if !supportsAnthropicPassiveUsage(account) {
 		return nil, fmt.Errorf("passive usage only supported for Anthropic OAuth/SetupToken accounts")
 	}
 
@@ -622,6 +729,9 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 					if updates := buildCodexSparkWindowExtraUpdates(quotaUsage, now); len(updates) > 0 {
 						mergeAccountExtra(account, updates)
 						s.persistOpenAICodexProbeSnapshot(account.ID, updates)
+						if account.ParentAccountID != nil {
+							notifyOpenAIAutoReset(*account.ParentAccountID)
+						}
 						if usage.UpdatedAt == nil {
 							usage.UpdatedAt = &now
 						}
@@ -729,7 +839,7 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	if accessToken == "" && !account.IsOpenAIAgentIdentity() {
 		return nil, fmt.Errorf("no access token available")
 	}
-	modelID := openaipkg.DefaultTestModel
+	modelID := openaipkg.CodexUsageProbeModel
 	payload := createOpenAITestPayload(modelID, true)
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -759,17 +869,19 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	}
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
-	req.Header.Set("Originator", "codex_cli_rs")
-	req.Header.Set("Version", openAICodexProbeVersion)
-	req.Header.Set("User-Agent", codexCLIUserAgent)
+	canonical := resolveCodexOutboundIdentity("")
+	req.Header.Set("Originator", canonical.originator)
+	req.Header.Set("Version", canonical.version)
+	req.Header.Set("User-Agent", canonical.userAgent)
 	if s.identityCache != nil {
 		if fp, fpErr := s.identityCache.GetFingerprint(reqCtx, account.ID); fpErr == nil && fp != nil && strings.TrimSpace(fp.UserAgent) != "" {
 			req.Header.Set("User-Agent", strings.TrimSpace(fp.UserAgent))
 		}
 	}
-	// 与真实转发一致：originator 与最终 User-Agent（可能来自指纹缓存）首段配套，否则探针被上游
-	// 404（issue #3901）；缓存里的降载桶身份同样在此归一化，避免探针被回 server_is_overloaded。
-	enforceCodexIdentityHeaders(req.Header)
+	// 与真实转发一致：账号级自定义 UA 同样作为管理员显式配置传入。
+	// 上面写进 header 的指纹缓存 UA 只在强制统一被关闭时才参与配对（保持回滚后的历史语义）；
+	// 强制统一开启时客户端身份不参与构造，探针与真实转发用同一套规范身份出站。
+	enforceCodexIdentityHeadersWithUA(req.Header, account.GetOpenAIUserAgent())
 	setOpenAIChatGPTAccountHeaders(req.Header, account)
 
 	proxyURL := ""
@@ -812,7 +924,9 @@ func (s *AccountUsageService) persistOpenAICodexProbeSnapshot(accountID int64, u
 	go func() {
 		updateCtx, updateCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer updateCancel()
-		_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
+		if err := s.accountRepo.UpdateExtra(updateCtx, accountID, updates); err == nil {
+			notifyOpenAIAutoReset(accountID)
+		}
 	}()
 }
 
@@ -1023,6 +1137,13 @@ func (s *AccountUsageService) getGrokUsage(ctx context.Context, account *Account
 			usage.GrokLocalUsage24h, usage.GrokLocalUsage7d, usage.GrokLocalUsageMonthly = grokLocalUsageForQuota(
 				ctx, s.usageLogRepo, account.ID, usage.GrokBilling, time.Now().UTC(),
 			)
+		}
+		// Attach local window stats to official 7d/30d progress bars.
+		if usage.SevenDay != nil && usage.GrokLocalUsage7d != nil {
+			usage.SevenDay.WindowStats = usage.GrokLocalUsage7d
+		}
+		if usage.ThirtyDay != nil && usage.GrokLocalUsageMonthly != nil {
+			usage.ThirtyDay.WindowStats = usage.GrokLocalUsageMonthly
 		}
 	}
 

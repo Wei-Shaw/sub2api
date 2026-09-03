@@ -745,15 +745,15 @@
     "supports_web_search": true,
     "supports_xhigh_reasoning_effort": true
   },
-  "deepseek-chat": {
-    "cache_read_input_token_cost": 2.8e-08,
-    "input_cost_per_token": 2.8e-07,
+  "deepseek-v4-flash": {
+    "cache_read_input_token_cost": 7e-09,
+    "input_cost_per_token": 2.2e-07,
     "litellm_provider": "deepseek",
-    "max_input_tokens": 131072,
-    "max_output_tokens": 8192,
-    "max_tokens": 8192,
+    "max_input_tokens": 1048576,
+    "max_output_tokens": 393216,
+    "max_tokens": 393216,
     "mode": "chat",
-    "output_cost_per_token": 4.2e-07,
+    "output_cost_per_token": 6.6e-07,
     "source": "https://api-docs.deepseek.com/quick_start/pricing",
     "supported_endpoints": [
       "/v1/chat/completions"
@@ -762,44 +762,54 @@
     "supports_native_streaming": true,
     "supports_parallel_function_calling": true,
     "supports_prompt_caching": true,
+    "supports_reasoning": true,
     "supports_response_schema": true,
     "supports_system_messages": true,
     "supports_tool_choice": true
   },
-  "deepseek-reasoner": {
-    "cache_read_input_token_cost": 2.8e-08,
-    "input_cost_per_token": 2.8e-07,
+  "deepseek-v4-flash-vision-exp": {
+    "cache_read_input_token_cost": 7e-09,
+    "input_cost_per_token": 2.2e-07,
     "litellm_provider": "deepseek",
-    "max_input_tokens": 131072,
-    "max_output_tokens": 65536,
-    "max_tokens": 65536,
+    "max_input_tokens": 1048576,
+    "max_output_tokens": 393216,
+    "max_tokens": 393216,
     "mode": "chat",
-    "output_cost_per_token": 4.2e-07,
+    "output_cost_per_token": 6.6e-07,
     "source": "https://api-docs.deepseek.com/quick_start/pricing",
     "supported_endpoints": [
       "/v1/chat/completions"
     ],
-    "supports_function_calling": false,
+    "supports_function_calling": true,
     "supports_native_streaming": true,
-    "supports_parallel_function_calling": false,
+    "supports_parallel_function_calling": true,
     "supports_prompt_caching": true,
     "supports_reasoning": true,
     "supports_response_schema": true,
     "supports_system_messages": true,
-    "supports_tool_choice": false
+    "supports_tool_choice": true,
+    "supports_vision": true
   },
-  "deepseek-v3-2-251201": {
-    "input_cost_per_token": 0.0,
-    "litellm_provider": "volcengine",
-    "max_input_tokens": 98304,
-    "max_output_tokens": 32768,
-    "max_tokens": 32768,
+  "deepseek-v4-pro": {
+    "cache_read_input_token_cost": 2.2e-08,
+    "input_cost_per_token": 6.6e-07,
+    "litellm_provider": "deepseek",
+    "max_input_tokens": 1048576,
+    "max_output_tokens": 393216,
+    "max_tokens": 393216,
     "mode": "chat",
-    "output_cost_per_token": 0.0,
-    "supports_assistant_prefill": true,
+    "output_cost_per_token": 1.98e-06,
+    "source": "https://api-docs.deepseek.com/quick_start/pricing",
+    "supported_endpoints": [
+      "/v1/chat/completions"
+    ],
     "supports_function_calling": true,
+    "supports_native_streaming": true,
+    "supports_parallel_function_calling": true,
     "supports_prompt_caching": true,
     "supports_reasoning": true,
+    "supports_response_schema": true,
+    "supports_system_messages": true,
     "supports_tool_choice": true
   },
   "gemini-2.0-flash": {
@@ -1404,7 +1414,8 @@
     ]
   },
   "gemini-2.5-pro": {
-    "cache_creation_input_token_cost_above_200k_tokens": 2.5e-07,
+    "cache_creation_input_token_cost": 1.25e-06,
+    "cache_creation_input_token_cost_above_200k_tokens": 2.5e-06,
     "cache_read_input_token_cost": 1.25e-07,
     "cache_read_input_token_cost_above_200k_tokens": 2.5e-07,
     "input_cost_per_token": 1.25e-06,
@@ -1692,7 +1703,10 @@
     "web_search_billing_unit": "per_query"
   },
   "gemini-3-pro-preview": {
-    "cache_creation_input_token_cost_above_200k_tokens": 2.5e-07,
+    "cache_creation_input_token_cost": 2e-06,
+    "cache_creation_input_token_cost_above_200k_tokens": 4e-06,
+    "cache_creation_input_token_cost_above_200k_tokens_priority": 7.2e-06,
+    "cache_creation_input_token_cost_priority": 3.6e-06,
     "cache_read_input_token_cost": 2e-07,
     "cache_read_input_token_cost_above_200k_tokens": 4e-07,
     "cache_read_input_token_cost_above_200k_tokens_priority": 7.2e-07,
@@ -2021,7 +2035,10 @@
     "supports_web_search": true
   },
   "gemini-3.1-pro-high": {
-    "cache_creation_input_token_cost_above_200k_tokens": 2.5e-07,
+    "cache_creation_input_token_cost": 2e-06,
+    "cache_creation_input_token_cost_above_200k_tokens": 4e-06,
+    "cache_creation_input_token_cost_above_200k_tokens_priority": 7.2e-06,
+    "cache_creation_input_token_cost_priority": 3.6e-06,
     "cache_read_input_token_cost": 2e-07,
     "cache_read_input_token_cost_above_200k_tokens": 4e-07,
     "cache_read_input_token_cost_above_200k_tokens_priority": 7.2e-07,
@@ -2085,7 +2102,10 @@
     "web_search_billing_unit": "per_query"
   },
   "gemini-3.1-pro-low": {
-    "cache_creation_input_token_cost_above_200k_tokens": 2.5e-07,
+    "cache_creation_input_token_cost": 2e-06,
+    "cache_creation_input_token_cost_above_200k_tokens": 4e-06,
+    "cache_creation_input_token_cost_above_200k_tokens_priority": 7.2e-06,
+    "cache_creation_input_token_cost_priority": 3.6e-06,
     "cache_read_input_token_cost": 2e-07,
     "cache_read_input_token_cost_above_200k_tokens": 4e-07,
     "cache_read_input_token_cost_above_200k_tokens_priority": 7.2e-07,
@@ -2149,7 +2169,10 @@
     "web_search_billing_unit": "per_query"
   },
   "gemini-3.1-pro-preview": {
-    "cache_creation_input_token_cost_above_200k_tokens": 2.5e-07,
+    "cache_creation_input_token_cost": 2e-06,
+    "cache_creation_input_token_cost_above_200k_tokens": 4e-06,
+    "cache_creation_input_token_cost_above_200k_tokens_priority": 7.2e-06,
+    "cache_creation_input_token_cost_priority": 3.6e-06,
     "cache_read_input_token_cost": 2e-07,
     "cache_read_input_token_cost_above_200k_tokens": 4e-07,
     "cache_read_input_token_cost_above_200k_tokens_priority": 7.2e-07,
@@ -2213,7 +2236,8 @@
     "web_search_billing_unit": "per_query"
   },
   "gemini-3.1-pro-preview-customtools": {
-    "cache_creation_input_token_cost_above_200k_tokens": 2.5e-07,
+    "cache_creation_input_token_cost": 2e-06,
+    "cache_creation_input_token_cost_above_200k_tokens": 4e-06,
     "cache_read_input_token_cost": 2e-07,
     "cache_read_input_token_cost_above_200k_tokens": 4e-07,
     "input_cost_per_token": 2e-06,
@@ -5162,12 +5186,12 @@
     "cache_read_input_token_cost": 5e-07,
     "cache_read_input_token_cost_above_272k_tokens": 1e-06,
     "cache_read_input_token_cost_flex": 2.5e-07,
-    "cache_read_input_token_cost_priority": 1e-06,
+    "cache_read_input_token_cost_priority": 1.25e-6,
     "input_cost_per_token": 5e-06,
     "input_cost_per_token_above_272k_tokens": 1e-05,
     "input_cost_per_token_batches": 2.5e-06,
     "input_cost_per_token_flex": 2.5e-06,
-    "input_cost_per_token_priority": 1e-05,
+    "input_cost_per_token_priority": 12.5e-6,
     "litellm_provider": "openai",
     "max_input_tokens": 1050000,
     "max_output_tokens": 128000,
@@ -5177,7 +5201,7 @@
     "output_cost_per_token_above_272k_tokens": 4.5e-05,
     "output_cost_per_token_batches": 1.5e-05,
     "output_cost_per_token_flex": 1.5e-05,
-    "output_cost_per_token_priority": 6e-05,
+    "output_cost_per_token_priority": 75e-6,
     "supported_endpoints": [
       "/v1/chat/completions",
       "/v1/batch",
@@ -5210,12 +5234,12 @@
     "cache_read_input_token_cost": 5e-07,
     "cache_read_input_token_cost_above_272k_tokens": 1e-06,
     "cache_read_input_token_cost_flex": 2.5e-07,
-    "cache_read_input_token_cost_priority": 1e-06,
+    "cache_read_input_token_cost_priority": 1.25e-6,
     "input_cost_per_token": 5e-06,
     "input_cost_per_token_above_272k_tokens": 1e-05,
     "input_cost_per_token_batches": 2.5e-06,
     "input_cost_per_token_flex": 2.5e-06,
-    "input_cost_per_token_priority": 1e-05,
+    "input_cost_per_token_priority": 12.5e-6,
     "litellm_provider": "openai",
     "max_input_tokens": 1050000,
     "max_output_tokens": 128000,
@@ -5225,7 +5249,7 @@
     "output_cost_per_token_above_272k_tokens": 4.5e-05,
     "output_cost_per_token_batches": 1.5e-05,
     "output_cost_per_token_flex": 1.5e-05,
-    "output_cost_per_token_priority": 6e-05,
+    "output_cost_per_token_priority": 75e-6,
     "supported_endpoints": [
       "/v1/chat/completions",
       "/v1/batch",

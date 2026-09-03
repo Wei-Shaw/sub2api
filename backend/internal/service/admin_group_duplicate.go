@@ -67,6 +67,21 @@ func cloneGroupModelRouting(value map[string][]int64) map[string][]int64 {
 	return cloned
 }
 
+func cloneGroupVideoModelPrices(value map[string]map[string]float64) map[string]map[string]float64 {
+	if value == nil {
+		return nil
+	}
+	cloned := make(map[string]map[string]float64, len(value))
+	for model, prices := range value {
+		clonedPrices := make(map[string]float64, len(prices))
+		for resolution, price := range prices {
+			clonedPrices[resolution] = price
+		}
+		cloned[model] = clonedPrices
+	}
+	return cloned
+}
+
 func cloneGroupMessagesDispatchModelConfig(value OpenAIMessagesDispatchModelConfig) OpenAIMessagesDispatchModelConfig {
 	cloned := value
 	if value.ExactModelMappings != nil {
@@ -113,7 +128,12 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		VideoPrice480P:                  cloneGroupValuePointer(source.VideoPrice480P),
 		VideoPrice720P:                  cloneGroupValuePointer(source.VideoPrice720P),
 		VideoPrice1080P:                 cloneGroupValuePointer(source.VideoPrice1080P),
+		VideoModelPrices:                cloneGroupVideoModelPrices(source.VideoModelPrices),
 		WebSearchPricePerCall:           cloneGroupValuePointer(source.WebSearchPricePerCall),
+		SearchPricePer1k:                cloneGroupValuePointer(source.SearchPricePer1k),
+		AudioRealtimePricePerMin:        cloneGroupValuePointer(source.AudioRealtimePricePerMin),
+		AudioTTSPricePerMillionChars:    cloneGroupValuePointer(source.AudioTTSPricePerMillionChars),
+		AudioSTTPricePerHour:            cloneGroupValuePointer(source.AudioSTTPricePerHour),
 		ClaudeCodeOnly:                  source.ClaudeCodeOnly,
 		FallbackGroupID:                 cloneGroupValuePointer(source.FallbackGroupID),
 		FallbackGroupIDOnInvalidRequest: cloneGroupValuePointer(source.FallbackGroupIDOnInvalidRequest),
@@ -124,6 +144,8 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		SortOrder:                       source.SortOrder,
 		AllowMessagesDispatch:           source.AllowMessagesDispatch,
 		AllowLive:                       source.AllowLive,
+		ForceOpenAIFast:                 source.ForceOpenAIFast,
+		FreeOpenAIFast:                  source.FreeOpenAIFast,
 		RequireOAuthOnly:                source.RequireOAuthOnly,
 		RequirePrivacySet:               source.RequirePrivacySet,
 		DefaultMappedModel:              source.DefaultMappedModel,
@@ -132,9 +154,10 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 			Enabled: source.ModelsListConfig.Enabled,
 			Models:  append([]string(nil), source.ModelsListConfig.Models...),
 		},
-		RPMLimit:                source.RPMLimit,
-		MaxReasoningEffort:      source.MaxReasoningEffort,
-		ReasoningEffortMappings: append([]ReasoningEffortMapping(nil), source.ReasoningEffortMappings...),
+		RPMLimit:                    source.RPMLimit,
+		MaxReasoningEffort:          source.MaxReasoningEffort,
+		MaxReasoningEffortOverLimit: source.MaxReasoningEffortOverLimit,
+		ReasoningEffortMappings:     append([]ReasoningEffortMapping(nil), source.ReasoningEffortMappings...),
 	}
 }
 

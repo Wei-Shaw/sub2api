@@ -21,6 +21,20 @@ type grokCredentialPersistingRepo struct {
 	*tokenRefreshAccountRepo
 }
 
+func TestClassifyGrokCredentialFailureBillingExhaustionIsTransient(t *testing.T) {
+	account := expiredGrokOAuthAccountForCredentialTest(9901)
+	for _, message := range []string{
+		"Grok OAuth refresh failed: spending limit reached",
+		"included free usage exhausted",
+		"credits exhausted",
+	} {
+		class := classifyGrokCredentialFailure(account, errors.New(message))
+		require.Equal(t, GrokCredentialReasonRefreshTransient, class.reason, message)
+		require.True(t, class.transient, message)
+		require.False(t, class.permanent, message)
+	}
+}
+
 func (r *grokCredentialPersistingRepo) SetError(ctx context.Context, id int64, message string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -278,6 +292,34 @@ func TestGetRequestCredentialMapsPermanentGrokOAuthFailureAndRedactsSecrets(t *t
 	require.Zero(t, events[0].UpstreamStatusCode)
 	require.NotContains(t, events[0].Message, "leaked-access")
 	require.NotContains(t, events[0].Message, "leaked-refresh")
+}
+
+func TestNewGrokCredentialFailoverDoesNotAttributeInferenceProxy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	proxyID := int64(43)
+	account := &Account{
+		ID:       701,
+		Platform: PlatformGrok,
+		ProxyID:  &proxyID,
+		Proxy:    &Proxy{ID: proxyID, Name: "bound-proxy"},
+	}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	err := (&OpenAIGatewayService{}).newGrokCredentialFailover(c, account, grokCredentialFailureClass{
+		scope:   GatewayFailureScopeAccount,
+		reason:  GrokCredentialReasonAccountChanged,
+		action:  NextAccountRetry,
+		message: "credential unavailable",
+	})
+	require.Error(t, err)
+
+	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.Nil(t, events[0].ProxyID)
+	require.Equal(t, opsProxyNameUnknown, events[0].ProxyName)
 }
 
 func TestGetRequestCredentialPermanentMappingsPersistAndInvalidate(t *testing.T) {

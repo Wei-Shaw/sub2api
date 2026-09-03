@@ -24,18 +24,13 @@
         </svg>
         {{ t('admin.accounts.usageWindow.grokProbe') }}
       </button>
-
-      <button
-        type="button"
-        class="inline-flex cursor-not-allowed items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-gray-400 opacity-70 dark:text-gray-500"
-        disabled
-        :title="t('admin.accounts.usageWindow.grokResetUnsupportedTooltip')"
-      >
-        {{ t('admin.accounts.usageWindow.grokResetUnsupported') }}
-      </button>
     </div>
 
-    <div v-if="summary" class="text-[10px] text-gray-600 dark:text-gray-300">
+    <!-- Compact mode: parent already shows 7d/30d/prepaid or 24h — only surface errors. -->
+    <div
+      v-if="!compact && summary"
+      class="text-[10px] text-gray-600 dark:text-gray-300"
+    >
       {{ summary }}
     </div>
     <div v-if="error" class="truncate text-[10px] text-red-600 dark:text-red-400" :title="error">
@@ -48,18 +43,16 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
-import { userAccountsAPI } from '@/api/userAccounts'
-import type { GrokQuotaProbeResult, GrokQuotaWindow } from '@/api/admin/grok'
+import type { GrokQuotaProbeResult } from '@/api/admin/grok'
 import type { Account } from '@/types'
 
 const props = withDefaults(
   defineProps<{
     account: Account
-    usageApi?: 'admin' | 'user'
+    /** When true, only show the probe button (+ errors). No duplicate weekly summary. */
+    compact?: boolean
   }>(),
-  {
-    usageApi: 'admin'
-  }
+  { compact: false }
 )
 
 const emit = defineEmits<{ probed: [result: GrokQuotaProbeResult] }>()
@@ -86,42 +79,16 @@ const extractErrorMessage = (e: unknown): string => {
   )
 }
 
-const formatWindow = (label: string, window?: GrokQuotaWindow | null): string | null => {
-  if (!window || window.limit == null || window.remaining == null) return null
-  return `${label} ${window.remaining}/${window.limit}`
-}
-
-const retryAfterLabel = computed(() => {
-  const seconds = data.value?.snapshot?.retry_after_seconds
-  if (seconds == null || seconds <= 0) return null
-  if (seconds < 60) return `${seconds}s`
-  return `${Math.ceil(seconds / 60)}m`
-})
-
 const summary = computed(() => {
-  const snapshot = data.value?.snapshot
-  if (!data.value) return ''
+  if (props.compact || !data.value) return ''
+  // Non-compact fallback (rarely used): brief weekly percent if present.
   const billing = data.value.billing
-  const parts: Array<string | null> = []
   if (billing?.period_type?.toLowerCase() === 'weekly' && billing.usage_percent != null) {
-    parts.push(t('admin.accounts.usageWindow.grokWeeklyUsage', {
+    return t('admin.accounts.usageWindow.grokWeeklyUsage', {
       percent: Math.round(Math.min(100, Math.max(0, billing.usage_percent)))
-    }))
+    })
   }
-  if (snapshot) {
-    parts.push(
-      formatWindow(t('admin.accounts.usageWindow.grokRequests'), snapshot.requests),
-      formatWindow(t('admin.accounts.usageWindow.grokTokens'), snapshot.tokens)
-    )
-  }
-  if (retryAfterLabel.value) {
-    parts.push(t('admin.accounts.usageWindow.grokRetryAfter', { time: retryAfterLabel.value }))
-  }
-  if (snapshot?.entitlement_status) {
-    parts.push(snapshot.entitlement_status)
-  }
-  const visibleParts = parts.filter((part): part is string => Boolean(part))
-  return visibleParts.length > 0 ? visibleParts.join(' | ') : t('admin.accounts.usageWindow.grokNoHeaders')
+  return ''
 })
 
 const truncatedError = computed(() => {
@@ -134,41 +101,9 @@ const handleProbe = async () => {
   loading.value = true
   error.value = null
   try {
-    if (props.usageApi === 'user') {
-      const usage = await userAccountsAPI.getUsage(props.account.id, 'active', true)
-      const probeResult: GrokQuotaProbeResult = {
-        source: 'billing_probe',
-        billing: usage.grok_billing ?? null,
-        snapshot:
-          usage.grok_request_quota ||
-          usage.grok_token_quota ||
-          usage.grok_retry_after_seconds != null ||
-          usage.grok_entitlement_status
-            ? {
-                requests: usage.grok_request_quota,
-                tokens: usage.grok_token_quota,
-                retry_after_seconds: usage.grok_retry_after_seconds,
-                entitlement_status: usage.grok_entitlement_status,
-                headers_observed: Boolean(usage.grok_request_quota || usage.grok_token_quota),
-                updated_at: usage.updated_at || new Date().toISOString()
-              }
-            : null,
-        local_usage_24h: usage.grok_local_usage_24h ?? null,
-        local_usage_7d: usage.grok_local_usage_7d ?? null,
-        local_usage_monthly: usage.grok_local_usage_monthly ?? null,
-        headers_observed: Boolean(usage.grok_request_quota || usage.grok_token_quota),
-        reset_supported: false,
-        fetched_at: Date.now(),
-        probe_error: usage.error || undefined
-      }
-      data.value = probeResult
-      error.value = probeResult.probe_error || null
-      emit('probed', probeResult)
-    } else {
-      data.value = await adminAPI.grok.queryQuota(props.account.id)
-      error.value = data.value.probe_error || null
-      emit('probed', data.value)
-    }
+    data.value = await adminAPI.grok.queryQuota(props.account.id)
+    error.value = data.value.probe_error || null
+    emit('probed', data.value)
   } catch (e) {
     error.value = extractErrorMessage(e)
   } finally {

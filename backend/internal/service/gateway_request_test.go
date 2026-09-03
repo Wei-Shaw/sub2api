@@ -42,6 +42,22 @@ func TestParseGatewayRequest_ThinkingAdaptiveEnabled(t *testing.T) {
 	require.True(t, parsed.ThinkingEnabled)
 }
 
+func TestParseGatewayRequest_AnthropicFastSpeed(t *testing.T) {
+	parsed, err := ParseGatewayRequest(
+		NewRequestBodyRef([]byte(`{"model":"claude-opus-4-8","speed":" FAST "}`)),
+		domain.PlatformAnthropic,
+	)
+	require.NoError(t, err)
+	require.Equal(t, "fast", parsed.Speed)
+
+	nonAnthropic, err := ParseGatewayRequest(
+		NewRequestBodyRef([]byte(`{"model":"gpt-5.4","speed":"fast"}`)),
+		"responses",
+	)
+	require.NoError(t, err)
+	require.Empty(t, nonAnthropic.Speed)
+}
+
 func TestParseGatewayRequest_MaxTokens(t *testing.T) {
 	body := []byte(`{"model":"claude-haiku-4-5","max_tokens":1}`)
 	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), "")

@@ -113,6 +113,8 @@ type UserUpdateFields struct {
 	BalanceNotifyExtraEmails bool
 	// AllowedGroups 为 true 时才同步 user_allowed_groups 关联表。
 	AllowedGroups bool
+	// RestrictPublicGroups 覆盖 restrict_public_groups 列。
+	RestrictPublicGroups bool
 }
 
 // BalanceChange 记录一次余额变更前后的值。
@@ -179,6 +181,13 @@ type UserRepository interface {
 	UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error
 	EnableTotp(ctx context.Context, userID int64) error
 	DisableTotp(ctx context.Context, userID int64) error
+}
+
+// RegistrationEmailDomainRepository 是生产用户仓储为非白名单域名单账户兜底策略提供的可选能力。
+// 它独立于 UserRepository，避免无关测试桩和服务消费者实现注册专用方法。
+type RegistrationEmailDomainRepository interface {
+	CountUsersByEmailDomain(ctx context.Context, domain string) (int, error)
+	CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *User, domain string) error
 }
 
 // RedeemUserAdjustmentRepository provides the atomic, floor-at-zero updates

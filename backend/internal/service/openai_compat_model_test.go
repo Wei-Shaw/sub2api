@@ -18,6 +18,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -997,7 +998,7 @@ func TestForwardAsAnthropic_ReusesOAuthCodexTurnState(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, firstResult)
 	require.Empty(t, upstream.requests[0].Header.Get("x-codex-turn-state"))
-	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, "codex_cli_rs")
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, openai.CodexDefaultOriginator)
 
 	secondBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[{"role":"user","content":"first"},{"role":"assistant","content":"ok"},{"role":"user","content":"second"}],"stream":false}`)
 	secondRec := httptest.NewRecorder()
@@ -1009,9 +1010,9 @@ func TestForwardAsAnthropic_ReusesOAuthCodexTurnState(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, secondResult)
 	require.Equal(t, "turn_state_first", upstream.requests[1].Header.Get("x-codex-turn-state"))
-	require.Equal(t, generateSessionUUID(isolateOpenAISessionID(0, "stable-cache-key")), upstream.requests[1].Header.Get("session_id"))
+	require.Equal(t, generateSessionUUID(isolateOpenAIUpstreamSessionID(0, account, "stable-cache-key")), upstream.requests[1].Header.Get("session_id"))
 	require.Empty(t, upstream.requests[1].Header.Get("conversation_id"))
-	requireOpenAIMessagesCodexIdentity(t, upstream.requests[1], codexCLIUserAgent, "codex_cli_rs")
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[1], codexCLIUserAgent, openai.CodexDefaultOriginator)
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "prompt_cache_key").Exists())
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "previous_response_id").Exists())
 }
@@ -1021,34 +1022,15 @@ func TestForwardAsAnthropic_OAuthRestoresCodexIdentityHeaders(t *testing.T) {
 
 	const tuiUA = "codex-tui/9.9.9 (Mac OS X 14.0; arm64) iTerm (codex-tui; 9.9.9)"
 	const vscodeUA = "codex_vscode/9.9.9 (Mac OS X 14.0; arm64) vscode (codex_vscode; 9.9.9)"
+	// messages 桥接路径同样强制统一出站身份：三类客户端身份都收敛到规范身份。
 	tests := []struct {
-		name           string
-		userAgent      string
-		originator     string
-		wantUserAgent  string
-		wantOriginator string
+		name       string
+		userAgent  string
+		originator string
 	}{
-		{
-			name:           "官方UA逐字保留并重新配对",
-			userAgent:      vscodeUA,
-			originator:     "opencode",
-			wantUserAgent:  vscodeUA,
-			wantOriginator: "codex_vscode",
-		},
-		{
-			name:           "降载身份改写为CLI身份并保留终端指纹",
-			userAgent:      tuiUA,
-			originator:     "opencode",
-			wantUserAgent:  "codex_cli_rs/9.9.9 (Mac OS X 14.0; arm64) iTerm",
-			wantOriginator: "codex_cli_rs",
-		},
-		{
-			name:           "第三方UA回退为默认Codex身份",
-			userAgent:      "third-party-client/1.0.0",
-			originator:     "opencode",
-			wantUserAgent:  codexCLIUserAgent,
-			wantOriginator: "codex_cli_rs",
-		},
+		{name: "官方vscode身份", userAgent: vscodeUA, originator: "opencode"},
+		{name: "TUI身份", userAgent: tuiUA, originator: "opencode"},
+		{name: "第三方UA", userAgent: "third-party-client/1.0.0", originator: "opencode"},
 	}
 
 	for _, tt := range tests {
@@ -1081,7 +1063,7 @@ func TestForwardAsAnthropic_OAuthRestoresCodexIdentityHeaders(t *testing.T) {
 			result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "gpt-5.4")
 			require.NoError(t, err)
 			require.NotNil(t, result)
-			requireOpenAIMessagesCodexIdentity(t, upstream.lastReq, tt.wantUserAgent, tt.wantOriginator)
+			requireOpenAIMessagesCodexIdentity(t, upstream.lastReq, codexCLIUserAgent, openai.CodexDefaultOriginator)
 		})
 	}
 }
@@ -1124,7 +1106,7 @@ func TestForwardAsAnthropic_OAuthDigestFallbackReusesTurnStateWithoutExplicitKey
 	firstSessionID := upstream.requests[0].Header.Get("session_id")
 	require.NotEmpty(t, firstSessionID)
 	require.Empty(t, upstream.requests[0].Header.Get("x-codex-turn-state"))
-	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, "codex_cli_rs")
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, openai.CodexDefaultOriginator)
 	require.False(t, gjson.GetBytes(upstream.bodies[0], "prompt_cache_key").Exists())
 
 	secondBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[{"role":"user","content":"first"},{"role":"assistant","content":"ok"},{"role":"user","content":"second"}],"stream":false}`)
@@ -1139,7 +1121,7 @@ func TestForwardAsAnthropic_OAuthDigestFallbackReusesTurnStateWithoutExplicitKey
 	require.Equal(t, firstSessionID, upstream.requests[1].Header.Get("session_id"))
 	require.Equal(t, "turn_state_digest_first", upstream.requests[1].Header.Get("x-codex-turn-state"))
 	require.Empty(t, upstream.requests[1].Header.Get("conversation_id"))
-	requireOpenAIMessagesCodexIdentity(t, upstream.requests[1], codexCLIUserAgent, "codex_cli_rs")
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[1], codexCLIUserAgent, openai.CodexDefaultOriginator)
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "prompt_cache_key").Exists())
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "previous_response_id").Exists())
 }
@@ -1294,7 +1276,7 @@ func TestForwardAsAnthropic_OAuthKeepsSystemAsDeveloperInput(t *testing.T) {
 	instructions := gjson.GetBytes(upstream.lastBody, "instructions")
 	require.True(t, instructions.Exists())
 	require.Empty(t, instructions.String())
-	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, "codex_cli_rs")
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, openai.CodexDefaultOriginator)
 }
 
 func TestForwardAsAnthropic_OAuthAddsClaudeCodeTodoGuardForCompatModel(t *testing.T) {

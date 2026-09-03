@@ -124,6 +124,11 @@ func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_OAuthFallsBackWhenPl
 			body:       `{"error":{"type":"invalid_request_error","code":"missing_scope","message":"Missing scopes: api.responses.write"}}`,
 		},
 		{
+			name:       "403_html_proxy_page",
+			statusCode: http.StatusForbidden,
+			body:       "<!doctype html><html><body>Forbidden</body></html>",
+		},
+		{
 			name:       "404_input_tokens_unsupported",
 			statusCode: http.StatusNotFound,
 			body:       `{"error":{"type":"invalid_request_error","message":"The /v1/responses/input_tokens endpoint was not found"}}`,
@@ -306,6 +311,10 @@ func TestEstimateOpenAIInputTokens_CompareWithOpenAIAPI(t *testing.T) {
 	if apiKey == "" {
 		t.Skip("OPENAI_API_KEY not set")
 	}
+	// Invalid/expired keys in local env must not fail the unit suite.
+	if strings.HasPrefix(apiKey, "sk-") && len(apiKey) < 20 {
+		t.Skip("OPENAI_API_KEY looks incomplete")
+	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	cases := []struct {
@@ -340,7 +349,13 @@ func TestEstimateOpenAIInputTokens_CompareWithOpenAIAPI(t *testing.T) {
 			require.NoError(t, err)
 
 			actual, err := callOpenAIInputTokensAPIForTest(client, apiKey, prepared.Request)
-			require.NoError(t, err)
+			if err != nil {
+				// Live-API comparison only; invalid/expired local keys should skip, not fail CI.
+				if strings.Contains(err.Error(), "status=401") || strings.Contains(err.Error(), "invalid_api_key") {
+					t.Skipf("OPENAI_API_KEY rejected by OpenAI: %v", err)
+				}
+				require.NoError(t, err)
+			}
 
 			diff := estimated - actual
 			if diff < 0 {

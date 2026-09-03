@@ -31,8 +31,7 @@ type AdminService interface {
 	BindUserAuthIdentity(ctx context.Context, userID int64, input AdminBindAuthIdentityInput) (*AdminBoundAuthIdentity, error)
 
 	// Group management
-	// showPrivate=true 时管理端列表包含 private-* 私有专属组；默认 false。
-	ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool, sortBy, sortOrder string, showPrivate bool) ([]Group, int64, error)
+	ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool, sortBy, sortOrder string) ([]Group, int64, error)
 	GetAllGroups(ctx context.Context) ([]Group, error)
 	GetAllGroupsByPlatform(ctx context.Context, platform string) ([]Group, error)
 	// GetAllGroupsIncludingInactive returns all groups regardless of status (active + disabled),
@@ -140,15 +139,16 @@ type AdminService interface {
 
 // CreateUserInput represents input for creating a new user via admin operations.
 type CreateUserInput struct {
-	Email         string
-	Password      string
-	Username      string
-	Notes         string
-	Role          string // 空字符串表示使用默认角色(user);合法值 admin/user
-	Balance       *float64
-	Concurrency   int
-	RPMLimit      int
-	AllowedGroups []int64
+	Email                string
+	Password             string
+	Username             string
+	Notes                string
+	Role                 string // 空字符串表示使用默认角色(user);合法值 admin/user
+	Balance              *float64
+	Concurrency          int
+	RPMLimit             int
+	AllowedGroups        []int64
+	RestrictPublicGroups bool
 	// ActorAdminID 执行本次操作的管理员ID(来自JWT)，仅用于权限敏感操作的审计日志。
 	ActorAdminID int64
 }
@@ -164,6 +164,8 @@ type UpdateUserInput struct {
 	RPMLimit      *int     // 使用指针区分"未提供"和"设置为0"
 	Status        string
 	AllowedGroups *[]int64 // 使用指针区分"未提供"和"设置为空数组"
+	// RestrictPublicGroups 指针区分"未提供"和"显式开关"。
+	RestrictPublicGroups *bool
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates map[int64]*float64
@@ -210,19 +212,17 @@ type AdminBoundAuthIdentityChannel struct {
 }
 
 type CreateGroupInput struct {
-	Name             string
-	Description      string
-	Platform         string
-	// UpstreamPlan 上游订阅档位 code（空=未指定）
-	UpstreamPlan     string
-	RateMultiplier   float64
-	IsExclusive      bool
-	// IsSharePool 共享池标记；私有组名禁止创建，且私有组不可设为 true
-	IsSharePool      bool
-	SubscriptionType string   // standard/subscription
-	DailyLimitUSD    *float64 // 日限额 (USD)
-	WeeklyLimitUSD   *float64 // 周限额 (USD)
-	MonthlyLimitUSD  *float64 // 月限额 (USD)
+	Name                      string
+	Description               string
+	Platform                  string
+	RateMultiplier            float64
+	IsExclusive               bool
+	SubscriptionType          string   // standard/subscription
+	DailyLimitUSD             *float64 // 日限额 (USD)
+	WeeklyLimitUSD            *float64 // 周限额 (USD)
+	MonthlyLimitUSD           *float64 // 月限额 (USD)
+	LongContextPricingEnabled bool
+	ModelPricing              []ChannelModelPricing
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration         bool
 	AllowBatchImageGeneration    bool
@@ -243,10 +243,18 @@ type CreateGroupInput struct {
 	VideoPrice480P     *float64
 	VideoPrice720P     *float64
 	VideoPrice1080P    *float64
+	// VideoModelPrices 可选按模型族×分辨率覆盖视频每秒单价。
+	VideoModelPrices map[string]map[string]float64
 	// Codex alpha/search 网页搜索单次价格（USD/次，仅 openai 平台使用）；nil/负数按默认价 0.01 处理
 	WebSearchPricePerCall *float64
-	ClaudeCodeOnly        bool   // 仅允许 Claude Code 客户端
-	FallbackGroupID       *int64 // 降级分组 ID
+	// 搜索工具单价 per 1k
+	SearchPricePer1k *float64
+	// Grok Voice 显式定价（分组级）
+	AudioRealtimePricePerMin     *float64
+	AudioTTSPricePerMillionChars *float64
+	AudioSTTPricePerHour         *float64
+	ClaudeCodeOnly               bool   // 仅允许 Claude Code 客户端
+	FallbackGroupID              *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
@@ -258,6 +266,8 @@ type CreateGroupInput struct {
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       bool
 	AllowLive                   bool
+	ForceOpenAIFast             bool
+	FreeOpenAIFast              bool
 	DefaultMappedModel          string
 	RequireOAuthOnly            bool
 	RequirePrivacySet           bool
@@ -267,6 +277,8 @@ type CreateGroupInput struct {
 	RPMLimit int
 	// MaxReasoningEffort OpenAI/Codex 请求的推理强度上限，空字符串表示不限制。
 	MaxReasoningEffort string
+	// MaxReasoningEffortOverLimit 超过上限时的访问控制：downgrade（默认）或 deny。
+	MaxReasoningEffortOverLimit string
 	// ReasoningEffortMappings OpenAI/Codex 推理强度精确映射。
 	ReasoningEffortMappings []ReasoningEffortMapping
 	// 分组利润控制（五个 token 平台分组可启用；margin/buffer 为小数，nil 按 0 处理）
@@ -278,20 +290,18 @@ type CreateGroupInput struct {
 }
 
 type UpdateGroupInput struct {
-	Name             string
-	Description      *string
-	Platform         string
-	// UpstreamPlan nil=不修改；非 nil 空串=清空；非空=校验后写入
-	UpstreamPlan     *string
-	RateMultiplier   *float64 // 使用指针以支持设置为0
-	IsExclusive      *bool
-	// IsSharePool nil=不修改；私有组禁止设为 true
-	IsSharePool      *bool
-	Status           string
-	SubscriptionType string   // standard/subscription
-	DailyLimitUSD    *float64 // 日限额 (USD)
-	WeeklyLimitUSD   *float64 // 周限额 (USD)
-	MonthlyLimitUSD  *float64 // 月限额 (USD)
+	Name                      string
+	Description               *string
+	Platform                  string
+	RateMultiplier            *float64 // 使用指针以支持设置为0
+	IsExclusive               *bool
+	Status                    string
+	SubscriptionType          string   // standard/subscription
+	DailyLimitUSD             *float64 // 日限额 (USD)
+	WeeklyLimitUSD            *float64 // 周限额 (USD)
+	MonthlyLimitUSD           *float64 // 月限额 (USD)
+	LongContextPricingEnabled *bool
+	ModelPricing              *[]ChannelModelPricing
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration         *bool
 	AllowBatchImageGeneration    *bool
@@ -312,10 +322,18 @@ type UpdateGroupInput struct {
 	VideoPrice480P     *float64
 	VideoPrice720P     *float64
 	VideoPrice1080P    *float64
+	// VideoModelPrices 可选按模型族×分辨率覆盖；nil 表示不修改，空 map 表示清除。
+	VideoModelPrices map[string]map[string]float64
 	// Codex alpha/search 网页搜索单次价格（USD/次）；nil 表示不修改，负数表示清除回默认价 0.01
 	WebSearchPricePerCall *float64
-	ClaudeCodeOnly        *bool  // 仅允许 Claude Code 客户端
-	FallbackGroupID       *int64 // 降级分组 ID
+	// 搜索工具单价；nil 不修改，负数清除
+	SearchPricePer1k *float64
+	// Grok Voice 显式定价；nil 表示不修改，负数表示清除
+	AudioRealtimePricePerMin     *float64
+	AudioTTSPricePerMillionChars *float64
+	AudioSTTPricePerHour         *float64
+	ClaudeCodeOnly               *bool  // 仅允许 Claude Code 客户端
+	FallbackGroupID              *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
@@ -327,6 +345,8 @@ type UpdateGroupInput struct {
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       *bool
 	AllowLive                   *bool
+	ForceOpenAIFast             *bool
+	FreeOpenAIFast              *bool
 	DefaultMappedModel          *string
 	RequireOAuthOnly            *bool
 	RequirePrivacySet           *bool
@@ -336,6 +356,8 @@ type UpdateGroupInput struct {
 	RPMLimit *int
 	// MaxReasoningEffort 空字符串表示清除上限；nil 表示未提供不改动。
 	MaxReasoningEffort *string
+	// MaxReasoningEffortOverLimit 空字符串视为 downgrade；nil 表示未提供不改动。
+	MaxReasoningEffortOverLimit *string
 	// ReasoningEffortMappings nil 表示不修改，空数组表示清空，非空数组表示替换。
 	ReasoningEffortMappings *[]ReasoningEffortMapping
 	// 分组利润控制（nil 表示不修改；margin/buffer 为小数）
@@ -466,11 +488,12 @@ type UserGroupRPMStatus struct {
 
 // BulkUpdateAccountsResult is the aggregated response for bulk updates.
 type BulkUpdateAccountsResult struct {
-	Success    int                       `json:"success"`
-	Failed     int                       `json:"failed"`
-	SuccessIDs []int64                   `json:"success_ids"`
-	FailedIDs  []int64                   `json:"failed_ids"`
-	Results    []BulkUpdateAccountResult `json:"results"`
+	Success                   int                       `json:"success"`
+	Failed                    int                       `json:"failed"`
+	SuccessIDs                []int64                   `json:"success_ids"`
+	FailedIDs                 []int64                   `json:"failed_ids"`
+	Results                   []BulkUpdateAccountResult `json:"results"`
+	LongContextInheritedCount int                       `json:"long_context_inherited_count,omitempty"`
 }
 
 type CreateProxyInput struct {
@@ -653,10 +676,16 @@ type adminServiceImpl struct {
 	privacyClientFactory PrivacyClientFactory
 	runtimeBlocker       AccountRuntimeBlocker
 	affiliateService     adminRechargeAffiliateAccruer
-	compositeRouteRepo     CompositeModelRouteRepository
-	compositeResolver      *CompositeRouteResolver
-	privateGroups          PrivateGroupProvisioner
-	accountGroupRecomputer *AccountGroupRecomputer
+	compositeRouteRepo   CompositeModelRouteRepository
+	compositeResolver    *CompositeRouteResolver
+	// 分组平台变更后用来失效渠道缓存；可为 nil（缓存会在 TTL 到期后自然重建）
+	channelCacheInvalidator ChannelCacheInvalidator
+}
+
+// ChannelCacheInvalidator 失效渠道缓存。
+// 窄接口，避免 admin 服务依赖整个 ChannelService——与 APIKeyAuthCacheInvalidator 同一思路。
+type ChannelCacheInvalidator interface {
+	InvalidateCache()
 }
 
 type adminRechargeAffiliateAccruer interface {
@@ -690,7 +719,7 @@ func NewAdminService(
 	affiliateService *AffiliateService,
 	compositeRouteRepo CompositeModelRouteRepository,
 	compositeResolver *CompositeRouteResolver,
-	privateGroups PrivateGroupProvisioner,
+	channelCacheInvalidator ChannelCacheInvalidator,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:             userRepo,
@@ -717,7 +746,7 @@ func NewAdminService(
 		affiliateService:     affiliateService,
 		compositeRouteRepo:   compositeRouteRepo,
 		compositeResolver:    compositeResolver,
-		privateGroups:          privateGroups,
-		accountGroupRecomputer: NewAccountGroupRecomputer(accountRepo, groupRepo),
+
+		channelCacheInvalidator: channelCacheInvalidator,
 	}
 }

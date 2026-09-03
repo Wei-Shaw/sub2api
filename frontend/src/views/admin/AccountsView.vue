@@ -7,7 +7,6 @@
             v-model:searchQuery="params.search"
             :filters="params"
             :groups="groups"
-            :mine-scope="isMineScope"
             @update:filters="(newFilters) => Object.assign(params, newFilters)"
             @change="debouncedReload"
             @update:searchQuery="debouncedReload"
@@ -84,17 +83,12 @@
                     @click.stop
                   >
                     <div class="overflow-y-auto p-2" :style="{ maxHeight: `${accountToolsDropdownPosition.maxHeight}px` }">
-                      <!-- 导入/导出：mine 与 all 均开放；mine 仅操作本人账号 -->
                       <div class="px-2 py-2">
                         <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
                           {{ t('admin.accounts.dataActions') }}
                         </div>
                       </div>
-                      <button
-                        v-if="!isMineScope"
-                        class="account-tools-menu-item"
-                        @click="openSyncFromCrs"
-                      >
+                      <button class="account-tools-menu-item" @click="openSyncFromCrs">
                         <span class="account-tools-menu-icon bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
                           <Icon name="sync" size="sm" />
                         </span>
@@ -121,26 +115,24 @@
                         </span>
                       </button>
 
-                      <template v-if="!isMineScope">
-                        <div class="my-2 border-t border-gray-100 dark:border-dark-700"></div>
-                        <div class="px-2 py-2">
-                          <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                            {{ t('admin.accounts.toolActions') }}
-                          </div>
+                      <div class="my-2 border-t border-gray-100 dark:border-dark-700"></div>
+                      <div class="px-2 py-2">
+                        <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                          {{ t('admin.accounts.toolActions') }}
                         </div>
-                        <button class="account-tools-menu-item" @click="openErrorPassthrough">
-                          <span class="account-tools-menu-icon bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
-                            <Icon name="shield" size="sm" />
-                          </span>
-                          <span class="flex-1 text-left">{{ t('admin.errorPassthrough.title') }}</span>
-                        </button>
-                        <button class="account-tools-menu-item" @click="openTLSFingerprintProfiles">
-                          <span class="account-tools-menu-icon bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200">
-                            <Icon name="lock" size="sm" />
-                          </span>
-                          <span class="flex-1 text-left">{{ t('admin.tlsFingerprintProfiles.title') }}</span>
-                        </button>
-                      </template>
+                      </div>
+                      <button class="account-tools-menu-item" @click="openErrorPassthrough">
+                        <span class="account-tools-menu-icon bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
+                          <Icon name="shield" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">{{ t('admin.errorPassthrough.title') }}</span>
+                      </button>
+                      <button class="account-tools-menu-item" @click="openTLSFingerprintProfiles">
+                        <span class="account-tools-menu-icon bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                          <Icon name="lock" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">{{ t('admin.tlsFingerprintProfiles.title') }}</span>
+                      </button>
 
                       <div class="my-2 border-t border-gray-100 dark:border-dark-700"></div>
                       <div class="px-2 py-2">
@@ -185,7 +177,6 @@
       <template #table>
         <AccountBulkActionsBar
           :selected-ids="selIds"
-          :mine-scope="isMineScope"
           :total-results="pagination.total"
           :selecting-all="selectingAllResults"
           :all-results-selected="allResultsSelected"
@@ -264,41 +255,20 @@
             <span v-if="value" :title="value" class="block max-w-xs truncate text-sm text-gray-600 dark:text-gray-300">{{ value }}</span>
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
-          <template #cell-owner_user_id="{ value }">
-            <span
-              v-if="value != null && value !== 0"
-              class="font-mono text-xs text-gray-600 dark:text-gray-300"
-              :title="String(value)"
-            >#{{ value }}</span>
-            <span v-else class="text-xs text-gray-400 dark:text-gray-500">—</span>
-          </template>
-          <template #cell-visibility="{ value }">
-            <span
-              v-if="value === 'public'"
-              class="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-900/30 dark:text-sky-300"
-            >{{ t('admin.accounts.visibilityPublic') }}</span>
-            <span
-              v-else-if="value === 'private'"
-              class="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300"
-            >{{ t('admin.accounts.visibilityPrivate') }}</span>
-            <span v-else class="text-xs text-gray-400 dark:text-gray-500">—</span>
-          </template>
-          <template #cell-upstream_plan="{ value }">
-            <span
-              v-if="value"
-              class="inline-flex rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-            >{{ value }}</span>
-            <span v-else class="text-xs text-gray-400 dark:text-gray-500">—</span>
-          </template>
           <template #cell-platform_type="{ row }">
             <div class="flex min-w-0 flex-col gap-1">
               <div class="flex flex-wrap items-center gap-1">
-                <!-- 档位只走 PlatformTypeBadge，避免与旁侧 Antigravity tier span 重复显示 Pro -->
                 <PlatformTypeBadge :platform="row.platform" :type="row.type"
                   :auth-mode="getOpenAIAuthMode(row)"
                   :plan-type="getAccountPlanType(row)"
                   :privacy-mode="row.extra?.privacy_mode || row.parent_privacy_mode"
                   :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at" />
+                <span
+                  v-if="getAntigravityTierLabel(row)"
+                  :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
+                >
+                  {{ getAntigravityTierLabel(row) }}
+                </span>
               </div>
               <div
                 v-if="getOpenAICompactMeta(row)"
@@ -348,7 +318,12 @@
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
-              :usage-api="isMineScope ? 'user' : 'admin'"
+              :batched-usage="usageBatchByAccountId[String(row.id)] ?? null"
+              :batched-usage-error="usageBatchErrorByAccountId[String(row.id)] ?? null"
+              :batched-usage-loading="usageBatchLoadingByAccountId[String(row.id)] === true"
+              :request-batched-usage="isDesktopViewport ? queueBatchedUsage : null"
+              @account-updated="handleAccountUpdated"
+              @usage-loaded="handleAccountUsageLoaded(row.id, $event)"
             />
           </template>
           <template #cell-proxy="{ row }">
@@ -464,11 +439,7 @@
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
                 <span class="text-xs">{{ t('common.delete') }}</span>
               </button>
-              <button
-                v-if="!isMineScope"
-                @click="openMenu(row, $event)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white"
-              >
+              <button @click="openMenu(row, $event)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white">
                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" /></svg>
                 <span class="text-xs">{{ t('common.more') }}</span>
               </button>
@@ -479,53 +450,16 @@
       </template>
       <template #pagination><Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" /></template>
     </TablePageLayout>
-    <CreateAccountModal
-      :show="showCreate"
-      :mode="isMineScope ? 'user' : 'admin'"
-      :proxies="isMineScope ? [] : proxies"
-      :groups="isMineScope ? [] : groups"
-      @close="showCreate = false"
-      @created="reload"
-    />
-    <EditAccountModal
-      :show="showEdit"
-      :mode="isMineScope ? 'user' : 'admin'"
-      :account="edAcc"
-      :proxies="isMineScope ? [] : proxies"
-      :groups="isMineScope ? [] : groups"
-      @close="showEdit = false"
-      @updated="handleAccountUpdated"
-    />
-    <ReAuthAccountModal v-if="!isMineScope" :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
-    <AccountTestModal v-if="!isMineScope" :show="showTest" :account="testingAcc" @close="closeTestModal" />
-    <AccountStatsModal v-if="!isMineScope" :show="showStats" :account="statsAcc" @close="closeStatsModal" />
-    <ScheduledTestsPanel v-if="!isMineScope" :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
-    <AccountActionMenu
-      :show="menu.show && !isMineScope"
-      :account="menu.acc"
-      :position="menu.pos"
-      :mine-scope="isMineScope"
-      @close="menu.show = false"
-      @test="handleTest"
-      @stats="handleViewStats"
-      @schedule="handleSchedule"
-      @duplicate="handleDuplicateAccount"
-      @reauth="handleReAuth"
-      @refresh-token="handleRefresh"
-      @recover-state="handleRecoverState"
-      @reset-quota="handleResetQuota"
-      @set-privacy="handleSetPrivacy"
-      @create-spark-shadow="handleCreateSparkShadow"
-    />
-    <SyncFromCrsModal v-if="!isMineScope" :show="showSync" @close="showSync = false" @synced="reload" />
-    <ImportDataModal
-      :show="showImportData"
-      :mode="isMineScope ? 'user' : 'admin'"
-      @close="showImportData = false"
-      @imported="handleDataImported"
-    />
+    <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" />
+    <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
+    <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
+    <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
+    <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
+    <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
+    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" />
+    <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
+    <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <BulkEditAccountModal
-      v-if="!isMineScope"
       :show="showBulkEdit"
       :account-ids="selIds"
       :selected-platforms="selPlatforms"
@@ -538,39 +472,26 @@
     />
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name })" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
-    <ConfirmDialog v-if="!isMineScope" :show="showCreateShadowDialog" :title="t('admin.accounts.createSparkShadow')" :message="t('admin.accounts.createSparkShadowConfirm', { name: creatingShadowAcc?.name })" @confirm="confirmCreateSparkShadow" @cancel="showCreateShadowDialog = false" />
-    <ConfirmDialog
-      :show="showExportDataDialog"
-      :title="t('admin.accounts.dataExport')"
-      :message="t('admin.accounts.dataExportConfirmMessage')"
-      :confirm-text="t('admin.accounts.dataExportConfirm')"
-      :cancel-text="t('common.cancel')"
-      @confirm="handleExportData"
-      @cancel="showExportDataDialog = false"
-    >
-      <label
-        v-if="!isMineScope"
-        class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
-      >
+    <ConfirmDialog :show="showCreateShadowDialog" :title="t('admin.accounts.createSparkShadow')" :message="t('admin.accounts.createSparkShadowConfirm', { name: creatingShadowAcc?.name })" @confirm="confirmCreateSparkShadow" @cancel="showCreateShadowDialog = false" />
+    <ConfirmDialog :show="showExportDataDialog" :title="t('admin.accounts.dataExport')" :message="t('admin.accounts.dataExportConfirmMessage')" :confirm-text="t('admin.accounts.dataExportConfirm')" :cancel-text="t('common.cancel')" @confirm="handleExportData" @cancel="showExportDataDialog = false">
+      <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
         <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" v-model="includeProxyOnExport" />
         <span>{{ t('admin.accounts.dataExportIncludeProxies') }}</span>
       </label>
     </ConfirmDialog>
-    <ErrorPassthroughRulesModal v-if="!isMineScope" :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
-    <TLSFingerprintProfilesModal v-if="!isMineScope" :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
-    <TotpStepUpDialog v-if="!isMineScope" :controller="accountExportStepUp" />
+    <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
+    <TLSFingerprintProfilesModal :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
+    <TotpStepUpDialog :controller="accountExportStepUp" />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch } from 'vue'
-import { useRoute } from 'vue-router'
 import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
-import { userAccountsAPI } from '@/api/userAccounts'
 import { useTableLoader } from '@/composables/useTableLoader'
 import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
@@ -604,27 +525,18 @@ import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { fetchAllAccountIds } from '@/utils/accountSelection'
-import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import { buildGrokUsageRefreshKey, buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import { formatMultiplier } from '@/utils/formatters'
-import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
+import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
-const route = useRoute()
 const appStore = useAppStore()
 const authStore = useAuthStore()
-
-/** mine=/my-accounts；all=/admin/accounts（默认；测试无 router 时亦为 all） */
-const accountScope = computed(() =>
-  (route as { meta?: { accountScope?: string } } | undefined)?.meta?.accountScope === 'mine'
-    ? 'mine'
-    : 'all'
-)
-const isMineScope = computed(() => accountScope.value === 'mine')
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
@@ -701,7 +613,9 @@ const exportingData = ref(false)
 const probingUpstreamBilling = reactive(new Set<number>())
 const upstreamBillingProbeGloballyEnabled = ref<boolean | undefined>(undefined)
 const upstreamBillingNow = ref(Date.now())
-let lastUpstreamBillingSortRefreshMinute = -1
+const upstreamBillingRateETag = ref<string | null>(null)
+const upstreamBillingRateRefreshing = ref(false)
+let upstreamBillingRateAbortController: AbortController | null = null
 useIntervalFn(() => { upstreamBillingNow.value = Date.now() }, 60_000)
 
 // Account tools dropdown
@@ -722,12 +636,11 @@ const accountToolsDropdownStyle = computed(() => ({
   width: `${accountToolsDropdownPosition.width}px`
 }))
 const hiddenColumns = reactive<Set<string>>(new Set())
-const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'priority', 'scheduler_score', 'rate_multiplier', 'owner_user_id', 'visibility', 'upstream_plan']
+const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'scheduler_score', 'rate_multiplier']
 const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
 // One-time migration: hide scheduler score for existing admins too, because showing it opt-ins to heavy backend scoring.
-// Bumped to also default-hide user-owned account columns for existing admins (toggleable via column settings).
 const HIDDEN_COLUMNS_VERSION_KEY = 'account-hidden-columns-version'
-const HIDDEN_COLUMNS_CURRENT_VERSION = 'user-owned-account-cols-hidden-by-default'
+const HIDDEN_COLUMNS_CURRENT_VERSION = 'scheduler-score-hidden-by-default'
 
 // Sorting settings
 const ACCOUNT_SORT_STORAGE_KEY = 'account-table-sort'
@@ -786,6 +699,24 @@ const todayStatsReqSeq = ref(0)
 const pendingTodayStatsRefresh = ref(false)
 const usageManualRefreshToken = ref(0)
 
+const desktopViewportQuery = '(min-width: 768px)'
+const isDesktopViewport = ref(
+  typeof window === 'undefined' ? true : window.matchMedia(desktopViewportQuery).matches
+)
+let desktopViewportMediaQuery: MediaQueryList | null = null
+let desktopViewportListener: ((event: MediaQueryListEvent) => void) | null = null
+
+const usageBatchByAccountId = ref<Record<string, AccountUsageInfo | null>>({})
+const usageBatchErrorByAccountId = ref<Record<string, string | null>>({})
+const usageBatchLoadingByAccountId = ref<Record<string, boolean>>({})
+const usageBatchRequestTokenByAccountId = ref<Record<string, number>>({})
+const usageBatchCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
+const USAGE_BATCH_CACHE_TTL = 5 * 60 * 1000
+const pendingUsageBatchIds = new Set<number>()
+let usageBatchFlushTimer: ReturnType<typeof setTimeout> | null = null
+let queuedUsageBatchForce = false
+let usageBatchRequestToken = 0
+
 const buildDefaultTodayStats = (): WindowStats => ({
   requests: 0,
   tokens: 0,
@@ -794,13 +725,139 @@ const buildDefaultTodayStats = (): WindowStats => ({
   user_cost: 0
 })
 
-const refreshTodayStatsBatch = async () => {
-  // 用户自建列表无 admin today-stats API
-  if (isMineScope.value) {
-    todayStatsLoading.value = false
-    todayStatsError.value = null
-    return
+const accountSupportsBatchUsage = (account: Account) => {
+  if (account.platform === 'anthropic') {
+    return account.type === 'oauth' || account.type === 'setup-token'
   }
+  if (account.platform === 'gemini') return true
+  if (account.platform === 'antigravity') return account.type === 'oauth'
+  if (account.platform === 'openai') return account.type === 'oauth'
+  if (account.platform === 'grok') return account.type === 'oauth'
+  return false
+}
+
+const setUsageBatchLoading = (accountID: number, loadingState: boolean) => {
+  usageBatchLoadingByAccountId.value = {
+    ...usageBatchLoadingByAccountId.value,
+    [String(accountID)]: loadingState
+  }
+}
+
+const setUsageBatchState = (accountID: number, usage: AccountUsageInfo | null, error: string | null) => {
+  const key = String(accountID)
+  usageBatchByAccountId.value = {
+    ...usageBatchByAccountId.value,
+    [key]: usage
+  }
+  usageBatchErrorByAccountId.value = {
+    ...usageBatchErrorByAccountId.value,
+    [key]: error
+  }
+}
+
+const handleAccountUsageLoaded = (accountID: number, usage: AccountUsageInfo) => {
+  if (usageBatchByAccountId.value[String(accountID)] === usage) return
+  setUsageBatchState(accountID, usage, null)
+}
+
+const flushQueuedUsageBatch = async () => {
+  usageBatchFlushTimer = null
+  const accountIDs = Array.from(pendingUsageBatchIds)
+  const force = queuedUsageBatchForce
+  pendingUsageBatchIds.clear()
+  queuedUsageBatchForce = false
+
+  if (accountIDs.length === 0) return
+
+  const requestTokensByAccount = accountIDs.reduce<Record<string, number>>((acc, accountID) => {
+    acc[String(accountID)] = usageBatchRequestTokenByAccountId.value[String(accountID)] ?? 0
+    return acc
+  }, {})
+
+  try {
+    const result = await adminAPI.accounts.getBatchUsage(accountIDs, force)
+
+    const usageMap = result.usage ?? {}
+    const errorMap = result.errors ?? {}
+    const now = Date.now()
+    const nextUsage = { ...usageBatchByAccountId.value }
+    const nextErrors = { ...usageBatchErrorByAccountId.value }
+    const nextLoading = { ...usageBatchLoadingByAccountId.value }
+
+    for (const accountID of accountIDs) {
+      const key = String(accountID)
+      if ((usageBatchRequestTokenByAccountId.value[key] ?? 0) !== requestTokensByAccount[key]) {
+        continue
+      }
+      const usage = usageMap[key] ?? null
+      nextUsage[key] = usage
+      nextErrors[key] = errorMap[key] ?? null
+      nextLoading[key] = false
+      if (usage) {
+        usageBatchCache.set(accountID, { data: usage, ts: now })
+      } else {
+        usageBatchCache.delete(accountID)
+      }
+    }
+
+    usageBatchByAccountId.value = nextUsage
+    usageBatchErrorByAccountId.value = nextErrors
+    usageBatchLoadingByAccountId.value = nextLoading
+  } catch (error) {
+    const nextErrors = { ...usageBatchErrorByAccountId.value }
+    const nextLoading = { ...usageBatchLoadingByAccountId.value }
+    for (const accountID of accountIDs) {
+      const key = String(accountID)
+      if ((usageBatchRequestTokenByAccountId.value[key] ?? 0) !== requestTokensByAccount[key]) {
+        continue
+      }
+      nextErrors[key] = 'Failed'
+      nextLoading[key] = false
+    }
+    usageBatchErrorByAccountId.value = nextErrors
+    usageBatchLoadingByAccountId.value = nextLoading
+    console.error('Failed to load account usage batch:', error)
+  }
+}
+
+const queueBatchedUsage = (account: Account, options?: { force?: boolean }) => {
+  if (!isDesktopViewport.value) return
+  if (!accountSupportsBatchUsage(account)) return
+
+  const force = options?.force === true
+  const cacheKey = account.id
+  const key = String(cacheKey)
+
+  if (force) {
+    usageBatchCache.delete(cacheKey)
+  } else {
+    const cached = usageBatchCache.get(cacheKey)
+    if (cached && Date.now() - cached.ts < USAGE_BATCH_CACHE_TTL) {
+      setUsageBatchState(cacheKey, cached.data, null)
+      setUsageBatchLoading(cacheKey, false)
+      return
+    }
+  }
+
+  usageBatchErrorByAccountId.value = {
+    ...usageBatchErrorByAccountId.value,
+    [key]: null
+  }
+  usageBatchRequestTokenByAccountId.value = {
+    ...usageBatchRequestTokenByAccountId.value,
+    [key]: ++usageBatchRequestToken
+  }
+  setUsageBatchLoading(cacheKey, true)
+  pendingUsageBatchIds.add(cacheKey)
+  queuedUsageBatchForce = queuedUsageBatchForce || force
+
+  if (usageBatchFlushTimer !== null) return
+  usageBatchFlushTimer = setTimeout(() => {
+    void flushQueuedUsageBatch()
+  }, 0)
+}
+
+const refreshTodayStatsBatch = async () => {
   // Why this checks both columns:
   // - today_stats column shows dedicated today's metrics.
   // - usage column also embeds today's stats for Key/Bedrock rows.
@@ -890,12 +947,9 @@ const loadSavedColumns = () => {
       parsed.forEach(key => {
         hiddenColumns.add(key)
       })
-      // Older saved layouts: force-hide columns that should be opt-in (scheduler score / user-owned meta).
+      // Older saved column layouts may have scheduler_score visible; migrate them to the new safe default once.
       if (localStorage.getItem(HIDDEN_COLUMNS_VERSION_KEY) !== HIDDEN_COLUMNS_CURRENT_VERSION) {
         hiddenColumns.add('scheduler_score')
-        hiddenColumns.add('owner_user_id')
-        hiddenColumns.add('visibility')
-        hiddenColumns.add('upstream_plan')
         localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify([...hiddenColumns]))
         localStorage.setItem(HIDDEN_COLUMNS_VERSION_KEY, HIDDEN_COLUMNS_CURRENT_VERSION)
       }
@@ -1017,20 +1071,7 @@ const {
   handlePageChange: baseHandlePageChange,
   handlePageSizeChange: baseHandlePageSizeChange
 } = useTableLoader<Account, any>({
-  // 运行时按 scope 分流：mine → /user/accounts；all → /admin/accounts
-  fetchFn: (page, pageSize, filters, options) => {
-    if (isMineScope.value) {
-      return userAccountsAPI.list(page, pageSize, {
-        signal: options?.signal,
-        sort_by: typeof filters?.sort_by === 'string' ? filters.sort_by : undefined,
-        sort_order: filters?.sort_order === 'asc' || filters?.sort_order === 'desc' ? filters.sort_order : undefined,
-        platform: typeof filters?.platform === 'string' ? filters.platform : undefined,
-        status: typeof filters?.status === 'string' ? filters.status : undefined,
-        search: typeof filters?.search === 'string' ? filters.search : undefined
-      })
-    }
-    return adminAPI.accounts.list(page, pageSize, filters, options)
-  },
+  fetchFn: adminAPI.accounts.list,
   initialParams: {
     platform: '',
     type: '',
@@ -1098,19 +1139,17 @@ useSwipeSelect(accountTableRef, {
 
 const resetAutoRefreshCache = () => {
   autoRefreshETag.value = null
+  upstreamBillingRateETag.value = null
 }
 
 const isFirstLoad = ref(true)
 
-function markUpstreamBillingSortRefresh() {
-  if (sortState.sort_by === 'upstream_billing_rate') {
-    lastUpstreamBillingSortRefreshMinute = Math.floor(Date.now() / 60_000)
-  }
+type AccountLoadOptions = {
+  refreshTodayStats?: boolean
 }
 
-const load = async () => {
+const load = async (options: AccountLoadOptions = {}) => {
   const requestParams = params as any
-  markUpstreamBillingSortRefresh()
   syncAccountListDerivedParams()
   hasPendingListSync.value = false
   resetAutoRefreshCache()
@@ -1123,11 +1162,10 @@ const load = async () => {
     isFirstLoad.value = false
     delete requestParams.lite
   }
-  await refreshTodayStatsBatch()
+  if (options.refreshTodayStats !== false) await refreshTodayStatsBatch()
 }
 
 const reload = async () => {
-  markUpstreamBillingSortRefresh()
   syncAccountListDerivedParams()
   hasPendingListSync.value = false
   resetAutoRefreshCache()
@@ -1136,18 +1174,119 @@ const reload = async () => {
   await refreshTodayStatsBatch()
 }
 
-const refreshUpstreamBillingSortedList = async (force = false) => {
-  if (sortState.sort_by !== 'upstream_billing_rate') return
-
-  const minute = Math.floor(upstreamBillingNow.value / 60_000)
-  if (!force && lastUpstreamBillingSortRefreshMinute === minute) return
-  lastUpstreamBillingSortRefreshMinute = minute
-  try {
-    await reload()
-  } catch (error) {
-    console.error('Failed to refresh upstream billing sort:', error)
+const buildUpstreamBillingRateFilters = () => {
+  const rawParams = toRaw(params) as Record<string, unknown>
+  return {
+    platform: typeof rawParams.platform === 'string' ? rawParams.platform : '',
+    type: typeof rawParams.type === 'string' ? rawParams.type : '',
+    status: typeof rawParams.status === 'string' ? rawParams.status : '',
+    group: typeof rawParams.group === 'string' ? rawParams.group : '',
+    search: typeof rawParams.search === 'string' ? rawParams.search : '',
+    privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
+    sort_by: sortState.sort_by,
+    sort_order: sortState.sort_order
   }
 }
+
+const sameAccountIDOrder = (left: number[], right: number[]) =>
+  left.length === right.length && left.every((id, index) => id === right[index])
+
+const upstreamBillingRateContextKey = () => JSON.stringify({
+  page: pagination.page,
+  pageSize: pagination.page_size,
+  filters: buildUpstreamBillingRateFilters()
+})
+
+const applyUpstreamBillingRateSnapshots = async (
+  result: NonNullable<Awaited<ReturnType<typeof adminAPI.accounts.getUpstreamBillingRatesWithEtag>>['data']>
+) => {
+  const nextIDs = result.items.map(item => item.account_id)
+  const currentIDs = accounts.value.map(account => account.id)
+
+  // The compact response cannot fill a row that crossed a page boundary.
+  // Only that case needs the expensive, full account-list request.
+  if (result.total !== pagination.total || !sameAccountIDOrder(nextIDs, currentIDs)) {
+    try {
+      await load({ refreshTodayStats: false })
+    } catch (error) {
+      console.error('Failed to reconcile upstream billing sort:', error)
+    }
+    return
+  }
+
+  const itemsByID = new Map(result.items.map(item => [item.account_id, item]))
+  let changed = false
+  const nextAccounts = accounts.value.map(account => {
+    const item = itemsByID.get(account.id)
+    if (!item) return account
+    const nextSnapshot = item.snapshot ?? null
+    const previousSnapshot = account.extra?.upstream_billing_probe ?? null
+    if (JSON.stringify(previousSnapshot) === JSON.stringify(nextSnapshot)) return account
+
+    const nextExtra = { ...(account.extra ?? {}) }
+    if (nextSnapshot) nextExtra.upstream_billing_probe = nextSnapshot
+    else delete nextExtra.upstream_billing_probe
+    const nextAccount = {
+      ...account,
+      ...(typeof nextSnapshot?.synced_rate_multiplier === 'number'
+        ? { rate_multiplier: nextSnapshot.synced_rate_multiplier }
+        : {}),
+      extra: nextExtra
+    }
+    syncAccountRefs(nextAccount)
+    changed = true
+    return nextAccount
+  })
+
+  if (changed) {
+    accounts.value = nextAccounts
+    upstreamBillingNow.value = Date.now()
+  }
+}
+
+const refreshUpstreamBillingRates = async (force = false) => {
+  if (upstreamBillingRateRefreshing.value || loading.value || accounts.value.length === 0) return
+  if (!force && (
+    probingUpstreamBilling.size > 0 ||
+    isAnyModalOpen.value ||
+    menu.show ||
+    showAccountToolsDropdown.value ||
+    showAutoRefreshDropdown.value ||
+    (typeof document !== 'undefined' && document.hidden)
+  )) return
+
+  const controller = new AbortController()
+  upstreamBillingRateAbortController = controller
+  upstreamBillingRateRefreshing.value = true
+  try {
+    syncAccountListDerivedParams()
+    const requestContextKey = upstreamBillingRateContextKey()
+    const result = await adminAPI.accounts.getUpstreamBillingRatesWithEtag(
+      pagination.page,
+      pagination.page_size,
+      buildUpstreamBillingRateFilters(),
+      { etag: force ? null : upstreamBillingRateETag.value, signal: controller.signal }
+    )
+    if (loading.value || requestContextKey !== upstreamBillingRateContextKey()) return
+    if (result.etag) upstreamBillingRateETag.value = result.etag
+    if (!result.notModified && result.data) await applyUpstreamBillingRateSnapshots(result.data)
+  } catch (error) {
+    const refreshError = error as { name?: string; code?: string }
+    if (refreshError.name !== 'AbortError' && refreshError.name !== 'CanceledError' && refreshError.code !== 'ERR_CANCELED') {
+      console.error('Failed to refresh upstream billing rates:', error)
+    }
+  } finally {
+    if (upstreamBillingRateAbortController === controller) upstreamBillingRateAbortController = null
+    upstreamBillingRateRefreshing.value = false
+  }
+}
+
+const refreshUpstreamBillingSortedList = async (force = false) => {
+  if (!force && sortState.sort_by !== 'upstream_billing_rate') return
+  await refreshUpstreamBillingRates(force)
+}
+
+useIntervalFn(() => { void refreshUpstreamBillingRates() }, 5 * 60_000, { immediate: false })
 
 const debouncedReload = () => {
   clearSelection()
@@ -1200,10 +1339,20 @@ watch(loading, (isLoading, wasLoading) => {
   }
 })
 
-watch(upstreamBillingNow, () => {
-  if (sortState.sort_by !== 'upstream_billing_rate' || loading.value) return
-  if (typeof document !== 'undefined' && document.hidden) return
-  void refreshUpstreamBillingSortedList()
+watch(accounts, (rows) => {
+  const visibleIDs = new Set(rows.map((row) => String(row.id)))
+  usageBatchByAccountId.value = Object.fromEntries(
+    Object.entries(usageBatchByAccountId.value).filter(([key]) => visibleIDs.has(key))
+  )
+  usageBatchErrorByAccountId.value = Object.fromEntries(
+    Object.entries(usageBatchErrorByAccountId.value).filter(([key]) => visibleIDs.has(key))
+  )
+  usageBatchLoadingByAccountId.value = Object.fromEntries(
+    Object.entries(usageBatchLoadingByAccountId.value).filter(([key]) => visibleIDs.has(key))
+  )
+  usageBatchRequestTokenByAccountId.value = Object.fromEntries(
+    Object.entries(usageBatchRequestTokenByAccountId.value).filter(([key]) => visibleIDs.has(key))
+  )
 })
 
 const isAnyModalOpen = computed(() => {
@@ -1245,7 +1394,8 @@ const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
     current.rate_limit_reset_at !== next.rate_limit_reset_at ||
     current.overload_until !== next.overload_until ||
     current.temp_unschedulable_until !== next.temp_unschedulable_until ||
-    buildOpenAIUsageRefreshKey(current) !== buildOpenAIUsageRefreshKey(next)
+    buildOpenAIUsageRefreshKey(current) !== buildOpenAIUsageRefreshKey(next) ||
+    buildGrokUsageRefreshKey(current) !== buildGrokUsageRefreshKey(next)
   )
 }
 
@@ -1292,52 +1442,35 @@ const refreshAccountsIncrementally = async () => {
   syncAccountListDerivedParams()
   autoRefreshFetching.value = true
   try {
-    if (isMineScope.value) {
-      const raw = toRaw(params) as Record<string, unknown>
-      const data = await userAccountsAPI.list(pagination.page, pagination.page_size, {
-        sort_by: typeof raw.sort_by === 'string' ? raw.sort_by : undefined,
-        sort_order: raw.sort_order === 'asc' || raw.sort_order === 'desc' ? raw.sort_order : undefined,
-        platform: typeof raw.platform === 'string' ? raw.platform : undefined,
-        status: typeof raw.status === 'string' ? raw.status : undefined,
-        search: typeof raw.search === 'string' ? raw.search : undefined
-      })
-      pagination.total = data.total || 0
-      pagination.pages = data.pages || 0
-      mergeAccountsIncrementally(data.items || [])
-      hasPendingListSync.value = false
-    } else {
-      const result = await adminAPI.accounts.listWithEtag(
-        pagination.page,
-        pagination.page_size,
-        toRaw(params) as {
-          platform?: string
-          type?: string
-          status?: string
-          privacy_mode?: string
-          group?: string
-          search?: string
-          sort_by?: string
-          sort_order?: AccountSortOrder
-        },
-        { etag: autoRefreshETag.value }
-      )
+    const result = await adminAPI.accounts.listWithEtag(
+      pagination.page,
+      pagination.page_size,
+      toRaw(params) as {
+        platform?: string
+        type?: string
+        status?: string
+        privacy_mode?: string
+        group?: string
+        search?: string
+        sort_by?: string
+        sort_order?: AccountSortOrder
 
-      if (result.etag) {
-        autoRefreshETag.value = result.etag
-      }
-      if (!result.notModified && result.data) {
-        pagination.total = result.data.total || 0
-        pagination.pages = result.data.pages || 0
-        mergeAccountsIncrementally(result.data.items || [])
-        hasPendingListSync.value = false
-        markUpstreamBillingSortRefresh()
-      }
+      },
+      { etag: autoRefreshETag.value }
+    )
+
+    if (result.etag) {
+      autoRefreshETag.value = result.etag
+    }
+    if (!result.notModified && result.data) {
+      pagination.total = result.data.total || 0
+      pagination.pages = result.data.pages || 0
+      mergeAccountsIncrementally(result.data.items || [])
+      hasPendingListSync.value = false
     }
     upstreamBillingNow.value = Date.now()
 
-    if (!isMineScope.value) {
-      await refreshTodayStatsBatch()
-    }
+    await refreshTodayStatsBatch()
   } catch (error) {
     console.error('Auto refresh failed:', error)
   } finally {
@@ -1346,11 +1479,7 @@ const refreshAccountsIncrementally = async () => {
 }
 
 const handleManualRefresh = async () => {
-  if (isMineScope.value) {
-    await load()
-  } else {
-    await Promise.all([load(), loadUpstreamBillingProbeGlobalState()])
-  }
+  await Promise.all([load(), loadUpstreamBillingProbeGlobalState()])
   // Force usage cells to refetch /usage on explicit user refresh.
   usageManualRefreshToken.value += 1
 }
@@ -1446,56 +1575,139 @@ const { pause: pauseAutoRefresh, resume: resumeAutoRefresh } = useIntervalFn(
   { immediate: false }
 )
 
-// Fresh billing/quota snapshots are authoritative. Imported credential tiers
-// can be stale, so they remain fallbacks together with legacy plan_type fields.
+const GROK_QUOTA_SIGNAL_MAX_AGE_MS = 24 * 60 * 60 * 1000
+const GROK_QUOTA_SIGNAL_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000
+
+function firstNonBlankString(...values: unknown[]): string | undefined {
+  return values.find((value): value is string => (
+    typeof value === 'string' && value.trim().length > 0
+  ))
+}
+
+function normalizeGrokPlanKey(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, '')
+}
+
+function grokPersistedQuotaSnapshot(extra: Record<string, any>): Record<string, any> | undefined {
+  const usage = extra.grok_usage_snapshot
+  if (usage && typeof usage === 'object' && !Array.isArray(usage)) {
+    return usage as Record<string, any>
+  }
+  const legacy = extra.grok_quota_snapshot
+  if (legacy && typeof legacy === 'object' && !Array.isArray(legacy)) {
+    return legacy as Record<string, any>
+  }
+  return undefined
+}
+
+function isGrokQuotaTimestampFresh(raw: unknown): boolean {
+  const value = String(raw || '').trim()
+  if (!value) return false
+  const observedAt = Date.parse(value)
+  if (!Number.isFinite(observedAt)) return false
+  const age = Date.now() - observedAt
+  return age <= GROK_QUOTA_SIGNAL_MAX_AGE_MS && age >= -GROK_QUOTA_SIGNAL_MAX_FUTURE_SKEW_MS
+}
+
+function isGrok45ResponsesQuotaModel(model: unknown): boolean {
+  const value = String(model || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^(x-ai|xai)\//, '')
+  return value === 'grok-4.5' || value.startsWith('grok-4.5-')
+}
+
+function grokQuotaLooksHeavy(snapshot: Record<string, any> | undefined): boolean {
+  const req = Number(snapshot?.requests?.limit ?? 0)
+  const tok = Number(snapshot?.tokens?.limit ?? 0)
+  return req >= 8300 || tok >= 53_000_000
+}
+
+function grok45ResponsesPlanIsHeavy(snapshot: Record<string, any> | undefined): boolean {
+  if (!snapshot) return false
+  const hint = normalizeGrokPlanKey(snapshot.plan_from_45_responses)
+  if (hint === 'supergrokheavy' && isGrokQuotaTimestampFresh(snapshot.plan_from_45_responses_at)) {
+    return true
+  }
+  const observedAt = snapshot.last_headers_seen_at || snapshot.updated_at
+  return (
+    isGrok45ResponsesQuotaModel(snapshot.model) &&
+    isGrokQuotaTimestampFresh(observedAt) &&
+    grokQuotaLooksHeavy(snapshot)
+  )
+}
+
+// JWT / unambiguous credentials outrank snapshots. SuperGrokPro is ambiguous
+// (covers SuperGrok and Heavy). 8300/53M only upgrades when the window came
+// from grok-4.5 Responses (or a carried 4.5 hint).
 function getAccountPlanType(row: any): string | undefined {
   if (!row) return undefined
   if (row.platform === 'grok') {
     const extra = (row.extra || {}) as Record<string, any>
     const billing = extra.grok_billing_snapshot as Record<string, any> | undefined
-    const quota = extra.grok_quota_snapshot as Record<string, any> | undefined
-    // 优先 billing/quota 快照（探测权威），再 credentials，最后 upstream_plan 列
-    // （admin 创建 OAuth 时常只有列上的 code，JWT 不带 subscription_tier）
-    const candidates = [
+    const usage = extra.grok_usage_snapshot as Record<string, any> | undefined
+    const legacyQuota = extra.grok_quota_snapshot as Record<string, any> | undefined
+    const quota = grokPersistedQuotaSnapshot(extra)
+    const cred = firstNonBlankString(row.credentials?.subscription_tier)
+    const credKey = normalizeGrokPlanKey(cred)
+    if (credKey && credKey !== 'supergrokpro') {
+      return cred
+    }
+    if (
+      grok45ResponsesPlanIsHeavy(quota) &&
+      (credKey === 'supergrokpro' ||
+        normalizeGrokPlanKey(billing?.plan) === 'supergrok' ||
+        normalizeGrokPlanKey(billing?.plan) === 'supergrokpro')
+    ) {
+      return 'SuperGrok Heavy'
+    }
+    if (credKey === 'supergrokpro') {
+      return firstNonBlankString(billing?.plan) || 'SuperGrok'
+    }
+    return firstNonBlankString(
       billing?.plan,
-      quota?.subscription_tier,
-      row.credentials?.subscription_tier,
+      usage?.subscription_tier,
+      legacyQuota?.subscription_tier,
       extra.subscription_tier,
       row.credentials?.plan_type,
-      row.upstream_plan,
       row.parent_plan_type
-    ]
-    for (const c of candidates) {
-      if (typeof c === 'string' && c.trim()) return c.trim()
-    }
-    return undefined
+    )
   }
-  // Antigravity：plan_type / tier_id / load_code_assist / upstream_plan 均可，PlatformTypeBadge 会映射为 Pro 等友好名
-  if (row.platform === 'antigravity') {
-    const planType = row.credentials?.plan_type
-    if (typeof planType === 'string' && planType.trim()) return planType.trim()
-    const tierId = row.credentials?.tier_id
-    if (typeof tierId === 'string' && tierId.trim()) return tierId.trim()
-    const lca = (row.extra as Record<string, any> | undefined)?.load_code_assist as
-      | Record<string, any>
-      | undefined
-    const paidId = lca?.paidTier?.id
-    if (typeof paidId === 'string' && paidId.trim()) return paidId.trim()
-    const currentId = lca?.currentTier?.id
-    if (typeof currentId === 'string' && currentId.trim()) return currentId.trim()
-    if (typeof row.upstream_plan === 'string' && row.upstream_plan.trim()) return row.upstream_plan.trim()
-    if (typeof row.parent_plan_type === 'string' && row.parent_plan_type.trim()) {
-      return row.parent_plan_type.trim()
-    }
-    return undefined
-  }
-  return row.credentials?.plan_type || row.parent_plan_type || undefined
+  return firstNonBlankString(row.credentials?.plan_type, row.parent_plan_type)
 }
 
 function getOpenAIAuthMode(row: any): string | undefined {
   if (!row || row.platform !== 'openai' || row.type !== 'oauth') return undefined
   const authMode = row.credentials?.auth_mode
   return typeof authMode === 'string' && authMode.trim() ? authMode : undefined
+}
+
+// Antigravity 订阅等级辅助函数
+function getAntigravityTierFromRow(row: any): string | null {
+  if (row.platform !== 'antigravity') return null
+  const extra = row.extra as Record<string, unknown> | undefined
+  if (!extra) return null
+  const lca = extra.load_code_assist as Record<string, unknown> | undefined
+  if (!lca) return null
+  const paid = lca.paidTier as Record<string, unknown> | undefined
+  if (paid && typeof paid.id === 'string') return paid.id
+  const current = lca.currentTier as Record<string, unknown> | undefined
+  if (current && typeof current.id === 'string') return current.id
+  return null
+}
+
+function getAntigravityTierLabel(row: any): string | null {
+  const tier = getAntigravityTierFromRow(row)
+  switch (tier) {
+    case 'free-tier': return t('admin.accounts.tier.free')
+    case 'g1-pro-tier': return t('admin.accounts.tier.pro')
+    case 'g1-ultra-tier': return t('admin.accounts.tier.ultra')
+    default: return null
+  }
 }
 
 // 账号显示邮箱:优先账号自身(extra/credentials),影子账号回退母账号 parent_email。
@@ -1557,6 +1769,16 @@ function getOpenAICompactTitle(row: any): string {
   return `${label} | ${t('admin.accounts.openai.compactLastChecked')}: ${formatDateTime(new Date(checkedAt))}`
 }
 
+function getAntigravityTierClass(row: any): string {
+  const tier = getAntigravityTierFromRow(row)
+  switch (tier) {
+    case 'free-tier': return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'
+    case 'g1-pro-tier': return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
+    case 'g1-ultra-tier': return 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300'
+    default: return ''
+  }
+}
+
 // All available columns
 const allColumns = computed(() => {
   const c = [
@@ -1564,9 +1786,6 @@ const allColumns = computed(() => {
     { key: 'name', label: t('admin.accounts.columns.name'), sortable: true },
     { key: 'id', label: t('admin.accounts.columns.id'), sortable: true },
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
-    { key: 'owner_user_id', label: t('admin.accounts.columns.owner'), sortable: false },
-    { key: 'visibility', label: t('admin.accounts.columns.visibility'), sortable: false },
-    { key: 'upstream_plan', label: t('admin.accounts.columns.upstreamPlan'), sortable: false },
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true },
@@ -1663,21 +1882,16 @@ const handleBulkDelete = async () => {
   const accountIds = [...selIds.value]
   if (!confirm(t('admin.accounts.bulkActions.confirmDelete', { count: accountIds.length }))) return
   try {
-    if (isMineScope.value) {
-      await userAccountsAPI.batchDelete([...selIds.value])
-      clearSelection()
+    const result = await adminAPI.accounts.batchDelete(accountIds)
+    if (result.failed > 0) {
+      appStore.showError(t('admin.accounts.bulkActions.partialSuccess', {
+        success: result.success,
+        failed: result.failed
+      }))
+      setSelectedIds(result.failed_ids?.length ? result.failed_ids : accountIds)
     } else {
-      const result = await adminAPI.accounts.batchDelete(accountIds)
-      if (result.failed > 0) {
-        appStore.showError(t('admin.accounts.bulkActions.partialSuccess', {
-          success: result.success,
-          failed: result.failed
-        }))
-        setSelectedIds(result.failed_ids?.length ? result.failed_ids : accountIds)
-      } else {
-        appStore.showSuccess(t('admin.accounts.bulkActions.deleteSuccess', { count: result.success }))
-        clearSelection()
-      }
+      appStore.showSuccess(t('admin.accounts.bulkActions.deleteSuccess', { count: result.success }))
+      clearSelection()
     }
     await reload()
   } catch (error) {
@@ -1819,31 +2033,6 @@ const normalizeBulkSchedulableResult = (
 const handleBulkToggleSchedulable = async (schedulable: boolean) => {
   const accountIds = [...selIds.value]
   try {
-    if (isMineScope.value) {
-      const result = await userAccountsAPI.batchSetSchedulable(accountIds, schedulable)
-      const successIds = result.success_ids || []
-      const failedIds = result.failed_ids || []
-      if (successIds.length > 0) {
-        updateSchedulableInList(successIds, schedulable)
-      }
-      if (result.success > 0 && result.failed === 0) {
-        const message = schedulable
-          ? t('admin.accounts.bulkSchedulableEnabled', { count: result.success })
-          : t('admin.accounts.bulkSchedulableDisabled', { count: result.success })
-        appStore.showSuccess(message)
-        clearSelection()
-      } else if (result.failed > 0) {
-        appStore.showError(
-          t('admin.accounts.bulkSchedulablePartial', {
-            success: result.success,
-            failed: result.failed
-          })
-        )
-        setSelectedIds(failedIds.length > 0 ? failedIds : accountIds)
-      }
-      return
-    }
-
     const result = await adminAPI.accounts.bulkUpdate(accountIds, { schedulable })
     const { successIds, failedIds, successCount, failedCount, hasIds, hasCounts } = normalizeBulkSchedulableResult(result, accountIds)
     if (!hasIds && !hasCounts) {
@@ -2054,19 +2243,17 @@ const patchAccountInList = (updatedAccount: Account) => {
 const patchUpstreamBillingSnapshot = (accountID: number, snapshot: UpstreamBillingProbeSnapshot) => {
   const account = accounts.value.find(item => item.id === accountID)
   if (!account) return
-  markUpstreamBillingSortRefresh()
   upstreamBillingNow.value = Date.now()
   patchAccountInList({
     ...account,
+    ...(typeof snapshot.synced_rate_multiplier === 'number'
+      ? { rate_multiplier: snapshot.synced_rate_multiplier }
+      : {}),
     extra: { ...account.extra, upstream_billing_probe: snapshot }
   })
 }
 const refreshAccountsAfterUpstreamBillingProbe = async () => {
-  try {
-    await load()
-  } catch (error) {
-    console.error('Failed to refresh accounts after upstream billing probe:', error)
-  }
+  await refreshUpstreamBillingSortedList(true)
 }
 const handleProbeUpstreamBilling = async (account: Account) => {
   if (probingUpstreamBilling.has(account.id)) return
@@ -2101,24 +2288,14 @@ const handleExportData = async () => {
   if (exportingData.value) return
   exportingData.value = true
   try {
-    let dataPayload: Record<string, unknown>
-    if (isMineScope.value) {
-      // 用户导出：仅本人账号，不含代理，无需 step-up
-      dataPayload = (await userAccountsAPI.exportData(
-        selIds.value.length > 0 ? { ids: selIds.value } : undefined
-      )) as unknown as Record<string, unknown>
-    } else {
-      dataPayload = (await accountExportStepUp.run(() =>
-        adminAPI.accounts.exportData(
-          selIds.value.length > 0
-            ? { ids: selIds.value, includeProxies: includeProxyOnExport.value }
-            : {
-                includeProxies: includeProxyOnExport.value,
-                filters: buildAccountQueryFilters()
-              }
-        )
-      )) as unknown as Record<string, unknown>
-    }
+    const dataPayload = await accountExportStepUp.run(() => adminAPI.accounts.exportData(
+      selIds.value.length > 0
+        ? { ids: selIds.value, includeProxies: includeProxyOnExport.value }
+        : {
+            includeProxies: includeProxyOnExport.value,
+            filters: buildAccountQueryFilters()
+          }
+    ))
     const timestamp = formatExportTimestamp()
     const filename = `sub2api-account-${timestamp}.json`
     const blob = new Blob([JSON.stringify(dataPayload, null, 2)], { type: 'application/json' })
@@ -2130,9 +2307,8 @@ const handleExportData = async () => {
     URL.revokeObjectURL(url)
     // spark 影子账号被后端排除出备份(其凭据透传母账号、调度配置不可经凭据型导入重建);
     // 跳过非零时明确提示用户,避免「下载成功但少了账号」的静默丢失。
-    const skipped = Number((dataPayload as { skipped_shadows?: number }).skipped_shadows || 0)
-    if (skipped > 0) {
-      appStore.showWarning(t('admin.accounts.dataExportedSkippedShadows', { count: skipped }))
+    if (dataPayload.skipped_shadows && dataPayload.skipped_shadows > 0) {
+      appStore.showWarning(t('admin.accounts.dataExportedSkippedShadows', { count: dataPayload.skipped_shadows }))
     } else {
       appStore.showSuccess(t('admin.accounts.dataExported'))
     }
@@ -2284,28 +2460,12 @@ const confirmCreateSparkShadow = async () => {
   }
 }
 const handleDelete = (a: Account) => { deletingAcc.value = a; showDeleteDialog.value = true }
-const confirmDelete = async () => {
-  if (!deletingAcc.value) return
-  try {
-    if (isMineScope.value) {
-      await userAccountsAPI.remove(deletingAcc.value.id)
-    } else {
-      await adminAPI.accounts.delete(deletingAcc.value.id)
-    }
-    showDeleteDialog.value = false
-    deletingAcc.value = null
-    reload()
-  } catch (error) {
-    console.error('Failed to delete account:', error)
-  }
-}
+const confirmDelete = async () => { if(!deletingAcc.value) return; try { await adminAPI.accounts.delete(deletingAcc.value.id); showDeleteDialog.value = false; deletingAcc.value = null; reload() } catch (error) { console.error('Failed to delete account:', error) } }
 const handleToggleSchedulable = async (a: Account) => {
   const nextSchedulable = !a.schedulable
   togglingSchedulable.value = a.id
   try {
-    const updated = isMineScope.value
-      ? await userAccountsAPI.setSchedulable(a.id, nextSchedulable)
-      : await adminAPI.accounts.setSchedulable(a.id, nextSchedulable)
+    const updated = await adminAPI.accounts.setSchedulable(a.id, nextSchedulable)
     updateSchedulableInList([a.id], updated?.schedulable ?? nextSchedulable)
     enterAutoRefreshSilentWindow()
   } catch (error) {
@@ -2315,11 +2475,7 @@ const handleToggleSchedulable = async (a: Account) => {
     togglingSchedulable.value = null
   }
 }
-const handleShowTempUnsched = (a: Account) => {
-  if (isMineScope.value) return // 暂无用户侧 temp-unsched API
-  tempUnschedAcc.value = a
-  showTempUnsched.value = true
-}
+const handleShowTempUnsched = (a: Account) => { tempUnschedAcc.value = a; showTempUnsched.value = true }
 const handleTempUnschedReset = async (updated: Account) => {
   showTempUnsched.value = false
   tempUnschedAcc.value = null
@@ -2374,16 +2530,34 @@ const handleClickOutside = (event: MouseEvent) => {
 }
 
 onMounted(async () => {
-  load()
-  if (!isMineScope.value) {
-    loadUpstreamBillingProbeGlobalState()
-    try {
-      const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
-      proxies.value = p
-      groups.value = g
-    } catch (error) {
-      console.error('Failed to load proxies/groups:', error)
+  if (typeof window !== 'undefined') {
+    desktopViewportMediaQuery = window.matchMedia(desktopViewportQuery)
+    isDesktopViewport.value = desktopViewportMediaQuery.matches
+    desktopViewportListener = (event: MediaQueryListEvent) => {
+      isDesktopViewport.value = event.matches
     }
+    if (typeof desktopViewportMediaQuery.addEventListener === 'function') {
+      desktopViewportMediaQuery.addEventListener('change', desktopViewportListener)
+    } else {
+      desktopViewportMediaQuery.addListener(desktopViewportListener)
+    }
+  }
+
+  load()
+  loadUpstreamBillingProbeGlobalState()
+  const [proxiesResult, groupsResult] = await Promise.allSettled([
+    adminAPI.proxies.getAll(),
+    adminAPI.groups.getAll()
+  ])
+  if (proxiesResult.status === 'fulfilled') {
+    proxies.value = proxiesResult.value
+  } else {
+    console.error('Failed to load proxies:', proxiesResult.reason)
+  }
+  if (groupsResult.status === 'fulfilled') {
+    groups.value = groupsResult.value
+  } else {
+    console.error('Failed to load groups:', groupsResult.reason)
   }
   window.addEventListener('scroll', handleScroll, true)
   window.addEventListener('resize', handleViewportResize)
@@ -2398,9 +2572,24 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  upstreamBillingRateAbortController?.abort()
+  if (usageBatchFlushTimer !== null) {
+    clearTimeout(usageBatchFlushTimer)
+    usageBatchFlushTimer = null
+  }
+  pendingUsageBatchIds.clear()
   window.removeEventListener('scroll', handleScroll, true)
   window.removeEventListener('resize', handleViewportResize)
   document.removeEventListener('click', handleClickOutside)
+  if (desktopViewportMediaQuery && desktopViewportListener) {
+    if (typeof desktopViewportMediaQuery.removeEventListener === 'function') {
+      desktopViewportMediaQuery.removeEventListener('change', desktopViewportListener)
+    } else {
+      desktopViewportMediaQuery.removeListener(desktopViewportListener)
+    }
+  }
+  desktopViewportListener = null
+  desktopViewportMediaQuery = null
 })
 </script>
 

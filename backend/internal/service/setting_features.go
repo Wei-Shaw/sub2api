@@ -12,9 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
 // IsRegistrationEnabled 检查是否开放注册
@@ -30,6 +27,16 @@ func (s *SettingService) IsRegistrationEnabled(ctx context.Context) bool {
 // IsEmailVerifyEnabled 检查是否开启邮件验证
 func (s *SettingService) IsEmailVerifyEnabled(ctx context.Context) bool {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyEmailVerifyEnabled)
+	if err != nil {
+		return false
+	}
+	return value == "true"
+}
+
+// IsRegistrationEmailDomainQuotaEnabled 检查白名单非空时是否放行非白名单域名限量注册。
+// 安全默认：设置缺失或查询出错时按关闭处理（保持白名单严格模式）。
+func (s *SettingService) IsRegistrationEmailDomainQuotaEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEmailDomainQuotaEnabled)
 	if err != nil {
 		return false
 	}
@@ -79,59 +86,6 @@ func (s *SettingService) IsAffiliateEnabled(ctx context.Context) bool {
 		return false // 默认关闭
 	}
 	return value == "true"
-}
-
-// IsShareRevenueSplitEnabled 共享账号收益分配总开关。
-func (s *SettingService) IsShareRevenueSplitEnabled(ctx context.Context) bool {
-	if s == nil {
-		return false
-	}
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyShareRevenueSplitEnabled)
-	if err != nil {
-		return false
-	}
-	return value == "true"
-}
-
-func (s *SettingService) getSharePctSetting(ctx context.Context, key string, def float64) float64 {
-	if s == nil {
-		return def
-	}
-	raw, err := s.settingRepo.GetValue(ctx, key)
-	if err != nil {
-		return def
-	}
-	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
-	if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
-		return def
-	}
-	if v < 0 {
-		return 0
-	}
-	if v > 100 {
-		return 100
-	}
-	return v
-}
-
-// GetShareSplitInvitePct 共享池邀请返利占比。
-func (s *SettingService) GetShareSplitInvitePct(ctx context.Context) float64 {
-	return s.getSharePctSetting(ctx, SettingKeyShareSplitInvitePct, 10)
-}
-
-// GetShareSplitUserPct 共享池贡献者收益占比。
-func (s *SettingService) GetShareSplitUserPct(ctx context.Context) float64 {
-	return s.getSharePctSetting(ctx, SettingKeyShareSplitUserPct, 40)
-}
-
-// GetShareSplitPlatformPct 共享池平台占比。
-func (s *SettingService) GetShareSplitPlatformPct(ctx context.Context) float64 {
-	return s.getSharePctSetting(ctx, SettingKeyShareSplitPlatformPct, 50)
-}
-
-// GetPrivateSelfEnvFeePct private 自用环境费率。
-func (s *SettingService) GetPrivateSelfEnvFeePct(ctx context.Context) float64 {
-	return s.getSharePctSetting(ctx, SettingKeyPrivateSelfEnvFeePct, 1)
 }
 
 // IsAffiliateAdminRechargeEnabled reports whether admin balance
@@ -366,59 +320,6 @@ func (s *SettingService) GetDefaultBalance(ctx context.Context) float64 {
 	return s.cfg.Default.UserBalance
 }
 
-// GetPrivateGroupExpiresDate 读取私有专属分组绝对到期日（YYYY-MM-DD）。
-// ok=false 表示未配置（空串或缺失）。
-func (s *SettingService) GetPrivateGroupExpiresDate(ctx context.Context) (date string, ok bool) {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyPrivateGroupExpiresDate)
-	if err != nil {
-		return "", false
-	}
-	date, err = normalizePrivateGroupExpiresDate(value)
-	if err != nil || date == "" {
-		return "", false
-	}
-	return date, true
-}
-
-// ResolvePrivateGroupExpiresAt 将配置的绝对到期日解析为 Asia/Shanghai 当日 23:59:59。
-// 未配置时 ok=false，expiresAt 为零值；调用方应回落为 now + expired。
-func (s *SettingService) ResolvePrivateGroupExpiresAt(ctx context.Context) (expiresAt time.Time, ok bool) {
-	date, ok := s.GetPrivateGroupExpiresDate(ctx)
-	if !ok {
-		return time.Time{}, false
-	}
-	loc := timezone.Location()
-	// 优先使用显式 Asia/Shanghai，保证与产品契约一致；timezone 未初始化时回落 Location()。
-	if shanghai, err := time.LoadLocation("Asia/Shanghai"); err == nil {
-		loc = shanghai
-	}
-	t, err := time.ParseInLocation("2006-01-02", date, loc)
-	if err != nil {
-		return time.Time{}, false
-	}
-	// 当日结束 23:59:59
-	return time.Date(t.Year(), t.Month(), t.Day(), 23, 59, 59, 0, loc), true
-}
-
-// normalizePrivateGroupExpiresDate 校验并规范化私有组到期日。
-// 空串合法（表示清空/未配置）；非空必须为严格合法的 YYYY-MM-DD
-// （拒绝 time.Parse 会归一化的非法日历日，如 2026-02-30）。
-func normalizePrivateGroupExpiresDate(raw string) (string, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return "", nil
-	}
-	t, err := time.Parse("2006-01-02", raw)
-	if err != nil {
-		return "", infraerrors.BadRequest("INVALID_PRIVATE_GROUP_EXPIRES_DATE", "private_group_expires_date must be YYYY-MM-DD or empty")
-	}
-	formatted := t.Format("2006-01-02")
-	if formatted != raw {
-		return "", infraerrors.BadRequest("INVALID_PRIVATE_GROUP_EXPIRES_DATE", "private_group_expires_date must be a valid calendar date (YYYY-MM-DD)")
-	}
-	return formatted, nil
-}
-
 // GetDefaultUserRPMLimit 获取新用户默认 RPM 限制（0 = 不限制）。未配置则返回 0。
 func (s *SettingService) GetDefaultUserRPMLimit(ctx context.Context) int {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultUserRPMLimit)
@@ -563,6 +464,87 @@ func (s *SettingService) GetTurnstileSecretKey(ctx context.Context) string {
 		return ""
 	}
 	return value
+}
+
+// TencentCaptchaConfig contains the credentials required by Tencent Cloud's
+// ticket verification API. It must never be returned by a public handler.
+type TencentCaptchaConfig struct {
+	Enabled        bool
+	AppID          string
+	AppSecretKey   string
+	CloudSecretID  string
+	CloudSecretKey string
+	Region         string
+}
+
+// AliyunCaptchaConfig contains the credentials required by Aliyun Captcha 2.0's
+// server-side verification API. It must never be returned by a public handler.
+type AliyunCaptchaConfig struct {
+	Enabled         bool
+	AccessKeyID     string
+	AccessKeySecret string
+	SceneID         string
+	Region          string
+}
+
+type CaptchaProviderConfig struct {
+	TurnstileEnabled   bool
+	TurnstileSecretKey string
+	Tencent            TencentCaptchaConfig
+	Aliyun             AliyunCaptchaConfig
+}
+
+func (s *SettingService) GetCaptchaProviderConfig(ctx context.Context) (CaptchaProviderConfig, error) {
+	values, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyTurnstileEnabled,
+		SettingKeyTurnstileSecretKey,
+		SettingKeyTencentCaptchaEnabled,
+		SettingKeyTencentCaptchaAppID,
+		SettingKeyTencentCaptchaAppSecretKey,
+		SettingKeyTencentCaptchaCloudSecretID,
+		SettingKeyTencentCaptchaCloudSecretKey,
+		SettingKeyTencentCaptchaRegion,
+		SettingKeyAliyunCaptchaEnabled,
+		SettingKeyAliyunCaptchaAccessKeyID,
+		SettingKeyAliyunCaptchaAccessKeySecret,
+		SettingKeyAliyunCaptchaSceneID,
+		SettingKeyAliyunCaptchaRegion,
+	})
+	if err != nil {
+		return CaptchaProviderConfig{}, fmt.Errorf("read captcha provider settings: %w", err)
+	}
+	return CaptchaProviderConfig{
+		TurnstileEnabled:   values[SettingKeyTurnstileEnabled] == "true",
+		TurnstileSecretKey: values[SettingKeyTurnstileSecretKey],
+		Tencent: TencentCaptchaConfig{
+			Enabled:        values[SettingKeyTencentCaptchaEnabled] == "true",
+			AppID:          values[SettingKeyTencentCaptchaAppID],
+			AppSecretKey:   values[SettingKeyTencentCaptchaAppSecretKey],
+			CloudSecretID:  values[SettingKeyTencentCaptchaCloudSecretID],
+			CloudSecretKey: values[SettingKeyTencentCaptchaCloudSecretKey],
+			Region:         normalizeTencentCaptchaRegion(values[SettingKeyTencentCaptchaRegion]),
+		},
+		Aliyun: AliyunCaptchaConfig{
+			Enabled:         values[SettingKeyAliyunCaptchaEnabled] == "true",
+			AccessKeyID:     values[SettingKeyAliyunCaptchaAccessKeyID],
+			AccessKeySecret: values[SettingKeyAliyunCaptchaAccessKeySecret],
+			SceneID:         values[SettingKeyAliyunCaptchaSceneID],
+			Region:          normalizeAliyunCaptchaRegion(values[SettingKeyAliyunCaptchaRegion]),
+		},
+	}, nil
+}
+
+func (s *SettingService) IsTencentCaptchaEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyTencentCaptchaEnabled)
+	return err == nil && value == "true"
+}
+
+func (s *SettingService) GetTencentCaptchaConfig(ctx context.Context) TencentCaptchaConfig {
+	config, err := s.GetCaptchaProviderConfig(ctx)
+	if err != nil {
+		return TencentCaptchaConfig{}
+	}
+	return config.Tencent
 }
 
 // IsIdentityPatchEnabled 检查是否启用身份补丁（Claude -> Gemini systemInstruction 注入）
@@ -780,6 +762,40 @@ func (s *SettingService) SetRateLimit429CooldownSettings(ctx context.Context, se
 	}
 
 	return s.settingRepo.Set(ctx, SettingKeyRateLimit429CooldownSettings, string(data))
+}
+
+func (s *SettingService) GetOpenAIImagesOAuthUnavailableCooldownSettings(ctx context.Context) (*OpenAIImagesOAuthUnavailableCooldownSettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAIImagesOAuthUnavailableCooldownSettings)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return DefaultOpenAIImagesOAuthUnavailableCooldownSettings(), nil
+		}
+		return nil, fmt.Errorf("get OpenAI images OAuth unavailable cooldown settings: %w", err)
+	}
+	if value == "" {
+		return DefaultOpenAIImagesOAuthUnavailableCooldownSettings(), nil
+	}
+
+	var settings OpenAIImagesOAuthUnavailableCooldownSettings
+	if err := json.Unmarshal([]byte(value), &settings); err != nil ||
+		settings.CooldownMinutes <= 0 || settings.CooldownMinutes > openAIImagesOAuthUnavailableMaxCooldownMinutes {
+		return DefaultOpenAIImagesOAuthUnavailableCooldownSettings(), nil
+	}
+	return &settings, nil
+}
+
+func (s *SettingService) SetOpenAIImagesOAuthUnavailableCooldownSettings(ctx context.Context, settings *OpenAIImagesOAuthUnavailableCooldownSettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+	}
+	if settings.CooldownMinutes <= 0 || settings.CooldownMinutes > openAIImagesOAuthUnavailableMaxCooldownMinutes {
+		return fmt.Errorf("cooldown_minutes must be between 1-%d", openAIImagesOAuthUnavailableMaxCooldownMinutes)
+	}
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal OpenAI images OAuth unavailable cooldown settings: %w", err)
+	}
+	return s.settingRepo.Set(ctx, SettingKeyOpenAIImagesOAuthUnavailableCooldownSettings, string(data))
 }
 
 // GetStreamTimeoutSettings 获取流超时处理配置
@@ -1105,6 +1121,69 @@ func (s *SettingService) GetDefaultPlatformQuotas(ctx context.Context) (map[stri
 		}
 	}
 	return out, nil // 补齐全部允许 platform key，保持与旧实现一致的下游契约
+}
+
+// GetAccountSchedulingThresholds returns per-platform auto-pause thresholds (1..100).
+// 100 disables the threshold for that platform. Hot-path cached with singleflight.
+func (s *SettingService) GetAccountSchedulingThresholds(ctx context.Context) map[string]int {
+	if s == nil || s.settingRepo == nil {
+		return defaultAccountSchedulingThresholds()
+	}
+	if cached, ok := accountSchedulingThresholdsCache.Load().(*cachedAccountSchedulingThresholds); ok {
+		if cached != nil && len(cached.thresholds) > 0 && time.Now().UnixNano() < cached.expiresAt {
+			return cloneAccountSchedulingThresholds(cached.thresholds)
+		}
+	}
+
+	result, err, _ := accountSchedulingThresholdsSF.Do(SettingKeyAccountSchedulingThresholds, func() (any, error) {
+		if cached, ok := accountSchedulingThresholdsCache.Load().(*cachedAccountSchedulingThresholds); ok {
+			if cached != nil && len(cached.thresholds) > 0 && time.Now().UnixNano() < cached.expiresAt {
+				return cloneAccountSchedulingThresholds(cached.thresholds), nil
+			}
+		}
+
+		thresholds := defaultAccountSchedulingThresholds()
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), accountSchedulingThresholdsDBTimeout)
+		defer cancel()
+
+		raw, err := s.settingRepo.GetValue(dbCtx, SettingKeyAccountSchedulingThresholds)
+		if err != nil {
+			if errors.Is(err, ErrSettingNotFound) {
+				accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{
+					thresholds: cloneAccountSchedulingThresholds(thresholds),
+					expiresAt:  time.Now().Add(accountSchedulingThresholdsCacheTTL).UnixNano(),
+				})
+				return cloneAccountSchedulingThresholds(thresholds), nil
+			}
+			slog.Warn("failed to get account scheduling thresholds, falling back to defaults", "error", err)
+			accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{
+				thresholds: cloneAccountSchedulingThresholds(thresholds),
+				expiresAt:  time.Now().Add(accountSchedulingThresholdsErrorTTL).UnixNano(),
+			})
+			return cloneAccountSchedulingThresholds(thresholds), nil
+		}
+
+		if trimmed := strings.TrimSpace(raw); trimmed != "" {
+			if parsed, err := parseAccountSchedulingThresholdsSetting(trimmed); err != nil {
+				slog.Warn("failed to parse account scheduling thresholds, falling back to defaults", "error", err)
+			} else {
+				thresholds = parsed
+			}
+		}
+
+		accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{
+			thresholds: cloneAccountSchedulingThresholds(thresholds),
+			expiresAt:  time.Now().Add(accountSchedulingThresholdsCacheTTL).UnixNano(),
+		})
+		return cloneAccountSchedulingThresholds(thresholds), nil
+	})
+	if err != nil {
+		return defaultAccountSchedulingThresholds()
+	}
+	if thresholds, ok := result.(map[string]int); ok {
+		return cloneAccountSchedulingThresholds(thresholds)
+	}
+	return defaultAccountSchedulingThresholds()
 }
 
 // GetAuthSourcePlatformQuotas 读取指定 auth source 的 platform quota 覆盖（仅返回有配置的平台，override 语义）。
