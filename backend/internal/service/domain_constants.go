@@ -548,6 +548,11 @@ const (
 
 	// SettingKeyStreamTimeoutSettings stores JSON config for stream timeout handling.
 	SettingKeyStreamTimeoutSettings = "stream_timeout_settings"
+	// SettingKeyCancelKimiUpstreamOnClientDisconnect controls whether an
+	// in-flight Kimi streaming request inherits the client cancellation signal.
+	// It is disabled by default so upgrades preserve usage draining and billing
+	// reconciliation.
+	SettingKeyCancelKimiUpstreamOnClientDisconnect = "cancel_kimi_upstream_on_client_disconnect"
 
 	// =========================
 	// Request Rectifier (请求整流器)

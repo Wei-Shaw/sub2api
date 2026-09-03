@@ -479,6 +479,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.EnableClientDatelineNormalization != after.EnableClientDatelineNormalization {
 		changed = append(changed, "enable_client_dateline_normalization")
 	}
+	if before.CancelKimiUpstreamOnClientDisconnect != after.CancelKimiUpstreamOnClientDisconnect {
+		changed = append(changed, "cancel_kimi_upstream_on_client_disconnect")
+	}
 	if before.AntigravityUserAgentVersion != after.AntigravityUserAgentVersion {
 		changed = append(changed, "antigravity_user_agent_version")
 	}

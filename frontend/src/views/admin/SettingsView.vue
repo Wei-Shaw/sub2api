@@ -5203,6 +5203,29 @@
               </p>
             </div>
             <div class="space-y-5 p-6">
+              <div class="space-y-3 border-b border-gray-100 pb-5 dark:border-dark-700">
+                <div class="flex items-center justify-between gap-6">
+                  <div>
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.gatewayForwarding.cancelUpstreamOnClientDisconnect") }}
+                    </label>
+                    <p class="mt-0.5 max-w-3xl text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.gatewayForwarding.cancelUpstreamOnClientDisconnectHint") }}
+                    </p>
+                  </div>
+                  <Toggle
+                    v-model="form.cancel_kimi_upstream_on_client_disconnect"
+                    data-testid="cancel-kimi-upstream-on-client-disconnect-toggle"
+                  />
+                </div>
+                <div
+                  v-if="form.cancel_kimi_upstream_on_client_disconnect"
+                  class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
+                  data-testid="cancel-kimi-upstream-billing-warning"
+                >
+                  {{ t("admin.settings.gatewayForwarding.cancelUpstreamOnClientDisconnectWarning") }}
+                </div>
+              </div>
               <div class="grid gap-5 border-b border-gray-100 pb-5 dark:border-dark-700 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
                 <div>
                   <label
@@ -9771,6 +9794,7 @@ const form = reactive<SettingsForm>({
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
   enable_client_dateline_normalization: true,
+  cancel_kimi_upstream_on_client_disconnect: false,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
   openai_codex_client_version: "",
@@ -11351,6 +11375,8 @@ async function saveSettings() {
       rewrite_message_cache_control: form.rewrite_message_cache_control,
       enable_client_dateline_normalization:
         form.enable_client_dateline_normalization,
+      cancel_kimi_upstream_on_client_disconnect:
+        form.cancel_kimi_upstream_on_client_disconnect,
       antigravity_user_agent_version:
         form.antigravity_user_agent_version?.trim() || "",
       openai_codex_user_agent:

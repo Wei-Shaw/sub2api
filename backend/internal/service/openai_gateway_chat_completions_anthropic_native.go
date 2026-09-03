@@ -110,7 +110,7 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 		proxyURL = account.Proxy.URL()
 	}
 
-	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
+	upstreamCtx, releaseUpstreamCtx := s.kimiStreamUpstreamContext(ctx, account, reqStream)
 	upstreamReq, _, err := s.buildNativeAnthropicUpstreamRequest(upstreamCtx, c, account, anthropicBody, apiKey, targetURL)
 	releaseUpstreamCtx()
 	if err != nil {
@@ -136,7 +136,7 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, billingModel)
 
 	if clientStream {
-		return s.handleCCStreamingFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime, includeUsage)
+		return s.handleCCStreamingFromNativeAnthropic(resp, c, account, originalModel, billingModel, upstreamModel, reasoningEffort, startTime, includeUsage)
 	}
 	return s.handleCCBufferedFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime)
 }
@@ -297,6 +297,7 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	resp *http.Response,
 	c *gin.Context,
+	account *Account,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
@@ -388,7 +389,7 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 		out := string(reverseToolNamesIfPresent(c, []byte(sse)))
 		if _, err := fmt.Fprint(c.Writer, out); err != nil {
 			clientDisconnected = true
-			return false
+			return s.closeKimiUpstreamAfterClientDisconnect(c, resp, account)
 		}
 		return false
 	}
@@ -418,7 +419,9 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 		for _, resEvt := range responsesEvents {
 			ccChunks := apicompat.ResponsesEventToChatChunks(&resEvt, ccState)
 			for _, chunk := range ccChunks {
-				writeChunk(chunk)
+				if writeChunk(chunk) {
+					return true
+				}
 			}
 		}
 		if len(responsesEvents) > 0 {
@@ -478,8 +481,12 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	}
 
 	if !clientDisconnected {
-		fmt.Fprint(c.Writer, "data: [DONE]\n\n") //nolint:errcheck
-		c.Writer.Flush()
+		if _, err := fmt.Fprint(c.Writer, "data: [DONE]\n\n"); err != nil {
+			clientDisconnected = true
+			s.closeKimiUpstreamAfterClientDisconnect(c, resp, account)
+		} else {
+			c.Writer.Flush()
+		}
 	}
 
 	return resultWithUsage(), nil

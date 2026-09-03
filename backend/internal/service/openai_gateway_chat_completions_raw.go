@@ -303,9 +303,11 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			for _, pending := range pendingLines {
 				if _, werr := c.Writer.WriteString(pending + "\n"); werr != nil {
 					clientDisconnected = true
-					logger.L().Debug("openai chat_completions raw: client disconnected, continuing to drain upstream for billing",
+					canceled := s.closeKimiUpstreamAfterClientDisconnect(c, resp, account)
+					logger.L().Debug("openai chat_completions raw: client disconnected",
 						zap.Error(werr),
 						zap.String("request_id", requestID),
+						zap.Bool("kimi_upstream_canceled", canceled),
 					)
 					return
 				}
@@ -315,9 +317,11 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		}
 		if _, werr := c.Writer.WriteString(line + "\n"); werr != nil {
 			clientDisconnected = true
-			logger.L().Debug("openai chat_completions raw: client disconnected, continuing to drain upstream for billing",
+			canceled := s.closeKimiUpstreamAfterClientDisconnect(c, resp, account)
+			logger.L().Debug("openai chat_completions raw: client disconnected",
 				zap.Error(werr),
 				zap.String("request_id", requestID),
+				zap.Bool("kimi_upstream_canceled", canceled),
 			)
 		}
 	}
@@ -422,6 +426,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			for _, pending := range pendingLines {
 				if _, werr := c.Writer.WriteString(pending + "\n"); werr != nil {
 					clientDisconnected = true
+					s.closeKimiUpstreamAfterClientDisconnect(c, resp, account)
 					logger.L().Debug("openai chat_completions raw: client disconnected during final flush",
 						zap.Error(werr),
 						zap.String("request_id", requestID),
