@@ -676,3 +676,147 @@ type refundQueryProviderTestDouble struct {
 func (p *refundQueryProviderTestDouble) QueryRefund(context.Context, payment.RefundQueryRequest) (*payment.RefundResponse, error) {
 	return p.refundResponse, nil
 }
+
+// TestPrepDeductSubtractsAlreadyDeductedBalance 覆盖 H2：
+// 上一轮退款已经扣走 60 却因回滚失败停在 REFUND_FAILED，重试时只应补扣 40。
+func TestPrepDeductSubtractsAlreadyDeductedBalance(t *testing.T) {
+	ctx := context.Background()
+
+	order := &dbent.PaymentOrder{
+		ID:                   7,
+		UserID:               42,
+		Amount:               100,
+		OrderType:            payment.OrderTypeBalance,
+		Status:               OrderStatusRefundFailed,
+		RefundDeductedAmount: 60,
+	}
+	repo := &mockUserRepo{getByIDUser: &User{ID: 42, Balance: 500}}
+	svc := &PaymentService{userRepo: repo}
+
+	plan := &RefundPlan{OrderID: order.ID, Order: order, RefundAmount: 100}
+	require.Nil(t, svc.prepDeduct(ctx, order, plan, false))
+	require.Equal(t, 40.0, plan.BalanceToDeduct)
+
+	// 已全额扣过的订单，重试不得再扣任何金额。
+	order.RefundDeductedAmount = 100
+	plan = &RefundPlan{OrderID: order.ID, Order: order, RefundAmount: 100}
+	require.Nil(t, svc.prepDeduct(ctx, order, plan, false))
+	require.Equal(t, 0.0, plan.BalanceToDeduct)
+}
+
+// TestExecuteRefundSkipsAlreadyDeductedAmountOnRetry 覆盖 H2 的并发/重试路径：
+// PrepareRefund 之后、CAS 之前另一位管理员已经扣过一轮，本次必须重读台账并只补差额。
+func TestExecuteRefundSkipsAlreadyDeductedAmountOnRetry(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	user, err := client.User.Create().
+		SetEmail("refund-ledger@example.com").
+		SetPasswordHash("hash").
+		SetUsername("refund-ledger").
+		Save(ctx)
+	require.NoError(t, err)
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(100).
+		SetPayAmount(100).
+		SetFeeRate(0).
+		SetRechargeCode("REFUND-LEDGER").
+		SetOutTradeNo("refund_ledger").
+		SetPaymentType(payment.TypeStripe).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusRefundFailed).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetPaidAt(time.Now()).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	// 模拟"另一位管理员刚刚扣走 100 但回滚失败"：台账记 100。
+	_, err = client.PaymentOrder.UpdateOneID(order.ID).SetRefundDeductedAmount(100).Save(ctx)
+	require.NoError(t, err)
+
+	deductCalls := 0
+	repo := &mockUserRepo{deductAvailableBalanceFn: func(_ context.Context, _ int64, amount float64) (float64, error) {
+		deductCalls++
+		return amount, nil
+	}}
+
+	// 计划仍带着 PrepareRefund 时的过期快照（BalanceToDeduct=100）。
+	plan := &RefundPlan{
+		OrderID: order.ID, Order: order, RefundAmount: 100, GatewayAmount: 100,
+		Reason: "retry", Force: true, DeductBalance: true,
+		DeductionType: payment.DeductionTypeBalance, BalanceToDeduct: 100,
+	}
+	result, err := (&PaymentService{entClient: client, userRepo: repo}).ExecuteRefund(ctx, plan)
+	require.NoError(t, err)
+	require.True(t, result.Success)
+	require.Zero(t, deductCalls, "balance must not be deducted a second time")
+	require.Equal(t, 0.0, plan.BalanceToDeduct)
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, 100.0, reloaded.RefundDeductedAmount)
+}
+
+// TestExecuteRefundRecordsDeductionLedger 断言扣减落地后台账被写入，
+// 且网关失败并成功回滚之后台账被冲销回 0。
+func TestExecuteRefundRecordsDeductionLedger(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	user, err := client.User.Create().
+		SetEmail("refund-ledger-write@example.com").
+		SetPasswordHash("hash").
+		SetUsername("refund-ledger-write").
+		Save(ctx)
+	require.NoError(t, err)
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(100).
+		SetPayAmount(100).
+		SetFeeRate(0).
+		SetRechargeCode("REFUND-LEDGER-WRITE").
+		SetOutTradeNo("refund_ledger_write").
+		SetPaymentType(payment.TypeStripe).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusCompleted).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetPaidAt(time.Now()).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	repo := &mockUserRepo{deductAvailableBalanceFn: func(_ context.Context, _ int64, amount float64) (float64, error) {
+		return amount, nil
+	}}
+	plan := &RefundPlan{
+		OrderID: order.ID, Order: order, RefundAmount: 100, GatewayAmount: 100,
+		Reason: "ledger", Force: true, DeductBalance: true,
+		DeductionType: payment.DeductionTypeBalance, BalanceToDeduct: 100,
+	}
+	svc := &PaymentService{entClient: client, userRepo: repo}
+	result, err := svc.ExecuteRefund(ctx, plan)
+	require.NoError(t, err)
+	require.True(t, result.Success)
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, 100.0, reloaded.RefundDeductedAmount)
+
+	// 回滚成功后台账必须冲销，否则下一次退款会少扣。
+	rollbackPlan := &RefundPlan{
+		OrderID: order.ID, Order: reloaded, RefundAmount: 100,
+		DeductionType: payment.DeductionTypeBalance, BalanceToDeduct: 100,
+	}
+	require.True(t, svc.RollbackRefund(ctx, rollbackPlan, nil))
+	reloaded, err = client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, 0.0, reloaded.RefundDeductedAmount)
+}

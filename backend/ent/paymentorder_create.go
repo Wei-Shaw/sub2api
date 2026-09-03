@@ -357,6 +357,34 @@ func (_c *PaymentOrderCreate) SetNillableRefundRequestedBy(v *string) *PaymentOr
 	return _c
 }
 
+// SetRefundDeductedAmount sets the "refund_deducted_amount" field.
+func (_c *PaymentOrderCreate) SetRefundDeductedAmount(v float64) *PaymentOrderCreate {
+	_c.mutation.SetRefundDeductedAmount(v)
+	return _c
+}
+
+// SetNillableRefundDeductedAmount sets the "refund_deducted_amount" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableRefundDeductedAmount(v *float64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetRefundDeductedAmount(*v)
+	}
+	return _c
+}
+
+// SetRefundDeductedSubDays sets the "refund_deducted_sub_days" field.
+func (_c *PaymentOrderCreate) SetRefundDeductedSubDays(v int) *PaymentOrderCreate {
+	_c.mutation.SetRefundDeductedSubDays(v)
+	return _c
+}
+
+// SetNillableRefundDeductedSubDays sets the "refund_deducted_sub_days" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableRefundDeductedSubDays(v *int) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetRefundDeductedSubDays(*v)
+	}
+	return _c
+}
+
 // SetExpiresAt sets the "expires_at" field.
 func (_c *PaymentOrderCreate) SetExpiresAt(v time.Time) *PaymentOrderCreate {
 	_c.mutation.SetExpiresAt(v)
@@ -537,6 +565,14 @@ func (_c *PaymentOrderCreate) defaults() {
 		v := paymentorder.DefaultForceRefund
 		_c.mutation.SetForceRefund(v)
 	}
+	if _, ok := _c.mutation.RefundDeductedAmount(); !ok {
+		v := paymentorder.DefaultRefundDeductedAmount
+		_c.mutation.SetRefundDeductedAmount(v)
+	}
+	if _, ok := _c.mutation.RefundDeductedSubDays(); !ok {
+		v := paymentorder.DefaultRefundDeductedSubDays
+		_c.mutation.SetRefundDeductedSubDays(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := paymentorder.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -645,6 +681,12 @@ func (_c *PaymentOrderCreate) check() error {
 		if err := paymentorder.RefundRequestedByValidator(v); err != nil {
 			return &ValidationError{Name: "refund_requested_by", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.refund_requested_by": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.RefundDeductedAmount(); !ok {
+		return &ValidationError{Name: "refund_deducted_amount", err: errors.New(`ent: missing required field "PaymentOrder.refund_deducted_amount"`)}
+	}
+	if _, ok := _c.mutation.RefundDeductedSubDays(); !ok {
+		return &ValidationError{Name: "refund_deducted_sub_days", err: errors.New(`ent: missing required field "PaymentOrder.refund_deducted_sub_days"`)}
 	}
 	if _, ok := _c.mutation.ExpiresAt(); !ok {
 		return &ValidationError{Name: "expires_at", err: errors.New(`ent: missing required field "PaymentOrder.expires_at"`)}
@@ -812,6 +854,14 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.RefundRequestedBy(); ok {
 		_spec.SetField(paymentorder.FieldRefundRequestedBy, field.TypeString, value)
 		_node.RefundRequestedBy = &value
+	}
+	if value, ok := _c.mutation.RefundDeductedAmount(); ok {
+		_spec.SetField(paymentorder.FieldRefundDeductedAmount, field.TypeFloat64, value)
+		_node.RefundDeductedAmount = value
+	}
+	if value, ok := _c.mutation.RefundDeductedSubDays(); ok {
+		_spec.SetField(paymentorder.FieldRefundDeductedSubDays, field.TypeInt, value)
+		_node.RefundDeductedSubDays = value
 	}
 	if value, ok := _c.mutation.ExpiresAt(); ok {
 		_spec.SetField(paymentorder.FieldExpiresAt, field.TypeTime, value)
@@ -1399,6 +1449,42 @@ func (u *PaymentOrderUpsert) UpdateRefundRequestedBy() *PaymentOrderUpsert {
 // ClearRefundRequestedBy clears the value of the "refund_requested_by" field.
 func (u *PaymentOrderUpsert) ClearRefundRequestedBy() *PaymentOrderUpsert {
 	u.SetNull(paymentorder.FieldRefundRequestedBy)
+	return u
+}
+
+// SetRefundDeductedAmount sets the "refund_deducted_amount" field.
+func (u *PaymentOrderUpsert) SetRefundDeductedAmount(v float64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldRefundDeductedAmount, v)
+	return u
+}
+
+// UpdateRefundDeductedAmount sets the "refund_deducted_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateRefundDeductedAmount() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldRefundDeductedAmount)
+	return u
+}
+
+// AddRefundDeductedAmount adds v to the "refund_deducted_amount" field.
+func (u *PaymentOrderUpsert) AddRefundDeductedAmount(v float64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldRefundDeductedAmount, v)
+	return u
+}
+
+// SetRefundDeductedSubDays sets the "refund_deducted_sub_days" field.
+func (u *PaymentOrderUpsert) SetRefundDeductedSubDays(v int) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldRefundDeductedSubDays, v)
+	return u
+}
+
+// UpdateRefundDeductedSubDays sets the "refund_deducted_sub_days" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateRefundDeductedSubDays() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldRefundDeductedSubDays)
+	return u
+}
+
+// AddRefundDeductedSubDays adds v to the "refund_deducted_sub_days" field.
+func (u *PaymentOrderUpsert) AddRefundDeductedSubDays(v int) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldRefundDeductedSubDays, v)
 	return u
 }
 
@@ -2142,6 +2228,48 @@ func (u *PaymentOrderUpsertOne) UpdateRefundRequestedBy() *PaymentOrderUpsertOne
 func (u *PaymentOrderUpsertOne) ClearRefundRequestedBy() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearRefundRequestedBy()
+	})
+}
+
+// SetRefundDeductedAmount sets the "refund_deducted_amount" field.
+func (u *PaymentOrderUpsertOne) SetRefundDeductedAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetRefundDeductedAmount(v)
+	})
+}
+
+// AddRefundDeductedAmount adds v to the "refund_deducted_amount" field.
+func (u *PaymentOrderUpsertOne) AddRefundDeductedAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddRefundDeductedAmount(v)
+	})
+}
+
+// UpdateRefundDeductedAmount sets the "refund_deducted_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateRefundDeductedAmount() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateRefundDeductedAmount()
+	})
+}
+
+// SetRefundDeductedSubDays sets the "refund_deducted_sub_days" field.
+func (u *PaymentOrderUpsertOne) SetRefundDeductedSubDays(v int) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetRefundDeductedSubDays(v)
+	})
+}
+
+// AddRefundDeductedSubDays adds v to the "refund_deducted_sub_days" field.
+func (u *PaymentOrderUpsertOne) AddRefundDeductedSubDays(v int) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddRefundDeductedSubDays(v)
+	})
+}
+
+// UpdateRefundDeductedSubDays sets the "refund_deducted_sub_days" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateRefundDeductedSubDays() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateRefundDeductedSubDays()
 	})
 }
 
@@ -3074,6 +3202,48 @@ func (u *PaymentOrderUpsertBulk) UpdateRefundRequestedBy() *PaymentOrderUpsertBu
 func (u *PaymentOrderUpsertBulk) ClearRefundRequestedBy() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearRefundRequestedBy()
+	})
+}
+
+// SetRefundDeductedAmount sets the "refund_deducted_amount" field.
+func (u *PaymentOrderUpsertBulk) SetRefundDeductedAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetRefundDeductedAmount(v)
+	})
+}
+
+// AddRefundDeductedAmount adds v to the "refund_deducted_amount" field.
+func (u *PaymentOrderUpsertBulk) AddRefundDeductedAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddRefundDeductedAmount(v)
+	})
+}
+
+// UpdateRefundDeductedAmount sets the "refund_deducted_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateRefundDeductedAmount() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateRefundDeductedAmount()
+	})
+}
+
+// SetRefundDeductedSubDays sets the "refund_deducted_sub_days" field.
+func (u *PaymentOrderUpsertBulk) SetRefundDeductedSubDays(v int) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetRefundDeductedSubDays(v)
+	})
+}
+
+// AddRefundDeductedSubDays adds v to the "refund_deducted_sub_days" field.
+func (u *PaymentOrderUpsertBulk) AddRefundDeductedSubDays(v int) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddRefundDeductedSubDays(v)
+	})
+}
+
+// UpdateRefundDeductedSubDays sets the "refund_deducted_sub_days" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateRefundDeductedSubDays() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateRefundDeductedSubDays()
 	})
 }
 

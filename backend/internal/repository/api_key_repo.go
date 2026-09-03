@@ -13,6 +13,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -37,6 +38,29 @@ func newAPIKeyRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *apiKeyR
 	return &apiKeyRepository{client: client, sql: sqlq}
 }
 
+// apiKeyCredentialPredicate 构造"凭据 -> 行"的查询条件。
+//
+// 主路径只比对摘要：WHERE key_hash <> '' AND key_hash = $1。
+// 显式带上 key_hash <> '' 是必须的——migrations/239 建的是部分唯一索引
+// （UNIQUE ... WHERE key_hash <> ''），参数化的 key_hash = $1 无法蕴含索引
+// 谓词，规划器不会选中该索引，热路径会退化成顺序扫描。
+//
+// 第二个分支是两阶段迁移第 1 阶段专用的兼容路径：滚动升级窗口里，尚未替换的
+// 老版本二进制插入 api_keys 时不写 key_hash，该行的 key_hash 是 DEFAULT ''，
+// 只按摘要查会让这些 Key 直接认证失败。用 OR 而不是"查不到再补一次查询"，
+// 是因为无效 Key 是攻击者可控的高基数输入，未命中路径上再发一次查询会把
+// 撞库扫描的数据库开销直接翻倍。两个分支各自走唯一索引，规划器用
+// BitmapOr 合并，仍是索引扫描。
+//
+// 第 2 阶段删除明文 key 列时，这里连同 legacy 分支一起去掉。
+func apiKeyCredentialPredicate(key string) predicate.APIKey {
+	hash := service.HashAPIKeyCredential(key)
+	return apikey.Or(
+		apikey.And(apikey.KeyHashNEQ(""), apikey.KeyHashEQ(hash)),
+		apikey.And(apikey.KeyHashEQ(""), apikey.KeyEQ(key)),
+	)
+}
+
 func (r *apiKeyRepository) activeQuery() *dbent.APIKeyQuery {
 	// 默认过滤已软删除记录，避免删除后仍被查询到。
 	return r.client.APIKey.Query().Where(apikey.DeletedAtIsNil())
@@ -46,6 +70,8 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 	builder := r.client.APIKey.Create().
 		SetUserID(key.UserID).
 		SetKey(key.Key).
+		// key_hash 与明文 key 同时写入：认证查询只认摘要列。
+		SetKeyHash(service.HashAPIKeyCredential(key.Key)).
 		SetName(key.Name).
 		SetStatus(key.Status).
 		SetNillableGroupID(key.GroupID).
@@ -110,7 +136,7 @@ func (r *apiKeyRepository) GetKeyAndOwnerID(ctx context.Context, id int64) (stri
 
 func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.APIKey, error) {
 	m, err := r.activeQuery().
-		Where(apikey.KeyEQ(key)).
+		Where(apiKeyCredentialPredicate(key)).
 		WithUser(func(q *dbent.UserQuery) {
 			q.WithAllowedGroups(func(gq *dbent.GroupQuery) {
 				gq.Select(group.FieldID)
@@ -129,7 +155,7 @@ func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.A
 
 func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {
 	m, err := r.activeQuery().
-		Where(apikey.KeyEQ(key)).
+		Where(apiKeyCredentialPredicate(key)).
 		Select(
 			apikey.FieldID,
 			apikey.FieldUserID,
@@ -351,6 +377,9 @@ func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
 	affected, err := r.client.APIKey.Update().
 		Where(apikey.IDEQ(id), apikey.DeletedAtIsNil()).
 		SetKey(tombstoneKey).
+		// 墓碑同时改写 key_hash：两列都带唯一约束，只换其中一列会在
+		// 重复删除/重建同名 Key 时撞唯一索引。
+		SetKeyHash(service.HashAPIKeyCredential(tombstoneKey)).
 		SetDeletedAt(time.Now()).
 		Save(ctx)
 	if err != nil {
@@ -407,8 +436,8 @@ func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error 
 func (r *apiKeyRepository) deleteWithTombstone(ctx context.Context, exec *dbent.Client, id int64, tombstoneKey string) error {
 	res, err := exec.ExecContext(ctx, `
 		UPDATE api_keys
-		SET key = $1, deleted_at = NOW(), updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL`, tombstoneKey, id)
+		SET key = $1, key_hash = $2, deleted_at = NOW(), updated_at = NOW()
+		WHERE id = $3 AND deleted_at IS NULL`, tombstoneKey, service.HashAPIKeyCredential(tombstoneKey), id)
 	if err != nil {
 		return err
 	}
@@ -615,7 +644,7 @@ func (r *apiKeyRepository) CountByUserID(ctx context.Context, userID int64) (int
 }
 
 func (r *apiKeyRepository) ExistsByKey(ctx context.Context, key string) (bool, error) {
-	count, err := r.activeQuery().Where(apikey.KeyEQ(key)).Count(ctx)
+	count, err := r.activeQuery().Where(apiKeyCredentialPredicate(key)).Count(ctx)
 	return count > 0, err
 }
 
@@ -876,6 +905,7 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		ID:            m.ID,
 		UserID:        m.UserID,
 		Key:           m.Key,
+		KeyHash:       m.KeyHash,
 		Name:          m.Name,
 		Status:        m.Status,
 		IPWhitelist:   m.IPWhitelist,

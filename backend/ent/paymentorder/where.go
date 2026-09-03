@@ -195,6 +195,16 @@ func RefundRequestedBy(v string) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldRefundRequestedBy, v))
 }
 
+// RefundDeductedAmount applies equality check predicate on the "refund_deducted_amount" field. It's identical to RefundDeductedAmountEQ.
+func RefundDeductedAmount(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldRefundDeductedAmount, v))
+}
+
+// RefundDeductedSubDays applies equality check predicate on the "refund_deducted_sub_days" field. It's identical to RefundDeductedSubDaysEQ.
+func RefundDeductedSubDays(v int) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldRefundDeductedSubDays, v))
+}
+
 // ExpiresAt applies equality check predicate on the "expires_at" field. It's identical to ExpiresAtEQ.
 func ExpiresAt(v time.Time) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldExpiresAt, v))
@@ -1888,6 +1898,86 @@ func RefundRequestedByEqualFold(v string) predicate.PaymentOrder {
 // RefundRequestedByContainsFold applies the ContainsFold predicate on the "refund_requested_by" field.
 func RefundRequestedByContainsFold(v string) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldContainsFold(FieldRefundRequestedBy, v))
+}
+
+// RefundDeductedAmountEQ applies the EQ predicate on the "refund_deducted_amount" field.
+func RefundDeductedAmountEQ(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldRefundDeductedAmount, v))
+}
+
+// RefundDeductedAmountNEQ applies the NEQ predicate on the "refund_deducted_amount" field.
+func RefundDeductedAmountNEQ(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNEQ(FieldRefundDeductedAmount, v))
+}
+
+// RefundDeductedAmountIn applies the In predicate on the "refund_deducted_amount" field.
+func RefundDeductedAmountIn(vs ...float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIn(FieldRefundDeductedAmount, vs...))
+}
+
+// RefundDeductedAmountNotIn applies the NotIn predicate on the "refund_deducted_amount" field.
+func RefundDeductedAmountNotIn(vs ...float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotIn(FieldRefundDeductedAmount, vs...))
+}
+
+// RefundDeductedAmountGT applies the GT predicate on the "refund_deducted_amount" field.
+func RefundDeductedAmountGT(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGT(FieldRefundDeductedAmount, v))
+}
+
+// RefundDeductedAmountGTE applies the GTE predicate on the "refund_deducted_amount" field.
+func RefundDeductedAmountGTE(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGTE(FieldRefundDeductedAmount, v))
+}
+
+// RefundDeductedAmountLT applies the LT predicate on the "refund_deducted_amount" field.
+func RefundDeductedAmountLT(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLT(FieldRefundDeductedAmount, v))
+}
+
+// RefundDeductedAmountLTE applies the LTE predicate on the "refund_deducted_amount" field.
+func RefundDeductedAmountLTE(v float64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLTE(FieldRefundDeductedAmount, v))
+}
+
+// RefundDeductedSubDaysEQ applies the EQ predicate on the "refund_deducted_sub_days" field.
+func RefundDeductedSubDaysEQ(v int) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldRefundDeductedSubDays, v))
+}
+
+// RefundDeductedSubDaysNEQ applies the NEQ predicate on the "refund_deducted_sub_days" field.
+func RefundDeductedSubDaysNEQ(v int) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNEQ(FieldRefundDeductedSubDays, v))
+}
+
+// RefundDeductedSubDaysIn applies the In predicate on the "refund_deducted_sub_days" field.
+func RefundDeductedSubDaysIn(vs ...int) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIn(FieldRefundDeductedSubDays, vs...))
+}
+
+// RefundDeductedSubDaysNotIn applies the NotIn predicate on the "refund_deducted_sub_days" field.
+func RefundDeductedSubDaysNotIn(vs ...int) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotIn(FieldRefundDeductedSubDays, vs...))
+}
+
+// RefundDeductedSubDaysGT applies the GT predicate on the "refund_deducted_sub_days" field.
+func RefundDeductedSubDaysGT(v int) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGT(FieldRefundDeductedSubDays, v))
+}
+
+// RefundDeductedSubDaysGTE applies the GTE predicate on the "refund_deducted_sub_days" field.
+func RefundDeductedSubDaysGTE(v int) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGTE(FieldRefundDeductedSubDays, v))
+}
+
+// RefundDeductedSubDaysLT applies the LT predicate on the "refund_deducted_sub_days" field.
+func RefundDeductedSubDaysLT(v int) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLT(FieldRefundDeductedSubDays, v))
+}
+
+// RefundDeductedSubDaysLTE applies the LTE predicate on the "refund_deducted_sub_days" field.
+func RefundDeductedSubDaysLTE(v int) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLTE(FieldRefundDeductedSubDays, v))
 }
 
 // ExpiresAtEQ applies the EQ predicate on the "expires_at" field.

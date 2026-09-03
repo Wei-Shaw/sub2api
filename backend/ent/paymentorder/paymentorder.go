@@ -72,6 +72,10 @@ const (
 	FieldRefundRequestReason = "refund_request_reason"
 	// FieldRefundRequestedBy holds the string denoting the refund_requested_by field in the database.
 	FieldRefundRequestedBy = "refund_requested_by"
+	// FieldRefundDeductedAmount holds the string denoting the refund_deducted_amount field in the database.
+	FieldRefundDeductedAmount = "refund_deducted_amount"
+	// FieldRefundDeductedSubDays holds the string denoting the refund_deducted_sub_days field in the database.
+	FieldRefundDeductedSubDays = "refund_deducted_sub_days"
 	// FieldExpiresAt holds the string denoting the expires_at field in the database.
 	FieldExpiresAt = "expires_at"
 	// FieldPaidAt holds the string denoting the paid_at field in the database.
@@ -137,6 +141,8 @@ var Columns = []string{
 	FieldRefundRequestedAt,
 	FieldRefundRequestReason,
 	FieldRefundRequestedBy,
+	FieldRefundDeductedAmount,
+	FieldRefundDeductedSubDays,
 	FieldExpiresAt,
 	FieldPaidAt,
 	FieldCompletedAt,
@@ -194,6 +200,10 @@ var (
 	DefaultForceRefund bool
 	// RefundRequestedByValidator is a validator for the "refund_requested_by" field. It is called by the builders before save.
 	RefundRequestedByValidator func(string) error
+	// DefaultRefundDeductedAmount holds the default value on creation for the "refund_deducted_amount" field.
+	DefaultRefundDeductedAmount float64
+	// DefaultRefundDeductedSubDays holds the default value on creation for the "refund_deducted_sub_days" field.
+	DefaultRefundDeductedSubDays int
 	// ClientIPValidator is a validator for the "client_ip" field. It is called by the builders before save.
 	ClientIPValidator func(string) error
 	// SrcHostValidator is a validator for the "src_host" field. It is called by the builders before save.
@@ -352,6 +362,16 @@ func ByRefundRequestReason(opts ...sql.OrderTermOption) OrderOption {
 // ByRefundRequestedBy orders the results by the refund_requested_by field.
 func ByRefundRequestedBy(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRefundRequestedBy, opts...).ToFunc()
+}
+
+// ByRefundDeductedAmount orders the results by the refund_deducted_amount field.
+func ByRefundDeductedAmount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRefundDeductedAmount, opts...).ToFunc()
+}
+
+// ByRefundDeductedSubDays orders the results by the refund_deducted_sub_days field.
+func ByRefundDeductedSubDays(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRefundDeductedSubDays, opts...).ToFunc()
 }
 
 // ByExpiresAt orders the results by the expires_at field.

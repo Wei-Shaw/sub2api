@@ -86,6 +86,20 @@ func (_u *APIKeyUpdate) SetNillableKey(v *string) *APIKeyUpdate {
 	return _u
 }
 
+// SetKeyHash sets the "key_hash" field.
+func (_u *APIKeyUpdate) SetKeyHash(v string) *APIKeyUpdate {
+	_u.mutation.SetKeyHash(v)
+	return _u
+}
+
+// SetNillableKeyHash sets the "key_hash" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableKeyHash(v *string) *APIKeyUpdate {
+	if v != nil {
+		_u.SetKeyHash(*v)
+	}
+	return _u
+}
+
 // SetName sets the "name" field.
 func (_u *APIKeyUpdate) SetName(v string) *APIKeyUpdate {
 	_u.mutation.SetName(v)
@@ -550,6 +564,11 @@ func (_u *APIKeyUpdate) check() error {
 			return &ValidationError{Name: "key", err: fmt.Errorf(`ent: validator failed for field "APIKey.key": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.KeyHash(); ok {
+		if err := apikey.KeyHashValidator(v); err != nil {
+			return &ValidationError{Name: "key_hash", err: fmt.Errorf(`ent: validator failed for field "APIKey.key_hash": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Name(); ok {
 		if err := apikey.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "APIKey.name": %w`, err)}
@@ -589,6 +608,9 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Key(); ok {
 		_spec.SetField(apikey.FieldKey, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.KeyHash(); ok {
+		_spec.SetField(apikey.FieldKeyHash, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(apikey.FieldName, field.TypeString, value)
@@ -869,6 +891,20 @@ func (_u *APIKeyUpdateOne) SetKey(v string) *APIKeyUpdateOne {
 func (_u *APIKeyUpdateOne) SetNillableKey(v *string) *APIKeyUpdateOne {
 	if v != nil {
 		_u.SetKey(*v)
+	}
+	return _u
+}
+
+// SetKeyHash sets the "key_hash" field.
+func (_u *APIKeyUpdateOne) SetKeyHash(v string) *APIKeyUpdateOne {
+	_u.mutation.SetKeyHash(v)
+	return _u
+}
+
+// SetNillableKeyHash sets the "key_hash" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableKeyHash(v *string) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetKeyHash(*v)
 	}
 	return _u
 }
@@ -1350,6 +1386,11 @@ func (_u *APIKeyUpdateOne) check() error {
 			return &ValidationError{Name: "key", err: fmt.Errorf(`ent: validator failed for field "APIKey.key": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.KeyHash(); ok {
+		if err := apikey.KeyHashValidator(v); err != nil {
+			return &ValidationError{Name: "key_hash", err: fmt.Errorf(`ent: validator failed for field "APIKey.key_hash": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Name(); ok {
 		if err := apikey.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "APIKey.name": %w`, err)}
@@ -1406,6 +1447,9 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if value, ok := _u.mutation.Key(); ok {
 		_spec.SetField(apikey.FieldKey, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.KeyHash(); ok {
+		_spec.SetField(apikey.FieldKeyHash, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(apikey.FieldName, field.TypeString, value)

@@ -1102,6 +1102,7 @@ func (s *adminServiceImpl) GetGroupAPIKeys(ctx context.Context, groupID int64, p
 	if err != nil {
 		return nil, 0, err
 	}
+	maskAPIKeyCredentials(keys)
 	return keys, result.Total, nil
 }
 

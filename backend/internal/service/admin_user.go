@@ -607,7 +607,20 @@ func (s *adminServiceImpl) GetUserAPIKeys(ctx context.Context, userID int64, pag
 	if err != nil {
 		return nil, 0, err
 	}
+	maskAPIKeyCredentials(keys)
 	return keys, result.Total, nil
+}
+
+// maskAPIKeyCredentials 就地把管理端列表里的完整 Key 换成掩码。
+//
+// 管理员不需要看到别人的完整凭据，而完整 Key 一旦写进 HTTP 响应，就同时
+// 落在浏览器网络面板、前端组件状态和沿途日志里——前端再用 substring 遮一遍
+// 也拿不掉响应体里的原文。因此在离开 service 之前就换掉。
+func maskAPIKeyCredentials(keys []APIKey) {
+	for i := range keys {
+		keys[i].Key = MaskAPIKeyCredential(keys[i].Key)
+		keys[i].KeyHash = ""
+	}
 }
 
 func (s *adminServiceImpl) GetUserRPMStatus(ctx context.Context, userID int64) (*UserRPMStatus, error) {

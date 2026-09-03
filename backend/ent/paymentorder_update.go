@@ -566,6 +566,48 @@ func (_u *PaymentOrderUpdate) ClearRefundRequestedBy() *PaymentOrderUpdate {
 	return _u
 }
 
+// SetRefundDeductedAmount sets the "refund_deducted_amount" field.
+func (_u *PaymentOrderUpdate) SetRefundDeductedAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.ResetRefundDeductedAmount()
+	_u.mutation.SetRefundDeductedAmount(v)
+	return _u
+}
+
+// SetNillableRefundDeductedAmount sets the "refund_deducted_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableRefundDeductedAmount(v *float64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetRefundDeductedAmount(*v)
+	}
+	return _u
+}
+
+// AddRefundDeductedAmount adds value to the "refund_deducted_amount" field.
+func (_u *PaymentOrderUpdate) AddRefundDeductedAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.AddRefundDeductedAmount(v)
+	return _u
+}
+
+// SetRefundDeductedSubDays sets the "refund_deducted_sub_days" field.
+func (_u *PaymentOrderUpdate) SetRefundDeductedSubDays(v int) *PaymentOrderUpdate {
+	_u.mutation.ResetRefundDeductedSubDays()
+	_u.mutation.SetRefundDeductedSubDays(v)
+	return _u
+}
+
+// SetNillableRefundDeductedSubDays sets the "refund_deducted_sub_days" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableRefundDeductedSubDays(v *int) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetRefundDeductedSubDays(*v)
+	}
+	return _u
+}
+
+// AddRefundDeductedSubDays adds value to the "refund_deducted_sub_days" field.
+func (_u *PaymentOrderUpdate) AddRefundDeductedSubDays(v int) *PaymentOrderUpdate {
+	_u.mutation.AddRefundDeductedSubDays(v)
+	return _u
+}
+
 // SetExpiresAt sets the "expires_at" field.
 func (_u *PaymentOrderUpdate) SetExpiresAt(v time.Time) *PaymentOrderUpdate {
 	_u.mutation.SetExpiresAt(v)
@@ -1000,6 +1042,18 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if _u.mutation.RefundRequestedByCleared() {
 		_spec.ClearField(paymentorder.FieldRefundRequestedBy, field.TypeString)
+	}
+	if value, ok := _u.mutation.RefundDeductedAmount(); ok {
+		_spec.SetField(paymentorder.FieldRefundDeductedAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedRefundDeductedAmount(); ok {
+		_spec.AddField(paymentorder.FieldRefundDeductedAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.RefundDeductedSubDays(); ok {
+		_spec.SetField(paymentorder.FieldRefundDeductedSubDays, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedRefundDeductedSubDays(); ok {
+		_spec.AddField(paymentorder.FieldRefundDeductedSubDays, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.ExpiresAt(); ok {
 		_spec.SetField(paymentorder.FieldExpiresAt, field.TypeTime, value)
@@ -1629,6 +1683,48 @@ func (_u *PaymentOrderUpdateOne) ClearRefundRequestedBy() *PaymentOrderUpdateOne
 	return _u
 }
 
+// SetRefundDeductedAmount sets the "refund_deducted_amount" field.
+func (_u *PaymentOrderUpdateOne) SetRefundDeductedAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetRefundDeductedAmount()
+	_u.mutation.SetRefundDeductedAmount(v)
+	return _u
+}
+
+// SetNillableRefundDeductedAmount sets the "refund_deducted_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableRefundDeductedAmount(v *float64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetRefundDeductedAmount(*v)
+	}
+	return _u
+}
+
+// AddRefundDeductedAmount adds value to the "refund_deducted_amount" field.
+func (_u *PaymentOrderUpdateOne) AddRefundDeductedAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.AddRefundDeductedAmount(v)
+	return _u
+}
+
+// SetRefundDeductedSubDays sets the "refund_deducted_sub_days" field.
+func (_u *PaymentOrderUpdateOne) SetRefundDeductedSubDays(v int) *PaymentOrderUpdateOne {
+	_u.mutation.ResetRefundDeductedSubDays()
+	_u.mutation.SetRefundDeductedSubDays(v)
+	return _u
+}
+
+// SetNillableRefundDeductedSubDays sets the "refund_deducted_sub_days" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableRefundDeductedSubDays(v *int) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetRefundDeductedSubDays(*v)
+	}
+	return _u
+}
+
+// AddRefundDeductedSubDays adds value to the "refund_deducted_sub_days" field.
+func (_u *PaymentOrderUpdateOne) AddRefundDeductedSubDays(v int) *PaymentOrderUpdateOne {
+	_u.mutation.AddRefundDeductedSubDays(v)
+	return _u
+}
+
 // SetExpiresAt sets the "expires_at" field.
 func (_u *PaymentOrderUpdateOne) SetExpiresAt(v time.Time) *PaymentOrderUpdateOne {
 	_u.mutation.SetExpiresAt(v)
@@ -2093,6 +2189,18 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	}
 	if _u.mutation.RefundRequestedByCleared() {
 		_spec.ClearField(paymentorder.FieldRefundRequestedBy, field.TypeString)
+	}
+	if value, ok := _u.mutation.RefundDeductedAmount(); ok {
+		_spec.SetField(paymentorder.FieldRefundDeductedAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedRefundDeductedAmount(); ok {
+		_spec.AddField(paymentorder.FieldRefundDeductedAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.RefundDeductedSubDays(); ok {
+		_spec.SetField(paymentorder.FieldRefundDeductedSubDays, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedRefundDeductedSubDays(); ok {
+		_spec.AddField(paymentorder.FieldRefundDeductedSubDays, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.ExpiresAt(); ok {
 		_spec.SetField(paymentorder.FieldExpiresAt, field.TypeTime, value)

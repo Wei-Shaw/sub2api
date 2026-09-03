@@ -79,6 +79,20 @@ func (_c *APIKeyCreate) SetKey(v string) *APIKeyCreate {
 	return _c
 }
 
+// SetKeyHash sets the "key_hash" field.
+func (_c *APIKeyCreate) SetKeyHash(v string) *APIKeyCreate {
+	_c.mutation.SetKeyHash(v)
+	return _c
+}
+
+// SetNillableKeyHash sets the "key_hash" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableKeyHash(v *string) *APIKeyCreate {
+	if v != nil {
+		_c.SetKeyHash(*v)
+	}
+	return _c
+}
+
 // SetName sets the "name" field.
 func (_c *APIKeyCreate) SetName(v string) *APIKeyCreate {
 	_c.mutation.SetName(v)
@@ -383,6 +397,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.KeyHash(); !ok {
+		v := apikey.DefaultKeyHash
+		_c.mutation.SetKeyHash(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := apikey.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -439,6 +457,14 @@ func (_c *APIKeyCreate) check() error {
 	if v, ok := _c.mutation.Key(); ok {
 		if err := apikey.KeyValidator(v); err != nil {
 			return &ValidationError{Name: "key", err: fmt.Errorf(`ent: validator failed for field "APIKey.key": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.KeyHash(); !ok {
+		return &ValidationError{Name: "key_hash", err: errors.New(`ent: missing required field "APIKey.key_hash"`)}
+	}
+	if v, ok := _c.mutation.KeyHash(); ok {
+		if err := apikey.KeyHashValidator(v); err != nil {
+			return &ValidationError{Name: "key_hash", err: fmt.Errorf(`ent: validator failed for field "APIKey.key_hash": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Name(); !ok {
@@ -526,6 +552,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Key(); ok {
 		_spec.SetField(apikey.FieldKey, field.TypeString, value)
 		_node.Key = value
+	}
+	if value, ok := _c.mutation.KeyHash(); ok {
+		_spec.SetField(apikey.FieldKeyHash, field.TypeString, value)
+		_node.KeyHash = value
 	}
 	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(apikey.FieldName, field.TypeString, value)
@@ -748,6 +778,18 @@ func (u *APIKeyUpsert) SetKey(v string) *APIKeyUpsert {
 // UpdateKey sets the "key" field to the value that was provided on create.
 func (u *APIKeyUpsert) UpdateKey() *APIKeyUpsert {
 	u.SetExcluded(apikey.FieldKey)
+	return u
+}
+
+// SetKeyHash sets the "key_hash" field.
+func (u *APIKeyUpsert) SetKeyHash(v string) *APIKeyUpsert {
+	u.Set(apikey.FieldKeyHash, v)
+	return u
+}
+
+// UpdateKeyHash sets the "key_hash" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateKeyHash() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldKeyHash)
 	return u
 }
 
@@ -1168,6 +1210,20 @@ func (u *APIKeyUpsertOne) SetKey(v string) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateKey() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateKey()
+	})
+}
+
+// SetKeyHash sets the "key_hash" field.
+func (u *APIKeyUpsertOne) SetKeyHash(v string) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetKeyHash(v)
+	})
+}
+
+// UpdateKeyHash sets the "key_hash" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateKeyHash() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateKeyHash()
 	})
 }
 
@@ -1806,6 +1862,20 @@ func (u *APIKeyUpsertBulk) SetKey(v string) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateKey() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateKey()
+	})
+}
+
+// SetKeyHash sets the "key_hash" field.
+func (u *APIKeyUpsertBulk) SetKeyHash(v string) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetKeyHash(v)
+	})
+}
+
+// UpdateKeyHash sets the "key_hash" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateKeyHash() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateKeyHash()
 	})
 }
 

@@ -131,6 +131,24 @@ func (PaymentOrder) Fields() []ent.Field {
 			Nillable().
 			MaxLen(20),
 
+		// 退款扣减台账（幂等重试用）
+		//
+		// 退款流程会先从用户余额（或订阅天数）里扣回本次退款额，再调用网关。
+		// 网关失败且回滚也失败时订单停在 REFUND_FAILED，而 REFUND_FAILED 仍在
+		// PrepareRefund 允许重试的状态集合里——若不记账，管理员再点一次退款就会
+		// 把同一笔钱扣第二遍。这两列记录"当前订单上已经落地、尚未回滚的扣减量"，
+		// prepDeduct 用它算出本次只需补扣的差额。
+		//
+		// 语义：扣减成功后累加，回滚成功后递减；退款终态（REFUNDED /
+		// PARTIALLY_REFUNDED）保留最终值作为审计留痕。
+		field.Float("refund_deducted_amount").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
+			Default(0).
+			Comment("Balance already deducted for this order's refund and not yet rolled back"),
+		field.Int("refund_deducted_sub_days").
+			Default(0).
+			Comment("Subscription days already deducted for this order's refund and not yet rolled back"),
+
 		// 时间节点
 		field.Time("expires_at").
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),

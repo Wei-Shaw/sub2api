@@ -77,6 +77,10 @@ type PaymentOrder struct {
 	RefundRequestReason *string `json:"refund_request_reason,omitempty"`
 	// RefundRequestedBy holds the value of the "refund_requested_by" field.
 	RefundRequestedBy *string `json:"refund_requested_by,omitempty"`
+	// Balance already deducted for this order's refund and not yet rolled back
+	RefundDeductedAmount float64 `json:"refund_deducted_amount,omitempty"`
+	// Subscription days already deducted for this order's refund and not yet rolled back
+	RefundDeductedSubDays int `json:"refund_deducted_sub_days,omitempty"`
 	// ExpiresAt holds the value of the "expires_at" field.
 	ExpiresAt time.Time `json:"expires_at,omitempty"`
 	// PaidAt holds the value of the "paid_at" field.
@@ -132,9 +136,9 @@ func (*PaymentOrder) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case paymentorder.FieldForceRefund:
 			values[i] = new(sql.NullBool)
-		case paymentorder.FieldAmount, paymentorder.FieldPayAmount, paymentorder.FieldFeeRate, paymentorder.FieldRefundAmount:
+		case paymentorder.FieldAmount, paymentorder.FieldPayAmount, paymentorder.FieldFeeRate, paymentorder.FieldRefundAmount, paymentorder.FieldRefundDeductedAmount:
 			values[i] = new(sql.NullFloat64)
-		case paymentorder.FieldID, paymentorder.FieldUserID, paymentorder.FieldPlanID, paymentorder.FieldSubscriptionGroupID, paymentorder.FieldSubscriptionDays:
+		case paymentorder.FieldID, paymentorder.FieldUserID, paymentorder.FieldPlanID, paymentorder.FieldSubscriptionGroupID, paymentorder.FieldSubscriptionDays, paymentorder.FieldRefundDeductedSubDays:
 			values[i] = new(sql.NullInt64)
 		case paymentorder.FieldUserEmail, paymentorder.FieldUserName, paymentorder.FieldUserNotes, paymentorder.FieldRechargeCode, paymentorder.FieldOutTradeNo, paymentorder.FieldPaymentType, paymentorder.FieldPaymentTradeNo, paymentorder.FieldPayURL, paymentorder.FieldQrCode, paymentorder.FieldQrCodeImg, paymentorder.FieldOrderType, paymentorder.FieldProviderInstanceID, paymentorder.FieldProviderKey, paymentorder.FieldStatus, paymentorder.FieldRefundReason, paymentorder.FieldRefundRequestReason, paymentorder.FieldRefundRequestedBy, paymentorder.FieldFailedReason, paymentorder.FieldClientIP, paymentorder.FieldSrcHost, paymentorder.FieldSrcURL:
 			values[i] = new(sql.NullString)
@@ -350,6 +354,18 @@ func (_m *PaymentOrder) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.RefundRequestedBy = new(string)
 				*_m.RefundRequestedBy = value.String
+			}
+		case paymentorder.FieldRefundDeductedAmount:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field refund_deducted_amount", values[i])
+			} else if value.Valid {
+				_m.RefundDeductedAmount = value.Float64
+			}
+		case paymentorder.FieldRefundDeductedSubDays:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field refund_deducted_sub_days", values[i])
+			} else if value.Valid {
+				_m.RefundDeductedSubDays = int(value.Int64)
 			}
 		case paymentorder.FieldExpiresAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -571,6 +587,12 @@ func (_m *PaymentOrder) String() string {
 		builder.WriteString("refund_requested_by=")
 		builder.WriteString(*v)
 	}
+	builder.WriteString(", ")
+	builder.WriteString("refund_deducted_amount=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RefundDeductedAmount))
+	builder.WriteString(", ")
+	builder.WriteString("refund_deducted_sub_days=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RefundDeductedSubDays))
 	builder.WriteString(", ")
 	builder.WriteString("expires_at=")
 	builder.WriteString(_m.ExpiresAt.Format(time.ANSIC))
