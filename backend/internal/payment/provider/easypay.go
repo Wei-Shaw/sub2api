@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/shopspring/decimal"
 )
 
 // EasyPay constants.
@@ -427,7 +428,9 @@ func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Quer
 		responseTradeNo = *resp.Data.TradeNo
 	}
 
-	amount, _ := strconv.ParseFloat(money, 64)
+	// 解析失败时是零值 decimal，与旧的 ParseFloat 忽略错误行为一致；
+	// 上层 isValidProviderAmount 会把 0 判为非法金额。
+	amount, _ := decimal.NewFromString(money)
 	return &payment.QueryOrderResponse{
 		TradeNo:  responseTradeNo,
 		Status:   status,
@@ -457,7 +460,7 @@ func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[st
 	if params["trade_status"] == tradeStatusSuccess {
 		status = payment.ProviderStatusSuccess
 	}
-	amount, _ := strconv.ParseFloat(params["money"], 64)
+	amount, _ := decimal.NewFromString(params["money"])
 
 	metadata := e.MerchantIdentityMetadata()
 	if pid := strings.TrimSpace(params["pid"]); pid != "" {

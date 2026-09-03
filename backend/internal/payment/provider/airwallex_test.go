@@ -284,7 +284,7 @@ func TestAirwallexVerifyNotificationRequiresValidSignatureAndCurrency(t *testing
 	require.Equal(t, "int_123", n.TradeNo)
 	require.Equal(t, "sub2_abc", n.OrderID)
 	require.Equal(t, payment.NotificationStatusSuccess, n.Status)
-	require.InDelta(t, 88.66, n.Amount, 0.0001)
+	require.Equal(t, "88.66", n.Amount.StringFixed(2))
 	require.Equal(t, "CNY", n.Metadata["currency"])
 	require.Equal(t, "acct_123", n.Metadata["account_id"])
 
@@ -322,7 +322,7 @@ func TestAirwallexQueryOrderMapsSucceeded(t *testing.T) {
 	resp, err := prov.QueryOrder(context.Background(), "int_123")
 	require.NoError(t, err)
 	require.Equal(t, payment.ProviderStatusPaid, resp.Status)
-	require.InDelta(t, 99.01, resp.Amount, 0.0001)
+	require.Equal(t, "99.01", resp.Amount.StringFixed(2))
 	require.Equal(t, "CNY", resp.Metadata["currency"])
 	require.Equal(t, "SUCCEEDED", resp.Metadata["status"])
 }

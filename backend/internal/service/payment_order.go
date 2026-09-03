@@ -403,37 +403,106 @@ func paymentOrderSnapshotWxpayAppID(sel *payment.InstanceSelection, req CreateOr
 	return strings.TrimSpace(sel.Config["appId"])
 }
 
-// checkDailyLimit 统计用户当天已支付金额是否还放得下本次订单。
-// 余额订单按实付金额计入，其余（订阅）按订单金额计入，两条聚合语句都在库内求和。
-// 调用方必须已经通过 lockUserRowForOrderLimits 持有用户行锁。
-func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *dbent.Tx, userID int64, amount, limit float64) error {
-	if limit <= 0 {
-		return nil
-	}
-	ts := psStartOfDayUTC(time.Now())
+// sumDailyOrderAmount 按「余额订单算实付、其余算订单金额」的口径求和。
+// extra 是这一类订单的附加谓词（已支付 / 未过期挂起）。
+func sumDailyOrderAmount(ctx context.Context, tx *dbent.Tx, userID int64, extra ...predicate.PaymentOrder) (float64, error) {
 	base := func() []predicate.PaymentOrder {
-		return []predicate.PaymentOrder{
-			paymentorder.UserIDEQ(userID),
-			paymentorder.StatusIn(OrderStatusPaid, OrderStatusRecharging, OrderStatusCompleted),
-			paymentorder.PaidAtGTE(ts),
-		}
+		preds := []predicate.PaymentOrder{paymentorder.UserIDEQ(userID)}
+		return append(preds, extra...)
 	}
 	balanceUsed, err := sumPaymentOrderAmount(ctx, tx,
 		append(base(), paymentorder.OrderTypeEQ(payment.OrderTypeBalance)), paymentorder.FieldPayAmount)
 	if err != nil {
-		return fmt.Errorf("query daily usage: %w", err)
+		return 0, err
 	}
 	otherUsed, err := sumPaymentOrderAmount(ctx, tx,
 		append(base(), paymentorder.OrderTypeNEQ(payment.OrderTypeBalance)), paymentorder.FieldAmount)
 	if err != nil {
+		return 0, err
+	}
+	return balanceUsed + otherUsed, nil
+}
+
+// unexpiredPendingDailyLimitPredicates 返回「仍会被支付」的挂起订单谓词。
+//
+// 只统计未过期的挂起订单：已过期的订单不会再被履约（toPaid 只在过期宽限期内
+// 接受回调），继续占额度就成了永久性的封锁；未过期的订单则随时可能被支付，
+// 必须把额度预留出来。
+func unexpiredPendingDailyLimitPredicates(now time.Time) []predicate.PaymentOrder {
+	return []predicate.PaymentOrder{
+		paymentorder.StatusEQ(OrderStatusPending),
+		paymentorder.ExpiresAtGT(now),
+	}
+}
+
+// earliestUnexpiredPendingExpiry 返回未过期挂起订单里最早的过期时间，
+// 用于告诉用户被占用的额度什么时候会自动释放。
+func earliestUnexpiredPendingExpiry(ctx context.Context, tx *dbent.Tx, userID int64, now time.Time) (time.Time, bool) {
+	preds := append([]predicate.PaymentOrder{paymentorder.UserIDEQ(userID)}, unexpiredPendingDailyLimitPredicates(now)...)
+	order, err := tx.PaymentOrder.Query().
+		Where(preds...).
+		Order(dbent.Asc(paymentorder.FieldExpiresAt)).
+		First(ctx)
+	if err != nil || order == nil {
+		return time.Time{}, false
+	}
+	return order.ExpiresAt, true
+}
+
+// checkDailyLimit 统计用户当天额度是否还放得下本次订单。
+// 余额订单按实付金额计入，其余（订阅）按订单金额计入，聚合语句都在库内求和。
+// 调用方必须已经通过 lockUserRowForOrderLimits 持有用户行锁。
+//
+// 除了已支付（paid/recharging/completed）的订单，未过期的挂起订单也计入额度：
+// 否则用户可以连开 MaxPendingOrders 个挂起订单——每一个建单时都读到 used=0，
+// 都判定「放得下」——再把它们全部付掉，实际入账额是日限额的数倍。履约侧不能补检查
+// （钱已经收了，不可能拒绝入账），所以只能在建单时预留额度。
+// 被占用的额度不会永久锁死：挂起订单到 OrderTimeoutMin 分钟后过期就自动释放。
+func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *dbent.Tx, userID int64, amount, limit float64) error {
+	if limit <= 0 {
+		return nil
+	}
+	now := time.Now()
+	ts := psStartOfDayUTC(now)
+	paidUsed, err := sumDailyOrderAmount(ctx, tx, userID,
+		paymentorder.StatusIn(OrderStatusPaid, OrderStatusRecharging, OrderStatusCompleted),
+		paymentorder.PaidAtGTE(ts))
+	if err != nil {
 		return fmt.Errorf("query daily usage: %w", err)
 	}
-	used := balanceUsed + otherUsed
-	if used+amount > limit {
+	if paidUsed+amount > limit {
 		return infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily_limit_exceeded").
-			WithMetadata(map[string]string{"remaining": fmt.Sprintf("%.2f", math.Max(0, limit-used))})
+			WithMetadata(map[string]string{"remaining": fmt.Sprintf("%.2f", math.Max(0, limit-paidUsed))})
 	}
-	return nil
+
+	// 未过期的挂起订单不按创建日期过滤：它们一旦被支付，paid_at 就落在支付当天，
+	// 也就是「现在」，所以对当天额度的占用与创建时间无关。
+	pendingHeld, err := sumDailyOrderAmount(ctx, tx, userID, unexpiredPendingDailyLimitPredicates(now)...)
+	if err != nil {
+		return fmt.Errorf("query pending daily usage: %w", err)
+	}
+	if pendingHeld <= 0 || paidUsed+pendingHeld+amount <= limit {
+		return nil
+	}
+
+	remaining := math.Max(0, limit-paidUsed-pendingHeld)
+	meta := map[string]string{
+		"remaining": fmt.Sprintf("%.2f", remaining),
+		"held":      fmt.Sprintf("%.2f", pendingHeld),
+	}
+	detail := ""
+	if expiresAt, ok := earliestUnexpiredPendingExpiry(ctx, tx, userID, now); ok {
+		meta["held_until"] = expiresAt.UTC().Format(time.RFC3339)
+		retryAfter := int(math.Ceil(expiresAt.Sub(now).Seconds()))
+		if retryAfter < 0 {
+			retryAfter = 0
+		}
+		meta["retry_after_seconds"] = strconv.Itoa(retryAfter)
+		detail = fmt.Sprintf(", the earliest frees up at %s", meta["held_until"])
+	}
+	return infraerrors.TooManyRequests("DAILY_LIMIT_PENDING_HOLD",
+		fmt.Sprintf("unpaid pending orders are holding %.2f of today's limit%s; pay or cancel them to free the headroom", pendingHeld, detail)).
+		WithMetadata(meta)
 }
 
 func (s *PaymentService) selectCreateOrderInstance(ctx context.Context, req CreateOrderRequest, cfg *PaymentConfig, payAmount float64) (*payment.InstanceSelection, error) {

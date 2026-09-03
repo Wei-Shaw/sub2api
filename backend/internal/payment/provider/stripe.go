@@ -162,7 +162,7 @@ func (s *Stripe) QueryOrder(ctx context.Context, tradeNo string) (*payment.Query
 	return &payment.QueryOrderResponse{
 		TradeNo: pi.ID,
 		Status:  status,
-		Amount:  payment.MinorUnitToAmount(pi.Amount, currency),
+		Amount:  payment.MinorUnitToDecimalAmount(pi.Amount, currency),
 		Metadata: map[string]string{
 			"currency": currency,
 		},
@@ -207,7 +207,7 @@ func parseStripePaymentIntent(event *stripe.Event, status string, rawBody string
 	return &payment.PaymentNotification{
 		TradeNo: pi.ID,
 		OrderID: pi.Metadata["orderId"],
-		Amount:  payment.MinorUnitToAmount(pi.Amount, currency),
+		Amount:  payment.MinorUnitToDecimalAmount(pi.Amount, currency),
 		Status:  status,
 		RawData: rawBody,
 		Metadata: map[string]string{

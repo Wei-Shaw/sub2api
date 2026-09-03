@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 
 	"entgo.io/ent/dialect"
@@ -233,7 +234,7 @@ func TestVerifyOrderByOutTradeNoBackfillsTradeNoFromPaidQuery(t *testing.T) {
 		resp: &payment.QueryOrderResponse{
 			TradeNo: "upstream-trade-123",
 			Status:  payment.ProviderStatusPaid,
-			Amount:  88,
+			Amount:  decimal.NewFromInt(88),
 		},
 	}
 	registry.Register(provider)
@@ -335,12 +336,12 @@ func TestVerifyOrderByOutTradeNoRetriesZeroAmountPaidQueryOnce(t *testing.T) {
 			{
 				TradeNo: "upstream-trade-zero",
 				Status:  payment.ProviderStatusPaid,
-				Amount:  0,
+				Amount:  decimal.NewFromInt(0),
 			},
 			{
 				TradeNo: "upstream-trade-retry",
 				Status:  payment.ProviderStatusPaid,
-				Amount:  88,
+				Amount:  decimal.NewFromInt(88),
 			},
 		},
 	}
@@ -425,7 +426,7 @@ func TestVerifyOrderByOutTradeNoRejectsPaidQueryWithZeroAmount(t *testing.T) {
 		resp: &payment.QueryOrderResponse{
 			TradeNo: "upstream-trade-zero",
 			Status:  payment.ProviderStatusPaid,
-			Amount:  0,
+			Amount:  decimal.NewFromInt(0),
 		},
 	}
 	registry.Register(provider)
@@ -488,7 +489,7 @@ func TestVerifyOrderByOutTradeNoDoesNotCancelUnpaidUpstreamOrder(t *testing.T) {
 		resp: &payment.QueryOrderResponse{
 			TradeNo: order.OutTradeNo,
 			Status:  payment.ProviderStatusPending,
-			Amount:  0,
+			Amount:  decimal.NewFromInt(0),
 		},
 	}
 	registry.Register(provider)
@@ -545,7 +546,7 @@ func TestCancelOrderStillClosesUnpaidUpstreamOrder(t *testing.T) {
 		resp: &payment.QueryOrderResponse{
 			TradeNo: order.OutTradeNo,
 			Status:  payment.ProviderStatusPending,
-			Amount:  0,
+			Amount:  decimal.NewFromInt(0),
 		},
 	}
 	registry.Register(provider)
@@ -639,7 +640,7 @@ func TestReconcilePendingWxpayOrdersBackfillsPaidOrder(t *testing.T) {
 		resp: &payment.QueryOrderResponse{
 			TradeNo: "wxpay-upstream-trade-123",
 			Status:  payment.ProviderStatusPaid,
-			Amount:  50,
+			Amount:  decimal.NewFromInt(50),
 			Metadata: map[string]string{
 				"trade_state": "SUCCESS",
 			},
@@ -740,7 +741,7 @@ func TestVerifyOrderByOutTradeNoUsesOutTradeNoWhenPaymentTradeNoAlreadyExistsFor
 		resp: &payment.QueryOrderResponse{
 			TradeNo: "upstream-trade-existing",
 			Status:  payment.ProviderStatusPaid,
-			Amount:  88,
+			Amount:  decimal.NewFromInt(88),
 		},
 	}
 	registry.Register(provider)

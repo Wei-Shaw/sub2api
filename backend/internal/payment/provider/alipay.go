@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/shopspring/decimal"
 	"github.com/smartwalle/alipay/v3"
 )
 
@@ -257,7 +257,7 @@ func (a *Alipay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Query
 		status = payment.ProviderStatusFailed
 	}
 
-	amount, err := strconv.ParseFloat(result.TotalAmount, 64)
+	amount, err := decimal.NewFromString(result.TotalAmount)
 	if err != nil {
 		amount, err = parseAlipayAmount(
 			result.TotalAmount,
@@ -301,7 +301,7 @@ func (a *Alipay) VerifyNotification(ctx context.Context, rawBody string, _ map[s
 		status = payment.ProviderStatusSuccess
 	}
 
-	amount, err := strconv.ParseFloat(notification.TotalAmount, 64)
+	amount, err := decimal.NewFromString(notification.TotalAmount)
 	if err != nil {
 		amount, err = parseAlipayAmount(
 			notification.TotalAmount,
@@ -388,18 +388,18 @@ func isTradeNotExist(err error) bool {
 	return strings.Contains(err.Error(), alipayErrTradeNotExist)
 }
 
-func parseAlipayAmount(values ...string) (float64, error) {
+func parseAlipayAmount(values ...string) (decimal.Decimal, error) {
 	for _, raw := range values {
 		raw = strings.TrimSpace(raw)
 		if raw == "" {
 			continue
 		}
-		amount, err := strconv.ParseFloat(raw, 64)
+		amount, err := decimal.NewFromString(raw)
 		if err == nil {
 			return amount, nil
 		}
 	}
-	return 0, fmt.Errorf("no valid amount field")
+	return decimal.Zero, fmt.Errorf("no valid amount field")
 }
 
 // Ensure interface compliance.

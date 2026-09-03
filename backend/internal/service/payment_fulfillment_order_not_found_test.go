@@ -15,6 +15,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -56,7 +57,7 @@ func TestHandlePaymentNotification_UnknownOrder_ReturnsSentinel(t *testing.T) {
 		OrderID: "sub2_does_not_exist_12345",
 		TradeNo: "stripe_evt_test_xyz",
 		Status:  payment.NotificationStatusSuccess,
-		Amount:  1000,
+		Amount:  decimal.NewFromInt(1000),
 	}
 
 	err := svc.HandlePaymentNotification(ctx, notification, payment.TypeStripe)

@@ -214,7 +214,7 @@ func (a *Airwallex) QueryOrder(ctx context.Context, tradeNo string) (*payment.Qu
 	return &payment.QueryOrderResponse{
 		TradeNo:  intent.ID,
 		Status:   airwallexProviderStatus(intent.Status),
-		Amount:   intent.Amount.InexactFloat64(),
+		Amount:   intent.Amount,
 		Metadata: a.intentMetadata(intent, ""),
 	}, nil
 }
@@ -252,7 +252,7 @@ func (a *Airwallex) VerifyNotification(_ context.Context, rawBody string, header
 	return &payment.PaymentNotification{
 		TradeNo:  intent.ID,
 		OrderID:  intent.MerchantOrderID,
-		Amount:   intent.Amount.InexactFloat64(),
+		Amount:   intent.Amount,
 		Status:   status,
 		RawData:  rawBody,
 		Metadata: a.intentMetadata(intent, event.accountID()),

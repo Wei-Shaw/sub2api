@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -37,6 +38,47 @@ type ctxKeySkipRedeemAffiliate struct{}
 // via applyAffiliateRebateForOrder (with audit-log deduplication).
 func ContextSkipRedeemAffiliate(ctx context.Context) context.Context {
 	return context.WithValue(ctx, ctxKeySkipRedeemAffiliate{}, true)
+}
+
+type ctxKeyRedeemPostCommit struct{}
+
+// redeemPostCommitCollector 收集「必须等事务提交后才能执行」的收尾动作。
+type redeemPostCommitCollector struct {
+	mu    sync.Mutex
+	hooks []func(context.Context)
+}
+
+func (c *redeemPostCommitCollector) add(fn func(context.Context)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.hooks = append(c.hooks, fn)
+}
+
+func (c *redeemPostCommitCollector) run(ctx context.Context) {
+	c.mu.Lock()
+	hooks := c.hooks
+	c.hooks = nil
+	c.mu.Unlock()
+	for _, fn := range hooks {
+		fn(ctx)
+	}
+}
+
+// ContextWithRedeemPostCommit 返回带「提交后回调收集器」的 context，以及必须在
+// 调用方 Commit 成功之后调用的执行函数。
+//
+// Redeem 复用 context 中已有事务时，缓存失效与邀请返利不能在 Redeem 内部直接执行：
+// 那一刻外层事务还没提交，失效 L1 只会把提交前的旧行重新灌回缓存（与 0a2191222
+// 修掉的问题同源），返利也可能为一笔最终回滚的兑换入账。这些动作因此登记到收集器，
+// 由持有事务的调用方在提交之后统一执行。
+func ContextWithRedeemPostCommit(ctx context.Context) (context.Context, func(context.Context)) {
+	c := &redeemPostCommitCollector{}
+	return context.WithValue(ctx, ctxKeyRedeemPostCommit{}, c), c.run
+}
+
+func redeemPostCommitFromContext(ctx context.Context) *redeemPostCommitCollector {
+	c, _ := ctx.Value(ctxKeyRedeemPostCommit{}).(*redeemPostCommitCollector)
+	return c
 }
 
 // RedeemCache defines cache operations for redeem service
@@ -457,15 +499,29 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 		return nil, fmt.Errorf("get user: %w", err)
 	}
 
-	// 使用数据库事务保证兑换码标记与权益发放的原子性
-	tx, err := s.entClient.Tx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
+	// 使用数据库事务保证兑换码标记与权益发放的原子性。
+	//
+	// context 里已经有事务时直接复用（不再自己开一个），这样调用方可以把
+	// 「创建兑换码」与「兑换」放进同一个事务：支付履约的 doBalance 原先是
+	// CreateCode 一个事务、Redeem 另一个事务，两步之间崩溃会留下一条 unused
+	// 的孤儿充值码。复用事务时提交由调用方负责，本函数的 commit 是空操作。
+	ownsTx := dbent.TxFromContext(ctx) == nil
+	txCtx := ctx
+	commit := func() error { return nil }
+	if ownsTx {
+		if s.entClient == nil {
+			return nil, errors.New("redeem service is not configured with a database client")
+		}
+		tx, err := s.entClient.Tx(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("begin transaction: %w", err)
+		}
+		defer func() { _ = tx.Rollback() }()
 
-	// 将事务放入 context，使 repository 方法能够使用同一事务
-	txCtx := dbent.NewTxContext(ctx, tx)
+		// 将事务放入 context，使 repository 方法能够使用同一事务
+		txCtx = dbent.NewTxContext(ctx, tx)
+		commit = tx.Commit
+	}
 
 	// 【关键】先标记兑换码为已使用，确保并发安全
 	// 利用数据库乐观锁（WHERE status = 'unused'）保证原子性
@@ -534,21 +590,35 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 		return nil, unsupportedRedeemTypeError(redeemCode.Type)
 	}
 
-	// 提交事务
-	if err := tx.Commit(); err != nil {
+	// 提交事务（复用外部事务时是空操作，由调用方提交）
+	if err := commit(); err != nil {
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
-	// 事务提交成功后失效缓存
-	s.invalidateRedeemCaches(ctx, userID, redeemCode)
-
-	// 余额类正数兑换码触发邀请返利（best-effort，失败不影响兑换结果）
-	if redeemCode.Type == RedeemTypeBalance && redeemCode.Value > 0 {
-		s.tryAccrueAffiliateRebateForRedeem(ctx, userID, redeemCode.Value)
+	// 提交后的收尾：失效缓存 + 余额类正数兑换码触发邀请返利
+	//（best-effort，失败不影响兑换结果）。
+	//
+	// 是否返利必须在这里、用兑换时的 ctx 判定：回调可能由调用方用另一个 ctx
+	// 触发，而 ContextSkipRedeemAffiliate 标记只挂在兑换时的 ctx 上，
+	// 否则支付履约路径会在 applyAffiliateRebateForOrder 之外再返一次。
+	shouldAccrue := redeemCode.Type == RedeemTypeBalance &&
+		redeemCode.Value > 0 &&
+		ctx.Value(ctxKeySkipRedeemAffiliate{}) == nil
+	postCommit := func(hookCtx context.Context) {
+		s.invalidateRedeemCaches(hookCtx, userID, redeemCode)
+		if shouldAccrue {
+			s.tryAccrueAffiliateRebateForRedeem(hookCtx, userID, redeemCode.Value)
+		}
+	}
+	if collector := redeemPostCommitFromContext(ctx); !ownsTx && collector != nil {
+		collector.add(postCommit)
+	} else {
+		// 自己持有事务，或调用方没有登记收集器（此时只能尽力而为）。
+		postCommit(ctx)
 	}
 
 	// 重新获取更新后的兑换码
-	redeemCode, err = s.redeemRepo.GetByID(ctx, redeemCode.ID)
+	redeemCode, err = s.redeemRepo.GetByID(txCtx, redeemCode.ID)
 	if err != nil {
 		return nil, fmt.Errorf("get updated redeem code: %w", err)
 	}

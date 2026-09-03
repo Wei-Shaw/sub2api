@@ -22,8 +22,10 @@ func NewRedeemCodeRepository(client *dbent.Client) service.RedeemCodeRepository 
 	return &redeemCodeRepository{client: client}
 }
 
+// Create 走 clientFromContext：支付履约需要在同一个事务里创建并兑换充值码，
+// 直接用 r.client 会让创建落在事务之外，事务回滚后留下孤儿码。
 func (r *redeemCodeRepository) Create(ctx context.Context, code *service.RedeemCode) error {
-	created, err := r.client.RedeemCode.Create().
+	created, err := clientFromContext(ctx, r.client).RedeemCode.Create().
 		SetCode(code.Code).
 		SetType(code.Type).
 		SetValue(code.Value).
@@ -68,7 +70,7 @@ func (r *redeemCodeRepository) CreateBatch(ctx context.Context, codes []service.
 }
 
 func (r *redeemCodeRepository) GetByID(ctx context.Context, id int64) (*service.RedeemCode, error) {
-	m, err := r.client.RedeemCode.Query().
+	m, err := clientFromContext(ctx, r.client).RedeemCode.Query().
 		Where(redeemcode.IDEQ(id)).
 		Only(ctx)
 	if err != nil {
@@ -81,7 +83,7 @@ func (r *redeemCodeRepository) GetByID(ctx context.Context, id int64) (*service.
 }
 
 func (r *redeemCodeRepository) GetByCode(ctx context.Context, code string) (*service.RedeemCode, error) {
-	m, err := r.client.RedeemCode.Query().
+	m, err := clientFromContext(ctx, r.client).RedeemCode.Query().
 		Where(redeemcode.CodeEQ(code)).
 		Only(ctx)
 	if err != nil {

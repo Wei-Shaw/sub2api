@@ -5,7 +5,6 @@ package service
 import (
 	"context"
 	"errors"
-	"math"
 	"strconv"
 	"testing"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -492,11 +492,9 @@ func TestParseLegacyPaymentOrderID(t *testing.T) {
 func TestIsValidProviderAmount(t *testing.T) {
 	t.Parallel()
 
-	assert.True(t, isValidProviderAmount(0.01))
-	assert.False(t, isValidProviderAmount(0))
-	assert.False(t, isValidProviderAmount(-1))
-	assert.False(t, isValidProviderAmount(math.NaN()))
-	assert.False(t, isValidProviderAmount(math.Inf(1)))
+	assert.True(t, isValidProviderAmount(decimal.NewFromFloat(0.01)))
+	assert.False(t, isValidProviderAmount(decimal.Zero))
+	assert.False(t, isValidProviderAmount(decimal.NewFromInt(-1)))
 }
 
 func TestValidateProviderNotificationMetadataRejectsAlipaySnapshotMismatch(t *testing.T) {
@@ -582,6 +580,7 @@ func TestPaymentAmountToleranceForThreeDecimalCurrency(t *testing.T) {
 
 	assert.Equal(t, amountToleranceCNY, paymentAmountToleranceForCurrency("CNY"))
 	assert.Equal(t, amountToleranceCNY, paymentAmountToleranceForCurrency("JPY"))
+	assert.True(t, decimalAmountToleranceCNY.Equal(paymentOverpayToleranceForCurrency("CNY")))
 	assert.InDelta(t, 0.0005, paymentAmountToleranceForCurrency("KWD"), 1e-12)
 }
 
@@ -730,7 +729,7 @@ func TestDuplicatePaymentNotificationDoesNotReprocessCompletedBalanceOrder(t *te
 	notification := &payment.PaymentNotification{
 		TradeNo: "alipay-trade-replayed",
 		OrderID: order.OutTradeNo,
-		Amount:  order.PayAmount,
+		Amount:  decimal.NewFromFloat(order.PayAmount),
 		Status:  payment.NotificationStatusSuccess,
 	}
 	require.NoError(t, svc.HandlePaymentNotification(ctx, notification, payment.TypeAlipay))
@@ -758,7 +757,7 @@ func TestPaymentNotificationRejectsAmountMismatchBeforeFulfillment(t *testing.T)
 	err = svc.HandlePaymentNotification(ctx, &payment.PaymentNotification{
 		TradeNo: "alipay-trade-wrong-amount",
 		OrderID: order.OutTradeNo,
-		Amount:  order.PayAmount - 1,
+		Amount:  decimal.NewFromFloat(order.PayAmount).Sub(decimal.NewFromInt(1)),
 		Status:  payment.NotificationStatusSuccess,
 	}, payment.TypeAlipay)
 	require.ErrorContains(t, err, "amount mismatch")

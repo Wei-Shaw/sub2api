@@ -449,6 +449,8 @@ export default {
       GROUP_TYPE_MISMATCH: '分组类型不是订阅类型',
       TOO_MANY_PENDING: '待支付订单过多（最多 {max} 个），请先完成或取消现有订单',
       DAILY_LIMIT_EXCEEDED: '今日充值已达上限，剩余额度 {remaining}',
+      DAILY_LIMIT_PENDING_HOLD:
+        '待支付订单占用了今日额度 {held}，请先完成或取消，或等待 {held_until} 后自动释放。剩余额度 {remaining}',
       PAYMENT_GATEWAY_ERROR: '支付方式不可用',
       NO_AVAILABLE_INSTANCE: '暂无可用的支付通道',
       PAYMENT_PROVIDER_MISCONFIGURED: '支付通道配置错误，请联系管理员',

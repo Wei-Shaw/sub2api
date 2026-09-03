@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect"
+	"github.com/shopspring/decimal"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
@@ -75,7 +76,7 @@ func parseLegacyPaymentOrderID(orderID string, lookupErr error) (int64, bool) {
 	return oid, true
 }
 
-func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo string, paid float64, pk string, metadata map[string]string) error {
+func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo string, paid decimal.Decimal, pk string, metadata map[string]string) error {
 	o, err := s.entClient.PaymentOrder.Get(ctx, oid)
 	if err != nil {
 		slog.Error("order not found", "orderID", oid)
@@ -104,18 +105,35 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 	if !isValidProviderAmount(paid) {
 		s.writeAuditLog(ctx, o.ID, "PAYMENT_INVALID_AMOUNT", pk, map[string]any{
 			"expected": o.PayAmount,
-			"paid":     paid,
+			"paid":     paid.String(),
 			"tradeNo":  tradeNo,
 		})
-		return fmt.Errorf("invalid paid amount from provider: %v", paid)
+		return fmt.Errorf("invalid paid amount from provider: %s", paid.String())
 	}
-	if math.Abs(paid-o.PayAmount) > paymentAmountToleranceForCurrency(PaymentOrderCurrency(o)) {
-		s.writeAuditLog(ctx, o.ID, "PAYMENT_AMOUNT_MISMATCH", pk, map[string]any{"expected": o.PayAmount, "paid": paid, "tradeNo": tradeNo})
-		return fmt.Errorf("amount mismatch: expected %s, got %s", strconv.FormatFloat(o.PayAmount, 'f', -1, 64), strconv.FormatFloat(paid, 'f', -1, 64))
+	expected := decimal.NewFromFloat(o.PayAmount)
+	if shortfall := expected.Sub(paid); shortfall.IsPositive() {
+		// 少付一律不予履约：金额全程是十进制精确值，没有需要吸收的表示误差，
+		// 旧的 0.01 容差纯粹是 float64 时代的产物，副作用是 100.00 的订单
+		// 收到 99.99 也照样足额到账。
+		s.writeAuditLog(ctx, o.ID, "PAYMENT_AMOUNT_MISMATCH", pk, map[string]any{
+			"expected": o.PayAmount, "paid": paid.String(), "shortfall": shortfall.String(), "tradeNo": tradeNo,
+		})
+		return fmt.Errorf("amount mismatch: expected %s, got %s", expected.String(), paid.String())
+	}
+	if overpay := paid.Sub(expected); overpay.GreaterThan(paymentOverpayToleranceForCurrency(PaymentOrderCurrency(o))) {
+		// 多付超过容差同样拒绝（与既有行为一致）：多半是币种或实例配错了，
+		// 静默按订单金额入账会掩盖配置问题。容差仍按币种保留，是留给那些
+		// 确实会做进位的服务商的口子。
+		s.writeAuditLog(ctx, o.ID, "PAYMENT_AMOUNT_MISMATCH", pk, map[string]any{
+			"expected": o.PayAmount, "paid": paid.String(), "overpay": overpay.String(), "tradeNo": tradeNo,
+		})
+		return fmt.Errorf("amount mismatch: expected %s, got %s", expected.String(), paid.String())
 	}
 	return s.toPaid(ctx, o, tradeNo, paid, pk)
 }
 
+// paymentAmountToleranceForCurrency 退款侧仍在用的浮点容差（见 payment_amounts.go /
+// payment_refund.go）。收款侧改用 paymentOverpayToleranceForCurrency。
 func paymentAmountToleranceForCurrency(currency string) float64 {
 	minorUnit := payment.CurrencyMinorUnit(currency)
 	if minorUnit <= 2 {
@@ -124,8 +142,21 @@ func paymentAmountToleranceForCurrency(currency string) float64 {
 	return math.Pow10(-minorUnit) / 2
 }
 
-func isValidProviderAmount(amount float64) bool {
-	return amount > 0 && !math.IsNaN(amount) && !math.IsInf(amount, 0)
+// paymentOverpayToleranceForCurrency 只作用于「多付」方向：少付零容差。
+func paymentOverpayToleranceForCurrency(currency string) decimal.Decimal {
+	minorUnit := payment.CurrencyMinorUnit(currency)
+	if minorUnit <= 2 {
+		return decimalAmountToleranceCNY
+	}
+	// 半个最小货币单位：给按最小单位进位的服务商留出余地。
+	return decimal.New(5, int32(-minorUnit-1))
+}
+
+var decimalAmountToleranceCNY = decimal.NewFromFloat(amountToleranceCNY)
+
+// isValidProviderAmount 金额必须为正。decimal 不存在 NaN/Inf，无需额外判定。
+func isValidProviderAmount(amount decimal.Decimal) bool {
+	return amount.IsPositive()
 }
 
 func validateProviderNotificationMetadata(order *dbent.PaymentOrder, providerKey string, metadata map[string]string) error {
@@ -147,7 +178,7 @@ func expectedNotificationProviderKey(registry *payment.Registry, orderPaymentTyp
 	return strings.TrimSpace(orderPaymentType)
 }
 
-func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, tradeNo string, paid float64, pk string) error {
+func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, tradeNo string, paid decimal.Decimal, pk string) error {
 	previousStatus := o.Status
 	now := time.Now()
 	grace := now.Add(-paymentGraceMinutes * time.Minute)
@@ -161,7 +192,7 @@ func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, trad
 				paymentorder.UpdatedAtGTE(grace),
 			),
 		),
-	).SetStatus(OrderStatusPaid).SetPayAmount(paid).SetPaymentTradeNo(tradeNo).SetPaidAt(now).ClearFailedAt().ClearFailedReason().Save(ctx)
+	).SetStatus(OrderStatusPaid).SetPayAmount(paid.InexactFloat64()).SetPaymentTradeNo(tradeNo).SetPaidAt(now).ClearFailedAt().ClearFailedReason().Save(ctx)
 	if err != nil {
 		return fmt.Errorf("update to PAID: %w", err)
 	}
@@ -178,11 +209,11 @@ func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, trad
 		s.writeAuditLog(ctx, o.ID, "ORDER_RECOVERED", pk, map[string]any{
 			"previous_status": previousStatus,
 			"tradeNo":         tradeNo,
-			"paidAmount":      paid,
+			"paidAmount":      paid.String(),
 			"reason":          "webhook payment success received after order " + previousStatus,
 		})
 	}
-	s.writeAuditLog(ctx, o.ID, "ORDER_PAID", pk, map[string]any{"tradeNo": tradeNo, "paidAmount": paid})
+	s.writeAuditLog(ctx, o.ID, "ORDER_PAID", pk, map[string]any{"tradeNo": tradeNo, "paidAmount": paid.String()})
 	return s.executeFulfillment(ctx, o.ID)
 }
 
@@ -329,42 +360,73 @@ func resolveRedeemAction(existing *RedeemCode, lookupErr error) redeemAction {
 
 // doBalance 用订单上预生成的兑换码给用户加余额。
 //
-// CreateCode 与 Redeem 分属两个事务（RedeemService.Redeem 自己开事务，不复用
-// ctx 里的事务），所以两步之间崩溃会留下一条 unused 的兑换码。这条残留码：
-//   - 只可能被知道码本身的人使用。o.RechargeCode 由 crypto/rand 生成（130 bit，
-//     见 generateRechargeCode），且只在 payment_orders 行和管理端接口里可见，
-//     用户侧接口不返回，暴力枚举不可行；
-//   - 会被下一次重试自愈：resolveRedeemAction 发现「存在且未使用」时跳过创建、
-//     直接兑换，不会重复加钱。
+// 创建兑换码与兑换在同一个事务内完成（见 createAndRedeemBalanceCode）：
+// 两者分属两个事务时，中间崩溃会留下一条 unused 的孤儿充值码。虽然
+// o.RechargeCode 是 130 bit crypto/rand（见 generateRechargeCode）、
+// 用户侧接口不返回，枚举不可行，但那仍是一条能被兑换却没有对应入账的活码。
 //
-// 真正的漏洞是旧的 "PAY-<orderID>-<5位>" 格式可被枚举，已在建单处修掉。
+// 幂等性判定（GetByCode）刻意留在事务外：它是一次只读探测，
+// redeemActionSkipCompleted 分支不需要开事务；若与并发履约撞车，
+// Create 会撞唯一约束、整笔事务回滚，下一次重试按「存在且未使用」自愈。
 func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder, lease *paymentFulfillmentLease) error {
 	// Idempotency: check if redeem code already exists (from a previous partial run)
 	existing, lookupErr := s.redeemService.GetByCode(ctx, o.RechargeCode)
 	action := resolveRedeemAction(existing, lookupErr)
 
-	switch action {
-	case redeemActionSkipCompleted:
+	if action == redeemActionSkipCompleted {
 		if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 			return err
 		}
 		// Code already created and redeemed — just mark completed
 		return s.markCompleted(ctx, o, lease, "RECHARGE_SUCCESS")
-	case redeemActionCreate:
-		rc := &RedeemCode{Code: o.RechargeCode, Type: RedeemTypeBalance, Value: o.Amount, Status: StatusUnused}
-		if err := s.redeemService.CreateCode(ctx, rc); err != nil {
-			return fmt.Errorf("create redeem code: %w", err)
-		}
-	case redeemActionRedeem:
-		// Code exists but unused — skip creation, proceed to redeem
 	}
-	if _, err := s.redeemService.Redeem(ContextSkipRedeemAffiliate(ctx), o.UserID, o.RechargeCode); err != nil {
-		return fmt.Errorf("redeem balance: %w", err)
+
+	if err := s.createAndRedeemBalanceCode(ctx, o, action == redeemActionCreate); err != nil {
+		return err
 	}
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 		return err
 	}
 	return s.markCompleted(ctx, o, lease, "RECHARGE_SUCCESS")
+}
+
+// createAndRedeemBalanceCode 在一个事务内创建（可选）并兑换充值码。
+//
+// RedeemService.Redeem 会复用 context 里的事务，所以标记兑换码已用与给用户加钱
+// 和这里的 Create 同属一个事务；崩溃时整笔回滚，不留下 unused 的孤儿码。
+// 缓存失效与邀请返利由 ContextWithRedeemPostCommit 收集，Commit 成功后才执行。
+func (s *PaymentService) createAndRedeemBalanceCode(ctx context.Context, o *dbent.PaymentOrder, needCreate bool) error {
+	if s.entClient == nil {
+		return errors.New("payment service is not configured with a database client")
+	}
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin balance fulfillment transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	txCtx, runPostCommit := ContextWithRedeemPostCommit(dbent.NewTxContext(ctx, tx))
+	if needCreate {
+		rc := &RedeemCode{Code: o.RechargeCode, Type: RedeemTypeBalance, Value: o.Amount, Status: StatusUnused}
+		if err := s.redeemService.CreateCode(txCtx, rc); err != nil {
+			return fmt.Errorf("create redeem code: %w", err)
+		}
+	}
+	if _, err := s.redeemService.Redeem(ContextSkipRedeemAffiliate(txCtx), o.UserID, o.RechargeCode); err != nil {
+		return fmt.Errorf("redeem balance: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit balance fulfillment transaction: %w", err)
+	}
+	committed = true
+
+	runPostCommit(ctx)
+	return nil
 }
 
 func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrder, lease *paymentFulfillmentLease, auditAction string) error {

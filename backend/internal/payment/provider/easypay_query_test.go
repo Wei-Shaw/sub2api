@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/shopspring/decimal"
 )
 
 func TestEasyPayQueryOrderStatusMapping(t *testing.T) {
@@ -113,7 +114,7 @@ func TestEasyPayQueryOrderStatusMapping(t *testing.T) {
 			if resp.TradeNo != tt.wantTradeNo {
 				t.Fatalf("trade_no = %q, want %q", resp.TradeNo, tt.wantTradeNo)
 			}
-			if resp.Amount != tt.wantAmount {
+			if !resp.Amount.Equal(decimal.NewFromFloat(tt.wantAmount)) {
 				t.Fatalf("amount = %v, want %v", resp.Amount, tt.wantAmount)
 			}
 			for key, want := range map[string]string{

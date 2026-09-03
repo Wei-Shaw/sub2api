@@ -13,6 +13,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/shopspring/decimal"
 	"github.com/wechatpay-apiv3/wechatpay-go/core"
 	"github.com/wechatpay-apiv3/wechatpay-go/core/auth/verifiers"
 	"github.com/wechatpay-apiv3/wechatpay-go/core/notify"
@@ -401,9 +402,9 @@ func (w *Wxpay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryO
 	if err != nil {
 		return nil, fmt.Errorf("wxpay query order: %w", err)
 	}
-	var amt float64
+	var amt decimal.Decimal
 	if tx.Amount != nil && tx.Amount.Total != nil {
-		amt = payment.FenToYuan(*tx.Amount.Total)
+		amt = payment.MinorUnitToDecimalAmount(*tx.Amount.Total, payment.DefaultPaymentCurrency)
 	}
 	id := tradeNo
 	if tx.TransactionId != nil {
@@ -441,9 +442,9 @@ func (w *Wxpay) VerifyNotification(ctx context.Context, rawBody string, headers 
 	if nr.EventType != wxpayEventTransactionSuccess {
 		return nil, nil
 	}
-	var amt float64
+	var amt decimal.Decimal
 	if tx.Amount != nil && tx.Amount.Total != nil {
-		amt = payment.FenToYuan(*tx.Amount.Total)
+		amt = payment.MinorUnitToDecimalAmount(*tx.Amount.Total, payment.DefaultPaymentCurrency)
 	}
 	st := payment.ProviderStatusFailed
 	if wxSV(tx.TradeState) == wxpayTradeStateSuccess {

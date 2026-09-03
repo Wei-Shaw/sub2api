@@ -425,6 +425,8 @@ export default {
       GROUP_TYPE_MISMATCH: 'Group is not a subscription type.',
       TOO_MANY_PENDING: 'Too many pending orders (max {max}). Please complete or cancel existing orders first.',
       DAILY_LIMIT_EXCEEDED: 'Daily recharge limit reached. Remaining: {remaining}.',
+      DAILY_LIMIT_PENDING_HOLD:
+        "Unpaid pending orders are holding {held} of today's limit. Pay or cancel them, or wait until {held_until}. Remaining: {remaining}.",
       PAYMENT_GATEWAY_ERROR: 'Payment method is unavailable.',
       NO_AVAILABLE_INSTANCE: 'No payment channel available right now.',
       PAYMENT_PROVIDER_MISCONFIGURED: 'Payment provider misconfigured. Please contact an administrator.',

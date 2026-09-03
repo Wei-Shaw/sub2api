@@ -2,7 +2,11 @@
 // registry, load balancing, and shared utilities for the payment subsystem.
 package payment
 
-import "context"
+import (
+	"context"
+
+	"github.com/shopspring/decimal"
+)
 
 // PaymentType represents a supported payment method.
 type PaymentType = string
@@ -158,20 +162,33 @@ type CreatePaymentResponse struct {
 	JSAPI        *WechatJSAPIPayload     // WeChat JSAPI invocation payload when ready
 }
 
+// MinorUnitToDecimalAmount 把最小货币单位（分 / cent）换算成精确金额。
+//
+// 与 MinorUnitToAmount 的区别是不经过 float64：金额从服务商解析、跨接口传递、
+// 一直到与订单应付金额比对，全程保持十进制精确值。
+func MinorUnitToDecimalAmount(value int64, currency string) decimal.Decimal {
+	return decimal.NewFromInt(value).Div(decimal.New(1, int32(CurrencyMinorUnit(currency))))
+}
+
 // QueryOrderResponse describes the payment status from the upstream provider.
 type QueryOrderResponse struct {
-	TradeNo  string
-	Status   string  // "pending", "paid", "failed", "refunded"
-	Amount   float64 // 按服务商返回币种解释的金额
-	PaidAt   string  // RFC3339 timestamp or empty
+	TradeNo string
+	Status  string // "pending", "paid", "failed", "refunded"
+	// Amount 是按服务商返回币种解释的金额。用 decimal 而不是 float64：
+	// 服务商给的是十进制字符串或最小货币单位整数，转成 float64 再比对会引入
+	// 表示误差，历来只能靠一个「一分钱」的容差掩盖过去——而那个容差正好让
+	// 100.00 的订单收到 99.99 也照样足额履约。
+	Amount   decimal.Decimal
+	PaidAt   string // RFC3339 timestamp or empty
 	Metadata map[string]string
 }
 
 // PaymentNotification is the parsed result of a webhook/notify callback.
 type PaymentNotification struct {
-	TradeNo  string
-	OrderID  string
-	Amount   float64
+	TradeNo string
+	OrderID string
+	// Amount 同 QueryOrderResponse.Amount：保持十进制精确值。
+	Amount   decimal.Decimal
 	Status   string // "success" or "failed"
 	RawData  string // Raw notification body for audit
 	Metadata map[string]string

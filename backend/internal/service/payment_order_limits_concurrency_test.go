@@ -18,6 +18,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -183,7 +184,8 @@ func TestLockUserRowForOrderLimitsSkipsNonPostgres(t *testing.T) {
 }
 
 // TestCheckDailyLimitAggregatesInDatabase 新的库内聚合必须和旧的「读全部订单再在 Go
-// 里累加」结果一致：余额订单按实付金额计入，订阅订单按订单金额计入，未支付订单不计入。
+// 里累加」结果一致：余额订单按实付金额计入，订阅订单按订单金额计入。
+// 已过期的挂起订单不计入（它不会再被履约，继续占额度就成了永久封锁）。
 func TestCheckDailyLimitAggregatesInDatabase(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
@@ -200,8 +202,9 @@ func TestCheckDailyLimitAggregatesInDatabase(t *testing.T) {
 	mustCreatePaidPaymentOrder(t, ctx, client, user.ID, payment.OrderTypeBalance, 100, 30, OrderStatusCompleted, paidAt)
 	// 订阅订单：按 amount=20 计入。
 	mustCreatePaidPaymentOrder(t, ctx, client, user.ID, payment.OrderTypeSubscription, 20, 19, OrderStatusPaid, paidAt)
-	// 未支付订单不计入。
-	mustCreatePaidPaymentOrder(t, ctx, client, user.ID, payment.OrderTypeBalance, 500, 500, OrderStatusPending, time.Time{})
+	// 已过期的挂起订单不计入。
+	mustCreatePaymentOrderWithExpiry(t, ctx, client, user.ID, payment.OrderTypeBalance, 500, 500,
+		OrderStatusPending, time.Time{}, time.Now().Add(-time.Minute))
 
 	svc := &PaymentService{entClient: client}
 
@@ -244,6 +247,22 @@ func mustCreatePaidPaymentOrder(
 	paidAt time.Time,
 ) {
 	t.Helper()
+	mustCreatePaymentOrderWithExpiry(t, ctx, client, userID, orderType, amount, payAmount, status, paidAt,
+		time.Now().Add(time.Hour))
+}
+
+func mustCreatePaymentOrderWithExpiry(
+	t *testing.T,
+	ctx context.Context,
+	client *dbent.Client,
+	userID int64,
+	orderType string,
+	amount, payAmount float64,
+	status string,
+	paidAt time.Time,
+	expiresAt time.Time,
+) {
+	t.Helper()
 	code, err := generateRechargeCode()
 	require.NoError(t, err)
 	b := client.PaymentOrder.Create().
@@ -261,10 +280,121 @@ func mustCreatePaidPaymentOrder(
 		SetStatus(status).
 		SetClientIP("127.0.0.1").
 		SetSrcHost("app.example.com").
-		SetExpiresAt(time.Now().Add(time.Hour))
+		SetExpiresAt(expiresAt)
 	if !paidAt.IsZero() {
 		b = b.SetPaidAt(paidAt)
 	}
 	_, err = b.Save(ctx)
 	require.NoError(t, err)
+}
+
+// TestCheckDailyLimitCountsUnexpiredPendingOrders 钉住 M13 的收口：
+// 日限额原本只统计 paid/recharging/completed，用户可以连开数个挂起订单
+// （每个建单时都读到 used=0）再一次性付掉，实际入账远超日限额。
+// 未过期的挂起订单现在预占额度，并且要给出「谁占着、什么时候释放」的错误。
+func TestCheckDailyLimitCountsUnexpiredPendingOrders(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("daily-limit-pending@example.com").
+		SetPasswordHash("hash").
+		SetUsername("daily-limit-pending-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	expiresAt := time.Now().Add(20 * time.Minute).UTC().Truncate(time.Second)
+	mustCreatePaymentOrderWithExpiry(t, ctx, client, user.ID, payment.OrderTypeBalance, 60, 60,
+		OrderStatusPending, time.Time{}, expiresAt)
+
+	svc := &PaymentService{entClient: client}
+
+	// 60（挂起预占）+ 30 <= 100：还放得下。
+	tx, err := client.Tx(ctx)
+	require.NoError(t, err)
+	require.NoError(t, svc.checkDailyLimit(ctx, tx, user.ID, 30, 100))
+	require.NoError(t, tx.Rollback())
+
+	// 60（挂起预占）+ 50 > 100：必须拒绝，且不是「已支付超限」那种笼统提示。
+	tx, err = client.Tx(ctx)
+	require.NoError(t, err)
+	err = svc.checkDailyLimit(ctx, tx, user.ID, 50, 100)
+	require.NoError(t, tx.Rollback())
+	require.Error(t, err)
+	require.Equal(t, "DAILY_LIMIT_PENDING_HOLD", infraerrors.Reason(err))
+	var appErr *infraerrors.ApplicationError
+	require.ErrorAs(t, err, &appErr)
+	meta := appErr.Metadata
+	require.Equal(t, "60.00", meta["held"])
+	require.Equal(t, "40.00", meta["remaining"])
+	require.Equal(t, expiresAt.Format(time.RFC3339), meta["held_until"])
+	require.NotEmpty(t, meta["retry_after_seconds"])
+	require.Contains(t, infraerrors.Message(err), "pending orders are holding")
+}
+
+// TestCheckDailyLimitIgnoresExpiredPendingOrders 预占必须是自愈的：
+// 订单一旦过了 OrderTimeoutMin 就不会再被履约，占用的额度必须立刻释放，
+// 否则一个被遗弃的订单会把用户的日额度永久锁死。
+func TestCheckDailyLimitIgnoresExpiredPendingOrders(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("daily-limit-expired-pending@example.com").
+		SetPasswordHash("hash").
+		SetUsername("daily-limit-expired-pending-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	mustCreatePaymentOrderWithExpiry(t, ctx, client, user.ID, payment.OrderTypeBalance, 90, 90,
+		OrderStatusPending, time.Time{}, time.Now().Add(-time.Second))
+
+	svc := &PaymentService{entClient: client}
+	tx, err := client.Tx(ctx)
+	require.NoError(t, err)
+	require.NoError(t, svc.checkDailyLimit(ctx, tx, user.ID, 100, 100))
+	require.NoError(t, tx.Rollback())
+}
+
+// TestCreateOrderInTxPendingOrdersConsumeDailyLimit 端到端复现 M13 的绕过：
+// 日限额 100，连下两笔 60 的订单。修复前两笔都建得出来（各自读到 used=0），
+// 付掉就是 120；修复后第二笔被 DAILY_LIMIT_PENDING_HOLD 拒绝，
+// 而第一笔过期之后额度又能重新用起来。
+func TestCreateOrderInTxPendingOrdersConsumeDailyLimit(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("daily-limit-createorder@example.com").
+		SetPasswordHash("hash").
+		SetUsername("daily-limit-createorder-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentService{entClient: client}
+	cfg := &PaymentConfig{MaxPendingOrders: 10, OrderTimeoutMin: 30, DailyLimit: 100}
+	req := CreateOrderRequest{
+		UserID:      user.ID,
+		PaymentType: payment.TypeAlipay,
+		OrderType:   payment.OrderTypeBalance,
+	}
+	svcUser := &User{ID: user.ID, Email: user.Email, Username: user.Username}
+
+	first, err := svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 60, 60, 0, 60, nil)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusPending, first.Status)
+
+	_, err = svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 60, 60, 0, 60, nil)
+	require.Error(t, err)
+	require.Equal(t, "DAILY_LIMIT_PENDING_HOLD", infraerrors.Reason(err))
+
+	// 让第一笔过期：占用的额度必须自动释放。
+	_, err = client.PaymentOrder.UpdateOneID(first.ID).
+		SetExpiresAt(time.Now().Add(-time.Minute)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	third, err := svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 60, 60, 0, 60, nil)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusPending, third.Status)
 }

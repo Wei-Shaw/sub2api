@@ -436,7 +436,7 @@ func TestParseAlipayAmount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if amount != 88 {
+	if amount.String() != "88" {
 		t.Fatalf("amount = %v, want 88", amount)
 	}
 
