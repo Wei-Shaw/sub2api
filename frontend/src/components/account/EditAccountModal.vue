@@ -3038,7 +3038,7 @@ const editAdaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
 // 回填窗口标志：syncFormFromAccount 会同步改写 editAccountMode / editApiProtocol，
 // 而 watcher（pre-flush）在同步代码执行完之后才触发——若不抑制，会把刚恢复的
 // 存储版 base_url（可能是用户自定义/中转地址）覆盖为官方预设并在下次保存时持久化。
-// nextTick 后解除，此后用户主动切换模式/协议仍正常联动重置。
+// nextTick 后解除，此后用户主动切换模式/协议仍正常联动处理。
 const syncingForm = ref(false)
 const cnAccountModeOptions = computed<Array<{ value: CnAccountMode; labelKey: 'payg' | 'coding' }>>(
   () => {
@@ -3073,23 +3073,38 @@ const editAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol;
 })
 watch(editApiProtocol, (protocol, previousProtocol) => {
   if (!isCNApiKeyAccount.value || syncingForm.value) return
+  const currentBaseUrl = editBaseUrl.value.trim()
+  const defaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, editAccountMode.value)
+
   if (protocol === 'adaptive') {
-    const defaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, editAccountMode.value)
     for (const item of editAdaptiveProtocolOptions.value) {
       if (!editAdaptiveBaseUrls.value[item.value]) editAdaptiveBaseUrls.value[item.value] = defaults[item.value]
     }
-    if (previousProtocol !== 'adaptive' && editBaseUrl.value.trim()) {
-      editAdaptiveBaseUrls.value[previousProtocol] = editBaseUrl.value.trim()
+    if (previousProtocol !== 'adaptive' && currentBaseUrl) {
+      // Keep the address the user was editing. The legacy single base_url field
+      // is the only source available for older accounts without api_base_urls.
+      editAdaptiveBaseUrls.value[previousProtocol] = currentBaseUrl
+      // base_url is the adaptive Chat Completions fallback. Replace only the
+      // generated default; an explicitly configured adaptive endpoint wins.
+      if (!editAdaptiveBaseUrls.value.chat_completions ||
+        editAdaptiveBaseUrls.value.chat_completions === defaults.chat_completions) {
+        editAdaptiveBaseUrls.value.chat_completions = currentBaseUrl
+      }
     }
-    editBaseUrl.value = editAdaptiveBaseUrls.value.chat_completions
+    editBaseUrl.value = currentBaseUrl || editAdaptiveBaseUrls.value.chat_completions
     return
   }
   if (previousProtocol === 'adaptive') {
-    editBaseUrl.value = editAdaptiveBaseUrls.value[protocol] ||
-      defaultCNBaseUrl(props.account!.platform, editAccountMode.value, protocol)
+    const configuredTargetUrl = editAdaptiveBaseUrls.value[protocol]?.trim()
+    const targetDefaultUrl = defaults[protocol as CnNativeApiProtocol]
+    editBaseUrl.value = configuredTargetUrl && configuredTargetUrl !== targetDefaultUrl
+      ? configuredTargetUrl
+      : currentBaseUrl || defaultCNBaseUrl(props.account!.platform, editAccountMode.value, protocol)
     return
   }
-  editBaseUrl.value = defaultCNBaseUrl(props.account!.platform, editAccountMode.value, protocol)
+  // Switching between fixed protocols must not silently replace a user relay
+  // with the provider default. Empty fields still receive the normal default.
+  editBaseUrl.value = currentBaseUrl || defaultCNBaseUrl(props.account!.platform, editAccountMode.value, protocol)
 })
 watch(editAccountMode, (mode, previousMode) => {
   if (!isCNApiKeyAccount.value || syncingForm.value) return

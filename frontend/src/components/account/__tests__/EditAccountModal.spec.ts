@@ -514,9 +514,8 @@ describe('EditAccountModal', () => {
       platform: 'zhipu',
       protocol: 'anthropic',
       baseUrl: 'https://relay.example.com/anthropic',
-      expectedBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
       expectedProtocolUrls: {
-        chat_completions: 'https://open.bigmodel.cn/api/paas/v4',
+        chat_completions: 'https://relay.example.com/anthropic',
         anthropic: 'https://relay.example.com/anthropic'
       }
     },
@@ -525,9 +524,8 @@ describe('EditAccountModal', () => {
       platform: 'deepseek',
       protocol: 'responses',
       baseUrl: 'https://relay.example.com/responses',
-      expectedBaseUrl: 'https://api.deepseek.com',
       expectedProtocolUrls: {
-        chat_completions: 'https://api.deepseek.com',
+        chat_completions: 'https://relay.example.com/responses',
         anthropic: 'https://api.deepseek.com/anthropic',
         responses: 'https://relay.example.com/responses'
       }
@@ -555,8 +553,38 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
       api_protocol: 'adaptive',
-      base_url: testCase.expectedBaseUrl,
+      base_url: testCase.baseUrl,
       api_base_urls: testCase.expectedProtocolUrls
+    })
+  })
+
+  it.each([
+    ['zhipu', 'chat_completions', 'anthropic', 'https://relay.example.com/v1'],
+    ['deepseek', 'chat_completions', 'responses', 'https://relay.example.com/v1']
+  ])('preserves a custom relay when switching fixed protocols', async (platform, from, to, baseUrl) => {
+    const account = buildAccount()
+    account.platform = platform
+    account.credentials = {
+      api_key: 'sk-cn',
+      account_mode: 'payg',
+      api_protocol: from,
+      base_url: baseUrl
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    const targetButton = wrapper
+      .findAll('button')
+      .find(button => button.text().includes(`admin.accounts.cnProviders.apiProtocol.${to === 'chat_completions' ? 'chatCompletions' : to}`))
+    expect(targetButton).toBeDefined()
+    await targetButton!.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      api_protocol: to,
+      base_url: baseUrl
     })
   })
 
