@@ -36,7 +36,7 @@ func configuredCodexToolCapabilities(modelID string) map[string]json.RawMessage 
 	}
 	for _, base := range []string{"gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark", "gpt-5.2"} {
 		suffix, hasSuffix := strings.CutPrefix(normalized, base+"-")
-		if normalized != base && !(hasSuffix && isKnownCodexModelSuffix(suffix)) {
+		if normalized != base && (!hasSuffix || !isKnownCodexModelSuffix(suffix)) {
 			continue
 		}
 		capabilities["apply_patch_tool_type"] = json.RawMessage(`"freeform"`)
