@@ -200,6 +200,72 @@ func TestCodexModelsAppliesLocalFiltersBeforeClientETag(t *testing.T) {
 	}
 }
 
+func TestCodexModelsUsesPrimaryManifestWhenSparkShadowHasMapping(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(44)
+	parentID := int64(1)
+	repo := &codexModelsFailoverAccountRepo{accounts: []service.Account{
+		{
+			ID:              2,
+			Name:            "spark-shadow",
+			Platform:        service.PlatformOpenAI,
+			Type:            service.AccountTypeOAuth,
+			Status:          service.StatusActive,
+			Schedulable:     true,
+			Priority:        0,
+			Concurrency:     1,
+			ParentAccountID: &parentID,
+			QuotaDimension:  service.QuotaDimensionSpark,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gpt-5.3-codex-spark": "gpt-5.3-codex-spark",
+				},
+			},
+		},
+		{
+			ID:          parentID,
+			Name:        "primary-api-key",
+			Platform:    service.PlatformOpenAI,
+			Type:        service.AccountTypeAPIKey,
+			Status:      service.StatusActive,
+			Schedulable: true,
+			Priority:    1,
+			Concurrency: 1,
+			Credentials: map[string]any{
+				"api_key":  "sk-test",
+				"base_url": "https://upstream.example/v1",
+			},
+		},
+	}}
+	upstream := &codexModelsFailoverHTTPUpstream{
+		firstBody: `{"models":[{"slug":"gpt-5.6-sol","display_name":"Official GPT-5.6 Sol","future_capability":{"preserved":true}}]}`,
+	}
+	gatewayService := service.NewOpenAIGatewayService(
+		repo,
+		nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple}, nil, nil, nil, nil, nil,
+		upstream,
+		nil, nil, nil, nil, nil, nil, nil, nil,
+	)
+	handler := &OpenAIGatewayHandler{gatewayService: gatewayService}
+
+	response := performCodexModelsRequestForGroup(
+		t,
+		handler,
+		&service.Group{ID: groupID, Platform: service.PlatformOpenAI},
+		"",
+	)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, []int64{parentID}, upstream.calls())
+	require.Equal(t, []string{"gpt-5.6-sol", "gpt-5.3-codex-spark"}, codexHandlerManifestSlugs(t, response))
+
+	var envelope struct {
+		Models []map[string]any `json:"models"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &envelope))
+	require.Equal(t, "Official GPT-5.6 Sol", envelope.Models[0]["display_name"])
+	require.Equal(t, map[string]any{"preserved": true}, envelope.Models[0]["future_capability"])
+}
+
 func TestCodexModelsAPIKeyCacheDoesNotLeakGroupFilters(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &codexModelsFailoverAccountRepo{accounts: []service.Account{

@@ -117,6 +117,55 @@ type modelsListAccountRepoStub struct {
 	listAllCalls     atomic.Int64
 }
 
+type modelsListUpstreamFetcherStub struct {
+	models map[int64][]string
+	errors map[int64]error
+	calls  map[int64]int
+	mu     sync.Mutex
+}
+
+type blockingModelsListUpstreamFetcherStub struct {
+	started chan int64
+	release <-chan struct{}
+	active  atomic.Int64
+	max     atomic.Int64
+}
+
+func (s *blockingModelsListUpstreamFetcherStub) FetchUpstreamSupportedModels(ctx context.Context, account *Account) ([]string, error) {
+	active := s.active.Add(1)
+	defer s.active.Add(-1)
+	for {
+		currentMax := s.max.Load()
+		if active <= currentMax || s.max.CompareAndSwap(currentMax, active) {
+			break
+		}
+	}
+	select {
+	case s.started <- account.ID:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	select {
+	case <-s.release:
+		return []string{"discovered-model"}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (s *modelsListUpstreamFetcherStub) FetchUpstreamSupportedModels(_ context.Context, account *Account) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if account == nil {
+		return nil, errors.New("account is required")
+	}
+	s.calls[account.ID]++
+	if err := s.errors[account.ID]; err != nil {
+		return nil, err
+	}
+	return append([]string(nil), s.models[account.ID]...), nil
+}
+
 type stickyGatewayCacheHotpathStub struct {
 	GatewayCache
 
@@ -562,6 +611,193 @@ func TestGetAvailableModels_UsesShortCacheAndSupportsInvalidation(t *testing.T) 
 	require.Equal(t, int64(2), hit)
 	require.Equal(t, int64(2), miss)
 	require.Equal(t, int64(2), store)
+}
+
+func TestGetAvailableModelsDiscoversUnmappedAccountsFromUpstream(t *testing.T) {
+	groupID := int64(12)
+	repo := &modelsListAccountRepoStub{
+		byGroup: map[int64][]Account{
+			groupID: {
+				{
+					ID:       1,
+					Platform: PlatformOpenAI,
+					Credentials: map[string]any{
+						"model_mapping": map[string]any{
+							"configured-model": "configured-upstream",
+						},
+					},
+				},
+				{ID: 2, Platform: PlatformOpenAI},
+				{ID: 3, Platform: PlatformDeepseek},
+			},
+		},
+	}
+	fetcher := &modelsListUpstreamFetcherStub{
+		models: map[int64][]string{
+			2: {"gpt-5.6-terra", "gpt-5.6-sol"},
+			3: {"deepseek-chat"},
+		},
+		calls: make(map[int64]int),
+	}
+	svc := &GatewayService{
+		accountRepo:          repo,
+		modelsListCache:      gocache.New(time.Minute, time.Minute),
+		modelsListCacheTTL:   time.Minute,
+		upstreamModelFetcher: fetcher,
+	}
+
+	models := svc.GetAvailableModels(context.Background(), &groupID, "")
+	require.Equal(t, []string{"configured-model", "deepseek-chat", "gpt-5.6-sol", "gpt-5.6-terra"}, models)
+	require.Equal(t, 0, fetcher.calls[1], "configured accounts must not be discovered upstream")
+	require.Equal(t, 1, fetcher.calls[2])
+	require.Equal(t, 1, fetcher.calls[3])
+
+	models = svc.GetAvailableModels(context.Background(), &groupID, "")
+	require.Equal(t, []string{"configured-model", "deepseek-chat", "gpt-5.6-sol", "gpt-5.6-terra"}, models)
+	require.Equal(t, 1, fetcher.calls[2], "group cache should prevent repeated discovery")
+	require.Equal(t, 1, fetcher.calls[3], "group cache should prevent repeated discovery")
+}
+
+func TestGetAvailableModelsBoundsConcurrentUpstreamDiscovery(t *testing.T) {
+	groupID := int64(13)
+	accounts := make([]Account, 6)
+	for i := range accounts {
+		accounts[i] = Account{ID: int64(i + 1), Platform: PlatformOpenAI}
+	}
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+	fetcher := &blockingModelsListUpstreamFetcherStub{
+		started: make(chan int64, len(accounts)),
+		release: release,
+	}
+	svc := &GatewayService{
+		accountRepo:          &modelsListAccountRepoStub{byGroup: map[int64][]Account{groupID: accounts}},
+		upstreamModelFetcher: fetcher,
+	}
+
+	result := make(chan []string, 1)
+	go func() {
+		result <- svc.GetAvailableModels(context.Background(), &groupID, PlatformOpenAI)
+	}()
+
+	for i := 0; i < gatewayUpstreamModelsFetchConcurrency; i++ {
+		select {
+		case <-fetcher.started:
+		case <-time.After(time.Second):
+			t.Fatal("upstream discovery did not reach the configured concurrency")
+		}
+	}
+	select {
+	case accountID := <-fetcher.started:
+		t.Fatalf("account %d started above the concurrency limit", accountID)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	releaseOnce.Do(func() { close(release) })
+	select {
+	case models := <-result:
+		require.Equal(t, []string{"discovered-model"}, models)
+	case <-time.After(time.Second):
+		t.Fatal("upstream discovery did not finish after release")
+	}
+	require.Equal(t, int64(gatewayUpstreamModelsFetchConcurrency), fetcher.max.Load())
+}
+
+func TestFetchUpstreamModelCatalogSingleflightWaiterHonorsContext(t *testing.T) {
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+	fetcher := &blockingModelsListUpstreamFetcherStub{
+		started: make(chan int64, 1),
+		release: release,
+	}
+	svc := &GatewayService{upstreamModelFetcher: fetcher}
+	account := Account{ID: 21, Platform: PlatformOpenAI}
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := svc.fetchUpstreamModelCatalogForAccount(context.Background(), account)
+		firstDone <- err
+	}()
+	select {
+	case <-fetcher.started:
+	case <-time.After(time.Second):
+		t.Fatal("first upstream fetch did not start")
+	}
+
+	waiterCtx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	startedAt := time.Now()
+	_, err := svc.fetchUpstreamModelCatalogForAccount(waiterCtx, account)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Less(t, time.Since(startedAt), 250*time.Millisecond)
+
+	releaseOnce.Do(func() { close(release) })
+	select {
+	case err := <-firstDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("first upstream fetch did not finish after release")
+	}
+}
+
+func TestDiscoveredUpstreamCatalogConstrainsSchedulersOnlyWhenKnown(t *testing.T) {
+	cache := gocache.New(time.Minute, time.Minute)
+	gateway := &GatewayService{upstreamModelCatalogCache: cache}
+	account := &Account{ID: 31, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true}
+
+	require.True(t, gateway.isModelSupportedByAccount(account, "gpt-b"), "cache miss keeps legacy eligibility")
+	cache.Set(gatewayUpstreamModelCatalogCacheKey(account.ID), &gatewayUpstreamModelCatalog{models: []string{"gpt-a"}}, time.Minute)
+	require.True(t, gateway.isModelSupportedByAccount(account, "gpt-a"))
+	require.False(t, gateway.isModelSupportedByAccount(account, "gpt-b"))
+	mappedTargetCtx := WithUpstreamModelAvailabilityTarget(context.Background(), "gpt-a")
+	require.True(t, gateway.isModelSupportedByAccountWithContext(mappedTargetCtx, account, "public-alias"),
+		"channel-mapped upstream target, not the public alias, must be checked against the catalog")
+	emptyCatalogAccount := &Account{ID: 33, Platform: PlatformOpenAI}
+	cache.Set(gatewayUpstreamModelCatalogCacheKey(emptyCatalogAccount.ID), &gatewayUpstreamModelCatalog{}, time.Minute)
+	require.False(t, gateway.isModelSupportedByAccount(emptyCatalogAccount, "gpt-a"), "a successful empty catalog is authoritative")
+
+	openAIGateway := &OpenAIGatewayService{upstreamModelResolver: gateway}
+	scheduler := &defaultOpenAIAccountScheduler{service: openAIGateway}
+	compatible, reason := scheduler.isAccountRequestCompatibleReason(
+		context.Background(), account, OpenAIAccountScheduleRequest{RequestedModel: "gpt-b"},
+	)
+	require.False(t, compatible)
+	require.Equal(t, "model_not_supported", reason)
+	compatible, reason = scheduler.isAccountRequestCompatibleReason(
+		mappedTargetCtx, account, OpenAIAccountScheduleRequest{RequestedModel: "public-alias"},
+	)
+	require.True(t, compatible)
+	require.Empty(t, reason)
+	compactMapped := *account
+	compactMapped.ID = 34
+	compactMapped.Credentials = map[string]any{
+		"compact_model_mapping": map[string]any{"public-alias": "gpt-a"},
+	}
+	cache.Set(gatewayUpstreamModelCatalogCacheKey(compactMapped.ID), &gatewayUpstreamModelCatalog{models: []string{"gpt-a"}}, time.Minute)
+	compactCtx := WithOpenAIForwardModel(context.Background(), "public-alias", true)
+	require.True(t, openAIGateway.isModelSupportedByAccountForRequest(compactCtx, &compactMapped, "public-alias"),
+		"catalog lookup must follow the same compact mapping chain as forwarding")
+	require.Equal(t, "model_not_supported", openAIGateway.openAICompatibleAccountEligibilityFailureReason(
+		context.Background(), account, PlatformOpenAI, "gpt-b", false, OpenAIEndpointCapabilityResponses,
+	))
+
+	mapped := *account
+	mapped.Credentials = map[string]any{"model_mapping": map[string]any{"gpt-b": "gpt-b"}}
+	require.True(t, openAIGateway.IsModelSupportedByAccount(&mapped, "gpt-b"), "explicit mapping remains authoritative")
+
+	passthrough := *account
+	passthrough.Extra = map[string]any{"openai_passthrough": true}
+	require.True(t, openAIGateway.IsModelSupportedByAccount(&passthrough, "gpt-b"), "passthrough remains unrestricted")
+
+	geminiAccount := &Account{ID: 32, Platform: PlatformGemini}
+	cache.Set(gatewayUpstreamModelCatalogCacheKey(geminiAccount.ID), &gatewayUpstreamModelCatalog{models: []string{"gemini-a"}}, time.Minute)
+	gemini := &GeminiMessagesCompatService{upstreamModelResolver: gateway}
+	require.True(t, gemini.isModelSupportedByAccount(geminiAccount, "gemini-a"))
+	require.False(t, gemini.isModelSupportedByAccount(geminiAccount, "gemini-b"))
+	geminiTargetCtx := WithUpstreamModelAvailabilityTarget(context.Background(), "gemini-a")
+	require.True(t, gemini.isModelSupportedByAccountForRequest(geminiTargetCtx, geminiAccount, "public-gemini-alias"))
 }
 
 // Scenario: 账号模型变更会失效所属平台缓存

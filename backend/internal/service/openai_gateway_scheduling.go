@@ -380,11 +380,27 @@ func openAICompatibleAccountEligibilityFailureReason(ctx context.Context, accoun
 	return ""
 }
 
+func (s *OpenAIGatewayService) openAICompatibleAccountEligibilityFailureReason(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) string {
+	if reason := openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx, account, platform, requestedModel, requireCompact, requiredCapability); reason != "" {
+		return reason
+	}
+	if requestedModel != "" && !s.isModelSupportedByAccountForRequest(ctx, account, requestedModel) {
+		return "model_not_supported"
+	}
+	if vetoed, reason := openAIProfitControlVetoReason(ctx, account); vetoed {
+		return reason
+	}
+	return ""
+}
+
 // isOpenAICompatibleAccountEligibleForRequestBeforeProfit applies every
 // ordinary scheduling gate. Legacy selection uses it before classifying the
 // profit veto so earlier failures retain their actual reason.
-func isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) bool {
-	return openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx, account, platform, requestedModel, requireCompact, requiredCapability) == ""
+func (s *OpenAIGatewayService) isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) bool {
+	if reason := openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx, account, platform, requestedModel, requireCompact, requiredCapability); reason != "" {
+		return false
+	}
+	return requestedModel == "" || s.isModelSupportedByAccountForRequest(ctx, account, requestedModel)
 }
 
 func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) string {
@@ -1254,7 +1270,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		// Scheduler snapshots can be temporarily stale (bucket rebuild is throttled);
 		// re-check schedulability here so recently rate-limited/overloaded accounts
 		// are not selected again before the bucket is rebuilt.
-		if reason := openAICompatibleAccountEligibilityFailureReason(ctx, acc, platform, requestedModel, false, requiredCapability); reason != "" {
+		if reason := s.openAICompatibleAccountEligibilityFailureReason(ctx, acc, platform, requestedModel, false, requiredCapability); reason != "" {
 			filterStats.exclude(reason)
 			continue
 		}
@@ -1534,7 +1550,7 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountBeforeProfit(
 		fresh = current
 	}
 
-	if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, fresh, platform, requestedModel, requireCompact, requiredCapability) {
+	if !s.isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, fresh, platform, requestedModel, requireCompact, requiredCapability) {
 		return nil
 	}
 	if !parentHealthyForShadow(fresh, s.parentAccountLookup(ctx)) {
@@ -1586,7 +1602,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 		if s.openAIGroupRequiresPrivacySet(ctx, groupID) && !account.IsPrivacySet() {
 			return nil
 		}
-		if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, account, platform, requestedModel, requireCompact, requiredCapability) {
+		if !s.isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, account, platform, requestedModel, requireCompact, requiredCapability) {
 			return nil
 		}
 		if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, account) {
@@ -1611,7 +1627,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	if s.openAIGroupRequiresPrivacySet(ctx, groupID) && !latest.IsPrivacySet() {
 		return nil
 	}
-	if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, latest, platform, requestedModel, requireCompact, requiredCapability) {
+	if !s.isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, latest, platform, requestedModel, requireCompact, requiredCapability) {
 		return nil
 	}
 	if !parentHealthyForShadow(latest, s.parentAccountLookup(ctx)) {
