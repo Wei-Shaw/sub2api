@@ -17,10 +17,11 @@ const AES256KeySize = 32
 // The output format is "iv:authTag:ciphertext" where each component is base64-encoded,
 // matching the Node.js crypto.ts format for cross-compatibility.
 //
-// Deprecated: payment provider configs are now stored as plaintext JSON.
-// This function is kept only for seeding legacy ciphertext in tests and for
-// the transitional Decrypt fallback. Scheduled for removal after all live
-// deployments complete migration by re-saving their configs.
+// This is the write path for payment provider instance configs. Those configs hold
+// live gateway credentials — Stripe secretKey/webhookSecret, EasyPay pkey, wxpay
+// apiV3Key/privateKey, Alipay privateKey, Airwallex apiKey/webhookSecret — and a
+// single leaked row is enough to forge a valid success callback for any order.
+// They must never reach the database in plaintext.
 func Encrypt(plaintext string, key []byte) (string, error) {
 	if len(key) != AES256KeySize {
 		return "", fmt.Errorf("encryption key must be %d bytes, got %d", AES256KeySize, len(key))
@@ -60,10 +61,8 @@ func Encrypt(plaintext string, key []byte) (string, error) {
 // Decrypt decrypts a ciphertext string produced by Encrypt.
 // The input format is "iv:authTag:ciphertext" where each component is base64-encoded.
 //
-// Deprecated: payment provider configs are now stored as plaintext JSON.
-// This function remains only as a read-path fallback for pre-migration
-// ciphertext records. Scheduled for removal once all deployments re-save
-// their provider configs through the admin UI.
+// The format is unchanged from the original implementation, so rows written before
+// the plaintext regression are still readable without any migration step.
 func Decrypt(ciphertext string, key []byte) (string, error) {
 	if len(key) != AES256KeySize {
 		return "", fmt.Errorf("encryption key must be %d bytes, got %d", AES256KeySize, len(key))

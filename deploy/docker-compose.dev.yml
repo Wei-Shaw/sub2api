@@ -45,6 +45,10 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - JWT_SECRET=${JWT_SECRET:-}
       - SETUP_MIGRATION_TIMEOUT_SECONDS=${SETUP_MIGRATION_TIMEOUT_SECONDS:-0}
+      # Application-wide secret encryption key (openssl rand -hex 32).
+      # Empty is fine for a scratch dev DB; it is NOT auto-generated.
+      - SECURITY_SECRET_ENCRYPTION_KEY=${SECURITY_SECRET_ENCRYPTION_KEY:-}
+      # Legacy alias for the same key.
       - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-}
       - TZ=${TZ:-Asia/Shanghai}
       # Local mainland-China development proxy. Containers cannot use

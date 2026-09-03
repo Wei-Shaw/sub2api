@@ -70,24 +70,74 @@ func TestNewAESEncryptor_WrongKeyLength(t *testing.T) {
 	}
 }
 
-// "配置缺失"场景：空字符串与非法 hex 编码。
-func TestNewAESEncryptor_MissingOrInvalidConfig(t *testing.T) {
+// 非法 hex 编码：必须启动失败，不得退化为空密钥或随机密钥。
+func TestNewAESEncryptor_InvalidHex(t *testing.T) {
 	tests := []struct {
-		name        string
-		keyHex      string
-		wantContain string
+		name   string
+		keyHex string
 	}{
-		{"empty_key", "", "32 bytes"},
-		{"invalid_hex_odd_length", "abcde", "invalid totp encryption key"},
-		{"invalid_hex_chars", "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", "invalid totp encryption key"},
+		{"invalid_hex_odd_length", "abcde"},
+		{"invalid_hex_chars", "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := NewAESEncryptor(aesTestCfg(tt.keyHex))
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), tt.wantContain)
+			assert.Contains(t, err.Error(), config.SecretEncryptionKeyEnvVar)
 		})
 	}
+}
+
+// 空密钥不再是错误，也不再被自动生成成一把每次重启都变的随机密钥。
+// 它返回一个显式失败的实现：进程能起来（全新安装还用不到密钥），
+// 但任何真正想写入或读取密文的调用都会当场拿到一条点名变量的错误。
+func TestNewAESEncryptor_EmptyKeyReturnsDisabledEncryptor(t *testing.T) {
+	for _, keyHex := range []string{"", "   "} {
+		enc, err := NewAESEncryptor(aesTestCfg(keyHex))
+		require.NoError(t, err, "空密钥不得阻断启动")
+		require.NotNil(t, enc, "不得返回 nil，否则调用方会 panic 而不是报错")
+
+		_, err = enc.Encrypt("secret")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), config.SecretEncryptionKeyEnvVar,
+			"错误必须点名要设置的变量")
+
+		_, err = enc.Decrypt("whatever")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), config.SecretEncryptionKeyEnvVar)
+	}
+}
+
+// nil Config 走的是同一条降级路径，不得 panic。
+func TestNewAESEncryptor_NilConfigReturnsDisabledEncryptor(t *testing.T) {
+	enc, err := NewAESEncryptor(nil)
+	require.NoError(t, err)
+	require.NotNil(t, enc)
+	_, err = enc.Encrypt("secret")
+	require.Error(t, err)
+}
+
+// 规范键优先于历史别名。
+func TestNewAESEncryptor_CanonicalKeyWinsOverLegacyAlias(t *testing.T) {
+	canonical := aesHexKey(32, 0xC1)
+	legacy := aesHexKey(32, 0x1E)
+
+	enc, err := NewAESEncryptor(&config.Config{
+		Security: config.SecurityConfig{SecretEncryptionKey: canonical},
+		Totp:     config.TotpConfig{EncryptionKey: legacy},
+	})
+	require.NoError(t, err)
+
+	canonicalOnly, err := NewAESEncryptor(&config.Config{
+		Security: config.SecurityConfig{SecretEncryptionKey: canonical},
+	})
+	require.NoError(t, err)
+
+	ct, err := enc.Encrypt("payload")
+	require.NoError(t, err)
+	got, err := canonicalOnly.Decrypt(ct)
+	require.NoError(t, err)
+	assert.Equal(t, "payload", got)
 }
 
 // ── 加解密往返（Roundtrip）───────────────────────────────────────────────────

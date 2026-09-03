@@ -490,25 +490,34 @@ func (s *PaymentConfigService) mergeConfig(ctx context.Context, id int64, newCon
 }
 
 // decryptConfig parses a stored provider config.
-// New records are plaintext JSON; legacy records are AES-256-GCM ciphertext
-// ("iv:authTag:ciphertext"). Values that cannot be parsed as either — including
-// legacy ciphertext with no/invalid TOTP_ENCRYPTION_KEY — are treated as empty,
-// letting the admin re-enter the config via the UI to complete the migration.
 //
-// TODO(deprecated-legacy-ciphertext): The AES fallback branch is a transitional
-// shim for pre-plaintext records. Remove it (and the encryptionKey field) after
-// a few releases once all live deployments have re-saved their provider configs.
+// The canonical storage format is AES-256-GCM ciphertext ("iv:authTag:ciphertext"),
+// which is what encryptConfig writes and what the ent schema documents.
+//
+// The plaintext-JSON branch is a READ SHIM, not a supported write format: a
+// regression made encryptConfig store configs as bare json.Marshal output for a
+// number of releases, so live databases contain rows holding gateway credentials
+// in the clear. Those rows must stay readable until the startup backfill
+// (repository.reencryptPaymentProviderConfigs) has re-encrypted them. Keep this
+// branch until that backfill has shipped everywhere; removing it early turns a
+// readable row into a silently-empty provider config.
+//
+// The two formats are structurally disjoint — ciphertext is three base64 segments
+// and can never parse as a JSON object — so the order of the attempts below is a
+// determination, not a guess.
+//
+// Values that parse as neither — including ciphertext under a missing or rotated
+// key — are treated as empty so the admin can re-enter the config via the UI.
 func (s *PaymentConfigService) decryptConfig(stored string) (map[string]string, error) {
 	if stored == "" {
 		return nil, nil
 	}
 	var cfg map[string]string
+	// Read shim for rows written during the plaintext regression window.
 	if err := json.Unmarshal([]byte(stored), &cfg); err == nil {
 		return cfg, nil
 	}
-	// Deprecated: legacy AES-256-GCM ciphertext fallback — scheduled for removal.
 	if len(s.encryptionKey) == payment.AES256KeySize {
-		//nolint:staticcheck // SA1019: intentional legacy fallback, scheduled for removal
 		if plaintext, err := payment.Decrypt(stored, s.encryptionKey); err == nil {
 			if err := json.Unmarshal([]byte(plaintext), &cfg); err == nil {
 				return cfg, nil
@@ -532,13 +541,30 @@ func (s *PaymentConfigService) DeleteProviderInstance(ctx context.Context, id in
 	return s.entClient.PaymentProviderInstance.DeleteOneID(id).Exec(ctx)
 }
 
-// encryptConfig serialises a provider config for storage.
-// New records are written as plaintext JSON; the historical AES-GCM wrapping
-// has been dropped but decryptConfig still accepts old ciphertext during migration.
+// encryptConfig serialises a provider config and encrypts it for storage.
+//
+// Provider configs hold live payment gateway credentials (Stripe secretKey and
+// webhookSecret, EasyPay pkey, wxpay apiV3Key and privateKey, Alipay privateKey,
+// Airwallex apiKey and webhookSecret). With any of those an attacker can sign a
+// valid success callback for an arbitrary order, so a single leaked row defeats
+// the callback signature verification entirely. They are never written in the clear.
+//
+// Refusing to write when no key is available is deliberate: falling back to
+// plaintext is exactly the regression this restores, and it fails silently.
 func (s *PaymentConfigService) encryptConfig(cfg map[string]string) (string, error) {
 	data, err := json.Marshal(cfg)
 	if err != nil {
 		return "", fmt.Errorf("marshal config: %w", err)
 	}
-	return string(data), nil
+	if len(s.encryptionKey) != payment.AES256KeySize {
+		return "", infraerrors.BadRequest("PAYMENT_ENCRYPTION_KEY_NOT_CONFIGURED",
+			"cannot store payment provider credentials: no application secret encryption key is configured. "+
+				"Generate one with `openssl rand -hex 32` and set SECURITY_SECRET_ENCRYPTION_KEY "+
+				"(legacy alias: TOTP_ENCRYPTION_KEY), then restart the service")
+	}
+	ciphertext, err := payment.Encrypt(string(data), s.encryptionKey)
+	if err != nil {
+		return "", fmt.Errorf("encrypt config: %w", err)
+	}
+	return ciphertext, nil
 }

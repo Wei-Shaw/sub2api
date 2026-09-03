@@ -151,6 +151,20 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 		return nil, nil, err
 	}
 
+	// 应用级密钥加密主密钥的前置检查：密钥缺失但库里已有密文时阻断启动，
+	// 而不是让运维在重启后静默失去解密能力。
+	if err := ensureSecretEncryptionKeyUsable(migrationCtx, drv.DB(), cfg); err != nil {
+		_ = client.Close()
+		return nil, nil, err
+	}
+
+	// 一次性回填：把回归窗口内被明文写入的支付服务商配置重新加密。
+	// 必须在任何请求读到这些行之前完成，且拿不到纯 SQL 上下文的密钥，因此不能做成 migration。
+	if err := reencryptPaymentProviderConfigs(migrationCtx, drv.DB(), cfg); err != nil {
+		_ = client.Close()
+		return nil, nil, err
+	}
+
 	// 在密钥补齐后执行完整配置校验，避免空 jwt.secret 导致服务运行时失败。
 	if err := cfg.Validate(); err != nil {
 		_ = client.Close()
