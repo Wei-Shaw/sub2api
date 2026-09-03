@@ -41,7 +41,7 @@ func (s *GroupRepoSuite) TestListWithAccountCountSort_AttachesActiveCount() {
 
 	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{
 		Page: 1, PageSize: 100, SortBy: "account_count", SortOrder: "desc",
-	}, service.PlatformAnthropic, service.StatusActive, "", nil)
+	}, service.PlatformAnthropic, service.StatusActive, "", nil, false)
 	s.Require().NoError(err)
 
 	byID := make(map[int64]service.Group, len(groups))

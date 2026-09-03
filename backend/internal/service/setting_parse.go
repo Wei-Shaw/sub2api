@@ -125,6 +125,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOIDCConnectUserInfoUsernamePath:           "",
 		SettingKeyDefaultConcurrency:                        strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                            strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
+		SettingKeyPrivateGroupExpiresDate:                   "",
+		SettingKeyGroupUpstreamPlans:                        "",
 		SettingKeyAffiliateRebateRate:                       strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
 		SettingKeyAffiliateRebateFreezeHours:                strconv.Itoa(AffiliateRebateFreezeHoursDefault),
 		SettingKeyAffiliateRebateDurationDays:               strconv.Itoa(AffiliateRebateDurationDaysDefault),
@@ -200,6 +202,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Available channels feature (default disabled; opt-in)
 		SettingKeyAvailableChannelsEnabled: "false",
 
+		// User-owned accounts feature (default disabled; opt-in; soft cap 10)
+		SettingKeyUserOwnedAccountsEnabled: "false",
+		SettingKeyMaxUserOwnedAccounts:     strconv.Itoa(DefaultMaxUserOwnedAccounts),
+
 		// Model plaza feature (default disabled; opt-in, public unless require_auth)
 		SettingKeyModelPlazaEnabled:       "false",
 		SettingKeyModelPlazaRequireAuth:   "false",
@@ -209,6 +215,13 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled:              "false",
 		SettingKeyAffiliateAdminRechargeEnabled: strconv.FormatBool(AdminRechargeRebateEnabledDefault),
+
+		// 共享收益分配（默认关闭）
+		SettingKeyShareRevenueSplitEnabled: "false",
+		SettingKeyShareSplitInvitePct:      "10",
+		SettingKeyShareSplitUserPct:        "40",
+		SettingKeyShareSplitPlatformPct:    "50",
+		SettingKeyPrivateSelfEnvFeePct:     "1",
 
 		// 风控中心功能（默认关闭，显式启用）
 		SettingKeyRiskControlEnabled: "false",
@@ -392,6 +405,19 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.DefaultBalance = balance
 	} else {
 		result.DefaultBalance = s.cfg.Default.UserBalance
+	}
+	// 非法历史值读侧降级为空（未配置），写侧仍会校验
+	if date, err := normalizePrivateGroupExpiresDate(settings[SettingKeyPrivateGroupExpiresDate]); err == nil {
+		result.PrivateGroupExpiresDate = date
+	} else {
+		result.PrivateGroupExpiresDate = ""
+	}
+	// group_upstream_plans：raw 空时不在 parse 路径 seed（避免 GetAll 写库副作用）；
+	// 业务读用 GetGroupUpstreamPlans；此处解析成功则填入，失败用空 map。
+	if plans, err := ParseGroupUpstreamPlansJSON(settings[SettingKeyGroupUpstreamPlans]); err == nil {
+		result.GroupUpstreamPlans = plans
+	} else {
+		result.GroupUpstreamPlans = map[string][]GroupUpstreamPlanOption{}
 	}
 	if rebateRate, err := strconv.ParseFloat(settings[SettingKeyAffiliateRebateRate], 64); err == nil {
 		result.AffiliateRebateRate = clampAffiliateRebateRate(rebateRate)
@@ -816,6 +842,17 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Available channels feature (default: disabled; strict true)
 	result.AvailableChannelsEnabled = settings[SettingKeyAvailableChannelsEnabled] == "true"
+
+	// User-owned accounts feature (default: disabled; strict true; max default 10)
+	result.UserOwnedAccountsEnabled = settings[SettingKeyUserOwnedAccountsEnabled] == "true"
+	result.MaxUserOwnedAccounts = parseMaxUserOwnedAccounts(settings[SettingKeyMaxUserOwnedAccounts])
+
+	// 共享收益分配（默认关；比例默认 10/40/50；自用环境费 1%）
+	result.ShareRevenueSplitEnabled = settings[SettingKeyShareRevenueSplitEnabled] == "true"
+	result.ShareSplitInvitePct = parseSharePct(settings[SettingKeyShareSplitInvitePct], 10)
+	result.ShareSplitUserPct = parseSharePct(settings[SettingKeyShareSplitUserPct], 40)
+	result.ShareSplitPlatformPct = parseSharePct(settings[SettingKeyShareSplitPlatformPct], 50)
+	result.PrivateSelfEnvFeePct = parseSharePct(settings[SettingKeyPrivateSelfEnvFeePct], 1)
 
 	// Model plaza feature (default: disabled; strict true)
 	result.ModelPlazaEnabled = settings[SettingKeyModelPlazaEnabled] == "true"

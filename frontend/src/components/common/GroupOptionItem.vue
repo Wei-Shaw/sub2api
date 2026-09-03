@@ -10,6 +10,7 @@
         :name="name"
         :platform="platform"
         :subscription-type="subscriptionType"
+        :upstream-plan="upstreamPlan"
         :show-rate="false"
         class="groupOptionItemBadge"
       />
@@ -78,6 +79,8 @@ interface Props {
   peakStart?: string
   peakEnd?: string
   peakRateMultiplier?: number
+  /** 上游订阅档位显示文案（label 或 code） */
+  upstreamPlan?: string | null
   description?: string | null
   selected?: boolean
   showCheckmark?: boolean
@@ -88,7 +91,8 @@ const props = withDefaults(defineProps<Props>(), {
   selected: false,
   showCheckmark: true,
   userRateMultiplier: null,
-  peakRateEnabled: false
+  peakRateEnabled: false,
+  upstreamPlan: null
 })
 
 // Whether user has a custom rate different from default

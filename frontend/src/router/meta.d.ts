@@ -64,5 +64,10 @@ declare module 'vue-router' {
      * i18n key for the page description
      */
     descriptionKey?: string
+
+    /**
+     * 账号列表范围：mine=用户自建（/my-accounts）；all=管理端全站（/admin/accounts）
+     */
+    accountScope?: 'mine' | 'all'
   }
 }

@@ -2,11 +2,20 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
+import { apiClient } from '@/api/client'
 import type { AntigravityTokenInfo } from '@/api/admin/antigravity'
+import {
+  type OAuthComposableOptions,
+  type OAuthSurface,
+  effectiveProxyId,
+  oauthPrefix
+} from '@/utils/oauthSurface'
 
-export function useAntigravityOAuth() {
+export function useAntigravityOAuth(opts?: OAuthComposableOptions) {
   const appStore = useAppStore()
   const { t } = useI18n()
+  const surface: OAuthSurface = opts?.surface ?? 'admin'
+  const prefix = oauthPrefix(surface, 'antigravity')
 
   const authUrl = ref('')
   const sessionId = ref('')
@@ -31,9 +40,20 @@ export function useAntigravityOAuth() {
 
     try {
       const payload: Record<string, unknown> = {}
-      if (proxyId) payload.proxy_id = proxyId
+      const effectiveProxy = effectiveProxyId(surface, proxyId)
+      if (effectiveProxy) payload.proxy_id = effectiveProxy
 
-      const response = await adminAPI.antigravity.generateAuthUrl(payload as any)
+      let response: { auth_url: string; session_id: string; state: string }
+      if (surface === 'user') {
+        const { data } = await apiClient.post<{
+          auth_url: string
+          session_id: string
+          state: string
+        }>(`${prefix}/auth-url`, payload)
+        response = data
+      } else {
+        response = await adminAPI.antigravity.generateAuthUrl(payload as any)
+      }
       authUrl.value = response.auth_url
       sessionId.value = response.session_id
       state.value = response.state
@@ -69,8 +89,16 @@ export function useAntigravityOAuth() {
         state: params.state,
         code
       }
-      if (params.proxyId) payload.proxy_id = params.proxyId
+      const effectiveProxy = effectiveProxyId(surface, params.proxyId)
+      if (effectiveProxy) payload.proxy_id = effectiveProxy
 
+      if (surface === 'user') {
+        const { data } = await apiClient.post<AntigravityTokenInfo>(
+          `${prefix}/exchange-code`,
+          payload
+        )
+        return data
+      }
       const tokenInfo = await adminAPI.antigravity.exchangeCode(payload as any)
       return tokenInfo as AntigravityTokenInfo
     } catch (err: any) {
@@ -96,9 +124,16 @@ export function useAntigravityOAuth() {
     error.value = ''
 
     try {
+      const effectiveProxy = effectiveProxyId(surface, proxyId)
+      if (surface === 'user') {
+        const { data } = await apiClient.post<AntigravityTokenInfo>(`${prefix}/refresh-token`, {
+          refresh_token: refreshToken.trim()
+        })
+        return data
+      }
       const tokenInfo = await adminAPI.antigravity.refreshAntigravityToken(
         refreshToken.trim(),
-        proxyId
+        effectiveProxy
       )
       return tokenInfo as AntigravityTokenInfo
     } catch (err: any) {
@@ -126,7 +161,7 @@ export function useAntigravityOAuth() {
       ? tokenInfo.refresh_token
       : fallbackRefreshToken
 
-    return {
+    const creds: Record<string, unknown> = {
       access_token: tokenInfo.access_token,
       refresh_token: refreshToken,
       token_type: tokenInfo.token_type,
@@ -134,6 +169,28 @@ export function useAntigravityOAuth() {
       project_id: tokenInfo.project_id,
       email: tokenInfo.email
     }
+    const planType =
+      typeof tokenInfo.plan_type === 'string' ? tokenInfo.plan_type.trim() : ''
+    if (planType) creds.plan_type = planType
+    const tierId = typeof tokenInfo.tier_id === 'string' ? tokenInfo.tier_id.trim() : ''
+    if (tierId) creds.tier_id = tierId
+    return creds
+  }
+
+  /** 列表 Private/Pro 角标依赖的 extra 字段 */
+  const buildExtraInfo = (tokenInfo: AntigravityTokenInfo): Record<string, unknown> | undefined => {
+    const extra: Record<string, unknown> = {}
+    const privacy =
+      typeof tokenInfo.privacy_mode === 'string' ? tokenInfo.privacy_mode.trim() : ''
+    if (privacy) extra.privacy_mode = privacy
+    const tierId = typeof tokenInfo.tier_id === 'string' ? tokenInfo.tier_id.trim() : ''
+    if (tierId) {
+      extra.load_code_assist = {
+        currentTier: { id: tierId },
+        paidTier: { id: tierId }
+      }
+    }
+    return Object.keys(extra).length > 0 ? extra : undefined
   }
 
   return {
@@ -146,6 +203,7 @@ export function useAntigravityOAuth() {
     generateAuthUrl,
     exchangeAuthCode,
     validateRefreshToken,
-    buildCredentials
+    buildCredentials,
+    buildExtraInfo
   }
 }

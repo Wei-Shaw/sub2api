@@ -252,6 +252,24 @@
               {{ t('admin.users.bulkLimits.action', { count: selectedCount }) }}
             </button>
 
+            <button
+              v-if="selectedCount > 0"
+              class="btn btn-secondary flex-1 md:flex-initial"
+              data-testid="bulk-provision-private-groups-btn"
+              :disabled="bulkProvisioningPrivateGroups"
+              @click="openBulkProvisionPrivateDialog"
+            >
+              <Icon name="users" size="md" class="mr-2" />
+              {{
+                bulkProvisioningPrivateGroups
+                  ? t('admin.users.bulkProvisionPrivateGroupsProgress', {
+                      current: bulkProvisionProgress.current,
+                      total: bulkProvisionProgress.total
+                    })
+                  : t('admin.users.bulkProvisionPrivateGroups', { count: selectedCount })
+              }}
+            </button>
+
             <!-- Create User Button (full width on mobile, auto width on desktop) -->
             <button @click="showCreateModal = true" class="btn btn-primary flex-1 md:flex-initial">
               <Icon name="plus" size="md" class="mr-2" />
@@ -666,7 +684,7 @@
     <Teleport to="body">
       <div
         v-if="activeMenuId !== null && menuPosition"
-        class="action-menu-content fixed z-[9999] w-48 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 dark:bg-dark-800 dark:ring-white/10"
+        class="action-menu-content fixed z-[9999] w-56 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 dark:bg-dark-800 dark:ring-white/10"
         :style="{ top: menuPosition.top + 'px', left: menuPosition.left + 'px' }"
       >
         <div class="py-1">
@@ -730,6 +748,17 @@
                 {{ t('admin.users.balanceHistory') }}
               </button>
 
+              <!-- Provision private platform groups (role=user | admin) -->
+              <button
+                v-if="canProvisionPrivateGroups(user)"
+                data-testid="provision-private-groups-btn"
+                @click="handleProvisionPrivateGroups(user); closeActionMenu()"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+              >
+                <Icon name="users" size="sm" class="text-primary-500" :stroke-width="2" />
+                {{ t('admin.users.provisionPrivateGroups') }}
+              </button>
+
               <div class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
 
               <!-- Delete (not for admin) -->
@@ -748,6 +777,39 @@
     </Teleport>
 
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.users.deleteUser')" :message="t('admin.users.deleteConfirm', { email: deletingUser?.email })" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
+    <ConfirmDialog
+      :show="showProvisionPrivateDialog"
+      :title="t('admin.users.provisionPrivateGroupsConfirmTitle')"
+      :message="t('admin.users.provisionPrivateGroupsConfirm', { email: provisioningUser?.email })"
+      :confirm-text="
+        provisioningPrivateGroups
+          ? t('admin.users.provisioningPrivateGroups')
+          : t('admin.users.provisionPrivateGroupsConfirmButton')
+      "
+      data-testid="provision-private-groups-confirm"
+      @confirm="confirmProvisionPrivateGroups"
+      @cancel="closeProvisionPrivateDialog"
+    />
+    <ConfirmDialog
+      :show="showBulkProvisionPrivateDialog"
+      :title="t('admin.users.bulkProvisionPrivateGroupsConfirmTitle')"
+      :message="
+        t('admin.users.bulkProvisionPrivateGroupsConfirm', {
+          count: bulkProvisionTargetIds.length
+        })
+      "
+      :confirm-text="
+        bulkProvisioningPrivateGroups
+          ? t('admin.users.bulkProvisionPrivateGroupsProgress', {
+              current: bulkProvisionProgress.current,
+              total: bulkProvisionProgress.total
+            })
+          : t('admin.users.bulkProvisionPrivateGroupsConfirmButton')
+      "
+      data-testid="bulk-provision-private-groups-confirm"
+      @confirm="confirmBulkProvisionPrivateGroups"
+      @cancel="closeBulkProvisionPrivateDialog"
+    />
     <UserCreateModal :show="showCreateModal" @close="showCreateModal = false" @success="loadUsers" />
     <UserEditModal :show="showEditModal" :user="editingUser" @close="closeEditModal" @success="loadUsers" />
     <BulkEditUserModal
@@ -1782,6 +1844,159 @@ const confirmDelete = async () => {
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.users.failedToDelete'))
     console.error('Error deleting user:', error)
+  }
+}
+
+const PRIVATE_GROUP_PROVISION_ROLES = new Set(['user', 'admin'])
+/** 与分页选择上限一致：批量补建单次最多 50 */
+const BULK_PROVISION_PRIVATE_MAX = 50
+
+const canProvisionPrivateGroups = (user: AdminUser | null | undefined) =>
+  Boolean(user && PRIVATE_GROUP_PROVISION_ROLES.has(user.role))
+
+const showProvisionPrivateDialog = ref(false)
+const provisioningUser = ref<AdminUser | null>(null)
+const provisioningPrivateGroups = ref(false)
+
+const showBulkProvisionPrivateDialog = ref(false)
+const bulkProvisioningPrivateGroups = ref(false)
+const bulkProvisionTargetIds = ref<number[]>([])
+const bulkProvisionProgress = reactive({ current: 0, total: 0 })
+
+const handleProvisionPrivateGroups = (user: AdminUser) => {
+  if (!canProvisionPrivateGroups(user)) return
+  provisioningUser.value = user
+  showProvisionPrivateDialog.value = true
+}
+
+const closeProvisionPrivateDialog = () => {
+  if (provisioningPrivateGroups.value) return
+  showProvisionPrivateDialog.value = false
+  provisioningUser.value = null
+}
+
+const confirmProvisionPrivateGroups = async () => {
+  if (!provisioningUser.value || provisioningPrivateGroups.value) return
+  provisioningPrivateGroups.value = true
+  try {
+    const result = await adminAPI.users.provisionPrivateGroups(provisioningUser.value.id)
+    appStore.showSuccess(
+      t('admin.users.provisionPrivateGroupsSuccess', {
+        created: result.created_count,
+        ensured: result.ensured_count
+      })
+    )
+    showProvisionPrivateDialog.value = false
+    provisioningUser.value = null
+  } catch (error: any) {
+    appStore.showError(
+      error.response?.data?.detail ||
+        error.response?.data?.message ||
+        t('admin.users.provisionPrivateGroupsFailed')
+    )
+    console.error('Error provisioning private groups:', error)
+  } finally {
+    provisioningPrivateGroups.value = false
+  }
+}
+
+const openBulkProvisionPrivateDialog = () => {
+  if (bulkProvisioningPrivateGroups.value) return
+  const ids = [...selectedIds.value]
+  if (ids.length === 0) {
+    appStore.showError(t('admin.users.bulkProvisionPrivateGroupsNeedSelection'))
+    return
+  }
+  if (ids.length > BULK_PROVISION_PRIVATE_MAX) {
+    appStore.showError(
+      t('admin.users.bulkProvisionPrivateGroupsLimit', { max: BULK_PROVISION_PRIVATE_MAX })
+    )
+    return
+  }
+  bulkProvisionTargetIds.value = ids
+  bulkProvisionProgress.current = 0
+  bulkProvisionProgress.total = ids.length
+  showBulkProvisionPrivateDialog.value = true
+}
+
+const closeBulkProvisionPrivateDialog = () => {
+  if (bulkProvisioningPrivateGroups.value) return
+  showBulkProvisionPrivateDialog.value = false
+  bulkProvisionTargetIds.value = []
+  bulkProvisionProgress.current = 0
+  bulkProvisionProgress.total = 0
+}
+
+const confirmBulkProvisionPrivateGroups = async () => {
+  if (bulkProvisioningPrivateGroups.value) return
+  const ids = [...bulkProvisionTargetIds.value]
+  if (ids.length === 0) {
+    closeBulkProvisionPrivateDialog()
+    return
+  }
+  if (ids.length > BULK_PROVISION_PRIVATE_MAX) {
+    appStore.showError(
+      t('admin.users.bulkProvisionPrivateGroupsLimit', { max: BULK_PROVISION_PRIVATE_MAX })
+    )
+    return
+  }
+
+  bulkProvisioningPrivateGroups.value = true
+  bulkProvisionProgress.current = 0
+  bulkProvisionProgress.total = ids.length
+
+  let success = 0
+  let failed = 0
+  const failedEmails: string[] = []
+
+  try {
+    // 串行调用单用户补建接口（A2）：尽力而为，单用户失败不中断整批
+    for (let i = 0; i < ids.length; i++) {
+      const userId = ids[i]
+      bulkProvisionProgress.current = i + 1
+      const user = sortedUsers.value.find((u) => u.id === userId)
+      try {
+        await adminAPI.users.provisionPrivateGroups(userId)
+        success += 1
+      } catch (error: any) {
+        failed += 1
+        const email = user?.email || String(userId)
+        failedEmails.push(email)
+        console.error('Bulk provision private groups failed for user', userId, error)
+      }
+    }
+
+    showBulkProvisionPrivateDialog.value = false
+    bulkProvisionTargetIds.value = []
+    clearSelection()
+
+    if (failed === 0) {
+      appStore.showSuccess(
+        t('admin.users.bulkProvisionPrivateGroupsSuccess', {
+          success,
+          failed
+        })
+      )
+    } else if (success === 0) {
+      appStore.showError(
+        t('admin.users.bulkProvisionPrivateGroupsAllFailed', {
+          failed,
+          detail: failedEmails.slice(0, 5).join(', ')
+        })
+      )
+    } else {
+      appStore.showError(
+        t('admin.users.bulkProvisionPrivateGroupsPartial', {
+          success,
+          failed,
+          detail: failedEmails.slice(0, 5).join(', ')
+        })
+      )
+    }
+  } finally {
+    bulkProvisioningPrivateGroups.value = false
+    bulkProvisionProgress.current = 0
+    bulkProvisionProgress.total = 0
   }
 }
 

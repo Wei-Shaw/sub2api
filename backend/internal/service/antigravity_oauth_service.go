@@ -90,8 +90,12 @@ type AntigravityTokenInfo struct {
 	Email            string `json:"email,omitempty"`
 	ProjectID        string `json:"project_id,omitempty"`
 	ProjectIDMissing bool   `json:"-"`
-	PlanType         string `json:"-"`
-	PrivacyMode      string `json:"-"`
+	// PlanType 订阅档位展示名（Pro/Free/Ultra…），须下发给前端写入 credentials.plan_type
+	PlanType string `json:"plan_type,omitempty"`
+	// PrivacyMode 隐私设置结果（privacy_set / privacy_set_failed），须下发给前端写入 extra
+	PrivacyMode string `json:"privacy_mode,omitempty"`
+	// TierID LoadCodeAssist 原始 tier id（g1-pro-tier 等），供列表角标与 upstream_plan 映射
+	TierID string `json:"tier_id,omitempty"`
 }
 
 // ExchangeCode 用 authorization code 交换 token
@@ -155,6 +159,7 @@ func (s *AntigravityOAuthService) ExchangeCode(ctx context.Context, input *Antig
 	}
 	if loadResult != nil {
 		result.ProjectID = loadResult.ProjectID
+		result.TierID = loadResult.TierID
 		if loadResult.Subscription != nil {
 			result.PlanType = loadResult.Subscription.PlanType
 		}
@@ -247,6 +252,7 @@ func (s *AntigravityOAuthService) ValidateRefreshToken(ctx context.Context, refr
 	}
 	if loadResult != nil {
 		tokenInfo.ProjectID = loadResult.ProjectID
+		tokenInfo.TierID = loadResult.TierID
 		if loadResult.Subscription != nil {
 			tokenInfo.PlanType = loadResult.Subscription.PlanType
 		}
@@ -327,9 +333,10 @@ func (s *AntigravityOAuthService) RefreshAccountToken(ctx context.Context, accou
 }
 
 // loadCodeAssistResult 封装 loadProjectIDWithRetry 的返回结果，
-// 同时携带从 LoadCodeAssist 响应中提取的 plan_type 信息。
+// 同时携带从 LoadCodeAssist 响应中提取的 plan_type / tier_id 信息。
 type loadCodeAssistResult struct {
 	ProjectID    string
+	TierID       string
 	Subscription *AntigravitySubscriptionResult
 }
 
@@ -353,14 +360,17 @@ func (s *AntigravityOAuthService) loadProjectIDWithRetry(ctx context.Context, ac
 		}
 		loadResp, loadRaw, err := client.LoadCodeAssist(ctx, accessToken)
 
+		tierID := ""
 		if loadResp != nil {
 			sub := NormalizeAntigravitySubscription(loadResp)
 			lastSubscription = &sub
+			tierID = strings.TrimSpace(loadResp.GetTier())
 		}
 
 		if err == nil && loadResp != nil && loadResp.CloudAICompanionProject != "" {
 			return &loadCodeAssistResult{
 				ProjectID:    loadResp.CloudAICompanionProject,
+				TierID:       tierID,
 				Subscription: lastSubscription,
 			}, nil
 		}
@@ -369,6 +379,7 @@ func (s *AntigravityOAuthService) loadProjectIDWithRetry(ctx context.Context, ac
 			if projectID, onboardErr := tryOnboardProjectID(ctx, client, accessToken, loadRaw); onboardErr == nil && projectID != "" {
 				return &loadCodeAssistResult{
 					ProjectID:    projectID,
+					TierID:       tierID,
 					Subscription: lastSubscription,
 				}, nil
 			} else if onboardErr != nil {
@@ -391,6 +402,8 @@ func (s *AntigravityOAuthService) loadProjectIDWithRetry(ctx context.Context, ac
 	}
 	return nil, fmt.Errorf("获取 project_id 失败 (重试 %d 次后): %w", maxRetries, lastErr)
 }
+
+// note: lastSubscription-only failure path may still have tier via Subscription.PlanType; TierID optional.
 
 func tryOnboardProjectID(ctx context.Context, client *antigravity.Client, accessToken string, loadRaw map[string]any) (string, error) {
 	tierID := resolveDefaultTierID(loadRaw)
@@ -475,6 +488,9 @@ func (s *AntigravityOAuthService) BuildAccountCredentials(tokenInfo *Antigravity
 	}
 	if tokenInfo.PlanType != "" {
 		creds["plan_type"] = tokenInfo.PlanType
+	}
+	if tokenInfo.TierID != "" {
+		creds["tier_id"] = tokenInfo.TierID
 	}
 	return creds
 }

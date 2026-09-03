@@ -104,6 +104,16 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Available Channels',
   }),
+  userOwnedAccounts: defineFlag({
+    key: 'user_owned_accounts_enabled',
+    mode: 'opt-in',
+    label: 'User-owned Accounts',
+  }),
+  shareRevenueSplit: defineFlag({
+    key: 'share_revenue_split_enabled',
+    mode: 'opt-in',
+    label: 'Share Revenue Split',
+  }),
   modelPlaza: defineFlag({
     key: 'model_plaza_enabled',
     mode: 'opt-in',

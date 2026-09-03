@@ -545,6 +545,13 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		}
 	}
 
+	// 与用户自建号路径一致：凭证里已有 plan 时同步 upstream_plan（列表 SuperGrok 角标 / 共享池匹配）
+	if err := ApplyProbedPlanFromCredentials(ctx, s.accountRepo, s.accountGroupRecomputer, account); err != nil {
+		slog.Warn("create_account_apply_probed_plan_failed", "account_id", account.ID, "error", err)
+	} else if refreshed, loadErr := s.accountRepo.GetByID(ctx, account.ID); loadErr == nil && refreshed != nil {
+		account = refreshed
+	}
+
 	return account, nil
 }
 
@@ -861,12 +868,54 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 
+	// Admin 更新 credentials 显式含 plan 类键时，经 ApplyProbedPlan 同步 upstream_plan 列 + recompute（K16）。
+	// 仅看 input.Credentials，避免无关凭证编辑重复触发 recompute。
+	if len(input.Credentials) > 0 {
+		if raw := extractPlanRawFromCredentialsMap(account.Platform, input.Credentials); raw != "" {
+			if planErr := ApplyProbedPlan(ctx, s.accountRepo, s.accountGroupRecomputer, account, raw); planErr != nil {
+				return nil, planErr
+			}
+		}
+	}
+
 	// 重新查询以确保返回完整数据（包括正确的 Proxy 关联对象）
 	updated, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	return updated, nil
+}
+
+// extractPlanRawFromCredentialsMap 从 credentials map 取 plan 类原始值（admin / OAuth 共用探测键）。
+func extractPlanRawFromCredentialsMap(platform string, creds map[string]any) string {
+	if len(creds) == 0 {
+		return ""
+	}
+	get := func(key string) string {
+		v, ok := creds[key]
+		if !ok || v == nil {
+			return ""
+		}
+		switch t := v.(type) {
+		case string:
+			return strings.TrimSpace(t)
+		default:
+			return strings.TrimSpace(fmt.Sprint(t))
+		}
+	}
+	key := planCredentialKey(platform)
+	if v := get(key); v != "" {
+		return v
+	}
+	if strings.EqualFold(platform, PlatformOpenAI) {
+		if v := get("chatgpt_plan_type"); v != "" {
+			return v
+		}
+	}
+	if key != "plan_type" {
+		return get("plan_type")
+	}
+	return ""
 }
 
 // UpdateAccountExtra 仅对 Extra JSONB 做 key 级合并，避免覆盖其它运行态键

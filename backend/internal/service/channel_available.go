@@ -44,8 +44,8 @@ type AvailableChannel struct {
 // 对于渠道未配置定价的模型，进一步用 PricingService 的全局 LiteLLM 数据合成
 // 一份展示用定价，让用户看到默认价格而非"未配置"。
 //
-// 关联分组信息通过 groupRepo.ListActive 查询后按 ID 映射；渠道 GroupIDs 中未在活跃列表中
-// 的分组（已停用或删除）会被忽略。
+// 关联分组信息通过 groupRepo.ListByIDs(渠道 GroupIDs 去重) 加载；复杂度与渠道关联组数相关，
+// 与 private 组总数无关。停用/缺失组忽略（与现语义一致）。禁止全表 ListActive。
 //
 // 前置条件：s.groupRepo 必须非 nil（由 wire DI 保证）。直接 nil-deref 用于 fail-fast，
 // 避免静默掩盖注入缺失。
@@ -55,13 +55,33 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 		return nil, fmt.Errorf("list channels: %w", err)
 	}
 
-	groups, err := s.groupRepo.ListActive(ctx)
+	// 收集渠道关联组 ID（去重）
+	groupIDSet := make(map[int64]struct{})
+	groupIDs := make([]int64, 0)
+	for i := range channels {
+		for _, gid := range channels[i].GroupIDs {
+			if gid <= 0 {
+				continue
+			}
+			if _, ok := groupIDSet[gid]; ok {
+				continue
+			}
+			groupIDSet[gid] = struct{}{}
+			groupIDs = append(groupIDs, gid)
+		}
+	}
+
+	groups, err := s.groupRepo.ListByIDs(ctx, groupIDs)
 	if err != nil {
-		return nil, fmt.Errorf("list active groups: %w", err)
+		return nil, fmt.Errorf("list groups by ids: %w", err)
 	}
 	groupByID := make(map[int64]AvailableGroupRef, len(groups))
 	for i := range groups {
 		g := groups[i]
+		// 仅展示活跃组，与历史 ListActive 语义一致
+		if g.Status != "" && g.Status != StatusActive {
+			continue
+		}
 		groupByID[g.ID] = AvailableGroupRef{
 			ID:                 g.ID,
 			Name:               g.Name,

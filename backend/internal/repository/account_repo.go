@@ -123,10 +123,20 @@ func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedul
 }
 
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
-	if err := createAccountRecord(ctx, r.client, account); err != nil {
+	// 支持外层事务：TxFromContext 时写入走事务 client，保证 UserAccount Create Tx1 原子性。
+	client := clientFromContext(ctx, r.client)
+	if err := createAccountRecord(ctx, client, account); err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
+	// 外层 tx：outbox 写入同一 ent client（随 commit/rollback）；无外层 tx：写 r.sql。
+	outboxExec := sqlExecutor(r.sql)
+	if dbent.TxFromContext(ctx) != nil {
+		outboxExec = client
+	}
+	if err := enqueueSchedulerOutbox(ctx, outboxExec, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
+		if dbent.TxFromContext(ctx) != nil {
+			return err
+		}
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue account create failed: account=%d err=%v", account.ID, err)
 	}
 	return nil
@@ -189,6 +199,15 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 	builder.SetQuotaDimension(dbaccount.QuotaDimension(account.QuotaDimensionOrDefault()))
 	if account.ParentAccountID != nil {
 		builder.SetParentAccountID(*account.ParentAccountID)
+	}
+	if account.OwnerUserID != nil {
+		builder.SetOwnerUserID(*account.OwnerUserID)
+	}
+	if account.Visibility != "" {
+		builder.SetVisibility(account.Visibility)
+	}
+	if account.UpstreamPlan != "" {
+		builder.SetUpstreamPlan(account.UpstreamPlan)
 	}
 
 	created, err := builder.Save(ctx)
@@ -600,6 +619,22 @@ func (r *accountRepository) updateLockedAccount(
 
 	builder.SetQuotaDimension(dbaccount.QuotaDimension(account.QuotaDimensionOrDefault()))
 	builder.SetNillableParentAccountID(account.ParentAccountID)
+
+	if account.OwnerUserID != nil {
+		builder.SetOwnerUserID(*account.OwnerUserID)
+	} else {
+		builder.ClearOwnerUserID()
+	}
+	if account.Visibility != "" {
+		builder.SetVisibility(account.Visibility)
+	} else {
+		builder.ClearVisibility()
+	}
+	if account.UpstreamPlan != "" {
+		builder.SetUpstreamPlan(account.UpstreamPlan)
+	} else {
+		builder.ClearUpstreamPlan()
+	}
 
 	return builder.Save(ctx)
 }
@@ -1864,6 +1899,280 @@ func (r *accountRepository) BindGroups(ctx context.Context, accountID int64, gro
 	return nil
 }
 
+// AddGroups 幂等追加账号→组绑定；不删除其它绑定。新建行 priority = max(existing)+1 递增。
+func (r *accountRepository) AddGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	if accountID <= 0 || len(groupIDs) == 0 {
+		return nil
+	}
+	existingGroupIDs, err := r.loadAccountGroupIDs(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	existingSet := make(map[int64]struct{}, len(existingGroupIDs))
+	for _, id := range existingGroupIDs {
+		existingSet[id] = struct{}{}
+	}
+	toAdd := make([]int64, 0, len(groupIDs))
+	seen := make(map[int64]struct{}, len(groupIDs))
+	for _, gid := range groupIDs {
+		if gid <= 0 {
+			continue
+		}
+		if _, ok := seen[gid]; ok {
+			continue
+		}
+		seen[gid] = struct{}{}
+		if _, ok := existingSet[gid]; ok {
+			continue
+		}
+		toAdd = append(toAdd, gid)
+	}
+	if len(toAdd) == 0 {
+		return nil
+	}
+
+	// 优先复用外层 TxFromContext（UserAccount Create Tx1）；否则自开事务。
+	var tx *dbent.Tx
+	var txClient *dbent.Client
+	if contextTx := dbent.TxFromContext(ctx); contextTx != nil {
+		txClient = contextTx.Client()
+	} else {
+		tx, err = r.client.Tx(ctx)
+		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+			return err
+		}
+		if err == nil {
+			defer func() { _ = tx.Rollback() }()
+			txClient = tx.Client()
+		} else {
+			// ErrTxStarted 但无 TxFromContext：fail-closed，禁止旁路 r.client。
+			return errGroupOuterTxMissing
+		}
+	}
+
+	nextPriority, err := nextAccountGroupPriority(ctx, txClient, accountID)
+	if err != nil {
+		return err
+	}
+	builders := make([]*dbent.AccountGroupCreate, 0, len(toAdd))
+	for i, groupID := range toAdd {
+		builders = append(builders, txClient.AccountGroup.Create().
+			SetAccountID(accountID).
+			SetGroupID(groupID).
+			SetPriority(nextPriority+i),
+		)
+	}
+	if _, err := txClient.AccountGroup.CreateBulk(builders...).Save(ctx); err != nil {
+		return err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	payload := buildSchedulerGroupPayload(mergeGroupIDs(existingGroupIDs, toAdd))
+	outboxExec := sqlExecutor(r.sql)
+	if dbent.TxFromContext(ctx) != nil {
+		outboxExec = txClient
+	}
+	if err := enqueueSchedulerOutbox(ctx, outboxExec, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
+		if dbent.TxFromContext(ctx) != nil {
+			return err
+		}
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue add groups failed: account=%d err=%v", accountID, err)
+	}
+	return nil
+}
+
+// RemoveGroups 幂等移除账号→组绑定；不碰未列出的绑定。
+func (r *accountRepository) RemoveGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	if accountID <= 0 || len(groupIDs) == 0 {
+		return nil
+	}
+	cleanIDs := make([]int64, 0, len(groupIDs))
+	seen := make(map[int64]struct{}, len(groupIDs))
+	for _, gid := range groupIDs {
+		if gid <= 0 {
+			continue
+		}
+		if _, ok := seen[gid]; ok {
+			continue
+		}
+		seen[gid] = struct{}{}
+		cleanIDs = append(cleanIDs, gid)
+	}
+	if len(cleanIDs) == 0 {
+		return nil
+	}
+
+	existingGroupIDs, err := r.loadAccountGroupIDs(ctx, accountID)
+	if err != nil {
+		return err
+	}
+
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return err
+	}
+	var txClient *dbent.Client
+	if err == nil {
+		defer func() { _ = tx.Rollback() }()
+		txClient = tx.Client()
+	} else {
+		txClient = r.client
+	}
+
+	deleted, err := txClient.AccountGroup.Delete().
+		Where(
+			dbaccountgroup.AccountIDEQ(accountID),
+			dbaccountgroup.GroupIDIn(cleanIDs...),
+		).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	if deleted == 0 {
+		return nil
+	}
+	payload := buildSchedulerGroupPayload(mergeGroupIDs(existingGroupIDs, cleanIDs))
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue remove groups failed: account=%d err=%v", accountID, err)
+	}
+	return nil
+}
+
+// ListOwnerAccountsBoundToGroup 返回绑定到 groupID 且 owner_user_id 非空的用户自建号。
+func (r *accountRepository) ListOwnerAccountsBoundToGroup(ctx context.Context, groupID int64) ([]*service.Account, error) {
+	if groupID <= 0 {
+		return []*service.Account{}, nil
+	}
+	ags, err := r.client.AccountGroup.Query().
+		Where(
+			dbaccountgroup.GroupIDEQ(groupID),
+			dbaccountgroup.HasAccountWith(dbaccount.OwnerUserIDNotNil()),
+		).
+		WithAccount().
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*service.Account, 0, len(ags))
+	seen := make(map[int64]struct{}, len(ags))
+	for _, ag := range ags {
+		if ag.Edges.Account == nil {
+			continue
+		}
+		if _, ok := seen[ag.AccountID]; ok {
+			continue
+		}
+		seen[ag.AccountID] = struct{}{}
+		acc := accountEntityToService(ag.Edges.Account)
+		if acc == nil {
+			continue
+		}
+		// 轻量附带 group_ids（至少含当前组，便于 recompute 差分）
+		acc.GroupIDs = []int64{groupID}
+		out = append(out, acc)
+	}
+	return out, nil
+}
+
+// ListPublicOwnerAccountsByPlatformPlan 扫描 public + platform + plan 严格匹配的用户自建号。
+// plan 空表示匹配无档位账号（upstream_plan 为空或 NULL）。
+func (r *accountRepository) ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*service.Account, error) {
+	platform = strings.TrimSpace(platform)
+	plan = strings.TrimSpace(plan)
+	if platform == "" {
+		return []*service.Account{}, nil
+	}
+	preds := []dbpredicate.Account{
+		dbaccount.OwnerUserIDNotNil(),
+		dbaccount.VisibilityEQ(service.VisibilityPublic),
+		dbaccount.PlatformEQ(platform),
+	}
+	if plan == "" {
+		preds = append(preds, dbaccount.Or(dbaccount.UpstreamPlanIsNil(), dbaccount.UpstreamPlanEQ("")))
+	} else {
+		preds = append(preds, dbaccount.UpstreamPlanEQ(plan))
+	}
+	entAccounts, err := r.client.Account.Query().
+		Where(preds...).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*service.Account, 0, len(entAccounts))
+	for _, m := range entAccounts {
+		acc := accountEntityToService(m)
+		if acc != nil {
+			out = append(out, acc)
+		}
+	}
+	return out, nil
+}
+
+// CountActiveOwned 统计 owner 名下未软删账号数。
+func (r *accountRepository) CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error) {
+	if ownerUserID <= 0 {
+		return 0, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	n, err := client.Account.Query().
+		Where(dbaccount.OwnerUserIDEQ(ownerUserID)).
+		Count(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// ListByOwnerUserID 分页列出 owner 名下未软删账号。
+func (r *accountRepository) ListByOwnerUserID(ctx context.Context, ownerUserID int64, params pagination.PaginationParams) ([]service.Account, *pagination.PaginationResult, error) {
+	if ownerUserID <= 0 {
+		return []service.Account{}, paginationResultFromTotal(0, params), nil
+	}
+	client := clientFromContext(ctx, r.client)
+	q := client.Account.Query().Where(dbaccount.OwnerUserIDEQ(ownerUserID))
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	accountsQuery := q.Offset(params.Offset()).Limit(params.Limit())
+	for _, order := range accountListOrder(params) {
+		accountsQuery = accountsQuery.Order(order)
+	}
+	accounts, err := accountsQuery.All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	outAccounts, err := r.accountsToService(ctx, accounts)
+	if err != nil {
+		return nil, nil, err
+	}
+	return outAccounts, paginationResultFromTotal(int64(total), params), nil
+}
+
+// nextAccountGroupPriority 返回该账号下一可用 priority（max existing + 1，无绑定则 1）。
+func nextAccountGroupPriority(ctx context.Context, client *dbent.Client, accountID int64) (int, error) {
+	ags, err := client.AccountGroup.Query().
+		Where(dbaccountgroup.AccountIDEQ(accountID)).
+		Order(dbent.Desc(dbaccountgroup.FieldPriority)).
+		Limit(1).
+		All(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if len(ags) == 0 {
+		return 1, nil
+	}
+	return ags[0].Priority + 1, nil
+}
+
 func (r *accountRepository) ListSchedulable(ctx context.Context) ([]service.Account, error) {
 	accounts, err := r.schedulableAccountsQuery(time.Now()).All(ctx)
 	if err != nil {
@@ -2889,6 +3198,16 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		args = append(args, *updates.Schedulable)
 		idx++
 	}
+	if updates.UpstreamPlan != nil {
+		plan := strings.TrimSpace(*updates.UpstreamPlan)
+		if plan == "" {
+			setClauses = append(setClauses, "upstream_plan = NULL")
+		} else {
+			setClauses = append(setClauses, "upstream_plan = $"+itoa(idx))
+			args = append(args, plan)
+			idx++
+		}
+	}
 	if updates.ProbeEnabled != nil {
 		if updates.Extra == nil {
 			updates.Extra = make(map[string]any)
@@ -3400,6 +3719,9 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		SessionWindowStatus:     derefString(m.SessionWindowStatus),
 		ParentAccountID:         m.ParentAccountID,
 		QuotaDimension:          string(m.QuotaDimension),
+		OwnerUserID:             m.OwnerUserID,
+		Visibility:              derefString(m.Visibility),
+		UpstreamPlan:            derefString(m.UpstreamPlan),
 	}
 }
 

@@ -55,16 +55,17 @@ type GrokOAuthRefreshMutationRepository interface {
 // TokenRefreshService OAuth token自动刷新服务
 // 定期检查并刷新即将过期的token
 type TokenRefreshService struct {
-	accountRepo      AccountRepository
-	candidatePager   OAuthRefreshCandidatePager
-	registrations    []tokenRefreshRegistration
-	refreshPolicy    BackgroundRefreshPolicy
-	cfg              *config.TokenRefreshConfig
-	cacheInvalidator TokenCacheInvalidator
-	schedulerCache   SchedulerCache   // 用于同步更新调度器缓存，解决 token 刷新后缓存不一致问题
-	tempUnschedCache TempUnschedCache // 用于清除 Redis 中的临时不可调度缓存
-	refreshAPI       *OAuthRefreshAPI // 统一刷新 API
-	runtimeBlocker   AccountRuntimeBlocker
+	accountRepo            AccountRepository
+	candidatePager         OAuthRefreshCandidatePager
+	registrations          []tokenRefreshRegistration
+	refreshPolicy          BackgroundRefreshPolicy
+	cfg                    *config.TokenRefreshConfig
+	cacheInvalidator       TokenCacheInvalidator
+	schedulerCache         SchedulerCache   // 用于同步更新调度器缓存，解决 token 刷新后缓存不一致问题
+	tempUnschedCache       TempUnschedCache // 用于清除 Redis 中的临时不可调度缓存
+	refreshAPI             *OAuthRefreshAPI // 统一刷新 API
+	runtimeBlocker         AccountRuntimeBlocker
+	accountGroupRecomputer ManagedLinkRecomputer
 
 	// OpenAI privacy: 刷新成功后检查并设置 training opt-out
 	privacyClientFactory PrivacyClientFactory
@@ -182,6 +183,14 @@ func (s *TokenRefreshService) SetRefreshPolicy(policy BackgroundRefreshPolicy) {
 
 func (s *TokenRefreshService) SetAccountRuntimeBlocker(blocker AccountRuntimeBlocker) {
 	s.runtimeBlocker = blocker
+}
+
+// SetAccountGroupRecomputer 注入 managed 链接重算器（legacy 刷新路径 ApplyProbedPlan 用）。
+func (s *TokenRefreshService) SetAccountGroupRecomputer(recomputer ManagedLinkRecomputer) {
+	if s == nil {
+		return
+	}
+	s.accountGroupRecomputer = recomputer
 }
 
 func (s *TokenRefreshService) notifyAccountSchedulingBlocked(account *Account, until time.Time, reason string) {
@@ -911,6 +920,14 @@ func (s *TokenRefreshService) refreshWithRetryWithRateGate(
 					err = fmt.Errorf("failed to save credentials: %w", saveErr)
 				} else {
 					credentialsPersisted = true
+					// legacy 刷新路径：凭证落库后同步 upstream_plan（统一 API 路径在 OAuthRefreshAPI 内处理）
+					if planErr := ApplyProbedPlanFromCredentials(attemptCtx, s.accountRepo, s.accountGroupRecomputer, account); planErr != nil {
+						slog.Warn("token_refresh_apply_probed_plan_failed",
+							"account_id", account.ID,
+							"platform", account.Platform,
+							"error", planErr,
+						)
+					}
 				}
 			}
 		}

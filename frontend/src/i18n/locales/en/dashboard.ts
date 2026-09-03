@@ -597,6 +597,112 @@ export default {
     }
   },
 
+  // Share contributor earnings
+  shareRevenue: {
+    title: 'Share Earnings',
+    description: 'Earnings you receive as an account contributor when others use your accounts via share pools.',
+    disabledHint:
+      'Share revenue split is not enabled yet. After it is turned on, you earn a share when others use your accounts via share-pool groups.',
+    stats: {
+      totalEarned: 'Total earned',
+      totalEarnedHint: 'Already credited to balance',
+      records: 'Split records',
+      userPct: 'Contributor share',
+      split: 'Global split',
+      splitDetail: 'Invite {invite}% / Contributor {user}% / Platform {platform}%'
+    },
+    ledgersTitle: 'Earnings history',
+    ledgersHint: 'Only user_amount credited to you as account owner.',
+    empty: 'No contributor earnings yet',
+    loadFailed: 'Failed to load share earnings',
+    retry: 'Retry',
+    prev: 'Previous',
+    next: 'Next',
+    pageInfo: 'Page {page}/{pages}, {total} total',
+    columns: {
+      time: 'Time',
+      account: 'Account',
+      total: 'Call amount',
+      earned: 'My earnings',
+      request: 'Request ID'
+    }
+  },
+
+  // User-owned upstream accounts (feature flag: user_owned_accounts_enabled)
+  myAccounts: {
+    title: 'My Accounts',
+    description: 'Create and manage your own upstream accounts',
+    subtitle:
+      'Admins and users share this page. Create uses the same form as admin account creation (no group pick; private/public instead). Private binds to your platform private group; public may join matching share-pool groups after plan probe.',
+    create: 'Add Account',
+    createTitle: 'Add upstream account',
+    deleteTitle: 'Delete account',
+    deleteConfirm: 'Delete account "{name}"? This cannot be undone.',
+    createSuccess: 'Account created',
+    createSuccessForcedPrivate: 'Account created as private ({reason})',
+    deleteSuccess: 'Account deleted',
+    madePublic: 'Visibility set to public',
+    madePrivate: 'Visibility set to private',
+    visibilityForcedPrivate: 'Could not set public ({reason}); kept private',
+    failedToLoad: 'Failed to load accounts',
+    failedToCreate: 'Failed to create account',
+    failedToDelete: 'Failed to delete account',
+    failedToUpdateVisibility: 'Failed to update visibility',
+    columns: {
+      name: 'Name',
+      platform: 'Platform',
+      type: 'Type',
+      visibility: 'Visibility',
+      upstreamPlan: 'Upstream Plan',
+      status: 'Status',
+      actions: 'Actions'
+    },
+    visibility: {
+      private: 'Private',
+      public: 'Public'
+    },
+    types: {
+      apikey: 'API Key',
+      oauth: 'OAuth (token paste)',
+      setupToken: 'Setup Token'
+    },
+    status: {
+      active: 'Active',
+      disabled: 'Disabled',
+      error: 'Error'
+    },
+    actions: {
+      makePublic: 'Make public',
+      makePrivate: 'Make private'
+    },
+    reasons: {
+      planProbeFailed: 'plan probe failed',
+      planProbeUnsupported: 'cannot set public for this account type',
+      planEmpty: 'upstream plan unknown and no empty-plan share-pool group',
+      noSharePoolMatch: 'no matching share-pool group'
+    },
+    form: {
+      name: 'Name',
+      namePlaceholder: 'e.g. my-openai-plus',
+      nameRequired: 'Name is required',
+      platform: 'Platform',
+      type: 'Auth type',
+      typeHint: 'v1 supports API key paste or OAuth access_token paste (no full OAuth wizard).',
+      apiKey: 'API Key',
+      apiKeyPlaceholder: 'Paste API key',
+      apiKeyRequired: 'API key is required',
+      accessToken: 'Access token',
+      accessTokenPlaceholder: 'Paste OAuth access_token',
+      accessTokenRequired: 'Access token is required',
+      oauthPasteHint: 'Paste a valid access_token. Refresh-token based OAuth wizard is not available yet.',
+      visibility: 'Visibility',
+      visibilityHint:
+        'Private binds only your private platform group. Public joins share-pool groups by platform + upstream plan (including both empty). Mismatch keeps private.',
+      publicUnsupportedHint:
+        'If no share-pool group matches, the account stays private and the server reports the reason.'
+    }
+  },
+
   // Model Plaza (public group/model pricing showcase)
   modelPlaza: {
     title: 'Model Plaza',

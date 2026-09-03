@@ -11,6 +11,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -44,13 +45,51 @@ func newGroupRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *groupRep
 }
 
 func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) error {
-	if err := createGroupRecord(ctx, r.client, groupIn); err != nil {
+	// 支持外层事务：有 TxFromContext 时写入走事务 client，保证与用户创建等同事务。
+	client := clientFromContext(ctx, r.client)
+	if err := createGroupRecord(ctx, client, groupIn); err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
-		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group create failed: group=%d err=%v", groupIn.ID, err)
+	// Outbox 策略（与 CreateFromSource / DeleteCascade 对齐说明见 EnqueueGroupChanged）：
+	// Create 在外层 tx 时跳过 enqueue，须由调用方在真实 commit 后 EnqueueGroupChanged。
+	if groupOutboxImmediate(ctx) {
+		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
+			logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group create failed: group=%d err=%v", groupIn.ID, err)
+		}
 	}
 	return nil
+}
+
+// EnqueueGroupChanged 在外层事务成功提交后补发分组变更调度事件。
+//
+// Outbox 策略（调用方心智）：
+//   - Create / DeleteCascade：外层 tx 内不写 outbox；commit 后必须对本组调用本方法（provision 可批量）。
+//   - CreateFromSource：outbox 写入同一 ent tx client，随外层 commit/rollback，无需再调本方法。
+//   - 无外层 tx：Create/DeleteCascade 在自有路径上立即 enqueue。
+func (r *groupRepository) EnqueueGroupChanged(ctx context.Context, groupID int64) error {
+	if groupID <= 0 {
+		return nil
+	}
+	return enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupID, nil)
+}
+
+// groupOutboxImmediate 为 true 时 Create/DeleteCascade 可立即向 r.sql 写 outbox
+// （context 中无外层 ent 事务）。有 TxFromContext 时返回 false，须 post-commit 补发。
+func groupOutboxImmediate(ctx context.Context) bool {
+	return dbent.TxFromContext(ctx) == nil
+}
+
+// errGroupOuterTxMissing 表示 ent 报告已在事务中，但 context 未附着 TxFromContext。
+// 此时继续用 r.client 会旁路外层事务，必须 fail-closed。
+var errGroupOuterTxMissing = errors.New("group repo: ent reports tx already started but TxFromContext is nil; caller must use ent.NewTxContext")
+
+// outerTxClientOrError 在 begin 返回 ErrTxStarted 时取外层事务 client；缺失则 fail-closed。
+func outerTxClientOrError(ctx context.Context) (*dbent.Client, error) {
+	existingTx := dbent.TxFromContext(ctx)
+	if existingTx == nil {
+		return nil, errGroupOuterTxMissing
+	}
+	return existingTx.Client(), nil
 }
 
 func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *service.Group) error {
@@ -68,6 +107,7 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetRateMultiplier(groupIn.RateMultiplier).
 		SetSortOrder(groupIn.SortOrder).
 		SetIsExclusive(groupIn.IsExclusive).
+		SetIsSharePool(groupIn.IsSharePool).
 		SetStatus(groupIn.Status).
 		SetSubscriptionType(groupIn.SubscriptionType).
 		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
@@ -121,6 +161,9 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetProfitControlEnabled(groupIn.ProfitControlEnabled).
 		SetProfitMinMargin(groupIn.ProfitMinMargin).
 		SetProfitSafetyBuffer(groupIn.ProfitSafetyBuffer)
+	if groupIn.UpstreamPlan != "" {
+		builder = builder.SetUpstreamPlan(groupIn.UpstreamPlan)
+	}
 	if groupIn.DuplicateOperationID != "" {
 		builder = builder.SetDuplicateOperationID(groupIn.DuplicateOperationID)
 	}
@@ -163,6 +206,9 @@ func (r *groupRepository) FindByDuplicateOperationID(ctx context.Context, operat
 
 // CreateFromSource atomically persists a copied group, clones the source
 // account bindings with their exact priorities, and writes its scheduler event.
+//
+// Outbox：写入同一 ent tx client（自有或外层），随 commit/rollback 可见；
+// 与 Create/DeleteCascade「外层 tx 跳过 + post-commit EnqueueGroupChanged」不同。
 func (r *groupRepository) CreateFromSource(ctx context.Context, groupIn *service.Group, sourceGroupID int64) error {
 	if groupIn == nil {
 		return errors.New("group is nil")
@@ -173,12 +219,17 @@ func (r *groupRepository) CreateFromSource(ctx context.Context, groupIn *service
 	}
 
 	var txClient *dbent.Client
+	ownTx := false
 	if err == nil {
+		ownTx = true
 		defer func() { _ = tx.Rollback() }()
 		txClient = tx.Client()
 	} else {
-		// Reuse a caller-owned transaction when this repository is already transactional.
-		txClient = r.client
+		// ErrTxStarted：必须附着外层 tx；缺失则 fail-closed，禁止旁路 r.client。
+		txClient, err = outerTxClientOrError(ctx)
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := createGroupRecord(ctx, txClient, groupIn); err != nil {
@@ -205,11 +256,12 @@ func (r *groupRepository) CreateFromSource(ctx context.Context, groupIn *service
 	if count, countErr := result.RowsAffected(); countErr == nil {
 		groupIn.AccountCount = count
 	}
+	// outbox 与组写入同一 tx client（见方法注释）。
 	if err := enqueueSchedulerOutbox(ctx, txClient, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
 		return err
 	}
 
-	if tx != nil {
+	if ownTx {
 		if err := tx.Commit(); err != nil {
 			return err
 		}
@@ -234,8 +286,25 @@ func (r *groupRepository) GetByID(ctx context.Context, id int64) (*service.Group
 
 func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.Group, error) {
 	// AccountCount is intentionally not loaded here; use GetByID when needed.
-	m, err := r.client.Group.Query().
+	client := clientFromContext(ctx, r.client)
+	m, err := client.Group.Query().
 		Where(group.IDEQ(id)).
+		Only(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
+	}
+	return groupEntityToService(m), nil
+}
+
+// GetByName 按名称查询未软删分组。
+func (r *groupRepository) GetByName(ctx context.Context, name string) (*service.Group, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, service.ErrGroupNotFound
+	}
+	client := clientFromContext(ctx, r.client)
+	m, err := client.Group.Query().
+		Where(group.NameEQ(name)).
 		Only(ctx)
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
@@ -254,6 +323,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetPlatform(groupIn.Platform).
 		SetRateMultiplier(groupIn.RateMultiplier).
 		SetIsExclusive(groupIn.IsExclusive).
+		SetIsSharePool(groupIn.IsSharePool).
 		SetStatus(groupIn.Status).
 		SetSubscriptionType(groupIn.SubscriptionType).
 		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
@@ -300,6 +370,12 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetProfitControlEnabled(groupIn.ProfitControlEnabled).
 		SetProfitMinMargin(groupIn.ProfitMinMargin).
 		SetProfitSafetyBuffer(groupIn.ProfitSafetyBuffer)
+
+	if groupIn.UpstreamPlan != "" {
+		builder = builder.SetUpstreamPlan(groupIn.UpstreamPlan)
+	} else {
+		builder = builder.ClearUpstreamPlan()
+	}
 
 	// 显式处理可空字段：nil 需要 clear，非 nil 需要 set。
 	if groupIn.DailyLimitUSD != nil {
@@ -419,11 +495,17 @@ func (r *groupRepository) Delete(ctx context.Context, id int64) error {
 }
 
 func (r *groupRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.Group, *pagination.PaginationResult, error) {
-	return r.ListWithFilters(ctx, params, "", "", "", nil)
+	return r.ListWithFilters(ctx, params, "", "", "", nil, false)
 }
 
-func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]service.Group, *pagination.PaginationResult, error) {
+func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool, showPrivate bool) ([]service.Group, *pagination.PaginationResult, error) {
 	q := r.client.Group.Query()
+
+	// 默认排除 private-* 私有专属组，防止 N×5 规模污染管理端列表与下拉。
+	// showPrivate=true（管理端 show_private 开关）时包含；GetByName / ListByIDs 仍可按需加载 private。
+	if !showPrivate {
+		q = q.Where(group.Not(group.NameHasPrefix("private-")))
+	}
 
 	if platform != "" {
 		q = q.Where(group.PlatformEQ(platform))
@@ -625,7 +707,8 @@ func groupListOrder(params pagination.PaginationParams) []func(*entsql.Selector)
 }
 
 func (r *groupRepository) ListActive(ctx context.Context) ([]service.Group, error) {
-	groups, err := r.client.Group.Query().
+	client := clientFromContext(ctx, r.client)
+	groups, err := client.Group.Query().
 		Where(group.StatusEQ(service.StatusActive)).
 		Order(dbent.Asc(group.FieldSortOrder), dbent.Asc(group.FieldID)).
 		All(ctx)
@@ -633,6 +716,103 @@ func (r *groupRepository) ListActive(ctx context.Context) ([]service.Group, erro
 		return nil, err
 	}
 
+	return r.attachAccountCounts(ctx, groups)
+}
+
+// ListActiveExcludingPrivate 列出活跃分组，排除 name 以 private- 为前缀的私有专属组。
+// 最终精确正则过滤可在 provision helper 落地后加强；foundation 使用前缀即可。
+func (r *groupRepository) ListActiveExcludingPrivate(ctx context.Context) ([]service.Group, error) {
+	client := clientFromContext(ctx, r.client)
+	groups, err := client.Group.Query().
+		Where(
+			group.StatusEQ(service.StatusActive),
+			group.Not(group.NameHasPrefix("private-")),
+		).
+		Order(dbent.Asc(group.FieldSortOrder), dbent.Asc(group.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return r.attachAccountCounts(ctx, groups)
+}
+
+// ListByIDs 按 ID 批量查询分组（默认软删过滤）。
+func (r *groupRepository) ListByIDs(ctx context.Context, ids []int64) ([]service.Group, error) {
+	if len(ids) == 0 {
+		return []service.Group{}, nil
+	}
+
+	uniqueIDs := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniqueIDs = append(uniqueIDs, id)
+	}
+	if len(uniqueIDs) == 0 {
+		return []service.Group{}, nil
+	}
+
+	client := clientFromContext(ctx, r.client)
+	groups, err := client.Group.Query().
+		Where(group.IDIn(uniqueIDs...)).
+		Order(dbent.Asc(group.FieldSortOrder), dbent.Asc(group.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return r.attachAccountCounts(ctx, groups)
+}
+
+// ListSharePoolMatches 返回 platform+plan 匹配的活跃共享池组（排除 private-* / exclusive）。
+// plan 空字符串表示匹配「无档位」组（upstream_plan 为空或 NULL）。
+func (r *groupRepository) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]service.Group, error) {
+	platform = strings.TrimSpace(platform)
+	plan = strings.TrimSpace(plan)
+	if platform == "" {
+		return []service.Group{}, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	preds := []predicate.Group{
+		group.PlatformEQ(platform),
+		group.IsSharePoolEQ(true),
+		group.IsExclusiveEQ(false),
+		group.StatusEQ(service.StatusActive),
+		group.Not(group.NameHasPrefix("private-")),
+	}
+	if plan == "" {
+		// 空档位：NULL 或 ""
+		preds = append(preds, group.Or(group.UpstreamPlanIsNil(), group.UpstreamPlanEQ("")))
+	} else {
+		preds = append(preds, group.UpstreamPlanEQ(plan))
+	}
+	groups, err := client.Group.Query().
+		Where(preds...).
+		Order(dbent.Asc(group.FieldSortOrder), dbent.Asc(group.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// 应用层再滤一次严格 private 名（与 IsPrivateGroupName 对齐）
+	out := make([]service.Group, 0, len(groups))
+	for i := range groups {
+		g := groupEntityToService(groups[i])
+		if g == nil || service.IsPrivateGroupName(g.Name) {
+			continue
+		}
+		out = append(out, *g)
+	}
+	return out, nil
+}
+
+func (r *groupRepository) attachAccountCounts(ctx context.Context, groups []*dbent.Group) ([]service.Group, error) {
 	groupIDs := make([]int64, 0, len(groups))
 	outGroups := make([]service.Group, 0, len(groups))
 	for i := range groups {
@@ -698,37 +878,27 @@ func (r *groupRepository) ListActiveIDs(ctx context.Context) ([]int64, error) {
 }
 
 func (r *groupRepository) ListActiveByPlatform(ctx context.Context, platform string) ([]service.Group, error) {
-	groups, err := r.client.Group.Query().
-		Where(group.StatusEQ(service.StatusActive), group.PlatformEQ(platform)).
+	client := clientFromContext(ctx, r.client)
+	// 管理端按平台下拉 / 绑组列表排除 private-*，避免 N×5 膨胀。
+	// 调度热路径使用 ListActive / ListActiveIDs（保留 private）。
+	groups, err := client.Group.Query().
+		Where(
+			group.StatusEQ(service.StatusActive),
+			group.PlatformEQ(platform),
+			group.Not(group.NameHasPrefix("private-")),
+		).
 		Order(dbent.Asc(group.FieldSortOrder), dbent.Asc(group.FieldID)).
 		All(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	groupIDs := make([]int64, 0, len(groups))
-	outGroups := make([]service.Group, 0, len(groups))
-	for i := range groups {
-		g := groupEntityToService(groups[i])
-		outGroups = append(outGroups, *g)
-		groupIDs = append(groupIDs, g.ID)
-	}
-
-	counts, err := r.loadAccountCounts(ctx, groupIDs)
-	if err == nil {
-		for i := range outGroups {
-			c := counts[outGroups[i].ID]
-			outGroups[i].AccountCount = c.Total
-			outGroups[i].ActiveAccountCount = c.Active
-			outGroups[i].RateLimitedAccountCount = c.RateLimited
-		}
-	}
-
-	return outGroups, nil
+	return r.attachAccountCounts(ctx, groups)
 }
 
 func (r *groupRepository) ExistsByName(ctx context.Context, name string) (bool, error) {
-	return r.client.Group.Query().Where(group.NameEQ(name)).Exist(ctx)
+	client := clientFromContext(ctx, r.client)
+	return client.Group.Query().Where(group.NameEQ(name)).Exist(ctx)
 }
 
 // ExistsByIDs 批量检查分组是否存在（仅检查未软删除记录）。
@@ -805,7 +975,8 @@ func (r *groupRepository) DeleteAccountGroupsByGroupID(ctx context.Context, grou
 }
 
 func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64, error) {
-	g, err := r.client.Group.Query().Where(group.IDEQ(id)).Only(ctx)
+	readClient := clientFromContext(ctx, r.client)
+	g, err := readClient.Group.Query().Where(group.IDEQ(id)).Only(ctx)
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
 	}
@@ -817,14 +988,24 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
 		return nil, err
 	}
-	exec := r.client
-	txClient := r.client
+	var exec *dbent.Client
+	var txClient *dbent.Client
+	ownTx := false
 	if err == nil {
+		ownTx = true
 		defer func() { _ = tx.Rollback() }()
 		exec = tx.Client()
 		txClient = exec
+	} else {
+		// ErrTxStarted：复用外层事务 client，不自行 Commit、不 enqueue。
+		// 若调用方未 NewTxContext，fail-closed，禁止静默旁路 r.client。
+		outer, outerErr := outerTxClientOrError(ctx)
+		if outerErr != nil {
+			return nil, outerErr
+		}
+		exec = outer
+		txClient = outer
 	}
-	// err 为 dbent.ErrTxStarted 时，复用当前 client 参与同一事务。
 
 	// Lock the group row to avoid concurrent writes while we cascade.
 	// 这里使用 exec.QueryContext 手动扫描，确保同一事务内加锁并能区分"未找到"与其他错误。
@@ -898,13 +1079,17 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 		return nil, err
 	}
 
-	if tx != nil {
+	// 仅自有事务真正 commit 后发送 outbox；外层 tx 场景延迟到外层 commit 后
+	// 由调用方 EnqueueGroupChanged（与 Create 一致；与 CreateFromSource 不同）。
+	if ownTx {
 		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
-	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &id, nil); err != nil {
-		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group cascade delete failed: group=%d err=%v", id, err)
+		if groupOutboxImmediate(ctx) {
+			if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &id, nil); err != nil {
+				logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group cascade delete failed: group=%d err=%v", id, err)
+			}
+		}
 	}
 
 	return affectedUserIDs, nil

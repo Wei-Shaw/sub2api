@@ -87,6 +87,23 @@ func (s *AuditLogService) Record(entry *AuditLog) {
 	}
 }
 
+// ForceRecord 同步写入单条审计记录（绕过异步队列），用于高风险操作（如批量同步私有订阅到期日）。
+// 写入失败返回 error，调用方应显式暴露（操作可能已成功，但审计链断裂）。
+func (s *AuditLogService) ForceRecord(ctx context.Context, entry *AuditLog) error {
+	if s == nil || s.repo == nil || entry == nil {
+		return fmt.Errorf("audit log service not configured for force record")
+	}
+	if entry.CreatedAt.IsZero() {
+		entry.CreatedAt = time.Now().UTC()
+	}
+	if err := s.repo.Insert(ctx, entry); err != nil {
+		atomic.AddUint64(&s.writeFailed, 1)
+		return fmt.Errorf("force audit log insert: %w", err)
+	}
+	atomic.AddUint64(&s.writtenCount, 1)
+	return nil
+}
+
 // List 分页查询审计日志。
 func (s *AuditLogService) List(ctx context.Context, filter *AuditLogFilter) (*AuditLogList, error) {
 	return s.repo.List(ctx, filter)

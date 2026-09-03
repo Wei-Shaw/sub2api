@@ -62,6 +62,8 @@ type SettingHandler struct {
 	notificationEmailService *service.NotificationEmailService
 	totpService              *service.TotpService
 	userService              *service.UserService
+	privateGroups            service.PrivateGroupProvisioner
+	auditLog                 *service.AuditLogService
 }
 
 // NewSettingHandler 创建系统设置处理器
@@ -96,6 +98,12 @@ func (h *SettingHandler) SetAliyunCaptchaService(aliyunCaptchaService *service.A
 func (h *SettingHandler) SetStepUpDeps(totpService *service.TotpService, userService *service.UserService) {
 	h.totpService = totpService
 	h.userService = userService
+}
+
+// SetPrivateGroupSyncDeps attaches private group sync + force audit writers.
+func (h *SettingHandler) SetPrivateGroupSyncDeps(privateGroups service.PrivateGroupProvisioner, auditLog *service.AuditLogService) {
+	h.privateGroups = privateGroups
+	h.auditLog = auditLog
 }
 
 // GetSettings 获取所有系统设置
@@ -263,6 +271,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CustomEndpoints:                                        dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                                     settings.DefaultConcurrency,
 		DefaultBalance:                                         settings.DefaultBalance,
+		PrivateGroupExpiresDate:                                settings.PrivateGroupExpiresDate,
+		GroupUpstreamPlans:                                     settings.GroupUpstreamPlans,
 		RiskControlEnabled:                                     settings.RiskControlEnabled,
 		CyberSessionBlockEnabled:                               settings.CyberSessionBlockEnabled,
 		CyberSessionBlockTTLSeconds:                            settings.CyberSessionBlockTTLSeconds,
@@ -382,6 +392,15 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		GrokDefaultBaseURLMode:         settings.GrokDefaultBaseURLMode,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
+
+		UserOwnedAccountsEnabled: settings.UserOwnedAccountsEnabled,
+		MaxUserOwnedAccounts:     settings.MaxUserOwnedAccounts,
+
+		ShareRevenueSplitEnabled: settings.ShareRevenueSplitEnabled,
+		ShareSplitInvitePct:      settings.ShareSplitInvitePct,
+		ShareSplitUserPct:        settings.ShareSplitUserPct,
+		ShareSplitPlatformPct:    settings.ShareSplitPlatformPct,
+		PrivateSelfEnvFeePct:     settings.PrivateSelfEnvFeePct,
 
 		ModelPlazaEnabled:       settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:   settings.ModelPlazaRequireAuth,

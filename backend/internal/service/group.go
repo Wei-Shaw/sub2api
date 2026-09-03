@@ -20,6 +20,8 @@ type Group struct {
 	Name           string
 	Description    string
 	Platform       string
+	// UpstreamPlan 上游订阅档位 code（空=未指定；仅元数据/展示）
+	UpstreamPlan   string
 	RateMultiplier float64
 	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
 	// token 计费倍率额外乘以 PeakRateMultiplier。详见 PeakMultiplierAt。
@@ -28,8 +30,10 @@ type Group struct {
 	PeakEnd            string
 	PeakRateMultiplier float64
 	IsExclusive        bool
-	Status             string
-	Hydrated           bool // indicates the group was loaded from a trusted repository source
+	// IsSharePool 共享池标记：为 true 时 public 用户自建号可按 platform+upstream_plan 匹配吸入。
+	IsSharePool bool
+	Status      string
+	Hydrated    bool // indicates the group was loaded from a trusted repository source
 	// DuplicateOperationID is internal persistence metadata used only to recover
 	// an already committed one-click copy. It must never be mapped to API DTOs.
 	DuplicateOperationID string

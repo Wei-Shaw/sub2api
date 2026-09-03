@@ -141,6 +141,15 @@ const (
 	AccountTypeServiceAccount = domain.AccountTypeServiceAccount // Google Service Account 类型账号（用于 Vertex AI）
 )
 
+// User-owned account visibility (accounts.visibility).
+const (
+	VisibilityPrivate = "private" // 仅绑定用户私有组
+	VisibilityPublic  = "public"  // 私有组 + 匹配的共享池公有组
+)
+
+// DefaultMaxUserOwnedAccounts is the default soft cap per user when the setting is unset.
+const DefaultMaxUserOwnedAccounts = 10
+
 // Redeem type constants
 const (
 	RedeemTypeBalance          = domain.RedeemTypeBalance
@@ -208,6 +217,13 @@ const (
 	SettingKeyAffiliateRebateDurationDays         = "affiliate_rebate_duration_days"   // 返利有效期（天，0=永久）
 	SettingKeyAffiliateRebatePerInviteeCap        = "affiliate_rebate_per_invitee_cap" // 单人返利上限（0=无上限）
 	SettingKeyAffiliateAdminRechargeEnabled       = "affiliate_admin_recharge_enabled" // 管理员充值是否产生返利
+
+	// 共享账号收益分配（docs/design/share-revenue-split.md）
+	SettingKeyShareRevenueSplitEnabled = "share_revenue_split_enabled" // 总开关，默认 false
+	SettingKeyShareSplitInvitePct      = "share_split_invite_pct"      // 邀请返利占比 0-100
+	SettingKeyShareSplitUserPct        = "share_split_user_pct"        // 贡献者占比 0-100
+	SettingKeyShareSplitPlatformPct    = "share_split_platform_pct"    // 平台占比 0-100
+	SettingKeyPrivateSelfEnvFeePct     = "private_self_env_fee_pct"    // private 自用环境费率 0-100
 	SettingKeyRiskControlEnabled                  = "risk_control_enabled"             // 是否启用风控中心入口与审计链路
 	SettingKeyContentModerationConfig             = "content_moderation_config"        // 内容审计配置（JSON）
 	SettingKeyCyberSessionBlockEnabled            = "cyber_session_block_enabled"      // cyber 命中后会话级自动屏蔽总开关(默认关)
@@ -368,6 +384,10 @@ const (
 	SettingKeyDefaultBalance       = "default_balance"        // 新用户默认余额
 	SettingKeyDefaultSubscriptions = "default_subscriptions"  // 新用户默认订阅列表（JSON）
 	SettingKeyDefaultUserRPMLimit  = "default_user_rpm_limit" // 新用户默认 RPM 限制（0 = 不限制）
+	// SettingKeyPrivateGroupExpiresDate 私有专属平台分组订阅统一绝对到期日（YYYY-MM-DD，空=未配置）
+	SettingKeyPrivateGroupExpiresDate = "private_group_expires_date"
+	// SettingKeyGroupUpstreamPlans 分组上游订阅档位配置 JSON（按平台 [{code,label}]）
+	SettingKeyGroupUpstreamPlans = "group_upstream_plans"
 
 	// 第三方认证来源默认授予配置
 	SettingKeyAuthSourceDefaultEmailBalance             = "auth_source_default_email_balance"
@@ -502,6 +522,15 @@ const (
 	// user-facing aggregate view. When false: user endpoint returns an empty list and the
 	// sidebar entry is hidden. Defaults to false (opt-in feature).
 	SettingKeyAvailableChannelsEnabled = "available_channels_enabled"
+
+	// SettingKeyUserOwnedAccountsEnabled is a DB-backed soft switch for user-owned accounts.
+	// When false: user account APIs reject writes and the "My Accounts" menu is hidden.
+	// Defaults to false (opt-in feature).
+	SettingKeyUserOwnedAccountsEnabled = "user_owned_accounts_enabled"
+
+	// SettingKeyMaxUserOwnedAccounts is the soft cap on active (non-deleted) user-owned
+	// accounts per user. Admin-only; not injected into public settings. Default 10.
+	SettingKeyMaxUserOwnedAccounts = "max_user_owned_accounts"
 
 	// SettingKeyModelPlazaEnabled is a DB-backed soft switch for the Model Plaza page
 	// (public group/model pricing showcase). When false: the plaza endpoint returns 404

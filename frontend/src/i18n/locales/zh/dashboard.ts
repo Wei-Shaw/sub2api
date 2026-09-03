@@ -602,6 +602,111 @@ export default {
     }
   },
 
+  // 共享贡献收益
+  shareRevenue: {
+    title: '贡献收益',
+    description: '查看您作为账号贡献者从共享池调度中获得的分成。',
+    disabledHint: '平台尚未开启共享收益分配。开启后，他人经共享池使用您的账号时，您将按比例获得收益。',
+    stats: {
+      totalEarned: '累计收益',
+      totalEarnedHint: '已即时计入余额',
+      records: '分成笔数',
+      userPct: '当前贡献者占比',
+      split: '全局分成比例',
+      splitDetail: '邀请 {invite}% / 贡献者 {user}% / 平台 {platform}%'
+    },
+    ledgersTitle: '收益流水',
+    ledgersHint: '仅展示您作为账号 owner 获得的 user_amount。',
+    empty: '暂无贡献收益记录',
+    loadFailed: '加载贡献收益失败',
+    retry: '重试',
+    prev: '上一页',
+    next: '下一页',
+    pageInfo: '第 {page}/{pages} 页，共 {total} 条',
+    columns: {
+      time: '时间',
+      account: '账号',
+      total: '调用金额',
+      earned: '我的收益',
+      request: '请求 ID'
+    }
+  },
+
+  // 用户自建上游账号（feature flag: user_owned_accounts_enabled）
+  myAccounts: {
+    title: '我的账号',
+    description: '创建与管理您自己的上游账号',
+    subtitle:
+      '管理员与普通用户共用本页。添加方式与管理端创建账号表单同源；不可选分组，改为私有/公用。私有进入您的平台私有组，公用在探测档位后可进入匹配共享池。',
+    create: '添加账号',
+    createTitle: '添加上游账号',
+    deleteTitle: '删除账号',
+    deleteConfirm: '确定删除账号「{name}」？此操作不可撤销。',
+    createSuccess: '账号已创建',
+    createSuccessForcedPrivate: '账号已创建，因（{reason}）保持为私有',
+    deleteSuccess: '账号已删除',
+    madePublic: '已切换为公用',
+    madePrivate: '已切换为私有',
+    visibilityForcedPrivate: '无法设为公用（{reason}），已保持私有',
+    failedToLoad: '加载账号失败',
+    failedToCreate: '创建账号失败',
+    failedToDelete: '删除账号失败',
+    failedToUpdateVisibility: '更新可见性失败',
+    columns: {
+      name: '名称',
+      platform: '平台',
+      type: '类型',
+      visibility: '可见性',
+      upstreamPlan: '上游档位',
+      status: '状态',
+      actions: '操作'
+    },
+    visibility: {
+      private: '私有',
+      public: '公用'
+    },
+    types: {
+      apikey: 'API Key',
+      oauth: 'OAuth（粘贴 Token）',
+      setupToken: 'Setup Token'
+    },
+    status: {
+      active: '启用',
+      disabled: '停用',
+      error: '错误'
+    },
+    actions: {
+      makePublic: '设为公用',
+      makePrivate: '设为私有'
+    },
+    reasons: {
+      planProbeFailed: '套餐探测失败',
+      planProbeUnsupported: '该类型暂无法设为公用',
+      planEmpty: '上游档位未知且无匹配的空档位共享池',
+      noSharePoolMatch: '没有匹配的共享池分组'
+    },
+    form: {
+      name: '名称',
+      namePlaceholder: '例如 my-openai-plus',
+      nameRequired: '请填写名称',
+      platform: '平台',
+      type: '鉴权类型',
+      typeHint: 'v1 支持粘贴 API Key 或 OAuth access_token（完整 OAuth 向导尚未开放）。',
+      apiKey: 'API Key',
+      apiKeyPlaceholder: '粘贴 API Key',
+      apiKeyRequired: '请填写 API Key',
+      accessToken: 'Access Token',
+      accessTokenPlaceholder: '粘贴 OAuth access_token',
+      accessTokenRequired: '请填写 access_token',
+      oauthPasteHint: '粘贴有效的 access_token。基于 refresh_token 的完整 OAuth 流程尚未提供。',
+      visibility: '可见性',
+      visibilityHint:
+        '私有仅绑定您的私有平台组；公用按平台+上游档位匹配共享池（含双方都无档位）。匹配失败则保持私有。',
+      publicUnsupportedHint:
+        '若无法匹配共享池，保存后会保持私有并提示原因。'
+    }
+  },
+
   // Model Plaza (public group/model pricing showcase)
   modelPlaza: {
     title: '模型广场',

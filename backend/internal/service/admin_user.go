@@ -147,9 +147,38 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 	if err := user.SetPassword(input.Password); err != nil {
 		return nil, err
 	}
-	if err := s.userRepo.Create(ctx, user); err != nil {
-		return nil, err
+
+	// 用户插入 + 私有组供给同事务（fail-closed）；默认订阅仍在事务外 best-effort。
+	// privateGroups 已注入时必须具备 entClient，禁止「先 Create 再 best-effort Provision」的半成品路径。
+	if s.privateGroups != nil && s.entClient == nil {
+		return nil, errors.New("misconfigured AdminService: privateGroups requires entClient for atomic user create")
 	}
+
+	var provisionResult *ProvisionResult
+	if s.privateGroups != nil {
+		tx, err := s.entClient.Tx(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = tx.Rollback() }()
+		opCtx := dbent.NewTxContext(ctx, tx)
+		if err := s.userRepo.Create(opCtx, user); err != nil {
+			return nil, err
+		}
+		provisionResult, err = s.privateGroups.ProvisionPrivatePlatformGroups(opCtx, user.ID)
+		if err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		s.privateGroups.AfterCommit(ctx, provisionResult)
+	} else {
+		if err := s.userRepo.Create(ctx, user); err != nil {
+			return nil, err
+		}
+	}
+
 	// 创建管理员属权限敏感操作，落审计日志（含操作者），便于事后追溯。
 	if user.Role == RoleAdmin {
 		logger.LegacyPrintf("service.admin", "audit: admin user created actor_admin_id=%d target_user_id=%d",
@@ -277,7 +306,27 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	if input.AllowedGroups != nil {
-		user.AllowedGroups = *input.AllowedGroups
+		// 强制保留该用户 private-{userId}-* 组 ID，防止前端 Modal 只回写 standard 勾选导致抹除。
+		// groupRepo 缺失或 GetByName 非 not-found 错误必须 fail-closed，避免瞬时故障抹掉 private allowed。
+		if s.groupRepo == nil {
+			return nil, errors.New("misconfigured AdminService: groupRepo required to preserve private allowed groups")
+		}
+		merged := *input.AllowedGroups
+		privateIDs := make([]Group, 0, len(AllowedQuotaPlatforms))
+		for _, platform := range AllowedQuotaPlatforms {
+			name := PrivateGroupName(user.ID, platform)
+			g, err := s.groupRepo.GetByName(ctx, name)
+			if err != nil {
+				if errors.Is(err, ErrGroupNotFound) {
+					continue
+				}
+				return nil, fmt.Errorf("load private group for allowed merge: %s: %w", name, err)
+			}
+			if g != nil {
+				privateIDs = append(privateIDs, *g)
+			}
+		}
+		user.AllowedGroups = mergePrivateAllowedGroupIDs(merged, privateIDs, user.ID)
 		fields.AllowedGroups = true
 	}
 
@@ -371,6 +420,7 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 		return err
 	}
 
+	var revokeResult *RevokeResult
 	if s.entClient != nil {
 		tx, err := s.entClient.Tx(ctx)
 		if err != nil {
@@ -379,13 +429,38 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 		defer func() { _ = tx.Rollback() }()
 
 		opCtx := dbent.NewTxContext(ctx, tx)
+		// K14 MUST：先级联删除用户自建账号（硬删 account_groups + 软删账号），再 Revoke 私有组，再软删用户。
+		// 软删用户不触发 FK ON DELETE；不可依赖 SET NULL。
+		if err := s.deleteOwnedAccountsForUser(opCtx, id); err != nil {
+			return err
+		}
+		if s.privateGroups != nil {
+			revokeResult, err = s.privateGroups.RevokePrivatePlatformGroups(opCtx, id)
+			if err != nil {
+				return err
+			}
+		}
 		if err := s.deleteUserWithAPIKeys(opCtx, id, apiKeys); err != nil {
 			return err
 		}
 		if err := tx.Commit(); err != nil {
 			return err
 		}
+		if s.privateGroups != nil {
+			s.privateGroups.AfterRevokeCommit(ctx, revokeResult)
+		}
 	} else {
+		if err := s.deleteOwnedAccountsForUser(ctx, id); err != nil {
+			return err
+		}
+		if s.privateGroups != nil {
+			var err error
+			revokeResult, err = s.privateGroups.RevokePrivatePlatformGroups(ctx, id)
+			if err != nil {
+				return err
+			}
+			s.privateGroups.AfterRevokeCommit(ctx, revokeResult)
+		}
 		if err := s.deleteUserWithAPIKeys(ctx, id, apiKeys); err != nil {
 			return err
 		}
@@ -398,6 +473,58 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 			}
 		}
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, id)
+	}
+	return nil
+}
+
+// deleteOwnedAccountsForUser 删除 owner_user_id=userID 的全部自建账号（K14）。
+// 使用与 Admin DeleteAccount 相同的 account_repo.Delete 路径。
+func (s *adminServiceImpl) deleteOwnedAccountsForUser(ctx context.Context, userID int64) error {
+	if s.accountRepo == nil || userID <= 0 {
+		return nil
+	}
+	const pageSize = 200
+	deleted := 0
+	for {
+		batch, result, err := s.accountRepo.ListByOwnerUserID(ctx, userID, pagination.PaginationParams{
+			Page:      1, // 每轮取第一页：删除后列表缩短
+			PageSize:  pageSize,
+			SortBy:    "id",
+			SortOrder: pagination.SortOrderAsc,
+		})
+		if err != nil {
+			return fmt.Errorf("list owned accounts for cascade delete: user_id=%d: %w", userID, err)
+		}
+		if len(batch) == 0 {
+			break
+		}
+		for i := range batch {
+			acc := &batch[i]
+			// 级联 spark 影子（与 DeleteAccount 对齐）
+			shadows, serr := s.accountRepo.ListShadowsByParent(ctx, acc.ID)
+			if serr != nil {
+				return fmt.Errorf("list spark shadows for cascade delete account=%d: %w", acc.ID, serr)
+			}
+			for _, shadow := range shadows {
+				if err := s.accountRepo.Delete(ctx, shadow.ID); err != nil {
+					return fmt.Errorf("cascade delete spark shadow %d: %w", shadow.ID, err)
+				}
+			}
+			if err := s.accountRepo.Delete(ctx, acc.ID); err != nil {
+				return fmt.Errorf("cascade delete owned account %d: %w", acc.ID, err)
+			}
+			deleted++
+		}
+		// 若本页不足 pageSize 且 total 已清完则退出
+		if result != nil && int64(deleted) >= result.Total {
+			break
+		}
+		if len(batch) < pageSize {
+			break
+		}
+	}
+	if deleted > 0 {
+		logger.LegacyPrintf("service.admin", "user_account_delete_cascade_on_user_delete: user_id=%d deleted=%d", userID, deleted)
 	}
 	return nil
 }

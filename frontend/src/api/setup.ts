@@ -13,6 +13,10 @@ const setupClient = axios.create({
   }
 })
 
+// Full install runs remote DB migrations + admin bootstrap + config write.
+// Remote Postgres/Redis can easily exceed the short connectivity-test timeout.
+const INSTALL_TIMEOUT_MS = 300000
+
 export interface SetupStatus {
   needs_setup: boolean
   step: string
@@ -85,6 +89,8 @@ export async function testRedis(config: RedisConfig): Promise<void> {
  * Perform installation
  */
 export async function install(config: InstallRequest): Promise<InstallResponse> {
-  const response = await setupClient.post('/setup/install', config)
+  const response = await setupClient.post('/setup/install', config, {
+    timeout: INSTALL_TIMEOUT_MS
+  })
   return response.data.data
 }

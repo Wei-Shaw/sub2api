@@ -598,6 +598,30 @@ export default {
       failedToSave: 'Failed to save user',
       failedToAdjust: 'Adjustment failed',
       deleteConfirm: "Are you sure you want to delete '{email}'? This action cannot be undone.",
+      provisionPrivateGroups: 'Provision private groups',
+      provisionPrivateGroupsConfirmTitle: 'Provision private platform groups?',
+      provisionPrivateGroupsConfirm:
+        "Idempotently provision private-{userId}-{platform} exclusive groups, allowed groups, and subscriptions for '{email}'. Existing groups/subscriptions keep their expiry. Available for role=user and role=admin.",
+      provisionPrivateGroupsConfirmButton: 'Confirm provision',
+      provisionPrivateGroupsSuccess:
+        'Provisioned: {created} created, {ensured} already present',
+      provisionPrivateGroupsFailed: 'Failed to provision private groups',
+      provisioningPrivateGroups: 'Provisioning...',
+      bulkProvisionPrivateGroups: 'Bulk provision private groups ({count})',
+      bulkProvisionPrivateGroupsConfirmTitle: 'Bulk provision private groups?',
+      bulkProvisionPrivateGroupsConfirm:
+        'Serially and idempotently provision private exclusive groups for {count} selected users (user/admin). Failures on one user do not stop the rest; existing groups keep their expiry.',
+      bulkProvisionPrivateGroupsConfirmButton: 'Confirm bulk provision',
+      bulkProvisionPrivateGroupsProgress: 'Provisioning {current}/{total}…',
+      bulkProvisionPrivateGroupsSuccess:
+        'Bulk provision finished: {success} succeeded, {failed} failed',
+      bulkProvisionPrivateGroupsPartial:
+        'Bulk provision partial: {success} succeeded, {failed} failed ({detail})',
+      bulkProvisionPrivateGroupsAllFailed:
+        'Bulk provision failed for all {failed} users ({detail})',
+      bulkProvisionPrivateGroupsNeedSelection: 'Select users first',
+      bulkProvisionPrivateGroupsLimit:
+        'Select at most {max} users per batch (matches page size limit)',
       setAllowedGroups: 'Set Allowed Groups',
       allowedGroupsHint:
         'Select which standard groups this user can use. Subscription groups are managed separately.',
@@ -780,6 +804,11 @@ export default {
       title: 'Group Management',
       description: 'Manage API key groups and rate multipliers',
       searchGroups: 'Search groups...',
+      showPrivateGroups: 'Show private user groups',
+      showPrivateGroupsHint:
+        'When enabled, the list includes private-{userId}-{platform} exclusive groups',
+      privateIdentityLocked:
+        'Private group name, platform, subscription type, and exclusive flag cannot be changed',
       createGroup: 'Create Group',
       editGroup: 'Edit Group',
       deleteGroup: 'Delete Group',
@@ -799,6 +828,9 @@ export default {
       exclusive: 'Exclusive',
       nonExclusive: 'Non-Exclusive',
       public: 'Public',
+      sharePool: 'Share pool',
+      sharePoolOn: 'Share pool',
+      sharePoolOff: 'Not a share pool',
       columns: {
         name: 'Name',
         id: 'ID',
@@ -848,6 +880,15 @@ export default {
         rateMultiplier: 'Rate Multiplier',
         status: 'Status',
         exclusive: 'Exclusive Group',
+        sharePool: 'Share pool group',
+        sharePoolHint:
+          'When enabled, public user-owned accounts whose upstream_plan matches this group are auto-bound. Requires non-exclusive + upstream plan. Private groups cannot be share pools.',
+        sharePoolNeedsPlan:
+          'Share pool needs an upstream plan tier to match user accounts. Without it, no public accounts will join.',
+        upstreamPlan: 'Upstream plan tier',
+        upstreamPlanHint:
+          'For share-pool groups this is used for strict plan matching (public user accounts). Otherwise metadata/display only. Options come from system setting "Group upstream plans".',
+        upstreamPlanUnspecified: 'Unspecified',
         nameLabel: 'Group Name',
         namePlaceholder: 'Enter group name',
         descriptionLabel: 'Description',

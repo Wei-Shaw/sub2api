@@ -42,6 +42,19 @@
               class="w-44"
               @change="loadGroups"
             />
+            <label
+              class="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-gray-300"
+              :title="t('admin.groups.showPrivateGroupsHint')"
+            >
+              <input
+                v-model="showPrivateGroups"
+                type="checkbox"
+                class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500 dark:bg-dark-700"
+                data-testid="show-private-groups-toggle"
+                @change="handleShowPrivateChange"
+              />
+              <span>{{ t("admin.groups.showPrivateGroups") }}</span>
+            </label>
           </div>
 
           <!-- Right: actions -->
@@ -134,30 +147,39 @@
             >
           </template>
 
-          <template #cell-platform="{ value }">
-            <span
-              :class="[
-                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
-                value === 'anthropic'
-                  ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-                  : value === 'openai'
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                    : value === 'antigravity'
-                      ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                      : value === 'grok'
-                        ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100'
-                        : value === 'kimi'
+          <template #cell-platform="{ value, row }">
+            <div class="flex flex-col items-start gap-1">
+              <span
+                :class="[
+                  'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
+                  value === 'anthropic'
+                    ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                    : value === 'openai'
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                      : value === 'antigravity'
+                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                        : value === 'grok'
+                          ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100'
+                          : value === 'kimi'
                           ? 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400'
                           : value === 'zhipu'
                             ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
                             : value === 'deepseek'
                               ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400'
                               : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-              ]"
-            >
-              <PlatformIcon :platform="value" size="xs" />
-              {{ t("admin.groups.platforms." + value) }}
-            </span>
+                ]"
+              >
+                <PlatformIcon :platform="value" size="xs" />
+                {{ t("admin.groups.platforms." + value) }}
+              </span>
+              <span
+                v-if="row.upstream_plan"
+                class="inline-flex rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                data-testid="group-upstream-plan-badge"
+              >
+                {{ resolveUpstreamPlanLabel(value, row.upstream_plan) }}
+              </span>
+            </div>
           </template>
 
           <template #cell-billing_type="{ row }">
@@ -261,12 +283,21 @@
             >
           </template>
 
-          <template #cell-is_exclusive="{ value }">
-            <span :class="['badge', value ? 'badge-primary' : 'badge-gray']">
-              {{
-                value ? t("admin.groups.exclusive") : t("admin.groups.public")
-              }}
-            </span>
+          <template #cell-is_exclusive="{ value, row }">
+            <div class="flex flex-col items-start gap-1">
+              <span :class="['badge', value ? 'badge-primary' : 'badge-gray']">
+                {{
+                  value ? t("admin.groups.exclusive") : t("admin.groups.public")
+                }}
+              </span>
+              <span
+                v-if="row.is_share_pool"
+                class="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-900/30 dark:text-sky-300"
+                data-testid="group-share-pool-badge"
+              >
+                {{ t("admin.groups.sharePool") }}
+              </span>
+            </div>
           </template>
 
           <template #cell-account_count="{ row }">
@@ -505,9 +536,29 @@
             v-model="createForm.platform"
             :options="platformOptions"
             data-tour="group-form-platform"
-            @change="createForm.copy_accounts_from_group_ids = []"
+            @change="
+              createForm.copy_accounts_from_group_ids = [];
+              createForm.upstream_plan = '';
+            "
           />
           <p class="input-hint">{{ t("admin.groups.platformHint") }}</p>
+        </div>
+        <!-- 上游订阅档位（composite 不展示；仅元数据） -->
+        <div
+          v-if="
+            createForm.platform !== 'composite' &&
+            upstreamPlanOptionsFor(createForm.platform).length > 0
+          "
+        >
+          <label class="input-label">{{
+            t("admin.groups.form.upstreamPlan")
+          }}</label>
+          <Select
+            v-model="createForm.upstream_plan"
+            :options="upstreamPlanSelectOptions(createForm.platform)"
+            data-tour="group-form-upstream-plan"
+          />
+          <p class="input-hint">{{ t("admin.groups.form.upstreamPlanHint") }}</p>
         </div>
         <!-- 从分组复制账号 -->
         <div v-if="copyAccountsGroupOptions.length > 0">
@@ -684,7 +735,7 @@
           <div class="flex items-center gap-3">
             <button
               type="button"
-              @click="createForm.is_exclusive = !createForm.is_exclusive"
+              @click="toggleCreateExclusive"
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                 createForm.is_exclusive
@@ -707,6 +758,55 @@
               }}
             </span>
           </div>
+        </div>
+
+        <!-- Share pool (mutually exclusive with exclusive / private groups) -->
+        <div
+          v-if="createForm.platform !== 'composite'"
+          data-tour="group-form-share-pool"
+        >
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.form.sharePool") }}
+            </label>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              :disabled="createForm.is_exclusive"
+              @click="toggleCreateSharePool"
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                createForm.is_exclusive ? 'cursor-not-allowed opacity-60' : '',
+                createForm.is_share_pool
+                  ? 'bg-sky-500'
+                  : 'bg-gray-300 dark:bg-dark-600',
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  createForm.is_share_pool ? 'translate-x-6' : 'translate-x-1',
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{
+                createForm.is_share_pool
+                  ? t("admin.groups.sharePoolOn")
+                  : t("admin.groups.sharePoolOff")
+              }}
+            </span>
+          </div>
+          <p class="input-hint mt-1">
+            {{ t("admin.groups.form.sharePoolHint") }}
+          </p>
+          <p
+            v-if="createForm.is_share_pool && !createForm.upstream_plan"
+            class="mt-1 text-xs text-amber-600 dark:text-amber-400"
+          >
+            {{ t("admin.groups.form.sharePoolNeedsPlan") }}
+          </p>
         </div>
 
         <!-- Subscription Configuration -->
@@ -2283,7 +2383,11 @@
             required
             class="input"
             data-tour="edit-group-form-name"
+            :disabled="isEditingPrivateGroup"
           />
+          <p v-if="isEditingPrivateGroup" class="input-hint">
+            {{ t("admin.groups.privateIdentityLocked") }}
+          </p>
         </div>
         <div>
           <label class="input-label">{{
@@ -2306,6 +2410,22 @@
             data-tour="group-form-platform"
           />
           <p class="input-hint">{{ t("admin.groups.platformNotEditable") }}</p>
+        </div>
+        <div
+          v-if="
+            editForm.platform !== 'composite' &&
+            upstreamPlanOptionsFor(editForm.platform).length > 0
+          "
+        >
+          <label class="input-label">{{
+            t("admin.groups.form.upstreamPlan")
+          }}</label>
+          <Select
+            v-model="editForm.upstream_plan"
+            :options="upstreamPlanSelectOptions(editForm.platform)"
+            data-tour="edit-group-form-upstream-plan"
+          />
+          <p class="input-hint">{{ t("admin.groups.form.upstreamPlanHint") }}</p>
         </div>
         <!-- 从分组复制账号（编辑时） -->
         <div v-if="copyAccountsGroupOptionsForEdit.length > 0">
@@ -2480,9 +2600,11 @@
           <div class="flex items-center gap-3">
             <button
               type="button"
-              @click="editForm.is_exclusive = !editForm.is_exclusive"
+              :disabled="isEditingPrivateGroup"
+              @click="toggleEditExclusive"
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                isEditingPrivateGroup ? 'cursor-not-allowed opacity-60' : '',
                 editForm.is_exclusive
                   ? 'bg-primary-500'
                   : 'bg-gray-300 dark:bg-dark-600',
@@ -2503,7 +2625,65 @@
               }}
             </span>
           </div>
+          <p v-if="isEditingPrivateGroup" class="input-hint mt-1">
+            {{ t("admin.groups.privateIdentityLocked") }}
+          </p>
         </div>
+
+        <!-- Share pool (edit) -->
+        <div
+          v-if="editForm.platform !== 'composite'"
+          data-tour="edit-group-form-share-pool"
+        >
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.form.sharePool") }}
+            </label>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              :disabled="isEditingPrivateGroup || editForm.is_exclusive"
+              @click="toggleEditSharePool"
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                isEditingPrivateGroup || editForm.is_exclusive
+                  ? 'cursor-not-allowed opacity-60'
+                  : '',
+                editForm.is_share_pool
+                  ? 'bg-sky-500'
+                  : 'bg-gray-300 dark:bg-dark-600',
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  editForm.is_share_pool ? 'translate-x-6' : 'translate-x-1',
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{
+                editForm.is_share_pool
+                  ? t("admin.groups.sharePoolOn")
+                  : t("admin.groups.sharePoolOff")
+              }}
+            </span>
+          </div>
+          <p class="input-hint mt-1">
+            {{ t("admin.groups.form.sharePoolHint") }}
+          </p>
+          <p
+            v-if="editForm.is_share_pool && !editForm.upstream_plan"
+            class="mt-1 text-xs text-amber-600 dark:text-amber-400"
+          >
+            {{ t("admin.groups.form.sharePoolNeedsPlan") }}
+          </p>
+          <p v-if="isEditingPrivateGroup" class="input-hint mt-1">
+            {{ t("admin.groups.privateIdentityLocked") }}
+          </p>
+        </div>
+
         <div>
           <label class="input-label">{{ t("admin.groups.form.status") }}</label>
           <Select v-model="editForm.status" :options="editStatusOptions" />
@@ -4561,6 +4741,7 @@ import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/stores/app";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
+import type { GroupUpstreamPlanOption } from "@/api/admin/settings";
 import type {
   AdminGroup,
   CompositeModelRoute,
@@ -5090,6 +5271,7 @@ const capacityMap = ref<
   >
 >(new Map());
 const searchQuery = ref("");
+const showPrivateGroups = ref(false);
 const filters = reactive({
   platform: "",
   status: "",
@@ -5124,6 +5306,41 @@ const showSortModal = ref(false);
 const submitting = ref(false);
 const sortSubmitting = ref(false);
 const editingGroup = ref<AdminGroup | null>(null);
+
+/** 系统设置中的分组上游档位配置（按平台） */
+const groupUpstreamPlans = ref<Record<string, GroupUpstreamPlanOption[]>>({});
+
+const upstreamPlanOptionsFor = (platform: string): GroupUpstreamPlanOption[] => {
+  if (!platform || platform === "composite") return [];
+  return groupUpstreamPlans.value[platform] || [];
+};
+
+const upstreamPlanSelectOptions = (platform: string) => {
+  const opts = upstreamPlanOptionsFor(platform).map((o) => ({
+    value: o.code,
+    label: o.label || o.code,
+  }));
+  return [
+    { value: "", label: t("admin.groups.form.upstreamPlanUnspecified") },
+    ...opts,
+  ];
+};
+
+const resolveUpstreamPlanLabel = (platform: string, code: string) => {
+  if (!code) return "";
+  const found = upstreamPlanOptionsFor(platform).find((o) => o.code === code);
+  return found?.label || code;
+};
+
+const loadGroupUpstreamPlans = async () => {
+  try {
+    const settings = await adminAPI.settings.getSettings();
+    groupUpstreamPlans.value = settings.group_upstream_plans || {};
+  } catch (e) {
+    console.error("Failed to load group_upstream_plans", e);
+    groupUpstreamPlans.value = {};
+  }
+};
 const deletingGroup = ref<AdminGroup | null>(null);
 const duplicatingGroupIds = reactive(new Set<number>());
 const showRateMultipliersModal = ref(false);
@@ -5187,8 +5404,10 @@ const createForm = reactive({
   name: "",
   description: "",
   platform: "anthropic" as GroupPlatform,
+  upstream_plan: "" as string,
   rate_multiplier: 1.0,
   is_exclusive: false,
+  is_share_pool: false,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
@@ -5550,8 +5769,10 @@ const editForm = reactive({
   name: "",
   description: "",
   platform: "anthropic" as GroupPlatform,
+  upstream_plan: "" as string,
   rate_multiplier: 1.0,
   is_exclusive: false,
+  is_share_pool: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
@@ -5857,6 +6078,7 @@ const loadGroups = async () => {
         search: searchQuery.value.trim() || undefined,
         sort_by: sortState.sort_by,
         sort_order: sortState.sort_order,
+        show_private: showPrivateGroups.value || undefined,
       },
       { signal },
     );
@@ -5981,6 +6203,49 @@ const handleSearch = () => {
   }, 300);
 };
 
+const handleShowPrivateChange = () => {
+  pagination.page = 1;
+  loadGroups();
+};
+
+/** 严格匹配 private-{userId}-{platform}，与后端 IsPrivateGroupName 白名单一致 */
+const isPrivateGroupName = (name?: string | null): boolean => {
+  if (!name) return false;
+  return /^private-\d+-(anthropic|openai|gemini|antigravity|grok)$/.test(
+    name.trim(),
+  );
+};
+
+const isEditingPrivateGroup = computed(() =>
+  isPrivateGroupName(editingGroup.value?.name),
+);
+
+/** 专属与共享池互斥：开启专属时清共享池 */
+const toggleCreateExclusive = () => {
+  createForm.is_exclusive = !createForm.is_exclusive;
+  if (createForm.is_exclusive) {
+    createForm.is_share_pool = false;
+  }
+};
+
+const toggleCreateSharePool = () => {
+  if (createForm.is_exclusive) return;
+  createForm.is_share_pool = !createForm.is_share_pool;
+};
+
+const toggleEditExclusive = () => {
+  if (isEditingPrivateGroup.value) return;
+  editForm.is_exclusive = !editForm.is_exclusive;
+  if (editForm.is_exclusive) {
+    editForm.is_share_pool = false;
+  }
+};
+
+const toggleEditSharePool = () => {
+  if (isEditingPrivateGroup.value || editForm.is_exclusive) return;
+  editForm.is_share_pool = !editForm.is_share_pool;
+};
+
 const handlePageChange = (page: number) => {
   pagination.page = page;
   loadGroups();
@@ -6013,8 +6278,10 @@ const closeCreateModal = () => {
   createForm.name = "";
   createForm.description = "";
   createForm.platform = "anthropic";
+  createForm.upstream_plan = "";
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
+  createForm.is_share_pool = false;
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
   createForm.weekly_limit_usd = null;
@@ -6265,8 +6532,10 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.name = group.name;
   editForm.description = group.description || "";
   editForm.platform = group.platform;
+  editForm.upstream_plan = group.upstream_plan || "";
   editForm.rate_multiplier = group.rate_multiplier;
   editForm.is_exclusive = group.is_exclusive;
+  editForm.is_share_pool = group.is_share_pool ?? false;
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";
   editForm.daily_limit_usd = group.daily_limit_usd;
@@ -6809,6 +7078,7 @@ watch(
   (newVal) => {
     if (newVal === "subscription") {
       createForm.is_exclusive = true;
+      createForm.is_share_pool = false;
       createForm.fallback_group_id_on_invalid_request = null;
     } else {
       createForm.peak_rate_enabled = false;
@@ -7025,6 +7295,7 @@ const saveSortOrder = async () => {
 onMounted(() => {
   loadGroups();
   void loadLiveCapability();
+  void loadGroupUpstreamPlans();
   loadModelsListCandidates("create", 0, createForm.platform);
   document.addEventListener("click", handleClickOutside);
 });

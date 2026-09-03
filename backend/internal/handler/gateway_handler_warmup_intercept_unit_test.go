@@ -92,7 +92,7 @@ func (f *fakeGroupRepo) DeleteCascade(context.Context, int64) ([]int64, error) {
 func (f *fakeGroupRepo) List(context.Context, pagination.PaginationParams) ([]service.Group, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
-func (f *fakeGroupRepo) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool) ([]service.Group, *pagination.PaginationResult, error) {
+func (f *fakeGroupRepo) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool, bool) ([]service.Group, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
 func (f *fakeGroupRepo) ListActive(context.Context) ([]service.Group, error) { return nil, nil }
@@ -100,6 +100,20 @@ func (f *fakeGroupRepo) ListActiveByPlatform(context.Context, string) ([]service
 	return nil, nil
 }
 func (f *fakeGroupRepo) ExistsByName(context.Context, string) (bool, error) { return false, nil }
+func (f *fakeGroupRepo) GetByName(context.Context, string) (*service.Group, error) {
+	return nil, nil
+}
+func (f *fakeGroupRepo) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]service.Group, error) {
+	return nil, nil
+}
+
+func (f *fakeGroupRepo) ListActiveExcludingPrivate(context.Context) ([]service.Group, error) {
+	return nil, nil
+}
+func (f *fakeGroupRepo) ListByIDs(context.Context, []int64) ([]service.Group, error) {
+	return nil, nil
+}
+func (f *fakeGroupRepo) EnqueueGroupChanged(context.Context, int64) error { return nil }
 func (f *fakeGroupRepo) GetAccountCount(context.Context, int64) (int64, int64, error) {
 	return 0, 0, nil
 }

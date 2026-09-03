@@ -419,6 +419,48 @@ func (_c *AccountCreate) SetNillableQuotaDimension(v *account.QuotaDimension) *A
 	return _c
 }
 
+// SetOwnerUserID sets the "owner_user_id" field.
+func (_c *AccountCreate) SetOwnerUserID(v int64) *AccountCreate {
+	_c.mutation.SetOwnerUserID(v)
+	return _c
+}
+
+// SetNillableOwnerUserID sets the "owner_user_id" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableOwnerUserID(v *int64) *AccountCreate {
+	if v != nil {
+		_c.SetOwnerUserID(*v)
+	}
+	return _c
+}
+
+// SetVisibility sets the "visibility" field.
+func (_c *AccountCreate) SetVisibility(v string) *AccountCreate {
+	_c.mutation.SetVisibility(v)
+	return _c
+}
+
+// SetNillableVisibility sets the "visibility" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableVisibility(v *string) *AccountCreate {
+	if v != nil {
+		_c.SetVisibility(*v)
+	}
+	return _c
+}
+
+// SetUpstreamPlan sets the "upstream_plan" field.
+func (_c *AccountCreate) SetUpstreamPlan(v string) *AccountCreate {
+	_c.mutation.SetUpstreamPlan(v)
+	return _c
+}
+
+// SetNillableUpstreamPlan sets the "upstream_plan" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableUpstreamPlan(v *string) *AccountCreate {
+	if v != nil {
+		_c.SetUpstreamPlan(*v)
+	}
+	return _c
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by IDs.
 func (_c *AccountCreate) AddGroupIDs(ids ...int64) *AccountCreate {
 	_c.mutation.AddGroupIDs(ids...)
@@ -658,6 +700,16 @@ func (_c *AccountCreate) check() error {
 			return &ValidationError{Name: "quota_dimension", err: fmt.Errorf(`ent: validator failed for field "Account.quota_dimension": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.Visibility(); ok {
+		if err := account.VisibilityValidator(v); err != nil {
+			return &ValidationError{Name: "visibility", err: fmt.Errorf(`ent: validator failed for field "Account.visibility": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.UpstreamPlan(); ok {
+		if err := account.UpstreamPlanValidator(v); err != nil {
+			return &ValidationError{Name: "upstream_plan", err: fmt.Errorf(`ent: validator failed for field "Account.upstream_plan": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -800,6 +852,18 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.QuotaDimension(); ok {
 		_spec.SetField(account.FieldQuotaDimension, field.TypeEnum, value)
 		_node.QuotaDimension = value
+	}
+	if value, ok := _c.mutation.OwnerUserID(); ok {
+		_spec.SetField(account.FieldOwnerUserID, field.TypeInt64, value)
+		_node.OwnerUserID = &value
+	}
+	if value, ok := _c.mutation.Visibility(); ok {
+		_spec.SetField(account.FieldVisibility, field.TypeString, value)
+		_node.Visibility = &value
+	}
+	if value, ok := _c.mutation.UpstreamPlan(); ok {
+		_spec.SetField(account.FieldUpstreamPlan, field.TypeString, value)
+		_node.UpstreamPlan = &value
 	}
 	if nodes := _c.mutation.GroupsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1431,6 +1495,66 @@ func (u *AccountUpsert) UpdateQuotaDimension() *AccountUpsert {
 	return u
 }
 
+// SetOwnerUserID sets the "owner_user_id" field.
+func (u *AccountUpsert) SetOwnerUserID(v int64) *AccountUpsert {
+	u.Set(account.FieldOwnerUserID, v)
+	return u
+}
+
+// UpdateOwnerUserID sets the "owner_user_id" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateOwnerUserID() *AccountUpsert {
+	u.SetExcluded(account.FieldOwnerUserID)
+	return u
+}
+
+// AddOwnerUserID adds v to the "owner_user_id" field.
+func (u *AccountUpsert) AddOwnerUserID(v int64) *AccountUpsert {
+	u.Add(account.FieldOwnerUserID, v)
+	return u
+}
+
+// ClearOwnerUserID clears the value of the "owner_user_id" field.
+func (u *AccountUpsert) ClearOwnerUserID() *AccountUpsert {
+	u.SetNull(account.FieldOwnerUserID)
+	return u
+}
+
+// SetVisibility sets the "visibility" field.
+func (u *AccountUpsert) SetVisibility(v string) *AccountUpsert {
+	u.Set(account.FieldVisibility, v)
+	return u
+}
+
+// UpdateVisibility sets the "visibility" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateVisibility() *AccountUpsert {
+	u.SetExcluded(account.FieldVisibility)
+	return u
+}
+
+// ClearVisibility clears the value of the "visibility" field.
+func (u *AccountUpsert) ClearVisibility() *AccountUpsert {
+	u.SetNull(account.FieldVisibility)
+	return u
+}
+
+// SetUpstreamPlan sets the "upstream_plan" field.
+func (u *AccountUpsert) SetUpstreamPlan(v string) *AccountUpsert {
+	u.Set(account.FieldUpstreamPlan, v)
+	return u
+}
+
+// UpdateUpstreamPlan sets the "upstream_plan" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateUpstreamPlan() *AccountUpsert {
+	u.SetExcluded(account.FieldUpstreamPlan)
+	return u
+}
+
+// ClearUpstreamPlan clears the value of the "upstream_plan" field.
+func (u *AccountUpsert) ClearUpstreamPlan() *AccountUpsert {
+	u.SetNull(account.FieldUpstreamPlan)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2047,6 +2171,76 @@ func (u *AccountUpsertOne) SetQuotaDimension(v account.QuotaDimension) *AccountU
 func (u *AccountUpsertOne) UpdateQuotaDimension() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdateQuotaDimension()
+	})
+}
+
+// SetOwnerUserID sets the "owner_user_id" field.
+func (u *AccountUpsertOne) SetOwnerUserID(v int64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetOwnerUserID(v)
+	})
+}
+
+// AddOwnerUserID adds v to the "owner_user_id" field.
+func (u *AccountUpsertOne) AddOwnerUserID(v int64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddOwnerUserID(v)
+	})
+}
+
+// UpdateOwnerUserID sets the "owner_user_id" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateOwnerUserID() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateOwnerUserID()
+	})
+}
+
+// ClearOwnerUserID clears the value of the "owner_user_id" field.
+func (u *AccountUpsertOne) ClearOwnerUserID() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearOwnerUserID()
+	})
+}
+
+// SetVisibility sets the "visibility" field.
+func (u *AccountUpsertOne) SetVisibility(v string) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetVisibility(v)
+	})
+}
+
+// UpdateVisibility sets the "visibility" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateVisibility() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateVisibility()
+	})
+}
+
+// ClearVisibility clears the value of the "visibility" field.
+func (u *AccountUpsertOne) ClearVisibility() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearVisibility()
+	})
+}
+
+// SetUpstreamPlan sets the "upstream_plan" field.
+func (u *AccountUpsertOne) SetUpstreamPlan(v string) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetUpstreamPlan(v)
+	})
+}
+
+// UpdateUpstreamPlan sets the "upstream_plan" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateUpstreamPlan() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateUpstreamPlan()
+	})
+}
+
+// ClearUpstreamPlan clears the value of the "upstream_plan" field.
+func (u *AccountUpsertOne) ClearUpstreamPlan() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearUpstreamPlan()
 	})
 }
 
@@ -2832,6 +3026,76 @@ func (u *AccountUpsertBulk) SetQuotaDimension(v account.QuotaDimension) *Account
 func (u *AccountUpsertBulk) UpdateQuotaDimension() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdateQuotaDimension()
+	})
+}
+
+// SetOwnerUserID sets the "owner_user_id" field.
+func (u *AccountUpsertBulk) SetOwnerUserID(v int64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetOwnerUserID(v)
+	})
+}
+
+// AddOwnerUserID adds v to the "owner_user_id" field.
+func (u *AccountUpsertBulk) AddOwnerUserID(v int64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddOwnerUserID(v)
+	})
+}
+
+// UpdateOwnerUserID sets the "owner_user_id" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateOwnerUserID() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateOwnerUserID()
+	})
+}
+
+// ClearOwnerUserID clears the value of the "owner_user_id" field.
+func (u *AccountUpsertBulk) ClearOwnerUserID() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearOwnerUserID()
+	})
+}
+
+// SetVisibility sets the "visibility" field.
+func (u *AccountUpsertBulk) SetVisibility(v string) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetVisibility(v)
+	})
+}
+
+// UpdateVisibility sets the "visibility" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateVisibility() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateVisibility()
+	})
+}
+
+// ClearVisibility clears the value of the "visibility" field.
+func (u *AccountUpsertBulk) ClearVisibility() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearVisibility()
+	})
+}
+
+// SetUpstreamPlan sets the "upstream_plan" field.
+func (u *AccountUpsertBulk) SetUpstreamPlan(v string) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetUpstreamPlan(v)
+	})
+}
+
+// UpdateUpstreamPlan sets the "upstream_plan" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateUpstreamPlan() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateUpstreamPlan()
+	})
+}
+
+// ClearUpstreamPlan clears the value of the "upstream_plan" field.
+func (u *AccountUpsertBulk) ClearUpstreamPlan() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearUpstreamPlan()
 	})
 }
 

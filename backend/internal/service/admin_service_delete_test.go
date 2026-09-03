@@ -278,7 +278,7 @@ func (s *groupRepoStub) List(ctx context.Context, params pagination.PaginationPa
 	panic("unexpected List call")
 }
 
-func (s *groupRepoStub) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]Group, *pagination.PaginationResult, error) {
+func (s *groupRepoStub) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool, showPrivate bool) ([]Group, *pagination.PaginationResult, error) {
 	panic("unexpected ListWithFilters call")
 }
 
@@ -292,6 +292,26 @@ func (s *groupRepoStub) ListActiveByPlatform(ctx context.Context, platform strin
 
 func (s *groupRepoStub) ExistsByName(ctx context.Context, name string) (bool, error) {
 	panic("unexpected ExistsByName call")
+}
+
+func (s *groupRepoStub) GetByName(ctx context.Context, name string) (*Group, error) {
+	panic("unexpected GetByName call")
+}
+
+func (s *groupRepoStub) ListActiveExcludingPrivate(ctx context.Context) ([]Group, error) {
+	panic("unexpected ListActiveExcludingPrivate call")
+}
+
+func (s *groupRepoStub) ListByIDs(ctx context.Context, ids []int64) ([]Group, error) {
+	panic("unexpected ListByIDs call")
+}
+func (s *groupRepoStub) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]Group, error) {
+	return nil, nil
+}
+
+
+func (s *groupRepoStub) EnqueueGroupChanged(ctx context.Context, groupID int64) error {
+	panic("unexpected EnqueueGroupChanged call")
 }
 
 func (s *groupRepoStub) GetAccountCount(ctx context.Context, groupID int64) (int64, int64, error) {

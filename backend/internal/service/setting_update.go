@@ -363,6 +363,23 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
 	updates[SettingKeyDefaultBalance] = strconv.FormatFloat(settings.DefaultBalance, 'f', 8, 64)
+	// 私有组绝对到期日：空串显式写入以支持「清空」；未发送字段由 OmittedSettingKeys 剔除
+	privateExpiresDate, err := normalizePrivateGroupExpiresDate(settings.PrivateGroupExpiresDate)
+	if err != nil {
+		return nil, err
+	}
+	settings.PrivateGroupExpiresDate = privateExpiresDate
+	updates[SettingKeyPrivateGroupExpiresDate] = privateExpiresDate
+	// 分组上游档位：规范化后整表写入；省略字段由 OmittedSettingKeys 剔除
+	plansJSON, err := MarshalGroupUpstreamPlansJSON(settings.GroupUpstreamPlans)
+	if err != nil {
+		return nil, err
+	}
+	// 回写规范化结果到 settings，便于响应
+	if normalized, nerr := ParseGroupUpstreamPlansJSON(plansJSON); nerr == nil {
+		settings.GroupUpstreamPlans = normalized
+	}
+	updates[SettingKeyGroupUpstreamPlans] = plansJSON
 	settings.AffiliateRebateRate = clampAffiliateRebateRate(settings.AffiliateRebateRate)
 	updates[SettingKeyAffiliateRebateRate] = strconv.FormatFloat(settings.AffiliateRebateRate, 'f', 8, 64)
 	if settings.AffiliateRebateFreezeHours < 0 {
@@ -430,6 +447,19 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// Available channels feature switch
 	updates[SettingKeyAvailableChannelsEnabled] = strconv.FormatBool(settings.AvailableChannelsEnabled)
+
+	// User-owned accounts feature switch + soft cap
+	updates[SettingKeyUserOwnedAccountsEnabled] = strconv.FormatBool(settings.UserOwnedAccountsEnabled)
+	if v := clampMaxUserOwnedAccounts(settings.MaxUserOwnedAccounts); v > 0 {
+		updates[SettingKeyMaxUserOwnedAccounts] = strconv.Itoa(v)
+	}
+
+	// 共享收益分配
+	updates[SettingKeyShareRevenueSplitEnabled] = strconv.FormatBool(settings.ShareRevenueSplitEnabled)
+	updates[SettingKeyShareSplitInvitePct] = formatSharePct(settings.ShareSplitInvitePct)
+	updates[SettingKeyShareSplitUserPct] = formatSharePct(settings.ShareSplitUserPct)
+	updates[SettingKeyShareSplitPlatformPct] = formatSharePct(settings.ShareSplitPlatformPct)
+	updates[SettingKeyPrivateSelfEnvFeePct] = formatSharePct(settings.PrivateSelfEnvFeePct)
 
 	// Model plaza feature switches + description
 	updates[SettingKeyModelPlazaEnabled] = strconv.FormatBool(settings.ModelPlazaEnabled)

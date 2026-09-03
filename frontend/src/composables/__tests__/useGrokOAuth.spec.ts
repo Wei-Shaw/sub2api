@@ -29,6 +29,13 @@ vi.mock('@/api/admin', () => ({
   }
 }))
 
+vi.mock('@/api/client', () => ({
+  apiClient: {
+    post: vi.fn(),
+    get: vi.fn()
+  }
+}))
+
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
 import { adminAPI } from '@/api/admin'
 

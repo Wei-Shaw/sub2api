@@ -201,6 +201,25 @@ func (Account) Fields() []ent.Field {
 			Comment("Parent account id for a linked spark shadow (NULL = normal)."),
 		field.Enum("quota_dimension").Values("global", "spark").Default("global").
 			Comment("'global' (default) or 'spark' (shadow reads codex_bengalfox)."),
+
+		// 用户自建账号归属与可见性（migration 193）
+		// owner_user_id NULL = 管理端系统号；非 NULL = 普通用户自建
+		field.Int64("owner_user_id").
+			Optional().
+			Nillable().
+			Comment("Owner user id for user-owned accounts; NULL = admin/system account."),
+		// visibility: private | public；系统号通常为 NULL
+		field.String("visibility").
+			MaxLen(16).
+			Optional().
+			Nillable().
+			Comment("User-owned account visibility: private or public."),
+		// 上游订阅档位 code（与 groups.upstream_plan 同体系；仅 ApplyProbedPlan 写入）
+		field.String("upstream_plan").
+			MaxLen(64).
+			Optional().
+			Nillable().
+			Comment("Probed upstream plan code for user-owned accounts; empty/NULL = unknown."),
 	}
 }
 

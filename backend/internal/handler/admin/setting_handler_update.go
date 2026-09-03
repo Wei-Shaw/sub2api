@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -170,8 +171,12 @@ type UpdateSettingsRequest struct {
 	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
 
 	// 默认配置
-	DefaultConcurrency                        int                               `json:"default_concurrency"`
-	DefaultBalance                            float64                           `json:"default_balance"`
+	DefaultConcurrency int     `json:"default_concurrency"`
+	DefaultBalance     float64 `json:"default_balance"`
+	// PrivateGroupExpiresDate 私有专属分组绝对到期日（YYYY-MM-DD）；空串清空；字段省略由 OmittedSettingKeys 保留库值
+	PrivateGroupExpiresDate                   string                            `json:"private_group_expires_date"`
+	// GroupUpstreamPlans 按平台上游档位；省略则保留库值；显式传 map 则全量替换
+	GroupUpstreamPlans                        map[string][]service.GroupUpstreamPlanOption `json:"group_upstream_plans"`
 	AffiliateRebateRate                       *float64                          `json:"affiliate_rebate_rate"`
 	AffiliateRebateFreezeHours                *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays               *int                              `json:"affiliate_rebate_duration_days"`
@@ -342,6 +347,17 @@ type UpdateSettingsRequest struct {
 
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
+
+	// User-owned accounts feature switch + soft cap
+	UserOwnedAccountsEnabled *bool `json:"user_owned_accounts_enabled"`
+	MaxUserOwnedAccounts     *int  `json:"max_user_owned_accounts"`
+
+	// 共享账号收益分配
+	ShareRevenueSplitEnabled *bool    `json:"share_revenue_split_enabled"`
+	ShareSplitInvitePct      *float64 `json:"share_split_invite_pct"`
+	ShareSplitUserPct        *float64 `json:"share_split_user_pct"`
+	ShareSplitPlatformPct    *float64 `json:"share_split_platform_pct"`
+	PrivateSelfEnvFeePct     *float64 `json:"private_self_env_fee_pct"`
 
 	// Model Plaza feature switches + description
 	ModelPlazaEnabled     *bool   `json:"model_plaza_enabled"`
@@ -557,6 +573,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	if req.DefaultBalance < 0 {
 		req.DefaultBalance = 0
+	}
+	// 校验 private_group_expires_date（仅当请求显式携带该字段时）
+	if _, sent := sentFields["private_group_expires_date"]; sent {
+		req.PrivateGroupExpiresDate = strings.TrimSpace(req.PrivateGroupExpiresDate)
+		if req.PrivateGroupExpiresDate != "" {
+			t, err := time.Parse("2006-01-02", req.PrivateGroupExpiresDate)
+			// Format 往返必须一致，拒绝 time.Parse 会归一化的非法日（如 2026-02-30）
+			if err != nil || t.Format("2006-01-02") != req.PrivateGroupExpiresDate {
+				response.BadRequest(c, "private_group_expires_date must be a valid calendar date (YYYY-MM-DD) or empty")
+				return
+			}
+		}
 	}
 	affiliateRebateRate := previousSettings.AffiliateRebateRate
 	if req.AffiliateRebateRate != nil {
@@ -1630,6 +1658,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                        customEndpointsJSON,
 		DefaultConcurrency:                     req.DefaultConcurrency,
 		DefaultBalance:                         req.DefaultBalance,
+		PrivateGroupExpiresDate:                req.PrivateGroupExpiresDate,
+		GroupUpstreamPlans:                     req.GroupUpstreamPlans,
 		AffiliateRebateRate:                    affiliateRebateRate,
 		AffiliateRebateFreezeHours:             affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
@@ -1929,6 +1959,48 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.AvailableChannelsEnabled
 			}
 			return previousSettings.AvailableChannelsEnabled
+		}(),
+		UserOwnedAccountsEnabled: func() bool {
+			if req.UserOwnedAccountsEnabled != nil {
+				return *req.UserOwnedAccountsEnabled
+			}
+			return previousSettings.UserOwnedAccountsEnabled
+		}(),
+		MaxUserOwnedAccounts: func() int {
+			if req.MaxUserOwnedAccounts != nil {
+				return *req.MaxUserOwnedAccounts
+			}
+			return previousSettings.MaxUserOwnedAccounts
+		}(),
+		ShareRevenueSplitEnabled: func() bool {
+			if req.ShareRevenueSplitEnabled != nil {
+				return *req.ShareRevenueSplitEnabled
+			}
+			return previousSettings.ShareRevenueSplitEnabled
+		}(),
+		ShareSplitInvitePct: func() float64 {
+			if req.ShareSplitInvitePct != nil {
+				return *req.ShareSplitInvitePct
+			}
+			return previousSettings.ShareSplitInvitePct
+		}(),
+		ShareSplitUserPct: func() float64 {
+			if req.ShareSplitUserPct != nil {
+				return *req.ShareSplitUserPct
+			}
+			return previousSettings.ShareSplitUserPct
+		}(),
+		ShareSplitPlatformPct: func() float64 {
+			if req.ShareSplitPlatformPct != nil {
+				return *req.ShareSplitPlatformPct
+			}
+			return previousSettings.ShareSplitPlatformPct
+		}(),
+		PrivateSelfEnvFeePct: func() float64 {
+			if req.PrivateSelfEnvFeePct != nil {
+				return *req.PrivateSelfEnvFeePct
+			}
+			return previousSettings.PrivateSelfEnvFeePct
 		}(),
 		ModelPlazaEnabled: func() bool {
 			if req.ModelPlazaEnabled != nil {
@@ -2258,6 +2330,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                                        dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                                         updatedSettings.DefaultBalance,
+		PrivateGroupExpiresDate:                                updatedSettings.PrivateGroupExpiresDate,
+		GroupUpstreamPlans:                                     updatedSettings.GroupUpstreamPlans,
 		AffiliateRebateRate:                                    updatedSettings.AffiliateRebateRate,
 		AffiliateRebateFreezeHours:                             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:                            updatedSettings.AffiliateRebateDurationDays,
@@ -2372,6 +2446,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		GrokDefaultBaseURLMode:         updatedSettings.GrokDefaultBaseURLMode,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
+
+		UserOwnedAccountsEnabled: updatedSettings.UserOwnedAccountsEnabled,
+		MaxUserOwnedAccounts:     updatedSettings.MaxUserOwnedAccounts,
+
+		ShareRevenueSplitEnabled: updatedSettings.ShareRevenueSplitEnabled,
+		ShareSplitInvitePct:      updatedSettings.ShareSplitInvitePct,
+		ShareSplitUserPct:        updatedSettings.ShareSplitUserPct,
+		ShareSplitPlatformPct:    updatedSettings.ShareSplitPlatformPct,
+		PrivateSelfEnvFeePct:     updatedSettings.PrivateSelfEnvFeePct,
 
 		ModelPlazaEnabled:       updatedSettings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:   updatedSettings.ModelPlazaRequireAuth,

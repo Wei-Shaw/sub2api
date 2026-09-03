@@ -166,6 +166,9 @@ type SystemSettings struct {
 
 	DefaultConcurrency           int                          `json:"default_concurrency"`
 	DefaultBalance               float64                      `json:"default_balance"`
+	PrivateGroupExpiresDate string `json:"private_group_expires_date"`
+	// GroupUpstreamPlans 按平台上游订阅档位 [{code,label}]
+	GroupUpstreamPlans map[string][]service.GroupUpstreamPlanOption `json:"group_upstream_plans"`
 	AffiliateRebateRate          float64                      `json:"affiliate_rebate_rate"`
 	AffiliateRebateFreezeHours   int                          `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays  int                          `json:"affiliate_rebate_duration_days"`
@@ -316,6 +319,17 @@ type SystemSettings struct {
 	// Available Channels feature switch (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
+	// User-owned accounts feature switch + soft cap
+	UserOwnedAccountsEnabled bool `json:"user_owned_accounts_enabled"`
+	MaxUserOwnedAccounts     int  `json:"max_user_owned_accounts"`
+
+	// 共享账号收益分配
+	ShareRevenueSplitEnabled bool    `json:"share_revenue_split_enabled"`
+	ShareSplitInvitePct      float64 `json:"share_split_invite_pct"`
+	ShareSplitUserPct        float64 `json:"share_split_user_pct"`
+	ShareSplitPlatformPct    float64 `json:"share_split_platform_pct"`
+	PrivateSelfEnvFeePct     float64 `json:"private_self_env_fee_pct"`
+
 	// Model Plaza feature (public group/model pricing showcase)
 	ModelPlazaEnabled       bool   `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth   bool   `json:"model_plaza_require_auth"`
@@ -419,6 +433,10 @@ type PublicSettings struct {
 	ChannelMonitorShowQuota              bool   `json:"channel_monitor_show_quota"`
 
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+
+	UserOwnedAccountsEnabled bool `json:"user_owned_accounts_enabled"`
+
+	ShareRevenueSplitEnabled bool `json:"share_revenue_split_enabled"`
 
 	ModelPlazaEnabled       bool `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth   bool `json:"model_plaza_require_auth"`

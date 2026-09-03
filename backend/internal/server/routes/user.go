@@ -40,6 +40,82 @@ func RegisterUserRoutes(
 			user.GET("/api-keys/:id/usage/daily", panelRateLimiter.Heavy(), h.Usage.GetMyAPIKeyDailyUsage)
 			user.GET("/platform-quotas", h.User.GetMyPlatformQuotas)
 
+			// 共享贡献收益（用户作为账号 owner 的分账流水）
+			if h.ShareRevenue != nil {
+				sr := user.Group("/share-revenue")
+				{
+					sr.GET("/summary", h.ShareRevenue.GetSummary)
+					sr.GET("/ledgers", h.ShareRevenue.ListLedgers)
+				}
+			}
+
+			// 用户自建上游账号（feature flag: user_owned_accounts_enabled）
+			if h.UserAccount != nil {
+				accounts := user.Group("/accounts")
+				{
+					accounts.GET("", h.UserAccount.List)
+					accounts.POST("", h.UserAccount.Create)
+					// 批量 / 数据路由须在 /:id 之前注册，避免被当成 id
+					accounts.POST("/batch-delete", h.UserAccount.BatchDelete)
+					accounts.POST("/batch-set-schedulable", h.UserAccount.BatchSetSchedulable)
+					// 使用 /export|/import 而非 /data，避免部分运行时把 "data" 匹配进 /:id
+					accounts.GET("/export", h.UserAccount.ExportData)
+					accounts.POST("/import", h.UserAccount.ImportData)
+					accounts.GET("/:id", h.UserAccount.Get)
+					accounts.GET("/:id/usage", h.UserAccount.GetUsage)
+					accounts.PATCH("/:id", h.UserAccount.Update)
+					accounts.PUT("/:id/visibility", h.UserAccount.SetVisibility)
+					accounts.PUT("/:id/schedulable", h.UserAccount.SetSchedulable)
+					accounts.DELETE("/:id", h.UserAccount.Delete)
+				}
+			}
+
+			// 用户自建账号 OAuth（与 admin 共用 service；flag + session owner + 禁 proxy）
+			if h.UserOAuth != nil {
+				// Anthropic (Claude)
+				accountsOAuth := user.Group("/accounts/oauth")
+				{
+					accountsOAuth.POST("/generate-auth-url", h.UserOAuth.GenerateAuthURL)
+					accountsOAuth.POST("/generate-setup-token-url", h.UserOAuth.GenerateSetupTokenURL)
+					accountsOAuth.POST("/exchange-code", h.UserOAuth.ExchangeCode)
+					accountsOAuth.POST("/exchange-setup-token-code", h.UserOAuth.ExchangeSetupTokenCode)
+					accountsOAuth.POST("/cookie-auth", h.UserOAuth.CookieAuth)
+					accountsOAuth.POST("/setup-token-cookie-auth", h.UserOAuth.SetupTokenCookieAuth)
+				}
+
+				// OpenAI（无 create-from-oauth / create-from-codex-pat）
+				openai := user.Group("/openai")
+				{
+					openai.POST("/generate-auth-url", h.UserOAuth.OpenAIGenerateAuthURL)
+					openai.POST("/exchange-code", h.UserOAuth.OpenAIExchangeCode)
+					openai.POST("/refresh-token", h.UserOAuth.OpenAIRefreshToken)
+				}
+
+				// Gemini
+				gemini := user.Group("/gemini/oauth")
+				{
+					gemini.POST("/auth-url", h.UserOAuth.GeminiGenerateAuthURL)
+					gemini.POST("/exchange-code", h.UserOAuth.GeminiExchangeCode)
+					gemini.GET("/capabilities", h.UserOAuth.GeminiGetCapabilities)
+				}
+
+				// Antigravity
+				antigravity := user.Group("/antigravity/oauth")
+				{
+					antigravity.POST("/auth-url", h.UserOAuth.AntigravityGenerateAuthURL)
+					antigravity.POST("/exchange-code", h.UserOAuth.AntigravityExchangeCode)
+					antigravity.POST("/refresh-token", h.UserOAuth.AntigravityRefreshToken)
+				}
+
+				// Grok（无 create-from-oauth / sso-to-oauth）
+				grok := user.Group("/grok/oauth")
+				{
+					grok.POST("/auth-url", h.UserOAuth.GrokGenerateAuthURL)
+					grok.POST("/exchange-code", h.UserOAuth.GrokExchangeCode)
+					grok.POST("/refresh-token", h.UserOAuth.GrokRefreshToken)
+				}
+			}
+
 			// 通知邮箱管理
 			notifyEmail := user.Group("/notify-email")
 			{

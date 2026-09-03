@@ -176,6 +176,20 @@ func (_c *GroupCreate) SetNillableIsExclusive(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetIsSharePool sets the "is_share_pool" field.
+func (_c *GroupCreate) SetIsSharePool(v bool) *GroupCreate {
+	_c.mutation.SetIsSharePool(v)
+	return _c
+}
+
+// SetNillableIsSharePool sets the "is_share_pool" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableIsSharePool(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetIsSharePool(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *GroupCreate) SetStatus(v string) *GroupCreate {
 	_c.mutation.SetStatus(v)
@@ -214,6 +228,20 @@ func (_c *GroupCreate) SetPlatform(v string) *GroupCreate {
 func (_c *GroupCreate) SetNillablePlatform(v *string) *GroupCreate {
 	if v != nil {
 		_c.SetPlatform(*v)
+	}
+	return _c
+}
+
+// SetUpstreamPlan sets the "upstream_plan" field.
+func (_c *GroupCreate) SetUpstreamPlan(v string) *GroupCreate {
+	_c.mutation.SetUpstreamPlan(v)
+	return _c
+}
+
+// SetNillableUpstreamPlan sets the "upstream_plan" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableUpstreamPlan(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetUpstreamPlan(*v)
 	}
 	return _c
 }
@@ -1057,6 +1085,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultIsExclusive
 		_c.mutation.SetIsExclusive(v)
 	}
+	if _, ok := _c.mutation.IsSharePool(); !ok {
+		v := group.DefaultIsSharePool
+		_c.mutation.SetIsSharePool(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := group.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -1240,6 +1272,9 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.IsExclusive(); !ok {
 		return &ValidationError{Name: "is_exclusive", err: errors.New(`ent: missing required field "Group.is_exclusive"`)}
 	}
+	if _, ok := _c.mutation.IsSharePool(); !ok {
+		return &ValidationError{Name: "is_share_pool", err: errors.New(`ent: missing required field "Group.is_share_pool"`)}
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "Group.status"`)}
 	}
@@ -1259,6 +1294,11 @@ func (_c *GroupCreate) check() error {
 	if v, ok := _c.mutation.Platform(); ok {
 		if err := group.PlatformValidator(v); err != nil {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "Group.platform": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.UpstreamPlan(); ok {
+		if err := group.UpstreamPlanValidator(v); err != nil {
+			return &ValidationError{Name: "upstream_plan", err: fmt.Errorf(`ent: validator failed for field "Group.upstream_plan": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.SubscriptionType(); !ok {
@@ -1468,6 +1508,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
 		_node.IsExclusive = value
 	}
+	if value, ok := _c.mutation.IsSharePool(); ok {
+		_spec.SetField(group.FieldIsSharePool, field.TypeBool, value)
+		_node.IsSharePool = value
+	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(group.FieldStatus, field.TypeString, value)
 		_node.Status = value
@@ -1479,6 +1523,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)
 		_node.Platform = value
+	}
+	if value, ok := _c.mutation.UpstreamPlan(); ok {
+		_spec.SetField(group.FieldUpstreamPlan, field.TypeString, value)
+		_node.UpstreamPlan = &value
 	}
 	if value, ok := _c.mutation.SubscriptionType(); ok {
 		_spec.SetField(group.FieldSubscriptionType, field.TypeString, value)
@@ -1984,6 +2032,18 @@ func (u *GroupUpsert) UpdateIsExclusive() *GroupUpsert {
 	return u
 }
 
+// SetIsSharePool sets the "is_share_pool" field.
+func (u *GroupUpsert) SetIsSharePool(v bool) *GroupUpsert {
+	u.Set(group.FieldIsSharePool, v)
+	return u
+}
+
+// UpdateIsSharePool sets the "is_share_pool" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateIsSharePool() *GroupUpsert {
+	u.SetExcluded(group.FieldIsSharePool)
+	return u
+}
+
 // SetStatus sets the "status" field.
 func (u *GroupUpsert) SetStatus(v string) *GroupUpsert {
 	u.Set(group.FieldStatus, v)
@@ -2005,6 +2065,24 @@ func (u *GroupUpsert) SetPlatform(v string) *GroupUpsert {
 // UpdatePlatform sets the "platform" field to the value that was provided on create.
 func (u *GroupUpsert) UpdatePlatform() *GroupUpsert {
 	u.SetExcluded(group.FieldPlatform)
+	return u
+}
+
+// SetUpstreamPlan sets the "upstream_plan" field.
+func (u *GroupUpsert) SetUpstreamPlan(v string) *GroupUpsert {
+	u.Set(group.FieldUpstreamPlan, v)
+	return u
+}
+
+// UpdateUpstreamPlan sets the "upstream_plan" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateUpstreamPlan() *GroupUpsert {
+	u.SetExcluded(group.FieldUpstreamPlan)
+	return u
+}
+
+// ClearUpstreamPlan clears the value of the "upstream_plan" field.
+func (u *GroupUpsert) ClearUpstreamPlan() *GroupUpsert {
+	u.SetNull(group.FieldUpstreamPlan)
 	return u
 }
 
@@ -3100,6 +3178,20 @@ func (u *GroupUpsertOne) UpdateIsExclusive() *GroupUpsertOne {
 	})
 }
 
+// SetIsSharePool sets the "is_share_pool" field.
+func (u *GroupUpsertOne) SetIsSharePool(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetIsSharePool(v)
+	})
+}
+
+// UpdateIsSharePool sets the "is_share_pool" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateIsSharePool() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateIsSharePool()
+	})
+}
+
 // SetStatus sets the "status" field.
 func (u *GroupUpsertOne) SetStatus(v string) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -3125,6 +3217,27 @@ func (u *GroupUpsertOne) SetPlatform(v string) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdatePlatform() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdatePlatform()
+	})
+}
+
+// SetUpstreamPlan sets the "upstream_plan" field.
+func (u *GroupUpsertOne) SetUpstreamPlan(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetUpstreamPlan(v)
+	})
+}
+
+// UpdateUpstreamPlan sets the "upstream_plan" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateUpstreamPlan() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateUpstreamPlan()
+	})
+}
+
+// ClearUpstreamPlan clears the value of the "upstream_plan" field.
+func (u *GroupUpsertOne) ClearUpstreamPlan() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearUpstreamPlan()
 	})
 }
 
@@ -4532,6 +4645,20 @@ func (u *GroupUpsertBulk) UpdateIsExclusive() *GroupUpsertBulk {
 	})
 }
 
+// SetIsSharePool sets the "is_share_pool" field.
+func (u *GroupUpsertBulk) SetIsSharePool(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetIsSharePool(v)
+	})
+}
+
+// UpdateIsSharePool sets the "is_share_pool" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateIsSharePool() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateIsSharePool()
+	})
+}
+
 // SetStatus sets the "status" field.
 func (u *GroupUpsertBulk) SetStatus(v string) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -4557,6 +4684,27 @@ func (u *GroupUpsertBulk) SetPlatform(v string) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdatePlatform() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdatePlatform()
+	})
+}
+
+// SetUpstreamPlan sets the "upstream_plan" field.
+func (u *GroupUpsertBulk) SetUpstreamPlan(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetUpstreamPlan(v)
+	})
+}
+
+// UpdateUpstreamPlan sets the "upstream_plan" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateUpstreamPlan() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateUpstreamPlan()
+	})
+}
+
+// ClearUpstreamPlan clears the value of the "upstream_plan" field.
+func (u *GroupUpsertBulk) ClearUpstreamPlan() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearUpstreamPlan()
 	})
 }
 

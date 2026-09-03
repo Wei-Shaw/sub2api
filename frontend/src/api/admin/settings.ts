@@ -20,6 +20,12 @@ export interface DefaultSubscriptionSetting {
 export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity" | "grok"
 export type QuotaWindowType = "daily" | "weekly" | "monthly"
 
+/** 分组上游订阅档位选项（系统设置可配置） */
+export interface GroupUpstreamPlanOption {
+  code: string
+  label: string
+}
+
 /** 单平台三档限额；null = 不限制，undefined = 未填（等价 null） */
 export interface PlatformQuotaLimits {
   daily:   number | null
@@ -425,6 +431,16 @@ export interface SystemSettings {
   affiliate_admin_recharge_enabled: boolean;
   default_concurrency: number;
   default_user_rpm_limit: number;
+  /**
+   * 私有专属平台组统一绝对到期日（YYYY-MM-DD，Asia/Shanghai 当日 23:59:59）。
+   * 空串表示未配置（新用户私有订阅立即 expired）。
+   */
+  private_group_expires_date: string;
+  /**
+   * 分组上游订阅档位：按平台 [{code,label}]。
+   * 首次空配置时后端种子回填。
+   */
+  group_upstream_plans?: Record<string, GroupUpstreamPlanOption[]>;
   default_subscriptions: DefaultSubscriptionSetting[];
   auth_source_default_email_balance?: number;
   auth_source_default_email_concurrency?: number;
@@ -724,6 +740,17 @@ export interface SystemSettings {
   // Available Channels feature switch
   available_channels_enabled: boolean;
 
+  // User-owned accounts feature switch + soft cap
+  user_owned_accounts_enabled: boolean;
+  max_user_owned_accounts: number;
+
+  // 共享账号收益分配
+  share_revenue_split_enabled: boolean;
+  share_split_invite_pct: number;
+  share_split_user_pct: number;
+  share_split_platform_pct: number;
+  private_self_env_fee_pct: number;
+
   // Model Plaza feature switches + description
   model_plaza_enabled: boolean;
   model_plaza_require_auth: boolean;
@@ -766,6 +793,13 @@ export interface UpdateSettingsRequest {
   affiliate_admin_recharge_enabled?: boolean;
   default_concurrency?: number;
   default_user_rpm_limit?: number;
+  /**
+   * 私有专属平台组绝对到期日。传 "" 清空；省略则保留库中值。
+   * 保存不会自动同步存量订阅——需调用 syncPrivateGroupExpires。
+   */
+  private_group_expires_date?: string;
+  /** 分组上游订阅档位配置；省略则保留库中值 */
+  group_upstream_plans?: Record<string, GroupUpstreamPlanOption[]>;
   default_subscriptions?: DefaultSubscriptionSetting[];
   auth_source_default_email_balance?: number;
   auth_source_default_email_concurrency?: number;
@@ -1025,6 +1059,17 @@ export interface UpdateSettingsRequest {
   // Available Channels feature switch
   available_channels_enabled?: boolean;
 
+  // User-owned accounts feature switch + soft cap
+  user_owned_accounts_enabled?: boolean;
+  max_user_owned_accounts?: number;
+
+  // 共享账号收益分配
+  share_revenue_split_enabled?: boolean;
+  share_split_invite_pct?: number;
+  share_split_user_pct?: number;
+  share_split_platform_pct?: number;
+  private_self_env_fee_pct?: number;
+
   // Model Plaza feature switches + description
   model_plaza_enabled?: boolean;
   model_plaza_require_auth?: boolean;
@@ -1060,6 +1105,26 @@ export async function updateSettings(
   const { data } = await apiClient.put<SystemSettings>(
     "/admin/settings",
     settings,
+  );
+  return data;
+}
+
+/** 批量同步私有订阅到期日响应（S1） */
+export interface SyncPrivateGroupExpiresResponse {
+  updated: number;
+  expires_at: string;
+  status: string;
+}
+
+/**
+ * 将全部私有专属订阅 expires_at 同步为已配置的绝对到期日。
+ * 与 settings 保存分离（product B）；confirm 必须为 true。
+ * S1：含 expired/suspended；target 未来→active（救活），过去→expired。
+ */
+export async function syncPrivateGroupExpires(): Promise<SyncPrivateGroupExpiresResponse> {
+  const { data } = await apiClient.post<SyncPrivateGroupExpiresResponse>(
+    "/admin/settings/private-group-expires/sync",
+    { confirm: true },
   );
   return data;
 }
@@ -1557,6 +1622,7 @@ export async function resetWebSearchUsage(payload: {
 export const settingsAPI = {
   getSettings,
   updateSettings,
+  syncPrivateGroupExpires,
   testSmtpConnection,
   sendTestEmail,
   getEmailTemplates,

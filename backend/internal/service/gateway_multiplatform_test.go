@@ -128,6 +128,25 @@ func (m *mockAccountRepoForPlatform) AutoPauseExpiredAccounts(ctx context.Contex
 func (m *mockAccountRepoForPlatform) BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
 	return nil
 }
+func (m *mockAccountRepoForPlatform) AddGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (m *mockAccountRepoForPlatform) RemoveGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	return nil
+}
+func (m *mockAccountRepoForPlatform) ListOwnerAccountsBoundToGroup(ctx context.Context, groupID int64) ([]*Account, error) {
+	return nil, nil
+}
+func (m *mockAccountRepoForPlatform) ListPublicOwnerAccountsByPlatformPlan(ctx context.Context, platform, plan string) ([]*Account, error) {
+	return nil, nil
+}
+func (m *mockAccountRepoForPlatform) ListByOwnerUserID(ctx context.Context, ownerUserID int64, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error) {
+	return nil, &pagination.PaginationResult{Total: 0}, nil
+}
+func (m *mockAccountRepoForPlatform) CountActiveOwned(ctx context.Context, ownerUserID int64) (int, error) {
+	return 0, nil
+}
+
 func (m *mockAccountRepoForPlatform) ListSchedulable(ctx context.Context) ([]Account, error) {
 	return nil, nil
 }
@@ -329,7 +348,7 @@ func (m *mockGroupRepoForGateway) DeleteCascade(ctx context.Context, id int64) (
 func (m *mockGroupRepoForGateway) List(ctx context.Context, params pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
-func (m *mockGroupRepoForGateway) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]Group, *pagination.PaginationResult, error) {
+func (m *mockGroupRepoForGateway) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool, showPrivate bool) ([]Group, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
 func (m *mockGroupRepoForGateway) ListActive(ctx context.Context) ([]Group, error) {
@@ -340,6 +359,22 @@ func (m *mockGroupRepoForGateway) ListActiveByPlatform(ctx context.Context, plat
 }
 func (m *mockGroupRepoForGateway) ExistsByName(ctx context.Context, name string) (bool, error) {
 	return false, nil
+}
+func (m *mockGroupRepoForGateway) GetByName(ctx context.Context, name string) (*Group, error) {
+	return nil, nil
+}
+func (m *mockGroupRepoForGateway) ListActiveExcludingPrivate(ctx context.Context) ([]Group, error) {
+	return nil, nil
+}
+func (m *mockGroupRepoForGateway) ListByIDs(ctx context.Context, ids []int64) ([]Group, error) {
+	return nil, nil
+}
+func (m *mockGroupRepoForGateway) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]Group, error) {
+	return nil, nil
+}
+
+func (m *mockGroupRepoForGateway) EnqueueGroupChanged(ctx context.Context, groupID int64) error {
+	return nil
 }
 func (m *mockGroupRepoForGateway) GetAccountCount(ctx context.Context, groupID int64) (int64, int64, error) {
 	return 0, 0, nil

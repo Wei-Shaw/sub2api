@@ -2,7 +2,14 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
+import { apiClient } from '@/api/client'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
+import {
+  type OAuthComposableOptions,
+  type OAuthSurface,
+  effectiveProxyId,
+  oauthPrefix
+} from '@/utils/oauthSurface'
 
 export interface OpenAITokenInfo {
   access_token?: string
@@ -27,10 +34,11 @@ export interface OpenAITokenInfo {
 
 export type OpenAIOAuthPlatform = 'openai'
 
-export function useOpenAIOAuth() {
+export function useOpenAIOAuth(opts?: OAuthComposableOptions) {
   const appStore = useAppStore()
   const { t } = useI18n()
-  const endpointPrefix = '/admin/openai'
+  const surface: OAuthSurface = opts?.surface ?? 'admin'
+  const endpointPrefix = oauthPrefix(surface, 'openai')
 
   // State
   const authUrl = ref('')
@@ -61,17 +69,27 @@ export function useOpenAIOAuth() {
 
     try {
       const payload: Record<string, unknown> = {}
-      if (proxyId) {
-        payload.proxy_id = proxyId
+      const effectiveProxy = effectiveProxyId(surface, proxyId)
+      if (effectiveProxy) {
+        payload.proxy_id = effectiveProxy
       }
       if (redirectUri) {
         payload.redirect_uri = redirectUri
       }
 
-      const response = await adminAPI.accounts.generateAuthUrl(
-        `${endpointPrefix}/generate-auth-url`,
-        payload
-      )
+      let response: { auth_url: string; session_id: string }
+      if (surface === 'user') {
+        const { data } = await apiClient.post<{ auth_url: string; session_id: string }>(
+          `${endpointPrefix}/generate-auth-url`,
+          payload
+        )
+        response = data
+      } else {
+        response = await adminAPI.accounts.generateAuthUrl(
+          `${endpointPrefix}/generate-auth-url`,
+          payload
+        )
+      }
       authUrl.value = response.auth_url
       sessionId.value = response.session_id
       try {
@@ -111,11 +129,22 @@ export function useOpenAIOAuth() {
         code: code.trim(),
         state: state.trim()
       }
-      if (proxyId) {
-        payload.proxy_id = proxyId
+      const effectiveProxy = effectiveProxyId(surface, proxyId)
+      if (effectiveProxy) {
+        payload.proxy_id = effectiveProxy
       }
 
-      const tokenInfo = await adminAPI.accounts.exchangeCode(`${endpointPrefix}/exchange-code`, payload)
+      if (surface === 'user') {
+        const { data } = await apiClient.post<OpenAITokenInfo>(
+          `${endpointPrefix}/exchange-code`,
+          payload
+        )
+        return data
+      }
+      const tokenInfo = await adminAPI.accounts.exchangeCode(
+        `${endpointPrefix}/exchange-code`,
+        payload
+      )
       return tokenInfo as OpenAITokenInfo
     } catch (err: any) {
       error.value = extractI18nErrorMessage(
@@ -147,10 +176,21 @@ export function useOpenAIOAuth() {
     error.value = ''
 
     try {
-      // Use dedicated refresh-token endpoint
+      const effectiveProxy = effectiveProxyId(surface, proxyId)
+      if (surface === 'user') {
+        const body: { refresh_token: string; client_id?: string } = {
+          refresh_token: refreshToken.trim()
+        }
+        if (clientId) body.client_id = clientId
+        const { data } = await apiClient.post<OpenAITokenInfo>(
+          `${endpointPrefix}/refresh-token`,
+          body
+        )
+        return data
+      }
       const tokenInfo = await adminAPI.accounts.refreshOpenAIToken(
         refreshToken.trim(),
-        proxyId,
+        effectiveProxy,
         `${endpointPrefix}/refresh-token`,
         clientId
       )

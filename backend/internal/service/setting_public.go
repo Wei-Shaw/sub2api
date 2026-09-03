@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -233,6 +234,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorHideThroughput,
 		SettingKeyChannelMonitorShowQuota,
 		SettingKeyAvailableChannelsEnabled,
+		SettingKeyUserOwnedAccountsEnabled,
+		SettingKeyShareRevenueSplitEnabled,
 		SettingKeyModelPlazaEnabled,
 		SettingKeyModelPlazaRequireAuth,
 		SettingKeyPluginManagementEnabled,
@@ -361,6 +364,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
 
+		UserOwnedAccountsEnabled: settings[SettingKeyUserOwnedAccountsEnabled] == "true",
+
+		ShareRevenueSplitEnabled: settings[SettingKeyShareRevenueSplitEnabled] == "true",
+
 		ModelPlazaEnabled:       settings[SettingKeyModelPlazaEnabled] == "true",
 		ModelPlazaRequireAuth:   settings[SettingKeyModelPlazaRequireAuth] == "true",
 		PluginManagementEnabled: settings[SettingKeyPluginManagementEnabled] == "true",
@@ -418,6 +425,66 @@ func clampChannelMonitorInterval(v int) int {
 	return v
 }
 
+const (
+	maxUserOwnedAccountsMin      = 1
+	maxUserOwnedAccountsMax      = 1000
+	maxUserOwnedAccountsFallback = DefaultMaxUserOwnedAccounts
+)
+
+// parseMaxUserOwnedAccounts parses the soft cap; invalid → default 10.
+func parseMaxUserOwnedAccounts(raw string) int {
+	v, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return maxUserOwnedAccountsFallback
+	}
+	if clamped := clampMaxUserOwnedAccounts(v); clamped > 0 {
+		return clamped
+	}
+	return maxUserOwnedAccountsFallback
+}
+
+// clampMaxUserOwnedAccounts clamps v to [1, 1000]. 0 means "not provided".
+func clampMaxUserOwnedAccounts(v int) int {
+	if v <= 0 {
+		return 0
+	}
+	if v < maxUserOwnedAccountsMin {
+		return maxUserOwnedAccountsMin
+	}
+	if v > maxUserOwnedAccountsMax {
+		return maxUserOwnedAccountsMax
+	}
+	return v
+}
+
+// parseSharePct 解析 0–100 的分账/费率百分比；非法回退 def。
+func parseSharePct(raw string, def float64) float64 {
+	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
+		return def
+	}
+	if v < 0 {
+		return 0
+	}
+	if v > 100 {
+		return 100
+	}
+	return v
+}
+
+func formatSharePct(v float64) string {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return "0"
+	}
+	if v < 0 {
+		v = 0
+	}
+	if v > 100 {
+		v = 100
+	}
+	return strconv.FormatFloat(v, 'f', -1, 64)
+}
+
 // ChannelMonitorRuntime is the lightweight view of the channel monitor feature
 // consumed by the runner, V2 aggregator, and user-facing handlers.
 type ChannelMonitorRuntime struct {
@@ -440,6 +507,43 @@ func (r ChannelMonitorRuntime) ActiveProbesAllowed() bool {
 // PassiveAggregationAllowed reports whether V2 passive aggregation may run.
 func (r ChannelMonitorRuntime) PassiveAggregationAllowed() bool {
 	return r.Enabled && r.Mode == ChannelMonitorModeV2
+}
+
+// IsUserOwnedAccountsEnabled reports whether user-owned accounts API is enabled (opt-in).
+// Fail-closed: error or unset → false.
+func (s *SettingService) IsUserOwnedAccountsEnabled(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return false
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyUserOwnedAccountsEnabled)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(raw) == "true"
+}
+
+// GetMaxUserOwnedAccounts returns the soft cap (clamped 1–1000, default 10).
+// Raw value <=0 is treated as 0 (deny create) by the caller; parse layer maps invalid to default.
+func (s *SettingService) GetMaxUserOwnedAccounts(ctx context.Context) int {
+	if s == nil || s.settingRepo == nil {
+		return DefaultMaxUserOwnedAccounts
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyMaxUserOwnedAccounts)
+	if err != nil {
+		return DefaultMaxUserOwnedAccounts
+	}
+	// 显式 0 或负数：禁止创建（与设计 <=0 treat as deny 对齐）
+	v, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return DefaultMaxUserOwnedAccounts
+	}
+	if v <= 0 {
+		return 0
+	}
+	if clamped := clampMaxUserOwnedAccounts(v); clamped > 0 {
+		return clamped
+	}
+	return DefaultMaxUserOwnedAccounts
 }
 
 // GetChannelMonitorRuntime reads the channel monitor feature flags directly from
@@ -620,6 +724,8 @@ type PublicSettingsInjectionPayload struct {
 	// monitors; fail-closed (absent/false = hidden). Admin UI always shows it.
 	ChannelMonitorShowQuota    bool `json:"channel_monitor_show_quota"`
 	AvailableChannelsEnabled   bool `json:"available_channels_enabled"`
+	UserOwnedAccountsEnabled             bool `json:"user_owned_accounts_enabled"`
+	ShareRevenueSplitEnabled             bool `json:"share_revenue_split_enabled"`
 	ModelPlazaEnabled          bool `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth      bool `json:"model_plaza_require_auth"`
 	PluginManagementEnabled    bool `json:"plugin_management_enabled"`
@@ -701,6 +807,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
 		ChannelMonitorShowQuota:              settings.ChannelMonitorShowQuota,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
+		UserOwnedAccountsEnabled:             settings.UserOwnedAccountsEnabled,
+		ShareRevenueSplitEnabled:             settings.ShareRevenueSplitEnabled,
 		ModelPlazaEnabled:                    settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:                settings.ModelPlazaRequireAuth,
 		PluginManagementEnabled:              settings.PluginManagementEnabled,

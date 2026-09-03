@@ -42,6 +42,30 @@ export default {
           enabled: '启用可用渠道',
           enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
         },
+        userOwnedAccounts: {
+          title: '用户自建账号',
+          description: '允许普通用户在「我的账号」中创建与管理自有上游账号，并可选共享到共享池分组。默认关闭。',
+          enabled: '启用用户自建账号',
+          enabledHint: '关闭后用户端菜单隐藏，相关接口拒绝写入。',
+          maxAccounts: '每用户账号上限',
+          maxAccountsHint: '单个用户可持有的未删除自建账号数量软上限。范围 1 – 1000，默认 10。',
+        },
+        shareRevenue: {
+          title: '共享账号收益分配',
+          description:
+            '用户 B 经共享池使用用户 A 的账号时，将 B 应付金额拆为邀请返利、贡献者收益与平台；自用 private 组仅收环境费率。默认关闭。',
+          enabled: '启用共享收益分配',
+          enabledHint: '关闭后计费与现网一致（仅扣调用方），不做三方分账。',
+          invitePct: '邀请返利占比 (%)',
+          invitePctHint: '归调用方 B 的邀请人；无邀请人或邀请返利关闭时并入平台。',
+          userPct: '贡献者收益占比 (%)',
+          userPctHint: '归账号 owner A，即时入余额。',
+          platformPct: '平台占比 (%)',
+          platformPctHint: '三者之和建议为 100；余量归平台。',
+          pctSum: '当前合计：{sum}%（建议 100%）',
+          envFeePct: 'Private 自用环境费率 (%)',
+          envFeePctHint: '用户用自己的 private 组打自己的号时，按正常计费 × 该比例扣款，全部归平台。',
+        },
         modelPlaza: {
           title: '模型广场',
           description: '以分组为单位向访客展示可用模型与价格的公开页面。默认关闭。',
@@ -401,6 +425,37 @@ export default {
         defaultPlatformQuotas: '默认平台限额（注册时分配）',
         defaultPlatformQuotasHint: '新用户注册时自动写入平台限额记录；已有用户不受影响。留空 = 该平台该窗口不限制。',
         platformQuotaNotice: '月限额为 30 天滚动窗口，非自然月',
+        groupUpstreamPlans: '分组上游订阅档位',
+        groupUpstreamPlansHint:
+          '创建/编辑分组时可选的上游套餐档位（仅元数据展示）。首次空配置会自动写入默认枚举。',
+        groupUpstreamPlansAdd: '添加档位',
+        groupUpstreamPlansEmpty: '暂无档位（该平台创建分组时不显示档位选择）',
+        groupUpstreamPlansCode: 'code（如 pro）',
+        groupUpstreamPlansLabel: '显示名（如 Pro）',
+        privateGroupExpiresDate: '私有专属组统一到期日',
+        privateGroupExpiresDateHint:
+          '新用户 private-{userId}-{platform} 订阅的绝对到期日（Asia/Shanghai 当日 23:59:59）。清空则新用户私有订阅立即 expired。仅影响未来新用户，保存不会改存量。',
+        privateGroupExpiresDateClear: '清空',
+        privateGroupExpiresDatePlaceholder: 'YYYY-MM-DD',
+        syncPrivateSubscriptions: '同步到全部私有订阅',
+        syncPrivateSubscriptionsHint:
+          '独立操作，不会随设置保存自动执行。使用下方「已保存」的到期日批量改写全部私有专属订阅（不是输入框草稿）。',
+        syncPrivateSubscriptionsSavedDate: '已保存到期日：{date}（同步将使用此日期）',
+        syncPrivateSubscriptionsNoSavedDate: '尚未保存到期日：请先选择日期并点击「保存设置」',
+        syncPrivateSubscriptionsUnsavedHint:
+          '到期日有未保存的修改，请先点击「保存设置」，再同步。',
+        syncPrivateSubscriptionsConfirmTitle: '确认同步到全部私有订阅？',
+        syncPrivateSubscriptionsConfirmMessage:
+          '将把全部私有专属订阅（含已过期、已暂停）的到期日统一改为已保存日期 {date}（Asia/Shanghai 当日 23:59:59）。',
+        syncPrivateSubscriptionsConfirmDetail:
+          'S1 状态规则：新到期日在未来 → status=active（会救活已过期与已暂停的私有订阅）；新到期日已过去 → status=expired。非私有订阅不受影响。此操作不可撤销。',
+        syncPrivateSubscriptionsConfirm: '确认同步',
+        syncPrivateSubscriptionsSuccess: '已同步 {updated} 条私有订阅，到期日 {expiresAt}，状态 {status}',
+        syncPrivateSubscriptionsFailed: '同步私有订阅到期日失败',
+        syncPrivateSubscriptionsNeedDate: '请先配置并保存私有专属组统一到期日后再同步',
+        syncPrivateSubscriptionsNeedSave:
+          '私有专属组到期日尚未保存（或与已保存值不一致），请先点击「保存设置」再同步',
+        syncingPrivateSubscriptions: '同步中...',
       },
       platformQuota: {
         platform:    '平台',

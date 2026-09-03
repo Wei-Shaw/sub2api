@@ -277,6 +277,32 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/my-accounts',
+    name: 'MyAccounts',
+    // 与 /admin/accounts 共用 AccountsView；通过 meta.accountScope 区分 mine/all
+    component: () => import('@/views/admin/AccountsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      accountScope: 'mine',
+      title: 'My Accounts',
+      titleKey: 'myAccounts.title',
+      descriptionKey: 'myAccounts.description'
+    }
+  },
+  {
+    path: '/share-revenue',
+    name: 'ShareRevenue',
+    component: () => import('@/views/user/ShareRevenueView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Share Earnings',
+      titleKey: 'shareRevenue.title',
+      descriptionKey: 'shareRevenue.description'
+    }
+  },
+  {
     path: '/profile',
     name: 'Profile',
     component: () => import('@/views/user/ProfileView.vue'),
@@ -519,6 +545,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: true,
+      accountScope: 'all',
       title: 'Account Management',
       titleKey: 'admin.accounts.title',
       descriptionKey: 'admin.accounts.description'

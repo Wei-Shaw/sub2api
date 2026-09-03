@@ -173,6 +173,8 @@ export default {
     groups: '分组管理',
     channels: '渠道管理',
     availableChannels: '可用渠道',
+    myAccounts: '我的账号',
+    shareRevenue: '贡献收益',
     modelPlaza: '模型广场',
     subscriptions: '订阅管理',
     accounts: '账号管理',

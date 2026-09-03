@@ -42,6 +42,31 @@ export default {
           enabled: 'Enable Available Channels',
           enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
         },
+        userOwnedAccounts: {
+          title: 'User-owned Accounts',
+          description: 'Allow end users to create and manage their own upstream accounts under My Accounts, optionally contributing them to share-pool groups. Disabled by default.',
+          enabled: 'Enable user-owned accounts',
+          enabledHint: 'When off, the user menu entry is hidden and write APIs reject requests.',
+          maxAccounts: 'Max accounts per user',
+          maxAccountsHint: 'Soft cap on non-deleted user-owned accounts per user. Range 1 – 1000, default 10.',
+        },
+        shareRevenue: {
+          title: 'Share revenue split',
+          description:
+            'When user B uses user A’s account via a share-pool group, split B’s charge into invite rebate, contributor revenue, and platform. Private self-use only pays an environment fee. Disabled by default.',
+          enabled: 'Enable share revenue split',
+          enabledHint: 'When off, billing matches legacy (caller only); no three-way split.',
+          invitePct: 'Invite rebate (%)',
+          invitePctHint: 'Goes to B’s inviter; merges into platform if none or affiliate is off.',
+          userPct: 'Contributor revenue (%)',
+          userPctHint: 'Goes to account owner A (immediate balance credit).',
+          platformPct: 'Platform share (%)',
+          platformPctHint: 'Prefer sum of three = 100%; remainder goes to platform.',
+          pctSum: 'Current sum: {sum}% (prefer 100%)',
+          envFeePct: 'Private self-use env fee (%)',
+          envFeePctHint:
+            'When a user calls their own account via private-{id}-* group, charge normal cost × this rate to the platform only.',
+        },
         modelPlaza: {
           title: 'Model Plaza',
           description: 'A public page showcasing available models and pricing by group. Disabled by default.',
@@ -406,6 +431,41 @@ export default {
         defaultPlatformQuotas: 'Default Platform Quotas (on signup)',
         defaultPlatformQuotasHint: 'Automatically assigned to new users on signup; existing users are not affected. Leave blank = unlimited.',
         platformQuotaNotice: 'Monthly quota uses a 30-day rolling window, not a calendar month.',
+        groupUpstreamPlans: 'Group upstream plan tiers',
+        groupUpstreamPlansHint:
+          'Upstream subscription tiers available when creating/editing groups (metadata/display only). Empty config is seeded with defaults on first load.',
+        groupUpstreamPlansAdd: 'Add tier',
+        groupUpstreamPlansEmpty: 'No tiers (group form hides plan select for this platform)',
+        groupUpstreamPlansCode: 'code (e.g. pro)',
+        groupUpstreamPlansLabel: 'label (e.g. Pro)',
+        privateGroupExpiresDate: 'Private Group Unified Expiry Date',
+        privateGroupExpiresDateHint:
+          'Absolute expiry for new users\' private-{userId}-{platform} subscriptions (Asia/Shanghai end of day 23:59:59). Clear to make new private subscriptions expire immediately. Affects future users only; saving does not change existing subscriptions.',
+        privateGroupExpiresDateClear: 'Clear',
+        privateGroupExpiresDatePlaceholder: 'YYYY-MM-DD',
+        syncPrivateSubscriptions: 'Sync to All Private Subscriptions',
+        syncPrivateSubscriptionsHint:
+          'Separate action — not run on settings save. Bulk-updates all private exclusive subscriptions using the saved expiry date below (not the draft in the date input).',
+        syncPrivateSubscriptionsSavedDate:
+          'Saved expiry date: {date} (sync will use this date)',
+        syncPrivateSubscriptionsNoSavedDate:
+          'No saved expiry date yet — pick a date and click Save Settings first',
+        syncPrivateSubscriptionsUnsavedHint:
+          'You have unsaved changes to the expiry date. Save Settings before syncing.',
+        syncPrivateSubscriptionsConfirmTitle: 'Sync to all private subscriptions?',
+        syncPrivateSubscriptionsConfirmMessage:
+          'This will set expires_at on ALL private exclusive subscriptions (including expired and suspended) to the saved date {date} (Asia/Shanghai end of day 23:59:59).',
+        syncPrivateSubscriptionsConfirmDetail:
+          'S1 status rules: if the new expiry is in the future → status=active (revives expired and suspended private subscriptions); if past → status=expired. Non-private subscriptions are not touched. This cannot be undone.',
+        syncPrivateSubscriptionsConfirm: 'Confirm sync',
+        syncPrivateSubscriptionsSuccess:
+          'Synced {updated} private subscription(s); expires_at {expiresAt}; status {status}',
+        syncPrivateSubscriptionsFailed: 'Failed to sync private subscription expiry',
+        syncPrivateSubscriptionsNeedDate:
+          'Configure and save the private group expiry date before syncing',
+        syncPrivateSubscriptionsNeedSave:
+          'The private group expiry date is unsaved (or differs from the saved value). Click Save Settings first, then sync.',
+        syncingPrivateSubscriptions: 'Syncing...',
       },
       platformQuota: {
         platform:    'Platform',

@@ -1,7 +1,7 @@
 <template>
   <BaseDialog
     :show="show"
-    :title="t('admin.accounts.createAccount')"
+    :title="isUserMode ? t('myAccounts.createTitle') : t('admin.accounts.createAccount')"
     width="wide"
     @close="handleClose"
   >
@@ -2914,7 +2914,60 @@
         </div>
       </div>
 
-      <div>
+      <!-- 用户自建模式：私有/公用（管理员与普通用户在「我的账号」共用同一套创建表单） -->
+      <div v-if="isUserMode" class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+        <label class="input-label">{{ t('myAccounts.form.visibility') }}</label>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            @click="form.visibility = 'private'"
+            :class="[
+              'flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all min-w-[8rem]',
+              form.visibility === 'private'
+                ? 'bg-primary-500 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600'
+            ]"
+            data-testid="account-form-visibility-private"
+          >
+            {{ t('myAccounts.visibility.private') }}
+          </button>
+          <button
+            type="button"
+            @click="form.visibility = 'public'"
+            :class="[
+              'flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all min-w-[8rem]',
+              form.visibility === 'public'
+                ? 'bg-sky-500 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600'
+            ]"
+            data-testid="account-form-visibility-public"
+          >
+            {{ t('myAccounts.visibility.public') }}
+          </button>
+        </div>
+        <p class="input-hint mt-2">{{ t('myAccounts.form.visibilityHint') }}</p>
+        <p
+          v-if="form.visibility === 'public' && !userModeSupportsPublic"
+          class="mt-1 text-xs text-amber-600 dark:text-amber-400"
+        >
+          {{ t('myAccounts.form.publicUnsupportedHint') }}
+        </p>
+      </div>
+
+      <!-- 用户自建模式：显示并发数（与管理端字段同源 form.concurrency） -->
+      <div v-if="isUserMode">
+        <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
+        <input
+          v-model.number="form.concurrency"
+          type="number"
+          min="1"
+          class="input"
+          data-testid="account-form-concurrency-user"
+          @input="form.concurrency = Math.max(1, form.concurrency || 1)"
+        />
+      </div>
+
+      <div v-if="!isUserMode">
         <div class="mb-1 flex items-center gap-2">
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
           <ProxyAdBanner />
@@ -2922,7 +2975,7 @@
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
-      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div v-if="!isUserMode" class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
           <input v-model.number="form.concurrency" type="number" min="1" class="input"
@@ -2942,7 +2995,7 @@
             type="number"
             min="1"
             class="input"
-            data-tour="account-form-priority"
+            data-testid="account-form-priority"
           />
           <p class="input-hint">{{ t('admin.accounts.priorityHint') }}</p>
         </div>
@@ -2952,7 +3005,7 @@
           <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') }}</p>
         </div>
       </div>
-      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div v-if="!isUserMode" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
         <input v-model="expiresAtInput" type="datetime-local" class="input" />
         <p class="input-hint">
@@ -2961,7 +3014,7 @@
         </p>
       </div>
 
-      <!-- OpenAI 自动透传开关（OAuth/API Key） -->
+<!-- OpenAI 自动透传开关（OAuth/API Key） -->
       <div
         v-if="form.platform === 'openai'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -3393,9 +3446,9 @@
           </div>
         </div>
 
-        <!-- Group Selection - 仅标准模式显示 -->
+        <!-- 分组：仅管理端账号页；「我的账号」共用用户自建模式，不可选分组 -->
         <GroupSelector
-          v-if="!authStore.isSimpleMode"
+          v-if="!isUserMode && !authStore.isSimpleMode"
           v-model="form.group_ids"
           :groups="groups"
           :platform="form.platform"
@@ -3772,6 +3825,7 @@ import {
 } from '@/composables/useModelWhitelist'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import userAccountsAPI from '@/api/userAccounts'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
   useAccountOAuth,
@@ -3923,15 +3977,28 @@ const apiKeyValuePlaceholder = computed(() => {
 
 interface Props {
   show: boolean
-  proxies: Proxy[]
-  groups: AdminGroup[]
+  proxies?: Proxy[]
+  groups?: AdminGroup[]
+  /**
+   * admin：管理端完整创建（分组/代理/调度参数）
+   * user：用户「我的账号」——隐藏分组与代理等，改为私有/公用，提交走用户 API
+   */
+  mode?: 'admin' | 'user'
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  proxies: () => [],
+  groups: () => [],
+  mode: 'admin'
+})
 const emit = defineEmits<{
   close: []
   created: []
 }>()
+
+const isUserMode = computed(() => props.mode === 'user')
+const groups = computed(() => props.groups ?? [])
+const proxies = computed(() => props.proxies ?? [])
 
 const appStore = useAppStore()
 
@@ -3939,12 +4006,13 @@ const hideAccountLongContextBilling = computed(() => {
   return allSelectedGroupsEnableLongContextPricing(form.group_ids, props.groups)
 })
 
-// OAuth composables
-const oauth = useAccountOAuth() // For Anthropic OAuth
-const openaiOAuth = useOpenAIOAuth() // For OpenAI OAuth
-const geminiOAuth = useGeminiOAuth() // For Gemini OAuth
-const antigravityOAuth = useAntigravityOAuth() // For Antigravity OAuth
-const grokOAuth = useGrokOAuth() // For Grok OAuth
+// OAuth composables — user mode hits /user/... OAuth routes (not AdminAuth)
+const oauthSurface = props.mode === 'user' ? 'user' : 'admin'
+const oauth = useAccountOAuth({ surface: oauthSurface }) // For Anthropic OAuth
+const openaiOAuth = useOpenAIOAuth({ surface: oauthSurface }) // For OpenAI OAuth
+const geminiOAuth = useGeminiOAuth({ surface: oauthSurface }) // For Gemini OAuth
+const antigravityOAuth = useAntigravityOAuth({ surface: oauthSurface }) // For Antigravity OAuth
+const grokOAuth = useGrokOAuth({ surface: oauthSurface }) // For Grok OAuth
 
 // Computed: current OAuth state for template binding
 const currentAuthUrl = computed(() => {
@@ -4525,8 +4593,13 @@ const form = reactive({
   priority: 1,
   rate_multiplier: 1,
   group_ids: [] as number[],
-  expires_at: null as number | null
+  expires_at: null as number | null,
+  /** 用户模式：private | public */
+  visibility: 'private' as 'private' | 'public'
 })
+
+/** 所有允许类型均可选公用；最终是否 public 由后端共享池匹配决定 */
+const userModeSupportsPublic = computed(() => true)
 
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
@@ -5003,6 +5076,10 @@ const withAntigravityConfirmFlag = (payload: CreateAccountRequest): CreateAccoun
 }
 
 const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<void>): Promise<boolean> => {
+  // 「我的账号」不选分组，跳过 mixed channel
+  if (isUserMode.value) {
+    return true
+  }
   if (!needsMixedChannelCheck(form.platform)) {
     return true
   }
@@ -5035,6 +5112,37 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
+    // 「我的账号」管理员/普通用户共用：走用户自建 API（无分组、带私有/公用）
+    if (isUserMode.value) {
+      const created = await userAccountsAPI.create({
+        name: payload.name,
+        platform: payload.platform,
+        type: payload.type,
+        credentials: payload.credentials,
+        extra: payload.extra,
+        visibility: form.visibility,
+        concurrency: payload.concurrency ?? form.concurrency
+      })
+      if (created.visibility_reason) {
+        const reasonText =
+          created.visibility_reason === 'plan_probe_failed'
+            ? t('myAccounts.reasons.planProbeFailed')
+            : created.visibility_reason === 'plan_probe_unsupported'
+              ? t('myAccounts.reasons.planProbeUnsupported')
+              : created.visibility_reason === 'plan_empty'
+                ? t('myAccounts.reasons.planEmpty')
+                : created.visibility_reason === 'no_share_pool_match'
+                  ? t('myAccounts.reasons.noSharePoolMatch')
+                  : created.visibility_reason
+        appStore.showSuccess(t('myAccounts.createSuccessForcedPrivate', { reason: reasonText }))
+      } else {
+        appStore.showSuccess(t('myAccounts.createSuccess'))
+      }
+      emit('created')
+      handleClose()
+      return
+    }
+
     const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
     const modelMapping = payload.credentials.model_mapping
     const hasConcreteMappedTarget = payload.type === 'apikey' &&
@@ -5067,7 +5175,12 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
     emit('created')
     handleClose()
   } catch (error: any) {
-    if (error.response?.status === 409 && error.response?.data?.error === 'mixed_channel_warning' && needsMixedChannelCheck(form.platform)) {
+    if (
+      !isUserMode.value &&
+      error.response?.status === 409 &&
+      error.response?.data?.error === 'mixed_channel_warning' &&
+      needsMixedChannelCheck(form.platform)
+    ) {
       openMixedChannelDialog({
         message: error.response?.data?.message,
         onConfirm: async () => {
@@ -5077,7 +5190,11 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
       })
       return
     }
-    appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToCreate'))
+    appStore.showError(
+      error.response?.data?.message ||
+        error.response?.data?.detail ||
+        (isUserMode.value ? t('myAccounts.failedToCreate') : t('admin.accounts.failedToCreate'))
+    )
   } finally {
     submitting.value = false
   }
@@ -5098,6 +5215,7 @@ const resetForm = () => {
   form.rate_multiplier = 1
   form.group_ids = []
   form.expires_at = null
+  form.visibility = 'private'
   accountCategory.value = 'oauth-based'
   addMethod.value = 'oauth'
   accountMode.value = 'payg'
@@ -5322,6 +5440,7 @@ const doCreateAccount = async (payload: CreateAccountRequest) => {
 }
 
 // Handle mixed channel warning confirmation
+
 const handleMixedChannelConfirm = async () => {
   const action = mixedChannelWarningAction.value
   if (!action) {
@@ -6486,14 +6605,14 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
         // Generate account name with index for batch
         const accountName = refreshTokens.length > 1 ? `${form.name} #${i + 1}` : form.name
 
-        // Note: Antigravity doesn't have buildExtraInfo, so we pass empty extra or rely on credentials
+        const tokenExtra = antigravityOAuth.buildExtraInfo(tokenInfo) || {}
         const createPayload = withAntigravityConfirmFlag({
           name: accountName,
           notes: form.notes,
           platform: 'antigravity',
           type: 'oauth',
           credentials,
-          extra: {},
+          extra: { ...(buildAntigravityExtra() || {}), ...tokenExtra },
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
@@ -6609,8 +6728,16 @@ const handleAntigravityExchange = async (authCode: string) => {
 		if (antigravityModelMapping) {
 			credentials.model_mapping = antigravityModelMapping
 		}
-		const extra = buildAntigravityExtra()
-		await createAccountAndFinish('antigravity', 'oauth', credentials, extra)
+		const extra = {
+			...(buildAntigravityExtra() || {}),
+			...(antigravityOAuth.buildExtraInfo(tokenInfo) || {})
+		}
+		await createAccountAndFinish(
+			'antigravity',
+			'oauth',
+			credentials,
+			Object.keys(extra).length > 0 ? extra : undefined
+		)
   } catch (error: any) {
     antigravityOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
     appStore.showError(antigravityOAuth.error.value)

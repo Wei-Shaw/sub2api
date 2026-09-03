@@ -449,6 +449,9 @@ type OpenAIGatewayService struct {
 	balanceNotifyService  *BalanceNotifyService
 	settingService        *SettingService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	// 共享收益分配（可选注入；nil 时跳过分账）。Grok/OpenAI 计费走本服务，须与 GatewayService 同源注入。
+	shareInviterLookup AffiliateInviterLookup
+	shareRevenueLedger ShareRevenueLedgerWriter
 	liveAttestation       liveattestation.Provider
 	liveAttestationCipher SecretEncryptor
 
@@ -663,6 +666,16 @@ func (s *OpenAIGatewayService) getCodexSnapshotThrottle() *accountWriteThrottle 
 	return defaultOpenAICodexSnapshotPersistThrottle
 }
 
+// SetShareRevenueDeps 注入共享收益依赖（wire 装配后可选调用）。
+// Grok 与 OpenAI 兼容路径均经 OpenAIGatewayService 扣费，必须在此注入，否则分账永远不生效。
+func (s *OpenAIGatewayService) SetShareRevenueDeps(inviter AffiliateInviterLookup, ledger ShareRevenueLedgerWriter) {
+	if s == nil {
+		return
+	}
+	s.shareInviterLookup = inviter
+	s.shareRevenueLedger = ledger
+}
+
 func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 	return &billingDeps{
 		accountRepo:           s.accountRepo,
@@ -672,6 +685,10 @@ func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 		deferredService:       s.deferredService,
 		balanceNotifyService:  s.balanceNotifyService,
 		userPlatformQuotaRepo: s.userPlatformQuotaRepo,
+		cfg:                   s.cfg,
+		settingService:        s.settingService,
+		shareInviterLookup:    s.shareInviterLookup,
+		shareRevenueLedger:    s.shareRevenueLedger,
 	}
 }
 

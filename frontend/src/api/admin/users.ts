@@ -327,6 +327,28 @@ export async function bindUserAuthIdentity(
   return data
 }
 
+/** 幂等补建私有专属平台组响应 */
+export interface ProvisionPrivateGroupsResponse {
+  user_id: number
+  created_count: number
+  ensured_count: number
+  created_ids: number[]
+  ensured_ids: number[]
+}
+
+/**
+ * 为 role=user 幂等补建 private-{userId}-{platform} 专属组 + allowed + 订阅。
+ * 历史用户 / 半失败回填；已存在则 ensured 不改期。
+ */
+export async function provisionPrivateGroups(
+  id: number
+): Promise<ProvisionPrivateGroupsResponse> {
+  const { data } = await apiClient.post<ProvisionPrivateGroupsResponse>(
+    `/admin/users/${id}/provision-private-groups`
+  )
+  return data
+}
+
 /**
  * Platform quota types
  */
@@ -414,6 +436,7 @@ export const usersAPI = {
   getUserBalanceHistory,
   replaceGroup,
   bindUserAuthIdentity,
+  provisionPrivateGroups,
   getPlatformQuotas,
   updatePlatformQuotas,
   resetPlatformQuotaWindow,

@@ -246,7 +246,7 @@ func (s *groupRepoStubForGroupUpdate) DeleteCascade(context.Context, int64) ([]i
 func (s *groupRepoStubForGroupUpdate) List(context.Context, pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error) {
 	panic("unexpected")
 }
-func (s *groupRepoStubForGroupUpdate) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool) ([]Group, *pagination.PaginationResult, error) {
+func (s *groupRepoStubForGroupUpdate) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool, bool) ([]Group, *pagination.PaginationResult, error) {
 	panic("unexpected")
 }
 func (s *groupRepoStubForGroupUpdate) ListActive(context.Context) ([]Group, error) {
@@ -256,6 +256,22 @@ func (s *groupRepoStubForGroupUpdate) ListActiveByPlatform(context.Context, stri
 	panic("unexpected")
 }
 func (s *groupRepoStubForGroupUpdate) ExistsByName(context.Context, string) (bool, error) {
+	panic("unexpected")
+}
+func (s *groupRepoStubForGroupUpdate) GetByName(context.Context, string) (*Group, error) {
+	panic("unexpected")
+}
+func (s *groupRepoStubForGroupUpdate) ListSharePoolMatches(ctx context.Context, platform, plan string) ([]Group, error) {
+	return nil, nil
+}
+
+func (s *groupRepoStubForGroupUpdate) ListActiveExcludingPrivate(context.Context) ([]Group, error) {
+	panic("unexpected")
+}
+func (s *groupRepoStubForGroupUpdate) ListByIDs(context.Context, []int64) ([]Group, error) {
+	panic("unexpected")
+}
+func (s *groupRepoStubForGroupUpdate) EnqueueGroupChanged(context.Context, int64) error {
 	panic("unexpected")
 }
 func (s *groupRepoStubForGroupUpdate) GetAccountCount(context.Context, int64) (int64, int64, error) {

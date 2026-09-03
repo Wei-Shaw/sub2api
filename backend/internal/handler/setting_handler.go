@@ -111,6 +111,10 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 
+		UserOwnedAccountsEnabled: settings.UserOwnedAccountsEnabled,
+
+		ShareRevenueSplitEnabled: settings.ShareRevenueSplitEnabled,
+
 		ModelPlazaEnabled:       settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:   settings.ModelPlazaRequireAuth,
 		PluginManagementEnabled: settings.PluginManagementEnabled,

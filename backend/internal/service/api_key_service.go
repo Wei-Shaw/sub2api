@@ -444,17 +444,46 @@ func (s *APIKeyService) incrementAPIKeyErrorCount(ctx context.Context, userID in
 	_ = s.cache.IncrementCreateAttemptCount(ctx, userID)
 }
 
-// canUserBindGroup 检查用户是否可以绑定指定分组
-// 对于订阅类型分组：检查用户是否有有效订阅
-// 对于标准类型分组：使用原有的 AllowedGroups 和 IsExclusive 逻辑
+// canUserBindGroup 检查用户是否可以绑定指定分组（创建/更新密钥）。
+// 先做权限校验，再限制为：本人私有组 / 专属组 / 公开共享池。
 func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group *Group) bool {
+	if user == nil || group == nil {
+		return false
+	}
 	// 订阅类型分组：需要有效订阅
+	var allowed bool
 	if group.IsSubscriptionType() {
 		_, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, user.ID, group.ID)
-		return err == nil // 有有效订阅则允许
+		allowed = err == nil
+	} else {
+		// 标准类型：公开非专属均可；专属需 AllowedGroups
+		allowed = user.CanBindGroup(group.ID, group.IsExclusive)
 	}
-	// 标准类型分组：使用原有逻辑
-	return user.CanBindGroup(group.ID, group.IsExclusive)
+	if !allowed {
+		return false
+	}
+	return isAPIKeySelectableGroupCategory(user.ID, group)
+}
+
+// isAPIKeySelectableGroupCategory 密钥可选分组品类（不含权限，权限由 canUserBind* 负责）。
+func isAPIKeySelectableGroupCategory(userID int64, group *Group) bool {
+	if group == nil || userID <= 0 {
+		return false
+	}
+	// 1. 自己的私有分组
+	if IsPrivateGroupName(group.Name) {
+		return IsPrivateGroupNameForUser(group.Name, userID)
+	}
+	// 2. 专属分组（运营专属 / 订阅专属，不含他人 private 名）
+	if group.IsExclusive {
+		return true
+	}
+	// 3. 公开的共享池分组
+	if group.IsSharePool {
+		return true
+	}
+	// 普通公开运营组（非专属、非共享池）不可选
+	return false
 }
 
 // Create 创建API Key
@@ -1013,10 +1042,14 @@ func (s *APIKeyService) IncrementUsage(ctx context.Context, keyID int64) error {
 	return nil
 }
 
-// GetAvailableGroups 获取用户有权限绑定的分组列表
-// 返回用户可以选择的分组：
-// - 标准类型分组：公开的（非专属）或用户被明确允许的
-// - 订阅类型分组：用户有有效订阅的
+// GetAvailableGroups 获取用户有权限绑定的分组列表（创建/编辑密钥可选范围）。
+// 在权限校验通过后，再限制为以下三类：
+//  1. 自己的私有分组 private-{userId}-*
+//  2. 专属分组 is_exclusive（需 allowed / 有效订阅）
+//  3. 公开的共享池分组 is_share_pool 且非私有名
+//
+// 规模安全：不调用含 private 的全表 ListActive；运营组走 ListActiveExcludingPrivate，
+// 用户有效订阅组走 ListByIDs。
 func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([]Group, error) {
 	// 获取用户信息
 	user, err := s.userRepo.GetByID(ctx, userID)
@@ -1024,10 +1057,10 @@ func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([
 		return nil, fmt.Errorf("get user: %w", err)
 	}
 
-	// 获取所有活跃分组
-	allGroups, err := s.groupRepo.ListActive(ctx)
+	// 运营活跃组（排除 private-*）
+	opsGroups, err := s.groupRepo.ListActiveExcludingPrivate(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list active groups: %w", err)
+		return nil, fmt.Errorf("list active groups excluding private: %w", err)
 	}
 
 	// 获取用户的所有有效订阅
@@ -1036,31 +1069,72 @@ func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([
 		return nil, fmt.Errorf("list active subscriptions: %w", err)
 	}
 
-	// 构建订阅分组 ID 集合
-	subscribedGroupIDs := make(map[int64]bool)
+	// 构建订阅分组 ID 集合，并收集需按 ID 加载的组（含 private）
+	subscribedGroupIDs := make(map[int64]bool, len(activeSubscriptions))
+	subGroupIDList := make([]int64, 0, len(activeSubscriptions))
 	for _, sub := range activeSubscriptions {
+		if sub.GroupID <= 0 {
+			continue
+		}
+		if !subscribedGroupIDs[sub.GroupID] {
+			subGroupIDList = append(subGroupIDList, sub.GroupID)
+		}
 		subscribedGroupIDs[sub.GroupID] = true
 	}
 
+	byID := make(map[int64]Group, len(opsGroups)+len(subGroupIDList))
+	for i := range opsGroups {
+		g := opsGroups[i]
+		byID[g.ID] = g
+	}
+	if len(subGroupIDList) > 0 {
+		subGroups, err := s.groupRepo.ListByIDs(ctx, subGroupIDList)
+		if err != nil {
+			return nil, fmt.Errorf("list subscription groups by ids: %w", err)
+		}
+		for i := range subGroups {
+			g := subGroups[i]
+			byID[g.ID] = g
+		}
+	}
+
 	// 过滤出用户有权限的分组
-	availableGroups := make([]Group, 0)
-	for _, group := range allGroups {
+	availableGroups := make([]Group, 0, len(byID))
+	for id := range byID {
+		group := byID[id]
 		if s.canUserBindGroupInternal(user, &group, subscribedGroupIDs) {
 			availableGroups = append(availableGroups, group)
 		}
 	}
+
+	// map 迭代顺序不稳定；按 SortOrder、ID 稳定排序，避免 UI 抖动
+	sort.SliceStable(availableGroups, func(i, j int) bool {
+		if availableGroups[i].SortOrder != availableGroups[j].SortOrder {
+			return availableGroups[i].SortOrder < availableGroups[j].SortOrder
+		}
+		return availableGroups[i].ID < availableGroups[j].ID
+	})
 
 	return availableGroups, nil
 }
 
 // canUserBindGroupInternal 内部方法，检查用户是否可以绑定分组（使用预加载的订阅数据）
 func (s *APIKeyService) canUserBindGroupInternal(user *User, group *Group, subscribedGroupIDs map[int64]bool) bool {
+	if user == nil || group == nil {
+		return false
+	}
+	var allowed bool
 	// 订阅类型分组：需要有效订阅
 	if group.IsSubscriptionType() {
-		return subscribedGroupIDs[group.ID]
+		allowed = subscribedGroupIDs[group.ID]
+	} else {
+		// 标准类型分组：使用原有逻辑
+		allowed = user.CanBindGroup(group.ID, group.IsExclusive)
 	}
-	// 标准类型分组：使用原有逻辑
-	return user.CanBindGroup(group.ID, group.IsExclusive)
+	if !allowed {
+		return false
+	}
+	return isAPIKeySelectableGroupCategory(user.ID, group)
 }
 
 func (s *APIKeyService) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]APIKey, error) {

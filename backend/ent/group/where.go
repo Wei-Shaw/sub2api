@@ -110,6 +110,11 @@ func IsExclusive(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldIsExclusive, v))
 }
 
+// IsSharePool applies equality check predicate on the "is_share_pool" field. It's identical to IsSharePoolEQ.
+func IsSharePool(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldIsSharePool, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldStatus, v))
@@ -123,6 +128,11 @@ func DuplicateOperationID(v string) predicate.Group {
 // Platform applies equality check predicate on the "platform" field. It's identical to PlatformEQ.
 func Platform(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldPlatform, v))
+}
+
+// UpstreamPlan applies equality check predicate on the "upstream_plan" field. It's identical to UpstreamPlanEQ.
+func UpstreamPlan(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldUpstreamPlan, v))
 }
 
 // SubscriptionType applies equality check predicate on the "subscription_type" field. It's identical to SubscriptionTypeEQ.
@@ -845,6 +855,16 @@ func IsExclusiveNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldIsExclusive, v))
 }
 
+// IsSharePoolEQ applies the EQ predicate on the "is_share_pool" field.
+func IsSharePoolEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldIsSharePool, v))
+}
+
+// IsSharePoolNEQ applies the NEQ predicate on the "is_share_pool" field.
+func IsSharePoolNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldIsSharePool, v))
+}
+
 // StatusEQ applies the EQ predicate on the "status" field.
 func StatusEQ(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldStatus, v))
@@ -1048,6 +1068,81 @@ func PlatformEqualFold(v string) predicate.Group {
 // PlatformContainsFold applies the ContainsFold predicate on the "platform" field.
 func PlatformContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldPlatform, v))
+}
+
+// UpstreamPlanEQ applies the EQ predicate on the "upstream_plan" field.
+func UpstreamPlanEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanNEQ applies the NEQ predicate on the "upstream_plan" field.
+func UpstreamPlanNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanIn applies the In predicate on the "upstream_plan" field.
+func UpstreamPlanIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldUpstreamPlan, vs...))
+}
+
+// UpstreamPlanNotIn applies the NotIn predicate on the "upstream_plan" field.
+func UpstreamPlanNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldUpstreamPlan, vs...))
+}
+
+// UpstreamPlanGT applies the GT predicate on the "upstream_plan" field.
+func UpstreamPlanGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanGTE applies the GTE predicate on the "upstream_plan" field.
+func UpstreamPlanGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanLT applies the LT predicate on the "upstream_plan" field.
+func UpstreamPlanLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanLTE applies the LTE predicate on the "upstream_plan" field.
+func UpstreamPlanLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanContains applies the Contains predicate on the "upstream_plan" field.
+func UpstreamPlanContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanHasPrefix applies the HasPrefix predicate on the "upstream_plan" field.
+func UpstreamPlanHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanHasSuffix applies the HasSuffix predicate on the "upstream_plan" field.
+func UpstreamPlanHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanIsNil applies the IsNil predicate on the "upstream_plan" field.
+func UpstreamPlanIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldUpstreamPlan))
+}
+
+// UpstreamPlanNotNil applies the NotNil predicate on the "upstream_plan" field.
+func UpstreamPlanNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldUpstreamPlan))
+}
+
+// UpstreamPlanEqualFold applies the EqualFold predicate on the "upstream_plan" field.
+func UpstreamPlanEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldUpstreamPlan, v))
+}
+
+// UpstreamPlanContainsFold applies the ContainsFold predicate on the "upstream_plan" field.
+func UpstreamPlanContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldUpstreamPlan, v))
 }
 
 // SubscriptionTypeEQ applies the EQ predicate on the "subscription_type" field.

@@ -2,12 +2,21 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
+import { apiClient } from '@/api/client'
 import type { GrokTokenInfo } from '@/api/admin/grok'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
+import {
+  type OAuthComposableOptions,
+  type OAuthSurface,
+  effectiveProxyId,
+  oauthPrefix
+} from '@/utils/oauthSurface'
 
-export function useGrokOAuth() {
+export function useGrokOAuth(opts?: OAuthComposableOptions) {
   const appStore = useAppStore()
   const { t } = useI18n()
+  const surface: OAuthSurface = opts?.surface ?? 'admin'
+  const prefix = oauthPrefix(surface, 'grok')
 
   const authUrl = ref('')
   const sessionId = ref('')
@@ -32,9 +41,20 @@ export function useGrokOAuth() {
 
     try {
       const payload: Record<string, unknown> = {}
-      if (proxyId) payload.proxy_id = proxyId
+      const effectiveProxy = effectiveProxyId(surface, proxyId)
+      if (effectiveProxy) payload.proxy_id = effectiveProxy
 
-      const response = await adminAPI.grok.generateAuthUrl(payload)
+      let response: { auth_url: string; session_id: string; state: string }
+      if (surface === 'user') {
+        const { data } = await apiClient.post<{
+          auth_url: string
+          session_id: string
+          state: string
+        }>(`${prefix}/auth-url`, payload)
+        response = data
+      } else {
+        response = await adminAPI.grok.generateAuthUrl(payload)
+      }
       authUrl.value = response.auth_url
       sessionId.value = response.session_id
       state.value = response.state
@@ -69,8 +89,13 @@ export function useGrokOAuth() {
         state: params.state,
         code
       }
-      if (params.proxyId) payload.proxy_id = params.proxyId
+      const effectiveProxy = effectiveProxyId(surface, params.proxyId)
+      if (effectiveProxy) payload.proxy_id = effectiveProxy
 
+      if (surface === 'user') {
+        const { data } = await apiClient.post<GrokTokenInfo>(`${prefix}/exchange-code`, payload)
+        return data
+      }
       return await adminAPI.grok.exchangeCode(payload as any)
     } catch (err: any) {
       error.value = extractI18nErrorMessage(
@@ -99,7 +124,14 @@ export function useGrokOAuth() {
     error.value = ''
 
     try {
-      return await adminAPI.grok.refreshGrokToken(refreshToken.trim(), proxyId)
+      const effectiveProxy = effectiveProxyId(surface, proxyId)
+      if (surface === 'user') {
+        const { data } = await apiClient.post<GrokTokenInfo>(`${prefix}/refresh-token`, {
+          refresh_token: refreshToken.trim()
+        })
+        return data
+      }
+      return await adminAPI.grok.refreshGrokToken(refreshToken.trim(), effectiveProxy)
     } catch (err: any) {
       error.value = extractI18nErrorMessage(
         err,

@@ -795,6 +795,18 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	// 共享收益分配（可选注入；nil 时跳过分账）
+	shareInviterLookup AffiliateInviterLookup
+	shareRevenueLedger  ShareRevenueLedgerWriter
+}
+
+// SetShareRevenueDeps 注入共享收益依赖（wire 装配后可选调用）。
+func (s *GatewayService) SetShareRevenueDeps(inviter AffiliateInviterLookup, ledger ShareRevenueLedgerWriter) {
+	if s == nil {
+		return
+	}
+	s.shareInviterLookup = inviter
+	s.shareRevenueLedger = ledger
 }
 
 // NewGatewayService creates a new GatewayService

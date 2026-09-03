@@ -99,8 +99,12 @@ type CreateGroupRequest struct {
 	Name                      string                        `json:"name" binding:"required"`
 	Description               string                        `json:"description"`
 	Platform                  string                        `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek composite"`
+	// UpstreamPlan 上游订阅档位 code；空=未指定
+	UpstreamPlan     string             `json:"upstream_plan"`
 	RateMultiplier            float64                       `json:"rate_multiplier"`
 	IsExclusive               bool                          `json:"is_exclusive"`
+	// IsSharePool 共享池标记
+	IsSharePool      bool               `json:"is_share_pool"`
 	SubscriptionType          string                        `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
 	DailyLimitUSD             optionalLimitField            `json:"daily_limit_usd"`
 	WeeklyLimitUSD            optionalLimitField            `json:"weekly_limit_usd"`
@@ -171,8 +175,12 @@ type UpdateGroupRequest struct {
 	Name                      string                         `json:"name"`
 	Description               *string                        `json:"description"`
 	Platform                  string                         `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek composite"`
+	// UpstreamPlan nil=不修改；空串=清空
+	UpstreamPlan     *string            `json:"upstream_plan"`
 	RateMultiplier            *float64                       `json:"rate_multiplier"`
 	IsExclusive               *bool                          `json:"is_exclusive"`
+	// IsSharePool nil=不修改
+	IsSharePool      *bool              `json:"is_share_pool"`
 	Status                    string                         `json:"status" binding:"omitempty,oneof=active inactive"`
 	SubscriptionType          string                         `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
 	DailyLimitUSD             optionalLimitField             `json:"daily_limit_usd"`
@@ -270,6 +278,8 @@ func (h *GroupHandler) List(c *gin.Context) {
 	isExclusiveStr := c.Query("is_exclusive")
 	sortBy := c.DefaultQuery("sort_by", "sort_order")
 	sortOrder := c.DefaultQuery("sort_order", "asc")
+	// show_private=true 时包含 private-* 私有专属组；默认隐藏
+	showPrivate := strings.EqualFold(c.Query("show_private"), "true") || c.Query("show_private") == "1"
 
 	var isExclusive *bool
 	if isExclusiveStr != "" {
@@ -277,7 +287,7 @@ func (h *GroupHandler) List(c *gin.Context) {
 		isExclusive = &val
 	}
 
-	groups, total, err := h.adminService.ListGroups(c.Request.Context(), page, pageSize, platform, status, search, isExclusive, sortBy, sortOrder)
+	groups, total, err := h.adminService.ListGroups(c.Request.Context(), page, pageSize, platform, status, search, isExclusive, sortBy, sortOrder, showPrivate)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -516,6 +526,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		Platform:                        req.Platform,
 		RateMultiplier:                  req.RateMultiplier,
 		IsExclusive:                     req.IsExclusive,
+		IsSharePool:                     req.IsSharePool,
 		SubscriptionType:                req.SubscriptionType,
 		DailyLimitUSD:                   req.DailyLimitUSD.ToServiceInput(),
 		WeeklyLimitUSD:                  req.WeeklyLimitUSD.ToServiceInput(),
@@ -570,6 +581,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		MaxReasoningEffortOverLimit:     req.MaxReasoningEffortOverLimit,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
+		UpstreamPlan:                    req.UpstreamPlan,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -645,8 +657,10 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		Name:                            req.Name,
 		Description:                     req.Description,
 		Platform:                        req.Platform,
+		UpstreamPlan:                    req.UpstreamPlan,
 		RateMultiplier:                  req.RateMultiplier,
 		IsExclusive:                     req.IsExclusive,
+		IsSharePool:                     req.IsSharePool,
 		Status:                          req.Status,
 		SubscriptionType:                req.SubscriptionType,
 		DailyLimitUSD:                   req.DailyLimitUSD.ToServiceInput(),

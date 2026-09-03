@@ -38,12 +38,16 @@ const (
 	FieldPeakRateMultiplier = "peak_rate_multiplier"
 	// FieldIsExclusive holds the string denoting the is_exclusive field in the database.
 	FieldIsExclusive = "is_exclusive"
+	// FieldIsSharePool holds the string denoting the is_share_pool field in the database.
+	FieldIsSharePool = "is_share_pool"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldDuplicateOperationID holds the string denoting the duplicate_operation_id field in the database.
 	FieldDuplicateOperationID = "duplicate_operation_id"
 	// FieldPlatform holds the string denoting the platform field in the database.
 	FieldPlatform = "platform"
+	// FieldUpstreamPlan holds the string denoting the upstream_plan field in the database.
+	FieldUpstreamPlan = "upstream_plan"
 	// FieldSubscriptionType holds the string denoting the subscription_type field in the database.
 	FieldSubscriptionType = "subscription_type"
 	// FieldDailyLimitUsd holds the string denoting the daily_limit_usd field in the database.
@@ -232,9 +236,11 @@ var Columns = []string{
 	FieldPeakEnd,
 	FieldPeakRateMultiplier,
 	FieldIsExclusive,
+	FieldIsSharePool,
 	FieldStatus,
 	FieldDuplicateOperationID,
 	FieldPlatform,
+	FieldUpstreamPlan,
 	FieldSubscriptionType,
 	FieldDailyLimitUsd,
 	FieldWeeklyLimitUsd,
@@ -339,6 +345,8 @@ var (
 	DefaultPeakRateMultiplier float64
 	// DefaultIsExclusive holds the default value on creation for the "is_exclusive" field.
 	DefaultIsExclusive bool
+	// DefaultIsSharePool holds the default value on creation for the "is_share_pool" field.
+	DefaultIsSharePool bool
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
@@ -349,6 +357,8 @@ var (
 	DefaultPlatform string
 	// PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
 	PlatformValidator func(string) error
+	// UpstreamPlanValidator is a validator for the "upstream_plan" field. It is called by the builders before save.
+	UpstreamPlanValidator func(string) error
 	// DefaultSubscriptionType holds the default value on creation for the "subscription_type" field.
 	DefaultSubscriptionType string
 	// SubscriptionTypeValidator is a validator for the "subscription_type" field. It is called by the builders before save.
@@ -494,6 +504,11 @@ func ByIsExclusive(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldIsExclusive, opts...).ToFunc()
 }
 
+// ByIsSharePool orders the results by the is_share_pool field.
+func ByIsSharePool(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIsSharePool, opts...).ToFunc()
+}
+
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
@@ -507,6 +522,11 @@ func ByDuplicateOperationID(opts ...sql.OrderTermOption) OrderOption {
 // ByPlatform orders the results by the platform field.
 func ByPlatform(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPlatform, opts...).ToFunc()
+}
+
+// ByUpstreamPlan orders the results by the upstream_plan field.
+func ByUpstreamPlan(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUpstreamPlan, opts...).ToFunc()
 }
 
 // BySubscriptionType orders the results by the subscription_type field.

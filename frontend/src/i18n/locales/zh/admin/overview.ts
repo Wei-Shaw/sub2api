@@ -557,6 +557,27 @@ export default {
       failedToToggle: '更新用户状态失败',
       failedToLoadApiKeys: '加载用户 API 密钥失败',
       deleteConfirm: "确定要删除用户 '{email}' 吗？此操作无法撤销。",
+      provisionPrivateGroups: '补建私有专属组',
+      provisionPrivateGroupsConfirmTitle: '补建私有专属平台组？',
+      provisionPrivateGroupsConfirm:
+        "为用户 '{email}' 幂等补建 private-{userId}-{platform} 专属组、授权与订阅。已存在的组/订阅不会改期。适用于 role=user 与 role=admin。",
+      provisionPrivateGroupsConfirmButton: '确认补建',
+      provisionPrivateGroupsSuccess:
+        '补建完成：新建 {created} 个组，已存在 {ensured} 个',
+      provisionPrivateGroupsFailed: '补建私有专属组失败',
+      provisioningPrivateGroups: '补建中...',
+      bulkProvisionPrivateGroups: '批量补建私有组 ({count})',
+      bulkProvisionPrivateGroupsConfirmTitle: '批量补建私有专属组？',
+      bulkProvisionPrivateGroupsConfirm:
+        '将对已选的 {count} 个用户串行幂等补建私有专属组（user/admin）。单用户失败不中断其余；已存在的组不会改期。',
+      bulkProvisionPrivateGroupsConfirmButton: '确认批量补建',
+      bulkProvisionPrivateGroupsProgress: '补建中 {current}/{total}…',
+      bulkProvisionPrivateGroupsSuccess: '批量补建完成：成功 {success}，失败 {failed}',
+      bulkProvisionPrivateGroupsPartial:
+        '批量补建部分成功：成功 {success}，失败 {failed}（{detail}）',
+      bulkProvisionPrivateGroupsAllFailed: '批量补建全部失败：{failed} 个（{detail}）',
+      bulkProvisionPrivateGroupsNeedSelection: '请先勾选要补建的用户',
+      bulkProvisionPrivateGroupsLimit: '单次最多选择 {max} 个用户（与分页上限一致）',
       roles: {
         admin: '管理员',
         user: '用户'
@@ -777,6 +798,9 @@ export default {
       title: '分组管理',
       description: '管理 API 密钥分组和费率配置',
       searchGroups: '搜索分组...',
+      showPrivateGroups: '显示用户私有组',
+      showPrivateGroupsHint: '开启后列表包含 private-{userId}-{platform} 私有专属组',
+      privateIdentityLocked: '用户私有组的名称、平台、订阅类型与专属标识不可修改',
       createGroup: '创建分组',
       editGroup: '编辑分组',
       deleteGroup: '删除分组',
@@ -827,9 +851,18 @@ export default {
         name: '名称',
         description: '描述',
         platform: '平台',
+        upstreamPlan: '上游订阅档位',
+        upstreamPlanHint:
+          '共享池分组会用此档位与 public 用户号严格匹配；否则仅展示/元数据。选项来自系统设置「分组上游订阅档位」。',
+        upstreamPlanUnspecified: '未指定',
         rateMultiplier: '费率倍数',
         status: '状态',
         exclusive: '专属分组',
+        sharePool: '共享池分组',
+        sharePoolHint:
+          '开启后，upstream_plan 匹配的 public 用户自建号会自动绑定到此组。需非专属且填写上游档位。私有组不可设为共享池。',
+        sharePoolNeedsPlan:
+          '共享池需要填写上游订阅档位才能匹配用户账号；未填写时不会有 public 号入池。',
         nameLabel: '分组名称',
         namePlaceholder: '请输入分组名称',
         descriptionLabel: '描述',
@@ -886,6 +919,9 @@ export default {
       },
       exclusive: '专属',
       exclusiveHint: '专属分组，可以手动指定给特定用户',
+      sharePool: '共享池',
+      sharePoolOn: '共享池',
+      sharePoolOff: '非共享池',
       exclusiveTooltip: {
         title: '什么是专属分组？',
         description:

@@ -165,8 +165,13 @@ type SystemSettings struct {
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 
-	DefaultConcurrency           int
-	DefaultBalance               float64
+	DefaultConcurrency int
+	DefaultBalance     float64
+	// PrivateGroupExpiresDate 私有专属平台分组订阅统一绝对到期日（YYYY-MM-DD）。
+	// 空串表示未配置：新用户 provision 时 expires_at=now 且 status=expired。
+	PrivateGroupExpiresDate      string
+	// GroupUpstreamPlans 按平台的上游订阅档位选项（code+label）；空 map 读侧会 seed。
+	GroupUpstreamPlans           map[string][]GroupUpstreamPlanOption
 	RiskControlEnabled           bool
 	CyberSessionBlockEnabled     bool
 	CyberSessionBlockTTLSeconds  int
@@ -210,6 +215,18 @@ type SystemSettings struct {
 
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+
+	// User-owned accounts feature (user-facing "My Accounts")
+	UserOwnedAccountsEnabled bool `json:"user_owned_accounts_enabled"`
+	// MaxUserOwnedAccounts soft cap per user (admin-only; not public-injected)
+	MaxUserOwnedAccounts int `json:"max_user_owned_accounts"`
+
+	// 共享账号收益分配（admin-only；默认关）
+	ShareRevenueSplitEnabled bool    `json:"share_revenue_split_enabled"`
+	ShareSplitInvitePct      float64 `json:"share_split_invite_pct"`
+	ShareSplitUserPct        float64 `json:"share_split_user_pct"`
+	ShareSplitPlatformPct    float64 `json:"share_split_platform_pct"`
+	PrivateSelfEnvFeePct     float64 `json:"private_self_env_fee_pct"`
 
 	// Model Plaza feature (public group/model pricing showcase)
 	ModelPlazaEnabled       bool   `json:"model_plaza_enabled"`
@@ -390,6 +407,12 @@ type PublicSettings struct {
 
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+
+	// User-owned accounts feature switch (user-facing "My Accounts")
+	UserOwnedAccountsEnabled bool `json:"user_owned_accounts_enabled"`
+
+	// 共享收益分配开关（用户侧「贡献收益」入口）
+	ShareRevenueSplitEnabled bool `json:"share_revenue_split_enabled"`
 
 	// Model Plaza feature (public group/model pricing showcase)
 	ModelPlazaEnabled       bool `json:"model_plaza_enabled"`

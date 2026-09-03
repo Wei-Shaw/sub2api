@@ -17,14 +17,25 @@ type GroupRepository interface {
 	Create(ctx context.Context, group *Group) error
 	GetByID(ctx context.Context, id int64) (*Group, error)
 	GetByIDLite(ctx context.Context, id int64) (*Group, error)
+	// GetByName 按名称查询分组（默认软删过滤）。
+	GetByName(ctx context.Context, name string) (*Group, error)
 	Update(ctx context.Context, group *Group) error
 	Delete(ctx context.Context, id int64) error
 	DeleteCascade(ctx context.Context, id int64) ([]int64, error)
 
 	List(ctx context.Context, params pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error)
-	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]Group, *pagination.PaginationResult, error)
+	// ListWithFilters 分页过滤列表；showPrivate=false 时排除 private-* 私有专属组（管理端列表默认隐藏）。
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool, showPrivate bool) ([]Group, *pagination.PaginationResult, error)
 	ListActive(ctx context.Context) ([]Group, error)
+	// ListActiveExcludingPrivate 返回活跃且名称不以 private- 前缀的分组（管理端下拉/用户可选运营组）。
+	ListActiveExcludingPrivate(ctx context.Context) ([]Group, error)
 	ListActiveByPlatform(ctx context.Context, platform string) ([]Group, error)
+	// ListByIDs 按 ID 批量加载分组（默认软删过滤）。
+	ListByIDs(ctx context.Context, ids []int64) ([]Group, error)
+	// ListSharePoolMatches 返回可吸入 public 用户号的共享池组：
+	// is_share_pool && !is_exclusive && status=active && upstream_plan 严格相等 && 非 private-* 名。
+	// plan 为空时返回空切片（任一侧空 = 不匹配）。
+	ListSharePoolMatches(ctx context.Context, platform, plan string) ([]Group, error)
 
 	ExistsByName(ctx context.Context, name string) (bool, error)
 	GetAccountCount(ctx context.Context, groupID int64) (total int64, active int64, err error)
@@ -35,6 +46,8 @@ type GroupRepository interface {
 	BindAccountsToGroup(ctx context.Context, groupID int64, accountIDs []int64) error
 	// UpdateSortOrders 批量更新分组排序
 	UpdateSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error
+	// EnqueueGroupChanged 在外层事务 commit 后补发分组变更 outbox（Create/DeleteCascade 在外层 tx 内会跳过 enqueue）。
+	EnqueueGroupChanged(ctx context.Context, groupID int64) error
 }
 
 type GroupDuplicateRepository interface {
