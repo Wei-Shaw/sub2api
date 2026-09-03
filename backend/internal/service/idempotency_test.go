@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -458,7 +459,10 @@ func (r *utf8RejectingIdempotencyRepo) MarkSucceeded(ctx context.Context, id int
 	return r.inMemoryIdempotencyRepo.MarkSucceeded(ctx, id, responseStatus, responseBody, expiresAt)
 }
 
-func TestIdempotencyCoordinator_TruncatedStoredResponseRemainsUTF8(t *testing.T) {
+// TestIdempotencyCoordinator_OversizedStoredResponseStaysValidJSON \u56fa\u5b9a\u8d85\u9650\u54cd\u5e94\u7684\u5b58\u50a8\u5951\u7ea6\uff1a
+// \u5199\u8fdb response_body \u7684\u5fc5\u987b\u662f\u5408\u6cd5 UTF-8\uff08\u5426\u5219 Postgres \u76f4\u63a5\u62d2\u6536\uff09**\u4e14**\u662f\u5408\u6cd5 JSON
+// \uff08\u5426\u5219\u91cd\u653e\u65f6 json.Unmarshal \u5931\u8d25\uff0c\u4e00\u6b21\u6210\u529f\u7684\u5927\u54cd\u5e94\u4f1a\u628a\u540e\u7eed\u91cd\u8bd5\u53d8\u6210 503\uff09\u3002
+func TestIdempotencyCoordinator_OversizedStoredResponseStaysValidJSON(t *testing.T) {
 	repo := newUTF8RejectingIdempotencyRepo()
 	cfg := DefaultIdempotencyConfig()
 	cfg.MaxStoredResponseLen = len(`{"message":"`) + 2
@@ -479,13 +483,91 @@ func TestIdempotencyCoordinator_TruncatedStoredResponseRemainsUTF8(t *testing.T)
 	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
+	// \u9996\u6b21\u8c03\u7528\u7167\u5e38\u62ff\u5230\u771f\u5b9e\u54cd\u5e94\uff0c\u8d85\u9650\u53ea\u5f71\u54cd\u7f13\u5b58\u3002
+	require.Equal(t, map[string]any{"message": strings.Repeat("\u8d26", 8)}, result.Data)
 
 	stored, err := repo.GetByScopeAndKeyHash(context.Background(), opts.Scope, HashIdempotencyKey(opts.IdempotencyKey))
 	require.NoError(t, err)
 	require.NotNil(t, stored)
 	require.NotNil(t, stored.ResponseBody)
 	require.True(t, utf8.ValidString(*stored.ResponseBody))
-	require.Contains(t, *stored.ResponseBody, "...(truncated)")
+
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal([]byte(*stored.ResponseBody), &decoded),
+		"stored response body must stay parseable JSON, got %q", *stored.ResponseBody)
+	require.Equal(t, idempotencyOversizedResponseMarkerValue, decoded[idempotencyOversizedResponseMarkerKey])
+	require.NotContains(t, *stored.ResponseBody, "...(truncated)")
+}
+
+// TestIdempotencyCoordinator_OversizedResponseRetryIsExplicitConflict \u8986\u76d6 M15 \u7684\u56de\u5f52\u70b9\uff1a
+// \u8d85\u9650\u54cd\u5e94\u7684\u91cd\u8bd5\u65e2\u4e0d\u80fd\u62ff\u5230 503\uff0c\u4e5f\u4e0d\u80fd\u62ff\u5230\u4e00\u4e2a\u300c\u770b\u8d77\u6765\u50cf\u539f\u59cb\u54cd\u5e94\u300d\u7684\u66ff\u8eab\uff0c
+// \u66f4\u4e0d\u80fd\u91cd\u65b0\u6267\u884c\u4e1a\u52a1\u903b\u8f91\uff1b\u6b63\u786e\u7ed3\u679c\u662f\u4e00\u4e2a\u660e\u786e\u7684 409\u3002
+func TestIdempotencyCoordinator_OversizedResponseRetryIsExplicitConflict(t *testing.T) {
+	repo := newInMemoryIdempotencyRepo()
+	cfg := DefaultIdempotencyConfig()
+	cfg.ObserveOnly = false
+	cfg.MaxStoredResponseLen = 16
+	coordinator := NewIdempotencyCoordinator(repo, cfg)
+
+	opts := IdempotencyExecuteOptions{
+		Scope:          "test.scope.oversized_replay",
+		Method:         "POST",
+		Route:          "/api/v1/accounts/import/codex-session",
+		ActorScope:     "admin:1",
+		RequireKey:     true,
+		IdempotencyKey: "oversized-replay",
+		Payload:        map[string]any{"content": "codex-session"},
+	}
+
+	executions := 0
+	execute := func(ctx context.Context) (any, error) {
+		executions++
+		return map[string]any{"message": strings.Repeat("a", 512)}, nil
+	}
+
+	first, err := coordinator.Execute(context.Background(), opts, execute)
+	require.NoError(t, err)
+	require.Equal(t, map[string]any{"message": strings.Repeat("a", 512)}, first.Data)
+	require.False(t, first.Replayed)
+	require.Equal(t, 1, executions)
+
+	second, err := coordinator.Execute(context.Background(), opts, execute)
+	require.Error(t, err)
+	require.Nil(t, second)
+	require.Equal(t, infraerrors.Code(ErrIdempotencyResponseNotReplayable), infraerrors.Code(err))
+	require.Equal(t, "IDEMPOTENCY_RESPONSE_NOT_REPLAYABLE", infraerrors.Reason(err))
+	require.NotEqual(t, infraerrors.Code(ErrIdempotencyStoreUnavail), infraerrors.Code(err))
+	// \u4e1a\u52a1\u903b\u8f91\u4e0d\u5f97\u88ab\u91cd\u590d\u6267\u884c\u3002
+	require.Equal(t, 1, executions)
+}
+
+func TestIsOversizedIdempotencyResponse(t *testing.T) {
+	require.False(t, isOversizedIdempotencyResponse(nil))
+
+	for _, body := range []string{
+		"",
+		"{}",
+		`{"message":"ok"}`,
+		// \u63d0\u5230\u4e86\u6807\u8bb0\u952e\u4f46\u4e0d\u662f\u5408\u6cd5 JSON\uff0c\u4e0d\u80fd\u8bef\u5224\u3002
+		`{"message":"__sub2api_idempotency_response_omitted__`,
+		// \u6807\u8bb0\u952e\u5b58\u5728\u4f46\u53d6\u503c\u4e0d\u5bf9\u3002
+		`{"__sub2api_idempotency_response_omitted__":"nope"}`,
+	} {
+		require.Falsef(t, isOversizedIdempotencyResponse(&body), "unexpected marker match for %q", body)
+	}
+
+	marker, err := marshalOversizedIdempotencyResponseMarker(1024, 16)
+	require.NoError(t, err)
+	require.True(t, isOversizedIdempotencyResponse(&marker))
+
+	// 升级前写入的坏数据同样按「不可重放」处理，而不是 503。
+	legacy := `{"message":"aaaa...(truncated)`
+	require.True(t, isOversizedIdempotencyResponse(&legacy))
+
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal([]byte(marker), &decoded))
+	require.Equal(t, float64(1024), decoded["response_bytes"])
+	require.Equal(t, float64(16), decoded["max_stored_response_len"])
 }
 
 func TestDefaultIdempotencyCoordinatorAndTTLs(t *testing.T) {
@@ -835,10 +917,11 @@ func TestIdempotencyCoordinator_HelperBranches(t *testing.T) {
 	err := c.conflictWithRetryAfter(base, nil, time.Now())
 	require.Equal(t, infraerrors.Code(base), infraerrors.Code(err))
 
-	// marshalStoredResponse should truncate.
+	// marshalStoredResponse should replace an over-cap payload with a valid JSON marker.
 	body, err := c.marshalStoredResponse(map[string]any{"long": "abcdefghijklmnopqrstuvwxyz"})
 	require.NoError(t, err)
-	require.Contains(t, body, "...(truncated)")
+	require.True(t, isOversizedIdempotencyResponse(&body))
+	require.NoError(t, json.Unmarshal([]byte(body), &map[string]any{}))
 
 	// decodeStoredResponse empty and invalid json.
 	out, err := c.decodeStoredResponse(nil)

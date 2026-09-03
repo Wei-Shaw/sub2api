@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
@@ -31,6 +30,35 @@ var (
 	ErrIdempotencyRetryBackoff   = infraerrors.Conflict("IDEMPOTENCY_RETRY_BACKOFF", "idempotent request is in retry backoff window")
 	ErrIdempotencyStoreUnavail   = infraerrors.ServiceUnavailable("IDEMPOTENCY_STORE_UNAVAILABLE", "idempotency store unavailable")
 	ErrIdempotencyInvalidPayload = infraerrors.BadRequest("IDEMPOTENCY_PAYLOAD_INVALID", "failed to normalize request payload")
+	// ErrIdempotencyResponseNotReplayable 表示首次请求已成功执行，但响应体超过
+	// MaxStoredResponseLen 未被缓存，因此无法原样重放。这是 409 而不是 503：
+	// 服务端一切正常，重试也不会被再次执行（副作用不会重复），客户端应改用查询接口确认结果。
+	ErrIdempotencyResponseNotReplayable = infraerrors.Conflict(
+		"IDEMPOTENCY_RESPONSE_NOT_REPLAYABLE",
+		"the original request already succeeded but its response was too large to cache and cannot be replayed",
+	)
+)
+
+const (
+	// idempotencyOversizedResponseMarkerKey/Value 构成「响应过大、未缓存」的占位记录。
+	//
+	// 历史实现把 "...(truncated)" 直接拼在已序列化的 JSON 后面，写进 response_body。
+	// 那串文本不是合法 JSON，重放时 json.Unmarshal 必然失败，于是一次成功的大响应
+	// 会让后续同 key 重试拿到 503 —— 与幂等层的目的完全相反。
+	// 现在超限时改写为一个**合法**的标记对象：写入的永远是可解析 JSON，
+	// 读路径识别到标记后返回 ErrIdempotencyResponseNotReplayable，
+	// 既不会把不同的结果冒充成原始响应，也不会重复执行业务逻辑。
+	//
+	// 标记体是纯 ASCII，天然是合法 UTF-8，不会触发 Postgres 的编码校验；
+	// 它通常比 MaxStoredResponseLen 更短，即便配置得极小也只有约 100 字节，
+	// response_body 是 TEXT，不存在长度上限问题。
+	idempotencyOversizedResponseMarkerKey   = "__sub2api_idempotency_response_omitted__"
+	idempotencyOversizedResponseMarkerValue = "response_too_large"
+
+	// legacyIdempotencyTruncationSuffix 是升级前写入的坏数据留下的尾巴。
+	// 这些记录最长会在库里再活一个 TTL（默认 24h），按同样的「不可重放」处理，
+	// 免得升级窗口内的重试仍旧收到 503。
+	legacyIdempotencyTruncationSuffix = "...(truncated)"
 )
 
 type IdempotencyRecord struct {
@@ -332,6 +360,13 @@ func (c *IdempotencyCoordinator) Execute(
 		if !reclaimedByExpired {
 			switch existing.Status {
 			case IdempotencyStatusSucceeded:
+				if isOversizedIdempotencyResponse(existing.ResponseBody) {
+					recordIdempotencyConflict(opts.Route, opts.Scope, map[string]string{"reason": "response_not_replayable"})
+					logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "succeeded->response_not_replayable", false, map[string]string{
+						"reason": "response_too_large",
+					})
+					return nil, ErrIdempotencyResponseNotReplayable
+				}
 				data, parseErr := c.decodeStoredResponse(existing.ResponseBody)
 				if parseErr != nil {
 					RecordIdempotencyStoreUnavailable(opts.Route, opts.Scope, "decode_stored_response_error")
@@ -425,6 +460,11 @@ func (c *IdempotencyCoordinator) Execute(
 		})
 		return nil, ErrIdempotencyStoreUnavail.WithCause(marshalErr)
 	}
+	if isOversizedIdempotencyResponse(&storedBody) {
+		logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->succeeded_response_omitted", false, map[string]string{
+			"reason": "response_too_large",
+		})
+	}
 	if markErr := c.repo.MarkSucceeded(ctx, record.ID, 200, storedBody, expiresAt); markErr != nil {
 		RecordIdempotencyStoreUnavailable(opts.Route, opts.Scope, "mark_succeeded_error")
 		logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->store_unavailable", false, map[string]string{
@@ -455,19 +495,44 @@ func (c *IdempotencyCoordinator) marshalStoredResponse(data any) (string, error)
 	}
 	redacted := logredact.RedactText(string(raw))
 	if c.cfg.MaxStoredResponseLen > 0 && len(redacted) > c.cfg.MaxStoredResponseLen {
-		redacted = truncateUTF8(redacted, c.cfg.MaxStoredResponseLen) + "...(truncated)"
+		// 超限时不再截断已序列化的 JSON（截断结果不可解析），而是存一个合法的标记对象。
+		return marshalOversizedIdempotencyResponseMarker(len(redacted), c.cfg.MaxStoredResponseLen)
 	}
 	return redacted, nil
 }
 
-func truncateUTF8(s string, maxBytes int) string {
-	if maxBytes <= 0 || len(s) <= maxBytes {
-		return s
+// marshalOversizedIdempotencyResponseMarker 生成「响应过大、未缓存」的占位 JSON。
+func marshalOversizedIdempotencyResponseMarker(responseLen, maxStoredResponseLen int) (string, error) {
+	marker, err := json.Marshal(map[string]any{
+		idempotencyOversizedResponseMarkerKey: idempotencyOversizedResponseMarkerValue,
+		"response_bytes":                      responseLen,
+		"max_stored_response_len":             maxStoredResponseLen,
+	})
+	if err != nil {
+		return "", err
 	}
-	for maxBytes > 0 && !utf8.ValidString(s[:maxBytes]) {
-		maxBytes--
+	return string(marker), nil
+}
+
+// isOversizedIdempotencyResponse 判断 response_body 是否是「响应过大」占位记录。
+// 只有顶层是 JSON 对象、且标记键取到约定值时才成立，避免误判业务响应。
+func isOversizedIdempotencyResponse(stored *string) bool {
+	if stored == nil {
+		return false
 	}
-	return s[:maxBytes]
+	trimmed := strings.TrimSpace(*stored)
+	if strings.HasSuffix(trimmed, legacyIdempotencyTruncationSuffix) {
+		return true
+	}
+	if !strings.Contains(trimmed, idempotencyOversizedResponseMarkerKey) {
+		return false
+	}
+	var probe map[string]any
+	if err := json.Unmarshal([]byte(trimmed), &probe); err != nil {
+		return false
+	}
+	marker, _ := probe[idempotencyOversizedResponseMarkerKey].(string)
+	return marker == idempotencyOversizedResponseMarkerValue
 }
 
 func (c *IdempotencyCoordinator) decodeStoredResponse(stored *string) (any, error) {
