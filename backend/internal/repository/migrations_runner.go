@@ -51,17 +51,24 @@ CREATE TABLE IF NOT EXISTS atlas_schema_revisions (
 const migrationsAdvisoryLockID int64 = 694208311321144027
 const migrationsLockRetryInterval = 500 * time.Millisecond
 const nonTransactionalMigrationSuffix = "_notx.sql"
+
+// paymentOrdersOutTradeNoUniqueMigration 需要一次迁移专属的数据前置校验，因此仍按文件名识别。
+// 其余 *_notx.sql 不再按文件名做特殊处理：INVALID 索引清理已改为从文件内容解析索引名。
 const paymentOrdersOutTradeNoUniqueMigration = "120_enforce_payment_orders_out_trade_no_unique_notx.sql"
-const paymentOrdersOutTradeNoUniqueIndex = "paymentorder_out_trade_no_unique"
-const schedulerOutboxPendingDedupKeyMigration = "153_scheduler_outbox_pending_dedup_key_index_notx.sql"
-const schedulerOutboxPendingDedupKeyIndex = "idx_scheduler_outbox_pending_dedup_key"
-const latestAPIKeyIPIndexMigration = "174_add_usage_logs_api_key_latest_ip_index_notx.sql"
-const latestAPIKeyIPIndex = "idx_usage_logs_api_key_latest_ip"
-const usageLogsUpstreamModelMismatchIndexMigration = "195_add_usage_log_upstream_model_mismatch_index_notx.sql"
-const usageLogsUpstreamModelMismatchIndex = "idx_usage_logs_upstream_model_mismatch_created_at"
-const usageLogsEffectiveModelIndexesMigration = "226_add_usage_log_effective_model_indexes_notx.sql"
-const usageLogsEffectiveRequestedModelIndex = "idx_usage_logs_effective_requested_model_created"
-const usageLogsEffectiveUpstreamModelIndex = "idx_usage_logs_effective_upstream_model_created"
+
+// 以下常量只被 tag 门控的测试（unit / integration）引用，golangci-lint 默认不带 build tag，
+// 看不到那些文件，因此会误报 unused。
+//
+//nolint:unused // referenced from //go:build unit / integration test files
+const (
+	latestAPIKeyIPIndexMigration                 = "174_add_usage_logs_api_key_latest_ip_index_notx.sql"
+	latestAPIKeyIPIndex                          = "idx_usage_logs_api_key_latest_ip"
+	usageLogsUpstreamModelMismatchIndexMigration = "195_add_usage_log_upstream_model_mismatch_index_notx.sql"
+	usageLogsUpstreamModelMismatchIndex          = "idx_usage_logs_upstream_model_mismatch_created_at"
+	usageLogsEffectiveModelIndexesMigration      = "226_add_usage_log_effective_model_indexes_notx.sql"
+	usageLogsEffectiveRequestedModelIndex        = "idx_usage_logs_effective_requested_model_created"
+	usageLogsEffectiveUpstreamModelIndex         = "idx_usage_logs_effective_upstream_model_created"
+)
 
 type migrationChecksumCompatibilityRule struct {
 	fileChecksum       string
@@ -83,8 +90,21 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 	// 该块会紧接着 Up 块在同一事务里执行，导致迁移自我回滚。
 	// 现已删除 goose 标记（仅注释，不改变 SQL 语义），已安装的库保留历史 checksum，
 	// 修复逻辑由 235/236/237 幂等迁移补齐。
-	"019_migrate_wechat_to_attributes.sql":                    newMigrationChecksumCompatibilityRule("ee3ef7786d8d1a70fea3c96eada2199ab5dd1977f34bced36327c2ff38a4dff3", "d45e05b4bb722b287377790583c2677b8666dbf7e02b626c93468491d4ce8cf8"),
-	"024_add_gemini_tier_id.sql":                              newMigrationChecksumCompatibilityRule("63f0ecd8b51a66d63221b93b351fc93dc5a2d7e045886a26a23d4259881335bd", "b54de1b9a4423224f7aef5e644d1af115214d58dd61befd3c25db3e709b9163a"),
+	"019_migrate_wechat_to_attributes.sql": newMigrationChecksumCompatibilityRule("ee3ef7786d8d1a70fea3c96eada2199ab5dd1977f34bced36327c2ff38a4dff3", "d45e05b4bb722b287377790583c2677b8666dbf7e02b626c93468491d4ce8cf8"),
+	"024_add_gemini_tier_id.sql":           newMigrationChecksumCompatibilityRule("63f0ecd8b51a66d63221b93b351fc93dc5a2d7e045886a26a23d4259881335bd", "b54de1b9a4423224f7aef5e644d1af115214d58dd61befd3c25db3e709b9163a"),
+	// 027 的两条 request_id 归一化语句（全表 UPDATE + 对全部非空 request_id 做 ROW_NUMBER 窗口）
+	// 现在被包在「唯一索引已存在则跳过」的 DO 块里。在已经跑过 027 的库上重放时，
+	// 它们会在启动事务里全表扫描 + 排序落盘却更新 0 行，超时即前功尽弃；SQL 语义未变。
+	"027_usage_billing_consistency.sql": newMigrationChecksumCompatibilityRule("900bd6d56f7cbec279f4aa04a7717c65b369d71efecdcd47229a05c3395b8722", "68df49831cadfb2c5d1f8e24b8b36068be454cca9fdf6df1141593ee20c98dd8"),
+	// 036/041/044b/069/189 历史上使用裸 `ALTER TABLE ... ADD COLUMN`，在「列已存在但
+	// schema_migrations 缺少对应行」的库（不含跟踪表的恢复、schema-only 克隆、手工补过 DDL）上
+	// 会以 `column already exists` 直接中断启动，且只能人工修复。现已补上 IF NOT EXISTS
+	// （纯幂等性修复，不改变列定义与默认值），已安装的库保留历史 checksum 继续放行。
+	"036_ops_error_logs_add_is_count_tokens.sql":              newMigrationChecksumCompatibilityRule("c86571fad72cec209a3f9c1267f9e306585281ef42bfb6760fc594d35719215c", "ed9ee240c43ef259f18a7ca440d73f285988d2aa57af229e0b69344f11af3bf4"),
+	"041_add_model_routing_enabled.sql":                       newMigrationChecksumCompatibilityRule("ed47b7db6af8d8b968e3554b9017bc792e4359775fc33c6f0095f3fc8db98caf", "5cee91bdfc5afe4815dba6b127755a76d33ab55a93419c5b51e57d8dfd9cba3a"),
+	"044b_add_group_mcp_xml_inject.sql":                       newMigrationChecksumCompatibilityRule("ee6818ad95110ad842df5ac57b7573069f373e20eb4ef74ce5a472d3d9a274fc", "944e8ed8950dc9c2cf95ee62bcf342ea2e15a771895b43da87efec85db921c31"),
+	"069_add_group_messages_dispatch.sql":                     newMigrationChecksumCompatibilityRule("594e258aadcfea83fd28258b8a35a1d4d2ae34b2b12944018bda9ee913c18aca", "c6d35422f140f97f5427f756eae929b243e3cbb362252806f179fbb7519b107f"),
+	"189_add_group_allow_live.sql":                            newMigrationChecksumCompatibilityRule("d6d2e6ac7f201da0cebcc81bdc7b8a5ffff7f93abfb149f17d3dd609fa316ea6", "51172b10c160e7f560346dbaf736dc8e92feb793cd00169f5fb876c399460862"),
 	"037_ops_alert_silences.sql":                              newMigrationChecksumCompatibilityRule("5bf2aba80d8501c9177494480a78668a236ee85249c84455ba908836681fe759", "72143a1ce3528ebc47472759c59011ec6993b25a3f22d50485538710047438c6"),
 	"054_drop_legacy_cache_columns.sql":                       newMigrationChecksumCompatibilityRule("82de761156e03876653e7a6a4eee883cd927847036f779b0b9f34c42a8af7a7d", "182c193f3359946cf094090cd9e57d5c3fd9abaffbc1e8fc378646b8a6fa12b4"),
 	"061_add_usage_log_request_type.sql":                      newMigrationChecksumCompatibilityRule("66207e7aa5dd0429c2e2c0fabdaf79783ff157fa0af2e81adff2ee03790ec65c", "08a248652cbab7cfde147fc6ef8cda464f2477674e20b718312faa252e0481c0", "222b4a09c797c22e5922b6b172327c824f5463aaa8760e4f621bc5c22e2be0f3"),
@@ -241,7 +261,7 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 		}
 
 		if nonTx {
-			if err := prepareNonTransactionalMigration(ctx, lockConn, name); err != nil {
+			if err := prepareNonTransactionalMigration(ctx, lockConn, name, content); err != nil {
 				return fmt.Errorf("prepare migration %s: %w", name, err)
 			}
 
@@ -301,29 +321,104 @@ type migrationConnection interface {
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
 }
 
-func prepareNonTransactionalMigration(ctx context.Context, db migrationConnection, name string) error {
-	switch name {
-	case paymentOrdersOutTradeNoUniqueMigration:
-		return preparePaymentOrdersOutTradeNoUniqueMigration(ctx, db)
-	case schedulerOutboxPendingDedupKeyMigration:
-		return dropInvalidIndexIfPresent(ctx, db, schedulerOutboxPendingDedupKeyIndex)
-	case latestAPIKeyIPIndexMigration:
-		return dropInvalidIndexIfPresent(ctx, db, latestAPIKeyIPIndex)
-	case usageLogsUpstreamModelMismatchIndexMigration:
-		return dropInvalidIndexIfPresent(ctx, db, usageLogsUpstreamModelMismatchIndex)
-	case usageLogsEffectiveModelIndexesMigration:
-		for _, indexName := range []string{usageLogsEffectiveRequestedModelIndex, usageLogsEffectiveUpstreamModelIndex} {
-			if err := dropInvalidIndexIfPresent(ctx, db, indexName); err != nil {
-				return err
-			}
+// prepareNonTransactionalMigration 在执行 *_notx.sql 之前做两件事：
+//  1. 迁移专属的数据前置校验（目前只有 120 的 out_trade_no 重复检查）；
+//  2. 清理上一次被中断的 CREATE INDEX CONCURRENTLY 留下的 INVALID 索引。
+//
+// 第 2 步的索引名直接从迁移文件内容里解析，因此覆盖全部 *_notx.sql。
+// 历史实现只对 5 个文件名做 switch 白名单清理，而 062/072/148/151/155/190 等文件没有覆盖：
+// CREATE INDEX CONCURRENTLY 被打断后会留下一个永久 INVALID 的索引，下次启动时语句里的
+// IF NOT EXISTS 认为索引已存在而直接跳过，迁移被记为已应用，坏索引却永远留在库里
+// （既不被使用，又要承担全部写放大）。白名单正是这个 bug 的成因，所以不再扩充白名单。
+func prepareNonTransactionalMigration(ctx context.Context, db migrationConnection, name, content string) error {
+	if name == paymentOrdersOutTradeNoUniqueMigration {
+		if err := checkDuplicatePaymentOrderOutTradeNos(ctx, db); err != nil {
+			return err
 		}
-		return nil
-	default:
-		return nil
 	}
+
+	for _, indexName := range concurrentlyCreatedIndexNames(content) {
+		if err := dropInvalidIndexIfPresent(ctx, db, indexName); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func preparePaymentOrdersOutTradeNoUniqueMigration(ctx context.Context, db migrationConnection) error {
+// concurrentlyCreatedIndexNames 解析出内容里所有 `CREATE [UNIQUE] INDEX CONCURRENTLY` 创建的索引名。
+// validateMigrationExecutionMode 已经保证 *_notx.sql 里的 CONCURRENTLY 语句必须是
+// CREATE/DROP INDEX 且带 IF [NOT] EXISTS，并且 CREATE 语句必须能被这里解析出索引名，
+// 因此该函数对合法的 *_notx.sql 是完备的（不会静默漏掉某个索引）。
+func concurrentlyCreatedIndexNames(content string) []string {
+	names := make([]string, 0, 2)
+	seen := make(map[string]struct{}, 2)
+	for _, stmt := range splitSQLStatements(content) {
+		indexName, ok := parseConcurrentlyCreatedIndexName(stripSQLLineComment(strings.TrimSpace(stmt)))
+		if !ok {
+			continue
+		}
+		if _, dup := seen[indexName]; dup {
+			continue
+		}
+		seen[indexName] = struct{}{}
+		names = append(names, indexName)
+	}
+	return names
+}
+
+// parseConcurrentlyCreatedIndexName 匹配 `CREATE [UNIQUE] INDEX CONCURRENTLY [IF NOT EXISTS] <name> ...`
+// 并返回 <name>。只接受未加引号的普通标识符：解析结果会被拼进 DROP INDEX 语句，
+// 无法参数化，所以形态不认识时宁可返回 false（退化为不清理），也不拼接任意文本。
+func parseConcurrentlyCreatedIndexName(stmt string) (string, bool) {
+	fields := strings.Fields(stmt)
+	i := 0
+	if i >= len(fields) || !strings.EqualFold(fields[i], "CREATE") {
+		return "", false
+	}
+	i++
+	if i < len(fields) && strings.EqualFold(fields[i], "UNIQUE") {
+		i++
+	}
+	if i >= len(fields) || !strings.EqualFold(fields[i], "INDEX") {
+		return "", false
+	}
+	i++
+	if i >= len(fields) || !strings.EqualFold(fields[i], "CONCURRENTLY") {
+		return "", false
+	}
+	i++
+	if i+2 < len(fields) &&
+		strings.EqualFold(fields[i], "IF") &&
+		strings.EqualFold(fields[i+1], "NOT") &&
+		strings.EqualFold(fields[i+2], "EXISTS") {
+		i += 3
+	}
+	if i >= len(fields) {
+		return "", false
+	}
+	name := fields[i]
+	if !isPlainSQLIdentifier(name) {
+		return "", false
+	}
+	return name, true
+}
+
+func isPlainSQLIdentifier(s string) bool {
+	if s == "" || len(s) > 63 {
+		return false
+	}
+	for i, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r == '_':
+		case i > 0 && (r >= '0' && r <= '9' || r == '$'):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func checkDuplicatePaymentOrderOutTradeNos(ctx context.Context, db migrationConnection) error {
 	duplicates, err := findDuplicatePaymentOrderOutTradeNos(ctx, db)
 	if err != nil {
 		return fmt.Errorf("precheck duplicate out_trade_no: %w", err)
@@ -335,8 +430,7 @@ func preparePaymentOrdersOutTradeNoUniqueMigration(ctx context.Context, db migra
 			strings.Join(duplicates, ", "),
 		)
 	}
-
-	return dropInvalidIndexIfPresent(ctx, db, paymentOrdersOutTradeNoUniqueIndex)
+	return nil
 }
 
 func dropInvalidIndexIfPresent(ctx context.Context, db migrationConnection, indexName string) error {
@@ -523,7 +617,8 @@ func validateMigrationExecutionMode(name, content string) (bool, error) {
 
 	statements := splitSQLStatements(content)
 	for _, stmt := range statements {
-		normalizedStmt := strings.ToUpper(stripSQLLineComment(strings.TrimSpace(stmt)))
+		cleanedStmt := stripSQLLineComment(strings.TrimSpace(stmt))
+		normalizedStmt := strings.ToUpper(cleanedStmt)
 		if normalizedStmt == "" {
 			continue
 		}
@@ -539,6 +634,16 @@ func validateMigrationExecutionMode(name, content string) (bool, error) {
 			}
 			if isDropIndex && !strings.Contains(normalizedStmt, "IF EXISTS") {
 				return false, errors.New("DROP INDEX CONCURRENTLY in *_notx.sql must include IF EXISTS for idempotency")
+			}
+			// 索引名必须可解析：prepareNonTransactionalMigration 依赖它清理上一次中断留下的
+			// INVALID 索引。若解析不出来，这个文件就会静默失去清理能力（正是 M6 的成因），
+			// 所以宁可在启动时直接报错，也不放行一个"看起来正常"的迁移。
+			if isCreateIndex {
+				if _, ok := parseConcurrentlyCreatedIndexName(cleanedStmt); !ok {
+					return false, errors.New("CREATE INDEX CONCURRENTLY in *_notx.sql must use the form " +
+						"`CREATE [UNIQUE] INDEX CONCURRENTLY IF NOT EXISTS <unquoted_index_name> ON ...` " +
+						"so the runner can drop the INVALID index left behind by an interrupted build")
+				}
 			}
 			continue
 		}

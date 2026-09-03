@@ -5,7 +5,7 @@
 
 -- Add is_count_tokens column to ops_error_logs table
 ALTER TABLE ops_error_logs
-ADD COLUMN is_count_tokens BOOLEAN NOT NULL DEFAULT FALSE;
+ADD COLUMN IF NOT EXISTS is_count_tokens BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Add comment
 COMMENT ON COLUMN ops_error_logs.is_count_tokens IS '是否为 count_tokens 请求的错误（用于统计过滤）';

@@ -4,27 +4,54 @@
 -- -----------------------------------------------------------------------------
 -- 1) Normalize legacy request_id values
 -- -----------------------------------------------------------------------------
--- Historically request_id may be inserted as empty string. Convert it to NULL so
--- the upcoming unique index does not break on repeated "" values.
-UPDATE usage_logs
-SET request_id = NULL
-WHERE request_id = '';
+-- Both statements below are one-shot cleanups whose only purpose is to let the
+-- unique index in section 2 be created. They are also the most expensive thing
+-- this migration does: a full-table UPDATE and a ROW_NUMBER() window over every
+-- non-null request_id in usage_logs, inside the boot transaction. On a database
+-- that already carries the index -- meaning 027 has effectively already run here
+-- (a dump restored without schema_migrations, a schema-only clone, hand-applied
+-- DDL) -- they scan and sort the whole table, spill to temp disk, and update
+-- exactly zero rows; a statement timeout then throws all of it away and the
+-- server never finishes booting.
+--
+-- So skip them when the index is already there. On a fresh install usage_logs is
+-- empty and the guard costs a single catalog lookup. Section 2 keeps its own
+-- IF NOT EXISTS, so re-running the file stays idempotent either way.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_class idx
+        JOIN pg_namespace ns ON ns.oid = idx.relnamespace
+        WHERE ns.nspname = 'public'
+          AND idx.relname = 'idx_usage_logs_request_id_api_key_unique'
+    ) THEN
+        RETURN;
+    END IF;
 
--- If duplicates already exist for the same (request_id, api_key_id), keep the
--- first row and NULL-out request_id for the rest so the unique index can be
--- created without deleting historical logs.
-WITH ranked AS (
-    SELECT
-        id,
-        ROW_NUMBER() OVER (PARTITION BY api_key_id, request_id ORDER BY id) AS rn
-    FROM usage_logs
-    WHERE request_id IS NOT NULL
-)
-UPDATE usage_logs ul
-SET request_id = NULL
-FROM ranked r
-WHERE ul.id = r.id
-  AND r.rn > 1;
+    -- Historically request_id may be inserted as empty string. Convert it to NULL
+    -- so the upcoming unique index does not break on repeated "" values.
+    UPDATE usage_logs
+    SET request_id = NULL
+    WHERE request_id = '';
+
+    -- If duplicates already exist for the same (request_id, api_key_id), keep the
+    -- first row and NULL-out request_id for the rest so the unique index can be
+    -- created without deleting historical logs.
+    WITH ranked AS (
+        SELECT
+            id,
+            ROW_NUMBER() OVER (PARTITION BY api_key_id, request_id ORDER BY id) AS rn
+        FROM usage_logs
+        WHERE request_id IS NOT NULL
+    )
+    UPDATE usage_logs ul
+    SET request_id = NULL
+    FROM ranked r
+    WHERE ul.id = r.id
+      AND r.rn > 1;
+END
+$$;
 
 -- -----------------------------------------------------------------------------
 -- 2) Idempotency constraint for usage_logs
