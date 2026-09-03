@@ -106,7 +106,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
 	// 仅允许 WS 入站请求走 WS 上游，避免出现 HTTP -> WS 协议混用。
-	wsDecision = resolveOpenAIWSDecisionByClientTransport(wsDecision, GetOpenAIClientTransport(c))
+	// 例外：http_ingress_ws_upstream_enabled 开启时放行 HTTP 入站走 WS 上游，
+	// 用于绕开上游边缘对单个 HTTP 流约 900s 的时长上限（失败回落 HTTP，见下）。
+	if s.cfg == nil || !s.cfg.Gateway.OpenAIWS.HTTPIngressWSUpstreamEnabled {
+		wsDecision = resolveOpenAIWSDecisionByClientTransport(wsDecision, GetOpenAIClientTransport(c))
+	}
 	passthroughEnabled := account.IsOpenAIPassthroughEnabled()
 	compactPath := isOpenAIResponsesCompactPath(c)
 	if shouldFlattenOpenAIResponsesNamespaces(account, wsDecision.Transport, passthroughEnabled, compactPath) {
@@ -959,8 +963,21 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			return wsResult, nil
 		}
-		s.writeOpenAIWSFallbackErrorResponse(c, account, wsErr)
-		return nil, wsErr
+		// http_ingress_ws_upstream_enabled 下的 HTTP 入站请求：WS 各次尝试均失败
+		// 且尚未向客户端写出任何字节时，回落原 HTTP/SSE 路径（不把 WS 错误抛给客户端）。
+		if s.cfg != nil && s.cfg.Gateway.OpenAIWS.HTTPIngressWSUpstreamEnabled &&
+			GetOpenAIClientTransport(c) == OpenAIClientTransportHTTP &&
+			c != nil && c.Writer != nil && !c.Writer.Written() {
+			logOpenAIWSModeInfo(
+				"http_ingress_ws_fallback_http account_id=%d attempts=%d cause=%s",
+				account.ID,
+				wsAttempts,
+				truncateOpenAIWSLogValue(wsErr.Error(), openAIWSLogValueMaxLen),
+			)
+		} else {
+			s.writeOpenAIWSFallbackErrorResponse(c, account, wsErr)
+			return nil, wsErr
+		}
 	}
 
 	reasoningEffort := extractOpenAIReasoningEffortFromBody(body, upstreamModel, billingModel, originalModel)

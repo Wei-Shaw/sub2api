@@ -335,6 +335,12 @@ gateway:
     # 全局强制 OpenAI Responses 上游使用 HTTP/SSE，不使用 WebSocket（紧急回滚开关）。
     # 此开关不强制 HTTP/1.1；HTTP/2 由 gateway.openai_http2 单独控制。
     force_http: false
+    # 允许 HTTP 入站（POST /v1/responses）请求走 WebSocket 上游（默认 false）。
+    # 用途：部分边缘/CDN 对单个 HTTP 流有时长上限（实测约 900s 后 RST_STREAM），
+    # WS 通道不受该限制；开启后账号 WS mode 仍逐账号控制（off 的账号照旧走 HTTP）。
+    # WS 各次尝试均失败且尚未向客户端写出任何字节时，自动回落原 HTTP/SSE 路径。
+    # 环境变量：GATEWAY_OPENAI_WS_HTTP_INGRESS_WS_UPSTREAM_ENABLED=true
+    http_ingress_ws_upstream_enabled: false
     # 允许在 WSv2 下按策略恢复 store=true（默认 false）
     allow_store_recovery: false
     # ingress 模式收到 previous_response_not_found 时，自动去掉 previous_response_id 重试一次（默认 true）
