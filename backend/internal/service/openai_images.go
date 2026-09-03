@@ -456,7 +456,7 @@ func applyOpenAIImagesDefaults(req *OpenAIImagesRequest) {
 }
 
 func isOpenAIImageGenerationModel(model string) bool {
-	return IsGPTImageGenerationModel(model) || isGrokImageGenerationModel(model)
+	return IsGPTImageGenerationModel(model) || isGrokImageGenerationModel(model) || isAgnesImageGenerationModel(model)
 }
 
 // IsGPTImageGenerationModel identifies the GPT native image-generation model family.
@@ -470,6 +470,15 @@ func isGrokImageGenerationModel(model string) bool {
 	return model == "grok-imagine" ||
 		model == "grok-imagine-edit" ||
 		strings.HasPrefix(model, "grok-imagine-image")
+}
+
+func isAgnesImageGenerationModel(model string) bool {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "agnes-image-2.1-flash":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateOpenAIImagesModel(model string) error {
