@@ -81,8 +81,8 @@ type APIKey struct {
 	Key    string
 	// KeyHash 是 Key 的 SHA-256 摘要，认证查询走它。
 	// 两阶段迁移的第 1 阶段仍同时保留明文 Key，第 2 阶段才删除明文列。
-	KeyHash string
-	Name    string
+	KeyHash     string
+	Name        string
 	GroupID     *int64
 	Status      string
 	IPWhitelist []string

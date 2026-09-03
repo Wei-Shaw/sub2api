@@ -40,13 +40,16 @@ func newAPIKeyRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *apiKeyR
 
 // apiKeyCredentialPredicate 构造"凭据 -> 行"的查询条件。
 //
-// 主路径只比对摘要：WHERE key_hash <> '' AND key_hash = $1。
-// 显式带上 key_hash <> '' 是必须的——migrations/239 建的是部分唯一索引
-// （UNIQUE ... WHERE key_hash <> ''），参数化的 key_hash = $1 无法蕴含索引
-// 谓词，规划器不会选中该索引，热路径会退化成顺序扫描。
+// 主路径只比对摘要，条件为「key_hash 非空串 AND key_hash 等于入参摘要」。
+// 显式带上「非空串」这一条是必须的——migrations/239 建的是部分唯一索引
+// （UNIQUE ... WHERE 非空串），参数化的等值条件无法蕴含索引谓词，规划器不会
+// 选中该索引，热路径会退化成顺序扫描。
+//
+// 注：这段说明刻意不写出两个连续的英文单引号。gofmt 的文档注释规范化会把它
+// 转成右双引号，反而让 SQL 描述失真。
 //
 // 第二个分支是两阶段迁移第 1 阶段专用的兼容路径：滚动升级窗口里，尚未替换的
-// 老版本二进制插入 api_keys 时不写 key_hash，该行的 key_hash 是 DEFAULT ''，
+// 老版本二进制插入 api_keys 时不写 key_hash，该行的 key_hash 取列默认值空串，
 // 只按摘要查会让这些 Key 直接认证失败。用 OR 而不是"查不到再补一次查询"，
 // 是因为无效 Key 是攻击者可控的高基数输入，未命中路径上再发一次查询会把
 // 撞库扫描的数据库开销直接翻倍。两个分支各自走唯一索引，规划器用
