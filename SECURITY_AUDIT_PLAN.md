@@ -23,7 +23,9 @@ Nhãn **[ĐÃ SỬA]** = đã vá trên nhánh `fix/security-audit-batch-1`, có
 
 **Đợt 2 — 19 phát hiện:** C4 · H1 · H2 · H3 · H5 · H6 · M1 · M2 · M4 · M5 · M6 · M7 · M9 · M10 · M12 · M14 · M16 · L1 · L4. Trong đó M8 và M13 mới sửa được một phần, M3 hoá ra đã được sửa từ trước, M11 cố tình không sửa.
 
-**Còn lại:** M15 (bản rà soát có liệt kê nhưng **không xếp vào PR nào**) · M19 và L3 (quyết định kiến trúc riêng) · L2 (design choice, không sửa) · PR 6 release 2 (drop cột `key`).
+**Đợt 3 — dọn nốt:** M15 · M8 và M13 (hoàn tất nửa còn lại) · L3 · nil-deref ở ba gateway sibling · step-up cho route ghi settings và cho hai route admin API key · allowlist host iframe cho phép operator cấu hình · spec cho hai view DingTalk · gofmt.
+
+**Còn lại sau đợt 3:** M19 và L2 — đều là quyết định có ghi nhận, không sửa · M11 cố tình không sửa · PR 6 release 2 (drop cột `key`) để sang bản phát hành sau, vì không thể vừa drop cột vừa giữ khả năng rollback.
 
 **Chưa chạy được — quan trọng:** máy này **không có Docker**, nên toàn bộ integration test viết trong hai đợt chỉ compile chứ chưa từng chạy. Đáng lo nhất: **migration 238 và 239 chưa từng chạy trên PostgreSQL thật** — khối DO backfill của 238, biểu thức `sha256(convert_to(...))` của 239, partial unique index, và khối DO mới thêm vào 027. Cần một lượt chạy trên PG 16 với dữ liệu thực trước khi merge, đặc biệt là 238 trên những đơn có audit `REFUND_ROLLBACK_FAILED` thật.
 
@@ -219,7 +221,7 @@ Mặc định `security.url_allowlist.enabled=false` (xác nhận ở `config_te
 `backend/internal/service/subscription_service.go:655`
 `ExtendSubscription` đọc `GetByID` rồi ghi `ExtendExpiry` — không transaction, không `FOR UPDATE`, không CAS trên `expires_at` cũ. Hai lệnh +30 ngày đồng thời → khách nhận 30 ngày thay vì 60, không lỗi nào nổi lên. Khuôn đúng đã có sẵn: `updateExistingSubscriptionTerm`.
 
-### M8. Mã nạp tiền chỉ có ~17 bit ngẫu nhiên và được tạo ngoài transaction **[SỬA MỘT PHẦN]**
+### M8. Mã nạp tiền chỉ có ~17 bit ngẫu nhiên và được tạo ngoài transaction **[ĐÃ SỬA]**
 `backend/internal/service/payment_order.go:216` · `payment_fulfillment.go:343-352`
 `fmt.Sprintf("PAY-%d-%d", order.ID, time.Now().UnixNano()%100000)` — hậu tố 5 chữ số trên order id tuần tự. `doBalance` gọi `CreateCode` và `Redeem` ở hai bước không nguyên tử. Crash giữa hai bước để lại mã `unused` còn sống; user bất kỳ dò `PAY-<orderID>-<0..99999>` trên `POST /api/v1/redeem` cướp được khoản nạp của nạn nhân.
 
@@ -243,7 +245,7 @@ Sản phẩm đúng cho phát hiện này là ghi chú review, không phải cod
 `backend/internal/service/redeem_service.go:495`, `:555-569` · `subscription_service.go:218`, `:273-275`
 Đường đổi mã gọi `AssignOrExtendSubscription` với `deferCacheInvalidation=false` → bỏ entry L1 ristretto **trước** commit; `invalidateRedeemCaches` sau commit không gọi `InvalidateSubCache`, cũng không `PublishSubscriptionCacheInvalidation`. Request song song nạp lại dòng tiền-commit vào L1 → hạn mới vô hình suốt TTL trên mọi instance. Rủi ro này **đã được ghi chú** tại `subscription_service.go:273-275` cho đường thanh toán nhưng chưa vá cho đường đổi mã.
 
-### M13. Hạn mức nạp tiền hằng ngày vượt được bằng N request song song **[SỬA MỘT PHẦN]**
+### M13. Hạn mức nạp tiền hằng ngày vượt được bằng N request song song **[ĐÃ SỬA]**
 `backend/internal/service/payment_order.go:330` · `:246`
 `checkDailyLimit` nạp toàn bộ đơn đã thanh toán trong ngày bằng `.All(ctx)` rồi cộng ở tầng Go, trong tx READ COMMITTED không khoá dòng user. `checkPendingLimit` cùng hình dạng.
 
@@ -251,7 +253,7 @@ Sản phẩm đúng cho phát hiện này là ghi chú review, không phải cod
 `migrations/069_add_group_messages_dispatch.sql:1` · `041_add_model_routing_enabled.sql:2` · `044b_add_group_mcp_xml_inject.sql:2` · `189_add_group_allow_live.sql:1` · `036_ops_error_logs_add_is_count_tokens.sql:8`
 `ALTER TABLE ... ADD COLUMN` trần, trái quy ước idempotent của repo. Trên DB đã có cột nhưng thiếu dòng `schema_migrations` (restore loại trừ bảng tracking, clone schema-only, DDL vá tay) → lỗi `column already exists`, server từ chối boot, chỉ sửa được bằng tay.
 
-### M15. Idempotency lưu JSON không hợp lệ cho response lớn **[BẢN RÀ SOÁT BỎP SÓT KHỎI MỌI PR — CHƯA SỬA]**
+### M15. Idempotency lưu JSON không hợp lệ cho response lớn **[BẢN RÀ SOÁT BỎP SÓT KHỎI MỌI PR — ĐÃ SỬA]**
 `backend/internal/service/idempotency.go:451-461`
 `marshalStoredResponse` nối `"...(truncated)"` vào JSON **đã** serialize khi vượt `MaxStoredResponseLen` (mặc định 64 KiB), rồi vẫn ghi qua `MarkSucceeded`. Retry cùng `Idempotency-Key` → `json.Unmarshal` hỏng → trả `ErrIdempotencyStoreUnavail` (503) thay vì kết quả cache.
 
@@ -283,7 +285,7 @@ Hàng model mapping cho phép thêm/xoá nhưng khoá theo chỉ số. Xoá hàn
 
 Ba chỗ còn sót thật nằm ở nơi khác: `CreateAccountModal.vue:1936` (hàng Bedrock mapping-mode, **không có trong danh sách trên**) và `BulkEditAccountModal.vue:382`, `:1232`. Đã sửa ba chỗ đó. Không còn `v-for` nào trong ba modal khoá theo chỉ số.
 
-### M19. Token lưu trong `localStorage` — đánh đổi kiến trúc, không phải regression
+### M19. Token lưu trong `localStorage` — đánh đổi kiến trúc, không phải regression **[GIỮ NGUYÊN — QUYẾT ĐỊNH CÓ GHI NHẬN]**
 `frontend/src/stores/auth.ts:301-329`, `:357-395` · `frontend/src/api/tokenRefresh.ts:51`, `:145-147`
 Access token, refresh token xoay vòng, object user nằm trong `localStorage` dạng rõ → mọi XSS đọc được refresh token và tự đúc access token vô hạn.
 **Ghi chú:** app dùng Bearer token chứ không cookie ngay từ thiết kế, nên đây là đánh đổi có chủ ý — agent xếp CRITICAL, đã hạ xuống MEDIUM. Chuyển sang httpOnly cookie là thay đổi lớn, cân nhắc riêng. Điều đáng nói: nó làm H7 và mọi lỗ XSS khác **đắt hơn bình thường**.
@@ -298,11 +300,19 @@ Access token, refresh token xoay vòng, object user nằm trong `localStorage` d
 ### L2. Client outbound của prompt-audit cố ý bỏ chặn SSRF
 `backend/internal/securityaudit/prompt_outbound_security.go:58-89` — `NewSecureHTTPClient` tắt bảo vệ SSRF kèm comment giải thích đích đến là việc của quản trị viên; chỉ vô hiệu hoá kế thừa proxy từ env. Quyết định thiết kế có ghi chép, ghi nhận vì nằm trong phạm vi rà soát.
 
-### L3. Tiền tệ đi qua interface dưới dạng `float64`, kéo theo dung sai 0.01
+### L3. Tiền tệ đi qua interface dưới dạng `float64`, kéo theo dung sai 0.01 **[ĐÃ SỬA]**
 `backend/internal/payment/types.go:174` · `payment_fulfillment.go:112` — `PaymentNotification.Amount` và `QueryOrderResponse.Amount` là `float64`, buộc đi vòng qua `InexactFloat64()` và `strconv.ParseFloat`. Hệ quả: `amountToleranceCNY = 0.01` được chấp nhận — đơn 100.00 CNY vẫn fulfill đủ khi trả 99.99, `PAYMENT_AMOUNT_MISMATCH` không bao giờ kích hoạt.
 
 ### L4. Khoá Redis khi đổi mã không có token chủ sở hữu **[ĐÃ SỬA]**
 `backend/internal/repository/redeem_cache.go:59` — `ReleaseRedeemLock` là `DEL` vô điều kiện; `AcquireRedeemLock` set giá trị `1` với TTL 10s. Tx quá 10s → khoá hết hạn, request thứ hai giành được, `defer` của request đầu xoá khoá của người thứ hai. Tác động hạn chế vì lớp bảo vệ thật là UPDATE có điều kiện ở DB.
+
+---
+
+**Ghi nhận quyết định (M19).** Đã cân nhắc và **không chuyển sang httpOnly cookie**. Đó không phải một bản vá mà là viết lại toàn bộ lớp xác thực: cần thêm CSRF token, làm lại vòng xoay refresh token và session binding, sửa mọi lời gọi API ở frontend và toàn bộ OAuth callback. Rủi ro của chính việc viết lại lớn hơn rủi ro nó gỡ bỏ.
+
+Thứ thực sự làm giảm rủi ro ở đây là các bản vá XSS đã làm trong hai đợt đầu: sandbox + allowlist cho iframe (H7), instance DOMPurify riêng, chuẩn hoá đường dẫn redirect (M17, kèm lỗ TAB), và bỏ token khỏi URL nhúng (N2). M19 khiến mọi lỗ XSS **đắt hơn bình thường**, nên giá trị nằm ở chỗ không để lọt XSS chứ không phải ở chỗ cất token.
+
+Nếu sau này vẫn muốn làm, nó xứng đáng một đề xuất openspec riêng, không phải một mục nhét vào PR vá lỗi.
 
 ---
 
