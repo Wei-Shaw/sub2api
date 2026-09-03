@@ -325,6 +325,7 @@ import PendingOAuthCreateAccountForm, {
 } from '@/components/auth/PendingOAuthCreateAccountForm.vue'
 import { apiClient } from '@/api/client'
 import { useAuthStore, useAppStore } from '@/stores'
+import { sanitizeRedirectPath } from '@/utils/redirect'
 import {
   completeWeChatOAuthRegistration,
   exchangePendingOAuthCompletion,
@@ -470,15 +471,6 @@ function readLegacyFragmentLogin(params: URLSearchParams): OAuthTokenResponse | 
   return completion
 }
 
-function sanitizeRedirectPath(path: string | null | undefined): string {
-  if (!path) return '/dashboard'
-  if (!path.startsWith('/')) return '/dashboard'
-  if (path.startsWith('//')) return '/dashboard'
-  if (path.includes('://')) return '/dashboard'
-  if (path.includes('\n') || path.includes('\r')) return '/dashboard'
-  return path
-}
-
 async function ensurePublicSettingsLoaded(): Promise<void> {
   if (hasExplicitWeChatOAuthCapabilities(appStore.cachedPublicSettings)) {
     return
@@ -545,7 +537,7 @@ function resolveRequestedWeChatOAuthMode(): 'open' | 'mp' | null {
 
 function resolveRedirectTarget(): string {
   return sanitizeRedirectPath(
-    (route.query.redirect as string | undefined) || redirectTo.value || '/dashboard'
+    (route.query.redirect as string | undefined) || redirectTo.value
   )
 }
 
@@ -1026,7 +1018,7 @@ onMounted(async () => {
   const error = params.get('error')
   const errorDesc = params.get('error_description') || params.get('error_message') || ''
   const redirect = sanitizeRedirectPath(
-    params.get('redirect') || (route.query.redirect as string | undefined) || '/dashboard'
+    params.get('redirect') || (route.query.redirect as string | undefined)
   )
 
   try {
@@ -1055,7 +1047,7 @@ onMounted(async () => {
 
     const completion = await exchangePendingOAuthCompletion() as PendingWeChatCompletion
     const completionRedirect = sanitizeRedirectPath(
-      completion.redirect || (route.query.redirect as string | undefined) || '/dashboard'
+      completion.redirect || (route.query.redirect as string | undefined)
     )
     applyAdoptionSuggestionState(completion)
     redirectTo.value = completionRedirect

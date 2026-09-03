@@ -244,6 +244,7 @@ import PendingOAuthCreateAccountForm, {
 } from '@/components/auth/PendingOAuthCreateAccountForm.vue'
 import { apiClient } from '@/api/client'
 import { useAuthStore, useAppStore } from '@/stores'
+import { sanitizeRedirectPath } from '@/utils/redirect'
 import {
   completeLinuxDoOAuthRegistration,
   exchangePendingOAuthCompletion,
@@ -377,15 +378,6 @@ function readLegacyFragmentLogin(params: URLSearchParams): OAuthTokenResponse | 
     completion.token_type = tokenType
   }
   return completion
-}
-
-function sanitizeRedirectPath(path: string | null | undefined): string {
-  if (!path) return '/dashboard'
-  if (!path.startsWith('/')) return '/dashboard'
-  if (path.startsWith('//')) return '/dashboard'
-  if (path.includes('://')) return '/dashboard'
-  if (path.includes('\n') || path.includes('\r')) return '/dashboard'
-  return path
 }
 
 function currentAdoptionDecision(): OAuthAdoptionDecision {
@@ -754,7 +746,7 @@ onMounted(async () => {
   const error = params.get('error')
   const errorDesc = params.get('error_description') || params.get('error_message') || ''
   const redirect = sanitizeRedirectPath(
-    params.get('redirect') || (route.query.redirect as string | undefined) || '/dashboard'
+    params.get('redirect') || (route.query.redirect as string | undefined)
   )
 
   try {
@@ -783,7 +775,7 @@ onMounted(async () => {
 
     const completion = await exchangePendingOAuthCompletion()
     const completionRedirect = sanitizeRedirectPath(
-      completion.redirect || (route.query.redirect as string | undefined) || '/dashboard'
+      completion.redirect || (route.query.redirect as string | undefined)
     )
     applyAdoptionSuggestionState(completion)
     redirectTo.value = completionRedirect

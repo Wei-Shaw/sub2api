@@ -379,7 +379,7 @@
               <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
                 <div
                   v-for="(mapping, index) in modelMappings"
-                  :key="index"
+                  :key="getModelMappingKey(mapping)"
                   class="flex items-center gap-2"
                 >
                   <input
@@ -1229,7 +1229,7 @@
           <div v-if="openAICompactModelMappings.length > 0" class="mb-3 space-y-2">
             <div
               v-for="(mapping, index) in openAICompactModelMappings"
-              :key="index"
+              :key="getOpenAICompactModelMappingKey(mapping)"
               class="flex items-center gap-2"
             >
               <input
@@ -1516,6 +1516,7 @@ import {
   resolveOpenAIWSModeConcurrencyHintKey
 } from '@/utils/openaiWsMode'
 import type { OpenAIWSMode } from '@/utils/openaiWsMode'
+import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 interface Props {
   show: boolean
   accountIds: number[]
@@ -1832,6 +1833,11 @@ const openAIAPIKeyWSModeConcurrencyHintKey = computed(() =>
 )
 
 // Model mapping helpers
+const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('bulk-edit-model-mapping')
+const getOpenAICompactModelMappingKey = createStableObjectKeyResolver<ModelMapping>(
+  'bulk-edit-openai-compact-model-mapping'
+)
+
 const addModelMapping = () => {
   modelMappings.value.push({ from: '', to: '' })
 }
