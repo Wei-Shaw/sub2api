@@ -12,7 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
-	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/compositeroutescheme"
 )
 
 // CompositeModelRouteCreate is the builder for creating a CompositeModelRoute entity.
@@ -65,9 +65,9 @@ func (_c *CompositeModelRouteCreate) SetNillableDeletedAt(v *time.Time) *Composi
 	return _c
 }
 
-// SetGroupID sets the "group_id" field.
-func (_c *CompositeModelRouteCreate) SetGroupID(v int64) *CompositeModelRouteCreate {
-	_c.mutation.SetGroupID(v)
+// SetSchemeID sets the "scheme_id" field.
+func (_c *CompositeModelRouteCreate) SetSchemeID(v int64) *CompositeModelRouteCreate {
+	_c.mutation.SetSchemeID(v)
 	return _c
 }
 
@@ -175,9 +175,9 @@ func (_c *CompositeModelRouteCreate) SetNillableNotes(v *string) *CompositeModel
 	return _c
 }
 
-// SetGroup sets the "group" edge to the Group entity.
-func (_c *CompositeModelRouteCreate) SetGroup(v *Group) *CompositeModelRouteCreate {
-	return _c.SetGroupID(v.ID)
+// SetScheme sets the "scheme" edge to the CompositeRouteScheme entity.
+func (_c *CompositeModelRouteCreate) SetScheme(v *CompositeRouteScheme) *CompositeModelRouteCreate {
+	return _c.SetSchemeID(v.ID)
 }
 
 // Mutation returns the CompositeModelRouteMutation object of the builder.
@@ -266,8 +266,8 @@ func (_c *CompositeModelRouteCreate) check() error {
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "CompositeModelRoute.updated_at"`)}
 	}
-	if _, ok := _c.mutation.GroupID(); !ok {
-		return &ValidationError{Name: "group_id", err: errors.New(`ent: missing required field "CompositeModelRoute.group_id"`)}
+	if _, ok := _c.mutation.SchemeID(); !ok {
+		return &ValidationError{Name: "scheme_id", err: errors.New(`ent: missing required field "CompositeModelRoute.scheme_id"`)}
 	}
 	if _, ok := _c.mutation.PublicModel(); !ok {
 		return &ValidationError{Name: "public_model", err: errors.New(`ent: missing required field "CompositeModelRoute.public_model"`)}
@@ -315,8 +315,8 @@ func (_c *CompositeModelRouteCreate) check() error {
 	if _, ok := _c.mutation.Enabled(); !ok {
 		return &ValidationError{Name: "enabled", err: errors.New(`ent: missing required field "CompositeModelRoute.enabled"`)}
 	}
-	if len(_c.mutation.GroupIDs()) == 0 {
-		return &ValidationError{Name: "group", err: errors.New(`ent: missing required edge "CompositeModelRoute.group"`)}
+	if len(_c.mutation.SchemeIDs()) == 0 {
+		return &ValidationError{Name: "scheme", err: errors.New(`ent: missing required edge "CompositeModelRoute.scheme"`)}
 	}
 	return nil
 }
@@ -389,21 +389,21 @@ func (_c *CompositeModelRouteCreate) createSpec() (*CompositeModelRoute, *sqlgra
 		_spec.SetField(compositemodelroute.FieldNotes, field.TypeString, value)
 		_node.Notes = &value
 	}
-	if nodes := _c.mutation.GroupIDs(); len(nodes) > 0 {
+	if nodes := _c.mutation.SchemeIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
-			Inverse: false,
-			Table:   compositemodelroute.GroupTable,
-			Columns: []string{compositemodelroute.GroupColumn},
+			Inverse: true,
+			Table:   compositemodelroute.SchemeTable,
+			Columns: []string{compositemodelroute.SchemeColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+				IDSpec: sqlgraph.NewFieldSpec(compositeroutescheme.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
-		_node.GroupID = nodes[0]
+		_node.SchemeID = nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
@@ -488,15 +488,15 @@ func (u *CompositeModelRouteUpsert) ClearDeletedAt() *CompositeModelRouteUpsert 
 	return u
 }
 
-// SetGroupID sets the "group_id" field.
-func (u *CompositeModelRouteUpsert) SetGroupID(v int64) *CompositeModelRouteUpsert {
-	u.Set(compositemodelroute.FieldGroupID, v)
+// SetSchemeID sets the "scheme_id" field.
+func (u *CompositeModelRouteUpsert) SetSchemeID(v int64) *CompositeModelRouteUpsert {
+	u.Set(compositemodelroute.FieldSchemeID, v)
 	return u
 }
 
-// UpdateGroupID sets the "group_id" field to the value that was provided on create.
-func (u *CompositeModelRouteUpsert) UpdateGroupID() *CompositeModelRouteUpsert {
-	u.SetExcluded(compositemodelroute.FieldGroupID)
+// UpdateSchemeID sets the "scheme_id" field to the value that was provided on create.
+func (u *CompositeModelRouteUpsert) UpdateSchemeID() *CompositeModelRouteUpsert {
+	u.SetExcluded(compositemodelroute.FieldSchemeID)
 	return u
 }
 
@@ -688,17 +688,17 @@ func (u *CompositeModelRouteUpsertOne) ClearDeletedAt() *CompositeModelRouteUpse
 	})
 }
 
-// SetGroupID sets the "group_id" field.
-func (u *CompositeModelRouteUpsertOne) SetGroupID(v int64) *CompositeModelRouteUpsertOne {
+// SetSchemeID sets the "scheme_id" field.
+func (u *CompositeModelRouteUpsertOne) SetSchemeID(v int64) *CompositeModelRouteUpsertOne {
 	return u.Update(func(s *CompositeModelRouteUpsert) {
-		s.SetGroupID(v)
+		s.SetSchemeID(v)
 	})
 }
 
-// UpdateGroupID sets the "group_id" field to the value that was provided on create.
-func (u *CompositeModelRouteUpsertOne) UpdateGroupID() *CompositeModelRouteUpsertOne {
+// UpdateSchemeID sets the "scheme_id" field to the value that was provided on create.
+func (u *CompositeModelRouteUpsertOne) UpdateSchemeID() *CompositeModelRouteUpsertOne {
 	return u.Update(func(s *CompositeModelRouteUpsert) {
-		s.UpdateGroupID()
+		s.UpdateSchemeID()
 	})
 }
 
@@ -1074,17 +1074,17 @@ func (u *CompositeModelRouteUpsertBulk) ClearDeletedAt() *CompositeModelRouteUps
 	})
 }
 
-// SetGroupID sets the "group_id" field.
-func (u *CompositeModelRouteUpsertBulk) SetGroupID(v int64) *CompositeModelRouteUpsertBulk {
+// SetSchemeID sets the "scheme_id" field.
+func (u *CompositeModelRouteUpsertBulk) SetSchemeID(v int64) *CompositeModelRouteUpsertBulk {
 	return u.Update(func(s *CompositeModelRouteUpsert) {
-		s.SetGroupID(v)
+		s.SetSchemeID(v)
 	})
 }
 
-// UpdateGroupID sets the "group_id" field to the value that was provided on create.
-func (u *CompositeModelRouteUpsertBulk) UpdateGroupID() *CompositeModelRouteUpsertBulk {
+// UpdateSchemeID sets the "scheme_id" field to the value that was provided on create.
+func (u *CompositeModelRouteUpsertBulk) UpdateSchemeID() *CompositeModelRouteUpsertBulk {
 	return u.Update(func(s *CompositeModelRouteUpsert) {
-		s.UpdateGroupID()
+		s.UpdateSchemeID()
 	})
 }
 

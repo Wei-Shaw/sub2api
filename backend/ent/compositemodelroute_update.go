@@ -12,7 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
-	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/compositeroutescheme"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 )
 
@@ -55,16 +55,16 @@ func (_u *CompositeModelRouteUpdate) ClearDeletedAt() *CompositeModelRouteUpdate
 	return _u
 }
 
-// SetGroupID sets the "group_id" field.
-func (_u *CompositeModelRouteUpdate) SetGroupID(v int64) *CompositeModelRouteUpdate {
-	_u.mutation.SetGroupID(v)
+// SetSchemeID sets the "scheme_id" field.
+func (_u *CompositeModelRouteUpdate) SetSchemeID(v int64) *CompositeModelRouteUpdate {
+	_u.mutation.SetSchemeID(v)
 	return _u
 }
 
-// SetNillableGroupID sets the "group_id" field if the given value is not nil.
-func (_u *CompositeModelRouteUpdate) SetNillableGroupID(v *int64) *CompositeModelRouteUpdate {
+// SetNillableSchemeID sets the "scheme_id" field if the given value is not nil.
+func (_u *CompositeModelRouteUpdate) SetNillableSchemeID(v *int64) *CompositeModelRouteUpdate {
 	if v != nil {
-		_u.SetGroupID(*v)
+		_u.SetSchemeID(*v)
 	}
 	return _u
 }
@@ -194,9 +194,9 @@ func (_u *CompositeModelRouteUpdate) ClearNotes() *CompositeModelRouteUpdate {
 	return _u
 }
 
-// SetGroup sets the "group" edge to the Group entity.
-func (_u *CompositeModelRouteUpdate) SetGroup(v *Group) *CompositeModelRouteUpdate {
-	return _u.SetGroupID(v.ID)
+// SetScheme sets the "scheme" edge to the CompositeRouteScheme entity.
+func (_u *CompositeModelRouteUpdate) SetScheme(v *CompositeRouteScheme) *CompositeModelRouteUpdate {
+	return _u.SetSchemeID(v.ID)
 }
 
 // Mutation returns the CompositeModelRouteMutation object of the builder.
@@ -204,9 +204,9 @@ func (_u *CompositeModelRouteUpdate) Mutation() *CompositeModelRouteMutation {
 	return _u.mutation
 }
 
-// ClearGroup clears the "group" edge to the Group entity.
-func (_u *CompositeModelRouteUpdate) ClearGroup() *CompositeModelRouteUpdate {
-	_u.mutation.ClearGroup()
+// ClearScheme clears the "scheme" edge to the CompositeRouteScheme entity.
+func (_u *CompositeModelRouteUpdate) ClearScheme() *CompositeModelRouteUpdate {
+	_u.mutation.ClearScheme()
 	return _u
 }
 
@@ -279,8 +279,8 @@ func (_u *CompositeModelRouteUpdate) check() error {
 			return &ValidationError{Name: "endpoint", err: fmt.Errorf(`ent: validator failed for field "CompositeModelRoute.endpoint": %w`, err)}
 		}
 	}
-	if _u.mutation.GroupCleared() && len(_u.mutation.GroupIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "CompositeModelRoute.group"`)
+	if _u.mutation.SchemeCleared() && len(_u.mutation.SchemeIDs()) > 0 {
+		return errors.New(`ent: clearing a required unique edge "CompositeModelRoute.scheme"`)
 	}
 	return nil
 }
@@ -336,28 +336,28 @@ func (_u *CompositeModelRouteUpdate) sqlSave(ctx context.Context) (_node int, er
 	if _u.mutation.NotesCleared() {
 		_spec.ClearField(compositemodelroute.FieldNotes, field.TypeString)
 	}
-	if _u.mutation.GroupCleared() {
+	if _u.mutation.SchemeCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
-			Inverse: false,
-			Table:   compositemodelroute.GroupTable,
-			Columns: []string{compositemodelroute.GroupColumn},
+			Inverse: true,
+			Table:   compositemodelroute.SchemeTable,
+			Columns: []string{compositemodelroute.SchemeColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+				IDSpec: sqlgraph.NewFieldSpec(compositeroutescheme.FieldID, field.TypeInt64),
 			},
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := _u.mutation.GroupIDs(); len(nodes) > 0 {
+	if nodes := _u.mutation.SchemeIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
-			Inverse: false,
-			Table:   compositemodelroute.GroupTable,
-			Columns: []string{compositemodelroute.GroupColumn},
+			Inverse: true,
+			Table:   compositemodelroute.SchemeTable,
+			Columns: []string{compositemodelroute.SchemeColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+				IDSpec: sqlgraph.NewFieldSpec(compositeroutescheme.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -411,16 +411,16 @@ func (_u *CompositeModelRouteUpdateOne) ClearDeletedAt() *CompositeModelRouteUpd
 	return _u
 }
 
-// SetGroupID sets the "group_id" field.
-func (_u *CompositeModelRouteUpdateOne) SetGroupID(v int64) *CompositeModelRouteUpdateOne {
-	_u.mutation.SetGroupID(v)
+// SetSchemeID sets the "scheme_id" field.
+func (_u *CompositeModelRouteUpdateOne) SetSchemeID(v int64) *CompositeModelRouteUpdateOne {
+	_u.mutation.SetSchemeID(v)
 	return _u
 }
 
-// SetNillableGroupID sets the "group_id" field if the given value is not nil.
-func (_u *CompositeModelRouteUpdateOne) SetNillableGroupID(v *int64) *CompositeModelRouteUpdateOne {
+// SetNillableSchemeID sets the "scheme_id" field if the given value is not nil.
+func (_u *CompositeModelRouteUpdateOne) SetNillableSchemeID(v *int64) *CompositeModelRouteUpdateOne {
 	if v != nil {
-		_u.SetGroupID(*v)
+		_u.SetSchemeID(*v)
 	}
 	return _u
 }
@@ -550,9 +550,9 @@ func (_u *CompositeModelRouteUpdateOne) ClearNotes() *CompositeModelRouteUpdateO
 	return _u
 }
 
-// SetGroup sets the "group" edge to the Group entity.
-func (_u *CompositeModelRouteUpdateOne) SetGroup(v *Group) *CompositeModelRouteUpdateOne {
-	return _u.SetGroupID(v.ID)
+// SetScheme sets the "scheme" edge to the CompositeRouteScheme entity.
+func (_u *CompositeModelRouteUpdateOne) SetScheme(v *CompositeRouteScheme) *CompositeModelRouteUpdateOne {
+	return _u.SetSchemeID(v.ID)
 }
 
 // Mutation returns the CompositeModelRouteMutation object of the builder.
@@ -560,9 +560,9 @@ func (_u *CompositeModelRouteUpdateOne) Mutation() *CompositeModelRouteMutation 
 	return _u.mutation
 }
 
-// ClearGroup clears the "group" edge to the Group entity.
-func (_u *CompositeModelRouteUpdateOne) ClearGroup() *CompositeModelRouteUpdateOne {
-	_u.mutation.ClearGroup()
+// ClearScheme clears the "scheme" edge to the CompositeRouteScheme entity.
+func (_u *CompositeModelRouteUpdateOne) ClearScheme() *CompositeModelRouteUpdateOne {
+	_u.mutation.ClearScheme()
 	return _u
 }
 
@@ -648,8 +648,8 @@ func (_u *CompositeModelRouteUpdateOne) check() error {
 			return &ValidationError{Name: "endpoint", err: fmt.Errorf(`ent: validator failed for field "CompositeModelRoute.endpoint": %w`, err)}
 		}
 	}
-	if _u.mutation.GroupCleared() && len(_u.mutation.GroupIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "CompositeModelRoute.group"`)
+	if _u.mutation.SchemeCleared() && len(_u.mutation.SchemeIDs()) > 0 {
+		return errors.New(`ent: clearing a required unique edge "CompositeModelRoute.scheme"`)
 	}
 	return nil
 }
@@ -722,28 +722,28 @@ func (_u *CompositeModelRouteUpdateOne) sqlSave(ctx context.Context) (_node *Com
 	if _u.mutation.NotesCleared() {
 		_spec.ClearField(compositemodelroute.FieldNotes, field.TypeString)
 	}
-	if _u.mutation.GroupCleared() {
+	if _u.mutation.SchemeCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
-			Inverse: false,
-			Table:   compositemodelroute.GroupTable,
-			Columns: []string{compositemodelroute.GroupColumn},
+			Inverse: true,
+			Table:   compositemodelroute.SchemeTable,
+			Columns: []string{compositemodelroute.SchemeColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+				IDSpec: sqlgraph.NewFieldSpec(compositeroutescheme.FieldID, field.TypeInt64),
 			},
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := _u.mutation.GroupIDs(); len(nodes) > 0 {
+	if nodes := _u.mutation.SchemeIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
-			Inverse: false,
-			Table:   compositemodelroute.GroupTable,
-			Columns: []string{compositemodelroute.GroupColumn},
+			Inverse: true,
+			Table:   compositemodelroute.SchemeTable,
+			Columns: []string{compositemodelroute.SchemeColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+				IDSpec: sqlgraph.NewFieldSpec(compositeroutescheme.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

@@ -10,7 +10,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
-	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/compositeroutescheme"
 )
 
 // CompositeModelRoute is the model entity for the CompositeModelRoute schema.
@@ -24,8 +24,8 @@ type CompositeModelRoute struct {
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// DeletedAt holds the value of the "deleted_at" field.
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
-	// GroupID holds the value of the "group_id" field.
-	GroupID int64 `json:"group_id,omitempty"`
+	// SchemeID holds the value of the "scheme_id" field.
+	SchemeID int64 `json:"scheme_id,omitempty"`
 	// Client-facing model identifier or prefix.
 	PublicModel string `json:"public_model,omitempty"`
 	// exact or prefix.
@@ -50,22 +50,22 @@ type CompositeModelRoute struct {
 
 // CompositeModelRouteEdges holds the relations/edges for other nodes in the graph.
 type CompositeModelRouteEdges struct {
-	// Group holds the value of the group edge.
-	Group *Group `json:"group,omitempty"`
+	// Scheme holds the value of the scheme edge.
+	Scheme *CompositeRouteScheme `json:"scheme,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
 	loadedTypes [1]bool
 }
 
-// GroupOrErr returns the Group value or an error if the edge
+// SchemeOrErr returns the Scheme value or an error if the edge
 // was not loaded in eager-loading, or loaded but was not found.
-func (e CompositeModelRouteEdges) GroupOrErr() (*Group, error) {
-	if e.Group != nil {
-		return e.Group, nil
+func (e CompositeModelRouteEdges) SchemeOrErr() (*CompositeRouteScheme, error) {
+	if e.Scheme != nil {
+		return e.Scheme, nil
 	} else if e.loadedTypes[0] {
-		return nil, &NotFoundError{label: group.Label}
+		return nil, &NotFoundError{label: compositeroutescheme.Label}
 	}
-	return nil, &NotLoadedError{edge: "group"}
+	return nil, &NotLoadedError{edge: "scheme"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -75,7 +75,7 @@ func (*CompositeModelRoute) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case compositemodelroute.FieldEnabled:
 			values[i] = new(sql.NullBool)
-		case compositemodelroute.FieldID, compositemodelroute.FieldGroupID, compositemodelroute.FieldPriority:
+		case compositemodelroute.FieldID, compositemodelroute.FieldSchemeID, compositemodelroute.FieldPriority:
 			values[i] = new(sql.NullInt64)
 		case compositemodelroute.FieldPublicModel, compositemodelroute.FieldMatchType, compositemodelroute.FieldTargetPlatform, compositemodelroute.FieldUpstreamModel, compositemodelroute.FieldEndpoint, compositemodelroute.FieldNotes:
 			values[i] = new(sql.NullString)
@@ -121,11 +121,11 @@ func (_m *CompositeModelRoute) assignValues(columns []string, values []any) erro
 				_m.DeletedAt = new(time.Time)
 				*_m.DeletedAt = value.Time
 			}
-		case compositemodelroute.FieldGroupID:
+		case compositemodelroute.FieldSchemeID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field group_id", values[i])
+				return fmt.Errorf("unexpected type %T for field scheme_id", values[i])
 			} else if value.Valid {
-				_m.GroupID = value.Int64
+				_m.SchemeID = value.Int64
 			}
 		case compositemodelroute.FieldPublicModel:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -189,9 +189,9 @@ func (_m *CompositeModelRoute) Value(name string) (ent.Value, error) {
 	return _m.selectValues.Get(name)
 }
 
-// QueryGroup queries the "group" edge of the CompositeModelRoute entity.
-func (_m *CompositeModelRoute) QueryGroup() *GroupQuery {
-	return NewCompositeModelRouteClient(_m.config).QueryGroup(_m)
+// QueryScheme queries the "scheme" edge of the CompositeModelRoute entity.
+func (_m *CompositeModelRoute) QueryScheme() *CompositeRouteSchemeQuery {
+	return NewCompositeModelRouteClient(_m.config).QueryScheme(_m)
 }
 
 // Update returns a builder for updating this CompositeModelRoute.
@@ -228,8 +228,8 @@ func (_m *CompositeModelRoute) String() string {
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")
-	builder.WriteString("group_id=")
-	builder.WriteString(fmt.Sprintf("%v", _m.GroupID))
+	builder.WriteString("scheme_id=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SchemeID))
 	builder.WriteString(", ")
 	builder.WriteString("public_model=")
 	builder.WriteString(_m.PublicModel)

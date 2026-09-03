@@ -200,6 +200,9 @@ type AdminGroup struct {
 
 	// 分组排序
 	SortOrder int `json:"sort_order"`
+
+	// Composite 分组绑定的路由方案
+	CompositeRouteSchemeID *int64 `json:"composite_route_scheme_id"`
 }
 
 type Account struct {

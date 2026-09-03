@@ -27,6 +27,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
+	"github.com/Wei-Shaw/sub2api/ent/compositeroutescheme"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -79,6 +80,7 @@ const (
 	TypeChannelMonitorHistory         = "ChannelMonitorHistory"
 	TypeChannelMonitorRequestTemplate = "ChannelMonitorRequestTemplate"
 	TypeCompositeModelRoute           = "CompositeModelRoute"
+	TypeCompositeRouteScheme          = "CompositeRouteScheme"
 	TypeErrorPassthroughRule          = "ErrorPassthroughRule"
 	TypeGroup                         = "Group"
 	TypeIdempotencyRecord             = "IdempotencyRecord"
@@ -19723,8 +19725,8 @@ type CompositeModelRouteMutation struct {
 	enabled         *bool
 	notes           *string
 	clearedFields   map[string]struct{}
-	group           *int64
-	clearedgroup    bool
+	scheme          *int64
+	clearedscheme   bool
 	done            bool
 	oldValue        func(context.Context) (*CompositeModelRoute, error)
 	predicates      []predicate.CompositeModelRoute
@@ -19949,40 +19951,40 @@ func (m *CompositeModelRouteMutation) ResetDeletedAt() {
 	delete(m.clearedFields, compositemodelroute.FieldDeletedAt)
 }
 
-// SetGroupID sets the "group_id" field.
-func (m *CompositeModelRouteMutation) SetGroupID(i int64) {
-	m.group = &i
+// SetSchemeID sets the "scheme_id" field.
+func (m *CompositeModelRouteMutation) SetSchemeID(i int64) {
+	m.scheme = &i
 }
 
-// GroupID returns the value of the "group_id" field in the mutation.
-func (m *CompositeModelRouteMutation) GroupID() (r int64, exists bool) {
-	v := m.group
+// SchemeID returns the value of the "scheme_id" field in the mutation.
+func (m *CompositeModelRouteMutation) SchemeID() (r int64, exists bool) {
+	v := m.scheme
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldGroupID returns the old "group_id" field's value of the CompositeModelRoute entity.
+// OldSchemeID returns the old "scheme_id" field's value of the CompositeModelRoute entity.
 // If the CompositeModelRoute object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *CompositeModelRouteMutation) OldGroupID(ctx context.Context) (v int64, err error) {
+func (m *CompositeModelRouteMutation) OldSchemeID(ctx context.Context) (v int64, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+		return v, errors.New("OldSchemeID is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldGroupID requires an ID field in the mutation")
+		return v, errors.New("OldSchemeID requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+		return v, fmt.Errorf("querying old value for OldSchemeID: %w", err)
 	}
-	return oldValue.GroupID, nil
+	return oldValue.SchemeID, nil
 }
 
-// ResetGroupID resets all changes to the "group_id" field.
-func (m *CompositeModelRouteMutation) ResetGroupID() {
-	m.group = nil
+// ResetSchemeID resets all changes to the "scheme_id" field.
+func (m *CompositeModelRouteMutation) ResetSchemeID() {
+	m.scheme = nil
 }
 
 // SetPublicModel sets the "public_model" field.
@@ -20306,31 +20308,31 @@ func (m *CompositeModelRouteMutation) ResetNotes() {
 	delete(m.clearedFields, compositemodelroute.FieldNotes)
 }
 
-// ClearGroup clears the "group" edge to the Group entity.
-func (m *CompositeModelRouteMutation) ClearGroup() {
-	m.clearedgroup = true
-	m.clearedFields[compositemodelroute.FieldGroupID] = struct{}{}
+// ClearScheme clears the "scheme" edge to the CompositeRouteScheme entity.
+func (m *CompositeModelRouteMutation) ClearScheme() {
+	m.clearedscheme = true
+	m.clearedFields[compositemodelroute.FieldSchemeID] = struct{}{}
 }
 
-// GroupCleared reports if the "group" edge to the Group entity was cleared.
-func (m *CompositeModelRouteMutation) GroupCleared() bool {
-	return m.clearedgroup
+// SchemeCleared reports if the "scheme" edge to the CompositeRouteScheme entity was cleared.
+func (m *CompositeModelRouteMutation) SchemeCleared() bool {
+	return m.clearedscheme
 }
 
-// GroupIDs returns the "group" edge IDs in the mutation.
+// SchemeIDs returns the "scheme" edge IDs in the mutation.
 // Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
-// GroupID instead. It exists only for internal usage by the builders.
-func (m *CompositeModelRouteMutation) GroupIDs() (ids []int64) {
-	if id := m.group; id != nil {
+// SchemeID instead. It exists only for internal usage by the builders.
+func (m *CompositeModelRouteMutation) SchemeIDs() (ids []int64) {
+	if id := m.scheme; id != nil {
 		ids = append(ids, *id)
 	}
 	return
 }
 
-// ResetGroup resets all changes to the "group" edge.
-func (m *CompositeModelRouteMutation) ResetGroup() {
-	m.group = nil
-	m.clearedgroup = false
+// ResetScheme resets all changes to the "scheme" edge.
+func (m *CompositeModelRouteMutation) ResetScheme() {
+	m.scheme = nil
+	m.clearedscheme = false
 }
 
 // Where appends a list predicates to the CompositeModelRouteMutation builder.
@@ -20377,8 +20379,8 @@ func (m *CompositeModelRouteMutation) Fields() []string {
 	if m.deleted_at != nil {
 		fields = append(fields, compositemodelroute.FieldDeletedAt)
 	}
-	if m.group != nil {
-		fields = append(fields, compositemodelroute.FieldGroupID)
+	if m.scheme != nil {
+		fields = append(fields, compositemodelroute.FieldSchemeID)
 	}
 	if m.public_model != nil {
 		fields = append(fields, compositemodelroute.FieldPublicModel)
@@ -20418,8 +20420,8 @@ func (m *CompositeModelRouteMutation) Field(name string) (ent.Value, bool) {
 		return m.UpdatedAt()
 	case compositemodelroute.FieldDeletedAt:
 		return m.DeletedAt()
-	case compositemodelroute.FieldGroupID:
-		return m.GroupID()
+	case compositemodelroute.FieldSchemeID:
+		return m.SchemeID()
 	case compositemodelroute.FieldPublicModel:
 		return m.PublicModel()
 	case compositemodelroute.FieldMatchType:
@@ -20451,8 +20453,8 @@ func (m *CompositeModelRouteMutation) OldField(ctx context.Context, name string)
 		return m.OldUpdatedAt(ctx)
 	case compositemodelroute.FieldDeletedAt:
 		return m.OldDeletedAt(ctx)
-	case compositemodelroute.FieldGroupID:
-		return m.OldGroupID(ctx)
+	case compositemodelroute.FieldSchemeID:
+		return m.OldSchemeID(ctx)
 	case compositemodelroute.FieldPublicModel:
 		return m.OldPublicModel(ctx)
 	case compositemodelroute.FieldMatchType:
@@ -20499,12 +20501,12 @@ func (m *CompositeModelRouteMutation) SetField(name string, value ent.Value) err
 		}
 		m.SetDeletedAt(v)
 		return nil
-	case compositemodelroute.FieldGroupID:
+	case compositemodelroute.FieldSchemeID:
 		v, ok := value.(int64)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetGroupID(v)
+		m.SetSchemeID(v)
 		return nil
 	case compositemodelroute.FieldPublicModel:
 		v, ok := value.(string)
@@ -20650,8 +20652,8 @@ func (m *CompositeModelRouteMutation) ResetField(name string) error {
 	case compositemodelroute.FieldDeletedAt:
 		m.ResetDeletedAt()
 		return nil
-	case compositemodelroute.FieldGroupID:
-		m.ResetGroupID()
+	case compositemodelroute.FieldSchemeID:
+		m.ResetSchemeID()
 		return nil
 	case compositemodelroute.FieldPublicModel:
 		m.ResetPublicModel()
@@ -20684,8 +20686,8 @@ func (m *CompositeModelRouteMutation) ResetField(name string) error {
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *CompositeModelRouteMutation) AddedEdges() []string {
 	edges := make([]string, 0, 1)
-	if m.group != nil {
-		edges = append(edges, compositemodelroute.EdgeGroup)
+	if m.scheme != nil {
+		edges = append(edges, compositemodelroute.EdgeScheme)
 	}
 	return edges
 }
@@ -20694,8 +20696,8 @@ func (m *CompositeModelRouteMutation) AddedEdges() []string {
 // name in this mutation.
 func (m *CompositeModelRouteMutation) AddedIDs(name string) []ent.Value {
 	switch name {
-	case compositemodelroute.EdgeGroup:
-		if id := m.group; id != nil {
+	case compositemodelroute.EdgeScheme:
+		if id := m.scheme; id != nil {
 			return []ent.Value{*id}
 		}
 	}
@@ -20717,8 +20719,8 @@ func (m *CompositeModelRouteMutation) RemovedIDs(name string) []ent.Value {
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *CompositeModelRouteMutation) ClearedEdges() []string {
 	edges := make([]string, 0, 1)
-	if m.clearedgroup {
-		edges = append(edges, compositemodelroute.EdgeGroup)
+	if m.clearedscheme {
+		edges = append(edges, compositemodelroute.EdgeScheme)
 	}
 	return edges
 }
@@ -20727,8 +20729,8 @@ func (m *CompositeModelRouteMutation) ClearedEdges() []string {
 // was cleared in this mutation.
 func (m *CompositeModelRouteMutation) EdgeCleared(name string) bool {
 	switch name {
-	case compositemodelroute.EdgeGroup:
-		return m.clearedgroup
+	case compositemodelroute.EdgeScheme:
+		return m.clearedscheme
 	}
 	return false
 }
@@ -20737,8 +20739,8 @@ func (m *CompositeModelRouteMutation) EdgeCleared(name string) bool {
 // if that edge is not defined in the schema.
 func (m *CompositeModelRouteMutation) ClearEdge(name string) error {
 	switch name {
-	case compositemodelroute.EdgeGroup:
-		m.ClearGroup()
+	case compositemodelroute.EdgeScheme:
+		m.ClearScheme()
 		return nil
 	}
 	return fmt.Errorf("unknown CompositeModelRoute unique edge %s", name)
@@ -20748,11 +20750,770 @@ func (m *CompositeModelRouteMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *CompositeModelRouteMutation) ResetEdge(name string) error {
 	switch name {
-	case compositemodelroute.EdgeGroup:
-		m.ResetGroup()
+	case compositemodelroute.EdgeScheme:
+		m.ResetScheme()
 		return nil
 	}
 	return fmt.Errorf("unknown CompositeModelRoute edge %s", name)
+}
+
+// CompositeRouteSchemeMutation represents an operation that mutates the CompositeRouteScheme nodes in the graph.
+type CompositeRouteSchemeMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int64
+	created_at    *time.Time
+	updated_at    *time.Time
+	deleted_at    *time.Time
+	name          *string
+	description   *string
+	clearedFields map[string]struct{}
+	routes        map[int64]struct{}
+	removedroutes map[int64]struct{}
+	clearedroutes bool
+	groups        map[int64]struct{}
+	removedgroups map[int64]struct{}
+	clearedgroups bool
+	done          bool
+	oldValue      func(context.Context) (*CompositeRouteScheme, error)
+	predicates    []predicate.CompositeRouteScheme
+}
+
+var _ ent.Mutation = (*CompositeRouteSchemeMutation)(nil)
+
+// compositerouteschemeOption allows management of the mutation configuration using functional options.
+type compositerouteschemeOption func(*CompositeRouteSchemeMutation)
+
+// newCompositeRouteSchemeMutation creates new mutation for the CompositeRouteScheme entity.
+func newCompositeRouteSchemeMutation(c config, op Op, opts ...compositerouteschemeOption) *CompositeRouteSchemeMutation {
+	m := &CompositeRouteSchemeMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCompositeRouteScheme,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCompositeRouteSchemeID sets the ID field of the mutation.
+func withCompositeRouteSchemeID(id int64) compositerouteschemeOption {
+	return func(m *CompositeRouteSchemeMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CompositeRouteScheme
+		)
+		m.oldValue = func(ctx context.Context) (*CompositeRouteScheme, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CompositeRouteScheme.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCompositeRouteScheme sets the old CompositeRouteScheme of the mutation.
+func withCompositeRouteScheme(node *CompositeRouteScheme) compositerouteschemeOption {
+	return func(m *CompositeRouteSchemeMutation) {
+		m.oldValue = func(context.Context) (*CompositeRouteScheme, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CompositeRouteSchemeMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CompositeRouteSchemeMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CompositeRouteSchemeMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CompositeRouteSchemeMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CompositeRouteScheme.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CompositeRouteSchemeMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CompositeRouteSchemeMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CompositeRouteScheme entity.
+// If the CompositeRouteScheme object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeRouteSchemeMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CompositeRouteSchemeMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *CompositeRouteSchemeMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *CompositeRouteSchemeMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the CompositeRouteScheme entity.
+// If the CompositeRouteScheme object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeRouteSchemeMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *CompositeRouteSchemeMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *CompositeRouteSchemeMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *CompositeRouteSchemeMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the CompositeRouteScheme entity.
+// If the CompositeRouteScheme object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeRouteSchemeMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *CompositeRouteSchemeMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[compositeroutescheme.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *CompositeRouteSchemeMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[compositeroutescheme.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *CompositeRouteSchemeMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, compositeroutescheme.FieldDeletedAt)
+}
+
+// SetName sets the "name" field.
+func (m *CompositeRouteSchemeMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *CompositeRouteSchemeMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the CompositeRouteScheme entity.
+// If the CompositeRouteScheme object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeRouteSchemeMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *CompositeRouteSchemeMutation) ResetName() {
+	m.name = nil
+}
+
+// SetDescription sets the "description" field.
+func (m *CompositeRouteSchemeMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *CompositeRouteSchemeMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the CompositeRouteScheme entity.
+// If the CompositeRouteScheme object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeRouteSchemeMutation) OldDescription(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ClearDescription clears the value of the "description" field.
+func (m *CompositeRouteSchemeMutation) ClearDescription() {
+	m.description = nil
+	m.clearedFields[compositeroutescheme.FieldDescription] = struct{}{}
+}
+
+// DescriptionCleared returns if the "description" field was cleared in this mutation.
+func (m *CompositeRouteSchemeMutation) DescriptionCleared() bool {
+	_, ok := m.clearedFields[compositeroutescheme.FieldDescription]
+	return ok
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *CompositeRouteSchemeMutation) ResetDescription() {
+	m.description = nil
+	delete(m.clearedFields, compositeroutescheme.FieldDescription)
+}
+
+// AddRouteIDs adds the "routes" edge to the CompositeModelRoute entity by ids.
+func (m *CompositeRouteSchemeMutation) AddRouteIDs(ids ...int64) {
+	if m.routes == nil {
+		m.routes = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.routes[ids[i]] = struct{}{}
+	}
+}
+
+// ClearRoutes clears the "routes" edge to the CompositeModelRoute entity.
+func (m *CompositeRouteSchemeMutation) ClearRoutes() {
+	m.clearedroutes = true
+}
+
+// RoutesCleared reports if the "routes" edge to the CompositeModelRoute entity was cleared.
+func (m *CompositeRouteSchemeMutation) RoutesCleared() bool {
+	return m.clearedroutes
+}
+
+// RemoveRouteIDs removes the "routes" edge to the CompositeModelRoute entity by IDs.
+func (m *CompositeRouteSchemeMutation) RemoveRouteIDs(ids ...int64) {
+	if m.removedroutes == nil {
+		m.removedroutes = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.routes, ids[i])
+		m.removedroutes[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedRoutes returns the removed IDs of the "routes" edge to the CompositeModelRoute entity.
+func (m *CompositeRouteSchemeMutation) RemovedRoutesIDs() (ids []int64) {
+	for id := range m.removedroutes {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// RoutesIDs returns the "routes" edge IDs in the mutation.
+func (m *CompositeRouteSchemeMutation) RoutesIDs() (ids []int64) {
+	for id := range m.routes {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetRoutes resets all changes to the "routes" edge.
+func (m *CompositeRouteSchemeMutation) ResetRoutes() {
+	m.routes = nil
+	m.clearedroutes = false
+	m.removedroutes = nil
+}
+
+// AddGroupIDs adds the "groups" edge to the Group entity by ids.
+func (m *CompositeRouteSchemeMutation) AddGroupIDs(ids ...int64) {
+	if m.groups == nil {
+		m.groups = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.groups[ids[i]] = struct{}{}
+	}
+}
+
+// ClearGroups clears the "groups" edge to the Group entity.
+func (m *CompositeRouteSchemeMutation) ClearGroups() {
+	m.clearedgroups = true
+}
+
+// GroupsCleared reports if the "groups" edge to the Group entity was cleared.
+func (m *CompositeRouteSchemeMutation) GroupsCleared() bool {
+	return m.clearedgroups
+}
+
+// RemoveGroupIDs removes the "groups" edge to the Group entity by IDs.
+func (m *CompositeRouteSchemeMutation) RemoveGroupIDs(ids ...int64) {
+	if m.removedgroups == nil {
+		m.removedgroups = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.groups, ids[i])
+		m.removedgroups[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedGroups returns the removed IDs of the "groups" edge to the Group entity.
+func (m *CompositeRouteSchemeMutation) RemovedGroupsIDs() (ids []int64) {
+	for id := range m.removedgroups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// GroupsIDs returns the "groups" edge IDs in the mutation.
+func (m *CompositeRouteSchemeMutation) GroupsIDs() (ids []int64) {
+	for id := range m.groups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetGroups resets all changes to the "groups" edge.
+func (m *CompositeRouteSchemeMutation) ResetGroups() {
+	m.groups = nil
+	m.clearedgroups = false
+	m.removedgroups = nil
+}
+
+// Where appends a list predicates to the CompositeRouteSchemeMutation builder.
+func (m *CompositeRouteSchemeMutation) Where(ps ...predicate.CompositeRouteScheme) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CompositeRouteSchemeMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CompositeRouteSchemeMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CompositeRouteScheme, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CompositeRouteSchemeMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CompositeRouteSchemeMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CompositeRouteScheme).
+func (m *CompositeRouteSchemeMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CompositeRouteSchemeMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.created_at != nil {
+		fields = append(fields, compositeroutescheme.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, compositeroutescheme.FieldUpdatedAt)
+	}
+	if m.deleted_at != nil {
+		fields = append(fields, compositeroutescheme.FieldDeletedAt)
+	}
+	if m.name != nil {
+		fields = append(fields, compositeroutescheme.FieldName)
+	}
+	if m.description != nil {
+		fields = append(fields, compositeroutescheme.FieldDescription)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CompositeRouteSchemeMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case compositeroutescheme.FieldCreatedAt:
+		return m.CreatedAt()
+	case compositeroutescheme.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case compositeroutescheme.FieldDeletedAt:
+		return m.DeletedAt()
+	case compositeroutescheme.FieldName:
+		return m.Name()
+	case compositeroutescheme.FieldDescription:
+		return m.Description()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CompositeRouteSchemeMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case compositeroutescheme.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case compositeroutescheme.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case compositeroutescheme.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
+	case compositeroutescheme.FieldName:
+		return m.OldName(ctx)
+	case compositeroutescheme.FieldDescription:
+		return m.OldDescription(ctx)
+	}
+	return nil, fmt.Errorf("unknown CompositeRouteScheme field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CompositeRouteSchemeMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case compositeroutescheme.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case compositeroutescheme.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case compositeroutescheme.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
+	case compositeroutescheme.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case compositeroutescheme.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CompositeRouteScheme field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CompositeRouteSchemeMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CompositeRouteSchemeMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CompositeRouteSchemeMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown CompositeRouteScheme numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CompositeRouteSchemeMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(compositeroutescheme.FieldDeletedAt) {
+		fields = append(fields, compositeroutescheme.FieldDeletedAt)
+	}
+	if m.FieldCleared(compositeroutescheme.FieldDescription) {
+		fields = append(fields, compositeroutescheme.FieldDescription)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CompositeRouteSchemeMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CompositeRouteSchemeMutation) ClearField(name string) error {
+	switch name {
+	case compositeroutescheme.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
+	case compositeroutescheme.FieldDescription:
+		m.ClearDescription()
+		return nil
+	}
+	return fmt.Errorf("unknown CompositeRouteScheme nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CompositeRouteSchemeMutation) ResetField(name string) error {
+	switch name {
+	case compositeroutescheme.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case compositeroutescheme.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case compositeroutescheme.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
+	case compositeroutescheme.FieldName:
+		m.ResetName()
+		return nil
+	case compositeroutescheme.FieldDescription:
+		m.ResetDescription()
+		return nil
+	}
+	return fmt.Errorf("unknown CompositeRouteScheme field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CompositeRouteSchemeMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.routes != nil {
+		edges = append(edges, compositeroutescheme.EdgeRoutes)
+	}
+	if m.groups != nil {
+		edges = append(edges, compositeroutescheme.EdgeGroups)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CompositeRouteSchemeMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case compositeroutescheme.EdgeRoutes:
+		ids := make([]ent.Value, 0, len(m.routes))
+		for id := range m.routes {
+			ids = append(ids, id)
+		}
+		return ids
+	case compositeroutescheme.EdgeGroups:
+		ids := make([]ent.Value, 0, len(m.groups))
+		for id := range m.groups {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CompositeRouteSchemeMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.removedroutes != nil {
+		edges = append(edges, compositeroutescheme.EdgeRoutes)
+	}
+	if m.removedgroups != nil {
+		edges = append(edges, compositeroutescheme.EdgeGroups)
+	}
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CompositeRouteSchemeMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case compositeroutescheme.EdgeRoutes:
+		ids := make([]ent.Value, 0, len(m.removedroutes))
+		for id := range m.removedroutes {
+			ids = append(ids, id)
+		}
+		return ids
+	case compositeroutescheme.EdgeGroups:
+		ids := make([]ent.Value, 0, len(m.removedgroups))
+		for id := range m.removedgroups {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CompositeRouteSchemeMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedroutes {
+		edges = append(edges, compositeroutescheme.EdgeRoutes)
+	}
+	if m.clearedgroups {
+		edges = append(edges, compositeroutescheme.EdgeGroups)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CompositeRouteSchemeMutation) EdgeCleared(name string) bool {
+	switch name {
+	case compositeroutescheme.EdgeRoutes:
+		return m.clearedroutes
+	case compositeroutescheme.EdgeGroups:
+		return m.clearedgroups
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CompositeRouteSchemeMutation) ClearEdge(name string) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown CompositeRouteScheme unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CompositeRouteSchemeMutation) ResetEdge(name string) error {
+	switch name {
+	case compositeroutescheme.EdgeRoutes:
+		m.ResetRoutes()
+		return nil
+	case compositeroutescheme.EdgeGroups:
+		m.ResetGroups()
+		return nil
+	}
+	return fmt.Errorf("unknown CompositeRouteScheme edge %s", name)
 }
 
 // ErrorPassthroughRuleMutation represents an operation that mutates the ErrorPassthroughRule nodes in the graph.
@@ -22195,6 +22956,8 @@ type GroupMutation struct {
 	allowed_users                           map[int64]struct{}
 	removedallowed_users                    map[int64]struct{}
 	clearedallowed_users                    bool
+	composite_route_scheme                  *int64
+	clearedcomposite_route_scheme           bool
 	done                                    bool
 	oldValue                                func(context.Context) (*Group, error)
 	predicates                              []predicate.Group
@@ -25526,6 +26289,55 @@ func (m *GroupMutation) ResetProfitSafetyBuffer() {
 	m.addprofit_safety_buffer = nil
 }
 
+// SetCompositeRouteSchemeID sets the "composite_route_scheme_id" field.
+func (m *GroupMutation) SetCompositeRouteSchemeID(i int64) {
+	m.composite_route_scheme = &i
+}
+
+// CompositeRouteSchemeID returns the value of the "composite_route_scheme_id" field in the mutation.
+func (m *GroupMutation) CompositeRouteSchemeID() (r int64, exists bool) {
+	v := m.composite_route_scheme
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCompositeRouteSchemeID returns the old "composite_route_scheme_id" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldCompositeRouteSchemeID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCompositeRouteSchemeID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCompositeRouteSchemeID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCompositeRouteSchemeID: %w", err)
+	}
+	return oldValue.CompositeRouteSchemeID, nil
+}
+
+// ClearCompositeRouteSchemeID clears the value of the "composite_route_scheme_id" field.
+func (m *GroupMutation) ClearCompositeRouteSchemeID() {
+	m.composite_route_scheme = nil
+	m.clearedFields[group.FieldCompositeRouteSchemeID] = struct{}{}
+}
+
+// CompositeRouteSchemeIDCleared returns if the "composite_route_scheme_id" field was cleared in this mutation.
+func (m *GroupMutation) CompositeRouteSchemeIDCleared() bool {
+	_, ok := m.clearedFields[group.FieldCompositeRouteSchemeID]
+	return ok
+}
+
+// ResetCompositeRouteSchemeID resets all changes to the "composite_route_scheme_id" field.
+func (m *GroupMutation) ResetCompositeRouteSchemeID() {
+	m.composite_route_scheme = nil
+	delete(m.clearedFields, group.FieldCompositeRouteSchemeID)
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -25850,6 +26662,33 @@ func (m *GroupMutation) ResetAllowedUsers() {
 	m.removedallowed_users = nil
 }
 
+// ClearCompositeRouteScheme clears the "composite_route_scheme" edge to the CompositeRouteScheme entity.
+func (m *GroupMutation) ClearCompositeRouteScheme() {
+	m.clearedcomposite_route_scheme = true
+	m.clearedFields[group.FieldCompositeRouteSchemeID] = struct{}{}
+}
+
+// CompositeRouteSchemeCleared reports if the "composite_route_scheme" edge to the CompositeRouteScheme entity was cleared.
+func (m *GroupMutation) CompositeRouteSchemeCleared() bool {
+	return m.CompositeRouteSchemeIDCleared() || m.clearedcomposite_route_scheme
+}
+
+// CompositeRouteSchemeIDs returns the "composite_route_scheme" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// CompositeRouteSchemeID instead. It exists only for internal usage by the builders.
+func (m *GroupMutation) CompositeRouteSchemeIDs() (ids []int64) {
+	if id := m.composite_route_scheme; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetCompositeRouteScheme resets all changes to the "composite_route_scheme" edge.
+func (m *GroupMutation) ResetCompositeRouteScheme() {
+	m.composite_route_scheme = nil
+	m.clearedcomposite_route_scheme = false
+}
+
 // Where appends a list predicates to the GroupMutation builder.
 func (m *GroupMutation) Where(ps ...predicate.Group) {
 	m.predicates = append(m.predicates, ps...)
@@ -25884,7 +26723,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 65)
+	fields := make([]string, 0, 66)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26080,6 +26919,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.profit_safety_buffer != nil {
 		fields = append(fields, group.FieldProfitSafetyBuffer)
 	}
+	if m.composite_route_scheme != nil {
+		fields = append(fields, group.FieldCompositeRouteSchemeID)
+	}
 	return fields
 }
 
@@ -26218,6 +27060,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ProfitMinMargin()
 	case group.FieldProfitSafetyBuffer:
 		return m.ProfitSafetyBuffer()
+	case group.FieldCompositeRouteSchemeID:
+		return m.CompositeRouteSchemeID()
 	}
 	return nil, false
 }
@@ -26357,6 +27201,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldProfitMinMargin(ctx)
 	case group.FieldProfitSafetyBuffer:
 		return m.OldProfitSafetyBuffer(ctx)
+	case group.FieldCompositeRouteSchemeID:
+		return m.OldCompositeRouteSchemeID(ctx)
 	}
 	return nil, fmt.Errorf("unknown Group field %s", name)
 }
@@ -26821,6 +27667,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetProfitSafetyBuffer(v)
 		return nil
+	case group.FieldCompositeRouteSchemeID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCompositeRouteSchemeID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
 }
@@ -27244,6 +28097,9 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldModelRouting) {
 		fields = append(fields, group.FieldModelRouting)
 	}
+	if m.FieldCleared(group.FieldCompositeRouteSchemeID) {
+		fields = append(fields, group.FieldCompositeRouteSchemeID)
+	}
 	return fields
 }
 
@@ -27323,6 +28179,9 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldModelRouting:
 		m.ClearModelRouting()
+		return nil
+	case group.FieldCompositeRouteSchemeID:
+		m.ClearCompositeRouteSchemeID()
 		return nil
 	}
 	return fmt.Errorf("unknown Group nullable field %s", name)
@@ -27527,13 +28386,16 @@ func (m *GroupMutation) ResetField(name string) error {
 	case group.FieldProfitSafetyBuffer:
 		m.ResetProfitSafetyBuffer()
 		return nil
+	case group.FieldCompositeRouteSchemeID:
+		m.ResetCompositeRouteSchemeID()
+		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
 }
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *GroupMutation) AddedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.api_keys != nil {
 		edges = append(edges, group.EdgeAPIKeys)
 	}
@@ -27551,6 +28413,9 @@ func (m *GroupMutation) AddedEdges() []string {
 	}
 	if m.allowed_users != nil {
 		edges = append(edges, group.EdgeAllowedUsers)
+	}
+	if m.composite_route_scheme != nil {
+		edges = append(edges, group.EdgeCompositeRouteScheme)
 	}
 	return edges
 }
@@ -27595,13 +28460,17 @@ func (m *GroupMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case group.EdgeCompositeRouteScheme:
+		if id := m.composite_route_scheme; id != nil {
+			return []ent.Value{*id}
+		}
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *GroupMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.removedapi_keys != nil {
 		edges = append(edges, group.EdgeAPIKeys)
 	}
@@ -27669,7 +28538,7 @@ func (m *GroupMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *GroupMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.clearedapi_keys {
 		edges = append(edges, group.EdgeAPIKeys)
 	}
@@ -27687,6 +28556,9 @@ func (m *GroupMutation) ClearedEdges() []string {
 	}
 	if m.clearedallowed_users {
 		edges = append(edges, group.EdgeAllowedUsers)
+	}
+	if m.clearedcomposite_route_scheme {
+		edges = append(edges, group.EdgeCompositeRouteScheme)
 	}
 	return edges
 }
@@ -27707,6 +28579,8 @@ func (m *GroupMutation) EdgeCleared(name string) bool {
 		return m.clearedaccounts
 	case group.EdgeAllowedUsers:
 		return m.clearedallowed_users
+	case group.EdgeCompositeRouteScheme:
+		return m.clearedcomposite_route_scheme
 	}
 	return false
 }
@@ -27715,6 +28589,9 @@ func (m *GroupMutation) EdgeCleared(name string) bool {
 // if that edge is not defined in the schema.
 func (m *GroupMutation) ClearEdge(name string) error {
 	switch name {
+	case group.EdgeCompositeRouteScheme:
+		m.ClearCompositeRouteScheme()
+		return nil
 	}
 	return fmt.Errorf("unknown Group unique edge %s", name)
 }
@@ -27740,6 +28617,9 @@ func (m *GroupMutation) ResetEdge(name string) error {
 		return nil
 	case group.EdgeAllowedUsers:
 		m.ResetAllowedUsers()
+		return nil
+	case group.EdgeCompositeRouteScheme:
+		m.ResetCompositeRouteScheme()
 		return nil
 	}
 	return fmt.Errorf("unknown Group edge %s", name)

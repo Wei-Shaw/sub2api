@@ -164,6 +164,8 @@ type CreateGroupRequest struct {
 	ReasoningEffortMappings []service.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
+	// Composite 分组绑定的路由方案
+	CompositeRouteSchemeID *int64 `json:"composite_route_scheme_id"`
 }
 
 // UpdateGroupRequest represents update group request
@@ -237,6 +239,8 @@ type UpdateGroupRequest struct {
 	ReasoningEffortMappings *[]service.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
+	// Composite 分组绑定的路由方案；nil 表示不修改，0 表示清除
+	CompositeRouteSchemeID *int64 `json:"composite_route_scheme_id"`
 }
 
 type CompositeRouteRequest struct {
@@ -570,6 +574,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		MaxReasoningEffortOverLimit:     req.MaxReasoningEffortOverLimit,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
+		CompositeRouteSchemeID:          req.CompositeRouteSchemeID,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -702,6 +707,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		MaxReasoningEffortOverLimit:     req.MaxReasoningEffortOverLimit,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
+		CompositeRouteSchemeID:          req.CompositeRouteSchemeID,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

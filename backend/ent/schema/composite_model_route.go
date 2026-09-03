@@ -33,7 +33,7 @@ func (CompositeModelRoute) Mixin() []ent.Mixin {
 
 func (CompositeModelRoute) Fields() []ent.Field {
 	return []ent.Field{
-		field.Int64("group_id"),
+		field.Int64("scheme_id"),
 		field.String("public_model").
 			MaxLen(200).
 			NotEmpty().
@@ -68,19 +68,20 @@ func (CompositeModelRoute) Fields() []ent.Field {
 
 func (CompositeModelRoute) Edges() []ent.Edge {
 	return []ent.Edge{
-		edge.To("group", Group.Type).
+		edge.From("scheme", CompositeRouteScheme.Type).
+			Ref("routes").
 			Unique().
 			Required().
-			Field("group_id"),
+			Field("scheme_id"),
 	}
 }
 
 func (CompositeModelRoute) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("group_id"),
-		index.Fields("group_id", "enabled"),
-		index.Fields("group_id", "endpoint"),
-		index.Fields("group_id", "target_platform"),
+		index.Fields("scheme_id"),
+		index.Fields("scheme_id", "enabled"),
+		index.Fields("scheme_id", "endpoint"),
+		index.Fields("scheme_id", "target_platform"),
 		index.Fields("deleted_at"),
 		index.Fields("priority"),
 	}

@@ -146,6 +146,8 @@ const (
 	FieldProfitMinMargin = "profit_min_margin"
 	// FieldProfitSafetyBuffer holds the string denoting the profit_safety_buffer field in the database.
 	FieldProfitSafetyBuffer = "profit_safety_buffer"
+	// FieldCompositeRouteSchemeID holds the string denoting the composite_route_scheme_id field in the database.
+	FieldCompositeRouteSchemeID = "composite_route_scheme_id"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -158,6 +160,8 @@ const (
 	EdgeAccounts = "accounts"
 	// EdgeAllowedUsers holds the string denoting the allowed_users edge name in mutations.
 	EdgeAllowedUsers = "allowed_users"
+	// EdgeCompositeRouteScheme holds the string denoting the composite_route_scheme edge name in mutations.
+	EdgeCompositeRouteScheme = "composite_route_scheme"
 	// EdgeAccountGroups holds the string denoting the account_groups edge name in mutations.
 	EdgeAccountGroups = "account_groups"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
@@ -202,6 +206,13 @@ const (
 	// AllowedUsersInverseTable is the table name for the User entity.
 	// It exists in this package in order to avoid circular dependency with the "user" package.
 	AllowedUsersInverseTable = "users"
+	// CompositeRouteSchemeTable is the table that holds the composite_route_scheme relation/edge.
+	CompositeRouteSchemeTable = "groups"
+	// CompositeRouteSchemeInverseTable is the table name for the CompositeRouteScheme entity.
+	// It exists in this package in order to avoid circular dependency with the "compositeroutescheme" package.
+	CompositeRouteSchemeInverseTable = "composite_route_schemes"
+	// CompositeRouteSchemeColumn is the table column denoting the composite_route_scheme relation/edge.
+	CompositeRouteSchemeColumn = "composite_route_scheme_id"
 	// AccountGroupsTable is the table that holds the account_groups relation/edge.
 	AccountGroupsTable = "account_groups"
 	// AccountGroupsInverseTable is the table name for the AccountGroup entity.
@@ -286,6 +297,7 @@ var Columns = []string{
 	FieldProfitControlEnabled,
 	FieldProfitMinMargin,
 	FieldProfitSafetyBuffer,
+	FieldCompositeRouteSchemeID,
 }
 
 var (
@@ -729,6 +741,11 @@ func ByProfitSafetyBuffer(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProfitSafetyBuffer, opts...).ToFunc()
 }
 
+// ByCompositeRouteSchemeID orders the results by the composite_route_scheme_id field.
+func ByCompositeRouteSchemeID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCompositeRouteSchemeID, opts...).ToFunc()
+}
+
 // ByAPIKeysCount orders the results by api_keys count.
 func ByAPIKeysCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -813,6 +830,13 @@ func ByAllowedUsers(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByCompositeRouteSchemeField orders the results by composite_route_scheme field.
+func ByCompositeRouteSchemeField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCompositeRouteSchemeStep(), sql.OrderByField(field, opts...))
+	}
+}
+
 // ByAccountGroupsCount orders the results by account_groups count.
 func ByAccountGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -880,6 +904,13 @@ func newAllowedUsersStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(AllowedUsersInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2M, true, AllowedUsersTable, AllowedUsersPrimaryKey...),
+	)
+}
+func newCompositeRouteSchemeStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CompositeRouteSchemeInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, false, CompositeRouteSchemeTable, CompositeRouteSchemeColumn),
 	)
 }
 func newAccountGroupsStep() *sqlgraph.Step {

@@ -647,6 +647,9 @@ export interface AdminGroup extends Group {
 
   // 分组排序
   sort_order: number
+
+  // Composite 分组绑定的路由方案
+  composite_route_scheme_id?: number | null
 }
 
 export interface ModelsListConfig {
@@ -668,9 +671,26 @@ export type CompositeRouteEndpoint =
 
 export type CompositeRouteSource = 'route' | 'detector' | string
 
+export interface CompositeRouteScheme {
+  id: number
+  name: string
+  description: string
+  route_count: number
+  group_count: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface CompositeRouteSchemeInput {
+  name: string
+  description?: string
+  copy_from_scheme_id?: number
+}
+
 export interface CompositeModelRoute {
   id: number
-  group_id: number
+  scheme_id: number
+  group_id?: number
   public_model: string
   match_type: CompositeRouteMatchType
   target_platform: Exclude<GroupPlatform, 'composite'>
@@ -833,6 +853,7 @@ export interface CreateGroupRequest {
   require_privacy_set?: boolean
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
+  composite_route_scheme_id?: number | null
 }
 
 export interface UpdateGroupRequest {
@@ -897,6 +918,7 @@ export interface UpdateGroupRequest {
   require_oauth_only?: boolean
   require_privacy_set?: boolean
   copy_accounts_from_group_ids?: number[]
+  composite_route_scheme_id?: number | null
 }
 
 // ==================== Account & Proxy Types ====================

@@ -129,6 +129,10 @@ type Group struct {
 	ProfitMinMargin      float64 // 最低毛利率，小数存储（0.30=30%）
 	ProfitSafetyBuffer   float64 // 安全缓冲，小数，与 margin 相加后从 D 中扣除
 
+	// CompositeRouteSchemeID binds a composite group to a reusable route scheme.
+	// Nil means only built-in detection / account ownership is used.
+	CompositeRouteSchemeID *int64
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 

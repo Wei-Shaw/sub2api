@@ -114,13 +114,15 @@ func (s *adminServiceImpl) CreateCompositeRoute(ctx context.Context, groupID int
 	if err := s.requireCompositeGroup(ctx, groupID); err != nil {
 		return nil, err
 	}
-	if s.compositeRouteRepo == nil {
-		return nil, fmt.Errorf("composite route repository is not configured")
-	}
-	route, err := compositeRouteFromInput(groupID, input)
+	schemeID, err := s.ensureGroupRouteScheme(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
+	route, err := compositeRouteFromInput(schemeID, input)
+	if err != nil {
+		return nil, err
+	}
+	route.GroupID = groupID
 	if err := s.compositeRouteRepo.Create(ctx, route); err != nil {
 		return nil, err
 	}
@@ -139,11 +141,16 @@ func (s *adminServiceImpl) UpdateCompositeRoute(ctx context.Context, groupID, ro
 	} else if !ok {
 		return nil, ErrCompositeRouteNotFound
 	}
-	route, err := compositeRouteFromInput(groupID, input)
+	schemeID, err := s.ensureGroupRouteScheme(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	route, err := compositeRouteFromInput(schemeID, input)
 	if err != nil {
 		return nil, err
 	}
 	route.ID = routeID
+	route.GroupID = groupID
 	if err := s.compositeRouteRepo.Update(ctx, route); err != nil {
 		return nil, err
 	}
@@ -204,7 +211,65 @@ func (s *adminServiceImpl) compositeRouteBelongsToGroup(ctx context.Context, gro
 	return false, nil
 }
 
-func compositeRouteFromInput(groupID int64, input CompositeRouteInput) (*CompositeModelRoute, error) {
+func (s *adminServiceImpl) applyCompositeRouteSchemeID(ctx context.Context, group *Group, schemeID *int64, update bool) error {
+	if group == nil {
+		return nil
+	}
+	if group.Platform != PlatformComposite {
+		group.CompositeRouteSchemeID = nil
+		return nil
+	}
+	if schemeID == nil {
+		if !update {
+			group.CompositeRouteSchemeID = nil
+		}
+		return nil
+	}
+	if *schemeID <= 0 {
+		group.CompositeRouteSchemeID = nil
+		return nil
+	}
+	if s.compositeRouteRepo == nil {
+		return fmt.Errorf("composite route repository is not configured")
+	}
+	if _, err := s.compositeRouteRepo.GetScheme(ctx, *schemeID); err != nil {
+		return err
+	}
+	id := *schemeID
+	group.CompositeRouteSchemeID = &id
+	return nil
+}
+
+func (s *adminServiceImpl) ensureGroupRouteScheme(ctx context.Context, groupID int64) (int64, error) {
+	if s.compositeRouteRepo == nil {
+		return 0, fmt.Errorf("composite route repository is not configured")
+	}
+	group, err := s.groupRepo.GetByIDLite(ctx, groupID)
+	if err != nil {
+		return 0, err
+	}
+	if group.CompositeRouteSchemeID != nil && *group.CompositeRouteSchemeID > 0 {
+		return *group.CompositeRouteSchemeID, nil
+	}
+	name := strings.TrimSpace(group.Name)
+	if name == "" {
+		name = fmt.Sprintf("group-%d", groupID)
+	}
+	scheme := &CompositeRouteScheme{
+		Name:        fmt.Sprintf("%s (#%d)", name, groupID),
+		Description: fmt.Sprintf("Auto-created for composite group %s", name),
+	}
+	if err := s.compositeRouteRepo.CreateScheme(ctx, scheme); err != nil {
+		return 0, err
+	}
+	group.CompositeRouteSchemeID = &scheme.ID
+	if err := s.groupRepo.Update(ctx, group); err != nil {
+		return 0, err
+	}
+	return scheme.ID, nil
+}
+
+func compositeRouteFromInput(schemeID int64, input CompositeRouteInput) (*CompositeModelRoute, error) {
 	input = normalizeCompositeRouteInput(input)
 	if input.PublicModel == "" {
 		return nil, fmt.Errorf("public_model is required")
@@ -216,7 +281,7 @@ func compositeRouteFromInput(groupID int64, input CompositeRouteInput) (*Composi
 		input.Priority = 100
 	}
 	return &CompositeModelRoute{
-		GroupID:        groupID,
+		SchemeID:       schemeID,
 		PublicModel:    input.PublicModel,
 		MatchType:      input.MatchType,
 		TargetPlatform: input.TargetPlatform,
@@ -528,6 +593,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		MaxReasoningEffort:              maxReasoningEffort,
 		MaxReasoningEffortOverLimit:     maxReasoningEffortOverLimit,
 		ReasoningEffortMappings:         reasoningEffortMappings,
+	}
+	if err := s.applyCompositeRouteSchemeID(ctx, group, input.CompositeRouteSchemeID, false); err != nil {
+		return nil, err
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	sanitizeGroupOpenAIFast(group)
@@ -859,6 +927,10 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		}
 	}
 	group.FallbackGroupIDOnInvalidRequest = fallbackOnInvalidRequest
+
+	if err := s.applyCompositeRouteSchemeID(ctx, group, input.CompositeRouteSchemeID, true); err != nil {
+		return nil, err
+	}
 
 	// 模型路由配置
 	if input.ModelRouting != nil {

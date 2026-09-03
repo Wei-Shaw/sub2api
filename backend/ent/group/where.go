@@ -345,6 +345,11 @@ func ProfitSafetyBuffer(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldProfitSafetyBuffer, v))
 }
 
+// CompositeRouteSchemeID applies equality check predicate on the "composite_route_scheme_id" field. It's identical to CompositeRouteSchemeIDEQ.
+func CompositeRouteSchemeID(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCompositeRouteSchemeID, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -2650,6 +2655,36 @@ func ProfitSafetyBufferLTE(v float64) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldProfitSafetyBuffer, v))
 }
 
+// CompositeRouteSchemeIDEQ applies the EQ predicate on the "composite_route_scheme_id" field.
+func CompositeRouteSchemeIDEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCompositeRouteSchemeID, v))
+}
+
+// CompositeRouteSchemeIDNEQ applies the NEQ predicate on the "composite_route_scheme_id" field.
+func CompositeRouteSchemeIDNEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldCompositeRouteSchemeID, v))
+}
+
+// CompositeRouteSchemeIDIn applies the In predicate on the "composite_route_scheme_id" field.
+func CompositeRouteSchemeIDIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldCompositeRouteSchemeID, vs...))
+}
+
+// CompositeRouteSchemeIDNotIn applies the NotIn predicate on the "composite_route_scheme_id" field.
+func CompositeRouteSchemeIDNotIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldCompositeRouteSchemeID, vs...))
+}
+
+// CompositeRouteSchemeIDIsNil applies the IsNil predicate on the "composite_route_scheme_id" field.
+func CompositeRouteSchemeIDIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldCompositeRouteSchemeID))
+}
+
+// CompositeRouteSchemeIDNotNil applies the NotNil predicate on the "composite_route_scheme_id" field.
+func CompositeRouteSchemeIDNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldCompositeRouteSchemeID))
+}
+
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.
 func HasAPIKeys() predicate.Group {
 	return predicate.Group(func(s *sql.Selector) {
@@ -2780,6 +2815,29 @@ func HasAllowedUsers() predicate.Group {
 func HasAllowedUsersWith(preds ...predicate.User) predicate.Group {
 	return predicate.Group(func(s *sql.Selector) {
 		step := newAllowedUsersStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasCompositeRouteScheme applies the HasEdge predicate on the "composite_route_scheme" edge.
+func HasCompositeRouteScheme() predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, CompositeRouteSchemeTable, CompositeRouteSchemeColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasCompositeRouteSchemeWith applies the HasEdge predicate on the "composite_route_scheme" edge with a given conditions (other predicates).
+func HasCompositeRouteSchemeWith(preds ...predicate.CompositeRouteScheme) predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := newCompositeRouteSchemeStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

@@ -13,7 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
-	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/compositeroutescheme"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 )
 
@@ -24,7 +24,7 @@ type CompositeModelRouteQuery struct {
 	order      []compositemodelroute.OrderOption
 	inters     []Interceptor
 	predicates []predicate.CompositeModelRoute
-	withGroup  *GroupQuery
+	withScheme *CompositeRouteSchemeQuery
 	modifiers  []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -62,9 +62,9 @@ func (_q *CompositeModelRouteQuery) Order(o ...compositemodelroute.OrderOption) 
 	return _q
 }
 
-// QueryGroup chains the current query on the "group" edge.
-func (_q *CompositeModelRouteQuery) QueryGroup() *GroupQuery {
-	query := (&GroupClient{config: _q.config}).Query()
+// QueryScheme chains the current query on the "scheme" edge.
+func (_q *CompositeModelRouteQuery) QueryScheme() *CompositeRouteSchemeQuery {
+	query := (&CompositeRouteSchemeClient{config: _q.config}).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
 			return nil, err
@@ -75,8 +75,8 @@ func (_q *CompositeModelRouteQuery) QueryGroup() *GroupQuery {
 		}
 		step := sqlgraph.NewStep(
 			sqlgraph.From(compositemodelroute.Table, compositemodelroute.FieldID, selector),
-			sqlgraph.To(group.Table, group.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, compositemodelroute.GroupTable, compositemodelroute.GroupColumn),
+			sqlgraph.To(compositeroutescheme.Table, compositeroutescheme.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, compositemodelroute.SchemeTable, compositemodelroute.SchemeColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -276,21 +276,21 @@ func (_q *CompositeModelRouteQuery) Clone() *CompositeModelRouteQuery {
 		order:      append([]compositemodelroute.OrderOption{}, _q.order...),
 		inters:     append([]Interceptor{}, _q.inters...),
 		predicates: append([]predicate.CompositeModelRoute{}, _q.predicates...),
-		withGroup:  _q.withGroup.Clone(),
+		withScheme: _q.withScheme.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
 	}
 }
 
-// WithGroup tells the query-builder to eager-load the nodes that are connected to
-// the "group" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *CompositeModelRouteQuery) WithGroup(opts ...func(*GroupQuery)) *CompositeModelRouteQuery {
-	query := (&GroupClient{config: _q.config}).Query()
+// WithScheme tells the query-builder to eager-load the nodes that are connected to
+// the "scheme" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *CompositeModelRouteQuery) WithScheme(opts ...func(*CompositeRouteSchemeQuery)) *CompositeModelRouteQuery {
+	query := (&CompositeRouteSchemeClient{config: _q.config}).Query()
 	for _, opt := range opts {
 		opt(query)
 	}
-	_q.withGroup = query
+	_q.withScheme = query
 	return _q
 }
 
@@ -373,7 +373,7 @@ func (_q *CompositeModelRouteQuery) sqlAll(ctx context.Context, hooks ...queryHo
 		nodes       = []*CompositeModelRoute{}
 		_spec       = _q.querySpec()
 		loadedTypes = [1]bool{
-			_q.withGroup != nil,
+			_q.withScheme != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -397,20 +397,20 @@ func (_q *CompositeModelRouteQuery) sqlAll(ctx context.Context, hooks ...queryHo
 	if len(nodes) == 0 {
 		return nodes, nil
 	}
-	if query := _q.withGroup; query != nil {
-		if err := _q.loadGroup(ctx, query, nodes, nil,
-			func(n *CompositeModelRoute, e *Group) { n.Edges.Group = e }); err != nil {
+	if query := _q.withScheme; query != nil {
+		if err := _q.loadScheme(ctx, query, nodes, nil,
+			func(n *CompositeModelRoute, e *CompositeRouteScheme) { n.Edges.Scheme = e }); err != nil {
 			return nil, err
 		}
 	}
 	return nodes, nil
 }
 
-func (_q *CompositeModelRouteQuery) loadGroup(ctx context.Context, query *GroupQuery, nodes []*CompositeModelRoute, init func(*CompositeModelRoute), assign func(*CompositeModelRoute, *Group)) error {
+func (_q *CompositeModelRouteQuery) loadScheme(ctx context.Context, query *CompositeRouteSchemeQuery, nodes []*CompositeModelRoute, init func(*CompositeModelRoute), assign func(*CompositeModelRoute, *CompositeRouteScheme)) error {
 	ids := make([]int64, 0, len(nodes))
 	nodeids := make(map[int64][]*CompositeModelRoute)
 	for i := range nodes {
-		fk := nodes[i].GroupID
+		fk := nodes[i].SchemeID
 		if _, ok := nodeids[fk]; !ok {
 			ids = append(ids, fk)
 		}
@@ -419,7 +419,7 @@ func (_q *CompositeModelRouteQuery) loadGroup(ctx context.Context, query *GroupQ
 	if len(ids) == 0 {
 		return nil
 	}
-	query.Where(group.IDIn(ids...))
+	query.Where(compositeroutescheme.IDIn(ids...))
 	neighbors, err := query.All(ctx)
 	if err != nil {
 		return err
@@ -427,7 +427,7 @@ func (_q *CompositeModelRouteQuery) loadGroup(ctx context.Context, query *GroupQ
 	for _, n := range neighbors {
 		nodes, ok := nodeids[n.ID]
 		if !ok {
-			return fmt.Errorf(`unexpected foreign-key "group_id" returned %v`, n.ID)
+			return fmt.Errorf(`unexpected foreign-key "scheme_id" returned %v`, n.ID)
 		}
 		for i := range nodes {
 			assign(nodes[i], n)
@@ -464,8 +464,8 @@ func (_q *CompositeModelRouteQuery) querySpec() *sqlgraph.QuerySpec {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 			}
 		}
-		if _q.withGroup != nil {
-			_spec.Node.AddColumnOnce(compositemodelroute.FieldGroupID)
+		if _q.withScheme != nil {
+			_spec.Node.AddColumnOnce(compositemodelroute.FieldSchemeID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {
