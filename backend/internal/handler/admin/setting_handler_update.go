@@ -1301,6 +1301,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 					return
 				}
 			}
+			// 开启令牌透传时必须是 https：明文 http 会把用户（可能是管理员）的
+			// 访问令牌暴露在链路上。关闭时仍允许 http，保证既有的非令牌内嵌页可用。
+			if item.PassToken && !strings.HasPrefix(strings.ToLower(urlTrimmed), "https://") {
+				response.BadRequest(c, "Custom menu item URL must use https:// when token passthrough (pass_token) is enabled")
+				return
+			}
 			if item.Visibility != "user" && item.Visibility != "admin" {
 				response.BadRequest(c, "Custom menu item visibility must be 'user' or 'admin'")
 				return

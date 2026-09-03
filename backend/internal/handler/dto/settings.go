@@ -16,6 +16,10 @@ type CustomMenuItem struct {
 	PageSlug   string `json:"page_slug,omitempty"`
 	Visibility string `json:"visibility"` // "user" or "admin"
 	SortOrder  int    `json:"sort_order"`
+	// PassToken 控制是否把当前用户的访问令牌（JWT）作为 `token` query 透传给内嵌页面。
+	// 该令牌与 Authorization: Bearer 是同一枚（默认 24 小时有效，管理员打开管理员可见
+	// 页面时泄露的是管理员令牌），所以默认关闭；开启时 URL 必须是 https。
+	PassToken bool `json:"pass_token"`
 }
 
 // CustomEndpoint represents an admin-configured API endpoint for quick copy.

@@ -102,15 +102,28 @@ curl -X POST "${BASE}/api/v1/admin/users/123/balance" \
 ### 4) 购买页 / 自定义页面 URL Query 透传（iframe / 新窗口一致）
 当 Sub2API 打开 `purchase_subscription_url` 或用户侧自定义页面 iframe URL 时，会统一追加：
 - `user_id`
-- `token`
 - `theme`（`light` / `dark`）
 - `lang`（例如 `zh` / `en`，用于向嵌入页传递当前界面语言）
 - `ui_mode`（固定 `embedded`）
+- `src_host`（来源站点 origin）、`src_url`（来源页面 origin + 路径，不含 query / hash）
 
 示例：
 ```text
-https://pay.example.com/pay?user_id=123&token=<jwt>&theme=light&lang=zh&ui_mode=embedded
+https://pay.example.com/pay?user_id=123&theme=light&lang=zh&ui_mode=embedded
 ```
+
+#### `token`：默认不再透传（逐菜单项手动开启）
+`token` 是访问者本人的**面板访问 JWT**，与 `Authorization: Bearer` 是同一枚凭据：默认 24 小时有效，
+携带 `Role` 声明，管理员打开"仅管理员可见"的自定义页面时泄露的就是管理员令牌。它一旦出现在 URL 上，
+被嵌入站点及其加载的任意脚本都能从 `location.search` 读到，"在新标签页打开"还会把它写进地址栏与浏览器历史。
+因此从本版本起 **`token` 默认不再附加**。
+
+如需保留，请在「管理后台 → 设置 → 自定义菜单页面」中为**单个菜单项**打开「向该页面透传访问令牌」开关
+（对应字段 `custom_menu_items[].pass_token`，缺省为 `false`）。开启时后端会校验该菜单项的 URL 必须是 `https://`。
+
+**推荐做法：不要依赖 `token`。** 本文档中的所有接入调用都是服务端到服务端的：用管理员 API Key
+（`x-api-key`）鉴权，并通过请求体/路径里的 `user_id` 标识用户。Sub2API 的后端也从不接受 query 上的面板 JWT
+作为凭据，因此 `token` 对上述接口没有任何用处。
 
 ### 5) 失败处理建议
 - 支付成功与充值成功分状态落库
@@ -222,15 +235,31 @@ curl -X POST "${BASE}/api/v1/admin/users/123/balance" \
 ### 4) Purchase / Custom Page URL query forwarding (iframe and new tab)
 When Sub2API opens `purchase_subscription_url` or a user-facing custom page iframe URL, it appends:
 - `user_id`
-- `token`
 - `theme` (`light` / `dark`)
 - `lang` (for example `zh` / `en`, used to pass the current UI language to the embedded page)
 - `ui_mode` (fixed: `embedded`)
+- `src_host` (origin of the embedding site) and `src_url` (origin + path of the embedding page, without query / hash)
 
 Example:
 ```text
-https://pay.example.com/pay?user_id=123&token=<jwt>&theme=light&lang=zh&ui_mode=embedded
+https://pay.example.com/pay?user_id=123&theme=light&lang=zh&ui_mode=embedded
 ```
+
+#### `token`: no longer forwarded by default (opt in per menu item)
+`token` is the visitor's own **panel access JWT** - the exact same credential sent as
+`Authorization: Bearer`: valid for 24 hours by default and carrying a `Role` claim, so an administrator
+opening an admin-only custom page leaks an administrator token. Once it is in the URL, the embedded site
+and any script it loads can read it from `location.search`, and "open in new tab" also writes it into the
+address bar and browser history. As of this version **`token` is no longer appended by default**.
+
+To keep it, turn on "Pass access token to this page" for the **individual menu item** under
+Admin → Settings → Custom Menu Pages (field `custom_menu_items[].pass_token`, default `false`).
+When it is on, the backend requires that menu item's URL to be `https://`.
+
+**Recommended: do not rely on `token`.** Every integration call in this document is server-to-server:
+authenticate with the admin API key (`x-api-key`) and identify the user via `user_id` in the request body
+or path. The Sub2API backend never accepts a panel JWT from a query parameter as a credential, so `token`
+is of no use for these endpoints.
 
 ### 5) Failure handling recommendations
 - Persist payment success and recharge success as separate states

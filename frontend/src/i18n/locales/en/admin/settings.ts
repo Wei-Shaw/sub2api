@@ -682,6 +682,8 @@ export default {
         visibility: 'Visible To',
         visibilityUser: 'Regular Users',
         visibilityAdmin: 'Administrators',
+        passToken: 'Pass access token to this page (security sensitive)',
+        passTokenHint: "Off by default. When enabled, the visitor's own panel login token (JWT) is appended to the page URL as ?token=..., in the iframe and in the address bar of the \"open in new tab\" link. Anyone who can read that URL - the embedded site, its scripts, browser history - can act as that user, and as a full administrator for admin-only pages. Enable it only for a page you operate and that genuinely requires it; the URL must then be https.",
         add: 'Add Menu Item',
         remove: 'Remove',
         moveUp: 'Move Up',

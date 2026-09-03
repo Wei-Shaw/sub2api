@@ -104,9 +104,14 @@
             <Icon name="externalLink" size="sm" class="mr-1.5" :stroke-width="2" />
             {{ t('customPage.openInNewTab') }}
           </a>
+          <!-- referrerpolicy 与 iframeSanitize.ts 对 Markdown 内嵌 iframe 的处理保持一致：
+               不向第三方页面泄露当前面板地址。此处不加 sandbox —— 没有 allow-same-origin
+               的 sandbox 会让该 frame 变成不透明来源并发送 Origin: null，被后端 CORS 拒绝，
+               需要回调的接入方会直接不可用。 -->
           <iframe
             :src="embeddedUrl"
             class="custom-embed-frame"
+            referrerpolicy="no-referrer"
             allowfullscreen
           ></iframe>
         </div>
@@ -127,7 +132,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { buildApiUrl } from '@/api/client'
 import { buildEmbeddedUrl, detectTheme } from '@/utils/embedded-url'
 import { marked } from 'marked'
-import DOMPurify from 'dompurify'
+import { resolveAllowedIframeHosts, sanitizeCustomPageHtml } from '@/utils/iframeSanitize'
 
 interface TocItem {
   id: string
@@ -173,6 +178,16 @@ const markdownSlug = computed(() => {
 
 const isMarkdownMode = computed(() => !!markdownSlug.value)
 
+// iframe 主机白名单：优先取后端公开设置下发的 `custom_page_iframe_hosts`（字符串数组），
+// 该字段目前尚未加入 PublicSettings —— 后端补上并在 `src/types/index.ts` 声明后即自动生效；
+// 在此之前 resolveAllowedIframeHosts 会回落到 iframeSanitize.ts 里的默认列表。
+const allowedIframeHosts = computed(() =>
+  resolveAllowedIframeHosts(
+    (appStore.cachedPublicSettings as unknown as Record<string, unknown> | null)
+      ?.custom_page_iframe_hosts,
+  ),
+)
+
 const embeddedUrl = computed(() => {
   if (!menuItem.value || isMarkdownMode.value) return ''
   return buildEmbeddedUrl(
@@ -181,6 +196,8 @@ const embeddedUrl = computed(() => {
     authStore.token,
     pageTheme.value,
     locale.value,
+    // 访问令牌默认不透传，只有该菜单项显式开启 pass_token 时才附加
+    menuItem.value.pass_token === true,
   )
 })
 
@@ -241,9 +258,10 @@ async function fetchAndRenderMarkdown(slug: string) {
     )
 
     const html = marked.parse(raw) as string
-    const sanitized = DOMPurify.sanitize(html, {
-      ADD_TAGS: ['iframe'],
-      ADD_ATTR: ['allowfullscreen', 'frameborder', 'src'],
+    // 自定义页面是全站唯一放开 iframe 的地方：只允许白名单主机的绝对 https 地址，
+    // 且幸存的 iframe 由 sanitizeCustomPageHtml 强制加 sandbox / referrerpolicy。
+    const sanitized = sanitizeCustomPageHtml(html, {
+      allowedIframeHosts: allowedIframeHosts.value,
     })
 
     // Inject IDs into headings and build TOC

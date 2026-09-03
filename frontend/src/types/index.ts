@@ -193,6 +193,11 @@ export interface CustomMenuItem {
   page_slug?: string
   visibility: 'user' | 'admin'
   sort_order: number
+  /**
+   * 是否把当前用户的访问令牌（JWT）作为 `token` query 透传给内嵌页面。
+   * 缺省/false = 不透传。开启后后端要求该菜单项 URL 必须是 https。
+   */
+  pass_token?: boolean
 }
 
 export interface CustomEndpoint {

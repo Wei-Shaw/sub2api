@@ -6763,6 +6763,30 @@
                     />
                   </div>
 
+                  <!-- Token passthrough (security sensitive, full width) -->
+                  <div
+                    class="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-700/60 dark:bg-amber-900/20 sm:col-span-2"
+                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <label
+                          class="block text-xs font-medium text-amber-800 dark:text-amber-300"
+                        >
+                          {{ t("admin.settings.customMenu.passToken") }}
+                        </label>
+                        <p
+                          class="mt-1 text-xs text-amber-700 dark:text-amber-400"
+                        >
+                          {{ t("admin.settings.customMenu.passTokenHint") }}
+                        </p>
+                      </div>
+                      <label class="toggle shrink-0">
+                        <input v-model="item.pass_token" type="checkbox" />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                  </div>
+
                   <!-- SVG Icon (full width) -->
                   <div class="sm:col-span-2">
                     <label
@@ -9603,6 +9627,7 @@ const form = reactive<SettingsForm>({
     url: string;
     visibility: "user" | "admin";
     sort_order: number;
+    pass_token: boolean;
   }>,
   custom_endpoints: [] as Array<{
     name: string;
@@ -10576,6 +10601,8 @@ function addMenuItem() {
     url: "",
     visibility: "user",
     sort_order: form.custom_menu_items.length,
+    // 安全默认：不向内嵌页面透传访问令牌
+    pass_token: false,
   });
 }
 

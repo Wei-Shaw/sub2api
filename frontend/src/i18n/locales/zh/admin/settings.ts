@@ -677,6 +677,9 @@ export default {
         visibility: '可见角色',
         visibilityUser: '普通用户',
         visibilityAdmin: '管理员',
+        passToken: '向该页面透传访问令牌（涉及安全）',
+        passTokenHint:
+          '默认关闭。开启后会把访问者本人的面板登录令牌（JWT）以 ?token=... 附加到页面地址上，iframe 和"在新标签页打开"的地址栏中都会带上它。任何能读到该地址的一方——被嵌入的站点、它加载的脚本、浏览器历史记录——都可以冒充该用户操作；若该页面仅管理员可见，泄露的就是管理员令牌。仅在页面由你自己运营且确实需要时开启，且地址必须为 https。',
         add: '添加菜单项',
         remove: '删除',
         moveUp: '上移',
