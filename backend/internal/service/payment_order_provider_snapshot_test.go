@@ -101,7 +101,10 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, strconv.FormatInt(instance.ID, 10), valueOrEmpty(order.ProviderInstanceID))
 	require.Equal(t, payment.TypeAlipay, valueOrEmpty(order.ProviderKey))
-	require.Equal(t, float64(2), order.ProviderSnapshot["schema_version"])
+	// createOrderInTx 不再回读订单（少一条 UPDATE），返回的是内存实体，
+	// schema_version 仍是 int；回读后才会变成 JSON 解码出的 float64。
+	// 生产读取方 psSnapshotIntValue 两种类型都接受，这里按值断言。
+	require.Equal(t, 2, psSnapshotIntValue(order.ProviderSnapshot["schema_version"]))
 	require.Equal(t, strconv.FormatInt(instance.ID, 10), order.ProviderSnapshot["provider_instance_id"])
 	require.Equal(t, payment.TypeAlipay, order.ProviderSnapshot["provider_key"])
 	require.Equal(t, "redirect", order.ProviderSnapshot["payment_mode"])

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -18,6 +19,11 @@ import (
 const (
 	affiliateCodeLength      = 12
 	affiliateCodeMaxAttempts = 12
+
+	// affiliateAccrueCapEpsilon 吸收浮点累加误差，避免「刚好用满上限」被误判为超额。
+	affiliateAccrueCapEpsilon = 1e-9
+	// affiliateAccrueCapEpsilonLiteral 是同一个值在 SQL 谓词里的字面量形式。
+	affiliateAccrueCapEpsilonLiteral = "0.000000001"
 )
 
 var affiliateCodeCharset = []byte("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
@@ -114,27 +120,64 @@ func (r *affiliateRepository) BindInviter(ctx context.Context, userID, inviterID
 	return bound, nil
 }
 
-func (r *affiliateRepository) AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error) {
-	if amount <= 0 {
-		return false, nil
+// AccrueQuota 在单个事务内完成「锁定邀请人 -> 校验单人上限 -> 入账 -> 记流水」。
+//
+// 并发安全说明（PostgreSQL 默认隔离级别 READ COMMITTED）：
+// 单人返利上限是典型的「先读后写」。两笔并发订单如果只是各自裸读一次流水求和，
+// 都会读到 existing=0 并各自足额入账，上限被绕过（互相看不见对方未提交的流水，
+// 也没有可加锁的目标行，属于幻读）。因此必须先在 user_affiliates 上取一个共同锁点：
+// 拿到 FOR UPDATE 之后的语句会重新取快照，能看到对方已提交的流水。
+// UPDATE 本身再带一次上限谓词作为兜底，即使读到的值过期也不会超额入账。
+//
+// perInviteeCap <= 0 表示不限制；返回值是实际入账金额（0 表示未入账）。
+func (r *affiliateRepository) AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64, perInviteeCap float64) (float64, error) {
+	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
+		return 0, nil
 	}
 
-	var applied bool
+	var applied float64
 	err := r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
-		// freezeHours > 0: add to frozen quota; == 0: add to available quota directly
-		var updateSQL string
-		if freezeHours > 0 {
-			updateSQL = "UPDATE user_affiliates SET aff_frozen_quota = aff_frozen_quota + $1, aff_history_quota = aff_history_quota + $1, updated_at = NOW() WHERE user_id = $2"
-		} else {
-			updateSQL = "UPDATE user_affiliates SET aff_quota = aff_quota + $1, aff_history_quota = aff_history_quota + $1, updated_at = NOW() WHERE user_id = $2"
+		applied = 0
+
+		// 1) 锁定邀请人行，串行化同一邀请人的并发入账。
+		locked, err := lockAffiliateRowForUpdate(txCtx, txClient, inviterID)
+		if err != nil {
+			return err
 		}
-		res, err := txClient.ExecContext(txCtx, updateSQL, amount, inviterID)
+		if !locked {
+			// 邀请人没有 profile 行：与旧实现（UPDATE 影响 0 行）行为一致。
+			return nil
+		}
+
+		// 2) 持锁后再读已累计返利，并把本次金额截断到剩余额度。
+		credit := amount
+		if perInviteeCap > 0 {
+			existing, sumErr := sumAccruedRebateFromInvitee(txCtx, txClient, inviterID, inviteeUserID)
+			if sumErr != nil {
+				return sumErr
+			}
+			remaining := perInviteeCap - existing
+			if remaining <= affiliateAccrueCapEpsilon {
+				return nil
+			}
+			if credit > remaining {
+				// 向下截断到 8 位小数，保证累计值不会因为进位越过上限。
+				credit = math.Floor(remaining*1e8) / 1e8
+			}
+			if credit <= 0 {
+				return nil
+			}
+		}
+
+		// 3) freezeHours > 0 计入冻结额度；== 0 直接计入可用额度。
+		//    WHERE 里的子查询是兜底上限谓词，跟上面的读互为双保险。
+		updateSQL := affiliateAccrueUpdateSQL(freezeHours > 0)
+		res, err := txClient.ExecContext(txCtx, updateSQL, credit, inviterID, perInviteeCap, inviteeUserID)
 		if err != nil {
 			return err
 		}
 		affected, _ := res.RowsAffected()
 		if affected == 0 {
-			applied = false
 			return nil
 		}
 
@@ -142,28 +185,68 @@ func (r *affiliateRepository) AccrueQuota(ctx context.Context, inviterID, invite
 			if _, err = txClient.ExecContext(txCtx, `
 INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, source_order_id, frozen_until, created_at, updated_at)
 VALUES ($1, 'accrue', $2, $3, $4, NOW() + make_interval(hours => $5), NOW(), NOW())`,
-				inviterID, amount, inviteeUserID, nullableInt64Arg(sourceOrderID), freezeHours); err != nil {
+				inviterID, credit, inviteeUserID, nullableInt64Arg(sourceOrderID), freezeHours); err != nil {
 				return fmt.Errorf("insert affiliate accrue ledger: %w", err)
 			}
 		} else {
 			if _, err = txClient.ExecContext(txCtx, `
 INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, source_order_id, created_at, updated_at)
-VALUES ($1, 'accrue', $2, $3, $4, NOW(), NOW())`, inviterID, amount, inviteeUserID, nullableInt64Arg(sourceOrderID)); err != nil {
+VALUES ($1, 'accrue', $2, $3, $4, NOW(), NOW())`, inviterID, credit, inviteeUserID, nullableInt64Arg(sourceOrderID)); err != nil {
 				return fmt.Errorf("insert affiliate accrue ledger: %w", err)
 			}
 		}
 
-		applied = true
+		applied = credit
 		return nil
 	})
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 	return applied, nil
 }
 
-func (r *affiliateRepository) GetAccruedRebateFromInvitee(ctx context.Context, inviterID, inviteeUserID int64) (float64, error) {
-	client := clientFromContext(ctx, r.client)
+// affiliateAccrueUpdateSQL 返回带上限谓词的入账 UPDATE。
+// $1=本次金额 $2=邀请人 $3=单人上限（<=0 表示不限制） $4=被邀请人
+func affiliateAccrueUpdateSQL(frozen bool) string {
+	target := "aff_quota = aff_quota + $1"
+	if frozen {
+		target = "aff_frozen_quota = aff_frozen_quota + $1"
+	}
+	return `
+UPDATE user_affiliates
+SET ` + target + `,
+    aff_history_quota = aff_history_quota + $1,
+    updated_at = NOW()
+WHERE user_id = $2
+  AND ($3 <= 0 OR COALESCE((
+        SELECT SUM(l.amount)
+        FROM user_affiliate_ledger l
+        WHERE l.user_id = $2
+          AND l.source_user_id = $4
+          AND l.action = 'accrue'
+      ), 0) + $1 <= $3 + ` + affiliateAccrueCapEpsilonLiteral + `)`
+}
+
+// lockAffiliateRowForUpdate 对邀请人的 user_affiliates 行加排他锁。
+// 返回 false 表示该用户还没有 profile 行（调用方按「未入账」处理）。
+func lockAffiliateRowForUpdate(ctx context.Context, client affiliateQueryExecer, userID int64) (bool, error) {
+	rows, err := client.QueryContext(ctx,
+		`SELECT 1 FROM user_affiliates WHERE user_id = $1 FOR UPDATE`, userID)
+	if err != nil {
+		return false, fmt.Errorf("lock affiliate row: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	found := rows.Next()
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	return found, nil
+}
+
+// sumAccruedRebateFromInvitee 统计邀请人从某个被邀请人身上已累计的返利。
+// 只在 AccrueQuota 的事务内、持有邀请人行锁之后调用——事务外读这个值是没有意义的，
+// 读到的瞬间就可能被并发事务改写（这正是上限被绕过的原因）。
+func sumAccruedRebateFromInvitee(ctx context.Context, client affiliateQueryExecer, inviterID, inviteeUserID int64) (float64, error) {
 	rows, err := client.QueryContext(ctx,
 		`SELECT COALESCE(SUM(amount), 0)::double precision FROM user_affiliate_ledger WHERE user_id = $1 AND source_user_id = $2 AND action = 'accrue'`,
 		inviterID, inviteeUserID)
@@ -177,7 +260,10 @@ func (r *affiliateRepository) GetAccruedRebateFromInvitee(ctx context.Context, i
 			return 0, err
 		}
 	}
-	return total, rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	return total, nil
 }
 
 func (r *affiliateRepository) ThawFrozenQuota(ctx context.Context, userID int64) (float64, error) {

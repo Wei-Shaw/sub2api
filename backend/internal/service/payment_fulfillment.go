@@ -327,6 +327,17 @@ func resolveRedeemAction(existing *RedeemCode, lookupErr error) redeemAction {
 	return redeemActionRedeem
 }
 
+// doBalance 用订单上预生成的兑换码给用户加余额。
+//
+// CreateCode 与 Redeem 分属两个事务（RedeemService.Redeem 自己开事务，不复用
+// ctx 里的事务），所以两步之间崩溃会留下一条 unused 的兑换码。这条残留码：
+//   - 只可能被知道码本身的人使用。o.RechargeCode 由 crypto/rand 生成（130 bit，
+//     见 generateRechargeCode），且只在 payment_orders 行和管理端接口里可见，
+//     用户侧接口不返回，暴力枚举不可行；
+//   - 会被下一次重试自愈：resolveRedeemAction 发现「存在且未使用」时跳过创建、
+//     直接兑换，不会重复加钱。
+//
+// 真正的漏洞是旧的 "PAY-<orderID>-<5位>" 格式可被枚举，已在建单处修掉。
 func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder, lease *paymentFulfillmentLease) error {
 	// Idempotency: check if redeem code already exists (from a previous partial run)
 	existing, lookupErr := s.redeemService.GetByCode(ctx, o.RechargeCode)

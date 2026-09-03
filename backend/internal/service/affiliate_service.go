@@ -98,8 +98,10 @@ type AffiliateRepository interface {
 	EnsureUserAffiliate(ctx context.Context, userID int64) (*AffiliateSummary, error)
 	GetAffiliateByCode(ctx context.Context, code string) (*AffiliateSummary, error)
 	BindInviter(ctx context.Context, userID, inviterID int64) (bool, error)
-	AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error)
-	GetAccruedRebateFromInvitee(ctx context.Context, inviterID, inviteeUserID int64) (float64, error)
+	// AccrueQuota 在同一个事务内完成「锁定邀请人 -> 校验单人上限 -> 入账」。
+	// perInviteeCap <= 0 表示不限制；返回实际入账金额（0 表示未入账）。
+	// 上限必须由实现方在事务内强制，调用方在事务外预读是不安全的。
+	AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64, perInviteeCap float64) (float64, error)
 	ThawFrozenQuota(ctx context.Context, userID int64) (float64, error)
 	TransferQuotaToBalance(ctx context.Context, userID int64) (float64, float64, error)
 	ListInvitees(ctx context.Context, inviterID int64, limit int) ([]AffiliateInvitee, error)
@@ -355,35 +357,24 @@ func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, invit
 		return 0, nil
 	}
 
-	// 单人上限检查：精确截断到剩余额度
-	if s.settingService != nil {
-		if perInviteeCap := s.settingService.GetAffiliateRebatePerInviteeCap(ctx); perInviteeCap > 0 {
-			existing, err := s.repo.GetAccruedRebateFromInvitee(ctx, *inviteeSummary.InviterID, inviteeUserID)
-			if err != nil {
-				return 0, err
-			}
-			if existing >= perInviteeCap {
-				return 0, nil
-			}
-			if remaining := perInviteeCap - existing; rebate > remaining {
-				rebate = roundTo(remaining, 8)
-			}
-		}
-	}
-
+	// 单人上限与冻结时长都下沉到仓储层：上限只有在入账事务内、持有邀请人行锁之后
+	// 校验才是安全的。事务外预读一次剩余额度会留下 TOCTOU 窗口——两笔并发充值会
+	// 同时读到 existing=0 并各自足额入账，上限被绕过。
+	var perInviteeCap float64
 	var freezeHours int
 	if s.settingService != nil {
+		perInviteeCap = s.settingService.GetAffiliateRebatePerInviteeCap(ctx)
 		freezeHours = s.settingService.GetAffiliateRebateFreezeHours(ctx)
 	}
 
-	applied, err := s.repo.AccrueQuota(ctx, *inviteeSummary.InviterID, inviteeUserID, rebate, freezeHours, sourceOrderID)
+	applied, err := s.repo.AccrueQuota(ctx, *inviteeSummary.InviterID, inviteeUserID, rebate, freezeHours, sourceOrderID, perInviteeCap)
 	if err != nil {
 		return 0, err
 	}
-	if !applied {
+	if applied <= 0 {
 		return 0, nil
 	}
-	return rebate, nil
+	return roundTo(applied, 8), nil
 }
 
 // resolveRebateRatePercent returns the inviter's exclusive rate when set,

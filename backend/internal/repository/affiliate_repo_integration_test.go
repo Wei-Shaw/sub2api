@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -145,9 +146,9 @@ func TestAffiliateRepository_AccrueQuota_ReusesOuterTransaction(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, bound, "invitee must bind to inviter")
 
-	applied, err := repo.AccrueQuota(txCtx, inviter.ID, invitee.ID, 3.5, 0, nil)
+	applied, err := repo.AccrueQuota(txCtx, inviter.ID, invitee.ID, 3.5, 0, nil, 0)
 	require.NoError(t, err)
-	require.True(t, applied, "AccrueQuota must report applied=true")
+	require.InDelta(t, 3.5, applied, 1e-9, "AccrueQuota must report the credited amount")
 
 	// Visible inside the outer tx.
 	innerQuota := querySingleFloat(t, txCtx, client,
@@ -416,4 +417,87 @@ func TestAffiliateRepository_ListUsersWithCustomSettings(t *testing.T) {
 	require.InDelta(t, 33.3, *rateEntry.AffRebateRatePercent, 1e-9)
 
 	require.GreaterOrEqual(t, total, int64(2), "total must include at least our 2 custom rows")
+}
+
+// TestAffiliateRepository_AccrueQuota_ConcurrentAccrualsRespectPerInviteeCap is
+// the regression test for H1: the per-invitee rebate cap used to be checked by
+// a bare SELECT outside any lock, so two payment fulfillments for the same
+// invitee both read existing=0 and both credited the full commission.
+//
+// This test really races: accrualGoroutines goroutines call AccrueQuota with a
+// plain context (no ambient tx), so repo.withTx opens one transaction each on
+// its own pooled PostgreSQL connection, and they are released together by
+// closing a start barrier. Under the old code the ledger total ended at
+// accrualGoroutines * amount; with the inviter row lock plus the capped UPDATE
+// it must stop exactly at the cap.
+func TestAffiliateRepository_AccrueQuota_ConcurrentAccrualsRespectPerInviteeCap(t *testing.T) {
+	ctx := context.Background()
+	client := integrationEntClient
+	repo := NewAffiliateRepository(client, integrationDB)
+
+	inviter := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("aff-cap-inviter-%d@example.com", time.Now().UnixNano()),
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+		Concurrency:  5,
+	})
+	invitee := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("aff-cap-invitee-%d@example.com", time.Now().UnixNano()+1),
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+		Concurrency:  5,
+	})
+	t.Cleanup(func() {
+		_, _ = client.ExecContext(ctx, "DELETE FROM user_affiliate_ledger WHERE user_id = $1", inviter.ID)
+		_, _ = client.ExecContext(ctx, "DELETE FROM user_affiliates WHERE user_id IN ($1, $2)", inviter.ID, invitee.ID)
+		_, _ = client.ExecContext(ctx, "DELETE FROM users WHERE id IN ($1, $2)", inviter.ID, invitee.ID)
+	})
+
+	_, err := repo.EnsureUserAffiliate(ctx, inviter.ID)
+	require.NoError(t, err)
+	_, err = repo.EnsureUserAffiliate(ctx, invitee.ID)
+	require.NoError(t, err)
+
+	const (
+		accrualGoroutines = 8
+		amountPerAccrual  = 4.0
+		perInviteeCap     = 10.0
+	)
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	appliedTotals := make([]float64, accrualGoroutines)
+	errs := make([]error, accrualGoroutines)
+	for i := 0; i < accrualGoroutines; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			<-start
+			appliedTotals[idx], errs[idx] = repo.AccrueQuota(ctx, inviter.ID, invitee.ID, amountPerAccrual, 0, nil, perInviteeCap)
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	var appliedSum float64
+	for i := 0; i < accrualGoroutines; i++ {
+		require.NoError(t, errs[i], "goroutine %d", i)
+		appliedSum += appliedTotals[i]
+	}
+
+	ledgerTotal := querySingleFloat(t, ctx, client, `
+SELECT COALESCE(SUM(amount), 0)::double precision
+FROM user_affiliate_ledger
+WHERE user_id = $1 AND source_user_id = $2 AND action = 'accrue'`, inviter.ID, invitee.ID)
+	quota := querySingleFloat(t, ctx, client,
+		"SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1", inviter.ID)
+	history := querySingleFloat(t, ctx, client,
+		"SELECT aff_history_quota::double precision FROM user_affiliates WHERE user_id = $1", inviter.ID)
+
+	require.InDelta(t, perInviteeCap, ledgerTotal, 1e-6, "ledger total must stop at the per-invitee cap")
+	require.InDelta(t, perInviteeCap, quota, 1e-6, "credited quota must stop at the per-invitee cap")
+	require.InDelta(t, perInviteeCap, history, 1e-6, "history quota must stop at the per-invitee cap")
+	require.InDelta(t, ledgerTotal, appliedSum, 1e-6, "reported amounts must match what was written")
 }

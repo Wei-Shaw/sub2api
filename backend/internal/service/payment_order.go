@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,8 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"entgo.io/ent/dialect"
+
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
+	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -155,6 +159,11 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	// 待处理订单数与当日额度都是「先读后判断」，必须先拿到用户行锁把同一用户的
+	// 并发建单串行化，否则 N 个并发请求会各自读到同一个旧值后一起通过。
+	if err := lockUserRowForOrderLimits(ctx, tx, req.UserID); err != nil {
+		return nil, err
+	}
 	if err := s.checkPendingLimit(ctx, tx, req.UserID, cfg.MaxPendingOrders); err != nil {
 		return nil, err
 	}
@@ -177,6 +186,10 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		selectedInstanceID = strings.TrimSpace(sel.InstanceID)
 		selectedProviderKey = strings.TrimSpace(sel.ProviderKey)
 	}
+	rechargeCode, err := generateRechargeCode()
+	if err != nil {
+		return nil, err
+	}
 	b := tx.PaymentOrder.Create().
 		SetUserID(req.UserID).
 		SetUserEmail(user.Email).
@@ -185,7 +198,7 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		SetAmount(orderAmount).
 		SetPayAmount(payAmount).
 		SetFeeRate(feeRate).
-		SetRechargeCode("").
+		SetRechargeCode(rechargeCode).
 		SetOutTradeNo(outTradeNo).
 		SetPaymentType(req.PaymentType).
 		SetPaymentTradeNo("").
@@ -213,11 +226,6 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	if err != nil {
 		return nil, fmt.Errorf("create order: %w", err)
 	}
-	code := fmt.Sprintf("PAY-%d-%d", order.ID, time.Now().UnixNano()%100000)
-	order, err = tx.PaymentOrder.UpdateOneID(order.ID).SetRechargeCode(code).Save(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("set recharge code: %w", err)
-	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit order transaction: %w", err)
 	}
@@ -239,6 +247,79 @@ func (s *PaymentService) allocateOutTradeNo(ctx context.Context, tx *dbent.Tx) (
 	return "", fmt.Errorf("generate unique out_trade_no: exhausted %d attempts", maxAttempts)
 }
 
+// rechargeCodeCharset 是 Crockford 风格的 32 字符表（去掉了 I/O/0/1 等易混字符）。
+// 长度正好 32，所以 byte % len 不引入模偏差。
+var rechargeCodeCharset = []byte("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+
+const (
+	rechargeCodePrefix = "PAY-"
+	// rechargeCodeRandomLen 个字符 × 5 bit = 130 bit 熵。
+	// redeem_codes.code 是 VARCHAR(32)，"PAY-" + 26 = 30 字符，刚好放得下。
+	rechargeCodeRandomLen = 26
+)
+
+// generateRechargeCode 生成充值订单对应的兑换码。
+//
+// 旧格式 "PAY-<orderID>-<UnixNano%100000>" 只有约 17 bit 熵，而且订单 id 是自增的：
+// 任何用户都能用自己的订单 id 推出别人的订单 id，再对 POST /api/v1/redeem 暴力枚举
+// 5 位后缀，在「已创建兑换码但还没兑换」的窗口里抢走别人的充值。新格式不再携带订单 id，
+// 全部来自 crypto/rand。
+func generateRechargeCode() (string, error) {
+	buf := make([]byte, rechargeCodeRandomLen)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate recharge code: %w", err)
+	}
+	for i := range buf {
+		buf[i] = rechargeCodeCharset[int(buf[i])%len(rechargeCodeCharset)]
+	}
+	return rechargeCodePrefix + string(buf), nil
+}
+
+// lockUserRowForOrderLimits 对用户行加排他锁，串行化同一用户的并发建单。
+//
+// PostgreSQL 默认隔离级别是 READ COMMITTED：checkPendingLimit / checkDailyLimit 都是
+// 「聚合读 -> 判断 -> 插入订单」。并发事务互相看不到对方未提交的插入，聚合结果里也没有
+// 可以加锁的目标行（幻读），所以单纯把读改成单条 SQL 并不能防住并发绕过——必须有一个
+// 共同的锁点。拿到行锁之后的语句会重新取快照，能看到对方已提交的订单。
+//
+// SQLite（单元测试用的内存库）不支持 FOR UPDATE，直接跳过；生产只跑 PostgreSQL。
+func lockUserRowForOrderLimits(ctx context.Context, tx *dbent.Tx, userID int64) error {
+	if tx == nil {
+		return nil
+	}
+	client := tx.Client()
+	if paymentAuditDialect(client) != dialect.Postgres {
+		return nil
+	}
+	rows, err := client.QueryContext(ctx, "SELECT 1 FROM users WHERE id = $1 FOR UPDATE", userID)
+	if err != nil {
+		return fmt.Errorf("lock user row for order limits: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() { //nolint:revive // 只为持锁，行内容不需要
+	}
+	return rows.Err()
+}
+
+// sumPaymentOrderAmount 在库内对指定字段求和，避免把当天所有订单读进内存再累加。
+func sumPaymentOrderAmount(ctx context.Context, tx *dbent.Tx, preds []predicate.PaymentOrder, field string) (float64, error) {
+	var result []struct {
+		Sum float64 `json:"sum"`
+	}
+	if err := tx.PaymentOrder.Query().
+		Where(preds...).
+		Aggregate(dbent.As(dbent.Sum(field), "sum")).
+		Scan(ctx, &result); err != nil {
+		return 0, err
+	}
+	if len(result) == 0 {
+		return 0, nil
+	}
+	return result[0].Sum, nil
+}
+
+// checkPendingLimit 统计用户当前待支付订单数。
+// 调用方必须已经通过 lockUserRowForOrderLimits 持有用户行锁，否则并发请求会一起通过。
 func (s *PaymentService) checkPendingLimit(ctx context.Context, tx *dbent.Tx, userID int64, max int) error {
 	if max <= 0 {
 		max = defaultMaxPendingOrders
@@ -322,23 +403,32 @@ func paymentOrderSnapshotWxpayAppID(sel *payment.InstanceSelection, req CreateOr
 	return strings.TrimSpace(sel.Config["appId"])
 }
 
+// checkDailyLimit 统计用户当天已支付金额是否还放得下本次订单。
+// 余额订单按实付金额计入，其余（订阅）按订单金额计入，两条聚合语句都在库内求和。
+// 调用方必须已经通过 lockUserRowForOrderLimits 持有用户行锁。
 func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *dbent.Tx, userID int64, amount, limit float64) error {
 	if limit <= 0 {
 		return nil
 	}
 	ts := psStartOfDayUTC(time.Now())
-	orders, err := tx.PaymentOrder.Query().Where(paymentorder.UserIDEQ(userID), paymentorder.StatusIn(OrderStatusPaid, OrderStatusRecharging, OrderStatusCompleted), paymentorder.PaidAtGTE(ts)).All(ctx)
+	base := func() []predicate.PaymentOrder {
+		return []predicate.PaymentOrder{
+			paymentorder.UserIDEQ(userID),
+			paymentorder.StatusIn(OrderStatusPaid, OrderStatusRecharging, OrderStatusCompleted),
+			paymentorder.PaidAtGTE(ts),
+		}
+	}
+	balanceUsed, err := sumPaymentOrderAmount(ctx, tx,
+		append(base(), paymentorder.OrderTypeEQ(payment.OrderTypeBalance)), paymentorder.FieldPayAmount)
 	if err != nil {
 		return fmt.Errorf("query daily usage: %w", err)
 	}
-	var used float64
-	for _, o := range orders {
-		if o.OrderType == payment.OrderTypeBalance {
-			used += o.PayAmount
-			continue
-		}
-		used += o.Amount
+	otherUsed, err := sumPaymentOrderAmount(ctx, tx,
+		append(base(), paymentorder.OrderTypeNEQ(payment.OrderTypeBalance)), paymentorder.FieldAmount)
+	if err != nil {
+		return fmt.Errorf("query daily usage: %w", err)
 	}
+	used := balanceUsed + otherUsed
 	if used+amount > limit {
 		return infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily_limit_exceeded").
 			WithMetadata(map[string]string{"remaining": fmt.Sprintf("%.2f", math.Max(0, limit-used))})
