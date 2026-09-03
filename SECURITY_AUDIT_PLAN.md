@@ -19,7 +19,13 @@ Nhãn **[đã xác minh]** = đã đọc lại trực tiếp trên mã nguồn s
 
 Nhãn **[ĐÃ SỬA]** = đã vá trên nhánh `fix/security-audit-batch-1`, có test chặn tái phát, đã chạy gate.
 
-**Đợt 1 đã xong — 7 phát hiện:** C1 · C2 · C3 · H4 · H7 · M17 · M18.
+**Đợt 1 — 7 phát hiện:** C1 · C2 · C3 · H4 · H7 · M17 · M18.
+
+**Đợt 2 — 19 phát hiện:** C4 · H1 · H2 · H3 · H5 · H6 · M1 · M2 · M4 · M5 · M6 · M7 · M9 · M10 · M12 · M14 · M16 · L1 · L4. Trong đó M8 và M13 mới sửa được một phần, M3 hoá ra đã được sửa từ trước, M11 cố tình không sửa.
+
+**Còn lại:** M15 (bản rà soát có liệt kê nhưng **không xếp vào PR nào**) · M19 và L3 (quyết định kiến trúc riêng) · L2 (design choice, không sửa) · PR 6 release 2 (drop cột `key`).
+
+**Chưa chạy được — quan trọng:** máy này **không có Docker**, nên toàn bộ integration test viết trong hai đợt chỉ compile chứ chưa từng chạy. Đáng lo nhất: **migration 238 và 239 chưa từng chạy trên PostgreSQL thật** — khối DO backfill của 238, biểu thức `sha256(convert_to(...))` của 239, partial unique index, và khối DO mới thêm vào 027. Cần một lượt chạy trên PG 16 với dữ liệu thực trước khi merge, đặc biệt là 238 trên những đơn có audit `REFUND_ROLLBACK_FAILED` thật.
 
 Trong lúc sửa, agent tìm thêm **3 lỗi không có trong bản rà soát này** (Phần I-B), và **5 chỗ bản rà soát nói sai hoặc nói thiếu** — đính chính nằm ngay dưới phát hiện tương ứng. Đọc các đính chính trước khi tin số dòng `file:line` còn lại trong tài liệu: chúng đã trôi ở nhiều chỗ.
 
@@ -91,7 +97,7 @@ Panic `slice bounds out of range` xảy ra bên trong `go func()` ở dòng 74, 
 
 Ngoài ra bản rà soát **bỏ sót một vector thứ hai** trong cùng hàm: `total_length` cũng không có trần, nên `make([]byte, totalLength-12)` cho phép cấp phát ~4 GB từ một frame — độc lập với lỗi panic. Đã chặn bằng trần 16 MiB (đúng giá trị AWS SDK dùng).
 
-### C4. Secret của cổng thanh toán lưu plaintext — regression thầm lặng **[đã xác minh]**
+### C4. Secret của cổng thanh toán lưu plaintext — regression thầm lặng **[đã xác minh]** **[ĐÃ SỬA]**
 
 `backend/internal/service/payment_config_providers.go:534-540` (ghi) · `:501-518` (đọc) · `backend/ent/schema/payment_provider_instance.go:20`
 
@@ -113,19 +119,19 @@ Một dòng DB rò ra (backup, replica, log dump) là lộ: Stripe `secretKey` +
 
 ## High
 
-### H1. Trần hoa hồng giới thiệu bị vượt gấp đôi khi chạy song song
+### H1. Trần hoa hồng giới thiệu bị vượt gấp đôi khi chạy song song **[ĐÃ SỬA]**
 
 `backend/internal/service/affiliate_service.go:361` · `backend/internal/repository/affiliate_repo.go:117`
 
 `GetAccruedRebateFromInvitee` là SELECT trần không khoá dòng; `AccrueQuota` chạy `UPDATE user_affiliates SET aff_frozen_quota = aff_frozen_quota + $1` không có predicate kiểm trần. Hai lần fulfill thanh toán cho cùng một invitee chạy đồng thời (mỗi lần có audit claim riêng nên cả hai đều đi tiếp) cùng đọc `existing=0` và cùng cộng đủ mức hoa hồng. Lặp lại tuỳ ý bằng nạp tiền song song.
 
-### H2. Thử lại hoàn tiền trừ số dư người dùng lần thứ hai
+### H2. Thử lại hoàn tiền trừ số dư người dùng lần thứ hai **[ĐÃ SỬA]**
 
 `backend/internal/service/payment_refund.go:701` · `:603` · `:213`
 
 `RollbackRefund` thất bại → `handleGwFail` để đơn ở `REFUND_FAILED` trong lúc số dư **đã bị trừ**. Danh sách trạng thái hợp lệ của `PrepareRefund` (`:213`) lại bao gồm `OrderStatusRefundFailed`, và `prepDeduct` không tra cứu lần trừ trước. Admin bấm hoàn tiền lại từ UI → trừ đủ số tiền hoàn lần nữa.
 
-### H3. Đổi mã quà tặng ghi đè mất hạn subscription đã gia hạn
+### H3. Đổi mã quà tặng ghi đè mất hạn subscription đã gia hạn **[ĐÃ SỬA]**
 
 `backend/internal/service/redeem_service.go:667`, `:691`, `:703`
 
@@ -143,7 +149,7 @@ Kịch bản: T1 đổi mã `validity_days` âm, đọc `expires_at = D`. T2 đ�
 
 Ba điểm ghi nhận khi vá C2: (a) `grok_upstream_url.go` **không tồn tại**, Grok lọc ở `openai_gateway_request_body.go:20`; (b) các sibling `if s.cfg != nil` rồi vẫn deref `s.cfg` vô điều kiện trong nhánh allowlist — nil cfg là panic, **lỗi tiềm ẩn riêng, chưa sửa**; (c) nhánh lỗi nay trả `(nil, err)` thay vì `(&ForwardResult{}, nil)`, nên 4xx/5xx không còn ghi bản ghi billing zero-usage — giống mọi đường antigravity khác, nhưng là thay đổi hành vi.
 
-### H5. `TOTP_ENCRYPTION_KEY` là master key trá hình và tự sinh lại mỗi lần khởi động
+### H5. `TOTP_ENCRYPTION_KEY` là master key trá hình và tự sinh lại mỗi lần khởi động **[ĐÃ SỬA]**
 
 `backend/internal/config/config.go:1925-1937` · `backend/internal/repository/aes_encryptor.go:22-33` · `backend/internal/repository/wire.go:143`
 
@@ -151,7 +157,7 @@ Dù mang tên TOTP, đây là khoá **duy nhất** chống lưng cho `SecretEncr
 
 `deploy/.env.example` và `docker-compose.yml` để trống mặc định. Khi trống, config **tự sinh khoá ngẫu nhiên mới ở mỗi lần khởi tiến trình** → operator không bật 2FA sẽ mất khả năng giải mã toàn bộ secret đã lưu sau mỗi lần restart container.
 
-### H6. API admin gửi nguyên API key của người dùng xuống trình duyệt, che bằng CSS
+### H6. API admin gửi nguyên API key của người dùng xuống trình duyệt, che bằng CSS **[ĐÃ SỬA]**
 
 `frontend/src/components/admin/user/UserApiKeysModal.vue:17`
 
@@ -175,67 +181,87 @@ Danh sách host hiện **hardcode** — không tìm thấy ghi chép nào trong 
 
 ## Medium
 
-### M1. API key lưu plaintext trong Postgres
+### M1. API key lưu plaintext trong Postgres **[ĐÃ SỬA]**
 `backend/ent/schema/api_key.go:37-40` · `backend/internal/repository/api_key_repo.go:111-167`
 Cột `key` là `Unique()` không băm; `GetByKeyForAuth`/`GetByKey` tra bằng `apikey.KeyEQ(key)` trên chính cột đó. Backup rò = ra thẳng loạt `sk-...` dùng được ngay. Fix: cột lookup `sha256(key)` hoặc HMAC, hiện raw key đúng một lần lúc tạo.
 
-### M2. Chặn SSRF tắt mặc định trên toàn bộ đường upstream còn lại
+### M2. Chặn SSRF tắt mặc định trên toàn bộ đường upstream còn lại **[ĐÃ SỬA]**
 `backend/internal/util/urlvalidator/validator.go:72-102` · `config.go:1953-1955` · `backend/internal/repository/http_upstream.go:580-605`
 Mặc định `security.url_allowlist.enabled=false` (xác nhận ở `config_test.go:810-817`) khiến `validateUpstreamBaseURL` rơi về `ValidateURLFormat` — chỉ kiểm scheme + parse, không chặn `localhost`, RFC1918, link-local, `169.254.169.254`. Cùng cờ đó tắt luôn `shouldValidateResolvedIP()` → mất lớp chống DNS rebinding/redirect. Admin-gated, nhưng ở SaaS multi-tenant admin tenant ≠ chủ hạ tầng.
 
-### M3. Video Grok đọc chéo tenant vì không kiểm quyền sở hữu `request_id`
+**Đính chính khi sửa — bật cờ lên là sai, và cũng không vá được lỗi.** Đổi `url_allowlist.enabled` thành `true` sẽ phá hỏng: 11 call site truyền `RequireAllowlist`, bật lên là ép HTTPS bất kể `allow_insecure_http` và bắt khai báo từng host, mọi bản tự triển khai dùng relay riêng chết ngay. Và nó **vẫn không chặn được** `169.254.169.254`, vì `allow_private_hosts` mặc định `true`.
+
+Đã tách theo đúng hai trục vốn có sẵn trong mã: `enabled` giữ `false` (whitelist host, tùy chọn), `allow_private_hosts` đổi `true` → **`false`** và không còn lệ thuộc cờ kia. `shouldValidateResolvedIP` bỏ điều kiện `Enabled` — chính chỗ nối này làm lớp chống DNS rebinding không bao giờ chạy ở cấu hình mặc định.
+
+`deploy/config.example.yaml` trước đó ghi sẵn `allow_private_hosts: true`, ai chép mẫu là mất trắng mặc định mới — đã sửa. Hai đường còn lại (`proxy_probe_service.go`, `crs_sync_service.go`) cũng đã gỡ phụ thuộc tương tự.
+
+### M3. Video Grok đọc chéo tenant vì không kiểm quyền sở hữu `request_id` **[VỐN ĐÃ ĐƯỢC SỬA TỪ TRƯỚC]**
 `backend/internal/handler/grok_media.go:45-52` · `backend/internal/service/grok_media.go:607-757`, `:759-850`
 `GrokVideoStatus`/`GrokVideoContent` chuyển `request_id` từ client thẳng lên upstream, không ràng buộc id với API key/group tạo ra nó. Account↔Group many-to-many (`account_group.go:5-12`) nên ở pool mode một account Grok phục vụ nhiều tenant. Fix: lưu `request_id -> (account_id, group_id, api_key_id)`, verify trước khi proxy.
 
-### M4. Khoản giữ của batch image có thể được hoàn hai lần
+**Ghi chú — bản rà soát đọc theo mã đã cũ.** Commit `c831bb979` (tổ tiên của `485af88ac`) đã vá đúng điều này: `GrokMediaVideoRequestSessionHash(requestID, userID, apiKeyID)` ràng buộc quyền sở hữu trước mọi lượt gọi upstream, group làm namespace, và `handler/grok_media.go:263` từ chối account không khớp binding. Không sửa gì.
+
+Đáng chú ý: giải pháp đề xuất trong bản rà soát (bảng `request_id -> (account_id, group_id, api_key_id)`) **tệ hơn** cái đang có: binding hiện nằm trong Redis có TTL và tự hết hạn, còn bảng DB sẽ tự sinh ra đúng vấn đề phình không giới hạn mà chính bản rà soát cảnh báo.
+
+### M4. Khoản giữ của batch image có thể được hoàn hai lần **[ĐÃ SỬA]**
 `backend/internal/repository/usage_billing_repo.go:294` · `:340` · `backend/internal/service/batch_image_settlement.go:223`
 `captureUsageBillingBatchImageBalance` không có guard `batchImageHoldClaimExists`; guard ở đường release chỉ chứng minh khoản giữ *từng được đặt*, không chứng minh nó *còn treo*. Cả hai đường cùng trừ `frozen_balance` theo `HoldAmount`. Capture xong → một lần thất bại cạn retry gọi release với dedup key khác → toàn bộ `HoldAmount` cộng vào balance lần hai, rút từ quỹ đóng băng của batch khác.
 
-### M5. Migration 027 viết lại toàn bảng và khoá index trong lúc khởi động
+### M5. Migration 027 viết lại toàn bảng và khoá index trong lúc khởi động **[ĐÃ SỬA]**
 `backend/migrations/027_usage_billing_consistency.sql:9`, `:32` · `migrations_runner.go:257-278`
 `UPDATE usage_logs WHERE request_id = ''` toàn bảng + quét `ROW_NUMBER()` trên mọi `request_id` khác null + `CREATE UNIQUE INDEX` **không** `CONCURRENTLY`, tất cả trong một transaction lúc boot. Trên `usage_logs` lớn: chặn ghi log request, server không boot xong, timeout thì mất trắng tiến độ.
 
-### M6. Dọn index INVALID chỉ áp dụng cho 5 trong số các file `_notx`
+### M6. Dọn index INVALID chỉ áp dụng cho 5 trong số các file `_notx` **[ĐÃ SỬA]**
 `migrations_runner.go:292` · `:524` · `migrations/190_add_users_email_alias_dedup_index_notx.sql:6`
 `prepareNonTransactionalMigration` chỉ drop index INVALID cho 5 file trong whitelist, trong khi `validateMigrationExecutionMode` buộc **mọi** file `_notx` phải dùng `IF NOT EXISTS`. Các file 062, 072, 148, 151, 155, 190 không được dọn → `CREATE INDEX CONCURRENTLY` bị ngắt để lại index INVALID vĩnh viễn, boot sau `IF NOT EXISTS` bỏ qua và ghi nhận đã áp dụng.
 
-### M7. Hai admin gia hạn subscription cùng lúc chỉ tính một lần
+### M7. Hai admin gia hạn subscription cùng lúc chỉ tính một lần **[ĐÃ SỬA]**
 `backend/internal/service/subscription_service.go:655`
 `ExtendSubscription` đọc `GetByID` rồi ghi `ExtendExpiry` — không transaction, không `FOR UPDATE`, không CAS trên `expires_at` cũ. Hai lệnh +30 ngày đồng thời → khách nhận 30 ngày thay vì 60, không lỗi nào nổi lên. Khuôn đúng đã có sẵn: `updateExistingSubscriptionTerm`.
 
-### M8. Mã nạp tiền chỉ có ~17 bit ngẫu nhiên và được tạo ngoài transaction
+### M8. Mã nạp tiền chỉ có ~17 bit ngẫu nhiên và được tạo ngoài transaction **[SỬA MỘT PHẦN]**
 `backend/internal/service/payment_order.go:216` · `payment_fulfillment.go:343-352`
 `fmt.Sprintf("PAY-%d-%d", order.ID, time.Now().UnixNano()%100000)` — hậu tố 5 chữ số trên order id tuần tự. `doBalance` gọi `CreateCode` và `Redeem` ở hai bước không nguyên tử. Crash giữa hai bước để lại mã `unused` còn sống; user bất kỳ dò `PAY-<orderID>-<0..99999>` trên `POST /api/v1/redeem` cướp được khoản nạp của nạn nhân.
 
-### M9. Một repo method dùng nhầm client, tự khoá chính mình
+### M9. Một repo method dùng nhầm client, tự khoá chính mình **[ĐÃ SỬA]**
 `backend/internal/repository/promo_code_repo.go:208` · `backend/internal/service/promo_service.go:118`
 `GetUsageByPromoCodeAndUser` là method **duy nhất** trong file dùng `r.client` thay vì `clientFromContext(ctx, r.client)`. Transaction đang giữ connection + khoá `FOR UPDATE` trên `promo_codes` lại xin connection thứ hai → pool cạn thì tự deadlock. Fix một dòng.
 
-### M10. EasyPay chấp nhận endpoint `http://`, gửi khoá thương nhân dạng rõ
+### M10. EasyPay chấp nhận endpoint `http://`, gửi khoá thương nhân dạng rõ **[ĐÃ SỬA]**
 `backend/internal/payment/provider/easypay.go:69` · `:306` · `:439` (so với `airwallex.go:109`)
 `normalizeEasyPayAPIBase` nhận mọi scheme (kể cả không scheme), trong khi `QueryOrder` và `refundAttempts` đặt secret `pkey` vào body POST dưới trường `key=`. Người quan sát mạng lấy `pkey` → ký được `sign` hợp lệ cho `/api/v1/payment/webhook/easypay` với `out_trade_no` tuỳ ý.
 
-### M11. Migration 131 xoá log audit thanh toán không sao lưu
+### M11. Migration 131 xoá log audit thanh toán không sao lưu **[KHÔNG SỬA — CÓ LÝ DO]**
 `backend/migrations/131_affiliate_rebate_hardening.sql:35`, `:40`
 `DELETE FROM payment_audit_logs` vô điều kiện mọi dòng trùng `(order_id, action)` để dọn chỗ cho unique index, trên bảng chứng từ tài chính. Migration 220 cùng repo thì có snapshot sang `groups_video_price_backup_220` trước khi xoá.
 
-### M12. Cache subscription bị xoá trước khi commit khi đổi mã
+**Ghi chú — 131 đã chạy ở mọi nơi, không còn gì để sửa.** Những dòng trùng bị xoá đã không còn; thêm snapshot hôm nay — dù sửa 131 hay thêm migration mới — chụp được **con số không**, vì migration không khôi phục được dòng đã xoá. Trên bản cài mới bảng rỗng khi 131 chạy; trên bản restore thiếu tracking table thì unique index đã tồn tại nên không thể có dòng trùng. Sửa nó chỉ tốn một checksum rule mà không giúp được ai.
+
+Sản phẩm đúng cho phát hiện này là ghi chú review, không phải code. Muốn chặn lặp lại thì chỗ để viết là `backend/migrations/README.md`.
+
+### M12. Cache subscription bị xoá trước khi commit khi đổi mã **[ĐÃ SỬA]**
 `backend/internal/service/redeem_service.go:495`, `:555-569` · `subscription_service.go:218`, `:273-275`
 Đường đổi mã gọi `AssignOrExtendSubscription` với `deferCacheInvalidation=false` → bỏ entry L1 ristretto **trước** commit; `invalidateRedeemCaches` sau commit không gọi `InvalidateSubCache`, cũng không `PublishSubscriptionCacheInvalidation`. Request song song nạp lại dòng tiền-commit vào L1 → hạn mới vô hình suốt TTL trên mọi instance. Rủi ro này **đã được ghi chú** tại `subscription_service.go:273-275` cho đường thanh toán nhưng chưa vá cho đường đổi mã.
 
-### M13. Hạn mức nạp tiền hằng ngày vượt được bằng N request song song
+### M13. Hạn mức nạp tiền hằng ngày vượt được bằng N request song song **[SỬA MỘT PHẦN]**
 `backend/internal/service/payment_order.go:330` · `:246`
 `checkDailyLimit` nạp toàn bộ đơn đã thanh toán trong ngày bằng `.All(ctx)` rồi cộng ở tầng Go, trong tx READ COMMITTED không khoá dòng user. `checkPendingLimit` cùng hình dạng.
 
-### M14. Năm migration thiếu `IF NOT EXISTS`, chặn server khởi động
+### M14. Năm migration thiếu `IF NOT EXISTS`, chặn server khởi động **[ĐÃ SỬA]**
 `migrations/069_add_group_messages_dispatch.sql:1` · `041_add_model_routing_enabled.sql:2` · `044b_add_group_mcp_xml_inject.sql:2` · `189_add_group_allow_live.sql:1` · `036_ops_error_logs_add_is_count_tokens.sql:8`
 `ALTER TABLE ... ADD COLUMN` trần, trái quy ước idempotent của repo. Trên DB đã có cột nhưng thiếu dòng `schema_migrations` (restore loại trừ bảng tracking, clone schema-only, DDL vá tay) → lỗi `column already exists`, server từ chối boot, chỉ sửa được bằng tay.
 
-### M15. Idempotency lưu JSON không hợp lệ cho response lớn
+### M15. Idempotency lưu JSON không hợp lệ cho response lớn **[BẢN RÀ SOÁT BỎP SÓT KHỎI MỌI PR — CHƯA SỬA]**
 `backend/internal/service/idempotency.go:451-461`
 `marshalStoredResponse` nối `"...(truncated)"` vào JSON **đã** serialize khi vượt `MaxStoredResponseLen` (mặc định 64 KiB), rồi vẫn ghi qua `MarkSucceeded`. Retry cùng `Idempotency-Key` → `json.Unmarshal` hỏng → trả `ErrIdempotencyStoreUnavail` (503) thay vì kết quả cache.
 
-### M16. Hai `Stop()` thiếu `sync.Once`, panic khi tắt hai lần
+**Ghi chú — cả hai mới sửa được một nửa, cố ý dừng lại.**
+
+M8: entropy đã xử lý (crypto/rand 130 bit, bỏ số đơn khỏi mã). **Tính nguyên tử thì chưa**: `RedeemService.Redeem` luôn tự mở transaction riêng thay vì nhận từ context, nên `CreateCode` và `Redeem` vẫn là hai giao dịch. Cửa sổ mồ côi giờ vô hại (mã 130 bit, không endpoint người dùng nào trả về, lần retry sau tự chữa) nhưng muốn đóng hẳn thì phải sửa `redeem_service.go`.
+
+M13: tạo đơn đã được tuần tự hoá. Nhưng hạn mức ngày **chỉ tính đơn đã thanh toán**, nên vẫn mở được nhiều đơn pending cùng thấy `used=0` rồi trả hết. Hiện bị chặn bởi `MaxPendingOrders` (mặc định 3). Đóng hẳn thì hoặc tính cả đơn pending vào hạn mức (đơn bỏ dở sẽ chặn người dùng suốt `OrderTimeoutMin`), hoặc kiểm lại lúc hoàn tất đơn (tức từ chối cộng tiền đã thu). Cả hai đều là quyết định sản phẩm nên giữ nguyên ngữ nghĩa.
+
+### M16. Hai `Stop()` thiếu `sync.Once`, panic khi tắt hai lần **[ĐÃ SỬA]**
 `backend/internal/service/pricing_service.go:213-217` · `email_queue_service.go:140-144`
 Cả hai gọi `close(s.stopCh)` trần. Mọi worker nền khác cùng package (`AccountExpiryService`, `UsageRecordWorkerPool`, `SubscriptionMaintenanceQueue`) đều guard bằng `sync.Once` hoặc cờ có mutex; repo còn có sẵn `TestSessionStore_Stop_Idempotent` ép quy ước này.
 
@@ -266,7 +292,7 @@ Access token, refresh token xoay vòng, object user nằm trong `localStorage` d
 
 ## Low
 
-### L1. Danh sách redact log bỏ sót các tên trường secret đang dùng thật
+### L1. Danh sách redact log bỏ sót các tên trường secret đang dùng thật **[ĐÃ SỬA]**
 `backend/internal/util/logredact/redact.go:14-34` — chỉ phủ nhóm OAuth (`access_token`, `refresh_token`, `client_secret`, `password`), thiếu `secret_key`, `api_key`, `private_key`, `api_v3_key`, `cookie`. Chưa có call site nào rò thật; bẫy chờ lệnh log tương lai.
 
 ### L2. Client outbound của prompt-audit cố ý bỏ chặn SSRF
@@ -275,7 +301,7 @@ Access token, refresh token xoay vòng, object user nằm trong `localStorage` d
 ### L3. Tiền tệ đi qua interface dưới dạng `float64`, kéo theo dung sai 0.01
 `backend/internal/payment/types.go:174` · `payment_fulfillment.go:112` — `PaymentNotification.Amount` và `QueryOrderResponse.Amount` là `float64`, buộc đi vòng qua `InexactFloat64()` và `strconv.ParseFloat`. Hệ quả: `amountToleranceCNY = 0.01` được chấp nhận — đơn 100.00 CNY vẫn fulfill đủ khi trả 99.99, `PAYMENT_AMOUNT_MISMATCH` không bao giờ kích hoạt.
 
-### L4. Khoá Redis khi đổi mã không có token chủ sở hữu
+### L4. Khoá Redis khi đổi mã không có token chủ sở hữu **[ĐÃ SỬA]**
 `backend/internal/repository/redeem_cache.go:59` — `ReleaseRedeemLock` là `DEL` vô điều kiện; `AcquireRedeemLock` set giá trị `1` với TTL 10s. Tx quá 10s → khoá hết hạn, request thứ hai giành được, `defer` của request đầu xoá khoá của người thứ hai. Tác động hạn chế vì lớp bảo vệ thật là UPDATE có điều kiện ở DB.
 
 ---
