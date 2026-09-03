@@ -112,7 +112,7 @@ const expired = ref(false)
 const cancelling = ref(false)
 const success = ref(false)
 const paidOrder = ref<PaymentOrder | null>(null)
-const creditedAmountSymbol = currencySymbol('USD')
+const creditedAmountSymbol = computed(() => currencySymbol(paidOrder.value?.currency))
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let countdownTimer: ReturnType<typeof setInterval> | null = null

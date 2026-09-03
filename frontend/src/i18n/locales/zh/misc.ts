@@ -550,7 +550,7 @@ export default {
       deductBalanceHint: '从用户余额中扣回充值金额',
       userBalance: '用户余额',
       orderAmount: '订单金额',
-      insufficientBalance: '余额不足，将扣至 $0',
+      insufficientBalance: '余额不足，将扣至 ￥0',
       noDeduction: '将不扣除用户余额',
       forceRefund: '强制退款（忽略余额检查）',
       orderCancelled: '订单已取消',

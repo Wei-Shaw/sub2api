@@ -261,6 +261,7 @@ import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
+import { DEFAULT_PAYMENT_CURRENCY, currencySymbol } from '@/components/payment/currency'
 
 const router = useRouter()
 const route = useRoute()
@@ -362,8 +363,8 @@ function handleReplayGuide() {
 }
 
 function formatHeaderMoney(value: number) {
-  if (!Number.isFinite(value)) return '$0.00'
-  return `$${value.toFixed(2)}`
+  if (!Number.isFinite(value)) return `${currencySymbol(DEFAULT_PAYMENT_CURRENCY)}0.00`
+  return `${currencySymbol(DEFAULT_PAYMENT_CURRENCY)}${value.toFixed(2)}`
 }
 
 function handleClickOutside(event: MouseEvent) {

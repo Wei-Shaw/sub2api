@@ -278,7 +278,7 @@ export default {
     invalidCode: '请输入有效的6位验证码',
     promoCodeLabel: '优惠码',
     promoCodePlaceholder: '输入优惠码（可选）',
-    promoCodeValid: '有效！注册后将获得 ${amount} 赠送余额',
+    promoCodeValid: '有效！注册后将获得 ￥{amount} 赠送余额',
     promoCodeInvalid: '无效的优惠码',
     promoCodeNotFound: '优惠码不存在',
     promoCodeExpired: '此优惠码已过期',

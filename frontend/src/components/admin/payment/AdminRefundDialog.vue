@@ -187,9 +187,8 @@ const emit = defineEmits<{
   (e: 'cancel'): void
 }>()
 
-const creditedAmountSymbol = currencySymbol('USD')
-
 const paymentAmountSymbol = computed(() => currencySymbol(props.order?.currency))
+const creditedAmountSymbol = paymentAmountSymbol
 
 const form = reactive({
   amount: 0,

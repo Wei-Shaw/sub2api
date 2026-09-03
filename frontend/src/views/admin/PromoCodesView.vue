@@ -76,7 +76,7 @@
 
           <template #cell-bonus_amount="{ value }">
             <span class="text-sm font-medium text-gray-900 dark:text-white">
-              ${{ value.toFixed(2) }}
+              {{ formatBonusAmount(value) }}
             </span>
           </template>
 
@@ -347,7 +347,7 @@
           </div>
           <div class="text-right">
             <span class="text-sm font-medium text-green-600 dark:text-green-400">
-              +${{ usage.bonus_amount.toFixed(2) }}
+              {{ formatSignedBonusAmount(usage.bonus_amount) }}
             </span>
           </div>
         </div>
@@ -403,6 +403,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { DEFAULT_PAYMENT_CURRENCY, formatPaymentAmount } from '@/components/payment/currency'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -464,6 +465,10 @@ const editForm = reactive({
   expires_at_str: '',
   notes: ''
 })
+
+const formatBonusAmount = (value: number) => formatPaymentAmount(value, DEFAULT_PAYMENT_CURRENCY)
+
+const formatSignedBonusAmount = (value: number) => `+${formatBonusAmount(value)}`
 
 // Options
 const filterStatusOptions = computed(() => [

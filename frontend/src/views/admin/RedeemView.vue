@@ -130,7 +130,7 @@
 
           <template #cell-value="{ value, row }">
             <span class="text-sm font-medium text-gray-900 dark:text-white">
-              <template v-if="row.type === 'balance'">${{ value.toFixed(2) }}</template>
+              <template v-if="row.type === 'balance'">{{ formatRedeemBalance(value) }}</template>
               <template v-else-if="row.type === 'subscription'">
                 {{ row.validity_days || 30 }} {{ t('admin.redeem.days') }}
                 <span v-if="row.group" class="ml-1 text-xs text-gray-500 dark:text-gray-400"
@@ -641,6 +641,7 @@ import Select from '@/components/common/Select.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { DEFAULT_PAYMENT_CURRENCY, formatPaymentAmount } from '@/components/payment/currency'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -844,6 +845,8 @@ const generateForm = reactive({
   expiry_option: 'never' as RedeemCodeExpiryOption,
   custom_expiry_days: 7
 })
+
+const formatRedeemBalance = (value: number) => formatPaymentAmount(value, DEFAULT_PAYMENT_CURRENCY)
 
 // 监听类型变化，邀请码类型时自动设置 value 为 0
 watch(

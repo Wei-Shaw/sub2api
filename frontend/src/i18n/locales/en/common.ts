@@ -279,7 +279,7 @@ export default {
     invalidCode: 'Please enter a valid 6-digit code',
     promoCodeLabel: 'Promo Code',
     promoCodePlaceholder: 'Enter promo code (optional)',
-    promoCodeValid: 'Valid! You will receive ${amount} bonus balance',
+    promoCodeValid: 'Valid! You will receive ￥{amount} bonus balance',
     promoCodeInvalid: 'Invalid promo code',
     promoCodeNotFound: 'Promo code not found',
     promoCodeExpired: 'This promo code has expired',
