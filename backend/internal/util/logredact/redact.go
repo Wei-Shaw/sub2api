@@ -11,18 +11,20 @@ import (
 // maxRedactDepth 限制递归深度以防止栈溢出
 const maxRedactDepth = 32
 
-var defaultSensitiveKeys = map[string]struct{}{
-	"authorization_code": {},
-	"code":               {},
-	"code_verifier":      {},
-	"access_token":       {},
-	"refresh_token":      {},
-	"id_token":           {},
-	"client_secret":      {},
-	"password":           {},
-}
-
+// defaultSensitiveKeyList 是默认脱敏的字段名。
+//
+// 匹配语义（两处必须一起理解，否则容易误判覆盖面）：
+//   - RedactMap / RedactJSON 走 isSensitiveKey，是「整键精确匹配」，
+//     仅做 ToLower+TrimSpace，不做子串匹配、也不做 camelCase→snake_case 归一化。
+//     所以 camelCase 配置键（wxpay 的 apiV3Key/privateKey）必须以其小写形式
+//     单独列出（apiv3key/privatekey），否则不会命中。
+//   - RedactText 走 buildKeyAlternation 拼出的正则，两侧都有 \b 词边界。
+//     Go regexp 里 `_` 属于词字符，因此 \bapi_key\b 不会命中 api_key_id、
+//     \bapikey\b 不会命中 apikey_id —— 业务 ID 字段仍然可见，不会被过度脱敏。
+//
+// 新增条目请只放"值本身即凭据"的字段名，绝不要放裸 key/id/name 这类通用词。
 var defaultSensitiveKeyList = []string{
+	// OAuth 簇
 	"authorization_code",
 	"code",
 	"code_verifier",
@@ -31,7 +33,30 @@ var defaultSensitiveKeyList = []string{
 	"id_token",
 	"client_secret",
 	"password",
+	// 通用密钥簇：snake_case 与 camelCase 小写形式都要列，见上文匹配语义说明
+	"secret_key",
+	"secretkey",
+	"api_key",
+	"apikey",
+	"private_key",
+	"privatekey",
+	"api_v3_key",
+	"apiv3key",
+	"session_key",
+	"sessionkey",
+	// 会话凭据：Cookie / Set-Cookie 的值等价于一次完整的身份接管
+	"cookie",
+	"set-cookie",
 }
+
+// defaultSensitiveKeys 由 defaultSensitiveKeyList 派生，避免两份清单各改各的而漂移。
+var defaultSensitiveKeys = func() map[string]struct{} {
+	keys := make(map[string]struct{}, len(defaultSensitiveKeyList))
+	for _, k := range defaultSensitiveKeyList {
+		keys[k] = struct{}{}
+	}
+	return keys
+}()
 
 type textRedactPatterns struct {
 	reJSONLike  *regexp.Regexp

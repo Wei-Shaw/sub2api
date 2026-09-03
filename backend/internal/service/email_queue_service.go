@@ -30,6 +30,7 @@ type EmailQueueService struct {
 	taskChan     chan EmailTask
 	wg           sync.WaitGroup
 	stopChan     chan struct{}
+	stopOnce     sync.Once
 	workers      int
 }
 
@@ -136,9 +137,17 @@ func (s *EmailQueueService) EnqueuePasswordReset(email, siteName, resetURL strin
 	}
 }
 
-// Stop 停止队列服务
+// Stop 停止队列服务。
+//
+// 用 sync.Once 保护 close(stopChan)：Stop 可能被多次调用（优雅退出 + cleanup），
+// 裸 close 已关闭的 channel 会 panic。与 AccountExpiryService 等后台任务保持一致。
 func (s *EmailQueueService) Stop() {
-	close(s.stopChan)
+	if s == nil {
+		return
+	}
+	s.stopOnce.Do(func() {
+		close(s.stopChan)
+	})
 	s.wg.Wait()
 	logger.LegacyPrintf("service.email_queue", "%s", "[EmailQueue] All workers stopped")
 }

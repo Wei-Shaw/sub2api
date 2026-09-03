@@ -204,8 +204,14 @@ func (r *promoCodeRepository) CreateUsage(ctx context.Context, usage *service.Pr
 	return nil
 }
 
+// GetUsageByPromoCodeAndUser 查询某用户对某优惠码的使用记录。
+//
+// 必须走 clientFromContext：ApplyPromoCode 在事务里先对 promo_codes 加了 FOR UPDATE 行锁，
+// 再调用本方法做"是否已使用过"的判重。若这里用 r.client，等于在持锁期间再向连接池要一条新连接，
+// 连接池打满时会自己等自己，形成自死锁；同时也读不到本事务内的未提交写入。
 func (r *promoCodeRepository) GetUsageByPromoCodeAndUser(ctx context.Context, promoCodeID, userID int64) (*service.PromoCodeUsage, error) {
-	m, err := r.client.PromoCodeUsage.Query().
+	client := clientFromContext(ctx, r.client)
+	m, err := client.PromoCodeUsage.Query().
 		Where(
 			promocodeusage.PromoCodeIDEQ(promoCodeID),
 			promocodeusage.UserIDEQ(userID),

@@ -303,3 +303,73 @@ func newTestEasyPay(t *testing.T, apiBase string) *EasyPay {
 	}
 	return provider
 }
+
+// TestNewEasyPayRejectsInsecureAPIBase 锁定 M10 修复：apiBase 必须走 TLS。
+// QueryOrder / refundAttempts 会把商户密钥 pkey 明文放进 POST body 的 key= 字段，
+// 明文 http 下抓到 pkey 就能伪造 webhook 的 sign。
+func TestNewEasyPayRejectsInsecureAPIBase(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		apiBase string
+	}{
+		{name: "plain http", apiBase: "http://pay.example.com"},
+		{name: "schemeless", apiBase: "pay.example.com"},
+		{name: "non http scheme", apiBase: "ftp://pay.example.com"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := NewEasyPay("test-instance", map[string]string{
+				"pid":       "pid-1",
+				"pkey":      "pkey-1",
+				"apiBase":   tt.apiBase,
+				"notifyUrl": "https://example.com/notify",
+				"returnUrl": "https://example.com/return",
+			})
+			if err == nil {
+				t.Fatalf("expected NewEasyPay to reject apiBase %q", tt.apiBase)
+			}
+		})
+	}
+}
+
+// TestNewEasyPayAllowsInsecureAPIBaseWithExplicitOptOut 保留存量 http 自建站点的迁移通道：
+// 只有运营者主动写入 allowInsecureApiBase=true 才放行，不会默默降级。
+func TestNewEasyPayAllowsInsecureAPIBaseWithExplicitOptOut(t *testing.T) {
+	t.Parallel()
+
+	provider, err := NewEasyPay("test-instance", map[string]string{
+		"pid":                  "pid-1",
+		"pkey":                 "pkey-1",
+		"apiBase":              "http://pay.example.com",
+		"notifyUrl":            "https://example.com/notify",
+		"returnUrl":            "https://example.com/return",
+		"allowInsecureApiBase": "true",
+	})
+	if err != nil {
+		t.Fatalf("NewEasyPay with explicit opt-out: %v", err)
+	}
+	if got := provider.apiBase(); got != "http://pay.example.com" {
+		t.Fatalf("apiBase() = %q, want %q", got, "http://pay.example.com")
+	}
+}
+
+// TestNewEasyPayAllowsLoopbackHTTP 回环地址不出网，本地与测试环境无需 TLS。
+func TestNewEasyPayAllowsLoopbackHTTP(t *testing.T) {
+	t.Parallel()
+
+	for _, apiBase := range []string{"http://127.0.0.1:8080", "http://localhost:8080", "http://[::1]:8080"} {
+		if _, err := NewEasyPay("test-instance", map[string]string{
+			"pid":       "pid-1",
+			"pkey":      "pkey-1",
+			"apiBase":   apiBase,
+			"notifyUrl": "https://example.com/notify",
+			"returnUrl": "https://example.com/return",
+		}); err != nil {
+			t.Fatalf("NewEasyPay(%q): %v", apiBase, err)
+		}
+	}
+}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"hash/fnv"
+	"strconv"
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -146,6 +148,16 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 			_ = tx.Rollback()
 		}
 	}()
+
+	// 同一 batch 的 reserve/capture/release 必须串行：三者用的是三个不同的 dedup
+	// request id，dedup 唯一索引管不住它们互相并发。batchImageHoldOutstanding 的
+	// "对侧是否已被 claim" 是一次读，若 capture 与 release 并发跑，两边都读不到对方
+	// 未提交的 claim，双双通过校验，frozen_balance 被扣两次。
+	// 事务级 advisory lock 把这个 TOCTOU 窗口关掉，事务结束自动释放；
+	// 每个事务只取这一把锁，不存在加锁顺序导致的死锁。
+	if err := lockBatchImageHold(ctx, tx, cmd.BatchID, cmd.APIKeyID); err != nil {
+		return nil, err
+	}
 
 	applied, err := r.claimUsageBillingRequest(ctx, tx, cmd.RequestID, cmd.APIKeyID, cmd.RequestFingerprint)
 	if err != nil {
@@ -306,6 +318,20 @@ func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 	if cmd.ActualAmount-cmd.HoldAmount > 0.00000001 {
 		return nil, service.ErrBatchImageSettlementCostExceedsHold
 	}
+	// 核销同样要先确认冻结额仍在押：hold 从未提交（幻影核销）或已被 release 归还时，
+	// 下面的 frozen_balance - HoldAmount 会挖到别的 batch 的冻结资金。
+	// HoldAmount > 0 是防御性条件：走到这里时 HoldAmount == 0 必然伴随 ActualAmount == 0
+	// （上面两个前置分支已分别拦掉全零与超额），即不触碰 frozen_balance 的空操作。
+	if cmd.HoldAmount > 0 {
+		outstanding, err := batchImageHoldOutstanding(ctx, tx, cmd.BatchID, cmd.APIKeyID, service.BatchImageReleaseRequestID(cmd.BatchID))
+		if err != nil {
+			return nil, err
+		}
+		if !outstanding {
+			logger.LegacyPrintf("repository.usage_billing", "[BatchImage] capture skipped, hold is not outstanding: batch=%s", cmd.BatchID)
+			return &service.BatchImageBalanceHoldResult{}, nil
+		}
+	}
 	var balance, frozen float64
 	err := tx.QueryRowContext(ctx, `
 		UPDATE users
@@ -335,14 +361,15 @@ func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 	if cmd.HoldAmount <= 0 {
 		return &service.BatchImageBalanceHoldResult{}, nil
 	}
-	// 释放前校验该 job 确实预留过 hold（hold request id 已被 claim），
-	// 防止从未成功冻结的 job 触发"幻影释放"，从其他用户的冻结资金池中凭空生成余额。
-	held, heldErr := batchImageHoldClaimExists(ctx, tx, service.BatchImageHoldRequestID(cmd.BatchID), cmd.APIKeyID)
+	// 释放前校验该 job 的冻结额"仍在押"：既要曾经成功冻结过（防幻影释放），
+	// 也要没有被 capture 消费掉（防重复退款）。仅校验前者不够：capture 与 release
+	// 用的是两个不同的 dedup request id，dedup 拦不住"先核销、后释放"。
+	outstanding, heldErr := batchImageHoldOutstanding(ctx, tx, cmd.BatchID, cmd.APIKeyID, service.BatchImageCaptureRequestID(cmd.BatchID))
 	if heldErr != nil {
 		return nil, heldErr
 	}
-	if !held {
-		logger.LegacyPrintf("repository.usage_billing", "[BatchImage] release skipped, hold was never reserved: batch=%s", cmd.BatchID)
+	if !outstanding {
+		logger.LegacyPrintf("repository.usage_billing", "[BatchImage] release skipped, hold is not outstanding: batch=%s", cmd.BatchID)
 		return &service.BatchImageBalanceHoldResult{}, nil
 	}
 	var balance, frozen float64
@@ -368,8 +395,53 @@ func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 	return nil, errors.New("batch image frozen balance is insufficient")
 }
 
-// batchImageHoldClaimExists 检查 hold request id 是否已在 dedup（或归档）表中被 claim，
-// 即该 batch 的冻结操作确实成功提交过。
+// lockBatchImageHold 以 (batchID, apiKeyID) 为键取一把事务级 advisory lock，
+// 把同一 batch 的 reserve/capture/release 串行化。锁随事务提交或回滚自动释放。
+func lockBatchImageHold(ctx context.Context, tx *sql.Tx, batchID string, apiKeyID int64) error {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(strings.TrimSpace(batchID)))
+	_, _ = h.Write([]byte{0})
+	_, _ = h.Write([]byte(strconv.FormatInt(apiKeyID, 10)))
+	// pg_advisory_xact_lock 取 bigint，转换按位重解释，不同 batch 的碰撞概率可忽略；
+	// 即便碰撞也只是多串行一次，不影响正确性。
+	_, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", int64(h.Sum64())) //nolint:gosec // 位重解释，非数值截断
+	return err
+}
+
+// batchImageHoldOutstanding 判断该 batch 的冻结额此刻是否"仍在押"。
+//
+// 冻结额的生命周期是 reserve -> (capture | release) 二选一，两条终态路径都会把
+// 同一笔 HoldAmount 从 frozen_balance 里扣掉。但三者各用一个独立的 dedup request id
+// （batch_image_hold: / batch_image_capture: / batch_image_release:），所以 dedup 表
+// 只能保证"同一条路径不会跑两次"，拦不住"先 capture、后 release"这种跨路径重复消费：
+// 结算成功核销后，若 job 仍停在 settling 并最终触发 failExhaustedSettlement，
+// 释放路径会把整笔 HoldAmount 二次记入余额，而这笔钱只能从别的 batch 的冻结资金里扣。
+//
+// 因此判定"在押"需要同时满足两个条件：
+//  1. hold request id 已被 claim —— 证明冻结确实成功提交过（拦幻影核销/幻影释放）；
+//  2. 对侧终态 request id 尚未被 claim —— 证明冻结额还没有被另一条路径消费掉
+//     （release 查 capture，capture 查 release；自身的 claim 已在本事务里先行插入，
+//     所以查对侧不会自我否定）。
+//
+// 只有条件 1 是不够的：它只证明冻结"曾经存在"，不证明它"现在还在"。
+func batchImageHoldOutstanding(ctx context.Context, tx *sql.Tx, batchID string, apiKeyID int64, opposingRequestID string) (bool, error) {
+	held, err := batchImageHoldClaimExists(ctx, tx, service.BatchImageHoldRequestID(batchID), apiKeyID)
+	if err != nil {
+		return false, err
+	}
+	if !held {
+		return false, nil
+	}
+	consumed, err := batchImageHoldClaimExists(ctx, tx, opposingRequestID, apiKeyID)
+	if err != nil {
+		return false, err
+	}
+	return !consumed, nil
+}
+
+// batchImageHoldClaimExists 检查给定 request id 是否已在 dedup（或归档）表中被 claim。
+// dedup 行按 dashboard_aggregation.retention.usage_billing_dedup_days（默认 365 天）
+// 归档而非删除，两张表都查，因此远长于 batch job 生命周期。
 func batchImageHoldClaimExists(ctx context.Context, tx *sql.Tx, holdRequestID string, apiKeyID int64) (bool, error) {
 	var exists int
 	err := tx.QueryRowContext(ctx, `

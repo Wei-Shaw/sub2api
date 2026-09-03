@@ -20,6 +20,9 @@ const (
 	captureBatchImageHoldSQL    = `(?s)UPDATE users\s+SET balance = balance\s+\+ CASE WHEN \$1 > \$2 THEN \$1 - \$2 ELSE 0 END\s+- CASE WHEN \$2 > \$1 THEN \$2 - \$1 ELSE 0 END,\s+frozen_balance = COALESCE\(frozen_balance, 0\) - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$3 AND deleted_at IS NULL AND COALESCE\(frozen_balance, 0\) >= \$1\s+RETURNING balance, frozen_balance`
 	releaseBatchImageHoldSQL    = `(?s)UPDATE users\s+SET balance = balance \+ \$1,\s+frozen_balance = COALESCE\(frozen_balance, 0\) - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND COALESCE\(frozen_balance, 0\) >= \$1\s+RETURNING balance, frozen_balance`
 	userExistsForBillingSQL     = `(?s)SELECT 1\s+FROM users\s+WHERE id = \$1 AND deleted_at IS NULL`
+
+	dedupClaimExistsSQL        = `(?s)SELECT 1\s+FROM usage_billing_dedup\s+WHERE request_id = \$1 AND api_key_id = \$2`
+	dedupArchiveClaimExistsSQL = `(?s)SELECT 1\s+FROM usage_billing_dedup_archive\s+WHERE request_id = \$1 AND api_key_id = \$2`
 )
 
 func TestDeductUsageBillingBalance_UsesSufficientBalanceGuard(t *testing.T) {
@@ -178,12 +181,22 @@ func TestCaptureUsageBillingBatchImageBalance_ReleasesRemainder(t *testing.T) {
 	mock.ExpectBegin()
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
+	// hold 已 claim，对侧的 release 尚未 claim —— 冻结额仍在押，允许核销。
+	mock.ExpectQuery(dedupClaimExistsSQL).
+		WithArgs(service.BatchImageHoldRequestID("imgbatch_capture"), int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(1))
+	mock.ExpectQuery(dedupClaimExistsSQL).
+		WithArgs(service.BatchImageReleaseRequestID("imgbatch_capture"), int64(7)).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(dedupArchiveClaimExistsSQL).
+		WithArgs(service.BatchImageReleaseRequestID("imgbatch_capture"), int64(7)).
+		WillReturnError(sql.ErrNoRows)
 	mock.ExpectQuery(captureBatchImageHoldSQL).
 		WithArgs(1.0, 0.25, int64(42)).
 		WillReturnRows(sqlmock.NewRows([]string{"balance", "frozen_balance"}).AddRow(9.75, 0.0))
 	mock.ExpectCommit()
 
-	result, err := captureUsageBillingBatchImageBalance(ctx, tx, &service.BatchImageBalanceHoldCommand{UserID: 42, HoldAmount: 1, ActualAmount: 0.25})
+	result, err := captureUsageBillingBatchImageBalance(ctx, tx, &service.BatchImageBalanceHoldCommand{UserID: 42, APIKeyID: 7, BatchID: "imgbatch_capture", HoldAmount: 1, ActualAmount: 0.25})
 	require.NoError(t, err)
 	require.InDelta(t, 9.75, *result.NewBalance, 0.000001)
 	require.InDelta(t, 0.0, *result.FrozenBalance, 0.000001)
@@ -217,9 +230,16 @@ func TestReleaseUsageBillingBatchImageBalance_ReturnsFrozenToAvailable(t *testin
 	mock.ExpectBegin()
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
-	mock.ExpectQuery(`SELECT 1\s+FROM usage_billing_dedup\s+WHERE request_id = \$1 AND api_key_id = \$2`).
+	mock.ExpectQuery(dedupClaimExistsSQL).
 		WithArgs(service.BatchImageHoldRequestID("imgbatch_release"), int64(7)).
 		WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(1))
+	// 对侧 capture 未被 claim —— 冻结额仍在押，允许释放。
+	mock.ExpectQuery(dedupClaimExistsSQL).
+		WithArgs(service.BatchImageCaptureRequestID("imgbatch_release"), int64(7)).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(dedupArchiveClaimExistsSQL).
+		WithArgs(service.BatchImageCaptureRequestID("imgbatch_release"), int64(7)).
+		WillReturnError(sql.ErrNoRows)
 	mock.ExpectQuery(releaseBatchImageHoldSQL).
 		WithArgs(1.0, int64(42)).
 		WillReturnRows(sqlmock.NewRows([]string{"balance", "frozen_balance"}).AddRow(10.0, 0.0))
@@ -244,10 +264,10 @@ func TestReleaseUsageBillingBatchImageBalance_SkipsWhenHoldNeverReserved(t *test
 	require.NoError(t, err)
 	// dedup 与归档表均无 hold claim：说明该 job 从未成功冻结，
 	// 释放必须跳过，不得从他人冻结资金池中凭空生成余额。
-	mock.ExpectQuery(`SELECT 1\s+FROM usage_billing_dedup\s+WHERE request_id = \$1 AND api_key_id = \$2`).
+	mock.ExpectQuery(dedupClaimExistsSQL).
 		WithArgs(service.BatchImageHoldRequestID("imgbatch_phantom"), int64(7)).
 		WillReturnError(sql.ErrNoRows)
-	mock.ExpectQuery(`SELECT 1\s+FROM usage_billing_dedup_archive\s+WHERE request_id = \$1 AND api_key_id = \$2`).
+	mock.ExpectQuery(dedupArchiveClaimExistsSQL).
 		WithArgs(service.BatchImageHoldRequestID("imgbatch_phantom"), int64(7)).
 		WillReturnError(sql.ErrNoRows)
 	mock.ExpectCommit()
@@ -256,6 +276,116 @@ func TestReleaseUsageBillingBatchImageBalance_SkipsWhenHoldNeverReserved(t *test
 	require.NoError(t, err)
 	require.Nil(t, result.NewBalance)
 	require.Nil(t, result.FrozenBalance)
+	require.NoError(t, tx.Commit())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestReleaseUsageBillingBatchImageBalance_SkipsWhenHoldAlreadyCaptured 锁定 M4 修复：
+// capture 与 release 用两个不同的 dedup request id，dedup 表拦不住"先核销、后释放"。
+// 核销已把 HoldAmount 从 frozen_balance 扣掉后，释放必须跳过，
+// 否则整笔 HoldAmount 会被二次记入余额，而这笔钱只能从别的 batch 的冻结资金里扣。
+func TestReleaseUsageBillingBatchImageBalance_SkipsWhenHoldAlreadyCaptured(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	mock.ExpectQuery(dedupClaimExistsSQL).
+		WithArgs(service.BatchImageHoldRequestID("imgbatch_captured"), int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(1))
+	mock.ExpectQuery(dedupClaimExistsSQL).
+		WithArgs(service.BatchImageCaptureRequestID("imgbatch_captured"), int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(1))
+	mock.ExpectCommit()
+
+	result, err := releaseUsageBillingBatchImageBalance(ctx, tx, &service.BatchImageBalanceHoldCommand{UserID: 42, APIKeyID: 7, BatchID: "imgbatch_captured", HoldAmount: 1})
+	require.NoError(t, err)
+	require.Nil(t, result.NewBalance)
+	require.Nil(t, result.FrozenBalance)
+	require.NoError(t, tx.Commit())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestReleaseUsageBillingBatchImageBalance_SkipsWhenCaptureClaimArchived 覆盖
+// capture claim 已被归档搬走的情形：归档表也必须参与"是否已被消费"的判定。
+func TestReleaseUsageBillingBatchImageBalance_SkipsWhenCaptureClaimArchived(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	mock.ExpectQuery(dedupClaimExistsSQL).
+		WithArgs(service.BatchImageHoldRequestID("imgbatch_archived"), int64(7)).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(dedupArchiveClaimExistsSQL).
+		WithArgs(service.BatchImageHoldRequestID("imgbatch_archived"), int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(1))
+	mock.ExpectQuery(dedupClaimExistsSQL).
+		WithArgs(service.BatchImageCaptureRequestID("imgbatch_archived"), int64(7)).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(dedupArchiveClaimExistsSQL).
+		WithArgs(service.BatchImageCaptureRequestID("imgbatch_archived"), int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(1))
+	mock.ExpectCommit()
+
+	result, err := releaseUsageBillingBatchImageBalance(ctx, tx, &service.BatchImageBalanceHoldCommand{UserID: 42, APIKeyID: 7, BatchID: "imgbatch_archived", HoldAmount: 1})
+	require.NoError(t, err)
+	require.Nil(t, result.NewBalance)
+	require.NoError(t, tx.Commit())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestCaptureUsageBillingBatchImageBalance_SkipsWhenHoldNeverReserved 锁定核销侧的
+// 对称防护：hold 从未成功冻结时，核销不得扣减 frozen_balance（会挖到别的 batch 的冻结资金）。
+func TestCaptureUsageBillingBatchImageBalance_SkipsWhenHoldNeverReserved(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	mock.ExpectQuery(dedupClaimExistsSQL).
+		WithArgs(service.BatchImageHoldRequestID("imgbatch_nohold"), int64(7)).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(dedupArchiveClaimExistsSQL).
+		WithArgs(service.BatchImageHoldRequestID("imgbatch_nohold"), int64(7)).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectCommit()
+
+	result, err := captureUsageBillingBatchImageBalance(ctx, tx, &service.BatchImageBalanceHoldCommand{UserID: 42, APIKeyID: 7, BatchID: "imgbatch_nohold", HoldAmount: 1, ActualAmount: 0.25})
+	require.NoError(t, err)
+	require.Nil(t, result.NewBalance)
+	require.Nil(t, result.FrozenBalance)
+	require.NoError(t, tx.Commit())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestCaptureUsageBillingBatchImageBalance_ZeroAmountsSkipClaimLookup 确认全零金额的
+// 空操作不会去查 dedup：此时既不动余额也不动 frozen_balance，无需在押校验。
+// （HoldAmount == 0 而 ActualAmount > 0 的组合走不到在押校验——上面的
+// "核销额超过冻结额" 分支会先行拒绝。）
+func TestCaptureUsageBillingBatchImageBalance_ZeroAmountsSkipClaimLookup(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	mock.ExpectCommit()
+
+	result, err := captureUsageBillingBatchImageBalance(ctx, tx, &service.BatchImageBalanceHoldCommand{UserID: 42, APIKeyID: 7, BatchID: "imgbatch_zero", HoldAmount: 0, ActualAmount: 0})
+	require.NoError(t, err)
+	require.Nil(t, result.NewBalance)
 	require.NoError(t, tx.Commit())
 	require.NoError(t, mock.ExpectationsWereMet())
 }

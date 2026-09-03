@@ -172,8 +172,9 @@ type PricingService struct {
 	localHash    string
 
 	// 停止信号
-	stopCh chan struct{}
-	wg     sync.WaitGroup
+	stopCh   chan struct{}
+	stopOnce sync.Once
+	wg       sync.WaitGroup
 }
 
 // NewPricingService 创建价格服务
@@ -209,9 +210,17 @@ func (s *PricingService) Initialize() error {
 	return nil
 }
 
-// Stop 停止价格服务
+// Stop 停止价格服务。
+//
+// 用 sync.Once 保护 close(stopCh)：重复调用（例如优雅退出与 provideCleanup 各调一次）
+// 若裸 close 已关闭的 channel 会直接 panic。与 AccountExpiryService 等后台任务保持一致。
 func (s *PricingService) Stop() {
-	close(s.stopCh)
+	if s == nil {
+		return
+	}
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+	})
 	s.wg.Wait()
 	logger.LegacyPrintf("service.pricing", "%s", "[Pricing] Service stopped")
 }

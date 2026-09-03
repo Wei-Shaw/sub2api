@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -59,6 +60,9 @@ func NewEasyPay(instanceID string, config map[string]string) (*EasyPay, error) {
 		cfg[k] = v
 	}
 	cfg["apiBase"] = normalizeEasyPayAPIBase(cfg["apiBase"])
+	if err := validateEasyPayAPIBaseScheme(cfg["apiBase"], easyPayInsecureAPIBaseAllowed(cfg)); err != nil {
+		return nil, err
+	}
 	return &EasyPay{
 		instanceID: instanceID,
 		config:     cfg,
@@ -79,6 +83,70 @@ func normalizeEasyPayAPIBase(apiBase string) string {
 		return strings.TrimRight(parsed.String(), "/")
 	}
 	return strings.TrimRight(trimEasyPayEndpointPath(base), "/")
+}
+
+// easyPayAllowInsecureAPIBaseKey 是显式放行明文 http:// apiBase 的逃生开关。
+//
+// 存量自建易支付站点大量部署在纯 http 上，直接硬性拒绝会让这些实例在启动时全部失效，
+// 所以保留一个必须由运营者主动写入配置的开关，而不是默默放行。
+const easyPayAllowInsecureAPIBaseKey = "allowInsecureApiBase"
+
+func easyPayInsecureAPIBaseAllowed(cfg map[string]string) bool {
+	switch strings.ToLower(strings.TrimSpace(cfg[easyPayAllowInsecureAPIBaseKey])) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+// validateEasyPayAPIBaseScheme 强制 apiBase 走 TLS。
+//
+// QueryOrder(/api.php) 与 refundAttempts(/api.php?act=refund) 会把商户密钥 pkey
+// 明文放进 POST body 的 key= 字段。明文 http 下任一链路观察者都能抓到 pkey，
+// 而 pkey 正是 webhook 回调 sign 的唯一凭据（easyPaySign），拿到它就能对
+// /api/v1/payment/webhook/easypay 伪造任意 out_trade_no 的"支付成功"通知。
+// 因此 apiBase 必须是 https，参考 normalizeAirwallexAPIBase 的做法。
+//
+// 两个例外：
+//   - 回环地址（127.0.0.1 / ::1 / localhost）不出网，用于本地与测试；
+//   - 运营者显式设置 allowInsecureApiBase=true，作为存量 http 部署的迁移通道。
+func validateEasyPayAPIBaseScheme(apiBase string, allowInsecure bool) error {
+	base := strings.TrimSpace(apiBase)
+	if base == "" {
+		return fmt.Errorf("easypay config missing required key: apiBase")
+	}
+	parsed, err := url.Parse(base)
+	if err != nil || parsed.Host == "" {
+		return fmt.Errorf("easypay apiBase must be an absolute https:// URL, got %q", apiBase)
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "https":
+		return nil
+	case "http":
+		if allowInsecure || isEasyPayLoopbackHost(parsed.Host) {
+			return nil
+		}
+		return fmt.Errorf(
+			"easypay apiBase must use https:// (merchant key pkey is sent in the request body; set %s=true to keep the existing http:// endpoint)",
+			easyPayAllowInsecureAPIBaseKey,
+		)
+	default:
+		return fmt.Errorf("easypay apiBase must be an absolute https:// URL, got %q", apiBase)
+	}
+}
+
+func isEasyPayLoopbackHost(host string) bool {
+	hostname := host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		hostname = h
+	}
+	hostname = strings.ToLower(strings.Trim(strings.TrimSpace(hostname), "[]"))
+	if hostname == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(hostname)
+	return ip != nil && ip.IsLoopback()
 }
 
 func trimEasyPayEndpointPath(path string) string {

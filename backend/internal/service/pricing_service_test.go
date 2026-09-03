@@ -1013,3 +1013,12 @@ func TestCalculateCost_ClaudeSonnetCatalogLadderIsDataDriven(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, cost.LongContextBillingApplied, "恰好 200000 不进高档（严格大于）")
 }
+
+// TestPricingServiceStopIsIdempotent 锁定 M16 修复：Stop 可能被多次调用
+// （优雅退出与 provideCleanup 各一次），裸 close 已关闭的 channel 会 panic。
+func TestPricingServiceStopIsIdempotent(t *testing.T) {
+	svc := NewPricingService(&config.Config{Pricing: config.PricingConfig{RemoteURL: ""}}, nil)
+	svc.Stop()
+	require.NotPanics(t, svc.Stop)
+	require.NotPanics(t, svc.Stop)
+}
