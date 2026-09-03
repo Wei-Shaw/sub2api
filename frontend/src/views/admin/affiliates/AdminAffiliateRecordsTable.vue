@@ -5,8 +5,17 @@
         <div class="flex flex-wrap items-center gap-3">
           <div class="relative w-full md:w-80">
             <Icon name="search" size="md" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input v-model="filters.search" type="text" class="input pl-10" :placeholder="t('admin.affiliates.records.searchPlaceholder')" @input="debounceLoad" />
+            <input v-model="filters.search" type="text" class="input pl-10" :placeholder="t(props.type === 'rebates' ? 'admin.affiliates.records.rebateSearchPlaceholder' : 'admin.affiliates.records.searchPlaceholder')" @input="debounceLoad" />
           </div>
+          <Select
+            v-if="props.type === 'rebates'"
+            v-model="filters.source_type"
+            :options="sourceFilterOptions"
+            data-test="affiliate-rebate-source-filter"
+            class="w-full sm:w-44"
+            :aria-label="t('admin.affiliates.records.sourceFilter')"
+            @change="reloadFromFirstPage"
+          />
           <input v-model="filters.start_at" type="date" class="input w-full sm:w-44" :title="t('admin.affiliates.records.startAt')" @change="reloadFromFirstPage" />
           <input v-model="filters.end_at" type="date" class="input w-full sm:w-44" :title="t('admin.affiliates.records.endAt')" @change="reloadFromFirstPage" />
           <button class="btn btn-secondary px-2 md:px-3" :disabled="loading" :title="t('common.refresh')" @click="loadRecords">
@@ -56,26 +65,47 @@
           <template #cell-aff_code="{ row }">
             <span class="font-mono text-sm text-gray-700 dark:text-gray-300">{{ row.aff_code || '-' }}</span>
           </template>
-          <template #cell-order="{ row }">
+          <template #cell-source="{ row }">
+            <span class="inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 dark:bg-dark-700 dark:text-dark-200">
+              {{ sourceTypeLabel(row.source_type) }}
+            </span>
+          </template>
+          <template #cell-source_reference="{ row }">
             <div class="space-y-0.5">
-              <div class="font-mono text-sm text-gray-900 dark:text-white">#{{ row.order_id }}</div>
-              <div class="max-w-56 truncate text-sm text-gray-500 dark:text-dark-400">{{ row.out_trade_no }}</div>
+              <template v-if="row.source_type === 'payment_order' && row.order_id">
+                <div class="font-mono text-sm text-gray-900 dark:text-white">#{{ row.order_id }}</div>
+                <div class="max-w-56 truncate text-sm text-gray-500 dark:text-dark-400">{{ row.out_trade_no || '-' }}</div>
+              </template>
+              <template v-else-if="row.redeem_code_id">
+                <div class="font-mono text-sm text-gray-900 dark:text-white">#{{ row.redeem_code_id }}</div>
+                <div class="max-w-56 truncate font-mono text-sm text-gray-500 dark:text-dark-400">{{ row.redeem_code_masked || '-' }}</div>
+              </template>
+              <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
             </div>
           </template>
           <template #cell-payment_type="{ row }">
-            {{ t('payment.methods.' + row.payment_type, row.payment_type || '-') }}
+            {{ row.payment_type ? t('payment.methods.' + row.payment_type, row.payment_type) : '-' }}
           </template>
-          <template #cell-order_status="{ row }">
-            <OrderStatusBadge :status="row.order_status" />
+          <template #cell-source_status="{ row }">
+            <OrderStatusBadge v-if="row.source_type === 'payment_order' && row.order_status" :status="row.order_status" />
+            <!-- 非订单来源没有 order_status，仅复用支付订单完成态的视觉样式。 -->
+            <span
+              v-else-if="row.source_type === 'balance_redeem_code' || row.source_type === 'admin_recharge'"
+              class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400"
+            >
+              {{ sourceStatusLabel(row.source_type) }}
+            </span>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
           <template #cell-total_rebate="{ row }">
             <AmountText :value="row.total_rebate" />
           </template>
-          <template #cell-order_amount="{ row }">
-            <AmountText :value="row.order_amount" />
+          <template #cell-base_amount="{ row }">
+            <NullableAmountText :value="row.base_amount" />
           </template>
           <template #cell-pay_amount="{ row }">
-            <span class="text-sm text-gray-900 dark:text-white">¥{{ formatAmount(row.pay_amount) }}</span>
+            <span v-if="row.pay_amount !== null && row.pay_amount !== undefined" class="text-sm text-gray-900 dark:text-white">¥{{ formatAmount(row.pay_amount) }}</span>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
           <template #cell-rebate_amount="{ row }">
             <AmountText :value="row.rebate_amount" strong />
@@ -149,11 +179,12 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import OrderStatusBadge from '@/components/payment/OrderStatusBadge.vue'
 import type { Column } from '@/components/common/types'
 import { useAppStore } from '@/stores/app'
-import { affiliatesAPI, type AffiliateInviteRecord, type AffiliateRebateRecord, type AffiliateTransferRecord, type AffiliateUserOverview, type ListAffiliateRecordsParams } from '@/api/admin/affiliates'
+import { affiliatesAPI, type AffiliateInviteRecord, type AffiliateRebateRecord, type AffiliateRebateSourceFilter, type AffiliateRebateSourceType, type AffiliateTransferRecord, type AffiliateUserOverview, type ListAffiliateRecordsParams } from '@/api/admin/affiliates'
 import type { PaginatedResponse } from '@/types'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { formatDateTime as formatDisplayDateTime } from '@/utils/format'
@@ -169,12 +200,20 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const loading = ref(false)
 const records = ref<AffiliateRecord[]>([])
-const filters = reactive({ search: '', start_at: '', end_at: '' })
+const filters = reactive({ search: '', start_at: '', end_at: '', source_type: 'all' as AffiliateRebateSourceFilter })
+const sourceFilterOptions = computed(() => [
+  { value: 'all', label: t('admin.affiliates.records.sourceTypes.all') },
+  { value: 'payment_order', label: t('admin.affiliates.records.sourceTypes.payment_order') },
+  { value: 'balance_redeem_code', label: t('admin.affiliates.records.sourceTypes.balance_redeem_code') },
+  { value: 'admin_recharge', label: t('admin.affiliates.records.sourceTypes.admin_recharge') },
+  { value: 'legacy_unknown', label: t('admin.affiliates.records.sourceTypes.legacy_unknown') },
+])
 const pagination = reactive({ page: 1, page_size: 20, total: 0 })
 const overviewDialog = ref(false)
 const overviewLoading = ref(false)
 const selectedOverview = ref<AffiliateUserOverview | null>(null)
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+let recordsRequestSequence = 0
 
 const columns = computed<Column[]>(() => {
   if (props.type === 'invites') {
@@ -188,14 +227,15 @@ const columns = computed<Column[]>(() => {
   }
   if (props.type === 'rebates') {
     return [
-      { key: 'order', label: t('admin.affiliates.records.order'), sortable: true },
+      { key: 'source', label: t('admin.affiliates.records.source'), sortable: true },
+      { key: 'source_reference', label: t('admin.affiliates.records.sourceReference'), sortable: true },
       { key: 'inviter', label: t('admin.affiliates.records.inviter'), sortable: true },
       { key: 'invitee', label: t('admin.affiliates.records.invitee'), sortable: true },
-      { key: 'order_amount', label: t('admin.affiliates.records.orderAmount'), sortable: true },
+      { key: 'base_amount', label: t('admin.affiliates.records.baseAmount'), sortable: true },
       { key: 'pay_amount', label: t('admin.affiliates.records.payAmount'), sortable: true },
       { key: 'rebate_amount', label: t('admin.affiliates.records.rebateAmount') },
       { key: 'payment_type', label: t('admin.affiliates.records.paymentType'), sortable: true },
-      { key: 'order_status', label: t('admin.affiliates.records.orderStatus'), sortable: true },
+      { key: 'source_status', label: t('admin.affiliates.records.sourceStatus') },
       { key: 'created_at', label: t('admin.affiliates.records.rebatedAt'), sortable: true },
     ]
   }
@@ -249,6 +289,7 @@ function buildParams(): ListAffiliateRecordsParams {
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order,
     timezone: userTimezone(),
+    source_type: props.type === 'rebates' ? filters.source_type : undefined,
   }
 }
 
@@ -263,15 +304,18 @@ async function fetchRecords(params: ListAffiliateRecordsParams): Promise<Paginat
 }
 
 async function loadRecords() {
+  const requestSequence = ++recordsRequestSequence
   loading.value = true
   try {
     const res = await fetchRecords(buildParams())
+    if (requestSequence !== recordsRequestSequence) return
     records.value = res.items || []
     pagination.total = res.total || 0
   } catch (error) {
+    if (requestSequence !== recordsRequestSequence) return
     appStore.showError(extractI18nErrorMessage(error, t, 'admin.affiliates.errors', t('common.error')))
   } finally {
-    loading.value = false
+    if (requestSequence === recordsRequestSequence) loading.value = false
   }
 }
 
@@ -314,6 +358,16 @@ function formatPercent(value: number | null | undefined): string {
 
 function formatDateTime(value: string | null | undefined): string {
   return value ? formatDisplayDateTime(value) : '-'
+}
+
+function sourceTypeLabel(sourceType: AffiliateRebateSourceType): string {
+  return t(`admin.affiliates.records.sourceTypes.${sourceType}`, sourceType || '-')
+}
+
+function sourceStatusLabel(sourceType: AffiliateRebateSourceType): string {
+  if (sourceType === 'balance_redeem_code') return t('admin.affiliates.records.sourceStatuses.redeemed')
+  if (sourceType === 'admin_recharge') return t('admin.affiliates.records.sourceStatuses.credited')
+  return '-'
 }
 
 async function openUserOverview(userId: number) {

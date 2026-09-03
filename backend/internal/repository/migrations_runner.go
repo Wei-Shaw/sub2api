@@ -62,6 +62,10 @@ const usageLogsUpstreamModelMismatchIndex = "idx_usage_logs_upstream_model_misma
 const usageLogsEffectiveModelIndexesMigration = "226_add_usage_log_effective_model_indexes_notx.sql"
 const usageLogsEffectiveRequestedModelIndex = "idx_usage_logs_effective_requested_model_created"
 const usageLogsEffectiveUpstreamModelIndex = "idx_usage_logs_effective_upstream_model_created"
+const affiliateRebateSourceIndexesMigration = "231_affiliate_rebate_sources_indexes_notx.sql"
+const affiliateRebateSourceTypeCreatedAtIndex = "idx_user_affiliate_ledger_source_type_created_at"
+const affiliateRebateAccrueOrderUniqueIndex = "idx_user_affiliate_ledger_accrue_order_uniq"
+const affiliateRebateAccrueRedeemCodeUniqueIndex = "idx_user_affiliate_ledger_accrue_redeem_code_uniq"
 
 type migrationChecksumCompatibilityRule struct {
 	fileChecksum       string
@@ -94,6 +98,8 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 	"220_clear_non_grok_video_generation_config.sql": newMigrationChecksumCompatibilityRule("85e320b9ec64f2d3fcd8cf705b2b4e76a7b49f7a57140c14bff97f32691c818b", "3da48c8fdffe6390325f43d08b8e353e0a365df43d44a78dbbe655d0deb18402"),
 	"219_group_search_price_per_1k.sql":              newMigrationChecksumCompatibilityRule("e86786ebcc3b14206fd2d321380a4e50e80cdadbfcf4962c639255e6a14008db", "df6ffd71b97e30ec2c8fe7b95e15783042dea58c553e32701ee7c42a5619af80"),
 	"218_group_audio_voice_pricing.sql":              newMigrationChecksumCompatibilityRule("40ee9f3a2af0e0a5e99dabc878fd0fe98be1011f26bcfcefcac7197f7081f0e7", "c2a5e5b4ffd6968ad1c10593289fbc11192cdea19fec3ed9bce3a84eff9a8351"),
+	// 231 的早期分支版本包含历史时间窗回填和事务内索引；修复版只保留快速加列。
+	"231_affiliate_rebate_sources.sql": newMigrationChecksumCompatibilityRule("835825077e002997764e59c4a3ce026e9e36d7a328671b7983cce94c4fb9fc94", "ceb508efbf81877a891a95fe6688cb3287462c2552e1a5c8a8254be9328d6806"),
 }
 
 // ApplyMigrations 将嵌入的 SQL 迁移文件应用到指定的数据库。
@@ -305,9 +311,36 @@ func prepareNonTransactionalMigration(ctx context.Context, db migrationConnectio
 			}
 		}
 		return nil
+	case affiliateRebateSourceIndexesMigration:
+		return prepareAffiliateRebateSourceIndexesMigration(ctx, db)
 	default:
 		return nil
 	}
+}
+
+func prepareAffiliateRebateSourceIndexesMigration(ctx context.Context, db migrationConnection) error {
+	duplicates, err := findDuplicateAffiliateRebateSources(ctx, db)
+	if err != nil {
+		return fmt.Errorf("precheck duplicate affiliate rebate sources: %w", err)
+	}
+	if len(duplicates) > 0 {
+		return fmt.Errorf(
+			"duplicate affiliate rebate sources block %s; remediate duplicates before retrying: %s",
+			affiliateRebateSourceIndexesMigration,
+			strings.Join(duplicates, ", "),
+		)
+	}
+
+	for _, indexName := range []string{
+		affiliateRebateSourceTypeCreatedAtIndex,
+		affiliateRebateAccrueOrderUniqueIndex,
+		affiliateRebateAccrueRedeemCodeUniqueIndex,
+	} {
+		if err := dropInvalidIndexIfPresent(ctx, db, indexName); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func preparePaymentOrdersOutTradeNoUniqueMigration(ctx context.Context, db migrationConnection) error {
@@ -366,6 +399,46 @@ func findDuplicatePaymentOrderOutTradeNos(ctx context.Context, db migrationConne
 			return nil, err
 		}
 		duplicates = append(duplicates, fmt.Sprintf("%s (count=%d)", outTradeNo, duplicateCount))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return duplicates, nil
+}
+
+func findDuplicateAffiliateRebateSources(ctx context.Context, db migrationConnection) ([]string, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT source_kind, source_id, COUNT(*) AS duplicate_count
+		FROM (
+			SELECT 'source_order_id' AS source_kind, source_order_id AS source_id
+			FROM user_affiliate_ledger
+			WHERE action = 'accrue' AND source_order_id IS NOT NULL
+			UNION ALL
+			SELECT 'source_redeem_code_id' AS source_kind, source_redeem_code_id AS source_id
+			FROM user_affiliate_ledger
+			WHERE action = 'accrue' AND source_redeem_code_id IS NOT NULL
+		) rebate_sources
+		GROUP BY source_kind, source_id
+		HAVING COUNT(*) > 1
+		ORDER BY duplicate_count DESC, source_kind, source_id
+		LIMIT 10
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	duplicates := make([]string, 0, 10)
+	for rows.Next() {
+		var sourceKind string
+		var sourceID int64
+		var duplicateCount int
+		if err := rows.Scan(&sourceKind, &sourceID, &duplicateCount); err != nil {
+			return nil, err
+		}
+		duplicates = append(duplicates, fmt.Sprintf("%s=%d (count=%d)", sourceKind, sourceID, duplicateCount))
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -516,8 +589,8 @@ func validateMigrationExecutionMode(name, content string) (bool, error) {
 		}
 
 		if strings.Contains(normalizedStmt, "CONCURRENTLY") {
-			isCreateIndex := strings.Contains(normalizedStmt, "CREATE") && strings.Contains(normalizedStmt, "INDEX")
-			isDropIndex := strings.Contains(normalizedStmt, "DROP") && strings.Contains(normalizedStmt, "INDEX")
+			isCreateIndex := strings.HasPrefix(normalizedStmt, "CREATE INDEX ") || strings.HasPrefix(normalizedStmt, "CREATE UNIQUE INDEX ")
+			isDropIndex := strings.HasPrefix(normalizedStmt, "DROP INDEX ")
 			if !isCreateIndex && !isDropIndex {
 				return false, errors.New("*_notx.sql currently only supports CREATE/DROP INDEX CONCURRENTLY statements")
 			}

@@ -390,7 +390,7 @@ export default {
 
     affiliates: {
       invitesDescription: '查看全站邀请关系和被邀请用户累计返利',
-      rebatesDescription: '查看每一笔产生返利的充值订单',
+      rebatesDescription: '查看每一笔支付、余额兑换码或管理员充值产生的邀请返利',
       transfersDescription: '查看返利额度转入账户余额的提取流水',
       errors: {
         loadFailed: '加载邀请返利记录失败'
@@ -398,8 +398,25 @@ export default {
       records: {
         search: '搜索',
         searchPlaceholder: '邮箱、用户名、用户 ID、订单号',
+        rebateSearchPlaceholder: '邮箱、用户名、用户 ID、订单号、兑换码',
         startAt: '开始日期',
         endAt: '结束日期',
+        sourceFilter: '返利来源',
+        source: '来源',
+        sourceReference: '来源记录',
+        baseAmount: '充值金额',
+        sourceStatus: '来源状态',
+        sourceTypes: {
+          all: '全部来源',
+          payment_order: '支付订单',
+          balance_redeem_code: '余额兑换码',
+          admin_recharge: '管理员充值',
+          legacy_unknown: '历史未知'
+        },
+        sourceStatuses: {
+          redeemed: '已兑换',
+          credited: '已入账'
+        },
         inviter: '邀请人',
         invitee: '被邀请人',
         user: '用户',

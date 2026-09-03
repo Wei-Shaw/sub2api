@@ -7,6 +7,7 @@ import (
 	"testing/fstest"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
+	migrationspkg "github.com/Wei-Shaw/sub2api/migrations"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,12 +44,30 @@ func TestValidateMigrationExecutionMode(t *testing.T) {
 
 	t.Run("notx迁移允许幂等并发索引语句", func(t *testing.T) {
 		nonTx, err := validateMigrationExecutionMode("001_add_idx_notx.sql", `
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_a ON t(a);
-DROP INDEX CONCURRENTLY IF EXISTS idx_b;
-`)
+	CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_a ON t(a);
+	DROP INDEX CONCURRENTLY IF EXISTS idx_b;
+	`)
 		require.True(t, nonTx)
 		require.NoError(t, err)
 	})
+
+	t.Run("删除索引名称包含created_at时不会误判为创建语句", func(t *testing.T) {
+		nonTx, err := validateMigrationExecutionMode(
+			"001_drop_idx_notx.sql",
+			"DROP INDEX CONCURRENTLY IF EXISTS idx_user_affiliate_ledger_source_type_created_at;",
+		)
+		require.True(t, nonTx)
+		require.NoError(t, err)
+	})
+}
+
+func TestAffiliateRebateSourceIndexesMigrationUsesSupportedExecutionMode(t *testing.T) {
+	content, err := migrationspkg.FS.ReadFile(affiliateRebateSourceIndexesMigration)
+	require.NoError(t, err)
+
+	nonTx, err := validateMigrationExecutionMode(affiliateRebateSourceIndexesMigration, string(content))
+	require.NoError(t, err)
+	require.True(t, nonTx)
 }
 
 func TestApplyMigrationsFS_NonTransactionalMigration(t *testing.T) {
@@ -303,6 +322,96 @@ CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS paymentorder_out_trade_no_unique
 DROP INDEX CONCURRENTLY IF EXISTS paymentorder_out_trade_no;
 `),
 		},
+	}
+
+	err = applyMigrationsFS(context.Background(), db, fsys)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestApplyMigrationsFS_AffiliateRebateSourceIndexesMigration_FailsFastOnDuplicatePrecheck(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	prepareMigrationsBootstrapExpectations(mock)
+	mock.ExpectQuery("SELECT checksum FROM schema_migrations WHERE filename = \\$1").
+		WithArgs(affiliateRebateSourceIndexesMigration).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery("SELECT source_kind, source_id, COUNT\\(\\*\\) AS duplicate_count").
+		WillReturnRows(sqlmock.NewRows([]string{"source_kind", "source_id", "duplicate_count"}).
+			AddRow("source_redeem_code_id", int64(42), 2))
+	mock.ExpectExec("SELECT pg_advisory_unlock\\(\\$1\\)").
+		WithArgs(migrationsAdvisoryLockID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	fsys := fstest.MapFS{
+		affiliateRebateSourceIndexesMigration: &fstest.MapFile{Data: []byte(`
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_user_affiliate_ledger_accrue_redeem_code_uniq
+ON user_affiliate_ledger(source_redeem_code_id)
+WHERE action = 'accrue' AND source_redeem_code_id IS NOT NULL;
+`)},
+	}
+
+	err = applyMigrationsFS(context.Background(), db, fsys)
+	require.ErrorContains(t, err, "source_redeem_code_id=42 (count=2)")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestApplyMigrationsFS_AffiliateRebateSourceIndexesMigration_DropsInvalidIndexesBeforeRetry(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	prepareMigrationsBootstrapExpectations(mock)
+	mock.ExpectQuery("SELECT checksum FROM schema_migrations WHERE filename = \\$1").
+		WithArgs(affiliateRebateSourceIndexesMigration).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery("SELECT source_kind, source_id, COUNT\\(\\*\\) AS duplicate_count").
+		WillReturnRows(sqlmock.NewRows([]string{"source_kind", "source_id", "duplicate_count"}))
+
+	for _, index := range []struct {
+		name    string
+		invalid bool
+	}{
+		{name: affiliateRebateSourceTypeCreatedAtIndex, invalid: false},
+		{name: affiliateRebateAccrueOrderUniqueIndex, invalid: true},
+		{name: affiliateRebateAccrueRedeemCodeUniqueIndex, invalid: true},
+	} {
+		mock.ExpectQuery("SELECT EXISTS \\(").
+			WithArgs(index.name).
+			WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(index.invalid))
+		if index.invalid {
+			mock.ExpectExec("DROP INDEX CONCURRENTLY IF EXISTS " + index.name).
+				WillReturnResult(sqlmock.NewResult(0, 0))
+		}
+	}
+
+	mock.ExpectExec("DROP INDEX CONCURRENTLY IF EXISTS idx_user_affiliate_ledger_source_type_created_at").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_user_affiliate_ledger_source_type_created_at").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_user_affiliate_ledger_accrue_order_uniq").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_user_affiliate_ledger_accrue_redeem_code_uniq").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("INSERT INTO schema_migrations \\(filename, checksum\\) VALUES \\(\\$1, \\$2\\)").
+		WithArgs(affiliateRebateSourceIndexesMigration, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("SELECT pg_advisory_unlock\\(\\$1\\)").
+		WithArgs(migrationsAdvisoryLockID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	fsys := fstest.MapFS{
+		affiliateRebateSourceIndexesMigration: &fstest.MapFile{Data: []byte(`
+DROP INDEX CONCURRENTLY IF EXISTS idx_user_affiliate_ledger_source_type_created_at;
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_user_affiliate_ledger_source_type_created_at
+ON user_affiliate_ledger(source_type);
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_user_affiliate_ledger_accrue_order_uniq
+ON user_affiliate_ledger(source_order_id);
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_user_affiliate_ledger_accrue_redeem_code_uniq
+ON user_affiliate_ledger(source_redeem_code_id);
+`)},
 	}
 
 	err = applyMigrationsFS(context.Background(), db, fsys)

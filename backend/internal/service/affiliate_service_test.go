@@ -6,6 +6,7 @@ import (
 	"context"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -55,6 +56,67 @@ func TestIsEnabled_NilSettingServiceReturnsDefault(t *testing.T) {
 	svc := &AffiliateService{}
 	require.False(t, svc.IsEnabled(context.Background()))
 	require.Equal(t, AffiliateEnabledDefault, svc.IsEnabled(context.Background()))
+}
+
+func TestAffiliateRebateSourceValidateForAccrual(t *testing.T) {
+	orderID := int64(11)
+	redeemCodeID := int64(22)
+
+	require.NoError(t, (AffiliateRebateSource{
+		Type:       AffiliateRebateSourcePaymentOrder,
+		BaseAmount: 10,
+		OrderID:    &orderID,
+	}).ValidateForAccrual())
+	require.NoError(t, (AffiliateRebateSource{
+		Type:         AffiliateRebateSourceBalanceRedeem,
+		BaseAmount:   10,
+		RedeemCodeID: &redeemCodeID,
+	}).ValidateForAccrual())
+	require.NoError(t, (AffiliateRebateSource{
+		Type:         AffiliateRebateSourceAdminRecharge,
+		BaseAmount:   10,
+		RedeemCodeID: &redeemCodeID,
+	}).ValidateForAccrual())
+
+	require.ErrorIs(t, (AffiliateRebateSource{Type: AffiliateRebateSourcePaymentOrder}).ValidateForAccrual(), ErrAffiliateRebateSource)
+	require.ErrorIs(t, (AffiliateRebateSource{Type: AffiliateRebateSourceBalanceRedeem}).ValidateForAccrual(), ErrAffiliateRebateSource)
+	require.ErrorIs(t, (AffiliateRebateSource{Type: AffiliateRebateSourceAdminRecharge}).ValidateForAccrual(), ErrAffiliateRebateSource)
+	require.ErrorIs(t, (AffiliateRebateSource{Type: AffiliateRebateSourceAdminRecharge, RedeemCodeID: new(int64)}).ValidateForAccrual(), ErrAffiliateRebateSource)
+	require.ErrorIs(t, (AffiliateRebateSource{Type: AffiliateRebateSourceBalanceRedeem, RedeemCodeID: &redeemCodeID}).ValidateForAccrual(), ErrAffiliateRebateSource)
+	require.ErrorIs(t, (AffiliateRebateSource{Type: AffiliateRebateSourceBalanceRedeem, BaseAmount: math.NaN(), RedeemCodeID: &redeemCodeID}).ValidateForAccrual(), ErrAffiliateRebateSource)
+	require.ErrorIs(t, (AffiliateRebateSource{Type: AffiliateRebateSourceBalanceRedeem, BaseAmount: math.Inf(1), RedeemCodeID: &redeemCodeID}).ValidateForAccrual(), ErrAffiliateRebateSource)
+	require.ErrorIs(t, (AffiliateRebateSource{Type: AffiliateRebateSourceLegacyUnknown}).ValidateForAccrual(), ErrAffiliateRebateSource)
+}
+
+func TestAccrueInviteRebatePassesSourceAndCapToRepository(t *testing.T) {
+	inviterID := int64(10)
+	inviteeID := int64(20)
+	redeemCodeID := int64(30)
+	repo := &paymentFulfillmentAffiliateRepoStub{
+		inviteeSummary: &AffiliateSummary{UserID: inviteeID, InviterID: &inviterID, CreatedAt: time.Now().Add(-time.Hour)},
+		inviterSummary: &AffiliateSummary{UserID: inviterID},
+	}
+	settingSvc := NewSettingService(&paymentFulfillmentSettingRepoStub{values: map[string]string{
+		SettingKeyAffiliateEnabled:             "true",
+		SettingKeyAffiliateRebateRate:          "20",
+		SettingKeyAffiliateRebatePerInviteeCap: "7",
+	}}, nil)
+	svc := NewAffiliateService(repo, settingSvc, nil, nil)
+
+	rebate, err := svc.AccrueInviteRebate(context.Background(), inviteeID, AffiliateRebateSource{
+		Type:         AffiliateRebateSourceBalanceRedeem,
+		BaseAmount:   25,
+		RedeemCodeID: &redeemCodeID,
+	})
+
+	require.NoError(t, err)
+	require.InDelta(t, 5, rebate, 1e-9)
+	require.Len(t, repo.accrueCalls, 1)
+	call := repo.accrueCalls[0]
+	require.Equal(t, inviterID, call.inviterID)
+	require.Equal(t, inviteeID, call.inviteeUserID)
+	require.Equal(t, AffiliateRebateSourceBalanceRedeem, call.sourceType)
+	require.InDelta(t, 25, call.baseAmount, 1e-9)
 }
 
 // TestValidateExclusiveRate_BoundaryAndInvalid covers the validator used by

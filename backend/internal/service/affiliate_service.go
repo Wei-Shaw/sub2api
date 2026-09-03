@@ -17,6 +17,7 @@ var (
 	ErrAffiliateCodeTaken       = infraerrors.Conflict("AFFILIATE_CODE_TAKEN", "affiliate code already in use")
 	ErrAffiliateAlreadyBound    = infraerrors.Conflict("AFFILIATE_ALREADY_BOUND", "affiliate inviter already bound")
 	ErrAffiliateQuotaEmpty      = infraerrors.BadRequest("AFFILIATE_QUOTA_EMPTY", "no affiliate quota available to transfer")
+	ErrAffiliateRebateSource    = errors.New("invalid affiliate rebate source")
 )
 
 const (
@@ -94,12 +95,60 @@ type AffiliateDetail struct {
 	Invitees                   []AffiliateInvitee `json:"invitees"`
 }
 
+type AffiliateRebateSourceType string
+
+const (
+	AffiliateRebateSourcePaymentOrder  AffiliateRebateSourceType = "payment_order"
+	AffiliateRebateSourceBalanceRedeem AffiliateRebateSourceType = "balance_redeem_code"
+	AffiliateRebateSourceAdminRecharge AffiliateRebateSourceType = "admin_recharge"
+	AffiliateRebateSourceLegacyUnknown AffiliateRebateSourceType = "legacy_unknown"
+	AffiliateRebateSourceFilterAll     AffiliateRebateSourceType = "all"
+)
+
+type AffiliateRebateSource struct {
+	Type         AffiliateRebateSourceType
+	BaseAmount   float64
+	OrderID      *int64
+	RedeemCodeID *int64
+}
+
+func (s AffiliateRebateSource) ValidateForAccrual() error {
+	if s.BaseAmount <= 0 || math.IsNaN(s.BaseAmount) || math.IsInf(s.BaseAmount, 0) {
+		return ErrAffiliateRebateSource
+	}
+	switch s.Type {
+	case AffiliateRebateSourcePaymentOrder:
+		if s.OrderID == nil || *s.OrderID <= 0 || s.RedeemCodeID != nil {
+			return ErrAffiliateRebateSource
+		}
+	case AffiliateRebateSourceBalanceRedeem:
+		if s.RedeemCodeID == nil || *s.RedeemCodeID <= 0 || s.OrderID != nil {
+			return ErrAffiliateRebateSource
+		}
+	case AffiliateRebateSourceAdminRecharge:
+		if s.RedeemCodeID == nil || *s.RedeemCodeID <= 0 || s.OrderID != nil {
+			return ErrAffiliateRebateSource
+		}
+	default:
+		return ErrAffiliateRebateSource
+	}
+	return nil
+}
+
+type AffiliateAccrualInput struct {
+	InviterID     int64
+	InviteeUserID int64
+	Amount        float64
+	PerInviteeCap float64
+	FreezeHours   int
+	Source        AffiliateRebateSource
+}
+
 type AffiliateRepository interface {
 	EnsureUserAffiliate(ctx context.Context, userID int64) (*AffiliateSummary, error)
 	GetAffiliateByCode(ctx context.Context, code string) (*AffiliateSummary, error)
 	BindInviter(ctx context.Context, userID, inviterID int64) (bool, error)
-	AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error)
-	GetAccruedRebateFromInvitee(ctx context.Context, inviterID, inviteeUserID int64) (float64, error)
+	AccrueQuota(ctx context.Context, input AffiliateAccrualInput) (float64, error)
 	ThawFrozenQuota(ctx context.Context, userID int64) (float64, error)
 	TransferQuotaToBalance(ctx context.Context, userID int64) (float64, float64, error)
 	ListInvitees(ctx context.Context, inviterID int64, limit int) ([]AffiliateInvitee, error)
@@ -135,13 +184,14 @@ type AffiliateAdminEntry struct {
 }
 
 type AffiliateRecordFilter struct {
-	Search   string
-	Page     int
-	PageSize int
-	StartAt  *time.Time
-	EndAt    *time.Time
-	SortBy   string
-	SortDesc bool
+	Search     string
+	SourceType string
+	Page       int
+	PageSize   int
+	StartAt    *time.Time
+	EndAt      *time.Time
+	SortBy     string
+	SortDesc   bool
 }
 
 type AffiliateInviteRecord struct {
@@ -157,20 +207,25 @@ type AffiliateInviteRecord struct {
 }
 
 type AffiliateRebateRecord struct {
-	OrderID         int64     `json:"order_id"`
-	OutTradeNo      string    `json:"out_trade_no"`
-	InviterID       int64     `json:"inviter_id"`
-	InviterEmail    string    `json:"inviter_email"`
-	InviterUsername string    `json:"inviter_username"`
-	InviteeID       int64     `json:"invitee_id"`
-	InviteeEmail    string    `json:"invitee_email"`
-	InviteeUsername string    `json:"invitee_username"`
-	OrderAmount     float64   `json:"order_amount"`
-	PayAmount       float64   `json:"pay_amount"`
-	RebateAmount    float64   `json:"rebate_amount"`
-	PaymentType     string    `json:"payment_type"`
-	OrderStatus     string    `json:"order_status"`
-	CreatedAt       time.Time `json:"created_at"`
+	LedgerID         int64     `json:"ledger_id"`
+	SourceType       string    `json:"source_type"`
+	OrderID          *int64    `json:"order_id,omitempty"`
+	OutTradeNo       *string   `json:"out_trade_no,omitempty"`
+	RedeemCodeID     *int64    `json:"redeem_code_id,omitempty"`
+	RedeemCodeMasked *string   `json:"redeem_code_masked,omitempty"`
+	InviterID        int64     `json:"inviter_id"`
+	InviterEmail     string    `json:"inviter_email"`
+	InviterUsername  string    `json:"inviter_username"`
+	InviteeID        int64     `json:"invitee_id"`
+	InviteeEmail     string    `json:"invitee_email"`
+	InviteeUsername  string    `json:"invitee_username"`
+	BaseAmount       *float64  `json:"base_amount,omitempty"`
+	OrderAmount      *float64  `json:"order_amount,omitempty"`
+	PayAmount        *float64  `json:"pay_amount,omitempty"`
+	RebateAmount     float64   `json:"rebate_amount"`
+	PaymentType      *string   `json:"payment_type,omitempty"`
+	OrderStatus      *string   `json:"order_status,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 type AffiliateTransferRecord struct {
@@ -311,15 +366,14 @@ func (s *AffiliateService) BindInviterByCode(ctx context.Context, userID int64, 
 	return nil
 }
 
-func (s *AffiliateService) AccrueInviteRebate(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64) (float64, error) {
-	return s.AccrueInviteRebateForOrder(ctx, inviteeUserID, baseRechargeAmount, nil)
-}
-
-func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64, sourceOrderID *int64) (float64, error) {
+func (s *AffiliateService) AccrueInviteRebate(ctx context.Context, inviteeUserID int64, source AffiliateRebateSource) (float64, error) {
 	if s == nil || s.repo == nil {
 		return 0, nil
 	}
-	if inviteeUserID <= 0 || baseRechargeAmount <= 0 || math.IsNaN(baseRechargeAmount) || math.IsInf(baseRechargeAmount, 0) {
+	if err := source.ValidateForAccrual(); err != nil {
+		return 0, err
+	}
+	if inviteeUserID <= 0 {
 		return 0, nil
 	}
 	// 总开关关闭时，新充值不再产生返利
@@ -350,25 +404,14 @@ func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, invit
 	}
 
 	rebateRatePercent := s.resolveRebateRatePercent(ctx, inviterSummary)
-	rebate := roundTo(baseRechargeAmount*(rebateRatePercent/100), 8)
+	rebate := roundTo(source.BaseAmount*(rebateRatePercent/100), 8)
 	if rebate <= 0 {
 		return 0, nil
 	}
 
-	// 单人上限检查：精确截断到剩余额度
+	var perInviteeCap float64
 	if s.settingService != nil {
-		if perInviteeCap := s.settingService.GetAffiliateRebatePerInviteeCap(ctx); perInviteeCap > 0 {
-			existing, err := s.repo.GetAccruedRebateFromInvitee(ctx, *inviteeSummary.InviterID, inviteeUserID)
-			if err != nil {
-				return 0, err
-			}
-			if existing >= perInviteeCap {
-				return 0, nil
-			}
-			if remaining := perInviteeCap - existing; rebate > remaining {
-				rebate = roundTo(remaining, 8)
-			}
-		}
+		perInviteeCap = s.settingService.GetAffiliateRebatePerInviteeCap(ctx)
 	}
 
 	var freezeHours int
@@ -376,14 +419,18 @@ func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, invit
 		freezeHours = s.settingService.GetAffiliateRebateFreezeHours(ctx)
 	}
 
-	applied, err := s.repo.AccrueQuota(ctx, *inviteeSummary.InviterID, inviteeUserID, rebate, freezeHours, sourceOrderID)
+	applied, err := s.repo.AccrueQuota(ctx, AffiliateAccrualInput{
+		InviterID:     *inviteeSummary.InviterID,
+		InviteeUserID: inviteeUserID,
+		Amount:        rebate,
+		PerInviteeCap: perInviteeCap,
+		FreezeHours:   freezeHours,
+		Source:        source,
+	})
 	if err != nil {
 		return 0, err
 	}
-	if !applied {
-		return 0, nil
-	}
-	return rebate, nil
+	return applied, nil
 }
 
 // resolveRebateRatePercent returns the inviter's exclusive rate when set,

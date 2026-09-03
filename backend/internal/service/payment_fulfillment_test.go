@@ -47,6 +47,8 @@ type paymentFulfillmentAffiliateAccrueCall struct {
 	amount        float64
 	freezeHours   int
 	sourceOrderID *int64
+	sourceType    AffiliateRebateSourceType
+	baseAmount    float64
 }
 
 type paymentFulfillmentAffiliateRepoStub struct {
@@ -76,24 +78,22 @@ func (r *paymentFulfillmentAffiliateRepoStub) BindInviter(context.Context, int64
 	panic("unexpected BindInviter call")
 }
 
-func (r *paymentFulfillmentAffiliateRepoStub) AccrueQuota(_ context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error) {
+func (r *paymentFulfillmentAffiliateRepoStub) AccrueQuota(_ context.Context, input AffiliateAccrualInput) (float64, error) {
 	var sourceCopy *int64
-	if sourceOrderID != nil {
-		v := *sourceOrderID
+	if input.Source.OrderID != nil {
+		v := *input.Source.OrderID
 		sourceCopy = &v
 	}
 	r.accrueCalls = append(r.accrueCalls, paymentFulfillmentAffiliateAccrueCall{
-		inviterID:     inviterID,
-		inviteeUserID: inviteeUserID,
-		amount:        amount,
-		freezeHours:   freezeHours,
+		inviterID:     input.InviterID,
+		inviteeUserID: input.InviteeUserID,
+		amount:        input.Amount,
+		freezeHours:   input.FreezeHours,
 		sourceOrderID: sourceCopy,
+		sourceType:    input.Source.Type,
+		baseAmount:    input.Source.BaseAmount,
 	})
-	return true, nil
-}
-
-func (r *paymentFulfillmentAffiliateRepoStub) GetAccruedRebateFromInvitee(context.Context, int64, int64) (float64, error) {
-	return 0, nil
+	return input.Amount, nil
 }
 
 func (r *paymentFulfillmentAffiliateRepoStub) ThawFrozenQuota(context.Context, int64) (float64, error) {
@@ -959,6 +959,8 @@ func TestExecuteSubscriptionFulfillmentAppliesAffiliateRebate(t *testing.T) {
 	require.Equal(t, inviterID, affiliateRepo.accrueCalls[0].inviterID)
 	require.Equal(t, user.ID, affiliateRepo.accrueCalls[0].inviteeUserID)
 	require.InDelta(t, 1.4985, affiliateRepo.accrueCalls[0].amount, 0.00000001)
+	require.Equal(t, AffiliateRebateSourcePaymentOrder, affiliateRepo.accrueCalls[0].sourceType)
+	require.InDelta(t, 9.99, affiliateRepo.accrueCalls[0].baseAmount, 0.00000001)
 	require.NotNil(t, affiliateRepo.accrueCalls[0].sourceOrderID)
 	require.Equal(t, order.ID, *affiliateRepo.accrueCalls[0].sourceOrderID)
 	require.Equal(t, 1, subRepo.createCalls)

@@ -214,11 +214,27 @@ func (h *AffiliateHandler) ListInviteRecords(c *gin.Context) {
 	response.Paginated(c, items, total, filter.Page, filter.PageSize)
 }
 
-// ListRebateRecords returns all order-level affiliate rebate records.
+// ListRebateRecords returns affiliate rebate records from all supported recharge sources.
 // GET /api/v1/admin/affiliates/rebates
 func (h *AffiliateHandler) ListRebateRecords(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
 	filter := parseAffiliateRecordFilter(c, page, pageSize)
+	sourceType := strings.TrimSpace(c.Query("source_type"))
+	if sourceType == "" {
+		// 兼容旧管理端：未传来源时继续只返回支付订单；新页面会显式传 all。
+		sourceType = string(service.AffiliateRebateSourcePaymentOrder)
+	}
+	switch service.AffiliateRebateSourceType(sourceType) {
+	case service.AffiliateRebateSourceFilterAll,
+		service.AffiliateRebateSourcePaymentOrder,
+		service.AffiliateRebateSourceBalanceRedeem,
+		service.AffiliateRebateSourceAdminRecharge,
+		service.AffiliateRebateSourceLegacyUnknown:
+		filter.SourceType = sourceType
+	default:
+		response.BadRequest(c, "Invalid affiliate rebate source type")
+		return
+	}
 	items, total, err := h.affiliateService.AdminListRebateRecords(c.Request.Context(), filter)
 	if err != nil {
 		response.ErrorFrom(c, err)

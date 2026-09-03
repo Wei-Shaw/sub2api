@@ -50,6 +50,13 @@ LEFT JOIN (
 WHERE ua.user_id = $1
 LIMIT 1`
 
+// 历史支付流水已有订单编号时可以可靠识别；其余未分类旧流水统一展示为历史未知。
+const affiliateRebateEffectiveSourceSQL = `CASE
+    WHEN ual.source_order_id IS NOT NULL THEN 'payment_order'
+    WHEN ual.source_type IS NOT NULL THEN ual.source_type
+    ELSE 'legacy_unknown'
+END`
+
 type affiliateQueryExecer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
@@ -114,70 +121,137 @@ func (r *affiliateRepository) BindInviter(ctx context.Context, userID, inviterID
 	return bound, nil
 }
 
-func (r *affiliateRepository) AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error) {
-	if amount <= 0 {
-		return false, nil
+func (r *affiliateRepository) AccrueQuota(ctx context.Context, input service.AffiliateAccrualInput) (float64, error) {
+	if input.Amount <= 0 {
+		return 0, nil
+	}
+	if err := input.Source.ValidateForAccrual(); err != nil {
+		return 0, err
 	}
 
-	var applied bool
+	var appliedAmount float64
 	err := r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
-		// freezeHours > 0: add to frozen quota; == 0: add to available quota directly
-		var updateSQL string
-		if freezeHours > 0 {
-			updateSQL = "UPDATE user_affiliates SET aff_frozen_quota = aff_frozen_quota + $1, aff_history_quota = aff_history_quota + $1, updated_at = NOW() WHERE user_id = $2"
-		} else {
-			updateSQL = "UPDATE user_affiliates SET aff_quota = aff_quota + $1, aff_history_quota = aff_history_quota + $1, updated_at = NOW() WHERE user_id = $2"
+		var sourceValidationSQL string
+		var sourceID int64
+		switch input.Source.Type {
+		case service.AffiliateRebateSourcePaymentOrder:
+			sourceValidationSQL = "SELECT COUNT(*) FROM payment_orders WHERE id = $1 AND user_id = $2"
+			sourceID = *input.Source.OrderID
+		case service.AffiliateRebateSourceBalanceRedeem:
+			sourceValidationSQL = "SELECT COUNT(*) FROM redeem_codes WHERE id = $1 AND used_by = $2 AND status = 'used' AND type = 'balance'"
+			sourceID = *input.Source.RedeemCodeID
+		case service.AffiliateRebateSourceAdminRecharge:
+			sourceValidationSQL = "SELECT COUNT(*) FROM redeem_codes WHERE id = $1 AND used_by = $2 AND status = 'used' AND type = 'admin_balance'"
+			sourceID = *input.Source.RedeemCodeID
 		}
-		res, err := txClient.ExecContext(txCtx, updateSQL, amount, inviterID)
+		sourceCount, err := scanInt64(txCtx, txClient, sourceValidationSQL, sourceID, input.InviteeUserID)
 		if err != nil {
+			return fmt.Errorf("validate affiliate rebate source: %w", err)
+		}
+		if sourceCount != 1 {
+			return service.ErrAffiliateRebateSource
+		}
+
+		// 锁住邀请人的返利账户后再计算单人上限，避免并发充值同时越过上限。
+		lockRows, err := txClient.QueryContext(txCtx, `
+SELECT user_id
+FROM user_affiliates
+WHERE user_id = $1
+FOR UPDATE`, input.InviterID)
+		if err != nil {
+			return fmt.Errorf("lock inviter affiliate account: %w", err)
+		}
+		if !lockRows.Next() {
+			rowsErr := lockRows.Err()
+			_ = lockRows.Close()
+			if rowsErr != nil {
+				return rowsErr
+			}
+			return service.ErrAffiliateProfileNotFound
+		}
+		if err := lockRows.Close(); err != nil {
 			return err
 		}
-		affected, _ := res.RowsAffected()
-		if affected == 0 {
-			applied = false
+
+		quotaColumn := "aff_quota"
+		if input.FreezeHours > 0 {
+			quotaColumn = "aff_frozen_quota"
+		}
+
+		// 上限、已有返利和本次实际入账金额全部在 PostgreSQL NUMERIC 中计算。
+		// 流水插入与额度更新共用同一个 CTE；来源唯一冲突或额度耗尽时不会更新额度。
+		accrueRows, err := txClient.QueryContext(txCtx, fmt.Sprintf(`
+WITH existing AS (
+    SELECT COALESCE(SUM(amount), 0::numeric) AS amount
+    FROM user_affiliate_ledger
+    WHERE user_id = $1
+      AND source_user_id = $3
+      AND action = 'accrue'
+), normalized AS (
+    SELECT GREATEST(TRUNC($2::numeric, 8), 0::numeric) AS requested_amount,
+           TRUNC($9::numeric, 8) AS per_invitee_cap,
+           existing.amount AS existing_amount
+    FROM existing
+), candidate AS (
+    SELECT CASE
+        WHEN per_invitee_cap <= 0 THEN requested_amount
+        ELSE LEAST(requested_amount, GREATEST(per_invitee_cap - existing_amount, 0::numeric))
+    END::numeric(20,8) AS amount
+    FROM normalized
+), inserted AS (
+    INSERT INTO user_affiliate_ledger (
+        user_id, action, amount, source_user_id, source_type, base_amount,
+        source_order_id, source_redeem_code_id, frozen_until, created_at, updated_at
+    )
+    SELECT $1, 'accrue', candidate.amount, $3, $4, TRUNC($5::numeric, 8), $6, $7,
+           CASE WHEN $8::integer > 0 THEN NOW() + make_interval(hours => $8::integer) ELSE NULL END,
+           NOW(), NOW()
+    FROM candidate
+    WHERE candidate.amount > 0
+    ON CONFLICT DO NOTHING
+    RETURNING amount
+)
+UPDATE user_affiliates AS ua
+SET %s = ua.%s + inserted.amount,
+    aff_history_quota = ua.aff_history_quota + inserted.amount,
+    updated_at = NOW()
+FROM inserted
+WHERE ua.user_id = $1
+RETURNING inserted.amount::double precision`, quotaColumn, quotaColumn),
+			input.InviterID,
+			input.Amount,
+			input.InviteeUserID,
+			string(input.Source.Type),
+			input.Source.BaseAmount,
+			nullableInt64Arg(input.Source.OrderID),
+			nullableInt64Arg(input.Source.RedeemCodeID),
+			input.FreezeHours,
+			input.PerInviteeCap,
+		)
+		if err != nil {
+			return fmt.Errorf("accrue affiliate quota: %w", err)
+		}
+		if !accrueRows.Next() {
+			rowsErr := accrueRows.Err()
+			_ = accrueRows.Close()
+			if rowsErr != nil {
+				return rowsErr
+			}
 			return nil
 		}
-
-		if freezeHours > 0 {
-			if _, err = txClient.ExecContext(txCtx, `
-INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, source_order_id, frozen_until, created_at, updated_at)
-VALUES ($1, 'accrue', $2, $3, $4, NOW() + make_interval(hours => $5), NOW(), NOW())`,
-				inviterID, amount, inviteeUserID, nullableInt64Arg(sourceOrderID), freezeHours); err != nil {
-				return fmt.Errorf("insert affiliate accrue ledger: %w", err)
-			}
-		} else {
-			if _, err = txClient.ExecContext(txCtx, `
-INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, source_order_id, created_at, updated_at)
-VALUES ($1, 'accrue', $2, $3, $4, NOW(), NOW())`, inviterID, amount, inviteeUserID, nullableInt64Arg(sourceOrderID)); err != nil {
-				return fmt.Errorf("insert affiliate accrue ledger: %w", err)
-			}
+		if err := accrueRows.Scan(&appliedAmount); err != nil {
+			_ = accrueRows.Close()
+			return err
 		}
-
-		applied = true
+		if err := accrueRows.Close(); err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
-		return false, err
+		return 0, err
 	}
-	return applied, nil
-}
-
-func (r *affiliateRepository) GetAccruedRebateFromInvitee(ctx context.Context, inviterID, inviteeUserID int64) (float64, error) {
-	client := clientFromContext(ctx, r.client)
-	rows, err := client.QueryContext(ctx,
-		`SELECT COALESCE(SUM(amount), 0)::double precision FROM user_affiliate_ledger WHERE user_id = $1 AND source_user_id = $2 AND action = 'accrue'`,
-		inviterID, inviteeUserID)
-	if err != nil {
-		return 0, fmt.Errorf("query accrued rebate from invitee: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	var total float64
-	if rows.Next() {
-		if err := rows.Scan(&total); err != nil {
-			return 0, err
-		}
-	}
-	return total, rows.Close()
+	return appliedAmount, nil
 }
 
 func (r *affiliateRepository) ThawFrozenQuota(ctx context.Context, userID int64) (float64, error) {
@@ -464,17 +538,22 @@ func (r *affiliateRepository) ListAffiliateRebateRecords(ctx context.Context, fi
 	client := clientFromContext(ctx, r.client)
 	where, args := buildAffiliateRecordWhere(filter, "ual.created_at", []string{
 		"inviter.email", "inviter.username", "invitee.email", "invitee.username",
-		"po.id::text", "po.out_trade_no", "po.payment_type", "po.status",
+		"ual.id::text", affiliateRebateEffectiveSourceSQL, "po.id::text", "po.out_trade_no",
+		"po.payment_type", "po.status", "rc.id::text", "rc.code",
 	})
 	baseJoin := `
 FROM user_affiliate_ledger ual
-JOIN payment_orders po ON po.id = ual.source_order_id
+LEFT JOIN payment_orders po ON po.id = ual.source_order_id
+LEFT JOIN redeem_codes rc ON rc.id = ual.source_redeem_code_id
 JOIN users invitee ON invitee.id = ual.source_user_id
 JOIN users inviter ON inviter.id = ual.user_id
-WHERE ual.action = 'accrue'
-  AND ual.source_order_id IS NOT NULL`
+WHERE ual.action = 'accrue'`
 	if where != "" {
 		where = strings.Replace(where, "WHERE ", " AND ", 1)
+	}
+	if sourceType := strings.TrimSpace(filter.SourceType); sourceType != "" && sourceType != string(service.AffiliateRebateSourceFilterAll) {
+		args = append(args, sourceType)
+		where += fmt.Sprintf(" AND (%s) = $%d", affiliateRebateEffectiveSourceSQL, len(args))
 	}
 
 	total, err := queryAffiliateRecordCount(ctx, client, "SELECT COUNT(*) "+baseJoin+where, args...)
@@ -483,27 +562,40 @@ WHERE ual.action = 'accrue'
 	}
 
 	orderBy := buildAffiliateRecordOrderBy(filter, map[string]string{
-		"order":         "po.id",
-		"inviter":       "inviter.email",
-		"invitee":       "invitee.email",
-		"order_amount":  "po.amount",
-		"pay_amount":    "po.pay_amount",
-		"rebate_amount": "ual.amount",
-		"payment_type":  "po.payment_type",
-		"order_status":  "po.status",
-		"created_at":    "ual.created_at",
-	}, "ual.created_at")
+		"source":           affiliateRebateEffectiveSourceSQL,
+		"source_reference": "COALESCE(po.id, rc.id)",
+		"order":            "po.id",
+		"inviter":          "inviter.email",
+		"invitee":          "invitee.email",
+		"base_amount":      "COALESCE(ual.base_amount, po.amount)",
+		"order_amount":     "po.amount",
+		"pay_amount":       "po.pay_amount",
+		"rebate_amount":    "ual.amount",
+		"payment_type":     "po.payment_type",
+		"order_status":     "po.status",
+		"created_at":       "ual.created_at",
+	}, "ual.created_at") + ", ual.id DESC"
 	args = append(args, filter.PageSize, (filter.Page-1)*filter.PageSize)
 	rows, err := client.QueryContext(ctx, `
-SELECT po.id,
-       po.out_trade_no,
-       ual.user_id,
+		SELECT ual.id,
+		       `+affiliateRebateEffectiveSourceSQL+`,
+	       ual.source_order_id,
+	       po.out_trade_no,
+		       ual.source_redeem_code_id,
+		       CASE
+		           WHEN rc.code IS NULL THEN NULL
+		           WHEN LENGTH(rc.code) <= 4 THEN '****'
+		           WHEN LENGTH(rc.code) <= 8 THEN LEFT(rc.code, 1) || '****' || RIGHT(rc.code, 1)
+		           ELSE LEFT(rc.code, 4) || '****' || RIGHT(rc.code, 4)
+		       END,
+	       ual.user_id,
        COALESCE(inviter.email, ''),
        COALESCE(inviter.username, ''),
        ual.source_user_id,
-       COALESCE(invitee.email, ''),
-       COALESCE(invitee.username, ''),
-       po.amount::double precision,
+	       COALESCE(invitee.email, ''),
+	       COALESCE(invitee.username, ''),
+		       COALESCE(ual.base_amount, po.amount)::double precision,
+	       po.amount::double precision,
        po.pay_amount::double precision,
        ual.amount::double precision,
        po.payment_type,
@@ -521,14 +613,19 @@ LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	for rows.Next() {
 		var item service.AffiliateRebateRecord
 		if err := rows.Scan(
+			&item.LedgerID,
+			&item.SourceType,
 			&item.OrderID,
 			&item.OutTradeNo,
+			&item.RedeemCodeID,
+			&item.RedeemCodeMasked,
 			&item.InviterID,
 			&item.InviterEmail,
 			&item.InviterUsername,
 			&item.InviteeID,
 			&item.InviteeEmail,
 			&item.InviteeUsername,
+			&item.BaseAmount,
 			&item.OrderAmount,
 			&item.PayAmount,
 			&item.RebateAmount,
