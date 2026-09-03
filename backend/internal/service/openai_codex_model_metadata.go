@@ -1,6 +1,122 @@
 package service
 
-import "strings"
+import (
+	"bytes"
+	"encoding/json"
+	"strings"
+)
+
+var codexToolCapabilityFields = [...]string{
+	"apply_patch_tool_type", "comp_hash", "tool_mode", "use_responses_lite",
+}
+
+// configuredCodexToolCapabilities 仅为已核实的 Codex 目录型号提供回退值。
+// 补丁格式、代码模式与压缩协议分别声明，不能把新型号的四个字段套给所有 GPT 模型。
+func configuredCodexToolCapabilities(modelID string) map[string]json.RawMessage {
+	capabilities := map[string]json.RawMessage{
+		"apply_patch_tool_type": json.RawMessage("null"),
+		"comp_hash":             json.RawMessage("null"),
+		"tool_mode":             json.RawMessage("null"),
+		"use_responses_lite":    json.RawMessage("false"),
+	}
+	if isOpenAIGPT56Model(modelID) {
+		capabilities["apply_patch_tool_type"] = json.RawMessage(`"freeform"`)
+		capabilities["comp_hash"] = json.RawMessage(`"3000"`)
+		capabilities["tool_mode"] = json.RawMessage(`"code_mode_only"`)
+		capabilities["use_responses_lite"] = json.RawMessage("true")
+		return capabilities
+	}
+	normalized := canonicalizeOpenAIModelAliasSpelling(modelID)
+	if normalized == "codex-auto-review" {
+		capabilities["apply_patch_tool_type"] = json.RawMessage(`"freeform"`)
+		capabilities["comp_hash"] = json.RawMessage(`"3000"`)
+		capabilities["tool_mode"] = json.RawMessage(`"code_mode_only"`)
+		capabilities["use_responses_lite"] = json.RawMessage("true")
+		return capabilities
+	}
+	for _, base := range []string{"gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark", "gpt-5.2"} {
+		suffix, hasSuffix := strings.CutPrefix(normalized, base+"-")
+		if normalized != base && !(hasSuffix && isKnownCodexModelSuffix(suffix)) {
+			continue
+		}
+		capabilities["apply_patch_tool_type"] = json.RawMessage(`"freeform"`)
+		if base != "gpt-5.2" {
+			capabilities["comp_hash"] = json.RawMessage(`"2911"`)
+		}
+		break
+	}
+	return capabilities
+}
+
+func isCodexToolCapabilityField(field string) bool {
+	for _, candidate := range codexToolCapabilityFields {
+		if field == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+// normalizeCodexToolCapabilities 在上游信任边界只接收工具契约字段。
+// RawMessage 保留“未声明”和显式 null/false 的区别，避免回退逻辑重新开启上游禁用的能力。
+func normalizeCodexToolCapabilities(fields map[string]json.RawMessage) map[string]json.RawMessage {
+	var normalized map[string]json.RawMessage
+	for _, field := range codexToolCapabilityFields {
+		raw, exists := fields[field]
+		if !exists {
+			continue
+		}
+		var value any
+		if err := json.Unmarshal(raw, &value); err != nil {
+			continue
+		}
+		valid := value == nil
+		switch field {
+		case "apply_patch_tool_type":
+			valid = valid || value == "freeform" || value == "function"
+		case "comp_hash", "tool_mode":
+			_, isString := value.(string)
+			valid = valid || isString
+		case "use_responses_lite":
+			_, isBool := value.(bool)
+			valid = valid || isBool
+		}
+		if !valid {
+			continue
+		}
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			continue
+		}
+		if normalized == nil {
+			normalized = make(map[string]json.RawMessage)
+		}
+		normalized[field] = encoded
+	}
+	return normalized
+}
+
+func applyCodexToolCapabilities(descriptor *configuredCodexModelDescriptor, fields map[string]json.RawMessage) {
+	for field, raw := range normalizeCodexToolCapabilities(fields) {
+		var value any
+		if err := json.Unmarshal(raw, &value); err != nil {
+			continue
+		}
+		switch field {
+		case "apply_patch_tool_type":
+			descriptor.ApplyPatchToolType = nil
+			if patchType, ok := value.(string); ok {
+				descriptor.ApplyPatchToolType = &patchType
+			}
+		case "comp_hash":
+			descriptor.CompHash = value
+		case "tool_mode":
+			descriptor.ToolMode = value
+		case "use_responses_lite":
+			descriptor.UseResponsesLite, _ = value.(bool)
+		}
+	}
+}
 
 func groupCodexModelMetadata(
 	platform string,
@@ -25,11 +141,14 @@ func groupCodexModelMetadata(
 		if !resolved {
 			if codexExplicitModelTargetsConflict(accounts, modelID) {
 				return codexModelMetadataOverride{
+					UpstreamModelMetadata:   UpstreamModelMetadata{CodexToolCapabilities: configuredCodexToolCapabilities("")},
 					reasoningConflict:       true,
 					inputModalitiesConflict: true,
 				}, true
 			}
-			return codexModelMetadataOverride{}, false
+			return codexModelMetadataOverride{UpstreamModelMetadata: UpstreamModelMetadata{
+				CodexToolCapabilities: configuredCodexToolCapabilities(""),
+			}}, true
 		}
 	}
 	if !isConcreteRequestPlatform(platform) {
@@ -48,6 +167,7 @@ func groupCodexModelMetadata(
 	explicitTargetsConflict := explicitClaims && codexExplicitModelTargetsConflictForPlatform(accounts, platform, modelID)
 	publicAlias := upstreamModel != modelID
 	candidates := make([]UpstreamModelMetadata, 0)
+	missingMetadata := false
 	for i := range accounts {
 		account := &accounts[i]
 		if account.Platform != platform {
@@ -70,20 +190,23 @@ func groupCodexModelMetadata(
 		}
 		metadata, ok := account.GetUpstreamModelMetadata(lookupModel)
 		if !ok {
-			if explicitTargetsConflict {
-				return codexModelMetadataOverride{
-					reasoningConflict:       true,
-					inputModalitiesConflict: true,
-				}, true
-			}
-			return codexModelMetadataOverride{}, false
+			missingMetadata = true
 		}
+		// 工具回退依据真实路由目标；公开别名即使叫 GPT，也可能实际映射到未知模型。
+		metadata.ID = strings.TrimSpace(lookupModel)
 		candidates = append(candidates, metadata)
 	}
 	if len(candidates) == 0 {
 		return codexModelMetadataOverride{}, false
 	}
 	metadata := intersectUpstreamModelMetadata(modelID, candidates)
+	if missingMetadata {
+		// 保持现有推理/模态的缺失处理，但工具能力仍需包含所有路由账号的保守交集。
+		metadata = codexModelMetadataOverride{
+			UpstreamModelMetadata: UpstreamModelMetadata{ID: modelID, CodexToolCapabilities: metadata.CodexToolCapabilities},
+			reasoningConflict:     explicitTargetsConflict, inputModalitiesConflict: explicitTargetsConflict,
+		}
+	}
 	if publicAlias {
 		metadata.DisplayName = modelID
 		metadata.Description = configuredCodexCustomDescription
@@ -208,6 +331,30 @@ func intersectUpstreamModelMetadata(modelID string, candidates []UpstreamModelMe
 	if !contextKnown {
 		result.ContextWindow = 0
 	}
+	result.CodexToolCapabilities = configuredCodexToolCapabilities("")
+	toolCandidates := make([]map[string]json.RawMessage, 0, len(candidates))
+	for _, candidate := range candidates {
+		capabilities := configuredCodexToolCapabilities(candidate.ID)
+		for field, value := range normalizeCodexToolCapabilities(candidate.CodexToolCapabilities) {
+			capabilities[field] = value
+		}
+		toolCandidates = append(toolCandidates, capabilities)
+	}
+	for _, field := range codexToolCapabilityFields {
+		shared := toolCandidates[0][field]
+		for _, candidate := range toolCandidates[1:] {
+			if !bytes.Equal(shared, candidate[field]) {
+				shared = result.CodexToolCapabilities[field]
+				break
+			}
+		}
+		result.CodexToolCapabilities[field] = shared
+	}
+	if bytes.Equal(result.CodexToolCapabilities["apply_patch_tool_type"], json.RawMessage("null")) {
+		// 没有共同补丁协议时，继续声明代码模式或 Lite 路径会形成客户端无法执行的组合。
+		result.CodexToolCapabilities["tool_mode"] = json.RawMessage("null")
+		result.CodexToolCapabilities["use_responses_lite"] = json.RawMessage("false")
+	}
 	return result
 }
 
@@ -263,6 +410,7 @@ func applyUpstreamModelMetadataToCodexDescriptor(
 		descriptor.ContextWindow = metadata.ContextWindow
 		descriptor.MaxContextWindow = metadata.ContextWindow
 	}
+	applyCodexToolCapabilities(descriptor, metadata.CodexToolCapabilities)
 }
 
 func configuredCodexReasoningLevelDescription(level string) string {

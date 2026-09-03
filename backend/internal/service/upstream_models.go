@@ -36,6 +36,8 @@ type UpstreamModelMetadata struct {
 	InputModalities          []string `json:"input_modalities,omitempty"`
 	ContextWindow            int64    `json:"context_window,omitempty"`
 	MaxOutputTokens          int64    `json:"max_output_tokens,omitempty"`
+	// 仅保存经过白名单校验的 Codex 工具字段；显式 null/false 必须在同步后仍可区分于缺失。
+	CodexToolCapabilities map[string]json.RawMessage `json:"codex_tool_capabilities,omitempty"`
 }
 
 type UpstreamModelMetadataSnapshot struct {
@@ -331,7 +333,8 @@ func upstreamModelMetadataIsUseful(metadata UpstreamModelMetadata) bool {
 		len(metadata.SupportedReasoningLevels) > 0 ||
 		len(metadata.InputModalities) > 0 ||
 		metadata.ContextWindow > 0 ||
-		metadata.MaxOutputTokens > 0
+		metadata.MaxOutputTokens > 0 ||
+		len(metadata.CodexToolCapabilities) > 0
 }
 
 func mergeUpstreamModelMetadata(primary, fallback UpstreamModelMetadata) (UpstreamModelMetadata, bool) {
@@ -372,6 +375,17 @@ func mergeUpstreamModelMetadata(primary, fallback UpstreamModelMetadata) (Upstre
 	}
 	if merged.MaxOutputTokens <= 0 && fallback.MaxOutputTokens > 0 {
 		merged.MaxOutputTokens = fallback.MaxOutputTokens
+		changed = true
+	}
+	merged.CodexToolCapabilities = normalizeCodexToolCapabilities(primary.CodexToolCapabilities)
+	for field, value := range normalizeCodexToolCapabilities(fallback.CodexToolCapabilities) {
+		if _, exists := merged.CodexToolCapabilities[field]; exists {
+			continue
+		}
+		if merged.CodexToolCapabilities == nil {
+			merged.CodexToolCapabilities = make(map[string]json.RawMessage)
+		}
+		merged.CodexToolCapabilities[field] = value
 		changed = true
 	}
 	return merged, changed
@@ -1128,6 +1142,10 @@ func extractUpstreamModelCatalog(body []byte, grok bool) ([]string, map[string]U
 		}
 		models = append(models, modelID)
 		entry := upstreamMetadataFromCapabilityEntry(modelID, capability)
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err == nil {
+			entry.CodexToolCapabilities = normalizeCodexToolCapabilities(fields)
+		}
 		if upstreamModelMetadataIsUseful(entry) {
 			metadata[modelID] = entry
 		}
