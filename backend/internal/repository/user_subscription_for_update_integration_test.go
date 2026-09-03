@@ -9,6 +9,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
@@ -48,7 +49,12 @@ func TestUserSubscription_GetByIDForUpdateSerializesConcurrentExtensions(t *test
 	require.NoError(t, err, "create subscription")
 
 	t.Cleanup(func() {
-		cleanupCtx := context.Background()
+		// 本用例用的是会真正提交的全局 client，必须硬删除。
+		// user_subscription 带软删除 hook，直接 DeleteOneID 只会把行改成 revoked，
+		// 而 List 在 status 为空或 revoked 时走 SkipSoftDelete 会把它读出来，
+		// 从而污染同包的 TestUserSubscriptionRepoSuite。硬删除写法见
+		// soft_delete_ent_integration_test.go:107。
+		cleanupCtx := mixins.SkipSoftDelete(context.Background())
 		_ = client.UserSubscription.DeleteOneID(created.ID).Exec(cleanupCtx)
 		_ = client.Group.DeleteOneID(group.ID).Exec(cleanupCtx)
 		_ = client.User.DeleteOneID(user.ID).Exec(cleanupCtx)
