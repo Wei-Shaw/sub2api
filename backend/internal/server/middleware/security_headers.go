@@ -18,10 +18,25 @@ const (
 	NonceTemplate = "__CSP_NONCE__"
 	// CloudflareInsightsDomain is the domain for Cloudflare Web Analytics
 	CloudflareInsightsDomain = "https://static.cloudflareinsights.com"
-	// TencentCaptchaDomain is the Tencent Captcha 2.0 Web SDK domain.
+	// TencentCaptchaDomain is the Tencent Captcha 2.0 Web SDK domain (Chinese mainland site).
 	TencentCaptchaDomain = "https://turing.captcha.qcloud.com"
 	// TencentCaptchaStaticDomain is the Tencent Captcha static asset domain.
 	TencentCaptchaStaticDomain = "https://*.captcha.gtimg.com"
+	// TencentCaptchaCDNDomain 是天御国内站的核心 JS CDN 主机：
+	// 入口脚本 TJCaptcha.js 会再从这里加载 /1/tgJCap.*.js，缺失时会被 script-src 拦截。
+	TencentCaptchaCDNDomain = "https://turing.captcha.gtimg.com"
+	// TencentCaptchaGlobalDomain 是天御国际站的 Web SDK 与验证弹窗 iframe 主机。
+	TencentCaptchaGlobalDomain = "https://ca.turing.captcha.qcloud.com"
+	// TencentCaptchaGlobalCDNDomain 是天御国际站的核心 JS CDN 主机。
+	TencentCaptchaGlobalCDNDomain = "https://global.turing.captcha.gtimg.com"
+	// TencentCaptchaPrehandleDomain 是天御 SDK 动态预处理脚本与预处理接口主机。
+	TencentCaptchaPrehandleDomain = "https://www.tycaptcha.com"
+	// TencentCaptchaJQueryDomain 是国内站入口脚本动态加载的 jQuery CDN 主机。
+	TencentCaptchaJQueryDomain = "https://cloudcache.tencentcs.com"
+	// TencentCaptchaRceDomain 是国际站风控校验接口主机。
+	TencentCaptchaRceDomain = "https://rce.tencentrio.com"
+	// TencentCaptchaWorkerSource 是天御国际站创建验证码 Web Worker 时使用的来源。
+	TencentCaptchaWorkerSource = "blob:"
 	// StripeDomain is the domain for Stripe.js SDK
 	StripeDomain = "https://*.stripe.com"
 	// AirwallexStaticDomain 是 Airwallex 生产环境 SDK 脚本域名。
@@ -38,10 +53,31 @@ var requiredCSPDirectiveValues = []struct {
 	directive string
 	value     string
 }{
+	// Plugin/custom-menu pages are embedded by the same-origin frontend.
+	// Keep same-origin frames available even when an older custom CSP policy
+	// omitted frame-src entirely.
+	{"frame-src", "'self'"},
+	// Custom-menu items may point at arbitrary external https URLs. Such pages
+	// often 301-redirect to a different host (e.g. pay.ldxp.cn -> wzyp.cn),
+	// which cannot be known when the CSP header is built, so a host allowlist
+	// would block the iframe right after the redirect. Allow any https origin
+	// so external custom-menu pages keep embedding inside the same-origin iframe.
+	{"frame-src", "https:"},
 	{"script-src", CloudflareInsightsDomain},
 	{"script-src", TencentCaptchaDomain},
 	{"frame-src", TencentCaptchaDomain},
 	{"style-src", TencentCaptchaStaticDomain},
+	{"script-src", TencentCaptchaCDNDomain},
+	{"script-src", TencentCaptchaGlobalDomain},
+	{"script-src", TencentCaptchaGlobalCDNDomain},
+	{"script-src", TencentCaptchaPrehandleDomain},
+	{"script-src", TencentCaptchaJQueryDomain},
+	{"connect-src", TencentCaptchaDomain},
+	{"connect-src", TencentCaptchaPrehandleDomain},
+	{"connect-src", TencentCaptchaRceDomain},
+	{"frame-src", TencentCaptchaGlobalDomain},
+	{"frame-src", TencentCaptchaPrehandleDomain},
+	{"worker-src", TencentCaptchaWorkerSource},
 	{"script-src", StripeDomain},
 	{"frame-src", StripeDomain},
 	{"script-src", AirwallexStaticDomain},
@@ -99,8 +135,17 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 		}
 
 		c.Header("X-Content-Type-Options", "nosniff")
-		c.Header("X-Frame-Options", "DENY")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		// Responses proxied from the plugin service are intentionally embedded
+		// by /custom/:id pages. The upstream plugin response is responsible for
+		// its own frame policy; applying the main service's DENY header here
+		// makes every custom/plugin menu page blank.
+		if isPluginProxyRoutePath(c) {
+			c.Next()
+			return
+		}
+
+		c.Header("X-Frame-Options", "DENY")
 		if isAPIRoutePath(c) {
 			c.Next()
 			return
@@ -120,6 +165,13 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 		}
 		c.Next()
 	}
+}
+
+func isPluginProxyRoutePath(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return false
+	}
+	return strings.HasPrefix(c.Request.URL.Path, "/plugins/")
 }
 
 func isAPIRoutePath(c *gin.Context) bool {
@@ -170,35 +222,41 @@ func directiveHasValue(policy, directive, value string) bool {
 // addToDirective adds a value to a specific CSP directive.
 // If the directive doesn't exist, it will be added after default-src.
 func addToDirective(policy, directive, value string) string {
-	// Find the directive in the policy
-	directivePrefix := directive + " "
-	idx := strings.Index(policy, directivePrefix)
+	if end, ok := cspDirectiveEnd(policy, directive); ok {
+		return policy[:end] + " " + value + policy[end:]
+	}
+	trimmed := strings.TrimSpace(policy)
+	if trimmed == "" {
+		return newCSPDirective(directive, value)
+	}
+	if !strings.HasSuffix(trimmed, ";") {
+		trimmed += ";"
+	}
+	return trimmed + " " + newCSPDirective(directive, value)
+}
 
-	if idx == -1 {
-		// Directive not found, add it after default-src or at the beginning
-		defaultSrcIdx := strings.Index(policy, "default-src ")
-		if defaultSrcIdx != -1 {
-			// Find the end of default-src directive (next semicolon)
-			endIdx := strings.Index(policy[defaultSrcIdx:], ";")
-			if endIdx != -1 {
-				insertPos := defaultSrcIdx + endIdx + 1
-				// Insert new directive after default-src
-				return policy[:insertPos] + " " + directive + " 'self' " + value + ";" + policy[insertPos:]
-			}
+func cspDirectiveEnd(policy, directive string) (int, bool) {
+	start := 0
+	for start <= len(policy) {
+		end := len(policy)
+		if relativeEnd := strings.IndexByte(policy[start:], ';'); relativeEnd >= 0 {
+			end = start + relativeEnd
 		}
-		// Fallback: prepend the directive
-		return directive + " 'self' " + value + "; " + policy
+		fields := strings.Fields(policy[start:end])
+		if len(fields) > 0 && fields[0] == directive {
+			return end, true
+		}
+		if end == len(policy) {
+			break
+		}
+		start = end + 1
 	}
+	return 0, false
+}
 
-	// Find the end of this directive (next semicolon or end of string)
-	endIdx := strings.Index(policy[idx:], ";")
-
-	if endIdx == -1 {
-		// No semicolon found, directive goes to end of string
-		return policy + " " + value
+func newCSPDirective(directive, value string) string {
+	if value == "'self'" {
+		return directive + " 'self';"
 	}
-
-	// Insert value before the semicolon
-	insertPos := idx + endIdx
-	return policy[:insertPos] + " " + value + policy[insertPos:]
+	return directive + " 'self' " + value + ";"
 }

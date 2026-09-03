@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/plugin-service/internal/host/httpx"
 	hostprincipal "github.com/Wei-Shaw/sub2api/plugin-service/internal/host/principal"
+	"github.com/Wei-Shaw/sub2api/plugin-service/internal/media"
 	"github.com/Wei-Shaw/sub2api/plugin-service/internal/model"
 	"github.com/Wei-Shaw/sub2api/plugin-service/internal/service"
 	imagemanifest "github.com/Wei-Shaw/sub2api/plugin-service/plugins/image-generation/manifest"
@@ -172,6 +173,11 @@ func (h *Handler) GetAsset(w http.ResponseWriter, r *http.Request, principal mod
 	}
 	object, err := h.generation.GetMedia(r.Context(), key)
 	if err != nil {
+		if errors.Is(err, media.ErrNotFound) {
+			httpx.WriteError(w, http.StatusNotFound, "image asset not found")
+			return
+		}
+		log.Printf("[plugin-service] image asset storage read failed history_id=%s kind=%s index=%d key=%q err=%v", r.PathValue("history_id"), kind, index, key, err)
 		httpx.WriteError(w, http.StatusServiceUnavailable, "image storage unavailable")
 		return
 	}

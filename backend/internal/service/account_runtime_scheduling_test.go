@@ -20,6 +20,9 @@ func TestAccountRuntimeSchedulingProtection(t *testing.T) {
 	require.True(t, account.IsSchedulable())
 
 	account.Schedulable = false
+	require.True(t, account.IsSchedulable())
+
+	account.Status = StatusActive
 	require.False(t, account.IsSchedulable())
 
 	account.Schedulable = true

@@ -22,6 +22,7 @@ UPLOAD_EXCLUDED_PARTS = {
     "node_modules",
     "data",
     "plugin_data",
+    "minio_data",
     "postgres_data",
     "redis_data",
     ".DS_Store",
@@ -317,12 +318,16 @@ def get_deploy_plan_with_assets(
             ),
         )
 
-    services = ("sub2api", "sub2api-plugin-server")
+    # MinIO is an explicit service dependency for image-generation assets.
+    # Include it in every deployment plan so local-image deployments do not
+    # leave the storage service stopped when --no-deps is used.
+    services = ("minio", "sub2api", "sub2api-plugin-server")
     if config.image_source == "local_image":
         if local_image_services:
-            services = tuple(service for service in services if service in local_image_services)
+            app_services = tuple(service for service in services if service == "minio" or service in local_image_services)
+            services = app_services
         else:
-            services = ("sub2api",)
+            services = ("minio", "sub2api")
 
     force_recreate = config.image_source == "local_image" or reuse_existing_data_services
     no_deps = force_recreate
@@ -331,7 +336,8 @@ def get_deploy_plan_with_assets(
         force_recreate=force_recreate,
         no_deps=no_deps,
         health_checks=tuple(
-            (service_name, service_name) for service_name in services
+            (service_name, "sub2api-minio" if service_name == "minio" else service_name)
+            for service_name in services
         ),
     )
 
@@ -722,7 +728,7 @@ def deploy_to_remote(config: RemoteDeployConfig) -> None:
         print(f"[5/{total_steps}] Creating data directories...")
         exec_remote_command(
             client,
-            f"cd {quoted_remote_dir} && mkdir -p data postgres_data redis_data plugin_data",
+            f"cd {quoted_remote_dir} && mkdir -p data postgres_data redis_data plugin_data minio_data",
             timeout=60,
         )
 

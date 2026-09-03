@@ -132,7 +132,7 @@ func TestSecurityHeaders(t *testing.T) {
 		assert.Equal(t, 1, countDirectiveValue(csp, "worker-src", TencentCaptchaWorkerSource))
 	})
 
-	t.Run("old_custom_policy_dynamically_allows_same_origin_frames", func(t *testing.T) {
+	t.Run("old_custom_policy_dynamically_allows_same_origin_and_external_https_frames", func(t *testing.T) {
 		cfg := config.CSPConfig{
 			Enabled: true,
 			Policy:  "default-src 'self'; frame-src https://checkout.example.com",
@@ -148,6 +148,8 @@ func TestSecurityHeaders(t *testing.T) {
 		csp := w.Header().Get("Content-Security-Policy")
 		assert.Equal(t, 1, countDirectiveValue(csp, "frame-src", "'self'"))
 		assert.Equal(t, 1, countDirectiveValue(csp, "frame-src", "https://checkout.example.com"))
+		// External https custom-menu pages stay embeddable even after a host redirect.
+		assert.Equal(t, 1, countDirectiveValue(csp, "frame-src", "https:"))
 		assert.Equal(t, "DENY", w.Header().Get("X-Frame-Options"))
 	})
 
@@ -344,12 +346,14 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 		assert.Contains(t, enhanced, CloudflareInsightsDomain)
 	})
 
-	t.Run("allows_only_same_origin_plugin_frames", func(t *testing.T) {
+	t.Run("keeps_same_origin_frames_and_allows_external_https_frames", func(t *testing.T) {
 		policy := "default-src 'self'; frame-src https://checkout.example.com"
 		enhanced := enhanceCSPPolicy(policy)
 
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", "'self'"))
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", "https://checkout.example.com"))
+		// External https custom-menu pages must remain embeddable after redirect.
+		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", "https:"))
 		assert.NotContains(t, enhanced, "frame-src *")
 	})
 

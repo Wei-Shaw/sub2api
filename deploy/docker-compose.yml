@@ -296,7 +296,7 @@ services:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER:-sub2api-plugin}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
     volumes:
-      - minio_data:/data
+      - ./minio_data:/data:Z
     networks:
       - sub2api-network
     healthcheck:
@@ -397,8 +397,6 @@ volumes:
   sub2api_data:
     driver: local
   plugin_data:
-    driver: local
-  minio_data:
     driver: local
   postgres_data:
     driver: local

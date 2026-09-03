@@ -179,11 +179,20 @@ func (a *Account) EffectiveLoadFactor() int {
 }
 
 func (a *Account) IsSchedulable() bool {
-	if a == nil || !a.Schedulable || a.Status == StatusDisabled {
+	if a == nil || a.Status == StatusDisabled {
 		return false
 	}
 	if a.IsRuntimeSchedulingProtectionDisabled() {
+		if a.Status == StatusError {
+			return true
+		}
+		if !a.Schedulable {
+			return false
+		}
 		return true
+	}
+	if !a.Schedulable {
+		return false
 	}
 	if !a.IsActive() {
 		return false

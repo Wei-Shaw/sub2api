@@ -191,19 +191,27 @@ class HelperTests(unittest.TestCase):
             project_root = Path(tmpdir)
             deploy_dir = project_root / "deploy"
             postgres_file = deploy_dir / "postgres_data" / "PG_VERSION"
+            minio_file = deploy_dir / "minio_data" / "buckets" / "plugin-media"
             runtime_file = deploy_dir / "data" / "config.yaml"
             regular_file = deploy_dir / "docker-compose.local.yml"
 
             postgres_file.parent.mkdir(parents=True)
+            minio_file.parent.mkdir(parents=True)
             runtime_file.parent.mkdir(parents=True)
             regular_file.parent.mkdir(parents=True, exist_ok=True)
             postgres_file.write_text("18\n", encoding="utf-8")
+            minio_file.write_text("demo\n", encoding="utf-8")
             runtime_file.write_text("demo\n", encoding="utf-8")
             regular_file.write_text("services:\n", encoding="utf-8")
 
             self.assertFalse(remote_deploy.should_upload_path(postgres_file, project_root))
+            self.assertFalse(remote_deploy.should_upload_path(minio_file, project_root))
             self.assertFalse(remote_deploy.should_upload_path(runtime_file, project_root))
             self.assertTrue(remote_deploy.should_upload_path(regular_file, project_root))
+
+    def test_remote_deploy_creates_minio_bind_mount_directory(self) -> None:
+        source = (Path(remote_deploy.__file__).read_text(encoding="utf-8"))
+        self.assertIn("mkdir -p data postgres_data redis_data plugin_data minio_data", source)
 
     def test_resolve_local_image_tar_path_uses_project_root_for_relative_paths(self) -> None:
         config = remote_deploy.RemoteDeployConfig(

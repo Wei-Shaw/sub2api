@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -1357,21 +1358,25 @@ func (r *accountRepository) BatchUpdateLastUsed(ctx context.Context, updates map
 }
 
 func (r *accountRepository) SetError(ctx context.Context, id int64, errorMsg string) error {
-	account, err := r.client.Account.Get(ctx, id)
+	result, err := r.sql.ExecContext(ctx, `
+		UPDATE accounts
+		SET status = $1,
+			error_message = $2,
+			schedulable = false,
+			updated_at = NOW()
+		WHERE id = $3
+			AND deleted_at IS NULL
+			AND COALESCE(credentials->>'disable_runtime_error_handling', '') <> 'true'
+	`, service.StatusError, errorMsg, id)
 	if err != nil {
 		return err
 	}
-	if account.Credentials["disable_runtime_error_handling"] == true {
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected <= 0 {
 		return nil
-	}
-	_, err = r.client.Account.Update().
-		Where(dbaccount.IDEQ(id)).
-		SetStatus(service.StatusError).
-		SetErrorMessage(errorMsg).
-		SetSchedulable(false).
-		Save(ctx)
-	if err != nil {
-		return err
 	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue set error failed: account=%d err=%v", id, err)
@@ -1909,12 +1914,12 @@ func (r *accountRepository) ListSchedulableAccountLoads(ctx context.Context) ([]
 func (r *accountRepository) schedulableAccountsQuery(now time.Time) *dbent.AccountQuery {
 	return r.client.Account.Query().
 		Where(
-			dbaccount.StatusEQ(service.StatusActive),
-			dbaccount.SchedulableEQ(true),
-			tempUnschedulablePredicate(),
+			schedulableStatusPredicate(),
+			schedulableFlagPredicate(),
+			tempUnschedulableSchedulablePredicate(),
 			notExpiredPredicate(now),
-			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
-			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
+			overloadSchedulablePredicate(now),
+			rateLimitSchedulablePredicate(now),
 		).
 		Order(dbent.Asc(dbaccount.FieldPriority))
 }
@@ -2308,13 +2313,6 @@ func (r *accountRepository) SetOverloaded(ctx context.Context, id int64, until t
 }
 
 func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
-	account, err := r.client.Account.Get(ctx, id)
-	if err != nil {
-		return err
-	}
-	if account.Credentials["disable_temp_unschedulable"] == true || account.Credentials["disable_runtime_error_handling"] == true {
-		return nil
-	}
 	result, err := r.sql.ExecContext(ctx, `
 		UPDATE accounts
 		SET temp_unschedulable_until = $1,
@@ -2322,6 +2320,8 @@ func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, 
 			updated_at = NOW()
 		WHERE id = $3
 			AND deleted_at IS NULL
+			AND COALESCE(credentials->>'disable_temp_unschedulable', '') <> 'true'
+			AND COALESCE(credentials->>'disable_runtime_error_handling', '') <> 'true'
 			AND (temp_unschedulable_until IS NULL OR temp_unschedulable_until < $1)
 	`, until, reason, id)
 	if err != nil {
@@ -3074,20 +3074,24 @@ func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID in
 	preds := make([]dbpredicate.Account, 0, 6)
 	preds = append(preds, dbaccount.DeletedAtIsNil())
 	if opts.status != "" {
-		preds = append(preds, dbaccount.StatusEQ(opts.status))
+		if opts.schedulable && opts.status == service.StatusActive {
+			preds = append(preds, schedulableStatusPredicate())
+		} else {
+			preds = append(preds, dbaccount.StatusEQ(opts.status))
+		}
 	}
 	if len(opts.platforms) > 0 {
 		preds = append(preds, dbaccount.PlatformIn(opts.platforms...))
 	}
 	if opts.schedulable {
-		preds = append(preds, dbaccount.SchedulableEQ(true))
+		preds = append(preds, schedulableFlagPredicate())
 		if !opts.ignoreTransientState {
 			now := time.Now()
 			preds = append(preds,
-				tempUnschedulablePredicate(),
+				tempUnschedulableSchedulablePredicate(),
 				notExpiredPredicate(now),
-				dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
-				dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
+				overloadSchedulablePredicate(now),
+				rateLimitSchedulablePredicate(now),
 			)
 		}
 	}
@@ -3197,6 +3201,48 @@ func tempUnschedulablePredicate() dbpredicate.Account {
 			entsql.LTE(col, entsql.Expr("NOW()")),
 		))
 	})
+}
+
+func accountCredentialFlagPredicate(flag string) dbpredicate.Account {
+	return dbpredicate.Account(func(s *entsql.Selector) {
+		s.Where(entsql.P(func(b *entsql.Builder) {
+			b.WriteString(fmt.Sprintf("credentials->>'%s' = 'true'", flag))
+		}))
+	})
+}
+
+func schedulableStatusPredicate() dbpredicate.Account {
+	return dbaccount.Or(
+		dbaccount.StatusEQ(service.StatusActive),
+		runtimeErrorHandlingDisabledStatusPredicate(),
+	)
+}
+
+func runtimeErrorHandlingDisabledStatusPredicate() dbpredicate.Account {
+	return dbpredicate.Account(func(s *entsql.Selector) {
+		s.Where(entsql.P(func(b *entsql.Builder) {
+			b.WriteString("status = 'error' AND credentials->>'disable_runtime_error_handling' = 'true'")
+		}))
+	})
+}
+
+func schedulableFlagPredicate() dbpredicate.Account {
+	return dbaccount.Or(
+		dbaccount.SchedulableEQ(true),
+		runtimeErrorHandlingDisabledStatusPredicate(),
+	)
+}
+
+func tempUnschedulableSchedulablePredicate() dbpredicate.Account {
+	return dbaccount.Or(tempUnschedulablePredicate(), accountCredentialFlagPredicate("disable_temp_unschedulable"), accountCredentialFlagPredicate("disable_runtime_error_handling"))
+}
+
+func overloadSchedulablePredicate(now time.Time) dbpredicate.Account {
+	return dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now), accountCredentialFlagPredicate("disable_runtime_error_handling"))
+}
+
+func rateLimitSchedulablePredicate(now time.Time) dbpredicate.Account {
+	return dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now), accountCredentialFlagPredicate("disable_runtime_error_handling"))
 }
 
 func notExpiredPredicate(now time.Time) dbpredicate.Account {
