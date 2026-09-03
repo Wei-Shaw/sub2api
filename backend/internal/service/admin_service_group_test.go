@@ -1120,13 +1120,22 @@ func TestAdminService_CreateGroup_NormalizesForceOpenAIFastByPlatform(t *testing
 			require.NotNil(t, group)
 			require.Equal(t, tt.want, repo.created.ForceOpenAIFast)
 			require.Equal(t, tt.want, repo.created.FreeOpenAIFast)
+
+			disabledRepo := &groupRepoStubForAdmin{}
+			disabledSvc := &adminServiceImpl{groupRepo: disabledRepo}
+			disabledGroup, err := disabledSvc.CreateGroup(context.Background(), &CreateGroupInput{
+				Name: "disable-fast-" + tt.name, Platform: tt.platform, RateMultiplier: 1, DisableOpenAIFast: true,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, disabledGroup)
+			require.Equal(t, tt.want, disabledRepo.created.DisableOpenAIFast)
 		})
 	}
 }
 
 func TestAdminService_UpdateGroup_ClearsForceOpenAIFastWhenPlatformChanges(t *testing.T) {
 	existingGroup := &Group{
-		ID: 1, Name: "existing-fast", Platform: PlatformOpenAI, Status: StatusActive, ForceOpenAIFast: true, FreeOpenAIFast: true,
+		ID: 1, Name: "existing-fast", Platform: PlatformOpenAI, Status: StatusActive, ForceOpenAIFast: true, FreeOpenAIFast: true, DisableOpenAIFast: true,
 	}
 	repo := &groupRepoStubForAdmin{getByID: existingGroup}
 	svc := &adminServiceImpl{groupRepo: repo}
@@ -1139,6 +1148,42 @@ func TestAdminService_UpdateGroup_ClearsForceOpenAIFastWhenPlatformChanges(t *te
 	require.NotNil(t, group)
 	require.False(t, repo.updated.ForceOpenAIFast)
 	require.False(t, repo.updated.FreeOpenAIFast)
+	require.False(t, repo.updated.DisableOpenAIFast)
+}
+
+func TestAdminService_CreateGroup_DisableOpenAIFastWinsOverForce(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name: "disable-beats-force", Platform: PlatformOpenAI, RateMultiplier: 1,
+		ForceOpenAIFast: true, DisableOpenAIFast: true,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.True(t, repo.created.DisableOpenAIFast)
+	require.False(t, repo.created.ForceOpenAIFast, "disable must clear force when both are requested")
+}
+
+func TestAdminService_UpdateGroup_DisableOpenAIFastClearsForceAndInvalidatesAuthCache(t *testing.T) {
+	existingGroup := &Group{
+		ID: 1, Name: "existing-force", Platform: PlatformOpenAI, Status: StatusActive, ForceOpenAIFast: true,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	invalidator := &authCacheInvalidatorStub{}
+	svc := &adminServiceImpl{groupRepo: repo, authCacheInvalidator: invalidator}
+	enabled := true
+
+	group, err := svc.UpdateGroup(context.Background(), existingGroup.ID, &UpdateGroupInput{
+		DisableOpenAIFast: &enabled,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.True(t, repo.updated.DisableOpenAIFast)
+	require.False(t, repo.updated.ForceOpenAIFast)
+	require.Equal(t, []int64{existingGroup.ID}, invalidator.groupIDs)
 }
 
 func TestAdminService_UpdateGroup_ForceOpenAIFastInvalidatesAuthCache(t *testing.T) {

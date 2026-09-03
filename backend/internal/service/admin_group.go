@@ -304,7 +304,13 @@ func sanitizeGroupOpenAIFast(group *Group) {
 		if group != nil {
 			group.ForceOpenAIFast = false
 			group.FreeOpenAIFast = false
+			group.DisableOpenAIFast = false
 		}
+		return
+	}
+	// 禁用 Fast 优先于强制 Fast：两者同时开启时以禁用为准。
+	if group.DisableOpenAIFast {
+		group.ForceOpenAIFast = false
 	}
 }
 
@@ -519,6 +525,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		AllowLive:                       input.AllowLive,
 		ForceOpenAIFast:                 input.ForceOpenAIFast,
 		FreeOpenAIFast:                  input.FreeOpenAIFast,
+		DisableOpenAIFast:               input.DisableOpenAIFast,
 		RequireOAuthOnly:                input.RequireOAuthOnly,
 		RequirePrivacySet:               input.RequirePrivacySet,
 		DefaultMappedModel:              input.DefaultMappedModel,
@@ -888,6 +895,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.FreeOpenAIFast != nil {
 		group.FreeOpenAIFast = *input.FreeOpenAIFast
+	}
+	if input.DisableOpenAIFast != nil {
+		group.DisableOpenAIFast = *input.DisableOpenAIFast
 	}
 	if input.RequireOAuthOnly != nil {
 		group.RequireOAuthOnly = *input.RequireOAuthOnly

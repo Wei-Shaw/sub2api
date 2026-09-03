@@ -300,6 +300,11 @@ func FreeOpenaiFast(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldFreeOpenaiFast, v))
 }
 
+// DisableOpenaiFast applies equality check predicate on the "disable_openai_fast" field. It's identical to DisableOpenaiFastEQ.
+func DisableOpenaiFast(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDisableOpenaiFast, v))
+}
+
 // RequireOauthOnly applies equality check predicate on the "require_oauth_only" field. It's identical to RequireOauthOnlyEQ.
 func RequireOauthOnly(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRequireOauthOnly, v))
@@ -2303,6 +2308,16 @@ func FreeOpenaiFastEQ(v bool) predicate.Group {
 // FreeOpenaiFastNEQ applies the NEQ predicate on the "free_openai_fast" field.
 func FreeOpenaiFastNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldFreeOpenaiFast, v))
+}
+
+// DisableOpenaiFastEQ applies the EQ predicate on the "disable_openai_fast" field.
+func DisableOpenaiFastEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDisableOpenaiFast, v))
+}
+
+// DisableOpenaiFastNEQ applies the NEQ predicate on the "disable_openai_fast" field.
+func DisableOpenaiFastNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldDisableOpenaiFast, v))
 }
 
 // RequireOauthOnlyEQ applies the EQ predicate on the "require_oauth_only" field.

@@ -1184,3 +1184,47 @@ func TestPassthroughBilling_BlockedFrameDoesNotMutateServiceTier(t *testing.T) {
 	require.Equal(t, "flex", *tier,
 		"blocked frame is never sent upstream; billing must retain the previous turn's tier")
 }
+
+func TestWSResponseCreate_GroupDisableStripsTier(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
+		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, DisableOpenAIFast: true,
+	})
+	frame := []byte(`{"type":"response.create","model":"gpt-5.6-sol","service_tier":"priority","input":[]}`)
+
+	updated, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, "gpt-5.6-sol", frame)
+	require.NoError(t, err)
+	require.Nil(t, blocked)
+	require.False(t, gjson.GetBytes(updated, "service_tier").Exists())
+	require.Equal(t, "response.create", gjson.GetBytes(updated, "type").String())
+}
+
+func TestWSResponseCreate_GroupDisableBeatsForce(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
+		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true,
+		ForceOpenAIFast: true, DisableOpenAIFast: true,
+	})
+	frame := []byte(`{"type":"response.create","model":"gpt-5.6-sol","input":[]}`)
+
+	updated, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, "gpt-5.6-sol", frame)
+	require.NoError(t, err)
+	require.Nil(t, blocked)
+	require.False(t, gjson.GetBytes(updated, "service_tier").Exists())
+}
+
+func TestWSResponseCreate_GroupDisableDoesNotTouchOtherFrames(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
+		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, DisableOpenAIFast: true,
+	})
+	frame := []byte(`{"type":"response.cancel","service_tier":"priority"}`)
+
+	updated, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, "gpt-5.6-sol", frame)
+	require.NoError(t, err)
+	require.Nil(t, blocked)
+	require.Equal(t, string(frame), string(updated))
+}
