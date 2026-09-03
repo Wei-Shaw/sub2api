@@ -711,3 +711,18 @@ const AdminAPIKeyPrefix = "admin-"
 // SettingKeyAllowUserViewErrorRequests controls whether end users can view
 // their own failed requests on the usage page. Default false (opt-in).
 const SettingKeyAllowUserViewErrorRequests = "allow_user_view_error_requests"
+
+// SettingKeyCustomPageIframeHosts is the operator-configurable host allowlist for
+// iframes embedded in custom-page Markdown bodies.
+//
+// 存储格式为 JSON 字符串数组（也容忍逗号/换行分隔的手写值），每项是**主机名**而非
+// URL —— 例如 "youtube.com"，命中规则是「完全相等或以 `.<entry>` 结尾」。
+//
+// 三态语义（务必与 frontend/src/utils/iframeSanitize.ts 保持一致）：
+//   - 键缺失 / 空白：从未配置 → 回落到 DefaultCustomPageIframeHosts；
+//   - 键存在且解析出 0 个合法主机（含 "[]"）：显式锁死 → 自定义页面不允许任何 iframe；
+//   - 否则：使用解析出的主机集合。
+//
+// 这份列表同时是 CSP frame-src 的来源（见 SettingService.GetFrameSrcOrigins），
+// 避免「前端白名单」与「CSP 白名单」各说各话。
+const SettingKeyCustomPageIframeHosts = "custom_page_iframe_hosts"

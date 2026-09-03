@@ -6829,6 +6829,148 @@
               </button>
             </div>
           </div>
+
+          <!-- Custom Page iframe host allowlist -->
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.customPageIframe.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.customPageIframe.description") }}
+              </p>
+            </div>
+            <div class="space-y-4 p-6">
+              <!-- Mode selector: built-in defaults vs. an explicit list -->
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.customPageIframe.mode") }}
+                </label>
+                <div
+                  class="grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1 dark:bg-dark-700"
+                >
+                  <button
+                    type="button"
+                    class="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition"
+                    :class="
+                      customPageIframeMode === 'default'
+                        ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-800 dark:text-primary-300'
+                        : 'text-gray-600 hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
+                    "
+                    data-testid="custom-page-iframe-mode-default"
+                    @click="customPageIframeMode = 'default'"
+                  >
+                    {{ t("admin.settings.customPageIframe.modeDefault") }}
+                  </button>
+                  <button
+                    type="button"
+                    class="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition"
+                    :class="
+                      customPageIframeMode === 'custom'
+                        ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-800 dark:text-primary-300'
+                        : 'text-gray-600 hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
+                    "
+                    data-testid="custom-page-iframe-mode-custom"
+                    @click="customPageIframeMode = 'custom'"
+                  >
+                    {{ t("admin.settings.customPageIframe.modeCustom") }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Which of the three states is actually in effect -->
+              <div
+                class="rounded-md border p-3 text-sm"
+                :class="
+                  customPageIframeState === 'lockdown'
+                    ? 'border-red-300 bg-red-50 text-red-800 dark:border-red-700/60 dark:bg-red-900/20 dark:text-red-300'
+                    : customPageIframeState === 'allowlist'
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700/60 dark:bg-emerald-900/20 dark:text-emerald-300'
+                      : 'border-gray-200 bg-gray-50 text-gray-700 dark:border-dark-600 dark:bg-dark-700/40 dark:text-gray-300'
+                "
+                data-testid="custom-page-iframe-state"
+              >
+                <p class="font-medium">
+                  <template v-if="customPageIframeState === 'default'">
+                    {{ t("admin.settings.customPageIframe.stateDefault") }}
+                  </template>
+                  <template v-else-if="customPageIframeState === 'allowlist'">
+                    {{
+                      t("admin.settings.customPageIframe.stateAllowlist", {
+                        count: customPageIframeNormalizedHosts.length,
+                      })
+                    }}
+                  </template>
+                  <template v-else>
+                    {{ t("admin.settings.customPageIframe.stateLockdown") }}
+                  </template>
+                </p>
+                <p
+                  v-if="customPageIframeState === 'lockdown'"
+                  class="mt-1 text-xs"
+                >
+                  {{ t("admin.settings.customPageIframe.lockdownWarning") }}
+                </p>
+              </div>
+
+              <!-- Built-in defaults, shown read-only so "defaults apply" is not abstract -->
+              <div v-if="customPageIframeMode === 'default'">
+                <label
+                  class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                >
+                  {{ t("admin.settings.customPageIframe.defaultsLabel") }}
+                </label>
+                <div class="flex flex-wrap gap-2">
+                  <span
+                    v-for="host in customPageIframeDefaultHosts"
+                    :key="host"
+                    class="rounded bg-gray-100 px-2 py-1 font-mono text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-300"
+                  >
+                    {{ host }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Explicit host list -->
+              <div v-else>
+                <label
+                  class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                >
+                  {{ t("admin.settings.customPageIframe.hosts") }}
+                </label>
+                <textarea
+                  v-model="customPageIframeHostsDraft"
+                  rows="5"
+                  class="input font-mono text-sm"
+                  :class="
+                    customPageIframeInvalidEntry !== null
+                      ? 'border-red-400 dark:border-red-600'
+                      : ''
+                  "
+                  :placeholder="
+                    t('admin.settings.customPageIframe.hostsPlaceholder')
+                  "
+                  data-testid="custom-page-iframe-hosts"
+                ></textarea>
+                <p
+                  v-if="customPageIframeInvalidEntry !== null"
+                  class="mt-1 text-xs text-red-600 dark:text-red-400"
+                  data-testid="custom-page-iframe-error"
+                >
+                  {{
+                    t("admin.settings.customPageIframe.invalidHost", {
+                      host: customPageIframeInvalidEntry,
+                    })
+                  }}
+                </p>
+                <p v-else class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.customPageIframe.hostsHint") }}
+                </p>
+              </div>
+            </div>
+          </div>
 	        </div>
 	        <!-- /Tab: General -->
 
@@ -8847,6 +8989,9 @@ import {
 import TotpStepUpDialog from "@/components/auth/TotpStepUpDialog.vue";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
+// 自定义页面 iframe 白名单的内置默认值：与净化器共用同一份，避免管理端展示的
+// 「默认生效主机」与实际放行的主机对不上。
+import { DEFAULT_ALLOWED_IFRAME_HOSTS } from "@/utils/iframeSanitize";
 import { useAppStore } from "@/stores";
 import { useAdminSettingsStore } from "@/stores/adminSettings";
 import { normalizeVisibleMethod } from "@/components/payment/paymentFlow";
@@ -8972,6 +9117,90 @@ const registrationEmailSuffixWhitelistTags = ref<string[]>([]);
 const registrationEmailSuffixWhitelistDraft = ref("");
 const forwardedClientIpHeaderDraft = ref("");
 const tablePageSizeOptionsInput = ref("10, 20, 50, 100");
+
+// ---------------------------------------------------------------------------
+// 自定义页面 iframe 主机白名单（custom_page_iframe_hosts）
+//
+// 该设置有三态，且第二态（显式锁死）是整个特性的重点：
+//   未配置 → 后端内置默认列表生效；
+//   []     → 一个 iframe 都不许嵌，**不回落**默认值；
+//   [...]  → 显式白名单。
+// 因此它刻意不放进 `form`：loadSettings 会跳过所有 null 值，`null` 一进 form 就和
+// 「后端没返回这个字段」再也分不开了。这里用独立的 ref 保住 null 这一态。
+// ---------------------------------------------------------------------------
+
+/** "default" = 用内置默认列表（提交 null）；"custom" = 用下面 textarea 里的列表。 */
+const customPageIframeMode = ref<"default" | "custom">("default");
+/** 每行一个主机的编辑草稿。空白（含全是空行）在 custom 模式下即为「显式锁死」。 */
+const customPageIframeHostsDraft = ref("");
+/**
+ * 内置默认列表，仅用于在 default 模式下展示「当前实际生效的是哪些主机」。
+ * 直接复用净化器里的那一份，避免管理端和净化器各写一份而悄悄漂移。
+ */
+const customPageIframeDefaultHosts = DEFAULT_ALLOWED_IFRAME_HOSTS;
+
+/**
+ * 与后端 NormalizeCustomPageIframeHost / 前端 iframeSanitize.ts 的 normalizeHostEntry
+ * 保持一致的主机名校验：只接受「至少含一个点」的纯主机名。
+ * 三处必须同时改，否则会出现「管理端能存、净化器不认」的分裂。
+ */
+const CUSTOM_PAGE_IFRAME_HOST_PATTERN = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+const MAX_CUSTOM_PAGE_IFRAME_HOSTS = 50;
+
+function normalizeCustomPageIframeHost(entry: string): string | null {
+  let host = entry.trim().toLowerCase();
+  while (host.startsWith(".")) host = host.slice(1);
+  while (host.endsWith(".")) host = host.slice(0, -1);
+  if (!host) return null;
+  return CUSTOM_PAGE_IFRAME_HOST_PATTERN.test(host) ? host : null;
+}
+
+/** 把 textarea 草稿切成非空条目（保留原始文本，供报错时点名）。 */
+const customPageIframeHostEntries = computed<string[]>(() =>
+  customPageIframeHostsDraft.value
+    .split(/[\n,;]/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0),
+);
+
+/** 归一化去重后的主机列表；只在全部条目合法时才有意义。 */
+const customPageIframeNormalizedHosts = computed<string[]>(() => {
+  const out: string[] = [];
+  for (const entry of customPageIframeHostEntries.value) {
+    const host = normalizeCustomPageIframeHost(entry);
+    if (host && !out.includes(host)) out.push(host);
+  }
+  return out;
+});
+
+/** 第一条非法条目的原始文本；null 表示全部合法。 */
+const customPageIframeInvalidEntry = computed<string | null>(() => {
+  if (customPageIframeMode.value !== "custom") return null;
+  for (const entry of customPageIframeHostEntries.value) {
+    if (!normalizeCustomPageIframeHost(entry)) return entry;
+  }
+  return null;
+});
+
+/** 当前处于哪一态，驱动状态条文案与配色。 */
+const customPageIframeState = computed<"default" | "allowlist" | "lockdown">(
+  () => {
+    if (customPageIframeMode.value !== "custom") return "default";
+    return customPageIframeNormalizedHosts.value.length > 0
+      ? "allowlist"
+      : "lockdown";
+  },
+);
+
+/**
+ * 提交给后端的取值。null 是有意义的：它让后端把该键清空，回到「从未配置」。
+ * 空数组同样有意义：显式锁死。两者都不能被折叠成 undefined。
+ */
+const customPageIframeHostsPayload = computed<string[] | null>(() =>
+  customPageIframeMode.value === "custom"
+    ? customPageIframeNormalizedHosts.value
+    : null,
+);
 
 // Admin API Key 状态
 const adminApiKeyLoading = ref(true);
@@ -9503,6 +9732,10 @@ type SettingsForm = Omit<
   | "wechat_connect_open_enabled"
   | "wechat_connect_mp_enabled"
   | "wechat_connect_mobile_enabled"
+  // custom_page_iframe_hosts 有三态（null / [] / [...]），而 loadSettings 的批量赋值
+  // 会跳过 null，一旦进了 form 就再也分不清「从未配置」和「后端没返回」。
+  // 它由 customPageIframeMode / customPageIframeHostsDraft 这组独立 ref 承载。
+  | "custom_page_iframe_hosts"
 > & {
   /** Form always binds a concrete boolean (SystemSettings marks this optional). */
   channel_monitor_hide_throughput: boolean;
@@ -10850,6 +11083,17 @@ async function loadSettings() {
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
     );
+    // custom_page_iframe_hosts：三态在这里落到 UI 状态上。
+    // 上面的 Object.entries 循环会跳过 null，所以「从未配置」必须在这里显式还原成
+    // default 模式；只看 `Array.isArray` 而不看长度——空数组是运维显式的锁死指令。
+    if (Array.isArray(settings.custom_page_iframe_hosts)) {
+      customPageIframeMode.value = "custom";
+      customPageIframeHostsDraft.value =
+        settings.custom_page_iframe_hosts.join("\n");
+    } else {
+      customPageIframeMode.value = "default";
+      customPageIframeHostsDraft.value = "";
+    }
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         settings.registration_email_suffix_whitelist,
@@ -11179,6 +11423,27 @@ async function saveSettings() {
     form.claude_oauth_system_prompt_blocks =
       claudeOAuthSystemPromptBlocksJSON;
 
+    // 自定义页面 iframe 白名单：本地先按后端同一套规则挡一次，让运维当场看到是哪条填错了，
+    // 而不是等后端 400 回来只给一句笼统的报错。
+    if (customPageIframeInvalidEntry.value !== null) {
+      appStore.showError(
+        t("admin.settings.customPageIframe.invalidHost", {
+          host: customPageIframeInvalidEntry.value,
+        }),
+      );
+      return;
+    }
+    if (
+      customPageIframeNormalizedHosts.value.length > MAX_CUSTOM_PAGE_IFRAME_HOSTS
+    ) {
+      appStore.showError(
+        t("admin.settings.customPageIframe.tooManyHosts", {
+          max: MAX_CUSTOM_PAGE_IFRAME_HOSTS,
+        }),
+      );
+      return;
+    }
+
     const payload: UpdateSettingsRequest = {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
@@ -11231,6 +11496,8 @@ async function saveSettings() {
       table_page_size_options: form.table_page_size_options,
       custom_menu_items: form.custom_menu_items,
       custom_endpoints: form.custom_endpoints,
+      // null（回落默认）与 []（显式锁死）都必须原样发出去，不能用 || / ?? 兜底。
+      custom_page_iframe_hosts: customPageIframeHostsPayload.value,
       frontend_url: form.frontend_url,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
@@ -11717,16 +11984,33 @@ async function loadAdminApiKey() {
   }
 }
 
+// 铸造 / 吹销管理 API Key 与保存设置同级敏感（它们直接产出一把全权限机器凭证），
+// 因此一律走 settingsStepUp.run：后端返回 STEP_UP_REQUIRED 时弹 TOTP 对话框并重试一次。
+// 注意：createAdminApiKey 同时被模板上的“生成”按钮和 regenerateAdminApiKey 调用，
+// 包在这里可以让两条路径只验证一次，不会叠出两个弹窗。
 async function createAdminApiKey() {
   adminApiKeyOperating.value = true;
   try {
-    const result = await adminAPI.settings.regenerateAdminApiKey();
+    const result = await settingsStepUp.run(() =>
+      adminAPI.settings.regenerateAdminApiKey(),
+    );
     newAdminApiKey.value = result.key;
     adminApiKeyExists.value = true;
     adminApiKeyMasked.value =
       result.key.substring(0, 10) + "..." + result.key.slice(-4);
     appStore.showSuccess(t("admin.settings.adminApiKey.keyGenerated"));
   } catch (error: unknown) {
+    if (isStepUpCancelled(error)) {
+      return;
+    }
+    if (isStepUpBlocked(error)) {
+      appStore.showError(
+        stepUpBlockReason(error) === "STEP_UP_ADMIN_API_KEY_FORBIDDEN"
+          ? t("stepUp.adminApiKeyForbidden")
+          : t("stepUp.notEnabled"),
+      );
+      return;
+    }
     appStore.showError(extractApiErrorMessage(error, t("common.error")));
   } finally {
     adminApiKeyOperating.value = false;
@@ -11739,15 +12023,28 @@ async function regenerateAdminApiKey() {
 }
 
 async function deleteAdminApiKey() {
+  // 原生 confirm() 是同步阻塞的，返回时它已经关闭；
+  // TOTP 对话框在其后的异步请求里才可能弹出，两个弹窗不会重叠。
   if (!confirm(t("admin.settings.adminApiKey.deleteConfirm"))) return;
   adminApiKeyOperating.value = true;
   try {
-    await adminAPI.settings.deleteAdminApiKey();
+    await settingsStepUp.run(() => adminAPI.settings.deleteAdminApiKey());
     adminApiKeyExists.value = false;
     adminApiKeyMasked.value = "";
     newAdminApiKey.value = "";
     appStore.showSuccess(t("admin.settings.adminApiKey.keyDeleted"));
   } catch (error: unknown) {
+    if (isStepUpCancelled(error)) {
+      return;
+    }
+    if (isStepUpBlocked(error)) {
+      appStore.showError(
+        stepUpBlockReason(error) === "STEP_UP_ADMIN_API_KEY_FORBIDDEN"
+          ? t("stepUp.adminApiKeyForbidden")
+          : t("stepUp.notEnabled"),
+      );
+      return;
+    }
     appStore.showError(extractApiErrorMessage(error, t("common.error")));
   } finally {
     adminApiKeyOperating.value = false;

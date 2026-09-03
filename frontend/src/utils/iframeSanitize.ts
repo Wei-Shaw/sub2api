@@ -16,22 +16,14 @@ import createDOMPurify from 'dompurify'
 import type { Config } from 'dompurify'
 
 /**
- * 默认允许被嵌入的主机白名单。
+ * 内置默认主机白名单：仅在运维**从未配置**过 `custom_page_iframe_hosts` 时生效。
  *
- * 仓库内目前没有“自定义页面实际嵌入了哪些站点”的配置项或文档，因此这里给出的是
- * 常见视频 / 演示嵌入源的保守默认值。命中规则是「主机名完全相等，或以 `.<entry>`
- * 结尾」，所以列出 `youtube.com` 即同时覆盖 `www.youtube.com`；而 `evil-youtube.com`
- * 与 `youtube.com.evil.com` 都不会命中。
+ * 命中规则是「主机名完全相等，或以 `.<entry>` 结尾」，所以列出 `youtube.com`
+ * 即同时覆盖 `www.youtube.com`；而 `evil-youtube.com` 与 `youtube.com.evil.com` 都不会命中。
  *
- * TODO(运维可配置化)：这份列表最终应由管理员在后台配置，落到公开设置里下发。
- * 需要改动的位置（均不属于本次改动范围）：
- *   - backend: 在系统设置中新增 `custom_page_iframe_hosts`（字符串数组）并在
- *     public settings handler 中输出；
- *   - frontend: `src/types/index.ts` 的 `PublicSettings` 增加同名可选字段；
- *   - frontend: 管理端设置页增加编辑入口。
- * CustomPageView 已经通过 {@link resolveAllowedIframeHosts} 读取
- * `cachedPublicSettings.custom_page_iframe_hosts`，一旦上述字段存在即可自动生效，
- * 无需再改本模块。
+ * 必须与后端 `internal/service/setting_public.go` 的 `DefaultCustomPageIframeHosts`
+ * 保持一致：后端用同一份列表拼出 CSP 的 frame-src，两边不一致就会出现
+ * 「净化器放行但浏览器不加载」或反过来的分裂状态。
  */
 export const DEFAULT_ALLOWED_IFRAME_HOSTS: readonly string[] = Object.freeze([
   'youtube.com',
@@ -91,8 +83,17 @@ function normalizeHostEntry(entry: unknown): string | null {
 }
 
 /**
- * 解析运维配置的主机白名单；为空或全部非法时回落到 {@link DEFAULT_ALLOWED_IFRAME_HOSTS}。
- * 入参故意放宽成 unknown，便于直接喂入后端下发的公开设置字段。
+ * 解析后端下发的 `custom_page_iframe_hosts`。入参故意放宽成 unknown，
+ * 便于直接喂入公开设置字段。
+ *
+ * 两态语义（与后端 `ParseCustomPageIframeHosts` 一一对应）：
+ *   - **不是数组**（undefined / null / 旧后端没有这个字段）→ 回落到
+ *     {@link DEFAULT_ALLOWED_IFRAME_HOSTS}，因为“拿不到配置”不等于“运维要求锁死”；
+ *   - **是数组**（包括空数组）→ 原样采用归一化后的结果，结果为空就意味着
+ *     **一个 iframe 都不允许嵌入**。
+ *
+ * 全部条目都非法（比如把 URL 当主机名填了）同样归为空——安全控制配错了应当
+ * fail closed，而不是惄惄回到默认白名单。
  */
 export function resolveAllowedIframeHosts(configured?: unknown): string[] {
   if (!Array.isArray(configured)) return [...DEFAULT_ALLOWED_IFRAME_HOSTS]
@@ -101,7 +102,7 @@ export function resolveAllowedIframeHosts(configured?: unknown): string[] {
     const host = normalizeHostEntry(entry)
     if (host && !normalized.includes(host)) normalized.push(host)
   }
-  return normalized.length > 0 ? normalized : [...DEFAULT_ALLOWED_IFRAME_HOSTS]
+  return normalized
 }
 
 /**
@@ -180,7 +181,10 @@ function getPurifier(): ReturnType<typeof createDOMPurify> {
 }
 
 export interface SanitizeCustomPageOptions {
-  /** 运维配置的主机白名单；省略或为空时使用默认列表。 */
+  /**
+   * 生效的主机白名单（一般直接传 {@link resolveAllowedIframeHosts} 的返回值）。
+   * 省略时用默认列表；**传空数组意味着禁止一切 iframe**，不会回落默认值。
+   */
   allowedIframeHosts?: readonly string[]
 }
 
@@ -192,9 +196,8 @@ export function sanitizeCustomPageHtml(
   options: SanitizeCustomPageOptions = {},
 ): string {
   if (!html) return ''
-  const hosts = options.allowedIframeHosts?.length
-    ? options.allowedIframeHosts
-    : DEFAULT_ALLOWED_IFRAME_HOSTS
+  // 只看“有没有传”，不看“是不是空”：空数组是运维显式的锁死指令。
+  const hosts = options.allowedIframeHosts ?? DEFAULT_ALLOWED_IFRAME_HOSTS
   activeAllowedHosts = hosts
   try {
     return getPurifier().sanitize(html, buildSanitizeConfig()) as string

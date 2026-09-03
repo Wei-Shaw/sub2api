@@ -363,7 +363,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		PurchaseSubscriptionURL:                strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 		CustomMenuItems:                        settings[SettingKeyCustomMenuItems],
 		CustomEndpoints:                        settings[SettingKeyCustomEndpoints],
-		BackendModeEnabled:                     settings[SettingKeyBackendModeEnabled] == "true",
+		// 原样透传，不在这里回落默认值：一旦回落，「显式锁死」就会在
+		// GET → 前端 → PUT 的往返里被悄悄改写成「内置默认白名单」。
+		CustomPageIframeHosts: settings[SettingKeyCustomPageIframeHosts],
+		BackendModeEnabled:    settings[SettingKeyBackendModeEnabled] == "true",
 	}
 	result.TableDefaultPageSize, result.TablePageSizeOptions = parseTablePreferences(
 		settings[SettingKeyTableDefaultPageSize],

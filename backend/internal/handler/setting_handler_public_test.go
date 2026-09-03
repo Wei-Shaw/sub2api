@@ -155,3 +155,55 @@ func TestSettingHandler_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *
 	require.True(t, resp.Data.WeChatOAuthOpenEnabled)
 	require.True(t, resp.Data.WeChatOAuthMPEnabled)
 }
+
+// 公开设置必须下发**实际生效**的 iframe 主机白名单，而且要保住三态里最脆弱的那一档：
+// 「显式配置成空」意味着一个 iframe 都不许嵌，绝不能在这一跳被悄悄换成默认列表。
+// 这里同时校验 JSON 编码——空数组必须是 []，缺省必须是内置默认列表而不是 null，
+// 因为前端 resolveAllowedIframeHosts 正是靠「是不是数组」来分流的。
+func TestSettingHandler_GetPublicSettings_CustomPageIframeHostsThreeStates(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cases := []struct {
+		name  string
+		fixed map[string]string
+		want  string
+	}{
+		{
+			name:  "从未配置：下发内置默认列表",
+			fixed: map[string]string{},
+			want:  `["youtube.com","youtube-nocookie.com","player.vimeo.com","bilibili.com"]`,
+		},
+		{
+			name:  "显式锁死：下发空数组，不得回落默认值",
+			fixed: map[string]string{service.SettingKeyCustomPageIframeHosts: "[]"},
+			want:  `[]`,
+		},
+		{
+			name:  "显式白名单：原样下发",
+			fixed: map[string]string{service.SettingKeyCustomPageIframeHosts: `["Embed.Example.com"]`},
+			want:  `["embed.example.com"]`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &settingHandlerPublicRepoStub{values: tc.fixed}
+			h := NewSettingHandler(service.NewSettingService(repo, &config.Config{}), "test-version")
+
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/public", nil)
+
+			h.GetPublicSettings(c)
+
+			require.Equal(t, http.StatusOK, recorder.Code)
+			var resp struct {
+				Data struct {
+					CustomPageIframeHosts json.RawMessage `json:"custom_page_iframe_hosts"`
+				} `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+			require.JSONEq(t, tc.want, string(resp.Data.CustomPageIframeHosts))
+		})
+	}
+}

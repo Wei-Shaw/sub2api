@@ -64,14 +64,26 @@ describe('isAllowedIframeSrc', () => {
 })
 
 describe('resolveAllowedIframeHosts', () => {
-  it('falls back to the defaults when nothing usable is configured', () => {
+  it('falls back to the defaults when the setting is absent or not an array', () => {
+    // “拿不到配置”（字段缺失 / 旧后端 / 类型不对）不等于“运维要求锁死”
     expect(resolveAllowedIframeHosts(undefined)).toEqual([...DEFAULT_ALLOWED_IFRAME_HOSTS])
     expect(resolveAllowedIframeHosts(null)).toEqual([...DEFAULT_ALLOWED_IFRAME_HOSTS])
     expect(resolveAllowedIframeHosts('youtube.com')).toEqual([...DEFAULT_ALLOWED_IFRAME_HOSTS])
-    expect(resolveAllowedIframeHosts([])).toEqual([...DEFAULT_ALLOWED_IFRAME_HOSTS])
-    expect(resolveAllowedIframeHosts(['', 'https://x.com/a', 'localhost', 42])).toEqual([
-      ...DEFAULT_ALLOWED_IFRAME_HOSTS,
-    ])
+    expect(resolveAllowedIframeHosts({})).toEqual([...DEFAULT_ALLOWED_IFRAME_HOSTS])
+  })
+
+  it('treats an explicitly empty array as "no iframes at all"', () => {
+    // 这是本模块最容易退化的一条：若空数组静默回落默认白名单，
+    // 运维以为自己把嵌入关死了，实际仍放行 youtube / vimeo / bilibili。
+    expect(resolveAllowedIframeHosts([])).toEqual([])
+  })
+
+  it('fails closed when every configured entry is invalid', () => {
+    // 把 URL / 端口 / 通配符 / 裸主机当主机名填进去都不算数，
+    // 配错的结果是“全部禁止”而不是惄惄回到默认列表。
+    expect(resolveAllowedIframeHosts(['', 'https://x.com/a', 'localhost', 'a.com:8443', 42])).toEqual(
+      [],
+    )
   })
 
   it('normalizes and deduplicates configured hosts', () => {
@@ -134,6 +146,27 @@ describe('sanitizeCustomPageHtml', () => {
     expect(out).toContain('<p>before</p>')
     expect(out).toContain('<p>after</p>')
     expect(out).not.toContain('evil.com')
+  })
+
+  it('drops every iframe when the caller passes an empty allowlist', () => {
+    // 空数组 = 锁死；sanitizeCustomPageHtml 不得因为“看起来像没配”而回落默认值。
+    const out = sanitizeCustomPageHtml(
+      '<p>before</p><iframe src="https://www.youtube.com/embed/abc"></iframe><p>after</p>',
+      { allowedIframeHosts: [] },
+    )
+    expect(out).not.toContain('<iframe')
+    expect(out).toContain('<p>before</p>')
+    expect(out).toContain('<p>after</p>')
+  })
+
+  it('restores the default allowlist on the next call after a lockdown call', () => {
+    // activeAllowedHosts 是模块级可变状态，锁死调用不能泄漏到下一次调用。
+    sanitizeCustomPageHtml('<iframe src="https://www.youtube.com/embed/abc"></iframe>', {
+      allowedIframeHosts: [],
+    })
+    expect(
+      sanitizeCustomPageHtml('<iframe src="https://www.youtube.com/embed/abc"></iframe>'),
+    ).toContain('<iframe')
   })
 
   it('respects a narrowed allowlist passed by the caller', () => {

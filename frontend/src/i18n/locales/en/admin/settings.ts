@@ -689,6 +689,30 @@ export default {
         moveUp: 'Move Up',
         moveDown: 'Move Down',
       },
+      customPageIframe: {
+        title: 'Custom Page Embeds',
+        description:
+          'Controls which hosts a custom Markdown page may embed in an <iframe>. The same list drives the browser Content-Security-Policy, so an embed is only loaded when its host appears here.',
+        mode: 'Allowlist source',
+        modeDefault: 'Built-in defaults',
+        modeCustom: 'Custom list',
+        stateDefault:
+          'Not configured. The built-in default hosts below are in effect.',
+        stateAllowlist:
+          'Explicit allowlist: only these {count} host(s) may be embedded.',
+        stateLockdown:
+          'Explicit lockdown: no iframes at all are allowed on custom pages. The built-in defaults are NOT used.',
+        lockdownWarning:
+          'Clearing this list does not restore the defaults — it disables every custom-page iframe. Switch back to "Built-in defaults" if that is what you want.',
+        hosts: 'Allowed hosts',
+        hostsHint:
+          'One hostname per line. Hostnames only — no scheme, path, port, wildcard or credentials. Listing "youtube.com" also covers "www.youtube.com" but never "evil-youtube.com".',
+        hostsPlaceholder: 'youtube.com\nplayer.vimeo.com',
+        defaultsLabel: 'Built-in defaults',
+        invalidHost:
+          'Invalid host "{host}": enter a bare hostname such as "youtube.com" (no scheme, path, port, wildcard or credentials).',
+        tooManyHosts: 'Too many hosts (max {max}).',
+      },
       payment: {
         title: 'Payment Settings',
         description: 'Configure payment system options',

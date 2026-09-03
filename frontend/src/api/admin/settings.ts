@@ -486,6 +486,14 @@ export interface SystemSettings {
   backend_mode_enabled: boolean;
   custom_menu_items: CustomMenuItem[];
   custom_endpoints: CustomEndpoint[];
+  /**
+   * 自定义页面允许嵌入的 iframe 主机白名单（三态，`null` 有意义，不要收窄成 `string[]`）：
+   *   `null`  → 从未配置，实际生效的是后端内置默认列表；
+   *   `[]`    → 运维显式锁死，自定义页面不允许任何 iframe；
+   *   `[...]` → 显式白名单。
+   * 该字段同时驱动 CSP frame-src，把 `[]` 当成「回落默认值」会让锁死配置形同虚设。
+   */
+  custom_page_iframe_hosts: string[] | null;
   // SMTP settings
   smtp_host: string;
   smtp_port: number;
@@ -826,6 +834,14 @@ export interface UpdateSettingsRequest {
   backend_mode_enabled?: boolean;
   custom_menu_items?: CustomMenuItem[];
   custom_endpoints?: CustomEndpoint[];
+  /**
+   * 自定义页面 iframe 主机白名单。四种取值各有含义，**不要**用 `?? []` 之类的兜底：
+   *   字段缺席（`undefined`，`JSON.stringify` 会整个丢掉）→ 保持后端现状；
+   *   `null`  → 重置为「从未配置」，回落到内置默认列表；
+   *   `[]`    → 显式锁死，自定义页面一个 iframe 都不许嵌；
+   *   `[...]` → 该主机集合（后端会逐条校验，非法条目整体 400）。
+   */
+  custom_page_iframe_hosts?: string[] | null;
   smtp_host?: string;
   smtp_port?: number;
   smtp_username?: string;

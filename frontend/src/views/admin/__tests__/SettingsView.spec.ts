@@ -1954,3 +1954,163 @@ describe("admin SettingsView platform quota matrix", () => {
     expect(quotas["anthropic"]?.["daily"]).toBe(null);
   });
 });
+
+// custom_page_iframe_hosts 的三态必须在 UI ↔ payload 之间无损往返。
+// 最容易丢的是中间那一态：「显式配置成空」= 一个 iframe 都不许嵌。任何
+// `hosts.length ? hosts : null` 之类的兜底都会把它悄悄变回默认白名单，
+// 而运维完全看不出来。
+describe("admin SettingsView custom page iframe hosts", () => {
+  beforeEach(() => {
+    getSettings.mockReset();
+    updateSettings.mockReset();
+    getWebSearchEmulationConfig.mockReset();
+    updateWebSearchEmulationConfig.mockReset();
+    getAdminApiKey.mockReset();
+    getOverloadCooldownSettings.mockReset();
+    getRateLimit429CooldownSettings.mockReset();
+    updateRateLimit429CooldownSettings.mockReset();
+    getStreamTimeoutSettings.mockReset();
+    getRectifierSettings.mockReset();
+    getBetaPolicySettings.mockReset();
+    getGroups.mockReset();
+    listProxies.mockReset();
+    getProviders.mockReset();
+    fetchPublicSettings.mockReset();
+    adminSettingsFetch.mockReset();
+    showError.mockReset();
+    showSuccess.mockReset();
+    localeRef.value = "zh-CN";
+
+    getSettings.mockResolvedValue({ ...baseSettingsResponse });
+    updateSettings.mockImplementation(async (payload) => ({
+      ...baseSettingsResponse,
+      ...payload,
+    }));
+    getWebSearchEmulationConfig.mockResolvedValue({ enabled: false, providers: [] });
+    updateWebSearchEmulationConfig.mockResolvedValue({ enabled: false, providers: [] });
+    getAdminApiKey.mockResolvedValue({ exists: false, masked_key: "" });
+    getOverloadCooldownSettings.mockResolvedValue({});
+    getRateLimit429CooldownSettings.mockResolvedValue({});
+    updateRateLimit429CooldownSettings.mockResolvedValue({});
+    getStreamTimeoutSettings.mockResolvedValue({});
+    getRectifierSettings.mockResolvedValue({});
+    getBetaPolicySettings.mockResolvedValue({});
+    getGroups.mockResolvedValue([]);
+    listProxies.mockResolvedValue({ items: [] });
+    getProviders.mockResolvedValue({ data: [] });
+  });
+
+  function lastUpdatePayload(): Record<string, unknown> {
+    const call = updateSettings.mock.calls.at(-1);
+    expect(call).toBeDefined();
+    return call![0] as Record<string, unknown>;
+  }
+
+  it("null（从未配置）回显为默认模式，保存时仍然提交 null", async () => {
+    getSettings.mockResolvedValue({
+      ...baseSettingsResponse,
+      custom_page_iframe_hosts: null,
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="custom-page-iframe-state"]').text()).toContain(
+      "admin.settings.customPageIframe.stateDefault",
+    );
+    // 默认模式下展示内置默认主机，让「默认生效」不再是一句抽象的话
+    expect(wrapper.get('[data-testid="custom-page-iframe-state"]').element).toBeTruthy();
+    expect(wrapper.html()).toContain("youtube.com");
+    expect(wrapper.find('[data-testid="custom-page-iframe-hosts"]').exists()).toBe(false);
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(lastUpdatePayload().custom_page_iframe_hosts).toBeNull();
+  });
+
+  it("空数组（显式锁死）回显为自定义模式并给出警告，保存时仍然提交空数组", async () => {
+    getSettings.mockResolvedValue({
+      ...baseSettingsResponse,
+      custom_page_iframe_hosts: [],
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    const state = wrapper.get('[data-testid="custom-page-iframe-state"]');
+    expect(state.text()).toContain("admin.settings.customPageIframe.stateLockdown");
+    expect(state.text()).toContain("admin.settings.customPageIframe.lockdownWarning");
+    expect(wrapper.get('[data-testid="custom-page-iframe-hosts"]').exists()).toBe(true);
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    // 关键断言：不是 null，也不是默认列表
+    expect(lastUpdatePayload().custom_page_iframe_hosts).toEqual([]);
+  });
+
+  it("显式白名单原样往返，并归一化大小写与重复项", async () => {
+    getSettings.mockResolvedValue({
+      ...baseSettingsResponse,
+      custom_page_iframe_hosts: ["embed.example.com"],
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    const textarea = wrapper.get('[data-testid="custom-page-iframe-hosts"]');
+    expect((textarea.element as HTMLTextAreaElement).value).toBe("embed.example.com");
+    expect(wrapper.get('[data-testid="custom-page-iframe-state"]').text()).toContain(
+      "admin.settings.customPageIframe.stateAllowlist",
+    );
+
+    await textarea.setValue("Embed.Example.com\nplayer.vimeo.com\nembed.example.com");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(lastUpdatePayload().custom_page_iframe_hosts).toEqual([
+      "embed.example.com",
+      "player.vimeo.com",
+    ]);
+  });
+
+  it("切回默认模式提交 null，让内置默认列表重新生效", async () => {
+    getSettings.mockResolvedValue({
+      ...baseSettingsResponse,
+      custom_page_iframe_hosts: [],
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="custom-page-iframe-mode-default"]').trigger("click");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(lastUpdatePayload().custom_page_iframe_hosts).toBeNull();
+  });
+
+  it("非法条目当场拦下并点名，不发起保存请求", async () => {
+    getSettings.mockResolvedValue({
+      ...baseSettingsResponse,
+      custom_page_iframe_hosts: ["embed.example.com"],
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    await wrapper
+      .get('[data-testid="custom-page-iframe-hosts"]')
+      .setValue("embed.example.com\nhttps://youtube.com");
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="custom-page-iframe-error"]').text()).toContain(
+      "admin.settings.customPageIframe.invalidHost",
+    );
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalled();
+  });
+});

@@ -178,14 +178,11 @@ const markdownSlug = computed(() => {
 
 const isMarkdownMode = computed(() => !!markdownSlug.value)
 
-// iframe 主机白名单：优先取后端公开设置下发的 `custom_page_iframe_hosts`（字符串数组），
-// 该字段目前尚未加入 PublicSettings —— 后端补上并在 `src/types/index.ts` 声明后即自动生效；
-// 在此之前 resolveAllowedIframeHosts 会回落到 iframeSanitize.ts 里的默认列表。
+// iframe 主机白名单：取后端公开设置下发的 `custom_page_iframe_hosts`。
+// 字段缺失（旧后端）时 resolveAllowedIframeHosts 回落默认列表；
+// 下发空数组时则是运维显式锁死，此页不允许任何 iframe。
 const allowedIframeHosts = computed(() =>
-  resolveAllowedIframeHosts(
-    (appStore.cachedPublicSettings as unknown as Record<string, unknown> | null)
-      ?.custom_page_iframe_hosts,
-  ),
+  resolveAllowedIframeHosts(appStore.cachedPublicSettings?.custom_page_iframe_hosts),
 )
 
 const embeddedUrl = computed(() => {

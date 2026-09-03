@@ -359,6 +359,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyTablePageSizeOptions] = string(tablePageSizeOptionsJSON)
 	updates[SettingKeyCustomMenuItems] = settings.CustomMenuItems
 	updates[SettingKeyCustomEndpoints] = settings.CustomEndpoints
+	// 原样落库：""/"[]"/主机数组 三态在这里必须一字不改地穿过去。
+	// 校验发生在 handler（拿得到运维提交的原始条目，能指名道姓地报错）；
+	// 这里再解析一次只会把历史脏数据变成「保存别的设置也一起失败」。
+	updates[SettingKeyCustomPageIframeHosts] = settings.CustomPageIframeHosts
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -835,4 +839,63 @@ func (s *SettingService) validateDefaultSubscriptionGroups(ctx context.Context, 
 	}
 
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// 自定义页面 iframe 主机白名单的**写入侧**处理
+//
+// 读取侧（ParseCustomPageIframeHosts）对非法条目是静默丢弃的——面对库里可能存在
+// 的历史脏数据，安全控制只能 fail closed 地继续跑。写入侧则相反：运维刚刚亲手提交
+// 的条目如果被悄悄丢掉，他会以为 `https://youtube.com/embed` 已经生效，实际上一条
+// 都没进白名单。所以这里**整体拒绝**，并在错误里点名那条非法条目。
+// ---------------------------------------------------------------------------
+
+// MaxCustomPageIframeHosts 限制白名单长度，避免 CSP 头被撑爆（每条主机展开成 2 个 frame-src 值）。
+const MaxCustomPageIframeHosts = 50
+
+// NormalizeCustomPageIframeHostsForWrite 校验并归一化运维提交的主机列表。
+//
+// 返回的切片保持提交顺序、去重，且**保证非 nil**——即使入参为空：空列表是
+// 「显式锁死」这一有效状态，不能和 nil（从未配置）混为一谈。
+func NormalizeCustomPageIframeHostsForWrite(entries []string) ([]string, error) {
+	if len(entries) > MaxCustomPageIframeHosts {
+		return nil, fmt.Errorf("too many custom page iframe hosts (max %d)", MaxCustomPageIframeHosts)
+	}
+	hosts := make([]string, 0, len(entries))
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		trimmed := strings.TrimSpace(entry)
+		if trimmed == "" {
+			// 纯空白条目多半是 textarea 的空行，忽略即可，不值得打断保存
+			continue
+		}
+		host := NormalizeCustomPageIframeHost(trimmed)
+		if host == "" {
+			return nil, fmt.Errorf(
+				"invalid custom page iframe host %q: expected a bare hostname such as \"youtube.com\" (no scheme, path, port, wildcard or credentials)",
+				trimmed,
+			)
+		}
+		if _, ok := seen[host]; ok {
+			continue
+		}
+		seen[host] = struct{}{}
+		hosts = append(hosts, host)
+	}
+	return hosts, nil
+}
+
+// MarshalCustomPageIframeHosts 把归一化后的列表编码成存储值。
+//
+// nil 编码成 ""（从未配置 → 读取侧回落内置默认），空切片编码成 "[]"（显式锁死）。
+// 这两者的区别就是整个特性的重点，调用方务必传对。
+func MarshalCustomPageIframeHosts(hosts []string) (string, error) {
+	if hosts == nil {
+		return "", nil
+	}
+	encoded, err := json.Marshal(hosts)
+	if err != nil {
+		return "", fmt.Errorf("marshal custom page iframe hosts: %w", err)
+	}
+	return string(encoded), nil
 }

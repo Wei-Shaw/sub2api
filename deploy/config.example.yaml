@@ -117,6 +117,30 @@ cors:
 # 安全配置
 # =============================================================================
 security:
+  # This is the ONE key behind every secret Sub2API stores at rest. Despite the
+  # legacy name (totp.encryption_key) it protects far more than 2FA:
+  #   - backup S3 secret access key
+  #   - channel monitor upstream API keys
+  #   - S3 image storage credentials
+  #   - Ollama Cloud session cookie
+  #   - plugin configuration and plugin UI session tokens
+  #   - prompt audit endpoint tokens
+  #   - payment provider credentials (Stripe, wxpay, Alipay, EasyPay, Airwallex)
+  #   - TOTP secrets
+  #
+  # Generate with / 生成命令: openssl rand -hex 32   (must be 64 hex characters)
+  # Environment / 环境变量: SECURITY_SECRET_ENCRYPTION_KEY
+  #
+  # If left empty, the service does NOT invent a key. Every feature above will
+  # refuse to save secrets, and startup will FAIL outright if this database
+  # already contains data that only such a key can decrypt. Once set, treat it
+  # like a database password: back it up, and never rotate it without first
+  # re-entering every stored secret.
+  #
+  # 这是 Sub2API 全站唯一一把静态数据加密密钥。留空不会生成随机密钥：上述功能
+  # 会拒绝保存密钥，且当数据库中已存在密文时启动会直接失败。请像数据库密码一样
+  # 妥善备份，不要在未重新录入全部密钥的情况下轮换。
+  secret_encryption_key: ""
   # Legacy compatibility switch. When true, raw forwarded headers take over
   # server.trusted_proxies. Set false to enforce the trusted proxy chain above.
   # 旧版兼容开关。开启时原始转发头会接管 server.trusted_proxies；关闭后严格
@@ -920,14 +944,15 @@ jwt:
 # TOTP 双因素认证配置
 # =============================================================================
 totp:
-  # IMPORTANT: Set a fixed encryption key for TOTP secrets.
-  # 重要：设置固定的 TOTP 加密密钥。
-  # If left empty, a random key will be generated on each startup, causing all
-  # existing TOTP configurations to become invalid (users won't be able to
-  # login with 2FA).
-  # 如果留空，每次启动将生成随机密钥，导致现有的 TOTP 配置失效（用户无法使用
-  # 双因素认证登录）。
-  # Generate with / 生成命令: openssl rand -hex 32
+  # DEPRECATED alias for security.secret_encryption_key, kept so running
+  # installs keep working. It is the exact same key and it was never
+  # TOTP-specific — see the security block above for what it actually
+  # protects. If both are set, security.secret_encryption_key
+  # (SECURITY_SECRET_ENCRYPTION_KEY) wins. New deployments should configure
+  # the canonical key above and leave this empty.
+  # 已废弃：同一把密钥的历史配置键，保留以兼容存量安装。两者同时设置时以上方
+  # security.secret_encryption_key 为准，新部署请直接使用规范键。
+  # Legacy environment / 历史环境变量: TOTP_ENCRYPTION_KEY
   encryption_key: ""
 
 # =============================================================================

@@ -285,6 +285,12 @@ export interface PublicSettings {
   service_quota_enabled: boolean
   affiliate_enabled: boolean
   allow_user_view_error_requests?: boolean
+  /**
+   * 自定义页面 Markdown 正文里允许被嵌入的**主机名**（不是 URL）。
+   * 空数组 = 运维显式禁止任何 iframe；字段缺失（旧后端）= 回落内置默认列表。
+   * 同一份列表也会被后端注入 CSP frame-src，参见 utils/iframeSanitize.ts。
+   */
+  custom_page_iframe_hosts?: string[]
 }
 
 export interface AuthResponse {

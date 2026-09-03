@@ -164,6 +164,13 @@ type SystemSettings struct {
 	TablePageSizeOptions        []int
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
+	// CustomPageIframeHosts 是 custom_page_iframe_hosts 的**原始存储值**，不做任何回落。
+	// 之所以不解析成 []string，是因为这个设置有三态而切片只有两态：
+	//   ""   → 从未配置，读取侧回落到 DefaultCustomPageIframeHosts；
+	//   "[]" → 显式锁死，自定义页面一个 iframe 都不许嵌，**禁止**回落默认值；
+	//   其余 → JSON 字符串数组（也容忍逗号/换行分隔的手写值）。
+	// 写入侧原样落库（与 CustomMenuItems 一致），三态由调用方负责保持。
+	CustomPageIframeHosts string
 
 	DefaultConcurrency           int
 	DefaultBalance               float64

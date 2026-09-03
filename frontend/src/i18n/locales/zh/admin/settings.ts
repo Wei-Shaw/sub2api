@@ -685,6 +685,28 @@ export default {
         moveUp: '上移',
         moveDown: '下移',
       },
+      customPageIframe: {
+        title: '自定义页面嵌入白名单',
+        description:
+          '控制自定义 Markdown 页面正文里的 <iframe> 允许嵌入哪些主机。同一份列表也会写进浏览器的 Content-Security-Policy，因此只有出现在这里的主机才会真正被加载。',
+        mode: '白名单来源',
+        modeDefault: '内置默认',
+        modeCustom: '自定义列表',
+        stateDefault: '尚未配置，当前生效的是下方的内置默认主机。',
+        stateAllowlist: '显式白名单：仅允许嵌入这 {count} 个主机。',
+        stateLockdown:
+          '显式锁死：自定义页面不允许任何 iframe，不会回落到内置默认列表。',
+        lockdownWarning:
+          '清空列表不等于恢复默认值，而是禁用全部自定义页面 iframe。若只是想用默认值，请切回“内置默认”。',
+        hosts: '允许的主机',
+        hostsHint:
+          '每行一个主机名。只能填主机名，不能带协议、路径、端口、通配符或用户名。填 “youtube.com” 同时覆盖 “www.youtube.com”，但不会命中 “evil-youtube.com”。',
+        hostsPlaceholder: 'youtube.com\nplayer.vimeo.com',
+        defaultsLabel: '内置默认主机',
+        invalidHost:
+          '主机 “{host}” 非法：请填写纯主机名，如 “youtube.com”（不能带协议、路径、端口、通配符或用户名）。',
+        tooManyHosts: '主机数量过多（最多 {max} 个）。',
+      },
       payment: {
         title: '支付设置',
         description: '配置支付系统选项',

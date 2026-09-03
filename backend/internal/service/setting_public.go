@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -626,6 +627,11 @@ type PublicSettingsInjectionPayload struct {
 	AffiliateEnabled           bool `json:"affiliate_enabled"`
 	RiskControlEnabled         bool `json:"risk_control_enabled"`
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
+
+	// CustomPageIframeHosts 是自定义页面 Markdown 正文里允许被嵌入的主机名（非 URL）。
+	// 空数组是有意义的值：表示运维显式禁止任何 iframe，前端不得回落到默认列表。
+	// 同一份列表也会进入 CSP frame-src（见 GetFrameSrcOrigins）。
+	CustomPageIframeHosts []string `json:"custom_page_iframe_hosts"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -707,6 +713,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,
+		CustomPageIframeHosts:                s.CustomPageIframeHosts(ctx),
 	}, nil
 }
 
@@ -791,6 +798,18 @@ func (s *SettingService) GetFrameSrcOrigins(ctx context.Context) ([]string, erro
 		addOrigin(item)
 	}
 
+	// 自定义页面 Markdown 正文里的 iframe 主机白名单。
+	// 这里必须与下发给前端净化器的 CustomPageIframeHosts 同源：只在前端放行、
+	// CSP 不放行 ⇒ 嵌入永远加载不出来；只在 CSP 放行、前端不放行 ⇒ 运维以为
+	// 收紧了其实没有。两边分裂会让这道控制彻底失效，所以共用同一个列表。
+	for _, origin := range customPageIframeFrameSrcOrigins(s.CustomPageIframeHosts(ctx)) {
+		if _, ok := seen[origin]; ok {
+			continue
+		}
+		seen[origin] = struct{}{}
+		origins = append(origins, origin)
+	}
+
 	return origins, nil
 }
 
@@ -830,4 +849,125 @@ func parseCustomMenuItemURLs(raw string) []string {
 		}
 	}
 	return urls
+}
+
+// ---------------------------------------------------------------------------
+// 自定义页面 iframe 主机白名单（custom_page_iframe_hosts）
+//
+// 这是 iframe 嵌入策略的**唯一事实来源**：
+//   1. 通过公开设置下发给前端，驱动 frontend/src/utils/iframeSanitize.ts 的
+//      DOMPurify 净化（决定哪些 iframe 能活下来）；
+//   2. 通过 GetFrameSrcOrigins 注入 CSP 的 frame-src（决定浏览器允不允许加载）。
+// 两处必须同源，否则会出现「后台配了 A，浏览器只放行 B」的分裂状态——
+// 那种状态下这道安全控制形同虚设。
+// ---------------------------------------------------------------------------
+
+// DefaultCustomPageIframeHosts 是运维从未配置过该设置时使用的保守默认值。
+// 必须与 frontend/src/utils/iframeSanitize.ts 的 DEFAULT_ALLOWED_IFRAME_HOSTS 保持一致。
+var DefaultCustomPageIframeHosts = []string{
+	"youtube.com",
+	"youtube-nocookie.com",
+	"player.vimeo.com",
+	"bilibili.com",
+}
+
+// customPageIframeHostPattern 只接受「至少含一个点的主机名」：字母、数字、连字符与点。
+// 因此协议、路径、端口、通配符、`user@host`、裸 `localhost` 全部会被拒绝。
+var customPageIframeHostPattern = regexp.MustCompile(`^[a-z0-9-]+(\.[a-z0-9-]+)+$`)
+
+// NormalizeCustomPageIframeHost 归一化一条主机条目：去空白、去首尾点、转小写。
+// 返回空串表示该条目非法，应当被丢弃。
+// 与 frontend/src/utils/iframeSanitize.ts 的 normalizeHostEntry 行为一致。
+func NormalizeCustomPageIframeHost(entry string) string {
+	host := strings.ToLower(strings.TrimSpace(entry))
+	host = strings.Trim(host, ".")
+	if host == "" || !customPageIframeHostPattern.MatchString(host) {
+		return ""
+	}
+	return host
+}
+
+// ParseCustomPageIframeHosts 解析入库的原始值。
+//
+// 第二个返回值 configured 区分「从未配置」与「显式配置成空」：
+//   - raw 为空白 → (nil, false)，调用方应回落到 DefaultCustomPageIframeHosts；
+//   - raw 是 JSON 数组或逗号/换行分隔的列表 → (归一化去重后的主机, true)，
+//     即便结果为空也是 true —— 那是运维明确要求「一个 iframe 都不许嵌」。
+//
+// 非法条目被静默丢弃；如果所有条目都非法，结果就是「全部禁止」而不是回落默认值，
+// 因为对安全控制而言，配错了应当 fail closed。
+func ParseCustomPageIframeHosts(raw string) ([]string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, false
+	}
+
+	var entries []string
+	if strings.HasPrefix(raw, "[") {
+		var decoded []string
+		if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+			// 坏 JSON 同样按「已配置但没有合法条目」处理（fail closed）
+			return []string{}, true
+		}
+		entries = decoded
+	} else {
+		// 容忍运维直接在 psql 里写 "youtube.com, vimeo.com" 这类手写值
+		entries = strings.FieldsFunc(raw, func(r rune) bool {
+			return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
+		})
+	}
+
+	hosts := make([]string, 0, len(entries))
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		host := NormalizeCustomPageIframeHost(entry)
+		if host == "" {
+			continue
+		}
+		if _, ok := seen[host]; ok {
+			continue
+		}
+		seen[host] = struct{}{}
+		hosts = append(hosts, host)
+	}
+	return hosts, true
+}
+
+// EffectiveCustomPageIframeHosts 把原始设置值解析成实际生效的主机列表，
+// 未配置时回落到默认值。返回的切片调用方可以安全持有/修改。
+func EffectiveCustomPageIframeHosts(raw string) []string {
+	hosts, configured := ParseCustomPageIframeHosts(raw)
+	if !configured {
+		return append([]string(nil), DefaultCustomPageIframeHosts...)
+	}
+	return hosts
+}
+
+// CustomPageIframeHosts 返回**实际生效**的自定义页面 iframe 主机白名单。
+//
+// 读取失败时回落到默认列表而不是空列表：读不到设置属于基础设施故障，不应该被
+// 当成「运维要求锁死」——那会让一次 Redis/DB 抖动静默掐掉所有已有嵌入。
+func (s *SettingService) CustomPageIframeHosts(ctx context.Context) []string {
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyCustomPageIframeHosts})
+	if err != nil {
+		slog.Warn("failed to get custom_page_iframe_hosts setting, falling back to defaults", "error", err)
+		return append([]string(nil), DefaultCustomPageIframeHosts...)
+	}
+	return EffectiveCustomPageIframeHosts(vals[SettingKeyCustomPageIframeHosts])
+}
+
+// customPageIframeFrameSrcOrigins 把主机白名单翻译成 CSP frame-src 取值。
+//
+// 前端匹配规则是「完全相等或点边界子域」，CSP 里对应两条：`https://<host>` 与
+// `https://*.<host>`。只发 https —— 净化器本来就拒绝任何非 https 的 iframe src。
+func customPageIframeFrameSrcOrigins(hosts []string) []string {
+	origins := make([]string, 0, len(hosts)*2)
+	for _, raw := range hosts {
+		host := NormalizeCustomPageIframeHost(raw)
+		if host == "" {
+			continue
+		}
+		origins = append(origins, "https://"+host, "https://*."+host)
+	}
+	return origins
 }

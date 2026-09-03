@@ -347,6 +347,13 @@ type SystemSettings struct {
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
+
+	// CustomPageIframeHosts 是自定义页面正文允许嵌入的 iframe 主机白名单。
+	// 三态直接编码在 JSON 里，**不要加 omitempty**：
+	//   null  → 从未配置，实际生效的是后端内置默认列表；
+	//   []    → 运维显式锁死，自定义页面不允许任何 iframe；
+	//   [...] → 显式白名单。
+	CustomPageIframeHosts []string `json:"custom_page_iframe_hosts"`
 }
 
 type DefaultSubscriptionSetting struct {
@@ -433,6 +440,11 @@ type PublicSettings struct {
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
+
+	// CustomPageIframeHosts 是自定义页面 Markdown 正文里允许被嵌入的主机名（非 URL），
+	// 驱动 frontend/src/utils/iframeSanitize.ts 的 iframe 白名单。
+	// 空数组 = 运维显式禁止任何 iframe；字段缺失（旧后端）= 前端回落到内置默认列表。
+	CustomPageIframeHosts []string `json:"custom_page_iframe_hosts"`
 }
 
 type LoginAgreementDocument struct {

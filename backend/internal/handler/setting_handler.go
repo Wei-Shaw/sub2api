@@ -120,6 +120,12 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		RiskControlEnabled: settings.RiskControlEnabled,
 
 		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
+
+		// 与 HTML 注入的 window.__APP_CONFIG__ 走同一个方法，保证「首屏注入」和
+		// 「异步拉取」下发的白名单一致；不一致会让自定义页面的 iframe 在刷新前后
+		// 时有时无。这里返回的是**实际生效**的列表（未配置时即内置默认值），
+		// 空数组代表运维显式锁死，前端不得回落默认值。
+		CustomPageIframeHosts: h.settingService.CustomPageIframeHosts(c.Request.Context()),
 	})
 }
 

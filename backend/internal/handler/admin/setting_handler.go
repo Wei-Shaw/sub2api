@@ -392,6 +392,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 		AccountSchedulingThresholds: settings.AccountSchedulingThresholds,
 		AllowUserViewErrorRequests:  settings.AllowUserViewErrorRequests,
+		CustomPageIframeHosts:       customPageIframeHostsForResponse(settings.CustomPageIframeHosts),
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)
@@ -529,4 +530,26 @@ func systemSettingsResponseData(settings dto.SystemSettings, authSourceDefaults 
 	data["force_email_on_third_party_signup"] = authSourceDefaults.ForceEmailOnThirdPartySignup
 
 	return data
+}
+
+// customPageIframeHostsForResponse 把 custom_page_iframe_hosts 的原始存储值翻译成
+// 管理端响应体里的三态 JSON：
+//
+//	""（从未配置）           → nil  → JSON null
+//	"[]"（显式锁死）         → []string{} → JSON []
+//	主机数组                 → 归一化去重后的主机列表
+//
+// 这里刻意**不**回落到 DefaultCustomPageIframeHosts：管理端要看到的是「库里到底
+// 配了什么」，默认值生效与否由 null 这个信号表达。若在这里回落，运维一次「读出来
+// 再存回去」就会把「从未配置」固化成一份写死的白名单，后续改默认值也再不生效。
+func customPageIframeHostsForResponse(raw string) []string {
+	hosts, configured := service.ParseCustomPageIframeHosts(raw)
+	if !configured {
+		return nil
+	}
+	if hosts == nil {
+		// 已配置但一条都没解析出来 = 显式锁死，必须是非 nil 空切片才能序列化成 []
+		return []string{}
+	}
+	return hosts
 }

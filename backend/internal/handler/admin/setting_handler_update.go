@@ -168,6 +168,15 @@ type UpdateSettingsRequest struct {
 	TablePageSizeOptions        []int                 `json:"table_page_size_options"`
 	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
+	// CustomPageIframeHosts 自定义页面 iframe 主机白名单。指针类型，四种入参各有含义：
+	//   字段缺席        → 保持库里现状（老客户端不会误伤这道安全控制）；
+	//   显式 null       → 重置为「从未配置」，回落到内置默认列表；
+	//   显式 []         → 显式锁死，自定义页面一个 iframe 都不许嵌；
+	//   显式 [...]      → 该主机集合。
+	// 「缺席」与「显式 null」都会让指针为 nil，两者靠 sentFields 区分（见 UpdateSettings）。
+	// 注意：指针字段被 buildSettingKeyByJSONName 排除在通用 omitted 机制之外，
+	// 所以本字段的 omitted 登记是在 UpdateSettings 里手工做的。
+	CustomPageIframeHosts *[]string `json:"custom_page_iframe_hosts"`
 
 	// 默认配置
 	DefaultConcurrency                        int                               `json:"default_concurrency"`
@@ -782,7 +791,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.TotpEnabled && !previousSettings.TotpEnabled {
 		// 尝试启用 TOTP，检查加密密钥是否已手动配置
 		if !h.settingService.IsTotpEncryptionKeyConfigured() {
-			response.BadRequest(c, "Cannot enable TOTP: TOTP_ENCRYPTION_KEY environment variable must be configured first. Generate a key with 'openssl rand -hex 32' and set it in your environment.")
+			response.BadRequest(c, "Cannot enable TOTP: SECURITY_SECRET_ENCRYPTION_KEY environment variable must be configured first (the legacy name TOTP_ENCRYPTION_KEY still works). Generate a key with 'openssl rand -hex 32' and set it in your environment.")
 			return
 		}
 	}
@@ -1500,6 +1509,35 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		return
 	}
 
+	// 自定义页面 iframe 主机白名单：三态解析。
+	//
+	// 这道设置同时驱动前端 DOMPurify 白名单与 CSP frame-src，"配了空列表" 与
+	// "没配过" 必须区分开——把空列表当成 "回落默认值" 会让运维以为自己关掉了
+	// 全部嵌入，实际上 youtube 之流照旧可用。
+	customPageIframeHostsRaw := previousSettings.CustomPageIframeHosts
+	if _, present := sentFields["custom_page_iframe_hosts"]; present {
+		if req.CustomPageIframeHosts == nil {
+			// 显式 null：重置为「从未配置」，让内置默认列表重新生效
+			customPageIframeHostsRaw = ""
+		} else {
+			// 写入侧不做静默丢弃：运维填错了必须当场知道，否则他会以为白名单生效了
+			hosts, err := service.NormalizeCustomPageIframeHostsForWrite(*req.CustomPageIframeHosts)
+			if err != nil {
+				response.BadRequest(c, err.Error())
+				return
+			}
+			encoded, err := service.MarshalCustomPageIframeHosts(hosts)
+			if err != nil {
+				response.InternalError(c, err.Error())
+				return
+			}
+			customPageIframeHostsRaw = encoded
+		}
+	} else {
+		// 老客户端整表 PUT 时压根不带这个字段：连写都不要写，库里没有的键继续没有。
+		omitted[service.SettingKeyCustomPageIframeHosts] = struct{}{}
+	}
+
 	settings := &service.SystemSettings{
 		// 系统全局 platform quota 默认值（整体替换语义）
 		DefaultPlatformQuotas:       req.DefaultPlatformQuotas,
@@ -1634,6 +1672,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TablePageSizeOptions:                   req.TablePageSizeOptions,
 		CustomMenuItems:                        customMenuJSON,
 		CustomEndpoints:                        customEndpointsJSON,
+		CustomPageIframeHosts:                  customPageIframeHostsRaw,
 		DefaultConcurrency:                     req.DefaultConcurrency,
 		DefaultBalance:                         req.DefaultBalance,
 		AffiliateRebateRate:                    affiliateRebateRate,
@@ -2391,6 +2430,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CyberSessionBlockTTLSeconds: updatedSettings.CyberSessionBlockTTLSeconds,
 		AccountSchedulingThresholds: updatedSettings.AccountSchedulingThresholds,
 		AllowUserViewErrorRequests:  updatedSettings.AllowUserViewErrorRequests,
+		CustomPageIframeHosts:       customPageIframeHostsForResponse(updatedSettings.CustomPageIframeHosts),
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)
