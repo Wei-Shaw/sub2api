@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -220,7 +221,23 @@ func TestOpenAIGatewayServiceForwardImages_StructuredUnavailableCoolsImageCapabi
 	require.Equal(t, account.ID, call.accountID)
 	require.Equal(t, openAIImageGenerationRateLimitKey, call.scope)
 	require.Equal(t, openAIImagesOAuthUnavailableReason, call.reason)
-	require.WithinDuration(t, before.Add(openAIImagesOAuthUnavailableCooldown), call.resetAt, time.Second)
+	require.WithinDuration(t, before.Add(openAIImagesOAuthUnavailableDefaultCooldown), call.resetAt, time.Second)
+}
+
+func TestOpenAIGatewayService_CoolOpenAIImagesOAuthToolUsesConfiguredCooldown(t *testing.T) {
+	accountRepo := &modelNotFoundAccountRepoStub{}
+	settingRepo := newMockSettingRepo()
+	settingRepo.data[SettingKeyOpenAIImagesOAuthUnavailableCooldownSettings] = `{"cooldown_minutes":7}`
+	svc := &OpenAIGatewayService{
+		accountRepo:    accountRepo,
+		settingService: NewSettingService(settingRepo, &config.Config{}),
+	}
+
+	before := time.Now()
+	svc.coolOpenAIImagesOAuthTool(context.Background(), &Account{ID: 206, Platform: PlatformOpenAI, Type: AccountTypeOAuth})
+
+	require.Len(t, accountRepo.modelRateLimitCalls, 1)
+	require.WithinDuration(t, before.Add(7*time.Minute), accountRepo.modelRateLimitCalls[0].resetAt, time.Second)
 }
 
 func TestOpenAIGatewayServiceForwardImages_CapabilityLossCoolsImageScope(t *testing.T) {

@@ -54,6 +54,40 @@ function makeAccount(overrides: Partial<Account>): Account {
   }
 }
 
+function makeOllamaUsage(accountId: number, overrides: Partial<NonNullable<Account['ollama_cloud_usage']>> = {}) {
+  return {
+    account_id: accountId,
+    eligible: true,
+    configured: true,
+    auto_refresh_enabled: true,
+    encryption_key_configured: true,
+    snapshot: {
+      status: 'ok' as const,
+      last_attempt_at: '2026-07-23T00:00:00Z',
+      next_refresh_at: '2026-07-23T01:00:00Z',
+      data: {
+        five_hour: { used_percent: 12 },
+        seven_day: { used_percent: 34 }
+      }
+    },
+    ...overrides,
+  }
+}
+
+// CN 平台 Ollama Cloud 用例共用的子组件 stub：按 data-test 断言渲染与否
+const cnUsageCellStubs = {
+  OllamaCloudUsageCell: {
+    props: ['account'],
+    template: '<div data-test="embedded-ollama">ollama</div>'
+  },
+  CNProviderQuotaCell: {
+    template: '<div data-test="cn-quota-cell" />'
+  },
+  CNProviderBalanceCell: {
+    template: '<div data-test="cn-balance-cell" />'
+  }
+}
+
 describe('AccountUsageCell', () => {
   beforeEach(() => {
     getUsage.mockReset()
@@ -118,6 +152,92 @@ describe('AccountUsageCell', () => {
     const updatedAccount = wrapper.emitted<Account[]>('account-updated')?.[0]?.[0]
     expect(updatedAccount?.id).toBe(9001)
     expect(updatedAccount?.ollama_cloud_usage?.auto_refresh_enabled).toBe(false)
+  })
+
+  it.each(['kimi', 'zhipu', 'deepseek'] as const)(
+    '%s apikey 账号 Ollama Cloud eligible 时渲染 Ollama 用量单元格并跳过 CN 子单元格',
+    async (platform) => {
+      const wrapper = mount(AccountUsageCell, {
+        props: {
+          account: makeAccount({
+            id: 9002,
+            platform,
+            type: 'apikey',
+            credentials: { account_mode: 'coding' },
+            ollama_cloud_usage: makeOllamaUsage(9002)
+          })
+        },
+        global: {
+          stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+        }
+      })
+
+      await flushPromises()
+
+      expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(true)
+      expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(false)
+      expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(false)
+      expect(wrapper.find('div[title="admin.accounts.cnProviders.noBalanceEndpoint"]').exists()).toBe(false)
+      expect(getUsage).not.toHaveBeenCalled()
+    }
+  )
+
+  it('CN 平台 Ollama Cloud eligible 账号的用量更新经 account-updated 透传', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9003,
+          platform: 'kimi',
+          type: 'apikey',
+          credentials: { account_mode: 'coding' },
+          ollama_cloud_usage: makeOllamaUsage(9003)
+        })
+      },
+      global: {
+        stubs: {
+          ...cnUsageCellStubs,
+          OllamaCloudUsageCell: {
+            props: ['account'],
+            emits: ['updated'],
+            template: '<button data-test="embedded-ollama" @click="$emit(\'updated\', { ...account.ollama_cloud_usage, auto_refresh_enabled: false })" />'
+          },
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await wrapper.get('[data-test="embedded-ollama"]').trigger('click')
+
+    const updatedAccount = wrapper.emitted<Account[]>('account-updated')?.[0]?.[0]
+    expect(updatedAccount?.id).toBe(9003)
+    expect(updatedAccount?.ollama_cloud_usage?.auto_refresh_enabled).toBe(false)
+  })
+
+  it.each([
+    { name: '无 ollama_cloud_usage', usage: undefined },
+    { name: 'eligible=false', usage: makeOllamaUsage(9004, { eligible: false }) }
+  ])('普通 kimi apikey 账号（$name）仍渲染 CN 子单元格', async ({ usage }) => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9004,
+          platform: 'kimi',
+          type: 'apikey',
+          credentials: { account_mode: 'coding' },
+          ollama_cloud_usage: usage
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(false)
   })
 
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {

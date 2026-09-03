@@ -271,6 +271,71 @@ describe('admin UsageView route filters', () => {
   })
 })
 
+describe('admin UsageView native compaction filter', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    list.mockReset().mockResolvedValue({ items: [], total: 0, pages: 0 })
+    getStats.mockReset().mockResolvedValue({
+      total_requests: 0,
+      total_input_tokens: 0,
+      total_output_tokens: 0,
+      total_cache_tokens: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      total_actual_cost: 0,
+      average_duration_ms: 0,
+    })
+    getSnapshotV2.mockReset().mockResolvedValue({ trend: [], models: [], groups: [] })
+    getModelStats.mockReset().mockResolvedValue({ models: [] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('propagates the filter to list/stats/model/snapshot requests and clears it on reset', async () => {
+    const wrapper = mountRouteFilteredUsageView()
+    vi.advanceTimersByTime(120)
+    await flushPromises()
+
+    list.mockClear()
+    getStats.mockClear()
+    getModelStats.mockClear()
+    getSnapshotV2.mockClear()
+
+    ;(wrapper.vm as any).filters.native_compaction_v2 = true
+    ;(wrapper.vm as any).applyFilters()
+    await flushPromises()
+
+    expect((wrapper.vm as any).breakdownFilters.native_compaction_v2).toBe(true)
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ native_compaction_v2: true }),
+      expect.anything()
+    )
+    expect(getStats).toHaveBeenCalledWith(expect.objectContaining({ native_compaction_v2: true }))
+    expect(getModelStats).toHaveBeenCalledWith(expect.objectContaining({ native_compaction_v2: true }))
+    expect(getSnapshotV2).toHaveBeenCalledWith(expect.objectContaining({ native_compaction_v2: true }))
+
+    list.mockClear()
+    getStats.mockClear()
+    getModelStats.mockClear()
+    getSnapshotV2.mockClear()
+
+    ;(wrapper.vm as any).resetFilters()
+    await flushPromises()
+
+    expect((wrapper.vm as any).filters.native_compaction_v2).toBeNull()
+    expect((wrapper.vm as any).breakdownFilters).not.toHaveProperty('native_compaction_v2')
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ native_compaction_v2: null }),
+      expect.anything()
+    )
+    expect(getStats).toHaveBeenCalledWith(expect.objectContaining({ native_compaction_v2: null }))
+    expect(getModelStats).toHaveBeenCalledWith(expect.objectContaining({ native_compaction_v2: null }))
+    expect(getSnapshotV2).toHaveBeenCalledWith(expect.objectContaining({ native_compaction_v2: null }))
+  })
+})
+
 describe('admin UsageView distribution metric toggles', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -671,9 +736,15 @@ describe('admin UsageView model audit export', () => {
 		const wrapper = mountRouteFilteredUsageView()
 		vi.advanceTimersByTime(120)
 		await flushPromises()
+		;(wrapper.vm as any).filters.native_compaction_v2 = true
 
 		await (wrapper.vm as any).exportToExcel()
 		await flushPromises()
+
+		expect(exportList).toHaveBeenCalledWith(
+			expect.objectContaining({ native_compaction_v2: true }),
+			expect.anything()
+		)
 
 		const headers = aoaToSheet.mock.calls[0][0][0]
 		expect(headers.slice(4, 8)).toEqual([

@@ -225,7 +225,7 @@ func (m *mockAccountRepoForPlatform) IncrementQuotaUsed(ctx context.Context, id 
 	return nil
 }
 
-func (m *mockAccountRepoForPlatform) ResetQuotaUsed(ctx context.Context, id int64) error {
+func (m *mockAccountRepoForPlatform) ResetQuotaUsedAndClearRateLimitCooldown(ctx context.Context, id int64) error {
 	return nil
 }
 

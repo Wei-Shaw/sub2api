@@ -152,6 +152,33 @@ func TestOpenAINativeFirstOutputTimeoutIgnoresPreambleAndCleansReader(t *testing
 	}
 }
 
+func TestNewOpenAIFirstOutputTimeoutErrorRecordsCallerProxyAttribution(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	svc := &OpenAIGatewayService{}
+	proxyID := int64(10060)
+	account := &Account{ID: 1, Name: "acc", Platform: PlatformOpenAI, ProxyID: &proxyID, Proxy: &Proxy{ID: proxyID, Name: "ws-proxy"}}
+
+	// WebSocket callers pass the WS attribution; HTTP callers pass the HTTP one.
+	wsID, wsName := opsUpstreamWSProxyAttribution(&Account{ID: 2, Platform: PlatformOpenAI})
+	_ = svc.newOpenAIFirstOutputTimeoutError(context.Background(), c, &Account{ID: 2, Name: "ws", Platform: PlatformOpenAI},
+		wsID, wsName, time.Now(), "gpt-5.5", "", time.Second, "websocket_first_semantic_output", nil)
+	_ = svc.newOpenAIFirstOutputTimeoutError(context.Background(), c, account,
+		opsUpstreamProxyID(account), opsUpstreamProxyName(account), time.Now(), "gpt-5.5", "", time.Second, "semantic_output", nil)
+
+	raw, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := raw.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 2)
+	require.Equal(t, "first_output_timeout", events[0].Kind)
+	require.Nil(t, events[0].ProxyID)
+	require.Equal(t, opsProxyNameUnknown, events[0].ProxyName)
+	require.NotNil(t, events[1].ProxyID)
+	require.Equal(t, proxyID, *events[1].ProxyID)
+	require.Equal(t, "ws-proxy", events[1].ProxyName)
+}
+
 func TestOpenAIFirstOutputTimeoutForReasoningEffort(t *testing.T) {
 	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{
 		OpenAIFirstOutputTimeoutSeconds:           120,
@@ -403,6 +430,16 @@ func assertOpenAINativeLargeOpenEventTimesOutWithoutLeak(t *testing.T, line stri
 }
 
 func TestOpenAINativeFirstOutputEOFDispatchesTerminalEventWithoutBlankLine(t *testing.T) {
+	gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
+		openAITTFTMode: OpenAITTFTModeVisible,
+		expiresAt:      time.Now().Add(time.Minute).UnixNano(),
+	})
+	t.Cleanup(func() {
+		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
+			openAITTFTMode: OpenAITTFTModeSemantic,
+			expiresAt:      time.Now().Add(time.Minute).UnixNano(),
+		})
+	})
 	cfg := &config.Config{Gateway: config.GatewayConfig{
 		OpenAIFirstOutputTimeoutSeconds: 1,
 		MaxLineSize:                     defaultMaxLineSize,

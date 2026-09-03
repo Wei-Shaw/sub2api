@@ -957,6 +957,8 @@ func (s *OpenAIGatewayService) handleOpenAIImagesErrorResponse(
 	// handleCompatErrorResponse).
 	if !account.ShouldHandleErrorCode(resp.StatusCode) {
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			ProxyID:            opsUpstreamProxyID(account),
+			ProxyName:          opsUpstreamProxyName(account),
 			Platform:           account.Platform,
 			AccountID:          account.ID,
 			AccountName:        account.Name,
@@ -997,6 +999,8 @@ func (s *OpenAIGatewayService) handleOpenAIImagesErrorResponse(
 		kind = "failover"
 	}
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		ProxyID:            opsUpstreamProxyID(account),
+		ProxyName:          opsUpstreamProxyName(account),
 		Platform:           account.Platform,
 		AccountID:          account.ID,
 		AccountName:        account.Name,
@@ -1826,6 +1830,8 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())
 		setOpsUpstreamError(c, 0, safeErr, "")
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			ProxyID:            opsUpstreamProxyID(account),
+			ProxyName:          opsUpstreamProxyName(account),
 			Platform:           account.Platform,
 			AccountID:          account.ID,
 			AccountName:        account.Name,
@@ -1852,6 +1858,8 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				ProxyID:            opsUpstreamProxyID(account),
+				ProxyName:          opsUpstreamProxyName(account),
 				Platform:           account.Platform,
 				AccountID:          account.ID,
 				AccountName:        account.Name,
@@ -1950,8 +1958,8 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 }
 
 const (
-	openAIImagesOAuthUnavailableCooldown = 30 * time.Minute
-	openAIImagesOAuthUnavailableReason   = "openai_images_oauth_tool_unavailable"
+	openAIImagesOAuthUnavailableDefaultCooldown = 30 * time.Minute
+	openAIImagesOAuthUnavailableReason          = "openai_images_oauth_tool_unavailable"
 )
 
 // shouldCoolOpenAIImagesToolForError decides whether an image_generation_unavailable
@@ -1980,7 +1988,16 @@ func (s *OpenAIGatewayService) coolOpenAIImagesOAuthTool(ctx context.Context, ac
 	}
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
-	resetAt := time.Now().Add(openAIImagesOAuthUnavailableCooldown)
+	cooldown := openAIImagesOAuthUnavailableDefaultCooldown
+	if s.settingService != nil {
+		settings, err := s.settingService.GetOpenAIImagesOAuthUnavailableCooldownSettings(stateCtx)
+		if err != nil {
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images OAuth tool cooldown setting read failed error=%v", err)
+		} else {
+			cooldown = time.Duration(settings.CooldownMinutes) * time.Minute
+		}
+	}
+	resetAt := time.Now().Add(cooldown)
 	if err := s.accountRepo.SetModelRateLimit(stateCtx, account.ID, openAIImageGenerationRateLimitKey, resetAt, openAIImagesOAuthUnavailableReason); err != nil {
 		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images OAuth tool cooldown write failed account_id=%d error=%v", account.ID, err)
 		return
@@ -2015,7 +2032,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 			kind = "retry_exhausted_failover"
 		}
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-			Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
+			ProxyID:   opsUpstreamProxyID(account),
+			ProxyName: opsUpstreamProxyName(account),
+			Platform:  account.Platform, AccountID: account.ID, AccountName: account.Name,
 			UpstreamStatusCode: statusCode, UpstreamRequestID: requestID, UpstreamURL: upstreamURL,
 			Kind: kind, Message: message,
 		})
@@ -2057,6 +2076,8 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 		}
 	}
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		ProxyID:            opsUpstreamProxyID(account),
+		ProxyName:          opsUpstreamProxyName(account),
 		Platform:           account.Platform,
 		AccountID:          account.ID,
 		AccountName:        account.Name,

@@ -1,15 +1,18 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,18 +25,24 @@ import (
 )
 
 var (
-	openAIModelDatePattern     = regexp.MustCompile(`-\d{8}$`)
-	openAIModelBasePattern     = regexp.MustCompile(`^(gpt-\d+(?:\.\d+)?)(?:-|$)`)
+	openAIModelDatePattern = regexp.MustCompile(`-\d{8}$`)
+	openAIModelBasePattern = regexp.MustCompile(`^(gpt-\d+(?:\.\d+)?)(?:-|$)`)
+	// aboveTierPricePattern 匹配 LiteLLM 长上下文绝对价字段名
+	// （input_cost_per_token_above_272k_tokens / output_cost_per_token_above_200k_tokens 等）。
+	// 带 _flex/_priority 服务档后缀的变体与 cache 侧字段不参与阈值/倍率折算。
+	aboveTierPricePattern = regexp.MustCompile(`^(input|output)_cost_per_token_above_(\d+)k_tokens$`)
+	// cacheTierPricePattern 匹配 cache 侧的长上下文绝对价字段名
+	// （cache_creation_input_token_cost_above_200k_tokens、cache_read_input_token_cost_above_272k_tokens_priority、
+	// cache_creation_input_token_cost_above_1hr_above_200k_tokens 等）。
+	// 组 1 为基础价字段名主干，组 2 为 1h 缓存时长段（可为空），组 3 为服务档后缀（可为空）。
+	cacheTierPricePattern      = regexp.MustCompile(`^(cache_(?:creation|read)_input_token_cost)(_above_1hr)?_above_\d+k_tokens((?:_[a-z]+)?)$`)
 	openAIGPT54FallbackPricing = &LiteLLMModelPricing{
-		InputCostPerToken:               2.5e-06, // $2.5 per MTok
-		OutputCostPerToken:              1.5e-05, // $15 per MTok
-		CacheReadInputTokenCost:         2.5e-07, // $0.25 per MTok
-		LongContextInputTokenThreshold:  272000,
-		LongContextInputCostMultiplier:  2.0,
-		LongContextOutputCostMultiplier: 1.5,
-		LiteLLMProvider:                 "openai",
-		Mode:                            "chat",
-		SupportsPromptCaching:           true,
+		InputCostPerToken:       2.5e-06, // $2.5 per MTok
+		OutputCostPerToken:      1.5e-05, // $15 per MTok
+		CacheReadInputTokenCost: 2.5e-07, // $0.25 per MTok
+		LiteLLMProvider:         "openai",
+		Mode:                    "chat",
+		SupportsPromptCaching:   true,
 	}
 	openAIGPT56SolFallbackPricing = &LiteLLMModelPricing{
 		InputCostPerToken:                   5e-06,
@@ -44,9 +53,6 @@ var (
 		CacheCreationInputTokenCostPriority: 1.25e-05,
 		CacheReadInputTokenCost:             5e-07,
 		CacheReadInputTokenCostPriority:     1e-06,
-		LongContextInputTokenThreshold:      openAIGPT54LongContextInputThreshold,
-		LongContextInputCostMultiplier:      openAIGPT54LongContextInputMultiplier,
-		LongContextOutputCostMultiplier:     openAIGPT54LongContextOutputMultiplier,
 		SupportsServiceTier:                 true,
 		LiteLLMProvider:                     "openai",
 		Mode:                                "chat",
@@ -61,9 +67,6 @@ var (
 		CacheCreationInputTokenCostPriority: 5e-06,
 		CacheReadInputTokenCost:             2e-07,
 		CacheReadInputTokenCostPriority:     4e-07,
-		LongContextInputTokenThreshold:      openAIGPT54LongContextInputThreshold,
-		LongContextInputCostMultiplier:      openAIGPT54LongContextInputMultiplier,
-		LongContextOutputCostMultiplier:     openAIGPT54LongContextOutputMultiplier,
 		SupportsServiceTier:                 true,
 		LiteLLMProvider:                     "openai",
 		Mode:                                "chat",
@@ -78,9 +81,6 @@ var (
 		CacheCreationInputTokenCostPriority: 5e-07,
 		CacheReadInputTokenCost:             2e-08,
 		CacheReadInputTokenCostPriority:     4e-08,
-		LongContextInputTokenThreshold:      openAIGPT54LongContextInputThreshold,
-		LongContextInputCostMultiplier:      openAIGPT54LongContextInputMultiplier,
-		LongContextOutputCostMultiplier:     openAIGPT54LongContextOutputMultiplier,
 		SupportsServiceTier:                 true,
 		LiteLLMProvider:                     "openai",
 		Mode:                                "chat",
@@ -388,6 +388,7 @@ func (s *PricingService) downloadPricingData() error {
 		return fmt.Errorf("parse pricing data: %w", err)
 	}
 	data = s.mergeFallbackPricingData(data)
+	data = s.mergeOverrideOnlyModels(data)
 
 	// 保存到本地文件
 	pricingFile := s.getPricingFilePath()
@@ -408,6 +409,7 @@ func (s *PricingService) downloadPricingData() error {
 
 	// 更新内存数据
 	s.mu.Lock()
+	warnDroppedLongContextLadders(s.pricingData, data)
 	s.pricingData = data
 	s.lastUpdated = time.Now()
 	s.localHash = syncHash
@@ -424,9 +426,11 @@ func (s *PricingService) parsePricingData(body []byte) (map[string]*LiteLLMModel
 	if err := json.Unmarshal(body, &rawData); err != nil {
 		return nil, fmt.Errorf("parse raw JSON: %w", err)
 	}
+	rawData = s.applyPricingOverrides(rawData)
 
 	result := make(map[string]*LiteLLMModelPricing)
 	skipped := 0
+	var orphanCacheTiers, lopsidedLadders []string
 
 	for modelName, rawEntry := range rawData {
 		// 跳过 sample_spec 等文档条目
@@ -500,18 +504,298 @@ func (s *PricingService) parsePricingData(body []byte) (map[string]*LiteLLMModel
 			pricing.InputCostPerImageToken = *entry.InputCostPerImageToken
 		}
 
+		hasExplicitLongContext := entry.LongContextInputTokenThreshold != nil ||
+			entry.LongContextInputCostMultiplier != nil ||
+			entry.LongContextOutputCostMultiplier != nil
+		if !hasExplicitLongContext {
+			deriveLongContextFromAboveTierFields(rawEntry, pricing)
+			if isLopsidedLongContextLadder(pricing) {
+				lopsidedLadders = append(lopsidedLadders, fmt.Sprintf("%s(input x%.2f, output x%.2f)", modelName,
+					pricing.LongContextInputCostMultiplier, pricing.LongContextOutputCostMultiplier))
+			}
+		}
+		if orphans := orphanCacheTierFields(rawEntry); len(orphans) > 0 {
+			orphanCacheTiers = append(orphanCacheTiers, modelName+"("+strings.Join(orphans, ",")+")")
+		}
+
 		result[modelName] = pricing
 	}
 
 	if skipped > 0 {
 		logger.LegacyPrintf("service.pricing", "[Pricing] Skipped %d invalid entries", skipped)
 	}
+	warnOrphanCacheTierFields(orphanCacheTiers)
+	warnLopsidedLongContextLadders(lopsidedLadders)
 
 	if len(result) == 0 {
 		return nil, fmt.Errorf("no valid pricing entries found")
 	}
 
 	return result, nil
+}
+
+// deriveLongContextFromAboveTierFields 把 LiteLLM 目录的 *_above_XXXk_tokens 绝对价字段
+// 折算成 long_context_* 阈值+倍率（sub2api 计费机制的内部表达）：阈值取自字段名，
+// 倍率 = above 价 ÷ 基础价。条目显式携带任一 long_context_* 字段（含显式 0）时由
+// 调用方跳过折算，以显式配置为准——显式写 threshold=0 或 multiplier=1 均可关闭该
+// 模型的阶梯。多个阈值并存时取最小阈值。
+// cache_read/cache_creation 的 above 档在计费中统一跟随输入倍率，不单独折算：
+// 目录条目的 cache above 档须恰为基础价 × 输入倍率；缺基础价的 cache above 字段
+// 无法参与计费，由 orphanCacheTierFields 哨兵告警。
+func deriveLongContextFromAboveTierFields(rawEntry json.RawMessage, pricing *LiteLLMModelPricing) {
+	if pricing == nil ||
+		pricing.LongContextInputTokenThreshold > 0 ||
+		pricing.LongContextInputCostMultiplier > 0 ||
+		pricing.LongContextOutputCostMultiplier > 0 {
+		return
+	}
+	if !bytes.Contains(rawEntry, []byte("_above_")) {
+		return
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(rawEntry, &fields); err != nil {
+		return
+	}
+	type tierPrices struct{ input, output float64 }
+	tiers := make(map[int]*tierPrices)
+	for key, value := range fields {
+		m := aboveTierPricePattern.FindStringSubmatch(key)
+		if m == nil {
+			continue
+		}
+		price, ok := value.(float64)
+		if !ok || price <= 0 {
+			continue
+		}
+		thousands, err := strconv.Atoi(m[2])
+		if err != nil || thousands <= 0 {
+			continue
+		}
+		threshold := thousands * 1000
+		tp := tiers[threshold]
+		if tp == nil {
+			tp = &tierPrices{}
+			tiers[threshold] = tp
+		}
+		if m[1] == "input" {
+			tp.input = price
+		} else {
+			tp.output = price
+		}
+	}
+	if len(tiers) == 0 {
+		return
+	}
+	threshold := 0
+	for t := range tiers {
+		if threshold == 0 || t < threshold {
+			threshold = t
+		}
+	}
+	tp := tiers[threshold]
+	inputMultiplier, outputMultiplier := 1.0, 1.0
+	if tp.input > 0 && pricing.InputCostPerToken > 0 {
+		inputMultiplier = tp.input / pricing.InputCostPerToken
+	}
+	if tp.output > 0 && pricing.OutputCostPerToken > 0 {
+		outputMultiplier = tp.output / pricing.OutputCostPerToken
+	}
+	// above 价不高于基础价时视为无附加费，不生成阶梯。
+	if inputMultiplier <= 1 && outputMultiplier <= 1 {
+		return
+	}
+	pricing.LongContextInputTokenThreshold = threshold
+	pricing.LongContextInputCostMultiplier = inputMultiplier
+	pricing.LongContextOutputCostMultiplier = outputMultiplier
+}
+
+// isLopsidedLongContextLadder 判断折算出的阶梯是否只有一侧带附加费。官方阶梯（OpenAI、
+// Google、Anthropic、xAI）都同时抬高 input 与 output；单侧附加费意味着条目的基础价与
+// above 档来自不同价格版本（如基础价被手工 pin、above 档随上游更新），折算出的倍率失真。
+func isLopsidedLongContextLadder(pricing *LiteLLMModelPricing) bool {
+	if pricing == nil || pricing.LongContextInputTokenThreshold <= 0 {
+		return false
+	}
+	return (pricing.LongContextInputCostMultiplier > 1) != (pricing.LongContextOutputCostMultiplier > 1)
+}
+
+// warnLopsidedLongContextLadders 对单侧附加费的折算阶梯打 WARN：应成组修正该条目的
+// 基础价与 above 档（目录或 pricing.override_file）。
+func warnLopsidedLongContextLadders(entries []string) {
+	if len(entries) == 0 {
+		return
+	}
+	sort.Strings(entries)
+	total := len(entries)
+	if total > 20 {
+		entries = append(entries[:20], "...")
+	}
+	logger.LegacyPrintf("service.pricing", "[Pricing] Warning: %d model(s) derive a one-sided long-context ladder (surcharge on only input or only output); base prices and above-tier prices likely come from different price versions: %s", total, strings.Join(entries, ", "))
+}
+
+// orphanCacheTierFields 返回条目中没有对应基础价的 cache 侧 above 档字段名。
+// cache 侧 above 档不参与计费取值，计费按"基础价 × 输入倍率"；基础价缺失或为 0 时，
+// 该缓存分项在整个阶梯上都按 0 计。计费对变体有回落：服务档变体（_priority/_flex）
+// 缺自身基础价时用标准基础价，1h 缓存写入缺 above_1hr 价时全部按 5m 价——因此沿
+// 回落链任一基础价存在即不算孤儿。
+func orphanCacheTierFields(rawEntry json.RawMessage) []string {
+	if !bytes.Contains(rawEntry, []byte("_above_")) {
+		return nil
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(rawEntry, &fields); err != nil {
+		return nil
+	}
+	positive := func(key string) bool {
+		price, ok := fields[key].(float64)
+		return ok && price > 0
+	}
+	var orphans []string
+	for key := range fields {
+		m := cacheTierPricePattern.FindStringSubmatch(key)
+		if m == nil || !positive(key) {
+			continue
+		}
+		stem, hourly, tier := m[1], m[2], m[3]
+		if positive(stem+hourly+tier) || positive(stem+hourly) || positive(stem+tier) || positive(stem) {
+			continue
+		}
+		orphans = append(orphans, key)
+	}
+	sort.Strings(orphans)
+	return orphans
+}
+
+// warnOrphanCacheTierFields 对带 cache 侧 above 档却没有基础价的条目打 WARN：
+// 该缓存分项按 0 计费，目录或 pricing.override_file 补上基础价即可消除。
+func warnOrphanCacheTierFields(entries []string) {
+	if len(entries) == 0 {
+		return
+	}
+	sort.Strings(entries)
+	total := len(entries)
+	if total > 20 {
+		entries = append(entries[:20], "...")
+	}
+	logger.LegacyPrintf("service.pricing", "[Pricing] Warning: %d model(s) carry cache above-tier prices without a base cache price; that cache item bills at $0 until the catalog/override supplies the base: %s", total, strings.Join(entries, ", "))
+}
+
+// applyPricingOverrides 把 override 文件的条目逐字段修补进原始目录数据。目录与回退
+// 文件的解析都经过 parsePricingData，因此 override 是最高优先级的数据源。这里只修补
+// 已存在的条目：目录/回退里都没有的模型由 mergeOverrideOnlyModels 在两层数据合并后
+// 统一并入——若在此处抢先建条目，纯 override 条目会挡住回退文件中同名完整条目的合并。
+func (s *PricingService) applyPricingOverrides(rawData map[string]json.RawMessage) map[string]json.RawMessage {
+	overrides := s.loadPricingOverrideEntries()
+	if len(overrides) == 0 {
+		return rawData
+	}
+	for name, patch := range overrides {
+		base, ok := rawData[name]
+		if !ok {
+			continue
+		}
+		merged, valid := mergePricingOverrideEntry(base, patch)
+		if !valid {
+			logger.LegacyPrintf("service.pricing", "[Pricing] Warning: override entry %q skipped: not a JSON object", name)
+			continue
+		}
+		rawData[name] = merged
+	}
+	return rawData
+}
+
+// loadPricingOverrideEntries 读取 override 文件的原始条目。未配置返回 nil；
+// 读取或解析失败打日志并跳过，不影响目录加载。
+func (s *PricingService) loadPricingOverrideEntries() map[string]json.RawMessage {
+	if s == nil || s.cfg == nil {
+		return nil
+	}
+	path := strings.TrimSpace(s.cfg.Pricing.OverrideFile)
+	if path == "" {
+		return nil
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		logger.LegacyPrintf("service.pricing", "[Pricing] Warning: override merge skipped: %v", err)
+		return nil
+	}
+	var entries map[string]json.RawMessage
+	if err := json.Unmarshal(body, &entries); err != nil {
+		logger.LegacyPrintf("service.pricing", "[Pricing] Warning: override merge skipped: %v", err)
+		return nil
+	}
+	return entries
+}
+
+// mergePricingOverrideEntry 在 JSON 字段层浅合并：patch 字段覆盖 base 同名字段，
+// 值为 null 的 patch 字段从结果中删除，base 为空时结果即 patch 本身。
+// patch 不是 JSON 对象时返回 ok=false。
+func mergePricingOverrideEntry(base, patch json.RawMessage) (json.RawMessage, bool) {
+	var patchFields map[string]any
+	if err := json.Unmarshal(patch, &patchFields); err != nil || patchFields == nil {
+		return nil, false
+	}
+	merged := make(map[string]any, len(patchFields))
+	if len(base) > 0 {
+		// base 非对象时忽略，仅以 patch 为准。
+		if err := json.Unmarshal(base, &merged); err != nil {
+			merged = make(map[string]any, len(patchFields))
+		}
+	}
+	for k, v := range patchFields {
+		if v == nil {
+			delete(merged, k)
+			continue
+		}
+		merged[k] = v
+	}
+	out, err := json.Marshal(merged)
+	if err != nil {
+		return nil, false
+	}
+	return out, true
+}
+
+// mergeOverrideOnlyModels 把 override 中目录/回退两层都不存在的模型作为独立条目并入
+// （条目须自带价格字段才能通过有效性过滤），并对最终仍未生效的条目打 WARN：
+// 模型名拼错、或纯补丁条目落在不存在的模型上时会被静默丢弃，让"已改价/已关阶梯"
+// 的运营预期与实际计费脱节，这里是唯一的哨兵。
+func (s *PricingService) mergeOverrideOnlyModels(data map[string]*LiteLLMModelPricing) map[string]*LiteLLMModelPricing {
+	overrides := s.loadPricingOverrideEntries()
+	if len(overrides) == 0 {
+		return data
+	}
+	if data == nil {
+		data = make(map[string]*LiteLLMModelPricing)
+	}
+	leftover := make(map[string]json.RawMessage)
+	for name, patch := range overrides {
+		if _, ok := data[name]; !ok {
+			leftover[name] = patch
+		}
+	}
+	if len(leftover) == 0 {
+		return data
+	}
+	// 复用主解析路径（含 above_XXXk 折算与有效性过滤）；applyPricingOverrides
+	// 对已存在条目做的自我修补是幂等的，不会二次改值。
+	if body, err := json.Marshal(leftover); err == nil {
+		if parsed, err := s.parsePricingData(body); err == nil {
+			maps.Copy(data, parsed)
+		}
+	}
+	var missing []string
+	for name := range leftover {
+		if _, ok := data[name]; !ok {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) == 0 {
+		return data
+	}
+	sort.Strings(missing)
+	logger.LegacyPrintf("service.pricing", "[Pricing] Warning: override had no effect for %d model(s): %s (unknown model name, or patch-only entry without price fields)", len(missing), strings.Join(missing, ", "))
+	return data
 }
 
 // loadPricingData 从本地文件加载价格数据
@@ -527,12 +811,14 @@ func (s *PricingService) loadPricingData(filePath string) error {
 		return fmt.Errorf("parse pricing data: %w", err)
 	}
 	pricingData = s.mergeFallbackPricingData(pricingData)
+	pricingData = s.mergeOverrideOnlyModels(pricingData)
 
 	// 计算哈希
 	hash := sha256.Sum256(data)
 	hashStr := hex.EncodeToString(hash[:])
 
 	s.mu.Lock()
+	warnDroppedLongContextLadders(s.pricingData, pricingData)
 	s.pricingData = pricingData
 	s.localHash = hashStr
 
@@ -577,6 +863,34 @@ func (s *PricingService) mergeFallbackPricingData(data map[string]*LiteLLMModelP
 		logger.LegacyPrintf("service.pricing", "[Pricing] Merged %d fallback-only models", merged)
 	}
 	return data
+}
+
+// warnDroppedLongContextLadders 对比新旧目录数据：原本带长上下文阶梯的条目在新数据里
+// 丢失阈值时打 WARN。阶梯已完全数据驱动（无代码兜底），数据源一次误提交就会把阶梯
+// 静默变成基础价少收（07-14~08-21 漏收事故的形态），这里是唯一的哨兵。
+// 调用方需持有 s.mu 写锁。
+func warnDroppedLongContextLadders(old, next map[string]*LiteLLMModelPricing) {
+	if len(old) == 0 {
+		return
+	}
+	var dropped []string
+	for name, prev := range old {
+		if prev == nil || prev.LongContextInputTokenThreshold <= 0 {
+			continue
+		}
+		if cur, ok := next[name]; ok && (cur == nil || cur.LongContextInputTokenThreshold <= 0) {
+			dropped = append(dropped, name)
+		}
+	}
+	if len(dropped) == 0 {
+		return
+	}
+	sort.Strings(dropped)
+	total := len(dropped)
+	if total > 20 {
+		dropped = append(dropped[:20], "...")
+	}
+	logger.LegacyPrintf("service.pricing", "[Pricing] Long-context ladder dropped for %d model(s) after reload: %s (verify catalog/override data if unintended)", total, strings.Join(dropped, ", "))
 }
 
 // useFallbackPricing 使用回退价格文件

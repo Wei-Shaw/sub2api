@@ -70,6 +70,13 @@ func isOpenAINativeCompactionV2(c *gin.Context) bool {
 	return c.GetBool(openAINativeCompactionV2Key)
 }
 
+// IsOpenAINativeCompactionV2 reports whether the handler identified this
+// request as the native remote compaction v2 wire. It exposes only the
+// request-scoped boolean marker; no request payload is retained.
+func IsOpenAINativeCompactionV2(c *gin.Context) bool {
+	return isOpenAINativeCompactionV2(c)
+}
+
 // ensureOpenAIRemoteCompactionV2BetaFeature 确保出站 x-codex-beta-features
 // 头包含 remote_compaction_v2。真实 Codex 发送 compaction_trigger 时总会同时
 // 携带该协商头（codex-rs build_model_client_beta_features_header 对该 feature

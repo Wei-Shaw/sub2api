@@ -173,14 +173,15 @@ type UsageLog struct {
 	// AccountStatsCost 账号统计定价预计算费用（nil = 使用默认公式 total_cost × account_rate_multiplier）
 	AccountStatsCost *float64
 
-	BillingType  int8
-	RequestType  RequestType
-	Stream       bool
-	OpenAIWSMode bool
-	DurationMs   *int
-	FirstTokenMs *int
-	UserAgent    *string
-	IPAddress    *string
+	BillingType        int8
+	RequestType        RequestType
+	Stream             bool
+	OpenAIWSMode       bool
+	NativeCompactionV2 bool
+	DurationMs         *int
+	FirstTokenMs       *int
+	UserAgent          *string
+	IPAddress          *string
 	// SessionID is the explicit client-provided request correlation identifier
 	// (e.g. the session_id / X-Session-Id headers). Nil when the client sent no
 	// valid session header. It is never derived from prompt_cache_key or content.

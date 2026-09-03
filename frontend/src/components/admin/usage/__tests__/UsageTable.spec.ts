@@ -54,6 +54,9 @@ const messages: Record<string, string> = {
   'usage.imageSizeUnknown': 'unknown',
   'usage.imageUnitPrice': 'Per-image price',
   'usage.imageTotalPrice': 'Image total price',
+  'usage.stream': 'Stream',
+  'usage.sync': 'Sync',
+  'usage.nativeCompactionV2': 'Compaction',
   'admin.usage.billingModeToken': 'Token',
   'admin.usage.billingModePerRequest': 'Per request',
   'admin.usage.billingModeImage': 'Image',
@@ -167,6 +170,56 @@ describe('admin UsageTable tooltip', () => {
 
     expect(wrapper.findAll('[data-testid="long-context-billing-marker"]')).toHaveLength(1)
     expect(wrapper.get('[data-testid="long-context-billing-marker"]').text()).toBe('x2')
+  })
+
+  it('keeps the request type badge and adds a separate badge only for native compaction rows', () => {
+    const DataTableStreamStub = {
+      props: ['data'],
+      template: `
+        <div>
+          <div v-for="row in data" :key="row.request_id">
+            <slot name="cell-stream" :row="row" />
+          </div>
+        </div>
+      `,
+    }
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          {
+            ...baseImageRow,
+            request_id: 'req-compaction-stream',
+            request_type: 'stream',
+            stream: true,
+            native_compaction_v2: true,
+          },
+          {
+            ...baseImageRow,
+            request_id: 'req-historical-sync',
+            request_type: 'sync',
+            stream: false,
+            native_compaction_v2: false,
+          },
+        ],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStreamStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const requestBadges = wrapper.findAll('[data-testid="request-type-badge"]')
+    expect(requestBadges).toHaveLength(2)
+    expect(requestBadges[0].text()).toBe('Stream')
+    expect(requestBadges[1].text()).toBe('Sync')
+    expect(wrapper.findAll('[data-testid="native-compaction-badge"]')).toHaveLength(1)
+    expect(wrapper.get('[data-testid="native-compaction-badge"]').text()).toBe('Compaction')
   })
 
   it('shows service tier and billing breakdown in cost tooltip', async () => {

@@ -138,9 +138,13 @@
                   class="whitespace-nowrap font-mono text-xs leading-5 text-gray-800 dark:text-gray-200"
                   :title="tierHint(m)"
                 >
-                  <template v-if="iv.cache_write_price != null || iv.cache_read_price != null">
+                  <template v-if="iv.cache_write_price != null || iv.cache_write_1h_price != null || iv.cache_read_price != null">
                     <span class="font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheWriteShort') }}</span>
                     {{ paidPerMillion(iv.cache_write_price, period) }}
+                    <template v-if="iv.cache_write_1h_price != null"
+                      ><span class="font-sans font-normal text-gray-400 dark:text-dark-500"> (1h </span>{{ paidPerMillion(iv.cache_write_1h_price, period)
+                      }}<span class="font-sans font-normal text-gray-400 dark:text-dark-500">)</span></template
+                    >
                     <span class="ml-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheReadShort') }}</span>
                     {{ paidPerMillion(iv.cache_read_price, period) }}
                   </template>
@@ -153,7 +157,11 @@
               >
                 <div>
                   <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheWrite') }}</span>
-                  {{ paidPerMillion(m.pricing?.cache_write_price, period) }}
+                  {{ paidPerMillion(m.pricing?.cache_write_price, period)
+                  }}<template v-if="m.pricing?.cache_write_1h_price != null"
+                    ><span class="font-sans font-normal text-gray-400 dark:text-dark-500"> (1h </span>{{ paidPerMillion(m.pricing.cache_write_1h_price, period)
+                    }}<span class="font-sans font-normal text-gray-400 dark:text-dark-500">)</span></template
+                  >
                 </div>
                 <div>
                   <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheRead') }}</span>
@@ -228,9 +236,13 @@
                 class="whitespace-nowrap font-mono text-xs leading-5 text-gray-500 dark:text-dark-400"
                 :title="t('modelPlaza.table.tierHint')"
               >
-                <template v-if="iv.cache_write_price != null || iv.cache_read_price != null">
+                <template v-if="iv.cache_write_price != null || iv.cache_write_1h_price != null || iv.cache_read_price != null">
                   <span class="font-sans text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheWriteShort') }}</span>
                   {{ official(iv.cache_write_price) }}
+                  <template v-if="iv.cache_write_1h_price != null"
+                    ><span class="font-sans text-gray-400 dark:text-dark-500"> (1h </span>{{ official(iv.cache_write_1h_price)
+                    }}<span class="font-sans text-gray-400 dark:text-dark-500">)</span></template
+                  >
                   <span class="ml-1 font-sans text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheReadShort') }}</span>
                   {{ official(iv.cache_read_price) }}
                 </template>
@@ -423,7 +435,7 @@ function perUnitSuffix(m: PlazaModel): string {
 }
 
 function hasCachePricing(m: PlazaModel): boolean {
-  return m.pricing?.cache_write_price != null || m.pricing?.cache_read_price != null
+  return m.pricing?.cache_write_price != null || m.pricing?.cache_write_1h_price != null || m.pricing?.cache_read_price != null
 }
 
 function hasOfficialCache(o: NonNullable<PlazaModel['official_pricing']>): boolean {
@@ -476,7 +488,7 @@ function officialIntervals(m: PlazaModel): UserPricingInterval[] {
 
 /** 任一档带缓存价才按档渲染缓存列;否则沿用平价的写入/读取两行。 */
 function hasTierCachePricing(intervals: UserPricingInterval[]): boolean {
-  return intervals.some((iv) => iv.cache_write_price != null || iv.cache_read_price != null)
+  return intervals.some((iv) => iv.cache_write_price != null || iv.cache_write_1h_price != null || iv.cache_read_price != null)
 }
 
 /** 档位说明:整单按档计价,或(平台旧规则)仅超出部分按档计价。 */

@@ -716,7 +716,7 @@ type ChatFile struct {
 
 // ChatTool describes a tool available to the model.
 type ChatTool struct {
-	Type     string        `json:"type"` // "function" | "x_search"
+	Type     string        `json:"type"` // "function" | "web_search" | "code_execution" | "x_search"
 	Function *ChatFunction `json:"function,omitempty"`
 
 	// type=x_search

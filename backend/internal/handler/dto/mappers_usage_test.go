@@ -28,6 +28,27 @@ func TestUsageLogFromService_IncludesOpenAIWSMode(t *testing.T) {
 	require.False(t, UsageLogFromServiceAdmin(httpLog).OpenAIWSMode)
 }
 
+func TestUsageLogFromService_PreservesNativeCompactionAndStream(t *testing.T) {
+	t.Parallel()
+
+	log := &service.UsageLog{
+		RequestID:          "resp_compaction",
+		Model:              "gpt-5.6-sol",
+		RequestType:        service.RequestTypeStream,
+		Stream:             true,
+		NativeCompactionV2: true,
+	}
+
+	userDTO := UsageLogFromService(log)
+	adminDTO := UsageLogFromServiceAdmin(log)
+	require.Equal(t, "stream", userDTO.RequestType)
+	require.True(t, userDTO.Stream)
+	require.True(t, userDTO.NativeCompactionV2)
+	require.Equal(t, "stream", adminDTO.RequestType)
+	require.True(t, adminDTO.Stream)
+	require.True(t, adminDTO.NativeCompactionV2)
+}
+
 func TestUsageLogFromService_PrefersRequestTypeForLegacyFields(t *testing.T) {
 	t.Parallel()
 

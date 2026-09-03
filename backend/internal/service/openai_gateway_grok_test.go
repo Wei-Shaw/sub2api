@@ -144,6 +144,47 @@ func TestPatchGrokResponsesBodyDropsViewImageOnlyToolMetadata(t *testing.T) {
 	require.False(t, gjson.GetBytes(patched, "parallel_tool_calls").Exists())
 }
 
+func TestPatchGrokResponsesBodyPreservesGrokShellFunctionOutputImages(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model":"grok-4.6",
+		"input":[
+			{"type":"function_call","call_id":"call_read","name":"read_file","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_read","content":"Read image file: /tmp/example.png","images":[{"type":"image","url":"data:image/png;base64,QUE="}]}
+		]
+	}`)
+
+	patched, _, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.6")
+	require.NoError(t, err)
+	require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.1.type").String())
+	require.Equal(t, "Read image file: /tmp/example.png", gjson.GetBytes(patched, "input.1.output").String())
+	require.Equal(t, "message", gjson.GetBytes(patched, "input.2.type").String())
+	require.Equal(t, "input_image", gjson.GetBytes(patched, "input.2.content.1.type").String())
+	require.Equal(t, "data:image/png;base64,QUE=", gjson.GetBytes(patched, "input.2.content.1.image_url").String())
+}
+
+func TestPatchGrokResponsesBodyPreservesGrok105StructuredFunctionOutputImages(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model":"grok-4.6",
+		"input":[
+			{"type":"function_call","call_id":"call_read","name":"read_file","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_read","output":[
+				{"type":"input_text","text":"Read image file: /tmp/example.png"},
+				{"type":"input_image","detail":"auto","image_url":"data:image/png;base64,QUE="}
+			]}
+		]
+	}`)
+
+	patched, _, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.6")
+	require.NoError(t, err)
+	require.Equal(t, "Read image file: /tmp/example.png", gjson.GetBytes(patched, "input.1.output").String())
+	require.Equal(t, "input_image", gjson.GetBytes(patched, "input.2.content.1.type").String())
+	require.Equal(t, "data:image/png;base64,QUE=", gjson.GetBytes(patched, "input.2.content.1.image_url").String())
+}
+
 func TestPatchGrokResponsesBodySanitizesComposerReasoningParameters(t *testing.T) {
 	t.Parallel()
 

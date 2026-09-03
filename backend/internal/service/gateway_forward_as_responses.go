@@ -161,6 +161,8 @@ func (s *GatewayService) ForwardAsResponses(
 
 		if s.shouldFailoverUpstreamError(resp.StatusCode) {
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				ProxyID:            opsUpstreamProxyID(account),
+				ProxyName:          opsUpstreamProxyName(account),
 				Platform:           account.Platform,
 				AccountID:          account.ID,
 				AccountName:        account.Name,
@@ -639,7 +641,12 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 
 // appendRawJSON appends a JSON fragment string to existing raw JSON.
 func appendRawJSON(existing json.RawMessage, fragment string) json.RawMessage {
-	if len(existing) == 0 {
+	// Anthropic initializes tool_use.input to {} in content_block_start, then
+	// streams the actual input through input_json_delta events. Treat that empty
+	// object as a placeholder instead of prefixing it to the streamed JSON.
+	var existingObject map[string]json.RawMessage
+	isEmptyObject := json.Unmarshal(existing, &existingObject) == nil && existingObject != nil && len(existingObject) == 0
+	if len(existing) == 0 || isEmptyObject {
 		return json.RawMessage(fragment)
 	}
 	return json.RawMessage(string(existing) + fragment)
