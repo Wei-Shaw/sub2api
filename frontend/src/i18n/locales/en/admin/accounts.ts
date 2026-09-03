@@ -1449,7 +1449,7 @@ export default {
       imagePromptDefault: 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
       imageTestHint:
         'Calls standalone /v1/images/generations and shows the returned image below.',
-      imageTestMode: 'Mode: Image generation test',
+      imageTestMode: 'Image generation test',
       videoPromptLabel: 'Video prompt',
       videoPromptPlaceholder: 'Example: A red ball bouncing once on a white floor, short simple motion.',
       videoPromptDefault: 'A red ball bouncing once on a white floor, short simple motion.',
