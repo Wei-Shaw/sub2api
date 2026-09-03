@@ -472,6 +472,14 @@ func runClientToUpstream(
 	onTrace func(event RelayTraceEvent),
 	exitCh chan<- relayExitSignal,
 ) {
+	// 客户端帧完全由对端控制：panic 必须转成一次退出信号，否则中继主循环
+	// 会永远阻塞在 exitCh 上（gin 的 Recovery 不覆盖本协程）。
+	defer recoverRelayGoroutine("runClientToUpstream", func(err error) {
+		select {
+		case exitCh <- relayExitSignal{stage: "read_client", err: err}:
+		default:
+		}
+	})
 	if readClientFrame == nil {
 		readClientFrame = func(ctx context.Context, conn FrameConn) (coderws.MessageType, []byte, error) {
 			return conn.ReadFrame(ctx)
@@ -529,6 +537,14 @@ func runUpstreamToClient(
 	exitCh chan<- relayExitSignal,
 ) {
 	wroteDownstream := false
+	// 上游帧完全由上游控制：panic 必须转成一次退出信号，否则中继主循环
+	// 会永远阻塞在 exitCh 上（gin 的 Recovery 不覆盖本协程）。
+	defer recoverRelayGoroutine("runUpstreamToClient", func(err error) {
+		select {
+		case exitCh <- relayExitSignal{stage: "read_upstream", err: err, wroteDownstream: wroteDownstream}:
+		default:
+		}
+	})
 	for {
 		msgType, payload, err := upstreamConn.ReadFrame(ctx)
 		if err != nil {

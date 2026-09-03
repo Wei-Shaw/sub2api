@@ -233,6 +233,13 @@ func (r *pluginRuntime) roundTrip(ctx context.Context, request *http.Request, pr
 	}
 	sendErr := make(chan error, 1)
 	go func() {
+		defer recoverStreamGoroutine("sendPluginRequestBody", func(err error) {
+			select {
+			case sendErr <- err:
+			default:
+			}
+			cancel()
+		})
 		err := sendPluginRequestBody(stream, request.Body)
 		sendErr <- err
 		if err != nil {
@@ -346,6 +353,8 @@ func sendPluginRequestBody(stream pluginv1.TransportPlugin_ForwardClient, body i
 
 func receivePluginResponseBody(stream pluginv1.TransportPlugin_ForwardClient, writer *io.PipeWriter, sendErr <-chan error) {
 	defer func() { _ = writer.Close() }()
+	// 后注册 => 先执行：panic 时先把错误写进管道，再让上面的 Close() 兜底。
+	defer recoverStreamPipeWriter("receivePluginResponseBody pipe", writer)
 	for {
 		frame, err := stream.Recv()
 		if err == io.EOF {

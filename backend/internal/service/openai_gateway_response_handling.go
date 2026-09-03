@@ -845,6 +845,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	go func(scanBuf *sseScannerBuf64K) {
 		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
+		defer recoverStreamGoroutine("handleStreamingResponseWithReasoning SSE pump", func(err error) {
+			_ = sendEvent(scanEvent{err: err})
+		})
 		for documentScanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
 			if !sendEvent(scanEvent{line: documentScanner.Text()}) {

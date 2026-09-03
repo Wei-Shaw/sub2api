@@ -798,6 +798,12 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 	done := make(chan struct{})
 	go func() {
 		defer close(events)
+		defer recoverStreamGoroutine("readOpenAICompatBufferedTerminal SSE pump", func(err error) {
+			select {
+			case events <- scanEvent{err: err}:
+			case <-done:
+			}
+		})
 		for scanner.Scan() {
 			select {
 			case events <- scanEvent{line: scanner.Text()}:
@@ -1223,6 +1229,9 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	}
 	go func() {
 		defer close(events)
+		defer recoverStreamGoroutine("handleAnthropicStreamingResponse SSE pump", func(err error) {
+			_ = sendEvent(scanEvent{err: err})
+		})
 		for scanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
 			if !sendEvent(scanEvent{line: scanner.Text()}) {

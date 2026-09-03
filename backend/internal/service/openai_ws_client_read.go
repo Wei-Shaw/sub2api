@@ -55,6 +55,12 @@ func readOpenAIWSClientMessageWithTimeoutStart(
 
 	readDone := make(chan openAIWSClientReadResult, 1)
 	go func() {
+		defer recoverStreamGoroutine("ReadOpenAIWSClientMessage read pump", func(err error) {
+			select {
+			case readDone <- openAIWSClientReadResult{err: err}:
+			default:
+			}
+		})
 		messageType, payload, err := conn.Read(context.Background())
 		readDone <- openAIWSClientReadResult{messageType: messageType, payload: payload, err: err}
 	}()

@@ -143,6 +143,8 @@ func transformResponsesClientToolStream(
 	mapping apicompat.ResponsesClientToolMapping,
 	maxLineSize int,
 ) {
+	// 最先注册 => 最后执行：先归还缓冲/关闭上游，再用错误关闭管道写端。
+	defer recoverStreamPipeWriter("transformResponsesClientToolStream pipe", destination)
 	defer func() { _ = source.Close() }()
 	if maxLineSize <= 0 {
 		maxLineSize = defaultMaxLineSize

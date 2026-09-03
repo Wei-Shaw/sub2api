@@ -51,6 +51,12 @@ func newAnthropicNativeLinePump(scanner *bufio.Scanner, interval time.Duration) 
 	}
 	go func() {
 		defer close(p.events)
+		defer recoverStreamGoroutine("anthropicNativeLinePump SSE pump", func(err error) {
+			select {
+			case p.events <- anthropicNativeLineEvent{err: err}:
+			case <-p.done:
+			}
+		})
 		for scanner.Scan() {
 			select {
 			case p.events <- anthropicNativeLineEvent{line: scanner.Text()}:

@@ -210,6 +210,12 @@ func (s *OpenAIGatewayService) ProxyGrokRealtimeConn(ctx context.Context, c *gin
 
 	// Upstream → client
 	go func() {
+		defer recoverStreamGoroutine("ProxyGrokRealtimeConn upstream read pump", func(err error) {
+			select {
+			case errCh <- err:
+			default:
+			}
+		})
 		for {
 			msg, readErr := conn.ReadMessage(ctx)
 			if readErr != nil {
@@ -228,6 +234,12 @@ func (s *OpenAIGatewayService) ProxyGrokRealtimeConn(ctx context.Context, c *gin
 
 	// Client → upstream (JSON events only)
 	go func() {
+		defer recoverStreamGoroutine("ProxyGrokRealtimeConn client read pump", func(err error) {
+			select {
+			case errCh <- err:
+			default:
+			}
+		})
 		for {
 			kind, msg, readErr := client.Read(ctx)
 			if readErr != nil {

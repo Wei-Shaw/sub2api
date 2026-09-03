@@ -165,6 +165,9 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 	go func(scanBuf *sseScannerBuf64K) {
 		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
+		defer recoverStreamGoroutine("handleGeminiStreamingResponse SSE pump", func(err error) {
+			_ = sendEvent(scanEvent{err: err})
+		})
 		for scanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
 			if !sendEvent(scanEvent{line: scanner.Text()}) {
@@ -362,6 +365,9 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 	go func(scanBuf *sseScannerBuf64K) {
 		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
+		defer recoverStreamGoroutine("handleGeminiStreamToNonStreaming SSE pump", func(err error) {
+			_ = sendEvent(scanEvent{err: err})
+		})
 		for scanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
 			if !sendEvent(scanEvent{line: scanner.Text()}) {
@@ -833,6 +839,9 @@ func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, 
 	go func(scanBuf *sseScannerBuf64K) {
 		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
+		defer recoverStreamGoroutine("collectClaudeStreamResponse SSE pump", func(err error) {
+			_ = sendEvent(scanEvent{err: err})
+		})
 		for scanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
 			if !sendEvent(scanEvent{line: scanner.Text()}) {
@@ -1057,6 +1066,9 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 	go func(scanBuf *sseScannerBuf64K) {
 		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
+		defer recoverStreamGoroutine("handleClaudeStreamingResponse SSE pump", func(err error) {
+			_ = sendEvent(scanEvent{err: err})
+		})
 		for scanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
 			if !sendEvent(scanEvent{line: scanner.Text()}) {

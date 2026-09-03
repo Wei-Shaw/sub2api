@@ -1670,6 +1670,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
 	go func() {
 		defer close(events)
+		defer recoverStreamGoroutine("handleOpenAIImagesOAuthStreamingResponse chunk pump", func(err error) {
+			_ = sendEvent(readEvent{err: err})
+		})
 		reader := bufio.NewReader(resp.Body)
 		for {
 			line, err := reader.ReadBytes('\n')

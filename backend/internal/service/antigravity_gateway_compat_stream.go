@@ -339,6 +339,12 @@ func (s *AntigravityGatewayService) startAntigravityCompatScanner(
 	go func() {
 		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
+		defer recoverStreamGoroutine("startAntigravityCompatScanner SSE pump", func(err error) {
+			select {
+			case events <- antigravityCompatScanEvent{err: err}:
+			case <-done:
+			}
+		})
 		send := func(event antigravityCompatScanEvent) bool {
 			select {
 			case events <- event:

@@ -62,6 +62,8 @@ func filterGrokResponsesBillingPings(
 	closeSource func() error,
 	maxLineSize int,
 ) {
+	// 最先注册 => 最后执行：先归还缓冲/关闭上游，再用错误关闭管道写端。
+	defer recoverStreamPipeWriter("filterGrokResponsesBillingPings pipe", destination)
 	defer func() { _ = closeSource() }()
 	if maxLineSize <= 0 {
 		maxLineSize = defaultMaxLineSize

@@ -9,6 +9,7 @@ import (
 	"hash/crc32"
 	"io"
 	"net/http"
+	"runtime/debug"
 	"sync/atomic"
 	"time"
 
@@ -72,7 +73,19 @@ func (s *GatewayService) handleBedrockStreamingResponse(
 	lastReadAt.Store(time.Now().UnixNano())
 
 	go func() {
+		// defer 按 LIFO 执行：先 recover 并投递错误事件，再 close(events)，
+		// 保证主循环不会因为解码协程 panic 而永久阻塞。
+		// 注意：gin 的 Recovery() 中间件只包裹请求协程，不覆盖这里的子协程，
+		// 一旦 panic 逃逸会导致整个进程退出。
 		defer close(events)
+		defer func() {
+			if r := recover(); r != nil {
+				logger.LegacyPrintf("service.gateway",
+					"[Bedrock] panic in eventstream decode goroutine: account=%d model=%s panic=%v\n%s",
+					account.ID, model, r, debug.Stack())
+				_ = sendEvent(decodeEvent{err: fmt.Errorf("bedrock stream decode panic: %v", r)})
+			}
+		}()
 		for {
 			payload, err := decoder.Decode()
 			if err != nil {
@@ -241,6 +254,15 @@ type bedrockEventStreamDecoder struct {
 	reader *bufio.Reader
 }
 
+const (
+	// bedrockFrameMinLength 是合法帧的最小 total_length：prelude(12) + message_crc(4)。
+	// 此时 headers 与 payload 均为空。
+	bedrockFrameMinLength = 16
+	// bedrockFrameMaxLength 是 AWS EventStream 规定的单帧上限（16MB），
+	// 用于防止恶意 total_length 触发超大内存分配。
+	bedrockFrameMaxLength = 16 * 1024 * 1024
+)
+
 func newBedrockEventStreamDecoder(r io.Reader) *bedrockEventStreamDecoder {
 	return &bedrockEventStreamDecoder{
 		reader: bufio.NewReaderSize(r, 64*1024),
@@ -265,18 +287,39 @@ func (d *bedrockEventStreamDecoder) Decode() ([]byte, error) {
 		totalLength := bedrockReadUint32(prelude[0:4])
 		headersLength := bedrockReadUint32(prelude[4:8])
 
-		if totalLength < 16 { // minimum: 12 prelude + 4 message_crc
+		// 长度字段完全来自网络，CRC 只能证明"没有传输损坏"，不能证明"值合法"：
+		// 攻击者可以构造 CRC 自洽但长度字段恶意的帧。必须在切片前独立校验。
+		// 帧布局：prelude(12) + headers(headers_length) + payload(>=0) + message_crc(4)
+		// 因此 total_length = 12 + headers_length + payload_length + 4。
+		if totalLength < bedrockFrameMinLength { // minimum: 12 prelude + 4 message_crc
 			return nil, fmt.Errorf("invalid eventstream frame: total_length=%d", totalLength)
+		}
+		// 上限保护：AWS EventStream 单帧最大 16MB，避免恶意 total_length 触发巨量分配
+		if totalLength > bedrockFrameMaxLength {
+			return nil, fmt.Errorf("invalid eventstream frame: total_length=%d exceeds max %d", totalLength, bedrockFrameMaxLength)
+		}
+		// headers_length 必须能被 total_length 容纳：headers_length <= total_length - 16
+		// （payload_length = total_length - 16 - headers_length >= 0）
+		// 用 uint64 比较，避免 32 位平台上 uint32 -> int 转换溢出为负数。
+		if uint64(headersLength) > uint64(totalLength)-bedrockFrameMinLength {
+			return nil, fmt.Errorf("invalid eventstream frame: headers_length=%d exceeds total_length=%d", headersLength, totalLength)
 		}
 
 		// 读取 headers + payload + message_crc
-		remaining := int(totalLength) - 12
+		remaining := int(totalLength) - 12 // 安全：totalLength 已被限制在 [16, 16MB]
 		if remaining <= 0 {
 			continue
 		}
 		data := make([]byte, remaining)
 		if _, err := io.ReadFull(d.reader, data); err != nil {
 			return nil, err
+		}
+
+		// 防御性检查：data 至少要放得下 message_crc，且 headers 不能越过 payload 边界。
+		// 上面的 prelude 校验已经保证了这两点，这里在切片处再确认一次，
+		// 使切片边界的正确性不依赖于远处的校验逻辑。
+		if len(data) < 4 || uint64(headersLength) > uint64(len(data)-4) {
+			return nil, fmt.Errorf("invalid eventstream frame: headers_length=%d frame_body=%d", headersLength, len(data))
 		}
 
 		// 验证 message CRC（覆盖 prelude + headers + payload）

@@ -748,6 +748,9 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	go func(scanBuf *sseScannerBuf64K) {
 		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
+		defer recoverStreamGoroutine("handleStreamingResponse SSE pump", func(err error) {
+			_ = sendEvent(scanEvent{err: err})
+		})
 		for scanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
 			if !sendEvent(scanEvent{line: scanner.Text()}) {

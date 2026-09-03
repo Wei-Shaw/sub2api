@@ -1037,6 +1037,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	}
 	go func() {
 		defer close(events)
+		defer recoverStreamGoroutine("handleChatStreamingResponse SSE pump", func(err error) {
+			_ = sendEvent(scanEvent{err: err})
+		})
 		for scanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
 			if !sendEvent(scanEvent{line: scanner.Text()}) {

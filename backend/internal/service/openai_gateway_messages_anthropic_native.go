@@ -333,6 +333,9 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 	go func(scanBuf *sseScannerBuf64K) {
 		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
+		defer recoverStreamGoroutine("handleNativeAnthropicStreamingResponse SSE pump", func(err error) {
+			_ = sendEvent(scanEvent{err: err})
+		})
 		for scanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
 			if !sendEvent(scanEvent{line: scanner.Text()}) {

@@ -525,6 +525,12 @@ func (s *OpenAIGatewayService) ProxyLiveSideband(
 	defer cancel()
 	errCh := make(chan error, 2)
 	go func() {
+		defer recoverStreamGoroutine("live sideband downstream read pump", func(err error) {
+			select {
+			case errCh <- err:
+			default:
+			}
+		})
 		for {
 			messageType, payload, readErr := downstream.Read(proxyCtx)
 			if readErr != nil {
@@ -538,6 +544,12 @@ func (s *OpenAIGatewayService) ProxyLiveSideband(
 		}
 	}()
 	go func() {
+		defer recoverStreamGoroutine("live sideband upstream read pump", func(err error) {
+			select {
+			case errCh <- err:
+			default:
+			}
+		})
 		for {
 			messageType, payload, readErr := upstream.ReadFrame(proxyCtx)
 			if readErr != nil {
@@ -685,6 +697,12 @@ func (s *OpenAIGatewayService) runLiveObserverConnection(record *LiveCallRecord,
 	frameCh := make(chan []byte, 1)
 	errCh := make(chan error, 1)
 	go func() {
+		defer recoverStreamGoroutine("live observer upstream read pump", func(err error) {
+			select {
+			case errCh <- err:
+			case <-ctx.Done():
+			}
+		})
 		for {
 			messageType, payload, err := upstream.ReadFrame(ctx)
 			if err != nil {

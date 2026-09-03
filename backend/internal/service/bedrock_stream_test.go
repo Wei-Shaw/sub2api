@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"hash/crc32"
 	"io"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -258,4 +259,136 @@ func TestBuildBedrockURL(t *testing.T) {
 		url := BuildBedrockURL("us-east-1", "us.anthropic.claude-sonnet-4-6", true)
 		assert.Equal(t, "https://bedrock-runtime.us-east-1.amazonaws.com/model/us.anthropic.claude-sonnet-4-6/invoke-with-response-stream", url)
 	})
+}
+
+// TestBedrockEventStreamDecoderHostileLengths 覆盖"CRC 自洽但长度字段恶意"的帧。
+// CRC32 只能证明数据没有被传输损坏，无法证明 total_length / headers_length 合法，
+// 因此这些帧会正常通过两道 CRC 校验并直达切片逻辑。修复前 data[:headersLength]
+// 与 data[headersLength:len(data)-4] 会触发 slice bounds out of range panic；
+// 该 panic 发生在解码协程中，不受 gin Recovery() 保护，会直接终止整个进程。
+func TestBedrockEventStreamDecoderHostileLengths(t *testing.T) {
+	tab := crc32.MakeTable(crc32.IEEE)
+
+	// buildHostileFrame 构造 prelude CRC 与 message CRC 均正确、
+	// 但 total_length / headers_length 由调用方任意指定的帧。
+	// bodyLen 为 prelude 之后、message_crc 之前的字节数；
+	// 合法帧应满足 bodyLen == total_length - 16。
+	buildHostileFrame := func(totalLen, headersLen uint32, bodyLen int) []byte {
+		prelude := make([]byte, 8)
+		binary.BigEndian.PutUint32(prelude[0:4], totalLen)
+		binary.BigEndian.PutUint32(prelude[4:8], headersLen)
+
+		var frame bytes.Buffer
+		_, _ = frame.Write(prelude)
+		_ = binary.Write(&frame, binary.BigEndian, crc32.Checksum(prelude, tab))
+		if bodyLen > 0 {
+			_, _ = frame.Write(bytes.Repeat([]byte{0x41}, bodyLen))
+		}
+		// message CRC 覆盖它之前的全部字节（prelude + prelude_crc + body）
+		_ = binary.Write(&frame, binary.BigEndian, crc32.Checksum(frame.Bytes(), tab))
+		return frame.Bytes()
+	}
+
+	// 自检：辅助函数生成的合法帧确实能通过两道 CRC 校验，
+	// 否则下面的用例会在 CRC 处提前返回，根本触及不到越界代码。
+	t.Run("helper frames pass both CRC checks", func(t *testing.T) {
+		// total_length=40 => body 24 字节 + 4 字节 message_crc
+		frame := buildHostileFrame(40, 8, 24)
+		decoder := newBedrockEventStreamDecoder(bytes.NewReader(frame))
+		_, err := decoder.Decode()
+		// headers/payload 是无意义填充，不是 chunk 事件，会被跳过并读到流尾
+		require.ErrorIs(t, err, io.EOF)
+		assert.NotContains(t, err.Error(), "CRC mismatch")
+	})
+
+	tests := []struct {
+		name      string
+		frame     []byte
+		wantErrIs error
+		wantErrIn string
+	}{
+		{
+			// headers_length 超出帧体：total_length=40 时上限为 24
+			name:      "headers_length exceeds frame body",
+			frame:     buildHostileFrame(40, 100, 24),
+			wantErrIn: "headers_length=100 exceeds total_length=40",
+		},
+		{
+			name:      "headers_length is MaxUint32",
+			frame:     buildHostileFrame(40, math.MaxUint32, 24),
+			wantErrIn: "headers_length=4294967295 exceeds total_length=40",
+		},
+		{
+			// 恰好越界一个字节：payload 切片下界会大于上界
+			name:      "headers_length off by one past payload boundary",
+			frame:     buildHostileFrame(40, 25, 24),
+			wantErrIn: "headers_length=25 exceeds total_length=40",
+		},
+		{
+			// headers_length == total_length-16 是合法的（payload 为空）
+			name:      "headers_length exactly fills frame body",
+			frame:     buildHostileFrame(40, 24, 24),
+			wantErrIs: io.EOF,
+		},
+		{
+			// 最小合法帧：仅 prelude + message_crc，headers/payload 均为空
+			name:      "minimum valid frame with empty headers and payload",
+			frame:     buildHostileFrame(16, 0, 0),
+			wantErrIs: io.EOF,
+		},
+		{
+			name:      "total_length below the 16 byte minimum",
+			frame:     buildHostileFrame(15, 0, 0),
+			wantErrIn: "total_length=15",
+		},
+		{
+			name:      "total_length zero",
+			frame:     buildHostileFrame(0, 0, 0),
+			wantErrIn: "total_length=0",
+		},
+		{
+			// total_length=16 时 headers_length 只能为 0
+			name:      "headers_length nonzero on minimum frame",
+			frame:     buildHostileFrame(16, 1, 0),
+			wantErrIn: "headers_length=1 exceeds total_length=16",
+		},
+		{
+			// 超大 total_length 会触发巨量分配，必须在 make 之前拒绝
+			name:      "total_length exceeds max frame size",
+			frame:     buildHostileFrame(bedrockFrameMaxLength+1, 0, 0),
+			wantErrIn: "exceeds max",
+		},
+		{
+			name:      "total_length MaxUint32",
+			frame:     buildHostileFrame(math.MaxUint32, 0, 0),
+			wantErrIn: "exceeds max",
+		},
+		{
+			// 长度字段合法但实际数据被截断
+			name:      "truncated frame body",
+			frame:     buildHostileFrame(1000, 10, 20),
+			wantErrIs: io.ErrUnexpectedEOF,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			decoder := newBedrockEventStreamDecoder(bytes.NewReader(tt.frame))
+			var (
+				err error
+				out []byte
+			)
+			require.NotPanics(t, func() {
+				out, err = decoder.Decode()
+			})
+			require.Error(t, err)
+			assert.Nil(t, out)
+			if tt.wantErrIs != nil {
+				assert.ErrorIs(t, err, tt.wantErrIs)
+			}
+			if tt.wantErrIn != "" {
+				assert.Contains(t, err.Error(), tt.wantErrIn)
+			}
+		})
+	}
 }
