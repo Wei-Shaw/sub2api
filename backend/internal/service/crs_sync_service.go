@@ -245,7 +245,8 @@ func (s *CRSSyncService) fetchCRSExport(ctx context.Context, baseURL, username, 
 
 	client, err := httpclient.GetClient(httpclient.Options{
 		Timeout:            20 * time.Second,
-		ValidateResolvedIP: s.cfg.Security.URLAllowlist.Enabled,
+		// 解析后 IP 校验跟随「私网目标」策略，而非主机白名单开关（安全审计 M2）。
+		ValidateResolvedIP: !s.cfg.Security.URLAllowlist.AllowPrivateHosts,
 		AllowPrivateHosts:  s.cfg.Security.URLAllowlist.AllowPrivateHosts,
 	})
 	if err != nil {

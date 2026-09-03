@@ -158,6 +158,8 @@ func runCRSOpenAILongContextSync(t *testing.T, repo AccountRepository, source cr
 
 	cfg := &config.Config{}
 	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	// 测试指向本机 httptest 服务，需显式放行私网目标；生产默认 false（安全审计 M2）。
+	cfg.Security.URLAllowlist.AllowPrivateHosts = true
 	service := NewCRSSyncService(repo, nil, nil, nil, nil, cfg)
 	result, err := service.SyncFromCRS(context.Background(), SyncFromCRSInput{
 		BaseURL:  server.URL,

@@ -23,7 +23,9 @@ func NewProxyExitInfoProber(cfg *config.Config) service.ProxyExitInfoProber {
 	if cfg != nil {
 		insecure = cfg.Security.ProxyProbe.InsecureSkipVerify
 		allowPrivate = cfg.Security.URLAllowlist.AllowPrivateHosts
-		validateResolvedIP = cfg.Security.URLAllowlist.Enabled
+		// 解析后 IP 校验属于「私网目标」策略，与主机白名单开关无关；
+		// 串联两者会让默认部署（白名单关闭）失去 DNS Rebinding 防护（安全审计 M2）。
+		validateResolvedIP = !cfg.Security.URLAllowlist.AllowPrivateHosts
 		if cfg.Gateway.ProxyProbeResponseReadMaxBytes > 0 {
 			maxResponseBytes = cfg.Gateway.ProxyProbeResponseReadMaxBytes
 		}

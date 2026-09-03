@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 )
@@ -807,14 +808,19 @@ func TestLoadDefaultSecurityToggles(t *testing.T) {
 		t.Fatalf("Load() error: %v", err)
 	}
 
+	// 主机白名单保持 opt-in：开启后会强制 HTTPS 并要求逐一列名上游主机
+	// （调用方普遍使用 RequireAllowlist=true），默认开启会打断所有自建/中转上游。
 	if cfg.Security.URLAllowlist.Enabled {
 		t.Fatalf("URLAllowlist.Enabled = true, want false")
 	}
 	if !cfg.Security.URLAllowlist.AllowInsecureHTTP {
 		t.Fatalf("URLAllowlist.AllowInsecureHTTP = false, want true")
 	}
-	if !cfg.Security.URLAllowlist.AllowPrivateHosts {
-		t.Fatalf("URLAllowlist.AllowPrivateHosts = false, want true")
+	// 私网目标默认阻断（安全审计 M2）：与白名单是两个独立开关。
+	// 历史默认值为 true，等于所有部署都对 http://169.254.169.254 之类目标不设防。
+	// 指向 LAN/localhost 上游的部署需显式设置 allow_private_hosts: true。
+	if cfg.Security.URLAllowlist.AllowPrivateHosts {
+		t.Fatalf("URLAllowlist.AllowPrivateHosts = true, want false")
 	}
 	if !cfg.Security.ResponseHeaders.Enabled {
 		t.Fatalf("ResponseHeaders.Enabled = false, want true")
@@ -2609,4 +2615,43 @@ func TestLoad_DefaultGatewayImageStreamConfig(t *testing.T) {
 	if cfg.Gateway.ImageStreamDataIntervalTimeout <= cfg.Gateway.StreamDataIntervalTimeout {
 		t.Fatalf("image stream timeout = %d, want greater than ordinary stream timeout %d", cfg.Gateway.ImageStreamDataIntervalTimeout, cfg.Gateway.StreamDataIntervalTimeout)
 	}
+}
+
+// TestLoadInjectsPrivateUpstreamPolicy 固化 M2 修复的接线：
+// security.url_allowlist.allow_private_hosts 是独立于主机白名单的 SSRF 开关，
+// 且必须被注入 urlvalidator——白名单关闭时的降级校验路径（ValidateURLFormat）
+// 拿不到 *Config，只能靠 Load 注入。断言两个方向，避免接线被悄悄删掉。
+func TestLoadInjectsPrivateUpstreamPolicy(t *testing.T) {
+	prev := urlvalidator.BlockPrivateUpstreams()
+	t.Cleanup(func() { urlvalidator.SetBlockPrivateUpstreams(prev) })
+
+	t.Run("默认阻断私网上游", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		urlvalidator.SetBlockPrivateUpstreams(false)
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		require.False(t, cfg.Security.URLAllowlist.AllowPrivateHosts)
+		require.True(t, urlvalidator.BlockPrivateUpstreams())
+
+		_, err = urlvalidator.ValidateURLFormat("http://169.254.169.254", true)
+		require.ErrorIs(t, err, urlvalidator.ErrPrivateHostBlocked)
+		require.Contains(t, err.Error(), urlvalidator.AllowPrivateHostsSettingKey)
+	})
+
+	t.Run("运营者可显式放行私网上游", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		// AutomaticEnv 只能覆盖 AllKeys() 中已存在的键；该键有 SetDefault，故可用环境变量覆盖。
+		t.Setenv(urlvalidator.AllowPrivateHostsEnvKey, "true")
+		urlvalidator.SetBlockPrivateUpstreams(true)
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		require.True(t, cfg.Security.URLAllowlist.AllowPrivateHosts)
+		require.False(t, urlvalidator.BlockPrivateUpstreams())
+
+		normalized, err := urlvalidator.ValidateURLFormat("http://192.168.1.10:3000", true)
+		require.NoError(t, err)
+		require.Equal(t, "http://192.168.1.10:3000", normalized)
+	})
 }

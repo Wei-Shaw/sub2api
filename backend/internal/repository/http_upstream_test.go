@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -960,4 +961,92 @@ func hasEntry(svc *httpUpstreamService, target *upstreamClientEntry) bool {
 		}
 	}
 	return false
+}
+
+// TestShouldValidateResolvedIPDecoupledFromAllowlist 固化安全审计 M2 的修复：
+// 解析后 IP 校验（DNS Rebinding / 重定向防护）执行的是「私网目标」策略，
+// 与主机白名单 security.url_allowlist.enabled 无关。此前两者被串联，
+// 导致默认部署（白名单关闭）下该防护完全不生效。
+func TestShouldValidateResolvedIPDecoupledFromAllowlist(t *testing.T) {
+	cases := []struct {
+		name              string
+		allowlistEnabled  bool
+		allowPrivateHosts bool
+		want              bool
+	}{
+		{name: "默认部署：白名单关闭且不允许私网 -> 校验", allowlistEnabled: false, allowPrivateHosts: false, want: true},
+		{name: "白名单开启且不允许私网 -> 校验", allowlistEnabled: true, allowPrivateHosts: false, want: true},
+		{name: "运营者显式放行私网 -> 不校验", allowlistEnabled: false, allowPrivateHosts: true, want: false},
+		{name: "白名单开启但放行私网 -> 不校验", allowlistEnabled: true, allowPrivateHosts: true, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{
+				Enabled:           tc.allowlistEnabled,
+				AllowPrivateHosts: tc.allowPrivateHosts,
+			}}}
+			svc, ok := NewHTTPUpstream(cfg).(*httpUpstreamService)
+			require.True(t, ok)
+			require.Equal(t, tc.want, svc.shouldValidateResolvedIP())
+		})
+	}
+
+	svc, ok := NewHTTPUpstream(nil).(*httpUpstreamService)
+	require.True(t, ok)
+	require.False(t, svc.shouldValidateResolvedIP(), "nil config 保持原有的不校验语义")
+}
+
+// TestDoBlocksPrivateUpstreamAtEgress 验证出网口兜底：即使 base_url 校验被绕过或
+// 通过 DNS 变换指向内网，实际发起请求时仍会被解析后 IP 校验拦下；
+// 运营者显式放行私网后，自建 LAN/localhost 上游必须恢复可用。
+func TestDoBlocksPrivateUpstreamAtEgress(t *testing.T) {
+	var hits atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	newRequest := func(t *testing.T) *http.Request {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, server.URL, nil)
+		require.NoError(t, err)
+		return req
+	}
+
+	t.Run("默认阻断环回上游", func(t *testing.T) {
+		cfg := &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{AllowPrivateHosts: false}}}
+		_, err := NewHTTPUpstream(cfg).Do(newRequest(t), "", 1, 1)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), urlvalidator.AllowPrivateHostsSettingKey)
+		require.Zero(t, hits.Load(), "请求不得真正出网")
+	})
+
+	t.Run("显式放行后可达", func(t *testing.T) {
+		cfg := &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{AllowPrivateHosts: true}}}
+		resp, err := NewHTTPUpstream(cfg).Do(newRequest(t), "", 2, 1)
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.Equal(t, int64(1), hits.Load())
+	})
+}
+
+// TestRedirectCheckerBlocksPrivateRedirectTarget 验证重定向到内网地址会被拒绝
+// （DNS Rebinding / 开放重定向绕过防护）。
+func TestRedirectCheckerBlocksPrivateRedirectTarget(t *testing.T) {
+	cfg := &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{AllowPrivateHosts: false}}}
+	svc, ok := NewHTTPUpstream(cfg).(*httpUpstreamService)
+	require.True(t, ok)
+
+	entry := mustGetOrCreateClient(t, svc, "", 3, 1)
+	require.NotNil(t, entry.client.CheckRedirect, "阻断私网时必须挂上重定向校验")
+
+	req, err := http.NewRequest(http.MethodGet, "http://169.254.169.254/latest/meta-data/", nil)
+	require.NoError(t, err)
+	require.Error(t, svc.redirectChecker(req, nil))
+
+	publicReq, err := http.NewRequest(http.MethodGet, "https://api.anthropic.com/v1/messages", nil)
+	require.NoError(t, err)
+	require.NoError(t, svc.redirectChecker(publicReq, nil))
 }

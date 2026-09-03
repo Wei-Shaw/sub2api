@@ -577,11 +577,15 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	return entry, nil
 }
 
+// shouldValidateResolvedIP 决定是否在发起请求/跟随重定向时校验解析后的 IP。
+//
+// 该校验执行的是「私网目标」策略（security.url_allowlist.allow_private_hosts），
+// 与主机白名单（security.url_allowlist.enabled）无关：此前把两者串联，导致默认
+// 部署（白名单关闭）下 DNS Rebinding / 重定向绕过防护完全不生效（安全审计 M2）。
+//
+// cfg == nil 只出现在测试与少数引导路径中，保持原有的「不校验」语义。
 func (s *httpUpstreamService) shouldValidateResolvedIP() bool {
 	if s.cfg == nil {
-		return false
-	}
-	if !s.cfg.Security.URLAllowlist.Enabled {
 		return false
 	}
 	return !s.cfg.Security.URLAllowlist.AllowPrivateHosts

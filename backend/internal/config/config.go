@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/spf13/viper"
 	"golang.org/x/net/http/httpguts"
 )
@@ -2010,8 +2011,17 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 		cfg.JWT.Secret = ""
 	}
 
+	// 把「是否阻断私网上游」注入 urlvalidator：白名单关闭时的降级校验路径
+	// （ValidateURLFormat）没有 *Config 可用，只能由加载流程一次性注入。
+	// 由于 allow_private_hosts 默认 false，任何真实部署（都经由 Load/LoadForBootstrap）
+	// 都会在这里打开私网阻断；出网口 repository 侧还有一层基于 Config 的兜底校验。
+	urlvalidator.SetBlockPrivateUpstreams(!cfg.Security.URLAllowlist.AllowPrivateHosts)
+
 	if !cfg.Security.URLAllowlist.Enabled {
-		slog.Warn("security.url_allowlist.enabled=false; allowlist/SSRF checks disabled (minimal format validation only).")
+		slog.Warn("security.url_allowlist.enabled=false; upstream host allowlist is not enforced (private/loopback targets are still blocked unless security.url_allowlist.allow_private_hosts=true).")
+	}
+	if cfg.Security.URLAllowlist.AllowPrivateHosts {
+		slog.Warn("security.url_allowlist.allow_private_hosts=true; SSRF protection is disabled: upstream/pricing/CRS URLs may point at localhost, RFC1918 or link-local addresses (169.254.169.254). Only use this on trusted networks.")
 	}
 	if !cfg.Security.ResponseHeaders.Enabled {
 		slog.Warn("security.response_headers.enabled=false; configurable header filtering disabled (default allowlist only).")
@@ -2098,6 +2108,20 @@ func setDefaults() {
 	viper.SetDefault("webauthn.rp_origins", []string{})
 
 	// Security
+	//
+	// 出站 URL 策略被拆成两个独立开关，不要把它们混为一谈：
+	//
+	//  1. security.url_allowlist.enabled —— 主机白名单（默认关闭）。
+	//     开启后调用方走 ValidateHTTPSURL + RequireAllowlist=true：强制 HTTPS，
+	//     且上游主机必须逐一列在 upstream_hosts/pricing_hosts/crs_hosts 中。
+	//     这是封闭部署的收敛策略，默认开启会直接打断所有自建/第三方中转上游，
+	//     因此保持 opt-in。
+	//
+	//  2. security.url_allowlist.allow_private_hosts —— 私网目标（默认禁止）。
+	//     这是 SSRF 基线防护，与白名单是否开启无关：无论走白名单路径还是降级的
+	//     格式校验路径，指向 localhost / RFC1918 / 169.254.169.254 的上游都会被
+	//     拒绝，且解析后 IP 校验（DNS Rebinding / 重定向）同步生效。
+	//     指向 LAN、局域网中转或 localhost 的部署需要显式设为 true。
 	viper.SetDefault("security.url_allowlist.enabled", false)
 	viper.SetDefault("security.url_allowlist.upstream_hosts", []string{
 		"api.openai.com",
@@ -2115,7 +2139,10 @@ func setDefaults() {
 		"raw.githubusercontent.com",
 	})
 	viper.SetDefault("security.url_allowlist.crs_hosts", []string{})
-	viper.SetDefault("security.url_allowlist.allow_private_hosts", true)
+	// 默认阻断私网/环回/链路本地上游（SSRF 基线）。
+	// 历史默认值为 true，配合默认关闭的白名单，等于所有部署都对
+	// http://169.254.169.254 之类的目标完全不设防（安全审计 M2）。
+	viper.SetDefault("security.url_allowlist.allow_private_hosts", false)
 	viper.SetDefault("security.url_allowlist.allow_insecure_http", true)
 	viper.SetDefault("security.response_headers.enabled", true)
 	viper.SetDefault("security.response_headers.additional_allowed", []string{})

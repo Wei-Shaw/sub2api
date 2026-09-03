@@ -13,6 +13,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -69,9 +70,9 @@ const antigravityUpstreamTestBody = `{"model":"claude-sonnet-4-5","messages":[{"
 // TestForwardUpstreamRejectsSSRFBaseURL 验证 base_url 指向内网/元数据地址时，
 // ForwardUpstream 在构造并发送上游请求之前即失败（不产生任何出网请求）。
 //
-// 注意：security.url_allowlist.allow_insecure_http 的运行时默认值为 true，因此
-// 「关闭白名单 + 仅格式校验」这条降级分支并不能拦住 http 内网地址，
-// 见 TestForwardUpstreamAllowlistDisabledFallbackIsFormatOnly。
+// 注意：security.url_allowlist.allow_insecure_http 的运行时默认值为 true，
+// 关闭白名单时走的是降级校验分支；该分支现在同样执行私网阻断，
+// 见 TestForwardUpstreamAllowlistDisabledFallbackBlocksPrivateTargets。
 func TestForwardUpstreamRejectsSSRFBaseURL(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -199,24 +200,69 @@ func TestForwardUpstreamLimitsResponseBody(t *testing.T) {
 	require.ErrorIs(t, err, ErrUpstreamResponseBodyTooLarge)
 }
 
-// TestForwardUpstreamAllowlistDisabledFallbackIsFormatOnly 固化当前行为：
-// security.url_allowlist.enabled=false（默认）时只做格式校验，配合默认开启的
-// allow_insecure_http，http://169.254.169.254 仍会被放行。
-// 这是安全审计 M2（降级校验过弱）的范围，不在本次修复内；此用例用于让 M2 一旦被修复
-// 时能立刻暴露出来，而不是假装该路径已经安全。
-func TestForwardUpstreamAllowlistDisabledFallbackIsFormatOnly(t *testing.T) {
-	upstream := &antigravityUpstreamCallRecorder{err: errors.New("boom")}
-	svc := &AntigravityGatewayService{
-		httpUpstream:   upstream,
-		settingService: &SettingService{cfg: antigravityInsecureHTTPConfig(true)},
+// TestForwardUpstreamAllowlistDisabledFallbackBlocksPrivateTargets 固化 M2 修复后的行为：
+// security.url_allowlist.enabled=false（默认，主机白名单仍是 opt-in）时走降级校验分支，
+// 但该分支不再只做格式校验——私网/环回/链路本地目标由独立开关
+// security.url_allowlist.allow_private_hosts 控制，默认阻断，
+// 因此 http://169.254.169.254 在发起任何出网请求前即被拒绝。
+//
+// 该用例同时固化「运营者可以主动放行私网上游」这条出路：显式允许私网后，
+// 指向 LAN/localhost 的自建上游必须恢复可达，否则等于把自托管部署打死。
+//
+// 注意：单测直接构造 config.Config，不经过 config.Load，所以要显式注入
+// Load 在运行时注入的同一策略（urlvalidator.SetBlockPrivateUpstreams）。
+func TestForwardUpstreamAllowlistDisabledFallbackBlocksPrivateTargets(t *testing.T) {
+	forward := func(t *testing.T, blockPrivate bool, baseURL string) (*antigravityUpstreamCallRecorder, error) {
+		t.Helper()
+		prev := urlvalidator.BlockPrivateUpstreams()
+		urlvalidator.SetBlockPrivateUpstreams(blockPrivate)
+		t.Cleanup(func() { urlvalidator.SetBlockPrivateUpstreams(prev) })
+
+		upstream := &antigravityUpstreamCallRecorder{err: errors.New("boom")}
+		svc := &AntigravityGatewayService{
+			httpUpstream:   upstream,
+			settingService: &SettingService{cfg: antigravityInsecureHTTPConfig(true)},
+		}
+		c, _ := newAntigravityUpstreamTestContext()
+
+		_, err := svc.ForwardUpstream(context.Background(), c, newAntigravityUpstreamAccount(baseURL), []byte(antigravityUpstreamTestBody))
+		return upstream, err
 	}
-	c, _ := newAntigravityUpstreamTestContext()
 
-	_, err := svc.ForwardUpstream(context.Background(), c, newAntigravityUpstreamAccount("http://169.254.169.254"), []byte(antigravityUpstreamTestBody))
+	t.Run("默认阻断云元数据地址", func(t *testing.T) {
+		upstream, err := forward(t, true, "http://169.254.169.254")
 
-	require.Error(t, err)
-	require.NotContains(t, err.Error(), "invalid base_url")
-	require.Equal(t, 1, upstream.calls, "M2: 关闭白名单时仅格式校验，内网地址仍可达（待 M2 修复后此断言应改为 0）")
+		require.Error(t, err)
+		require.ErrorIs(t, err, urlvalidator.ErrPrivateHostBlocked)
+		require.Contains(t, err.Error(), "invalid base_url")
+		// 报错必须点名放行开关，否则运营者不知道去哪里开。
+		require.Contains(t, err.Error(), urlvalidator.AllowPrivateHostsSettingKey)
+		require.Equal(t, 0, upstream.calls, "M2: 私网目标必须在出网前被拒绝")
+	})
+
+	t.Run("默认阻断 localhost", func(t *testing.T) {
+		upstream, err := forward(t, true, "http://localhost:8080")
+
+		require.Error(t, err)
+		require.ErrorIs(t, err, urlvalidator.ErrPrivateHostBlocked)
+		require.Equal(t, 0, upstream.calls)
+	})
+
+	t.Run("显式放行后私网上游恢复可达", func(t *testing.T) {
+		upstream, err := forward(t, false, "http://192.168.1.10:3000")
+
+		require.Error(t, err) // 来自 stub 上游的 boom，而非校验失败
+		require.NotContains(t, err.Error(), "invalid base_url")
+		require.Equal(t, 1, upstream.calls, "allow_private_hosts=true 时自建 LAN 上游必须仍然可用")
+	})
+
+	t.Run("公网目标不受影响", func(t *testing.T) {
+		upstream, err := forward(t, true, "http://relay.example.com")
+
+		require.Error(t, err)
+		require.NotContains(t, err.Error(), "invalid base_url")
+		require.Equal(t, 1, upstream.calls)
+	})
 }
 
 func antigravityInsecureHTTPConfig(allowInsecureHTTP bool) *config.Config {
