@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
@@ -27,19 +26,17 @@ const (
 	SettingBalanceRechargeMult = "BALANCE_RECHARGE_MULTIPLIER"
 	// SettingSubscriptionUSDToCNYRate 是订阅 CNY 换算汇率（1 USD = X CNY）。
 	// 0/未配置 = 关闭换算（订阅按 price 数值直付），显式配置后 CNY 通道订阅按 price × rate 收款。
-	SettingSubscriptionUSDToCNYRate      = "SUBSCRIPTION_USD_TO_CNY_RATE"
-	SettingRechargeFeeRate               = "RECHARGE_FEE_RATE"
-	SettingProductNamePrefix             = "PRODUCT_NAME_PREFIX"
-	SettingProductNameSuffix             = "PRODUCT_NAME_SUFFIX"
-	SettingHelpImageURL                  = "PAYMENT_HELP_IMAGE_URL"
-	SettingHelpText                      = "PAYMENT_HELP_TEXT"
-	SettingCancelRateLimitOn             = "CANCEL_RATE_LIMIT_ENABLED"
-	SettingCancelRateLimitMax            = "CANCEL_RATE_LIMIT_MAX"
-	SettingCancelWindowSize              = "CANCEL_RATE_LIMIT_WINDOW"
-	SettingCancelWindowUnit              = "CANCEL_RATE_LIMIT_UNIT"
-	SettingCancelWindowMode              = "CANCEL_RATE_LIMIT_WINDOW_MODE"
-	SettingAlipayForceQRCode             = "ALIPAY_FORCE_QRCODE"
-	SettingAlipayMobilePrecreateDeepLink = "ALIPAY_MOBILE_PRECREATE_DEEP_LINK"
+	SettingSubscriptionUSDToCNYRate = "SUBSCRIPTION_USD_TO_CNY_RATE"
+	SettingRechargeFeeRate          = "RECHARGE_FEE_RATE"
+	SettingProductNamePrefix        = "PRODUCT_NAME_PREFIX"
+	SettingProductNameSuffix        = "PRODUCT_NAME_SUFFIX"
+	SettingHelpImageURL             = "PAYMENT_HELP_IMAGE_URL"
+	SettingHelpText                 = "PAYMENT_HELP_TEXT"
+	SettingCancelRateLimitOn        = "CANCEL_RATE_LIMIT_ENABLED"
+	SettingCancelRateLimitMax       = "CANCEL_RATE_LIMIT_MAX"
+	SettingCancelWindowSize         = "CANCEL_RATE_LIMIT_WINDOW"
+	SettingCancelWindowUnit         = "CANCEL_RATE_LIMIT_UNIT"
+	SettingCancelWindowMode         = "CANCEL_RATE_LIMIT_WINDOW_MODE"
 )
 
 // Default values for payment configuration settings.
@@ -67,7 +64,6 @@ type PaymentConfig struct {
 	ProductNameSuffix        string  `json:"product_name_suffix"`
 	HelpImageURL             string  `json:"help_image_url"`
 	HelpText                 string  `json:"help_text"`
-	StripePublishableKey     string  `json:"stripe_publishable_key,omitempty"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled bool   `json:"cancel_rate_limit_enabled"`
@@ -224,18 +220,12 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingHelpImageURL, SettingHelpText,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
 		SettingCancelWindowSize, SettingCancelWindowUnit, SettingCancelWindowMode,
-		SettingAlipayForceQRCode, SettingAlipayMobilePrecreateDeepLink,
-		SettingPaymentVisibleMethodAlipayEnabled, SettingPaymentVisibleMethodAlipaySource,
-		SettingPaymentVisibleMethodWxpayEnabled, SettingPaymentVisibleMethodWxpaySource,
 	}
 	vals, err := s.settingRepo.GetMultiple(ctx, keys)
 	if err != nil {
 		return nil, fmt.Errorf("get payment config settings: %w", err)
 	}
-	cfg := s.parsePaymentConfig(vals)
-	// Load Stripe publishable key from the first enabled Stripe provider instance
-	cfg.StripePublishableKey = s.getStripePublishableKey(ctx)
-	return cfg, nil
+	return s.parsePaymentConfig(vals), nil
 }
 
 func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *PaymentConfig {
@@ -261,14 +251,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		CancelRateLimitWindow:  pcParseInt(vals[SettingCancelWindowSize], 1),
 		CancelRateLimitUnit:    vals[SettingCancelWindowUnit],
 		CancelRateLimitMode:    vals[SettingCancelWindowMode],
-
-		AlipayForceQRCode:             vals[SettingAlipayForceQRCode] == "true",
-		AlipayMobilePrecreateDeepLink: vals[SettingAlipayMobilePrecreateDeepLink] == "true",
 	}
-	cfg.AlipayMobilePrecreateDeepLink = pcEnvBoolOverride(
-		SettingAlipayMobilePrecreateDeepLink,
-		cfg.AlipayMobilePrecreateDeepLink,
-	)
 	if cfg.LoadBalanceStrategy == "" {
 		cfg.LoadBalanceStrategy = payment.DefaultLoadBalanceStrategy
 	}
@@ -295,26 +278,6 @@ func pcEnvBoolOverride(key string, fallback bool) bool {
 		return fallback
 	}
 	return value
-}
-
-// getStripePublishableKey finds the publishable key from the first enabled Stripe provider instance.
-func (s *PaymentConfigService) getStripePublishableKey(ctx context.Context) string {
-	if s.entClient == nil {
-		return ""
-	}
-	instances, err := s.entClient.PaymentProviderInstance.Query().
-		Where(
-			paymentproviderinstance.EnabledEQ(true),
-			paymentproviderinstance.ProviderKeyEQ(payment.TypeStripe),
-		).Limit(1).All(ctx)
-	if err != nil || len(instances) == 0 {
-		return ""
-	}
-	cfg, err := s.decryptConfig(instances[0].Config)
-	if err != nil || cfg == nil {
-		return ""
-	}
-	return cfg[payment.ConfigKeyPublishableKey]
 }
 
 // UpdatePaymentConfig updates the payment configuration settings.
@@ -407,24 +370,6 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	if req.CancelRateLimitMode != nil {
 		m[SettingCancelWindowMode] = derefStr(req.CancelRateLimitMode)
 	}
-	if req.AlipayForceQRCode != nil {
-		m[SettingAlipayForceQRCode] = formatBoolOrEmpty(req.AlipayForceQRCode)
-	}
-	if req.AlipayMobilePrecreateDeepLink != nil {
-		m[SettingAlipayMobilePrecreateDeepLink] = formatBoolOrEmpty(req.AlipayMobilePrecreateDeepLink)
-	}
-	if req.VisibleMethodAlipaySource != nil {
-		m[SettingPaymentVisibleMethodAlipaySource] = derefStr(req.VisibleMethodAlipaySource)
-	}
-	if req.VisibleMethodWxpaySource != nil {
-		m[SettingPaymentVisibleMethodWxpaySource] = derefStr(req.VisibleMethodWxpaySource)
-	}
-	if req.VisibleMethodAlipayEnabled != nil {
-		m[SettingPaymentVisibleMethodAlipayEnabled] = formatBoolOrEmpty(req.VisibleMethodAlipayEnabled)
-	}
-	if req.VisibleMethodWxpayEnabled != nil {
-		m[SettingPaymentVisibleMethodWxpayEnabled] = formatBoolOrEmpty(req.VisibleMethodWxpayEnabled)
-	}
 	return s.settingRepo.SetMultiple(ctx, m)
 }
 
@@ -510,80 +455,4 @@ func pcParseInt(s string, defaultVal int) int {
 		return defaultVal
 	}
 	return v
-}
-
-func buildVisibleMethodSourceAvailability(instances []*dbent.PaymentProviderInstance) map[string]bool {
-	available := make(map[string]bool, 4)
-	for _, inst := range instances {
-		switch inst.ProviderKey {
-		case payment.TypeAlipay:
-			if inst.SupportedTypes == "" || payment.InstanceSupportsType(inst.SupportedTypes, payment.TypeAlipay) || payment.InstanceSupportsType(inst.SupportedTypes, payment.TypeAlipayDirect) {
-				available[VisibleMethodSourceOfficialAlipay] = true
-			}
-		case payment.TypeWxpay:
-			if inst.SupportedTypes == "" || payment.InstanceSupportsType(inst.SupportedTypes, payment.TypeWxpay) || payment.InstanceSupportsType(inst.SupportedTypes, payment.TypeWxpayDirect) {
-				available[VisibleMethodSourceOfficialWechat] = true
-			}
-		case payment.TypeEasyPay:
-			for _, supportedType := range splitTypes(inst.SupportedTypes) {
-				switch NormalizeVisibleMethod(supportedType) {
-				case payment.TypeAlipay:
-					available[VisibleMethodSourceEasyPayAlipay] = true
-				case payment.TypeWxpay:
-					available[VisibleMethodSourceEasyPayWechat] = true
-				}
-			}
-		}
-	}
-	return available
-}
-
-func applyVisibleMethodRoutingToEnabledTypes(base []string, vals map[string]string, available map[string]bool) []string {
-	shouldExpose := map[string]bool{
-		payment.TypeAlipay: visibleMethodShouldBeExposed(payment.TypeAlipay, vals, available),
-		payment.TypeWxpay:  visibleMethodShouldBeExposed(payment.TypeWxpay, vals, available),
-	}
-
-	seen := make(map[string]struct{}, len(base)+2)
-	out := make([]string, 0, len(base)+2)
-	appendType := func(paymentType string) {
-		paymentType = NormalizeVisibleMethod(paymentType)
-		if paymentType == "" {
-			return
-		}
-		if _, ok := seen[paymentType]; ok {
-			return
-		}
-		seen[paymentType] = struct{}{}
-		out = append(out, paymentType)
-	}
-
-	for _, paymentType := range base {
-		visibleMethod := NormalizeVisibleMethod(paymentType)
-		switch visibleMethod {
-		case payment.TypeAlipay, payment.TypeWxpay:
-			if shouldExpose[visibleMethod] {
-				appendType(visibleMethod)
-			}
-		default:
-			appendType(visibleMethod)
-		}
-	}
-
-	for _, visibleMethod := range []string{payment.TypeAlipay, payment.TypeWxpay} {
-		if shouldExpose[visibleMethod] {
-			appendType(visibleMethod)
-		}
-	}
-	return out
-}
-
-func visibleMethodShouldBeExposed(method string, vals map[string]string, available map[string]bool) bool {
-	enabledKey := visibleMethodEnabledSettingKey(method)
-	sourceKey := visibleMethodSourceSettingKey(method)
-	if enabledKey == "" || sourceKey == "" || vals[enabledKey] != "true" {
-		return false
-	}
-	source := NormalizeVisibleMethodSource(method, vals[sourceKey])
-	return source != "" && available[source]
 }

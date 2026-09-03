@@ -110,14 +110,6 @@
             <Icon name="refresh" size="sm" />
             <span class="text-xs">{{ t('payment.admin.retry') }}</span>
           </button>
-          <button
-            v-if="canRefundRow(row)"
-            @click="emit('refund', row)"
-            class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-          >
-            <Icon name="dollar" size="sm" />
-            <span class="text-xs">{{ t('payment.admin.refund') }}</span>
-          </button>
         </div>
       </template>
     </DataTable>
@@ -142,7 +134,7 @@ import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { statusBadgeClass, canRefund, formatOrderDateTime } from '@/components/payment/orderUtils'
+import { statusBadgeClass, formatOrderDateTime } from '@/components/payment/orderUtils'
 import { currencySymbol } from '@/components/payment/currency'
 
 const { t } = useI18n()
@@ -159,7 +151,6 @@ const emit = defineEmits<{
   (e: 'detail', order: PaymentOrder): void
   (e: 'cancel', order: PaymentOrder): void
   (e: 'retry', order: PaymentOrder): void
-  (e: 'refund', order: PaymentOrder): void
   (e: 'refresh'): void
   (e: 'update:page', page: number): void
   (e: 'update:pageSize', size: number): void
@@ -227,10 +218,6 @@ const orderTypeFilterOptions = computed(() => [
   { value: 'balance', label: t('payment.admin.balanceOrder') },
   { value: 'subscription', label: t('payment.admin.subscriptionOrder') },
 ])
-
-function canRefundRow(order: PaymentOrder): boolean {
-  return canRefund(order.status)
-}
 
 function formatDateTime(dateStr: string): string {
   return formatOrderDateTime(dateStr)

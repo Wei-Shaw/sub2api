@@ -21,13 +21,18 @@ import (
 // --- Order Status Constants ---
 
 const (
-	OrderStatusPending           = payment.OrderStatusPending
-	OrderStatusPaid              = payment.OrderStatusPaid
-	OrderStatusRecharging        = payment.OrderStatusRecharging
-	OrderStatusCompleted         = payment.OrderStatusCompleted
-	OrderStatusExpired           = payment.OrderStatusExpired
-	OrderStatusCancelled         = payment.OrderStatusCancelled
-	OrderStatusFailed            = payment.OrderStatusFailed
+	OrderStatusPending    = payment.OrderStatusPending
+	OrderStatusPaid       = payment.OrderStatusPaid
+	OrderStatusRecharging = payment.OrderStatusRecharging
+	OrderStatusCompleted  = payment.OrderStatusCompleted
+	OrderStatusExpired    = payment.OrderStatusExpired
+	OrderStatusCancelled  = payment.OrderStatusCancelled
+	OrderStatusFailed     = payment.OrderStatusFailed
+)
+
+// Legacy refund order statuses, kept so historical orders still render.
+// See the same block in internal/payment/types.go.
+const (
 	OrderStatusRefundRequested   = payment.OrderStatusRefundRequested
 	OrderStatusRefunding         = payment.OrderStatusRefunding
 	OrderStatusRefundPending     = payment.OrderStatusRefundPending
@@ -41,10 +46,11 @@ const (
 	// payment_config_service.go alongside other payment configuration defaults.
 	paymentGraceMinutes = 5
 
-	defaultPageSize    = 20
-	maxPageSize        = 100
-	topUsersLimit      = 10
-	amountToleranceCNY = 0.01
+	defaultPageSize = 20
+	maxPageSize     = 100
+	topUsersLimit   = 10
+	// amountToleranceMinorUnit 是两位小数币种下允许的多付容差（一分 / one cent）。
+	amountToleranceMinorUnit = 0.01
 
 	orderIDPrefix = "sub2_"
 )
@@ -71,45 +77,36 @@ func generateRandomString(n int) string {
 }
 
 type CreateOrderRequest struct {
-	UserID          int64
-	Amount          float64
-	PaymentType     string
-	OpenID          string
-	ClientIP        string
-	IsMobile        bool
-	IsWeChatBrowser bool
-	SrcHost         string
-	SrcURL          string
-	ReturnURL       string
-	PaymentSource   string
-	OrderType       string
-	PlanID          int64
-	Locale          string
+	UserID        int64
+	Amount        float64
+	PaymentType   string
+	ClientIP      string
+	IsMobile      bool
+	SrcHost       string
+	SrcURL        string
+	ReturnURL     string
+	PaymentSource string
+	OrderType     string
+	PlanID        int64
+	Locale        string
 }
 
 type CreateOrderResponse struct {
-	OrderID                       int64                           `json:"order_id"`
-	Amount                        float64                         `json:"amount"`
-	PayAmount                     float64                         `json:"pay_amount"`
-	FeeRate                       float64                         `json:"fee_rate"`
-	Status                        string                          `json:"status"`
-	ResultType                    payment.CreatePaymentResultType `json:"result_type,omitempty"`
-	PaymentType                   string                          `json:"payment_type"`
-	OutTradeNo                    string                          `json:"out_trade_no,omitempty"`
-	PayURL                        string                          `json:"pay_url,omitempty"`
-	QRCode                        string                          `json:"qr_code,omitempty"`
-	ClientSecret                  string                          `json:"client_secret,omitempty"`
-	IntentID                      string                          `json:"intent_id,omitempty"`
-	Currency                      string                          `json:"currency,omitempty"`
-	CountryCode                   string                          `json:"country_code,omitempty"`
-	PaymentEnv                    string                          `json:"payment_env,omitempty"`
-	OAuth                         *payment.WechatOAuthInfo        `json:"oauth,omitempty"`
-	JSAPI                         *payment.WechatJSAPIPayload     `json:"jsapi,omitempty"`
-	JSAPIPayload                  *payment.WechatJSAPIPayload     `json:"jsapi_payload,omitempty"`
-	ExpiresAt                     time.Time                       `json:"expires_at"`
-	PaymentMode                   string                          `json:"payment_mode,omitempty"`
-	ResumeToken                   string                          `json:"resume_token,omitempty"`
-	AlipayMobilePrecreateDeepLink bool                            `json:"alipay_mobile_precreate_deep_link,omitempty"`
+	OrderID     int64                           `json:"order_id"`
+	Amount      float64                         `json:"amount"`
+	PayAmount   float64                         `json:"pay_amount"`
+	FeeRate     float64                         `json:"fee_rate"`
+	Status      string                          `json:"status"`
+	ResultType  payment.CreatePaymentResultType `json:"result_type,omitempty"`
+	PaymentType string                          `json:"payment_type"`
+	OutTradeNo  string                          `json:"out_trade_no,omitempty"`
+	PayURL      string                          `json:"pay_url,omitempty"`
+	QRCode      string                          `json:"qr_code,omitempty"`
+	Currency    string                          `json:"currency,omitempty"`
+	PaymentEnv  string                          `json:"payment_env,omitempty"`
+	ExpiresAt   time.Time                       `json:"expires_at"`
+	PaymentMode string                          `json:"payment_mode,omitempty"`
+	ResumeToken string                          `json:"resume_token,omitempty"`
 }
 
 type OrderListParams struct {
@@ -119,28 +116,6 @@ type OrderListParams struct {
 	OrderType   string
 	PaymentType string
 	Keyword     string
-}
-
-type RefundPlan struct {
-	OrderID         int64
-	Order           *dbent.PaymentOrder
-	RefundAmount    float64
-	GatewayAmount   float64
-	Reason          string
-	Force           bool
-	DeductBalance   bool
-	DeductionType   string
-	BalanceToDeduct float64
-	SubDaysToDeduct int
-	SubscriptionID  int64
-}
-
-type RefundResult struct {
-	Success         bool    `json:"success"`
-	Warning         string  `json:"warning,omitempty"`
-	RequireForce    bool    `json:"require_force,omitempty"`
-	BalanceDeducted float64 `json:"balance_deducted,omitempty"`
-	SubDaysDeducted int     `json:"subscription_days_deducted,omitempty"`
 }
 
 type DashboardStats struct {
@@ -201,7 +176,7 @@ type PaymentService struct {
 }
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService) *PaymentService {
-	svc := &PaymentService{entClient: entClient, registry: registry, loadBalancer: newVisibleMethodLoadBalancer(loadBalancer, configService), redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepo, affiliateService: affiliateService}
+	svc := &PaymentService{entClient: entClient, registry: registry, loadBalancer: loadBalancer, redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepo, affiliateService: affiliateService}
 	svc.resumeService = psNewPaymentResumeService(configService)
 	return svc
 }

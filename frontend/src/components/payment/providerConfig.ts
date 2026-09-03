@@ -21,12 +21,6 @@ export interface TypeOption {
   [key: string]: unknown
 }
 
-export interface EasyPayCustomMethod {
-  type: string
-  upstreamType: string
-  displayName: string
-}
-
 /** Callback URL paths for a provider. */
 export interface CallbackPaths {
   notifyUrl?: string
@@ -35,57 +29,80 @@ export interface CallbackPaths {
 
 // --- Constants ---
 
-/** Maps provider key → available payment types. */
+/** Provider key of the only supported gateway. */
+export const PROVIDER_SEPAY = 'sepay'
+
+/** User-facing SePay payment methods. */
+export const SEPAY_BANK_TRANSFER = 'sepay_bank_transfer'
+export const SEPAY_NAPAS = 'sepay_napas'
+export const SEPAY_CARD = 'sepay_card'
+
+/** Maps provider key -> available payment types. */
 export const PROVIDER_SUPPORTED_TYPES: Record<string, string[]> = {
-  easypay: ['alipay', 'wxpay'],
-  alipay: ['alipay'],
-  wxpay: ['wxpay'],
-  stripe: ['card', 'alipay', 'wxpay', 'link'],
-  airwallex: ['airwallex'],
+  [PROVIDER_SEPAY]: [SEPAY_BANK_TRANSFER, SEPAY_NAPAS, SEPAY_CARD],
 }
 
-/** Available payment modes for EasyPay providers. */
-export const EASYPAY_PAYMENT_MODES = ['qrcode', 'popup'] as const
+/** Fixed display order for user-facing payment methods. */
+export const METHOD_ORDER = [SEPAY_BANK_TRANSFER, SEPAY_NAPAS, SEPAY_CARD] as const
 
-/** Fixed display order for user-facing payment methods */
-export const METHOD_ORDER = ['alipay', 'alipay_direct', 'wxpay', 'wxpay_direct', 'stripe', 'airwallex'] as const
-
-export function isBuiltInAlipayMethod(type: string): boolean {
-  return type === 'alipay' || type === 'alipay_direct'
-}
-
-export function isBuiltInWxpayMethod(type: string): boolean {
-  return type === 'wxpay' || type === 'wxpay_direct'
-}
-
-/** Payment mode constants */
+/** Payment mode constants. */
 export const PAYMENT_MODE_QRCODE = 'qrcode'
 export const PAYMENT_MODE_POPUP = 'popup'
-/** Alipay-only: skip FACE_TO_FACE_PAYMENT precreate and open the Alipay
- * checkout page in a new tab instead. Backend `alipay.go` matches on this
- * literal (case-insensitive); other values fall back to the default
- * precreate→pagepay flow. */
 export const PAYMENT_MODE_REDIRECT = 'redirect'
 
-export const PAYMENT_CURRENCY_OPTIONS: TypeOption[] = [
-  { value: 'CNY', label: 'CNY' },
-  { value: 'HKD', label: 'HKD' },
-  { value: 'USD', label: 'USD' },
-  { value: 'EUR', label: 'EUR' },
-  { value: 'GBP', label: 'GBP' },
-  { value: 'AUD', label: 'AUD' },
-  { value: 'CAD', label: 'CAD' },
-  { value: 'SGD', label: 'SGD' },
-  { value: 'JPY', label: 'JPY' },
-  { value: 'KRW', label: 'KRW' },
-  { value: 'NZD', label: 'NZD' },
+/** SePay environments, mirroring the backend `env` config field. */
+export const SEPAY_ENV_OPTIONS: TypeOption[] = [
+  { value: 'production', label: 'Production' },
+  { value: 'sandbox', label: 'Sandbox' },
 ]
 
-// 与后端当前集成的 stripe-go v85.0.0 的 stripe.APIVersion 保持一致。
-export const STRIPE_SDK_API_VERSION = '2026-03-25.dahlia'
+export const PAYMENT_CURRENCY_OPTIONS: TypeOption[] = [
+  { value: 'VND', label: 'VND' },
+  { value: 'USD', label: 'USD' },
+]
 
-/** Preferred popup size for payment gateways. Alipay's standard checkout
- * (QR + account login panel) needs ~1200×900 to render without any scrolling. */
+/** Webhook paths for each provider (relative to origin). */
+export const WEBHOOK_PATHS: Record<string, string> = {
+  [PROVIDER_SEPAY]: '/api/v1/payment/webhook/sepay',
+}
+
+export const RETURN_PATH = '/payment/result'
+
+/** Fixed callback paths per provider - displayed as read-only after base URL. */
+export const PROVIDER_CALLBACK_PATHS: Record<string, CallbackPaths> = {
+  [PROVIDER_SEPAY]: { notifyUrl: WEBHOOK_PATHS[PROVIDER_SEPAY], returnUrl: RETURN_PATH },
+}
+
+/**
+ * Per-provider config fields (excludes notifyUrl/returnUrl which are handled separately).
+ *
+ * `sensitive: true` must stay in sync with the backend definition in
+ * internal/service/payment_config_providers.go (providerSensitiveConfigFields):
+ * those values are never returned by the admin GET API.
+ */
+export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
+  [PROVIDER_SEPAY]: [
+    { key: 'merchantId', label: 'Merchant ID', sensitive: false },
+    { key: 'secretKey', label: 'Secret Key', sensitive: true },
+    {
+      key: 'env',
+      label: 'Environment',
+      sensitive: false,
+      defaultValue: 'production',
+      options: SEPAY_ENV_OPTIONS,
+    },
+    {
+      key: 'currency',
+      label: 'Currency',
+      sensitive: false,
+      defaultValue: 'VND',
+      hintKey: 'admin.settings.payment.field_paymentCurrencyHint',
+      options: PAYMENT_CURRENCY_OPTIONS,
+    },
+  ],
+}
+
+/** Preferred popup size for payment gateways. */
 const PAYMENT_POPUP_PREFERRED_WIDTH = 1250
 const PAYMENT_POPUP_PREFERRED_HEIGHT = 900
 
@@ -101,66 +118,6 @@ export function getPaymentPopupFeatures(): string {
   const left = Math.max(0, Math.floor((availW - width) / 2))
   const top = Math.max(0, Math.floor((availH - height) / 2))
   return `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
-}
-
-/** Webhook paths for each provider (relative to origin). */
-export const WEBHOOK_PATHS: Record<string, string> = {
-  easypay: '/api/v1/payment/webhook/easypay',
-  alipay: '/api/v1/payment/webhook/alipay',
-  wxpay: '/api/v1/payment/webhook/wxpay',
-  stripe: '/api/v1/payment/webhook/stripe',
-  airwallex: '/api/v1/payment/webhook/airwallex',
-}
-
-export const RETURN_PATH = '/payment/result'
-
-/** Fixed callback paths per provider — displayed as read-only after base URL. */
-export const PROVIDER_CALLBACK_PATHS: Record<string, CallbackPaths> = {
-  easypay: { notifyUrl: WEBHOOK_PATHS.easypay, returnUrl: RETURN_PATH },
-  alipay: { notifyUrl: WEBHOOK_PATHS.alipay, returnUrl: RETURN_PATH },
-  wxpay: { notifyUrl: WEBHOOK_PATHS.wxpay },
-  // stripe: 不需要回调 URL 配置，Webhook 单独配置。
-  // airwallex: 不需要回调 URL 配置，Webhook 在空中云汇后台配置。
-}
-
-/** Per-provider config fields (excludes notifyUrl/returnUrl which are handled separately). */
-export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
-  easypay: [
-    { key: 'pid', label: 'PID', sensitive: false },
-    { key: 'pkey', label: 'PKey', sensitive: true },
-    { key: 'apiBase', label: '', sensitive: false },
-    { key: 'cidAlipay', label: '', sensitive: false, optional: true },
-    { key: 'cidWxpay', label: '', sensitive: false, optional: true },
-  ],
-  alipay: [
-    { key: 'appId', label: 'App ID', sensitive: false },
-    { key: 'privateKey', label: '', sensitive: true },
-    { key: 'publicKey', label: '', sensitive: true },
-  ],
-  wxpay: [
-    { key: 'appId', label: 'App ID', sensitive: false },
-    { key: 'mchId', label: '', sensitive: false },
-    { key: 'privateKey', label: '', sensitive: true },
-    { key: 'apiV3Key', label: '', sensitive: true },
-    { key: 'certSerial', label: '', sensitive: false },
-    { key: 'publicKey', label: '', sensitive: true },
-    { key: 'publicKeyId', label: '', sensitive: false },
-  ],
-  stripe: [
-    { key: 'secretKey', label: '', sensitive: true },
-    { key: 'publishableKey', label: '', sensitive: false },
-    { key: 'webhookSecret', label: '', sensitive: true },
-    { key: 'currency', label: '', sensitive: false, defaultValue: 'CNY', hintKey: 'admin.settings.payment.field_paymentCurrencyHint', options: PAYMENT_CURRENCY_OPTIONS },
-  ],
-  airwallex: [
-    { key: 'clientId', label: '', sensitive: false },
-    { key: 'apiKey', label: '', sensitive: true },
-    { key: 'webhookSecret', label: '', sensitive: true },
-    { key: 'apiBase', label: '', sensitive: false, defaultValue: 'https://api.airwallex.com/api/v1', hintKey: 'admin.settings.payment.field_airwallexApiBaseHint' },
-    { key: 'countryCode', label: '', sensitive: false, defaultValue: 'CN' },
-    { key: 'currency', label: '', sensitive: false, defaultValue: 'CNY', hintKey: 'admin.settings.payment.field_paymentCurrencyHint', options: PAYMENT_CURRENCY_OPTIONS },
-    { key: 'accountId', label: '', sensitive: false, optional: true, clearable: true, hintKey: 'admin.settings.payment.field_accountIdHint' },
-  ],
 }
 
 // --- Helpers ---
@@ -183,34 +140,6 @@ export function getAvailableTypes(
 ): TypeOption[] {
   const types = PROVIDER_SUPPORTED_TYPES[providerKey] || []
   return types.map(t => resolveTypeLabel(t, providerKey, allTypes, redirectLabel))
-}
-
-export function parseEasyPayCustomMethods(raw: string | undefined): EasyPayCustomMethod[] {
-  if (!raw || !raw.trim()) return []
-  try {
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed
-      .map(item => ({
-        type: String(item?.type || '').trim(),
-        upstreamType: String(item?.upstreamType || '').trim(),
-        displayName: String(item?.displayName || '').trim(),
-      }))
-      .filter(item => item.type && item.upstreamType)
-  } catch {
-    return []
-  }
-}
-
-export function serializeEasyPayCustomMethods(methods: EasyPayCustomMethod[]): string {
-  const clean = methods
-    .map(method => ({
-      type: method.type.trim(),
-      upstreamType: method.upstreamType.trim(),
-      displayName: method.displayName.trim(),
-    }))
-    .filter(method => method.type && method.upstreamType)
-  return clean.length ? JSON.stringify(clean) : ''
 }
 
 /** Extract base URL from a full callback URL by removing the known path suffix. */

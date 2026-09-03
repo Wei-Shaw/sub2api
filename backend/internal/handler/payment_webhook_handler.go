@@ -37,41 +37,17 @@ func NewPaymentWebhookHandler(paymentService *service.PaymentService, registry *
 	}
 }
 
-// EasyPayNotify handles EasyPay payment notifications.
-// POST /api/v1/payment/webhook/easypay
-func (h *PaymentWebhookHandler) EasyPayNotify(c *gin.Context) {
-	h.handleNotify(c, payment.TypeEasyPay)
+// SePayNotify handles SePay payment notifications.
+// POST /api/v1/payment/webhook/sepay
+func (h *PaymentWebhookHandler) SePayNotify(c *gin.Context) {
+	h.handleNotify(c, payment.TypeSePay)
 }
 
-// AlipayNotify handles Alipay payment notifications.
-// POST /api/v1/payment/webhook/alipay
-func (h *PaymentWebhookHandler) AlipayNotify(c *gin.Context) {
-	h.handleNotify(c, payment.TypeAlipay)
-}
-
-// WxpayNotify handles WeChat Pay payment notifications.
-// POST /api/v1/payment/webhook/wxpay
-func (h *PaymentWebhookHandler) WxpayNotify(c *gin.Context) {
-	h.handleNotify(c, payment.TypeWxpay)
-}
-
-// StripeWebhook handles Stripe webhook events.
-// POST /api/v1/payment/webhook/stripe
-func (h *PaymentWebhookHandler) StripeWebhook(c *gin.Context) {
-	h.handleNotify(c, payment.TypeStripe)
-}
-
-// AirwallexWebhook 处理空中云汇 Webhook 事件。
-// POST /api/v1/payment/webhook/airwallex
-func (h *PaymentWebhookHandler) AirwallexWebhook(c *gin.Context) {
-	h.handleNotify(c, payment.TypeAirwallex)
-}
-
-// handleNotify is the shared logic for all provider webhook handlers.
+// handleNotify is the shared logic for provider webhook handlers.
 func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string) {
 	var rawBody string
 	if c.Request.Method == http.MethodGet {
-		// GET callbacks (e.g. EasyPay) pass params as URL query string
+		// GET callbacks carry their params in the query string.
 		rawBody = c.Request.URL.RawQuery
 	} else {
 		body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxWebhookBodySize))
@@ -84,16 +60,12 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 	}
 
 	// Extract out_trade_no to look up the order's specific provider instance.
-	// This is needed when multiple instances of the same provider exist (e.g. multiple EasyPay accounts).
-	outTradeNo := extractOutTradeNo(rawBody, providerKey)
+	// This is needed when several instances of the same gateway are configured.
+	outTradeNo := extractOutTradeNo(rawBody)
 
 	providers, err := h.paymentService.GetWebhookProviders(c.Request.Context(), providerKey, outTradeNo)
 	if err != nil {
 		slog.Warn("[Payment Webhook] provider not found", "provider", providerKey, "outTradeNo", outTradeNo, "error", err)
-		if providerKey == payment.TypeWxpay {
-			c.String(http.StatusBadRequest, "verify failed")
-			return
-		}
 		writeSuccessResponse(c, providerKey)
 		return
 	}
@@ -115,7 +87,7 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 		return
 	}
 
-	// nil notification means irrelevant event (e.g. Stripe non-payment event); return success.
+	// nil notification means an irrelevant event (e.g. the order is not settled yet); return success.
 	if notification == nil {
 		writeSuccessResponse(c, resolvedProviderKey)
 		return
@@ -146,28 +118,33 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 
 // extractOutTradeNo parses the webhook body to find the out_trade_no.
 // This allows looking up the correct provider instance before verification.
-func extractOutTradeNo(rawBody, providerKey string) string {
-	switch providerKey {
-	case payment.TypeEasyPay, payment.TypeAlipay:
-		values, err := url.ParseQuery(rawBody)
-		if err == nil {
-			return values.Get("out_trade_no")
-		}
-	case payment.TypeAirwallex:
+// SePay posts JSON, but form-encoded bodies are accepted too so a gateway that
+// switches encodings does not silently lose instance pinning.
+func extractOutTradeNo(rawBody string) string {
+	trimmed := strings.TrimSpace(rawBody)
+	if trimmed == "" {
+		return ""
+	}
+	if strings.HasPrefix(trimmed, "{") {
 		var payload struct {
-			Data struct {
-				Object struct {
-					MerchantOrderID string `json:"merchant_order_id"`
-				} `json:"object"`
+			OrderInvoiceNumber string `json:"order_invoice_number"`
+			Data               struct {
+				OrderInvoiceNumber string `json:"order_invoice_number"`
 			} `json:"data"`
 		}
-		if err := json.Unmarshal([]byte(rawBody), &payload); err == nil {
-			return strings.TrimSpace(payload.Data.Object.MerchantOrderID)
+		if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+			return ""
 		}
+		if v := strings.TrimSpace(payload.OrderInvoiceNumber); v != "" {
+			return v
+		}
+		return strings.TrimSpace(payload.Data.OrderInvoiceNumber)
 	}
-	// For other providers (Stripe, Alipay direct, WxPay direct), the registry
-	// typically has only one instance, so no instance lookup is needed.
-	return ""
+	values, err := url.ParseQuery(trimmed)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(values.Get("order_invoice_number"))
 }
 
 func verifyNotificationWithProviders(ctx context.Context, providers []payment.Provider, rawBody string, headers map[string]string) (string, *payment.PaymentNotification, error) {
@@ -189,28 +166,8 @@ func verifyNotificationWithProviders(ctx context.Context, providers []payment.Pr
 	return "", nil, fmt.Errorf("no webhook provider could verify notification")
 }
 
-// wxpaySuccessResponse is the JSON response expected by WeChat Pay webhook.
-type wxpaySuccessResponse struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
-
-// WeChat Pay webhook success response constants.
-const (
-	wxpaySuccessCode    = "SUCCESS"
-	wxpaySuccessMessage = "成功"
-)
-
-// writeSuccessResponse 返回各支付服务商要求的成功响应。
-// 微信支付需要 JSON {"code":"SUCCESS","message":"成功"}；
-// Stripe 和空中云汇接受空 200，其它服务商接受纯文本 "success"。
+// writeSuccessResponse 返回服务商要求的成功响应。SePay 接受纯文本 "success"。
 func writeSuccessResponse(c *gin.Context, providerKey string) {
-	switch providerKey {
-	case payment.TypeWxpay:
-		c.JSON(http.StatusOK, wxpaySuccessResponse{Code: wxpaySuccessCode, Message: wxpaySuccessMessage})
-	case payment.TypeStripe, payment.TypeAirwallex:
-		c.String(http.StatusOK, "")
-	default:
-		c.String(http.StatusOK, "success")
-	}
+	_ = providerKey
+	c.String(http.StatusOK, "success")
 }

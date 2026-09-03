@@ -1,6 +1,6 @@
 /**
  * Shared utility functions for payment order display.
- * Used by AdminOrderDetail, AdminOrderTable, AdminRefundDialog, AdminOrdersView, etc.
+ * Used by AdminOrderDetail, AdminOrderTable, AdminOrdersView, etc.
  */
 
 const STATUS_BADGE_MAP: Record<string, string> = {
@@ -11,6 +11,8 @@ const STATUS_BADGE_MAP: Record<string, string> = {
   EXPIRED: 'badge-secondary',
   CANCELLED: 'badge-secondary',
   FAILED: 'badge-danger',
+  // Legacy refund statuses: nothing produces them any more, but historical
+  // orders still carry them and must not render as an unknown status.
   REFUND_REQUESTED: 'badge-warning',
   REFUNDING: 'badge-warning',
   REFUND_PENDING: 'badge-warning',
@@ -19,14 +21,8 @@ const STATUS_BADGE_MAP: Record<string, string> = {
   REFUND_FAILED: 'badge-danger',
 }
 
-const REFUNDABLE_STATUSES = ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUND_REQUESTED', 'REFUND_FAILED']
-
 export function statusBadgeClass(status: string): string {
   return STATUS_BADGE_MAP[status] || 'badge-secondary'
-}
-
-export function canRefund(status: string): boolean {
-  return REFUNDABLE_STATUSES.includes(status)
 }
 
 export function formatOrderDateTime(dateStr: string): string {

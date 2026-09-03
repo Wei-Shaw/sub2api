@@ -276,10 +276,6 @@ type UpdateSettingsRequest struct {
 	CodexCLIOnlyEngineFingerprintSignals string `json:"codex_cli_only_engine_fingerprint_signals"`
 
 	// Payment visible method routing
-	PaymentVisibleMethodAlipaySource  *string `json:"payment_visible_method_alipay_source"`
-	PaymentVisibleMethodWxpaySource   *string `json:"payment_visible_method_wxpay_source"`
-	PaymentVisibleMethodAlipayEnabled *bool   `json:"payment_visible_method_alipay_enabled"`
-	PaymentVisibleMethodWxpayEnabled  *bool   `json:"payment_visible_method_wxpay_enabled"`
 
 	// OpenAI account scheduling
 	OpenAILowUpstreamRatePriorityEnabled               *bool    `json:"openai_low_upstream_rate_priority_enabled"`
@@ -333,9 +329,7 @@ type UpdateSettingsRequest struct {
 	PaymentCancelRateLimitMode    *string `json:"payment_cancel_rate_limit_window_mode"`
 
 	// Force Alipay mobile clients to use QR code payment instead of mobile redirect
-	PaymentAlipayForceQRCode *bool `json:"payment_alipay_force_qrcode"`
 	// Use Alipay face-to-face precreate and an app deep link on mobile clients.
-	PaymentAlipayMobilePrecreateDeepLink *bool `json:"payment_alipay_mobile_precreate_deep_link"`
 
 	// Channel Monitor feature switch
 	ChannelMonitorEnabled                *bool   `json:"channel_monitor_enabled"`
@@ -1820,30 +1814,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return previousSettings.CodexCLIOnlyAllowAppServerClients
 		}(),
 		CodexCLIOnlyEngineFingerprintSignals: strings.TrimSpace(req.CodexCLIOnlyEngineFingerprintSignals),
-		PaymentVisibleMethodAlipaySource: func() string {
-			if req.PaymentVisibleMethodAlipaySource != nil {
-				return strings.TrimSpace(*req.PaymentVisibleMethodAlipaySource)
-			}
-			return previousSettings.PaymentVisibleMethodAlipaySource
-		}(),
-		PaymentVisibleMethodWxpaySource: func() string {
-			if req.PaymentVisibleMethodWxpaySource != nil {
-				return strings.TrimSpace(*req.PaymentVisibleMethodWxpaySource)
-			}
-			return previousSettings.PaymentVisibleMethodWxpaySource
-		}(),
-		PaymentVisibleMethodAlipayEnabled: func() bool {
-			if req.PaymentVisibleMethodAlipayEnabled != nil {
-				return *req.PaymentVisibleMethodAlipayEnabled
-			}
-			return previousSettings.PaymentVisibleMethodAlipayEnabled
-		}(),
-		PaymentVisibleMethodWxpayEnabled: func() bool {
-			if req.PaymentVisibleMethodWxpayEnabled != nil {
-				return *req.PaymentVisibleMethodWxpayEnabled
-			}
-			return previousSettings.PaymentVisibleMethodWxpayEnabled
-		}(),
 		OpenAILowUpstreamRatePriorityEnabled: func() bool {
 			if req.OpenAILowUpstreamRatePriorityEnabled != nil {
 				return *req.OpenAILowUpstreamRatePriorityEnabled
@@ -2106,29 +2076,27 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	// Skip if no payment fields were provided (prevents accidental wipe).
 	if h.paymentConfigService != nil && hasPaymentFields(req) {
 		paymentReq := service.UpdatePaymentConfigRequest{
-			Enabled:                       req.PaymentEnabled,
-			MinAmount:                     req.PaymentMinAmount,
-			MaxAmount:                     req.PaymentMaxAmount,
-			DailyLimit:                    req.PaymentDailyLimit,
-			OrderTimeoutMin:               req.PaymentOrderTimeoutMin,
-			MaxPendingOrders:              req.PaymentMaxPendingOrders,
-			EnabledTypes:                  req.PaymentEnabledTypes,
-			BalanceDisabled:               req.PaymentBalanceDisabled,
-			BalanceRechargeMultiplier:     req.PaymentBalanceRechargeMultiplier,
-			SubscriptionUSDToCNYRate:      req.PaymentSubscriptionUSDToCNYRate,
-			RechargeFeeRate:               req.PaymentRechargeFeeRate,
-			LoadBalanceStrategy:           req.PaymentLoadBalanceStrat,
-			ProductNamePrefix:             req.PaymentProductNamePrefix,
-			ProductNameSuffix:             req.PaymentProductNameSuffix,
-			HelpImageURL:                  req.PaymentHelpImageURL,
-			HelpText:                      req.PaymentHelpText,
-			CancelRateLimitEnabled:        req.PaymentCancelRateLimitEnabled,
-			CancelRateLimitMax:            req.PaymentCancelRateLimitMax,
-			CancelRateLimitWindow:         req.PaymentCancelRateLimitWindow,
-			CancelRateLimitUnit:           req.PaymentCancelRateLimitUnit,
-			CancelRateLimitMode:           req.PaymentCancelRateLimitMode,
-			AlipayForceQRCode:             req.PaymentAlipayForceQRCode,
-			AlipayMobilePrecreateDeepLink: req.PaymentAlipayMobilePrecreateDeepLink,
+			Enabled:                   req.PaymentEnabled,
+			MinAmount:                 req.PaymentMinAmount,
+			MaxAmount:                 req.PaymentMaxAmount,
+			DailyLimit:                req.PaymentDailyLimit,
+			OrderTimeoutMin:           req.PaymentOrderTimeoutMin,
+			MaxPendingOrders:          req.PaymentMaxPendingOrders,
+			EnabledTypes:              req.PaymentEnabledTypes,
+			BalanceDisabled:           req.PaymentBalanceDisabled,
+			BalanceRechargeMultiplier: req.PaymentBalanceRechargeMultiplier,
+			SubscriptionUSDToCNYRate:  req.PaymentSubscriptionUSDToCNYRate,
+			RechargeFeeRate:           req.PaymentRechargeFeeRate,
+			LoadBalanceStrategy:       req.PaymentLoadBalanceStrat,
+			ProductNamePrefix:         req.PaymentProductNamePrefix,
+			ProductNameSuffix:         req.PaymentProductNameSuffix,
+			HelpImageURL:              req.PaymentHelpImageURL,
+			HelpText:                  req.PaymentHelpText,
+			CancelRateLimitEnabled:    req.PaymentCancelRateLimitEnabled,
+			CancelRateLimitMax:        req.PaymentCancelRateLimitMax,
+			CancelRateLimitWindow:     req.PaymentCancelRateLimitWindow,
+			CancelRateLimitUnit:       req.PaymentCancelRateLimitUnit,
+			CancelRateLimitMode:       req.PaymentCancelRateLimitMode,
 		}
 		if err := h.paymentConfigService.UpdatePaymentConfig(c.Request.Context(), paymentReq); err != nil {
 			response.ErrorFrom(c, err)
@@ -2345,10 +2313,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CodexCLIOnlyWhitelist:                                  updatedSettings.CodexCLIOnlyWhitelist,
 		CodexCLIOnlyAllowAppServerClients:                      updatedSettings.CodexCLIOnlyAllowAppServerClients,
 		CodexCLIOnlyEngineFingerprintSignals:                   updatedSettings.CodexCLIOnlyEngineFingerprintSignals,
-		PaymentVisibleMethodAlipaySource:                       updatedSettings.PaymentVisibleMethodAlipaySource,
-		PaymentVisibleMethodWxpaySource:                        updatedSettings.PaymentVisibleMethodWxpaySource,
-		PaymentVisibleMethodAlipayEnabled:                      updatedSettings.PaymentVisibleMethodAlipayEnabled,
-		PaymentVisibleMethodWxpayEnabled:                       updatedSettings.PaymentVisibleMethodWxpayEnabled,
 		OpenAILowUpstreamRatePriorityEnabled:                   updatedSettings.OpenAILowUpstreamRatePriorityEnabled,
 		OpenAIOAuthSchedulingRateMultiplier:                    updatedSettings.OpenAIOAuthSchedulingRateMultiplier,
 		OpenAIAdvancedSchedulerEnabled:                         updatedSettings.OpenAIAdvancedSchedulerEnabled,
@@ -2403,8 +2367,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentCancelRateLimitWindow:                           updatedPaymentCfg.CancelRateLimitWindow,
 		PaymentCancelRateLimitUnit:                             updatedPaymentCfg.CancelRateLimitUnit,
 		PaymentCancelRateLimitMode:                             updatedPaymentCfg.CancelRateLimitMode,
-		PaymentAlipayForceQRCode:                               updatedPaymentCfg.AlipayForceQRCode,
-		PaymentAlipayMobilePrecreateDeepLink:                   updatedPaymentCfg.AlipayMobilePrecreateDeepLink,
 
 		ChannelMonitorEnabled:                updatedSettings.ChannelMonitorEnabled,
 		ChannelMonitorMode:                   updatedSettings.ChannelMonitorMode,
@@ -2471,8 +2433,7 @@ func hasPaymentFields(req UpdateSettingsRequest) bool {
 		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||
 		req.PaymentHelpText != nil || req.PaymentCancelRateLimitEnabled != nil ||
 		req.PaymentCancelRateLimitMax != nil || req.PaymentCancelRateLimitWindow != nil ||
-		req.PaymentCancelRateLimitUnit != nil || req.PaymentCancelRateLimitMode != nil ||
-		req.PaymentAlipayForceQRCode != nil || req.PaymentAlipayMobilePrecreateDeepLink != nil
+		req.PaymentCancelRateLimitUnit != nil || req.PaymentCancelRateLimitMode != nil
 }
 
 // ensureDingTalkSyncAttributes 在保存 settings 后，按 admin 配置的 (attr key, attr name)

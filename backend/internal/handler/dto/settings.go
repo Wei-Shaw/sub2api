@@ -233,10 +233,6 @@ type SystemSettings struct {
 	WebSearchEmulationEnabled bool `json:"web_search_emulation_enabled"`
 
 	// Payment visible method routing
-	PaymentVisibleMethodAlipaySource  string `json:"payment_visible_method_alipay_source"`
-	PaymentVisibleMethodWxpaySource   string `json:"payment_visible_method_wxpay_source"`
-	PaymentVisibleMethodAlipayEnabled bool   `json:"payment_visible_method_alipay_enabled"`
-	PaymentVisibleMethodWxpayEnabled  bool   `json:"payment_visible_method_wxpay_enabled"`
 
 	// OpenAI account scheduling
 	OpenAILowUpstreamRatePriorityEnabled                   bool    `json:"openai_low_upstream_rate_priority_enabled"`
@@ -291,11 +287,6 @@ type SystemSettings struct {
 	PaymentCancelRateLimitWindow  int    `json:"payment_cancel_rate_limit_window"`
 	PaymentCancelRateLimitUnit    string `json:"payment_cancel_rate_limit_unit"`
 	PaymentCancelRateLimitMode    string `json:"payment_cancel_rate_limit_window_mode"`
-
-	// Force Alipay mobile clients to use QR code payment instead of mobile redirect
-	PaymentAlipayForceQRCode bool `json:"payment_alipay_force_qrcode"`
-	// Use Alipay face-to-face precreate and an app deep link on mobile clients.
-	PaymentAlipayMobilePrecreateDeepLink bool `json:"payment_alipay_mobile_precreate_deep_link"`
 
 	// 余额、订阅到期与账号限额通知
 	BalanceLowNotifyEnabled         bool               `json:"balance_low_notify_enabled"`

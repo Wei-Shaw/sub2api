@@ -19,7 +19,7 @@ export type OrderStatus =
   | 'REFUNDED'
   | 'REFUND_FAILED'
 
-export type PaymentType = 'alipay' | 'wxpay' | 'alipay_direct' | 'wxpay_direct' | 'stripe' | 'easypay' | 'airwallex'
+export type PaymentType = 'sepay_bank_transfer' | 'sepay_napas' | 'sepay_card'
 
 export type OrderType = 'balance' | 'subscription'
 
@@ -38,7 +38,6 @@ export interface PaymentConfig {
   enabled_payment_types: PaymentType[]
   help_image_url: string
   help_text: string
-  stripe_publishable_key: string
 }
 
 export interface MethodLimit {
@@ -68,16 +67,11 @@ export interface CheckoutInfoResponse {
   plans: SubscriptionPlan[]
   balance_disabled: boolean
   balance_recharge_multiplier: number
-  /** Subscription CNY conversion rate (1 USD = X CNY); 0 = disabled, plan price is charged as-is */
+  /** Subscription conversion rate (1 USD = X gateway currency); 0 = disabled, plan price is charged as-is */
   subscription_usd_to_cny_rate: number
   recharge_fee_rate: number
   help_text: string
   help_image_url: string
-  stripe_publishable_key: string
-  /** When true, Alipay payments on mobile always show the QR code instead of redirecting */
-  alipay_force_qrcode?: boolean
-  /** When true, official Alipay mobile orders use precreate plus an Alipay app deep link */
-  alipay_mobile_precreate_deep_link?: boolean
 }
 
 // ==================== Orders ====================
@@ -97,6 +91,10 @@ export interface PaymentOrder {
   expires_at: string
   paid_at?: string
   completed_at?: string
+  /**
+   * Legacy refund columns. The refund feature was removed with the previous
+   * gateways; these stay declared so historical orders still render.
+   */
   refund_amount: number
   refund_reason?: string
   refund_requested_at?: string
@@ -158,8 +156,6 @@ export interface ProviderInstance {
   supported_types: string[]
   enabled: boolean
   payment_mode: string
-  refund_enabled: boolean
-  allow_user_refund: boolean
   limits: string
   sort_order: number
 }
@@ -173,40 +169,22 @@ export interface CreateOrderRequest {
   plan_id?: number
   return_url?: string
   payment_source?: string
-  openid?: string
-  wechat_resume_token?: string
   is_mobile?: boolean
 }
 
-export type CreateOrderResultType = 'order_created' | 'oauth_required' | 'jsapi_ready'
-
-export interface WechatOAuthInfo {
-  authorize_url?: string
-  appid?: string
-  openid?: string
-  scope?: string
-  state?: string
-  redirect_url?: string
-}
-
-export interface WechatJSAPIPayload {
-  appId?: string
-  timeStamp?: string
-  nonceStr?: string
-  package?: string
-  signType?: string
-  paySign?: string
-}
+/**
+ * `form_post` means the gateway checkout is reached through a signed HTTP POST
+ * form rather than a plain redirect; the backend serves an auto-submitting
+ * bridge page and hands us its URL in `pay_url`.
+ */
+export type CreateOrderResultType = 'order_created' | 'form_post'
 
 export interface CreateOrderResult {
   order_id: number
   amount: number
   pay_url?: string
   qr_code?: string
-  client_secret?: string
-  intent_id?: string
   currency?: string
-  country_code?: string
   payment_env?: string
   pay_amount: number
   fee_rate: number
@@ -216,10 +194,6 @@ export interface CreateOrderResult {
   out_trade_no?: string
   payment_mode?: string
   resume_token?: string
-  alipay_mobile_precreate_deep_link?: boolean
-  oauth?: WechatOAuthInfo
-  jsapi?: WechatJSAPIPayload
-  jsapi_payload?: WechatJSAPIPayload
 }
 
 export type CurrencyAmounts = Record<string, number>

@@ -40,7 +40,7 @@ func TestConfirmPaymentRejectsOneCentShortfall(t *testing.T) {
 		OrderID: order.OutTradeNo,
 		Amount:  decimal.RequireFromString("99.99"),
 		Status:  payment.NotificationStatusSuccess,
-	}, payment.TypeAlipay)
+	}, payment.TypeSePayBankTransfer)
 	require.ErrorContains(t, err, "amount mismatch")
 
 	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
@@ -89,7 +89,7 @@ func TestConfirmPaymentAcceptsExactDecimalAmount(t *testing.T) {
 		OrderID: order.OutTradeNo,
 		Amount:  decimal.RequireFromString("0.30"),
 		Status:  payment.NotificationStatusSuccess,
-	}, payment.TypeAlipay))
+	}, payment.TypeSePayBankTransfer))
 
 	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
 	require.NoError(t, err)

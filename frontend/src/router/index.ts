@@ -100,16 +100,6 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/auth/wechat/payment/callback',
-    name: 'WeChatPaymentOAuthCallback',
-    component: () => import('@/views/auth/WechatPaymentCallbackView.vue'),
-    meta: {
-      requiresAuth: false,
-      title: 'WeChat Payment Callback',
-      titleKey: 'auth.wechatPaymentCallbackPageTitle'
-    }
-  },
-  {
     path: '/auth/dingtalk/callback',
     name: 'DingTalkOAuthCallback',
     component: () => import('@/views/auth/DingTalkCallbackView.vue'),
@@ -346,41 +336,6 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: false,
       title: 'Payment Result',
       titleKey: 'payment.result.success',
-      requiresPayment: false
-    }
-  },
-  {
-    path: '/payment/stripe',
-    name: 'StripePayment',
-    component: () => import('@/views/user/StripePaymentView.vue'),
-    meta: {
-      requiresAuth: false,
-      requiresAdmin: false,
-      title: 'Stripe Payment',
-      titleKey: 'payment.stripePay',
-      requiresPayment: false
-    }
-  },
-  {
-    path: '/payment/airwallex',
-    name: 'AirwallexPayment',
-    component: () => import('@/views/user/AirwallexPaymentView.vue'),
-    meta: {
-      requiresAuth: false,
-      requiresAdmin: false,
-      title: 'Airwallex Payment',
-      titleKey: 'payment.airwallexPay',
-      requiresPayment: false
-    }
-  },
-  {
-    path: '/payment/stripe-popup',
-    name: 'StripePopup',
-    component: () => import('@/views/user/StripePopupView.vue'),
-    meta: {
-      requiresAuth: false,
-      requiresAdmin: false,
-      title: 'Payment',
       requiresPayment: false
     }
   },
@@ -750,7 +705,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/legal']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',
@@ -758,7 +713,6 @@ const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/dingtalk/email-completion',
   '/auth/oidc/callback',
   '/auth/wechat/callback',
-  '/auth/wechat/payment/callback',
 ]
 const BACKEND_MODE_PENDING_AUTH_PATHS = ['/register', '/email-verify']
 

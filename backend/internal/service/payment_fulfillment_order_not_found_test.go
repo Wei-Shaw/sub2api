@@ -60,7 +60,7 @@ func TestHandlePaymentNotification_UnknownOrder_ReturnsSentinel(t *testing.T) {
 		Amount:  decimal.NewFromInt(1000),
 	}
 
-	err := svc.HandlePaymentNotification(ctx, notification, payment.TypeStripe)
+	err := svc.HandlePaymentNotification(ctx, notification, payment.TypeSePay)
 	require.Error(t, err, "unknown out_trade_no should surface an error")
 	require.ErrorIs(t, err, ErrOrderNotFound,
 		"webhook handler relies on errors.Is(err, ErrOrderNotFound) to downgrade to 200")
@@ -88,7 +88,7 @@ func TestHandlePaymentNotification_NonSuccessStatus_Skips(t *testing.T) {
 		Status:  "failed", // any value other than NotificationStatusSuccess
 	}
 
-	err := svc.HandlePaymentNotification(ctx, notification, payment.TypeStripe)
+	err := svc.HandlePaymentNotification(ctx, notification, payment.TypeSePay)
 	require.NoError(t, err,
 		"non-success notifications must short-circuit before the DB lookup")
 }

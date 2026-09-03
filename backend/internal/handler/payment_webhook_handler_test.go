@@ -4,7 +4,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -18,100 +17,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestWriteSuccessResponse(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	tests := []struct {
-		name            string
-		providerKey     string
-		wantCode        int
-		wantContentType string
-		wantBody        string
-		checkJSON       bool
-		wantJSONCode    string
-		wantJSONMessage string
-	}{
-		{
-			name:            "wxpay returns JSON with code SUCCESS",
-			providerKey:     "wxpay",
-			wantCode:        http.StatusOK,
-			wantContentType: "application/json",
-			checkJSON:       true,
-			wantJSONCode:    "SUCCESS",
-			wantJSONMessage: "成功",
-		},
-		{
-			name:            "stripe returns empty 200",
-			providerKey:     "stripe",
-			wantCode:        http.StatusOK,
-			wantContentType: "text/plain",
-			wantBody:        "",
-		},
-		{
-			name:            "airwallex returns empty 200",
-			providerKey:     payment.TypeAirwallex,
-			wantCode:        http.StatusOK,
-			wantContentType: "text/plain",
-			wantBody:        "",
-		},
-		{
-			name:            "easypay returns plain text success",
-			providerKey:     "easypay",
-			wantCode:        http.StatusOK,
-			wantContentType: "text/plain",
-			wantBody:        "success",
-		},
-		{
-			name:            "alipay returns plain text success",
-			providerKey:     "alipay",
-			wantCode:        http.StatusOK,
-			wantContentType: "text/plain",
-			wantBody:        "success",
-		},
-		{
-			name:            "unknown provider returns plain text success",
-			providerKey:     "unknown_provider",
-			wantCode:        http.StatusOK,
-			wantContentType: "text/plain",
-			wantBody:        "success",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			w := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(w)
-
-			writeSuccessResponse(c, tt.providerKey)
-
-			assert.Equal(t, tt.wantCode, w.Code)
-			assert.Contains(t, w.Header().Get("Content-Type"), tt.wantContentType)
-
-			if tt.checkJSON {
-				var resp wxpaySuccessResponse
-				err := json.Unmarshal(w.Body.Bytes(), &resp)
-				require.NoError(t, err, "response body should be valid JSON")
-				assert.Equal(t, tt.wantJSONCode, resp.Code)
-				assert.Equal(t, tt.wantJSONMessage, resp.Message)
-			} else {
-				assert.Equal(t, tt.wantBody, w.Body.String())
-			}
-		})
-	}
-}
-
 // TestUnknownOrderWebhookAcksWithSuccess exercises the response contract that
 // handleNotify relies on when HandlePaymentNotification returns ErrOrderNotFound:
-// we still need to emit the provider-specific 2xx so the provider stops
-// retrying. We can't easily drive handleNotify end-to-end without mocking the
-// concrete *service.PaymentService, so this test locks down the two ingredients
-// the fix depends on:
+// we still need to emit a 2xx so the gateway stops retrying. We can't easily
+// drive handleNotify end-to-end without mocking the concrete
+// *service.PaymentService, so this test locks down the two ingredients the fix
+// depends on:
 //  1. errors.Is recognises the sentinel through fmt.Errorf %w wrapping (which
-//     is how service layer wraps it with the out_trade_no context).
-//  2. writeSuccessResponse produces the provider-specific body for Stripe
-//     (empty 200) — matching what handleNotify calls on the ack path.
+//     is how the service layer wraps it with the out_trade_no context).
+//  2. writeSuccessResponse produces the acknowledged body handleNotify emits.
 //
-// If either contract breaks, the Stripe "unknown order → 500 loop" regresses.
+// If either contract breaks, the "unknown order → 500 loop" regresses.
 func TestUnknownOrderWebhookAcksWithSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -126,15 +42,13 @@ func TestUnknownOrderWebhookAcksWithSuccess(t *testing.T) {
 	other := errors.New("lookup order failed: connection refused")
 	require.False(t, errors.Is(other, service.ErrOrderNotFound))
 
-	// 2) Provider-specific success body is what handleNotify emits on the
-	// ack path. Asserted again here because this is the shape Stripe expects
-	// to consider the webhook acknowledged.
+	// 2) The success body is what handleNotify emits on the ack path.
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	writeSuccessResponse(c, payment.TypeStripe)
+	writeSuccessResponse(c, payment.TypeSePay)
 	require.Equal(t, http.StatusOK, w.Code,
-		"Stripe requires 2xx to stop retrying; anything else restarts the retry loop")
-	require.Empty(t, w.Body.String(), "Stripe expects an empty body on the ack path")
+		"the gateway requires 2xx to stop retrying; anything else restarts the retry loop")
+	require.Equal(t, "success", w.Body.String())
 }
 
 func TestWebhookConstants(t *testing.T) {
@@ -149,40 +63,40 @@ func TestWebhookConstants(t *testing.T) {
 
 func TestExtractOutTradeNo(t *testing.T) {
 	tests := []struct {
-		name        string
-		providerKey string
-		rawBody     string
-		want        string
+		name    string
+		rawBody string
+		want    string
 	}{
 		{
-			name:        "easypay query payload",
-			providerKey: "easypay",
-			rawBody:     "out_trade_no=sub2_123&trade_status=TRADE_SUCCESS",
-			want:        "sub2_123",
+			name:    "sepay json payload",
+			rawBody: `{"merchant":"M1","order_invoice_number":"sub2_123","order_status":"COMPLETED"}`,
+			want:    "sub2_123",
 		},
 		{
-			name:        "alipay query payload",
-			providerKey: "alipay",
-			rawBody:     "notify_time=2026-04-20+12%3A00%3A00&out_trade_no=sub2_456",
-			want:        "sub2_456",
+			name:    "sepay nested json payload",
+			rawBody: `{"data":{"order_invoice_number":"sub2_456"}}`,
+			want:    "sub2_456",
 		},
 		{
-			name:        "unknown provider",
-			providerKey: "wxpay",
-			rawBody:     "{}",
-			want:        "",
+			name:    "form encoded payload",
+			rawBody: "order_invoice_number=sub2_789&order_status=COMPLETED",
+			want:    "sub2_789",
 		},
 		{
-			name:        "airwallex payment intent payload",
-			providerKey: payment.TypeAirwallex,
-			rawBody:     `{"name":"payment_intent.succeeded","data":{"object":{"merchant_order_id":"sub2_awx_123"}}}`,
-			want:        "sub2_awx_123",
+			name:    "payload without an order reference",
+			rawBody: "{}",
+			want:    "",
+		},
+		{
+			name:    "empty body",
+			rawBody: "",
+			want:    "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, extractOutTradeNo(tt.rawBody, tt.providerKey))
+			assert.Equal(t, tt.want, extractOutTradeNo(tt.rawBody))
 		})
 	}
 }
@@ -191,11 +105,11 @@ func TestVerifyNotificationWithProvidersReturnsMatchedProvider(t *testing.T) {
 	firstErr := errors.New("wrong provider")
 	providers := []payment.Provider{
 		webhookHandlerProviderStub{
-			key:       payment.TypeWxpay,
+			key:       payment.TypeSePayNapas,
 			verifyErr: firstErr,
 		},
 		webhookHandlerProviderStub{
-			key: payment.TypeWxpay,
+			key: payment.TypeSePayNapas,
 			notification: &payment.PaymentNotification{
 				OrderID: "sub2_42",
 				TradeNo: "trade-42",
@@ -206,7 +120,7 @@ func TestVerifyNotificationWithProvidersReturnsMatchedProvider(t *testing.T) {
 
 	providerKey, notification, err := verifyNotificationWithProviders(context.Background(), providers, "{}", map[string]string{"wechatpay-signature": "sig"})
 	require.NoError(t, err)
-	require.Equal(t, payment.TypeWxpay, providerKey)
+	require.Equal(t, payment.TypeSePayNapas, providerKey)
 	require.NotNil(t, notification)
 	require.Equal(t, "sub2_42", notification.OrderID)
 }
@@ -214,11 +128,11 @@ func TestVerifyNotificationWithProvidersReturnsMatchedProvider(t *testing.T) {
 func TestVerifyNotificationWithProvidersFailsWhenAllProvidersReject(t *testing.T) {
 	providers := []payment.Provider{
 		webhookHandlerProviderStub{
-			key:       payment.TypeWxpay,
+			key:       payment.TypeSePayNapas,
 			verifyErr: errors.New("verify failed a"),
 		},
 		webhookHandlerProviderStub{
-			key:       payment.TypeWxpay,
+			key:       payment.TypeSePayNapas,
 			verifyErr: errors.New("verify failed b"),
 		},
 	}
@@ -249,7 +163,4 @@ func (p webhookHandlerProviderStub) VerifyNotification(context.Context, string, 
 		return nil, p.verifyErr
 	}
 	return p.notification, nil
-}
-func (p webhookHandlerProviderStub) Refund(context.Context, payment.RefundRequest) (*payment.RefundResponse, error) {
-	panic("unexpected call")
 }

@@ -4,13 +4,14 @@
       <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
         {{ qrUrl ? scanTitle : t('payment.qr.payInNewWindow') }}
       </h2>
-      <div v-if="qrUrl" class="rounded-2xl bg-white p-6 shadow-lg dark:bg-dark-800">
+      <div v-if="qrUrl" class="relative rounded-2xl bg-white p-6 shadow-lg dark:bg-dark-800">
         <canvas ref="qrCanvas" class="mx-auto"></canvas>
+        <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <span class="rounded-full bg-gray-400 p-2 shadow ring-2 ring-white">
+            <img :src="paymentIcon" alt="" class="h-5 w-5 brightness-0 invert" />
+          </span>
+        </div>
       </div>
-      <!-- Scan prompt for QR code -->
-      <p v-if="qrUrl && !expired && scanHint" class="text-center text-sm text-gray-500 dark:text-gray-400">
-        {{ scanHint }}
-      </p>
       <div v-if="expired" class="text-center">
         <p class="text-lg font-medium text-red-500">{{ t('payment.qr.expired') }}</p>
         <button class="btn btn-primary mt-4" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
@@ -41,10 +42,8 @@ import { usePaymentStore } from '@/stores/payment'
 import { paymentAPI } from '@/api/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores'
-import { isBuiltInAlipayMethod, isBuiltInWxpayMethod } from '@/components/payment/providerConfig'
 import QRCode from 'qrcode'
-import alipayIcon from '@/assets/icons/alipay.svg'
-import wxpayIcon from '@/assets/icons/wxpay.svg'
+import paymentIcon from '@/assets/icons/payment.svg'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -70,66 +69,19 @@ const countdownDisplay = computed(() => {
   return m.toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0')
 })
 
-const isAlipay = computed(() => isBuiltInAlipayMethod(paymentType.value))
-const isWxpay = computed(() => isBuiltInWxpayMethod(paymentType.value))
-
-const scanTitle = computed(() => {
-  if (isAlipay.value) return t('payment.qr.scanAlipay')
-  if (isWxpay.value) return t('payment.qr.scanWxpay')
-  return t('payment.qr.scanToPay')
-})
-
-const scanHint = computed(() => {
-  if (isAlipay.value) return t('payment.qr.scanAlipayHint')
-  if (isWxpay.value) return t('payment.qr.scanWxpayHint')
-  return ''
-})
-
-function getLogoForType(): string | null {
-  if (isAlipay.value) return alipayIcon
-  if (isWxpay.value) return wxpayIcon
-  return null
-}
+const scanTitle = computed(() => t('payment.qr.scanToPay'))
 
 async function renderQR() {
   await nextTick()
   if (!qrCanvas.value || !qrUrl.value) return
 
-  // Use medium error correction to support logo overlay while keeping QR code scannable
-  const logoSrc = getLogoForType()
+  // Medium error correction leaves room for the logo overlay the template
+  // draws on top of the canvas.
   await QRCode.toCanvas(qrCanvas.value, qrUrl.value, {
     width: 256,
     margin: 2,
-    errorCorrectionLevel: logoSrc ? 'M' : 'L',
+    errorCorrectionLevel: 'M',
   })
-
-  if (!logoSrc) return
-
-  // Draw logo in center of QR code
-  const canvas = qrCanvas.value
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-
-  const img = new Image()
-  img.src = logoSrc
-  img.onload = () => {
-    const logoSize = 48
-    const x = (canvas.width - logoSize) / 2
-    const y = (canvas.height - logoSize) / 2
-    // White background with rounded corners
-    const pad = 5
-    ctx.fillStyle = '#FFFFFF'
-    ctx.beginPath()
-    const r = 6
-    ctx.moveTo(x - pad + r, y - pad)
-    ctx.arcTo(x + logoSize + pad, y - pad, x + logoSize + pad, y + logoSize + pad, r)
-    ctx.arcTo(x + logoSize + pad, y + logoSize + pad, x - pad, y + logoSize + pad, r)
-    ctx.arcTo(x - pad, y + logoSize + pad, x - pad, y - pad, r)
-    ctx.arcTo(x - pad, y - pad, x + logoSize + pad, y - pad, r)
-    ctx.fill()
-    // Draw logo
-    ctx.drawImage(img, x, y, logoSize, logoSize)
-  }
 }
 
 let pollInFlight = false

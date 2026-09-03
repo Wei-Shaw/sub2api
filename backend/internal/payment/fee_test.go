@@ -102,9 +102,11 @@ func TestCalculatePayAmount(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := CalculatePayAmount(tt.amount, tt.feeRate)
+			// 这些用例断言的是两位小数币种的进位行为；默认结算币种已改为
+			// 零小数的 VND，因此显式指定 CNY 而不是走 CalculatePayAmount 的默认值。
+			got := CalculatePayAmountForCurrency(tt.amount, tt.feeRate, "CNY")
 			if got != tt.expected {
-				t.Fatalf("CalculatePayAmount(%v, %v) = %q, want %q", tt.amount, tt.feeRate, got, tt.expected)
+				t.Fatalf("CalculatePayAmountForCurrency(%v, %v, CNY) = %q, want %q", tt.amount, tt.feeRate, got, tt.expected)
 			}
 		})
 	}

@@ -27,8 +27,8 @@ func (s *PaymentService) GetWebhookProvider(ctx context.Context, providerKey, ou
 }
 
 // GetWebhookProviders returns provider candidates that can verify the webhook.
-// Official WeChat Pay may require multiple candidates because the callback body
-// cannot be bound to a merchant before decryption.
+// A callback that carries an out_trade_no resolves to exactly the instance that
+// created the order; the registry fallback only covers single-instance setups.
 func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, outTradeNo string) ([]payment.Provider, error) {
 	if outTradeNo != "" {
 		order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(outTradeNo)).Only(ctx)
@@ -51,9 +51,6 @@ func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, o
 				}
 				return []payment.Provider{prov}, nil
 			}
-			if strings.TrimSpace(providerKey) == payment.TypeWxpay {
-				return s.getEnabledWebhookProvidersByKey(ctx, providerKey)
-			}
 			if !s.webhookRegistryFallbackAllowed(ctx, providerKey) {
 				return nil, fmt.Errorf("webhook provider fallback is ambiguous for %s", providerKey)
 			}
@@ -64,10 +61,6 @@ func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, o
 			}
 			return []payment.Provider{prov}, nil
 		}
-	}
-
-	if strings.TrimSpace(providerKey) == payment.TypeWxpay {
-		return s.getEnabledWebhookProvidersByKey(ctx, providerKey)
 	}
 
 	if !s.webhookRegistryFallbackAllowed(ctx, providerKey) {

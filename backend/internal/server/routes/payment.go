@@ -41,8 +41,6 @@ func RegisterPaymentRoutes(
 			orders.GET("/my", paymentHandler.GetMyOrders)
 			orders.GET("/:id", paymentHandler.GetOrder)
 			orders.POST("/:id/cancel", paymentHandler.CancelOrder)
-			orders.POST("/:id/refund-request", paymentHandler.RequestRefund)
-			orders.GET("/refund-eligible-providers", paymentHandler.GetRefundEligibleProviders)
 		}
 	}
 
@@ -59,14 +57,13 @@ func RegisterPaymentRoutes(
 	// --- Webhook endpoints (no auth) ---
 	webhook := v1.Group("/payment/webhook")
 	{
-		// EasyPay sends GET callbacks with query params
-		webhook.GET("/easypay", webhookHandler.EasyPayNotify)
-		webhook.POST("/easypay", webhookHandler.EasyPayNotify)
-		webhook.POST("/alipay", webhookHandler.AlipayNotify)
-		webhook.POST("/wxpay", webhookHandler.WxpayNotify)
-		webhook.POST("/stripe", webhookHandler.StripeWebhook)
-		webhook.POST("/airwallex", webhookHandler.AirwallexWebhook)
+		webhook.POST("/sepay", webhookHandler.SePayNotify)
 	}
+
+	// --- Hosted checkout bridge (no auth) ---
+	// SePay 收银台要求 POST 表单，浏览器无法直接跳转过去；这里用一个自动提交页
+	// 承接跳转，访问凭据是建单时签发的 resume token。
+	v1.GET("/payment/checkout", paymentHandler.Checkout)
 
 	// --- Admin payment endpoints (admin auth) ---
 	adminGroup := v1.Group("/admin/payment")
@@ -88,8 +85,6 @@ func RegisterPaymentRoutes(
 			adminOrders.GET("/:id", adminPaymentHandler.GetOrderDetail)
 			adminOrders.POST("/:id/cancel", adminPaymentHandler.CancelOrder)
 			adminOrders.POST("/:id/retry", adminPaymentHandler.RetryFulfillment)
-			adminOrders.POST("/:id/refund", adminPaymentHandler.ProcessRefund)
-			adminOrders.POST("/:id/refund/query", adminPaymentHandler.QueryAndFinalizeRefund)
 		}
 
 		// Subscription Plans

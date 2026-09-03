@@ -37,7 +37,6 @@ func TestLogoutClearsOAuthStateCookiesAndConsumesPendingSession(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: linuxDoOAuthStateCookieName, Value: encodeCookieValue("linuxdo-state")})
 	req.AddCookie(&http.Cookie{Name: oidcOAuthStateCookieName, Value: encodeCookieValue("oidc-state")})
 	req.AddCookie(&http.Cookie{Name: wechatOAuthStateCookieName, Value: encodeCookieValue("wechat-state")})
-	req.AddCookie(&http.Cookie{Name: wechatPaymentOAuthStateName, Value: encodeCookieValue("wechat-payment-state")})
 	ginCtx.Request = req
 
 	handler.Logout(ginCtx)
@@ -52,7 +51,6 @@ func TestLogoutClearsOAuthStateCookiesAndConsumesPendingSession(t *testing.T) {
 		linuxDoOAuthStateCookieName,
 		oidcOAuthStateCookieName,
 		wechatOAuthStateCookieName,
-		wechatPaymentOAuthStateName,
 	} {
 		cookie := findCookie(cookies, name)
 		require.NotNil(t, cookie, name)

@@ -136,89 +136,25 @@ func validateProviderSnapshotMetadata(order *dbent.PaymentOrder, providerKey str
 		return nil
 	}
 
-	switch strings.TrimSpace(providerKey) {
-	case payment.TypeWxpay:
-		if expected := strings.TrimSpace(snapshot.MerchantAppID); expected != "" {
-			actual := strings.TrimSpace(metadata["appid"])
-			if actual == "" {
-				return fmt.Errorf("wxpay notification missing appid")
-			}
-			if !strings.EqualFold(expected, actual) {
-				return fmt.Errorf("wxpay appid mismatch: expected %s, got %s", expected, actual)
-			}
+	if strings.TrimSpace(providerKey) != payment.TypeSePay {
+		return nil
+	}
+	if expected := strings.TrimSpace(snapshot.MerchantID); expected != "" {
+		actual := strings.TrimSpace(metadata["merchant_id"])
+		if actual == "" {
+			return fmt.Errorf("sepay notification missing merchant_id")
 		}
-		if expected := strings.TrimSpace(snapshot.MerchantID); expected != "" {
-			actual := strings.TrimSpace(metadata["mchid"])
-			if actual == "" {
-				return fmt.Errorf("wxpay notification missing mchid")
-			}
-			if !strings.EqualFold(expected, actual) {
-				return fmt.Errorf("wxpay mchid mismatch: expected %s, got %s", expected, actual)
-			}
+		if !strings.EqualFold(expected, actual) {
+			return fmt.Errorf("sepay merchant_id mismatch: expected %s, got %s", expected, actual)
 		}
-		if expected := strings.TrimSpace(snapshot.Currency); expected != "" {
-			actual := strings.ToUpper(strings.TrimSpace(metadata["currency"]))
-			if actual == "" {
-				return fmt.Errorf("wxpay notification missing currency")
-			}
-			if !strings.EqualFold(expected, actual) {
-				return fmt.Errorf("wxpay currency mismatch: expected %s, got %s", expected, actual)
-			}
+	}
+	if expected := strings.TrimSpace(snapshot.Currency); expected != "" {
+		actual := strings.ToUpper(strings.TrimSpace(metadata["currency"]))
+		if actual == "" {
+			return fmt.Errorf("sepay notification missing currency")
 		}
-		if actual := strings.TrimSpace(metadata["trade_state"]); actual != "" && !strings.EqualFold(actual, "SUCCESS") {
-			return fmt.Errorf("wxpay trade_state mismatch: expected SUCCESS, got %s", actual)
-		}
-	case payment.TypeAlipay:
-		if expected := strings.TrimSpace(snapshot.MerchantAppID); expected != "" {
-			actual := strings.TrimSpace(metadata["app_id"])
-			if actual == "" {
-				return fmt.Errorf("alipay app_id missing")
-			}
-			if !strings.EqualFold(expected, actual) {
-				return fmt.Errorf("alipay app_id mismatch: expected %s, got %s", expected, actual)
-			}
-		}
-	case payment.TypeEasyPay:
-		if expected := strings.TrimSpace(snapshot.MerchantID); expected != "" {
-			actual := strings.TrimSpace(metadata["pid"])
-			if actual == "" {
-				return fmt.Errorf("easypay pid missing")
-			}
-			if !strings.EqualFold(expected, actual) {
-				return fmt.Errorf("easypay pid mismatch: expected %s, got %s", expected, actual)
-			}
-		}
-	case payment.TypeStripe:
-		if expected := strings.TrimSpace(snapshot.Currency); expected != "" {
-			actual := strings.ToUpper(strings.TrimSpace(metadata["currency"]))
-			if actual == "" {
-				return fmt.Errorf("stripe notification missing currency")
-			}
-			if !strings.EqualFold(expected, actual) {
-				return fmt.Errorf("stripe currency mismatch: expected %s, got %s", expected, actual)
-			}
-		}
-	case payment.TypeAirwallex:
-		if expected := strings.TrimSpace(snapshot.MerchantID); expected != "" {
-			actual := strings.TrimSpace(metadata["account_id"])
-			if actual == "" {
-				return fmt.Errorf("airwallex account_id missing")
-			}
-			if !strings.EqualFold(expected, actual) {
-				return fmt.Errorf("airwallex account_id mismatch: expected %s, got %s", expected, actual)
-			}
-		}
-		if expected := strings.TrimSpace(snapshot.Currency); expected != "" {
-			actual := strings.ToUpper(strings.TrimSpace(metadata["currency"]))
-			if actual == "" {
-				return fmt.Errorf("airwallex notification missing currency")
-			}
-			if !strings.EqualFold(expected, actual) {
-				return fmt.Errorf("airwallex currency mismatch: expected %s, got %s", expected, actual)
-			}
-		}
-		if actual := strings.TrimSpace(metadata["status"]); actual != "" && !strings.EqualFold(actual, "SUCCEEDED") {
-			return fmt.Errorf("airwallex status mismatch: expected SUCCEEDED, got %s", actual)
+		if !strings.EqualFold(expected, actual) {
+			return fmt.Errorf("sepay currency mismatch: expected %s, got %s", expected, actual)
 		}
 	}
 

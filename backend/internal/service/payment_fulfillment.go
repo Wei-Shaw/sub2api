@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -132,27 +131,17 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 	return s.toPaid(ctx, o, tradeNo, paid, pk)
 }
 
-// paymentAmountToleranceForCurrency 退款侧仍在用的浮点容差（见 payment_amounts.go /
-// payment_refund.go）。收款侧改用 paymentOverpayToleranceForCurrency。
-func paymentAmountToleranceForCurrency(currency string) float64 {
-	minorUnit := payment.CurrencyMinorUnit(currency)
-	if minorUnit <= 2 {
-		return amountToleranceCNY
-	}
-	return math.Pow10(-minorUnit) / 2
-}
-
 // paymentOverpayToleranceForCurrency 只作用于「多付」方向：少付零容差。
 func paymentOverpayToleranceForCurrency(currency string) decimal.Decimal {
 	minorUnit := payment.CurrencyMinorUnit(currency)
 	if minorUnit <= 2 {
-		return decimalAmountToleranceCNY
+		return decimalAmountToleranceMinorUnit
 	}
 	// 半个最小货币单位：给按最小单位进位的服务商留出余地。
 	return decimal.New(5, int32(-minorUnit-1))
 }
 
-var decimalAmountToleranceCNY = decimal.NewFromFloat(amountToleranceCNY)
+var decimalAmountToleranceMinorUnit = decimal.NewFromFloat(amountToleranceMinorUnit)
 
 // isValidProviderAmount 金额必须为正。decimal 不存在 NaN/Inf，无需额外判定。
 func isValidProviderAmount(amount decimal.Decimal) bool {

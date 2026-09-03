@@ -79,12 +79,10 @@ import { usePaymentStore } from '@/stores/payment'
 import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
-import { getPaymentPopupFeatures, isBuiltInAlipayMethod, isBuiltInWxpayMethod } from '@/components/payment/providerConfig'
+import { getPaymentPopupFeatures } from '@/components/payment/providerConfig'
 import type { PaymentOrder } from '@/types/payment'
 import { currencySymbol } from '@/components/payment/currency'
 import QRCode from 'qrcode'
-import alipayIcon from '@/assets/icons/alipay.svg'
-import wxpayIcon from '@/assets/icons/wxpay.svg'
 
 const props = defineProps<{
   show: boolean
@@ -122,20 +120,13 @@ let lastVerifyAt = 0
 const VERIFY_RETRY_INTERVAL_MS = 15000
 const VERIFY_RETRY_MAX_ATTEMPTS = 6
 
-const isAlipay = computed(() => isBuiltInAlipayMethod(props.paymentType))
-const isWxpay = computed(() => isBuiltInWxpayMethod(props.paymentType))
-
 const dialogTitle = computed(() => {
   if (success.value) return t('payment.result.success')
   if (!qrUrl.value) return t('payment.qr.payInNewWindow')
-  if (isAlipay.value) return t('payment.qr.scanAlipay')
-  if (isWxpay.value) return t('payment.qr.scanWxpay')
   return t('payment.qr.scanToPay')
 })
 
 const scanHint = computed(() => {
-  if (isAlipay.value) return t('payment.qr.scanAlipayHint')
-  if (isWxpay.value) return t('payment.qr.scanWxpayHint')
   return ''
 })
 
@@ -150,8 +141,6 @@ const countdownDisplay = computed(() => {
 })
 
 function getLogoForType(): string | null {
-  if (isAlipay.value) return alipayIcon
-  if (isWxpay.value) return wxpayIcon
   return null
 }
 
@@ -211,8 +200,9 @@ async function pollStatus() {
   }
 }
 
+// The gateway can miss a callback, so a still-PENDING order is re-verified
+// against the upstream a few times before we give up on this poll cycle.
 async function tryRecoverPendingOrder(order: PaymentOrder): Promise<PaymentOrder> {
-  if (!isWxpay.value) return order
   const outTradeNo = String(order.out_trade_no || '').trim()
   if (!outTradeNo) return order
   const normalizedStatus = String(order.status || '').trim().toUpperCase()

@@ -152,50 +152,47 @@ func TestPcAggregateMethodLimits(t *testing.T) {
 func TestPcGroupByPaymentType(t *testing.T) {
 	t.Parallel()
 
-	t.Run("stripe instance maps all types to stripe group", func(t *testing.T) {
+	t.Run("instance is grouped under each supported method", func(t *testing.T) {
 		t.Parallel()
-		stripe := makeInstance(1, payment.TypeStripe, "card,alipay,link,wxpay", "")
-		easypay := makeInstance(2, payment.TypeEasyPay, "alipay,wxpay", "")
+		bank := makeInstance(1, payment.TypeSePay, payment.TypeSePayBankTransfer+","+payment.TypeSePayCard, "")
+		napas := makeInstance(2, payment.TypeSePay, payment.TypeSePayNapas, "")
 
-		groups := pcGroupByPaymentType([]*dbent.PaymentProviderInstance{stripe, easypay})
+		groups := pcGroupByPaymentType([]*dbent.PaymentProviderInstance{bank, napas})
 
-		// Stripe instance should only be in "stripe" group
-		if len(groups[payment.TypeStripe]) != 1 || groups[payment.TypeStripe][0].ID != 1 {
-			t.Fatalf("stripe group should contain only stripe instance, got %v", groups[payment.TypeStripe])
+		if len(groups[payment.TypeSePayBankTransfer]) != 1 || groups[payment.TypeSePayBankTransfer][0].ID != 1 {
+			t.Fatalf("bank transfer group should contain only instance 1, got %v", groups[payment.TypeSePayBankTransfer])
 		}
-		// alipay group should only contain easypay, NOT stripe
-		if len(groups[payment.TypeAlipay]) != 1 || groups[payment.TypeAlipay][0].ID != 2 {
-			t.Fatalf("alipay group should contain only easypay instance, got %v", groups[payment.TypeAlipay])
+		if len(groups[payment.TypeSePayCard]) != 1 || groups[payment.TypeSePayCard][0].ID != 1 {
+			t.Fatalf("card group should contain only instance 1, got %v", groups[payment.TypeSePayCard])
 		}
-		// wxpay group should only contain easypay, NOT stripe
-		if len(groups[payment.TypeWxpay]) != 1 || groups[payment.TypeWxpay][0].ID != 2 {
-			t.Fatalf("wxpay group should contain only easypay instance, got %v", groups[payment.TypeWxpay])
+		if len(groups[payment.TypeSePayNapas]) != 1 || groups[payment.TypeSePayNapas][0].ID != 2 {
+			t.Fatalf("napas group should contain only instance 2, got %v", groups[payment.TypeSePayNapas])
 		}
 	})
 
-	t.Run("multiple easypay instances in same groups", func(t *testing.T) {
+	t.Run("multiple instances share the same method groups", func(t *testing.T) {
 		t.Parallel()
-		ep1 := makeInstance(1, payment.TypeEasyPay, "alipay,wxpay", "")
-		ep2 := makeInstance(2, payment.TypeEasyPay, "alipay,wxpay", "")
+		first := makeInstance(1, payment.TypeSePay, payment.TypeSePayBankTransfer+","+payment.TypeSePayNapas, "")
+		second := makeInstance(2, payment.TypeSePay, payment.TypeSePayBankTransfer+","+payment.TypeSePayNapas, "")
 
-		groups := pcGroupByPaymentType([]*dbent.PaymentProviderInstance{ep1, ep2})
+		groups := pcGroupByPaymentType([]*dbent.PaymentProviderInstance{first, second})
 
-		if len(groups[payment.TypeAlipay]) != 2 {
-			t.Fatalf("alipay group should have 2 instances, got %d", len(groups[payment.TypeAlipay]))
+		if len(groups[payment.TypeSePayBankTransfer]) != 2 {
+			t.Fatalf("bank transfer group should have 2 instances, got %d", len(groups[payment.TypeSePayBankTransfer]))
 		}
-		if len(groups[payment.TypeWxpay]) != 2 {
-			t.Fatalf("wxpay group should have 2 instances, got %d", len(groups[payment.TypeWxpay]))
+		if len(groups[payment.TypeSePayNapas]) != 2 {
+			t.Fatalf("napas group should have 2 instances, got %d", len(groups[payment.TypeSePayNapas]))
 		}
 	})
 
-	t.Run("stripe with no supported types still in stripe group", func(t *testing.T) {
+	t.Run("instance with no supported types is grouped under nothing", func(t *testing.T) {
 		t.Parallel()
-		stripe := makeInstance(1, payment.TypeStripe, "", "")
+		inst := makeInstance(1, payment.TypeSePay, "", "")
 
-		groups := pcGroupByPaymentType([]*dbent.PaymentProviderInstance{stripe})
+		groups := pcGroupByPaymentType([]*dbent.PaymentProviderInstance{inst})
 
-		if len(groups[payment.TypeStripe]) != 1 {
-			t.Fatalf("stripe with empty types should still be in stripe group, got %v", groups)
+		if len(groups) != 0 {
+			t.Fatalf("instance without supported types should not be grouped, got %v", groups)
 		}
 	})
 }
@@ -204,19 +201,19 @@ func TestPcAggregateMethodCurrency(t *testing.T) {
 	t.Parallel()
 
 	svc := &PaymentConfigService{}
-	stripe := makeInstance(1, payment.TypeStripe, payment.TypeStripe, "")
+	stripe := makeInstance(1, payment.TypeSePay, payment.TypeSePay, "")
 	stripe.Config = `{"currency":"hkd"}`
 	currency, ok := svc.pcAggregateMethodCurrency([]*dbent.PaymentProviderInstance{stripe})
 	require.True(t, ok)
 	require.Equal(t, "HKD", currency)
 
-	airwallex := makeInstance(2, payment.TypeAirwallex, payment.TypeAirwallex, "")
+	airwallex := makeInstance(2, payment.TypeSePay, payment.TypeSePay, "")
 	airwallex.Config = `{"currency":"usd"}`
 	currency, ok = svc.pcAggregateMethodCurrency([]*dbent.PaymentProviderInstance{stripe, airwallex})
 	require.False(t, ok)
 	require.Empty(t, currency)
 
-	easypay := makeInstance(3, payment.TypeEasyPay, payment.TypeAlipay, "")
+	easypay := makeInstance(3, payment.TypeSePay, payment.TypeSePayBankTransfer, "")
 	currency, ok = svc.pcAggregateMethodCurrency([]*dbent.PaymentProviderInstance{easypay})
 	require.True(t, ok)
 	require.Equal(t, payment.DefaultPaymentCurrency, currency)
@@ -227,19 +224,19 @@ func TestGetAvailableMethodLimitsOmitsMixedCurrencyMethod(t *testing.T) {
 	client := newPaymentConfigServiceTestClient(t)
 
 	_, err := client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeStripe).
-		SetName("Stripe HKD").
-		SetConfig(`{"currency":"HKD"}`).
-		SetSupportedTypes("card,link").
+		SetProviderKey(payment.TypeSePay).
+		SetName("SePay VND").
+		SetConfig(`{"currency":"VND"}`).
+		SetSupportedTypes(payment.TypeSePayCard).
 		SetEnabled(true).
 		Save(ctx)
 	require.NoError(t, err)
 
 	_, err = client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeStripe).
-		SetName("Stripe USD").
+		SetProviderKey(payment.TypeSePay).
+		SetName("SePay USD").
 		SetConfig(`{"currency":"USD"}`).
-		SetSupportedTypes("card,link").
+		SetSupportedTypes(payment.TypeSePayCard).
 		SetEnabled(true).
 		Save(ctx)
 	require.NoError(t, err)
@@ -247,34 +244,12 @@ func TestGetAvailableMethodLimitsOmitsMixedCurrencyMethod(t *testing.T) {
 	svc := &PaymentConfigService{entClient: client}
 	resp, err := svc.GetAvailableMethodLimits(ctx)
 	require.NoError(t, err)
-	require.NotContains(t, resp.Methods, payment.TypeStripe)
+	require.NotContains(t, resp.Methods, payment.TypeSePayCard)
 
-	_, err = svc.ValidateMethodCurrencyConsistency(ctx, payment.TypeStripe)
+	_, err = svc.ValidateMethodCurrencyConsistency(ctx, payment.TypeSePayCard)
 	require.Error(t, err)
 	appErr := infraerrors.FromError(err)
 	require.Equal(t, "PAYMENT_METHOD_CURRENCY_CONFLICT", appErr.Reason)
-}
-
-func TestGetAvailableMethodLimitsIncludesEasyPayCustomMethodDisplayName(t *testing.T) {
-	ctx := context.Background()
-	client := newPaymentConfigServiceTestClient(t)
-
-	_, err := client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeEasyPay).
-		SetName("EasyPay Custom").
-		SetConfig(`{"customMethods":"[{\"type\":\"ldc\",\"upstreamType\":\"ldc\",\"displayName\":\"LDC Pay\"}]"}`).
-		SetSupportedTypes("alipay,wxpay,ldc").
-		SetEnabled(true).
-		Save(ctx)
-	require.NoError(t, err)
-
-	svc := &PaymentConfigService{entClient: client}
-	resp, err := svc.GetAvailableMethodLimits(ctx)
-	require.NoError(t, err)
-
-	limits, ok := resp.Methods["ldc"]
-	require.True(t, ok, "expected custom EasyPay method limits to be visible")
-	require.Equal(t, "LDC Pay", limits.DisplayName)
 }
 
 func TestPcComputeGlobalRange(t *testing.T) {
@@ -378,162 +353,4 @@ func TestPcInstanceTypeLimits(t *testing.T) {
 			t.Fatal("expected ok=false for invalid JSON")
 		}
 	})
-}
-
-func TestGetAvailableMethodLimitsUsesConfiguredVisibleMethodSource(t *testing.T) {
-	tests := []struct {
-		name                string
-		sourceSetting       string
-		wantAlipaySingleMin float64
-		wantAlipaySingleMax float64
-		wantGlobalMin       float64
-		wantGlobalMax       float64
-	}{
-		{
-			name:                "official source",
-			sourceSetting:       VisibleMethodSourceOfficialAlipay,
-			wantAlipaySingleMin: 10,
-			wantAlipaySingleMax: 100,
-			wantGlobalMin:       10,
-			wantGlobalMax:       300,
-		},
-		{
-			name:                "easypay source",
-			sourceSetting:       VisibleMethodSourceEasyPayAlipay,
-			wantAlipaySingleMin: 20,
-			wantAlipaySingleMax: 200,
-			wantGlobalMin:       20,
-			wantGlobalMax:       300,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			client := newPaymentConfigServiceTestClient(t)
-
-			_, err := client.PaymentProviderInstance.Create().
-				SetProviderKey(payment.TypeAlipay).
-				SetName("Official Alipay").
-				SetConfig("{}").
-				SetSupportedTypes("alipay").
-				SetLimits(`{"alipay":{"singleMin":10,"singleMax":100}}`).
-				SetEnabled(true).
-				Save(ctx)
-			if err != nil {
-				t.Fatalf("create official alipay instance: %v", err)
-			}
-			_, err = client.PaymentProviderInstance.Create().
-				SetProviderKey(payment.TypeEasyPay).
-				SetName("EasyPay Alipay").
-				SetConfig("{}").
-				SetSupportedTypes("alipay").
-				SetLimits(`{"alipay":{"singleMin":20,"singleMax":200}}`).
-				SetEnabled(true).
-				Save(ctx)
-			if err != nil {
-				t.Fatalf("create easypay alipay instance: %v", err)
-			}
-			_, err = client.PaymentProviderInstance.Create().
-				SetProviderKey(payment.TypeWxpay).
-				SetName("Official WeChat").
-				SetConfig("{}").
-				SetSupportedTypes("wxpay").
-				SetLimits(`{"wxpay":{"singleMin":30,"singleMax":300}}`).
-				SetEnabled(true).
-				Save(ctx)
-			if err != nil {
-				t.Fatalf("create official wxpay instance: %v", err)
-			}
-
-			svc := &PaymentConfigService{
-				entClient: client,
-				settingRepo: &paymentConfigSettingRepoStub{
-					values: map[string]string{
-						SettingPaymentVisibleMethodAlipaySource: tt.sourceSetting,
-					},
-				},
-			}
-
-			resp, err := svc.GetAvailableMethodLimits(ctx)
-			if err != nil {
-				t.Fatalf("GetAvailableMethodLimits returned error: %v", err)
-			}
-
-			alipayLimits, ok := resp.Methods[payment.TypeAlipay]
-			if !ok {
-				t.Fatalf("expected alipay limits to remain visible, got %v", resp.Methods)
-			}
-			if alipayLimits.SingleMin != tt.wantAlipaySingleMin || alipayLimits.SingleMax != tt.wantAlipaySingleMax {
-				t.Fatalf("alipay limits = %+v, want min=%v max=%v", alipayLimits, tt.wantAlipaySingleMin, tt.wantAlipaySingleMax)
-			}
-
-			wxpayLimits, ok := resp.Methods[payment.TypeWxpay]
-			if !ok {
-				t.Fatalf("expected wxpay limits to remain visible, got %v", resp.Methods)
-			}
-			if wxpayLimits.SingleMin != 30 || wxpayLimits.SingleMax != 300 {
-				t.Fatalf("wxpay limits = %+v, want official-only min=30 max=300", wxpayLimits)
-			}
-			if resp.GlobalMin != tt.wantGlobalMin || resp.GlobalMax != tt.wantGlobalMax {
-				t.Fatalf("global range = (%v, %v), want (%v, %v)", resp.GlobalMin, resp.GlobalMax, tt.wantGlobalMin, tt.wantGlobalMax)
-			}
-		})
-	}
-}
-
-func TestGetAvailableMethodLimitsPreservesLegacyCrossProviderBehaviorWhenVisibleMethodSourceMissing(t *testing.T) {
-	ctx := context.Background()
-	client := newPaymentConfigServiceTestClient(t)
-
-	_, err := client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeAlipay).
-		SetName("Official Alipay").
-		SetConfig("{}").
-		SetSupportedTypes("alipay").
-		SetLimits(`{"alipay":{"singleMin":10,"singleMax":100}}`).
-		SetEnabled(true).
-		Save(ctx)
-	require.NoError(t, err)
-
-	_, err = client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeEasyPay).
-		SetName("EasyPay Mixed").
-		SetConfig("{}").
-		SetSupportedTypes("alipay,wxpay").
-		SetLimits(`{"alipay":{"singleMin":20,"singleMax":200},"wxpay":{"singleMin":40,"singleMax":400}}`).
-		SetEnabled(true).
-		Save(ctx)
-	require.NoError(t, err)
-
-	_, err = client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeWxpay).
-		SetName("Official WeChat").
-		SetConfig("{}").
-		SetSupportedTypes("wxpay").
-		SetLimits(`{"wxpay":{"singleMin":30,"singleMax":300}}`).
-		SetEnabled(true).
-		Save(ctx)
-	require.NoError(t, err)
-
-	svc := &PaymentConfigService{
-		entClient:   client,
-		settingRepo: &paymentConfigSettingRepoStub{values: map[string]string{}},
-	}
-
-	resp, err := svc.GetAvailableMethodLimits(ctx)
-	require.NoError(t, err)
-
-	alipayLimits, ok := resp.Methods[payment.TypeAlipay]
-	require.True(t, ok, "expected alipay limits to remain visible")
-	require.Equal(t, 10.0, alipayLimits.SingleMin)
-	require.Equal(t, 200.0, alipayLimits.SingleMax)
-
-	wxpayLimits, ok := resp.Methods[payment.TypeWxpay]
-	require.True(t, ok, "expected wxpay limits to remain visible")
-	require.Equal(t, 30.0, wxpayLimits.SingleMin)
-	require.Equal(t, 400.0, wxpayLimits.SingleMax)
-
-	require.Equal(t, 10.0, resp.GlobalMin)
-	require.Equal(t, 400.0, resp.GlobalMax)
 }

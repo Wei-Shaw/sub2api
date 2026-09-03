@@ -34,25 +34,6 @@
               <Icon name="refresh" size="sm" />
               {{ t('payment.admin.retry') }}
             </button>
-            <template v-if="row.status === 'REFUND_REQUESTED'">
-              <span v-if="row.refund_amount" class="rounded-full bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">{{ creditedAmountSymbol }}{{ row.refund_amount.toFixed(2) }}</span>
-              <button @click="openRefundDialog(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20">
-                <Icon name="check" size="sm" />
-                {{ t('payment.admin.approveRefund') }}
-              </button>
-            </template>
-            <button v-else-if="row.status === 'REFUND_FAILED'" @click="openRefundDialog(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20">
-              <Icon name="refresh" size="sm" />
-              {{ t('payment.admin.retryRefund') }}
-            </button>
-            <button v-else-if="row.status === 'REFUND_PENDING'" :disabled="refundQueryingIds.has(row.id)" @click="handleQueryRefund(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-orange-600 hover:bg-orange-50 disabled:opacity-60 dark:text-orange-400 dark:hover:bg-orange-900/20">
-              <Icon name="refresh" size="sm" :class="refundQueryingIds.has(row.id) ? 'animate-spin' : ''" />
-              {{ t('payment.admin.queryRefundStatus') }}
-            </button>
-            <button v-else-if="row.status === 'COMPLETED' || row.status === 'PARTIALLY_REFUNDED'" @click="openRefundDialog(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20">
-              <Icon name="dollar" size="sm" />
-              {{ t('payment.admin.refund') }}
-            </button>
           </div>
         </template>
       </OrderTable>
@@ -111,7 +92,6 @@
       </div>
     </BaseDialog>
 
-    <AdminRefundDialog :show="showRefundDialog" :order="selectedOrder" :submitting="refundSubmitting" :require-force="refundRequireForce" :warning="refundWarning" @confirm="handleRefund" @cancel="closeRefundDialog" />
   </AppLayout>
 </template>
 
@@ -128,7 +108,6 @@ import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
-import AdminRefundDialog from '@/components/admin/payment/AdminRefundDialog.vue'
 import OrderStatusBadge from '@/components/payment/OrderStatusBadge.vue'
 import OrderTable from '@/components/payment/OrderTable.vue'
 import { currencySymbol } from '@/components/payment/currency'
@@ -151,11 +130,6 @@ const orderFilters = reactive({ status: '', payment_type: '', order_type: '' })
 const orderPagination = reactive({ page: 1, page_size: 20, total: 0 })
 const selectedOrder = ref<PaymentOrder | null>(null)
 const showDetailDialog = ref(false)
-const showRefundDialog = ref(false)
-const refundSubmitting = ref(false)
-const refundRequireForce = ref(false)
-const refundWarning = ref('')
-const refundQueryingIds = ref(new Set<number>())
 const orderAuditLogs = ref<AuditLog[]>([])
 const creditedAmountSymbol = currencySymbol('USD')
 
@@ -235,74 +209,6 @@ async function handleCancelOrder(order: PaymentOrder) {
 async function handleRetryOrder(order: PaymentOrder) {
   try { await adminPaymentAPI.retryRecharge(order.id); appStore.showSuccess(t('payment.admin.retrySuccess')); loadOrders() }
   catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) }
-}
-
-function openRefundDialog(order: PaymentOrder) {
-  selectedOrder.value = order
-  refundRequireForce.value = false
-  refundWarning.value = ''
-  showRefundDialog.value = true
-}
-
-function closeRefundDialog() {
-  showRefundDialog.value = false
-  refundRequireForce.value = false
-  refundWarning.value = ''
-}
-
-function isRefundPendingWarning(warning: string | undefined): boolean {
-  return /pending|处理中|待/.test(String(warning || '').toLowerCase())
-}
-
-async function handleRefund(data: { amount: number; reason: string; deduct_balance: boolean; force: boolean }) {
-  if (!selectedOrder.value) return
-  refundSubmitting.value = true
-  try {
-    const res = await adminPaymentAPI.refundOrder(selectedOrder.value.id, { amount: data.amount, reason: data.reason, deduct_balance: data.deduct_balance, force: data.force })
-    if (res.data.success) {
-      appStore.showSuccess(t('payment.admin.refundSuccess'))
-      closeRefundDialog()
-      loadOrders()
-      return
-    }
-    if (isRefundPendingWarning(res.data.warning)) {
-      appStore.showSuccess(t('payment.admin.refundPending'))
-      closeRefundDialog()
-      loadOrders()
-      return
-    }
-    if (res.data.require_force) {
-      // Backend needs an explicit force confirmation (e.g. the user spent their
-      // balance after requesting the refund). Keep the dialog open and surface
-      // the force checkbox instead of dropping the admin back to the list.
-      refundRequireForce.value = true
-      refundWarning.value = res.data.warning || ''
-      return
-    }
-    appStore.showError(res.data.warning || t('common.error'))
-  } catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) }
-  finally { refundSubmitting.value = false }
-}
-
-async function handleQueryRefund(order: PaymentOrder) {
-  refundQueryingIds.value = new Set(refundQueryingIds.value).add(order.id)
-  try {
-    const res = await adminPaymentAPI.queryRefund(order.id)
-    if (res.data.success) {
-      appStore.showSuccess(t('payment.admin.refundSuccess'))
-    } else if (isRefundPendingWarning(res.data.warning)) {
-      appStore.showSuccess(t('payment.admin.refundPending'))
-    } else {
-      appStore.showError(res.data.warning || t('common.error'))
-    }
-    loadOrders()
-  } catch (err: unknown) {
-    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
-  } finally {
-    const next = new Set(refundQueryingIds.value)
-    next.delete(order.id)
-    refundQueryingIds.value = next
-  }
 }
 
 function formatDateTime(dateStr: string): string { return formatOrderDateTime(dateStr) }

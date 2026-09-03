@@ -511,14 +511,16 @@ describe('PaymentResultView', () => {
     expect(wrapper.text()).toContain(formatPaymentAmount(103, 'HKD'))
   })
 
-  it('normalizes aliased payment methods before rendering the label', async () => {
+  it('renders each SePay method under its own label', async () => {
+    // The methods are distinct user choices, so the result page must not fold
+    // one onto another when naming what the payer used.
     routeState.query = {
       resume_token: 'resume-88',
     }
     resolveOrderPublicByResumeToken.mockResolvedValueOnce({
       data: {
         ...orderFactory('PAID'),
-        payment_type: 'alipay_direct',
+        payment_type: 'sepay_card',
       },
     })
 
@@ -532,7 +534,7 @@ describe('PaymentResultView', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('payment.methods.alipay')
-    expect(wrapper.text()).not.toContain('payment.methods.alipay_direct')
+    expect(wrapper.text()).toContain('payment.methods.sepay_card')
+    expect(wrapper.text()).not.toContain('payment.methods.sepay_bank_transfer')
   })
 })

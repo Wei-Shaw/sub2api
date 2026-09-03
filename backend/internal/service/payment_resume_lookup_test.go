@@ -18,10 +18,10 @@ type paymentResumeLookupProvider struct {
 
 func (p *paymentResumeLookupProvider) Name() string { return "resume-lookup-provider" }
 
-func (p *paymentResumeLookupProvider) ProviderKey() string { return payment.TypeAlipay }
+func (p *paymentResumeLookupProvider) ProviderKey() string { return payment.TypeSePayBankTransfer }
 
 func (p *paymentResumeLookupProvider) SupportedTypes() []payment.PaymentType {
-	return []payment.PaymentType{payment.TypeAlipay}
+	return []payment.PaymentType{payment.TypeSePayBankTransfer}
 }
 
 func (p *paymentResumeLookupProvider) CreatePayment(context.Context, payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
@@ -37,10 +37,6 @@ func (p *paymentResumeLookupProvider) VerifyNotification(context.Context, string
 	panic("unexpected call")
 }
 
-func (p *paymentResumeLookupProvider) Refund(context.Context, payment.RefundRequest) (*payment.RefundResponse, error) {
-	panic("unexpected call")
-}
-
 func TestGetPublicOrderByResumeTokenReturnsMatchingOrder(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
@@ -52,7 +48,7 @@ func TestGetPublicOrderByResumeTokenReturnsMatchingOrder(t *testing.T) {
 	require.NoError(t, err)
 
 	instanceID := "12"
-	providerKey := payment.TypeEasyPay
+	providerKey := payment.TypeSePay
 	order, err := client.PaymentOrder.Create().
 		SetUserID(user.ID).
 		SetUserEmail(user.Email).
@@ -62,7 +58,7 @@ func TestGetPublicOrderByResumeTokenReturnsMatchingOrder(t *testing.T) {
 		SetFeeRate(0).
 		SetRechargeCode("RESUME-ORDER").
 		SetOutTradeNo("sub2_resume_lookup").
-		SetPaymentType(payment.TypeAlipay).
+		SetPaymentType(payment.TypeSePayBankTransfer).
 		SetPaymentTradeNo("trade-1").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -80,7 +76,7 @@ func TestGetPublicOrderByResumeTokenReturnsMatchingOrder(t *testing.T) {
 		UserID:             user.ID,
 		ProviderInstanceID: instanceID,
 		ProviderKey:        providerKey,
-		PaymentType:        payment.TypeAlipay,
+		PaymentType:        payment.TypeSePayBankTransfer,
 		CanonicalReturnURL: "https://app.example.com/payment/result",
 	})
 	require.NoError(t, err)
@@ -114,7 +110,7 @@ func TestGetPublicOrderByResumeTokenRejectsSnapshotMismatch(t *testing.T) {
 		SetFeeRate(0).
 		SetRechargeCode("RESUME-MISMATCH").
 		SetOutTradeNo("sub2_resume_lookup_mismatch").
-		SetPaymentType(payment.TypeAlipay).
+		SetPaymentType(payment.TypeSePayBankTransfer).
 		SetPaymentTradeNo("trade-2").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -122,7 +118,7 @@ func TestGetPublicOrderByResumeTokenRejectsSnapshotMismatch(t *testing.T) {
 		SetClientIP("127.0.0.1").
 		SetSrcHost("api.example.com").
 		SetProviderInstanceID("12").
-		SetProviderKey(payment.TypeEasyPay).
+		SetProviderKey(payment.TypeSePay).
 		Save(ctx)
 	require.NoError(t, err)
 
@@ -131,8 +127,8 @@ func TestGetPublicOrderByResumeTokenRejectsSnapshotMismatch(t *testing.T) {
 		OrderID:            order.ID,
 		UserID:             user.ID,
 		ProviderInstanceID: "99",
-		ProviderKey:        payment.TypeEasyPay,
-		PaymentType:        payment.TypeAlipay,
+		ProviderKey:        payment.TypeSePay,
+		PaymentType:        payment.TypeSePayBankTransfer,
 		CanonicalReturnURL: "https://app.example.com/payment/result",
 	})
 	require.NoError(t, err)
@@ -166,7 +162,7 @@ func TestGetPublicOrderByResumeTokenUsesSnapshotAuthorityWhenColumnsDiffer(t *te
 		SetFeeRate(0).
 		SetRechargeCode("RESUME-SNAPSHOT-AUTHORITY").
 		SetOutTradeNo("sub2_resume_snapshot_authority").
-		SetPaymentType(payment.TypeAlipay).
+		SetPaymentType(payment.TypeSePayBankTransfer).
 		SetPaymentTradeNo("trade-snapshot-authority").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -174,11 +170,11 @@ func TestGetPublicOrderByResumeTokenUsesSnapshotAuthorityWhenColumnsDiffer(t *te
 		SetClientIP("127.0.0.1").
 		SetSrcHost("api.example.com").
 		SetProviderInstanceID("legacy-column-instance").
-		SetProviderKey(payment.TypeAlipay).
+		SetProviderKey(payment.TypeSePayBankTransfer).
 		SetProviderSnapshot(map[string]any{
 			"schema_version":       2,
 			"provider_instance_id": "snapshot-instance",
-			"provider_key":         payment.TypeEasyPay,
+			"provider_key":         payment.TypeSePay,
 		}).
 		Save(ctx)
 	require.NoError(t, err)
@@ -188,8 +184,8 @@ func TestGetPublicOrderByResumeTokenUsesSnapshotAuthorityWhenColumnsDiffer(t *te
 		OrderID:            order.ID,
 		UserID:             user.ID,
 		ProviderInstanceID: "snapshot-instance",
-		ProviderKey:        payment.TypeEasyPay,
-		PaymentType:        payment.TypeAlipay,
+		ProviderKey:        payment.TypeSePay,
+		PaymentType:        payment.TypeSePayBankTransfer,
 		CanonicalReturnURL: "https://app.example.com/payment/result",
 	})
 	require.NoError(t, err)
@@ -223,7 +219,7 @@ func TestGetPublicOrderByResumeTokenChecksUpstreamForPendingOrder(t *testing.T) 
 		SetFeeRate(0).
 		SetRechargeCode("RESUME-PENDING").
 		SetOutTradeNo("sub2_resume_lookup_pending").
-		SetPaymentType(payment.TypeAlipay).
+		SetPaymentType(payment.TypeSePayBankTransfer).
 		SetPaymentTradeNo("trade-pending").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -237,7 +233,7 @@ func TestGetPublicOrderByResumeTokenChecksUpstreamForPendingOrder(t *testing.T) 
 	token, err := resumeSvc.CreateToken(ResumeTokenClaims{
 		OrderID:            order.ID,
 		UserID:             user.ID,
-		PaymentType:        payment.TypeAlipay,
+		PaymentType:        payment.TypeSePayBankTransfer,
 		CanonicalReturnURL: "https://app.example.com/payment/result",
 	})
 	require.NoError(t, err)
@@ -278,7 +274,7 @@ func TestVerifyOrderPublicDoesNotCheckUpstreamForPendingOrder(t *testing.T) {
 		SetFeeRate(0).
 		SetRechargeCode("PUBLIC-VERIFY").
 		SetOutTradeNo("sub2_public_verify_pending").
-		SetPaymentType(payment.TypeAlipay).
+		SetPaymentType(payment.TypeSePayBankTransfer).
 		SetPaymentTradeNo("trade-public-verify").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).

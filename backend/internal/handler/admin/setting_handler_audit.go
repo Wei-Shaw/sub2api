@@ -491,18 +491,6 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OpenAICodexVersionAutoSyncEnabled != after.OpenAICodexVersionAutoSyncEnabled {
 		changed = append(changed, "openai_codex_version_auto_sync_enabled")
 	}
-	if before.PaymentVisibleMethodAlipaySource != after.PaymentVisibleMethodAlipaySource {
-		changed = append(changed, "payment_visible_method_alipay_source")
-	}
-	if before.PaymentVisibleMethodWxpaySource != after.PaymentVisibleMethodWxpaySource {
-		changed = append(changed, "payment_visible_method_wxpay_source")
-	}
-	if before.PaymentVisibleMethodAlipayEnabled != after.PaymentVisibleMethodAlipayEnabled {
-		changed = append(changed, "payment_visible_method_alipay_enabled")
-	}
-	if before.PaymentVisibleMethodWxpayEnabled != after.PaymentVisibleMethodWxpayEnabled {
-		changed = append(changed, "payment_visible_method_wxpay_enabled")
-	}
 	if before.OpenAILowUpstreamRatePriorityEnabled != after.OpenAILowUpstreamRatePriorityEnabled {
 		changed = append(changed, "openai_low_upstream_rate_priority_enabled")
 	}

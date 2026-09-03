@@ -3,7 +3,6 @@ import { mount } from '@vue/test-utils'
 import type { PaymentOrder } from '@/types/payment'
 import AdminOrderDetail from '../AdminOrderDetail.vue'
 import AdminOrderTable from '../AdminOrderTable.vue'
-import AdminRefundDialog from '../AdminRefundDialog.vue'
 import OrderTable from '@/components/payment/OrderTable.vue'
 
 vi.mock('vue-i18n', async () => {
@@ -71,32 +70,6 @@ describe('admin order currency display', () => {
     expect(text).toContain('¥108.00')
     expect(text).toContain('$100.00')
     expect(text).toContain('$25.00')
-  })
-
-  it('uses order currency for pay_amount and USD for refundable balance amounts', () => {
-    const wrapper = mount(AdminRefundDialog, {
-      props: {
-        show: true,
-        order: orderFactory({
-          currency: 'USD',
-          status: 'PARTIALLY_REFUNDED',
-          refund_amount: 20,
-        }),
-        userBalance: 200,
-      },
-      global: {
-        stubs: {
-          BaseDialog: BaseDialogStub,
-        },
-      },
-    })
-
-    const text = wrapper.text()
-    expect(text).toContain('$108.00')
-    expect(text).toContain('$100.00')
-    expect(text).toContain('$20.00')
-    expect(text).toContain('$80.00')
-    expect(text).toContain('$200.00')
   })
 
   it('renders payment currency consistently in the shared order table', () => {

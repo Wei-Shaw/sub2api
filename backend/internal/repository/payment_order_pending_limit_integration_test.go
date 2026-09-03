@@ -136,7 +136,7 @@ func createOrderIfPendingHeadroomAllows(
 		SetFeeRate(0).
 		SetRechargeCode(fmt.Sprintf("PAY-PENDLIMIT-%d-%d", time.Now().UnixNano(), seq)).
 		SetOutTradeNo(fmt.Sprintf("sub2_pendlimit_%d_%d", time.Now().UnixNano(), seq)).
-		SetPaymentType(payment.TypeAlipay).
+		SetPaymentType(payment.TypeSePayBankTransfer).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(service.OrderStatusPending).

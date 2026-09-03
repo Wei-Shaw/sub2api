@@ -110,7 +110,7 @@ func TestCreateOrderInTxRechargeCodeDoesNotLeakOrderID(t *testing.T) {
 			ctx,
 			CreateOrderRequest{
 				UserID:      user.ID,
-				PaymentType: payment.TypeAlipay,
+				PaymentType: payment.TypeSePayBankTransfer,
 				OrderType:   payment.OrderTypeBalance,
 			},
 			&User{ID: user.ID, Email: user.Email, Username: user.Username},
@@ -274,7 +274,7 @@ func mustCreatePaymentOrderWithExpiry(
 		SetFeeRate(0).
 		SetRechargeCode(code).
 		SetOutTradeNo(fmt.Sprintf("sub2_daily_%d_%d", userID, atomic.AddInt64(&dailyLimitOrderSeq, 1))).
-		SetPaymentType(payment.TypeAlipay).
+		SetPaymentType(payment.TypeSePayBankTransfer).
 		SetPaymentTradeNo("").
 		SetOrderType(orderType).
 		SetStatus(status).
@@ -375,7 +375,7 @@ func TestCreateOrderInTxPendingOrdersConsumeDailyLimit(t *testing.T) {
 	cfg := &PaymentConfig{MaxPendingOrders: 10, OrderTimeoutMin: 30, DailyLimit: 100}
 	req := CreateOrderRequest{
 		UserID:      user.ID,
-		PaymentType: payment.TypeAlipay,
+		PaymentType: payment.TypeSePayBankTransfer,
 		OrderType:   payment.OrderTypeBalance,
 	}
 	svcUser := &User{ID: user.ID, Email: user.Email, Username: user.Username}

@@ -14,7 +14,9 @@ describe('currencySymbol', () => {
     expect(currencySymbol('USD')).toBe('$')
     expect(currencySymbol('cny')).toBe('¥')
     expect(currencySymbol('EUR')).toBe('€')
-    expect(currencySymbol('')).toBe('¥')
+    // An unset currency falls back to the gateway currency (VND).
+    expect(currencySymbol('')).toBe('₫')
+    expect(currencySymbol('VND')).toBe('₫')
     expect(currencySymbol('XYZ')).toBe('XYZ')
   })
 })

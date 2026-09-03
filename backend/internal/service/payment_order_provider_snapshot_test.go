@@ -16,13 +16,13 @@ func TestBuildPaymentOrderProviderSnapshot_ExcludesSensitiveConfig(t *testing.T)
 
 	sel := &payment.InstanceSelection{
 		InstanceID:     "12",
-		ProviderKey:    payment.TypeWxpay,
-		SupportedTypes: "wxpay,wxpay_direct",
+		ProviderKey:    payment.TypeSePay,
+		SupportedTypes: payment.TypeSePayBankTransfer + "," + payment.TypeSePayCard,
 		PaymentMode:    "popup",
 		Config: map[string]string{
-			"privateKey": "secret",
-			"apiV3Key":   "secret-v3",
-			"appId":      "wx-app-id",
+			"merchantId": "MERCHANT_TEST",
+			"secretKey":  "secret",
+			"currency":   "VND",
 		},
 	}
 
@@ -30,17 +30,15 @@ func TestBuildPaymentOrderProviderSnapshot_ExcludesSensitiveConfig(t *testing.T)
 	require.Equal(t, map[string]any{
 		"schema_version":       2,
 		"provider_instance_id": "12",
-		"provider_key":         payment.TypeWxpay,
+		"provider_key":         payment.TypeSePay,
 		"payment_mode":         "popup",
-		"merchant_app_id":      "wx-app-id",
-		"currency":             "CNY",
+		"merchant_id":          "MERCHANT_TEST",
+		"currency":             "VND",
 	}, snapshot)
 	require.NotContains(t, snapshot, "config")
-	require.NotContains(t, snapshot, "privateKey")
-	require.NotContains(t, snapshot, "apiV3Key")
+	require.NotContains(t, snapshot, "secretKey")
 	require.NotContains(t, snapshot, "supported_types")
 	require.NotContains(t, snapshot, "instance_name")
-	require.NotContains(t, snapshot, "merchant_id")
 }
 
 func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
@@ -55,7 +53,7 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 	require.NoError(t, err)
 
 	instance, err := client.PaymentProviderInstance.Create().
-		SetProviderKey(payment.TypeAlipay).
+		SetProviderKey(payment.TypeSePayBankTransfer).
 		SetName("Primary Alipay").
 		SetConfig(`{"secretKey":"do-not-copy"}`).
 		SetSupportedTypes("alipay,alipay_direct").
@@ -69,7 +67,7 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 		ctx,
 		CreateOrderRequest{
 			UserID:      user.ID,
-			PaymentType: payment.TypeAlipay,
+			PaymentType: payment.TypeSePayBankTransfer,
 			OrderType:   payment.OrderTypeBalance,
 			ClientIP:    "127.0.0.1",
 			SrcHost:     "app.example.com",
@@ -90,7 +88,7 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 		88,
 		&payment.InstanceSelection{
 			InstanceID:     strconv.FormatInt(instance.ID, 10),
-			ProviderKey:    payment.TypeAlipay,
+			ProviderKey:    payment.TypeSePayBankTransfer,
 			SupportedTypes: "alipay,alipay_direct",
 			PaymentMode:    "redirect",
 			Config: map[string]string{
@@ -100,13 +98,13 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, strconv.FormatInt(instance.ID, 10), valueOrEmpty(order.ProviderInstanceID))
-	require.Equal(t, payment.TypeAlipay, valueOrEmpty(order.ProviderKey))
+	require.Equal(t, payment.TypeSePayBankTransfer, valueOrEmpty(order.ProviderKey))
 	// createOrderInTx 不再回读订单（少一条 UPDATE），返回的是内存实体，
 	// schema_version 仍是 int；回读后才会变成 JSON 解码出的 float64。
 	// 生产读取方 psSnapshotIntValue 两种类型都接受，这里按值断言。
 	require.Equal(t, 2, psSnapshotIntValue(order.ProviderSnapshot["schema_version"]))
 	require.Equal(t, strconv.FormatInt(instance.ID, 10), order.ProviderSnapshot["provider_instance_id"])
-	require.Equal(t, payment.TypeAlipay, order.ProviderSnapshot["provider_key"])
+	require.Equal(t, payment.TypeSePayBankTransfer, order.ProviderSnapshot["provider_key"])
 	require.Equal(t, "redirect", order.ProviderSnapshot["payment_mode"])
 	require.NotContains(t, order.ProviderSnapshot, "config")
 	require.NotContains(t, order.ProviderSnapshot, "secretKey")
@@ -114,86 +112,27 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 	require.NotContains(t, order.ProviderSnapshot, "instance_name")
 }
 
-func TestBuildPaymentOrderProviderSnapshot_UsesWxpayJSAPIAppIDForOpenIDOrders(t *testing.T) {
-	t.Parallel()
-
-	snapshot := buildPaymentOrderProviderSnapshot(&payment.InstanceSelection{
-		InstanceID:  "88",
-		ProviderKey: payment.TypeWxpay,
-		Config: map[string]string{
-			"appId":   "wx-open-app",
-			"mpAppId": "wx-mp-app",
-			"mchId":   "mch-88",
-		},
-		PaymentMode: "jsapi",
-	}, CreateOrderRequest{OpenID: "openid-123"})
-
-	require.Equal(t, "wx-mp-app", snapshot["merchant_app_id"])
-	require.Equal(t, "mch-88", snapshot["merchant_id"])
-	require.Equal(t, "CNY", snapshot["currency"])
-}
-
-func TestBuildPaymentOrderProviderSnapshot_IncludesAlipayMerchantIdentity(t *testing.T) {
-	t.Parallel()
-
-	snapshot := buildPaymentOrderProviderSnapshot(&payment.InstanceSelection{
-		InstanceID:  "21",
-		ProviderKey: payment.TypeAlipay,
-		Config: map[string]string{
-			"appId":      "alipay-app-21",
-			"privateKey": "secret",
-		},
-		PaymentMode: "redirect",
-	}, CreateOrderRequest{})
-
-	require.Equal(t, "alipay-app-21", snapshot["merchant_app_id"])
-	require.NotContains(t, snapshot, "privateKey")
-}
-
-func TestBuildPaymentOrderProviderSnapshot_IncludesEasyPayMerchantIdentity(t *testing.T) {
-	t.Parallel()
-
-	snapshot := buildPaymentOrderProviderSnapshot(&payment.InstanceSelection{
-		InstanceID:  "66",
-		ProviderKey: payment.TypeEasyPay,
-		Config: map[string]string{
-			"pid":  "easypay-merchant-66",
-			"pkey": "secret",
-		},
-		PaymentMode: "popup",
-	}, CreateOrderRequest{PaymentType: payment.TypeAlipay})
-
-	require.Equal(t, "easypay-merchant-66", snapshot["merchant_id"])
-	require.NotContains(t, snapshot, "pkey")
-}
-
-func TestBuildPaymentOrderProviderSnapshot_IncludesProviderCurrency(t *testing.T) {
-	t.Parallel()
-
-	stripeSnapshot := buildPaymentOrderProviderSnapshot(&payment.InstanceSelection{
-		InstanceID:  "77",
-		ProviderKey: payment.TypeStripe,
-		Config: map[string]string{
-			"currency": "hkd",
-		},
-	}, CreateOrderRequest{})
-	require.Equal(t, "HKD", stripeSnapshot["currency"])
-
-	airwallexSnapshot := buildPaymentOrderProviderSnapshot(&payment.InstanceSelection{
-		InstanceID:  "78",
-		ProviderKey: payment.TypeAirwallex,
-		Config: map[string]string{
-			"currency":  "usd",
-			"accountId": "acct-78",
-		},
-	}, CreateOrderRequest{})
-	require.Equal(t, "USD", airwallexSnapshot["currency"])
-	require.Equal(t, "acct-78", airwallexSnapshot["merchant_id"])
-}
-
 func valueOrEmpty(v *string) string {
 	if v == nil {
 		return ""
 	}
 	return *v
+}
+
+func TestBuildPaymentOrderProviderSnapshot_IncludesSePayMerchantIdentity(t *testing.T) {
+	t.Parallel()
+
+	snapshot := buildPaymentOrderProviderSnapshot(&payment.InstanceSelection{
+		InstanceID:  "21",
+		ProviderKey: payment.TypeSePay,
+		Config: map[string]string{
+			"merchantId": "MERCHANT_TEST",
+			"secretKey":  "sk_test_123",
+			"currency":   "VND",
+		},
+	}, CreateOrderRequest{})
+
+	require.Equal(t, "MERCHANT_TEST", snapshot["merchant_id"])
+	require.Equal(t, "VND", snapshot["currency"])
+	require.NotContains(t, snapshot, "secretKey")
 }

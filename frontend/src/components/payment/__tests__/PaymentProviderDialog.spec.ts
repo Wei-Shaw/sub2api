@@ -2,25 +2,23 @@ import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import PaymentProviderDialog from '@/components/payment/PaymentProviderDialog.vue'
-import { STRIPE_SDK_API_VERSION } from '@/components/payment/providerConfig'
+import {
+  PROVIDER_SEPAY,
+  SEPAY_BANK_TRANSFER,
+  SEPAY_CARD,
+  SEPAY_NAPAS,
+  WEBHOOK_PATHS,
+} from '@/components/payment/providerConfig'
 import type { ProviderInstance } from '@/types/payment'
 
 const messages: Record<string, string> = {
   'admin.settings.payment.providerConfig': 'Credentials',
-  'admin.settings.payment.easypayCustomMethods': 'Custom EasyPay methods',
-  'admin.settings.payment.easypayCustomMethodsHint': 'Add provider-specific EasyPay type values.',
-  'admin.settings.payment.addCustomMethod': 'Add method',
-  'admin.settings.payment.customMethodType': 'Payment type',
-  'admin.settings.payment.customMethodUpstreamType': 'Upstream type',
-  'admin.settings.payment.customMethodDisplayName': 'Display name',
-  'admin.settings.payment.customMethodDisplayNamePlaceholder': '信用卡',
-  'admin.settings.payment.paymentGuideTrigger': 'View payment guide',
-  'admin.settings.payment.alipayGuideSummary': 'Desktop prefers QR precreate and falls back to cashier; mobile prefers WAP checkout.',
-  'admin.settings.payment.wxpayGuideSummary': 'Desktop prefers Native QR; mobile routes to JSAPI or H5 based on browser context.',
-  'admin.settings.payment.airwallexGuideSummary': 'Use Payment Acceptance read/write only.',
-  'admin.settings.payment.stripeWebhookHint': 'Configure Stripe webhook.',
-  'admin.settings.payment.stripeWebhookApiVersionHint': 'Use Stripe API version {version}.',
-  'admin.settings.payment.airwallexWebhookHint': 'Select payment_intent.succeeded and use the latest stable API version.',
+  'admin.settings.payment.sepayWebhookHint': 'Configure the SePay IPN endpoint.',
+  'admin.settings.payment.field_merchantId': 'Merchant ID',
+  'admin.settings.payment.field_secretKey': 'Secret Key',
+  'admin.settings.payment.field_env': 'Environment',
+  'admin.settings.payment.field_currency': 'Payment currency',
+  'admin.settings.payment.validationFieldRequired': 'Missing {field}',
 }
 
 vi.mock('vue-i18n', () => ({
@@ -29,7 +27,7 @@ vi.mock('vue-i18n', () => ({
       const message = messages[key] ?? key
       if (!params) return message
       return Object.entries(params).reduce(
-        (value, [name, replacement]) => value.replaceAll(`{${name}}`, replacement),
+        (value, [name, replacement]) => value.replaceAll('{' + name + '}', replacement),
         message,
       )
     },
@@ -39,14 +37,12 @@ vi.mock('vue-i18n', () => ({
 function providerFactory(overrides: Partial<ProviderInstance> = {}): ProviderInstance {
   return {
     id: 1,
-    provider_key: 'airwallex',
-    name: 'Airwallex',
+    provider_key: PROVIDER_SEPAY,
+    name: 'SePay',
     config: {},
-    supported_types: ['airwallex'],
+    supported_types: [SEPAY_BANK_TRANSFER],
     enabled: true,
-    payment_mode: '',
-    refund_enabled: false,
-    allow_user_refund: false,
+    payment_mode: 'redirect',
     limits: '',
     sort_order: 0,
     ...overrides,
@@ -59,22 +55,12 @@ function mountDialog(options: { editing?: ProviderInstance | null } = {}) {
       show: true,
       saving: false,
       editing: options.editing ?? null,
-      allKeyOptions: [
-        { value: 'easypay', label: 'EasyPay' },
-        { value: 'alipay', label: 'Alipay' },
-        { value: 'wxpay', label: 'WeChat Pay' },
-        { value: 'stripe', label: 'Stripe' },
-        { value: 'airwallex', label: 'Airwallex' },
-      ],
-      enabledKeyOptions: [
-        { value: 'easypay', label: 'EasyPay' },
-        { value: 'alipay', label: 'Alipay' },
-        { value: 'wxpay', label: 'WeChat Pay' },
-        { value: 'airwallex', label: 'Airwallex' },
-      ],
+      allKeyOptions: [{ value: PROVIDER_SEPAY, label: 'SePay' }],
+      enabledKeyOptions: [{ value: PROVIDER_SEPAY, label: 'SePay' }],
       allPaymentTypes: [
-        { value: 'alipay', label: 'Alipay' },
-        { value: 'wxpay', label: 'WeChat Pay' },
+        { value: SEPAY_BANK_TRANSFER, label: 'Bank Transfer' },
+        { value: SEPAY_NAPAS, label: 'Napas' },
+        { value: SEPAY_CARD, label: 'Card' },
       ],
       redirectLabel: 'Redirect',
     },
@@ -95,155 +81,98 @@ function mountDialog(options: { editing?: ProviderInstance | null } = {}) {
   })
 }
 
-describe('PaymentProviderDialog payment guide', () => {
-  it('shows no payment guide for providers without a flow guide', () => {
+type DialogVm = {
+  reset: (key: string) => void
+  loadProvider: (provider: ProviderInstance) => void
+  config: Record<string, string>
+  form: { supported_types: string[]; payment_mode: string; provider_key: string; name: string }
+  handleSave: () => void
+}
+
+describe('PaymentProviderDialog', () => {
+  it('shows the SePay webhook endpoint so the admin can paste it into the merchant portal', () => {
     const wrapper = mountDialog()
 
-    expect(wrapper.text()).not.toContain(messages['admin.settings.payment.alipayGuideSummary'])
-    expect(wrapper.text()).not.toContain(messages['admin.settings.payment.wxpayGuideSummary'])
-    expect(wrapper.find('button[title="View payment guide"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain(messages['admin.settings.payment.sepayWebhookHint'])
+    expect(wrapper.text()).toContain(WEBHOOK_PATHS[PROVIDER_SEPAY])
   })
 
-  it.each([
-    ['alipay', 'admin.settings.payment.alipayGuideSummary'],
-    ['wxpay', 'admin.settings.payment.wxpayGuideSummary'],
-    ['airwallex', 'admin.settings.payment.airwallexGuideSummary'],
-  ])('shows the payment guide summary for %s', async (providerKey, summaryKey) => {
+  it('defaults a new instance to redirect mode and every SePay method', async () => {
     const wrapper = mountDialog()
+    const vm = wrapper.vm as unknown as DialogVm
 
-    ;(wrapper.vm as unknown as { reset: (key: string) => void }).reset(providerKey)
+    vm.reset(PROVIDER_SEPAY)
     await nextTick()
 
-    expect(wrapper.text()).toContain(messages[summaryKey])
-    expect(wrapper.find('button[title="View payment guide"]').exists()).toBe(true)
+    // SePay reaches its checkout through a signed POST form, so redirect is the
+    // only mode that actually completes a payment.
+    expect(vm.form.payment_mode).toBe('redirect')
+    expect(vm.form.supported_types).toEqual([SEPAY_BANK_TRANSFER, SEPAY_NAPAS, SEPAY_CARD])
   })
 
-  it('shows Airwallex webhook event and API version guidance with the webhook URL', async () => {
+  it('applies the SePay config defaults', async () => {
     const wrapper = mountDialog()
+    const vm = wrapper.vm as unknown as DialogVm
 
-    ;(wrapper.vm as unknown as { reset: (key: string) => void }).reset('airwallex')
+    vm.reset(PROVIDER_SEPAY)
     await nextTick()
 
-    expect(wrapper.text()).toContain(messages['admin.settings.payment.airwallexWebhookHint'])
-    expect(wrapper.text()).toContain('/api/v1/payment/webhook/airwallex')
+    expect(vm.config.env).toBe('production')
+    expect(vm.config.currency).toBe('VND')
   })
 
-  it('shows Stripe webhook API version guidance with the integrated SDK version', async () => {
+  it('blocks saving until the merchant credentials are filled in', async () => {
     const wrapper = mountDialog()
+    const vm = wrapper.vm as unknown as DialogVm
 
-    ;(wrapper.vm as unknown as { reset: (key: string) => void }).reset('stripe')
+    vm.reset(PROVIDER_SEPAY)
     await nextTick()
-
-    expect(wrapper.text()).toContain(messages['admin.settings.payment.stripeWebhookHint'])
-    expect(wrapper.text()).toContain(`Use Stripe API version ${STRIPE_SDK_API_VERSION}.`)
-    expect(wrapper.text()).toContain('/api/v1/payment/webhook/stripe')
-  })
-
-  it('emits an empty Airwallex accountId when the admin clears it', async () => {
-    const provider = providerFactory({
-      config: {
-        clientId: 'cid_123',
-        apiBase: 'https://api.airwallex.com/api/v1',
-        countryCode: 'CN',
-        currency: 'CNY',
-        accountId: 'acct_123',
-      },
-    })
-    const wrapper = mountDialog({ editing: provider })
-
-    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    vm.handleSave()
     await nextTick()
-
-    const accountIdInput = wrapper
-      .findAll('input[type="text"]')
-      .find(input => (input.element as HTMLInputElement).value === 'acct_123')
-    if (!accountIdInput) throw new Error('accountId input not found')
-
-    await accountIdInput.setValue('')
-    await wrapper.find('form').trigger('submit.prevent')
-
-    const payload = wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string> }
-    expect(payload.config.accountId).toBe('')
-  })
-
-  it('serializes EasyPay custom methods and adds them to supported_types', async () => {
-    const provider = providerFactory({
-      provider_key: 'easypay',
-      name: 'EasyPay',
-      config: {
-        pid: 'pid-1',
-        apiBase: 'https://pay.example.com',
-        notifyUrl: 'https://example.com/api/v1/payment/webhook/easypay',
-        returnUrl: 'https://example.com/payment/result',
-      },
-      supported_types: ['alipay', 'wxpay'],
-      payment_mode: 'qrcode',
-    })
-    const wrapper = mountDialog({ editing: provider })
-
-    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
-    await nextTick()
-
-    await wrapper.find('button.btn-sm').trigger('click')
-    await nextTick()
-
-    const inputs = wrapper.findAll('input[type="text"]')
-    const customTypeInputs = inputs.filter(input => (input.element as HTMLInputElement).placeholder === 'credit_card')
-    const ldcTypeInput = customTypeInputs[0]
-    const upstreamTypeInput = customTypeInputs[1]
-    const displayNameInput = inputs.find(input => (input.element as HTMLInputElement).placeholder === '信用卡')
-    if (!ldcTypeInput || !upstreamTypeInput || !displayNameInput) {
-      throw new Error('custom method inputs not found')
-    }
-
-    await ldcTypeInput.setValue('ldc')
-    await upstreamTypeInput.setValue('epay')
-    await displayNameInput.setValue('LDC')
-    await wrapper.find('form').trigger('submit.prevent')
-
-    const payload = wrapper.emitted('save')?.[0]?.[0] as {
-      config: Record<string, string>
-      supported_types: string[]
-    }
-    expect(payload.config.customMethods).toBe('[{"type":"ldc","upstreamType":"epay","displayName":"LDC"}]')
-    expect(payload.supported_types).toEqual(['alipay', 'wxpay', 'ldc'])
-  })
-
-  it('rejects custom EasyPay method types with built-in payment prefixes', async () => {
-    const provider = providerFactory({
-      provider_key: 'easypay',
-      name: 'EasyPay',
-      config: {
-        pid: 'pid-1',
-        apiBase: 'https://pay.example.com',
-        notifyUrl: 'https://example.com/api/v1/payment/webhook/easypay',
-        returnUrl: 'https://example.com/payment/result',
-      },
-      supported_types: ['alipay', 'wxpay'],
-      payment_mode: 'qrcode',
-    })
-    const wrapper = mountDialog({ editing: provider })
-
-    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
-    await nextTick()
-
-    await wrapper.find('button.btn-sm').trigger('click')
-    await nextTick()
-
-    const inputs = wrapper.findAll('input[type="text"]')
-    const customTypeInputs = inputs.filter(input => (input.element as HTMLInputElement).placeholder === 'credit_card')
-    const typeInput = customTypeInputs[0]
-    const upstreamTypeInput = customTypeInputs[1]
-    const displayNameInput = inputs.find(input => (input.element as HTMLInputElement).placeholder === '信用卡')
-    if (!typeInput || !upstreamTypeInput || !displayNameInput) {
-      throw new Error('custom method inputs not found')
-    }
-
-    await typeInput.setValue('alipay_hk')
-    await upstreamTypeInput.setValue('hkpay')
-    await displayNameInput.setValue('Hong Kong Alipay')
-    await wrapper.find('form').trigger('submit.prevent')
 
     expect(wrapper.emitted('save')).toBeUndefined()
+  })
+
+  it('emits the merchant credentials and derived callback URLs on save', async () => {
+    const wrapper = mountDialog()
+    const vm = wrapper.vm as unknown as DialogVm
+
+    vm.reset(PROVIDER_SEPAY)
+    await nextTick()
+    Object.assign(vm.config, { merchantId: 'MERCHANT_TEST', secretKey: 'sk_test_123' })
+    vm.form.name = 'SePay VN'
+    await nextTick()
+
+    vm.handleSave()
+    await nextTick()
+
+    const saved = wrapper.emitted('save')
+    expect(saved).toHaveLength(1)
+    const payload = saved![0][0] as { provider_key: string; config: Record<string, string> }
+    expect(payload.provider_key).toBe(PROVIDER_SEPAY)
+    expect(payload.config.merchantId).toBe('MERCHANT_TEST')
+    expect(payload.config.secretKey).toBe('sk_test_123')
+    expect(payload.config.notifyUrl).toContain(WEBHOOK_PATHS[PROVIDER_SEPAY])
+  })
+
+  it('leaves the secret blank when editing so an untouched field preserves the stored value', async () => {
+    // The admin GET API omits sensitive fields entirely; submitting a blank
+    // secret is how the backend is told to keep the existing one.
+    const stored = providerFactory({
+      config: { merchantId: 'MERCHANT_TEST', env: 'sandbox', currency: 'VND' },
+    })
+    const wrapper = mountDialog({ editing: stored })
+    const vm = wrapper.vm as unknown as DialogVm
+
+    vm.loadProvider(stored)
+    await nextTick()
+
+    expect(vm.config.merchantId).toBe('MERCHANT_TEST')
+    expect(vm.config.secretKey ?? '').toBe('')
+
+    vm.handleSave()
+    await nextTick()
+
+    expect(wrapper.emitted('save')).toHaveLength(1)
   })
 })

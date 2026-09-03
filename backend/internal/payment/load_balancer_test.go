@@ -68,18 +68,6 @@ func TestInstanceSupportsType(t *testing.T) {
 			expected:       true,
 		},
 		{
-			name:           "legacy alipay direct supports canonical visible method",
-			supportedTypes: "alipay_direct",
-			target:         "alipay",
-			expected:       true,
-		},
-		{
-			name:           "legacy wxpay direct supports canonical visible method",
-			supportedTypes: "wxpay_direct",
-			target:         "wxpay",
-			expected:       true,
-		},
-		{
 			name:           "empty supported types means all supported",
 			supportedTypes: "",
 			target:         "alipay",
@@ -95,22 +83,6 @@ func TestInstanceSupportsType(t *testing.T) {
 				t.Fatalf("InstanceSupportsType(%q, %q) = %v, want %v", tt.supportedTypes, tt.target, got, tt.expected)
 			}
 		})
-	}
-}
-
-func TestGetInstanceChannelLimitsFallsBackToLegacyDirectAliases(t *testing.T) {
-	t.Parallel()
-
-	inst := testInstance(1, TypeAlipay, makeLimitsJSON(TypeAlipayDirect, ChannelLimits{SingleMax: 66}))
-	got := getInstanceChannelLimits(inst, TypeAlipay)
-	if got.SingleMax != 66 {
-		t.Fatalf("getInstanceChannelLimits() = %+v, want SingleMax=66", got)
-	}
-
-	wxInst := testInstance(2, TypeWxpay, makeLimitsJSON(TypeWxpayDirect, ChannelLimits{SingleMin: 8}))
-	wxGot := getInstanceChannelLimits(wxInst, TypeWxpay)
-	if wxGot.SingleMin != 8 {
-		t.Fatalf("getInstanceChannelLimits() = %+v, want SingleMin=8", wxGot)
 	}
 }
 
@@ -392,14 +364,7 @@ func TestGetInstanceChannelLimits(t *testing.T) {
 			want:        ChannelLimits{SingleMin: 10, SingleMax: 500, DailyLimit: 5000},
 		},
 		{
-			name: "stripe provider ignores payment type key even if present",
-			inst: testInstance(1, "stripe",
-				`{"stripe":{"singleMin":10,"singleMax":500},"alipay":{"singleMin":1,"singleMax":100}}`),
-			paymentType: "alipay",
-			want:        ChannelLimits{SingleMin: 10, SingleMax: 500},
-		},
-		{
-			name: "non-stripe provider uses payment type as lookup key",
+			name: "provider uses payment type as lookup key",
 			inst: testInstance(1, "easypay",
 				`{"alipay":{"singleMin":5},"wxpay":{"singleMin":10}}`),
 			paymentType: "wxpay",

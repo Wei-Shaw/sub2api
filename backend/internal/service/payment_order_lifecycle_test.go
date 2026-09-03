@@ -46,7 +46,7 @@ func (p *paymentOrderLifecycleQueryProvider) ProviderKey() string {
 	if p.key != "" {
 		return p.key
 	}
-	return payment.TypeAlipay
+	return payment.TypeSePayBankTransfer
 }
 
 func (p *paymentOrderLifecycleQueryProvider) SupportedTypes() []payment.PaymentType {
@@ -71,10 +71,6 @@ func (p *paymentOrderLifecycleQueryProvider) QueryOrder(_ context.Context, trade
 }
 
 func (p *paymentOrderLifecycleQueryProvider) VerifyNotification(context.Context, string, map[string]string) (*payment.PaymentNotification, error) {
-	panic("unexpected call")
-}
-
-func (p *paymentOrderLifecycleQueryProvider) Refund(context.Context, payment.RefundRequest) (*payment.RefundResponse, error) {
 	panic("unexpected call")
 }
 
@@ -183,7 +179,7 @@ func TestVerifyOrderByOutTradeNoBackfillsTradeNoFromPaidQuery(t *testing.T) {
 		SetFeeRate(0).
 		SetRechargeCode("CHECKPAID-UPSTREAM-TRADE-NO").
 		SetOutTradeNo("sub2_checkpaid_trade_no_missing").
-		SetPaymentType(payment.TypeAlipay).
+		SetPaymentType(payment.TypeSePayBankTransfer).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -284,7 +280,7 @@ func TestVerifyOrderByOutTradeNoRetriesZeroAmountPaidQueryOnce(t *testing.T) {
 		SetFeeRate(0).
 		SetRechargeCode("CHECKPAID-UPSTREAM-RETRY").
 		SetOutTradeNo("sub2_checkpaid_retry_zero_amount").
-		SetPaymentType(payment.TypeAlipay).
+		SetPaymentType(payment.TypeSePayBankTransfer).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -382,7 +378,7 @@ func TestVerifyOrderByOutTradeNoRejectsPaidQueryWithZeroAmount(t *testing.T) {
 		SetFeeRate(0).
 		SetRechargeCode("CHECKPAID-ZERO-AMOUNT").
 		SetOutTradeNo("sub2_checkpaid_zero_amount").
-		SetPaymentType(payment.TypeAlipay).
+		SetPaymentType(payment.TypeSePayBankTransfer).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -474,7 +470,7 @@ func TestVerifyOrderByOutTradeNoDoesNotCancelUnpaidUpstreamOrder(t *testing.T) {
 		SetFeeRate(0).
 		SetRechargeCode("CHECKPAID-PENDING").
 		SetOutTradeNo("sub2_checkpaid_pending").
-		SetPaymentType(payment.TypeAlipay).
+		SetPaymentType(payment.TypeSePayBankTransfer).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -531,7 +527,7 @@ func TestCancelOrderStillClosesUnpaidUpstreamOrder(t *testing.T) {
 		SetFeeRate(0).
 		SetRechargeCode("CANCEL-PENDING").
 		SetOutTradeNo("sub2_cancel_pending").
-		SetPaymentType(payment.TypeAlipay).
+		SetPaymentType(payment.TypeSePayBankTransfer).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -568,108 +564,6 @@ func TestCancelOrderStillClosesUnpaidUpstreamOrder(t *testing.T) {
 	require.Equal(t, OrderStatusCancelled, reloaded.Status)
 }
 
-func TestReconcilePendingWxpayOrdersBackfillsPaidOrder(t *testing.T) {
-	ctx := context.Background()
-	client := newPaymentOrderLifecycleTestClient(t)
-
-	user, err := client.User.Create().
-		SetEmail("wxpay-reconcile@example.com").
-		SetPasswordHash("hash").
-		SetUsername("wxpay-reconcile-user").
-		Save(ctx)
-	require.NoError(t, err)
-
-	order, err := client.PaymentOrder.Create().
-		SetUserID(user.ID).
-		SetUserEmail(user.Email).
-		SetUserName(user.Username).
-		SetAmount(50).
-		SetPayAmount(50).
-		SetFeeRate(0).
-		SetRechargeCode("WXPAY-RECONCILE").
-		SetOutTradeNo("sub2_wxpay_reconcile").
-		SetPaymentType(payment.TypeWxpay).
-		SetPaymentTradeNo("").
-		SetOrderType(payment.OrderTypeBalance).
-		SetStatus(OrderStatusPending).
-		SetExpiresAt(time.Now().Add(time.Hour)).
-		SetClientIP("127.0.0.1").
-		SetSrcHost("api.example.com").
-		Save(ctx)
-	require.NoError(t, err)
-
-	userRepo := &mockUserRepo{
-		getByIDUser: &User{
-			ID:       user.ID,
-			Email:    user.Email,
-			Username: user.Username,
-			Balance:  0,
-		},
-	}
-	userRepo.updateBalanceFn = func(ctx context.Context, id int64, amount float64) error {
-		require.Equal(t, user.ID, id)
-		if userRepo.getByIDUser != nil {
-			userRepo.getByIDUser.Balance += amount
-		}
-		return nil
-	}
-	redeemRepo := &paymentOrderLifecycleRedeemRepo{
-		codesByCode: map[string]*RedeemCode{
-			order.RechargeCode: {
-				ID:     1,
-				Code:   order.RechargeCode,
-				Type:   RedeemTypeBalance,
-				Value:  order.Amount,
-				Status: StatusUnused,
-			},
-		},
-	}
-	redeemService := NewRedeemService(
-		redeemRepo,
-		userRepo,
-		nil,
-		nil,
-		nil,
-		client,
-		nil,
-		nil,
-	)
-	registry := payment.NewRegistry()
-	provider := &paymentOrderLifecycleQueryProvider{
-		key: payment.TypeWxpay,
-		resp: &payment.QueryOrderResponse{
-			TradeNo: "wxpay-upstream-trade-123",
-			Status:  payment.ProviderStatusPaid,
-			Amount:  decimal.NewFromInt(50),
-			Metadata: map[string]string{
-				"trade_state": "SUCCESS",
-			},
-		},
-	}
-	registry.Register(provider)
-
-	svc := &PaymentService{
-		entClient:       client,
-		registry:        registry,
-		redeemService:   redeemService,
-		userRepo:        userRepo,
-		providersLoaded: true,
-	}
-
-	recovered, err := svc.ReconcilePendingWxpayOrders(ctx)
-	require.NoError(t, err)
-	require.Equal(t, 1, recovered)
-	require.Equal(t, order.OutTradeNo, provider.lastQueryTradeNo)
-	require.Zero(t, provider.cancelCalls)
-
-	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
-	require.NoError(t, err)
-	require.Equal(t, OrderStatusCompleted, reloaded.Status)
-	require.Equal(t, "wxpay-upstream-trade-123", reloaded.PaymentTradeNo)
-	require.Equal(t, 50.0, userRepo.getByIDUser.Balance)
-	require.Len(t, redeemRepo.useCalls, 1)
-}
-
 func TestVerifyOrderByOutTradeNoUsesOutTradeNoWhenPaymentTradeNoAlreadyExistsForAlipay(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentOrderLifecycleTestClient(t)
@@ -690,7 +584,7 @@ func TestVerifyOrderByOutTradeNoUsesOutTradeNoWhenPaymentTradeNoAlreadyExistsFor
 		SetFeeRate(0).
 		SetRechargeCode("CHECKPAID-EXISTING-TRADE-NO").
 		SetOutTradeNo("sub2_checkpaid_use_out_trade_no").
-		SetPaymentType(payment.TypeAlipay).
+		SetPaymentType(payment.TypeSePayBankTransfer).
 		SetPaymentTradeNo("upstream-trade-existing").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).
@@ -764,17 +658,17 @@ func TestPaymentOrderAllowsRegistryFallbackOnlyForLegacyOrdersWithoutPinnedProvi
 	t.Parallel()
 
 	require.True(t, paymentOrderAllowsRegistryFallback(&dbent.PaymentOrder{
-		PaymentType: payment.TypeAlipay,
+		PaymentType: payment.TypeSePayBankTransfer,
 	}))
 
 	instanceID := "12"
 	require.False(t, paymentOrderAllowsRegistryFallback(&dbent.PaymentOrder{
-		PaymentType:        payment.TypeAlipay,
+		PaymentType:        payment.TypeSePayBankTransfer,
 		ProviderInstanceID: &instanceID,
 	}))
 
 	require.False(t, paymentOrderAllowsRegistryFallback(&dbent.PaymentOrder{
-		PaymentType: payment.TypeAlipay,
+		PaymentType: payment.TypeSePayBankTransfer,
 		ProviderSnapshot: map[string]any{
 			"schema_version":       2,
 			"provider_instance_id": "12",
@@ -786,14 +680,14 @@ func TestPaymentOrderQueryReferenceUsesOutTradeNoForOfficialProviders(t *testing
 	t.Parallel()
 
 	order := &dbent.PaymentOrder{
-		PaymentType:    payment.TypeWxpay,
+		PaymentType:    payment.TypeSePayNapas,
 		OutTradeNo:     "sub2_out_trade_no",
 		PaymentTradeNo: "wx-transaction-id",
 	}
 
 	require.Equal(t, "sub2_out_trade_no", paymentOrderQueryReference(order, &paymentOrderLifecycleQueryProvider{}))
 	require.Equal(t, "sub2_out_trade_no", paymentOrderQueryReference(order, paymentFulfillmentTestProvider{
-		key: payment.TypeWxpay,
+		key: payment.TypeSePayNapas,
 	}))
 }
 

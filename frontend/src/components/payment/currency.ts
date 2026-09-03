@@ -1,6 +1,9 @@
-export const DEFAULT_PAYMENT_CURRENCY = 'CNY'
+// Mirrors payment.DefaultPaymentCurrency in the backend. The subscription rate
+// conversion is gated on this value on both sides, so the two must agree.
+export const DEFAULT_PAYMENT_CURRENCY = 'VND'
 
 const PAYMENT_CURRENCY_SYMBOLS: Record<string, string> = {
+  VND: '₫',
   USD: '$',
   CNY: '¥',
   RMB: '¥',

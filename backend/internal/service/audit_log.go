@@ -122,7 +122,7 @@ func auditNormalizeBodyKey(key string) string {
 // auditBodySensitiveExactKeys 请求体脱敏的精确匹配键（归一化后）。
 // 除内置清单外，程序化并入两份权威敏感表以防清单漂移：
 //   - SensitiveCredentialKeys：账号 credentials 的敏感子键（session_key / service_account_json 等）
-//   - providerSensitiveConfigFields：支付渠道密钥字段（pkey / privatekey / apiv3key 等）
+//   - providerSensitiveConfigFields：支付渠道密钥字段（secretkey 等）
 var auditBodySensitiveExactKeys = func() map[string]struct{} {
 	builtin := []string{
 		"code", "codes", "pin", "cvv",

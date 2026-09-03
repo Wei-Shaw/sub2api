@@ -3,69 +3,70 @@ import {
   buildPaymentErrorToastMessage,
   describePaymentScenarioError,
   normalizePaymentMethodForDisplay,
+  paymentMethodI18nKey,
 } from '../paymentUx'
 
 describe('normalizePaymentMethodForDisplay', () => {
-  it('collapses visible payment aliases to canonical method ids', () => {
-    expect(normalizePaymentMethodForDisplay(' alipay_direct ')).toBe('alipay')
-    expect(normalizePaymentMethodForDisplay('wxpay_direct')).toBe('wxpay')
-    expect(normalizePaymentMethodForDisplay('wechat_pay')).toBe('wxpay')
+  it('keeps each SePay method distinct', () => {
+    expect(normalizePaymentMethodForDisplay(' sepay_bank_transfer ')).toBe('sepay_bank_transfer')
+    expect(normalizePaymentMethodForDisplay('SEPAY_NAPAS')).toBe('sepay_napas')
+    expect(normalizePaymentMethodForDisplay('sepay_card')).toBe('sepay_card')
   })
 
-  it('leaves non-aliased methods untouched', () => {
-    expect(normalizePaymentMethodForDisplay('stripe')).toBe('stripe')
+  it('passes an unrecognised method through unchanged', () => {
+    expect(normalizePaymentMethodForDisplay('something_else')).toBe('something_else')
+    expect(normalizePaymentMethodForDisplay('')).toBe('')
+  })
+
+  it('builds the i18n key from the normalised method', () => {
+    expect(paymentMethodI18nKey('SEPAY_CARD')).toBe('payment.methods.sepay_card')
   })
 })
 
 describe('describePaymentScenarioError', () => {
-  it('maps WeChat H5 authorization errors to explicit in-app guidance', () => {
+  it.each([
+    'PAYMENT_GATEWAY_ERROR',
+    'UNHANDLED_PAYMENT_SCENARIO',
+    'NO_AVAILABLE_INSTANCE',
+    'PAYMENT_PROVIDER_MISCONFIGURED',
+  ])('explains %s as a temporarily unavailable method', (reason) => {
     expect(describePaymentScenarioError(
-      { reason: 'WECHAT_H5_NOT_AUTHORIZED' },
-      { paymentMethod: 'wxpay', isMobile: true, isWechatBrowser: false },
+      { reason },
+      { paymentMethod: 'sepay_bank_transfer', isMobile: false },
     )).toEqual({
-      messageKey: 'payment.errors.wechatH5NotAuthorized',
-      hintKey: 'payment.errors.wechatOpenInWeChatHint',
+      messageKey: 'payment.errors.methodUnavailable',
+      hintKey: 'payment.errors.methodRetryDesktopHint',
     })
   })
 
-  it('maps WeChat H5 authorization errors when provider aliases use wxpay_direct', () => {
-    expect(describePaymentScenarioError(
-      { reason: 'WECHAT_H5_NOT_AUTHORIZED' },
-      { paymentMethod: 'wxpay_direct', isMobile: true, isWechatBrowser: false },
-    )).toEqual({
-      messageKey: 'payment.errors.wechatH5NotAuthorized',
-      hintKey: 'payment.errors.wechatOpenInWeChatHint',
-    })
-  })
-
-  it('maps missing WeixinJSBridge to a JSAPI-specific prompt', () => {
-    expect(describePaymentScenarioError(
-      new Error('WeixinJSBridge is unavailable'),
-      { paymentMethod: 'wxpay', isMobile: true, isWechatBrowser: true },
-    )).toEqual({
-      messageKey: 'payment.errors.wechatJsapiUnavailable',
-      hintKey: 'payment.errors.wechatOpenInWeChatHint',
-    })
-  })
-
-  it('maps the internal JSAPI unavailable marker to the same prompt', () => {
-    expect(describePaymentScenarioError(
-      new Error('WECHAT_JSAPI_UNAVAILABLE'),
-      { paymentMethod: 'wxpay', isMobile: true, isWechatBrowser: true },
-    )).toEqual({
-      messageKey: 'payment.errors.wechatJsapiUnavailable',
-      hintKey: 'payment.errors.wechatOpenInWeChatHint',
-    })
-  })
-
-  it('maps generic desktop Alipay failures to QR guidance', () => {
+  it('gives a mobile-specific hint on mobile', () => {
     expect(describePaymentScenarioError(
       { reason: 'PAYMENT_GATEWAY_ERROR' },
-      { paymentMethod: 'alipay', isMobile: false, isWechatBrowser: false },
+      { paymentMethod: 'sepay_card', isMobile: true },
     )).toEqual({
-      messageKey: 'payment.errors.alipayDesktopUnavailable',
-      hintKey: 'payment.errors.alipayDesktopQrHint',
+      messageKey: 'payment.errors.methodUnavailable',
+      hintKey: 'payment.errors.methodRetryMobileHint',
     })
+  })
+
+  it('returns null for errors with no gateway-specific story', () => {
+    // The caller falls back to the generic API message; claiming the method is
+    // unavailable would hide the real reason (e.g. a daily limit).
+    expect(describePaymentScenarioError(
+      { reason: 'DAILY_LIMIT_EXCEEDED' },
+      { paymentMethod: 'sepay_napas', isMobile: false },
+    )).toBeNull()
+    expect(describePaymentScenarioError(
+      new Error('boom'),
+      { paymentMethod: 'sepay_napas', isMobile: false },
+    )).toBeNull()
+  })
+
+  it('returns null when no payment method is known', () => {
+    expect(describePaymentScenarioError(
+      { reason: 'PAYMENT_GATEWAY_ERROR' },
+      { paymentMethod: '  ', isMobile: false },
+    )).toBeNull()
   })
 })
 
@@ -75,8 +76,8 @@ describe('buildPaymentErrorToastMessage', () => {
   })
 
   it('appends the hint to the toast body when present', () => {
-    expect(buildPaymentErrorToastMessage('Payment failed', 'Open WeChat to continue.')).toBe(
-      'Payment failed Open WeChat to continue.'
+    expect(buildPaymentErrorToastMessage('Payment failed', 'Please try again.')).toBe(
+      'Payment failed Please try again.'
     )
   })
 })

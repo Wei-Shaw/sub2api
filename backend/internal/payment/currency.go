@@ -7,7 +7,9 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-const DefaultPaymentCurrency = "CNY"
+// DefaultPaymentCurrency 是网关的默认结算币种。SePay（越南）以越南盾结算；
+// 币种表与按币种换算的机制保留下来，后续接入 USD 时不需要再改动这里之外的代码。
+const DefaultPaymentCurrency = "VND"
 
 type paymentCurrencyAmountUnit struct {
 	apiMinorUnit      int
@@ -18,7 +20,8 @@ var (
 	zeroDecimalAmountUnit  = paymentCurrencyAmountUnit{apiMinorUnit: 0, maxFractionDigits: 0}
 	twoDecimalAmountUnit   = paymentCurrencyAmountUnit{apiMinorUnit: 2, maxFractionDigits: 2}
 	threeDecimalAmountUnit = paymentCurrencyAmountUnit{apiMinorUnit: 3, maxFractionDigits: 3}
-	stripeLegacyZeroAmount = paymentCurrencyAmountUnit{apiMinorUnit: 2, maxFractionDigits: 0}
+	// legacyZeroDecimalAmountUnit 覆盖那些整数计价、但历史网关按两位小数传输的币种。
+	legacyZeroDecimalAmountUnit = paymentCurrencyAmountUnit{apiMinorUnit: 2, maxFractionDigits: 0}
 )
 
 var paymentCurrencyAmountUnits = map[string]paymentCurrencyAmountUnit{
@@ -37,8 +40,8 @@ var paymentCurrencyAmountUnits = map[string]paymentCurrencyAmountUnit{
 	"XAF": zeroDecimalAmountUnit,
 	"XOF": zeroDecimalAmountUnit,
 	"XPF": zeroDecimalAmountUnit,
-	"ISK": stripeLegacyZeroAmount,
-	"UGX": stripeLegacyZeroAmount,
+	"ISK": legacyZeroDecimalAmountUnit,
+	"UGX": legacyZeroDecimalAmountUnit,
 	"BHD": threeDecimalAmountUnit,
 	"IQD": threeDecimalAmountUnit,
 	"JOD": threeDecimalAmountUnit,

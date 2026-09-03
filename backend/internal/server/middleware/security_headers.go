@@ -37,16 +37,10 @@ const (
 	TencentCaptchaRceDomain = "https://rce.tencentrio.com"
 	// TencentCaptchaWorkerSource 是天御国际站创建验证码 Web Worker 时使用的来源。
 	TencentCaptchaWorkerSource = "blob:"
-	// StripeDomain is the domain for Stripe.js SDK
-	StripeDomain = "https://*.stripe.com"
-	// AirwallexStaticDomain 是 Airwallex 生产环境 SDK 脚本域名。
-	AirwallexStaticDomain = "https://static.airwallex.com"
-	// AirwallexCheckoutDomain 是 Airwallex 生产环境收银台元素和 iframe 域名。
-	AirwallexCheckoutDomain = "https://checkout.airwallex.com"
-	// AirwallexDemoStaticDomain 是 Airwallex 沙箱环境 SDK 脚本域名。
-	AirwallexDemoStaticDomain = "https://static-demo.airwallex.com"
-	// AirwallexDemoCheckoutDomain 是 Airwallex 沙箱环境收银台元素和 iframe 域名。
-	AirwallexDemoCheckoutDomain = "https://checkout-demo.airwallex.com"
+	// SePayCheckoutDomain 是 SePay 生产环境收银台域名。
+	SePayCheckoutDomain = "https://pay.sepay.vn"
+	// SePaySandboxCheckoutDomain 是 SePay 沙箱环境收银台域名。
+	SePaySandboxCheckoutDomain = "https://pay-sandbox.sepay.vn"
 )
 
 var requiredCSPDirectiveValues = []struct {
@@ -71,18 +65,9 @@ var requiredCSPDirectiveValues = []struct {
 	{"frame-src", TencentCaptchaGlobalDomain},
 	{"frame-src", TencentCaptchaPrehandleDomain},
 	{"worker-src", TencentCaptchaWorkerSource},
-	{"script-src", StripeDomain},
-	{"frame-src", StripeDomain},
-	{"script-src", AirwallexStaticDomain},
-	{"script-src", AirwallexCheckoutDomain},
-	{"style-src", AirwallexStaticDomain},
-	{"style-src", AirwallexCheckoutDomain},
-	{"frame-src", AirwallexCheckoutDomain},
-	{"script-src", AirwallexDemoStaticDomain},
-	{"script-src", AirwallexDemoCheckoutDomain},
-	{"style-src", AirwallexDemoStaticDomain},
-	{"style-src", AirwallexDemoCheckoutDomain},
-	{"frame-src", AirwallexDemoCheckoutDomain},
+	// 收银台跳转是一次表单 POST，因此需要放开 form-action，而不是脚本或 iframe。
+	{"form-action", SePayCheckoutDomain},
+	{"form-action", SePaySandboxCheckoutDomain},
 }
 
 // GenerateNonce generates a cryptographically secure random nonce.

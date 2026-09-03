@@ -77,7 +77,7 @@ func TestRedactAuditBody_BareSessionKeyRedacted(t *testing.T) {
 }
 
 // TestRedactAuditBody_AuthoritativeTablesSynced 覆盖曾经漏网的凭证字段：
-// 账号 credentials 敏感子键、支付渠道无分隔符密钥、字符串值内嵌凭证的 proxy_key / custom_key，
+// 账号 credentials 敏感子键、支付渠道密钥的各种命名写法、字符串值内嵌凭证的 proxy_key / custom_key，
 // 以及 camelCase 等命名变体（归一化比对）。
 func TestRedactAuditBody_AuthoritativeTablesSynced(t *testing.T) {
 	raw := []byte(`{
@@ -89,13 +89,13 @@ func TestRedactAuditBody_AuthoritativeTablesSynced(t *testing.T) {
 		"proxy_key": "socks5|1.2.3.4|1080|proxyuser|proxypass-ddd",
 		"custom_key": "sk-custom-eee",
 		"config": {
-			"pkey": "easypay-merchant-fff",
-			"privateKey": "alipay-pem-ggg",
-			"apiv3key": "wxpay-v3-hhh",
-			"SecretKey": "stripe-sk-iii",
+			"secretKey": "sepay-secret-fff",
+			"SecretKey": "sepay-secret-ggg",
+			"secret_key": "sepay-secret-hhh",
+			"privateKey": "legacy-pem-iii",
 			"webhookSecret": "whsec-jjj"
 		},
-		"provider_key": "stripe",
+		"provider_key": "sepay",
 		"name": "instance-1"
 	}`)
 	out := RedactAuditBody(raw, "application/json")
@@ -103,15 +103,15 @@ func TestRedactAuditBody_AuthoritativeTablesSynced(t *testing.T) {
 	for _, secret := range []string{
 		"sk-session-aaa", "pem-body-bbb", "sa-blob-ccc",
 		"proxypass-ddd", "sk-custom-eee",
-		"easypay-merchant-fff", "alipay-pem-ggg", "wxpay-v3-hhh",
-		"stripe-sk-iii", "whsec-jjj",
+		"sepay-secret-fff", "sepay-secret-ggg", "sepay-secret-hhh",
+		"legacy-pem-iii", "whsec-jjj",
 	} {
 		if strings.Contains(out, secret) {
 			t.Fatalf("redacted body still contains secret %q: %s", secret, out)
 		}
 	}
 	// provider_key 是渠道标识而非密钥，必须保留以便追责。
-	if !strings.Contains(out, `"provider_key":"stripe"`) {
+	if !strings.Contains(out, `"provider_key":"sepay"`) {
 		t.Fatalf("provider_key should be preserved for accountability: %s", out)
 	}
 	if !strings.Contains(out, "instance-1") {

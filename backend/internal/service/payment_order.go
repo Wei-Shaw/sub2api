@@ -81,9 +81,6 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if err != nil {
 		return nil, err
 	}
-	if err := s.validateSelectedCreateOrderInstance(ctx, req, sel); err != nil {
-		return nil, err
-	}
 	selectedCurrency := payment.DefaultPaymentCurrency
 	if sel != nil {
 		selectedCurrency = paymentProviderConfigCurrency(sel.ProviderKey, sel.Config)
@@ -96,13 +93,6 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	}
 	if err := validateSelectedCreateOrderAmountCurrency(payAmountStr, sel); err != nil {
 		return nil, err
-	}
-	oauthResp, err := s.maybeBuildWeChatOAuthRequiredResponseForSelection(ctx, req, limitAmount, payAmount, feeRate, sel)
-	if err != nil {
-		return nil, err
-	}
-	if oauthResp != nil {
-		return oauthResp, nil
 	}
 	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, limitAmount, feeRate, payAmount, sel)
 	if err != nil {
@@ -358,31 +348,9 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 		snapshot["payment_mode"] = paymentMode
 	}
 
-	if providerKey == payment.TypeWxpay {
-		if merchantAppID := paymentOrderSnapshotWxpayAppID(sel, req); merchantAppID != "" {
-			snapshot["merchant_app_id"] = merchantAppID
-		}
-		if merchantID := strings.TrimSpace(sel.Config["mchId"]); merchantID != "" {
+	if providerKey == payment.TypeSePay {
+		if merchantID := strings.TrimSpace(sel.Config["merchantId"]); merchantID != "" {
 			snapshot["merchant_id"] = merchantID
-		}
-		snapshot["currency"] = payment.DefaultPaymentCurrency
-	}
-	if providerKey == payment.TypeAlipay {
-		if merchantAppID := strings.TrimSpace(sel.Config["appId"]); merchantAppID != "" {
-			snapshot["merchant_app_id"] = merchantAppID
-		}
-	}
-	if providerKey == payment.TypeEasyPay {
-		if merchantID := strings.TrimSpace(sel.Config["pid"]); merchantID != "" {
-			snapshot["merchant_id"] = merchantID
-		}
-	}
-	if providerKey == payment.TypeStripe {
-		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
-	}
-	if providerKey == payment.TypeAirwallex {
-		if accountID := strings.TrimSpace(sel.Config["accountId"]); accountID != "" {
-			snapshot["merchant_id"] = accountID
 		}
 		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
 	}
@@ -391,16 +359,6 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 		return nil
 	}
 	return snapshot
-}
-
-func paymentOrderSnapshotWxpayAppID(sel *payment.InstanceSelection, req CreateOrderRequest) string {
-	if sel == nil || strings.TrimSpace(sel.ProviderKey) != payment.TypeWxpay {
-		return ""
-	}
-	if strings.TrimSpace(req.OpenID) != "" {
-		return strings.TrimSpace(provider.ResolveWxpayJSAPIAppID(sel.Config))
-	}
-	return strings.TrimSpace(sel.Config["appId"])
 }
 
 // sumDailyOrderAmount 按「余额订单算实付、其余算订单金额」的口径求和。
@@ -506,11 +464,7 @@ func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *dbent.Tx, user
 }
 
 func (s *PaymentService) selectCreateOrderInstance(ctx context.Context, req CreateOrderRequest, cfg *PaymentConfig, payAmount float64) (*payment.InstanceSelection, error) {
-	selectCtx, err := s.prepareCreateOrderSelectionContext(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	sel, err := s.loadBalancer.SelectInstance(selectCtx, "", req.PaymentType, payment.Strategy(cfg.LoadBalanceStrategy), payAmount)
+	sel, err := s.loadBalancer.SelectInstance(ctx, "", req.PaymentType, payment.Strategy(cfg.LoadBalanceStrategy), payAmount)
 	if err != nil {
 		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", "method_not_configured").
 			WithMetadata(map[string]string{"payment_type": req.PaymentType})
@@ -519,41 +473,6 @@ func (s *PaymentService) selectCreateOrderInstance(ctx context.Context, req Crea
 		return nil, infraerrors.TooManyRequests("NO_AVAILABLE_INSTANCE", "no_available_instance")
 	}
 	return sel, nil
-}
-
-func (s *PaymentService) prepareCreateOrderSelectionContext(ctx context.Context, req CreateOrderRequest) (context.Context, error) {
-	if !requestNeedsWeChatJSAPICompatibility(req) {
-		return ctx, nil
-	}
-	if !s.usesOfficialWxpayVisibleMethod(ctx) {
-		return ctx, nil
-	}
-	expectedAppID, _, err := s.getWeChatPaymentOAuthCredential(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return payment.WithWxpayJSAPIAppID(ctx, expectedAppID), nil
-}
-
-func requestNeedsWeChatJSAPICompatibility(req CreateOrderRequest) bool {
-	if payment.GetBasePaymentType(req.PaymentType) != payment.TypeWxpay {
-		return false
-	}
-	return req.IsWeChatBrowser || strings.TrimSpace(req.OpenID) != ""
-}
-
-func (s *PaymentService) usesOfficialWxpayVisibleMethod(ctx context.Context) bool {
-	if s == nil || s.configService == nil {
-		return false
-	}
-	inst, err := s.configService.resolveEnabledVisibleMethodInstance(ctx, payment.TypeWxpay)
-	if err != nil {
-		return false
-	}
-	if inst == nil {
-		return false
-	}
-	return inst.ProviderKey == payment.TypeWxpay
 }
 
 func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.PaymentOrder, req CreateOrderRequest, cfg *PaymentConfig, limitAmount float64, payAmountStr string, payAmount float64, plan *dbent.SubscriptionPlan, sel *payment.InstanceSelection) (*CreateOrderResponse, error) {
@@ -600,12 +519,10 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 	}
 	providerReq := buildProviderCreatePaymentRequest(CreateOrderRequest{
 		PaymentType: req.PaymentType,
-		OpenID:      req.OpenID,
 		ClientIP:    req.ClientIP,
 		IsMobile:    req.IsMobile,
 		ReturnURL:   providerReturnURL,
 	}, sel, outTradeNo, payAmountStr, subject)
-	providerReq.AlipayMobilePrecreate = shouldUseAlipayMobilePrecreate(req, cfg, sel)
 	finishProviderCall := servertiming.ObserveDependency(ctx, "payment")
 	pr, err := prov.CreatePayment(ctx, providerReq)
 	finishProviderCall()
@@ -615,6 +532,14 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 			return nil, appErr
 		}
 		return nil, classifyCreatePaymentError(req, sel.ProviderKey, err)
+	}
+	// 表单式收银台没有可直接跳转的链接：把用户先送到本站的自动提交页，
+	// 由它带着签名字段 POST 到网关。令牌即 resume token，页面据此定位订单。
+	if pr.ResultType == payment.CreatePaymentResultFormPost {
+		if resumeToken == "" {
+			return nil, infraerrors.ServiceUnavailable(paymentResumeNotConfiguredCode, paymentResumeNotConfiguredMessage)
+		}
+		pr.PayURL = BuildCheckoutRedirectPath(resumeToken)
 	}
 	sanitizeCreatePaymentResponseDetails(pr)
 	_, err = s.entClient.PaymentOrder.UpdateOneID(order.ID).
@@ -641,16 +566,7 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 	}
 	resp := buildCreateOrderResponse(order, req, payAmount, sel, pr, resultType)
 	resp.ResumeToken = resumeToken
-	resp.AlipayMobilePrecreateDeepLink = providerReq.AlipayMobilePrecreate && strings.TrimSpace(pr.QRCode) != ""
 	return resp, nil
-}
-
-func shouldUseAlipayMobilePrecreate(req CreateOrderRequest, cfg *PaymentConfig, sel *payment.InstanceSelection) bool {
-	return cfg != nil &&
-		cfg.AlipayMobilePrecreateDeepLink &&
-		req.IsMobile &&
-		sel != nil &&
-		strings.EqualFold(strings.TrimSpace(sel.ProviderKey), payment.TypeAlipay)
 }
 
 func sanitizeCreatePaymentResponseDetails(pr *payment.CreatePaymentResponse) {
@@ -670,24 +586,16 @@ func removePostgresTextNUL(value string) string {
 }
 
 func buildProviderCreatePaymentRequest(req CreateOrderRequest, sel *payment.InstanceSelection, orderID, amount, subject string) payment.CreatePaymentRequest {
+	_ = sel
 	return payment.CreatePaymentRequest{
-		OrderID:            orderID,
-		Amount:             amount,
-		PaymentType:        req.PaymentType,
-		Subject:            subject,
-		ReturnURL:          req.ReturnURL,
-		OpenID:             strings.TrimSpace(req.OpenID),
-		ClientIP:           req.ClientIP,
-		IsMobile:           req.IsMobile,
-		InstanceSubMethods: selectedInstanceSupportedTypes(sel),
+		OrderID:     orderID,
+		Amount:      amount,
+		PaymentType: req.PaymentType,
+		Subject:     subject,
+		ReturnURL:   req.ReturnURL,
+		ClientIP:    req.ClientIP,
+		IsMobile:    req.IsMobile,
 	}
-}
-
-func selectedInstanceSupportedTypes(sel *payment.InstanceSelection) string {
-	if sel == nil {
-		return ""
-	}
-	return sel.SupportedTypes
 }
 
 func (s *PaymentService) buildPaymentSubject(plan *dbent.SubscriptionPlan, limitAmount float64, cfg *PaymentConfig, sel *payment.InstanceSelection) string {
@@ -725,64 +633,6 @@ func applyPaymentProductNameAffix(productName string, cfg *PaymentConfig) string
 	pf := strings.TrimSpace(cfg.ProductNamePrefix)
 	sf := strings.TrimSpace(cfg.ProductNameSuffix)
 	return strings.TrimSpace(pf + " " + productName + " " + sf)
-}
-
-func (s *PaymentService) maybeBuildWeChatOAuthRequiredResponse(ctx context.Context, req CreateOrderRequest, amount, payAmount, feeRate float64) (*CreateOrderResponse, error) {
-	return s.maybeBuildWeChatOAuthRequiredResponseForSelection(ctx, req, amount, payAmount, feeRate, nil)
-}
-
-func (s *PaymentService) maybeBuildWeChatOAuthRequiredResponseForSelection(ctx context.Context, req CreateOrderRequest, amount, payAmount, feeRate float64, sel *payment.InstanceSelection) (*CreateOrderResponse, error) {
-	if sel != nil && sel.ProviderKey != "" && sel.ProviderKey != payment.TypeWxpay {
-		return nil, nil
-	}
-	if strings.TrimSpace(req.OpenID) != "" || !req.IsWeChatBrowser || payment.GetBasePaymentType(req.PaymentType) != payment.TypeWxpay {
-		return nil, nil
-	}
-	return s.buildWeChatOAuthRequiredResponse(ctx, req, amount, payAmount, feeRate)
-}
-
-func (s *PaymentService) buildWeChatOAuthRequiredResponse(ctx context.Context, req CreateOrderRequest, amount, payAmount, feeRate float64) (*CreateOrderResponse, error) {
-	appID, _, err := s.getWeChatPaymentOAuthCredential(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.paymentResume().ensureSigningKey(); err != nil {
-		return nil, err
-	}
-
-	authorizeURL, err := buildWeChatPaymentOAuthStartURL(req, "snsapi_base")
-	if err != nil {
-		return nil, err
-	}
-
-	return &CreateOrderResponse{
-		Amount:      amount,
-		PayAmount:   payAmount,
-		FeeRate:     feeRate,
-		ResultType:  payment.CreatePaymentResultOAuthRequired,
-		PaymentType: req.PaymentType,
-		OAuth: &payment.WechatOAuthInfo{
-			AuthorizeURL: authorizeURL,
-			AppID:        appID,
-			Scope:        "snsapi_base",
-			RedirectURL:  "/auth/wechat/payment/callback",
-		},
-	}, nil
-}
-
-func (s *PaymentService) validateSelectedCreateOrderInstance(ctx context.Context, req CreateOrderRequest, sel *payment.InstanceSelection) error {
-	if !requiresWeChatJSAPICompatibleSelection(req, sel) {
-		return nil
-	}
-	expectedAppID, _, err := s.getWeChatPaymentOAuthCredential(ctx)
-	if err != nil {
-		return err
-	}
-	selectedAppID := provider.ResolveWxpayJSAPIAppID(sel.Config)
-	if selectedAppID == "" || selectedAppID != expectedAppID {
-		return infraerrors.TooManyRequests("NO_AVAILABLE_INSTANCE", "selected payment instance is not compatible with the current WeChat OAuth app")
-	}
-	return nil
 }
 
 func calculateCreateOrderPayAmount(limitAmount, feeRate float64, currency string) (string, float64, error) {
@@ -845,98 +695,31 @@ func validateSelectedCreateOrderAmountCurrency(payAmount string, sel *payment.In
 	return nil
 }
 
-func requiresWeChatJSAPICompatibleSelection(req CreateOrderRequest, sel *payment.InstanceSelection) bool {
-	if sel == nil || sel.ProviderKey != payment.TypeWxpay || payment.GetBasePaymentType(req.PaymentType) != payment.TypeWxpay {
-		return false
-	}
-	return req.IsWeChatBrowser || strings.TrimSpace(req.OpenID) != ""
-}
-
-func (s *PaymentService) getWeChatPaymentOAuthCredential(ctx context.Context) (string, string, error) {
-	if s == nil || s.configService == nil || s.configService.settingRepo == nil {
-		return "", "", infraerrors.ServiceUnavailable(
-			"WECHAT_PAYMENT_MP_NOT_CONFIGURED",
-			"wechat in-app payment requires a complete WeChat MP OAuth credential",
-		)
-	}
-	cfg, err := (&SettingService{settingRepo: s.configService.settingRepo}).GetWeChatConnectOAuthConfig(ctx)
-	appID := strings.TrimSpace(cfg.AppIDForMode("mp"))
-	appSecret := strings.TrimSpace(cfg.AppSecretForMode("mp"))
-	if err != nil || !cfg.SupportsMode("mp") || appID == "" || appSecret == "" {
-		return "", "", infraerrors.ServiceUnavailable(
-			"WECHAT_PAYMENT_MP_NOT_CONFIGURED",
-			"wechat in-app payment requires a complete WeChat MP OAuth credential",
-		)
-	}
-	return appID, appSecret, nil
-}
-
 func classifyCreatePaymentError(req CreateOrderRequest, providerKey string, err error) error {
 	if err == nil {
 		return nil
 	}
-	if providerKey == payment.TypeWxpay &&
-		payment.GetBasePaymentType(req.PaymentType) == payment.TypeWxpay &&
-		strings.Contains(err.Error(), "wxpay h5 payments are not authorized for this merchant") {
-		return infraerrors.ServiceUnavailable(
-			"WECHAT_H5_NOT_AUTHORIZED",
-			"wechat h5 payment is not available for this merchant",
-		).WithMetadata(map[string]string{
-			"action": "open_in_wechat_or_scan_qr",
-		})
-	}
+	_, _ = req, providerKey
 	return infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", fmt.Sprintf("payment gateway error: %s", err.Error()))
 }
 
 func buildCreateOrderResponse(order *dbent.PaymentOrder, req CreateOrderRequest, payAmount float64, sel *payment.InstanceSelection, pr *payment.CreatePaymentResponse, resultType payment.CreatePaymentResultType) *CreateOrderResponse {
 	return &CreateOrderResponse{
-		OrderID:      order.ID,
-		Amount:       order.Amount,
-		PayAmount:    payAmount,
-		FeeRate:      order.FeeRate,
-		Status:       OrderStatusPending,
-		ResultType:   resultType,
-		PaymentType:  req.PaymentType,
-		OutTradeNo:   order.OutTradeNo,
-		PayURL:       pr.PayURL,
-		QRCode:       pr.QRCode,
-		ClientSecret: pr.ClientSecret,
-		IntentID:     pr.IntentID,
-		Currency:     pr.Currency,
-		CountryCode:  pr.CountryCode,
-		PaymentEnv:   pr.PaymentEnv,
-		OAuth:        pr.OAuth,
-		JSAPI:        pr.JSAPI,
-		JSAPIPayload: pr.JSAPI,
-		ExpiresAt:    order.ExpiresAt,
-		PaymentMode:  sel.PaymentMode,
+		OrderID:     order.ID,
+		Amount:      order.Amount,
+		PayAmount:   payAmount,
+		FeeRate:     order.FeeRate,
+		Status:      OrderStatusPending,
+		ResultType:  resultType,
+		PaymentType: req.PaymentType,
+		OutTradeNo:  order.OutTradeNo,
+		PayURL:      pr.PayURL,
+		QRCode:      pr.QRCode,
+		Currency:    pr.Currency,
+		PaymentEnv:  pr.PaymentEnv,
+		ExpiresAt:   order.ExpiresAt,
+		PaymentMode: sel.PaymentMode,
 	}
-}
-
-func buildWeChatPaymentOAuthStartURL(req CreateOrderRequest, scope string) (string, error) {
-	u, err := url.Parse("/api/v1/auth/oauth/wechat/payment/start")
-	if err != nil {
-		return "", fmt.Errorf("build wechat payment oauth start url: %w", err)
-	}
-	q := u.Query()
-	q.Set("payment_type", strings.TrimSpace(req.PaymentType))
-	if req.Amount > 0 {
-		q.Set("amount", strconv.FormatFloat(req.Amount, 'f', -1, 64))
-	}
-	if orderType := strings.TrimSpace(req.OrderType); orderType != "" {
-		q.Set("order_type", orderType)
-	}
-	if req.PlanID > 0 {
-		q.Set("plan_id", strconv.FormatInt(req.PlanID, 10))
-	}
-	if scope = strings.TrimSpace(scope); scope != "" {
-		q.Set("scope", scope)
-	}
-	if redirectTo := paymentRedirectPathFromURL(req.SrcURL); redirectTo != "" {
-		q.Set("redirect", redirectTo)
-	}
-	u.RawQuery = q.Encode()
-	return u.String(), nil
 }
 
 func paymentRedirectPathFromURL(rawURL string) string {

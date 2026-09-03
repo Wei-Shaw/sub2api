@@ -37,9 +37,6 @@ func (p paymentFulfillmentTestProvider) QueryOrder(ctx context.Context, tradeNo 
 func (p paymentFulfillmentTestProvider) VerifyNotification(ctx context.Context, rawBody string, headers map[string]string) (*payment.PaymentNotification, error) {
 	panic("unexpected call")
 }
-func (p paymentFulfillmentTestProvider) Refund(ctx context.Context, req payment.RefundRequest) (*payment.RefundResponse, error) {
-	panic("unexpected call")
-}
 
 type paymentFulfillmentAffiliateAccrueCall struct {
 	inviterID     int64
@@ -360,13 +357,13 @@ func TestExpectedNotificationProviderKeyPrefersOrderInstanceProvider(t *testing.
 
 	registry := payment.NewRegistry()
 	registry.Register(paymentFulfillmentTestProvider{
-		key:            payment.TypeAlipay,
-		supportedTypes: []payment.PaymentType{payment.TypeAlipay},
+		key:            payment.TypeSePayBankTransfer,
+		supportedTypes: []payment.PaymentType{payment.TypeSePayBankTransfer},
 	})
 
 	assert.Equal(t,
-		payment.TypeEasyPay,
-		expectedNotificationProviderKey(registry, payment.TypeAlipay, "", payment.TypeEasyPay),
+		payment.TypeSePay,
+		expectedNotificationProviderKey(registry, payment.TypeSePayBankTransfer, "", payment.TypeSePay),
 	)
 }
 
@@ -375,13 +372,13 @@ func TestExpectedNotificationProviderKeyUsesRegistryMappingForLegacyOrders(t *te
 
 	registry := payment.NewRegistry()
 	registry.Register(paymentFulfillmentTestProvider{
-		key:            payment.TypeEasyPay,
-		supportedTypes: []payment.PaymentType{payment.TypeAlipay},
+		key:            payment.TypeSePay,
+		supportedTypes: []payment.PaymentType{payment.TypeSePayBankTransfer},
 	})
 
 	assert.Equal(t,
-		payment.TypeEasyPay,
-		expectedNotificationProviderKey(registry, payment.TypeAlipay, "", ""),
+		payment.TypeSePay,
+		expectedNotificationProviderKey(registry, payment.TypeSePayBankTransfer, "", ""),
 	)
 }
 
@@ -389,8 +386,8 @@ func TestExpectedNotificationProviderKeyFallsBackToPaymentType(t *testing.T) {
 	t.Parallel()
 
 	assert.Equal(t,
-		payment.TypeWxpay,
-		expectedNotificationProviderKey(nil, payment.TypeWxpay, "", ""),
+		payment.TypeSePayNapas,
+		expectedNotificationProviderKey(nil, payment.TypeSePayNapas, "", ""),
 	)
 }
 
@@ -399,13 +396,13 @@ func TestExpectedNotificationProviderKeyPrefersOrderSnapshotProviderKey(t *testi
 
 	registry := payment.NewRegistry()
 	registry.Register(paymentFulfillmentTestProvider{
-		key:            payment.TypeAlipay,
-		supportedTypes: []payment.PaymentType{payment.TypeAlipay},
+		key:            payment.TypeSePayBankTransfer,
+		supportedTypes: []payment.PaymentType{payment.TypeSePayBankTransfer},
 	})
 
 	assert.Equal(t,
-		payment.TypeEasyPay,
-		expectedNotificationProviderKey(registry, payment.TypeAlipay, payment.TypeEasyPay, ""),
+		payment.TypeSePay,
+		expectedNotificationProviderKey(registry, payment.TypeSePayBankTransfer, payment.TypeSePay, ""),
 	)
 }
 
@@ -414,63 +411,77 @@ func TestExpectedNotificationProviderKeyForOrderUsesSnapshotProviderKey(t *testi
 
 	registry := payment.NewRegistry()
 	registry.Register(paymentFulfillmentTestProvider{
-		key:            payment.TypeAlipay,
-		supportedTypes: []payment.PaymentType{payment.TypeAlipay},
+		key:            payment.TypeSePayBankTransfer,
+		supportedTypes: []payment.PaymentType{payment.TypeSePayBankTransfer},
 	})
 
 	order := &dbent.PaymentOrder{
-		PaymentType: payment.TypeAlipay,
+		PaymentType: payment.TypeSePayBankTransfer,
 		ProviderSnapshot: map[string]any{
 			"schema_version": 1,
-			"provider_key":   payment.TypeEasyPay,
+			"provider_key":   payment.TypeSePay,
 		},
 	}
 
 	assert.Equal(t,
-		payment.TypeEasyPay,
+		payment.TypeSePay,
 		expectedNotificationProviderKeyForOrder(registry, order, ""),
 	)
 }
 
-func TestValidateProviderNotificationMetadataRejectsWxpaySnapshotMismatch(t *testing.T) {
+func TestValidateProviderNotificationMetadataRejectsMerchantMismatch(t *testing.T) {
 	t.Parallel()
 
 	order := &dbent.PaymentOrder{
-		PaymentType: payment.TypeWxpay,
+		PaymentType: payment.TypeSePayBankTransfer,
 		ProviderSnapshot: map[string]any{
-			"schema_version":  1,
-			"merchant_app_id": "wx-app-expected",
-			"merchant_id":     "mch-expected",
-			"currency":        "CNY",
+			"schema_version": 2,
+			"merchant_id":    "MERCHANT_EXPECTED",
+			"currency":       "VND",
 		},
 	}
 
-	err := validateProviderNotificationMetadata(order, payment.TypeWxpay, map[string]string{
-		"appid":       "wx-app-other",
-		"mchid":       "mch-expected",
-		"currency":    "CNY",
-		"trade_state": "SUCCESS",
+	err := validateProviderNotificationMetadata(order, payment.TypeSePay, map[string]string{
+		"merchant_id": "MERCHANT_OTHER",
+		"currency":    "VND",
 	})
-	assert.ErrorContains(t, err, "wxpay appid mismatch")
+	assert.ErrorContains(t, err, "sepay merchant_id mismatch")
+}
+
+func TestValidateProviderNotificationMetadataRejectsCurrencyMismatch(t *testing.T) {
+	t.Parallel()
+
+	order := &dbent.PaymentOrder{
+		PaymentType: payment.TypeSePayBankTransfer,
+		ProviderSnapshot: map[string]any{
+			"schema_version": 2,
+			"merchant_id":    "MERCHANT_EXPECTED",
+			"currency":       "VND",
+		},
+	}
+
+	err := validateProviderNotificationMetadata(order, payment.TypeSePay, map[string]string{
+		"merchant_id": "MERCHANT_EXPECTED",
+		"currency":    "USD",
+	})
+	assert.ErrorContains(t, err, "sepay currency mismatch")
 }
 
 func TestValidateProviderNotificationMetadataAllowsLegacyOrdersWithoutSnapshotFields(t *testing.T) {
 	t.Parallel()
 
 	order := &dbent.PaymentOrder{
-		PaymentType: payment.TypeWxpay,
+		PaymentType: payment.TypeSePayBankTransfer,
 		ProviderSnapshot: map[string]any{
 			"schema_version":       1,
 			"provider_instance_id": "9",
-			"provider_key":         payment.TypeWxpay,
+			"provider_key":         payment.TypeSePay,
 		},
 	}
 
-	err := validateProviderNotificationMetadata(order, payment.TypeWxpay, map[string]string{
-		"appid":       "wx-app-runtime",
-		"mchid":       "mch-runtime",
-		"currency":    "CNY",
-		"trade_state": "SUCCESS",
+	err := validateProviderNotificationMetadata(order, payment.TypeSePay, map[string]string{
+		"merchant_id": "MERCHANT_RUNTIME",
+		"currency":    "VND",
 	})
 	assert.NoError(t, err)
 }
@@ -495,93 +506,6 @@ func TestIsValidProviderAmount(t *testing.T) {
 	assert.True(t, isValidProviderAmount(decimal.NewFromFloat(0.01)))
 	assert.False(t, isValidProviderAmount(decimal.Zero))
 	assert.False(t, isValidProviderAmount(decimal.NewFromInt(-1)))
-}
-
-func TestValidateProviderNotificationMetadataRejectsAlipaySnapshotMismatch(t *testing.T) {
-	t.Parallel()
-
-	order := &dbent.PaymentOrder{
-		PaymentType: payment.TypeAlipay,
-		ProviderSnapshot: map[string]any{
-			"schema_version":  2,
-			"merchant_app_id": "alipay-app-expected",
-		},
-	}
-
-	err := validateProviderNotificationMetadata(order, payment.TypeAlipay, map[string]string{
-		"app_id": "alipay-app-other",
-	})
-	assert.ErrorContains(t, err, "alipay app_id mismatch")
-}
-
-func TestValidateProviderNotificationMetadataRejectsEasyPaySnapshotMismatch(t *testing.T) {
-	t.Parallel()
-
-	order := &dbent.PaymentOrder{
-		PaymentType: payment.TypeAlipay,
-		ProviderSnapshot: map[string]any{
-			"schema_version": 2,
-			"merchant_id":    "pid-expected",
-		},
-	}
-
-	err := validateProviderNotificationMetadata(order, payment.TypeEasyPay, map[string]string{
-		"pid": "pid-other",
-	})
-	assert.ErrorContains(t, err, "easypay pid mismatch")
-}
-
-func TestValidateProviderNotificationMetadataRejectsAirwallexSnapshotMismatch(t *testing.T) {
-	t.Parallel()
-
-	order := &dbent.PaymentOrder{
-		PaymentType: payment.TypeAirwallex,
-		ProviderSnapshot: map[string]any{
-			"schema_version": 2,
-			"merchant_id":    "acct_expected",
-			"currency":       "CNY",
-		},
-	}
-
-	err := validateProviderNotificationMetadata(order, payment.TypeAirwallex, map[string]string{
-		"account_id": "acct_other",
-		"currency":   "CNY",
-		"status":     "SUCCEEDED",
-	})
-	assert.ErrorContains(t, err, "airwallex account_id mismatch")
-
-	err = validateProviderNotificationMetadata(order, payment.TypeAirwallex, map[string]string{
-		"account_id": "acct_expected",
-		"currency":   "USD",
-		"status":     "SUCCEEDED",
-	})
-	assert.ErrorContains(t, err, "airwallex currency mismatch")
-}
-
-func TestValidateProviderNotificationMetadataRejectsStripeCurrencyMismatch(t *testing.T) {
-	t.Parallel()
-
-	order := &dbent.PaymentOrder{
-		PaymentType: payment.TypeStripe,
-		ProviderSnapshot: map[string]any{
-			"schema_version": 2,
-			"currency":       "HKD",
-		},
-	}
-
-	err := validateProviderNotificationMetadata(order, payment.TypeStripe, map[string]string{
-		"currency": "USD",
-	})
-	assert.ErrorContains(t, err, "stripe currency mismatch")
-}
-
-func TestPaymentAmountToleranceForThreeDecimalCurrency(t *testing.T) {
-	t.Parallel()
-
-	assert.Equal(t, amountToleranceCNY, paymentAmountToleranceForCurrency("CNY"))
-	assert.Equal(t, amountToleranceCNY, paymentAmountToleranceForCurrency("JPY"))
-	assert.True(t, decimalAmountToleranceCNY.Equal(paymentOverpayToleranceForCurrency("CNY")))
-	assert.InDelta(t, 0.0005, paymentAmountToleranceForCurrency("KWD"), 1e-12)
 }
 
 func TestRetryFulfillmentRejectsFreshRechargingLease(t *testing.T) {
@@ -732,8 +656,8 @@ func TestDuplicatePaymentNotificationDoesNotReprocessCompletedBalanceOrder(t *te
 		Amount:  decimal.NewFromFloat(order.PayAmount),
 		Status:  payment.NotificationStatusSuccess,
 	}
-	require.NoError(t, svc.HandlePaymentNotification(ctx, notification, payment.TypeAlipay))
-	require.NoError(t, svc.HandlePaymentNotification(ctx, notification, payment.TypeAlipay))
+	require.NoError(t, svc.HandlePaymentNotification(ctx, notification, payment.TypeSePayBankTransfer))
+	require.NoError(t, svc.HandlePaymentNotification(ctx, notification, payment.TypeSePayBankTransfer))
 
 	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
 	require.NoError(t, err)
@@ -759,7 +683,7 @@ func TestPaymentNotificationRejectsAmountMismatchBeforeFulfillment(t *testing.T)
 		OrderID: order.OutTradeNo,
 		Amount:  decimal.NewFromFloat(order.PayAmount).Sub(decimal.NewFromInt(1)),
 		Status:  payment.NotificationStatusSuccess,
-	}, payment.TypeAlipay)
+	}, payment.TypeSePayBankTransfer)
 	require.ErrorContains(t, err, "amount mismatch")
 
 	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
@@ -858,7 +782,7 @@ func createPaymentFulfillmentSubscriptionOrder(
 		SetFeeRate(0).
 		SetRechargeCode("PAY-SUB-" + strconv.FormatInt(time.Now().UnixNano(), 10)).
 		SetOutTradeNo("sub2_fulfillment_" + strconv.FormatInt(time.Now().UnixNano(), 10)).
-		SetPaymentType(payment.TypeAlipay).
+		SetPaymentType(payment.TypeSePayBankTransfer).
 		SetPaymentTradeNo("trade-fulfillment").
 		SetOrderType(payment.OrderTypeSubscription).
 		SetPlanID(100).
@@ -903,7 +827,7 @@ func TestExecuteSubscriptionFulfillmentAppliesAffiliateRebate(t *testing.T) {
 		SetFeeRate(0).
 		SetRechargeCode("PAY-SUB-AFFILIATE").
 		SetOutTradeNo("sub2_subscription_affiliate").
-		SetPaymentType(payment.TypeAlipay).
+		SetPaymentType(payment.TypeSePayBankTransfer).
 		SetPaymentTradeNo("trade-sub-affiliate").
 		SetOrderType(payment.OrderTypeSubscription).
 		SetPlanID(99).
@@ -989,7 +913,7 @@ func TestExecuteSubscriptionFulfillmentDoesNotDuplicateWorkAfterLegacySuccessAud
 		SetFeeRate(0).
 		SetRechargeCode("PAY-SUB-AFFILIATE-IDEMPOTENT").
 		SetOutTradeNo("sub2_subscription_affiliate_idempotent").
-		SetPaymentType(payment.TypeAlipay).
+		SetPaymentType(payment.TypeSePayBankTransfer).
 		SetPaymentTradeNo("trade-sub-affiliate-idempotent").
 		SetOrderType(payment.OrderTypeSubscription).
 		SetPlanID(100).

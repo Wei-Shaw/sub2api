@@ -101,13 +101,6 @@
         >
           {{ t('payment.admin.retry') }}
         </button>
-        <button
-          v-if="canRefund(order)"
-          @click="emit('refund', order)"
-          class="btn btn-sm rounded-md bg-red-50 px-3 py-1.5 text-sm text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30"
-        >
-          {{ t('payment.admin.refund') }}
-        </button>
       </div>
     </div>
   </BaseDialog>
@@ -118,7 +111,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import type { PaymentOrder } from '@/types/payment'
-import { statusBadgeClass, canRefund as canRefundStatus, formatOrderDateTime } from '@/components/payment/orderUtils'
+import { statusBadgeClass, formatOrderDateTime } from '@/components/payment/orderUtils'
 import { currencySymbol } from '@/components/payment/currency'
 
 const { t } = useI18n()
@@ -152,12 +145,7 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'cancel', order: PaymentOrder): void
   (e: 'retry', order: PaymentOrder): void
-  (e: 'refund', order: PaymentOrder): void
 }>()
-
-function canRefund(order: PaymentOrder): boolean {
-  return canRefundStatus(order.status)
-}
 
 function formatDateTime(dateStr: string): string {
   return formatOrderDateTime(dateStr)
