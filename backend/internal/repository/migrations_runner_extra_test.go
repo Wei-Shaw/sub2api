@@ -13,6 +13,8 @@ import (
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Wei-Shaw/sub2api/migrations"
 )
 
 func TestApplyMigrations_NilDB(t *testing.T) {
@@ -109,6 +111,55 @@ func TestMigrationChecksumCompatibilityRules_CoverEditedUpgradeCompatibilityMigr
 		require.Truef(t, ok, "missing compatibility rule for %s", name)
 		require.NotEmpty(t, rule.fileChecksum)
 		require.NotEmpty(t, rule.acceptedDBChecksum)
+	}
+}
+
+// TestMigrationChecksumCompatibilityRulesMatchEmbeddedFiles 守护 migrationChecksumCompatibilityRules
+// 的不变式：
+//  1. map 的 key 必须真实存在于嵌入的 migrations.FS 中（迁移被改名或删除后，规则会指向空气）；
+//  2. fileChecksum 必须等于当前文件按运行器算法算出的 checksum，即 sha256(strings.TrimSpace(内容))，
+//     与 applyMigrationsFS 中的写法逐字一致；
+//  3. 每条规则至少有一个历史 checksum，且自身的 fileChecksum 也在放行集合内。
+//
+// 缺了这条断言，规则会静默腐烂：历史上有人用 `sha256sum <file>` 填 checksum（那是对原始字节做哈希，
+// 把结尾换行也算了进去），运行器永远算不出那个值，于是 9 条规则全部失效——本该被放行的升级会在
+// 启动时直接 checksum mismatch 崩溃，而 CI 一片绿。
+func TestMigrationChecksumCompatibilityRulesMatchEmbeddedFiles(t *testing.T) {
+	require.NotEmpty(t, migrationChecksumCompatibilityRules)
+
+	for name, rule := range migrationChecksumCompatibilityRules {
+		contentBytes, err := fs.ReadFile(migrations.FS, name)
+		require.NoErrorf(t, err,
+			"compatibility rule %q names a migration that is not in the embedded FS; "+
+				"fix the filename or delete the rule after renaming/removing a migration", name)
+
+		// 必须与 applyMigrationsFS 中的算法保持一致。
+		sum := sha256.Sum256([]byte(strings.TrimSpace(string(contentBytes))))
+		want := hex.EncodeToString(sum[:])
+
+		require.Equalf(t, want, rule.fileChecksum,
+			"compatibility rule %q declares a stale fileChecksum.\n"+
+				"Recompute it as sha256(strings.TrimSpace(fileContent)) = %s -- NOT `sha256sum %s`, "+
+				"which hashes the raw bytes including the trailing newline and can never match.\n"+
+				"Pass that value as the FIRST argument of newMigrationChecksumCompatibilityRule and keep "+
+				"every previously accepted checksum in the tail, so databases still holding an older "+
+				"version of this migration keep booting.",
+			name, want, name)
+
+		require.NotEmptyf(t, rule.acceptedDBChecksum,
+			"compatibility rule %q lists no historical checksum, so it can never fire", name)
+		require.Containsf(t, rule.acceptedChecksums, rule.fileChecksum,
+			"compatibility rule %q does not accept its own fileChecksum", name)
+
+		for checksum := range rule.acceptedChecksums {
+			require.Lenf(t, checksum, 64,
+				"compatibility rule %q has a malformed checksum %q (want 64 hex chars)", name, checksum)
+			require.Equalf(t, strings.ToLower(checksum), checksum,
+				"compatibility rule %q must use lowercase hex checksums, got %q", name, checksum)
+			_, decErr := hex.DecodeString(checksum)
+			require.NoErrorf(t, decErr,
+				"compatibility rule %q has a non-hex checksum %q", name, checksum)
+		}
 	}
 }
 
