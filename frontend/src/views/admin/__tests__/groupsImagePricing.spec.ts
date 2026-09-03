@@ -27,6 +27,11 @@ describe("groups image pricing platform support", () => {
     expect(supportsImagePricingPlatform("anthropic")).toBe(false);
   });
 
+  it("includes Composite groups in image pricing controls", () => {
+    expect(supportsImagePricingPlatform("composite")).toBe(true);
+    expect(imagePricingPlatforms.has("composite")).toBe(true);
+  });
+
   it("keeps image and video pricing copy separate", () => {
     expect(imagePricingI18nKey("grok", "title")).toBe(
       "admin.groups.imagePricing.title",

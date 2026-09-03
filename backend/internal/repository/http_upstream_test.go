@@ -17,7 +17,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
-	"github.com/Wei-Shaw/sub2api/internal/pluginrelay"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -74,33 +73,6 @@ func TestHTTPUpstreamDoWithTLSPlainHTTPUsesConfiguredHTTPProxy(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, int64(1), proxyCalls.Load())
 	require.Zero(t, upstreamCalls.Load(), "plain HTTP must not bypass the configured proxy")
-}
-
-func TestHTTPUpstreamDoBypassesAccountProxyForAIRelay(t *testing.T) {
-	var upstreamCalls atomic.Int64
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		upstreamCalls.Add(1)
-		require.Equal(t, "42", r.Header.Get(pluginrelay.ProxyIDHeader))
-		w.WriteHeader(http.StatusTeapot)
-	}))
-	t.Cleanup(upstream.Close)
-	var proxyCalls atomic.Int64
-	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		proxyCalls.Add(1)
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	t.Cleanup(proxy.Close)
-
-	req, err := http.NewRequest(http.MethodPost, upstream.URL+"/plugins/ai-relay/agnes/1/v1/images/generations", nil)
-	require.NoError(t, err)
-	req.Header.Set(pluginrelay.ProxyIDHeader, "42")
-
-	resp, err := NewHTTPUpstream(nil).Do(req, proxy.URL, 41, 1)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusTeapot, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, int64(1), upstreamCalls.Load())
-	require.Zero(t, proxyCalls.Load())
 }
 
 func TestHTTPUpstreamDoWithTLSPlainHTTPUsesConfiguredSOCKSProxy(t *testing.T) {

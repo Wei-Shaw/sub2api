@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"encoding/json"
+
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 
@@ -148,11 +150,50 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+		field.JSON("video_model_prices", map[string]map[string]float64{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("按模型族和分辨率覆盖视频每秒价格"),
 		field.Float("web_search_price_per_call").
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Comment("Codex alpha/search 网页搜索单次价格（USD/次）；nil 表示使用默认价 0.01（官方 $10/1000 次）"),
+
+		// 搜索/工具调用显式定价（per 1k calls），用于 Grok web_search 等。
+		field.Float("search_price_per_1k").
+			Optional().
+			Nillable().
+			Min(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Comment("搜索工具价格 per 1000 calls（web_search 等）"),
+
+		// Grok Voice 显式定价（realtime / TTS / STT），不按文本 RateMultiplier。
+		field.Float("audio_realtime_price_per_min").
+			Optional().
+			Nillable().
+			Min(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Comment("Voice realtime 每分钟价格（USD）"),
+		field.Float("audio_tts_price_per_million_chars").
+			Optional().
+			Nillable().
+			Min(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Comment("TTS 每百万字符价格（USD）"),
+		field.Float("audio_stt_price_per_hour").
+			Optional().
+			Nillable().
+			Min(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Comment("STT 每小时价格（USD）"),
+		field.Bool("long_context_pricing_enabled").
+			Default(true).
+			Comment("是否按上下文长度应用模型阶梯价格；默认开启以保持官方/渠道长上下文价"),
+		field.JSON("model_pricing", json.RawMessage{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("分组逐模型定价；优先级高于渠道和内置定价"),
 
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").
@@ -201,6 +242,12 @@ func (Group) Fields() []ent.Field {
 		field.Bool("allow_live").
 			Default(false).
 			Comment("是否允许此 OpenAI 分组访问 Live 接口"),
+		field.Bool("force_openai_fast").
+			Default(false).
+			Comment("是否强制此 OpenAI/Composite 分组请求使用 service_tier=priority"),
+		field.Bool("free_openai_fast").
+			Default(false).
+			Comment("是否让此 OpenAI/Composite 分组的 Fast 请求按 Standard 价格计费"),
 		field.Bool("require_oauth_only").
 			Default(false).
 			Comment("仅允许非 apikey 类型账号关联到此分组"),
@@ -230,10 +277,14 @@ func (Group) Fields() []ent.Field {
 			MaxLen(20).
 			Default("").
 			Comment("OpenAI reasoning effort 上限；可选 minimal/low/medium/high/xhigh/max"),
+		field.String("max_reasoning_effort_over_limit").
+			MaxLen(20).
+			Default("downgrade").
+			Comment("超过推理强度上限时的访问控制：downgrade 自动降档，deny 拒绝访问"),
 		field.JSON("reasoning_effort_mappings", []domain.ReasoningEffortMapping{}).
 			Default([]domain.ReasoningEffortMapping{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
-			Comment("OpenAI reasoning effort 自定义精确映射；先映射再应用上限"),
+			Comment("OpenAI reasoning effort 自定义映射；可按模型精确名、前缀或后缀限定，先映射再应用上限"),
 
 		// 分组利润控制（migration 192/193）：openai/anthropic/gemini/grok/antigravity
 		// 的 token 分组可启用，composite 分组不能直接启用。

@@ -25,7 +25,7 @@ export function applyAntigravityProjectID(
   }
 }
 
-// ========== 请求头覆写（anthropic/openai 的 api_key 账号 + grok 的 api_key/oauth 账号） ==========
+// ========== 请求头覆写（API-key 平台 + grok 的 api_key/oauth 账号） ==========
 
 export const HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY = 'header_override_enabled'
 export const HEADER_OVERRIDES_CREDENTIAL_KEY = 'header_overrides'
@@ -37,7 +37,13 @@ export interface HeaderOverrideRow {
 
 /** 请求头覆写资格（与后端 IsHeaderOverrideEligible 保持一致） */
 export function isHeaderOverrideCapable(platform: string, type: string): boolean {
-  if (platform === 'anthropic' || platform === 'openai') {
+  if (
+    platform === 'anthropic' ||
+    platform === 'openai' ||
+    platform === 'kimi' ||
+    platform === 'zhipu' ||
+    platform === 'deepseek'
+  ) {
     return type === 'apikey'
   }
   if (platform === 'grok') {
@@ -241,6 +247,111 @@ export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
   { label: 'us-west-2', url: 'https://us-west-2.api.x.ai/v1' },
   { label: 'eu-west-1', url: 'https://eu-west-1.api.x.ai/v1' }
 ]
+
+// ========== 国产供应商（Kimi / Zhipu / DeepSeek）base_url 预设 ==========
+// 与后端 service/domain_constants.go 的默认 base url 保持一致。
+// 账号类型（payg 按量付费 / coding 编程套餐）决定额度监控方式；
+// API 协议（chat_completions / anthropic / responses）决定转发端点与格式，
+// 两者正交。同协议请求零转换直通，跨协议组合才走转换链。
+
+export type CnAccountMode = 'payg' | 'coding'
+
+/** deepseek / kimi 支持原生 responses；adaptive 会按入站协议选择原生端点。 */
+export type CnApiProtocol = 'adaptive' | 'chat_completions' | 'anthropic' | 'responses'
+export type CnNativeApiProtocol = Exclude<CnApiProtocol, 'adaptive'>
+
+/** DeepSeek 与 Kimi（按量付费 / Coding Plan）提供原生 Responses 端点。 */
+export function cnSupportsNativeResponses(platform: string): boolean {
+  return platform === 'deepseek' || platform === 'kimi'
+}
+
+export interface CnBaseUrlPreset {
+  mode: CnAccountMode
+  protocol: CnApiProtocol
+  /** 专有名词，不参与 i18n */
+  label: string
+  url: string
+}
+
+/** 各供应商按账号类型 × API 协议分档的快捷端点（点击快速填充，输入框仍可自由填写）。 */
+export const CN_BASE_URL_PRESETS: Record<'kimi' | 'zhipu' | 'deepseek', CnBaseUrlPreset[]> = {
+  kimi: [
+    { mode: 'payg', protocol: 'chat_completions', label: 'Moonshot', url: 'https://api.moonshot.cn/v1' },
+    { mode: 'payg', protocol: 'anthropic', label: 'Moonshot Anthropic', url: 'https://api.moonshot.cn/anthropic' },
+    { mode: 'payg', protocol: 'responses', label: 'Moonshot Responses', url: 'https://api.moonshot.cn/v1' },
+    { mode: 'coding', protocol: 'chat_completions', label: 'Kimi For Coding', url: 'https://api.kimi.com/coding/v1' },
+    { mode: 'coding', protocol: 'anthropic', label: 'Kimi Coding Anthropic', url: 'https://api.kimi.com/coding' },
+    { mode: 'coding', protocol: 'responses', label: 'Kimi Coding Responses', url: 'https://api.kimi.com/coding/v1' }
+  ],
+  zhipu: [
+    { mode: 'payg', protocol: 'chat_completions', label: 'GLM PaaS', url: 'https://open.bigmodel.cn/api/paas/v4' },
+    { mode: 'payg', protocol: 'anthropic', label: 'GLM Anthropic', url: 'https://open.bigmodel.cn/api/anthropic' },
+    { mode: 'coding', protocol: 'chat_completions', label: 'GLM Coding', url: 'https://open.bigmodel.cn/api/coding/paas/v4' },
+    { mode: 'coding', protocol: 'anthropic', label: 'GLM Coding Anthropic', url: 'https://open.bigmodel.cn/api/anthropic' }
+  ],
+  deepseek: [
+    { mode: 'payg', protocol: 'chat_completions', label: 'DeepSeek', url: 'https://api.deepseek.com' },
+    { mode: 'payg', protocol: 'anthropic', label: 'DeepSeek Anthropic', url: 'https://api.deepseek.com/anthropic' },
+    { mode: 'payg', protocol: 'responses', label: 'DeepSeek Responses', url: 'https://api.deepseek.com' }
+  ]
+}
+
+/** 返回指定供应商 + 账号类型 + API 协议的默认 base url。 */
+export function defaultCNBaseUrl(
+  platform: string,
+  mode: CnAccountMode,
+  protocol: CnApiProtocol = 'chat_completions'
+): string {
+  if (protocol === 'anthropic') {
+    switch (platform) {
+      case 'kimi':
+        return mode === 'coding' ? 'https://api.kimi.com/coding' : 'https://api.moonshot.cn/anthropic'
+      case 'zhipu':
+        return 'https://open.bigmodel.cn/api/anthropic'
+      case 'deepseek':
+        return 'https://api.deepseek.com/anthropic'
+      default:
+        return ''
+    }
+  }
+  // responses：Kimi / DeepSeek 的 base 与 chat_completions 相同（端点路径差异由后端处理）。
+  switch (platform) {
+    case 'kimi':
+      return mode === 'coding' ? 'https://api.kimi.com/coding/v1' : 'https://api.moonshot.cn/v1'
+    case 'zhipu':
+      return mode === 'coding'
+        ? 'https://open.bigmodel.cn/api/coding/paas/v4'
+        : 'https://open.bigmodel.cn/api/paas/v4'
+    case 'deepseek':
+      return 'https://api.deepseek.com'
+    default:
+      return ''
+  }
+}
+
+/** 返回自适应模式下需要配置的原生协议及其默认端点。 */
+export function defaultCNAdaptiveBaseUrls(
+  platform: 'kimi' | 'zhipu' | 'deepseek',
+  mode: CnAccountMode
+): Record<CnNativeApiProtocol, string> {
+  return {
+    chat_completions: defaultCNBaseUrl(platform, mode, 'chat_completions'),
+    anthropic: defaultCNBaseUrl(platform, mode, 'anthropic'),
+    responses: cnSupportsNativeResponses(platform) ? defaultCNBaseUrl(platform, mode, 'responses') : ''
+  }
+}
+
+// ===== 国产供应商用量单元格可见性（单一事实源） =====
+// CNProviderQuotaCell / CNProviderBalanceCell 与 AccountUsageCell 的占位符判定
+// 共用，避免多处复制条件后一处改另一处漏改。
+
+export function cnQuotaCellVisible(platform: string, accountMode: string): boolean {
+  return (platform === 'kimi' || platform === 'zhipu') && accountMode === 'coding'
+}
+
+export function cnBalanceCellVisible(platform: string, accountMode: string): boolean {
+  return (platform === 'kimi' || platform === 'deepseek') && accountMode !== 'coding'
+}
 
 /**
  * 将请求头覆写写入 credentials。

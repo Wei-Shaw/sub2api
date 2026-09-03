@@ -152,9 +152,6 @@ const (
 // 自定义错误码开启时覆盖后续所有逻辑（包括临时不可调度）。
 func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Account, statusCode int, responseBody []byte, requestedModel ...string) ErrorPolicyResult {
 	ctx = withTempUnschedulableModel(ctx, requestedModel)
-	if account != nil && account.IsRuntimeSchedulingProtectionDisabled() {
-		return ErrorPolicySkipped
-	}
 	if account.IsCustomErrorCodesEnabled() {
 		if account.ShouldHandleErrorCode(statusCode) {
 			return ErrorPolicyMatched
@@ -180,10 +177,6 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 // 返回是否应该停止该账号的调度
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
 	ctx = withTempUnschedulableModel(ctx, requestedModel)
-	if account != nil && account.IsRuntimeSchedulingProtectionDisabled() {
-		slog.Info("account_runtime_error_handling_disabled", "account_id", account.ID, "status_code", statusCode)
-		return false
-	}
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
 	// 池模式默认不标记本地账号状态；但管理员显式配置的临时不可调度规则优先。
@@ -2218,7 +2211,7 @@ func matchTempUnschedKeyword(bodyLower string, keywords []string) string {
 }
 
 func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account *Account, rule TempUnschedulableRule, ruleIndex int, statusCode int, matchedKeyword string, responseBody []byte, requestedModel ...string) bool {
-	if account == nil || account.IsTempUnschedulableDisabled() || account.IsRuntimeSchedulingProtectionDisabled() {
+	if account == nil {
 		return false
 	}
 	if rule.DurationMinutes <= 0 {

@@ -345,12 +345,6 @@ export default {
         overloadedUntil: '负载过重，重置时间：{time}',
         viewTempUnschedDetails: '查看临时不可调度详情'
       },
-      runtimeScheduling: {
-        disableTemp: '禁用临时不可调度状态',
-        disableTempDesc: '该账号不再创建或执行临时冷却状态。',
-        disableErrors: '禁用自动错误调度保护',
-        disableErrorsDesc: '上游错误、限流或过载后仍保持该账号可调度；上游错误仍会返回给调用方。',
-      },
       tempUnschedulable: {
         title: '临时不可调度',
         statusTitle: '临时不可调度状态',
@@ -576,9 +570,6 @@ export default {
         baseUrlHint: '留空使用官方 OpenAI API',
         apiKeyHint: '您的 OpenAI API Key',
         oauthPassthrough: '自动透传（仅替换认证）',
-        requestHeaderPassthrough: '透传客户端请求头',
-        requestHeaderPassthroughDesc:
-          '将客户端的 User-Agent、originator、version 及其他扩展请求头原样转发到上游；认证、连接控制和会话隔离头仍由网关管理。',
         oauthPassthroughDesc:
           '开启后，该 OpenAI 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。',
         flattenNamespaces: '摊平 Codex namespace 工具（兼容）',
@@ -1351,7 +1342,7 @@ export default {
       imagePromptPlaceholder: '例如：生成一只戴宇航员头盔的橘猫，像素插画风格，纯色背景。',
       imagePromptDefault: 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
       imageTestHint: '选择图片模型后，这里会直接发起生图测试，并在下方展示返回图片。',
-      imageTestMode: '生图测试',
+      imageTestMode: '模式：生图测试',
       imagePreview: '生成结果：',
       imageReceived: '已收到第 {count} 张测试图片',
       // Stats Modal

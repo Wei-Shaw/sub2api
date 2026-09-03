@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -245,6 +246,36 @@ type UpdateAPIKeyRequest struct {
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // Reset all usage counters to 0
 }
 
+func validateAPIKeyLimit(v float64) error {
+	if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
+		return infraerrors.BadRequest("API_KEY_LIMIT_INVALID", "API key limits must be finite and non-negative")
+	}
+	return nil
+}
+
+func validateCreateAPIKeyRequest(req CreateAPIKeyRequest) error {
+	for _, v := range []float64{req.Quota, req.RateLimit5h, req.RateLimit1d, req.RateLimit7d} {
+		if err := validateAPIKeyLimit(v); err != nil {
+			return err
+		}
+	}
+	if req.ExpiresInDays != nil && *req.ExpiresInDays <= 0 {
+		return infraerrors.BadRequest("API_KEY_EXPIRY_INVALID", "expires_in_days must be greater than zero")
+	}
+	return nil
+}
+
+func validateUpdateAPIKeyRequest(req UpdateAPIKeyRequest) error {
+	for _, v := range []*float64{req.Quota, req.RateLimit5h, req.RateLimit1d, req.RateLimit7d} {
+		if v != nil {
+			if err := validateAPIKeyLimit(*v); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // APIKeyService API Key服务
 // RateLimitCacheInvalidator invalidates rate limit cache entries on manual reset.
 type RateLimitCacheInvalidator interface {
@@ -428,6 +459,9 @@ func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group 
 
 // Create 创建API Key
 func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error) {
+	if err := validateCreateAPIKeyRequest(req); err != nil {
+		return nil, err
+	}
 	// 验证用户存在
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -723,6 +757,9 @@ func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, erro
 
 // Update 更新API Key
 func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req UpdateAPIKeyRequest) (*APIKey, error) {
+	if err := validateUpdateAPIKeyRequest(req); err != nil {
+		return nil, err
+	}
 	apiKey, err := s.apiKeyRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get api key: %w", err)
@@ -1034,20 +1071,21 @@ func (s *APIKeyService) SearchAPIKeys(ctx context.Context, userID int64, keyword
 	return keys, nil
 }
 
-// GetUserAllowedGroupIDSet 返回 user_allowed_groups 授权给该用户的专属分组 ID 集合。
+// GetUserGroupVisibility 返回 user_allowed_groups 授权给该用户的分组 ID 集合，
+// 以及该用户是否开启了公开分组限制。开启时公开分组的可见性也要落在该集合内。
 //
 // 与 GetAvailableGroups 的区别：这里是「橱窗」语义（模型广场用），不检查订阅有效性，
 // 也不关心分组是否活跃——仅回答"哪些专属分组对该用户可见"。返回值恒非 nil。
-func (s *APIKeyService) GetUserAllowedGroupIDSet(ctx context.Context, userID int64) (map[int64]struct{}, error) {
+func (s *APIKeyService) GetUserGroupVisibility(ctx context.Context, userID int64) (map[int64]struct{}, bool, error) {
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("get user: %w", err)
+		return nil, false, fmt.Errorf("get user: %w", err)
 	}
 	allowed := make(map[int64]struct{}, len(user.AllowedGroups))
 	for _, id := range user.AllowedGroups {
 		allowed[id] = struct{}{}
 	}
-	return allowed, nil
+	return allowed, user.RestrictPublicGroups, nil
 }
 
 // GetUserGroupRates 获取用户的专属分组倍率配置

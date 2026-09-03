@@ -340,12 +340,6 @@ export default {
           unavailableDesc: 'Unavailable - pause 30 minutes'
         }
       },
-      runtimeScheduling: {
-        disableTemp: 'Disable temporary unschedulable state',
-        disableTempDesc: 'Do not create or enforce temporary cooldowns for this account.',
-        disableErrors: 'Disable automatic error scheduling protection',
-        disableErrorsDesc: 'Keep this account eligible after upstream errors, rate limits, or overloads. Upstream errors are still returned to callers.',
-      },
       clearRateLimit: 'Clear Rate Limit',
       resetQuota: 'Reset Quota',
       quotaLimit: 'Quota Limit',
@@ -507,9 +501,6 @@ export default {
         oauthPassthrough: 'Auto passthrough (auth only)',
         oauthPassthroughDesc:
           'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
-        requestHeaderPassthrough: 'Pass through client request headers',
-        requestHeaderPassthroughDesc:
-          'Forwards User-Agent, originator, version, and other client extension headers as received. Authentication, connection control, and session isolation headers remain gateway-managed.',
         flattenNamespaces: 'Flatten Codex namespace tools (compatibility)',
         flattenNamespacesDesc:
           'Disabled by default: Codex namespace tool declarations are forwarded as-is on /responses, which is what the ChatGPT Codex backend expects. Enable only when this OAuth account is routed to a relay that rejects namespace tools — flattening renames them to namespace__tool, which breaks models that address collaboration tools as functions.<namespace>.<tool>. Compaction requests always flatten regardless of this switch.',
@@ -1305,7 +1296,7 @@ export default {
       imagePromptPlaceholder: 'Example: Generate an orange cat astronaut sticker in pixel-art style on a solid background.',
       imagePromptDefault: 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
       imageTestHint: 'When an image model is selected, this test sends a real image-generation request and previews the returned image below.',
-      imageTestMode: 'Image generation test',
+      imageTestMode: 'Mode: Image generation test',
       imagePreview: 'Generated images:',
       imageReceived: 'Received test image #{count}',
       // Stats Modal
