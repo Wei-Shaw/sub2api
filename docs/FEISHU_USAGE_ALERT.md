@@ -108,7 +108,7 @@ FEISHU_SECRET=xxxxxxxxxxxxxxxxxxxxxx
 # 恢复通知在下一次轮询发现状态已解除时发出，所以最多滞后一个 cron 周期。
 # 每条告警卡片末尾都附带"各平台订阅账号当前用量"总览（按平台分组、用分隔线区分；
 # 没有配置该平台订阅的不显示；纯 API 计费账号没有 5h/7d 概念，不出现在总览里；
-# 限流中的账号名字后面标注"（限流中）"）
+# 限流中的账号名字后面标注"（限流中---预计 XXX 重置额度）"）
 set -euo pipefail
 
 DIR="${SUB2API_MONITOR_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
@@ -198,7 +198,7 @@ result=$(jq -n --argjson rows "$rows" --argjson state "$state" --argjson totals 
       | map({
           platform: (.[0].platform | platform_label),
           lines: (map(
-              "• " + .name + (if .is_rate_limited then "（限流中）" else "" end)
+              "• " + .name + (if .is_rate_limited then "（限流中---预计 " + (.rate_limit_reset_bj // "?") + " 重置额度）" else "" end)
               + "\n5h " + (.win_5h|bar) + " " + (.win_5h|pct|tostring) + "%　7d " + (.win_7d|bar) + " " + (.win_7d|pct|tostring) + "%"
             ) | join("\n"))
         })
