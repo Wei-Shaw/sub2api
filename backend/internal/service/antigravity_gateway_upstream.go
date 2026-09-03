@@ -14,7 +14,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 )
 
@@ -27,31 +26,17 @@ func (s *AntigravityGatewayService) gatewayConfig() *config.Config {
 	return s.settingService.cfg
 }
 
-// validateUpstreamBaseURL 校验上游透传账号配置的 base_url，语义与 GatewayService /
-// OpenAIGatewayService / GeminiMessagesCompatService 的同名方法保持一致：
-//   - 开启 security.url_allowlist 时：HTTPS + 主机白名单 + 私网阻断
-//   - 未开启时：退化为最小格式校验（scheme/host/port）
+// validateUpstreamBaseURL 校验上游透传账号配置的 base_url。缺少该校验时 base_url 可被
+// 指向 169.254.169.254 等内网元数据服务，构成 SSRF。
 //
-// 缺少该校验时 base_url 可被指向 169.254.169.254 等内网元数据服务，构成 SSRF。
+// 直接委托给 validateUpstreamBaseURLWithConfig，与 GatewayService / OpenAIGatewayService /
+// GeminiMessagesCompatService 三个同名方法共用同一份实现，避免四份副本再次分叉。
+//
+// 注意 cfg 为 nil 的分支：此前这里退化为 ValidateURLFormat，而私网阻断依赖 config.Load
+// 注入的进程级开关——配置从未加载时该开关为零值，等于放行私网目标。共用实现对 nil
+// 采取最严格语义（要求 HTTPS 且阻断私网）。
 func (s *AntigravityGatewayService) validateUpstreamBaseURL(raw string) (string, error) {
-	cfg := s.gatewayConfig()
-	if cfg == nil || !cfg.Security.URLAllowlist.Enabled {
-		allowInsecureHTTP := cfg != nil && cfg.Security.URLAllowlist.AllowInsecureHTTP
-		normalized, err := urlvalidator.ValidateURLFormat(raw, allowInsecureHTTP)
-		if err != nil {
-			return "", fmt.Errorf("invalid base_url: %w", err)
-		}
-		return normalized, nil
-	}
-	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
-		AllowedHosts:     cfg.Security.URLAllowlist.UpstreamHosts,
-		RequireAllowlist: true,
-		AllowPrivate:     cfg.Security.URLAllowlist.AllowPrivateHosts,
-	})
-	if err != nil {
-		return "", fmt.Errorf("invalid base_url: %w", err)
-	}
-	return normalized, nil
+	return validateUpstreamBaseURLWithConfig(s.gatewayConfig(), raw)
 }
 
 // ForwardUpstream 使用 base_url + /v1/messages + 双 header 认证透传上游 Claude 请求

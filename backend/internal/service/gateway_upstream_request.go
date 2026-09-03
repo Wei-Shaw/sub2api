@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
@@ -900,21 +901,57 @@ func (s *GatewayService) buildCustomRelayURL(baseURL, path string, account *Acco
 	return u
 }
 
-func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
-	if s.cfg != nil && !s.cfg.Security.URLAllowlist.Enabled {
-		normalized, err := urlvalidator.ValidateURLFormat(raw, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
+// validateUpstreamBaseURLWithConfig 是 GatewayService / OpenAIGatewayService /
+// GeminiMessagesCompatService 三处 validateUpstreamBaseURL 的共同实现，语义与
+// AntigravityGatewayService.validateUpstreamBaseURL 保持一致：
+//
+//   - security.url_allowlist.enabled=true：HTTPS + 主机白名单 + 私网阻断
+//   - enabled=false（默认）：退化为 ValidateURLFormat，仍执行
+//     security.url_allowlist.allow_private_hosts 这条 SSRF 基线（见 cf894c3a1：
+//     主机白名单与私网阻断是两个独立开关）
+//
+// cfg == nil 的处理刻意不等同于「白名单关闭」。原实现写成
+// `if s.cfg != nil && !s.cfg.Security.URLAllowlist.Enabled`：nil 时该条件为 false，
+// 于是落进下面的白名单分支并无条件解引用 s.cfg，直接 panic。
+// 修复方向选择 fail-safe 而非 fail-open：cfg 为 nil 意味着拿不到运营者策略，
+// 既不知道 allow_insecure_http 是否放行，也不知道 allow_private_hosts 是否放行，
+// 因此按最严格的一档校验——强制 HTTPS、阻断环回/私网/链路本地，但不做主机收敛
+// （没有白名单可用，收敛只会变成一刀切拒绝）。
+//
+// 这里没有改成「构造期硬失败」，是因为生产装配下 cfg 恒非 nil：
+// cmd/server/wire_gen.go 由 Wire 注入 config.Load 产出的 *config.Config，
+// nil 只在未完整装配的单测中可达；而 NewGatewayService 等构造函数不返回 error，
+// 改成 panic 既要动 wire_gen.go 又会把一批单测从「不碰 base_url 就没事」
+// 变成「构造即崩」，收益为零。
+func validateUpstreamBaseURLWithConfig(cfg *config.Config, raw string) (string, error) {
+	if cfg == nil {
+		normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
+			RequireAllowlist: false,
+			AllowPrivate:     false,
+		})
+		if err != nil {
+			return "", fmt.Errorf("invalid base_url: %w", err)
+		}
+		return normalized, nil
+	}
+	if !cfg.Security.URLAllowlist.Enabled {
+		normalized, err := urlvalidator.ValidateURLFormat(raw, cfg.Security.URLAllowlist.AllowInsecureHTTP)
 		if err != nil {
 			return "", fmt.Errorf("invalid base_url: %w", err)
 		}
 		return normalized, nil
 	}
 	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
-		AllowedHosts:     s.cfg.Security.URLAllowlist.UpstreamHosts,
+		AllowedHosts:     cfg.Security.URLAllowlist.UpstreamHosts,
 		RequireAllowlist: true,
-		AllowPrivate:     s.cfg.Security.URLAllowlist.AllowPrivateHosts,
+		AllowPrivate:     cfg.Security.URLAllowlist.AllowPrivateHosts,
 	})
 	if err != nil {
 		return "", fmt.Errorf("invalid base_url: %w", err)
 	}
 	return normalized, nil
+}
+
+func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
+	return validateUpstreamBaseURLWithConfig(s.cfg, raw)
 }

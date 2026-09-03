@@ -25,7 +25,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
-	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -464,23 +463,11 @@ func (s *GeminiMessagesCompatService) listSchedulableAccountsOnce(ctx context.Co
 	return s.accountRepo.ListSchedulableUngroupedByPlatforms(ctx, queryPlatforms)
 }
 
+// validateUpstreamBaseURL 校验上游账号配置的 base_url。
+// 实现与 GatewayService / AntigravityGatewayService 共用，nil cfg 的 fail-safe
+// 取舍见 validateUpstreamBaseURLWithConfig 的注释。
 func (s *GeminiMessagesCompatService) validateUpstreamBaseURL(raw string) (string, error) {
-	if s.cfg != nil && !s.cfg.Security.URLAllowlist.Enabled {
-		normalized, err := urlvalidator.ValidateURLFormat(raw, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
-		if err != nil {
-			return "", fmt.Errorf("invalid base_url: %w", err)
-		}
-		return normalized, nil
-	}
-	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
-		AllowedHosts:     s.cfg.Security.URLAllowlist.UpstreamHosts,
-		RequireAllowlist: true,
-		AllowPrivate:     s.cfg.Security.URLAllowlist.AllowPrivateHosts,
-	})
-	if err != nil {
-		return "", fmt.Errorf("invalid base_url: %w", err)
-	}
-	return normalized, nil
+	return validateUpstreamBaseURLWithConfig(s.cfg, raw)
 }
 
 // HasAntigravityAccounts 检查是否有可用的 antigravity 账户

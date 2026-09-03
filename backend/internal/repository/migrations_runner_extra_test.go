@@ -96,6 +96,15 @@ func TestIsMigrationChecksumCompatible_AdditionalCases(t *testing.T) {
 	require.True(t, isMigrationChecksumCompatible(name, accepted, rule.fileChecksum))
 }
 
+// TestMigrationChecksumCompatibilityRules_CoverEditedUpgradeCompatibilityMigrations 守护的是
+// TestMigrationChecksumCompatibilityRulesMatchEmbeddedFiles **不覆盖**的那个方向：
+//
+//   - MatchEmbeddedFiles 遍历 map 里已有的规则，断言每条规则本身有效（文件还在、checksum 正确）；
+//     它对「某条规则被整条删掉」完全无感——map 里少一条，它就少检查一条，照样全绿。
+//   - 这里反过来遍历文件名，断言这些迁移**必须**仍有兼容规则。删掉其中任何一条，
+//     持有旧版本迁移的库会在启动时 checksum mismatch 直接崩溃，而不是被放行。
+//
+// 两者方向相反，互不蕴含，因此这条断言不是冗余的，不要因为「看起来只断言了 NotEmpty」而删除。
 func TestMigrationChecksumCompatibilityRules_CoverEditedUpgradeCompatibilityMigrations(t *testing.T) {
 	for _, name := range []string{
 		"109_auth_identity_compat_backfill.sql",

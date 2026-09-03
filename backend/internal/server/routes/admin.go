@@ -74,7 +74,7 @@ func RegisterAdminRoutes(
 		registerPromoCodeRoutes(admin, h)
 
 		// 系统设置
-		registerSettingsRoutes(admin, h)
+		registerSettingsRoutes(admin, h, stepUpAuth)
 
 		// 数据管理
 		registerDataManagementRoutes(admin, h, stepUpAuth)
@@ -552,11 +552,16 @@ func registerPromoCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	}
 }
 
-func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
 	adminSettings := admin.Group("/settings")
 	{
 		adminSettings.GET("", h.Admin.Setting.GetSettings)
-		adminSettings.PUT("", h.Admin.Setting.UpdateSettings)
+		// PUT /settings 是全站设置的总写入口：一次请求可改写 custom_menu_items
+		// （可把菜单指向任意外部主机）、SMTP 凭据、认证来源默认值、
+		// forwarded_client_ip_headers 等安全相关项——要求 step-up 2FA。
+		// 门控只挂在写入路由上：GET 仍是管理面加载设置页的第一个请求，
+		// 挂上去会让整个设置页在打开时就弹 TOTP。
+		adminSettings.PUT("", gin.HandlerFunc(stepUpAuth), h.Admin.Setting.UpdateSettings)
 		adminSettings.POST("/test-smtp", h.Admin.Setting.TestSMTPConnection)
 		adminSettings.POST("/send-test-email", h.Admin.Setting.SendTestEmail)
 		adminSettings.GET("/email-templates", h.Admin.Setting.ListEmailTemplates)
@@ -566,8 +571,12 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		adminSettings.POST("/email-templates/:event/:locale/restore-official", h.Admin.Setting.RestoreOfficialEmailTemplate)
 		// Admin API Key 管理
 		adminSettings.GET("/admin-api-key", h.Admin.Setting.GetAdminAPIKey)
-		adminSettings.POST("/admin-api-key/regenerate", h.Admin.Setting.RegenerateAdminAPIKey)
-		adminSettings.DELETE("/admin-api-key", h.Admin.Setting.DeleteAdminAPIKey)
+		// 签发/吊销 admin API key 等同于铸造一把长期管理员机器凭证，属于典型的权限驻留
+		// 手段，风险不低于设置写入本身，因此同样要求 step-up。
+		// 前端 SettingsView 的 createAdminApiKey / deleteAdminApiKey 已接入
+		// settingsStepUp.run()，可在完成 TOTP 挑战后重试。
+		adminSettings.POST("/admin-api-key/regenerate", gin.HandlerFunc(stepUpAuth), h.Admin.Setting.RegenerateAdminAPIKey)
+		adminSettings.DELETE("/admin-api-key", gin.HandlerFunc(stepUpAuth), h.Admin.Setting.DeleteAdminAPIKey)
 		// 529过载冷却配置
 		adminSettings.GET("/overload-cooldown", h.Admin.Setting.GetOverloadCooldownSettings)
 		adminSettings.PUT("/overload-cooldown", h.Admin.Setting.UpdateOverloadCooldownSettings)

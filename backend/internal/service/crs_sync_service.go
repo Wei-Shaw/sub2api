@@ -243,9 +243,9 @@ func (s *CRSSyncService) fetchCRSExport(ctx context.Context, baseURL, username, 
 		return nil, errors.New("username and password are required")
 	}
 
+	// 解析后 IP 校验跟随「私网目标」策略，而非主机白名单开关（安全审计 M2）。
 	client, err := httpclient.GetClient(httpclient.Options{
 		Timeout:            20 * time.Second,
-		// 解析后 IP 校验跟随「私网目标」策略，而非主机白名单开关（安全审计 M2）。
 		ValidateResolvedIP: !s.cfg.Security.URLAllowlist.AllowPrivateHosts,
 		AllowPrivateHosts:  s.cfg.Security.URLAllowlist.AllowPrivateHosts,
 	})

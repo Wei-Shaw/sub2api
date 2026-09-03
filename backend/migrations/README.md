@@ -46,6 +46,15 @@ ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS example_column VARCHAR(100);
 
 > ⚠️ Do **not** place executable "Down" SQL in the same file. The runner does not parse goose Up/Down sections and will execute all SQL statements in the file.
 
+> ⚠️ A destructive `DELETE` / `DROP` / value-clearing `UPDATE` must first snapshot the affected rows
+> into a backup table in the **same** migration. Forward-only migrations have no rollback, so data
+> removed without a snapshot is gone for good. Use `CREATE TABLE IF NOT EXISTS <table>_backup_<NNN> AS
+> SELECT ...` (a no-op on re-run, so the migration stays idempotent) and `COMMENT ON TABLE` it with the
+> rollback statement. See `220_clear_non_grok_video_generation_config.sql` /
+> `groups_video_price_backup_220` for the established pattern. Counter-example:
+> `131_affiliate_rebate_hardening.sql` deletes duplicate `payment_audit_logs` rows with no backup —
+> do not copy that.
+
 ## Important Rules
 
 ### ⚠️ Immutability Principle
