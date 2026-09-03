@@ -55,29 +55,54 @@ func (s *RedeemCacheSuite) TestMultipleIncrements() {
 }
 
 func (s *RedeemCacheSuite) TestAcquireAndReleaseRedeemLock() {
-	ok, err := s.cache.AcquireRedeemLock(s.ctx, "CODE", 10*time.Second)
+	ok, err := s.cache.AcquireRedeemLock(s.ctx, "CODE", "token-a", 10*time.Second)
 	require.NoError(s.T(), err, "AcquireRedeemLock")
 	require.True(s.T(), ok)
 
 	// Second acquire should fail
-	ok, err = s.cache.AcquireRedeemLock(s.ctx, "CODE", 10*time.Second)
+	ok, err = s.cache.AcquireRedeemLock(s.ctx, "CODE", "token-b", 10*time.Second)
 	require.NoError(s.T(), err, "AcquireRedeemLock 2")
 	require.False(s.T(), ok, "expected lock to be held")
 
 	// Release
-	require.NoError(s.T(), s.cache.ReleaseRedeemLock(s.ctx, "CODE"), "ReleaseRedeemLock")
+	require.NoError(s.T(), s.cache.ReleaseRedeemLock(s.ctx, "CODE", "token-a"), "ReleaseRedeemLock")
 
 	// Now acquire should succeed
-	ok, err = s.cache.AcquireRedeemLock(s.ctx, "CODE", 10*time.Second)
+	ok, err = s.cache.AcquireRedeemLock(s.ctx, "CODE", "token-c", 10*time.Second)
 	require.NoError(s.T(), err, "AcquireRedeemLock after release")
 	require.True(s.T(), ok)
+}
+
+// 锁超时后被下一个请求接管，原持有者的 release 不得删掉新持有者的锁。
+func (s *RedeemCacheSuite) TestReleaseRedeemLock_DoesNotStealOtherHolder() {
+	lockKey := redeemLockKeyPrefix + "STOLEN"
+
+	ok, err := s.cache.AcquireRedeemLock(s.ctx, "STOLEN", "token-first", 10*time.Second)
+	require.NoError(s.T(), err)
+	require.True(s.T(), ok)
+
+	// 模拟第一个持有者的锁 TTL 过期后由第二个请求重新抢到。
+	require.NoError(s.T(), s.rdb.Del(s.ctx, lockKey).Err())
+	ok, err = s.cache.AcquireRedeemLock(s.ctx, "STOLEN", "token-second", 10*time.Second)
+	require.NoError(s.T(), err)
+	require.True(s.T(), ok)
+
+	// 第一个持有者的 defer release 不应删除第二个持有者的锁。
+	require.NoError(s.T(), s.cache.ReleaseRedeemLock(s.ctx, "STOLEN", "token-first"))
+
+	value, err := s.rdb.Get(s.ctx, lockKey).Result()
+	require.NoError(s.T(), err, "第二个持有者的锁应仍然存在")
+	require.Equal(s.T(), "token-second", value)
+
+	require.NoError(s.T(), s.cache.ReleaseRedeemLock(s.ctx, "STOLEN", "token-second"))
+	require.Equal(s.T(), int64(0), s.rdb.Exists(s.ctx, lockKey).Val())
 }
 
 func (s *RedeemCacheSuite) TestAcquireRedeemLock_TTL() {
 	lockKey := redeemLockKeyPrefix + "CODE2"
 	lockTTL := 15 * time.Second
 
-	ok, err := s.cache.AcquireRedeemLock(s.ctx, "CODE2", lockTTL)
+	ok, err := s.cache.AcquireRedeemLock(s.ctx, "CODE2", "token-ttl", lockTTL)
 	require.NoError(s.T(), err, "AcquireRedeemLock CODE2")
 	require.True(s.T(), ok)
 
@@ -88,14 +113,14 @@ func (s *RedeemCacheSuite) TestAcquireRedeemLock_TTL() {
 
 func (s *RedeemCacheSuite) TestReleaseRedeemLock_Idempotent() {
 	// Release a lock that doesn't exist should not error
-	require.NoError(s.T(), s.cache.ReleaseRedeemLock(s.ctx, "NONEXISTENT"))
+	require.NoError(s.T(), s.cache.ReleaseRedeemLock(s.ctx, "NONEXISTENT", "token-x"))
 
 	// Acquire, release, release again
-	ok, err := s.cache.AcquireRedeemLock(s.ctx, "IDEMPOTENT", 10*time.Second)
+	ok, err := s.cache.AcquireRedeemLock(s.ctx, "IDEMPOTENT", "token-idem", 10*time.Second)
 	require.NoError(s.T(), err)
 	require.True(s.T(), ok)
-	require.NoError(s.T(), s.cache.ReleaseRedeemLock(s.ctx, "IDEMPOTENT"))
-	require.NoError(s.T(), s.cache.ReleaseRedeemLock(s.ctx, "IDEMPOTENT"), "second release should be idempotent")
+	require.NoError(s.T(), s.cache.ReleaseRedeemLock(s.ctx, "IDEMPOTENT", "token-idem"))
+	require.NoError(s.T(), s.cache.ReleaseRedeemLock(s.ctx, "IDEMPOTENT", "token-idem"), "second release should be idempotent")
 }
 
 func TestRedeemCacheSuite(t *testing.T) {

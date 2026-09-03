@@ -44,8 +44,10 @@ type RedeemCache interface {
 	GetRedeemAttemptCount(ctx context.Context, userID int64) (int, error)
 	IncrementRedeemAttemptCount(ctx context.Context, userID int64) error
 
-	AcquireRedeemLock(ctx context.Context, code string, ttl time.Duration) (bool, error)
-	ReleaseRedeemLock(ctx context.Context, code string) error
+	// AcquireRedeemLock 以 token 作为持有者标识抢锁；ReleaseRedeemLock 必须比较
+	// token 后再删除，防止锁 TTL 到期后误删下一个持有者的锁。
+	AcquireRedeemLock(ctx context.Context, code, token string, ttl time.Duration) (bool, error)
+	ReleaseRedeemLock(ctx context.Context, code, token string) error
 }
 
 type RedeemCodeRepository interface {
@@ -353,28 +355,48 @@ func (s *RedeemService) incrementRedeemErrorCount(ctx context.Context, userID in
 	_ = s.cache.IncrementRedeemAttemptCount(ctx, userID)
 }
 
-// acquireRedeemLock 尝试获取兑换码的分布式锁
-// 返回 true 表示获取成功，false 表示锁已被占用
-func (s *RedeemService) acquireRedeemLock(ctx context.Context, code string) bool {
-	if s.cache == nil {
-		return true // 无 Redis 时降级为不加锁
+// newRedeemLockToken 生成锁持有者令牌，语义与 repository 层
+// newBatchImageLockToken 一致（16 字节随机数的十六进制表示）。
+func newRedeemLockToken() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
 	}
-
-	ok, err := s.cache.AcquireRedeemLock(ctx, code, redeemLockDuration)
-	if err != nil {
-		// Redis 出错时不阻止操作，依赖数据库层面的状态检查
-		return true
-	}
-	return ok
+	return hex.EncodeToString(b[:]), nil
 }
 
-// releaseRedeemLock 释放兑换码的分布式锁
-func (s *RedeemService) releaseRedeemLock(ctx context.Context, code string) {
+// acquireRedeemLock 尝试获取兑换码的分布式锁。
+// 返回 (是否可继续, 持有者令牌)。令牌为空表示未真正持锁（降级路径），
+// 此时 releaseRedeemLock 不会删除任何键，避免误删他人的锁。
+func (s *RedeemService) acquireRedeemLock(ctx context.Context, code string) (bool, string) {
 	if s.cache == nil {
+		return true, "" // 无 Redis 时降级为不加锁
+	}
+
+	token, err := newRedeemLockToken()
+	if err != nil {
+		// 令牌生成失败时降级为不加锁，依赖数据库层面的状态检查
+		return true, ""
+	}
+
+	ok, err := s.cache.AcquireRedeemLock(ctx, code, token, redeemLockDuration)
+	if err != nil {
+		// Redis 出错时不阻止操作，依赖数据库层面的状态检查
+		return true, ""
+	}
+	if !ok {
+		return false, ""
+	}
+	return true, token
+}
+
+// releaseRedeemLock 释放兑换码的分布式锁（仅当锁仍由本次持有者持有）
+func (s *RedeemService) releaseRedeemLock(ctx context.Context, code, token string) {
+	if s.cache == nil || token == "" {
 		return
 	}
 
-	_ = s.cache.ReleaseRedeemLock(ctx, code)
+	_ = s.cache.ReleaseRedeemLock(ctx, code, token)
 }
 
 func unsupportedRedeemTypeError(codeType string) error {
@@ -392,10 +414,11 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 	}
 
 	// 获取分布式锁，防止同一兑换码并发使用
-	if !s.acquireRedeemLock(ctx, code) {
+	acquired, lockToken := s.acquireRedeemLock(ctx, code)
+	if !acquired {
 		return nil, ErrRedeemCodeLocked
 	}
-	defer s.releaseRedeemLock(ctx, code)
+	defer s.releaseRedeemLock(ctx, code, lockToken)
 
 	// 查找兑换码
 	redeemCode, err := s.redeemRepo.GetByCode(ctx, code)
@@ -492,13 +515,16 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 			if validityDays == 0 {
 				validityDays = 30
 			}
-			_, _, err := s.subscriptionService.AssignOrExtendSubscription(txCtx, &AssignSubscriptionInput{
+			// deferCacheInvalidation=true：兑换事务尚未提交，此处失效 L1 会让并发
+			// 请求把提交前的旧行重新灌回缓存。缓存统一在提交后由
+			// invalidateRedeemCaches 同步失效（与支付履约路径共用同一套处理）。
+			_, _, err := s.subscriptionService.assignOrExtendSubscription(txCtx, &AssignSubscriptionInput{
 				UserID:       userID,
 				GroupID:      *redeemCode.GroupID,
 				ValidityDays: validityDays,
 				AssignedBy:   0, // 系统分配
 				Notes:        fmt.Sprintf("通过兑换码 %s 兑换", redeemCode.Code),
-			})
+			}, true)
 			if err != nil {
 				return nil, fmt.Errorf("assign or extend subscription: %w", err)
 			}
@@ -556,16 +582,13 @@ func (s *RedeemService) invalidateRedeemCaches(ctx context.Context, userID int64
 		if s.authCacheInvalidator != nil {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
 		}
-		if s.billingCacheService == nil {
+		if redeemCode.GroupID == nil || s.subscriptionService == nil {
 			return
 		}
-		if redeemCode.GroupID != nil {
-			groupID := *redeemCode.GroupID
-			go func() {
-				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
-			}()
+		// 复用支付履约路径的同一套失效逻辑：同步失效 L1 + Redis，并广播跨实例
+		// 失效消息，否则其他实例的 L1 会保留提交前的旧订阅直到 TTL 过期。
+		if err := s.subscriptionService.invalidateSubscriptionCaches(userID, *redeemCode.GroupID); err != nil {
+			logger.LegacyPrintf("service.redeem", "[Redeem] invalidate subscription cache failed for user %d group %d: %v", userID, *redeemCode.GroupID, err)
 		}
 	}
 }
@@ -662,50 +685,57 @@ func (s *RedeemService) GetUserHistory(ctx context.Context, userID int64, limit 
 	return codes, nil
 }
 
-// reduceOrCancelSubscription 缩短订阅天数，剩余天数 <= 0 时取消订阅
+// reduceOrCancelSubscription 缩短订阅天数，剩余天数 <= 0 时取消订阅。
+//
+// expires_at / notes 都是读改写字段，必须在事务内用 GetByIDForUpdate 加行锁后
+// 重新读取，否则会与并发续期（updateExistingSubscriptionTerm、支付履约）互相
+// 覆盖：先读到旧过期时间的一方会把对方刚写入的天数与备注一起抹掉。
 func (s *RedeemService) reduceOrCancelSubscription(ctx context.Context, userID, groupID int64, reduceDays int, code string) error {
-	sub, err := s.subscriptionService.userSubRepo.GetByUserIDAndGroupID(ctx, userID, groupID)
+	// 仅用于解析订阅 ID；参与计算的字段一律以事务内加锁读取的行为准。
+	located, err := s.subscriptionService.userSubRepo.GetByUserIDAndGroupID(ctx, userID, groupID)
 	if err != nil {
 		return ErrSubscriptionNotFound
 	}
-
-	now := time.Now()
-	remaining := int(sub.ExpiresAt.Sub(now).Hours() / 24)
-	if remaining < 0 {
-		remaining = 0
-	}
+	subscriptionID := located.ID
 
 	notes := fmt.Sprintf("通过兑换码 %s 退款扣减 %d 天", code, reduceDays)
 
-	if remaining <= reduceDays {
-		// 剩余天数不足，直接取消订阅
-		if err := s.subscriptionService.userSubRepo.UpdateStatus(ctx, sub.ID, SubscriptionStatusExpired); err != nil {
-			return fmt.Errorf("cancel subscription: %w", err)
+	// 缓存失效交由事务提交后的 invalidateRedeemCaches 处理；
+	// 在事务内失效会把提交前的旧行重新灌回 L1。
+	return s.subscriptionService.withSubscriptionUpdateTx(ctx, func(txCtx context.Context) error {
+		sub, err := s.subscriptionService.userSubRepo.GetByIDForUpdate(txCtx, subscriptionID)
+		if err != nil {
+			return fmt.Errorf("lock subscription for reduction: %w", err)
 		}
-		// 设置过期时间为当前时间
-		if err := s.subscriptionService.userSubRepo.ExtendExpiry(ctx, sub.ID, now); err != nil {
-			return fmt.Errorf("set subscription expiry: %w", err)
+
+		now := time.Now()
+		remaining := int(sub.ExpiresAt.Sub(now).Hours() / 24)
+		if remaining < 0 {
+			remaining = 0
 		}
-	} else {
-		// 缩短天数
-		newExpiresAt := sub.ExpiresAt.AddDate(0, 0, -reduceDays)
-		if err := s.subscriptionService.userSubRepo.ExtendExpiry(ctx, sub.ID, newExpiresAt); err != nil {
-			return fmt.Errorf("reduce subscription: %w", err)
+
+		if remaining <= reduceDays {
+			// 剩余天数不足，直接取消订阅
+			if err := s.subscriptionService.userSubRepo.UpdateStatus(txCtx, sub.ID, SubscriptionStatusExpired); err != nil {
+				return fmt.Errorf("cancel subscription: %w", err)
+			}
+			// 设置过期时间为当前时间
+			if err := s.subscriptionService.userSubRepo.ExtendExpiry(txCtx, sub.ID, now); err != nil {
+				return fmt.Errorf("set subscription expiry: %w", err)
+			}
+		} else {
+			// 缩短天数
+			newExpiresAt := sub.ExpiresAt.AddDate(0, 0, -reduceDays)
+			if err := s.subscriptionService.userSubRepo.ExtendExpiry(txCtx, sub.ID, newExpiresAt); err != nil {
+				return fmt.Errorf("reduce subscription: %w", err)
+			}
 		}
-	}
 
-	// 追加备注
-	newNotes := sub.Notes
-	if newNotes != "" {
-		newNotes += "\n"
-	}
-	newNotes += notes
-	if err := s.subscriptionService.userSubRepo.UpdateNotes(ctx, sub.ID, newNotes); err != nil {
-		return fmt.Errorf("update subscription notes: %w", err)
-	}
+		// 追加备注（基于加锁读取到的 notes，避免覆盖并发写入的备注）
+		if err := s.subscriptionService.userSubRepo.UpdateNotes(txCtx, sub.ID, appendSubscriptionNotes(sub.Notes, notes)); err != nil {
+			return fmt.Errorf("update subscription notes: %w", err)
+		}
 
-	// 失效缓存
-	s.subscriptionService.InvalidateSubCache(userID, groupID)
-
-	return nil
+		return nil
+	})
 }

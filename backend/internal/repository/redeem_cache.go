@@ -25,6 +25,14 @@ func redeemLockKey(code string) string {
 	return redeemLockKeyPrefix + code
 }
 
+// redeemReleaseLockScript 比较并删除：只有持有者 token 匹配时才释放锁。
+var redeemReleaseLockScript = redis.NewScript(`
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("DEL", KEYS[1])
+end
+return 0
+`)
+
 type redeemCache struct {
 	rdb *redis.Client
 }
@@ -51,12 +59,20 @@ func (c *redeemCache) IncrementRedeemAttemptCount(ctx context.Context, userID in
 	return err
 }
 
-func (c *redeemCache) AcquireRedeemLock(ctx context.Context, code string, ttl time.Duration) (bool, error) {
+// AcquireRedeemLock 以 token 为持有者标识抢占兑换码锁。
+// token 必须由调用方随机生成，配合 ReleaseRedeemLock 的比较删除，
+// 避免锁 TTL 到期后误删下一个持有者的锁。
+func (c *redeemCache) AcquireRedeemLock(ctx context.Context, code, token string, ttl time.Duration) (bool, error) {
 	key := redeemLockKey(code)
-	return c.rdb.SetNX(ctx, key, 1, ttl).Result()
+	return c.rdb.SetNX(ctx, key, token, ttl).Result()
 }
 
-func (c *redeemCache) ReleaseRedeemLock(ctx context.Context, code string) error {
+// ReleaseRedeemLock 仅在锁仍属于本次持有者（值等于 token）时删除，
+// 与 batch_image_queue 的 batchImageReleaseLockScript 采用同一套比较删除语义。
+func (c *redeemCache) ReleaseRedeemLock(ctx context.Context, code, token string) error {
+	if token == "" {
+		return nil
+	}
 	key := redeemLockKey(code)
-	return c.rdb.Del(ctx, key).Err()
+	return redeemReleaseLockScript.Run(ctx, c.rdb, []string{key}, token).Err()
 }
