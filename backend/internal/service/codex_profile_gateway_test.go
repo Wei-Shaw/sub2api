@@ -982,7 +982,8 @@ func TestCodexProfileDirectWSIngressRoundTrip(t *testing.T) {
 		t.Fatal("timed out waiting for direct WS ingress")
 	}
 	require.Zero(t, captureDialer.DialCount(), "Profile mode must use the host HTTP bridge instead of native upstream WebSocket")
-	echo := svc.httpUpstream.(*codexProfileEchoUpstream)
+	echo, ok := svc.httpUpstream.(*codexProfileEchoUpstream)
+	require.True(t, ok)
 	originator := echo.requestHeader.Get("originator")
 	architecture := gjson.GetBytes(echo.requestBody, "client_metadata.arch").String()
 	require.Equal(t, "Codex Desktop", originator)

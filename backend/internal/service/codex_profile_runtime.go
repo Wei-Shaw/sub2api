@@ -107,7 +107,7 @@ func ResolveCodexRuntimeProfileWithVersion(policy CodexOSProfilePolicy, clientVe
 	}
 	if CompareVersions(clientVersion, codexUpstreamMinVersion) < 0 {
 		return CodexResolvedProfile{}, fmt.Errorf(
-			"Codex client version must be at least %s",
+			"codex client version must be at least %s",
 			codexUpstreamMinVersion,
 		)
 	}
