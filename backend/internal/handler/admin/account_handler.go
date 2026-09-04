@@ -136,6 +136,8 @@ type UpdateAccountRequest struct {
 	Name                    string         `json:"name"`
 	Notes                   *string        `json:"notes"`
 	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
+	// ParentAccountID 仅对影子账号生效：复制出来的影子可改绑到另一个母账号。
+	ParentAccountID         *int64         `json:"parent_account_id"`
 	Credentials             map[string]any `json:"credentials"`
 	Extra                   map[string]any `json:"extra"`
 	ProxyID                 *int64         `json:"proxy_id"`
@@ -978,6 +980,7 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		Name:                  req.Name,
 		Notes:                 req.Notes,
 		Type:                  req.Type,
+		ParentAccountID:       req.ParentAccountID,
 		Credentials:           req.Credentials,
 		Extra:                 req.Extra,
 		ProxyID:               req.ProxyID,

@@ -393,6 +393,7 @@ type UpdateAccountInput struct {
 	Name                  string
 	Notes                 *string
 	Type                  string // Account type: oauth, setup-token, apikey
+	ParentAccountID       *int64 // 影子账号可改绑的母账号；仅影子账号生效
 	Credentials           map[string]any
 	Extra                 map[string]any
 	ProxyID               *int64

@@ -617,6 +617,10 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 				"cannot change account type while it has linked accounts; delete them first")
 		}
 	}
+	// 影子账号允许在编辑时改绑到另一个母账号（复制出来的影子不一定要绑定复制的母账号）。
+	if err := s.changeShadowParent(ctx, account, input); err != nil {
+		return nil, err
+	}
 	wasOveragesEnabled := account.IsOveragesEnabled()
 
 	if input.Name != "" {
@@ -887,6 +891,62 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		return nil, err
 	}
 	return updated, nil
+}
+
+// changeShadowParent 处理影子账号在编辑时改绑母账号：仅影子账号且显式提供新
+// parent_account_id 时生效。新母账号必须存在、非影子、平台一致；spark 影子还
+// 要求母账号为 OpenAI OAuth 且目标母账号无其它 spark 影子（一母一影）。改绑后
+// 影子的代理恒继承新母账号（外审 B/P1），避免出现"有时继承、有时独立"的漂移。
+func (s *adminServiceImpl) changeShadowParent(ctx context.Context, account *Account, input *UpdateAccountInput) error {
+	if input == nil || input.ParentAccountID == nil || !account.IsCredentialShadow() {
+		return nil
+	}
+	newParentID := *input.ParentAccountID
+	if account.ParentAccountID != nil && *account.ParentAccountID == newParentID {
+		return nil
+	}
+	if account.ID == newParentID {
+		return infraerrors.New(http.StatusBadRequest, "LINKED_ACCOUNT_PARENT_SELF",
+			"shadow account cannot be linked to itself")
+	}
+	newParent, err := s.accountRepo.GetByID(ctx, newParentID)
+	if err != nil {
+		return infraerrors.New(http.StatusBadRequest, "LINKED_ACCOUNT_INVALID_PARENT",
+			"target parent account not found")
+	}
+	if newParent.IsCredentialShadow() {
+		return infraerrors.New(http.StatusBadRequest, "LINKED_ACCOUNT_PARENT_IS_SHADOW",
+			"target parent must be a real account, not another shadow")
+	}
+	if newParent.Platform != account.Platform {
+		return infraerrors.New(http.StatusBadRequest, "LINKED_ACCOUNT_PARENT_PLATFORM_MISMATCH",
+			"target parent platform must match the shadow account")
+	}
+	if newParent.Type != account.Type {
+		return infraerrors.New(http.StatusBadRequest, "LINKED_ACCOUNT_PARENT_TYPE_MISMATCH",
+			"target parent account type must match the shadow account")
+	}
+	if account.IsSparkShadow() {
+		if !newParent.IsOpenAIOAuth() {
+			return infraerrors.New(http.StatusBadRequest, "SPARK_SHADOW_INVALID_PARENT",
+				"spark shadow requires an OpenAI OAuth parent account")
+		}
+		shadows, serr := s.accountRepo.ListShadowsByParent(ctx, newParent.ID)
+		if serr != nil {
+			return serr
+		}
+		for _, existing := range shadows {
+			if existing != nil && existing.IsSparkShadow() && existing.ID != account.ID {
+				return infraerrors.New(http.StatusConflict, "SPARK_SHADOW_ALREADY_EXISTS",
+					"target parent already has a spark shadow account")
+			}
+		}
+	}
+	account.ParentAccountID = input.ParentAccountID
+	// 影子代理恒继承母账号：改绑后立即跟随新母账号的代理。
+	account.ProxyID = newParent.ProxyID
+	account.Proxy = nil
+	return nil
 }
 
 // UpdateAccountExtra 仅对 Extra JSONB 做 key 级合并，避免覆盖其它运行态键

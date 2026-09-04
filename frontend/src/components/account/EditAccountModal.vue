@@ -26,6 +26,17 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
+      <!-- 影子账号(复制出来)：支持改绑到另一个母账号，不一定是复制的账号 -->
+      <div v-if="isSparkShadow" class="space-y-2">
+        <label class="input-label">{{ t('admin.accounts.shadowParent') }}</label>
+        <select v-model="parentAccountId" class="input" data-tour="edit-account-form-shadow-parent">
+          <option v-for="p in shadowParentCandidates" :key="p.id" :value="p.id">
+            {{ p.name }} (#{{ p.id }})
+          </option>
+        </select>
+        <p class="input-hint">{{ t('admin.accounts.shadowParentHint') }}</p>
+      </div>
+
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
         <div v-if="!isCNApiKeyAccount || editApiProtocol !== 'adaptive'">
@@ -2912,6 +2923,8 @@ interface Props {
   account: Account | null
   proxies: Proxy[]
   groups: AdminGroup[]
+  // 候选母账号列表（仅影子账号改绑用）：过滤出同平台、同类型、非影子的真实账号。
+  accounts?: Account[]
 }
 
 const props = defineProps<Props>()
@@ -2927,6 +2940,21 @@ const authStore = useAuthStore()
 // Spark 影子账号(parent_account_id 非空):代理恒继承母账号,不可独立编辑(外审 B/P1),
 // 故隐藏代理选择器。
 const isSparkShadow = computed(() => props.account?.parent_account_id != null)
+
+// 影子账号改绑：当前选中的关联母账号（编辑时可变，不必是复制的原母账号）。
+const parentAccountId = ref<number | null>(null)
+
+const shadowParentCandidates = computed<Account[]>(() => {
+  const account = props.account
+  if (!account) return []
+  return (props.accounts ?? []).filter(
+    (a) =>
+      a.id !== account.id &&
+      a.parent_account_id == null &&
+      a.platform === account.platform &&
+      a.type === account.type
+  )
+})
 
 const hideAccountLongContextBilling = computed(() => {
   return allSelectedGroupsEnableLongContextPricing(form.group_ids, props.groups)
@@ -3664,6 +3692,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     : 'active'
   form.group_ids = newAccount.group_ids || []
   form.expires_at = newAccount.expires_at ?? null
+  parentAccountId.value = newAccount.parent_account_id ?? null
 
   // Load intercept warmup requests setting (applies to all account types)
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
@@ -4596,6 +4625,10 @@ const handleSubmit = async () => {
 
   const updatePayload: Record<string, unknown> = { ...form }
   try {
+    // 影子账号可改绑到其它母账号（后端仅对影子账号生效并校验）。
+    if (isSparkShadow.value) {
+      updatePayload.parent_account_id = parentAccountId.value
+    }
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
     if (updatePayload.proxy_id === null) {
       updatePayload.proxy_id = 0
