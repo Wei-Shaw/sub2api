@@ -1994,6 +1994,9 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
 
+	// zhipu 账号统一为 ZCode Desktop 客户端指纹（header_overrides 仍可再覆盖）。
+	applyZCodeIdentityHeaders(req.Header, account, zcodeIdentityOpenAI)
+
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
 
