@@ -603,6 +603,42 @@ func TestAdminService_UpdateGroup_PreservesImageGenerationControlsWhenOmitted(t 
 	require.InDelta(t, 0.5, repo.updated.ImageRateMultiplier, 1e-12)
 }
 
+func TestAdminService_UpdateGroup_LimitFieldsPartialUpdate(t *testing.T) {
+	daily, weekly, monthly := 10.0, 20.0, 30.0
+	existingGroup := &Group{
+		ID:              1,
+		Name:            "existing-group",
+		Platform:        PlatformOpenAI,
+		Status:          StatusActive,
+		DailyLimitUSD:   &daily,
+		WeeklyLimitUSD:  &weekly,
+		MonthlyLimitUSD: &monthly,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	t.Run("non-quota update preserves all limits", func(t *testing.T) {
+		description := "updated"
+		group, err := svc.UpdateGroup(context.Background(), existingGroup.ID, &UpdateGroupInput{Description: &description})
+		require.NoError(t, err)
+		require.Equal(t, 10.0, *group.DailyLimitUSD)
+		require.Equal(t, 20.0, *group.WeeklyLimitUSD)
+		require.Equal(t, 30.0, *group.MonthlyLimitUSD)
+	})
+
+	t.Run("explicit changes and unlimited clear only touched limits", func(t *testing.T) {
+		newDaily, unlimited := 15.0, -1.0
+		group, err := svc.UpdateGroup(context.Background(), existingGroup.ID, &UpdateGroupInput{
+			DailyLimitUSD:  &newDaily,
+			WeeklyLimitUSD: &unlimited,
+		})
+		require.NoError(t, err)
+		require.Equal(t, 15.0, *group.DailyLimitUSD)
+		require.Nil(t, group.WeeklyLimitUSD)
+		require.Equal(t, 30.0, *group.MonthlyLimitUSD)
+	})
+}
+
 func TestAdminService_UpdateGroup_DisablesBatchImageWhenImageGenerationDisabled(t *testing.T) {
 	existingGroup := &Group{
 		ID:                        1,
@@ -850,6 +886,20 @@ func TestAdminService_UpdateGroup_ReasoningEffortMappingsTriState(t *testing.T) 
 			}(),
 			want: []ReasoningEffortMapping{{From: "xhigh", To: "high"}},
 		},
+		{
+			name: "model scoped mappings are canonicalized independently",
+			input: func() *UpdateGroupInput {
+				replacement := []ReasoningEffortMapping{
+					{From: " MAX ", To: " low ", MatchType: "PREFIX", Model: " gpt "},
+					{From: "max", To: "medium", Model: "gpt-5.4"},
+				}
+				return &UpdateGroupInput{ReasoningEffortMappings: &replacement}
+			}(),
+			want: []ReasoningEffortMapping{
+				{From: "max", To: "low", MatchType: "prefix", Model: "gpt"},
+				{From: "max", To: "medium", MatchType: "exact", Model: "gpt-5.4"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -899,12 +949,13 @@ func TestAdminService_UpdateGroup_RejectsInvalidReasoningEffortMappings(t *testi
 
 func TestAdminService_UpdateGroup_ClearsReasoningPolicyForUnsupportedPlatform(t *testing.T) {
 	existing := &Group{
-		ID:                      1,
-		Name:                    "openai-group",
-		Platform:                PlatformOpenAI,
-		Status:                  StatusActive,
-		MaxReasoningEffort:      "medium",
-		ReasoningEffortMappings: []ReasoningEffortMapping{{From: "max", To: "xhigh"}},
+		ID:                          1,
+		Name:                        "openai-group",
+		Platform:                    PlatformOpenAI,
+		Status:                      StatusActive,
+		MaxReasoningEffort:          "medium",
+		MaxReasoningEffortOverLimit: ReasoningEffortOverLimitDeny,
+		ReasoningEffortMappings:     []ReasoningEffortMapping{{From: "max", To: "xhigh"}},
 	}
 	repo := &groupRepoStubForAdmin{getByID: existing}
 	svc := &adminServiceImpl{groupRepo: repo}
@@ -913,6 +964,7 @@ func TestAdminService_UpdateGroup_ClearsReasoningPolicyForUnsupportedPlatform(t 
 
 	require.NoError(t, err)
 	require.Empty(t, repo.updated.MaxReasoningEffort)
+	require.Equal(t, ReasoningEffortOverLimitDowngrade, repo.updated.MaxReasoningEffortOverLimit)
 	require.Empty(t, repo.updated.ReasoningEffortMappings)
 }
 
@@ -1044,6 +1096,70 @@ func TestAdminService_CreateCompositeGroupPreservesLive(t *testing.T) {
 	require.NotNil(t, group)
 	require.NotNil(t, repo.created)
 	require.True(t, repo.created.AllowLive)
+}
+
+func TestAdminService_CreateGroup_NormalizesForceOpenAIFastByPlatform(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		platform string
+		want     bool
+	}{
+		{name: "openai", platform: PlatformOpenAI, want: true},
+		{name: "composite", platform: PlatformComposite, want: true},
+		{name: "anthropic", platform: PlatformAnthropic, want: false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &groupRepoStubForAdmin{}
+			svc := &adminServiceImpl{groupRepo: repo}
+
+			group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+				Name: "fast-" + tt.name, Platform: tt.platform, RateMultiplier: 1, ForceOpenAIFast: true, FreeOpenAIFast: true,
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, group)
+			require.Equal(t, tt.want, repo.created.ForceOpenAIFast)
+			require.Equal(t, tt.want, repo.created.FreeOpenAIFast)
+		})
+	}
+}
+
+func TestAdminService_UpdateGroup_ClearsForceOpenAIFastWhenPlatformChanges(t *testing.T) {
+	existingGroup := &Group{
+		ID: 1, Name: "existing-fast", Platform: PlatformOpenAI, Status: StatusActive, ForceOpenAIFast: true, FreeOpenAIFast: true,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.UpdateGroup(context.Background(), existingGroup.ID, &UpdateGroupInput{
+		Platform: PlatformAnthropic,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.False(t, repo.updated.ForceOpenAIFast)
+	require.False(t, repo.updated.FreeOpenAIFast)
+}
+
+func TestAdminService_UpdateGroup_ForceOpenAIFastInvalidatesAuthCache(t *testing.T) {
+	existingGroup := &Group{
+		ID: 1, Name: "existing-fast", Platform: PlatformOpenAI, Status: StatusActive,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	invalidator := &authCacheInvalidatorStub{}
+	svc := &adminServiceImpl{groupRepo: repo, authCacheInvalidator: invalidator}
+	enabled := true
+
+	group, err := svc.UpdateGroup(context.Background(), existingGroup.ID, &UpdateGroupInput{
+		ForceOpenAIFast: &enabled,
+		FreeOpenAIFast:  &enabled,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.True(t, repo.updated.ForceOpenAIFast)
+	require.True(t, repo.updated.FreeOpenAIFast)
+	require.Equal(t, []int64{existingGroup.ID}, invalidator.groupIDs)
 }
 
 func TestAdminService_UpdateCompositeGroupPreservesLive(t *testing.T) {

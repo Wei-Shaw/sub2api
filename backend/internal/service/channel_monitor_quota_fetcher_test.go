@@ -564,6 +564,48 @@ func TestQuotaFetcher_ConcurrentFetchesShareSingleFlight(t *testing.T) {
 	require.Equal(t, 1, usage.getCalls())
 }
 
+// 上面那条并发用例只能以极低概率撞上真正的缺陷窗口（实测约 300 次一次），
+// 所以这里直接钉住窗口本身。
+//
+// 窗口在 Fetch 顶部的 cachedSnapshot 与 flight.DoChan 之间：一个 goroutine 判定
+// 缓存未命中之后、真正入队之前，另一个 goroutine 的 flight 可能已经跑完、写好缓存
+// 并被摘掉 key，于是前者不会并入那次飞行，而是另起一次新的，对同一账号重复打上游。
+// fetchShared 就是 flight 的执行体，直接调用它等价于「已经越过顶层缓存判定、拿到了
+// 属于自己的那次飞行」这个状态。
+func TestQuotaFetcher_SharedFetchCacheRecheckAvoidsDuplicateUpstream(t *testing.T) {
+	fetcher, usage, _, _, accounts := newQuotaFetcherTestSetup(t)
+	accounts.accounts[13] = &Account{ID: 13, Platform: domain.PlatformOpenAI}
+	usage.usage = &UsageInfo{FiveHour: &UsageProgress{Utilization: 10}}
+
+	first := fetcher.Fetch(context.Background(), 13)
+	require.True(t, first.Success)
+	require.Equal(t, 1, usage.getCalls())
+
+	shared := fetcher.fetchShared(13)
+	require.Equal(t, 1, usage.getCalls(), "重查缓存后不得再打一次上游")
+	require.Same(t, first, shared, "应原样返回已缓存的快照")
+}
+
+// 重查不能变成无条件短路：缓存过期后同一个执行体必须照常回源，
+// 否则快照会永远停在第一次的值上。
+func TestQuotaFetcher_SharedFetchStillRefetchesAfterCacheExpiry(t *testing.T) {
+	fetcher, usage, _, _, accounts := newQuotaFetcherTestSetup(t)
+	accounts.accounts[14] = &Account{ID: 14, Platform: domain.PlatformOpenAI}
+	usage.usage = &UsageInfo{FiveHour: &UsageProgress{Utilization: 10}}
+
+	require.True(t, fetcher.Fetch(context.Background(), 14).Success)
+	require.Equal(t, 1, usage.getCalls())
+
+	fetcher.mu.Lock()
+	entry := fetcher.cache[14]
+	entry.expiry = time.Now().Add(-time.Second)
+	fetcher.cache[14] = entry
+	fetcher.mu.Unlock()
+
+	require.True(t, fetcher.fetchShared(14).Success)
+	require.Equal(t, 2, usage.getCalls(), "缓存过期后必须回源")
+}
+
 // --- UsageInfo → tiers 归一 ---
 
 func TestUsageQuotaTiers_MapsAllWindowKinds(t *testing.T) {

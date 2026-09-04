@@ -279,7 +279,7 @@ func InboundEndpointMiddleware() gin.HandlerFunc {
 
 // ──────────────────────────────────────────────────────────
 // Context helpers — used by handlers before building
-// RecordUsageInput / RecordUsageLongContextInput.
+// RecordUsageInput.
 // ──────────────────────────────────────────────────────────
 
 // GetInboundEndpoint returns the canonical inbound endpoint stored by
@@ -312,6 +312,14 @@ func GetInboundEndpoint(c *gin.Context) string {
 // and the account platform. Handlers call this after scheduling an
 // account, passing account.Platform.
 func GetUpstreamEndpoint(c *gin.Context, platform string) string {
+	// OpenAI 转发服务维护独立的运行时端点上下文，覆盖普通入站推导。
+	// 这对 force_chat_completions 的错误路径尤为重要：此时可能没有
+	// ForwardResult，不能把入站 /v1/responses 误报成上游端点。
+	if platform == service.PlatformOpenAI || platform == service.PlatformGrok || service.IsCNProvider(platform) {
+		if endpoint := service.GetActualOpenAIUpstreamEndpoint(c); endpoint != "" {
+			return endpoint
+		}
+	}
 	if c != nil {
 		if value, ok := c.Get(ctxKeyActualUpstreamEndpoint); ok {
 			if endpoint, ok := value.(string); ok && endpoint != "" {

@@ -83,36 +83,25 @@ data: {"type":"response.completed"}
 }
 
 func TestAccountTestService_AdaptiveChatOnlyProvidersTestChatAndAnthropicEndpoints(t *testing.T) {
-	for index, testCase := range []struct {
-		name     string
-		platform string
-		model    string
-	}{
-		{name: "Kimi", platform: PlatformKimi, model: "kimi-k2.5"},
-		{name: "Zhipu", platform: PlatformZhipu, model: "glm-4.7"},
-	} {
-		t.Run(testCase.name, func(t *testing.T) {
-			account := adaptiveCNAccountTestAccount(int64(301+index), testCase.platform)
-			svc, upstream := adaptiveCNAccountTestService(
-				account,
-				adaptiveCNChatTestResponse(),
-				adaptiveCNAnthropicTestResponse(),
-			)
-			c, recorder := newTestContext()
+	account := adaptiveCNAccountTestAccount(301, PlatformZhipu)
+	svc, upstream := adaptiveCNAccountTestService(
+		account,
+		adaptiveCNChatTestResponse(),
+		adaptiveCNAnthropicTestResponse(),
+	)
+	c, recorder := newTestContext()
 
-			err := svc.TestAccountConnection(c, account.ID, testCase.model, "hello", AccountTestModeDefault)
+	err := svc.TestAccountConnection(c, account.ID, "glm-4.7", "hello", AccountTestModeDefault)
 
-			require.NoError(t, err)
-			require.Len(t, upstream.requests, 2)
-			require.Equal(t, "http://chat.example/v1/chat/completions", upstream.requests[0].URL.String())
-			require.Equal(t, "http://anthropic.example/v1/messages", upstream.requests[1].URL.String())
-			require.Equal(t, "Bearer sk-adaptive-test", upstream.requests[0].Header.Get("Authorization"))
-			require.Equal(t, "sk-adaptive-test", upstream.requests[1].Header.Get("x-api-key"))
-			require.Equal(t, 1, strings.Count(recorder.Body.String(), `"type":"test_start"`))
-			require.Equal(t, 1, strings.Count(recorder.Body.String(), `"type":"test_complete"`))
-			require.Contains(t, recorder.Body.String(), "已通过原生 /v1/messages 验证")
-		})
-	}
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "http://chat.example/v1/chat/completions", upstream.requests[0].URL.String())
+	require.Equal(t, "http://anthropic.example/v1/messages", upstream.requests[1].URL.String())
+	require.Equal(t, "Bearer sk-adaptive-test", upstream.requests[0].Header.Get("Authorization"))
+	require.Equal(t, "sk-adaptive-test", upstream.requests[1].Header.Get("x-api-key"))
+	require.Equal(t, 1, strings.Count(recorder.Body.String(), `"type":"test_start"`))
+	require.Equal(t, 1, strings.Count(recorder.Body.String(), `"type":"test_complete"`))
+	require.Contains(t, recorder.Body.String(), "已通过原生 /v1/messages 验证")
 }
 
 func TestAccountTestService_AdaptiveDeepSeekAlsoTestsResponsesEndpoint(t *testing.T) {
@@ -130,6 +119,30 @@ func TestAccountTestService_AdaptiveDeepSeekAlsoTestsResponsesEndpoint(t *testin
 	require.NoError(t, err)
 	require.Len(t, upstream.requests, 3)
 	require.Equal(t, "http://responses.example/responses", upstream.requests[2].URL.String())
+	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.requests[2].Context()))
+	require.Equal(t, "Bearer sk-adaptive-test", upstream.requests[2].Header.Get("Authorization"))
+	require.True(t, gjson.GetBytes(upstream.bodies[2], "stream").Bool())
+	require.False(t, gjson.GetBytes(upstream.bodies[2], "store").Bool())
+	require.False(t, gjson.GetBytes(upstream.bodies[2], "instructions").Exists())
+	require.Equal(t, 1, strings.Count(recorder.Body.String(), `"type":"test_complete"`))
+	require.Contains(t, recorder.Body.String(), "已通过原生 /responses 验证")
+}
+
+func TestAccountTestService_AdaptiveKimiAlsoTestsResponsesEndpoint(t *testing.T) {
+	account := adaptiveCNAccountTestAccount(306, PlatformKimi)
+	svc, upstream := adaptiveCNAccountTestService(
+		account,
+		adaptiveCNChatTestResponse(),
+		adaptiveCNAnthropicTestResponse(),
+		adaptiveCNResponsesTestResponse(),
+	)
+	c, recorder := newTestContext()
+
+	err := svc.TestAccountConnection(c, account.ID, "k3-256k", "", AccountTestModeDefault)
+
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 3)
+	require.Equal(t, "http://responses.example/v1/responses", upstream.requests[2].URL.String())
 	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.requests[2].Context()))
 	require.Equal(t, "Bearer sk-adaptive-test", upstream.requests[2].Header.Get("Authorization"))
 	require.True(t, gjson.GetBytes(upstream.bodies[2], "stream").Bool())

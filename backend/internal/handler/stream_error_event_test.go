@@ -227,6 +227,22 @@ func TestOpenAIHandleStreamingAwareError_BareResponsesRouteEmitsResponseFailed(t
 }
 
 // Synthesized response.failed id falls back to uuid when no request_id is present.
+// issue #5601：严格的 Responses 客户端把 created_at 当必填字段，缺失即
+// `missing field 'created_at'`。合成的终止事件若解析不了，本文件存在的意义
+// （给客户端一个可识别的终止事件而不是盲重连）就落空了。
+func TestOpenAIHandleStreamingAwareError_ResponsesStreamingCarriesCreatedAt(t *testing.T) {
+	c, w := newGinContextForEndpoint(t, EndpointResponses)
+	h := &OpenAIGatewayHandler{}
+	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "boom", true)
+
+	resp, _ := parseResponsesFailedSSE(t, w.Body.String())
+	raw, ok := resp["created_at"]
+	assert.True(t, ok, "response.failed 必须带 created_at")
+	createdAt, ok := raw.(float64)
+	assert.True(t, ok, "created_at 必须是数字，得到 %T", raw)
+	assert.Greater(t, int64(createdAt), int64(0), "created_at 必须是有效的 unix 时间戳")
+}
+
 func TestSynthesizeResponseID_FallbackUUID(t *testing.T) {
 	c, _ := newGinContextForEndpoint(t, EndpointResponses)
 	id := synthesizeResponseID(c)

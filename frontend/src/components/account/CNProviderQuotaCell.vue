@@ -4,38 +4,18 @@
     data-test="cn-provider-quota"
     class="min-w-[220px] space-y-1"
   >
-    <!-- Tier rows: 5h + weekly utilization bars (snapshot renders on mount) -->
+    <!-- Tier rows: 5h + weekly utilization bars (snapshot renders on mount).
+         复用账号页 UsageProgressBar：同阈值配色、同倒计时格式。 -->
     <div v-if="data?.success && data.tiers?.length" class="space-y-1">
-      <div
+      <UsageProgressBar
         v-for="tier in data.tiers"
         :key="tier.window"
         data-test="cn-provider-quota-tier"
-        class="flex min-w-0 items-center gap-1.5 text-[10px] leading-4"
-      >
-        <span
-          data-test="cn-provider-quota-label"
-          class="w-14 shrink-0 whitespace-nowrap text-gray-500 dark:text-gray-400"
-        >
-          {{ windowLabel(tier.window) }}
-        </span>
-        <div class="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
-          <div
-            class="h-full rounded-full transition-all"
-            :class="utilizationColor(tier.used_percent)"
-            :style="{ width: `${Math.min(100, Math.max(0, tier.used_percent))}%` }"
-          />
-        </div>
-        <span :class="['shrink-0 font-medium', utilizationTextColor(tier.used_percent)]">
-          {{ Math.round(tier.used_percent) }}%
-        </span>
-        <span
-          v-if="tier.reset_at"
-          class="min-w-0 truncate text-gray-400 dark:text-gray-500"
-          :title="tier.reset_at"
-        >
-          · {{ formatReset(tier.reset_at) }}
-        </span>
-      </div>
+        :label="windowLabel(tier.window)"
+        :color="tier.window === 'weekly' ? 'emerald' : 'indigo'"
+        :utilization="tier.used_percent"
+        :resets-at="tier.reset_at"
+      />
     </div>
 
     <!-- Explicit refresh action (aligned with the OpenAI "Query" / Grok "Probe"
@@ -86,6 +66,7 @@ import { adminAPI } from '@/api/admin'
 import type { CNProviderQuotaProbeResult } from '@/api/admin/cnProviders'
 import type { Account } from '@/types'
 import { cnQuotaCellVisible } from './credentialsBuilder'
+import UsageProgressBar from './UsageProgressBar.vue'
 
 const props = defineProps<{
   account: Account
@@ -184,33 +165,6 @@ const windowLabel = (window: string) =>
   window === 'weekly'
     ? t('admin.accounts.cnProviders.windowWeekly')
     : t('admin.accounts.cnProviders.window5h')
-
-const utilizationColor = (pct: number) => {
-  if (pct >= 90) return 'bg-red-500'
-  if (pct >= 75) return 'bg-amber-500'
-  return 'bg-emerald-500'
-}
-
-const utilizationTextColor = (pct: number) => {
-  if (pct >= 90) return 'text-red-600 dark:text-red-400'
-  if (pct >= 75) return 'text-amber-600 dark:text-amber-400'
-  return 'text-emerald-600 dark:text-emerald-400'
-}
-
-// 重置时间相对/绝对简短显示。
-const formatReset = (iso: string) => {
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return iso
-  const now = Date.now()
-  const diffMs = d.getTime() - now
-  if (diffMs <= 0) return t('admin.accounts.cnProviders.resetSoon')
-  if (diffMs < 3_600_000) return `${Math.max(1, Math.round(diffMs / 60_000))}m`
-  const hours = Math.round(diffMs / 3_600_000)
-  if (hours < 48) return `${hours}h`
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${mm}-${dd}`
-}
 
 const handleProbe = async () => {
   if (loading.value) return

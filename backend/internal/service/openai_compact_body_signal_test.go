@@ -5,9 +5,19 @@ package service
 import (
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestIsOpenAINativeCompactionV2ReadsOnlyRequestMarker(t *testing.T) {
+	c, _ := gin.CreateTestContext(nil)
+	require.False(t, IsOpenAINativeCompactionV2(c))
+
+	MarkOpenAINativeCompactionV2(c)
+	require.True(t, IsOpenAINativeCompactionV2(c))
+	require.False(t, IsOpenAINativeCompactionV2(nil))
+}
 
 func TestHasCompactionTriggerInInput_DetectsCompactSignal(t *testing.T) {
 	body := []byte(`{
@@ -96,7 +106,7 @@ func TestWebSocketCompatibilityNormalizesTriggerAfterPairedOutputCleanup(t *test
 	body := []byte(`{"type":"response.create","model":"gpt-5.4","input":[{"type":"compaction_trigger"},{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"{}"},{"type":"function_call_output","call_id":"call_1","output":"ok"},{"type":"message","role":"user","content":"visible"}]}`)
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 
-	normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, account)
+	normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, account, false)
 	require.NoError(t, err)
 	require.True(t, changed)
 	items := gjson.GetBytes(normalized, "input").Array()

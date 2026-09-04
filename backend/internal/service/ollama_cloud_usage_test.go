@@ -467,7 +467,14 @@ func TestIsOllamaCloudUsageAccountStrictOfficialHost(t *testing.T) {
 		{"https://ollama.com", PlatformOpenAI, true},
 		{"HTTPS://OLLAMA.COM", PlatformAnthropic, true},
 		{"https://www.OLLAMA.com:443/v1", PlatformOpenAI, true},
-		{"https://ollama.com:443", PlatformOpenAI, true},
+		// 官方 ollama.com key 挂在国产 OpenAI 兼容平台下同样进用量窗口。
+		{"https://ollama.com", PlatformKimi, true},
+		{"https://www.ollama.com/v1", PlatformZhipu, true},
+		{"https://ollama.com:443", PlatformDeepseek, true},
+		// 用量窗口不随 base_url 放开到其余平台。
+		{"https://ollama.com", PlatformGemini, false},
+		{"https://ollama.com", PlatformGrok, false},
+		{"https://ollama.com", PlatformAntigravity, false},
 		{"https://ollama.com/", PlatformAnthropic, false},
 		{"https://ollama.com/v1/", PlatformOpenAI, false},
 		{"http://ollama.com", PlatformOpenAI, false},
@@ -485,6 +492,16 @@ func TestIsOllamaCloudUsageAccountStrictOfficialHost(t *testing.T) {
 			account.Credentials["base_url"] = test.baseURL
 			require.Equal(t, test.want, IsOllamaCloudUsageAccount(account))
 		})
+	}
+}
+
+// oauth 类型账号即使平台与 base_url 都命中也不进用量窗口（仅 apikey 账号）。
+func TestIsOllamaCloudUsageAccountRejectsOAuthType(t *testing.T) {
+	for _, platform := range []string{PlatformOpenAI, PlatformAnthropic, PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+		account := ollamaUsageAccount(1)
+		account.Platform = platform
+		account.Type = AccountTypeOAuth
+		require.False(t, IsOllamaCloudUsageAccount(account), platform)
 	}
 }
 

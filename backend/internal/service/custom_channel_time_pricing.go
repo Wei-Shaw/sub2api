@@ -47,6 +47,9 @@ func (config *ChannelTimePricing) MultiplierAt(at time.Time) float64 {
 	}
 
 	local := at.In(location)
+	if config.WeekdaysOnly && (local.Weekday() == time.Saturday || local.Weekday() == time.Sunday) {
+		return 1.0
+	}
 	second := local.Hour()*60*60 + local.Minute()*60 + local.Second()
 	for _, period := range periods {
 		if second >= period.start && second < period.end {

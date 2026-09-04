@@ -66,27 +66,29 @@ type userAvailableGroup struct {
 
 // userSupportedModelPricing 用户可见的定价字段白名单。
 type userSupportedModelPricing struct {
-	BillingMode      string                   `json:"billing_mode"`
-	InputPrice       *float64                 `json:"input_price"`
-	OutputPrice      *float64                 `json:"output_price"`
-	CacheWritePrice  *float64                 `json:"cache_write_price"`
-	CacheReadPrice   *float64                 `json:"cache_read_price"`
-	ImageInputPrice  *float64                 `json:"image_input_price"`
-	ImageOutputPrice *float64                 `json:"image_output_price"`
-	PerRequestPrice  *float64                 `json:"per_request_price"`
-	Intervals        []userPricingIntervalDTO `json:"intervals"`
+	BillingMode       string                   `json:"billing_mode"`
+	InputPrice        *float64                 `json:"input_price"`
+	OutputPrice       *float64                 `json:"output_price"`
+	CacheWritePrice   *float64                 `json:"cache_write_price"`
+	CacheWrite1hPrice *float64                 `json:"cache_write_1h_price"`
+	CacheReadPrice    *float64                 `json:"cache_read_price"`
+	ImageInputPrice   *float64                 `json:"image_input_price"`
+	ImageOutputPrice  *float64                 `json:"image_output_price"`
+	PerRequestPrice   *float64                 `json:"per_request_price"`
+	Intervals         []userPricingIntervalDTO `json:"intervals"`
 }
 
 // userPricingIntervalDTO 定价区间白名单（去掉内部 ID、SortOrder 等前端不渲染的字段）。
 type userPricingIntervalDTO struct {
-	MinTokens       int      `json:"min_tokens"`
-	MaxTokens       *int     `json:"max_tokens"`
-	TierLabel       string   `json:"tier_label,omitempty"`
-	InputPrice      *float64 `json:"input_price"`
-	OutputPrice     *float64 `json:"output_price"`
-	CacheWritePrice *float64 `json:"cache_write_price"`
-	CacheReadPrice  *float64 `json:"cache_read_price"`
-	PerRequestPrice *float64 `json:"per_request_price"`
+	MinTokens         int      `json:"min_tokens"`
+	MaxTokens         *int     `json:"max_tokens"`
+	TierLabel         string   `json:"tier_label,omitempty"`
+	InputPrice        *float64 `json:"input_price"`
+	OutputPrice       *float64 `json:"output_price"`
+	CacheWritePrice   *float64 `json:"cache_write_price"`
+	CacheWrite1hPrice *float64 `json:"cache_write_1h_price"`
+	CacheReadPrice    *float64 `json:"cache_read_price"`
+	PerRequestPrice   *float64 `json:"per_request_price"`
 }
 
 // userSupportedModel 用户可见的支持模型条目。
@@ -284,37 +286,52 @@ func toUserSupportedModels(
 	return out
 }
 
+// toUserPricingIntervals 将定价区间转换为用户 DTO 白名单形态；nil 入参返回 nil（JSON omitempty 可省略）。
+func toUserPricingIntervals(src []service.PricingInterval) []userPricingIntervalDTO {
+	if src == nil {
+		return nil
+	}
+	intervals := make([]userPricingIntervalDTO, 0, len(src))
+	for _, iv := range src {
+		intervals = append(intervals, userPricingIntervalDTO{
+			MinTokens:         iv.MinTokens,
+			MaxTokens:         iv.MaxTokens,
+			TierLabel:         iv.TierLabel,
+			InputPrice:        iv.InputPrice,
+			OutputPrice:       iv.OutputPrice,
+			CacheWritePrice:   iv.CacheWritePrice,
+			CacheWrite1hPrice: iv.CacheWrite1hPrice,
+			CacheReadPrice:    iv.CacheReadPrice,
+			PerRequestPrice:   iv.PerRequestPrice,
+		})
+	}
+	return intervals
+}
+
 // toUserPricing 将 service 层定价转换为用户 DTO；入参为 nil 时返回 nil。
 func toUserPricing(p *service.ChannelModelPricing) *userSupportedModelPricing {
 	if p == nil {
 		return nil
 	}
-	intervals := make([]userPricingIntervalDTO, 0, len(p.Intervals))
-	for _, iv := range p.Intervals {
-		intervals = append(intervals, userPricingIntervalDTO{
-			MinTokens:       iv.MinTokens,
-			MaxTokens:       iv.MaxTokens,
-			TierLabel:       iv.TierLabel,
-			InputPrice:      iv.InputPrice,
-			OutputPrice:     iv.OutputPrice,
-			CacheWritePrice: iv.CacheWritePrice,
-			CacheReadPrice:  iv.CacheReadPrice,
-			PerRequestPrice: iv.PerRequestPrice,
-		})
+	intervals := toUserPricingIntervals(p.Intervals)
+	if intervals == nil {
+		// 用户侧定价的 intervals 固定输出数组（空配置为 []），保持既有契约。
+		intervals = []userPricingIntervalDTO{}
 	}
 	billingMode := string(p.BillingMode)
 	if billingMode == "" {
 		billingMode = string(service.BillingModeToken)
 	}
 	return &userSupportedModelPricing{
-		BillingMode:      billingMode,
-		InputPrice:       p.InputPrice,
-		OutputPrice:      p.OutputPrice,
-		CacheWritePrice:  p.CacheWritePrice,
-		CacheReadPrice:   p.CacheReadPrice,
-		ImageInputPrice:  p.ImageInputPrice,
-		ImageOutputPrice: p.ImageOutputPrice,
-		PerRequestPrice:  p.PerRequestPrice,
-		Intervals:        intervals,
+		BillingMode:       billingMode,
+		InputPrice:        p.InputPrice,
+		OutputPrice:       p.OutputPrice,
+		CacheWritePrice:   p.CacheWritePrice,
+		CacheWrite1hPrice: p.CacheWrite1hPrice,
+		CacheReadPrice:    p.CacheReadPrice,
+		ImageInputPrice:   p.ImageInputPrice,
+		ImageOutputPrice:  p.ImageOutputPrice,
+		PerRequestPrice:   p.PerRequestPrice,
+		Intervals:         intervals,
 	}
 }

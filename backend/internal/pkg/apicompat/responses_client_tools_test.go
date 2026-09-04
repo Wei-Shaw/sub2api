@@ -48,14 +48,14 @@ func TestAdaptResponsesClientTools_LowersDeclarationsHistoryChoiceAndNamespaces(
 	input := requireResponsesClientToolValue[[]any](t, req["input"])
 	customCall := requireResponsesClientToolValue[map[string]any](t, input[0])
 	require.Equal(t, "function_call", customCall["type"])
-	require.NotContains(t, customCall, "id")
+	require.Equal(t, "fc_client", customCall["id"])
 	require.JSONEq(t, `{"input":"dir"}`, requireResponsesClientToolValue[string](t, customCall["arguments"]))
 	customOutput := requireResponsesClientToolValue[map[string]any](t, input[1])
 	require.Equal(t, "function_call_output", customOutput["type"])
 	require.NotContains(t, customOutput, "id")
 	searchCall := requireResponsesClientToolValue[map[string]any](t, input[2])
 	require.Equal(t, "function_call", searchCall["type"])
-	require.NotContains(t, searchCall, "id")
+	require.Equal(t, "fc_client", searchCall["id"])
 	require.Equal(t, toolSearchProxyName, searchCall["name"])
 	require.JSONEq(t, `{"query":"git"}`, requireResponsesClientToolValue[string](t, searchCall["arguments"]))
 	searchOutput := requireResponsesClientToolValue[map[string]any](t, input[3])
@@ -64,6 +64,33 @@ func TestAdaptResponsesClientTools_LowersDeclarationsHistoryChoiceAndNamespaces(
 	require.JSONEq(t, `{"groups":["git"]}`, requireResponsesClientToolValue[string](t, searchOutput["output"]))
 	namespaceCall := requireResponsesClientToolValue[map[string]any](t, input[4])
 	require.Equal(t, "team__send", namespaceCall["name"])
+}
+
+func TestAdaptResponsesClientTools_RemovesDeferredFlagsWhenToolSearchIsLowered(t *testing.T) {
+	req := map[string]any{
+		"tools": []any{
+			map[string]any{"type": "tool_search"},
+			map[string]any{"type": "function", "name": "shell", "defer_loading": true},
+			map[string]any{"type": "function", "name": "apply_patch"},
+		},
+	}
+
+	_, changed, err := AdaptResponsesClientTools(req)
+	require.NoError(t, err)
+	require.True(t, changed)
+	tools := requireResponsesClientToolValue[[]any](t, req["tools"])
+	require.Equal(t, toolSearchProxyName, requireResponsesClientToolValue[map[string]any](t, tools[0])["name"])
+	require.NotContains(t, requireResponsesClientToolValue[map[string]any](t, tools[1]), "defer_loading")
+}
+
+func TestStripResponsesDeferredToolFlags_PreservesFlagsWithBuiltInToolSearch(t *testing.T) {
+	tools := []any{
+		map[string]any{"type": "tool_search"},
+		map[string]any{"type": "function", "name": "shell", "defer_loading": true},
+	}
+
+	require.False(t, stripResponsesDeferredToolFlags(tools))
+	require.Equal(t, true, requireResponsesClientToolValue[map[string]any](t, tools[1])["defer_loading"])
 }
 
 func TestAdaptResponsesClientTools_LowersDiscoveredToolSearchOutput(t *testing.T) {
@@ -433,7 +460,55 @@ func TestAdaptResponsesClientToolsWithInheritedMapping_LowersFollowupHistoryWith
 	output := requireResponsesClientToolValue[map[string]any](t, items[1])
 	require.Equal(t, "function_call_output", output["type"])
 	require.NotContains(t, output, "id")
-	require.JSONEq(t, `[{"text":"ok","type":"input_text"}]`, requireResponsesClientToolValue[string](t, output["output"]))
+	require.Equal(t, []any{map[string]any{"type": "input_text", "text": "ok"}}, output["output"])
+}
+
+func TestAdaptResponsesClientTools_NormalizesCustomToolOutput(t *testing.T) {
+	tests := []struct {
+		name       string
+		output     any
+		wantOutput any
+	}{
+		{
+			name: "supported content parts remain an array",
+			output: []any{
+				map[string]any{"type": "input_text", "text": "ok"},
+				map[string]any{"type": "input_image", "image_url": "https://example.com/image.png"},
+				map[string]any{"type": "input_file", "file_id": "file_123"},
+			},
+			wantOutput: []any{
+				map[string]any{"type": "input_text", "text": "ok"},
+				map[string]any{"type": "input_image", "image_url": "https://example.com/image.png"},
+				map[string]any{"type": "input_file", "file_id": "file_123"},
+			},
+		},
+		{name: "ordinary object is stringified", output: map[string]any{"ok": true}, wantOutput: `{"ok":true}`},
+		{name: "arbitrary array is stringified", output: []any{"ok"}, wantOutput: `["ok"]`},
+		{name: "empty array is stringified", output: []any{}, wantOutput: `[]`},
+		{name: "mixed array is stringified", output: []any{map[string]any{"type": "input_text", "text": "ok"}, "bad"}, wantOutput: `[{"text":"ok","type":"input_text"},"bad"]`},
+		{name: "unknown content type is stringified", output: []any{map[string]any{"type": "output_text", "text": "bad"}}, wantOutput: `[{"text":"bad","type":"output_text"}]`},
+		{name: "whitespace-padded content type is stringified", output: []any{map[string]any{"type": " input_text ", "text": "bad"}}, wantOutput: `[{"text":"bad","type":" input_text "}]`},
+		{name: "missing content type is stringified", output: []any{map[string]any{"text": "bad"}}, wantOutput: `[{"text":"bad"}]`},
+		{name: "non-string content type is stringified", output: []any{map[string]any{"type": 1}}, wantOutput: `[{"type":1}]`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := map[string]any{
+				"tools": []any{map[string]any{"type": "custom", "name": "exec"}},
+				"input": []any{map[string]any{
+					"type": "custom_tool_call_output", "call_id": "call_1", "output": tc.output,
+				}},
+			}
+
+			_, changed, err := AdaptResponsesClientTools(req)
+			require.NoError(t, err)
+			require.True(t, changed)
+			item := requireResponsesClientToolValue[map[string]any](t, requireResponsesClientToolValue[[]any](t, req["input"])[0])
+			require.Equal(t, "function_call_output", item["type"])
+			require.Equal(t, tc.wantOutput, item["output"])
+		})
+	}
 }
 
 func TestAdaptResponsesClientToolsWithInheritedMapping_PromotesOmittedToolsDiscoveryIntoEffectiveDeclarations(t *testing.T) {

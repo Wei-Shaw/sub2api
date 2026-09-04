@@ -38,9 +38,12 @@ func sanitizeGrokResponsesModelInput(body []byte) ([]byte, error) {
 	}
 	callIDs, outputIDs := pairGrokReplayCallIDs(items)
 	filtered := make([]any, 0, len(items))
+	pendingOutputImages := make([]grokToolOutputImage, 0)
 	for index, rawItem := range items {
 		item, ok := rawItem.(map[string]any)
 		if !ok {
+			filtered = appendGrokToolOutputImageMessage(filtered, pendingOutputImages)
+			pendingOutputImages = pendingOutputImages[:0]
 			if text, ok := rawItem.(string); ok && strings.TrimSpace(text) != "" {
 				filtered = append(filtered, map[string]any{"type": "message", "role": "user", "content": text})
 			}
@@ -50,14 +53,20 @@ func sanitizeGrokResponsesModelInput(body []byte) ([]byte, error) {
 		itemType := strings.ToLower(strings.TrimSpace(grokStringValue(item["type"])))
 		role := strings.ToLower(strings.TrimSpace(grokStringValue(item["role"])))
 		if role == "tool" || role == "function" || isGrokReplayOutputType(itemType) {
-			output := firstNonNilGrokJSONValue(item["output"], item["content"], item["results"])
+			callID := outputIDs[index]
+			rawOutput := firstNonNilGrokJSONValue(item["output"], item["content"], item["results"])
+			output, nestedImages := normalizeGrokToolOutput(rawOutput, callID)
 			filtered = append(filtered, map[string]any{
 				"type":    "function_call_output",
-				"call_id": outputIDs[index],
-				"output":  grokModelInputString(output, "(empty)"),
+				"call_id": callID,
+				"output":  output,
 			})
+			pendingOutputImages = append(pendingOutputImages, extractGrokToolOutputImages(item, callID)...)
+			pendingOutputImages = append(pendingOutputImages, nestedImages...)
 			continue
 		}
+		filtered = appendGrokToolOutputImageMessage(filtered, pendingOutputImages)
+		pendingOutputImages = pendingOutputImages[:0]
 
 		switch itemType {
 		case "text", "input_text", "output_text":
@@ -139,6 +148,7 @@ func sanitizeGrokResponsesModelInput(body []byte) ([]byte, error) {
 		}
 		filtered = append(filtered, item)
 	}
+	filtered = appendGrokToolOutputImageMessage(filtered, pendingOutputImages)
 
 	encoded, err := json.Marshal(filtered)
 	if err != nil {
@@ -149,6 +159,178 @@ func sanitizeGrokResponsesModelInput(body []byte) ([]byte, error) {
 		return nil, fmt.Errorf("set Grok Responses model input: %w", err)
 	}
 	return updated, nil
+}
+
+type grokToolOutputImage struct {
+	callID string
+	url    string
+}
+
+// Grok 1.0.5 returns read_file media as structured output parts rather than
+// top-level images. xAI requires function_call_output.output to be a string,
+// so remove those media parts before stringifying and lift them separately.
+func normalizeGrokToolOutput(value any, callID string) (string, []grokToolOutputImage) {
+	stripped, images, keep := stripGrokToolOutputImages(value, callID)
+	if len(images) == 0 {
+		return grokModelInputString(value, "(empty)"), nil
+	}
+	if !keep {
+		return "(empty)", images
+	}
+	return grokStructuredToolOutputString(stripped, "(empty)"), images
+}
+
+func stripGrokToolOutputImages(value any, callID string) (any, []grokToolOutputImage, bool) {
+	switch typed := value.(type) {
+	case []any:
+		filtered := make([]any, 0, len(typed))
+		images := make([]grokToolOutputImage, 0)
+		for _, item := range typed {
+			stripped, nested, keep := stripGrokToolOutputImages(item, callID)
+			images = append(images, nested...)
+			if keep {
+				filtered = append(filtered, stripped)
+			}
+		}
+		return filtered, images, len(filtered) > 0
+	case map[string]any:
+		partType := strings.ToLower(strings.TrimSpace(grokStringValue(typed["type"])))
+		if partType == "image" || partType == "image_url" || partType == "input_image" {
+			url := grokToolOutputImageURL(typed)
+			if url == "" || isEmptyBase64DataURI(url) {
+				return nil, nil, false
+			}
+			return nil, []grokToolOutputImage{{callID: callID, url: url}}, false
+		}
+
+		filtered := make(map[string]any, len(typed))
+		for key, item := range typed {
+			filtered[key] = item
+		}
+		images := make([]grokToolOutputImage, 0)
+		if rawImages, exists := filtered["images"]; exists {
+			if values, ok := rawImages.([]any); ok {
+				for _, rawImage := range values {
+					url := grokToolOutputImageURL(rawImage)
+					if url != "" && !isEmptyBase64DataURI(url) {
+						images = append(images, grokToolOutputImage{callID: callID, url: url})
+					}
+				}
+				delete(filtered, "images")
+			}
+		}
+		for _, field := range []string{"content", "output", "results"} {
+			item, exists := filtered[field]
+			if !exists {
+				continue
+			}
+			stripped, nested, keep := stripGrokToolOutputImages(item, callID)
+			images = append(images, nested...)
+			if keep {
+				filtered[field] = stripped
+			} else {
+				delete(filtered, field)
+			}
+		}
+		return filtered, images, len(filtered) > 0
+	default:
+		return value, nil, value != nil
+	}
+}
+
+func grokStructuredToolOutputString(value any, fallback string) string {
+	parts, ok := value.([]any)
+	if !ok || len(parts) == 0 {
+		return grokModelInputString(value, fallback)
+	}
+
+	texts := make([]string, 0, len(parts))
+	for _, rawPart := range parts {
+		part, ok := rawPart.(map[string]any)
+		if !ok {
+			return grokModelInputString(value, fallback)
+		}
+		partType := strings.ToLower(strings.TrimSpace(grokStringValue(part["type"])))
+		if partType != "text" && partType != "input_text" && partType != "output_text" {
+			return grokModelInputString(value, fallback)
+		}
+		if text := strings.TrimSpace(grokStringValue(part["text"])); text != "" {
+			texts = append(texts, text)
+		}
+	}
+	if len(texts) == 0 {
+		return fallback
+	}
+	return strings.Join(texts, "\n")
+}
+
+// Grok Shell attaches local image results to function_call_output.images.
+// xAI's ModelInput accepts only a string output, so keep the tool replies
+// consecutive and lift their media into one following user input_image turn.
+func extractGrokToolOutputImages(item map[string]any, callID string) []grokToolOutputImage {
+	rawImages, ok := item["images"].([]any)
+	if !ok || len(rawImages) == 0 {
+		return nil
+	}
+
+	images := make([]grokToolOutputImage, 0, len(rawImages))
+	for _, rawImage := range rawImages {
+		url := grokToolOutputImageURL(rawImage)
+		if url == "" || isEmptyBase64DataURI(url) {
+			continue
+		}
+		images = append(images, grokToolOutputImage{callID: callID, url: url})
+	}
+	return images
+}
+
+func grokToolOutputImageURL(value any) string {
+	switch image := value.(type) {
+	case string:
+		return strings.TrimSpace(image)
+	case map[string]any:
+		for _, field := range []string{"url", "image_url", "file_url"} {
+			raw := image[field]
+			switch typed := raw.(type) {
+			case string:
+				if url := strings.TrimSpace(typed); url != "" {
+					return url
+				}
+			case map[string]any:
+				if url := strings.TrimSpace(grokStringValue(typed["url"])); url != "" {
+					return url
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func appendGrokToolOutputImageMessage(items []any, images []grokToolOutputImage) []any {
+	if len(images) == 0 {
+		return items
+	}
+
+	content := make([]any, 0, len(images)*2)
+	lastCallID := ""
+	for _, image := range images {
+		if image.callID != lastCallID {
+			content = append(content, map[string]any{
+				"type": "input_text",
+				"text": fmt.Sprintf("[Tool output media for call %s]", image.callID),
+			})
+			lastCallID = image.callID
+		}
+		content = append(content, map[string]any{
+			"type":      "input_image",
+			"image_url": image.url,
+		})
+	}
+	return append(items, map[string]any{
+		"type":    "message",
+		"role":    "user",
+		"content": content,
+	})
 }
 
 func pairGrokReplayCallIDs(items []any) (map[int]string, map[int]string) {

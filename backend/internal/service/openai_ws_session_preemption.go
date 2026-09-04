@@ -56,6 +56,10 @@ func (s *OpenAIGatewayService) BeginOpenAIWSIngressSessionPreemption(
 	if armed, _ := ctx.Value(openAIWSSessionPreemptContextKey{}).(bool); armed {
 		return ctx, func() {}, true
 	}
+	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.ModeRouterV2Enabled &&
+		account != nil && account.ResolveOpenAIResponsesWebSocketV2Mode(s.cfg.Gateway.OpenAIWS.IngressModeDefault) == OpenAIWSIngressModePassthrough {
+		return ctx, func() {}, false
+	}
 
 	preemptSessionHash := ""
 	preemptGroupID := getOpenAIGroupIDFromContext(c)
