@@ -404,7 +404,7 @@ payment: {
   amountTooLow: 'Số tiền tối thiểu là {min}',
   amountTooHigh: 'Số tiền tối đa là {max}',
   amountNoMethod: 'Không có phương thức thanh toán khả dụng cho số tiền này',
-  rechargeRatePreview: 'Tỷ giá hiện tại: 1 CNY = {usd} USD',
+  rechargeRatePreview: 'Tỷ giá hiện tại: 1 {currency} = {usd} USD',
   fxRateMissing: 'Đang thiếu tỷ giá cho: {currencies}. Vui lòng liên hệ hỗ trợ trước khi thanh toán.',
   fxRateStale: 'Tỷ giá từ {source} có thể đã cũ; hệ thống sẽ khóa quote tại thời điểm thanh toán.',
   fxRateUpdated: 'Tỷ giá từ {source}, cập nhật lúc {time}.',

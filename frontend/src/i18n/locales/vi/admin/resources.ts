@@ -594,6 +594,8 @@ export default mergeLocaleMessages(
     customExpiry: 'Tùy chỉnh',
     customExpiryDays: 'ngày tùy chỉnh',
     expiryDaysRequired: 'Vui lòng nhập số ngày hết hạn hợp lệ',
+    expiryDateRequired: 'Vui lòng nhập ngày và giờ hết hạn hợp lệ',
+    localTimeZoneHint: 'Thời gian tùy chỉnh được hiểu theo múi giờ trình duyệt của bạn ({timezone}).',
     },
 
     announcements: {
