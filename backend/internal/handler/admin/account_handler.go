@@ -133,9 +133,9 @@ type CreateAccountRequest struct {
 // UpdateAccountRequest represents update account request
 // 使用指针类型来区分"未提供"和"设置为0"
 type UpdateAccountRequest struct {
-	Name                    string         `json:"name"`
-	Notes                   *string        `json:"notes"`
-	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
+	Name  string  `json:"name"`
+	Notes *string `json:"notes"`
+	Type  string  `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
 	// ParentAccountID 仅对影子账号生效：复制出来的影子可改绑到另一个母账号。
 	ParentAccountID         *int64         `json:"parent_account_id"`
 	Credentials             map[string]any `json:"credentials"`
