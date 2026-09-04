@@ -38,9 +38,8 @@ services:
     volumes:
       # Local directory mapping for easy migration
       - ./data:/app/data:Z
-      # Optional: Mount custom config.yaml (uncomment and create the file first)
-      # Copy config.example.yaml to config.yaml, modify it, then uncomment:
-      # - ./config.yaml:/app/data/config.yaml
+      # Mount custom config.yaml (copy config.example.yaml to config.yaml, modify it)
+      - ./config.yaml:/app/data/config.yaml
     environment:
       # =======================================================================
       # Auto Setup (REQUIRED for Docker deployment)
