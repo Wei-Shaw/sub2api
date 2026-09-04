@@ -72,6 +72,11 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	anthropicReq.Model = upstreamModel
+	if responsesReq.Reasoning != nil {
+		apicompat.ReapplyResponsesReasoningToAnthropic(
+			anthropicReq, upstreamModel, responsesReq.Reasoning.Effort,
+		)
+	}
 
 	// 4. Force upstream streaming（客户端原始终决定响应格式；
 	// 上游恒为流式，非流式由缓冲路径组装）。
