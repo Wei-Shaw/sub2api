@@ -553,6 +553,93 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('not recorded')
     expect(text).not.toContain('(2K)')
   })
+
+  it('opens token and cost tooltips to the left at the right edge of a mobile viewport', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 390 })
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 358,
+      y: 420,
+      top: 420,
+      left: 358,
+      right: 374,
+      bottom: 436,
+      width: 16,
+      height: 16,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          ...baseImageRow,
+          billing_mode: 'token',
+          image_count: 0,
+          input_tokens: 348,
+          output_tokens: 196,
+          input_cost: 0.02,
+          output_cost: 0.11,
+          actual_cost: 0.137096,
+        }],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await wrapper.get('[data-testid="usage-cost-tooltip-trigger"]').trigger('mouseenter')
+    const costTooltip = wrapper.get('[data-testid="usage-cost-tooltip"]')
+    expect(costTooltip.attributes('data-placement')).toBe('left')
+    expect(costTooltip.element.style.right).toBe('40px')
+    expect(costTooltip.element.style.maxWidth).toBe('320px')
+    expect(390 - 40 - 320).toBeGreaterThanOrEqual(8)
+
+    await wrapper.get('[data-testid="usage-cost-tooltip-trigger"]').trigger('mouseleave')
+    await wrapper.get('[data-testid="usage-token-tooltip-trigger"]').trigger('mouseenter')
+    const tokenTooltip = wrapper.get('[data-testid="usage-token-tooltip"]')
+    expect(tokenTooltip.attributes('data-placement')).toBe('left')
+    expect(tokenTooltip.element.style.right).toBe('40px')
+    expect(tokenTooltip.element.style.maxWidth).toBe('320px')
+  })
+
+  it('keeps the existing right-side placement when there is enough room', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1280 })
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 164,
+      y: 200,
+      top: 200,
+      left: 164,
+      right: 180,
+      bottom: 216,
+      width: 16,
+      height: 16,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    const wrapper = mount(UsageTable, {
+      props: { data: [baseImageRow], loading: false, columns: [] },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await wrapper.get('[data-testid="usage-cost-tooltip-trigger"]').trigger('mouseenter')
+    const tooltip = wrapper.get('[data-testid="usage-cost-tooltip"]')
+    expect(tooltip.attributes('data-placement')).toBe('right')
+    expect(tooltip.element.style.left).toBe('188px')
+    expect(tooltip.element.style.maxWidth).toBe('320px')
+  })
 })
 
 describe('admin UsageTable request ID column', () => {
