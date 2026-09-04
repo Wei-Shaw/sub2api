@@ -179,11 +179,10 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
-				message := cls.Message
 				if !cls.ModelNotFound {
-					message = "No available accounts: " + err.Error()
+					recordNoAvailableAccountsErrorForOps(c, err)
 				}
-				h.chatCompletionsErrorResponse(c, cls.Status, cls.ErrType, message)
+				h.chatCompletionsErrorResponse(c, cls.Status, cls.ErrType, cls.Message)
 				return
 			}
 			action := fs.HandleSelectionExhausted(c.Request.Context())
@@ -197,7 +196,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				if fs.LastFailoverErr != nil {
 					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
 				} else {
-					h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "server_error", "All available accounts exhausted")
+					h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "server_error", "Upstream service temporarily unavailable")
 				}
 				return
 			}
@@ -210,7 +209,8 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		if !selection.Acquired {
 			if selection.WaitPlan == nil {
 				markOpsRoutingCapacityLimited(c)
-				h.chatCompletionsErrorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
+				recordNoAvailableAccountsReasonForOps(c, noAvailableAccountsReasonNoSlot)
+				h.chatCompletionsErrorResponse(c, http.StatusServiceUnavailable, "api_error", noAvailableAccountsClientMessage)
 				return
 			}
 			accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
@@ -237,7 +237,8 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			reqLog.Debug("gateway.cc.account_slot_profit_vetoed", zap.Int64("account_id", account.ID), zap.String("reason", reason))
 			if fs.RecordProfitVeto(account.ID) == FailoverExhausted {
 				reqLog.Warn("gateway.cc.profit_veto_attempts_exhausted", zap.Int("profit_veto_count", fs.ProfitVetoCount()))
-				h.chatCompletionsErrorResponse(c, http.StatusServiceUnavailable, "api_error", profitVetoExhaustedMessage)
+				recordNoAvailableAccountsReasonForOps(c, profitVetoExhaustedReason)
+				h.chatCompletionsErrorResponse(c, http.StatusServiceUnavailable, "api_error", noAvailableAccountsClientMessage)
 				return
 			}
 			continue

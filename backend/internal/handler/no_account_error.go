@@ -70,7 +70,7 @@ func classifySelectionFailureError(err error, fallback noAccountErrorClassificat
 	return noAccountErrorClassification{
 		Status:  http.StatusTooManyRequests,
 		ErrType: "rate_limit_error",
-		Message: "All available accounts are currently rate-limited. Please retry later.",
+		Message: "Currently rate-limited, please retry later.",
 	}
 }
 

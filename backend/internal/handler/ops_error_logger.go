@@ -1139,7 +1139,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		}
 
 		// Skip logging if the error should be filtered based on settings
-		if shouldSkipOpsErrorLog(c.Request.Context(), ops, parsed.Message, string(body), c.Request.URL.Path) {
+		if shouldSkipOpsErrorLog(c.Request.Context(), ops, opsFilterTextWithContext(c, parsed.Message), string(body), c.Request.URL.Path) {
 			return
 		}
 
@@ -1425,7 +1425,7 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 	}
 
 	// 复用与 status>=400 分支相同的设置过滤（context canceled / 无可用账号等）。
-	if shouldSkipOpsErrorLog(c.Request.Context(), ops, streamErr.Message, streamErr.Message, c.Request.URL.Path) {
+	if shouldSkipOpsErrorLog(c.Request.Context(), ops, opsFilterTextWithContext(c, streamErr.Message), streamErr.Message, c.Request.URL.Path) {
 		return
 	}
 
@@ -2404,6 +2404,26 @@ func truncateString(s string, max int) string {
 
 func strconvItoa(v int) string {
 	return strconv.Itoa(v)
+}
+
+// opsFilterTextWithContext widens the text inspected by shouldSkipOpsErrorLog with
+// the internal reason recorded in the request context (service.SetOpsUpstreamError).
+// Client-facing bodies are deliberately neutral for pool-exhaustion errors, so the
+// phrases the settings filter keys on ("no available accounts", ...) only exist in
+// the recorded reason.
+func opsFilterTextWithContext(c *gin.Context, text string) string {
+	if c == nil {
+		return text
+	}
+	v, ok := c.Get(service.OpsUpstreamErrorMessageKey)
+	if !ok {
+		return text
+	}
+	reason, ok := v.(string)
+	if !ok || strings.TrimSpace(reason) == "" {
+		return text
+	}
+	return text + "\n" + reason
 }
 
 // shouldSkipOpsErrorLog determines if an error should be skipped from logging based on settings.
