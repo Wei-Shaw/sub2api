@@ -283,3 +283,89 @@ func TestOpenAIResponsesTemperaturePolicyRespectsModelCapabilities(t *testing.T)
 		})
 	}
 }
+
+func TestOpenAIChatRetriesRejectedGPT56Temperature(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"temperature":0}`)
+	c := newOpenAIRejectedFieldTestContext(body)
+	c.Request.URL.Path = "/v1/chat/completions"
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusBadRequest, `{"error":{"code":"unsupported_parameter","message":"Unsupported parameter: temperature","param":"temperature"}}`),
+		openAICompatSSECompletedResponse("resp_chat_temperature", "gpt-5.6-sol"),
+	}}
+	service := newOpenAIRejectedFieldTestService(upstream)
+	account := newOpenAIRejectedFieldTestAccount()
+	account.Credentials["temperature_mode"] = "override"
+	account.Credentials["temperature"] = 0.2
+
+	result, err := service.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.6-sol")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 2)
+	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(upstream.bodies[0], "model").String())
+	require.InDelta(t, 0.2, gjson.GetBytes(upstream.bodies[0], "temperature").Float(), 1e-9)
+	require.False(t, gjson.GetBytes(upstream.bodies[1], "temperature").Exists())
+}
+
+func TestOpenAIMessagesRetriesRejectedGPT56Temperature(t *testing.T) {
+	body := []byte(`{"model":"claude-sonnet-4","max_tokens":1024,"messages":[{"role":"user","content":"hello"}],"temperature":0}`)
+	c := newOpenAIRejectedFieldTestContext(body)
+	c.Request.URL.Path = "/v1/messages"
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusBadRequest, `{"error":{"code":"unsupported_parameter","message":"Unsupported parameter: temperature","param":"temperature"}}`),
+		openAICompatSSECompletedResponse("resp_messages_temperature", "gpt-5.6-terra"),
+	}}
+	service := newOpenAIRejectedFieldTestService(upstream)
+	account := newOpenAIRejectedFieldTestAccount()
+	account.Credentials["temperature_mode"] = "override"
+	account.Credentials["temperature"] = 0.2
+
+	result, err := service.ForwardAsAnthropic(context.Background(), c, account, body, "", "gpt-5.6-terra")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 2)
+	require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(upstream.bodies[0], "model").String())
+	require.InDelta(t, 0.2, gjson.GetBytes(upstream.bodies[0], "temperature").Float(), 1e-9)
+	require.False(t, gjson.GetBytes(upstream.bodies[1], "temperature").Exists())
+}
+
+func TestOpenAIRawChatCompletionsRetriesRejectedSamplingParameter(t *testing.T) {
+	tests := []struct {
+		name          string
+		rejectedParam string
+	}{
+		{name: "temperature", rejectedParam: "temperature"},
+		{name: "top_p", rejectedParam: "top_p"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(`{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"hello"}],"stream":false,"temperature":0.35,"top_p":0.75}`)
+			c := newOpenAIRejectedFieldTestContext(body)
+			c.Request.URL.Path = "/v1/chat/completions"
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{
+				newOpenAIRejectedFieldTestResponse(http.StatusBadRequest, `{"error":{"code":"unsupported_parameter","message":"Unsupported parameter: `+tt.rejectedParam+`","param":"`+tt.rejectedParam+`"}}`),
+				newOpenAIRejectedFieldTestResponse(http.StatusOK, `{"id":"chatcmpl_raw_temperature","object":"chat.completion","model":"gpt-5.6-sol","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`),
+			}}
+			service := newOpenAIRejectedFieldTestService(upstream)
+			account := newOpenAIRejectedFieldTestAccount()
+
+			result, err := service.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Len(t, upstream.bodies, 2)
+			require.InDelta(t, 0.35, gjson.GetBytes(upstream.bodies[0], "temperature").Float(), 1e-9)
+			require.InDelta(t, 0.75, gjson.GetBytes(upstream.bodies[0], "top_p").Float(), 1e-9)
+			require.False(t, gjson.GetBytes(upstream.bodies[1], tt.rejectedParam).Exists())
+			preservedParam := "top_p"
+			preservedValue := 0.75
+			if tt.rejectedParam == "top_p" {
+				preservedParam = "temperature"
+				preservedValue = 0.35
+			}
+			require.InDelta(t, preservedValue, gjson.GetBytes(upstream.bodies[1], preservedParam).Float(), 1e-9)
+		})
+	}
+}
