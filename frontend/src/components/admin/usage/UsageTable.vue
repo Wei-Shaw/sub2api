@@ -195,8 +195,10 @@
             <!-- Token Detail Tooltip -->
             <div
               class="group relative"
+              data-testid="usage-token-tooltip-trigger"
               @mouseenter="showTokenTooltip($event, row)"
               @mouseleave="hideTokenTooltip"
+              @click.stop="showTokenTooltip($event, row)"
             >
               <div class="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-100 transition-colors group-hover:bg-blue-100 dark:bg-gray-700 dark:group-hover:bg-blue-900/50">
                 <Icon name="infoCircle" size="xs" class="text-gray-400 group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400" />
@@ -217,8 +219,10 @@
               <!-- Cost Detail Tooltip -->
               <div
                 class="group relative"
+                data-testid="usage-cost-tooltip-trigger"
                 @mouseenter="showTooltip($event, row)"
                 @mouseleave="hideTooltip"
+                @click.stop="showTooltip($event, row)"
               >
                 <div class="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-100 transition-colors group-hover:bg-blue-100 dark:bg-gray-700 dark:group-hover:bg-blue-900/50">
                   <Icon name="infoCircle" size="xs" class="text-gray-400 group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400" />
@@ -295,13 +299,18 @@
   <Teleport to="body">
     <div
       v-if="tokenTooltipVisible"
-      class="fixed z-[9999] pointer-events-none -translate-y-1/2"
+      data-testid="usage-token-tooltip"
+      :data-placement="tokenTooltipPosition.placement"
+      class="fixed z-[9999] pointer-events-none"
       :style="{
-        left: tokenTooltipPosition.x + 'px',
-        top: tokenTooltipPosition.y + 'px'
+        left: tokenTooltipPosition.left + 'px',
+        top: tokenTooltipPosition.top + 'px'
       }"
     >
-      <div class="whitespace-nowrap rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 text-xs text-white shadow-xl dark:border-gray-600 dark:bg-gray-800">
+      <div
+        ref="tokenTooltipEl"
+        class="w-max max-w-[min(20rem,calc(100vw-16px))] rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 text-xs text-white shadow-xl dark:border-gray-600 dark:bg-gray-800"
+      >
         <div class="space-y-1.5">
           <div>
             <div class="text-xs font-semibold text-gray-300 mb-1">{{ t('usage.tokenDetails') }}</div>
@@ -370,7 +379,11 @@
             <span class="font-semibold text-blue-400">{{ ((tokenTooltipData?.input_tokens || 0) + (tokenTooltipData?.output_tokens || 0) + (tokenTooltipData?.cache_creation_tokens || 0) + (tokenTooltipData?.cache_read_tokens || 0)).toLocaleString() }}</span>
           </div>
         </div>
-        <div class="absolute right-full top-1/2 h-0 w-0 -translate-y-1/2 border-b-[6px] border-r-[6px] border-t-[6px] border-b-transparent border-r-gray-900 border-t-transparent dark:border-r-gray-800"></div>
+        <div
+          class="absolute h-0 w-0"
+          :class="tooltipArrowClass(tokenTooltipPosition.placement)"
+          :style="tooltipArrowStyle(tokenTooltipPosition)"
+        />
       </div>
     </div>
   </Teleport>
@@ -379,13 +392,18 @@
   <Teleport to="body">
     <div
       v-if="tooltipVisible"
-      class="fixed z-[9999] pointer-events-none -translate-y-1/2"
+      data-testid="usage-cost-tooltip"
+      :data-placement="tooltipPosition.placement"
+      class="fixed z-[9999] pointer-events-none"
       :style="{
-        left: tooltipPosition.x + 'px',
-        top: tooltipPosition.y + 'px'
+        left: tooltipPosition.left + 'px',
+        top: tooltipPosition.top + 'px'
       }"
     >
-      <div class="whitespace-nowrap rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 text-xs text-white shadow-xl dark:border-gray-600 dark:bg-gray-800">
+      <div
+        ref="tooltipEl"
+        class="w-max max-w-[min(20rem,calc(100vw-16px))] rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 text-xs text-white shadow-xl dark:border-gray-600 dark:bg-gray-800"
+      >
         <div class="space-y-1.5">
           <!-- Cost Breakdown -->
           <div class="mb-2 border-b border-gray-700 pb-1.5">
@@ -507,14 +525,18 @@
             </div>
           </template>
         </div>
-        <div class="absolute right-full top-1/2 h-0 w-0 -translate-y-1/2 border-b-[6px] border-r-[6px] border-t-[6px] border-b-transparent border-r-gray-900 border-t-transparent dark:border-r-gray-800"></div>
+        <div
+          class="absolute h-0 w-0"
+          :class="tooltipArrowClass(tooltipPosition.placement)"
+          :style="tooltipArrowStyle(tooltipPosition)"
+        />
       </div>
     </div>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { formatDateTime, formatReasoningEffort, reasoningEffortValuesEqual } from '@/utils/format'
@@ -565,6 +587,11 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import IpGeoCell from '@/components/common/IpGeoCell.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { fetchBatch, getEntry } from '@/utils/ipGeoLookup'
+import {
+  getAnchoredTooltipPosition,
+  type AnchoredTooltipPlacement,
+  type AnchoredTooltipPosition,
+} from '@/utils/floatingPanel'
 import type { AdminUsageLog } from '@/types'
 import type { Column } from '@/components/common/types'
 
@@ -666,15 +693,72 @@ const copyRequestId = async (requestId: string) => {
   }
 }
 
+const ESTIMATED_TOOLTIP_SIZE = { width: 320, height: 320 }
+
+const emptyTooltipPosition = (): AnchoredTooltipPosition => ({
+  top: 0,
+  left: 0,
+  placement: 'right',
+  arrowOffset: 24,
+})
+
 // Tooltip state - cost
 const tooltipVisible = ref(false)
-const tooltipPosition = ref({ x: 0, y: 0 })
+const tooltipPosition = ref<AnchoredTooltipPosition>(emptyTooltipPosition())
 const tooltipData = ref<AdminUsageLog | null>(null)
+const tooltipEl = ref<HTMLElement | null>(null)
 
 // Tooltip state - token
 const tokenTooltipVisible = ref(false)
-const tokenTooltipPosition = ref({ x: 0, y: 0 })
+const tokenTooltipPosition = ref<AnchoredTooltipPosition>(emptyTooltipPosition())
 const tokenTooltipData = ref<AdminUsageLog | null>(null)
+const tokenTooltipEl = ref<HTMLElement | null>(null)
+
+const tooltipArrowClass = (placement: AnchoredTooltipPlacement): string => {
+  if (placement === 'right') {
+    return 'left-0 top-0 -translate-x-full -translate-y-1/2 border-y-[6px] border-r-[6px] border-y-transparent border-r-gray-900 dark:border-r-gray-800'
+  }
+  if (placement === 'left') {
+    return 'right-0 top-0 translate-x-full -translate-y-1/2 border-y-[6px] border-l-[6px] border-y-transparent border-l-gray-900 dark:border-l-gray-800'
+  }
+  if (placement === 'bottom') {
+    return 'left-0 top-0 -translate-x-1/2 -translate-y-full border-x-[6px] border-b-[6px] border-x-transparent border-b-gray-900 dark:border-b-gray-800'
+  }
+  return 'left-0 bottom-0 -translate-x-1/2 translate-y-full border-x-[6px] border-t-[6px] border-x-transparent border-t-gray-900 dark:border-t-gray-800'
+}
+
+const tooltipArrowStyle = (position: AnchoredTooltipPosition): Record<string, string> => {
+  if (position.placement === 'right' || position.placement === 'left') {
+    return { top: `${position.arrowOffset}px` }
+  }
+  return { left: `${position.arrowOffset}px` }
+}
+
+const placeUsageTooltip = (
+  trigger: HTMLElement,
+  size?: { width: number; height: number }
+): AnchoredTooltipPosition => {
+  const rect = trigger.getBoundingClientRect()
+  return getAnchoredTooltipPosition(rect, window.innerWidth, window.innerHeight, {
+    tooltipWidth: size?.width ?? ESTIMATED_TOOLTIP_SIZE.width,
+    tooltipHeight: size?.height ?? ESTIMATED_TOOLTIP_SIZE.height,
+  })
+}
+
+const refineUsageTooltipPosition = async (
+  trigger: HTMLElement,
+  getEl: () => HTMLElement | null,
+  assign: (position: AnchoredTooltipPosition) => void,
+  stillOpen: () => boolean
+) => {
+  await nextTick()
+  const el = getEl()
+  if (!el || !stillOpen()) return
+  const width = el.offsetWidth
+  const height = el.offsetHeight
+  if (width < 1 || height < 1) return
+  assign(placeUsageTooltip(trigger, { width, height }))
+}
 
 const getRequestTypeLabel = (row: AdminUsageLog): string => {
   const requestType = resolveUsageRequestType(row)
@@ -715,11 +799,17 @@ const formatDuration = (ms: number | null | undefined): string => {
 // Cost tooltip functions
 const showTooltip = (event: MouseEvent, row: AdminUsageLog) => {
   const target = event.currentTarget as HTMLElement
-  const rect = target.getBoundingClientRect()
+  tokenTooltipVisible.value = false
+  tokenTooltipData.value = null
   tooltipData.value = row
-  tooltipPosition.value.x = rect.right + 8
-  tooltipPosition.value.y = rect.top + rect.height / 2
+  tooltipPosition.value = placeUsageTooltip(target)
   tooltipVisible.value = true
+  void refineUsageTooltipPosition(
+    target,
+    () => tooltipEl.value,
+    (position) => { tooltipPosition.value = position },
+    () => tooltipVisible.value
+  )
 }
 
 const hideTooltip = () => {
@@ -730,11 +820,17 @@ const hideTooltip = () => {
 // Token tooltip functions
 const showTokenTooltip = (event: MouseEvent, row: AdminUsageLog) => {
   const target = event.currentTarget as HTMLElement
-  const rect = target.getBoundingClientRect()
+  tooltipVisible.value = false
+  tooltipData.value = null
   tokenTooltipData.value = row
-  tokenTooltipPosition.value.x = rect.right + 8
-  tokenTooltipPosition.value.y = rect.top + rect.height / 2
+  tokenTooltipPosition.value = placeUsageTooltip(target)
   tokenTooltipVisible.value = true
+  void refineUsageTooltipPosition(
+    target,
+    () => tokenTooltipEl.value,
+    (position) => { tokenTooltipPosition.value = position },
+    () => tokenTooltipVisible.value
+  )
 }
 
 const hideTokenTooltip = () => {

@@ -21,6 +21,7 @@ import UsageTable from '../UsageTable.vue'
 const messages: Record<string, string> = {
   'admin.usage.userDeletedBadge': 'Deleted',
   'usage.costDetails': 'Cost Breakdown',
+  'usage.tokenDetails': 'Token Breakdown',
   'admin.usage.inputCost': 'Input Cost',
   'admin.usage.outputCost': 'Output Cost',
   'admin.usage.cacheCreationCost': 'Cache Creation Cost',
@@ -552,6 +553,103 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('Per-image price')
     expect(text).toContain('not recorded')
     expect(text).not.toContain('(2K)')
+  })
+
+  it('keeps cost and token tooltips inside a 390px mobile viewport', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 390 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: 844 })
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 358,
+      y: 420,
+      top: 420,
+      left: 358,
+      right: 374,
+      bottom: 436,
+      width: 16,
+      height: 16,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          ...baseImageRow,
+          billing_mode: 'token',
+          image_count: 0,
+          input_tokens: 348,
+          output_tokens: 196,
+          input_cost: 0.02,
+          output_cost: 0.11,
+          actual_cost: 0.137096,
+        }],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await wrapper.get('[data-testid="usage-cost-tooltip-trigger"]').trigger('mouseenter')
+    await nextTick()
+
+    const costTooltip = wrapper.get('[data-testid="usage-cost-tooltip"]')
+    expect(costTooltip.attributes('data-placement')).toBe('left')
+    expect(parseFloat(costTooltip.element.style.left)).toBeGreaterThanOrEqual(8)
+    expect(parseFloat(costTooltip.element.style.left) + 320).toBeLessThanOrEqual(358)
+
+    await wrapper.get('[data-testid="usage-cost-tooltip-trigger"]').trigger('mouseleave')
+    await wrapper.get('[data-testid="usage-token-tooltip-trigger"]').trigger('click')
+    await nextTick()
+
+    const tokenTooltip = wrapper.get('[data-testid="usage-token-tooltip"]')
+    expect(tokenTooltip.attributes('data-placement')).toBe('left')
+    expect(parseFloat(tokenTooltip.element.style.left)).toBeGreaterThanOrEqual(8)
+    expect(wrapper.text()).toContain('Token Breakdown')
+  })
+
+  it('keeps the desktop tooltip on the right when the icon has room', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1280 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: 800 })
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 164,
+      y: 200,
+      top: 200,
+      left: 164,
+      right: 180,
+      bottom: 216,
+      width: 16,
+      height: 16,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [baseImageRow],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await wrapper.get('[data-testid="usage-cost-tooltip-trigger"]').trigger('mouseenter')
+    await nextTick()
+
+    const costTooltip = wrapper.get('[data-testid="usage-cost-tooltip"]')
+    expect(costTooltip.attributes('data-placement')).toBe('right')
+    expect(parseFloat(costTooltip.element.style.left)).toBe(188)
   })
 })
 
