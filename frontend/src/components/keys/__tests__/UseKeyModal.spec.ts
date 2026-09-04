@@ -341,7 +341,7 @@ describe('UseKeyModal', () => {
     expect(codeBlocks.join('\n')).toContain('experimental_bearer_token = "sk-grok-codex-test"')
   })
 
-  it('keeps legacy OpenAI Codex config as the default', () => {
+  it('defaults OpenAI Codex config to GPT-5.6 Sol with medium reasoning', () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
@@ -365,9 +365,10 @@ describe('UseKeyModal', () => {
     const configToml = codeBlocks.find((content) => content.includes('model_provider = "OpenAI"'))
 
     expect(configToml).toBeDefined()
-    expect(configToml).toContain('model = "gpt-5.5"')
-    expect(configToml).toContain('review_model = "gpt-5.5"')
-    expect(configToml).not.toContain('model = "gpt-5.4"')
+    expect(configToml).toContain('model = "gpt-5.6-sol"')
+    expect(configToml).toContain('review_model = "gpt-5.6-sol"')
+    expect(configToml).toContain('model_reasoning_effort = "medium"')
+    expect(configToml).not.toContain('model = "gpt-5.5"')
     expect(configToml).not.toContain('model_context_window')
     expect(configToml).not.toContain('model_auto_compact_token_limit')
     expect(configToml).toContain('requires_openai_auth = true')
@@ -378,7 +379,6 @@ describe('UseKeyModal', () => {
     expect(configToml).not.toContain('supports_websockets')
     expect(configToml).not.toContain('responses_websockets_v2')
     expect(configToml).toContain('[features]\ngoals = true')
-    expect(configToml).not.toContain('model_reasoning_effort = "xhigh"')
     expect(codeBlocks).toContain('{\n  "OPENAI_API_KEY": "sk-test"\n}')
     expect(wrapper.text()).toContain('auth.json')
     expect(wrapper.find('[data-testid="codex-api-key-restart-notice"]').exists()).toBe(false)
@@ -435,7 +435,7 @@ describe('UseKeyModal', () => {
     )
   })
 
-  it('keeps legacy OpenAI Codex WebSocket config as the default', async () => {
+  it('defaults OpenAI Codex WebSocket config to GPT-5.6 Sol with medium reasoning', async () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
@@ -467,9 +467,10 @@ describe('UseKeyModal', () => {
     const configToml = codeBlocks.find((content) => content.includes('supports_websockets = true'))
 
     expect(configToml).toBeDefined()
-    expect(configToml).toContain('model = "gpt-5.5"')
-    expect(configToml).toContain('review_model = "gpt-5.5"')
-    expect(configToml).not.toContain('model = "gpt-5.4"')
+    expect(configToml).toContain('model = "gpt-5.6-sol"')
+    expect(configToml).toContain('review_model = "gpt-5.6-sol"')
+    expect(configToml).toContain('model_reasoning_effort = "medium"')
+    expect(configToml).not.toContain('model = "gpt-5.5"')
     expect(configToml).not.toContain('model_context_window')
     expect(configToml).not.toContain('model_auto_compact_token_limit')
     expect(configToml).toContain('requires_openai_auth = true')
@@ -760,7 +761,7 @@ describe('UseKeyModal', () => {
       .find((content) => content.includes('[model_providers.sub2api]'))
     expect(loadedUnixConfig).toContain('model = "claude-opus-4-8"')
     expect(loadedUnixConfig).toContain('review_model = "claude-opus-4-8"')
-    expect(loadedUnixConfig).not.toContain('model = "gpt-5.5"')
+    expect(loadedUnixConfig).not.toContain('model = "gpt-5.6-sol"')
 
     const downloadButton = wrapper.findAll('button').find((button) =>
       button.text().includes('keys.useKeyModal.codexModelCatalog.download')
@@ -824,14 +825,14 @@ describe('UseKeyModal', () => {
   )
 
   // Scenario: the platform-preferred model remains selected when the downloaded catalog contains it.
-  it('keeps the preferred Composite default when it exists in the catalog', async () => {
+  it('keeps the preferred Composite GPT-5.6 Sol default at medium', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
         models: [
           { slug: 'claude-opus-4-8' },
-          { slug: 'gpt-5.5' }
+          { slug: 'gpt-5.6-sol' }
         ]
       })
     }))
@@ -866,8 +867,9 @@ describe('UseKeyModal', () => {
     const config = wrapper.findAll('pre code')
       .map((code) => code.text())
       .find((content) => content.includes('[model_providers.sub2api]'))
-    expect(config).toContain('model = "gpt-5.5"')
-    expect(config).toContain('review_model = "gpt-5.5"')
+    expect(config).toContain('model = "gpt-5.6-sol"')
+    expect(config).toContain('review_model = "gpt-5.6-sol"')
+    expect(config).toContain('model_reasoning_effort = "medium"')
   })
 
   it('derives OpenAI Codex reasoning effort from the selected catalog descriptor', async () => {
