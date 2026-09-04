@@ -79,8 +79,13 @@ func parseAccountTemperaturePolicy(credentials map[string]any) (accountTemperatu
 }
 
 func applyAccountTemperaturePolicy(body []byte, account *Account, path temperaturePath) ([]byte, error) {
+	updated, _, err := applyAccountTemperaturePolicyWithResult(body, account, path)
+	return updated, err
+}
+
+func applyAccountTemperaturePolicyWithResult(body []byte, account *Account, path temperaturePath) ([]byte, accountTemperaturePolicy, error) {
 	if !gjson.ValidBytes(body) {
-		return nil, infraerrors.BadRequest("INVALID_REQUEST_BODY", "request body must be valid JSON")
+		return nil, accountTemperaturePolicy{}, infraerrors.BadRequest("INVALID_REQUEST_BODY", "request body must be valid JSON")
 	}
 
 	var credentials map[string]any
@@ -89,17 +94,17 @@ func applyAccountTemperaturePolicy(body []byte, account *Account, path temperatu
 	}
 	policy, err := parseAccountTemperaturePolicy(credentials)
 	if err != nil {
-		return nil, err
+		return nil, policy, err
 	}
 
 	field := gjson.GetBytes(body, string(path))
 	if field.Exists() && field.Type != gjson.Number && field.Type != gjson.Null {
-		return nil, infraerrors.BadRequest("INVALID_TEMPERATURE", "temperature must be a number or null")
+		return nil, policy, infraerrors.BadRequest("INVALID_TEMPERATURE", "temperature must be a number or null")
 	}
 	if field.Type == gjson.Number {
 		value := field.Float()
 		if math.IsNaN(value) || math.IsInf(value, 0) {
-			return nil, infraerrors.BadRequest("INVALID_TEMPERATURE", "temperature must be a finite number")
+			return nil, policy, infraerrors.BadRequest("INVALID_TEMPERATURE", "temperature must be a finite number")
 		}
 	}
 
@@ -107,27 +112,27 @@ func applyAccountTemperaturePolicy(body []byte, account *Account, path temperatu
 	if field.Exists() && field.Type == gjson.Null {
 		normalized, err = sjson.DeleteBytes(normalized, string(path))
 		if err != nil {
-			return nil, infraerrors.BadRequest("INVALID_TEMPERATURE", "temperature could not be removed from request body")
+			return nil, policy, infraerrors.BadRequest("INVALID_TEMPERATURE", "temperature could not be removed from request body")
 		}
 	}
 
 	switch policy.mode {
 	case accountTemperatureModeInherit:
-		return normalized, nil
+		return normalized, policy, nil
 	case accountTemperatureModeOmit:
 		updated, deleteErr := sjson.DeleteBytes(normalized, string(path))
 		if deleteErr != nil {
-			return nil, infraerrors.BadRequest("INVALID_TEMPERATURE", "temperature could not be removed from request body")
+			return nil, policy, infraerrors.BadRequest("INVALID_TEMPERATURE", "temperature could not be removed from request body")
 		}
-		return updated, nil
+		return updated, policy, nil
 	case accountTemperatureModeOverride:
 		updated, setErr := sjson.SetBytes(normalized, string(path), policy.temperature)
 		if setErr != nil {
-			return nil, infraerrors.BadRequest("INVALID_TEMPERATURE", "temperature could not be written to request body")
+			return nil, policy, infraerrors.BadRequest("INVALID_TEMPERATURE", "temperature could not be written to request body")
 		}
-		return updated, nil
+		return updated, policy, nil
 	default:
-		return nil, invalidAccountTemperature("temperature_mode must be inherit, override, or omit")
+		return nil, policy, invalidAccountTemperature("temperature_mode must be inherit, override, or omit")
 	}
 }
 
@@ -138,11 +143,22 @@ func applyResolvedAccountTemperaturePolicy(
 	body []byte,
 	path temperaturePath,
 ) ([]byte, error) {
+	updated, _, err := applyResolvedAccountTemperaturePolicyWithResult(ctx, repo, account, body, path)
+	return updated, err
+}
+
+func applyResolvedAccountTemperaturePolicyWithResult(
+	ctx context.Context,
+	repo AccountRepository,
+	account *Account,
+	body []byte,
+	path temperaturePath,
+) ([]byte, accountTemperaturePolicy, error) {
 	credentialAccount, err := resolveCredentialAccount(ctx, repo, account)
 	if err != nil {
-		return nil, err
+		return nil, accountTemperaturePolicy{}, err
 	}
-	return applyAccountTemperaturePolicy(body, credentialAccount, path)
+	return applyAccountTemperaturePolicyWithResult(body, credentialAccount, path)
 }
 
 func accountTemperatureNumber(value any) (float64, bool) {

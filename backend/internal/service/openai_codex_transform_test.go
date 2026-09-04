@@ -1786,7 +1786,7 @@ func TestApplyCodexOAuthTransform_StripsChatGPTInternalUnsupportedFields(t *test
 	}
 }
 
-func TestApplyCodexOAuthTransform_PreservesGPT56SamplingParameters(t *testing.T) {
+func TestApplyCodexOAuthTransform_StripsGPT56SamplingParameters(t *testing.T) {
 	reqBody := map[string]any{
 		"model":       "gpt-5.6-terra",
 		"temperature": 0.0,
@@ -1796,9 +1796,8 @@ func TestApplyCodexOAuthTransform_PreservesGPT56SamplingParameters(t *testing.T)
 
 	applyCodexOAuthTransform(reqBody, false, false)
 
-	require.Contains(t, reqBody, "temperature")
-	require.Zero(t, reqBody["temperature"])
-	require.InDelta(t, 0.75, reqBody["top_p"], 1e-9)
+	require.NotContains(t, reqBody, "temperature")
+	require.NotContains(t, reqBody, "top_p")
 }
 
 func TestApplyCodexOAuthTransform_StripsLegacySamplingParameters(t *testing.T) {

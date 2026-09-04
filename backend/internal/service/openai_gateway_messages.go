@@ -34,13 +34,15 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
 	beginUpstreamResponseModelObservation(c)
+	beginOpenAITemperatureObservation(c, account, body)
 	ClearActualOpenAIUpstreamEndpoint(c)
-	policyBody, policyErr := applyResolvedAccountTemperaturePolicy(ctx, s.accountRepo, account, body, temperaturePathTopLevel)
+	policyBody, temperaturePolicy, policyErr := applyResolvedAccountTemperaturePolicyWithResult(ctx, s.accountRepo, account, body, temperaturePathTopLevel)
 	if policyErr != nil {
 		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", policyErr.Error())
 		return nil, policyErr
 	}
 	body = policyBody
+	setOpenAITemperaturePolicyObservation(c, temperaturePolicy, body)
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
 		SetActualOpenAIUpstreamEndpoint(c, "/v1/chat/completions")
 	}
