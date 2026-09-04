@@ -320,8 +320,16 @@
               :concurrency-max="capacityMap.get(row.id)!.concurrencyMax"
               :sessions-used="capacityMap.get(row.id)!.sessionsUsed"
               :sessions-max="capacityMap.get(row.id)!.sessionsMax"
-              :group-sessions-used="capacityMap.get(row.id)!.groupSessionsUsed"
-              :group-sessions-max="capacityMap.get(row.id)!.groupSessionsMax"
+              :group-sessions-used="
+                row.platform === 'anthropic'
+                  ? capacityMap.get(row.id)!.groupSessionsUsed
+                  : 0
+              "
+              :group-sessions-max="
+                row.platform === 'anthropic'
+                  ? capacityMap.get(row.id)!.groupSessionsMax
+                  : 0
+              "
               :rpm-used="capacityMap.get(row.id)!.rpmUsed"
               :rpm-max="capacityMap.get(row.id)!.rpmMax"
             />
@@ -627,7 +635,7 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
-        <div>
+        <div v-if="createForm.platform === 'anthropic'">
           <label class="input-label">{{ t("admin.groups.form.maxSessions") }}</label>
           <input
             v-model.number="createForm.max_sessions"
@@ -2438,7 +2446,7 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
-        <div>
+        <div v-if="editForm.platform === 'anthropic'">
           <label class="input-label">{{ t("admin.groups.form.maxSessions") }}</label>
           <input
             v-model.number="editForm.max_sessions"
@@ -6273,7 +6281,10 @@ const handleCreateGroup = async () => {
       requestData.web_search_price_per_call,
     );
     // 清空输入框时 v-model.number 产生 ""，归一为 0（不限制）
-    requestData.max_sessions = Number(requestData.max_sessions) || 0;
+    requestData.max_sessions =
+      createForm.platform === "anthropic"
+        ? Number(requestData.max_sessions) || 0
+        : 0;
     requestData.peak_rate_enabled = createForm.peak_rate_enabled;
     requestData.peak_start = createForm.peak_start;
     requestData.peak_end = createForm.peak_end;
@@ -6567,7 +6578,10 @@ const handleUpdateGroup = async () => {
       payload.web_search_price_per_call,
     );
     // 清空输入框时 v-model.number 产生 ""，归一为 0（不限制）
-    payload.max_sessions = Number(payload.max_sessions) || 0;
+    payload.max_sessions =
+      editForm.platform === "anthropic"
+        ? Number(payload.max_sessions) || 0
+        : 0;
     payload.peak_rate_enabled = editForm.peak_rate_enabled;
     payload.peak_start = editForm.peak_start;
     payload.peak_end = editForm.peak_end;
@@ -6877,6 +6891,9 @@ watch(
 watch(
   () => createForm.platform,
   (newVal) => {
+    if (newVal !== "anthropic") {
+      createForm.max_sessions = 0;
+    }
     if (!["anthropic", "antigravity"].includes(newVal)) {
       createForm.fallback_group_id_on_invalid_request = null;
     }
@@ -6934,6 +6951,9 @@ watch(
 watch(
   () => editForm.platform,
   (newVal) => {
+    if (newVal !== "anthropic") {
+      editForm.max_sessions = 0;
+    }
     if (!["anthropic", "antigravity"].includes(newVal)) {
       editForm.fallback_group_id_on_invalid_request = null;
     }
