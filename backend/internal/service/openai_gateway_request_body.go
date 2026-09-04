@@ -2169,6 +2169,8 @@ func supportsOpenAIReasoningEffortMax(model string) bool {
 	normalized := strings.ToLower(lastOpenAIModelSegment(model))
 	normalized = strings.ReplaceAll(normalized, "_", "-")
 	switch {
+	case normalized == "gpt-6-astra" || strings.HasPrefix(normalized, "gpt-6-astra-"):
+		return true
 	case strings.HasPrefix(normalized, "deepseek-v4"):
 		return true
 	case strings.HasPrefix(normalized, "glm-"):
