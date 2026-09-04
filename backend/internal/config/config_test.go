@@ -768,6 +768,31 @@ func TestLoadDefaultOIDCSecurityDefaults(t *testing.T) {
 	require.False(t, cfg.OIDC.ValidateIDTokenExplicit)
 }
 
+func TestLoadOIDCExclusiveModeFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("OIDC_CONNECT_ENABLED", "true")
+	t.Setenv("OIDC_CONNECT_EXCLUSIVE", "true")
+	t.Setenv("OIDC_CONNECT_END_SESSION_URL", "https://sso.example.com/application/o/sub2api/end-session/")
+	t.Setenv("OIDC_CONNECT_CLIENT_ID", "sub2api")
+	t.Setenv("OIDC_CONNECT_CLIENT_SECRET", "test-client-secret")
+	t.Setenv("OIDC_CONNECT_ISSUER_URL", "https://sso.example.com/application/o/sub2api/")
+	t.Setenv("OIDC_CONNECT_REDIRECT_URL", "https://sub2api.example.com/api/v1/auth/oauth/oidc/callback")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.OIDC.Exclusive)
+	require.Equal(t, "https://sso.example.com/application/o/sub2api/end-session/", cfg.OIDC.EndSessionURL)
+}
+
+func TestLoadOIDCExclusiveModeRequiresEndSessionURLWhenRuntimeEnablementIsPossible(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("OIDC_CONNECT_ENABLED", "false")
+	t.Setenv("OIDC_CONNECT_EXCLUSIVE", "true")
+
+	_, err := Load()
+	require.ErrorContains(t, err, "oidc_connect.end_session_url is required")
+}
+
 func TestLoadExplicitOIDCSecurityDefaultsFromEnvMarksFlagsExplicit(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("OIDC_CONNECT_USE_PKCE", "false")

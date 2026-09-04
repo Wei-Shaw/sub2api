@@ -34,8 +34,14 @@ func (r *bmSettingRepo) Set(_ context.Context, _, _ string) error {
 	panic("unexpected Set call")
 }
 
-func (r *bmSettingRepo) GetMultiple(_ context.Context, _ []string) (map[string]string, error) {
-	panic("unexpected GetMultiple call")
+func (r *bmSettingRepo) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	values := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, ok := r.values[key]; ok {
+			values[key] = value
+		}
+	}
+	return values, nil
 }
 
 func (r *bmSettingRepo) SetMultiple(_ context.Context, settings map[string]string) error {
@@ -381,6 +387,51 @@ func TestBackendModeAuthGuard(t *testing.T) {
 			}
 
 			r.Use(BackendModeAuthGuard(svc))
+			r.Any("/*path", func(c *gin.Context) {
+				c.JSON(http.StatusOK, gin.H{"ok": true})
+			})
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			r.ServeHTTP(w, req)
+
+			require.Equal(t, tc.wantStatus, w.Code)
+		})
+	}
+}
+
+func TestOIDCExclusiveAuthGuard(t *testing.T) {
+	tests := []struct {
+		name        string
+		exclusive   bool
+		oidcEnabled string
+		path        string
+		wantStatus  int
+	}{
+		{name: "disabled_allows_password_login", oidcEnabled: "true", path: "/api/v1/auth/login", wantStatus: http.StatusOK},
+		{name: "runtime_disabled_allows_password_login", exclusive: true, oidcEnabled: "false", path: "/api/v1/auth/login", wantStatus: http.StatusOK},
+		{name: "exclusive_blocks_password_login", exclusive: true, oidcEnabled: "true", path: "/api/v1/auth/login", wantStatus: http.StatusForbidden},
+		{name: "exclusive_blocks_passkey_login", exclusive: true, oidcEnabled: "true", path: "/api/v1/auth/passkey/login/finish", wantStatus: http.StatusForbidden},
+		{name: "exclusive_blocks_other_oauth", exclusive: true, oidcEnabled: "true", path: "/api/v1/auth/oauth/github/callback", wantStatus: http.StatusForbidden},
+		{name: "exclusive_allows_oidc", exclusive: true, oidcEnabled: "true", path: "/api/v1/auth/oauth/oidc/start", wantStatus: http.StatusOK},
+		{name: "exclusive_allows_pending_continuation", exclusive: true, oidcEnabled: "true", path: "/api/v1/auth/oauth/pending/exchange", wantStatus: http.StatusOK},
+		{name: "exclusive_allows_wechat_payment", exclusive: true, oidcEnabled: "true", path: "/api/v1/auth/oauth/wechat/payment/callback", wantStatus: http.StatusOK},
+		{name: "exclusive_allows_logout", exclusive: true, oidcEnabled: "true", path: "/api/v1/auth/logout", wantStatus: http.StatusOK},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			repo := &bmSettingRepo{values: map[string]string{
+				service.SettingKeyOIDCConnectEnabled: tc.oidcEnabled,
+			}}
+			svc := service.NewSettingService(repo, &config.Config{OIDC: config.OIDCConnectConfig{
+				Enabled:   true,
+				Exclusive: tc.exclusive,
+			}})
+
+			r := gin.New()
+			r.Use(OIDCExclusiveAuthGuard(svc))
 			r.Any("/*path", func(c *gin.Context) {
 				c.JSON(http.StatusOK, gin.H{"ok": true})
 			})

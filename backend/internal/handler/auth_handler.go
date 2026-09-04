@@ -174,9 +174,30 @@ func (h *AuthHandler) isBackendModeEnabled(ctx context.Context) bool {
 	return h.settingSvc.IsBackendModeEnabled(ctx)
 }
 
+func (h *AuthHandler) rejectLocalAuthInOIDCExclusiveMode(c *gin.Context) bool {
+	if h == nil || !h.isOIDCExclusiveModeEnabled(c.Request.Context()) {
+		return false
+	}
+	response.Forbidden(c, "OIDC login is required")
+	return true
+}
+
+func (h *AuthHandler) isOIDCExclusiveModeEnabled(ctx context.Context) bool {
+	if h == nil {
+		return false
+	}
+	if h.settingSvc != nil {
+		return h.settingSvc.IsOIDCExclusiveModeEnabled(ctx)
+	}
+	return h.cfg != nil && h.cfg.OIDC.Enabled && h.cfg.OIDC.Exclusive
+}
+
 // Register handles user registration
 // POST /api/v1/auth/register
 func (h *AuthHandler) Register(c *gin.Context) {
+	if h.rejectLocalAuthInOIDCExclusiveMode(c) {
+		return
+	}
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
@@ -237,6 +258,9 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 // Login handles user login
 // POST /api/v1/auth/login
 func (h *AuthHandler) Login(c *gin.Context) {
+	if h.rejectLocalAuthInOIDCExclusiveMode(c) {
+		return
+	}
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
