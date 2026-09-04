@@ -157,7 +157,7 @@ type Group struct {
 	MaxReasoningEffort string `json:"max_reasoning_effort"`
 	// MaxReasoningEffortOverLimit 超过上限时的访问控制：downgrade（默认）或 deny。
 	MaxReasoningEffortOverLimit string `json:"max_reasoning_effort_over_limit"`
-	// ReasoningEffortMappings OpenAI/Codex 推理强度精确映射。
+	// ReasoningEffortMappings OpenAI/Codex 推理强度映射，可按模型精确名、前缀或后缀限定。
 	ReasoningEffortMappings []domain.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
 
 	CreatedAt time.Time `json:"created_at"`
@@ -170,6 +170,8 @@ type AdminGroup struct {
 	Group
 	// ForceOpenAIFast 是管理端请求策略，用户侧分组 DTO 无需暴露。
 	ForceOpenAIFast bool `json:"force_openai_fast"`
+	// FreeOpenAIFast 是管理端计费策略，用户侧分组 DTO 无需暴露。
+	FreeOpenAIFast bool `json:"free_openai_fast"`
 
 	// 分组利润控制（五个 token 平台分组可启用；margin/buffer 为小数存储）。
 	// 仅管理员可见：这三个字段与同响应中的 rate_multiplier 相乘即可反推出

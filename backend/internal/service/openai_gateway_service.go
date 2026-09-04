@@ -892,7 +892,10 @@ func (s *OpenAIGatewayService) writeOpenAIWSFallbackErrorResponse(c *gin.Context
 
 	setOpsUpstreamError(c, statusCode, upstreamMessage, "")
 	if account != nil {
+		proxyID, proxyName := opsUpstreamWSProxyAttribution(account)
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			ProxyID:            proxyID,
+			ProxyName:          proxyName,
 			Platform:           account.Platform,
 			AccountID:          account.ID,
 			AccountName:        account.Name,

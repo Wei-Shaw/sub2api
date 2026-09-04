@@ -467,7 +467,7 @@
     <BaseDialog
       :show="showCreateModal"
       :title="t('admin.groups.createGroup')"
-      width="normal"
+      width="wide"
       @close="closeCreateModal"
     >
       <form
@@ -1502,12 +1502,12 @@
 
 
         <div class="border-t border-gray-200 pt-4 mt-4 dark:border-dark-400">
-          <div class="flex items-start justify-between gap-4">
-            <div>
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
               <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelPricing.title") }}</h4>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.modelPricing.description") }}</p>
             </div>
-            <button type="button" class="btn btn-secondary" @click="addGroupPricing(createForm.model_pricing)">
+            <button type="button" class="btn btn-secondary shrink-0 whitespace-nowrap" @click="addGroupPricing(createForm.model_pricing)">
               <Icon name="plus" size="sm" class="mr-1" />{{ t("admin.groups.modelPricing.add") }}
             </button>
           </div>
@@ -1618,6 +1618,35 @@
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {{ t("admin.groups.openaiFast.hint") }}
+          </p>
+          <div class="flex items-center justify-between gap-4 mt-4">
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.openaiFast.free") }}
+            </label>
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="createForm.free_openai_fast"
+              :aria-label="t('admin.groups.openaiFast.free')"
+              data-testid="create-free-openai-fast"
+              @click="createForm.free_openai_fast = !createForm.free_openai_fast"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                createForm.free_openai_fast
+                  ? 'bg-emerald-500'
+                  : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  createForm.free_openai_fast ? 'translate-x-6' : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.openaiFast.freeHint") }}
           </p>
         </div>
 
@@ -2237,7 +2266,7 @@
     <BaseDialog
       :show="showEditModal"
       :title="t('admin.groups.editGroup')"
-      width="normal"
+      width="wide"
       @close="closeEditModal"
     >
       <form
@@ -3270,12 +3299,12 @@
 
 
         <div class="border-t border-gray-200 pt-4 mt-4 dark:border-dark-400">
-          <div class="flex items-start justify-between gap-4">
-            <div>
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
               <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelPricing.title") }}</h4>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.modelPricing.description") }}</p>
             </div>
-            <button type="button" class="btn btn-secondary" @click="addGroupPricing(editForm.model_pricing)">
+            <button type="button" class="btn btn-secondary shrink-0 whitespace-nowrap" @click="addGroupPricing(editForm.model_pricing)">
               <Icon name="plus" size="sm" class="mr-1" />{{ t("admin.groups.modelPricing.add") }}
             </button>
           </div>
@@ -3386,6 +3415,35 @@
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {{ t("admin.groups.openaiFast.hint") }}
+          </p>
+          <div class="flex items-center justify-between gap-4 mt-4">
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.openaiFast.free") }}
+            </label>
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="editForm.free_openai_fast"
+              :aria-label="t('admin.groups.openaiFast.free')"
+              data-testid="edit-free-openai-fast"
+              @click="editForm.free_openai_fast = !editForm.free_openai_fast"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                editForm.free_openai_fast
+                  ? 'bg-emerald-500'
+                  : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  editForm.free_openai_fast ? 'translate-x-6' : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.openaiFast.freeHint") }}
           </p>
         </div>
 
@@ -5137,6 +5195,7 @@ const createForm = reactive({
   monthly_limit_usd: null as number | null,
   long_context_pricing_enabled: true,
   force_openai_fast: false,
+  free_openai_fast: false,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
   allow_image_generation: false,
@@ -5500,6 +5559,7 @@ const editForm = reactive({
   monthly_limit_usd: null as number | null,
   long_context_pricing_enabled: true,
   force_openai_fast: false,
+  free_openai_fast: false,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
   allow_image_generation: false,
@@ -5976,6 +6036,7 @@ const closeCreateModal = () => {
   createForm.video_model_prices = createVideoModelPricesForm();
   createForm.long_context_pricing_enabled = true;
   createForm.force_openai_fast = false;
+  createForm.free_openai_fast = false;
   createForm.model_pricing = [];
   createForm.web_search_price_per_call = null;
   createForm.search_price_per_1k = null;
@@ -6080,6 +6141,10 @@ const handleCreateGroup = async () => {
       force_openai_fast: normalizeGroupOpenAIFast(
         createForm.platform,
         createForm.force_openai_fast,
+      ),
+      free_openai_fast: normalizeGroupOpenAIFast(
+        createForm.platform,
+        createForm.free_openai_fast,
       ),
       model_pricing: groupPricingToAPI(
         createForm.model_pricing,
@@ -6210,6 +6275,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.long_context_pricing_enabled =
     group.long_context_pricing_enabled ?? true;
   editForm.force_openai_fast = group.force_openai_fast ?? false;
+  editForm.free_openai_fast = group.free_openai_fast ?? false;
   editForm.model_pricing = groupPricingFromAPI(group.model_pricing);
   editForm.allow_image_generation = group.allow_image_generation ?? false;
   editForm.allow_batch_image_generation =
@@ -6321,6 +6387,7 @@ const closeEditModal = () => {
   editForm.video_model_prices = createVideoModelPricesForm();
   editForm.long_context_pricing_enabled = true;
   editForm.force_openai_fast = false;
+  editForm.free_openai_fast = false;
   editForm.model_pricing = [];
   editForm.web_search_price_per_call = null;
   editForm.search_price_per_1k = null;
@@ -6357,6 +6424,10 @@ const handleUpdateGroup = async () => {
       force_openai_fast: normalizeGroupOpenAIFast(
         editForm.platform,
         editForm.force_openai_fast,
+      ),
+      free_openai_fast: normalizeGroupOpenAIFast(
+        editForm.platform,
+        editForm.free_openai_fast,
       ),
       model_pricing: groupPricingToAPI(
         editForm.model_pricing,

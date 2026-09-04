@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -12,6 +13,7 @@ import (
 const (
 	maxReasoningEffortMappings = 64
 	maxReasoningEffortValueLen = 64
+	maxReasoningEffortModelLen = 200
 
 	// ReasoningEffortOverLimitDowngrade rewrites values above the ceiling.
 	ReasoningEffortOverLimitDowngrade = "downgrade"
@@ -170,8 +172,109 @@ func reasoningEffortRank(raw string) (int, bool) {
 	}
 }
 
+func normalizeReasoningEffortMatchType(matchType, model string) (string, error) {
+	model = strings.TrimSpace(model)
+	matchType = strings.ToLower(strings.TrimSpace(matchType))
+	if model == "" {
+		return "", nil
+	}
+	switch matchType {
+	case "", domain.ReasoningEffortMatchExact:
+		return domain.ReasoningEffortMatchExact, nil
+	case domain.ReasoningEffortMatchPrefix:
+		return domain.ReasoningEffortMatchPrefix, nil
+	case domain.ReasoningEffortMatchSuffix:
+		return domain.ReasoningEffortMatchSuffix, nil
+	default:
+		return "", fmt.Errorf("invalid match_type %q", matchType)
+	}
+}
+
+func reasoningEffortMappingDuplicateKey(from, matchType, model string) string {
+	return from + "\x00" + matchType + "\x00" + strings.ToLower(strings.TrimSpace(model))
+}
+
+func requestModelMatchesReasoningEffortMapping(requestModel, matchType, mappingModel string) bool {
+	scope := strings.ToLower(strings.TrimSpace(mappingModel))
+	req := strings.ToLower(strings.TrimSpace(requestModel))
+	switch matchType {
+	case "":
+		return true
+	case domain.ReasoningEffortMatchExact:
+		return scope != "" && scope == req
+	case domain.ReasoningEffortMatchPrefix:
+		return scope != "" && req != "" && strings.HasPrefix(req, scope)
+	case domain.ReasoningEffortMatchSuffix:
+		return scope != "" && req != "" && strings.HasSuffix(req, scope)
+	default:
+		return false
+	}
+}
+
+func selectReasoningEffortMapping(mappings []ReasoningEffortMapping, from, requestModel string) (ReasoningEffortMapping, bool) {
+	type candidate struct {
+		mapping       ReasoningEffortMapping
+		matchStrength int
+		patternLen    int
+		index         int
+	}
+	candidates := make([]candidate, 0, len(mappings))
+	for i, mapping := range mappings {
+		if NormalizeMaxReasoningEffort(mapping.From) != from {
+			continue
+		}
+		model := strings.TrimSpace(mapping.Model)
+		matchType, err := normalizeReasoningEffortMatchType(mapping.MatchType, model)
+		if err != nil {
+			continue
+		}
+		if !requestModelMatchesReasoningEffortMapping(requestModel, matchType, model) {
+			continue
+		}
+		strength := 1
+		patternLen := 0
+		switch matchType {
+		case domain.ReasoningEffortMatchExact:
+			strength = 3
+		case domain.ReasoningEffortMatchPrefix, domain.ReasoningEffortMatchSuffix:
+			strength = 2
+			patternLen = len(strings.ToLower(model))
+		}
+		candidates = append(candidates, candidate{
+			mapping:       mapping,
+			matchStrength: strength,
+			patternLen:    patternLen,
+			index:         i,
+		})
+	}
+	if len(candidates) == 0 {
+		return ReasoningEffortMapping{}, false
+	}
+	best := candidates[0]
+	for _, item := range candidates[1:] {
+		if item.matchStrength != best.matchStrength {
+			if item.matchStrength > best.matchStrength {
+				best = item
+			}
+			continue
+		}
+		if item.patternLen != best.patternLen {
+			if item.patternLen > best.patternLen {
+				best = item
+			}
+			continue
+		}
+		if item.index < best.index {
+			best = item
+		}
+	}
+	return best.mapping, true
+}
+
 // NormalizeReasoningEffortMappings validates group mapping rules against the
-// fixed effort values supported by OpenAI routes.
+// fixed effort values supported by OpenAI routes. Optional model scopes are
+// canonicalized to exact/prefix/suffix match; empty type and model keep the
+// global all-models rule.
 func NormalizeReasoningEffortMappings(platform string, raw []ReasoningEffortMapping) ([]ReasoningEffortMapping, error) {
 	if len(raw) > maxReasoningEffortMappings {
 		return nil, fmt.Errorf("reasoning effort mappings cannot exceed %d entries", maxReasoningEffortMappings)
@@ -194,12 +297,28 @@ func NormalizeReasoningEffortMappings(platform string, raw []ReasoningEffortMapp
 		if _, err := normalizeMaxReasoningEffortForPlatform(platform, to); err != nil {
 			return nil, fmt.Errorf("reasoning effort mapping %d target: %w", i+1, err)
 		}
-		key := from
+		model := strings.TrimSpace(mapping.Model)
+		if len(model) > maxReasoningEffortModelLen {
+			return nil, fmt.Errorf("reasoning effort mapping %d model cannot exceed %d characters", i+1, maxReasoningEffortModelLen)
+		}
+		matchType, err := normalizeReasoningEffortMatchType(mapping.MatchType, model)
+		if err != nil {
+			return nil, fmt.Errorf("reasoning effort mapping %d: %w", i+1, err)
+		}
+		key := reasoningEffortMappingDuplicateKey(from, matchType, model)
 		if _, exists := seen[key]; exists {
-			return nil, fmt.Errorf("duplicate reasoning effort mapping source %q", from)
+			if model == "" {
+				return nil, fmt.Errorf("duplicate reasoning effort mapping source %q", from)
+			}
+			return nil, fmt.Errorf("duplicate reasoning effort mapping source %q for %s model %q", from, matchType, strings.ToLower(model))
 		}
 		seen[key] = struct{}{}
-		normalized = append(normalized, ReasoningEffortMapping{From: from, To: to})
+		normalized = append(normalized, ReasoningEffortMapping{
+			From:      from,
+			To:        to,
+			MatchType: matchType,
+			Model:     model,
+		})
 	}
 	return normalized, nil
 }
@@ -262,15 +381,17 @@ func ApplyOpenAIReasoningEffortPolicyFromContext(ctx context.Context, body []byt
 	return ApplyOpenAIReasoningEffortPolicy(body, policy.maxEffort, policy.mappings, policy.overLimit)
 }
 
-func mapReasoningEffort(raw string, mappings []ReasoningEffortMapping) (string, bool) {
+func mapReasoningEffort(raw string, mappings []ReasoningEffortMapping, requestModel string) (string, bool) {
 	value := strings.TrimSpace(raw)
 	canonical := NormalizeMaxReasoningEffort(value)
-	for _, mapping := range mappings {
-		if canonical != "" && canonical == NormalizeMaxReasoningEffort(mapping.From) {
-			return strings.TrimSpace(mapping.To), true
-		}
+	if canonical == "" {
+		return value, false
 	}
-	return value, false
+	mapping, ok := selectReasoningEffortMapping(mappings, canonical, requestModel)
+	if !ok {
+		return value, false
+	}
+	return strings.TrimSpace(mapping.To), true
 }
 
 func sanitizeGroupReasoningEffortPolicy(group *Group) {
@@ -294,10 +415,11 @@ func sanitizeGroupReasoningEffortPolicy(group *Group) {
 	group.ReasoningEffortMappings = mappings
 }
 
-// ApplyOpenAIReasoningEffortPolicy applies one exact mapping and then either
-// caps known effort levels or rejects the request when the group is configured
-// to deny values above the ceiling. Omitted values remain untouched so
-// upstream defaults stay in control.
+// ApplyOpenAIReasoningEffortPolicy applies one mapping (optionally scoped to
+// the request model by exact name, prefix, or suffix) and then either caps
+// known effort levels or rejects the request when the group is configured to
+// deny values above the ceiling. Omitted values remain untouched so upstream
+// defaults stay in control.
 func ApplyOpenAIReasoningEffortPolicy(body []byte, maxEffort string, mappings []ReasoningEffortMapping, overLimit string) ([]byte, bool, error) {
 	maxRank, hasMax := reasoningEffortRank(maxEffort)
 	if len(body) == 0 || (!hasMax && len(mappings) == 0) {
@@ -306,6 +428,7 @@ func ApplyOpenAIReasoningEffortPolicy(body []byte, maxEffort string, mappings []
 	deny := hasMax && NormalizeMaxReasoningEffortOverLimit(overLimit) == ReasoningEffortOverLimitDeny
 	canonicalMax := NormalizeMaxReasoningEffort(maxEffort)
 
+	requestModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	result := body
 	changed := false
 	for _, path := range []string{"reasoning.effort", "reasoning_effort"} {
@@ -318,7 +441,7 @@ func ApplyOpenAIReasoningEffortPolicy(body []byte, maxEffort string, mappings []
 			continue
 		}
 
-		effective, _ := mapReasoningEffort(original, mappings)
+		effective, _ := mapReasoningEffort(original, mappings, requestModel)
 		if currentRank, recognized := reasoningEffortRank(effective); recognized {
 			effective = NormalizeMaxReasoningEffort(effective)
 			if hasMax && currentRank > maxRank {

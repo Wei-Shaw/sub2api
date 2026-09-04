@@ -97,12 +97,6 @@ Please read the following carefully before using this project:
 </tr>
 
 <tr>
-<td width="180"><a href="https://sui-xiang.com/"><img src="assets/partners/logos/sui-xiang.jpg" alt="sui-xiang" width="150"></a></td>
-<td>Thanks to Suixiang AI Gateway for sponsoring this project! <a href="https://sui-xiang.com/">Suixiang AI Gateway</a> is a reliable and efficient API relay service provider offering relay services for Claude, Codex, Gemini, and more. A privacy-focused relay — no data reselling, no model dilution; privacy, transparency, and lightning-fast after-sales support. New accounts get ¥0.5 in trial credit daily by signing in; top-ups are 1:1, no subscription required, pay-as-you-go. Multi-line redundancy, cross-region disaster recovery, automatic failover, and uninterrupted long-link SSE. 99.9% availability — critical calls never fall behind.
-</td>
-</tr>
-
-<tr>
 <td width="180"><a href="https://www.proxy4free.com/?keyword=4yjqecpc"><img src="assets/partners/logos/proxy4free.png" alt="proxy4free" width="150"></a></td>
 <td>Thanks to Proxy4Free for sponsoring this project! Proxy4Free is a data proxy service provider for developers and AI applications, offering residential proxies, static residential proxies, ISP proxies, and datacenter proxies for scenarios such as Web Scraping, Browser Automation, and AI Agents. With global IP resources, stable connections, and flexible switching, it helps developers improve data collection success rates and reduce the risk of IP bans. Register via <a href="https://www.proxy4free.com/?keyword=4yjqecpc">this link</a> to get started and easily build more stable and efficient automation workflows.
 </td>
@@ -125,11 +119,6 @@ Please read the following carefully before using this project:
 <tr>
 <td width="180"><a href="https://nagora.ai/"><img src="assets/partners/logos/nagora.png" alt="Nagora" width="150"></a></td>
 <td><a href="https://nagora.ai/">Nagora</a> is a multi-model AI API gateway built for developers and teams. With a single account and API key, you can access more than 26 leading text and image models through one unified interface. It is compatible with OpenAI, Anthropic, and Gemini protocols and integrates seamlessly with development tools such as Claude Code, Codex, and Gemini CLI. The platform provides intelligent routing, automatic failover, transparent pricing, and consolidated billing, along with budget management, rate limiting, and concurrency controls. This makes AI usage more reliable and manageable across individual development, team collaboration, and production environments. No changes to your existing application are required. Simply replace the Base URL and API key to complete the integration in as little as one minute.</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://www.novada.com/?sub2api/"><img src="assets/partners/logos/novada.png" alt="Novada" width="150"></a></td>
-<td>Thanks to <a href="https://www.novada.com/?sub2api/">Novada</a> for sponsoring this project! Novada provides residential, ISP, datacenter, and mobile proxies, along with Web Unlocker and Scraper APIs for developers building AI applications and automation workflows. With global IP coverage, flexible rotating and sticky sessions, and precise geo-targeting, Novada helps teams access web data reliably for AI agent workflows, cross-region testing, web research, and browser automation. Explore Novada to build more stable and scalable AI workflows.</td>
 </tr>
 
 <tr>

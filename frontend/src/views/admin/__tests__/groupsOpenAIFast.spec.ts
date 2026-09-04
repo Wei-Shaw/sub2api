@@ -26,11 +26,15 @@ describe("groupsOpenAIFast", () => {
       title: expect.any(String),
       force: expect.any(String),
       hint: expect.stringContaining("service_tier=priority"),
+      free: expect.any(String),
+      freeHint: expect.stringContaining("Standard"),
     });
     expect(en.groups.openaiFast).toMatchObject({
       title: expect.any(String),
       force: expect.any(String),
       hint: expect.stringContaining("service_tier=priority"),
+      free: expect.any(String),
+      freeHint: expect.stringContaining("Standard"),
     });
   });
 });
