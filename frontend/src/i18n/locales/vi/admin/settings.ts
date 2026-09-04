@@ -340,6 +340,10 @@ export default mergeLocaleMessages(
     gatewayForwarding: {
       title: 'Hành vi chuyển tiếp yêu cầu',
       description: 'Kiểm soát hành vi khi chuyển tiếp yêu cầu tới tài khoản OAuth upstream',
+      openaiTTFTMode: 'Chỉ số token đầu tiên của OpenAI Responses',
+      openaiTTFTModeSemantic: 'Tương thích legacy (sự kiện ngữ nghĩa)',
+      openaiTTFTModeVisible: 'Nội dung hiển thị thực tế',
+      openaiTTFTModeHint: 'Mặc định ghi first_token_ms tại sự kiện ngữ nghĩa không phải preamble đầu tiên. Chế độ nội dung hiển thị thực tế chỉ ghi khi có văn bản, tham số tool hoặc nội dung hình ảnh không rỗng.',
       fingerprintUnification: 'Hợp nhất fingerprint',
       fingerprintUnificationHint: 'Đồng nhất các header yêu cầu X-Stainless-* của những người dùng dùng chung một tài khoản OAuth. Khi tắt sẽ passthrough header gốc từ client.',
       metadataPassthrough: 'Passthrough metadata',

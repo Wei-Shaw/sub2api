@@ -710,6 +710,7 @@ export default mergeLocaleMessages(
     billingRateMultiplierHint: '0 nghĩa là không tính phí, chỉ ảnh hưởng tới phần tính phí của tài khoản',
     expiresAt: 'Hết hạn lúc',
     expiresAtHint: 'Để trống nghĩa là không hết hạn',
+    expiresAtTimezoneHint: 'Thời gian nhập được hiểu theo múi giờ trình duyệt của bạn ({timezone}).',
     higherPriorityFirst: 'Giá trị càng nhỏ thì ưu tiên càng cao',
     mixedScheduling: 'Dùng trong /v1/messages',
     mixedSchedulingHint: 'Sau khi bật, tài khoản có thể tham gia điều phối trong các nhóm Anthropic/Gemini',
