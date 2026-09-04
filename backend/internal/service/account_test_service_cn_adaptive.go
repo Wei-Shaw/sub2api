@@ -84,6 +84,8 @@ func (s *AccountTestService) testCNProviderAdaptiveAnthropicConnection(c *gin.Co
 	// Ollama Cloud Anthropic 兼容端点按 adaptive 实际选用的 Anthropic
 	// base_url 强制 Bearer，其余保持 extra/default 行为。
 	setAnthropicAPIKeyAuthHeader(req.Header, account, authToken, account.GetCNProtocolBaseURL(APIProtocolAnthropic))
+	// zhipu 探测同样按 ZCode Desktop 客户端身份出站（非 zhipu 账号 no-op）。
+	applyZCodeIdentityHeaders(req.Header, account, zcodeIdentityAnthropic)
 	account.ApplyHeaderOverrides(req.Header)
 	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
 
@@ -267,6 +269,8 @@ func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, a
 	// Ollama Cloud Anthropic 兼容端点按实际 base_url 强制 Bearer，其余保持
 	// extra/default 行为。
 	setAnthropicAPIKeyAuthHeader(req.Header, account, authToken, account.GetAnthropicProtocolBaseURL())
+	// zhipu 探测同样按 ZCode Desktop 客户端身份出站（非 zhipu 账号 no-op）。
+	applyZCodeIdentityHeaders(req.Header, account, zcodeIdentityAnthropic)
 	account.ApplyHeaderOverrides(req.Header)
 	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
 
