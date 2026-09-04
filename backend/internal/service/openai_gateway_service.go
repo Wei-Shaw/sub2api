@@ -83,6 +83,7 @@ var openaiAllowedHeaders = map[string]bool{
 	"x-codex-turn-state":      true,
 	"x-codex-turn-metadata":   true,
 	"x-codex-window-id":       true,
+	"x-opencode-session":      true,
 	responsesLiteHeaderKey:    true,
 }
 

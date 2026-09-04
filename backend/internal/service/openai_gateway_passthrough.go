@@ -991,6 +991,9 @@ func isOpenAIPassthroughAllowedRequestHeader(lowerKey string, allowTimeoutHeader
 	if lowerKey == "" {
 		return false
 	}
+	if lowerKey == "x-opencode-session" {
+		return true
+	}
 	if isOpenAIPassthroughTimeoutHeader(lowerKey) {
 		return allowTimeoutHeaders
 	}
