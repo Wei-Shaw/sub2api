@@ -1568,7 +1568,9 @@ func buildGrokResponsesRequest(ctx context.Context, c *gin.Context, account *Acc
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
+	// targetURL is produced by buildGrokResponsesURL, which applies the configured
+	// upstream URL validation and allowlist policy before this request is built.
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body)) // #nosec G704 -- validated upstream URL
 	if err != nil {
 		return nil, err
 	}

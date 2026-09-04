@@ -982,8 +982,11 @@ func TestCodexProfileDirectWSIngressRoundTrip(t *testing.T) {
 		t.Fatal("timed out waiting for direct WS ingress")
 	}
 	require.Zero(t, captureDialer.DialCount(), "Profile mode must use the host HTTP bridge instead of native upstream WebSocket")
-	require.Equal(t, "Codex Desktop", svc.httpUpstream.(*codexProfileEchoUpstream).requestHeader.Get("originator"))
-	require.Equal(t, "x86_64", gjson.GetBytes(svc.httpUpstream.(*codexProfileEchoUpstream).requestBody, "client_metadata.arch").String())
+	echo := svc.httpUpstream.(*codexProfileEchoUpstream)
+	originator := echo.requestHeader.Get("originator")
+	architecture := gjson.GetBytes(echo.requestBody, "client_metadata.arch").String()
+	require.Equal(t, "Codex Desktop", originator)
+	require.Equal(t, "x86_64", architecture)
 }
 
 func TestRefreshCodexProfileTurnPlanPrefersCurrentFrameTurnIdentity(t *testing.T) {
@@ -1026,19 +1029,6 @@ func TestRefreshCodexProfileTurnPlanPrefersCurrentFrameTurnIdentity(t *testing.T
 	require.True(t, profileField["os"].ClientPresent)
 	require.Equal(t, "linux", profileField["os"].ClientValue)
 	require.Equal(t, "arm64", profileField["arch"].ClientValue)
-}
-
-func valueFromMap(root map[string]any, keys ...string) string {
-	var value any = root
-	for _, key := range keys {
-		object, ok := value.(map[string]any)
-		if !ok {
-			return ""
-		}
-		value = object[key]
-	}
-	text, _ := value.(string)
-	return text
 }
 
 func codexProfileTestContext(userID, apiKeyID int64, profile CodexClientProfile, sessionHash string) context.Context {

@@ -219,7 +219,7 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			templateID, revision := *acc.CodexIdentityTemplateID, *acc.CodexIdentityTemplateAppliedRevision
 			reader, ok := h.adminService.(codexIdentityTemplateExportReader)
 			if !ok {
-				response.ErrorFrom(c, errors.New("Codex identity template export is unavailable"))
+				response.ErrorFrom(c, errors.New("codex identity template export is unavailable"))
 				return
 			}
 			template, templateErr := reader.GetCodexIdentityTemplateForExport(ctx, templateID)

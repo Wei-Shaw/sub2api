@@ -88,10 +88,6 @@ func (s *OpenAIGatewayService) BeginOpenAIWSIngressSessionPreemption(
 	return context.WithValue(preemptCtx, openAIWSSessionPreemptContextKey{}, true), cleanup, true
 }
 
-func newOpenAIWSSessionPreemptKey(groupID, apiKeyID int64, sessionHash string) (openAIWSSessionPreemptKey, bool) {
-	return newOpenAIWSSessionPreemptKeyWithProfile(groupID, apiKeyID, sessionHash, "")
-}
-
 func newOpenAIWSSessionPreemptKeyWithProfile(groupID, apiKeyID int64, sessionHash, profileScope string) (openAIWSSessionPreemptKey, bool) {
 	sessionHash = strings.TrimSpace(sessionHash)
 	if groupID <= 0 || apiKeyID <= 0 || sessionHash == "" {

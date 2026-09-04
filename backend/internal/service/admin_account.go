@@ -1015,7 +1015,7 @@ func (s *adminServiceImpl) materializeCodexIdentityAssignment(
 	}
 	reader, ok := s.accountRepo.(CodexIdentityTemplateReader)
 	if !ok {
-		return CodexIdentityPolicySpec{}, nil, nil, errors.New("Codex identity template reader is not configured")
+		return CodexIdentityPolicySpec{}, nil, nil, errors.New("codex identity template reader is not configured")
 	}
 	template, err := reader.GetCodexIdentityTemplate(ctx, assignment.TemplateID)
 	if (err != nil || assignment.ExpectedTemplateName != "" &&
@@ -1057,7 +1057,7 @@ func (s *adminServiceImpl) GetCodexIdentityTemplateForExport(
 ) (*CodexIdentityTemplate, error) {
 	reader, ok := s.accountRepo.(CodexIdentityTemplateReader)
 	if !ok {
-		return nil, errors.New("Codex identity template reader is not configured")
+		return nil, errors.New("codex identity template reader is not configured")
 	}
 	return reader.GetCodexIdentityTemplate(ctx, templateID)
 }
