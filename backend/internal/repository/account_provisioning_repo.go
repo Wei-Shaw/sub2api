@@ -467,14 +467,10 @@ func transitionProvisionedCodexIdentity(
 		if exists && newProfile.Epoch == oldProfile.Epoch {
 			continue
 		}
-		if !exists {
-			if _, err := client.ExecContext(ctx, `
-				DELETE FROM account_codex_device_bindings
-				WHERE account_id=$1 AND os_class=$2 AND canonical_surface=$3
-			`, accountID, oldProfile.OSClass, oldProfile.CanonicalSurface); err != nil {
-				return err
-			}
-		}
+		// Keep bindings on removed or replaced profiles while their affinity
+		// lease is still valid. A retry or in-flight conversation must be able
+		// to finish on the draining slot; ResolveCodexDeviceBinding removes it
+		// after the affinity TTL expires.
 		if _, err := client.ExecContext(ctx, `
 			UPDATE account_codex_device_slots AS slots
 			SET state='draining', updated_at=NOW()

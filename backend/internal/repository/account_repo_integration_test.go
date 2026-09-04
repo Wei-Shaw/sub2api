@@ -185,7 +185,7 @@ func TestConcurrentPolicyUpdatesAllocateDistinctVersionsAndEpochs(t *testing.T) 
 	require.NoError(t, err)
 	firstPolicy := first.CodexIdentityPolicy
 	firstPolicy.Profiles = append([]service.CodexOSProfilePolicy(nil), firstPolicy.Profiles...)
-	firstPolicy.Profiles[0].CanonicalSurface = service.CodexSurfaceDesktop
+	firstPolicy.Profiles[0].Architecture = service.CodexArchARM64
 	secondPolicy := second.CodexIdentityPolicy
 	secondPolicy.Profiles = append([]service.CodexOSProfilePolicy(nil), secondPolicy.Profiles...)
 	secondPolicy.Profiles[0].SlotCount = 2
@@ -1244,7 +1244,7 @@ func (s *AccountRepoSuite) TestCodexDeviceBindingDrainsAfterAffinitySilence() {
 
 	nextPolicy := account.CodexIdentityPolicy
 	nextPolicy.Profiles = append([]service.CodexOSProfilePolicy(nil), account.CodexIdentityPolicy.Profiles...)
-	nextPolicy.Profiles[0].CanonicalSurface = service.CodexSurfaceDesktop
+	nextPolicy.Profiles[0].SlotCount = 1
 	s.Require().NoError(s.repo.UpdateProvisionedAccount(s.ctx, &service.AccountProvisioningSpec{
 		Account: account, Identity: &nextPolicy, FinalStatus: service.StatusActive,
 		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
@@ -1282,6 +1282,15 @@ func (s *AccountRepoSuite) TestCodexDeviceBindingDrainsAfterAffinitySilence() {
 		Account: account, Identity: &removeLinux, FinalStatus: service.StatusActive,
 		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
 	}, nil, nil, account.RateMultiplier))
+	// Removed profiles retain an affinity binding until its TTL expires. Mark
+	// the binding stale and run the normal finalizer before asserting cleanup.
+	_, err = s.repo.sql.ExecContext(s.ctx, `
+		UPDATE account_codex_device_bindings SET updated_at=NOW()-INTERVAL '2 minutes'
+		WHERE account_id=$1 AND os_class='linux'
+	`, account.ID)
+	s.Require().NoError(err)
+	_, err = s.repo.FinalizeDrainedCodexDeviceSlots(s.ctx, account.ID)
+	s.Require().NoError(err)
 	var linuxBindingCount, linuxSlotCount int
 	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, `
 		SELECT COUNT(*) FROM account_codex_device_bindings
