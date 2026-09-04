@@ -23,6 +23,8 @@ type AccountCodexDeviceBinding struct {
 	APIKeyID int64 `json:"api_key_id,omitempty"`
 	// OsClass holds the value of the "os_class" field.
 	OsClass string `json:"os_class,omitempty"`
+	// CanonicalSurface holds the value of the "canonical_surface" field.
+	CanonicalSurface string `json:"canonical_surface,omitempty"`
 	// SlotID holds the value of the "slot_id" field.
 	SlotID int64 `json:"slot_id,omitempty"`
 	// PolicyVersion holds the value of the "policy_version" field.
@@ -41,7 +43,7 @@ func (*AccountCodexDeviceBinding) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case accountcodexdevicebinding.FieldID, accountcodexdevicebinding.FieldAccountID, accountcodexdevicebinding.FieldAPIKeyID, accountcodexdevicebinding.FieldSlotID, accountcodexdevicebinding.FieldPolicyVersion:
 			values[i] = new(sql.NullInt64)
-		case accountcodexdevicebinding.FieldOsClass:
+		case accountcodexdevicebinding.FieldOsClass, accountcodexdevicebinding.FieldCanonicalSurface:
 			values[i] = new(sql.NullString)
 		case accountcodexdevicebinding.FieldCreatedAt, accountcodexdevicebinding.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -83,6 +85,12 @@ func (_m *AccountCodexDeviceBinding) assignValues(columns []string, values []any
 				return fmt.Errorf("unexpected type %T for field os_class", values[i])
 			} else if value.Valid {
 				_m.OsClass = value.String
+			}
+		case accountcodexdevicebinding.FieldCanonicalSurface:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field canonical_surface", values[i])
+			} else if value.Valid {
+				_m.CanonicalSurface = value.String
 			}
 		case accountcodexdevicebinding.FieldSlotID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -152,6 +160,9 @@ func (_m *AccountCodexDeviceBinding) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("os_class=")
 	builder.WriteString(_m.OsClass)
+	builder.WriteString(", ")
+	builder.WriteString("canonical_surface=")
+	builder.WriteString(_m.CanonicalSurface)
 	builder.WriteString(", ")
 	builder.WriteString("slot_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SlotID))

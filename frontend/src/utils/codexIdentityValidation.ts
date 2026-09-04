@@ -1,6 +1,8 @@
 import {
   CODEX_AFFINITY_TTL_MAX_SECONDS,
   CODEX_AFFINITY_TTL_MIN_SECONDS,
+  CODEX_CLIENT_VERSION_MAX_LENGTH,
+  CODEX_CLIENT_VERSION_MIN,
   CODEX_DEVICE_SLOT_MAX,
   CODEX_DEVICE_SLOT_MIN,
   CODEX_OS_PROFILE_IDS,
@@ -8,6 +10,7 @@ import {
   CODEX_SESSION_SLOT_MIN,
   type CodexArchitecture,
   type CodexClientSurface,
+  type CodexClientVersionMode,
   type CodexIdentityPolicy,
   type CodexIdentityProxyOption,
   type CodexIdentityValidationIssue,
@@ -52,6 +55,10 @@ const VALIDATION_MESSAGE_KEYS: Record<string, string> = {
   SESSION_SLOT_COUNT_OUT_OF_RANGE: 'sessionSlotCountOutOfRange',
   SESSION_SLOT_COUNT_NOT_APPLICABLE: 'sessionSlotCountNotApplicable',
   DEVICE_SHARED_RESTRICTIONS_INVALID: 'deviceSharedRestrictionsInvalid',
+  CLIENT_VERSION_MODE_INVALID: 'clientVersionModeInvalid',
+  CLIENT_VERSION_REQUIRED: 'clientVersionRequired',
+  CLIENT_VERSION_INVALID: 'clientVersionInvalid',
+  CLIENT_VERSION_TOO_OLD: 'clientVersionTooOld',
 }
 
 export const codexIdentityValidationMessageKey = (code: string): string | null => {
@@ -99,6 +106,7 @@ export const createDefaultCodexOSProfile = (
     canonical_surface: canonicalSurface,
     slot_count: 1,
     proxy_mode: 'inherit',
+    slots: [{ index: 0, proxy_mode: 'inherit', client_version_mode: 'inherit' }],
   }
 }
 
@@ -136,6 +144,27 @@ const validateProxyID = (
 }
 
 const CODEX_PROXY_MODES: readonly CodexProxyMode[] = ['inherit', 'proxy', 'direct']
+const CODEX_CLIENT_VERSION_MODES: readonly CodexClientVersionMode[] = ['inherit', 'pinned']
+const CODEX_CLIENT_VERSION_PATTERN = /^[0-9]+(\.[0-9]+){1,3}(-[0-9A-Za-z.]+)?$/
+
+const compareCodexVersions = (left: string, right: string): number => {
+  const parse = (value: string) => value.split('-')[0].split('.').map((part) => Number(part) || 0)
+  const leftParts = parse(left)
+  const rightParts = parse(right)
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0)
+    if (difference !== 0) return difference
+  }
+  return 0
+}
+
+export const normalizeCodexClientVersion = (value: string | undefined): string => {
+  const trimmed = value?.trim() ?? ''
+  if (!trimmed || trimmed.length > CODEX_CLIENT_VERSION_MAX_LENGTH || !CODEX_CLIENT_VERSION_PATTERN.test(trimmed)) {
+    return ''
+  }
+  return trimmed
+}
 
 const inferredCodexProxyMode = (
   mode: CodexProxyMode | '' | undefined,
@@ -164,6 +193,38 @@ const validateProxyRoute = (
   }
   if (proxyID !== undefined) {
     addIssue(errors, 'PROXY_NOT_ALLOWED', `${path}.proxy_id`, 'Proxy ID is only valid in explicit proxy mode.')
+  }
+}
+
+const validateClientVersion = (
+  modeInput: CodexClientVersionMode | '' | undefined,
+  versionInput: string | undefined,
+  path: string,
+  errors: CodexIdentityValidationIssue[],
+) => {
+  const mode = modeInput || 'inherit'
+  const version = versionInput?.trim() ?? ''
+  if (!CODEX_CLIENT_VERSION_MODES.includes(mode)) {
+    addIssue(errors, 'CLIENT_VERSION_MODE_INVALID', `${path}.client_version_mode`, 'The selected Codex client version mode is invalid.')
+    return
+  }
+  if (mode === 'inherit') {
+    if (version !== '') {
+      addIssue(errors, 'CLIENT_VERSION_INVALID', `${path}.client_version`, 'Automatic Codex client version mode cannot include a fixed version.')
+    }
+    return
+  }
+  if (!version) {
+    addIssue(errors, 'CLIENT_VERSION_REQUIRED', `${path}.client_version`, 'Enter a Codex client version when fixed version mode is selected.')
+    return
+  }
+  const normalized = normalizeCodexClientVersion(version)
+  if (!normalized) {
+    addIssue(errors, 'CLIENT_VERSION_INVALID', `${path}.client_version`, 'Enter a valid Codex client version such as 0.146.0.')
+    return
+  }
+  if (compareCodexVersions(normalized, CODEX_CLIENT_VERSION_MIN) < 0) {
+    addIssue(errors, 'CLIENT_VERSION_TOO_OLD', `${path}.client_version`, `Codex client version must be at least ${CODEX_CLIENT_VERSION_MIN}.`)
   }
 }
 
@@ -217,6 +278,7 @@ const validateProfile = (
     }
     seenSlots.add(slot.index)
     validateProxyRoute(slot.proxy_mode, slot.proxy_id, slotPath, errors, availableProxyIDs)
+    validateClientVersion(slot.client_version_mode, slot.client_version, slotPath, errors)
   }
 }
 
@@ -389,12 +451,18 @@ export const normalizeCodexIdentityPolicy = (policy: CodexIdentityPolicy): Codex
               .sort((left, right) => left.index - right.index)
               .map((slot) => {
                 const slotProxyMode = inferredCodexProxyMode(slot.proxy_mode, slot.proxy_id)
+                const clientVersionMode = slot.client_version_mode || 'inherit'
+                const clientVersion = clientVersionMode === 'pinned'
+                  ? normalizeCodexClientVersion(slot.client_version)
+                  : ''
                 return {
                   index: slot.index,
                   proxy_mode: slotProxyMode,
                   ...(slotProxyMode === 'proxy' && slot.proxy_id !== undefined
                     ? { proxy_id: slot.proxy_id }
                     : {}),
+                  client_version_mode: clientVersionMode,
+                  ...(clientVersionMode === 'pinned' && clientVersion ? { client_version: clientVersion } : {}),
                 }
               }),
           }

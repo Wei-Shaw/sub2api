@@ -198,7 +198,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			if c != nil && c.Request != nil {
 				clientHeaders = c.Request.Header
 			}
-			fpIDs := resolveCodexFingerprintIDsFromRequest(account, clientHeaders)
+			scope := ""
+			if c != nil && c.Request != nil {
+				scope = HTTPUpstreamIsolationScopeFromContext(c.Request.Context())
+			}
+			fpIDs := resolveCodexFingerprintIDsFromRequestWithScope(account, clientHeaders, scope)
 			if fpIDs != nil {
 				fpBody, fpChanged, fpErr := applyCodexFingerprintClientMetadataRaw(body, fpIDs)
 				if fpErr != nil {
@@ -210,7 +214,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			}
 			stageCodexFingerprintIDs(c, fpIDs)
 		}
-		if plan := stagedCodexIdentityAttemptPlan(c, account); plan != nil {
+		if plan := stagedCodexIdentityAttemptPlan(c, account); plan != nil && !isOpenAIResponsesCompactPath(c) {
 			profileBody, profileChanged, profileErr := ApplyCodexIdentityPlanToJSON(body, plan)
 			if profileErr != nil {
 				return nil, profileErr

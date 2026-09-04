@@ -103,6 +103,91 @@ func TestCodexIdentityPolicyRejectsInvalidShapes(t *testing.T) {
 	}
 }
 
+func TestCodexIdentityPolicyNormalizesAndValidatesSlotClientVersions(t *testing.T) {
+	policy := CodexIdentityPolicySpec{
+		Mode: CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []CodexOSProfilePolicy{{
+			OSClass: CodexOSLinux, CanonicalSurface: CodexSurfaceCLI,
+			Architecture: CodexArchX8664, SlotCount: 2,
+			Slots: []CodexDeviceSlotPolicy{
+				{Index: 0, ClientVersionMode: CodexClientVersionPinned, ClientVersion: " 0.200.1 "},
+				{Index: 1},
+			},
+		}},
+	}
+	normalized, err := policy.NormalizeAndValidate(PlatformOpenAI, AccountTypeOAuth)
+	require.NoError(t, err)
+	require.Equal(t, CodexClientVersionPinned, normalized.Profiles[0].Slots[0].ClientVersionMode)
+	require.Equal(t, "0.200.1", normalized.Profiles[0].Slots[0].ClientVersion)
+	require.Equal(t, CodexClientVersionInherit, normalized.Profiles[0].Slots[1].ClientVersionMode)
+	require.Empty(t, normalized.Profiles[0].Slots[1].ClientVersion)
+
+	for name, slot := range map[string]CodexDeviceSlotPolicy{
+		"inherit with version": {Index: 0, ClientVersionMode: CodexClientVersionInherit, ClientVersion: "0.200.1"},
+		"invalid pinned":       {Index: 0, ClientVersionMode: CodexClientVersionPinned, ClientVersion: "latest"},
+		"pinned below minimum": {Index: 0, ClientVersionMode: CodexClientVersionPinned, ClientVersion: "0.143.9"},
+		"unsupported mode":     {Index: 0, ClientVersionMode: "automatic"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := policy
+			candidate.Profiles = append([]CodexOSProfilePolicy(nil), policy.Profiles...)
+			candidate.Profiles[0].SlotCount = 1
+			candidate.Profiles[0].Slots = []CodexDeviceSlotPolicy{slot}
+			_, err := candidate.NormalizeAndValidate(PlatformOpenAI, AccountTypeOAuth)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestCodexIdentityPolicyPinnedSlotVersionRotatesProfileEpoch(t *testing.T) {
+	created, err := PrepareCodexIdentityPolicyForCreate(CodexIdentityPolicySpec{
+		Mode: CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []CodexOSProfilePolicy{{
+			OSClass: CodexOSLinux, CanonicalSurface: CodexSurfaceCLI,
+			Architecture: CodexArchX8664, SlotCount: 1,
+			Slots: []CodexDeviceSlotPolicy{{Index: 0}},
+		}},
+	}, PlatformOpenAI, AccountTypeOAuth)
+	require.NoError(t, err)
+
+	requested := created
+	requested.Profiles = append([]CodexOSProfilePolicy(nil), created.Profiles...)
+	requested.Profiles[0].Slots = append([]CodexDeviceSlotPolicy(nil), created.Profiles[0].Slots...)
+	requested.Profiles[0].Slots[0].ClientVersionMode = CodexClientVersionPinned
+	requested.Profiles[0].Slots[0].ClientVersion = "0.200.1"
+	updated, changed, err := PrepareCodexIdentityPolicyForUpdate(created, requested, PlatformOpenAI, AccountTypeOAuth)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.EqualValues(t, 2, updated.Version)
+	require.EqualValues(t, 2, updated.Profiles[0].Epoch)
+}
+
+func TestCodexIdentityPolicySparseAndExplicitInheritSlotsAreRuntimeEquivalent(t *testing.T) {
+	base := CodexIdentityPolicySpec{
+		Mode: CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []CodexOSProfilePolicy{{
+			OSClass: CodexOSLinux, CanonicalSurface: CodexSurfaceCLI,
+			Architecture: CodexArchX8664, SlotCount: 2,
+		}},
+	}
+	explicit := base
+	explicit.Profiles = append([]CodexOSProfilePolicy(nil), base.Profiles...)
+	explicit.Profiles[0].Slots = []CodexDeviceSlotPolicy{
+		{Index: 0, ProxyMode: CodexProxyInherit, ClientVersionMode: CodexClientVersionInherit},
+		{Index: 1, ProxyMode: CodexProxyInherit, ClientVersionMode: CodexClientVersionInherit},
+	}
+	updated, changed, err := PrepareCodexIdentityPolicyForUpdate(base, explicit, PlatformOpenAI, AccountTypeOAuth)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.EqualValues(t, 1, updated.Profiles[0].Epoch)
+
+	sparseHash, err := CodexIdentityPolicyRuntimeSHA256(base)
+	require.NoError(t, err)
+	explicitHash, err := CodexIdentityPolicyRuntimeSHA256(explicit)
+	require.NoError(t, err)
+	require.Equal(t, sparseHash, explicitHash)
+}
+
 func TestPendingAccountIsNotSchedulable(t *testing.T) {
 	account := &Account{
 		Status:            StatusActive,

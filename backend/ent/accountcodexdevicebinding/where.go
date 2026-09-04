@@ -69,6 +69,11 @@ func OsClass(v string) predicate.AccountCodexDeviceBinding {
 	return predicate.AccountCodexDeviceBinding(sql.FieldEQ(FieldOsClass, v))
 }
 
+// CanonicalSurface applies equality check predicate on the "canonical_surface" field. It's identical to CanonicalSurfaceEQ.
+func CanonicalSurface(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldEQ(FieldCanonicalSurface, v))
+}
+
 // SlotID applies equality check predicate on the "slot_id" field. It's identical to SlotIDEQ.
 func SlotID(v int64) predicate.AccountCodexDeviceBinding {
 	return predicate.AccountCodexDeviceBinding(sql.FieldEQ(FieldSlotID, v))
@@ -232,6 +237,71 @@ func OsClassEqualFold(v string) predicate.AccountCodexDeviceBinding {
 // OsClassContainsFold applies the ContainsFold predicate on the "os_class" field.
 func OsClassContainsFold(v string) predicate.AccountCodexDeviceBinding {
 	return predicate.AccountCodexDeviceBinding(sql.FieldContainsFold(FieldOsClass, v))
+}
+
+// CanonicalSurfaceEQ applies the EQ predicate on the "canonical_surface" field.
+func CanonicalSurfaceEQ(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldEQ(FieldCanonicalSurface, v))
+}
+
+// CanonicalSurfaceNEQ applies the NEQ predicate on the "canonical_surface" field.
+func CanonicalSurfaceNEQ(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldNEQ(FieldCanonicalSurface, v))
+}
+
+// CanonicalSurfaceIn applies the In predicate on the "canonical_surface" field.
+func CanonicalSurfaceIn(vs ...string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldIn(FieldCanonicalSurface, vs...))
+}
+
+// CanonicalSurfaceNotIn applies the NotIn predicate on the "canonical_surface" field.
+func CanonicalSurfaceNotIn(vs ...string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldNotIn(FieldCanonicalSurface, vs...))
+}
+
+// CanonicalSurfaceGT applies the GT predicate on the "canonical_surface" field.
+func CanonicalSurfaceGT(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldGT(FieldCanonicalSurface, v))
+}
+
+// CanonicalSurfaceGTE applies the GTE predicate on the "canonical_surface" field.
+func CanonicalSurfaceGTE(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldGTE(FieldCanonicalSurface, v))
+}
+
+// CanonicalSurfaceLT applies the LT predicate on the "canonical_surface" field.
+func CanonicalSurfaceLT(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldLT(FieldCanonicalSurface, v))
+}
+
+// CanonicalSurfaceLTE applies the LTE predicate on the "canonical_surface" field.
+func CanonicalSurfaceLTE(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldLTE(FieldCanonicalSurface, v))
+}
+
+// CanonicalSurfaceContains applies the Contains predicate on the "canonical_surface" field.
+func CanonicalSurfaceContains(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldContains(FieldCanonicalSurface, v))
+}
+
+// CanonicalSurfaceHasPrefix applies the HasPrefix predicate on the "canonical_surface" field.
+func CanonicalSurfaceHasPrefix(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldHasPrefix(FieldCanonicalSurface, v))
+}
+
+// CanonicalSurfaceHasSuffix applies the HasSuffix predicate on the "canonical_surface" field.
+func CanonicalSurfaceHasSuffix(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldHasSuffix(FieldCanonicalSurface, v))
+}
+
+// CanonicalSurfaceEqualFold applies the EqualFold predicate on the "canonical_surface" field.
+func CanonicalSurfaceEqualFold(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldEqualFold(FieldCanonicalSurface, v))
+}
+
+// CanonicalSurfaceContainsFold applies the ContainsFold predicate on the "canonical_surface" field.
+func CanonicalSurfaceContainsFold(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldContainsFold(FieldCanonicalSurface, v))
 }
 
 // SlotIDEQ applies the EQ predicate on the "slot_id" field.

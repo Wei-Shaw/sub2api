@@ -8,7 +8,7 @@ import (
 )
 
 func TestCodexOSProfileDevicePoolMigrationDefinesLifecycleGraph(t *testing.T) {
-	payload, err := FS.ReadFile("229_codex_os_profile_device_pool.sql")
+	payload, err := FS.ReadFile("234_codex_os_profile_device_pool.sql")
 	require.NoError(t, err)
 	sql := string(payload)
 	for _, required := range []string{

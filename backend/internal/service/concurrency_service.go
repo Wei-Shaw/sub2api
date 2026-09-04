@@ -95,15 +95,45 @@ var (
 )
 
 type CodexDeviceConversationLease struct {
-	ctx     context.Context
-	cancel  context.CancelCauseFunc
-	cache   CodexDeviceConversationLeaseCache
-	slotKey string
-	leaseID string
+	// ctx follows the client/attempt lifecycle and is exposed to gateway logic.
+	// The refresh and upstream contexts below deliberately outlive a client
+	// disconnect so detached HTTP/SSE draining cannot lose the slot lease.
+	ctx            context.Context
+	cancel         context.CancelCauseFunc
+	refreshCtx     context.Context
+	refreshCancel  context.CancelCauseFunc
+	upstreamCtx    context.Context
+	upstreamCancel context.CancelCauseFunc
+	cache          CodexDeviceConversationLeaseCache
+	slotKey        string
+	leaseID        string
 
-	stopOnce    sync.Once
-	stopCh      chan struct{}
-	refreshDone chan struct{}
+	stopOnce        sync.Once
+	stopCh          chan struct{}
+	refreshDone     chan struct{}
+	refreshInterval time.Duration
+	leaseTTL        time.Duration
+	operationTO     time.Duration
+}
+
+type codexDeviceConversationLeaseContextKey struct{}
+
+func withCodexDeviceConversationLeaseContext(ctx context.Context, lease *CodexDeviceConversationLease) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if lease == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, codexDeviceConversationLeaseContextKey{}, lease)
+}
+
+func codexDeviceConversationLeaseFromContext(ctx context.Context) *CodexDeviceConversationLease {
+	if ctx == nil {
+		return nil
+	}
+	lease, _ := ctx.Value(codexDeviceConversationLeaseContextKey{}).(*CodexDeviceConversationLease)
+	return lease
 }
 
 func (l *CodexDeviceConversationLease) Context() context.Context {
@@ -113,6 +143,16 @@ func (l *CodexDeviceConversationLease) Context() context.Context {
 	return l.ctx
 }
 
+// UpstreamContext returns a context that preserves request values but is not
+// canceled merely because the downstream client disconnected. It is canceled
+// on explicit release or when Redis ownership is lost.
+func (l *CodexDeviceConversationLease) UpstreamContext() context.Context {
+	if l == nil || l.upstreamCtx == nil {
+		return context.Background()
+	}
+	return l.upstreamCtx
+}
+
 func (l *CodexDeviceConversationLease) Release() {
 	if l == nil {
 		return
@@ -120,6 +160,12 @@ func (l *CodexDeviceConversationLease) Release() {
 	l.stopOnce.Do(func() {
 		if l.stopCh != nil {
 			close(l.stopCh)
+		}
+		if l.refreshCancel != nil {
+			l.refreshCancel(nil)
+		}
+		if l.upstreamCancel != nil {
+			l.upstreamCancel(nil)
 		}
 		if l.cancel != nil {
 			l.cancel(nil)
@@ -140,25 +186,49 @@ func (l *CodexDeviceConversationLease) Release() {
 
 func (l *CodexDeviceConversationLease) refreshLoop() {
 	defer close(l.refreshDone)
-	ticker := time.NewTicker(openAIWSIngressLeaseRefreshInterval)
+	refreshInterval := l.refreshInterval
+	if refreshInterval <= 0 {
+		refreshInterval = openAIWSIngressLeaseRefreshInterval
+	}
+	leaseTTL := l.leaseTTL
+	if leaseTTL <= 0 {
+		leaseTTL = openAIWSIngressLeaseTTL
+	}
+	operationTO := l.operationTO
+	if operationTO <= 0 {
+		operationTO = openAIWSIngressLeaseOperationTO
+	}
+	refreshCtx := l.refreshCtx
+	if refreshCtx == nil {
+		refreshCtx = context.Background()
+	}
+	ticker := time.NewTicker(refreshInterval)
 	defer ticker.Stop()
 	lastConfirmedAt := time.Now()
 	for {
 		select {
-		case <-l.ctx.Done():
+		case <-refreshCtx.Done():
 			return
 		case <-l.stopCh:
 			return
 		case <-ticker.C:
-			refreshCtx, cancel := context.WithTimeout(context.Background(), openAIWSIngressLeaseOperationTO)
-			owned, err := l.cache.RefreshCodexDeviceConversationLease(refreshCtx, l.slotKey, l.leaseID)
+			operationCtx, cancel := context.WithTimeout(context.Background(), operationTO)
+			owned, err := l.cache.RefreshCodexDeviceConversationLease(operationCtx, l.slotKey, l.leaseID)
 			cancel()
 			if err == nil && owned {
 				lastConfirmedAt = time.Now()
 				continue
 			}
-			if err == nil || time.Since(lastConfirmedAt) >= openAIWSIngressLeaseTTL {
-				l.cancel(ErrCodexDeviceConversationLeaseLost)
+			if err == nil || time.Since(lastConfirmedAt) >= leaseTTL {
+				if l.upstreamCancel != nil {
+					l.upstreamCancel(ErrCodexDeviceConversationLeaseLost)
+				}
+				if l.cancel != nil {
+					l.cancel(ErrCodexDeviceConversationLeaseLost)
+				}
+				if l.refreshCancel != nil {
+					l.refreshCancel(ErrCodexDeviceConversationLeaseLost)
+				}
 				return
 			}
 		}
@@ -407,14 +477,23 @@ func (s *ConcurrencyService) AcquireCodexDeviceConversationLease(
 		ctx = context.Background()
 	}
 	leaseCtx, leaseCancel := context.WithCancelCause(ctx)
+	refreshCtx, refreshCancel := context.WithCancelCause(context.Background())
+	upstreamCtx, upstreamCancel := context.WithCancelCause(context.WithoutCancel(ctx))
 	lease := &CodexDeviceConversationLease{
-		ctx:         leaseCtx,
-		cancel:      leaseCancel,
-		cache:       cache,
-		slotKey:     slotKey,
-		leaseID:     leaseID,
-		stopCh:      make(chan struct{}),
-		refreshDone: make(chan struct{}),
+		ctx:             leaseCtx,
+		cancel:          leaseCancel,
+		refreshCtx:      refreshCtx,
+		refreshCancel:   refreshCancel,
+		upstreamCtx:     upstreamCtx,
+		upstreamCancel:  upstreamCancel,
+		cache:           cache,
+		slotKey:         slotKey,
+		leaseID:         leaseID,
+		stopCh:          make(chan struct{}),
+		refreshDone:     make(chan struct{}),
+		refreshInterval: openAIWSIngressLeaseRefreshInterval,
+		leaseTTL:        openAIWSIngressLeaseTTL,
+		operationTO:     openAIWSIngressLeaseOperationTO,
 	}
 	go lease.refreshLoop()
 	return lease, true, nil

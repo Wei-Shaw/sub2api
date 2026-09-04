@@ -358,6 +358,26 @@ func effectiveCodexProfileProxyID(account *Account, profile CodexOSProfilePolicy
 	return nil
 }
 
+func codexProfileSlotClientVersion(profile CodexOSProfilePolicy, slotIndex int) (CodexClientVersionMode, string) {
+	for _, slot := range profile.Slots {
+		if slot.Index == slotIndex {
+			return slot.ClientVersionMode, slot.ClientVersion
+		}
+	}
+	return CodexClientVersionInherit, ""
+}
+
+func (s *OpenAIGatewayService) resolveCodexDeviceSlotClientVersion(ctx context.Context, slot *CodexResolvedDeviceSlot) (string, error) {
+	if slot == nil {
+		return "", errors.New("codex client version requires a resolved device slot")
+	}
+	var settings *SettingService
+	if s != nil {
+		settings = s.settingService
+	}
+	return resolveEffectiveCodexClientVersion(ctx, settings, slot.ClientVersionMode, slot.ClientVersion)
+}
+
 func (s *OpenAIGatewayService) prepareCodexProfileAttempt(
 	ctx context.Context,
 	c *gin.Context,
@@ -445,14 +465,25 @@ func (s *OpenAIGatewayService) prepareCodexProfileAttempt(
 	if resolvedBinding == nil {
 		return nil, errors.New("codex device binding resolver returned nil")
 	}
-	attemptProfile, err := ResolveCodexRuntimeProfile(CodexOSProfilePolicy{
+	clientVersionMode, clientVersion := codexProfileSlotClientVersion(profilePolicy, resolvedBinding.SlotIndex)
+	if strings.TrimSpace(string(resolvedBinding.ClientVersionMode)) == "" {
+		resolvedBinding.ClientVersionMode = clientVersionMode
+	}
+	if strings.TrimSpace(resolvedBinding.ClientVersion) == "" {
+		resolvedBinding.ClientVersion = clientVersion
+	}
+	effectiveClientVersion, err := s.resolveCodexDeviceSlotClientVersion(ctx, resolvedBinding)
+	if err != nil {
+		return nil, fmt.Errorf("resolve bound Codex client version: %w", err)
+	}
+	attemptProfile, err := ResolveCodexRuntimeProfileWithVersion(CodexOSProfilePolicy{
 		OSClass:          resolvedBinding.OSClass,
 		CanonicalSurface: resolvedBinding.CanonicalSurface,
 		Architecture:     resolvedBinding.Architecture,
 		SlotCount:        1,
 		Epoch:            resolvedBinding.Epoch,
 		CatalogVersion:   resolvedBinding.CatalogVersion,
-	})
+	}, effectiveClientVersion)
 	if err != nil {
 		return nil, fmt.Errorf("resolve bound Codex profile: %w", err)
 	}
@@ -564,7 +595,10 @@ func (s *OpenAIGatewayService) RestoreCodexProfileRetryPayload(c *gin.Context, a
 func (s *OpenAIGatewayService) CodexProfileAttemptContext(c *gin.Context, account *Account, fallback context.Context) context.Context {
 	plan := stagedCodexIdentityAttemptPlan(c, account)
 	if plan != nil && plan.conversationLease != nil {
-		return plan.conversationLease.Context()
+		return withCodexDeviceConversationLeaseContext(
+			plan.conversationLease.Context(),
+			plan.conversationLease,
+		)
 	}
 	if fallback == nil {
 		return context.Background()

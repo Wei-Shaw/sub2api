@@ -249,11 +249,16 @@ const cloneProfile = (profile: CodexOSProfilePolicy): CodexOSProfilePolicy => ({
   slot_count: profile.slot_count,
   proxy_mode: profile.proxy_mode,
   ...(profile.proxy_id !== undefined ? { proxy_id: profile.proxy_id } : {}),
-  slots: (profile.slots ?? []).map((slot) => ({
-    index: slot.index,
-    proxy_mode: slot.proxy_mode,
-    ...(slot.proxy_id !== undefined ? { proxy_id: slot.proxy_id } : {}),
-  })),
+  slots: (profile.slots ?? [])
+    .filter((slot) => slot.index >= 0 && slot.index < profile.slot_count)
+    .sort((left, right) => left.index - right.index)
+    .map((slot) => ({
+      index: slot.index,
+      proxy_mode: slot.proxy_mode,
+      ...(slot.proxy_id !== undefined ? { proxy_id: slot.proxy_id } : {}),
+      client_version_mode: slot.client_version_mode ?? 'inherit',
+      ...(slot.client_version_mode === 'pinned' && slot.client_version ? { client_version: slot.client_version } : {}),
+    })),
 })
 
 const policyFromTemplate = (item: CodexIdentityTemplate): CodexIdentityPolicy => ({

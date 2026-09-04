@@ -79,6 +79,16 @@ func ProxyID(v int64) predicate.AccountCodexDeviceSlot {
 	return predicate.AccountCodexDeviceSlot(sql.FieldEQ(FieldProxyID, v))
 }
 
+// ClientVersionMode applies equality check predicate on the "client_version_mode" field. It's identical to ClientVersionModeEQ.
+func ClientVersionMode(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldEQ(FieldClientVersionMode, v))
+}
+
+// ClientVersion applies equality check predicate on the "client_version" field. It's identical to ClientVersionEQ.
+func ClientVersion(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldEQ(FieldClientVersion, v))
+}
+
 // Epoch applies equality check predicate on the "epoch" field. It's identical to EpochEQ.
 func Epoch(v int64) predicate.AccountCodexDeviceSlot {
 	return predicate.AccountCodexDeviceSlot(sql.FieldEQ(FieldEpoch, v))
@@ -332,6 +342,136 @@ func ProxyIDIsNil() predicate.AccountCodexDeviceSlot {
 // ProxyIDNotNil applies the NotNil predicate on the "proxy_id" field.
 func ProxyIDNotNil() predicate.AccountCodexDeviceSlot {
 	return predicate.AccountCodexDeviceSlot(sql.FieldNotNull(FieldProxyID))
+}
+
+// ClientVersionModeEQ applies the EQ predicate on the "client_version_mode" field.
+func ClientVersionModeEQ(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldEQ(FieldClientVersionMode, v))
+}
+
+// ClientVersionModeNEQ applies the NEQ predicate on the "client_version_mode" field.
+func ClientVersionModeNEQ(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldNEQ(FieldClientVersionMode, v))
+}
+
+// ClientVersionModeIn applies the In predicate on the "client_version_mode" field.
+func ClientVersionModeIn(vs ...string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldIn(FieldClientVersionMode, vs...))
+}
+
+// ClientVersionModeNotIn applies the NotIn predicate on the "client_version_mode" field.
+func ClientVersionModeNotIn(vs ...string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldNotIn(FieldClientVersionMode, vs...))
+}
+
+// ClientVersionModeGT applies the GT predicate on the "client_version_mode" field.
+func ClientVersionModeGT(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldGT(FieldClientVersionMode, v))
+}
+
+// ClientVersionModeGTE applies the GTE predicate on the "client_version_mode" field.
+func ClientVersionModeGTE(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldGTE(FieldClientVersionMode, v))
+}
+
+// ClientVersionModeLT applies the LT predicate on the "client_version_mode" field.
+func ClientVersionModeLT(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldLT(FieldClientVersionMode, v))
+}
+
+// ClientVersionModeLTE applies the LTE predicate on the "client_version_mode" field.
+func ClientVersionModeLTE(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldLTE(FieldClientVersionMode, v))
+}
+
+// ClientVersionModeContains applies the Contains predicate on the "client_version_mode" field.
+func ClientVersionModeContains(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldContains(FieldClientVersionMode, v))
+}
+
+// ClientVersionModeHasPrefix applies the HasPrefix predicate on the "client_version_mode" field.
+func ClientVersionModeHasPrefix(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldHasPrefix(FieldClientVersionMode, v))
+}
+
+// ClientVersionModeHasSuffix applies the HasSuffix predicate on the "client_version_mode" field.
+func ClientVersionModeHasSuffix(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldHasSuffix(FieldClientVersionMode, v))
+}
+
+// ClientVersionModeEqualFold applies the EqualFold predicate on the "client_version_mode" field.
+func ClientVersionModeEqualFold(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldEqualFold(FieldClientVersionMode, v))
+}
+
+// ClientVersionModeContainsFold applies the ContainsFold predicate on the "client_version_mode" field.
+func ClientVersionModeContainsFold(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldContainsFold(FieldClientVersionMode, v))
+}
+
+// ClientVersionEQ applies the EQ predicate on the "client_version" field.
+func ClientVersionEQ(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldEQ(FieldClientVersion, v))
+}
+
+// ClientVersionNEQ applies the NEQ predicate on the "client_version" field.
+func ClientVersionNEQ(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldNEQ(FieldClientVersion, v))
+}
+
+// ClientVersionIn applies the In predicate on the "client_version" field.
+func ClientVersionIn(vs ...string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldIn(FieldClientVersion, vs...))
+}
+
+// ClientVersionNotIn applies the NotIn predicate on the "client_version" field.
+func ClientVersionNotIn(vs ...string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldNotIn(FieldClientVersion, vs...))
+}
+
+// ClientVersionGT applies the GT predicate on the "client_version" field.
+func ClientVersionGT(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldGT(FieldClientVersion, v))
+}
+
+// ClientVersionGTE applies the GTE predicate on the "client_version" field.
+func ClientVersionGTE(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldGTE(FieldClientVersion, v))
+}
+
+// ClientVersionLT applies the LT predicate on the "client_version" field.
+func ClientVersionLT(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldLT(FieldClientVersion, v))
+}
+
+// ClientVersionLTE applies the LTE predicate on the "client_version" field.
+func ClientVersionLTE(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldLTE(FieldClientVersion, v))
+}
+
+// ClientVersionContains applies the Contains predicate on the "client_version" field.
+func ClientVersionContains(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldContains(FieldClientVersion, v))
+}
+
+// ClientVersionHasPrefix applies the HasPrefix predicate on the "client_version" field.
+func ClientVersionHasPrefix(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldHasPrefix(FieldClientVersion, v))
+}
+
+// ClientVersionHasSuffix applies the HasSuffix predicate on the "client_version" field.
+func ClientVersionHasSuffix(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldHasSuffix(FieldClientVersion, v))
+}
+
+// ClientVersionEqualFold applies the EqualFold predicate on the "client_version" field.
+func ClientVersionEqualFold(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldEqualFold(FieldClientVersion, v))
+}
+
+// ClientVersionContainsFold applies the ContainsFold predicate on the "client_version" field.
+func ClientVersionContainsFold(v string) predicate.AccountCodexDeviceSlot {
+	return predicate.AccountCodexDeviceSlot(sql.FieldContainsFold(FieldClientVersion, v))
 }
 
 // EpochEQ applies the EQ predicate on the "epoch" field.

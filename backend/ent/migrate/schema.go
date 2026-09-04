@@ -235,6 +235,7 @@ var (
 		{Name: "account_id", Type: field.TypeInt64},
 		{Name: "api_key_id", Type: field.TypeInt64},
 		{Name: "os_class", Type: field.TypeString, Size: 20},
+		{Name: "canonical_surface", Type: field.TypeString, Size: 20},
 		{Name: "slot_id", Type: field.TypeInt64},
 		{Name: "policy_version", Type: field.TypeInt64},
 		{Name: "created_at", Type: field.TypeTime},
@@ -247,14 +248,14 @@ var (
 		PrimaryKey: []*schema.Column{AccountCodexDeviceBindingsColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "accountcodexdevicebinding_account_id_api_key_id_os_class",
+				Name:    "accountcodexdevicebinding_account_id_api_key_id_os_class_canonical_surface",
 				Unique:  true,
-				Columns: []*schema.Column{AccountCodexDeviceBindingsColumns[1], AccountCodexDeviceBindingsColumns[2], AccountCodexDeviceBindingsColumns[3]},
+				Columns: []*schema.Column{AccountCodexDeviceBindingsColumns[1], AccountCodexDeviceBindingsColumns[2], AccountCodexDeviceBindingsColumns[3], AccountCodexDeviceBindingsColumns[4]},
 			},
 			{
-				Name:    "accountcodexdevicebinding_api_key_id_os_class",
+				Name:    "accountcodexdevicebinding_api_key_id_os_class_canonical_surface",
 				Unique:  false,
-				Columns: []*schema.Column{AccountCodexDeviceBindingsColumns[2], AccountCodexDeviceBindingsColumns[3]},
+				Columns: []*schema.Column{AccountCodexDeviceBindingsColumns[2], AccountCodexDeviceBindingsColumns[3], AccountCodexDeviceBindingsColumns[4]},
 			},
 		},
 	}
@@ -266,6 +267,8 @@ var (
 		{Name: "slot_index", Type: field.TypeInt},
 		{Name: "proxy_mode", Type: field.TypeString, Size: 20, Default: "inherit"},
 		{Name: "proxy_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "client_version_mode", Type: field.TypeString, Size: 20, Default: "inherit"},
+		{Name: "client_version", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "epoch", Type: field.TypeInt64},
 		{Name: "state", Type: field.TypeString, Size: 20, Default: "active"},
 		{Name: "created_at", Type: field.TypeTime},
@@ -280,7 +283,7 @@ var (
 			{
 				Name:    "accountcodexdeviceslot_profile_id_slot_index_epoch",
 				Unique:  true,
-				Columns: []*schema.Column{AccountCodexDeviceSlotsColumns[2], AccountCodexDeviceSlotsColumns[3], AccountCodexDeviceSlotsColumns[6]},
+				Columns: []*schema.Column{AccountCodexDeviceSlotsColumns[2], AccountCodexDeviceSlotsColumns[3], AccountCodexDeviceSlotsColumns[8]},
 			},
 			{
 				Name:    "accountcodexdeviceslot_id_account_id",
@@ -290,7 +293,7 @@ var (
 			{
 				Name:    "accountcodexdeviceslot_account_id_state",
 				Unique:  false,
-				Columns: []*schema.Column{AccountCodexDeviceSlotsColumns[1], AccountCodexDeviceSlotsColumns[7]},
+				Columns: []*schema.Column{AccountCodexDeviceSlotsColumns[1], AccountCodexDeviceSlotsColumns[9]},
 			},
 		},
 	}
@@ -299,7 +302,7 @@ var (
 		{Name: "id", Type: field.TypeInt64, Increment: true},
 		{Name: "account_id", Type: field.TypeInt64, Unique: true},
 		{Name: "mode", Type: field.TypeString, Size: 40, Default: "off"},
-		{Name: "binding_scope", Type: field.TypeString, Size: 40, Default: "api_key_os"},
+		{Name: "binding_scope", Type: field.TypeString, Size: 40, Default: "api_key_os_surface"},
 		{Name: "session_policy", Type: field.TypeJSON},
 		{Name: "affinity_ttl_seconds", Type: field.TypeInt, Default: 3600},
 		{Name: "unsupported_policy", Type: field.TypeString, Size: 40, Default: "reject"},
@@ -335,9 +338,9 @@ var (
 		PrimaryKey: []*schema.Column{AccountCodexProfilesColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "accountcodexprofile_account_id_os_class_epoch",
+				Name:    "accountcodexprofile_account_id_os_class_canonical_surface_epoch",
 				Unique:  true,
-				Columns: []*schema.Column{AccountCodexProfilesColumns[1], AccountCodexProfilesColumns[2], AccountCodexProfilesColumns[8]},
+				Columns: []*schema.Column{AccountCodexProfilesColumns[1], AccountCodexProfilesColumns[2], AccountCodexProfilesColumns[3], AccountCodexProfilesColumns[8]},
 			},
 			{
 				Name:    "accountcodexprofile_id_account_id",

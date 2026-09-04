@@ -169,6 +169,26 @@ func TestCodexIdentityTemplateRuntimeEqualityIgnoresPresentationMetadata(t *test
 	require.False(t, codexIdentityTemplateRuntimeEqual(left, &right))
 }
 
+func TestCodexIdentityTemplateRuntimeEqualityTreatsSparseSlotsAsInheritedDefaults(t *testing.T) {
+	left := &service.CodexIdentityTemplate{
+		ID: 1, Revision: 2,
+		SessionPolicy:      service.CodexSessionPolicySpec{Mode: service.CodexSessionConversationIsolated},
+		AffinityTTLSeconds: 3600, UnsupportedPolicy: service.CodexUnsupportedProfileReject,
+		Profiles: []service.CodexIdentityTemplateProfile{{
+			OSClass: service.CodexOSWindows, CanonicalSurface: service.CodexSurfaceDesktop,
+			Architecture: service.CodexArchX8664, ProxyMode: service.CodexProxyInherit,
+			SlotCount: 2, CatalogVersion: 1,
+		}},
+	}
+	right := *left
+	right.Profiles = append([]service.CodexIdentityTemplateProfile(nil), left.Profiles...)
+	right.Profiles[0].Slots = []service.CodexIdentityTemplateSlot{
+		{Index: 0, ProxyMode: service.CodexProxyInherit, ClientVersionMode: service.CodexClientVersionInherit},
+		{Index: 1, ProxyMode: service.CodexProxyInherit, ClientVersionMode: service.CodexClientVersionInherit},
+	}
+	require.True(t, codexIdentityTemplateRuntimeEqual(left, &right))
+}
+
 func TestCodexIdentityTemplateTransactionalProxyValidationRejectsMissingOrSoftDeletedProxy(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -190,5 +210,25 @@ func TestCodexIdentityTemplateTransactionalProxyValidationRejectsMissingOrSoftDe
 	require.Error(t, err)
 	require.Equal(t, "INVALID_CODEX_IDENTITY_TEMPLATE_PROXY", infraerrors.Reason(err))
 	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestLoadCodexIdentityTemplateSlotsIncludesClientVersion(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	mock.ExpectQuery("SELECT id, slot_index, proxy_mode, proxy_id, client_version_mode, client_version").
+		WithArgs(int64(7), int64(11)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "slot_index", "proxy_mode", "proxy_id", "client_version_mode", "client_version",
+		}).AddRow(int64(19), 0, "inherit", nil, "pinned", "0.200.1"))
+
+	profile := &service.CodexIdentityTemplateProfile{ID: 11}
+	err = loadCodexIdentityTemplateSlots(context.Background(), db, 7, profile)
+	require.NoError(t, err)
+	require.Len(t, profile.Slots, 1)
+	require.Equal(t, service.CodexClientVersionPinned, profile.Slots[0].ClientVersionMode)
+	require.Equal(t, "0.200.1", profile.Slots[0].ClientVersion)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

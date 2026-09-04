@@ -23,6 +23,10 @@ const (
 	FieldProxyMode = "proxy_mode"
 	// FieldProxyID holds the string denoting the proxy_id field in the database.
 	FieldProxyID = "proxy_id"
+	// FieldClientVersionMode holds the string denoting the client_version_mode field in the database.
+	FieldClientVersionMode = "client_version_mode"
+	// FieldClientVersion holds the string denoting the client_version field in the database.
+	FieldClientVersion = "client_version"
 	// FieldEpoch holds the string denoting the epoch field in the database.
 	FieldEpoch = "epoch"
 	// FieldState holds the string denoting the state field in the database.
@@ -43,6 +47,8 @@ var Columns = []string{
 	FieldSlotIndex,
 	FieldProxyMode,
 	FieldProxyID,
+	FieldClientVersionMode,
+	FieldClientVersion,
 	FieldEpoch,
 	FieldState,
 	FieldCreatedAt,
@@ -64,6 +70,14 @@ var (
 	DefaultProxyMode string
 	// ProxyModeValidator is a validator for the "proxy_mode" field. It is called by the builders before save.
 	ProxyModeValidator func(string) error
+	// DefaultClientVersionMode holds the default value on creation for the "client_version_mode" field.
+	DefaultClientVersionMode string
+	// ClientVersionModeValidator is a validator for the "client_version_mode" field. It is called by the builders before save.
+	ClientVersionModeValidator func(string) error
+	// DefaultClientVersion holds the default value on creation for the "client_version" field.
+	DefaultClientVersion string
+	// ClientVersionValidator is a validator for the "client_version" field. It is called by the builders before save.
+	ClientVersionValidator func(string) error
 	// DefaultState holds the default value on creation for the "state" field.
 	DefaultState string
 	// StateValidator is a validator for the "state" field. It is called by the builders before save.
@@ -107,6 +121,16 @@ func ByProxyMode(opts ...sql.OrderTermOption) OrderOption {
 // ByProxyID orders the results by the proxy_id field.
 func ByProxyID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProxyID, opts...).ToFunc()
+}
+
+// ByClientVersionMode orders the results by the client_version_mode field.
+func ByClientVersionMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClientVersionMode, opts...).ToFunc()
+}
+
+// ByClientVersion orders the results by the client_version field.
+func ByClientVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClientVersion, opts...).ToFunc()
 }
 
 // ByEpoch orders the results by the epoch field.

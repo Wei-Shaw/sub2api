@@ -15,6 +15,7 @@ func (AccountCodexDeviceBinding) Fields() []ent.Field {
 		field.Int64("account_id"),
 		field.Int64("api_key_id"),
 		field.String("os_class").MaxLen(20),
+		field.String("canonical_surface").MaxLen(20),
 		field.Int64("slot_id"),
 		field.Int64("policy_version"),
 		field.Time("created_at").Default(time.Now).Immutable(),
@@ -24,7 +25,7 @@ func (AccountCodexDeviceBinding) Fields() []ent.Field {
 
 func (AccountCodexDeviceBinding) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("account_id", "api_key_id", "os_class").Unique(),
-		index.Fields("api_key_id", "os_class"),
+		index.Fields("account_id", "api_key_id", "os_class", "canonical_surface").Unique(),
+		index.Fields("api_key_id", "os_class", "canonical_surface"),
 	}
 }

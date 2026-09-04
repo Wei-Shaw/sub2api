@@ -132,6 +132,34 @@ func (_u *AccountCodexDeviceSlotUpdate) ClearProxyID() *AccountCodexDeviceSlotUp
 	return _u
 }
 
+// SetClientVersionMode sets the "client_version_mode" field.
+func (_u *AccountCodexDeviceSlotUpdate) SetClientVersionMode(v string) *AccountCodexDeviceSlotUpdate {
+	_u.mutation.SetClientVersionMode(v)
+	return _u
+}
+
+// SetNillableClientVersionMode sets the "client_version_mode" field if the given value is not nil.
+func (_u *AccountCodexDeviceSlotUpdate) SetNillableClientVersionMode(v *string) *AccountCodexDeviceSlotUpdate {
+	if v != nil {
+		_u.SetClientVersionMode(*v)
+	}
+	return _u
+}
+
+// SetClientVersion sets the "client_version" field.
+func (_u *AccountCodexDeviceSlotUpdate) SetClientVersion(v string) *AccountCodexDeviceSlotUpdate {
+	_u.mutation.SetClientVersion(v)
+	return _u
+}
+
+// SetNillableClientVersion sets the "client_version" field if the given value is not nil.
+func (_u *AccountCodexDeviceSlotUpdate) SetNillableClientVersion(v *string) *AccountCodexDeviceSlotUpdate {
+	if v != nil {
+		_u.SetClientVersion(*v)
+	}
+	return _u
+}
+
 // SetEpoch sets the "epoch" field.
 func (_u *AccountCodexDeviceSlotUpdate) SetEpoch(v int64) *AccountCodexDeviceSlotUpdate {
 	_u.mutation.ResetEpoch()
@@ -221,6 +249,16 @@ func (_u *AccountCodexDeviceSlotUpdate) check() error {
 			return &ValidationError{Name: "proxy_mode", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceSlot.proxy_mode": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ClientVersionMode(); ok {
+		if err := accountcodexdeviceslot.ClientVersionModeValidator(v); err != nil {
+			return &ValidationError{Name: "client_version_mode", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceSlot.client_version_mode": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ClientVersion(); ok {
+		if err := accountcodexdeviceslot.ClientVersionValidator(v); err != nil {
+			return &ValidationError{Name: "client_version", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceSlot.client_version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.State(); ok {
 		if err := accountcodexdeviceslot.StateValidator(v); err != nil {
 			return &ValidationError{Name: "state", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceSlot.state": %w`, err)}
@@ -270,6 +308,12 @@ func (_u *AccountCodexDeviceSlotUpdate) sqlSave(ctx context.Context) (_node int,
 	}
 	if _u.mutation.ProxyIDCleared() {
 		_spec.ClearField(accountcodexdeviceslot.FieldProxyID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.ClientVersionMode(); ok {
+		_spec.SetField(accountcodexdeviceslot.FieldClientVersionMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ClientVersion(); ok {
+		_spec.SetField(accountcodexdeviceslot.FieldClientVersion, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Epoch(); ok {
 		_spec.SetField(accountcodexdeviceslot.FieldEpoch, field.TypeInt64, value)
@@ -407,6 +451,34 @@ func (_u *AccountCodexDeviceSlotUpdateOne) ClearProxyID() *AccountCodexDeviceSlo
 	return _u
 }
 
+// SetClientVersionMode sets the "client_version_mode" field.
+func (_u *AccountCodexDeviceSlotUpdateOne) SetClientVersionMode(v string) *AccountCodexDeviceSlotUpdateOne {
+	_u.mutation.SetClientVersionMode(v)
+	return _u
+}
+
+// SetNillableClientVersionMode sets the "client_version_mode" field if the given value is not nil.
+func (_u *AccountCodexDeviceSlotUpdateOne) SetNillableClientVersionMode(v *string) *AccountCodexDeviceSlotUpdateOne {
+	if v != nil {
+		_u.SetClientVersionMode(*v)
+	}
+	return _u
+}
+
+// SetClientVersion sets the "client_version" field.
+func (_u *AccountCodexDeviceSlotUpdateOne) SetClientVersion(v string) *AccountCodexDeviceSlotUpdateOne {
+	_u.mutation.SetClientVersion(v)
+	return _u
+}
+
+// SetNillableClientVersion sets the "client_version" field if the given value is not nil.
+func (_u *AccountCodexDeviceSlotUpdateOne) SetNillableClientVersion(v *string) *AccountCodexDeviceSlotUpdateOne {
+	if v != nil {
+		_u.SetClientVersion(*v)
+	}
+	return _u
+}
+
 // SetEpoch sets the "epoch" field.
 func (_u *AccountCodexDeviceSlotUpdateOne) SetEpoch(v int64) *AccountCodexDeviceSlotUpdateOne {
 	_u.mutation.ResetEpoch()
@@ -509,6 +581,16 @@ func (_u *AccountCodexDeviceSlotUpdateOne) check() error {
 			return &ValidationError{Name: "proxy_mode", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceSlot.proxy_mode": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ClientVersionMode(); ok {
+		if err := accountcodexdeviceslot.ClientVersionModeValidator(v); err != nil {
+			return &ValidationError{Name: "client_version_mode", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceSlot.client_version_mode": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ClientVersion(); ok {
+		if err := accountcodexdeviceslot.ClientVersionValidator(v); err != nil {
+			return &ValidationError{Name: "client_version", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceSlot.client_version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.State(); ok {
 		if err := accountcodexdeviceslot.StateValidator(v); err != nil {
 			return &ValidationError{Name: "state", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceSlot.state": %w`, err)}
@@ -575,6 +657,12 @@ func (_u *AccountCodexDeviceSlotUpdateOne) sqlSave(ctx context.Context) (_node *
 	}
 	if _u.mutation.ProxyIDCleared() {
 		_spec.ClearField(accountcodexdeviceslot.FieldProxyID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.ClientVersionMode(); ok {
+		_spec.SetField(accountcodexdeviceslot.FieldClientVersionMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ClientVersion(); ok {
+		_spec.SetField(accountcodexdeviceslot.FieldClientVersion, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Epoch(); ok {
 		_spec.SetField(accountcodexdeviceslot.FieldEpoch, field.TypeInt64, value)

@@ -167,7 +167,7 @@ func (r *accountRepository) ListCodexDeviceSlots(
 	rows, err := r.client.QueryContext(ctx, `
 		SELECT profiles.id, slots.id, profiles.os_class, profiles.canonical_surface,
 		       COALESCE(profiles.architecture, ''), profiles.catalog_version, slots.slot_index, slots.epoch,
-		       slots.state, policies.version,
+		       slots.state, policies.version, slots.client_version_mode, slots.client_version,
 		       (SELECT COUNT(*) FROM account_codex_device_bindings AS bindings WHERE bindings.slot_id=slots.id),
 		       CASE
 		           WHEN slots.proxy_mode='direct' THEN NULL
@@ -195,7 +195,8 @@ func (r *accountRepository) ListCodexDeviceSlots(
 		if err := rows.Scan(
 			&resolved.ProfileID, &resolved.SlotID, &resolved.OSClass, &resolved.CanonicalSurface,
 			&resolved.Architecture, &resolved.CatalogVersion, &resolved.SlotIndex, &resolved.Epoch, &resolved.State,
-			&resolved.PolicyVersion, &resolved.BindingCount, &proxyID,
+			&resolved.PolicyVersion, &resolved.ClientVersionMode, &resolved.ClientVersion,
+			&resolved.BindingCount, &proxyID,
 		); err != nil {
 			return nil, err
 		}
@@ -391,7 +392,8 @@ func loadCodexDeviceBinding(
 		SELECT bindings.id, bindings.account_id, bindings.api_key_id,
 		       profiles.id, slots.id, profiles.os_class, profiles.canonical_surface,
 		       COALESCE(profiles.architecture, ''), profiles.catalog_version, slots.slot_index, slots.epoch,
-		       slots.state, bindings.policy_version, bindings.updated_at, policies.affinity_ttl_seconds,
+		       slots.state, bindings.policy_version, slots.client_version_mode, slots.client_version,
+		       bindings.updated_at, policies.affinity_ttl_seconds,
 		       CASE
 		           WHEN slots.proxy_mode='direct' THEN NULL
 		           WHEN slots.proxy_mode='proxy' THEN slots.proxy_id
@@ -425,7 +427,8 @@ func loadCodexDeviceBinding(
 		&resolved.BindingID, &resolved.AccountID, &resolved.APIKeyID,
 		&resolved.ProfileID, &resolved.SlotID, &resolved.OSClass, &resolved.CanonicalSurface,
 		&resolved.Architecture, &resolved.CatalogVersion, &resolved.SlotIndex, &resolved.Epoch,
-		&resolved.State, &resolved.PolicyVersion, &resolved.LastSeenAt, &resolved.AffinityTTLSeconds, &proxyID,
+		&resolved.State, &resolved.PolicyVersion, &resolved.ClientVersionMode, &resolved.ClientVersion,
+		&resolved.LastSeenAt, &resolved.AffinityTTLSeconds, &proxyID,
 	); err != nil {
 		return nil, err
 	}

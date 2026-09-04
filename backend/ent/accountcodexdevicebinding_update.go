@@ -84,6 +84,20 @@ func (_u *AccountCodexDeviceBindingUpdate) SetNillableOsClass(v *string) *Accoun
 	return _u
 }
 
+// SetCanonicalSurface sets the "canonical_surface" field.
+func (_u *AccountCodexDeviceBindingUpdate) SetCanonicalSurface(v string) *AccountCodexDeviceBindingUpdate {
+	_u.mutation.SetCanonicalSurface(v)
+	return _u
+}
+
+// SetNillableCanonicalSurface sets the "canonical_surface" field if the given value is not nil.
+func (_u *AccountCodexDeviceBindingUpdate) SetNillableCanonicalSurface(v *string) *AccountCodexDeviceBindingUpdate {
+	if v != nil {
+		_u.SetCanonicalSurface(*v)
+	}
+	return _u
+}
+
 // SetSlotID sets the "slot_id" field.
 func (_u *AccountCodexDeviceBindingUpdate) SetSlotID(v int64) *AccountCodexDeviceBindingUpdate {
 	_u.mutation.ResetSlotID()
@@ -180,6 +194,11 @@ func (_u *AccountCodexDeviceBindingUpdate) check() error {
 			return &ValidationError{Name: "os_class", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceBinding.os_class": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CanonicalSurface(); ok {
+		if err := accountcodexdevicebinding.CanonicalSurfaceValidator(v); err != nil {
+			return &ValidationError{Name: "canonical_surface", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceBinding.canonical_surface": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -209,6 +228,9 @@ func (_u *AccountCodexDeviceBindingUpdate) sqlSave(ctx context.Context) (_node i
 	}
 	if value, ok := _u.mutation.OsClass(); ok {
 		_spec.SetField(accountcodexdevicebinding.FieldOsClass, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CanonicalSurface(); ok {
+		_spec.SetField(accountcodexdevicebinding.FieldCanonicalSurface, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.SlotID(); ok {
 		_spec.SetField(accountcodexdevicebinding.FieldSlotID, field.TypeInt64, value)
@@ -297,6 +319,20 @@ func (_u *AccountCodexDeviceBindingUpdateOne) SetOsClass(v string) *AccountCodex
 func (_u *AccountCodexDeviceBindingUpdateOne) SetNillableOsClass(v *string) *AccountCodexDeviceBindingUpdateOne {
 	if v != nil {
 		_u.SetOsClass(*v)
+	}
+	return _u
+}
+
+// SetCanonicalSurface sets the "canonical_surface" field.
+func (_u *AccountCodexDeviceBindingUpdateOne) SetCanonicalSurface(v string) *AccountCodexDeviceBindingUpdateOne {
+	_u.mutation.SetCanonicalSurface(v)
+	return _u
+}
+
+// SetNillableCanonicalSurface sets the "canonical_surface" field if the given value is not nil.
+func (_u *AccountCodexDeviceBindingUpdateOne) SetNillableCanonicalSurface(v *string) *AccountCodexDeviceBindingUpdateOne {
+	if v != nil {
+		_u.SetCanonicalSurface(*v)
 	}
 	return _u
 }
@@ -410,6 +446,11 @@ func (_u *AccountCodexDeviceBindingUpdateOne) check() error {
 			return &ValidationError{Name: "os_class", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceBinding.os_class": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CanonicalSurface(); ok {
+		if err := accountcodexdevicebinding.CanonicalSurfaceValidator(v); err != nil {
+			return &ValidationError{Name: "canonical_surface", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceBinding.canonical_surface": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -456,6 +497,9 @@ func (_u *AccountCodexDeviceBindingUpdateOne) sqlSave(ctx context.Context) (_nod
 	}
 	if value, ok := _u.mutation.OsClass(); ok {
 		_spec.SetField(accountcodexdevicebinding.FieldOsClass, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CanonicalSurface(); ok {
+		_spec.SetField(accountcodexdevicebinding.FieldCanonicalSurface, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.SlotID(); ok {
 		_spec.SetField(accountcodexdevicebinding.FieldSlotID, field.TypeInt64, value)

@@ -28,7 +28,7 @@ func (AccountCodexProfile) Fields() []ent.Field {
 
 func (AccountCodexProfile) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("account_id", "os_class", "epoch").Unique(),
+		index.Fields("account_id", "os_class", "canonical_surface", "epoch").Unique(),
 		index.Fields("id", "account_id").Unique(),
 	}
 }

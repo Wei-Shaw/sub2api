@@ -4,6 +4,8 @@ export const CODEX_SESSION_SLOT_MIN = 1 as const
 export const CODEX_SESSION_SLOT_MAX = 3 as const
 export const CODEX_AFFINITY_TTL_MIN_SECONDS = 60 as const
 export const CODEX_AFFINITY_TTL_MAX_SECONDS = 86400 as const
+export const CODEX_CLIENT_VERSION_MIN = '0.144.0' as const
+export const CODEX_CLIENT_VERSION_MAX_LENGTH = 64 as const
 
 export const CODEX_OS_PROFILE_IDS = ['windows', 'macos', 'linux', 'generic'] as const
 export type CodexOSProfileID = (typeof CODEX_OS_PROFILE_IDS)[number]
@@ -13,6 +15,7 @@ export type CodexIdentityBindingScope = 'api_key_os_surface' | 'api_key_os'
 export type CodexClientSurface = 'desktop' | 'cli' | 'sdk' | 'third_party'
 export type CodexArchitecture = 'x86_64' | 'arm64' | ''
 export type CodexProxyMode = 'inherit' | 'proxy' | 'direct'
+export type CodexClientVersionMode = 'inherit' | 'pinned'
 export type CodexSessionPolicyMode =
   | 'conversation_isolated'
   | 'api_key_shared'
@@ -25,6 +28,10 @@ export interface CodexDeviceSlotPolicy {
   proxy_mode: CodexProxyMode
   /** Present only when proxy_mode is proxy. */
   proxy_id?: number
+  /** Follow the deployment version unless explicitly pinned. */
+  client_version_mode: CodexClientVersionMode
+  /** Present only when client_version_mode is pinned. */
+  client_version?: string
 }
 
 export interface CodexOSProfilePolicy {

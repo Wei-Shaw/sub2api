@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -278,29 +277,7 @@ func getCodexIdentityTemplateForUpdate(
 }
 
 func codexIdentityTemplateRuntimeEqual(left, right *service.CodexIdentityTemplate) bool {
-	if left == nil || right == nil ||
-		left.SessionPolicy != right.SessionPolicy ||
-		left.AffinityTTLSeconds != right.AffinityTTLSeconds ||
-		left.UnsupportedPolicy != right.UnsupportedPolicy ||
-		len(left.Profiles) != len(right.Profiles) {
-		return false
-	}
-	for index := range left.Profiles {
-		leftProfile := left.Profiles[index]
-		rightProfile := right.Profiles[index]
-		leftProfile.ID = 0
-		rightProfile.ID = 0
-		for slotIndex := range leftProfile.Slots {
-			leftProfile.Slots[slotIndex].ID = 0
-		}
-		for slotIndex := range rightProfile.Slots {
-			rightProfile.Slots[slotIndex].ID = 0
-		}
-		if !reflect.DeepEqual(leftProfile, rightProfile) {
-			return false
-		}
-	}
-	return true
+	return service.CodexIdentityTemplateRuntimeEqual(left, right)
 }
 
 func validateCodexIdentityTemplateProxyReferences(
@@ -659,7 +636,7 @@ func loadCodexIdentityTemplateSlots(
 	profile *service.CodexIdentityTemplateProfile,
 ) error {
 	rows, err := query.QueryContext(ctx, `
-		SELECT id, slot_index, proxy_mode, proxy_id
+		SELECT id, slot_index, proxy_mode, proxy_id, client_version_mode, client_version
 		FROM codex_identity_template_slots
 		WHERE template_id=$1 AND profile_id=$2
 		ORDER BY slot_index
@@ -672,7 +649,10 @@ func loadCodexIdentityTemplateSlots(
 	for rows.Next() {
 		slot := service.CodexIdentityTemplateSlot{}
 		var proxyID sql.NullInt64
-		if err := rows.Scan(&slot.ID, &slot.Index, &slot.ProxyMode, &proxyID); err != nil {
+		if err := rows.Scan(
+			&slot.ID, &slot.Index, &slot.ProxyMode, &proxyID,
+			&slot.ClientVersionMode, &slot.ClientVersion,
+		); err != nil {
 			return err
 		}
 		if proxyID.Valid {
@@ -707,9 +687,11 @@ func replaceCodexIdentityTemplateProfiles(
 		for _, slot := range profile.Slots {
 			if _, err := tx.ExecContext(ctx, `
 				INSERT INTO codex_identity_template_slots
-					(template_id, profile_id, slot_index, proxy_mode, proxy_id)
-				VALUES ($1, $2, $3, $4, $5)
-			`, templateID, profileID, slot.Index, slot.ProxyMode, slot.ProxyID); err != nil {
+					(template_id, profile_id, slot_index, proxy_mode, proxy_id,
+					 client_version_mode, client_version)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
+			`, templateID, profileID, slot.Index, slot.ProxyMode, slot.ProxyID,
+				slot.ClientVersionMode, slot.ClientVersion); err != nil {
 				return translateCodexIdentityTemplateWriteError(err)
 			}
 		}

@@ -63,12 +63,11 @@ type CodexResolvedProfile struct {
 const codexRuntimeCatalogVersion int64 = 1
 
 type codexRuntimeProfileFixture struct {
-	engineVersion string
-	appBuild      string
-	osLabel       string
-	terminal      string
-	clientName    string
-	originator    string
+	appBuild   string
+	osLabel    string
+	terminal   string
+	clientName string
+	originator string
 }
 
 func (p CodexResolvedProfile) Key() string {
@@ -91,9 +90,26 @@ type CodexResolvedSlot struct {
 // catalog. The policy cannot inject arbitrary versions, user agents, or
 // originators.
 func ResolveCodexRuntimeProfile(policy CodexOSProfilePolicy) (CodexResolvedProfile, error) {
+	return ResolveCodexRuntimeProfileWithVersion(policy, codexCLIVersion)
+}
+
+// ResolveCodexRuntimeProfileWithVersion resolves a closed profile using one
+// validated engine version. Only the version segment is variable; client name,
+// originator, OS/terminal shape, and Desktop app build remain catalog-owned.
+func ResolveCodexRuntimeProfileWithVersion(policy CodexOSProfilePolicy, clientVersion string) (CodexResolvedProfile, error) {
 	normalized, err := normalizeCodexOSProfile(policy)
 	if err != nil {
 		return CodexResolvedProfile{}, err
+	}
+	clientVersion = NormalizeCodexClientVersion(clientVersion)
+	if clientVersion == "" {
+		return CodexResolvedProfile{}, errors.New("invalid Codex client version")
+	}
+	if CompareVersions(clientVersion, codexUpstreamMinVersion) < 0 {
+		return CodexResolvedProfile{}, fmt.Errorf(
+			"Codex client version must be at least %s",
+			codexUpstreamMinVersion,
+		)
 	}
 	if normalized.CatalogVersion != codexRuntimeCatalogVersion {
 		return CodexResolvedProfile{}, fmt.Errorf("unsupported Codex profile catalog version %d", normalized.CatalogVersion)
@@ -107,7 +123,7 @@ func ResolveCodexRuntimeProfile(policy CodexOSProfilePolicy) (CodexResolvedProfi
 		Surface:        normalized.CanonicalSurface,
 		Architecture:   normalized.Architecture,
 		CatalogVersion: normalized.CatalogVersion,
-		Version:        fixture.engineVersion,
+		Version:        clientVersion,
 		AppBuild:       fixture.appBuild,
 		OSLabel:        fixture.osLabel,
 		Terminal:       fixture.terminal,
@@ -116,10 +132,10 @@ func ResolveCodexRuntimeProfile(policy CodexOSProfilePolicy) (CodexResolvedProfi
 	}
 
 	if profile.OSClass == CodexOSGeneric {
-		profile.UserAgent = fixture.clientName + "/" + fixture.engineVersion
+		profile.UserAgent = fixture.clientName + "/" + clientVersion
 	} else {
 		osLabel := fixture.osLabel + "; " + string(profile.Architecture)
-		profile.UserAgent = fmt.Sprintf("%s/%s (%s) %s", fixture.clientName, fixture.engineVersion, osLabel, fixture.terminal)
+		profile.UserAgent = fmt.Sprintf("%s/%s (%s) %s", fixture.clientName, clientVersion, osLabel, fixture.terminal)
 		if fixture.appBuild != "" {
 			profile.UserAgent += fmt.Sprintf(" (%s; %s)", fixture.originator, fixture.appBuild)
 		}
@@ -135,9 +151,9 @@ func codexRuntimeCatalogFixture(osClass CodexOSClass, surface CodexClientSurface
 	if osClass == CodexOSGeneric {
 		switch surface {
 		case CodexSurfaceSDK:
-			return codexRuntimeProfileFixture{engineVersion: codexCLIVersion, clientName: "codex_sdk_ts", originator: "codex_sdk_ts"}, nil
+			return codexRuntimeProfileFixture{clientName: "codex_sdk_ts", originator: "codex_sdk_ts"}, nil
 		case CodexSurfaceThirdParty:
-			return codexRuntimeProfileFixture{engineVersion: codexCLIVersion, clientName: "codex_exec", originator: "codex_exec"}, nil
+			return codexRuntimeProfileFixture{clientName: "codex_exec", originator: "codex_exec"}, nil
 		default:
 			return codexRuntimeProfileFixture{}, errors.New("generic Codex profile requires sdk or third_party surface")
 		}
@@ -146,11 +162,10 @@ func codexRuntimeCatalogFixture(osClass CodexOSClass, surface CodexClientSurface
 		return codexRuntimeProfileFixture{}, fmt.Errorf("%s Codex profile requires desktop or cli surface", osClass)
 	}
 
-	fixture := codexRuntimeProfileFixture{engineVersion: codexCLIVersion}
+	fixture := codexRuntimeProfileFixture{}
 	if surface == CodexSurfaceDesktop {
 		// Engine protocol and desktop application build are distinct fields.
 		// The app build is pinned from the repository's captured first-party UA.
-		fixture.engineVersion = codexCLIVersion
 		fixture.appBuild = "26.616.71553"
 		fixture.clientName = "Codex Desktop"
 		fixture.originator = "Codex Desktop"

@@ -276,12 +276,16 @@ func init() {
 	accountcodexdevicebindingDescOsClass := accountcodexdevicebindingFields[2].Descriptor()
 	// accountcodexdevicebinding.OsClassValidator is a validator for the "os_class" field. It is called by the builders before save.
 	accountcodexdevicebinding.OsClassValidator = accountcodexdevicebindingDescOsClass.Validators[0].(func(string) error)
+	// accountcodexdevicebindingDescCanonicalSurface is the schema descriptor for canonical_surface field.
+	accountcodexdevicebindingDescCanonicalSurface := accountcodexdevicebindingFields[3].Descriptor()
+	// accountcodexdevicebinding.CanonicalSurfaceValidator is a validator for the "canonical_surface" field. It is called by the builders before save.
+	accountcodexdevicebinding.CanonicalSurfaceValidator = accountcodexdevicebindingDescCanonicalSurface.Validators[0].(func(string) error)
 	// accountcodexdevicebindingDescCreatedAt is the schema descriptor for created_at field.
-	accountcodexdevicebindingDescCreatedAt := accountcodexdevicebindingFields[5].Descriptor()
+	accountcodexdevicebindingDescCreatedAt := accountcodexdevicebindingFields[6].Descriptor()
 	// accountcodexdevicebinding.DefaultCreatedAt holds the default value on creation for the created_at field.
 	accountcodexdevicebinding.DefaultCreatedAt = accountcodexdevicebindingDescCreatedAt.Default.(func() time.Time)
 	// accountcodexdevicebindingDescUpdatedAt is the schema descriptor for updated_at field.
-	accountcodexdevicebindingDescUpdatedAt := accountcodexdevicebindingFields[6].Descriptor()
+	accountcodexdevicebindingDescUpdatedAt := accountcodexdevicebindingFields[7].Descriptor()
 	// accountcodexdevicebinding.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	accountcodexdevicebinding.DefaultUpdatedAt = accountcodexdevicebindingDescUpdatedAt.Default.(func() time.Time)
 	// accountcodexdevicebinding.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -294,18 +298,30 @@ func init() {
 	accountcodexdeviceslot.DefaultProxyMode = accountcodexdeviceslotDescProxyMode.Default.(string)
 	// accountcodexdeviceslot.ProxyModeValidator is a validator for the "proxy_mode" field. It is called by the builders before save.
 	accountcodexdeviceslot.ProxyModeValidator = accountcodexdeviceslotDescProxyMode.Validators[0].(func(string) error)
+	// accountcodexdeviceslotDescClientVersionMode is the schema descriptor for client_version_mode field.
+	accountcodexdeviceslotDescClientVersionMode := accountcodexdeviceslotFields[5].Descriptor()
+	// accountcodexdeviceslot.DefaultClientVersionMode holds the default value on creation for the client_version_mode field.
+	accountcodexdeviceslot.DefaultClientVersionMode = accountcodexdeviceslotDescClientVersionMode.Default.(string)
+	// accountcodexdeviceslot.ClientVersionModeValidator is a validator for the "client_version_mode" field. It is called by the builders before save.
+	accountcodexdeviceslot.ClientVersionModeValidator = accountcodexdeviceslotDescClientVersionMode.Validators[0].(func(string) error)
+	// accountcodexdeviceslotDescClientVersion is the schema descriptor for client_version field.
+	accountcodexdeviceslotDescClientVersion := accountcodexdeviceslotFields[6].Descriptor()
+	// accountcodexdeviceslot.DefaultClientVersion holds the default value on creation for the client_version field.
+	accountcodexdeviceslot.DefaultClientVersion = accountcodexdeviceslotDescClientVersion.Default.(string)
+	// accountcodexdeviceslot.ClientVersionValidator is a validator for the "client_version" field. It is called by the builders before save.
+	accountcodexdeviceslot.ClientVersionValidator = accountcodexdeviceslotDescClientVersion.Validators[0].(func(string) error)
 	// accountcodexdeviceslotDescState is the schema descriptor for state field.
-	accountcodexdeviceslotDescState := accountcodexdeviceslotFields[6].Descriptor()
+	accountcodexdeviceslotDescState := accountcodexdeviceslotFields[8].Descriptor()
 	// accountcodexdeviceslot.DefaultState holds the default value on creation for the state field.
 	accountcodexdeviceslot.DefaultState = accountcodexdeviceslotDescState.Default.(string)
 	// accountcodexdeviceslot.StateValidator is a validator for the "state" field. It is called by the builders before save.
 	accountcodexdeviceslot.StateValidator = accountcodexdeviceslotDescState.Validators[0].(func(string) error)
 	// accountcodexdeviceslotDescCreatedAt is the schema descriptor for created_at field.
-	accountcodexdeviceslotDescCreatedAt := accountcodexdeviceslotFields[7].Descriptor()
+	accountcodexdeviceslotDescCreatedAt := accountcodexdeviceslotFields[9].Descriptor()
 	// accountcodexdeviceslot.DefaultCreatedAt holds the default value on creation for the created_at field.
 	accountcodexdeviceslot.DefaultCreatedAt = accountcodexdeviceslotDescCreatedAt.Default.(func() time.Time)
 	// accountcodexdeviceslotDescUpdatedAt is the schema descriptor for updated_at field.
-	accountcodexdeviceslotDescUpdatedAt := accountcodexdeviceslotFields[8].Descriptor()
+	accountcodexdeviceslotDescUpdatedAt := accountcodexdeviceslotFields[10].Descriptor()
 	// accountcodexdeviceslot.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	accountcodexdeviceslot.DefaultUpdatedAt = accountcodexdeviceslotDescUpdatedAt.Default.(func() time.Time)
 	// accountcodexdeviceslot.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

@@ -3306,6 +3306,13 @@ const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
 const codexIdentityAssignment = ref<CodexIdentityAssignment>({ enabled: false })
+const initialCodexIdentityAssignment = ref<CodexIdentityAssignment>({ enabled: false })
+const codexIdentityAssignmentChanged = computed(() =>
+  JSON.stringify(codexIdentityAssignment.value) !== JSON.stringify(initialCodexIdentityAssignment.value),
+)
+const shouldSubmitCodexIdentityAssignment = computed(() =>
+  initialCodexIdentityAssignment.value.enabled || codexIdentityAssignmentChanged.value,
+)
 watch(() => codexIdentityAssignment.value.enabled, (enabled) => {
   if (enabled) codexFingerprintMode.value = 'off'
 })
@@ -3788,7 +3795,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
-  codexIdentityAssignment.value = newAccount.platform === 'openai' &&
+  const loadedCodexIdentityAssignment: CodexIdentityAssignment = newAccount.platform === 'openai' &&
     newAccount.type === 'oauth' &&
     typeof newAccount.codex_identity_template_id === 'number' &&
     newAccount.codex_identity_template_id > 0
@@ -3800,6 +3807,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
           : {}),
       }
     : { enabled: false }
+  codexIdentityAssignment.value = loadedCodexIdentityAssignment
+  initialCodexIdentityAssignment.value = { ...loadedCodexIdentityAssignment }
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
@@ -4711,7 +4720,7 @@ const handleSubmit = async () => {
 	}
 
   const updatePayload: Record<string, unknown> = { ...form }
-  if (props.account.platform === 'openai' && props.account.type === 'oauth' && !isSparkShadow.value) {
+  if (props.account.platform === 'openai' && props.account.type === 'oauth' && !isSparkShadow.value && shouldSubmitCodexIdentityAssignment.value) {
     updatePayload.codex_identity_assignment = { ...codexIdentityAssignment.value }
   }
   try {

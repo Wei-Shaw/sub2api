@@ -27,6 +27,10 @@ type AccountCodexDeviceSlot struct {
 	ProxyMode string `json:"proxy_mode,omitempty"`
 	// ProxyID holds the value of the "proxy_id" field.
 	ProxyID *int64 `json:"proxy_id,omitempty"`
+	// ClientVersionMode holds the value of the "client_version_mode" field.
+	ClientVersionMode string `json:"client_version_mode,omitempty"`
+	// ClientVersion holds the value of the "client_version" field.
+	ClientVersion string `json:"client_version,omitempty"`
 	// Epoch holds the value of the "epoch" field.
 	Epoch int64 `json:"epoch,omitempty"`
 	// State holds the value of the "state" field.
@@ -45,7 +49,7 @@ func (*AccountCodexDeviceSlot) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case accountcodexdeviceslot.FieldID, accountcodexdeviceslot.FieldAccountID, accountcodexdeviceslot.FieldProfileID, accountcodexdeviceslot.FieldSlotIndex, accountcodexdeviceslot.FieldProxyID, accountcodexdeviceslot.FieldEpoch:
 			values[i] = new(sql.NullInt64)
-		case accountcodexdeviceslot.FieldProxyMode, accountcodexdeviceslot.FieldState:
+		case accountcodexdeviceslot.FieldProxyMode, accountcodexdeviceslot.FieldClientVersionMode, accountcodexdeviceslot.FieldClientVersion, accountcodexdeviceslot.FieldState:
 			values[i] = new(sql.NullString)
 		case accountcodexdeviceslot.FieldCreatedAt, accountcodexdeviceslot.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -100,6 +104,18 @@ func (_m *AccountCodexDeviceSlot) assignValues(columns []string, values []any) e
 			} else if value.Valid {
 				_m.ProxyID = new(int64)
 				*_m.ProxyID = value.Int64
+			}
+		case accountcodexdeviceslot.FieldClientVersionMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field client_version_mode", values[i])
+			} else if value.Valid {
+				_m.ClientVersionMode = value.String
+			}
+		case accountcodexdeviceslot.FieldClientVersion:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field client_version", values[i])
+			} else if value.Valid {
+				_m.ClientVersion = value.String
 			}
 		case accountcodexdeviceslot.FieldEpoch:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -177,6 +193,12 @@ func (_m *AccountCodexDeviceSlot) String() string {
 		builder.WriteString("proxy_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("client_version_mode=")
+	builder.WriteString(_m.ClientVersionMode)
+	builder.WriteString(", ")
+	builder.WriteString("client_version=")
+	builder.WriteString(_m.ClientVersion)
 	builder.WriteString(", ")
 	builder.WriteString("epoch=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Epoch))

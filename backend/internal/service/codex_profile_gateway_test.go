@@ -558,6 +558,96 @@ func TestCodexProfileCompactKeepsLegacyBodyShape(t *testing.T) {
 	}
 }
 
+func TestCodexProfileSlotClientVersionDrivesHeadersAndMetadata(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		mode          CodexClientVersionMode
+		pinnedVersion string
+		wantVersion   string
+	}{
+		{name: "inherit", mode: CodexClientVersionInherit, wantVersion: "0.201.0"},
+		{name: "pinned", mode: CodexClientVersionPinned, pinnedVersion: "0.188.0", wantVersion: "0.188.0"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			account := codexProfileTestAccount(t, 290, CodexOSWindows, CodexSurfaceDesktop, CodexArchX8664, false)
+			account.CodexIdentityPolicy.Profiles[0].Slots = []CodexDeviceSlotPolicy{{
+				Index: 0, ClientVersionMode: tt.mode, ClientVersion: tt.pinnedVersion,
+			}}
+			repo := &codexProfileGatewayAccountRepo{
+				accounts: map[int64]*Account{account.ID: account},
+				resolvedSlots: map[int64]*CodexResolvedDeviceSlot{account.ID: {
+					AccountID: account.ID, SlotID: 29001, ProfileID: 29000,
+					OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceDesktop,
+					Architecture: CodexArchX8664, CatalogVersion: 1,
+					SlotIndex: 0, Epoch: 4, State: "active", PolicyVersion: 1,
+					ClientVersionMode: tt.mode, ClientVersion: tt.pinnedVersion,
+				}},
+			}
+			settings := NewSettingService(&codexVersionSettingRepoStub{values: map[string]string{
+				SettingKeyOpenAICodexClientVersion: "0.201.0",
+			}}, nil)
+			svc := &OpenAIGatewayService{accountRepo: repo, settingService: settings}
+			body := []byte(`{"model":"gpt-5.6-sol","prompt_cache_key":"version-session","client_metadata":{"session_id":"client-session","surface":"desktop","version":"0.1.0","user_agent":"client-ua","app_build":"client-build"}}`)
+			c := newCodexProfileGatewayContext(t, 7, 101, body)
+			c.Request.Header.Set("x-codex-turn-metadata", `{"version":"0.1.0","user_agent":"client-ua","app_build":"client-build"}`)
+			require.NotEmpty(t, svc.GenerateSessionHash(c, body))
+
+			prepared, err := svc.PrepareCodexProfileAttempt(c.Request.Context(), c, account, body)
+			require.NoError(t, err)
+			defer svc.ReleaseCodexProfileAttempt(c, prepared)
+			plan := stagedCodexIdentityAttemptPlan(c, prepared)
+			require.NotNil(t, plan)
+			require.Equal(t, tt.wantVersion, plan.Profile.Version)
+			require.Contains(t, plan.Profile.UserAgent, "/"+tt.wantVersion+" ")
+			require.Equal(t, "26.616.71553", plan.Profile.AppBuild, "slot version must not change the Desktop app build")
+
+			headers := c.Request.Header.Clone()
+			require.True(t, applyStagedCodexProfileHeaders(c, prepared, headers))
+			enforceCodexIdentityHeadersForAttempt(c, prepared, headers, "")
+			require.Equal(t, plan.Profile.Version, headers.Get("version"))
+			require.Equal(t, plan.Profile.UserAgent, headers.Get("user-agent"))
+			require.Equal(t, plan.Profile.Originator, headers.Get("originator"))
+			require.Equal(t, plan.Profile.Version, gjson.Get(headers.Get("x-codex-turn-metadata"), "version").String())
+			require.Equal(t, plan.Profile.UserAgent, gjson.Get(headers.Get("x-codex-turn-metadata"), "user_agent").String())
+			require.Equal(t, plan.Profile.AppBuild, gjson.Get(headers.Get("x-codex-turn-metadata"), "app_build").String())
+
+			upstreamBody, changed, err := ApplyCodexIdentityPlanToJSON(body, plan)
+			require.NoError(t, err)
+			require.True(t, changed)
+			require.Equal(t, plan.Profile.Version, gjson.GetBytes(upstreamBody, "client_metadata.version").String())
+			require.Equal(t, plan.Profile.UserAgent, gjson.GetBytes(upstreamBody, "client_metadata.user_agent").String())
+			require.Equal(t, plan.Profile.AppBuild, gjson.GetBytes(upstreamBody, "client_metadata.app_build").String())
+		})
+	}
+}
+
+func TestCodexProfileSlotClientVersionRejectsUnknownMode(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	_, err := svc.resolveCodexDeviceSlotClientVersion(context.Background(), &CodexResolvedDeviceSlot{
+		ClientVersionMode: CodexClientVersionMode("custom"), ClientVersion: "0.200.0",
+	})
+	require.ErrorContains(t, err, "unsupported Codex client version mode")
+}
+
+func TestCodexProfileSlotClientVersionFallsBackOrRejectsVersionsBelowUpstreamMinimum(t *testing.T) {
+	settings := NewSettingService(&codexVersionSettingRepoStub{values: map[string]string{
+		SettingKeyOpenAICodexClientVersion: "0.143.9",
+	}}, nil)
+	svc := &OpenAIGatewayService{settingService: settings}
+
+	version, err := svc.resolveCodexDeviceSlotClientVersion(context.Background(), &CodexResolvedDeviceSlot{
+		ClientVersionMode: CodexClientVersionInherit,
+	})
+	require.NoError(t, err)
+	require.Equal(t, codexCLIVersion, version)
+
+	_, err = svc.resolveCodexDeviceSlotClientVersion(context.Background(), &CodexResolvedDeviceSlot{
+		ClientVersionMode: CodexClientVersionPinned,
+		ClientVersion:     "0.143.9",
+	})
+	require.ErrorContains(t, err, codexUpstreamMinVersion)
+}
+
 func TestCodexProfilePassthroughJSONResponseRestoresKnownIdentityOnly(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	input := codexRuntimeAttemptInput(t)
@@ -631,9 +721,6 @@ func TestCodexProfileSharedDevicePreservesPR2WSAndStateIsolation(t *testing.T) {
 
 	ctxA := WithHTTPUpstreamIsolationScope(context.Background(), 7, 101)
 	ctxB := WithHTTPUpstreamIsolationScope(context.Background(), 7, 202)
-	scopeA := HTTPUpstreamIsolationScopeFromContext(ctxA)
-	scopeB := HTTPUpstreamIsolationScopeFromContext(ctxB)
-	require.NotEqual(t, newOpenAIWSAccountPoolKey(91, scopeA), newOpenAIWSAccountPoolKey(91, scopeB))
 	stateKeyA := scopedOpenAIWSStateKey(ctxA, "shared-response")
 	stateKeyB := scopedOpenAIWSStateKey(ctxB, "shared-response")
 	require.NotEqual(t, stateKeyA, stateKeyB)
@@ -805,7 +892,7 @@ func TestCodexProfileDirectWSIngressRoundTrip(t *testing.T) {
 		accountRepo:      repo,
 		cache:            &codexProfileGatewayCache{values: map[string]int64{}},
 		cfg:              cfg,
-		httpUpstream:     &codexProfileEchoUpstream{},
+		httpUpstream:     &codexProfileEchoUpstream{stream: true},
 		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
 		toolCorrector:    NewCodexToolCorrector(),
 		openaiWSPool:     pool,
@@ -852,7 +939,7 @@ func TestCodexProfileDirectWSIngressRoundTrip(t *testing.T) {
 	client, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http"), nil)
 	cancel()
 	require.NoError(t, err)
-	firstMessage := []byte(`{"type":"response.create","model":"gpt-5.6-sol","client_metadata":{"session_id":"client-session","os":"windows","arch":"arm64","surface":"cli"}}`)
+	firstMessage := []byte(`{"type":"response.create","model":"gpt-5.6-sol","client_metadata":{"session_id":"client-session","os":"windows","arch":"arm64","surface":"desktop"}}`)
 	writeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	require.NoError(t, client.Write(writeCtx, coderws.MessageText, firstMessage))
 	cancel()
@@ -860,11 +947,21 @@ func TestCodexProfileDirectWSIngressRoundTrip(t *testing.T) {
 	_, response, err := client.Read(readCtx)
 	cancel()
 	require.NoError(t, err)
+	require.Equal(t, "response.created", gjson.GetBytes(response, "type").String())
 	require.Equal(t, "client-session", gjson.GetBytes(response, "response.client_metadata.session_id").String())
-	aliasText := gjson.GetBytes(response, "response.output.0.content.0.text").String()
+	readCtx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+	_, delta, err := client.Read(readCtx)
+	cancel()
+	require.NoError(t, err)
+	aliasText := gjson.GetBytes(delta, "delta").String()
 	require.NotEmpty(t, aliasText)
 	require.NotEqual(t, "client-session", aliasText, "ordinary WS output text must not be restored")
-	secondMessage := []byte(`{"type":"response.create","model":"gpt-5.6-sol","client_metadata":{"session_id":"client-session","turn_id":"client-turn-2","os":"windows","arch":"arm64","surface":"cli"}}`)
+	readCtx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+	_, completed, err := client.Read(readCtx)
+	cancel()
+	require.NoError(t, err)
+	require.Equal(t, "response.completed", gjson.GetBytes(completed, "type").String())
+	secondMessage := []byte(`{"type":"response.create","model":"gpt-5.6-sol","client_metadata":{"session_id":"client-session","turn_id":"client-turn-2","os":"windows","arch":"arm64","surface":"desktop"}}`)
 	writeCtx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
 	require.NoError(t, client.Write(writeCtx, coderws.MessageText, secondMessage))
 	cancel()
@@ -884,17 +981,9 @@ func TestCodexProfileDirectWSIngressRoundTrip(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for direct WS ingress")
 	}
-	require.Equal(t, "Codex Desktop", captureDialer.lastHeaders.Get("originator"))
-	captureConn.mu.Lock()
-	require.Len(t, captureConn.writes, 2)
-	firstWrite := cloneMapStringAny(captureConn.writes[0])
-	secondWrite := cloneMapStringAny(captureConn.writes[1])
-	captureConn.mu.Unlock()
-	require.Equal(t, "windows", valueFromMap(firstWrite, "client_metadata", "os"))
-	require.Equal(t, "x86_64", valueFromMap(firstWrite, "client_metadata", "arch"))
-	require.Equal(t, valueFromMap(firstWrite, "client_metadata", "installation_id"), valueFromMap(secondWrite, "client_metadata", "installation_id"))
-	require.Equal(t, valueFromMap(firstWrite, "client_metadata", "session_id"), valueFromMap(secondWrite, "client_metadata", "session_id"))
-	require.NotEqual(t, valueFromMap(firstWrite, "client_metadata", "turn_id"), valueFromMap(secondWrite, "client_metadata", "turn_id"), "each direct WS response.create must use a fresh turn identity")
+	require.Zero(t, captureDialer.DialCount(), "Profile mode must use the host HTTP bridge instead of native upstream WebSocket")
+	require.Equal(t, "Codex Desktop", svc.httpUpstream.(*codexProfileEchoUpstream).requestHeader.Get("originator"))
+	require.Equal(t, "x86_64", gjson.GetBytes(svc.httpUpstream.(*codexProfileEchoUpstream).requestBody, "client_metadata.arch").String())
 }
 
 func TestRefreshCodexProfileTurnPlanPrefersCurrentFrameTurnIdentity(t *testing.T) {

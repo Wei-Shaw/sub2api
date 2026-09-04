@@ -1,4 +1,4 @@
--- Data downgrade for rolling back to a binary that predates migrations 233/234.
+-- Data downgrade for rolling back to a binary that predates migrations 236-238.
 -- This intentionally disables every OS Profile policy because an old binary
 -- cannot represent two surfaces for one OS or a template assignment. Account
 -- credentials, groups, proxies, usage and billing data are not changed.
@@ -15,6 +15,15 @@ IN SHARE ROW EXCLUSIVE MODE;
 DELETE FROM account_codex_device_bindings;
 DELETE FROM account_codex_device_slots;
 DELETE FROM account_codex_profiles;
+
+ALTER TABLE account_codex_device_slots
+    DROP CONSTRAINT IF EXISTS account_codex_slot_client_version_shape_check;
+ALTER TABLE account_codex_device_slots
+    DROP CONSTRAINT IF EXISTS account_codex_slot_client_version_mode_check;
+ALTER TABLE account_codex_device_slots
+    DROP COLUMN IF EXISTS client_version;
+ALTER TABLE account_codex_device_slots
+    DROP COLUMN IF EXISTS client_version_mode;
 
 ALTER TABLE account_codex_identity_policies
     DROP CONSTRAINT IF EXISTS account_codex_identity_binding_scope_check;
@@ -39,7 +48,7 @@ SET codex_identity_policy='{
     }'::jsonb,
     updated_at=NOW();
 
--- Migration files are committed independently. If 233 succeeded but 234
+-- Migration files are committed independently. If 236 succeeded but 237
 -- failed, these columns do not exist yet; use dynamic SQL so the same
 -- downgrade also handles that valid intermediate state.
 DO $$
@@ -117,8 +126,9 @@ BEGIN
         EXECUTE $sql$
             DELETE FROM schema_migrations
             WHERE filename IN (
-                '233_codex_profile_surface_identity.sql',
-                '234_codex_identity_templates.sql'
+                '236_codex_profile_surface_identity.sql',
+                '237_codex_identity_templates.sql',
+                '238_codex_slot_client_versions.sql'
             )
         $sql$;
     END IF;

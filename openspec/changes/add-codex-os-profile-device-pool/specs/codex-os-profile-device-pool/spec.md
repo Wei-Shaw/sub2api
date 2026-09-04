@@ -54,6 +54,50 @@ The system SHALL implement conversation-isolated, API-Key-shared, session-pool a
 - **WHEN** the new identity mode is enabled without an explicit session policy
 - **THEN** the system SHALL use conversation-isolated semantics
 
+#### Scenario: Device-shared active capacity
+
+- **WHEN** `device_shared` is selected
+- **THEN** each physical device slot SHALL admit at most one in-progress HTTP/SSE request stream or one WebSocket session at a time
+- **AND** the slot SHALL become available immediately when that request or session ends
+- **AND** a downstream disconnect SHALL NOT release the slot while the host is still draining the upstream response for billing
+- **AND** this restriction SHALL NOT reduce the whole account to one concurrent request
+- **AND** the other session policy modes SHALL NOT acquire this extra slot mutex
+
+#### Scenario: Session-pool size
+
+- **WHEN** `session_pool.sessions_per_device` is configured
+- **THEN** the value SHALL determine the number of reusable upstream session identities per device
+- **AND** it SHALL NOT be interpreted as a request-concurrency limit
+
+### Requirement: Per-slot Codex client version
+
+The system SHALL let every device slot either inherit the deployment Codex client version or pin one validated Codex client version without changing its model, client family or Desktop application build.
+
+#### Scenario: Inherited version
+
+- **WHEN** a slot uses `client_version_mode=inherit`
+- **THEN** the effective version SHALL follow the global administrator override, then the synced stable version, then the built-in fallback
+
+#### Scenario: Pinned version
+
+- **WHEN** a slot uses `client_version_mode=pinned`
+- **THEN** `client_version` SHALL be required, syntactically valid and no lower than `0.144.0`
+- **AND** the same effective value SHALL drive the User-Agent version segment, `version` header and structured client/turn metadata
+
+#### Scenario: Version change
+
+- **WHEN** a slot's version mode or pinned version changes
+- **THEN** the affected Profile epoch SHALL advance and its previous slots SHALL drain
+- **AND** `catalog_version` SHALL remain the identity-fixture format version rather than the Codex client version
+
+#### Scenario: Global inherited-version refresh
+
+- **WHEN** the deployment-wide Codex version changes while a slot remains in `client_version_mode=inherit`
+- **THEN** the next attempt SHALL use the new validated version
+- **AND** an already running attempt SHALL keep the version captured when it was prepared
+- **AND** the slot's device identity and Profile epoch SHALL remain stable
+- **AND** no account-wide epoch fan-out SHALL be required
+
 ### Requirement: Structured identity round trip
 
 The system SHALL transform and restore identity only through known JSON fields and HTTP/SSE/WS protocol events.

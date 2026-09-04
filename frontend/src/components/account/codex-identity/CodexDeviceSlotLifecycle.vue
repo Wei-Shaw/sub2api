@@ -41,7 +41,7 @@
     <ul v-else class="divide-y divide-gray-100 border-y border-gray-200 dark:divide-dark-700 dark:border-dark-600" :aria-busy="loading">
       <li
         v-for="slot in slots"
-        :key="`${slot.os_class}:${slot.epoch}:${slot.slot_index}`"
+        :key="`${slot.os_class}:${slot.canonical_surface}:${slot.epoch}:${slot.slot_index}`"
         class="grid grid-cols-1 gap-2 py-3 sm:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(5rem,0.7fr))] sm:items-center"
       >
         <div class="min-w-0">
@@ -58,8 +58,14 @@
                 : copy('admin.accounts.codexIdentity.activeSlot', 'Active') }}
             </span>
           </div>
-          <p class="mt-0.5 truncate text-xs text-gray-500 dark:text-dark-400">
-            {{ copy('admin.accounts.codexIdentity.catalogVersion', 'Catalog') }} v{{ slot.catalog_version }} · {{ proxyLabel(slot.proxy_id) }}
+          <p class="mt-0.5 break-words text-xs leading-5 text-gray-500 dark:text-dark-400">
+            {{ copy('admin.accounts.codexIdentity.catalogVersion', 'Identity catalog') }} v{{ slot.catalog_version }} ·
+            {{ proxyLabel(slot.proxy_id) }} ·
+            {{ slot.client_version_mode === 'pinned'
+              ? copy('admin.accounts.codexIdentity.clientVersionPinned', 'Fixed version')
+              : copy('admin.accounts.codexIdentity.clientVersionInherit', 'Automatic (recommended)') }}:
+            {{ copy('admin.accounts.codexIdentity.effectiveClientVersion', 'Effective version') }}
+            {{ slot.effective_client_version }}
           </p>
         </div>
         <div class="text-xs text-gray-500 dark:text-dark-400">

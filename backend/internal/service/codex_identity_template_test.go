@@ -117,6 +117,53 @@ func TestCodexIdentityTemplateRejectsInvalidSlotProxyShape(t *testing.T) {
 	require.Equal(t, "INVALID_CODEX_IDENTITY_TEMPLATE", infraerrors.Reason(err))
 }
 
+func TestCodexIdentityTemplateNormalizesPinnedSlotClientVersion(t *testing.T) {
+	repo := &codexIdentityTemplateRepoStub{}
+	svc := NewCodexIdentityTemplateService(repo, nil)
+	created, err := svc.Create(context.Background(), CodexIdentityTemplateCreateInput{
+		Name: "pinned client",
+		Profiles: []CodexIdentityTemplateProfile{{
+			OSClass: CodexOSLinux, CanonicalSurface: CodexSurfaceCLI,
+			Architecture: CodexArchX8664, SlotCount: 1,
+			Slots: []CodexIdentityTemplateSlot{{
+				Index: 0, ClientVersionMode: CodexClientVersionPinned, ClientVersion: " 0.200.1 ",
+			}},
+		}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, CodexClientVersionPinned, created.Profiles[0].Slots[0].ClientVersionMode)
+	require.Equal(t, "0.200.1", created.Profiles[0].Slots[0].ClientVersion)
+
+	created.ID = 7
+	created.Revision = 1
+	policy, err := MaterializeCodexIdentityTemplate(created)
+	require.NoError(t, err)
+	require.Equal(t, CodexClientVersionPinned, policy.Profiles[0].Slots[0].ClientVersionMode)
+	require.Equal(t, "0.200.1", policy.Profiles[0].Slots[0].ClientVersion)
+}
+
+func TestCodexIdentityTemplateRejectsInvalidPinnedSlotClientVersion(t *testing.T) {
+	svc := NewCodexIdentityTemplateService(&codexIdentityTemplateRepoStub{}, nil)
+	for name, slot := range map[string]CodexIdentityTemplateSlot{
+		"below minimum": {Index: 0, ClientVersionMode: CodexClientVersionPinned, ClientVersion: "0.143.9"},
+		"invalid":       {Index: 0, ClientVersionMode: CodexClientVersionPinned, ClientVersion: "latest"},
+		"inherit value": {Index: 0, ClientVersionMode: CodexClientVersionInherit, ClientVersion: "0.200.1"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := svc.Create(context.Background(), CodexIdentityTemplateCreateInput{
+				Name: "bad " + name,
+				Profiles: []CodexIdentityTemplateProfile{{
+					OSClass: CodexOSLinux, CanonicalSurface: CodexSurfaceCLI,
+					Architecture: CodexArchX8664, SlotCount: 1,
+					Slots: []CodexIdentityTemplateSlot{slot},
+				}},
+			})
+			require.Error(t, err)
+			require.Equal(t, "INVALID_CODEX_IDENTITY_TEMPLATE", infraerrors.Reason(err))
+		})
+	}
+}
+
 func TestMaterializeCodexIdentityTemplatePreservesAssignmentPolicy(t *testing.T) {
 	proxyID := int64(9)
 	policy, err := MaterializeCodexIdentityTemplate(&CodexIdentityTemplate{
@@ -124,7 +171,8 @@ func TestMaterializeCodexIdentityTemplatePreservesAssignmentPolicy(t *testing.T)
 		SessionPolicy:      CodexSessionPolicySpec{Mode: CodexSessionAPIKeyShared},
 		AffinityTTLSeconds: 7200, UnsupportedPolicy: CodexUnsupportedProfileReject,
 		Profiles: []CodexIdentityTemplateProfile{
-			{OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceDesktop, Architecture: CodexArchX8664, ProxyMode: CodexProxyInherit, SlotCount: 1, CatalogVersion: 1},
+			{OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceDesktop, Architecture: CodexArchX8664, ProxyMode: CodexProxyInherit, SlotCount: 1, CatalogVersion: 1,
+				Slots: []CodexIdentityTemplateSlot{{Index: 0, ClientVersionMode: CodexClientVersionPinned, ClientVersion: "0.200.1"}}},
 			{OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceCLI, Architecture: CodexArchARM64, ProxyMode: CodexProxyExplicit, ProxyID: &proxyID, SlotCount: 1, CatalogVersion: 1},
 		},
 	})
@@ -136,6 +184,8 @@ func TestMaterializeCodexIdentityTemplatePreservesAssignmentPolicy(t *testing.T)
 	require.Len(t, policy.Profiles, 2)
 	require.Equal(t, CodexSurfaceCLI, policy.Profiles[0].CanonicalSurface)
 	require.Equal(t, proxyID, *policy.Profiles[0].ProxyID)
+	require.Equal(t, CodexClientVersionPinned, policy.Profiles[1].Slots[0].ClientVersionMode)
+	require.Equal(t, "0.200.1", policy.Profiles[1].Slots[0].ClientVersion)
 }
 
 func TestCodexIdentityPolicyRuntimeSHA256IgnoresProjectionVersionsButIncludesSurface(t *testing.T) {

@@ -349,10 +349,10 @@ func (s *SettingService) GetOpenAICodexClientVersion(ctx context.Context) string
 			return fallback, nil
 		}
 		version := NormalizeCodexClientVersion(values[SettingKeyOpenAICodexClientVersion])
-		if version == "" {
+		if !IsSupportedCodexClientVersion(version) {
 			version = NormalizeCodexClientVersion(values[SettingKeyOpenAICodexClientVersionSynced])
 		}
-		if version == "" {
+		if !IsSupportedCodexClientVersion(version) {
 			version = fallback
 		}
 		s.openAICodexVersionCache.Store(&cachedOpenAICodexClientVersion{

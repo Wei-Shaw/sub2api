@@ -24,6 +24,10 @@ const validationCodes = [
   'SESSION_SLOT_COUNT_OUT_OF_RANGE',
   'SESSION_SLOT_COUNT_NOT_APPLICABLE',
   'DEVICE_SHARED_RESTRICTIONS_INVALID',
+  'CLIENT_VERSION_MODE_INVALID',
+  'CLIENT_VERSION_REQUIRED',
+  'CLIENT_VERSION_INVALID',
+  'CLIENT_VERSION_TOO_OLD',
 ] as const
 
 const flatten = (node: unknown, path = ''): Record<string, string> => {

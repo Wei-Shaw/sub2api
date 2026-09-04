@@ -21,18 +21,18 @@
       />
     </div>
 
-    <details v-if="modelValue.slot_count > 1" class="group" data-testid="slot-proxy-overrides">
+    <details class="group" data-testid="slot-proxy-overrides">
       <summary
         class="flex cursor-pointer list-none items-center justify-between gap-3 rounded px-2 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-dark-200 dark:hover:bg-dark-700"
       >
-        <span>{{ copy('admin.accounts.codexIdentity.slotOverrides', 'Per-slot proxy overrides') }}</span>
+        <span>{{ copy('admin.accounts.codexIdentity.slotOverrides', 'Per-slot proxy overrides and versions') }}</span>
         <Icon name="chevronDown" size="sm" class="transition-transform group-open:rotate-180" />
       </summary>
       <div class="mt-2 divide-y divide-gray-100 border-y border-gray-100 dark:divide-dark-700 dark:border-dark-700">
         <div
           v-for="slotIndex in slotIndexes"
           :key="slotIndex"
-          class="grid grid-cols-1 gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,18rem)] sm:items-center"
+          class="grid grid-cols-1 gap-3 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,18rem)_minmax(15rem,20rem)] sm:items-start"
         >
           <div>
             <label :id="`${idPrefix}-slot-${slotIndex}-label`" class="text-sm font-medium text-gray-700 dark:text-dark-200">
@@ -51,6 +51,39 @@
             searchable="auto"
             @update:model-value="updateSlotProxy(slotIndex, $event)"
           />
+          <div class="min-w-0 space-y-2">
+            <label :id="`${idPrefix}-slot-${slotIndex}-client-version-label`" class="input-label mb-0">
+              {{ copy('admin.accounts.codexIdentity.clientVersion', 'Codex client version') }}
+            </label>
+            <Select
+              :id="`${idPrefix}-slot-${slotIndex}-client-version-mode`"
+              :model-value="slotClientVersionMode(slotIndex)"
+              :options="clientVersionModeOptions"
+              :disabled="disabled"
+              :aria-label="`${copy('admin.accounts.codexIdentity.clientVersion', 'Codex client version')} ${slotIndex + 1}`"
+              :aria-describedby="`${idPrefix}-slot-${slotIndex}-client-version-hint`"
+              :data-testid="`slot-${slotIndex}-client-version-mode`"
+              @update:model-value="updateSlotClientVersionMode(slotIndex, $event)"
+            />
+            <input
+              v-if="slotClientVersionMode(slotIndex) === 'pinned'"
+              :id="`${idPrefix}-slot-${slotIndex}-client-version`"
+              :value="slotClientVersion(slotIndex)"
+              type="text"
+              inputmode="decimal"
+              maxlength="64"
+              class="input font-mono text-sm"
+              :placeholder="copy('admin.accounts.codexIdentity.clientVersionPlaceholder', 'e.g. 0.146.0')"
+              :aria-label="`${copy('admin.accounts.codexIdentity.fixedClientVersion', 'Fixed Codex client version')} ${slotIndex + 1}`"
+              :data-testid="`slot-${slotIndex}-client-version`"
+              @input="updateSlotClientVersionValue(slotIndex, ($event.target as HTMLInputElement).value)"
+            />
+            <p :id="`${idPrefix}-slot-${slotIndex}-client-version-hint`" class="text-xs text-gray-500 dark:text-dark-400">
+              {{ slotClientVersionMode(slotIndex) === 'pinned'
+                ? copy('admin.accounts.codexIdentity.clientVersionPinnedHint', 'Use a version such as 0.146.0.')
+                : copy('admin.accounts.codexIdentity.clientVersionInheritHint', 'Follow the deployment Codex client version automatically.') }}
+            </p>
+          </div>
         </div>
       </div>
     </details>
@@ -64,6 +97,7 @@ import Icon from '@/components/icons/Icon.vue'
 import type {
   CodexIdentityProxyOption,
   CodexOSProfilePolicy,
+  CodexClientVersionMode,
   CodexProxyMode,
 } from '@/types/codexIdentity'
 import { useCodexIdentityCopy } from './copy'
@@ -138,6 +172,17 @@ const slotProxyOptions = computed(() => [
   })),
 ])
 
+const clientVersionModeOptions = computed(() => [
+  {
+    value: 'inherit',
+    label: copy('admin.accounts.codexIdentity.clientVersionInherit', 'Automatic (recommended)'),
+  },
+  {
+    value: 'pinned',
+    label: copy('admin.accounts.codexIdentity.clientVersionPinned', 'Fixed version'),
+  },
+])
+
 const slotIndexes = computed(() => Array.from({ length: props.modelValue.slot_count }, (_, index) => index))
 
 const updateProfileProxy = (value: string | number | boolean | null) => {
@@ -161,16 +206,71 @@ const slotProxySelection = (slotIndex: number): string | number => {
   return mode === 'proxy' && slot?.proxy_id !== undefined ? slot.proxy_id : mode
 }
 
+const slotClientVersionMode = (slotIndex: number): CodexClientVersionMode =>
+  props.modelValue.slots?.find((item) => item.index === slotIndex)?.client_version_mode ?? 'inherit'
+
+const slotClientVersion = (slotIndex: number): string =>
+  props.modelValue.slots?.find((item) => item.index === slotIndex)?.client_version ?? ''
+
 const updateSlotProxy = (slotIndex: number, value: string | number | boolean | null) => {
   const next = cloneCodexOSProfile(props.modelValue)
+  const existing = next.slots?.find((slot) => slot.index === slotIndex)
   const slots = (next.slots ?? []).filter((slot) => slot.index !== slotIndex)
+  const clientVersionMode = existing?.client_version_mode ?? 'inherit'
   if (typeof value === 'number' && activeProxies.value.some((proxy) => proxy.id === value)) {
-    slots.push({ index: slotIndex, proxy_mode: 'proxy', proxy_id: value })
+    slots.push({
+      index: slotIndex,
+      proxy_mode: 'proxy',
+      proxy_id: value,
+      client_version_mode: clientVersionMode,
+      ...(clientVersionMode === 'pinned' && existing?.client_version ? { client_version: existing.client_version } : {}),
+    })
   } else if (value === 'direct') {
-    slots.push({ index: slotIndex, proxy_mode: 'direct' })
+    slots.push({
+      index: slotIndex,
+      proxy_mode: 'direct',
+      client_version_mode: clientVersionMode,
+      ...(clientVersionMode === 'pinned' && existing?.client_version ? { client_version: existing.client_version } : {}),
+    })
   } else {
-    slots.push({ index: slotIndex, proxy_mode: 'inherit' })
+    slots.push({
+      index: slotIndex,
+      proxy_mode: 'inherit',
+      client_version_mode: clientVersionMode,
+      ...(clientVersionMode === 'pinned' && existing?.client_version ? { client_version: existing.client_version } : {}),
+    })
   }
+  next.slots = slots.sort((left, right) => left.index - right.index)
+  emit('update:modelValue', next)
+}
+
+const updateSlotClientVersionMode = (slotIndex: number, value: string | number | boolean | null) => {
+  const next = cloneCodexOSProfile(props.modelValue)
+  const existing = next.slots?.find((slot) => slot.index === slotIndex)
+  const slots = (next.slots ?? []).filter((slot) => slot.index !== slotIndex)
+  const mode: CodexClientVersionMode = value === 'pinned' ? 'pinned' : 'inherit'
+  slots.push({
+    index: slotIndex,
+    proxy_mode: existing?.proxy_mode ?? 'inherit',
+    ...(existing?.proxy_id !== undefined ? { proxy_id: existing.proxy_id } : {}),
+    client_version_mode: mode,
+    ...(mode === 'pinned' && existing?.client_version ? { client_version: existing.client_version } : {}),
+  })
+  next.slots = slots.sort((left, right) => left.index - right.index)
+  emit('update:modelValue', next)
+}
+
+const updateSlotClientVersionValue = (slotIndex: number, value: string) => {
+  const next = cloneCodexOSProfile(props.modelValue)
+  const existing = next.slots?.find((slot) => slot.index === slotIndex)
+  const slots = (next.slots ?? []).filter((slot) => slot.index !== slotIndex)
+  slots.push({
+    index: slotIndex,
+    proxy_mode: existing?.proxy_mode ?? 'inherit',
+    ...(existing?.proxy_id !== undefined ? { proxy_id: existing.proxy_id } : {}),
+    client_version_mode: 'pinned',
+    client_version: value,
+  })
   next.slots = slots.sort((left, right) => left.index - right.index)
   emit('update:modelValue', next)
 }

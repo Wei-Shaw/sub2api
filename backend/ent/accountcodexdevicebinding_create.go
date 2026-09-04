@@ -40,6 +40,12 @@ func (_c *AccountCodexDeviceBindingCreate) SetOsClass(v string) *AccountCodexDev
 	return _c
 }
 
+// SetCanonicalSurface sets the "canonical_surface" field.
+func (_c *AccountCodexDeviceBindingCreate) SetCanonicalSurface(v string) *AccountCodexDeviceBindingCreate {
+	_c.mutation.SetCanonicalSurface(v)
+	return _c
+}
+
 // SetSlotID sets the "slot_id" field.
 func (_c *AccountCodexDeviceBindingCreate) SetSlotID(v int64) *AccountCodexDeviceBindingCreate {
 	_c.mutation.SetSlotID(v)
@@ -141,6 +147,14 @@ func (_c *AccountCodexDeviceBindingCreate) check() error {
 			return &ValidationError{Name: "os_class", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceBinding.os_class": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.CanonicalSurface(); !ok {
+		return &ValidationError{Name: "canonical_surface", err: errors.New(`ent: missing required field "AccountCodexDeviceBinding.canonical_surface"`)}
+	}
+	if v, ok := _c.mutation.CanonicalSurface(); ok {
+		if err := accountcodexdevicebinding.CanonicalSurfaceValidator(v); err != nil {
+			return &ValidationError{Name: "canonical_surface", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceBinding.canonical_surface": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.SlotID(); !ok {
 		return &ValidationError{Name: "slot_id", err: errors.New(`ent: missing required field "AccountCodexDeviceBinding.slot_id"`)}
 	}
@@ -191,6 +205,10 @@ func (_c *AccountCodexDeviceBindingCreate) createSpec() (*AccountCodexDeviceBind
 	if value, ok := _c.mutation.OsClass(); ok {
 		_spec.SetField(accountcodexdevicebinding.FieldOsClass, field.TypeString, value)
 		_node.OsClass = value
+	}
+	if value, ok := _c.mutation.CanonicalSurface(); ok {
+		_spec.SetField(accountcodexdevicebinding.FieldCanonicalSurface, field.TypeString, value)
+		_node.CanonicalSurface = value
 	}
 	if value, ok := _c.mutation.SlotID(); ok {
 		_spec.SetField(accountcodexdevicebinding.FieldSlotID, field.TypeInt64, value)
@@ -305,6 +323,18 @@ func (u *AccountCodexDeviceBindingUpsert) SetOsClass(v string) *AccountCodexDevi
 // UpdateOsClass sets the "os_class" field to the value that was provided on create.
 func (u *AccountCodexDeviceBindingUpsert) UpdateOsClass() *AccountCodexDeviceBindingUpsert {
 	u.SetExcluded(accountcodexdevicebinding.FieldOsClass)
+	return u
+}
+
+// SetCanonicalSurface sets the "canonical_surface" field.
+func (u *AccountCodexDeviceBindingUpsert) SetCanonicalSurface(v string) *AccountCodexDeviceBindingUpsert {
+	u.Set(accountcodexdevicebinding.FieldCanonicalSurface, v)
+	return u
+}
+
+// UpdateCanonicalSurface sets the "canonical_surface" field to the value that was provided on create.
+func (u *AccountCodexDeviceBindingUpsert) UpdateCanonicalSurface() *AccountCodexDeviceBindingUpsert {
+	u.SetExcluded(accountcodexdevicebinding.FieldCanonicalSurface)
 	return u
 }
 
@@ -454,6 +484,20 @@ func (u *AccountCodexDeviceBindingUpsertOne) SetOsClass(v string) *AccountCodexD
 func (u *AccountCodexDeviceBindingUpsertOne) UpdateOsClass() *AccountCodexDeviceBindingUpsertOne {
 	return u.Update(func(s *AccountCodexDeviceBindingUpsert) {
 		s.UpdateOsClass()
+	})
+}
+
+// SetCanonicalSurface sets the "canonical_surface" field.
+func (u *AccountCodexDeviceBindingUpsertOne) SetCanonicalSurface(v string) *AccountCodexDeviceBindingUpsertOne {
+	return u.Update(func(s *AccountCodexDeviceBindingUpsert) {
+		s.SetCanonicalSurface(v)
+	})
+}
+
+// UpdateCanonicalSurface sets the "canonical_surface" field to the value that was provided on create.
+func (u *AccountCodexDeviceBindingUpsertOne) UpdateCanonicalSurface() *AccountCodexDeviceBindingUpsertOne {
+	return u.Update(func(s *AccountCodexDeviceBindingUpsert) {
+		s.UpdateCanonicalSurface()
 	})
 }
 
@@ -777,6 +821,20 @@ func (u *AccountCodexDeviceBindingUpsertBulk) SetOsClass(v string) *AccountCodex
 func (u *AccountCodexDeviceBindingUpsertBulk) UpdateOsClass() *AccountCodexDeviceBindingUpsertBulk {
 	return u.Update(func(s *AccountCodexDeviceBindingUpsert) {
 		s.UpdateOsClass()
+	})
+}
+
+// SetCanonicalSurface sets the "canonical_surface" field.
+func (u *AccountCodexDeviceBindingUpsertBulk) SetCanonicalSurface(v string) *AccountCodexDeviceBindingUpsertBulk {
+	return u.Update(func(s *AccountCodexDeviceBindingUpsert) {
+		s.SetCanonicalSurface(v)
+	})
+}
+
+// UpdateCanonicalSurface sets the "canonical_surface" field to the value that was provided on create.
+func (u *AccountCodexDeviceBindingUpsertBulk) UpdateCanonicalSurface() *AccountCodexDeviceBindingUpsertBulk {
+	return u.Update(func(s *AccountCodexDeviceBindingUpsert) {
+		s.UpdateCanonicalSurface()
 	})
 }
 

@@ -10,7 +10,7 @@ Accepted; control-plane ownership and Profile identity are amended by ADR-004
 
 ## Context
 
-Shared OpenAI OAuth accounts need stable, bounded client identities across Windows, macOS, Linux and generic SDK traffic. Existing account-level convergence over-couples tenants, while per-API-Key convergence can expose unbounded device identities. PR #2 already provides tenant-scoped HTTP/WS/state isolation and must remain authoritative for runtime state.
+Shared OpenAI OAuth accounts need stable, bounded client identities across Windows, macOS, Linux and generic SDK traffic. Existing account-level convergence over-couples tenants, while per-API-Key convergence can expose unbounded device identities. The separate Privacy Transport plugin provides the pluggable HTTP/TLS egress boundary and receives only an opaque API-Key connection scope. The host remains authoritative for account scheduling, device/session identity, WebSocket bridging and response/turn state.
 
 Account creation and import currently expose an `active + schedulable` account before groups and post-create configuration finish. The new identity policy makes that race unacceptable.
 
@@ -21,9 +21,9 @@ Account creation and import currently expose an `active + schedulable` account b
 - Persist Profile/slot/binding lifecycle in typed relational entities, not untyped account extra.
 - Make AccountProvisioningSpec the only account write contract and atomically activate accounts after complete configuration.
 - Use structured HTTP/SSE/WS identity transformation and response restoration.
-- Preserve PR #2 API Key isolation even when device identities are shared.
+- Preserve API-Key HTTP/TLS, WebSocket and response/turn-state isolation even when device identities are shared.
 - Preserve legacy eligibility for default-off accounts in mixed pools; strict unsupported-device enforcement requires a fully Profile-managed candidate pool, and established Profile affinity never downgrades to legacy.
-- Deliver as a stacked Draft PR whose base is the PR #2 branch.
+- Deliver the host changes as an independent Draft PR against upstream `main`; do not include the Transport plugin source in the core PR.
 
 ## Alternatives Considered
 
@@ -49,5 +49,5 @@ Rejected because UA, originator, body metadata, workspace, prompt cache and resp
 - Profile adapters and response restoration require broad protocol tests.
 - Slot and proxy changes need epoch/draining semantics.
 - Binding resolution adds a database transaction on Profile-managed attempts; canary testing must measure query/write load before production rollout.
-- Profile/session/proxy handshake compatibility can reduce WS connection reuse, while the PR #2 account-wide connection budget remains the hard cap.
+- Profile/session/proxy handshake compatibility can reduce connection reuse, while the host account-wide connection budget remains the hard cap.
 - The feature adds schema and maintenance cost but remains opt-in and isolated from existing account behavior.

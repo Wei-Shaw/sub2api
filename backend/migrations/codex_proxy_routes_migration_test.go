@@ -8,7 +8,7 @@ import (
 )
 
 func TestCodexProxyRoutesMigrationBackfillsAndConstrainsExplicitRouting(t *testing.T) {
-	payload, err := FS.ReadFile("230_codex_proxy_routes_and_cleanup.sql")
+	payload, err := FS.ReadFile("235_codex_proxy_routes_and_cleanup.sql")
 	require.NoError(t, err)
 	sql := string(payload)
 	for _, required := range []string{

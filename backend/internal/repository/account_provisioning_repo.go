@@ -542,16 +542,22 @@ func createProvisionedCodexIdentity(
 			override, exists := overrides[slotIndex]
 			proxyMode := service.CodexProxyInherit
 			var proxyID *int64
+			clientVersionMode := service.CodexClientVersionInherit
+			clientVersion := ""
 			if exists {
 				proxyMode = override.ProxyMode
 				proxyID = override.ProxyID
+				clientVersionMode = override.ClientVersionMode
+				clientVersion = override.ClientVersion
 			}
 			if _, err := client.ExecContext(ctx, `
 				INSERT INTO account_codex_device_slots
-					(account_id, profile_id, slot_index, proxy_mode, proxy_id, epoch, state)
-				VALUES ($1, $2, $3, $4, $5, $6, 'active')
+					(account_id, profile_id, slot_index, proxy_mode, proxy_id,
+					 client_version_mode, client_version, epoch, state)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
 				ON CONFLICT (profile_id, slot_index, epoch) DO NOTHING
-			`, accountID, profileID, slotIndex, proxyMode, proxyID, profile.Epoch); err != nil {
+			`, accountID, profileID, slotIndex, proxyMode, proxyID,
+				clientVersionMode, clientVersion, profile.Epoch); err != nil {
 				return err
 			}
 		}

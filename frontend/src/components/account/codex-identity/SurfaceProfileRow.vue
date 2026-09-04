@@ -178,7 +178,8 @@ const updateSlotCount = (count: number) => {
   const slotCount = Math.max(CODEX_DEVICE_SLOT_MIN, Math.min(CODEX_DEVICE_SLOT_MAX, count))
   const next = cloneCodexOSProfile(props.modelValue)
   next.slot_count = slotCount
-  next.slots = (next.slots ?? []).filter((slot) => slot.index < slotCount)
+  const existingSlots = (next.slots ?? []).filter((slot) => slot.index < slotCount)
+  next.slots = existingSlots.sort((left, right) => left.index - right.index)
   emit('update:modelValue', next)
 }
 const validationMessage = (issue: CodexIdentityValidationIssue): string => {

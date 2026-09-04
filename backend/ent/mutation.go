@@ -5426,6 +5426,7 @@ type AccountCodexDeviceBindingMutation struct {
 	api_key_id        *int64
 	addapi_key_id     *int64
 	os_class          *string
+	canonical_surface *string
 	slot_id           *int64
 	addslot_id        *int64
 	policy_version    *int64
@@ -5684,6 +5685,42 @@ func (m *AccountCodexDeviceBindingMutation) ResetOsClass() {
 	m.os_class = nil
 }
 
+// SetCanonicalSurface sets the "canonical_surface" field.
+func (m *AccountCodexDeviceBindingMutation) SetCanonicalSurface(s string) {
+	m.canonical_surface = &s
+}
+
+// CanonicalSurface returns the value of the "canonical_surface" field in the mutation.
+func (m *AccountCodexDeviceBindingMutation) CanonicalSurface() (r string, exists bool) {
+	v := m.canonical_surface
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCanonicalSurface returns the old "canonical_surface" field's value of the AccountCodexDeviceBinding entity.
+// If the AccountCodexDeviceBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceBindingMutation) OldCanonicalSurface(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCanonicalSurface is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCanonicalSurface requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCanonicalSurface: %w", err)
+	}
+	return oldValue.CanonicalSurface, nil
+}
+
+// ResetCanonicalSurface resets all changes to the "canonical_surface" field.
+func (m *AccountCodexDeviceBindingMutation) ResetCanonicalSurface() {
+	m.canonical_surface = nil
+}
+
 // SetSlotID sets the "slot_id" field.
 func (m *AccountCodexDeviceBindingMutation) SetSlotID(i int64) {
 	m.slot_id = &i
@@ -5902,7 +5939,7 @@ func (m *AccountCodexDeviceBindingMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountCodexDeviceBindingMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.account_id != nil {
 		fields = append(fields, accountcodexdevicebinding.FieldAccountID)
 	}
@@ -5911,6 +5948,9 @@ func (m *AccountCodexDeviceBindingMutation) Fields() []string {
 	}
 	if m.os_class != nil {
 		fields = append(fields, accountcodexdevicebinding.FieldOsClass)
+	}
+	if m.canonical_surface != nil {
+		fields = append(fields, accountcodexdevicebinding.FieldCanonicalSurface)
 	}
 	if m.slot_id != nil {
 		fields = append(fields, accountcodexdevicebinding.FieldSlotID)
@@ -5938,6 +5978,8 @@ func (m *AccountCodexDeviceBindingMutation) Field(name string) (ent.Value, bool)
 		return m.APIKeyID()
 	case accountcodexdevicebinding.FieldOsClass:
 		return m.OsClass()
+	case accountcodexdevicebinding.FieldCanonicalSurface:
+		return m.CanonicalSurface()
 	case accountcodexdevicebinding.FieldSlotID:
 		return m.SlotID()
 	case accountcodexdevicebinding.FieldPolicyVersion:
@@ -5961,6 +6003,8 @@ func (m *AccountCodexDeviceBindingMutation) OldField(ctx context.Context, name s
 		return m.OldAPIKeyID(ctx)
 	case accountcodexdevicebinding.FieldOsClass:
 		return m.OldOsClass(ctx)
+	case accountcodexdevicebinding.FieldCanonicalSurface:
+		return m.OldCanonicalSurface(ctx)
 	case accountcodexdevicebinding.FieldSlotID:
 		return m.OldSlotID(ctx)
 	case accountcodexdevicebinding.FieldPolicyVersion:
@@ -5998,6 +6042,13 @@ func (m *AccountCodexDeviceBindingMutation) SetField(name string, value ent.Valu
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetOsClass(v)
+		return nil
+	case accountcodexdevicebinding.FieldCanonicalSurface:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCanonicalSurface(v)
 		return nil
 	case accountcodexdevicebinding.FieldSlotID:
 		v, ok := value.(int64)
@@ -6136,6 +6187,9 @@ func (m *AccountCodexDeviceBindingMutation) ResetField(name string) error {
 	case accountcodexdevicebinding.FieldOsClass:
 		m.ResetOsClass()
 		return nil
+	case accountcodexdevicebinding.FieldCanonicalSurface:
+		m.ResetCanonicalSurface()
+		return nil
 	case accountcodexdevicebinding.FieldSlotID:
 		m.ResetSlotID()
 		return nil
@@ -6203,27 +6257,29 @@ func (m *AccountCodexDeviceBindingMutation) ResetEdge(name string) error {
 // AccountCodexDeviceSlotMutation represents an operation that mutates the AccountCodexDeviceSlot nodes in the graph.
 type AccountCodexDeviceSlotMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *int64
-	account_id    *int64
-	addaccount_id *int64
-	profile_id    *int64
-	addprofile_id *int64
-	slot_index    *int
-	addslot_index *int
-	proxy_mode    *string
-	proxy_id      *int64
-	addproxy_id   *int64
-	epoch         *int64
-	addepoch      *int64
-	state         *string
-	created_at    *time.Time
-	updated_at    *time.Time
-	clearedFields map[string]struct{}
-	done          bool
-	oldValue      func(context.Context) (*AccountCodexDeviceSlot, error)
-	predicates    []predicate.AccountCodexDeviceSlot
+	op                  Op
+	typ                 string
+	id                  *int64
+	account_id          *int64
+	addaccount_id       *int64
+	profile_id          *int64
+	addprofile_id       *int64
+	slot_index          *int
+	addslot_index       *int
+	proxy_mode          *string
+	proxy_id            *int64
+	addproxy_id         *int64
+	client_version_mode *string
+	client_version      *string
+	epoch               *int64
+	addepoch            *int64
+	state               *string
+	created_at          *time.Time
+	updated_at          *time.Time
+	clearedFields       map[string]struct{}
+	done                bool
+	oldValue            func(context.Context) (*AccountCodexDeviceSlot, error)
+	predicates          []predicate.AccountCodexDeviceSlot
 }
 
 var _ ent.Mutation = (*AccountCodexDeviceSlotMutation)(nil)
@@ -6598,6 +6654,78 @@ func (m *AccountCodexDeviceSlotMutation) ResetProxyID() {
 	delete(m.clearedFields, accountcodexdeviceslot.FieldProxyID)
 }
 
+// SetClientVersionMode sets the "client_version_mode" field.
+func (m *AccountCodexDeviceSlotMutation) SetClientVersionMode(s string) {
+	m.client_version_mode = &s
+}
+
+// ClientVersionMode returns the value of the "client_version_mode" field in the mutation.
+func (m *AccountCodexDeviceSlotMutation) ClientVersionMode() (r string, exists bool) {
+	v := m.client_version_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClientVersionMode returns the old "client_version_mode" field's value of the AccountCodexDeviceSlot entity.
+// If the AccountCodexDeviceSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceSlotMutation) OldClientVersionMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClientVersionMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClientVersionMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClientVersionMode: %w", err)
+	}
+	return oldValue.ClientVersionMode, nil
+}
+
+// ResetClientVersionMode resets all changes to the "client_version_mode" field.
+func (m *AccountCodexDeviceSlotMutation) ResetClientVersionMode() {
+	m.client_version_mode = nil
+}
+
+// SetClientVersion sets the "client_version" field.
+func (m *AccountCodexDeviceSlotMutation) SetClientVersion(s string) {
+	m.client_version = &s
+}
+
+// ClientVersion returns the value of the "client_version" field in the mutation.
+func (m *AccountCodexDeviceSlotMutation) ClientVersion() (r string, exists bool) {
+	v := m.client_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClientVersion returns the old "client_version" field's value of the AccountCodexDeviceSlot entity.
+// If the AccountCodexDeviceSlot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceSlotMutation) OldClientVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClientVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClientVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClientVersion: %w", err)
+	}
+	return oldValue.ClientVersion, nil
+}
+
+// ResetClientVersion resets all changes to the "client_version" field.
+func (m *AccountCodexDeviceSlotMutation) ResetClientVersion() {
+	m.client_version = nil
+}
+
 // SetEpoch sets the "epoch" field.
 func (m *AccountCodexDeviceSlotMutation) SetEpoch(i int64) {
 	m.epoch = &i
@@ -6796,7 +6924,7 @@ func (m *AccountCodexDeviceSlotMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountCodexDeviceSlotMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 11)
 	if m.account_id != nil {
 		fields = append(fields, accountcodexdeviceslot.FieldAccountID)
 	}
@@ -6811,6 +6939,12 @@ func (m *AccountCodexDeviceSlotMutation) Fields() []string {
 	}
 	if m.proxy_id != nil {
 		fields = append(fields, accountcodexdeviceslot.FieldProxyID)
+	}
+	if m.client_version_mode != nil {
+		fields = append(fields, accountcodexdeviceslot.FieldClientVersionMode)
+	}
+	if m.client_version != nil {
+		fields = append(fields, accountcodexdeviceslot.FieldClientVersion)
 	}
 	if m.epoch != nil {
 		fields = append(fields, accountcodexdeviceslot.FieldEpoch)
@@ -6842,6 +6976,10 @@ func (m *AccountCodexDeviceSlotMutation) Field(name string) (ent.Value, bool) {
 		return m.ProxyMode()
 	case accountcodexdeviceslot.FieldProxyID:
 		return m.ProxyID()
+	case accountcodexdeviceslot.FieldClientVersionMode:
+		return m.ClientVersionMode()
+	case accountcodexdeviceslot.FieldClientVersion:
+		return m.ClientVersion()
 	case accountcodexdeviceslot.FieldEpoch:
 		return m.Epoch()
 	case accountcodexdeviceslot.FieldState:
@@ -6869,6 +7007,10 @@ func (m *AccountCodexDeviceSlotMutation) OldField(ctx context.Context, name stri
 		return m.OldProxyMode(ctx)
 	case accountcodexdeviceslot.FieldProxyID:
 		return m.OldProxyID(ctx)
+	case accountcodexdeviceslot.FieldClientVersionMode:
+		return m.OldClientVersionMode(ctx)
+	case accountcodexdeviceslot.FieldClientVersion:
+		return m.OldClientVersion(ctx)
 	case accountcodexdeviceslot.FieldEpoch:
 		return m.OldEpoch(ctx)
 	case accountcodexdeviceslot.FieldState:
@@ -6920,6 +7062,20 @@ func (m *AccountCodexDeviceSlotMutation) SetField(name string, value ent.Value) 
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetProxyID(v)
+		return nil
+	case accountcodexdeviceslot.FieldClientVersionMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClientVersionMode(v)
+		return nil
+	case accountcodexdeviceslot.FieldClientVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClientVersion(v)
 		return nil
 	case accountcodexdeviceslot.FieldEpoch:
 		v, ok := value.(int64)
@@ -7084,6 +7240,12 @@ func (m *AccountCodexDeviceSlotMutation) ResetField(name string) error {
 		return nil
 	case accountcodexdeviceslot.FieldProxyID:
 		m.ResetProxyID()
+		return nil
+	case accountcodexdeviceslot.FieldClientVersionMode:
+		m.ResetClientVersionMode()
+		return nil
+	case accountcodexdeviceslot.FieldClientVersion:
+		m.ResetClientVersion()
 		return nil
 	case accountcodexdeviceslot.FieldEpoch:
 		m.ResetEpoch()

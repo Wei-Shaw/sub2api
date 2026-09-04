@@ -43,6 +43,29 @@ is enabled and which configuration is assigned.
   rebind its sibling surface.
 - Keep account-level proxy as the final fallback. Template profile and slot
   routes retain the precedence `slot -> profile -> account -> direct`.
+- Let every template slot choose a Codex client version mode. `inherit` follows
+  the deployment-wide version resolved as `administrator override -> synced
+  stable version -> built-in fallback`; `pinned` stores one explicitly
+  validated version and requires at least `0.144.0`.
+- Use the slot's effective client version as one source for the User-Agent
+  version segment, the `version` header and structured client/turn metadata.
+  It does not select a model and does not change the Desktop application build.
+- Treat a slot version change as runtime material: advance only the affected
+  profile epoch, create replacement slots and drain the old epoch. Keep
+  `catalog_version` separate; it versions the closed identity fixture format,
+  not the Codex client release.
+- A deployment-wide version refresh is deliberately different from a slot
+  configuration change. Slots in `inherit` mode pick up the newly validated
+  global version on the next attempt, while an already running attempt keeps
+  the version captured in its plan; the device identity and epoch are retained
+  just as they are across a normal first-party client upgrade. No account-wide
+  epoch fan-out or drain is performed for that global refresh.
+- Define `device_shared` capacity as one in-progress HTTP/SSE request stream or
+  one WebSocket session per physical device slot. The lease is released when
+  that request/session ends. This is not an account-wide concurrency limit, and
+  the other session policies add no equivalent slot mutex.
+- Define `sessions_per_device` as the number of reusable upstream session
+  identities in `session_pool`; it is not a request-concurrency setting.
 - Keep usage parsing, billing, scheduler ownership and durable A-to-B usage
   relay behavior in the host. The Transport plugin continues to receive only
   the already resolved proxy URL and an opaque API-key connection scope.
@@ -60,6 +83,10 @@ Templates are resources under the admin settings namespace:
 An account write uses an assignment object rather than an editable policy
 snapshot. Existing policy output remains available as the effective runtime
 projection during migration.
+
+The account device-slot lifecycle response exposes `client_version_mode`, the
+optional pinned `client_version`, and `effective_client_version` so operators
+can verify the version that will actually be declared upstream.
 
 ## Alternatives Considered
 
@@ -88,7 +115,8 @@ UI must disclose the affected account count and require explicit confirmation.
 ## Consequences
 
 - The schema adds template, template-profile and template-slot resources plus
-  account assignment metadata.
+  account assignment metadata. A later additive migration adds the two client
+  version fields to template slots and materialized account slots.
 - Existing profile and binding uniqueness moves to OS plus surface. Affinity
   and WebSocket namespaces must advance so old OS-only keys expire naturally.
 - Template runtime edits can touch multiple accounts and therefore require a

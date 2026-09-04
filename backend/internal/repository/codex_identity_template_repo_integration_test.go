@@ -26,7 +26,10 @@ func TestCodexIdentityTemplateRepositoryUpdateLoadsProfilesAndSlotsOnPostgresTra
 				OSClass: service.CodexOSWindows, CanonicalSurface: service.CodexSurfaceDesktop,
 				Architecture: service.CodexArchX8664, ProxyMode: service.CodexProxyInherit,
 				SlotCount: 1, CatalogVersion: 1,
-				Slots: []service.CodexIdentityTemplateSlot{{Index: 0, ProxyMode: service.CodexProxyInherit}},
+				Slots: []service.CodexIdentityTemplateSlot{{
+					Index: 0, ProxyMode: service.CodexProxyInherit,
+					ClientVersionMode: service.CodexClientVersionPinned, ClientVersion: "0.200.1",
+				}},
 			},
 			{
 				OSClass: service.CodexOSWindows, CanonicalSurface: service.CodexSurfaceCLI,
@@ -57,6 +60,8 @@ func TestCodexIdentityTemplateRepositoryUpdateLoadsProfilesAndSlotsOnPostgresTra
 	}
 	require.NotNil(t, desktopProfile)
 	require.Len(t, desktopProfile.Slots, 1)
+	require.Equal(t, service.CodexClientVersionPinned, desktopProfile.Slots[0].ClientVersionMode)
+	require.Equal(t, "0.200.1", desktopProfile.Slots[0].ClientVersion)
 
 	runtimeUpdate := *metadataUpdated
 	runtimeUpdate.Profiles = append([]service.CodexIdentityTemplateProfile(nil), metadataUpdated.Profiles...)

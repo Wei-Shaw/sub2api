@@ -598,7 +598,10 @@ func TestCodexProfileWSPassthroughTransformsEveryTurnAndRestoresStructuredRespon
 			serverErr <- err
 			return
 		}
-		err = svc.ProxyResponsesWebSocketFromClient(ginCtx.Request.Context(), ginCtx, client, prepared, "test-token", firstMessage, nil)
+		err = svc.proxyResponsesWebSocketV2Passthrough(
+			ginCtx.Request.Context(), ginCtx, client, prepared, "test-token", firstMessage, nil,
+			OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2},
+		)
 		svc.ReleaseCodexProfileAttempt(ginCtx, prepared)
 		serverErr <- err
 	}))
@@ -610,10 +613,17 @@ func TestCodexProfileWSPassthroughTransformsEveryTurnAndRestoresStructuredRespon
 	require.NoError(t, err)
 	defer func() { _ = client.CloseNow() }()
 
-	first := []byte(`{"type":"response.create","model":"gpt-5.6-sol","client_metadata":{"installation_id":"client-install","session_id":"client-session","turn_id":"client-turn-1","os":"windows","arch":"arm64","surface":"cli"},"input":[{"role":"user","content":"first"}]}`)
+	// The request headers identify a Windows Desktop client; keep the explicit
+	// body surface consistent so profile classification is not ambiguous.
+	first := []byte(`{"type":"response.create","model":"gpt-5.6-sol","client_metadata":{"installation_id":"client-install","session_id":"client-session","turn_id":"client-turn-1","os":"windows","arch":"arm64","surface":"desktop"},"input":[{"role":"user","content":"first"}]}`)
 	writeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	require.NoError(t, client.Write(writeCtx, coderws.MessageText, first))
 	cancel()
+	select {
+	case serverErrValue := <-serverErr:
+		t.Fatalf("passthrough server exited before upstream write: %v", serverErrValue)
+	default:
+	}
 	firstUpstream := requirePassthroughUpstreamWrite(t, upstream, 3*time.Second)
 	expectedProfile, err := ResolveCodexRuntimeProfile(account.CodexIdentityPolicy.Profiles[0])
 	require.NoError(t, err)
@@ -641,10 +651,10 @@ func TestCodexProfileWSPassthroughTransformsEveryTurnAndRestoresStructuredRespon
 	require.Equal(t, "client-session", gjson.GetBytes(firstResponse, "response.client_metadata.session_id").String())
 	require.Equal(t, "client-turn-1", gjson.GetBytes(firstResponse, "response.client_metadata.turn_id").String())
 	require.Equal(t, "arm64", gjson.GetBytes(firstResponse, "response.client_metadata.arch").String())
-	require.Equal(t, "cli", gjson.GetBytes(firstResponse, "response.client_metadata.surface").String())
+	require.Equal(t, "desktop", gjson.GetBytes(firstResponse, "response.client_metadata.surface").String())
 	require.Equal(t, sessionAlias, gjson.GetBytes(firstResponse, "response.output.0.content.0.text").String(), "ordinary model output must not be globally restored")
 
-	second := []byte(`{"type":"response.create","model":"gpt-5.6-sol","client_metadata":{"installation_id":"client-install","session_id":"client-session","turn_id":"client-turn-2","os":"windows","arch":"arm64","surface":"cli"},"input":[{"role":"user","content":"second"}]}`)
+	second := []byte(`{"type":"response.create","model":"gpt-5.6-sol","client_metadata":{"installation_id":"client-install","session_id":"client-session","turn_id":"client-turn-2","os":"windows","arch":"arm64","surface":"desktop"},"input":[{"role":"user","content":"second"}]}`)
 	writeCtx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
 	require.NoError(t, client.Write(writeCtx, coderws.MessageText, second))
 	cancel()
@@ -715,6 +725,22 @@ func TestCodexProfileWSPassthroughLaterTurn429RebindsAndReplaysCurrentTurnPerAPI
 		toolCorrector:             NewCodexToolCorrector(),
 		openaiWSPassthroughDialer: dialer,
 	}
+	firstHooks := &OpenAIWSIngressHooks{
+		MapRequestModel: func(_ int, originalModel string) (string, error) {
+			if originalModel == "client-model" {
+				return "upstream-a", nil
+			}
+			return originalModel, nil
+		},
+	}
+	secondHooks := &OpenAIWSIngressHooks{
+		MapRequestModel: func(_ int, originalModel string) (string, error) {
+			if originalModel == "client-model" {
+				return "upstream-b", nil
+			}
+			return originalModel, nil
+		},
+	}
 
 	type isolationProbe struct {
 		indexKey   string
@@ -771,7 +797,10 @@ func TestCodexProfileWSPassthroughLaterTurn429RebindsAndReplaysCurrentTurnPerAPI
 			serverErr <- err
 			return
 		}
-		proxyErr := svc.ProxyResponsesWebSocketFromClient(ginCtx.Request.Context(), ginCtx, client, preparedFirst, "test-token", firstMessage, nil)
+		proxyErr := svc.proxyResponsesWebSocketV2Passthrough(
+			ginCtx.Request.Context(), ginCtx, client, preparedFirst, "test-token", firstMessage, firstHooks,
+			OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2},
+		)
 		svc.ReleaseCodexProfileAttempt(ginCtx, preparedFirst)
 		var failoverErr *UpstreamFailoverError
 		if !errors.As(proxyErr, &failoverErr) || failoverErr.StatusCode != http.StatusTooManyRequests {
@@ -800,7 +829,10 @@ func TestCodexProfileWSPassthroughLaterTurn429RebindsAndReplaysCurrentTurnPerAPI
 			serverErr <- err
 			return
 		}
-		err = svc.ProxyResponsesWebSocketFromClient(ginCtx.Request.Context(), ginCtx, client, preparedSecond, "test-token", retryPayload, nil)
+		err = svc.proxyResponsesWebSocketV2Passthrough(
+			ginCtx.Request.Context(), ginCtx, client, preparedSecond, "test-token", retryPayload, secondHooks,
+			OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2},
+		)
 		svc.ReleaseCodexProfileAttempt(ginCtx, preparedSecond)
 		serverErr <- err
 	}))
@@ -812,10 +844,15 @@ func TestCodexProfileWSPassthroughLaterTurn429RebindsAndReplaysCurrentTurnPerAPI
 	require.NoError(t, err)
 	defer func() { _ = client.CloseNow() }()
 
-	firstMessage := []byte(`{"type":"response.create","model":"client-model","client_metadata":{"installation_id":"client-install","session_id":"client-session","turn_id":"client-turn-1","os":"windows","arch":"arm64","surface":"cli"},"input":[{"role":"user","content":"first"}]}`)
+	firstMessage := []byte(`{"type":"response.create","model":"client-model","client_metadata":{"installation_id":"client-install","session_id":"client-session","turn_id":"client-turn-1","os":"windows","arch":"arm64","surface":"desktop"},"input":[{"role":"user","content":"first"}]}`)
 	writeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	require.NoError(t, client.Write(writeCtx, coderws.MessageText, firstMessage))
 	cancel()
+	select {
+	case serverErrValue := <-serverErr:
+		t.Fatalf("passthrough failover server exited before upstream write: %v", serverErrValue)
+	default:
+	}
 	firstWire := requirePassthroughUpstreamWrite(t, upstreamFirst, 3*time.Second)
 	require.Equal(t, "upstream-a", gjson.GetBytes(firstWire, "model").String())
 	firstInstallAlias := gjson.GetBytes(firstWire, "client_metadata.installation_id").String()
@@ -830,7 +867,7 @@ func TestCodexProfileWSPassthroughLaterTurn429RebindsAndReplaysCurrentTurnPerAPI
 	require.Equal(t, "resp_passthrough_first", gjson.GetBytes(firstResponse, "response.id").String())
 	require.Equal(t, "client-session", gjson.GetBytes(firstResponse, "response.client_metadata.session_id").String())
 
-	secondMessage := []byte(`{"type":"response.create","model":"client-model","previous_response_id":"resp_passthrough_first","client_metadata":{"installation_id":"client-install","session_id":"client-session","turn_id":"client-turn-2","os":"windows","arch":"arm64","surface":"cli"},"input":[{"type":"function_call_output","call_id":"call_1","output":"second"}]}`)
+	secondMessage := []byte(`{"type":"response.create","model":"client-model","previous_response_id":"resp_passthrough_first","client_metadata":{"installation_id":"client-install","session_id":"client-session","turn_id":"client-turn-2","os":"windows","arch":"arm64","surface":"desktop"},"input":[{"type":"function_call_output","call_id":"call_1","output":"second"}]}`)
 	writeCtx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
 	require.NoError(t, client.Write(writeCtx, coderws.MessageText, secondMessage))
 	cancel()

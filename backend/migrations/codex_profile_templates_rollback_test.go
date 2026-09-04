@@ -26,9 +26,12 @@ func TestCodexProfileTemplatesRollbackRestoresOldBinaryContract(t *testing.T) {
 		"DROP CONSTRAINT IF EXISTS account_codex_device_bindings_account_id_api_key_id_os_class_key",
 		"DROP CONSTRAINT IF EXISTS account_codex_profiles_account_id_os_class_epoch_key",
 		"DROP TABLE IF EXISTS codex_identity_templates",
+		"DROP COLUMN IF EXISTS client_version_mode",
+		"DROP COLUMN IF EXISTS client_version",
 		"DELETE FROM schema_migrations",
-		"233_codex_profile_surface_identity.sql",
-		"234_codex_identity_templates.sql",
+		"236_codex_profile_surface_identity.sql",
+		"237_codex_identity_templates.sql",
+		"238_codex_slot_client_versions.sql",
 	} {
 		require.Contains(t, sql, required)
 	}

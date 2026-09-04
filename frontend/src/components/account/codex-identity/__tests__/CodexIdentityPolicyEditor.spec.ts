@@ -197,7 +197,7 @@ describe('CodexIdentityPolicyEditor', () => {
         architecture: 'x86_64',
         slot_count: 2,
         proxy_mode: 'direct',
-        slots: [{ index: 0, proxy_mode: 'direct' }],
+        slots: [{ index: 0, proxy_mode: 'direct', client_version_mode: 'inherit' }],
       }],
     })
 
@@ -221,10 +221,15 @@ describe('CodexIdentityPolicyEditor', () => {
       index: 0,
       proxy_mode: 'proxy',
       proxy_id: 7,
+      client_version_mode: 'inherit',
     })
 
     await slotProxy.setValue('direct')
     harness = wrapper.vm as unknown as { policy: CodexIdentityPolicy }
-    expect(harness.policy.profiles?.[0]?.slots?.[0]).toEqual({ index: 0, proxy_mode: 'direct' })
+    expect(harness.policy.profiles?.[0]?.slots?.[0]).toEqual({
+      index: 0,
+      proxy_mode: 'direct',
+      client_version_mode: 'inherit',
+    })
   })
 })

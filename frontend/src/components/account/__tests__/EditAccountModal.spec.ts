@@ -309,6 +309,28 @@ function buildOpenAIOAuthParentAccount() {
   } as any
 }
 
+function buildLegacyOpenAIProfileAccount() {
+  return {
+    ...buildOpenAIOAuthParentAccount(),
+    codex_identity_policy: {
+      mode: 'os_profile_device_pool',
+      binding_scope: 'api_key_os_surface',
+      session_policy: { mode: 'conversation_isolated' },
+      affinity_ttl_seconds: 3600,
+      unsupported_policy: 'reject',
+      version: 3,
+      profiles: [{
+        os_class: 'linux',
+        canonical_surface: 'cli',
+        architecture: 'x86_64',
+        slot_count: 1,
+        proxy_mode: 'inherit',
+        slots: [{ index: 0, proxy_mode: 'inherit', client_version_mode: 'inherit' }],
+      }],
+    },
+  } as any
+}
+
 function mountModal(account = buildAccount()) {
   return mount(EditAccountModal, {
     props: {
@@ -1426,6 +1448,18 @@ describe('EditAccountModal', () => {
       template_id: 19,
       expected_revision: 7,
     })
+    expect(updateAccountMock.mock.calls[0]?.[1]).not.toHaveProperty('codex_identity_policy')
+  })
+
+  it('preserves a legacy account-owned Codex profile when no template assignment changed', async () => {
+    const account = buildLegacyOpenAIProfileAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]).not.toHaveProperty('codex_identity_assignment')
     expect(updateAccountMock.mock.calls[0]?.[1]).not.toHaveProperty('codex_identity_policy')
   })
 

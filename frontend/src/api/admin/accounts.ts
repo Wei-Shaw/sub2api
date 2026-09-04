@@ -121,6 +121,9 @@ export interface CodexDeviceSlotSummary {
   slot_index: number
   state: 'active' | 'draining'
   proxy_id?: number | null
+  client_version_mode: 'inherit' | 'pinned'
+  client_version?: string
+  effective_client_version: string
   binding_count: number
 }
 

@@ -543,7 +543,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			if c != nil && c.Request != nil {
 				clientHeaders = c.Request.Header
 			}
-			fpIDs := resolveCodexFingerprintIDsFromRequest(account, clientHeaders)
+			scope := ""
+			if c != nil && c.Request != nil {
+				scope = HTTPUpstreamIsolationScopeFromContext(c.Request.Context())
+			}
+			fpIDs := resolveCodexFingerprintIDsFromRequestWithScope(account, clientHeaders, scope)
 			if fpIDs != nil {
 				if applyCodexFingerprintClientMetadata(decoded, fpIDs) {
 					markDecodedModified()
@@ -554,7 +558,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			// 账号的 IDs 不得残留（stageCodexFingerprintIDs 注释）。
 			stageCodexFingerprintIDs(c, fpIDs)
 		}
-		if plan := stagedCodexIdentityAttemptPlan(c, account); plan != nil {
+		if plan := stagedCodexIdentityAttemptPlan(c, account); plan != nil && !isCompactRequest {
 			profileChanged, profileErr := ApplyCodexIdentityPlanToMap(decoded, plan)
 			if profileErr != nil {
 				return nil, profileErr

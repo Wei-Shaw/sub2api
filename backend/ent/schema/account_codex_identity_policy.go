@@ -13,7 +13,7 @@ func (AccountCodexIdentityPolicy) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("account_id").Unique(),
 		field.String("mode").Default("off").MaxLen(40),
-		field.String("binding_scope").Default("api_key_os").MaxLen(40),
+		field.String("binding_scope").Default("api_key_os_surface").MaxLen(40),
 		field.JSON("session_policy", map[string]any{}).
 			Default(func() map[string]any { return map[string]any{"mode": "conversation_isolated"} }),
 		field.Int("affinity_ttl_seconds").Default(3600),

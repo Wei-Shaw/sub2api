@@ -79,6 +79,13 @@ const (
 	CodexProxyDirect   CodexProxyMode = "direct"
 )
 
+type CodexClientVersionMode string
+
+const (
+	CodexClientVersionInherit CodexClientVersionMode = "inherit"
+	CodexClientVersionPinned  CodexClientVersionMode = "pinned"
+)
+
 const (
 	defaultCodexAffinityTTLSeconds = 3600
 	minCodexAffinityTTLSeconds     = 60
@@ -99,9 +106,11 @@ type CodexSessionPolicySpec struct {
 // The installation ID is derived from the account seed and is never accepted
 // through this contract.
 type CodexDeviceSlotPolicy struct {
-	Index     int            `json:"index"`
-	ProxyMode CodexProxyMode `json:"proxy_mode,omitempty"`
-	ProxyID   *int64         `json:"proxy_id,omitempty"`
+	Index             int                    `json:"index"`
+	ProxyMode         CodexProxyMode         `json:"proxy_mode,omitempty"`
+	ProxyID           *int64                 `json:"proxy_id,omitempty"`
+	ClientVersionMode CodexClientVersionMode `json:"client_version_mode"`
+	ClientVersion     string                 `json:"client_version,omitempty"`
 }
 
 // CodexOSProfilePolicy defines one canonical client surface for an OS class.
@@ -423,6 +432,9 @@ func normalizeCodexOSProfile(profile CodexOSProfilePolicy) (CodexOSProfilePolicy
 		if err := normalizeCodexProxyRoute(&slot.ProxyMode, slot.ProxyID, "slot"); err != nil {
 			return CodexOSProfilePolicy{}, err
 		}
+		if err := normalizeCodexClientVersion(&slot.ClientVersionMode, &slot.ClientVersion, "slot"); err != nil {
+			return CodexOSProfilePolicy{}, err
+		}
 	}
 	sort.Slice(profile.Slots, func(i, j int) bool { return profile.Slots[i].Index < profile.Slots[j].Index })
 	return profile, nil
@@ -450,6 +462,40 @@ func normalizeCodexProxyRoute(mode *CodexProxyMode, proxyID *int64, scope string
 		}
 	default:
 		return invalidCodexIdentityPolicy("unsupported %s proxy_mode %q", scope, *mode)
+	}
+	return nil
+}
+
+func normalizeCodexClientVersion(mode *CodexClientVersionMode, version *string, scope string) error {
+	if mode == nil || version == nil {
+		return invalidCodexIdentityPolicy("%s client version configuration is required", scope)
+	}
+	*mode = CodexClientVersionMode(strings.TrimSpace(string(*mode)))
+	trimmed := strings.TrimSpace(*version)
+	if *mode == "" {
+		*mode = CodexClientVersionInherit
+	}
+	switch *mode {
+	case CodexClientVersionInherit:
+		if trimmed != "" {
+			return invalidCodexIdentityPolicy("%s client_version must be empty when client_version_mode=inherit", scope)
+		}
+		*version = ""
+	case CodexClientVersionPinned:
+		normalized := NormalizeCodexClientVersion(trimmed)
+		if normalized == "" {
+			return invalidCodexIdentityPolicy("%s pinned client_version is invalid", scope)
+		}
+		if CompareVersions(normalized, codexUpstreamMinVersion) < 0 {
+			return invalidCodexIdentityPolicy(
+				"%s pinned client_version must be at least %s",
+				scope,
+				codexUpstreamMinVersion,
+			)
+		}
+		*version = normalized
+	default:
+		return invalidCodexIdentityPolicy("unsupported %s client_version_mode %q", scope, *mode)
 	}
 	return nil
 }
@@ -537,7 +583,7 @@ func codexPolicyMaterial(policy CodexIdentityPolicySpec) CodexIdentityPolicySpec
 	material.Version = 0
 	material.Profiles = append([]CodexOSProfilePolicy(nil), policy.Profiles...)
 	for i := range material.Profiles {
-		material.Profiles[i].Slots = append([]CodexDeviceSlotPolicy(nil), policy.Profiles[i].Slots...)
+		material.Profiles[i].Slots = canonicalCodexDeviceSlotPolicies(policy.Profiles[i])
 		material.Profiles[i].Epoch = 0
 	}
 	return material
@@ -545,7 +591,46 @@ func codexPolicyMaterial(policy CodexIdentityPolicySpec) CodexIdentityPolicySpec
 
 func codexProfileMaterial(profile CodexOSProfilePolicy) CodexOSProfilePolicy {
 	profile.Epoch = 0
+	profile.Slots = canonicalCodexDeviceSlotPolicies(profile)
 	return profile
+}
+
+// canonicalCodexDeviceSlotPolicies makes sparse slot overrides comparable to
+// an explicit list of default inherit slots. Missing entries are runtime
+// equivalent to inherit/inherit and must not rotate a profile epoch merely
+// because a client serialized those defaults explicitly.
+func canonicalCodexDeviceSlotPolicies(profile CodexOSProfilePolicy) []CodexDeviceSlotPolicy {
+	if profile.SlotCount <= 0 {
+		return append([]CodexDeviceSlotPolicy(nil), profile.Slots...)
+	}
+	canonical := make([]CodexDeviceSlotPolicy, profile.SlotCount)
+	for index := range canonical {
+		canonical[index] = CodexDeviceSlotPolicy{
+			Index:             index,
+			ProxyMode:         CodexProxyInherit,
+			ClientVersionMode: CodexClientVersionInherit,
+		}
+	}
+	for _, slot := range profile.Slots {
+		if slot.Index < 0 || slot.Index >= len(canonical) {
+			continue
+		}
+		if slot.ProxyMode == "" {
+			if slot.ProxyID != nil {
+				slot.ProxyMode = CodexProxyExplicit
+			} else {
+				slot.ProxyMode = CodexProxyInherit
+			}
+		}
+		if slot.ClientVersionMode == "" {
+			slot.ClientVersionMode = CodexClientVersionInherit
+		}
+		if slot.ClientVersionMode == CodexClientVersionInherit {
+			slot.ClientVersion = ""
+		}
+		canonical[slot.Index] = slot
+	}
+	return canonical
 }
 
 func (s CodexIdentityPolicySpec) ReferencedProxyIDs() []int64 {

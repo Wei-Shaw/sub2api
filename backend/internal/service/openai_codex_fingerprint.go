@@ -81,7 +81,11 @@ const (
 
 const (
 	codexFingerprintModeExtraKey = "codex_fingerprint_mode"
-	codexFingerprintSeedExtraKey = "codex_fingerprint_seed"
+	// CodexFingerprintSeedExtraKey is system-managed account identity state. It
+	// is persisted in accounts.extra but never accepted from or returned to
+	// ordinary account-management clients.
+	CodexFingerprintSeedExtraKey = "codex_fingerprint_seed"
+	codexFingerprintSeedExtraKey = CodexFingerprintSeedExtraKey
 )
 
 func canonicalCodexFingerprintSeed(value any) (string, bool) {
@@ -101,7 +105,9 @@ func newCodexFingerprintSeed() string {
 	return uuid.NewString()
 }
 
-func stripCodexFingerprintSeed(extra map[string]any) map[string]any {
+// StripCodexFingerprintSeed returns a shallow copy without the system-managed
+// fingerprint seed. The input map is never mutated.
+func StripCodexFingerprintSeed(extra map[string]any) map[string]any {
 	if extra == nil {
 		return nil
 	}
@@ -139,9 +145,16 @@ func codexFingerprintSeed(extra map[string]any) (string, bool) {
 	return canonicalCodexFingerprintSeed(extra[codexFingerprintSeedExtraKey])
 }
 
-func prepareCodexFingerprintExtraForCreate(platform, accountType string, extra map[string]any) map[string]any {
-	prepared := stripCodexFingerprintSeed(extra)
-	if platform != PlatformOpenAI || (accountType != AccountTypeOAuth && accountType != AccountTypeSetupToken) || !codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(prepared)) {
+// PrepareCodexFingerprintExtraForCreate discards caller-provided seed material
+// and creates a fresh seed for every OpenAI OAuth account. Setup-token
+// accounts keep the legacy behavior and allocate a seed only when convergence
+// is enabled.
+func PrepareCodexFingerprintExtraForCreate(platform, accountType string, extra map[string]any) map[string]any {
+	prepared := StripCodexFingerprintSeed(extra)
+	if platform != PlatformOpenAI || (accountType != AccountTypeOAuth && accountType != AccountTypeSetupToken) {
+		return prepared
+	}
+	if accountType == AccountTypeSetupToken && !codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(prepared)) {
 		return prepared
 	}
 	if prepared == nil {
@@ -151,28 +164,34 @@ func prepareCodexFingerprintExtraForCreate(platform, accountType string, extra m
 	return prepared
 }
 
-func prepareCodexFingerprintExtraForUpdate(account *Account, extra map[string]any) map[string]any {
-	prepared := stripCodexFingerprintSeed(extra)
-	if account == nil || !account.IsOpenAIOAuthLike() {
+// PrepareCodexFingerprintExtraForUpdate strips caller-provided seed material,
+// preserves the canonical database seed, and creates a replacement only when
+// the account type requires one.
+func PrepareCodexFingerprintExtraForUpdate(platform, accountType string, currentExtra, requestedExtra map[string]any) map[string]any {
+	prepared := StripCodexFingerprintSeed(requestedExtra)
+	if platform != PlatformOpenAI || (accountType != AccountTypeOAuth && accountType != AccountTypeSetupToken) {
 		return prepared
 	}
-	if seed, ok := codexFingerprintSeed(account.Extra); ok {
+	if seed, ok := codexFingerprintSeed(currentExtra); ok {
 		if prepared == nil {
 			prepared = make(map[string]any, 1)
 		}
 		prepared[codexFingerprintSeedExtraKey] = seed
 		return prepared
 	}
-	if codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(prepared)) {
-		if prepared == nil {
-			prepared = make(map[string]any, 1)
-		}
-		prepared[codexFingerprintSeedExtraKey] = newCodexFingerprintSeed()
+	if accountType == AccountTypeSetupToken && !codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(prepared)) {
+		return prepared
 	}
+	if prepared == nil {
+		prepared = make(map[string]any, 1)
+	}
+	prepared[codexFingerprintSeedExtraKey] = newCodexFingerprintSeed()
 	return prepared
 }
 
-func sanitizedCodexFingerprintExtraUpdates(updates map[string]any) map[string]any {
+// SanitizedCodexFingerprintExtraUpdates removes caller-controlled seed writes
+// without mutating the supplied update map.
+func SanitizedCodexFingerprintExtraUpdates(updates map[string]any) map[string]any {
 	if updates == nil {
 		return nil
 	}
@@ -280,12 +299,23 @@ type codexFingerprintIDs struct {
 // 返回 nil 表示 off 模式，不需要改写。
 // 注意：包含随机生成的 turn_id，调用方必须只调用一次并共享结果给头改写和体改写。
 func resolveCodexFingerprintIDs(account *Account, clientSessionID string, mode codexFingerprintMode) *codexFingerprintIDs {
+	return resolveCodexFingerprintIDsForScope(account, clientSessionID, mode, "")
+}
+
+// resolveCodexFingerprintIDsForScope derives converged legacy identity for a
+// tenant scope. Profile-managed requests use their dedicated identity plan;
+// this scope-aware helper is retained for legacy convergence paths that share
+// an OAuth account across downstream API keys.
+func resolveCodexFingerprintIDsForScope(account *Account, clientSessionID string, mode codexFingerprintMode, scope string) *codexFingerprintIDs {
 	if account == nil || mode == codexFingerprintOff {
 		return nil
 	}
 	seed, ok := codexFingerprintSeed(account.Extra)
 	if !ok {
 		return nil
+	}
+	if scope = strings.TrimSpace(scope); scope != "" && account.GetOpenAIDeviceID() == "" {
+		seed = deriveStableUUIDv4("sub2api:codex-tenant-scope:v1:" + seed + ":" + scope)
 	}
 
 	ids := &codexFingerprintIDs{
@@ -338,6 +368,10 @@ func extractClientSessionID(h http.Header) string {
 // 结合账号配置一次性解析收敛 ID 集合。调用方应将返回的 ids 同时传给
 // applyCodexFingerprintHeaders 和 applyCodexFingerprintClientMetadata。
 func resolveCodexFingerprintIDsFromRequest(account *Account, clientHeaders http.Header) *codexFingerprintIDs {
+	return resolveCodexFingerprintIDsFromRequestWithScope(account, clientHeaders, "")
+}
+
+func resolveCodexFingerprintIDsFromRequestWithScope(account *Account, clientHeaders http.Header, scope string) *codexFingerprintIDs {
 	if account == nil {
 		return nil
 	}
@@ -349,7 +383,7 @@ func resolveCodexFingerprintIDsFromRequest(account *Account, clientHeaders http.
 	if clientHeaders != nil {
 		clientSessionID = extractClientSessionID(clientHeaders)
 	}
-	return resolveCodexFingerprintIDs(account, clientSessionID, mode)
+	return resolveCodexFingerprintIDsForScope(account, clientSessionID, mode, scope)
 }
 
 // applyCodexFingerprintHeaders 按预计算的收敛 ID 改写出站 HTTP 头中的设备指纹。

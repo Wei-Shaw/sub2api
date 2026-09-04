@@ -60,7 +60,7 @@ type AccountProvisioningSpec struct {
 - `account_codex_identity_policies`: mode、binding scope、session policy、TTL、unsupported policy、版本。
 - `codex_identity_templates` 及 profile/slot 子表：设置页的命名权威模板与 revision。
 - `account_codex_profiles`: 账号运行投影；`OS + canonical surface`、arch、profile proxy、slot count、epoch。
-- `account_codex_device_slots`: profile、slot index、slot proxy、epoch、active/draining。
+- `account_codex_device_slots`: profile、slot index、slot proxy、Codex client version mode/value、epoch、active/draining。
 - `account_codex_device_bindings`: account + api key + OS + surface 到 slot 的稳定绑定。
 
 `accounts.extra` 继续承载旧模式。新模式与旧 `codex_fingerprint_mode != off` 互斥。
@@ -71,7 +71,11 @@ OS: `windows|macos|linux|generic`。
 
 Surface: `desktop|cli|sdk|third_party`。Profile 唯一键为 `(OS, surface)`；Generic 可同时启用 SDK/Third-party，其他 OS 可同时启用 Desktop/CLI。每个 surface 独立配置 Arch、槽位和代理。Arch 使用受约束枚举并由 Profile catalog 验证。Linux Desktop 同时支持 x86_64 和 arm64。
 
-每个 Profile 使用 version epoch；同 epoch 的 UA/originator/version/body 规则必须同源。管理员只选择枚举和 epoch，不填写任意 UA。
+每个 Profile 使用 version epoch；同 epoch 的 UA/originator/version/body 规则必须同源。管理员不填写任意 UA。每个实际 slot 可选择 `client_version_mode=inherit|pinned`：`inherit` 按“管理员全局覆写 → 自动同步稳定版 → 内置版本”解析，`pinned` 必须填写不低于 `0.144.0` 的合法版本。生效版本同时驱动 User-Agent 版本段、`version` header 与结构化 client/turn metadata，但不选择模型，也不改 Desktop app build。`catalog_version` 仅表示封闭身份目录格式，不是 Codex 客户端版本。
+
+slot 版本模式或固定值属于运行时物料。修改时只推进对应 OS/surface Profile 的 epoch，新槽位承接新请求，旧槽位按原版本排空。
+
+全局 Codex 版本自动同步/管理员覆写是 `inherit` 槽位的运行时输入，不是逐账号的槽位配置变更：正在执行的 attempt 保留已解析版本，后续 attempt 读取新的合法版本并保留原设备 epoch。这模拟真实客户端升级，不触发全账号 epoch 扇出；只有 slot 的 `inherit|pinned` 或固定值发生变化时才创建新 epoch 并排空旧槽位。
 
 ### 5. 同 OS Adapter 必须完整双向
 
@@ -98,8 +102,8 @@ type CodexIdentityAttemptPlan struct {
 
 - `conversation_isolated`: 默认；API Key + Profile + 原 conversation 假名化。
 - `api_key_shared`: 每 API Key + Profile 固定 session。
-- `session_pool`: 每设备固定 1-3 个 session 槽位，API Key + conversation 粘性绑定。
-- `device_shared`: 每设备一个 session；要求每槽位最多一个活动 conversation，并关闭跨 Key continuation。
+- `session_pool`: 每设备固定 1-3 个 session 身份，API Key + conversation 粘性映射；`sessions_per_device` 是身份池大小，不是并发数。
+- `device_shared`: 每设备一个 session；仅此模式要求每个实际设备槽位同一时刻最多一个进行中的 HTTP/SSE 请求流或一个 WS 会话，并关闭跨 Key continuation。请求流/会话结束即释放槽位；客户端断开但主机仍在排空上游以完成计费时，租约继续保留。它不是账号全局并发 1，其他三种策略也没有这层额外互斥。
 
 ### 8. Proxy 分层且变化创建新 epoch
 

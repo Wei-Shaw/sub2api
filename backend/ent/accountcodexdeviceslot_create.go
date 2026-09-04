@@ -68,6 +68,34 @@ func (_c *AccountCodexDeviceSlotCreate) SetNillableProxyID(v *int64) *AccountCod
 	return _c
 }
 
+// SetClientVersionMode sets the "client_version_mode" field.
+func (_c *AccountCodexDeviceSlotCreate) SetClientVersionMode(v string) *AccountCodexDeviceSlotCreate {
+	_c.mutation.SetClientVersionMode(v)
+	return _c
+}
+
+// SetNillableClientVersionMode sets the "client_version_mode" field if the given value is not nil.
+func (_c *AccountCodexDeviceSlotCreate) SetNillableClientVersionMode(v *string) *AccountCodexDeviceSlotCreate {
+	if v != nil {
+		_c.SetClientVersionMode(*v)
+	}
+	return _c
+}
+
+// SetClientVersion sets the "client_version" field.
+func (_c *AccountCodexDeviceSlotCreate) SetClientVersion(v string) *AccountCodexDeviceSlotCreate {
+	_c.mutation.SetClientVersion(v)
+	return _c
+}
+
+// SetNillableClientVersion sets the "client_version" field if the given value is not nil.
+func (_c *AccountCodexDeviceSlotCreate) SetNillableClientVersion(v *string) *AccountCodexDeviceSlotCreate {
+	if v != nil {
+		_c.SetClientVersion(*v)
+	}
+	return _c
+}
+
 // SetEpoch sets the "epoch" field.
 func (_c *AccountCodexDeviceSlotCreate) SetEpoch(v int64) *AccountCodexDeviceSlotCreate {
 	_c.mutation.SetEpoch(v)
@@ -155,6 +183,14 @@ func (_c *AccountCodexDeviceSlotCreate) defaults() {
 		v := accountcodexdeviceslot.DefaultProxyMode
 		_c.mutation.SetProxyMode(v)
 	}
+	if _, ok := _c.mutation.ClientVersionMode(); !ok {
+		v := accountcodexdeviceslot.DefaultClientVersionMode
+		_c.mutation.SetClientVersionMode(v)
+	}
+	if _, ok := _c.mutation.ClientVersion(); !ok {
+		v := accountcodexdeviceslot.DefaultClientVersion
+		_c.mutation.SetClientVersion(v)
+	}
 	if _, ok := _c.mutation.State(); !ok {
 		v := accountcodexdeviceslot.DefaultState
 		_c.mutation.SetState(v)
@@ -186,6 +222,22 @@ func (_c *AccountCodexDeviceSlotCreate) check() error {
 	if v, ok := _c.mutation.ProxyMode(); ok {
 		if err := accountcodexdeviceslot.ProxyModeValidator(v); err != nil {
 			return &ValidationError{Name: "proxy_mode", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceSlot.proxy_mode": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ClientVersionMode(); !ok {
+		return &ValidationError{Name: "client_version_mode", err: errors.New(`ent: missing required field "AccountCodexDeviceSlot.client_version_mode"`)}
+	}
+	if v, ok := _c.mutation.ClientVersionMode(); ok {
+		if err := accountcodexdeviceslot.ClientVersionModeValidator(v); err != nil {
+			return &ValidationError{Name: "client_version_mode", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceSlot.client_version_mode": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ClientVersion(); !ok {
+		return &ValidationError{Name: "client_version", err: errors.New(`ent: missing required field "AccountCodexDeviceSlot.client_version"`)}
+	}
+	if v, ok := _c.mutation.ClientVersion(); ok {
+		if err := accountcodexdeviceslot.ClientVersionValidator(v); err != nil {
+			return &ValidationError{Name: "client_version", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceSlot.client_version": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Epoch(); !ok {
@@ -251,6 +303,14 @@ func (_c *AccountCodexDeviceSlotCreate) createSpec() (*AccountCodexDeviceSlot, *
 	if value, ok := _c.mutation.ProxyID(); ok {
 		_spec.SetField(accountcodexdeviceslot.FieldProxyID, field.TypeInt64, value)
 		_node.ProxyID = &value
+	}
+	if value, ok := _c.mutation.ClientVersionMode(); ok {
+		_spec.SetField(accountcodexdeviceslot.FieldClientVersionMode, field.TypeString, value)
+		_node.ClientVersionMode = value
+	}
+	if value, ok := _c.mutation.ClientVersion(); ok {
+		_spec.SetField(accountcodexdeviceslot.FieldClientVersion, field.TypeString, value)
+		_node.ClientVersion = value
 	}
 	if value, ok := _c.mutation.Epoch(); ok {
 		_spec.SetField(accountcodexdeviceslot.FieldEpoch, field.TypeInt64, value)
@@ -407,6 +467,30 @@ func (u *AccountCodexDeviceSlotUpsert) AddProxyID(v int64) *AccountCodexDeviceSl
 // ClearProxyID clears the value of the "proxy_id" field.
 func (u *AccountCodexDeviceSlotUpsert) ClearProxyID() *AccountCodexDeviceSlotUpsert {
 	u.SetNull(accountcodexdeviceslot.FieldProxyID)
+	return u
+}
+
+// SetClientVersionMode sets the "client_version_mode" field.
+func (u *AccountCodexDeviceSlotUpsert) SetClientVersionMode(v string) *AccountCodexDeviceSlotUpsert {
+	u.Set(accountcodexdeviceslot.FieldClientVersionMode, v)
+	return u
+}
+
+// UpdateClientVersionMode sets the "client_version_mode" field to the value that was provided on create.
+func (u *AccountCodexDeviceSlotUpsert) UpdateClientVersionMode() *AccountCodexDeviceSlotUpsert {
+	u.SetExcluded(accountcodexdeviceslot.FieldClientVersionMode)
+	return u
+}
+
+// SetClientVersion sets the "client_version" field.
+func (u *AccountCodexDeviceSlotUpsert) SetClientVersion(v string) *AccountCodexDeviceSlotUpsert {
+	u.Set(accountcodexdeviceslot.FieldClientVersion, v)
+	return u
+}
+
+// UpdateClientVersion sets the "client_version" field to the value that was provided on create.
+func (u *AccountCodexDeviceSlotUpsert) UpdateClientVersion() *AccountCodexDeviceSlotUpsert {
+	u.SetExcluded(accountcodexdeviceslot.FieldClientVersion)
 	return u
 }
 
@@ -599,6 +683,34 @@ func (u *AccountCodexDeviceSlotUpsertOne) UpdateProxyID() *AccountCodexDeviceSlo
 func (u *AccountCodexDeviceSlotUpsertOne) ClearProxyID() *AccountCodexDeviceSlotUpsertOne {
 	return u.Update(func(s *AccountCodexDeviceSlotUpsert) {
 		s.ClearProxyID()
+	})
+}
+
+// SetClientVersionMode sets the "client_version_mode" field.
+func (u *AccountCodexDeviceSlotUpsertOne) SetClientVersionMode(v string) *AccountCodexDeviceSlotUpsertOne {
+	return u.Update(func(s *AccountCodexDeviceSlotUpsert) {
+		s.SetClientVersionMode(v)
+	})
+}
+
+// UpdateClientVersionMode sets the "client_version_mode" field to the value that was provided on create.
+func (u *AccountCodexDeviceSlotUpsertOne) UpdateClientVersionMode() *AccountCodexDeviceSlotUpsertOne {
+	return u.Update(func(s *AccountCodexDeviceSlotUpsert) {
+		s.UpdateClientVersionMode()
+	})
+}
+
+// SetClientVersion sets the "client_version" field.
+func (u *AccountCodexDeviceSlotUpsertOne) SetClientVersion(v string) *AccountCodexDeviceSlotUpsertOne {
+	return u.Update(func(s *AccountCodexDeviceSlotUpsert) {
+		s.SetClientVersion(v)
+	})
+}
+
+// UpdateClientVersion sets the "client_version" field to the value that was provided on create.
+func (u *AccountCodexDeviceSlotUpsertOne) UpdateClientVersion() *AccountCodexDeviceSlotUpsertOne {
+	return u.Update(func(s *AccountCodexDeviceSlotUpsert) {
+		s.UpdateClientVersion()
 	})
 }
 
@@ -964,6 +1076,34 @@ func (u *AccountCodexDeviceSlotUpsertBulk) UpdateProxyID() *AccountCodexDeviceSl
 func (u *AccountCodexDeviceSlotUpsertBulk) ClearProxyID() *AccountCodexDeviceSlotUpsertBulk {
 	return u.Update(func(s *AccountCodexDeviceSlotUpsert) {
 		s.ClearProxyID()
+	})
+}
+
+// SetClientVersionMode sets the "client_version_mode" field.
+func (u *AccountCodexDeviceSlotUpsertBulk) SetClientVersionMode(v string) *AccountCodexDeviceSlotUpsertBulk {
+	return u.Update(func(s *AccountCodexDeviceSlotUpsert) {
+		s.SetClientVersionMode(v)
+	})
+}
+
+// UpdateClientVersionMode sets the "client_version_mode" field to the value that was provided on create.
+func (u *AccountCodexDeviceSlotUpsertBulk) UpdateClientVersionMode() *AccountCodexDeviceSlotUpsertBulk {
+	return u.Update(func(s *AccountCodexDeviceSlotUpsert) {
+		s.UpdateClientVersionMode()
+	})
+}
+
+// SetClientVersion sets the "client_version" field.
+func (u *AccountCodexDeviceSlotUpsertBulk) SetClientVersion(v string) *AccountCodexDeviceSlotUpsertBulk {
+	return u.Update(func(s *AccountCodexDeviceSlotUpsert) {
+		s.SetClientVersion(v)
+	})
+}
+
+// UpdateClientVersion sets the "client_version" field to the value that was provided on create.
+func (u *AccountCodexDeviceSlotUpsertBulk) UpdateClientVersion() *AccountCodexDeviceSlotUpsertBulk {
+	return u.Update(func(s *AccountCodexDeviceSlotUpsert) {
+		s.UpdateClientVersion()
 	})
 }
 

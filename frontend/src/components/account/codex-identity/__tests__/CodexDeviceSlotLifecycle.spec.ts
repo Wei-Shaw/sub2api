@@ -37,6 +37,9 @@ const activeSlot = {
   slot_index: 0,
   state: 'active',
   proxy_id: 7,
+  client_version_mode: 'pinned',
+  client_version: '0.188.0',
+  effective_client_version: '0.188.0',
   binding_count: 3,
 } as const
 
@@ -48,6 +51,8 @@ const drainingSlot = {
   epoch: 1,
   slot_index: 1,
   state: 'draining',
+  client_version_mode: 'inherit',
+  effective_client_version: '0.201.0',
   binding_count: 0,
 } as const
 
@@ -76,6 +81,8 @@ describe('CodexDeviceSlotLifecycle', () => {
     expect(wrapper.text()).toContain('Tokyo')
     expect(wrapper.text()).toContain('Direct connection')
     expect(wrapper.text()).toContain('Draining')
+    expect(wrapper.text()).toContain('Fixed version: Effective version 0.188.0')
+    expect(wrapper.text()).toContain('Automatic (recommended): Effective version 0.201.0')
     const row = wrapper.get('li')
     expect(row.classes()).toContain('grid-cols-1')
     expect(row.classes()).toContain('sm:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(5rem,0.7fr))]')

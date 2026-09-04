@@ -74,7 +74,7 @@ describe('admin account Codex identity API payloads', () => {
   it('keeps explicit direct profile and slot modes in API payloads', async () => {
     const profile = createDefaultCodexOSProfile('linux')
     profile.proxy_mode = 'direct'
-    profile.slots = [{ index: 0, proxy_mode: 'direct' }]
+    profile.slots = [{ index: 0, proxy_mode: 'direct', client_version_mode: 'pinned', client_version: '0.146.0' }]
     const policy = {
       ...createDefaultCodexIdentityPolicy(),
       mode: 'os_profile_device_pool' as const,
@@ -92,7 +92,7 @@ describe('admin account Codex identity API payloads', () => {
       codex_identity_policy_override: expect.objectContaining({
         profiles: [expect.objectContaining({
           proxy_mode: 'direct',
-          slots: [{ index: 0, proxy_mode: 'direct' }]
+          slots: [{ index: 0, proxy_mode: 'direct', client_version_mode: 'pinned', client_version: '0.146.0' }]
         })]
       })
     }))
@@ -106,6 +106,8 @@ describe('admin account Codex identity API payloads', () => {
       epoch: 2,
       slot_index: 0,
       state: 'draining',
+      client_version_mode: 'inherit',
+      effective_client_version: '0.201.0',
       binding_count: 0
     }]
     get.mockResolvedValueOnce({ data: { slots } })

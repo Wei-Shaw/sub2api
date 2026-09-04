@@ -985,6 +985,9 @@ func (s *AccountRepoSuite) TestProvisionAccount_CommitsIdentityGraphAndPublishes
 			Architecture:     service.CodexArchARM64,
 			SlotCount:        2,
 			ProxyID:          &proxy.ID,
+			Slots: []service.CodexDeviceSlotPolicy{{
+				Index: 1, ClientVersionMode: service.CodexClientVersionPinned, ClientVersion: "0.200.1",
+			}},
 		}},
 	}
 	account := &service.Account{
@@ -1022,6 +1025,27 @@ func (s *AccountRepoSuite) TestProvisionAccount_CommitsIdentityGraphAndPublishes
 	s.Require().Equal(2, slotCount)
 	s.Require().Zero(bindingCount)
 	s.Require().Equal(1, outboxCount)
+	var slotVersionMode, slotVersion string
+	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, `
+		SELECT client_version_mode, client_version
+		FROM account_codex_device_slots
+		WHERE account_id=$1 AND slot_index=1
+	`, []any{account.ID}, &slotVersionMode, &slotVersion))
+	s.Require().Equal(string(service.CodexClientVersionPinned), slotVersionMode)
+	s.Require().Equal("0.200.1", slotVersion)
+	resolvedSlots, err := s.repo.ListCodexDeviceSlots(s.ctx, account.ID, service.CodexOSLinux, service.CodexSurfaceDesktop, false)
+	s.Require().NoError(err)
+	s.Require().Len(resolvedSlots, 2)
+	var pinnedSlot *service.CodexResolvedDeviceSlot
+	for index := range resolvedSlots {
+		if resolvedSlots[index].SlotIndex == 1 {
+			pinnedSlot = &resolvedSlots[index]
+			break
+		}
+	}
+	s.Require().NotNil(pinnedSlot)
+	s.Require().Equal(service.CodexClientVersionPinned, pinnedSlot.ClientVersionMode)
+	s.Require().Equal("0.200.1", pinnedSlot.ClientVersion)
 
 	schedulable, err := s.repo.ListSchedulableByGroupIDAndPlatform(s.ctx, group.ID, service.PlatformOpenAI)
 	s.Require().NoError(err)

@@ -225,6 +225,42 @@ func TestResolveCodexRuntimeProfileCatalog(t *testing.T) {
 	require.False(t, windows.Supports(CodexClientProfile{OSClass: CodexOSWindows, Surface: CodexSurfaceCLI, Architecture: CodexArchARM64}), "Windows CLI must not converge to a Desktop profile")
 }
 
+func TestResolveCodexRuntimeProfileWithVersionUsesOneVersionSource(t *testing.T) {
+	profile, err := ResolveCodexRuntimeProfileWithVersion(CodexOSProfilePolicy{
+		OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceCLI,
+		Architecture: CodexArchX8664, SlotCount: 1, Epoch: 1,
+	}, "0.155.0")
+	require.NoError(t, err)
+	require.Equal(t, "0.155.0", profile.Version)
+	require.Equal(t, "codex_cli_rs/0.155.0 (Windows 11; x86_64) WindowsTerminal", profile.UserAgent)
+	require.Equal(t, "codex_cli_rs", profile.Originator)
+
+	plan, err := BuildCodexIdentityAttemptPlan(CodexIdentityAttemptInput{
+		Mode: CodexIdentityPolicyOSProfileDevicePool, AccountID: 1,
+		APIKeyScope: "user:7|key:101", AccountSeed: codexRuntimeTestSeed,
+		Profile: profile, Slot: CodexResolvedSlot{Index: 0, Epoch: 1},
+		SessionPolicy:   CodexSessionPolicySpec{Mode: CodexSessionConversationIsolated},
+		ConversationKey: "conversation-version", RequestNonce: "nonce-version",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "0.155.0", plan.Profile.Version)
+	metadata := codexResolvedProfileMetadataValues(plan.Profile)
+	require.Equal(t, plan.Profile.Version, metadata["version"])
+	require.Equal(t, plan.Profile.UserAgent, metadata["user_agent"])
+}
+
+func TestResolveCodexRuntimeProfileWithVersionRejectsInvalidOrUnsupportedVersion(t *testing.T) {
+	for _, version := range []string{"latest", "0.143.9"} {
+		t.Run(version, func(t *testing.T) {
+			_, err := ResolveCodexRuntimeProfileWithVersion(CodexOSProfilePolicy{
+				OSClass: CodexOSLinux, CanonicalSurface: CodexSurfaceCLI,
+				Architecture: CodexArchX8664, SlotCount: 1, Epoch: 1,
+			}, version)
+			require.Error(t, err)
+		})
+	}
+}
+
 func TestBuildCodexIdentityAttemptPlanDefaultOffIsHardGate(t *testing.T) {
 	plan, err := BuildCodexIdentityAttemptPlan(CodexIdentityAttemptInput{
 		Mode:        CodexIdentityPolicyOff,

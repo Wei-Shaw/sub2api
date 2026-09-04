@@ -8,7 +8,7 @@ import (
 )
 
 func TestCodexIdentityTemplatesMigrationDefinesReusableControlPlane(t *testing.T) {
-	payload, err := FS.ReadFile("234_codex_identity_templates.sql")
+	payload, err := FS.ReadFile("237_codex_identity_templates.sql")
 	require.NoError(t, err)
 	sql := strings.Join(strings.Fields(string(payload)), " ")
 	for _, required := range []string{

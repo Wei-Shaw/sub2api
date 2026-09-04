@@ -136,10 +136,10 @@ func TestCodexProfileWSRejectsContinuationOwnedByAnotherAPIKey(t *testing.T) {
 	groupID := int64(3)
 	require.NoError(t, svc.BindOpenAIHTTPResponseOwner(context.Background(), groupID, "resp_key_a", 7, 101))
 
-	owned, err := svc.ValidateOpenAIHTTPResponseOwnerForAPIKey(context.Background(), groupID, "resp_key_a", 7, 202)
+	owned, err := svc.ValidateOpenAIHTTPResponseOwner(context.Background(), groupID, "resp_key_a", 8, 202)
 	require.NoError(t, err)
 	require.False(t, owned)
-	owned, err = svc.ValidateOpenAIHTTPResponseOwnerForAPIKey(context.Background(), groupID, "resp_key_a", 7, 101)
+	owned, err = svc.ValidateOpenAIHTTPResponseOwner(context.Background(), groupID, "resp_key_a", 7, 202)
 	require.NoError(t, err)
 	require.True(t, owned)
 }

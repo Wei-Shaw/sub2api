@@ -8,7 +8,7 @@ import (
 )
 
 func TestCodexProfileSurfaceIdentityMigrationExpandsProfileKeys(t *testing.T) {
-	payload, err := FS.ReadFile("233_codex_profile_surface_identity.sql")
+	payload, err := FS.ReadFile("236_codex_profile_surface_identity.sql")
 	require.NoError(t, err)
 	sql := strings.Join(strings.Fields(string(payload)), " ")
 	for _, required := range []string{

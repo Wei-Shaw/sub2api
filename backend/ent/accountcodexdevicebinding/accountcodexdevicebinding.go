@@ -19,6 +19,8 @@ const (
 	FieldAPIKeyID = "api_key_id"
 	// FieldOsClass holds the string denoting the os_class field in the database.
 	FieldOsClass = "os_class"
+	// FieldCanonicalSurface holds the string denoting the canonical_surface field in the database.
+	FieldCanonicalSurface = "canonical_surface"
 	// FieldSlotID holds the string denoting the slot_id field in the database.
 	FieldSlotID = "slot_id"
 	// FieldPolicyVersion holds the string denoting the policy_version field in the database.
@@ -37,6 +39,7 @@ var Columns = []string{
 	FieldAccountID,
 	FieldAPIKeyID,
 	FieldOsClass,
+	FieldCanonicalSurface,
 	FieldSlotID,
 	FieldPolicyVersion,
 	FieldCreatedAt,
@@ -56,6 +59,8 @@ func ValidColumn(column string) bool {
 var (
 	// OsClassValidator is a validator for the "os_class" field. It is called by the builders before save.
 	OsClassValidator func(string) error
+	// CanonicalSurfaceValidator is a validator for the "canonical_surface" field. It is called by the builders before save.
+	CanonicalSurfaceValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -85,6 +90,11 @@ func ByAPIKeyID(opts ...sql.OrderTermOption) OrderOption {
 // ByOsClass orders the results by the os_class field.
 func ByOsClass(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldOsClass, opts...).ToFunc()
+}
+
+// ByCanonicalSurface orders the results by the canonical_surface field.
+func ByCanonicalSurface(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCanonicalSurface, opts...).ToFunc()
 }
 
 // BySlotID orders the results by the slot_id field.

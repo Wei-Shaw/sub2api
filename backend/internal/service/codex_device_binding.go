@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -13,24 +16,27 @@ var ErrDeviceProfileUnsupported = infraerrors.BadRequest(
 )
 
 type CodexResolvedDeviceSlot struct {
-	BindingID          int64
-	AccountID          int64
-	APIKeyID           int64
-	ProfileID          int64
-	SlotID             int64
-	OSClass            CodexOSClass
-	CanonicalSurface   CodexClientSurface
-	Architecture       CodexArchitecture
-	CatalogVersion     int64
-	SlotIndex          int
-	Epoch              int64
-	State              string
-	PolicyVersion      int64
-	ProxyID            *int64
-	Proxy              *Proxy
-	LastSeenAt         time.Time
-	AffinityTTLSeconds int
-	BindingCount       int64
+	BindingID              int64
+	AccountID              int64
+	APIKeyID               int64
+	ProfileID              int64
+	SlotID                 int64
+	OSClass                CodexOSClass
+	CanonicalSurface       CodexClientSurface
+	Architecture           CodexArchitecture
+	CatalogVersion         int64
+	SlotIndex              int
+	Epoch                  int64
+	State                  string
+	PolicyVersion          int64
+	ProxyID                *int64
+	Proxy                  *Proxy
+	ClientVersionMode      CodexClientVersionMode
+	ClientVersion          string
+	EffectiveClientVersion string
+	LastSeenAt             time.Time
+	AffinityTTLSeconds     int
+	BindingCount           int64
 }
 
 type CodexDeviceSlotAdminService interface {
@@ -55,7 +61,32 @@ func (s *adminServiceImpl) ListAccountCodexDeviceSlots(
 	if !ok {
 		return nil, infraerrors.New(501, "CODEX_DEVICE_SLOT_ADMIN_UNAVAILABLE", "Codex device slot repository is unavailable")
 	}
-	return repo.ListCodexDeviceSlots(ctx, accountID, "", "", includeDraining)
+	slots, err := repo.ListCodexDeviceSlots(ctx, accountID, "", "", includeDraining)
+	if err != nil {
+		return nil, err
+	}
+	for index := range slots {
+		if strings.TrimSpace(string(slots[index].ClientVersionMode)) == "" {
+			slots[index].ClientVersionMode = CodexClientVersionInherit
+		}
+		version, err := resolveEffectiveCodexClientVersion(
+			ctx,
+			s.settingService,
+			slots[index].ClientVersionMode,
+			slots[index].ClientVersion,
+		)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"resolve Codex client version for %s/%s slot %d: %w",
+				slots[index].OSClass,
+				slots[index].CanonicalSurface,
+				slots[index].SlotIndex,
+				err,
+			)
+		}
+		slots[index].EffectiveClientVersion = version
+	}
+	return slots, nil
 }
 
 func (s *adminServiceImpl) FinalizeAccountCodexDeviceSlots(ctx context.Context, accountID int64) (int64, error) {
@@ -64,4 +95,40 @@ func (s *adminServiceImpl) FinalizeAccountCodexDeviceSlots(ctx context.Context, 
 		return 0, infraerrors.New(501, "CODEX_DEVICE_SLOT_ADMIN_UNAVAILABLE", "Codex device slot repository is unavailable")
 	}
 	return repo.FinalizeDrainedCodexDeviceSlots(ctx, accountID)
+}
+
+func resolveEffectiveCodexClientVersion(
+	ctx context.Context,
+	settings *SettingService,
+	mode CodexClientVersionMode,
+	pinnedVersion string,
+) (string, error) {
+	mode = CodexClientVersionMode(strings.TrimSpace(string(mode)))
+	switch mode {
+	case "", CodexClientVersionInherit:
+		// Inherit is resolved for each attempt. A global client upgrade therefore
+		// affects the next request without mutating the persisted slot epoch.
+		version := codexCLIVersion
+		if settings != nil {
+			version = settings.GetOpenAICodexClientVersion(ctx)
+		}
+		if version = NormalizeCodexClientVersion(version); version == "" {
+			return "", errors.New("global Codex client version is invalid")
+		}
+		if CompareVersions(version, codexUpstreamMinVersion) < 0 {
+			return "", fmt.Errorf("global Codex client version must be at least %s", codexUpstreamMinVersion)
+		}
+		return version, nil
+	case CodexClientVersionPinned:
+		version := NormalizeCodexClientVersion(pinnedVersion)
+		if version == "" {
+			return "", errors.New("pinned Codex client version is invalid")
+		}
+		if CompareVersions(version, codexUpstreamMinVersion) < 0 {
+			return "", fmt.Errorf("pinned Codex client version must be at least %s", codexUpstreamMinVersion)
+		}
+		return version, nil
+	default:
+		return "", fmt.Errorf("unsupported Codex client version mode %q", mode)
+	}
 }

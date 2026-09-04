@@ -162,7 +162,7 @@ describe('Codex identity policy contract', () => {
     delete (legacy as Partial<typeof legacy>).proxy_mode
     legacy.proxy_id = 7
     legacy.slot_count = 2
-    legacy.slots = [{ index: 1, proxy_id: 8 } as NonNullable<typeof legacy.slots>[number]]
+    legacy.slots = [{ index: 1, proxy_id: 8, client_version_mode: 'inherit' } as NonNullable<typeof legacy.slots>[number]]
     const direct = createDefaultCodexOSProfile('windows')
     direct.proxy_mode = 'direct'
     direct.slots = [{ index: 0, proxy_mode: 'direct' }]
@@ -196,7 +196,7 @@ describe('Codex identity policy contract', () => {
     const profile = createDefaultCodexOSProfile('windows')
     profile.proxy_mode = 'proxy'
     profile.slot_count = 2
-    profile.slots = [{ index: 0, proxy_mode: 'direct', proxy_id: 9 }]
+    profile.slots = [{ index: 0, proxy_mode: 'direct', proxy_id: 9, client_version_mode: 'inherit' }]
     const invalidMode = createDefaultCodexOSProfile('linux')
     const invalidModeInput = invalidMode as unknown as { proxy_mode: string }
     invalidModeInput.proxy_mode = 'rotate'
@@ -254,5 +254,30 @@ describe('Codex identity policy contract', () => {
 
     expect(validateCodexIdentityPolicy(policy).errors.map((issue) => issue.code))
       .toContain('DEVICE_SHARED_RESTRICTIONS_INVALID')
+  })
+
+  it('validates and normalizes per-slot Codex client versions', () => {
+    const profile = createDefaultCodexOSProfile('windows')
+    profile.slots = [{ index: 0, proxy_mode: 'inherit', client_version_mode: 'pinned', client_version: ' 0.146.0 ' }]
+    const policy: CodexIdentityPolicy = {
+      ...createDefaultCodexIdentityPolicy(),
+      mode: 'os_profile_device_pool',
+      profiles: [profile],
+    }
+
+    expect(validateCodexIdentityPolicy(policy).valid).toBe(true)
+    expect(serializeCodexIdentityPolicy(policy).profiles?.[0]?.slots).toEqual([{
+      index: 0,
+      proxy_mode: 'inherit',
+      client_version_mode: 'pinned',
+      client_version: '0.146.0',
+    }])
+
+    profile.slots = [{ index: 0, proxy_mode: 'inherit', client_version_mode: 'pinned', client_version: '0.143.9' }]
+    expect(validateCodexIdentityPolicy(policy).errors.map((issue) => issue.code))
+      .toContain('CLIENT_VERSION_TOO_OLD')
+    profile.slots = [{ index: 0, proxy_mode: 'inherit', client_version_mode: 'inherit', client_version: '0.146.0' }]
+    expect(validateCodexIdentityPolicy(policy).errors.map((issue) => issue.code))
+      .toContain('CLIENT_VERSION_INVALID')
   })
 })

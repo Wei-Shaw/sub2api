@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -67,10 +68,72 @@ type CodexIdentityTemplateProfile struct {
 }
 
 type CodexIdentityTemplateSlot struct {
-	ID        int64          `json:"id,omitempty"`
-	Index     int            `json:"index"`
-	ProxyMode CodexProxyMode `json:"proxy_mode"`
-	ProxyID   *int64         `json:"proxy_id,omitempty"`
+	ID                int64                  `json:"id,omitempty"`
+	Index             int                    `json:"index"`
+	ProxyMode         CodexProxyMode         `json:"proxy_mode"`
+	ProxyID           *int64                 `json:"proxy_id,omitempty"`
+	ClientVersionMode CodexClientVersionMode `json:"client_version_mode"`
+	ClientVersion     string                 `json:"client_version,omitempty"`
+}
+
+// CodexIdentityTemplateRuntimeEqual compares only runtime-affecting template
+// fields. Sparse slot rows and explicit inherit defaults are equivalent.
+// Presentation metadata (name, description, IDs, revision and timestamps) is
+// intentionally excluded so editing it cannot rotate live profiles.
+func CodexIdentityTemplateRuntimeEqual(left, right *CodexIdentityTemplate) bool {
+	if left == nil || right == nil ||
+		left.SessionPolicy != right.SessionPolicy ||
+		left.AffinityTTLSeconds != right.AffinityTTLSeconds ||
+		left.UnsupportedPolicy != right.UnsupportedPolicy ||
+		len(left.Profiles) != len(right.Profiles) {
+		return false
+	}
+	for index := range left.Profiles {
+		leftProfile := codexIdentityTemplateProfileRuntimeMaterial(left.Profiles[index])
+		rightProfile := codexIdentityTemplateProfileRuntimeMaterial(right.Profiles[index])
+		if !reflect.DeepEqual(leftProfile, rightProfile) {
+			return false
+		}
+	}
+	return true
+}
+
+func codexIdentityTemplateProfileRuntimeMaterial(profile CodexIdentityTemplateProfile) CodexIdentityTemplateProfile {
+	profile.ID = 0
+	if profile.SlotCount <= 0 {
+		profile.Slots = append([]CodexIdentityTemplateSlot(nil), profile.Slots...)
+		return profile
+	}
+	canonical := make([]CodexIdentityTemplateSlot, profile.SlotCount)
+	for index := range canonical {
+		canonical[index] = CodexIdentityTemplateSlot{
+			Index:             index,
+			ProxyMode:         CodexProxyInherit,
+			ClientVersionMode: CodexClientVersionInherit,
+		}
+	}
+	for _, slot := range profile.Slots {
+		if slot.Index < 0 || slot.Index >= len(canonical) {
+			continue
+		}
+		slot.ID = 0
+		if slot.ProxyMode == "" {
+			if slot.ProxyID != nil {
+				slot.ProxyMode = CodexProxyExplicit
+			} else {
+				slot.ProxyMode = CodexProxyInherit
+			}
+		}
+		if slot.ClientVersionMode == "" {
+			slot.ClientVersionMode = CodexClientVersionInherit
+		}
+		if slot.ClientVersionMode == CodexClientVersionInherit {
+			slot.ClientVersion = ""
+		}
+		canonical[slot.Index] = slot
+	}
+	profile.Slots = canonical
+	return profile
 }
 
 type CodexIdentityTemplateCreateInput struct {
@@ -122,7 +185,10 @@ func MaterializeCodexIdentityTemplate(template *CodexIdentityTemplate) (CodexIde
 			Slots:          make([]CodexDeviceSlotPolicy, len(profile.Slots)),
 		}
 		for j, slot := range profile.Slots {
-			policy.Profiles[i].Slots[j] = CodexDeviceSlotPolicy{Index: slot.Index, ProxyMode: slot.ProxyMode, ProxyID: slot.ProxyID}
+			policy.Profiles[i].Slots[j] = CodexDeviceSlotPolicy{
+				Index: slot.Index, ProxyMode: slot.ProxyMode, ProxyID: slot.ProxyID,
+				ClientVersionMode: slot.ClientVersionMode, ClientVersion: slot.ClientVersion,
+			}
 		}
 	}
 	return policy.NormalizeAndValidate(PlatformOpenAI, AccountTypeOAuth)
@@ -363,6 +429,9 @@ func normalizeCodexIdentityTemplateProfile(profile CodexIdentityTemplateProfile)
 		seenSlots[slot.Index] = struct{}{}
 		if err := normalizeCodexIdentityTemplateProxy(&slot.ProxyMode, slot.ProxyID); err != nil {
 			return CodexIdentityTemplateProfile{}, fmt.Errorf("slot %d proxy: %w", slot.Index, err)
+		}
+		if err := normalizeCodexClientVersion(&slot.ClientVersionMode, &slot.ClientVersion, fmt.Sprintf("slot %d", slot.Index)); err != nil {
+			return CodexIdentityTemplateProfile{}, err
 		}
 		slots[i] = slot
 	}
