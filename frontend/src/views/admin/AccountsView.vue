@@ -1617,13 +1617,13 @@ function getAntigravityTierLabel(row: any): string | null {
   }
 }
 
-// 账号显示邮箱:普通账号优先账号自身(extra/credentials);
-// 影子账号只展示当前关联母账号 parent_email——复制来源残留的 extra/credentials
-// 身份不再作为展示来源,否则改绑后仍会显示复制时的旧账号。
+// 账号显示邮箱:普通账号优先账号自身(extra/credentials)。
+// 影子账号不展示关联账号:底层数据仍返回 parent_* 字段,但界面按需求隐藏,
+// 避免把复制来源或改绑后的母账号身份暴露在列表行里。
 // 供名称单元格 v-if/标题/文本三处共用,避免同一回退链在模板里重复三次。
 function accountDisplayEmail(row: any): string {
   if (row.parent_account_id != null) {
-    return row.parent_email || ''
+    return ''
   }
   return row.extra?.email_address || row.extra?.email || row.credentials?.email || ''
 }
