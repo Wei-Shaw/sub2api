@@ -259,6 +259,36 @@ func TestDuplicateOpenAIOAuthCreatesLinkedRouteWithoutTokens(t *testing.T) {
 	require.Equal(t, source.GroupIDs, duplicate.GroupIDs)
 }
 
+func TestDuplicateOpenAIOAuthLinkedShadowDropsSourceIdentity(t *testing.T) {
+	ctx := context.Background()
+	repo := newDuplicateAccountRepoStub()
+	svc := &adminServiceImpl{accountRepo: repo, accountDuplicateRepo: repo}
+	source := &Account{
+		Name:     "codex-parent",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			"email":          "copied@example.com",
+			"email_address":  "copied@example.com",
+			"codex_cli_only": true,
+		},
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"gpt-5.6-sol": "gpt-5.6-sol"},
+		},
+		GroupIDs: []int64{7},
+	}
+	require.NoError(t, repo.Create(ctx, source))
+
+	duplicate, err := svc.DuplicateAccount(ctx, source.ID, "admin:1", "")
+
+	require.NoError(t, err)
+	require.NotNil(t, duplicate.ParentAccountID)
+	// 复制来源的账号身份不得进入影子 Extra：列表展示走当前关联母账号的 parent_email。
+	require.NotContains(t, duplicate.Extra, "email")
+	require.NotContains(t, duplicate.Extra, "email_address")
+	require.Equal(t, true, duplicate.Extra["codex_cli_only"])
+}
+
 func TestDuplicateAccountRejectsUnsupportedCredentialTypes(t *testing.T) {
 	tests := []struct {
 		name        string

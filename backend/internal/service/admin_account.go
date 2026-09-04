@@ -98,6 +98,11 @@ var duplicateAccountDiscardedExtraKeys = map[string]struct{}{
 	"crs_account_id": {},
 	"crs_kind":       {},
 	"crs_synced_at":  {},
+	// Source account identity must not leak into the copy: a linked shadow
+	// displays the currently linked parent (parent_email), never the account
+	// it was duplicated from.
+	"email":         {},
+	"email_address": {},
 	// Local quota usage and derived window timestamps must start fresh.
 	"quota_used":            {},
 	"quota_daily_used":      {},
@@ -946,6 +951,11 @@ func (s *adminServiceImpl) changeShadowParent(ctx context.Context, account *Acco
 	// 影子代理恒继承母账号：改绑后立即跟随新母账号的代理。
 	account.ProxyID = newParent.ProxyID
 	account.Proxy = nil
+	// 复制来源的账号身份不再属于影子：改绑后清理残留身份键，展示统一走
+	// parent_* 回填（enrichShadowParentInfo），避免列表仍显示复制时的旧账号。
+	for _, key := range []string{"email", "email_address"} {
+		delete(account.Extra, key)
+	}
 	return nil
 }
 

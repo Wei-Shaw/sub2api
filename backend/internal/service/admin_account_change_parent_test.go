@@ -230,3 +230,46 @@ func TestAdminUpdateAccountIgnoresParentForNonShadow(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, updated.ParentAccountID)
 }
+
+func TestAdminUpdateAccountChangeShadowParentDropsSourceIdentity(t *testing.T) {
+	shadowID := int64(100)
+	oldParentID := int64(10)
+	newParentID := int64(20)
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		shadowID: {
+			ID:              shadowID,
+			Name:            "linked-shadow",
+			Platform:        PlatformOpenAI,
+			Type:            AccountTypeOAuth,
+			ParentAccountID: &oldParentID,
+			QuotaDimension:  QuotaDimensionLinked,
+			Status:          StatusActive,
+			Extra: map[string]any{
+				// 复制来源残留的身份键，改绑后必须清理。
+				"email":          "copied@example.com",
+				"email_address":  "copied@example.com",
+				"codex_cli_only": true,
+			},
+		},
+		oldParentID: {
+			ID:       oldParentID,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Status:   StatusActive,
+		},
+		newParentID: {
+			ID:       newParentID,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Status:   StatusActive,
+		},
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	updated, err := svc.UpdateAccount(context.Background(), shadowID, &UpdateAccountInput{ParentAccountID: &newParentID})
+	require.NoError(t, err)
+	require.Equal(t, newParentID, *updated.ParentAccountID)
+	require.NotContains(t, updated.Extra, "email")
+	require.NotContains(t, updated.Extra, "email_address")
+	require.Equal(t, true, updated.Extra["codex_cli_only"])
+}
