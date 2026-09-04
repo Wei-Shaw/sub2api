@@ -57,12 +57,9 @@ var requiredCSPDirectiveValues = []struct {
 	// Keep same-origin frames available even when an older custom CSP policy
 	// omitted frame-src entirely.
 	{"frame-src", "'self'"},
-	// Custom-menu items may point at arbitrary external https URLs. Such pages
-	// often 301-redirect to a different host (e.g. pay.ldxp.cn -> wzyp.cn),
-	// which cannot be known when the CSP header is built, so a host allowlist
-	// would block the iframe right after the redirect. Allow any https origin
-	// so external custom-menu pages keep embedding inside the same-origin iframe.
-	{"frame-src", "https:"},
+	// External https frames for custom-menu pages are injected dynamically by
+	// SettingService.GetFrameSrcOrigins from the configured menu/home/subscription
+	// URLs. No global https: catch-all is hardcoded here anymore.
 	{"script-src", CloudflareInsightsDomain},
 	{"script-src", TencentCaptchaDomain},
 	{"frame-src", TencentCaptchaDomain},
