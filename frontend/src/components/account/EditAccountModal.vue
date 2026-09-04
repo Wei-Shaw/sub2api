@@ -29,11 +29,11 @@
       <!-- 影子账号(复制出来)：支持改绑到另一个母账号，不一定是复制的账号 -->
       <div v-if="isSparkShadow" class="space-y-2">
         <label class="input-label">{{ t('admin.accounts.shadowParent') }}</label>
-        <select v-model="parentAccountId" class="input" data-tour="edit-account-form-shadow-parent">
-          <option v-for="p in shadowParentCandidates" :key="p.id" :value="p.id">
-            {{ p.name }} (#{{ p.id }})
-          </option>
-        </select>
+        <Select
+          v-model="parentAccountId"
+          :options="shadowParentOptions"
+          data-tour="edit-account-form-shadow-parent"
+        />
         <p class="input-hint">{{ t('admin.accounts.shadowParentHint') }}</p>
       </div>
 
@@ -2954,6 +2954,20 @@ const shadowParentCandidates = computed<Account[]>(() => {
       a.platform === account.platform &&
       a.type === account.type
   )
+})
+
+// 与其它表单下拉统一走 common/Select，options 为 { value, label }。
+const shadowParentOptions = computed(() => {
+  const options = shadowParentCandidates.value.map((p) => ({
+    value: p.id,
+    label: `${p.name} (#${p.id})`
+  }))
+  const currentId = parentAccountId.value
+  if (currentId != null && !options.some((option) => option.value === currentId)) {
+    // 账号列表缺失当前母账号时兜底展示，避免控件显示为空。
+    options.unshift({ value: currentId, label: `#${currentId}` })
+  }
+  return options
 })
 
 const hideAccountLongContextBilling = computed(() => {
