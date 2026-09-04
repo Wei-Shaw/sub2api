@@ -114,7 +114,9 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 	}
 	if selection == nil || selection.Account == nil || release == nil || upstream == nil {
 		if !candidateSeen {
-			h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available Grok accounts")
+			markOpsRoutingCapacityLimited(c)
+			recordNoAvailableAccountsReasonForOps(c, noAvailableAccountsReasonNoAccount)
+			h.errorResponse(c, http.StatusServiceUnavailable, "api_error", noAvailableAccountsClientMessage)
 		} else {
 			h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Grok realtime upstream unavailable")
 		}
@@ -241,7 +243,9 @@ func (h *OpenAIGatewayHandler) GrokVoice(c *gin.Context, endpoint string) {
 			if last != nil {
 				h.handleFailoverExhausted(c, last, false)
 			} else {
-				h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available Grok accounts")
+				markOpsRoutingCapacityLimited(c)
+				recordNoAvailableAccountsReasonForOps(c, noAvailableAccountsReasonNoAccount)
+				h.errorResponse(c, http.StatusServiceUnavailable, "api_error", noAvailableAccountsClientMessage)
 			}
 			return
 		}
