@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
@@ -28,19 +29,20 @@ func IsWindowExpired(windowStart *time.Time, duration time.Duration) bool {
 }
 
 type APIKey struct {
-	ID          int64
-	UserID      int64
-	Key         string
-	Name        string
-	GroupID     *int64
-	Status      string
-	IPWhitelist []string
-	IPBlacklist []string
+	ID                    int64
+	UserID                int64
+	Key                   string
+	Name                  string
+	GroupID               *int64
+	Status                string
+	IPWhitelist           []string
+	IPBlacklist           []string
+	AllowedModels         []string
+	OpenAIDefaultFastMode bool
 	// 预编译的 IP 规则，用于认证热路径避免重复 ParseIP/ParseCIDR。
 	CompiledIPWhitelist *ip.CompiledIPRules `json:"-"`
 	CompiledIPBlacklist *ip.CompiledIPRules `json:"-"`
 	LastUsedAt          *time.Time
-	LastUsedIP          *string
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 	User                *User
@@ -66,6 +68,55 @@ type APIKey struct {
 
 func (k *APIKey) IsActive() bool {
 	return k.Status == StatusActive
+}
+
+func NormalizeAllowedModels(models []string) []string {
+	if len(models) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(models))
+	out := make([]string, 0, len(models))
+	for _, model := range models {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		key := strings.ToLower(model)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, model)
+	}
+	return out
+}
+
+func (k *APIKey) AllowsModel(model string) bool {
+	if k == nil || len(k.AllowedModels) == 0 {
+		return true
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return true
+	}
+	normalizedModel := strings.ToLower(model)
+	for _, pattern := range k.AllowedModels {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		normalizedPattern := strings.ToLower(pattern)
+		if normalizedPattern == normalizedModel {
+			return true
+		}
+		if strings.HasSuffix(normalizedPattern, "*") {
+			prefix := strings.TrimSuffix(normalizedPattern, "*")
+			if prefix != "" && strings.HasPrefix(normalizedModel, prefix) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // HasRateLimits returns true if any rate limit window is configured

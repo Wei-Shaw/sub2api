@@ -100,6 +100,11 @@ func LastUsedAt(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldLastUsedAt, v))
 }
 
+// OpenaiDefaultFastMode applies equality check predicate on the "openai_default_fast_mode" field. It's identical to OpenaiDefaultFastModeEQ.
+func OpenaiDefaultFastMode(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldOpenaiDefaultFastMode, v))
+}
+
 // Quota applies equality check predicate on the "quota" field. It's identical to QuotaEQ.
 func Quota(v float64) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldQuota, v))
@@ -603,6 +608,16 @@ func IPBlacklistIsNil() predicate.APIKey {
 // IPBlacklistNotNil applies the NotNil predicate on the "ip_blacklist" field.
 func IPBlacklistNotNil() predicate.APIKey {
 	return predicate.APIKey(sql.FieldNotNull(FieldIPBlacklist))
+}
+
+// OpenaiDefaultFastModeEQ applies the EQ predicate on the "openai_default_fast_mode" field.
+func OpenaiDefaultFastModeEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldOpenaiDefaultFastMode, v))
+}
+
+// OpenaiDefaultFastModeNEQ applies the NEQ predicate on the "openai_default_fast_mode" field.
+func OpenaiDefaultFastModeNEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldOpenaiDefaultFastMode, v))
 }
 
 // QuotaEQ applies the EQ predicate on the "quota" field.

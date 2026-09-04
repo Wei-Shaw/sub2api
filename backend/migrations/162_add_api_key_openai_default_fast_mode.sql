@@ -1,0 +1,2 @@
+ALTER TABLE api_keys
+ADD COLUMN IF NOT EXISTS openai_default_fast_mode BOOLEAN NOT NULL DEFAULT FALSE;
