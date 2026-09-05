@@ -324,6 +324,12 @@ type ContentModerationCheckInput struct {
 type ContentModerationInput struct {
 	Text   string
 	Images []string
+
+	classification string
+	inputShape     string
+	tailItemKind   string
+	itemCount      int
+	failClosed     bool
 }
 
 func (in *ContentModerationInput) Normalize() {
@@ -336,6 +342,17 @@ func (in *ContentModerationInput) Normalize() {
 
 func (in ContentModerationInput) IsEmpty() bool {
 	return strings.TrimSpace(in.Text) == "" && len(in.Images) == 0
+}
+
+func (in ContentModerationInput) Classification() string {
+	if in.classification != "" {
+		return in.classification
+	}
+	return classifyExtractedModerationInput(in)
+}
+
+func (in ContentModerationInput) MustFailClosed() bool {
+	return in.failClosed
 }
 
 func (in ContentModerationInput) ModerationInput() any {
@@ -910,23 +927,59 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 		return allow, nil
 	}
 	content := ExtractContentModerationInput(input.Protocol, input.Body)
-	if content.IsEmpty() {
-		slog.Info("content_moderation.skip_empty_input",
+	if content.MustFailClosed() {
+		slog.Warn("content_moderation.fail_closed_unreviewable_input",
+			"request_id", input.RequestID,
 			"user_id", input.UserID,
 			"api_key_id", input.APIKeyID,
 			"group_id", contentModerationLogGroupID(input.GroupID),
 			"endpoint", input.Endpoint,
 			"protocol", input.Protocol,
+			"classification", content.Classification(),
+			"input_shape", content.inputShape,
+			"tail_item_kind", content.tailItemKind,
+			"input_item_count", content.itemCount,
+			"body_bytes", len(input.Body),
+			"mode", cfg.Mode)
+		if cfg.Mode == ContentModerationModePreBlock {
+			s.recordPreBlockSyncMetric(0, ContentModerationActionError)
+			return &ContentModerationDecision{
+				Allowed:    false,
+				Blocked:    true,
+				Message:    cfg.BlockMessage,
+				StatusCode: cfg.BlockStatus,
+				Action:     ContentModerationActionError,
+			}, nil
+		}
+		return allow, nil
+	}
+	if content.IsEmpty() {
+		slog.Info("content_moderation.skip_empty_input",
+			"request_id", input.RequestID,
+			"user_id", input.UserID,
+			"api_key_id", input.APIKeyID,
+			"group_id", contentModerationLogGroupID(input.GroupID),
+			"endpoint", input.Endpoint,
+			"protocol", input.Protocol,
+			"classification", content.Classification(),
+			"input_shape", content.inputShape,
+			"tail_item_kind", content.tailItemKind,
+			"input_item_count", content.itemCount,
 			"body_bytes", len(input.Body))
 		return allow, nil
 	}
 	content.Normalize()
 	slog.Info("content_moderation.input_extracted",
+		"request_id", input.RequestID,
 		"user_id", input.UserID,
 		"api_key_id", input.APIKeyID,
 		"group_id", contentModerationLogGroupID(input.GroupID),
 		"endpoint", input.Endpoint,
 		"protocol", input.Protocol,
+		"classification", content.Classification(),
+		"input_shape", content.inputShape,
+		"tail_item_kind", content.tailItemKind,
+		"input_item_count", content.itemCount,
 		"text_runes", len([]rune(content.Text)),
 		"image_count", len(content.Images))
 	hashText := content.Hash()
