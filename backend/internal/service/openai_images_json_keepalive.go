@@ -13,8 +13,9 @@ import (
 
 const openAIImagesJSONKeepaliveKey = "openai_images_json_keepalive"
 
-// openAIImagesJSONKeepalive keeps non-streaming Images API requests alive while
-// an OAuth upstream is producing SSE internally. JSON permits leading
+// openAIImagesJSONKeepalive keeps non-streaming image-generation requests alive
+// while an upstream is producing JSON or SSE internally. It is shared by the
+// Images API and /responses image_generation paths. JSON permits leading
 // whitespace, so each heartbeat remains compatible with clients expecting one
 // final JSON document.
 //
@@ -31,7 +32,8 @@ type openAIImagesJSONKeepalive struct {
 }
 
 // StartOpenAIImagesJSONKeepalive starts whitespace heartbeats for a
-// non-streaming Images request. A non-positive interval disables the feature.
+// non-streaming image-generation request. A non-positive interval disables the
+// feature.
 func StartOpenAIImagesJSONKeepalive(c *gin.Context, interval time.Duration) func() {
 	if c == nil || c.Writer == nil || interval <= 0 {
 		return func() {}
@@ -128,7 +130,8 @@ func StopOpenAIImagesJSONKeepaliveCommitted(c *gin.Context) bool {
 }
 
 // OpenAIImagesJSONKeepalivePresent reports whether the response writer belongs
-// to an Images JSON request, including fast responses before the first beat.
+// to an image-generation JSON request, including fast responses before the
+// first beat.
 func OpenAIImagesJSONKeepalivePresent(c *gin.Context) bool {
 	return openAIImagesJSONKeepaliveFromContext(c) != nil
 }
