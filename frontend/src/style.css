@@ -390,7 +390,7 @@
   /* ============ 模态框 ============ */
   .modal-overlay {
     @apply fixed inset-0 z-50;
-    @apply bg-black/50 backdrop-blur-sm;
+    @apply bg-black/50;
     @apply flex items-center justify-center p-2 sm:p-4;
   }
 
