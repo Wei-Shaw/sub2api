@@ -9,7 +9,15 @@ import type { EndpointStat } from '@/types'
 
 // ==================== Types ====================
 
+export interface UserAgentStat {
+  user_agent: string
+  client: string
+  version: string
+  requests: number
+}
+
 export interface AdminUsageStatsResponse {
+  user_agents?: UserAgentStat[]
   total_requests: number
   total_input_tokens: number
   total_output_tokens: number
@@ -117,6 +125,7 @@ export async function list(
  * @returns Usage statistics
  */
 export async function getStats(params: {
+  include_user_agents?: boolean
   user_id?: number
   api_key_id?: number
   account_id?: number
