@@ -545,7 +545,14 @@ const setUserKeyword = (email: string) => {
   showUserDropdown.value = false
 }
 
+// 供外部(如 API Key 排行/分布下钻)在程序化设置 api_key_id 后回显选中的 Key 名称
+const setApiKeyKeyword = (name: string) => {
+  apiKeyKeyword.value = name
+  apiKeyResults.value = []
+  showApiKeyDropdown.value = false
+}
+
 const getUserSearchRevision = () => userSearchSequence
 
-defineExpose({ getUserSearchRevision, setUserKeyword })
+defineExpose({ getUserSearchRevision, setUserKeyword, setApiKeyKeyword })
 </script>

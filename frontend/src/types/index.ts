@@ -1989,6 +1989,33 @@ export interface ApiKeyUsageTrendPoint {
   key_name: string
   requests: number
   tokens: number
+  actual_cost: number // 实际扣除
+}
+
+export interface ApiKeyUsageRankingItem {
+  api_key_id: number
+  key_name: string
+  key_deleted: boolean // Key 已被软删除(历史用量仍计入)
+  user_id: number
+  email: string
+  username: string
+  requests: number
+  input_tokens: number
+  output_tokens: number
+  cache_tokens: number
+  total_tokens: number
+  cost: number // 标准计费
+  actual_cost: number // 实际扣除
+}
+
+export interface ApiKeyUsageRankingResponse {
+  ranking: ApiKeyUsageRankingItem[]
+  total_actual_cost: number
+  total_requests: number
+  total_tokens: number
+  total_keys: number // 时间范围内有用量的 Key 总数(含未上榜)
+  start_date: string
+  end_date: string
 }
 
 // ==================== Admin User Management ====================

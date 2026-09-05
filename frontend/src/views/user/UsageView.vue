@@ -64,6 +64,14 @@
           />
           <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
         </div>
+
+        <ApiKeyDistributionChart
+          ref="apiKeyDistRef"
+          scope="user"
+          :start-date="startDate"
+          :end-date="endDate"
+          @key-click="handleKeySelect"
+        />
       </div>
 
       <div class="card p-6">
@@ -233,6 +241,7 @@ import ModelDistributionChart from '@/components/charts/ModelDistributionChart.v
 import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
+import ApiKeyDistributionChart from '@/components/charts/ApiKeyDistributionChart.vue'
 import Icon from '@/components/icons/Icon.vue'
 import UserErrorRequestsTable from '@/components/user/UserErrorRequestsTable.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -241,6 +250,7 @@ import { getBillingModeLabel, getDisplayBillingMode as resolveDisplayBillingMode
 import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usageRequestType'
 import type {
   ApiKey,
+  ApiKeyUsageRankingItem,
   EndpointStat,
   Group,
   GroupStat,
@@ -408,10 +418,20 @@ const apiKeys = ref<ApiKey[]>([])
 const groups = ref<Group[]>([])
 const modelOptionValues = ref<string[]>([])
 
-const apiKeyOptions = computed<SelectOption[]>(() => [
-  { value: null, label: t('usage.allApiKeys') },
-  ...apiKeys.value.map((key) => ({ value: key.id, label: key.name })),
-])
+// 从分布图下钻的 Key 可能不在已加载的列表里(超出前 100 条)，
+// 注入临时选项让筛选控件正确回显，避免"隐形过滤"。
+const extraKeyOption = ref<SelectOption | null>(null)
+const apiKeyOptions = computed<SelectOption[]>(() => {
+  const options: SelectOption[] = [
+    { value: null, label: t('usage.allApiKeys') },
+    ...apiKeys.value.map((key) => ({ value: key.id, label: key.name })),
+  ]
+  const extra = extraKeyOption.value
+  if (extra && !apiKeys.value.some((key) => key.id === extra.value)) {
+    options.push(extra)
+  }
+  return options
+})
 const groupOptions = computed<SelectOption[]>(() => [
   { value: null, label: t('admin.usage.allGroups') },
   ...groups.value.map((group) => ({ value: group.id, label: group.name })),
@@ -551,7 +571,19 @@ const refreshData = () => {
   void loadStats()
   void loadModelStats()
   void loadChartData()
+  apiKeyDistRef.value?.reload()
   if (activeTab.value === 'errors') void loadErrors()
+}
+
+// 从 Key 分布图下钻：按该 Key 过滤用量明细
+const apiKeyDistRef = ref<InstanceType<typeof ApiKeyDistributionChart> | null>(null)
+const handleKeySelect = (item: ApiKeyUsageRankingItem) => {
+  // 已删 Key 图表层已禁点，这里再兜底：用户端接口按活跃 Key 校验，下钻会导致整页请求 404
+  if (item.key_deleted) return
+  extraKeyOption.value = { value: item.api_key_id, label: item.key_name || `#${item.api_key_id}` }
+  filters.value = { ...filters.value, api_key_id: item.api_key_id }
+  activeTab.value = 'usage'
+  applyFilters()
 }
 
 const resetFilters = () => {

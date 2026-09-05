@@ -26,34 +26,57 @@ type UserSpendingRankingResponse = usagestats.UserSpendingRankingResponse
 // APIKeyUsageTrendPoint represents API key usage trend data point
 type APIKeyUsageTrendPoint = usagestats.APIKeyUsageTrendPoint
 
-// GetAPIKeyUsageTrend returns usage trend data grouped by API key and date
-func (r *usageLogRepository) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) (results []APIKeyUsageTrendPoint, err error) {
+// APIKeyUsageRankingItem represents an API key usage ranking row.
+type APIKeyUsageRankingItem = usagestats.APIKeyUsageRankingItem
+type APIKeyUsageRankingResponse = usagestats.APIKeyUsageRankingResponse
+
+// GetAPIKeyUsageTrend returns usage trend data grouped by API key and date.
+// userID > 0 时只统计该用户的 Key(Top-N 选取与数据聚合都限定该用户)。
+func (r *usageLogRepository) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int, userID int64) (results []APIKeyUsageTrendPoint, err error) {
 	dateFormat := safeDateFormat(granularity)
+
+	topUserFilter := ""
+	args := []any{startTime, endTime}
+	if userID > 0 {
+		topUserFilter = fmt.Sprintf(" AND user_id = $%d", len(args)+1)
+		args = append(args, userID)
+	}
+	args = append(args, limit)
+	limitPlaceholder := fmt.Sprintf("$%d", len(args))
+	rangeStart := fmt.Sprintf("$%d", len(args)+1)
+	rangeEnd := fmt.Sprintf("$%d", len(args)+2)
+	args = append(args, startTime, endTime)
+	outerUserFilter := ""
+	if userID > 0 {
+		outerUserFilter = fmt.Sprintf(" AND u.user_id = $%d", len(args)+1)
+		args = append(args, userID)
+	}
 
 	query := fmt.Sprintf(`
 		WITH top_keys AS (
 			SELECT api_key_id
 			FROM usage_logs
-			WHERE created_at >= $1 AND created_at < $2
+			WHERE created_at >= $1 AND created_at < $2%s
 			GROUP BY api_key_id
 			ORDER BY SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens) DESC
-			LIMIT $3
+			LIMIT %s
 		)
 		SELECT
 			TO_CHAR(u.created_at, '%s') as date,
 			u.api_key_id,
 			COALESCE(k.name, '') as key_name,
 			COUNT(*) as requests,
-			COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens
+			COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens,
+			COALESCE(SUM(u.actual_cost), 0) as actual_cost
 		FROM usage_logs u
 		LEFT JOIN api_keys k ON u.api_key_id = k.id
 		WHERE u.api_key_id IN (SELECT api_key_id FROM top_keys)
-		  AND u.created_at >= $4 AND u.created_at < $5
+		  AND u.created_at >= %s AND u.created_at < %s%s
 		GROUP BY date, u.api_key_id, k.name
 		ORDER BY date ASC, tokens DESC
-	`, dateFormat)
+	`, topUserFilter, limitPlaceholder, dateFormat, rangeStart, rangeEnd, outerUserFilter)
 
-	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit, startTime, endTime)
+	rows, err := r.sql.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +92,7 @@ func (r *usageLogRepository) GetAPIKeyUsageTrend(ctx context.Context, startTime,
 	results = make([]APIKeyUsageTrendPoint, 0)
 	for rows.Next() {
 		var row APIKeyUsageTrendPoint
-		if err = rows.Scan(&row.Date, &row.APIKeyID, &row.KeyName, &row.Requests, &row.Tokens); err != nil {
+		if err = rows.Scan(&row.Date, &row.APIKeyID, &row.KeyName, &row.Requests, &row.Tokens, &row.ActualCost); err != nil {
 			return nil, err
 		}
 		results = append(results, row)
@@ -219,6 +242,126 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 		TotalActualCost: totalActualCost,
 		TotalRequests:   totalRequests,
 		TotalTokens:     totalTokens,
+	}, nil
+}
+
+// GetAPIKeyUsageRanking returns per-API-key usage ranking aggregated within the time range.
+// 软删除的 Key 不过滤(否则窗口合计与分片之和不一致)，用 key_deleted 标记。
+// 若未来 Key 基数过大导致原始扫描过慢，可引入按 api_key_id 维度的日聚合表。
+func (r *usageLogRepository) GetAPIKeyUsageRanking(ctx context.Context, startTime, endTime time.Time, limit int, sortBy string, userID int64) (result *APIKeyUsageRankingResponse, err error) {
+	if limit <= 0 {
+		limit = 12
+	}
+
+	// ORDER BY 列来自固定 allowlist，避免 SQL 注入。
+	orderBy := "actual_cost"
+	switch sortBy {
+	case "total_tokens", "input_tokens", "output_tokens", "cache_tokens", "requests", "cost", "actual_cost":
+		orderBy = sortBy
+	}
+
+	where := "u.created_at >= $1 AND u.created_at < $2"
+	args := []any{startTime, endTime}
+	if userID > 0 {
+		where += fmt.Sprintf(" AND u.user_id = $%d", len(args)+1)
+		args = append(args, userID)
+	}
+	args = append(args, limit)
+	limitPlaceholder := fmt.Sprintf("$%d", len(args))
+
+	query := fmt.Sprintf(`
+		WITH key_spend AS (
+			SELECT
+				u.api_key_id,
+				COALESCE(k.name, '') as key_name,
+				(k.id IS NULL OR k.deleted_at IS NOT NULL) as key_deleted,
+				COALESCE(k.user_id, 0) as user_id,
+				COALESCE(us.email, '') as email,
+				COALESCE(us.username, '') as username,
+				COUNT(*) as requests,
+				COALESCE(SUM(u.input_tokens), 0) as input_tokens,
+				COALESCE(SUM(u.output_tokens), 0) as output_tokens,
+				COALESCE(SUM(u.cache_creation_tokens + u.cache_read_tokens), 0) as cache_tokens,
+				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as total_tokens,
+				COALESCE(SUM(u.total_cost), 0) as cost,
+				COALESCE(SUM(u.actual_cost), 0) as actual_cost
+			FROM usage_logs u
+			LEFT JOIN api_keys k ON u.api_key_id = k.id
+			LEFT JOIN users us ON k.user_id = us.id
+			WHERE %s
+			GROUP BY u.api_key_id, k.id, k.name, k.deleted_at, k.user_id, us.email, us.username
+		),
+		ranked AS (
+			SELECT
+				*,
+				COALESCE(SUM(actual_cost) OVER (), 0) as total_actual_cost,
+				COALESCE(SUM(requests) OVER (), 0) as total_requests,
+				COALESCE(SUM(total_tokens) OVER (), 0) as total_tokens_all,
+				COUNT(*) OVER () as total_keys
+			FROM key_spend
+			ORDER BY %s DESC, total_tokens DESC, api_key_id ASC
+			LIMIT %s
+		)
+		SELECT
+			api_key_id,
+			key_name,
+			key_deleted,
+			user_id,
+			email,
+			username,
+			requests,
+			input_tokens,
+			output_tokens,
+			cache_tokens,
+			total_tokens,
+			cost,
+			actual_cost,
+			total_actual_cost,
+			total_requests,
+			total_tokens_all,
+			total_keys
+		FROM ranked
+		ORDER BY %s DESC, total_tokens DESC, api_key_id ASC
+	`, where, orderBy, limitPlaceholder, orderBy)
+
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			result = nil
+		}
+	}()
+
+	ranking := make([]APIKeyUsageRankingItem, 0)
+	totalActualCost := 0.0
+	totalRequests := int64(0)
+	totalTokens := int64(0)
+	totalKeys := int64(0)
+	for rows.Next() {
+		var row APIKeyUsageRankingItem
+		if err = rows.Scan(
+			&row.APIKeyID, &row.KeyName, &row.KeyDeleted, &row.UserID, &row.Email, &row.Username,
+			&row.Requests, &row.InputTokens, &row.OutputTokens, &row.CacheTokens, &row.TotalTokens,
+			&row.Cost, &row.ActualCost,
+			&totalActualCost, &totalRequests, &totalTokens, &totalKeys,
+		); err != nil {
+			return nil, err
+		}
+		ranking = append(ranking, row)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return &APIKeyUsageRankingResponse{
+		Ranking:         ranking,
+		TotalActualCost: totalActualCost,
+		TotalRequests:   totalRequests,
+		TotalTokens:     totalTokens,
+		TotalKeys:       totalKeys,
 	}, nil
 }
 
