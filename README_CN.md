@@ -217,6 +217,33 @@ underscores_in_headers on;
 
 Nginx 默认会丢弃名称中含下划线的请求头（如 `session_id`），这会导致多账号环境下的粘性会话功能失效。
 
+> **端口受限场景**：如果服务器 80/443 被封锁、只能用非标端口对外提供 HTTPS 且需要自动续签证书，可参考 [deploy/caddy-dns01/GUIDE.md](deploy/caddy-dns01/GUIDE.md)（Caddy + Cloudflare DNS-01 增量叠加方案）。
+
+<details>
+<summary>💡 想让 AI 帮你按这套方案直接部署？点击展开 AI 提示词</summary>
+
+把下面这段喂给 Claude Code（或其它具备 SSH/Bash 能力的 AI 编码助手），按它的要求陆续提供凭据即可：
+
+```
+请按 deploy/caddy-dns01/GUIDE.md 的步骤帮我在我的服务器上部署 Sub2API + Caddy + Cloudflare DNS-01。
+
+我会陆续提供：
+- 服务器 SSH 信息（IP / 用户名 / SSH 密钥路径，强烈建议用密钥而非密码）
+- 域名（已托管在 Cloudflare）和子域名前缀（如 api）
+- 联系邮箱（Let's Encrypt 用）
+- Cloudflare API Token（权限 Zone:DNS:Edit + Zone:Zone:Read，仅限该 zone）
+
+执行原则：
+1. 严格按 GUIDE.md 阶段 0 → 阶段 7 顺序，每阶段完成后向我汇报结果再继续
+2. 任何 destructive 命令（rm / down / reset / drop）执行前先经我确认
+3. 我提供的 token、密码、密钥不要回显、不要写进任何 git 提交或日志
+4. 遇到 GUIDE.md 没覆盖的报错就停下来分析，不要自行绕过验证步骤
+5. 部署完成后给我一份"已生效配置摘要"和"日常维护命令清单"
+6. 如果发现 GUIDE.md 与实际操作有出入（命令报错、步骤遗漏、版本变化等），请同时给出 GUIDE.md 的修订建议
+```
+
+</details>
+
 ---
 
 ## 部署方式

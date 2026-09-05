@@ -215,6 +215,33 @@ underscores_in_headers on;
 
 Nginx drops headers containing underscores by default (e.g. `session_id`), which breaks sticky session routing in multi-account setups.
 
+> **Port-restricted scenarios**: If your server has ports 80/443 blocked and you need HTTPS on a non-standard port with auto-renewing certificates, see [deploy/caddy-dns01/GUIDE.md](deploy/caddy-dns01/GUIDE.md) (Caddy + Cloudflare DNS-01 incremental overlay).
+
+<details>
+<summary>💡 Want AI to deploy it for you? Click to expand the prompt</summary>
+
+Feed the prompt below to Claude Code (or any AI coding assistant with SSH/Bash capability) and supply credentials as it asks:
+
+```
+Please deploy Sub2API + Caddy + Cloudflare DNS-01 on my server following deploy/caddy-dns01/GUIDE.md.
+
+I will provide:
+- Server SSH info (IP / username / SSH key path — strongly prefer key over password)
+- Domain (hosted on Cloudflare) and subdomain prefix (e.g. api)
+- Contact email (for Let's Encrypt)
+- Cloudflare API Token (permissions: Zone:DNS:Edit + Zone:Zone:Read, limited to that single zone)
+
+Execution rules:
+1. Follow GUIDE.md phases 0 → 7 strictly, report after each phase before proceeding
+2. Confirm any destructive command (rm / down / reset / drop) with me first
+3. Never echo or commit my token, password, or key to git/logs
+4. If you hit an error not covered by GUIDE.md, stop and analyze — do not skip verification
+5. When done, give me an "active configuration summary" and a "daily maintenance cheatsheet"
+6. If GUIDE.md is out of sync with reality (commands error, steps missing, versions changed), propose GUIDE.md revisions alongside the deployment
+```
+
+</details>
+
 ---
 
 ## Deployment
