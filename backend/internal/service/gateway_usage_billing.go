@@ -759,6 +759,9 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	// 确定计费模型
 	concreteBillingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
 	billingModel := concreteBillingModel
+	if input.BillingModelSource == BillingModelSourceUpstream && result.UpstreamModel != "" {
+		billingModel = result.UpstreamModel
+	}
 	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" {
 		billingModel = input.ChannelMappedModel
 	}
