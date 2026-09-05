@@ -23,6 +23,13 @@ type ModelAvailabilityDiagnosis struct {
 	HasModelSupport bool
 }
 
+// ModelAvailability is the current, side-effect-free schedulability of one
+// requested model. It intentionally exposes no account identity or pool size.
+type ModelAvailability struct {
+	Model     string `json:"model"`
+	Available bool   `json:"available"`
+}
+
 // ModelAvailabilityDiagnoser is implemented by gateway services that can
 // report whether the requested model is configured to be served by any
 // account. Both *GatewayService and *OpenAIGatewayService implement this so
@@ -34,6 +41,49 @@ type ModelAvailabilityDiagnoser interface {
 		requestedModel string,
 		platform string,
 	) ModelAvailabilityDiagnosis
+}
+
+// CurrentModelAvailabilityForPlatform applies the same cheap gates used before
+// account selection, without acquiring a concurrency slot or binding a sticky
+// session. It is intended for callers choosing among fallback models.
+func (s *GatewayService) CurrentModelAvailabilityForPlatform(
+	ctx context.Context,
+	groupID *int64,
+	platform string,
+	models []string,
+) ([]ModelAvailability, error) {
+	accounts, useMixed, err := s.listSchedulableAccounts(ctx, groupID, platform, false)
+	if err != nil {
+		return nil, err
+	}
+	ctx = s.withWindowCostPrefetch(ctx, accounts)
+	ctx = s.withRPMPrefetch(ctx, accounts)
+
+	result := make([]ModelAvailability, 0, len(models))
+	for _, requestedModel := range models {
+		requestedModel = strings.TrimSpace(requestedModel)
+		if requestedModel == "" {
+			continue
+		}
+		available := false
+		for i := range accounts {
+			account := &accounts[i]
+			if !s.isAccountAllowedForPlatform(account, platform, useMixed) ||
+				!s.isAccountSchedulableForSelection(account) ||
+				!s.isGatewayAccountProfitEligible(ctx, account) ||
+				!s.isModelSupportedByAccountWithContext(ctx, account, requestedModel) ||
+				!s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) ||
+				!s.isAccountSchedulableForQuota(account) ||
+				!s.isAccountSchedulableForWindowCost(ctx, account, false) ||
+				!s.isAccountSchedulableForRPM(ctx, account, false) {
+				continue
+			}
+			available = true
+			break
+		}
+		result = append(result, ModelAvailability{Model: requestedModel, Available: available})
+	}
+	return result, nil
 }
 
 // DiagnoseModelAvailabilityForPlatform inspects accounts enabled for scheduling

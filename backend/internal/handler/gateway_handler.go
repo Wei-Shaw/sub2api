@@ -1190,6 +1190,57 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	})
 }
 
+const maxModelAvailabilityBatch = 50
+
+// ModelAvailability reports current model schedulability for the authenticated
+// API-key group. Unlike /models, it never falls back to a static catalogue when
+// the live pool is empty.
+func (h *GatewayHandler) ModelAvailability(c *gin.Context) {
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok || apiKey == nil || apiKey.Group == nil {
+		h.errorResponse(c, http.StatusUnauthorized, "invalid_request_error", "API key group is required")
+		return
+	}
+	var body struct {
+		Models []string `json:"models"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Invalid request body")
+		return
+	}
+	seen := make(map[string]struct{}, len(body.Models))
+	models := make([]string, 0, len(body.Models))
+	for _, model := range body.Models {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		if _, exists := seen[model]; exists {
+			continue
+		}
+		seen[model] = struct{}{}
+		models = append(models, model)
+	}
+	if len(models) == 0 || len(models) > maxModelAvailabilityBatch {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "models must contain between 1 and 50 unique values")
+		return
+	}
+
+	groupID := apiKey.GroupID
+	if groupID == nil {
+		id := apiKey.Group.ID
+		groupID = &id
+	}
+	availability, err := h.gatewayService.CurrentModelAvailabilityForPlatform(
+		c.Request.Context(), groupID, apiKey.Group.Platform, models,
+	)
+	if err != nil {
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Model availability is temporarily unavailable")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"object": "model_availability", "data": availability})
+}
+
 // CodexModels returns the effective group model list using the manifest shape
 // expected by Codex custom providers. Official OpenAI groups continue to use
 // OpenAIGatewayHandler.CodexModels so their live upstream metadata is preserved.
