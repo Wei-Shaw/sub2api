@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -39,10 +40,10 @@ func NewChannelMonitorHandler(monitorService *service.ChannelMonitorService) *Ch
 
 type channelMonitorCreateRequest struct {
 	Name             string            `json:"name" binding:"required,max=100"`
-	Provider         string            `json:"provider" binding:"required,oneof=openai anthropic gemini grok"`
+	Provider         string            `json:"provider" binding:"required,oneof=openai anthropic gemini grok antigravity kimi zhipu deepseek"`
 	APIMode          string            `json:"api_mode" binding:"omitempty,oneof=chat_completions responses"`
-	Endpoint         string            `json:"endpoint" binding:"required,max=500"`
-	APIKey           string            `json:"api_key" binding:"required,max=2000"`
+	Endpoint         string            `json:"endpoint" binding:"omitempty,max=500"`
+	APIKey           string            `json:"api_key" binding:"omitempty,max=2000"`
 	PrimaryModel     string            `json:"primary_model" binding:"max=200"`
 	ExtraModels      []string          `json:"extra_models"`
 	GroupName        string            `json:"group_name" binding:"max=100"`
@@ -53,11 +54,17 @@ type channelMonitorCreateRequest struct {
 	ExtraHeaders     map[string]string `json:"extra_headers"`
 	BodyOverrideMode string            `json:"body_override_mode" binding:"omitempty,oneof=off merge replace"`
 	BodyOverride     map[string]any    `json:"body_override"`
+
+	// CheckMode: probe（默认）/ quota / quota_probe。quota 模式 endpoint/api_key
+	// 可空（条件必填校验在 service 层按模式分支）。
+	CheckMode string `json:"check_mode" binding:"omitempty,oneof=probe quota quota_probe"`
+	// AccountID: 配额模式关联的账号 ID。
+	AccountID *int64 `json:"account_id"`
 }
 
 type channelMonitorUpdateRequest struct {
 	Name             *string            `json:"name" binding:"omitempty,max=100"`
-	Provider         *string            `json:"provider" binding:"omitempty,oneof=openai anthropic gemini grok"`
+	Provider         *string            `json:"provider" binding:"omitempty,oneof=openai anthropic gemini grok antigravity kimi zhipu deepseek"`
 	APIMode          *string            `json:"api_mode" binding:"omitempty,oneof=chat_completions responses"`
 	Endpoint         *string            `json:"endpoint" binding:"omitempty,max=500"`
 	APIKey           *string            `json:"api_key" binding:"omitempty,max=2000"`
@@ -72,6 +79,10 @@ type channelMonitorUpdateRequest struct {
 	ExtraHeaders     *map[string]string `json:"extra_headers"`
 	BodyOverrideMode *string            `json:"body_override_mode" binding:"omitempty,oneof=off merge replace"`
 	BodyOverride     *map[string]any    `json:"body_override"`
+
+	// CheckMode/AccountID：nil = 不更新；AccountID 指向 0 = 清空关联。
+	CheckMode *string `json:"check_mode" binding:"omitempty,oneof=probe quota quota_probe"`
+	AccountID *int64  `json:"account_id"`
 }
 
 type channelMonitorResponse struct {
@@ -101,25 +112,33 @@ type channelMonitorResponse struct {
 	ExtraHeaders     map[string]string `json:"extra_headers"`
 	BodyOverrideMode string            `json:"body_override_mode"`
 	BodyOverride     map[string]any    `json:"body_override"`
+
+	// 配额模式：check_mode + 关联账号 + 主模型最近配额快照
+	// （LatestQuota 由 List handler 批量聚合后填充；管理端不受 channel_monitor_show_quota 影响）。
+	CheckMode   string                       `json:"check_mode"`
+	AccountID   *int64                       `json:"account_id"`
+	LatestQuota *domain.MonitorQuotaSnapshot `json:"latest_quota,omitempty"`
 }
 
 type channelMonitorCheckResultResponse struct {
-	Model         string `json:"model"`
-	Status        string `json:"status"`
-	LatencyMs     *int   `json:"latency_ms"`
-	PingLatencyMs *int   `json:"ping_latency_ms"`
-	Message       string `json:"message"`
-	CheckedAt     string `json:"checked_at"`
+	Model         string                       `json:"model"`
+	Status        string                       `json:"status"`
+	LatencyMs     *int                         `json:"latency_ms"`
+	PingLatencyMs *int                         `json:"ping_latency_ms"`
+	Message       string                       `json:"message"`
+	CheckedAt     string                       `json:"checked_at"`
+	Quota         *domain.MonitorQuotaSnapshot `json:"quota,omitempty"`
 }
 
 type channelMonitorHistoryItemResponse struct {
-	ID            int64  `json:"id"`
-	Model         string `json:"model"`
-	Status        string `json:"status"`
-	LatencyMs     *int   `json:"latency_ms"`
-	PingLatencyMs *int   `json:"ping_latency_ms"`
-	Message       string `json:"message"`
-	CheckedAt     string `json:"checked_at"`
+	ID            int64                        `json:"id"`
+	Model         string                       `json:"model"`
+	Status        string                       `json:"status"`
+	LatencyMs     *int                         `json:"latency_ms"`
+	PingLatencyMs *int                         `json:"ping_latency_ms"`
+	Message       string                       `json:"message"`
+	CheckedAt     string                       `json:"checked_at"`
+	Quota         *domain.MonitorQuotaSnapshot `json:"quota,omitempty"`
 }
 
 // maskAPIKey 对 API Key 明文做脱敏：前 4 字符 + "***"，长度 ≤ 4 时只显示 "***"。
@@ -163,7 +182,10 @@ func channelMonitorToResponse(m *service.ChannelMonitor) *channelMonitorResponse
 		ExtraHeaders:        headers,
 		BodyOverrideMode:    m.BodyOverrideMode,
 		BodyOverride:        m.BodyOverride,
-		// PrimaryStatus / PrimaryLatencyMs / Availability7d 由 List handler 在批量聚合后填充。
+		CheckMode:           m.CheckMode,
+		AccountID:           m.AccountID,
+		// PrimaryStatus / PrimaryLatencyMs / Availability7d / LatestQuota
+		// 由 List handler 在批量聚合后填充。
 	}
 	if m.LastCheckedAt != nil {
 		s := m.LastCheckedAt.UTC().Format(time.RFC3339)
@@ -180,6 +202,7 @@ func checkResultToResponse(r *service.CheckResult) channelMonitorCheckResultResp
 		PingLatencyMs: r.PingLatencyMs,
 		Message:       r.Message,
 		CheckedAt:     r.CheckedAt.UTC().Format(time.RFC3339),
+		Quota:         r.Quota,
 	}
 }
 
@@ -192,6 +215,7 @@ func historyEntryToResponse(e *service.ChannelMonitorHistoryEntry) channelMonito
 		PingLatencyMs: e.PingLatencyMs,
 		Message:       e.Message,
 		CheckedAt:     e.CheckedAt.UTC().Format(time.RFC3339),
+		Quota:         e.Quota,
 	}
 }
 
@@ -270,6 +294,7 @@ func buildListItemResponse(m *service.ChannelMonitor, summary service.MonitorSta
 	resp.PrimaryStatus = summary.PrimaryStatus
 	resp.PrimaryLatencyMs = summary.PrimaryLatencyMs
 	resp.Availability7d = summary.Availability7d
+	resp.LatestQuota = summary.LatestQuota
 	resp.ExtraModelsStatus = make([]dto.ChannelMonitorExtraModelStatus, 0, len(summary.ExtraModels))
 	for _, e := range summary.ExtraModels {
 		resp.ExtraModelsStatus = append(resp.ExtraModelsStatus, dto.ChannelMonitorExtraModelStatus{
@@ -327,6 +352,8 @@ func (h *ChannelMonitorHandler) Create(c *gin.Context) {
 		ExtraHeaders:     req.ExtraHeaders,
 		BodyOverrideMode: req.BodyOverrideMode,
 		BodyOverride:     req.BodyOverride,
+		CheckMode:        req.CheckMode,
+		AccountID:        req.AccountID,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -421,6 +448,8 @@ func (h *ChannelMonitorHandler) Update(c *gin.Context) {
 		ExtraHeaders:     req.ExtraHeaders,
 		BodyOverrideMode: req.BodyOverrideMode,
 		BodyOverride:     req.BodyOverride,
+		CheckMode:        req.CheckMode,
+		AccountID:        req.AccountID,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

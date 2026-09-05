@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -52,31 +51,29 @@ func firstNonEmpty(values ...string) string {
 
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
-	settingService             *service.SettingService
-	emailService               *service.EmailService
-	turnstileService           *service.TurnstileService
-	aliyunCaptchaService       *service.AliyunCaptchaService
-	opsService                 *service.OpsService
-	paymentConfigService       *service.PaymentConfigService
-	paymentService             *service.PaymentService
-	userAttributeService       *service.UserAttributeService
-	notificationEmailService   *service.NotificationEmailService
-	totpService                *service.TotpService
-	userService                *service.UserService
-	channelMonitorDingTalkTest func(context.Context, string, string) error
+	settingService           *service.SettingService
+	emailService             *service.EmailService
+	turnstileService         *service.TurnstileService
+	aliyunCaptchaService     *service.AliyunCaptchaService
+	opsService               *service.OpsService
+	paymentConfigService     *service.PaymentConfigService
+	paymentService           *service.PaymentService
+	userAttributeService     *service.UserAttributeService
+	notificationEmailService *service.NotificationEmailService
+	totpService              *service.TotpService
+	userService              *service.UserService
 }
 
 // NewSettingHandler 创建系统设置处理器
 func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService, userAttributeService *service.UserAttributeService) *SettingHandler {
 	return &SettingHandler{
-		settingService:             settingService,
-		emailService:               emailService,
-		turnstileService:           turnstileService,
-		opsService:                 opsService,
-		paymentConfigService:       paymentConfigService,
-		paymentService:             paymentService,
-		userAttributeService:       userAttributeService,
-		channelMonitorDingTalkTest: service.SendChannelMonitorDingTalkTest,
+		settingService:       settingService,
+		emailService:         emailService,
+		turnstileService:     turnstileService,
+		opsService:           opsService,
+		paymentConfigService: paymentConfigService,
+		paymentService:       paymentService,
+		userAttributeService: userAttributeService,
 	}
 }
 
@@ -139,6 +136,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		RegistrationEnabled:                                    settings.RegistrationEnabled,
 		EmailVerifyEnabled:                                     settings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:                       settings.RegistrationEmailSuffixWhitelist,
+		RegistrationEmailDomainQuotaEnabled:                    settings.RegistrationEmailDomainQuotaEnabled,
 		PromoCodeEnabled:                                       settings.PromoCodeEnabled,
 		PasswordResetEnabled:                                   settings.PasswordResetEnabled,
 		FrontendURL:                                            settings.FrontendURL,
@@ -290,6 +288,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		MaxClaudeCodeVersion:                                   settings.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:                            settings.AllowUngroupedKeyScheduling,
 		BackendModeEnabled:                                     settings.BackendModeEnabled,
+		OpenAITTFTMode:                                         settings.OpenAITTFTMode,
 		EnableFingerprintUnification:                           settings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:                              settings.EnableMetadataPassthrough,
 		EnableCCHSigning:                                       settings.EnableCCHSigning,
@@ -372,21 +371,27 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentAlipayForceQRCode:                               paymentCfg.AlipayForceQRCode,
 		PaymentAlipayMobilePrecreateDeepLink:                   paymentCfg.AlipayMobilePrecreateDeepLink,
 
-		ChannelMonitorEnabled:                   settings.ChannelMonitorEnabled,
-		ChannelMonitorDefaultIntervalSeconds:    settings.ChannelMonitorDefaultIntervalSeconds,
-		ChannelMonitorDingTalkEnabled:           settings.ChannelMonitorDingTalkEnabled,
-		ChannelMonitorDingTalkWebhookConfigured: settings.ChannelMonitorDingTalkWebhookConfigured,
-		ChannelMonitorDingTalkSecretConfigured:  settings.ChannelMonitorDingTalkSecretConfigured,
+		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
+		ChannelMonitorMode:                   settings.ChannelMonitorMode,
+		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
+		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
+		ChannelMonitorShowQuota:              settings.ChannelMonitorShowQuota,
+
+		GrokDefaultTextModel:           settings.GrokDefaultTextModel,
+		GrokCrossClientModelMapEnabled: settings.GrokCrossClientModelMapEnabled,
+		GrokDefaultBaseURLMode:         settings.GrokDefaultBaseURLMode,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 
-		ModelPlazaEnabled:     settings.ModelPlazaEnabled,
-		ModelPlazaRequireAuth: settings.ModelPlazaRequireAuth,
-		ModelPlazaDescription: settings.ModelPlazaDescription,
+		ModelPlazaEnabled:       settings.ModelPlazaEnabled,
+		ModelPlazaRequireAuth:   settings.ModelPlazaRequireAuth,
+		PluginManagementEnabled: settings.PluginManagementEnabled,
+		ModelPlazaDescription:   settings.ModelPlazaDescription,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 
-		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
+		AccountSchedulingThresholds: settings.AccountSchedulingThresholds,
+		AllowUserViewErrorRequests:  settings.AllowUserViewErrorRequests,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)

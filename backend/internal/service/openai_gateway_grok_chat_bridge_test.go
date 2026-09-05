@@ -218,9 +218,12 @@ func TestGrokChatResponsesBridgeEligibility(t *testing.T) {
 func TestGrokChatResponsesRuntimeEligibility(t *testing.T) {
 	t.Parallel()
 	require.True(t, grokChatResponsesRuntimeEligible("grok-4.5", "isolated-id"))
+	require.True(t, grokChatResponsesRuntimeEligible("grok-4.6", "isolated-id"))
+	require.True(t, grokChatResponsesRuntimeEligible("grok-4.6-latest", "isolated-id"))
 	require.False(t, grokChatResponsesRuntimeEligible("grok-4.3", "isolated-id"))
 	require.False(t, grokChatResponsesRuntimeEligible("grok-4.5-build-free", "isolated-id"))
 	require.False(t, grokChatResponsesRuntimeEligible("grok-4.5", ""))
+	require.False(t, grokChatResponsesRuntimeEligible("grok-4.6", ""))
 }
 
 func TestForwardGrokChatViaResponsesNonStreamingCachesAndReturnsChat(t *testing.T) {
@@ -248,7 +251,7 @@ func TestForwardGrokChatViaResponsesNonStreamingCachesAndReturnsChat(t *testing.
 	require.NotNil(t, result)
 	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
 	require.Equal(t, grokChatResponsesEndpoint, result.UpstreamEndpoint)
-	require.Equal(t, "grok-4.5", result.UpstreamModel)
+	require.Equal(t, "grok-4.6", result.UpstreamModel)
 	require.Equal(t, 9908, result.Usage.InputTokens)
 	require.Equal(t, 12, result.Usage.OutputTokens)
 	require.Equal(t, 9856, result.Usage.CacheReadInputTokens)
@@ -271,6 +274,47 @@ func TestForwardGrokChatViaResponsesNonStreamingCachesAndReturnsChat(t *testing.
 	require.Equal(t, "cached ok", gjson.Get(recorder.Body.String(), "choices.0.message.content").String())
 	require.Equal(t, int64(9856), gjson.Get(recorder.Body.String(), "usage.prompt_tokens_details.cached_tokens").Int())
 	require.NotNil(t, repo.updates[account.ID][grokQuotaSnapshotExtraKey])
+}
+
+func TestForwardGrokChatViaResponsesNonStreamingRejectsCompletedResponseWithoutUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"grok","messages":[{"role":"user","content":"hi"}],"stream":false,"prompt_cache_key":"stable-session"}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, grokChatRawEndpoint, bytes.NewReader(body))
+	c.Set("api_key", &APIKey{ID: 7102})
+
+	account := grokChatBridgeTestAccount(72)
+	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+		accountsByID: map[int64]*Account{account.ID: account},
+	}}
+	upstreamBody := strings.Join([]string{
+		`data: {"type":"response.output_text.delta","sequence_number":0,"delta":"ok"}`,
+		"",
+		`data: {"type":"response.completed","sequence_number":1,"response":{"id":"resp_missing_usage","object":"response","model":"grok-4.5","status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok"}]}]}}`,
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &OpenAIGatewayService{
+		httpUpstream:      upstream,
+		grokTokenProvider: NewGrokTokenProvider(repo, nil),
+		accountRepo:       repo,
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.Equal(t, grokMissingUsageErrorCode, gjson.GetBytes(failoverErr.ResponseBody, "error.code").String())
+	require.False(t, c.Writer.Written(), "an unbillable response must not be committed to the client")
+	require.Empty(t, recorder.Body.String())
 }
 
 func TestForwardGrokChatViaResponsesCodeBuddyUsesStableConversationHeader(t *testing.T) {
@@ -308,7 +352,7 @@ func TestForwardGrokChatViaResponsesCodeBuddyUsesStableConversationHeader(t *tes
 			c.Request.Header.Set("X-Request-ID", "generic-"+tt.requestID)
 			c.Set("api_key", &APIKey{ID: 7111})
 
-			identity := resolveGrokCacheIdentity(c, tt.body, "", "grok-4.5")
+			identity := resolveGrokCacheIdentity(c, tt.body, "", "grok-4.6")
 			require.NotEmpty(t, identity)
 			if index == 0 {
 				stableIdentity = identity
@@ -362,8 +406,8 @@ func TestForwardGrokChatViaResponsesTraeToolHistoryKeepsCacheRoute(t *testing.T)
 		accountRepo:       repo,
 	}
 
-	firstTurnIdentity := resolveGrokCacheIdentity(c, firstTurnBody, "", "grok-4.5")
-	extendedTurnIdentity := resolveGrokCacheIdentity(c, body, "", "grok-4.5")
+	firstTurnIdentity := resolveGrokCacheIdentity(c, firstTurnBody, "", "grok-4.6")
+	extendedTurnIdentity := resolveGrokCacheIdentity(c, body, "", "grok-4.6")
 	require.NotEmpty(t, firstTurnIdentity)
 	require.Equal(t, firstTurnIdentity, extendedTurnIdentity)
 
@@ -419,8 +463,8 @@ func TestForwardGrokChatViaResponsesTraeCompatibilityFieldsKeepCacheRoute(t *tes
 		accountRepo:       repo,
 	}
 
-	firstTurnIdentity := resolveGrokCacheIdentity(c, firstTurnBody, "", "grok-4.5")
-	extendedTurnIdentity := resolveGrokCacheIdentity(c, body, "", "grok-4.5")
+	firstTurnIdentity := resolveGrokCacheIdentity(c, firstTurnBody, "", "grok-4.6")
+	extendedTurnIdentity := resolveGrokCacheIdentity(c, body, "", "grok-4.6")
 	require.NotEmpty(t, firstTurnIdentity)
 	require.Equal(t, firstTurnIdentity, extendedTurnIdentity)
 
@@ -437,7 +481,7 @@ func TestForwardGrokChatViaResponsesTraeCompatibilityFieldsKeepCacheRoute(t *tes
 	require.Equal(t, "priority", gjson.GetBytes(upstream.lastBody, "service_tier").String())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "stop").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "reasoning").Exists())
-	require.Contains(t, gjson.GetBytes(upstream.lastBody, "input.1.content.0.text").String(), "<thinking>I should use lookup</thinking>")
+	require.Contains(t, gjson.GetBytes(upstream.lastBody, "input.1.content").String(), "<thinking>I should use lookup</thinking>")
 	require.Equal(t, "function_call", gjson.GetBytes(upstream.lastBody, "input.2.type").String())
 	require.Equal(t, "function_call_output", gjson.GetBytes(upstream.lastBody, "input.3.type").String())
 
@@ -490,7 +534,7 @@ func TestForwardGrokChatRuntimeGateFallsBackToRaw(t *testing.T) {
 		mappedModel  string
 		wantUpstream string
 	}{
-		{name: "missing cache identity", wantUpstream: "grok-4.5"},
+		{name: "missing cache identity", wantUpstream: "grok-4.6"},
 		{name: "non cache capable mapped model", setAPIKey: true, mappedModel: "grok-4.3", wantUpstream: "grok-4.3"},
 	}
 

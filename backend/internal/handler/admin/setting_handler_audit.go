@@ -41,6 +41,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if !equalStringSlice(before.RegistrationEmailSuffixWhitelist, after.RegistrationEmailSuffixWhitelist) {
 		changed = append(changed, "registration_email_suffix_whitelist")
 	}
+	if before.RegistrationEmailDomainQuotaEnabled != after.RegistrationEmailDomainQuotaEnabled {
+		changed = append(changed, "registration_email_domain_quota_enabled")
+	}
 	if before.PromoCodeEnabled != after.PromoCodeEnabled {
 		changed = append(changed, "promo_code_enabled")
 	}
@@ -449,6 +452,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.EnableFingerprintUnification != after.EnableFingerprintUnification {
 		changed = append(changed, "enable_fingerprint_unification")
 	}
+	if before.OpenAITTFTMode != after.OpenAITTFTMode {
+		changed = append(changed, "openai_ttft_mode")
+	}
 	if before.EnableMetadataPassthrough != after.EnableMetadataPassthrough {
 		changed = append(changed, "enable_metadata_passthrough")
 	}
@@ -570,15 +576,6 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.ChannelMonitorDefaultIntervalSeconds != after.ChannelMonitorDefaultIntervalSeconds {
 		changed = append(changed, "channel_monitor_default_interval_seconds")
 	}
-	if before.ChannelMonitorDingTalkEnabled != after.ChannelMonitorDingTalkEnabled {
-		changed = append(changed, "channel_monitor_dingtalk_enabled")
-	}
-	if req.ChannelMonitorDingTalkWebhook != "" || req.ChannelMonitorDingTalkWebhookClear {
-		changed = append(changed, "channel_monitor_dingtalk_webhook")
-	}
-	if req.ChannelMonitorDingTalkSecret != "" || req.ChannelMonitorDingTalkSecretClear {
-		changed = append(changed, "channel_monitor_dingtalk_secret")
-	}
 	if before.AvailableChannelsEnabled != after.AvailableChannelsEnabled {
 		changed = append(changed, "available_channels_enabled")
 	}
@@ -606,6 +603,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	// Default platform quotas（JSON map，整体比较）
 	if !equalPlatformQuotaSettings(before.DefaultPlatformQuotas, after.DefaultPlatformQuotas) {
 		changed = append(changed, service.SettingKeyDefaultPlatformQuotas)
+	}
+	if !equalAccountSchedulingThresholds(before.AccountSchedulingThresholds, after.AccountSchedulingThresholds) {
+		changed = append(changed, service.SettingKeyAccountSchedulingThresholds)
 	}
 	changed = appendAuthSourceDefaultChanges(changed, beforeAuthSourceDefaults, afterAuthSourceDefaults)
 	return changed
@@ -820,6 +820,27 @@ func slotOf(s *service.DefaultPlatformQuotaSetting, win string) *float64 {
 }
 
 // equalPlatformQuotaSettings reports whether two platform-quota maps are identical across all allowed slots.
+func equalAccountSchedulingThresholds(before, after map[string]int) bool {
+	for _, platform := range service.AllowedSchedulingThresholdPlatforms {
+		beforeValue := 100
+		if before != nil {
+			if value, ok := before[platform]; ok {
+				beforeValue = value
+			}
+		}
+		afterValue := 100
+		if after != nil {
+			if value, ok := after[platform]; ok {
+				afterValue = value
+			}
+		}
+		if beforeValue != afterValue {
+			return false
+		}
+	}
+	return true
+}
+
 func equalPlatformQuotaSettings(before, after map[string]*service.DefaultPlatformQuotaSetting) bool {
 	for _, platform := range service.AllowedQuotaPlatforms {
 		b := before[platform]

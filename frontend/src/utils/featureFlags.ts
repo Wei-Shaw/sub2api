@@ -68,9 +68,9 @@
  * `makeSidebarFlag(flag)` returns a `() => boolean | undefined` compatible with
  * `AppSidebar.NavItem.featureFlag`, where `false` hides the menu entry.
  */
-
 import { useAppStore } from '@/stores/app'
 import type { PublicSettings } from '@/types'
+import { DEFAULT_INTERVAL_SECONDS } from '@/constants/channelMonitor'
 
 export type FeatureFlagMode = 'opt-in' | 'opt-out'
 
@@ -108,6 +108,11 @@ export const FeatureFlags = {
     key: 'model_plaza_enabled',
     mode: 'opt-in',
     label: 'Model Plaza',
+  }),
+  pluginManagement: defineFlag({
+    key: 'plugin_management_enabled',
+    mode: 'opt-in',
+    label: 'Plugin Management',
   }),
   payment: defineFlag({
     key: 'payment_enabled',
@@ -151,4 +156,49 @@ export function isFeatureFlagEnabled(flag: FeatureFlagDefinition): boolean {
  */
 export function makeSidebarFlag(flag: FeatureFlagDefinition): () => boolean {
   return () => isFeatureFlagEnabled(flag)
+}
+
+/** True when channel monitor feature flag is enabled. */
+export function isChannelMonitorRouteEnabled(): boolean {
+  return isFeatureFlagEnabled(FeatureFlags.channelMonitor)
+}
+
+export type ChannelMonitorMode = 'v1' | 'v2'
+
+/** Exclusive channel-monitor implementation. Invalid/missing → v1 (opt-in to v2). */
+export function getChannelMonitorMode(): ChannelMonitorMode {
+  const appStore = useAppStore()
+  const mode = appStore.cachedPublicSettings?.channel_monitor_mode
+  return mode === 'v2' ? 'v2' : 'v1'
+}
+
+export function isChannelMonitorV1Mode(): boolean {
+  return isChannelMonitorRouteEnabled() && getChannelMonitorMode() === 'v1'
+}
+
+export function isChannelMonitorV2Mode(): boolean {
+  return isChannelMonitorRouteEnabled() && getChannelMonitorMode() === 'v2'
+}
+
+export function getChannelMonitorRefreshIntervalSeconds(): number {
+  const appStore = useAppStore()
+  const configured = appStore.cachedPublicSettings?.channel_monitor_default_interval_seconds
+  return configured && configured > 0 ? configured : DEFAULT_INTERVAL_SECONDS
+}
+
+/** Hide RPM/TPM on user-facing monitor (scale privacy). Admin always shows full metrics. */
+export function isChannelMonitorThroughputHidden(): boolean {
+  const appStore = useAppStore()
+  return Boolean(appStore.cachedPublicSettings?.channel_monitor_hide_throughput)
+}
+
+/**
+ * Show quota/balance snapshots on the user-facing monitor page
+ * (channel_monitor_show_quota, default off). The backend strips
+ * latest_quota server-side when the switch is off; this flag is
+ * defense-in-depth only. Admin views always show quota.
+ */
+export function isChannelMonitorQuotaVisible(): boolean {
+  const appStore = useAppStore()
+  return appStore.cachedPublicSettings?.channel_monitor_show_quota === true
 }

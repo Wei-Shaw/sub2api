@@ -90,6 +90,9 @@ func mustCreateGroup(t *testing.T, client *dbent.Client, g *service.Group) *serv
 		SetSubscriptionType(g.SubscriptionType).
 		SetRateMultiplier(g.RateMultiplier).
 		SetIsExclusive(g.IsExclusive).
+		SetForceOpenaiFast(g.ForceOpenAIFast).
+		SetFreeOpenaiFast(g.FreeOpenAIFast).
+		SetCodexModelsManifestConfig(g.CodexModelsManifestConfig).
 		SetProfitControlEnabled(g.ProfitControlEnabled).
 		SetProfitMinMargin(g.ProfitMinMargin).
 		SetProfitSafetyBuffer(g.ProfitSafetyBuffer)

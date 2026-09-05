@@ -134,6 +134,7 @@ func TestOpenAIResponsesRequestPathSuffixRejectsNonConformingSubpaths(t *testing
 	for path, want := range map[string]string{
 		"/v1/responses":                        "",
 		"/v1/responses/compact":                "/compact",
+		"/v1/responses/input_tokens":           "/input_tokens",
 		"/responses/compact/":                  "/compact",
 		"/backend-api/codex/responses/compact": "/compact",
 	} {
@@ -141,6 +142,43 @@ func TestOpenAIResponsesRequestPathSuffixRejectsNonConformingSubpaths(t *testing
 			c := newResponsesSuffixTestContext(t, path)
 			require.True(t, IsForwardableOpenAIResponsesRequestPath(c))
 			require.Equal(t, want, openAIResponsesRequestPathSuffix(c))
+		})
+	}
+}
+
+func TestIsOpenAIResponsesInputTokensRequestPath(t *testing.T) {
+	for _, path := range []string{"/v1/responses/input_tokens", "/responses/input_tokens", "/backend-api/codex/responses/input_tokens"} {
+		c := newResponsesSuffixTestContext(t, path)
+		require.True(t, IsOpenAIResponsesInputTokensRequestPath(c), "path=%s", path)
+	}
+	c := newResponsesSuffixTestContext(t, "/v1/responses/compact")
+	require.False(t, IsOpenAIResponsesInputTokensRequestPath(c))
+}
+
+func TestIsOpenAIResponsesCompactPathUsesLegacyEndpointShape(t *testing.T) {
+	legacyPaths := []string{
+		"/v1/responses/compact",
+		"/v1/responses/compact/detail",
+		"/responses/compact/",
+	}
+	for _, path := range legacyPaths {
+		t.Run("legacy_"+path, func(t *testing.T) {
+			c := newResponsesSuffixTestContext(t, path)
+			require.True(t, IsOpenAIResponsesCompactPath(c))
+		})
+	}
+
+	nonLegacyPaths := []string{
+		"/v1/responses",
+		"/openai/v1/responses",
+		"/responses",
+		"/backend-api/codex/responses",
+		"/v1/responses/resp_123/cancel",
+	}
+	for _, path := range nonLegacyPaths {
+		t.Run("non_legacy_"+path, func(t *testing.T) {
+			c := newResponsesSuffixTestContext(t, path)
+			require.False(t, IsOpenAIResponsesCompactPath(c))
 		})
 	}
 }

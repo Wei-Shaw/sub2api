@@ -23,6 +23,7 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
+	"golang.org/x/mod/semver"
 	"golang.org/x/net/http2"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -33,7 +34,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
-	"golang.org/x/mod/semver"
 )
 
 // 默认配置常量
@@ -85,12 +85,12 @@ const (
 	openAIHTTP2PingTimeout     = 15 * time.Second
 
 	// The Grok CLI proxy rejects requests that do not identify a supported
-	// client version. Keep a known-good stable version in the binary while
-	// allowing operators to bump it without waiting for a Sub2API release.
-	grokCLIProxyHost       = "cli-chat-proxy.grok.com"
+	// client version. Host/env/version pins live in package xai so service,
+	// billing, and transport layers advertise the same identity.
+	grokCLIProxyHost       = xai.CLIProxyHost
 	grokOfficialAPIHost    = "api.x.ai"
-	grokCLIStableVersion   = xai.CLIClientVersion
-	grokCLIVersionOverride = "XAI_GROK_CLI_VERSION"
+	grokCLIStableVersion   = xai.CLIClientVersion // preferred pin (not the minimum floor)
+	grokCLIVersionOverride = xai.CLIVersionEnv
 	grokFallbackBodyLimit  = 64 << 10
 )
 
@@ -99,6 +99,7 @@ const (
 	upstreamProtocolModeOpenAIH1         = "openai_h1"
 	upstreamProtocolModeOpenAIH2         = "openai_h2"
 	upstreamProtocolModeOpenAIH1Fallback = "openai_h1_fallback"
+	upstreamProtocolModeGrok             = "grok"
 )
 
 var errUpstreamClientLimitReached = errors.New("upstream client cache limit reached")
@@ -212,7 +213,7 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	}
 
 	// 执行请求
-	client := httpClientForUpstreamRequest(entry.client, req)
+	client := s.httpClientForUpstreamRequest(entry.client, req)
 	client = httpClientWithGrokAccessDeniedFallback(client)
 	resp, err := servertiming.Do(client, req)
 	if err != nil {
@@ -276,7 +277,7 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 		return nil, err
 	}
 
-	client := httpClientForUpstreamRequest(entry.client, req)
+	client := s.httpClientForUpstreamRequest(entry.client, req)
 	client = httpClientWithGrokAccessDeniedFallback(client)
 	resp, err := servertiming.Do(client, req)
 	if err != nil {
@@ -296,15 +297,27 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	return resp, nil
 }
 
-func httpClientForUpstreamRequest(client *http.Client, req *http.Request) *http.Client {
-	if client == nil || req == nil || !service.HTTPUpstreamRedirectsDisabled(req.Context()) {
+// httpClientForUpstreamRequest 按请求上下文的标记派生客户端：禁用重定向，或对重定向的每一跳做主机校验。
+// 派生的克隆与缓存客户端共享 Transport；未打标记时原样返回。
+func (s *httpUpstreamService) httpClientForUpstreamRequest(client *http.Client, req *http.Request) *http.Client {
+	if client == nil || req == nil {
 		return client
 	}
-	clone := *client
-	clone.CheckRedirect = func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
+	ctx := req.Context()
+	switch {
+	case service.HTTPUpstreamRedirectsDisabled(ctx):
+		clone := *client
+		clone.CheckRedirect = func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+		return &clone
+	case service.HTTPUpstreamPublicHostsOnly(ctx) && client.CheckRedirect == nil:
+		clone := *client
+		clone.CheckRedirect = s.redirectChecker
+		return &clone
+	default:
+		return client
 	}
-	return &clone
 }
 
 // grokAccessDeniedFallbackTransport preserves the subscription CLI proxy as
@@ -450,6 +463,11 @@ type prefixedReadCloser struct {
 // the final shared transport boundary. Keying this behavior to the exact CLI
 // proxy host keeps direct api.x.ai traffic unchanged and automatically covers
 // Responses, Chat Completions, media, quota probes, and account tests.
+//
+// Operator overrides must be >= CLIClientVersion (the preferred pin). Package
+// xai.IsSupportedCLIVersion uses a lower floor (CLIStableVersion) for general
+// validation; transport is stricter so we never silently advertise an older pin
+// than the binary default.
 func applyGrokCLIProxyHeaders(req *http.Request) {
 	if req == nil || req.URL == nil || !strings.EqualFold(strings.TrimSpace(req.URL.Hostname()), grokCLIProxyHost) {
 		return
@@ -461,14 +479,15 @@ func applyGrokCLIProxyHeaders(req *http.Request) {
 	if !isSupportedGrokCLIVersion(version) {
 		version = grokCLIStableVersion
 	}
-	req.Header.Set("X-XAI-Token-Auth", "xai-grok-cli")
+	req.Header.Set("X-XAI-Token-Auth", xai.CLITokenAuth)
 	req.Header.Set("x-grok-client-version", version)
-	req.Header.Set("User-Agent", "xai-grok-workspace/"+version)
+	req.Header.Set("x-grok-client-identifier", xai.CLIClientIdentifier)
+	req.Header.Set("User-Agent", xai.CLIUserAgent(version))
 }
 
 func isSupportedGrokCLIVersion(version string) bool {
 	canonical := "v" + version
-	minimum := "v" + grokCLIStableVersion
+	minimum := "v" + xai.CLIClientVersion
 	return semver.IsValid(canonical) &&
 		semver.Canonical(canonical) == canonical &&
 		semver.Compare(canonical, minimum) >= 0
@@ -580,8 +599,11 @@ func (s *httpUpstreamService) shouldValidateResolvedIP() bool {
 	return !s.cfg.Security.URLAllowlist.AllowPrivateHosts
 }
 
+// validateRequestHost 校验请求主机的解析结果不落在回环、私网、链路本地或未指定地址。
+// 是否全局启用由 security.url_allowlist 决定；带 WithHTTPUpstreamPublicHostsOnly 标记的请求无论配置如何都校验。
 func (s *httpUpstreamService) validateRequestHost(req *http.Request) error {
-	if !s.shouldValidateResolvedIP() {
+	publicHostsOnly := req != nil && service.HTTPUpstreamPublicHostsOnly(req.Context())
+	if !s.shouldValidateResolvedIP() && !publicHostsOnly {
 		return nil
 	}
 	if req == nil || req.URL == nil {
@@ -893,12 +915,20 @@ func (s *httpUpstreamService) resolvePoolSettings(isolation string, accountConcu
 }
 
 func (s *httpUpstreamService) applyProfilePoolSettings(settings poolSettings, profile service.HTTPUpstreamProfile) poolSettings {
-	if profile != service.HTTPUpstreamProfileOpenAI {
-		return settings
-	}
-	settings.responseHeaderTimeout = 0
-	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIResponseHeaderTimeout > 0 {
-		settings.responseHeaderTimeout = time.Duration(s.cfg.Gateway.OpenAIResponseHeaderTimeout) * time.Second
+	switch profile {
+	case service.HTTPUpstreamProfileOpenAI:
+		settings.responseHeaderTimeout = 0
+		if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIResponseHeaderTimeout > 0 {
+			settings.responseHeaderTimeout = time.Duration(s.cfg.Gateway.OpenAIResponseHeaderTimeout) * time.Second
+		}
+	case service.HTTPUpstreamProfileGrok:
+		// Grok can stall before its first byte under capacity pressure. Keep the
+		// generic 600s gateway timeout from turning one request into a 10-minute
+		// resource hold; streaming after headers is unaffected.
+		settings.responseHeaderTimeout = 120 * time.Second
+		if s != nil && s.cfg != nil {
+			settings.responseHeaderTimeout = time.Duration(s.cfg.Gateway.GrokResponseHeaderTimeout) * time.Second
+		}
 	}
 	return settings
 }
@@ -977,6 +1007,9 @@ func (s *httpUpstreamService) resolveOpenAIHTTP2Settings() openAIHTTP2Settings {
 }
 
 func (s *httpUpstreamService) resolveProtocolMode(profile service.HTTPUpstreamProfile, proxyKey string, parsedProxy *url.URL) string {
+	if profile == service.HTTPUpstreamProfileGrok {
+		return upstreamProtocolModeGrok
+	}
 	if profile != service.HTTPUpstreamProfileOpenAI {
 		return upstreamProtocolModeDefault
 	}

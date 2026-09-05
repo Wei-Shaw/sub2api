@@ -11,6 +11,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // IsRegistrationEnabled 检查是否开放注册
@@ -26,6 +27,16 @@ func (s *SettingService) IsRegistrationEnabled(ctx context.Context) bool {
 // IsEmailVerifyEnabled 检查是否开启邮件验证
 func (s *SettingService) IsEmailVerifyEnabled(ctx context.Context) bool {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyEmailVerifyEnabled)
+	if err != nil {
+		return false
+	}
+	return value == "true"
+}
+
+// IsRegistrationEmailDomainQuotaEnabled 检查白名单非空时是否放行非白名单域名限量注册。
+// 安全默认：设置缺失或查询出错时按关闭处理（保持白名单严格模式）。
+func (s *SettingService) IsRegistrationEmailDomainQuotaEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEmailDomainQuotaEnabled)
 	if err != nil {
 		return false
 	}
@@ -753,6 +764,40 @@ func (s *SettingService) SetRateLimit429CooldownSettings(ctx context.Context, se
 	return s.settingRepo.Set(ctx, SettingKeyRateLimit429CooldownSettings, string(data))
 }
 
+func (s *SettingService) GetOpenAIImagesOAuthUnavailableCooldownSettings(ctx context.Context) (*OpenAIImagesOAuthUnavailableCooldownSettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAIImagesOAuthUnavailableCooldownSettings)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return DefaultOpenAIImagesOAuthUnavailableCooldownSettings(), nil
+		}
+		return nil, fmt.Errorf("get OpenAI images OAuth unavailable cooldown settings: %w", err)
+	}
+	if value == "" {
+		return DefaultOpenAIImagesOAuthUnavailableCooldownSettings(), nil
+	}
+
+	var settings OpenAIImagesOAuthUnavailableCooldownSettings
+	if err := json.Unmarshal([]byte(value), &settings); err != nil ||
+		settings.CooldownMinutes <= 0 || settings.CooldownMinutes > openAIImagesOAuthUnavailableMaxCooldownMinutes {
+		return DefaultOpenAIImagesOAuthUnavailableCooldownSettings(), nil
+	}
+	return &settings, nil
+}
+
+func (s *SettingService) SetOpenAIImagesOAuthUnavailableCooldownSettings(ctx context.Context, settings *OpenAIImagesOAuthUnavailableCooldownSettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+	}
+	if settings.CooldownMinutes <= 0 || settings.CooldownMinutes > openAIImagesOAuthUnavailableMaxCooldownMinutes {
+		return fmt.Errorf("cooldown_minutes must be between 1-%d", openAIImagesOAuthUnavailableMaxCooldownMinutes)
+	}
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal OpenAI images OAuth unavailable cooldown settings: %w", err)
+	}
+	return s.settingRepo.Set(ctx, SettingKeyOpenAIImagesOAuthUnavailableCooldownSettings, string(data))
+}
+
 // GetStreamTimeoutSettings 获取流超时处理配置
 func (s *SettingService) GetStreamTimeoutSettings(ctx context.Context) (*StreamTimeoutSettings, error) {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyStreamTimeoutSettings)
@@ -971,7 +1016,7 @@ func (s *SettingService) SetOpenAIFastPolicySettings(ctx context.Context, settin
 		BetaPolicyScopeAll: true, BetaPolicyScopeOAuth: true, BetaPolicyScopeAPIKey: true, BetaPolicyScopeBedrock: true,
 	}
 	validTiers := map[string]bool{
-		OpenAIFastTierAny: true, OpenAIFastTierPriority: true, OpenAIFastTierFlex: true,
+		OpenAIFastTierAny: true, OpenAIFastTierPriority: true, OpenAIFastTierUltrafast: true, OpenAIFastTierFlex: true,
 	}
 
 	for i, rule := range settings.Rules {
@@ -1076,6 +1121,69 @@ func (s *SettingService) GetDefaultPlatformQuotas(ctx context.Context) (map[stri
 		}
 	}
 	return out, nil // 补齐全部允许 platform key，保持与旧实现一致的下游契约
+}
+
+// GetAccountSchedulingThresholds returns per-platform auto-pause thresholds (1..100).
+// 100 disables the threshold for that platform. Hot-path cached with singleflight.
+func (s *SettingService) GetAccountSchedulingThresholds(ctx context.Context) map[string]int {
+	if s == nil || s.settingRepo == nil {
+		return defaultAccountSchedulingThresholds()
+	}
+	if cached, ok := accountSchedulingThresholdsCache.Load().(*cachedAccountSchedulingThresholds); ok {
+		if cached != nil && len(cached.thresholds) > 0 && time.Now().UnixNano() < cached.expiresAt {
+			return cloneAccountSchedulingThresholds(cached.thresholds)
+		}
+	}
+
+	result, err, _ := accountSchedulingThresholdsSF.Do(SettingKeyAccountSchedulingThresholds, func() (any, error) {
+		if cached, ok := accountSchedulingThresholdsCache.Load().(*cachedAccountSchedulingThresholds); ok {
+			if cached != nil && len(cached.thresholds) > 0 && time.Now().UnixNano() < cached.expiresAt {
+				return cloneAccountSchedulingThresholds(cached.thresholds), nil
+			}
+		}
+
+		thresholds := defaultAccountSchedulingThresholds()
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), accountSchedulingThresholdsDBTimeout)
+		defer cancel()
+
+		raw, err := s.settingRepo.GetValue(dbCtx, SettingKeyAccountSchedulingThresholds)
+		if err != nil {
+			if errors.Is(err, ErrSettingNotFound) {
+				accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{
+					thresholds: cloneAccountSchedulingThresholds(thresholds),
+					expiresAt:  time.Now().Add(accountSchedulingThresholdsCacheTTL).UnixNano(),
+				})
+				return cloneAccountSchedulingThresholds(thresholds), nil
+			}
+			slog.Warn("failed to get account scheduling thresholds, falling back to defaults", "error", err)
+			accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{
+				thresholds: cloneAccountSchedulingThresholds(thresholds),
+				expiresAt:  time.Now().Add(accountSchedulingThresholdsErrorTTL).UnixNano(),
+			})
+			return cloneAccountSchedulingThresholds(thresholds), nil
+		}
+
+		if trimmed := strings.TrimSpace(raw); trimmed != "" {
+			if parsed, err := parseAccountSchedulingThresholdsSetting(trimmed); err != nil {
+				slog.Warn("failed to parse account scheduling thresholds, falling back to defaults", "error", err)
+			} else {
+				thresholds = parsed
+			}
+		}
+
+		accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{
+			thresholds: cloneAccountSchedulingThresholds(thresholds),
+			expiresAt:  time.Now().Add(accountSchedulingThresholdsCacheTTL).UnixNano(),
+		})
+		return cloneAccountSchedulingThresholds(thresholds), nil
+	})
+	if err != nil {
+		return defaultAccountSchedulingThresholds()
+	}
+	if thresholds, ok := result.(map[string]int); ok {
+		return cloneAccountSchedulingThresholds(thresholds)
+	}
+	return defaultAccountSchedulingThresholds()
 }
 
 // GetAuthSourcePlatformQuotas 读取指定 auth source 的 platform quota 覆盖（仅返回有配置的平台，override 语义）。

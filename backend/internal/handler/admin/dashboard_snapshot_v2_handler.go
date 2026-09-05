@@ -37,34 +37,38 @@ type dashboardSnapshotV2Response struct {
 }
 
 type dashboardSnapshotV2Filters struct {
-	UserID      int64
-	APIKeyID    int64
-	AccountID   int64
-	GroupID     int64
-	Model       string
-	RequestType *int16
-	Stream      *bool
-	BillingType *int8
+	UserID                int64
+	APIKeyID              int64
+	AccountID             int64
+	GroupID               int64
+	Model                 string
+	RequestType           *int16
+	Stream                *bool
+	NativeCompactionV2    *bool
+	BillingType           *int8
+	UpstreamModelMismatch *bool
 }
 
 type dashboardSnapshotV2CacheKey struct {
-	StartTime         string `json:"start_time"`
-	EndTime           string `json:"end_time"`
-	Granularity       string `json:"granularity"`
-	UserID            int64  `json:"user_id"`
-	APIKeyID          int64  `json:"api_key_id"`
-	AccountID         int64  `json:"account_id"`
-	GroupID           int64  `json:"group_id"`
-	Model             string `json:"model"`
-	RequestType       *int16 `json:"request_type"`
-	Stream            *bool  `json:"stream"`
-	BillingType       *int8  `json:"billing_type"`
-	IncludeStats      bool   `json:"include_stats"`
-	IncludeTrend      bool   `json:"include_trend"`
-	IncludeModels     bool   `json:"include_models"`
-	IncludeGroups     bool   `json:"include_groups"`
-	IncludeUsersTrend bool   `json:"include_users_trend"`
-	UsersTrendLimit   int    `json:"users_trend_limit"`
+	StartTime             string `json:"start_time"`
+	EndTime               string `json:"end_time"`
+	Granularity           string `json:"granularity"`
+	UserID                int64  `json:"user_id"`
+	APIKeyID              int64  `json:"api_key_id"`
+	AccountID             int64  `json:"account_id"`
+	GroupID               int64  `json:"group_id"`
+	Model                 string `json:"model"`
+	RequestType           *int16 `json:"request_type"`
+	Stream                *bool  `json:"stream"`
+	NativeCompactionV2    *bool  `json:"native_compaction_v2"`
+	BillingType           *int8  `json:"billing_type"`
+	UpstreamModelMismatch *bool  `json:"upstream_model_mismatch"`
+	IncludeStats          bool   `json:"include_stats"`
+	IncludeTrend          bool   `json:"include_trend"`
+	IncludeModels         bool   `json:"include_models"`
+	IncludeGroups         bool   `json:"include_groups"`
+	IncludeUsersTrend     bool   `json:"include_users_trend"`
+	UsersTrendLimit       int    `json:"users_trend_limit"`
 }
 
 func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
@@ -93,23 +97,25 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 	}
 
 	keyRaw, _ := json.Marshal(dashboardSnapshotV2CacheKey{
-		StartTime:         startTime.UTC().Format(time.RFC3339),
-		EndTime:           endTime.UTC().Format(time.RFC3339),
-		Granularity:       granularity,
-		UserID:            filters.UserID,
-		APIKeyID:          filters.APIKeyID,
-		AccountID:         filters.AccountID,
-		GroupID:           filters.GroupID,
-		Model:             filters.Model,
-		RequestType:       filters.RequestType,
-		Stream:            filters.Stream,
-		BillingType:       filters.BillingType,
-		IncludeStats:      includeStats,
-		IncludeTrend:      includeTrend,
-		IncludeModels:     includeModels,
-		IncludeGroups:     includeGroups,
-		IncludeUsersTrend: includeUsersTrend,
-		UsersTrendLimit:   usersTrendLimit,
+		StartTime:             startTime.UTC().Format(time.RFC3339),
+		EndTime:               endTime.UTC().Format(time.RFC3339),
+		Granularity:           granularity,
+		UserID:                filters.UserID,
+		APIKeyID:              filters.APIKeyID,
+		AccountID:             filters.AccountID,
+		GroupID:               filters.GroupID,
+		Model:                 filters.Model,
+		RequestType:           filters.RequestType,
+		Stream:                filters.Stream,
+		NativeCompactionV2:    filters.NativeCompactionV2,
+		BillingType:           filters.BillingType,
+		UpstreamModelMismatch: filters.UpstreamModelMismatch,
+		IncludeStats:          includeStats,
+		IncludeTrend:          includeTrend,
+		IncludeModels:         includeModels,
+		IncludeGroups:         includeGroups,
+		IncludeUsersTrend:     includeUsersTrend,
+		UsersTrendLimit:       usersTrendLimit,
 	})
 	cacheKey := string(keyRaw)
 
@@ -183,7 +189,9 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 			filters.Model,
 			filters.RequestType,
 			filters.Stream,
+			filters.NativeCompactionV2,
 			filters.BillingType,
+			filters.UpstreamModelMismatch,
 		)
 		if err != nil {
 			return nil, errors.New("failed to get usage trend")
@@ -203,7 +211,9 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 			usagestats.ModelSourceRequested,
 			filters.RequestType,
 			filters.Stream,
+			filters.NativeCompactionV2,
 			filters.BillingType,
+			filters.UpstreamModelMismatch,
 		)
 		if err != nil {
 			return nil, errors.New("failed to get model statistics")
@@ -222,7 +232,9 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 			filters.GroupID,
 			filters.RequestType,
 			filters.Stream,
+			filters.NativeCompactionV2,
 			filters.BillingType,
+			filters.UpstreamModelMismatch,
 		)
 		if err != nil {
 			return nil, errors.New("failed to get group statistics")
@@ -290,6 +302,14 @@ func parseDashboardSnapshotV2Filters(c *gin.Context) (*dashboardSnapshotV2Filter
 		filters.Stream = &streamVal
 	}
 
+	if nativeCompactionV2Str := strings.TrimSpace(c.Query("native_compaction_v2")); nativeCompactionV2Str != "" {
+		value, err := strconv.ParseBool(nativeCompactionV2Str)
+		if err != nil {
+			return nil, err
+		}
+		filters.NativeCompactionV2 = &value
+	}
+
 	if billingTypeStr := strings.TrimSpace(c.Query("billing_type")); billingTypeStr != "" {
 		v, err := strconv.ParseInt(billingTypeStr, 10, 8)
 		if err != nil {
@@ -297,6 +317,14 @@ func parseDashboardSnapshotV2Filters(c *gin.Context) (*dashboardSnapshotV2Filter
 		}
 		bt := int8(v)
 		filters.BillingType = &bt
+	}
+
+	if mismatchStr := strings.TrimSpace(c.Query("upstream_model_mismatch")); mismatchStr != "" {
+		value, err := strconv.ParseBool(mismatchStr)
+		if err != nil {
+			return nil, err
+		}
+		filters.UpstreamModelMismatch = &value
 	}
 
 	return filters, nil

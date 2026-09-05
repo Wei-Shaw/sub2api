@@ -98,3 +98,58 @@ func TestUserRepositoryCreateWithEmailAliasGuard(t *testing.T) {
 		Status:       service.StatusActive,
 	}))
 }
+
+func TestUserRepositoryCountUsersByEmailDomain(t *testing.T) {
+	repo, _ := newUserEntRepo(t)
+	ctx := context.Background()
+
+	active := &service.User{
+		Email:        "first@custom.example",
+		Username:     "first",
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+	}
+	seedUserForAliasTest(t, repo, active.Email)
+	seedUserForAliasTest(t, repo, "other@sub.custom.example")
+	deleted := &service.User{
+		Email:        "deleted@custom.example",
+		Username:     "deleted",
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+	}
+	require.NoError(t, repo.Create(ctx, deleted))
+	require.NoError(t, repo.Delete(ctx, deleted.ID))
+
+	count, err := repo.CountUsersByEmailDomain(ctx, "custom.example")
+	require.NoError(t, err)
+	require.Equal(t, 2, count)
+}
+
+func TestUserRepositoryCreateWithEmailAliasGuardAndDomainLimit(t *testing.T) {
+	repo, _ := newUserEntRepo(t)
+	ctx := context.Background()
+	seedUserForAliasTest(t, repo, "first@custom.example.")
+
+	err := repo.CreateWithEmailAliasGuardAndDomainLimit(ctx, &service.User{
+		Email:        "second@custom.example",
+		Username:     "second",
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+	}, "custom.example")
+	require.ErrorIs(t, err, service.ErrEmailDomainRegistrationLimit)
+}
+
+func TestUserRepositoryCountUsersByEmailDomainEscapesLikeWildcards(t *testing.T) {
+	repo, _ := newUserEntRepo(t)
+	ctx := context.Background()
+	seedUserForAliasTest(t, repo, "first@foo_bar.com")
+	seedUserForAliasTest(t, repo, "other@fooxbar.com")
+
+	count, err := repo.CountUsersByEmailDomain(ctx, "foo_bar.com")
+
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+}

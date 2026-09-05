@@ -4,7 +4,13 @@ const ipGeoMocks = vi.hoisted(() => ({
   fetchBatch: vi.fn(),
 }))
 
+const appStoreMocks = vi.hoisted(() => ({
+  showSuccess: vi.fn(),
+  showError: vi.fn(),
+}))
+
 vi.mock('@/utils/ipGeoLookup', () => ipGeoMocks)
+vi.mock('@/stores/app', () => ({ useAppStore: () => appStoreMocks }))
 
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -24,6 +30,7 @@ const messages: Record<string, string> = {
   'usage.perMillionTokens': '/ 1M tokens',
   'usage.serviceTier': 'Service tier',
   'usage.serviceTierPriority': 'Fast',
+  'usage.serviceTierUltrafast': 'Ultrafast',
   'usage.serviceTierFlex': 'Flex',
   'usage.serviceTierStandard': 'Standard',
   'usage.rate': 'Rate',
@@ -48,9 +55,22 @@ const messages: Record<string, string> = {
   'usage.imageSizeUnknown': 'unknown',
   'usage.imageUnitPrice': 'Per-image price',
   'usage.imageTotalPrice': 'Image total price',
+  'usage.stream': 'Stream',
+  'usage.sync': 'Sync',
+  'usage.nativeCompactionV2': 'Compaction',
   'admin.usage.billingModeToken': 'Token',
   'admin.usage.billingModePerRequest': 'Per request',
   'admin.usage.billingModeImage': 'Image',
+	'admin.usage.requestIdCopied': 'Request ID copied',
+	'admin.usage.upstreamRequestIdCopied': 'Upstream ID copied',
+	'keys.copied': 'Copied',
+	'keys.copyToClipboard': 'Copy to clipboard',
+	'common.copyFailed': 'Copy failed',
+	'usage.requestedModel': 'Requested',
+	'usage.sentUpstreamModel': 'Sent upstream',
+	'usage.upstreamResponseModel': 'Upstream response',
+	'usage.modelVariant': 'Possible version variant',
+	'usage.modelMismatch': 'Different model',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -69,9 +89,12 @@ const DataTableStub = {
     <div>
       <div v-for="row in data" :key="row.request_id">
         <slot name="cell-model" :row="row" :value="row.model" />
+        <slot name="cell-reasoning_effort" :row="row" :value="row.reasoning_effort" />
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
+        <slot name="cell-request_id" :row="row" />
+        <slot name="cell-upstream_request_id" :row="row" />
       </div>
     </div>
   `,
@@ -150,6 +173,56 @@ describe('admin UsageTable tooltip', () => {
 
     expect(wrapper.findAll('[data-testid="long-context-billing-marker"]')).toHaveLength(1)
     expect(wrapper.get('[data-testid="long-context-billing-marker"]').text()).toBe('x2')
+  })
+
+  it('keeps the request type badge and adds a separate badge only for native compaction rows', () => {
+    const DataTableStreamStub = {
+      props: ['data'],
+      template: `
+        <div>
+          <div v-for="row in data" :key="row.request_id">
+            <slot name="cell-stream" :row="row" />
+          </div>
+        </div>
+      `,
+    }
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          {
+            ...baseImageRow,
+            request_id: 'req-compaction-stream',
+            request_type: 'stream',
+            stream: true,
+            native_compaction_v2: true,
+          },
+          {
+            ...baseImageRow,
+            request_id: 'req-historical-sync',
+            request_type: 'sync',
+            stream: false,
+            native_compaction_v2: false,
+          },
+        ],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStreamStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const requestBadges = wrapper.findAll('[data-testid="request-type-badge"]')
+    expect(requestBadges).toHaveLength(2)
+    expect(requestBadges[0].text()).toBe('Stream')
+    expect(requestBadges[1].text()).toBe('Sync')
+    expect(wrapper.findAll('[data-testid="native-compaction-badge"]')).toHaveLength(1)
+    expect(wrapper.get('[data-testid="native-compaction-badge"]').text()).toBe('Compaction')
   })
 
   it('shows service tier and billing breakdown in cost tooltip', async () => {
@@ -239,6 +312,128 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('claude-sonnet-4')
     expect(text).toContain('claude-sonnet-4-20250514')
   })
+
+  it('shows requested and forwarded reasoning effort separately when they differ', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          request_id: 'req-admin-effort-1',
+          model: 'gpt-5.4',
+          reasoning_effort: 'max',
+          upstream_reasoning_effort: 'xhigh',
+        }],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const text = wrapper.text()
+    expect(text).toContain('Max')
+    expect(text).toContain('XHigh')
+    expect(text).toContain('↳')
+  })
+
+  it('shows a single reasoning effort when requested matches forwarded', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          request_id: 'req-admin-effort-2',
+          model: 'gpt-5.6-sol',
+          reasoning_effort: 'max',
+        }],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const text = wrapper.text()
+    expect(text).toContain('Max')
+    expect(text).not.toContain('↳')
+  })
+
+  it('hides mapped reasoning effort for user rows that only have the requested value', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          request_id: 'req-user-effort-1',
+          model: 'gpt-5.4',
+          reasoning_effort: 'max',
+        }],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('Max')
+    expect(wrapper.text()).not.toContain('XHigh')
+    expect(wrapper.text()).not.toContain('↳')
+  })
+
+	it.each([
+		{
+			name: 'possible version variant',
+			responseModel: 'gpt-5.5-2026-08-01',
+			expectedBadge: 'Possible version variant',
+		},
+		{
+			name: 'different upstream model',
+			responseModel: 'gpt-5.4',
+			expectedBadge: 'Different model',
+		},
+	])('shows a compact upstream response audit marker for $name', ({ responseModel, expectedBadge }) => {
+		const wrapper = mount(UsageTable, {
+			props: {
+				data: [{
+					request_id: `req-${responseModel}`,
+					model: 'gpt-5.6-sol',
+					upstream_model: 'gpt-5.5',
+					model_mapping_chain: 'gpt-5.6-sol→gpt-5.5',
+					upstream_response_model: responseModel,
+					upstream_model_mismatch: true,
+				}],
+				loading: false,
+				columns: [],
+			},
+			global: {
+				stubs: {
+					DataTable: DataTableStub,
+					EmptyState: true,
+					Icon: true,
+					Teleport: true,
+				},
+			},
+		})
+
+		const text = wrapper.text()
+		expect(text).toContain('gpt-5.6-sol')
+		expect(text).toContain('gpt-5.5')
+		expect(text).toContain(responseModel)
+		expect(text).toContain(expectedBadge)
+	})
 
   it.each([
     {
@@ -363,6 +558,69 @@ describe('admin UsageTable tooltip', () => {
   })
 })
 
+describe('admin UsageTable request ID column', () => {
+  beforeEach(() => {
+    appStoreMocks.showSuccess.mockReset()
+    appStoreMocks.showError.mockReset()
+  })
+
+  it('renders and copies the request ID', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{ ...baseImageRow, request_id: 'req-admin-visible-id' }],
+        loading: false,
+        columns: [{ key: 'request_id', label: 'Request ID' }],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('req-admin-visible-id')
+    await wrapper.get('button[title="Copy to clipboard"]').trigger('click')
+
+    expect(writeText).toHaveBeenCalledWith('req-admin-visible-id')
+    expect(appStoreMocks.showSuccess).toHaveBeenCalledWith('Request ID copied')
+  })
+
+  it('renders and copies the upstream ID', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{ ...baseImageRow, request_id: '', upstream_request_id: '20260903082826779695' }],
+        loading: false,
+        columns: [{ key: 'upstream_request_id', label: 'Upstream ID' }],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('20260903082826779695')
+    const copyButtons = wrapper.findAll('button[title="Copy to clipboard"]')
+    expect(copyButtons).toHaveLength(1)
+    await copyButtons[0].trigger('click')
+
+    expect(writeText).toHaveBeenCalledWith('20260903082826779695')
+    expect(appStoreMocks.showSuccess).toHaveBeenCalledWith('Upstream ID copied')
+  })
+})
+
 describe('admin UsageTable IP geolocation batch toolbar', () => {
   const DataTableStubWithIp = {
     props: ['data'],
@@ -469,6 +727,7 @@ const DataTableStubWithUser = {
       <div v-for="row in data" :key="row.request_id">
         <slot name="cell-user" :row="row" />
         <slot name="cell-model" :row="row" :value="row.model" />
+        <slot name="cell-reasoning_effort" :row="row" :value="row.reasoning_effort" />
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />

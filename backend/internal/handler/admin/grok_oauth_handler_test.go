@@ -4,6 +4,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
@@ -128,14 +130,22 @@ func TestGrokOAuthHandlerQueryQuotaProbesUpstream(t *testing.T) {
 	require.Contains(t, rec.Body.String(), `"snapshot":`)
 	require.Contains(t, rec.Body.String(), `"headers_observed":true`)
 	require.NotContains(t, rec.Body.String(), "access-token")
+	require.Eventually(t, func() bool {
+		upstream.mu.Lock()
+		defer upstream.mu.Unlock()
+		return len(upstream.requests) == 4
+	}, time.Second, 10*time.Millisecond)
 	upstream.mu.Lock()
 	requests := append([]*http.Request(nil), upstream.requests...)
 	bodies := append([][]byte(nil), upstream.bodies...)
 	upstream.mu.Unlock()
-	require.Len(t, requests, 3)
+	require.Len(t, requests, 4)
+	responsesProbeSeen := false
+	modelsSyncSeen := false
 	for i, upstreamReq := range requests {
 		require.Equal(t, "Bearer access-token", upstreamReq.Header.Get("Authorization"))
 		if upstreamReq.URL.String() == xai.DefaultCLIBaseURL+"/responses" {
+			responsesProbeSeen = true
 			require.Equal(t, "application/json, text/event-stream", upstreamReq.Header.Get("Accept"))
 			require.Contains(t, string(bodies[i]), `"model":"grok-4.5"`)
 			require.Contains(t, string(bodies[i]), `"input":"hi"`)
@@ -143,7 +153,12 @@ func TestGrokOAuthHandlerQueryQuotaProbesUpstream(t *testing.T) {
 			require.NotContains(t, string(bodies[i]), `"max_output_tokens"`)
 			require.NotContains(t, string(bodies[i]), `"store"`)
 		}
+		if upstreamReq.URL.String() == xai.DefaultCLIBaseURL+"/models" {
+			modelsSyncSeen = true
+		}
 	}
+	require.True(t, responsesProbeSeen)
+	require.True(t, modelsSyncSeen)
 	require.NotNil(t, repo.updates[42])
 }
 
@@ -187,6 +202,84 @@ func TestGrokOAuthHandlerRuntimeSanityDoesNotExposeSecrets(t *testing.T) {
 	require.NotContains(t, rec.Body.String(), "access_token")
 	require.NotContains(t, rec.Body.String(), "secret")
 	require.NotContains(t, rec.Body.String(), "client-secret-like-value")
+}
+
+type grokOAuthHandlerClient struct{}
+
+func (c *grokOAuthHandlerClient) ExchangeCode(context.Context, string, string, string, string, string) (*xai.TokenResponse, error) {
+	return nil, errors.New("unexpected exchange")
+}
+
+func (c *grokOAuthHandlerClient) RefreshToken(context.Context, string, string, string) (*xai.TokenResponse, error) {
+	return &xai.TokenResponse{AccessToken: "access-token", RefreshToken: "refresh-token", ExpiresIn: 3600}, nil
+}
+
+func (c *grokOAuthHandlerClient) LoginWithPassword(_ context.Context, email, _ string, _ string) (*service.GrokPasswordLoginResult, error) {
+	return &service.GrokPasswordLoginResult{
+		Email:    email,
+		SSOToken: "sso-from-password",
+	}, nil
+}
+
+func (c *grokOAuthHandlerClient) ConvertSSOToBuild(context.Context, string, string) (*xai.TokenResponse, error) {
+	return &xai.TokenResponse{AccessToken: "access-token", RefreshToken: "refresh-token", ExpiresIn: 3600}, nil
+}
+
+func TestGrokOAuthHandlerValidateSSOTokenReturnsTokenInfo(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	oauthClient := &grokOAuthHandlerClient{}
+	oauthService := service.NewGrokOAuthService(nil, oauthClient)
+	defer oauthService.Stop()
+	handler := NewGrokOAuthHandler(oauthService, nil, nil, nil)
+
+	router := gin.New()
+	router.POST("/api/v1/admin/grok/oauth/sso-token", handler.ValidateSSOToken)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/grok/oauth/sso-token", strings.NewReader(`{"sso_token":"sso-token"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"access_token":"access-token"`)
+	require.NotContains(t, rec.Body.String(), `"sso_token"`)
+}
+
+func TestGrokOAuthHandlerAuthorizePasswordReturnsTokenInfoWithoutPassword(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	oauthClient := &grokOAuthHandlerClient{}
+	cfg := &config.Config{}
+	cfg.Gateway.Grok.PasswordAuthEnabled = true
+	oauthService := service.NewGrokOAuthService(nil, oauthClient, cfg)
+	defer oauthService.Stop()
+	handler := NewGrokOAuthHandler(oauthService, nil, nil, nil)
+
+	router := gin.New()
+	router.POST("/api/v1/admin/grok/oauth/password", handler.AuthorizePassword)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/grok/oauth/password", strings.NewReader(`{"email":"user@example.com","password":"super-secret"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"access_token":"access-token"`)
+	require.NotContains(t, rec.Body.String(), "super-secret")
+}
+
+func TestGrokOAuthHandlerPasswordCapabilityDefaultsToDisabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	oauthService := service.NewGrokOAuthService(nil, &grokOAuthHandlerClient{})
+	defer oauthService.Stop()
+	handler := NewGrokOAuthHandler(oauthService, nil, nil, nil)
+
+	router := gin.New()
+	router.GET("/api/v1/admin/grok/oauth/capabilities", handler.GetCapabilities)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/grok/oauth/capabilities", nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"password_auth_enabled":false`)
 }
 
 func TestGrokSSOImportExpiryUsesTokenExpiryWithoutRefreshToken(t *testing.T) {
@@ -266,14 +359,12 @@ func TestGrokSSOImportCredentialsDefaultsToOfficialBaseURL(t *testing.T) {
 	require.Equal(t, "at-2", credentials["access_token"])
 }
 
-func TestGrokSSOImportWorkerRecoversPanic(t *testing.T) {
+func TestGrokSSOImportWorkerHandlesMissingOAuthService(t *testing.T) {
 	h := &GrokOAuthHandler{}
 	result := h.safeCreateAccountFromSSOToken(context.Background(), GrokSSOToOAuthRequest{}, "token", 2, 3)
-	// Without a service, createAccountFromSSOToken would panic on nil service access.
-	// Recovery must convert that into a failed item and keep the worker alive.
 	require.False(t, result.created)
 	require.Equal(t, 2, result.item.Index)
-	require.Contains(t, result.item.Error, "internal worker panic")
+	require.Contains(t, result.item.Error, "GROK_OAUTH_CLIENT_NOT_CONFIGURED")
 }
 
 func TestGrokOAuthHandlerReconcileDefaultsToDryRun(t *testing.T) {

@@ -154,6 +154,33 @@ func (h *SettingHandler) UpdateRateLimit429CooldownSettings(c *gin.Context) {
 	})
 }
 
+func (h *SettingHandler) GetOpenAIImagesOAuthUnavailableCooldownSettings(c *gin.Context) {
+	settings, err := h.settingService.GetOpenAIImagesOAuthUnavailableCooldownSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.OpenAIImagesOAuthUnavailableCooldownSettings{CooldownMinutes: settings.CooldownMinutes})
+}
+
+type UpdateOpenAIImagesOAuthUnavailableCooldownSettingsRequest struct {
+	CooldownMinutes int `json:"cooldown_minutes"`
+}
+
+func (h *SettingHandler) UpdateOpenAIImagesOAuthUnavailableCooldownSettings(c *gin.Context) {
+	var req UpdateOpenAIImagesOAuthUnavailableCooldownSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	settings := &service.OpenAIImagesOAuthUnavailableCooldownSettings{CooldownMinutes: req.CooldownMinutes}
+	if err := h.settingService.SetOpenAIImagesOAuthUnavailableCooldownSettings(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, dto.OpenAIImagesOAuthUnavailableCooldownSettings{CooldownMinutes: settings.CooldownMinutes})
+}
+
 // GetPanelRateLimitSettings 获取面板 API 限流配置
 // GET /api/v1/admin/settings/panel-rate-limit
 func (h *SettingHandler) GetPanelRateLimitSettings(c *gin.Context) {

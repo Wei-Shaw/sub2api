@@ -29,6 +29,12 @@ func TestBillingModelForRestriction_Upstream(t *testing.T) {
 	require.Equal(t, "", got, "upstream should return empty (per-account check needed)")
 }
 
+func TestBillingModelForRestriction_ResponseModelUsesMappedPrecheck(t *testing.T) {
+	t.Parallel()
+	got := billingModelForRestriction(BillingModelSourceResponse, "claude-fable-5", "claude-fable-5")
+	require.Equal(t, "claude-fable-5", got)
+}
+
 func TestBillingModelForRestriction_Empty(t *testing.T) {
 	t.Parallel()
 	got := billingModelForRestriction("", "claude-sonnet-4-5", "claude-sonnet-4-6")

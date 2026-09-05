@@ -34,6 +34,10 @@ type OpsSystemLogSink struct {
 	batchSize     int
 	flushInterval time.Duration
 
+	// 连续写入失败后的退避参数。构造后只读，测试可在 Start 前覆盖。
+	flushBackoff    time.Duration
+	flushBackoffMax time.Duration
+
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -48,20 +52,52 @@ type OpsSystemLogSink struct {
 
 const maxSystemLogHostLength = 255
 
+const (
+	// 首次写入失败后暂停落库的时长，之后逐次翻倍到上限。
+	defaultOpsSystemLogFlushBackoff = 2 * time.Second
+	// 退避上限。日志是尽力而为的观测数据，不值得为它无限期占用连接池。
+	defaultOpsSystemLogFlushBackoffMax = 60 * time.Second
+)
+
 func NewOpsSystemLogSink(opsRepo OpsRepository) *OpsSystemLogSink {
 	ctx, cancel := context.WithCancel(context.Background())
 	rawHost, err := os.Hostname()
 	s := &OpsSystemLogSink{
-		opsRepo:       opsRepo,
-		host:          normalizeSystemLogHost(rawHost, err),
-		queue:         make(chan *logger.LogEvent, 5000),
-		batchSize:     200,
-		flushInterval: time.Second,
-		ctx:           ctx,
-		cancel:        cancel,
+		opsRepo:         opsRepo,
+		host:            normalizeSystemLogHost(rawHost, err),
+		queue:           make(chan *logger.LogEvent, 5000),
+		batchSize:       200,
+		flushInterval:   time.Second,
+		flushBackoff:    defaultOpsSystemLogFlushBackoff,
+		flushBackoffMax: defaultOpsSystemLogFlushBackoffMax,
+		ctx:             ctx,
+		cancel:          cancel,
 	}
 	s.lastError.Store("")
 	return s
+}
+
+// flushBackoffFor 返回第 failures 次连续失败后的退避时长（指数退避，封顶）。
+func (s *OpsSystemLogSink) flushBackoffFor(failures int) time.Duration {
+	base := s.flushBackoff
+	if base <= 0 {
+		base = defaultOpsSystemLogFlushBackoff
+	}
+	maxBackoff := s.flushBackoffMax
+	if maxBackoff <= 0 {
+		maxBackoff = defaultOpsSystemLogFlushBackoffMax
+	}
+	if maxBackoff < base {
+		maxBackoff = base
+	}
+	backoff := base
+	for i := 1; i < failures && backoff < maxBackoff; i++ {
+		backoff *= 2
+	}
+	if backoff > maxBackoff {
+		backoff = maxBackoff
+	}
+	return backoff
 }
 
 func normalizeSystemLogHost(host string, err error) string {
@@ -146,20 +182,37 @@ func (s *OpsSystemLogSink) run() {
 	defer ticker.Stop()
 
 	batch := make([]*logger.LogEvent, 0, s.batchSize)
+	// 仅在本 goroutine 内读写，无需加锁。
+	failures := 0
+	var suppressedUntil time.Time
 	flush := func(baseCtx context.Context) {
 		if len(batch) == 0 {
+			return
+		}
+		now := time.Now()
+		if now.Before(suppressedUntil) {
+			// 退避窗口内直接丢弃本批：日志是尽力而为的观测数据，继续攒批只会把
+			// 压力转移到内存，而每次重试都会再占用并取消一条池内连接。
+			atomic.AddUint64(&s.droppedCount, uint64(len(batch)))
+			batch = batch[:0]
 			return
 		}
 		started := time.Now()
 		inserted, err := s.flushBatch(baseCtx, batch)
 		delay := time.Since(started)
 		if err != nil {
+			failures++
+			backoff := s.flushBackoffFor(failures)
+			suppressedUntil = time.Now().Add(backoff)
 			atomic.AddUint64(&s.writeFailed, uint64(len(batch)))
 			s.lastError.Store(err.Error())
-			_, _ = fmt.Fprintf(os.Stderr, "time=%s level=WARN msg=\"ops system log sink flush failed\" err=%v batch=%d\n",
-				time.Now().Format(time.RFC3339Nano), err, len(batch),
+			// 每个退避窗口至多一条，避免数据库故障期间刷屏。
+			_, _ = fmt.Fprintf(os.Stderr, "time=%s level=WARN msg=\"ops system log sink flush failed\" err=%v batch=%d failures=%d backoff=%s\n",
+				time.Now().Format(time.RFC3339Nano), err, len(batch), failures, backoff,
 			)
 		} else {
+			failures = 0
+			suppressedUntil = time.Time{}
 			atomic.AddUint64(&s.writtenCount, uint64(inserted))
 			atomic.AddUint64(&s.totalDelayNs, uint64(delay.Nanoseconds()))
 			s.lastError.Store("")

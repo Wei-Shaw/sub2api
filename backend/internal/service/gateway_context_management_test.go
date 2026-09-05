@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -357,6 +358,25 @@ func TestApplyClaudeCodeOAuthMimicryToBody_HaikuRewritesSystem(t *testing.T) {
 	require.Equal(t, "claude-haiku-4-5-20251001", gjson.GetBytes(out, "model").String())
 }
 
+func TestApplyClaudeCodeOAuthMimicryToBody_FableOmitsRefusedExpansion(t *testing.T) {
+	account := &Account{ID: 406, Platform: PlatformAnthropic, Type: AccountTypeOAuth}
+	body := []byte(`{"model":"claude-fable-5","system":"Project instructions","messages":[{"role":"user","content":"hello"}]}`)
+	svc := &GatewayService{cfg: &config.Config{}}
+
+	out := svc.applyClaudeCodeOAuthMimicryToBody(
+		context.Background(), nil, account, body, "Project instructions", "claude-fable-5",
+	)
+
+	system := gjson.GetBytes(out, "system").Array()
+	require.Len(t, system, 2)
+	require.Contains(t, system[0].Get("text").String(), "x-anthropic-billing-header:")
+	require.Equal(t, claudeCodeSystemPrompt, system[1].Get("text").String())
+	require.NotContains(t, string(out), claudeCodeSystemPromptExpansion)
+	require.Contains(t, gjson.GetBytes(out, "messages.0.content.0.text").String(), "Project instructions")
+	require.Equal(t, "Understood. I will follow these instructions.", gjson.GetBytes(out, "messages.1.content.0.text").String())
+	require.Equal(t, "hello", gjson.GetBytes(out, "messages.2.content").String())
+}
+
 // ============================================================================
 // passthrough 集成测试：buildUpstreamRequest-
 // AnthropicAPIKeyPassthrough 与 buildCountTokensRequestAnthropicAPIKeyPassthrough
@@ -648,6 +668,51 @@ func TestBuildCountTokensRequest_APIKeyHaiku_StripsContextManagementEndToEnd(t *
 	outBody := readUpstreamBodyForTest(t, req)
 	require.False(t, gjson.GetBytes(outBody, "context_management").Exists(),
 		"count_tokens API-key + 客户端未带 beta token → body strip")
+}
+
+func TestBuildCountTokensRequest_StripsCacheControlOnlyFromLiteralDeferredTools(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"claude-haiku-4-5","messages":[],"tools":[{"name":"deferred","custom":{"defer_loading":true},"cache_control":{"type":"ephemeral"}},{"name":"ordinary","custom":{"defer_loading":false},"cache_control":{"type":"ephemeral"}},{"name":"string","custom":{"defer_loading":"true"},"cache_control":{"type":"ephemeral"}},{"name":"number","custom":{"defer_loading":1},"cache_control":{"type":"ephemeral"}},{"name":"object","custom":{"defer_loading":{}},"cache_control":{"type":"ephemeral"}}]}`)
+
+	tests := []struct {
+		name      string
+		account   *Account
+		token     string
+		tokenType string
+	}{
+		{
+			name:      "generic API key",
+			account:   &Account{Platform: PlatformAnthropic, Type: AccountTypeAPIKey},
+			token:     "sk-ant-test",
+			tokenType: "apikey",
+		},
+		{
+			name:      "recognized Claude Code OAuth without mimicry",
+			account:   &Account{Platform: PlatformAnthropic, Type: AccountTypeOAuth},
+			token:     "oauth-token",
+			tokenType: "oauth",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", nil)
+			svc := &GatewayService{cfg: &config.Config{}}
+
+			req, wireBody, err := svc.buildCountTokensRequest(
+				context.Background(), c, tt.account, body,
+				tt.token, tt.tokenType, "claude-haiku-4-5", false,
+			)
+			require.NoError(t, err)
+			require.False(t, gjson.GetBytes(wireBody, "tools.0.cache_control").Exists())
+			for idx := 1; idx < 5; idx++ {
+				require.Equal(t, "ephemeral", gjson.GetBytes(wireBody, fmt.Sprintf("tools.%d.cache_control.type", idx)).String())
+			}
+			require.JSONEq(t, string(wireBody), string(readUpstreamBodyForTest(t, req)))
+		})
+	}
 }
 
 // count_tokens passthrough preserve 测试

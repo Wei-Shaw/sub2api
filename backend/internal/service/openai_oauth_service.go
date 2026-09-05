@@ -269,22 +269,35 @@ func (s *OpenAIOAuthService) enrichTokenInfo(ctx context.Context, tokenInfo *Ope
 			orgID = atClaims.OpenAIAuth.POID
 		}
 	}
+	// accounts/check 命中的记录不属于个人账号时，必须改用个人订阅端点拿到期时间，
+	// 否则会把 workspace 权益的 expires_at 当成个人订阅到期日展示。
+	forcePersonalSubscriptionLookup := false
 	if info := fetchChatGPTAccountInfo(ctx, s.privacyClientFactory, tokenInfo.AccessToken, proxyURL, orgID); info != nil {
 		// chatgpt_plan_type from the ID token is the canonical personal-plan value.
 		// accounts/check is a multi-account/workspace endpoint; inactive team or
 		// business workspaces can otherwise overwrite Pro/Free with internal
 		// workspace billing plan names such as self_serve_business_usage_based.
-		if shouldApplyChatGPTAccountInfoPlanType(tokenInfo.PlanType, info.PlanType) {
+		appliedAccountInfoPlanType := shouldApplyChatGPTAccountInfoPlanType(tokenInfo.PlanType, info.PlanType)
+		if appliedAccountInfoPlanType {
 			tokenInfo.PlanType = info.PlanType
 		}
+		// plan_type 与 subscription_expires_at 必须描述同一份订阅。套餐取自
+		// accounts/check 时，到期时间跟着取同一条记录；套餐保留了 JWT 里的个人值时，
+		// 只有该记录确实就是个人账号才能用它的 entitlement.expires_at——poid 指向的
+		// 默认 Personal workspace 与 chatgpt_account_id 可以是两个不同的标识，
+		// 混用会显示成「个人 Pro + workspace 到期时间」。
 		if info.SubscriptionExpiresAt != "" {
-			tokenInfo.SubscriptionExpiresAt = info.SubscriptionExpiresAt
+			if appliedAccountInfoPlanType || chatGPTAccountInfoBelongsToTokenAccount(tokenInfo, info) {
+				tokenInfo.SubscriptionExpiresAt = info.SubscriptionExpiresAt
+			} else {
+				forcePersonalSubscriptionLookup = true
+			}
 		}
 		if tokenInfo.Email == "" && info.Email != "" {
 			tokenInfo.Email = info.Email
 		}
 	}
-	if strings.TrimSpace(tokenInfo.SubscriptionExpiresAt) == "" {
+	if forcePersonalSubscriptionLookup || strings.TrimSpace(tokenInfo.SubscriptionExpiresAt) == "" {
 		if expiresAt := fetchChatGPTSubscriptionExpiresAt(ctx, s.privacyClientFactory, tokenInfo.AccessToken, proxyURL, resolveChatGPTSubscriptionAccountID(tokenInfo, orgID)); expiresAt != "" {
 			tokenInfo.SubscriptionExpiresAt = expiresAt
 		}
@@ -296,6 +309,17 @@ func (s *OpenAIOAuthService) enrichTokenInfo(ctx context.Context, tokenInfo *Ope
 
 func shouldApplyChatGPTAccountInfoPlanType(current, candidate string) bool {
 	return strings.TrimSpace(candidate) != "" && strings.TrimSpace(current) == ""
+}
+
+// chatGPTAccountInfoBelongsToTokenAccount 判断 accounts/check 命中的那条记录是不是
+// token 自己的个人 ChatGPT 账号。两侧任一缺 ID 时无法区分，返回 true 保持既有行为。
+func chatGPTAccountInfoBelongsToTokenAccount(tokenInfo *OpenAITokenInfo, info *ChatGPTAccountInfo) bool {
+	personalID := strings.TrimSpace(tokenInfo.ChatGPTAccountID)
+	sourceID := strings.TrimSpace(info.AccountID)
+	if personalID == "" || sourceID == "" {
+		return true
+	}
+	return strings.EqualFold(personalID, sourceID)
 }
 
 func resolveChatGPTSubscriptionAccountID(tokenInfo *OpenAITokenInfo, orgID string) string {

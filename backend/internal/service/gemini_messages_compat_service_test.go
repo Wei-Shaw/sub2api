@@ -405,6 +405,110 @@ func TestCleanToolSchema_NormalizesGeminiUnsupportedSchemaFields(t *testing.T) {
 	require.NotContains(t, emptySchema, "type")
 }
 
+func TestCleanToolSchema_ConvertsNestedIntegerExclusiveMinimum(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"counts": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type":             "integer",
+					"exclusiveMinimum": float64(0),
+				},
+			},
+			"strict": map[string]any{
+				"type":             "integer",
+				"exclusiveMinimum": 0,
+				"minimum":          5,
+			},
+			"weak": map[string]any{
+				"type":             "integer",
+				"exclusiveMinimum": 2,
+				"minimum":          1,
+			},
+		},
+	}
+
+	cleaned, ok := cleanToolSchema(schema).(map[string]any)
+	require.True(t, ok)
+	properties, ok := cleaned["properties"].(map[string]any)
+	require.True(t, ok)
+	counts, ok := properties["counts"].(map[string]any)
+	require.True(t, ok)
+	items, ok := counts["items"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, items, "exclusiveMinimum")
+	require.Equal(t, float64(1), items["minimum"])
+
+	strict, ok := properties["strict"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, strict, "exclusiveMinimum")
+	require.Equal(t, 5, strict["minimum"])
+
+	weak, ok := properties["weak"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, weak, "exclusiveMinimum")
+	require.Equal(t, 3, weak["minimum"])
+}
+
+func TestCleanToolSchema_DropsAmbiguousExclusiveMinimumWithoutConversion(t *testing.T) {
+	for name, schema := range map[string]map[string]any{
+		"number schema": {
+			"type":             "number",
+			"exclusiveMinimum": 0,
+		},
+		"fractional integer bound": {
+			"type":             "integer",
+			"exclusiveMinimum": 0.5,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cleaned, ok := cleanToolSchema(schema).(map[string]any)
+			require.True(t, ok)
+			require.NotContains(t, cleaned, "exclusiveMinimum")
+			require.NotContains(t, cleaned, "minimum")
+		})
+	}
+}
+
+func TestCleanToolSchema_RemovesNestedDeprecatedAndNormalizesMixedScalarEnum(t *testing.T) {
+	schema := map[string]any{
+		"anyOf": []any{
+			map[string]any{
+				"type":       "string",
+				"deprecated": true,
+			},
+			map[string]any{
+				"enum": []any{"enabled", false, float64(1), nil},
+			},
+		},
+	}
+
+	cleaned, ok := cleanToolSchema(schema).(map[string]any)
+	require.True(t, ok)
+	anyOf, ok := cleaned["anyOf"].([]any)
+	require.True(t, ok)
+	require.Len(t, anyOf, 2)
+
+	deprecatedSchema, ok := anyOf[0].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, deprecatedSchema, "deprecated")
+
+	enumSchema, ok := anyOf[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, []any{"enabled", "false", "1", "null"}, enumSchema["enum"])
+}
+
+func TestCleanToolSchema_DropsEnumWithNonScalarValue(t *testing.T) {
+	schema := map[string]any{
+		"enum": []any{"valid", map[string]any{"invalid": true}},
+	}
+
+	cleaned, ok := cleanToolSchema(schema).(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, cleaned, "enum")
+}
+
 func TestConvertClaudeToolsToGeminiTools_PreservesWebSearchAlongsideFunctions(t *testing.T) {
 	tools := []any{
 		map[string]any{
@@ -793,6 +897,11 @@ func TestExtractGeminiUsage(t *testing.T) {
 			}
 			if got.CacheReadInputTokens != tt.wantUsage.CacheReadInputTokens {
 				t.Errorf("CacheReadInputTokens: 期望 %d，实际 %d", tt.wantUsage.CacheReadInputTokens, got.CacheReadInputTokens)
+			}
+			// Gemini usageMetadata 只有 cachedContentTokenCount（缓存命中），没有缓存写入
+			// 的 token 类别：cache_creation_input_tokens 恒为 0，计费侧不会产生缓存创建分项。
+			if got.CacheCreationInputTokens != 0 {
+				t.Errorf("CacheCreationInputTokens: 期望 0，实际 %d", got.CacheCreationInputTokens)
 			}
 		})
 	}
