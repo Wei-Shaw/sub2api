@@ -198,9 +198,9 @@ func (Account) Fields() []ent.Field {
 			MaxLen(20),
 
 		field.Int64("parent_account_id").Optional().Nillable().
-			Comment("Parent account id for a linked spark shadow (NULL = normal)."),
-		field.Enum("quota_dimension").Values("global", "spark").Default("global").
-			Comment("'global' (default) or 'spark' (shadow reads codex_bengalfox)."),
+			Comment("Credential-owning parent account id (NULL = normal)."),
+		field.Enum("quota_dimension").Values("global", "spark", "linked").Default("global").
+			Comment("'global' for normal accounts, 'spark' for the independent Spark bucket, or 'linked' for a parent-shared global route."),
 	}
 }
 

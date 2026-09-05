@@ -219,7 +219,7 @@ func (s *OpenAIGatewayService) markOpenAIOAuth429RateLimited(ctx context.Context
 	}
 	// Spark 影子：不按 /responses 429 的 global x-codex-* 信号做内存运行时熔断(同 handle429,外审第8轮 P1)。
 	// 同时避免把 spark 的 429 计入全局 429 storm 计数(recordOpenAIOAuth429),否则会误伤母账号 failover 决策。
-	if account.IsShadow() {
+	if account.IsSparkShadow() {
 		return
 	}
 	s.recordOpenAIOAuth429()
@@ -245,7 +245,7 @@ func (s *OpenAIGatewayService) shouldRetryOpenAIOAuth429OnSameAccount(account *A
 }
 
 func (s *OpenAIGatewayService) shouldRetryOpenAIOAuth429OnSameAccountWithResponse(account *Account, statusCode int, shouldDisable bool, headers http.Header, responseBody []byte) bool {
-	if shouldDisable || statusCode != http.StatusTooManyRequests || !isOpenAIOAuthAccount(account) || account.IsShadow() {
+	if shouldDisable || statusCode != http.StatusTooManyRequests || !isOpenAIOAuthAccount(account) || account.IsSparkShadow() {
 		return false
 	}
 	disposition, _ := classifyOpenAIOAuth429(headers, responseBody)
@@ -263,7 +263,7 @@ func (s *OpenAIGatewayService) shouldRetryOpenAIOAuth429OnSameAccountWithRespons
 // ShouldRetryOpenAIOAuth429 lets RateLimitService defer persistent account
 // cooldown until the gateway's same-account retry window is exhausted.
 func (s *OpenAIGatewayService) ShouldRetryOpenAIOAuth429(account *Account, headers http.Header, responseBody []byte) bool {
-	if s == nil || !isOpenAIOAuthAccount(account) || account.IsShadow() || s.isOpenAIAccountRuntimeBlocked(account) {
+	if s == nil || !isOpenAIOAuthAccount(account) || account.IsSparkShadow() || s.isOpenAIAccountRuntimeBlocked(account) {
 		return false
 	}
 	disposition, _ := classifyOpenAIOAuth429(headers, responseBody)
@@ -274,7 +274,7 @@ func (s *OpenAIGatewayService) ShouldRetryOpenAIOAuth429(account *Account, heade
 }
 
 func (s *OpenAIGatewayService) openAIOAuth429RetryWindowActive(account *Account) bool {
-	if s == nil || !isOpenAIOAuthAccount(account) || account.IsShadow() {
+	if s == nil || !isOpenAIOAuthAccount(account) || account.IsSparkShadow() {
 		return false
 	}
 	now := time.Now()
@@ -288,7 +288,7 @@ func (s *OpenAIGatewayService) openAIOAuth429RetryWindowActive(account *Account)
 }
 
 func (s *OpenAIGatewayService) openAIOAuth429RetryDeadline(account *Account) time.Time {
-	if s == nil || !isOpenAIOAuthAccount(account) || account.IsShadow() {
+	if s == nil || !isOpenAIOAuthAccount(account) || account.IsSparkShadow() {
 		return time.Time{}
 	}
 	value, ok := s.openaiOAuth429RetryStartedAt.Load(account.ID)

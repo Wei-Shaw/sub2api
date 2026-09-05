@@ -69,8 +69,18 @@ describe('AccountActionMenu — spark shadow 按钮可见性', () => {
     wrapper.unmount()
   })
 
-  it.each(['oauth', 'setup-token'] as const)('%s 账号隐藏「复制账号」按钮，避免共享可轮换令牌', (type) => {
-    const account = makeAccount({ platform: 'openai', type, parent_account_id: null })
+  it('OpenAI OAuth 母账号显示「复制账号」并创建链接账号', () => {
+    const account = makeAccount({ platform: 'openai', type: 'oauth', parent_account_id: null })
+    const wrapper = mount(AccountActionMenu, {
+      props: { show: true, account, position },
+      attachTo: document.body,
+    })
+    expect(getBodyText()).toContain('admin.accounts.duplicateAccount')
+    wrapper.unmount()
+  })
+
+  it('setup-token 账号仍隐藏「复制账号」按钮', () => {
+    const account = makeAccount({ platform: 'openai', type: 'setup-token', parent_account_id: null })
     const wrapper = mount(AccountActionMenu, {
       props: { show: true, account, position },
       attachTo: document.body,

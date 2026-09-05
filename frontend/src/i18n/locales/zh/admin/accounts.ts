@@ -81,6 +81,8 @@ export default {
       notes: '备注',
       notesPlaceholder: '请输入备注',
       notesHint: '备注可选',
+      shadowParent: '关联母账号',
+      shadowParentHint: '影子账号(复制出来)可改绑到其它母账号，不一定是复制的账号。',
       // Filter options
       allPlatforms: '全部平台',
       allTypes: '全部类型',
