@@ -49,6 +49,9 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel, reasoningEffort string) (*openaiStreamingResult, error) {
+	// Standard Forward already owns post-header keepalive. Stop the independent
+	// pre-header writer before this function takes over the ResponseWriter.
+	StopOpenAIPreHeaderSSEKeepaliveCommitted(c)
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)

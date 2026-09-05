@@ -145,6 +145,50 @@ func TestOpenAIStreamingPassthroughKeepsPreamblePendingUntilFirstOutputBoundary(
 	}, writer.flushBodyLengths)
 }
 
+func TestOpenAIStreamingPassthroughReasoningWaitGetsKeepaliveUntilFirstRealWrite(t *testing.T) {
+	reader, writer := io.Pipe()
+	preamble := "event: response.created\n" +
+		`data: {"type":"response.created","response":{"id":"resp_reasoning"}}` + "\n\n" +
+		"event: response.in_progress\n" +
+		`data: {"type":"response.in_progress","response":{"id":"resp_reasoning"}}` + "\n\n"
+	firstOutput := `data: {"type":"response.output_text.delta","delta":"ready"}` + "\n\n"
+	terminal := `data: {"type":"response.completed","response":{"id":"resp_reasoning","usage":{"input_tokens":9,"output_tokens":1,"total_tokens":10}}}` + "\n\n"
+
+	writeDone := make(chan struct{})
+	go func() {
+		defer close(writeDone)
+		defer writer.Close()
+		_, _ = io.WriteString(writer, preamble)
+		time.Sleep(8 * preHeaderKeepaliveTestInterval)
+		_, _ = io.WriteString(writer, firstOutput)
+		// The first real write must stop the independent keepalive. A second
+		// reasoning-sized pause must therefore add no more comment frames.
+		time.Sleep(8 * preHeaderKeepaliveTestInterval)
+		_, _ = io.WriteString(writer, terminal)
+	}()
+
+	var requestContext *gin.Context
+	result, recorder, _, err := runPassthroughFlushTest(
+		t,
+		reader,
+		-1,
+		func(c *gin.Context) {
+			requestContext = c
+			EnsureOpenAIPreHeaderSSEKeepalive(c, preHeaderKeepaliveTestInterval)
+		},
+	)
+	<-writeDone
+	StopOpenAIPreHeaderSSEKeepaliveCommitted(requestContext)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	body := recorder.Body.String()
+	require.GreaterOrEqual(t, strings.Count(body, ":\n\n"), 3)
+	require.Less(t, strings.LastIndex(body, ":\n\n"), strings.Index(body, "event: response.created"))
+	require.Contains(t, body, firstOutput)
+	require.Contains(t, body, terminal)
+}
+
 func TestOpenAIStreamingPassthroughFlushesTerminalEventAtEOFWithoutBlankLine(t *testing.T) {
 	upstream := "event: response.completed\n" +
 		`data: {"type":"response.completed","response":{"id":"resp_eof","usage":{"input_tokens":5,"output_tokens":2,"total_tokens":7}}}`

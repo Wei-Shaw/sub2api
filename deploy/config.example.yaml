@@ -476,6 +476,9 @@ gateway:
   # Stream keepalive interval (seconds), 0=disable
   # 流式 keepalive 间隔（秒），0=禁用
   stream_keepalive_interval: 10
+  # Non-streaming Anthropic Messages JSON keepalive interval (seconds), 0=disable; commits HTTP 200 after the first heartbeat
+  # Anthropic Messages 非流式 JSON keepalive 间隔（秒），0=禁用；首个心跳后 HTTP 状态会固化为 200
+  anthropic_nonstream_keepalive_interval: 0
   # Image stream data interval timeout (seconds), 0=disable; independent from ordinary text streams
   # 图片流数据间隔超时（秒），0=禁用；独立于普通文本流式
   image_stream_data_interval_timeout: 900

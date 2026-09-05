@@ -446,13 +446,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		"upstream_error",
 		"Upstream request failed",
 	); matched {
-		c.JSON(status, gin.H{
-			"type": "error",
-			"error": gin.H{
-				"type":    errType,
-				"message": errMsg,
-			},
-		})
+		writeAnthropicGatewayErrorResponse(c, status, errType, errMsg)
 
 		summary := upstreamMsg
 		if summary == "" {
@@ -470,7 +464,21 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 
 	switch resp.StatusCode {
 	case 400:
-		c.Data(http.StatusBadRequest, "application/json", body)
+		if AnthropicJSONKeepalivePresent(c) {
+			message := upstreamMsg
+			if message == "" {
+				message = "Upstream rejected the request"
+			}
+			writeAnthropicGatewayErrorResponse(c, http.StatusBadRequest, "invalid_request_error", message)
+		} else if AnthropicPreHeaderSSEKeepaliveCommitted(c) {
+			message := upstreamMsg
+			if message == "" {
+				message = "Upstream rejected the request"
+			}
+			writeAnthropicGatewayErrorResponse(c, http.StatusBadRequest, "invalid_request_error", message)
+		} else {
+			c.Data(http.StatusBadRequest, "application/json", body)
+		}
 		summary := upstreamMsg
 		if summary == "" {
 			summary = truncateForLog(body, 512)
@@ -506,13 +514,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 	}
 
 	// 返回自定义错误响应
-	c.JSON(statusCode, gin.H{
-		"type": "error",
-		"error": gin.H{
-			"type":    errType,
-			"message": errMsg,
-		},
-	})
+	writeAnthropicGatewayErrorResponse(c, statusCode, errType, errMsg)
 
 	if upstreamMsg == "" {
 		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
@@ -611,13 +613,7 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 		"upstream_error",
 		"Upstream request failed after retries",
 	); matched {
-		c.JSON(status, gin.H{
-			"type": "error",
-			"error": gin.H{
-				"type":    errType,
-				"message": errMsg,
-			},
-		})
+		writeAnthropicGatewayErrorResponse(c, status, errType, errMsg)
 
 		summary := upstreamMsg
 		if summary == "" {
@@ -630,13 +626,7 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 	}
 
 	// 返回统一的重试耗尽错误响应
-	c.JSON(http.StatusBadGateway, gin.H{
-		"type": "error",
-		"error": gin.H{
-			"type":    "upstream_error",
-			"message": "Upstream request failed after retries",
-		},
-	})
+	writeAnthropicGatewayErrorResponse(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
 
 	if upstreamMsg == "" {
 		return nil, fmt.Errorf("upstream error: %d (retries exhausted)", resp.StatusCode)
@@ -693,6 +683,8 @@ func partialStreamUsageResult(c *gin.Context, resp *http.Response, streamResult 
 }
 
 func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string, mimicClaudeCode bool) (*streamingResult, error) {
+	// Upstream headers have arrived. Hand off to the existing post-header ping.
+	StopAnthropicPreHeaderSSEKeepaliveCommitted(c)
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)

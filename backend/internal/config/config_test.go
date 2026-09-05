@@ -662,6 +662,15 @@ func TestLoadImageNonstreamKeepaliveFromEnv(t *testing.T) {
 	require.Equal(t, 15, cfg.Gateway.ImageNonstreamKeepaliveInterval)
 }
 
+func TestLoadAnthropicNonstreamKeepaliveFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_ANTHROPIC_NONSTREAM_KEEPALIVE_INTERVAL", "60")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 60, cfg.Gateway.AnthropicNonstreamKeepaliveInterval)
+}
+
 func TestLoadOpenAIWSStickyTTLCompatibility(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("GATEWAY_OPENAI_WS_STICKY_RESPONSE_ID_TTL_SECONDS", "0")
@@ -1931,6 +1940,16 @@ func TestValidateConfigErrors(t *testing.T) {
 			wantErr: "gateway.stream_data_interval_timeout must be non-negative",
 		},
 		{
+			name:    "gateway anthropic nonstream keepalive range",
+			mutate:  func(c *Config) { c.Gateway.AnthropicNonstreamKeepaliveInterval = 4 },
+			wantErr: "gateway.anthropic_nonstream_keepalive_interval",
+		},
+		{
+			name:    "gateway anthropic nonstream keepalive negative",
+			mutate:  func(c *Config) { c.Gateway.AnthropicNonstreamKeepaliveInterval = -1 },
+			wantErr: "gateway.anthropic_nonstream_keepalive_interval must be non-negative",
+		},
+		{
 			name:    "gateway image stream keepalive range",
 			mutate:  func(c *Config) { c.Gateway.ImageStreamKeepaliveInterval = 4 },
 			wantErr: "gateway.image_stream_keepalive_interval",
@@ -2581,6 +2600,9 @@ func TestLoad_DefaultGatewayImageStreamConfig(t *testing.T) {
 	}
 	if cfg.Gateway.StreamKeepaliveInterval != 10 {
 		t.Fatalf("stream_keepalive_interval = %d, want 10", cfg.Gateway.StreamKeepaliveInterval)
+	}
+	if cfg.Gateway.AnthropicNonstreamKeepaliveInterval != 0 {
+		t.Fatalf("anthropic_nonstream_keepalive_interval = %d, want 0", cfg.Gateway.AnthropicNonstreamKeepaliveInterval)
 	}
 	if cfg.Gateway.ImageStreamDataIntervalTimeout != 900 {
 		t.Fatalf("image_stream_data_interval_timeout = %d, want 900", cfg.Gateway.ImageStreamDataIntervalTimeout)

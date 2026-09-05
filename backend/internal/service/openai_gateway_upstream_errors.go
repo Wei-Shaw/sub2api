@@ -498,12 +498,20 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 			UpstreamStatus: resp.StatusCode,
 		})
 		setOpsUpstreamError(c, resp.StatusCode, cyberMsg, truncateString(string(body), 2048))
-		writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-		contentType := resp.Header.Get("Content-Type")
-		if contentType == "" {
-			contentType = "application/json"
+		if OpenAIPreHeaderSSEKeepaliveCommitted(c) {
+			message := cyberMsg
+			if message == "" {
+				message = "Request blocked by upstream cyber-security policy"
+			}
+			writeOpenAIResponsesGatewayError(c, resp.StatusCode, "cyber_policy", message)
+		} else {
+			writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+			contentType := resp.Header.Get("Content-Type")
+			if contentType == "" {
+				contentType = "application/json"
+			}
+			c.Data(resp.StatusCode, contentType, body)
 		}
-		c.Data(resp.StatusCode, contentType, body)
 		if cyberMsg == "" {
 			return nil, fmt.Errorf("openai cyber_policy: %d", resp.StatusCode)
 		}
@@ -514,12 +522,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		setOpsUpstreamError(c, resp.StatusCode, clientMsg, truncateString(string(body), 2048))
 		writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 		MarkResponseCommitted(c)
-		c.JSON(http.StatusForbidden, gin.H{
-			"error": gin.H{
-				"type":    "invalid_request_error",
-				"message": clientMsg,
-			},
-		})
+		writeOpenAIResponsesGatewayError(c, http.StatusForbidden, "invalid_request_error", clientMsg)
 		return nil, fmt.Errorf("grok content policy rejection: %s", clientMsg)
 	}
 
@@ -580,12 +583,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		"Upstream request failed",
 	); matched {
 		MarkResponseCommitted(c)
-		c.JSON(status, gin.H{
-			"error": gin.H{
-				"type":    errType,
-				"message": errMsg,
-			},
-		})
+		writeOpenAIResponsesGatewayError(c, status, errType, errMsg)
 		if upstreamMsg == "" {
 			upstreamMsg = errMsg
 		}
@@ -610,12 +608,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 			Detail:             upstreamDetail,
 		})
 		MarkResponseCommitted(c)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": gin.H{
-				"type":    "upstream_error",
-				"message": "Upstream gateway error",
-			},
-		})
+		writeOpenAIResponsesGatewayError(c, http.StatusInternalServerError, "upstream_error", "Upstream gateway error")
 		if upstreamMsg == "" {
 			return nil, fmt.Errorf("upstream error: %d (not in custom error codes)", resp.StatusCode)
 		}
@@ -669,7 +662,15 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	// 回真实状态码 + invalid_request_error + 真实 message；/v1/images 还额外透传
 	// code/param。原生 Responses 是唯一漏掉的一条。
 	if isOpenAIDeterministicClientError(resp.StatusCode) {
-		writeOpenAIUpstreamClientError(c, resp.StatusCode, body, upstreamMsg)
+		if OpenAIPreHeaderSSEKeepaliveCommitted(c) {
+			message := upstreamMsg
+			if message == "" {
+				message = "Upstream rejected the request"
+			}
+			writeOpenAIResponsesGatewayError(c, resp.StatusCode, "invalid_request_error", message)
+		} else {
+			writeOpenAIUpstreamClientError(c, resp.StatusCode, body, upstreamMsg)
+		}
 		if upstreamMsg == "" {
 			return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
 		}
@@ -706,12 +707,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		errMsg = upstreamMsg
 	}
 
-	c.JSON(statusCode, gin.H{
-		"error": gin.H{
-			"type":    errType,
-			"message": errMsg,
-		},
-	})
+	writeOpenAIResponsesGatewayError(c, statusCode, errType, errMsg)
 
 	if upstreamMsg == "" {
 		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)

@@ -7,11 +7,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestGatewayEnsureForwardErrorResponse_WritesFallbackWhenNotWritten(t *testing.T) {
@@ -52,6 +54,32 @@ func TestGatewayEnsureForwardErrorResponse_AppendsSSEAfterWritten(t *testing.T) 
 	require.Equal(t, http.StatusTeapot, w.Code)
 	assert.Contains(t, w.Body.String(), "already written")
 	assert.Contains(t, w.Body.String(), `data: {"type":"error"`)
+}
+
+func TestGatewayEnsureForwardErrorResponse_JSONKeepaliveWritesJSONFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, EndpointMessages, nil)
+
+	stop := service.StartAnthropicJSONKeepalive(c, 5*time.Millisecond)
+	defer stop()
+	require.Eventually(t, func() bool {
+		return service.AnthropicJSONKeepaliveCommitted(c)
+	}, time.Second, time.Millisecond)
+
+	h := &GatewayHandler{}
+	wrote := h.ensureForwardErrorResponse(c, false)
+
+	require.True(t, wrote)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.True(t, json.Valid(w.Body.Bytes()), w.Body.String())
+	require.NotContains(t, w.Body.String(), "event:")
+	require.NotContains(t, w.Body.String(), "data:")
+	require.Equal(t, "upstream_error", gjson.Get(w.Body.String(), "error.type").String())
+	marked, ok := service.GetOpsStreamError(c)
+	require.True(t, ok)
+	require.Equal(t, http.StatusBadGateway, marked.IntendedStatus)
 }
 
 func TestGatewayEnsureForwardErrorResponse_SkipsCommittedSSEError(t *testing.T) {
