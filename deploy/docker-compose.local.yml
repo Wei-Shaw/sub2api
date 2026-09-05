@@ -10,7 +10,7 @@
 #   2. mkdir -p data postgres_data redis_data
 #   3. docker-compose -f docker-compose.local.yml up -d
 #   4. Check logs: docker-compose -f docker-compose.local.yml logs -f aibridge
-#   5. Access: http://localhost:8080
+#   5. Access: https://your-domain.example.com (Nginx) or http://<server-ip>:8080
 #
 # Migration to New Server:
 #   1. docker-compose -f docker-compose.local.yml down
@@ -31,6 +31,10 @@ services:
       nofile:
         soft: 100000
         hard: 100000
+    # Direct backend access for remote administration/debugging.
+    # WARNING: this is PLAINTEXT HTTP and bypasses Nginx/TLS. Restrict it to
+    # trusted source IPs in both the host and cloud firewall (see README.md).
+    # Normal end-user traffic should enter through Nginx on 80/443.
     ports:
       - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
     volumes:
@@ -52,6 +56,10 @@ services:
       - SERVER_PORT=8080
       - SERVER_MODE=${SERVER_MODE:-release}
       - RUN_MODE=${RUN_MODE:-standard}
+      # Trust the Nginx reverse proxy so the real client IP is recovered from
+      # X-Forwarded-For instead of the Nginx container address. Must match the
+      # Docker bridge subnet (comma-separated CIDRs/IPs).
+      - SERVER_TRUSTED_PROXIES=${SERVER_TRUSTED_PROXIES:-172.16.0.0/12}
 
       # =======================================================================
       # Database Configuration (PostgreSQL)
@@ -178,6 +186,48 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  # ===========================================================================
+  # Nginx Reverse Proxy (HTTPS termination)
+  # ===========================================================================
+  # Serves the public entrypoints: 80 redirects to HTTPS, 443 terminates TLS
+  # and proxies to the aibridge container over the internal network.
+  #
+  # REQUIRED before first start:
+  #   - nginx/certs/fullchain.pem and nginx/certs/privkey.pem must exist,
+  #     otherwise Nginx fails to start. See nginx/certs/README.md.
+  #   - Set DOMAIN in .env (defaults to "_", which matches any hostname).
+  # ===========================================================================
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: aibridge-nginx
+    restart: unless-stopped
+    depends_on:
+      aibridge:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # The official entrypoint renders templates/*.template through envsubst
+      # into /etc/nginx/conf.d, so conf.d itself must stay writable.
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+      - DOMAIN=${DOMAIN:-_}
+      # Restrict envsubst to DOMAIN only. Without this filter it would also
+      # expand nginx runtime variables ($host, $remote_addr, $http_upgrade,
+      # $connection_upgrade, ...) to empty strings and break the config.
+      - NGINX_ENVSUBST_FILTER=^DOMAIN$$
+    networks:
+      - aibridge-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 5 -O /dev/null --no-check-certificate https://127.0.0.1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   # ===========================================================================
   # PostgreSQL Database

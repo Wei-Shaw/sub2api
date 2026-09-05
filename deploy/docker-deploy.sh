@@ -96,6 +96,18 @@ main() {
     fi
     print_success "Downloaded .env.example"
 
+    # Download the Nginx config template (required by the nginx service)
+    print_info "Downloading Nginx config template..."
+    mkdir -p nginx/templates nginx/certs
+    if command_exists curl; then
+        curl -sSL "${GITHUB_RAW_URL}/nginx/templates/sub2api.conf.template" \
+            -o nginx/templates/sub2api.conf.template
+    else
+        wget -q "${GITHUB_RAW_URL}/nginx/templates/sub2api.conf.template" \
+            -O nginx/templates/sub2api.conf.template
+    fi
+    print_success "Downloaded Nginx config template"
+
     # Generate .env file with auto-generated secrets
     print_info "Generating secure secrets..."
     echo ""
@@ -150,17 +162,30 @@ main() {
     echo "  data/                     - Application data (will be created on first run)"
     echo "  postgres_data/            - PostgreSQL data"
     echo "  redis_data/               - Redis data"
+    echo "  nginx/templates/          - Nginx config template"
+    echo "  nginx/certs/              - TLS certificate (you must provide these)"
     echo ""
     echo "Next steps:"
     echo "  1. (Optional) Edit .env to customize configuration"
-    echo "  2. Start services:"
+    echo ""
+    echo "  2. Configure HTTPS (required — Nginx will not start without a cert):"
+    echo "     - Set DOMAIN=your-domain.example.com in .env"
+    echo "     - Copy your certificate to nginx/certs/fullchain.pem"
+    echo "     - Copy your private key to nginx/certs/privkey.pem"
+    echo "     - chmod 600 nginx/certs/privkey.pem"
+    echo ""
+    echo "  3. Start services:"
     echo "     docker-compose up -d"
     echo ""
-    echo "  3. View logs:"
-    echo "     docker-compose logs -f sub2api"
+    echo "  4. View logs:"
+    echo "     docker-compose logs -f aibridge"
     echo ""
-    echo "  4. Access Web UI:"
-    echo "     http://localhost:8080"
+    echo "  5. Access Web UI:"
+    echo "     https://your-domain.example.com   (via Nginx)"
+    echo "     http://<server-ip>:8080           (direct backend, plaintext HTTP)"
+    echo ""
+    print_warning "Port 8080 exposes the admin UI/API over plaintext HTTP."
+    print_warning "Restrict it to trusted source IPs in your firewall."
     echo ""
     print_info "If admin password is not set in .env, it will be auto-generated."
     print_info "Check logs for the generated admin password on first startup."

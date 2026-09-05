@@ -24,6 +24,8 @@ This directory contains files for deploying Sub2API on Linux servers.
 | `sub2api-datamanagementd.service` | datamanagementd systemd service unit file |
 | `DATAMANAGEMENTD_CN.md` | datamanagementd 部署与联动说明（中文） |
 | `config.example.yaml` | Example configuration file |
+| `nginx/templates/sub2api.conf.template` | Nginx reverse proxy config (HTTPS on 443, `${DOMAIN}` injected at startup) |
+| `nginx/certs/` | Drop your `fullchain.pem` / `privkey.pem` here |
 
 ---
 
@@ -56,14 +58,19 @@ chmod +x docker-deploy.sh
 docker compose -f docker-compose.local.yml up -d
 
 # View logs
-docker compose -f docker-compose.local.yml logs -f sub2api
+docker compose -f docker-compose.local.yml logs -f aibridge
 
 # If admin password was auto-generated, find it in logs:
-docker compose -f docker-compose.local.yml logs sub2api | grep "admin password"
+docker compose -f docker-compose.local.yml logs aibridge | grep "admin password"
 
 # Access Web UI
-# http://localhost:8080
+# https://your-domain.example.com   (via Nginx — see "Public HTTPS with Nginx")
+# http://<server-ip>:8080           (direct backend, plaintext)
 ```
+
+> The stack also starts an Nginx container that owns ports 80 and 443. It will
+> not start until you place a TLS certificate in `nginx/certs/` — see
+> [Public HTTPS with Nginx](#public-https-with-nginx).
 
 ### Method 2: Manual Deployment
 
@@ -87,15 +94,114 @@ echo "TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}" >> .env
 # Create data directories
 mkdir -p data postgres_data redis_data
 
+# Set the public domain and place the TLS certificate for Nginx
+echo "DOMAIN=your-domain.example.com" >> .env
+cp /path/to/fullchain.pem nginx/certs/fullchain.pem
+cp /path/to/privkey.pem   nginx/certs/privkey.pem
+chmod 600 nginx/certs/privkey.pem
+
 # Start all services using local directory version
 docker compose -f docker-compose.local.yml up -d
 
 # View logs (check for auto-generated admin password)
-docker compose -f docker-compose.local.yml logs -f sub2api
+docker compose -f docker-compose.local.yml logs -f aibridge
 
 # Access Web UI
-# http://localhost:8080
+# https://your-domain.example.com
 ```
+
+### Public HTTPS with Nginx
+
+`docker-compose.local.yml` runs an Nginx reverse proxy in front of the app:
+
+| Port | Exposed by | Purpose |
+|------|-----------|---------|
+| `443` | nginx | HTTPS, terminates TLS and proxies to the backend |
+| `80` | nginx | Redirects to HTTPS (`301`) |
+| `8080` | aibridge | Direct backend access, **plaintext HTTP, no TLS** |
+
+PostgreSQL (`5432`) and Redis (`6379`) are reachable only inside the Docker
+network and are never published to the host.
+
+**1. Point DNS at the server.** Create an `A` (and `AAAA` if you have IPv6)
+record for your domain resolving to the server's public IP.
+
+**2. Install the certificate.** Nginx **fails to start** if these files are
+missing, so do this before the first `up -d`:
+
+```bash
+cp fullchain.pem nginx/certs/fullchain.pem
+cp privkey.pem   nginx/certs/privkey.pem
+chmod 600 nginx/certs/privkey.pem
+```
+
+The certificate must cover the domain you set below. For a temporary
+self-signed certificate to get the stack running, see
+[`nginx/certs/README.md`](nginx/certs/README.md).
+
+**3. Set the domain** in `.env` (no need to edit any Nginx config file — the
+value is injected into the config template at container startup):
+
+```bash
+DOMAIN=your-domain.example.com
+```
+
+**4. Open the firewall.** Ports 80 and 443 are public; **restrict 8080 to the
+IPs you administer from**, since it serves the admin UI and API over plaintext
+HTTP with no TLS.
+
+```bash
+# ufw (Debian/Ubuntu)
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw allow from <your-ip> to any port 8080 proto tcp
+
+# firewalld (RHEL/Rocky/Alma)
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-service=https
+sudo firewall-cmd --permanent --add-rich-rule\
+='rule family="ipv4" source address="<your-ip>" port port="8080" protocol="tcp" accept'
+sudo firewall-cmd --reload
+```
+
+Apply the same rules in your cloud security group (AWS/Aliyun/Tencent/GCP):
+`80` and `443` from `0.0.0.0/0`, `8080` only from your source IP. Never open
+`5432` or `6379`.
+
+> If you would rather not expose 8080 at all, set `BIND_HOST=127.0.0.1` in
+> `.env` and reach it through an SSH tunnel instead:
+> `ssh -L 8080:127.0.0.1:8080 user@server`
+
+**5. Start and verify:**
+
+```bash
+docker compose -f docker-compose.local.yml up -d
+docker compose -f docker-compose.local.yml ps      # all four services healthy
+
+# Confirm the domain was substituted and nginx variables survived
+docker compose -f docker-compose.local.yml exec nginx nginx -T | grep -E 'server_name|\$host'
+
+curl -I  http://your-domain.example.com            # 301 -> https
+curl -sI https://your-domain.example.com/health    # 200
+curl -sI http://<server-ip>:8080/health            # 200 (from an allowed IP)
+```
+
+**Renewing certificates.** Copy the new files into `nginx/certs/`, then
+validate and reload without dropping connections:
+
+```bash
+docker compose -f docker-compose.local.yml exec nginx nginx -t
+docker compose -f docker-compose.local.yml exec nginx nginx -s reload
+```
+
+**Notes**
+
+- The proxy sets `proxy_buffering off` with 900s read/send timeouts so
+  streaming (SSE) responses are not batched or cut off.
+- `SERVER_TRUSTED_PROXIES` (default `172.16.0.0/12`) lets the backend recover
+  the real client IP from `X-Forwarded-For`. If your Docker bridge uses a
+  different subnet, adjust it in `.env` — otherwise logs and rate limits will
+  attribute every request to the Nginx container's IP.
 
 ### Deployment Version Comparison
 
@@ -121,7 +227,7 @@ When using Docker Compose with `AUTO_SETUP=true`:
 
 3. If `ADMIN_PASSWORD` is not set, check logs for the generated password:
    ```bash
-   docker compose logs sub2api | grep "admin password"
+   docker compose logs aibridge | grep "admin password"
    ```
 
 ### Database Migration Notes (PostgreSQL)
@@ -168,7 +274,7 @@ docker compose -f docker-compose.local.yml up -d
 docker compose -f docker-compose.local.yml down
 
 # View logs
-docker compose -f docker-compose.local.yml logs -f sub2api
+docker compose -f docker-compose.local.yml logs -f aibridge
 
 # Restart Sub2API only
 docker compose -f docker-compose.local.yml restart sub2api
@@ -192,7 +298,7 @@ docker compose up -d
 docker compose down
 
 # View logs
-docker compose logs -f sub2api
+docker compose logs -f aibridge
 
 # Restart Sub2API only
 docker compose restart sub2api
@@ -495,7 +601,7 @@ For **local directory version**:
 docker compose -f docker-compose.local.yml ps
 
 # View detailed logs
-docker compose -f docker-compose.local.yml logs --tail=100 sub2api
+docker compose -f docker-compose.local.yml logs --tail=100 aibridge
 
 # Check database connection
 docker compose -f docker-compose.local.yml exec postgres pg_isready
@@ -517,7 +623,7 @@ For **named volumes version**:
 docker compose ps
 
 # View detailed logs
-docker compose logs --tail=100 sub2api
+docker compose logs --tail=100 aibridge
 
 # Check database connection
 docker compose exec postgres pg_isready
