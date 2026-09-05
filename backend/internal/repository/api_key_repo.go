@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 
@@ -42,8 +43,75 @@ func (r *apiKeyRepository) activeQuery() *dbent.APIKeyQuery {
 	return r.client.APIKey.Query().Where(apikey.DeletedAtIsNil())
 }
 
+// ensureExclusiveGroupAuthorization serializes the group lookup with an API
+// key write and creates the owner authorization when the target is an
+// exclusive standard group.  Keeping this at the repository boundary closes
+// callers that do not pass through APIKeyService's permission check.
+func ensureExclusiveGroupAuthorization(ctx context.Context, client *dbent.Client, userID, groupID int64) error {
+	if client == nil || userID <= 0 || groupID <= 0 {
+		return nil
+	}
+	groupQuery := client.Group.Query().Where(group.IDEQ(groupID))
+	if client.Driver().Dialect() == dialect.Postgres {
+		groupQuery = groupQuery.ForUpdate()
+	}
+	target, err := groupQuery.Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return service.ErrGroupNotFound
+		}
+		return err
+	}
+	if !target.IsExclusive || target.SubscriptionType == service.SubscriptionTypeSubscription {
+		return nil
+	}
+	if err := client.UserAllowedGroup.Create().
+		SetUserID(userID).
+		SetGroupID(groupID).
+		OnConflictColumns(userallowedgroup.FieldUserID, userallowedgroup.FieldGroupID).
+		DoNothing().
+		Exec(ctx); err != nil && !isSQLNoRowsError(err) {
+		return err
+	}
+	return nil
+}
+
+// beginAPIKeyWriteTx starts a transaction only when the caller has not
+// already supplied one.  Some repository instances are constructed with an
+// ent transaction client (notably integration tests), in which case Ent
+// returns ErrTxStarted and the injected client is reused.
+func beginAPIKeyWriteTx(ctx context.Context, client *dbent.Client) (context.Context, *dbent.Client, *dbent.Tx, error) {
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		return ctx, tx.Client(), nil, nil
+	}
+	tx, err := client.Tx(ctx)
+	if errors.Is(err, dbent.ErrTxStarted) {
+		return ctx, client, nil, nil
+	}
+	if err != nil {
+		return ctx, nil, nil, err
+	}
+	txCtx := dbent.NewTxContext(ctx, tx)
+	return txCtx, tx.Client(), tx, nil
+}
+
 func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) error {
-	builder := r.client.APIKey.Create().
+	if key == nil {
+		return errors.New("api key is nil")
+	}
+	txCtx, client, tx, err := beginAPIKeyWriteTx(ctx, r.client)
+	if err != nil {
+		return err
+	}
+	if tx != nil {
+		defer func() { _ = tx.Rollback() }()
+	}
+	if key.GroupID != nil {
+		if err := ensureExclusiveGroupAuthorization(txCtx, client, key.UserID, *key.GroupID); err != nil {
+			return err
+		}
+	}
+	builder := client.APIKey.Create().
 		SetUserID(key.UserID).
 		SetKey(key.Key).
 		SetName(key.Name).
@@ -64,14 +132,22 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		builder.SetIPBlacklist(key.IPBlacklist)
 	}
 
-	created, err := builder.Save(ctx)
+	created, err := builder.Save(txCtx)
 	if err == nil {
 		key.ID = created.ID
 		key.LastUsedAt = created.LastUsedAt
 		key.CreatedAt = created.CreatedAt
 		key.UpdatedAt = created.UpdatedAt
 	}
-	return translatePersistenceError(err, nil, service.ErrAPIKeyExists)
+	if err != nil {
+		return translatePersistenceError(err, nil, service.ErrAPIKeyExists)
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *apiKeyRepository) GetByID(ctx context.Context, id int64) (*service.APIKey, error) {
@@ -242,6 +318,9 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 }
 
 func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fields service.APIKeyUpdateFields) error {
+	if key == nil {
+		return errors.New("api key is nil")
+	}
 	// 空掩码代表调用方不改任何列，直接返回，避免产生一次无意义的整行写。
 	if fields.IsEmpty() {
 		return nil
@@ -252,7 +331,22 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 	// 则会更新已删除的记录。
 	// 这里选择 Update().Where()，确保只有未软删除记录能被更新。
 	// 同时显式设置 updated_at，避免二次查询带来的并发可见性问题。
+	txCtx := ctx
 	client := clientFromContext(ctx, r.client)
+	var tx *dbent.Tx
+	if fields.GroupID && key.GroupID != nil {
+		var err error
+		txCtx, client, tx, err = beginAPIKeyWriteTx(ctx, r.client)
+		if err != nil {
+			return err
+		}
+		if tx != nil {
+			defer func() { _ = tx.Rollback() }()
+		}
+		if err := ensureExclusiveGroupAuthorization(txCtx, client, key.UserID, *key.GroupID); err != nil {
+			return err
+		}
+	}
 	now := time.Now()
 	builder := client.APIKey.Update().
 		Where(apikey.IDEQ(key.ID), apikey.DeletedAtIsNil()).
@@ -329,7 +423,7 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 		}
 	}
 
-	affected, err := builder.Save(ctx)
+	affected, err := builder.Save(txCtx)
 	if err != nil {
 		return err
 	}
@@ -340,6 +434,11 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 
 	// 使用同一时间戳回填，避免并发删除导致二次查询失败。
 	key.UpdatedAt = now
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -717,12 +816,29 @@ func (r *apiKeyRepository) ClearGroupIDByGroupID(ctx context.Context, groupID in
 
 // UpdateGroupIDByUserAndGroup 将用户下绑定 oldGroupID 的所有 Key 迁移到 newGroupID
 func (r *apiKeyRepository) UpdateGroupIDByUserAndGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (int64, error) {
-	client := clientFromContext(ctx, r.client)
+	txCtx, client, tx, err := beginAPIKeyWriteTx(ctx, r.client)
+	if err != nil {
+		return 0, err
+	}
+	if tx != nil {
+		defer func() { _ = tx.Rollback() }()
+	}
+	if err := ensureExclusiveGroupAuthorization(txCtx, client, userID, newGroupID); err != nil {
+		return 0, err
+	}
 	n, err := client.APIKey.Update().
 		Where(apikey.UserIDEQ(userID), apikey.GroupIDEQ(oldGroupID), apikey.DeletedAtIsNil()).
 		SetGroupID(newGroupID).
-		Save(ctx)
-	return int64(n), err
+		Save(txCtx)
+	if err != nil {
+		return 0, err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return 0, err
+		}
+	}
+	return int64(n), nil
 }
 
 // CountByGroupID 获取分组的 API Key 数量

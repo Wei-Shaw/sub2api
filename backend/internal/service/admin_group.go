@@ -1209,19 +1209,15 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 
 		// 专属标准分组：使用事务保证「添加分组权限」与「更新 API Key」的原子性
 		if group.IsExclusive && !group.IsSubscriptionType() {
-			opCtx := ctx
-			var tx *dbent.Tx
 			if s.entClient == nil {
-				logger.LegacyPrintf("service.admin", "Warning: entClient is nil, skipping transaction protection for exclusive group binding")
-			} else {
-				var txErr error
-				tx, txErr = s.entClient.Tx(ctx)
-				if txErr != nil {
-					return nil, fmt.Errorf("begin transaction: %w", txErr)
-				}
-				defer func() { _ = tx.Rollback() }()
-				opCtx = dbent.NewTxContext(ctx, tx)
+				return nil, fmt.Errorf("entClient is nil, cannot atomically bind an exclusive group")
 			}
+			tx, txErr := s.entClient.Tx(ctx)
+			if txErr != nil {
+				return nil, fmt.Errorf("begin transaction: %w", txErr)
+			}
+			defer func() { _ = tx.Rollback() }()
+			opCtx := dbent.NewTxContext(ctx, tx)
 
 			if addErr := s.userRepo.AddGroupToAllowedGroups(opCtx, apiKey.UserID, gid); addErr != nil {
 				return nil, fmt.Errorf("add group to user allowed groups: %w", addErr)
@@ -1229,10 +1225,8 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 			if err := s.apiKeyRepo.Update(opCtx, apiKey, APIKeyUpdateFields{GroupID: true}); err != nil {
 				return nil, fmt.Errorf("update api key: %w", err)
 			}
-			if tx != nil {
-				if err := tx.Commit(); err != nil {
-					return nil, fmt.Errorf("commit transaction: %w", err)
-				}
+			if err := tx.Commit(); err != nil {
+				return nil, fmt.Errorf("commit transaction: %w", err)
 			}
 
 			result.AutoGrantedGroupAccess = true
