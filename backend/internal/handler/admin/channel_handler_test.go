@@ -453,10 +453,11 @@ func TestPricingRequestToService_TimePricingNil(t *testing.T) {
 // 避免渠道倍率意外污染账号成本口径。
 func TestPricingRequestToService_MultipliersGatedByFlag(t *testing.T) {
 	req := channelModelPricingRequest{
-		Models:         []string{"gpt-5"},
-		BillingMode:    "token",
-		FastMultiplier: float64Ptr(2.5),
-		FlexMultiplier: float64Ptr(0.5),
+		Models:                       []string{"gpt-5"},
+		BillingMode:                  "token",
+		FastMultiplier:               float64Ptr(2.5),
+		FlexMultiplier:               float64Ptr(0.5),
+		MaxReasoningEffortMultiplier: float64Ptr(3),
 		Intervals: []pricingIntervalRequest{{
 			MinTokens:            272000,
 			InputMultiplier:      float64Ptr(2),
@@ -469,6 +470,7 @@ func TestPricingRequestToService_MultipliersGatedByFlag(t *testing.T) {
 	allowed := pricingRequestToService([]channelModelPricingRequest{req}, true)
 	require.Equal(t, float64Ptr(2.5), allowed[0].FastMultiplier)
 	require.Equal(t, float64Ptr(0.5), allowed[0].FlexMultiplier)
+	require.Equal(t, float64Ptr(3), allowed[0].MaxReasoningEffortMultiplier)
 	require.Equal(t, float64Ptr(2), allowed[0].Intervals[0].InputMultiplier)
 	require.Equal(t, float64Ptr(1.5), allowed[0].Intervals[0].OutputMultiplier)
 	require.Equal(t, float64Ptr(2), allowed[0].Intervals[0].CacheWriteMultiplier)
@@ -477,6 +479,7 @@ func TestPricingRequestToService_MultipliersGatedByFlag(t *testing.T) {
 	dropped := pricingRequestToService([]channelModelPricingRequest{req}, false)
 	require.Nil(t, dropped[0].FastMultiplier)
 	require.Nil(t, dropped[0].FlexMultiplier)
+	require.Nil(t, dropped[0].MaxReasoningEffortMultiplier)
 	require.Nil(t, dropped[0].Intervals[0].InputMultiplier)
 	require.Nil(t, dropped[0].Intervals[0].OutputMultiplier)
 	require.Nil(t, dropped[0].Intervals[0].CacheWriteMultiplier)
@@ -580,9 +583,10 @@ func TestGetModelDefaultPricing_ReturnsFable51CacheTTLs(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	var body struct {
 		Data struct {
-			Found             bool     `json:"found"`
-			CacheWritePrice   float64  `json:"cache_write_price"`
-			CacheWrite1hPrice *float64 `json:"cache_write_1h_price"`
+			Found                        bool     `json:"found"`
+			CacheWritePrice              float64  `json:"cache_write_price"`
+			CacheWrite1hPrice            *float64 `json:"cache_write_1h_price"`
+			MaxReasoningEffortMultiplier *float64 `json:"max_reasoning_effort_multiplier"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
@@ -590,6 +594,8 @@ func TestGetModelDefaultPricing_ReturnsFable51CacheTTLs(t *testing.T) {
 	require.InDelta(t, 12.5e-6, body.Data.CacheWritePrice, 1e-12)
 	require.NotNil(t, body.Data.CacheWrite1hPrice)
 	require.InDelta(t, 20e-6, *body.Data.CacheWrite1hPrice, 1e-12)
+	require.NotNil(t, body.Data.MaxReasoningEffortMultiplier)
+	require.Equal(t, 3.0, *body.Data.MaxReasoningEffortMultiplier)
 }
 
 func TestGetModelDefaultPricing_OmitsUnsupportedCache1hPrice(t *testing.T) {

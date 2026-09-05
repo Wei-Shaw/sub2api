@@ -865,6 +865,7 @@ function addPricingEntry(sectionIdx: number) {
     cache_read_price: null,
     fast_multiplier: null,
     flex_multiplier: null,
+    max_reasoning_effort_multiplier: null,
     image_input_price: null,
     image_output_price: null,
     per_request_price: null,
@@ -902,6 +903,7 @@ async function syncLatestModels(sectionIdx: number) {
       cache_read_price: null,
       fast_multiplier: null,
       flex_multiplier: null,
+      max_reasoning_effort_multiplier: null,
       image_input_price: null,
       image_output_price: null,
       per_request_price: null,
@@ -1132,6 +1134,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
         cache_read_price: mTokToPerToken(entry.cache_read_price),
         fast_multiplier: entry.fast_multiplier != null && entry.fast_multiplier !== '' ? Number(entry.fast_multiplier) : null,
         flex_multiplier: entry.flex_multiplier != null && entry.flex_multiplier !== '' ? Number(entry.flex_multiplier) : null,
+        max_reasoning_effort_multiplier: entry.max_reasoning_effort_multiplier != null && entry.max_reasoning_effort_multiplier !== '' ? Number(entry.max_reasoning_effort_multiplier) : null,
         image_input_price: mTokToPerToken(entry.image_input_price),
         image_output_price: mTokToPerToken(entry.image_output_price),
         per_request_price: entry.per_request_price != null && entry.per_request_price !== '' ? Number(entry.per_request_price) : null,
@@ -1234,6 +1237,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
         cache_read_price: perTokenToMTok(p.cache_read_price),
         fast_multiplier: p.fast_multiplier,
         flex_multiplier: p.flex_multiplier,
+        max_reasoning_effort_multiplier: p.max_reasoning_effort_multiplier,
         image_input_price: perTokenToMTok(p.image_input_price),
         image_output_price: perTokenToMTok(p.image_output_price),
         per_request_price: p.per_request_price,
@@ -1541,7 +1545,8 @@ async function handleSubmit() {
   for (const section of form.platforms.filter(s => s.enabled)) {
     for (const entry of section.model_pricing) {
       if (!isValidPositiveMultiplier(entry.fast_multiplier) ||
-          !isValidPositiveMultiplier(entry.flex_multiplier)) {
+          !isValidPositiveMultiplier(entry.flex_multiplier) ||
+          !isValidPositiveMultiplier(entry.max_reasoning_effort_multiplier)) {
         const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
         const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')
         appStore.showError(`${platformLabel} - ${modelLabel}: ${t('admin.channels.form.multiplierPositive')}`)

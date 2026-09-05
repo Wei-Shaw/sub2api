@@ -478,6 +478,18 @@ func TestTryModelFilePricing_Success(t *testing.T) {
 	require.InDelta(t, 0.2, *result, 1e-12)
 }
 
+func TestTryModelFilePricing_Fable51MaxEffortUsesTripleQuota(t *testing.T) {
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"claude-fable-5-1": {InputPricePerToken: 0.001},
+	})
+	tokens := UsageTokens{InputTokens: 100}
+	standard := tryModelFilePricing(bs, "claude-fable-5-1", tokens, "", "xhigh")
+	max := tryModelFilePricing(bs, "claude-fable-5-1", tokens, "", "max")
+	require.NotNil(t, standard)
+	require.NotNil(t, max)
+	require.InDelta(t, *standard*3, *max, 1e-12)
+}
+
 func TestTryModelFilePricing_AppliesLongContextPricing(t *testing.T) {
 	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
 		"gpt-5.6-sol": {

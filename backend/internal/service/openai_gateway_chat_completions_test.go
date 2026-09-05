@@ -148,6 +148,11 @@ func TestNormalizeResponsesBodyServiceTier(t *testing.T) {
 	require.Equal(t, "scale", tier)
 	require.Equal(t, "scale", gjson.GetBytes(body, "service_tier").String())
 
+	body, tier, err = normalizeResponsesBodyServiceTier([]byte(`{"model":"gpt-5.6-sol","service_tier":"ultrafast"}`))
+	require.NoError(t, err)
+	require.Equal(t, "ultrafast", tier)
+	require.Equal(t, "ultrafast", gjson.GetBytes(body, "service_tier").String())
+
 	// 真未知值才会被删除。
 	body, tier, err = normalizeResponsesBodyServiceTier([]byte(`{"model":"gpt-5.1","service_tier":"turbo"}`))
 	require.NoError(t, err)

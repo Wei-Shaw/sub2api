@@ -12,6 +12,18 @@ const openAIReasoningEffortValues = [
   "xhigh",
   "max",
 ] as const;
+const openAIReasoningEffortSourceValues = [
+  "none",
+  ...openAIReasoningEffortValues,
+] as const;
+
+const anthropicReasoningEffortValues = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
 
 const reasoningEffortMatchTypes: readonly ReasoningEffortMatchType[] = [
   "exact",
@@ -25,14 +37,16 @@ export const reasoningEffortOverLimitDeny = "deny";
 const reasoningEffortValuesForPlatform = (
   platform: GroupPlatform,
 ): readonly string[] =>
-  supportsReasoningEffortPolicyPlatform(platform)
-    ? openAIReasoningEffortValues
-    : [];
+  platform === "anthropic"
+    ? anthropicReasoningEffortValues
+    : supportsReasoningEffortPolicyPlatform(platform)
+      ? openAIReasoningEffortValues
+      : [];
 
 export function supportsReasoningEffortPolicyPlatform(
   platform: GroupPlatform,
 ): boolean {
-  return platform === "openai" || platform === "composite";
+  return platform === "anthropic" || platform === "openai" || platform === "composite";
 }
 
 export function reasoningEffortOptionsForPlatform(platform: GroupPlatform) {
@@ -40,6 +54,15 @@ export function reasoningEffortOptionsForPlatform(platform: GroupPlatform) {
     value,
     label: value,
   }));
+}
+
+export function reasoningEffortSourceOptionsForPlatform(
+  platform: GroupPlatform,
+) {
+  return (supportsReasoningEffortPolicyPlatform(platform)
+    ? openAIReasoningEffortSourceValues
+    : []
+  ).map((value) => ({ value, label: value }));
 }
 
 export function normalizeReasoningEffortForPlatform(
@@ -52,6 +75,17 @@ export function normalizeReasoningEffortForPlatform(
   )
     ? normalized
     : "";
+}
+
+export function normalizeReasoningEffortSourceForPlatform(
+  platform: GroupPlatform,
+  value: string | null | undefined,
+): string {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  return supportsReasoningEffortPolicyPlatform(platform) &&
+    normalized === "none"
+    ? "none"
+    : normalizeReasoningEffortForPlatform(platform, value);
 }
 
 export function normalizeReasoningEffortMatchType(
@@ -154,7 +188,10 @@ export function reasoningEffortMappingsToRows(
   const indexByScope = new Map<string, number>();
 
   (mappings ?? []).forEach((mapping) => {
-    const from = normalizeReasoningEffortForPlatform(platform, mapping.from);
+    const from = normalizeReasoningEffortSourceForPlatform(
+      platform,
+      mapping.from,
+    );
     const to = normalizeReasoningEffortForPlatform(platform, mapping.to);
     if (!from || !to) return;
 
@@ -225,7 +262,7 @@ export function validateReasoningEffortMappings(
       const to = pair.to.trim();
       if (!from) {
         errors[pair.id] = { ...errors[pair.id], from: "fromRequired" };
-      } else if (!normalizeReasoningEffortForPlatform(platform, from)) {
+      } else if (!normalizeReasoningEffortSourceForPlatform(platform, from)) {
         errors[pair.id] = { ...errors[pair.id], from: "unsupportedFrom" };
       } else {
         const key = `${scope}\0${from.toLowerCase()}`;

@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,13 +16,55 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestNormalizeOpenAIReasoningEffortForGPT56(t *testing.T) {
+func TestAstraForwardPreservesMaxInPayloadAndUsage(t *testing.T) {
+	for _, requestedModel := range []string{"gpt-6-astra", "astra-public"} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stream=%t", requestedModel, stream), func(t *testing.T) {
+				response := `{"id":"resp_astra","model":"gpt-6-astra","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":1,"output_tokens":2}}`
+				contentType := "application/json"
+				if stream {
+					response = "data: {\"type\":\"response.completed\",\"response\":" + response + "}\n\ndata: [DONE]\n\n"
+					contentType = "text/event-stream"
+				}
+				upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: http.StatusOK,
+					Header: http.Header{"Content-Type": []string{contentType}}, Body: io.NopCloser(strings.NewReader(response))}}
+				svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+				account := rawGPT56ResponsesAPIKeyAccount(requestedModel, "gpt-6-astra")
+				body, err := json.Marshal(map[string]any{"model": requestedModel, "stream": stream, "input": "hello", "reasoning": map[string]string{"effort": "max"}})
+				require.NoError(t, err)
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(body)))
+				SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+				result, err := svc.Forward(context.Background(), c, account, body)
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Equal(t, "gpt-6-astra", gjson.GetBytes(upstream.lastBody, "model").String())
+				require.Equal(t, "max", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
+				require.NotNil(t, result.ReasoningEffort)
+				require.Equal(t, "max", *result.ReasoningEffort)
+				usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+				billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+				usageService := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+				err = usageService.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+					Result: result, Account: account, User: &User{ID: 21}, APIKey: &APIKey{ID: 22, Group: &Group{RateMultiplier: 1}},
+				})
+				require.NoError(t, err)
+				require.NotNil(t, usageRepo.lastLog)
+				require.Equal(t, "max", *usageRepo.lastLog.ReasoningEffort)
+				require.Equal(t, "max", *usageRepo.lastLog.RequestedReasoningEffort)
+			})
+		}
+	}
+}
+
+func TestNormalizeOpenAIReasoningEffortForMaxCapableModels(t *testing.T) {
 	tests := []struct {
 		name  string
 		raw   string
 		model string
 		want  string
 	}{
+		{name: "Astra 保留 max", raw: "max", model: "gpt-6-astra", want: "max"},
 		{name: "Sol 保留 max", raw: "max", model: "gpt-5.6-sol", want: "max"},
 		{name: "Terra 保留 max", raw: "max", model: "openai/gpt-5.6-terra", want: "max"},
 		{name: "Luna 后缀保留 max", raw: "max", model: "gpt-5.6-luna-2026-07-09", want: "max"},

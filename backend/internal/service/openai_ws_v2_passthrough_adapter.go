@@ -1396,10 +1396,15 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	var firstOutputTimeoutErr *openAIWSPassthroughFirstOutputTimeoutError
 	if errors.As(relayErr, &firstOutputTimeoutErr) {
 		deadline := firstOutputTimeoutErr.deadline
+		// The relay ran over the WebSocket transport, so a missing managed
+		// proxy is an unknown route (http.DefaultClient), not a direct one.
+		wsProxyID, wsProxyName := opsUpstreamWSProxyAttribution(account)
 		failoverErr := s.newOpenAIFirstOutputTimeoutError(
 			ctx,
 			c,
 			account,
+			wsProxyID,
+			wsProxyName,
 			deadline.startedAt,
 			deadline.requestModel,
 			deadline.reasoningEffort,
@@ -1472,21 +1477,9 @@ func openAIWSPassthroughRelayClientClose(exit openaiwsv2.RelayExit, completedTur
 }
 
 func markOpenAIWSV2PassthroughCyberPolicy(c *gin.Context, payload []byte) bool {
-	hit, code, message := detectOpenAICyberPolicy(payload)
-	if !hit {
-		return false
-	}
 	usage := OpenAIUsage{}
 	parseOpenAIWSResponseUsageFromCompletedEvent(payload, &usage)
-	MarkOpsCyberPolicy(c, CyberPolicyMark{
-		Code:           code,
-		Message:        message,
-		Body:           truncateString(string(payload), 4096),
-		UpstreamStatus: http.StatusOK,
-		UpstreamInTok:  usage.InputTokens,
-		UpstreamOutTok: usage.OutputTokens,
-	})
-	return true
+	return markOpenAICyberPolicyEvent(c, payload, http.StatusOK, &usage)
 }
 
 func (s *OpenAIGatewayService) mapOpenAIWSPassthroughDialError(

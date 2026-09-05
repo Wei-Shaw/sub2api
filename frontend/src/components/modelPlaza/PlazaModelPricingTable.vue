@@ -99,6 +99,13 @@
               >
                 {{ t('modelPlaza.table.marginalBadge') }}
               </span>
+              <span
+                v-if="m.pricing?.max_reasoning_effort_multiplier"
+                class="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+                :title="t('modelPlaza.table.maxReasoningMultiplierHint', { multiplier: m.pricing.max_reasoning_effort_multiplier })"
+              >
+                {{ t('modelPlaza.table.maxReasoningMultiplierBadge', { multiplier: m.pricing.max_reasoning_effort_multiplier }) }}
+              </span>
             </div>
           </td>
 
