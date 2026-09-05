@@ -75,6 +75,8 @@ type APIKeyUpdateFields struct {
 	RateLimitUsage bool
 	// IPRules 覆盖 ip_whitelist 与 ip_blacklist。
 	IPRules bool
+	// MaxRateMultiplier controls the maximum effective billing multiplier.
+	MaxRateMultiplier bool
 }
 
 // IsEmpty 报告该次 Update 是否不写任何列。
@@ -223,6 +225,8 @@ type CreateAPIKeyRequest struct {
 	RateLimit5h float64 `json:"rate_limit_5h"`
 	RateLimit1d float64 `json:"rate_limit_1d"`
 	RateLimit7d float64 `json:"rate_limit_7d"`
+	// Maximum effective billing multiplier (nil = unlimited).
+	MaxRateMultiplier *float64 `json:"max_rate_multiplier"`
 }
 
 // UpdateAPIKeyRequest 更新API Key请求
@@ -240,10 +244,12 @@ type UpdateAPIKeyRequest struct {
 	ResetQuota      *bool      `json:"reset_quota"` // Reset quota_used to 0
 
 	// Rate limit fields (nil = no change, 0 = unlimited)
-	RateLimit5h         *float64 `json:"rate_limit_5h"`
-	RateLimit1d         *float64 `json:"rate_limit_1d"`
-	RateLimit7d         *float64 `json:"rate_limit_7d"`
-	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // Reset all usage counters to 0
+	RateLimit5h            *float64 `json:"rate_limit_5h"`
+	RateLimit1d            *float64 `json:"rate_limit_1d"`
+	RateLimit7d            *float64 `json:"rate_limit_7d"`
+	ResetRateLimitUsage    *bool    `json:"reset_rate_limit_usage"` // Reset all usage counters to 0
+	MaxRateMultiplier      *float64 `json:"max_rate_multiplier"`
+	ClearMaxRateMultiplier bool     `json:"clear_max_rate_multiplier"`
 }
 
 func validateAPIKeyLimit(v float64) error {
@@ -256,6 +262,11 @@ func validateAPIKeyLimit(v float64) error {
 func validateCreateAPIKeyRequest(req CreateAPIKeyRequest) error {
 	for _, v := range []float64{req.Quota, req.RateLimit5h, req.RateLimit1d, req.RateLimit7d} {
 		if err := validateAPIKeyLimit(v); err != nil {
+			return err
+		}
+	}
+	if req.MaxRateMultiplier != nil {
+		if err := validateAPIKeyLimit(*req.MaxRateMultiplier); err != nil {
 			return err
 		}
 	}
@@ -273,6 +284,11 @@ func validateUpdateAPIKeyRequest(req UpdateAPIKeyRequest) error {
 			}
 		}
 	}
+	if req.MaxRateMultiplier != nil {
+		if err := validateAPIKeyLimit(*req.MaxRateMultiplier); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -288,6 +304,8 @@ type APIKeyService struct {
 	groupRepo                 GroupRepository
 	userSubRepo               UserSubscriptionRepository
 	userGroupRateRepo         UserGroupRateRepository
+	userGroupRateResolver     *userGroupRateResolver
+	userGroupRateSF           singleflight.Group
 	cache                     APIKeyCache
 	rateLimitCacheInvalid     RateLimitCacheInvalidator // optional: invalidate Redis rate limit cache
 	concurrencyService        *ConcurrencyService
@@ -349,6 +367,13 @@ func NewAPIKeyService(
 		cache:             cache,
 		cfg:               cfg,
 	}
+	svc.userGroupRateResolver = newUserGroupRateResolver(
+		userGroupRateRepo,
+		nil,
+		resolveUserGroupRateCacheTTL(cfg),
+		&svc.userGroupRateSF,
+		"service.api_key",
+	)
 	svc.initAuthCache(cfg)
 	lookupConcurrency := defaultAuthLookupConcurrency
 	if cfg != nil && cfg.APIKeyAuth.LookupConcurrency > 0 {
@@ -532,18 +557,19 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 
 	// 创建API Key记录
 	apiKey := &APIKey{
-		UserID:      userID,
-		Key:         key,
-		Name:        html.EscapeString(req.Name),
-		GroupID:     req.GroupID,
-		Status:      StatusActive,
-		IPWhitelist: req.IPWhitelist,
-		IPBlacklist: req.IPBlacklist,
-		Quota:       req.Quota,
-		QuotaUsed:   0,
-		RateLimit5h: req.RateLimit5h,
-		RateLimit1d: req.RateLimit1d,
-		RateLimit7d: req.RateLimit7d,
+		UserID:            userID,
+		Key:               key,
+		Name:              html.EscapeString(req.Name),
+		GroupID:           req.GroupID,
+		Status:            StatusActive,
+		IPWhitelist:       req.IPWhitelist,
+		IPBlacklist:       req.IPBlacklist,
+		Quota:             req.Quota,
+		QuotaUsed:         0,
+		RateLimit5h:       req.RateLimit5h,
+		RateLimit1d:       req.RateLimit1d,
+		RateLimit7d:       req.RateLimit7d,
+		MaxRateMultiplier: req.MaxRateMultiplier,
 	}
 
 	// Set expiration time if specified
@@ -882,6 +908,13 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		apiKey.RateLimit7d = *req.RateLimit7d
 		fields.RateLimits = true
 	}
+	if req.MaxRateMultiplier != nil {
+		apiKey.MaxRateMultiplier = req.MaxRateMultiplier
+		fields.MaxRateMultiplier = true
+	} else if req.ClearMaxRateMultiplier {
+		apiKey.MaxRateMultiplier = nil
+		fields.MaxRateMultiplier = true
+	}
 	resetRateLimit := req.ResetRateLimitUsage != nil && *req.ResetRateLimitUsage
 	if resetRateLimit {
 		apiKey.Usage5h = 0
@@ -1115,6 +1148,30 @@ func (s *APIKeyService) CheckAPIKeyQuotaAndExpiry(apiKey *APIKey) error {
 	}
 
 	return nil
+}
+
+// CheckAPIKeyMaxRateMultiplier reports whether the current effective billing
+// multiplier exceeds the optional limit configured on the API key. The
+// effective value follows the billing path: user/group override, group base
+// multiplier, then the configured peak multiplier when applicable.
+func (s *APIKeyService) CheckAPIKeyMaxRateMultiplier(ctx context.Context, apiKey *APIKey, at time.Time) (current, maximum float64, exceeded bool) {
+	if apiKey == nil || apiKey.MaxRateMultiplier == nil {
+		return 0, 0, false
+	}
+
+	current = 1.0
+	if s != nil && s.cfg != nil {
+		current = s.cfg.Default.RateMultiplier
+	}
+	if apiKey.Group != nil {
+		current = apiKey.Group.RateMultiplier
+		if s != nil && s.userGroupRateResolver != nil && apiKey.GroupID != nil {
+			current = s.userGroupRateResolver.Resolve(ctx, apiKey.UserID, *apiKey.GroupID, current)
+		}
+		current *= apiKey.Group.PeakMultiplierAt(at)
+	}
+	maximum = *apiKey.MaxRateMultiplier
+	return current, maximum, current > maximum
 }
 
 // UpdateQuotaUsed updates the quota_used field after a request

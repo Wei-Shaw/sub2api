@@ -51,6 +51,9 @@ type APIKey struct {
 	Quota     float64    // Quota limit in USD (0 = unlimited)
 	QuotaUsed float64    // Used quota amount
 	ExpiresAt *time.Time // Expiration time (nil = never expires)
+	// MaxRateMultiplier limits the effective billing multiplier for this key.
+	// nil means no price protection is configured.
+	MaxRateMultiplier *float64
 
 	// Rate limit fields
 	RateLimit5h   float64    // Rate limit in USD per 5h (0 = unlimited)
