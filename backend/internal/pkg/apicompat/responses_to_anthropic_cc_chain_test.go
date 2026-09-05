@@ -100,3 +100,40 @@ func TestCCChain_WellFormedMultiRound(t *testing.T) {
 	}
 	require.True(t, sawA && sawB, "both well-formed calls should be preserved")
 }
+
+func TestCCChain_PreservesStructuredOutputFormat(t *testing.T) {
+	tests := []struct {
+		name           string
+		responseFormat json.RawMessage
+		expectedSchema string
+	}{
+		{
+			name:           "json_schema",
+			responseFormat: json.RawMessage(`{"type":"json_schema","json_schema":{"name":"cities","strict":true,"schema":{"type":"object","properties":{"cities":{"type":"array"}},"additionalProperties":false}}}`),
+			expectedSchema: `{"type":"object","properties":{"cities":{"type":"array"}},"additionalProperties":false}`,
+		},
+		{
+			name:           "json_object",
+			responseFormat: json.RawMessage(`{"type":"json_object"}`),
+			expectedSchema: `{"type":"object"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			responsesReq, err := ChatCompletionsToResponses(&ChatCompletionsRequest{
+				Model:          "gemini-2.5-flash",
+				Messages:       []ChatMessage{{Role: "user", Content: json.RawMessage(`"Return JSON"`)}},
+				ResponseFormat: tt.responseFormat,
+			})
+			require.NoError(t, err)
+
+			anthropicReq, err := ResponsesToAnthropicRequest(responsesReq)
+			require.NoError(t, err)
+			require.NotNil(t, anthropicReq.OutputConfig)
+			require.NotNil(t, anthropicReq.OutputConfig.Format)
+			require.Equal(t, "json_schema", anthropicReq.OutputConfig.Format.Type)
+			require.JSONEq(t, tt.expectedSchema, string(anthropicReq.OutputConfig.Format.Schema))
+		})
+	}
+}

@@ -70,6 +70,37 @@ func responsesTextFormatToChatResponseFormat(raw json.RawMessage) json.RawMessag
 	return out
 }
 
+func responsesTextFormatToAnthropicJSONOutputFormat(raw json.RawMessage) *AnthropicJSONOutputFormat {
+	raw = normalizedRawJSON(raw)
+	if len(raw) == 0 {
+		return nil
+	}
+
+	obj, ok := rawJSONObject(raw)
+	if !ok {
+		return nil
+	}
+
+	switch rawString(obj["type"]) {
+	case "json_object":
+		return &AnthropicJSONOutputFormat{
+			Type:   "json_schema",
+			Schema: json.RawMessage(`{"type":"object"}`),
+		}
+	case "json_schema":
+		schema := normalizedRawJSON(obj["schema"])
+		if len(schema) == 0 {
+			return nil
+		}
+		return &AnthropicJSONOutputFormat{
+			Type:   "json_schema",
+			Schema: schema,
+		}
+	default:
+		return nil
+	}
+}
+
 func normalizedRawJSON(raw json.RawMessage) json.RawMessage {
 	raw = bytesTrimSpace(raw)
 	if len(raw) == 0 || string(raw) == "null" {

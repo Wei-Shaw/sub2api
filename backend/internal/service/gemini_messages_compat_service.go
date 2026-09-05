@@ -3754,10 +3754,42 @@ func convertClaudeGenerationConfig(req map[string]any) map[string]any {
 	if stopSeq, ok := req["stop_sequences"].([]any); ok && len(stopSeq) > 0 {
 		out["stopSequences"] = stopSeq
 	}
+	if schema := claudeStructuredOutputSchema(req); schema != nil {
+		out["responseMimeType"] = "application/json"
+		out["responseSchema"] = cleanToolSchema(schema)
+	}
 	if len(out) == 0 {
 		return nil
 	}
 	return out
+}
+
+func claudeStructuredOutputSchema(req map[string]any) map[string]any {
+	format := claudeOutputFormat(req["output_config"])
+	if format == nil {
+		format = claudeOutputFormat(req["output_format"])
+	}
+	if format == nil {
+		return nil
+	}
+
+	formatType, _ := format["type"].(string)
+	if !strings.EqualFold(formatType, "json_schema") && !strings.EqualFold(formatType, "json") {
+		return nil
+	}
+	schema, _ := format["schema"].(map[string]any)
+	return schema
+}
+
+func claudeOutputFormat(outputConfig any) map[string]any {
+	config, ok := outputConfig.(map[string]any)
+	if !ok {
+		return nil
+	}
+	if format, ok := config["format"].(map[string]any); ok {
+		return format
+	}
+	return config
 }
 
 func (s *GeminiMessagesCompatService) extractImageInputSize(body []byte) string {

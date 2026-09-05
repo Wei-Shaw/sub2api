@@ -48,6 +48,17 @@ func TestPrepareBedrockRequestBody_OutputFormatInlineSchema(t *testing.T) {
 		assert.Contains(t, contentArr[1].Get("text").String(), `"result":"number"`)
 	})
 
+	t.Run("schema in output_config format is inlined", func(t *testing.T) {
+		input := `{"model":"claude-sonnet-4-5","output_config":{"format":{"type":"json_schema","schema":{"type":"object","properties":{"result":{"type":"number"}}}}},"messages":[{"role":"user","content":"compute this"}]}`
+		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-sonnet-4-5-v1", "")
+		require.NoError(t, err)
+
+		assert.False(t, gjson.GetBytes(result, "output_config").Exists())
+		contentArr := gjson.GetBytes(result, "messages.0.content").Array()
+		require.Len(t, contentArr, 2)
+		assert.Contains(t, contentArr[1].Get("text").String(), `"result":{"type":"number"}`)
+	})
+
 	t.Run("no schema field just removes output_format", func(t *testing.T) {
 		input := `{"model":"claude-sonnet-4-5","output_format":{"type":"json"},"messages":[{"role":"user","content":"hi"}]}`
 		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-sonnet-4-5-v1", "")
