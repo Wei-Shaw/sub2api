@@ -117,6 +117,8 @@ Apple-specific handling of shared settings:
 | `BIND_HOST`, `SERVER_PORT` | Used for the macOS published port |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | PostgreSQL first initialization only |
 | `REDIS_PASSWORD` | Applied to Redis and Sub2API |
+| `REDIS_SAVE_SECONDS`, `REDIS_SAVE_CHANGES` | Configure the Redis RDB snapshot rule |
+| `REDIS_LATENCY_MONITOR_THRESHOLD_MS` | Configures Redis latency monitoring; `0` disables it |
 | `DATABASE_PORT`, `REDIS_PORT` | Internal ports are fixed to 5432 and 6379 |
 | `POSTGRES_MAX_*`, `REDIS_MAXCLIENTS` | Not currently applied to the database/cache server |
 

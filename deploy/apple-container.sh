@@ -30,6 +30,9 @@ POSTGRES_USER=""
 POSTGRES_PASSWORD=""
 POSTGRES_DB=""
 REDIS_PASSWORD=""
+REDIS_SAVE_SECONDS=""
+REDIS_SAVE_CHANGES=""
+REDIS_LATENCY_MONITOR_THRESHOLD_MS=""
 TZ_VALUE=""
 POSTGRES_ADDRESS=""
 REDIS_ADDRESS=""
@@ -371,6 +374,20 @@ validate_port() {
         die "SERVER_PORT must be between 1025 and 65535 for Apple container port forwarding."
 }
 
+validate_positive_integer() {
+    local key=$1
+    local value=$2
+
+    [[ "${value}" =~ ^[1-9][0-9]*$ ]] || die "${key} must be a positive integer: ${value}"
+}
+
+validate_nonnegative_integer() {
+    local key=$1
+    local value=$2
+
+    [[ "${value}" =~ ^(0|[1-9][0-9]*)$ ]] || die "${key} must be a non-negative integer: ${value}"
+}
+
 validate_ipv4_address() {
     local address=$1
     local first second third fourth extra octet
@@ -409,6 +426,9 @@ prepare_environment() {
     POSTGRES_PASSWORD="$(read_env_value POSTGRES_PASSWORD)"
     POSTGRES_DB="$(read_env_value POSTGRES_DB sub2api)"
     REDIS_PASSWORD="$(read_env_value REDIS_PASSWORD)"
+    REDIS_SAVE_SECONDS="$(read_env_value REDIS_SAVE_SECONDS 60)"
+    REDIS_SAVE_CHANGES="$(read_env_value REDIS_SAVE_CHANGES 1)"
+    REDIS_LATENCY_MONITOR_THRESHOLD_MS="$(read_env_value REDIS_LATENCY_MONITOR_THRESHOLD_MS 0)"
     TZ_VALUE="$(read_env_value TZ Asia/Shanghai)"
 
     [[ -n "${BIND_HOST}" ]] || die "BIND_HOST must not be empty."
@@ -421,6 +441,9 @@ prepare_environment() {
     fi
     [[ -n "${POSTGRES_USER}" ]] || die "POSTGRES_USER must not be empty."
     [[ -n "${POSTGRES_DB}" ]] || die "POSTGRES_DB must not be empty."
+    validate_positive_integer REDIS_SAVE_SECONDS "${REDIS_SAVE_SECONDS}"
+    validate_positive_integer REDIS_SAVE_CHANGES "${REDIS_SAVE_CHANGES}"
+    validate_nonnegative_integer REDIS_LATENCY_MONITOR_THRESHOLD_MS "${REDIS_LATENCY_MONITOR_THRESHOLD_MS}"
     if [[ -z "${POSTGRES_PASSWORD}" || "${POSTGRES_PASSWORD}" == "change_this_secure_password" ]]; then
         die "Set a secure POSTGRES_PASSWORD in ${ENV_FILE}."
     fi
@@ -444,6 +467,9 @@ EOF
 
     cat >"${REDIS_ENV_FILE}" <<EOF
 REDIS_PASSWORD=${REDIS_PASSWORD}
+REDIS_SAVE_SECONDS=${REDIS_SAVE_SECONDS}
+REDIS_SAVE_CHANGES=${REDIS_SAVE_CHANGES}
+REDIS_LATENCY_MONITOR_THRESHOLD_MS=${REDIS_LATENCY_MONITOR_THRESHOLD_MS}
 TZ=${TZ_VALUE}
 EOF
     if [[ -n "${REDIS_PASSWORD}" ]]; then
@@ -501,7 +527,7 @@ create_redis_container() {
         --env-file "${REDIS_ENV_FILE}" \
         --volume "${REDIS_VOLUME}:/var/lib/redis" \
         "${REDIS_IMAGE}" \
-        sh -c 'set -e; mkdir -p /var/lib/redis/data; chown redis:redis /var/lib/redis/data; exec /usr/local/bin/docker-entrypoint.sh redis-server --dir /var/lib/redis/data --save 60 1 --appendonly yes --appendfsync everysec ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}' \
+        sh -c 'set -e; mkdir -p /var/lib/redis/data; chown redis:redis /var/lib/redis/data; exec /usr/local/bin/docker-entrypoint.sh redis-server --dir /var/lib/redis/data --save "${REDIS_SAVE_SECONDS:-60}" "${REDIS_SAVE_CHANGES:-1}" --appendonly yes --appendfsync everysec --latency-monitor-threshold "${REDIS_LATENCY_MONITOR_THRESHOLD_MS:-0}" ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}' \
         >/dev/null
 }
 
