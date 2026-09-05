@@ -385,7 +385,7 @@ func (r *proxyRepository) listWithAccountCountSort(ctx context.Context, q *dbent
 }
 
 func (r *proxyRepository) buildProxyWithAccountCountResult(ctx context.Context, proxies []*dbent.Proxy, params pagination.PaginationParams, total int64) ([]service.ProxyWithAccountCount, *pagination.PaginationResult, error) {
-	counts, err := r.GetAccountCountsForProxies(ctx)
+	stats, err := r.GetAccountCountsForProxies(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -396,9 +396,12 @@ func (r *proxyRepository) buildProxyWithAccountCountResult(ctx context.Context, 
 		if proxyOut == nil {
 			continue
 		}
+		st := stats[proxyOut.ID]
 		result = append(result, service.ProxyWithAccountCount{
-			Proxy:        *proxyOut,
-			AccountCount: counts[proxyOut.ID],
+			Proxy:             *proxyOut,
+			AccountCount:      st.Total,
+			ErrorAccountCount: st.ErrorCount,
+			PlatformCounts:    st.Platforms,
 		})
 	}
 
@@ -520,31 +523,59 @@ func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, pro
 	return out, nil
 }
 
-// GetAccountCountsForProxies returns a map of proxy ID to account count for all proxies
-func (r *proxyRepository) GetAccountCountsForProxies(ctx context.Context) (counts map[int64]int64, err error) {
-	rows, err := r.sql.QueryContext(ctx, "SELECT proxy_id, COUNT(*) AS count FROM accounts WHERE proxy_id IS NOT NULL AND deleted_at IS NULL GROUP BY proxy_id")
+// GetAccountCountsForProxies returns per-proxy account stats: total count, error count
+// and the per-platform breakdown.
+// 「异常」口径固定为 status == StatusError，与 service/ops_account_availability.go 的
+// hasError 保持一致；若以后要把限流/过载也算作异常，两处需要一起改。
+func (r *proxyRepository) GetAccountCountsForProxies(ctx context.Context) (stats map[int64]service.ProxyAccountStats, err error) {
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT proxy_id,
+		       platform,
+		       COUNT(*)                            AS total,
+		       COUNT(*) FILTER (WHERE status = $1) AS error_count
+		FROM accounts
+		WHERE proxy_id IS NOT NULL AND deleted_at IS NULL
+		GROUP BY proxy_id, platform
+		ORDER BY proxy_id, platform
+	`, service.StatusError)
 	if err != nil {
 		return nil, err
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil && err == nil {
 			err = closeErr
-			counts = nil
+			stats = nil
 		}
 	}()
 
-	counts = make(map[int64]int64)
+	stats = make(map[int64]service.ProxyAccountStats)
 	for rows.Next() {
-		var proxyID, count int64
-		if err = rows.Scan(&proxyID, &count); err != nil {
+		var (
+			proxyID    int64
+			platform   string
+			total      int64
+			errorCount int64
+		)
+		if err = rows.Scan(&proxyID, &platform, &total, &errorCount); err != nil {
 			return nil, err
 		}
-		counts[proxyID] = count
+		entry := stats[proxyID]
+		entry.Total += total
+		entry.ErrorCount += errorCount
+		// 平台为空的脏数据仍计入总数，但不生成徽章
+		if platform != "" {
+			entry.Platforms = append(entry.Platforms, service.ProxyPlatformAccountCount{
+				Platform:   platform,
+				Count:      total,
+				ErrorCount: errorCount,
+			})
+		}
+		stats[proxyID] = entry
 	}
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
-	return counts, nil
+	return stats, nil
 }
 
 // ListActiveWithAccountCount returns all active proxies with account count, sorted by creation time descending
@@ -558,7 +589,7 @@ func (r *proxyRepository) ListActiveWithAccountCount(ctx context.Context) ([]ser
 	}
 
 	// Get account counts
-	counts, err := r.GetAccountCountsForProxies(ctx)
+	stats, err := r.GetAccountCountsForProxies(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -570,9 +601,12 @@ func (r *proxyRepository) ListActiveWithAccountCount(ctx context.Context) ([]ser
 		if proxyOut == nil {
 			continue
 		}
+		st := stats[proxyOut.ID]
 		result = append(result, service.ProxyWithAccountCount{
-			Proxy:        *proxyOut,
-			AccountCount: counts[proxyOut.ID],
+			Proxy:             *proxyOut,
+			AccountCount:      st.Total,
+			ErrorAccountCount: st.ErrorCount,
+			PlatformCounts:    st.Platforms,
 		})
 	}
 

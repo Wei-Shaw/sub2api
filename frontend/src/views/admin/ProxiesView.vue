@@ -199,20 +199,66 @@
           </template>
 
           <template #cell-account_count="{ row, value }">
-            <button
-              v-if="(value || 0) > 0"
-              type="button"
-              class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-primary-700 hover:bg-gray-200 dark:bg-dark-600 dark:text-primary-300 dark:hover:bg-dark-500"
-              @click="openAccountsModal(row)"
-            >
-              {{ t('admin.groups.accountsCount', { count: value || 0 }) }}
-            </button>
-            <span
-              v-else
-              class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800 dark:bg-dark-600 dark:text-gray-300"
-            >
-              {{ t('admin.groups.accountsCount', { count: 0 }) }}
-            </span>
+            <div class="flex flex-col items-start gap-1 md:items-end">
+              <!-- 第一行：总数 + 异常标记 -->
+              <div class="flex flex-wrap items-center gap-1">
+                <button
+                  v-if="(value || 0) > 0"
+                  type="button"
+                  class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-primary-700 hover:bg-gray-200 dark:bg-dark-600 dark:text-primary-300 dark:hover:bg-dark-500"
+                  @click="openAccountsModal(row)"
+                >
+                  {{ t('admin.groups.accountsCount', { count: value || 0 }) }}
+                </button>
+                <span
+                  v-else
+                  class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800 dark:bg-dark-600 dark:text-gray-300"
+                >
+                  {{ t('admin.groups.accountsCount', { count: 0 }) }}
+                </span>
+                <span
+                  v-if="row.error_account_count"
+                  class="inline-flex items-center rounded bg-red-100 px-1.5 py-0.5 text-[11px] font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                  :title="t('admin.proxies.abnormalTooltip', { count: row.error_account_count })"
+                >
+                  {{ t('admin.proxies.abnormalCount', { count: row.error_account_count }) }}
+                </span>
+              </div>
+
+              <!-- 第二行：分平台数量（只渲染有账号的平台），点击按该平台过滤进入 -->
+              <div
+                v-if="row.platform_counts?.length"
+                class="flex max-w-[180px] flex-wrap gap-1 md:justify-end"
+              >
+                <button
+                  v-for="pc in row.platform_counts"
+                  v-show="pc.count > 0"
+                  :key="pc.platform"
+                  type="button"
+                  :class="[
+                    'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium transition-opacity hover:opacity-80',
+                    platformBadgeLightClass(pc.platform)
+                  ]"
+                  :title="
+                    t('admin.proxies.platformAccountsTooltip', {
+                      platform: platformLabel(pc.platform),
+                      count: pc.count
+                    })
+                  "
+                  @click="openAccountsModal(row, pc.platform)"
+                >
+                  <PlatformIcon :platform="pc.platform" size="xs" />
+                  {{ pc.count }}
+                  <span
+                    v-if="pc.error_count"
+                    class="rounded bg-red-100 px-1 text-[10px] font-medium text-red-700 dark:bg-red-900/40 dark:text-red-400"
+                    :title="t('admin.proxies.abnormalTooltip', { count: pc.error_count })"
+                  >
+                    {{ t('admin.proxies.abnormalCount', { count: pc.error_count }) }}
+                  </span>
+                </button>
+              </div>
+            </div>
           </template>
 
           <template #cell-latency="{ row }">
@@ -920,14 +966,40 @@
     <BaseDialog
       :show="showAccountsModal"
       :title="t('admin.proxies.accountsTitle', { name: accountsProxy?.name || '' })"
-      width="normal"
+      width="wide"
       @close="closeAccountsModal"
     >
+      <!-- 平台筛选提示（点击平台徽章进入时显示），重置为纯前端操作 -->
+      <div
+        v-if="accountsPlatformFilter"
+        class="mb-3 flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300"
+      >
+        <span
+          :class="[
+            'inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium',
+            platformBadgeLightClass(accountsPlatformFilter)
+          ]"
+        >
+          <PlatformIcon :platform="accountsPlatformFilter" size="xs" />
+          {{ t('admin.proxies.accountsFilteredBy', { platform: platformLabel(accountsPlatformFilter) }) }}
+        </span>
+        <button
+          type="button"
+          class="text-primary-600 hover:underline dark:text-primary-400"
+          @click="accountsPlatformFilter = null"
+        >
+          {{ t('admin.proxies.accountsAllPlatforms') }}
+        </button>
+      </div>
+
       <div v-if="accountsLoading" class="flex items-center justify-center py-8 text-sm text-gray-500">
         <Icon name="refresh" size="md" class="mr-2 animate-spin" />
         {{ t('common.loading') }}
       </div>
-      <div v-else-if="proxyAccounts.length === 0" class="py-6 text-center text-sm text-gray-500">
+      <div
+        v-else-if="filteredProxyAccounts.length === 0"
+        class="py-6 text-center text-sm text-gray-500"
+      >
         {{ t('admin.proxies.accountsEmpty') }}
       </div>
       <div v-else class="max-h-80 overflow-auto">
@@ -936,14 +1008,18 @@
             <tr>
               <th class="px-4 py-2 text-left">{{ t('admin.proxies.accountName') }}</th>
               <th class="px-4 py-2 text-left">{{ t('admin.accounts.columns.platformType') }}</th>
+              <th class="px-4 py-2 text-left">{{ t('admin.accounts.columns.status') }}</th>
               <th class="px-4 py-2 text-left">{{ t('admin.proxies.accountNotes') }}</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-200 bg-white dark:divide-dark-700 dark:bg-dark-900">
-            <tr v-for="account in proxyAccounts" :key="account.id">
+            <tr v-for="account in filteredProxyAccounts" :key="account.id">
               <td class="px-4 py-2 font-medium text-gray-900 dark:text-white">{{ account.name }}</td>
               <td class="px-4 py-2">
                 <PlatformTypeBadge :platform="account.platform" :type="account.type" />
+              </td>
+              <td class="px-4 py-2">
+                <AccountStatusIndicator :account="account" @show-temp-unsched="handleShowTempUnsched" />
               </td>
               <td class="px-4 py-2 text-gray-600 dark:text-gray-300">
                 {{ account.notes || '-' }}
@@ -953,13 +1029,67 @@
         </table>
       </div>
       <template #footer>
-        <div class="flex justify-end">
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="assignableAccounts.length === 0"
+            @click="openReassign"
+          >
+            {{ t('admin.proxies.reassignAccounts', { count: assignableAccounts.length }) }}
+          </button>
           <button @click="closeAccountsModal" class="btn btn-secondary">
             {{ t('common.close') }}
           </button>
         </div>
       </template>
     </BaseDialog>
+
+    <!-- 分配到其它 IP：轻量选择器，复用账号批量更新接口 -->
+    <BaseDialog
+      :show="showReassign"
+      :title="t('admin.proxies.reassignTitle')"
+      width="narrow"
+      @close="closeReassign"
+    >
+      <div class="space-y-3">
+        <p class="text-sm text-gray-600 dark:text-gray-300">
+          {{ t('admin.proxies.reassignHint', { count: reassignAccountIds.length }) }}
+        </p>
+        <ProxySelector
+          v-model="reassignTargetId"
+          :proxies="reassignProxyOptions"
+          :disabled="reassignSubmitting"
+        />
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            :disabled="reassignSubmitting"
+            @click="closeReassign"
+          >
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="reassignSubmitting"
+            @click="submitReassign"
+          >
+            {{ reassignSubmitting ? t('common.saving') : t('common.confirm') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
+    <TempUnschedStatusModal
+      :show="showTempUnsched"
+      :account="tempUnschedAcc"
+      @close="showTempUnsched = false"
+      @reset="handleTempUnschedReset"
+    />
   </AppLayout>
 </template>
 
@@ -968,7 +1098,7 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { Proxy, ProxyAccountSummary, ProxyProtocol, ProxyQualityCheckResult } from '@/types'
+import type { Account, AccountPlatform, Proxy, ProxyProtocol, ProxyQualityCheckResult } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -982,6 +1112,10 @@ import Select from '@/components/common/Select.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import { AccountStatusIndicator, TempUnschedStatusModal } from '@/components/account'
+import ProxySelector from '@/components/common/ProxySelector.vue'
+import { platformLabel, platformBadgeLightClass } from '@/utils/platformColors'
 import { useClipboard } from '@/composables/useClipboard'
 import { useSwipeSelect } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
@@ -1096,8 +1230,31 @@ useSwipeSelect(proxyTableRef, {
   batchUpdate
 })
 const accountsProxy = ref<Proxy | null>(null)
-const proxyAccounts = ref<ProxyAccountSummary[]>([])
+const proxyAccounts = ref<Account[]>([])
 const accountsLoading = ref(false)
+// 弹窗内的平台筛选（点击平台徽章进入时预设），纯前端过滤，不重新请求
+const accountsPlatformFilter = ref<AccountPlatform | null>(null)
+const filteredProxyAccounts = computed(() =>
+  accountsPlatformFilter.value
+    ? proxyAccounts.value.filter((a) => a.platform === accountsPlatformFilter.value)
+    : proxyAccounts.value
+)
+// 临时不可调度详情弹窗（AccountStatusIndicator 的状态徽章可点击）
+const showTempUnsched = ref(false)
+const tempUnschedAcc = ref<Account | null>(null)
+
+// ── 把弹窗内展示的账号批量分配到其它 IP（复用账号批量更新接口）──
+const showReassign = ref(false)
+const reassignSubmitting = ref(false)
+const reassignTargetId = ref<number | null>(null)
+// 影子账号的 proxy 恒继承母账号，后端在批量携带 proxy 时会整体拒绝，这里先剔除
+const assignableAccounts = computed(() => filteredProxyAccounts.value.filter((a) => !a.parent_account_id))
+// 打开时快照，避免弹窗开着期间列表变动导致改动目标漂移
+const reassignAccountIds = ref<number[]>([])
+// 目标不含当前 IP 自身（分配到自己是空操作）
+const reassignProxyOptions = computed(() =>
+  allProxiesForBackup.value.filter((p) => p.id !== accountsProxy.value?.id)
+)
 const editingProxy = ref<Proxy | null>(null)
 const deletingProxy = ref<Proxy | null>(null)
 const showQualityReportDialog = ref(false)
@@ -1994,9 +2151,11 @@ const confirmBatchDelete = async () => {
   }
 }
 
-const openAccountsModal = async (proxy: Proxy) => {
+// platform 非空时进入弹窗即按该平台过滤（点击平台徽章的入口）
+const openAccountsModal = async (proxy: Proxy, platform: AccountPlatform | null = null) => {
   accountsProxy.value = proxy
   proxyAccounts.value = []
+  accountsPlatformFilter.value = platform
   accountsLoading.value = true
   showAccountsModal.value = true
 
@@ -2014,6 +2173,74 @@ const closeAccountsModal = () => {
   showAccountsModal.value = false
   accountsProxy.value = null
   proxyAccounts.value = []
+  accountsPlatformFilter.value = null
+}
+
+const handleShowTempUnsched = (a: Account) => {
+  tempUnschedAcc.value = a
+  showTempUnsched.value = true
+}
+
+const openReassign = () => {
+  const targets = assignableAccounts.value
+  if (targets.length === 0) return
+
+  const skipped = filteredProxyAccounts.value.length - targets.length
+  if (skipped > 0) {
+    appStore.showInfo(t('admin.proxies.reassignSkippedShadows', { count: skipped }))
+  }
+
+  reassignAccountIds.value = targets.map((a) => a.id)
+  reassignTargetId.value = null
+  showReassign.value = true
+}
+
+const closeReassign = () => {
+  if (reassignSubmitting.value) return
+  showReassign.value = false
+  reassignAccountIds.value = []
+  reassignTargetId.value = null
+}
+
+const submitReassign = async () => {
+  if (reassignAccountIds.value.length === 0) return
+  reassignSubmitting.value = true
+  try {
+    // 与账号管理一致：null（无代理）在接口上用 0 表达「清除代理」
+    const proxyId = reassignTargetId.value === null ? 0 : reassignTargetId.value
+    const result = await adminAPI.accounts.bulkUpdate(reassignAccountIds.value, { proxy_id: proxyId })
+    if (result.failed > 0) {
+      appStore.showError(
+        t('admin.proxies.reassignPartial', { success: result.success, failed: result.failed })
+      )
+    } else {
+      appStore.showSuccess(t('admin.proxies.reassignSuccess', { count: result.success }))
+    }
+
+    showReassign.value = false
+    reassignAccountIds.value = []
+    reassignTargetId.value = null
+
+    // 代理归属变了：刷新列表的账号数/异常数，并重载弹窗内的账号
+    await loadProxies()
+    if (accountsProxy.value) {
+      await openAccountsModal(accountsProxy.value, accountsPlatformFilter.value)
+    }
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.proxies.reassignFailed'))
+    console.error('Error reassigning proxy accounts:', error)
+  } finally {
+    reassignSubmitting.value = false
+  }
+}
+
+// 重置成功后刷新弹窗内的账号列表（保留当前平台筛选）
+const handleTempUnschedReset = async () => {
+  showTempUnsched.value = false
+  tempUnschedAcc.value = null
+  if (accountsProxy.value) {
+    await openAccountsModal(accountsProxy.value, accountsPlatformFilter.value)
+  }
 }
 
 // ── Proxy URL copy ──

@@ -6,7 +6,7 @@
 import { apiClient } from '../client'
 import type {
   Proxy,
-  ProxyAccountSummary,
+  Account,
   ProxyQualityCheckResult,
   CreateProxyRequest,
   UpdateProxyRequest,
@@ -181,10 +181,10 @@ export async function getStats(id: number): Promise<{
 /**
  * Get accounts using a proxy
  * @param id - Proxy ID
- * @returns List of accounts using the proxy
+ * @returns Full account objects, so the caller can reuse the account-management status UI
  */
-export async function getProxyAccounts(id: number): Promise<ProxyAccountSummary[]> {
-  const { data } = await apiClient.get<ProxyAccountSummary[]>(`/admin/proxies/${id}/accounts`)
+export async function getProxyAccounts(id: number): Promise<Account[]> {
+  const { data } = await apiClient.get<Account[]>(`/admin/proxies/${id}/accounts`)
   return data
 }
 

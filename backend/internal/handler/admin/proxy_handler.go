@@ -319,9 +319,11 @@ func (h *ProxyHandler) GetProxyAccounts(c *gin.Context) {
 		return
 	}
 
-	out := make([]dto.ProxyAccountSummary, 0, len(accounts))
+	out := make([]dto.Account, 0, len(accounts))
 	for i := range accounts {
-		out = append(out, *dto.ProxyAccountSummaryFromService(&accounts[i]))
+		if a := dto.AccountFromService(&accounts[i]); a != nil {
+			out = append(out, *a)
+		}
 	}
 	response.Success(c, out)
 }
