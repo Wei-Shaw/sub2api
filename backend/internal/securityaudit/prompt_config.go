@@ -24,7 +24,15 @@ const (
 	DefaultInputLimit    = 4000
 	MinInputLimit        = 128
 	MaxInputLimit        = 100000
+	MaxModelFilterModels = 1000
+	MaxModelFilterRunes  = 200
 	DefaultPayloadTTL    = 30 * time.Minute
+)
+
+const (
+	ModelFilterAll     = "all"
+	ModelFilterInclude = "include"
+	ModelFilterExclude = "exclude"
 )
 
 type SecretEncryptor interface {
@@ -63,22 +71,31 @@ type StorageEndpoint struct {
 	Enabled         bool   `json:"enabled"`
 }
 
+// PromptAuditModelFilter controls which requested models enter prompt audit.
+// Model IDs use exact, case-insensitive matching to match content moderation.
+type PromptAuditModelFilter struct {
+	Type   string   `json:"type"`
+	Models []string `json:"models"`
+}
+
 type storageConfig struct {
-	Enabled                bool              `json:"enabled"`
-	BlockingEnabled        bool              `json:"blocking_enabled"`
-	BlockingLatestTurnOnly bool              `json:"blocking_latest_turn_only"`
-	StorePassEvents        bool              `json:"store_pass_events"`
-	Strategy               string            `json:"strategy"`
-	WorkerCount            int               `json:"worker_count"`
-	QueueCapacity          int               `json:"queue_capacity"`
-	Scanners               []string          `json:"scanners"`
-	AllGroups              bool              `json:"all_groups"`
-	GroupIDs               []int64           `json:"group_ids"`
-	Endpoints              []StorageEndpoint `json:"endpoints"`
-	ConfigVersion          int64             `json:"config_version"`
-	UpdatedAt              time.Time         `json:"updated_at"`
-	UpdatedBy              int64             `json:"updated_by"`
-	ChangeSummary          string            `json:"change_summary"`
+	Enabled                bool                   `json:"enabled"`
+	BlockingEnabled        bool                   `json:"blocking_enabled"`
+	BlockingLatestTurnOnly bool                   `json:"blocking_latest_turn_only"`
+	ContinueOnGuardFailure bool                   `json:"continue_on_guard_failure"`
+	StorePassEvents        bool                   `json:"store_pass_events"`
+	Strategy               string                 `json:"strategy"`
+	WorkerCount            int                    `json:"worker_count"`
+	QueueCapacity          int                    `json:"queue_capacity"`
+	Scanners               []string               `json:"scanners"`
+	AllGroups              bool                   `json:"all_groups"`
+	GroupIDs               []int64                `json:"group_ids"`
+	ModelFilter            PromptAuditModelFilter `json:"model_filter"`
+	Endpoints              []StorageEndpoint      `json:"endpoints"`
+	ConfigVersion          int64                  `json:"config_version"`
+	UpdatedAt              time.Time              `json:"updated_at"`
+	UpdatedBy              int64                  `json:"updated_by"`
+	ChangeSummary          string                 `json:"change_summary"`
 }
 
 type ActiveEndpoint struct {
@@ -103,6 +120,7 @@ type ActiveConfig struct {
 	Enabled                bool
 	BlockingEnabled        bool
 	BlockingLatestTurnOnly bool
+	ContinueOnGuardFailure bool
 	StorePassEvents        bool
 	Strategy               string
 	WorkerCount            int
@@ -110,6 +128,8 @@ type ActiveConfig struct {
 	Scanners               []string
 	AllGroups              bool
 	GroupIDs               []int64
+	ModelFilter            PromptAuditModelFilter
+	modelFilterSet         map[string]struct{}
 	Endpoints              []ActiveEndpoint
 	ConfigVersion          int64
 	UpdatedAt              time.Time
@@ -131,22 +151,24 @@ type PublicEndpoint struct {
 }
 
 type PublicConfig struct {
-	Enabled                bool             `json:"enabled"`
-	BlockingEnabled        bool             `json:"blocking_enabled"`
-	BlockingLatestTurnOnly bool             `json:"blocking_latest_turn_only"`
-	StorePassEvents        bool             `json:"store_pass_events"`
-	EffectiveMode          Mode             `json:"effective_mode"`
-	Strategy               string           `json:"strategy"`
-	WorkerCount            int              `json:"worker_count"`
-	QueueCapacity          int              `json:"queue_capacity"`
-	Scanners               []string         `json:"scanners"`
-	AllGroups              bool             `json:"all_groups"`
-	GroupIDs               []int64          `json:"group_ids"`
-	Endpoints              []PublicEndpoint `json:"endpoints"`
-	ConfigVersion          int64            `json:"config_version"`
-	UpdatedAt              time.Time        `json:"updated_at"`
-	UpdatedBy              int64            `json:"updated_by"`
-	ChangeSummary          string           `json:"change_summary"`
+	Enabled                bool                   `json:"enabled"`
+	BlockingEnabled        bool                   `json:"blocking_enabled"`
+	BlockingLatestTurnOnly bool                   `json:"blocking_latest_turn_only"`
+	ContinueOnGuardFailure bool                   `json:"continue_on_guard_failure"`
+	StorePassEvents        bool                   `json:"store_pass_events"`
+	EffectiveMode          Mode                   `json:"effective_mode"`
+	Strategy               string                 `json:"strategy"`
+	WorkerCount            int                    `json:"worker_count"`
+	QueueCapacity          int                    `json:"queue_capacity"`
+	Scanners               []string               `json:"scanners"`
+	AllGroups              bool                   `json:"all_groups"`
+	GroupIDs               []int64                `json:"group_ids"`
+	ModelFilter            PromptAuditModelFilter `json:"model_filter"`
+	Endpoints              []PublicEndpoint       `json:"endpoints"`
+	ConfigVersion          int64                  `json:"config_version"`
+	UpdatedAt              time.Time              `json:"updated_at"`
+	UpdatedBy              int64                  `json:"updated_by"`
+	ChangeSummary          string                 `json:"change_summary"`
 }
 
 type UpdateEndpoint struct {
@@ -163,18 +185,20 @@ type UpdateEndpoint struct {
 }
 
 type UpdateConfigRequest struct {
-	ExpectedConfigVersion  int64            `json:"expected_config_version" binding:"required"`
-	Enabled                bool             `json:"enabled"`
-	BlockingEnabled        bool             `json:"blocking_enabled"`
-	BlockingLatestTurnOnly bool             `json:"blocking_latest_turn_only"`
-	StorePassEvents        bool             `json:"store_pass_events"`
-	Strategy               string           `json:"strategy"`
-	WorkerCount            int              `json:"worker_count"`
-	QueueCapacity          int              `json:"queue_capacity"`
-	Scanners               []string         `json:"scanners"`
-	AllGroups              bool             `json:"all_groups"`
-	GroupIDs               []int64          `json:"group_ids"`
-	Endpoints              []UpdateEndpoint `json:"endpoints"`
+	ExpectedConfigVersion  int64                  `json:"expected_config_version" binding:"required"`
+	Enabled                bool                   `json:"enabled"`
+	BlockingEnabled        bool                   `json:"blocking_enabled"`
+	BlockingLatestTurnOnly bool                   `json:"blocking_latest_turn_only"`
+	ContinueOnGuardFailure bool                   `json:"continue_on_guard_failure"`
+	StorePassEvents        bool                   `json:"store_pass_events"`
+	Strategy               string                 `json:"strategy"`
+	WorkerCount            int                    `json:"worker_count"`
+	QueueCapacity          int                    `json:"queue_capacity"`
+	Scanners               []string               `json:"scanners"`
+	AllGroups              bool                   `json:"all_groups"`
+	GroupIDs               []int64                `json:"group_ids"`
+	ModelFilter            PromptAuditModelFilter `json:"model_filter"`
+	Endpoints              []UpdateEndpoint       `json:"endpoints"`
 }
 
 func DefaultStorageConfig() storageConfig {
@@ -189,6 +213,7 @@ func DefaultStorageConfig() storageConfig {
 		Scanners:               append([]string(nil), AllScannerIDs...),
 		AllGroups:              true,
 		GroupIDs:               []int64{},
+		ModelFilter:            PromptAuditModelFilter{Type: ModelFilterAll, Models: []string{}},
 		Endpoints:              []StorageEndpoint{},
 		ConfigVersion:          1,
 	}
@@ -230,6 +255,10 @@ func normalizeStorageConfig(cfg *storageConfig) {
 	}
 	cfg.Scanners = canonicalScannerIDs(cfg.Scanners)
 	cfg.GroupIDs = canonicalInt64s(cfg.GroupIDs)
+	cfg.ModelFilter = normalizeModelFilter(cfg.ModelFilter)
+	if !cfg.BlockingEnabled {
+		cfg.ContinueOnGuardFailure = false
+	}
 	// Preserve an invalid blocking-without-audit combination so validation can
 	// reject it instead of silently changing administrator intent.
 	for i := range cfg.Endpoints {
@@ -255,6 +284,10 @@ func normalizeStorageConfig(cfg *storageConfig) {
 }
 
 func validateStorageConfig(cfg storageConfig) error {
+	cfg.ModelFilter = normalizeModelFilter(cfg.ModelFilter)
+	if err := validateModelFilter(cfg.ModelFilter); err != nil {
+		return err
+	}
 	if cfg.BlockingEnabled && !cfg.Enabled {
 		return infraerrors.BadRequest(ErrorCodeRequiresEnabled, "开启同步阻止前必须先启用提示词审计")
 	}
@@ -333,6 +366,10 @@ func validateUpdateConfigRequest(req UpdateConfigRequest) error {
 			}
 		}
 	}
+	filter := normalizeModelFilter(req.ModelFilter)
+	if err := validateModelFilter(filter); err != nil {
+		return err
+	}
 	for _, endpoint := range req.Endpoints {
 		if endpoint.TimeoutMS < MinTimeoutMS || endpoint.TimeoutMS > MaxTimeoutMS {
 			return infraerrors.BadRequest("prompt_audit_invalid_timeout", "审计节点超时超出允许范围")
@@ -365,6 +402,31 @@ func (cfg ActiveConfig) IncludesGroup(groupID *int64) bool {
 	return i < len(cfg.GroupIDs) && cfg.GroupIDs[i] == *groupID
 }
 
+func (cfg ActiveConfig) IncludesModel(model string) bool {
+	switch cfg.ModelFilter.Type {
+	case "", ModelFilterAll:
+		return true
+	case ModelFilterInclude:
+		return cfg.modelFilterIncludes(model)
+	case ModelFilterExclude:
+		return !cfg.modelFilterIncludes(model)
+	default:
+		return false
+	}
+}
+
+func (cfg ActiveConfig) modelFilterIncludes(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if model == "" {
+		return false
+	}
+	if cfg.modelFilterSet != nil {
+		_, ok := cfg.modelFilterSet[model]
+		return ok
+	}
+	return modelFilterContains(cfg.ModelFilter.Models, model)
+}
+
 func (cfg ActiveConfig) EnabledEndpoints() []ActiveEndpoint {
 	result := make([]ActiveEndpoint, 0, len(cfg.Endpoints))
 	for _, ep := range cfg.Endpoints {
@@ -394,6 +456,7 @@ func PublicFromStorage(cfg storageConfig, riskControlEnabled bool, invalidTokenE
 	}
 	scanners := append([]string{}, cfg.Scanners...)
 	groupIDs := append([]int64{}, cfg.GroupIDs...)
+	modelFilter := cloneModelFilter(cfg.ModelFilter)
 	endpoints := make([]PublicEndpoint, 0, len(cfg.Endpoints))
 	for _, ep := range cfg.Endpoints {
 		hasToken := strings.TrimSpace(ep.TokenCiphertext) != ""
@@ -412,21 +475,23 @@ func PublicFromStorage(cfg storageConfig, riskControlEnabled bool, invalidTokenE
 	}
 	active := ActiveConfig{RiskControlEnabled: riskControlEnabled, Enabled: cfg.Enabled, BlockingEnabled: cfg.BlockingEnabled}
 	return PublicConfig{
-		Enabled: cfg.Enabled, BlockingEnabled: cfg.BlockingEnabled, BlockingLatestTurnOnly: cfg.BlockingLatestTurnOnly, StorePassEvents: cfg.StorePassEvents,
+		Enabled: cfg.Enabled, BlockingEnabled: cfg.BlockingEnabled, BlockingLatestTurnOnly: cfg.BlockingLatestTurnOnly,
+		ContinueOnGuardFailure: cfg.ContinueOnGuardFailure, StorePassEvents: cfg.StorePassEvents,
 		EffectiveMode: active.EffectiveMode(), Strategy: cfg.Strategy, WorkerCount: cfg.WorkerCount,
 		QueueCapacity: cfg.QueueCapacity, Scanners: scanners, AllGroups: cfg.AllGroups,
-		GroupIDs: groupIDs, Endpoints: endpoints, ConfigVersion: cfg.ConfigVersion,
+		GroupIDs: groupIDs, ModelFilter: modelFilter, Endpoints: endpoints, ConfigVersion: cfg.ConfigVersion,
 		UpdatedAt: cfg.UpdatedAt, UpdatedBy: cfg.UpdatedBy, ChangeSummary: cfg.ChangeSummary,
 	}
 }
 
 func ActiveFromStorage(cfg storageConfig, riskControlEnabled bool, encryptor SecretEncryptor) (ActiveConfig, error) {
+	modelFilter := cloneModelFilter(cfg.ModelFilter)
 	active := ActiveConfig{
 		RiskControlEnabled: riskControlEnabled, Enabled: cfg.Enabled, BlockingEnabled: cfg.BlockingEnabled,
-		BlockingLatestTurnOnly: cfg.BlockingLatestTurnOnly,
-		StorePassEvents:        cfg.StorePassEvents, Strategy: cfg.Strategy, WorkerCount: cfg.WorkerCount,
+		BlockingLatestTurnOnly: cfg.BlockingLatestTurnOnly, ContinueOnGuardFailure: cfg.ContinueOnGuardFailure,
+		StorePassEvents: cfg.StorePassEvents, Strategy: cfg.Strategy, WorkerCount: cfg.WorkerCount,
 		QueueCapacity: cfg.QueueCapacity, Scanners: append([]string(nil), cfg.Scanners...), AllGroups: cfg.AllGroups,
-		GroupIDs: append([]int64(nil), cfg.GroupIDs...), ConfigVersion: cfg.ConfigVersion,
+		GroupIDs: append([]int64(nil), cfg.GroupIDs...), ModelFilter: modelFilter, modelFilterSet: modelFilterSet(modelFilter.Models), ConfigVersion: cfg.ConfigVersion,
 		UpdatedAt: cfg.UpdatedAt, UpdatedBy: cfg.UpdatedBy, ChangeSummary: cfg.ChangeSummary,
 		Endpoints: make([]ActiveEndpoint, 0, len(cfg.Endpoints)),
 	}
@@ -463,13 +528,16 @@ func changeSummary(cfg storageConfig) string {
 		Enabled                bool   `json:"enabled"`
 		BlockingEnabled        bool   `json:"blocking_enabled"`
 		BlockingLatestTurnOnly bool   `json:"blocking_latest_turn_only"`
+		ContinueOnGuardFailure bool   `json:"continue_on_guard_failure"`
 		StorePassEvents        bool   `json:"store_pass_events"`
 		EndpointCount          int    `json:"endpoint_count"`
 		ScannerCount           int    `json:"scanner_count"`
 		AllGroups              bool   `json:"all_groups"`
 		GroupCount             int    `json:"group_count"`
+		ModelFilterType        string `json:"model_filter_type"`
+		ModelCount             int    `json:"model_count"`
 		GroupHash              string `json:"group_hash"`
-	}{cfg.Enabled, cfg.BlockingEnabled, cfg.BlockingLatestTurnOnly, cfg.StorePassEvents, len(cfg.Endpoints), len(cfg.Scanners), cfg.AllGroups, len(cfg.GroupIDs), ""}
+	}{cfg.Enabled, cfg.BlockingEnabled, cfg.BlockingLatestTurnOnly, cfg.ContinueOnGuardFailure, cfg.StorePassEvents, len(cfg.Endpoints), len(cfg.Scanners), cfg.AllGroups, len(cfg.GroupIDs), cfg.ModelFilter.Type, len(cfg.ModelFilter.Models), ""}
 	rawGroups, _ := json.Marshal(cfg.GroupIDs)
 	digest := sha256.Sum256(rawGroups)
 	summary.GroupHash = hex.EncodeToString(digest[:])
@@ -492,6 +560,92 @@ func canonicalInt64s(values []int64) []int64 {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
 	return result
+}
+
+func normalizeModelFilter(filter PromptAuditModelFilter) PromptAuditModelFilter {
+	filter.Type = normalizeModelFilterType(filter.Type)
+	filter.Models = canonicalModelNames(filter.Models)
+	if filter.Type == ModelFilterAll {
+		filter.Models = []string{}
+	}
+	return filter
+}
+
+func cloneModelFilter(filter PromptAuditModelFilter) PromptAuditModelFilter {
+	filter = normalizeModelFilter(filter)
+	filter.Models = append([]string(nil), filter.Models...)
+	return filter
+}
+
+func normalizeModelFilterType(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return ModelFilterAll
+	}
+	return value
+}
+
+func validateModelFilter(filter PromptAuditModelFilter) error {
+	switch filter.Type {
+	case ModelFilterAll:
+		return nil
+	case ModelFilterInclude, ModelFilterExclude:
+		if len(filter.Models) == 0 {
+			return infraerrors.BadRequest("prompt_audit_models_required", "指定或排除模型时至少需要配置一个模型")
+		}
+		return nil
+	default:
+		return infraerrors.BadRequest("prompt_audit_invalid_model_filter", "提示词审计模型范围无效")
+	}
+}
+
+func modelFilterSet(models []string) map[string]struct{} {
+	if len(models) == 0 {
+		return nil
+	}
+	result := make(map[string]struct{}, len(models))
+	for _, model := range models {
+		result[strings.ToLower(model)] = struct{}{}
+	}
+	return result
+}
+
+func canonicalModelNames(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, raw := range values {
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			continue
+		}
+		runes := []rune(value)
+		if len(runes) > MaxModelFilterRunes {
+			value = string(runes[:MaxModelFilterRunes])
+		}
+		key := strings.ToLower(value)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, value)
+		if len(result) == MaxModelFilterModels {
+			break
+		}
+	}
+	return result
+}
+
+func modelFilterContains(models []string, model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if model == "" {
+		return false
+	}
+	for _, candidate := range models {
+		if strings.ToLower(strings.TrimSpace(candidate)) == model {
+			return true
+		}
+	}
+	return false
 }
 
 func canonicalScannerIDs(values []string) []string {
