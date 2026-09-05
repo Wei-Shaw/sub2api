@@ -12,6 +12,7 @@ describe('API Client', () => {
 
   beforeEach(async () => {
     localStorage.clear()
+    sessionStorage.clear()
     window.history.replaceState({}, '', '/')
     // 每次测试重新导入以获取干净的模块状态
     vi.resetModules()
@@ -56,6 +57,24 @@ describe('API Client', () => {
 
       const config = adapter.mock.calls[0][0]
       expect(config.headers.get('Authorization')).toBe('Bearer my-jwt-token')
+    })
+
+    it('未勾选记住我时从 sessionStorage 附加 Authorization 头', async () => {
+      sessionStorage.setItem('auth_token', 'session-jwt-token')
+
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {} },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+      apiClient.defaults.adapter = adapter
+
+      await apiClient.get('/test')
+
+      const config = adapter.mock.calls[0][0]
+      expect(config.headers.get('Authorization')).toBe('Bearer session-jwt-token')
     })
 
     it('无 token 时不附加 Authorization 头', async () => {

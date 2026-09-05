@@ -210,8 +210,8 @@ export default {
 
   // Auth
   auth: {
-    welcomeBack: '欢迎回来',
-    signInToAccount: '登录您的账户以继续',
+    welcomeBack: '登录账户',
+    signInToAccount: '使用邮箱密码登录',
     signIn: '登录',
     signingIn: '登录中...',
     passkeySignIn: '使用 Passkey 登录',
@@ -221,6 +221,7 @@ export default {
     createAccount: '创建账户',
     signUpToStart: '注册以开始使用 {siteName}',
     signUp: '注册',
+    freeSignUp: '免费注册',
     processing: '处理中...',
     continue: '继续',
     rememberMe: '记住我',
@@ -230,6 +231,7 @@ export default {
     emailLabel: '邮箱',
     emailPlaceholder: '请输入邮箱',
     passwordLabel: '密码',
+    setPasswordLabel: '设置密码',
     passwordPlaceholder: '请输入密码',
     createPasswordPlaceholder: '创建一个安全的密码',
     passwordHint: '至少 6 个字符',
@@ -295,6 +297,7 @@ export default {
     invitationCodeValidating: '正在验证邀请码...',
     invitationCodeInvalidCannotRegister: '邀请码无效，请检查后重试',
     oauthOrContinue: '或使用其他继续',
+    loginOauthOrThirdPartyAccount: '或使用第三方账户',
     linuxdo: {
       signIn: '使用 Linux.do 登录',
       orContinue: '或使用邮箱密码继续',

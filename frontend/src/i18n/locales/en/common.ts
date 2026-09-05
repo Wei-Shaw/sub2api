@@ -221,6 +221,7 @@ export default {
     createAccount: 'Create Account',
     signUpToStart: 'Sign up to start using {siteName}',
     signUp: 'Sign up',
+    freeSignUp: 'Free Sign Up',
     processing: 'Processing...',
     continue: 'Continue',
     rememberMe: 'Remember me',
@@ -230,6 +231,7 @@ export default {
     emailLabel: 'Email',
     emailPlaceholder: 'Enter your email',
     passwordLabel: 'Password',
+    setPasswordLabel: 'Set Password',
     passwordPlaceholder: 'Enter your password',
     createPasswordPlaceholder: 'Create a strong password',
     passwordHint: 'At least 6 characters',
@@ -296,6 +298,7 @@ export default {
     invitationCodeValidating: 'Validating invitation code...',
     invitationCodeInvalidCannotRegister: 'Invalid invitation code. Please check and try again',
     oauthOrContinue: 'or continue with others',
+    loginOauthOrThirdPartyAccount: 'or continue with a third-party account',
     linuxdo: {
       signIn: 'Continue with Linux.do',
       orContinue: 'or continue with email',

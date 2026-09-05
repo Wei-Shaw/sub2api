@@ -1,12 +1,12 @@
 <template>
-  <AuthLayout>
+  <AuthLayout compact>
     <div class="space-y-6">
       <!-- Title -->
       <div class="text-center">
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
           {{ t('auth.welcomeBack') }}
         </h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+        <p class="mt-2 inline-block rounded-full border border-gray-200 px-6 py-2 text-sm font-medium text-gray-500 shadow-sm dark:border-dark-700 dark:text-dark-300">
           {{ t('auth.signInToAccount') }}
         </p>
       </div>
@@ -29,7 +29,7 @@
               autofocus
               autocomplete="email"
               :disabled="authActionDisabled"
-              class="input pl-11"
+              class="input border-gray-300 pl-11 transition-none focus:border-black focus:ring-4 focus:ring-gray-300/30 dark:border-dark-600 dark:focus:border-white dark:focus:ring-gray-300/20"
               :class="{ 'input-error': errors.email }"
               :placeholder="t('auth.emailPlaceholder')"
             />
@@ -52,7 +52,7 @@
               required
               autocomplete="current-password"
               :disabled="authActionDisabled"
-              class="input pl-11 pr-11"
+              class="input border-gray-300 pl-11 pr-11 transition-none focus:border-black focus:ring-4 focus:ring-gray-300/30 dark:border-dark-600 dark:focus:border-white dark:focus:ring-gray-300/20"
               :class="{ 'input-error': errors.password }"
               :placeholder="t('auth.passwordPlaceholder')"
             />
@@ -66,12 +66,19 @@
               <Icon v-else name="eye" size="md" />
             </button>
           </div>
-          <div class="mt-1 flex items-center justify-between">
-            <span></span>
+          <div class="mt-3 flex items-center justify-between">
+            <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-dark-300">
+              <input
+                v-model="rememberMe"
+                type="checkbox"
+                class="h-4 w-4 rounded border-gray-300 accent-black text-black focus:ring-black dark:border-dark-600 dark:bg-dark-800"
+              />
+              {{ t('auth.rememberMe') }}
+            </label>
             <router-link
               v-if="passwordResetEnabled && !backendModeEnabled"
               to="/forgot-password"
-              class="text-sm font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+              class="text-sm font-medium text-blue-600 transition-colors hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
             >
               {{ t('auth.forgotPassword') }}
             </router-link>
@@ -101,7 +108,7 @@
         <button
           type="submit"
           :disabled="authActionDisabled || (turnstileEnabled && !turnstileToken)"
-          class="btn btn-primary w-full"
+          class="btn w-full bg-black text-white shadow-md shadow-black/20 hover:bg-gray-800 hover:shadow-lg hover:shadow-black/30 dark:bg-white dark:text-black dark:hover:bg-gray-200"
         >
           <svg
             v-if="isLoading"
@@ -128,7 +135,7 @@
         </button>
 
         <LoginAgreementPrompt
-          v-if="loginAgreementEnabled"
+          v-if="loginAgreementEnabled && loginAgreementMode !== 'checkbox'"
           :accepted="agreementAccepted"
           :documents="loginAgreementDocuments"
           :mode="loginAgreementMode"
@@ -143,7 +150,7 @@
           <div class="flex items-center gap-3">
             <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
             <span class="text-xs text-gray-500 dark:text-dark-400">
-              {{ t('auth.oauthOrContinue') }}
+              {{ t('auth.loginOauthOrThirdPartyAccount') }}
             </span>
             <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
           </div>
@@ -202,9 +209,9 @@
         {{ t('auth.dontHaveAccount') }}
         <router-link
           to="/register"
-          class="font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+          class="font-medium text-black transition-colors hover:text-gray-700 dark:text-gray-300 dark:hover:text-white"
         >
-          {{ t('auth.signUp') }}
+          {{ t('auth.freeSignUp') }}
         </router-link>
       </p>
     </template>
@@ -328,6 +335,7 @@ const formData = reactive({
   email: '',
   password: ''
 })
+const rememberMe = ref<boolean>(false)
 
 const errors = reactive({
   email: '',
@@ -340,7 +348,10 @@ const validationToastMessage = computed(
 )
 
 const agreementGateActive = computed(
-  () => loginAgreementEnabled.value && !agreementAccepted.value
+  () =>
+    loginAgreementEnabled.value &&
+    loginAgreementMode.value !== 'checkbox' &&
+    !agreementAccepted.value
 )
 
 const authActionDisabled = computed(
@@ -584,7 +595,7 @@ async function handleLogin(): Promise<void> {
       tencent_captcha_randstr: tencentCaptchaEnabled.value
         ? tencentCaptchaRandstr.value
         : undefined
-    })
+    }, rememberMe.value ? 'persistent' : 'session')
 
     // Check if 2FA is required
     if (isTotp2FARequired(response)) {
@@ -703,7 +714,11 @@ async function handle2FAVerify(code: string): Promise<void> {
   }
 
   try {
-    await authStore.login2FA(totpTempToken.value, code)
+    await authStore.login2FA(
+      totpTempToken.value,
+      code,
+      rememberMe.value ? 'persistent' : 'session'
+    )
 
     // Close modal and show success
     show2FAModal.value = false
