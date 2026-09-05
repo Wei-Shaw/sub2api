@@ -127,6 +127,19 @@ export default {
     lastUsedAt: 'Last Used',
     lastUsedIP: 'Last Used IP',
     useKey: 'Use Key',
+    models: 'Models',
+    modelsModal: {
+      title: 'Available Models - {name}',
+      description: 'Fetches this API key’s live /v1/models response, matching the model list seen by API clients.',
+      loading: 'Loading models...',
+      searchPlaceholder: 'Search model IDs...',
+      count: '{count} models',
+      copy: 'Copy model ID',
+      empty: 'This API key returned no available models',
+      noMatches: 'No matching models',
+      failedToLoad: 'Unable to load models. Make sure the key is enabled and assigned to a valid group.',
+      retry: 'Retry'
+    },
     useKeyModal: {
       title: 'Use API Key',
       description:
