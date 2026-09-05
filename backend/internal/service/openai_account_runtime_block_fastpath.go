@@ -473,8 +473,94 @@ func (s *OpenAIGatewayService) isOpenAIAccountModelRuntimeBlocked(account *Accou
 	return state.isBlocked(account.ID, openAIAccountModelTransientModel(canonicalModel), time.Now())
 }
 
+func accountPersistedSchedulingCooldownActive(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	now := time.Now()
+	if account.TempUnschedulableUntil != nil && now.Before(*account.TempUnschedulableUntil) {
+		return true
+	}
+	if account.RateLimitResetAt != nil && now.Before(*account.RateLimitResetAt) {
+		return true
+	}
+	if account.OverloadUntil != nil && now.Before(*account.OverloadUntil) {
+		return true
+	}
+	return false
+}
+
+type openAIAccountRuntimeBlockSnapshot struct {
+	until      time.Time
+	generation uint64
+	blocked    bool
+}
+
+func (s *OpenAIGatewayService) peekOpenAIAccountRuntimeBlock(account *Account) openAIAccountRuntimeBlockSnapshot {
+	if s == nil || !isOpenAIAccount(account) {
+		return openAIAccountRuntimeBlockSnapshot{}
+	}
+	mu := s.openAIAccountRuntimeBlockLock(account.ID)
+	mu.Lock()
+	defer mu.Unlock()
+	value, ok := s.openaiAccountRuntimeBlockUntil.Load(account.ID)
+	if !ok {
+		return openAIAccountRuntimeBlockSnapshot{}
+	}
+	until, isTime := value.(time.Time)
+	if !isTime || until.IsZero() || !time.Now().Before(until) {
+		s.openaiAccountRuntimeBlockUntil.Delete(account.ID)
+		s.openaiOAuth429RetryStartedAt.Delete(account.ID)
+		s.openaiAccountRuntimeBlockGeneration.Store(account.ID, s.openaiAccountRuntimeBlockSequence.Add(1))
+		return openAIAccountRuntimeBlockSnapshot{}
+	}
+	generation, _ := s.openaiAccountRuntimeBlockGeneration.Load(account.ID)
+	gen, _ := generation.(uint64)
+	return openAIAccountRuntimeBlockSnapshot{until: until, generation: gen, blocked: true}
+}
+
+// clearOpenAIAccountRuntimeBlockIfUnchanged deletes the in-process account block
+// only when generation and deadline are unchanged. A newer block installed after
+// peek must be kept even if its deadline happens to match.
+func (s *OpenAIGatewayService) clearOpenAIAccountRuntimeBlockIfUnchanged(accountID int64, snapshot openAIAccountRuntimeBlockSnapshot) {
+	if s == nil || accountID <= 0 || !snapshot.blocked {
+		return
+	}
+	mu := s.openAIAccountRuntimeBlockLock(accountID)
+	mu.Lock()
+	defer mu.Unlock()
+	generation, ok := s.openaiAccountRuntimeBlockGeneration.Load(accountID)
+	if !ok || generation != snapshot.generation {
+		return
+	}
+	current, ok := s.openaiAccountRuntimeBlockUntil.Load(accountID)
+	currentUntil, isTime := current.(time.Time)
+	if !ok || !isTime || !currentUntil.Equal(snapshot.until) {
+		return
+	}
+	s.openaiAccountRuntimeBlockUntil.Delete(accountID)
+	s.openaiOAuth429RetryStartedAt.Delete(accountID)
+	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
+}
+
+// isOpenAIAccountRequestRuntimeBlocked treats persisted cooldown fields on the
+// scheduling Account as source of truth. When TempUnschedulableUntil,
+// RateLimitResetAt, and OverloadUntil are all inactive, a stale local account
+// block is dropped with generation+deadline CAS. Model-scoped transient blocks
+// are left alone. This is fail-open if a DB write failed or the snapshot has
+// not caught up yet: empty cooldown fields drop the local account-level block.
 func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Account, requestedModel string) bool {
-	return s != nil && (s.isOpenAIAccountRuntimeBlocked(account) || s.isOpenAIAccountModelRuntimeBlocked(account, requestedModel))
+	if s == nil {
+		return false
+	}
+	snapshot := s.peekOpenAIAccountRuntimeBlock(account)
+	if snapshot.blocked {
+		if accountPersistedSchedulingCooldownActive(account) {
+			return true
+		}
+		s.clearOpenAIAccountRuntimeBlockIfUnchanged(account.ID, snapshot)
+	}
+	return s.isOpenAIAccountModelRuntimeBlocked(account, requestedModel)
 }
 
 func (s *OpenAIGatewayService) recordOpenAIOAuth429() {
