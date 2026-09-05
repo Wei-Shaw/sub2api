@@ -22,6 +22,11 @@ type UserHandler struct {
 	emailCache            service.EmailCache
 	affiliateService      *service.AffiliateService
 	userPlatformQuotaRepo service.UserPlatformQuotaRepository
+	web3IdentityRepo      service.Web3IdentityRepository
+}
+
+func (h *UserHandler) SetWeb3IdentityRepository(repository service.Web3IdentityRepository) {
+	h.web3IdentityRepo = repository
 }
 
 // NewUserHandler creates a new UserHandler
@@ -85,6 +90,7 @@ type UpdateProfileRequest struct {
 
 type userProfileResponse struct {
 	dto.User
+	Web3Address       string                                 `json:"web3_address,omitempty"`
 	AvatarURL         string                                 `json:"avatar_url,omitempty"`
 	AvatarSource      *userProfileSourceContext              `json:"avatar_source,omitempty"`
 	UsernameSource    *userProfileSourceContext              `json:"username_source,omitempty"`
@@ -535,7 +541,25 @@ func (h *UserHandler) buildUserProfileResponse(ctx context.Context, userID int64
 	if err != nil {
 		return userProfileResponse{}, err
 	}
-	return userProfileResponseFromService(user, identities), nil
+	profile := userProfileResponseFromService(user, identities)
+	if err := populateUserProfileWeb3Address(ctx, h.web3IdentityRepo, userID, &profile); err != nil {
+		return userProfileResponse{}, err
+	}
+	return profile, nil
+}
+
+func populateUserProfileWeb3Address(ctx context.Context, repository service.Web3IdentityRepository, userID int64, profile *userProfileResponse) error {
+	if repository == nil || profile == nil {
+		return nil
+	}
+	address, found, err := repository.GetAddressByUserID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if found {
+		profile.Web3Address = address
+	}
+	return nil
 }
 
 func userProfileResponseFromService(user *service.User, identities service.UserIdentitySummarySet) userProfileResponse {

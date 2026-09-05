@@ -5,9 +5,40 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/web3deposit"
 
 	"github.com/google/wire"
 )
+
+func ProvideAuthHandler(
+	cfg *config.Config,
+	authService *service.AuthService,
+	userService *service.UserService,
+	settingService *service.SettingService,
+	promoService *service.PromoService,
+	redeemService *service.RedeemService,
+	totpService *service.TotpService,
+	userAttributeService *service.UserAttributeService,
+	web3IdentityRepo service.Web3IdentityRepository,
+) *AuthHandler {
+	handler := NewAuthHandler(cfg, authService, userService, settingService, promoService, redeemService, totpService, userAttributeService)
+	handler.SetWeb3IdentityRepository(web3IdentityRepo)
+	return handler
+}
+
+func ProvideUserHandler(
+	userService *service.UserService,
+	authService *service.AuthService,
+	emailService *service.EmailService,
+	emailCache service.EmailCache,
+	affiliateService *service.AffiliateService,
+	userPlatformQuotaRepo service.UserPlatformQuotaRepository,
+	web3IdentityRepo service.Web3IdentityRepository,
+) *UserHandler {
+	handler := NewUserHandler(userService, authService, emailService, emailCache, affiliateService, userPlatformQuotaRepo)
+	handler.SetWeb3IdentityRepository(web3IdentityRepo)
+	return handler
+}
 
 // ProvideAdminHandlers creates the AdminHandlers struct
 func ProvideAdminHandlers(
@@ -44,6 +75,7 @@ func ProvideAdminHandlers(
 	contentModerationHandler *admin.ContentModerationHandler,
 	promptAuditHandler *securityaudit.PromptAdminHandler,
 	paymentHandler *admin.PaymentHandler,
+	web3DepositHandler *admin.Web3DepositHandler,
 	affiliateHandler *admin.AffiliateHandler,
 	complianceHandler *admin.ComplianceHandler,
 	auditLogHandler *admin.AuditLogHandler,
@@ -86,6 +118,7 @@ func ProvideAdminHandlers(
 		ContentModeration:      contentModerationHandler,
 		PromptAudit:            promptAuditHandler,
 		Payment:                paymentHandler,
+		Web3Deposit:            web3DepositHandler,
 		Affiliate:              affiliateHandler,
 		Compliance:             complianceHandler,
 		AuditLog:               auditLogHandler,
@@ -174,6 +207,7 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 // ProvideHandlers creates the Handlers struct
 func ProvideHandlers(
 	authHandler *AuthHandler,
+	web3AuthHandler *Web3AuthHandler,
 	userHandler *UserHandler,
 	apiKeyHandler *APIKeyHandler,
 	usageHandler *UsageHandler,
@@ -189,6 +223,7 @@ func ProvideHandlers(
 	totpHandler *TotpHandler,
 	passkeyHandler *PasskeyHandler,
 	paymentHandler *PaymentHandler,
+	web3DepositHandler *Web3DepositHandler,
 	paymentWebhookHandler *PaymentWebhookHandler,
 	availableChannelHandler *AvailableChannelHandler,
 	modelPlazaHandler *ModelPlazaHandler,
@@ -200,6 +235,7 @@ func ProvideHandlers(
 ) *Handlers {
 	return &Handlers{
 		Auth:             authHandler,
+		Web3Auth:         web3AuthHandler,
 		User:             userHandler,
 		APIKey:           apiKeyHandler,
 		Usage:            usageHandler,
@@ -215,6 +251,7 @@ func ProvideHandlers(
 		Totp:             totpHandler,
 		Passkey:          passkeyHandler,
 		Payment:          paymentHandler,
+		Web3Deposit:      web3DepositHandler,
 		PaymentWebhook:   paymentWebhookHandler,
 		AvailableChannel: availableChannelHandler,
 		ModelPlaza:       modelPlazaHandler,
@@ -226,8 +263,9 @@ func ProvideHandlers(
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
 	// Top-level handlers
-	NewAuthHandler,
-	NewUserHandler,
+	ProvideAuthHandler,
+	NewWeb3AuthHandler,
+	ProvideUserHandler,
 	NewAPIKeyHandler,
 	NewUsageHandler,
 	NewRedeemHandler,
@@ -241,6 +279,13 @@ var ProviderSet = wire.NewSet(
 	NewPasskeyHandler,
 	ProvideSettingHandler,
 	NewPaymentHandler,
+	web3deposit.NewAddressAllocator,
+	web3deposit.NewConfluxNetworkRuntimeRegistry,
+	web3deposit.ProvideScannerRuntimeRegistry,
+	web3deposit.ProvideCreditWorkerRuntime,
+	web3deposit.NewBoundedRescannerRegistry,
+	web3deposit.ProvideRescanJobRuntime,
+	NewWeb3DepositHandler,
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,
 	NewModelPlazaHandler,
@@ -280,6 +325,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewChannelMonitorRequestTemplateHandler,
 	admin.NewContentModerationHandler,
 	admin.NewPaymentHandler,
+	admin.NewWeb3DepositHandler,
 	admin.NewAffiliateHandler,
 	admin.NewComplianceHandler,
 	admin.NewAuditLogHandler,

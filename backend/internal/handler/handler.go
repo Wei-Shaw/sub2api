@@ -40,6 +40,7 @@ type AdminHandlers struct {
 	ContentModeration      *admin.ContentModerationHandler
 	PromptAudit            *securityaudit.PromptAdminHandler
 	Payment                *admin.PaymentHandler
+	Web3Deposit            *admin.Web3DepositHandler
 	Affiliate              *admin.AffiliateHandler
 	Compliance             *admin.ComplianceHandler
 	AuditLog               *admin.AuditLogHandler
@@ -48,6 +49,7 @@ type AdminHandlers struct {
 // Handlers contains all HTTP handlers
 type Handlers struct {
 	Auth             *AuthHandler
+	Web3Auth         *Web3AuthHandler
 	User             *UserHandler
 	APIKey           *APIKeyHandler
 	Usage            *UsageHandler
@@ -63,6 +65,7 @@ type Handlers struct {
 	Totp             *TotpHandler
 	Passkey          *PasskeyHandler
 	Payment          *PaymentHandler
+	Web3Deposit      *Web3DepositHandler
 	PaymentWebhook   *PaymentWebhookHandler
 	AvailableChannel *AvailableChannelHandler
 	ModelPlaza       *ModelPlazaHandler

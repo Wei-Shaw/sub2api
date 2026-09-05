@@ -29,23 +29,27 @@ func TestAuthHandlerGetCurrentUserReturnsProfileCompatibilityFields(t *testing.T
 			AvatarURL:    "https://cdn.example.com/linuxdo.png",
 			AvatarSource: "remote_url",
 		},
-			identities: []service.UserAuthIdentityRecord{
-				{
-					ProviderType:    "linuxdo",
-					ProviderKey:     "linuxdo",
-					ProviderSubject: "linuxdo-subject-31",
-					VerifiedAt:      &verifiedAt,
-					Metadata: map[string]any{
-						"username":   "linuxdo-handle",
-						"avatar_url": "https://cdn.example.com/linuxdo.png",
-					},
+		identities: []service.UserAuthIdentityRecord{
+			{
+				ProviderType:    "linuxdo",
+				ProviderKey:     "linuxdo",
+				ProviderSubject: "linuxdo-subject-31",
+				VerifiedAt:      &verifiedAt,
+				Metadata: map[string]any{
+					"username":   "linuxdo-handle",
+					"avatar_url": "https://cdn.example.com/linuxdo.png",
 				},
 			},
-		}
+		},
+	}
 
 	handler := &AuthHandler{
 		userService: service.NewUserService(repo, nil, nil, nil),
 	}
+	handler.SetWeb3IdentityRepository(&userHandlerWeb3IdentityRepoStub{
+		address: "0xb2a43ad86acf10e43a2cacab7097981aeb0ec689",
+		found:   true,
+	})
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -65,6 +69,7 @@ func TestAuthHandlerGetCurrentUserReturnsProfileCompatibilityFields(t *testing.T
 	require.Equal(t, true, resp.Data["email_bound"])
 	require.Equal(t, true, resp.Data["linuxdo_bound"])
 	require.Equal(t, "https://cdn.example.com/linuxdo.png", resp.Data["avatar_url"])
+	require.Equal(t, "0xb2a43ad86acf10e43a2cacab7097981aeb0ec689", resp.Data["web3_address"])
 
 	authBindings, ok := resp.Data["auth_bindings"].(map[string]any)
 	require.True(t, ok)

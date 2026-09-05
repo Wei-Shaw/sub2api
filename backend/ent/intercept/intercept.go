@@ -48,6 +48,12 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/web3balancetransfer"
+	"github.com/Wei-Shaw/sub2api/ent/web3deposit"
+	"github.com/Wei-Shaw/sub2api/ent/web3depositaddress"
+	"github.com/Wei-Shaw/sub2api/ent/web3depositwallet"
+	"github.com/Wei-Shaw/sub2api/ent/web3scannercursor"
+	"github.com/Wei-Shaw/sub2api/ent/web3userbalance"
 )
 
 // The Query interface represents an operation that queries a graph.
@@ -1159,6 +1165,168 @@ func (f TraverseUserSubscription) Traverse(ctx context.Context, q ent.Query) err
 	return fmt.Errorf("unexpected query type %T. expect *ent.UserSubscriptionQuery", q)
 }
 
+// The Web3BalanceTransferFunc type is an adapter to allow the use of ordinary function as a Querier.
+type Web3BalanceTransferFunc func(context.Context, *ent.Web3BalanceTransferQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f Web3BalanceTransferFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.Web3BalanceTransferQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.Web3BalanceTransferQuery", q)
+}
+
+// The TraverseWeb3BalanceTransfer type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseWeb3BalanceTransfer func(context.Context, *ent.Web3BalanceTransferQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseWeb3BalanceTransfer) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseWeb3BalanceTransfer) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.Web3BalanceTransferQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.Web3BalanceTransferQuery", q)
+}
+
+// The Web3DepositFunc type is an adapter to allow the use of ordinary function as a Querier.
+type Web3DepositFunc func(context.Context, *ent.Web3DepositQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f Web3DepositFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.Web3DepositQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.Web3DepositQuery", q)
+}
+
+// The TraverseWeb3Deposit type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseWeb3Deposit func(context.Context, *ent.Web3DepositQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseWeb3Deposit) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseWeb3Deposit) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.Web3DepositQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.Web3DepositQuery", q)
+}
+
+// The Web3DepositAddressFunc type is an adapter to allow the use of ordinary function as a Querier.
+type Web3DepositAddressFunc func(context.Context, *ent.Web3DepositAddressQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f Web3DepositAddressFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.Web3DepositAddressQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.Web3DepositAddressQuery", q)
+}
+
+// The TraverseWeb3DepositAddress type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseWeb3DepositAddress func(context.Context, *ent.Web3DepositAddressQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseWeb3DepositAddress) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseWeb3DepositAddress) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.Web3DepositAddressQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.Web3DepositAddressQuery", q)
+}
+
+// The Web3DepositWalletFunc type is an adapter to allow the use of ordinary function as a Querier.
+type Web3DepositWalletFunc func(context.Context, *ent.Web3DepositWalletQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f Web3DepositWalletFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.Web3DepositWalletQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.Web3DepositWalletQuery", q)
+}
+
+// The TraverseWeb3DepositWallet type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseWeb3DepositWallet func(context.Context, *ent.Web3DepositWalletQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseWeb3DepositWallet) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseWeb3DepositWallet) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.Web3DepositWalletQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.Web3DepositWalletQuery", q)
+}
+
+// The Web3ScannerCursorFunc type is an adapter to allow the use of ordinary function as a Querier.
+type Web3ScannerCursorFunc func(context.Context, *ent.Web3ScannerCursorQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f Web3ScannerCursorFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.Web3ScannerCursorQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.Web3ScannerCursorQuery", q)
+}
+
+// The TraverseWeb3ScannerCursor type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseWeb3ScannerCursor func(context.Context, *ent.Web3ScannerCursorQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseWeb3ScannerCursor) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseWeb3ScannerCursor) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.Web3ScannerCursorQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.Web3ScannerCursorQuery", q)
+}
+
+// The Web3UserBalanceFunc type is an adapter to allow the use of ordinary function as a Querier.
+type Web3UserBalanceFunc func(context.Context, *ent.Web3UserBalanceQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f Web3UserBalanceFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.Web3UserBalanceQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.Web3UserBalanceQuery", q)
+}
+
+// The TraverseWeb3UserBalance type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseWeb3UserBalance func(context.Context, *ent.Web3UserBalanceQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseWeb3UserBalance) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseWeb3UserBalance) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.Web3UserBalanceQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.Web3UserBalanceQuery", q)
+}
+
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
@@ -1240,6 +1408,18 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.UserPlatformQuotaQuery, predicate.UserPlatformQuota, userplatformquota.OrderOption]{typ: ent.TypeUserPlatformQuota, tq: q}, nil
 	case *ent.UserSubscriptionQuery:
 		return &query[*ent.UserSubscriptionQuery, predicate.UserSubscription, usersubscription.OrderOption]{typ: ent.TypeUserSubscription, tq: q}, nil
+	case *ent.Web3BalanceTransferQuery:
+		return &query[*ent.Web3BalanceTransferQuery, predicate.Web3BalanceTransfer, web3balancetransfer.OrderOption]{typ: ent.TypeWeb3BalanceTransfer, tq: q}, nil
+	case *ent.Web3DepositQuery:
+		return &query[*ent.Web3DepositQuery, predicate.Web3Deposit, web3deposit.OrderOption]{typ: ent.TypeWeb3Deposit, tq: q}, nil
+	case *ent.Web3DepositAddressQuery:
+		return &query[*ent.Web3DepositAddressQuery, predicate.Web3DepositAddress, web3depositaddress.OrderOption]{typ: ent.TypeWeb3DepositAddress, tq: q}, nil
+	case *ent.Web3DepositWalletQuery:
+		return &query[*ent.Web3DepositWalletQuery, predicate.Web3DepositWallet, web3depositwallet.OrderOption]{typ: ent.TypeWeb3DepositWallet, tq: q}, nil
+	case *ent.Web3ScannerCursorQuery:
+		return &query[*ent.Web3ScannerCursorQuery, predicate.Web3ScannerCursor, web3scannercursor.OrderOption]{typ: ent.TypeWeb3ScannerCursor, tq: q}, nil
+	case *ent.Web3UserBalanceQuery:
+		return &query[*ent.Web3UserBalanceQuery, predicate.Web3UserBalance, web3userbalance.OrderOption]{typ: ent.TypeWeb3UserBalance, tq: q}, nil
 	default:
 		return nil, fmt.Errorf("unknown query type %T", q)
 	}

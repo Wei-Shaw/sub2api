@@ -54,6 +54,12 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/web3balancetransfer"
+	"github.com/Wei-Shaw/sub2api/ent/web3deposit"
+	"github.com/Wei-Shaw/sub2api/ent/web3depositaddress"
+	"github.com/Wei-Shaw/sub2api/ent/web3depositwallet"
+	"github.com/Wei-Shaw/sub2api/ent/web3scannercursor"
+	"github.com/Wei-Shaw/sub2api/ent/web3userbalance"
 
 	stdsql "database/sql"
 )
@@ -141,6 +147,18 @@ type Client struct {
 	UserPlatformQuota *UserPlatformQuotaClient
 	// UserSubscription is the client for interacting with the UserSubscription builders.
 	UserSubscription *UserSubscriptionClient
+	// Web3BalanceTransfer is the client for interacting with the Web3BalanceTransfer builders.
+	Web3BalanceTransfer *Web3BalanceTransferClient
+	// Web3Deposit is the client for interacting with the Web3Deposit builders.
+	Web3Deposit *Web3DepositClient
+	// Web3DepositAddress is the client for interacting with the Web3DepositAddress builders.
+	Web3DepositAddress *Web3DepositAddressClient
+	// Web3DepositWallet is the client for interacting with the Web3DepositWallet builders.
+	Web3DepositWallet *Web3DepositWalletClient
+	// Web3ScannerCursor is the client for interacting with the Web3ScannerCursor builders.
+	Web3ScannerCursor *Web3ScannerCursorClient
+	// Web3UserBalance is the client for interacting with the Web3UserBalance builders.
+	Web3UserBalance *Web3UserBalanceClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -191,6 +209,12 @@ func (c *Client) init() {
 	c.UserAttributeValue = NewUserAttributeValueClient(c.config)
 	c.UserPlatformQuota = NewUserPlatformQuotaClient(c.config)
 	c.UserSubscription = NewUserSubscriptionClient(c.config)
+	c.Web3BalanceTransfer = NewWeb3BalanceTransferClient(c.config)
+	c.Web3Deposit = NewWeb3DepositClient(c.config)
+	c.Web3DepositAddress = NewWeb3DepositAddressClient(c.config)
+	c.Web3DepositWallet = NewWeb3DepositWalletClient(c.config)
+	c.Web3ScannerCursor = NewWeb3ScannerCursorClient(c.config)
+	c.Web3UserBalance = NewWeb3UserBalanceClient(c.config)
 }
 
 type (
@@ -322,6 +346,12 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
 		UserPlatformQuota:             NewUserPlatformQuotaClient(cfg),
 		UserSubscription:              NewUserSubscriptionClient(cfg),
+		Web3BalanceTransfer:           NewWeb3BalanceTransferClient(cfg),
+		Web3Deposit:                   NewWeb3DepositClient(cfg),
+		Web3DepositAddress:            NewWeb3DepositAddressClient(cfg),
+		Web3DepositWallet:             NewWeb3DepositWalletClient(cfg),
+		Web3ScannerCursor:             NewWeb3ScannerCursorClient(cfg),
+		Web3UserBalance:               NewWeb3UserBalanceClient(cfg),
 	}, nil
 }
 
@@ -380,6 +410,12 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
 		UserPlatformQuota:             NewUserPlatformQuotaClient(cfg),
 		UserSubscription:              NewUserSubscriptionClient(cfg),
+		Web3BalanceTransfer:           NewWeb3BalanceTransferClient(cfg),
+		Web3Deposit:                   NewWeb3DepositClient(cfg),
+		Web3DepositAddress:            NewWeb3DepositAddressClient(cfg),
+		Web3DepositWallet:             NewWeb3DepositWalletClient(cfg),
+		Web3ScannerCursor:             NewWeb3ScannerCursorClient(cfg),
+		Web3UserBalance:               NewWeb3UserBalanceClient(cfg),
 	}, nil
 }
 
@@ -419,7 +455,9 @@ func (c *Client) Use(hooks ...Hook) {
 		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
 		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
 		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.UserPlatformQuota, c.UserSubscription, c.Web3BalanceTransfer, c.Web3Deposit,
+		c.Web3DepositAddress, c.Web3DepositWallet, c.Web3ScannerCursor,
+		c.Web3UserBalance,
 	} {
 		n.Use(hooks...)
 	}
@@ -439,7 +477,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
 		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
 		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.UserPlatformQuota, c.UserSubscription, c.Web3BalanceTransfer, c.Web3Deposit,
+		c.Web3DepositAddress, c.Web3DepositWallet, c.Web3ScannerCursor,
+		c.Web3UserBalance,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -526,6 +566,18 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UserPlatformQuota.mutate(ctx, m)
 	case *UserSubscriptionMutation:
 		return c.UserSubscription.mutate(ctx, m)
+	case *Web3BalanceTransferMutation:
+		return c.Web3BalanceTransfer.mutate(ctx, m)
+	case *Web3DepositMutation:
+		return c.Web3Deposit.mutate(ctx, m)
+	case *Web3DepositAddressMutation:
+		return c.Web3DepositAddress.mutate(ctx, m)
+	case *Web3DepositWalletMutation:
+		return c.Web3DepositWallet.mutate(ctx, m)
+	case *Web3ScannerCursorMutation:
+		return c.Web3ScannerCursor.mutate(ctx, m)
+	case *Web3UserBalanceMutation:
+		return c.Web3UserBalance.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -6822,6 +6874,804 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 	}
 }
 
+// Web3BalanceTransferClient is a client for the Web3BalanceTransfer schema.
+type Web3BalanceTransferClient struct {
+	config
+}
+
+// NewWeb3BalanceTransferClient returns a client for the Web3BalanceTransfer from the given config.
+func NewWeb3BalanceTransferClient(c config) *Web3BalanceTransferClient {
+	return &Web3BalanceTransferClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `web3balancetransfer.Hooks(f(g(h())))`.
+func (c *Web3BalanceTransferClient) Use(hooks ...Hook) {
+	c.hooks.Web3BalanceTransfer = append(c.hooks.Web3BalanceTransfer, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `web3balancetransfer.Intercept(f(g(h())))`.
+func (c *Web3BalanceTransferClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Web3BalanceTransfer = append(c.inters.Web3BalanceTransfer, interceptors...)
+}
+
+// Create returns a builder for creating a Web3BalanceTransfer entity.
+func (c *Web3BalanceTransferClient) Create() *Web3BalanceTransferCreate {
+	mutation := newWeb3BalanceTransferMutation(c.config, OpCreate)
+	return &Web3BalanceTransferCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Web3BalanceTransfer entities.
+func (c *Web3BalanceTransferClient) CreateBulk(builders ...*Web3BalanceTransferCreate) *Web3BalanceTransferCreateBulk {
+	return &Web3BalanceTransferCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *Web3BalanceTransferClient) MapCreateBulk(slice any, setFunc func(*Web3BalanceTransferCreate, int)) *Web3BalanceTransferCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &Web3BalanceTransferCreateBulk{err: fmt.Errorf("calling to Web3BalanceTransferClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*Web3BalanceTransferCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &Web3BalanceTransferCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Web3BalanceTransfer.
+func (c *Web3BalanceTransferClient) Update() *Web3BalanceTransferUpdate {
+	mutation := newWeb3BalanceTransferMutation(c.config, OpUpdate)
+	return &Web3BalanceTransferUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *Web3BalanceTransferClient) UpdateOne(_m *Web3BalanceTransfer) *Web3BalanceTransferUpdateOne {
+	mutation := newWeb3BalanceTransferMutation(c.config, OpUpdateOne, withWeb3BalanceTransfer(_m))
+	return &Web3BalanceTransferUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *Web3BalanceTransferClient) UpdateOneID(id int64) *Web3BalanceTransferUpdateOne {
+	mutation := newWeb3BalanceTransferMutation(c.config, OpUpdateOne, withWeb3BalanceTransferID(id))
+	return &Web3BalanceTransferUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Web3BalanceTransfer.
+func (c *Web3BalanceTransferClient) Delete() *Web3BalanceTransferDelete {
+	mutation := newWeb3BalanceTransferMutation(c.config, OpDelete)
+	return &Web3BalanceTransferDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *Web3BalanceTransferClient) DeleteOne(_m *Web3BalanceTransfer) *Web3BalanceTransferDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *Web3BalanceTransferClient) DeleteOneID(id int64) *Web3BalanceTransferDeleteOne {
+	builder := c.Delete().Where(web3balancetransfer.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &Web3BalanceTransferDeleteOne{builder}
+}
+
+// Query returns a query builder for Web3BalanceTransfer.
+func (c *Web3BalanceTransferClient) Query() *Web3BalanceTransferQuery {
+	return &Web3BalanceTransferQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeWeb3BalanceTransfer},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Web3BalanceTransfer entity by its id.
+func (c *Web3BalanceTransferClient) Get(ctx context.Context, id int64) (*Web3BalanceTransfer, error) {
+	return c.Query().Where(web3balancetransfer.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *Web3BalanceTransferClient) GetX(ctx context.Context, id int64) *Web3BalanceTransfer {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *Web3BalanceTransferClient) Hooks() []Hook {
+	return c.hooks.Web3BalanceTransfer
+}
+
+// Interceptors returns the client interceptors.
+func (c *Web3BalanceTransferClient) Interceptors() []Interceptor {
+	return c.inters.Web3BalanceTransfer
+}
+
+func (c *Web3BalanceTransferClient) mutate(ctx context.Context, m *Web3BalanceTransferMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&Web3BalanceTransferCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&Web3BalanceTransferUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&Web3BalanceTransferUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&Web3BalanceTransferDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Web3BalanceTransfer mutation op: %q", m.Op())
+	}
+}
+
+// Web3DepositClient is a client for the Web3Deposit schema.
+type Web3DepositClient struct {
+	config
+}
+
+// NewWeb3DepositClient returns a client for the Web3Deposit from the given config.
+func NewWeb3DepositClient(c config) *Web3DepositClient {
+	return &Web3DepositClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `web3deposit.Hooks(f(g(h())))`.
+func (c *Web3DepositClient) Use(hooks ...Hook) {
+	c.hooks.Web3Deposit = append(c.hooks.Web3Deposit, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `web3deposit.Intercept(f(g(h())))`.
+func (c *Web3DepositClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Web3Deposit = append(c.inters.Web3Deposit, interceptors...)
+}
+
+// Create returns a builder for creating a Web3Deposit entity.
+func (c *Web3DepositClient) Create() *Web3DepositCreate {
+	mutation := newWeb3DepositMutation(c.config, OpCreate)
+	return &Web3DepositCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Web3Deposit entities.
+func (c *Web3DepositClient) CreateBulk(builders ...*Web3DepositCreate) *Web3DepositCreateBulk {
+	return &Web3DepositCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *Web3DepositClient) MapCreateBulk(slice any, setFunc func(*Web3DepositCreate, int)) *Web3DepositCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &Web3DepositCreateBulk{err: fmt.Errorf("calling to Web3DepositClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*Web3DepositCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &Web3DepositCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Web3Deposit.
+func (c *Web3DepositClient) Update() *Web3DepositUpdate {
+	mutation := newWeb3DepositMutation(c.config, OpUpdate)
+	return &Web3DepositUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *Web3DepositClient) UpdateOne(_m *Web3Deposit) *Web3DepositUpdateOne {
+	mutation := newWeb3DepositMutation(c.config, OpUpdateOne, withWeb3Deposit(_m))
+	return &Web3DepositUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *Web3DepositClient) UpdateOneID(id int64) *Web3DepositUpdateOne {
+	mutation := newWeb3DepositMutation(c.config, OpUpdateOne, withWeb3DepositID(id))
+	return &Web3DepositUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Web3Deposit.
+func (c *Web3DepositClient) Delete() *Web3DepositDelete {
+	mutation := newWeb3DepositMutation(c.config, OpDelete)
+	return &Web3DepositDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *Web3DepositClient) DeleteOne(_m *Web3Deposit) *Web3DepositDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *Web3DepositClient) DeleteOneID(id int64) *Web3DepositDeleteOne {
+	builder := c.Delete().Where(web3deposit.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &Web3DepositDeleteOne{builder}
+}
+
+// Query returns a query builder for Web3Deposit.
+func (c *Web3DepositClient) Query() *Web3DepositQuery {
+	return &Web3DepositQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeWeb3Deposit},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Web3Deposit entity by its id.
+func (c *Web3DepositClient) Get(ctx context.Context, id int64) (*Web3Deposit, error) {
+	return c.Query().Where(web3deposit.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *Web3DepositClient) GetX(ctx context.Context, id int64) *Web3Deposit {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *Web3DepositClient) Hooks() []Hook {
+	return c.hooks.Web3Deposit
+}
+
+// Interceptors returns the client interceptors.
+func (c *Web3DepositClient) Interceptors() []Interceptor {
+	return c.inters.Web3Deposit
+}
+
+func (c *Web3DepositClient) mutate(ctx context.Context, m *Web3DepositMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&Web3DepositCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&Web3DepositUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&Web3DepositUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&Web3DepositDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Web3Deposit mutation op: %q", m.Op())
+	}
+}
+
+// Web3DepositAddressClient is a client for the Web3DepositAddress schema.
+type Web3DepositAddressClient struct {
+	config
+}
+
+// NewWeb3DepositAddressClient returns a client for the Web3DepositAddress from the given config.
+func NewWeb3DepositAddressClient(c config) *Web3DepositAddressClient {
+	return &Web3DepositAddressClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `web3depositaddress.Hooks(f(g(h())))`.
+func (c *Web3DepositAddressClient) Use(hooks ...Hook) {
+	c.hooks.Web3DepositAddress = append(c.hooks.Web3DepositAddress, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `web3depositaddress.Intercept(f(g(h())))`.
+func (c *Web3DepositAddressClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Web3DepositAddress = append(c.inters.Web3DepositAddress, interceptors...)
+}
+
+// Create returns a builder for creating a Web3DepositAddress entity.
+func (c *Web3DepositAddressClient) Create() *Web3DepositAddressCreate {
+	mutation := newWeb3DepositAddressMutation(c.config, OpCreate)
+	return &Web3DepositAddressCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Web3DepositAddress entities.
+func (c *Web3DepositAddressClient) CreateBulk(builders ...*Web3DepositAddressCreate) *Web3DepositAddressCreateBulk {
+	return &Web3DepositAddressCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *Web3DepositAddressClient) MapCreateBulk(slice any, setFunc func(*Web3DepositAddressCreate, int)) *Web3DepositAddressCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &Web3DepositAddressCreateBulk{err: fmt.Errorf("calling to Web3DepositAddressClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*Web3DepositAddressCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &Web3DepositAddressCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Web3DepositAddress.
+func (c *Web3DepositAddressClient) Update() *Web3DepositAddressUpdate {
+	mutation := newWeb3DepositAddressMutation(c.config, OpUpdate)
+	return &Web3DepositAddressUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *Web3DepositAddressClient) UpdateOne(_m *Web3DepositAddress) *Web3DepositAddressUpdateOne {
+	mutation := newWeb3DepositAddressMutation(c.config, OpUpdateOne, withWeb3DepositAddress(_m))
+	return &Web3DepositAddressUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *Web3DepositAddressClient) UpdateOneID(id int64) *Web3DepositAddressUpdateOne {
+	mutation := newWeb3DepositAddressMutation(c.config, OpUpdateOne, withWeb3DepositAddressID(id))
+	return &Web3DepositAddressUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Web3DepositAddress.
+func (c *Web3DepositAddressClient) Delete() *Web3DepositAddressDelete {
+	mutation := newWeb3DepositAddressMutation(c.config, OpDelete)
+	return &Web3DepositAddressDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *Web3DepositAddressClient) DeleteOne(_m *Web3DepositAddress) *Web3DepositAddressDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *Web3DepositAddressClient) DeleteOneID(id int64) *Web3DepositAddressDeleteOne {
+	builder := c.Delete().Where(web3depositaddress.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &Web3DepositAddressDeleteOne{builder}
+}
+
+// Query returns a query builder for Web3DepositAddress.
+func (c *Web3DepositAddressClient) Query() *Web3DepositAddressQuery {
+	return &Web3DepositAddressQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeWeb3DepositAddress},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Web3DepositAddress entity by its id.
+func (c *Web3DepositAddressClient) Get(ctx context.Context, id int64) (*Web3DepositAddress, error) {
+	return c.Query().Where(web3depositaddress.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *Web3DepositAddressClient) GetX(ctx context.Context, id int64) *Web3DepositAddress {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *Web3DepositAddressClient) Hooks() []Hook {
+	return c.hooks.Web3DepositAddress
+}
+
+// Interceptors returns the client interceptors.
+func (c *Web3DepositAddressClient) Interceptors() []Interceptor {
+	return c.inters.Web3DepositAddress
+}
+
+func (c *Web3DepositAddressClient) mutate(ctx context.Context, m *Web3DepositAddressMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&Web3DepositAddressCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&Web3DepositAddressUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&Web3DepositAddressUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&Web3DepositAddressDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Web3DepositAddress mutation op: %q", m.Op())
+	}
+}
+
+// Web3DepositWalletClient is a client for the Web3DepositWallet schema.
+type Web3DepositWalletClient struct {
+	config
+}
+
+// NewWeb3DepositWalletClient returns a client for the Web3DepositWallet from the given config.
+func NewWeb3DepositWalletClient(c config) *Web3DepositWalletClient {
+	return &Web3DepositWalletClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `web3depositwallet.Hooks(f(g(h())))`.
+func (c *Web3DepositWalletClient) Use(hooks ...Hook) {
+	c.hooks.Web3DepositWallet = append(c.hooks.Web3DepositWallet, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `web3depositwallet.Intercept(f(g(h())))`.
+func (c *Web3DepositWalletClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Web3DepositWallet = append(c.inters.Web3DepositWallet, interceptors...)
+}
+
+// Create returns a builder for creating a Web3DepositWallet entity.
+func (c *Web3DepositWalletClient) Create() *Web3DepositWalletCreate {
+	mutation := newWeb3DepositWalletMutation(c.config, OpCreate)
+	return &Web3DepositWalletCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Web3DepositWallet entities.
+func (c *Web3DepositWalletClient) CreateBulk(builders ...*Web3DepositWalletCreate) *Web3DepositWalletCreateBulk {
+	return &Web3DepositWalletCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *Web3DepositWalletClient) MapCreateBulk(slice any, setFunc func(*Web3DepositWalletCreate, int)) *Web3DepositWalletCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &Web3DepositWalletCreateBulk{err: fmt.Errorf("calling to Web3DepositWalletClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*Web3DepositWalletCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &Web3DepositWalletCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Web3DepositWallet.
+func (c *Web3DepositWalletClient) Update() *Web3DepositWalletUpdate {
+	mutation := newWeb3DepositWalletMutation(c.config, OpUpdate)
+	return &Web3DepositWalletUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *Web3DepositWalletClient) UpdateOne(_m *Web3DepositWallet) *Web3DepositWalletUpdateOne {
+	mutation := newWeb3DepositWalletMutation(c.config, OpUpdateOne, withWeb3DepositWallet(_m))
+	return &Web3DepositWalletUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *Web3DepositWalletClient) UpdateOneID(id int64) *Web3DepositWalletUpdateOne {
+	mutation := newWeb3DepositWalletMutation(c.config, OpUpdateOne, withWeb3DepositWalletID(id))
+	return &Web3DepositWalletUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Web3DepositWallet.
+func (c *Web3DepositWalletClient) Delete() *Web3DepositWalletDelete {
+	mutation := newWeb3DepositWalletMutation(c.config, OpDelete)
+	return &Web3DepositWalletDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *Web3DepositWalletClient) DeleteOne(_m *Web3DepositWallet) *Web3DepositWalletDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *Web3DepositWalletClient) DeleteOneID(id int64) *Web3DepositWalletDeleteOne {
+	builder := c.Delete().Where(web3depositwallet.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &Web3DepositWalletDeleteOne{builder}
+}
+
+// Query returns a query builder for Web3DepositWallet.
+func (c *Web3DepositWalletClient) Query() *Web3DepositWalletQuery {
+	return &Web3DepositWalletQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeWeb3DepositWallet},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Web3DepositWallet entity by its id.
+func (c *Web3DepositWalletClient) Get(ctx context.Context, id int64) (*Web3DepositWallet, error) {
+	return c.Query().Where(web3depositwallet.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *Web3DepositWalletClient) GetX(ctx context.Context, id int64) *Web3DepositWallet {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *Web3DepositWalletClient) Hooks() []Hook {
+	return c.hooks.Web3DepositWallet
+}
+
+// Interceptors returns the client interceptors.
+func (c *Web3DepositWalletClient) Interceptors() []Interceptor {
+	return c.inters.Web3DepositWallet
+}
+
+func (c *Web3DepositWalletClient) mutate(ctx context.Context, m *Web3DepositWalletMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&Web3DepositWalletCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&Web3DepositWalletUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&Web3DepositWalletUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&Web3DepositWalletDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Web3DepositWallet mutation op: %q", m.Op())
+	}
+}
+
+// Web3ScannerCursorClient is a client for the Web3ScannerCursor schema.
+type Web3ScannerCursorClient struct {
+	config
+}
+
+// NewWeb3ScannerCursorClient returns a client for the Web3ScannerCursor from the given config.
+func NewWeb3ScannerCursorClient(c config) *Web3ScannerCursorClient {
+	return &Web3ScannerCursorClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `web3scannercursor.Hooks(f(g(h())))`.
+func (c *Web3ScannerCursorClient) Use(hooks ...Hook) {
+	c.hooks.Web3ScannerCursor = append(c.hooks.Web3ScannerCursor, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `web3scannercursor.Intercept(f(g(h())))`.
+func (c *Web3ScannerCursorClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Web3ScannerCursor = append(c.inters.Web3ScannerCursor, interceptors...)
+}
+
+// Create returns a builder for creating a Web3ScannerCursor entity.
+func (c *Web3ScannerCursorClient) Create() *Web3ScannerCursorCreate {
+	mutation := newWeb3ScannerCursorMutation(c.config, OpCreate)
+	return &Web3ScannerCursorCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Web3ScannerCursor entities.
+func (c *Web3ScannerCursorClient) CreateBulk(builders ...*Web3ScannerCursorCreate) *Web3ScannerCursorCreateBulk {
+	return &Web3ScannerCursorCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *Web3ScannerCursorClient) MapCreateBulk(slice any, setFunc func(*Web3ScannerCursorCreate, int)) *Web3ScannerCursorCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &Web3ScannerCursorCreateBulk{err: fmt.Errorf("calling to Web3ScannerCursorClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*Web3ScannerCursorCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &Web3ScannerCursorCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Web3ScannerCursor.
+func (c *Web3ScannerCursorClient) Update() *Web3ScannerCursorUpdate {
+	mutation := newWeb3ScannerCursorMutation(c.config, OpUpdate)
+	return &Web3ScannerCursorUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *Web3ScannerCursorClient) UpdateOne(_m *Web3ScannerCursor) *Web3ScannerCursorUpdateOne {
+	mutation := newWeb3ScannerCursorMutation(c.config, OpUpdateOne, withWeb3ScannerCursor(_m))
+	return &Web3ScannerCursorUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *Web3ScannerCursorClient) UpdateOneID(id int64) *Web3ScannerCursorUpdateOne {
+	mutation := newWeb3ScannerCursorMutation(c.config, OpUpdateOne, withWeb3ScannerCursorID(id))
+	return &Web3ScannerCursorUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Web3ScannerCursor.
+func (c *Web3ScannerCursorClient) Delete() *Web3ScannerCursorDelete {
+	mutation := newWeb3ScannerCursorMutation(c.config, OpDelete)
+	return &Web3ScannerCursorDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *Web3ScannerCursorClient) DeleteOne(_m *Web3ScannerCursor) *Web3ScannerCursorDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *Web3ScannerCursorClient) DeleteOneID(id int64) *Web3ScannerCursorDeleteOne {
+	builder := c.Delete().Where(web3scannercursor.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &Web3ScannerCursorDeleteOne{builder}
+}
+
+// Query returns a query builder for Web3ScannerCursor.
+func (c *Web3ScannerCursorClient) Query() *Web3ScannerCursorQuery {
+	return &Web3ScannerCursorQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeWeb3ScannerCursor},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Web3ScannerCursor entity by its id.
+func (c *Web3ScannerCursorClient) Get(ctx context.Context, id int64) (*Web3ScannerCursor, error) {
+	return c.Query().Where(web3scannercursor.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *Web3ScannerCursorClient) GetX(ctx context.Context, id int64) *Web3ScannerCursor {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *Web3ScannerCursorClient) Hooks() []Hook {
+	return c.hooks.Web3ScannerCursor
+}
+
+// Interceptors returns the client interceptors.
+func (c *Web3ScannerCursorClient) Interceptors() []Interceptor {
+	return c.inters.Web3ScannerCursor
+}
+
+func (c *Web3ScannerCursorClient) mutate(ctx context.Context, m *Web3ScannerCursorMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&Web3ScannerCursorCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&Web3ScannerCursorUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&Web3ScannerCursorUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&Web3ScannerCursorDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Web3ScannerCursor mutation op: %q", m.Op())
+	}
+}
+
+// Web3UserBalanceClient is a client for the Web3UserBalance schema.
+type Web3UserBalanceClient struct {
+	config
+}
+
+// NewWeb3UserBalanceClient returns a client for the Web3UserBalance from the given config.
+func NewWeb3UserBalanceClient(c config) *Web3UserBalanceClient {
+	return &Web3UserBalanceClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `web3userbalance.Hooks(f(g(h())))`.
+func (c *Web3UserBalanceClient) Use(hooks ...Hook) {
+	c.hooks.Web3UserBalance = append(c.hooks.Web3UserBalance, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `web3userbalance.Intercept(f(g(h())))`.
+func (c *Web3UserBalanceClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Web3UserBalance = append(c.inters.Web3UserBalance, interceptors...)
+}
+
+// Create returns a builder for creating a Web3UserBalance entity.
+func (c *Web3UserBalanceClient) Create() *Web3UserBalanceCreate {
+	mutation := newWeb3UserBalanceMutation(c.config, OpCreate)
+	return &Web3UserBalanceCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Web3UserBalance entities.
+func (c *Web3UserBalanceClient) CreateBulk(builders ...*Web3UserBalanceCreate) *Web3UserBalanceCreateBulk {
+	return &Web3UserBalanceCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *Web3UserBalanceClient) MapCreateBulk(slice any, setFunc func(*Web3UserBalanceCreate, int)) *Web3UserBalanceCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &Web3UserBalanceCreateBulk{err: fmt.Errorf("calling to Web3UserBalanceClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*Web3UserBalanceCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &Web3UserBalanceCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Web3UserBalance.
+func (c *Web3UserBalanceClient) Update() *Web3UserBalanceUpdate {
+	mutation := newWeb3UserBalanceMutation(c.config, OpUpdate)
+	return &Web3UserBalanceUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *Web3UserBalanceClient) UpdateOne(_m *Web3UserBalance) *Web3UserBalanceUpdateOne {
+	mutation := newWeb3UserBalanceMutation(c.config, OpUpdateOne, withWeb3UserBalance(_m))
+	return &Web3UserBalanceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *Web3UserBalanceClient) UpdateOneID(id int64) *Web3UserBalanceUpdateOne {
+	mutation := newWeb3UserBalanceMutation(c.config, OpUpdateOne, withWeb3UserBalanceID(id))
+	return &Web3UserBalanceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Web3UserBalance.
+func (c *Web3UserBalanceClient) Delete() *Web3UserBalanceDelete {
+	mutation := newWeb3UserBalanceMutation(c.config, OpDelete)
+	return &Web3UserBalanceDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *Web3UserBalanceClient) DeleteOne(_m *Web3UserBalance) *Web3UserBalanceDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *Web3UserBalanceClient) DeleteOneID(id int64) *Web3UserBalanceDeleteOne {
+	builder := c.Delete().Where(web3userbalance.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &Web3UserBalanceDeleteOne{builder}
+}
+
+// Query returns a query builder for Web3UserBalance.
+func (c *Web3UserBalanceClient) Query() *Web3UserBalanceQuery {
+	return &Web3UserBalanceQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeWeb3UserBalance},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Web3UserBalance entity by its id.
+func (c *Web3UserBalanceClient) Get(ctx context.Context, id int64) (*Web3UserBalance, error) {
+	return c.Query().Where(web3userbalance.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *Web3UserBalanceClient) GetX(ctx context.Context, id int64) *Web3UserBalance {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *Web3UserBalanceClient) Hooks() []Hook {
+	return c.hooks.Web3UserBalance
+}
+
+// Interceptors returns the client interceptors.
+func (c *Web3UserBalanceClient) Interceptors() []Interceptor {
+	return c.inters.Web3UserBalance
+}
+
+func (c *Web3UserBalanceClient) mutate(ctx context.Context, m *Web3UserBalanceMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&Web3UserBalanceCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&Web3UserBalanceUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&Web3UserBalanceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&Web3UserBalanceDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Web3UserBalance mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
@@ -6834,7 +7684,8 @@ type (
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
 		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Hook
+		UserSubscription, Web3BalanceTransfer, Web3Deposit, Web3DepositAddress,
+		Web3DepositWallet, Web3ScannerCursor, Web3UserBalance []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
@@ -6846,7 +7697,8 @@ type (
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
 		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Interceptor
+		UserSubscription, Web3BalanceTransfer, Web3Deposit, Web3DepositAddress,
+		Web3DepositWallet, Web3ScannerCursor, Web3UserBalance []ent.Interceptor
 	}
 )
 

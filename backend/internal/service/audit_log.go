@@ -20,6 +20,7 @@ const (
 	AuditAuthMethodJWT         = "jwt"
 	AuditAuthMethodAdminAPIKey = "admin_api_key"
 	AuditAuthMethodPasskey     = "passkey"
+	AuditAuthMethodWeb3        = "web3"
 
 	// auditRequestBodyMaxBytes 请求体脱敏后入库的最大长度（字节），超出截断。
 	auditRequestBodyMaxBytes = 16 * 1024

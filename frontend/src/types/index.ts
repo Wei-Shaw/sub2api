@@ -67,6 +67,7 @@ export interface User {
   id: number
   username: string
   email: string
+  web3_address?: string | null
   avatar_url?: string | null
   avatar_source?: string | UserProfileSourceContext | null
   username_source?: string | UserProfileSourceContext | null

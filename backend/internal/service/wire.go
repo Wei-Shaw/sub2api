@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/Wei-Shaw/sub2api/internal/web3deposit"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -533,8 +534,10 @@ func ProvideOpsAlertEvaluatorService(
 	redisClient *redis.Client,
 	cfg *config.Config,
 	proxyRepo ProxyRepository,
+	web3Deposits web3deposit.AdminDepositReader,
+	web3RuntimeHealth *web3deposit.ConfluxNetworkRuntimeRegistry,
 ) *OpsAlertEvaluatorService {
-	svc := NewOpsAlertEvaluatorService(opsService, opsRepo, emailService, redisClient, cfg, proxyRepo)
+	svc := NewOpsAlertEvaluatorService(opsService, opsRepo, emailService, redisClient, cfg, proxyRepo, web3Deposits, web3RuntimeHealth)
 	svc.Start()
 	return svc
 }
@@ -820,11 +823,18 @@ func ProvideAPIKeyService(
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
+	NewAuthService,
+	NewWeb3AuthService,
 	ProvideAuthService,
 	NewPasskeyService,
 	NewUserService,
 	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,
+	NewWeb3TransferCacheInvalidator,
+	NewWeb3TransferNotifier,
+	web3deposit.NewTransferService,
+	wire.Bind(new(web3deposit.TransferCacheInvalidator), new(*Web3TransferCacheInvalidator)),
+	wire.Bind(new(web3deposit.TransferNotifier), new(*Web3TransferNotifier)),
 	ProvideAuthCacheInvalidationWorker,
 	NewGroupService,
 	NewCompositeRouteResolver,
