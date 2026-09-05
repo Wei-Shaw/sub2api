@@ -2844,7 +2844,7 @@
       <GroupSelector
         v-if="!authStore.isSimpleMode"
         v-model="form.group_ids"
-        :groups="groups"
+        :groups="selectableGroups"
         :platform="account?.platform"
         :mixed-scheduling="mixedScheduling"
         data-tour="account-form-groups"
@@ -2914,6 +2914,7 @@ import type {
   Account,
   Proxy,
   AdminGroup,
+  Group,
   CheckMixedChannelResponse,
   OpenAICompactMode,
   OpenAIResponsesMode,
@@ -3001,6 +3002,17 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const browserTimeZone = getBrowserTimeZone()
+
+const selectableGroups = computed(() => {
+  const groups = new Map<number, Group>(props.groups.map(group => [group.id, group]))
+  const assignedIds = new Set(props.account?.group_ids ?? [])
+  for (const group of props.account?.groups ?? []) {
+    if (assignedIds.has(group.id) && !groups.has(group.id)) {
+      groups.set(group.id, group)
+    }
+  }
+  return Array.from(groups.values())
+})
 
 // Spark 影子账号(parent_account_id 非空):代理恒继承母账号,不可独立编辑(外审 B/P1),
 // 故隐藏代理选择器。
