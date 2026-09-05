@@ -171,16 +171,7 @@ func (s *OpenAIOAuthService) ExchangeCode(ctx context.Context, input *OpenAIExch
 		return nil, err
 	}
 
-	// Parse ID token to get user info
-	var userInfo *openai.UserInfo
-	if tokenResp.IDToken != "" {
-		claims, parseErr := openai.ParseIDToken(tokenResp.IDToken)
-		if parseErr != nil {
-			slog.Warn("openai_oauth_id_token_parse_failed", "error", parseErr)
-		} else {
-			userInfo = claims.GetUserInfo()
-		}
-	}
+	userInfo := extractOpenAIUserInfo(tokenResp.IDToken)
 
 	// Delete session after successful exchange
 	s.sessionStore.Delete(input.SessionID)
@@ -219,16 +210,7 @@ func (s *OpenAIOAuthService) RefreshTokenWithClientID(ctx context.Context, refre
 		return nil, err
 	}
 
-	// Parse ID token to get user info
-	var userInfo *openai.UserInfo
-	if tokenResp.IDToken != "" {
-		claims, parseErr := openai.ParseIDToken(tokenResp.IDToken)
-		if parseErr != nil {
-			slog.Warn("openai_oauth_id_token_parse_failed", "error", parseErr)
-		} else {
-			userInfo = claims.GetUserInfo()
-		}
-	}
+	userInfo := extractOpenAIUserInfo(tokenResp.IDToken)
 
 	tokenInfo := &OpenAITokenInfo{
 		AccessToken:  tokenResp.AccessToken,
@@ -252,6 +234,29 @@ func (s *OpenAIOAuthService) RefreshTokenWithClientID(ctx context.Context, refre
 	s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
 
 	return tokenInfo, nil
+}
+
+// extractOpenAIUserInfo treats ID-token claims as account metadata, not as an
+// authentication decision. Some refresh-token issuers return the previous,
+// already-expired ID token together with a fresh access token. Preserve its
+// identity claims in that case so newly created accounts remain routable.
+func extractOpenAIUserInfo(idToken string) *openai.UserInfo {
+	idToken = strings.TrimSpace(idToken)
+	if idToken == "" {
+		return nil
+	}
+	claims, err := openai.ParseIDToken(idToken)
+	if err == nil {
+		return claims.GetUserInfo()
+	}
+
+	slog.Warn("openai_oauth_id_token_validation_failed_using_metadata_fallback", "error", err)
+	claims, decodeErr := openai.DecodeIDToken(idToken)
+	if decodeErr != nil {
+		slog.Warn("openai_oauth_id_token_parse_failed", "error", decodeErr)
+		return nil
+	}
+	return claims.GetUserInfo()
 }
 
 // enrichTokenInfo 通过 ChatGPT backend-api 补全 tokenInfo 并设置隐私（best-effort）。
