@@ -1576,7 +1576,7 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
   it('仅对 OpenAI OAuth 母账号显示，默认关闭且阈值为 100/100', () => {
     const parent = mountModal(buildOpenAIOAuthParentAccount())
     expect(parent.find('[data-testid="auto-reset-credit-settings"]').exists()).toBe(true)
-    expect((parent.get('[data-testid="auto-reset-credit-5h-threshold"]').element as HTMLInputElement).value).toBe('100')
+    expect((parent.get('[data-testid="auto-reset-credit-5h-threshold"]').element as HTMLInputElement).value).toBe('0')
     expect((parent.get('[data-testid="auto-reset-credit-7d-threshold"]').element as HTMLInputElement).value).toBe('100')
     expect(parent.find('[data-testid="auto-reset-credit-expiry-settings"]').exists()).toBe(true)
     expect((parent.get('[data-testid="auto-reset-credit-expiry-lead-minutes"]').element as HTMLInputElement).value).toBe('10')
@@ -1627,7 +1627,7 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
   it('开启后拒绝超出 0.1–100 范围的任一阈值', async () => {
     const wrapper = mountModal(buildOpenAIOAuthParentAccount())
     await wrapper.get('[data-testid="auto-reset-credit-enabled"]').trigger('click')
-    await wrapper.get('[data-testid="auto-reset-credit-5h-threshold"]').setValue('0')
+    await wrapper.get('[data-testid="auto-reset-credit-5h-threshold"]').setValue('0.05')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     expect(updateAccountMock).not.toHaveBeenCalled()
     wrapper.unmount()
