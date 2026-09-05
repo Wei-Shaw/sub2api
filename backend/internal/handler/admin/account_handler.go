@@ -220,18 +220,20 @@ type AccountSchedulerGroupScore struct {
 }
 
 type CodexDeviceSlotSummary struct {
-	OSClass                service.CodexOSClass           `json:"os_class"`
-	CanonicalSurface       service.CodexClientSurface     `json:"canonical_surface"`
-	Architecture           service.CodexArchitecture      `json:"architecture,omitempty"`
-	CatalogVersion         int64                          `json:"catalog_version"`
-	Epoch                  int64                          `json:"epoch"`
-	SlotIndex              int                            `json:"slot_index"`
-	State                  string                         `json:"state"`
-	ProxyID                *int64                         `json:"proxy_id,omitempty"`
-	ClientVersionMode      service.CodexClientVersionMode `json:"client_version_mode"`
-	ClientVersion          string                         `json:"client_version,omitempty"`
-	EffectiveClientVersion string                         `json:"effective_client_version"`
-	BindingCount           int64                          `json:"binding_count"`
+	OSClass                   service.CodexOSClass                   `json:"os_class"`
+	CanonicalSurface          service.CodexClientSurface             `json:"canonical_surface"`
+	Architecture              service.CodexArchitecture              `json:"architecture,omitempty"`
+	CatalogVersion            int64                                  `json:"catalog_version"`
+	Epoch                     int64                                  `json:"epoch"`
+	SlotIndex                 int                                    `json:"slot_index"`
+	State                     string                                 `json:"state"`
+	ProxyID                   *int64                                 `json:"proxy_id,omitempty"`
+	ClientVersionMode         service.CodexClientVersionMode         `json:"client_version_mode"`
+	ClientVersion             string                                 `json:"client_version,omitempty"`
+	EffectiveClientVersion    string                                 `json:"effective_client_version"`
+	ClientProfileVerification service.CodexClientProfileVerification `json:"client_profile_verification"`
+	ClientProfileSource       string                                 `json:"client_profile_source"`
+	BindingCount              int64                                  `json:"binding_count"`
 }
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
@@ -825,6 +827,7 @@ func (h *AccountHandler) ListCodexDeviceSlots(c *gin.Context) {
 			Epoch: slot.Epoch, SlotIndex: slot.SlotIndex, State: slot.State,
 			ProxyID: slot.ProxyID, ClientVersionMode: slot.ClientVersionMode,
 			ClientVersion: slot.ClientVersion, EffectiveClientVersion: slot.EffectiveClientVersion,
+			ClientProfileVerification: slot.ClientProfileVerification, ClientProfileSource: slot.ClientProfileSource,
 			BindingCount: slot.BindingCount,
 		})
 	}

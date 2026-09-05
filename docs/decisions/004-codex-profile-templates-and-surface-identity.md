@@ -60,15 +60,37 @@ is enabled and which configuration is assigned.
   the version captured in its plan; the device identity and epoch are retained
   just as they are across a normal first-party client upgrade. No account-wide
   epoch fan-out or drain is performed for that global refresh.
-- Define `device_shared` capacity as one in-progress HTTP/SSE request stream or
-  one WebSocket session per physical device slot. The lease is released when
-  that request/session ends. This is not an account-wide concurrency limit, and
-  the other session policies add no equivalent slot mutex.
+- Make `device_shared.max_active_conversations_per_slot` configurable from 0
+  to 1000. Zero adds no local slot cap; positive values count simultaneous
+  HTTP/SSE request streams or WebSocket sessions. Existing explicit limits,
+  including 1, remain unchanged. Other session policies add no slot cap.
+- Prefer the API key's stable device slot. If its local capacity is full, a
+  new conversation with a stable key may use another active slot of the same
+  OS, surface, architecture and profile epoch. Persist that conversation's
+  binding without moving other conversations. A known conversation stays on
+  its bound slot; missing identity or an unbound previous_response_id never
+  authorizes a move. No upstream request has been sent during this selection.
+- Renew and release each request lease independently. Keep its database
+  affinity alive during long requests and detached upstream draining.
+- Classify explicit quota, concurrency and rate-limit errors separately; a
+  bare 429 remains unknown. Quota errors do not enter same-account retries.
+  An upstream 429 never triggers device switching. Existing account, user
+  and API-key concurrency settings continue to apply.
+- Provide a version/device-keyed `CodexClientProfileProvider` extension point
+  with source, evidence and verification status. The default catalog remains
+  explicitly unverified. This does not extract release fingerprints, install
+  Codex, or configure TLS/HTTP2 fingerprints. Future providers must be wired
+  into both gateway resolution and admin status before deployment.
 - Define `sessions_per_device` as the number of reusable upstream session
   identities in `session_pool`; it is not a request-concurrency setting.
 - Keep usage parsing, billing, scheduler ownership and durable A-to-B usage
   relay behavior in the host. The Transport plugin continues to receive only
   the already resolved proxy URL and an opaque API-key connection scope.
+
+Migrations 239–240 are required. Upgrade the core and database together: the
+conversation-aware binding uniqueness is not compatible with writes from the
+old core's four-column ON CONFLICT query. Do not mix old and new core binaries
+in a rolling deployment. This change has only been tested locally.
 
 ## API Contract
 
@@ -86,7 +108,9 @@ projection during migration.
 
 The account device-slot lifecycle response exposes `client_version_mode`, the
 optional pinned `client_version`, and `effective_client_version` so operators
-can verify the version that will actually be declared upstream.
+can verify the version that will actually be declared upstream. It also exposes
+`client_profile_source` and `client_profile_verification`; a version string
+alone is not evidence of a verified fingerprint.
 
 ## Alternatives Considered
 

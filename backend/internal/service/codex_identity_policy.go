@@ -91,6 +91,8 @@ const (
 	minCodexAffinityTTLSeconds     = 60
 	maxCodexAffinityTTLSeconds     = 86400
 	maxCodexDeviceSlotsPerProfile  = 3
+	// Zero adds no slot-specific limit; existing account/user/key limits still apply.
+	MaxCodexSlotConcurrency = 1000
 )
 
 // CodexSessionPolicySpec controls only application identity. HTTP/WS state
@@ -363,9 +365,9 @@ func validateCodexSessionPolicy(policy CodexSessionPolicySpec) error {
 		if policy.SessionsPerDevice != 0 {
 			return invalidCodexIdentityPolicy("sessions_per_device is only valid for session_pool")
 		}
-		if policy.MaxActiveConversationsPerSlot != 1 || !policy.DisableCrossKeyContinuation {
+		if policy.MaxActiveConversationsPerSlot < 0 || policy.MaxActiveConversationsPerSlot > MaxCodexSlotConcurrency || !policy.DisableCrossKeyContinuation {
 			return invalidCodexIdentityPolicy(
-				"device_shared requires max_active_conversations_per_slot=1 and disable_cross_key_continuation=true",
+				"device_shared requires max_active_conversations_per_slot between 0 and 1000 and disable_cross_key_continuation=true",
 			)
 		}
 	default:

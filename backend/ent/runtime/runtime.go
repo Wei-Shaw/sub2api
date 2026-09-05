@@ -280,12 +280,18 @@ func init() {
 	accountcodexdevicebindingDescCanonicalSurface := accountcodexdevicebindingFields[3].Descriptor()
 	// accountcodexdevicebinding.CanonicalSurfaceValidator is a validator for the "canonical_surface" field. It is called by the builders before save.
 	accountcodexdevicebinding.CanonicalSurfaceValidator = accountcodexdevicebindingDescCanonicalSurface.Validators[0].(func(string) error)
+	// accountcodexdevicebindingDescConversationHash is the schema descriptor for conversation_hash field.
+	accountcodexdevicebindingDescConversationHash := accountcodexdevicebindingFields[4].Descriptor()
+	// accountcodexdevicebinding.DefaultConversationHash holds the default value on creation for the conversation_hash field.
+	accountcodexdevicebinding.DefaultConversationHash = accountcodexdevicebindingDescConversationHash.Default.(string)
+	// accountcodexdevicebinding.ConversationHashValidator is a validator for the "conversation_hash" field. It is called by the builders before save.
+	accountcodexdevicebinding.ConversationHashValidator = accountcodexdevicebindingDescConversationHash.Validators[0].(func(string) error)
 	// accountcodexdevicebindingDescCreatedAt is the schema descriptor for created_at field.
-	accountcodexdevicebindingDescCreatedAt := accountcodexdevicebindingFields[6].Descriptor()
+	accountcodexdevicebindingDescCreatedAt := accountcodexdevicebindingFields[7].Descriptor()
 	// accountcodexdevicebinding.DefaultCreatedAt holds the default value on creation for the created_at field.
 	accountcodexdevicebinding.DefaultCreatedAt = accountcodexdevicebindingDescCreatedAt.Default.(func() time.Time)
 	// accountcodexdevicebindingDescUpdatedAt is the schema descriptor for updated_at field.
-	accountcodexdevicebindingDescUpdatedAt := accountcodexdevicebindingFields[7].Descriptor()
+	accountcodexdevicebindingDescUpdatedAt := accountcodexdevicebindingFields[8].Descriptor()
 	// accountcodexdevicebinding.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	accountcodexdevicebinding.DefaultUpdatedAt = accountcodexdevicebindingDescUpdatedAt.Default.(func() time.Time)
 	// accountcodexdevicebinding.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

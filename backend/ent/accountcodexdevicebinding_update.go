@@ -98,6 +98,20 @@ func (_u *AccountCodexDeviceBindingUpdate) SetNillableCanonicalSurface(v *string
 	return _u
 }
 
+// SetConversationHash sets the "conversation_hash" field.
+func (_u *AccountCodexDeviceBindingUpdate) SetConversationHash(v string) *AccountCodexDeviceBindingUpdate {
+	_u.mutation.SetConversationHash(v)
+	return _u
+}
+
+// SetNillableConversationHash sets the "conversation_hash" field if the given value is not nil.
+func (_u *AccountCodexDeviceBindingUpdate) SetNillableConversationHash(v *string) *AccountCodexDeviceBindingUpdate {
+	if v != nil {
+		_u.SetConversationHash(*v)
+	}
+	return _u
+}
+
 // SetSlotID sets the "slot_id" field.
 func (_u *AccountCodexDeviceBindingUpdate) SetSlotID(v int64) *AccountCodexDeviceBindingUpdate {
 	_u.mutation.ResetSlotID()
@@ -199,6 +213,11 @@ func (_u *AccountCodexDeviceBindingUpdate) check() error {
 			return &ValidationError{Name: "canonical_surface", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceBinding.canonical_surface": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ConversationHash(); ok {
+		if err := accountcodexdevicebinding.ConversationHashValidator(v); err != nil {
+			return &ValidationError{Name: "conversation_hash", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceBinding.conversation_hash": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -231,6 +250,9 @@ func (_u *AccountCodexDeviceBindingUpdate) sqlSave(ctx context.Context) (_node i
 	}
 	if value, ok := _u.mutation.CanonicalSurface(); ok {
 		_spec.SetField(accountcodexdevicebinding.FieldCanonicalSurface, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ConversationHash(); ok {
+		_spec.SetField(accountcodexdevicebinding.FieldConversationHash, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.SlotID(); ok {
 		_spec.SetField(accountcodexdevicebinding.FieldSlotID, field.TypeInt64, value)
@@ -333,6 +355,20 @@ func (_u *AccountCodexDeviceBindingUpdateOne) SetCanonicalSurface(v string) *Acc
 func (_u *AccountCodexDeviceBindingUpdateOne) SetNillableCanonicalSurface(v *string) *AccountCodexDeviceBindingUpdateOne {
 	if v != nil {
 		_u.SetCanonicalSurface(*v)
+	}
+	return _u
+}
+
+// SetConversationHash sets the "conversation_hash" field.
+func (_u *AccountCodexDeviceBindingUpdateOne) SetConversationHash(v string) *AccountCodexDeviceBindingUpdateOne {
+	_u.mutation.SetConversationHash(v)
+	return _u
+}
+
+// SetNillableConversationHash sets the "conversation_hash" field if the given value is not nil.
+func (_u *AccountCodexDeviceBindingUpdateOne) SetNillableConversationHash(v *string) *AccountCodexDeviceBindingUpdateOne {
+	if v != nil {
+		_u.SetConversationHash(*v)
 	}
 	return _u
 }
@@ -451,6 +487,11 @@ func (_u *AccountCodexDeviceBindingUpdateOne) check() error {
 			return &ValidationError{Name: "canonical_surface", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceBinding.canonical_surface": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ConversationHash(); ok {
+		if err := accountcodexdevicebinding.ConversationHashValidator(v); err != nil {
+			return &ValidationError{Name: "conversation_hash", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceBinding.conversation_hash": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -500,6 +541,9 @@ func (_u *AccountCodexDeviceBindingUpdateOne) sqlSave(ctx context.Context) (_nod
 	}
 	if value, ok := _u.mutation.CanonicalSurface(); ok {
 		_spec.SetField(accountcodexdevicebinding.FieldCanonicalSurface, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ConversationHash(); ok {
+		_spec.SetField(accountcodexdevicebinding.FieldConversationHash, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.SlotID(); ok {
 		_spec.SetField(accountcodexdevicebinding.FieldSlotID, field.TypeInt64, value)

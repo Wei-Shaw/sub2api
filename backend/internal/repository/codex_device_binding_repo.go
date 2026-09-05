@@ -74,7 +74,7 @@ func (r *accountRepository) RebindCodexDeviceBinding(
 	}
 	if _, err := client.ExecContext(ctx, `
 		DELETE FROM account_codex_device_bindings
-		WHERE account_id=$1 AND api_key_id=$2 AND os_class=$3 AND canonical_surface=$4
+		WHERE account_id=$1 AND api_key_id=$2 AND os_class=$3 AND canonical_surface=$4 AND conversation_hash=''
 	`, oldAccountID, apiKeyID, osClass, surface); err != nil {
 		return nil, err
 	}
@@ -366,7 +366,7 @@ func resolveCodexDeviceBinding(
 		INSERT INTO account_codex_device_bindings
 			(account_id, api_key_id, os_class, canonical_surface, slot_id, policy_version)
 		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (account_id, api_key_id, os_class, canonical_surface) DO NOTHING
+		ON CONFLICT (account_id, api_key_id, os_class, canonical_surface, conversation_hash) DO NOTHING
 	`, accountID, apiKeyID, osClass, surface, slotID, policyVersion); err != nil {
 		return nil, err
 	}
@@ -380,14 +380,11 @@ func resolveCodexDeviceBinding(
 	return resolved, nil
 }
 
-func loadCodexDeviceBinding(
-	ctx context.Context,
-	client *dbent.Client,
-	accountID int64,
-	apiKeyID int64,
-	osClass service.CodexOSClass,
-	surface service.CodexClientSurface,
-) (*service.CodexResolvedDeviceSlot, error) {
+func loadCodexDeviceBinding(ctx context.Context, client *dbent.Client, accountID, apiKeyID int64, osClass service.CodexOSClass, surface service.CodexClientSurface) (*service.CodexResolvedDeviceSlot, error) {
+	return loadCodexConversationBinding(ctx, client, accountID, apiKeyID, osClass, surface, "")
+}
+
+func loadCodexConversationBinding(ctx context.Context, client *dbent.Client, accountID, apiKeyID int64, osClass service.CodexOSClass, surface service.CodexClientSurface, conversationHash string) (*service.CodexResolvedDeviceSlot, error) {
 	rows, err := client.QueryContext(ctx, `
 		SELECT bindings.id, bindings.account_id, bindings.api_key_id,
 		       profiles.id, slots.id, profiles.os_class, profiles.canonical_surface,
@@ -407,10 +404,10 @@ func loadCodexDeviceBinding(
 		JOIN account_codex_identity_policies AS policies ON policies.account_id=bindings.account_id
 		JOIN accounts ON accounts.id=bindings.account_id
 		WHERE bindings.account_id=$1 AND bindings.api_key_id=$2 AND bindings.os_class=$3
-		  AND bindings.canonical_surface=$4
+		  AND bindings.canonical_surface=$4 AND bindings.conversation_hash=$5
 		LIMIT 1
 		FOR UPDATE OF bindings
-	`, accountID, apiKeyID, osClass, surface)
+	`, accountID, apiKeyID, osClass, surface, conversationHash)
 	if err != nil {
 		return nil, err
 	}

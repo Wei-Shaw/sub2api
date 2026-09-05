@@ -364,14 +364,16 @@ export const validateCodexIdentityPolicy = (
 
   if (sessionPolicy.mode === 'device_shared') {
     if (
-      sessionPolicy.max_active_conversations_per_slot !== 1 ||
+      !Number.isInteger(sessionPolicy.max_active_conversations_per_slot ?? 0) ||
+      (sessionPolicy.max_active_conversations_per_slot ?? 0) < 0 ||
+      (sessionPolicy.max_active_conversations_per_slot ?? 0) > 1000 ||
       sessionPolicy.disable_cross_key_continuation !== true
     ) {
       addIssue(
         errors,
         'DEVICE_SHARED_RESTRICTIONS_INVALID',
         'session_policy',
-        'Device-shared mode requires one active conversation per slot and disables cross-key continuation.',
+        'Device-shared mode requires a slot concurrency limit between 0 and 1000 and disables cross-key continuation.',
       )
     }
   } else if (
@@ -427,7 +429,7 @@ export const normalizeCodexIdentityPolicy = (policy: CodexIdentityPolicy): Codex
       : policy.session_policy.mode === 'device_shared'
         ? {
             mode: 'device_shared',
-            max_active_conversations_per_slot: 1,
+            max_active_conversations_per_slot: policy.session_policy.max_active_conversations_per_slot ?? 0,
             disable_cross_key_continuation: true,
           }
         : { mode: policy.session_policy.mode },

@@ -2,6 +2,7 @@ export const CODEX_DEVICE_SLOT_MIN = 1 as const
 export const CODEX_DEVICE_SLOT_MAX = 3 as const
 export const CODEX_SESSION_SLOT_MIN = 1 as const
 export const CODEX_SESSION_SLOT_MAX = 3 as const
+export const CODEX_SLOT_CONCURRENCY_MAX = 1000 as const
 export const CODEX_AFFINITY_TTL_MIN_SECONDS = 60 as const
 export const CODEX_AFFINITY_TTL_MAX_SECONDS = 86400 as const
 export const CODEX_CLIENT_VERSION_MIN = '0.144.0' as const
@@ -90,7 +91,8 @@ export type CodexSessionPolicy =
   | { mode: 'session_pool'; sessions_per_device: number }
   | {
       mode: 'device_shared'
-      max_active_conversations_per_slot: 1
+      /** Zero adds no slot-specific limit. Existing account/user/key limits still apply. */
+      max_active_conversations_per_slot: number
       disable_cross_key_continuation: true
     }
 

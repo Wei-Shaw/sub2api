@@ -65,7 +65,11 @@
               ? copy('admin.accounts.codexIdentity.clientVersionPinned', 'Fixed version')
               : copy('admin.accounts.codexIdentity.clientVersionInherit', 'Automatic (recommended)') }}:
             {{ copy('admin.accounts.codexIdentity.effectiveClientVersion', 'Effective version') }}
-            {{ slot.effective_client_version }}
+            {{ slot.effective_client_version }} ·
+            {{ copy('admin.accounts.codexIdentity.clientProfileVerification', 'Client metadata') }}:
+            {{ slot.client_profile_verification === 'verified'
+              ? copy('admin.accounts.codexIdentity.clientProfileVerified', 'Verified metadata')
+              : copy('admin.accounts.codexIdentity.clientProfileUnverified', 'Unverified built-in metadata') }}
           </p>
         </div>
         <div class="text-xs text-gray-500 dark:text-dark-400">

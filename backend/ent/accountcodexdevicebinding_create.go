@@ -46,6 +46,20 @@ func (_c *AccountCodexDeviceBindingCreate) SetCanonicalSurface(v string) *Accoun
 	return _c
 }
 
+// SetConversationHash sets the "conversation_hash" field.
+func (_c *AccountCodexDeviceBindingCreate) SetConversationHash(v string) *AccountCodexDeviceBindingCreate {
+	_c.mutation.SetConversationHash(v)
+	return _c
+}
+
+// SetNillableConversationHash sets the "conversation_hash" field if the given value is not nil.
+func (_c *AccountCodexDeviceBindingCreate) SetNillableConversationHash(v *string) *AccountCodexDeviceBindingCreate {
+	if v != nil {
+		_c.SetConversationHash(*v)
+	}
+	return _c
+}
+
 // SetSlotID sets the "slot_id" field.
 func (_c *AccountCodexDeviceBindingCreate) SetSlotID(v int64) *AccountCodexDeviceBindingCreate {
 	_c.mutation.SetSlotID(v)
@@ -121,6 +135,10 @@ func (_c *AccountCodexDeviceBindingCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *AccountCodexDeviceBindingCreate) defaults() {
+	if _, ok := _c.mutation.ConversationHash(); !ok {
+		v := accountcodexdevicebinding.DefaultConversationHash
+		_c.mutation.SetConversationHash(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := accountcodexdevicebinding.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -153,6 +171,14 @@ func (_c *AccountCodexDeviceBindingCreate) check() error {
 	if v, ok := _c.mutation.CanonicalSurface(); ok {
 		if err := accountcodexdevicebinding.CanonicalSurfaceValidator(v); err != nil {
 			return &ValidationError{Name: "canonical_surface", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceBinding.canonical_surface": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ConversationHash(); !ok {
+		return &ValidationError{Name: "conversation_hash", err: errors.New(`ent: missing required field "AccountCodexDeviceBinding.conversation_hash"`)}
+	}
+	if v, ok := _c.mutation.ConversationHash(); ok {
+		if err := accountcodexdevicebinding.ConversationHashValidator(v); err != nil {
+			return &ValidationError{Name: "conversation_hash", err: fmt.Errorf(`ent: validator failed for field "AccountCodexDeviceBinding.conversation_hash": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.SlotID(); !ok {
@@ -209,6 +235,10 @@ func (_c *AccountCodexDeviceBindingCreate) createSpec() (*AccountCodexDeviceBind
 	if value, ok := _c.mutation.CanonicalSurface(); ok {
 		_spec.SetField(accountcodexdevicebinding.FieldCanonicalSurface, field.TypeString, value)
 		_node.CanonicalSurface = value
+	}
+	if value, ok := _c.mutation.ConversationHash(); ok {
+		_spec.SetField(accountcodexdevicebinding.FieldConversationHash, field.TypeString, value)
+		_node.ConversationHash = value
 	}
 	if value, ok := _c.mutation.SlotID(); ok {
 		_spec.SetField(accountcodexdevicebinding.FieldSlotID, field.TypeInt64, value)
@@ -335,6 +365,18 @@ func (u *AccountCodexDeviceBindingUpsert) SetCanonicalSurface(v string) *Account
 // UpdateCanonicalSurface sets the "canonical_surface" field to the value that was provided on create.
 func (u *AccountCodexDeviceBindingUpsert) UpdateCanonicalSurface() *AccountCodexDeviceBindingUpsert {
 	u.SetExcluded(accountcodexdevicebinding.FieldCanonicalSurface)
+	return u
+}
+
+// SetConversationHash sets the "conversation_hash" field.
+func (u *AccountCodexDeviceBindingUpsert) SetConversationHash(v string) *AccountCodexDeviceBindingUpsert {
+	u.Set(accountcodexdevicebinding.FieldConversationHash, v)
+	return u
+}
+
+// UpdateConversationHash sets the "conversation_hash" field to the value that was provided on create.
+func (u *AccountCodexDeviceBindingUpsert) UpdateConversationHash() *AccountCodexDeviceBindingUpsert {
+	u.SetExcluded(accountcodexdevicebinding.FieldConversationHash)
 	return u
 }
 
@@ -498,6 +540,20 @@ func (u *AccountCodexDeviceBindingUpsertOne) SetCanonicalSurface(v string) *Acco
 func (u *AccountCodexDeviceBindingUpsertOne) UpdateCanonicalSurface() *AccountCodexDeviceBindingUpsertOne {
 	return u.Update(func(s *AccountCodexDeviceBindingUpsert) {
 		s.UpdateCanonicalSurface()
+	})
+}
+
+// SetConversationHash sets the "conversation_hash" field.
+func (u *AccountCodexDeviceBindingUpsertOne) SetConversationHash(v string) *AccountCodexDeviceBindingUpsertOne {
+	return u.Update(func(s *AccountCodexDeviceBindingUpsert) {
+		s.SetConversationHash(v)
+	})
+}
+
+// UpdateConversationHash sets the "conversation_hash" field to the value that was provided on create.
+func (u *AccountCodexDeviceBindingUpsertOne) UpdateConversationHash() *AccountCodexDeviceBindingUpsertOne {
+	return u.Update(func(s *AccountCodexDeviceBindingUpsert) {
+		s.UpdateConversationHash()
 	})
 }
 
@@ -835,6 +891,20 @@ func (u *AccountCodexDeviceBindingUpsertBulk) SetCanonicalSurface(v string) *Acc
 func (u *AccountCodexDeviceBindingUpsertBulk) UpdateCanonicalSurface() *AccountCodexDeviceBindingUpsertBulk {
 	return u.Update(func(s *AccountCodexDeviceBindingUpsert) {
 		s.UpdateCanonicalSurface()
+	})
+}
+
+// SetConversationHash sets the "conversation_hash" field.
+func (u *AccountCodexDeviceBindingUpsertBulk) SetConversationHash(v string) *AccountCodexDeviceBindingUpsertBulk {
+	return u.Update(func(s *AccountCodexDeviceBindingUpsert) {
+		s.SetConversationHash(v)
+	})
+}
+
+// UpdateConversationHash sets the "conversation_hash" field to the value that was provided on create.
+func (u *AccountCodexDeviceBindingUpsertBulk) UpdateConversationHash() *AccountCodexDeviceBindingUpsertBulk {
+	return u.Update(func(s *AccountCodexDeviceBindingUpsert) {
+		s.UpdateConversationHash()
 	})
 }
 

@@ -43,6 +43,7 @@ func TestAccountCodexDeviceSlotManagementDoesNotExposeBindingIdentity(t *testing
 			Epoch: 2, SlotIndex: 0, State: "draining", ProxyID: &proxyID,
 			ClientVersionMode: service.CodexClientVersionPinned, ClientVersion: "0.188.0",
 			EffectiveClientVersion: "0.188.0", BindingCount: 1,
+			ClientProfileVerification: service.CodexClientProfileUnverified, ClientProfileSource: "builtin",
 		}},
 	}
 	handler := &AccountHandler{adminService: adminSvc}
@@ -59,6 +60,8 @@ func TestAccountCodexDeviceSlotManagementDoesNotExposeBindingIdentity(t *testing
 	require.Contains(t, listRecorder.Body.String(), `"state":"draining"`)
 	require.Contains(t, listRecorder.Body.String(), `"client_version_mode":"pinned"`)
 	require.Contains(t, listRecorder.Body.String(), `"effective_client_version":"0.188.0"`)
+	require.Contains(t, listRecorder.Body.String(), `"client_profile_verification":"unverified"`)
+	require.Contains(t, listRecorder.Body.String(), `"client_profile_source":"builtin"`)
 
 	finalizeRecorder := httptest.NewRecorder()
 	router.ServeHTTP(finalizeRecorder, httptest.NewRequest(http.MethodPost, "/accounts/7/codex-device-slots/finalize-draining", nil))

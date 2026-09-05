@@ -83,6 +83,7 @@ describe('CodexDeviceSlotLifecycle', () => {
     expect(wrapper.text()).toContain('Draining')
     expect(wrapper.text()).toContain('Fixed version: Effective version 0.188.0')
     expect(wrapper.text()).toContain('Automatic (recommended): Effective version 0.201.0')
+    expect(wrapper.text()).toContain('Unverified built-in metadata')
     const row = wrapper.get('li')
     expect(row.classes()).toContain('grid-cols-1')
     expect(row.classes()).toContain('sm:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(5rem,0.7fr))]')

@@ -21,6 +21,8 @@ const (
 	FieldOsClass = "os_class"
 	// FieldCanonicalSurface holds the string denoting the canonical_surface field in the database.
 	FieldCanonicalSurface = "canonical_surface"
+	// FieldConversationHash holds the string denoting the conversation_hash field in the database.
+	FieldConversationHash = "conversation_hash"
 	// FieldSlotID holds the string denoting the slot_id field in the database.
 	FieldSlotID = "slot_id"
 	// FieldPolicyVersion holds the string denoting the policy_version field in the database.
@@ -40,6 +42,7 @@ var Columns = []string{
 	FieldAPIKeyID,
 	FieldOsClass,
 	FieldCanonicalSurface,
+	FieldConversationHash,
 	FieldSlotID,
 	FieldPolicyVersion,
 	FieldCreatedAt,
@@ -61,6 +64,10 @@ var (
 	OsClassValidator func(string) error
 	// CanonicalSurfaceValidator is a validator for the "canonical_surface" field. It is called by the builders before save.
 	CanonicalSurfaceValidator func(string) error
+	// DefaultConversationHash holds the default value on creation for the "conversation_hash" field.
+	DefaultConversationHash string
+	// ConversationHashValidator is a validator for the "conversation_hash" field. It is called by the builders before save.
+	ConversationHashValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -95,6 +102,11 @@ func ByOsClass(opts ...sql.OrderTermOption) OrderOption {
 // ByCanonicalSurface orders the results by the canonical_surface field.
 func ByCanonicalSurface(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCanonicalSurface, opts...).ToFunc()
+}
+
+// ByConversationHash orders the results by the conversation_hash field.
+func ByConversationHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldConversationHash, opts...).ToFunc()
 }
 
 // BySlotID orders the results by the slot_id field.

@@ -161,11 +161,15 @@ describe('CodexIdentityPolicyEditor', () => {
     harness = wrapper.vm as unknown as { policy: CodexIdentityPolicy }
     expect(harness.policy.session_policy).toEqual({
       mode: 'device_shared',
-      max_active_conversations_per_slot: 1,
+      max_active_conversations_per_slot: 0,
       disable_cross_key_continuation: true,
     })
     expect(wrapper.get('[role="status"]').text()).toContain('High risk')
-    expect(wrapper.get('[data-testid="device-shared-restrictions"]').text()).toContain('One active')
+    expect(wrapper.get('[data-testid="device-shared-restrictions"]').text()).toContain('Concurrent requests')
+    await wrapper.get('[data-testid="slot-concurrency-limit"]').setValue('5')
+    expect((wrapper.vm as unknown as { policy: CodexIdentityPolicy }).policy.session_policy).toEqual({
+      mode: 'device_shared', max_active_conversations_per_slot: 5, disable_cross_key_continuation: true,
+    })
   })
 
   it('uses mobile-first layout classes and labelled controls', async () => {

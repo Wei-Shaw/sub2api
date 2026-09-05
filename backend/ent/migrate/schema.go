@@ -236,6 +236,7 @@ var (
 		{Name: "api_key_id", Type: field.TypeInt64},
 		{Name: "os_class", Type: field.TypeString, Size: 20},
 		{Name: "canonical_surface", Type: field.TypeString, Size: 20},
+		{Name: "conversation_hash", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "slot_id", Type: field.TypeInt64},
 		{Name: "policy_version", Type: field.TypeInt64},
 		{Name: "created_at", Type: field.TypeTime},
@@ -248,9 +249,9 @@ var (
 		PrimaryKey: []*schema.Column{AccountCodexDeviceBindingsColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "accountcodexdevicebinding_account_id_api_key_id_os_class_canonical_surface",
+				Name:    "accountcodexdevicebinding_account_id_api_key_id_os_class_canonical_surface_conversation_hash",
 				Unique:  true,
-				Columns: []*schema.Column{AccountCodexDeviceBindingsColumns[1], AccountCodexDeviceBindingsColumns[2], AccountCodexDeviceBindingsColumns[3], AccountCodexDeviceBindingsColumns[4]},
+				Columns: []*schema.Column{AccountCodexDeviceBindingsColumns[1], AccountCodexDeviceBindingsColumns[2], AccountCodexDeviceBindingsColumns[3], AccountCodexDeviceBindingsColumns[4], AccountCodexDeviceBindingsColumns[5]},
 			},
 			{
 				Name:    "accountcodexdevicebinding_api_key_id_os_class_canonical_surface",

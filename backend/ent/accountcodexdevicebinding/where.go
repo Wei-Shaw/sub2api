@@ -74,6 +74,11 @@ func CanonicalSurface(v string) predicate.AccountCodexDeviceBinding {
 	return predicate.AccountCodexDeviceBinding(sql.FieldEQ(FieldCanonicalSurface, v))
 }
 
+// ConversationHash applies equality check predicate on the "conversation_hash" field. It's identical to ConversationHashEQ.
+func ConversationHash(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldEQ(FieldConversationHash, v))
+}
+
 // SlotID applies equality check predicate on the "slot_id" field. It's identical to SlotIDEQ.
 func SlotID(v int64) predicate.AccountCodexDeviceBinding {
 	return predicate.AccountCodexDeviceBinding(sql.FieldEQ(FieldSlotID, v))
@@ -302,6 +307,71 @@ func CanonicalSurfaceEqualFold(v string) predicate.AccountCodexDeviceBinding {
 // CanonicalSurfaceContainsFold applies the ContainsFold predicate on the "canonical_surface" field.
 func CanonicalSurfaceContainsFold(v string) predicate.AccountCodexDeviceBinding {
 	return predicate.AccountCodexDeviceBinding(sql.FieldContainsFold(FieldCanonicalSurface, v))
+}
+
+// ConversationHashEQ applies the EQ predicate on the "conversation_hash" field.
+func ConversationHashEQ(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldEQ(FieldConversationHash, v))
+}
+
+// ConversationHashNEQ applies the NEQ predicate on the "conversation_hash" field.
+func ConversationHashNEQ(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldNEQ(FieldConversationHash, v))
+}
+
+// ConversationHashIn applies the In predicate on the "conversation_hash" field.
+func ConversationHashIn(vs ...string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldIn(FieldConversationHash, vs...))
+}
+
+// ConversationHashNotIn applies the NotIn predicate on the "conversation_hash" field.
+func ConversationHashNotIn(vs ...string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldNotIn(FieldConversationHash, vs...))
+}
+
+// ConversationHashGT applies the GT predicate on the "conversation_hash" field.
+func ConversationHashGT(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldGT(FieldConversationHash, v))
+}
+
+// ConversationHashGTE applies the GTE predicate on the "conversation_hash" field.
+func ConversationHashGTE(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldGTE(FieldConversationHash, v))
+}
+
+// ConversationHashLT applies the LT predicate on the "conversation_hash" field.
+func ConversationHashLT(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldLT(FieldConversationHash, v))
+}
+
+// ConversationHashLTE applies the LTE predicate on the "conversation_hash" field.
+func ConversationHashLTE(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldLTE(FieldConversationHash, v))
+}
+
+// ConversationHashContains applies the Contains predicate on the "conversation_hash" field.
+func ConversationHashContains(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldContains(FieldConversationHash, v))
+}
+
+// ConversationHashHasPrefix applies the HasPrefix predicate on the "conversation_hash" field.
+func ConversationHashHasPrefix(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldHasPrefix(FieldConversationHash, v))
+}
+
+// ConversationHashHasSuffix applies the HasSuffix predicate on the "conversation_hash" field.
+func ConversationHashHasSuffix(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldHasSuffix(FieldConversationHash, v))
+}
+
+// ConversationHashEqualFold applies the EqualFold predicate on the "conversation_hash" field.
+func ConversationHashEqualFold(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldEqualFold(FieldConversationHash, v))
+}
+
+// ConversationHashContainsFold applies the ContainsFold predicate on the "conversation_hash" field.
+func ConversationHashContainsFold(v string) predicate.AccountCodexDeviceBinding {
+	return predicate.AccountCodexDeviceBinding(sql.FieldContainsFold(FieldConversationHash, v))
 }
 
 // SlotIDEQ applies the EQ predicate on the "slot_id" field.

@@ -354,6 +354,13 @@ func (s *OpenAIGatewayService) newOpenAIAccountFailoverErrorWithClassificationHe
 		upstreamMsg,
 		retryableOnSameAccount || oauth429Retry,
 	)
+	if statusCode == http.StatusTooManyRequests && !failoverErr.RequestScopedTransient && failoverErr.Reason == "" {
+		reason := ClassifyOpenAIRateLimitReason(classificationHeaders, responseBody)
+		failoverErr.Reason = GatewayFailureReason("openai_429_" + string(reason))
+		if reason == OpenAIRateLimitQuota {
+			failoverErr.RetryableOnSameAccount = false
+		}
+	}
 	if oauth429Retry {
 		failoverErr.SameAccountRetryDeadline = s.openAIOAuth429RetryDeadline(account)
 		failoverErr.SameAccountRetryDelay = openAIOAuth429SameAccountRetryDelay(responseHeaders, failoverErr.SameAccountRetryDeadline)
@@ -711,12 +718,13 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		errMsg = upstreamMsg
 	}
 
-	c.JSON(statusCode, gin.H{
-		"error": gin.H{
-			"type":    errType,
-			"message": errMsg,
-		},
-	})
+	errorBody := gin.H{"type": errType, "message": errMsg}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		reason := string(ClassifyOpenAIRateLimitReason(resp.Header, body))
+		errorBody["rate_limit_reason"] = reason
+		c.Header("X-Sub2API-Rate-Limit-Reason", reason)
+	}
+	c.JSON(statusCode, gin.H{"error": errorBody})
 
 	if upstreamMsg == "" {
 		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
@@ -875,6 +883,9 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		errType = "api_error"
 	}
 
+	if resp.StatusCode == http.StatusTooManyRequests {
+		c.Header("X-Sub2API-Rate-Limit-Reason", string(ClassifyOpenAIRateLimitReason(resp.Header, body)))
+	}
 	writeError(c, resp.StatusCode, errType, upstreamMsg)
 	return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 }

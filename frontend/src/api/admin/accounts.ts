@@ -124,6 +124,8 @@ export interface CodexDeviceSlotSummary {
   client_version_mode: 'inherit' | 'pinned'
   client_version?: string
   effective_client_version: string
+  client_profile_verification?: 'unverified' | 'verified'
+  client_profile_source?: string
   binding_count: number
 }
 

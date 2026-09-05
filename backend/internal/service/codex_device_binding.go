@@ -16,27 +16,37 @@ var ErrDeviceProfileUnsupported = infraerrors.BadRequest(
 )
 
 type CodexResolvedDeviceSlot struct {
-	BindingID              int64
-	AccountID              int64
-	APIKeyID               int64
-	ProfileID              int64
-	SlotID                 int64
-	OSClass                CodexOSClass
-	CanonicalSurface       CodexClientSurface
-	Architecture           CodexArchitecture
-	CatalogVersion         int64
-	SlotIndex              int
-	Epoch                  int64
-	State                  string
-	PolicyVersion          int64
-	ProxyID                *int64
-	Proxy                  *Proxy
-	ClientVersionMode      CodexClientVersionMode
-	ClientVersion          string
-	EffectiveClientVersion string
-	LastSeenAt             time.Time
-	AffinityTTLSeconds     int
-	BindingCount           int64
+	BindingID                 int64
+	AccountID                 int64
+	APIKeyID                  int64
+	ProfileID                 int64
+	SlotID                    int64
+	OSClass                   CodexOSClass
+	CanonicalSurface          CodexClientSurface
+	Architecture              CodexArchitecture
+	CatalogVersion            int64
+	SlotIndex                 int
+	Epoch                     int64
+	State                     string
+	PolicyVersion             int64
+	ProxyID                   *int64
+	Proxy                     *Proxy
+	ClientVersionMode         CodexClientVersionMode
+	ClientVersion             string
+	ClientProfileVerification CodexClientProfileVerification
+	ClientProfileSource       string
+	EffectiveClientVersion    string
+	LastSeenAt                time.Time
+	AffinityTTLSeconds        int
+	BindingCount              int64
+}
+
+// CodexConversationBindingRepository adds conversation affinity without changing
+// the API-key's preferred slot. Bind is first-writer-wins and returns the winner.
+type CodexConversationBindingRepository interface {
+	FindCodexConversationBinding(context.Context, int64, int64, CodexOSClass, CodexClientSurface, string) (*CodexResolvedDeviceSlot, error)
+	BindCodexConversationSlot(context.Context, int64, int64, CodexOSClass, CodexClientSurface, string, int64) (*CodexResolvedDeviceSlot, error)
+	RefreshCodexConversationBinding(context.Context, int64) error
 }
 
 type CodexDeviceSlotAdminService interface {
@@ -85,6 +95,10 @@ func (s *adminServiceImpl) ListAccountCodexDeviceSlots(
 			)
 		}
 		slots[index].EffectiveClientVersion = version
+		// Production currently uses the built-in catalog. Keep its unverified
+		// status explicit until a reviewed provider is wired into both paths.
+		slots[index].ClientProfileVerification = CodexClientProfileUnverified
+		slots[index].ClientProfileSource = "builtin"
 	}
 	return slots, nil
 }

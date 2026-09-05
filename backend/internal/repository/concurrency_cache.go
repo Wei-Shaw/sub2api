@@ -250,22 +250,39 @@ var (
 	`)
 
 	acquireCodexDeviceConversationLeaseScript = redis.NewScript(`
+		redis.replicate_commands()
 		local key = KEYS[1]
 		local ttl = tonumber(ARGV[1])
 		local leaseID = ARGV[2]
-		if redis.call('SET', key, leaseID, 'NX', 'EX', ttl) then
-			return 1
-		end
-		return 0
+		local limit = tonumber(ARGV[3])
+		local kind = redis.call('TYPE', key).ok
+		-- A legacy process still owns its mutex. Do not steal or convert it.
+		if kind == 'string' then return 0 end
+		local now = tonumber(redis.call('TIME')[1])
+		redis.call('ZREMRANGEBYSCORE', key, '-inf', now - ttl)
+		if redis.call('ZSCORE', key, leaseID) then return 1 end
+		if limit > 0 and redis.call('ZCARD', key) >= limit then return 0 end
+		redis.call('ZADD', key, now, leaseID)
+		redis.call('EXPIRE', key, ttl)
+		return 1
 	`)
 
 	refreshCodexDeviceConversationLeaseScript = redis.NewScript(`
+		redis.replicate_commands()
 		local key = KEYS[1]
 		local ttl = tonumber(ARGV[1])
 		local leaseID = ARGV[2]
-		if redis.call('GET', key) ~= leaseID then
-			return 0
+		local kind = redis.call('TYPE', key).ok
+		if kind == 'string' then
+			if redis.call('GET', key) ~= leaseID then return 0 end
+			redis.call('EXPIRE', key, ttl)
+			return 1
 		end
+		if kind ~= 'zset' then return 0 end
+		local now = tonumber(redis.call('TIME')[1])
+		redis.call('ZREMRANGEBYSCORE', key, '-inf', now - ttl)
+		if not redis.call('ZSCORE', key, leaseID) then return 0 end
+		redis.call('ZADD', key, now, leaseID)
 		redis.call('EXPIRE', key, ttl)
 		return 1
 	`)
@@ -273,10 +290,13 @@ var (
 	releaseCodexDeviceConversationLeaseScript = redis.NewScript(`
 		local key = KEYS[1]
 		local leaseID = ARGV[1]
-		if redis.call('GET', key) ~= leaseID then
-			return 0
+		local kind = redis.call('TYPE', key).ok
+		if kind == 'string' then
+			if redis.call('GET', key) ~= leaseID then return 0 end
+			return redis.call('DEL', key)
 		end
-		return redis.call('DEL', key)
+		if kind ~= 'zset' then return 0 end
+		return redis.call('ZREM', key, leaseID)
 	`)
 
 	// incrementWaitScript - refreshes TTL on each increment to keep queue depth accurate
@@ -832,6 +852,13 @@ func (c *concurrencyCache) ReleaseOpenAIWSIngressLease(ctx context.Context, apiK
 }
 
 func (c *concurrencyCache) AcquireCodexDeviceConversationLease(ctx context.Context, slotKey, leaseID string) (bool, error) {
+	return c.AcquireCodexDeviceConversationLeaseWithLimit(ctx, slotKey, leaseID, 1)
+}
+
+func (c *concurrencyCache) AcquireCodexDeviceConversationLeaseWithLimit(ctx context.Context, slotKey, leaseID string, maxConcurrency int) (bool, error) {
+	if maxConcurrency < 0 || maxConcurrency > service.MaxCodexSlotConcurrency {
+		return false, fmt.Errorf("invalid Codex slot concurrency limit: %d", maxConcurrency)
+	}
 	if c == nil || c.rdb == nil || slotKey == "" || leaseID == "" {
 		return false, nil
 	}
@@ -841,6 +868,7 @@ func (c *concurrencyCache) AcquireCodexDeviceConversationLease(ctx context.Conte
 		[]string{codexDeviceConversationLeaseKey(slotKey)},
 		codexDeviceConversationLeaseTTLSeconds,
 		leaseID,
+		maxConcurrency,
 	).Int()
 	if err != nil {
 		return false, err

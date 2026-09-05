@@ -465,6 +465,19 @@ func (s *OpenAIGatewayService) prepareCodexProfileAttempt(
 	if resolvedBinding == nil {
 		return nil, errors.New("codex device binding resolver returned nil")
 	}
+	var conversationLease *CodexDeviceConversationLease
+	if account.CodexIdentityPolicy.SessionPolicy.Mode == CodexSessionDeviceShared {
+		resolvedBinding, conversationLease, err = s.acquireCodexConversationSlot(ctx, account, request, resolvedBinding, body)
+		if err != nil {
+			return nil, err
+		}
+		// A failed version/profile/identity adaptation must not strand capacity.
+		defer func() {
+			if conversationLease != nil {
+				conversationLease.Release()
+			}
+		}()
+	}
 	clientVersionMode, clientVersion := codexProfileSlotClientVersion(profilePolicy, resolvedBinding.SlotIndex)
 	if strings.TrimSpace(string(resolvedBinding.ClientVersionMode)) == "" {
 		resolvedBinding.ClientVersionMode = clientVersionMode
@@ -527,28 +540,8 @@ func (s *OpenAIGatewayService) prepareCodexProfileAttempt(
 	if err != nil {
 		return nil, err
 	}
-	if account.CodexIdentityPolicy.SessionPolicy.Mode == CodexSessionDeviceShared {
-		if s.concurrencyService == nil {
-			return nil, errors.New("device_shared requires a distributed conversation lease")
-		}
-		slotIdentity := strconv.FormatInt(resolvedBinding.SlotID, 10)
-		if resolvedBinding.SlotID <= 0 {
-			slotIdentity = strings.Join([]string{
-				strconv.FormatInt(account.ID, 10),
-				attemptProfile.Key(),
-				strconv.Itoa(resolvedBinding.SlotIndex),
-				strconv.FormatInt(resolvedBinding.Epoch, 10),
-			}, ":")
-		}
-		lease, acquired, leaseErr := s.concurrencyService.AcquireCodexDeviceConversationLease(ctx, slotIdentity)
-		if leaseErr != nil {
-			return nil, fmt.Errorf("acquire Codex device conversation lease: %w", leaseErr)
-		}
-		if !acquired {
-			return nil, ErrCodexDeviceSessionBusy
-		}
-		plan.conversationLease = lease
-	}
+	plan.conversationLease = conversationLease
+	conversationLease = nil // Ownership transfers to the attempt lifecycle.
 
 	if previousPlan != nil && previousPlan.AccountID != account.ID {
 		if store := s.getOpenAIWSStateStore(); store != nil && request.ConversationHash != "" {

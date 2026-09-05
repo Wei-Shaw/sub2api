@@ -78,6 +78,13 @@ type CodexDeviceConversationLeaseCache interface {
 	ReleaseCodexDeviceConversationLease(ctx context.Context, slotKey, leaseID string) error
 }
 
+// CodexDeviceConversationCapacityCache extends legacy mutex caches without
+// weakening their behavior. Zero means no additional slot-specific limit.
+type CodexDeviceConversationCapacityCache interface {
+	CodexDeviceConversationLeaseCache
+	AcquireCodexDeviceConversationLeaseWithLimit(ctx context.Context, slotKey, leaseID string, maxConcurrency int) (bool, error)
+}
+
 const (
 	openAIWSIngressLeaseTTL             = 60 * time.Second
 	openAIWSIngressLeaseRefreshInterval = 20 * time.Second
@@ -95,6 +102,8 @@ var (
 )
 
 type CodexDeviceConversationLease struct {
+	affinityMu      sync.RWMutex
+	refreshAffinity func(context.Context) error
 	// ctx follows the client/attempt lifecycle and is exposed to gateway logic.
 	// The refresh and upstream contexts below deliberately outlive a client
 	// disconnect so detached HTTP/SSE draining cannot lose the slot lease.
@@ -184,6 +193,14 @@ func (l *CodexDeviceConversationLease) Release() {
 	})
 }
 
+// keepAffinityAlive ties the database drain protection to the request lease,
+// including detached upstream draining after the client disconnects.
+func (l *CodexDeviceConversationLease) keepAffinityAlive(refresh func(context.Context) error) {
+	l.affinityMu.Lock()
+	l.refreshAffinity = refresh
+	l.affinityMu.Unlock()
+}
+
 func (l *CodexDeviceConversationLease) refreshLoop() {
 	defer close(l.refreshDone)
 	refreshInterval := l.refreshInterval
@@ -214,6 +231,12 @@ func (l *CodexDeviceConversationLease) refreshLoop() {
 		case <-ticker.C:
 			operationCtx, cancel := context.WithTimeout(context.Background(), operationTO)
 			owned, err := l.cache.RefreshCodexDeviceConversationLease(operationCtx, l.slotKey, l.leaseID)
+			l.affinityMu.RLock()
+			refreshAffinity := l.refreshAffinity
+			l.affinityMu.RUnlock()
+			if err == nil && owned && refreshAffinity != nil {
+				err = refreshAffinity(operationCtx)
+			}
 			cancel()
 			if err == nil && owned {
 				lastConfirmedAt = time.Now()
@@ -453,6 +476,7 @@ func (s *ConcurrencyService) AcquireOpenAIWSIngressLease(ctx context.Context, ap
 func (s *ConcurrencyService) AcquireCodexDeviceConversationLease(
 	ctx context.Context,
 	slotKey string,
+	capacity ...int,
 ) (*CodexDeviceConversationLease, bool, error) {
 	slotKey = strings.TrimSpace(slotKey)
 	if s == nil || s.cache == nil || slotKey == "" {
@@ -468,7 +492,21 @@ func (s *ConcurrencyService) AcquireCodexDeviceConversationLease(
 		baseCtx = context.WithoutCancel(ctx)
 	}
 	acquireCtx, cancel := context.WithTimeout(baseCtx, openAIWSIngressLeaseOperationTO)
-	acquired, err := cache.AcquireCodexDeviceConversationLease(acquireCtx, slotKey, leaseID)
+	maxConcurrency := 1 // Preserve callers using the old mutex contract.
+	if len(capacity) > 0 {
+		maxConcurrency = capacity[0]
+	}
+	var acquired bool
+	var err error
+	if maxConcurrency < 0 || maxConcurrency > MaxCodexSlotConcurrency {
+		err = errors.New("invalid codex device slot concurrency limit")
+	} else if bounded, supported := cache.(CodexDeviceConversationCapacityCache); supported {
+		acquired, err = bounded.AcquireCodexDeviceConversationLeaseWithLimit(acquireCtx, slotKey, leaseID, maxConcurrency)
+	} else if maxConcurrency == 1 {
+		acquired, err = cache.AcquireCodexDeviceConversationLease(acquireCtx, slotKey, leaseID)
+	} else {
+		err = errors.New("codex device cache does not support configurable concurrency")
+	}
 	cancel()
 	if err != nil || !acquired {
 		return nil, acquired, err

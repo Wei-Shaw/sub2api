@@ -73,6 +73,27 @@
       </div>
     </div>
 
+    <div v-if="modelValue.mode === 'device_shared'" class="space-y-2">
+      <label :for="`${idPrefix}-concurrency`" class="input-label">
+        {{ copy('admin.accounts.codexIdentity.slotConcurrency', 'Local concurrency limit per slot') }}
+      </label>
+      <input
+        :id="`${idPrefix}-concurrency`"
+        :value="modelValue.max_active_conversations_per_slot ?? 0"
+        type="number"
+        min="0"
+        :max="CODEX_SLOT_CONCURRENCY_MAX"
+        step="1"
+        class="input"
+        :aria-describedby="`${idPrefix}-concurrency-hint`"
+        data-testid="slot-concurrency-limit"
+        @input="updateConcurrency"
+      />
+      <p :id="`${idPrefix}-concurrency-hint`" class="input-hint">
+        {{ copy('admin.accounts.codexIdentity.slotConcurrencyHint', '0 adds no slot-specific limit. New conversations try idle slots of the same profile when full; existing conversations stay pinned. Account, user and API key limits still apply.') }}
+      </p>
+    </div>
+
     <div class="grid grid-cols-1 gap-3 border-t border-gray-100 pt-4 sm:grid-cols-[minmax(0,1fr)_10rem] sm:items-center dark:border-dark-700">
       <div>
         <label :for="`${idPrefix}-ttl`" class="input-label mb-0">
@@ -113,7 +134,7 @@
       class="text-xs leading-5 text-gray-500 dark:text-dark-400"
       data-testid="device-shared-restrictions"
     >
-      {{ copy('admin.accounts.codexIdentity.deviceSharedRestriction', 'One active conversation per slot; cross-key continuation is disabled.') }}
+      {{ copy('admin.accounts.codexIdentity.deviceSharedRestriction', 'Concurrent requests can share a stable device slot. Existing account limits still apply; cross-key continuation is disabled.') }}
     </p>
   </fieldset>
 </template>
@@ -122,6 +143,7 @@
 import { computed } from 'vue'
 import Icon from '@/components/icons/Icon.vue'
 import {
+  CODEX_SLOT_CONCURRENCY_MAX,
   CODEX_SESSION_SLOT_MAX,
   CODEX_SESSION_SLOT_MIN,
   type CodexSessionPolicy,
@@ -201,7 +223,9 @@ const updateMode = (mode: CodexSessionPolicyMode) => {
   if (mode === 'device_shared') {
     emit('update:modelValue', {
       mode,
-      max_active_conversations_per_slot: 1,
+      max_active_conversations_per_slot: props.modelValue.mode === 'device_shared'
+        ? props.modelValue.max_active_conversations_per_slot
+        : 0,
       disable_cross_key_continuation: true,
     })
     return
@@ -214,6 +238,16 @@ const updateSessionCount = (count: number) => {
     mode: 'session_pool',
     sessions_per_device: Math.max(CODEX_SESSION_SLOT_MIN, Math.min(CODEX_SESSION_SLOT_MAX, count)),
   })
+}
+
+const updateConcurrency = (event: Event) => {
+  if (props.modelValue.mode !== 'device_shared') return
+  const value = Number((event.target as HTMLInputElement).value)
+  if (!Number.isInteger(value) || value < 0 || value > CODEX_SLOT_CONCURRENCY_MAX) {
+    (event.target as HTMLInputElement).value = String(props.modelValue.max_active_conversations_per_slot)
+    return
+  }
+  emit('update:modelValue', { ...props.modelValue, max_active_conversations_per_slot: value })
 }
 
 const updateAffinity = (event: Event) => {

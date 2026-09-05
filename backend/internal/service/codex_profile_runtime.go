@@ -47,17 +47,19 @@ func (p CodexClientProfile) Key() string {
 }
 
 type CodexResolvedProfile struct {
-	OSClass        CodexOSClass
-	Surface        CodexClientSurface
-	Architecture   CodexArchitecture
-	CatalogVersion int64
-	Version        string
-	AppBuild       string
-	OSLabel        string
-	Terminal       string
-	ClientName     string
-	UserAgent      string
-	Originator     string
+	OSClass                   CodexOSClass
+	Surface                   CodexClientSurface
+	Architecture              CodexArchitecture
+	CatalogVersion            int64
+	Version                   string
+	AppBuild                  string
+	OSLabel                   string
+	Terminal                  string
+	ClientName                string
+	UserAgent                 string
+	Originator                string
+	ClientProfileVerification CodexClientProfileVerification
+	ClientProfileSource       string
 }
 
 const codexRuntimeCatalogVersion int64 = 1
@@ -97,6 +99,12 @@ func ResolveCodexRuntimeProfile(policy CodexOSProfilePolicy) (CodexResolvedProfi
 // validated engine version. Only the version segment is variable; client name,
 // originator, OS/terminal shape, and Desktop app build remain catalog-owned.
 func ResolveCodexRuntimeProfileWithVersion(policy CodexOSProfilePolicy, clientVersion string) (CodexResolvedProfile, error) {
+	return ResolveCodexRuntimeProfileWithProvider(policy, clientVersion, nil)
+}
+
+// ResolveCodexRuntimeProfileWithProvider is the extension point for reviewed,
+// version-specific client metadata. Nil retains the existing unverified catalog.
+func ResolveCodexRuntimeProfileWithProvider(policy CodexOSProfilePolicy, clientVersion string, provider CodexClientProfileProvider) (CodexResolvedProfile, error) {
 	normalized, err := normalizeCodexOSProfile(policy)
 	if err != nil {
 		return CodexResolvedProfile{}, err
@@ -114,21 +122,38 @@ func ResolveCodexRuntimeProfileWithVersion(policy CodexOSProfilePolicy, clientVe
 	if normalized.CatalogVersion != codexRuntimeCatalogVersion {
 		return CodexResolvedProfile{}, fmt.Errorf("unsupported Codex profile catalog version %d", normalized.CatalogVersion)
 	}
-	fixture, err := codexRuntimeCatalogFixture(normalized.OSClass, normalized.CanonicalSurface)
+	if provider == nil {
+		provider = BuiltinCodexClientProfileProvider{}
+	}
+	request := CodexClientProfileRequest{
+		OSClass: normalized.OSClass, Surface: normalized.CanonicalSurface,
+		Architecture: normalized.Architecture, ClientVersion: clientVersion,
+		CatalogVersion: normalized.CatalogVersion,
+	}
+	record, err := provider.LookupCodexClientProfile(request)
 	if err != nil {
 		return CodexResolvedProfile{}, err
 	}
+	if err := validateCodexClientProfileRecord(request, record); err != nil {
+		return CodexResolvedProfile{}, err
+	}
+	fixture := codexRuntimeProfileFixture{
+		clientName: record.ClientName, originator: record.Originator, osLabel: record.OSLabel,
+		terminal: record.Terminal, appBuild: record.AppBuild,
+	}
 	profile := CodexResolvedProfile{
-		OSClass:        normalized.OSClass,
-		Surface:        normalized.CanonicalSurface,
-		Architecture:   normalized.Architecture,
-		CatalogVersion: normalized.CatalogVersion,
-		Version:        clientVersion,
-		AppBuild:       fixture.appBuild,
-		OSLabel:        fixture.osLabel,
-		Terminal:       fixture.terminal,
-		ClientName:     fixture.clientName,
-		Originator:     fixture.originator,
+		OSClass:                   normalized.OSClass,
+		Surface:                   normalized.CanonicalSurface,
+		Architecture:              normalized.Architecture,
+		CatalogVersion:            normalized.CatalogVersion,
+		Version:                   clientVersion,
+		AppBuild:                  fixture.appBuild,
+		OSLabel:                   fixture.osLabel,
+		Terminal:                  fixture.terminal,
+		ClientName:                fixture.clientName,
+		Originator:                fixture.originator,
+		ClientProfileVerification: record.Verification,
+		ClientProfileSource:       record.Source,
 	}
 
 	if profile.OSClass == CodexOSGeneric {
@@ -602,8 +627,8 @@ func BuildCodexIdentityAttemptPlan(input CodexIdentityAttemptInput) (*CodexIdent
 		return nil, err
 	}
 	if input.SessionPolicy.Mode == CodexSessionDeviceShared &&
-		(input.SessionRuntime.MaxActiveConversationsPerSlot != 1 || !input.SessionRuntime.DisableCrossKeyContinuation) {
-		return nil, errors.New("device_shared requires one active conversation per slot and disabled cross-key continuation")
+		(input.SessionRuntime.MaxActiveConversationsPerSlot < 0 || input.SessionRuntime.MaxActiveConversationsPerSlot > MaxCodexSlotConcurrency || !input.SessionRuntime.DisableCrossKeyContinuation) {
+		return nil, errors.New("device_shared requires a valid slot concurrency limit and disabled cross-key continuation")
 	}
 
 	conversation := firstNonEmptyCodexIdentityValue(

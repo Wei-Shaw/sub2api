@@ -822,11 +822,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 		if err != nil {
 			if errors.Is(err, service.ErrCodexDeviceSessionBusy) {
+				c.Set("openai_rate_limit_reason", "local_slot_busy")
+				c.Header("X-Sub2API-Rate-Limit-Reason", "local_slot_busy")
 				h.handleStreamingAwareError(
 					c,
 					http.StatusTooManyRequests,
 					"CODEX_DEVICE_SESSION_BUSY",
-					"The selected Codex device is serving another conversation; retry shortly",
+					"Local Codex slot capacity is full; no safe same-profile slot is available. This is not an account quota error.",
 					streamStarted,
 				)
 				return
@@ -3277,6 +3279,11 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 		return
 	}
 	copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)
+	if failoverErr.StatusCode == http.StatusTooManyRequests && !failoverErr.RequestScopedTransient {
+		reason := string(service.OpenAIFailoverRateLimitReason(failoverErr))
+		c.Set("openai_rate_limit_reason", reason)
+		c.Header("X-Sub2API-Rate-Limit-Reason", reason)
+	}
 	if failoverErr.IsCredentialFailure() {
 		status, message := credentialFailoverClientResponse(failoverErr)
 		h.handleStreamingAwareError(c, status, "upstream_error", message, streamStarted)
@@ -3437,6 +3444,9 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareErrorWithCode(
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
 			errorObject := gin.H{"type": errType, "message": message}
+			if reason := c.GetString("openai_rate_limit_reason"); reason != "" {
+				errorObject["rate_limit_reason"] = reason
+			}
 			if code != "" {
 				errorObject["code"] = code
 			}
@@ -3454,6 +3464,14 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareErrorWithCode(
 	}
 
 	// Normal case: return JSON response with proper status code
+	if reason := c.GetString("openai_rate_limit_reason"); reason != "" {
+		errorObject := gin.H{"type": errType, "message": message, "rate_limit_reason": reason}
+		if code != "" {
+			errorObject["code"] = code
+		}
+		c.JSON(status, gin.H{"error": errorObject})
+		return
+	}
 	if code == "" {
 		h.errorResponse(c, status, errType, message)
 		return
@@ -3694,7 +3712,7 @@ func closeOpenAIWSFailoverExhausted(c *gin.Context, conn *coderws.Conn, failover
 			case http.StatusTooManyRequests:
 				intendedStatus = http.StatusTooManyRequests
 				errorType = "rate_limit_error"
-				message = "upstream rate limit exceeded, please retry later"
+				message = string(service.OpenAIFailoverRateLimitReason(failoverErr)) + ": upstream request limited"
 				closeStatus = coderws.StatusTryAgainLater
 			case 529, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 				intendedStatus = failoverErr.StatusCode

@@ -25,6 +25,8 @@ type AccountCodexDeviceBinding struct {
 	OsClass string `json:"os_class,omitempty"`
 	// CanonicalSurface holds the value of the "canonical_surface" field.
 	CanonicalSurface string `json:"canonical_surface,omitempty"`
+	// ConversationHash holds the value of the "conversation_hash" field.
+	ConversationHash string `json:"conversation_hash,omitempty"`
 	// SlotID holds the value of the "slot_id" field.
 	SlotID int64 `json:"slot_id,omitempty"`
 	// PolicyVersion holds the value of the "policy_version" field.
@@ -43,7 +45,7 @@ func (*AccountCodexDeviceBinding) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case accountcodexdevicebinding.FieldID, accountcodexdevicebinding.FieldAccountID, accountcodexdevicebinding.FieldAPIKeyID, accountcodexdevicebinding.FieldSlotID, accountcodexdevicebinding.FieldPolicyVersion:
 			values[i] = new(sql.NullInt64)
-		case accountcodexdevicebinding.FieldOsClass, accountcodexdevicebinding.FieldCanonicalSurface:
+		case accountcodexdevicebinding.FieldOsClass, accountcodexdevicebinding.FieldCanonicalSurface, accountcodexdevicebinding.FieldConversationHash:
 			values[i] = new(sql.NullString)
 		case accountcodexdevicebinding.FieldCreatedAt, accountcodexdevicebinding.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -91,6 +93,12 @@ func (_m *AccountCodexDeviceBinding) assignValues(columns []string, values []any
 				return fmt.Errorf("unexpected type %T for field canonical_surface", values[i])
 			} else if value.Valid {
 				_m.CanonicalSurface = value.String
+			}
+		case accountcodexdevicebinding.FieldConversationHash:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field conversation_hash", values[i])
+			} else if value.Valid {
+				_m.ConversationHash = value.String
 			}
 		case accountcodexdevicebinding.FieldSlotID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -163,6 +171,9 @@ func (_m *AccountCodexDeviceBinding) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("canonical_surface=")
 	builder.WriteString(_m.CanonicalSurface)
+	builder.WriteString(", ")
+	builder.WriteString("conversation_hash=")
+	builder.WriteString(_m.ConversationHash)
 	builder.WriteString(", ")
 	builder.WriteString("slot_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SlotID))

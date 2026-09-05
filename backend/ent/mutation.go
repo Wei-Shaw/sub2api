@@ -5427,6 +5427,7 @@ type AccountCodexDeviceBindingMutation struct {
 	addapi_key_id     *int64
 	os_class          *string
 	canonical_surface *string
+	conversation_hash *string
 	slot_id           *int64
 	addslot_id        *int64
 	policy_version    *int64
@@ -5721,6 +5722,42 @@ func (m *AccountCodexDeviceBindingMutation) ResetCanonicalSurface() {
 	m.canonical_surface = nil
 }
 
+// SetConversationHash sets the "conversation_hash" field.
+func (m *AccountCodexDeviceBindingMutation) SetConversationHash(s string) {
+	m.conversation_hash = &s
+}
+
+// ConversationHash returns the value of the "conversation_hash" field in the mutation.
+func (m *AccountCodexDeviceBindingMutation) ConversationHash() (r string, exists bool) {
+	v := m.conversation_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConversationHash returns the old "conversation_hash" field's value of the AccountCodexDeviceBinding entity.
+// If the AccountCodexDeviceBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountCodexDeviceBindingMutation) OldConversationHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConversationHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConversationHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConversationHash: %w", err)
+	}
+	return oldValue.ConversationHash, nil
+}
+
+// ResetConversationHash resets all changes to the "conversation_hash" field.
+func (m *AccountCodexDeviceBindingMutation) ResetConversationHash() {
+	m.conversation_hash = nil
+}
+
 // SetSlotID sets the "slot_id" field.
 func (m *AccountCodexDeviceBindingMutation) SetSlotID(i int64) {
 	m.slot_id = &i
@@ -5939,7 +5976,7 @@ func (m *AccountCodexDeviceBindingMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountCodexDeviceBindingMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m.account_id != nil {
 		fields = append(fields, accountcodexdevicebinding.FieldAccountID)
 	}
@@ -5951,6 +5988,9 @@ func (m *AccountCodexDeviceBindingMutation) Fields() []string {
 	}
 	if m.canonical_surface != nil {
 		fields = append(fields, accountcodexdevicebinding.FieldCanonicalSurface)
+	}
+	if m.conversation_hash != nil {
+		fields = append(fields, accountcodexdevicebinding.FieldConversationHash)
 	}
 	if m.slot_id != nil {
 		fields = append(fields, accountcodexdevicebinding.FieldSlotID)
@@ -5980,6 +6020,8 @@ func (m *AccountCodexDeviceBindingMutation) Field(name string) (ent.Value, bool)
 		return m.OsClass()
 	case accountcodexdevicebinding.FieldCanonicalSurface:
 		return m.CanonicalSurface()
+	case accountcodexdevicebinding.FieldConversationHash:
+		return m.ConversationHash()
 	case accountcodexdevicebinding.FieldSlotID:
 		return m.SlotID()
 	case accountcodexdevicebinding.FieldPolicyVersion:
@@ -6005,6 +6047,8 @@ func (m *AccountCodexDeviceBindingMutation) OldField(ctx context.Context, name s
 		return m.OldOsClass(ctx)
 	case accountcodexdevicebinding.FieldCanonicalSurface:
 		return m.OldCanonicalSurface(ctx)
+	case accountcodexdevicebinding.FieldConversationHash:
+		return m.OldConversationHash(ctx)
 	case accountcodexdevicebinding.FieldSlotID:
 		return m.OldSlotID(ctx)
 	case accountcodexdevicebinding.FieldPolicyVersion:
@@ -6049,6 +6093,13 @@ func (m *AccountCodexDeviceBindingMutation) SetField(name string, value ent.Valu
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCanonicalSurface(v)
+		return nil
+	case accountcodexdevicebinding.FieldConversationHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConversationHash(v)
 		return nil
 	case accountcodexdevicebinding.FieldSlotID:
 		v, ok := value.(int64)
@@ -6189,6 +6240,9 @@ func (m *AccountCodexDeviceBindingMutation) ResetField(name string) error {
 		return nil
 	case accountcodexdevicebinding.FieldCanonicalSurface:
 		m.ResetCanonicalSurface()
+		return nil
+	case accountcodexdevicebinding.FieldConversationHash:
+		m.ResetConversationHash()
 		return nil
 	case accountcodexdevicebinding.FieldSlotID:
 		m.ResetSlotID()
