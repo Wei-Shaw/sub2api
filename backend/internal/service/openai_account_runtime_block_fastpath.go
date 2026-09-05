@@ -91,6 +91,26 @@ func isOpenAIAccount(account *Account) bool {
 	return account != nil && (account.Platform == PlatformOpenAI || account.Platform == PlatformGrok)
 }
 
+func (s *OpenAIGatewayService) openAIAPIKeyAvailabilityEnabled(account *Account) bool {
+	return s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIAPIKeyAvailabilityEnabled &&
+		account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey &&
+		!account.IsPoolMode()
+}
+
+func openAIAPIKeyAvailabilityTransientStatus(statusCode int) bool {
+	switch statusCode {
+	case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout, 520, 521, 522, 523, 524:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *OpenAIGatewayService) openAIAPIKeyTransientAvailabilityEnabled(account *Account, statusCode int) bool {
+	return s.openAIAPIKeyAvailabilityEnabled(account) && openAIAPIKeyAvailabilityTransientStatus(statusCode)
+}
+
 // handleOpenAIAccountUpstreamError expects canonicalModel to be the model used
 // for scheduling after applying account mapping exactly once.
 func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, canonicalModel ...string) bool {
@@ -101,9 +121,10 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	if s != nil {
 		scheduleOllamaCloudUsageActivity(s.deferredService, account)
 	}
-	// Capacity shedding describes this request, not account health. Keep the
-	// account schedulable while the request-local retry budget handles recovery.
-	if account != nil && account.Platform == PlatformOpenAI && isOpenAIRequestScopedCapacityShed("", responseBody) {
+	// Capacity shedding normally stays request-scoped. The opt-in API-key policy
+	// also records transient server failures against the selected account and model.
+	availabilityTransient := s.openAIAPIKeyTransientAvailabilityEnabled(account, statusCode)
+	if account != nil && account.Platform == PlatformOpenAI && isOpenAIRequestScopedCapacityShed("", responseBody) && !availabilityTransient {
 		return false
 	}
 	stateCtx, cancel := openAIAccountStateContext(ctx)
@@ -188,7 +209,11 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		if len(canonicalModel) > 0 {
 			model = canonicalModel[0]
 		}
-		decision := s.recordOpenAIAccountModelTransientFailure(account, model, time.Now())
+		initialCooldown := time.Duration(0)
+		if availabilityTransient {
+			initialCooldown = openAIModelTransientShortCooldown
+		}
+		decision := s.recordOpenAIAccountModelTransientFailureWithInitialCooldown(account, model, time.Now(), initialCooldown)
 		if decision.FailureStreak > 0 {
 			slog.Warn("openai_model_transient_state",
 				"account_id", account.ID,
@@ -443,6 +468,10 @@ func openAIAccountModelTransientModel(canonicalModel string) string {
 }
 
 func (s *OpenAIGatewayService) recordOpenAIAccountModelTransientFailure(account *Account, canonicalModel string, now time.Time) openAIAccountModelTransientDecision {
+	return s.recordOpenAIAccountModelTransientFailureWithInitialCooldown(account, canonicalModel, now, 0)
+}
+
+func (s *OpenAIGatewayService) recordOpenAIAccountModelTransientFailureWithInitialCooldown(account *Account, canonicalModel string, now time.Time, initialCooldown time.Duration) openAIAccountModelTransientDecision {
 	if s == nil || account == nil {
 		return openAIAccountModelTransientDecision{}
 	}
@@ -450,7 +479,7 @@ func (s *OpenAIGatewayService) recordOpenAIAccountModelTransientFailure(account 
 	if state == nil {
 		return openAIAccountModelTransientDecision{}
 	}
-	return state.recordFailure(account.ID, openAIAccountModelTransientModel(canonicalModel), now)
+	return state.recordFailureWithInitialCooldown(account.ID, openAIAccountModelTransientModel(canonicalModel), now, initialCooldown)
 }
 
 func (s *OpenAIGatewayService) clearOpenAIAccountModelTransientState(accountID int64, model string) {

@@ -105,7 +105,7 @@ func classifyUpstreamTransportError(err error) upstreamTransportErrorClass {
 // (failover, or a protocol-correct error once failover is exhausted).
 //
 // passthrough tags the Ops error event for the OpenAI passthrough forward path.
-func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Context, c *gin.Context, account *Account, err error, passthrough bool) error {
+func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Context, c *gin.Context, account *Account, err error, passthrough bool, canonicalModel ...string) error {
 	safeErr := sanitizeUpstreamErrorMessage(err.Error())
 	setOpsUpstreamError(c, 0, safeErr, "")
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -125,6 +125,9 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 	if errors.Is(err, context.Canceled) || (errors.Is(err, context.DeadlineExceeded) && errors.Is(ctx.Err(), context.DeadlineExceeded)) {
 		return err
 	}
+	if s.openAIAPIKeyAvailabilityEnabled(account) && openAIAvailabilityCallerGone(ctx, c, err) {
+		return err
+	}
 
 	// Transport attempt reached the network path; count as Ollama Cloud activity.
 	if s != nil {
@@ -139,6 +142,8 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 
 	if classifyUpstreamTransportError(err).Persistent {
 		s.tempUnscheduleOpenAITransportError(ctx, account, safeErr)
+	} else {
+		s.recordOpenAIAvailabilityTransportFailure(ctx, c, account, firstNonEmpty(canonicalModel...), err)
 	}
 
 	return &UpstreamFailoverError{

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -254,6 +255,16 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	failedMessage := ""
 	clientOutputStarted := false
 	codexFailureTerminal := account != nil && account.IsOpenAIOAuthLike()
+	availabilityFailureRecorded := false
+	applyTerminalAccountSideEffects := func(payload []byte, message string) {
+		if s.isOpenAIAPIKeyTransientStreamFailure(account, payload, message) {
+			if availabilityFailureRecorded {
+				return
+			}
+			availabilityFailureRecorded = true
+		}
+		s.handleOpenAIStreamTerminalAccountSideEffects(c, account, payload, message, resp.Header, mappedModel)
+	}
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	var streamEarlyErr error
 	terminalFailurePending := false
@@ -373,7 +384,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			completeGuardedEvent(true)
 		}
 		if codexFailureTerminal && sawBareError && !sawResponseFailed && bareErrorAccountSideEffectsPending {
-			s.handleOpenAIStreamTerminalAccountSideEffects(c, account, bareErrorPayload, failedMessage, resp.Header, mappedModel)
+			applyTerminalAccountSideEffects(bareErrorPayload, failedMessage)
 			bareErrorAccountSideEffectsPending = false
 		}
 		if codexFailureTerminal && sawBareError && !sawResponseFailed && !clientDisconnected {
@@ -388,18 +399,13 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			s.clearOpenAIProxyStreamDisconnect(account)
 		}
 		if !sawTerminalEvent && !openAIStreamClientOutputStarted(c, clientOutputStarted) && !eventShouldFlush {
-			return resultWithUsage(), s.newOpenAIStreamFailoverError(
-				c,
-				account,
-				false,
-				upstreamRequestID,
-				nil,
-				"OpenAI stream ended before a terminal event",
-			)
+			return resultWithUsage(), s.newOpenAIAvailabilityStreamTransportError(ctx, c, account, false, upstreamRequestID,
+				openAIAvailabilityModel(account, originalModel, mappedModel), "OpenAI stream ended before a terminal event", io.ErrUnexpectedEOF)
 		}
 		flushPending("Client disconnected during final flush, returning collected usage")
 		if !sawTerminalEvent {
 			if openAIStreamClientOutputStarted(c, clientOutputStarted) && !clientDisconnected {
+				s.recordOpenAIAvailabilityTransportFailure(ctx, c, account, openAIAvailabilityModel(account, originalModel, mappedModel), io.ErrUnexpectedEOF)
 				s.recordOpenAIProxyStreamDisconnect(account, errors.New("stream ended before terminal event"), upstreamRequestID)
 			}
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
@@ -442,7 +448,8 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		}
 		// 客户端断开/取消请求时，上游读取往往会返回 context canceled。
 		// /v1/responses 的 SSE 事件必须符合 OpenAI 协议；这里不注入自定义 error event，避免下游 SDK 解析失败。
-		if errors.Is(scanErr, context.Canceled) || errors.Is(scanErr, context.DeadlineExceeded) {
+		if errors.Is(scanErr, context.Canceled) || (errors.Is(scanErr, context.DeadlineExceeded) && !s.openAIAvailabilityReadFailure(ctx, c, account, scanErr)) ||
+			(s.openAIAPIKeyAvailabilityEnabled(account) && openAIAvailabilityCallerGone(ctx, c, scanErr)) {
 			if eventShouldFlush {
 				flushPending("Client disconnected during canceled stream flush, returning collected usage")
 			}
@@ -458,12 +465,13 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			if errText := strings.TrimSpace(scanErr.Error()); errText != "" {
 				msg += ": " + errText
 			}
-			return resultWithUsage(), s.newOpenAIStreamFailoverError(c, account, false, upstreamRequestID, nil, msg), true
+			return resultWithUsage(), s.newOpenAIAvailabilityStreamTransportError(ctx, c, account, false, upstreamRequestID, openAIAvailabilityModel(account, originalModel, mappedModel), msg, scanErr), true
 		}
 		// 客户端已断开时，上游出错仅影响体验，不影响计费；返回已收集 usage
 		if clientDisconnected {
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete after disconnect: %w", scanErr), true
 		}
+		s.recordOpenAIAvailabilityTransportFailure(ctx, c, account, openAIAvailabilityModel(account, originalModel, mappedModel), scanErr)
 		s.recordOpenAIProxyStreamDisconnect(account, scanErr, upstreamRequestID)
 		sendErrorEvent("stream_read_error")
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", scanErr), true
@@ -558,7 +566,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 						// Defer account health updates so the pair is applied once.
 						bareErrorAccountSideEffectsPending = true
 					} else {
-						s.handleOpenAIStreamTerminalAccountSideEffects(c, account, dataBytes, failedMessage, resp.Header, mappedModel)
+						applyTerminalAccountSideEffects(dataBytes, failedMessage)
 						bareErrorAccountSideEffectsPending = false
 					}
 				}
@@ -570,6 +578,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 						} else {
 							shouldFailover = openAIStreamFailedEventShouldFailover(dataBytes, failedMessage)
 						}
+						shouldFailover = shouldFailover || s.isOpenAIAPIKeyTransientStreamFailure(account, dataBytes, failedMessage)
 					}
 					if shouldFailover {
 						sawFailedEvent = true
@@ -894,9 +903,20 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				return resultWithUsage(), fmt.Errorf("stream usage incomplete after timeout")
 			}
 			logger.LegacyPrintf("service.openai_gateway", "Stream data interval timeout: account=%d model=%s interval=%s", account.ID, originalModel, streamInterval)
-			// 处理流超时，可能标记账户为临时不可调度或错误状态
+			if s.openAIAPIKeyAvailabilityEnabled(account) && openAIAvailabilityCallerGone(ctx, c, nil) {
+				return resultWithUsage(), context.Canceled
+			}
+			// Preserve the administrator's existing timeout policy before failover.
 			if s.rateLimitService != nil {
 				s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
+			}
+			if s.openAIAPIKeyAvailabilityEnabled(account) {
+				model := openAIAvailabilityModel(account, originalModel, mappedModel)
+				if !openAIStreamClientOutputStarted(c, clientOutputStarted) && !eventShouldFlush {
+					_ = resp.Body.Close()
+					return resultWithUsage(), s.newOpenAIAvailabilityStreamTransportError(ctx, c, account, false, upstreamRequestID, model, "OpenAI stream data interval timeout", context.DeadlineExceeded)
+				}
+				s.recordOpenAIAvailabilityTransportFailure(ctx, c, account, model, context.DeadlineExceeded)
 			}
 			// Grok: short cool + account failover when no client-visible bytes
 			// were committed yet (pre-commit). After output started we keep the
@@ -927,7 +947,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			return resultWithUsage(), s.newOpenAIFirstOutputTimeoutError(
 				ctx, c, account, opsUpstreamProxyID(account), opsUpstreamProxyName(account),
 				startTime, originalModel, reasoningEffort,
-				firstOutputTimeout, "semantic_output", resp.Header,
+				firstOutputTimeout, "semantic_output", resp.Header, openAIAvailabilityModel(account, originalModel, mappedModel),
 			)
 
 		case <-keepaliveCh:
@@ -1561,6 +1581,9 @@ func openAICacheCreationTokensFromUsage(value gjson.Result) int {
 func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
+		if s.openAIAvailabilityReadFailure(ctx, c, account, err) && !openAIStreamClientOutputStarted(c, false) {
+			return nil, s.newOpenAIAvailabilityStreamTransportError(ctx, c, account, false, resp.Header.Get("x-request-id"), openAIAvailabilityModel(account, originalModel, mappedModel), "OpenAI response body could not be read", err)
+		}
 		return nil, err
 	}
 	observer := upstreamResponseModelObserverFromContext(c)

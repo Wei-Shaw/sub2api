@@ -354,6 +354,12 @@ func (s *OpenAIGatewayService) newOpenAIAccountFailoverErrorWithClassificationHe
 		upstreamMsg,
 		retryableOnSameAccount || oauth429Retry,
 	)
+	if s.openAIAPIKeyAvailabilityEnabled(account) &&
+		(openAIAPIKeyAvailabilityTransientStatus(statusCode) || statusCode == http.StatusTooManyRequests || s.openAIAPIKeyCredentialFailure(account, statusCode, responseBody)) {
+		// The account/model cooldown excludes this attempt; do not spend the
+		// request-local same-account retry budget on the unavailable route.
+		failoverErr.RetryableOnSameAccount = false
+	}
 	if oauth429Retry {
 		failoverErr.SameAccountRetryDeadline = s.openAIOAuth429RetryDeadline(account)
 		failoverErr.SameAccountRetryDelay = openAIOAuth429SameAccountRetryDelay(responseHeaders, failoverErr.SameAccountRetryDeadline)
@@ -406,6 +412,19 @@ func isOpenAIUpstreamAccessStateCode(value string) bool {
 // such a code must flow through the existing authentication/403 policies.
 func isOpenAIHTTPUpstreamAccessStateError(_ int, _ string, body []byte) bool {
 	return isOpenAIUpstreamAccessStateError("", body)
+}
+
+func (s *OpenAIGatewayService) openAIAPIKeyCredentialFailure(account *Account, statusCode int, body []byte) bool {
+	if !s.openAIAPIKeyAvailabilityEnabled(account) || !gjson.ValidBytes(body) {
+		return false
+	}
+	if isOpenAIUpstreamAccessStateError("", body) {
+		return true
+	}
+	if statusCode == http.StatusUnauthorized {
+		return gjson.GetBytes(body, "error").IsObject() || openAIStreamCredentialAuthFailure(body)
+	}
+	return statusCode == http.StatusForbidden && openAIStreamCredentialAuthFailure(body)
 }
 
 func openAICapacityShedClientMessage(upstreamMsg string, body []byte) string {

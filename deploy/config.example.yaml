@@ -226,6 +226,9 @@ gateway:
   openai_first_output_timeout_seconds: 0
   # Optional high/xhigh/max override (seconds, 0=use the standard timeout)
   openai_high_effort_first_output_timeout_seconds: 0
+  # Opt-in next-account failover and immediate model cooldown for non-pool OpenAI API keys.
+  # 默认关闭；详情见 docs/openai-apikey-availability.md。
+  openai_apikey_availability_enabled: false
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456
