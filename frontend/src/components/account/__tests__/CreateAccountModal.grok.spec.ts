@@ -14,6 +14,23 @@ describe('CreateAccountModal Grok account types', () => {
     expect(source).toContain("newPlatform === 'grok'")
     expect(source).toContain("? 'https://api.x.ai/v1'")
     expect(source).toContain("form.platform === 'grok'")
-    expect(source).toContain("? 'xai-...'")
+    expect(source).toContain(':placeholder="apiKeyValuePlaceholder"')
+    expect(source).toContain("return 'xai-...'")
+  })
+
+  it('exposes custom upstream URL and header override for the OAuth create flow', () => {
+    expect(source).toContain('data-testid="grok-custom-base-url-toggle"')
+    expect(source).toContain('data-testid="grok-custom-base-url-input"')
+    expect(source).toContain('form.platform === \'grok\' && isOAuthFlow')
+  })
+
+  it('validates and applies upstream config on Grok OAuth create paths', () => {
+    // 授权码兑换 / RT 批量 / SSO 批量（密码授权已隐藏）
+    expect(source.match(/validateGrokOAuthUpstreamConfig\(\)/g)?.length).toBeGreaterThanOrEqual(3)
+    expect(source.match(/applyGrokOAuthUpstreamConfig\(credentials\)/g)?.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('hides Grok password authorize option in the create flow', () => {
+    expect(source).toContain(':show-email-password-option="false"')
   })
 })

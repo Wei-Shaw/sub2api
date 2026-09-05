@@ -19,11 +19,12 @@ const (
 	RequestTypeStream       RequestType = 2
 	RequestTypeWSV2         RequestType = 3
 	RequestTypeCyberBlocked RequestType = 4 // cyber_policy 命中（透传但被上游安全策略拒绝）
+	RequestTypeLive         RequestType = 5
 )
 
 func (t RequestType) IsValid() bool {
 	switch t {
-	case RequestTypeUnknown, RequestTypeSync, RequestTypeStream, RequestTypeWSV2, RequestTypeCyberBlocked:
+	case RequestTypeUnknown, RequestTypeSync, RequestTypeStream, RequestTypeWSV2, RequestTypeCyberBlocked, RequestTypeLive:
 		return true
 	default:
 		return false
@@ -47,6 +48,8 @@ func (t RequestType) String() string {
 		return "ws_v2"
 	case RequestTypeCyberBlocked:
 		return "cyber"
+	case RequestTypeLive:
+		return "live"
 	default:
 		return "unknown"
 	}
@@ -68,8 +71,10 @@ func ParseUsageRequestType(value string) (RequestType, error) {
 		return RequestTypeWSV2, nil
 	case "cyber":
 		return RequestTypeCyberBlocked, nil
+	case "live":
+		return RequestTypeLive, nil
 	default:
-		return RequestTypeUnknown, fmt.Errorf("invalid request_type, allowed values: unknown, sync, stream, ws_v2, cyber")
+		return RequestTypeUnknown, fmt.Errorf("invalid request_type, allowed values: unknown, sync, stream, ws_v2, cyber, live")
 	}
 }
 
@@ -109,6 +114,12 @@ type UsageLog struct {
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Nil means no mapping was applied (requested model was used as-is).
 	UpstreamModel *string
+	// UpstreamResponseModel is the model declared by the successful upstream
+	// response before client-facing model rewrites or protocol conversion.
+	UpstreamResponseModel *string
+	// UpstreamModelMismatch is nil when no upstream model was observed. Otherwise
+	// it compares UpstreamResponseModel with the actual model sent upstream.
+	UpstreamModelMismatch *bool
 	// ChannelID 渠道 ID
 	ChannelID *int64
 	// ModelMappingChain 模型映射链，如 "a→b→c"
@@ -117,12 +128,17 @@ type UsageLog struct {
 	BillingTier *string
 	// BillingMode 计费模式：token/image
 	BillingMode *string
-	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
+	// ServiceTier records the billable request tier, e.g. OpenAI "priority" / "flex"
+	// or Anthropic "fast".
 	ServiceTier *string
-	// ReasoningEffort is the request's reasoning effort level.
+	// ReasoningEffort is the effective effort recorded for this request after
+	// group policy rewriting and model-family remapping (e.g. max -> xhigh).
 	// OpenAI: "low" / "medium" / "high" / "xhigh"; Claude: "low" / "medium" / "high" / "max".
 	// Nil means not provided / not applicable.
 	ReasoningEffort *string
+	// RequestedReasoningEffort is the client-requested effort before mapping.
+	// Nil means historical rows, or that no explicit/suffix-derived effort was observed.
+	RequestedReasoningEffort *string
 	// InboundEndpoint is the client-facing API endpoint path, e.g. /v1/chat/completions.
 	InboundEndpoint *string
 	// UpstreamEndpoint is the normalized upstream endpoint path, e.g. /v1/responses.
@@ -139,6 +155,8 @@ type UsageLog struct {
 	CacheCreation5mTokens int `gorm:"column:cache_creation_5m_tokens"`
 	CacheCreation1hTokens int `gorm:"column:cache_creation_1h_tokens"`
 
+	ImageInputTokens  int
+	ImageInputCost    float64
 	ImageOutputTokens int
 	ImageOutputCost   float64
 
@@ -155,14 +173,23 @@ type UsageLog struct {
 	// AccountStatsCost 账号统计定价预计算费用（nil = 使用默认公式 total_cost × account_rate_multiplier）
 	AccountStatsCost *float64
 
-	BillingType  int8
-	RequestType  RequestType
-	Stream       bool
-	OpenAIWSMode bool
-	DurationMs   *int
-	FirstTokenMs *int
-	UserAgent    *string
-	IPAddress    *string
+	BillingType        int8
+	RequestType        RequestType
+	Stream             bool
+	OpenAIWSMode       bool
+	NativeCompactionV2 bool
+	DurationMs         *int
+	FirstTokenMs       *int
+	UserAgent          *string
+	IPAddress          *string
+	// SessionID is the explicit client-provided request correlation identifier
+	// (e.g. the session_id / X-Session-Id headers). Nil when the client sent no
+	// valid session header. It is never derived from prompt_cache_key or content.
+	SessionID *string
+	// UpstreamRequestID 是直接上游在响应头中声明的请求标识，只读账户
+	// extra.upstream_request_id_header 指定的头；账户未指定头名、WS 轮次
+	// 与上游没有该头的路径为 nil。
+	UpstreamRequestID *string
 
 	// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 	CacheTTLOverridden bool

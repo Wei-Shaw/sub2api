@@ -1,6 +1,11 @@
 <template>
-  <div class="card overflow-hidden">
-    <table class="w-full table-fixed border-collapse text-sm">
+  <!-- .table-wrapper 是 TablePageLayout 滚动链的挂载点：外层 .table-scroll-container
+       负责卡片外观并 overflow-hidden，本层接收 overflow-y-auto 才能在内容超高时滚动。 -->
+  <div class="table-wrapper">
+    <table
+      data-testid="desktop-channels"
+      class="!hidden w-full table-fixed border-collapse text-sm lg:!table"
+    >
       <thead>
         <tr class="border-b border-gray-100 bg-gray-50/50 text-xs font-medium uppercase tracking-wide text-gray-500 dark:border-dark-700 dark:bg-dark-800/50 dark:text-gray-400">
           <th class="w-[180px] px-4 py-3 text-center">{{ columns.name }}</th>
@@ -166,6 +171,151 @@
         </tr>
       </tbody>
     </table>
+
+    <div data-testid="mobile-channels" class="w-full min-w-0 overflow-x-hidden lg:hidden">
+      <div v-if="loading" data-testid="mobile-loading" class="py-10 text-center">
+        <Icon name="refresh" size="lg" class="inline-block animate-spin text-gray-400" />
+      </div>
+      <div v-else-if="rows.length === 0" data-testid="mobile-empty" class="py-12 text-center">
+        <Icon name="inbox" size="xl" class="mx-auto mb-3 h-12 w-12 text-gray-400" />
+        <p class="text-sm text-gray-500 dark:text-gray-400">{{ emptyLabel }}</p>
+      </div>
+      <section
+        v-else
+        v-for="(channel, chIdx) in rows"
+        :key="`mobile-${channel.name}-${chIdx}`"
+        class="border-b-2 border-gray-200 px-4 py-4 last:border-b-0 dark:border-dark-600"
+      >
+        <header class="mb-3 min-w-0">
+          <h3 class="break-words text-sm font-semibold text-gray-900 dark:text-white">
+            {{ channel.name }}
+          </h3>
+          <p class="mt-1 break-words text-xs leading-5 text-gray-500 dark:text-gray-400">
+            {{ channel.description || '-' }}
+          </p>
+        </header>
+
+        <div class="divide-y divide-gray-100 dark:divide-dark-700/60">
+          <div
+            v-for="section in channel.platforms"
+            :key="`mobile-${channel.name}-${section.platform}`"
+            class="min-w-0 py-3 first:pt-0 last:pb-0"
+          >
+            <span
+              :class="[
+                'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium uppercase',
+                platformBadgeClass(section.platform),
+              ]"
+            >
+              <PlatformIcon :platform="section.platform as GroupPlatform" size="xs" />
+              {{ section.platform }}
+            </span>
+
+            <dl class="mt-3 space-y-3">
+              <div class="min-w-0">
+                <dt class="mb-1.5 text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                  {{ columns.groups }}
+                </dt>
+                <dd class="flex min-w-0 flex-col gap-2">
+                  <div
+                    v-if="exclusiveGroups(section).length > 0"
+                    class="flex min-w-0 flex-wrap items-center gap-1.5"
+                  >
+                    <span
+                      class="inline-flex items-center gap-0.5 text-[10px] font-medium uppercase text-purple-600 dark:text-purple-400"
+                      :title="t('availableChannels.exclusiveTooltip')"
+                    >
+                      <Icon name="shield" size="xs" class="h-3 w-3" />
+                      {{ t('availableChannels.exclusive') }}
+                    </span>
+                    <div
+                      v-for="g in exclusiveGroups(section)"
+                      :key="`mobile-ex-${g.id}`"
+                      class="inline-flex max-w-full min-w-0 flex-wrap items-center gap-1"
+                    >
+                      <GroupBadge
+                        class="max-w-full"
+                        :name="g.name"
+                        :platform="g.platform as GroupPlatform"
+                        :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
+                        :rate-multiplier="g.rate_multiplier"
+                        :user-rate-multiplier="userGroupRates[g.id] ?? null"
+                        always-show-rate
+                      />
+                      <span
+                        v-if="hasPeakRate(g)"
+                        class="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+                        :title="peakRateTitle(g)"
+                      >
+                        <Icon name="clock" size="xs" class="h-3 w-3" />
+                        {{ peakRateLabel(g) }}
+                      </span>
+                    </div>
+                  </div>
+                  <div
+                    v-if="publicGroups(section).length > 0"
+                    class="flex min-w-0 flex-wrap items-center gap-1.5"
+                  >
+                    <span
+                      class="inline-flex items-center gap-0.5 text-[10px] font-medium uppercase text-gray-500 dark:text-gray-400"
+                      :title="t('availableChannels.publicTooltip')"
+                    >
+                      <Icon name="globe" size="xs" class="h-3 w-3" />
+                      {{ t('availableChannels.public') }}
+                    </span>
+                    <div
+                      v-for="g in publicGroups(section)"
+                      :key="`mobile-pub-${g.id}`"
+                      class="inline-flex max-w-full min-w-0 flex-wrap items-center gap-1"
+                    >
+                      <GroupBadge
+                        class="max-w-full"
+                        :name="g.name"
+                        :platform="g.platform as GroupPlatform"
+                        :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
+                        :rate-multiplier="g.rate_multiplier"
+                        :user-rate-multiplier="userGroupRates[g.id] ?? null"
+                        always-show-rate
+                      />
+                      <span
+                        v-if="hasPeakRate(g)"
+                        class="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+                        :title="peakRateTitle(g)"
+                      >
+                        <Icon name="clock" size="xs" class="h-3 w-3" />
+                        {{ peakRateLabel(g) }}
+                      </span>
+                    </div>
+                  </div>
+                  <span v-if="section.groups.length === 0" class="text-xs text-gray-400">-</span>
+                </dd>
+              </div>
+
+              <div class="min-w-0">
+                <dt class="mb-1.5 text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                  {{ columns.supportedModels }}
+                </dt>
+                <dd class="flex min-w-0 flex-wrap gap-1">
+                  <SupportedModelChip
+                    v-for="m in section.supported_models"
+                    :key="`mobile-${section.platform}-${m.name}`"
+                    class="max-w-full [&>span]:max-w-full [&>span]:truncate"
+                    :model="m"
+                    :pricing-key-prefix="pricingKeyPrefix"
+                    :no-pricing-label="noPricingLabel"
+                    :show-platform="false"
+                    :platform-hint="section.platform"
+                  />
+                  <span v-if="section.supported_models.length === 0" class="text-xs text-gray-400">
+                    {{ noModelsLabel }}
+                  </span>
+                </dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 

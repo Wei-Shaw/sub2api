@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -68,6 +69,28 @@ type coderOpenAIWSClientDialer struct {
 	proxyMisses  atomic.Int64
 }
 
+// openAIWSHandshakeError keeps a bounded, non-logged HTTP error body so the
+// Agent Identity recovery path can distinguish an invalid task from other
+// 401 handshake failures.
+type openAIWSHandshakeError struct {
+	Body []byte
+	Err  error
+}
+
+func (e *openAIWSHandshakeError) Error() string {
+	if e == nil || e.Err == nil {
+		return "openai ws handshake failed"
+	}
+	return e.Err.Error()
+}
+
+func (e *openAIWSHandshakeError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
 type openAIWSProxyClientEntry struct {
 	client           *http.Client
 	lastUsedUnixNano int64
@@ -104,7 +127,12 @@ func (d *coderOpenAIWSClientDialer) Dial(
 			status = resp.StatusCode
 			respHeaders = cloneHeader(resp.Header)
 		}
-		return nil, status, respHeaders, err
+		var body []byte
+		if resp != nil && resp.Body != nil {
+			body, _ = io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+			_ = resp.Body.Close()
+		}
+		return nil, status, respHeaders, &openAIWSHandshakeError{Body: body, Err: err}
 	}
 	// coder/websocket 默认单消息读取上限为 32KB，Codex WS 事件（如 rate_limits/大 delta）
 	// 可能超过该阈值，需显式提高上限，避免本地 read_fail(message too big)。

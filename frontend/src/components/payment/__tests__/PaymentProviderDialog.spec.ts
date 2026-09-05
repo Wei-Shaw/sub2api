@@ -13,6 +13,7 @@ const messages: Record<string, string> = {
   'admin.settings.payment.customMethodType': 'Payment type',
   'admin.settings.payment.customMethodUpstreamType': 'Upstream type',
   'admin.settings.payment.customMethodDisplayName': 'Display name',
+  'admin.settings.payment.customMethodDisplayNamePlaceholder': '信用卡',
   'admin.settings.payment.paymentGuideTrigger': 'View payment guide',
   'admin.settings.payment.alipayGuideSummary': 'Desktop prefers QR precreate and falls back to cashier; mobile prefers WAP checkout.',
   'admin.settings.payment.wxpayGuideSummary': 'Desktop prefers Native QR; mobile routes to JSAPI or H5 based on browser context.',

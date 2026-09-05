@@ -34,7 +34,7 @@ func TestCalculateProgress_BasicFields(t *testing.T) {
 	assert.Equal(t, int64(100), progress.ID)
 	assert.Equal(t, "Premium", progress.GroupName)
 	assert.Equal(t, sub.ExpiresAt, progress.ExpiresAt)
-	assert.True(t, progress.ExpiresInDays == 29 || progress.ExpiresInDays == 30, "ExpiresInDays should be 29 or 30, got %d", progress.ExpiresInDays)
+	assert.Equal(t, 30, progress.ExpiresInDays)
 	assert.Nil(t, progress.Daily, "无日限额时 Daily 应为 nil")
 	assert.Nil(t, progress.Weekly, "无周限额时 Weekly 应为 nil")
 	assert.Nil(t, progress.Monthly, "无月限额时 Monthly 应为 nil")
@@ -113,6 +113,32 @@ func TestCalculateProgress_WeeklyUsage(t *testing.T) {
 	assert.Equal(t, 25.0, progress.Weekly.UsedUSD)
 	assert.Equal(t, 25.0, progress.Weekly.RemainingUSD)
 	assert.Equal(t, 50.0, progress.Weekly.Percentage)
+}
+
+// 周窗口初始化在开通日零点（legacy anchor）时，展示的 ResetsAt 应与
+// automaticWindowStartAt 的实际推进时间一致（StartsAt+7d），而非窗口起点+7d。
+func TestCalculateProgress_WeeklyResetsAt_LegacyMidnightAnchor(t *testing.T) {
+	svc := newTestSubscriptionService()
+	startsAt := time.Date(2026, 7, 31, 13, 37, 6, 0, time.FixedZone("UTC+8", 8*3600))
+	weeklyStart := time.Date(startsAt.Year(), startsAt.Month(), startsAt.Day(), 0, 0, 0, 0, startsAt.Location())
+
+	sub := &UserSubscription{
+		ID:                1,
+		StartsAt:          startsAt,
+		ExpiresAt:         startsAt.AddDate(0, 0, 30),
+		WeeklyUsageUSD:    2000.18,
+		WeeklyWindowStart: ptrTime(weeklyStart),
+	}
+	group := &Group{
+		Name:           "Pro",
+		WeeklyLimitUSD: ptrFloat64(2000.0),
+	}
+
+	progress := svc.calculateProgress(sub, group)
+
+	require.NotNil(t, progress.Weekly)
+	assert.True(t, startsAt.Add(7*24*time.Hour).Equal(progress.Weekly.ResetsAt),
+		"legacy 午夜锚点的周窗口 ResetsAt 应为 StartsAt+7d，与实际推进时间一致")
 }
 
 func TestCalculateProgress_MonthlyUsage(t *testing.T) {

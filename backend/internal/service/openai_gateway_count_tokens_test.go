@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -124,6 +126,11 @@ func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_OAuthFallsBackWhenPl
 			body:       `{"error":{"type":"invalid_request_error","code":"missing_scope","message":"Missing scopes: api.responses.write"}}`,
 		},
 		{
+			name:       "403_html_proxy_page",
+			statusCode: http.StatusForbidden,
+			body:       "<!doctype html><html><body>Forbidden</body></html>",
+		},
+		{
 			name:       "404_input_tokens_unsupported",
 			statusCode: http.StatusNotFound,
 			body:       `{"error":{"type":"invalid_request_error","message":"The /v1/responses/input_tokens endpoint was not found"}}`,
@@ -236,6 +243,51 @@ func TestEstimateOpenAIInputTokens_RequestSamples(t *testing.T) {
 	}
 }
 
+func TestEstimateGrokCountTokens_AnthropicRequests(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "simple message",
+			body: `{"model":"grok-4","messages":[{"role":"user","content":"hello world"}]}`,
+		},
+		{
+			name: "system blocks and tools",
+			body: `{
+				"model":"grok-4",
+				"system":[{"type":"text","text":"You are helpful."}],
+				"messages":[{"role":"user","content":[{"type":"text","text":"look up the weather"}]}],
+				"tools":[{"name":"lookup_weather","description":"Look up weather","input_schema":{"type":"object","properties":{"city":{"type":"string"}}}}],
+				"tool_choice":{"type":"auto"}
+			}`,
+		},
+		{
+			name: "empty conversation uses positive minimum",
+			body: `{"model":"grok-4","messages":[]}`,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := EstimateGrokCountTokens([]byte(tt.body))
+			require.NoError(t, err)
+			require.Positive(t, got)
+		})
+	}
+}
+
+func TestEstimateGrokCountTokens_RejectsInvalidRequests(t *testing.T) {
+	for _, body := range []string{
+		`{`,
+		`{"messages":[{"role":"user","content":"hello"}]}`,
+		`{"model":"grok-4","messages":[{"role":"user","content":{"unexpected":true}}]}`,
+	} {
+		_, err := EstimateGrokCountTokens([]byte(body))
+		require.Error(t, err, "body=%s", body)
+	}
+}
+
 func TestOpenAIInputTokensEncodingForModel(t *testing.T) {
 	cases := []struct {
 		model string
@@ -260,6 +312,10 @@ func TestEstimateOpenAIInputTokens_CompareWithOpenAIAPI(t *testing.T) {
 	apiKey := strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
 	if apiKey == "" {
 		t.Skip("OPENAI_API_KEY not set")
+	}
+	// Invalid/expired keys in local env must not fail the unit suite.
+	if strings.HasPrefix(apiKey, "sk-") && len(apiKey) < 20 {
+		t.Skip("OPENAI_API_KEY looks incomplete")
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
@@ -295,7 +351,17 @@ func TestEstimateOpenAIInputTokens_CompareWithOpenAIAPI(t *testing.T) {
 			require.NoError(t, err)
 
 			actual, err := callOpenAIInputTokensAPIForTest(client, apiKey, prepared.Request)
-			require.NoError(t, err)
+			if err != nil {
+				// This is an optional live-API comparison. Credential and transient
+				// network failures must not make the deterministic unit suite fail.
+				var netErr net.Error
+				if strings.Contains(err.Error(), "status=401") ||
+					strings.Contains(err.Error(), "invalid_api_key") ||
+					errors.As(err, &netErr) {
+					t.Skipf("OpenAI live comparison unavailable: %v", err)
+				}
+				require.NoError(t, err)
+			}
 
 			diff := estimated - actual
 			if diff < 0 {

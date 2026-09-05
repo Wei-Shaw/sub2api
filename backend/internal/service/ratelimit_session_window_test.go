@@ -143,6 +143,9 @@ func (m *sessionWindowMockRepo) ListSchedulableUngroupedByPlatform(context.Conte
 func (m *sessionWindowMockRepo) ListSchedulableUngroupedByPlatforms(context.Context, []string) ([]Account, error) {
 	panic("unexpected")
 }
+func (m *sessionWindowMockRepo) ListModelAvailabilityCandidates(context.Context, *int64, []string, bool) ([]Account, error) {
+	panic("unexpected")
+}
 func (m *sessionWindowMockRepo) SetRateLimited(context.Context, int64, time.Time) error {
 	panic("unexpected")
 }
@@ -161,7 +164,9 @@ func (m *sessionWindowMockRepo) BulkUpdate(context.Context, []int64, AccountBulk
 func (m *sessionWindowMockRepo) IncrementQuotaUsed(context.Context, int64, float64) error {
 	panic("unexpected")
 }
-func (m *sessionWindowMockRepo) ResetQuotaUsed(context.Context, int64) error { panic("unexpected") }
+func (m *sessionWindowMockRepo) ResetQuotaUsedAndClearRateLimitCooldown(context.Context, int64) error {
+	panic("unexpected")
+}
 func (m *sessionWindowMockRepo) RevertProxyFallback(context.Context, int64) error {
 	panic("unexpected")
 }

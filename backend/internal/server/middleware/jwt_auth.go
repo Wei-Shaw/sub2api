@@ -11,8 +11,13 @@ import (
 )
 
 // NewJWTAuthMiddleware 创建 JWT 认证中间件
-func NewJWTAuthMiddleware(authService *service.AuthService, userService *service.UserService) JWTAuthMiddleware {
-	return JWTAuthMiddleware(jwtAuth(authService, userService, userService))
+func NewJWTAuthMiddleware(
+	authService *service.AuthService,
+	userService *service.UserService,
+	settingService *service.SettingService,
+	auditService *service.AuditLogService,
+) JWTAuthMiddleware {
+	return JWTAuthMiddleware(jwtAuth(authService, userService, userService, settingService, auditService))
 }
 
 type jwtUserReader interface {
@@ -24,7 +29,13 @@ type userActivityToucher interface {
 }
 
 // jwtAuth JWT认证中间件实现
-func jwtAuth(authService *service.AuthService, userService jwtUserReader, activityToucher userActivityToucher) gin.HandlerFunc {
+func jwtAuth(
+	authService *service.AuthService,
+	userService jwtUserReader,
+	activityToucher userActivityToucher,
+	settingService *service.SettingService,
+	auditService *service.AuditLogService,
+) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 从Authorization header中提取token
 		authHeader := c.GetHeader("Authorization")
@@ -77,11 +88,18 @@ func jwtAuth(authService *service.AuthService, userService jwtUserReader, activi
 			return
 		}
 
+		// 会话绑定校验：IP/UA 任一变化即撤销会话（功能可在系统设置中关闭）
+		if !enforceSessionBinding(c, authService, settingService, auditService, claims) {
+			return
+		}
+
 		c.Set(string(ContextKeyUser), AuthSubject{
 			UserID:      user.ID,
 			Concurrency: user.Concurrency,
 		})
 		c.Set(string(ContextKeyUserRole), user.Role)
+		c.Set(ContextKeyAuthEmail, user.Email)
+		c.Set(ContextKeySessionID, claims.SessionID)
 		if activityToucher != nil {
 			activityToucher.TouchLastActiveForUser(c.Request.Context(), user)
 		}

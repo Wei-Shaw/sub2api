@@ -154,6 +154,97 @@ func (h *SettingHandler) UpdateRateLimit429CooldownSettings(c *gin.Context) {
 	})
 }
 
+func (h *SettingHandler) GetOpenAIImagesOAuthUnavailableCooldownSettings(c *gin.Context) {
+	settings, err := h.settingService.GetOpenAIImagesOAuthUnavailableCooldownSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.OpenAIImagesOAuthUnavailableCooldownSettings{CooldownMinutes: settings.CooldownMinutes})
+}
+
+type UpdateOpenAIImagesOAuthUnavailableCooldownSettingsRequest struct {
+	CooldownMinutes int `json:"cooldown_minutes"`
+}
+
+func (h *SettingHandler) UpdateOpenAIImagesOAuthUnavailableCooldownSettings(c *gin.Context) {
+	var req UpdateOpenAIImagesOAuthUnavailableCooldownSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	settings := &service.OpenAIImagesOAuthUnavailableCooldownSettings{CooldownMinutes: req.CooldownMinutes}
+	if err := h.settingService.SetOpenAIImagesOAuthUnavailableCooldownSettings(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, dto.OpenAIImagesOAuthUnavailableCooldownSettings{CooldownMinutes: settings.CooldownMinutes})
+}
+
+// GetPanelRateLimitSettings 获取面板 API 限流配置
+// GET /api/v1/admin/settings/panel-rate-limit
+func (h *SettingHandler) GetPanelRateLimitSettings(c *gin.Context) {
+	settings, err := h.settingService.GetPanelRateLimitSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.PanelRateLimitSettings{
+		Enabled:     settings.Enabled,
+		UserRPM:     settings.UserRPM,
+		HeavyRPM:    settings.HeavyRPM,
+		ExemptAdmin: settings.ExemptAdmin,
+		PublicIPRPM: settings.PublicIPRPM,
+	})
+}
+
+// UpdatePanelRateLimitSettingsRequest 更新面板 API 限流配置请求
+type UpdatePanelRateLimitSettingsRequest struct {
+	Enabled     bool `json:"enabled"`
+	UserRPM     int  `json:"user_rpm"`
+	HeavyRPM    int  `json:"heavy_rpm"`
+	ExemptAdmin bool `json:"exempt_admin"`
+	PublicIPRPM int  `json:"public_ip_rpm"`
+}
+
+// UpdatePanelRateLimitSettings 更新面板 API 限流配置
+// PUT /api/v1/admin/settings/panel-rate-limit
+func (h *SettingHandler) UpdatePanelRateLimitSettings(c *gin.Context) {
+	var req UpdatePanelRateLimitSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	settings := &service.PanelRateLimitSettings{
+		Enabled:     req.Enabled,
+		UserRPM:     req.UserRPM,
+		HeavyRPM:    req.HeavyRPM,
+		ExemptAdmin: req.ExemptAdmin,
+		PublicIPRPM: req.PublicIPRPM,
+	}
+
+	if err := h.settingService.SetPanelRateLimitSettings(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	updatedSettings, err := h.settingService.GetPanelRateLimitSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.PanelRateLimitSettings{
+		Enabled:     updatedSettings.Enabled,
+		UserRPM:     updatedSettings.UserRPM,
+		HeavyRPM:    updatedSettings.HeavyRPM,
+		ExemptAdmin: updatedSettings.ExemptAdmin,
+		PublicIPRPM: updatedSettings.PublicIPRPM,
+	})
+}
+
 // GetStreamTimeoutSettings 获取流超时处理配置
 // GET /api/v1/admin/settings/stream-timeout
 func (h *SettingHandler) GetStreamTimeoutSettings(c *gin.Context) {

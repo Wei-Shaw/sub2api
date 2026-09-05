@@ -12,6 +12,7 @@ describe('API Client', () => {
 
   beforeEach(async () => {
     localStorage.clear()
+    window.history.replaceState({}, '', '/')
     // 每次测试重新导入以获取干净的模块状态
     vi.resetModules()
     const mod = await import('@/api/client')
@@ -119,6 +120,107 @@ describe('API Client', () => {
 
       const config = adapter.mock.calls[0][0]
       expect(config.withCredentials).toBe(true)
+    })
+
+    it('Admin API 在进入管理页面前也带 Admin UI 标记', async () => {
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {} },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+      apiClient.defaults.adapter = adapter
+
+      await apiClient.get('/admin/users')
+
+      const config = adapter.mock.calls[0][0]
+      expect(config.headers.get('X-Admin-UI-Request')).toBe('1')
+    })
+
+    it('管理页面调用共享 API 时带 Admin UI 标记', async () => {
+      window.history.replaceState({}, '', '/admin/dashboard')
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {} },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+      apiClient.defaults.adapter = adapter
+
+      await apiClient.get('/groups/available')
+
+      const config = adapter.mock.calls[0][0]
+      expect(config.headers.get('X-Admin-UI-Request')).toBe('1')
+    })
+
+    it('普通用户页面调用共享 API 时不带 Admin UI 标记', async () => {
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {} },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+      apiClient.defaults.adapter = adapter
+
+      await apiClient.get('/groups/available')
+
+      const config = adapter.mock.calls[0][0]
+      expect(config.headers.get('X-Admin-UI-Request')).toBeFalsy()
+    })
+
+    it('用户侧 timing API 自动带 User UI 标记', async () => {
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {} },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+      apiClient.defaults.adapter = adapter
+
+      await apiClient.get('/auth/me')
+
+      const config = adapter.mock.calls[0][0]
+      expect(config.headers.get('X-User-UI-Request')).toBe('1')
+      expect(config.headers.get('X-Admin-UI-Request')).toBeFalsy()
+    })
+
+    it('支付用户 API 带 User UI 标记，公开支付 API 不带', async () => {
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {} },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+      apiClient.defaults.adapter = adapter
+
+      await apiClient.get('/payment/plans')
+      expect(adapter.mock.calls[0][0].headers.get('X-User-UI-Request')).toBe('1')
+
+      await apiClient.post('/payment/public/orders/verify', {})
+      expect(adapter.mock.calls[1][0].headers.get('X-User-UI-Request')).toBeFalsy()
+    })
+
+    it('管理页调用共享 API 时同时带 Admin 与 User UI 标记', async () => {
+      window.history.replaceState({}, '', '/admin/dashboard')
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {} },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+      apiClient.defaults.adapter = adapter
+
+      await apiClient.get('/keys')
+
+      const config = adapter.mock.calls[0][0]
+      expect(config.headers.get('X-Admin-UI-Request')).toBe('1')
+      expect(config.headers.get('X-User-UI-Request')).toBe('1')
     })
   })
 
@@ -241,6 +343,94 @@ describe('API Client', () => {
         value: originalLocation,
         writable: true,
       })
+    })
+
+    it('有 refresh_token 时刷新并重试原请求', async () => {
+      localStorage.setItem('auth_token', 'expired-token')
+      localStorage.setItem('refresh_token', 'refresh-token')
+      localStorage.setItem('token_expires_at', String(Date.now() - 1))
+      localStorage.setItem('auth_user', JSON.stringify({ id: 7 }))
+
+      const adapter = vi.fn()
+        .mockRejectedValueOnce({
+          response: {
+            status: 401,
+            data: { code: 'TOKEN_EXPIRED', message: 'Token expired' },
+          },
+          config: {
+            url: '/test',
+            headers: { Authorization: 'Bearer expired-token' },
+          },
+          code: 'ERR_BAD_REQUEST',
+        })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: { code: 0, data: { ok: true } },
+          headers: {},
+          config: {},
+          statusText: 'OK',
+        })
+      apiClient.defaults.adapter = adapter
+      vi.spyOn(axios, 'post').mockResolvedValueOnce({
+        data: {
+          code: 0,
+          message: 'ok',
+          data: {
+            access_token: 'new-token',
+            refresh_token: 'new-refresh-token',
+            expires_in: 3600,
+            token_type: 'Bearer',
+          },
+        },
+      })
+
+      await expect(apiClient.get('/test')).resolves.toMatchObject({ data: { ok: true } })
+
+      expect(adapter).toHaveBeenCalledTimes(2)
+      expect(localStorage.getItem('auth_token')).toBe('new-token')
+      expect(localStorage.getItem('refresh_token')).toBe('new-refresh-token')
+      expect(adapter.mock.calls[1][0].headers.get('Authorization')).toBe('Bearer new-token')
+    })
+
+    it('刷新期间换号时旧请求不会清除新会话', async () => {
+      localStorage.setItem('auth_token', 'user-a-access')
+      localStorage.setItem('refresh_token', 'user-a-refresh')
+      localStorage.setItem('token_expires_at', String(Date.now() - 1))
+      localStorage.setItem('auth_user', JSON.stringify({ id: 7 }))
+
+      apiClient.defaults.adapter = vi.fn().mockRejectedValueOnce({
+        response: {
+          status: 401,
+          data: { code: 'TOKEN_EXPIRED', message: 'Token expired' },
+        },
+        config: {
+          url: '/test',
+          headers: { Authorization: 'Bearer user-a-access' },
+        },
+        code: 'ERR_BAD_REQUEST',
+      })
+
+      let rejectRefresh!: (reason: Error) => void
+      vi.spyOn(axios, 'post').mockImplementationOnce(
+        () => new Promise((_resolve, reject) => {
+          rejectRefresh = reject
+        })
+      )
+
+      const staleRequest = apiClient.get('/test')
+      await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1))
+
+      localStorage.setItem('auth_token', 'user-b-access')
+      localStorage.setItem('refresh_token', 'user-b-refresh')
+      localStorage.setItem('token_expires_at', String(Date.now() + 3600_000))
+      localStorage.setItem('auth_user', JSON.stringify({ id: 8 }))
+      rejectRefresh(new Error('stale refresh failed'))
+
+      await expect(staleRequest).rejects.toMatchObject({ code: 'AUTH_SESSION_CHANGED' })
+      expect(localStorage.getItem('auth_token')).toBe('user-b-access')
+      expect(localStorage.getItem('refresh_token')).toBe('user-b-refresh')
+      expect(localStorage.getItem('auth_user')).toBe(JSON.stringify({ id: 8 }))
+      expect(window.location.pathname).toBe('/')
     })
   })
 

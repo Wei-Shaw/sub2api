@@ -50,6 +50,7 @@ export default {
         timeRange: 'Time range',
         startTime: 'Start time (optional)',
         endTime: 'End time (optional)',
+        host: 'Host',
         component: 'Component',
         componentPlaceholder: 'e.g. http.access',
         keyId: 'KEY ID',
@@ -71,6 +72,7 @@ export default {
         runtimeConfigResetFailed: 'Failed to reset log configuration',
         cleanupConfirm: 'Clean up system logs matching the current filters? This cannot be undone.',
         cleanupSuccess: 'Cleanup complete. Deleted {count} log entries.',
+        cleanupFilterRequired: 'Cleanup requires at least one filter condition (start/end time or another field)',
         cleanupFailed: 'Failed to clean up system logs'
       },
       requestsTotal: 'Requests (total)',
@@ -265,6 +267,7 @@ export default {
         typeUpstream: 'Upstream',
         typeRequest: 'Request',
         typeAuth: 'Auth',
+        typeAccountAuth: 'Account Auth',
         typeRouting: 'Routing',
         typeInternal: 'Internal',
         endpoint: 'Endpoint',
@@ -290,6 +293,7 @@ export default {
         phase: {
           request: 'Request',
           auth: 'Auth',
+          account_auth: 'Account Auth',
           routing: 'Routing',
           upstream: 'Upstream',
           network: 'Network',
@@ -303,6 +307,7 @@ export default {
         title: 'Error Detail',
         titleWithId: 'Error #{id}',
         noErrorSelected: 'No error selected.',
+        backToList: 'Back to List',
         resolution: 'Resolved:',
         failedToUpdateResolvedStatus: 'Failed to update resolved status',
         classificationKeys: {
@@ -335,7 +340,16 @@ export default {
         time: 'Time',
         phase: 'Phase',
         status: 'Status',
+        upstreamStatus: 'Upstream Status',
         message: 'Message',
+        rootCause: 'Root Cause',
+        diagnosticPayloads: 'Diagnostic Payloads',
+        payloads: {
+          client: 'Client Response',
+          upstream_message: 'Upstream Message',
+          upstream_detail: 'Upstream Detail',
+          upstream_events: 'Upstream Events'
+        },
         basicInfo: 'Basic Info',
         platform: 'Platform',
         model: 'Model',
@@ -378,8 +392,6 @@ export default {
         suggestPlatform: 'Platform error: prioritize investigation and fix',
         suggestGeneric: 'See details for more context',
         apiKeyPrefix: 'Key Prefix',
-        attemptedKeyPrefix: 'Attempted Key Prefix',
-        deletedKeyOwner: 'Deleted Key Owner',
         keyDeletedBadge: 'Key Deleted'
       },
       requestDetails: {
@@ -709,8 +721,6 @@ export default {
         ignoreContextCanceledHint: 'When enabled, client disconnect (context canceled) errors will not be written to the error log.',
         ignoreNoAvailableAccounts: 'Ignore no available accounts errors',
         ignoreNoAvailableAccountsHint: 'When enabled, "No available accounts" errors will not be written to the error log (not recommended; usually a config issue).',
-        ignoreInvalidApiKeyErrors: 'Ignore invalid API key errors',
-        ignoreInvalidApiKeyErrorsHint: 'When enabled, invalid or missing API key errors (INVALID_API_KEY, API_KEY_REQUIRED) will not be written to the error log.',
         ignoreInsufficientBalanceErrors: 'Ignore Insufficient Balance Errors',
         ignoreInsufficientBalanceErrorsHint: 'When enabled, insufficient account balance errors will not be written to the error log.',
         autoRefresh: 'Auto Refresh',

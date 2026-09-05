@@ -11,7 +11,7 @@
         <tr
           v-for="user in items"
           :key="user.user_id"
-          class="border-t border-gray-100/50 dark:border-gray-700/50"
+          class="border-t border-gray-100/50 dark:border-dark-700/50"
         >
           <td class="max-w-[120px] truncate py-1 pl-6 text-gray-600 dark:text-gray-300" :title="user.email">
             {{ user.email || `User #${user.user_id}` }}

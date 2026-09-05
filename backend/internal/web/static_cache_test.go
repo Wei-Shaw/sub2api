@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestIsLongCacheStaticPath(t *testing.T) {
+func TestIsFingerprintedEmbeddedAssetPath(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -17,12 +17,16 @@ func TestIsLongCacheStaticPath(t *testing.T) {
 		path string
 		want bool
 	}{
-		{name: "hashed_js", path: "assets/index-abc123.js", want: true},
-		{name: "hashed_css", path: "assets/app-def456.css", want: true},
-		{name: "nested_asset", path: "assets/vendor/chunk.js", want: true},
-		{name: "leading_slash_asset", path: "/assets/index.js", want: true},
-		{name: "logo", path: "logo.png", want: true},
-		{name: "favicon", path: "favicon.ico", want: true},
+		{name: "fingerprinted_js", path: "assets/index-AbCd1234.js", want: true},
+		{name: "fingerprinted_css", path: "assets/app-a1B2c3D4.css", want: true},
+		{name: "fingerprinted_url_safe_hash", path: "assets/app-aB1-2_Cd.css", want: true},
+		{name: "nested_fingerprinted_asset", path: "assets/vendor/chunk-AbCd1234.js", want: true},
+		{name: "leading_slash_fingerprinted_asset", path: "/assets/index-AbCd1234.js", want: true},
+		{name: "unhashed_asset", path: "assets/index.js", want: false},
+		{name: "short_suffix", path: "assets/index-abc123.js", want: false},
+		{name: "logo", path: "logo.png", want: false},
+		{name: "favicon", path: "favicon.ico", want: false},
+		{name: "fingerprint_outside_assets", path: "downloads/index-AbCd1234.js", want: false},
 		{name: "index_html", path: "index.html", want: false},
 		{name: "spa_route", path: "dashboard", want: false},
 		{name: "assets_prefix_only", path: "assets", want: false},
@@ -33,7 +37,7 @@ func TestIsLongCacheStaticPath(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tc.want, isLongCacheStaticPath(tc.path))
+			assert.Equal(t, tc.want, isFingerprintedEmbeddedAssetPath(tc.path))
 		})
 	}
 }
@@ -41,31 +45,27 @@ func TestIsLongCacheStaticPath(t *testing.T) {
 func TestApplyStaticAssetCacheHeaders(t *testing.T) {
 	t.Parallel()
 
-	t.Run("sets_immutable_cache_for_assets", func(t *testing.T) {
+	t.Run("sets_immutable_cache_for_fingerprinted_asset", func(t *testing.T) {
 		t.Parallel()
 		header := make(http.Header)
-		applyStaticAssetCacheHeaders(header, "assets/index-abc.js")
+		applyStaticAssetCacheHeaders(header, "assets/index-AbCd1234.js")
 		assert.Equal(t, staticAssetsCacheControl, header.Get("Cache-Control"))
 	})
 
-	t.Run("sets_immutable_cache_for_logo", func(t *testing.T) {
-		t.Parallel()
-		header := make(http.Header)
-		applyStaticAssetCacheHeaders(header, "logo.png")
-		assert.Equal(t, staticAssetsCacheControl, header.Get("Cache-Control"))
-	})
-
-	t.Run("skips_index_html", func(t *testing.T) {
-		t.Parallel()
-		header := make(http.Header)
-		applyStaticAssetCacheHeaders(header, "index.html")
-		assert.Empty(t, header.Get("Cache-Control"))
-	})
+	for _, path := range []string{"assets/index.js", "logo.png", "favicon.ico", "index.html"} {
+		path := path
+		t.Run("skips_"+path, func(t *testing.T) {
+			t.Parallel()
+			header := make(http.Header)
+			applyStaticAssetCacheHeaders(header, path)
+			assert.Empty(t, header.Get("Cache-Control"))
+		})
+	}
 
 	t.Run("nil_header_is_noop", func(t *testing.T) {
 		t.Parallel()
 		assert.NotPanics(t, func() {
-			applyStaticAssetCacheHeaders(nil, "assets/x.js")
+			applyStaticAssetCacheHeaders(nil, "assets/index-AbCd1234.js")
 		})
 	})
 }

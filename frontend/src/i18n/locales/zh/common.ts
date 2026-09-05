@@ -44,6 +44,9 @@ export default {
     inactive: '禁用',
     more: '更多',
     close: '关闭',
+    toggleMenu: '切换菜单',
+    userMenu: '用户菜单',
+    pageNotFound: '页面不存在',
     enabled: '已启用',
     disabled: '已禁用',
 	    total: '总计',
@@ -78,6 +81,13 @@ export default {
     view: '查看',
     settings: '设置',
     chooseFile: '选择文件',
+    upload: '上传',
+    remove: '移除',
+    noFileSelected: '未选择文件',
+    selectedFile: '已选：{name}',
+    fileReadFailed: '读取文件失败',
+    selectImageFile: '请选择图片文件',
+    fileTooLargeKb: '文件过大（{size} KB），上限 {max} KB',
     copy: '复制',
     notAvailable: '不可用',
     now: '现在',
@@ -163,8 +173,10 @@ export default {
     groups: '分组管理',
     channels: '渠道管理',
     availableChannels: '可用渠道',
+    modelPlaza: '模型广场',
     subscriptions: '订阅管理',
     accounts: '账号管理',
+    plugins: '插件管理',
     proxies: 'IP管理',
     redeemCodes: '兑换码',
     ops: '运维监控',
@@ -190,6 +202,10 @@ export default {
     channelMonitor: '渠道监控',
     channelStatus: '渠道状态',
     riskControl: '风控中心',
+    securityAudit: '安全审计',
+    contentModeration: '内容审核',
+    promptAudit: '提示词审计',
+    auditLogs: '操作日志',
   },
 
   // Auth
@@ -198,6 +214,10 @@ export default {
     signInToAccount: '登录您的账户以继续',
     signIn: '登录',
     signingIn: '登录中...',
+    passkeySignIn: '使用 Passkey 登录',
+    passkeySigningIn: '正在等待 Passkey...',
+    passkeyCancelled: '已取消 Passkey 登录。',
+    passkeyFailed: 'Passkey 登录失败，请重试。',
     createAccount: '创建账户',
     signUpToStart: '注册以开始使用 {siteName}',
     signUp: '注册',
@@ -222,6 +242,8 @@ export default {
       USER_NOT_ACTIVE: '账号已被禁用',
     },
     registrationFailed: '注册失败，请重试。',
+    emailDomainRegistrationLimit:
+      '该邮箱域名无法注册新账户。请使用主流邮箱注册；如需使用企业邮箱，请联系客服添加域名白名单。',
     emailSuffixNotAllowed: '该邮箱域名不在允许注册范围内。',
     emailSuffixNotAllowedWithAllowed: '该邮箱域名不被允许。可用域名：{suffixes}',
     emailSuffixAllowedMore: '等 {count} 项',
@@ -230,6 +252,10 @@ export default {
     reloginRequired: '会话已过期，请重新登录。',
     turnstileExpired: '验证已过期，请重试',
     turnstileFailed: '验证失败，请重试',
+    captchaVerified: '验证已完成',
+    captchaLoading: '正在加载验证码…',
+    captchaClickToVerify: '点击完成人机验证',
+    captchaVerifying: '验证中…',
     completeVerification: '请完成验证',
     verifyYourEmail: '验证您的邮箱',
     sessionExpired: '会话已过期',
@@ -410,6 +436,15 @@ export default {
     invalidResetLinkHint: '此密码重置链接无效或已过期。请重新请求一个新链接。',
     requestNewResetLink: '请求新的重置链接',
     invalidOrExpiredToken: '密码重置链接无效或已过期。请重新请求一个新链接。'
+  },
+
+  // Step-up（敏感操作二次验证）
+  stepUp: {
+    title: '需要二次验证',
+    hint: '请输入身份验证器应用中的 6 位验证码以继续此敏感操作。',
+    verifyFailed: '验证失败，请重试',
+    notEnabled: '此操作需要开启二次验证，请先在个人资料中启用 TOTP。',
+    adminApiKeyForbidden: '管理 API Key 无法执行此操作，请使用已通过二次验证的管理员会话。'
   },
 
   // Dashboard

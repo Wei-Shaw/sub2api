@@ -16,6 +16,29 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const gatewayStreamHeartbeatBytesKey = "gateway_stream_heartbeat_bytes"
+
+func recordGatewayStreamHeartbeat(c *gin.Context, written int) {
+	if c == nil || written <= 0 {
+		return
+	}
+	total, _ := c.Get(gatewayStreamHeartbeatBytesKey)
+	bytes, _ := total.(int)
+	c.Set(gatewayStreamHeartbeatBytesKey, bytes+written)
+}
+
+func gatewayStreamHasOnlyHeartbeats(c *gin.Context) bool {
+	if c == nil || c.Writer == nil {
+		return false
+	}
+	value, ok := c.Get(gatewayStreamHeartbeatBytesKey)
+	if !ok {
+		return false
+	}
+	heartbeatBytes, _ := value.(int)
+	return heartbeatBytes > 0 && c.Writer.Size() == heartbeatBytes
+}
+
 // claudeCodeValidator is a singleton validator for Claude Code client detection
 var claudeCodeValidator = service.NewClaudeCodeValidator()
 
@@ -163,20 +186,15 @@ func wrapReleaseOnDone(ctx context.Context, releaseFunc func()) func() {
 		return nil
 	}
 	var once sync.Once
-	var stop func() bool
-
-	release := func() {
-		once.Do(func() {
-			if stop != nil {
-				_ = stop()
-			}
-			releaseFunc()
-		})
+	releaseOnce := func() {
+		once.Do(releaseFunc)
 	}
+	stop := context.AfterFunc(ctx, releaseOnce)
 
-	stop = context.AfterFunc(ctx, release)
-
-	return release
+	return func() {
+		_ = stop()
+		releaseOnce()
+	}
 }
 
 // IncrementWaitCount increments the wait count for a user
@@ -401,9 +419,11 @@ func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType 
 				c.Header("X-Accel-Buffering", "no")
 				*streamStarted = true
 			}
-			if _, err := fmt.Fprint(c.Writer, string(h.pingFormat)); err != nil {
+			written, err := fmt.Fprint(c.Writer, string(h.pingFormat))
+			if err != nil {
 				return nil, err
 			}
+			recordGatewayStreamHeartbeat(c, written)
 			flusher.Flush()
 
 		case <-timer.C:

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -102,6 +103,77 @@ func TestIsImageGenerationIntent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, IsImageGenerationIntent(tt.endpoint, tt.model, tt.body))
+		})
+	}
+}
+
+func TestIsImageGenerationIntentJSONSemantics(t *testing.T) {
+	largeInput := strings.Repeat("x", 1<<20)
+	tests := []struct {
+		name     string
+		endpoint string
+		body     []byte
+		want     bool
+	}{
+		{
+			name:     "chat body image model",
+			endpoint: "/v1/chat/completions",
+			body:     []byte(`{"model":"gpt-image-2"}`),
+			want:     true,
+		},
+		{
+			name:     "large responses input with trailing namespace tool choice",
+			endpoint: "/v1/responses",
+			body:     []byte(`{"model":"gpt-5.5","input":"` + largeInput + `","tool_choice":{"type":"namespace","name":"image_gen"}}`),
+			want:     true,
+		},
+		{
+			name:     "invalid json with image tool",
+			endpoint: "/v1/responses",
+			body:     []byte(`{"tools":[{"type":"image_generation"}]`),
+			want:     false,
+		},
+		{
+			name:     "duplicate model uses first value",
+			endpoint: "/v1/responses",
+			body:     []byte(`{"model":"gpt-5.5","model":"gpt-image-2"}`),
+			want:     false,
+		},
+		{
+			name:     "duplicate null model still uses first value",
+			endpoint: "/v1/responses",
+			body:     []byte(`{"model":null,"model":"gpt-image-2"}`),
+			want:     false,
+		},
+		{
+			name:     "duplicate tools uses first value",
+			endpoint: "/v1/responses",
+			body:     []byte(`{"tools":[],"tools":[{"type":"image_generation"}]}`),
+			want:     false,
+		},
+		{
+			name:     "duplicate input uses first value",
+			endpoint: "/v1/responses",
+			body:     []byte(`{"input":[],"input":[{"type":"additional_tools","tools":[{"type":"namespace","name":"image_gen"}]}]}`),
+			want:     false,
+		},
+		{
+			name:     "duplicate tool choice uses first value",
+			endpoint: "/v1/responses",
+			body:     []byte(`{"tool_choice":"required","tool_choice":{"type":"image_generation"}}`),
+			want:     false,
+		},
+		{
+			name:     "escaped top level key",
+			endpoint: "/v1/responses",
+			body:     []byte(`{"tool_\u0063hoice":{"type":"image_generation"}}`),
+			want:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, IsImageGenerationIntent(tt.endpoint, "gpt-5.5", tt.body))
 		})
 	}
 }

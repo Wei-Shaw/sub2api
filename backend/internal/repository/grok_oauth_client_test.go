@@ -47,18 +47,12 @@ func TestGrokOAuthClientExchangeAndRefreshUseFormFields(t *testing.T) {
 		}
 	}))
 	defer server.Close()
+	// Tests inject a loopback token endpoint; allowlist requires unsafe override.
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 	t.Setenv(xai.EnvTokenURL, server.URL)
 
 	client := NewGrokOAuthClient()
-
-	exchanged, err := client.ExchangeCode(
-		context.Background(),
-		"auth-code",
-		"verifier",
-		"http://127.0.0.1:56121/callback",
-		"",
-		"client-id",
-	)
+	exchanged, err := client.ExchangeCode(context.Background(), "auth-code", "verifier", "http://127.0.0.1:56121/callback", "", "client-id")
 	require.NoError(t, err)
 	require.Equal(t, "exchange-access", exchanged.AccessToken)
 	require.Equal(t, "exchange-refresh", exchanged.RefreshToken)
@@ -72,18 +66,31 @@ func TestGrokOAuthClientExchangeAndRefreshUseFormFields(t *testing.T) {
 	require.Equal(t, int64(7200), refreshed.ExpiresIn)
 }
 
-func TestGrokOAuthClientRefreshForbiddenClassifiesEntitlement(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte(`{"error":"subscription required"}`))
-	}))
-	defer server.Close()
-	t.Setenv(xai.EnvTokenURL, server.URL)
+func TestGrokOAuthClientRefreshForbiddenClassifiesOnlyExplicitEntitlement(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		wantReason string
+	}{
+		{name: "explicit entitlement", body: `{"error":"access_denied"}`, wantReason: "GROK_OAUTH_ENTITLEMENT_DENIED"},
+		{name: "generic forbidden", body: `{"error":"forbidden"}`, wantReason: "GROK_OAUTH_TOKEN_REFRESH_FAILED"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+			t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+			t.Setenv(xai.EnvTokenURL, server.URL)
 
-	client := NewGrokOAuthClient()
-	_, err := client.RefreshToken(context.Background(), "refresh-token", "", "client-id")
-	require.Error(t, err)
-	require.Contains(t, strings.ToUpper(err.Error()), "GROK_OAUTH_ENTITLEMENT_DENIED")
+			client := NewGrokOAuthClient()
+			_, err := client.RefreshToken(context.Background(), "refresh-token", "", "client-id")
+			require.Error(t, err)
+			require.Contains(t, strings.ToUpper(err.Error()), tt.wantReason)
+		})
+	}
 }
 
 func TestGrokOAuthClientStatusErrorRedactsSensitiveResponseBody(t *testing.T) {
@@ -92,6 +99,7 @@ func TestGrokOAuthClientStatusErrorRedactsSensitiveResponseBody(t *testing.T) {
 		_, _ = w.Write([]byte(`{"error":"invalid_grant","access_token":"access-secret","refresh_token":"refresh-secret","code_verifier":"verifier-secret"}`))
 	}))
 	defer server.Close()
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 	t.Setenv(xai.EnvTokenURL, server.URL)
 
 	client := NewGrokOAuthClient()
@@ -104,4 +112,25 @@ func TestGrokOAuthClientStatusErrorRedactsSensitiveResponseBody(t *testing.T) {
 	require.NotContains(t, errText, "access-secret")
 	require.NotContains(t, errText, "refresh-secret")
 	require.NotContains(t, errText, "verifier-secret")
+}
+
+func TestGrokOAuthEntitlementDenialRequiresExplicitEvidence(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, grokOAuthHasExplicitEntitlementDenial(`{"error":"access_denied"}`))
+	require.True(t, grokOAuthHasExplicitEntitlementDenial(`{"code":"entitlement_denied"}`))
+	require.True(t, grokOAuthHasExplicitEntitlementDenial(`{"message":"no active Grok subscription"}`))
+	require.False(t, grokOAuthHasExplicitEntitlementDenial(`{"error":"forbidden","message":"request forbidden"}`))
+	require.False(t, grokOAuthHasExplicitEntitlementDenial(`<html>403 Forbidden</html>`))
+	require.False(t, grokOAuthHasExplicitEntitlementDenial(`{"error":"access_denied","message":"You have run out of credits"}`))
+	require.False(t, grokOAuthHasExplicitEntitlementDenial(`{"code":"subscription_required","message":"included free usage exhausted"}`))
+}
+
+func TestNewGrokOAuthClient_UnvalidatedTokenURLFallsBackToDefault(t *testing.T) {
+	// Without unsafe overrides, a random env TokenURL must not be used (fail-closed).
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "")
+	t.Setenv(xai.EnvTokenURL, "https://evil.example/oauth/token")
+
+	client := NewGrokOAuthClient().(*grokOAuthClient)
+	require.Equal(t, xai.DefaultTokenURL, client.tokenURL)
 }

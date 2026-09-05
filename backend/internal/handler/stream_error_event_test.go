@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 // Regression for the production incident on 2026-05-24 around 9:13 CST:
@@ -75,6 +76,60 @@ func TestOpenAIHandleStreamingAwareError_ResponsesStreamingEmitsResponseFailed(t
 	assert.True(t, strings.HasPrefix(id, "resp_"), "id should start with resp_, got %q", id)
 	assert.Equal(t, "rate_limit_exceeded", errObj["code"])
 	assert.Equal(t, "Concurrency limit exceeded for user, please retry later", errObj["message"])
+}
+
+func TestOpenAIAdmissionError_SynchronousNonResponsesIncludesGatewayCode(t *testing.T) {
+	c, w := newGinContextForEndpoint(t, EndpointChatCompletions)
+	h := &OpenAIGatewayHandler{}
+	h.handleStreamingAwareErrorWithCode(c, http.StatusTooManyRequests, "rate_limit_error",
+		gatewayQueueFullCode, "Too many pending requests, please retry later", false, false)
+
+	assert.Equal(t, http.StatusTooManyRequests, w.Code)
+	assert.Equal(t, "rate_limit_error", gjson.GetBytes(w.Body.Bytes(), "error.type").String())
+	assert.Equal(t, gatewayQueueFullCode, gjson.GetBytes(w.Body.Bytes(), "error.code").String())
+}
+
+func TestOpenAIAdmissionError_SynchronousResponsesIncludesGatewayCode(t *testing.T) {
+	c, w := newGinContextForEndpoint(t, EndpointResponses)
+	h := &OpenAIGatewayHandler{}
+	h.handleStreamingAwareErrorWithCode(c, http.StatusTooManyRequests, "rate_limit_error",
+		gatewayConcurrencyLimitCode, "Concurrency limit exceeded for account, please retry later", false, false)
+
+	assert.Equal(t, http.StatusTooManyRequests, w.Code)
+	assert.Equal(t, "rate_limit_error", gjson.GetBytes(w.Body.Bytes(), "error.type").String())
+	assert.Equal(t, gatewayConcurrencyLimitCode, gjson.GetBytes(w.Body.Bytes(), "error.code").String())
+}
+
+func TestOpenAIAdmissionError_ResponsesFailedIncludesGatewayCode(t *testing.T) {
+	c, w := newGinContextForEndpoint(t, EndpointResponses)
+	h := &OpenAIGatewayHandler{}
+	h.handleStreamingAwareErrorWithCode(c, http.StatusTooManyRequests, "rate_limit_error",
+		gatewayConcurrencyLimitCode, "Concurrency limit exceeded for account, please retry later", true, false)
+
+	_, errObj := parseResponsesFailedSSE(t, w.Body.String())
+	assert.Equal(t, gatewayConcurrencyLimitCode, errObj["code"])
+}
+
+func TestOpenAIAdmissionError_StreamingNonResponsesIncludesGatewayCode(t *testing.T) {
+	c, w := newGinContextForEndpoint(t, EndpointChatCompletions)
+	h := &OpenAIGatewayHandler{}
+	h.handleStreamingAwareErrorWithCode(c, http.StatusTooManyRequests, "rate_limit_error",
+		gatewayQueueFullCode, "Too many pending requests, please retry later", true, false)
+
+	body := w.Body.String()
+	assert.True(t, strings.HasPrefix(body, "event: error\n"))
+	payload := body[strings.Index(body, "{"):]
+	assert.Equal(t, "rate_limit_error", gjson.Get(payload, "error.type").String())
+	assert.Equal(t, gatewayQueueFullCode, gjson.Get(payload, "error.code").String())
+}
+
+func TestOpenAIUpstreamRateLimitWithoutLocalCodeRemainsUnchanged(t *testing.T) {
+	c, w := newGinContextForEndpoint(t, EndpointChatCompletions)
+	h := &OpenAIGatewayHandler{}
+	h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "upstream limited", false)
+
+	assert.Equal(t, "rate_limit_error", gjson.GetBytes(w.Body.Bytes(), "error.type").String())
+	assert.False(t, gjson.GetBytes(w.Body.Bytes(), "error.code").Exists())
 }
 
 // 当 setOpsRequestContext 写过 model，合成事件应回填该字段（与 codebase 已有 makeResponsesCompletedEvent 对齐）。
@@ -164,6 +219,41 @@ func TestGatewayHandleStreamingAwareError_ResponsesStreamingEmitsResponseFailed(
 	assert.Equal(t, "upstream gone", errObj["message"])
 }
 
+func TestGatewayAdmissionError_SynchronousIncludesGatewayCode(t *testing.T) {
+	c, w := newGinContextForEndpoint(t, EndpointMessages)
+	h := &GatewayHandler{}
+	h.handleStreamingAwareErrorWithCode(c, http.StatusTooManyRequests, "rate_limit_error",
+		gatewayQueueFullCode, "Too many pending requests, please retry later", false)
+
+	assert.Equal(t, http.StatusTooManyRequests, w.Code)
+	assert.Equal(t, "error", gjson.GetBytes(w.Body.Bytes(), "type").String())
+	assert.Equal(t, "rate_limit_error", gjson.GetBytes(w.Body.Bytes(), "error.type").String())
+	assert.Equal(t, gatewayQueueFullCode, gjson.GetBytes(w.Body.Bytes(), "error.code").String())
+}
+
+func TestGatewayAdmissionError_MessagesStreamingIncludesGatewayCode(t *testing.T) {
+	c, w := newGinContextForEndpoint(t, EndpointMessages)
+	h := &GatewayHandler{}
+	h.handleStreamingAwareErrorWithCode(c, http.StatusTooManyRequests, "rate_limit_error",
+		gatewayConcurrencyLimitCode, "Concurrency limit exceeded for account, please retry later", true)
+
+	body := w.Body.String()
+	assert.True(t, strings.HasPrefix(body, `data: {"type":"error"`))
+	payload := body[strings.Index(body, "{"):]
+	assert.Equal(t, "rate_limit_error", gjson.Get(payload, "error.type").String())
+	assert.Equal(t, gatewayConcurrencyLimitCode, gjson.Get(payload, "error.code").String())
+}
+
+func TestGatewayAdmissionError_BareResponsesFailedIncludesGatewayCode(t *testing.T) {
+	c, w := newGinContextForEndpoint(t, "/responses")
+	h := &GatewayHandler{}
+	h.handleStreamingAwareErrorWithCode(c, http.StatusTooManyRequests, "rate_limit_error",
+		gatewayQueueFullCode, "Too many pending requests, please retry later", true)
+
+	_, errObj := parseResponsesFailedSSE(t, w.Body.String())
+	assert.Equal(t, gatewayQueueFullCode, errObj["code"])
+}
+
 // Gateway handler: /v1/messages preserves the legacy data:{type:error,...} format
 // (Anthropic spec accepts a type:"error" stream event).
 func TestGatewayHandleStreamingAwareError_MessagesStreamingKeepsLegacy(t *testing.T) {
@@ -227,6 +317,22 @@ func TestOpenAIHandleStreamingAwareError_BareResponsesRouteEmitsResponseFailed(t
 }
 
 // Synthesized response.failed id falls back to uuid when no request_id is present.
+// issue #5601：严格的 Responses 客户端把 created_at 当必填字段，缺失即
+// `missing field 'created_at'`。合成的终止事件若解析不了，本文件存在的意义
+// （给客户端一个可识别的终止事件而不是盲重连）就落空了。
+func TestOpenAIHandleStreamingAwareError_ResponsesStreamingCarriesCreatedAt(t *testing.T) {
+	c, w := newGinContextForEndpoint(t, EndpointResponses)
+	h := &OpenAIGatewayHandler{}
+	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "boom", true)
+
+	resp, _ := parseResponsesFailedSSE(t, w.Body.String())
+	raw, ok := resp["created_at"]
+	assert.True(t, ok, "response.failed 必须带 created_at")
+	createdAt, ok := raw.(float64)
+	assert.True(t, ok, "created_at 必须是数字，得到 %T", raw)
+	assert.Greater(t, int64(createdAt), int64(0), "created_at 必须是有效的 unix 时间戳")
+}
+
 func TestSynthesizeResponseID_FallbackUUID(t *testing.T) {
 	c, _ := newGinContextForEndpoint(t, EndpointResponses)
 	id := synthesizeResponseID(c)
@@ -248,6 +354,7 @@ func TestMapResponsesErrorCode(t *testing.T) {
 		{"custom_thing", "custom_thing"},
 	}
 	for _, tc := range cases {
-		assert.Equal(t, tc.out, mapResponsesErrorCode(tc.in), "in=%q", tc.in)
+		assert.Equal(t, tc.out, mapResponsesErrorCode(tc.in, ""), "in=%q", tc.in)
 	}
+	assert.Equal(t, gatewayQueueFullCode, mapResponsesErrorCode("rate_limit_error", gatewayQueueFullCode))
 }

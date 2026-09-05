@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -347,8 +348,13 @@ func removeCustomFieldFromTools(body []byte) []byte {
 }
 
 // claudeVersionRe 匹配 Claude 模型 ID 中的版本号部分
-// 支持 claude-{tier}-{major}-{minor} 和 claude-{tier}-{major}.{minor} 格式
-var claudeVersionRe = regexp.MustCompile(`claude-(?:haiku|sonnet|opus)-(\d+)[-.](\d+)`)
+// 支持 claude-{tier}-{major}-{minor} 和 claude-{tier}-{major}.{minor} 格式；
+// minor 可选，用于覆盖只有主版本号的新模型 ID（claude-opus-5 / claude-sonnet-5），
+// 此时 matches[2] 为空串，调用方 strconv.Atoi 得到 minor=0。
+// 缺少可选 minor 时这类 ID 完全不匹配，会被当作"旧模型"降级处理：
+// thinking.enabled 不转 adaptive（Opus 5 上游已移除 budget_tokens，直接 400）、
+// cache_control.ttl 被剥离、tool search 被过滤。
+var claudeVersionRe = regexp.MustCompile(`claude-(?:haiku|sonnet|opus)-(\d+)(?:[-.](\d+))?`)
 
 // isBedrockClaude45OrNewer 判断 Bedrock 模型 ID 是否为 Claude 4.5 或更新版本
 // Claude 4.5+ 支持 cache_control 中的 ttl 字段（"5m" 和 "1h"）
@@ -633,9 +639,25 @@ func filterBedrockBetaTokens(tokens []string) []string {
 	return result
 }
 
+// sanitizeBedrockFieldsForBetaTokens 与直连路径的 sanitizeAnthropicBodyForBetaTokens
+// 对称：按最终 Bedrock beta tokens 决定是否保留 body 中的 beta 字段。
+//   - context_management 缺 context-management beta → strip
+//   - fallbacks 缺 server-side-fallback beta → strip
+//   - fallback_credit_token 缺 server-side-fallback / 任一 fallback-credit beta → strip
+//
+// 注意：fallback beta token 均不在 bedrockSupportedBetaTokens 白名单内
+// （会被 filterBedrockBetaTokens 过滤掉），因此条件 strip 实际总会剥除——这是预期：
+// Bedrock Invoke 不支持这些 beta 字段。
 func sanitizeBedrockFieldsForBetaTokens(body []byte, betaTokens []string) []byte {
 	if !containsBedrockBetaToken(betaTokens, bedrockContextManagementBetaToken) && gjson.GetBytes(body, "context_management").Exists() {
 		body, _ = sjson.DeleteBytes(body, "context_management")
+	}
+	if !containsBedrockBetaToken(betaTokens, claude.BetaServerSideFallback) && gjson.GetBytes(body, "fallbacks").Exists() {
+		body, _ = sjson.DeleteBytes(body, "fallbacks")
+	}
+	if !containsAnyBedrockBetaToken(betaTokens, claude.BetaServerSideFallback, claude.BetaFallbackCredit, claude.BetaFallbackCreditLegacy) &&
+		gjson.GetBytes(body, "fallback_credit_token").Exists() {
+		body, _ = sjson.DeleteBytes(body, "fallback_credit_token")
 	}
 	return body
 }
@@ -643,6 +665,16 @@ func sanitizeBedrockFieldsForBetaTokens(body []byte, betaTokens []string) []byte
 func containsBedrockBetaToken(tokens []string, target string) bool {
 	for _, token := range tokens {
 		if token == target {
+			return true
+		}
+	}
+	return false
+}
+
+// containsAnyBedrockBetaToken 判断 tokens 是否包含 targets 中的任意一个 token。
+func containsAnyBedrockBetaToken(tokens []string, targets ...string) bool {
+	for _, target := range targets {
+		if containsBedrockBetaToken(tokens, target) {
 			return true
 		}
 	}
@@ -755,6 +787,8 @@ const defaultCCMaxTokens = 81920
 //   - 移除 service_tier（Anthropic API 专有，Bedrock 不支持）
 //   - 移除 interface_geo（Anthropic API 专有，Bedrock 不支持）
 //   - 移除 context_management（Anthropic API 专有，Bedrock 不支持，CC v2.1.87+ 默认携带）
+//   - 无条件移除 fallbacks / fallback_credit_token（server-side refusal fallback，
+//     Anthropic 直连 beta API 专有；Bedrock Invoke 无对应 beta，永不支持）
 //   - 注入 max_tokens 默认值 81920（CC 可能省略，Bedrock 要求必须提供）
 //   - 注入 anthropic_version（CC 通过 HTTP 头发送，Bedrock 需要放在请求体中）
 func sanitizeBedrockCCFields(body []byte) []byte {
@@ -766,6 +800,12 @@ func sanitizeBedrockCCFields(body []byte) []byte {
 	}
 	if gjson.GetBytes(body, "context_management").Exists() {
 		body, _ = sjson.DeleteBytes(body, "context_management")
+	}
+	if gjson.GetBytes(body, "fallbacks").Exists() {
+		body, _ = sjson.DeleteBytes(body, "fallbacks")
+	}
+	if gjson.GetBytes(body, "fallback_credit_token").Exists() {
+		body, _ = sjson.DeleteBytes(body, "fallback_credit_token")
 	}
 	if !gjson.GetBytes(body, "max_tokens").Exists() {
 		body, _ = sjson.SetBytes(body, "max_tokens", defaultCCMaxTokens)

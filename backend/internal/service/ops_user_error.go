@@ -44,7 +44,7 @@ func MapUserErrorCategory(phase, errType string) string {
 		return "auth"
 	case "routing":
 		return "service_unavailable"
-	case "upstream", "network":
+	case "account_auth", "upstream", "network":
 		return "upstream"
 	case "internal":
 		return "internal"
@@ -73,7 +73,7 @@ func CategoryToFilter(category string) (phases []string, errorTypes []string) {
 	case "service_unavailable":
 		return []string{"routing"}, nil
 	case "upstream":
-		return []string{"upstream", "network"}, nil
+		return []string{"account_auth", "upstream", "network"}, nil
 	case "internal":
 		return []string{"internal"}, nil
 	case "rate_limit":

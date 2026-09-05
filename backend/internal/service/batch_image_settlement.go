@@ -277,6 +277,7 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 		RequestType:           RequestTypeSync,
 		BillingMode:           &billingMode,
 		ImageSize:             &imageSize,
+		SessionID:             job.SessionID,
 		CreatedAt:             createdAt,
 	}
 	writeUsageLogBestEffort(ctx, s.UsageLogRepo, usageLog, "service.batch_image_settlement")

@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/handler/quotaview"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -30,6 +31,9 @@ type UserHandler struct {
 	concurrencyService    *service.ConcurrencyService
 	userPlatformQuotaRepo service.UserPlatformQuotaRepository // T13 admin quota view
 	billingCache          service.BillingCache                // T17/T18 缓存失效（PUT/POST 路径）
+	totpService           *service.TotpService                // 角色提升为管理员的 step-up 门控
+	userService           *service.UserService
+	settingService        *service.SettingService // step-up 功能开关
 }
 
 // NewUserHandler creates a new admin user handler
@@ -38,41 +42,49 @@ func NewUserHandler(
 	concurrencyService *service.ConcurrencyService,
 	userPlatformQuotaRepo service.UserPlatformQuotaRepository,
 	billingCache service.BillingCache,
+	totpService *service.TotpService,
+	userService *service.UserService,
+	settingService *service.SettingService,
 ) *UserHandler {
 	return &UserHandler{
 		adminService:          adminService,
 		concurrencyService:    concurrencyService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
 		billingCache:          billingCache,
+		totpService:           totpService,
+		userService:           userService,
+		settingService:        settingService,
 	}
 }
 
 // CreateUserRequest represents admin create user request
 type CreateUserRequest struct {
-	Email         string   `json:"email" binding:"required,email"`
-	Password      string   `json:"password" binding:"required,min=6"`
-	Username      string   `json:"username"`
-	Notes         string   `json:"notes"`
-	Role          string   `json:"role" binding:"omitempty,oneof=admin user"`
-	Balance       *float64 `json:"balance"`
-	Concurrency   int      `json:"concurrency"`
-	RPMLimit      int      `json:"rpm_limit"`
-	AllowedGroups []int64  `json:"allowed_groups"`
+	Email                string   `json:"email" binding:"required,email"`
+	Password             string   `json:"password" binding:"required,min=6"`
+	Username             string   `json:"username"`
+	Notes                string   `json:"notes"`
+	Role                 string   `json:"role" binding:"omitempty,oneof=admin user"`
+	Balance              *float64 `json:"balance"`
+	Concurrency          int      `json:"concurrency"`
+	RPMLimit             int      `json:"rpm_limit"`
+	AllowedGroups        []int64  `json:"allowed_groups"`
+	RestrictPublicGroups bool     `json:"restrict_public_groups"`
 }
 
 // UpdateUserRequest represents admin update user request
 // 使用指针类型来区分"未提供"和"设置为0"
 type UpdateUserRequest struct {
-	Email         string   `json:"email" binding:"omitempty,email"`
-	Password      string   `json:"password" binding:"omitempty,min=6"`
-	Username      *string  `json:"username"`
-	Notes         *string  `json:"notes"`
-	Role          string   `json:"role" binding:"omitempty,oneof=admin user"`
-	Balance       *float64 `json:"balance"`
-	Concurrency   *int     `json:"concurrency"`
-	RPMLimit      *int     `json:"rpm_limit"`
-	Status        string   `json:"status" binding:"omitempty,oneof=active disabled"`
-	AllowedGroups *[]int64 `json:"allowed_groups"`
+	Email                string   `json:"email" binding:"omitempty,email"`
+	Password             string   `json:"password" binding:"omitempty,min=6"`
+	Username             *string  `json:"username"`
+	Notes                *string  `json:"notes"`
+	Role                 string   `json:"role" binding:"omitempty,oneof=admin user"`
+	Balance              *float64 `json:"balance"`
+	Concurrency          *int     `json:"concurrency"`
+	RPMLimit             *int     `json:"rpm_limit"`
+	Status               string   `json:"status" binding:"omitempty,oneof=active disabled"`
+	AllowedGroups        *[]int64 `json:"allowed_groups"`
+	RestrictPublicGroups *bool    `json:"restrict_public_groups"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates map[int64]*float64 `json:"group_rates"`
@@ -275,17 +287,25 @@ func (h *UserHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// 创建管理员账号属权限敏感操作：需最近完成 step-up 2FA 验证。
+	if req.Role == service.RoleAdmin {
+		if !middleware.EnforceStepUp(c, h.totpService, h.userService, h.settingService) {
+			return
+		}
+	}
+
 	user, err := h.adminService.CreateUser(c.Request.Context(), &service.CreateUserInput{
-		Email:         req.Email,
-		Password:      req.Password,
-		Username:      req.Username,
-		Notes:         req.Notes,
-		Role:          req.Role,
-		Balance:       req.Balance,
-		Concurrency:   req.Concurrency,
-		RPMLimit:      req.RPMLimit,
-		AllowedGroups: req.AllowedGroups,
-		ActorAdminID:  getAdminIDFromContext(c),
+		Email:                req.Email,
+		Password:             req.Password,
+		Username:             req.Username,
+		Notes:                req.Notes,
+		Role:                 req.Role,
+		Balance:              req.Balance,
+		Concurrency:          req.Concurrency,
+		RPMLimit:             req.RPMLimit,
+		AllowedGroups:        req.AllowedGroups,
+		RestrictPublicGroups: req.RestrictPublicGroups,
+		ActorAdminID:         getAdminIDFromContext(c),
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -317,20 +337,36 @@ func (h *UserHandler) Update(c *gin.Context) {
 		return
 	}
 
+	// 把普通用户提升为管理员属权限敏感操作：需最近完成 step-up 2FA 验证。
+	// 目标已是管理员时（前端编辑表单总是携带 role）不触发，避免日常编辑被打断。
+	if req.Role == service.RoleAdmin {
+		target, err := h.adminService.GetUser(c.Request.Context(), userID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if target.Role != service.RoleAdmin {
+			if !middleware.EnforceStepUp(c, h.totpService, h.userService, h.settingService) {
+				return
+			}
+		}
+	}
+
 	// 使用指针类型直接传递，nil 表示未提供该字段
 	user, err := h.adminService.UpdateUser(c.Request.Context(), userID, &service.UpdateUserInput{
-		Email:         req.Email,
-		Password:      req.Password,
-		Username:      req.Username,
-		Notes:         req.Notes,
-		Role:          req.Role,
-		Balance:       req.Balance,
-		Concurrency:   req.Concurrency,
-		RPMLimit:      req.RPMLimit,
-		Status:        req.Status,
-		AllowedGroups: req.AllowedGroups,
-		GroupRates:    req.GroupRates,
-		ActorAdminID:  getAdminIDFromContext(c),
+		Email:                req.Email,
+		Password:             req.Password,
+		Username:             req.Username,
+		Notes:                req.Notes,
+		Role:                 req.Role,
+		Balance:              req.Balance,
+		Concurrency:          req.Concurrency,
+		RPMLimit:             req.RPMLimit,
+		Status:               req.Status,
+		AllowedGroups:        req.AllowedGroups,
+		RestrictPublicGroups: req.RestrictPublicGroups,
+		GroupRates:           req.GroupRates,
+		ActorAdminID:         getAdminIDFromContext(c),
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -604,6 +640,73 @@ func (h *UserHandler) BatchUpdateConcurrency(c *gin.Context) {
 	}
 
 	affected, err := h.adminService.BatchUpdateConcurrency(c.Request.Context(), userIDs, req.Concurrency, req.Mode)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"affected": affected})
+}
+
+// BatchUpdateLimits overwrites concurrency and/or RPM limits for multiple users.
+// POST /api/v1/admin/users/batch-limits
+type BatchUpdateLimitsRequest struct {
+	UserIDs     []int64 `json:"user_ids"`
+	All         bool    `json:"all"`
+	Concurrency *int    `json:"concurrency" binding:"omitempty,min=0"`
+	RPMLimit    *int    `json:"rpm_limit" binding:"omitempty,min=0"`
+}
+
+func (h *UserHandler) BatchUpdateLimits(c *gin.Context) {
+	var req BatchUpdateLimitsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if req.Concurrency == nil && req.RPMLimit == nil {
+		response.BadRequest(c, "at least one of concurrency or rpm_limit is required")
+		return
+	}
+	if !req.All && len(req.UserIDs) == 0 {
+		response.BadRequest(c, "user_ids is required unless all=true")
+		return
+	}
+	if !req.All && len(req.UserIDs) > 500 {
+		response.BadRequest(c, "user_ids cannot exceed 500")
+		return
+	}
+
+	userIDs := req.UserIDs
+	if req.All {
+		userIDs = nil
+		page := 1
+		const pageSize = 500
+		for {
+			users, _, err := h.adminService.ListUsers(c.Request.Context(), page, pageSize, service.UserListFilters{}, "id", "asc")
+			if err != nil {
+				response.ErrorFrom(c, err)
+				return
+			}
+			for _, user := range users {
+				userIDs = append(userIDs, user.ID)
+			}
+			if len(users) < pageSize {
+				break
+			}
+			page++
+		}
+	}
+
+	if len(userIDs) == 0 {
+		response.Success(c, gin.H{"affected": 0})
+		return
+	}
+
+	affected, err := h.adminService.BatchUpdateLimits(
+		c.Request.Context(),
+		userIDs,
+		req.Concurrency,
+		req.RPMLimit,
+	)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
