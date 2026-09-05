@@ -136,15 +136,15 @@ INSERT INTO ops_system_metrics (
 		opsNullBool(input.DBOK),
 		opsNullBool(input.RedisOK),
 
-		opsNullInt(input.RedisConnTotal),
-		opsNullInt(input.RedisConnIdle),
+		opsNullableIntPointer(input.RedisConnTotal),
+		opsNullableIntPointer(input.RedisConnIdle),
 
-		opsNullInt(input.DBConnActive),
-		opsNullInt(input.DBConnIdle),
-		opsNullInt(input.DBConnWaiting),
+		opsNullableIntPointer(input.DBConnActive),
+		opsNullableIntPointer(input.DBConnIdle),
+		opsNullableIntPointer(input.DBConnWaiting),
 
-		opsNullInt(input.GoroutineCount),
-		opsNullInt(input.ConcurrencyQueueDepth),
+		opsNullableIntPointer(input.GoroutineCount),
+		opsNullableIntPointer(input.ConcurrencyQueueDepth),
 	)
 	return err
 }
