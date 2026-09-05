@@ -212,8 +212,11 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}(),
 	})
 	if err != nil {
-		var agentDialErr *openAIWSDialError
-		if s.isAgentIdentityAccount(ctx, account) && errors.As(err, &agentDialErr) && isAgentIdentityTaskInvalidWSDialError(agentDialErr) && agentTaskRecoveryTried != nil && !*agentTaskRecoveryTried {
+		var dialErr *openAIWSDialError
+		if errors.As(err, &dialErr) && dialErr != nil {
+			markOpenAICyberPolicyEvent(c, dialErr.ResponseBody, dialErr.StatusCode, nil)
+		}
+		if s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidWSDialError(dialErr) && agentTaskRecoveryTried != nil && !*agentTaskRecoveryTried {
 			*agentTaskRecoveryTried = true
 			if recoveryErr := s.recoverAgentIdentityTask(ctx, account, account.GetCredential("task_id")); recoveryErr != nil {
 				return nil, fmt.Errorf("agent identity task recovery failed: %w", recoveryErr)
@@ -243,8 +246,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			wsPath,
 			account.ProxyID != nil && account.Proxy != nil,
 		)
-		var dialErr *openAIWSDialError
-		if errors.As(err, &dialErr) && dialErr != nil && dialErr.StatusCode == http.StatusTooManyRequests {
+		if dialErr != nil && dialErr.StatusCode == http.StatusTooManyRequests {
 			s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(err.Error()), mappedModel)
 		}
 		return nil, wrapOpenAIWSFallback(classifyOpenAIWSAcquireError(err), err)

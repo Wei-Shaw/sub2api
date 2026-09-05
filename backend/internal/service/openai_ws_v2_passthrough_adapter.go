@@ -870,6 +870,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	var upstreamConn openAIWSClientConn
 	statusCode := 0
 	var handshakeHeaders http.Header
+	finishHandshakeFailure := func(turnErr error) error {
+		if hooks != nil && hooks.AfterTurn != nil {
+			hooks.AfterTurn(1, nil, turnErr)
+		}
+		return turnErr
+	}
 	for {
 		headers, err = s.refreshOpenAIAgentIdentityHeaders(ctx, account, headers)
 		if err != nil {
@@ -886,11 +892,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		if errors.As(err, &handshakeErr) && handshakeErr != nil {
 			responseBody = handshakeErr.Body
 		}
+		markOpenAICyberPolicyEvent(c, responseBody, statusCode, nil)
 		dialErr := &openAIWSDialError{StatusCode: statusCode, ResponseHeaders: cloneHeader(handshakeHeaders), ResponseBody: responseBody, Err: err}
 		if s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidWSDialError(dialErr) && !agentTaskRecoveryTried {
 			agentTaskRecoveryTried = true
 			if recoveryErr := s.recoverAgentIdentityTask(ctx, account, account.GetCredential("task_id")); recoveryErr != nil {
-				return fmt.Errorf("agent identity task recovery failed: %w", recoveryErr)
+				return finishHandshakeFailure(fmt.Errorf("agent identity task recovery failed: %w", recoveryErr))
 			}
 			continue
 		}
@@ -903,9 +910,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		s.handleOpenAIWSDialTransientFailure(ctx, account, capturedSessionModel, dialErr)
 		if statusCode == http.StatusTooManyRequests {
 			s.persistOpenAIWSRateLimitSignal(ctx, account, handshakeHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(err.Error()), capturedSessionModel)
-			return s.newOpenAIWSRateLimitFailoverError(account, handshakeHeaders, nil, err.Error())
+			return finishHandshakeFailure(s.newOpenAIWSRateLimitFailoverError(account, handshakeHeaders, nil, err.Error()))
 		}
-		return s.mapOpenAIWSPassthroughDialError(err, statusCode, handshakeHeaders)
+		return finishHandshakeFailure(s.mapOpenAIWSPassthroughDialError(err, statusCode, handshakeHeaders))
 	}
 	defer func() {
 		_ = upstreamConn.Close()
