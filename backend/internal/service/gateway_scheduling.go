@@ -17,7 +17,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
 // SelectAccount 选择账号（粘性会话+优先级）
@@ -1158,8 +1157,8 @@ func (s *GatewayService) tryAcquireAccountSlot(ctx context.Context, accountID in
 	return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
 }
 
-type usageLogWindowStatsBatchProvider interface {
-	GetAccountWindowStatsBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]*usagestats.AccountStats, error)
+type accountWindowCostBatchProvider interface {
+	GetAccountWindowCostsBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]float64, error)
 }
 
 type windowCostPrefetchContextKeyType struct{}
@@ -1236,43 +1235,37 @@ func (s *GatewayService) withWindowCostPrefetch(ctx context.Context, accounts []
 		return context.WithValue(ctx, windowCostPrefetchContextKey, costs)
 	}
 
-	batchReader, hasBatch := s.usageLogRepo.(usageLogWindowStatsBatchProvider)
+	windowCostReader, hasWindowCostState := s.usageLogRepo.(accountWindowCostBatchProvider)
 	for startKey, ids := range missingByStart {
 		startTime := startTimes[startKey]
-
-		if hasBatch {
-			windowCostPrefetchBatchSQLTotal.Add(1)
-			queryStart := time.Now()
-			statsByAccount, err := batchReader.GetAccountWindowStatsBatch(ctx, ids, startTime)
-			if err == nil {
-				slog.Debug("window_cost_batch_query_ok",
-					"accounts", len(ids),
-					"window_start", startTime.Format(time.RFC3339),
-					"duration_ms", time.Since(queryStart).Milliseconds())
-				for _, accountID := range ids {
-					stats := statsByAccount[accountID]
-					cost := 0.0
-					if stats != nil {
-						cost = stats.StandardCost
-					}
-					costs[accountID] = cost
-					_ = s.sessionLimitCache.SetWindowCost(ctx, accountID, cost)
-				}
-				continue
-			}
+		if !hasWindowCostState {
 			windowCostPrefetchErrorTotal.Add(1)
-			logger.LegacyPrintf("service.gateway", "window_cost batch db query failed: start=%s err=%v", startTime.Format(time.RFC3339), err)
+			logger.LegacyPrintf("service.gateway", "window_cost state reader unavailable")
+			for _, accountID := range ids {
+				costs[accountID] = 0
+			}
+			continue
 		}
 
-		// 回退路径：缺少批量仓储能力或批量查询失败时，按账号单查（失败开放）。
-		windowCostPrefetchFallbackTotal.Add(int64(len(ids)))
-		for _, accountID := range ids {
-			stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, accountID, startTime)
-			if err != nil {
-				windowCostPrefetchErrorTotal.Add(1)
-				continue
+		windowCostPrefetchBatchSQLTotal.Add(1)
+		queryStart := time.Now()
+		costsByAccount, err := windowCostReader.GetAccountWindowCostsBatch(ctx, ids, startTime)
+		if err != nil {
+			// Do not resurrect the expensive usage_logs scan when incremental state
+			// is unavailable. Window-cost enforcement is explicitly fail-open.
+			windowCostPrefetchErrorTotal.Add(1)
+			logger.LegacyPrintf("service.gateway", "window_cost state query failed: start=%s err=%v", startTime.Format(time.RFC3339), err)
+			for _, accountID := range ids {
+				costs[accountID] = 0
 			}
-			cost := stats.StandardCost
+			continue
+		}
+		slog.Debug("window_cost_state_query_ok",
+			"accounts", len(ids),
+			"window_start", startTime.Format(time.RFC3339),
+			"duration_ms", time.Since(queryStart).Milliseconds())
+		for _, accountID := range ids {
+			cost := costsByAccount[accountID]
 			costs[accountID] = cost
 			_ = s.sessionLimitCache.SetWindowCost(ctx, accountID, cost)
 		}
@@ -1321,17 +1314,16 @@ func (s *GatewayService) isAccountSchedulableForWindowCost(ctx context.Context, 
 	{
 		// 使用统一的窗口开始时间计算逻辑（考虑窗口过期情况）
 		startTime := account.GetCurrentWindowStartTime()
-
-		stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, startTime)
-		if err != nil {
-			// 失败开放：查询失败时允许调度
+		reader, ok := s.usageLogRepo.(accountWindowCostBatchProvider)
+		if !ok {
 			return true
 		}
-
-		// 使用标准费用（不含账号倍率）
-		currentCost = stats.StandardCost
-
-		// 设置缓存（忽略错误）
+		costs, err := reader.GetAccountWindowCostsBatch(ctx, []int64{account.ID}, startTime)
+		if err != nil {
+			// 增量状态不可用时失败开放，不回退扫描 usage_logs。
+			return true
+		}
+		currentCost = costs[account.ID]
 		if s.sessionLimitCache != nil {
 			_ = s.sessionLimitCache.SetWindowCost(ctx, account.ID, currentCost)
 		}
