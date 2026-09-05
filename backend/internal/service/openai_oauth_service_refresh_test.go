@@ -75,6 +75,24 @@ func TestOpenAIOAuthService_RefreshTokenUsesExpiredIDTokenForAccountMetadata(t *
 	require.Equal(t, "org-123", credentials["organization_id"])
 }
 
+func TestOpenAIOAuthService_RefreshTokenFallsBackToAccessTokenForAccountMetadata(t *testing.T) {
+	client := &openaiOAuthClientRefreshStub{refreshResp: &openai.TokenResponse{
+		AccessToken: makeOpenAIIDTokenForTest(
+			t, time.Now().Add(time.Hour), "access-account-123", "access-org-123",
+		),
+		IDToken:   "invalid-id-token",
+		ExpiresIn: 3600,
+	}}
+	svc := NewOpenAIOAuthService(nil, client)
+
+	info, err := svc.RefreshTokenWithClientID(context.Background(), "refresh-token", "", "client-id")
+	require.NoError(t, err)
+	require.Equal(t, "access-account-123", info.ChatGPTAccountID)
+
+	credentials := svc.BuildAccountCredentials(info)
+	require.Equal(t, "access-account-123", credentials["chatgpt_account_id"])
+}
+
 func TestOpenAIOAuthService_RefreshAccountToken_NoRefreshTokenUsesExistingAccessToken(t *testing.T) {
 	client := &openaiOAuthClientRefreshStub{}
 	svc := NewOpenAIOAuthService(nil, client)
