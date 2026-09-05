@@ -23,7 +23,7 @@ func newTokenCostTestEnv(t *testing.T, groupPlatform string, pricing []ChannelMo
 			return map[int64]string{100: groupPlatform}, nil
 		},
 	}
-	cs := NewChannelService(repo, nil, nil, nil)
+	cs := NewChannelService(repo, nil, nil, nil, nil)
 	bs := NewBillingService(&config.Config{}, catalog)
 	return bs, NewModelPricingResolver(cs, bs)
 }
