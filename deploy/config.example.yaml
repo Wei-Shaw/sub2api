@@ -987,6 +987,8 @@ oidc_connect:
   clock_skew_seconds: 120
   # 若 Provider 返回 email_verified=false，是否拒绝登录
   require_email_verified: false
+  # OIDC authorize 的 prompt 参数；为空时不发送。常用 login（强制重新认证）/ select_account / consent
+  prompt: ""
   userinfo_email_path: ""
   userinfo_id_path: ""
   userinfo_username_path: ""
