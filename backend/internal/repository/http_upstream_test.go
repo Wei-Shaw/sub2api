@@ -731,6 +731,134 @@ func (s *HTTPUpstreamSuite) TestOpenAIHTTP2ProxyCompatibilityErrorActivatesFallb
 	require.Equal(s.T(), upstreamProtocolModeOpenAIH1Fallback, entry.protocolMode)
 }
 
+func (s *HTTPUpstreamSuite) TestOpenAIHTTP2BodyFailuresActivateProxyFallback() {
+	s.cfg.Gateway = config.GatewayConfig{
+		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
+			Enabled:                   true,
+			AllowProxyFallbackToHTTP1: true,
+			FallbackErrorThreshold:    2,
+			FallbackWindowSeconds:     60,
+			FallbackTTLSeconds:        600,
+		},
+	}
+	svc := s.newService()
+	proxyURL := "http://proxy.local:8080"
+	readBody := func(readErr error) {
+		startedAt := time.Now()
+		body := wrapTrackedBodyWithOutcome(
+			io.NopCloser(&failingReader{err: readErr}),
+			nil,
+			func() {
+				svc.recordOpenAIHTTP2Success(service.HTTPUpstreamProfileOpenAI, upstreamProtocolModeOpenAIH2, proxyURL, startedAt)
+			},
+			func(err error) {
+				svc.recordOpenAIHTTP2Failure(service.HTTPUpstreamProfileOpenAI, upstreamProtocolModeOpenAIH2, proxyURL, err)
+			},
+		)
+		_, err := io.ReadAll(body)
+		require.Error(s.T(), err)
+		require.NoError(s.T(), body.Close())
+	}
+
+	readBody(errors.New("http2: client connection lost"))
+	require.False(s.T(), svc.isOpenAIHTTP2FallbackActive(proxyURL))
+	readBody(errors.New("http2: client connection lost"))
+	require.True(s.T(), svc.isOpenAIHTTP2FallbackActive(proxyURL))
+}
+
+func (s *HTTPUpstreamSuite) TestOpenAIHTTP2GenericUnexpectedEOFDoesNotActivateProxyFallback() {
+	s.cfg.Gateway = config.GatewayConfig{
+		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
+			Enabled:                   true,
+			AllowProxyFallbackToHTTP1: true,
+			FallbackErrorThreshold:    1,
+			FallbackWindowSeconds:     60,
+			FallbackTTLSeconds:        600,
+		},
+	}
+	svc := s.newService()
+	proxyURL := "http://proxy.local:8080"
+	body := wrapTrackedBodyWithOutcome(
+		io.NopCloser(&failingReader{err: io.ErrUnexpectedEOF}),
+		nil,
+		nil,
+		func(err error) {
+			svc.recordOpenAIHTTP2Failure(service.HTTPUpstreamProfileOpenAI, upstreamProtocolModeOpenAIH2, proxyURL, err)
+		},
+	)
+
+	_, err := io.ReadAll(body)
+	require.ErrorIs(s.T(), err, io.ErrUnexpectedEOF)
+	require.NoError(s.T(), body.Close())
+	require.False(s.T(), svc.isOpenAIHTTP2FallbackActive(proxyURL))
+}
+
+func (s *HTTPUpstreamSuite) TestOpenAIHTTP2SuccessfulBodyResetsFailureWindow() {
+	s.cfg.Gateway = config.GatewayConfig{
+		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
+			Enabled:                   true,
+			AllowProxyFallbackToHTTP1: true,
+			FallbackErrorThreshold:    2,
+			FallbackWindowSeconds:     60,
+			FallbackTTLSeconds:        600,
+		},
+	}
+	svc := s.newService()
+	proxyURL := "http://proxy.local:8080"
+	failed := func() {
+		startedAt := time.Now()
+		body := wrapTrackedBodyWithOutcome(
+			io.NopCloser(&failingReader{err: errors.New("http2: client connection lost")}),
+			nil,
+			func() {
+				svc.recordOpenAIHTTP2Success(service.HTTPUpstreamProfileOpenAI, upstreamProtocolModeOpenAIH2, proxyURL, startedAt)
+			},
+			func(err error) {
+				svc.recordOpenAIHTTP2Failure(service.HTTPUpstreamProfileOpenAI, upstreamProtocolModeOpenAIH2, proxyURL, err)
+			},
+		)
+		_, err := io.ReadAll(body)
+		require.Error(s.T(), err)
+		require.NoError(s.T(), body.Close())
+	}
+	succeeded := func() {
+		startedAt := time.Now()
+		body := wrapTrackedBodyWithOutcome(
+			io.NopCloser(strings.NewReader("ok")),
+			nil,
+			func() {
+				svc.recordOpenAIHTTP2Success(service.HTTPUpstreamProfileOpenAI, upstreamProtocolModeOpenAIH2, proxyURL, startedAt)
+			},
+			func(err error) {
+				svc.recordOpenAIHTTP2Failure(service.HTTPUpstreamProfileOpenAI, upstreamProtocolModeOpenAIH2, proxyURL, err)
+			},
+		)
+		_, err := io.ReadAll(body)
+		require.NoError(s.T(), err)
+		require.NoError(s.T(), body.Close())
+	}
+
+	failed()
+	succeeded()
+	failed()
+	require.False(s.T(), svc.isOpenAIHTTP2FallbackActive(proxyURL))
+}
+
+func (s *HTTPUpstreamSuite) TestOpenAIHTTP2OlderSuccessCannotResetNewFailure() {
+	base := time.Unix(1_800_000_000, 0)
+	state := &openAIHTTP2FallbackState{}
+
+	tripped, _ := state.recordFailure(base, 2, time.Minute, 10*time.Minute)
+	require.False(s.T(), tripped)
+	state.resetErrorWindow(base.Add(-time.Second))
+	tripped, _ = state.recordFailure(base.Add(10*time.Second), 2, time.Minute, 10*time.Minute)
+	require.True(s.T(), tripped, "a success from an older request must not erase a newer transport failure")
+}
+
+type failingReader struct{ err error }
+
+func (r *failingReader) Read([]byte) (int, error) { return 0, r.err }
+
 // TestNormalizeProxyURL_Canonicalizes 测试代理 URL 规范化
 // 验证等价地址能够映射到同一缓存键
 func (s *HTTPUpstreamSuite) TestNormalizeProxyURL_Canonicalizes() {

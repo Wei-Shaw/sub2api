@@ -28,6 +28,8 @@ func TestOpenAIProxyStreamCircuitThresholdTTLAndSuccessReset(t *testing.T) {
 	require.True(t, tripped)
 	require.Equal(t, base.Add(20*time.Second+10*time.Minute), until)
 	require.True(t, circuit.isBlocked(1, until.Add(-time.Nanosecond)))
+	require.False(t, circuit.recordSuccess(1), "an older in-flight success must not clear an active quarantine")
+	require.True(t, circuit.isBlocked(1, until.Add(-time.Nanosecond)))
 	require.False(t, circuit.isBlocked(1, until), "TTL expiry must re-admit the proxy")
 
 	tripped, _ = circuit.recordFailure(2, base)
