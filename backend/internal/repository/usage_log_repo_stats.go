@@ -695,11 +695,19 @@ func (r *usageLogRepository) GetStatsWithFilters(ctx context.Context, filters Us
 		args = append(args, *filters.EndTime)
 	}
 
+	// 可选分组与总计共享 scoped，保证筛选口径一致；关闭时保持原查询列及分组不变。
+	uaScoped, uaSelect, uaGrouping := "", "", ""
+	if filters.IncludeUserAgents {
+		uaScoped = "COALESCE(user_agent, '') AS user_agent,"
+		uaSelect = ", GROUPING(user_agent), user_agent"
+		uaGrouping = ", (user_agent)"
+	}
 	query := fmt.Sprintf(`
 		WITH scoped AS (
 			SELECT
 				COALESCE(NULLIF(TRIM(inbound_endpoint), ''), 'unknown') AS inbound_endpoint,
 				COALESCE(NULLIF(TRIM(upstream_endpoint), ''), 'unknown') AS upstream_endpoint,
+				%s
 				input_tokens,
 				output_tokens,
 				cache_creation_tokens,
@@ -724,15 +732,15 @@ func (r *usageLogRepository) GetStatsWithFilters(ctx context.Context, filters Us
 			COALESCE(SUM(total_cost), 0) AS cost,
 			COALESCE(SUM(actual_cost), 0) AS actual_cost,
 			COALESCE(SUM(account_cost), 0) AS account_cost,
-			COALESCE(AVG(duration_ms), 0) AS avg_duration_ms
+			COALESCE(AVG(duration_ms), 0) AS avg_duration_ms%s
 		FROM scoped
 		GROUP BY GROUPING SETS (
 			(),
 			(inbound_endpoint),
 			(upstream_endpoint),
-			(inbound_endpoint, upstream_endpoint)
+			(inbound_endpoint, upstream_endpoint)%s
 		)
-	`, buildWhere(conditions))
+	`, uaScoped, buildWhere(conditions), uaSelect, uaGrouping)
 
 	stats := &UsageStats{}
 	var totalAccountCost float64
@@ -750,7 +758,9 @@ func (r *usageLogRepository) GetStatsWithFilters(ctx context.Context, filters Us
 			requests, inputTokens, outputTokens, cacheCreationTokens, cacheReads int64
 			cost, actualCost, accountCost, averageDurationMs                     float64
 		)
-		if err := rows.Scan(
+		userAgentGrouped := 1
+		var userAgent sql.NullString
+		dest := []any{
 			&inboundGrouped,
 			&upstreamGrouped,
 			&inboundEndpoint,
@@ -764,8 +774,20 @@ func (r *usageLogRepository) GetStatsWithFilters(ctx context.Context, filters Us
 			&actualCost,
 			&accountCost,
 			&averageDurationMs,
-		); err != nil {
+		}
+		if filters.IncludeUserAgents {
+			dest = append(dest, &userAgentGrouped, &userAgent)
+		}
+		if err := rows.Scan(dest...); err != nil {
 			return nil, err
+		}
+
+		// UA 分组的两个端点 GROUPING 都为 1，必须先区分，避免覆盖总计。
+		if userAgentGrouped == 0 {
+			stats.UserAgents = append(stats.UserAgents, usagestats.UserAgentStat{
+				UserAgent: userAgent.String, Requests: requests,
+			})
+			continue
 		}
 
 		totalTokens := inputTokens + outputTokens + cacheCreationTokens + cacheReads
