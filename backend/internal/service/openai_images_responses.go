@@ -1326,6 +1326,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	c *gin.Context,
 	responseFormat string,
 	fallbackModel string,
+	maskCompositor *openAIImageMaskCompositor,
 ) (OpenAIUsage, int, []string, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
@@ -1374,6 +1375,14 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	if strings.TrimSpace(firstMeta.Model) == "" {
 		firstMeta.Model = strings.TrimSpace(fallbackModel)
 	}
+	for i := range results {
+		if err := maskCompositor.applyResult(&results[i]); err != nil {
+			return OpenAIUsage{}, 0, nil, err
+		}
+	}
+	if len(results) > 0 {
+		mergeOpenAIResponsesImageMeta(&firstMeta, results[0])
+	}
 
 	responseBody, err := buildOpenAIImagesAPIResponse(results, createdAt, usageRaw, firstMeta, responseFormat)
 	if err != nil {
@@ -1391,6 +1400,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	responseFormat string,
 	streamPrefix string,
 	fallbackModel string,
+	maskCompositor *openAIImageMaskCompositor,
 ) (OpenAIUsage, int, []string, *int, error) {
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Header("Content-Type", "text/event-stream")
@@ -1468,6 +1478,17 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				OutputFormat: strings.TrimSpace(gjson.GetBytes(dataBytes, "output_format").String()),
 				Background:   strings.TrimSpace(gjson.GetBytes(dataBytes, "background").String()),
 			})
+			partialResult := openAIResponsesImageResult{Result: b64}
+			if err := maskCompositor.applyResult(&partialResult); err != nil {
+				processDataErr = err
+				processDataDone = true
+				return
+			}
+			if maskCompositor != nil {
+				b64 = partialResult.Result
+				partialMeta.OutputFormat = partialResult.OutputFormat
+				partialMeta.Size = partialResult.Size
+			}
 			payload := buildOpenAIImagesStreamPartialPayload(
 				eventName,
 				b64,
@@ -1517,6 +1538,13 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			for _, img := range pendingResults {
 				mergeOpenAIResponsesImageMeta(&img, streamMeta)
 				appendOpenAIResponsesImageResultDedup(&finalResults, finalSeen, "", img)
+			}
+			for i := range finalResults {
+				if err := maskCompositor.applyResult(&finalResults[i]); err != nil {
+					processDataErr = err
+					processDataDone = true
+					return
+				}
 			}
 			reconcileOpenAIResponsesImageResultSizes(finalResults, nil)
 			if len(finalResults) == 0 {
@@ -1596,6 +1624,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			finalResults := append([]openAIResponsesImageResult(nil), pendingResults...)
 			for i := range finalResults {
 				mergeOpenAIResponsesImageMeta(&finalResults[i], streamMeta)
+				if err := maskCompositor.applyResult(&finalResults[i]); err != nil {
+					return err
+				}
 			}
 			reconcileOpenAIResponsesImageResultSizes(finalResults, nil)
 			for _, img := range finalResults {
@@ -1790,6 +1821,10 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	if err := validateOpenAIImagesModel(requestModel); err != nil {
 		return nil, err
 	}
+	maskCompositor, err := newOpenAIImageMaskCompositor(parsed)
+	if err != nil {
+		return nil, err
+	}
 	logger.LegacyPrintf(
 		"service.openai_gateway",
 		"[OpenAI] Images request routing request_model=%s endpoint=%s account_type=%s uploads=%d",
@@ -1894,7 +1929,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	// keepalive 心跳字节，避免 failover 第 2 轮起把上一轮心跳残留误判为已写响应。
 	writerSizeBeforeResponse := OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c)
 	if parsed.Stream {
-		usage, imageCount, imageOutputSizes, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(resp, c, startTime, parsed.ResponseFormat, openAIImagesStreamPrefix(parsed), requestModel)
+		usage, imageCount, imageOutputSizes, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(resp, c, startTime, parsed.ResponseFormat, openAIImagesStreamPrefix(parsed), requestModel, maskCompositor)
 		if err != nil {
 			if imageCount > 0 {
 				return &OpenAIForwardResult{
@@ -1925,7 +1960,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 			)
 		}
 	} else {
-		usage, imageCount, imageOutputSizes, err = s.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, parsed.ResponseFormat, requestModel)
+		usage, imageCount, imageOutputSizes, err = s.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, parsed.ResponseFormat, requestModel, maskCompositor)
 		if err != nil {
 			return nil, s.handleOpenAIImagesOAuthResponseError(
 				upstreamCtx,
