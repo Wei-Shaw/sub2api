@@ -1690,6 +1690,13 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 					newItem["call_id"] = fixedCallID
 				}
 			}
+
+			// The Responses API requires function_call item ids to start with 'fc'.
+			// Fix any 'call_'-prefixed id so OpenAI does not reject the request.
+			if id, ok := m["id"].(string); ok && strings.HasPrefix(id, "call_") {
+				ensureCopy()
+				newItem["id"] = fixCallIDPrefix(id)
+			}
 		}
 
 		if !isCodexToolCallItemType(typ) {

@@ -102,6 +102,37 @@ func TestApplyCodexOAuthTransform_ToolContinuationPreservesNativeMessageAndReaso
 	require.Equal(t, "rs_123", second["id"])
 }
 
+func TestApplyCodexOAuthTransform_ToolContinuationFixesFunctionCallItemID(t *testing.T) {
+	// function_call items with id starting with 'call_' must be fixed to 'fc' prefix
+	// so that OpenAI does not reject with "Expected an ID that begins with 'fc'".
+	reqBody := map[string]any{
+		"model": "gpt-5.2",
+		"input": []any{
+			map[string]any{"type": "function_call", "id": "call_U7Zpb", "call_id": "call_U7Zpb", "name": "bash", "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": "call_U7Zpb", "output": "ok"},
+		},
+		"tool_choice": "auto",
+	}
+
+	applyCodexOAuthTransform(reqBody, false, false)
+
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 2)
+
+	first, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "function_call", first["type"])
+	// id must be fixed to fc prefix
+	require.Equal(t, "fcU7Zpb", first["id"])
+	// call_id must also be fixed
+	require.Equal(t, "fcU7Zpb", first["call_id"])
+
+	second, ok := input[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "fcU7Zpb", second["call_id"])
+}
+
 func TestApplyCodexOAuthTransform_ToolContinuationNormalizesToolReferenceIDsOnly(t *testing.T) {
 	reqBody := map[string]any{
 		"model": "gpt-5.2",
