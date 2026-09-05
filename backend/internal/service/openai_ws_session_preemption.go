@@ -103,6 +103,9 @@ func openAIWSSessionPreemptCacheHash(apiKeyID int64, sessionHash string, profile
 	if len(profileScope) > 0 {
 		scope = strings.TrimSpace(profileScope[0])
 	}
+	if scope == "" {
+		return fmt.Sprintf("%s%d:%s", openAIWSSessionPreemptCachePrefix, apiKeyID, strings.TrimSpace(sessionHash))
+	}
 	return fmt.Sprintf("%s%d:%s:%s", openAIWSSessionPreemptCachePrefix, apiKeyID, scope, strings.TrimSpace(sessionHash))
 }
 

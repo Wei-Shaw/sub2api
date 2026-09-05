@@ -35,6 +35,26 @@ type openAIWSClientFrameConn struct {
 	restoreToolNames     func([]byte) []byte
 }
 
+func cloneOpenAIWSPayloadBytes(payload []byte) []byte {
+	if len(payload) == 0 {
+		return nil
+	}
+	cloned := make([]byte, len(payload))
+	copy(cloned, payload)
+	return cloned
+}
+
+func cloneOpenAIWSRawMessages(items []json.RawMessage) []json.RawMessage {
+	if items == nil {
+		return nil
+	}
+	cloned := make([]json.RawMessage, 0, len(items))
+	for idx := range items {
+		cloned = append(cloned, json.RawMessage(cloneOpenAIWSPayloadBytes(items[idx])))
+	}
+	return cloned
+}
+
 // openAIWSPolicyEnforcingFrameConn wraps a client-side FrameConn and runs
 // every client→upstream frame through the OpenAI Fast Policy. It is the
 // passthrough-relay equivalent of the parseClientPayload integration in the
@@ -1633,21 +1653,9 @@ func openAIWSPassthroughRelayClientClose(exit openaiwsv2.RelayExit, completedTur
 }
 
 func markOpenAIWSV2PassthroughCyberPolicy(c *gin.Context, payload []byte) bool {
-	hit, code, message := detectOpenAICyberPolicy(payload)
-	if !hit {
-		return false
-	}
 	usage := OpenAIUsage{}
 	parseOpenAIWSResponseUsageFromCompletedEvent(payload, &usage)
-	MarkOpsCyberPolicy(c, CyberPolicyMark{
-		Code:           code,
-		Message:        message,
-		Body:           truncateString(string(payload), 4096),
-		UpstreamStatus: http.StatusOK,
-		UpstreamInTok:  usage.InputTokens,
-		UpstreamOutTok: usage.OutputTokens,
-	})
-	return true
+	return markOpenAICyberPolicyEvent(c, payload, http.StatusOK, &usage)
 }
 
 func (s *OpenAIGatewayService) mapOpenAIWSPassthroughDialError(

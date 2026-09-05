@@ -8,6 +8,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestCompositeTargetPlatformAllowedResolvesKnownAllowedModel(t *testing.T) {
@@ -158,6 +159,75 @@ func TestOpenAIReasoningEffortPolicyForCompositeTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, changed)
 	require.Equal(t, body, got)
+}
+
+func TestOpenAIShapedReasoningEffortPolicyForAnthropicGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/v1/responses", nil)
+	apiKey := &service.APIKey{Group: &service.Group{
+		Platform:           service.PlatformAnthropic,
+		MaxReasoningEffort: "xhigh",
+	}}
+
+	got, changed, err := applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, []byte(`{"reasoning":{"effort":"max"}}`))
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "xhigh", gjson.GetBytes(got, "reasoning.effort").String())
+}
+
+func TestAnthropicReasoningEffortPolicyForConcreteAndCompositeTargets(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"claude-fable-5-1","output_config":{"effort":"max"}}`)
+	policy := func(platform string) *service.APIKey {
+		return &service.APIKey{Group: &service.Group{
+			Platform:           platform,
+			MaxReasoningEffort: "xhigh",
+			ReasoningEffortMappings: []service.ReasoningEffortMapping{
+				{From: "max", To: "xhigh"},
+			},
+		}}
+	}
+
+	concrete, _ := gin.CreateTestContext(httptest.NewRecorder())
+	concrete.Request = httptest.NewRequest("POST", "/v1/messages", nil)
+	got, changed, err := applyAnthropicReasoningEffortPolicyForRequest(concrete, policy(service.PlatformAnthropic), body)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.JSONEq(t, `{"model":"claude-fable-5-1","output_config":{"effort":"xhigh"}}`, string(got))
+
+	denyMax := policy(service.PlatformAnthropic)
+	denyMax.Group.ReasoningEffortMappings = nil
+	denyMax.Group.MaxReasoningEffortOverLimit = service.ReasoningEffortOverLimitDeny
+	_, changed, err = applyAnthropicReasoningEffortPolicyForRequest(concrete, denyMax, body)
+	require.Error(t, err)
+	require.False(t, changed)
+	var overLimit *service.ReasoningEffortOverLimitError
+	require.ErrorAs(t, err, &overLimit)
+	require.Equal(t, "max", overLimit.Requested)
+	require.Equal(t, "xhigh", overLimit.Max)
+
+	composite, _ := gin.CreateTestContext(httptest.NewRecorder())
+	composite.Request = httptest.NewRequest("POST", "/v1/messages", nil)
+	composite.Request = composite.Request.WithContext(service.WithResolvedTargetPlatform(composite.Request.Context(), service.PlatformAnthropic))
+	got, changed, err = applyAnthropicReasoningEffortPolicyForRequest(composite, policy(service.PlatformComposite), body)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "xhigh", gjson.GetBytes(got, "output_config.effort").String())
+
+	openAI, _ := gin.CreateTestContext(httptest.NewRecorder())
+	openAI.Request = httptest.NewRequest("POST", "/v1/messages", nil)
+	openAI.Request = openAI.Request.WithContext(service.WithResolvedTargetPlatform(openAI.Request.Context(), service.PlatformOpenAI))
+	got, changed, err = applyAnthropicReasoningEffortPolicyForRequest(openAI, policy(service.PlatformComposite), body)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, body, got)
+}
+
+func TestAnthropicCompositePolicyClampsUnsupportedMinimalToLow(t *testing.T) {
+	maxEffort, mappings := anthropicCompatibleReasoningEffortPolicy("minimal", []service.ReasoningEffortMapping{{From: "max", To: "minimal"}})
+	require.Equal(t, "low", maxEffort)
+	require.Equal(t, []service.ReasoningEffortMapping{{From: "max", To: "low"}}, mappings)
 }
 
 func TestClientRequestedModelUsesCompositePublicModel(t *testing.T) {

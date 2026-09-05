@@ -206,27 +206,6 @@ func TestSettingHandler_UpdateSettings_PreservesOmittedAuthSourceDefaults(t *tes
 	require.Equal(t, true, data["force_email_on_third_party_signup"])
 }
 
-func TestSettingHandler_UpdateSettings_RejectsCodexClientVersionBelowUpstreamMinimum(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	repo := &settingHandlerRepoStub{values: map[string]string{}}
-	settings := service.NewSettingService(repo, &config.Config{})
-	handler := NewSettingHandler(settings, nil, nil, nil, nil, nil, nil)
-
-	body, err := json.Marshal(map[string]string{
-		"openai_codex_client_version": "0.143.9",
-	})
-	require.NoError(t, err)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
-
-	handler.UpdateSettings(c)
-
-	require.Equal(t, http.StatusBadRequest, recorder.Code)
-	require.NotEqual(t, "0.143.9", repo.values[service.SettingKeyOpenAICodexClientVersion])
-}
-
 func TestSettingHandler_UpdateSettings_PersistsPaymentVisibleMethodsAndAdvancedScheduler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &settingHandlerRepoStub{

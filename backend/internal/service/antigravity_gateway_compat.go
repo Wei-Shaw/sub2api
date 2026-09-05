@@ -364,6 +364,7 @@ func (s *AntigravityGatewayService) consumeAntigravityCompatResponse(
 
 	return &ForwardResult{
 		RequestID:                     requestID,
+		UpstreamHeaders:               resp.Header,
 		Usage:                         *streamResult.usage,
 		Model:                         call.request.originalModel,
 		UpstreamModel:                 call.billingModel,

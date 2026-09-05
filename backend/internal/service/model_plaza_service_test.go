@@ -57,6 +57,19 @@ func TestListPlazaGroups_GroupCentricAggregation(t *testing.T) {
 	require.Equal(t, "claude-sonnet", out[0].Models[1].Name)
 }
 
+func TestWithDefaultMaxReasoningEffortMultiplier_Fable51(t *testing.T) {
+	base := &ChannelModelPricing{BillingMode: BillingModeToken}
+	got := withDefaultMaxReasoningEffortMultiplier(base, "claude-fable-5-1")
+	require.NotSame(t, base, got)
+	require.NotNil(t, got.MaxReasoningEffortMultiplier)
+	require.Equal(t, 3.0, *got.MaxReasoningEffortMultiplier)
+	require.Nil(t, base.MaxReasoningEffortMultiplier)
+
+	configured := 1.25
+	custom := &ChannelModelPricing{MaxReasoningEffortMultiplier: &configured}
+	require.Same(t, custom, withDefaultMaxReasoningEffortMultiplier(custom, "claude-fable-5-1"))
+}
+
 func TestListPlazaGroups_DedupFirstWinsWithPricingUpgrade(t *testing.T) {
 	// 同名模型:先见者胜;仅当已存条目无定价而新条目有定价时升级替换。
 	unpriced := Channel{

@@ -3,12 +3,80 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/gemini"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestGeminiV1BetaListModels_CustomGroupListUsesNativeResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1beta/models", nil)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{
+			Platform: service.PlatformGemini,
+			ModelsListConfig: service.GroupModelsListConfig{
+				Enabled: true,
+				Models:  []string{"gemini-2.5-pro", "models/gemini-custom"},
+			},
+		},
+	})
+
+	(&GatewayHandler{}).GeminiV1BetaListModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got gemini.ModelsListResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, []gemini.Model{
+		gemini.FallbackModel("gemini-2.5-pro"),
+		gemini.FallbackModel("models/gemini-custom"),
+	}, got.Models)
+}
+
+func TestGeminiV1BetaListModels_ForcedAntigravityIgnoresCustomGroupList(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/antigravity/v1beta/models", nil)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{
+			Platform: service.PlatformGemini,
+			ModelsListConfig: service.GroupModelsListConfig{
+				Enabled: true,
+				Models:  []string{"gemini-custom"},
+			},
+		},
+	})
+	c.Set(string(middleware.ContextKeyForcePlatform), service.PlatformAntigravity)
+
+	(&GatewayHandler{}).GeminiV1BetaListModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got antigravity.GeminiModelsListResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, antigravity.FallbackGeminiModelsList(), got)
+}
+
+func TestCustomGeminiModelsList_DisabledKeepsExistingFlow(t *testing.T) {
+	group := &service.Group{
+		ModelsListConfig: service.GroupModelsListConfig{
+			Enabled: false,
+			Models:  []string{"gemini-2.5-pro"},
+		},
+	}
+
+	_, ok := customGeminiModelsList(group)
+	require.False(t, ok)
+}
 
 // TestGeminiV1BetaHandler_PlatformRoutingInvariant 文档化并验证 Handler 层的平台路由逻辑不变量
 // 该测试确保 gemini 和 antigravity 平台的路由逻辑符合预期

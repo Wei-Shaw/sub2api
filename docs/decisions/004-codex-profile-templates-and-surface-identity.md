@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Proposed
 
 ## Date
 
@@ -83,14 +83,13 @@ is enabled and which configuration is assigned.
   into both gateway resolution and admin status before deployment.
 - Define `sessions_per_device` as the number of reusable upstream session
   identities in `session_pool`; it is not a request-concurrency setting.
-- Keep usage parsing, billing, scheduler ownership and durable A-to-B usage
-  relay behavior in the host. The Transport plugin continues to receive only
-  the already resolved proxy URL and an opaque API-key connection scope.
+- Keep existing usage parsing and billing unchanged. Lease lifetime includes
+  upstream draining so slot capacity is not released before a request ends.
 
-Migrations 239–240 are required. Upgrade the core and database together: the
-conversation-aware binding uniqueness is not compatible with writes from the
-old core's four-column ON CONFLICT query. Do not mix old and new core binaries
-in a rolling deployment. This change has only been tested locally.
+The feature adds account provisioning, template and device-binding schema.
+The normal migration runner applies these changes before the new core starts.
+Existing official accounts are backfilled as active with the feature disabled.
+Earlier experimental revisions of this PR are not an official upgrade baseline.
 
 ## API Contract
 
@@ -147,14 +146,9 @@ UI must disclose the affected account count and require explicit confirmation.
   bounded transaction, deterministic lock order and scheduler outbox events.
 - Deleting a referenced template is rejected until its accounts are disabled
   or moved to another template.
-- Once an account enables two surfaces for one OS, an older binary cannot read
-  that policy. Application rollback must either retain the new binary or first
-  prove that no dual-surface assignment exists and perform an explicit data
-  downgrade. Image rollback alone is not sufficient.
-- `deploy/rollback-codex-profile-templates-v1.sql` is the explicit downgrade
-  path for an old binary. It preserves account, credential, proxy and billing
-  data but disables all Codex Profile assignments before restoring OS-only
-  constraints.
+- Core instances handling profile-managed accounts must understand their
+  template assignments and binding lifecycle. Disable the feature before
+  rolling back to an official version without device-slot support.
 - The lightweight account-data export records assignment ID and applied
   revision so a same-database restore cannot silently detach from a template.
   Moving templates between deployments requires the database backup path; a

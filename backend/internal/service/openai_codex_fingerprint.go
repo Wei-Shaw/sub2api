@@ -299,23 +299,12 @@ type codexFingerprintIDs struct {
 // 返回 nil 表示 off 模式，不需要改写。
 // 注意：包含随机生成的 turn_id，调用方必须只调用一次并共享结果给头改写和体改写。
 func resolveCodexFingerprintIDs(account *Account, clientSessionID string, mode codexFingerprintMode) *codexFingerprintIDs {
-	return resolveCodexFingerprintIDsForScope(account, clientSessionID, mode, "")
-}
-
-// resolveCodexFingerprintIDsForScope derives converged legacy identity for a
-// tenant scope. Profile-managed requests use their dedicated identity plan;
-// this scope-aware helper is retained for legacy convergence paths that share
-// an OAuth account across downstream API keys.
-func resolveCodexFingerprintIDsForScope(account *Account, clientSessionID string, mode codexFingerprintMode, scope string) *codexFingerprintIDs {
 	if account == nil || mode == codexFingerprintOff {
 		return nil
 	}
 	seed, ok := codexFingerprintSeed(account.Extra)
 	if !ok {
 		return nil
-	}
-	if scope = strings.TrimSpace(scope); scope != "" && account.GetOpenAIDeviceID() == "" {
-		seed = deriveStableUUIDv4("sub2api:codex-tenant-scope:v1:" + seed + ":" + scope)
 	}
 
 	ids := &codexFingerprintIDs{
@@ -368,10 +357,6 @@ func extractClientSessionID(h http.Header) string {
 // 结合账号配置一次性解析收敛 ID 集合。调用方应将返回的 ids 同时传给
 // applyCodexFingerprintHeaders 和 applyCodexFingerprintClientMetadata。
 func resolveCodexFingerprintIDsFromRequest(account *Account, clientHeaders http.Header) *codexFingerprintIDs {
-	return resolveCodexFingerprintIDsFromRequestWithScope(account, clientHeaders, "")
-}
-
-func resolveCodexFingerprintIDsFromRequestWithScope(account *Account, clientHeaders http.Header, scope string) *codexFingerprintIDs {
 	if account == nil {
 		return nil
 	}
@@ -383,7 +368,7 @@ func resolveCodexFingerprintIDsFromRequestWithScope(account *Account, clientHead
 	if clientHeaders != nil {
 		clientSessionID = extractClientSessionID(clientHeaders)
 	}
-	return resolveCodexFingerprintIDsForScope(account, clientSessionID, mode, scope)
+	return resolveCodexFingerprintIDs(account, clientSessionID, mode)
 }
 
 // applyCodexFingerprintHeaders 按预计算的收敛 ID 改写出站 HTTP 头中的设备指纹。

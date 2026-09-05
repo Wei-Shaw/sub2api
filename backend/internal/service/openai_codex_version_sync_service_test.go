@@ -306,7 +306,6 @@ func TestGetOpenAICodexClientVersionPriority(t *testing.T) {
 		{name: "覆写为空时用同步值", synced: "0.146.0", want: "0.146.0"},
 		{name: "两者皆空时用内置常量", want: codexCLIVersion},
 		{name: "非法覆写回退同步值", override: "latest", synced: "0.146.0", want: "0.146.0"},
-		{name: "低于上游门槛的覆写回退同步值", override: "0.143.9", synced: "0.146.0", want: "0.146.0"},
 		{name: "非法同步值回退内置常量", synced: "not-a-version", want: codexCLIVersion},
 	}
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted; control-plane ownership and Profile identity are amended by ADR-004
+Proposed; control-plane ownership and Profile identity are described in ADR-004
 
 ## Date
 
@@ -10,7 +10,7 @@ Accepted; control-plane ownership and Profile identity are amended by ADR-004
 
 ## Context
 
-Shared OpenAI OAuth accounts need stable, bounded client identities across Windows, macOS, Linux and generic SDK traffic. Existing account-level convergence over-couples tenants, while per-API-Key convergence can expose unbounded device identities. The separate Privacy Transport plugin provides the pluggable HTTP/TLS egress boundary and receives only an opaque API-Key connection scope. The host remains authoritative for account scheduling, device/session identity, WebSocket bridging and response/turn state.
+Shared OpenAI OAuth accounts need stable, bounded client identities across Windows, macOS, Linux and generic SDK traffic. Account-level convergence combines unrelated conversations, while per-API-Key convergence can create one device identity per key. Device slots group compatible clients while keeping conversation routing and response state separate.
 
 Account creation and import currently expose an `active + schedulable` account before groups and post-create configuration finish. The new identity policy makes that race unacceptable.
 
@@ -23,13 +23,12 @@ Account creation and import currently expose an `active + schedulable` account b
 - Use structured HTTP/SSE/WS identity transformation and response restoration.
 - Preserve API-Key HTTP/TLS, WebSocket and response/turn-state isolation even when device identities are shared.
 - Preserve legacy eligibility for default-off accounts in mixed pools; strict unsupported-device enforcement requires a fully Profile-managed candidate pool, and established Profile affinity never downgrades to legacy.
-- Deliver the host changes as an independent Draft PR against upstream `main`; do not include the Transport plugin source in the core PR.
 
 ## Alternatives Considered
 
 ### Account-wide device and session convergence
 
-Rejected because all tenants share one upstream session/state identity and historical deployments reported quota regressions.
+Rejected as the default because unrelated conversations would share one session identity.
 
 ### Per-API-Key device identity only
 

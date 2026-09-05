@@ -12,6 +12,7 @@ describe('usageServiceTier utils', () => {
   it('preserves supported tiers', () => {
     expect(normalizeUsageServiceTier('priority')).toBe('priority')
     expect(normalizeUsageServiceTier('flex')).toBe('flex')
+    expect(normalizeUsageServiceTier('ultrafast')).toBe('ultrafast')
   })
 
   it('formats empty values as standard', () => {
@@ -27,11 +28,13 @@ describe('usageServiceTier utils', () => {
   it('maps tiers to translated labels', () => {
     const translate = (key: string) => ({
       'usage.serviceTierPriority': 'Fast',
+      'usage.serviceTierUltrafast': 'Ultrafast',
       'usage.serviceTierFlex': 'Flex',
       'usage.serviceTierStandard': 'Standard',
     })[key] ?? key
 
     expect(getUsageServiceTierLabel('fast', translate)).toBe('Fast')
+    expect(getUsageServiceTierLabel('ultrafast', translate)).toBe('Ultrafast')
     expect(getUsageServiceTierLabel('flex', translate)).toBe('Flex')
     expect(getUsageServiceTierLabel(undefined, translate)).toBe('Standard')
     expect(getUsageServiceTierLabel('custom-tier', translate)).toBe('custom-tier')

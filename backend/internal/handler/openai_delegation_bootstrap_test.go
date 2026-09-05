@@ -43,11 +43,7 @@ func TestNormalizeCodexDelegationBootstrapRejectsUnsafeShapes(t *testing.T) {
 	}{
 		{name: "ordinary missing call id", item: `{"type":"function_call_output","name":"other","namespace":"codex_app","output":"` + delegationEnvelope + `"}`},
 		{name: "valid call id", item: `{"type":"function_call_output","call_id":"call-1","name":"create_thread","namespace":"codex_app","output":"` + delegationEnvelope + `"}`},
-		{name: "previous response", item: `{"type":"function_call_output","name":"create_thread","namespace":"codex_app","output":"` + delegationEnvelope + `"}`, extra: `,"previous_response_id":"resp-1"`},
-		{name: "real call context", item: `{"type":"function_call_output","name":"create_thread","namespace":"codex_app","output":"` + delegationEnvelope + `"},{"type":"function_call","call_id":"call-1"}`},
 		{name: "ambiguous call context", item: `{"type":"function_call_output","name":"create_thread","namespace":"codex_app","output":"` + delegationEnvelope + `"},{"type":"function_call"}`},
-		{name: "item reference context", item: `{"type":"function_call_output","name":"create_thread","namespace":"codex_app","output":"` + delegationEnvelope + `"},{"type":"item_reference","id":"call-1"}`},
-		{name: "built-in call context", item: `{"type":"function_call_output","name":"create_thread","namespace":"codex_app","output":"` + delegationEnvelope + `"},{"type":"computer_call","call_id":"call-1"}`},
 		{name: "ambiguous built-in call context", item: `{"type":"function_call_output","name":"create_thread","namespace":"codex_app","output":"` + delegationEnvelope + `"},{"type":"computer_call"}`},
 		{name: "mixed missing call id output", item: `{"type":"function_call_output","name":"create_thread","namespace":"codex_app","output":"` + delegationEnvelope + `"},{"type":"computer_call_output","output":"done"}`},
 		{name: "mixed tool search output", item: `{"type":"function_call_output","name":"create_thread","namespace":"codex_app","output":"` + delegationEnvelope + `"},{"type":"tool_search_output","output":"done"}`},
@@ -67,6 +63,18 @@ func TestNormalizeCodexDelegationBootstrapRejectsUnsafeShapes(t *testing.T) {
 	}
 }
 
+func TestNormalizeCodexDelegationBootstrapWithHistoricalContext(t *testing.T) {
+	body := []byte(`{"model":"gpt-5","previous_response_id":"resp-1","input":[{"type":"function_call_output","namespace":"codex_app","name":"send_message_to_thread","output":"` + delegationEnvelope + `"},{"type":"function_call","call_id":"call-1"},{"type":"function_call_output","call_id":"call-1","output":"done"},{"type":"item_reference","id":"item-1"},{"type":"computer_call","call_id":"call-2"}]}`)
+
+	got, changed := normalizeCodexDelegationBootstrap(body)
+	require.True(t, changed)
+	require.Equal(t, "message", gjson.GetBytes(got, "input.0.type").String())
+	require.Equal(t, "user", gjson.GetBytes(got, "input.0.role").String())
+	require.Equal(t, "resp-1", gjson.GetBytes(got, "previous_response_id").String())
+	require.Equal(t, "call-1", gjson.GetBytes(got, "input.2.call_id").String())
+	require.Equal(t, "item-1", gjson.GetBytes(got, "input.3.id").String())
+}
+
 func TestNormalizeCodexDelegationBootstrapPreviousResponseID(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -75,7 +83,7 @@ func TestNormalizeCodexDelegationBootstrapPreviousResponseID(t *testing.T) {
 	}{
 		{name: "absent", changed: true},
 		{name: "blank string", value: `,"previous_response_id":"  "`, changed: true},
-		{name: "non-empty string", value: `,"previous_response_id":"resp-1"`},
+		{name: "non-empty string", value: `,"previous_response_id":"resp-1"`, changed: true},
 		{name: "null", value: `,"previous_response_id":null`},
 		{name: "number", value: `,"previous_response_id":42`},
 		{name: "boolean", value: `,"previous_response_id":false`},
