@@ -67,6 +67,14 @@ func TestRedactText_DefaultPathDoesNotUseExtraCache(t *testing.T) {
 	}
 }
 
+func TestRedactJSON_WebhookURLIsSensitiveByDefault(t *testing.T) {
+	const secret = "secret-value"
+	out := RedactJSON([]byte(`{"webhook_url":"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=` + secret + `"}`))
+	if strings.Contains(out, secret) || !strings.Contains(out, `"webhook_url":"***"`) {
+		t.Fatalf("expected webhook_url redacted, got %q", out)
+	}
+}
+
 func clearExtraTextPatternCache() {
 	extraTextPatternCache.Range(func(key, value any) bool {
 		extraTextPatternCache.Delete(key)
