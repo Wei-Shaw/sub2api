@@ -26,14 +26,14 @@
             <span class="text-xs text-gray-400 ml-2">{{ t('profile.balanceNotify.thresholdHint') }}</span>
           </label>
           <div class="flex items-center gap-2">
-            <span class="text-gray-500">$</span>
+            <span class="text-gray-500">{{ accountCurrencySymbol }}</span>
             <input
               v-model.number="customThreshold"
               type="number"
               min="0"
               step="0.01"
               class="input flex-1"
-              :placeholder="systemDefaultThreshold > 0 ? `${t('profile.balanceNotify.systemDefault')} $${systemDefaultThreshold}` : t('profile.balanceNotify.thresholdPlaceholder')"
+              :placeholder="systemDefaultThreshold > 0 ? `${t('profile.balanceNotify.systemDefault')} ${accountCurrencySymbol}${systemDefaultThreshold}` : t('profile.balanceNotify.thresholdPlaceholder')"
             />
             <button
               @click="handleThresholdUpdate"
@@ -164,6 +164,7 @@ import { useAppStore } from '@/stores/app'
 import { userAPI } from '@/api'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import type { NotifyEmailEntry } from '@/types'
+import { DEFAULT_PAYMENT_CURRENCY, currencySymbol } from '@/components/payment/currency'
 
 const maxTotalEmails = 3
 
@@ -186,6 +187,7 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+const accountCurrencySymbol = currencySymbol(DEFAULT_PAYMENT_CURRENCY)
 const authStore = useAuthStore()
 const appStore = useAppStore()
 

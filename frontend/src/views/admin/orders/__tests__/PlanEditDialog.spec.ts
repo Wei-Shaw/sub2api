@@ -150,9 +150,9 @@ describe('PlanEditDialog', () => {
     await wrapper.find('input[type="number"]').setValue('9.99')
 
     expect(wrapper.text()).toContain('preview')
-    expect(wrapper.text()).toContain('¥71.43')
+    expect(wrapper.text()).toContain('￥71.43')
     expect(wrapper.text()).toContain('fee 2.5')
-    expect(wrapper.text()).toContain('¥73.22')
+    expect(wrapper.text()).toContain('￥73.22')
   })
 
   it('hides the preview when the subscription rate is not configured', async () => {
@@ -166,7 +166,7 @@ describe('PlanEditDialog', () => {
     await wrapper.find('input[type="number"]').setValue('9.99')
 
     expect(wrapper.text()).not.toContain('preview')
-    expect(wrapper.text()).not.toContain('¥71.43')
+    expect(wrapper.text()).not.toContain('￥71.43')
   })
 
   it('allows composite subscription groups for payment plans', () => {

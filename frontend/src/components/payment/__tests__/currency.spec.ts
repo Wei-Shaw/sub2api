@@ -12,9 +12,14 @@ describe('formatPaymentAmount', () => {
 describe('currencySymbol', () => {
   it('maps common payment currencies and falls back safely', () => {
     expect(currencySymbol('USD')).toBe('$')
-    expect(currencySymbol('cny')).toBe('¥')
+    expect(currencySymbol('cny')).toBe('￥')
     expect(currencySymbol('EUR')).toBe('€')
-    expect(currencySymbol('')).toBe('¥')
+    expect(currencySymbol('')).toBe('￥')
     expect(currencySymbol('XYZ')).toBe('XYZ')
+  })
+
+  it('keeps the RMB symbol stable across locales', () => {
+    expect(formatPaymentAmount(100, 'CNY', 'en-US')).toBe('￥100.00')
+    expect(formatPaymentAmount(100, 'CNY', 'zh-CN')).toBe('￥100.00')
   })
 })

@@ -2,8 +2,8 @@ export const DEFAULT_PAYMENT_CURRENCY = 'CNY'
 
 const PAYMENT_CURRENCY_SYMBOLS: Record<string, string> = {
   USD: '$',
-  CNY: '¥',
-  RMB: '¥',
+  CNY: '￥',
+  RMB: '￥',
   EUR: '€',
   GBP: '£',
   JPY: '¥',
@@ -45,6 +45,21 @@ function paymentCurrencyFractionDigits(currency: string): number {
 export function formatPaymentAmount(amount: number, currency?: string | null, locale?: string): string {
   const normalized = normalizePaymentCurrency(currency)
   const fractionDigits = paymentCurrencyFractionDigits(normalized)
+  const safeAmount = Number.isFinite(amount) ? amount : 0
+
+  // Intl may render CNY as `¥` or `CN¥` depending on locale. Keep the
+  // deployment's RMB label stable while retaining locale-aware separators.
+  if (normalized === 'CNY' || normalized === 'RMB') {
+    try {
+      return `${currencySymbol(normalized)}${new Intl.NumberFormat(locale || undefined, {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits,
+      }).format(safeAmount)}`
+    } catch {
+      return `${currencySymbol(normalized)}${safeAmount.toFixed(fractionDigits)}`
+    }
+  }
+
   try {
     return new Intl.NumberFormat(locale || undefined, {
       style: 'currency',
@@ -52,8 +67,8 @@ export function formatPaymentAmount(amount: number, currency?: string | null, lo
       currencyDisplay: 'narrowSymbol',
       minimumFractionDigits: fractionDigits,
       maximumFractionDigits: fractionDigits,
-    }).format(Number.isFinite(amount) ? amount : 0)
+    }).format(safeAmount)
   } catch {
-    return `${normalized} ${(Number.isFinite(amount) ? amount : 0).toFixed(fractionDigits)}`
+    return `${normalized} ${safeAmount.toFixed(fractionDigits)}`
   }
 }

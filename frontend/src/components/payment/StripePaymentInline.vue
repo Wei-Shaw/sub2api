@@ -103,7 +103,7 @@ const cancelling = ref(false)
 const success = ref(false)
 const ready = ref(false)
 const selectedType = ref('')
-const creditedAmountSymbol = currencySymbol('USD')
+const creditedAmountSymbol = computed(() => currencySymbol(props.currency))
 const paymentAmountSymbol = computed(() => currencySymbol(props.currency))
 
 let stripeInstance: Stripe | null = null
@@ -153,6 +153,7 @@ async function handlePay() {
         order_id: String(props.orderId),
         method: selectedType.value,
         amount: String(props.payAmount),
+        currency: props.currency || 'CNY',
       },
     }).href
     const popup = window.open(popupUrl, 'paymentPopup', getPaymentPopupFeatures())
