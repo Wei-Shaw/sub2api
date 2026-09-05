@@ -16,6 +16,7 @@ import (
 	mathrand "math/rand"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,10 +35,12 @@ import (
 const geminiStickySessionTTL = time.Hour
 
 const (
-	geminiMaxRetries     = 5
-	geminiRetryBaseDelay = 1 * time.Second
-	geminiRetryMaxDelay  = 16 * time.Second
+	geminiMaxRetries    = 5
+	geminiRetryMaxDelay = 16 * time.Second
 )
+
+// geminiRetryBaseDelay 是重试退避的基准间隔；变量而非常量，便于测试压缩等待时间。
+var geminiRetryBaseDelay = 1 * time.Second
 
 // Gemini tool calling now requires `thoughtSignature` in parts that include `functionCall`.
 // Many clients don't send it; we inject a known dummy signature to satisfy the validator.
@@ -893,10 +896,9 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 				}
 				break
 			}
-			if resp.StatusCode == 429 {
-				// Mark as rate-limited early so concurrent requests avoid this account.
-				s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-			}
+			// 429 不在此处持久化账号限流：重试仍可能成功，提前写入会让一个瞬时 429
+			// 在客户端已经拿到 200 之后仍把账号停调度（service_account 甚至到 PST 午夜）。
+			// 账号状态统一由循环结束后的错误策略分支处理，只有最终一次仍失败才写。
 			if attempt < geminiMaxRetries {
 				upstreamReqID := resp.Header.Get(requestIDHeader)
 				if upstreamReqID == "" {
@@ -1388,9 +1390,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 				}
 				break
 			}
-			if resp.StatusCode == 429 {
-				s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-			}
+			// 429 不在重试循环内持久化账号限流，理由同 Forward：留到最终结果确定后再写。
 			if attempt < geminiMaxRetries {
 				upstreamReqID := resp.Header.Get(requestIDHeader)
 				if upstreamReqID == "" {
@@ -3050,7 +3050,23 @@ func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Cont
 	projectID := strings.TrimSpace(account.GetCredential("project_id"))
 	isCodeAssist := account.IsGeminiCodeAssist()
 
+	// Vertex service_account 是按量计费项目，没有 AI Studio 那套「日配额」语义，
+	// 所以绝不能落到 PST 午夜兜底：一次瞬时的 per-minute / MODEL_CAPACITY_EXHAUSTED
+	// 429 会把账号停调度到第二天。单独分支处理。
+	if account.IsVertexServiceAccount() {
+		s.applyGeminiServiceAccountRateLimit(ctx, account, headers, body)
+		return
+	}
+
 	resetAt := ParseGeminiRateLimitResetTime(body)
+	if resetAt == nil {
+		// 响应体没给出重置时间时，上游显式的 Retry-After 仍优先于本地启发式兜底。
+		if delay, ok := parseGeminiRetryAfterHeader(headers); ok {
+			ts := time.Now().Add(delay).Unix()
+			resetAt = &ts
+			logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d rate limited by Retry-After, cooldown=%v", account.ID, delay)
+		}
+	}
 	if resetAt == nil {
 		// 根据账号类型使用不同的默认重置时间
 		var ra time.Time
@@ -3088,6 +3104,108 @@ func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Cont
 		account.ID, resetTime, oauthType, tierID)
 }
 
+// geminiMaxRetryDelay 限制上游显式重试提示（RetryInfo.retryDelay / Retry-After）的最大值。
+// 上游偶尔会给出异常大的值，直接采信会把账号长时间停调度。
+const geminiMaxRetryDelay = 15 * time.Minute
+
+// geminiServiceAccountFallbackCooldown 是 service_account 429 无任何可解析重试提示时的
+// 兜底冷却，仅在 rate_limit_429_cooldown_settings 不可用时使用。
+const geminiServiceAccountFallbackCooldown = 5 * time.Second
+
+// applyGeminiServiceAccountRateLimit 处理 Vertex service_account 的 429。
+// 优先级：RetryInfo.retryDelay → Retry-After → 可配置的秒级短冷却
+// （rate_limit_429_cooldown_settings，默认 5s）。永远不使用 PST 午夜兜底。
+func (s *GeminiMessagesCompatService) applyGeminiServiceAccountRateLimit(ctx context.Context, account *Account, headers http.Header, body []byte) {
+	delay, ok := parseGeminiRetryInfoDelay(body)
+	source := "retry_info"
+	if !ok {
+		if delay, ok = parseGeminiRetryAfterHeader(headers); ok {
+			source = "retry_after"
+		}
+	}
+	if !ok {
+		// 没有任何显式提示：复用管理端的 429 兜底冷却配置。关闭时保持既有语义——
+		// 不写账号状态，由调度层自行消化。
+		delay = geminiServiceAccountFallbackCooldown
+		if s.rateLimitService != nil {
+			cooldown, enabled := s.rateLimitService.Fallback429Cooldown(ctx, account)
+			if !enabled {
+				logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (Vertex service_account, project=%s) fallback cooldown disabled, not marking", account.ID, account.VertexProjectID())
+				return
+			}
+			delay = cooldown
+		}
+		source = "short_cooldown"
+	}
+
+	resetAt := time.Now().Add(delay)
+	_ = s.accountRepo.SetRateLimited(ctx, account.ID, resetAt)
+	logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (Vertex service_account, project=%s) rate limited, source=%s cooldown=%v", account.ID, account.VertexProjectID(), source, delay)
+}
+
+// parseGeminiRetryInfoDelay 解析 error.details[] 中的 google.rpc.RetryInfo.retryDelay
+// （protojson Duration，例如 "39s" / "1.5s"）。小数秒向上取整到秒，并按
+// geminiMaxRetryDelay 截断。返回 false 表示上游没有给出可用的重试提示。
+func parseGeminiRetryInfoDelay(body []byte) (time.Duration, bool) {
+	var (
+		delay time.Duration
+		found bool
+	)
+	gjson.GetBytes(body, "error.details").ForEach(func(_, detail gjson.Result) bool {
+		// gjson 中 "@" 是 modifier 前缀，访问字面量 key 需要转义。
+		if !strings.HasSuffix(detail.Get(`\@type`).String(), "google.rpc.RetryInfo") {
+			return true
+		}
+		raw := strings.TrimSpace(detail.Get("retryDelay").String())
+		if raw == "" {
+			return true
+		}
+		dur, err := time.ParseDuration(raw)
+		if err != nil || dur <= 0 {
+			return true
+		}
+		delay = clampGeminiRetryDelay(dur)
+		found = true
+		return false
+	})
+	return delay, found
+}
+
+// parseGeminiRetryAfterHeader 解析 HTTP Retry-After（秒数或 HTTP-date 两种形式）。
+func parseGeminiRetryAfterHeader(headers http.Header) (time.Duration, bool) {
+	if headers == nil {
+		return 0, false
+	}
+	raw := strings.TrimSpace(headers.Get("Retry-After"))
+	if raw == "" {
+		return 0, false
+	}
+	if seconds, err := strconv.ParseFloat(raw, 64); err == nil {
+		if seconds <= 0 {
+			return 0, false
+		}
+		return clampGeminiRetryDelay(time.Duration(math.Ceil(seconds)) * time.Second), true
+	}
+	if at, err := http.ParseTime(raw); err == nil {
+		if d := time.Until(at); d > 0 {
+			return clampGeminiRetryDelay(d), true
+		}
+	}
+	return 0, false
+}
+
+// clampGeminiRetryDelay 把上游提示的重试延迟向上取整到秒，并限制在 (0, geminiMaxRetryDelay]。
+func clampGeminiRetryDelay(d time.Duration) time.Duration {
+	rounded := time.Duration(math.Ceil(d.Seconds())) * time.Second
+	if rounded < time.Second {
+		rounded = time.Second
+	}
+	if rounded > geminiMaxRetryDelay {
+		return geminiMaxRetryDelay
+	}
+	return rounded
+}
+
 // ParseGeminiRateLimitResetTime 解析 Gemini 格式的 429 响应，返回重置时间的 Unix 时间戳
 func ParseGeminiRateLimitResetTime(body []byte) *int64 {
 	// 第一阶段：gjson 结构化提取
@@ -3116,6 +3234,12 @@ func ParseGeminiRateLimitResetTime(body []byte) *int64 {
 	})
 	if found != nil {
 		return found
+	}
+
+	// google.rpc.RetryInfo.retryDelay：Vertex / Gemini 对瞬时 429 给出的显式重试延迟。
+	if delay, ok := parseGeminiRetryInfoDelay(body); ok {
+		ts := time.Now().Add(delay).Unix()
+		return &ts
 	}
 
 	// 第二阶段：regex 回退匹配 "Please retry in Xs"
