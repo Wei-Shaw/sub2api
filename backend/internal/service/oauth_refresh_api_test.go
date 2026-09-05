@@ -759,6 +759,41 @@ func TestBuildClaudeAccountCredentials_Minimal(t *testing.T) {
 	require.False(t, hasScope, "scope should not be set when empty")
 }
 
+func TestBuildClaudeAccountCredentials_RefreshTokenExpiresAt(t *testing.T) {
+	tokenInfo := &TokenInfo{
+		AccessToken:           "at-123",
+		TokenType:             "Bearer",
+		ExpiresIn:             3600,
+		ExpiresAt:             1700000000,
+		RefreshToken:          "rt-456",
+		RefreshTokenExpiresAt: 1702592000,
+	}
+
+	creds := BuildClaudeAccountCredentials(tokenInfo)
+
+	require.Equal(t, "1702592000", creds["refresh_token_expires_at"])
+}
+
+func TestBuildClaudeAccountCredentials_RefreshTokenExpiresAtOmittedWhenUnknown(t *testing.T) {
+	// 上游未返回 refresh_token_expires_in 时不写该字段，
+	// 交给 MergeCredentials 保留此前记录的值。
+	tokenInfo := &TokenInfo{
+		AccessToken:  "at-123",
+		TokenType:    "Bearer",
+		ExpiresIn:    3600,
+		ExpiresAt:    1700000000,
+		RefreshToken: "rt-456",
+	}
+
+	creds := BuildClaudeAccountCredentials(tokenInfo)
+
+	_, has := creds["refresh_token_expires_at"]
+	require.False(t, has, "refresh_token_expires_at should be omitted when upstream did not return it")
+
+	merged := MergeCredentials(map[string]any{"refresh_token_expires_at": "1702592000"}, creds)
+	require.Equal(t, "1702592000", merged["refresh_token_expires_at"], "previously known value must survive")
+}
+
 // refreshAPIAccountRepoWithRace supports returning a different account on subsequent GetByID calls
 // to simulate race conditions where another worker has refreshed the token.
 type refreshAPIAccountRepoWithRace struct {
