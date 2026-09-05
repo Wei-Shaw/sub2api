@@ -43,6 +43,7 @@ var (
 		"IDENTITY_UNBIND_LAST_METHOD",
 		"bind another sign-in method before unbinding this provider",
 	)
+	ErrBalanceTransferConflict = infraerrors.Conflict("BALANCE_TRANSFER_CONFLICT", "balance transfer external_id conflicts with an existing transfer")
 )
 
 const (
@@ -155,6 +156,7 @@ type UserRepository interface {
 
 	UpdateBalance(ctx context.Context, id int64, amount float64) error
 	DeductBalance(ctx context.Context, id int64, amount float64) error
+	TransferBalance(ctx context.Context, input BalanceTransferInput) (*BalanceTransfer, error)
 	// AdjustBalance 原子地把 delta 累加到余额上，并返回变更前后的值。结果为负时
 	// 拒绝写入并返回 ErrBalanceNegative。管理员的加/扣款必须走这里而不是
 	// "读余额→算新值→整行写回"，否则并发的计费扣款会被旧快照抹掉。
@@ -207,6 +209,28 @@ type UserAuthIdentityRecord struct {
 	Metadata        map[string]any
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+}
+
+type BalanceTransferInput struct {
+	ExternalID string
+	FromUserID int64
+	ToUserID   int64
+	Amount     float64
+	Reason     string
+	Metadata   map[string]any
+}
+
+type BalanceTransfer struct {
+	ID          int64
+	ExternalID  string
+	FromUserID  int64
+	ToUserID    int64
+	Amount      float64
+	Reason      string
+	Metadata    map[string]any
+	FromBalance float64
+	ToBalance   float64
+	CreatedAt   time.Time
 }
 
 type UserIdentitySummary struct {

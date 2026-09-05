@@ -175,6 +175,10 @@ func (s *userRepoStub) DeductBalance(ctx context.Context, id int64, amount float
 	panic("unexpected DeductBalance call")
 }
 
+func (s *userRepoStub) TransferBalance(ctx context.Context, input BalanceTransferInput) (*BalanceTransfer, error) {
+	panic("unexpected TransferBalance call")
+}
+
 func (s *userRepoStub) AdjustBalance(ctx context.Context, id int64, delta float64) (BalanceChange, error) {
 	panic("unexpected AdjustBalance call")
 }
