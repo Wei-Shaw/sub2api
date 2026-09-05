@@ -468,9 +468,47 @@ export default {
         resetStatus: 'Reset Status',
         refreshToken: 'Refresh Token',
         probeUpstreamBilling: 'Probe Upstream Rate',
+        testConnection: 'Batch Test Connection',
         resetStatusSuccess: 'Successfully reset {count} account(s) status',
         refreshTokenSuccess: 'Successfully refreshed {count} account(s) token',
         partialSuccess: 'Partially completed: {success} succeeded, {failed} failed'
+      },
+      batchTest: {
+        title: 'Batch Account Connection Test',
+        model: 'Test model',
+        loadingModels: 'Loading account models...',
+        selectModel: 'Select a model',
+        start: 'Start test',
+        testing: 'Testing...',
+        viewSnapshot: 'View last snapshot',
+        summary: '{supported} ready, {skipped} skipped',
+        progress: '{completed}/{total} completed',
+        resultFilter: 'Result filter',
+        filter: {
+          all: 'All',
+          success: 'Success',
+          failed: 'Failed'
+        },
+        account: 'Account',
+        modelStatus: 'Model support',
+        modelResult: 'Model result',
+        upstreamResponse: 'Upstream response',
+        modelMismatch: 'Model mismatch',
+        result: 'Result',
+        firstByte: 'First byte',
+        totalLatency: 'Total latency',
+        error: 'Error',
+        checking: 'Checking',
+        supported: 'Ready',
+        unsupported: 'Model unsupported',
+        status: {
+          checking: 'Checking',
+          ready: 'Ready',
+          skipped: 'Skipped',
+          testing: 'Testing',
+          success: 'Success',
+          failed: 'Failed'
+        }
       },
       bulkEdit: {
         title: 'Bulk Edit Accounts',

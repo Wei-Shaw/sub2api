@@ -3,7 +3,8 @@
  * Handles AI platform account management for administrators
  */
 
-import { apiClient } from '../client'
+import { apiClient, buildApiUrl } from '../client'
+import { ADMIN_UI_REQUEST_HEADER } from '../adminUIRequest'
 import type {
   Account,
   CreateAccountRequest,
@@ -283,6 +284,55 @@ export async function testAccount(id: number): Promise<{
     latency_ms?: number
   }>(`/admin/accounts/${id}/test`)
   return data
+}
+
+export interface BatchTestAccountEvent {
+  type: 'batch_start' | 'account_started' | 'account_result' | 'batch_complete'
+  account_id?: number
+  account_name?: string
+  platform?: string
+  model_id?: string
+  upstream_model?: string
+  status?: string
+  first_byte_latency_ms?: number
+  latency_ms?: number
+  error?: string
+  completed?: number
+  total?: number
+}
+
+export async function batchTestAccounts(
+  accountIds: number[],
+  modelId: string,
+  onEvent: (event: BatchTestAccountEvent) => void
+): Promise<void> {
+  const response = await fetch(buildApiUrl('/admin/accounts/batch-test'), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
+      'Content-Type': 'application/json',
+      [ADMIN_UI_REQUEST_HEADER]: '1'
+    },
+    credentials: 'include',
+    body: JSON.stringify({ account_ids: accountIds, model_id: modelId })
+  })
+  if (!response.ok || !response.body) {
+    throw new Error(`Batch account test failed (${response.status})`)
+  }
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (true) {
+    const { value, done } = await reader.read()
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+    for (const block of buffer.split('\n\n').slice(0, -1)) {
+      const line = block.split('\n').find(item => item.startsWith('data: '))
+      if (!line) continue
+      onEvent(JSON.parse(line.slice(6)) as BatchTestAccountEvent)
+    }
+    buffer = buffer.includes('\n\n') ? buffer.slice(buffer.lastIndexOf('\n\n') + 2) : buffer
+    if (done) break
+  }
 }
 
 /**
@@ -1057,6 +1107,7 @@ export const accountsAPI = {
   delete: deleteAccount,
   toggleStatus,
   testAccount,
+  batchTestAccounts,
   refreshCredentials,
   applyOAuthCredentials,
   getStats,

@@ -555,9 +555,47 @@ export default {
         resetStatus: '批量重置状态',
         refreshToken: '批量刷新令牌',
         probeUpstreamBilling: '探测上游倍率',
+        testConnection: '批量测试连接',
         resetStatusSuccess: '已成功重置 {count} 个账号状态',
         refreshTokenSuccess: '已成功刷新 {count} 个账号令牌',
         partialSuccess: '操作部分完成：{success} 成功，{failed} 失败'
+      },
+      batchTest: {
+        title: '批量测试账号连接',
+        model: '测试模型',
+        loadingModels: '正在读取账号模型...',
+        selectModel: '请选择模型',
+        start: '开始测试',
+        testing: '测试中...',
+        viewSnapshot: '查看上次快照',
+        summary: '可测试 {supported} 个，跳过 {skipped} 个',
+        progress: '已完成 {completed}/{total}',
+        resultFilter: '结果筛选',
+        filter: {
+          all: '全部',
+          success: '成功',
+          failed: '失败'
+        },
+        account: '账号',
+        modelStatus: '模型支持',
+        modelResult: '模型结果',
+        upstreamResponse: '上游响应',
+        modelMismatch: '模型不一致',
+        result: '结果',
+        firstByte: '首字延迟',
+        totalLatency: '总耗时',
+        error: '错误',
+        checking: '检查中',
+        supported: '可测试',
+        unsupported: '不支持该模型',
+        status: {
+          checking: '检查中',
+          ready: '待测试',
+          skipped: '已跳过',
+          testing: '测试中',
+          success: '成功',
+          failed: '失败'
+        }
       },
       bulkEdit: {
         title: '批量编辑账号',
