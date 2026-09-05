@@ -423,17 +423,18 @@ func parseUserPlatformQuotaHash(m map[string]string) *service.UserPlatformQuotaC
 		return n
 	}
 	return &service.UserPlatformQuotaCacheEntry{
-		DailyUsageUSD:      parseFloat(m["daily_usage"]),
-		WeeklyUsageUSD:     parseFloat(m["weekly_usage"]),
-		MonthlyUsageUSD:    parseFloat(m["monthly_usage"]),
-		Version:            parseInt64(m["version"]),
-		SchemaVersion:      parseInt64(m["schema_version"]),
-		DailyLimitUSD:      parseFloatPtr(m["daily_limit"]),
-		WeeklyLimitUSD:     parseFloatPtr(m["weekly_limit"]),
-		MonthlyLimitUSD:    parseFloatPtr(m["monthly_limit"]),
-		DailyWindowStart:   parseTimePtr(m["daily_window_start"]),
-		WeeklyWindowStart:  parseTimePtr(m["weekly_window_start"]),
-		MonthlyWindowStart: parseTimePtr(m["monthly_window_start"]),
+		DailyUsageUSD:       parseFloat(m["daily_usage"]),
+		WeeklyUsageUSD:      parseFloat(m["weekly_usage"]),
+		MonthlyUsageUSD:     parseFloat(m["monthly_usage"]),
+		Version:             parseInt64(m["version"]),
+		SchemaVersion:       parseInt64(m["schema_version"]),
+		DailyLimitUSD:       parseFloatPtr(m["daily_limit"]),
+		WeeklyLimitUSD:      parseFloatPtr(m["weekly_limit"]),
+		MonthlyLimitUSD:     parseFloatPtr(m["monthly_limit"]),
+		DailyWindowStart:    parseTimePtr(m["daily_window_start"]),
+		WeeklyWindowStart:   parseTimePtr(m["weekly_window_start"]),
+		WeeklyWindowResetAt: parseTimePtr(m["weekly_window_reset_at"]),
+		MonthlyWindowStart:  parseTimePtr(m["monthly_window_start"]),
 	}
 }
 
@@ -484,6 +485,7 @@ func (c *billingCache) SetUserPlatformQuotaCache(ctx context.Context, userID int
 		"monthly_limit", fmtFloatPtr(entry.MonthlyLimitUSD),
 		"daily_window_start", fmtTimePtr(entry.DailyWindowStart),
 		"weekly_window_start", fmtTimePtr(entry.WeeklyWindowStart),
+		"weekly_window_reset_at", fmtTimePtr(entry.WeeklyWindowResetAt),
 		"monthly_window_start", fmtTimePtr(entry.MonthlyWindowStart),
 	)
 	pipe.Expire(ctx, key, ttl)

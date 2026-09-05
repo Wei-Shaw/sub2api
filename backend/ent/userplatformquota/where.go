@@ -120,6 +120,11 @@ func WeeklyWindowStart(v time.Time) predicate.UserPlatformQuota {
 	return predicate.UserPlatformQuota(sql.FieldEQ(FieldWeeklyWindowStart, v))
 }
 
+// WeeklyWindowResetAt applies equality check predicate on the "weekly_window_reset_at" field. It's identical to WeeklyWindowResetAtEQ.
+func WeeklyWindowResetAt(v time.Time) predicate.UserPlatformQuota {
+	return predicate.UserPlatformQuota(sql.FieldEQ(FieldWeeklyWindowResetAt, v))
+}
+
 // MonthlyWindowStart applies equality check predicate on the "monthly_window_start" field. It's identical to MonthlyWindowStartEQ.
 func MonthlyWindowStart(v time.Time) predicate.UserPlatformQuota {
 	return predicate.UserPlatformQuota(sql.FieldEQ(FieldMonthlyWindowStart, v))
@@ -708,6 +713,56 @@ func WeeklyWindowStartIsNil() predicate.UserPlatformQuota {
 // WeeklyWindowStartNotNil applies the NotNil predicate on the "weekly_window_start" field.
 func WeeklyWindowStartNotNil() predicate.UserPlatformQuota {
 	return predicate.UserPlatformQuota(sql.FieldNotNull(FieldWeeklyWindowStart))
+}
+
+// WeeklyWindowResetAtEQ applies the EQ predicate on the "weekly_window_reset_at" field.
+func WeeklyWindowResetAtEQ(v time.Time) predicate.UserPlatformQuota {
+	return predicate.UserPlatformQuota(sql.FieldEQ(FieldWeeklyWindowResetAt, v))
+}
+
+// WeeklyWindowResetAtNEQ applies the NEQ predicate on the "weekly_window_reset_at" field.
+func WeeklyWindowResetAtNEQ(v time.Time) predicate.UserPlatformQuota {
+	return predicate.UserPlatformQuota(sql.FieldNEQ(FieldWeeklyWindowResetAt, v))
+}
+
+// WeeklyWindowResetAtIn applies the In predicate on the "weekly_window_reset_at" field.
+func WeeklyWindowResetAtIn(vs ...time.Time) predicate.UserPlatformQuota {
+	return predicate.UserPlatformQuota(sql.FieldIn(FieldWeeklyWindowResetAt, vs...))
+}
+
+// WeeklyWindowResetAtNotIn applies the NotIn predicate on the "weekly_window_reset_at" field.
+func WeeklyWindowResetAtNotIn(vs ...time.Time) predicate.UserPlatformQuota {
+	return predicate.UserPlatformQuota(sql.FieldNotIn(FieldWeeklyWindowResetAt, vs...))
+}
+
+// WeeklyWindowResetAtGT applies the GT predicate on the "weekly_window_reset_at" field.
+func WeeklyWindowResetAtGT(v time.Time) predicate.UserPlatformQuota {
+	return predicate.UserPlatformQuota(sql.FieldGT(FieldWeeklyWindowResetAt, v))
+}
+
+// WeeklyWindowResetAtGTE applies the GTE predicate on the "weekly_window_reset_at" field.
+func WeeklyWindowResetAtGTE(v time.Time) predicate.UserPlatformQuota {
+	return predicate.UserPlatformQuota(sql.FieldGTE(FieldWeeklyWindowResetAt, v))
+}
+
+// WeeklyWindowResetAtLT applies the LT predicate on the "weekly_window_reset_at" field.
+func WeeklyWindowResetAtLT(v time.Time) predicate.UserPlatformQuota {
+	return predicate.UserPlatformQuota(sql.FieldLT(FieldWeeklyWindowResetAt, v))
+}
+
+// WeeklyWindowResetAtLTE applies the LTE predicate on the "weekly_window_reset_at" field.
+func WeeklyWindowResetAtLTE(v time.Time) predicate.UserPlatformQuota {
+	return predicate.UserPlatformQuota(sql.FieldLTE(FieldWeeklyWindowResetAt, v))
+}
+
+// WeeklyWindowResetAtIsNil applies the IsNil predicate on the "weekly_window_reset_at" field.
+func WeeklyWindowResetAtIsNil() predicate.UserPlatformQuota {
+	return predicate.UserPlatformQuota(sql.FieldIsNull(FieldWeeklyWindowResetAt))
+}
+
+// WeeklyWindowResetAtNotNil applies the NotNil predicate on the "weekly_window_reset_at" field.
+func WeeklyWindowResetAtNotNil() predicate.UserPlatformQuota {
+	return predicate.UserPlatformQuota(sql.FieldNotNull(FieldWeeklyWindowResetAt))
 }
 
 // MonthlyWindowStartEQ applies the EQ predicate on the "monthly_window_start" field.

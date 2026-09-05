@@ -267,6 +267,26 @@ func (_u *UserPlatformQuotaUpdate) ClearWeeklyWindowStart() *UserPlatformQuotaUp
 	return _u
 }
 
+// SetWeeklyWindowResetAt sets the "weekly_window_reset_at" field.
+func (_u *UserPlatformQuotaUpdate) SetWeeklyWindowResetAt(v time.Time) *UserPlatformQuotaUpdate {
+	_u.mutation.SetWeeklyWindowResetAt(v)
+	return _u
+}
+
+// SetNillableWeeklyWindowResetAt sets the "weekly_window_reset_at" field if the given value is not nil.
+func (_u *UserPlatformQuotaUpdate) SetNillableWeeklyWindowResetAt(v *time.Time) *UserPlatformQuotaUpdate {
+	if v != nil {
+		_u.SetWeeklyWindowResetAt(*v)
+	}
+	return _u
+}
+
+// ClearWeeklyWindowResetAt clears the value of the "weekly_window_reset_at" field.
+func (_u *UserPlatformQuotaUpdate) ClearWeeklyWindowResetAt() *UserPlatformQuotaUpdate {
+	_u.mutation.ClearWeeklyWindowResetAt()
+	return _u
+}
+
 // SetMonthlyWindowStart sets the "monthly_window_start" field.
 func (_u *UserPlatformQuotaUpdate) SetMonthlyWindowStart(v time.Time) *UserPlatformQuotaUpdate {
 	_u.mutation.SetMonthlyWindowStart(v)
@@ -438,6 +458,12 @@ func (_u *UserPlatformQuotaUpdate) sqlSave(ctx context.Context) (_node int, err 
 	}
 	if _u.mutation.WeeklyWindowStartCleared() {
 		_spec.ClearField(userplatformquota.FieldWeeklyWindowStart, field.TypeTime)
+	}
+	if value, ok := _u.mutation.WeeklyWindowResetAt(); ok {
+		_spec.SetField(userplatformquota.FieldWeeklyWindowResetAt, field.TypeTime, value)
+	}
+	if _u.mutation.WeeklyWindowResetAtCleared() {
+		_spec.ClearField(userplatformquota.FieldWeeklyWindowResetAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.MonthlyWindowStart(); ok {
 		_spec.SetField(userplatformquota.FieldMonthlyWindowStart, field.TypeTime, value)
@@ -732,6 +758,26 @@ func (_u *UserPlatformQuotaUpdateOne) ClearWeeklyWindowStart() *UserPlatformQuot
 	return _u
 }
 
+// SetWeeklyWindowResetAt sets the "weekly_window_reset_at" field.
+func (_u *UserPlatformQuotaUpdateOne) SetWeeklyWindowResetAt(v time.Time) *UserPlatformQuotaUpdateOne {
+	_u.mutation.SetWeeklyWindowResetAt(v)
+	return _u
+}
+
+// SetNillableWeeklyWindowResetAt sets the "weekly_window_reset_at" field if the given value is not nil.
+func (_u *UserPlatformQuotaUpdateOne) SetNillableWeeklyWindowResetAt(v *time.Time) *UserPlatformQuotaUpdateOne {
+	if v != nil {
+		_u.SetWeeklyWindowResetAt(*v)
+	}
+	return _u
+}
+
+// ClearWeeklyWindowResetAt clears the value of the "weekly_window_reset_at" field.
+func (_u *UserPlatformQuotaUpdateOne) ClearWeeklyWindowResetAt() *UserPlatformQuotaUpdateOne {
+	_u.mutation.ClearWeeklyWindowResetAt()
+	return _u
+}
+
 // SetMonthlyWindowStart sets the "monthly_window_start" field.
 func (_u *UserPlatformQuotaUpdateOne) SetMonthlyWindowStart(v time.Time) *UserPlatformQuotaUpdateOne {
 	_u.mutation.SetMonthlyWindowStart(v)
@@ -933,6 +979,12 @@ func (_u *UserPlatformQuotaUpdateOne) sqlSave(ctx context.Context) (_node *UserP
 	}
 	if _u.mutation.WeeklyWindowStartCleared() {
 		_spec.ClearField(userplatformquota.FieldWeeklyWindowStart, field.TypeTime)
+	}
+	if value, ok := _u.mutation.WeeklyWindowResetAt(); ok {
+		_spec.SetField(userplatformquota.FieldWeeklyWindowResetAt, field.TypeTime, value)
+	}
+	if _u.mutation.WeeklyWindowResetAtCleared() {
+		_spec.ClearField(userplatformquota.FieldWeeklyWindowResetAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.MonthlyWindowStart(); ok {
 		_spec.SetField(userplatformquota.FieldMonthlyWindowStart, field.TypeTime, value)
