@@ -370,6 +370,31 @@ func TestGatewayModels_GeminiGroupFallsBackToGeminiModels(t *testing.T) {
 	require.NotContains(t, modelIDsForTest(got.Data), "claude-sonnet-4-6")
 }
 
+func TestGatewayModels_AntigravityGroupFallsBackToAntigravityModels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(21)
+	h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformAntigravity},
+	})
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, "list", got.Object)
+	ids := modelIDsForTest(got.Data)
+	require.Contains(t, ids, "gemini-3.6-flash")
+	require.Contains(t, ids, "gemini-2.5-flash")
+}
+
 func TestGatewayModels_Grok45AdvertisesReasoningEffortForGrokBuild(t *testing.T) {
 	assertGrokGatewayReasoningEfforts(t, 4409, "grok-4.5", []gatewayReasoningEffortOptionForTest{
 		{Value: "low", Label: "Low"},
