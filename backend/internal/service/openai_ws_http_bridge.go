@@ -488,12 +488,20 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	buildUpstreamRequest := func(requestBody []byte) (*http.Request, error) {
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 		defer releaseUpstreamCtx()
+		upstreamBody := requestBody
+		if account.Platform != PlatformGrok && isOpenAIResponsesLiteWebSocketPayload(payload) {
+			normalizedBody, _, normalizeErr := normalizeOpenAIResponsesLitePayloadForAccount(requestBody, account)
+			if normalizeErr != nil {
+				return nil, fmt.Errorf("normalize responses Lite upstream payload: %w", normalizeErr)
+			}
+			upstreamBody = normalizedBody
+		}
 		var upstreamReq *http.Request
 		var buildErr error
 		if account.Platform == PlatformGrok {
-			upstreamReq, buildErr = buildGrokResponsesRequest(upstreamCtx, c, account, requestBody, token, grokCacheIdentity, s.cfg, s.settingService)
+			upstreamReq, buildErr = buildGrokResponsesRequest(upstreamCtx, c, account, upstreamBody, token, grokCacheIdentity, s.cfg, s.settingService)
 		} else {
-			upstreamReq, buildErr = s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, requestBody, token)
+			upstreamReq, buildErr = s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, upstreamBody, token)
 		}
 		if buildErr != nil {
 			return nil, buildErr
