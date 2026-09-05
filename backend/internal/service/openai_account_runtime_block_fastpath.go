@@ -432,6 +432,9 @@ func canonicalOpenAIAccountSchedulingModel(account *Account, requestedModel stri
 	if account.IsOpenAI() {
 		return resolveOpenAIAccountUpstreamModelForRequest(account, model, false)
 	}
+	if account.IsGrokPassthroughEnabled() {
+		return model
+	}
 	if mapped := strings.TrimSpace(account.GetMappedModel(model)); mapped != "" {
 		return mapped
 	}

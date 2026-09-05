@@ -31,9 +31,9 @@
         </p>
       </div>
 
-      <!-- OpenAI passthrough -->
+      <!-- OpenAI / Grok passthrough -->
       <div
-        v-if="allOpenAIPassthroughCapable"
+        v-if="allPassthroughCapable"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="mb-3 flex items-center justify-between">
@@ -1563,6 +1563,19 @@ const allOpenAIPassthroughCapable = computed(() => {
   )
 })
 
+const allGrokPassthroughCapable = computed(() => {
+  return (
+    targetSelectedPlatforms.value.length === 1 &&
+    targetSelectedPlatforms.value[0] === 'grok' &&
+    targetSelectedTypes.value.length > 0 &&
+    targetSelectedTypes.value.every(t => t === 'oauth' || t === 'apikey')
+  )
+})
+
+const allPassthroughCapable = computed(
+  () => allOpenAIPassthroughCapable.value || allGrokPassthroughCapable.value
+)
+
 const allOpenAIOAuth = computed(() => {
   return (
     targetSelectedPlatforms.value.length === 1 &&
@@ -1749,7 +1762,7 @@ const upstreamBillingAutoProbeOptions = computed(() => [
 ])
 const isOpenAIModelRestrictionDisabled = computed(
   () =>
-    allOpenAIPassthroughCapable.value &&
+    allPassthroughCapable.value &&
     enableOpenAIPassthrough.value &&
     openaiPassthroughEnabled.value
 )
@@ -1975,11 +1988,15 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     }
   }
 
-  if (enableOpenAIPassthrough.value) {
+  if (enableOpenAIPassthrough.value && allPassthroughCapable.value) {
     const extra = ensureExtra()
-    extra.openai_passthrough = openaiPassthroughEnabled.value
-    if (!openaiPassthroughEnabled.value) {
-      extra.openai_oauth_passthrough = false
+    if (allGrokPassthroughCapable.value) {
+      extra.grok_passthrough = openaiPassthroughEnabled.value
+    } else {
+      extra.openai_passthrough = openaiPassthroughEnabled.value
+      if (!openaiPassthroughEnabled.value) {
+        extra.openai_oauth_passthrough = false
+      }
     }
   }
 

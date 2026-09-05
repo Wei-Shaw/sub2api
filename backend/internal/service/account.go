@@ -840,7 +840,7 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 	// 该短路必须在 model_mapping 判定之前：账号从"白名单模式"切换到透传后，
 	// credentials 里常残留旧的非空 model_mapping，若不在此放行，透传账号会被
 	// model_mapping 白名单错误排除出候选集，导致 no available accounts / 404（issue #4936）。
-	if a.IsOpenAIPassthroughEnabled() {
+	if a.IsOpenAIPassthroughEnabled() || a.IsGrokPassthroughEnabled() {
 		return true
 	}
 	mapping := a.GetModelMapping()
@@ -2040,6 +2040,18 @@ func (a *Account) IsOpenAIPassthroughEnabled() bool {
 		return enabled
 	}
 	return false
+}
+
+// IsGrokPassthroughEnabled 返回 Grok 账号是否启用「自动透传（仅替换认证）」。
+//
+// 字段：accounts.extra.grok_passthrough。
+// 仅 Grok 平台生效；缺省或非 bool 按 false（关闭）处理。
+func (a *Account) IsGrokPassthroughEnabled() bool {
+	if a == nil || !a.IsGrok() || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra["grok_passthrough"].(bool)
+	return ok && enabled
 }
 
 // IsOpenAIResponsesWebSocketV2Enabled 返回 OpenAI 账号是否开启 Responses WebSocket v2。
