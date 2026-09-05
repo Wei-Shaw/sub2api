@@ -70,7 +70,7 @@ func (s *OpenAIGatewayService) acquireCodexConversationSlot(ctx context.Context,
 		}
 		if winner == nil {
 			lease.Release()
-			return nil, nil, false, fmt.Errorf("Codex conversation slot resolver returned nil")
+			return nil, nil, false, fmt.Errorf("codex conversation slot resolver returned nil")
 		}
 		if winner.SlotID != candidate.SlotID {
 			lease.Release()
