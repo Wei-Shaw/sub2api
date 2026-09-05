@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { mount } from '@vue/test-utils'
 
@@ -326,6 +326,50 @@ function mountModal(account = buildAccount()) {
 describe('EditAccountModal', () => {
   beforeEach(() => {
     authIsSimpleMode.value = true
+  })
+
+  afterEach(() => vi.useRealTimers())
+
+  it('sets expiry presets from now instead of extending the saved expiry', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2028-02-29T12:34:00'))
+    const account = buildAccount()
+    account.expires_at = new Date('2030-06-15T09:00:00').getTime() / 1000
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const input = wrapper.get<HTMLInputElement>('input[type="datetime-local"]')
+
+    for (const [label, expected] of [
+      ['payment.oneMonth', '2028-03-29T12:34'],
+      ['payment.oneYear', '2029-02-28T12:34'],
+    ]) {
+      const button = wrapper.findAll('button').find((candidate) => candidate.text() === label)!
+      expect(button.attributes('type')).toBe('button')
+      await button.trigger('click')
+      expect(input.element.value).toBe(expected)
+      expect(updateAccountMock).not.toHaveBeenCalled()
+    }
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.expires_at).toBe(new Date('2029-02-28T12:34:00').getTime() / 1000)
+    wrapper.unmount()
+  })
+
+  it('can clear a selected expiry preset before saving the account', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const button = wrapper.findAll('button').find((candidate) => candidate.text() === 'payment.oneYear')!
+    await button.trigger('click')
+    const input = wrapper.get<HTMLInputElement>('input[type="datetime-local"]')
+    expect(input.element.value).not.toBe('')
+    await input.setValue('')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.expires_at).toBe(0)
+    wrapper.unmount()
   })
 
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
