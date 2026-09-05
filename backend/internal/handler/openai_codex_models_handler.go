@@ -68,7 +68,8 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 				h.errorResponse(c, infraerrors.Code(lastUpstreamErr), "upstream_error", infraerrors.Message(lastUpstreamErr))
 				return
 			}
-			h.errorResponse(c, http.StatusServiceUnavailable, "upstream_error", "No available OpenAI accounts")
+			recordNoAvailableAccountsReasonForOps(c, noAvailableAccountsReasonNoAccount)
+			h.errorResponse(c, http.StatusServiceUnavailable, "upstream_error", noAvailableAccountsClientMessage)
 			return
 		}
 		// 让 ops 错误日志携带实际选中的上游账号，便于定位失效账号（#4544）。

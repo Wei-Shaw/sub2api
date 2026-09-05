@@ -181,11 +181,10 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
-				message := cls.Message
 				if !cls.ModelNotFound {
-					message = "No available accounts: " + err.Error()
+					recordNoAvailableAccountsErrorForOps(c, err)
 				}
-				h.responsesErrorResponse(c, cls.Status, cls.ErrType, message)
+				h.responsesErrorResponse(c, cls.Status, cls.ErrType, cls.Message)
 				return
 			}
 			action := fs.HandleSelectionExhausted(requestCtx)
@@ -199,7 +198,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				if fs.LastFailoverErr != nil {
 					h.handleResponsesFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
 				} else {
-					h.responsesErrorResponse(c, http.StatusBadGateway, "server_error", "All available accounts exhausted")
+					h.responsesErrorResponse(c, http.StatusBadGateway, "server_error", "Upstream service temporarily unavailable")
 				}
 				return
 			}
@@ -212,7 +211,8 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		if !selection.Acquired {
 			if selection.WaitPlan == nil {
 				markOpsRoutingCapacityLimited(c)
-				h.responsesErrorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
+				recordNoAvailableAccountsReasonForOps(c, noAvailableAccountsReasonNoSlot)
+				h.responsesErrorResponse(c, http.StatusServiceUnavailable, "api_error", noAvailableAccountsClientMessage)
 				return
 			}
 			accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
@@ -241,7 +241,8 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			reqLog.Debug("gateway.responses.account_slot_profit_vetoed", zap.Int64("account_id", account.ID), zap.String("reason", reason))
 			if fs.RecordProfitVeto(account.ID) == FailoverExhausted {
 				reqLog.Warn("gateway.responses.profit_veto_attempts_exhausted", zap.Int("profit_veto_count", fs.ProfitVetoCount()))
-				h.responsesErrorResponse(c, http.StatusServiceUnavailable, "api_error", profitVetoExhaustedMessage)
+				recordNoAvailableAccountsReasonForOps(c, profitVetoExhaustedReason)
+				h.responsesErrorResponse(c, http.StatusServiceUnavailable, "api_error", noAvailableAccountsClientMessage)
 				return
 			}
 			continue
