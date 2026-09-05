@@ -154,6 +154,26 @@ func (_u *APIKeyUpdate) ClearLastUsedAt() *APIKeyUpdate {
 	return _u
 }
 
+// SetLastRotatedAt sets the "last_rotated_at" field.
+func (_u *APIKeyUpdate) SetLastRotatedAt(v time.Time) *APIKeyUpdate {
+	_u.mutation.SetLastRotatedAt(v)
+	return _u
+}
+
+// SetNillableLastRotatedAt sets the "last_rotated_at" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableLastRotatedAt(v *time.Time) *APIKeyUpdate {
+	if v != nil {
+		_u.SetLastRotatedAt(*v)
+	}
+	return _u
+}
+
+// ClearLastRotatedAt clears the value of the "last_rotated_at" field.
+func (_u *APIKeyUpdate) ClearLastRotatedAt() *APIKeyUpdate {
+	_u.mutation.ClearLastRotatedAt()
+	return _u
+}
+
 // SetIPWhitelist sets the "ip_whitelist" field.
 func (_u *APIKeyUpdate) SetIPWhitelist(v []string) *APIKeyUpdate {
 	_u.mutation.SetIPWhitelist(v)
@@ -602,6 +622,12 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.LastUsedAtCleared() {
 		_spec.ClearField(apikey.FieldLastUsedAt, field.TypeTime)
 	}
+	if value, ok := _u.mutation.LastRotatedAt(); ok {
+		_spec.SetField(apikey.FieldLastRotatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.LastRotatedAtCleared() {
+		_spec.ClearField(apikey.FieldLastRotatedAt, field.TypeTime)
+	}
 	if value, ok := _u.mutation.IPWhitelist(); ok {
 		_spec.SetField(apikey.FieldIPWhitelist, field.TypeJSON, value)
 	}
@@ -938,6 +964,26 @@ func (_u *APIKeyUpdateOne) SetNillableLastUsedAt(v *time.Time) *APIKeyUpdateOne 
 // ClearLastUsedAt clears the value of the "last_used_at" field.
 func (_u *APIKeyUpdateOne) ClearLastUsedAt() *APIKeyUpdateOne {
 	_u.mutation.ClearLastUsedAt()
+	return _u
+}
+
+// SetLastRotatedAt sets the "last_rotated_at" field.
+func (_u *APIKeyUpdateOne) SetLastRotatedAt(v time.Time) *APIKeyUpdateOne {
+	_u.mutation.SetLastRotatedAt(v)
+	return _u
+}
+
+// SetNillableLastRotatedAt sets the "last_rotated_at" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableLastRotatedAt(v *time.Time) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetLastRotatedAt(*v)
+	}
+	return _u
+}
+
+// ClearLastRotatedAt clears the value of the "last_rotated_at" field.
+func (_u *APIKeyUpdateOne) ClearLastRotatedAt() *APIKeyUpdateOne {
+	_u.mutation.ClearLastRotatedAt()
 	return _u
 }
 
@@ -1418,6 +1464,12 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if _u.mutation.LastUsedAtCleared() {
 		_spec.ClearField(apikey.FieldLastUsedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.LastRotatedAt(); ok {
+		_spec.SetField(apikey.FieldLastRotatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.LastRotatedAtCleared() {
+		_spec.ClearField(apikey.FieldLastRotatedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.IPWhitelist(); ok {
 		_spec.SetField(apikey.FieldIPWhitelist, field.TypeJSON, value)

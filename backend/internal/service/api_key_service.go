@@ -31,6 +31,7 @@ var (
 	ErrAPIKeyInvalidChars   = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
 	ErrAPIKeyRateLimited    = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
 	ErrAPIKeyAuthOverloaded = infraerrors.ServiceUnavailable("API_KEY_AUTH_OVERLOADED", "api key authentication is temporarily overloaded")
+	ErrAPIKeyRotateConflict = infraerrors.Conflict("API_KEY_ROTATE_CONFLICT", "api key was rotated by another request")
 	ErrInvalidIPPattern     = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
 	// ErrAPIKeyExpired        = infraerrors.Forbidden("API_KEY_EXPIRED", "api key has expired")
 	ErrAPIKeyExpired = infraerrors.Forbidden("API_KEY_EXPIRED", "api key 已过期")
@@ -119,6 +120,18 @@ type APIKeyRepository interface {
 	IncrementRateLimitUsage(ctx context.Context, id int64, cost float64) error
 	ResetRateLimitWindows(ctx context.Context, id int64) error
 	GetRateLimitData(ctx context.Context, id int64) (*APIKeyRateLimitData, error)
+}
+
+// APIKeyCredentialRepository performs the atomic compare-and-swap update required
+// by credential rotation. Production repositories must implement this interface.
+type APIKeyCredentialRepository interface {
+	RotateKey(ctx context.Context, id int64, expectedKey, newKey string, rotatedAt time.Time) error
+}
+
+// APIKeyCredentialRotator is used by the admin service without depending on the
+// full APIKeyService implementation.
+type APIKeyCredentialRotator interface {
+	RotateAny(ctx context.Context, id int64) (*APIKey, error)
 }
 
 type apiKeyAllByUserIDLister interface {
@@ -697,6 +710,52 @@ func (s *APIKeyService) GetByID(ctx context.Context, id int64) (*APIKey, error) 
 	if apiKey != nil {
 		apiKey.CurrentConcurrency = s.currentConcurrencyForAPIKey(ctx, apiKey.ID)
 	}
+	return apiKey, nil
+}
+
+// Rotate replaces the credential in place after verifying ownership. All
+// configuration, usage counters, relationships, and history remain attached
+// to the same API key ID.
+func (s *APIKeyService) Rotate(ctx context.Context, id, userID int64) (*APIKey, error) {
+	return s.rotate(ctx, id, &userID)
+}
+
+// RotateAny replaces a credential without an ownership check. It is exposed
+// through a narrow interface for administrator operations.
+func (s *APIKeyService) RotateAny(ctx context.Context, id int64) (*APIKey, error) {
+	return s.rotate(ctx, id, nil)
+}
+
+func (s *APIKeyService) rotate(ctx context.Context, id int64, ownerID *int64) (*APIKey, error) {
+	apiKey, err := s.apiKeyRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get api key: %w", err)
+	}
+	if ownerID != nil && apiKey.UserID != *ownerID {
+		return nil, ErrInsufficientPerms
+	}
+
+	repo, ok := s.apiKeyRepo.(APIKeyCredentialRepository)
+	if !ok {
+		return nil, infraerrors.InternalServer("API_KEY_ROTATION_UNAVAILABLE", "api key repository does not support atomic rotation")
+	}
+
+	oldKey := apiKey.Key
+	newKey, err := s.GenerateKey()
+	if err != nil {
+		return nil, fmt.Errorf("generate key: %w", err)
+	}
+
+	rotatedAt := time.Now().UTC()
+	if err := repo.RotateKey(ctx, apiKey.ID, oldKey, newKey, rotatedAt); err != nil {
+		return nil, fmt.Errorf("rotate api key: %w", err)
+	}
+
+	apiKey.Key = newKey
+	apiKey.LastRotatedAt = &rotatedAt
+	apiKey.UpdatedAt = rotatedAt
+	s.InvalidateAuthCacheByKey(ctx, oldKey)
+	s.InvalidateAuthCacheByKey(ctx, newKey)
 	return apiKey, nil
 }
 

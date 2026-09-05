@@ -58,6 +58,7 @@ var auditExtraAllowedKeys = map[string]struct{}{
 	"http_status": {}, "latency_ms": {}, "token_applied": {}, "retryable": {},
 	"event_id": {}, "requested_count": {}, "deleted_events": {}, "deleted_jobs": {},
 	"matched_count": {}, "snapshot_max_id": {}, "filter_hash": {}, "confirm": {},
+	"api_key_id": {}, "target_user_id": {},
 }
 
 // SetAuditExtra adds allowlisted, scalar details to the current audit entry.
@@ -129,6 +130,8 @@ var auditActionOverrides = map[string]string{
 	"POST /api/v1/auth/refresh":                               service.AuditActionTokenRefresh,
 	"POST /api/v1/user/totp/step-up":                          service.AuditActionStepUpVerify,
 	"POST /api/v1/admin/audit-logs/clear":                     service.AuditActionAuditLogClear,
+	"POST /api/v1/keys/:id/rotate":                            "user.api_keys.rotate",
+	"POST /api/v1/admin/api-keys/:id/rotate":                  "admin.api_keys.rotate",
 	"POST /api/v1/admin/accounts/data":                        "admin.accounts.import",
 	"POST /api/v1/admin/backups":                              "admin.backups.create",
 	"POST /api/v1/admin/backups/:id/restore":                  "admin.backups.restore",

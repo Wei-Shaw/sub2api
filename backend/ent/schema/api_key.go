@@ -51,6 +51,10 @@ func (APIKey) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("Last usage time of this API key"),
+		field.Time("last_rotated_at").
+			Optional().
+			Nillable().
+			Comment("Last time this API key credential was rotated"),
 		field.JSON("ip_whitelist", []string{}).
 			Optional().
 			Comment("Allowed IPs/CIDRs, e.g. [\"192.168.1.100\", \"10.0.0.0/8\"]"),

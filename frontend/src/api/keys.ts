@@ -121,6 +121,12 @@ export async function deleteKey(id: number): Promise<{ message: string }> {
   return data
 }
 
+/** Rotate an API key in place and return its one-time credential. */
+export async function rotate(id: number): Promise<ApiKey> {
+  const { data } = await apiClient.post<ApiKey>(`/keys/${id}/rotate`)
+  return data
+}
+
 /**
  * Toggle API key status (active/inactive)
  * @param id - API key ID
@@ -136,6 +142,7 @@ export const keysAPI = {
   getById,
   create,
   update,
+  rotate,
   delete: deleteKey,
   toggleStatus
 }

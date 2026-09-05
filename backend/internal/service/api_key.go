@@ -41,6 +41,7 @@ type APIKey struct {
 	CompiledIPBlacklist *ip.CompiledIPRules `json:"-"`
 	LastUsedAt          *time.Time
 	LastUsedIP          *string
+	LastRotatedAt       *time.Time
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 	User                *User

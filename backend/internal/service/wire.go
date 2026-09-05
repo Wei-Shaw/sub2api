@@ -656,6 +656,13 @@ func ProvideAPIKeyAuthCacheInvalidator(apiKeyService *APIKeyService) APIKeyAuthC
 	return apiKeyService
 }
 
+// ProvideAPIKeyCredentialRotator exposes the explicit rotation dependency used
+// by AdminService. Keeping it separate from cache invalidation makes Wire fail
+// at compile time if the production rotator is removed or replaced incorrectly.
+func ProvideAPIKeyCredentialRotator(apiKeyService *APIKeyService) APIKeyCredentialRotator {
+	return apiKeyService
+}
+
 // ProvideImageStorageSettingService 构造异步生图对象存储的后台设置服务。
 //
 // config.yaml 里的 image_storage 作为回落：后台从未保存过设置时沿用它，
@@ -825,6 +832,7 @@ var ProviderSet = wire.NewSet(
 	NewUserService,
 	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,
+	ProvideAPIKeyCredentialRotator,
 	ProvideAuthCacheInvalidationWorker,
 	NewGroupService,
 	NewCompositeRouteResolver,

@@ -4,6 +4,8 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"sync"
 	"testing"
 	"time"
@@ -169,6 +171,53 @@ func (s *APIKeyRepoSuite) TestUpdate_ClearGroupID() {
 	got, err := s.repo.GetByID(s.ctx, key.ID)
 	s.Require().NoError(err)
 	s.Require().Nil(got.GroupID, "expected GroupID to be cleared")
+}
+
+func (s *APIKeyRepoSuite) TestRotateKey_UsesCompareAndSwapAndPreservesRecord() {
+	user := s.mustCreateUser("rotate@test.com")
+	key := &service.APIKey{
+		UserID: user.ID, Key: "sk-rotate-old", Name: "Rotate",
+		Status: service.StatusActive, Quota: 100, QuotaUsed: 12,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, key))
+	rotatedAt := time.Now().UTC().Truncate(time.Microsecond)
+
+	s.Require().NoError(s.repo.RotateKey(s.ctx, key.ID, key.Key, "sk-rotate-new", rotatedAt))
+	got, err := s.repo.GetByID(s.ctx, key.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(key.ID, got.ID)
+	s.Require().Equal("sk-rotate-new", got.Key)
+	s.Require().Equal("Rotate", got.Name)
+	s.Require().Equal(100.0, got.Quota)
+	s.Require().Equal(12.0, got.QuotaUsed)
+	s.Require().NotNil(got.LastRotatedAt)
+	s.Require().WithinDuration(rotatedAt, *got.LastRotatedAt, time.Microsecond)
+	_, err = s.repo.GetByKey(s.ctx, key.Key)
+	s.Require().ErrorIs(err, service.ErrAPIKeyNotFound)
+	newKey, err := s.repo.GetByKey(s.ctx, "sk-rotate-new")
+	s.Require().NoError(err)
+	s.Require().Equal(key.ID, newKey.ID)
+
+	oldHash := sha256.Sum256([]byte(key.Key))
+	newHash := sha256.Sum256([]byte("sk-rotate-new"))
+	rows, err := s.repo.sql.QueryContext(s.ctx, `
+		SELECT cache_key
+		FROM auth_cache_invalidation_outbox
+		WHERE cache_key IN ($1, $2)`, hex.EncodeToString(oldHash[:]), hex.EncodeToString(newHash[:]))
+	s.Require().NoError(err)
+	defer rows.Close()
+	invalidated := map[string]bool{}
+	for rows.Next() {
+		var cacheKey string
+		s.Require().NoError(rows.Scan(&cacheKey))
+		invalidated[cacheKey] = true
+	}
+	s.Require().NoError(rows.Err())
+	s.Require().True(invalidated[hex.EncodeToString(oldHash[:])])
+	s.Require().True(invalidated[hex.EncodeToString(newHash[:])])
+
+	err = s.repo.RotateKey(s.ctx, key.ID, key.Key, "sk-rotate-stale", rotatedAt.Add(time.Second))
+	s.Require().ErrorIs(err, service.ErrAPIKeyRotateConflict)
 }
 
 // --- Delete ---
