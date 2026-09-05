@@ -87,6 +87,56 @@ func TestPromptServiceBlockingLatestTurnOnlyUsesNarrowSnapshot(t *testing.T) {
 	require.Equal(t, []string{"latest user input", "previous output"}, seen)
 }
 
+type recordingLatestTurnCache struct {
+	values map[string]*PromptDecision
+	keys   []string
+}
+
+func (c *recordingLatestTurnCache) GetLatestTurnDecision(_ context.Context, key string) (*PromptDecision, error) {
+	c.keys = append(c.keys, key)
+	return c.values[key], nil
+}
+
+func (c *recordingLatestTurnCache) SetLatestTurnDecision(_ context.Context, key string, decision *PromptDecision, _ time.Duration) error {
+	if c.values == nil {
+		c.values = map[string]*PromptDecision{}
+	}
+	c.values[key] = decision
+	return nil
+}
+
+func TestPromptServiceLatestTurnOnlyReusesDecisionAcrossAssistantUpdates(t *testing.T) {
+	cache := &recordingLatestTurnCache{}
+	metrics := NewAtomicMetrics()
+	config := &fakeConfigStore{active: true, cfg: ActiveConfig{
+		RiskControlEnabled: true, Enabled: true, BlockingEnabled: true, BlockingLatestTurnOnly: true,
+		AllGroups: true, ConfigVersion: 11, Scanners: AllScannerIDs,
+		Endpoints: []ActiveEndpoint{{ID: "guard-1", Enabled: true, TimeoutMS: 1000, InputLimit: 4096}},
+	}}
+	evaluator := newGuardEvaluator(PromptScannerFunc(func(context.Context, ActiveEndpoint, string, []string) (*NormalizedResult, error) {
+		return &NormalizedResult{Decision: EventPass, RiskLevel: RiskLow, Action: ActionAllow, ScannerScores: map[string]float64{}}, nil
+	}), nil, metrics, 2, 2)
+	service := &PromptService{config: config, evaluator: evaluator, latestTurnCache: cache}
+
+	first, err := service.Evaluate(context.Background(), Request{Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"assistant","content":"previous output"},{"role":"user","content":"same user turn"},{"role":"assistant","content":"first tool call"},{"role":"tool","content":"first tool result"}]}`)})
+	require.NoError(t, err)
+	second, err := service.Evaluate(context.Background(), Request{Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"assistant","content":"previous output"},{"role":"user","content":"same user turn"},{"role":"assistant","content":"second tool call"},{"role":"tool","content":"second tool result"}]}`)})
+	require.NoError(t, err)
+	require.Equal(t, DecisionAllow, first.Kind)
+	require.Equal(t, first, second)
+	require.Equal(t, int64(1), metrics.Snapshot().Total)
+	require.Len(t, cache.values, 1)
+
+	_, err = service.Evaluate(context.Background(), Request{Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"assistant","content":"previous output"},{"role":"user","content":"new user turn"},{"role":"assistant","content":"tool call"}]}`)})
+	require.NoError(t, err)
+	require.Equal(t, int64(2), metrics.Snapshot().Total)
+
+	config.cfg.ConfigVersion++
+	_, err = service.Evaluate(context.Background(), Request{Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"assistant","content":"previous output"},{"role":"user","content":"same user turn"},{"role":"assistant","content":"third tool call"}]}`)})
+	require.NoError(t, err)
+	require.Equal(t, int64(3), metrics.Snapshot().Total, "config version changes must isolate cached decisions")
+}
+
 func TestPromptServiceRejectsInvalidDeleteConfirmationClaims(t *testing.T) {
 	now := time.Date(2026, 7, 16, 10, 0, 0, 0, time.UTC)
 	start, end := now.Add(-time.Hour), now.Add(time.Hour)
