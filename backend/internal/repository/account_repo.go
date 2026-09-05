@@ -1098,6 +1098,7 @@ func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selecto
 
 	field := dbaccount.FieldName
 	defaultOrder := true
+	lastUsedSort := false
 	switch sortBy {
 	case "", "name":
 		field = dbaccount.FieldName
@@ -1119,6 +1120,7 @@ func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selecto
 	case "last_used_at":
 		field = dbaccount.FieldLastUsedAt
 		defaultOrder = false
+		lastUsedSort = true
 	case "expires_at":
 		field = dbaccount.FieldExpiresAt
 		defaultOrder = false
@@ -1127,11 +1129,24 @@ func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selecto
 		defaultOrder = false
 	}
 
+	// “从未使用”(NULL) 早于任何实际时间：升序置顶，降序沉底。
 	if sortOrder == pagination.SortOrderDesc {
+		if lastUsedSort {
+			return []func(*entsql.Selector){
+				entsql.OrderByField(field, entsql.OrderDesc(), entsql.OrderNullsLast()).ToFunc(),
+				dbent.Desc(dbaccount.FieldID),
+			}
+		}
 		return []func(*entsql.Selector){dbent.Desc(field), dbent.Desc(dbaccount.FieldID)}
 	}
 	if defaultOrder {
 		return []func(*entsql.Selector){dbent.Asc(dbaccount.FieldName), dbent.Asc(dbaccount.FieldID)}
+	}
+	if lastUsedSort {
+		return []func(*entsql.Selector){
+			entsql.OrderByField(field, entsql.OrderNullsFirst()).ToFunc(),
+			dbent.Asc(dbaccount.FieldID),
+		}
 	}
 	return []func(*entsql.Selector){dbent.Asc(field), dbent.Asc(dbaccount.FieldID)}
 }
