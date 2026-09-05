@@ -238,7 +238,9 @@ func TestOpenAIAvailabilityFirstOutputTimeoutDoesNotPunishCancellation(t *testin
 		require.EqualValues(t, 1, settings.calls.Load())
 		require.EqualValues(t, 1, counter.increments.Load())
 		require.EqualValues(t, 1, counter.resets.Load())
-		require.Equal(t, 1, svc.rateLimitService.accountRepo.(*availabilityAccountRepo).authErrors)
+		repo, ok := svc.rateLimitService.accountRepo.(*availabilityAccountRepo)
+		require.True(t, ok)
+		require.Equal(t, 1, repo.authErrors)
 	})
 }
 
@@ -291,7 +293,9 @@ func TestOpenAIAvailabilityConfiguredTimeouts(t *testing.T) {
 			require.EqualValues(t, 1, settings.calls.Load(), "native idle failover must preserve administrator policy")
 			require.EqualValues(t, 1, counter.increments.Load())
 			require.Zero(t, counter.resets.Load(), "threshold has not been reached")
-			require.Zero(t, svc.rateLimitService.accountRepo.(*availabilityAccountRepo).authErrors)
+			repo, ok := svc.rateLimitService.accountRepo.(*availabilityAccountRepo)
+			require.True(t, ok)
+			require.Zero(t, repo.authErrors)
 		})
 	}
 }
