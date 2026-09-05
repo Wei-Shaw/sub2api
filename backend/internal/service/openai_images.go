@@ -1065,15 +1065,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 	}()
 	defer close(done)
 
-	var intervalTicker *time.Ticker
-	if streamInterval > 0 {
-		intervalTicker = time.NewTicker(streamInterval)
-		defer intervalTicker.Stop()
-	}
-	var intervalCh <-chan time.Time
-	if intervalTicker != nil {
-		intervalCh = intervalTicker.C
-	}
+	intervalTimer := newStreamIdleTimer(streamInterval)
+	defer intervalTimer.Stop()
+	intervalCh := intervalTimer.C()
 
 	var keepaliveTicker *time.Ticker
 	if keepaliveInterval > 0 {
@@ -1100,7 +1094,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 			processLine(ev.line)
 		case <-intervalCh:
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
-			if time.Since(lastRead) < streamInterval {
+			if !intervalTimer.ExpiredSince(lastRead) {
 				continue
 			}
 			if clientDisconnected {

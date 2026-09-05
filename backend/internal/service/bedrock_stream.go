@@ -94,15 +94,9 @@ func (s *GatewayService) handleBedrockStreamingResponse(
 	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
 		streamInterval = time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
 	}
-	var intervalTicker *time.Ticker
-	if streamInterval > 0 {
-		intervalTicker = time.NewTicker(streamInterval)
-		defer intervalTicker.Stop()
-	}
-	var intervalCh <-chan time.Time
-	if intervalTicker != nil {
-		intervalCh = intervalTicker.C
-	}
+	intervalTimer := newStreamIdleTimer(streamInterval)
+	defer intervalTimer.Stop()
+	intervalCh := intervalTimer.C()
 
 	for {
 		select {
@@ -162,7 +156,7 @@ func (s *GatewayService) handleBedrockStreamingResponse(
 
 		case <-intervalCh:
 			lastRead := time.Unix(0, lastReadAt.Load())
-			if time.Since(lastRead) < streamInterval {
+			if !intervalTimer.ExpiredSince(lastRead) {
 				continue
 			}
 			if clientDisconnected {
