@@ -1003,6 +1003,13 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 							return
 						}
 						fallbackAPIKey := cloneAPIKeyWithGroup(apiKey, fallbackGroup)
+						if h.apiKeyService != nil {
+							if current, maximum, exceeded := h.apiKeyService.CheckAPIKeyMaxRateMultiplier(c.Request.Context(), fallbackAPIKey, time.Now()); exceeded {
+								service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalPolicyDenied)
+								h.handleStreamingAwareError(c, http.StatusPaymentRequired, "price_limit_exceeded", fmt.Sprintf("Current effective group multiplier %g exceeds the API key maximum allowed multiplier %g", current, maximum), streamStarted)
+								return
+							}
+						}
 						if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil, service.PlatformFromAPIKey(fallbackAPIKey)); err != nil {
 							status, code, message, retryAfter := billingErrorDetails(err)
 							if retryAfter > 0 {

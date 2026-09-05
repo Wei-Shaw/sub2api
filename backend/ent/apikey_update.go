@@ -252,6 +252,33 @@ func (_u *APIKeyUpdate) ClearExpiresAt() *APIKeyUpdate {
 	return _u
 }
 
+// SetMaxRateMultiplier sets the "max_rate_multiplier" field.
+func (_u *APIKeyUpdate) SetMaxRateMultiplier(v float64) *APIKeyUpdate {
+	_u.mutation.ResetMaxRateMultiplier()
+	_u.mutation.SetMaxRateMultiplier(v)
+	return _u
+}
+
+// SetNillableMaxRateMultiplier sets the "max_rate_multiplier" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableMaxRateMultiplier(v *float64) *APIKeyUpdate {
+	if v != nil {
+		_u.SetMaxRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddMaxRateMultiplier adds value to the "max_rate_multiplier" field.
+func (_u *APIKeyUpdate) AddMaxRateMultiplier(v float64) *APIKeyUpdate {
+	_u.mutation.AddMaxRateMultiplier(v)
+	return _u
+}
+
+// ClearMaxRateMultiplier clears the value of the "max_rate_multiplier" field.
+func (_u *APIKeyUpdate) ClearMaxRateMultiplier() *APIKeyUpdate {
+	_u.mutation.ClearMaxRateMultiplier()
+	return _u
+}
+
 // SetRateLimit5h sets the "rate_limit_5h" field.
 func (_u *APIKeyUpdate) SetRateLimit5h(v float64) *APIKeyUpdate {
 	_u.mutation.ResetRateLimit5h()
@@ -641,6 +668,15 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ExpiresAtCleared() {
 		_spec.ClearField(apikey.FieldExpiresAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.MaxRateMultiplier(); ok {
+		_spec.SetField(apikey.FieldMaxRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedMaxRateMultiplier(); ok {
+		_spec.AddField(apikey.FieldMaxRateMultiplier, field.TypeFloat64, value)
+	}
+	if _u.mutation.MaxRateMultiplierCleared() {
+		_spec.ClearField(apikey.FieldMaxRateMultiplier, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.RateLimit5h(); ok {
 		_spec.SetField(apikey.FieldRateLimit5h, field.TypeFloat64, value)
@@ -1036,6 +1072,33 @@ func (_u *APIKeyUpdateOne) SetNillableExpiresAt(v *time.Time) *APIKeyUpdateOne {
 // ClearExpiresAt clears the value of the "expires_at" field.
 func (_u *APIKeyUpdateOne) ClearExpiresAt() *APIKeyUpdateOne {
 	_u.mutation.ClearExpiresAt()
+	return _u
+}
+
+// SetMaxRateMultiplier sets the "max_rate_multiplier" field.
+func (_u *APIKeyUpdateOne) SetMaxRateMultiplier(v float64) *APIKeyUpdateOne {
+	_u.mutation.ResetMaxRateMultiplier()
+	_u.mutation.SetMaxRateMultiplier(v)
+	return _u
+}
+
+// SetNillableMaxRateMultiplier sets the "max_rate_multiplier" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableMaxRateMultiplier(v *float64) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetMaxRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddMaxRateMultiplier adds value to the "max_rate_multiplier" field.
+func (_u *APIKeyUpdateOne) AddMaxRateMultiplier(v float64) *APIKeyUpdateOne {
+	_u.mutation.AddMaxRateMultiplier(v)
+	return _u
+}
+
+// ClearMaxRateMultiplier clears the value of the "max_rate_multiplier" field.
+func (_u *APIKeyUpdateOne) ClearMaxRateMultiplier() *APIKeyUpdateOne {
+	_u.mutation.ClearMaxRateMultiplier()
 	return _u
 }
 
@@ -1458,6 +1521,15 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if _u.mutation.ExpiresAtCleared() {
 		_spec.ClearField(apikey.FieldExpiresAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.MaxRateMultiplier(); ok {
+		_spec.SetField(apikey.FieldMaxRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedMaxRateMultiplier(); ok {
+		_spec.AddField(apikey.FieldMaxRateMultiplier, field.TypeFloat64, value)
+	}
+	if _u.mutation.MaxRateMultiplierCleared() {
+		_spec.ClearField(apikey.FieldMaxRateMultiplier, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.RateLimit5h(); ok {
 		_spec.SetField(apikey.FieldRateLimit5h, field.TypeFloat64, value)

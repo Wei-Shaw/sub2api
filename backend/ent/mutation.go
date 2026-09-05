@@ -108,51 +108,53 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *int64
-	created_at         *time.Time
-	updated_at         *time.Time
-	deleted_at         *time.Time
-	key                *string
-	name               *string
-	status             *string
-	last_used_at       *time.Time
-	ip_whitelist       *[]string
-	appendip_whitelist []string
-	ip_blacklist       *[]string
-	appendip_blacklist []string
-	quota              *float64
-	addquota           *float64
-	quota_used         *float64
-	addquota_used      *float64
-	expires_at         *time.Time
-	rate_limit_5h      *float64
-	addrate_limit_5h   *float64
-	rate_limit_1d      *float64
-	addrate_limit_1d   *float64
-	rate_limit_7d      *float64
-	addrate_limit_7d   *float64
-	usage_5h           *float64
-	addusage_5h        *float64
-	usage_1d           *float64
-	addusage_1d        *float64
-	usage_7d           *float64
-	addusage_7d        *float64
-	window_5h_start    *time.Time
-	window_1d_start    *time.Time
-	window_7d_start    *time.Time
-	clearedFields      map[string]struct{}
-	user               *int64
-	cleareduser        bool
-	group              *int64
-	clearedgroup       bool
-	usage_logs         map[int64]struct{}
-	removedusage_logs  map[int64]struct{}
-	clearedusage_logs  bool
-	done               bool
-	oldValue           func(context.Context) (*APIKey, error)
-	predicates         []predicate.APIKey
+	op                     Op
+	typ                    string
+	id                     *int64
+	created_at             *time.Time
+	updated_at             *time.Time
+	deleted_at             *time.Time
+	key                    *string
+	name                   *string
+	status                 *string
+	last_used_at           *time.Time
+	ip_whitelist           *[]string
+	appendip_whitelist     []string
+	ip_blacklist           *[]string
+	appendip_blacklist     []string
+	quota                  *float64
+	addquota               *float64
+	quota_used             *float64
+	addquota_used          *float64
+	expires_at             *time.Time
+	max_rate_multiplier    *float64
+	addmax_rate_multiplier *float64
+	rate_limit_5h          *float64
+	addrate_limit_5h       *float64
+	rate_limit_1d          *float64
+	addrate_limit_1d       *float64
+	rate_limit_7d          *float64
+	addrate_limit_7d       *float64
+	usage_5h               *float64
+	addusage_5h            *float64
+	usage_1d               *float64
+	addusage_1d            *float64
+	usage_7d               *float64
+	addusage_7d            *float64
+	window_5h_start        *time.Time
+	window_1d_start        *time.Time
+	window_7d_start        *time.Time
+	clearedFields          map[string]struct{}
+	user                   *int64
+	cleareduser            bool
+	group                  *int64
+	clearedgroup           bool
+	usage_logs             map[int64]struct{}
+	removedusage_logs      map[int64]struct{}
+	clearedusage_logs      bool
+	done                   bool
+	oldValue               func(context.Context) (*APIKey, error)
+	predicates             []predicate.APIKey
 }
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -907,6 +909,76 @@ func (m *APIKeyMutation) ResetExpiresAt() {
 	delete(m.clearedFields, apikey.FieldExpiresAt)
 }
 
+// SetMaxRateMultiplier sets the "max_rate_multiplier" field.
+func (m *APIKeyMutation) SetMaxRateMultiplier(f float64) {
+	m.max_rate_multiplier = &f
+	m.addmax_rate_multiplier = nil
+}
+
+// MaxRateMultiplier returns the value of the "max_rate_multiplier" field in the mutation.
+func (m *APIKeyMutation) MaxRateMultiplier() (r float64, exists bool) {
+	v := m.max_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaxRateMultiplier returns the old "max_rate_multiplier" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldMaxRateMultiplier(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaxRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaxRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaxRateMultiplier: %w", err)
+	}
+	return oldValue.MaxRateMultiplier, nil
+}
+
+// AddMaxRateMultiplier adds f to the "max_rate_multiplier" field.
+func (m *APIKeyMutation) AddMaxRateMultiplier(f float64) {
+	if m.addmax_rate_multiplier != nil {
+		*m.addmax_rate_multiplier += f
+	} else {
+		m.addmax_rate_multiplier = &f
+	}
+}
+
+// AddedMaxRateMultiplier returns the value that was added to the "max_rate_multiplier" field in this mutation.
+func (m *APIKeyMutation) AddedMaxRateMultiplier() (r float64, exists bool) {
+	v := m.addmax_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearMaxRateMultiplier clears the value of the "max_rate_multiplier" field.
+func (m *APIKeyMutation) ClearMaxRateMultiplier() {
+	m.max_rate_multiplier = nil
+	m.addmax_rate_multiplier = nil
+	m.clearedFields[apikey.FieldMaxRateMultiplier] = struct{}{}
+}
+
+// MaxRateMultiplierCleared returns if the "max_rate_multiplier" field was cleared in this mutation.
+func (m *APIKeyMutation) MaxRateMultiplierCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldMaxRateMultiplier]
+	return ok
+}
+
+// ResetMaxRateMultiplier resets all changes to the "max_rate_multiplier" field.
+func (m *APIKeyMutation) ResetMaxRateMultiplier() {
+	m.max_rate_multiplier = nil
+	m.addmax_rate_multiplier = nil
+	delete(m.clearedFields, apikey.FieldMaxRateMultiplier)
+}
+
 // SetRateLimit5h sets the "rate_limit_5h" field.
 func (m *APIKeyMutation) SetRateLimit5h(f float64) {
 	m.rate_limit_5h = &f
@@ -1532,7 +1604,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 24)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1574,6 +1646,9 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.expires_at != nil {
 		fields = append(fields, apikey.FieldExpiresAt)
+	}
+	if m.max_rate_multiplier != nil {
+		fields = append(fields, apikey.FieldMaxRateMultiplier)
 	}
 	if m.rate_limit_5h != nil {
 		fields = append(fields, apikey.FieldRateLimit5h)
@@ -1638,6 +1713,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.QuotaUsed()
 	case apikey.FieldExpiresAt:
 		return m.ExpiresAt()
+	case apikey.FieldMaxRateMultiplier:
+		return m.MaxRateMultiplier()
 	case apikey.FieldRateLimit5h:
 		return m.RateLimit5h()
 	case apikey.FieldRateLimit1d:
@@ -1693,6 +1770,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldQuotaUsed(ctx)
 	case apikey.FieldExpiresAt:
 		return m.OldExpiresAt(ctx)
+	case apikey.FieldMaxRateMultiplier:
+		return m.OldMaxRateMultiplier(ctx)
 	case apikey.FieldRateLimit5h:
 		return m.OldRateLimit5h(ctx)
 	case apikey.FieldRateLimit1d:
@@ -1818,6 +1897,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetExpiresAt(v)
 		return nil
+	case apikey.FieldMaxRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaxRateMultiplier(v)
+		return nil
 	case apikey.FieldRateLimit5h:
 		v, ok := value.(float64)
 		if !ok {
@@ -1895,6 +1981,9 @@ func (m *APIKeyMutation) AddedFields() []string {
 	if m.addquota_used != nil {
 		fields = append(fields, apikey.FieldQuotaUsed)
 	}
+	if m.addmax_rate_multiplier != nil {
+		fields = append(fields, apikey.FieldMaxRateMultiplier)
+	}
 	if m.addrate_limit_5h != nil {
 		fields = append(fields, apikey.FieldRateLimit5h)
 	}
@@ -1925,6 +2014,8 @@ func (m *APIKeyMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedQuota()
 	case apikey.FieldQuotaUsed:
 		return m.AddedQuotaUsed()
+	case apikey.FieldMaxRateMultiplier:
+		return m.AddedMaxRateMultiplier()
 	case apikey.FieldRateLimit5h:
 		return m.AddedRateLimit5h()
 	case apikey.FieldRateLimit1d:
@@ -1959,6 +2050,13 @@ func (m *APIKeyMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddQuotaUsed(v)
+		return nil
+	case apikey.FieldMaxRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMaxRateMultiplier(v)
 		return nil
 	case apikey.FieldRateLimit5h:
 		v, ok := value.(float64)
@@ -2028,6 +2126,9 @@ func (m *APIKeyMutation) ClearedFields() []string {
 	if m.FieldCleared(apikey.FieldExpiresAt) {
 		fields = append(fields, apikey.FieldExpiresAt)
 	}
+	if m.FieldCleared(apikey.FieldMaxRateMultiplier) {
+		fields = append(fields, apikey.FieldMaxRateMultiplier)
+	}
 	if m.FieldCleared(apikey.FieldWindow5hStart) {
 		fields = append(fields, apikey.FieldWindow5hStart)
 	}
@@ -2068,6 +2169,9 @@ func (m *APIKeyMutation) ClearField(name string) error {
 		return nil
 	case apikey.FieldExpiresAt:
 		m.ClearExpiresAt()
+		return nil
+	case apikey.FieldMaxRateMultiplier:
+		m.ClearMaxRateMultiplier()
 		return nil
 	case apikey.FieldWindow5hStart:
 		m.ClearWindow5hStart()
@@ -2127,6 +2231,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldExpiresAt:
 		m.ResetExpiresAt()
+		return nil
+	case apikey.FieldMaxRateMultiplier:
+		m.ResetMaxRateMultiplier()
 		return nil
 	case apikey.FieldRateLimit5h:
 		m.ResetRateLimit5h()

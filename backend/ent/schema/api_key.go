@@ -74,6 +74,12 @@ func (APIKey) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("Expiration time for this API key (null = never expires)"),
+		// Maximum effective billing multiplier (null = no price protection).
+		field.Float("max_rate_multiplier").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Comment("Maximum effective billing multiplier for this API key (null = unlimited)"),
 
 		// ========== Rate limit fields ==========
 		// Rate limit configuration (0 = unlimited)

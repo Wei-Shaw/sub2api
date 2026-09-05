@@ -115,6 +115,11 @@ func ExpiresAt(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldExpiresAt, v))
 }
 
+// MaxRateMultiplier applies equality check predicate on the "max_rate_multiplier" field. It's identical to MaxRateMultiplierEQ.
+func MaxRateMultiplier(v float64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldMaxRateMultiplier, v))
+}
+
 // RateLimit5h applies equality check predicate on the "rate_limit_5h" field. It's identical to RateLimit5hEQ.
 func RateLimit5h(v float64) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldRateLimit5h, v))
@@ -733,6 +738,56 @@ func ExpiresAtIsNil() predicate.APIKey {
 // ExpiresAtNotNil applies the NotNil predicate on the "expires_at" field.
 func ExpiresAtNotNil() predicate.APIKey {
 	return predicate.APIKey(sql.FieldNotNull(FieldExpiresAt))
+}
+
+// MaxRateMultiplierEQ applies the EQ predicate on the "max_rate_multiplier" field.
+func MaxRateMultiplierEQ(v float64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldMaxRateMultiplier, v))
+}
+
+// MaxRateMultiplierNEQ applies the NEQ predicate on the "max_rate_multiplier" field.
+func MaxRateMultiplierNEQ(v float64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldMaxRateMultiplier, v))
+}
+
+// MaxRateMultiplierIn applies the In predicate on the "max_rate_multiplier" field.
+func MaxRateMultiplierIn(vs ...float64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldMaxRateMultiplier, vs...))
+}
+
+// MaxRateMultiplierNotIn applies the NotIn predicate on the "max_rate_multiplier" field.
+func MaxRateMultiplierNotIn(vs ...float64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldMaxRateMultiplier, vs...))
+}
+
+// MaxRateMultiplierGT applies the GT predicate on the "max_rate_multiplier" field.
+func MaxRateMultiplierGT(v float64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldMaxRateMultiplier, v))
+}
+
+// MaxRateMultiplierGTE applies the GTE predicate on the "max_rate_multiplier" field.
+func MaxRateMultiplierGTE(v float64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldMaxRateMultiplier, v))
+}
+
+// MaxRateMultiplierLT applies the LT predicate on the "max_rate_multiplier" field.
+func MaxRateMultiplierLT(v float64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldMaxRateMultiplier, v))
+}
+
+// MaxRateMultiplierLTE applies the LTE predicate on the "max_rate_multiplier" field.
+func MaxRateMultiplierLTE(v float64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldMaxRateMultiplier, v))
+}
+
+// MaxRateMultiplierIsNil applies the IsNil predicate on the "max_rate_multiplier" field.
+func MaxRateMultiplierIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldMaxRateMultiplier))
+}
+
+// MaxRateMultiplierNotNil applies the NotNil predicate on the "max_rate_multiplier" field.
+func MaxRateMultiplierNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldMaxRateMultiplier))
 }
 
 // RateLimit5hEQ applies the EQ predicate on the "rate_limit_5h" field.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -233,6 +234,11 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				abortWithAPIKeyQuotaError(c)
 				return
 			}
+			if current, maximum, exceeded := apiKeyService.CheckAPIKeyMaxRateMultiplier(c.Request.Context(), apiKey, time.Now()); exceeded {
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalPolicyDenied)
+				abortWithAPIKeyPriceLimitError(c, current, maximum)
+				return
+			}
 
 			// 订阅模式：验证订阅限额
 			if subscription != nil {
@@ -312,6 +318,21 @@ func abortWithAPIKeyQuotaError(c *gin.Context) {
 		return
 	}
 	AbortWithError(c, http.StatusTooManyRequests, "API_KEY_QUOTA_EXHAUSTED", message)
+}
+
+func apiKeyPriceLimitMessage(current, maximum float64) string {
+	return fmt.Sprintf("Current effective group multiplier %g exceeds the API key maximum allowed multiplier %g", current, maximum)
+}
+
+func abortWithAPIKeyPriceLimitError(c *gin.Context, current, maximum float64) {
+	c.AbortWithStatusJSON(http.StatusPaymentRequired, gin.H{
+		"error": gin.H{
+			"message": apiKeyPriceLimitMessage(current, maximum),
+			"type":    "price_limit_exceeded",
+			"param":   "max_rate_multiplier",
+			"code":    "price_limit_exceeded",
+		},
+	})
 }
 
 func isOpenAICompatibleAPIKeyRequest(c *gin.Context) bool {
