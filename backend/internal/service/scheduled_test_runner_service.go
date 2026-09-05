@@ -132,7 +132,7 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 
 	// Auto-recover account if test succeeded and auto_recover is enabled.
 	if result.Status == "success" && plan.AutoRecover {
-		s.tryRecoverAccount(ctx, plan.AccountID, plan.ID)
+		s.tryRecoverAccount(ctx, plan.AccountID, plan.ID, plan.ModelID)
 	}
 
 	nextRun, err := computeNextRun(plan.CronExpression, time.Now())
@@ -147,12 +147,12 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 }
 
 // tryRecoverAccount attempts to recover an account from recoverable runtime state.
-func (s *ScheduledTestRunnerService) tryRecoverAccount(ctx context.Context, accountID int64, planID int64) {
+func (s *ScheduledTestRunnerService) tryRecoverAccount(ctx context.Context, accountID int64, planID int64, modelID string) {
 	if s.rateLimitSvc == nil {
 		return
 	}
 
-	recovery, err := s.rateLimitSvc.RecoverAccountAfterSuccessfulTest(ctx, accountID)
+	recovery, err := s.rateLimitSvc.RecoverAccountAfterSuccessfulTest(ctx, accountID, modelID)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-recover failed: %v", planID, err)
 		return

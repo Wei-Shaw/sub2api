@@ -2092,8 +2092,97 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 
 // RecoverAccountAfterSuccessfulTest 将一次成功测试视为正常请求，
 // 按需恢复 error / rate-limit / overload / temp-unsched / model-rate-limit 等运行时状态。
-func (s *RateLimitService) RecoverAccountAfterSuccessfulTest(ctx context.Context, accountID int64) (*SuccessfulTestRecoveryResult, error) {
-	return s.RecoverAccountState(ctx, accountID, AccountRecoveryOptions{})
+// 传入 modelID 时仅恢复该 OpenAI model，避免旧测试结果清掉新一轮熔断。
+func (s *RateLimitService) RecoverAccountAfterSuccessfulTest(ctx context.Context, accountID int64, modelID ...string) (*SuccessfulTestRecoveryResult, error) {
+	if len(modelID) == 0 || strings.TrimSpace(modelID[0]) == "" {
+		return s.RecoverAccountState(ctx, accountID, AccountRecoveryOptions{})
+	}
+	return s.recoverOpenAIAccountModelState(ctx, accountID, modelID[0])
+}
+
+func (s *RateLimitService) recoverOpenAIAccountModelState(ctx context.Context, accountID int64, requestedModel string) (*SuccessfulTestRecoveryResult, error) {
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeAPIKey || account.Status == StatusError || hasAccountLevelRecoverableRuntimeState(account) {
+		return s.RecoverAccountState(ctx, accountID, AccountRecoveryOptions{})
+	}
+
+	canonicalModel := canonicalOpenAIAccountSchedulingModel(account, requestedModel)
+	modelID, observed, ok := openAIModelRateLimitSnapshot(account, canonicalModel)
+	if !ok {
+		return &SuccessfulTestRecoveryResult{}, nil
+	}
+
+	type conditionalModelRateLimitClearer interface {
+		ClearModelRateLimitIfMatch(context.Context, int64, string, json.RawMessage) (bool, error)
+	}
+	repo, ok := s.accountRepo.(conditionalModelRateLimitClearer)
+	if !ok {
+		return s.RecoverAccountState(ctx, accountID, AccountRecoveryOptions{})
+	}
+	clear := func() (bool, error) {
+		return repo.ClearModelRateLimitIfMatch(ctx, accountID, modelID, observed)
+	}
+	cleared, err := clearOpenAIModelRateLimitWithGeneration(s.runtimeBlocker, accountID, modelID, clear)
+	if err != nil {
+		return nil, err
+	}
+	result := &SuccessfulTestRecoveryResult{ClearedRateLimit: cleared}
+	if cleared {
+		s.ResetOpenAI403Counter(ctx, accountID)
+		s.notifyAccountSchedulingBlockCleared(accountID)
+	}
+	return result, nil
+}
+
+func hasAccountLevelRecoverableRuntimeState(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	return account.RateLimitedAt != nil || account.RateLimitResetAt != nil || account.OverloadUntil != nil || account.TempUnschedulableUntil != nil ||
+		hasNonEmptyMapValue(account.Extra, "antigravity_quota_scopes")
+}
+
+func openAIModelRateLimitSnapshot(account *Account, canonicalModel string) (string, json.RawMessage, bool) {
+	if account == nil || account.Extra == nil {
+		return "", nil, false
+	}
+	limits, ok := account.Extra[modelRateLimitsKey].(map[string]any)
+	if !ok {
+		return "", nil, false
+	}
+	for modelID, limit := range limits {
+		if !strings.EqualFold(strings.TrimSpace(modelID), strings.TrimSpace(canonicalModel)) || !account.isRateLimitActiveForKey(modelID) {
+			continue
+		}
+		observed, err := json.Marshal(limit)
+		if err != nil {
+			return "", nil, false
+		}
+		return modelID, observed, true
+	}
+	return "", nil, false
+}
+
+func clearOpenAIModelRateLimitWithGeneration(
+	runtimeBlocker AccountRuntimeBlocker,
+	accountID int64,
+	modelID string,
+	clear func() (bool, error),
+) (bool, error) {
+	if guard, ok := runtimeBlocker.(interface {
+		openAIAccountModelTransientGenerations(int64) map[string]uint64
+	}); ok {
+		generation := guard.openAIAccountModelTransientGenerations(accountID)[normalizeOpenAIAccountModelTransientModel(modelID)]
+		if clearer, ok := runtimeBlocker.(interface {
+			clearOpenAIAccountModelTransientStateIfGeneration(int64, string, uint64, func() (bool, error)) (bool, error)
+		}); ok {
+			return clearer.clearOpenAIAccountModelTransientStateIfGeneration(accountID, modelID, generation, clear)
+		}
+	}
+	return clear()
 }
 
 func (s *RateLimitService) ClearTempUnschedulable(ctx context.Context, accountID int64) error {
