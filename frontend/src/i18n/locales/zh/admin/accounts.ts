@@ -449,6 +449,39 @@ export default {
           unavailableDesc: '服务不可用 - 暂停 30 分钟'
         }
       },
+      availabilitySchedule: {
+        title: '可用时段',
+        hint: '按每天或每周固定时间强制开启/关闭调度。规则按顺序匹配，第一条命中生效；未命中时跟随手动「可调度」开关。',
+        notice: '关闭时段内账号不会被调度。「开启」不能绕过手动关闭的可调度开关。结束时间早于开始时间表示跨午夜。',
+        addRule: '添加时段规则',
+        ruleIndex: '规则 #{index}',
+        kind: '类型',
+        kindDaily: '每天',
+        kindWeekly: '每周',
+        action: '动作',
+        actionEnable: '开启调度',
+        actionDisable: '关闭调度',
+        start: '开始时间',
+        end: '结束时间',
+        overnightHint: '结束 ≤ 开始表示跨午夜窗口',
+        weekdays: '星期',
+        weekday: {
+          mon: '一',
+          tue: '二',
+          wed: '三',
+          thu: '四',
+          fri: '五',
+          sat: '六',
+          sun: '日'
+        },
+        previewOn: '按当前时刻：命中「开启」规则',
+        previewOff: '按当前时刻：命中「关闭」规则（不可调度）',
+        previewNone: '按当前时刻：未命中规则，跟随手动可调度开关',
+        rulesInvalidEmpty: '启用可用时段时请至少添加一条规则',
+        rulesInvalidTime: '请填写有效的开始/结束时间',
+        rulesInvalidWeekdays: '每周规则请至少选择一个星期',
+        rulesInvalidTooMany: '时段规则最多 20 条'
+      },
       usageWindow: {
         statsTitle: '5小时窗口用量统计',
         statsTitleDaily: '每日用量统计',
@@ -1021,7 +1054,8 @@ export default {
       loadFactor: '负载因子',
       loadFactorHint: '提高负载因子可以提高对账号的调度频率',
       priority: '优先级',
-      priorityHint: '优先级越小的账号优先使用',
+      priorityHint:
+        '仅账号自身优先级参与调度（数值越小越优先）。分组内绑定优先级不参与选号；开启进阶调度时仍可能被粘性会话、负载/错误率打分与 TopK 加权随机分摊。',
       billingRateMultiplier: '账号计费倍率',
       billingRateMultiplierHint: '0 表示不计费，仅影响账号计费',
       expiresAt: '过期时间',

@@ -1617,6 +1617,10 @@ func ChatCompletionsChunkToResponsesEvents(
 		// empty-string reasoning delta upstreams send is filtered out.
 		reasoning := choice.Delta.reasoningText()
 		if reasoning != nil && *reasoning != "" {
+			// Late reasoning after visible text (or a tool) must close the text
+			// part first so Finalize won't emit a spurious output_text.done that
+			// corrupts Anthropic content-block indices for Claude Code.
+			events = append(events, closeChatTextPart(state)...)
 			events = append(events, ensureChatReasoningItem(state)...)
 			_, _ = state.Reasoning.WriteString(*reasoning)
 			events = append(events, chatToResponsesEvent(state, "response.reasoning_summary_text.delta", &ResponsesStreamEvent{
@@ -1647,8 +1651,11 @@ func ChatCompletionsChunkToResponsesEvents(
 			}
 			stored, ok := state.ToolCalls[idx]
 			if !ok {
-				// A tool call closes any open reasoning item first.
+				// A tool call closes any open reasoning item and visible text
+				// part first so Finalize cannot emit a late output_text.done
+				// against an already-advanced Anthropic stream.
 				events = append(events, closeChatReasoningItem(state)...)
+				events = append(events, closeChatTextPart(state)...)
 				copyCall := toolCall
 				if copyCall.ID == "" {
 					copyCall.ID = generateItemID()
@@ -1713,20 +1720,7 @@ func FinalizeChatCompletionsResponsesStream(state *ChatCompletionsToResponsesStr
 	events = append(events, synthesizeChatReasoningFallbackMessage(state)...)
 
 	if state.MessageItemID != "" {
-		if state.TextPartOpen {
-			events = append(events, chatToResponsesEvent(state, "response.output_text.done", &ResponsesStreamEvent{
-				OutputIndex:  state.MessageIndex,
-				ContentIndex: 0,
-				Text:         state.Text.String(),
-				ItemID:       state.MessageItemID,
-			}))
-			events = append(events, chatToResponsesEvent(state, "response.content_part.done", &ResponsesStreamEvent{
-				OutputIndex:  state.MessageIndex,
-				ContentIndex: 0,
-				ItemID:       state.MessageItemID,
-				Part:         &ResponsesContentPart{Type: "output_text", Text: state.Text.String()},
-			}))
-		}
+		events = append(events, closeChatTextPart(state)...)
 		events = append(events, chatToResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
 			OutputIndex: state.MessageIndex,
 			Item: &ResponsesOutput{
@@ -1901,6 +1895,32 @@ func ensureChatToResponsesTextPart(state *ChatCompletionsToResponsesStreamState)
 		ItemID:       state.MessageItemID,
 		Part:         &ResponsesContentPart{Type: "output_text", Text: ""},
 	})}
+}
+
+// closeChatTextPart emits output_text.done + content_part.done when a visible
+// text part is still open. Used before late reasoning / tool items and at
+// finalize so a deferred output_text.done cannot close the wrong Anthropic
+// content block.
+func closeChatTextPart(state *ChatCompletionsToResponsesStreamState) []ResponsesStreamEvent {
+	if state == nil || !state.TextPartOpen {
+		return nil
+	}
+	state.TextPartOpen = false
+	text := state.Text.String()
+	return []ResponsesStreamEvent{
+		chatToResponsesEvent(state, "response.output_text.done", &ResponsesStreamEvent{
+			OutputIndex:  state.MessageIndex,
+			ContentIndex: 0,
+			Text:         text,
+			ItemID:       state.MessageItemID,
+		}),
+		chatToResponsesEvent(state, "response.content_part.done", &ResponsesStreamEvent{
+			OutputIndex:  state.MessageIndex,
+			ContentIndex: 0,
+			ItemID:       state.MessageItemID,
+			Part:         &ResponsesContentPart{Type: "output_text", Text: text},
+		}),
+	}
 }
 
 // announceChatToolItem 在类型可判定时发出工具调用的 output_item.added。custom

@@ -2502,6 +2502,11 @@
         </div>
       </div>
 
+      <AvailabilityScheduleEditor
+        v-model:enabled="availabilityScheduleEnabled"
+        v-model:rules="availabilityScheduleRules"
+      />
+
       <!-- Intercept Warmup Requests (Anthropic/Antigravity) -->
       <div
         v-if="form.platform === 'anthropic' || form.platform === 'antigravity'"
@@ -3847,6 +3852,12 @@ import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import AvailabilityScheduleEditor from '@/components/account/AvailabilityScheduleEditor.vue'
+import {
+  applyAvailabilityScheduleToExtra,
+  validateAvailabilityScheduleRules,
+  type AvailabilityScheduleRuleForm
+} from '@/utils/availabilitySchedule'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import {
   applyAntigravityProjectID,
@@ -4343,6 +4354,8 @@ const vertexLocation = ref('global')
 const vertexServiceAccountDragActive = ref(false)
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
+const availabilityScheduleEnabled = ref(false)
+const availabilityScheduleRules = ref<AvailabilityScheduleRuleForm[]>([])
 const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-model-mapping')
 const getOpenAICompactModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-openai-compact-model-mapping')
 const getAntigravityModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-antigravity-model-mapping')
@@ -5236,6 +5249,8 @@ const resetForm = () => {
   vertexLocation.value = 'global'
   tempUnschedEnabled.value = false
   tempUnschedRules.value = []
+  availabilityScheduleEnabled.value = false
+  availabilityScheduleRules.value = []
   geminiOAuthType.value = 'code_assist'
   geminiTierGoogleOne.value = 'google_one_free'
   geminiTierGcp.value = 'gcp_standard'
@@ -5371,6 +5386,30 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
 
 // Helper function to create account with mixed channel warning handling
 const doCreateAccount = async (payload: CreateAccountRequest) => {
+  const scheduleErrorCode = validateAvailabilityScheduleRules(
+    availabilityScheduleEnabled.value,
+    availabilityScheduleRules.value
+  )
+  if (scheduleErrorCode) {
+    const message =
+      scheduleErrorCode === 'empty'
+        ? t('admin.accounts.availabilitySchedule.rulesInvalidEmpty')
+        : scheduleErrorCode === 'time'
+          ? t('admin.accounts.availabilitySchedule.rulesInvalidTime')
+          : scheduleErrorCode === 'weekdays'
+            ? t('admin.accounts.availabilitySchedule.rulesInvalidWeekdays')
+            : t('admin.accounts.availabilitySchedule.rulesInvalidTooMany')
+    appStore.showError(message)
+    return
+  }
+  const extra: Record<string, unknown> = { ...(payload.extra || {}) }
+  applyAvailabilityScheduleToExtra(
+    extra,
+    availabilityScheduleEnabled.value,
+    availabilityScheduleRules.value
+  )
+  payload = { ...payload, extra }
+
   const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
     await submitCreateAccount(payload)
   })

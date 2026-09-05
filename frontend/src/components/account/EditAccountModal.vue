@@ -1469,6 +1469,10 @@
         </div>
       </div>
 
+      <AvailabilityScheduleEditor
+        v-model:enabled="availabilityScheduleEnabled"
+        v-model:rules="availabilityScheduleRules"
+      />
 
       <div
         v-if="supportsAccountSchedulingThresholdOverride"
@@ -2936,6 +2940,13 @@ import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
+import AvailabilityScheduleEditor from '@/components/account/AvailabilityScheduleEditor.vue'
+import {
+  applyAvailabilityScheduleToExtra,
+  parseAvailabilityScheduleFromExtra,
+  validateAvailabilityScheduleRules,
+  type AvailabilityScheduleRuleForm
+} from '@/utils/availabilitySchedule'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -3258,6 +3269,8 @@ const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
 const isSyncingAntigravityUpstream = ref(false)
 const tempUnschedEnabled = ref(false)
+const availabilityScheduleEnabled = ref(false)
+const availabilityScheduleRules = ref<AvailabilityScheduleRuleForm[]>([])
 const accountSchedulingThresholdOverrideEnabled = ref(false)
 const accountSchedulingThresholdOverrideValue = ref(100)
 const ACCOUNT_SCHEDULING_THRESHOLD_CREDENTIAL_KEY = 'account_scheduling_threshold'
@@ -3949,6 +3962,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   loadQuotaControlSettings(newAccount)
 
   loadTempUnschedRules(credentials)
+  loadAvailabilitySchedule(newAccount.extra as Record<string, unknown> | undefined)
   loadAccountSchedulingThresholdOverride(newAccount.platform, credentials)
 
   // Load header override state for eligible account platforms/types
@@ -4466,6 +4480,28 @@ function loadTempUnschedRules(credentials?: Record<string, unknown>) {
   })
 }
 
+function loadAvailabilitySchedule(extra?: Record<string, unknown>) {
+  const parsed = parseAvailabilityScheduleFromExtra(extra)
+  availabilityScheduleEnabled.value = parsed.enabled
+  availabilityScheduleRules.value = parsed.rules
+}
+
+function availabilityScheduleValidationMessage(code: string | null): string | null {
+  if (!code) return null
+  switch (code) {
+    case 'empty':
+      return t('admin.accounts.availabilitySchedule.rulesInvalidEmpty')
+    case 'time':
+      return t('admin.accounts.availabilitySchedule.rulesInvalidTime')
+    case 'weekdays':
+      return t('admin.accounts.availabilitySchedule.rulesInvalidWeekdays')
+    case 'tooMany':
+      return t('admin.accounts.availabilitySchedule.rulesInvalidTooMany')
+    default:
+      return t('admin.accounts.availabilitySchedule.rulesInvalidEmpty')
+  }
+}
+
 // Load quota control settings from account (Anthropic OAuth/SetupToken only)
 function loadQuotaControlSettings(account: Account) {
   // Reset all quota control state first
@@ -4703,6 +4739,14 @@ const handleSubmit = async () => {
 			return
 		}
 	}
+
+  const scheduleError = availabilityScheduleValidationMessage(
+    validateAvailabilityScheduleRules(availabilityScheduleEnabled.value, availabilityScheduleRules.value)
+  )
+  if (scheduleError) {
+    appStore.showError(scheduleError)
+    return
+  }
 
   const updatePayload: Record<string, unknown> = { ...form }
   try {
@@ -5400,15 +5444,25 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     }
 
-    // 上游ID头名只在改动时写回 extra，避免用弹窗打开时的快照覆盖运行态键。
-    const nextUpstreamRequestIdHeader = upstreamRequestIdHeader.value.trim()
-    if (nextUpstreamRequestIdHeader !== readUpstreamRequestIdHeader(props.account.extra)) {
-      const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
+    {
+      const currentExtra =
+        (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) ||
+        {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
-      if (nextUpstreamRequestIdHeader) {
-        newExtra.upstream_request_id_header = nextUpstreamRequestIdHeader
-      } else {
-        delete newExtra.upstream_request_id_header
+      applyAvailabilityScheduleToExtra(
+        newExtra,
+        availabilityScheduleEnabled.value,
+        availabilityScheduleRules.value
+      )
+      // 上游ID头名只在改动时写回 extra，避免用弹窗打开时的快照覆盖运行态键。
+      const nextUpstreamRequestIdHeader = upstreamRequestIdHeader.value.trim()
+      if (nextUpstreamRequestIdHeader !== readUpstreamRequestIdHeader(props.account.extra)) {
+        if (nextUpstreamRequestIdHeader) {
+          newExtra.upstream_request_id_header = nextUpstreamRequestIdHeader
+        } else {
+          delete newExtra.upstream_request_id_header
+        }
       }
       updatePayload.extra = newExtra
     }

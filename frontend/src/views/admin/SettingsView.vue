@@ -6585,6 +6585,82 @@
                 </p>
               </div>
 
+              <!-- Footer Legal Info -->
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <h3 class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ t("admin.settings.site.footerLegalTitle") }}
+                </h3>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.site.footerLegalDescription") }}
+                </p>
+                <div class="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.site.footerIcpNumber") }}
+                    </label>
+                    <input
+                      v-model="form.footer_icp_number"
+                      type="text"
+                      class="input"
+                      :placeholder="t('admin.settings.site.footerIcpNumberPlaceholder')"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.site.footerIcpNumberHint") }}
+                    </p>
+                  </div>
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.site.footerIcpUrl") }}
+                    </label>
+                    <input
+                      v-model="form.footer_icp_url"
+                      type="url"
+                      class="input font-mono text-sm"
+                      :placeholder="t('admin.settings.site.footerIcpUrlPlaceholder')"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.site.footerIcpUrlHint") }}
+                    </p>
+                  </div>
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.site.footerPsbNumber") }}
+                    </label>
+                    <input
+                      v-model="form.footer_psb_number"
+                      type="text"
+                      class="input"
+                      :placeholder="t('admin.settings.site.footerPsbNumberPlaceholder')"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.site.footerPsbNumberHint") }}
+                    </p>
+                  </div>
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.site.footerPsbUrl") }}
+                    </label>
+                    <input
+                      v-model="form.footer_psb_url"
+                      type="url"
+                      class="input font-mono text-sm"
+                      :placeholder="t('admin.settings.site.footerPsbUrlPlaceholder')"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.site.footerPsbUrlHint") }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               <!-- Compact Home Page -->
               <div class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
                 <div>
@@ -7723,27 +7799,6 @@
               </h2>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 {{ t("admin.settings.payment.description") }}
-                <a
-                  :href="paymentGuideHref"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="ml-2 inline-flex items-center text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
-                >
-                  <svg
-                    class="mr-0.5 h-3.5 w-3.5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                    />
-                  </svg>
-                  {{ t("admin.settings.payment.configGuide") }}
-                </a>
               </p>
             </div>
             <div class="space-y-4 p-6">
@@ -8188,27 +8243,6 @@
                   </div>
                   <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
                     {{ t("admin.settings.payment.enabledPaymentTypesHint") }}
-                    <a
-                      :href="paymentMethodsHref"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="ml-1 text-primary-500 hover:text-primary-600 dark:text-primary-400 dark:hover:text-primary-300"
-                    >
-                      {{ t("admin.settings.payment.findProvider") }}
-                      <svg
-                        class="mb-0.5 ml-0.5 inline h-3 w-3"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                        />
-                      </svg>
-                    </a>
                   </p>
                 </div>
                 <!-- Row 5: Help image + text -->
@@ -8849,18 +8883,6 @@ const isZhLocale = computed(() => locale.value.startsWith("zh"));
 function localText(zh: string, en: string): string {
   return isZhLocale.value ? zh : en;
 }
-
-const paymentGuideHref = computed(() =>
-  locale.value.startsWith("zh")
-    ? "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md"
-    : "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md",
-);
-
-const paymentMethodsHref = computed(() =>
-  locale.value.startsWith("zh")
-    ? "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md#支持的支付方式"
-    : "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md#supported-payment-methods",
-);
 
 type SettingsTab =
   | "general"
@@ -9565,6 +9587,10 @@ const form = reactive<SettingsForm>({
   contact_info: "",
   doc_url: "",
   home_content: "",
+  footer_icp_number: "",
+  footer_icp_url: "",
+  footer_psb_number: "",
+  footer_psb_url: "",
   compact_home_enabled: false,
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
@@ -11197,6 +11223,10 @@ async function saveSettings() {
       contact_info: form.contact_info,
       doc_url: form.doc_url,
       home_content: form.home_content,
+      footer_icp_number: form.footer_icp_number,
+      footer_icp_url: form.footer_icp_url,
+      footer_psb_number: form.footer_psb_number,
+      footer_psb_url: form.footer_psb_url,
       compact_home_enabled: form.compact_home_enabled,
       backend_mode_enabled: form.backend_mode_enabled,
       hide_ccs_import_button: form.hide_ccs_import_button,

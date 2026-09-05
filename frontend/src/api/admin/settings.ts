@@ -479,6 +479,10 @@ export interface SystemSettings {
   contact_info: string;
   doc_url: string;
   home_content: string;
+  footer_icp_number: string;
+  footer_icp_url: string;
+  footer_psb_number: string;
+  footer_psb_url: string;
   compact_home_enabled: boolean;
   hide_ccs_import_button: boolean;
   table_default_page_size: number;
@@ -819,6 +823,10 @@ export interface UpdateSettingsRequest {
   contact_info?: string;
   doc_url?: string;
   home_content?: string;
+  footer_icp_number?: string;
+  footer_icp_url?: string;
+  footer_psb_number?: string;
+  footer_psb_url?: string;
   compact_home_enabled?: boolean;
   hide_ccs_import_button?: boolean;
   table_default_page_size?: number;
