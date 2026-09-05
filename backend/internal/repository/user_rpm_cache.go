@@ -25,11 +25,11 @@ const (
 )
 
 type userRPMCacheImpl struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
 // NewUserRPMCache 创建用户/分组级 RPM 计数器。
-func NewUserRPMCache(rdb *redis.Client) service.UserRPMCache {
+func NewUserRPMCache(rdb redis.UniversalClient) service.UserRPMCache {
 	return &userRPMCacheImpl{rdb: rdb}
 }
 

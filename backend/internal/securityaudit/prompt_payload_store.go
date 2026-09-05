@@ -17,10 +17,10 @@ type PayloadStore interface {
 }
 
 type RedisPayloadStore struct {
-	client *redis.Client
+	client redis.UniversalClient
 }
 
-func NewRedisPayloadStore(client *redis.Client) *RedisPayloadStore {
+func NewRedisPayloadStore(client redis.UniversalClient) *RedisPayloadStore {
 	return &RedisPayloadStore{client: client}
 }
 

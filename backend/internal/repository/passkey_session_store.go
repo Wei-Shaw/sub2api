@@ -16,10 +16,10 @@ import (
 const passkeySessionPrefix = "passkey:session:"
 
 type passkeySessionStore struct {
-	redis *redis.Client
+	redis redis.UniversalClient
 }
 
-func NewPasskeySessionStore(redisClient *redis.Client) service.PasskeySessionStore {
+func NewPasskeySessionStore(redisClient redis.UniversalClient) service.PasskeySessionStore {
 	return &passkeySessionStore{redis: redisClient}
 }
 

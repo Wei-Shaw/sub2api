@@ -26,10 +26,10 @@ func redeemLockKey(code string) string {
 }
 
 type redeemCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
-func NewRedeemCache(rdb *redis.Client) service.RedeemCache {
+func NewRedeemCache(rdb redis.UniversalClient) service.RedeemCache {
 	return &redeemCache{rdb: rdb}
 }
 

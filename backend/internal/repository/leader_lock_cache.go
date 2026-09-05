@@ -23,13 +23,13 @@ return 0
 `)
 
 type leaderLockCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
 // NewLeaderLockCache returns a Redis-backed implementation of
 // service.LeaderLockCache used by periodic background jobs to elect a single
 // runner across instances.
-func NewLeaderLockCache(rdb *redis.Client) service.LeaderLockCache {
+func NewLeaderLockCache(rdb redis.UniversalClient) service.LeaderLockCache {
 	return &leaderLockCache{rdb: rdb}
 }
 

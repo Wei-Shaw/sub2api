@@ -37,11 +37,11 @@ const (
 
 // RPMCacheImpl RPM 计数器缓存 Redis 实现
 type RPMCacheImpl struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
 // NewRPMCache 创建 RPM 计数器缓存
-func NewRPMCache(rdb *redis.Client) service.RPMCache {
+func NewRPMCache(rdb redis.UniversalClient) service.RPMCache {
 	return &RPMCacheImpl{rdb: rdb}
 }
 

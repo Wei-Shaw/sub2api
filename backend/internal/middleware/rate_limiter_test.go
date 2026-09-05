@@ -67,7 +67,7 @@ func TestRateLimiterDifferentIPsIndependent(t *testing.T) {
 
 	callCounts := make(map[string]int64)
 	originalRun := rateLimitRun
-	rateLimitRun = func(ctx context.Context, client *redis.Client, key string, windowMillis int64) (int64, bool, error) {
+	rateLimitRun = func(ctx context.Context, client redis.UniversalClient, key string, windowMillis int64) (int64, bool, error) {
 		callCounts[key]++
 		return callCounts[key], false, nil
 	}
@@ -109,7 +109,7 @@ func TestRateLimiterAllow(t *testing.T) {
 	originalRun := rateLimitRun
 	var gotKey string
 	count := int64(0)
-	rateLimitRun = func(ctx context.Context, client *redis.Client, key string, windowMillis int64) (int64, bool, error) {
+	rateLimitRun = func(ctx context.Context, client redis.UniversalClient, key string, windowMillis int64) (int64, bool, error) {
 		gotKey = key
 		count++
 		return count, false, nil
@@ -145,7 +145,7 @@ func TestRateLimiterHonorsForwardedIPSnapshot(t *testing.T) {
 
 	callCounts := make(map[string]int64)
 	originalRun := rateLimitRun
-	rateLimitRun = func(ctx context.Context, client *redis.Client, key string, windowMillis int64) (int64, bool, error) {
+	rateLimitRun = func(ctx context.Context, client redis.UniversalClient, key string, windowMillis int64) (int64, bool, error) {
 		callCounts[key]++
 		return callCounts[key], false, nil
 	}
@@ -192,7 +192,7 @@ func TestRateLimiterSuccessAndLimit(t *testing.T) {
 	originalRun := rateLimitRun
 	counts := []int64{1, 2}
 	callIndex := 0
-	rateLimitRun = func(ctx context.Context, client *redis.Client, key string, windowMillis int64) (int64, bool, error) {
+	rateLimitRun = func(ctx context.Context, client redis.UniversalClient, key string, windowMillis int64) (int64, bool, error) {
 		if callIndex >= len(counts) {
 			return counts[len(counts)-1], false, nil
 		}

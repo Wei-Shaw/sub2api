@@ -28,10 +28,10 @@ func maskedSessionKey(accountID int64) string {
 }
 
 type identityCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
-func NewIdentityCache(rdb *redis.Client) service.IdentityCache {
+func NewIdentityCache(rdb redis.UniversalClient) service.IdentityCache {
 	return &identityCache{rdb: rdb}
 }
 

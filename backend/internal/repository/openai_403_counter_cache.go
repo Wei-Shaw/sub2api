@@ -23,10 +23,10 @@ var openAI403CounterIncrScript = redis.NewScript(`
 `)
 
 type openAI403CounterCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
-func NewOpenAI403CounterCache(rdb *redis.Client) service.OpenAI403CounterCache {
+func NewOpenAI403CounterCache(rdb redis.UniversalClient) service.OpenAI403CounterCache {
 	return &openAI403CounterCache{rdb: rdb}
 }
 

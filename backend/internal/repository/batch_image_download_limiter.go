@@ -37,13 +37,13 @@ return redis.call("DECR", KEYS[1])
 `)
 
 type batchImageDownloadLimiter struct {
-	rdb          *redis.Client
+	rdb          redis.UniversalClient
 	activePrefix string
 	maxActive    int
 	ttl          time.Duration
 }
 
-func NewBatchImageDownloadLimiter(rdb *redis.Client, cfg *config.Config) service.BatchImageDownloadLimiter {
+func NewBatchImageDownloadLimiter(rdb redis.UniversalClient, cfg *config.Config) service.BatchImageDownloadLimiter {
 	maxActive := defaultBatchImageDownloadConcurrency
 	ttl := defaultBatchImageDownloadActiveTTL
 	if cfg != nil {
@@ -82,7 +82,7 @@ func (l *batchImageDownloadLimiter) activeKey(userID string) string {
 }
 
 type batchImageDownloadPermit struct {
-	rdb  *redis.Client
+	rdb  redis.UniversalClient
 	key  string
 	once sync.Once
 	err  error

@@ -89,7 +89,7 @@ func performRequest(router *gin.Engine) *httptest.ResponseRecorder {
 	return recorder
 }
 
-func startRedis(t *testing.T, ctx context.Context) *redis.Client {
+func startRedis(t *testing.T, ctx context.Context) redis.UniversalClient {
 	t.Helper()
 	ensureDockerAvailable(t)
 

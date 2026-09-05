@@ -11,10 +11,10 @@ import (
 const contentModerationFlaggedHashSetKey = "content_moderation:flagged_hashes"
 
 type contentModerationHashCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
-func NewContentModerationHashCache(rdb *redis.Client) service.ContentModerationHashCache {
+func NewContentModerationHashCache(rdb redis.UniversalClient) service.ContentModerationHashCache {
 	return &contentModerationHashCache{rdb: rdb}
 }
 

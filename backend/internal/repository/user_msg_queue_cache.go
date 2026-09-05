@@ -85,11 +85,11 @@ return {1, pttl}
 `)
 
 type userMsgQueueCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
 // NewUserMsgQueueCache 创建用户消息队列缓存
-func NewUserMsgQueueCache(rdb *redis.Client) service.UserMsgQueueCache {
+func NewUserMsgQueueCache(rdb redis.UniversalClient) service.UserMsgQueueCache {
 	return &userMsgQueueCache{rdb: rdb}
 }
 

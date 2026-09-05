@@ -94,12 +94,32 @@ type DatabaseConfig struct {
 }
 
 type RedisConfig struct {
-	Host      string `json:"host" yaml:"host"`
-	Port      int    `json:"port" yaml:"port"`
-	Username  string `json:"username" yaml:"username"`
-	Password  string `json:"password" yaml:"password"`
-	DB        int    `json:"db" yaml:"db"`
-	EnableTLS bool   `json:"enable_tls" yaml:"enable_tls"`
+	Mode      string   `json:"mode" yaml:"mode"`
+	Addresses []string `json:"addresses,omitempty" yaml:"addresses,omitempty"`
+	Host      string   `json:"host" yaml:"host"`
+	Port      int      `json:"port" yaml:"port"`
+	Username  string   `json:"username" yaml:"username"`
+	Password  string   `json:"password" yaml:"password"`
+	DB        int      `json:"db" yaml:"db"`
+	EnableTLS bool     `json:"enable_tls" yaml:"enable_tls"`
+}
+
+func (c *RedisConfig) isCluster() bool {
+	return strings.EqualFold(strings.TrimSpace(c.Mode), config.RedisModeCluster)
+}
+
+func (c *RedisConfig) connectionAddresses() []string {
+	if !c.isCluster() {
+		return []string{fmt.Sprintf("%s:%d", c.Host, c.Port)}
+	}
+
+	addresses := make([]string, 0, len(c.Addresses))
+	for _, address := range c.Addresses {
+		if address = strings.TrimSpace(address); address != "" {
+			addresses = append(addresses, address)
+		}
+	}
+	return addresses
 }
 
 type AdminConfig struct {
@@ -265,11 +285,20 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 
 // TestRedisConnection tests the Redis connection
 func TestRedisConnection(cfg *RedisConfig) error {
-	opts := &redis.Options{
-		Addr:     fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
-		Username: cfg.Username,
-		Password: cfg.Password,
-		DB:       cfg.DB,
+	if cfg.isCluster() && cfg.DB != 0 {
+		return fmt.Errorf("database must be 0 in cluster mode")
+	}
+	addresses := cfg.connectionAddresses()
+	if len(addresses) == 0 {
+		return fmt.Errorf("at least one Redis address is required")
+	}
+
+	opts := &redis.UniversalOptions{
+		Addrs:         addresses,
+		IsClusterMode: cfg.isCluster(),
+		Username:      cfg.Username,
+		Password:      cfg.Password,
+		DB:            cfg.DB,
 	}
 
 	if cfg.EnableTLS {
@@ -279,7 +308,7 @@ func TestRedisConnection(cfg *RedisConfig) error {
 		}
 	}
 
-	rdb := redis.NewClient(opts)
+	rdb := redis.NewUniversalClient(opts)
 	defer func() {
 		if err := rdb.Close(); err != nil {
 			logger.LegacyPrintf("setup", "failed to close redis client: %v", err)
@@ -562,6 +591,17 @@ func getEnvIntOrDefault(key string, defaultValue int) int {
 	return defaultValue
 }
 
+func getEnvList(key string) []string {
+	values := strings.Split(os.Getenv(key), ",")
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
 // AutoSetupFromEnv performs automatic setup using environment variables
 // This is designed for Docker deployment where all config is passed via env vars
 func AutoSetupFromEnv() error {
@@ -585,6 +625,8 @@ func AutoSetupFromEnv() error {
 			SSLMode:  getEnvOrDefault("DATABASE_SSLMODE", "disable"),
 		},
 		Redis: RedisConfig{
+			Mode:      getEnvOrDefault("REDIS_MODE", config.RedisModeStandalone),
+			Addresses: getEnvList("REDIS_ADDRESSES"),
 			Host:      getEnvOrDefault("REDIS_HOST", "localhost"),
 			Port:      getEnvIntOrDefault("REDIS_PORT", 6379),
 			Username:  getEnvOrDefault("REDIS_USERNAME", ""),

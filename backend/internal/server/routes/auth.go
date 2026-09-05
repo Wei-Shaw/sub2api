@@ -18,7 +18,7 @@ func RegisterAuthRoutes(
 	h *handler.Handlers,
 	jwtAuth servermiddleware.JWTAuthMiddleware,
 	auditLog servermiddleware.AuditLogMiddleware,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 	settingService *service.SettingService,
 	panelRateLimiter *servermiddleware.PanelRateLimiter,
 ) {
