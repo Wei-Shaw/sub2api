@@ -611,9 +611,20 @@ export default {
       platformLabel: 'Platform',
       groupLabel: 'Group',
       rateLabel: 'Rate',
+      billingLabel: 'Billing',
       modelLabel: 'Model',
       searchPlaceholder: 'Search models',
-      all: 'All'
+      clearSearch: 'Clear search',
+      all: 'All',
+      advanced: 'Filters',
+      reset: 'Reset filters',
+      resultCount: '{count} models',
+      tokenBilling: 'Per token'
+    },
+    view: {
+      label: 'View style',
+      list: 'List view',
+      card: 'Card view'
     },
     badges: {
       exclusive: 'Exclusive',
@@ -622,6 +633,22 @@ export default {
     detail: {
       noModels: 'No models configured for this group',
       noPricing: 'Pricing not configured',
+      noOfficialPricing: 'No official reference pricing',
+      peakNote: 'Peak hours {window}: billing rate ×{multiplier}',
+      open: 'View details for {model}',
+      close: 'Close model details',
+      paidPricing: 'Your price',
+      officialReference: 'Official reference',
+      unitPrice: 'Unit price',
+      tier: 'Pricing tier',
+      cacheWrite: 'Cache write',
+      cacheRead: 'Cache read',
+      groupInfo: 'Group and billing',
+      effectiveRate: 'Effective rate',
+      groupType: 'Group type',
+      standard: 'Standard',
+      access: 'Access',
+      publicGroup: 'Public group'
       peakNote: 'Peak hours {window}: billing rate ×{multiplier}',
       longContextDisabledNote: 'Long-context tier pricing is disabled for this group: requests above the threshold are billed at the base tier; official tiers are for reference only'
     },
