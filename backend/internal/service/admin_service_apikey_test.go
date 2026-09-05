@@ -455,19 +455,13 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_ExclusiveGroup_AddsAllowedGroup(t
 	cache := &authCacheInvalidatorStub{}
 	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo, userRepo: userRepo, authCacheInvalidator: cache}
 
-	got, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(10))
-	require.NoError(t, err)
-	require.NotNil(t, got.APIKey.GroupID)
-	require.Equal(t, int64(10), *got.APIKey.GroupID)
-	// 验证 AddGroupToAllowedGroups 被调用，且参数正确
-	require.True(t, userRepo.addGroupCalled)
-	require.Equal(t, int64(42), userRepo.addedUserID)
-	require.Equal(t, int64(10), userRepo.addedGroupID)
-	// 验证 result 标记了自动授权
-	require.True(t, got.AutoGrantedGroupAccess)
-	require.NotNil(t, got.GrantedGroupID)
-	require.Equal(t, int64(10), *got.GrantedGroupID)
-	require.Equal(t, "Exclusive", got.GrantedGroupName)
+	_, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(10))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "entClient is nil")
+	// An exclusive binding must never fall back to two non-atomic repository
+	// writes when the service has not been given a transaction-capable client.
+	require.False(t, userRepo.addGroupCalled)
+	require.Nil(t, apiKeyRepo.updated)
 }
 
 func TestAdminService_AdminUpdateAPIKeyGroupID_NonExclusiveGroup_NoAllowedGroupUpdate(t *testing.T) {
@@ -542,12 +536,12 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_ExclusiveGroup_AllowedGroupAddFai
 	userRepo := &userRepoStubForGroupUpdate{addGroupErr: errors.New("db error")}
 	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo, userRepo: userRepo}
 
-	// 严格模式：AddGroupToAllowedGroups 失败时，整体操作报错
+	// Without a transaction client the operation must fail before attempting
+	// either side of the authorization/key update.
 	_, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(10))
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "add group to user allowed groups")
-	require.True(t, userRepo.addGroupCalled)
-	// apiKey 不应被更新
+	require.Contains(t, err.Error(), "entClient is nil")
+	require.False(t, userRepo.addGroupCalled)
 	require.Nil(t, apiKeyRepo.updated)
 }
 

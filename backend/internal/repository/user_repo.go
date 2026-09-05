@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 )
 
@@ -1401,23 +1402,137 @@ func (r *userRepository) AddGroupToAllowedGroups(ctx context.Context, userID int
 }
 
 func (r *userRepository) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {
-	// 仅操作 user_allowed_groups 联接表，legacy users.allowed_groups 列已弃用。
-	affected, err := r.client.UserAllowedGroup.Delete().
-		Where(userallowedgroup.GroupIDEQ(groupID)).
-		Exec(ctx)
+	// The group row is the serialization point shared with API-key writes:
+	// deleting an authorization must not race a key being moved into an
+	// exclusive group.  Reuse a caller transaction when present, otherwise own
+	// one for the lookup and delete.
+	txCtx := ctx
+	client := clientFromContext(ctx, r.client)
+	var tx *dbent.Tx
+	if dbent.TxFromContext(ctx) == nil {
+		var err error
+		tx, err = r.client.Tx(ctx)
+		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+			return 0, err
+		}
+		if tx != nil {
+			defer func() { _ = tx.Rollback() }()
+			client = tx.Client()
+			txCtx = dbent.NewTxContext(ctx, tx)
+		}
+	}
+
+	// Preserve permissions required by active, undeleted keys only for
+	// exclusive standard groups.  Public/subscription groups do not use this
+	// authorization gate and retain the historical replacement semantics.
+	groupQuery := client.Group.Query().Where(dbgroup.IDEQ(groupID))
+	if client.Driver().Dialect() == dialect.Postgres {
+		groupQuery = groupQuery.ForUpdate()
+	}
+	target, lookupErr := groupQuery.Only(txCtx)
+	protectedUsers := []int64(nil)
+	if lookupErr == nil && target.IsExclusive && target.SubscriptionType != service.SubscriptionTypeSubscription {
+		protectedKeyRows, keyErr := client.APIKey.Query().
+			Where(
+				apikey.GroupIDEQ(groupID),
+				apikey.StatusEQ(service.StatusActive),
+				apikey.DeletedAtIsNil(),
+			).
+			Select(apikey.FieldUserID).
+			All(txCtx)
+		if keyErr != nil {
+			lookupErr = keyErr
+		} else {
+			protectedUsers = make([]int64, 0, len(protectedKeyRows))
+			seen := make(map[int64]struct{}, len(protectedKeyRows))
+			for _, row := range protectedKeyRows {
+				if _, ok := seen[row.UserID]; ok {
+					continue
+				}
+				seen[row.UserID] = struct{}{}
+				protectedUsers = append(protectedUsers, row.UserID)
+			}
+		}
+	}
+	if lookupErr != nil && !dbent.IsNotFound(lookupErr) {
+		return 0, lookupErr
+	}
+
+	deleteQuery := client.UserAllowedGroup.Delete().Where(userallowedgroup.GroupIDEQ(groupID))
+	if len(protectedUsers) > 0 {
+		deleteQuery = deleteQuery.Where(userallowedgroup.UserIDNotIn(protectedUsers...))
+	}
+	affected, err := deleteQuery.Exec(txCtx)
 	if err != nil {
 		return 0, err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return 0, err
+		}
 	}
 	return int64(affected), nil
 }
 
 // RemoveGroupFromUserAllowedGroups 移除单个用户的指定分组权限
 func (r *userRepository) RemoveGroupFromUserAllowedGroups(ctx context.Context, userID int64, groupID int64) error {
+	// Keep the same invariant as bulk authorization replacement: an active,
+	// undeleted key owner must retain access to an exclusive standard group.
+	// ReplaceUserGroup calls this after moving keys, while other administrative
+	// paths may call it directly.
+	txCtx := ctx
 	client := clientFromContext(ctx, r.client)
+	var tx *dbent.Tx
+	if dbent.TxFromContext(ctx) == nil {
+		var err error
+		tx, err = r.client.Tx(ctx)
+		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+			return err
+		}
+		if tx != nil {
+			defer func() { _ = tx.Rollback() }()
+			client = tx.Client()
+			txCtx = dbent.NewTxContext(ctx, tx)
+		}
+	}
+
+	groupQuery := client.Group.Query().Where(dbgroup.IDEQ(groupID))
+	if client.Driver().Dialect() == dialect.Postgres {
+		groupQuery = groupQuery.ForUpdate()
+	}
+	target, lookupErr := groupQuery.Only(txCtx)
+	if lookupErr != nil && !dbent.IsNotFound(lookupErr) {
+		return lookupErr
+	}
+	if lookupErr == nil && target.IsExclusive && target.SubscriptionType != service.SubscriptionTypeSubscription {
+		keyExists, err := client.APIKey.Query().
+			Where(
+				apikey.UserIDEQ(userID),
+				apikey.GroupIDEQ(groupID),
+				apikey.StatusEQ(service.StatusActive),
+				apikey.DeletedAtIsNil(),
+			).
+			Exist(txCtx)
+		if err != nil {
+			return err
+		}
+		if keyExists {
+			return nil
+		}
+	}
+
 	_, err := client.UserAllowedGroup.Delete().
 		Where(userallowedgroup.UserIDEQ(userID), userallowedgroup.GroupIDEQ(groupID)).
-		Exec(ctx)
-	return err
+		Exec(txCtx)
+	if err != nil {
+		return err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *userRepository) GetFirstAdmin(ctx context.Context) (*service.User, error) {
@@ -1471,7 +1586,7 @@ func (r *userRepository) loadAllowedGroups(ctx context.Context, userIDs []int64)
 // 仅操作 user_allowed_groups 联接表，legacy users.allowed_groups 列已弃用。
 func (r *userRepository) syncUserAllowedGroupsWithClient(ctx context.Context, client *dbent.Client, userID int64, groupIDs []int64) error {
 	if client == nil {
-		return nil
+		return errors.New("ent client is required to synchronize user allowed groups")
 	}
 
 	existingRows, err := client.UserAllowedGroup.Query().
@@ -1487,6 +1602,23 @@ func (r *userRepository) syncUserAllowedGroupsWithClient(ctx context.Context, cl
 			continue
 		}
 		desired[id] = struct{}{}
+	}
+
+	// Never remove an exclusive standard group while the user still owns a
+	// non-deleted API key bound to it.  AllowedGroups updates are replacement
+	// semantics, so preserving these rows here prevents a stale admin form (or
+	// a concurrent snapshot) from creating a key/group authorization gap.
+	boundKeys, err := client.APIKey.Query().
+		Where(apikey.UserIDEQ(userID), apikey.StatusEQ(service.StatusActive), apikey.DeletedAtIsNil(), apikey.GroupIDNotNil(),
+			apikey.HasGroupWith(dbgroup.IsExclusiveEQ(true), dbgroup.SubscriptionTypeNEQ(service.SubscriptionTypeSubscription))).
+		All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, key := range boundKeys {
+		if key.GroupID != nil {
+			desired[*key.GroupID] = struct{}{}
+		}
 	}
 
 	existing := make(map[int64]struct{}, len(existingRows))

@@ -10,7 +10,9 @@ import (
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -245,11 +247,34 @@ func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.G
 }
 
 func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
+	if groupIn == nil {
+		return errors.New("group is nil")
+	}
+
+	// Group configuration and the authorization rows required by an exclusive
+	// group must commit together.  Reuse a caller-owned transaction when one is
+	// already present; otherwise own the transaction here.
+	txCtx := ctx
+	txClient := clientFromContext(ctx, r.client)
+	var ownedTx *dbent.Tx
+	if dbent.TxFromContext(ctx) == nil {
+		tx, txErr := r.client.Tx(ctx)
+		switch {
+		case txErr == nil:
+			ownedTx = tx
+			defer func() { _ = ownedTx.Rollback() }()
+			txClient = tx.Client()
+			txCtx = dbent.NewTxContext(ctx, tx)
+		case !errors.Is(txErr, dbent.ErrTxStarted):
+			return txErr
+		}
+	}
+
 	modelPricing, err := json.Marshal(groupIn.ModelPricing)
 	if err != nil {
 		return fmt.Errorf("marshal group model pricing: %w", err)
 	}
-	builder := r.client.Group.UpdateOneID(groupIn.ID).
+	builder := txClient.Group.UpdateOneID(groupIn.ID).
 		SetName(groupIn.Name).
 		SetDescription(groupIn.Description).
 		SetPlatform(groupIn.Platform).
@@ -398,13 +423,56 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 	// 处理 SupportedModelScopes（始终设置，空数组表示不限制）
 	builder = builder.SetSupportedModelScopes(groupIn.SupportedModelScopes)
 
-	updated, err := builder.Save(ctx)
+	updated, err := builder.Save(txCtx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrGroupNotFound, service.ErrGroupExists)
 	}
 	groupIn.UpdatedAt = updated.UpdatedAt
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
+
+	// An exclusive standard group can only be used by users explicitly listed
+	// in user_allowed_groups.  Repair/maintain that invariant for every
+	// non-deleted API key already bound to the group, including the transition
+	// from public to exclusive.  The insert is idempotent and lives in the same
+	// transaction as the group update.
+	if groupIn.IsExclusive && !groupIn.IsSubscriptionType() {
+		keys, keyErr := txClient.APIKey.Query().
+			Where(
+				apikey.GroupIDEQ(groupIn.ID),
+				apikey.StatusEQ(service.StatusActive),
+				apikey.DeletedAtIsNil(),
+			).
+			All(txCtx)
+		if keyErr != nil {
+			return keyErr
+		}
+		seenUsers := make(map[int64]struct{}, len(keys))
+		creates := make([]*dbent.UserAllowedGroupCreate, 0, len(keys))
+		for _, key := range keys {
+			if _, seen := seenUsers[key.UserID]; seen {
+				continue
+			}
+			seenUsers[key.UserID] = struct{}{}
+			creates = append(creates, txClient.UserAllowedGroup.Create().
+				SetUserID(key.UserID).
+				SetGroupID(groupIn.ID))
+		}
+		if len(creates) > 0 {
+			if err := txClient.UserAllowedGroup.CreateBulk(creates...).
+				OnConflictColumns(userallowedgroup.FieldUserID, userallowedgroup.FieldGroupID).
+				DoNothing().
+				Exec(txCtx); err != nil {
+				return err
+			}
+		}
+	}
+
+	if err := enqueueSchedulerOutbox(txCtx, txAwareSQLExecutor(txCtx, r.sql, txClient), service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
 		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group update failed: group=%d err=%v", groupIn.ID, err)
+	}
+	if ownedTx != nil {
+		if err := ownedTx.Commit(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
