@@ -439,6 +439,15 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
+	if cfg.Gateway.ClaudeCodeMimicProfile != "claude-code-cli" || cfg.Gateway.ClaudeCodeMimicMode != "compatibility" {
+		t.Fatalf("Claude Code mimic defaults = profile=%q mode=%q", cfg.Gateway.ClaudeCodeMimicProfile, cfg.Gateway.ClaudeCodeMimicMode)
+	}
+	if cfg.Gateway.CodexTransportProfile != "codex-cli" {
+		t.Fatalf("Codex transport profile = %q, want codex-cli", cfg.Gateway.CodexTransportProfile)
+	}
+	if cfg.Gateway.ProviderErrorMode != "proxy" {
+		t.Fatalf("Provider error mode = %q, want proxy", cfg.Gateway.ProviderErrorMode)
+	}
 
 	if !cfg.Gateway.OpenAIWS.Enabled {
 		t.Fatalf("Gateway.OpenAIWS.Enabled = false, want true")
@@ -548,6 +557,30 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	}
 	if cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey != 64 {
 		t.Fatalf("Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey = %d, want 64", cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey)
+	}
+}
+
+func TestValidateMimicProfiles(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Config)
+		want   string
+	}{
+		{"claude profile", func(c *Config) { c.Gateway.ClaudeCodeMimicProfile = "browser" }, "claude_code_mimic_profile"},
+		{"claude mode", func(c *Config) { c.Gateway.ClaudeCodeMimicMode = "passthrough" }, "claude_code_mimic_mode"},
+		{"codex profile", func(c *Config) { c.Gateway.CodexTransportProfile = "chrome" }, "codex_transport_profile"},
+		{"provider error mode", func(c *Config) { c.Gateway.ProviderErrorMode = "legacy" }, "provider_error_mode"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetViperWithJWTSecret(t)
+			cfg, err := Load()
+			require.NoError(t, err)
+			tt.mutate(cfg)
+			err = cfg.Validate()
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.want)
+		})
 	}
 }
 

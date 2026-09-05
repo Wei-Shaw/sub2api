@@ -392,7 +392,14 @@ func (s *GatewayService) applyClaudeCodeOAuthMimicryToBody(
 	systemRewritten := false
 	if systemPromptInjectionEnabled {
 		systemPromptBlocks = claudeOAuthSystemPromptBlocksForModel(model, systemPromptBlocks)
-		body = rewriteSystemForNonClaudeCodeWithPromptBlocks(body, normalizeSystemParam(systemRaw), systemPrompt, systemPromptBlocks)
+		body = rewriteSystemForNonClaudeCodeWithPromptBlocksMode(
+			body,
+			normalizeSystemParam(systemRaw),
+			systemPrompt,
+			systemPromptBlocks,
+			s.claudeCodeMimicProfile(),
+			s.claudeCodeMimicMode(ctx),
+		)
 		systemRewritten = true
 	}
 
@@ -745,14 +752,21 @@ func parseClaudeOAuthSystemPromptBlocksConfig(raw string) ([]claudeOAuthSystemPr
 }
 
 func decodeClaudeOAuthSystemPromptCacheControl(raw json.RawMessage) (any, error) {
+	return decodeClaudeOAuthSystemPromptCacheControlWithTTL(raw, claude.DefaultCacheControlTTL)
+}
+
+func decodeClaudeOAuthSystemPromptCacheControlWithTTL(raw json.RawMessage, defaultTTL string) (any, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) || bytes.Equal(trimmed, []byte("false")) {
 		return nil, nil
 	}
 	if bytes.Equal(trimmed, []byte("true")) {
+		if strings.TrimSpace(defaultTTL) == "" {
+			defaultTTL = claude.DefaultCacheControlTTL
+		}
 		return map[string]string{
 			"type": "ephemeral",
-			"ttl":  claude.DefaultCacheControlTTL,
+			"ttl":  defaultTTL,
 		}, nil
 	}
 	var value any
@@ -765,28 +779,36 @@ func decodeClaudeOAuthSystemPromptCacheControl(raw json.RawMessage) (any, error)
 	return value, nil
 }
 
-func expandClaudeOAuthSystemPromptTextTemplate(body []byte, text string, expansionPrompt string) (string, error) {
+func expandClaudeOAuthSystemPromptTextTemplateWithProfile(body []byte, text string, expansionPrompt string, profile claude.Profile) (string, error) {
 	if text == "" {
 		return "", nil
 	}
 	expansionPrompt = defaultClaudeOAuthExpansionPrompt(expansionPrompt)
-	billingText, err := buildBillingAttributionText(body, claude.CLICurrentVersion)
+	version := profile.Version
+	if version == "" {
+		version = claude.CLICurrentVersion
+	}
+	billingText, err := buildBillingAttributionTextWithEntrypoint(body, version, profile.Entrypoint)
 	if err != nil {
 		return "", err
 	}
-	fp := computeClaudeCodeFingerprint(body, claude.CLICurrentVersion)
+	fp := computeClaudeCodeFingerprint(body, version)
 	replacer := strings.NewReplacer(
 		"{billing_header}", billingText,
-		"{cc_version}", claude.CLICurrentVersion,
+		"{cc_version}", version,
 		"{fp}", fp,
-		"{claude_code_system_prompt}", claudeCodeSystemPrompt,
+		"{claude_code_system_prompt}", profile.SystemPrompt,
 		"{claude_code_expansion_prompt}", expansionPrompt,
 	)
 	return replacer.Replace(text), nil
 }
 
-func defaultClaudeOAuthSystemPromptBlockConfig() []claudeOAuthSystemPromptBlockConfig {
+func defaultClaudeOAuthSystemPromptBlockConfigForProfile(profile claude.Profile) []claudeOAuthSystemPromptBlockConfig {
 	enabled := true
+	ttl := profile.CacheControlTTL
+	if ttl == "" {
+		ttl = claude.DefaultCacheControlTTL
+	}
 	return []claudeOAuthSystemPromptBlockConfig{
 		{
 			Enabled: &enabled,
@@ -803,19 +825,19 @@ func defaultClaudeOAuthSystemPromptBlockConfig() []claudeOAuthSystemPromptBlockC
 			Type:    "text",
 			Text:    "{claude_code_expansion_prompt}",
 			CacheControl: json.RawMessage(
-				fmt.Sprintf(`{"type":"ephemeral","ttl":%q}`, claude.DefaultCacheControlTTL),
+				fmt.Sprintf(`{"type":"ephemeral","ttl":%q}`, ttl),
 			),
 		},
 	}
 }
 
-func buildClaudeOAuthSystemPromptBlocksJSON(body []byte, expansionPrompt string, blocksConfig string) ([][]byte, error) {
+func buildClaudeOAuthSystemPromptBlocksJSONWithProfile(body []byte, expansionPrompt string, blocksConfig string, profile claude.Profile) ([][]byte, error) {
 	blocks, err := parseClaudeOAuthSystemPromptBlocksConfig(blocksConfig)
 	if err != nil {
 		return nil, err
 	}
 	if len(blocks) == 0 {
-		blocks = defaultClaudeOAuthSystemPromptBlockConfig()
+		blocks = defaultClaudeOAuthSystemPromptBlockConfigForProfile(profile)
 	}
 
 	items := make([][]byte, 0, len(blocks))
@@ -830,14 +852,14 @@ func buildClaudeOAuthSystemPromptBlocksJSON(body []byte, expansionPrompt string,
 		if blockType != "text" {
 			return nil, fmt.Errorf("system block %d type %q is not supported", i, block.Type)
 		}
-		text, err := expandClaudeOAuthSystemPromptTextTemplate(body, block.Text, expansionPrompt)
+		text, err := expandClaudeOAuthSystemPromptTextTemplateWithProfile(body, block.Text, expansionPrompt, profile)
 		if err != nil {
 			return nil, err
 		}
 		if strings.TrimSpace(text) == "" {
 			continue
 		}
-		cacheControl, err := decodeClaudeOAuthSystemPromptCacheControl(block.CacheControl)
+		cacheControl, err := decodeClaudeOAuthSystemPromptCacheControlWithTTL(block.CacheControl, profile.CacheControlTTL)
 		if err != nil {
 			return nil, fmt.Errorf("system block %d cache_control: %w", i, err)
 		}
@@ -904,8 +926,21 @@ func extractSystemTextAndCacheControl(system any) (string, any) {
 }
 
 func rewriteSystemForNonClaudeCodeWithPromptBlocks(body []byte, system any, expansionPrompt string, blocksConfig string) []byte {
+	return rewriteSystemForNonClaudeCodeWithPromptBlocksMode(body, system, expansionPrompt, blocksConfig, claude.ResolveProfile(claude.DefaultProfileID), claude.MimicModeCompatibility)
+}
+
+// rewriteSystemForNonClaudeCodeWithPromptBlocksMode applies the selected
+// profile and mode. Strict mode keeps the original system instructions in the
+// system array and deliberately avoids the synthetic assistant acknowledgement
+// used by the historical compatibility bridge.
+func rewriteSystemForNonClaudeCodeWithPromptBlocksMode(body []byte, system any, expansionPrompt string, blocksConfig string, profile claude.Profile, mode claude.MimicMode) []byte {
 	system = normalizeSystemParam(system)
 	expansionPrompt = defaultClaudeOAuthExpansionPrompt(expansionPrompt)
+	if mode != claude.MimicModeStrict {
+		// Keep the legacy compatibility bridge's economical cache policy. Strict
+		// mode is the opt-in path that follows the 1h CLI breakpoint profile.
+		profile.CacheControlTTL = claude.DefaultCacheControlTTL
+	}
 
 	// 1. 提取原始 system prompt 文本及其缓存断点
 	originalSystemText, originalSystemCacheControl := extractSystemTextAndCacheControl(system)
@@ -921,11 +956,11 @@ func rewriteSystemForNonClaudeCodeWithPromptBlocks(body []byte, system any, expa
 	//
 	//    缺失 billing block 的系统 payload 是 Anthropic 判定第三方的关键信号之一
 	//    （真实 CLI 每个请求都带）。新版 CLI 已取消 cch=... 签名字段，故 block 不再注入
-	//    cch（见 buildBillingAttributionText）。
-	systemBlocks, blockErr := buildClaudeOAuthSystemPromptBlocksJSON(body, expansionPrompt, blocksConfig)
+	//    cch（见 buildBillingAttributionTextWithEntrypoint）。
+	systemBlocks, blockErr := buildClaudeOAuthSystemPromptBlocksJSONWithProfile(body, expansionPrompt, blocksConfig, profile)
 	if blockErr != nil {
 		logger.LegacyPrintf("service.gateway", "Warning: failed to build configured Claude OAuth system blocks: %v", blockErr)
-		systemBlocks, blockErr = buildClaudeOAuthSystemPromptBlocksJSON(body, expansionPrompt, "")
+		systemBlocks, blockErr = buildClaudeOAuthSystemPromptBlocksJSONWithProfile(body, expansionPrompt, "", profile)
 	}
 	if blockErr != nil {
 		logger.LegacyPrintf("service.gateway", "Warning: failed to build default Claude OAuth system blocks: %v", blockErr)
@@ -937,9 +972,31 @@ func rewriteSystemForNonClaudeCodeWithPromptBlocks(body []byte, system any, expa
 		return body
 	}
 
+	if mode == claude.MimicModeStrict {
+		// A real Claude Code request carries project/user instructions as system
+		// content. Preserve them here without creating a turn that the model never
+		// saw in the official client.
+		if originalSystemText != "" && !hasClaudeCodePrefix(originalSystemText) {
+			instructionBlock := map[string]any{
+				"type": "text",
+				"text": originalSystemText,
+			}
+			if originalSystemCacheControl != nil {
+				instructionBlock["cache_control"] = originalSystemCacheControl
+			}
+			if raw, err := json.Marshal(instructionBlock); err == nil {
+				systemItems := append(systemBlocks, raw)
+				if next, setOk := setJSONRawBytes(out, "system", buildJSONArrayRaw(systemItems)); setOk {
+					out = next
+				}
+			}
+		}
+		return out
+	}
+
 	// 3. 将原始 system prompt 作为 user/assistant 消息对注入到 messages 开头
 	//    模型仍通过 messages 接收完整指令，保留客户端功能
-	ccPromptTrimmed := strings.TrimSpace(claudeCodeSystemPrompt)
+	ccPromptTrimmed := strings.TrimSpace(profile.SystemPrompt)
 	if originalSystemText != "" && originalSystemText != ccPromptTrimmed && !hasClaudeCodePrefix(originalSystemText) {
 		instructionBlock := map[string]any{
 			"type": "text",

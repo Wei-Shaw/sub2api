@@ -118,3 +118,27 @@ func WriteFilteredHeaders(dst http.Header, src http.Header, filter *CompiledHead
 		}
 	}
 }
+
+// NormalizeEventStreamHeaders makes the gateway-owned SSE contract
+// authoritative after upstream headers have been filtered. Upstream servers
+// may return compression or framing metadata that no longer matches the bytes
+// emitted by the gateway (which parses and rewrites the stream). Leaving those
+// headers in place causes strict clients and intermediary proxies to disagree
+// about how to decode the response.
+func NormalizeEventStreamHeaders(dst http.Header) {
+	if dst == nil {
+		return
+	}
+	for _, key := range []string{
+		"Content-Encoding",
+		"Content-Length",
+		"Transfer-Encoding",
+		"Vary",
+	} {
+		dst.Del(key)
+	}
+	dst.Set("Content-Type", "text/event-stream")
+	dst.Set("Cache-Control", "no-cache")
+	dst.Set("Connection", "keep-alive")
+	dst.Set("X-Accel-Buffering", "no")
+}

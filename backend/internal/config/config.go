@@ -977,6 +977,21 @@ type GatewayConfig struct {
 	// ForceCodexCLI: 强制将 OpenAI `/v1/responses` 请求按 Codex CLI 处理。
 	// 用于网关未透传/改写 User-Agent 时的兼容兜底（默认关闭，避免影响其他客户端）。
 	ForceCodexCLI bool `mapstructure:"force_codex_cli"`
+	// ClaudeCodeMimicProfile selects the versioned Claude Code identity used for
+	// Anthropic OAuth mimicry. Empty keeps the built-in CLI profile.
+	ClaudeCodeMimicProfile string `mapstructure:"claude_code_mimic_profile"`
+	// ClaudeCodeMimicMode controls body adaptation for non-Claude clients:
+	// compatibility keeps the legacy user/assistant system bridge; strict keeps
+	// the request system-shaped and does not synthesize an assistant acknowledgement.
+	ClaudeCodeMimicMode string `mapstructure:"claude_code_mimic_mode"`
+	// CodexTransportProfile selects the transport intent for Codex OAuth:
+	// codex-cli (default), codex-cli-http2, codex-cli-websocket, or compatibility.
+	// It does not enable a TLS fingerprint; that requires a captured codex-rs ClientHello.
+	CodexTransportProfile string `mapstructure:"codex_transport_profile"`
+	// ProviderErrorMode controls whether gateway-generated errors retain the
+	// proxy's diagnostic wording or use provider-native wording/types.
+	// Values: proxy (default) or provider.
+	ProviderErrorMode string `mapstructure:"provider_error_mode"`
 	// DisableCodexIdentityEnforcement: 关闭「强制统一 Codex 出站身份」。上游 /backend-api/codex
 	// 在容量紧张时按客户端身份分优先级降载，被降载的请求会拿到 HTTP 200 + 流内
 	// server_is_overloaded，该次请求失败。默认强制统一出口：所有 OAuth 出站的
@@ -2369,6 +2384,10 @@ func setDefaults() {
 	viper.SetDefault("gateway.max_account_switches", 10)
 	viper.SetDefault("gateway.max_account_switches_gemini", 3)
 	viper.SetDefault("gateway.force_codex_cli", false)
+	viper.SetDefault("gateway.claude_code_mimic_profile", "claude-code-cli")
+	viper.SetDefault("gateway.claude_code_mimic_mode", "compatibility")
+	viper.SetDefault("gateway.codex_transport_profile", "codex-cli")
+	viper.SetDefault("gateway.provider_error_mode", "proxy")
 	viper.SetDefault("gateway.disable_codex_identity_enforcement", false)
 	viper.SetDefault("gateway.disable_codex_originator_normalization", false)
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
@@ -3286,6 +3305,46 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.OpenAIResponseHeaderTimeout < 0 {
 		return fmt.Errorf("gateway.openai_response_header_timeout must be non-negative")
+	}
+	profile := strings.ToLower(strings.TrimSpace(c.Gateway.ClaudeCodeMimicProfile))
+	if profile == "" {
+		profile = "claude-code-cli"
+	}
+	switch profile {
+	case "claude-code-cli", "claude-agent-sdk", "claude-code-ide":
+		c.Gateway.ClaudeCodeMimicProfile = profile
+	default:
+		return fmt.Errorf("gateway.claude_code_mimic_profile must be one of claude-code-cli|claude-agent-sdk|claude-code-ide")
+	}
+	mode := strings.ToLower(strings.TrimSpace(c.Gateway.ClaudeCodeMimicMode))
+	if mode == "" {
+		mode = "compatibility"
+	}
+	switch mode {
+	case "compatibility", "strict":
+		c.Gateway.ClaudeCodeMimicMode = mode
+	default:
+		return fmt.Errorf("gateway.claude_code_mimic_mode must be one of compatibility|strict")
+	}
+	codexProfile := strings.ToLower(strings.TrimSpace(c.Gateway.CodexTransportProfile))
+	if codexProfile == "" {
+		codexProfile = "codex-cli"
+	}
+	switch codexProfile {
+	case "codex-cli", "codex-cli-http2", "codex-cli-websocket", "compatibility":
+		c.Gateway.CodexTransportProfile = codexProfile
+	default:
+		return fmt.Errorf("gateway.codex_transport_profile must be one of codex-cli|codex-cli-http2|codex-cli-websocket|compatibility")
+	}
+	errorMode := strings.ToLower(strings.TrimSpace(c.Gateway.ProviderErrorMode))
+	if errorMode == "" {
+		errorMode = "proxy"
+	}
+	switch errorMode {
+	case "proxy", "provider":
+		c.Gateway.ProviderErrorMode = errorMode
+	default:
+		return fmt.Errorf("gateway.provider_error_mode must be one of proxy|provider")
 	}
 	if c.Gateway.GrokResponseHeaderTimeout < 0 || c.Gateway.GrokResponseHeaderTimeout > 1800 {
 		return fmt.Errorf("gateway.grok_response_header_timeout must be between 0-1800 seconds")

@@ -702,6 +702,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		errType = "upstream_error"
 		errMsg = "Upstream request failed"
 	}
+	errType, errMsg = normalizeProviderError(resolveProviderErrorMode(s.cfg), "openai", resp.StatusCode, errType, errMsg)
 	if isOpenAIContextWindowError(upstreamMsg, body) && upstreamMsg != "" {
 		errMsg = upstreamMsg
 	}
@@ -870,6 +871,9 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		errType = "api_error"
 	}
 
+	if resolveProviderErrorMode(s.cfg) == ProviderErrorModeProvider {
+		errType, upstreamMsg = normalizeProviderError(ProviderErrorModeProvider, "openai", resp.StatusCode, errType, upstreamMsg)
+	}
 	writeError(c, resp.StatusCode, errType, upstreamMsg)
 	return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 }
