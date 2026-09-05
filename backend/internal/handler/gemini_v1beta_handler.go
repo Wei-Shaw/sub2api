@@ -46,14 +46,34 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		return
 	}
 
-	// 强制 antigravity 模式：返回 antigravity 支持的模型列表
-	if forcePlatform == service.PlatformAntigravity {
-		c.JSON(http.StatusOK, antigravity.FallbackGeminiModelsList())
-		return
+	// 分组级模型白名单开启时过滤 models[].name（名字形如 models/xxx）。
+	filterGeminiModels := func(models []gemini.Model) []gemini.Model {
+		if apiKey.Group == nil || !apiKey.Group.ModelAllowlistEnabled() {
+			return models
+		}
+		filtered := make([]gemini.Model, 0, len(models))
+		for _, model := range models {
+			if apiKey.Group.ModelAllowlist.Allows(model.Name) {
+				filtered = append(filtered, model)
+			}
+		}
+		return filtered
 	}
 
-	if models, ok := customGeminiModelsList(apiKey.Group); ok {
-		c.JSON(http.StatusOK, models)
+	// 强制 antigravity 模式：返回 antigravity 支持的模型列表
+	if forcePlatform == service.PlatformAntigravity {
+		if apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
+			agModels := antigravity.DefaultGeminiModels()
+			filtered := make([]antigravity.GeminiModel, 0, len(agModels))
+			for _, model := range agModels {
+				if apiKey.Group.ModelAllowlist.Allows(model.Name) {
+					filtered = append(filtered, model)
+				}
+			}
+			c.JSON(http.StatusOK, antigravity.GeminiModelsListResponse{Models: filtered})
+			return
+		}
+		c.JSON(http.StatusOK, antigravity.FallbackGeminiModelsList())
 		return
 	}
 
@@ -63,7 +83,7 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		hasAntigravity, _ := h.geminiCompatService.HasAntigravityAccounts(c.Request.Context(), apiKey.GroupID)
 		if hasAntigravity {
 			// antigravity 账户使用静态模型列表
-			c.JSON(http.StatusOK, gemini.FallbackModelsList())
+			c.JSON(http.StatusOK, gemini.ModelsListResponse{Models: filterGeminiModels(gemini.DefaultModels())})
 			return
 		}
 		markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
@@ -77,21 +97,64 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		return
 	}
 	if shouldFallbackGeminiModels(res) {
-		c.JSON(http.StatusOK, gemini.FallbackModelsList())
+		c.JSON(http.StatusOK, gemini.ModelsListResponse{Models: filterGeminiModels(gemini.DefaultModels())})
 		return
+	}
+	if apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
+		if filtered, dropped, ok := filterUpstreamGeminiModelsBody(res.Body, apiKey.Group.ModelAllowlist); ok && dropped {
+			// 只在确有条目被过滤时替换响应体；全命中或解析失败时保持原始响应，
+			// 统一经 writeUpstreamResponse 写出（保留全部上游响应头）。
+			res.Body = filtered
+		}
 	}
 	writeUpstreamResponse(c, res)
 }
 
-func customGeminiModelsList(group *service.Group) (gemini.ModelsListResponse, bool) {
-	if group == nil || !group.CustomModelsListEnabled() {
-		return gemini.ModelsListResponse{}, false
+// filterUpstreamGeminiModelsBody 按白名单过滤上游 /v1beta/models 响应中的
+// models[].name，其余信封字段（如 nextPageToken）原样保留。
+// 返回值：filtered 为过滤后的响应体；dropped 表示是否有条目被移除（全命中时
+// 为 false，调用方应保持原始响应以完整透传上游头）；ok=false 表示解析失败，
+// 调用方同样应透传原始响应。
+func filterUpstreamGeminiModelsBody(body []byte, allowlist service.GroupModelAllowlist) (filtered []byte, dropped bool, ok bool) {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, false, false
 	}
-	models := make([]gemini.Model, 0, len(group.ModelsListConfig.Models))
-	for _, modelID := range group.ModelsListConfig.Models {
-		models = append(models, gemini.FallbackModel(modelID))
+	rawModels, hasModels := envelope["models"]
+	if !hasModels {
+		return body, false, true
 	}
-	return gemini.ModelsListResponse{Models: models}, true
+	type geminiModelName struct {
+		Name string `json:"name"`
+	}
+	var models []json.RawMessage
+	if err := json.Unmarshal(rawModels, &models); err != nil {
+		return nil, false, false
+	}
+	kept := make([]json.RawMessage, 0, len(models))
+	for _, raw := range models {
+		var model geminiModelName
+		if err := json.Unmarshal(raw, &model); err != nil {
+			return nil, false, false
+		}
+		if allowlist.Allows(model.Name) {
+			kept = append(kept, raw)
+		}
+	}
+	if len(kept) == len(models) {
+		// 全部命中时直接透传原始响应体。
+		return body, false, true
+	}
+	mergedModels, err := json.Marshal(kept)
+	if err != nil {
+		return nil, false, false
+	}
+	envelope["models"] = mergedModels
+	merged, err := json.Marshal(envelope)
+	if err != nil {
+		return nil, false, false
+	}
+	return merged, true, true
 }
 
 // GeminiV1BetaGetModel proxies:

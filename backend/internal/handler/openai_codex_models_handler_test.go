@@ -163,7 +163,7 @@ func TestCodexModelsAppliesLocalFiltersBeforeClientETag(t *testing.T) {
 	group := &service.Group{
 		ID:       groupID,
 		Platform: service.PlatformOpenAI,
-		ModelsListConfig: service.GroupModelsListConfig{
+		ModelAllowlist: service.GroupModelAllowlist{
 			Enabled: true,
 			Models:  []string{"codex-auto-review", "gpt-5.6"},
 		},
@@ -181,7 +181,7 @@ func TestCodexModelsAppliesLocalFiltersBeforeClientETag(t *testing.T) {
 		t.Fatal("first response did not include an ETag")
 	}
 
-	group.ModelsListConfig.Enabled = false
+	group.ModelAllowlist.Enabled = false
 	second := performCodexModelsRequestForGroup(t, handler, group, oldETag)
 	if second.Code != http.StatusOK {
 		t.Fatalf("second status: got %d, want %d; body=%s", second.Code, http.StatusOK, second.Body.String())
@@ -232,7 +232,7 @@ func TestCodexModelsAPIKeyCacheDoesNotLeakGroupFilters(t *testing.T) {
 	groupA := &service.Group{
 		ID:       91,
 		Platform: service.PlatformOpenAI,
-		ModelsListConfig: service.GroupModelsListConfig{
+		ModelAllowlist: service.GroupModelAllowlist{
 			Enabled: true,
 			Models:  []string{"model-a"},
 		},
@@ -240,7 +240,7 @@ func TestCodexModelsAPIKeyCacheDoesNotLeakGroupFilters(t *testing.T) {
 	groupB := &service.Group{
 		ID:       92,
 		Platform: service.PlatformOpenAI,
-		ModelsListConfig: service.GroupModelsListConfig{
+		ModelAllowlist: service.GroupModelAllowlist{
 			Enabled: true,
 			Models:  []string{"model-b"},
 		},
@@ -912,7 +912,7 @@ func TestCodexModelsPinnedAccountsStillApplyCustomModelsListFilter(t *testing.T)
 	group := &service.Group{
 		ID:       84,
 		Platform: service.PlatformOpenAI,
-		ModelsListConfig: service.GroupModelsListConfig{
+		ModelAllowlist: service.GroupModelAllowlist{
 			Enabled: true,
 			Models:  []string{"model-b"},
 		},

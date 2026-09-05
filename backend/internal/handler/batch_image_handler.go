@@ -139,7 +139,26 @@ func (h *BatchImageHandler) Models(c *gin.Context) {
 		batchImageError(c, err)
 		return
 	}
+	// 分组级模型白名单：ListModels 已按分组账号枚举，这里再按白名单过滤一次。
+	if apiKey, ok := middleware.GetAPIKeyFromContext(c); ok && apiKey != nil && apiKey.Group != nil {
+		got.Data = filterBatchImageModelsByAllowlist(got.Data, apiKey.Group.ModelAllowlist)
+	}
 	c.JSON(http.StatusOK, got)
+}
+
+// filterBatchImageModelsByAllowlist 按分组模型白名单过滤批量生图模型列表。
+// 白名单未开启时原样返回。
+func filterBatchImageModelsByAllowlist(models []service.BatchImagePublicModel, allowlist service.GroupModelAllowlist) []service.BatchImagePublicModel {
+	if !allowlist.Enabled {
+		return models
+	}
+	filtered := make([]service.BatchImagePublicModel, 0, len(models))
+	for _, model := range models {
+		if allowlist.Allows(model.ID) {
+			filtered = append(filtered, model)
+		}
+	}
+	return filtered
 }
 
 func (h *BatchImageHandler) Items(c *gin.Context) {

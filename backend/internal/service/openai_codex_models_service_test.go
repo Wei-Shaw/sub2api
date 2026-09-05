@@ -1190,7 +1190,7 @@ func TestBuildGroupConfiguredCodexModelsManifestExpandsSelectedModelCoveredByWil
 	group := &Group{
 		ID:       groupID,
 		Platform: PlatformOpenAI,
-		ModelsListConfig: GroupModelsListConfig{
+		ModelAllowlist: GroupModelAllowlist{
 			Enabled: true,
 			Models:  []string{"gpt-5.6"},
 		},
@@ -1382,7 +1382,7 @@ func TestMergeGroupConfiguredCodexModelsKeepsExplicitAutoReviewSelection(t *test
 	group := &Group{
 		ID:       groupID,
 		Platform: PlatformOpenAI,
-		ModelsListConfig: GroupModelsListConfig{
+		ModelAllowlist: GroupModelAllowlist{
 			Enabled: true,
 			Models:  []string{openai.CodexUsageProbeModel},
 		},
@@ -1414,7 +1414,7 @@ func TestMergeGroupConfiguredCodexModelsHonorsCustomListAndFinalETag(t *testing.
 	group := &Group{
 		ID:       groupID,
 		Platform: PlatformOpenAI,
-		ModelsListConfig: GroupModelsListConfig{
+		ModelAllowlist: GroupModelAllowlist{
 			Enabled: true,
 			Models:  []string{"deepseek-4-pro"},
 		},
@@ -2681,7 +2681,7 @@ func TestFetchCodexModelsManifestAPIKeyCacheSurvivesClientMutation(t *testing.T)
 		&Group{
 			ID:       81,
 			Platform: PlatformOpenAI,
-			ModelsListConfig: GroupModelsListConfig{
+			ModelAllowlist: GroupModelAllowlist{
 				Enabled: true,
 				Models:  []string{"model-a"},
 			},
@@ -2708,7 +2708,7 @@ func TestFetchCodexModelsManifestAPIKeyCacheSurvivesClientMutation(t *testing.T)
 				&Group{
 					ID:       82,
 					Platform: PlatformOpenAI,
-					ModelsListConfig: GroupModelsListConfig{
+					ModelAllowlist: GroupModelAllowlist{
 						Enabled: true,
 						Models:  []string{"model-b"},
 					},
@@ -3548,8 +3548,8 @@ func TestFetchCodexModelsManifestOAuthSharedAcrossGroupsWithIndependentFiltering
 		},
 	}
 	account := newCodexModelsTestAccount()
-	groupA := &Group{ID: 91, Platform: PlatformOpenAI, ModelsListConfig: GroupModelsListConfig{Enabled: true, Models: []string{"model-a"}}}
-	groupB := &Group{ID: 92, Platform: PlatformOpenAI, ModelsListConfig: GroupModelsListConfig{Enabled: true, Models: []string{"model-b"}}}
+	groupA := &Group{ID: 91, Platform: PlatformOpenAI, ModelAllowlist: GroupModelAllowlist{Enabled: true, Models: []string{"model-a"}}}
+	groupB := &Group{ID: 92, Platform: PlatformOpenAI, ModelAllowlist: GroupModelAllowlist{Enabled: true, Models: []string{"model-b"}}}
 
 	begin := make(chan struct{})
 	type result struct {

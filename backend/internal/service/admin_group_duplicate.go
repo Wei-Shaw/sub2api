@@ -150,9 +150,9 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		RequirePrivacySet:               source.RequirePrivacySet,
 		DefaultMappedModel:              source.DefaultMappedModel,
 		MessagesDispatchModelConfig:     cloneGroupMessagesDispatchModelConfig(source.MessagesDispatchModelConfig),
-		ModelsListConfig: GroupModelsListConfig{
-			Enabled: source.ModelsListConfig.Enabled,
-			Models:  append([]string(nil), source.ModelsListConfig.Models...),
+		ModelAllowlist: GroupModelAllowlist{
+			Enabled: source.ModelAllowlist.Enabled,
+			Models:  append([]string(nil), source.ModelAllowlist.Models...),
 		},
 		// 固定账号 manifest 配置指向源分组的账号 ID，复制后成员关系可能变化，重置为关闭且列表为空。
 		CodexModelsManifestConfig:   GroupCodexModelsManifestConfig{},

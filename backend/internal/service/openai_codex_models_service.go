@@ -48,14 +48,16 @@ const (
 
 // FilterCodexModelIDsForGroup removes dedicated media-generation models,
 // wildcard mapping keys, and Codex automatic modes from a client catalog.
-// Automatic modes are retained only when the group's enabled custom model list
+// Automatic modes are retained only when the group's enabled model allowlist
 // explicitly selects the exact slug; account model mappings describe routing
 // and are not feature opt-ins. Wildcard keys such as "foo-*" are routing
-// patterns, not concrete Codex models.
+// patterns, not concrete Codex models. When the allowlist is enabled the
+// catalog is additionally restricted by FilterForListing (wildcard entries
+// expand against the catalog).
 func FilterCodexModelIDsForGroup(modelIDs []string, group *Group) []string {
 	explicitlyEnabled := make(map[string]struct{})
-	if group != nil && group.CustomModelsListEnabled() {
-		for _, modelID := range group.ModelsListConfig.Models {
+	if group != nil && group.ModelAllowlistEnabled() {
+		for _, modelID := range group.ModelAllowlist.Models {
 			modelID = strings.TrimSpace(modelID)
 			if strings.HasPrefix(modelID, codexAutoModelPrefix) {
 				explicitlyEnabled[modelID] = struct{}{}
@@ -81,6 +83,9 @@ func FilterCodexModelIDsForGroup(modelIDs []string, group *Group) []string {
 			}
 		}
 		filtered = append(filtered, modelID)
+	}
+	if group != nil && group.ModelAllowlistEnabled() {
+		filtered = group.ModelAllowlist.FilterForListing(filtered)
 	}
 	return filtered
 }
@@ -145,8 +150,8 @@ func (s *OpenAIGatewayService) BuildGroupConfiguredCodexModelsManifest(
 	body, _, err = mergeConfiguredCodexModelsManifest(
 		body,
 		nil,
-		group.ModelsListConfig.Models,
-		group.CustomModelsListEnabled(),
+		group.ModelAllowlist.Models,
+		group.ModelAllowlistEnabled(),
 	)
 	if err != nil {
 		return nil, false, fmt.Errorf("build group configured Codex models: %w", err)
@@ -186,8 +191,8 @@ func (s *OpenAIGatewayService) MergeGroupConfiguredCodexModels(
 	body, changed, err := mergeConfiguredCodexModelsManifest(
 		manifest.Body,
 		configuredModels,
-		group.ModelsListConfig.Models,
-		group.CustomModelsListEnabled(),
+		group.ModelAllowlist.Models,
+		group.ModelAllowlistEnabled(),
 	)
 	if err != nil {
 		return fmt.Errorf("merge group configured Codex models: %w", err)
@@ -278,15 +283,15 @@ func openAIConfiguredCodexModelIDs(accounts []Account) []string {
 
 func openAIConfiguredCodexModelIDsForGroup(accounts []Account, group *Group) []string {
 	models := openAIConfiguredCodexModelIDs(accounts)
-	if group == nil || !group.CustomModelsListEnabled() {
+	if group == nil || !group.ModelAllowlistEnabled() {
 		return models
 	}
 
-	seen := make(map[string]struct{}, len(models)+len(group.ModelsListConfig.Models))
+	seen := make(map[string]struct{}, len(models)+len(group.ModelAllowlist.Models))
 	for _, modelID := range models {
 		seen[modelID] = struct{}{}
 	}
-	for _, selectedModel := range group.ModelsListConfig.Models {
+	for _, selectedModel := range group.ModelAllowlist.Models {
 		selectedModel = strings.TrimSpace(selectedModel)
 		if selectedModel == "" || strings.Contains(selectedModel, "*") {
 			continue
@@ -1263,6 +1268,8 @@ func mergeConfiguredCodexModelsManifest(
 			selected[modelID] = struct{}{}
 		}
 	}
+	// 白名单条目匹配统一走 GroupModelAllowlist.Allows（通配条目按前缀展开）。
+	allowlist := GroupModelAllowlist{Enabled: filterBySelection, Models: selectedModels}
 	seen := make(map[string]struct{}, len(upstreamModels)+len(configuredModels))
 	merged := make([]json.RawMessage, 0, len(upstreamModels)+len(configuredModels))
 	changed := false
@@ -1283,11 +1290,9 @@ func mergeConfiguredCodexModelsManifest(
 			changed = true
 			continue
 		}
-		if filterBySelection {
-			if _, allowed := selected[descriptor.Slug]; !allowed {
-				changed = true
-				continue
-			}
+		if filterBySelection && !allowlist.Allows(descriptor.Slug) {
+			changed = true
+			continue
 		}
 		if strings.HasPrefix(descriptor.Slug, codexAutoModelPrefix) {
 			_, explicitlyEnabled := selected[descriptor.Slug]
@@ -1311,10 +1316,8 @@ func mergeConfiguredCodexModelsManifest(
 		if isCodexDedicatedMediaModel(modelID) {
 			continue
 		}
-		if filterBySelection {
-			if _, allowed := selected[modelID]; !allowed {
-				continue
-			}
+		if filterBySelection && !allowlist.Allows(modelID) {
+			continue
 		}
 		if strings.HasPrefix(modelID, codexAutoModelPrefix) {
 			if _, explicitlyEnabled := selected[modelID]; !filterBySelection || !explicitlyEnabled {

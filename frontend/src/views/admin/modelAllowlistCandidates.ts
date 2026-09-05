@@ -1,23 +1,23 @@
 import type { GroupPlatform } from "@/types";
 
-export type ModelsListCandidatesMode = "create" | "edit";
+export type ModelAllowlistCandidatesMode = "create" | "edit";
 
-export interface ModelsListCandidatesRequest {
-  mode: ModelsListCandidatesMode;
+export interface ModelAllowlistCandidatesRequest {
+  mode: ModelAllowlistCandidatesMode;
   groupID: number;
   platform: GroupPlatform;
 }
 
-export interface ModelsListCandidatesTracker {
-  next(request: ModelsListCandidatesRequest): number;
-  isCurrent(requestID: number, request: ModelsListCandidatesRequest): boolean;
+export interface ModelAllowlistCandidatesTracker {
+  next(request: ModelAllowlistCandidatesRequest): number;
+  isCurrent(requestID: number, request: ModelAllowlistCandidatesRequest): boolean;
 }
 
-export const createModelsListCandidatesTracker = (): ModelsListCandidatesTracker => {
+export const createModelAllowlistCandidatesTracker = (): ModelAllowlistCandidatesTracker => {
   let currentRequestID = 0;
-  const currentByMode: Partial<Record<ModelsListCandidatesMode, {
+  const currentByMode: Partial<Record<ModelAllowlistCandidatesMode, {
     id: number;
-    request: ModelsListCandidatesRequest;
+    request: ModelAllowlistCandidatesRequest;
   }>> = {};
 
   return {
