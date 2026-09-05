@@ -105,6 +105,22 @@ APPLE_CONTAINER_POSTGRES_IMAGE=postgres:18-alpine
 APPLE_CONTAINER_REDIS_IMAGE=redis:8-alpine
 ```
 
+By default, Apple `container` selects the private IPv4 subnet for the managed
+network. Set `APPLE_CONTAINER_NETWORK_SUBNET` only when host-side tooling needs
+a stable network gateway:
+
+```dotenv
+APPLE_CONTAINER_NETWORK_SUBNET=
+```
+
+Leave the setting empty to keep automatic subnet allocation. When setting it,
+choose a CIDR that does not overlap the host LAN or VPN. The script applies the
+setting only when it creates `sub2api-apple`. If the existing managed network
+uses a different subnet, it stops without deleting any resources. To migrate
+intentionally, run `./apple-container.sh destroy --yes` to remove the managed
+containers and network while preserving named volumes, then run
+`./apple-container.sh up`.
+
 The normal `up` command recreates the application container, so application environment changes are applied immediately. Use `up --recreate` when changing PostgreSQL or Redis container images or Redis runtime configuration. Persistent data remains in named volumes.
 
 `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` are applied only when PostgreSQL initializes an empty data volume. Changing them in `.env` and recreating the container does not change an existing database. Rotate a password with `ALTER ROLE`, and plan explicit migrations for user or database changes. To intentionally initialize a new empty database, first back up the old one and use `destroy --volumes`.
