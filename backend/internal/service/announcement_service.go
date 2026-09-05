@@ -336,6 +336,10 @@ func (s *AnnouncementService) ListUserReadStatus(
 		return nil, nil, err
 	}
 
+	if strings.ToLower(strings.TrimSpace(params.SortBy)) == "read_at" {
+		return s.listUserReadStatusByReadAt(ctx, ann, announcementID, params, search)
+	}
+
 	filters := UserListFilters{
 		Search: strings.TrimSpace(search),
 	}
@@ -385,6 +389,51 @@ func (s *AnnouncementService) ListUserReadStatus(
 	}
 
 	return out, page, nil
+}
+
+// listUserReadStatusByReadAt 走 announcement_reads + users 的 LEFT JOIN 路径,
+// 让排序由 SQL 完成。未读用户在 desc 时排末尾、asc 时排开头(便于在同一页面里
+// 既能"看最近阅读人"也能"看尚未阅读的人")。
+//
+// listUserReadStatusByReadAt uses a LEFT JOIN-driven SQL ordering so the
+// pagination window honors read_at. Unread users sort to the end for descending
+// order and to the start for ascending order.
+func (s *AnnouncementService) listUserReadStatusByReadAt(
+	ctx context.Context,
+	ann *Announcement,
+	announcementID int64,
+	params pagination.PaginationParams,
+	search string,
+) ([]AnnouncementUserReadStatus, *pagination.PaginationResult, error) {
+	rows, pageResult, err := s.readRepo.ListUsersOrderedByReadAt(ctx, announcementID, params, search)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list users ordered by read_at: %w", err)
+	}
+
+	out := make([]AnnouncementUserReadStatus, 0, len(rows))
+	for i := range rows {
+		row := rows[i]
+
+		subs, err := s.userSubRepo.ListActiveByUserID(ctx, row.UserID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("list active subscriptions: %w", err)
+		}
+		activeGroupIDs := make(map[int64]struct{}, len(subs))
+		for j := range subs {
+			activeGroupIDs[subs[j].GroupID] = struct{}{}
+		}
+
+		out = append(out, AnnouncementUserReadStatus{
+			UserID:   row.UserID,
+			Email:    row.Email,
+			Username: row.Username,
+			Balance:  row.Balance,
+			Eligible: domain.AnnouncementTargeting(ann.Targeting).Matches(row.Balance, activeGroupIDs),
+			ReadAt:   row.ReadAt,
+		})
+	}
+
+	return out, pageResult, nil
 }
 
 func isValidAnnouncementStatus(status string) bool {
