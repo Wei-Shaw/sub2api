@@ -960,7 +960,7 @@ func TestAdminService_UpdateGroup_ClearsReasoningPolicyForUnsupportedPlatform(t 
 	repo := &groupRepoStubForAdmin{getByID: existing}
 	svc := &adminServiceImpl{groupRepo: repo}
 
-	_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{Platform: PlatformAnthropic})
+	_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{Platform: PlatformGemini})
 
 	require.NoError(t, err)
 	require.Empty(t, repo.updated.MaxReasoningEffort)
@@ -1900,4 +1900,209 @@ func TestAdminService_PreviewCompositeRouteUsesExplicitRoutes(t *testing.T) {
 	require.Equal(t, "claude-sonnet-4-6", decision.UpstreamModel)
 	require.NotNil(t, decision.Route)
 	require.Equal(t, int64(11), decision.Route.ID)
+}
+
+// accountRepoStubForGroupCodexManifest 支撑固定账号 manifest 配置校验测试。
+type accountRepoStubForGroupCodexManifest struct {
+	AccountRepository
+	accounts []Account
+}
+
+func (s *accountRepoStubForGroupCodexManifest) ListByGroup(_ context.Context, _ int64) ([]Account, error) {
+	return append([]Account(nil), s.accounts...), nil
+}
+
+func openAIGroupCodexManifestAccounts(ids ...int64) []Account {
+	accounts := make([]Account, 0, len(ids))
+	for _, id := range ids {
+		accounts = append(accounts, Account{
+			ID: id, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+			Status: StatusActive, Schedulable: true,
+		})
+	}
+	return accounts
+}
+
+func TestAdminService_UpdateGroup_CodexModelsManifestConfigValidation(t *testing.T) {
+	t.Run("enabled with empty list rejected", func(t *testing.T) {
+		existing := &Group{ID: 1, Name: "g", Platform: PlatformOpenAI, Status: StatusActive}
+		repo := &groupRepoStubForAdmin{getByID: existing}
+		svc := &adminServiceImpl{
+			groupRepo:   repo,
+			accountRepo: &accountRepoStubForGroupCodexManifest{},
+		}
+
+		_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+			CodexModelsManifestConfig: &GroupCodexModelsManifestConfig{Enabled: true},
+		})
+
+		require.Error(t, err)
+		require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+		require.Equal(t, "INVALID_CODEX_MODELS_MANIFEST_CONFIG", infraerrors.Reason(err))
+		require.Nil(t, repo.updated)
+	})
+
+	t.Run("non-member or non-openai account rejected", func(t *testing.T) {
+		existing := &Group{ID: 1, Name: "g", Platform: PlatformOpenAI, Status: StatusActive}
+		repo := &groupRepoStubForAdmin{getByID: existing}
+		anthropicMember := Account{ID: 30, Platform: PlatformAnthropic, Type: AccountTypeOAuth, Status: StatusActive}
+		inactiveMember := Account{ID: 40, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusDisabled}
+		svc := &adminServiceImpl{
+			groupRepo:   repo,
+			accountRepo: &accountRepoStubForGroupCodexManifest{accounts: append(openAIGroupCodexManifestAccounts(10, 20), anthropicMember, inactiveMember)},
+		}
+
+		_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+			CodexModelsManifestConfig: &GroupCodexModelsManifestConfig{
+				Enabled:    true,
+				AccountIDs: []int64{10, 30, 40, 99},
+			},
+		})
+
+		require.Error(t, err)
+		require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+		require.Equal(t, "INVALID_CODEX_MODELS_MANIFEST_CONFIG", infraerrors.Reason(err))
+		require.Contains(t, err.Error(), "30")
+		require.Contains(t, err.Error(), "40")
+		require.Contains(t, err.Error(), "99")
+		require.Nil(t, repo.updated)
+	})
+
+	t.Run("more than ten accounts rejected", func(t *testing.T) {
+		existing := &Group{ID: 1, Name: "g", Platform: PlatformOpenAI, Status: StatusActive}
+		repo := &groupRepoStubForAdmin{getByID: existing}
+		ids := make([]int64, 0, 11)
+		for id := int64(1); id <= 11; id++ {
+			ids = append(ids, id)
+		}
+		svc := &adminServiceImpl{
+			groupRepo:   repo,
+			accountRepo: &accountRepoStubForGroupCodexManifest{accounts: openAIGroupCodexManifestAccounts(ids...)},
+		}
+
+		_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+			CodexModelsManifestConfig: &GroupCodexModelsManifestConfig{Enabled: true, AccountIDs: ids},
+		})
+
+		require.Error(t, err)
+		require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+		require.Equal(t, "INVALID_CODEX_MODELS_MANIFEST_CONFIG", infraerrors.Reason(err))
+		require.Nil(t, repo.updated)
+	})
+
+	t.Run("duplicate ids deduplicated preserving order", func(t *testing.T) {
+		existing := &Group{ID: 1, Name: "g", Platform: PlatformOpenAI, Status: StatusActive}
+		repo := &groupRepoStubForAdmin{getByID: existing}
+		svc := &adminServiceImpl{
+			groupRepo:   repo,
+			accountRepo: &accountRepoStubForGroupCodexManifest{accounts: openAIGroupCodexManifestAccounts(1, 2, 3)},
+		}
+
+		group, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+			CodexModelsManifestConfig: &GroupCodexModelsManifestConfig{
+				Enabled:    true,
+				AccountIDs: []int64{3, 1, 3, 2, 1},
+			},
+		})
+
+		require.NoError(t, err)
+		require.Equal(t, []int64{3, 1, 2}, repo.updated.CodexModelsManifestConfig.AccountIDs)
+		require.True(t, group.CodexModelsManifestConfig.Enabled)
+	})
+
+	t.Run("valid config accepted", func(t *testing.T) {
+		existing := &Group{ID: 1, Name: "g", Platform: PlatformOpenAI, Status: StatusActive}
+		repo := &groupRepoStubForAdmin{getByID: existing}
+		svc := &adminServiceImpl{
+			groupRepo:   repo,
+			accountRepo: &accountRepoStubForGroupCodexManifest{accounts: openAIGroupCodexManifestAccounts(10, 20)},
+		}
+
+		group, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+			CodexModelsManifestConfig: &GroupCodexModelsManifestConfig{
+				Enabled:             true,
+				AccountIDs:          []int64{10, 20},
+				FallbackToScheduler: true,
+			},
+		})
+
+		require.NoError(t, err)
+		require.True(t, group.CodexModelsManifestConfig.Enabled)
+		require.Equal(t, []int64{10, 20}, repo.updated.CodexModelsManifestConfig.AccountIDs)
+		require.True(t, repo.updated.CodexModelsManifestConfig.FallbackToScheduler)
+	})
+}
+
+func TestAdminService_UpdateGroup_CodexModelsManifestConfigZeroedForNonOpenAIPlatform(t *testing.T) {
+	existing := &Group{ID: 1, Name: "g", Platform: PlatformOpenAI, Status: StatusActive}
+	repo := &groupRepoStubForAdmin{getByID: existing}
+	svc := &adminServiceImpl{
+		groupRepo:   repo,
+		accountRepo: &accountRepoStubForGroupCodexManifest{},
+	}
+
+	group, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+		Platform: PlatformAnthropic,
+		CodexModelsManifestConfig: &GroupCodexModelsManifestConfig{
+			Enabled:             true,
+			AccountIDs:          []int64{1, 2},
+			FallbackToScheduler: true,
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, GroupCodexModelsManifestConfig{}, repo.updated.CodexModelsManifestConfig)
+	require.Equal(t, GroupCodexModelsManifestConfig{}, group.CodexModelsManifestConfig)
+}
+
+func TestAdminService_UpdateGroup_CodexModelsManifestConfigUntouchedWhenOmitted(t *testing.T) {
+	existing := &Group{
+		ID: 1, Name: "g", Platform: PlatformOpenAI, Status: StatusActive,
+		CodexModelsManifestConfig: GroupCodexModelsManifestConfig{
+			Enabled:    true,
+			AccountIDs: []int64{10},
+		},
+	}
+	repo := &groupRepoStubForAdmin{getByID: existing}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{Name: "renamed"})
+
+	require.NoError(t, err)
+	require.Equal(t, existing.CodexModelsManifestConfig, repo.updated.CodexModelsManifestConfig)
+}
+
+func TestAdminService_CreateGroup_CodexModelsManifestConfigEnabledRejected(t *testing.T) {
+	repo := &groupRepoStubForAdmin{createID: 61}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name: "codex-pinned", Platform: PlatformOpenAI, RateMultiplier: 1,
+		CodexModelsManifestConfig: GroupCodexModelsManifestConfig{
+			Enabled:    true,
+			AccountIDs: []int64{1},
+		},
+	})
+
+	require.Error(t, err)
+	require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+	require.Equal(t, "INVALID_CODEX_MODELS_MANIFEST_CONFIG", infraerrors.Reason(err))
+	require.Nil(t, repo.created)
+}
+
+func TestAdminService_CreateGroup_CodexModelsManifestConfigDisabledAccepted(t *testing.T) {
+	repo := &groupRepoStubForAdmin{createID: 62}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name: "codex-pinned-off", Platform: PlatformOpenAI, RateMultiplier: 1,
+		CodexModelsManifestConfig: GroupCodexModelsManifestConfig{
+			Enabled:    false,
+			AccountIDs: []int64{1, 1, 2},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{1, 2}, group.CodexModelsManifestConfig.AccountIDs)
+	require.False(t, repo.created.CodexModelsManifestConfig.Enabled)
 }

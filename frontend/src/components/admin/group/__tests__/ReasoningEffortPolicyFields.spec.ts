@@ -13,6 +13,48 @@ vi.mock("vue-i18n", async () => {
 });
 
 describe("ReasoningEffortPolicyFields", () => {
+  it("offers none only in the mapping source selector", () => {
+    const mapping = createReasoningEffortMappingRow({
+      from: "none",
+      to: "low",
+    });
+    const wrapper = mount(ReasoningEffortPolicyFields, {
+      props: {
+        idPrefix: "edit-group-reasoning",
+        platform: "openai",
+        maxEffort: "",
+        overLimit: "downgrade",
+        mappings: [mapping],
+      },
+      global: {
+        stubs: {
+          Icon: true,
+          Select: {
+            props: ["id", "options"],
+            template:
+              '<div :id="id"><span v-for="option in options" :key="option.value" :data-value="option.value" /></div>',
+          },
+        },
+      },
+    });
+
+    const optionValues = (id: string) =>
+      wrapper
+        .get(`#${id}`)
+        .findAll("[data-value]")
+        .map((option) => option.attributes("data-value"));
+
+    expect(optionValues("edit-group-reasoning-max-effort")).not.toContain(
+      "none",
+    );
+    expect(
+      optionValues(`edit-group-reasoning-${mapping.pairs[0].id}-from`),
+    ).toContain("none");
+    expect(
+      optionValues(`edit-group-reasoning-${mapping.pairs[0].id}-to`),
+    ).not.toContain("none");
+  });
+
   it("renders model scope fields for each mapping", () => {
     const mapping = createReasoningEffortMappingRow({
       from: "max",

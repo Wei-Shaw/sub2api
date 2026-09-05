@@ -150,6 +150,7 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 		Duration:                      duration,
 		FirstTokenMs:                  firstTokenMs,
 		ClientDisconnect:              clientDisconnect,
+		UpstreamHeaders:               resp.Header,
 		Usage: ClaudeUsage{
 			InputTokens:              usage.InputTokens,
 			OutputTokens:             usage.OutputTokens,

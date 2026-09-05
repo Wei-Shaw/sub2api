@@ -160,6 +160,7 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		DefaultMappedModel:          g.DefaultMappedModel,
 		MessagesDispatchModelConfig: g.MessagesDispatchModelConfig,
 		ModelsListConfig:            g.ModelsListConfig,
+		CodexModelsManifestConfig:   g.CodexModelsManifestConfig,
 		SupportedModelScopes:        g.SupportedModelScopes,
 		AccountCount:                g.AccountCount,
 		ActiveAccountCount:          g.ActiveAccountCount,
@@ -447,6 +448,47 @@ func AccountFromService(a *service.Account) *Account {
 	return out
 }
 
+// AccountListItemFromAccount projects a full account response into the
+// compact shape used by the paginated admin account list. Keeping this
+// projection separate from Account preserves the existing detail API.
+func AccountListItemFromAccount(a *Account) *AccountListItem {
+	if a == nil {
+		return nil
+	}
+	return &AccountListItem{
+		ID: a.ID, Name: a.Name, Notes: a.Notes, Platform: a.Platform, Type: a.Type,
+		Credentials: a.Credentials, CredentialsStatus: a.CredentialsStatus, Extra: a.Extra,
+		OllamaCloudUsage: a.OllamaCloudUsage,
+		ProxyID:          a.ProxyID, ProxyFallbackOriginID: a.ProxyFallbackOriginID, ProxyFallbackOriginName: a.ProxyFallbackOriginName,
+		Concurrency: a.Concurrency, LoadFactor: a.LoadFactor, Priority: a.Priority, RateMultiplier: a.RateMultiplier,
+		Status: a.Status, ErrorMessage: a.ErrorMessage, LastUsedAt: a.LastUsedAt, ExpiresAt: a.ExpiresAt,
+		AutoPauseOnExpired: a.AutoPauseOnExpired, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt,
+		Schedulable: a.Schedulable, RateLimitedAt: a.RateLimitedAt, RateLimitResetAt: a.RateLimitResetAt,
+		OverloadUntil: a.OverloadUntil, TempUnschedulableUntil: a.TempUnschedulableUntil,
+		TempUnschedulableReason: a.TempUnschedulableReason, SessionWindowStart: a.SessionWindowStart,
+		SessionWindowEnd: a.SessionWindowEnd, SessionWindowStatus: a.SessionWindowStatus,
+		WindowCostLimit: a.WindowCostLimit, WindowCostStickyReserve: a.WindowCostStickyReserve,
+		MaxSessions: a.MaxSessions, SessionIdleTimeoutMin: a.SessionIdleTimeoutMin, BaseRPM: a.BaseRPM,
+		RPMStrategy: a.RPMStrategy, RPMStickyBuffer: a.RPMStickyBuffer, UserMsgQueueMode: a.UserMsgQueueMode,
+		EnableTLSFingerprint: a.EnableTLSFingerprint, TLSFingerprintProfileID: a.TLSFingerprintProfileID,
+		EnableSessionIDMasking: a.EnableSessionIDMasking, CacheTTLOverrideEnabled: a.CacheTTLOverrideEnabled,
+		CacheTTLOverrideTarget: a.CacheTTLOverrideTarget, CustomBaseURLEnabled: a.CustomBaseURLEnabled,
+		CustomBaseURL: a.CustomBaseURL, QuotaLimit: a.QuotaLimit, QuotaUsed: a.QuotaUsed,
+		QuotaDailyLimit: a.QuotaDailyLimit, QuotaDailyUsed: a.QuotaDailyUsed, QuotaWeeklyLimit: a.QuotaWeeklyLimit,
+		QuotaWeeklyUsed: a.QuotaWeeklyUsed, QuotaDailyResetMode: a.QuotaDailyResetMode,
+		QuotaDailyResetHour: a.QuotaDailyResetHour, QuotaWeeklyResetMode: a.QuotaWeeklyResetMode,
+		QuotaWeeklyResetDay: a.QuotaWeeklyResetDay, QuotaWeeklyResetHour: a.QuotaWeeklyResetHour,
+		QuotaResetTimezone: a.QuotaResetTimezone, QuotaDailyResetAt: a.QuotaDailyResetAt,
+		QuotaWeeklyResetAt: a.QuotaWeeklyResetAt, QuotaNotifyDailyEnabled: a.QuotaNotifyDailyEnabled,
+		QuotaNotifyDailyThreshold: a.QuotaNotifyDailyThreshold, QuotaNotifyWeeklyEnabled: a.QuotaNotifyWeeklyEnabled,
+		QuotaNotifyWeeklyThreshold: a.QuotaNotifyWeeklyThreshold, QuotaNotifyTotalEnabled: a.QuotaNotifyTotalEnabled,
+		QuotaNotifyTotalThreshold: a.QuotaNotifyTotalThreshold, ParentAccountID: a.ParentAccountID,
+		QuotaDimension: a.QuotaDimension, ParentEmail: a.ParentEmail, ParentPlanType: a.ParentPlanType,
+		ParentPrivacyMode: a.ParentPrivacyMode, ParentSubscriptionExpiresAt: a.ParentSubscriptionExpiresAt,
+		ParentChatGPTAccountID: a.ParentChatGPTAccountID, Proxy: a.Proxy, GroupIDs: a.GroupIDs,
+	}
+}
+
 func timeToUnixSeconds(value *time.Time) *int64 {
 	if value == nil {
 		return nil
@@ -723,6 +765,7 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 		UpstreamModelMismatch:   l.UpstreamModelMismatch,
 		ChannelID:               l.ChannelID,
 		ModelMappingChain:       l.ModelMappingChain,
+		UpstreamRequestID:       l.UpstreamRequestID,
 		BillingTier:             l.BillingTier,
 		AccountRateMultiplier:   l.AccountRateMultiplier,
 		AccountStatsCost:        l.AccountStatsCost,

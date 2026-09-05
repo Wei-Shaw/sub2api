@@ -677,15 +677,17 @@ func DefaultBetaPolicySettings() *BetaPolicySettings {
 // OpenAI Fast Policy 策略常量
 // OpenAI 的 "fast 模式" 通过请求体中的 service_tier 字段识别：
 //   - "priority"（客户端可传 "fast"，归一化为 "priority"）：fast 模式
+//   - "ultrafast"：Codex/API 的 Ultrafast 档位
 //   - "flex"：低优先级模式
 //   - 省略：normal 默认
 //
 // 本策略复用 BetaPolicyAction*/BetaPolicyScope* 常量语义，只是匹配键从
 // anthropic-beta header 换成 body 的 service_tier 字段。
 const (
-	OpenAIFastTierAny      = "all"      // 匹配任意已识别的 service_tier
-	OpenAIFastTierPriority = "priority" // 仅匹配 fast（priority）
-	OpenAIFastTierFlex     = "flex"     // 仅匹配 flex
+	OpenAIFastTierAny       = "all"       // 匹配任意已识别的 service_tier
+	OpenAIFastTierPriority  = "priority"  // 仅匹配 fast（priority）
+	OpenAIFastTierUltrafast = "ultrafast" // 仅匹配 ultrafast
+	OpenAIFastTierFlex      = "flex"      // 仅匹配 flex
 
 	// OpenAIFastPolicyActionForcePriority 会保留 service_tier 字段并强制写成
 	// priority，用于把 flex/auto/default/scale 等已识别 tier 收敛为 fast。
@@ -694,7 +696,7 @@ const (
 
 // OpenAIFastPolicyRule 单条 OpenAI fast/flex 策略规则
 type OpenAIFastPolicyRule struct {
-	ServiceTier          string   `json:"service_tier"`                     // "priority" | "flex" | "auto" | "default" | "scale" | "all"
+	ServiceTier          string   `json:"service_tier"`                     // "priority" | "ultrafast" | "flex" | "auto" | "default" | "scale" | "all"
 	Action               string   `json:"action"`                           // "pass" | "filter" | "block" | "force_priority"
 	Scope                string   `json:"scope"`                            // "all" | "oauth" | "apikey" | "bedrock"
 	UserIDs              []int64  `json:"user_ids,omitempty"`               // 空=所有 Sub2API 用户；非空=仅指定 API Key 所属用户

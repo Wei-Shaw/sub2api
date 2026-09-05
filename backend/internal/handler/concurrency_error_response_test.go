@@ -16,6 +16,7 @@ func TestConcurrencyErrorResponse(t *testing.T) {
 		slotType    string
 		wantStatus  int
 		wantType    string
+		wantCode    string
 		wantMessage string
 	}{
 		{
@@ -24,7 +25,17 @@ func TestConcurrencyErrorResponse(t *testing.T) {
 			slotType:    "user",
 			wantStatus:  http.StatusTooManyRequests,
 			wantType:    "rate_limit_error",
+			wantCode:    gatewayConcurrencyLimitCode,
 			wantMessage: "Concurrency limit exceeded for account, please retry later",
+		},
+		{
+			name:        "full local wait queue has gateway code",
+			err:         &WaitQueueFullError{SlotType: "account"},
+			slotType:    "account",
+			wantStatus:  http.StatusTooManyRequests,
+			wantType:    "rate_limit_error",
+			wantCode:    gatewayQueueFullCode,
+			wantMessage: "Too many pending requests, please retry later",
 		},
 		{
 			name:        "client cancellation is not classified as concurrency limit",
@@ -54,9 +65,10 @@ func TestConcurrencyErrorResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			status, errType, message := concurrencyErrorResponse(tt.err, tt.slotType)
+			status, errType, code, message := concurrencyErrorResponse(tt.err, tt.slotType)
 			require.Equal(t, tt.wantStatus, status)
 			require.Equal(t, tt.wantType, errType)
+			require.Equal(t, tt.wantCode, code)
 			require.Equal(t, tt.wantMessage, message)
 		})
 	}

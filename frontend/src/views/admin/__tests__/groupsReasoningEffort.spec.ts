@@ -4,11 +4,13 @@ import {
   createReasoningEffortMappingPair,
   createReasoningEffortMappingRow,
   normalizeReasoningEffortForPlatform,
+  normalizeReasoningEffortSourceForPlatform,
   normalizeReasoningEffortMatchType,
   normalizeReasoningEffortOverLimit,
   reasoningEffortMappingsToAPI,
   reasoningEffortMappingsToRows,
   reasoningEffortOptionsForPlatform,
+  reasoningEffortSourceOptionsForPlatform,
   reasoningEffortOverLimitDeny,
   reasoningEffortOverLimitDowngrade,
   supportsReasoningEffortPolicyPlatform,
@@ -31,15 +33,23 @@ describe("groupsReasoningEffort", () => {
           (option) => option.value,
         ),
       ).toEqual(expected);
+      expect(
+        reasoningEffortSourceOptionsForPlatform(platform).map(
+          (option) => option.value,
+        ),
+      ).toEqual(["none", ...expected]);
       expect(supportsReasoningEffortPolicyPlatform(platform)).toBe(true);
     }
-    for (const platform of [
-      "anthropic",
-      "gemini",
-      "antigravity",
-      "grok",
-    ] as const) {
+    expect(
+      reasoningEffortOptionsForPlatform("anthropic").map(
+        (option) => option.value,
+      ),
+    ).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(supportsReasoningEffortPolicyPlatform("anthropic")).toBe(true);
+
+    for (const platform of ["gemini", "antigravity", "grok"] as const) {
       expect(reasoningEffortOptionsForPlatform(platform)).toEqual([]);
+      expect(reasoningEffortSourceOptionsForPlatform(platform)).toEqual([]);
       expect(supportsReasoningEffortPolicyPlatform(platform)).toBe(false);
     }
   });
@@ -57,6 +67,27 @@ describe("groupsReasoningEffort", () => {
     expect(reasoningEffortMappingsToAPI(rows)).toEqual([
       { from: "max", to: "xhigh" },
     ]);
+  });
+
+  it("hydrates and validates none only as a mapping source", () => {
+    const rows = reasoningEffortMappingsToRows(
+      [{ from: " NONE ", to: "low" }],
+      "openai",
+    );
+    expect(reasoningEffortMappingsToAPI(rows)).toEqual([
+      { from: "none", to: "low" },
+    ]);
+    expect(validateReasoningEffortMappings(rows, "openai")).toEqual({});
+    expect(normalizeReasoningEffortSourceForPlatform("composite", " NONE ")).toBe("none");
+
+    const invalidTarget = createReasoningEffortMappingRow({
+      from: "low",
+      to: "none",
+    });
+    expect(validateReasoningEffortMappings([invalidTarget], "openai")).toEqual({
+      [invalidTarget.pairs[0].id]: { to: "unsupportedTo" },
+    });
+    expect(normalizeReasoningEffortForPlatform("openai", "none")).toBe("");
   });
 
   it("hydrates model scoped mappings", () => {
@@ -128,6 +159,12 @@ describe("groupsReasoningEffort", () => {
     expect(normalizeReasoningEffortForPlatform("openai", " MAX ")).toBe("max");
     expect(normalizeReasoningEffortForPlatform("composite", " MAX ")).toBe(
       "max",
+    );
+    expect(normalizeReasoningEffortForPlatform("anthropic", "xhigh")).toBe(
+      "xhigh",
+    );
+    expect(normalizeReasoningEffortForPlatform("anthropic", "minimal")).toBe(
+      "",
     );
     expect(normalizeReasoningEffortForPlatform("grok", "max")).toBe("");
     expect(normalizeReasoningEffortForPlatform("openai", "none")).toBe("");
