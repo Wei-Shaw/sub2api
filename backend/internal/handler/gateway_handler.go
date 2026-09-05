@@ -319,6 +319,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
 					cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, service.PlatformGemini)
+					cls = classifySelectionFailureError(err, cls)
 					if !cls.ModelNotFound {
 						markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 					}
@@ -330,7 +331,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						zap.Error(err),
 					)
 					message := cls.Message
-					if !cls.ModelNotFound {
+					if !cls.ModelNotFound && !cls.PreserveMessage {
 						message = "No available accounts: " + err.Error()
 					}
 					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
@@ -632,6 +633,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
 					cls := classifyNoAccountErrorFromGin(c, h.gatewayService, currentAPIKey, reqModel, reqModel, platform)
+					cls = classifySelectionFailureError(err, cls)
 					if !cls.ModelNotFound {
 						markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 					}
@@ -644,7 +646,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						zap.Error(err),
 					)
 					message := cls.Message
-					if !cls.ModelNotFound {
+					if !cls.ModelNotFound && !cls.PreserveMessage {
 						message = "No available accounts: " + err.Error()
 					}
 					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)

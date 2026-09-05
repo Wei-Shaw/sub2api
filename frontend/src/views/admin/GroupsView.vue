@@ -320,6 +320,16 @@
               :concurrency-max="capacityMap.get(row.id)!.concurrencyMax"
               :sessions-used="capacityMap.get(row.id)!.sessionsUsed"
               :sessions-max="capacityMap.get(row.id)!.sessionsMax"
+              :group-sessions-used="
+                row.platform === 'anthropic'
+                  ? capacityMap.get(row.id)!.groupSessionsUsed
+                  : 0
+              "
+              :group-sessions-max="
+                row.platform === 'anthropic'
+                  ? capacityMap.get(row.id)!.groupSessionsMax
+                  : 0
+              "
               :rpm-used="capacityMap.get(row.id)!.rpmUsed"
               :rpm-max="capacityMap.get(row.id)!.rpmMax"
             />
@@ -624,6 +634,18 @@
             :placeholder="t('admin.groups.form.rpmLimitPlaceholder')"
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
+        </div>
+        <div v-if="createForm.platform === 'anthropic'">
+          <label class="input-label">{{ t("admin.groups.form.maxSessions") }}</label>
+          <input
+            v-model.number="createForm.max_sessions"
+            type="number"
+            min="0"
+            step="1"
+            class="input"
+            :placeholder="t('admin.groups.form.maxSessionsPlaceholder')"
+          />
+          <p class="input-hint">{{ t("admin.groups.form.maxSessionsHint") }}</p>
         </div>
         <ReasoningEffortPolicyFields
           v-if="supportsReasoningEffortPolicyPlatform(createForm.platform)"
@@ -2423,6 +2445,18 @@
             :placeholder="t('admin.groups.form.rpmLimitPlaceholder')"
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
+        </div>
+        <div v-if="editForm.platform === 'anthropic'">
+          <label class="input-label">{{ t("admin.groups.form.maxSessions") }}</label>
+          <input
+            v-model.number="editForm.max_sessions"
+            type="number"
+            min="0"
+            step="1"
+            class="input"
+            :placeholder="t('admin.groups.form.maxSessionsPlaceholder')"
+          />
+          <p class="input-hint">{{ t("admin.groups.form.maxSessionsHint") }}</p>
         </div>
         <ReasoningEffortPolicyFields
           v-if="supportsReasoningEffortPolicyPlatform(editForm.platform)"
@@ -5084,6 +5118,8 @@ const capacityMap = ref<
       concurrencyMax: number;
       sessionsUsed: number;
       sessionsMax: number;
+      groupSessionsUsed: number;
+      groupSessionsMax: number;
       rpmUsed: number;
       rpmMax: number;
     }
@@ -5253,6 +5289,8 @@ const createForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+  // 分组活跃会话软上限（0 = 不限制）
+  max_sessions: 0 as number,
   max_reasoning_effort: "",
   max_reasoning_effort_over_limit: reasoningEffortOverLimitDowngrade,
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
@@ -5618,6 +5656,8 @@ const editForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+  // 分组活跃会话软上限（0 = 不限制）
+  max_sessions: 0 as number,
   max_reasoning_effort: "",
   max_reasoning_effort_over_limit: reasoningEffortOverLimitDowngrade,
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
@@ -5952,6 +5992,8 @@ const loadCapacitySummary = async () => {
         concurrencyMax: number;
         sessionsUsed: number;
         sessionsMax: number;
+        groupSessionsUsed: number;
+        groupSessionsMax: number;
         rpmUsed: number;
         rpmMax: number;
       }
@@ -5962,6 +6004,8 @@ const loadCapacitySummary = async () => {
         concurrencyMax: item.concurrency_max,
         sessionsUsed: item.sessions_used,
         sessionsMax: item.sessions_max,
+        groupSessionsUsed: item.group_sessions_used ?? 0,
+        groupSessionsMax: item.group_sessions_max ?? 0,
         rpmUsed: item.rpm_used,
         rpmMax: item.rpm_max,
       });
@@ -6061,6 +6105,7 @@ const closeCreateModal = () => {
   createForm.mcp_xml_inject = true;
   createForm.copy_accounts_from_group_ids = [];
   createForm.rpm_limit = 0;
+  createForm.max_sessions = 0;
   createForm.max_reasoning_effort = "";
   createForm.max_reasoning_effort_over_limit = reasoningEffortOverLimitDowngrade;
   createForm.reasoning_effort_mappings = [];
@@ -6235,6 +6280,11 @@ const handleCreateGroup = async () => {
     requestData.web_search_price_per_call = emptyToNull(
       requestData.web_search_price_per_call,
     );
+    // 清空输入框时 v-model.number 产生 ""，归一为 0（不限制）
+    requestData.max_sessions =
+      createForm.platform === "anthropic"
+        ? Number(requestData.max_sessions) || 0
+        : 0;
     requestData.peak_rate_enabled = createForm.peak_rate_enabled;
     requestData.peak_start = createForm.peak_start;
     requestData.peak_end = createForm.peak_end;
@@ -6339,6 +6389,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.mcp_xml_inject = group.mcp_xml_inject ?? true;
   editForm.copy_accounts_from_group_ids = []; // 复制账号字段每次编辑时重置为空
   editForm.rpm_limit = group.rpm_limit ?? 0;
+  editForm.max_sessions = group.max_sessions ?? 0;
   editForm.max_reasoning_effort = normalizeReasoningEffortForPlatform(
     group.platform,
     group.max_reasoning_effort,
@@ -6526,6 +6577,11 @@ const handleUpdateGroup = async () => {
     payload.web_search_price_per_call = emptyPriceToClear(
       payload.web_search_price_per_call,
     );
+    // 清空输入框时 v-model.number 产生 ""，归一为 0（不限制）
+    payload.max_sessions =
+      editForm.platform === "anthropic"
+        ? Number(payload.max_sessions) || 0
+        : 0;
     payload.peak_rate_enabled = editForm.peak_rate_enabled;
     payload.peak_start = editForm.peak_start;
     payload.peak_end = editForm.peak_end;
@@ -6835,6 +6891,9 @@ watch(
 watch(
   () => createForm.platform,
   (newVal) => {
+    if (newVal !== "anthropic") {
+      createForm.max_sessions = 0;
+    }
     if (!["anthropic", "antigravity"].includes(newVal)) {
       createForm.fallback_group_id_on_invalid_request = null;
     }
@@ -6892,6 +6951,9 @@ watch(
 watch(
   () => editForm.platform,
   (newVal) => {
+    if (newVal !== "anthropic") {
+      editForm.max_sessions = 0;
+    }
     if (!["anthropic", "antigravity"].includes(newVal)) {
       editForm.fallback_group_id_on_invalid_request = null;
     }

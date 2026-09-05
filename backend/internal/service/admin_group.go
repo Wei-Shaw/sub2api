@@ -525,6 +525,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
 		RPMLimit:                        input.RPMLimit,
+		MaxSessions:                     input.MaxSessions,
 		MaxReasoningEffort:              maxReasoningEffort,
 		MaxReasoningEffortOverLimit:     maxReasoningEffortOverLimit,
 		ReasoningEffortMappings:         reasoningEffortMappings,
@@ -906,6 +907,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit
+	}
+	if input.MaxSessions != nil {
+		if *input.MaxSessions < 0 {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_MAX_SESSIONS", "max_sessions must be non-negative")
+		}
+		group.MaxSessions = *input.MaxSessions
 	}
 	if input.MaxReasoningEffort != nil {
 		maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(group.Platform, *input.MaxReasoningEffort)

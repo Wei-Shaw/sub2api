@@ -459,14 +459,30 @@ export async function getUsageSummary(): Promise<
 }
 
 /**
+ * Per-group capacity summary.
+ *
+ * `sessions_used/sessions_max` aggregate the account-level session capacity of
+ * the group's account pool, so a shared account counts towards every group it
+ * belongs to. `group_sessions_used/group_sessions_max` are the group's own soft
+ * limit and only count sessions whose sticky binding belongs to this group.
+ */
+export interface GroupCapacitySummary {
+  group_id: number
+  concurrency_used: number
+  concurrency_max: number
+  sessions_used: number
+  sessions_max: number
+  group_sessions_used: number
+  group_sessions_max: number
+  rpm_used: number
+  rpm_max: number
+}
+
+/**
  * Get capacity summary (concurrency/sessions/RPM) for all active groups
  */
-export async function getCapacitySummary(): Promise<
-  { group_id: number; concurrency_used: number; concurrency_max: number; sessions_used: number; sessions_max: number; rpm_used: number; rpm_max: number }[]
-> {
-  const { data } = await apiClient.get<
-    { group_id: number; concurrency_used: number; concurrency_max: number; sessions_used: number; sessions_max: number; rpm_used: number; rpm_max: number }[]
-  >('/admin/groups/capacity-summary')
+export async function getCapacitySummary(): Promise<GroupCapacitySummary[]> {
+  const { data } = await apiClient.get<GroupCapacitySummary[]>('/admin/groups/capacity-summary')
   return data
 }
 

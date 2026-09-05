@@ -144,9 +144,15 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 		)
 		if selectErr != nil {
 			if attempt == 0 {
-				c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{
-					"type":    "scheduling_error",
-					"message": selectErr.Error(),
+				// 会话容量类拒绝要回 429，让客户端退避重试，而不是当成服务不可用。
+				cls := classifySelectionFailureError(selectErr, noAccountErrorClassification{
+					Status:  http.StatusServiceUnavailable,
+					ErrType: "scheduling_error",
+					Message: selectErr.Error(),
+				})
+				c.JSON(cls.Status, gin.H{"error": gin.H{
+					"type":    cls.ErrType,
+					"message": cls.Message,
 				}})
 				return
 			}

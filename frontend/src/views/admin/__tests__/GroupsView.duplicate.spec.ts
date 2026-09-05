@@ -75,6 +75,7 @@ const sourceGroup: AdminGroup = {
   platform: 'openai',
   rate_multiplier: 1,
   rpm_limit: 0,
+  max_sessions: 9,
   is_exclusive: false,
   status: 'active',
   subscription_type: 'standard',
@@ -295,11 +296,36 @@ describe('GroupsView duplicate action', () => {
     expect(editButton).toBeTruthy()
     await editButton!.trigger('click')
     await flushPromises()
+    expect(wrapper.text()).not.toContain('admin.groups.form.maxSessions')
     await wrapper.get('#edit-group-form').trigger('submit')
     await flushPromises()
 
     expect(updateGroup).toHaveBeenCalledTimes(1)
+    expect(updateGroup).toHaveBeenCalledWith(
+      42,
+      expect.objectContaining({ max_sessions: 0 })
+    )
     expect(showError).toHaveBeenCalledWith('group name already exists')
+    wrapper.unmount()
+  })
+
+  it('shows the session limit field for Anthropic groups', async () => {
+    listGroups.mockResolvedValueOnce({
+      items: [{ ...sourceGroup, platform: 'anthropic', max_sessions: 9 }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const editButton = wrapper.findAll('button').find((button) => button.text() === 'common.edit')
+    expect(editButton).toBeTruthy()
+    await editButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.groups.form.maxSessions')
     wrapper.unmount()
   })
 })

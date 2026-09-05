@@ -17,9 +17,10 @@
       </span>
     </div>
 
-    <!-- 会话数 -->
+    <!-- 账号池会话容量汇总 -->
     <div v-if="sessionsMax > 0" class="flex items-center gap-1">
       <span
+        :title="accountSessionsTitle"
         :class="[
           'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium',
           capacityClass(sessionsUsed, sessionsMax)
@@ -31,6 +32,24 @@
         <span class="font-mono">{{ sessionsUsed }}</span>
         <span class="text-gray-400 dark:text-gray-500">/</span>
         <span class="font-mono">{{ sessionsMax }}</span>
+      </span>
+    </div>
+
+    <!-- 分组会话软上限 -->
+    <div v-if="groupSessionsMax > 0" class="flex items-center gap-1">
+      <span
+        :title="groupSessionsTitle"
+        :class="[
+          'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium',
+          capacityClass(groupSessionsUsed, groupSessionsMax)
+        ]"
+      >
+        <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+        </svg>
+        <span class="font-mono">{{ groupSessionsUsed }}</span>
+        <span class="text-gray-400 dark:text-gray-500">/</span>
+        <span class="font-mono">{{ groupSessionsMax }}</span>
       </span>
     </div>
 
@@ -54,23 +73,48 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
 interface Props {
   concurrencyUsed: number
   concurrencyMax: number
+  /** 账号池会话容量汇总；共享账号会同时计入其所属的每个分组 */
   sessionsUsed: number
   sessionsMax: number
+  /** 分组自身的会话软上限，仅统计 sticky 归属本分组的活跃会话 */
+  groupSessionsUsed: number
+  groupSessionsMax: number
   rpmUsed: number
   rpmMax: number
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   concurrencyUsed: 0,
   concurrencyMax: 0,
   sessionsUsed: 0,
   sessionsMax: 0,
+  groupSessionsUsed: 0,
+  groupSessionsMax: 0,
   rpmUsed: 0,
   rpmMax: 0
 })
+
+const { t } = useI18n()
+
+const accountSessionsTitle = computed(() =>
+  t('admin.groups.capacity.accountSessionsTooltip', {
+    used: props.sessionsUsed,
+    max: props.sessionsMax
+  })
+)
+
+const groupSessionsTitle = computed(() =>
+  t('admin.groups.capacity.groupSessionsTooltip', {
+    used: props.groupSessionsUsed,
+    max: props.groupSessionsMax
+  })
+)
 
 function capacityClass(used: number, max: number): string {
   if (max > 0 && used >= max) {

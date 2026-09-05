@@ -823,6 +823,10 @@ export default {
         userNotes: 'Notes',
         userStatus: 'Status'
       },
+      capacity: {
+        accountSessionsTooltip: 'Account session pool: {used} / {max} (aggregated account-level session capacity; a shared account counts towards every group it belongs to)',
+        groupSessionsTooltip: 'Group sessions: {used} / {max} (only active sessions owned by this group)'
+      },
       usageToday: 'Today',
       usageYesterday: 'Yesterday',
       usageTotal: 'Total',
@@ -857,6 +861,9 @@ export default {
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
         rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).',
+        maxSessions: 'Max active sessions',
+        maxSessionsPlaceholder: '0 = unlimited',
+        maxSessionsHint: 'Maximum active sessions allowed in this group; 0 means unlimited. Once the limit is reached, only new sessions are rejected; existing sessions continue normally. Session activity follows each account\u2019s idle timeout. This is a soft limit and may be briefly exceeded under high concurrency.',
         maxReasoningEffort: 'Max reasoning effort',
         maxReasoningEffortUnlimited: 'Unlimited (follow request)',
         maxReasoningEffortHint: 'Limits explicit OpenAI reasoning effort requests only. For Composite groups, it applies only to requests resolved to OpenAI. Omitted effort stays omitted. The ceiling takes precedence over reasoning effort mappings.',

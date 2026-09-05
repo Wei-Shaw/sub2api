@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -32,12 +33,18 @@ type noAccountErrorClassification struct {
 	ErrType       string
 	Message       string
 	ModelNotFound bool // true when this is a 404 model_not_found classification
+	// PreserveMessage marks classifications whose Message already explains the
+	// real cause (e.g. session capacity), so handlers must not replace it with
+	// the generic "No available accounts" text.
+	PreserveMessage bool
 }
 
 var selectionModelRateLimitedPattern = regexp.MustCompile(`(?:model_rate_limited|rate_limited)=(\d+)`)
 
 // classifySelectionFailureError preserves the scheduler's compact reason when
-// every model-capable account is temporarily rate limited.
+// every model-capable account is temporarily rate limited, and maps session
+// capacity rejections to 429 so clients back off instead of treating an
+// exhausted session pool as a server outage.
 func classifySelectionFailureError(err error, fallback noAccountErrorClassification) noAccountErrorClassification {
 	if err == nil {
 		return fallback
@@ -58,6 +65,22 @@ func classifySelectionFailureError(err error, fallback noAccountErrorClassificat
 	// sites gate markOpsRoutingCapacityLimitedIfNoAvailable on ModelNotFound.
 	if fallback.ModelNotFound {
 		return fallback
+	}
+	if errors.Is(err, service.ErrGroupSessionCapacityExceeded) {
+		return noAccountErrorClassification{
+			Status:          http.StatusTooManyRequests,
+			ErrType:         "rate_limit_error",
+			Message:         "This group has reached its active session limit. Please retry later.",
+			PreserveMessage: true,
+		}
+	}
+	if errors.Is(err, service.ErrAccountSessionCapacityExceeded) {
+		return noAccountErrorClassification{
+			Status:          http.StatusTooManyRequests,
+			ErrType:         "rate_limit_error",
+			Message:         "All eligible accounts have reached their active session limits. Please retry later.",
+			PreserveMessage: true,
+		}
 	}
 	match := selectionModelRateLimitedPattern.FindStringSubmatch(strings.ToLower(err.Error()))
 	if len(match) != 2 {

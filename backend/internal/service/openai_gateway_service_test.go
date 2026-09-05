@@ -717,6 +717,10 @@ func (c *stubGatewayCache) GetSessionAccountID(ctx context.Context, groupID int6
 	return 0, errors.New("not found")
 }
 
+func (c *stubGatewayCache) GetSessionAccountIDBatch(_ context.Context, _ int64, _ []string) (map[string]int64, error) {
+	return nil, nil
+}
+
 func (c *stubGatewayCache) SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
 	if c.sessionBindings == nil {
 		c.sessionBindings = make(map[string]int64)

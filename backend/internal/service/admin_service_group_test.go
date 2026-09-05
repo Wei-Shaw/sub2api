@@ -859,6 +859,57 @@ func TestAdminService_UpdateGroup_InvalidatesAuthCacheOnRPMLimitChange(t *testin
 	require.Equal(t, []int64{1}, invalidator.groupIDs, "分组 RPMLimit 写入 auth snapshot，变更后必须失效 API Key 认证缓存")
 }
 
+// 分组会话软上限写入 auth snapshot，因此更新后必须失效 API Key 认证缓存；
+// nil 表示不修改，负数必须被拒绝。
+func TestAdminService_UpdateGroup_MaxSessionsTriState(t *testing.T) {
+	newSvc := func(existing *Group) (*adminServiceImpl, *groupRepoStubForAdmin, *authCacheInvalidatorStub) {
+		repo := &groupRepoStubForAdmin{getByID: existing}
+		invalidator := &authCacheInvalidatorStub{}
+		return &adminServiceImpl{groupRepo: repo, authCacheInvalidator: invalidator}, repo, invalidator
+	}
+	existing := func() *Group {
+		return &Group{
+			ID:          1,
+			Name:        "existing-group",
+			Platform:    PlatformAnthropic,
+			Status:      StatusActive,
+			MaxSessions: 7,
+		}
+	}
+
+	t.Run("set value", func(t *testing.T) {
+		svc, repo, invalidator := newSvc(existing())
+		maxSessions := 25
+		group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{MaxSessions: &maxSessions})
+		require.NoError(t, err)
+		require.NotNil(t, group)
+		require.Equal(t, 25, repo.updated.MaxSessions)
+		require.Equal(t, []int64{1}, invalidator.groupIDs)
+	})
+
+	t.Run("zero clears the limit", func(t *testing.T) {
+		svc, repo, _ := newSvc(existing())
+		zero := 0
+		_, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{MaxSessions: &zero})
+		require.NoError(t, err)
+		require.Equal(t, 0, repo.updated.MaxSessions)
+	})
+
+	t.Run("nil keeps existing value", func(t *testing.T) {
+		svc, repo, _ := newSvc(existing())
+		_, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{})
+		require.NoError(t, err)
+		require.Equal(t, 7, repo.updated.MaxSessions)
+	})
+
+	t.Run("negative is rejected", func(t *testing.T) {
+		svc, _, _ := newSvc(existing())
+		negative := -1
+		_, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{MaxSessions: &negative})
+		require.Error(t, err)
+	})
+}
+
 func TestAdminService_UpdateGroup_ReasoningEffortMappingsTriState(t *testing.T) {
 	tests := []struct {
 		name  string

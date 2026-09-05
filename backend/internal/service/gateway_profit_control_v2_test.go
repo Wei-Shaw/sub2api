@@ -475,3 +475,7 @@ func (c *sentinelMissGatewayCache) GetSessionAccountID(ctx context.Context, grou
 	}
 	return 0, ErrStickySessionNotFound
 }
+
+func (c *sentinelMissGatewayCache) GetSessionAccountIDBatch(_ context.Context, _ int64, _ []string) (map[string]int64, error) {
+	return nil, nil
+}

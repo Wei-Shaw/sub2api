@@ -162,6 +162,17 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 
 	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
+		// 分组会话软上限：本路径逐个选号，没有现成的候选列表，
+		// 仅在分组确实配置了上限时才额外查询一次分组账号。
+		if group != nil && group.GetMaxSessions() > 0 && sessionHash != "" {
+			groupAccounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, group.ID)
+			if err == nil {
+				if _, ok := s.checkGroupSessionCapacity(ctx, group, groupAccounts, sessionHash); !ok {
+					return nil, ErrGroupSessionCapacityExceeded
+				}
+			}
+		}
+
 		// 复制排除列表，用于会话限制拒绝时的重试
 		localExcluded := make(map[int64]struct{})
 		for k, v := range excludedIDs {
@@ -226,6 +237,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 	if len(accounts) == 0 {
 		return nil, ErrNoAvailableAccounts
+	}
+	// 分组会话软上限：达到上限时立即拒绝，不再尝试候选账号，也不排队等待。
+	if _, ok := s.checkGroupSessionCapacity(ctx, group, accounts, sessionHash); !ok {
+		return nil, ErrGroupSessionCapacityExceeded
 	}
 	ctx = s.withWindowCostPrefetch(ctx, accounts)
 	ctx = s.withRPMPrefetch(ctx, accounts)
@@ -778,9 +793,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 	// ============ Layer 3: 兜底排队 ============
 	s.sortCandidatesForFallback(candidates, preferOAuth, cfg.FallbackSelectionMode)
+	sessionLimited := 0
 	for _, acc := range candidates {
 		// 会话数量限制检查（等待计划也需要占用会话配额）
 		if !s.checkAndRegisterSession(ctx, acc, sessionHash) {
+			sessionLimited++
 			continue // 会话限制已满，尝试下一个账号
 		}
 		return s.newSelectionResult(ctx, acc, false, nil, &AccountWaitPlan{
@@ -789,6 +806,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			Timeout:        cfg.FallbackWaitTimeout,
 			MaxWaiting:     cfg.FallbackMaxWaiting,
 		})
+	}
+	if sessionLimited > 0 && sessionLimited == len(candidates) {
+		// 每个候选账号都已达到自身 max_sessions，立即拒绝而不是报告为无可用账号。
+		return nil, ErrAccountSessionCapacityExceeded
 	}
 	return nil, ErrNoAvailableAccounts
 }
@@ -1460,6 +1481,39 @@ func (s *GatewayService) checkAndRegisterSession(ctx context.Context, account *A
 		return true
 	}
 	return allowed
+}
+
+// checkGroupSessionCapacity 判断分组活跃会话软上限是否允许本次请求继续选号。
+//
+// 使用量由 computeGroupSessionUsage 从「账号活跃会话」与「本分组 sticky 归属」
+// 的交集推导，因此不需要分组级 Redis 结构，也不引入第二个 idle timeout 来源。
+//
+// 这是软限制：快照与后续账号级原子注册之间存在 TOCTOU 窗口，高并发下允许极少量
+// 瞬时超额；缓存不可用或查询失败时失败开放。达到上限时立即拒绝，不排队、不等待。
+func (s *GatewayService) checkGroupSessionCapacity(ctx context.Context, group *Group, accounts []Account, sessionID string) (groupSessionUsage, bool) {
+	usage := groupSessionUsage{}
+	if group == nil || sessionID == "" {
+		return usage, true
+	}
+	maxSessions := group.GetMaxSessions()
+	if maxSessions <= 0 {
+		return usage, true
+	}
+
+	accountIDs, idleTimeouts := sessionLimitedAccounts(accounts)
+	usage = computeGroupSessionUsage(ctx, s.sessionLimitCache, s.cache, group.ID, accountIDs, idleTimeouts, sessionID)
+	if !usage.Computed || usage.ContainsSession {
+		return usage, true
+	}
+	if usage.Used >= maxSessions {
+		slog.Info("group_session_limit_reached",
+			"group_id", group.ID,
+			"max_sessions", maxSessions,
+			"used", usage.Used,
+			"session", shortSessionHash(sessionID))
+		return usage, false
+	}
+	return usage, true
 }
 
 func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID int64) (*Account, error) {

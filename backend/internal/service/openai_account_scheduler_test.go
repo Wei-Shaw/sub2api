@@ -158,6 +158,10 @@ func (c *schedulerTestGatewayCache) GetSessionAccountID(ctx context.Context, gro
 	return 0, ErrStickySessionNotFound
 }
 
+func (c *schedulerTestGatewayCache) GetSessionAccountIDBatch(_ context.Context, _ int64, _ []string) (map[string]int64, error) {
+	return nil, nil
+}
+
 func (c *schedulerTestGatewayCache) SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
 	if c.sessionBindings == nil {
 		c.sessionBindings = make(map[string]int64)

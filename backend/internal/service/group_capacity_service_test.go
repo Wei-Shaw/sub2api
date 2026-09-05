@@ -124,6 +124,7 @@ func TestGetAllGroupCapacityBatchAggregatesRuntimeAndLimits(t *testing.T) {
 		groupRepo,
 		NewConcurrencyService(concurrencyCache),
 		sessionCache,
+		nil,
 		rpmCache,
 	)
 
@@ -167,7 +168,7 @@ func TestGetAllGroupCapacityBatchKeepsEmptyGroupRows(t *testing.T) {
 		},
 	}
 	groupRepo := &groupCapacityGroupRepoStub{groupIDs: []int64{10, 20}}
-	svc := NewGroupCapacityService(accountRepo, groupRepo, nil, nil, nil)
+	svc := NewGroupCapacityService(accountRepo, groupRepo, nil, nil, nil, nil)
 
 	results, err := svc.GetAllGroupCapacity(context.Background())
 	require.NoError(t, err)
@@ -175,5 +176,82 @@ func TestGetAllGroupCapacityBatchKeepsEmptyGroupRows(t *testing.T) {
 	require.Equal(t, []GroupCapacitySummary{
 		{GroupID: 10},
 		{GroupID: 20, ConcurrencyMax: 4},
+	}, results)
+}
+
+type groupCapacityGroupSessionRepoStub struct {
+	GroupRepository
+	groupIDs    []int64
+	maxSessions map[int64]int
+}
+
+func (s *groupCapacityGroupSessionRepoStub) ListActiveIDs(context.Context) ([]int64, error) {
+	return append([]int64(nil), s.groupIDs...), nil
+}
+
+func (s *groupCapacityGroupSessionRepoStub) ListActiveGroupMaxSessions(context.Context) (map[int64]int, error) {
+	out := make(map[int64]int, len(s.maxSessions))
+	for id, max := range s.maxSessions {
+		out[id] = max
+	}
+	return out, nil
+}
+
+// 分组会话软上限的 used 只统计 sticky 归属于本分组的活跃会话；
+// 共享账号上属于其它分组的会话不得计入，账号池汇总字段语义保持不变。
+func TestGetAllGroupCapacityReportsGroupSessionSoftLimit(t *testing.T) {
+	accountRepo := &groupCapacityAccountRepoStub{
+		rows: []GroupAccountCapacityRow{
+			{
+				GroupID:     10,
+				AccountID:   1,
+				Concurrency: 2,
+				Extra: map[string]any{
+					"max_sessions":                 5,
+					"session_idle_timeout_minutes": 7,
+				},
+			},
+			{
+				GroupID:     20,
+				AccountID:   1,
+				Concurrency: 2,
+				Extra: map[string]any{
+					"max_sessions":                 5,
+					"session_idle_timeout_minutes": 7,
+				},
+			},
+		},
+	}
+	groupRepo := &groupCapacityGroupSessionRepoStub{
+		groupIDs:    []int64{10, 20},
+		maxSessions: map[int64]int{10: 4},
+	}
+	sessionCache := &groupSessionUsageSessionCacheStub{
+		active: map[int64]map[string]struct{}{1: {"g10-a": {}, "g20-a": {}}},
+	}
+	sticky := &groupSessionUsageStickyCacheStub{bindings: map[string]int64{"g10-a": 1}}
+
+	svc := NewGroupCapacityService(accountRepo, groupRepo, nil, sessionCache, sticky, nil)
+
+	results, err := svc.GetAllGroupCapacity(context.Background())
+	require.NoError(t, err)
+
+	require.Equal(t, []GroupCapacitySummary{
+		{
+			GroupID:        10,
+			ConcurrencyMax: 2,
+			// 账号池汇总语义不变：共享账号的 2 个活跃会话同时计入两个分组。
+			SessionsUsed:      2,
+			SessionsMax:       5,
+			GroupSessionsUsed: 1,
+			GroupSessionsMax:  4,
+		},
+		{
+			GroupID:        20,
+			ConcurrencyMax: 2,
+			SessionsUsed:   2,
+			SessionsMax:    5,
+			// 分组 20 未配置 max_sessions，不报告分组会话软上限。
+		},
 	}, results)
 }

@@ -420,6 +420,17 @@ var (
 // ErrNoAvailableAccounts 表示没有可用的账号
 var ErrNoAvailableAccounts = errors.New("no available accounts")
 
+// ErrGroupSessionCapacityExceeded 表示分组活跃会话数已达 max_sessions 软上限。
+// 这是软限制：使用量由「分组账号池的活跃会话」与「本分组 sticky 归属」的交集
+// 在准入时快照计算，快照与后续账号级原子注册之间存在窗口，高并发下允许极少量
+// 瞬时超额。达到上限时立即拒绝，不排队、不等待。
+// 它包装 ErrNoAvailableAccounts，使既有 failover / ops 归因逻辑保持不变。
+var ErrGroupSessionCapacityExceeded = fmt.Errorf("%w: group session capacity exceeded", ErrNoAvailableAccounts)
+
+// ErrAccountSessionCapacityExceeded 表示所有候选账号都已达到各自的
+// max_sessions 硬上限（账号级检查在 Redis Lua 内原子完成）。
+var ErrAccountSessionCapacityExceeded = fmt.Errorf("%w: account session capacity exceeded", ErrNoAvailableAccounts)
+
 // ErrClaudeCodeOnly 表示分组仅允许 Claude Code 客户端访问
 var ErrClaudeCodeOnly = errors.New("this group only allows Claude Code clients")
 
@@ -471,6 +482,9 @@ type GatewayCache interface {
 	// distinguish a miss from a real read failure without importing the
 	// cache driver.
 	GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error)
+	// GetSessionAccountIDBatch 批量读取粘性会话绑定，用于按分组统计会话归属。
+	// 返回 map[sessionHash]accountID，未绑定或值非法的 sessionHash 不在 map 中。
+	GetSessionAccountIDBatch(ctx context.Context, groupID int64, sessionHashes []string) (map[string]int64, error)
 	// SetSessionAccountID 设置粘性会话与账号的绑定关系
 	// Set the binding between sticky session and account
 	SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error

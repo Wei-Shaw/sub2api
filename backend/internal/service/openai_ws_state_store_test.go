@@ -194,6 +194,10 @@ func (c *openAIWSStateStoreTimeoutProbeCache) GetSessionAccountID(ctx context.Co
 	return 123, nil
 }
 
+func (c *openAIWSStateStoreTimeoutProbeCache) GetSessionAccountIDBatch(_ context.Context, _ int64, _ []string) (map[string]int64, error) {
+	return nil, nil
+}
+
 func (c *openAIWSStateStoreTimeoutProbeCache) SetSessionAccountID(ctx context.Context, _ int64, _ string, _ int64, _ time.Duration) error {
 	if deadline, ok := ctx.Deadline(); ok {
 		c.setHasDeadline = true

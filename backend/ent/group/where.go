@@ -320,6 +320,11 @@ func RpmLimit(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
 }
 
+// MaxSessions applies equality check predicate on the "max_sessions" field. It's identical to MaxSessionsEQ.
+func MaxSessions(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldMaxSessions, v))
+}
+
 // MaxReasoningEffort applies equality check predicate on the "max_reasoning_effort" field. It's identical to MaxReasoningEffortEQ.
 func MaxReasoningEffort(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldMaxReasoningEffort, v))
@@ -2428,6 +2433,46 @@ func RpmLimitLT(v int) predicate.Group {
 // RpmLimitLTE applies the LTE predicate on the "rpm_limit" field.
 func RpmLimitLTE(v int) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldRpmLimit, v))
+}
+
+// MaxSessionsEQ applies the EQ predicate on the "max_sessions" field.
+func MaxSessionsEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldMaxSessions, v))
+}
+
+// MaxSessionsNEQ applies the NEQ predicate on the "max_sessions" field.
+func MaxSessionsNEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldMaxSessions, v))
+}
+
+// MaxSessionsIn applies the In predicate on the "max_sessions" field.
+func MaxSessionsIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldMaxSessions, vs...))
+}
+
+// MaxSessionsNotIn applies the NotIn predicate on the "max_sessions" field.
+func MaxSessionsNotIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldMaxSessions, vs...))
+}
+
+// MaxSessionsGT applies the GT predicate on the "max_sessions" field.
+func MaxSessionsGT(v int) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldMaxSessions, v))
+}
+
+// MaxSessionsGTE applies the GTE predicate on the "max_sessions" field.
+func MaxSessionsGTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldMaxSessions, v))
+}
+
+// MaxSessionsLT applies the LT predicate on the "max_sessions" field.
+func MaxSessionsLT(v int) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldMaxSessions, v))
+}
+
+// MaxSessionsLTE applies the LTE predicate on the "max_sessions" field.
+func MaxSessionsLTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldMaxSessions, v))
 }
 
 // MaxReasoningEffortEQ applies the EQ predicate on the "max_reasoning_effort" field.
