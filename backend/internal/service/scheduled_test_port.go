@@ -33,9 +33,19 @@ type ScheduledTestResult struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+// ScheduledTestBulkDefaults defines shared defaults for bulk-created plans.
+type ScheduledTestBulkDefaults struct {
+	ModelByPlatform map[string]string
+	CronExpression  string
+	MaxResults      int
+	AutoRecover     bool
+	SpreadMinutes   int
+}
+
 // ScheduledTestPlanRepository defines the data access interface for test plans.
 type ScheduledTestPlanRepository interface {
 	Create(ctx context.Context, plan *ScheduledTestPlan) (*ScheduledTestPlan, error)
+	CreateMissingForAllAccounts(ctx context.Context, defaults ScheduledTestBulkDefaults) (int64, error)
 	GetByID(ctx context.Context, id int64) (*ScheduledTestPlan, error)
 	ListByAccountID(ctx context.Context, accountID int64) ([]*ScheduledTestPlan, error)
 	ListDue(ctx context.Context, now time.Time) ([]*ScheduledTestPlan, error)

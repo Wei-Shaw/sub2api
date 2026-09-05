@@ -10,6 +10,20 @@ import (
 
 var scheduledTestCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
+const (
+	defaultBulkScheduledTestCron          = "*/30 * * * *"
+	defaultBulkScheduledTestMaxResults    = 50
+	defaultBulkScheduledTestSpreadMinutes = 30
+)
+
+var defaultBulkScheduledTestModels = map[string]string{
+	PlatformAnthropic:   "claude-haiku-4-5-20251001",
+	PlatformOpenAI:      "gpt-5.4-mini",
+	PlatformGemini:      "gemini-2.0-flash",
+	PlatformAntigravity: "gemini-2.5-flash-lite",
+	PlatformGrok:        "grok-composer-2.5-fast",
+}
+
 // ScheduledTestService provides CRUD operations for scheduled test plans and results.
 type ScheduledTestService struct {
 	planRepo   ScheduledTestPlanRepository
@@ -40,6 +54,18 @@ func (s *ScheduledTestService) CreatePlan(ctx context.Context, plan *ScheduledTe
 	}
 
 	return s.planRepo.Create(ctx, plan)
+}
+
+// CreateMissingPlansForAllAccounts creates one low-cost default plan for every
+// account that does not already have a scheduled test plan.
+func (s *ScheduledTestService) CreateMissingPlansForAllAccounts(ctx context.Context) (int64, error) {
+	return s.planRepo.CreateMissingForAllAccounts(ctx, ScheduledTestBulkDefaults{
+		ModelByPlatform: defaultBulkScheduledTestModels,
+		CronExpression:  defaultBulkScheduledTestCron,
+		MaxResults:      defaultBulkScheduledTestMaxResults,
+		AutoRecover:     true,
+		SpreadMinutes:   defaultBulkScheduledTestSpreadMinutes,
+	})
 }
 
 // GetPlan retrieves a plan by ID.
