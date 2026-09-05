@@ -202,16 +202,20 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 				logger.LegacyPrintf("service.identity", "Updated fingerprint for account %d: %s (merge update)", accountID, clientUA)
 			}
 
-			// 版本下限抬升（floor）：与上面的客户端升级相互独立、二者取更新者。客户端送来
-			// 更旧版本时 isNewerVersion 不触发，此处仍能把低于 CLICurrentVersion 的存量指纹
-			// 就地抬到下限并持久化，否则升 CLICurrentVersion 对所有已有账号无效，新模型的
-			// 客户端版本闸门（如 Fable 5.1 要求 >= 2.1.251）永远过不去。
-			if flooredUA, changed := floorClaudeCLIUserAgentVersion(cached.UserAgent); changed {
-				cached.UserAgent = flooredUA
-				needWrite = true
-				logger.LegacyPrintf("service.identity",
-					"Floored cached fingerprint claude-cli version for account %d: %s", accountID, flooredUA)
-			}
+		}
+
+		// 版本下限抬升（floor）：heal 与 healthy 两条缓存命中路径共同的后置条件，与
+		// 上面的客户端常规升级相互独立、二者取更新者。客户端送来更旧版本时
+		// isNewerVersion 不触发，此处仍能把低于 CLICurrentVersion 的存量指纹就地抬到
+		// 下限并持久化，否则升 CLICurrentVersion 对所有已有账号无效，新模型的客户端
+		// 版本闸门（如 Fable 5.1 要求 >= 2.1.251）永远过不去。自愈路径同样必须经过：
+		// 畸形缓存 + 合法但过旧的客户端 UA 首次读取就要落到下限，不能先落库一个
+		// 过旧版本、等下一次读取才纠正。
+		if flooredUA, changed := floorClaudeCLIUserAgentVersion(cached.UserAgent); changed {
+			cached.UserAgent = flooredUA
+			needWrite = true
+			logger.LegacyPrintf("service.identity",
+				"Floored cached fingerprint claude-cli version for account %d: %s", accountID, flooredUA)
 		}
 
 		if !needWrite && time.Since(time.Unix(cached.UpdatedAt, 0)) > 24*time.Hour {

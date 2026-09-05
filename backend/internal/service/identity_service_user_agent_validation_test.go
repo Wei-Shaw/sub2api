@@ -179,8 +179,10 @@ func TestGetOrCreateFingerprintHealsPoisonedCacheUsingValidClientUA(t *testing.T
 	fp, err := svc.GetOrCreateFingerprint(context.Background(), 1, headersWithUA(realUA))
 
 	require.NoError(t, err)
-	require.Equal(t, realUA, fp.UserAgent,
-		"真实客户端必须能从被毒化的指纹手中夺回账号身份")
+	// 真实客户端从被毒化的指纹手中夺回账号身份，但版本下限在自愈的同一读取内生效：
+	// 合法而过旧的 UA 不能先以过旧版本落库、等下次读取才被抬升。
+	require.Equal(t, "claude-cli/"+claude.CLICurrentVersion+" (external, cli)", fp.UserAgent)
+	require.Equal(t, fp.UserAgent, cache.lastSet.UserAgent, "自愈与下限抬升应合并为同一次落库")
 	require.Equal(t, 1, cache.setCalls)
 	require.NotContains(t, cache.lastSet.UserAgent, "999.0.0")
 	require.Equal(t, "cid-1", fp.ClientID, "自愈不应重置 ClientID")
