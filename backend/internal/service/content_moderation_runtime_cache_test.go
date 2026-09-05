@@ -52,7 +52,7 @@ func (r *contentModerationRuntimeSettingRepo) Set(_ context.Context, key, value 
 	return nil
 }
 
-func (r *contentModerationRuntimeSettingRepo) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+func (r *contentModerationRuntimeSettingRepo) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
 	r.mu.Lock()
 	r.getMultipleCalls++
 	if err := r.getMultipleErr; err != nil {
@@ -74,7 +74,11 @@ func (r *contentModerationRuntimeSettingRepo) GetMultiple(_ context.Context, key
 		start <- struct{}{}
 	}
 	if wait != nil {
-		<-wait
+		select {
+		case <-wait:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 	return out, nil
 }
@@ -141,9 +145,10 @@ func runtimeCacheTestConfig(t *testing.T, keywords ...string) string {
 
 func runtimeCacheTestService(repo *contentModerationRuntimeSettingRepo, ttl time.Duration) *ContentModerationService {
 	return &ContentModerationService{
-		settingRepo:     repo,
-		repo:            &contentModerationTestRepo{},
-		runtimeCacheTTL: ttl,
+		settingRepo:           repo,
+		repo:                  &contentModerationTestRepo{},
+		runtimeCacheTTL:       ttl,
+		runtimeRefreshTimeout: 20 * time.Millisecond,
 	}
 }
 
@@ -171,6 +176,29 @@ func TestContentModerationRuntimeSnapshotCachesSettings(t *testing.T) {
 	getValue, getMultiple := repo.calls()
 	require.Zero(t, getValue)
 	require.Equal(t, 1, getMultiple)
+}
+
+func TestContentModerationRuntimeSnapshotInitialLoadIsBounded(t *testing.T) {
+	repo := &contentModerationRuntimeSettingRepo{values: map[string]string{
+		SettingKeyRiskControlEnabled:      "true",
+		SettingKeyContentModerationConfig: runtimeCacheTestConfig(t, "blocked"),
+	}}
+	svc := runtimeCacheTestService(repo, time.Hour)
+	refreshStarted := make(chan struct{}, 1)
+	releaseRefresh := make(chan struct{})
+	repo.blockNextMultiple(refreshStarted, releaseRefresh)
+
+	startedAt := time.Now()
+	decision, err := svc.Check(context.Background(), runtimeCacheTestInput("clean prompt"))
+	require.NoError(t, err)
+	require.True(t, decision.Allowed)
+	require.Less(t, time.Since(startedAt), 200*time.Millisecond)
+	require.Nil(t, svc.runtimeSnapshot.Load())
+	select {
+	case <-refreshStarted:
+	default:
+		t.Fatal("initial runtime snapshot load did not reach the repository")
+	}
 }
 
 func TestContentModerationRuntimeSnapshotUpdateConfigIsImmediate(t *testing.T) {
