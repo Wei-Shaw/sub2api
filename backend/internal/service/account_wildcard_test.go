@@ -583,6 +583,59 @@ func TestAccountGetModelMapping_GoogleOnePreservesExplicitMapping(t *testing.T) 
 	}
 }
 
+func TestAccountGetModelMapping_AntigravityNormalizesGemini37Alias(t *testing.T) {
+	account := &Account{
+		Platform: PlatformAntigravity,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gemini-3.7-flash": "gemini-3.7-flash",
+			},
+		},
+	}
+
+	mapping := account.GetModelMapping()
+	if mapping["gemini-3.7-flash"] != "gemini-3.7-flash-tiered" {
+		t.Fatalf("expected Gemini 3.7 alias to normalize to tiered, got %q", mapping["gemini-3.7-flash"])
+	}
+	if mapping["gemini-3.7-flash-tiered"] != "gemini-3.7-flash-tiered" {
+		t.Fatalf("expected Gemini 3.7 tiered passthrough, got %q", mapping["gemini-3.7-flash-tiered"])
+	}
+}
+
+func TestAccountGetModelMapping_AntigravityPreservesGemini37Override(t *testing.T) {
+	account := &Account{
+		Platform: PlatformAntigravity,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gemini-3.7-flash": "custom-gemini-3.7",
+			},
+		},
+	}
+
+	if got := account.GetModelMapping()["gemini-3.7-flash"]; got != "custom-gemini-3.7" {
+		t.Fatalf("expected explicit Gemini 3.7 override to survive, got %q", got)
+	}
+}
+
+func TestAccountGetModelMapping_AntigravityGemini37AliasRespectsWildcard(t *testing.T) {
+	account := &Account{
+		Platform: PlatformAntigravity,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gemini-3.7*": "custom-gemini-3.7",
+			},
+		},
+	}
+
+	mapping := account.GetModelMapping()
+	if _, exists := mapping["gemini-3.7-flash"]; exists {
+		t.Fatal("did not expect a concrete alias when a wildcard already handles Gemini 3.7")
+	}
+	if got := account.GetMappedModel("gemini-3.7-flash"); got != "custom-gemini-3.7" {
+		t.Fatalf("expected wildcard mapping to remain effective, got %q", got)
+	}
+}
+
 func TestAccountGetModelMapping_AntigravityRespectsWildcardOverride(t *testing.T) {
 	account := &Account{
 		Platform: PlatformAntigravity,

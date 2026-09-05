@@ -148,6 +148,40 @@ describe('AccountTestModal', () => {
     expect(preview.attributes('src')).toBe('data:image/png;base64,QUJD')
   })
 
+  it('Antigravity 默认优先选择已验证的 Gemini 3.7 tiered 模型', async () => {
+    getAvailableModels.mockResolvedValue([
+      { id: 'gemini-2.5-flash-image', display_name: 'Gemini 2.5 Flash Image' },
+      { id: 'gemini-3.7-flash', display_name: 'Gemini 3.7 Flash' },
+      { id: 'gemini-3.7-flash-tiered', display_name: 'Gemini 3.7 Flash Tiered' }
+    ])
+    global.fetch = vi.fn().mockResolvedValue(
+      createStreamResponse([
+        'data: {"type":"test_complete","success":true}\n'
+      ])
+    ) as any
+
+    const wrapper = mountModal({
+      id: 14,
+      name: 'Antigravity OAuth',
+      platform: 'antigravity',
+      type: 'oauth',
+      status: 'active'
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const startButton = wrapper.findAll('button').find((button) => button.text().includes('admin.accounts.startTest'))
+    expect(startButton).toBeTruthy()
+    await startButton!.trigger('click')
+    await flushPromises()
+
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body)).toEqual({
+      model_id: 'gemini-3.7-flash-tiered',
+      prompt: ''
+    })
+  })
+
   it('grok 账号测试默认选择 Grok 模型', async () => {
     getAvailableModels.mockResolvedValue([
       { id: 'grok-4.3', display_name: 'Grok 4.3' },

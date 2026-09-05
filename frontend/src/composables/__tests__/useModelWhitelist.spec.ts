@@ -107,6 +107,16 @@ describe('useModelWhitelist', () => {
     expect(models).toContain('gemini-3.1-pro')
   })
 
+  it('antigravity 模型列表包含已验证的 Gemini 3.7 tiered 模型', () => {
+    const models = getModelsByPlatform('antigravity')
+
+    expect(models.filter(model => model === 'gemini-3.7-flash')).toHaveLength(1)
+    expect(models.filter(model => model === 'gemini-3.7-flash-tiered')).toHaveLength(1)
+    expect(models).not.toContain('gemini-3.7-flash-high')
+    expect(models).not.toContain('gemini-3.7-flash-medium')
+    expect(models).not.toContain('gemini-3.7-flash-low')
+  })
+
   it('whitelist 模式会忽略通配符条目', () => {
     const mapping = buildModelMappingObject('whitelist', ['claude-*', 'gemini-3.1-flash-image'], [])
     expect(mapping).toEqual({
