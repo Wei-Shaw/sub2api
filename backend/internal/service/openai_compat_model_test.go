@@ -2271,3 +2271,43 @@ func TestForwardAsAnthropic_UpstreamRequestIgnoresClientCancel(t *testing.T) {
 	require.NotNil(t, upstream.lastReq)
 	require.NoError(t, upstream.lastReq.Context().Err())
 }
+
+func TestForwardAsAnthropic_AstraContinuationRestoresHistoryAndDisablesUnsupportedSession(t *testing.T) {
+	for _, message := range []string{
+		"previous_response_id is not available for this user",
+		"previous_response_id requires an OpenAI API-key account for HTTP requests",
+	} {
+		t.Run(message, func(t *testing.T) {
+			encodedError, err := json.Marshal(map[string]any{"error": map[string]string{"message": message}})
+			require.NoError(t, err)
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{
+				{StatusCode: http.StatusBadRequest, Body: io.NopCloser(bytes.NewReader(encodedError))},
+				openAICompatSSECompletedResponse("resp_replayed", "gpt-6-astra"),
+				openAICompatSSECompletedResponse("resp_later", "gpt-6-astra"),
+			}}
+			svc := &OpenAIGatewayService{httpUpstream: upstream, cfg: &config.Config{}}
+			account := rawGPT56ResponsesAPIKeyAccount("gpt-6-astra", "gpt-6-astra")
+			svc.bindOpenAICompatSessionResponseID(context.Background(), nil, account, "astra-session", "resp_old")
+			body := []byte(`{"model":"gpt-6-astra","max_tokens":16,"messages":[{"role":"user","content":"first"},{"role":"assistant","content":"ok"},{"role":"user","content":"second"}]}`)
+			for i := 0; i < 2; i++ {
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+				result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "astra-session", "gpt-6-astra")
+				require.NoError(t, err)
+				require.NotNil(t, result)
+			}
+			require.Len(t, upstream.bodies, 3)
+			require.Equal(t, "resp_old", gjson.GetBytes(upstream.bodies[0], "previous_response_id").String())
+			for _, sent := range upstream.bodies[1:] {
+				require.False(t, gjson.GetBytes(sent, "previous_response_id").Exists())
+				require.Equal(t, "astra-session", gjson.GetBytes(sent, "prompt_cache_key").String())
+				require.Equal(t, int64(4), gjson.GetBytes(sent, "input.#").Int())
+				require.Contains(t, gjson.GetBytes(sent, "input.0.content.0.text").String(), "<sub2api-claude-code-todo-guard>")
+				require.Equal(t, "first", gjson.GetBytes(sent, "input.1.content.0.text").String())
+				require.Equal(t, "second", gjson.GetBytes(sent, "input.3.content.0.text").String())
+			}
+		})
+	}
+	require.False(t, isOpenAICompatPreviousResponseUnsupported(http.StatusUnauthorized, "previous_response_id is not available for this user", nil))
+	require.False(t, isOpenAICompatPreviousResponseUnsupported(http.StatusBadRequest, "The model is not available for this user", nil))
+}
