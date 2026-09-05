@@ -798,6 +798,80 @@ func (s *SettingService) SetOpenAIImagesOAuthUnavailableCooldownSettings(ctx con
 	return s.settingRepo.Set(ctx, SettingKeyOpenAIImagesOAuthUnavailableCooldownSettings, string(data))
 }
 
+// GetOpenAI403CooldownSettings 获取 OpenAI 403 临时冷却配置
+func (s *SettingService) GetOpenAI403CooldownSettings(ctx context.Context) (*OpenAI403CooldownSettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAI403CooldownSettings)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return DefaultOpenAI403CooldownSettings(), nil
+		}
+		return nil, fmt.Errorf("get OpenAI 403 cooldown settings: %w", err)
+	}
+	if value == "" {
+		return DefaultOpenAI403CooldownSettings(), nil
+	}
+
+	var settings OpenAI403CooldownSettings
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		return DefaultOpenAI403CooldownSettings(), nil
+	}
+
+	if settings.CooldownMinutes < 1 {
+		settings.CooldownMinutes = 1
+	}
+	if settings.CooldownMinutes > maxOpenAI403CooldownMinutes {
+		settings.CooldownMinutes = maxOpenAI403CooldownMinutes
+	}
+	if settings.DisableThreshold < 1 {
+		settings.DisableThreshold = 1
+	}
+	if settings.DisableThreshold > maxOpenAI403DisableThreshold {
+		settings.DisableThreshold = maxOpenAI403DisableThreshold
+	}
+	if settings.WindowMinutes < 1 {
+		settings.WindowMinutes = 1
+	}
+	if settings.WindowMinutes > maxOpenAI403WindowMinutes {
+		settings.WindowMinutes = maxOpenAI403WindowMinutes
+	}
+
+	return &settings, nil
+}
+
+// SetOpenAI403CooldownSettings 设置 OpenAI 403 临时冷却配置
+func (s *SettingService) SetOpenAI403CooldownSettings(ctx context.Context, settings *OpenAI403CooldownSettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+	}
+
+	defaults := DefaultOpenAI403CooldownSettings()
+	if settings.CooldownMinutes < 1 || settings.CooldownMinutes > maxOpenAI403CooldownMinutes {
+		if settings.Enabled {
+			return fmt.Errorf("cooldown_minutes must be between 1-1440")
+		}
+		settings.CooldownMinutes = defaults.CooldownMinutes
+	}
+	if settings.DisableThreshold < 1 || settings.DisableThreshold > maxOpenAI403DisableThreshold {
+		if settings.Enabled {
+			return fmt.Errorf("disable_threshold must be between 1-100")
+		}
+		settings.DisableThreshold = defaults.DisableThreshold
+	}
+	if settings.WindowMinutes < 1 || settings.WindowMinutes > maxOpenAI403WindowMinutes {
+		if settings.Enabled {
+			return fmt.Errorf("window_minutes must be between 1-1440")
+		}
+		settings.WindowMinutes = defaults.WindowMinutes
+	}
+
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal OpenAI 403 cooldown settings: %w", err)
+	}
+
+	return s.settingRepo.Set(ctx, SettingKeyOpenAI403CooldownSettings, string(data))
+}
+
 // GetStreamTimeoutSettings 获取流超时处理配置
 func (s *SettingService) GetStreamTimeoutSettings(ctx context.Context) (*StreamTimeoutSettings, error) {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyStreamTimeoutSettings)

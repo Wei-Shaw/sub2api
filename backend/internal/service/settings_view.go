@@ -576,6 +576,19 @@ const (
 	openAIImagesOAuthUnavailableMaxCooldownMinutes     = 120
 )
 
+// OpenAI403CooldownSettings OpenAI 403 临时冷却配置
+type OpenAI403CooldownSettings struct {
+	// Enabled 是否对 OpenAI 403 启用计数式临时冷却。关闭时 403 只触发换号（failover），
+	// 不递增计数、不临时停调、不永久禁用账号——与 HTML 403（端点级错误）分支的处置一致。
+	Enabled bool `json:"enabled"`
+	// CooldownMinutes 单次临时冷却时长（分钟），范围 1-1440
+	CooldownMinutes int `json:"cooldown_minutes"`
+	// DisableThreshold 计数窗口内累计到该次数即转为永久错误状态，范围 1-100
+	DisableThreshold int `json:"disable_threshold"`
+	// WindowMinutes 连续 403 计数窗口（分钟），范围 1-1440
+	WindowMinutes int `json:"window_minutes"`
+}
+
 // OpenAIAPIKeyHealthBreakerSettings controls cross-instance failure counting for OpenAI pool API keys.
 type OpenAIAPIKeyHealthBreakerSettings struct {
 	Enabled          bool `json:"enabled"`
@@ -611,6 +624,16 @@ func DefaultRateLimit429CooldownSettings() *RateLimit429CooldownSettings {
 
 func DefaultOpenAIImagesOAuthUnavailableCooldownSettings() *OpenAIImagesOAuthUnavailableCooldownSettings {
 	return &OpenAIImagesOAuthUnavailableCooldownSettings{CooldownMinutes: openAIImagesOAuthUnavailableDefaultCooldownMinutes}
+}
+
+// DefaultOpenAI403CooldownSettings 返回默认的 OpenAI 403 冷却配置（启用，10 分钟 / 3 次 / 180 分钟窗口）
+func DefaultOpenAI403CooldownSettings() *OpenAI403CooldownSettings {
+	return &OpenAI403CooldownSettings{
+		Enabled:          true,
+		CooldownMinutes:  openAI403CooldownMinutesDefault,
+		DisableThreshold: openAI403DisableThreshold,
+		WindowMinutes:    openAI403CounterWindowMinutes,
+	}
 }
 
 // DefaultBetaPolicySettings 返回默认的 Beta 策略配置
