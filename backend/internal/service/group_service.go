@@ -231,7 +231,9 @@ func (s *GroupService) Delete(ctx context.Context, id int64) error {
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
 	}
-	if err := s.groupRepo.Delete(ctx, id); err != nil {
+	// Use cascade delete here as well so any caller of GroupService.Delete
+	// gets the same cleanup semantics as the admin delete path.
+	if _, err := s.groupRepo.DeleteCascade(ctx, id); err != nil {
 		return fmt.Errorf("delete group: %w", err)
 	}
 
