@@ -34,6 +34,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"github.com/imroc/req/v3"
 )
 
 // 默认配置常量
@@ -271,7 +272,7 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 		return nil, err
 	}
 
-	entry, err := s.acquireClientWithTLS(proxyURL, accountID, accountConcurrency, profile, upstreamProfile)
+	entry, err := s.acquireClientWithTLS(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, tlsDestinationOrigin(req))
 	if err != nil {
 		slog.Debug("tls_fingerprint_acquire_client_failed", "account_id", accountID, "error", err)
 		return nil, err
@@ -281,11 +282,13 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	client = httpClientWithGrokAccessDeniedFallback(client)
 	resp, err := servertiming.Do(client, req)
 	if err != nil {
+		s.recordOpenAIHTTP2Failure(upstreamProfile, entry.protocolMode, entry.proxyKey, err)
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
 		slog.Debug("tls_fingerprint_request_failed", "account_id", accountID, "error", err)
 		return nil, err
 	}
+	s.recordOpenAIHTTP2Success(upstreamProfile, entry.protocolMode, entry.proxyKey)
 
 	decompressResponseBody(resp)
 
@@ -482,13 +485,13 @@ func isSupportedGrokCLIVersion(version string) bool {
 }
 
 // acquireClientWithTLS 获取或创建带 TLS 指纹的客户端
-func (s *httpUpstreamService) acquireClientWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile) (*upstreamClientEntry, error) {
-	return s.getClientEntryWithTLS(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, true, true)
+func (s *httpUpstreamService) acquireClientWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile, origin string) (*upstreamClientEntry, error) {
+	return s.getClientEntryWithTLS(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, origin, true, true)
 }
 
 // getClientEntryWithTLS 获取或创建带 TLS 指纹的客户端条目
 // TLS 指纹客户端使用独立的缓存键，与普通客户端隔离
-func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile, markInFlight bool, enforceLimit bool) (*upstreamClientEntry, error) {
+func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile, origin string, markInFlight bool, enforceLimit bool) (*upstreamClientEntry, error) {
 	isolation := s.getIsolationMode()
 	proxyKey, parsedProxy, err := normalizeProxyURL(proxyURL)
 	if err != nil {
@@ -496,9 +499,15 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	}
 	settings := s.resolvePoolSettings(isolation, accountConcurrency)
 	settings = s.applyProfilePoolSettings(settings, upstreamProfile)
-	// TLS 指纹客户端使用独立的缓存键，加 "tls:" 前缀
-	cacheKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault)
-	poolKey := buildPoolKey(settings, upstreamProtocolModeDefault) + ":tls"
+	protocolMode := s.resolveProtocolMode(upstreamProfile, proxyKey, parsedProxy)
+	effectiveProfile := convergeTLSProfileForProtocolMode(profile, protocolMode)
+	// TLS 指纹客户端使用独立的缓存键；profile 内容标识防止配置更新后
+	// 复用旧 ClientHello transport。协议模式也必须进入 key：代理 H2 回退
+	// 激活后，H1 fallback 不能继续复用已缓存的 Chrome H2 transport。目的 origin
+	// 则隔离 TLSRoundTripper 的一次性 ALPN 决策，防止一个目的地的协议污染另一个目的地。
+	cacheBaseKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID, protocolMode) + "|origin:" + origin
+	cacheKey := cacheBaseKey + "|profile:" + effectiveProfile.StableID()
+	poolKey := buildPoolKey(settings, protocolMode) + ":tls"
 
 	now := time.Now()
 	nowUnix := now.UnixNano()
@@ -518,6 +527,7 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 
 	// 写锁慢路径
 	s.mu.Lock()
+	s.removeSupersededTLSProfileClientsLocked(cacheBaseKey, cacheKey)
 	if entry, ok := s.clients[cacheKey]; ok {
 		if s.shouldReuseEntry(entry, isolation, proxyKey, poolKey) {
 			atomic.StoreInt64(&entry.lastUsed, nowUnix)
@@ -547,23 +557,30 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 		}
 	}
 
-	// 创建带 TLS 指纹的 Transport
+	// 创建带 TLS 指纹的 Transport。OpenAI 内置 Chrome profile 在 H2
+	// 模式下优先使用 req 的完整浏览器 transport，同时覆盖 ClientHello、
+	// SETTINGS、连接窗口与 header/pseudo-header 顺序；自定义 profile 继续
+	// 使用显式 uTLS dialer。
 	slog.Debug("tls_fingerprint_creating_new_client", "account_id", accountID, "cache_key", cacheKey, "proxy", proxyKey)
-	transport, err := buildUpstreamTransportWithTLSFingerprint(settings, parsedProxy, profile)
-	if err != nil {
-		s.mu.Unlock()
-		return nil, fmt.Errorf("build TLS fingerprint transport: %w", err)
+	var transport http.RoundTripper
+	if effectiveProfile.Preset == tlsfingerprint.PresetChrome120HTTP1 && protocolMode == upstreamProtocolModeOpenAIH2 {
+		transport = buildOpenAIChromeHTTP2Transport(settings, parsedProxy)
+	} else {
+		transport, err = buildUpstreamTransportWithTLSFingerprint(settings, parsedProxy, effectiveProfile)
+		if err != nil {
+			s.mu.Unlock()
+			return nil, fmt.Errorf("build TLS fingerprint transport: %w", err)
+		}
 	}
 
 	client := &http.Client{Transport: transport}
-	if s.shouldValidateResolvedIP() {
-		client.CheckRedirect = s.redirectChecker
-	}
+	client.CheckRedirect = s.tlsFingerprintRedirectChecker
 
 	entry := &upstreamClientEntry{
-		client:   client,
-		proxyKey: proxyKey,
-		poolKey:  poolKey,
+		client:       client,
+		proxyKey:     proxyKey,
+		poolKey:      poolKey,
+		protocolMode: protocolMode,
 	}
 	atomic.StoreInt64(&entry.lastUsed, nowUnix)
 	if markInFlight {
@@ -575,6 +592,71 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	s.evictOverLimitLocked()
 	s.mu.Unlock()
 	return entry, nil
+}
+
+func convergeTLSProfileForProtocolMode(profile *tlsfingerprint.Profile, protocolMode string) *tlsfingerprint.Profile {
+	switch protocolMode {
+	case upstreamProtocolModeOpenAIH1, upstreamProtocolModeOpenAIH1Fallback:
+		return tlsfingerprint.HTTP1OnlyProfile(profile)
+	default:
+		return profile
+	}
+}
+
+func tlsDestinationOrigin(req *http.Request) string {
+	if req == nil || req.URL == nil {
+		return ""
+	}
+	host := strings.ToLower(strings.TrimSpace(req.URL.Hostname()))
+	if host == "" {
+		return strings.ToLower(strings.TrimSpace(req.URL.Host))
+	}
+	port := req.URL.Port()
+	if port == "" {
+		port = "443"
+	}
+	return net.JoinHostPort(host, port)
+}
+
+// buildOpenAIChromeHTTP2Transport uses req's Chrome impersonation stack so the
+// wire identity covers both TLS and HTTP/2 frames. Returning the transport (not
+// req.Client) preserves HTTPUpstream.DoWithTLS and its account/profile cache.
+func buildOpenAIChromeHTTP2Transport(settings poolSettings, proxyURL *url.URL) *req.Transport {
+	client := req.C().ImpersonateChrome().EnableForceHTTP2()
+	transport := client.GetTransport()
+	transport.SetDial(newUpstreamDialer().DialContext)
+	transport.SetMaxIdleConns(settings.maxIdleConns)
+	transport.MaxIdleConnsPerHost = settings.maxIdleConnsPerHost
+	transport.SetMaxConnsPerHost(settings.maxConnsPerHost)
+	transport.SetIdleConnTimeout(settings.idleConnTimeout)
+	transport.SetTLSHandshakeTimeout(defaultUpstreamTLSHandshakeTimeout)
+	transport.SetResponseHeaderTimeout(settings.responseHeaderTimeout)
+	transport.SetHTTP2ReadIdleTimeout(openAIHTTP2ReadIdleTimeout)
+	transport.SetHTTP2PingTimeout(openAIHTTP2PingTimeout)
+	if proxyURL != nil {
+		client.SetProxyURL(proxyURL.String())
+	} else {
+		transport.SetProxy(nil)
+	}
+	return transport
+}
+
+// removeSupersededTLSProfileClientsLocked removes transports for older
+// profile variants in the same isolation/proxy/account/origin scope. http.Client's
+// CloseIdleConnections does not interrupt active requests; it closes current
+// idle connections and prevents their active connections from becoming a
+// reusable idle pool after they finish.
+func (s *httpUpstreamService) removeSupersededTLSProfileClientsLocked(cacheBaseKey, currentCacheKey string) {
+	prefix := cacheBaseKey + "|profile:"
+	for key, entry := range s.clients {
+		if key == currentCacheKey || !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		slog.Debug("tls_fingerprint_evicting_superseded_profile_client",
+			"cache_key", key,
+			"current_cache_key", currentCacheKey)
+		s.removeClientLocked(key, entry)
+	}
 }
 
 func (s *httpUpstreamService) shouldValidateResolvedIP() bool {
@@ -607,6 +689,19 @@ func (s *httpUpstreamService) validateRequestHost(req *http.Request) error {
 func (s *httpUpstreamService) redirectChecker(req *http.Request, via []*http.Request) error {
 	if len(via) >= 10 {
 		return errors.New("stopped after 10 redirects")
+	}
+	return s.validateRequestHost(req)
+}
+
+func (s *httpUpstreamService) tlsFingerprintRedirectChecker(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	if len(via) > 0 && tlsDestinationOrigin(req) != tlsDestinationOrigin(via[0]) {
+		// A cached TLSRoundTripper owns one origin's ALPN decision. Returning
+		// ErrUseLastResponse preserves the redirect response for the caller instead
+		// of silently reusing that decision for a different destination.
+		return http.ErrUseLastResponse
 	}
 	return s.validateRequestHost(req)
 }
@@ -1354,39 +1449,35 @@ func enableOpenAIHTTP2KeepAlive(transport *http.Transport) (*http2.Transport, er
 	return h2, nil
 }
 
-// buildUpstreamTransportWithTLSFingerprint 构建带 TLS 指纹伪装的 Transport
-// 使用 utls 库模拟 Claude CLI 的 TLS 指纹
+// buildUpstreamTransportWithTLSFingerprint 构建带 TLS 指纹伪装的 RoundTripper。
+// 使用 utls 库模拟目标客户端的 TLS 指纹。
+//
+// 自定义 profile 返回 *tlsfingerprint.TLSRoundTripper：首次请求用 uTLS 引导
+// 连接嗅探 ALPN，协商出 h2 则委托 http2.Transport，否则委托 http.Transport。
+// 这绕开了 net/http 的 H2 升级钩子对 *tls.Conn 的类型断言（*utls.UConn 无法
+// 通过该断言，导致即使协商出 h2 也静默降级 H1）。注意 h2 路径的 HTTP/2 帧
+// （SETTINGS/窗口/header 顺序）是 Go x/net/http2 默认特征，与 ClientHello
+// 声称的浏览器在帧级并不一致——这是已知折衷；帧级对齐只有内置 Chrome
+// preset 路径（req ImpersonateChrome 全栈）才提供。
 //
 // 参数:
-//   - settings: 连接池配置
+//   - settings: 连接池配置（应用于 H1 transport；H2 使用 keepalive 探测参数）
 //   - proxyURL: 代理 URL（nil 表示直连）
 //   - profile: TLS 指纹配置
 //
-// 返回:
-//   - *http.Transport: 配置好的 Transport 实例
-//   - error: 配置错误
-//
 // 代理类型处理:
 //   - nil/空: 直连，使用 TLSFingerprintDialer
-//   - http/https: HTTP 代理，使用 HTTPProxyDialer（CONNECT 隧道 + utls 握手）
+//   - http: HTTP 代理，使用 HTTPProxyDialer（CONNECT 隧道 + utls 握手）
 //   - socks5: SOCKS5 代理，使用 SOCKS5ProxyDialer（SOCKS5 隧道 + utls 握手）
-func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *url.URL, profile *tlsfingerprint.Profile) (*http.Transport, error) {
-	transport := &http.Transport{
-		MaxIdleConns:          settings.maxIdleConns,
-		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
-		MaxConnsPerHost:       settings.maxConnsPerHost,
-		IdleConnTimeout:       settings.idleConnTimeout,
-		ResponseHeaderTimeout: settings.responseHeaderTimeout,
-		// 禁用默认的 TLS，我们使用自定义的 DialTLSContext
-		ForceAttemptHTTP2: false,
-	}
-
+//   - https/未知: 回退普通代理配置（无 TLS 指纹），返回 *http.Transport
+func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *url.URL, profile *tlsfingerprint.Profile) (http.RoundTripper, error) {
 	// 根据代理类型选择合适的 TLS 指纹 Dialer
+	var dial tlsfingerprint.UtlsDialFunc
 	if proxyURL == nil {
 		// 直连：使用 TLSFingerprintDialer
 		slog.Debug("tls_fingerprint_transport_direct")
 		dialer := tlsfingerprint.NewDialer(profile, nil)
-		transport.DialTLSContext = dialer.DialTLSContext
+		dial = dialer.DialTLSContext
 	} else {
 		scheme := strings.ToLower(proxyURL.Scheme)
 		switch scheme {
@@ -1394,26 +1485,39 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 			// SOCKS5 代理：使用 SOCKS5ProxyDialer
 			slog.Debug("tls_fingerprint_transport_socks5", "proxy", proxyURL.Host)
 			socks5Dialer := tlsfingerprint.NewSOCKS5ProxyDialer(profile, proxyURL)
-			transport.DialTLSContext = socks5Dialer.DialTLSContext
+			dial = socks5Dialer.DialTLSContext
 		case "https":
 			// The fingerprint dialer emits a plaintext CONNECT preface and cannot
 			// establish TLS to an HTTPS proxy. Keep proxy routing via net/http.
 			return buildUpstreamTransport(settings, proxyURL, upstreamProtocolModeDefault)
 		case "http":
-			// HTTP/HTTPS 代理：使用 HTTPProxyDialer（CONNECT 隧道）
+			// HTTP 代理：使用 HTTPProxyDialer（CONNECT 隧道）
 			slog.Debug("tls_fingerprint_transport_http_connect", "proxy", proxyURL.Host)
 			httpDialer := tlsfingerprint.NewHTTPProxyDialer(profile, proxyURL)
-			transport.DialTLSContext = httpDialer.DialTLSContext
+			dial = httpDialer.DialTLSContext
 		default:
 			// 未知代理类型，回退到普通代理配置（无 TLS 指纹）
 			slog.Debug("tls_fingerprint_transport_unknown_scheme_fallback", "scheme", scheme)
-			if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
-				return nil, err
-			}
+			return buildUpstreamTransport(settings, proxyURL, upstreamProtocolModeDefault)
 		}
 	}
 
-	return transport, nil
+	h1 := &http.Transport{
+		MaxIdleConns:          settings.maxIdleConns,
+		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
+		MaxConnsPerHost:       settings.maxConnsPerHost,
+		IdleConnTimeout:       settings.idleConnTimeout,
+		ResponseHeaderTimeout: settings.responseHeaderTimeout,
+	}
+	// 与 OpenAI H2 路径一致：启用 PING 健康探测，剔除被代理/NAT 静默掐断的
+	// 死连接，避免请求挂到 TCP 重传超时。x/net/http2.Transport 没有
+	// ResponseHeaderTimeout 字段（该超时仅作用于 h1 transport）；h2 路径的
+	// 响应时限由调用方的 http.Client.Timeout / 请求 context 承担。
+	h2 := &http2.Transport{
+		ReadIdleTimeout: openAIHTTP2ReadIdleTimeout,
+		PingTimeout:     openAIHTTP2PingTimeout,
+	}
+	return tlsfingerprint.NewTLSRoundTripper(dial, h1, h2), nil
 }
 
 // trackedBody 带跟踪功能的响应体包装器

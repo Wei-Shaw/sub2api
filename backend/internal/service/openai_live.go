@@ -451,7 +451,14 @@ func (s *OpenAIGatewayService) dialLiveSideband(ctx context.Context, record *Liv
 		return nil, err
 	}
 	target := strings.TrimRight(chatGPTLiveSidebandBaseURL, "/") + "/" + url.PathEscape(record.CallID)
-	conn, status, _, err := s.getOpenAIWSPassthroughDialer().Dial(ctx, target, headers, resolveAccountProxyURL(account))
+	conn, status, _, err := dialOpenAIWSClient(
+		s.getOpenAIWSPassthroughDialer(),
+		ctx,
+		target,
+		headers,
+		resolveAccountProxyURL(account),
+		s.resolveHTTPUpstreamTLSProfile(account),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("dial live sideband (status %d): %w", status, err)
 	}

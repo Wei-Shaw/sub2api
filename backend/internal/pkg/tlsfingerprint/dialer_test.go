@@ -14,12 +14,16 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	utls "github.com/refraction-networking/utls"
+	"github.com/stretchr/testify/require"
 )
 
 // TestDialerBasicConnection tests that the dialer can establish TLS connections.
@@ -234,6 +238,68 @@ func TestSOCKS5ProxyDialerBasic(t *testing.T) {
 	}
 }
 
+func TestHTTPProxyDialerHonorsContextAfterTCPConnect(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = ln.Close() }()
+	accepted := make(chan struct{})
+	go func() {
+		conn, acceptErr := ln.Accept()
+		if acceptErr != nil {
+			return
+		}
+		close(accepted)
+		defer func() { _ = conn.Close() }()
+		// Simulate a proxy that accepts TCP but never answers CONNECT.
+		time.Sleep(400 * time.Millisecond)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	dialer := NewHTTPProxyDialer(&Profile{}, mustParseURL("http://"+ln.Addr().String()))
+	started := time.Now()
+	_, err = dialer.DialTLSContext(ctx, "tcp", "example.com:443")
+	require.Error(t, err)
+	require.Less(t, time.Since(started), 250*time.Millisecond,
+		"context cancellation must interrupt a silent proxy after TCP connect")
+	select {
+	case <-accepted:
+	default:
+		t.Fatal("test did not reach the post-connect proxy handshake")
+	}
+}
+
+func TestSOCKS5ProxyDialerHonorsContextDuringHandshake(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = ln.Close() }()
+	accepted := make(chan struct{})
+	go func() {
+		conn, acceptErr := ln.Accept()
+		if acceptErr != nil {
+			return
+		}
+		close(accepted)
+		defer func() { _ = conn.Close() }()
+		// Simulate a SOCKS server that never completes method negotiation.
+		time.Sleep(400 * time.Millisecond)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	dialer := NewSOCKS5ProxyDialer(&Profile{}, mustParseURL("socks5://"+ln.Addr().String()))
+	started := time.Now()
+	_, err = dialer.DialTLSContext(ctx, "tcp", "example.com:443")
+	require.Error(t, err)
+	require.Less(t, time.Since(started), 250*time.Millisecond,
+		"context cancellation must interrupt SOCKS negotiation")
+	select {
+	case <-accepted:
+	default:
+		t.Fatal("test did not reach the SOCKS handshake")
+	}
+}
+
 // TestBuildClientHelloSpec tests ClientHello spec construction.
 func TestBuildClientHelloSpec(t *testing.T) {
 	// Test with nil profile (should use defaults)
@@ -261,6 +327,79 @@ func TestBuildClientHelloSpec(t *testing.T) {
 
 	if len(spec.CipherSuites) != 2 {
 		t.Errorf("expected 2 cipher suites, got %d", len(spec.CipherSuites))
+	}
+}
+
+func TestOpenAIChrome120ProfileBuildsChromeLikeHTTP1ClientHello(t *testing.T) {
+	profile := NewOpenAIChrome120Profile()
+	spec := buildClientHelloSpecFromProfile(profile)
+
+	require.Equal(t, PresetChrome120HTTP1, profile.Preset)
+	require.NotEmpty(t, spec.CipherSuites)
+	require.Equal(t, uint16(utls.GREASE_PLACEHOLDER), spec.CipherSuites[0])
+
+	var alpn []string
+	var hasCertificateCompression bool
+	var hasHTTP2ApplicationSettings bool
+	for _, extension := range spec.Extensions {
+		switch typed := extension.(type) {
+		case *utls.ALPNExtension:
+			alpn = typed.AlpnProtocols
+		case *utls.UtlsCompressCertExtension:
+			hasCertificateCompression = true
+		case *utls.ApplicationSettingsExtension:
+			hasHTTP2ApplicationSettings = true
+		}
+	}
+
+	require.Equal(t, []string{"http/1.1"}, alpn)
+	require.True(t, hasCertificateCompression, "Chrome template should retain Chrome certificate compression")
+	require.False(t, hasHTTP2ApplicationSettings, "HTTP/1.1-only template must not advertise HTTP/2 ALPS")
+}
+
+func TestProfileStableIDTracksClientHelloContentButNotDisplayName(t *testing.T) {
+	base := Profile{
+		Name:                "original display name",
+		CipherSuites:        []uint16{0x1301},
+		Curves:              []uint16{29},
+		PointFormats:        []uint16{0},
+		EnableGREASE:        true,
+		SignatureAlgorithms: []uint16{0x0403},
+		ALPNProtocols:       []string{"http/1.1"},
+		SupportedVersions:   []uint16{0x0304},
+		KeyShareGroups:      []uint16{29},
+		PSKModes:            []uint16{1},
+		Extensions:          []uint16{0, 10, 16, 43},
+	}
+	baseID := base.StableID()
+	require.True(t, strings.HasPrefix(baseID, "v2:"), "StableID schema must be v2")
+
+	renamed := base
+	renamed.Name = "renamed only"
+	require.Equal(t, baseID, renamed.StableID())
+
+	mutations := map[string]func(*Profile){
+		"preset":               func(p *Profile) { p.Preset = PresetChrome120HTTP1 },
+		"cipher suites":        func(p *Profile) { p.CipherSuites = []uint16{0x1302} },
+		"curves":               func(p *Profile) { p.Curves = []uint16{23} },
+		"point formats":        func(p *Profile) { p.PointFormats = []uint16{1} },
+		"grease":               func(p *Profile) { p.EnableGREASE = false },
+		"signature algorithms": func(p *Profile) { p.SignatureAlgorithms = []uint16{0x0804} },
+		"alpn":                 func(p *Profile) { p.ALPNProtocols = []string{"h2"} },
+		"supported versions":   func(p *Profile) { p.SupportedVersions = []uint16{0x0303} },
+		"key shares":           func(p *Profile) { p.KeyShareGroups = []uint16{23} },
+		"psk modes":            func(p *Profile) { p.PSKModes = []uint16{0} },
+		"extensions":           func(p *Profile) { p.Extensions = []uint16{0, 16, 43} },
+		"extension randomization": func(p *Profile) {
+			p.RandomizeExtensionOrder = true
+		},
+	}
+	for name, mutate := range mutations {
+		t.Run(name, func(t *testing.T) {
+			changed := base
+			mutate(&changed)
+			require.NotEqual(t, baseID, changed.StableID())
+		})
 	}
 }
 

@@ -189,6 +189,7 @@ func registerAgentIdentityTask(ctx context.Context, account *Account) (string, e
 		ProxyURL:              proxyURL,
 		Timeout:               agentIdentityTaskRegistrationTimeout,
 		ResponseHeaderTimeout: 15 * time.Second,
+		TLSProfile:            resolveOpenAIAuthTLSProfile(ctx),
 	})
 	if err != nil {
 		return "", errors.New("invalid proxy configuration for agent task registration")
@@ -317,6 +318,7 @@ func (s *OpenAIGatewayService) ensureAgentIdentityTask(ctx context.Context, acco
 	if s == nil {
 		return errors.New("openai gateway service is nil")
 	}
+	ctx = withOpenAIAccountTLSProfile(ctx, s.tlsFPProfileService, account)
 	return ensureAgentIdentityTaskForAccount(ctx, s.accountRepo, s, &s.agentIdentityTaskMu, account, expectedTaskID)
 }
 
@@ -382,6 +384,7 @@ func (s *OpenAIGatewayService) buildOpenAIAuthenticationHeaders(ctx context.Cont
 	}
 	headers := make(http.Header)
 	if credAccount != nil && credAccount.IsOpenAIAgentIdentity() {
+		ctx = withOpenAIAccountTLSProfile(ctx, s.tlsFPProfileService, credAccount)
 		agentHeaders, err := buildAgentIdentityAuthenticationHeaders(ctx, s.accountRepo, s, &s.agentIdentityTaskMu, credAccount)
 		if err != nil {
 			return nil, err
@@ -427,6 +430,7 @@ func (s *OpenAIGatewayService) refreshOpenAIAgentIdentityHeaders(ctx context.Con
 	if !credAccount.IsOpenAIAgentIdentity() {
 		return cloneHeader(headers), nil
 	}
+	ctx = withOpenAIAccountTLSProfile(ctx, s.tlsFPProfileService, credAccount)
 	refreshed := cloneHeader(headers)
 	if refreshed == nil {
 		refreshed = make(http.Header)

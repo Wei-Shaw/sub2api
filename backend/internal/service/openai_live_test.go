@@ -17,8 +17,11 @@ import (
 )
 
 type liveHTTPUpstreamStub struct {
-	request *http.Request
-	body    []byte
+	request  *http.Request
+	body     []byte
+	profile  *tlsfingerprint.Profile
+	doCalls  int
+	tlsCalls int
 }
 
 type liveAttestationStub struct {
@@ -40,6 +43,7 @@ func (s *liveHTTPUpstreamStub) Do(
 	_ int64,
 	_ int,
 ) (*http.Response, error) {
+	s.doCalls++
 	s.request = request
 	body, err := io.ReadAll(request.Body)
 	if err != nil {
@@ -60,9 +64,13 @@ func (s *liveHTTPUpstreamStub) DoWithTLS(
 	proxyURL string,
 	accountID int64,
 	accountConcurrency int,
-	_ *tlsfingerprint.Profile,
+	profile *tlsfingerprint.Profile,
 ) (*http.Response, error) {
-	return s.Do(request, proxyURL, accountID, accountConcurrency)
+	s.tlsCalls++
+	s.profile = profile
+	resp, err := s.Do(request, proxyURL, accountID, accountConcurrency)
+	s.doCalls--
+	return resp, err
 }
 
 func TestLiveCapabilityOnlyAllowsOpenAIOAuth(t *testing.T) {
@@ -123,6 +131,9 @@ func TestCreateUpstreamLiveCallPreservesSession(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "call_test", created.CallID)
 	require.Equal(t, []byte("v=0\r\n"), created.SDP)
+	require.Zero(t, upstream.doCalls)
+	require.Equal(t, 1, upstream.tlsCalls)
+	require.Equal(t, tlsfingerprint.PresetChrome120HTTP1, upstream.profile.Preset)
 
 	var forwarded struct {
 		SDP     string          `json:"sdp"`

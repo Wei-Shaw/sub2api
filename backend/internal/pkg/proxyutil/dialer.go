@@ -39,6 +39,24 @@ var socks5ForwardDialer = &net.Dialer{
 	KeepAlive: socks5DialKeepAlive,
 }
 
+// PlainHTTPProxy returns a Transport proxy selector for requests whose
+// connection is not handled by a custom TLS dialer. This lets HTTP/WS traffic
+// use the configured proxy while HTTPS/WSS continues through a fingerprint
+// dialer that already owns proxy tunneling.
+func PlainHTTPProxy(proxyURL *url.URL) func(*http.Request) (*url.URL, error) {
+	return func(req *http.Request) (*url.URL, error) {
+		if proxyURL == nil || req == nil || req.URL == nil {
+			return nil, nil
+		}
+		switch strings.ToLower(req.URL.Scheme) {
+		case "http", "ws":
+			return proxyURL, nil
+		default:
+			return nil, nil
+		}
+	}
+}
+
 // ConfigureTransportProxy 根据代理 URL 配置 Transport
 //
 // 支持的协议：

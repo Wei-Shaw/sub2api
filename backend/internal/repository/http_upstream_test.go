@@ -2,6 +2,7 @@ package repository
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/imroc/req/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -99,14 +101,42 @@ func TestHTTPUpstreamDoWithTLSPlainHTTPUsesConfiguredSOCKSProxy(t *testing.T) {
 func TestTLSFingerprintHTTPSProxyFallsBackWithoutBypassingProxy(t *testing.T) {
 	proxyURL, err := url.Parse("https://user:pass@proxy.example:8443")
 	require.NoError(t, err)
-	transport, err := buildUpstreamTransportWithTLSFingerprint(poolSettings{}, proxyURL, &tlsfingerprint.Profile{Name: "test"})
+	rt, err := buildUpstreamTransportWithTLSFingerprint(poolSettings{}, proxyURL, &tlsfingerprint.Profile{Name: "test"})
 	require.NoError(t, err)
+	transport, ok := rt.(*http.Transport)
+	require.True(t, ok, "HTTPS proxy fallback must keep the plain net/http transport, got %T", rt)
 	require.NotNil(t, transport.Proxy)
 	require.Nil(t, transport.DialTLSContext)
 	req := &http.Request{URL: &url.URL{Scheme: "https", Host: "upstream.example"}}
 	resolved, err := transport.Proxy(req)
 	require.NoError(t, err)
 	require.Equal(t, "https://user:pass@proxy.example:8443", resolved.String())
+}
+
+func TestTLSFingerprintTransportUsesALPNSniffingRoundTripper(t *testing.T) {
+	profile := &tlsfingerprint.Profile{Name: "test", ALPNProtocols: []string{"h2", "http/1.1"}}
+
+	t.Run("direct", func(t *testing.T) {
+		rt, err := buildUpstreamTransportWithTLSFingerprint(poolSettings{}, nil, profile)
+		require.NoError(t, err)
+		require.IsType(t, &tlsfingerprint.TLSRoundTripper{}, rt)
+	})
+
+	t.Run("http proxy", func(t *testing.T) {
+		proxyURL, err := url.Parse("http://user:pass@proxy.example:8080")
+		require.NoError(t, err)
+		rt, err := buildUpstreamTransportWithTLSFingerprint(poolSettings{}, proxyURL, profile)
+		require.NoError(t, err)
+		require.IsType(t, &tlsfingerprint.TLSRoundTripper{}, rt)
+	})
+
+	t.Run("socks5 proxy", func(t *testing.T) {
+		proxyURL, err := url.Parse("socks5://proxy.example:1080")
+		require.NoError(t, err)
+		rt, err := buildUpstreamTransportWithTLSFingerprint(poolSettings{}, proxyURL, profile)
+		require.NoError(t, err)
+		require.IsType(t, &tlsfingerprint.TLSRoundTripper{}, rt)
+	})
 }
 
 func startTestSOCKS5Proxy(t *testing.T) (string, *atomic.Int64) {
@@ -550,6 +580,18 @@ type HTTPUpstreamSuite struct {
 	cfg *config.Config // 测试用配置
 }
 
+type closeIdleTrackingTransport struct {
+	closed atomic.Bool
+}
+
+func (t *closeIdleTrackingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("unexpected round trip")
+}
+
+func (t *closeIdleTrackingTransport) CloseIdleConnections() {
+	t.closed.Store(true)
+}
+
 // SetupTest 每个测试用例执行前的初始化
 // 创建空配置，各测试用例可按需覆盖
 func (s *HTTPUpstreamSuite) SetupTest() {
@@ -653,11 +695,248 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileTLSFingerprintDoesNotInheritGeneric
 		},
 	}
 	svc := s.newService()
-	entry, err := svc.getClientEntryWithTLS("", 1, 1, &tlsfingerprint.Profile{Name: "test"}, service.HTTPUpstreamProfileOpenAI, false, false)
+	entry, err := svc.getClientEntryWithTLS("", 1, 1, &tlsfingerprint.Profile{Name: "test"}, service.HTTPUpstreamProfileOpenAI, "api.openai.com:443", false, false)
 	require.NoError(s.T(), err)
-	transport, ok := entry.client.Transport.(*http.Transport)
-	require.True(s.T(), ok, "expected *http.Transport")
-	require.Equal(s.T(), time.Duration(0), transport.ResponseHeaderTimeout, "OpenAI TLS path should not inherit generic header timeout")
+	rt, ok := entry.client.Transport.(*tlsfingerprint.TLSRoundTripper)
+	require.True(s.T(), ok, "custom profiles use the ALPN-sniffing TLSRoundTripper, got %T", entry.client.Transport)
+	require.Equal(s.T(), time.Duration(0), rt.HTTP1Transport().ResponseHeaderTimeout, "OpenAI TLS path should not inherit generic header timeout")
+}
+
+func (s *HTTPUpstreamSuite) TestOpenAIBuiltInTLSFingerprintUsesChromeHTTP2Transport() {
+	s.cfg.Gateway = config.GatewayConfig{
+		OpenAIResponseHeaderTimeout: 1800,
+		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
+			Enabled: true,
+		},
+	}
+	svc := s.newService()
+	profile := tlsfingerprint.NewOpenAIChrome120Profile()
+
+	first, err := svc.getClientEntryWithTLS("", 81, 3, profile, service.HTTPUpstreamProfileOpenAI, "api.openai.com:443", false, false)
+	require.NoError(s.T(), err)
+	transport, ok := first.client.Transport.(*req.Transport)
+	require.True(s.T(), ok, "built-in OpenAI profile should use req's Chrome H2 impersonation transport")
+	require.Equal(s.T(), 1800*time.Second, transport.ResponseHeaderTimeout)
+	require.Equal(s.T(), 3, transport.MaxConnsPerHost)
+
+	h2Server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(s.T(), 2, r.ProtoMajor, "Chrome impersonation transport must negotiate HTTP/2")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	h2Server.EnableHTTP2 = true
+	h2Server.StartTLS()
+	s.T().Cleanup(h2Server.Close)
+	serverTransport, ok := h2Server.Client().Transport.(*http.Transport)
+	require.True(s.T(), ok)
+	transport.SetTLSClientConfig(serverTransport.TLSClientConfig.Clone())
+	resp, err := first.client.Get(h2Server.URL)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 2, resp.ProtoMajor)
+	require.NoError(s.T(), resp.Body.Close())
+
+	second, err := svc.getClientEntryWithTLS("", 81, 3, profile, service.HTTPUpstreamProfileOpenAI, "api.openai.com:443", false, false)
+	require.NoError(s.T(), err)
+	require.Same(s.T(), first, second, "the existing DoWithTLS profile cache key must still reuse the transport")
+}
+
+func (s *HTTPUpstreamSuite) TestOpenAITLSFingerprintProxyCompatibilityErrorActivatesFallbackAndSeparatesCacheMode() {
+	s.cfg.Gateway = config.GatewayConfig{
+		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
+			Enabled:                   true,
+			AllowProxyFallbackToHTTP1: true,
+			FallbackErrorThreshold:    1,
+			FallbackWindowSeconds:     60,
+			FallbackTTLSeconds:        600,
+		},
+	}
+	svc := s.newService()
+	profile := tlsfingerprint.NewOpenAIChrome120Profile()
+	proxyURL := "http://proxy.example:8080"
+
+	h2Entry, err := svc.getClientEntryWithTLS(proxyURL, 82, 1, profile, service.HTTPUpstreamProfileOpenAI, "api.openai.com:443", false, false)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), upstreamProtocolModeOpenAIH2, h2Entry.protocolMode)
+	h2Entry.client.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("stream error: PROTOCOL_ERROR")
+	})
+
+	request, err := http.NewRequest(http.MethodGet, "https://api.openai.com/v1/models", nil)
+	require.NoError(s.T(), err)
+	request = request.WithContext(service.WithHTTPUpstreamProfile(request.Context(), service.HTTPUpstreamProfileOpenAI))
+	_, err = svc.DoWithTLS(request, proxyURL, 82, 1, profile)
+	require.ErrorContains(s.T(), err, "PROTOCOL_ERROR")
+	require.True(s.T(), svc.isOpenAIHTTP2FallbackActive(proxyURL))
+
+	fallbackEntry, err := svc.getClientEntryWithTLS(proxyURL, 82, 1, profile, service.HTTPUpstreamProfileOpenAI, "api.openai.com:443", false, false)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), upstreamProtocolModeOpenAIH1Fallback, fallbackEntry.protocolMode)
+	require.NotSame(s.T(), h2Entry, fallbackEntry, "H1 fallback must not reuse the cached H2 fingerprint transport")
+	_, stillChromeH2 := fallbackEntry.client.Transport.(*req.Transport)
+	require.False(s.T(), stillChromeH2)
+}
+
+func (s *HTTPUpstreamSuite) TestTLSFingerprintProfileChangeRebuildsTransportAndClosesOldIdleConnections() {
+	svc := s.newService()
+	firstProfile := &tlsfingerprint.Profile{
+		Name:         "first",
+		CipherSuites: []uint16{0x1301},
+	}
+	first, err := svc.getClientEntryWithTLS("", 71, 1, firstProfile, service.HTTPUpstreamProfileOpenAI, "api.openai.com:443", false, false)
+	require.NoError(s.T(), err)
+	oldTransport := &closeIdleTrackingTransport{}
+	first.client.Transport = oldTransport
+
+	secondProfile := &tlsfingerprint.Profile{
+		Name:         "second",
+		CipherSuites: []uint16{0x1302},
+	}
+	second, err := svc.getClientEntryWithTLS("", 71, 1, secondProfile, service.HTTPUpstreamProfileOpenAI, "api.openai.com:443", false, false)
+	require.NoError(s.T(), err)
+
+	require.NotSame(s.T(), first, second, "a changed ClientHello profile must rebuild the cached transport")
+	require.True(s.T(), oldTransport.closed.Load(), "the superseded transport must close idle connections")
+	require.Len(s.T(), svc.clients, 1, "only the current TLS profile variant should remain cached")
+}
+
+func (s *HTTPUpstreamSuite) TestTLSFingerprintEquivalentProfileContentReusesTransport() {
+	svc := s.newService()
+	first, err := svc.getClientEntryWithTLS("", 72, 1, &tlsfingerprint.Profile{
+		Name:                "display name one",
+		CipherSuites:        []uint16{0x1301, 0x1302},
+		ALPNProtocols:       []string{"http/1.1"},
+		SupportedVersions:   []uint16{0x0304, 0x0303},
+		SignatureAlgorithms: []uint16{0x0403},
+	}, service.HTTPUpstreamProfileOpenAI, "api.openai.com:443", false, false)
+	require.NoError(s.T(), err)
+
+	second, err := svc.getClientEntryWithTLS("", 72, 1, &tlsfingerprint.Profile{
+		Name:                "renamed only",
+		CipherSuites:        []uint16{0x1301, 0x1302},
+		ALPNProtocols:       []string{"http/1.1"},
+		SupportedVersions:   []uint16{0x0304, 0x0303},
+		SignatureAlgorithms: []uint16{0x0403},
+	}, service.HTTPUpstreamProfileOpenAI, "api.openai.com:443", false, false)
+	require.NoError(s.T(), err)
+
+	require.Same(s.T(), first, second, "display-only profile changes must not discard an equivalent transport")
+}
+
+func (s *HTTPUpstreamSuite) TestTLSFingerprintCacheSeparatesDestinationOrigins() {
+	svc := s.newService()
+	profile := &tlsfingerprint.Profile{
+		Name:          "h2-capable custom profile",
+		ALPNProtocols: []string{"h2", "http/1.1"},
+		Extensions:    []uint16{0, 10, 13, 16, 43, 51},
+	}
+	apiRequest, err := http.NewRequest(http.MethodGet, "https://API.OpenAI.com/v1/responses", nil)
+	require.NoError(s.T(), err)
+	authRequest, err := http.NewRequest(http.MethodGet, "https://auth.openai.com:8443/oauth/token", nil)
+	require.NoError(s.T(), err)
+	apiOrigin := tlsDestinationOrigin(apiRequest)
+	authOrigin := tlsDestinationOrigin(authRequest)
+	require.Equal(s.T(), "api.openai.com:443", apiOrigin)
+	require.Equal(s.T(), "auth.openai.com:8443", authOrigin)
+
+	first, err := svc.getClientEntryWithTLS("", 73, 1, profile, service.HTTPUpstreamProfileOpenAI, apiOrigin, false, false)
+	require.NoError(s.T(), err)
+	second, err := svc.getClientEntryWithTLS("", 73, 1, profile, service.HTTPUpstreamProfileOpenAI, authOrigin, false, false)
+	require.NoError(s.T(), err)
+	again, err := svc.getClientEntryWithTLS("", 73, 1, profile, service.HTTPUpstreamProfileOpenAI, apiOrigin, false, false)
+	require.NoError(s.T(), err)
+
+	require.NotSame(s.T(), first, second,
+		"a TLSRoundTripper's one-time ALPN decision must never be shared across origins")
+	require.Same(s.T(), first, again, "the same normalized origin should reuse its transport")
+	require.Len(s.T(), svc.clients, 2)
+}
+
+func (s *HTTPUpstreamSuite) TestTLSProfileConvergesToHTTP1ForH1ProtocolModes() {
+	profile := tlsfingerprint.NewCodexRustlsFallbackProfile()
+	for _, mode := range []string{upstreamProtocolModeOpenAIH1, upstreamProtocolModeOpenAIH1Fallback} {
+		s.T().Run(string(mode), func(t *testing.T) {
+			effective := convergeTLSProfileForProtocolMode(profile, mode)
+			require.NotSame(t, profile, effective)
+			require.Equal(t, []string{"http/1.1"}, effective.ALPNProtocols)
+			require.Contains(t, effective.Extensions, uint16(16), "H1 convergence must keep the ALPN extension")
+			require.Equal(t, []string{"h2", "http/1.1"}, profile.ALPNProtocols,
+				"protocol convergence must not mutate the shared account profile")
+		})
+	}
+	require.Same(s.T(), profile, convergeTLSProfileForProtocolMode(profile, upstreamProtocolModeOpenAIH2))
+}
+
+func (s *HTTPUpstreamSuite) TestOpenAIH1ModeCodexProfileOffersOnlyHTTP1OnWire() {
+	offered := make(chan []string, 1)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	server.TLS = &tls.Config{
+		GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+			offered <- append([]string(nil), hello.SupportedProtos...)
+			return nil, nil
+		},
+	}
+	server.StartTLS()
+	s.T().Cleanup(server.Close)
+
+	s.cfg.Gateway.OpenAIHTTP2.Enabled = false
+	svc := s.newService()
+	profile := tlsfingerprint.NewCodexRustlsFallbackProfile()
+	req, err := http.NewRequest(http.MethodGet, server.URL, nil)
+	require.NoError(s.T(), err)
+	entry, err := svc.getClientEntryWithTLS("", 75, 1, profile, service.HTTPUpstreamProfileOpenAI, tlsDestinationOrigin(req), false, false)
+	require.NoError(s.T(), err)
+
+	_, _ = entry.client.Do(req) // self-signed certificate fails after ClientHello capture
+	select {
+	case got := <-offered:
+		require.Equal(s.T(), []string{"http/1.1"}, got)
+	case <-time.After(3 * time.Second):
+		s.T().Fatal("timed out waiting for ClientHello ALPN capture")
+	}
+	require.Equal(s.T(), []string{"h2", "http/1.1"}, profile.ALPNProtocols,
+		"wire convergence must not mutate the shared account profile")
+}
+
+func (s *HTTPUpstreamSuite) TestTLSFingerprintClientRejectsCrossOriginRedirectButFollowsSameOrigin() {
+	var crossOriginCalls atomic.Int64
+	crossOriginTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		crossOriginCalls.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	s.T().Cleanup(crossOriginTarget.Close)
+	crossOriginSource := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, crossOriginTarget.URL, http.StatusFound)
+	}))
+	s.T().Cleanup(crossOriginSource.Close)
+
+	svc := s.newService()
+	entry, err := svc.getClientEntryWithTLS("", 74, 1, tlsfingerprint.NewCodexRustlsFallbackProfile(), service.HTTPUpstreamProfileOpenAI, "source.example:443", false, false)
+	require.NoError(s.T(), err)
+	entry.client.Transport = http.DefaultTransport
+
+	resp, err := entry.client.Get(crossOriginSource.URL)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), http.StatusFound, resp.StatusCode)
+	require.NoError(s.T(), resp.Body.Close())
+	require.Zero(s.T(), crossOriginCalls.Load(), "TLS clients must not follow a redirect into another origin")
+
+	var sameOriginFinalCalls atomic.Int64
+	sameOrigin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/start" {
+			http.Redirect(w, r, "/final", http.StatusFound)
+			return
+		}
+		sameOriginFinalCalls.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	s.T().Cleanup(sameOrigin.Close)
+
+	resp, err = entry.client.Get(sameOrigin.URL + "/start")
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), http.StatusNoContent, resp.StatusCode)
+	require.NoError(s.T(), resp.Body.Close())
+	require.Equal(s.T(), int64(1), sameOriginFinalCalls.Load(), "same-origin redirects must remain enabled")
 }
 
 func (s *HTTPUpstreamSuite) TestOpenAIProfileHTTP2DisabledUsesHTTP1Transport() {

@@ -26,6 +26,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 )
 
@@ -41,12 +42,13 @@ const (
 
 // Options 定义共享 HTTP 客户端的构建参数
 type Options struct {
-	ProxyURL              string        // 代理 URL（支持 http/https/socks5/socks5h）
-	Timeout               time.Duration // 请求总超时时间
-	ResponseHeaderTimeout time.Duration // 等待响应头超时时间
-	InsecureSkipVerify    bool          // 是否跳过 TLS 证书验证（已禁用，不允许设置为 true）
-	ValidateResolvedIP    bool          // 是否校验解析后的 IP（防止 DNS Rebinding）
-	AllowPrivateHosts     bool          // 允许私有地址解析（与 ValidateResolvedIP 一起使用）
+	ProxyURL              string                  // 代理 URL（支持 http/https/socks5/socks5h）
+	Timeout               time.Duration           // 请求总超时时间
+	ResponseHeaderTimeout time.Duration           // 等待响应头超时时间
+	InsecureSkipVerify    bool                    // 是否跳过 TLS 证书验证（已禁用，不允许设置为 true）
+	ValidateResolvedIP    bool                    // 是否校验解析后的 IP（防止 DNS Rebinding）
+	AllowPrivateHosts     bool                    // 允许私有地址解析（与 ValidateResolvedIP 一起使用）
+	TLSProfile            *tlsfingerprint.Profile // 可选 uTLS ClientHello profile
 
 	// 可选的连接池参数（不设置则使用默认值）
 	MaxIdleConns        int // 最大空闲连接总数（默认 100）
@@ -64,6 +66,12 @@ var validateResolvedIP = urlvalidator.ValidateResolvedIP
 // 性能优化：相同配置复用同一客户端，避免重复创建 Transport
 // 安全说明：代理配置失败时直接返回错误，不会回退到直连，避免 IP 关联风险
 func GetClient(opts Options) (*http.Client, error) {
+	// The uTLS dialer paths in buildTransport install a bare fingerprinted
+	// dialer on a standard-library transport, which can only speak HTTP/1.1
+	// over those connections. Converge ALPN on a clone before deriving the
+	// cache key so an h2-advertising profile cannot negotiate a protocol the
+	// transport cannot serve, and the key always matches the effective profile.
+	opts.TLSProfile = tlsfingerprint.HTTP1OnlyProfile(opts.TLSProfile)
 	key := buildClientKey(opts)
 	if cached, ok := sharedClients.Load(key); ok {
 		if client, ok := cached.(*http.Client); ok {
@@ -132,10 +140,29 @@ func buildTransport(opts Options) (*http.Transport, error) {
 	if err != nil {
 		return nil, err
 	}
+	if opts.TLSProfile != nil {
+		transport.ForceAttemptHTTP2 = false
+		if parsed == nil {
+			transport.DialTLSContext = tlsfingerprint.NewDialer(opts.TLSProfile, nil).DialTLSContext
+			return transport, nil
+		}
+		switch strings.ToLower(parsed.Scheme) {
+		case "http":
+			transport.Proxy = proxyutil.PlainHTTPProxy(parsed)
+			transport.DialTLSContext = tlsfingerprint.NewHTTPProxyDialer(opts.TLSProfile, parsed).DialTLSContext
+			return transport, nil
+		case "socks5", "socks5h":
+			transport.Proxy = proxyutil.PlainHTTPProxy(parsed)
+			transport.DialTLSContext = tlsfingerprint.NewSOCKS5ProxyDialer(opts.TLSProfile, parsed).DialTLSContext
+			return transport, nil
+		}
+		// HTTPS and unknown proxy schemes keep the validated proxy route. The
+		// CONNECT-oriented uTLS dialers cannot establish TLS to an HTTPS proxy.
+	}
+
 	if parsed == nil {
 		return transport, nil
 	}
-
 	if err := proxyutil.ConfigureTransportProxy(transport, parsed); err != nil {
 		return nil, err
 	}
@@ -144,7 +171,7 @@ func buildTransport(opts Options) (*http.Transport, error) {
 }
 
 func buildClientKey(opts Options) string {
-	return fmt.Sprintf("%s|%s|%s|%t|%t|%t|%d|%d|%d",
+	key := fmt.Sprintf("%s|%s|%s|%t|%t|%t|%d|%d|%d",
 		strings.TrimSpace(opts.ProxyURL),
 		opts.Timeout.String(),
 		opts.ResponseHeaderTimeout.String(),
@@ -155,6 +182,10 @@ func buildClientKey(opts Options) string {
 		opts.MaxIdleConnsPerHost,
 		opts.MaxConnsPerHost,
 	)
+	if opts.TLSProfile != nil {
+		key += "|tls:" + opts.TLSProfile.StableID()
+	}
+	return key
 }
 
 type validatedTransport struct {

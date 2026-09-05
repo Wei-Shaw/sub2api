@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/model"
 )
 
 type accountUsageCodexProbeRepo struct {
@@ -63,6 +65,32 @@ func TestShouldRefreshOpenAICodexSnapshot(t *testing.T) {
 		},
 	}, usage, now) {
 		t.Fatal("expected stale ws snapshot to trigger refresh")
+	}
+}
+
+func TestAccountUsageServiceOpenAICodexProbeClientOptionsUsesAccountTLSProfile(t *testing.T) {
+	const profileID int64 = 91
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra:    map[string]any{"tls_fingerprint_profile_id": profileID},
+	}
+	svc := &AccountUsageService{
+		tlsFPProfileService: &TLSFingerprintProfileService{localCache: map[int64]*model.TLSFingerprintProfile{
+			profileID: {ID: profileID, Name: "usage probe override", CipherSuites: []uint16{0x1301}},
+		}},
+	}
+
+	opts := svc.openAICodexProbeClientOptions(account, "http://proxy.local:8080")
+
+	if opts.ProxyURL != "http://proxy.local:8080" {
+		t.Fatalf("ProxyURL = %q, want configured proxy", opts.ProxyURL)
+	}
+	if opts.TLSProfile == nil {
+		t.Fatal("expected usage probe client options to carry an OpenAI TLS profile")
+	}
+	if opts.TLSProfile.Name != "usage probe override" {
+		t.Fatalf("TLS profile name = %q, want account override", opts.TLSProfile.Name)
 	}
 }
 

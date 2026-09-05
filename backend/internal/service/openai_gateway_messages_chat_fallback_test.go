@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -165,6 +166,9 @@ func TestForwardAsAnthropic_ForceChatCompletionsNonStreaming(t *testing.T) {
 	require.Nil(t, result.ServiceTier)
 	require.Equal(t, "priority", result.UpstreamResponseServiceTier)
 	require.False(t, result.Stream)
+	require.Zero(t, upstream.doCalls)
+	require.Equal(t, 1, upstream.doWithTLSCalls)
+	require.Equal(t, tlsfingerprint.PresetChrome120HTTP1, upstream.lastTLSProfile.Preset)
 }
 
 // Covers the fully-new streaming composition: text block is still open when

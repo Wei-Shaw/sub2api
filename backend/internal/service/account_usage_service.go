@@ -855,7 +855,8 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	req.Host = "chatgpt.com"
 	req.Header.Set("Content-Type", "application/json")
 	if account.IsOpenAIAgentIdentity() {
-		authHeaders, authErr := buildAgentIdentityAuthenticationHeaders(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, account)
+		authCtx := withOpenAIAccountTLSProfile(ctx, s.tlsFPProfileService, account)
+		authHeaders, authErr := buildAgentIdentityAuthenticationHeaders(authCtx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, account)
 		if authErr != nil {
 			return nil, fmt.Errorf("build Agent Identity authentication: %w", authErr)
 		}
@@ -888,11 +889,7 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
-	client, err := httppool.GetClient(httppool.Options{
-		ProxyURL:              proxyURL,
-		Timeout:               15 * time.Second,
-		ResponseHeaderTimeout: 10 * time.Second,
-	})
+	client, err := httppool.GetClient(s.openAICodexProbeClientOptions(account, proxyURL))
 	if err != nil {
 		return nil, fmt.Errorf("build openai probe client: %w", err)
 	}
@@ -911,6 +908,21 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 		return updates, nil
 	}
 	return nil, nil
+}
+
+func (s *AccountUsageService) openAICodexProbeClientOptions(account *Account, proxyURL string) httppool.Options {
+	var profile *tlsfingerprint.Profile
+	if s != nil && s.tlsFPProfileService != nil {
+		profile = s.tlsFPProfileService.ResolveTLSProfile(account)
+	} else {
+		profile = (&TLSFingerprintProfileService{}).ResolveTLSProfile(account)
+	}
+	return httppool.Options{
+		ProxyURL:              proxyURL,
+		Timeout:               15 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+		TLSProfile:            profile,
+	}
 }
 
 func (s *AccountUsageService) persistOpenAICodexProbeSnapshot(accountID int64, updates map[string]any) {

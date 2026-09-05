@@ -17,6 +17,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -311,7 +312,6 @@ func (r *grokCredentialHandlerRefresher) Refresh(ctx context.Context, _ *service
 }
 
 type grokCredentialHandlerUpstream struct {
-	service.HTTPUpstream
 	mu            sync.Mutex
 	hits          []int64
 	requestURLs   []string
@@ -388,6 +388,10 @@ func (u *grokCredentialHandlerUpstream) Do(req *http.Request, _ string, accountI
 			`{"id":"resp_healthy","object":"response","model":"grok-4.5","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1}}`,
 		)),
 	}, nil
+}
+
+func (u *grokCredentialHandlerUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
 func (u *grokCredentialHandlerUpstream) accountHits() []int64 {

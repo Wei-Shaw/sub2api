@@ -16,6 +16,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -83,6 +84,9 @@ func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_APIKeyUsesResponsesI
 	require.Equal(t, "gpt-5.3-codex", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "input").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
+	require.Zero(t, upstream.doCalls)
+	require.Equal(t, 1, upstream.doWithTLSCalls)
+	require.Equal(t, tlsfingerprint.PresetChrome120HTTP1, upstream.lastTLSProfile.Preset)
 }
 
 func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_OAuthFallsBackWhenPlatformEndpointUnsupported(t *testing.T) {
@@ -163,6 +167,9 @@ func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_OAuthFallsBackWhenPl
 			require.Equal(t, "https://api.openai.com/v1/responses/input_tokens", upstream.lastReq.URL.String())
 			require.Equal(t, "Bearer oauth-token", upstream.lastReq.Header.Get("authorization"))
 			require.Empty(t, upstream.lastReq.Header.Get("Chatgpt-Account-Id"))
+			require.Zero(t, upstream.doCalls)
+			require.Equal(t, 1, upstream.doWithTLSCalls)
+			require.Equal(t, tlsfingerprint.PresetChrome120HTTP1, upstream.lastTLSProfile.Preset)
 			require.Zero(t, repo.tempUnschedCalls, "OAuth input_tokens unsupported errors must not temp-unschedule the account")
 			require.Zero(t, repo.setErrorCalls, "OAuth input_tokens unsupported errors must not mark the account error")
 		})

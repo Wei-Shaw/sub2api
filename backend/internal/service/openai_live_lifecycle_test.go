@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	coderws "github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
 )
@@ -85,6 +86,18 @@ type liveTestDialer struct {
 	conn    *liveTestFrameConn
 	url     string
 	headers http.Header
+	profile *tlsfingerprint.Profile
+}
+
+func (d *liveTestDialer) DialWithTLS(
+	ctx context.Context,
+	wsURL string,
+	headers http.Header,
+	proxyURL string,
+	profile *tlsfingerprint.Profile,
+) (openAIWSClientConn, int, http.Header, error) {
+	d.profile = profile
+	return d.Dial(ctx, wsURL, headers, proxyURL)
 }
 
 func (d *liveTestDialer) Dial(
@@ -426,6 +439,8 @@ func TestProxyLiveSidebandForwardsTextAndBinary(t *testing.T) {
 	require.Equal(t, "Bearer test-access-token", dialer.headers.Get("Authorization"))
 	require.Equal(t, "acct_test", dialer.headers.Get("Chatgpt-Account-Id"))
 	require.Equal(t, `{"v":1,"s":0,"t":"v1.sideband"}`, dialer.headers.Get(liveAttestationHeader))
+	require.NotNil(t, dialer.profile)
+	require.Equal(t, tlsfingerprint.PresetChrome120HTTP1, dialer.profile.Preset)
 	upstream.reads <- liveTestFrame{err: coderws.CloseError{Code: coderws.StatusNormalClosure}}
 	require.ErrorIs(t, <-proxyResult, ErrLiveCallNotFound)
 }

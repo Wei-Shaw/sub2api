@@ -32,6 +32,23 @@ func (p *TLSFingerprintProfile) Validate() error {
 	if p.Name == "" {
 		return &ValidationError{Field: "name", Message: "name is required"}
 	}
+	seenALPN := make(map[string]struct{}, len(p.ALPNProtocols))
+	for _, proto := range p.ALPNProtocols {
+		// The runtime ALPN dispatcher recognizes these exact wire tokens only.
+		// Reject unknown/case-folded/blank values and duplicates at the CRUD
+		// boundary so the stored profile, cache identity, and negotiated protocol
+		// cannot disagree. An empty slice remains valid and selects the built-in
+		// HTTP/1.1 default.
+		switch proto {
+		case "h2", "http/1.1":
+		default:
+			return &ValidationError{Field: "alpn_protocols", Message: "each ALPN protocol must be exactly \"h2\" or \"http/1.1\""}
+		}
+		if _, duplicate := seenALPN[proto]; duplicate {
+			return &ValidationError{Field: "alpn_protocols", Message: "ALPN protocols must not contain duplicates"}
+		}
+		seenALPN[proto] = struct{}{}
+	}
 	return nil
 }
 

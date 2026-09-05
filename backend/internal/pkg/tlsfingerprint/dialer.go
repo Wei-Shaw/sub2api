@@ -6,19 +6,29 @@ import (
 	"bufio"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
+	"time"
 
 	utls "github.com/refraction-networking/utls"
 	"golang.org/x/net/proxy"
 )
 
+// defaultBaseDialTimeout bounds TCP dials made by fingerprint dialers when no
+// base dialer is supplied.
+const defaultBaseDialTimeout = 10 * time.Second
+
+const preSharedKeyExtensionID uint16 = 41
+
 // Profile contains TLS fingerprint configuration.
 // All slice fields use built-in defaults when empty.
 type Profile struct {
+	Preset              Preset // Optional built-in ClientHello template
 	Name                string // Profile name for identification
 	CipherSuites        []uint16
 	Curves              []uint16
@@ -29,7 +39,57 @@ type Profile struct {
 	SupportedVersions   []uint16 // Empty uses [TLS1.3, TLS1.2]
 	KeyShareGroups      []uint16 // Empty uses [X25519]
 	PSKModes            []uint16 // Empty uses [psk_dhe_ke]
-	Extensions          []uint16 // Extension type IDs in order; empty uses default Node.js 24.x order
+	// Extensions lists extension type IDs in order; empty uses the default Node.js 24.x
+	// order. An explicit list suppresses the default GREASE bookends even when EnableGREASE
+	// is true. Unknown IDs serialize as empty GenericExtension values, which is valid only
+	// for extensions whose wire body is genuinely empty.
+	Extensions []uint16
+
+	// RandomizeExtensionOrder, when true, shuffles a copy of the constructed extension list
+	// once per new TLS connection instead of using a fixed order. HTTP connection reuse means
+	// this is per connection, not per request. Real rustls clients reshuffle their ClientHello
+	// extension order as an anti-fingerprinting measure; a permanently fixed order is itself
+	// a distinguishing signal for such clients. Defaults to false so existing Profiles (for
+	// example the Node.js/Claude Code default) keep their fixed-order behavior unchanged.
+	RandomizeExtensionOrder bool
+}
+
+// Preset identifies a built-in ClientHello template. User-defined profiles
+// leave this empty and continue to use the explicit fields above.
+type Preset string
+
+const (
+	// PresetChrome120HTTP1 is Chrome 120's uTLS template constrained to
+	// HTTP/1.1. The shared net/http transport uses a custom uTLS connection and
+	// cannot safely hand that connection to net/http's crypto/tls-only H2 hook.
+	PresetChrome120HTTP1 Preset = "chrome-120-http1"
+)
+
+// HTTP1OnlyProfile returns a clone of profile with ALPN converged to HTTP/1.1.
+// Bare uTLS dialer paths (the httpclient pool, WS proxy transports, the req
+// client pool) install the fingerprinted dialer on a standard-library transport
+// that can only speak HTTP/1.1 over those connections; an h2-advertising
+// profile would negotiate a protocol the transport cannot serve, so every such
+// caller must converge ALPN before deriving its cache key and dialer. Never
+// mutates the shared input; nil input returns nil.
+func HTTP1OnlyProfile(profile *Profile) *Profile {
+	if profile == nil {
+		return nil
+	}
+	clone := *profile
+	clone.ALPNProtocols = []string{"http/1.1"}
+	return &clone
+}
+
+// NewOpenAIChrome120Profile returns the built-in OpenAI account default.
+// Real Codex uses Rust/hyper rather than Chrome, so this is deliberately a
+// stable "not Go" compromise, not a claim of byte-for-byte Codex parity.
+// Chrome 120 also matches the existing OpenAI privacy-path impersonation.
+func NewOpenAIChrome120Profile() *Profile {
+	return &Profile{
+		Preset: PresetChrome120HTTP1,
+		Name:   "Built-in OpenAI Default (Chrome 120, HTTP/1.1)",
+	}
 }
 
 // Dialer creates TLS connections with custom fingerprints.
@@ -121,7 +181,10 @@ var (
 // If baseDialer is nil, direct TCP dial is used.
 func NewDialer(profile *Profile, baseDialer func(ctx context.Context, network, addr string) (net.Conn, error)) *Dialer {
 	if baseDialer == nil {
-		baseDialer = (&net.Dialer{}).DialContext
+		// A zero-value net.Dialer has no timeout and would let a black-holed
+		// upstream pin a goroutine until the caller's context ends. Bound the
+		// TCP dial; the TLS handshake itself still honors the caller's context.
+		baseDialer = (&net.Dialer{Timeout: defaultBaseDialTimeout}).DialContext
 	}
 	return &Dialer{profile: profile, baseDialer: baseDialer}
 }
@@ -138,10 +201,22 @@ func NewSOCKS5ProxyDialer(profile *Profile, proxyURL *url.URL) *SOCKS5ProxyDiale
 	return &SOCKS5ProxyDialer{profile: profile, proxyURL: proxyURL}
 }
 
+func withDefaultDialTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) <= defaultBaseDialTimeout {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, defaultBaseDialTimeout)
+}
+
 // DialTLSContext establishes a TLS connection through SOCKS5 proxy with the configured fingerprint.
 // Flow: SOCKS5 CONNECT to target -> TLS handshake with utls on the tunnel
 func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	slog.Debug("tls_fingerprint_socks5_connecting", "proxy", d.proxyURL.Host, "target", addr)
+	dialCtx, cancel := withDefaultDialTimeout(ctx)
+	defer cancel()
 
 	// Step 1: Create SOCKS5 dialer
 	var auth *proxy.Auth
@@ -160,7 +235,7 @@ func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr st
 		proxyAddr = net.JoinHostPort(d.proxyURL.Hostname(), "1080") // Default SOCKS5 port
 	}
 
-	socksDialer, err := proxy.SOCKS5("tcp", proxyAddr, auth, proxy.Direct)
+	socksDialer, err := proxy.SOCKS5("tcp", proxyAddr, auth, &net.Dialer{Timeout: defaultBaseDialTimeout})
 	if err != nil {
 		slog.Debug("tls_fingerprint_socks5_dialer_failed", "error", err)
 		return nil, fmt.Errorf("create SOCKS5 dialer: %w", err)
@@ -168,7 +243,11 @@ func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr st
 
 	// Step 2: Establish SOCKS5 tunnel to target
 	slog.Debug("tls_fingerprint_socks5_establishing_tunnel", "target", addr)
-	conn, err := socksDialer.Dial("tcp", addr)
+	contextDialer, ok := socksDialer.(proxy.ContextDialer)
+	if !ok {
+		return nil, errors.New("SOCKS5 dialer does not support context cancellation")
+	}
+	conn, err := contextDialer.DialContext(dialCtx, "tcp", addr)
 	if err != nil {
 		slog.Debug("tls_fingerprint_socks5_connect_failed", "error", err)
 		return nil, fmt.Errorf("SOCKS5 connect: %w", err)
@@ -176,13 +255,20 @@ func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr st
 	slog.Debug("tls_fingerprint_socks5_tunnel_established")
 
 	// Step 3: Perform TLS handshake on the tunnel with utls fingerprint
-	return performTLSHandshake(ctx, conn, d.profile, addr)
+	tlsConn, err := performTLSHandshake(dialCtx, conn, d.profile, addr)
+	if err != nil {
+		return nil, err
+	}
+	_ = tlsConn.SetDeadline(time.Time{})
+	return tlsConn, nil
 }
 
 // DialTLSContext establishes a TLS connection through HTTP proxy with the configured fingerprint.
 // Flow: TCP connect to proxy -> CONNECT tunnel -> TLS handshake with utls
 func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	slog.Debug("tls_fingerprint_http_proxy_connecting", "proxy", d.proxyURL.Host, "target", addr)
+	dialCtx, cancel := withDefaultDialTimeout(ctx)
+	defer cancel()
 
 	// Step 1: TCP connect to proxy server
 	var proxyAddr string
@@ -197,11 +283,17 @@ func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr stri
 		}
 	}
 
-	dialer := &net.Dialer{}
-	conn, err := dialer.DialContext(ctx, "tcp", proxyAddr)
+	dialer := &net.Dialer{Timeout: defaultBaseDialTimeout}
+	conn, err := dialer.DialContext(dialCtx, "tcp", proxyAddr)
 	if err != nil {
 		slog.Debug("tls_fingerprint_http_proxy_connect_failed", "error", err)
 		return nil, fmt.Errorf("connect to proxy: %w", err)
+	}
+	if deadline, ok := dialCtx.Deadline(); ok {
+		if err := conn.SetDeadline(deadline); err != nil {
+			_ = conn.Close()
+			return nil, fmt.Errorf("set proxy handshake deadline: %w", err)
+		}
 	}
 	slog.Debug("tls_fingerprint_http_proxy_connected", "proxy_addr", proxyAddr)
 
@@ -247,7 +339,12 @@ func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr stri
 	slog.Debug("tls_fingerprint_http_proxy_tunnel_established")
 
 	// Step 4: Perform TLS handshake on the tunnel with utls fingerprint
-	return performTLSHandshake(ctx, conn, d.profile, addr)
+	tlsConn, err := performTLSHandshake(dialCtx, conn, d.profile, addr)
+	if err != nil {
+		return nil, err
+	}
+	_ = tlsConn.SetDeadline(time.Time{})
+	return tlsConn, nil
 }
 
 // DialTLSContext establishes a TLS connection with the configured fingerprint.
@@ -334,6 +431,17 @@ func isGREASEValue(v uint16) bool {
 // buildClientHelloSpecFromProfile constructs ClientHelloSpec from a Profile.
 // This is a standalone function that can be used by both Dialer and HTTPProxyDialer.
 func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
+	if profile != nil && profile.Preset == PresetChrome120HTTP1 {
+		if spec, err := buildChrome120HTTP1Spec(); err == nil {
+			return spec
+		} else {
+			// The preset is compiled into the pinned uTLS version, so this should
+			// only be reachable after an incompatible dependency change. Preserve
+			// availability with the existing non-Go Node.js template.
+			slog.Warn("tls_fingerprint_chrome_preset_failed", "error", err)
+		}
+	}
+
 	// Resolve effective values (profile overrides or built-in defaults)
 	cipherSuites := defaultCipherSuites
 	if profile != nil && len(profile.CipherSuites) > 0 {
@@ -390,6 +498,9 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 	extOrder := defaultExtensionOrder
 	if profile != nil && len(profile.Extensions) > 0 {
 		extOrder = profile.Extensions
+	}
+	if profile != nil && profile.RandomizeExtensionOrder {
+		extOrder = shuffleExtensionOrder(extOrder)
 	}
 
 	// Build extensions list from the ordered IDs.
@@ -454,6 +565,52 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 		TLSVersMax:         utls.VersionTLS13,
 		TLSVersMin:         utls.VersionTLS10,
 	}
+}
+
+func buildChrome120HTTP1Spec() (*utls.ClientHelloSpec, error) {
+	spec, err := utls.UTLSIdToSpec(utls.HelloChrome_120)
+	if err != nil {
+		return nil, fmt.Errorf("build Chrome 120 ClientHello preset: %w", err)
+	}
+
+	extensions := make([]utls.TLSExtension, 0, len(spec.Extensions))
+	for _, extension := range spec.Extensions {
+		switch typed := extension.(type) {
+		case *utls.ALPNExtension:
+			typed.AlpnProtocols = []string{"http/1.1"}
+			extensions = append(extensions, typed)
+		case *utls.ApplicationSettingsExtension:
+			// ALPS carries HTTP/2 settings and must not remain when the only
+			// advertised application protocol is HTTP/1.1.
+			continue
+		default:
+			extensions = append(extensions, extension)
+		}
+	}
+	spec.Extensions = extensions
+	return &spec, nil
+}
+
+// shuffleExtensionOrder returns a new slice holding a random permutation of ids. It never
+// mutates ids: buildClientHelloSpecFromProfile can run concurrently for many new TLS
+// connections that share a Profile, and an in-place shuffle would race and corrupt the base
+// order. pre_shared_key (41), if present, is moved to the end after shuffling because TLS 1.3
+// requires real clients to send it last.
+//
+// Cryptographic randomness is unnecessary here: the shuffle only prevents every connection
+// from emitting an identical extension order.
+func shuffleExtensionOrder(ids []uint16) []uint16 {
+	shuffled := append([]uint16(nil), ids...)
+	rand.Shuffle(len(shuffled), func(i, j int) {
+		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+	})
+	for i, id := range shuffled {
+		if id == preSharedKeyExtensionID && i != len(shuffled)-1 {
+			shuffled[i], shuffled[len(shuffled)-1] = shuffled[len(shuffled)-1], shuffled[i]
+			break
+		}
+	}
+	return shuffled
 }
 
 // toUint8s converts []uint16 to []uint8 (for utls fields that require []uint8).

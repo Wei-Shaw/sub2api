@@ -11,8 +11,73 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/stretchr/testify/require"
 )
+
+func TestOpenAIWSConnPool_TLSProfileContentSeparatesReusableConnections(t *testing.T) {
+	pool := newOpenAIWSConnPool(&config.Config{})
+	t.Cleanup(pool.Close)
+	dialer := &openAIWSTLSProfileCaptureDialer{}
+	pool.setClientDialerForTest(dialer)
+	account := &Account{ID: 9_901, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 2}
+
+	firstProfile := &tlsfingerprint.Profile{CipherSuites: []uint16{0x1301}}
+	first, err := pool.Acquire(context.Background(), openAIWSAcquireRequest{
+		Account: account, WSURL: "wss://example.com/v1/responses", TLSProfile: firstProfile,
+	})
+	require.NoError(t, err)
+	first.Release()
+
+	secondProfile := &tlsfingerprint.Profile{CipherSuites: []uint16{0x1302}}
+	second, err := pool.Acquire(context.Background(), openAIWSAcquireRequest{
+		Account: account, WSURL: "wss://example.com/v1/responses", TLSProfile: secondProfile,
+	})
+	require.NoError(t, err)
+	second.Release()
+
+	require.Equal(t, 2, dialer.DialCount(), "a changed profile must not reuse the old WS connection")
+	require.Equal(t, []string{firstProfile.StableID(), secondProfile.StableID()}, dialer.ProfileIDs())
+}
+
+type openAIWSTLSProfileCaptureDialer struct {
+	mu       sync.Mutex
+	profiles []string
+}
+
+func (d *openAIWSTLSProfileCaptureDialer) Dial(
+	_ context.Context,
+	_ string,
+	_ http.Header,
+	_ string,
+) (openAIWSClientConn, int, http.Header, error) {
+	return nil, 0, nil, errors.New("legacy dial path used")
+}
+
+func (d *openAIWSTLSProfileCaptureDialer) DialWithTLS(
+	_ context.Context,
+	_ string,
+	_ http.Header,
+	_ string,
+	profile *tlsfingerprint.Profile,
+) (openAIWSClientConn, int, http.Header, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.profiles = append(d.profiles, profile.StableID())
+	return &openAIWSFakeConn{}, 0, nil, nil
+}
+
+func (d *openAIWSTLSProfileCaptureDialer) DialCount() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return len(d.profiles)
+}
+
+func (d *openAIWSTLSProfileCaptureDialer) ProfileIDs() []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return append([]string(nil), d.profiles...)
+}
 
 func TestOpenAIWSConnPool_CleanupStaleAndTrimIdle(t *testing.T) {
 	cfg := &config.Config{}
