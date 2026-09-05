@@ -28,6 +28,8 @@ func TestIsOpenAIOAuthLike(t *testing.T) {
 		{name: "openai_api_key", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, want: false, codex: false},
 		{name: "anthropic_setup_token", account: &Account{Platform: PlatformAnthropic, Type: AccountTypeSetupToken}, want: false, codex: false},
 		{name: "grok_setup_token", account: &Account{Platform: PlatformGrok, Type: AccountTypeSetupToken}, want: false, codex: false},
+		{name: "kimi_oauth", account: &Account{Platform: PlatformKimi, Type: AccountTypeOAuth}, want: false, codex: false},
+		{name: "implicit_oauth", account: &Account{Type: AccountTypeOAuth}, want: false, codex: true},
 		{name: "nil", account: nil, want: false, codex: false},
 	}
 

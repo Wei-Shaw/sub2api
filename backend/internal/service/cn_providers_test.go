@@ -504,6 +504,28 @@ func TestSupportsNativeCNResponses(t *testing.T) {
 	require.False(t, (&Account{Platform: PlatformOpenAI}).SupportsNativeCNResponses())
 }
 
+func TestUsesNativeCNResponsesExcludesOAuth(t *testing.T) {
+	t.Parallel()
+	oauthAdaptive := &Account{
+		Platform: PlatformKimi,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"api_protocol": APIProtocolAdaptive,
+		},
+	}
+	apiKeyAdaptive := &Account{
+		Platform: PlatformKimi,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":      "sk-test",
+			"api_protocol": APIProtocolAdaptive,
+		},
+	}
+	require.True(t, oauthAdaptive.SupportsNativeCNResponses())
+	require.False(t, oauthAdaptive.UsesNativeCNResponses(), "kimi OAuth must not use native /v1/responses")
+	require.True(t, apiKeyAdaptive.UsesNativeCNResponses())
+}
+
 func TestAdaptiveProtocolBaseURLs(t *testing.T) {
 	t.Parallel()
 
