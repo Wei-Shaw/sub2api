@@ -16,6 +16,11 @@ type opsRepository struct {
 	db *sql.DB
 }
 
+// opsSystemLogCountCap 是系统日志列表总数的封顶值，超过则只报「>= 该值」。
+// 取 10000：按每页 50 条算是 200 页，远超实际会翻到的深度，
+// 而计数代价从「扫完全部匹配的索引项」降到常数。
+const opsSystemLogCountCap = 10000
+
 const insertOpsErrorLogSQL = `
 INSERT INTO ops_error_logs (
   request_id,
@@ -727,11 +732,24 @@ func (r *opsRepository) BatchInsertSystemLogs(ctx context.Context, inputs []*ser
 }
 
 func (r *opsRepository) ListSystemLogs(ctx context.Context, filter *service.OpsSystemLogFilter) (*service.OpsSystemLogList, error) {
+	return r.listSystemLogsWithCountCap(ctx, filter, opsSystemLogCountCap)
+}
+
+// listSystemLogsWithCountCap 是 ListSystemLogs 的实现，计数上限可注入以便测试
+// （否则要塞进上万行才能触发封顶分支）。
+func (r *opsRepository) listSystemLogsWithCountCap(
+	ctx context.Context,
+	filter *service.OpsSystemLogFilter,
+	countCap int,
+) (*service.OpsSystemLogList, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
 	if filter == nil {
 		filter = &service.OpsSystemLogFilter{}
+	}
+	if countCap <= 0 {
+		countCap = opsSystemLogCountCap
 	}
 
 	page := filter.Page
@@ -747,13 +765,31 @@ func (r *opsRepository) ListSystemLogs(ctx context.Context, filter *service.OpsS
 	}
 
 	where, args, _ := buildOpsSystemLogsWhere(filter)
-	countSQL := "SELECT COUNT(*) FROM ops_system_logs l " + where
+	offset := (page - 1) * pageSize
+
+	// 计数封顶。
+	//
+	// 精确 COUNT(*) 要走完满足条件的全部索引项。ops_system_logs 在高写入部署下可达
+	// 千万行级别，而前端默认 time_range=30d、retention 也是 30 天，默认视图恰好等于
+	// 整张表，精确计数要数十秒。
+	// 这个数字只喂给分页器（「共 N 条」+ 页码按钮 + 跳页上限），千万条对应几十万页，
+	// 既没人翻得到，深翻页的 OFFSET 本身也早已不可用——为它付数十秒不划算。
+	//
+	// 改成先 LIMIT 再数：命中数超过上限时返回上限值并置 TotalIsCapped，前端显示「N+」。
+	// 代价是任意过滤组合下都恒定为 O(cap)。
+	if need := offset + pageSize + 1; need > countCap {
+		// 当前页已经翻过封顶值时要把上限抬上去，否则算出的总页数小于当前页码，分页器会错乱。
+		countCap = need
+	}
+	countArgs := append(append([]any{}, args...), countCap)
+	countSQL := "SELECT COUNT(*) FROM (SELECT 1 FROM ops_system_logs l " + where +
+		" LIMIT $" + itoa(len(countArgs)) + ") capped"
 	var total int
-	if err := r.db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
 		return nil, err
 	}
+	totalIsCapped := total >= countCap
 
-	offset := (page - 1) * pageSize
 	argsWithLimit := append(args, pageSize, offset)
 	query := `
 SELECT
@@ -833,10 +869,11 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 	}
 
 	return &service.OpsSystemLogList{
-		Logs:     logs,
-		Total:    total,
-		Page:     page,
-		PageSize: pageSize,
+		Logs:          logs,
+		Total:         total,
+		TotalIsCapped: totalIsCapped,
+		Page:          page,
+		PageSize:      pageSize,
 	}, nil
 }
 

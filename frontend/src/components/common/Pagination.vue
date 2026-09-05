@@ -12,11 +12,11 @@
         {{ t('pagination.previous') }}
       </button>
       <span class="text-sm text-gray-700 dark:text-gray-300">
-        {{ t('pagination.pageOf', { page, total: totalPages }) }}
+        {{ t('pagination.pageOf', { page, total: totalPagesLabel }) }}
       </span>
       <button
         @click="goToPage(page + 1)"
-        :disabled="page === totalPages"
+        :disabled="isLastPage"
         class="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-200 dark:hover:bg-dark-600"
       >
         {{ t('pagination.next') }}
@@ -32,7 +32,7 @@
           {{ t('pagination.to') }}
           <span class="font-medium">{{ toItem }}</span>
           {{ t('pagination.of') }}
-          <span class="font-medium">{{ total }}</span>
+          <span class="font-medium">{{ totalLabel }}</span>
           {{ t('pagination.results') }}
         </p>
 
@@ -106,7 +106,7 @@
         <!-- Next button -->
         <button
           @click="goToPage(page + 1)"
-          :disabled="page === totalPages"
+          :disabled="isLastPage"
           class="relative inline-flex items-center rounded-r-md border border-gray-300 bg-white px-2 py-2 text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600"
           :aria-label="t('pagination.next')"
         >
@@ -131,6 +131,11 @@ interface Props {
   total: number
   page: number
   pageSize: number
+  /**
+   * total 是封顶值而非精确命中数（实际 >= total）时置 true，显示为「N+」。
+   * 超大表上放弃精确 COUNT(*) 的列表会带上这个标记。
+   */
+  totalIsCapped?: boolean
   pageSizeOptions?: number[]
   showPageSizeSelector?: boolean
   showJump?: boolean
@@ -142,6 +147,7 @@ interface Emits {
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  totalIsCapped: false,
   pageSizeOptions: () => getConfiguredTablePageSizeOptions(),
   showPageSizeSelector: true,
   showJump: false
@@ -150,6 +156,19 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 
 const totalPages = computed(() => Math.ceil(props.total / props.pageSize))
+
+// 封顶时实际条数只知道下界，显示成「10000+」而不是谎报成精确值。
+const totalLabel = computed(() => (props.totalIsCapped ? `${props.total}+` : `${props.total}`))
+const totalPagesLabel = computed(() =>
+  props.totalIsCapped ? `${totalPages.value}+` : `${totalPages.value}`
+)
+
+// 封顶时 totalPages 只是下界，后面还有数据，不能把「下一页」锁死在这里。
+// 服务端会随页码把计数上限一起抬高，所以逐页往后翻是成立的。
+const maxPage = computed(() =>
+  props.totalIsCapped ? Number.POSITIVE_INFINITY : totalPages.value
+)
+const isLastPage = computed(() => props.page >= maxPage.value)
 
 const fromItem = computed(() => {
   if (props.total === 0) return 0
@@ -217,7 +236,7 @@ const visiblePages = computed(() => {
 })
 
 const goToPage = (newPage: number) => {
-  if (newPage >= 1 && newPage <= totalPages.value && newPage !== props.page) {
+  if (newPage >= 1 && newPage <= maxPage.value && newPage !== props.page) {
     emit('update:page', newPage)
   }
 }

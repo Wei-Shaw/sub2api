@@ -96,7 +96,7 @@ func (h *OpsHandler) ListSystemLogs(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Paginated(c, result.Logs, int64(result.Total), result.Page, result.PageSize)
+	response.PaginatedCapped(c, result.Logs, int64(result.Total), result.Page, result.PageSize, result.TotalIsCapped)
 }
 
 // CleanupSystemLogs deletes indexed system logs by filter.

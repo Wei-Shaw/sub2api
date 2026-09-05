@@ -564,23 +564,71 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 	if endTime.IsZero() {
 		endTime = time.Now()
 	}
+	// 历史段按自然日桶结算，因此把起点对齐到当地日边界：
+	// 否则首日会按整天计入，与 startTime 的精确时刻不符。
+	startTime = timezone.StartOfDay(startTime)
 
 	for _, id := range normalizedAPIKeyIDs {
 		result[id] = &BatchAPIKeyUsageStats{APIKeyID: id}
 	}
 
+	// 历史段读日桶、当日段读明细。
+	//
+	// 直接在 usage_logs 上按 api_key_id 聚合 30 天，代价随保留窗口线性增长；热点 key
+	// 往往集中了绝大部分流量，单次请求要聚合千万行级别的数据，需要数十秒。
+	// usage_apikey_daily_rollups 由分块日结产出，
+	// 其发布水位 usage_group_rollup_state.closed_before 之前的日期才是已结算的，
+	// 水位当天及之后仍以原始日志为准，避免与尾段重复计入。
 	query := `
+		WITH state_raw AS (
+			SELECT closed_before, timezone_name
+			FROM usage_group_rollup_state
+			WHERE id = 1
+		),
+		state AS (
+			-- 恒返回一行：水位缺失时退化成 1970，historical 为空、tail 覆盖全窗口，
+			-- 即回落到直接扫明细的旧行为（慢但正确），而不是返回 0。
+			SELECT
+				COALESCE((SELECT closed_before FROM state_raw), DATE '1970-01-01') AS closed_before,
+				COALESCE(
+					(SELECT closed_before::timestamp AT TIME ZONE timezone_name FROM state_raw),
+					TIMESTAMPTZ '1970-01-01 00:00:00+00'
+				) AS tail_start
+		),
+		historical AS (
+			SELECT
+				rollup.api_key_id,
+				COALESCE(SUM(rollup.actual_cost), 0) AS total_cost
+			FROM usage_apikey_daily_rollups rollup
+			CROSS JOIN state
+			WHERE rollup.api_key_id = ANY($1)
+				AND rollup.bucket_date >= ($2::timestamptz AT TIME ZONE $5::text)::date
+				AND rollup.bucket_date < state.closed_before
+			GROUP BY rollup.api_key_id
+		),
+		tail AS (
+			SELECT
+				ul.api_key_id,
+				COALESCE(SUM(ul.actual_cost) FILTER (
+					WHERE ul.created_at >= $2 AND ul.created_at < $3
+				), 0) AS total_cost,
+				COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $4), 0) AS today_cost
+			FROM usage_logs ul
+			CROSS JOIN state
+			WHERE ul.api_key_id = ANY($1)
+				AND ul.created_at >= GREATEST(state.tail_start, LEAST($2, $4))
+			GROUP BY ul.api_key_id
+		)
 		SELECT
-			api_key_id,
-			COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $2 AND created_at < $3), 0) as total_cost,
-			COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $4), 0) as today_cost
-		FROM usage_logs
-		WHERE api_key_id = ANY($1)
-		  AND created_at >= LEAST($2, $4)
-		GROUP BY api_key_id
+			k.api_key_id,
+			COALESCE(historical.total_cost, 0) + COALESCE(tail.total_cost, 0) AS total_cost,
+			COALESCE(tail.today_cost, 0) AS today_cost
+		FROM unnest($1::bigint[]) AS k(api_key_id)
+		LEFT JOIN historical ON historical.api_key_id = k.api_key_id
+		LEFT JOIN tail ON tail.api_key_id = k.api_key_id
 	`
 	today := timezone.Today()
-	rows, err := r.sql.QueryContext(ctx, query, pq.Array(normalizedAPIKeyIDs), startTime, endTime, today)
+	rows, err := r.sql.QueryContext(ctx, query, pq.Array(normalizedAPIKeyIDs), startTime, endTime, today, timezone.Name())
 	if err != nil {
 		return nil, err
 	}
