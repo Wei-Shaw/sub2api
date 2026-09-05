@@ -59,6 +59,13 @@ type AdjustSubscriptionRequest struct {
 	Days int `json:"days" binding:"required,min=-36500,max=36500"` // negative to shorten, positive to extend
 }
 
+type BatchSubscriptionActionRequest struct {
+	SubscriptionIDs []int64                        `json:"subscription_ids" binding:"required,min=1,dive,gt=0"`
+	Action          string                         `json:"action" binding:"required"`
+	Days            int                            `json:"days"`
+	ResetQuota      *ResetSubscriptionQuotaRequest `json:"reset_quota"`
+}
+
 // List handles listing all subscriptions with pagination and filters
 // GET /api/v1/admin/subscriptions
 func (h *SubscriptionHandler) List(c *gin.Context) {
@@ -186,6 +193,35 @@ func (h *SubscriptionHandler) BulkAssign(c *gin.Context) {
 	response.Success(c, dto.BulkAssignResultFromService(result))
 }
 
+// BatchAction applies a maintenance action to selected subscriptions.
+// POST /api/v1/admin/subscriptions/batch-action
+func (h *SubscriptionHandler) BatchAction(c *gin.Context) {
+	var req BatchSubscriptionActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	input := &service.SubscriptionBatchActionInput{
+		SubscriptionIDs: req.SubscriptionIDs,
+		Action:          req.Action,
+		Days:            req.Days,
+	}
+	if req.ResetQuota != nil {
+		input.ResetDaily = req.ResetQuota.Daily
+		input.ResetWeekly = req.ResetQuota.Weekly
+		input.ResetMonthly = req.ResetQuota.Monthly
+	}
+
+	executeAdminIdempotentJSON(c, "admin.subscriptions.batch_action", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		result, err := h.subscriptionService.BatchAction(ctx, input)
+		if err != nil {
+			return nil, err
+		}
+		return dto.SubscriptionBatchActionResultFromService(result), nil
+	})
+}
+
 // Extend handles adjusting a subscription (extend or shorten)
 // POST /api/v1/admin/subscriptions/:id/extend
 func (h *SubscriptionHandler) Extend(c *gin.Context) {
@@ -284,6 +320,26 @@ func (h *SubscriptionHandler) Restore(c *gin.Context) {
 	}
 
 	response.Success(c, dto.UserSubscriptionFromServiceAdmin(subscription))
+}
+
+// PermanentDelete permanently removes a previously revoked subscription.
+// DELETE /api/v1/admin/subscriptions/:id/permanent
+func (h *SubscriptionHandler) PermanentDelete(c *gin.Context) {
+	subscriptionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid subscription ID")
+		return
+	}
+
+	payload := struct {
+		SubscriptionID int64 `json:"subscription_id"`
+	}{SubscriptionID: subscriptionID}
+	executeAdminIdempotentJSON(c, "admin.subscriptions.permanent_delete", payload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		if err := h.subscriptionService.PermanentlyDeleteSubscription(ctx, subscriptionID); err != nil {
+			return nil, err
+		}
+		return gin.H{"message": "Subscription permanently deleted successfully"}, nil
+	})
 }
 
 // ListByGroup handles listing subscriptions for a specific group

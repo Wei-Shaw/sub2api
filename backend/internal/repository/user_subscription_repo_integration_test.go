@@ -192,6 +192,23 @@ func (s *UserSubscriptionRepoSuite) TestRestore() {
 	s.Require().Equal(service.SubscriptionStatusExpired, got.Status)
 }
 
+func (s *UserSubscriptionRepoSuite) TestHardDelete() {
+	user := s.mustCreateUser("hard-delete@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-hard-delete")
+	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
+
+	err := s.repo.HardDelete(s.ctx, sub.ID)
+	s.Require().ErrorIs(err, service.ErrSubscriptionNotRevoked)
+	_, err = s.repo.GetByID(s.ctx, sub.ID)
+	s.Require().NoError(err, "active subscription must not be hard deleted")
+
+	s.Require().NoError(s.repo.Delete(s.ctx, sub.ID), "soft delete")
+	s.Require().NoError(s.repo.HardDelete(s.ctx, sub.ID), "hard delete")
+
+	_, err = s.repo.GetByIDIncludeDeleted(s.ctx, sub.ID)
+	s.Require().ErrorIs(err, service.ErrSubscriptionNotFound)
+}
+
 func (s *UserSubscriptionRepoSuite) TestDelete_Idempotent() {
 	s.Require().NoError(s.repo.Delete(s.ctx, 42424242), "Delete should be idempotent")
 }

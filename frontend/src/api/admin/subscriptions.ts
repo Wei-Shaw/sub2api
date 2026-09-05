@@ -13,6 +13,39 @@ import type {
   PaginatedResponse
 } from '@/types'
 
+export type SubscriptionBatchAction =
+  | 'adjust'
+  | 'reset_quota'
+  | 'revoke'
+  | 'restore'
+  | 'permanent_delete'
+
+export interface BatchSubscriptionActionRequest {
+  subscription_ids: number[]
+  action: SubscriptionBatchAction
+  days?: number
+  reset_quota?: {
+    daily: boolean
+    weekly: boolean
+    monthly: boolean
+  }
+}
+
+export interface SubscriptionBatchActionItem {
+  subscription_id: number
+  status: 'succeeded' | 'skipped' | 'failed'
+  reason?: string
+  message?: string
+}
+
+export interface SubscriptionBatchActionResult {
+  total_count: number
+  succeeded_count: number
+  skipped_count: number
+  failed_count: number
+  items: SubscriptionBatchActionItem[]
+}
+
 /**
  * List all subscriptions with pagination
  * @param page - Page number (default: 1)
@@ -148,6 +181,31 @@ export async function resetQuota(
   return data
 }
 
+/** Apply one maintenance action to selected subscriptions. */
+export async function batchAction(
+  request: BatchSubscriptionActionRequest,
+  idempotencyKey: string
+): Promise<SubscriptionBatchActionResult> {
+  const { data } = await apiClient.post<SubscriptionBatchActionResult>(
+    '/admin/subscriptions/batch-action',
+    request,
+    { headers: { 'Idempotency-Key': idempotencyKey } }
+  )
+  return data
+}
+
+/** Permanently delete a previously revoked subscription. */
+export async function permanentDelete(
+  id: number,
+  idempotencyKey: string
+): Promise<{ message: string }> {
+  const { data } = await apiClient.delete<{ message: string }>(
+    `/admin/subscriptions/${id}/permanent`,
+    { headers: { 'Idempotency-Key': idempotencyKey } }
+  )
+  return data
+}
+
 /**
  * List subscriptions by group
  * @param groupId - Group ID
@@ -200,6 +258,8 @@ export const subscriptionsAPI = {
   revoke,
   restore,
   resetQuota,
+  batchAction,
+  permanentDelete,
   listByGroup,
   listByUser
 }

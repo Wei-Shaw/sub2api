@@ -40,7 +40,49 @@ var (
 	ErrMonthlyLimitExceeded        = infraerrors.TooManyRequests("MONTHLY_LIMIT_EXCEEDED", "monthly usage limit exceeded")
 	ErrSubscriptionNilInput        = infraerrors.BadRequest("SUBSCRIPTION_NIL_INPUT", "subscription input cannot be nil")
 	ErrAdjustWouldExpire           = infraerrors.BadRequest("ADJUST_WOULD_EXPIRE", "adjustment would result in expired subscription (remaining days must be > 0)")
+	ErrInvalidSubscriptionBatch    = infraerrors.BadRequest("INVALID_SUBSCRIPTION_BATCH", "invalid subscription batch action")
+	ErrSubscriptionBatchIneligible = infraerrors.Conflict("SUBSCRIPTION_BATCH_ACTION_INELIGIBLE", "subscription is not eligible for this batch action")
 )
+
+const MaxSubscriptionBatchSize = 100
+
+const (
+	SubscriptionBatchActionAdjust          = "adjust"
+	SubscriptionBatchActionResetQuota      = "reset_quota"
+	SubscriptionBatchActionRevoke          = "revoke"
+	SubscriptionBatchActionRestore         = "restore"
+	SubscriptionBatchActionPermanentDelete = "permanent_delete"
+)
+
+const (
+	SubscriptionBatchItemSucceeded = "succeeded"
+	SubscriptionBatchItemSkipped   = "skipped"
+	SubscriptionBatchItemFailed    = "failed"
+)
+
+type SubscriptionBatchActionInput struct {
+	SubscriptionIDs []int64
+	Action          string
+	Days            int
+	ResetDaily      bool
+	ResetWeekly     bool
+	ResetMonthly    bool
+}
+
+type SubscriptionBatchActionItem struct {
+	SubscriptionID int64
+	Status         string
+	Reason         string
+	Message        string
+}
+
+type SubscriptionBatchActionResult struct {
+	TotalCount     int
+	SucceededCount int
+	SkippedCount   int
+	FailedCount    int
+	Items          []SubscriptionBatchActionItem
+}
 
 // SubscriptionService 订阅服务
 type SubscriptionService struct {
@@ -648,6 +690,163 @@ func (s *SubscriptionService) RestoreSubscription(ctx context.Context, subscript
 		return nil, err
 	}
 	return restored, nil
+}
+
+// PermanentlyDeleteSubscription removes a previously revoked subscription.
+// Usage logs are retained; their nullable subscription_id foreign key is cleared by PostgreSQL.
+func (s *SubscriptionService) PermanentlyDeleteSubscription(ctx context.Context, subscriptionID int64) error {
+	sub, err := s.userSubRepo.GetByIDIncludeDeleted(ctx, subscriptionID)
+	if err != nil {
+		return err
+	}
+	if sub.DeletedAt == nil {
+		return ErrSubscriptionNotRevoked
+	}
+
+	return s.userSubRepo.HardDelete(ctx, subscriptionID)
+}
+
+// BatchAction applies an admin maintenance action to up to MaxSubscriptionBatchSize subscriptions.
+// Per-item failures are returned in the result so one stale or incompatible row does not block the batch.
+func (s *SubscriptionService) BatchAction(ctx context.Context, input *SubscriptionBatchActionInput) (*SubscriptionBatchActionResult, error) {
+	ids, err := validateSubscriptionBatchAction(input)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &SubscriptionBatchActionResult{
+		TotalCount: len(ids),
+		Items:      make([]SubscriptionBatchActionItem, 0, len(ids)),
+	}
+	for _, id := range ids {
+		item := SubscriptionBatchActionItem{SubscriptionID: id, Status: SubscriptionBatchItemSucceeded}
+		err := s.ensureSubscriptionBatchActionEligible(ctx, id, input.Action)
+		if err == nil {
+			err = s.applySubscriptionBatchAction(ctx, id, input)
+		}
+		if err == nil {
+			result.SucceededCount++
+			result.Items = append(result.Items, item)
+			continue
+		}
+
+		item.Reason = infraerrors.Reason(err)
+		item.Message = infraerrors.Message(err)
+		if subscriptionBatchErrorIsSkipped(err) {
+			item.Status = SubscriptionBatchItemSkipped
+			result.SkippedCount++
+		} else {
+			item.Status = SubscriptionBatchItemFailed
+			result.FailedCount++
+		}
+		result.Items = append(result.Items, item)
+	}
+	return result, nil
+}
+
+func (s *SubscriptionService) ensureSubscriptionBatchActionEligible(ctx context.Context, id int64, action string) error {
+	sub, err := s.userSubRepo.GetByIDIncludeDeleted(ctx, id)
+	if err != nil {
+		return err
+	}
+	if sub.DeletedAt != nil {
+		if action == SubscriptionBatchActionRestore || action == SubscriptionBatchActionPermanentDelete {
+			return nil
+		}
+		return ErrSubscriptionBatchIneligible
+	}
+	if action == SubscriptionBatchActionRestore || action == SubscriptionBatchActionPermanentDelete {
+		return ErrSubscriptionBatchIneligible
+	}
+
+	now := s.now()
+	active := sub.Status == SubscriptionStatusActive && sub.ExpiresAt.After(now)
+	expired := sub.Status == SubscriptionStatusExpired ||
+		(sub.Status == SubscriptionStatusActive && !sub.ExpiresAt.After(now))
+	switch action {
+	case SubscriptionBatchActionAdjust:
+		if active || expired {
+			return nil
+		}
+	case SubscriptionBatchActionResetQuota, SubscriptionBatchActionRevoke:
+		if active {
+			return nil
+		}
+	}
+	return ErrSubscriptionBatchIneligible
+}
+
+func validateSubscriptionBatchAction(input *SubscriptionBatchActionInput) ([]int64, error) {
+	if input == nil {
+		return nil, ErrInvalidSubscriptionBatch.WithMetadata(map[string]string{"field": "request"})
+	}
+
+	seen := make(map[int64]struct{}, len(input.SubscriptionIDs))
+	ids := make([]int64, 0, len(input.SubscriptionIDs))
+	for _, id := range input.SubscriptionIDs {
+		if id <= 0 {
+			return nil, ErrInvalidSubscriptionBatch.WithMetadata(map[string]string{"field": "subscription_ids"})
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 || len(ids) > MaxSubscriptionBatchSize {
+		return nil, ErrInvalidSubscriptionBatch.WithMetadata(map[string]string{
+			"field": "subscription_ids",
+			"max":   strconv.Itoa(MaxSubscriptionBatchSize),
+		})
+	}
+
+	switch input.Action {
+	case SubscriptionBatchActionAdjust:
+		if input.Days == 0 || input.Days < -MaxValidityDays || input.Days > MaxValidityDays {
+			return nil, ErrInvalidSubscriptionBatch.WithMetadata(map[string]string{"field": "days"})
+		}
+	case SubscriptionBatchActionResetQuota:
+		if !input.ResetDaily && !input.ResetWeekly && !input.ResetMonthly {
+			return nil, ErrInvalidSubscriptionBatch.WithMetadata(map[string]string{"field": "reset_quota"})
+		}
+	case SubscriptionBatchActionRevoke, SubscriptionBatchActionRestore, SubscriptionBatchActionPermanentDelete:
+	default:
+		return nil, ErrInvalidSubscriptionBatch.WithMetadata(map[string]string{"field": "action"})
+	}
+	return ids, nil
+}
+
+func (s *SubscriptionService) applySubscriptionBatchAction(ctx context.Context, id int64, input *SubscriptionBatchActionInput) error {
+	switch input.Action {
+	case SubscriptionBatchActionAdjust:
+		_, err := s.ExtendSubscription(ctx, id, input.Days)
+		return err
+	case SubscriptionBatchActionResetQuota:
+		_, err := s.AdminResetQuota(ctx, id, input.ResetDaily, input.ResetWeekly, input.ResetMonthly)
+		return err
+	case SubscriptionBatchActionRevoke:
+		return s.RevokeSubscription(ctx, id)
+	case SubscriptionBatchActionRestore:
+		_, err := s.RestoreSubscription(ctx, id)
+		return err
+	case SubscriptionBatchActionPermanentDelete:
+		return s.PermanentlyDeleteSubscription(ctx, id)
+	default:
+		return ErrInvalidSubscriptionBatch
+	}
+}
+
+func subscriptionBatchErrorIsSkipped(err error) bool {
+	switch infraerrors.Reason(err) {
+	case infraerrors.Reason(ErrSubscriptionNotRevoked),
+		infraerrors.Reason(ErrSubscriptionRestoreConflict),
+		infraerrors.Reason(ErrAdjustWouldExpire),
+		infraerrors.Reason(ErrSubscriptionBatchIneligible),
+		"CANNOT_SHORTEN_EXPIRED":
+		return true
+	default:
+		return false
+	}
 }
 
 // ExtendSubscription 调整订阅时长（正数延长，负数缩短）
