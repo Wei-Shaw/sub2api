@@ -1285,6 +1285,14 @@ func (s *RateLimitService) apply429FallbackRateLimit(ctx context.Context, accoun
 	}
 }
 
+// Fallback429Cooldown exposes the configurable 429 fallback cooldown
+// (rate_limit_429_cooldown_settings) to gateway services that persist the
+// account rate-limit themselves. The bool reports whether the operator has the
+// fallback enabled; false means "do not mark the account".
+func (s *RateLimitService) Fallback429Cooldown(ctx context.Context, account *Account) (time.Duration, bool) {
+	return s.get429FallbackCooldown(ctx, account)
+}
+
 func (s *RateLimitService) get429FallbackCooldown(ctx context.Context, account *Account) (time.Duration, bool) {
 	if s.settingService != nil {
 		settings, err := s.settingService.GetRateLimit429CooldownSettings(ctx)
