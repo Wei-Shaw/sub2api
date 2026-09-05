@@ -744,14 +744,43 @@ func (h *GroupHandler) GetStats(c *gin.Context) {
 		return
 	}
 
-	// Return mock data for now
+	// Get total API keys count for this group
+	var totalAPIKeys int64
+	_, totalAPIKeys, err = h.adminService.GetGroupAPIKeys(c.Request.Context(), groupID, 1, 1)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	// Get total accounts count for this group
+	_, totalAccounts, err := h.adminService.ListAccounts(c.Request.Context(), 1, 1, "", "", "", "", groupID, "")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	// Get usage stats (requests and cost) from dashboard service
+	var totalRequests int64
+	var totalCost float64
+	if h.dashboardService != nil {
+		stats, statsErr := h.dashboardService.GetGroupStatsWithFilters(
+			c.Request.Context(), time.Time{}, time.Now().UTC(),
+			0, 0, 0, groupID, nil, nil, nil,
+		)
+		if statsErr == nil {
+			for _, s := range stats {
+				totalRequests += s.Requests
+				totalCost += s.Cost
+			}
+		}
+	}
+
 	response.Success(c, gin.H{
-		"total_api_keys":  0,
-		"active_api_keys": 0,
-		"total_requests":  0,
-		"total_cost":      0.0,
+		"total_api_keys":  totalAPIKeys,
+		"total_accounts":  totalAccounts,
+		"total_requests":  totalRequests,
+		"total_cost":      totalCost,
 	})
-	_ = groupID // TODO: implement actual stats
 }
 
 // GetUsageSummary returns today's, yesterday's, and cumulative cost for all groups.
