@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -90,6 +91,16 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
 	setOpsRequestContext(c, reqModel, reqStream)
+	if openai_compat.ShouldRejectGPT56ResponsesExplicitCache(reqModel, body) {
+		h.responsesInvalidRequestParamErrorResponse(
+			c,
+			http.StatusBadRequest,
+			"unsupported_parameter",
+			"Unsupported parameter: 'explicit_cache' is not supported for GPT-5.6 Responses requests.",
+			openai_compat.ExplicitCacheParam,
+		)
+		return
+	}
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 	requestCtx := c.Request.Context()
 	// 定价上下文无条件装配：/v1/responses 是 token 计费端点，声明生图工具的
@@ -359,6 +370,17 @@ func (h *GatewayHandler) responsesErrorResponse(c *gin.Context, status int, code
 		"error": gin.H{
 			"code":    code,
 			"message": message,
+		},
+	})
+}
+
+func (h *GatewayHandler) responsesInvalidRequestParamErrorResponse(c *gin.Context, status int, code, message, param string) {
+	c.JSON(status, gin.H{
+		"error": gin.H{
+			"code":    code,
+			"message": message,
+			"param":   param,
+			"type":    "invalid_request_error",
 		},
 	})
 }
