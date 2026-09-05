@@ -1797,6 +1797,12 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 		return nil, fmt.Errorf("bind ENABLE_SERVER_TIMING: %w", err)
 	}
 
+	// 额外支持 DB_ 前缀的环境变量 alias，提升 DX
+	_ = viper.BindEnv("database.max_open_conns", "DB_MAX_OPEN_CONNS")
+	_ = viper.BindEnv("database.max_idle_conns", "DB_MAX_IDLE_CONNS")
+	_ = viper.BindEnv("database.conn_max_lifetime_minutes", "DB_MAX_CONN_LIFETIME_MINUTES")
+	_ = viper.BindEnv("database.conn_max_idle_time_minutes", "DB_MAX_CONN_IDLE_TIME_MINUTES")
+
 	// 默认值
 	setDefaults()
 
@@ -2158,9 +2164,9 @@ func setDefaults() {
 	viper.SetDefault("database.password", "postgres")
 	viper.SetDefault("database.dbname", "sub2api")
 	viper.SetDefault("database.sslmode", "prefer")
-	viper.SetDefault("database.max_open_conns", 256)
-	viper.SetDefault("database.max_idle_conns", 128)
-	viper.SetDefault("database.conn_max_lifetime_minutes", 30)
+	viper.SetDefault("database.max_open_conns", 20)
+	viper.SetDefault("database.max_idle_conns", 5)
+	viper.SetDefault("database.conn_max_lifetime_minutes", 10)
 	viper.SetDefault("database.conn_max_idle_time_minutes", 5)
 	viper.SetDefault("database.user_platform_quota_flusher_enabled", false)
 	viper.SetDefault("database.user_platform_quota_flush_interval_ms", 2000)
