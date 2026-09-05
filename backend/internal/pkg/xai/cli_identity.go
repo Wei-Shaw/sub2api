@@ -115,10 +115,7 @@ func firstHeaderValue(h http.Header, key string) string {
 	if h == nil {
 		return ""
 	}
-	if v := strings.TrimSpace(h.Get(key)); v != "" {
-		return v
-	}
-	return strings.TrimSpace(h.Get(http.CanonicalHeaderKey(key)))
+	return strings.TrimSpace(h.Get(key))
 }
 
 // ApplyCLIProxyHeaders stamps the fixed Grok CLI identity when the request

@@ -49,7 +49,7 @@ func TestResolveGrokPassthroughModelsUsesUpstreamCatalog(t *testing.T) {
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body: io.NopCloser(strings.NewReader(`{"object":"list","data":[{"id":"grok-4.20","reasoningEfforts":[{"value":"max"}]}]}`)),
+		Body:       io.NopCloser(strings.NewReader(`{"object":"list","data":[{"id":"grok-4.20","reasoningEfforts":[{"value":"max"}]}]}`)),
 	}}
 	svc := &GatewayService{
 		accountRepo:  repo,
@@ -59,7 +59,8 @@ func TestResolveGrokPassthroughModelsUsesUpstreamCatalog(t *testing.T) {
 	resolution := svc.ResolveGrokPassthroughModels(context.Background(), &groupID)
 	require.True(t, resolution.Enabled)
 	require.Len(t, resolution.RawData, 1)
-	item := resolution.RawData[0].(map[string]any)
+	item, ok := resolution.RawData[0].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, "grok-4.20", item["id"])
 	require.Contains(t, upstream.lastReq.URL.String(), "/models")
 	require.Equal(t, "Bearer xai-test-key", upstream.lastReq.Header.Get("Authorization"))
