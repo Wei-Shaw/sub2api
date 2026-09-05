@@ -31,6 +31,13 @@
         </p>
       </div>
 
+      <AccountTemperaturePolicyField
+        v-model:mode="temperatureMode"
+        v-model:temperature="temperatureValue"
+        allow-unchanged
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      />
+
       <!-- OpenAI passthrough -->
       <div
         v-if="allOpenAIPassthroughCapable"
@@ -1498,13 +1505,16 @@ import {
   getPresetMappingsByPlatform
 } from '@/composables/useModelWhitelist'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import AccountTemperaturePolicyField from '@/components/account/AccountTemperaturePolicyField.vue'
 import {
+  applyAccountTemperaturePolicy,
   buildHeaderOverridesObject,
   isHeaderOverrideCapable,
   validateHeaderOverrideRows,
   HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY,
   HEADER_OVERRIDES_CREDENTIAL_KEY,
-  type HeaderOverrideRow
+  type HeaderOverrideRow,
+  type AccountTemperatureSelectionMode
 } from '@/components/account/credentialsBuilder'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import {
@@ -1683,6 +1693,8 @@ const modelMappings = ref<ModelMapping[]>([])
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
+const temperatureMode = ref<AccountTemperatureSelectionMode>('unchanged')
+const temperatureValue = ref<number | null>(null)
 const headerOverrideEnabled = ref(false)
 const headerOverrideRows = ref<HeaderOverrideRow[]>([])
 const proxyId = ref<number | null>(null)
@@ -2043,6 +2055,13 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     credentialsChanged = true
   }
 
+  if (temperatureMode.value !== 'unchanged') {
+    if (!applyAccountTemperaturePolicy(credentials, temperatureMode.value, temperatureValue.value)) {
+      return null
+    }
+    credentialsChanged = true
+  }
+
   if (enableHeaderOverride.value) {
     // 后端使用 JSONB || merge 语义：关闭时显式写入 false + 空对象以清除旧配置
     credentials[HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY] = headerOverrideEnabled.value
@@ -2199,7 +2218,16 @@ const handleSubmit = async () => {
     return
   }
 
+  if (
+    temperatureMode.value === 'override' &&
+    (temperatureValue.value === null || !Number.isFinite(temperatureValue.value))
+  ) {
+    appStore.showError(t('admin.accounts.temperature.invalid'))
+    return
+  }
+
   const hasAnyFieldEnabled =
+    temperatureMode.value !== 'unchanged' ||
     enableBaseUrl.value ||
     enableOpenAIPassthrough.value ||
     enableOpenAIFlattenNamespaces.value ||
@@ -2392,6 +2420,8 @@ watch(
       selectedErrorCodes.value = []
       customErrorCodeInput.value = null
       interceptWarmupRequests.value = false
+      temperatureMode.value = 'unchanged'
+      temperatureValue.value = null
       headerOverrideEnabled.value = false
       headerOverrideRows.value = []
       proxyId.value = null

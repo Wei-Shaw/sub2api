@@ -2502,6 +2502,12 @@
         </div>
       </div>
 
+      <AccountTemperaturePolicyField
+        v-model:mode="temperatureMode"
+        v-model:temperature="temperatureValue"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      />
+
       <!-- Intercept Warmup Requests (Anthropic/Antigravity) -->
       <div
         v-if="form.platform === 'anthropic' || form.platform === 'antigravity'"
@@ -3809,8 +3815,10 @@ import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import AccountTemperaturePolicyField from '@/components/account/AccountTemperaturePolicyField.vue'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import {
+  applyAccountTemperaturePolicy,
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
@@ -3822,7 +3830,8 @@ import {
   type CnAccountMode,
   type CnApiProtocol,
   type CnNativeApiProtocol,
-  type HeaderOverrideRow
+  type HeaderOverrideRow,
+  type AccountTemperatureMode
 } from '@/components/account/credentialsBuilder'
 import {
   formatDateTimeLocalInput,
@@ -4223,6 +4232,8 @@ const applyGrokOAuthUpstreamConfig = (credentials: Record<string, unknown>) => {
   applyHeaderOverride(credentials, headerOverrideEnabled.value, headerOverrideRows.value, 'create')
 }
 const interceptWarmupRequests = ref(false)
+const temperatureMode = ref<AccountTemperatureMode>('inherit')
+const temperatureValue = ref<number | null>(1)
 const autoPauseOnExpired = ref(true)
 const openaiPassthroughEnabled = ref(false)
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
@@ -5002,6 +5013,19 @@ const withAntigravityConfirmFlag = (payload: CreateAccountRequest): CreateAccoun
   return cloned
 }
 
+const createAccountWithTemperature = async (payload: CreateAccountRequest) => {
+  const credentials = { ...payload.credentials }
+  if (!applyAccountTemperaturePolicy(credentials, temperatureMode.value, temperatureValue.value)) {
+    throw new Error(t('admin.accounts.temperature.invalid'))
+  }
+  return adminAPI.accounts.create(
+    withAntigravityConfirmFlag({
+      ...payload,
+      credentials
+    })
+  )
+}
+
 const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<void>): Promise<boolean> => {
   if (!needsMixedChannelCheck(form.platform)) {
     return true
@@ -5035,7 +5059,7 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
-    const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    const account = await createAccountWithTemperature(payload)
     const modelMapping = payload.credentials.model_mapping
     const hasConcreteMappedTarget = payload.type === 'apikey' &&
       typeof modelMapping === 'object' &&
@@ -5136,6 +5160,8 @@ const resetForm = () => {
   grokOAuthCustomBaseUrlEnabled.value = false
   grokOAuthBaseUrl.value = ''
   interceptWarmupRequests.value = false
+  temperatureMode.value = 'inherit'
+  temperatureValue.value = 1
   autoPauseOnExpired.value = true
   openaiPassthroughEnabled.value = false
   openaiFlattenNamespacesEnabled.value = false
@@ -5831,7 +5857,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
           return
         }
 
-        await adminAPI.accounts.create({
+        await createAccountWithTemperature({
           name: accountName,
           notes: form.notes,
           platform: 'grok',
@@ -6008,7 +6034,7 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
           return
         }
 
-        await adminAPI.accounts.create({
+        await createAccountWithTemperature({
           name: accountName,
           notes: form.notes,
           platform: 'grok',
@@ -6107,7 +6133,7 @@ const handleOpenAIExchange = async (authCode: string) => {
     }
 
     if (shouldCreateOpenAI) {
-      await adminAPI.accounts.create({
+      await createAccountWithTemperature({
         name: form.name,
         notes: form.notes,
         platform: 'openai',
@@ -6155,6 +6181,10 @@ const buildOpenAICodexImportCredentialExtras = (): Record<string, unknown> | nul
   }
 
   if (!applyTempUnschedConfig(credentials)) {
+    return null
+  }
+  if (!applyAccountTemperaturePolicy(credentials, temperatureMode.value, temperatureValue.value)) {
+    appStore.showError(t('admin.accounts.temperature.invalid'))
     return null
   }
   return credentials
@@ -6388,7 +6418,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
         const accountName = refreshTokens.length > 1 ? `${baseName} #${i + 1}` : baseName
 
         if (shouldCreateOpenAI) {
-          await adminAPI.accounts.create({
+          await createAccountWithTemperature({
             name: accountName,
             notes: form.notes,
             platform: 'openai',
@@ -6503,7 +6533,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
         })
-        await adminAPI.accounts.create(createPayload)
+        await createAccountWithTemperature(createPayload)
         successCount++
       } catch (error: any) {
         failedCount++
@@ -6868,7 +6898,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           credentials.temp_unschedulable_rules = tempUnschedPayload
         }
 
-        await adminAPI.accounts.create({
+        await createAccountWithTemperature({
           name: accountName,
           notes: form.notes,
           platform: form.platform,

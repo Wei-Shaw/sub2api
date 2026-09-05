@@ -178,15 +178,30 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	if customUA == "" && account.IsGrokOAuth() {
 		customUA = defaultGrokUpstreamUserAgent()
 	}
-	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, upstreamBody, clientStream, token, customUA, grokCacheIdentity)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
+	rejectedFieldRetryState := newOpenAIResponsesRejectedFieldRetryState(upstreamBody)
+	var resp *http.Response
+	for {
+		resp, err = s.sendCCUpstreamRequest(ctx, c, account, targetURL, upstreamBody, clientStream, token, customUA, grokCacheIdentity)
+		if err != nil {
+			return nil, err
+		}
+		defer func(response *http.Response) { _ = response.Body.Close() }(resp)
+		if resp.StatusCode < http.StatusBadRequest {
+			break
+		}
 
-	// 7. Handle error response with failover
-	if resp.StatusCode >= 400 {
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
+		retryBody, reason, changed, retryErr := normalizeOpenAIResponsesRejectedFieldRetryBody(resp.StatusCode, upstreamBody, respBody)
+		if retryErr != nil {
+			return nil, fmt.Errorf("normalize raw chat rejected sampling field retry body: %w", retryErr)
+		}
+		if changed && rejectedFieldRetryState.Allow(retryBody) {
+			upstreamBody = retryBody
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying raw chat request after %s (account: %s)", reason, account.Name)
+			continue
+		}
+
+		// 7. Handle error response with failover
 		if account.Platform == PlatformGrok {
 			kind := "http_error"
 			if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {

@@ -85,6 +85,11 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 	default:
 		return nil, s.writeGoogleError(c, http.StatusNotFound, "Unsupported action: "+action)
 	}
+	policyBody, policyErr := applyAccountTemperaturePolicy(body, account, temperaturePathGemini)
+	if policyErr != nil {
+		return nil, s.writeGoogleError(c, http.StatusBadRequest, policyErr.Error())
+	}
+	body = policyBody
 
 	mappedModel := s.getMappedModel(account, originalModel)
 	if mappedModel == "" {

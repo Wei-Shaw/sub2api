@@ -1535,6 +1535,13 @@
         </div>
       </div>
 
+      <AccountTemperaturePolicyField
+        v-if="!isSparkShadow"
+        v-model:mode="temperatureMode"
+        v-model:temperature="temperatureValue"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      />
+
       <div v-if="!isSparkShadow">
         <div class="mb-1 flex items-center gap-2">
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
@@ -2898,12 +2905,15 @@ import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
+import AccountTemperaturePolicyField from '@/components/account/AccountTemperaturePolicyField.vue'
 import {
+  applyAccountTemperaturePolicy,
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
   applyPlanType,
   buildPlanTypeOptions,
+  readAccountTemperaturePolicy,
   readPlanType,
   isCustomGrokBaseUrl,
   isHeaderOverrideCapable,
@@ -2917,7 +2927,8 @@ import {
   type CnAccountMode,
   type CnApiProtocol,
   type CnNativeApiProtocol,
-  type HeaderOverrideRow
+  type HeaderOverrideRow,
+  type AccountTemperatureMode
 } from '@/components/account/credentialsBuilder'
 import {
   formatDateTime,
@@ -3196,6 +3207,8 @@ const grokOAuthBaseUrl = ref('')
 const grokClientToolCacheEnabled = ref(true)
 
 const interceptWarmupRequests = ref(false)
+const temperatureMode = ref<AccountTemperatureMode>('inherit')
+const temperatureValue = ref<number | null>(null)
 const autoPauseOnExpired = ref(false)
 const autoPause5hThreshold = ref<number | null>(null)
 const autoPause7dThreshold = ref<number | null>(null)
@@ -3711,6 +3724,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load intercept warmup requests setting (applies to all account types)
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
   interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
+  const temperaturePolicy = readAccountTemperaturePolicy(credentials)
+  temperatureMode.value = temperaturePolicy.mode
+  temperatureValue.value = temperaturePolicy.temperature
   autoPauseOnExpired.value = newAccount.auto_pause_on_expired === true
   editVertexProjectId.value = ''
   editVertexClientEmail.value = ''
@@ -5335,6 +5351,18 @@ const handleSubmit = async () => {
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
       updatePayload.extra = newExtra
+    }
+
+    if (!isSparkShadow.value) {
+      const currentCredentials =
+        (updatePayload.credentials as Record<string, unknown>) ||
+        ((props.account.credentials as Record<string, unknown>) || {})
+      const newCredentials = { ...currentCredentials }
+      if (!applyAccountTemperaturePolicy(newCredentials, temperatureMode.value, temperatureValue.value)) {
+        appStore.showError(t('admin.accounts.temperature.invalid'))
+        return
+      }
+      updatePayload.credentials = newCredentials
     }
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

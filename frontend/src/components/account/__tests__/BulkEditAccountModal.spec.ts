@@ -98,6 +98,25 @@ describe('BulkEditAccountModal', () => {
     } as any)
   })
 
+  it('keeps temperature unchanged by default and submits a zero override when selected', async () => {
+    const wrapper = mountModal()
+    expect(wrapper.get('[data-testid="temperature-mode-unchanged"]').attributes('aria-pressed')).toBe(
+      'true'
+    )
+
+    await wrapper.get('[data-testid="temperature-mode-override"]').trigger('click')
+    await wrapper.get('[data-testid="temperature-value"]').setValue('0')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: {
+        temperature_mode: 'override',
+        temperature: 0
+      }
+    })
+  })
+
   it('批量修改倍率时提示自动同步账号需要先关闭同步', async () => {
     const wrapper = mountModal()
 

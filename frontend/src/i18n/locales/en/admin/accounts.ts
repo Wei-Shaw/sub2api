@@ -2,6 +2,17 @@ export default {
     accounts: {
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
+      temperature: {
+        label: 'Temperature policy',
+        value: 'Fixed temperature',
+        invalid: 'Fixed temperature must be a finite number',
+        modes: {
+          unchanged: 'Unchanged',
+          inherit: 'Default',
+          override: 'Fixed value',
+          omit: 'Do not send'
+        }
+      },
       createAccount: 'Create Account',
       autoRefresh: 'Auto Refresh',
       enableAutoRefresh: 'Enable auto refresh',

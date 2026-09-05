@@ -1786,6 +1786,34 @@ func TestApplyCodexOAuthTransform_StripsChatGPTInternalUnsupportedFields(t *test
 	}
 }
 
+func TestApplyCodexOAuthTransform_StripsGPT56SamplingParameters(t *testing.T) {
+	reqBody := map[string]any{
+		"model":       "gpt-5.6-terra",
+		"temperature": 0.0,
+		"top_p":       0.75,
+		"input":       []any{map[string]any{"role": "user", "content": "hi"}},
+	}
+
+	applyCodexOAuthTransform(reqBody, false, false)
+
+	require.NotContains(t, reqBody, "temperature")
+	require.NotContains(t, reqBody, "top_p")
+}
+
+func TestApplyCodexOAuthTransform_StripsLegacySamplingParameters(t *testing.T) {
+	reqBody := map[string]any{
+		"model":       "gpt-5.4",
+		"temperature": 0.35,
+		"top_p":       0.75,
+		"input":       []any{map[string]any{"role": "user", "content": "hi"}},
+	}
+
+	applyCodexOAuthTransform(reqBody, false, false)
+
+	require.NotContains(t, reqBody, "temperature")
+	require.NotContains(t, reqBody, "top_p")
+}
+
 func TestApplyCodexOAuthTransform_NormalizesPromptAndCommands(t *testing.T) {
 	reqBody := map[string]any{
 		"model":    "gpt-5.5",

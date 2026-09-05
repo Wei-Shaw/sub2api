@@ -240,6 +240,25 @@ func TestAnthropicToChatCompletionsRequest_TemperaturePreservedForNonReasoningMo
 	require.Equal(t, 0.9, *out.TopP)
 }
 
+func TestAnthropicToChatCompletionsRequest_TemperaturePreservedForGPT56(t *testing.T) {
+	temp := 0.35
+	topP := 0.75
+	req := &AnthropicRequest{
+		Model:       "gpt-5.6-terra",
+		MaxTokens:   100,
+		Temperature: &temp,
+		TopP:        &topP,
+		Messages:    []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+	}
+
+	out, err := AnthropicToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	require.NotNil(t, out.Temperature)
+	require.InDelta(t, temp, *out.Temperature, 1e-9)
+	require.NotNil(t, out.TopP)
+	require.InDelta(t, topP, *out.TopP, 1e-9)
+}
+
 func TestAnthropicToChatCompletionsRequest_MaxTokensFloor(t *testing.T) {
 	req := &AnthropicRequest{
 		Model:     "claude-sonnet-4-20250514",

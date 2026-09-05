@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -114,4 +115,27 @@ func TestUpdateAccount_EmptyCredentialsSkipsUpdate(t *testing.T) {
 
 	require.Equal(t, "rt-existing", repo.account.Credentials["refresh_token"], "空 credentials 不应触碰已有 token")
 	require.Equal(t, "renamed", repo.account.Name)
+}
+
+func TestUpdateAccount_RejectsInvalidTemperaturePolicyBeforeWrite(t *testing.T) {
+	accountID := int64(205)
+	repo := &updateAccountCredsRepoStub{
+		account: &Account{
+			ID:          accountID,
+			Platform:    PlatformAnthropic,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Credentials: map[string]any{"api_key": "sk-existing"},
+		},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	updated, err := svc.UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
+		Credentials: map[string]any{"temperature_mode": "override"},
+	})
+
+	require.Nil(t, updated)
+	require.Error(t, err)
+	require.True(t, infraerrors.IsBadRequest(err))
+	require.Zero(t, repo.updateCalls)
 }
